@@ -1,0 +1,401 @@
+@import "tailwindcss";
+
+@theme {
+  /* Quiver Tap — teal */
+  --color-brand-50: #e6f4f3;
+  --color-brand-100: #cfeae8;
+  --color-brand-200: #a6d6d2;
+  --color-brand-300: #1f8078;
+  --color-brand-400: #0c6e67;
+  --color-brand-500: #045e58;
+  --color-brand-600: #004c4c;
+  --color-brand-700: #00423f;
+  --color-brand-800: #00363a;
+  --color-brand-900: #002a2c;
+
+  /* Superfícies */
+  --color-surface: #ffffff;
+  --color-surface-light: #ffffff;
+  --color-surface-lighter: #f3f4f6;
+
+  /* Semânticas */
+  --color-orange: #f97316;
+  --color-orange-soft: #fff1e6;
+  --color-orange-dark: #c75300;
+  --color-success: #16a34a;
+  --color-success-soft: #eaf8ef;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fee2e2;
+  --color-purple: #8b5cf6;
+  --color-purple-soft: #f3e8ff;
+  --color-ink: #111827;
+  --color-ink-soft: #374151;
+  --color-ink-muted: #6b7280;
+  --color-ink-faint: #9ca3af;
+  --color-line: #e5e7eb;
+  --color-line-soft: #eef0f3;
+  --color-canvas: #f7f8fa;
+}
+
+:root {
+  --bottom-nav-height: 4.5rem;
+  --action-bar-height: 8.5rem;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-canvas text-ink antialiased;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  overscroll-behavior: none;
+  line-height: 1.45;
+  min-height: 100dvh;
+}
+
+body.auth-screen {
+  background: #00363a;
+}
+
+.safe-area-pt {
+  padding-top: max(0.25rem, env(safe-area-inset-top));
+}
+
+.safe-area-pb {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+.pb-nav {
+  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+}
+
+.page-with-action-bar {
+  padding-bottom: calc(var(--bottom-nav-height) + var(--action-bar-height) + env(safe-area-inset-bottom));
+}
+
+.mobile-action-bar {
+  @apply fixed left-0 right-0 z-30 border-t border-line bg-surface/95 backdrop-blur-md;
+  bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+}
+
+.mobile-action-bar-inner {
+  @apply w-full max-w-6xl mx-auto px-4 py-3 space-y-2;
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0.5;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.22s ease-out;
+}
+
+/* Botões */
+.touch-btn {
+  @apply min-h-[3rem] px-5 py-3 rounded-xl font-semibold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100;
+}
+
+.touch-btn-primary {
+  @apply min-h-[3rem] px-5 py-3 rounded-xl font-semibold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100 bg-brand-600 text-white hover:bg-brand-500;
+}
+
+.touch-btn-orange {
+  @apply min-h-[3rem] px-5 py-3 rounded-xl font-semibold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100 text-white;
+  background: #f97316;
+  box-shadow: 0 4px 14px rgba(249, 115, 22, 0.25);
+}
+
+.touch-btn-orange:hover:not(:disabled) {
+  background: #ea580c;
+}
+
+.touch-btn-secondary {
+  @apply min-h-[3rem] px-5 py-3 rounded-xl font-semibold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100 bg-surface text-ink hover:bg-surface-lighter border border-line;
+}
+
+.touch-btn-danger {
+  @apply min-h-[3rem] px-5 py-3 rounded-xl font-semibold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100 bg-danger text-white hover:bg-red-500;
+}
+
+.touch-btn-hero {
+  @apply flex w-full items-center justify-center gap-3 min-h-[3.75rem] rounded-2xl bg-gradient-to-r from-brand-600 to-brand-500 text-white text-lg font-bold shadow-lg shadow-brand-600/20 ring-2 ring-brand-200/40 active:scale-[0.98] transition-transform;
+}
+
+.card {
+  @apply bg-surface rounded-2xl p-4 border border-line shadow-sm;
+}
+
+.card-touch {
+  @apply bg-surface rounded-2xl p-4 border border-line text-left active:scale-[0.98] transition-transform min-h-[3.5rem] shadow-sm;
+}
+
+.card-hero {
+  @apply rounded-2xl p-4 bg-gradient-to-br from-brand-700 to-brand-600 text-white shadow-md;
+}
+
+.input {
+  @apply w-full min-h-[3rem] px-4 py-3 rounded-xl bg-surface border border-line text-ink text-base placeholder:text-ink-faint focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100;
+}
+
+.label {
+  @apply block text-sm font-medium text-ink-soft mb-1.5;
+}
+
+.section-label {
+  @apply text-xs font-semibold uppercase tracking-wide text-ink-faint;
+}
+
+.page-eyebrow {
+  @apply text-xs font-semibold uppercase tracking-[0.2em] text-brand-600;
+}
+
+.page-title {
+  @apply text-2xl sm:text-3xl font-bold leading-tight text-ink;
+}
+
+.page-subtitle {
+  @apply text-sm text-ink-muted mt-1 leading-snug;
+}
+
+.alert-error {
+  @apply bg-danger-soft text-danger px-4 py-3 rounded-xl text-sm;
+}
+
+.alert-success {
+  @apply bg-success-soft text-success px-4 py-3 rounded-xl text-sm;
+}
+
+.text-link {
+  @apply font-semibold text-brand-600 hover:text-brand-500 transition-colors;
+}
+
+.empty-state {
+  @apply text-center py-16 space-y-3;
+}
+
+.empty-state-icon {
+  @apply text-4xl;
+}
+
+.empty-state-text {
+  @apply text-ink-muted;
+}
+
+.badge {
+  @apply text-xs font-semibold px-2.5 py-1 rounded-full;
+}
+
+.badge-inactive {
+  @apply text-xs font-semibold px-2.5 py-1 rounded-full bg-surface-lighter text-ink-muted;
+}
+
+.badge-brand {
+  @apply text-xs font-semibold px-2.5 py-1 rounded-full bg-brand-50 text-brand-700;
+}
+
+.badge-live {
+  @apply text-xs font-semibold px-2.5 py-1 rounded-full bg-success-soft text-success;
+}
+
+.badge-open {
+  @apply text-xs font-semibold px-2.5 py-1 rounded-full bg-orange-soft text-orange-dark;
+}
+
+.badge-closed {
+  @apply text-xs font-semibold px-2.5 py-1 rounded-full bg-success-soft text-success;
+}
+
+.badge-series {
+  @apply text-xs font-semibold px-2.5 py-1 rounded-full bg-purple-soft text-purple;
+}
+
+.touch-btn-sm {
+  @apply min-h-10 px-3 py-2 text-sm rounded-xl;
+}
+
+.touch-btn-ghost {
+  @apply inline-flex items-center gap-1.5 min-h-10 px-3 rounded-xl font-semibold text-sm text-ink-muted hover:text-ink hover:bg-surface-lighter transition-colors active:scale-[0.98];
+}
+
+.icon-btn {
+  @apply min-h-11 min-w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 disabled:opacity-50 shrink-0;
+}
+
+.icon-btn-danger {
+  @apply min-h-11 min-w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 disabled:opacity-50 shrink-0 border border-line bg-surface text-ink-muted hover:text-danger hover:border-red-200 hover:bg-danger-soft;
+}
+
+.icon-btn-ghost {
+  @apply min-h-11 min-w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 disabled:opacity-50 shrink-0 text-ink-muted hover:text-ink hover:bg-surface-lighter;
+}
+
+.segmented-control {
+  @apply flex gap-1.5 p-1 rounded-xl bg-surface-lighter;
+}
+
+.segmented-control-btn {
+  @apply flex flex-1 min-h-[2.75rem] items-center justify-center px-2 sm:px-3 rounded-lg font-semibold text-sm sm:text-base whitespace-nowrap transition-colors active:scale-[0.98];
+}
+
+.segmented-control-btn-active {
+  @apply bg-brand-600 text-white shadow-sm;
+}
+
+.segmented-control-btn-inactive {
+  @apply text-ink-muted;
+}
+
+.metric-card {
+  @apply bg-surface rounded-2xl border border-line shadow-sm py-4 px-4 min-h-[5.25rem] flex flex-col items-center justify-center text-center gap-1.5;
+}
+
+.metric-value {
+  @apply text-2xl sm:text-3xl font-bold tabular-nums leading-none text-brand-600;
+}
+
+.metric-value-success {
+  @apply text-2xl sm:text-3xl font-bold tabular-nums leading-none text-success;
+}
+
+.ranking-tv-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.ranking-tv-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ranking-tv-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+}
+
+.agenda-scroll {
+  overflow-x: scroll;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.agenda-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.agenda-week-panel {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+/* Telão — mantém tema escuro para leitura à distância */
+.qt-tv {
+  --color-surface: #121820;
+  --color-surface-light: #1a2433;
+  --color-surface-lighter: #243044;
+  --color-brand-300: #f9ae24;
+  --color-brand-400: #e69500;
+  background-color: var(--color-surface);
+  color: #ffffff;
+  min-height: 100vh;
+}
+
+.qt-tv .card {
+  @apply bg-surface-light border-white/10 shadow-none;
+}
+
+.qt-tv .touch-btn-secondary {
+  @apply bg-surface-lighter text-white border-white/10;
+}
+
+/* Login — fundo teal escuro */
+.login-shell {
+  background: linear-gradient(180deg, #00363a 0%, #004c4c 45%, #00423f 100%);
+  color: #ffffff;
+  min-height: 100dvh;
+}
+
+.login-input {
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  font-size: 16px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.login-label {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.login-input:-webkit-autofill,
+.login-input:-webkit-autofill:hover,
+.login-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #ffffff;
+  -webkit-box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.22) inset;
+  caret-color: #ffffff;
+  transition: background-color 9999s ease-out 0s;
+}
+
+.login-input::placeholder {
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.login-btn-primary {
+  @apply min-h-[3.25rem] rounded-xl font-bold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100;
+  background: #f97316;
+  color: #ffffff;
+}
+
+.login-btn-primary:hover:not(:disabled) {
+  background: #ea580c;
+}
+
+.login-link {
+  color: #f97316;
+}
+
+.login-link:hover {
+  color: #fb923c;
+}
+
+/* Eventos — hero ao vivo */
+.event-hero-live-label {
+  @apply text-[11px] font-bold uppercase tracking-[0.18em] text-orange;
+}
+
+.fab-orange {
+  background: #f97316;
+  color: #ffffff;
+  box-shadow: 0 8px 24px rgba(249, 115, 22, 0.35);
+}
+
+.fab-orange:hover {
+  background: #ea580c;
+}
+
+.btn-hero-white {
+  @apply flex flex-1 items-center justify-center min-h-12 rounded-xl bg-white font-bold text-brand-600 transition active:scale-[0.98];
+}
+
+.btn-outline-light {
+  @apply inline-flex items-center justify-center min-h-11 px-4 rounded-xl border border-line font-semibold text-ink-soft bg-surface transition active:scale-[0.98];
+}

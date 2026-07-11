@@ -1,0 +1,18 @@
+# Copie para deploy/production.settings.psd1 e ajuste os caminhos.
+
+@{
+  ProjectRoot = 'C:\Users\Papai\Documents\Desenvolvimento\Cervejaria'
+
+  ApiPort      = 3001
+  FrontendPort = 5201
+  HealthPath   = '/api/health'
+
+  NodeExe = ''
+
+  CloudflaredConfig = ''
+  TunnelName        = 'quiver-tap'
+  CloudflaredExe    = ''
+
+  LogDir     = ''
+  RuntimeDir = ''
+}

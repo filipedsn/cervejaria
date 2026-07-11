@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionEnd": [
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/stop-dev-on-session-end.ps1"
+      }
+    ]
+  }
+}

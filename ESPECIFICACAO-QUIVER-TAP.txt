@@ -1,0 +1,833 @@
+================================================================================
+QUIVER TAP — ESPECIFICAÇÃO FUNCIONAL E NÃO FUNCIONAL
+Documento para entrega ao time de Design (UX/UI)
+Versão 1.0 — Julho/2026
+================================================================================
+
+SUMÁRIO
+--------------------------------------------------------------------------------
+1.  Visão geral do produto
+2.  Objetivos e proposta de valor
+3.  Personas e papéis de acesso
+4.  Glossário de termos
+5.  Arquitetura de informação e navegação
+6.  Inventário de telas
+7.  Requisitos funcionais por módulo
+8.  Regras de negócio
+9.  Modelo de dados (visão de domínio)
+10. Comportamento em tempo real
+11. Jornadas do usuário (fluxos)
+12. Estados de interface (vazio, carregando, erro, sucesso)
+13. Requisitos não funcionais
+14. Identidade visual e design system atual
+15. Acessibilidade e usabilidade
+16. Conteúdo, tom de voz e idioma
+17. Restrições, premissas e itens fora de escopo
+18. Oportunidades de evolução (backlog de design)
+
+
+================================================================================
+1. VISÃO GERAL DO PRODUTO
+================================================================================
+
+Quiver Tap é um PWA (Progressive Web App) multi-tenant (SaaS) para gestão de
+cervejarias móveis — operações de chopeira/food que atuam em eventos, feiras,
+condomínios e festas. O sistema controla comandas, pedidos, pagamentos, ranking
+de consumo em tempo real e relatórios financeiros.
+
+Cada cervejaria é um "tenant" isolado, com login próprio, catálogo próprio,
+identidade visual (logo e cores) própria e dados totalmente segregados.
+
+Tagline oficial da marca: "Mobile Brewery Management".
+Nome comercial: Quiver Tap.
+
+Contexto de uso principal:
+- Operação em campo, no balcão do evento, em TABLETS e CELULARES.
+- Ambiente muitas vezes com iluminação variável, uso com uma mão, pressa e
+  possível instabilidade de rede.
+- Vários dispositivos operando o MESMO evento simultaneamente (atendentes),
+  com sincronização em tempo real entre eles.
+- Uma TV/telão pode exibir o ranking de consumo ao público.
+
+Plataforma: web responsiva instalável como app (PWA), foco mobile-first,
+mas com layout de painel (desktop) para o Administrador da plataforma.
+
+
+================================================================================
+2. OBJETIVOS E PROPOSTA DE VALOR
+================================================================================
+
+Para o PROPRIETÁRIO da cervejaria:
+- Gerir a agenda de eventos (fixos recorrentes e avulsos).
+- Acompanhar faturamento, ticket médio e volume de chope por evento e por mês.
+- Ter relatórios executivos e exportação de dados.
+- Personalizar a identidade visual do próprio app (logo + cores).
+
+Para o ATENDENTE:
+- Abrir comandas rápido (nome do cliente, telefone opcional).
+- Lançar pedidos com poucos toques (tap → volume → confirmar).
+- Fechar comandas com pagamento simples ou dividido.
+
+Para o público do evento:
+- Ver o ranking de consumo de chope (gamificação) num telão.
+
+Para o ADMINISTRADOR da plataforma (dono do SaaS):
+- Cadastrar e gerir cervejarias-clientes.
+- Configurar parâmetros globais (SMTP, backup, URL da aplicação).
+
+Métrica-chave de UX: velocidade e baixo atrito na operação de balcão
+(abrir comanda, lançar pedido, fechar pagamento).
+
+
+================================================================================
+3. PERSONAS E PAPÉIS DE ACESSO
+================================================================================
+
+Há 3 papéis (roles). O papel define o que a pessoa vê e pode fazer.
+
+3.1 ADMIN (Administrador da plataforma / Quiver Cloud)
+    - Não pertence a nenhuma cervejaria.
+    - Após login vai para o PAINEL ADMIN (layout de painel, desktop-first).
+    - Gerencia cervejarias (cadastrar, editar, ativar/desativar, branding).
+    - Configura parâmetros globais (SMTP, backup, URL do app).
+    - NÃO opera comandas/eventos.
+
+3.2 DONO / PROPRIETÁRIO (dono da cervejaria)
+    - Pertence a uma cervejaria.
+    - Após login vai para a AGENDA (tela de Eventos).
+    - Acesso total à operação: eventos, comandas, catálogo, taps, equipe.
+    - Acesso exclusivo a: Dashboard mensal, Resumo executivo de evento,
+      Relatórios, Configurações (equipe, catálogo, aparência).
+    - Cadastra atendentes.
+    - Personaliza logo e cor da própria cervejaria.
+
+3.3 ATENDENTE (operador de balcão)
+    - Pertence a uma cervejaria.
+    - Após login vai para a AGENDA (tela de Eventos).
+    - Pode: iniciar/retomar sessões, abrir comandas, lançar pedidos,
+      fechar pagamentos, ver ranking.
+    - NÃO acessa: Dashboard, Resumo executivo, Relatórios, Configurações,
+      cadastro de catálogo/taps/equipe.
+
+Observação de design: a diferença Dono x Atendente deve ser tratada por
+OCULTAÇÃO de itens de menu e ações, nunca por telas de "acesso negado" no fluxo
+normal. O menu inferior mostra "Dashboard" e "Configurações" apenas para o Dono.
+
+
+================================================================================
+4. GLOSSÁRIO DE TERMOS
+================================================================================
+
+- CERVEJARIA (Tenant): o cliente do SaaS. Tem usuários, catálogo, eventos.
+- EVENTO: um compromisso da cervejaria. Dois tipos:
+    * AVULSO: tem uma DATA específica (ex.: 12/07 na Praça).
+    * AGENDA FIXA / SÉRIE (recorrência SEMANAL): repete todo [dia da semana]
+      (ex.: "toda sexta no Condomínio Solar"). A série em si não é "aberta";
+      ela GERA SESSÕES.
+- SESSÃO: uma ocorrência concreta de um evento num dia. Uma série gera uma
+  sessão quando o atendente "inicia a sessão de hoje". Um avulso já é uma sessão.
+- STATUS DO EVENTO/SESSÃO: ABERTO (em operação) ou FECHADO (encerrado).
+- COMANDA: a conta de um cliente dentro de uma sessão. Status ABERTA/FECHADA.
+- ITEM DE COMANDA: um pedido lançado (produto + volume + quantidade + preço).
+- TAP (torneira/chopeira): ponto de tiragem numerado, associado a um chope.
+- PRODUTO: item vendável. Tipo BEBIDA ou COMIDA.
+    * BEBIDA com formato CHOPE: vendida por VOLUME (300/500/700 ml), sai por tap,
+      conta para o ranking.
+    * BEBIDA com formato LATA/LONGNECK/GARRAFA/OUTRO: venda UNITÁRIA.
+    * COMIDA: venda UNITÁRIA (porção/unidade).
+- PREÇO: valor por volume (chope tem vários; unitário tem um só).
+- CLIENTE: identificado por nome (obrigatório) e telefone (opcional).
+- RANKING: classificação dos clientes por volume de CHOPE consumido na sessão.
+- RESUMO EXECUTIVO: relatório detalhado de uma sessão ENCERRADA (só Dono).
+- DASHBOARD: visão financeira mensal da cervejaria (só Dono).
+- BRANDING: logo + paleta de cores da cervejaria, aplicada ao app do tenant.
+
+
+================================================================================
+5. ARQUITETURA DE INFORMAÇÃO E NAVEGAÇÃO
+================================================================================
+
+Há dois "shells" (cascas de navegação) distintos:
+
+5.1 SHELL DO TENANT (Dono e Atendente) — mobile-first
+    Estrutura de tela:
+    - HEADER fixo no topo: logo da cervejaria + nome da cervejaria + avatar do
+      usuário (abre menu da conta). Abaixo, uma BARRA DE EVENTO (contexto da
+      sessão ativa) que aparece nas telas de operação.
+    - CONTEÚDO central rolável.
+    - BOTTOM NAV fixa (menu inferior) com os itens principais.
+
+    BOTTOM NAV (ordem atual):
+      1) Eventos  (ícone agenda) — rota "/eventos" (tela inicial pós-login)
+      2) Comandas (ícone lista)  — rota "/comandas"
+      3) Dashboard (só Dono)     — rota "/dashboard"
+      4) Configurações (só Dono) — rota "/configuracoes"
+
+    Rota inicial pós-login (Dono/Atendente): /eventos (a "Agenda").
+
+5.2 SHELL DO ADMIN — desktop-first (painel)
+    - SIDEBAR à esquerda (desktop) com logo Quiver Tap e navegação.
+    - Em mobile: topbar + bottom nav.
+    - Itens: "Cervejarias" e "Configurações".
+    - Rota inicial pós-login (Admin): /admin/cervejarias.
+
+5.3 Mapa de rotas (referência)
+    Públicas (sem login):
+      /login                      Login
+      /forgot-password            Esqueci a senha
+      /reset-password?token=...   Redefinir senha
+
+    Tenant (Dono/Atendente):
+      /eventos                    Agenda (home)
+      /comandas                   Lista de comandas do evento ativo
+      /comandas/nova              Nova comanda
+      /comandas/:id               Detalhe da comanda (pedidos + pagamento)
+      /ranking/:eventoId?         Ranking do evento (dentro do app)
+      /ranking/tv/:eventoId       Ranking em TELA CHEIA (telão)
+      /dashboard                  (Dono) Painel financeiro mensal
+      /eventos/:eventoId/resumo   (Dono) Resumo executivo da sessão
+      /configuracoes/:aba         (Dono) Equipe | Catálogo | Aparência
+
+    Admin:
+      /admin/cervejarias          Lista/gestão de cervejarias
+      /admin/configuracoes        Configurações da plataforma
+
+Observação: a navegação é o principal ponto de redesign solicitado — ver
+seção 18 (a Agenda deve funcionar como agenda de compromissos por data).
+
+
+================================================================================
+6. INVENTÁRIO DE TELAS
+================================================================================
+
+Abaixo, todas as telas existentes com propósito e principais elementos.
+(Detalhes de comportamento em Requisitos Funcionais, seção 7.)
+
+6.1 LOGIN (/login) — pública
+    - Logo Quiver Tap centralizada (grande).
+    - Campos: e-mail, senha. Botão "Entrar". Link "Esqueci minha senha".
+    - Erros de credencial exibidos em alerta.
+
+6.2 ESQUECI A SENHA (/forgot-password) — pública
+    - Logo Quiver Tap.
+    - Campo e-mail. Botão "Enviar link".
+    - Mensagem neutra de confirmação (não revela se o e-mail existe).
+    - Link "Voltar ao login".
+
+6.3 REDEFINIR SENHA (/reset-password) — pública
+    - Logo Quiver Tap.
+    - Campos: nova senha + confirmação. Botão "Redefinir senha".
+    - Requer token válido vindo do e-mail.
+
+6.4 AGENDA / EVENTOS (/eventos) — Dono e Atendente [HOME]
+    Objetivo: gerir o dia da cervejaria (agenda de compromissos).
+    Conteúdo atual:
+    - Sessão ATIVA em destaque ("Ao vivo"): nome, local, horário, botões
+      "Continuar comandas", "Ranking", "Encerrar evento", "Editar".
+    - Lista cronológica por DATA (hoje, próximas datas, datas passadas).
+      Cada dia agrupa: séries do dia (com "Iniciar sessão"), sessões avulsas
+      e sessões abertas/fechadas.
+    - Botão flutuante "+" para novo compromisso.
+    - Modais: "Novo compromisso" e "Editar evento/agenda fixa".
+    NOTA: esta tela está em redesign (ver seção 18).
+
+6.5 COMANDAS (/comandas) — Dono e Atendente
+    Objetivo: operar a sessão ativa.
+    - Botão herói "Nova Comanda".
+    - 4 cartões de resumo: comandas abertas, comandas fechadas, valor em
+      aberto, valor fechado.
+    - Botão "Ver ranking".
+    - Abas segmentadas "Abertas (n)" / "Fechadas (n)".
+    - Lista de comandas (nome do cliente, telefone, total, nº de itens).
+    - Botão "Encerrar evento" (quando sessão aberta).
+    - Se não há evento ativo: estado vazio orientando escolher/criar evento.
+
+6.6 NOVA COMANDA (/comandas/nova) — Dono e Atendente
+    - Campo "Nome do cliente" com AUTOCOMPLETE de clientes recorrentes
+      (busca a partir de 2 caracteres).
+    - Campo "Telefone (opcional)" com máscara.
+    - Botões "Cancelar" e "Abrir Comanda".
+
+6.7 DETALHE DA COMANDA (/comandas/:id) — Dono e Atendente [TELA CRÍTICA]
+    Objetivo: lançar pedidos e fechar pagamento. É a tela de maior uso.
+    - Cabeçalho: nome do cliente, telefone, status (Aberta/Fechada), TOTAL grande.
+    - Lista de ITENS (nome, detalhe, subtotal, remover).
+    - Seções para adicionar item (quando aberta):
+        * CHOPE: grade de TAPS → ao escolher tap, grade de VOLUMES (300/500/700).
+        * BEBIDAS (lata, long neck…): grade de produtos unitários.
+        * COMIDA: grade de produtos unitários.
+    - Modal "Adicionar à comanda": mostra item, preço unitário, seletor de
+      QUANTIDADE (− / número / +), subtotal e novo total. Confirmar/Cancelar.
+    - Barra de ação fixa (comanda aberta): "Fechar Comanda · R$ x" e
+      "Voltar ao evento".
+    - Modal "Fechar Comanda": total, barra de progresso do pagamento,
+      seletor de forma (Pix/Dinheiro/Cartão → Débito/Crédito), valor por
+      pagamento, botão "Usar restante", "+ Dividir pagamento" (até 3),
+      confirmação só habilita quando o somatório bate com o total.
+    - Modal "Recibo" pós-fechamento: check, nome, total, pagamentos, OK.
+    - Comanda fechada: modo somente leitura + "Nova comanda · [cliente]".
+
+6.8 RANKING (/ranking/:eventoId?) — Dono e Atendente
+    - Ranking de consumo de chope da sessão (pódio + demais).
+    - Botão para abrir o modo TELA CHEIA (telão).
+
+6.9 RANKING TELA CHEIA (/ranking/tv/:eventoId) — telão/TV
+    - Layout de destaque: título do evento, TOP 3 (medalhas), demais colocações.
+    - Auto-scroll suave quando a lista excede a tela.
+    - Atualiza em tempo real a cada venda de chope.
+    - Suporta modo simulação (?demo=N) para demonstração.
+    - Botão "Sair da tela cheia".
+
+6.10 DASHBOARD (/dashboard) — só Dono
+    Objetivo: visão financeira mensal da cervejaria.
+    - Seletor de período (mês/ano).
+    - KPIs: receita total, comandas atendidas, ticket médio, volume de chope,
+      variação vs mês anterior.
+    - Gráficos: evolução semanal (linha), receita x forma de pagamento (barras),
+      produtos mais vendidos, receita x funcionário, receita mês a mês do ano.
+    - Atalho para Catálogo.
+
+6.11 RESUMO EXECUTIVO (/eventos/:eventoId/resumo) — só Dono
+    Objetivo: relatório detalhado de uma sessão ENCERRADA.
+    - KPIs: receita total, comandas, ticket médio, volume de chope, clientes
+      únicos.
+    - Vendas por intervalo de 15 min (gráfico de linha).
+    - Formas de pagamento, produtos vendidos, top clientes, top chope,
+      receita por funcionário.
+    - Exportar CSV. Ver ranking. Voltar para a agenda.
+
+6.12 CONFIGURAÇÕES (/configuracoes/:aba) — só Dono
+    Abas segmentadas:
+    a) EQUIPE: lista de usuários da cervejaria; cadastrar atendente
+       (nome, e-mail, senha + confirmação); indica papel (Proprietário/Atendente).
+    b) CATÁLOGO: gestão de produtos (bebidas/comida) e de taps.
+       - Produtos: nome, descrição, tipo, formato, cor/estilo (chope),
+         preços (por volume p/ chope, único p/ unitário), ativar/desativar,
+         excluir (bloqueado se já usado).
+       - Taps: número, nome, produto (só chope), ativar/desativar, excluir.
+    c) APARÊNCIA: logo da cervejaria (upload) + cor primária; extração
+       automática de paleta a partir da logo; pré-visualização.
+
+6.13 ADMIN — CERVEJARIAS (/admin/cervejarias) — só Admin
+    - Cartões-resumo: total, ativas, faturamento do mês, comandas do mês.
+    - TABELA (desktop) com colunas: LOGO, Cervejaria (nome+e-mail),
+      Proprietário, Faturamento, Comandas, Produtos, Mais vendido, Status
+      (ativo/inativo), Ações (Editar).
+    - Cartões equivalentes no mobile.
+    - "Nova Cervejaria": nome, logo, dono (nome/e-mail/senha+confirmação).
+    - Editar cervejaria: dados do dono, nova senha (opcional), logo, cor
+      primária, reextração de identidade visual.
+    - Ativar/Desativar cervejaria (bloqueia login dos usuários do tenant).
+
+6.14 ADMIN — CONFIGURAÇÕES (/admin/configuracoes) — só Admin
+    - URL da aplicação (APP_URL) usada nos e-mails.
+    - SMTP: habilitar, host, porta, TLS, usuário, senha, remetente + teste.
+    - Backup do banco: habilitar, retenção (dias), horário; executar backup
+      manual; listar e baixar backups.
+
+6.15 MENU DA CONTA (overlay, todas as telas do tenant)
+    - Nome e papel do usuário, cervejaria (logo/nome), ação "Sair".
+
+
+================================================================================
+7. REQUISITOS FUNCIONAIS POR MÓDULO
+================================================================================
+
+Notação: [RF-XX] identificador; (Dono), (Atend.), (Admin), (Todos) = papel.
+
+7.1 AUTENTICAÇÃO E SESSÃO
+[RF-01] (Todos) Login por e-mail e senha.
+[RF-02] (Todos) Após login, redirecionar por papel:
+        Admin → /admin/cervejarias; Dono/Atendente → /eventos.
+[RF-03] (Todos) Recuperação de senha por e-mail (link com validade de 1 hora).
+[RF-04] (Todos) Redefinição de senha via token; exige senha (mín. 6) +
+        confirmação.
+[RF-05] (Todos) Logout limpa a sessão.
+[RF-06] (Todos) Sessão persistente por cookie httpOnly (expiração ~8h).
+[RF-07] (Sistema) Se a cervejaria do usuário estiver DESATIVADA, bloquear
+        login/sessão com mensagem orientando contato com o administrador.
+[RF-08] (Sistema) Mensagem de "esqueci a senha" é neutra (não revela cadastro).
+
+7.2 AGENDA / EVENTOS  (Dono cria/edita; Atendente inicia/retoma)
+[RF-10] (Dono) Criar evento AVULSO (nome, local, data, hora início, hora fim
+        opcional). Ao criar avulso, por padrão o evento já ABRE (vira sessão).
+[RF-11] (Dono) Criar AGENDA FIXA / série SEMANAL (nome, local, dia da semana,
+        hora início, hora fim opcional). A série nasce FECHADA (não opera).
+[RF-12] (Atend./Dono) Iniciar a SESSÃO DE HOJE a partir de uma série — só é
+        permitido no dia da semana correto da série.
+[RF-13] (Atend./Dono) Retomar uma sessão ABERTA existente.
+[RF-14] (Atend./Dono) Encerrar (fechar) a sessão do dia.
+[RF-15] (Atend./Dono) Reabrir uma sessão FECHADA.
+[RF-16] (Dono) Editar evento avulso (nome, local, data, horários).
+[RF-17] (Dono) Editar série (nome, local, dia da semana, horários).
+[RF-18] (Dono) Remover série — somente se ela NUNCA gerou sessões.
+[RF-19] (Todos tenant) Visualizar a agenda organizada por data (hoje/próximos/
+        passados) — ver seção 18 para o formato-alvo.
+[RF-20] (Sistema) Só pode existir UMA sessão ABERTA por cervejaria por vez.
+
+7.3 COMANDAS
+[RF-30] (Atend./Dono) Abrir comanda informando nome do cliente (obrigatório)
+        e telefone (opcional). Sistema reaproveita cliente existente por
+        telefone ou por nome+telefone; senão cria novo.
+[RF-31] (Atend./Dono) Autocomplete de clientes recorrentes ao digitar o nome.
+[RF-32] (Atend./Dono) Listar comandas do evento por status (Abertas/Fechadas).
+[RF-33] (Atend./Dono) Ver detalhe da comanda com itens e total.
+[RF-34] (Atend./Dono) Só é possível abrir comanda em evento/sessão ABERTO.
+[RF-35] (Atend./Dono) A partir de uma comanda fechada, abrir uma NOVA comanda
+        para o mesmo cliente com um toque.
+
+7.4 PEDIDOS (ITENS)
+[RF-40] (Atend./Dono) Adicionar CHOPE: escolher tap → volume (300/500/700 ml)
+        → quantidade → confirmar. Preço vem do cadastro por volume.
+[RF-41] (Atend./Dono) Adicionar BEBIDA unitária (lata/long neck/garrafa/outro):
+        escolher produto → quantidade → confirmar.
+[RF-42] (Atend./Dono) Adicionar COMIDA: escolher produto → quantidade → confirmar.
+[RF-43] (Atend./Dono) Remover item de comanda aberta.
+[RF-44] (Sistema) O total da comanda é recalculado automaticamente.
+[RF-45] (Sistema) Só é possível editar itens de comanda ABERTA.
+[RF-46] (Sistema) Ao adicionar/remover CHOPE, o ranking é atualizado.
+
+7.5 PAGAMENTO / FECHAMENTO
+[RF-50] (Atend./Dono) Fechar comanda registrando um ou mais pagamentos.
+[RF-51] Formas: Dinheiro, Pix, Cartão (Débito ou Crédito).
+[RF-52] Pagamento DIVIDIDO: até 3 formas na mesma comanda.
+[RF-53] Auxílio "Usar restante" preenche o valor que falta.
+[RF-54] (Sistema) Só fecha quando o somatório dos pagamentos = total da
+        comanda (tolerância de 1 centavo).
+[RF-55] (Sistema) Não fecha comanda sem itens.
+[RF-56] (Sistema) Registrar QUEM fechou a comanda (para relatório por
+        funcionário).
+[RF-57] Exibir recibo de confirmação após o fechamento.
+
+7.6 RANKING
+[RF-60] (Todos tenant) Ver ranking de consumo de CHOPE por cliente na sessão,
+        ordenado por volume (litros), com posição/medalhas.
+[RF-61] (Todos tenant) Abrir ranking em TELA CHEIA para telão.
+[RF-62] (Sistema) Só CHOPE conta para o ranking (bebidas unitárias e comida não).
+[RF-63] (Sistema) Ranking atualiza em tempo real; telão faz auto-scroll.
+[RF-64] Modo simulação para demonstração (parâmetro de quantidade fictícia).
+
+7.7 DASHBOARD (só Dono)
+[RF-70] Ver KPIs financeiros do mês: receita, comandas, ticket médio, volume
+        de chope, variação vs mês anterior.
+[RF-71] Selecionar mês/ano (não permite período futuro).
+[RF-72] Gráficos: evolução semanal, por forma de pagamento, produtos mais
+        vendidos, por funcionário, receita mês a mês do ano.
+
+7.8 RESUMO EXECUTIVO (só Dono)
+[RF-80] Ver resumo de uma sessão ENCERRADA (só disponível após o encerramento).
+[RF-81] KPIs, vendas por intervalo de 15 min, formas de pagamento, produtos,
+        top clientes, top chope, receita por funcionário.
+[RF-82] Exportar dados da sessão em CSV.
+
+7.9 RELATÓRIOS (só Dono)
+[RF-90] Totais do evento por bebida e por forma de pagamento (comandas fechadas).
+[RF-91] Exportar CSV detalhado do evento.
+
+7.10 CATÁLOGO — PRODUTOS (só Dono)
+[RF-100] Criar produto BEBIDA (chope: com cor/estilo e preços por volume) ou
+         BEBIDA embalada (unitário) ou COMIDA (unitário).
+[RF-101] Chope exige ao menos um preço por volume; unitário exige preço único.
+[RF-102] Editar produto; ativar/desativar; excluir (bloqueado se já usado em
+         pedidos/taps).
+[RF-103] Comida não usa formato de bebida nem tap.
+
+7.11 CATÁLOGO — TAPS (só Dono)
+[RF-110] Criar tap com número único (por cervejaria), nome opcional e produto
+         associado (apenas CHOPE).
+[RF-111] Editar/ativar/desativar/excluir tap (excluir bloqueado se em uso).
+
+7.12 EQUIPE (só Dono)
+[RF-120] Listar usuários da cervejaria (Dono + Atendentes).
+[RF-121] Cadastrar Atendente (nome, e-mail único, senha ≥ 6 + confirmação).
+
+7.13 APARÊNCIA / BRANDING DO TENANT (só Dono)
+[RF-130] Enviar/trocar a LOGO da cervejaria (PNG/JPG/WEBP/GIF, até 5 MB).
+[RF-131] Definir COR primária (#RRGGBB).
+[RF-132] Extração automática de paleta a partir da logo (re-extrair sob demanda).
+[RF-133] A identidade visual do tenant é aplicada DENTRO do sistema (tema),
+         nunca no login nem no ícone do app instalado (esses usam a marca
+         Quiver Tap — ver 13.6).
+
+7.14 ADMIN — CERVEJARIAS
+[RF-140] Listar cervejarias com métricas do mês (faturamento, comandas,
+         produtos, mais vendido) e logo.
+[RF-141] Cadastrar cervejaria + proprietário (com logo opcional).
+[RF-142] Editar cervejaria e dados do dono; trocar senha do dono (opcional);
+         trocar logo; cor primária; re-extrair identidade.
+[RF-143] Ativar/Desativar cervejaria (desativada bloqueia login do tenant).
+
+7.15 ADMIN — CONFIGURAÇÕES DA PLATAFORMA
+[RF-150] Definir APP_URL (usada nos e-mails).
+[RF-151] Configurar SMTP e enviar e-mail de teste.
+[RF-152] Configurar backup do banco (habilitar, retenção, horário), executar
+         backup manual, listar e baixar arquivos de backup.
+
+
+================================================================================
+8. REGRAS DE NEGÓCIO (CRÍTICAS PARA O DESIGN DE FLUXOS)
+================================================================================
+
+RN-01  Isolamento por cervejaria: um usuário só enxerga dados da sua cervejaria.
+RN-02  Uma cervejaria só pode ter UMA sessão ABERTA por vez. Ao tentar abrir/
+       iniciar/reabrir uma segunda, o sistema bloqueia com aviso "Já existe um
+       evento aberto. Feche-o antes de abrir outro." (Design precisa de estado
+       de erro claro e caminho para "ir ao evento aberto".)
+RN-03  Série (agenda fixa) não é "aberta" nem "encerrada": ela gera SESSÕES.
+       "Iniciar sessão" só funciona no DIA DA SEMANA da série.
+RN-04  Uma série só gera UMA sessão por data (não duplica no mesmo dia).
+RN-05  Série só pode ser REMOVIDA se nunca gerou sessões.
+RN-06  Encerrar sessão exige que NÃO haja comandas ABERTAS (senão bloqueia e
+       informa a quantidade pendente).
+RN-07  Fechar comanda: soma dos pagamentos deve igualar o total (tol. 1 centavo);
+       não fecha comanda vazia.
+RN-08  Só CHOPE (BEBIDA + formato CHOPE) conta para o ranking e para "volume de
+       chope" nos relatórios. Bebidas embaladas e comida contam só em receita.
+RN-09  Chope é vendido por volume (300/500/700 ml). Itens unitários têm preço
+       único e quantidade.
+RN-10  Tap aceita SOMENTE produto do tipo chope.
+RN-11  Produto/tap não podem ser excluídos se já usados (integridade histórica).
+RN-12  Cliente é único por telefone dentro da cervejaria; sem telefone,
+       identifica por nome (case-insensitive) + telefone nulo.
+RN-13  Telefone é opcional (LGPD) — usado para reconhecer recorrentes e ranking.
+RN-14  E-mail de usuário é único em toda a plataforma.
+RN-15  Cervejaria desativada: usuários não conseguem logar/permanecer logados.
+RN-16  Comanda fechada é somente leitura (sem editar itens/pagamentos).
+RN-17  Resumo executivo só existe para sessão ENCERRADA.
+RN-18  Dashboard não permite consultar período futuro.
+RN-19  A marca Quiver Tap é usada nas áreas "fora do tenant" (login, ícone do
+       app, e-mails); a marca da cervejaria é usada DENTRO do sistema.
+
+
+================================================================================
+9. MODELO DE DADOS (VISÃO DE DOMÍNIO)
+================================================================================
+
+Entidades e principais atributos (visão simplificada para design):
+
+CERVEJARIA (tenant)
+  - nome, slug, ativo (bool), logoUrl, corPrimaria, corPaleta (tema)
+  - possui: usuários, produtos, taps, eventos, clientes
+
+USUÁRIO
+  - nome, email (único), papel (ADMIN | DONO | ATENDENTE)
+  - vínculo com cervejaria (exceto ADMIN)
+
+PRODUTO
+  - nome, descrição, tipo (BEBIDA | COMIDA), formato (CHOPE | LATA | LONGNECK |
+    GARRAFA | OUTRO), cor, estilo, ativo
+  - possui: preços (por volume)
+
+PREÇO
+  - volumeMl, preço  (chope: vários; unitário: 1)
+
+TAP
+  - número (único por cervejaria), nome, produto (chope), ativo
+
+EVENTO (série OU sessão/avulso)
+  - nome, local, data (nulo em série), horaInicio, horaFim
+  - recorrencia (NENHUMA | SEMANAL), diaSemana (0=Dom..6=Sáb) em série
+  - serieId (aponta para a série que originou a sessão)
+  - status (ABERTO | FECHADO)
+
+CLIENTE
+  - nome, telefone (opcional, único por cervejaria)
+
+COMANDA
+  - status (ABERTA | FECHADA), total, fechadaPor (usuário)
+  - pertence a um evento (sessão) e a um cliente
+  - possui: itens, pagamentos
+
+ITEM DE COMANDA
+  - produto, volumeMl, quantidade, precoUnitário
+
+PAGAMENTO
+  - forma (DINHEIRO | PIX | CARTAO | CARTAO_DEBITO | CARTAO_CREDITO), valor
+
+Relacionamentos-chave:
+  Cervejaria 1—N Usuário/Produto/Tap/Evento/Cliente
+  Evento(série) 1—N Evento(sessões)
+  Evento(sessão) 1—N Comanda
+  Comanda 1—N Item ; Comanda 1—N Pagamento
+  Cliente 1—N Comanda ; Produto 1—N Item ; Produto 1—N Preço
+
+
+================================================================================
+10. COMPORTAMENTO EM TEMPO REAL
+================================================================================
+
+O sistema sincroniza vários dispositivos operando o mesmo evento via WebSocket.
+Impacto no design (feedback e consistência entre telas):
+
+- Ao criar/atualizar/encerrar evento: todas as telas do tenant atualizam.
+- Ao criar comanda, adicionar/remover item, fechar comanda: as telas de
+  Comandas e Detalhe atualizam em tempo real para todos os atendentes.
+- Ranking (inclusive telão) atualiza a cada venda/ajuste de chope.
+- Indicador de conexão: existe um componente de status de conexão; o design
+  deve prever estados "conectado / reconectando / offline".
+- Considerar concorrência: dois atendentes podem agir sobre a mesma comanda;
+  a UI deve refletir o estado mais recente sem "piscar" nem perder contexto.
+
+
+================================================================================
+11. JORNADAS DO USUÁRIO (FLUXOS)
+================================================================================
+
+11.1 Operação típica de um evento (Atendente)
+  Login → cai na Agenda (/eventos) → "Iniciar sessão de hoje" (série) OU
+  retomar sessão aberta → vai para Comandas → "Nova Comanda" (nome/telefone)
+  → Detalhe da comanda → adicionar itens (tap→volume→qtd) → "Fechar Comanda"
+  → escolher pagamento (ou dividir) → recibo → volta às Comandas.
+  Ao fim da noite: "Encerrar evento" (exige comandas fechadas).
+
+11.2 Criar agenda fixa (Dono)
+  Agenda → "+" → "Repete semanal" → nome/local/dia/horário → salvar.
+  A série aparece na agenda; no dia certo, botão "Iniciar sessão".
+
+11.3 Evento avulso (Dono/Atendente)
+  Agenda → "+" → "Evento avulso" → nome/local/data/horário → cria e já abre →
+  redireciona para Comandas.
+
+11.4 Analisar desempenho (Dono)
+  Dashboard (mês) para visão macro; após encerrar uma sessão, Resumo Executivo
+  para o detalhe daquela noite; exportar CSV se necessário.
+
+11.5 Onboarding de cervejaria (Admin)
+  Admin → Cervejarias → "Nova Cervejaria" (dados + logo + dono) → sistema cria
+  tenant e usuário Dono. Dono recebe credenciais e passa a operar.
+
+11.6 Personalização visual (Dono)
+  Configurações → Aparência → enviar logo → paleta é extraída → ajustar cor
+  primária → o app do tenant assume o tema.
+
+11.7 Ranking no telão (evento)
+  Abrir /ranking/tv/:eventoId numa TV → exibe pódio + lista com auto-scroll →
+  atualiza a cada chope vendido.
+
+
+================================================================================
+12. ESTADOS DE INTERFACE
+================================================================================
+
+Para cada tela/lista, o design deve cobrir:
+
+12.1 CARREGANDO
+  - Indicador de carregamento (spinner/skeleton). Existe componente "Loading".
+
+12.2 VAZIO (exemplos existentes)
+  - Agenda sem eventos: ícone 📅 + "Agenda vazia" + CTA "Cadastrar compromisso".
+  - Sem evento ativo em Comandas: orientar escolher/criar evento.
+  - Sem comandas abertas/fechadas: ícones 📋/✅ + textos-guia.
+  - Ranking sem consumo: 🍺 + "Aguardando chope nas taps...".
+
+12.3 ERRO
+  - Alertas de erro inline (padrão vermelho translúcido).
+  - Erros de regra de negócio com texto claro e acionável (ex.: evento já
+    aberto, comandas pendentes, pagamento não confere).
+  - Backend offline: mensagem orientando (fora do controle do usuário final).
+
+12.4 SUCESSO
+  - Confirmações (ex.: recibo de comanda fechada; "E-mail de teste enviado").
+
+12.5 DESABILITADO
+  - Botões desabilitados com opacidade reduzida (ex.: confirmar pagamento
+    enquanto não bate o total; iniciar sessão fora do dia; enviar sem campos).
+
+
+================================================================================
+13. REQUISITOS NÃO FUNCIONAIS
+================================================================================
+
+13.1 PLATAFORMA E RESPONSIVIDADE
+  - PWA instalável (tela inicial do dispositivo), funciona em tela cheia.
+  - Mobile-first para o tenant (celular/tablet). Layout deve escalar bem de
+    ~360px (celular) a tablets; considerar orientação retrato como principal.
+  - Painel Admin é desktop-first (com adaptação mobile).
+  - Suporte a "safe areas" (notch/barra inferior de gestos iOS/Android).
+
+13.2 DESEMPENHO E PERCEPÇÃO
+  - Operação de balcão exige respostas rápidas; ações otimistas quando possível.
+  - Ranking/telão atualiza sem recarregar; telão faz polling de segurança
+    periódico além do tempo real.
+  - Catálogo/taps têm cache de curta duração para leitura rápida offline-ish.
+
+13.3 DISPONIBILIDADE OFFLINE (PWA)
+  - Service worker faz cache de assets; algumas leituras (catálogo/taps) usam
+    estratégia "rede primeiro" com fallback.
+  - Verificação AUTOMÁTICA de atualização do app ao abrir pelo atalho e ao
+    voltar o foco (para o usuário sempre ter a versão mais recente).
+  - Observação: escrita (pedidos/pagamentos) requer conexão. O design deve
+    comunicar bem a perda de conexão (ver 10).
+
+13.4 SEGURANÇA
+  - Autenticação via cookie httpOnly; expiração da sessão (~8h).
+  - Rate limiting em login e "esqueci a senha".
+  - Tokens de redefinição com validade de 1 hora e uso único.
+  - Isolamento estrito de dados por cervejaria (multi-tenant).
+  - Segredos (ex.: SMTP) armazenados criptografados.
+  - Cabeçalhos de segurança (helmet) e CORS restrito em produção.
+
+13.5 PRIVACIDADE / LGPD
+  - Telefone do cliente é OPCIONAL e usado só para reconhecer recorrentes e
+    compor ranking. O design deve deixar claro o caráter opcional e o uso.
+  - Evitar exibição desnecessária de telefone em telas públicas (ex.: telão).
+
+13.6 IDENTIDADE / MARCA
+  - Fora do tenant (login, ícone do app instalado, e-mails) = marca QUIVER TAP.
+  - Dentro do tenant (header, tema, menus internos) = marca da CERVEJARIA
+    (logo + paleta). O tema NÃO deve "vazar" para as telas públicas.
+  - Ícone do atalho (PWA) é sempre Quiver Tap (quadrados 192/512 px).
+
+13.7 INTERNACIONALIZAÇÃO
+  - Idioma: Português do Brasil (pt-BR). Moeda em BRL (R$), datas pt-BR,
+    volumes em litros/ml. (Sem multilíngue por enquanto.)
+
+13.8 COMPATIBILIDADE
+  - Navegadores modernos (Chrome/Edge/Safari) em Android/iOS e desktop.
+
+
+================================================================================
+14. IDENTIDADE VISUAL E DESIGN SYSTEM ATUAL
+================================================================================
+
+O produto já possui um tema base (dark) e componentes. O designer pode evoluir,
+mas deve conhecer o estado atual para manter consistência.
+
+14.1 TEMA (dark, padrão fora do tenant)
+  Marca (laranja/âmbar):
+    brand-50  #fef3e2   brand-100 #fde4b8   brand-200 #fbc96e
+    brand-300 #f9ae24   brand-400 #e69500   brand-500 #c47d00
+    brand-600 #9a6200   brand-700 #704800   brand-800 #462e00   brand-900 #1c1400
+  Superfícies:
+    surface        #121820  (fundo)
+    surface-light  #1a2433  (cartões)
+    surface-lighter#243044  (inputs, chips)
+  Semânticos:
+    sucesso = verde (green-300/400/500) ; erro = vermelho (red-300/400/600)
+  Texto: branco com opacidades (white/90, /70, /55, /45, /40, /30).
+
+  IMPORTANTE: dentro do tenant, brand-* e surfaces são SOBRESCRITOS pela paleta
+  da cervejaria (extraída da logo). O design de componentes deve funcionar com
+  QUALQUER paleta (contraste garantido em cores variáveis).
+
+14.2 TIPOGRAFIA
+  - Fonte de sistema (system-ui / -apple-system / Segoe UI / sans-serif).
+  - Escala usada: título de página ~2xl/3xl bold; seções em "section-label"
+    (xs, uppercase, tracking, opacidade 45%); números com "tabular-nums".
+  - line-height base ~1.45.
+
+14.3 ESPAÇAMENTO E RAIO
+  - Cantos arredondados: inputs/botões rounded-xl; cartões rounded-2xl.
+  - Grid/gaps típicos de 2–3 (8–12px); paddings de cartão ~16px.
+
+14.4 COMPONENTES EXISTENTES (nomes de referência)
+  - Botões: touch-btn (primário/secundário/danger/hero) e variante "sm";
+    alvo mínimo ~48px de altura (touch).
+  - Cartão: card / card-touch.
+  - Input, label, section-label.
+  - Alertas: alert-error, alert-success.
+  - Badges: badge, badge-inactive, badge-brand, badge-live.
+  - Segmented control (abas): usado em Comandas e Configurações.
+  - Ícones-botão (icon-btn / danger / ghost).
+  - Modal (com animação slide-up).
+  - MobileActionBar: barra de ação fixa acima da bottom nav.
+  - PageHeader (título/subtítulo/eyebrow/voltar/ação).
+  - Loading, EmptyState, ConnectionStatus, ToggleAtivo, CurrencyInput,
+    AccountMenu, AppLogo.
+
+14.5 ALVOS DE TOQUE
+  - Botões e áreas tocáveis com altura mínima ~44–48px (WCAG / Apple HIG).
+  - Seletor de quantidade e teclas de pagamento generosos para uso no balcão.
+
+14.6 ÍCONES
+  - Atualmente usa emojis em vários pontos (📅 📋 ✅ 🍺 🏭 ⚙️). O designer pode
+    propor um set de ícones consistente (mantendo legibilidade e leveza).
+
+14.7 GRÁFICOS
+  - Dashboard e Resumo Executivo usam gráficos de linha e barras. Manter
+    paleta coerente com o tema e tooltips legíveis no dark.
+
+
+================================================================================
+15. ACESSIBILIDADE E USABILIDADE
+================================================================================
+
+- Contraste adequado no tema dark E com paletas variáveis de cervejarias.
+- Alvos de toque grandes; espaçamento que evite toques acidentais no balcão.
+- Rótulos claros (labels visíveis, não só placeholders).
+- Feedback imediato de ações (loading nos botões, estados desabilitados).
+- Mensagens de erro específicas e acionáveis (o que aconteceu + o que fazer).
+- Uso com uma mão: ações primárias ao alcance do polegar (barras inferiores).
+- Reduzir número de toques nas tarefas críticas (abrir comanda, lançar chope).
+- aria-labels em ícones-botão (ex.: remover item, sair da tela cheia).
+- Considerar leitura à distância no telão (tipografia grande, alto contraste).
+
+
+================================================================================
+16. CONTEÚDO, TOM DE VOZ E IDIOMA
+================================================================================
+
+- Idioma pt-BR, tom direto, objetivo e amigável (sem jargão técnico).
+- Termos consistentes: "evento/sessão", "comanda", "tap", "chope", "agenda".
+- Moeda R$ (pt-BR); volumes em litros (ranking) e ml (pedidos).
+- Datas por extenso na agenda (ex.: "Sábado, 5 de julho").
+- Mensagens de erro humanizadas (ex.: bloqueios de regra de negócio).
+
+
+================================================================================
+17. RESTRIÇÕES, PREMISSAS E FORA DE ESCOPO
+================================================================================
+
+Premissas:
+- Operação principal em rede local/Wi-Fi do evento; podem existir quedas.
+- Vários dispositivos por evento; um mesmo evento é compartilhado.
+- Impressão de recibo não é requisito (recibo é em tela).
+
+Restrições atuais:
+- Escrita depende de conexão (sem fila offline de pedidos por enquanto).
+- Sem multilíngue; sem multi-moeda.
+- Logo até 5 MB; formatos PNG/JPG/WEBP/GIF.
+- Volumes de chope fixos em 300/500/700 ml.
+
+Fora de escopo (deste ciclo de design, salvo decisão contrária):
+- Emissão fiscal/integração com meios de pagamento reais.
+- App nativo (é PWA).
+- Estoque/insumos, fornecedores, comissionamento.
+
+
+================================================================================
+18. OPORTUNIDADES DE EVOLUÇÃO (BACKLOG DE DESIGN)
+================================================================================
+
+18.1 REDESENHO DA AGENDA (/eventos) — PRIORITÁRIO
+  Direção acordada: a tela de Eventos deve funcionar como uma AGENDA DE
+  COMPROMISSOS do proprietário, organizada POR DATA (estilo agenda), e NÃO
+  por abas. A lista é cronológica:
+    - HOJE em destaque (com a sessão "ao vivo" no topo, se houver).
+    - PRÓXIMAS DATAS (avulsos futuros + ocorrências de séries no dia correto).
+    - DATAS PASSADAS (sessões encerradas / histórico integrado na timeline).
+  Requisitos a preservar (não perder funcionalidade):
+    - Iniciar sessão de série (no dia correto), retomar, encerrar, reabrir.
+    - Criar/editar evento avulso e série; remover série (se sem sessões).
+    - Acesso a ranking e (Dono) resumo executivo.
+    - Sessão ativa sempre visível/acessível.
+  Ideias de UX a explorar:
+    - Cabeçalho de data "sticky"; marcador visual do dia de hoje.
+    - Navegação/salto por semana ou por mês (opcional).
+    - Indicadores nos dias com compromisso.
+
+18.2 REVISÃO DO SISTEMA DE ÍCONES (substituir emojis por set coerente).
+
+18.3 ESTADOS DE CONEXÃO mais evidentes durante a operação (offline/reconectando)
+     com orientação clara ao atendente.
+
+18.4 MICROINTERAÇÕES nas ações críticas (adicionar item, fechar comanda) para
+     reforçar feedback sem atrapalhar a velocidade.
+
+18.5 CONSISTÊNCIA multi-paleta: validar todos os componentes com paletas de
+     cervejarias diversas (clara/escura/saturada) garantindo contraste.
+
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================

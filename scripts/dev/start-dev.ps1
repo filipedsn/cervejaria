@@ -1,0 +1,98 @@
+# Sobe backend (3002) e frontend (5202) em segundo plano.
+
+$ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\_config.ps1"
+
+$paths = Get-DevPaths
+
+if (-not $paths.NpmCmd -or -not (Test-Path $paths.NpmCmd)) {
+  Write-Host 'npm.cmd nao encontrado. Instale Node.js 20+.' -ForegroundColor Red
+  exit 1
+}
+
+$nodeDir = Split-Path $paths.NpmCmd -Parent
+$env:Path = "$nodeDir;$env:Path"
+$env:NODE_ENV = 'development'
+
+function Start-DevService {
+  param(
+    [string]$Label,
+    [string]$WorkingDir,
+    [string]$PidFile,
+    [int]$Port,
+    [string]$StdoutLog,
+    [string]$StderrLog
+  )
+
+  if (Test-DevPortListening -Port $Port) {
+    Write-DevLog -Paths $paths -Message "$Label ja esta na porta $Port."
+    return $true
+  }
+
+  if (Test-Path $PidFile) {
+    $oldPid = [int](Get-Content $PidFile -ErrorAction SilentlyContinue)
+    if (Test-DevProcessAlive -ProcessId $oldPid) {
+      Write-DevLog -Paths $paths -Message "$Label PID $oldPid ainda ativo."
+      return $true
+    }
+  }
+
+  $proc = Start-HiddenNpm `
+    -NpmCmd $paths.NpmCmd `
+    -WorkingDirectory $WorkingDir `
+    -NpmArgs @('run', 'dev') `
+    -StdoutLog $StdoutLog `
+    -StderrLog $StderrLog
+
+  Set-Content -Path $PidFile -Value $proc.Id -Encoding ASCII
+  Write-DevLog -Paths $paths -Message "$Label iniciado PID $($proc.Id) porta $Port."
+
+  Start-Sleep -Seconds 2
+
+  $deadline = (Get-Date).AddSeconds(90)
+  do {
+    if (Test-DevPortListening -Port $Port) {
+      $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+        Select-Object -First 1 -ExpandProperty OwningProcess
+      if ($listener) {
+        Set-Content -Path $PidFile -Value $listener -Encoding ASCII
+      }
+      return $true
+    }
+    Start-Sleep -Seconds 2
+  } while ((Get-Date) -lt $deadline)
+
+  Write-DevLog -Paths $paths -Message "$Label falhou ao abrir porta $Port."
+  return $false
+}
+
+Push-Location $paths.BackendDir
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'SilentlyContinue'
+& $paths.NpmCmd exec prisma generate *> $null
+$ErrorActionPreference = $prevEap
+Pop-Location
+
+$backendOk = Start-DevService `
+  -Label 'API dev' `
+  -WorkingDir $paths.BackendDir `
+  -PidFile $paths.BackendPidFile `
+  -Port $paths.BackendPort `
+  -StdoutLog $paths.BackendLog `
+  -StderrLog $paths.BackendErrLog
+
+$frontendOk = Start-DevService `
+  -Label 'Frontend dev' `
+  -WorkingDir $paths.FrontendDir `
+  -PidFile $paths.FrontendPidFile `
+  -Port $paths.FrontendPort `
+  -StdoutLog $paths.FrontendLog `
+  -StderrLog $paths.FrontendErrLog
+
+if ($backendOk -and $frontendOk) {
+  Write-Host "Dev no ar: http://localhost:$($paths.FrontendPort) (API :$($paths.BackendPort))" -ForegroundColor Green
+  exit 0
+}
+
+Write-Host 'Falha ao subir ambiente de desenvolvimento. Veja deploy/logs/dev-*.log' -ForegroundColor Red
+exit 1

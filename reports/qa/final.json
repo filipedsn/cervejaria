@@ -1,0 +1,13 @@
+{
+  "summary": {
+    "total": 62,
+    "passed": 62,
+    "failed": 0,
+    "warnings": 0,
+    "skipped": 0
+  },
+  "recommendations": [
+    "Otimizar endpoints acima da meta de p95 (índices, evitar N+1, cache de agregações).",
+    "Concluir UAT manual: PWA offline, fluxo de pagamento PIX/cartão real, branding por tenant e recorrência semanal."
+  ]
+}

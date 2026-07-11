@@ -1,0 +1,382 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  DONO
+  ATENDENTE
+}
+
+enum EventStatus {
+  ABERTO
+  FECHADO
+}
+
+enum ComandaStatus {
+  ABERTA
+  FECHADA
+  CANCELADA
+}
+
+enum PaymentMethod {
+  DINHEIRO
+  PIX
+  CARTAO
+  CARTAO_DEBITO
+  CARTAO_CREDITO
+}
+
+enum ProdutoTipo {
+  BEBIDA
+  COMIDA
+}
+
+enum FormatoBebida {
+  CHOPE
+  LATA
+  LONGNECK
+  GARRAFA
+  OUTRO
+}
+
+enum TransacaoTipo {
+  COMANDA_CRIADA
+  COMANDA_ITEM_ADICIONADO
+  COMANDA_ITEM_REMOVIDO
+  COMANDA_FECHADA
+  COMANDA_CANCELADA
+  EVENTO_CRIADO
+  EVENTO_SESSAO_INICIADA
+  EVENTO_ATUALIZADO
+  EVENTO_FECHADO
+  EVENTO_REABERTO
+  EVENTO_EXCLUIDO
+  EVENTO_CARDAPIO_ATUALIZADO
+  TAP_CHOPE_POSICIONADO
+  TAP_CHOPE_REMOVIDO
+  TAP_ATIVO_ALTERADO
+}
+
+model Cervejaria {
+  id          String   @id @default(cuid())
+  nome        String
+  slug        String   @unique
+  ativo       Boolean  @default(true)
+  logoUrl     String?
+  corPrimaria String?
+  corPaleta   Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  usuarios Usuario[]
+  produtos Produto[]
+  trailers Trailer[]
+  taps     Tap[]
+  eventos  Evento[]
+  clientes Cliente[]
+  cardapios Cardapio[]
+  transacoes TransacaoLog[]
+}
+
+model Trailer {
+  id            String   @id @default(cuid())
+  nome          String
+  identificador String?
+  ativo         Boolean  @default(true)
+  cervejariaId  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  taps       Tap[]
+  eventos    Evento[]
+
+  @@index([cervejariaId])
+}
+
+model Usuario {
+  id                 String    @id @default(cuid())
+  nome               String
+  email              String    @unique
+  senhaHash          String
+  papel              UserRole  @default(ATENDENTE)
+  cervejariaId       String?
+  passwordChangedAt  DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  cervejaria            Cervejaria?           @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  passwordResetTokens   PasswordResetToken[]
+  comandasFechadas      Comanda[]             @relation("ComandaFechadaPor")
+  transacoes            TransacaoLog[]
+
+  @@index([cervejariaId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  usuarioId String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+}
+
+model Produto {
+  id           String      @id @default(cuid())
+  nome         String
+  descricao    String?
+  cor          String?
+  estilo       String?
+  tipo         ProdutoTipo   @default(BEBIDA)
+  formato      FormatoBebida?
+  ativo        Boolean       @default(true)
+  cervejariaId String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  precos     Preco[]
+  taps       Tap[]
+  montagens  TapMontagem[]
+  itens      ItemComanda[]
+  eventos    EventoProduto[]
+  cardapios  CardapioProduto[]
+
+  @@index([cervejariaId])
+}
+
+model Preco {
+  id        String  @id @default(cuid())
+  produtoId String
+  volumeMl  Int
+  preco     Decimal @db.Decimal(10, 2)
+
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([produtoId, volumeMl])
+}
+
+model Tap {
+  id           String  @id @default(cuid())
+  numero       Int
+  nome         String?
+  produtoId    String?
+  ativo        Boolean @default(true)
+  cervejariaId String
+  trailerId    String
+
+  produto    Produto?      @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+  cervejaria Cervejaria    @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  trailer    Trailer       @relation(fields: [trailerId], references: [id], onDelete: Cascade)
+  montagens  TapMontagem[]
+  itens      ItemComanda[]
+
+  @@unique([trailerId, numero])
+  @@index([cervejariaId])
+  @@index([trailerId])
+}
+
+/// Chope posicionado em um tap durante um evento (histórico de trocas no dia).
+model TapMontagem {
+  id          String    @id @default(cuid())
+  tapId       String
+  produtoId   String
+  eventoId    String
+  iniciadoEm  DateTime  @default(now())
+  encerradoEm DateTime?
+
+  tap     Tap     @relation(fields: [tapId], references: [id], onDelete: Cascade)
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  evento  Evento  @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+
+  @@index([eventoId, encerradoEm])
+  @@index([tapId, eventoId])
+}
+
+enum RecorrenciaTipo {
+  NENHUMA
+  SEMANAL
+}
+
+model Evento {
+  id           String          @id @default(cuid())
+  nome         String
+  local        String
+  data         DateTime?       @db.Date
+  horaInicio   String          @default("18:00")
+  horaFim      String?
+  recorrencia  RecorrenciaTipo @default(NENHUMA)
+  diaSemana    Int?
+  serieId      String?
+  status       EventStatus     @default(ABERTO)
+  encerradoEm  DateTime?
+  cervejariaId String
+  trailerId    String
+  cardapioId   String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  cervejaria  Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  trailer     Trailer    @relation(fields: [trailerId], references: [id], onDelete: Restrict)
+  cardapio    Cardapio?  @relation(fields: [cardapioId], references: [id], onDelete: SetNull)
+  serie       Evento?    @relation("SerieOcorrencias", fields: [serieId], references: [id], onDelete: SetNull)
+  ocorrencias Evento[] @relation("SerieOcorrencias")
+  comandas    Comanda[]
+  montagens   TapMontagem[]
+  produtos    EventoProduto[]
+  transacoes  TransacaoLog[]
+
+  @@unique([serieId, data])
+  @@index([cervejariaId, status])
+  @@index([cervejariaId, recorrencia])
+  @@index([trailerId])
+  @@index([cardapioId])
+}
+
+/// Cardápio reutilizável (comida e bebidas, sem chope).
+model Cardapio {
+  id           String   @id @default(cuid())
+  nome         String
+  ativo        Boolean  @default(true)
+  cervejariaId String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  cervejaria Cervejaria       @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  produtos   CardapioProduto[]
+  eventos    Evento[]
+
+  @@index([cervejariaId])
+}
+
+model CardapioProduto {
+  id         String @id @default(cuid())
+  cardapioId String
+  produtoId  String
+
+  cardapio Cardapio @relation(fields: [cardapioId], references: [id], onDelete: Cascade)
+  produto  Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([cardapioId, produtoId])
+  @@index([cardapioId])
+}
+
+model Cliente {
+  id           String   @id @default(cuid())
+  nome         String
+  telefone     String?
+  cervejariaId String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  comandas   Comanda[]
+
+  @@unique([cervejariaId, telefone])
+  @@index([cervejariaId, nome])
+}
+
+model Comanda {
+  id           String        @id @default(cuid())
+  eventoId     String
+  clienteId    String
+  status       ComandaStatus @default(ABERTA)
+  total        Decimal       @default(0) @db.Decimal(10, 2)
+  fechadoPorId String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  evento     Evento    @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  cliente    Cliente   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  fechadoPor Usuario?  @relation("ComandaFechadaPor", fields: [fechadoPorId], references: [id], onDelete: SetNull)
+  itens      ItemComanda[]
+  pagamentos Pagamento[]
+  transacoes TransacaoLog[]
+
+  @@index([eventoId, status])
+  @@index([fechadoPorId])
+}
+
+model ItemComanda {
+  id         String   @id @default(cuid())
+  comandaId  String
+  produtoId  String
+  tapId      String?
+  volumeMl   Int
+  quantidade Int      @default(1)
+  precoUnit  Decimal  @db.Decimal(10, 2)
+  createdAt  DateTime @default(now())
+
+  comanda Comanda @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  tap     Tap?    @relation(fields: [tapId], references: [id], onDelete: SetNull)
+
+  @@index([comandaId])
+  @@index([tapId])
+}
+
+/// Comida e bebidas (não chope) disponíveis no evento — definido antes de abrir.
+model EventoProduto {
+  id        String   @id @default(cuid())
+  eventoId  String
+  produtoId String
+  createdAt DateTime @default(now())
+
+  evento  Evento  @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([eventoId, produtoId])
+  @@index([eventoId])
+}
+
+model Pagamento {
+  id        String        @id @default(cuid())
+  comandaId String
+  forma     PaymentMethod
+  valor     Decimal       @db.Decimal(10, 2)
+  pagoEm    DateTime      @default(now())
+
+  comanda Comanda @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+
+  @@index([comandaId])
+}
+
+model TransacaoLog {
+  id           String        @id @default(cuid())
+  cervejariaId String
+  tipo         TransacaoTipo
+  usuarioId    String?
+  eventoId     String?
+  comandaId    String?
+  entidadeTipo String?
+  entidadeId   String?
+  metadata     Json          @default("{}")
+  createdAt    DateTime      @default(now())
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  usuario    Usuario?   @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  evento     Evento?    @relation(fields: [eventoId], references: [id], onDelete: SetNull)
+  comanda    Comanda?   @relation(fields: [comandaId], references: [id], onDelete: SetNull)
+
+  @@index([cervejariaId, createdAt])
+  @@index([eventoId, createdAt])
+  @@index([comandaId, createdAt])
+  @@index([tipo])
+}
+
+model SystemConfig {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}

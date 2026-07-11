@@ -1,0 +1,34 @@
+{
+  "name": "cervejaria-movel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PWA para cervejarias móveis - comandas, pagamentos e ranking",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/supervisor.ps1",
+    "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/stop-dev.ps1",
+    "restart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restart-dev.ps1",
+    "prod:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/install-autostart.ps1",
+    "prod:install-user": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/install-autostart.ps1 -UserOnly",
+    "prod:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/status.ps1",
+    "prod:ensure": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/ensure-running.ps1",
+    "prod:fix-flickering": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/fix-flickering.ps1",
+    "prod:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/stop-all.ps1",
+    "prod:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/uninstall-autostart.ps1",
+    "build": "npm run build --prefix frontend && npm run build --prefix backend",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:setup:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/db-setup-dev.ps1",
+    "db:migrate": "npm run db:migrate --prefix backend",
+    "db:migrate:prod": "npm run db:migrate:prod --prefix backend",
+    "db:seed": "npm run db:seed --prefix backend",
+    "qa:test": "npm run qa:test --prefix backend",
+    "manual:pdf": "node scripts/generate-manual-pdf.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "playwright": "^1.50.1"
+  }
+}

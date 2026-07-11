@@ -1,0 +1,1 @@
+-- No-op: RecorrenciaTipo enum and Evento.recorrencia already created in 20250704210000_evento_recorrencia

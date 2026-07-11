@@ -1,0 +1,3 @@
+CREATE TYPE "ProdutoTipo" AS ENUM ('BEBIDA', 'COMIDA');
+
+ALTER TABLE "Produto" ADD COLUMN "tipo" "ProdutoTipo" NOT NULL DEFAULT 'BEBIDA';
