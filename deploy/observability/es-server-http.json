@@ -1,0 +1,16 @@
+{
+  "size": 5,
+  "query": {
+    "bool": {
+      "must": [
+        { "term": { "resource.attributes.service.name": "quiver-tap-api-dev" } },
+        { "wildcard": { "scope.name": "*http*" } }
+      ],
+      "should": [
+        { "exists": { "field": "metrics.http.server.request.duration" } },
+        { "exists": { "field": "attributes.http.route" } }
+      ],
+      "minimum_should_match": 1
+    }
+  }
+}

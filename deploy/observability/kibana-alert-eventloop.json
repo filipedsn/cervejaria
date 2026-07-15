@@ -1,0 +1,23 @@
+{
+  "name": "quiver-tap-eventloop-high",
+  "tags": ["quiver-tap", "observability"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "5m" },
+  "enabled": true,
+  "params": {
+    "index": ["metrics-generic.otel-default*"],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"range\":{\"metrics.nodejs.eventloop.utilization\":{\"gte\":0.5}}},{\"bool\":{\"should\":[{\"term\":{\"resource.attributes.service.name\":\"quiver-tap-api-dev\"}},{\"term\":{\"resource.attributes.service.name\":\"quiver-tap-api\"}}],\"minimum_should_match\":1}}]}}}",
+    "size": 100,
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m",
+    "thresholdComparator": "gt",
+    "threshold": [0],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery"
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

@@ -50,11 +50,20 @@ if (-not (Test-Path $npmCmd)) {
 }
 
 if (-not $SkipBuild) {
-  $distEntry = Join-Path $projectRoot 'backend\dist\index.js'
-  if (Test-Path $distEntry) {
-    Write-Host 'backend/dist encontrado - pulando build.' -ForegroundColor Gray
+  Write-Host 'Build frontend (producao)...' -ForegroundColor Cyan
+  if ($npmCmd) {
+    & $npmCmd run build:deploy --prefix frontend
   } else {
-    Write-Host 'Build do backend...' -ForegroundColor Cyan
+    npm run build:deploy --prefix frontend
+  }
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host 'Build do frontend falhou.' -ForegroundColor Red
+    exit 1
+  }
+
+  $distEntry = Join-Path $projectRoot 'backend\dist\index.js'
+  if (-not (Test-Path $distEntry)) {
+    Write-Host 'Build do backend (dist ausente)...' -ForegroundColor Cyan
     if ($npmCmd) {
       & $npmCmd run build --prefix backend
     } else {
@@ -97,7 +106,7 @@ Pop-Location
 
 $action = New-ScheduledTaskAction `
   -Execute 'wscript.exe' `
-  -Argument "`"$(Join-Path $PSScriptRoot 'ensure-running-hidden.vbs')`""
+  -Argument "`"$(Join-Path $PSScriptRoot 'start-watchdog-daemon-hidden.vbs')`""
 
 $runLevel = if ($isAdmin) { 'Highest' } else { 'Limited' }
 $principal = New-ScheduledTaskPrincipal `
@@ -114,24 +123,18 @@ $settings = New-ScheduledTaskSettingsSet `
   -Hidden
 
 $logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$watchdogDuration = New-TimeSpan -Days 3650
-$watchdogTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
-  -RepetitionInterval (New-TimeSpan -Minutes 5) `
-  -RepetitionDuration $watchdogDuration
 
 Register-ScheduledTask -TaskName 'QuiverTap-AtLogon' -Action $action -Trigger $logonTrigger -Principal $principal -Settings $settings -Force | Out-Null
-Register-ScheduledTask -TaskName 'QuiverTap-Watchdog' -Action $action -Trigger $watchdogTrigger -Principal $principal -Settings $settings -Force | Out-Null
 
 Write-Host ''
 Write-Host 'Tarefas instaladas:' -ForegroundColor Green
-Write-Host '  QuiverTap-AtLogon    - ao entrar no Windows'
-Write-Host '  QuiverTap-Watchdog   - a cada 5 min (backend + frontend + tunnel)'
+Write-Host '  QuiverTap-AtLogon    - ao entrar no Windows (inicia daemon oculto)'
 
 if ($isAdmin -and -not $UserOnly) {
   $startupTrigger = New-ScheduledTaskTrigger -AtStartup
   $startupTrigger.Delay = 'PT1M'
   Register-ScheduledTask -TaskName 'QuiverTap-AtStartup' -Action $action -Trigger $startupTrigger -Principal $principal -Settings $settings -Force | Out-Null
-  Write-Host '  QuiverTap-AtStartup  - 1 min apos ligar o PC'
+  Write-Host '  QuiverTap-AtStartup  - 1 min apos ligar o PC (inicia daemon oculto)'
 } else {
   Write-Host ''
   Write-Host 'Modo parcial: QuiverTap-AtStartup NAO instalada (precisa de admin).' -ForegroundColor Yellow
@@ -140,10 +143,10 @@ if ($isAdmin -and -not $UserOnly) {
 
 if (-not $SkipTunnelServiceHint) {
   Write-Host ''
-  Write-Host 'Cloudflare: tap.quivercloud.com.br -> localhost:5201 (painel Cloudflare)' -ForegroundColor Cyan
+  Write-Host 'Cloudflare: tap.quivercloud.com.br -> localhost:3001 (API + frontend estatico)' -ForegroundColor Cyan
 }
 
 Write-Host ''
 Write-Host 'Subindo agora...' -ForegroundColor Cyan
-& $ensureScript
+& "$PSScriptRoot\start-watchdog-daemon.ps1"
 & (Join-Path $PSScriptRoot 'status.ps1')

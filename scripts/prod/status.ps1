@@ -16,8 +16,10 @@ Write-Host '================================' -ForegroundColor Cyan
 Write-Host "Projeto: $($paths.ProjectRoot)"
 Write-Host ''
 
-$apiOk = Test-ApiHealthy -HealthUrl $paths.HealthUrl
-Write-Host "Backend ($($paths.HealthUrl)): $(if ($apiOk) { 'OK' } else { 'FORA' })" -ForegroundColor $(if ($apiOk) { 'Green' } else { 'Red' })
+$apiOk = Test-ApiHealthy -HealthUrl $paths.ReadyUrl
+$liveOk = Test-ApiHealthy -HealthUrl $paths.HealthUrl
+Write-Host "Backend ready ($($paths.ReadyUrl)): $(if ($apiOk) { 'OK' } else { 'FORA' })" -ForegroundColor $(if ($apiOk) { 'Green' } else { 'Red' })
+Write-Host "Backend live ($($paths.HealthUrl)): $(if ($liveOk) { 'OK' } else { 'FORA' })" -ForegroundColor $(if ($liveOk) { 'Green' } else { 'DarkGray' })
 
 if (Test-Path $paths.ApiPidFile) {
   $processId = Get-Content $paths.ApiPidFile
@@ -25,8 +27,24 @@ if (Test-Path $paths.ApiPidFile) {
   Write-Host "  PID arquivo: $processId $(if ($alive) { '(ativo)' } else { '(morto)' })"
 }
 
+$watchdogPidFile = Join-Path $paths.RuntimeDir 'watchdog.pid'
+if (Test-Path $watchdogPidFile) {
+  $processId = Get-Content $watchdogPidFile
+  $alive = Test-ProcessAlive -ProcessId ([int]$processId)
+  Write-Host "Watchdog daemon: $(if ($alive) { 'OK' } else { 'FORA' }) (PID $processId)" -ForegroundColor $(if ($alive) { 'Green' } else { 'Red' })
+}
+
+$opsPidFile = Join-Path $paths.RuntimeDir 'ops-panel.pid'
+if (Test-Path $opsPidFile) {
+  $processId = Get-Content $opsPidFile
+  $alive = Test-ProcessAlive -ProcessId ([int]$processId)
+  Write-Host "Ops panel (:3099): $(if ($alive) { 'OK' } else { 'FORA' }) (PID $processId)" -ForegroundColor $(if ($alive) { 'Green' } else { 'Red' })
+  Write-Host "  http://127.0.0.1:3099" -ForegroundColor Gray
+}
+
 $frontendOk = Test-FrontendHealthy -FrontendUrl $paths.FrontendUrl
-Write-Host "Frontend ($($paths.FrontendUrl)): $(if ($frontendOk) { 'OK' } else { 'FORA' })" -ForegroundColor $(if ($frontendOk) { 'Green' } else { 'Red' })
+$frontendLabel = if ($paths.ServeFrontendFromApi) { 'Frontend estatico (via API)' } else { 'Frontend Vite' }
+Write-Host "$frontendLabel ($($paths.FrontendUrl)): $(if ($frontendOk) { 'OK' } else { 'FORA' })" -ForegroundColor $(if ($frontendOk) { 'Green' } else { 'Red' })
 
 if (Test-Path $paths.FrontendPidFile) {
   $processId = Get-Content $paths.FrontendPidFile
@@ -34,7 +52,8 @@ if (Test-Path $paths.FrontendPidFile) {
   Write-Host "  PID arquivo: $processId $(if ($alive) { '(ativo)' } else { '(morto)' })"
 }
 
-Write-Host "Cloudflare (publico): https://tap.quivercloud.com.br -> localhost:$($paths.FrontendPort)"
+$cloudflarePort = if ($paths.ServeFrontendFromApi) { $paths.ApiPort } else { $paths.FrontendPort }
+Write-Host "Cloudflare (publico): https://tap.quivercloud.com.br -> localhost:$cloudflarePort"
 
 $tunnelOk = Test-CloudflaredRunning
 Write-Host "Cloudflare Tunnel: $(if ($tunnelOk) { 'OK' } else { 'FORA' })" -ForegroundColor $(if ($tunnelOk) { 'Green' } else { 'Red' })
@@ -52,7 +71,7 @@ if (Test-Path $paths.TunnelPidFile) {
 
 Write-Host ''
 Write-Host 'Tarefas agendadas:' -ForegroundColor Cyan
-foreach ($name in @('QuiverTap-AtLogon', 'QuiverTap-AtStartup', 'QuiverTap-Watchdog')) {
+foreach ($name in @('QuiverTap-AtLogon', 'QuiverTap-AtStartup')) {
   $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
   if ($task) {
     $info = Get-ScheduledTaskInfo -TaskName $name

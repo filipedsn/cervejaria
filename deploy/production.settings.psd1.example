@@ -5,7 +5,9 @@
 
   ApiPort      = 3001
   FrontendPort = 5201
+  ServeFrontendFromApi = $true
   HealthPath   = '/api/health'
+  ReadyPath    = '/api/ready'
 
   NodeExe = ''
 

@@ -57,13 +57,20 @@ $proc = Start-HiddenNpm `
 Set-Content -Path $paths.FrontendPidFile -Value $proc.Id -Encoding ASCII
 Write-WatchdogLog -Paths $paths -Message "Frontend iniciado PID $($proc.Id) porta $($paths.FrontendPort)."
 
-$deadline = (Get-Date).AddSeconds(45)
+$deadline = (Get-Date).AddSeconds(90)
 do {
   Start-Sleep -Seconds 2
   if (Test-FrontendHealthy -FrontendUrl $paths.FrontendUrl) {
-    if (-not $Quiet) { Write-Host "Frontend no ar: $($paths.FrontendUrl) (PID $($proc.Id))" -ForegroundColor Green }
+    $listener = Get-NetTCPConnection -LocalPort $paths.FrontendPort -State Listen -ErrorAction SilentlyContinue |
+      Select-Object -First 1 -ExpandProperty OwningProcess
+    if ($listener) {
+      Set-Content -Path $paths.FrontendPidFile -Value $listener -Encoding ASCII
+    }
+    $pidLabel = if ($listener) { $listener } else { $proc.Id }
+    if (-not $Quiet) { Write-Host "Frontend no ar: $($paths.FrontendUrl) (PID $pidLabel)" -ForegroundColor Green }
     exit 0
-  }} while ((Get-Date) -lt $deadline)
+  }
+} while ((Get-Date) -lt $deadline)
 
 Write-Host "Frontend subiu mas health check falhou. Veja $($paths.FrontendErrLog)" -ForegroundColor Red
 exit 1

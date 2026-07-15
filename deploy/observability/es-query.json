@@ -1,0 +1,12 @@
+{
+  "size": 5,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "bool": {
+      "should": [
+        { "term": { "service.name": "quiver-tap-api-dev" } },
+        { "match": { "resource.attributes.service.name": "quiver-tap-api-dev" } }
+      ]
+    }
+  }
+}

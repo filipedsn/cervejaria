@@ -1,0 +1,21 @@
+# EDOT Collector — recebe OTLP do Quiver Tap e envia para Elasticsearch existente.
+# Rede: elasticsearch-kibana_elastic (mesma do container elasticsearch).
+
+services:
+  edot-collector:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    container_name: quiver-edot-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./deploy/observability/otel-collector-config.yml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - elastic
+
+networks:
+  elastic:
+    external: true
+    name: elasticsearch-kibana_elastic

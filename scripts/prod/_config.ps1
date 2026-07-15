@@ -23,6 +23,36 @@ function Import-BackendEnvFile {
       Set-Item -Path "env:$key" -Value $value
     }
   }
+
+  Assert-DatabaseEnvironment -Environment $Environment
+}
+
+function Assert-DatabaseEnvironment {
+  param(
+    [ValidateSet('development', 'production')]
+    [string]$Environment
+  )
+
+  $url = $env:DATABASE_URL
+  if (-not $url) {
+    throw 'DATABASE_URL nao definida no arquivo de ambiente.'
+  }
+
+  if ($Environment -eq 'production') {
+    if ($url -match 'cervejaria_dev') {
+      throw 'PRODUCAO: DATABASE_URL aponta para cervejaria_dev. Corrija backend/.env.production.'
+    }
+    if ($url -notmatch '/cervejaria(\?|$|")') {
+      throw 'PRODUCAO: DATABASE_URL deve usar o banco cervejaria.'
+    }
+  } else {
+    if ($url -notmatch 'cervejaria_dev') {
+      throw 'DESENVOLVIMENTO: DATABASE_URL deve usar o banco cervejaria_dev.'
+    }
+    if ($url -match '/cervejaria(\?|$|")' -and $url -notmatch 'cervejaria_dev') {
+      throw 'DESENVOLVIMENTO: DATABASE_URL aponta para o banco de producao.'
+    }
+  }
 }
 
 function Get-QuiverTapSettings {
@@ -69,9 +99,16 @@ function Resolve-QuiverTapPaths {
 
   $apiPort = if ($Settings.ApiPort) { [int]$Settings.ApiPort } else { 3001 }
   $frontendPort = if ($Settings.FrontendPort) { [int]$Settings.FrontendPort } else { 5201 }
+  $serveFrontendFromApi = if ($null -ne $Settings.ServeFrontendFromApi) { [bool]$Settings.ServeFrontendFromApi } else { $true }
   $healthPath = if ($Settings.HealthPath) { $Settings.HealthPath } else { '/api/health' }
+  $readyPath = if ($Settings.ReadyPath) { $Settings.ReadyPath } else { '/api/ready' }
   $healthUrl = "http://127.0.0.1:${apiPort}${healthPath}"
-  $frontendUrl = "http://127.0.0.1:${frontendPort}/"
+  $readyUrl = "http://127.0.0.1:${apiPort}${readyPath}"
+  $frontendUrl = if ($serveFrontendFromApi) {
+    "http://127.0.0.1:${apiPort}/"
+  } else {
+    "http://127.0.0.1:${frontendPort}/"
+  }
 
   $cfConfig = $Settings.CloudflaredConfig
   if (-not $cfConfig) {
@@ -85,7 +122,9 @@ function Resolve-QuiverTapPaths {
     ApiEntry          = Join-Path $root 'backend\dist\index.js'
     ApiPort           = $apiPort
     FrontendPort      = $frontendPort
+    ServeFrontendFromApi = $serveFrontendFromApi
     HealthUrl         = $healthUrl
+    ReadyUrl          = $readyUrl
     FrontendUrl       = $frontendUrl
     NodeExe           = $nodeExe
     NpmCmd            = if (Test-Path (Join-Path ${env:ProgramFiles} 'nodejs\npm.cmd')) {
@@ -195,19 +234,6 @@ function Start-HiddenNpm {
     [string]$StdoutLog = '',
     [string]$StderrLog = ''
   )
-
-  $nodeDir = Split-Path $NpmCmd -Parent
-  $nodeExe = Join-Path $nodeDir 'node.exe'
-  $npmCli = Join-Path $nodeDir 'node_modules\npm\bin\npm-cli.js'
-
-  if (Test-Path $npmCli) {
-    return Start-HiddenProcess `
-      -FilePath $nodeExe `
-      -ArgumentList (@($npmCli) + $NpmArgs) `
-      -WorkingDirectory $WorkingDirectory `
-      -StdoutLog $StdoutLog `
-      -StderrLog $StderrLog
-  }
 
   return Start-HiddenProcess `
     -FilePath $NpmCmd `
