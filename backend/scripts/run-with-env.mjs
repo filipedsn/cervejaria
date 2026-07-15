@@ -42,6 +42,35 @@ if (!fs.existsSync(envFile)) {
 }
 
 const fileVars = parseEnvFile(fs.readFileSync(envFile, 'utf8'));
+
+function assertDatabaseEnvironment(name, databaseUrl) {
+  if (!databaseUrl) {
+    console.error('DATABASE_URL nao definida em', envFile);
+    process.exit(1);
+  }
+  if (name === 'production') {
+    if (databaseUrl.includes('cervejaria_dev')) {
+      console.error('PRODUCAO: DATABASE_URL aponta para cervejaria_dev.');
+      process.exit(1);
+    }
+    if (!/\/cervejaria(\?|$)/.test(databaseUrl)) {
+      console.error('PRODUCAO: DATABASE_URL deve usar o banco cervejaria.');
+      process.exit(1);
+    }
+  } else {
+    if (!databaseUrl.includes('cervejaria_dev')) {
+      console.error('DESENVOLVIMENTO: DATABASE_URL deve usar cervejaria_dev.');
+      process.exit(1);
+    }
+    if (/\/cervejaria(\?|$)/.test(databaseUrl) && !databaseUrl.includes('cervejaria_dev')) {
+      console.error('DESENVOLVIMENTO: DATABASE_URL aponta para producao.');
+      process.exit(1);
+    }
+  }
+}
+
+assertDatabaseEnvironment(envName, fileVars.DATABASE_URL);
+
 const childEnv = {
   ...process.env,
   ...fileVars,

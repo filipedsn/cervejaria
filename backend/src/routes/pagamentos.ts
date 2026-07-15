@@ -6,6 +6,7 @@ import { emitToEvento } from '../lib/realtime.js';
 import { toNumber } from '../lib/utils.js';
 import { cancelarComandaVazia } from '../lib/comanda-cancelar.js';
 import { registrarTransacao } from '../lib/transacao-log.js';
+import { computeChopeMlFromItens, incrementClienteStatsOnComandaFechada } from '../lib/cliente-stats.js';
 
 const pagamentoSchema = z.object({
   forma: z.enum(['DINHEIRO', 'PIX', 'CARTAO', 'CARTAO_DEBITO', 'CARTAO_CREDITO']),
@@ -35,7 +36,7 @@ export async function pagamentosRoutes(app: FastifyInstance) {
 
     const comanda = await prisma.comanda.findFirst({
       where: { id, status: 'ABERTA', evento: { cervejariaId: user.cervejariaId } },
-      include: { itens: true },
+      include: { itens: { include: { produto: true } } },
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada ou já fechada' });
 
@@ -62,10 +63,11 @@ export async function pagamentosRoutes(app: FastifyInstance) {
 
     let updated;
     try {
+      const fechadaEm = new Date();
       updated = await prisma.$transaction(async (tx) => {
         const fechou = await tx.comanda.updateMany({
           where: { id, status: 'ABERTA' },
-          data: { status: 'FECHADA', fechadoPorId: user.sub },
+          data: { status: 'FECHADA', fechadoPorId: user.sub, fechadaEm },
         });
         if (fechou.count === 0) {
           throw app.httpErrors.notFound('Comanda não encontrada ou já fechada');
@@ -93,6 +95,15 @@ export async function pagamentosRoutes(app: FastifyInstance) {
           },
           tx,
         );
+
+        const fechadoEm = fechadaEm;
+        const totalMlChope = computeChopeMlFromItens(comanda.itens);
+        await incrementClienteStatsOnComandaFechada(tx, {
+          clienteId: comanda.clienteId,
+          totalGasto: total,
+          totalMlChope,
+          fechadoEm,
+        });
 
         return tx.comanda.findUniqueOrThrow({
           where: { id },

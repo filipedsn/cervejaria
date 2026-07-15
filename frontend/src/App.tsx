@@ -17,6 +17,10 @@ import { RankingFullscreenPage } from './pages/RankingFullscreenPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ResumoExecutivoPage } from './pages/ResumoExecutivoPage';
 import { ConfiguracoesPage } from './pages/ConfiguracoesPage';
+import { ClientesPage } from './pages/ClientesPage';
+import { ClienteDetailPage } from './pages/ClienteDetailPage';
+import { CadastroLinkDescontinuadoPage } from './pages/CadastroLinkDescontinuadoPage';
+import { PortalClientePage } from './pages/PortalClientePage';
 import { Layout } from './components/Layout';
 import { AdminLayout } from './components/AdminLayout';
 import { InstallAppBanner } from './components/InstallAppBanner';
@@ -26,7 +30,9 @@ import { resetBreweryTheme } from './lib/theme';
 
 function RootLayout() {
   const { pathname } = useLocation();
-  const hideInstallBanner = pathname.startsWith('/ranking/tv');
+  const hideInstallBanner =
+    pathname.startsWith('/ranking/tv') ||
+    pathname.startsWith('/c/');
 
   return (
     <>
@@ -152,6 +158,8 @@ const router = createBrowserRouter([
     element: <RootLayout />,
     children: [
       { path: '/ranking/tv/:eventoId', element: <RankingTvEntry /> },
+      { path: '/c/:slug/cadastro', element: <CadastroLinkDescontinuadoPage /> },
+      { path: '/c/:slug/t/:trailerId', element: <PortalClientePage /> },
       {
         element: <PublicOnly />,
         children: [
@@ -200,6 +208,8 @@ const router = createBrowserRouter([
                   { index: true, element: <TenantEntryRedirect /> },
                   { path: 'trailer', element: <SelecionarTrailerPage /> },
                   { path: 'eventos', element: <EventoPage /> },
+                  { path: 'clientes', element: <ClientesPage /> },
+                  { path: 'clientes/:id', element: <ClienteDetailPage /> },
                   {
                     element: <RequireTrailerContext />,
                     children: [

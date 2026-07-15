@@ -50,6 +50,10 @@ import { adminRoutes } from './routes/admin.js';
 
 import { cervejariaRoutes } from './routes/cervejaria.js';
 
+import { publicRoutes } from './routes/public.js';
+import { pedidosRoutes } from './routes/pedidos.js';
+import { registerClienteSessionAuth } from './lib/cliente-session.js';
+
 import { ensureUploadsDir, getUploadsRoot } from './lib/uploads.js';
 
 import { verifySession } from './lib/session.js';
@@ -68,19 +72,15 @@ import {
 
 } from './lib/security-config.js';
 
+import { getReadinessStatus } from './lib/health.js';
+import { createLogger } from './lib/logger.js';
+
 import type { JwtPayload } from './types/auth.js';
-
-
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-
-
 export async function buildApp() {
-
-  const app = Fastify({ logger: true });
-
-
+  const app = Fastify({ loggerInstance: createLogger() });
 
   await app.register(helmet, {
 
@@ -178,6 +178,8 @@ export async function buildApp() {
 
   });
 
+  registerClienteSessionAuth(app);
+
 
 
   app.setErrorHandler((error, _request, reply) => {
@@ -217,7 +219,13 @@ export async function buildApp() {
 
   app.get('/api/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 
-
+  app.get('/api/ready', async (_request, reply) => {
+    const readiness = await getReadinessStatus();
+    if (readiness.status !== 'ready') {
+      return reply.status(503).send(readiness);
+    }
+    return readiness;
+  });
 
   await app.register(authRoutes, { prefix: '/api/auth' });
 
@@ -246,6 +254,10 @@ export async function buildApp() {
   await app.register(adminRoutes, { prefix: '/api/admin' });
 
   await app.register(cervejariaRoutes, { prefix: '/api/cervejaria' });
+
+  await app.register(publicRoutes, { prefix: '/api/public' });
+
+  await app.register(pedidosRoutes, { prefix: '/api/pedidos' });
 
 
 
@@ -283,6 +295,11 @@ export async function buildApp() {
 
         return reply.status(404).send({ error: 'Rota não encontrada' });
 
+      }
+
+      // Resquício do Vite dev (porta 5201): evitar fallback HTML que quebra service workers antigos.
+      if (/\/dev-sw\.js|\/@vite\/|\/@react-refresh|\/node_modules\//.test(request.url)) {
+        return reply.status(404).send({ error: 'Not found' });
       }
 
       return reply.sendFile('index.html');

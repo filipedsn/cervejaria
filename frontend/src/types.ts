@@ -176,6 +176,162 @@ export interface Cliente {
   id: string;
   nome: string;
   telefone?: string | null;
+  email?: string | null;
+  dataNascimento?: string | null;
+  optInMarketing?: boolean;
+  optInEm?: string | null;
+  cadastradoVia?: 'STAFF' | 'AUTO_ATENDIMENTO' | 'COMANDA';
+  observacoes?: string | null;
+  ativo?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  estatisticas?: ClienteEstatisticas | null;
+  totalGasto?: number;
+}
+
+export interface ClienteEstatisticas {
+  clienteId: string;
+  totalComandasFechadas: number;
+  totalGasto: number;
+  totalMlChope: number;
+  primeiraVisitaEm: string | null;
+  ultimaVisitaEm: string | null;
+  updatedAt: string;
+}
+
+export interface ClienteListResponse {
+  items: Cliente[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
+export interface ClienteHistoricoItem {
+  id: string;
+  total: number;
+  fechadaEm: string;
+  evento: { id: string; nome: string; local: string; data: string | null };
+  itens: {
+    id: string;
+    produto: string;
+    volumeMl: number;
+    quantidade: number;
+    precoUnit: number;
+    subtotal: number;
+  }[];
+  pagamentos: { forma: string; valor: number }[];
+}
+
+export interface ClienteHistoricoResponse {
+  items: ClienteHistoricoItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
+export interface PublicCervejariaInfo {
+  nome: string;
+  slug: string;
+  logoUrl?: string | null;
+  corPrimaria?: string | null;
+  corPaleta?: BrandTheme | null;
+}
+
+export interface PortalTrailerInfo {
+  cervejaria: PublicCervejariaInfo;
+  trailer: { id: string; nome: string; identificador?: string | null };
+  evento: {
+    id: string;
+    nome: string;
+    local: string;
+    data: string | null;
+    horaInicio?: string;
+    horaFim?: string | null;
+  } | null;
+  disponivel: boolean;
+}
+
+export interface PortalCardapioChope {
+  tapId: string;
+  tapNumero: number;
+  tapNome?: string | null;
+  produto: {
+    id: string;
+    nome: string;
+    cor?: string | null;
+    estilo?: string | null;
+    precos: { volumeMl: number; preco: number }[];
+  };
+}
+
+export interface PortalCardapioProduto {
+  id: string;
+  nome: string;
+  descricao?: string | null;
+  tipo: string;
+  formato?: string | null;
+  precos: { volumeMl: number; preco: number }[];
+}
+
+export interface PortalCardapio {
+  chopes: PortalCardapioChope[];
+  bebidas: PortalCardapioProduto[];
+  comidas: PortalCardapioProduto[];
+}
+
+export interface PortalComandaItem {
+  id: string;
+  produto: string;
+  volumeMl: number;
+  quantidade: number;
+  precoUnit: number;
+  subtotal: number;
+}
+
+export interface PedidoClienteItem {
+  id: string;
+  produtoId: string;
+  tapId?: string | null;
+  volumeMl: number;
+  quantidade: number;
+  precoUnit: number;
+  produto: { id: string; nome: string };
+}
+
+export type PedidoClienteStatus = 'PENDENTE' | 'CONFIRMADO' | 'RECUSADO' | 'CANCELADO';
+
+export interface PedidoCliente {
+  id: string;
+  status: PedidoClienteStatus;
+  observacao?: string | null;
+  recusadoMotivo?: string | null;
+  totalEstimado: number;
+  createdAt: string;
+  confirmadoEm?: string | null;
+  itens: PedidoClienteItem[];
+  cliente?: { id: string; nome: string; telefone?: string | null };
+}
+
+export interface PortalComanda {
+  id: string;
+  status: string;
+  total: number;
+  itens: PortalComandaItem[];
+  pedidos: PedidoCliente[];
+}
+
+export interface PortalSessaoResponse {
+  cliente: { id: string; nome: string };
+  evento: NonNullable<PortalTrailerInfo['evento']>;
+  trailer: PortalTrailerInfo['trailer'];
+  cervejaria: PublicCervejariaInfo;
+  comanda: PortalComanda;
 }
 
 export interface ItemComanda {
@@ -288,6 +444,20 @@ export interface CervejariaDashboard {
     comandas: number;
     receita: number;
   }>;
+  eventosRecentes: Array<{
+    eventoId: string;
+    nome: string;
+    local: string;
+    data: string;
+    horaInicio: string;
+    receitaTotal: number;
+    comandasAtendidas: number;
+    ticketMedio: number;
+    chopeMl: number;
+    duracaoHoras: number;
+    receitaPorHora: number;
+    chopeLitrosPorHora: number;
+  }>;
   receitaAnual: Array<{
     mes: number;
     label: string;
@@ -312,6 +482,20 @@ export interface EventoResumoExecutivo {
     receita: number;
     comandas: number;
   }>;
+  fluxoPorIntervalo: Array<{
+    intervalo: string;
+    inicio: string;
+    pedido: number;
+    fechado: number;
+    aberto: number;
+    chopeMl: number;
+    itens: number;
+    comandasFechadas: number;
+  }>;
+  tempoComanda: {
+    mediaMinutos: number;
+    distribuicao: Array<{ faixa: string; comandas: number }>;
+  };
   porPagamento: Array<{ forma: string; valor: number; percentual: number }>;
   porProduto: Array<{
     produtoId: string;

@@ -42,6 +42,7 @@ export interface TenantFixture {
 }
 
 export interface Arena {
+  slug: string;
   cervejariaId: string;
   eventoId: string;
   trailerId: string;
@@ -101,6 +102,31 @@ export interface WorkerResult {
   durationMs: number;
   itemOps: WorkerItemOps;
   duplicateEvent: { status: number; eventoId: string | null };
+}
+
+export interface PortalWorkerPedidoOps {
+  attempted: number;
+  success: number;
+  failed: number;
+  latencies: number[];
+  pedidoIds: string[];
+}
+
+export interface PortalWorkerResult {
+  workerId: string;
+  pid: number;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  sessao: {
+    status: number;
+    latencyMs: number;
+    comandaId: string | null;
+    clienteId: string | null;
+    telefone: string;
+  };
+  pedidoOps: PortalWorkerPedidoOps;
+  cancel: { attempted: boolean; status: number | null; pedidoId: string | null };
 }
 
 export interface SuiteArtifact {

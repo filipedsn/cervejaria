@@ -97,6 +97,7 @@ function EventoBar({
 
 function isNavActive(path: string, current: string, exact?: boolean) {
   if (path === '/configuracoes') return current.startsWith('/configuracoes');
+  if (path === '/clientes') return current.startsWith('/clientes');
   if (exact) return current === path;
   return current.startsWith(path);
 }
@@ -115,6 +116,7 @@ export function Layout() {
     onEventsPage ||
     onTrailerPage ||
     location.pathname === '/dashboard' ||
+    location.pathname.startsWith('/clientes') ||
     location.pathname.startsWith('/configuracoes') ||
     /^\/eventos\/[^/]+\/resumo$/.test(location.pathname);
   const showTrailerSwitcher = trailers.length > 1 && !hideOperacionalChrome;

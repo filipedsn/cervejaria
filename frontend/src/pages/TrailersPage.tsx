@@ -6,6 +6,7 @@ import { formatTrailerLabel } from '../types';
 import { Modal } from '../components/Modal';
 import { Loading } from '../components/Loading';
 import { TrailerTapsSection } from '../components/TrailerTapsSection';
+import { TrailerPortalQr } from '../components/TrailerPortalQr';
 
 function sortByActiveThenName(items: Trailer[]) {
   return [...items].sort((a, b) => {
@@ -121,6 +122,7 @@ export function TrailersPage({ embedded }: { embedded?: boolean } = {}) {
               </div>
             </div>
             <TrailerTapsSection trailerId={trailer.id} />
+            <TrailerPortalQr trailer={trailer} />
           </div>
         ))}
         {sorted.length === 0 && (

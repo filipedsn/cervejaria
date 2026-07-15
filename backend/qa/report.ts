@@ -1,13 +1,14 @@
 import { prisma } from '../src/lib/prisma.js';
 import { percentile } from './lib/http.js';
 import { renderHtml } from './lib/render.js';
-import { CONTEXT_PATH, HTML_PATH, SUITE_PATH, readJson, readWorkerResults, writeJson } from './lib/store.js';
-import type { PerfMetric, QaContext, SuiteArtifact, TestResult, WorkerResult } from './lib/types.js';
+import { CONTEXT_PATH, HTML_PATH, SUITE_PATH, readJson, readPortalWorkerResults, readWorkerResults, writeJson } from './lib/store.js';
+import type { PerfMetric, PortalWorkerResult, QaContext, SuiteArtifact, TestResult, WorkerResult } from './lib/types.js';
 
 async function main() {
   const ctx = readJson<QaContext>(CONTEXT_PATH);
   const suite = readJson<SuiteArtifact>(SUITE_PATH);
   const workers = readWorkerResults<WorkerResult>();
+  const portalWorkers = readPortalWorkerResults<PortalWorkerResult>();
 
   const results: TestResult[] = [...suite.results];
   const perf: PerfMetric[] = [...suite.perf];
@@ -86,6 +87,61 @@ async function main() {
     expected: '0 violações', actual: String(trailerViolations),
   }));
 
+  // ── DB-06: pedido com cliente da comanda ───────────────────────────────
+  const pedidoClienteMismatch = await prisma.$queryRaw<{ cnt: bigint }[]>`
+    SELECT COUNT(*) AS cnt FROM "PedidoCliente" p
+    JOIN "Comanda" c ON c.id = p."comandaId"
+    WHERE c."clienteId" != p."clienteId"`;
+  const pedidoMismatchN = Number(pedidoClienteMismatch[0]?.cnt ?? 0);
+  push(t({
+    id: 'DB-06', name: 'PedidoCliente.comandaId pertence ao mesmo clienteId',
+    status: pedidoMismatchN === 0 ? 'passed' : 'failed',
+    message: pedidoMismatchN === 0 ? 'Zero pedido com comanda de outro cliente' : `${pedidoMismatchN} inconsistência(s)`,
+    expected: '0', actual: String(pedidoMismatchN),
+  }));
+
+  // ── DB-07: no máximo 1 comanda ABERTA por (evento, cliente) ─────────────
+  const dupComandas = await prisma.$queryRaw<{ eventoId: string; clienteId: string; cnt: bigint }[]>`
+    SELECT "eventoId", "clienteId", COUNT(*) AS cnt
+    FROM "Comanda"
+    WHERE status = 'ABERTA'
+      AND "eventoId" IN (
+        SELECT e.id FROM "Evento" e JOIN "Cervejaria" cb ON cb.id = e."cervejariaId"
+        WHERE cb.slug LIKE 'qa-load-%' OR cb.slug = 'qa-arena' OR cb.slug = 'qa-multi-trailer'
+      )
+    GROUP BY "eventoId", "clienteId"
+    HAVING COUNT(*) > 1`;
+  const dupComandasN = dupComandas.length;
+  push(t({
+    id: 'DB-07', name: 'No máximo 1 comanda ABERTA por (evento, cliente) nos dados QA',
+    status: dupComandasN === 0 ? 'passed' : 'failed',
+    message: dupComandasN === 0 ? 'Sem comandas ABERTA duplicadas' : `${dupComandasN} par(es) com >1 comanda aberta`,
+    expected: '0 violações', actual: String(dupComandasN),
+    details: dupComandas.slice(0, 3).map((d) => `${d.eventoId}/${d.clienteId}: ${d.cnt}`).join('\n') || undefined,
+  }));
+
+  // ── DB-08: pedidos QA-CLIENT-* na comanda correta ──────────────────────
+  const qaClientPedidos = await prisma.pedidoCliente.findMany({
+    where: { observacao: { startsWith: 'QA-CLIENT-' } },
+    select: { id: true, observacao: true, comandaId: true, clienteId: true },
+  });
+  let db08Violations = 0;
+  for (const p of qaClientPedidos) {
+    const comanda = await prisma.comanda.findUnique({
+      where: { id: p.comandaId },
+      select: { clienteId: true },
+    });
+    if (!comanda || comanda.clienteId !== p.clienteId) db08Violations++;
+  }
+  push(t({
+    id: 'DB-08', name: 'Pedidos QA-CLIENT-* vinculados à comanda do cliente correto',
+    status: db08Violations === 0 ? 'passed' : 'failed',
+    message: db08Violations === 0
+      ? `${qaClientPedidos.length} pedido(s) QA-CLIENT consistentes`
+      : `${db08Violations} pedido(s) inconsistentes`,
+    expected: '0 violações', actual: String(db08Violations),
+  }));
+
   // ── Concorrência multi-processo (workers) ──────────────────────────────
   const totalAttempted = workers.reduce((s, w) => s + w.itemOps.attempted, 0);
   const totalSuccess = workers.reduce((s, w) => s + w.itemOps.success, 0);
@@ -131,6 +187,53 @@ async function main() {
     });
   }
 
+  // ── Portal workers (CONC-05) ───────────────────────────────────────────
+  const portalSessaoLat = portalWorkers.map((w) => w.sessao.latencyMs);
+  const portalPedidoLat = portalWorkers.flatMap((w) => w.pedidoOps.latencies);
+  const portalSessaoOk = portalWorkers.filter((w) => w.sessao.status === 201).length;
+  const portalPedidoOk = portalWorkers.reduce((s, w) => s + w.pedidoOps.success, 0);
+  const portalPedidoAttempted = portalWorkers.reduce((s, w) => s + w.pedidoOps.attempted, 0);
+  const sessaoP95 = percentile(portalSessaoLat, 95);
+  const pedidoP95 = percentile(portalPedidoLat, 95);
+
+  if (portalSessaoLat.length) {
+    perf.push({
+      label: `POST /public/.../sessao (${portalWorkers.length} portal-workers)`,
+      samples: portalSessaoLat.length,
+      p50: percentile(portalSessaoLat, 50), p95: sessaoP95, p99: percentile(portalSessaoLat, 99),
+      max: Math.max(...portalSessaoLat), errors: portalWorkers.length - portalSessaoOk, target: 2000,
+    });
+  }
+  if (portalPedidoLat.length) {
+    perf.push({
+      label: `POST /public/cliente/pedidos (${portalWorkers.length} portal-workers)`,
+      samples: portalPedidoLat.length,
+      p50: percentile(portalPedidoLat, 50), p95: pedidoP95, p99: percentile(portalPedidoLat, 99),
+      max: Math.max(...portalPedidoLat),
+      errors: portalPedidoAttempted - portalPedidoOk,
+      target: 1000,
+    });
+  }
+
+  push(t({
+    id: 'CONC-05',
+    name: `Portal stress (${portalWorkers.length} clientes simultâneos)`,
+    category: 'Concorrência',
+    requirement: 'CONC-05',
+    status:
+      portalSessaoOk === portalWorkers.length &&
+      portalPedidoOk === portalPedidoAttempted &&
+      sessaoP95 <= 2000 &&
+      pedidoP95 <= 1000
+        ? 'passed'
+        : portalSessaoOk < portalWorkers.length || portalPedidoOk < portalPedidoAttempted
+          ? 'failed'
+          : 'warning',
+    message: `${portalSessaoOk}/${portalWorkers.length} sessões · ${portalPedidoOk}/${portalPedidoAttempted} pedidos · p95 sessão ${sessaoP95.toFixed(0)}ms · p95 pedido ${pedidoP95.toFixed(0)}ms`,
+    expected: '100% OK · p95 sessão ≤2s · p95 pedido ≤1s',
+    actual: `${portalSessaoOk}/${portalWorkers.length} sessões · p95 ${sessaoP95.toFixed(0)}/${pedidoP95.toFixed(0)}ms`,
+  }));
+
   // ── Recomendações ──────────────────────────────────────────────────────
   const failed = results.filter((r) => r.status === 'failed');
   const warnings = results.filter((r) => r.status === 'warning');
@@ -147,8 +250,10 @@ async function main() {
     rec.push('Fechar comanda em transação com lock (SELECT ... FOR UPDATE / update condicional por status) para evitar cobrança dupla.');
   if (failed.some((r) => r.id === 'CONC-01'))
     rec.push('Revisar recalcTotal: recomputar total dentro de transação para eliminar lost update sob concorrência.');
-  if (failed.some((r) => r.category === 'Multi-tenant'))
-    rec.push('CRÍTICO: falha de isolamento multi-tenant detectada — revisar filtros por cervejariaId no(s) endpoint(s) afetado(s).');
+  if (failed.some((r) => r.id === 'DB-07' || r.id === 'PORTAL-04'))
+    rec.push('Adicionar índice único parcial (eventoId, clienteId) WHERE status=ABERTA e retry em findOrCreateComandaAberta para eliminar comandas duplicadas.');
+  if (failed.some((r) => r.id === 'DB-06' || r.id === 'DB-08'))
+    rec.push('CRÍTICO: pedido caiu em comanda de outro cliente — revisar binding session.comandaId/clienteId no portal.');
   if (perf.some((p) => p.target && p.p95 > p.target))
     rec.push('Otimizar endpoints acima da meta de p95 (índices, evitar N+1, cache de agregações).');
   rec.push('Concluir UAT manual: PWA offline, fluxo de pagamento PIX/cartão real, branding por tenant e recorrência semanal.');

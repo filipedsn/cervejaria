@@ -37,6 +37,13 @@ export function connectSocket(cervejariaId: string): Socket {
   return s;
 }
 
+/** Portal público do cliente — cookie cliente_token autentica no socket. */
+export function connectClientePortalSocket(): Socket {
+  const s = getSocket();
+  if (!s.connected) s.connect();
+  return s;
+}
+
 export function joinEvento(eventoId: string): void {
   joinedEventoIds.add(eventoId);
   const s = getSocket();

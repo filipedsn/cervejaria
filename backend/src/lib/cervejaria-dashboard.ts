@@ -6,6 +6,9 @@ import {
   resolveFechadoPorForReport,
   type ReportFechadoPorContext,
 } from './fechado-por-report.js';
+import { getScheduledEventWindow } from './evento-vendas-intervalo.js';
+
+const MS_HOUR = 3_600_000;
 
 const MESES = [
   'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
@@ -155,6 +158,93 @@ function weeklyEvolution(comandas: ClosedComanda[], ano: number, mes: number) {
   return weeks;
 }
 
+function eventDurationHours(evento: {
+  data: Date | null;
+  horaInicio: string;
+  horaFim: string | null;
+}): number {
+  const { start, end } = getScheduledEventWindow(evento);
+  const hours = (end.getTime() - start.getTime()) / MS_HOUR;
+  return Math.max(Math.round(hours * 100) / 100, 0.25);
+}
+
+async function buildEventosRecentes(
+  cervejariaId: string,
+  inicio: Date,
+  fim: Date,
+  trailerId?: string,
+) {
+  const eventos = await prisma.evento.findMany({
+    where: {
+      cervejariaId,
+      status: 'FECHADO',
+      data: { gte: inicio, lte: fim },
+      ...(trailerId ? { trailerId } : {}),
+    },
+    select: {
+      id: true,
+      nome: true,
+      local: true,
+      data: true,
+      horaInicio: true,
+      horaFim: true,
+    },
+    orderBy: [{ data: 'desc' }, { horaInicio: 'desc' }],
+    take: 8,
+  });
+
+  if (eventos.length === 0) return [];
+
+  const comandas = await prisma.comanda.findMany({
+    where: {
+      eventoId: { in: eventos.map((e) => e.id) },
+      status: 'FECHADA',
+    },
+    include: { itens: { include: { produto: true } } },
+  });
+
+  const comandasByEvento = new Map<string, typeof comandas>();
+  for (const comanda of comandas) {
+    const list = comandasByEvento.get(comanda.eventoId) ?? [];
+    list.push(comanda);
+    comandasByEvento.set(comanda.eventoId, list);
+  }
+
+  return eventos.map((evento) => {
+    const evComandas = comandasByEvento.get(evento.id) ?? [];
+    let receitaTotal = 0;
+    let chopeMl = 0;
+
+    for (const comanda of evComandas) {
+      receitaTotal += toNumber(comanda.total);
+      for (const item of comanda.itens) {
+        if (isBebidaChope(item.produto.tipo, item.produto.formato)) {
+          chopeMl += item.volumeMl * item.quantidade;
+        }
+      }
+    }
+
+    const comandasAtendidas = evComandas.length;
+    const ticketMedio = comandasAtendidas > 0 ? receitaTotal / comandasAtendidas : 0;
+    const duracaoHoras = eventDurationHours(evento);
+
+    return {
+      eventoId: evento.id,
+      nome: evento.nome,
+      local: evento.local,
+      data: evento.data,
+      horaInicio: evento.horaInicio,
+      receitaTotal,
+      comandasAtendidas,
+      ticketMedio,
+      chopeMl,
+      duracaoHoras,
+      receitaPorHora: Math.round((receitaTotal / duracaoHoras) * 100) / 100,
+      chopeLitrosPorHora: Math.round((chopeMl / 1000 / duracaoHoras) * 100) / 100,
+    };
+  });
+}
+
 export async function buildCervejariaDashboard(
   cervejariaId: string,
   ano: number,
@@ -167,9 +257,10 @@ export async function buildCervejariaDashboard(
 
   const fechadoPorCtx = await getReportFechadoPorContext(cervejariaId);
 
-  const [comandasMes, comandasAno] = await Promise.all([
+  const [comandasMes, comandasAno, eventosRecentes] = await Promise.all([
     fetchClosedComandas(cervejariaId, inicio, fim, trailerId),
     fetchClosedComandas(cervejariaId, yearBounds(anoVigente).inicio, yearBounds(anoVigente).fim, trailerId),
+    buildEventosRecentes(cervejariaId, inicio, fim, trailerId),
   ]);
 
   const resumo = aggregateComandas(comandasMes, fechadoPorCtx);
@@ -215,6 +306,7 @@ export async function buildCervejariaDashboard(
     porPagamento: resumo.porPagamento,
     porProduto: resumo.porProduto,
     porFuncionario: resumo.porFuncionario,
+    eventosRecentes,
     receitaAnual: receitaAnual.map((m) => ({
       ...m,
       receita: Math.round(m.receita * 100) / 100,

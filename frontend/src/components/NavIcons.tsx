@@ -73,6 +73,16 @@ export function IconShield({ className = 'w-4 h-4', strokeWidth = 1.75 }: IconPr
   );
 }
 
+export function IconUsers({ className = 'w-6 h-6', strokeWidth = 1.75 }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
 export function IconTrophy({ className = 'w-5 h-5', strokeWidth = 1.75 }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -107,6 +117,7 @@ export function IconTrash({ className = 'w-5 h-5', strokeWidth = 1.75 }: IconPro
 export const NAV_ITEMS = [
   { path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const },
   { path: '/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
+  { path: '/clientes', label: 'Clientes', shortLabel: 'Clientes', Icon: IconUsers },
   { path: '/dashboard', label: 'Dashboard', shortLabel: 'Dashboard', Icon: IconBarChart, donoOnly: true as const },
   { path: '/configuracoes', label: 'Configurações', shortLabel: 'Config.', Icon: IconSettings, donoOnly: true as const },
 ];

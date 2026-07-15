@@ -63,6 +63,19 @@ enum TransacaoTipo {
   TAP_ATIVO_ALTERADO
 }
 
+enum CadastroOrigem {
+  STAFF
+  AUTO_ATENDIMENTO
+  COMANDA
+}
+
+enum PedidoClienteStatus {
+  PENDENTE
+  CONFIRMADO
+  RECUSADO
+  CANCELADO
+}
+
 model Cervejaria {
   id          String   @id @default(cuid())
   nome        String
@@ -114,6 +127,7 @@ model Usuario {
   cervejaria            Cervejaria?           @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   passwordResetTokens   PasswordResetToken[]
   comandasFechadas      Comanda[]             @relation("ComandaFechadaPor")
+  pedidosConfirmados    PedidoCliente[]       @relation("PedidoConfirmadoPor")
   transacoes            TransacaoLog[]
 
   @@index([cervejariaId])
@@ -150,6 +164,7 @@ model Produto {
   taps       Tap[]
   montagens  TapMontagem[]
   itens      ItemComanda[]
+  pedidoItens PedidoClienteItem[]
   eventos    EventoProduto[]
   cardapios  CardapioProduto[]
 
@@ -233,6 +248,7 @@ model Evento {
   serie       Evento?    @relation("SerieOcorrencias", fields: [serieId], references: [id], onDelete: SetNull)
   ocorrencias Evento[] @relation("SerieOcorrencias")
   comandas    Comanda[]
+  pedidos     PedidoCliente[]
   montagens   TapMontagem[]
   produtos    EventoProduto[]
   transacoes  TransacaoLog[]
@@ -273,18 +289,41 @@ model CardapioProduto {
 }
 
 model Cliente {
-  id           String   @id @default(cuid())
-  nome         String
-  telefone     String?
-  cervejariaId String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id               String          @id @default(cuid())
+  nome             String
+  telefone         String?
+  email            String?
+  dataNascimento   DateTime?
+  optInMarketing   Boolean         @default(false)
+  optInEm          DateTime?
+  cadastradoVia    CadastroOrigem  @default(COMANDA)
+  observacoes      String?
+  ativo            Boolean         @default(true)
+  cervejariaId     String
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
-  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
-  comandas   Comanda[]
+  cervejaria    Cervejaria           @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  comandas      Comanda[]
+  pedidos       PedidoCliente[]
+  estatisticas  ClienteEstatisticas?
 
   @@unique([cervejariaId, telefone])
   @@index([cervejariaId, nome])
+  @@index([cervejariaId, ativo])
+}
+
+/// Agregados de consumo — extensível para fidelização (pontos) no futuro.
+model ClienteEstatisticas {
+  clienteId              String   @id
+  totalComandasFechadas  Int      @default(0)
+  totalGasto             Decimal  @default(0) @db.Decimal(12, 2)
+  totalMlChope           Int      @default(0)
+  primeiraVisitaEm       DateTime?
+  ultimaVisitaEm         DateTime?
+  updatedAt              DateTime @updatedAt
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
 }
 
 model Comanda {
@@ -294,6 +333,7 @@ model Comanda {
   status       ComandaStatus @default(ABERTA)
   total        Decimal       @default(0) @db.Decimal(10, 2)
   fechadoPorId String?
+  fechadaEm    DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -302,6 +342,7 @@ model Comanda {
   fechadoPor Usuario?  @relation("ComandaFechadaPor", fields: [fechadoPorId], references: [id], onDelete: SetNull)
   itens      ItemComanda[]
   pagamentos Pagamento[]
+  pedidos    PedidoCliente[]
   transacoes TransacaoLog[]
 
   @@index([eventoId, status])
@@ -324,6 +365,45 @@ model ItemComanda {
 
   @@index([comandaId])
   @@index([tapId])
+}
+
+model PedidoCliente {
+  id              String              @id @default(cuid())
+  eventoId        String
+  comandaId       String
+  clienteId       String
+  status          PedidoClienteStatus @default(PENDENTE)
+  observacao      String?
+  recusadoMotivo  String?
+  confirmadoPorId String?
+  confirmadoEm    DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  evento        Evento              @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  comanda       Comanda             @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  cliente       Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  confirmadoPor Usuario?            @relation("PedidoConfirmadoPor", fields: [confirmadoPorId], references: [id], onDelete: SetNull)
+  itens         PedidoClienteItem[]
+
+  @@index([eventoId, status])
+  @@index([comandaId])
+  @@index([clienteId])
+}
+
+model PedidoClienteItem {
+  id         String  @id @default(cuid())
+  pedidoId   String
+  produtoId  String
+  tapId      String?
+  volumeMl   Int
+  quantidade Int     @default(1)
+  precoUnit  Decimal @db.Decimal(10, 2)
+
+  pedido  PedidoCliente @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  produto Produto       @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@index([pedidoId])
 }
 
 /// Comida e bebidas (não chope) disponíveis no evento — definido antes de abrir.

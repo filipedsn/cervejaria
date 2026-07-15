@@ -34,6 +34,13 @@ export function readJson<T>(file: string): T {
 export function readWorkerResults<T>(): T[] {
   if (!existsSync(WORKERS_DIR)) return [];
   return readdirSync(WORKERS_DIR)
-    .filter((f) => f.endsWith('.json'))
+    .filter((f) => f.startsWith('worker-') && f.endsWith('.json'))
+    .map((f) => readJson<T>(path.join(WORKERS_DIR, f)));
+}
+
+export function readPortalWorkerResults<T>(): T[] {
+  if (!existsSync(WORKERS_DIR)) return [];
+  return readdirSync(WORKERS_DIR)
+    .filter((f) => f.startsWith('portal-worker-') && f.endsWith('.json'))
     .map((f) => readJson<T>(path.join(WORKERS_DIR, f)));
 }

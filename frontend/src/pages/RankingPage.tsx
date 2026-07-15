@@ -99,7 +99,9 @@ export function RankingPage() {
               {entry.posicao <= 3 ? MEDALS[entry.posicao - 1] : `#${entry.posicao}`}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-bold text-lg truncate">{entry.nome}</p>
+              <Link to={`/clientes/${entry.clienteId}`} className="font-bold text-lg truncate block hover:text-brand-600">
+                {entry.nome}
+              </Link>
               <p className="text-sm text-ink-muted">{entry.pedidos} chopp(s)</p>
             </div>
             <div className="text-right shrink-0">

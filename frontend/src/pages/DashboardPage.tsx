@@ -58,6 +58,11 @@ function ChartTooltip({
   );
 }
 
+function formatEventoDataCurta(data: string, horaInicio: string): string {
+  const d = new Date(data);
+  return `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} · ${horaInicio}`;
+}
+
 function KpiCard({
   label,
   value,
@@ -149,9 +154,21 @@ export function DashboardPage() {
     [data?.receitaAnual],
   );
 
+  const eventosChart = useMemo(
+    () =>
+      [...(data?.eventosRecentes ?? [])]
+        .reverse()
+        .map((e) => ({
+          name: e.nome.length > 16 ? `${e.nome.slice(0, 16)}…` : e.nome,
+          receita: e.receitaTotal,
+          comandas: e.comandasAtendidas,
+        })),
+    [data?.eventosRecentes],
+  );
+
   if (isLoading || !data) return <Loading />;
 
-  const { resumo, porPagamento, porProduto, porFuncionario } = data;
+  const { resumo, porPagamento, porProduto, porFuncionario, eventosRecentes = [] } = data;
   const mesSelecionadoIdx = mes - 1;
 
   return (
@@ -248,6 +265,64 @@ export function DashboardPage() {
         </div>
       ) : (
         <>
+          {eventosRecentes.length > 0 && (
+            <section className="space-y-4">
+              <div className="card p-4 sm:p-5">
+                <h2 className="section-label mb-4">Eventos encerrados no mês</h2>
+                <div className="h-56 sm:h-64 -mx-1">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={eventosChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(17,24,39,0.06)" vertical={false} />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fill: '#6b7280', fontSize: 10 }}
+                        axisLine={false}
+                        tickLine={false}
+                        interval={0}
+                        angle={eventosChart.length > 4 ? -25 : 0}
+                        textAnchor={eventosChart.length > 4 ? 'end' : 'middle'}
+                        height={eventosChart.length > 4 ? 52 : 30}
+                      />
+                      <YAxis
+                        tick={{ fill: '#9ca3af', fontSize: 11 }}
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(v) => (v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`)}
+                        width={48}
+                      />
+                      <Tooltip content={<ChartTooltip />} />
+                      <Bar dataKey="receita" fill="var(--color-brand-600)" radius={[6, 6, 0, 0]} maxBarSize={48} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="card divide-y divide-line p-0 overflow-hidden">
+                {eventosRecentes.map((e) => (
+                  <Link
+                    key={e.eventoId}
+                    to={`/eventos/${e.eventoId}/resumo`}
+                    className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 hover:bg-surface-lighter transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold truncate">{e.nome}</p>
+                      <p className="text-xs text-ink-faint truncate">
+                        {formatEventoDataCurta(e.data, e.horaInicio)}
+                        {e.local ? ` · ${e.local}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums shrink-0">
+                      <span className="font-bold text-brand-600">{formatCurrency(e.receitaTotal)}</span>
+                      <span className="text-ink-muted">{formatCurrency(e.receitaPorHora)}/h</span>
+                      <span className="text-ink-muted">{e.chopeLitrosPorHora.toFixed(1)} L/h</span>
+                      <span className="text-ink-faint">{e.comandasAtendidas} comandas</span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
+
           <section className="card p-4 sm:p-5">
             <h2 className="section-label mb-4">Evolução semanal</h2>
             <div className="h-56 sm:h-64 -mx-1">
@@ -358,12 +433,6 @@ export function DashboardPage() {
           </ResponsiveContainer>
         </div>
       </section>
-
-      <div className="flex flex-wrap gap-2 pt-2">
-        <Link to="/configuracoes/catalogo" className="touch-btn-secondary touch-btn-sm px-4">
-          Catálogo
-        </Link>
-      </div>
     </div>
   );
 }

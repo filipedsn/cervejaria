@@ -5,8 +5,13 @@ import { prisma } from './prisma.js';
 import { AUTH_COOKIE_NAME } from './security-config.js';
 import { verifyJwtPayload } from './session.js';
 import type { JwtPayload } from '../types/auth.js';
+import {
+  CLIENTE_COOKIE_NAME,
+  isClienteSessionPayload,
+  type ClienteSessionPayload,
+} from '../types/cliente-session.js';
 
-function extractSocketToken(socket: Socket): string | null {
+function extractStaffToken(socket: Socket): string | null {
   const fromAuth = socket.handshake.auth?.token;
   if (typeof fromAuth === 'string' && fromAuth.length > 0) return fromAuth;
 
@@ -21,15 +26,35 @@ function extractSocketToken(socket: Socket): string | null {
   return null;
 }
 
+function extractClienteToken(socket: Socket): string | null {
+  const cookies = parseCookie(socket.handshake.headers.cookie ?? '');
+  return cookies[CLIENTE_COOKIE_NAME] ?? null;
+}
+
 export function setupSocketAuth(io: SocketIOServer, app: FastifyInstance) {
   io.use(async (socket, next) => {
     try {
-      const raw = extractSocketToken(socket);
+      const clienteToken = extractClienteToken(socket);
+      if (clienteToken) {
+        try {
+          const decoded = app.jwt.verify(clienteToken);
+          if (isClienteSessionPayload(decoded)) {
+            socket.data.authType = 'cliente';
+            socket.data.clienteSession = decoded;
+            return next();
+          }
+        } catch {
+          /* tenta auth staff */
+        }
+      }
+
+      const raw = extractStaffToken(socket);
       if (!raw) {
         return next(new Error('Unauthorized'));
       }
       const decoded = app.jwt.verify<JwtPayload>(raw);
       const user = await verifyJwtPayload(app, decoded);
+      socket.data.authType = 'staff';
       socket.data.user = user;
       next();
     } catch {
@@ -38,6 +63,13 @@ export function setupSocketAuth(io: SocketIOServer, app: FastifyInstance) {
   });
 
   io.on('connection', (socket) => {
+    if (socket.data.authType === 'cliente') {
+      const session = socket.data.clienteSession as ClienteSessionPayload;
+      socket.join(`evento:${session.eventoId}`);
+      socket.join(`comanda:${session.comandaId}`);
+      return;
+    }
+
     const user = socket.data.user as JwtPayload;
 
     socket.on('join:cervejaria', (cervejariaId: string) => {

@@ -10,12 +10,13 @@ import { assertProdutoNoCardapioEvento } from '../lib/evento-cardapio.js';
 import { isVendaUnitaria } from '../lib/produto-utils.js';
 import { cancelarComandaVazia } from '../lib/comanda-cancelar.js';
 import { resolveClienteParaComanda } from '../lib/cliente-resolver.js';
+import { normalizePhone } from '../lib/phone.js';
 import { registrarTransacao } from '../lib/transacao-log.js';
 
 const createComandaSchema = z.object({
   eventoId: z.string(),
   clienteNome: z.string().min(1),
-  clienteTelefone: z.string().optional().nullable(),
+  clienteTelefone: z.string().min(1, 'Telefone é obrigatório'),
 });
 
 const addItemSchema = z.object({
@@ -220,11 +221,22 @@ export async function comandasRoutes(app: FastifyInstance) {
     });
     if (!evento) return reply.status(400).send({ error: 'Evento não encontrado ou fechado' });
 
-    const cliente = await resolveClienteParaComanda({
-      cervejariaId: user.cervejariaId!,
-      nome: body.clienteNome,
-      telefone: body.clienteTelefone,
-    });
+    const telefone = normalizePhone(body.clienteTelefone);
+    if (!telefone) {
+      return reply.status(400).send({ error: 'Telefone inválido. Informe DDD + número (10 ou 11 dígitos).' });
+    }
+
+    let cliente;
+    try {
+      cliente = await resolveClienteParaComanda({
+        cervejariaId: user.cervejariaId!,
+        nome: body.clienteNome,
+        telefone,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Telefone inválido';
+      return reply.status(400).send({ error: message });
+    }
 
     const comanda = await prisma.comanda.create({
       data: {

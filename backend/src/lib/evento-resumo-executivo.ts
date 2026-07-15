@@ -6,149 +6,11 @@ import { isBebidaChope } from './produto-utils.js';
 
 import { getReportFechadoPorContext, resolveFechadoPorForReport } from './fechado-por-report.js';
 
+import { buildVendasPorIntervalo, sumVendasPorIntervalo } from './evento-vendas-intervalo.js';
 
+import { buildFluxoPorIntervalo, sumFluxoFechado, type FluxoRemocaoInput } from './evento-fluxo-intervalo.js';
 
-const INTERVAL_MS = 15 * 60 * 1000;
-
-
-
-function parseTimeOnDate(baseDate: Date, time: string): Date {
-
-  const [hours, minutes] = time.split(':').map(Number);
-
-  // evento.data is @db.Date (midnight UTC) — use UTC calendar parts for the local datetime
-
-  const y = baseDate.getUTCFullYear();
-
-  const m = baseDate.getUTCMonth();
-
-  const day = baseDate.getUTCDate();
-
-  return new Date(y, m, day, hours, minutes, 0, 0);
-
-}
-
-
-
-function floorTo15Min(date: Date): Date {
-
-  const d = new Date(date);
-
-  d.setMinutes(Math.floor(d.getMinutes() / 15) * 15, 0, 0);
-
-  return d;
-
-}
-
-
-
-function formatIntervalLabel(date: Date): string {
-
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-
-}
-
-
-
-function getEventWindow(evento: { data: Date | null; horaInicio: string; horaFim: string | null }) {
-
-  const baseDate = evento.data ?? new Date();
-
-  const start = parseTimeOnDate(baseDate, evento.horaInicio);
-
-  let end: Date;
-
-
-
-  if (evento.horaFim) {
-
-    end = parseTimeOnDate(baseDate, evento.horaFim);
-
-    if (end <= start) {
-
-      end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
-
-    }
-
-  } else {
-
-    end = new Date(start);
-
-    end.setDate(end.getDate() + 1);
-
-    end.setHours(0, 0, 0, 0);
-
-  }
-
-
-
-  return { start, end };
-
-}
-
-
-
-function buildVendasPorIntervalo(
-
-  evento: { data: Date | null; horaInicio: string; horaFim: string | null },
-
-  comandas: Array<{ updatedAt: Date; total: unknown }>,
-
-) {
-
-  const { start, end } = getEventWindow(evento);
-
-  const statsMap = new Map<number, { receita: number; comandas: number }>();
-
-
-
-  for (let t = floorTo15Min(start).getTime(); t < end.getTime(); t += INTERVAL_MS) {
-
-    statsMap.set(t, { receita: 0, comandas: 0 });
-
-  }
-
-
-
-  for (const comanda of comandas) {
-
-    const bucketTime = floorTo15Min(comanda.updatedAt).getTime();
-
-    if (bucketTime < start.getTime() || bucketTime >= end.getTime()) continue;
-
-
-
-    const stats = statsMap.get(bucketTime);
-
-    if (!stats) continue;
-
-
-
-    stats.receita += toNumber(comanda.total);
-
-    stats.comandas += 1;
-
-  }
-
-
-
-  return Array.from(statsMap.entries())
-
-    .sort((a, b) => a[0] - b[0])
-
-    .map(([t, stats]) => ({
-
-      intervalo: formatIntervalLabel(new Date(t)),
-
-      inicio: new Date(t).toISOString(),
-
-      receita: stats.receita,
-
-      comandas: stats.comandas,
-
-    }));
-
-}
+import { buildTempoComandaStats } from './evento-comanda-tempo.js';
 
 
 
@@ -214,17 +76,33 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
 
 
-  const comandas = await prisma.comanda.findMany({
+  const comandasFluxo = await prisma.comanda.findMany({
 
-    where: { eventoId, status: 'FECHADA' },
+    where: { eventoId, status: { not: 'CANCELADA' } },
 
-    include: {
+    select: {
+
+      id: true,
+
+      status: true,
+
+      createdAt: true,
+
+      clienteId: true,
+
+      updatedAt: true,
+
+      fechadaEm: true,
+
+      total: true,
+
+      fechadoPorId: true,
 
       cliente: { select: { id: true, nome: true } },
 
       itens: { include: { produto: true } },
 
-      pagamentos: true,
+      pagamentos: { select: { forma: true, valor: true, pagoEm: true } },
 
       fechadoPor: { select: { id: true, nome: true } },
 
@@ -233,6 +111,44 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
     orderBy: { updatedAt: 'asc' },
 
   });
+
+
+
+  const remocoesRaw = await prisma.transacaoLog.findMany({
+
+    where: { eventoId, tipo: 'COMANDA_ITEM_REMOVIDO' },
+
+    select: { comandaId: true, createdAt: true, metadata: true },
+
+  });
+
+  const remocoes: FluxoRemocaoInput[] = remocoesRaw
+
+    .filter((r) => r.comandaId)
+
+    .map((r) => {
+
+      const m = (r.metadata ?? {}) as Record<string, unknown>;
+
+      const precoUnit = typeof m.precoUnit === 'number' ? m.precoUnit : Number(m.precoUnit ?? 0);
+
+      const quantidade = typeof m.quantidade === 'number' ? m.quantidade : Number(m.quantidade ?? 1);
+
+      return {
+
+        comandaId: r.comandaId!,
+
+        createdAt: r.createdAt,
+
+        valor: precoUnit * quantidade,
+
+      };
+
+    });
+
+
+
+  const comandasFechadas = comandasFluxo.filter((c) => c.status === 'FECHADA');
 
 
 
@@ -278,7 +194,7 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
 
 
-  for (const comanda of comandas) {
+  for (const comanda of comandasFechadas) {
 
     const valor = toNumber(comanda.total);
 
@@ -404,7 +320,7 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
 
 
-  const comandasAtendidas = comandas.length;
+  const comandasAtendidas = comandasFechadas.length;
 
   const ticketMedio = comandasAtendidas > 0 ? receitaTotal / comandasAtendidas : 0;
 
@@ -442,7 +358,41 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
 
 
-  const vendasPorIntervalo = buildVendasPorIntervalo(evento, comandas);
+  const vendasPorIntervalo = buildVendasPorIntervalo(evento, comandasFechadas);
+
+  const fluxoPorIntervalo = buildFluxoPorIntervalo(evento, comandasFluxo, remocoes);
+
+  const tempoComanda = buildTempoComandaStats(comandasFechadas);
+
+
+
+  if (process.env.NODE_ENV !== 'production') {
+
+    const chartTotal = sumVendasPorIntervalo(vendasPorIntervalo);
+
+    const fluxoFechado = sumFluxoFechado(fluxoPorIntervalo);
+
+    if (Math.abs(chartTotal - receitaTotal) > 0.01) {
+
+      console.warn(
+
+        `[resumo-executivo] vendasPorIntervalo (${chartTotal}) != receitaTotal (${receitaTotal}) evento=${eventoId}`,
+
+      );
+
+    }
+
+    if (Math.abs(fluxoFechado - receitaTotal) > 0.01) {
+
+      console.warn(
+
+        `[resumo-executivo] fluxoPorIntervalo.fechado (${fluxoFechado}) != receitaTotal (${receitaTotal}) evento=${eventoId}`,
+
+      );
+
+    }
+
+  }
 
 
 
@@ -490,6 +440,10 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
     vendasPorIntervalo,
 
+    fluxoPorIntervalo,
+
+    tempoComanda,
+
     porPagamento: porPagamentoArr,
 
     porProduto: porProdutoArr,
@@ -505,5 +459,4 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
   };
 
 }
-
 
