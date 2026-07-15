@@ -12,11 +12,6 @@ $ErrorActionPreference = 'Continue'
 $paths = Get-DevPaths
 
 if (-not $Detached) {
-  if (-not (Test-LaunchedFromCursor)) {
-    Write-Host 'Supervisor dev ignorado: workspace nao foi aberto pelo Cursor.' -ForegroundColor DarkGray
-    exit 0
-  }
-
   if (Test-Path $paths.SupervisorPidFile) {
     $existingPid = [int](Get-Content $paths.SupervisorPidFile -ErrorAction SilentlyContinue)
     if (Test-DevProcessAlive -ProcessId $existingPid) {
@@ -48,18 +43,47 @@ if (-not $Detached) {
 Set-Content -Path $paths.SupervisorPidFile -Value $PID -Encoding ASCII
 Write-DevLog -Paths $paths -Message "Supervisor iniciado PID $PID."
 
+$checkIntervalSeconds = 120
+$consecutiveFrontendFailures = 0
+$backoffUntil = [DateTime]::MinValue
+
 try {
   & "$PSScriptRoot\start-dev.ps1" | Out-Null
 
   while (Test-CursorRunning) {
-    Start-Sleep -Seconds 30
+    Start-Sleep -Seconds $checkIntervalSeconds
 
-    if (-not (Test-DevPortListening -Port $paths.BackendPort)) {
+    if ((Get-Date) -lt $backoffUntil) { continue }
+
+    $backendOk = Test-DevPortListening -Port $paths.BackendPort
+    $frontendOk = Test-DevPortListening -Port $paths.FrontendPort
+
+    if ($backendOk -and $frontendOk) {
+      $consecutiveFrontendFailures = 0
+      continue
+    }
+
+    if (-not $backendOk) {
       Write-DevLog -Paths $paths -Message 'API dev caiu - reiniciando.'
-      & "$PSScriptRoot\start-dev.ps1" | Out-Null
-    } elseif (-not (Test-DevPortListening -Port $paths.FrontendPort)) {
+    } else {
       Write-DevLog -Paths $paths -Message 'Frontend dev caiu - reiniciando.'
-      & "$PSScriptRoot\start-dev.ps1" | Out-Null
+    }
+
+    & "$PSScriptRoot\start-dev.ps1" | Out-Null
+
+    Start-Sleep -Seconds 5
+    $backendOk = Test-DevPortListening -Port $paths.BackendPort
+    $frontendOk = Test-DevPortListening -Port $paths.FrontendPort
+
+    if ($backendOk -and -not $frontendOk) {
+      $consecutiveFrontendFailures++
+      if ($consecutiveFrontendFailures -ge 3) {
+        $backoffUntil = (Get-Date).AddMinutes(10)
+        Write-DevLog -Paths $paths -Message "Frontend dev instavel ($consecutiveFrontendFailures falhas) - pausa 10 min para evitar piscar tela."
+        $consecutiveFrontendFailures = 0
+      }
+    } else {
+      $consecutiveFrontendFailures = 0
     }
   }
 

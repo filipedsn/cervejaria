@@ -1,7 +1,10 @@
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
+  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -17,23 +20,59 @@ import { VerRankingButton } from '../components/VerRankingButton';
 import { BackToEventosLink } from '../components/BackToEventosLink';
 import { EmptyState } from '../components/EmptyState';
 import { StatusBadge } from '../components/StatusBadge';
-function ChartTooltip({
+function formatDuracaoMinutos(min: number): string {
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m > 0 ? `${h}h ${m}min` : `${h}h`;
+}
+
+function ChopeChartTooltip({
   active,
   payload,
   label,
 }: {
   active?: boolean;
-  payload?: Array<{ value?: number; payload?: { comandas?: number } }>;
+  payload?: Array<{ value?: number }>;
   label?: string;
 }) {
   if (!active || !payload?.length) return null;
-  const value = payload[0]?.value ?? 0;
-  const comandas = payload[0]?.payload?.comandas;
+  const ml = payload[0]?.value ?? 0;
   return (
     <div className="rounded-lg border border-line bg-surface px-3 py-2 text-sm shadow-lg">
       <p className="font-semibold text-ink">{label}</p>
-      <p className="text-brand-600 font-bold tabular-nums">{formatCurrency(value)}</p>
-      {comandas != null && <p className="text-ink-muted text-xs mt-0.5">{comandas} comandas</p>}
+      <p className="text-brand-600 font-bold tabular-nums">{formatLiters(ml)}</p>
+    </div>
+  );
+}
+
+function FluxChartTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ dataKey?: string; value?: number; color?: string }>;
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload as {
+    fechado?: number;
+    aberto?: number;
+    comandasFechadas?: number;
+  };
+  return (
+    <div className="rounded-lg border border-line bg-surface px-3 py-2 text-sm shadow-lg space-y-1">
+      <p className="font-semibold text-ink">{label}</p>
+      {payload.map((entry) => (
+        <p key={entry.dataKey} className="tabular-nums" style={{ color: entry.color }}>
+          {entry.dataKey === 'fechado' && `Fechado: ${formatCurrency(entry.value ?? 0)}`}
+          {entry.dataKey === 'aberto' && `Aberto: ${formatCurrency(entry.value ?? 0)}`}
+        </p>
+      ))}
+      {row?.comandasFechadas != null && row.comandasFechadas > 0 && (
+        <p className="text-ink-muted text-xs">{row.comandasFechadas} comanda(s) fechadas</p>
+      )}
     </div>
   );
 }
@@ -84,14 +123,21 @@ export function ResumoExecutivoPage() {
     );
   }
 
-  const { evento, resumo, vendasPorIntervalo, porPagamento, porProduto, porFuncionario, rankingTop, topClientes } =
+  const { evento, resumo, fluxoPorIntervalo, tempoComanda = { mediaMinutos: 0, distribuicao: [] }, porPagamento, porProduto, porFuncionario, rankingTop, topClientes } =
     data;
-  const intervalChart = vendasPorIntervalo.map((i) => ({
+  const fluxoChart = fluxoPorIntervalo.map((i) => ({
     name: i.intervalo,
-    receita: i.receita,
-    comandas: i.comandas,
+    fechado: i.fechado,
+    aberto: i.aberto,
+    comandasFechadas: i.comandasFechadas,
   }));
-  const xTickInterval = Math.max(0, Math.ceil(intervalChart.length / 8) - 1);
+  const chopeChart = fluxoPorIntervalo.map((i) => ({
+    name: i.intervalo,
+    chopeMl: i.chopeMl ?? 0,
+  }));
+  const xTickInterval = Math.max(0, Math.ceil(fluxoChart.length / 8) - 1);
+  const showDots = fluxoChart.length <= 24;
+  const maxTempoFaixa = Math.max(1, ...tempoComanda.distribuicao.map((d) => d.comandas));
 
   return (
     <div className="space-y-6 pb-6">
@@ -108,12 +154,15 @@ export function ResumoExecutivoPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         <KpiCard label="Receita total" value={formatCurrency(resumo.receitaTotal)} />
         <KpiCard label="Comandas" value={String(resumo.comandasAtendidas)} />
         <KpiCard label="Ticket médio" value={formatCurrency(resumo.ticketMedio)} />
         <KpiCard label="Chope" value={formatLiters(resumo.chopeMl)} />
         <KpiCard label="Clientes" value={String(resumo.clientesUnicos)} />
+        {tempoComanda.mediaMinutos > 0 && (
+          <KpiCard label="Tempo médio comanda" value={formatDuracaoMinutos(tempoComanda.mediaMinutos)} />
+        )}
       </div>
 
       {resumo.comandasAtendidas === 0 ? (
@@ -123,12 +172,12 @@ export function ResumoExecutivoPage() {
         </div>
       ) : (
         <>
-          {intervalChart.length > 0 && (
+          {fluxoChart.length > 0 && (
             <section className="card p-4 sm:p-5">
-              <h2 className="section-label mb-4">Vendas · 15 min</h2>
-              <div className="h-56 sm:h-64 -mx-1">
+              <h2 className="section-label mb-4">Fluxo do evento · 15 min</h2>
+              <div className="h-56 sm:h-72 -mx-1">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={intervalChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <LineChart data={fluxoChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(17,24,39,0.06)" vertical={false} />
                     <XAxis
                       dataKey="name"
@@ -144,18 +193,85 @@ export function ResumoExecutivoPage() {
                       tickFormatter={(v) => (v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`)}
                       width={48}
                     />
-                    <Tooltip content={<ChartTooltip />} />
+                    <Tooltip content={<FluxChartTooltip />} />
+                    <Legend
+                      verticalAlign="bottom"
+                      height={28}
+                      formatter={(value) => (value === 'fechado' ? 'Fechado' : 'Aberto')}
+                    />
                     <Line
                       type="monotone"
-                      dataKey="receita"
+                      dataKey="fechado"
+                      name="fechado"
+                      stroke="var(--color-danger)"
+                      strokeWidth={2.5}
+                      dot={showDots ? { fill: 'var(--color-danger)', strokeWidth: 0, r: 3 } : false}
+                      activeDot={{ r: 5, fill: 'var(--color-danger)' }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="aberto"
+                      name="aberto"
                       stroke="var(--color-brand-600)"
                       strokeWidth={2.5}
-                      dot={intervalChart.length <= 24 ? { fill: 'var(--color-brand-600)', strokeWidth: 0, r: 3 } : false}
+                      dot={showDots ? { fill: 'var(--color-brand-600)', strokeWidth: 0, r: 3 } : false}
                       activeDot={{ r: 5, fill: 'var(--color-brand-500)' }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+            </section>
+          )}
+
+          {chopeChart.some((b) => b.chopeMl > 0) && (
+            <section className="card p-4 sm:p-5">
+              <h2 className="section-label mb-4">Chope · 15 min</h2>
+              <div className="h-48 sm:h-56 -mx-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chopeChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(17,24,39,0.06)" vertical={false} />
+                    <XAxis
+                      dataKey="name"
+                      interval={xTickInterval}
+                      tick={{ fill: '#6b7280', fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fill: '#9ca3af', fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(v) => formatLiters(v)}
+                      width={52}
+                    />
+                    <Tooltip content={<ChopeChartTooltip />} />
+                    <Bar dataKey="chopeMl" fill="var(--color-brand-600)" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+          )}
+
+          {tempoComanda.distribuicao.some((d) => d.comandas > 0) && (
+            <section className="card p-4 sm:p-5 space-y-4">
+              <h2 className="section-label">Tempo comanda aberta</h2>
+              <p className="text-sm text-ink-muted">
+                Do primeiro item ao pagamento — média {formatDuracaoMinutos(tempoComanda.mediaMinutos)}
+              </p>
+              {tempoComanda.distribuicao.map((d) => (
+                <div key={d.faixa} className="space-y-1.5">
+                  <div className="flex justify-between text-sm gap-2">
+                    <span className="font-medium">{d.faixa}</span>
+                    <span className="tabular-nums text-ink-soft shrink-0">{d.comandas} comandas</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-surface-lighter overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-brand-600"
+                      style={{ width: `${Math.max((d.comandas / maxTempoFaixa) * 100, d.comandas > 0 ? 4 : 0)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
             </section>
           )}
 

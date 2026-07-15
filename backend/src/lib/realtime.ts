@@ -14,7 +14,11 @@ export type RealtimeEvent =
   | { type: 'item:removed'; data: unknown }
   | { type: 'ranking:updated'; data: unknown }
   | { type: 'evento:updated'; data: unknown }
-  | { type: 'evento:deleted'; data: { id: string } };
+  | { type: 'evento:deleted'; data: { id: string } }
+  | { type: 'pedido:created'; data: unknown }
+  | { type: 'pedido:confirmed'; data: unknown }
+  | { type: 'pedido:recusado'; data: unknown }
+  | { type: 'pedido:cancelado'; data: unknown };
 
 export function emitToCervejaria(
   io: SocketIOServer | undefined,
@@ -30,6 +34,14 @@ export function emitToEvento(
   event: RealtimeEvent
 ): void {
   io?.to(`evento:${eventoId}`).emit(event.type, event.data);
+}
+
+export function emitToComanda(
+  io: SocketIOServer | undefined,
+  comandaId: string,
+  event: RealtimeEvent
+): void {
+  io?.to(`comanda:${comandaId}`).emit(event.type, event.data);
 }
 
 /** Notifica telas de ranking após venda, remoção ou ajuste de chope no evento. */

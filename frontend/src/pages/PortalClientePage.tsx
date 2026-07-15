@@ -1,0 +1,580 @@
+import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { useParams } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api, ApiError, assetUrl, formatCurrency } from '../lib/api';
+import { formatPhone } from '../lib/phone';
+import type {
+  PortalTrailerInfo,
+  PortalCardapio,
+  PortalComanda,
+  PortalSessaoResponse,
+} from '../types';
+import { Loading } from '../components/Loading';
+import { connectClientePortalSocket } from '../lib/socket';
+
+type Tab = 'comanda' | 'pedir';
+
+type CartItem = {
+  key: string;
+  produtoId: string;
+  produtoNome: string;
+  volumeMl: number;
+  quantidade: number;
+  precoUnit: number;
+  tapId?: string;
+};
+
+const PEDIDO_STATUS_LABEL: Record<string, string> = {
+  PENDENTE: 'Aguardando confirmação do atendente',
+  RECUSADO: 'Recusado',
+  CANCELADO: 'Cancelado',
+};
+
+function formatVolume(ml: number) {
+  if (ml <= 1) return '';
+  return ml >= 1000 ? `${ml / 1000}L` : `${ml}ml`;
+}
+
+export function PortalClientePage() {
+  const { slug, trailerId } = useParams<{ slug: string; trailerId: string }>();
+  const queryClient = useQueryClient();
+  const [tab, setTab] = useState<Tab>('comanda');
+  const [nome, setNome] = useState('');
+  const [telefone, setTelefone] = useState('');
+  const [error, setError] = useState('');
+  const [authenticated, setAuthenticated] = useState(false);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [menuTab, setMenuTab] = useState<'chope' | 'bebidas' | 'comidas'>('chope');
+  const [cancelandoPedidoId, setCancelandoPedidoId] = useState<string | null>(null);
+
+  const { data: info, isLoading, isError } = useQuery({
+    queryKey: ['portal-info', slug, trailerId],
+    queryFn: () =>
+      api.get<PortalTrailerInfo>(`/api/public/cervejarias/${slug}/trailers/${trailerId}/info`),
+    enabled: !!slug && !!trailerId,
+    retry: false,
+  });
+
+  const comandaQuery = useQuery({
+    queryKey: ['portal-comanda'],
+    queryFn: () => api.get<PortalComanda>('/api/public/cliente/comanda'),
+    enabled: authenticated,
+    refetchOnWindowFocus: true,
+    refetchInterval: (query) => {
+      const pedidos = query.state.data?.pedidos ?? [];
+      return pedidos.some((p) => p.status === 'PENDENTE') ? 3000 : false;
+    },
+  });
+
+  const { data: cardapio } = useQuery({
+    queryKey: ['portal-cardapio'],
+    queryFn: () => api.get<PortalCardapio>('/api/public/cliente/cardapio'),
+    enabled: authenticated,
+  });
+
+  useEffect(() => {
+    document.body.classList.add('auth-screen');
+    return () => document.body.classList.remove('auth-screen');
+  }, []);
+
+  useEffect(() => {
+    if (!info?.disponivel) return;
+    api
+      .get<PortalComanda>('/api/public/cliente/comanda')
+      .then(() => setAuthenticated(true))
+      .catch(() => {});
+  }, [info?.disponivel]);
+
+  useEffect(() => {
+    if (!cardapio) return;
+    if (cardapio.chopes.length > 0) setMenuTab('chope');
+    else if (cardapio.bebidas.length > 0) setMenuTab('bebidas');
+    else setMenuTab('comidas');
+  }, [cardapio]);
+
+  useEffect(() => {
+    if (!authenticated) return;
+
+    const socket = connectClientePortalSocket();
+    const refreshComanda = () => {
+      queryClient.invalidateQueries({ queryKey: ['portal-comanda'] });
+    };
+
+    socket.on('pedido:confirmed', refreshComanda);
+    socket.on('pedido:recusado', refreshComanda);
+    socket.on('pedido:cancelado', refreshComanda);
+    socket.on('item:added', refreshComanda);
+
+    return () => {
+      socket.off('pedido:confirmed', refreshComanda);
+      socket.off('pedido:recusado', refreshComanda);
+      socket.off('pedido:cancelado', refreshComanda);
+      socket.off('item:added', refreshComanda);
+    };
+  }, [authenticated, queryClient]);
+
+  const sessaoMutation = useMutation({
+    mutationFn: (body: { nome: string; telefone: string }) =>
+      api.post<PortalSessaoResponse>(
+        `/api/public/cervejarias/${slug}/trailers/${trailerId}/sessao`,
+        body,
+      ),
+    onSuccess: (data) => {
+      setAuthenticated(true);
+      setError('');
+      queryClient.setQueryData(['portal-comanda'], data.comanda);
+    },
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível entrar');
+    },
+  });
+
+  const pedidoMutation = useMutation({
+    mutationFn: (itens: CartItem[]) =>
+      api.post('/api/public/cliente/pedidos', {
+        itens: itens.map((i) => ({
+          produtoId: i.produtoId,
+          volumeMl: i.volumeMl,
+          quantidade: i.quantidade,
+          tapId: i.tapId,
+        })),
+      }),
+    onSuccess: () => {
+      setCart([]);
+      setTab('comanda');
+      queryClient.invalidateQueries({ queryKey: ['portal-comanda'] });
+    },
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : 'Erro ao enviar pedido');
+    },
+  });
+
+  const cancelarPedidoMutation = useMutation({
+    mutationFn: (pedidoId: string) =>
+      api.post(`/api/public/cliente/pedidos/${pedidoId}/cancelar`, {}),
+    onSuccess: () => {
+      setCancelandoPedidoId(null);
+      queryClient.invalidateQueries({ queryKey: ['portal-comanda'] });
+    },
+    onError: (err) => {
+      setCancelandoPedidoId(null);
+      setError(err instanceof ApiError ? err.message : 'Erro ao cancelar pedido');
+    },
+  });
+
+  const cartTotal = useMemo(
+    () => cart.reduce((s, i) => s + i.precoUnit * i.quantidade, 0),
+    [cart],
+  );
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const digits = telefone.replace(/\D/g, '');
+    if (digits.length < 10) {
+      setError('Informe um telefone válido com DDD');
+      return;
+    }
+    sessaoMutation.mutate({ nome: nome.trim(), telefone: digits });
+  };
+
+  const addToCart = (item: Omit<CartItem, 'key'>) => {
+    const key = `${item.produtoId}-${item.volumeMl}-${item.tapId ?? 'unit'}`;
+    setCart((prev) => {
+      const existing = prev.find((c) => c.key === key);
+      if (existing) {
+        return prev.map((c) => (c.key === key ? { ...c, quantidade: c.quantidade + 1 } : c));
+      }
+      return [...prev, { ...item, key }];
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-canvas px-4">
+        <Loading />
+      </div>
+    );
+  }
+
+  if (isError || !info) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-canvas px-4">
+        <div className="card max-w-md w-full text-center space-y-3">
+          <h1 className="text-xl font-bold">Link inválido</h1>
+          <p className="text-sm text-ink-muted">Este QR Code não está disponível.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const logo = assetUrl(info.cervejaria.logoUrl);
+
+  if (!info.disponivel || !info.evento) {
+    return (
+      <div className="min-h-screen bg-canvas px-4 py-8 safe-area-pt">
+        <div className="max-w-md mx-auto text-center space-y-4">
+          {logo && <img src={logo} alt="" className="h-14 mx-auto rounded-xl" />}
+          <h1 className="text-xl font-bold">{info.cervejaria.nome}</h1>
+          <p className="text-sm text-ink-muted">{info.trailer.nome}</p>
+          <div className="card">
+            <p className="font-semibold">Evento indisponível</p>
+            <p className="text-sm text-ink-muted mt-2">
+              Não há evento aberto neste trailer no momento. Tente novamente mais tarde.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <div className="min-h-screen bg-canvas px-4 py-8 safe-area-pt safe-area-pb">
+        <div className="max-w-md mx-auto space-y-6">
+          <div className="text-center space-y-2">
+            {logo ? (
+              <img src={logo} alt="" className="h-14 mx-auto rounded-xl object-contain" />
+            ) : (
+              <div className="text-3xl">🍺</div>
+            )}
+            <h1 className="text-xl font-bold">{info.cervejaria.nome}</h1>
+            <p className="text-sm text-ink-muted">
+              {info.trailer.nome} · {info.evento.nome}
+            </p>
+          </div>
+
+          <form onSubmit={handleLogin} className="card space-y-4">
+            <h2 className="font-bold">Abrir comanda</h2>
+            <p className="text-sm text-ink-muted">
+              Informe seus dados. Se ainda não estiver cadastrado, criamos seu perfil na hora.
+            </p>
+            {error && <div className="alert-error">{error}</div>}
+            <div>
+              <label className="label">Nome</label>
+              <input className="input" value={nome} onChange={(e) => setNome(e.target.value)} required />
+            </div>
+            <div>
+              <label className="label">Telefone</label>
+              <input
+                className="input"
+                type="tel"
+                value={telefone}
+                onChange={(e) => setTelefone(formatPhone(e.target.value))}
+                placeholder="(11) 99999-9999"
+                required
+              />
+            </div>
+            <button type="submit" className="touch-btn-primary w-full" disabled={sessaoMutation.isPending}>
+              {sessaoMutation.isPending ? 'Abrindo...' : 'Abrir comanda'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  const comanda = comandaQuery.data;
+  const pedidosPendentes = comanda?.pedidos.filter((p) => p.status === 'PENDENTE') ?? [];
+  const pedidosRecusados = comanda?.pedidos.filter((p) => p.status === 'RECUSADO') ?? [];
+  const comandaVazia =
+    !comanda?.itens.length && pedidosPendentes.length === 0 && pedidosRecusados.length === 0;
+
+  return (
+    <div className="min-h-screen bg-canvas pb-24 safe-area-pt">
+      <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur border-b border-line px-4 py-3">
+        <div className="max-w-lg mx-auto flex items-center gap-3">
+          {logo && <img src={logo} alt="" className="h-9 w-9 rounded-lg object-contain" />}
+          <div className="min-w-0">
+            <p className="font-bold truncate">{info.cervejaria.nome}</p>
+            <p className="text-xs text-ink-muted truncate">{info.evento.nome}</p>
+          </div>
+          <div className="ml-auto text-right">
+            <p className="text-xs text-ink-muted">Saldo</p>
+            <p className="font-bold text-brand-600">{formatCurrency(comanda?.total ?? 0)}</p>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-lg mx-auto px-4 py-4 space-y-4">
+        {error && <div className="alert-error">{error}</div>}
+
+        {tab === 'comanda' && (
+          <section className="space-y-4">
+            <div>
+              <h2 className="font-bold text-lg">Sua comanda</h2>
+              <p className="text-sm text-ink-muted mt-1">
+                Itens confirmados entram no saldo. Pedidos enviados aguardam o atendente.
+              </p>
+            </div>
+
+            {comandaVazia && (
+              <p className="text-sm text-ink-muted">Nenhum item na comanda ainda.</p>
+            )}
+
+            {!!comanda?.itens.length && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  Na comanda
+                </p>
+                {comanda.itens.map((item) => (
+                  <div key={item.id} className="card flex justify-between gap-2">
+                    <div>
+                      <p className="font-medium">{item.produto}</p>
+                      <p className="text-xs text-ink-muted">
+                        {item.quantidade}x {formatVolume(item.volumeMl)}
+                      </p>
+                    </div>
+                    <p className="font-semibold">{formatCurrency(item.subtotal)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {pedidosPendentes.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                  Aguardando confirmação
+                </p>
+                {pedidosPendentes.map((pedido) => (
+                  <article
+                    key={pedido.id}
+                    className="card space-y-2 border-amber-200/60 bg-amber-50/40"
+                  >
+                    <div className="flex justify-between gap-2">
+                      <p className="font-semibold text-amber-900">
+                        {PEDIDO_STATUS_LABEL[pedido.status]}
+                      </p>
+                      <p className="text-sm font-medium">{formatCurrency(pedido.totalEstimado)}</p>
+                    </div>
+                    <ul className="text-sm text-ink-muted space-y-0.5">
+                      {pedido.itens.map((i) => (
+                        <li key={i.id}>
+                          {i.quantidade}x {i.produto.nome}{' '}
+                          {i.volumeMl > 1 ? `(${formatVolume(i.volumeMl)})` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      className="touch-btn-danger touch-btn-sm w-full"
+                      disabled={cancelarPedidoMutation.isPending}
+                      onClick={() => {
+                        setError('');
+                        setCancelandoPedidoId(pedido.id);
+                        cancelarPedidoMutation.mutate(pedido.id);
+                      }}
+                    >
+                      {cancelandoPedidoId === pedido.id && cancelarPedidoMutation.isPending
+                        ? 'Cancelando...'
+                        : 'Cancelar pedido'}
+                    </button>
+                  </article>
+                ))}
+              </div>
+            )}
+
+            {pedidosRecusados.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-red-700">
+                  Recusados
+                </p>
+                {pedidosRecusados.map((pedido) => (
+                  <article key={pedido.id} className="card space-y-2 border-red-200/50">
+                    <div className="flex justify-between gap-2">
+                      <p className="font-semibold text-red-800">
+                        {PEDIDO_STATUS_LABEL[pedido.status]}
+                      </p>
+                      <p className="text-sm font-medium">{formatCurrency(pedido.totalEstimado)}</p>
+                    </div>
+                    <ul className="text-sm text-ink-muted space-y-0.5">
+                      {pedido.itens.map((i) => (
+                        <li key={i.id}>
+                          {i.quantidade}x {i.produto.nome}{' '}
+                          {i.volumeMl > 1 ? `(${formatVolume(i.volumeMl)})` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                    {pedido.recusadoMotivo && (
+                      <p className="text-xs text-red-700">Motivo: {pedido.recusadoMotivo}</p>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {tab === 'pedir' && cardapio && (
+          <section className="space-y-4">
+            <p className="text-sm text-ink-muted">
+              Monte seu pedido. O atendente confirma antes de lançar na comanda.
+            </p>
+            <div className="segmented-control">
+              {cardapio.chopes.length > 0 && (
+                <button
+                  type="button"
+                  className={`segmented-control-btn ${menuTab === 'chope' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
+                  onClick={() => setMenuTab('chope')}
+                >
+                  Chopes
+                </button>
+              )}
+              {cardapio.bebidas.length > 0 && (
+                <button
+                  type="button"
+                  className={`segmented-control-btn ${menuTab === 'bebidas' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
+                  onClick={() => setMenuTab('bebidas')}
+                >
+                  Bebidas
+                </button>
+              )}
+              {cardapio.comidas.length > 0 && (
+                <button
+                  type="button"
+                  className={`segmented-control-btn ${menuTab === 'comidas' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
+                  onClick={() => setMenuTab('comidas')}
+                >
+                  Comidas
+                </button>
+              )}
+            </div>
+
+            {menuTab === 'chope' &&
+              cardapio.chopes.map((chope) => (
+                <div key={chope.tapId} className="card space-y-2">
+                  <p className="font-bold">
+                    Tap {chope.tapNumero} — {chope.produto.nome}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {chope.produto.precos.map((p) => (
+                      <button
+                        key={p.volumeMl}
+                        type="button"
+                        className="touch-btn-secondary touch-btn-sm"
+                        onClick={() =>
+                          addToCart({
+                            produtoId: chope.produto.id,
+                            produtoNome: chope.produto.nome,
+                            volumeMl: p.volumeMl,
+                            quantidade: 1,
+                            precoUnit: p.preco,
+                            tapId: chope.tapId,
+                          })
+                        }
+                      >
+                        {formatVolume(p.volumeMl) || 'Un'} — {formatCurrency(p.preco)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+            {(menuTab === 'bebidas' ? cardapio.bebidas : menuTab === 'comidas' ? cardapio.comidas : []).map(
+              (produto) => (
+                <div key={produto.id} className="card flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{produto.nome}</p>
+                    <p className="text-sm text-brand-600">
+                      {formatCurrency(produto.precos[0]?.preco ?? 0)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="touch-btn-primary touch-btn-sm"
+                    onClick={() =>
+                      addToCart({
+                        produtoId: produto.id,
+                        produtoNome: produto.nome,
+                        volumeMl: produto.precos[0]?.volumeMl ?? 1,
+                        quantidade: 1,
+                        precoUnit: produto.precos[0]?.preco ?? 0,
+                      })
+                    }
+                  >
+                    Adicionar
+                  </button>
+                </div>
+              ),
+            )}
+
+            {cart.length > 0 &&
+              createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                  <button
+                    type="button"
+                    className="absolute inset-0 bg-black/45 backdrop-blur-sm"
+                    aria-label="Fechar carrinho"
+                    onClick={() => setCart([])}
+                  />
+                  <div
+                    role="dialog"
+                    aria-modal
+                    aria-labelledby="portal-cart-title"
+                    className="relative card shadow-xl w-full max-w-sm space-y-3 p-4"
+                  >
+                    <p id="portal-cart-title" className="font-bold">
+                      Carrinho ({cart.length})
+                    </p>
+                    {cart.map((item) => (
+                      <div key={item.key} className="flex justify-between text-sm">
+                        <span>
+                          {item.quantidade}x {item.produtoNome} {formatVolume(item.volumeMl)}
+                        </span>
+                        <span>{formatCurrency(item.precoUnit * item.quantidade)}</span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between font-bold pt-1 border-t border-line">
+                      <span>Total estimado</span>
+                      <span>{formatCurrency(cartTotal)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="touch-btn-primary w-full"
+                      disabled={pedidoMutation.isPending}
+                      onClick={() => {
+                        setError('');
+                        pedidoMutation.mutate(cart);
+                      }}
+                    >
+                      {pedidoMutation.isPending ? 'Enviando...' : 'Enviar pedido ao atendente'}
+                    </button>
+                    <button
+                      type="button"
+                      className="touch-btn-danger w-full"
+                      disabled={pedidoMutation.isPending}
+                      onClick={() => setCart([])}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>,
+                document.body,
+              )}
+          </section>
+        )}
+
+      </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-surface border-t border-line safe-area-pb">
+        <div className="max-w-lg mx-auto flex">
+          {(
+            [
+              ['comanda', `Comanda${pedidosPendentes.length ? ` (${pedidosPendentes.length})` : ''}`],
+              ['pedir', 'Pedir'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={`flex-1 py-3 text-sm font-semibold ${tab === id ? 'text-brand-600' : 'text-ink-faint'}`}
+              onClick={() => setTab(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </nav>
+    </div>
+  );
+}

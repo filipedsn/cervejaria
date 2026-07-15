@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 // concurrency) -> report. Mirrors the subagent-driven flow for a single command.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WORKERS = Number(process.env.QA_WORKERS ?? 6);
+const PORTAL_WORKERS = Number(process.env.QA_PORTAL_WORKERS ?? 10);
 
 function run(script: string, env: Record<string, string> = {}): Promise<number> {
   return new Promise((resolve) => {
@@ -26,10 +27,20 @@ async function main() {
   const workers = await Promise.all(
     Array.from({ length: WORKERS }, (_, i) => run('worker.ts', { QA_WORKER_ID: String(i + 1) })),
   );
+
+  console.log(`\n[run] Disparando ${PORTAL_WORKERS} portal-workers (clientes simultâneos)...`);
+  const portalWorkers = await Promise.all(
+    Array.from({ length: PORTAL_WORKERS }, (_, i) =>
+      run('portal-worker.ts', { QA_PORTAL_WORKER_ID: String(i + 1) }),
+    ),
+  );
+
   const suite = await run('suite.ts');
 
   const failedWorkers = workers.filter((c) => c !== 0).length;
+  const failedPortalWorkers = portalWorkers.filter((c) => c !== 0).length;
   if (failedWorkers) console.warn(`[run] ${failedWorkers} worker(s) retornaram erro`);
+  if (failedPortalWorkers) console.warn(`[run] ${failedPortalWorkers} portal-worker(s) retornaram erro`);
   if (suite !== 0) console.warn('[run] suite retornou erro');
 
   const report = await run('report.ts');

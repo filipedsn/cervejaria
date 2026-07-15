@@ -178,6 +178,7 @@ export async function seedArena(): Promise<Arena> {
   });
 
   return {
+    slug: ARENA_SLUG,
     cervejariaId: b.cervejaria.id,
     eventoId: evento.id,
     trailerId: b.trailer.id,

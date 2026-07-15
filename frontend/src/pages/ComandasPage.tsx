@@ -12,6 +12,7 @@ import { VerRankingButton } from '../components/VerRankingButton';
 import { EmptyState } from '../components/EmptyState';
 import { StatusBadge } from '../components/StatusBadge';
 import { EventoTapMontagemPanel } from '../components/EventoTapMontagemPanel';
+import { FilaPedidosPanel } from '../components/FilaPedidosPanel';
 import { MobileActionBar } from '../components/MobileActionBar';
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent?: 'brand' | 'green' }) {
@@ -114,6 +115,8 @@ export function ComandasPage() {
       )}
 
       <VerRankingButton eventoId={evento.id} />
+
+      <FilaPedidosPanel />
 
       <section className="space-y-3">
         <h2 className="section-label">Comandas</h2>

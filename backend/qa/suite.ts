@@ -1,5 +1,5 @@
 import { prisma } from '../src/lib/prisma.js';
-import { API_BASE, api, chopeItemBody, login, percentile } from './lib/http.js';
+import { API_BASE, api, chopeItemBody, login, percentile, portalPedidoBody, portalSessao, portalTestPhone, staffComandaBody } from './lib/http.js';
 import { decodeToken, jwtSecret, signToken, tamperSignature, userJwtPayload } from './lib/jwt.js';
 import { CONTEXT_PATH, SUITE_PATH, readJson, writeJson } from './lib/store.js';
 import type { PerfMetric, QaContext, SuiteArtifact, TestResult, TestStatus } from './lib/types.js';
@@ -344,7 +344,10 @@ async function main() {
   console.log('\n=== FUNCIONAL (ciclo de vida) ===');
   let funcComandaId = '';
   await test({ id: 'RF-05a', category: 'Funcional', name: 'Criar comanda', requirement: 'RF-05' }, async () => {
-    const r = await api<{ id: string }>('POST', '/api/comandas', { token: func.atendenteTokens[0], body: { eventoId: func.eventoId, clienteNome: `Cliente ${Date.now()}`, clienteTelefone: null } });
+    const r = await api<{ id: string }>('POST', '/api/comandas', {
+      token: func.atendenteTokens[0],
+      body: staffComandaBody(func.eventoId, `Cliente ${Date.now()}`, 1),
+    });
     funcComandaId = r.data.id;
     return expectStatus(r.status, 201, 'Comanda criada');
   });
@@ -417,6 +420,170 @@ async function main() {
   await test({ id: 'RF-09', category: 'Funcional', name: 'Resumo de evento ABERTO negado → 403', requirement: 'RF-09' }, async () => {
     const r = await api('GET', `/api/eventos/${func.eventoId}/resumo-executivo`, { token: func.donoToken });
     return expectStatus(r.status, 403, 'Resumo só para evento encerrado');
+  });
+
+  await test({ id: 'RF-11', category: 'Funcional', name: 'Gráfico vendas inclui fechamento fora do horário', requirement: 'RF-11' }, async () => {
+    const pastDate = new Date();
+    pastDate.setUTCDate(pastDate.getUTCDate() - 7);
+    pastDate.setUTCHours(0, 0, 0, 0);
+
+    await prisma.evento.update({
+      where: { id: lifecycle.eventoId },
+      data: { data: pastDate, horaInicio: '18:00', horaFim: '23:45', status: 'ABERTO' },
+    });
+    await prisma.comanda.deleteMany({ where: { eventoId: lifecycle.eventoId } });
+
+    const c = await api<{ id: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: staffComandaBody(lifecycle.eventoId, `ChartTest ${Date.now()}`, 11),
+    });
+    if (c.status !== 201 || !c.data?.id) {
+      return { status: 'failed', message: 'Setup RF-11: comanda não criada', actual: String(c.status) };
+    }
+
+    const item = await api('POST', `/api/comandas/${c.data.id}/itens`, {
+      token: lifecycle.atendenteTokens[0],
+      body: chopeItemBody(lifecycle.produtoId, lifecycle.tapId, lifecycle.volumeMl),
+    });
+    if (item.status !== 201) {
+      return { status: 'failed', message: 'Setup RF-11: item não adicionado', actual: String(item.status) };
+    }
+
+    const cur = await api<{ total: string | number }>('GET', `/api/comandas/${c.data.id}`, { token: lifecycle.donoToken });
+    const total = Number(cur.data?.total ?? 0);
+    const close = await api('POST', `/api/pagamentos/comandas/${c.data.id}/fechar`, {
+      token: lifecycle.atendenteTokens[0],
+      body: { pagamentos: [{ forma: 'DINHEIRO', valor: total }] },
+    });
+    if (close.status !== 200) {
+      return { status: 'failed', message: 'Setup RF-11: fechar comanda falhou', actual: String(close.status) };
+    }
+
+    const fecharEvento = await api('PATCH', `/api/eventos/${lifecycle.eventoId}/fechar`, { token: lifecycle.donoToken });
+    if (fecharEvento.status !== 200) {
+      return { status: 'failed', message: 'Setup RF-11: fechar evento falhou', actual: String(fecharEvento.status) };
+    }
+
+    const resumo = await api<{
+      resumo: { receitaTotal: number; comandasAtendidas: number };
+      vendasPorIntervalo: Array<{ receita: number; comandas: number }>;
+    }>('GET', `/api/eventos/${lifecycle.eventoId}/resumo-executivo`, { token: lifecycle.donoToken });
+
+    await api('PATCH', `/api/eventos/${lifecycle.eventoId}/reabrir`, { token: lifecycle.donoToken });
+
+    if (resumo.status !== 200 || !resumo.data) {
+      return { status: 'failed', message: 'Resumo HTTP inválido', actual: String(resumo.status) };
+    }
+
+    const chartTotal = resumo.data.vendasPorIntervalo.reduce((s, b) => s + b.receita, 0);
+    const chartComandas = resumo.data.vendasPorIntervalo.reduce((s, b) => s + b.comandas, 0);
+    const { receitaTotal, comandasAtendidas } = resumo.data.resumo;
+
+    if (Math.abs(chartTotal - receitaTotal) > 0.01) {
+      return {
+        status: 'failed',
+        message: 'Gráfico não bate com receita total',
+        expected: String(receitaTotal),
+        actual: String(chartTotal),
+      };
+    }
+    if (chartComandas !== comandasAtendidas || receitaTotal <= 0) {
+      return {
+        status: 'failed',
+        message: 'Gráfico sem vendas registradas',
+        expected: `receita>0 comandas=${comandasAtendidas}`,
+        actual: `receita=${chartTotal} comandas=${chartComandas}`,
+      };
+    }
+
+    return {
+      message: `Gráfico OK (R$ ${receitaTotal.toFixed(2)}, ${comandasAtendidas} comanda(s))`,
+      expected: String(receitaTotal),
+      actual: String(chartTotal),
+    };
+  });
+
+  await test({ id: 'RF-12', category: 'Funcional', name: 'Fluxo pedido/fechado/aberto no resumo', requirement: 'RF-12' }, async () => {
+    const pastDate = new Date();
+    pastDate.setUTCDate(pastDate.getUTCDate() - 7);
+    pastDate.setUTCHours(0, 0, 0, 0);
+
+    await prisma.evento.update({
+      where: { id: lifecycle.eventoId },
+      data: { data: pastDate, horaInicio: '18:00', horaFim: '23:45', status: 'ABERTO' },
+    });
+    await prisma.comanda.deleteMany({ where: { eventoId: lifecycle.eventoId } });
+
+    const c = await api<{ id: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: staffComandaBody(lifecycle.eventoId, `FluxoTest ${Date.now()}`, 12),
+    });
+    if (c.status !== 201 || !c.data?.id) {
+      return { status: 'failed', message: 'Setup RF-12: comanda não criada', actual: String(c.status) };
+    }
+
+    const item = await api('POST', `/api/comandas/${c.data.id}/itens`, {
+      token: lifecycle.atendenteTokens[0],
+      body: chopeItemBody(lifecycle.produtoId, lifecycle.tapId, lifecycle.volumeMl),
+    });
+    if (item.status !== 201) {
+      return { status: 'failed', message: 'Setup RF-12: item não adicionado', actual: String(item.status) };
+    }
+
+    const cur = await api<{ total: string | number }>('GET', `/api/comandas/${c.data.id}`, { token: lifecycle.donoToken });
+    const total = Number(cur.data?.total ?? 0);
+    const close = await api('POST', `/api/pagamentos/comandas/${c.data.id}/fechar`, {
+      token: lifecycle.atendenteTokens[0],
+      body: { pagamentos: [{ forma: 'DINHEIRO', valor: total }] },
+    });
+    if (close.status !== 200) {
+      return { status: 'failed', message: 'Setup RF-12: fechar comanda falhou', actual: String(close.status) };
+    }
+
+    const fecharEvento = await api('PATCH', `/api/eventos/${lifecycle.eventoId}/fechar`, { token: lifecycle.donoToken });
+    if (fecharEvento.status !== 200) {
+      return { status: 'failed', message: 'Setup RF-12: fechar evento falhou', actual: String(fecharEvento.status) };
+    }
+
+    const resumo = await api<{
+      resumo: { receitaTotal: number };
+      fluxoPorIntervalo: Array<{ pedido: number; fechado: number; aberto: number; itens: number }>;
+    }>('GET', `/api/eventos/${lifecycle.eventoId}/resumo-executivo`, { token: lifecycle.donoToken });
+
+    await api('PATCH', `/api/eventos/${lifecycle.eventoId}/reabrir`, { token: lifecycle.donoToken });
+
+    if (resumo.status !== 200 || !resumo.data?.fluxoPorIntervalo?.length) {
+      return { status: 'failed', message: 'fluxoPorIntervalo ausente', actual: String(resumo.status) };
+    }
+
+    const { receitaTotal } = resumo.data.resumo;
+    const fluxo = resumo.data.fluxoPorIntervalo;
+    const fechadoTotal = fluxo.reduce((s, b) => s + b.fechado, 0);
+    const pedidoTotal = fluxo.reduce((s, b) => s + b.pedido, 0);
+    const itensTotal = fluxo.reduce((s, b) => s + b.itens, 0);
+
+    if (Math.abs(fechadoTotal - receitaTotal) > 0.01) {
+      return {
+        status: 'failed',
+        message: 'Fluxo fechado não bate com receita',
+        expected: String(receitaTotal),
+        actual: String(fechadoTotal),
+      };
+    }
+    if (pedidoTotal <= 0 || itensTotal <= 0) {
+      return {
+        status: 'failed',
+        message: 'Fluxo pedido vazio',
+        expected: 'pedido>0',
+        actual: String(pedidoTotal),
+      };
+    }
+
+    return {
+      message: `Fluxo OK (pedido R$ ${pedidoTotal.toFixed(2)}, fechado R$ ${fechadoTotal.toFixed(2)})`,
+      expected: String(receitaTotal),
+      actual: String(fechadoTotal),
+    };
   });
 
   console.log('\n=== MULTI-TRAILER ===');
@@ -508,6 +675,300 @@ async function main() {
     return { message: '2 trailers ativos disponíveis', expected: '2', actual: '2' };
   });
 
+  console.log('\n=== PORTAL (cliente público) ===');
+  const portalSlug = ctx.arena.slug ?? 'qa-arena';
+  const portalTrailerId = ctx.arena.trailerId;
+  const portalProdutoId = ctx.arena.produtoId;
+  const portalTapId = ctx.arena.tapId;
+  const portalVolumeMl = ctx.arena.volumeMl;
+  const portalStaffToken = ctx.arena.donoToken;
+
+  type PortalClient = Awaited<ReturnType<typeof portalSessao>>;
+
+  await test({ id: 'PORTAL-01', category: 'Portal', name: '10 sessões paralelas — cookies e comandas distintos', requirement: 'PORTAL-01' }, async () => {
+    const sessions = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        portalSessao(portalSlug, portalTrailerId, {
+          nome: `Cliente Portal ${i + 1}`,
+          telefone: portalTestPhone(99, i + 1),
+        }),
+      ),
+    );
+    const ok = sessions.filter((s) => s.status === 201 && s.cookie && s.comandaId && s.clienteId);
+    const cookies = new Set(ok.map((s) => s.cookie));
+    const comandas = new Set(ok.map((s) => s.comandaId));
+    const clientes = new Set(ok.map((s) => s.clienteId));
+    if (ok.length !== 10) {
+      return {
+        status: 'failed',
+        message: `${ok.length}/10 sessões OK`,
+        expected: '10×201',
+        actual: `${ok.length} OK · HTTP: ${sessions.map((s) => s.status).join(',')}`,
+      };
+    }
+    if (cookies.size !== 10 || comandas.size !== 10 || clientes.size !== 10) {
+      return {
+        status: 'failed',
+        message: 'Colisão de cookie/comanda/cliente',
+        expected: '10 distintos cada',
+        actual: `cookies=${cookies.size} comandas=${comandas.size} clientes=${clientes.size}`,
+      };
+    }
+    return { message: '10 sessões isoladas', expected: '10/10', actual: '10/10' };
+  });
+
+  let portalSessions: PortalClient[] = [];
+
+  await test({ id: 'PORTAL-02', category: 'Portal', name: '10 pedidos paralelos — cada um na comanda correta', requirement: 'PORTAL-02' }, async () => {
+    portalSessions = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        portalSessao(portalSlug, portalTrailerId, {
+          nome: `Pedido Client ${i + 1}`,
+          telefone: portalTestPhone(98, i + 1),
+        }),
+      ),
+    );
+    if (portalSessions.some((s) => s.status !== 201 || !s.cookie)) {
+      return { status: 'failed', message: 'Falha ao abrir sessões para pedidos' };
+    }
+
+    const pedidos = await Promise.all(
+      portalSessions.map((s, i) =>
+        api<{ id: string; comandaId: string; clienteId: string; status: string; observacao?: string }>(
+          'POST',
+          '/api/public/cliente/pedidos',
+          {
+            cookie: s.cookie!,
+            body: portalPedidoBody(
+              portalProdutoId,
+              portalTapId,
+              portalVolumeMl,
+              `QA-CLIENT-${i + 1}`,
+            ),
+          },
+        ),
+      ),
+    );
+
+    const created = pedidos.filter((p) => p.status === 201);
+    if (created.length !== 10) {
+      return {
+        status: 'failed',
+        message: `${created.length}/10 pedidos criados`,
+        expected: '10×201',
+        actual: pedidos.map((p) => p.status).join(','),
+      };
+    }
+
+    for (let i = 0; i < created.length; i++) {
+      const p = created[i]!.data;
+      const s = portalSessions[i]!;
+      if (p.comandaId !== s.comandaId || p.clienteId !== s.clienteId) {
+        return {
+          status: 'failed',
+          message: `Pedido ${i + 1} em comanda/cliente errado`,
+          expected: `${s.comandaId}/${s.clienteId}`,
+          actual: `${p.comandaId}/${p.clienteId}`,
+        };
+      }
+    }
+    return { message: '10 pedidos vinculados corretamente', expected: '10/10', actual: '10/10' };
+  });
+
+  await test({ id: 'PORTAL-03', category: 'Portal', name: 'Isolamento cruzado — cookie A não acessa pedido B', requirement: 'PORTAL-03' }, async () => {
+    const [a, b] = await Promise.all([
+      portalSessao(portalSlug, portalTrailerId, { nome: 'Isolamento A', telefone: portalTestPhone(97, 1) }),
+      portalSessao(portalSlug, portalTrailerId, { nome: 'Isolamento B', telefone: portalTestPhone(97, 2) }),
+    ]);
+    if (!a.cookie || !b.cookie || a.status !== 201 || b.status !== 201) {
+      return { status: 'failed', message: 'Sessões A/B não abriram' };
+    }
+
+    const pedB = await api<{ id: string }>('POST', '/api/public/cliente/pedidos', {
+      cookie: b.cookie,
+      body: portalPedidoBody(portalProdutoId, portalTapId, portalVolumeMl, 'QA-CLIENT-B-ONLY'),
+    });
+    if (pedB.status !== 201 || !pedB.data.id) {
+      return { status: 'failed', message: 'Pedido B não criado' };
+    }
+
+    const comandaA = await api<{ pedidos: Array<{ id: string; observacao?: string }> }>(
+      'GET',
+      '/api/public/cliente/comanda',
+      { cookie: a.cookie },
+    );
+    const leak = comandaA.data.pedidos?.some((p) => p.id === pedB.data.id);
+    if (leak) {
+      return { status: 'failed', message: 'Cliente A vê pedido de B na comanda' };
+    }
+
+    const cancelCross = await api('POST', `/api/public/cliente/pedidos/${pedB.data.id}/cancelar`, {
+      cookie: a.cookie,
+      body: {},
+    });
+    if (cancelCross.status === 200) {
+      return { status: 'failed', message: 'Cliente A cancelou pedido de B', expected: '404', actual: '200' };
+    }
+    return { message: 'Isolamento OK', expected: '404 no cancel cruzado', actual: String(cancelCross.status) };
+  });
+
+  await test({ id: 'PORTAL-04', category: 'Portal', name: 'Race mesmo telefone — no máximo 1 comanda ABERTA', requirement: 'PORTAL-04' }, async () => {
+    const tel = portalTestPhone(96, 1);
+    const race = await Promise.all(
+      Array.from({ length: 2 }, () =>
+        portalSessao(portalSlug, portalTrailerId, { nome: 'Race Tel', telefone: tel }),
+      ),
+    );
+    if (race.some((s) => s.status !== 201 || !s.clienteId)) {
+      return {
+        status: 'failed',
+        message: 'Sessões race não abriram',
+        actual: race.map((s) => s.status).join(','),
+        details: race.map((s) => s.raw.slice(0, 120)).join(' | '),
+      };
+    }
+    const clienteId = race[0]!.clienteId!;
+    const abertas = await prisma.comanda.count({
+      where: { eventoId: ctx.arena.eventoId, clienteId, status: 'ABERTA' },
+    });
+    if (abertas > 1) {
+      return {
+        status: 'failed',
+        message: `${abertas} comandas ABERTA para mesmo cliente/evento`,
+        expected: '≤1',
+        actual: String(abertas),
+      };
+    }
+    return { message: 'No máximo 1 comanda aberta', expected: '≤1', actual: String(abertas) };
+  });
+
+  await test({ id: 'PORTAL-05', category: 'Portal', name: 'Staff confirma pedidos — itens na comanda correta', requirement: 'PORTAL-05' }, async () => {
+    const sessions = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        portalSessao(portalSlug, portalTrailerId, {
+          nome: `Confirm ${i + 1}`,
+          telefone: portalTestPhone(95, i + 1),
+        }),
+      ),
+    );
+    const pedidoRecords: Array<{ pedidoId: string; comandaId: string; clienteId: string }> = [];
+
+    for (let i = 0; i < sessions.length; i++) {
+      const s = sessions[i]!;
+      if (!s.cookie || s.status !== 201) continue;
+      const p = await api<{ id: string; comandaId: string; clienteId: string }>(
+        'POST',
+        '/api/public/cliente/pedidos',
+        {
+          cookie: s.cookie,
+          body: portalPedidoBody(
+            portalProdutoId,
+            portalTapId,
+            portalVolumeMl,
+            `QA-CONFIRM-${i + 1}`,
+          ),
+        },
+      );
+      if (p.status === 201 && p.data.id) {
+        pedidoRecords.push({
+          pedidoId: p.data.id,
+          comandaId: p.data.comandaId,
+          clienteId: p.data.clienteId,
+        });
+      }
+    }
+    if (pedidoRecords.length !== 10) {
+      return { status: 'failed', message: `${pedidoRecords.length}/10 pedidos para confirmar` };
+    }
+
+    for (const rec of pedidoRecords) {
+      const before = await prisma.itemComanda.count({ where: { comandaId: rec.comandaId } });
+      const confirm = await api('POST', `/api/pedidos/${rec.pedidoId}/confirmar`, {
+        token: portalStaffToken,
+        body: {},
+      });
+      if (confirm.status !== 200) {
+        return {
+          status: 'failed',
+          message: `Confirmar ${rec.pedidoId} falhou HTTP ${confirm.status}`,
+        };
+      }
+      const after = await prisma.itemComanda.count({ where: { comandaId: rec.comandaId } });
+      if (after <= before) {
+        return { status: 'failed', message: `Item não entrou na comanda ${rec.comandaId}` };
+      }
+    }
+    return { message: '10 confirmações OK', expected: '10/10', actual: '10/10' };
+  });
+
+  await test({ id: 'PORTAL-06', category: 'Portal', name: 'Mix cancel + pedido — fila staff reflete estado', requirement: 'PORTAL-06' }, async () => {
+    const sessions = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        portalSessao(portalSlug, portalTrailerId, {
+          nome: `Mix ${i + 1}`,
+          telefone: portalTestPhone(94, i + 1),
+        }),
+      ),
+    );
+    const pedidoIds: string[] = [];
+    for (let i = 0; i < sessions.length; i++) {
+      const s = sessions[i]!;
+      if (!s.cookie) continue;
+      const p = await api<{ id: string }>('POST', '/api/public/cliente/pedidos', {
+        cookie: s.cookie,
+        body: portalPedidoBody(
+          portalProdutoId,
+          portalTapId,
+          portalVolumeMl,
+          `QA-MIX-${i + 1}`,
+        ),
+      });
+      if (p.status === 201 && p.data.id) pedidoIds.push(p.data.id);
+    }
+    if (pedidoIds.length !== 10) {
+      return { status: 'failed', message: `${pedidoIds.length}/10 pedidos criados` };
+    }
+
+    const toCancel = pedidoIds.slice(0, 5);
+    const toKeep = pedidoIds.slice(5);
+    await Promise.all(
+      toCancel.map((id, i) =>
+        api('POST', `/api/public/cliente/pedidos/${id}/cancelar`, {
+          cookie: sessions[i]!.cookie!,
+          body: {},
+        }),
+      ),
+    );
+
+    const pending = await prisma.pedidoCliente.findMany({
+      where: { id: { in: pedidoIds }, status: 'PENDENTE' },
+      select: { id: true },
+    });
+    const pendingIds = pending.map((p) => p.id).sort();
+    const expectedKeep = [...toKeep].sort();
+    if (pendingIds.length !== 5 || pendingIds.join(',') !== expectedKeep.join(',')) {
+      return {
+        status: 'failed',
+        message: 'Fila pendente incorreta após cancelamentos',
+        expected: '5 pendentes (índices 6-10)',
+        actual: `${pendingIds.length} pendentes`,
+      };
+    }
+
+    const staffPending = await api<Array<{ id: string }>>(
+      'GET',
+      `/api/pedidos/eventos/${ctx.arena.eventoId}/pedidos?status=PENDENTE`,
+      { token: portalStaffToken },
+    );
+    const staffIds = new Set(staffPending.data.map((p) => p.id));
+    const allKeptVisible = toKeep.every((id) => staffIds.has(id));
+    const noneCancelledVisible = toCancel.every((id) => !staffIds.has(id));
+    if (!allKeptVisible || !noneCancelledVisible) {
+      return { status: 'failed', message: 'Fila staff não bate com cancelamentos do cliente' };
+    }
+    return { message: '5 cancelados, 5 pendentes na fila', expected: '5/5', actual: '5/5' };
+  });
+
   console.log('\n=== NÃO-FUNCIONAL (performance) ===');
   await bench('POST /api/auth/login', 50, 500, async () => {
     const t0 = performance.now();
@@ -528,7 +989,7 @@ async function main() {
       ctx.tenants.map(async (t) => {
         const r = await api<{ id: string }>('POST', '/api/comandas', {
           token: t.atendenteTokens[0],
-          body: { eventoId: t.eventoId, clienteNome: `RNF04 ${t.index}-${Date.now()}`, clienteTelefone: null },
+          body: staffComandaBody(t.eventoId, `RNF04 ${t.index}-${Date.now()}`, t.index + 1),
         });
         return { t, comandaId: r.data?.id, prepared: r.status === 201 };
       }),
@@ -554,8 +1015,20 @@ async function main() {
 
   console.log('\n=== CONCORRÊNCIA (in-process) ===');
   await test({ id: 'CONC-03', category: 'Concorrência', name: 'Duplo-fechamento simultâneo da mesma comanda', requirement: 'CONC-03' }, async () => {
-    const c = await api<{ id: string }>('POST', '/api/comandas', { token: func.atendenteTokens[0], body: { eventoId: func.eventoId, clienteNome: `DoubleClose ${Date.now()}`, clienteTelefone: null } });
-    const comandaId = c.data.id;
+    const c = await api<{ id: string }>('POST', '/api/comandas', {
+      token: func.atendenteTokens[0],
+      body: staffComandaBody(func.eventoId, `DoubleClose ${Date.now()}`, 99),
+    });
+    const comandaId = c.data?.id;
+    if (c.status !== 201 || !comandaId) {
+      return {
+        status: 'failed',
+        message: 'Setup CONC-03: comanda não criada',
+        expected: '201',
+        actual: String(c.status),
+        details: c.raw.slice(0, 200),
+      };
+    }
     await api('POST', `/api/comandas/${comandaId}/itens`, { token: func.atendenteTokens[0], body: chopeItemBody(func.produtoId, func.tapId, 500) });
     const cur = await api<{ total: string | number }>('GET', `/api/comandas/${comandaId}`, { token: func.donoToken });
     const total = Number(cur.data.total);

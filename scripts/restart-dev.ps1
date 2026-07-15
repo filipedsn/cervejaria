@@ -39,6 +39,8 @@ Start-Sleep -Seconds 1
 Write-Host "Gerando Prisma Client..." -ForegroundColor Gray
 Push-Location (Join-Path $ProjectRoot "backend")
 $env:NODE_ENV = 'development'
+. (Join-Path $ProjectRoot "scripts\prod\_config.ps1")
+Import-BackendEnvFile -BackendDir (Join-Path $ProjectRoot "backend") -Environment development
 npm exec prisma generate 2>$null
 Pop-Location
 

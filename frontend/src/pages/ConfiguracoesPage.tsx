@@ -25,11 +25,12 @@ export function ConfiguracoesPage() {
 
   if (!tab) return <Navigate to="/configuracoes/equipe" replace />;
   if (tab === 'carretos') return <Navigate to="/configuracoes/trailers" replace />;
+  if (tab === 'clientes') return <Navigate to="/configuracoes/trailers" replace />;
   if (!isValidTab(tab)) return <Navigate to="/configuracoes/equipe" replace />;
 
   return (
     <div className="space-y-5 pb-2">
-      <PageHeader title="Configurações" subtitle="Equipe, trailers, catálogo, cardápios e aparência" />
+      <PageHeader title="Configurações" subtitle="Equipe, trailers, catálogo e aparência" />
 
       <div className="segmented-control">
         {TABS.map(({ id, label }) => (

@@ -53,6 +53,26 @@ function Test-DevPortListening {
   return $null -ne (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
 }
 
+function Get-DevLanIPv4 {
+  $virtualPattern = 'Hyper-V|Virtual|WSL|VMware|VirtualBox|Loopback|Bluetooth|Default Switch|vEthernet'
+
+  $candidate = Get-NetIPConfiguration -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.IPv4DefaultGateway -and
+      $_.NetAdapter.Status -eq 'Up' -and
+      $_.NetAdapter.Name -notmatch $virtualPattern -and
+      $_.IPv4Address.IPAddress -match '^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)'
+    } |
+    Sort-Object { $_.NetAdapter.InterfaceMetric } |
+    Select-Object -First 1
+
+  if ($candidate) {
+    return $candidate.IPv4Address.IPAddress
+  }
+
+  return $null
+}
+
 function Write-DevLog {
   param(
     [hashtable]$Paths,
@@ -87,25 +107,21 @@ function Start-HiddenNpm {
     [string]$StderrLog = ''
   )
 
-  $nodeDir = Split-Path $NpmCmd -Parent
-  $nodeExe = Join-Path $nodeDir 'node.exe'
-  $npmCli = Join-Path $nodeDir 'node_modules\npm\bin\npm-cli.js'
+  $argLine = ($NpmArgs | ForEach-Object {
+    if ($_ -match '\s') { "`"$_`"" } else { $_ }
+  }) -join ' '
+
+  $cmd = "Set-Location -LiteralPath '$WorkingDirectory'; & '$NpmCmd' $argLine"
 
   $params = @{
-    WindowStyle = 'Hidden'
-    PassThru    = $true
+    FilePath         = 'powershell.exe'
+    ArgumentList     = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command', $cmd)
     WorkingDirectory = $WorkingDirectory
+    WindowStyle      = 'Hidden'
+    PassThru         = $true
   }
   if ($StdoutLog) { $params.RedirectStandardOutput = $StdoutLog }
   if ($StderrLog) { $params.RedirectStandardError = $StderrLog }
-
-  if (Test-Path $npmCli) {
-    $params.FilePath = $nodeExe
-    $params.ArgumentList = @($npmCli) + $NpmArgs
-  } else {
-    $params.FilePath = $NpmCmd
-    $params.ArgumentList = $NpmArgs
-  }
 
   return Start-Process @params
 }

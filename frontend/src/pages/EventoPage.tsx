@@ -4,9 +4,9 @@ import { useNavigate } from 'react-router-dom';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { api, formatTime, ApiError } from '../lib/api';
+import { api, formatTime, formatCurrency, ApiError } from '../lib/api';
 
-import type { Evento, EventosResponse, Trailer } from '../types';
+import type { Evento, EventoDashboard, EventosResponse, Trailer } from '../types';
 import { formatTrailerLabel } from '../types';
 
 import { useEvento } from '../contexts/EventoContext';
@@ -26,8 +26,6 @@ import { reabrirPrazoExpirado } from '../lib/evento-utils';
 import { VerRankingButton } from '../components/VerRankingButton';
 
 import { VerResumoExecutivoButton } from '../components/VerResumoExecutivoButton';
-
-import { EventoTapMontagemPanel } from '../components/EventoTapMontagemPanel';
 
 import { EventoMontagemTaps } from '../components/EventoMontagemTaps';
 
@@ -150,6 +148,66 @@ function EditEventoButton({ onClick, className }: { onClick: () => void; classNa
 
 
 
+function HeroStatCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-white/15 border border-white/20 px-3 py-2.5 min-w-0">
+      <p className="text-[11px] text-white/70 leading-tight">{label}</p>
+      <p className="text-lg font-bold mt-1 truncate">{value}</p>
+    </div>
+  );
+}
+
+function EventoHeroResumo({ eventoId }: { eventoId: string }) {
+  const queryClient = useQueryClient();
+
+  const { data: dashboard } = useQuery({
+    queryKey: ['dashboard', eventoId],
+    queryFn: () => api.get<EventoDashboard>(`/api/eventos/${eventoId}/dashboard`),
+  });
+
+  useEffect(() => {
+    const socket = getSocket();
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard', eventoId] });
+    };
+    socket.on('comanda:created', invalidate);
+    socket.on('comanda:closed', invalidate);
+    socket.on('item:added', invalidate);
+    socket.on('item:removed', invalidate);
+    socket.on('pedido:confirmed', invalidate);
+    return () => {
+      socket.off('comanda:created', invalidate);
+      socket.off('comanda:closed', invalidate);
+      socket.off('item:added', invalidate);
+      socket.off('item:removed', invalidate);
+      socket.off('pedido:confirmed', invalidate);
+    };
+  }, [eventoId, queryClient]);
+
+  const resumo = dashboard?.resumo;
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <HeroStatCell
+        label="Comandas abertas"
+        value={resumo ? String(resumo.comandasAbertas) : '—'}
+      />
+      <HeroStatCell
+        label="Comandas fechadas"
+        value={resumo ? String(resumo.comandasFechadas) : '—'}
+      />
+      <HeroStatCell
+        label="Valor aberto"
+        value={resumo ? formatCurrency(resumo.valorAberto) : '—'}
+      />
+      <HeroStatCell
+        label="Valor fechado"
+        value={resumo ? formatCurrency(resumo.valorFechado) : '—'}
+      />
+    </div>
+  );
+}
+
 function ActiveSessionHero({
 
   evento,
@@ -188,11 +246,7 @@ function ActiveSessionHero({
 
       </div>
 
-      <EventoTapMontagemPanel
-        eventoId={evento.id}
-        eventoAberto
-        variant="hero"
-      />
+      <EventoHeroResumo eventoId={evento.id} />
 
       <div className="flex gap-2">
 

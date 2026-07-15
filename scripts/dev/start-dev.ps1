@@ -14,6 +14,9 @@ $nodeDir = Split-Path $paths.NpmCmd -Parent
 $env:Path = "$nodeDir;$env:Path"
 $env:NODE_ENV = 'development'
 
+. (Join-Path $PSScriptRoot '..\prod\_config.ps1')
+Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment development
+
 function Start-DevService {
   param(
     [string]$Label,
@@ -32,9 +35,10 @@ function Start-DevService {
   if (Test-Path $PidFile) {
     $oldPid = [int](Get-Content $PidFile -ErrorAction SilentlyContinue)
     if (Test-DevProcessAlive -ProcessId $oldPid) {
-      Write-DevLog -Paths $paths -Message "$Label PID $oldPid ainda ativo."
-      return $true
+      Write-DevLog -Paths $paths -Message "$Label PID $oldPid ainda ativo mas porta $Port fechada - reiniciando."
+      Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
     }
+    Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
   }
 
   $proc = Start-HiddenNpm `
@@ -89,8 +93,18 @@ $frontendOk = Start-DevService `
   -StdoutLog $paths.FrontendLog `
   -StderrLog $paths.FrontendErrLog
 
+if ($backendOk -or $frontendOk) {
+  $backendOk = Test-DevPortListening -Port $paths.BackendPort
+  $frontendOk = Test-DevPortListening -Port $paths.FrontendPort
+}
+
 if ($backendOk -and $frontendOk) {
   Write-Host "Dev no ar: http://localhost:$($paths.FrontendPort) (API :$($paths.BackendPort))" -ForegroundColor Green
+  $lanIp = Get-DevLanIPv4
+  if ($lanIp) {
+    Write-Host "Celular (mesma Wi-Fi): http://${lanIp}:$($paths.FrontendPort)" -ForegroundColor Cyan
+    Write-Host "QR codes usam esse IP automaticamente quando o painel esta em localhost." -ForegroundColor DarkGray
+  }
   exit 0
 }
 
