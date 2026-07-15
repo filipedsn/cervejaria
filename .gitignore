@@ -15,9 +15,14 @@ coverage/
 frontend/dev-dist/
 backend/uploads/logos/*
 !backend/uploads/logos/.gitkeep
-backend/data/backups/
+backend/uploads-prod/
+backend/uploads-dev/
+deploy/backups/*.sql
+!deploy/backups/.gitkeep
 deploy/production.settings.psd1
 deploy/logs/*
 !deploy/logs/.gitkeep
 deploy/runtime/*
 !deploy/runtime/.gitkeep
+ops-panel/node_modules/
+ops-panel/.env
