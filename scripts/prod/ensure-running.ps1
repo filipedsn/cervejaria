@@ -1,4 +1,4 @@
-# Watchdog: garante backend (3001) + frontend (5201) + Cloudflare Tunnel no ar.
+# Watchdog: garante backend (3001) + frontend estatico + Cloudflare Tunnel no ar.
 
 param(
   [switch]$Quiet
@@ -15,13 +15,13 @@ try {
   exit 1
 }
 
-$apiOk = Test-ApiHealthy -HealthUrl $paths.HealthUrl
+$apiOk = Test-ApiHealthy -HealthUrl $paths.ReadyUrl
 $frontendOk = Test-FrontendHealthy -FrontendUrl $paths.FrontendUrl
 $tunnelOk = Test-CloudflaredRunning
 
 if (-not $apiOk -and (Test-PortListening -Port $paths.ApiPort)) {
   Start-Sleep -Seconds 3
-  $apiOk = Test-ApiHealthy -HealthUrl $paths.HealthUrl -Retries 3
+  $apiOk = Test-ApiHealthy -HealthUrl $paths.ReadyUrl -Retries 3
 }
 
 if (-not $frontendOk -and (Test-PortListening -Port $paths.FrontendPort)) {
@@ -32,12 +32,14 @@ if (-not $frontendOk -and (Test-PortListening -Port $paths.FrontendPort)) {
 if (-not $apiOk) {
   Write-WatchdogLog -Paths $paths -Message 'API fora do ar - iniciando.'
   & "$PSScriptRoot\start-api.ps1" -Quiet:$Quiet
-  $apiOk = Test-ApiHealthy -HealthUrl $paths.HealthUrl
+  $apiOk = Test-ApiHealthy -HealthUrl $paths.ReadyUrl
 }
 
-if (-not $frontendOk) {
+if (-not $frontendOk -and -not $paths.ServeFrontendFromApi) {
   Write-WatchdogLog -Paths $paths -Message 'Frontend fora do ar - iniciando.'
   & "$PSScriptRoot\start-frontend.ps1" -Quiet:$Quiet
+  $frontendOk = Test-FrontendHealthy -FrontendUrl $paths.FrontendUrl
+} elseif ($paths.ServeFrontendFromApi -and $apiOk) {
   $frontendOk = Test-FrontendHealthy -FrontendUrl $paths.FrontendUrl
 }
 

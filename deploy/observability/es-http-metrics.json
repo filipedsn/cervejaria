@@ -1,0 +1,8 @@
+{
+  "size": 3,
+  "query": {
+    "wildcard": {
+      "scope.name": "*http*"
+    }
+  }
+}

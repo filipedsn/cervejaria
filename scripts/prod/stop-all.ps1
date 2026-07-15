@@ -18,6 +18,8 @@ function Stop-ByPidFile {
 }
 
 Stop-ByPidFile -PidFile $paths.ApiPidFile -Label 'API'
+Stop-ByPidFile -PidFile (Join-Path $paths.RuntimeDir 'watchdog.pid') -Label 'Watchdog daemon'
+Stop-ByPidFile -PidFile (Join-Path $paths.RuntimeDir 'ops-panel.pid') -Label 'Ops panel'
 Stop-ByPidFile -PidFile $paths.FrontendPidFile -Label 'Frontend'
 Stop-ByPidFile -PidFile $paths.TunnelPidFile -Label 'Tunnel'
 

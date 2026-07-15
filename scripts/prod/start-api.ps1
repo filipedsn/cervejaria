@@ -6,14 +6,22 @@ $ErrorActionPreference = 'Stop'
 $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
 
-if (Test-ApiHealthy -HealthUrl $paths.HealthUrl) {
-  Write-Host "API ja esta no ar ($($paths.HealthUrl))." -ForegroundColor Green
+if (Test-ApiHealthy -HealthUrl $paths.ReadyUrl) {
+  Write-Host "API ja esta no ar ($($paths.ReadyUrl))." -ForegroundColor Green
   exit 0
 }
 
 if (-not (Test-Path $paths.ApiEntry)) {
-  Write-Host "Build ausente. Execute na raiz do projeto: npm run build" -ForegroundColor Red
+  Write-Host "Build ausente. Execute na raiz: npm run build" -ForegroundColor Red
   exit 1
+}
+
+if ($paths.ServeFrontendFromApi) {
+  $frontendDist = Join-Path $paths.ProjectRoot 'frontend\dist\index.html'
+  if (-not (Test-Path $frontendDist)) {
+    Write-Host "Frontend dist ausente. Execute: npm run build --prefix frontend" -ForegroundColor Red
+    exit 1
+  }
 }
 
 if (Test-Path $paths.ApiPidFile) {
@@ -21,7 +29,7 @@ if (Test-Path $paths.ApiPidFile) {
   if (Test-ProcessAlive -ProcessId $oldPid) {
     Write-Host "Processo API PID $oldPid ainda ativo; aguardando health..." -ForegroundColor Yellow
     Start-Sleep -Seconds 2
-    if (Test-ApiHealthy -HealthUrl $paths.HealthUrl) { exit 0 }
+    if (Test-ApiHealthy -HealthUrl $paths.ReadyUrl) { exit 0 }
     Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
   }
 }
@@ -44,7 +52,7 @@ Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment production
 
 $proc = Start-Process `
   -FilePath $paths.NodeExe `
-  -ArgumentList @('dist\index.js') `
+  -ArgumentList @('--import', '@elastic/opentelemetry-node', 'dist\index.js') `
   -WorkingDirectory $paths.BackendDir `
   -WindowStyle Hidden `
   -RedirectStandardOutput $paths.ApiLog `
@@ -57,8 +65,8 @@ Write-WatchdogLog -Paths $paths -Message "API iniciada PID $($proc.Id)."
 $deadline = (Get-Date).AddSeconds(30)
 do {
   Start-Sleep -Seconds 1
-  if (Test-ApiHealthy -HealthUrl $paths.HealthUrl) {
-    Write-Host "API no ar: $($paths.HealthUrl) (PID $($proc.Id))" -ForegroundColor Green
+  if (Test-ApiHealthy -HealthUrl $paths.ReadyUrl) {
+    Write-Host "API no ar: $($paths.ReadyUrl) (PID $($proc.Id))" -ForegroundColor Green
     exit 0
   }
 } while ((Get-Date) -lt $deadline)
