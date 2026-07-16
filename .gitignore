@@ -37,3 +37,4 @@ ops-panel/.env
 # Dumps SQL locais
 deploy/backups/*.sql
 !deploy/backups/.gitkeep
+deploy/backups-external/
