@@ -14,7 +14,7 @@ export function Modal({ open, onClose, title, children, footer, hideHeaderClose 
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
+      <div className="overlay-backdrop" onClick={onClose} aria-hidden />
       <div
         role="dialog"
         aria-modal

@@ -43,7 +43,7 @@ export function AccountMenu({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
+      <div className="overlay-backdrop" onClick={onClose} aria-hidden />
       <div
         role="dialog"
         aria-modal

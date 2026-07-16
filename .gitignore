@@ -21,3 +21,19 @@ deploy/logs/*
 !deploy/logs/.gitkeep
 deploy/runtime/*
 !deploy/runtime/.gitkeep
+
+# QA reports (gerados)
+reports/qa/
+reports/qa-report.html
+
+# Uploads locais por ambiente
+backend/uploads-dev/
+backend/uploads-prod/
+
+# Ops panel (local até decisão de infra)
+ops-panel/node_modules/
+ops-panel/.env
+
+# Dumps SQL locais
+deploy/backups/*.sql
+!deploy/backups/.gitkeep

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -48,6 +48,29 @@ export function PortalClientePage() {
   const [menuTab, setMenuTab] = useState<'chope' | 'bebidas' | 'comidas'>('chope');
   const [cancelandoPedidoId, setCancelandoPedidoId] = useState<string | null>(null);
 
+  const clearPortalSession = useCallback(async () => {
+    try {
+      await api.post('/api/public/cliente/logout', {});
+    } catch {
+      /* cookie pode já estar inválido */
+    }
+    setAuthenticated(false);
+    setCart([]);
+    queryClient.removeQueries({ queryKey: ['portal-comanda'] });
+    queryClient.removeQueries({ queryKey: ['portal-cardapio'] });
+  }, [queryClient]);
+
+  const handlePortalAuthError = useCallback(
+    (err: unknown) => {
+      if (err instanceof ApiError && err.status === 401) {
+        void clearPortalSession();
+        return true;
+      }
+      return false;
+    },
+    [clearPortalSession],
+  );
+
   const { data: info, isLoading, isError } = useQuery({
     queryKey: ['portal-info', slug, trailerId],
     queryFn: () =>
@@ -79,12 +102,16 @@ export function PortalClientePage() {
   }, []);
 
   useEffect(() => {
-    if (!info?.disponivel) return;
-    api
-      .get<PortalComanda>('/api/public/cliente/comanda')
-      .then(() => setAuthenticated(true))
-      .catch(() => {});
-  }, [info?.disponivel]);
+    if (info && !info.disponivel) {
+      void clearPortalSession();
+    }
+  }, [info, clearPortalSession]);
+
+  useEffect(() => {
+    if (comandaQuery.error) {
+      handlePortalAuthError(comandaQuery.error);
+    }
+  }, [comandaQuery.error, handlePortalAuthError]);
 
   useEffect(() => {
     if (!cardapio) return;
@@ -100,19 +127,24 @@ export function PortalClientePage() {
     const refreshComanda = () => {
       queryClient.invalidateQueries({ queryKey: ['portal-comanda'] });
     };
+    const onSessionExpired = () => {
+      void clearPortalSession();
+    };
 
     socket.on('pedido:confirmed', refreshComanda);
     socket.on('pedido:recusado', refreshComanda);
     socket.on('pedido:cancelado', refreshComanda);
     socket.on('item:added', refreshComanda);
+    socket.on('portal:session-expired', onSessionExpired);
 
     return () => {
       socket.off('pedido:confirmed', refreshComanda);
       socket.off('pedido:recusado', refreshComanda);
       socket.off('pedido:cancelado', refreshComanda);
       socket.off('item:added', refreshComanda);
+      socket.off('portal:session-expired', onSessionExpired);
     };
-  }, [authenticated, queryClient]);
+  }, [authenticated, queryClient, clearPortalSession]);
 
   const sessaoMutation = useMutation({
     mutationFn: (body: { nome: string; telefone: string }) =>
@@ -146,6 +178,7 @@ export function PortalClientePage() {
       queryClient.invalidateQueries({ queryKey: ['portal-comanda'] });
     },
     onError: (err) => {
+      if (handlePortalAuthError(err)) return;
       setError(err instanceof ApiError ? err.message : 'Erro ao enviar pedido');
     },
   });
@@ -159,6 +192,7 @@ export function PortalClientePage() {
     },
     onError: (err) => {
       setCancelandoPedidoId(null);
+      if (handlePortalAuthError(err)) return;
       setError(err instanceof ApiError ? err.message : 'Erro ao cancelar pedido');
     },
   });
@@ -503,7 +537,7 @@ export function PortalClientePage() {
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                   <button
                     type="button"
-                    className="absolute inset-0 bg-black/45 backdrop-blur-sm"
+                    className="overlay-backdrop"
                     aria-label="Fechar carrinho"
                     onClick={() => setCart([])}
                   />

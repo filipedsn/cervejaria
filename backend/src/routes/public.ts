@@ -14,6 +14,8 @@ import {
 
   setClienteSessionCookie,
 
+  clearClienteSessionCookie,
+
   signClienteSession,
 
 } from '../lib/cliente-session.js';
@@ -302,7 +304,7 @@ export async function publicRoutes(app: FastifyInstance) {
 
     try {
 
-      const { cliente, comanda } = await startClientePortalSession({
+      const { cliente, comanda, portalGeneration } = await startClientePortalSession({
 
         cervejariaId: ctx.cervejaria.id,
 
@@ -329,6 +331,8 @@ export async function publicRoutes(app: FastifyInstance) {
         clienteId: cliente.id,
 
         comandaId: comanda.id,
+
+        portalGeneration,
 
       });
 
@@ -361,6 +365,16 @@ export async function publicRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: message });
 
     }
+
+  });
+
+
+
+  app.post('/cliente/logout', async (_request, reply) => {
+
+    clearClienteSessionCookie(reply);
+
+    return reply.status(204).send();
 
   });
 

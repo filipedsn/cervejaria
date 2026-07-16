@@ -5,13 +5,16 @@ import { getAuthUser } from '../types/auth.js';
 import { emitToEvento, emitRankingUpdated } from '../lib/realtime.js';
 import { toNumber } from '../lib/utils.js';
 import { isBebidaChope } from '../lib/produto-utils.js';
-import { assertChopeAtivoNoTap } from '../lib/tap-montagem.js';
-import { assertProdutoNoCardapioEvento } from '../lib/evento-cardapio.js';
-import { isVendaUnitaria } from '../lib/produto-utils.js';
 import { cancelarComandaVazia } from '../lib/comanda-cancelar.js';
 import { resolveClienteParaComanda } from '../lib/cliente-resolver.js';
+import { isTelefoneClienteAvulsoReservado } from '../lib/cliente-avulso.js';
 import { normalizePhone } from '../lib/phone.js';
 import { registrarTransacao } from '../lib/transacao-log.js';
+import {
+  addItemToComanda,
+  comandaDetailInclude,
+  removeItemFromComanda,
+} from '../lib/comanda-service.js';
 
 const createComandaSchema = z.object({
   eventoId: z.string(),
@@ -25,25 +28,6 @@ const addItemSchema = z.object({
   quantidade: z.number().int().positive().default(1),
   tapId: z.string().optional(),
 });
-
-const comandaInclude = {
-  cliente: true,
-  itens: {
-    include: { produto: true, tap: { select: { id: true, numero: true } } },
-    orderBy: { createdAt: 'desc' as const },
-  },
-  pagamentos: true,
-};
-
-async function recalcTotal(comandaId: string) {
-  const itens = await prisma.itemComanda.findMany({ where: { comandaId } });
-  const total = itens.reduce((sum, item) => sum + toNumber(item.precoUnit) * item.quantidade, 0);
-  return prisma.comanda.update({
-    where: { id: comandaId },
-    data: { total },
-    include: comandaInclude,
-  });
-}
 
 export async function comandasRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
@@ -63,7 +47,7 @@ export async function comandasRoutes(app: FastifyInstance) {
         eventoId,
         ...(status ? { status } : {}),
       },
-      include: comandaInclude,
+      include: comandaDetailInclude,
       orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
     });
   });
@@ -79,43 +63,23 @@ export async function comandasRoutes(app: FastifyInstance) {
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada ou fechada' });
 
-    const produto = await prisma.produto.findFirst({
-      where: { id: body.produtoId, cervejariaId: user.cervejariaId, ativo: true },
-      include: { precos: true },
-    });
-    if (!produto) return reply.status(400).send({ error: 'Produto inválido' });
-
-    const isChope = isBebidaChope(produto.tipo, produto.formato);
-    if (isChope) {
-      if (!body.tapId) {
-        return reply.status(400).send({ error: 'Informe o tap para venda de chope' });
-      }
-      const chopeNoTap = await assertChopeAtivoNoTap(comanda.eventoId, body.tapId, body.produtoId);
-      if (!chopeNoTap) {
-        return reply.status(400).send({ error: 'Este chope não está posicionado no tap selecionado' });
-      }
-    } else if (isVendaUnitaria(produto.tipo, produto.formato)) {
-      const noCardapio = await assertProdutoNoCardapioEvento(comanda.eventoId, body.produtoId);
-      if (!noCardapio) {
-        return reply.status(400).send({ error: 'Este item não está no cardápio deste evento' });
-      }
-    }
-
-    const preco = produto.precos.find((p) => p.volumeMl === body.volumeMl);
-    if (!preco) return reply.status(400).send({ error: 'Preço não encontrado para este volume' });
-
-    await prisma.itemComanda.create({
-      data: {
-        comandaId: id,
+    const result = await addItemToComanda({
+      comandaId: id,
+      cervejariaId: user.cervejariaId!,
+      eventoId: comanda.eventoId,
+      item: {
         produtoId: body.produtoId,
-        tapId: isChope ? body.tapId : null,
         volumeMl: body.volumeMl,
         quantidade: body.quantidade,
-        precoUnit: preco.preco,
+        tapId: body.tapId,
       },
     });
 
-    const updated = await recalcTotal(id);
+    if ('error' in result) {
+      return reply.status(400).send({ error: result.error });
+    }
+
+    const { comanda: updated, produto, isChope, precoUnit } = result;
     await registrarTransacao({
       cervejariaId: user.cervejariaId!,
       tipo: 'COMANDA_ITEM_ADICIONADO',
@@ -128,13 +92,12 @@ export async function comandasRoutes(app: FastifyInstance) {
         produtoNome: produto.nome,
         volumeMl: body.volumeMl,
         quantidade: body.quantidade,
-        precoUnit: toNumber(preco.preco),
+        precoUnit,
         tapId: body.tapId ?? null,
       },
     });
-    const chopeAfetado = isBebidaChope(produto.tipo, produto.formato);
     emitToEvento(app.io, comanda.eventoId, { type: 'item:added', data: updated });
-    if (chopeAfetado) {
+    if (isChope) {
       emitRankingUpdated(app.io, user.cervejariaId!, comanda.eventoId);
     }
     return reply.status(201).send(updated);
@@ -149,14 +112,18 @@ export async function comandasRoutes(app: FastifyInstance) {
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada ou fechada' });
 
-    const item = await prisma.itemComanda.findFirst({
-      where: { id: itemId, comandaId: id },
-      include: { produto: true },
+    const result = await removeItemFromComanda({
+      comandaId: id,
+      itemId,
+      cervejariaId: user.cervejariaId!,
+      eventoId: comanda.eventoId,
     });
-    if (!item) return reply.status(404).send({ error: 'Item não encontrado' });
 
-    await prisma.itemComanda.delete({ where: { id: itemId } });
-    const updated = await recalcTotal(id);
+    if ('error' in result) {
+      return reply.status(404).send({ error: result.error });
+    }
+
+    const { comanda: updated, item } = result;
     await registrarTransacao({
       cervejariaId: user.cervejariaId!,
       tipo: 'COMANDA_ITEM_REMOVIDO',
@@ -205,7 +172,7 @@ export async function comandasRoutes(app: FastifyInstance) {
         id,
         evento: { cervejariaId: user.cervejariaId },
       },
-      include: comandaInclude,
+      include: comandaDetailInclude,
     });
 
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada' });
@@ -225,6 +192,9 @@ export async function comandasRoutes(app: FastifyInstance) {
     if (!telefone) {
       return reply.status(400).send({ error: 'Telefone inválido. Informe DDD + número (10 ou 11 dígitos).' });
     }
+    if (isTelefoneClienteAvulsoReservado(telefone)) {
+      return reply.status(400).send({ error: 'Telefone reservado pelo sistema' });
+    }
 
     let cliente;
     try {
@@ -243,7 +213,7 @@ export async function comandasRoutes(app: FastifyInstance) {
         eventoId: body.eventoId,
         clienteId: cliente.id,
       },
-      include: comandaInclude,
+      include: comandaDetailInclude,
     });
 
     await registrarTransacao({

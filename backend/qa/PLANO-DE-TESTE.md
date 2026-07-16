@@ -1,6 +1,6 @@
 # Plano de Teste — Cervejaria Móvel (QA aprofundado)
 
-> Suíte automatizada executada contra a API real (`http://localhost:3001`) + PostgreSQL.
+> Suíte automatizada executada contra a API real (`http://localhost:3002`) + PostgreSQL.
 > Foco: **requisitos funcionais**, **não-funcionais**, **controle de sessão** e **isolamento multi-tenant**.
 > Concorrência real gerada por **múltiplos processos (subagents)** atacando uma *arena* compartilhada.
 
@@ -126,6 +126,14 @@ Cervejaria dedicada `qa-multi-trailer` com **2 trailers**, **2 eventos ABERTOS**
 | MT-05 | `GET /ranking/evento/:id` | Ranking isolado por evento |
 | MT-06 | `POST /eventos` mesmo trailer/horário | 409 |
 | MT-07 | `GET /trailers?ativo=true` | 2 trailers ativos |
+
+## 10. Portal cliente (PORTAL)
+
+| ID | Caso | Esperado |
+|----|------|----------|
+| PORTAL-07 | Sessão portal após fechar/reabrir evento | Cookie antigo retorna **401** após `PATCH /eventos/:id/fechar` e após `PATCH /eventos/:id/reabrir`; nova `POST /sessao` retorna **201** com comanda válida |
+
+Fluxo PORTAL-07: abrir sessão via QR → `GET /cliente/comanda` **200** → fechar comandas abertas do evento → fechar evento → cookie antigo **401** → reabrir evento → cookie antigo ainda **401** → nova sessão **201**.
 
 ## 9. Critérios de "pronto para produção"
 

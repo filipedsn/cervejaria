@@ -4,6 +4,7 @@ export type StatusBadgeVariant =
   | 'comanda-aberta'
   | 'comanda-fechada'
   | 'comanda-cancelada'
+  | 'venda-avulsa'
   | 'series'
   | 'inactive';
 
@@ -14,6 +15,7 @@ const CONFIG: Record<StatusBadgeVariant, { className: string; label: string }> =
   'comanda-aberta': { className: 'badge-open', label: 'Aberta' },
   'comanda-fechada': { className: 'badge-closed', label: 'Fechada' },
   'comanda-cancelada': { className: 'badge-inactive', label: 'Cancelada' },
+  'venda-avulsa': { className: 'badge-series', label: 'Avulsa' },
   series: { className: 'badge-series', label: 'Série semanal' },
 };
 

@@ -7,6 +7,7 @@ export interface ClienteSessionPayload {
   trailerId: string;
   clienteId: string;
   comandaId: string;
+  portalGeneration: number;
 }
 
 export function isClienteSessionPayload(value: unknown): value is ClienteSessionPayload {
@@ -18,6 +19,7 @@ export function isClienteSessionPayload(value: unknown): value is ClienteSession
     typeof v.eventoId === 'string' &&
     typeof v.trailerId === 'string' &&
     typeof v.clienteId === 'string' &&
-    typeof v.comandaId === 'string'
+    typeof v.comandaId === 'string' &&
+    typeof v.portalGeneration === 'number'
   );
 }

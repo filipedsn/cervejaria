@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { getAuthUser } from '../types/auth.js';
 import { emitToCervejaria } from '../lib/realtime.js';
+import { emitPortalSessionExpired } from '../lib/cliente-session.js';
 import { isSerie, todayDateString, todayWeekday, reabrirPrazoExpirado, REABRIR_PRAZO_EXPIRADO_MSG, comandaImpedeExclusaoWhere } from '../lib/evento-utils.js';
 import { buildEventoDashboard } from '../lib/evento-dashboard.js';
 import { buildEventoResumoExecutivo } from '../lib/evento-resumo-executivo.js';
@@ -629,8 +630,10 @@ export async function eventosRoutes(app: FastifyInstance) {
 
     const updated = await prisma.evento.update({
       where: { id },
-      data: { status: 'FECHADO', encerradoEm: new Date() },
+      data: { status: 'FECHADO', encerradoEm: new Date(), portalGeneration: { increment: 1 } },
     });
+
+    emitPortalSessionExpired(app.io, id, 'evento_fechado');
 
     await registrarTransacao({
       cervejariaId: user.cervejariaId!,
@@ -683,9 +686,11 @@ export async function eventosRoutes(app: FastifyInstance) {
 
     const updated = await prisma.evento.update({
       where: { id },
-      data: { status: 'ABERTO', encerradoEm: null },
+      data: { status: 'ABERTO', encerradoEm: null, portalGeneration: { increment: 1 } },
       include: eventoInclude,
     });
+
+    emitPortalSessionExpired(app.io, id, 'evento_reaberto');
 
     emitToCervejaria(app.io, user.cervejariaId!, { type: 'evento:updated', data: updated });
     await ensureDefaultTaps(updated.trailerId, user.cervejariaId!);

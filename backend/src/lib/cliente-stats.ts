@@ -61,7 +61,7 @@ export async function incrementClienteStatsOnComandaFechada(
 
 export async function recalculateClienteStats(tx: TxClient, clienteId: string) {
   const comandas = await tx.comanda.findMany({
-    where: { clienteId, status: 'FECHADA' },
+    where: { clienteId, status: 'FECHADA', tipo: 'COMANDA' },
     include: {
       itens: { include: { produto: true } },
     },

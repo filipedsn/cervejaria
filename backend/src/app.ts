@@ -41,6 +41,7 @@ import { clientesRoutes } from './routes/clientes.js';
 import { comandasRoutes } from './routes/comandas.js';
 
 import { pagamentosRoutes } from './routes/pagamentos.js';
+import { vendasAvulsasRoutes } from './routes/vendas-avulsas.js';
 
 import { rankingRoutes } from './routes/ranking.js';
 
@@ -246,6 +247,8 @@ export async function buildApp() {
   await app.register(comandasRoutes, { prefix: '/api/comandas' });
 
   await app.register(pagamentosRoutes, { prefix: '/api/pagamentos' });
+
+  await app.register(vendasAvulsasRoutes, { prefix: '/api/vendas-avulsas' });
 
   await app.register(rankingRoutes, { prefix: '/api/ranking' });
 

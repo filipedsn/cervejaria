@@ -382,6 +382,865 @@ async function main() {
     return expectStatus(r.status, 404, 'Comanda fechada não refecha');
   });
 
+  let grupoComandaA = '';
+  let grupoComandaB = '';
+  await test({ id: 'RF-13-setup', category: 'Funcional', name: 'Setup comandas para pagamento conjunto', requirement: 'RF-13' }, async () => {
+    const c1 = await api<{ id: string }>('POST', '/api/comandas', {
+      token: func.atendenteTokens[0],
+      body: staffComandaBody(func.eventoId, `Grupo A ${Date.now()}`, 10),
+    });
+    const c2 = await api<{ id: string }>('POST', '/api/comandas', {
+      token: func.atendenteTokens[0],
+      body: staffComandaBody(func.eventoId, `Grupo B ${Date.now()}`, 11),
+    });
+    if (c1.status !== 201 || c2.status !== 201) {
+      return { status: 'failed', message: 'Falha ao criar comandas do grupo', actual: `${c1.status}/${c2.status}` };
+    }
+    grupoComandaA = c1.data.id;
+    grupoComandaB = c2.data.id;
+    const i1 = await api('POST', `/api/comandas/${grupoComandaA}/itens`, {
+      token: func.atendenteTokens[0],
+      body: chopeItemBody(func.produtoId, func.tapId, 500),
+    });
+    const i2 = await api('POST', `/api/comandas/${grupoComandaB}/itens`, {
+      token: func.atendenteTokens[0],
+      body: chopeItemBody(func.produtoId, func.tapId, 300, 2),
+    });
+    if (i1.status !== 201 || i2.status !== 201) {
+      return { status: 'failed', message: 'Falha ao adicionar itens ao grupo', actual: `${i1.status}/${i2.status}` };
+    }
+    return { message: 'Comandas do grupo prontas', actual: `${grupoComandaA.slice(0, 6)}…/${grupoComandaB.slice(0, 6)}…` };
+  });
+  await test({ id: 'RF-13b', category: 'Funcional', name: 'Pagamento conjunto divergente → 400', requirement: 'RF-13' }, async () => {
+    const r = await api('POST', '/api/pagamentos/fechar-grupo', {
+      token: func.atendenteTokens[0],
+      body: { comandaIds: [grupoComandaA, grupoComandaB], pagamentos: [{ forma: 'PIX', valor: 1 }] },
+    });
+    return expectStatus(r.status, 400, 'Total do grupo divergente rejeitado');
+  });
+  await test({ id: 'RF-13c', category: 'Funcional', name: 'Pagamento conjunto com evento diferente → 404', requirement: 'RF-13' }, async () => {
+    const other = await api<{ id: string }>('POST', '/api/comandas', {
+      token: lifecycle.donoToken,
+      body: staffComandaBody(lifecycle.eventoId, `Outro evento ${Date.now()}`, 12),
+    });
+    if (other.status !== 201) return { status: 'failed', message: 'Setup RF-13c falhou', actual: String(other.status) };
+    const r = await api('POST', '/api/pagamentos/fechar-grupo', {
+      token: func.atendenteTokens[0],
+      body: { comandaIds: [grupoComandaA, other.data.id], pagamentos: [{ forma: 'PIX', valor: 12 }] },
+    });
+    return expectStatus(r.status, 404, 'Comanda de outro evento rejeitada');
+  });
+  await test({ id: 'RF-13d', category: 'Funcional', name: 'Pagamento conjunto split alocado por comanda', requirement: 'RF-13' }, async () => {
+    const curA = await api<{ total: string | number; status: string }>('GET', `/api/comandas/${grupoComandaA}`, { token: func.donoToken });
+    const curB = await api<{ total: string | number; status: string }>('GET', `/api/comandas/${grupoComandaB}`, { token: func.donoToken });
+    const totalA = Number(curA.data.total);
+    const totalB = Number(curB.data.total);
+    const totalGrupo = totalA + totalB;
+    const r = await api<{ comandas: Array<{ id: string; pagamentos: Array<{ forma: string; valor: string | number }> }> }>(
+      'POST',
+      '/api/pagamentos/fechar-grupo',
+      {
+        token: func.atendenteTokens[0],
+        body: {
+          comandaIds: [grupoComandaA, grupoComandaB],
+          pagamentos: [
+            { forma: 'DINHEIRO', valor: Math.round(totalGrupo * 0.4 * 100) / 100 },
+            { forma: 'PIX', valor: Math.round(totalGrupo * 0.6 * 100) / 100 },
+          ],
+        },
+      },
+    );
+    if (r.status !== 200) return { status: 'failed', message: `Fechar grupo falhou HTTP ${r.status}`, actual: String(r.status) };
+    for (const comanda of r.data.comandas) {
+      const expected = comanda.id === grupoComandaA ? totalA : totalB;
+      const sumPag = comanda.pagamentos.reduce((s, p) => s + Number(p.valor), 0);
+      if (Math.abs(sumPag - expected) > 0.01) {
+        return {
+          status: 'failed',
+          message: `Pagamentos da comanda ${comanda.id.slice(0, 6)} somam ${sumPag}, esperado ${expected}`,
+          expected: String(expected),
+          actual: String(sumPag),
+        };
+      }
+    }
+    return { message: `Grupo fechado split OK (R$ ${totalGrupo.toFixed(2)})`, actual: String(r.data.comandas.length) };
+  });
+  await test({ id: 'RF-13a', category: 'Funcional', name: 'Pagamento conjunto fecha ambas comandas', requirement: 'RF-13' }, async () => {
+    const a = await api<{ status: string }>('GET', `/api/comandas/${grupoComandaA}`, { token: func.donoToken });
+    const b = await api<{ status: string }>('GET', `/api/comandas/${grupoComandaB}`, { token: func.donoToken });
+    if (a.data.status !== 'FECHADA' || b.data.status !== 'FECHADA') {
+      return {
+        status: 'failed',
+        message: 'Comandas do grupo não estão FECHADA após RF-13d',
+        expected: 'FECHADA/FECHADA',
+        actual: `${a.data.status}/${b.data.status}`,
+      };
+    }
+    return { message: 'Ambas comandas FECHADA', expected: 'FECHADA', actual: 'FECHADA' };
+  });
+  await test({ id: 'RF-13e', category: 'Funcional', name: 'Re-fechar grupo já fechado → 404', requirement: 'RF-13' }, async () => {
+    const r = await api('POST', '/api/pagamentos/fechar-grupo', {
+      token: func.atendenteTokens[0],
+      body: { comandaIds: [grupoComandaA, grupoComandaB], pagamentos: [{ forma: 'PIX', valor: 28 }] },
+    });
+    return expectStatus(r.status, 404, 'Grupo já fechado não refecha');
+  });
+
+  await test({ id: 'RF-13f', category: 'Funcional', name: 'Pagamento conjunto com 1 comanda → 400', requirement: 'RF-13' }, async () => {
+    const r = await api('POST', '/api/pagamentos/fechar-grupo', {
+      token: func.atendenteTokens[0],
+      body: { comandaIds: [grupoComandaA], pagamentos: [{ forma: 'PIX', valor: 12 }] },
+    });
+    return expectStatus(r.status, 400, 'Mínimo 2 comandas');
+  });
+
+  await test({ id: 'RF-13g', category: 'Funcional', name: 'Pagamento conjunto com IDs duplicados → 400', requirement: 'RF-13' }, async () => {
+    const r = await api('POST', '/api/pagamentos/fechar-grupo', {
+      token: func.atendenteTokens[0],
+      body: { comandaIds: [grupoComandaA, grupoComandaA], pagamentos: [{ forma: 'PIX', valor: 12 }] },
+    });
+    return expectStatus(r.status, 400, 'IDs duplicados rejeitados');
+  });
+
+  let rf13hVazia = '';
+  let rf13hComItens = '';
+  await test({ id: 'RF-13h', category: 'Funcional', name: 'Grupo vazia + com itens → cancela vazia e fecha outra', requirement: 'RF-13' }, async () => {
+    await prisma.evento.update({
+      where: { id: lifecycle.eventoId },
+      data: { status: 'ABERTO' },
+    });
+    await prisma.comanda.deleteMany({ where: { eventoId: lifecycle.eventoId } });
+
+    const vazia = await api<{ id: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: staffComandaBody(lifecycle.eventoId, `Vazia ${Date.now()}`, 20),
+    });
+    const comItens = await api<{ id: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: staffComandaBody(lifecycle.eventoId, `ComItens ${Date.now()}`, 21),
+    });
+    if (vazia.status !== 201 || comItens.status !== 201) {
+      return { status: 'failed', message: 'Setup RF-13h falhou', actual: `${vazia.status}/${comItens.status}` };
+    }
+    rf13hVazia = vazia.data.id;
+    rf13hComItens = comItens.data.id;
+
+    const item = await api('POST', `/api/comandas/${rf13hComItens}/itens`, {
+      token: lifecycle.atendenteTokens[0],
+      body: chopeItemBody(lifecycle.produtoId, lifecycle.tapId, 500),
+    });
+    if (item.status !== 201) {
+      return { status: 'failed', message: 'Setup RF-13h: item não adicionado', actual: String(item.status) };
+    }
+
+    const cur = await api<{ total: string | number }>('GET', `/api/comandas/${rf13hComItens}`, { token: lifecycle.donoToken });
+    const total = Number(cur.data.total);
+
+    const r = await api<{
+      comandas: Array<{ id: string; status: string }>;
+      canceladas: Array<{ id: string; status: string }>;
+    }>('POST', '/api/pagamentos/fechar-grupo', {
+      token: lifecycle.atendenteTokens[0],
+      body: {
+        comandaIds: [rf13hVazia, rf13hComItens],
+        pagamentos: [{ forma: 'PIX', valor: total }],
+      },
+    });
+    if (r.status !== 200) {
+      return { status: 'failed', message: `Fechar grupo misto HTTP ${r.status}`, actual: String(r.status) };
+    }
+
+    const cancelada = r.data.canceladas.find((c) => c.id === rf13hVazia);
+    const fechada = r.data.comandas.find((c) => c.id === rf13hComItens);
+    if (cancelada?.status !== 'CANCELADA') {
+      return { status: 'failed', message: 'Comanda vazia deveria CANCELADA', expected: 'CANCELADA', actual: cancelada?.status ?? 'missing' };
+    }
+    if (fechada?.status !== 'FECHADA') {
+      return { status: 'failed', message: 'Comanda com itens deveria FECHADA', expected: 'FECHADA', actual: fechada?.status ?? 'missing' };
+    }
+    return { message: 'Grupo misto OK', expected: 'CANCELADA/FECHADA', actual: `${cancelada.status}/${fechada.status}` };
+  });
+
+  await test({ id: 'RF-13i', category: 'Funcional', name: 'Pagamento conjunto com evento FECHADO → 404', requirement: 'RF-13' }, async () => {
+    await prisma.evento.update({
+      where: { id: lifecycle.eventoId },
+      data: { status: 'ABERTO' },
+    });
+    await prisma.comanda.deleteMany({ where: { eventoId: lifecycle.eventoId } });
+
+    const c1 = await api<{ id: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: staffComandaBody(lifecycle.eventoId, `EvFechado A ${Date.now()}`, 22),
+    });
+    const c2 = await api<{ id: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: staffComandaBody(lifecycle.eventoId, `EvFechado B ${Date.now()}`, 23),
+    });
+    if (c1.status !== 201 || c2.status !== 201) {
+      return { status: 'failed', message: 'Setup RF-13i falhou', actual: `${c1.status}/${c2.status}` };
+    }
+
+    for (const id of [c1.data.id, c2.data.id]) {
+      const item = await api('POST', `/api/comandas/${id}/itens`, {
+        token: lifecycle.atendenteTokens[0],
+        body: chopeItemBody(lifecycle.produtoId, lifecycle.tapId, 500),
+      });
+      if (item.status !== 201) {
+        return { status: 'failed', message: 'Setup RF-13i: item falhou', actual: String(item.status) };
+      }
+    }
+
+    // Simula evento encerrado enquanto comandas ainda abertas (PATCH /fechar exige comandas fechadas)
+    await prisma.evento.update({
+      where: { id: lifecycle.eventoId },
+      data: { status: 'FECHADO' },
+    });
+
+    const cur = await api<{ total: string | number }>('GET', `/api/comandas/${c1.data.id}`, { token: lifecycle.donoToken });
+    const total = Number(cur.data.total) * 2;
+
+    const r = await api('POST', '/api/pagamentos/fechar-grupo', {
+      token: lifecycle.atendenteTokens[0],
+      body: {
+        comandaIds: [c1.data.id, c2.data.id],
+        pagamentos: [{ forma: 'PIX', valor: total }],
+      },
+    });
+
+    await prisma.evento.update({
+      where: { id: lifecycle.eventoId },
+      data: { status: 'ABERTO' },
+    });
+    await prisma.comanda.deleteMany({ where: { eventoId: lifecycle.eventoId } });
+
+    return expectStatus(r.status, 404, 'Evento fechado bloqueia pagamento conjunto');
+  });
+
+  console.log('\n=== FUNCIONAL (pagamento conjunto — relatórios) ===');
+  let rf14ComandaA = '';
+  let rf14ComandaB = '';
+  let rf14ClienteAId = '';
+  let rf14ClienteBId = '';
+  let rf14TotalA = 0;
+  let rf14TotalB = 0;
+  let rf14TotalGrupo = 0;
+  let rf14PastDate = new Date();
+  let rf14Mes = 0;
+  let rf14Ano = 0;
+  let rf14GastoBeforeA = 0;
+  let rf14GastoBeforeB = 0;
+  let rf14MlBeforeA = 0;
+  let rf14MlBeforeB = 0;
+
+  await test({ id: 'RF-14-setup', category: 'Funcional', name: 'Setup pagamento conjunto para relatórios', requirement: 'RF-14' }, async () => {
+    rf14PastDate = new Date();
+    rf14PastDate.setUTCDate(rf14PastDate.getUTCDate() - 7);
+    rf14PastDate.setUTCHours(0, 0, 0, 0);
+    rf14Mes = rf14PastDate.getUTCMonth() + 1;
+    rf14Ano = rf14PastDate.getUTCFullYear();
+
+    await prisma.evento.update({
+      where: { id: lifecycle.eventoId },
+      data: { data: rf14PastDate, horaInicio: '18:00', horaFim: '23:45', status: 'ABERTO' },
+    });
+    await prisma.comanda.deleteMany({ where: { eventoId: lifecycle.eventoId } });
+
+    const cA = await api<{ id: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: staffComandaBody(lifecycle.eventoId, `Casal A ${Date.now()}`, 30),
+    });
+    const cB = await api<{ id: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: staffComandaBody(lifecycle.eventoId, `Casal B ${Date.now()}`, 31),
+    });
+    if (cA.status !== 201 || cB.status !== 201) {
+      return { status: 'failed', message: 'Setup RF-14: comandas não criadas', actual: `${cA.status}/${cB.status}` };
+    }
+    rf14ComandaA = cA.data.id;
+    rf14ComandaB = cB.data.id;
+
+    const iA = await api('POST', `/api/comandas/${rf14ComandaA}/itens`, {
+      token: lifecycle.atendenteTokens[0],
+      body: chopeItemBody(lifecycle.produtoId, lifecycle.tapId, 500),
+    });
+    const iB = await api('POST', `/api/comandas/${rf14ComandaB}/itens`, {
+      token: lifecycle.atendenteTokens[0],
+      body: chopeItemBody(lifecycle.produtoId, lifecycle.tapId, 300, 2),
+    });
+    if (iA.status !== 201 || iB.status !== 201) {
+      return { status: 'failed', message: 'Setup RF-14: itens não adicionados', actual: `${iA.status}/${iB.status}` };
+    }
+
+    const fullA = await api<{ total: string | number; clienteId: string }>('GET', `/api/comandas/${rf14ComandaA}`, { token: lifecycle.donoToken });
+    const fullB = await api<{ total: string | number; clienteId: string }>('GET', `/api/comandas/${rf14ComandaB}`, { token: lifecycle.donoToken });
+    rf14TotalA = Number(fullA.data.total);
+    rf14TotalB = Number(fullB.data.total);
+    rf14TotalGrupo = rf14TotalA + rf14TotalB;
+    rf14ClienteAId = fullA.data.clienteId;
+    rf14ClienteBId = fullB.data.clienteId;
+
+    const statsBeforeA = await prisma.clienteEstatisticas.findUnique({ where: { clienteId: rf14ClienteAId } });
+    const statsBeforeB = await prisma.clienteEstatisticas.findUnique({ where: { clienteId: rf14ClienteBId } });
+    rf14GastoBeforeA = Number(statsBeforeA?.totalGasto ?? 0);
+    rf14GastoBeforeB = Number(statsBeforeB?.totalGasto ?? 0);
+    rf14MlBeforeA = statsBeforeA?.totalMlChope ?? 0;
+    rf14MlBeforeB = statsBeforeB?.totalMlChope ?? 0;
+
+    const close = await api('POST', '/api/pagamentos/fechar-grupo', {
+      token: lifecycle.atendenteTokens[0],
+      body: {
+        comandaIds: [rf14ComandaA, rf14ComandaB],
+        pagamentos: [
+          { forma: 'DINHEIRO', valor: Math.round(rf14TotalGrupo * 0.4 * 100) / 100 },
+          { forma: 'PIX', valor: Math.round(rf14TotalGrupo * 0.6 * 100) / 100 },
+        ],
+      },
+    });
+    if (close.status !== 200) {
+      return { status: 'failed', message: 'Setup RF-14: fechar grupo falhou', actual: String(close.status) };
+    }
+
+    return {
+      message: `Grupo fechado R$ ${rf14TotalGrupo.toFixed(2)} (A=${rf14TotalA}, B=${rf14TotalB})`,
+      expected: String(rf14TotalGrupo),
+      actual: String(rf14TotalGrupo),
+    };
+  });
+
+  await test({ id: 'RF-14a', category: 'Funcional', name: 'Dashboard evento após pagamento conjunto', requirement: 'RF-14' }, async () => {
+    const dash = await api<{
+      resumo: { comandasFechadas: number; valorFechado: number };
+    }>('GET', `/api/eventos/${lifecycle.eventoId}/dashboard`, { token: lifecycle.donoToken });
+    if (dash.status !== 200) return { status: 'failed', message: `Dashboard HTTP ${dash.status}`, actual: String(dash.status) };
+    if (dash.data.resumo.comandasFechadas < 2) {
+      return { status: 'failed', message: 'comandasFechadas < 2', expected: '>=2', actual: String(dash.data.resumo.comandasFechadas) };
+    }
+    if (Math.abs(dash.data.resumo.valorFechado - rf14TotalGrupo) > 0.01) {
+      return {
+        status: 'failed',
+        message: 'valorFechado diverge do total grupo',
+        expected: String(rf14TotalGrupo),
+        actual: String(dash.data.resumo.valorFechado),
+      };
+    }
+    return { message: `Dashboard OK (${dash.data.resumo.comandasFechadas} fechadas)`, expected: String(rf14TotalGrupo), actual: String(dash.data.resumo.valorFechado) };
+  });
+
+  await test({ id: 'RF-14b', category: 'Funcional', name: 'Pagamentos alocados por comanda', requirement: 'RF-14' }, async () => {
+    for (const [id, expected] of [[rf14ComandaA, rf14TotalA], [rf14ComandaB, rf14TotalB]] as const) {
+      const c = await api<{ status: string; total: string | number; pagamentos: Array<{ valor: string | number }> }>(
+        'GET',
+        `/api/comandas/${id}`,
+        { token: lifecycle.donoToken },
+      );
+      if (c.data.status !== 'FECHADA') {
+        return { status: 'failed', message: `Comanda ${id.slice(0, 6)} não FECHADA`, expected: 'FECHADA', actual: c.data.status };
+      }
+      const sumPag = c.data.pagamentos.reduce((s, p) => s + Number(p.valor), 0);
+      if (Math.abs(sumPag - expected) > 0.01) {
+        return { status: 'failed', message: `Soma pagamentos ${id.slice(0, 6)}`, expected: String(expected), actual: String(sumPag) };
+      }
+    }
+    return { message: 'Pagamentos por comanda OK', expected: 'match', actual: 'match' };
+  });
+
+  await test({ id: 'RF-14c', category: 'Funcional', name: 'Ranking separado por cliente após grupo', requirement: 'RF-14' }, async () => {
+    const r = await api<{ ranking: Array<{ clienteId: string; totalMl: number }> }>(
+      'GET',
+      `/api/ranking/evento/${lifecycle.eventoId}`,
+      { token: lifecycle.donoToken },
+    );
+    if (r.status !== 200) return { status: 'failed', message: `Ranking HTTP ${r.status}`, actual: String(r.status) };
+    const entryA = r.data.ranking.find((x) => x.clienteId === rf14ClienteAId);
+    const entryB = r.data.ranking.find((x) => x.clienteId === rf14ClienteBId);
+    if (!entryA || !entryB) {
+      return { status: 'failed', message: 'Ranking não tem 2 clientes distintos', expected: '2 entries', actual: String(r.data.ranking.length) };
+    }
+    if (entryA.totalMl !== 500 || entryB.totalMl !== 600) {
+      return {
+        status: 'failed',
+        message: 'Ml por cliente incorreto',
+        expected: '500/600',
+        actual: `${entryA.totalMl}/${entryB.totalMl}`,
+      };
+    }
+    return { message: 'Ranking separado OK (500ml + 600ml)', expected: '500/600', actual: `${entryA.totalMl}/${entryB.totalMl}` };
+  });
+
+  await test({ id: 'RF-16a', category: 'Funcional', name: 'CRM: comandas fechadas por cliente', requirement: 'RF-16' }, async () => {
+    const statsA = await prisma.clienteEstatisticas.findUnique({ where: { clienteId: rf14ClienteAId } });
+    const statsB = await prisma.clienteEstatisticas.findUnique({ where: { clienteId: rf14ClienteBId } });
+    if (!statsA || !statsB) {
+      return { status: 'failed', message: 'Stats CRM ausentes', expected: '2 rows', actual: `${statsA ? 1 : 0}/${statsB ? 1 : 0}` };
+    }
+    if (statsA.totalComandasFechadas < 1 || statsB.totalComandasFechadas < 1) {
+      return {
+        status: 'failed',
+        message: 'totalComandasFechadas não incrementou',
+        expected: '>=1',
+        actual: `${statsA.totalComandasFechadas}/${statsB.totalComandasFechadas}`,
+      };
+    }
+    return { message: 'CRM comandas fechadas OK', expected: '>=1', actual: `${statsA.totalComandasFechadas}/${statsB.totalComandasFechadas}` };
+  });
+
+  await test({ id: 'RF-16b', category: 'Funcional', name: 'CRM: totalGasto por cliente', requirement: 'RF-16' }, async () => {
+    const statsA = await prisma.clienteEstatisticas.findUnique({ where: { clienteId: rf14ClienteAId } });
+    const statsB = await prisma.clienteEstatisticas.findUnique({ where: { clienteId: rf14ClienteBId } });
+    if (!statsA || !statsB) return { status: 'failed', message: 'Stats ausentes', actual: 'missing' };
+    const deltaA = Number(statsA.totalGasto) - rf14GastoBeforeA;
+    const deltaB = Number(statsB.totalGasto) - rf14GastoBeforeB;
+    if (Math.abs(deltaA - rf14TotalA) > 0.01 || Math.abs(deltaB - rf14TotalB) > 0.01) {
+      return {
+        status: 'failed',
+        message: 'Incremento totalGasto diverge',
+        expected: `${rf14TotalA}/${rf14TotalB}`,
+        actual: `${deltaA}/${deltaB}`,
+      };
+    }
+    return { message: 'CRM totalGasto OK', expected: `${rf14TotalA}/${rf14TotalB}`, actual: `${deltaA}/${deltaB}` };
+  });
+
+  await test({ id: 'RF-16c', category: 'Funcional', name: 'CRM: totalMlChope por cliente', requirement: 'RF-16' }, async () => {
+    const statsA = await prisma.clienteEstatisticas.findUnique({ where: { clienteId: rf14ClienteAId } });
+    const statsB = await prisma.clienteEstatisticas.findUnique({ where: { clienteId: rf14ClienteBId } });
+    if (!statsA || !statsB) return { status: 'failed', message: 'Stats ausentes', actual: 'missing' };
+    const deltaMlA = statsA.totalMlChope - rf14MlBeforeA;
+    const deltaMlB = statsB.totalMlChope - rf14MlBeforeB;
+    if (deltaMlA !== 500 || deltaMlB !== 600) {
+      return {
+        status: 'failed',
+        message: 'Incremento totalMlChope diverge',
+        expected: '500/600',
+        actual: `${deltaMlA}/${deltaMlB}`,
+      };
+    }
+    return { message: 'CRM chope OK', expected: '500/600', actual: `${deltaMlA}/${deltaMlB}` };
+  });
+
+  let rf14Resumo: {
+    resumo: { receitaTotal: number; comandasAtendidas: number };
+    porPagamento: Array<{ forma: string; valor: number }>;
+    fluxoPorIntervalo: Array<{ fechado: number }>;
+    vendasPorIntervalo: Array<{ receita: number }>;
+  } | null = null;
+
+  await test({ id: 'RF-14d', category: 'Funcional', name: 'Resumo: receitaTotal após grupo', requirement: 'RF-14' }, async () => {
+    const fecharEvento = await api('PATCH', `/api/eventos/${lifecycle.eventoId}/fechar`, { token: lifecycle.donoToken });
+    if (fecharEvento.status !== 200) {
+      return { status: 'failed', message: 'Fechar evento falhou', actual: String(fecharEvento.status) };
+    }
+
+    const resumo = await api<typeof rf14Resumo>('GET', `/api/eventos/${lifecycle.eventoId}/resumo-executivo`, { token: lifecycle.donoToken });
+    if (resumo.status !== 200 || !resumo.data) {
+      return { status: 'failed', message: 'Resumo HTTP inválido', actual: String(resumo.status) };
+    }
+    rf14Resumo = resumo.data;
+
+    if (Math.abs(resumo.data.resumo.receitaTotal - rf14TotalGrupo) > 0.01) {
+      return {
+        status: 'failed',
+        message: 'receitaTotal diverge',
+        expected: String(rf14TotalGrupo),
+        actual: String(resumo.data.resumo.receitaTotal),
+      };
+    }
+    return { message: `receitaTotal R$ ${resumo.data.resumo.receitaTotal.toFixed(2)}`, expected: String(rf14TotalGrupo), actual: String(resumo.data.resumo.receitaTotal) };
+  });
+
+  await test({ id: 'RF-14e', category: 'Funcional', name: 'Resumo: comandasAtendidas >= 2', requirement: 'RF-14' }, async () => {
+    if (!rf14Resumo) return { status: 'failed', message: 'RF-14d não rodou', actual: 'skip' };
+    if (rf14Resumo.resumo.comandasAtendidas < 2) {
+      return { status: 'failed', message: 'comandasAtendidas < 2', expected: '>=2', actual: String(rf14Resumo.resumo.comandasAtendidas) };
+    }
+    return { message: 'comandasAtendidas OK', expected: '>=2', actual: String(rf14Resumo.resumo.comandasAtendidas) };
+  });
+
+  await test({ id: 'RF-14f', category: 'Funcional', name: 'Resumo: porPagamento soma = receita', requirement: 'RF-14' }, async () => {
+    if (!rf14Resumo) return { status: 'failed', message: 'RF-14d não rodou', actual: 'skip' };
+    const pagTotal = rf14Resumo.porPagamento.reduce((s, p) => s + p.valor, 0);
+    if (Math.abs(pagTotal - rf14Resumo.resumo.receitaTotal) > 0.01) {
+      return { status: 'failed', message: 'porPagamento diverge', expected: String(rf14Resumo.resumo.receitaTotal), actual: String(pagTotal) };
+    }
+    return { message: 'porPagamento OK', expected: String(rf14Resumo.resumo.receitaTotal), actual: String(pagTotal) };
+  });
+
+  await test({ id: 'RF-14g', category: 'Funcional', name: 'Resumo: split DINHEIRO + PIX alocado', requirement: 'RF-14' }, async () => {
+    if (!rf14Resumo) return { status: 'failed', message: 'RF-14d não rodou', actual: 'skip' };
+    const dinheiro = rf14Resumo.porPagamento.find((p) => p.forma === 'DINHEIRO');
+    const pix = rf14Resumo.porPagamento.find((p) => p.forma === 'PIX');
+    if (!dinheiro || !pix || dinheiro.valor <= 0 || pix.valor <= 0) {
+      return { status: 'failed', message: 'Formas DINHEIRO/PIX ausentes', expected: 'both > 0', actual: `${dinheiro?.valor ?? 0}/${pix?.valor ?? 0}` };
+    }
+    return { message: 'Split formas OK', expected: '>0', actual: `${dinheiro.valor.toFixed(2)}/${pix.valor.toFixed(2)}` };
+  });
+
+  await test({ id: 'RF-14h', category: 'Funcional', name: 'Resumo: fluxo fechado = receita', requirement: 'RF-14' }, async () => {
+    if (!rf14Resumo) return { status: 'failed', message: 'RF-14d não rodou', actual: 'skip' };
+    const fechadoTotal = rf14Resumo.fluxoPorIntervalo.reduce((s, b) => s + b.fechado, 0);
+    if (Math.abs(fechadoTotal - rf14Resumo.resumo.receitaTotal) > 0.01) {
+      return { status: 'failed', message: 'fluxo fechado diverge', expected: String(rf14Resumo.resumo.receitaTotal), actual: String(fechadoTotal) };
+    }
+    return { message: 'fluxo fechado OK', expected: String(rf14Resumo.resumo.receitaTotal), actual: String(fechadoTotal) };
+  });
+
+  await test({ id: 'RF-14i', category: 'Funcional', name: 'Resumo: vendasPorIntervalo = receita', requirement: 'RF-14' }, async () => {
+    if (!rf14Resumo) return { status: 'failed', message: 'RF-14d não rodou', actual: 'skip' };
+    const chartTotal = rf14Resumo.vendasPorIntervalo.reduce((s, b) => s + b.receita, 0);
+    if (Math.abs(chartTotal - rf14Resumo.resumo.receitaTotal) > 0.01) {
+      return { status: 'failed', message: 'vendasPorIntervalo diverge', expected: String(rf14Resumo.resumo.receitaTotal), actual: String(chartTotal) };
+    }
+    await api('PATCH', `/api/eventos/${lifecycle.eventoId}/reabrir`, { token: lifecycle.donoToken });
+    return { message: 'vendasPorIntervalo OK', expected: String(rf14Resumo.resumo.receitaTotal), actual: String(chartTotal) };
+  });
+
+  await test({ id: 'RF-15a', category: 'Funcional', name: 'Dashboard BI: evento em eventosRecentes', requirement: 'RF-15' }, async () => {
+    const lastDayOfMonth = new Date(rf14Ano, rf14Mes, 0);
+    await prisma.evento.update({
+      where: { id: lifecycle.eventoId },
+      data: { data: lastDayOfMonth, status: 'FECHADO' },
+    });
+
+    const dash = await api<{
+      eventosRecentes: Array<{ eventoId: string; receitaTotal: number }>;
+      resumo: { receitaTotal: number };
+    }>('GET', `/api/cervejaria/dashboard?ano=${rf14Ano}&mes=${rf14Mes}`, { token: lifecycle.donoToken });
+
+    await api('PATCH', `/api/eventos/${lifecycle.eventoId}/reabrir`, { token: lifecycle.donoToken });
+
+    if (dash.status !== 200) return { status: 'failed', message: `Dashboard BI HTTP ${dash.status}`, actual: String(dash.status) };
+    const ev = dash.data.eventosRecentes.find((e) => e.eventoId === lifecycle.eventoId);
+    if (!ev) {
+      return {
+        status: 'failed',
+        message: 'Evento não listado em eventosRecentes',
+        expected: lifecycle.eventoId,
+        actual: dash.data.eventosRecentes.map((e) => e.eventoId).join(','),
+      };
+    }
+    if (ev.receitaTotal < rf14TotalGrupo - 0.01) {
+      return { status: 'failed', message: 'Receita eventoRecentes baixa', expected: String(rf14TotalGrupo), actual: String(ev.receitaTotal) };
+    }
+    return { message: `eventosRecentes receita R$ ${ev.receitaTotal.toFixed(2)}`, expected: String(rf14TotalGrupo), actual: String(ev.receitaTotal) };
+  });
+
+  await test({ id: 'RF-15b', category: 'Funcional', name: 'Dashboard BI: porPagamento coerente', requirement: 'RF-15' }, async () => {
+    await api('PATCH', `/api/eventos/${lifecycle.eventoId}/fechar`, { token: lifecycle.donoToken });
+
+    const dash = await api<{
+      porPagamento: Array<{ forma: string; valor: number }>;
+      resumo: { receitaTotal: number };
+    }>('GET', `/api/cervejaria/dashboard?ano=${rf14Ano}&mes=${rf14Mes}`, { token: lifecycle.donoToken });
+
+    await api('PATCH', `/api/eventos/${lifecycle.eventoId}/reabrir`, { token: lifecycle.donoToken });
+
+    if (dash.status !== 200) return { status: 'failed', message: `Dashboard BI HTTP ${dash.status}`, actual: String(dash.status) };
+    const pagTotal = dash.data.porPagamento.reduce((s, p) => s + p.valor, 0);
+    if (dash.data.resumo.receitaTotal < rf14TotalGrupo - 0.01) {
+      return { status: 'failed', message: 'receitaTotal mensal baixa', expected: `>=${rf14TotalGrupo}`, actual: String(dash.data.resumo.receitaTotal) };
+    }
+    if (Math.abs(pagTotal - dash.data.resumo.receitaTotal) > 0.01) {
+      return { status: 'failed', message: 'porPagamento mensal diverge', expected: String(dash.data.resumo.receitaTotal), actual: String(pagTotal) };
+    }
+    const dinheiro = dash.data.porPagamento.find((p) => p.forma === 'DINHEIRO');
+    const pix = dash.data.porPagamento.find((p) => p.forma === 'PIX');
+    if (!dinheiro || !pix) {
+      return { status: 'failed', message: 'Formas do grupo ausentes no BI', expected: 'DINHEIRO+PIX', actual: dash.data.porPagamento.map((p) => p.forma).join(',') };
+    }
+    return { message: 'BI porPagamento OK', expected: String(dash.data.resumo.receitaTotal), actual: String(pagTotal) };
+  });
+
+  await test({ id: 'RF-17', category: 'Funcional', name: 'Dashboard BI: só eventos FECHADOS', requirement: 'RF-15' }, async () => {
+    await api('PATCH', `/api/eventos/${lifecycle.eventoId}/reabrir`, { token: lifecycle.donoToken });
+
+    const dashAberto = await api<{ resumo: { receitaTotal: number } }>(
+      'GET',
+      `/api/cervejaria/dashboard?ano=${rf14Ano}&mes=${rf14Mes}`,
+      { token: lifecycle.donoToken },
+    );
+    if (dashAberto.status !== 200) {
+      return { status: 'failed', message: `Dashboard BI (evento aberto) HTTP ${dashAberto.status}`, actual: String(dashAberto.status) };
+    }
+
+    await api('PATCH', `/api/eventos/${lifecycle.eventoId}/fechar`, { token: lifecycle.donoToken });
+
+    const dashFechado = await api<{ resumo: { receitaTotal: number } }>(
+      'GET',
+      `/api/cervejaria/dashboard?ano=${rf14Ano}&mes=${rf14Mes}`,
+      { token: lifecycle.donoToken },
+    );
+    await api('PATCH', `/api/eventos/${lifecycle.eventoId}/reabrir`, { token: lifecycle.donoToken });
+
+    if (dashFechado.status !== 200) {
+      return { status: 'failed', message: `Dashboard BI (evento fechado) HTTP ${dashFechado.status}`, actual: String(dashFechado.status) };
+    }
+
+    const delta = dashFechado.data.resumo.receitaTotal - dashAberto.data.resumo.receitaTotal;
+    if (delta < rf14TotalGrupo - 0.01) {
+      return {
+        status: 'failed',
+        message: 'BI contou comandas antes do evento ser fechado',
+        expected: `delta >= ${rf14TotalGrupo}`,
+        actual: String(delta),
+      };
+    }
+    return {
+      message: `delta receita R$ ${delta.toFixed(2)} após fechar evento`,
+      expected: `>=${rf14TotalGrupo}`,
+      actual: String(delta),
+    };
+  });
+
+  console.log('\n=== FUNCIONAL (venda avulsa) ===');
+  let vaComandaId = '';
+  let vaTotal = 0;
+  let vaValorFechadoBefore = 0;
+  let vaRankingMlBefore = 0;
+  let vaCrmGastoBefore = 0;
+
+  await test({ id: 'RF-VA-01', category: 'Funcional', name: 'Venda avulsa: FECHADA + receita no dashboard', requirement: 'RF-VA' }, async () => {
+    const dashBefore = await api<{ resumo: { valorFechado: number } }>(
+      'GET',
+      `/api/eventos/${func.eventoId}/dashboard`,
+      { token: func.donoToken },
+    );
+    if (dashBefore.status !== 200) {
+      return { status: 'failed', message: `Dashboard HTTP ${dashBefore.status}`, actual: String(dashBefore.status) };
+    }
+    vaValorFechadoBefore = dashBefore.data.resumo.valorFechado;
+
+    const venda = await api<{ id: string; status: string; tipo: string; total: string | number }>(
+      'POST',
+      '/api/vendas-avulsas',
+      {
+        token: func.atendenteTokens[0],
+        body: {
+          eventoId: func.eventoId,
+          itens: [chopeItemBody(func.produtoId, func.tapId, 500)],
+          pagamentos: [{ forma: 'PIX', valor: 12 }],
+        },
+      },
+    );
+
+    if (venda.status !== 201) {
+      return { status: 'failed', message: `Venda avulsa HTTP ${venda.status}`, actual: JSON.stringify(venda.data) };
+    }
+    if (venda.data.status !== 'FECHADA' || venda.data.tipo !== 'AVULSA') {
+      return {
+        status: 'failed',
+        message: 'Comanda avulsa deveria FECHADA/AVULSA',
+        expected: 'FECHADA/AVULSA',
+        actual: `${venda.data.status}/${venda.data.tipo}`,
+      };
+    }
+
+    vaComandaId = venda.data.id;
+    vaTotal = Number(venda.data.total);
+
+    const dashAfter = await api<{ resumo: { valorFechado: number } }>(
+      'GET',
+      `/api/eventos/${func.eventoId}/dashboard`,
+      { token: func.donoToken },
+    );
+    if (dashAfter.status !== 200) {
+      return { status: 'failed', message: `Dashboard pós-venda HTTP ${dashAfter.status}`, actual: String(dashAfter.status) };
+    }
+    if (dashAfter.data.resumo.valorFechado < vaValorFechadoBefore + vaTotal - 0.01) {
+      return {
+        status: 'failed',
+        message: 'valorFechado não incluiu venda avulsa',
+        expected: String(vaValorFechadoBefore + vaTotal),
+        actual: String(dashAfter.data.resumo.valorFechado),
+      };
+    }
+    return { message: `Venda avulsa R$ ${vaTotal.toFixed(2)}`, expected: 'FECHADA', actual: venda.data.status };
+  });
+
+  await test({ id: 'RF-VA-02', category: 'Funcional', name: 'Venda avulsa: não entra no ranking', requirement: 'RF-VA' }, async () => {
+    const rankBefore = await api<{ ranking: Array<{ totalMl: number }> }>(
+      'GET',
+      `/api/ranking/evento/${func.eventoId}`,
+      { token: func.donoToken },
+    );
+    if (rankBefore.status !== 200) {
+      return { status: 'failed', message: `Ranking HTTP ${rankBefore.status}`, actual: String(rankBefore.status) };
+    }
+    vaRankingMlBefore = rankBefore.data.ranking.reduce((s, r) => s + r.totalMl, 0);
+
+    const venda = await api('POST', '/api/vendas-avulsas', {
+      token: func.atendenteTokens[0],
+      body: {
+        eventoId: func.eventoId,
+        itens: [chopeItemBody(func.produtoId, func.tapId, 500)],
+        pagamentos: [{ forma: 'DINHEIRO', valor: 12 }],
+      },
+    });
+    if (venda.status !== 201) {
+      return { status: 'failed', message: `Venda avulsa HTTP ${venda.status}`, actual: String(venda.status) };
+    }
+
+    const rankAfter = await api<{ ranking: Array<{ totalMl: number }> }>(
+      'GET',
+      `/api/ranking/evento/${func.eventoId}`,
+      { token: func.donoToken },
+    );
+    const mlAfter = rankAfter.data?.ranking.reduce((s, r) => s + r.totalMl, 0) ?? 0;
+    if (Math.abs(mlAfter - vaRankingMlBefore) > 0.01) {
+      return {
+        status: 'failed',
+        message: 'Ranking mudou após venda avulsa',
+        expected: String(vaRankingMlBefore),
+        actual: String(mlAfter),
+      };
+    }
+    return { message: 'Ranking inalterado', expected: String(vaRankingMlBefore), actual: String(mlAfter) };
+  });
+
+  await test({ id: 'RF-VA-03', category: 'Funcional', name: 'Venda avulsa: sem CRM + cliente sistema oculto', requirement: 'RF-VA' }, async () => {
+    const comanda = await api<{ clienteId: string }>('GET', `/api/comandas/${funcComandaId}`, { token: func.donoToken });
+    if (comanda.status !== 200) {
+      return { status: 'failed', message: 'Comanda RF-05 não encontrada', actual: String(comanda.status) };
+    }
+
+    const crmBefore = await api<{ items: Array<{ id: string; totalGasto: number }> }>(
+      'GET',
+      '/api/clientes?limit=100',
+      { token: func.donoToken },
+    );
+    const clienteBefore = crmBefore.data?.items.find((c) => c.id === comanda.data.clienteId);
+    vaCrmGastoBefore = clienteBefore?.totalGasto ?? 0;
+
+    const venda = await api('POST', '/api/vendas-avulsas', {
+      token: func.atendenteTokens[0],
+      body: {
+        eventoId: func.eventoId,
+        itens: [chopeItemBody(func.produtoId, func.tapId, 300)],
+        pagamentos: [{ forma: 'PIX', valor: 8 }],
+      },
+    });
+    if (venda.status !== 201) {
+      return { status: 'failed', message: `Venda avulsa HTTP ${venda.status}`, actual: String(venda.status) };
+    }
+
+    const crmAfter = await api<{ items: Array<{ id: string; nome: string; totalGasto: number }> }>(
+      'GET',
+      '/api/clientes?limit=100',
+      { token: func.donoToken },
+    );
+    const clienteAfter = crmAfter.data?.items.find((c) => c.id === comanda.data.clienteId);
+    if ((clienteAfter?.totalGasto ?? 0) > vaCrmGastoBefore + 0.01) {
+      return {
+        status: 'failed',
+        message: 'CRM incrementou após venda avulsa',
+        expected: String(vaCrmGastoBefore),
+        actual: String(clienteAfter?.totalGasto),
+      };
+    }
+    const sistema = crmAfter.data?.items.find((c) => c.nome === 'Consumidor avulso');
+    if (sistema) {
+      return { status: 'failed', message: 'Cliente sistema visível no CRM', expected: 'oculto', actual: sistema.id };
+    }
+    return { message: 'CRM OK', expected: String(vaCrmGastoBefore), actual: String(clienteAfter?.totalGasto ?? 0) };
+  });
+
+  await test({ id: 'RF-VA-04', category: 'Funcional', name: 'Venda avulsa: receita no BI após fechar evento', requirement: 'RF-VA' }, async () => {
+    const now = new Date();
+    const mes = now.getUTCMonth() + 1;
+    const ano = now.getUTCFullYear();
+
+    await prisma.comanda.deleteMany({ where: { eventoId: func.eventoId, status: 'ABERTA' } });
+    await prisma.evento.update({
+      where: { id: func.eventoId },
+      data: { data: now, status: 'ABERTO' },
+    });
+
+    const dashAberto = await api<{ resumo: { receitaTotal: number } }>(
+      'GET',
+      `/api/cervejaria/dashboard?ano=${ano}&mes=${mes}`,
+      { token: func.donoToken },
+    );
+    const receitaAberto = dashAberto.status === 200 ? dashAberto.data.resumo.receitaTotal : 0;
+
+    await api('PATCH', `/api/eventos/${func.eventoId}/fechar`, { token: func.donoToken });
+
+    const dashFechado = await api<{ resumo: { receitaTotal: number } }>(
+      'GET',
+      `/api/cervejaria/dashboard?ano=${ano}&mes=${mes}`,
+      { token: func.donoToken },
+    );
+
+    await api('PATCH', `/api/eventos/${func.eventoId}/reabrir`, { token: func.donoToken });
+
+    if (dashFechado.status !== 200) {
+      return { status: 'failed', message: `BI HTTP ${dashFechado.status}`, actual: String(dashFechado.status) };
+    }
+    if (dashFechado.data.resumo.receitaTotal <= receitaAberto + 0.01) {
+      return {
+        status: 'failed',
+        message: 'BI não incluiu vendas avulsas após fechar evento',
+        expected: `>${receitaAberto}`,
+        actual: String(dashFechado.data.resumo.receitaTotal),
+      };
+    }
+    return {
+      message: `BI receita R$ ${dashFechado.data.resumo.receitaTotal.toFixed(2)}`,
+      expected: `>${receitaAberto}`,
+      actual: String(dashFechado.data.resumo.receitaTotal),
+    };
+  });
+
+  await test({ id: 'RF-VA-05', category: 'Funcional', name: 'Venda avulsa: fechar-grupo rejeita avulsa', requirement: 'RF-VA' }, async () => {
+    const clienteSistema = await prisma.cliente.findFirst({
+      where: { cervejariaId: func.cervejariaId, telefone: '00000000000' },
+    });
+    if (!clienteSistema) {
+      return { status: 'failed', message: 'Cliente sistema ausente (RF-VA-01?)', actual: 'skip' };
+    }
+
+    const avulsaAberta = await prisma.comanda.create({
+      data: {
+        eventoId: func.eventoId,
+        clienteId: clienteSistema.id,
+        tipo: 'AVULSA',
+        status: 'ABERTA',
+      },
+    });
+
+    await api('POST', `/api/comandas/${avulsaAberta.id}/itens`, {
+      token: func.atendenteTokens[0],
+      body: chopeItemBody(func.produtoId, func.tapId, 500),
+    });
+
+    const c2 = await api<{ id: string }>('POST', '/api/comandas', {
+      token: func.atendenteTokens[0],
+      body: staffComandaBody(func.eventoId, `Par grupo VA ${Date.now()}`, 44),
+    });
+    if (c2.status !== 201) {
+      await prisma.comanda.delete({ where: { id: avulsaAberta.id } });
+      return { status: 'failed', message: 'Setup comanda par falhou', actual: String(c2.status) };
+    }
+    await api('POST', `/api/comandas/${c2.data.id}/itens`, {
+      token: func.atendenteTokens[0],
+      body: chopeItemBody(func.produtoId, func.tapId, 500),
+    });
+
+    const curAvulsa = await api<{ total: string | number }>('GET', `/api/comandas/${avulsaAberta.id}`, { token: func.donoToken });
+    const curC2 = await api<{ total: string | number }>('GET', `/api/comandas/${c2.data.id}`, { token: func.donoToken });
+    const total = Number(curAvulsa.data.total) + Number(curC2.data.total);
+
+    const r = await api('POST', '/api/pagamentos/fechar-grupo', {
+      token: func.atendenteTokens[0],
+      body: {
+        comandaIds: [avulsaAberta.id, c2.data.id],
+        pagamentos: [{ forma: 'PIX', valor: total }],
+      },
+    });
+
+    await prisma.comanda.deleteMany({ where: { id: { in: [avulsaAberta.id, c2.data.id] } } });
+
+    return expectStatus(r.status, 400, 'Grupo com venda avulsa rejeitado');
+  });
+
   console.log('\n=== FUNCIONAL (catálogo / evento) ===');
   await test({ id: 'RF-02a', category: 'Funcional', name: 'Criar produto sem preço → 400', requirement: 'RF-02' }, async () => {
     const r = await api('POST', '/api/produtos', { token: cat.donoToken, body: { nome: 'SemPreco', precos: [] } });
@@ -967,6 +1826,72 @@ async function main() {
       return { status: 'failed', message: 'Fila staff não bate com cancelamentos do cliente' };
     }
     return { message: '5 cancelados, 5 pendentes na fila', expected: '5/5', actual: '5/5' };
+  });
+
+  await test({ id: 'PORTAL-07', category: 'Portal', name: 'Sessão invalidada ao encerrar/reabrir evento', requirement: 'PORTAL-07' }, async () => {
+    const session = await portalSessao(portalSlug, portalTrailerId, {
+      nome: 'Portal Gen Test',
+      telefone: portalTestPhone(94, 7),
+    });
+    if (session.status !== 201 || !session.cookie) {
+      return { status: 'failed', message: 'Não abriu sessão portal', actual: String(session.status) };
+    }
+
+    const before = await api('GET', '/api/public/cliente/comanda', { cookie: session.cookie });
+    if (before.status !== 200) {
+      return { status: 'failed', message: 'Comanda inacessível antes do fechamento', actual: String(before.status) };
+    }
+
+    const abertas = await prisma.comanda.findMany({
+      where: { eventoId: ctx.arena.eventoId, status: 'ABERTA' },
+      select: { id: true, total: true },
+    });
+    for (const c of abertas) {
+      const total = Number(c.total);
+      if (total <= 0) {
+        await api('POST', `/api/comandas/${c.id}/cancelar`, { token: portalStaffToken });
+      } else {
+        await api('POST', `/api/pagamentos/comandas/${c.id}/fechar`, {
+          token: portalStaffToken,
+          body: { pagamentos: [{ forma: 'DINHEIRO', valor: total }] },
+        });
+      }
+    }
+
+    const fechar = await api('PATCH', `/api/eventos/${ctx.arena.eventoId}/fechar`, { token: portalStaffToken });
+    if (fechar.status !== 200) {
+      return { status: 'failed', message: 'Falha ao fechar evento arena', actual: String(fechar.status), details: fechar.raw };
+    }
+
+    const afterClose = await api('GET', '/api/public/cliente/comanda', { cookie: session.cookie });
+    if (afterClose.status !== 401) {
+      return { status: 'failed', message: 'Cookie deveria ser inválido após fechar evento', expected: '401', actual: String(afterClose.status) };
+    }
+
+    const reabrir = await api('PATCH', `/api/eventos/${ctx.arena.eventoId}/reabrir`, { token: portalStaffToken });
+    if (reabrir.status !== 200) {
+      return { status: 'failed', message: 'Falha ao reabrir evento arena', actual: String(reabrir.status) };
+    }
+
+    const afterReopen = await api('GET', '/api/public/cliente/comanda', { cookie: session.cookie });
+    if (afterReopen.status !== 401) {
+      return { status: 'failed', message: 'Cookie antigo deveria ser inválido após reabrir', expected: '401', actual: String(afterReopen.status) };
+    }
+
+    const fresh = await portalSessao(portalSlug, portalTrailerId, {
+      nome: 'Portal Gen Test 2',
+      telefone: portalTestPhone(94, 8),
+    });
+    if (fresh.status !== 201 || !fresh.comandaId || !fresh.cookie) {
+      return { status: 'failed', message: 'Nova sessão após reabrir falhou', actual: String(fresh.status) };
+    }
+
+    const freshComanda = await api('GET', '/api/public/cliente/comanda', { cookie: fresh.cookie });
+    if (freshComanda.status !== 200) {
+      return { status: 'failed', message: 'Nova sessão não acessa comanda', actual: String(freshComanda.status) };
+    }
+
+    return { message: 'Sessões invalidadas; nova sessão OK', expected: '401→401→201', actual: 'OK' };
   });
 
   console.log('\n=== NÃO-FUNCIONAL (performance) ===');

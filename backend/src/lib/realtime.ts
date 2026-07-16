@@ -18,7 +18,8 @@ export type RealtimeEvent =
   | { type: 'pedido:created'; data: unknown }
   | { type: 'pedido:confirmed'; data: unknown }
   | { type: 'pedido:recusado'; data: unknown }
-  | { type: 'pedido:cancelado'; data: unknown };
+  | { type: 'pedido:cancelado'; data: unknown }
+  | { type: 'portal:session-expired'; data: { eventoId: string; reason: string } };
 
 export function emitToCervejaria(
   io: SocketIOServer | undefined,

@@ -1,6 +1,6 @@
 /**
  * Gera o manual do usuário em PDF com capturas de tela do app.
- * Requer: frontend em http://localhost:5201 e backend em :3001 (seed demo).
+ * Requer: frontend em http://localhost:5202 e backend em :3002 (seed demo).
  *
  * Uso: node scripts/generate-manual-pdf.mjs
  */
@@ -13,7 +13,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 const OUT_DIR = join(ROOT, 'docs', 'manual');
 const SHOTS_DIR = join(OUT_DIR, 'screenshots');
-const BASE = process.env.MANUAL_BASE_URL ?? 'http://localhost:5201';
+const BASE = process.env.MANUAL_BASE_URL ?? 'http://localhost:5202';
 const EMAIL = process.env.MANUAL_EMAIL ?? 'dono@demo.com';
 const SENHA = process.env.MANUAL_SENHA ?? '123456';
 

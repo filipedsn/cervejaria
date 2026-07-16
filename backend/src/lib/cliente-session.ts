@@ -1,5 +1,12 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { CLIENTE_COOKIE_NAME, isClienteSessionPayload, type ClienteSessionPayload } from '../types/cliente-session.js';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { Server as SocketIOServer } from 'socket.io';
+import { prisma } from './prisma.js';
+import { findOpenEventoForTrailer } from './portal-cliente.js';
+import {
+  CLIENTE_COOKIE_NAME,
+  isClienteSessionPayload,
+  type ClienteSessionPayload,
+} from '../types/cliente-session.js';
 
 const CLIENTE_SESSION_MAX_AGE = 12 * 60 * 60; // 12h
 
@@ -7,7 +14,7 @@ export function signClienteSession(app: FastifyInstance, payload: Omit<ClienteSe
   return app.jwt.sign({ type: 'cliente', ...payload }, { expiresIn: '12h' });
 }
 
-export function setClienteSessionCookie(reply: import('fastify').FastifyReply, token: string) {
+export function setClienteSessionCookie(reply: FastifyReply, token: string) {
   reply.setCookie(CLIENTE_COOKIE_NAME, token, {
     path: '/',
     httpOnly: true,
@@ -15,6 +22,10 @@ export function setClienteSessionCookie(reply: import('fastify').FastifyReply, t
     secure: process.env.NODE_ENV === 'production',
     maxAge: CLIENTE_SESSION_MAX_AGE,
   });
+}
+
+export function clearClienteSessionCookie(reply: FastifyReply) {
+  reply.clearCookie(CLIENTE_COOKIE_NAME, { path: '/' });
 }
 
 export async function verifyClienteSession(
@@ -37,7 +48,54 @@ export async function verifyClienteSession(
     throw app.httpErrors.unauthorized('Sessão inválida.');
   }
 
-  return decoded;
+  const session = decoded;
+
+  const evento = await prisma.evento.findFirst({
+    where: { id: session.eventoId, cervejariaId: session.cervejariaId },
+    select: {
+      id: true,
+      status: true,
+      trailerId: true,
+      portalGeneration: true,
+    },
+  });
+
+  if (!evento || evento.status !== 'ABERTO') {
+    throw app.httpErrors.unauthorized('Sessão encerrada. Escaneie o QR Code novamente.');
+  }
+
+  if (evento.portalGeneration !== session.portalGeneration) {
+    throw app.httpErrors.unauthorized('Sessão encerrada. Escaneie o QR Code novamente.');
+  }
+
+  const openEvento = await findOpenEventoForTrailer(session.cervejariaId, session.trailerId);
+  if (!openEvento || openEvento.id !== session.eventoId) {
+    throw app.httpErrors.unauthorized('Sessão encerrada. Escaneie o QR Code novamente.');
+  }
+
+  const comanda = await prisma.comanda.findFirst({
+    where: {
+      id: session.comandaId,
+      eventoId: session.eventoId,
+      clienteId: session.clienteId,
+      status: 'ABERTA',
+    },
+    select: { id: true },
+  });
+
+  if (!comanda) {
+    throw app.httpErrors.unauthorized('Sessão encerrada. Escaneie o QR Code novamente.');
+  }
+
+  return session;
+}
+
+export function emitPortalSessionExpired(
+  io: SocketIOServer | undefined,
+  eventoId: string,
+  reason: 'evento_fechado' | 'evento_reaberto',
+) {
+  io?.to(`evento:${eventoId}`).emit('portal:session-expired', { eventoId, reason });
 }
 
 export function registerClienteSessionAuth(app: FastifyInstance) {

@@ -23,6 +23,7 @@ export async function findOpenEventoForTrailer(cervejariaId: string, trailerId: 
       horaFim: true,
       trailerId: true,
       cervejariaId: true,
+      portalGeneration: true,
     },
   });
 }
@@ -91,7 +92,7 @@ export async function startClientePortalSession(params: {
       trailerId: params.trailerId,
       status: 'ABERTO',
     },
-    select: { id: true },
+    select: { id: true, portalGeneration: true },
   });
   if (!evento) {
     throw new Error('Evento não está mais aberto');
@@ -110,5 +111,5 @@ export async function startClientePortalSession(params: {
     clienteId: cliente.id,
   });
 
-  return { cliente, comanda };
+  return { cliente, comanda, portalGeneration: evento.portalGeneration };
 }

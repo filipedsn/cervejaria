@@ -24,6 +24,11 @@ enum ComandaStatus {
   CANCELADA
 }
 
+enum ComandaTipo {
+  COMANDA
+  AVULSA
+}
+
 enum PaymentMethod {
   DINHEIRO
   PIX
@@ -234,9 +239,10 @@ model Evento {
   recorrencia  RecorrenciaTipo @default(NENHUMA)
   diaSemana    Int?
   serieId      String?
-  status       EventStatus     @default(ABERTO)
-  encerradoEm  DateTime?
-  cervejariaId String
+  status           EventStatus     @default(ABERTO)
+  encerradoEm      DateTime?
+  portalGeneration Int             @default(0)
+  cervejariaId     String
   trailerId    String
   cardapioId   String?
   createdAt    DateTime        @default(now())
@@ -299,6 +305,7 @@ model Cliente {
   cadastradoVia    CadastroOrigem  @default(COMANDA)
   observacoes      String?
   ativo            Boolean         @default(true)
+  isSistema        Boolean         @default(false)
   cervejariaId     String
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
@@ -331,6 +338,7 @@ model Comanda {
   eventoId     String
   clienteId    String
   status       ComandaStatus @default(ABERTA)
+  tipo         ComandaTipo   @default(COMANDA)
   total        Decimal       @default(0) @db.Decimal(10, 2)
   fechadoPorId String?
   fechadaEm    DateTime?
@@ -346,6 +354,7 @@ model Comanda {
   transacoes TransacaoLog[]
 
   @@index([eventoId, status])
+  @@index([eventoId, status, tipo])
   @@index([fechadoPorId])
 }
 

@@ -24,27 +24,37 @@ export async function recalcComandaTotal(comandaId: string) {
   });
 }
 
-export type AddItemInput = {
-  produtoId: string;
-  volumeMl: number;
-  quantidade: number;
-  tapId?: string;
-};
+async function recalcComandaTotalInTx(tx: Prisma.TransactionClient, comandaId: string) {
+  const itens = await tx.itemComanda.findMany({ where: { comandaId } });
+  const total = itens.reduce((sum, item) => sum + toNumber(item.precoUnit) * item.quantidade, 0);
+  await tx.comanda.update({
+    where: { id: comandaId },
+    data: { total },
+  });
+  return total;
+}
 
-export async function addItemToComanda(params: {
-  comandaId: string;
-  cervejariaId: string;
-  eventoId: string;
-  item: AddItemInput;
-}) {
+function comandaItemsLockKey(comandaId: string) {
+  return `comanda-items:${comandaId}`;
+}
+
+export async function addItemToComandaInTx(
+  tx: Prisma.TransactionClient,
+  params: {
+    comandaId: string;
+    cervejariaId: string;
+    eventoId: string;
+    item: AddItemInput;
+  },
+) {
   const { comandaId, cervejariaId, eventoId, item } = params;
 
-  const comanda = await prisma.comanda.findFirst({
+  const comanda = await tx.comanda.findFirst({
     where: { id: comandaId, status: 'ABERTA', eventoId },
   });
   if (!comanda) return { error: 'Comanda não encontrada ou fechada' as const };
 
-  const produto = await prisma.produto.findFirst({
+  const produto = await tx.produto.findFirst({
     where: { id: item.produtoId, cervejariaId, ativo: true },
     include: { precos: true },
   });
@@ -55,7 +65,7 @@ export async function addItemToComanda(params: {
 
   if (isChope) {
     if (!tapId) {
-      const montagens = await prisma.tapMontagem.findMany({
+      const montagens = await tx.tapMontagem.findMany({
         where: { eventoId, produtoId: item.produtoId, encerradoEm: null },
         select: { tapId: true },
       });
@@ -81,7 +91,7 @@ export async function addItemToComanda(params: {
   const preco = produto.precos.find((p) => p.volumeMl === item.volumeMl);
   if (!preco) return { error: 'Preço não encontrado para este volume' as const };
 
-  await prisma.itemComanda.create({
+  await tx.itemComanda.create({
     data: {
       comandaId,
       produtoId: item.produtoId,
@@ -92,14 +102,90 @@ export async function addItemToComanda(params: {
     },
   });
 
-  const updated = await recalcComandaTotal(comandaId);
+  const total = await recalcComandaTotalInTx(tx, comandaId);
   return {
     ok: true as const,
-    comanda: updated,
+    total,
     produto,
     isChope,
     precoUnit: toNumber(preco.preco),
   };
+}
+
+export type AddItemInput = {
+  produtoId: string;
+  volumeMl: number;
+  quantidade: number;
+  tapId?: string;
+};
+
+export async function addItemToComanda(params: {
+  comandaId: string;
+  cervejariaId: string;
+  eventoId: string;
+  item: AddItemInput;
+}) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(abs(hashtext(${comandaItemsLockKey(params.comandaId)})))`;
+    const inner = await addItemToComandaInTx(tx, params);
+    if ('error' in inner) return inner;
+
+    const updated = await tx.comanda.findUniqueOrThrow({
+      where: { id: params.comandaId },
+      include: comandaDetailInclude,
+    });
+    return {
+      ok: true as const,
+      comanda: updated,
+      produto: inner.produto,
+      isChope: inner.isChope,
+      precoUnit: inner.precoUnit,
+    };
+  });
+}
+
+export async function removeItemFromComandaInTx(
+  tx: Prisma.TransactionClient,
+  params: {
+    comandaId: string;
+    itemId: string;
+    cervejariaId: string;
+    eventoId: string;
+  },
+) {
+  const { comandaId, itemId, cervejariaId, eventoId } = params;
+
+  const comanda = await tx.comanda.findFirst({
+    where: { id: comandaId, status: 'ABERTA', eventoId, evento: { cervejariaId } },
+  });
+  if (!comanda) return { error: 'Comanda não encontrada ou fechada' as const };
+
+  const item = await tx.itemComanda.findFirst({
+    where: { id: itemId, comandaId },
+    include: { produto: true },
+  });
+  if (!item) return { error: 'Item não encontrado' as const };
+
+  await tx.itemComanda.delete({ where: { id: itemId } });
+  await recalcComandaTotalInTx(tx, comandaId);
+
+  const updated = await tx.comanda.findUniqueOrThrow({
+    where: { id: comandaId },
+    include: comandaDetailInclude,
+  });
+  return { ok: true as const, comanda: updated, item };
+}
+
+export async function removeItemFromComanda(params: {
+  comandaId: string;
+  itemId: string;
+  cervejariaId: string;
+  eventoId: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(abs(hashtext(${comandaItemsLockKey(params.comandaId)})))`;
+    return removeItemFromComandaInTx(tx, params);
+  });
 }
 
 export async function buildPublicEventCardapio(eventoId: string, trailerId: string, cervejariaId: string) {

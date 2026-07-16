@@ -86,6 +86,8 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
       status: true,
 
+      tipo: true,
+
       createdAt: true,
 
       clienteId: true,
@@ -200,27 +202,33 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
     receitaTotal += valor;
 
-    clientes.add(comanda.clienteId);
+    const isAvulsa = comanda.tipo === 'AVULSA';
+
+    if (!isAvulsa) {
+      clientes.add(comanda.clienteId);
+    }
 
 
 
-    const topCliente = topClientesMap.get(comanda.clienteId) ?? {
+    if (!isAvulsa) {
+      const topCliente = topClientesMap.get(comanda.clienteId) ?? {
 
-      clienteId: comanda.clienteId,
+        clienteId: comanda.clienteId,
 
-      nome: comanda.cliente.nome,
+        nome: comanda.cliente.nome,
 
-      receita: 0,
+        receita: 0,
 
-      comandas: 0,
+        comandas: 0,
 
-    };
+      };
 
-    topCliente.receita += valor;
+      topCliente.receita += valor;
 
-    topCliente.comandas += 1;
+      topCliente.comandas += 1;
 
-    topClientesMap.set(comanda.clienteId, topCliente);
+      topClientesMap.set(comanda.clienteId, topCliente);
+    }
 
 
 
@@ -282,27 +290,29 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
 
 
-        const rank = rankingMap.get(comanda.clienteId) ?? {
+        if (!isAvulsa) {
+          const rank = rankingMap.get(comanda.clienteId) ?? {
 
-          clienteId: comanda.clienteId,
+            clienteId: comanda.clienteId,
 
-          nome: comanda.cliente.nome,
+            nome: comanda.cliente.nome,
 
-          totalMl: 0,
+            totalMl: 0,
 
-          totalValor: 0,
+            totalValor: 0,
 
-          pedidos: 0,
+            pedidos: 0,
 
-        };
+          };
 
-        rank.totalMl += ml;
+          rank.totalMl += ml;
 
-        rank.totalValor += itemValor;
+          rank.totalValor += itemValor;
 
-        rank.pedidos += item.quantidade;
+          rank.pedidos += item.quantidade;
 
-        rankingMap.set(comanda.clienteId, rank);
+          rankingMap.set(comanda.clienteId, rank);
+        }
 
       }
 

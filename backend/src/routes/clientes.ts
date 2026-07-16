@@ -79,6 +79,7 @@ export async function clientesRoutes(app: FastifyInstance) {
     const where: Prisma.ClienteWhereInput = {
       cervejariaId: user.cervejariaId,
       ativo: true,
+      isSistema: false,
       ...(q
         ? {
             OR: [
@@ -114,12 +115,12 @@ export async function clientesRoutes(app: FastifyInstance) {
     const skip = (page - 1) * limit;
 
     const cliente = await prisma.cliente.findFirst({
-      where: { id, cervejariaId: user.cervejariaId },
+      where: { id, cervejariaId: user.cervejariaId, isSistema: false },
       select: { id: true },
     });
     if (!cliente) return reply.status(404).send({ error: 'Cliente não encontrado' });
 
-    const where = { clienteId: id, status: 'FECHADA' as const };
+    const where = { clienteId: id, status: 'FECHADA' as const, tipo: 'COMANDA' as const };
 
     const [comandas, total] = await Promise.all([
       prisma.comanda.findMany({
@@ -167,7 +168,7 @@ export async function clientesRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
 
     const cliente = await prisma.cliente.findFirst({
-      where: { id, cervejariaId: user.cervejariaId },
+      where: { id, cervejariaId: user.cervejariaId, isSistema: false },
       include: clienteInclude,
     });
     if (!cliente) return reply.status(404).send({ error: 'Cliente não encontrado' });

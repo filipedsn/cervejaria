@@ -88,6 +88,10 @@ body.auth-screen {
   @apply w-full max-w-6xl mx-auto px-4 py-3 space-y-2;
 }
 
+.overlay-backdrop {
+  @apply absolute inset-0 bg-black/40 backdrop-blur-sm;
+}
+
 @keyframes slide-up {
   from {
     transform: translateY(100%);

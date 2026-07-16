@@ -17,7 +17,7 @@ export async function rankingRoutes(app: FastifyInstance) {
     if (!evento) return reply.status(404).send({ error: 'Evento não encontrado' });
 
     const comandas = await prisma.comanda.findMany({
-      where: { eventoId },
+      where: { eventoId, tipo: 'COMANDA' },
       include: {
         cliente: true,
         itens: { include: { produto: true } },

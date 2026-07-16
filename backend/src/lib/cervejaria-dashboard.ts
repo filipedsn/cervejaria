@@ -49,6 +49,7 @@ async function fetchClosedComandas(cervejariaId: string, inicio: Date, fim: Date
       updatedAt: { gte: inicio, lte: fim },
       evento: {
         cervejariaId,
+        status: 'FECHADO',
         ...(trailerId ? { trailerId } : {}),
       },
     },
@@ -210,7 +211,7 @@ async function buildEventosRecentes(
     comandasByEvento.set(comanda.eventoId, list);
   }
 
-  return eventos.map((evento) => {
+  const rows = eventos.map((evento) => {
     const evComandas = comandasByEvento.get(evento.id) ?? [];
     let receitaTotal = 0;
     let chopeMl = 0;
@@ -243,6 +244,8 @@ async function buildEventosRecentes(
       chopeLitrosPorHora: Math.round((chopeMl / 1000 / duracaoHoras) * 100) / 100,
     };
   });
+
+  return rows.sort((a, b) => b.receitaTotal - a.receitaTotal);
 }
 
 export async function buildCervejariaDashboard(

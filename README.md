@@ -47,14 +47,14 @@ cd ..
 # 5. Iniciar backend + frontend
 npm run dev
 
-# Reiniciar ambos (encerra portas 3001 e 5201 e sobe de novo)
+# Reiniciar ambos (encerra portas 3002 e 5202 e sobe de novo)
 npm run restart
 # ou: scripts\restart-dev.cmd
 ```
 
-- Frontend: http://localhost:5201
-- API: http://localhost:3001
-- Health check: http://localhost:3001/api/health
+- Frontend: http://localhost:5202
+- API: http://localhost:3002
+- Health check: http://localhost:3002/api/health
 
 ### Credenciais demo (após seed)
 
@@ -155,24 +155,24 @@ cloudflared tunnel run cervejaria
 
 ## Produção no Windows (sem IDE, reinício automático)
 
-Para manter **backend + frontend + Cloudflare Tunnel** no ar mesmo com a IDE fechada e após reiniciar o PC:
+Para manter **backend + frontend estático + Cloudflare Tunnel** no ar mesmo com a IDE fechada e após reiniciar o PC:
 
 ```
-Cloudflare → Frontend :5201 (Vite) → Backend :3001 (API)
+Cloudflare → API :3001 (frontend estático + API)
 ```
 
 ### 1. Pré-requisitos
 
 - Node.js 20+, PostgreSQL rodando (Docker ou serviço)
-- Build do backend (`backend/dist`) — o instalador tenta gerar automaticamente
-- No painel Cloudflare, `tap.quivercloud.com.br` apontando para **`http://localhost:5201`**
-- `backend/.env` com `APP_URL` e `CORS_ORIGIN` = `https://tap.quivercloud.com.br`
+- Build do backend (`backend/dist`) e frontend (`frontend/dist`) — o instalador tenta gerar automaticamente
+- No painel Cloudflare, `tap.quivercloud.com.br` apontando para **`http://localhost:3001`**
+- `backend/.env.production` com `APP_URL` e `CORS_ORIGIN` = `https://tap.quivercloud.com.br`
 
 ### 2. Configurar caminhos
 
 ```powershell
 copy deploy\production.settings.psd1.example deploy\production.settings.psd1
-# Edite ProjectRoot, FrontendPort (5201) e ApiPort (3001) se necessário
+# Edite ProjectRoot e ApiPort (3001) se necessário
 ```
 
 ### 3. Instalar (PowerShell como Administrador)
@@ -236,6 +236,8 @@ CORS_ORIGIN="https://app.seudominio.com.br"
 ```
 ├── backend/          # API Node + Prisma
 ├── frontend/         # React PWA
+├── docs/             # Manual, roadmap, especificação
+├── assets/logo/      # Logo oficial (PWA icons)
 ├── docker-compose.yml
 └── README.md
 ```

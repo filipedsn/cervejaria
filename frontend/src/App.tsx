@@ -12,6 +12,7 @@ import { EventoPage } from './pages/EventoPage';
 import { ComandasPage } from './pages/ComandasPage';
 import { ComandaDetailPage } from './pages/ComandaDetailPage';
 import { NovaComandaPage } from './pages/NovaComandaPage';
+import { VendaAvulsaPage } from './pages/VendaAvulsaPage';
 import { RankingPage } from './pages/RankingPage';
 import { RankingFullscreenPage } from './pages/RankingFullscreenPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -215,6 +216,7 @@ const router = createBrowserRouter([
                     children: [
                       { path: 'comandas', element: <ComandasPage /> },
                       { path: 'comandas/nova', element: <NovaComandaPage /> },
+                      { path: 'comandas/venda-avulsa', element: <VendaAvulsaPage /> },
                       { path: 'comandas/:id', element: <ComandaDetailPage /> },
                       { path: 'ranking/:eventoId?', element: <RankingPage /> },
                     ],

@@ -1,0 +1,32 @@
+---
+description: Quiver Tap dev/prod segregation and safe deploy practices
+alwaysApply: true
+---
+
+# Quiver Tap — Deploy e ambientes
+
+> **Aviso:** Scripts de deploy completos (`prod:deploy`, ops-panel, CI GitHub) estão na branch `feat/ops-panel-ci`; pendente merge.
+
+## Ambientes
+
+- **Dev**: API `:3002`, Vite `:5202`, banco `cervejaria_dev`, env `backend/.env.development`
+- **Prod**: tudo na `:3001`, banco `cervejaria`, env `backend/.env.production`, publico em https://tap.quivercloud.com.br
+
+## Regras para o agente
+
+1. Comandos de producao (`prod:deploy`, `db:migrate:prod`, editar `.env.production`) exigem **confirmacao explicita** do usuario.
+2. Preferir **`npm run prod:deploy`** em vez de passos manuais fragmentados.
+3. `prod:ensure` mantem servicos no ar — **nao aplica codigo novo**; deploy precisa de build + restart via `prod:deploy`.
+4. Testar em dev (`npm run dev:start`, http://localhost:5202) antes de sugerir deploy.
+5. Para deploy completo, ler a skill `.cursor/skills/quiver-tap-deploy/SKILL.md`.
+
+## Comandos preferidos
+
+| Acao | Comando |
+|------|---------|
+| Testar | `npm run dev:start` |
+| Branch/PR | skill `quiver-tap-git-workflow` |
+| CI local | `npm run ci:frontend` / `npm run ci:validate` |
+| Publicar | `npm run prod:deploy` (apos merge em main) |
+| Status prod | `npm run prod:status` |
+| Reiniciar API | `npm run prod:restart` |

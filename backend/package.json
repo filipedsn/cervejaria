@@ -21,7 +21,7 @@
     "qa:report": "node scripts/run-with-env.mjs development npx tsx qa/report.ts",
     "qa:teardown": "node scripts/run-with-env.mjs development npx tsx qa/teardown.ts",
     "qa:test": "node scripts/run-with-env.mjs development npx tsx qa/run.ts",
-    "test:unit": "node --import tsx --test src/lib/evento-vendas-intervalo.test.ts src/lib/evento-fluxo-intervalo.test.ts src/lib/evento-comanda-tempo.test.ts"
+    "test:unit": "node --import tsx --test src/lib/evento-vendas-intervalo.test.ts src/lib/evento-fluxo-intervalo.test.ts src/lib/evento-comanda-tempo.test.ts src/lib/fechar-comanda.test.ts"
   },
   "dependencies": {
     "@elastic/opentelemetry-node": "^1.16.0",

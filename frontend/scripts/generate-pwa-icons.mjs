@@ -7,7 +7,7 @@ import { access } from 'node:fs/promises';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, '../public');
 const outDir = path.join(publicDir, 'icons');
-const officialSource = path.resolve(__dirname, '../../Imagens/Logo Oficial.png');
+const officialSource = path.resolve(__dirname, '../../assets/logo/Logo Oficial.png');
 const fallbackLogo = path.join(publicDir, 'logo.png');
 const fallbackSvg = path.join(publicDir, 'favicon.svg');
 const logoOut = path.join(publicDir, 'logo.png');

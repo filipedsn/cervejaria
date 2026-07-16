@@ -8,227 +8,18 @@ import { useEvento } from '../contexts/EventoContext';
 import { getSocket } from '../lib/socket';
 import { Loading } from '../components/Loading';
 import { Modal } from '../components/Modal';
-import { CurrencyInput } from '../components/CurrencyInput';
 import { PageHeader } from '../components/PageHeader';
 import { MobileActionBar } from '../components/MobileActionBar';
 import { StatusBadge, comandaStatusVariant } from '../components/StatusBadge';
 import { IconTrash } from '../components/NavIcons';
 import { AdicionarItemComandaModal } from '../components/AdicionarItemComandaModal';
-import { parseCurrencyInput, formatCurrencyInputFromNumber } from '../lib/currency';
-
-type PaymentFormRow = {
-  forma: 'DINHEIRO' | 'PIX' | 'CARTAO';
-  tipoCartao?: 'DEBITO' | 'CREDITO';
-  valor: string;
-};
-const PAYMENT_FORMS: PaymentFormRow['forma'][] = ['PIX', 'DINHEIRO', 'CARTAO'];
-
-function toPaymentForma(row: PaymentFormRow): 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO' {
-  if (row.forma === 'CARTAO') {
-    return row.tipoCartao === 'CREDITO' ? 'CARTAO_CREDITO' : 'CARTAO_DEBITO';
-  }
-  return row.forma;
-}
-
-function isPaymentFormValid(form: PaymentFormRow[]) {
-  return form.every((row) => row.forma !== 'CARTAO' || row.tipoCartao != null);
-}
-
-function paymentSummary(form: PaymentFormRow[], comandaTotal: number) {
-  const informed = form.reduce((s, p) => s + parseCurrencyInput(p.valor), 0);
-  const diff = comandaTotal - informed;
-  return {
-    informed,
-    remaining: diff,
-    isBalanced: Math.abs(diff) <= 0.01,
-  };
-}
-
-function FecharComandaModal({
-  open,
-  onClose,
-  comandaTotal,
-  paymentForm,
-  setPaymentForm,
-  onConfirm,
-  isPending,
-}: {
-  open: boolean;
-  onClose: () => void;
-  comandaTotal: number;
-  paymentForm: PaymentFormRow[];
-  setPaymentForm: React.Dispatch<React.SetStateAction<PaymentFormRow[]>>;
-  onConfirm: () => void;
-  isPending: boolean;
-}) {
-  const { informed, remaining, isBalanced } = paymentSummary(paymentForm, comandaTotal);
-  const progress = comandaTotal > 0 ? Math.min(100, (informed / comandaTotal) * 100) : 0;
-
-  const updateRow = (index: number, patch: Partial<PaymentFormRow>) => {
-    setPaymentForm((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
-  };
-
-  const removeRow = (index: number) => {
-    setPaymentForm((rows) => rows.filter((_, i) => i !== index));
-  };
-
-  const fillRemaining = (index: number) => {
-    const others = paymentForm.reduce(
-      (s, p, j) => (j === index ? s : s + parseCurrencyInput(p.valor)),
-      0,
-    );
-    const rest = Math.max(0, comandaTotal - others);
-    updateRow(index, { valor: rest > 0 ? formatCurrencyInputFromNumber(rest) : '' });
-  };
-
-  const addSplit = () => {
-    const usedForms = new Set(paymentForm.map((p) => p.forma));
-    const nextForm = PAYMENT_FORMS.find((f) => !usedForms.has(f)) ?? 'DINHEIRO';
-    const rest = Math.max(0, remaining);
-    setPaymentForm([
-      ...paymentForm,
-      {
-        forma: nextForm,
-        valor: rest > 0 ? formatCurrencyInputFromNumber(rest) : '',
-        tipoCartao: nextForm === 'CARTAO' ? 'DEBITO' : undefined,
-      },
-    ]);
-  };
-
-  return (
-    <Modal open={open} onClose={onClose} title="Fechar Comanda">
-      <div className="space-y-5">
-        <div className="text-center">
-          <p className="text-sm text-ink-muted">Total da comanda</p>
-          <p className="text-3xl font-bold text-brand-600 tabular-nums">{formatCurrency(comandaTotal)}</p>
-        </div>
-
-        <div className="rounded-xl bg-surface-lighter border border-line p-4 space-y-3">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-ink-muted">Informado</span>
-            <span className="font-semibold tabular-nums text-ink">{formatCurrency(informed)}</span>
-          </div>
-          <div className="h-2 rounded-full bg-line overflow-hidden">
-            <div
-              className={`h-full transition-all duration-300 ${isBalanced ? 'bg-success' : remaining > 0 ? 'bg-brand-600' : 'bg-danger'}`}
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          {isBalanced ? (
-            <p className="text-sm font-medium text-center text-success">Pagamento completo</p>
-          ) : remaining > 0 ? (
-            <p className="text-sm font-medium text-center text-orange-dark tabular-nums">
-              Faltam {formatCurrency(remaining)}
-            </p>
-          ) : (
-            <p className="text-sm font-medium text-center text-danger tabular-nums">
-              Excedeu {formatCurrency(Math.abs(remaining))}
-            </p>
-          )}
-        </div>
-
-        <div className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-            {paymentForm.length > 1 ? 'Dividir pagamento' : 'Forma de pagamento'}
-          </p>
-
-          {paymentForm.map((row, i) => (
-            <div key={i} className="rounded-xl border border-line bg-surface p-3 space-y-3">
-              {paymentForm.length > 1 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-ink-faint">Pagamento {i + 1}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeRow(i)}
-                    className="touch-btn-secondary touch-btn-sm shrink-0"
-                  >
-                    Remover
-                  </button>
-                </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-2">
-                {PAYMENT_FORMS.map((forma) => (
-                  <button
-                    key={forma}
-                    type="button"
-                    onClick={() =>
-                      updateRow(i, {
-                        forma,
-                        tipoCartao: forma === 'CARTAO' ? row.tipoCartao ?? 'DEBITO' : undefined,
-                      })
-                    }
-                    className={`min-h-11 rounded-xl text-sm font-semibold transition-colors ${
-                      row.forma === forma
-                        ? 'bg-brand-600 text-white'
-                        : 'bg-surface border border-line text-ink-muted'
-                    }`}
-                  >
-                    {PAYMENT_LABELS[forma]}
-                  </button>
-                ))}
-              </div>
-
-              {row.forma === 'CARTAO' && (
-                <div className="grid grid-cols-2 gap-2">
-                  {(['DEBITO', 'CREDITO'] as const).map((tipo) => (
-                    <button
-                      key={tipo}
-                      type="button"
-                      onClick={() => updateRow(i, { tipoCartao: tipo })}
-                      className={`min-h-11 rounded-xl text-sm font-semibold transition-colors ${
-                        row.tipoCartao === tipo
-                          ? 'bg-brand-600 text-white'
-                          : 'bg-surface border border-line text-ink-muted'
-                      }`}
-                    >
-                      {tipo === 'DEBITO' ? 'Débito' : 'Crédito'}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex gap-2">
-                <CurrencyInput
-                  className="input flex-1"
-                  value={row.valor}
-                  onChange={(value) => updateRow(i, { valor: value })}
-                  placeholder="R$ 0,00"
-                />
-                {!isBalanced && remaining > 0.01 && (
-                  <button
-                    type="button"
-                    onClick={() => fillRemaining(i)}
-                    className="shrink-0 min-h-14 px-3 rounded-xl border border-brand-200 bg-brand-50 text-brand-600 text-xs font-semibold active:scale-95"
-                  >
-                    Usar
-                    <br />
-                    restante
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {paymentForm.length < 3 && !isBalanced && (
-          <button type="button" onClick={addSplit} className="touch-btn-secondary w-full min-h-12 text-sm">
-            + Dividir pagamento
-          </button>
-        )}
-
-        <button
-          type="button"
-          className="touch-btn-primary w-full"
-          onClick={onConfirm}
-          disabled={isPending || !isBalanced || !isPaymentFormValid(paymentForm)}
-        >
-          {isPending ? 'Fechando...' : `Confirmar pagamento · ${formatCurrency(comandaTotal)}`}
-        </button>
-      </div>
-    </Modal>
-  );
-}
+import {
+  PaymentFormModal,
+  createDefaultPaymentForm,
+  toPaymentForma,
+  type PaymentFormRow,
+} from '../components/PaymentFormModal';
+import { parseCurrencyInput } from '../lib/currency';
 
 export function ComandaDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -366,7 +157,7 @@ export function ComandaDetailPage() {
 
   const openPayment = () => {
     if (!comanda) return;
-    setPaymentForm([{ forma: 'PIX', valor: formatCurrencyInputFromNumber(comanda.total) }]);
+    setPaymentForm(createDefaultPaymentForm(parseFloat(comanda.total)));
     setShowPayment(true);
     setError('');
   };
@@ -423,7 +214,9 @@ export function ComandaDetailPage() {
 
       <div className="card">
         <div className="flex items-start justify-between gap-3">
-          <h2 className="text-xl font-bold min-w-0 truncate leading-tight">{comanda.cliente.nome}</h2>
+          <h2 className="text-xl font-bold min-w-0 truncate leading-tight">
+            {comanda.tipo === 'AVULSA' ? 'Venda avulsa' : comanda.cliente.nome}
+          </h2>
           <StatusBadge variant={comandaStatusVariant(comanda.status)} />
         </div>
         {comanda.cliente.telefone && <p className="text-sm text-ink-faint mt-1">{comanda.cliente.telefone}</p>}
@@ -574,10 +367,12 @@ export function ComandaDetailPage() {
         error={showAddItem ? error : undefined}
       />
 
-      <FecharComandaModal
+      <PaymentFormModal
         open={showPayment}
         onClose={() => setShowPayment(false)}
-        comandaTotal={comandaTotal}
+        title="Fechar Comanda"
+        totalLabel="Total da comanda"
+        total={comandaTotal}
         paymentForm={paymentForm}
         setPaymentForm={setPaymentForm}
         onConfirm={handleClose}

@@ -356,12 +356,19 @@ export interface Comanda {
   eventoId: string;
   clienteId: string;
   status: 'ABERTA' | 'FECHADA' | 'CANCELADA';
+  tipo?: 'COMANDA' | 'AVULSA';
   total: string;
   cliente: Cliente;
   itens: ItemComanda[];
   pagamentos: Pagamento[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface FecharGrupoResponse {
+  totalGrupo: number;
+  comandas: Comanda[];
+  canceladas: Comanda[];
 }
 
 export interface EventoDashboardProduto {
@@ -396,23 +403,6 @@ export interface RankingEntry {
   totalMl: number;
   totalValor: number;
   pedidos: number;
-}
-
-export interface RelatorioEvento {
-  evento: Evento;
-  resumo: {
-    comandasFechadas: number;
-    totalVendido: number;
-    totalMl: number;
-  };
-  porBebida: Array<{
-    produtoId: string;
-    nome: string;
-    quantidade: number;
-    totalMl: number;
-    valor: number;
-  }>;
-  porPagamento: Array<{ forma: string; valor: number }>;
 }
 
 export interface CervejariaDashboard {
