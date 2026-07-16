@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quiver Tap — Ops Panel</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">QT</div>
+        <div>
+          <h1>Quiver Tap Ops</h1>
+          <p class="subtitle">Painel local de operacoes · porta 3099</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span id="lastUpdate" class="last-update"></span>
+        <button type="button" id="btnRefresh" class="btn btn-ghost">
+          <span class="btn-icon" aria-hidden="true">↻</span>
+          Atualizar
+        </button>
+      </div>
+    </header>
+
+    <section class="auth-panel" id="authPanel">
+      <div class="auth-info">
+        <span class="auth-icon" aria-hidden="true">🔐</span>
+        <div>
+          <strong>Autenticacao</strong>
+          <p>Cole o valor de <code>OPS_PANEL_TOKEN</code> do arquivo <code>ops-panel/.env</code> para executar acoes.</p>
+        </div>
+      </div>
+      <div class="auth-form">
+        <label class="field">
+          <span class="field-label">Token de operacao</span>
+          <input type="password" id="opsToken" placeholder="Cole o token aqui" autocomplete="off" />
+        </label>
+        <button type="button" id="btnSaveToken" class="btn btn-secondary">Salvar</button>
+      </div>
+      <div id="tokenStatus" class="token-status token-status--missing">Token nao salvo</div>
+    </section>
+
+    <section class="overview" aria-label="Resumo rapido">
+      <div class="overview-card" id="overviewProd">
+        <span class="overview-label">Producao</span>
+        <span class="overview-value" id="overviewProdValue">—</span>
+      </div>
+      <div class="overview-card" id="overviewDev">
+        <span class="overview-label">Desenvolvimento</span>
+        <span class="overview-value" id="overviewDevValue">—</span>
+      </div>
+      <div class="overview-card" id="overviewCi">
+        <span class="overview-label">GitHub CI</span>
+        <span class="overview-value" id="overviewCiValue">—</span>
+      </div>
+      <div class="overview-card" id="overviewInfra">
+        <span class="overview-label">Infra local</span>
+        <span class="overview-value" id="overviewInfraValue">—</span>
+      </div>
+    </section>
+
+    <main class="layout">
+      <section class="panel-section">
+        <div class="section-title">
+          <h2>Ambientes</h2>
+          <p>Monitore servicos e execute acoes com um clique.</p>
+        </div>
+
+        <div class="card-grid">
+          <article class="card card--prod" id="cardProd">
+            <header class="card-header">
+              <div class="card-title">
+                <span class="card-icon" aria-hidden="true">🚀</span>
+                <div>
+                  <h3>Producao</h3>
+                  <p>API :3001 · site publico</p>
+                </div>
+              </div>
+              <span id="prodBadge" class="chip chip--neutral">—</span>
+            </header>
+            <div class="metrics" id="prodMetrics"></div>
+            <div class="card-actions">
+              <button type="button" id="btnRestart" class="btn btn-primary">
+                <span class="btn-icon" aria-hidden="true">⟳</span>
+                Reiniciar API
+              </button>
+              <button type="button" id="btnDeploy" class="btn btn-danger">
+                <span class="btn-icon" aria-hidden="true">▲</span>
+                Deploy prod
+              </button>
+            </div>
+            <p class="card-hint">Deploy pede confirmacao digitando <strong>DEPLOY</strong>.</p>
+          </article>
+
+          <article class="card card--dev" id="cardDev">
+            <header class="card-header">
+              <div class="card-title">
+                <span class="card-icon" aria-hidden="true">🛠</span>
+                <div>
+                  <h3>Desenvolvimento</h3>
+                  <p>API :3002 · Vite :5202</p>
+                </div>
+              </div>
+              <span id="devBadge" class="chip chip--neutral">—</span>
+            </header>
+            <div class="metrics" id="devMetrics"></div>
+            <div class="card-actions">
+              <button type="button" id="btnDevStart" class="btn btn-primary">
+                <span class="btn-icon" aria-hidden="true">▶</span>
+                Iniciar dev
+              </button>
+              <button type="button" id="btnDevStop" class="btn btn-secondary">
+                <span class="btn-icon" aria-hidden="true">■</span>
+                Parar dev
+              </button>
+            </div>
+            <p class="card-hint">Frontend local: <a href="http://localhost:5202" target="_blank" rel="noopener">localhost:5202</a></p>
+          </article>
+
+          <article class="card card--github">
+            <header class="card-header">
+              <div class="card-title">
+                <span class="card-icon" aria-hidden="true">🐙</span>
+                <div>
+                  <h3>GitHub</h3>
+                  <p>Repositorio e CI</p>
+                </div>
+              </div>
+            </header>
+            <div class="metrics" id="githubMetrics"></div>
+            <div class="link-row">
+              <a id="linkPulls" class="link-chip" href="#" target="_blank" rel="noopener">Pull Requests</a>
+              <a id="linkActions" class="link-chip" href="#" target="_blank" rel="noopener">Actions CI</a>
+              <a id="linkBranches" class="link-chip" href="#" target="_blank" rel="noopener">Branches</a>
+              <a id="linkCommits" class="link-chip" href="#" target="_blank" rel="noopener">Commits</a>
+              <a class="link-chip" href="https://tap.quivercloud.com.br" target="_blank" rel="noopener">Site prod</a>
+            </div>
+          </article>
+
+          <article class="card card--infra">
+            <header class="card-header">
+              <div class="card-title">
+                <span class="card-icon" aria-hidden="true">⚙</span>
+                <div>
+                  <h3>Infra local</h3>
+                  <p>Processos e backups</p>
+                </div>
+              </div>
+            </header>
+            <div class="metrics" id="infraMetrics"></div>
+            <div class="metrics" id="backupMetrics"></div>
+            <div class="card-actions">
+              <button type="button" id="btnBackupDb" class="btn btn-secondary">
+                <span class="btn-icon" aria-hidden="true">💾</span>
+                Backup banco prod
+              </button>
+              <button type="button" id="btnSyncProdDev" class="btn btn-danger">
+                <span class="btn-icon" aria-hidden="true">⇄</span>
+                Copiar prod → dev
+              </button>
+            </div>
+            <p class="card-hint">Backup abre seletor de pasta do Windows. Copiar prod→dev <strong>substitui</strong> <code>cervejaria_dev</code> e para o ambiente dev antes.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel-section" id="terminalSection">
+        <div class="section-title">
+          <h2>Terminal de execucao</h2>
+          <p>Saida em tempo real dos scripts PowerShell ao clicar nos botoes acima.</p>
+        </div>
+
+        <article class="card card--terminal" id="terminalCard">
+          <div class="terminal-bar">
+            <div class="terminal-dots" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </div>
+            <span id="terminalStatus" class="terminal-status">Aguardando acao...</span>
+          </div>
+          <pre id="terminalOutput" class="log log--terminal">Nenhuma acao executada ainda.
+
+Clique em Iniciar dev, Backup banco prod, Copiar prod → dev, etc.
+A saida aparecera aqui linha a linha.</pre>
+        </article>
+      </section>
+
+      <section class="panel-section">
+        <div class="section-title">
+          <h2>Logs do disco</h2>
+          <p id="logDescription">Arquivos persistentes em deploy/logs/</p>
+        </div>
+
+        <article class="card card--logs">
+          <div class="log-tabs" id="logTabs" role="tablist" aria-label="Logs disponiveis"></div>
+          <pre id="logOutput" class="log log--file"></pre>
+        </article>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p><strong>Fluxo sugerido:</strong> desenvolver → PR + CI verde → merge na main → <em>Deploy prod</em> → conferir site.</p>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
