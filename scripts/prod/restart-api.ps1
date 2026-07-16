@@ -37,5 +37,5 @@ if (Test-PortListening -Port $paths.ApiPort) {
 
 Write-WatchdogLog -Paths $paths -Message 'API reiniciada via restart-api.ps1.'
 
-& "$PSScriptRoot\start-api.ps1"
+& "$PSScriptRoot\start-api.ps1" -Force -Quiet:$Quiet
 exit $LASTEXITCODE

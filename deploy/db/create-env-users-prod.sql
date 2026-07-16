@@ -19,10 +19,12 @@ GRANT CONNECT ON DATABASE cervejaria_dev TO cervejaria, cervejaria_dev;
 REVOKE CONNECT ON DATABASE cervejaria FROM cervejaria_dev;
 REVOKE CONNECT ON DATABASE cervejaria_dev FROM cervejaria_prod;
 
-GRANT USAGE ON SCHEMA public TO cervejaria_prod;
+GRANT USAGE, CREATE ON SCHEMA public TO cervejaria_prod;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO cervejaria_prod;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO cervejaria_prod;
 GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public TO cervejaria_prod;
+GRANT ALL PRIVILEGES ON ALL TYPES IN SCHEMA public TO cervejaria_prod;
 ALTER DEFAULT PRIVILEGES FOR ROLE cervejaria IN SCHEMA public GRANT ALL ON TABLES TO cervejaria_prod;
 ALTER DEFAULT PRIVILEGES FOR ROLE cervejaria IN SCHEMA public GRANT ALL ON SEQUENCES TO cervejaria_prod;
 ALTER DEFAULT PRIVILEGES FOR ROLE cervejaria IN SCHEMA public GRANT ALL ON FUNCTIONS TO cervejaria_prod;
+ALTER DEFAULT PRIVILEGES FOR ROLE cervejaria IN SCHEMA public GRANT ALL ON TYPES TO cervejaria_prod;

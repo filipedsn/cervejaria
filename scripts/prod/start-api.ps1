@@ -1,5 +1,10 @@
 # Inicia a API de produção (backend/dist) em segundo plano.
 
+param(
+  [switch]$Force,
+  [switch]$Quiet
+)
+
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
 
@@ -7,8 +12,13 @@ $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
 
 if (Test-ApiHealthy -HealthUrl $paths.ReadyUrl) {
-  Write-Host "API ja esta no ar ($($paths.ReadyUrl))." -ForegroundColor Green
-  exit 0
+  if (-not $Force) {
+    Write-Host "API ja esta no ar ($($paths.ReadyUrl))." -ForegroundColor Green
+    exit 0
+  }
+  if (-not $Quiet) {
+    Write-Host 'Forcando novo start da API (ignorando health check)...' -ForegroundColor Yellow
+  }
 }
 
 if (-not (Test-Path $paths.ApiEntry)) {

@@ -102,7 +102,7 @@ try {
   }
 
   if ($plan.BuildBE) {
-    Invoke-NpmStep -Label 'Build backend (tsc)' -NpmArgs @('run', 'build', '--prefix', 'backend')
+    Invoke-NpmStep -Label 'Build backend (tsc)' -NpmArgs @('run', 'build:deploy', '--prefix', 'backend')
     if (-not (Test-Path $paths.ApiEntry)) {
       throw 'backend/dist/index.js nao encontrado apos build.'
     }

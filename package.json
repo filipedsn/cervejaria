@@ -24,7 +24,7 @@
     "prod:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/uninstall-autostart.ps1",
     "build": "npm run build --prefix frontend && npm run build --prefix backend",
     "ci:frontend": "npm run build:deploy --prefix frontend",
-    "ci:backend": "npm run build --prefix backend",
+    "ci:backend": "npm run build:deploy --prefix backend",
     "ci:validate": "npm run ci:frontend && cd backend && npx prisma generate && npx prisma validate",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",

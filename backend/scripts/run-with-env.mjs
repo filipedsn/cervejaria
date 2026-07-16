@@ -71,9 +71,20 @@ function assertDatabaseEnvironment(name, databaseUrl) {
 
 assertDatabaseEnvironment(envName, fileVars.DATABASE_URL);
 
+const isPrismaMigrate =
+  command === 'npx' &&
+  (args[0] === 'prisma' || args[0]?.endsWith('prisma')) &&
+  (args[1] === 'migrate' || args.includes('migrate'));
+
+const databaseUrl =
+  isPrismaMigrate && fileVars.MIGRATE_DATABASE_URL
+    ? fileVars.MIGRATE_DATABASE_URL
+    : fileVars.DATABASE_URL;
+
 const childEnv = {
   ...process.env,
   ...fileVars,
+  DATABASE_URL: databaseUrl,
   NODE_ENV: envName === 'production' ? 'production' : 'development',
 };
 
