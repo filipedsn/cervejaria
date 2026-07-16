@@ -197,6 +197,14 @@ function EventoHeroResumo({ eventoId }: { eventoId: string }) {
         value={resumo ? String(resumo.comandasFechadas) : '—'}
       />
       <HeroStatCell
+        label="Vendas avulsas"
+        value={resumo ? String(resumo.vendasAvulsas) : '—'}
+      />
+      <HeroStatCell
+        label="Receita avulsa"
+        value={resumo ? formatCurrency(resumo.receitaAvulsa) : '—'}
+      />
+      <HeroStatCell
         label="Valor aberto"
         value={resumo ? formatCurrency(resumo.valorAberto) : '—'}
       />

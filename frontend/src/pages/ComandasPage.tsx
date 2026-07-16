@@ -216,6 +216,8 @@ export function ComandasPage() {
         <div className="grid grid-cols-2 gap-3">
           <StatCard label="Comandas abertas" value={String(resumo.comandasAbertas)} />
           <StatCard label="Comandas fechadas" value={String(resumo.comandasFechadas)} accent="green" />
+          <StatCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} />
+          <StatCard label="Receita avulsa" value={formatCurrency(resumo.receitaAvulsa)} accent="green" />
           <StatCard label="Valor em aberto" value={formatCurrency(resumo.valorAberto)} />
           <StatCard label="Valor fechado" value={formatCurrency(resumo.valorFechado)} accent="green" />
         </div>

@@ -59,19 +59,29 @@ export async function buildEventoDashboard(eventoId: string, cervejariaId: strin
 
   let comandasAbertas = 0;
   let comandasFechadas = 0;
+  let vendasAvulsas = 0;
   let valorAberto = 0;
   let valorFechado = 0;
+  let receitaAvulsa = 0;
   const aberto = new Map<string, ProdutoAgg>();
   const fechado = new Map<string, ProdutoAgg>();
 
   for (const comanda of comandas) {
+    const isAvulsa = comanda.tipo === 'AVULSA';
     if (comanda.status === 'ABERTA') {
-      comandasAbertas += 1;
-      valorAberto += toNumber(comanda.total);
-      for (const item of comanda.itens) addItem(aberto, item);
+      if (!isAvulsa) {
+        comandasAbertas += 1;
+        valorAberto += toNumber(comanda.total);
+        for (const item of comanda.itens) addItem(aberto, item);
+      }
     } else if (comanda.status === 'FECHADA') {
-      comandasFechadas += 1;
-      valorFechado += toNumber(comanda.total);
+      if (isAvulsa) {
+        vendasAvulsas += 1;
+        receitaAvulsa += toNumber(comanda.total);
+      } else {
+        comandasFechadas += 1;
+        valorFechado += toNumber(comanda.total);
+      }
       for (const item of comanda.itens) addItem(fechado, item);
     }
   }
@@ -81,8 +91,10 @@ export async function buildEventoDashboard(eventoId: string, cervejariaId: strin
     resumo: {
       comandasAbertas,
       comandasFechadas,
+      vendasAvulsas,
       valorAberto,
       valorFechado,
+      receitaAvulsa,
     },
     porProduto: {
       aberto: mapToSortedArray(aberto),

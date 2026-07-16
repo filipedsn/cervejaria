@@ -58,8 +58,10 @@ function FluxChartTooltip({
   if (!active || !payload?.length) return null;
   const row = payload[0]?.payload as {
     fechado?: number;
+    fechadoAvulsa?: number;
     aberto?: number;
     comandasFechadas?: number;
+    comandasAvulsas?: number;
   };
   return (
     <div className="rounded-lg border border-line bg-surface px-3 py-2 text-sm shadow-lg space-y-1">
@@ -67,11 +69,15 @@ function FluxChartTooltip({
       {payload.map((entry) => (
         <p key={entry.dataKey} className="tabular-nums" style={{ color: entry.color }}>
           {entry.dataKey === 'fechado' && `Fechado: ${formatCurrency(entry.value ?? 0)}`}
+          {entry.dataKey === 'fechadoAvulsa' && `Venda avulsa: ${formatCurrency(entry.value ?? 0)}`}
           {entry.dataKey === 'aberto' && `Aberto: ${formatCurrency(entry.value ?? 0)}`}
         </p>
       ))}
       {row?.comandasFechadas != null && row.comandasFechadas > 0 && (
         <p className="text-ink-muted text-xs">{row.comandasFechadas} comanda(s) fechadas</p>
+      )}
+      {row?.comandasAvulsas != null && row.comandasAvulsas > 0 && (
+        <p className="text-ink-muted text-xs">{row.comandasAvulsas} venda(s) avulsa(s)</p>
       )}
     </div>
   );
@@ -128,8 +134,10 @@ export function ResumoExecutivoPage() {
   const fluxoChart = fluxoPorIntervalo.map((i) => ({
     name: i.intervalo,
     fechado: i.fechado,
+    fechadoAvulsa: i.fechadoAvulsa ?? 0,
     aberto: i.aberto,
     comandasFechadas: i.comandasFechadas,
+    comandasAvulsas: i.comandasAvulsas ?? 0,
   }));
   const chopeChart = fluxoPorIntervalo.map((i) => ({
     name: i.intervalo,
@@ -154,9 +162,11 @@ export function ResumoExecutivoPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         <KpiCard label="Receita total" value={formatCurrency(resumo.receitaTotal)} />
-        <KpiCard label="Comandas" value={String(resumo.comandasAtendidas)} />
+        <KpiCard label="Comandas regulares" value={String(resumo.comandasRegulares)} />
+        <KpiCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} />
+        <KpiCard label="Receita avulsa" value={formatCurrency(resumo.receitaAvulsa)} />
         <KpiCard label="Ticket médio" value={formatCurrency(resumo.ticketMedio)} />
         <KpiCard label="Chope" value={formatLiters(resumo.chopeMl)} />
         <KpiCard label="Clientes" value={String(resumo.clientesUnicos)} />
@@ -197,7 +207,11 @@ export function ResumoExecutivoPage() {
                     <Legend
                       verticalAlign="bottom"
                       height={28}
-                      formatter={(value) => (value === 'fechado' ? 'Fechado' : 'Aberto')}
+                      formatter={(value) => {
+                        if (value === 'fechado') return 'Fechado';
+                        if (value === 'fechadoAvulsa') return 'Venda avulsa';
+                        return 'Aberto';
+                      }}
                     />
                     <Line
                       type="monotone"
@@ -207,6 +221,15 @@ export function ResumoExecutivoPage() {
                       strokeWidth={2.5}
                       dot={showDots ? { fill: 'var(--color-danger)', strokeWidth: 0, r: 3 } : false}
                       activeDot={{ r: 5, fill: 'var(--color-danger)' }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="fechadoAvulsa"
+                      name="fechadoAvulsa"
+                      stroke="var(--color-orange)"
+                      strokeWidth={2.5}
+                      dot={showDots ? { fill: 'var(--color-orange)', strokeWidth: 0, r: 3 } : false}
+                      activeDot={{ r: 5, fill: 'var(--color-orange)' }}
                     />
                     <Line
                       type="monotone"

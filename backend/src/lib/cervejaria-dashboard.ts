@@ -63,6 +63,8 @@ async function fetchClosedComandas(cervejariaId: string, inicio: Date, fim: Date
 
 function aggregateComandas(comandas: ClosedComanda[], fechadoPorCtx: ReportFechadoPorContext) {
   let receitaTotal = 0;
+  let vendasAvulsas = 0;
+  let receitaAvulsa = 0;
   let chopeMl = 0;
   const porPagamento = new Map<string, number>();
   const porProduto = new Map<string, { produtoId: string; nome: string; quantidade: number; receita: number }>();
@@ -71,6 +73,11 @@ function aggregateComandas(comandas: ClosedComanda[], fechadoPorCtx: ReportFecha
   for (const comanda of comandas) {
     const valor = toNumber(comanda.total);
     receitaTotal += valor;
+
+    if (comanda.tipo === 'AVULSA') {
+      vendasAvulsas += 1;
+      receitaAvulsa += valor;
+    }
 
     const resolved = resolveFechadoPorForReport(comanda, fechadoPorCtx);
     const funcKey = resolved.groupKey;
@@ -131,6 +138,8 @@ function aggregateComandas(comandas: ClosedComanda[], fechadoPorCtx: ReportFecha
 
   return {
     receitaTotal,
+    vendasAvulsas,
+    receitaAvulsa,
     chopeMl,
     comandasAtendidas,
     ticketMedio,
@@ -214,10 +223,17 @@ async function buildEventosRecentes(
   const rows = eventos.map((evento) => {
     const evComandas = comandasByEvento.get(evento.id) ?? [];
     let receitaTotal = 0;
+    let vendasAvulsas = 0;
+    let receitaAvulsa = 0;
     let chopeMl = 0;
 
     for (const comanda of evComandas) {
-      receitaTotal += toNumber(comanda.total);
+      const valor = toNumber(comanda.total);
+      receitaTotal += valor;
+      if (comanda.tipo === 'AVULSA') {
+        vendasAvulsas += 1;
+        receitaAvulsa += valor;
+      }
       for (const item of comanda.itens) {
         if (isBebidaChope(item.produto.tipo, item.produto.formato)) {
           chopeMl += item.volumeMl * item.quantidade;
@@ -237,6 +253,8 @@ async function buildEventosRecentes(
       horaInicio: evento.horaInicio,
       receitaTotal,
       comandasAtendidas,
+      vendasAvulsas,
+      receitaAvulsa,
       ticketMedio,
       chopeMl,
       duracaoHoras,
@@ -301,6 +319,8 @@ export async function buildCervejariaDashboard(
     resumo: {
       receitaTotal: resumo.receitaTotal,
       comandasAtendidas: resumo.comandasAtendidas,
+      vendasAvulsas: resumo.vendasAvulsas,
+      receitaAvulsa: resumo.receitaAvulsa,
       ticketMedio: resumo.ticketMedio,
       chopeMl: resumo.chopeMl,
       variacaoReceitaMesAnterior: variacaoReceita,

@@ -386,8 +386,10 @@ export interface EventoDashboard {
   resumo: {
     comandasAbertas: number;
     comandasFechadas: number;
+    vendasAvulsas: number;
     valorAberto: number;
     valorFechado: number;
+    receitaAvulsa: number;
   };
   porProduto: {
     aberto: EventoDashboardProduto[];
@@ -410,6 +412,8 @@ export interface CervejariaDashboard {
   resumo: {
     receitaTotal: number;
     comandasAtendidas: number;
+    vendasAvulsas: number;
+    receitaAvulsa: number;
     ticketMedio: number;
     chopeMl: number;
     variacaoReceitaMesAnterior: number | null;
@@ -442,6 +446,8 @@ export interface CervejariaDashboard {
     horaInicio: string;
     receitaTotal: number;
     comandasAtendidas: number;
+    vendasAvulsas: number;
+    receitaAvulsa: number;
     ticketMedio: number;
     chopeMl: number;
     duracaoHoras: number;
@@ -462,6 +468,9 @@ export interface EventoResumoExecutivo {
   resumo: {
     receitaTotal: number;
     comandasAtendidas: number;
+    comandasRegulares: number;
+    vendasAvulsas: number;
+    receitaAvulsa: number;
     ticketMedio: number;
     chopeMl: number;
     clientesUnicos: number;
@@ -477,10 +486,12 @@ export interface EventoResumoExecutivo {
     inicio: string;
     pedido: number;
     fechado: number;
+    fechadoAvulsa: number;
     aberto: number;
     chopeMl: number;
     itens: number;
     comandasFechadas: number;
+    comandasAvulsas: number;
   }>;
   tempoComanda: {
     mediaMinutos: number;

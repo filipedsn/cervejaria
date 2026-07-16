@@ -247,13 +247,15 @@ export function DashboardPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         <KpiCard
           label="Receita total"
           value={formatCurrency(resumo.receitaTotal)}
           trend={resumo.variacaoReceitaMesAnterior}
         />
         <KpiCard label="Comandas atendidas" value={String(resumo.comandasAtendidas)} />
+        <KpiCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} />
+        <KpiCard label="Receita avulsa" value={formatCurrency(resumo.receitaAvulsa)} />
         <KpiCard label="Ticket médio" value={formatCurrency(resumo.ticketMedio)} />
         <KpiCard label="Chope vendido" value={formatLiters(resumo.chopeMl)} />
       </div>
@@ -316,6 +318,11 @@ export function DashboardPage() {
                       <span className="text-ink-muted">{formatCurrency(e.receitaPorHora)}/h</span>
                       <span className="text-ink-muted">{e.chopeLitrosPorHora.toFixed(1)} L/h</span>
                       <span className="text-ink-faint">{e.comandasAtendidas} comandas</span>
+                      {e.vendasAvulsas > 0 && (
+                        <span className="text-ink-faint">
+                          {e.vendasAvulsas} avulsas · {formatCurrency(e.receitaAvulsa)}
+                        </span>
+                      )}
                     </div>
                   </Link>
                 ))}

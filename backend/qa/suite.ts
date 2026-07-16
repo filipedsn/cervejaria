@@ -994,12 +994,13 @@ async function main() {
   console.log('\n=== FUNCIONAL (venda avulsa) ===');
   let vaComandaId = '';
   let vaTotal = 0;
-  let vaValorFechadoBefore = 0;
+  let vaReceitaAvulsaBefore = 0;
+  let vaVendasAvulsasBefore = 0;
   let vaRankingMlBefore = 0;
   let vaCrmGastoBefore = 0;
 
   await test({ id: 'RF-VA-01', category: 'Funcional', name: 'Venda avulsa: FECHADA + receita no dashboard', requirement: 'RF-VA' }, async () => {
-    const dashBefore = await api<{ resumo: { valorFechado: number } }>(
+    const dashBefore = await api<{ resumo: { receitaAvulsa: number; vendasAvulsas: number; valorFechado: number } }>(
       'GET',
       `/api/eventos/${func.eventoId}/dashboard`,
       { token: func.donoToken },
@@ -1007,7 +1008,9 @@ async function main() {
     if (dashBefore.status !== 200) {
       return { status: 'failed', message: `Dashboard HTTP ${dashBefore.status}`, actual: String(dashBefore.status) };
     }
-    vaValorFechadoBefore = dashBefore.data.resumo.valorFechado;
+    vaReceitaAvulsaBefore = dashBefore.data.resumo.receitaAvulsa;
+    vaVendasAvulsasBefore = dashBefore.data.resumo.vendasAvulsas;
+    const valorFechadoBefore = dashBefore.data.resumo.valorFechado;
 
     const venda = await api<{ id: string; status: string; tipo: string; total: string | number }>(
       'POST',
@@ -1037,7 +1040,7 @@ async function main() {
     vaComandaId = venda.data.id;
     vaTotal = Number(venda.data.total);
 
-    const dashAfter = await api<{ resumo: { valorFechado: number } }>(
+    const dashAfter = await api<{ resumo: { receitaAvulsa: number; vendasAvulsas: number; valorFechado: number } }>(
       'GET',
       `/api/eventos/${func.eventoId}/dashboard`,
       { token: func.donoToken },
@@ -1045,11 +1048,27 @@ async function main() {
     if (dashAfter.status !== 200) {
       return { status: 'failed', message: `Dashboard pós-venda HTTP ${dashAfter.status}`, actual: String(dashAfter.status) };
     }
-    if (dashAfter.data.resumo.valorFechado < vaValorFechadoBefore + vaTotal - 0.01) {
+    if (dashAfter.data.resumo.receitaAvulsa < vaReceitaAvulsaBefore + vaTotal - 0.01) {
       return {
         status: 'failed',
-        message: 'valorFechado não incluiu venda avulsa',
-        expected: String(vaValorFechadoBefore + vaTotal),
+        message: 'receitaAvulsa não incluiu venda avulsa',
+        expected: String(vaReceitaAvulsaBefore + vaTotal),
+        actual: String(dashAfter.data.resumo.receitaAvulsa),
+      };
+    }
+    if (dashAfter.data.resumo.vendasAvulsas < vaVendasAvulsasBefore + 1) {
+      return {
+        status: 'failed',
+        message: 'vendasAvulsas não incrementou',
+        expected: String(vaVendasAvulsasBefore + 1),
+        actual: String(dashAfter.data.resumo.vendasAvulsas),
+      };
+    }
+    if (Math.abs(dashAfter.data.resumo.valorFechado - valorFechadoBefore) > 0.01) {
+      return {
+        status: 'failed',
+        message: 'valorFechado não deveria incluir venda avulsa',
+        expected: String(valorFechadoBefore),
         actual: String(dashAfter.data.resumo.valorFechado),
       };
     }
@@ -1163,7 +1182,7 @@ async function main() {
 
     await api('PATCH', `/api/eventos/${func.eventoId}/fechar`, { token: func.donoToken });
 
-    const dashFechado = await api<{ resumo: { receitaTotal: number } }>(
+    const dashFechado = await api<{ resumo: { receitaTotal: number; vendasAvulsas: number; receitaAvulsa: number } }>(
       'GET',
       `/api/cervejaria/dashboard?ano=${ano}&mes=${mes}`,
       { token: func.donoToken },
@@ -1180,6 +1199,22 @@ async function main() {
         message: 'BI não incluiu vendas avulsas após fechar evento',
         expected: `>${receitaAberto}`,
         actual: String(dashFechado.data.resumo.receitaTotal),
+      };
+    }
+    if (dashFechado.data.resumo.vendasAvulsas < 1) {
+      return {
+        status: 'failed',
+        message: 'BI vendasAvulsas deveria ser >= 1',
+        expected: '>=1',
+        actual: String(dashFechado.data.resumo.vendasAvulsas),
+      };
+    }
+    if (dashFechado.data.resumo.receitaAvulsa <= 0) {
+      return {
+        status: 'failed',
+        message: 'BI receitaAvulsa deveria ser > 0',
+        expected: '>0',
+        actual: String(dashFechado.data.resumo.receitaAvulsa),
       };
     }
     return {
@@ -1239,6 +1274,51 @@ async function main() {
     await prisma.comanda.deleteMany({ where: { id: { in: [avulsaAberta.id, c2.data.id] } } });
 
     return expectStatus(r.status, 400, 'Grupo com venda avulsa rejeitado');
+  });
+
+  await test({ id: 'RF-VA-06', category: 'Funcional', name: 'Venda avulsa: métricas no resumo executivo e fluxo', requirement: 'RF-VA' }, async () => {
+    await prisma.comanda.deleteMany({ where: { eventoId: func.eventoId, status: 'ABERTA' } });
+
+    const fechar = await api('PATCH', `/api/eventos/${func.eventoId}/fechar`, { token: func.donoToken });
+    if (fechar.status !== 200) {
+      return { status: 'failed', message: 'Falha ao fechar evento', actual: String(fechar.status) };
+    }
+
+    const resumo = await api<{
+      resumo: { vendasAvulsas: number; receitaAvulsa: number; comandasRegulares: number };
+      fluxoPorIntervalo: Array<{ fechadoAvulsa: number; comandasAvulsas: number }>;
+    }>('GET', `/api/eventos/${func.eventoId}/resumo-executivo`, { token: func.donoToken });
+
+    await api('PATCH', `/api/eventos/${func.eventoId}/reabrir`, { token: func.donoToken });
+
+    if (resumo.status !== 200) {
+      return { status: 'failed', message: `Resumo HTTP ${resumo.status}`, actual: String(resumo.status) };
+    }
+    if (resumo.data.resumo.vendasAvulsas < 3) {
+      return {
+        status: 'failed',
+        message: 'Resumo vendasAvulsas insuficiente',
+        expected: '>=3',
+        actual: String(resumo.data.resumo.vendasAvulsas),
+      };
+    }
+    if (resumo.data.resumo.receitaAvulsa <= 0) {
+      return {
+        status: 'failed',
+        message: 'Resumo receitaAvulsa deveria ser > 0',
+        expected: '>0',
+        actual: String(resumo.data.resumo.receitaAvulsa),
+      };
+    }
+    const temBucketAvulsa = resumo.data.fluxoPorIntervalo.some((b) => b.fechadoAvulsa > 0);
+    if (!temBucketAvulsa) {
+      return { status: 'failed', message: 'fluxoPorIntervalo sem fechadoAvulsa', expected: 'bucket>0', actual: '0' };
+    }
+    return {
+      message: `${resumo.data.resumo.vendasAvulsas} avulsas · R$ ${resumo.data.resumo.receitaAvulsa.toFixed(2)}`,
+      expected: '>=3 avulsas',
+      actual: String(resumo.data.resumo.vendasAvulsas),
+    };
   });
 
   console.log('\n=== FUNCIONAL (catálogo / evento) ===');

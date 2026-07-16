@@ -156,6 +156,12 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
   let receitaTotal = 0;
 
+  let vendasAvulsas = 0;
+
+  let receitaAvulsa = 0;
+
+  let comandasRegulares = 0;
+
   let chopeMl = 0;
 
   const clientes = new Set<string>();
@@ -204,7 +210,11 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
     const isAvulsa = comanda.tipo === 'AVULSA';
 
-    if (!isAvulsa) {
+    if (isAvulsa) {
+      vendasAvulsas += 1;
+      receitaAvulsa += valor;
+    } else {
+      comandasRegulares += 1;
       clientes.add(comanda.clienteId);
     }
 
@@ -439,6 +449,12 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
       receitaTotal,
 
       comandasAtendidas,
+
+      comandasRegulares,
+
+      vendasAvulsas,
+
+      receitaAvulsa,
 
       ticketMedio,
 

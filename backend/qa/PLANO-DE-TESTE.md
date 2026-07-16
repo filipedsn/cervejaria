@@ -127,6 +127,14 @@ Cervejaria dedicada `qa-multi-trailer` com **2 trailers**, **2 eventos ABERTOS**
 | MT-06 | `POST /eventos` mesmo trailer/horário | 409 |
 | MT-07 | `GET /trailers?ativo=true` | 2 trailers ativos |
 
+## 11. Venda avulsa (RF-VA)
+
+| ID | Caso | Esperado |
+|----|------|----------|
+| RF-VA-01 | Dashboard ao vivo após venda avulsa | `receitaAvulsa` e `vendasAvulsas` incrementam; `valorFechado` não inclui avulsa |
+| RF-VA-04 | Dashboard mensal após fechar evento | `receitaTotal`, `vendasAvulsas` e `receitaAvulsa` refletem avulsas |
+| RF-VA-06 | Resumo executivo + fluxo 15 min | `vendasAvulsas`, `receitaAvulsa`, `comandasRegulares`; bucket com `fechadoAvulsa > 0` |
+
 ## 10. Portal cliente (PORTAL)
 
 | ID | Caso | Esperado |

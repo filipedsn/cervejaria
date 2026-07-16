@@ -22,6 +22,7 @@ type EventoWindowInput = {
 export type FluxoComandaInput = ComandaCloseInput & {
   id: string;
   status: string;
+  tipo?: 'COMANDA' | 'AVULSA';
   createdAt: Date;
   itens: Array<{
     id: string;
@@ -130,18 +131,38 @@ export function buildFluxoPorIntervalo(
 
   const statsMap = new Map<
     number,
-    { pedido: number; fechado: number; aberto: number; chopeMl: number; itens: number; comandasFechadas: number }
+    {
+      pedido: number;
+      fechado: number;
+      fechadoAvulsa: number;
+      aberto: number;
+      chopeMl: number;
+      itens: number;
+      comandasFechadas: number;
+      comandasAvulsas: number;
+    }
   >();
 
+  const emptyStats = () => ({
+    pedido: 0,
+    fechado: 0,
+    fechadoAvulsa: 0,
+    aberto: 0,
+    chopeMl: 0,
+    itens: 0,
+    comandasFechadas: 0,
+    comandasAvulsas: 0,
+  });
+
   for (let t = startMs; t < endMs; t += INTERVAL_MS) {
-    statsMap.set(t, { pedido: 0, fechado: 0, aberto: 0, chopeMl: 0, itens: 0, comandasFechadas: 0 });
+    statsMap.set(t, emptyStats());
   }
 
   for (const comanda of activeComandas) {
     for (const item of comanda.itens) {
       const bucketTime = floorTo15MinUtc(item.createdAt, BRAZIL_TZ).getTime();
       if (!statsMap.has(bucketTime)) {
-        statsMap.set(bucketTime, { pedido: 0, fechado: 0, aberto: 0, chopeMl: 0, itens: 0, comandasFechadas: 0 });
+        statsMap.set(bucketTime, emptyStats());
       }
       const stats = statsMap.get(bucketTime)!;
       stats.pedido += itemValor(item);
@@ -158,11 +179,17 @@ export function buildFluxoPorIntervalo(
     if (comanda.status === 'FECHADA') {
       const bucketTime = floorTo15MinUtc(getCloseTime(comanda), BRAZIL_TZ).getTime();
       if (!statsMap.has(bucketTime)) {
-        statsMap.set(bucketTime, { pedido: 0, fechado: 0, aberto: 0, chopeMl: 0, itens: 0, comandasFechadas: 0 });
+        statsMap.set(bucketTime, emptyStats());
       }
       const stats = statsMap.get(bucketTime)!;
-      stats.fechado += toNumber(comanda.total);
-      stats.comandasFechadas += 1;
+      const valor = toNumber(comanda.total);
+      if (comanda.tipo === 'AVULSA') {
+        stats.fechadoAvulsa += valor;
+        stats.comandasAvulsas += 1;
+      } else {
+        stats.fechado += valor;
+        stats.comandasFechadas += 1;
+      }
     }
   }
 
@@ -178,13 +205,15 @@ export function buildFluxoPorIntervalo(
       inicio: new Date(t).toISOString(),
       pedido: stats.pedido,
       fechado: stats.fechado,
+      fechadoAvulsa: stats.fechadoAvulsa,
       aberto: stats.aberto,
       chopeMl: stats.chopeMl,
       itens: stats.itens,
       comandasFechadas: stats.comandasFechadas,
+      comandasAvulsas: stats.comandasAvulsas,
     }));
 }
 
-export function sumFluxoFechado(buckets: Array<{ fechado: number }>): number {
-  return buckets.reduce((sum, b) => sum + b.fechado, 0);
+export function sumFluxoFechado(buckets: Array<{ fechado: number; fechadoAvulsa?: number }>): number {
+  return buckets.reduce((sum, b) => sum + b.fechado + (b.fechadoAvulsa ?? 0), 0);
 }
