@@ -1210,6 +1210,12 @@ async function main() {
   } | null = null;
 
   await test({ id: 'RF-14d', category: 'Funcional', name: 'Resumo: receitaTotal após grupo', requirement: 'RF-14' }, async () => {
+    // RF-17a/e abrem comandas extras no mesmo evento; cancelar antes de fechar o evento.
+    await prisma.comanda.updateMany({
+      where: { eventoId: lifecycle.eventoId, status: 'ABERTA' },
+      data: { status: 'CANCELADA' },
+    });
+
     const fecharEvento = await api('PATCH', `/api/eventos/${lifecycle.eventoId}/fechar`, { token: lifecycle.donoToken });
     if (fecharEvento.status !== 200) {
       return { status: 'failed', message: 'Fechar evento falhou', actual: String(fecharEvento.status) };
@@ -1221,15 +1227,21 @@ async function main() {
     }
     rf14Resumo = resumo.data;
 
-    if (Math.abs(resumo.data.resumo.receitaTotal - rf14TotalGrupo) > 0.01) {
+    const fechadasAgg = await prisma.comanda.aggregate({
+      where: { eventoId: lifecycle.eventoId, status: 'FECHADA' },
+      _sum: { total: true },
+    });
+    const expectedReceita = Number(fechadasAgg._sum.total ?? 0);
+
+    if (Math.abs(resumo.data.resumo.receitaTotal - expectedReceita) > 0.01) {
       return {
         status: 'failed',
         message: 'receitaTotal diverge',
-        expected: String(rf14TotalGrupo),
+        expected: String(expectedReceita),
         actual: String(resumo.data.resumo.receitaTotal),
       };
     }
-    return { message: `receitaTotal R$ ${resumo.data.resumo.receitaTotal.toFixed(2)}`, expected: String(rf14TotalGrupo), actual: String(resumo.data.resumo.receitaTotal) };
+    return { message: `receitaTotal R$ ${resumo.data.resumo.receitaTotal.toFixed(2)}`, expected: String(expectedReceita), actual: String(resumo.data.resumo.receitaTotal) };
   });
 
   await test({ id: 'RF-14e', category: 'Funcional', name: 'Resumo: comandasAtendidas >= 2', requirement: 'RF-14' }, async () => {

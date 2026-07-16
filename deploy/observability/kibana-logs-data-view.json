@@ -1,0 +1,7 @@
+{
+  "data_view": {
+    "title": "logs-generic.otel-default*",
+    "name": "Quiver Tap OTel Logs",
+    "timeFieldName": "@timestamp"
+  }
+}

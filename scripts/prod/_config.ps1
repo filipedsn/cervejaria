@@ -256,6 +256,40 @@ function Test-PortListening {
   return $null -ne (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
 }
 
+function Get-PortListenerPid {
+  param([int]$Port)
+
+  $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($conn -and $conn.OwningProcess) { return [int]$conn.OwningProcess }
+  return 0
+}
+
+function Stop-PortListener {
+  param(
+    [int]$Port,
+    [switch]$Quiet
+  )
+
+  for ($attempt = 1; $attempt -le 5; $attempt++) {
+    $listenerPid = Get-PortListenerPid -Port $Port
+    if (-not $listenerPid) { return $true }
+
+    if (-not $Quiet) {
+      Write-Host "Encerrando listener na porta $Port (PID $listenerPid, tentativa $attempt/5)..." -ForegroundColor Yellow
+    }
+
+    try {
+      Stop-Process -Id $listenerPid -Force -ErrorAction SilentlyContinue
+    } catch {}
+    try {
+      & taskkill /F /PID $listenerPid *>$null
+    } catch {}
+    Start-Sleep -Seconds 1
+  }
+
+  return -not (Test-PortListening -Port $Port)
+}
+
 function Test-CloudflaredRunning {
   if (Get-Service -Name 'Cloudflared' -ErrorAction SilentlyContinue) {
     $svc = Get-Service -Name 'Cloudflared'

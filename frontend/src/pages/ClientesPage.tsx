@@ -83,6 +83,9 @@ function ClienteListItem({
           )}
         </div>
       </div>
+      {isDono && !cliente.podeExcluir && cliente.motivoExclusao && (
+        <p className="text-xs text-ink-faint mt-1.5 pl-0.5">{cliente.motivoExclusao}</p>
+      )}
     </article>
   );
 }
@@ -104,6 +107,9 @@ export function ClientesPage() {
       api.get<ClienteListResponse>(
         `/api/clientes?q=${encodeURIComponent(search)}&ordenar=${ordenar}&page=${page}&limit=20`,
       ),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   const deleteMutation = useMutation({

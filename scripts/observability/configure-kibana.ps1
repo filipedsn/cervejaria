@@ -25,7 +25,7 @@ Write-Host 'Quiver Tap - Configurando Kibana' -ForegroundColor Cyan
 Write-Host '=================================' -ForegroundColor Cyan
 Write-Host ''
 
-# 1. Data view
+# 1. Data view metrics
 Write-Host '1. Data view OTel metrics...' -ForegroundColor Yellow
 $existing = Invoke-Kibana -Method GET -Path '/api/data_views/data_view/metrics-generic.otel-default*'
 if ($existing -match 'not_found' -or $existing -match '"statusCode":404') {
@@ -37,6 +37,40 @@ if ($existing -match 'not_found' -or $existing -match '"statusCode":404') {
   }
 } else {
   Write-Host '   Data view ja existe' -ForegroundColor Green
+}
+
+# 1b. Data view logs
+Write-Host '1b. Data view OTel logs...' -ForegroundColor Yellow
+$existingLogs = Invoke-Kibana -Method GET -Path '/api/data_views/data_view/logs-generic.otel-default*'
+if ($existingLogs -match 'not_found' -or $existingLogs -match '"statusCode":404') {
+  $dvLogs = Invoke-Kibana -Method POST -Path '/api/data_views/data_view' -BodyFile (Join-Path $ObsDir 'kibana-logs-data-view.json')
+  if ($dvLogs -match '"id"' -or $dvLogs -match 'Duplicate data view') {
+    Write-Host '   Data view OK (Quiver Tap OTel Logs)' -ForegroundColor Green
+  } else {
+    Write-Host "   Falha: $dvLogs" -ForegroundColor Red
+  }
+} else {
+  Write-Host '   Data view logs ja existe' -ForegroundColor Green
+}
+
+# 1c. Data views por ambiente (logs/traces/audit/infra)
+Write-Host '1c. Data views por cervejaria/ambiente...' -ForegroundColor Yellow
+$viewFiles = @(
+  'kibana-audit-data-view-prd.json',
+  'kibana-audit-data-view-dev.json',
+  'kibana-metrics-infra-data-view.json',
+  'kibana-logs-data-view-prd.json',
+  'kibana-traces-data-view-prd.json'
+)
+foreach ($vf in $viewFiles) {
+  $path = Join-Path $ObsDir $vf
+  if (-not (Test-Path $path)) { continue }
+  $result = Invoke-Kibana -Method POST -Path '/api/data_views/data_view' -BodyFile $path
+  if ($result -match '"id"' -or $result -match 'Duplicate data view') {
+    Write-Host "   OK $vf" -ForegroundColor Green
+  } else {
+    Write-Host "   $vf : $result" -ForegroundColor Yellow
+  }
 }
 
 # 2. Dashboard + visualizations via saved objects import
@@ -116,6 +150,11 @@ Write-Host ''
 Write-Host 'Links uteis:' -ForegroundColor Cyan
 Write-Host "  Dashboard:  $KibanaBase/app/dashboards#/view/quiver-tap-observability" -ForegroundColor Gray
 Write-Host "  Discover:   $KibanaBase/app/discover#/?_a=(index:'metrics-generic.otel-default*')" -ForegroundColor Gray
+Write-Host "  Audit PRD:  $KibanaBase/app/discover#/?_a=(index:'audit-*.otel-prd')" -ForegroundColor Gray
+Write-Host "  Audit DEV:  $KibanaBase/app/discover#/?_a=(index:'audit-*.otel-dev')" -ForegroundColor Gray
+Write-Host "  Logs PRD:   $KibanaBase/app/discover#/?_a=(index:'logs-*.otel-prd')" -ForegroundColor Gray
+Write-Host "  Traces PRD: $KibanaBase/app/discover#/?_a=(index:'traces-*.otel-prd')" -ForegroundColor Gray
+Write-Host "  Infra:      $KibanaBase/app/discover#/?_a=(index:'metrics-infra.otel-*')" -ForegroundColor Gray
 Write-Host "  Alertas:    $KibanaBase/app/management/insightsAndAlerting/triggersActions/rules" -ForegroundColor Gray
 Write-Host "  Service Inv:$KibanaBase/app/apm/services (requer traces APM)" -ForegroundColor Gray
 Write-Host ''

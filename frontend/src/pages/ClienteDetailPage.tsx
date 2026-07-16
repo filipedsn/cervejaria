@@ -54,6 +54,8 @@ export function ClienteDetailPage() {
     queryKey: ['cliente', id],
     queryFn: () => api.get<Cliente>(`/api/clientes/${id}`),
     enabled: !!id,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const { data: historico, isLoading: histLoading } = useQuery({
@@ -312,6 +314,9 @@ export function ClienteDetailPage() {
           >
             {deleteMutation.isPending ? 'Excluindo...' : 'Excluir cliente'}
           </button>
+        )}
+        {!editMode && isDono && !cliente.podeExcluir && cliente.motivoExclusao && (
+          <p className="text-sm text-ink-muted mt-2 leading-relaxed">{cliente.motivoExclusao}</p>
         )}
       </div>
 

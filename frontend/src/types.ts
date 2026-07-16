@@ -194,6 +194,9 @@ export interface Cliente {
   estatisticas?: ClienteEstatisticas | null;
   totalGasto?: number;
   podeExcluir?: boolean;
+  motivoExclusao?: string | null;
+  comandasAbertas?: number;
+  comandasFechadas?: number;
 }
 
 export interface ClienteEstatisticas {

@@ -1,5 +1,7 @@
 import type { Prisma, TransacaoTipo } from '@prisma/client';
 import { prisma } from './prisma.js';
+import { emitAuditEvent } from './audit/emit-audit-event.js';
+import { describeTransacao } from './audit/describe.js';
 
 export type RegistrarTransacaoInput = {
   cervejariaId: string;
@@ -24,7 +26,7 @@ export async function registrarTransacao(
       return null;
     }
 
-    return await logClient.create({
+    const row = await logClient.create({
       data: {
         cervejariaId: input.cervejariaId,
         tipo: input.tipo,
@@ -36,6 +38,22 @@ export async function registrarTransacao(
         metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
       },
     });
+
+    emitAuditEvent({
+      action: `transacao.${input.tipo.toLowerCase()}`,
+      message: describeTransacao(input.tipo, input.metadata ?? {}),
+      outcome: 'success',
+      entityType: input.entidadeTipo ?? undefined,
+      entityId: input.entidadeId ?? undefined,
+      metadata: {
+        tipo: input.tipo,
+        eventoId: input.eventoId,
+        comandaId: input.comandaId,
+        ...(input.metadata ?? {}),
+      },
+    });
+
+    return row;
   } catch (err) {
     console.error('[transacao-log] Falha ao registrar transação:', err);
     return null;

@@ -1,4 +1,5 @@
 import pino from 'pino';
+import { getTelemetryContext } from './telemetry-context.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -21,6 +22,18 @@ export function createLogger() {
     redact: {
       paths: redactPaths,
       censor: '[REDACTED]',
+    },
+    mixin() {
+      const ctx = getTelemetryContext();
+      if (!ctx) return {};
+      return {
+        cervejariaId: ctx.cervejariaId,
+        cervejariaSlug: ctx.slug,
+        observabilityEnv: ctx.env,
+        actorType: ctx.actor.type,
+        actorId: ctx.actor.id,
+        actorName: ctx.actor.name,
+      };
     },
   });
 }

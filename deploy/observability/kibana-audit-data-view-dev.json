@@ -1,0 +1,7 @@
+{
+  "data_view": {
+    "title": "audit-*.otel-dev",
+    "name": "Quiver Tap Audit DEV",
+    "timeFieldName": "@timestamp"
+  }
+}

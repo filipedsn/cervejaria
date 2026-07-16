@@ -6,7 +6,7 @@ import { getAuthUser } from '../types/auth.js';
 import { resolveClienteParaComanda } from '../lib/cliente-resolver.js';
 import { normalizePhone, formatPhoneBr } from '../lib/phone.js';
 import { toNumber } from '../lib/utils.js';
-import { assertClientePodeExcluir } from '../lib/cliente-delete.js';
+import { assertClientePodeExcluir, buildExclusaoMeta, getComandaCountsByClienteIds, getClienteComandaCounts } from '../lib/cliente-delete.js';
 import { ClienteMergeError, mergeClientes } from '../lib/cliente-merge.js';
 
 const createClienteSchema = z.object({
@@ -42,19 +42,14 @@ const historicoQuerySchema = z.object({
 
 const clienteInclude = {
   estatisticas: true,
-  _count: {
-    select: {
-      comandas: { where: { status: { in: ['ABERTA', 'FECHADA'] } } },
-    },
-  },
 } satisfies Prisma.ClienteInclude;
 
-function serializeCliente(cliente: Prisma.ClienteGetPayload<{ include: typeof clienteInclude }>) {
-  const { _count, ...rest } = cliente;
-  const podeExcluir = !cliente.isSistema && _count.comandas === 0;
-
+function serializeCliente(
+  cliente: Prisma.ClienteGetPayload<{ include: typeof clienteInclude }>,
+  exclusao = buildExclusaoMeta(cliente.isSistema, { abertas: 0, fechadas: 0 }),
+) {
   return {
-    ...rest,
+    ...cliente,
     telefone: cliente.telefone ? formatPhoneBr(cliente.telefone) : null,
     totalGasto: cliente.estatisticas ? toNumber(cliente.estatisticas.totalGasto) : 0,
     estatisticas: cliente.estatisticas
@@ -63,8 +58,18 @@ function serializeCliente(cliente: Prisma.ClienteGetPayload<{ include: typeof cl
           totalGasto: toNumber(cliente.estatisticas.totalGasto),
         }
       : null,
-    podeExcluir,
+    podeExcluir: exclusao.podeExcluir,
+    motivoExclusao: exclusao.motivoExclusao,
+    comandasAbertas: exclusao.comandasAbertas,
+    comandasFechadas: exclusao.comandasFechadas,
   };
+}
+
+async function serializeClienteWithExclusao(
+  cliente: Prisma.ClienteGetPayload<{ include: typeof clienteInclude }>,
+) {
+  const counts = await getClienteComandaCounts(cliente.id);
+  return serializeCliente(cliente, buildExclusaoMeta(cliente.isSistema, counts));
 }
 
 function orderByFromSort(ordenar: string): Prisma.ClienteOrderByWithRelationInput[] {
@@ -113,8 +118,13 @@ export async function clientesRoutes(app: FastifyInstance) {
       prisma.cliente.count({ where }),
     ]);
 
+    const countsByCliente = await getComandaCountsByClienteIds(items.map((c) => c.id));
+
     return {
-      items: items.map(serializeCliente),
+      items: items.map((cliente) => {
+        const counts = countsByCliente.get(cliente.id) ?? { abertas: 0, fechadas: 0 };
+        return serializeCliente(cliente, buildExclusaoMeta(cliente.isSistema, counts));
+      }),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
   });
@@ -184,7 +194,7 @@ export async function clientesRoutes(app: FastifyInstance) {
     });
     if (!cliente) return reply.status(404).send({ error: 'Cliente não encontrado' });
 
-    return serializeCliente(cliente);
+    return serializeClienteWithExclusao(cliente);
   });
 
   app.post('/', async (request, reply) => {
@@ -274,7 +284,7 @@ export async function clientesRoutes(app: FastifyInstance) {
       include: clienteInclude,
     });
 
-    return serializeCliente(cliente);
+    return serializeClienteWithExclusao(cliente);
   });
 
   app.post('/:id/unir', { preHandler: [app.requireDono] }, async (request, reply) => {
@@ -295,7 +305,7 @@ export async function clientesRoutes(app: FastifyInstance) {
       });
 
       return {
-        ...serializeCliente(cliente),
+        ...(await serializeClienteWithExclusao(cliente)),
         comandasMovidas: result.comandasMovidas,
         pedidosMovidos: result.pedidosMovidos,
       };
@@ -344,6 +354,6 @@ export async function clientesRoutes(app: FastifyInstance) {
       where: { id: cliente.id },
       include: clienteInclude,
     });
-    return serializeCliente(full);
+    return serializeClienteWithExclusao(full);
   });
 }

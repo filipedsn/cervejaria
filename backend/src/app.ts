@@ -75,6 +75,8 @@ import {
 
 import { getReadinessStatus } from './lib/health.js';
 import { createLogger } from './lib/logger.js';
+import { registerAuditHooks } from './lib/audit-hooks.js';
+import { auditRoutes } from './routes/audit.js';
 
 import type { JwtPayload } from './types/auth.js';
 
@@ -181,6 +183,8 @@ export async function buildApp() {
 
   registerClienteSessionAuth(app);
 
+  registerAuditHooks(app);
+
 
 
   app.setErrorHandler((error, _request, reply) => {
@@ -229,6 +233,8 @@ export async function buildApp() {
   });
 
   await app.register(authRoutes, { prefix: '/api/auth' });
+
+  await app.register(auditRoutes, { prefix: '/api/audit' });
 
   await app.register(usuariosRoutes, { prefix: '/api/usuarios' });
 

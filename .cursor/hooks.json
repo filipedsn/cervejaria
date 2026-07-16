@@ -1,6 +1,12 @@
 {
   "version": 1,
   "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "node .cursor/hooks/block-prod-without-approval.mjs",
+        "failClosed": true
+      }
+    ],
     "sessionEnd": [
       {
         "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/stop-dev-on-session-end.ps1"

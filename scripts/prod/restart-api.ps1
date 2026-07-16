@@ -18,21 +18,24 @@ if (Test-Path $paths.ApiPidFile) {
   $oldPid = [int](Get-Content $paths.ApiPidFile -ErrorAction SilentlyContinue)
   if (Test-ProcessAlive -ProcessId $oldPid) {
     if (-not $Quiet) { Write-Host "Encerrando API (PID $oldPid)..." -ForegroundColor Yellow }
-    Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+    try {
+      Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+    } catch {}
+    try {
+      & taskkill /F /PID $oldPid *>$null
+    } catch {}
     Start-Sleep -Seconds 1
   }
   Remove-Item $paths.ApiPidFile -Force -ErrorAction SilentlyContinue
 }
 
 if (Test-PortListening -Port $paths.ApiPort) {
-  $conns = Get-NetTCPConnection -LocalPort $paths.ApiPort -State Listen -ErrorAction SilentlyContinue
-  foreach ($c in $conns) {
-    if ($c.OwningProcess) {
-      if (-not $Quiet) { Write-Host "Encerrando listener na porta $($paths.ApiPort) (PID $($c.OwningProcess))..." -ForegroundColor Yellow }
-      Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
-    }
+  if (-not (Stop-PortListener -Port $paths.ApiPort -Quiet:$Quiet)) {
+    $stalePid = Get-PortListenerPid -Port $paths.ApiPort
+    Write-Host "Falha ao liberar a porta $($paths.ApiPort). Processo $stalePid ainda ativo." -ForegroundColor Red
+    Write-Host 'Encerre manualmente: taskkill /F /PID ' + $stalePid -ForegroundColor Yellow
+    exit 1
   }
-  Start-Sleep -Seconds 1
 }
 
 Write-WatchdogLog -Paths $paths -Message 'API reiniciada via restart-api.ps1.'

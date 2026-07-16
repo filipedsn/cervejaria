@@ -1,0 +1,7 @@
+{
+  "data_view": {
+    "title": "traces-*.otel-prd",
+    "name": "Quiver Tap Traces PRD",
+    "timeFieldName": "@timestamp"
+  }
+}

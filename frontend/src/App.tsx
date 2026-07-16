@@ -28,6 +28,7 @@ import { InstallAppBanner } from './components/InstallAppBanner';
 import { Loading } from './components/Loading';
 import { ensureAppShellBranding } from './lib/app-branding';
 import { resetBreweryTheme } from './lib/theme';
+import { AuditTracker } from './components/AuditTracker';
 
 function RootLayout() {
   const { pathname } = useLocation();
@@ -38,6 +39,7 @@ function RootLayout() {
   return (
     <>
       {!hideInstallBanner && <InstallAppBanner />}
+      <AuditTracker />
       <Outlet />
     </>
   );

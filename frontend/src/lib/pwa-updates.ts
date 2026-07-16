@@ -22,9 +22,21 @@ function bindUpdateChecks(registration: ServiceWorkerRegistration) {
   });
 }
 
+/** Recarrega uma vez quando um SW novo assume o controle (bundle atualizado). */
+function bindControllerReload() {
+  let reloaded = false;
+  navigator.serviceWorker?.addEventListener('controllerchange', () => {
+    if (reloaded) return;
+    reloaded = true;
+    window.location.reload();
+  });
+}
+
 /** Verifica atualizações do PWA ao abrir o atalho ou retornar ao app. */
 export function initPwaUpdateChecks(): void {
   if (!('serviceWorker' in navigator)) return;
+
+  bindControllerReload();
 
   registerSW({
     immediate: true,

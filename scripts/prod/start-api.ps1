@@ -37,15 +37,27 @@ if ($paths.ServeFrontendFromApi) {
 if (Test-Path $paths.ApiPidFile) {
   $oldPid = [int](Get-Content $paths.ApiPidFile -ErrorAction SilentlyContinue)
   if (Test-ProcessAlive -ProcessId $oldPid) {
-    Write-Host "Processo API PID $oldPid ainda ativo; aguardando health..." -ForegroundColor Yellow
-    Start-Sleep -Seconds 2
-    if (Test-ApiHealthy -HealthUrl $paths.ReadyUrl) { exit 0 }
-    Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+    if ($Force) {
+      if (-not $Quiet) {
+        Write-Host "Forcando parada da API PID $oldPid..." -ForegroundColor Yellow
+      }
+      Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+      Start-Sleep -Seconds 1
+    } else {
+      Write-Host "Processo API PID $oldPid ainda ativo; aguardando health..." -ForegroundColor Yellow
+      Start-Sleep -Seconds 2
+      if (Test-ApiHealthy -HealthUrl $paths.ReadyUrl) { exit 0 }
+      Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+    }
   }
 }
 
 if (Test-PortListening -Port $paths.ApiPort) {
-  Write-WatchdogLog -Paths $paths -Message "Porta $($paths.ApiPort) em uso sem health OK - tentando liberar."
+  if ($Force) {
+    Write-WatchdogLog -Paths $paths -Message "Forcando liberacao da porta $($paths.ApiPort)."
+  } else {
+    Write-WatchdogLog -Paths $paths -Message "Porta $($paths.ApiPort) em uso sem health OK - tentando liberar."
+  }
   $conns = Get-NetTCPConnection -LocalPort $paths.ApiPort -State Listen -ErrorAction SilentlyContinue
   foreach ($c in $conns) {
     if ($c.OwningProcess) {
@@ -76,6 +88,12 @@ $deadline = (Get-Date).AddSeconds(30)
 do {
   Start-Sleep -Seconds 1
   if (Test-ApiHealthy -HealthUrl $paths.ReadyUrl) {
+    $listenerPid = Get-PortListenerPid -Port $paths.ApiPort
+    if ($listenerPid -and $listenerPid -ne $proc.Id) {
+      Write-Host "ERRO: porta $($paths.ApiPort) pertence ao PID $listenerPid, nao ao PID $($proc.Id) iniciado agora." -ForegroundColor Red
+      Write-Host 'Encerre o processo antigo (Gerenciador de Tarefas ou taskkill /F /PID ...) e rode npm run prod:restart.' -ForegroundColor Yellow
+      exit 1
+    }
     Write-Host "API no ar: $($paths.ReadyUrl) (PID $($proc.Id))" -ForegroundColor Green
     exit 0
   }
