@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,11 +9,14 @@ import type {
   PortalCardapio,
   PortalComanda,
   PortalSessaoResponse,
+  PortalClienteLookupResponse,
 } from '../types';
 import { Loading } from '../components/Loading';
 import { connectClientePortalSocket } from '../lib/socket';
 
 type Tab = 'comanda' | 'pedir';
+
+type LoginStep = 'telefone' | 'confirmar' | 'cadastro' | 'bloqueado';
 
 type CartItem = {
   key: string;
@@ -40,13 +43,17 @@ export function PortalClientePage() {
   const { slug, trailerId } = useParams<{ slug: string; trailerId: string }>();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('comanda');
+  const [loginStep, setLoginStep] = useState<LoginStep>('telefone');
   const [nome, setNome] = useState('');
+  const [lookupNome, setLookupNome] = useState('');
   const [telefone, setTelefone] = useState('');
   const [error, setError] = useState('');
   const [authenticated, setAuthenticated] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [menuTab, setMenuTab] = useState<'chope' | 'bebidas' | 'comidas'>('chope');
   const [cancelandoPedidoId, setCancelandoPedidoId] = useState<string | null>(null);
+  const phoneInputRef = useRef<HTMLInputElement>(null);
+  const nomeInputRef = useRef<HTMLInputElement>(null);
 
   const clearPortalSession = useCallback(async () => {
     try {
@@ -102,6 +109,17 @@ export function PortalClientePage() {
   }, []);
 
   useEffect(() => {
+    if (authenticated || loginStep !== 'telefone') return;
+    phoneInputRef.current?.focus();
+  }, [authenticated, loginStep]);
+
+  useEffect(() => {
+    if (loginStep === 'cadastro') {
+      nomeInputRef.current?.focus();
+    }
+  }, [loginStep]);
+
+  useEffect(() => {
     if (info && !info.disponivel) {
       void clearPortalSession();
     }
@@ -145,6 +163,27 @@ export function PortalClientePage() {
       socket.off('portal:session-expired', onSessionExpired);
     };
   }, [authenticated, queryClient, clearPortalSession]);
+
+  const lookupMutation = useMutation({
+    mutationFn: (digits: string) =>
+      api.get<PortalClienteLookupResponse>(
+        `/api/public/cervejarias/${slug}/trailers/${trailerId}/cliente-por-telefone?telefone=${encodeURIComponent(digits)}`,
+      ),
+    onSuccess: (data) => {
+      setError('');
+      if (data.encontrado && data.nome) {
+        setLookupNome(data.nome);
+        setLoginStep('confirmar');
+      } else {
+        setLookupNome('');
+        setNome('');
+        setLoginStep('cadastro');
+      }
+    },
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível verificar o telefone');
+    },
+  });
 
   const sessaoMutation = useMutation({
     mutationFn: (body: { nome: string; telefone: string }) =>
@@ -202,14 +241,41 @@ export function PortalClientePage() {
     [cart],
   );
 
-  const handleLogin = (e: React.FormEvent) => {
+  const phoneDigits = telefone.replace(/\D/g, '');
+
+  const resetLoginFlow = () => {
+    setLoginStep('telefone');
+    setLookupNome('');
+    setNome('');
+    setError('');
+  };
+
+  const handleContinuePhone = (e: React.FormEvent) => {
     e.preventDefault();
-    const digits = telefone.replace(/\D/g, '');
-    if (digits.length < 10) {
+    if (phoneDigits.length < 10) {
       setError('Informe um telefone válido com DDD');
       return;
     }
-    sessaoMutation.mutate({ nome: nome.trim(), telefone: digits });
+    lookupMutation.mutate(phoneDigits);
+  };
+
+  const handleConfirmYes = () => {
+    if (!lookupNome.trim()) return;
+    sessaoMutation.mutate({ nome: lookupNome.trim(), telefone: phoneDigits });
+  };
+
+  const handleConfirmNo = () => {
+    setError('');
+    setLoginStep('bloqueado');
+  };
+
+  const handleRegister = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nome.trim()) {
+      setError('Informe seu nome');
+      return;
+    }
+    sessaoMutation.mutate({ nome: nome.trim(), telefone: phoneDigits });
   };
 
   const addToCart = (item: Omit<CartItem, 'key'>) => {
@@ -278,31 +344,113 @@ export function PortalClientePage() {
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="card space-y-4">
-            <h2 className="font-bold">Abrir comanda</h2>
-            <p className="text-sm text-ink-muted">
-              Informe seus dados. Se ainda não estiver cadastrado, criamos seu perfil na hora.
-            </p>
-            {error && <div className="alert-error">{error}</div>}
-            <div>
-              <label className="label">Nome</label>
-              <input className="input" value={nome} onChange={(e) => setNome(e.target.value)} required />
+          {loginStep === 'telefone' && (
+            <form onSubmit={handleContinuePhone} className="card space-y-4">
+              <h2 className="font-bold">Abrir comanda</h2>
+              <p className="text-sm text-ink-muted">
+                Informe seu telefone. Se já estiver cadastrado, confirmamos seu nome na sequência.
+              </p>
+              {error && <div className="alert-error">{error}</div>}
+              <div>
+                <label className="label">Telefone</label>
+                <input
+                  ref={phoneInputRef}
+                  className="input"
+                  type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  value={telefone}
+                  onChange={(e) => setTelefone(formatPhone(e.target.value))}
+                  placeholder="(11) 99999-9999"
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                className="touch-btn-primary w-full"
+                disabled={lookupMutation.isPending}
+              >
+                {lookupMutation.isPending ? 'Verificando...' : 'Continuar'}
+              </button>
+            </form>
+          )}
+
+          {loginStep === 'confirmar' && (
+            <div className="card space-y-4">
+              <h2 className="font-bold">Confirmar identidade</h2>
+              <p className="text-sm text-ink-muted">
+                Telefone <span className="font-semibold text-ink">{formatPhone(telefone)}</span>
+              </p>
+              {error && <div className="alert-error">{error}</div>}
+              <p className="text-base">
+                Olá, <span className="font-bold">{lookupNome}</span>! É você?
+              </p>
+              <button
+                type="button"
+                className="touch-btn-primary w-full"
+                disabled={sessaoMutation.isPending}
+                onClick={handleConfirmYes}
+              >
+                {sessaoMutation.isPending ? 'Abrindo...' : 'Sim, sou eu'}
+              </button>
+              <button
+                type="button"
+                className="touch-btn-danger w-full"
+                disabled={sessaoMutation.isPending}
+                onClick={handleConfirmNo}
+              >
+                Não sou eu
+              </button>
+              <button type="button" className="touch-btn-warning w-full" onClick={resetLoginFlow}>
+                Usar outro telefone
+              </button>
             </div>
-            <div>
-              <label className="label">Telefone</label>
-              <input
-                className="input"
-                type="tel"
-                value={telefone}
-                onChange={(e) => setTelefone(formatPhone(e.target.value))}
-                placeholder="(11) 99999-9999"
-                required
-              />
+          )}
+
+          {loginStep === 'cadastro' && (
+            <form onSubmit={handleRegister} className="card space-y-4">
+              <h2 className="font-bold">Cadastro</h2>
+              <p className="text-sm text-ink-muted">
+                Telefone <span className="font-semibold text-ink">{formatPhone(telefone)}</span> ainda não está
+                cadastrado. Informe seu nome para abrir a comanda.
+              </p>
+              {error && <div className="alert-error">{error}</div>}
+              <div>
+                <label className="label">Nome</label>
+                <input
+                  ref={nomeInputRef}
+                  className="input"
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
+                  placeholder="Seu nome"
+                  required
+                  autoComplete="name"
+                />
+              </div>
+              <button type="submit" className="touch-btn-primary w-full" disabled={sessaoMutation.isPending}>
+                {sessaoMutation.isPending ? 'Abrindo...' : 'Abrir comanda'}
+              </button>
+              <button type="button" className="touch-btn-warning w-full" onClick={resetLoginFlow}>
+                Usar outro telefone
+              </button>
+            </form>
+          )}
+
+          {loginStep === 'bloqueado' && (
+            <div className="card space-y-4">
+              <h2 className="font-bold">Cadastro não confere</h2>
+              <p className="text-sm text-ink-muted">
+                O telefone <span className="font-semibold text-ink">{formatPhone(telefone)}</span> está vinculado a
+                outra pessoa em nosso cadastro.
+              </p>
+              <div className="rounded-xl bg-amber-50 border border-amber-200/60 px-4 py-3 text-sm text-amber-900 leading-relaxed">
+                Procure um atendente no balcão para regularizar seu cadastro antes de usar o portal.
+              </div>
+              <button type="button" className="touch-btn-warning w-full" onClick={resetLoginFlow}>
+                Usar outro telefone
+              </button>
             </div>
-            <button type="submit" className="touch-btn-primary w-full" disabled={sessaoMutation.isPending}>
-              {sessaoMutation.isPending ? 'Abrindo...' : 'Abrir comanda'}
-            </button>
-          </form>
+          )}
         </div>
       </div>
     );

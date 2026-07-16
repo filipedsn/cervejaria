@@ -23,7 +23,7 @@ $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
 
 Write-Host ''
-Write-Host '1/4 Parando ambiente dev (libera conexoes)...' -ForegroundColor Yellow
+Write-Host '1/5 Parando ambiente dev (libera conexoes)...' -ForegroundColor Yellow
 & "$PSScriptRoot\..\dev\stop-dev.ps1"
 
 $backupDir = Join-Path $paths.ProjectRoot 'deploy\backups'
@@ -33,15 +33,18 @@ $timestamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
 $dumpFile = Join-Path $backupDir "sync-prod-to-dev-$timestamp.sql"
 
 Write-Host ''
-Write-Host '2/4 Gerando dump de producao (cervejaria)...' -ForegroundColor Yellow
-docker exec cervejaria-db pg_dump -U cervejaria -d cervejaria --no-owner --no-acl |
-  Out-File -FilePath $dumpFile -Encoding utf8
+Write-Host '2/5 Gerando dump de producao (cervejaria)...' -ForegroundColor Yellow
+$containerDump = "/tmp/sync-prod-to-dev-$timestamp.sql"
+docker exec cervejaria-db pg_dump -U cervejaria -d cervejaria --no-owner --no-acl -f $containerDump
+if ($LASTEXITCODE -ne 0) { throw 'pg_dump falhou.' }
+docker cp "cervejaria-db:$containerDump" $dumpFile
+if ($LASTEXITCODE -ne 0) { throw "Falha ao copiar dump para $dumpFile" }
 
 $sizeKb = [math]::Round((Get-Item $dumpFile).Length / 1024, 1)
 Write-Host "Dump salvo: $dumpFile ($sizeKb KB)" -ForegroundColor Gray
 
 Write-Host ''
-Write-Host '3/4 Preparando banco cervejaria_dev...' -ForegroundColor Yellow
+Write-Host '3/5 Preparando banco cervejaria_dev...' -ForegroundColor Yellow
 $exists = docker exec cervejaria-db psql -U cervejaria -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'cervejaria_dev'" 2>$null
 if (-not ($exists -match '1')) {
   Write-Host 'Criando banco cervejaria_dev...' -ForegroundColor Gray
@@ -54,15 +57,24 @@ if (-not ($exists -match '1')) {
 }
 
 Write-Host ''
-Write-Host '4/4 Restaurando dump em cervejaria_dev...' -ForegroundColor Yellow
-$containerDump = "/tmp/sync-prod-to-dev-$timestamp.sql"
-docker cp $dumpFile "cervejaria-db:$containerDump"
+Write-Host '4/5 Restaurando dump em cervejaria_dev...' -ForegroundColor Yellow
 docker exec cervejaria-db psql -U cervejaria -d cervejaria_dev -v ON_ERROR_STOP=1 -f $containerDump
 if ($LASTEXITCODE -ne 0) {
   docker exec cervejaria-db rm -f $containerDump 2>$null | Out-Null
   throw "Restauracao falhou (exit $LASTEXITCODE). Dump local: $dumpFile"
 }
 docker exec cervejaria-db rm -f $containerDump 2>$null | Out-Null
+
+Write-Host ''
+Write-Host '5/5 Aplicando permissoes cervejaria_dev...' -ForegroundColor Yellow
+$grantsFile = Join-Path $paths.ProjectRoot 'deploy\db\create-env-users-dev.sql'
+if (-not (Test-Path $grantsFile)) {
+  throw "Arquivo de grants nao encontrado: $grantsFile"
+}
+Get-Content $grantsFile -Raw | docker exec -i cervejaria-db psql -U cervejaria -d cervejaria_dev -v ON_ERROR_STOP=1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  throw 'Falha ao aplicar grants em cervejaria_dev.'
+}
 
 Write-Host ''
 Write-Host 'SUCESSO: cervejaria_dev agora espelha producao.' -ForegroundColor Green

@@ -4,6 +4,7 @@ param(
   [switch]$Confirmed,
   [switch]$SkipBackup,
   [switch]$SkipMigrate,
+  [switch]$SkipBackfill,
   [switch]$FrontendOnly,
   [switch]$BackendOnly,
   [switch]$DryRun
@@ -33,6 +34,7 @@ $plan = [ordered]@{
   BuildFE  = $buildFrontend
   BuildBE  = $buildBackend
   Migrate  = -not $SkipMigrate
+  Backfill = -not $SkipBackfill -and -not $SkipMigrate
   Restart  = $true
   Smoke    = $true
 }
@@ -119,6 +121,10 @@ try {
 
   if ($plan.Migrate) {
     Invoke-NpmStep -Label 'Migrations (producao)' -NpmArgs @('run', 'db:migrate:prod')
+  }
+
+  if ($plan.Backfill) {
+    Invoke-NpmStep -Label 'Backfill ClienteEstatisticas (producao)' -NpmArgs @('run', 'db:backfill-cliente-stats:prod', '--prefix', 'backend')
   }
 
   Write-Host ''

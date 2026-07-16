@@ -166,6 +166,12 @@ export interface Evento {
 export interface EventosResponse {
   series: Evento[];
   sessoes: Evento[];
+  agendamentoExclusoes?: AgendamentoExclusao[];
+}
+
+export interface AgendamentoExclusao {
+  serieId: string;
+  data: string;
 }
 
 export interface TrailerOperacional extends Trailer {
@@ -187,6 +193,7 @@ export interface Cliente {
   updatedAt?: string;
   estatisticas?: ClienteEstatisticas | null;
   totalGasto?: number;
+  podeExcluir?: boolean;
 }
 
 export interface ClienteEstatisticas {
@@ -207,6 +214,11 @@ export interface ClienteListResponse {
     total: number;
     pages: number;
   };
+}
+
+export interface UnirClientesResponse extends Cliente {
+  comandasMovidas: number;
+  pedidosMovidos: number;
 }
 
 export interface ClienteHistoricoItem {
@@ -324,6 +336,11 @@ export interface PortalComanda {
   total: number;
   itens: PortalComandaItem[];
   pedidos: PedidoCliente[];
+}
+
+export interface PortalClienteLookupResponse {
+  encontrado: boolean;
+  nome?: string;
 }
 
 export interface PortalSessaoResponse {

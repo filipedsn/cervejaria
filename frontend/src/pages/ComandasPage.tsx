@@ -9,6 +9,7 @@ import { Loading } from '../components/Loading';
 import { EncerrarEventoButton } from '../components/EncerrarEventoButton';
 import { ExcluirEventoButton } from '../components/ExcluirEventoButton';
 import { VerRankingButton } from '../components/VerRankingButton';
+import { PortalQrButton } from '../components/PortalQrButton';
 import { EmptyState } from '../components/EmptyState';
 import { StatusBadge } from '../components/StatusBadge';
 import { EventoTapMontagemPanel } from '../components/EventoTapMontagemPanel';
@@ -184,14 +185,21 @@ export function ComandasPage() {
       />
 
       {!selectMode && eventoAberto && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Link to="/comandas/nova" className="touch-btn-hero">
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface/20 text-2xl leading-none font-normal">
-              +
-            </span>
-            Nova Comanda
-          </Link>
-          <Link to="/comandas/venda-avulsa" className="touch-btn-secondary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl font-bold text-base px-4">
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <Link to="/comandas/nova" className="touch-btn-hero flex-1 min-w-0">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface/20 text-2xl leading-none font-normal">
+                +
+              </span>
+              Nova Comanda
+            </Link>
+            <PortalQrButton
+              trailerId={evento.trailerId}
+              trailer={evento.trailer ?? trailer}
+              iconOnly
+            />
+          </div>
+          <Link to="/comandas/venda-avulsa" className="touch-btn-secondary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl font-bold text-base px-4 w-full">
             <span className="text-xl leading-none" aria-hidden>
               ⚡
             </span>
@@ -201,12 +209,19 @@ export function ComandasPage() {
       )}
 
       {!selectMode && !eventoAberto && (
-        <Link to="/comandas/nova" className="touch-btn-hero">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface/20 text-2xl leading-none font-normal">
-            +
-          </span>
-          Nova Comanda
-        </Link>
+        <div className="flex gap-2">
+          <Link to="/comandas/nova" className="touch-btn-hero flex-1 min-w-0">
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface/20 text-2xl leading-none font-normal">
+              +
+            </span>
+            Nova Comanda
+          </Link>
+          <PortalQrButton
+            trailerId={evento.trailerId}
+            trailer={evento.trailer ?? trailer}
+            iconOnly
+          />
+        </div>
       )}
 
       {groupSuccess && <div className="alert-success">{groupSuccess}</div>}

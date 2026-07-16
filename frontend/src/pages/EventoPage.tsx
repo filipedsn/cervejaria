@@ -4,9 +4,9 @@ import { useNavigate } from 'react-router-dom';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { api, formatTime, formatCurrency, ApiError } from '../lib/api';
+import { api, formatTime, ApiError } from '../lib/api';
 
-import type { Evento, EventoDashboard, EventosResponse, Trailer } from '../types';
+import type { Evento, EventosResponse, Trailer } from '../types';
 import { formatTrailerLabel } from '../types';
 
 import { useEvento } from '../contexts/EventoContext';
@@ -24,10 +24,11 @@ import { ExcluirEventoButton, canExcluirEvento } from '../components/ExcluirEven
 import { reabrirPrazoExpirado } from '../lib/evento-utils';
 
 import { VerRankingButton } from '../components/VerRankingButton';
+import { PortalQrButton } from '../components/PortalQrButton';
 
 import { VerResumoExecutivoButton } from '../components/VerResumoExecutivoButton';
 
-import { EventoMontagemTaps } from '../components/EventoMontagemTaps';
+import { EventoResumoKpis } from '../components/EventoResumoKpis';
 
 import { EditarCardapioEventoButton } from '../components/EditarCardapioEventoButton';
 
@@ -71,6 +72,8 @@ import {
   getAgendaDayForDate,
 
   formatAgendaHeading,
+
+  formatAgendaDateShort,
 
   isAgendaEmpty,
 
@@ -148,74 +151,6 @@ function EditEventoButton({ onClick, className }: { onClick: () => void; classNa
 
 
 
-function HeroStatCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl bg-white/15 border border-white/20 px-3 py-2.5 min-w-0">
-      <p className="text-[11px] text-white/70 leading-tight">{label}</p>
-      <p className="text-lg font-bold mt-1 truncate">{value}</p>
-    </div>
-  );
-}
-
-function EventoHeroResumo({ eventoId }: { eventoId: string }) {
-  const queryClient = useQueryClient();
-
-  const { data: dashboard } = useQuery({
-    queryKey: ['dashboard', eventoId],
-    queryFn: () => api.get<EventoDashboard>(`/api/eventos/${eventoId}/dashboard`),
-  });
-
-  useEffect(() => {
-    const socket = getSocket();
-    const invalidate = () => {
-      queryClient.invalidateQueries({ queryKey: ['dashboard', eventoId] });
-    };
-    socket.on('comanda:created', invalidate);
-    socket.on('comanda:closed', invalidate);
-    socket.on('item:added', invalidate);
-    socket.on('item:removed', invalidate);
-    socket.on('pedido:confirmed', invalidate);
-    return () => {
-      socket.off('comanda:created', invalidate);
-      socket.off('comanda:closed', invalidate);
-      socket.off('item:added', invalidate);
-      socket.off('item:removed', invalidate);
-      socket.off('pedido:confirmed', invalidate);
-    };
-  }, [eventoId, queryClient]);
-
-  const resumo = dashboard?.resumo;
-
-  return (
-    <div className="grid grid-cols-2 gap-2">
-      <HeroStatCell
-        label="Comandas abertas"
-        value={resumo ? String(resumo.comandasAbertas) : '—'}
-      />
-      <HeroStatCell
-        label="Comandas fechadas"
-        value={resumo ? String(resumo.comandasFechadas) : '—'}
-      />
-      <HeroStatCell
-        label="Vendas avulsas"
-        value={resumo ? String(resumo.vendasAvulsas) : '—'}
-      />
-      <HeroStatCell
-        label="Receita avulsa"
-        value={resumo ? formatCurrency(resumo.receitaAvulsa) : '—'}
-      />
-      <HeroStatCell
-        label="Valor aberto"
-        value={resumo ? formatCurrency(resumo.valorAberto) : '—'}
-      />
-      <HeroStatCell
-        label="Valor fechado"
-        value={resumo ? formatCurrency(resumo.valorFechado) : '—'}
-      />
-    </div>
-  );
-}
-
 function ActiveSessionHero({
 
   evento,
@@ -254,7 +189,7 @@ function ActiveSessionHero({
 
       </div>
 
-      <EventoHeroResumo eventoId={evento.id} />
+      <EventoResumoKpis eventoId={evento.id} variant="hero" liveUpdates />
 
       <div className="flex gap-2">
 
@@ -265,6 +200,13 @@ function ActiveSessionHero({
         </button>
 
         <EditarCardapioEventoButton eventoId={evento.id} eventoAberto iconOnly />
+
+        <PortalQrButton
+          trailerId={evento.trailerId}
+          trailer={evento.trailer}
+          iconOnly
+          variant="hero"
+        />
 
         <VerRankingButton eventoId={evento.id} iconOnly />
 
@@ -290,17 +232,23 @@ function ActiveSessionHero({
 
 function AgendaSerieCard({
   serie,
+  dateKey,
   isToday,
   pending,
+  cancelPending,
   onIniciar,
   onEdit,
+  onCancel,
   onRemove,
 }: {
   serie: Evento;
+  dateKey: string;
   isToday: boolean;
   pending: boolean;
+  cancelPending: boolean;
   onIniciar: () => void;
   onEdit: () => void;
+  onCancel: () => void;
   onRemove?: () => void;
 }) {
 
@@ -319,6 +267,8 @@ function AgendaSerieCard({
         <div className="min-w-0">
 
           <p className="text-sm font-semibold text-purple capitalize">{diaLabel}</p>
+
+          <p className="text-sm text-ink-muted mt-0.5">{formatAgendaDateShort(dateKey)}</p>
 
           <p className="font-bold text-lg leading-tight mt-0.5">{serie.nome}</p>
 
@@ -340,7 +290,7 @@ function AgendaSerieCard({
 
             className="btn-outline-light flex-1 min-w-[10rem] disabled:opacity-40"
 
-            disabled={pending}
+            disabled={pending || cancelPending}
 
             onClick={onIniciar}
 
@@ -357,6 +307,15 @@ function AgendaSerieCard({
         )}
 
         <EditEventoButton onClick={onEdit} />
+
+        <button
+          type="button"
+          className="touch-btn-danger touch-btn-sm px-4 disabled:opacity-40"
+          disabled={cancelPending || pending}
+          onClick={onCancel}
+        >
+          {cancelPending ? 'Cancelando…' : 'Cancelar dia'}
+        </button>
 
         {onRemove && (
 
@@ -391,34 +350,27 @@ function AgendaSessaoCard({
 }) {
 
   return (
-
     <div className="card space-y-3">
 
       <div className="flex items-start justify-between gap-3">
-
-        <div className="min-w-0">
-
+        <div className="min-w-0 flex-1">
           <p className="font-bold text-lg leading-tight">{sessao.nome}</p>
-
           <p className="text-sm text-ink-muted mt-1">{formatEventoMeta(sessao)}</p>
-
           {sessao.trailer && (
             <p className="text-xs text-ink-faint mt-1">{formatTrailerLabel(sessao.trailer)}</p>
           )}
-
           {sessao.serieId && (
-
             <p className="text-xs text-ink-faint mt-1">Sessão de agenda fixa</p>
-
           )}
-
-          <EventoMontagemTaps eventoId={sessao.id} variant="card" />
-
         </div>
-
         <StatusBadge variant={eventoStatusVariant(sessao.status)} />
-
       </div>
+
+      <EventoResumoKpis
+        eventoId={sessao.id}
+        variant="card"
+        liveUpdates={sessao.status === 'ABERTO'}
+      />
 
       {sessao.status === 'ABERTO' && (
         <div className="space-y-2">
@@ -482,7 +434,10 @@ function AgendaItemRow({
   day,
   isDono,
   iniciarPending,
+  cancelPendingSerieId,
+  cancelPendingDateKey,
   onIniciarSerie,
+  onCancelAgendamento,
   onRetomar,
   onEdit,
   onRemoveSerie,
@@ -491,19 +446,27 @@ function AgendaItemRow({
   day: AgendaDay;
   isDono: boolean;
   iniciarPending: boolean;
+  cancelPendingSerieId?: string;
+  cancelPendingDateKey?: string;
   onIniciarSerie: (serieId: string) => void;
+  onCancelAgendamento: (serie: Evento, dateKey: string) => void;
   onRetomar: (sessao: Evento) => void;
   onEdit: (evento: Evento) => void;
   onRemoveSerie?: (serie: Evento) => void;
 }) {
   if (item.kind === 'serie') {
+    const cancelPending =
+      cancelPendingSerieId === item.serie.id && cancelPendingDateKey === item.dateKey;
     return (
       <AgendaSerieCard
         serie={item.serie}
+        dateKey={item.dateKey}
         isToday={day.isToday}
         pending={iniciarPending}
+        cancelPending={cancelPending}
         onIniciar={() => onIniciarSerie(item.serie.id)}
         onEdit={() => onEdit(item.serie)}
+        onCancel={() => onCancelAgendamento(item.serie, item.dateKey)}
         onRemove={onRemoveSerie ? () => onRemoveSerie(item.serie) : undefined}
       />
     );
@@ -696,6 +659,26 @@ export function EventoPage() {
 
   });
 
+  const [cancelPending, setCancelPending] = useState<{ serieId: string; dateKey: string } | null>(null);
+
+  const cancelAgendamentoMutation = useMutation({
+
+    mutationFn: ({ serieId, data }: { serieId: string; data: string }) =>
+      api.post<{ serieId: string; data: string }>(`/api/eventos/${serieId}/cancelar-agendamento`, { data }),
+
+    onMutate: ({ serieId, data }) => setCancelPending({ serieId, dateKey: data }),
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['eventos'] });
+      setError('');
+    },
+
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao cancelar agendamento'),
+
+    onSettled: () => setCancelPending(null),
+
+  });
+
 
 
   const openEdit = (target: Evento) => {
@@ -727,6 +710,13 @@ export function EventoPage() {
 
   };
 
+  const confirmCancelAgendamento = (serie: Evento, dateKey: string) => {
+    const dataLabel = formatAgendaDateShort(dateKey);
+    if (confirm(`Cancelar agendamento de "${serie.nome}" em ${dataLabel}?`)) {
+      cancelAgendamentoMutation.mutate({ serieId: serie.id, data: dateKey });
+    }
+  };
+
 
 
   const retomarSessao = (e: Evento) => {
@@ -741,6 +731,8 @@ export function EventoPage() {
   const series = data?.series ?? [];
 
   const sessoes = data?.sessoes ?? [];
+
+  const agendamentoExclusoes = data?.agendamentoExclusoes ?? [];
 
   const filterByTrailer = (items: Evento[]) => {
     if (isDono || !trailerId) return items;
@@ -758,7 +750,13 @@ export function EventoPage() {
 
   const excludedSessaoIds = isSelectedToday ? openSessoesToday.map((s) => s.id) : [];
 
-  const agendaDays = buildAgendaDays(seriesFiltered, sessoesFiltered, excludedSessaoIds, WEEKS_FUTURE * 7 + 7);
+  const agendaDays = buildAgendaDays(
+    seriesFiltered,
+    sessoesFiltered,
+    excludedSessaoIds,
+    WEEKS_FUTURE * 7 + 7,
+    agendamentoExclusoes,
+  );
 
   const empty = isAgendaEmpty(seriesFiltered, sessoesFiltered);
 
@@ -766,7 +764,13 @@ export function EventoPage() {
 
   const selectedDay =
     agendaDays.find((d) => d.dateKey === selectedDateKey) ??
-    getAgendaDayForDate(selectedDateKey, seriesFiltered, sessoesFiltered, excludedSessaoIds);
+    getAgendaDayForDate(
+      selectedDateKey,
+      seriesFiltered,
+      sessoesFiltered,
+      excludedSessaoIds,
+      agendamentoExclusoes,
+    );
 
   const selectedSectionLabel = isSelectedToday
 
@@ -887,7 +891,13 @@ export function EventoPage() {
 
                     iniciarPending={iniciarMutation.isPending}
 
+                    cancelPendingSerieId={cancelPending?.serieId}
+
+                    cancelPendingDateKey={cancelPending?.dateKey}
+
                     onIniciarSerie={(id) => iniciarMutation.mutate(id)}
+
+                    onCancelAgendamento={confirmCancelAgendamento}
 
                     onRetomar={retomarSessao}
 
@@ -937,7 +947,13 @@ export function EventoPage() {
 
                       iniciarPending={iniciarMutation.isPending}
 
+                      cancelPendingSerieId={cancelPending?.serieId}
+
+                      cancelPendingDateKey={cancelPending?.dateKey}
+
                       onIniciarSerie={(id) => iniciarMutation.mutate(id)}
+
+                      onCancelAgendamento={confirmCancelAgendamento}
 
                       onRetomar={retomarSessao}
 

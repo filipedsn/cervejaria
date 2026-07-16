@@ -6,6 +6,8 @@ import { getAuthUser } from '../types/auth.js';
 import { resolveClienteParaComanda } from '../lib/cliente-resolver.js';
 import { normalizePhone, formatPhoneBr } from '../lib/phone.js';
 import { toNumber } from '../lib/utils.js';
+import { assertClientePodeExcluir } from '../lib/cliente-delete.js';
+import { ClienteMergeError, mergeClientes } from '../lib/cliente-merge.js';
 
 const createClienteSchema = z.object({
   nome: z.string().min(1),
@@ -40,11 +42,19 @@ const historicoQuerySchema = z.object({
 
 const clienteInclude = {
   estatisticas: true,
+  _count: {
+    select: {
+      comandas: { where: { status: { in: ['ABERTA', 'FECHADA'] } } },
+    },
+  },
 } satisfies Prisma.ClienteInclude;
 
 function serializeCliente(cliente: Prisma.ClienteGetPayload<{ include: typeof clienteInclude }>) {
+  const { _count, ...rest } = cliente;
+  const podeExcluir = !cliente.isSistema && _count.comandas === 0;
+
   return {
-    ...cliente,
+    ...rest,
     telefone: cliente.telefone ? formatPhoneBr(cliente.telefone) : null,
     totalGasto: cliente.estatisticas ? toNumber(cliente.estatisticas.totalGasto) : 0,
     estatisticas: cliente.estatisticas
@@ -53,6 +63,7 @@ function serializeCliente(cliente: Prisma.ClienteGetPayload<{ include: typeof cl
           totalGasto: toNumber(cliente.estatisticas.totalGasto),
         }
       : null,
+    podeExcluir,
   };
 }
 
@@ -264,6 +275,52 @@ export async function clientesRoutes(app: FastifyInstance) {
     });
 
     return serializeCliente(cliente);
+  });
+
+  app.post('/:id/unir', { preHandler: [app.requireDono] }, async (request, reply) => {
+    const user = getAuthUser(request);
+    const { id } = request.params as { id: string };
+    const body = z.object({ fonteId: z.string().min(1) }).parse(request.body);
+
+    try {
+      const result = await mergeClientes({
+        cervejariaId: user.cervejariaId!,
+        destinoId: id,
+        fonteId: body.fonteId,
+      });
+
+      const cliente = await prisma.cliente.findFirstOrThrow({
+        where: { id, cervejariaId: user.cervejariaId },
+        include: clienteInclude,
+      });
+
+      return {
+        ...serializeCliente(cliente),
+        comandasMovidas: result.comandasMovidas,
+        pedidosMovidos: result.pedidosMovidos,
+      };
+    } catch (err) {
+      if (err instanceof ClienteMergeError) {
+        return reply.status(err.statusCode).send({ error: err.message });
+      }
+      throw err;
+    }
+  });
+
+  app.delete('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
+    const user = getAuthUser(request);
+    const { id } = request.params as { id: string };
+
+    const blockReason = await assertClientePodeExcluir(id, user.cervejariaId!);
+    if (blockReason === 'Cliente não encontrado') {
+      return reply.status(404).send({ error: blockReason });
+    }
+    if (blockReason) {
+      return reply.status(409).send({ error: blockReason });
+    }
+
+    await prisma.cliente.delete({ where: { id } });
+    return reply.status(204).send();
   });
 
   app.post('/find-or-create', async (request, reply) => {

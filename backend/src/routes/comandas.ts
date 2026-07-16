@@ -6,7 +6,7 @@ import { emitToEvento, emitRankingUpdated } from '../lib/realtime.js';
 import { toNumber } from '../lib/utils.js';
 import { isBebidaChope } from '../lib/produto-utils.js';
 import { cancelarComandaVazia } from '../lib/comanda-cancelar.js';
-import { resolveClienteParaComanda } from '../lib/cliente-resolver.js';
+import { resolveClienteParaComanda, TelefoneConflitoError } from '../lib/cliente-resolver.js';
 import { isTelefoneClienteAvulsoReservado } from '../lib/cliente-avulso.js';
 import { normalizePhone } from '../lib/phone.js';
 import { registrarTransacao } from '../lib/transacao-log.js';
@@ -16,11 +16,16 @@ import {
   removeItemFromComanda,
 } from '../lib/comanda-service.js';
 
-const createComandaSchema = z.object({
-  eventoId: z.string(),
-  clienteNome: z.string().min(1),
-  clienteTelefone: z.string().min(1, 'Telefone é obrigatório'),
-});
+const createComandaSchema = z
+  .object({
+    eventoId: z.string(),
+    clienteNome: z.string().min(1),
+    clienteTelefone: z.string().optional(),
+    clienteId: z.string().optional(),
+  })
+  .refine((data) => Boolean(data.clienteId || data.clienteTelefone?.trim()), {
+    message: 'Informe o telefone ou selecione um cliente cadastrado',
+  });
 
 const addItemSchema = z.object({
   produtoId: z.string(),
@@ -188,12 +193,32 @@ export async function comandasRoutes(app: FastifyInstance) {
     });
     if (!evento) return reply.status(400).send({ error: 'Evento não encontrado ou fechado' });
 
-    const telefone = normalizePhone(body.clienteTelefone);
-    if (!telefone) {
+    const telefone = body.clienteTelefone ? normalizePhone(body.clienteTelefone) : null;
+    if (body.clienteTelefone && !telefone) {
       return reply.status(400).send({ error: 'Telefone inválido. Informe DDD + número (10 ou 11 dígitos).' });
     }
-    if (isTelefoneClienteAvulsoReservado(telefone)) {
+    if (telefone && isTelefoneClienteAvulsoReservado(telefone)) {
       return reply.status(400).send({ error: 'Telefone reservado pelo sistema' });
+    }
+
+    if (body.clienteId) {
+      const clienteSelecionado = await prisma.cliente.findFirst({
+        where: {
+          id: body.clienteId,
+          cervejariaId: user.cervejariaId,
+          isSistema: false,
+          ativo: true,
+        },
+        select: { telefone: true },
+      });
+      if (!clienteSelecionado) {
+        return reply.status(400).send({ error: 'Cliente não encontrado' });
+      }
+      if (!clienteSelecionado.telefone && !telefone) {
+        return reply.status(400).send({
+          error: 'Cliente sem telefone — informe o telefone para vincular ao cadastro',
+        });
+      }
     }
 
     let cliente;
@@ -201,10 +226,14 @@ export async function comandasRoutes(app: FastifyInstance) {
       cliente = await resolveClienteParaComanda({
         cervejariaId: user.cervejariaId!,
         nome: body.clienteNome,
-        telefone,
+        ...(telefone ? { telefone } : {}),
+        ...(body.clienteId ? { clienteId: body.clienteId } : {}),
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Telefone inválido';
+      if (err instanceof TelefoneConflitoError) {
+        return reply.status(409).send({ error: err.message });
+      }
+      const message = err instanceof Error ? err.message : 'Dados do cliente inválidos';
       return reply.status(400).send({ error: message });
     }
 

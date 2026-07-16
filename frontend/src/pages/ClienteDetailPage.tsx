@@ -1,13 +1,16 @@
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency, formatMl } from '../lib/api';
 import { formatPhone } from '../lib/phone';
-import type { Cliente, ClienteHistoricoResponse } from '../types';
+import type { Cliente, ClienteHistoricoResponse, UnirClientesResponse } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { PageHeader } from '../components/PageHeader';
 import { Loading } from '../components/Loading';
 import { EmptyState } from '../components/EmptyState';
+import { ExcluirClienteModal } from '../components/ExcluirClienteModal';
+import { UnirClienteModal } from '../components/UnirClienteModal';
+import { Modal } from '../components/Modal';
 
 const CADASTRO_LABELS: Record<string, string> = {
   STAFF: 'Equipe',
@@ -28,6 +31,8 @@ function formatDateTime(iso: string | null | undefined) {
 
 export function ClienteDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { isDono } = useAuth();
   const queryClient = useQueryClient();
   const [editMode, setEditMode] = useState(false);
@@ -37,7 +42,13 @@ export function ClienteDetailPage() {
   const [observacoes, setObservacoes] = useState('');
   const [optInMarketing, setOptInMarketing] = useState(false);
   const [error, setError] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeError, setMergeError] = useState('');
+  const [mergeSuccess, setMergeSuccess] = useState('');
   const [histPage, setHistPage] = useState(1);
+  const autoEditDone = useRef(false);
 
   const { data: cliente, isLoading } = useQuery({
     queryKey: ['cliente', id],
@@ -65,6 +76,50 @@ export function ClienteDetailPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => api.delete(`/api/clientes/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clientes-list'] });
+      setShowDeleteModal(false);
+      navigate('/clientes');
+    },
+    onError: (err) => {
+      setShowDeleteModal(false);
+      setDeleteError(err instanceof ApiError ? err.message : 'Erro ao excluir cliente');
+    },
+  });
+
+  const mergeMutation = useMutation({
+    mutationFn: (fonteId: string) =>
+      api.post<UnirClientesResponse>(`/api/clientes/${id}/unir`, { fonteId }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['cliente', id] });
+      queryClient.invalidateQueries({ queryKey: ['cliente-historico', id] });
+      queryClient.invalidateQueries({ queryKey: ['clientes-list'] });
+      setShowMergeModal(false);
+      setMergeError('');
+      setMergeSuccess(
+        `Cliente unido com sucesso (${data.comandasMovidas} comanda(s) transferida(s)).`,
+      );
+      setHistPage(1);
+    },
+    onError: (err) => {
+      setMergeError(err instanceof ApiError ? err.message : 'Erro ao unir clientes');
+    },
+  });
+
+  useEffect(() => {
+    if (autoEditDone.current || searchParams.get('edit') !== '1' || !cliente) return;
+    autoEditDone.current = true;
+    setNome(cliente.nome);
+    setTelefone(cliente.telefone ? formatPhone(cliente.telefone) : '');
+    setEmail(cliente.email ?? '');
+    setObservacoes(cliente.observacoes ?? '');
+    setOptInMarketing(cliente.optInMarketing ?? false);
+    setEditMode(true);
+    setError('');
+  }, [searchParams, cliente]);
+
   const startEdit = () => {
     if (!cliente) return;
     setNome(cliente.nome);
@@ -74,6 +129,17 @@ export function ClienteDetailPage() {
     setOptInMarketing(cliente.optInMarketing ?? false);
     setEditMode(true);
     setError('');
+  };
+
+  const handleDelete = () => {
+    if (!cliente) return;
+    setDeleteError('');
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = () => {
+    setDeleteError('');
+    deleteMutation.mutate();
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -97,7 +163,14 @@ export function ClienteDetailPage() {
 
   return (
     <div className="space-y-5 pb-6">
-      <PageHeader title={cliente.nome} backTo="/clientes" backLabel="Clientes" />
+      <PageHeader
+        title={cliente.nome}
+        backTo="/clientes"
+        backLabel="Clientes"
+        titleExtra={!cliente.telefone ? <span className="badge-warning">Sem telefone</span> : undefined}
+      />
+
+      {mergeSuccess && <div className="alert-success">{mergeSuccess}</div>}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="card text-center">
@@ -122,9 +195,23 @@ export function ClienteDetailPage() {
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-bold">Dados</h2>
           {!editMode && (
-            <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={startEdit}>
-              Editar
-            </button>
+            <div className="flex gap-2">
+              {isDono && (
+                <button
+                  type="button"
+                  className="touch-btn-secondary touch-btn-sm"
+                  onClick={() => {
+                    setMergeError('');
+                    setShowMergeModal(true);
+                  }}
+                >
+                  Unir
+                </button>
+              )}
+              <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => startEdit()}>
+                Editar
+              </button>
+            </div>
           )}
         </div>
 
@@ -188,9 +275,12 @@ export function ClienteDetailPage() {
           </form>
         ) : (
           <dl className="space-y-2 text-sm">
-            <div className="flex justify-between gap-2">
+            <div className="flex justify-between gap-2 items-center">
               <dt className="text-ink-muted">Telefone</dt>
-              <dd>{cliente.telefone ? formatPhone(cliente.telefone) : '—'}</dd>
+              <dd className="flex items-center gap-2">
+                {cliente.telefone ? formatPhone(cliente.telefone) : '—'}
+                {!cliente.telefone && <span className="badge-warning">Sem telefone</span>}
+              </dd>
             </div>
             <div className="flex justify-between gap-2">
               <dt className="text-ink-muted">E-mail</dt>
@@ -211,6 +301,17 @@ export function ClienteDetailPage() {
               <dd>{formatDateTime(cliente.createdAt)}</dd>
             </div>
           </dl>
+        )}
+
+        {!editMode && isDono && cliente.podeExcluir && (
+          <button
+            type="button"
+            className="touch-btn-danger w-full mt-2"
+            disabled={deleteMutation.isPending}
+            onClick={handleDelete}
+          >
+            {deleteMutation.isPending ? 'Excluindo...' : 'Excluir cliente'}
+          </button>
         )}
       </div>
 
@@ -265,6 +366,44 @@ export function ClienteDetailPage() {
           </div>
         )}
       </section>
+
+      <ExcluirClienteModal
+        open={showDeleteModal}
+        clienteNome={cliente.nome}
+        pending={deleteMutation.isPending}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={confirmDelete}
+      />
+
+      <UnirClienteModal
+        open={showMergeModal}
+        destino={cliente}
+        pending={mergeMutation.isPending}
+        error={mergeError}
+        onClose={() => {
+          if (mergeMutation.isPending) return;
+          setShowMergeModal(false);
+          setMergeError('');
+        }}
+        onConfirm={(fonteId) => mergeMutation.mutate(fonteId)}
+      />
+
+      <Modal
+        open={!!deleteError}
+        onClose={() => setDeleteError('')}
+        title="Não foi possível excluir"
+        footer={
+          <button
+            type="button"
+            className="touch-btn-primary w-full min-h-14"
+            onClick={() => setDeleteError('')}
+          >
+            Entendi
+          </button>
+        }
+      >
+        <p className="text-ink-soft leading-relaxed">{deleteError}</p>
+      </Modal>
     </div>
   );
 }

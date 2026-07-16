@@ -78,6 +78,17 @@ function parseDateOnly(dateStr: string) {
   return new Date(dateStr + 'T12:00:00');
 }
 
+function dateOnlyToKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function weekdayFromDateKey(dateKey: string): number {
+  return new Date(`${dateKey}T12:00:00`).getDay();
+}
+
 async function validarCardapioCriacao(
   cervejariaId: string,
   cardapioId?: string,
@@ -115,7 +126,19 @@ export async function eventosRoutes(app: FastifyInstance) {
     const series = eventos.filter((e) => isSerie(e));
     const sessoes = eventos.filter((e) => !isSerie(e));
 
-    return { series, sessoes };
+    const agendamentoExclusoes = await prisma.eventoSerieExclusao.findMany({
+      where: { cervejariaId: user.cervejariaId },
+      select: { serieId: true, data: true },
+    });
+
+    return {
+      series,
+      sessoes,
+      agendamentoExclusoes: agendamentoExclusoes.map((e) => ({
+        serieId: e.serieId,
+        data: dateOnlyToKey(e.data),
+      })),
+    };
   });
 
   app.get('/ativos', async (request) => {
@@ -540,6 +563,13 @@ export async function eventosRoutes(app: FastifyInstance) {
     }
 
     const hoje = todayDateString();
+    const excluidoHoje = await prisma.eventoSerieExclusao.findUnique({
+      where: { serieId_data: { serieId: id, data: parseDateOnly(hoje) } },
+    });
+    if (excluidoHoje) {
+      return reply.status(400).send({ error: 'O agendamento de hoje foi cancelado.' });
+    }
+
     const existente = await prisma.evento.findFirst({
       where: { serieId: id, data: parseDateOnly(hoje) },
     });
@@ -607,6 +637,64 @@ export async function eventosRoutes(app: FastifyInstance) {
     });
 
     return reply.status(201).send(sessao);
+  });
+
+  app.post('/:id/cancelar-agendamento', async (request, reply) => {
+    const user = getAuthUser(request);
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      })
+      .parse(request.body);
+
+    const serie = await prisma.evento.findFirst({
+      where: { id, cervejariaId: user.cervejariaId, recorrencia: 'SEMANAL', serieId: null },
+    });
+
+    if (!serie) {
+      return reply.status(404).send({ error: 'Agenda recorrente não encontrada' });
+    }
+
+    if (serie.diaSemana !== weekdayFromDateKey(body.data)) {
+      return reply.status(400).send({ error: 'A data informada não corresponde ao dia da semana desta agenda.' });
+    }
+
+    if (body.data < todayDateString()) {
+      return reply.status(400).send({ error: 'Não é possível cancelar agendamentos de datas passadas.' });
+    }
+
+    const sessaoExistente = await prisma.evento.findFirst({
+      where: { serieId: id, data: parseDateOnly(body.data) },
+    });
+    if (sessaoExistente) {
+      return reply.status(409).send({ error: 'Já existe uma sessão nesta data para esta agenda.' });
+    }
+
+    const exclusao = await prisma.eventoSerieExclusao.upsert({
+      where: { serieId_data: { serieId: id, data: parseDateOnly(body.data) } },
+      create: {
+        serieId: id,
+        data: parseDateOnly(body.data),
+        cervejariaId: user.cervejariaId!,
+      },
+      update: {},
+    });
+
+    await registrarTransacao({
+      cervejariaId: user.cervejariaId!,
+      tipo: 'EVENTO_ATUALIZADO',
+      usuarioId: user.sub,
+      eventoId: serie.id,
+      metadata: { acao: 'cancelar_agendamento', data: body.data, nome: serie.nome },
+    });
+
+    emitToCervejaria(app.io, user.cervejariaId!, { type: 'evento:updated', data: serie });
+
+    return reply.status(201).send({
+      serieId: exclusao.serieId,
+      data: dateOnlyToKey(exclusao.data),
+    });
   });
 
   app.patch('/:id/fechar', async (request, reply) => {

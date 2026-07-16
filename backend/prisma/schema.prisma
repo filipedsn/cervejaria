@@ -100,6 +100,7 @@ model Cervejaria {
   clientes Cliente[]
   cardapios Cardapio[]
   transacoes TransacaoLog[]
+  eventoSerieExclusoes EventoSerieExclusao[]
 }
 
 model Trailer {
@@ -253,6 +254,7 @@ model Evento {
   cardapio    Cardapio?  @relation(fields: [cardapioId], references: [id], onDelete: SetNull)
   serie       Evento?    @relation("SerieOcorrencias", fields: [serieId], references: [id], onDelete: SetNull)
   ocorrencias Evento[] @relation("SerieOcorrencias")
+  agendamentoExclusoes EventoSerieExclusao[] @relation("SerieAgendamentoExclusoes")
   comandas    Comanda[]
   pedidos     PedidoCliente[]
   montagens   TapMontagem[]
@@ -264,6 +266,21 @@ model Evento {
   @@index([cervejariaId, recorrencia])
   @@index([trailerId])
   @@index([cardapioId])
+}
+
+/// Ocorrência cancelada de uma agenda fixa semanal (pula um dia específico).
+model EventoSerieExclusao {
+  id           String   @id @default(cuid())
+  serieId      String
+  data         DateTime @db.Date
+  cervejariaId String
+  createdAt    DateTime @default(now())
+
+  serie      Evento     @relation("SerieAgendamentoExclusoes", fields: [serieId], references: [id], onDelete: Cascade)
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+
+  @@unique([serieId, data])
+  @@index([cervejariaId])
 }
 
 /// Cardápio reutilizável (comida e bebidas, sem chope).

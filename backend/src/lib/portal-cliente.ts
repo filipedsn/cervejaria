@@ -1,5 +1,31 @@
 import { prisma } from './prisma.js';
 import { registerOrUpdateCliente } from './cliente-resolver.js';
+import { normalizePhone } from './phone.js';
+
+export type PortalClienteLookupResult =
+  | { encontrado: true; nome: string }
+  | { encontrado: false };
+
+export async function lookupClientePortalPorTelefone(
+  cervejariaId: string,
+  telefone: string,
+): Promise<PortalClienteLookupResult> {
+  const normalized = normalizePhone(telefone);
+  if (!normalized) return { encontrado: false };
+
+  const cliente = await prisma.cliente.findFirst({
+    where: {
+      cervejariaId,
+      telefone: normalized,
+      ativo: true,
+      isSistema: false,
+    },
+    select: { nome: true },
+  });
+
+  if (!cliente) return { encontrado: false };
+  return { encontrado: true, nome: cliente.nome };
+}
 
 function comandaLockKey(eventoId: string, clienteId: string) {
   return `${eventoId}:${clienteId}`;

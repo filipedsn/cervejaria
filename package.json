@@ -16,6 +16,7 @@
     "prod:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/status.ps1",
     "prod:backup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/backup-db.ps1",
     "db:sync-prod-to-dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/sync-prod-to-dev.ps1",
+    "db:backfill:dev": "npm run db:backfill-cliente-stats --prefix backend",
     "prod:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/deploy.ps1",
     "prod:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/restart-api.ps1",
     "prod:ensure": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/ensure-running.ps1",

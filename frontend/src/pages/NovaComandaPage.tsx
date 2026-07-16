@@ -40,6 +40,9 @@ function ClienteResumo({ cliente, isNew }: { cliente: Cliente | null; isNew: boo
           Ver perfil
         </Link>
       </div>
+      {!cliente.telefone && (
+        <p className="text-xs text-amber-700">Cadastro legado — o telefone informado será vinculado a este perfil.</p>
+      )}
       <div className="grid grid-cols-3 gap-2 text-center text-sm">
         <div>
           <p className="text-xs text-ink-muted">Visitas</p>
@@ -64,21 +67,27 @@ export function NovaComandaPage() {
   const [nome, setNome] = useState('');
   const [telefone, setTelefone] = useState('');
   const [nameSearch, setNameSearch] = useState('');
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const [nomeEditadoManualmente, setNomeEditadoManualmente] = useState(false);
   const [nomeReferenciaTelefone, setNomeReferenciaTelefone] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
   const phoneInputRef = useRef<HTMLInputElement>(null);
+  const nomeInputRef = useRef<HTMLInputElement>(null);
   const lastAutoFilledPhone = useRef<string | null>(null);
+  const blurCloseSuggestions = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const phoneDigits = telefone.replace(/\D/g, '');
   const phoneValid = isPhoneValid(telefone);
+  const linkingLegacy = selectedCliente !== null && !selectedCliente.telefone;
 
   const { data: nameSuggestionsData } = useQuery({
     queryKey: ['clientes-search-name', nameSearch],
     queryFn: () =>
-      api.get<ClienteListResponse>(`/api/clientes?q=${encodeURIComponent(nameSearch)}&limit=8`),
+      api.get<ClienteListResponse>(
+        `/api/clientes?q=${encodeURIComponent(nameSearch)}&limit=8`,
+      ),
     enabled: nameSearch.length >= 2,
   });
 
@@ -95,6 +104,9 @@ export function NovaComandaPage() {
 
   useEffect(() => {
     phoneInputRef.current?.focus();
+    return () => {
+      if (blurCloseSuggestions.current) clearTimeout(blurCloseSuggestions.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -102,6 +114,9 @@ export function NovaComandaPage() {
 
     if (phoneLookup) {
       setNomeReferenciaTelefone(phoneLookup.nome);
+      if (selectedCliente && phoneLookup.id !== selectedCliente.id) {
+        setSelectedCliente(null);
+      }
       const shouldAutoFill =
         !nomeEditadoManualmente ||
         lastAutoFilledPhone.current !== phoneDigits;
@@ -116,12 +131,24 @@ export function NovaComandaPage() {
         lastAutoFilledPhone.current = null;
       }
     }
-  }, [phoneLookup, phoneLookupLoading, phoneValid, phoneDigits, nomeEditadoManualmente]);
+  }, [phoneLookup, phoneLookupLoading, phoneValid, phoneDigits, nomeEditadoManualmente, selectedCliente]);
 
   const nameSuggestions = nameSuggestionsData?.items ?? [];
   const clienteExistente = phoneValid && !phoneLookupLoading ? phoneLookup ?? null : null;
-  const isNewCliente = phoneValid && !phoneLookupLoading && !phoneLookup;
-  const canSubmit = nome.trim().length > 0 && phoneValid && !loading;
+  const isNewCliente = phoneValid && !phoneLookupLoading && !phoneLookup && !selectedCliente;
+  const canSubmit =
+    nome.trim().length > 0 &&
+    !loading &&
+    (linkingLegacy ? phoneValid : phoneValid || selectedCliente !== null);
+
+  const resumoCliente =
+    selectedCliente && (linkingLegacy || (phoneValid && phoneLookup?.id === selectedCliente.id))
+      ? selectedCliente
+      : clienteExistente;
+
+  const showResumo =
+    (phoneValid && !phoneLookupLoading && !linkingLegacy) ||
+    (selectedCliente !== null && (linkingLegacy || (phoneValid && !phoneLookupLoading)));
 
   const handleSelectByName = (cliente: Cliente) => {
     setNome(cliente.nome);
@@ -130,9 +157,11 @@ export function NovaComandaPage() {
     setNomeEditadoManualmente(false);
     lastAutoFilledPhone.current = null;
     if (cliente.telefone) {
+      setSelectedCliente(null);
       setTelefone(formatPhone(cliente.telefone));
       setNomeReferenciaTelefone(cliente.nome);
     } else {
+      setSelectedCliente(cliente);
       setTelefone('');
       setNomeReferenciaTelefone(null);
       phoneInputRef.current?.focus();
@@ -153,6 +182,21 @@ export function NovaComandaPage() {
     setNameSearch(value);
     setShowNameSuggestions(true);
     setNomeEditadoManualmente(true);
+    if (selectedCliente && value.trim() !== selectedCliente.nome.trim()) {
+      setSelectedCliente(null);
+    }
+  };
+
+  const handleNomeBlur = () => {
+    blurCloseSuggestions.current = setTimeout(() => setShowNameSuggestions(false), 150);
+  };
+
+  const handleNomeFocus = () => {
+    if (blurCloseSuggestions.current) {
+      clearTimeout(blurCloseSuggestions.current);
+      blurCloseSuggestions.current = null;
+    }
+    if (nameSearch.length >= 2) setShowNameSuggestions(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -164,7 +208,8 @@ export function NovaComandaPage() {
       const comanda = await api.post<{ id: string }>('/api/comandas', {
         eventoId: evento.id,
         clienteNome: nome.trim(),
-        clienteTelefone: formatPhone(telefone),
+        ...(phoneValid ? { clienteTelefone: formatPhone(telefone) } : {}),
+        ...(selectedCliente ? { clienteId: selectedCliente.id } : {}),
       });
       navigate(`/comandas/${comanda.id}`);
     } catch (err) {
@@ -181,7 +226,7 @@ export function NovaComandaPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Nova Comanda" backTo="/comandas" backLabel="Comandas" />
+      <PageHeader title="Nova Comanda" />
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <div className="alert-error">{error}</div>}
@@ -190,26 +235,32 @@ export function NovaComandaPage() {
           <label className="label">Telefone</label>
           <input
             ref={phoneInputRef}
-            className="input"
+            className={linkingLegacy ? 'input border-amber-400 ring-1 ring-amber-200/80' : 'input'}
             type="tel"
             inputMode="numeric"
             autoComplete="tel"
             value={telefone}
             onChange={(e) => handleTelefoneChange(e.target.value)}
             placeholder="(11) 99999-9999"
-            required
+            required={!selectedCliente || linkingLegacy}
+            aria-invalid={linkingLegacy && !phoneValid}
           />
           <p className="text-xs text-ink-faint mt-1">
-            Identifica ou cadastra o cliente. Se já existir, o nome será preenchido automaticamente.
+            {linkingLegacy
+              ? 'Obrigatório para vincular o cadastro legado selecionado.'
+              : 'Identifica ou cadastra o cliente. Se já existir, o nome será preenchido automaticamente.'}
           </p>
         </div>
 
         <div className="relative">
           <label className="label">Nome do cliente</label>
           <input
+            ref={nomeInputRef}
             className="input"
             value={nome}
             onChange={(e) => handleNomeChange(e.target.value)}
+            onFocus={handleNomeFocus}
+            onBlur={handleNomeBlur}
             placeholder="Digite o nome..."
             required
             autoComplete="off"
@@ -217,6 +268,12 @@ export function NovaComandaPage() {
           <p className="text-xs text-ink-faint mt-1">
             Nome exibido na comanda. Você também pode buscar clientes cadastrados pelo nome.
           </p>
+          {linkingLegacy && selectedCliente && (
+            <p className="text-xs text-amber-800 mt-1">
+              <span className="font-semibold">{selectedCliente.nome}</span>
+              <span className="text-amber-700"> · sem telefone</span>
+            </p>
+          )}
           {showNameSuggestions && nameSuggestions.length > 0 && (
             <div className="absolute z-10 w-full mt-1 bg-surface rounded-xl border border-line overflow-hidden shadow-xl">
               {nameSuggestions.map((c) => (
@@ -238,18 +295,30 @@ export function NovaComandaPage() {
           )}
         </div>
 
-        {telefone && nomeReferenciaTelefone && nome.trim() !== nomeReferenciaTelefone.trim() && (
+        {linkingLegacy && (
+          <div className="card bg-amber-50/80 border-amber-200/60 space-y-1">
+            <p className="text-sm font-semibold text-amber-900">Cadastro legado selecionado</p>
+            <p className="text-xs text-amber-800 leading-relaxed">
+              Informe o telefone de &quot;{selectedCliente.nome}&quot; para vincular ao perfil e abrir a comanda.
+            </p>
+          </div>
+        )}
+
+        {telefone && nomeReferenciaTelefone && nome.trim() !== nomeReferenciaTelefone.trim() && !selectedCliente && (
           <p className="text-xs text-amber-700">
             Telefone de &quot;{nomeReferenciaTelefone}&quot; — a comanda usará &quot;{nome.trim()}&quot;.
           </p>
         )}
 
-        {phoneValid && !phoneLookupLoading && (
-          <ClienteResumo cliente={clienteExistente} isNew={isNewCliente} />
+        {showResumo && (
+          <ClienteResumo
+            cliente={resumoCliente}
+            isNew={isNewCliente}
+          />
         )}
 
         <div className="flex gap-3 pt-2">
-          <button type="button" className="touch-btn-secondary flex-1" onClick={() => navigate('/comandas')}>
+          <button type="button" className="touch-btn-danger flex-1" onClick={() => navigate('/comandas')}>
             Cancelar
           </button>
           <button type="submit" className="touch-btn-primary flex-1" disabled={!canSubmit}>

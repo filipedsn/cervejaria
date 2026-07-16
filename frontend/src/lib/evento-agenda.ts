@@ -1,4 +1,4 @@
-import type { Evento } from '../types';
+import type { Evento, AgendamentoExclusao } from '../types';
 import { todayString } from '../components/EventoFormFields';
 
 export function dateKeyFromDate(date: Date): string {
@@ -12,6 +12,33 @@ export function formatAgendaHeading(dateKey: string): string {
     month: 'long',
   });
   return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+export function formatAgendaDateShort(dateKey: string): string {
+  const label = new Date(`${dateKey}T12:00:00`).toLocaleDateString('pt-BR', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+export function buildSerieExclusoesMap(exclusoes: AgendamentoExclusao[]): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  for (const e of exclusoes) {
+    const dateKey = e.data.slice(0, 10);
+    if (!map.has(e.serieId)) map.set(e.serieId, new Set());
+    map.get(e.serieId)!.add(dateKey);
+  }
+  return map;
+}
+
+function isSerieExcludedOnDate(
+  exclusoes: ReadonlyMap<string, ReadonlySet<string>>,
+  serieId: string,
+  dateKey: string,
+): boolean {
+  return exclusoes.get(serieId)?.has(dateKey) ?? false;
 }
 
 export function eventDateStr(evento: Evento): string | null {
@@ -93,6 +120,7 @@ function buildAgendaDayForKey(
   series: Evento[],
   sessoes: Evento[],
   excludedSessaoIds: ReadonlySet<string>,
+  serieExclusoes: ReadonlyMap<string, ReadonlySet<string>>,
   todayStr: string,
 ): AgendaDay {
   const isToday = dateKey === todayStr;
@@ -102,6 +130,7 @@ function buildAgendaDayForKey(
 
   if (!isPast) {
     for (const serie of series.filter((s) => s.diaSemana === dow)) {
+      if (isSerieExcludedOnDate(serieExclusoes, serie.id, dateKey)) continue;
       if (!hasSessaoForSerieOnDate(sessoes, serie.id, dateKey)) {
         items.push({ kind: 'serie', serie, dateKey });
       }
@@ -130,8 +159,16 @@ export function getAgendaDayForDate(
   series: Evento[],
   sessoes: Evento[],
   excludedSessaoIds: string[] = [],
+  agendamentoExclusoes: AgendamentoExclusao[] = [],
 ): AgendaDay {
-  return buildAgendaDayForKey(dateKey, series, sessoes, new Set(excludedSessaoIds), todayString());
+  return buildAgendaDayForKey(
+    dateKey,
+    series,
+    sessoes,
+    new Set(excludedSessaoIds),
+    buildSerieExclusoesMap(agendamentoExclusoes),
+    todayString(),
+  );
 }
 
 export function buildAgendaDays(
@@ -139,15 +176,17 @@ export function buildAgendaDays(
   sessoes: Evento[],
   excludedSessaoIds: string[] = [],
   futureWindowDays = 21,
+  agendamentoExclusoes: AgendamentoExclusao[] = [],
 ): AgendaDay[] {
   const todayStr = todayString();
   const excluded = new Set(excludedSessaoIds);
+  const serieExclusoes = buildSerieExclusoesMap(agendamentoExclusoes);
   const dateKeys = sortDateKeys([...collectDateKeys(series, sessoes, futureWindowDays)], todayStr);
 
   const days: AgendaDay[] = [];
 
   for (const dateKey of dateKeys) {
-    const day = buildAgendaDayForKey(dateKey, series, sessoes, excluded, todayStr);
+    const day = buildAgendaDayForKey(dateKey, series, sessoes, excluded, serieExclusoes, todayStr);
     const hasHiddenOnDay = sessoes.some(
       (s) => excluded.has(s.id) && eventDateStr(s) === dateKey,
     );

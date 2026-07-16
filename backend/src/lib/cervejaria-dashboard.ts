@@ -263,7 +263,12 @@ async function buildEventosRecentes(
     };
   });
 
-  return rows.sort((a, b) => b.receitaTotal - a.receitaTotal);
+  return rows.sort((a, b) => {
+    const dataA = a.data ? new Date(a.data).getTime() : 0;
+    const dataB = b.data ? new Date(b.data).getTime() : 0;
+    if (dataA !== dataB) return dataA - dataB;
+    return a.horaInicio.localeCompare(b.horaInicio);
+  });
 }
 
 export async function buildCervejariaDashboard(

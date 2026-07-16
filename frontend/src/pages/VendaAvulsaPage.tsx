@@ -157,7 +157,7 @@ export function VendaAvulsaPage() {
   if (!evento || evento.status !== 'ABERTO') {
     return (
       <div className="space-y-4">
-        <PageHeader title="Venda avulsa" backTo="/comandas" backLabel="Comandas" />
+        <PageHeader title="Venda avulsa" />
         <p className="empty-state-text">Abra um evento para registrar vendas avulsas.</p>
       </div>
     );
@@ -167,7 +167,7 @@ export function VendaAvulsaPage() {
 
   return (
     <div className={`space-y-4 ${cart.length > 0 ? 'page-with-action-bar' : 'pb-2'}`}>
-      <PageHeader title="Venda avulsa" backTo="/comandas" backLabel="Comandas" />
+      <PageHeader title="Venda avulsa" />
 
       <p className="text-sm text-ink-muted leading-relaxed">
         Venda rápida sem abrir comanda. Não entra no ranking nem na fidelização.
@@ -229,6 +229,10 @@ export function VendaAvulsaPage() {
           <span className="text-2xl font-bold text-brand-600 tabular-nums">{formatCurrency(total)}</span>
         </div>
       </div>
+
+      <button type="button" className="touch-btn-danger w-full" onClick={() => navigate('/comandas')}>
+        Cancelar
+      </button>
 
       {cart.length > 0 && (
         <MobileActionBar>

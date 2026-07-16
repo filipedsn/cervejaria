@@ -130,6 +130,10 @@ body.auth-screen {
   @apply min-h-[3rem] px-5 py-3 rounded-xl font-semibold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100 bg-surface text-ink hover:bg-surface-lighter border border-line;
 }
 
+.touch-btn-warning {
+  @apply min-h-[3rem] px-5 py-3 rounded-xl font-semibold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100 bg-amber-400 text-amber-950 hover:bg-amber-500 border border-amber-500/40;
+}
+
 .touch-btn-danger {
   @apply min-h-[3rem] px-5 py-3 rounded-xl font-semibold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100 bg-danger text-white hover:bg-red-500;
 }
@@ -226,6 +230,10 @@ body.auth-screen {
   @apply text-xs font-semibold px-2.5 py-1 rounded-full bg-purple-soft text-purple;
 }
 
+.badge-warning {
+  @apply text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800;
+}
+
 .touch-btn-sm {
   @apply min-h-10 px-3 py-2 text-sm rounded-xl;
 }
@@ -264,6 +272,19 @@ body.auth-screen {
 
 .metric-card {
   @apply bg-surface rounded-2xl border border-line shadow-sm py-4 px-4 min-h-[5.25rem] flex flex-col items-center justify-center text-center gap-1.5;
+}
+
+.dashboard-kpi-card {
+  @apply bg-surface rounded-2xl border border-line shadow-sm py-3 px-3.5 sm:px-4 min-h-[6.25rem] min-w-0 flex flex-col gap-1 @container;
+}
+
+.dashboard-kpi-value {
+  @apply font-bold text-brand-600 tabular-nums leading-none tracking-tight;
+  font-size: clamp(1.05rem, 7.5cqi, 1.625rem);
+}
+
+.dashboard-kpi-trend-slot {
+  @apply min-h-[1.125rem] text-xs font-semibold;
 }
 
 .metric-value {

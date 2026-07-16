@@ -11,6 +11,8 @@
     "start": "node --import @elastic/opentelemetry-node dist/index.js",
     "db:migrate": "node scripts/run-with-env.mjs development npx prisma migrate dev",
     "db:migrate:prod": "node scripts/run-with-env.mjs production npx prisma migrate deploy",
+    "db:backfill-cliente-stats": "node scripts/run-with-env.mjs development npx tsx scripts/backfill-cliente-stats.ts",
+    "db:backfill-cliente-stats:prod": "node scripts/run-with-env.mjs production npx tsx scripts/backfill-cliente-stats.ts",
     "db:push": "node scripts/run-with-env.mjs development npx prisma db push",
     "db:seed": "node scripts/run-with-env.mjs development npx tsx prisma/seed.ts",
     "db:studio": "node scripts/run-with-env.mjs development npx prisma studio",

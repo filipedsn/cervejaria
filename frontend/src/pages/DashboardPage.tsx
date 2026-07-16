@@ -63,6 +63,57 @@ function formatEventoDataCurta(data: string, horaInicio: string): string {
   return `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} · ${horaInicio}`;
 }
 
+function formatEventoChartDate(data: string): string {
+  const d = new Date(data);
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+}
+
+function compareEventoByData(
+  a: { data: string; horaInicio: string },
+  b: { data: string; horaInicio: string },
+): number {
+  const dataA = new Date(a.data).getTime();
+  const dataB = new Date(b.data).getTime();
+  if (dataA !== dataB) return dataA - dataB;
+  return a.horaInicio.localeCompare(b.horaInicio);
+}
+
+function EventoChartTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{
+    value?: number;
+    payload?: {
+      nome?: string;
+      dataLabel?: string;
+      horaInicio?: string;
+      local?: string | null;
+      comandas?: number;
+    };
+  }>;
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload;
+  const value = payload[0]?.value ?? 0;
+  if (!row) return null;
+  return (
+    <div className="rounded-lg border border-line bg-surface px-3 py-2 text-sm shadow-lg max-w-[14rem]">
+      <p className="font-semibold text-ink leading-snug">{row.nome}</p>
+      <p className="text-xs text-ink-muted mt-0.5">
+        {row.dataLabel}
+        {row.horaInicio ? ` · ${row.horaInicio}` : ''}
+        {row.local ? ` · ${row.local}` : ''}
+      </p>
+      <p className="text-brand-600 font-bold tabular-nums mt-1">{formatCurrency(value)}</p>
+      {row.comandas != null && (
+        <p className="text-ink-muted text-xs mt-0.5">{row.comandas} comandas</p>
+      )}
+    </div>
+  );
+}
+
 function KpiCard({
   label,
   value,
@@ -75,15 +126,21 @@ function KpiCard({
   trend?: number | null;
 }) {
   return (
-    <div className="card py-4 px-4 flex flex-col gap-1.5">
-      <p className="section-label">{label}</p>
-      <p className="text-2xl sm:text-3xl font-bold text-brand-600 tabular-nums leading-none">{value}</p>
+    <div className="dashboard-kpi-card">
+      <p className="section-label leading-snug">{label}</p>
+      <p className="dashboard-kpi-value">{value}</p>
       {hint && <p className="text-xs text-ink-faint">{hint}</p>}
-      {trend != null && (
-        <p className={`text-xs font-semibold ${trend >= 0 ? 'text-success' : 'text-danger'}`}>
-          {trend >= 0 ? '▲' : '▼'} {Math.abs(trend)}% vs mês anterior
-        </p>
-      )}
+      <div className="dashboard-kpi-trend-slot">
+        {trend != null ? (
+          <p className={trend >= 0 ? 'text-success' : 'text-danger'}>
+            {trend >= 0 ? '▲' : '▼'} {Math.abs(trend)}% vs mês anterior
+          </p>
+        ) : (
+          <span aria-hidden="true" className="invisible">
+            —
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -157,12 +214,20 @@ export function DashboardPage() {
   const eventosChart = useMemo(
     () =>
       [...(data?.eventosRecentes ?? [])]
-        .reverse()
+        .sort(compareEventoByData)
         .map((e) => ({
-          name: e.nome.length > 16 ? `${e.nome.slice(0, 16)}…` : e.nome,
+          nome: e.nome,
+          dataLabel: formatEventoChartDate(e.data),
+          horaInicio: e.horaInicio,
+          local: e.local,
           receita: e.receitaTotal,
           comandas: e.comandasAtendidas,
         })),
+    [data?.eventosRecentes],
+  );
+
+  const eventosOrdenados = useMemo(
+    () => [...(data?.eventosRecentes ?? [])].sort(compareEventoByData),
     [data?.eventosRecentes],
   );
 
@@ -247,7 +312,7 @@ export function DashboardPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 2xl:grid-cols-6 gap-3">
         <KpiCard
           label="Receita total"
           value={formatCurrency(resumo.receitaTotal)}
@@ -271,20 +336,11 @@ export function DashboardPage() {
             <section className="space-y-4">
               <div className="card p-4 sm:p-5">
                 <h2 className="section-label mb-4">Eventos encerrados no mês</h2>
-                <div className="h-56 sm:h-64 -mx-1">
+                <div className="h-52 sm:h-60 -mx-1">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={eventosChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <BarChart data={eventosChart} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(17,24,39,0.06)" vertical={false} />
-                      <XAxis
-                        dataKey="name"
-                        tick={{ fill: '#6b7280', fontSize: 10 }}
-                        axisLine={false}
-                        tickLine={false}
-                        interval={0}
-                        angle={eventosChart.length > 4 ? -25 : 0}
-                        textAnchor={eventosChart.length > 4 ? 'end' : 'middle'}
-                        height={eventosChart.length > 4 ? 52 : 30}
-                      />
+                      <XAxis hide />
                       <YAxis
                         tick={{ fill: '#9ca3af', fontSize: 11 }}
                         axisLine={false}
@@ -292,7 +348,7 @@ export function DashboardPage() {
                         tickFormatter={(v) => (v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`)}
                         width={48}
                       />
-                      <Tooltip content={<ChartTooltip />} />
+                      <Tooltip content={<EventoChartTooltip />} />
                       <Bar dataKey="receita" fill="var(--color-brand-600)" radius={[6, 6, 0, 0]} maxBarSize={48} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -300,7 +356,7 @@ export function DashboardPage() {
               </div>
 
               <div className="card divide-y divide-line p-0 overflow-hidden">
-                {eventosRecentes.map((e) => (
+                {eventosOrdenados.map((e) => (
                   <Link
                     key={e.eventoId}
                     to={`/eventos/${e.eventoId}/resumo`}

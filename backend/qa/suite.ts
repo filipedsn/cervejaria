@@ -818,6 +818,390 @@ async function main() {
     return { message: 'CRM chope OK', expected: '500/600', actual: `${deltaMlA}/${deltaMlB}` };
   });
 
+  await test({ id: 'RF-16d', category: 'Funcional', name: 'CRM: excluir cliente sem movimentação', requirement: 'RF-16' }, async () => {
+    const phoneSuffix = Date.now().toString().slice(-8);
+    const created = await api<{ id: string; podeExcluir: boolean }>('POST', '/api/clientes', {
+      token: lifecycle.donoToken,
+      body: { nome: 'QA Delete OK', telefone: `119${phoneSuffix}` },
+    });
+    if (created.status !== 201) {
+      return { status: 'failed', message: 'Falha ao criar cliente QA', actual: String(created.status) };
+    }
+    if (!created.data.podeExcluir) {
+      return { status: 'failed', message: 'podeExcluir deveria ser true', actual: String(created.data.podeExcluir) };
+    }
+    const del = await api('DELETE', `/api/clientes/${created.data.id}`, { token: lifecycle.donoToken });
+    if (del.status !== 204) {
+      return { status: 'failed', message: 'DELETE deveria retornar 204', expected: '204', actual: String(del.status) };
+    }
+    const gone = await prisma.cliente.findUnique({ where: { id: created.data.id } });
+    if (gone) {
+      return { status: 'failed', message: 'Cliente ainda existe no banco', actual: 'exists' };
+    }
+    return { message: 'Cliente sem movimentação excluído', expected: '204', actual: String(del.status) };
+  });
+
+  await test({ id: 'RF-16e', category: 'Funcional', name: 'CRM: bloquear exclusão com comandas', requirement: 'RF-16' }, async () => {
+    const del = await api<{ error: string }>('DELETE', `/api/clientes/${rf14ClienteAId}`, { token: lifecycle.donoToken });
+    if (del.status !== 409) {
+      return { status: 'failed', message: 'DELETE deveria retornar 409', expected: '409', actual: String(del.status) };
+    }
+    return { message: 'Exclusão bloqueada com movimentação', expected: '409', actual: String(del.status) };
+  });
+
+  await test({ id: 'RF-16f', category: 'Funcional', name: 'CRM: excluir cliente só com comanda cancelada', requirement: 'RF-16' }, async () => {
+    const phoneSuffix = Date.now().toString().slice(-8);
+    const created = await api<{ id: string; podeExcluir: boolean }>('POST', '/api/clientes', {
+      token: lifecycle.donoToken,
+      body: { nome: 'QA Cancelada Only', telefone: `118${phoneSuffix}` },
+    });
+    if (created.status !== 201) {
+      return { status: 'failed', message: 'Falha ao criar cliente QA', actual: String(created.status) };
+    }
+
+    await prisma.comanda.create({
+      data: {
+        eventoId: lifecycle.eventoId,
+        clienteId: created.data.id,
+        status: 'CANCELADA',
+        tipo: 'COMANDA',
+      },
+    });
+
+    const fetched = await api<{ podeExcluir: boolean }>('GET', `/api/clientes/${created.data.id}`, {
+      token: lifecycle.donoToken,
+    });
+    if (!fetched.data.podeExcluir) {
+      return {
+        status: 'failed',
+        message: 'podeExcluir deveria ser true com só comanda cancelada',
+        actual: String(fetched.data.podeExcluir),
+      };
+    }
+
+    const del = await api('DELETE', `/api/clientes/${created.data.id}`, { token: lifecycle.donoToken });
+    if (del.status !== 204) {
+      return { status: 'failed', message: 'DELETE deveria retornar 204', expected: '204', actual: String(del.status) };
+    }
+    return { message: 'Cliente com só comanda cancelada excluído', expected: '204', actual: String(del.status) };
+  });
+
+  await test({ id: 'RF-16g', category: 'Funcional', name: 'CRM: unir clientes legados duplicados', requirement: 'RF-16' }, async () => {
+    const nome = `QA Merge ${Date.now()}`;
+    const destino = await prisma.cliente.create({
+      data: {
+        nome,
+        telefone: null,
+        cervejariaId: lifecycle.cervejariaId,
+        cadastradoVia: 'COMANDA',
+      },
+    });
+    const fonte = await prisma.cliente.create({
+      data: {
+        nome,
+        telefone: null,
+        cervejariaId: lifecycle.cervejariaId,
+        cadastradoVia: 'COMANDA',
+      },
+    });
+
+    await prisma.comanda.create({
+      data: {
+        eventoId: lifecycle.eventoId,
+        clienteId: destino.id,
+        status: 'FECHADA',
+        tipo: 'COMANDA',
+        total: 50,
+      },
+    });
+    await prisma.comanda.create({
+      data: {
+        eventoId: lifecycle.eventoId,
+        clienteId: fonte.id,
+        status: 'FECHADA',
+        tipo: 'COMANDA',
+        total: 30,
+      },
+    });
+
+    const merge = await api<{
+      comandasMovidas: number;
+      estatisticas: { totalComandasFechadas: number; totalGasto: number };
+    }>('POST', `/api/clientes/${destino.id}/unir`, {
+      token: lifecycle.donoToken,
+      body: { fonteId: fonte.id },
+    });
+
+    if (merge.status !== 200) {
+      return { status: 'failed', message: 'Unir clientes deveria retornar 200', actual: String(merge.status) };
+    }
+    if (merge.data.comandasMovidas !== 1) {
+      return {
+        status: 'failed',
+        message: 'Deveria mover 1 comanda da fonte',
+        expected: '1',
+        actual: String(merge.data.comandasMovidas),
+      };
+    }
+
+    const fonteGone = await prisma.cliente.findUnique({ where: { id: fonte.id } });
+    if (fonteGone) {
+      return { status: 'failed', message: 'Cliente fonte deveria ter sido removido', actual: 'exists' };
+    }
+
+    const comandasDestino = await prisma.comanda.count({ where: { clienteId: destino.id, status: 'FECHADA' } });
+    if (comandasDestino !== 2) {
+      return {
+        status: 'failed',
+        message: 'Destino deveria ter 2 comandas fechadas',
+        expected: '2',
+        actual: String(comandasDestino),
+      };
+    }
+
+    const stats = await prisma.clienteEstatisticas.findUnique({ where: { clienteId: destino.id } });
+    const gasto = stats ? Number(stats.totalGasto) : 0;
+    if (stats?.totalComandasFechadas !== 2 || Math.abs(gasto - 80) > 0.01) {
+      return {
+        status: 'failed',
+        message: 'Stats deveriam refletir soma das comandas',
+        expected: '2 visitas / R$ 80',
+        actual: `${stats?.totalComandasFechadas ?? 0} visitas / R$ ${gasto}`,
+      };
+    }
+
+    return { message: 'Clientes legados unidos com stats recalculados', expected: '80', actual: String(gasto) };
+  });
+
+  await test({ id: 'RF-17a', category: 'Funcional', name: 'Legado: vincular telefone via clienteId', requirement: 'RF-17' }, async () => {
+    const legacy = await prisma.cliente.create({
+      data: {
+        nome: `QA Legado ${Date.now()}`,
+        telefone: null,
+        cervejariaId: lifecycle.cervejariaId,
+        cadastradoVia: 'COMANDA',
+      },
+    });
+    const tel = portalTestPhone(88, 1);
+
+    const created = await api<{ id: string; clienteId: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: {
+        eventoId: lifecycle.eventoId,
+        clienteNome: legacy.nome,
+        clienteTelefone: tel,
+        clienteId: legacy.id,
+      },
+    });
+    if (created.status !== 201) {
+      return { status: 'failed', message: 'Comanda legado+telefone deveria retornar 201', actual: String(created.status) };
+    }
+    if (created.data.clienteId !== legacy.id) {
+      return {
+        status: 'failed',
+        message: 'Comanda deveria usar o mesmo clienteId legado',
+        expected: legacy.id,
+        actual: created.data.clienteId,
+      };
+    }
+
+    const updated = await prisma.cliente.findUnique({ where: { id: legacy.id } });
+    if (!updated?.telefone || updated.telefone !== tel) {
+      return {
+        status: 'failed',
+        message: 'Telefone deveria estar vinculado ao legado',
+        expected: tel,
+        actual: updated?.telefone ?? 'null',
+      };
+    }
+    return { message: 'Telefone vinculado ao legado', expected: legacy.id, actual: created.data.clienteId };
+  });
+
+  await test({ id: 'RF-17b', category: 'Funcional', name: 'Legado: conflito telefone de outro cliente', requirement: 'RF-17' }, async () => {
+    const tel = portalTestPhone(88, 2);
+    const other = await api<{ id: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: staffComandaBody(lifecycle.eventoId, `QA Dono Tel ${Date.now()}`, 882),
+    });
+    if (other.status !== 201) {
+      return { status: 'failed', message: 'Setup: comanda com telefone falhou', actual: String(other.status) };
+    }
+
+    const fullOther = await api<{ clienteId: string }>('GET', `/api/comandas/${other.data.id}`, {
+      token: lifecycle.donoToken,
+    });
+    const otherCliente = await prisma.cliente.findUniqueOrThrow({
+      where: { id: fullOther.data.clienteId },
+      select: { telefone: true },
+    });
+    const telOcupado = otherCliente.telefone ?? tel;
+
+    const legacy = await prisma.cliente.create({
+      data: {
+        nome: `QA Legado Conflito ${Date.now()}`,
+        telefone: null,
+        cervejariaId: lifecycle.cervejariaId,
+        cadastradoVia: 'COMANDA',
+      },
+    });
+
+    const conflict = await api<{ error: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: {
+        eventoId: lifecycle.eventoId,
+        clienteNome: legacy.nome,
+        clienteTelefone: telOcupado,
+        clienteId: legacy.id,
+      },
+    });
+    if (conflict.status !== 409) {
+      return { status: 'failed', message: 'Conflito deveria retornar 409', expected: '409', actual: String(conflict.status) };
+    }
+
+    const stillLegacy = await prisma.cliente.findUnique({ where: { id: legacy.id } });
+    if (stillLegacy?.telefone) {
+      return { status: 'failed', message: 'Legado não deveria receber telefone em conflito', actual: stillLegacy.telefone };
+    }
+    return { message: 'Conflito de telefone bloqueado', expected: '409', actual: String(conflict.status) };
+  });
+
+  await test({ id: 'RF-17c', category: 'Funcional', name: 'Legado: fluxo telefone-only inalterado', requirement: 'RF-17' }, async () => {
+    const tel = portalTestPhone(88, 3);
+    const nome = `QA Phone Only ${Date.now()}`;
+    const before = await prisma.cliente.count({ where: { cervejariaId: lifecycle.cervejariaId, telefone: tel } });
+
+    const created = await api<{ id: string; clienteId: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: {
+        eventoId: lifecycle.eventoId,
+        clienteNome: nome,
+        clienteTelefone: tel,
+      },
+    });
+    if (created.status !== 201) {
+      return { status: 'failed', message: 'Comanda telefone-only deveria retornar 201', actual: String(created.status) };
+    }
+
+    const after = await prisma.cliente.count({ where: { cervejariaId: lifecycle.cervejariaId, telefone: tel } });
+    if (before === 0 && after !== 1) {
+      return { status: 'failed', message: 'Deveria existir exatamente 1 cliente com o telefone', expected: '1', actual: String(after) };
+    }
+
+    const cliente = await prisma.cliente.findFirst({
+      where: { id: created.data.clienteId, telefone: tel },
+    });
+    if (!cliente) {
+      return { status: 'failed', message: 'Cliente da comanda deveria ter o telefone informado', actual: 'not found' };
+    }
+    return { message: 'Fluxo telefone-only OK', expected: tel, actual: cliente.telefone ?? 'null' };
+  });
+
+  await test({ id: 'RF-17d', category: 'Funcional', name: 'Legado: portal não auto-vincula', requirement: 'RF-17' }, async () => {
+    const legacyName = `QA Portal Legado ${Date.now()}`;
+    const legacy = await prisma.cliente.create({
+      data: {
+        nome: legacyName,
+        telefone: null,
+        cervejariaId: lifecycle.cervejariaId,
+        cadastradoVia: 'COMANDA',
+      },
+    });
+    const tel = portalTestPhone(88, 4);
+
+    const session = await portalSessao(lifecycle.slug, lifecycle.trailerId, {
+      nome: legacyName,
+      telefone: tel,
+    });
+    if (session.status !== 201 || !session.clienteId) {
+      return { status: 'failed', message: 'Sessão portal deveria retornar 201', actual: String(session.status) };
+    }
+    if (session.clienteId === legacy.id) {
+      return {
+        status: 'failed',
+        message: 'Portal não deveria reutilizar cliente legado sem telefone',
+        expected: 'novo id',
+        actual: legacy.id,
+      };
+    }
+
+    const legacyAfter = await prisma.cliente.findUnique({ where: { id: legacy.id } });
+    if (legacyAfter?.telefone) {
+      return { status: 'failed', message: 'Legado deveria permanecer sem telefone', actual: legacyAfter.telefone };
+    }
+
+    const portalCliente = await prisma.cliente.findUnique({ where: { id: session.clienteId } });
+    if (!portalCliente?.telefone || portalCliente.telefone !== tel) {
+      return {
+        status: 'failed',
+        message: 'Portal deveria criar cliente com telefone informado',
+        expected: tel,
+        actual: portalCliente?.telefone ?? 'null',
+      };
+    }
+    return { message: 'Portal criou cliente novo sem tocar legado', expected: legacy.id, actual: session.clienteId };
+  });
+
+  await test({ id: 'RF-17e', category: 'Funcional', name: 'Legado: clienteId sem telefone exige phone', requirement: 'RF-17' }, async () => {
+    const legacy = await prisma.cliente.create({
+      data: {
+        nome: `QA Legado Block ${Date.now()}`,
+        telefone: null,
+        cervejariaId: lifecycle.cervejariaId,
+        cadastradoVia: 'COMANDA',
+      },
+    });
+    const tel = portalTestPhone(87, 1);
+
+    const blocked = await api<{ error: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: {
+        eventoId: lifecycle.eventoId,
+        clienteNome: legacy.nome,
+        clienteId: legacy.id,
+      },
+    });
+    if (blocked.status !== 400) {
+      return {
+        status: 'failed',
+        message: 'Legado sem telefone deveria retornar 400',
+        expected: '400',
+        actual: String(blocked.status),
+      };
+    }
+
+    const ok = await api<{ id: string; clienteId: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: {
+        eventoId: lifecycle.eventoId,
+        clienteNome: legacy.nome,
+        clienteTelefone: tel,
+        clienteId: legacy.id,
+      },
+    });
+    if (ok.status !== 201) {
+      return { status: 'failed', message: 'Com legado+telefone deveria retornar 201', actual: String(ok.status) };
+    }
+    if (ok.data.clienteId !== legacy.id) {
+      return {
+        status: 'failed',
+        message: 'Deveria usar o mesmo clienteId legado',
+        expected: legacy.id,
+        actual: ok.data.clienteId,
+      };
+    }
+
+    const updated = await prisma.cliente.findUnique({ where: { id: legacy.id } });
+    if (updated?.telefone !== tel) {
+      return {
+        status: 'failed',
+        message: 'Telefone deveria estar vinculado',
+        expected: tel,
+        actual: updated?.telefone ?? 'null',
+      };
+    }
+    return { message: 'Legado exige telefone; vincula ao confirmar', expected: '400 then 201', actual: 'OK' };
+  });
+
   let rf14Resumo: {
     resumo: { receitaTotal: number; comandasAtendidas: number };
     porPagamento: Array<{ forma: string; valor: number }>;
@@ -1623,6 +2007,98 @@ async function main() {
   const portalStaffToken = ctx.arena.donoToken;
 
   type PortalClient = Awaited<ReturnType<typeof portalSessao>>;
+
+  await test({ id: 'PORTAL-08', category: 'Portal', name: 'Lookup: telefone cadastrado retorna nome', requirement: 'PORTAL-08' }, async () => {
+    const tel = portalTestPhone(93, 1);
+    const nome = `QA Lookup OK ${Date.now()}`;
+    const created = await portalSessao(portalSlug, portalTrailerId, { nome, telefone: tel });
+    if (created.status !== 201) {
+      return { status: 'failed', message: 'Setup sessao falhou', actual: String(created.status) };
+    }
+
+    const lookup = await api<{ encontrado: boolean; nome?: string }>(
+      'GET',
+      `/api/public/cervejarias/${portalSlug}/trailers/${portalTrailerId}/cliente-por-telefone?telefone=${encodeURIComponent(tel)}`,
+    );
+    if (lookup.status !== 200 || !lookup.data.encontrado || lookup.data.nome !== nome) {
+      return {
+        status: 'failed',
+        message: 'Lookup deveria retornar cliente existente',
+        expected: nome,
+        actual: lookup.data.nome ?? String(lookup.data.encontrado),
+      };
+    }
+    return { message: 'Lookup encontrou cliente', expected: nome, actual: lookup.data.nome };
+  });
+
+  await test({ id: 'PORTAL-09', category: 'Portal', name: 'Lookup: telefone inexistente', requirement: 'PORTAL-09' }, async () => {
+    const tel = portalTestPhone(93, 2);
+    const lookup = await api<{ encontrado: boolean }>(
+      'GET',
+      `/api/public/cervejarias/${portalSlug}/trailers/${portalTrailerId}/cliente-por-telefone?telefone=${encodeURIComponent(tel)}`,
+    );
+    if (lookup.status !== 200 || lookup.data.encontrado) {
+      return {
+        status: 'failed',
+        message: 'Lookup deveria retornar encontrado=false',
+        expected: 'false',
+        actual: String(lookup.data.encontrado),
+      };
+    }
+    return { message: 'Telefone não cadastrado', expected: 'false', actual: 'false' };
+  });
+
+  await test({ id: 'PORTAL-10', category: 'Portal', name: 'Lookup: legado sem telefone não aparece', requirement: 'PORTAL-10' }, async () => {
+    const tel = portalTestPhone(93, 3);
+    await prisma.cliente.create({
+      data: {
+        nome: `QA Legado Portal ${Date.now()}`,
+        telefone: null,
+        cervejariaId: ctx.arena.cervejariaId,
+        cadastradoVia: 'COMANDA',
+      },
+    });
+
+    const lookup = await api<{ encontrado: boolean }>(
+      'GET',
+      `/api/public/cervejarias/${portalSlug}/trailers/${portalTrailerId}/cliente-por-telefone?telefone=${encodeURIComponent(tel)}`,
+    );
+    if (lookup.status !== 200 || lookup.data.encontrado) {
+      return {
+        status: 'failed',
+        message: 'Legado sem telefone não deveria aparecer no lookup',
+        expected: 'false',
+        actual: String(lookup.data.encontrado),
+      };
+    }
+    return { message: 'Legado invisível ao lookup', expected: 'false', actual: 'false' };
+  });
+
+  await test({ id: 'PORTAL-11', category: 'Portal', name: 'Fluxo novo: lookup + sessao abre comanda', requirement: 'PORTAL-11' }, async () => {
+    const tel = portalTestPhone(93, 4);
+    const nome = `QA Portal Novo ${Date.now()}`;
+
+    const lookup = await api<{ encontrado: boolean }>(
+      'GET',
+      `/api/public/cervejarias/${portalSlug}/trailers/${portalTrailerId}/cliente-por-telefone?telefone=${encodeURIComponent(tel)}`,
+    );
+    if (lookup.status !== 200 || lookup.data.encontrado) {
+      return { status: 'failed', message: 'Pré-lookup deveria ser false', actual: String(lookup.data.encontrado) };
+    }
+
+    const session = await portalSessao(portalSlug, portalTrailerId, { nome, telefone: tel });
+    if (session.status !== 201 || !session.comandaId || !session.clienteId) {
+      return { status: 'failed', message: 'Sessao deveria abrir comanda', actual: String(session.status) };
+    }
+
+    const cliente = await prisma.cliente.findFirst({
+      where: { id: session.clienteId, telefone: tel, nome },
+    });
+    if (!cliente) {
+      return { status: 'failed', message: 'Cliente não cadastrado após sessao', actual: 'not found' };
+    }
+    return { message: 'Cadastro + comanda OK', expected: tel, actual: cliente.telefone ?? 'null' };
+  });
 
   await test({ id: 'PORTAL-01', category: 'Portal', name: '10 sessões paralelas — cookies e comandas distintos', requirement: 'PORTAL-01' }, async () => {
     const sessions = await Promise.all(

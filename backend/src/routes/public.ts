@@ -6,7 +6,12 @@ import { z } from 'zod';
 
 import { prisma } from '../lib/prisma.js';
 
-import { resolveTrailerPortalContext, startClientePortalSession } from '../lib/portal-cliente.js';
+import {
+  lookupClientePortalPorTelefone,
+  resolveTrailerPortalContext,
+  startClientePortalSession,
+} from '../lib/portal-cliente.js';
+import { normalizePhone } from '../lib/phone.js';
 
 import {
 
@@ -54,6 +59,10 @@ const sessaoSchema = z.object({
 
   telefone: z.string().min(10),
 
+});
+
+const telefoneQuerySchema = z.object({
+  telefone: z.string().min(10),
 });
 
 
@@ -274,6 +283,25 @@ export async function publicRoutes(app: FastifyInstance) {
 
     };
 
+  });
+
+
+
+  app.get('/cervejarias/:slug/trailers/:trailerId/cliente-por-telefone', {
+    config: { rateLimit: { max: PUBLIC_RATE_LIMIT_MAX, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const { slug, trailerId } = request.params as { slug: string; trailerId: string };
+    const query = telefoneQuerySchema.parse(request.query);
+
+    const ctx = await resolveTrailerPortalContext(slug, trailerId);
+    if (!ctx) return reply.status(404).send({ error: 'Link inválido' });
+
+    const telefone = normalizePhone(query.telefone);
+    if (!telefone) {
+      return reply.status(400).send({ error: 'Telefone inválido. Informe DDD + número (10 ou 11 dígitos).' });
+    }
+
+    return lookupClientePortalPorTelefone(ctx.cervejaria.id, telefone);
   });
 
 

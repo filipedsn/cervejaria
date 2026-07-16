@@ -49,8 +49,12 @@ Write-Host "Origem: cervejaria (producao)" -ForegroundColor Gray
 Write-Host "Destino: $outFile" -ForegroundColor Gray
 Write-Host 'Gerando dump...' -ForegroundColor Yellow
 
-docker exec cervejaria-db pg_dump -U cervejaria -d cervejaria --no-owner --no-acl |
-  Out-File -FilePath $outFile -Encoding utf8
+$containerDump = "/tmp/backup-prod-$timestamp.sql"
+docker exec cervejaria-db pg_dump -U cervejaria -d cervejaria --no-owner --no-acl -f $containerDump
+if ($LASTEXITCODE -ne 0) { throw 'pg_dump falhou.' }
+docker cp "cervejaria-db:$containerDump" $outFile
+if ($LASTEXITCODE -ne 0) { throw "Falha ao copiar dump para $outFile" }
+docker exec cervejaria-db rm -f $containerDump 2>$null | Out-Null
 
 $size = (Get-Item $outFile).Length
 $sizeKb = [math]::Round($size / 1024, 1)
