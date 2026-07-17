@@ -8,6 +8,7 @@ import { formatTrailerLabel } from '../types';
 import { ConnectionStatus } from './ConnectionStatus';
 import { AccountMenu, UserAvatarButton } from './AccountMenu';
 import { BackToEventosLink } from './BackToEventosLink';
+import { PortalQrButton } from './PortalQrButton';
 import { TrailerSwitcher } from './TrailerSwitcher';
 import { NAV_ITEMS, IconBell } from './NavIcons';
 
@@ -78,7 +79,7 @@ function EventoBar({
         <Link
           to="/eventos"
           aria-label="Ir para lista de eventos"
-          className="flex shrink-0 items-center gap-1.5 px-4 min-w-[5.5rem] bg-brand-50 border-l border-line text-brand-600 hover:bg-brand-100 active:bg-brand-100 transition-colors"
+          className="touch-btn-danger touch-btn-sm flex shrink-0 items-center gap-1.5 px-4 min-w-[5.5rem] rounded-none border-0 border-l border-line uppercase tracking-wide leading-none"
         >
           <span className="text-xs font-bold uppercase tracking-wide leading-none">Eventos</span>
           <ChevronRightIcon className="w-5 h-5 shrink-0" />
@@ -91,6 +92,14 @@ function EventoBar({
     <div className="flex items-stretch min-h-14 rounded-xl overflow-hidden border border-line bg-surface shadow-sm">
       <BackToEventosLink className="shrink-0 min-w-[5.5rem] rounded-none border-0 border-r border-line" />
       <EventoInfo evento={evento} />
+      {evento.status === 'ABERTO' && (
+        <PortalQrButton
+          trailerId={evento.trailerId}
+          trailer={evento.trailer ?? trailer}
+          iconOnly
+          variant="header"
+        />
+      )}
     </div>
   );
 }

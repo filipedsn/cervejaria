@@ -7,9 +7,7 @@ import { useEvento } from '../contexts/EventoContext';
 import { getSocket } from '../lib/socket';
 import { Loading } from '../components/Loading';
 import { EncerrarEventoButton } from '../components/EncerrarEventoButton';
-import { ExcluirEventoButton } from '../components/ExcluirEventoButton';
 import { VerRankingButton } from '../components/VerRankingButton';
-import { PortalQrButton } from '../components/PortalQrButton';
 import { EmptyState } from '../components/EmptyState';
 import { StatusBadge } from '../components/StatusBadge';
 import { EventoTapMontagemPanel } from '../components/EventoTapMontagemPanel';
@@ -185,21 +183,17 @@ export function ComandasPage() {
       />
 
       {!selectMode && eventoAberto && (
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <Link to="/comandas/nova" className="touch-btn-hero flex-1 min-w-0">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface/20 text-2xl leading-none font-normal">
-                +
-              </span>
-              Nova Comanda
-            </Link>
-            <PortalQrButton
-              trailerId={evento.trailerId}
-              trailer={evento.trailer ?? trailer}
-              iconOnly
-            />
-          </div>
-          <Link to="/comandas/venda-avulsa" className="touch-btn-secondary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl font-bold text-base px-4 w-full">
+        <div className="flex gap-2">
+          <Link to="/comandas/nova" className="touch-btn-hero flex-1 min-w-0">
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface/20 text-2xl leading-none font-normal">
+              +
+            </span>
+            Nova Comanda
+          </Link>
+          <Link
+            to="/comandas/venda-avulsa"
+            className="touch-btn-secondary flex-1 min-w-0 min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl font-bold text-base px-4"
+          >
             <span className="text-xl leading-none" aria-hidden>
               ⚡
             </span>
@@ -209,19 +203,12 @@ export function ComandasPage() {
       )}
 
       {!selectMode && !eventoAberto && (
-        <div className="flex gap-2">
-          <Link to="/comandas/nova" className="touch-btn-hero flex-1 min-w-0">
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface/20 text-2xl leading-none font-normal">
-              +
-            </span>
-            Nova Comanda
-          </Link>
-          <PortalQrButton
-            trailerId={evento.trailerId}
-            trailer={evento.trailer ?? trailer}
-            iconOnly
-          />
-        </div>
+        <Link to="/comandas/nova" className="touch-btn-hero w-full">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface/20 text-2xl leading-none font-normal">
+            +
+          </span>
+          Nova Comanda
+        </Link>
       )}
 
       {groupSuccess && <div className="alert-success">{groupSuccess}</div>}
@@ -247,7 +234,7 @@ export function ComandasPage() {
           <button
             type="button"
             onClick={exitSelectMode}
-            className="flex w-full items-center gap-3 min-h-[3.75rem] rounded-2xl bg-ink-soft text-white px-4 py-3 shadow-lg shadow-black/15 ring-2 ring-line active:scale-[0.98] transition-transform"
+            className="touch-btn-danger flex w-full items-center gap-3 min-h-[3.75rem] rounded-2xl px-4 py-3 shadow-lg shadow-red-600/20 ring-2 ring-red-200/40 active:scale-[0.98] transition-transform"
           >
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 text-2xl leading-none">
               ×
@@ -395,17 +382,7 @@ export function ComandasPage() {
 
       {eventoAberto && !selectMode && (
         <MobileActionBar>
-          <div className="grid gap-2 w-full">
-            {resumo && resumo.comandasAbertas + resumo.comandasFechadas === 0 && (
-              <ExcluirEventoButton
-                eventoId={evento.id}
-                eventoNome={evento.nome}
-                eventoAberto
-                navigateAfterDelete="/eventos"
-              />
-            )}
-            <EncerrarEventoButton eventoId={evento.id} />
-          </div>
+          <EncerrarEventoButton eventoId={evento.id} />
         </MobileActionBar>
       )}
 

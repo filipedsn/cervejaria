@@ -14,6 +14,7 @@ import { useEvento } from '../contexts/EventoContext';
 import { Loading } from '../components/Loading';
 
 import { Modal } from '../components/Modal';
+import { ModalFormFooter } from '../components/ModalFormFooter';
 
 import { AgendaWeekStrip } from '../components/AgendaWeekStrip';
 
@@ -91,6 +92,18 @@ const DIAS_RECORRENCIA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 's
 
 const WEEKS_FUTURE = 12;
 
+const EVENTO_PENDENTE_ENCERRAMENTO_MSG =
+  'Existem eventos pendentes de encerramento. Finalize-os para iniciar um novo evento.';
+
+function isEventoPendenteEncerramentoError(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return false;
+  const msg = err.message;
+  return (
+    msg === 'Já existe uma sessão nesta data para esta agenda.' ||
+    msg.startsWith('Este trailer já possui o evento')
+  );
+}
+
 
 
 function formatTimeRange(evento: Pick<Evento, 'horaInicio' | 'horaFim'>) {
@@ -127,7 +140,15 @@ function formatTodaySectionLabel(dateKey: string) {
 
 
 
-function EditEventoButton({ onClick, className }: { onClick: () => void; className?: string }) {
+function EditEventoButton({
+  onClick,
+  className,
+  primary = false,
+}: {
+  onClick: () => void;
+  className?: string;
+  primary?: boolean;
+}) {
 
   return (
 
@@ -135,7 +156,7 @@ function EditEventoButton({ onClick, className }: { onClick: () => void; classNa
 
       type="button"
 
-      className={`btn-outline-light touch-btn-sm ${className ?? ''}`}
+      className={`${primary ? 'touch-btn-primary touch-btn-sm px-4' : 'btn-outline-light touch-btn-sm'} ${className ?? ''}`}
 
       onClick={onClick}
 
@@ -193,10 +214,12 @@ function ActiveSessionHero({
 
       <div className="flex gap-2">
 
-        <button type="button" className="btn-hero-white flex-1 min-w-0" onClick={onComandas}>
-
+        <button
+          type="button"
+          className="flex flex-1 min-w-0 items-center justify-center min-h-12 rounded-xl bg-success text-white font-bold shadow-md hover:bg-green-600 transition active:scale-[0.98]"
+          onClick={onComandas}
+        >
           Continuar comandas
-
         </button>
 
         <EditarCardapioEventoButton eventoId={evento.id} eventoAberto iconOnly />
@@ -285,19 +308,12 @@ function AgendaSerieCard({
         {isToday ? (
 
           <button
-
             type="button"
-
-            className="btn-outline-light flex-1 min-w-[10rem] disabled:opacity-40"
-
+            className="touch-btn-primary flex-1 min-w-[10rem] disabled:opacity-40"
             disabled={pending || cancelPending}
-
             onClick={onIniciar}
-
           >
-
             {pending ? 'Iniciando…' : 'Iniciar sessão'}
-
           </button>
 
         ) : (
@@ -306,7 +322,7 @@ function AgendaSerieCard({
 
         )}
 
-        <EditEventoButton onClick={onEdit} />
+        <EditEventoButton onClick={onEdit} primary />
 
         <button
           type="button"
@@ -375,7 +391,7 @@ function AgendaSessaoCard({
       {sessao.status === 'ABERTO' && (
         <div className="space-y-2">
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn-outline-light flex-1 min-w-[10rem]" onClick={onRetomar}>
+            <button type="button" className="touch-btn-primary flex-1 min-w-[10rem]" onClick={onRetomar}>
               Continuar comandas
             </button>
             <VerRankingButton eventoId={sessao.id} fullWidth={false} />
@@ -506,6 +522,22 @@ export function EventoPage() {
 
   const [error, setError] = useState('');
 
+  const [showPendingEventModal, setShowPendingEventModal] = useState(false);
+
+  const [cancelAgendamentoTarget, setCancelAgendamentoTarget] = useState<{
+    serie: Evento;
+    dateKey: string;
+  } | null>(null);
+
+  const handleAgendaError = (err: unknown, fallback: string) => {
+    if (isEventoPendenteEncerramentoError(err)) {
+      setError('');
+      setShowPendingEventModal(true);
+      return;
+    }
+    setError(err instanceof ApiError ? err.message : fallback);
+  };
+
   const { data, isLoading } = useQuery({
 
     queryKey: ['eventos'],
@@ -595,7 +627,7 @@ export function EventoPage() {
 
     },
 
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao criar'),
+    onError: (err) => handleAgendaError(err, 'Erro ao criar'),
 
   });
 
@@ -615,7 +647,7 @@ export function EventoPage() {
 
     },
 
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao iniciar sessão'),
+    onError: (err) => handleAgendaError(err, 'Erro ao iniciar sessão'),
 
   });
 
@@ -671,6 +703,7 @@ export function EventoPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['eventos'] });
       setError('');
+      setCancelAgendamentoTarget(null);
     },
 
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao cancelar agendamento'),
@@ -710,11 +743,8 @@ export function EventoPage() {
 
   };
 
-  const confirmCancelAgendamento = (serie: Evento, dateKey: string) => {
-    const dataLabel = formatAgendaDateShort(dateKey);
-    if (confirm(`Cancelar agendamento de "${serie.nome}" em ${dataLabel}?`)) {
-      cancelAgendamentoMutation.mutate({ serieId: serie.id, data: dateKey });
-    }
+  const openCancelAgendamentoModal = (serie: Evento, dateKey: string) => {
+    setCancelAgendamentoTarget({ serie, dateKey });
   };
 
 
@@ -897,7 +927,7 @@ export function EventoPage() {
 
                     onIniciarSerie={(id) => iniciarMutation.mutate(id)}
 
-                    onCancelAgendamento={confirmCancelAgendamento}
+                    onCancelAgendamento={openCancelAgendamentoModal}
 
                     onRetomar={retomarSessao}
 
@@ -953,7 +983,7 @@ export function EventoPage() {
 
                       onIniciarSerie={(id) => iniciarMutation.mutate(id)}
 
-                      onCancelAgendamento={confirmCancelAgendamento}
+                      onCancelAgendamento={openCancelAgendamentoModal}
 
                       onRetomar={retomarSessao}
 
@@ -1080,16 +1110,75 @@ export function EventoPage() {
 
             <EventoFormFields form={form} setForm={setForm} allowRecorrenciaChange={false} showTrailer={false} />
 
-            <button type="submit" className="touch-btn-primary w-full min-h-14" disabled={updateMutation.isPending}>
-
-              {updateMutation.isPending ? 'Salvando...' : 'Salvar alterações'}
-
-            </button>
+            <ModalFormFooter
+              onCancel={() => {
+                setEditingEvento(null);
+                setError('');
+              }}
+              submitLabel="Salvar alterações"
+              pending={updateMutation.isPending}
+            />
 
           </form>
 
         )}
 
+      </Modal>
+
+      <Modal
+        open={!!cancelAgendamentoTarget}
+        onClose={() => !cancelAgendamentoMutation.isPending && setCancelAgendamentoTarget(null)}
+        title="Cancelar agendamento?"
+        footer={
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              className="touch-btn-primary w-full min-h-14"
+              disabled={cancelAgendamentoMutation.isPending}
+              onClick={() => setCancelAgendamentoTarget(null)}
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              className="touch-btn-danger w-full min-h-14"
+              disabled={cancelAgendamentoMutation.isPending}
+              onClick={() => {
+                if (!cancelAgendamentoTarget) return;
+                cancelAgendamentoMutation.mutate({
+                  serieId: cancelAgendamentoTarget.serie.id,
+                  data: cancelAgendamentoTarget.dateKey,
+                });
+              }}
+            >
+              {cancelAgendamentoMutation.isPending ? 'Cancelando…' : 'Cancelar dia'}
+            </button>
+          </div>
+        }
+      >
+        {cancelAgendamentoTarget && (
+          <p className="text-ink-soft leading-relaxed">
+            Deseja cancelar o agendamento de &ldquo;{cancelAgendamentoTarget.serie.nome}&rdquo; em{' '}
+            {formatAgendaDateShort(cancelAgendamentoTarget.dateKey)}?
+          </p>
+        )}
+      </Modal>
+
+      <Modal
+        open={showPendingEventModal}
+        onClose={() => setShowPendingEventModal(false)}
+        title="Não foi possível iniciar"
+        footer={
+          <button
+            type="button"
+            className="touch-btn-primary w-full min-h-14"
+            onClick={() => setShowPendingEventModal(false)}
+          >
+            Fechar
+          </button>
+        }
+      >
+        <p className="text-ink-soft leading-relaxed">{EVENTO_PENDENTE_ENCERRAMENTO_MSG}</p>
       </Modal>
 
     </div>

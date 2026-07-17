@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import type { Tap, Produto } from '../types';
 import { isBebidaChope } from '../types';
 import { Modal } from './Modal';
+import { ModalFormFooter } from './ModalFormFooter';
 import { Loading } from './Loading';
 
 function nextTapNumero(taps: Tap[]): number {
@@ -133,9 +134,11 @@ function TapModalForm({
           Chope padrão deste tap. Alteração vale para eventos futuros; eventos em andamento mantêm a montagem já registrada.
         </p>
       </div>
-      <button type="submit" className="touch-btn-primary w-full" disabled={save.isPending || !!numeroError || !produtoId}>
-        {save.isPending ? 'Salvando...' : 'Salvar'}
-      </button>
+      <ModalFormFooter
+        onCancel={onClose}
+        pending={save.isPending}
+        disabled={!!numeroError || !produtoId}
+      />
     </form>
   );
 }

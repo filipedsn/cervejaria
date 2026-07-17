@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import type { Usuario } from '../types';
 import { Modal } from '../components/Modal';
+import { ModalFormFooter } from '../components/ModalFormFooter';
 import { Loading } from '../components/Loading';
 import { PageHeader } from '../components/PageHeader';
 import { PasswordWithConfirmFields, validatePasswordPair } from '../components/PasswordWithConfirmFields';
@@ -99,9 +100,12 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
             required
           />
 
-          <button type="submit" className="touch-btn-primary w-full" disabled={createMutation.isPending}>
-            {createMutation.isPending ? 'Cadastrando...' : 'Cadastrar'}
-          </button>
+          <ModalFormFooter
+            onCancel={() => setShowModal(false)}
+            submitLabel="Cadastrar"
+            pending={createMutation.isPending}
+            pendingLabel="Cadastrando..."
+          />
         </form>
       </Modal>
     </div>

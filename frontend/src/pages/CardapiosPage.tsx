@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import type { Cardapio, Produto } from '../types';
 import { Modal } from '../components/Modal';
+import { ModalFormFooter } from '../components/ModalFormFooter';
 import { Loading } from '../components/Loading';
 import { CardapioProdutosPicker } from '../components/CardapioProdutosPicker';
 
@@ -178,13 +179,11 @@ export function CardapiosPage({ embedded }: { embedded?: boolean } = {}) {
                 onToggle={toggleProduto}
               />
             )}
-            <button
-              type="submit"
-              className="touch-btn-primary w-full"
-              disabled={saveMutation.isPending || !nome.trim()}
-            >
-              {saveMutation.isPending ? 'Salvando...' : 'Salvar'}
-            </button>
+            <ModalFormFooter
+              onCancel={() => setShowModal(false)}
+              pending={saveMutation.isPending}
+              disabled={!nome.trim()}
+            />
           </form>
         </Modal>
       )}

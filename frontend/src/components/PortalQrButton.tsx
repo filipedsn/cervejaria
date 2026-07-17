@@ -13,7 +13,7 @@ interface PortalQrButtonProps {
   className?: string;
   iconOnly?: boolean;
   fullWidth?: boolean;
-  variant?: 'hero' | 'surface';
+  variant?: 'hero' | 'surface' | 'header';
 }
 
 export function PortalQrButton({
@@ -34,7 +34,9 @@ export function PortalQrButton({
   const iconButtonClass =
     variant === 'hero'
       ? 'inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/25 bg-white/10 text-white transition hover:bg-white/20'
-      : 'inline-flex h-[3.75rem] w-[3.75rem] shrink-0 items-center justify-center rounded-2xl border border-line bg-surface text-ink shadow-sm active:scale-[0.98] transition-transform';
+      : variant === 'header'
+        ? 'inline-flex h-full min-h-14 w-14 shrink-0 items-center justify-center border-0 border-l border-line bg-surface text-ink hover:bg-surface-lighter active:bg-surface-lighter transition-colors'
+        : 'inline-flex h-[3.75rem] w-[3.75rem] shrink-0 items-center justify-center rounded-2xl border border-line bg-surface text-ink shadow-sm active:scale-[0.98] transition-transform';
 
   const closeModal = () => setOpen(false);
 

@@ -11,6 +11,7 @@ import { VOLUMES, FOOD_UNIT_ML, FORMATO_BEBIDA_LABELS, FORMATOS_EMBALAGEM, isBeb
 import { Loading } from '../components/Loading';
 
 import { Modal } from '../components/Modal';
+import { ModalFormFooter } from '../components/ModalFormFooter';
 
 import { CurrencyInput } from '../components/CurrencyInput';
 
@@ -468,9 +469,7 @@ function BebidaModal({ open, onClose, produto, onError }: {
             />
           </div>
         )}
-        <button type="submit" className="touch-btn-primary w-full" disabled={save.isPending}>
-          {save.isPending ? 'Salvando...' : 'Salvar'}
-        </button>
+        <ModalFormFooter onCancel={onClose} pending={save.isPending} />
       </form>
     </Modal>
   );
@@ -589,11 +588,7 @@ function ComidaModal({ open, onClose, produto, onError }: {
 
         </div>
 
-        <button type="submit" className="touch-btn-primary w-full" disabled={save.isPending}>
-
-          {save.isPending ? 'Salvando...' : 'Salvar'}
-
-        </button>
+        <ModalFormFooter onCancel={onClose} pending={save.isPending} />
 
       </form>
 

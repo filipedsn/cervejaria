@@ -64,9 +64,9 @@ export function ResetPasswordPage() {
             {loading ? 'Salvando...' : 'Redefinir senha'}
           </button>
 
-          <p className="text-center text-sm text-ink-muted">
-            <Link to="/login" className="text-link">Voltar ao login</Link>
-          </p>
+          <Link to="/login" className="touch-btn-danger w-full inline-flex items-center justify-center">
+            Voltar ao login
+          </Link>
         </form>
       </div>
     </div>

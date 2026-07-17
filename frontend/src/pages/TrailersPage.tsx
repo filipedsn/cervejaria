@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import type { Trailer } from '../types';
 import { formatTrailerLabel } from '../types';
 import { Modal } from '../components/Modal';
+import { ModalFormFooter } from '../components/ModalFormFooter';
 import { Loading } from '../components/Loading';
 import { TrailerTapsSection } from '../components/TrailerTapsSection';
 import { TrailerPortalQr } from '../components/TrailerPortalQr';
@@ -158,9 +159,10 @@ export function TrailersPage({ embedded }: { embedded?: boolean } = {}) {
               placeholder="Placa ou apelido"
             />
           </div>
-          <button type="submit" className="touch-btn-primary w-full" disabled={saveMutation.isPending}>
-            {saveMutation.isPending ? 'Salvando...' : 'Salvar'}
-          </button>
+          <ModalFormFooter
+            onCancel={() => setShowModal(false)}
+            pending={saveMutation.isPending}
+          />
         </form>
       </Modal>
 

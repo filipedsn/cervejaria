@@ -167,8 +167,6 @@ export function ClienteDetailPage() {
     <div className="space-y-5 pb-6">
       <PageHeader
         title={cliente.nome}
-        backTo="/clientes"
-        backLabel="Clientes"
         titleExtra={!cliente.telefone ? <span className="badge-warning">Sem telefone</span> : undefined}
       />
 
@@ -213,6 +211,16 @@ export function ClienteDetailPage() {
               <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => startEdit()}>
                 Editar
               </button>
+              {isDono && cliente.podeExcluir && (
+                <button
+                  type="button"
+                  className="touch-btn-danger touch-btn-sm"
+                  disabled={deleteMutation.isPending}
+                  onClick={handleDelete}
+                >
+                  {deleteMutation.isPending ? 'Excluindo...' : 'Excluir'}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -262,18 +270,9 @@ export function ClienteDetailPage() {
                 </label>
               </>
             )}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="touch-btn-secondary flex-1"
-                onClick={() => setEditMode(false)}
-              >
-                Cancelar
-              </button>
-              <button type="submit" className="touch-btn-primary flex-1" disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? 'Salvando...' : 'Salvar'}
-              </button>
-            </div>
+            <button type="submit" className="touch-btn-primary w-full" disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? 'Salvando...' : 'Salvar'}
+            </button>
           </form>
         ) : (
           <dl className="space-y-2 text-sm">
@@ -305,18 +304,18 @@ export function ClienteDetailPage() {
           </dl>
         )}
 
-        {!editMode && isDono && cliente.podeExcluir && (
+        {!editMode && isDono && !cliente.podeExcluir && cliente.motivoExclusao && (
+          <p className="text-sm text-ink-muted mt-2 leading-relaxed">{cliente.motivoExclusao}</p>
+        )}
+
+        {!editMode && (
           <button
             type="button"
             className="touch-btn-danger w-full mt-2"
-            disabled={deleteMutation.isPending}
-            onClick={handleDelete}
+            onClick={() => navigate('/clientes')}
           >
-            {deleteMutation.isPending ? 'Excluindo...' : 'Excluir cliente'}
+            Voltar
           </button>
-        )}
-        {!editMode && isDono && !cliente.podeExcluir && cliente.motivoExclusao && (
-          <p className="text-sm text-ink-muted mt-2 leading-relaxed">{cliente.motivoExclusao}</p>
         )}
       </div>
 
@@ -371,6 +370,16 @@ export function ClienteDetailPage() {
           </div>
         )}
       </section>
+
+      {editMode && (
+        <button
+          type="button"
+          className="touch-btn-danger w-full"
+          onClick={() => navigate('/clientes')}
+        >
+          Voltar
+        </button>
+      )}
 
       <ExcluirClienteModal
         open={showDeleteModal}

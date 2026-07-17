@@ -305,7 +305,7 @@ export function ComandaDetailPage() {
           <button type="button" className="touch-btn-primary w-full" onClick={openPayment}>
             Fechar Comanda · {formatCurrency(comanda.total)}
           </button>
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/comandas')}>
+          <button type="button" className="touch-btn-primary w-full" onClick={() => navigate('/comandas')}>
             Voltar ao evento
           </button>
         </MobileActionBar>
@@ -321,13 +321,13 @@ export function ComandaDetailPage() {
           </p>
           <button
             type="button"
-            className="touch-btn-secondary w-full"
+            className="touch-btn-danger w-full"
             onClick={() => cancelMutation.mutate()}
             disabled={cancelMutation.isPending}
           >
             {cancelMutation.isPending ? 'Encerrando...' : 'Encerrar comanda'}
           </button>
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/comandas')}>
+          <button type="button" className="touch-btn-primary w-full" onClick={() => navigate('/comandas')}>
             Voltar ao evento
           </button>
         </MobileActionBar>
@@ -348,7 +348,7 @@ export function ComandaDetailPage() {
                 : `Nova comanda · ${comanda.cliente.nome}`}
             </button>
           )}
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/comandas')}>
+          <button type="button" className="touch-btn-primary w-full" onClick={() => navigate('/comandas')}>
             Voltar ao evento
           </button>
         </MobileActionBar>

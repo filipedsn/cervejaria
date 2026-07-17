@@ -72,7 +72,7 @@ export function ReabrirEventoButton({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
           <button
             type="button"
-            className="touch-btn-secondary w-full min-h-14"
+            className="touch-btn-danger w-full min-h-14"
             disabled={reabrirMutation.isPending}
             onClick={() => setShowConfirmModal(false)}
           >
