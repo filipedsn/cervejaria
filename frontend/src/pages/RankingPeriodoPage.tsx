@@ -9,21 +9,11 @@ import { useRankingLiveUpdates } from '../hooks/useRankingLiveUpdates';
 import { Loading } from '../components/Loading';
 import { PageHeader } from '../components/PageHeader';
 import { RankingList } from '../components/RankingList';
+import { MonthNavigator } from '../components/MonthNavigator';
 import { rankingPeriodoTvUrl } from '../lib/ranking-tv-url';
+import { currentMesKey, formatMesLabel } from '../lib/month-key';
+
 type Escopo = 'mensal' | 'geral';
-
-function currentMesKey(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}`;
-}
-
-function formatMesLabel(mes: string): string {
-  const [year, month] = mes.split('-').map(Number);
-  const d = new Date(year, month - 1, 1);
-  return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-}
 
 export function RankingPeriodoPage() {
   const { eventoId } = useParams<{ eventoId: string }>();
@@ -101,44 +91,43 @@ export function RankingPeriodoPage() {
         ]
           .filter(Boolean)
           .join(' · ')}
-        action={
-          <Link to={`/ranking/${eventoId}`} className="touch-btn-secondary touch-btn-sm shrink-0">
-            Ranking do dia
-          </Link>
-        }
       />
 
       <div className="card space-y-3">
-        <div className="flex flex-wrap gap-2">
+        <div className="segmented-control w-full">
+          <Link
+            to={`/ranking/${eventoId}`}
+            className="segmented-control-btn segmented-control-btn-inactive"
+          >
+            Dia
+          </Link>
           <Link
             to={`/ranking/periodo/${eventoId}?escopo=mensal`}
-            className={`touch-btn-sm px-4 ${escopo === 'mensal' ? 'touch-btn-primary' : 'btn-outline-light'}`}
+            className={`segmented-control-btn ${
+              escopo === 'mensal' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'
+            }`}
           >
             Mensal
           </Link>
           <Link
             to={`/ranking/periodo/${eventoId}?escopo=geral`}
-            className={`touch-btn-sm px-4 ${escopo === 'geral' ? 'touch-btn-primary' : 'btn-outline-light'}`}
+            className={`segmented-control-btn ${
+              escopo === 'geral' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'
+            }`}
           >
             Geral
           </Link>
         </div>
 
         {escopo === 'mensal' && (
-          <label className="block space-y-1">
-            <span className="text-sm text-ink-muted">Mês</span>
-            <select
-              className="input w-full"
+          <div>
+            <p className="label">Mês</p>
+            <MonthNavigator
               value={selectedMes}
-              onChange={(e) => setMes(e.target.value)}
-            >
-              {mesOptions.map((option) => (
-                <option key={option} value={option}>
-                  {formatMesLabel(option)}
-                </option>
-              ))}
-            </select>
-          </label>
+              options={mesOptions}
+              onChange={setMes}
+            />
+          </div>
         )}
 
         <p className="text-sm text-ink-faint">

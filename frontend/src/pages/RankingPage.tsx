@@ -102,7 +102,17 @@ export function RankingPage() {
         }
       />
 
-      <div className="space-y-2">
+      <div className="card space-y-3">
+        <div className="segmented-control w-full">
+          <span className="segmented-control-btn segmented-control-btn-active">Dia</span>
+          <Link to={mensalTo} className="segmented-control-btn segmented-control-btn-inactive">
+            Mensal
+          </Link>
+          <Link to={geralTo} className="segmented-control-btn segmented-control-btn-inactive">
+            Geral
+          </Link>
+        </div>
+
         <Link
           to={`/ranking/tv/${eventoId}`}
           className="touch-btn-orange w-full min-h-12 flex items-center justify-center gap-2 text-base font-bold"
@@ -110,21 +120,6 @@ export function RankingPage() {
           <span aria-hidden>📺</span>
           Tela cheia
         </Link>
-
-        <div className="grid grid-cols-2 gap-2">
-          <Link
-            to={mensalTo}
-            className="touch-btn-secondary min-h-12 flex items-center justify-center gap-2 text-sm font-semibold text-center px-2"
-          >
-            Ranking mensal
-          </Link>
-          <Link
-            to={geralTo}
-            className="touch-btn-secondary min-h-12 flex items-center justify-center gap-2 text-sm font-semibold text-center px-2"
-          >
-            Ranking geral
-          </Link>
-        </div>
       </div>
 
       <RankingList entries={data?.ranking ?? []} />

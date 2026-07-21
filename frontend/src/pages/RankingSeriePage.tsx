@@ -8,23 +8,13 @@ import { useRankingLiveUpdates } from '../hooks/useRankingLiveUpdates';
 import { Loading } from '../components/Loading';
 import { PageHeader } from '../components/PageHeader';
 import { RankingList } from '../components/RankingList';
+import { MonthNavigator } from '../components/MonthNavigator';
 import { rankingSerieTvUrl } from '../lib/ranking-tv-url';
+import { currentMesKey, formatMesLabel } from '../lib/month-key';
+
 const DIAS_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'] as const;
 
 type Escopo = 'mensal' | 'geral';
-
-function currentMesKey(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}`;
-}
-
-function formatMesLabel(mes: string): string {
-  const [year, month] = mes.split('-').map(Number);
-  const d = new Date(year, month - 1, 1);
-  return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-}
 
 export function RankingSeriePage() {
   const { serieId } = useParams<{ serieId: string }>();
@@ -107,17 +97,21 @@ export function RankingSeriePage() {
       />
 
       <div className="card space-y-3">
-        <div className="flex flex-wrap gap-2">
+        <div className="segmented-control w-full">
           <button
             type="button"
-            className={`touch-btn-sm px-4 ${escopo === 'mensal' ? 'touch-btn-primary' : 'btn-outline-light'}`}
+            className={`segmented-control-btn ${
+              escopo === 'mensal' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'
+            }`}
             onClick={() => setEscopo('mensal')}
           >
             Mensal
           </button>
           <button
             type="button"
-            className={`touch-btn-sm px-4 ${escopo === 'geral' ? 'touch-btn-primary' : 'btn-outline-light'}`}
+            className={`segmented-control-btn ${
+              escopo === 'geral' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'
+            }`}
             onClick={() => setEscopo('geral')}
           >
             Geral
@@ -125,20 +119,14 @@ export function RankingSeriePage() {
         </div>
 
         {escopo === 'mensal' && (
-          <label className="block space-y-1">
-            <span className="text-sm text-ink-muted">Mês</span>
-            <select
-              className="input w-full"
+          <div>
+            <p className="label">Mês</p>
+            <MonthNavigator
               value={selectedMes}
-              onChange={(e) => setMes(e.target.value)}
-            >
-              {mesOptions.map((option) => (
-                <option key={option} value={option}>
-                  {formatMesLabel(option)}
-                </option>
-              ))}
-            </select>
-          </label>
+              options={mesOptions}
+              onChange={setMes}
+            />
+          </div>
         )}
 
         <p className="text-sm text-ink-faint">
