@@ -107,6 +107,23 @@ body.auth-screen {
   animation: slide-up 0.22s ease-out;
 }
 
+@keyframes pedido-pulse {
+  0%,
+  100% {
+    border-color: #fdba74;
+    background-color: #fff1e6;
+  }
+  50% {
+    border-color: #f97316;
+    background-color: #ffedd5;
+  }
+}
+
+.pedido-card-alert {
+  animation: pedido-pulse 1.5s ease-in-out infinite;
+  border-width: 2px;
+}
+
 /* Botões */
 .touch-btn {
   @apply min-h-[3rem] px-5 py-3 rounded-xl font-semibold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100;

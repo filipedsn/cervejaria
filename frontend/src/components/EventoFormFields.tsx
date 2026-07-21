@@ -166,8 +166,8 @@ export function EventoFormFields({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="min-w-0">
           <label className="label">Início</label>
           <input
             type="time"
@@ -177,7 +177,7 @@ export function EventoFormFields({
             required
           />
         </div>
-        <div>
+        <div className="min-w-0">
           <label className="label">Fim (opcional)</label>
           <input
             type="time"

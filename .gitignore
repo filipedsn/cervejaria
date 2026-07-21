@@ -25,6 +25,8 @@ deploy/runtime/*
 # QA reports (gerados)
 reports/qa/
 reports/qa-report.html
+reports/browser/
+reports/cliente-teste-prod-diagnostico.md
 
 # Uploads locais por ambiente
 backend/uploads-dev/
@@ -38,3 +40,9 @@ ops-panel/.env
 deploy/backups/*.sql
 !deploy/backups/.gitkeep
 deploy/backups-external/
+
+# Scripts de diagnostico/temporarios (nao versionar)
+backend/scripts/diag-*.mjs
+backend/scripts/browser-test-*.mjs
+backend/qa/validate-jul21-session.ts
+backend/reports/

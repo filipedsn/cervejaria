@@ -38,6 +38,7 @@ import {
 } from '../lib/comanda-service.js';
 
 import { emitToEvento, emitToComanda, emitToCervejaria } from '../lib/realtime.js';
+import { notifyPedidoCreated } from '../lib/push-notifications.js';
 
 import { getDevFrontendOrigin } from '../lib/lan-url.js';
 
@@ -542,7 +543,20 @@ export async function publicRoutes(app: FastifyInstance) {
 
       emitToEvento(app.io, session.eventoId, { type: 'pedido:created', data: serializePedido(pedido) });
 
-
+      const pendenteCount = await prisma.pedidoCliente.count({
+        where: { eventoId: session.eventoId, status: 'PENDENTE' },
+      });
+      const resumoItens = pedido.itens
+        .slice(0, 2)
+        .map((item) => `${item.quantidade}x ${item.produto.nome}`)
+        .join(', ');
+      void notifyPedidoCreated(session.cervejariaId, {
+        pedidoId: pedido.id,
+        eventoId: session.eventoId,
+        clienteNome: pedido.cliente?.nome ?? 'Cliente',
+        resumoItens: resumoItens || 'Pedido pendente',
+        pendenteCount,
+      });
 
       return reply.status(201).send(serializePedido(pedido));
 

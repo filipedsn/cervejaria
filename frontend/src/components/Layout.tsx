@@ -11,6 +11,7 @@ import { BackToEventosLink } from './BackToEventosLink';
 import { PortalQrButton } from './PortalQrButton';
 import { TrailerSwitcher } from './TrailerSwitcher';
 import { NAV_ITEMS, IconBell } from './NavIcons';
+import { usePedidoAlertSound } from '../hooks/usePedidoAlertSound';
 
 function ChevronRightIcon({ className }: { className?: string }) {
   return (
@@ -119,6 +120,8 @@ export function Layout() {
   const [accountOpen, setAccountOpen] = useState(false);
 
   const navItems = NAV_ITEMS.filter((item) => !('donoOnly' in item && item.donoOnly) || isDono);
+  const { alertEnabled, alertNeedsUnlock, pushStatus, wakeLockActive, togglePedidoAlert } =
+    usePedidoAlertSound();
   const onEventsPage = location.pathname === '/eventos';
   const onTrailerPage = location.pathname === '/trailer';
   const hideOperacionalChrome =
@@ -149,8 +152,13 @@ export function Layout() {
                 {onTrailerPage ? 'Escolher trailer' : 'Eventos'}
               </h1>
               <div className="flex items-center gap-1">
-                <button type="button" className="icon-btn-ghost text-ink-muted" aria-label="Notificações">
-                  <IconBell />
+                <button
+                  type="button"
+                  className={`icon-btn-ghost ${alertEnabled ? 'text-orange' : 'text-ink-muted'}`}
+                  aria-label={alertEnabled ? 'Alertas de pedidos ativos' : 'Abrir alertas de pedidos'}
+                  onClick={() => setAccountOpen(true)}
+                >
+                  <IconBell strokeWidth={alertEnabled ? 2.25 : 1.75} />
                 </button>
                 {usuario && <UserAvatarButton nome={usuario.nome} onClick={() => setAccountOpen(true)} />}
               </div>
@@ -229,6 +237,11 @@ export function Layout() {
           onLogout={logout}
           trailer={trailers.length > 1 ? trailer : null}
           onTrocarTrailer={trailers.length > 1 && !isDono ? handleTrocarTrailer : undefined}
+          alertEnabled={alertEnabled}
+          alertNeedsUnlock={alertNeedsUnlock}
+          pushStatus={pushStatus}
+          wakeLockActive={wakeLockActive}
+          onTogglePedidoAlert={togglePedidoAlert}
         />
       )}
     </div>

@@ -1,5 +1,5 @@
 import { prisma } from '../src/lib/prisma.js';
-import { API_BASE, api, chopeItemBody, login, percentile, portalPedidoBody, portalSessao, portalTestPhone, staffComandaBody } from './lib/http.js';
+import { API_BASE, api, chopeItemBody, login, percentile, portalPedidoBody, portalSessao, portalTestPhone, staffComandaBody, uniquePortalTestPhone, uniqueStaffComandaBody } from './lib/http.js';
 import { decodeToken, jwtSecret, signToken, tamperSignature, userJwtPayload } from './lib/jwt.js';
 import { CONTEXT_PATH, SUITE_PATH, readJson, writeJson } from './lib/store.js';
 import type { PerfMetric, QaContext, SuiteArtifact, TestResult, TestStatus } from './lib/types.js';
@@ -912,6 +912,8 @@ async function main() {
         status: 'FECHADA',
         tipo: 'COMANDA',
         total: 50,
+        fechadaEm: new Date(),
+        pagamentos: { create: [{ forma: 'PIX', valor: 50 }] },
       },
     });
     await prisma.comanda.create({
@@ -921,6 +923,8 @@ async function main() {
         status: 'FECHADA',
         tipo: 'COMANDA',
         total: 30,
+        fechadaEm: new Date(),
+        pagamentos: { create: [{ forma: 'DINHEIRO', valor: 30 }] },
       },
     });
 
@@ -982,7 +986,7 @@ async function main() {
         cadastradoVia: 'COMANDA',
       },
     });
-    const tel = portalTestPhone(88, 1);
+    const tel = uniquePortalTestPhone(88, 1);
 
     const created = await api<{ id: string; clienteId: string }>('POST', '/api/comandas', {
       token: lifecycle.atendenteTokens[0],
@@ -1150,7 +1154,7 @@ async function main() {
         cadastradoVia: 'COMANDA',
       },
     });
-    const tel = portalTestPhone(87, 1);
+    const tel = uniquePortalTestPhone(87, 2);
 
     const blocked = await api<{ error: string }>('POST', '/api/comandas', {
       token: lifecycle.atendenteTokens[0],
@@ -1983,6 +1987,168 @@ async function main() {
     return { message: `Ranking A=${mlA}ml · Ranking B=${mlB}ml`, expected: 'isolado', actual: 'isolado' };
   });
 
+  let rsSerieAId = '';
+  let rsSerieBId = '';
+  let rsClienteId = '';
+  await test({ id: 'RS-01', category: 'Ranking', name: 'Ranking de série agrega sessões da agenda', requirement: 'RS-01' }, async () => {
+    const stamp = Date.now();
+    const oldSeries = await prisma.evento.findMany({
+      where: {
+        cervejariaId: func.cervejariaId,
+        recorrencia: 'SEMANAL',
+        nome: { startsWith: 'QA Ranking Serie' },
+      },
+      select: { id: true },
+    });
+    if (oldSeries.length) {
+      await prisma.evento.deleteMany({ where: { serieId: { in: oldSeries.map((s) => s.id) } } });
+      await prisma.evento.deleteMany({ where: { id: { in: oldSeries.map((s) => s.id) } } });
+    }
+
+    const slot = stamp % 12;
+    const hStart = 8 + slot;
+    const hEnd = hStart + 1;
+    const horaInicio = `${String(hStart).padStart(2, '0')}:00`;
+    const horaFim = `${String(hEnd).padStart(2, '0')}:00`;
+    const diaA = (stamp % 5) + 1;
+    const diaB = ((stamp + 2) % 5) + 1;
+
+    const serieA = await api<{ id: string }>('POST', '/api/eventos', {
+      token: func.donoToken,
+      body: {
+        nome: `QA Ranking Serie A ${stamp}`,
+        local: 'Itatiaia',
+        horaInicio,
+        horaFim,
+        recorrencia: 'SEMANAL',
+        diaSemana: diaA,
+        trailerId: func.trailerId,
+      },
+    });
+    const serieB = await api<{ id: string }>('POST', '/api/eventos', {
+      token: func.donoToken,
+      body: {
+        nome: `QA Ranking Serie B ${stamp}`,
+        local: 'Igarapé',
+        horaInicio,
+        horaFim,
+        recorrencia: 'SEMANAL',
+        diaSemana: diaB,
+        trailerId: func.trailerId,
+      },
+    });
+    if (serieA.status !== 201 || serieB.status !== 201) {
+      return { status: 'failed', message: 'Falha ao criar séries', actual: `${serieA.status}/${serieB.status}` };
+    }
+    rsSerieAId = serieA.data.id;
+    rsSerieBId = serieB.data.id;
+
+    const cliente = await prisma.cliente.create({
+      data: { nome: `QA Ranking Serie ${stamp}`, telefone: `55${String(stamp).slice(-10)}`, cervejariaId: func.cervejariaId },
+    });
+    rsClienteId = cliente.id;
+
+    const sessaoJul = await prisma.evento.create({
+      data: {
+        nome: `QA Ranking Serie A ${stamp}`,
+        local: 'Itatiaia',
+        data: new Date('2026-07-15T12:00:00'),
+        horaInicio: '10:00',
+        horaFim: '11:00',
+        recorrencia: 'NENHUMA',
+        serieId: rsSerieAId,
+        status: 'FECHADO',
+        cervejariaId: func.cervejariaId,
+        trailerId: func.trailerId,
+      },
+    });
+    const sessaoAgo = await prisma.evento.create({
+      data: {
+        nome: 'Sessão Ago',
+        local: 'Itatiaia',
+        data: new Date('2026-08-15T12:00:00'),
+        horaInicio: '10:00',
+        horaFim: '11:00',
+        recorrencia: 'NENHUMA',
+        serieId: rsSerieAId,
+        status: 'FECHADO',
+        cervejariaId: func.cervejariaId,
+        trailerId: func.trailerId,
+      },
+    });
+    const sessaoOutraSerie = await prisma.evento.create({
+      data: {
+        nome: 'Sessão outra agenda',
+        local: 'Igarapé',
+        data: new Date('2026-07-15T12:00:00'),
+        horaInicio: '10:00',
+        horaFim: '11:00',
+        recorrencia: 'NENHUMA',
+        serieId: rsSerieBId,
+        status: 'FECHADO',
+        cervejariaId: func.cervejariaId,
+        trailerId: func.trailerId,
+      },
+    });
+
+    const comandaJul = await prisma.comanda.create({
+      data: { eventoId: sessaoJul.id, clienteId: rsClienteId, tipo: 'COMANDA', status: 'FECHADA' },
+    });
+    const comandaAgo = await prisma.comanda.create({
+      data: { eventoId: sessaoAgo.id, clienteId: rsClienteId, tipo: 'COMANDA', status: 'FECHADA' },
+    });
+    const comandaOutra = await prisma.comanda.create({
+      data: { eventoId: sessaoOutraSerie.id, clienteId: rsClienteId, tipo: 'COMANDA', status: 'FECHADA' },
+    });
+
+    await prisma.itemComanda.createMany({
+      data: [
+        { comandaId: comandaJul.id, produtoId: func.produtoId, tapId: func.tapId, volumeMl: 500, quantidade: 1, precoUnit: 12 },
+        { comandaId: comandaAgo.id, produtoId: func.produtoId, tapId: func.tapId, volumeMl: 300, quantidade: 1, precoUnit: 8 },
+        { comandaId: comandaOutra.id, produtoId: func.produtoId, tapId: func.tapId, volumeMl: 1000, quantidade: 1, precoUnit: 20 },
+      ],
+    });
+
+    const geral = await api<{ entries: Array<{ clienteId: string; totalMl: number }> }>(
+      'GET',
+      `/api/ranking/serie/${rsSerieAId}`,
+      { token: func.donoToken },
+    );
+    if (geral.status !== 200) return { status: 'failed', message: 'Ranking geral falhou', actual: String(geral.status) };
+    const entryGeral = geral.data.entries.find((x) => x.clienteId === rsClienteId);
+    if (!entryGeral || entryGeral.totalMl !== 800) {
+      return {
+        status: 'failed',
+        message: 'Ranking geral deveria somar jul+ago (800ml)',
+        expected: '800',
+        actual: String(entryGeral?.totalMl ?? 0),
+      };
+    }
+
+    const mensal = await api<{ entries: Array<{ totalMl: number }> }>(
+      'GET',
+      `/api/ranking/serie/${rsSerieAId}?mes=2026-07`,
+      { token: func.donoToken },
+    );
+    if (mensal.status !== 200) return { status: 'failed', message: 'Ranking mensal falhou', actual: String(mensal.status) };
+    const mlMensal = mensal.data.entries.reduce((s, x) => s + x.totalMl, 0);
+    if (mlMensal !== 500) {
+      return { status: 'failed', message: 'Ranking mensal jul/2026 deveria ter 500ml', expected: '500', actual: String(mlMensal) };
+    }
+
+    const outraSerie = await api<{ entries: Array<{ totalMl: number }> }>(
+      'GET',
+      `/api/ranking/serie/${rsSerieBId}`,
+      { token: func.donoToken },
+    );
+    const mlOutra = outraSerie.data?.entries.reduce((s, x) => s + x.totalMl, 0) ?? 0;
+    if (mlOutra !== 1000) {
+      return { status: 'failed', message: 'Ranking da outra série deveria isolar consumo (1000ml)', expected: '1000', actual: String(mlOutra) };
+    }
+
+    return { message: 'Ranking de série agrega sessões corretas e isola agendas', expected: '800/500/1000', actual: 'ok' };
+  });
+
   await test({ id: 'MT-06', category: 'Multi-trailer', name: 'Conflito de horário no mesmo trailer → 409', requirement: 'MT-06' }, async () => {
     const today = new Date().toISOString().slice(0, 10);
     const r = await api('POST', '/api/eventos', {
@@ -2087,7 +2253,7 @@ async function main() {
   });
 
   await test({ id: 'PORTAL-11', category: 'Portal', name: 'Fluxo novo: lookup + sessao abre comanda', requirement: 'PORTAL-11' }, async () => {
-    const tel = portalTestPhone(93, 4);
+    const tel = uniquePortalTestPhone(93, 11);
     const nome = `QA Portal Novo ${Date.now()}`;
 
     const lookup = await api<{ encontrado: boolean }>(
@@ -2476,27 +2642,34 @@ async function main() {
   });
 
   await test({ id: 'RNF-04', category: 'Não-funcional', name: 'Throughput multi-tenant (1 op/tenant)', requirement: 'RNF-04' }, async () => {
-    // Cria uma comanda nova por tenant (fora da janela de medição) para tornar o
-    // teste independente da ordem: testes anteriores (ex.: RF-04) mutam comandas do seed.
-    const alvos = await Promise.all(
-      ctx.tenants.map(async (t) => {
-        const r = await api<{ id: string }>('POST', '/api/comandas', {
-          token: t.atendenteTokens[0],
-          body: staffComandaBody(t.eventoId, `RNF04 ${t.index}-${Date.now()}`, t.index + 1),
-        });
-        return { t, comandaId: r.data?.id, prepared: r.status === 201 };
-      }),
-    );
-    const prontos = alvos.filter((a) => a.prepared && a.comandaId);
+    // Comanda nova por tenant (fora da janela de medição). Setup sequencial evita
+    // burst no pool; medição em ondas limita transações Prisma concorrentes no dev.
+    const alvos: Array<{ t: (typeof ctx.tenants)[0]; comandaId?: string; prepared: boolean }> = [];
+    for (const t of ctx.tenants) {
+      const r = await api<{ id: string }>('POST', '/api/comandas', {
+        token: t.atendenteTokens[0],
+        body: uniqueStaffComandaBody(t.eventoId, `RNF04 ${t.index}-${Date.now()}`, t.index),
+      });
+      alvos.push({ t, comandaId: r.data?.id, prepared: r.status === 201 && Boolean(r.data?.id) });
+    }
+    const prontos = alvos.filter((a): a is typeof a & { comandaId: string } => a.prepared && Boolean(a.comandaId));
     const setupErrs = alvos.length - prontos.length;
 
+    const waveSize = 8;
     const t0 = performance.now();
-    const rs = await Promise.all(prontos.map(({ t, comandaId }) =>
-      api('POST', `/api/comandas/${comandaId}/itens`, {
-        token: t.atendenteTokens[Math.floor(Math.random() * t.atendenteTokens.length)],
-        body: chopeItemBody(t.produtoId, t.tapId, 500),
-      }),
-    ));
+    const rs: Awaited<ReturnType<typeof api>>[] = [];
+    for (let i = 0; i < prontos.length; i += waveSize) {
+      const chunk = prontos.slice(i, i + waveSize);
+      const part = await Promise.all(
+        chunk.map(({ t, comandaId }) =>
+          api('POST', `/api/comandas/${comandaId}/itens`, {
+            token: t.atendenteTokens[Math.floor(Math.random() * t.atendenteTokens.length)],
+            body: chopeItemBody(t.produtoId, t.tapId, 500),
+          }),
+        ),
+      );
+      rs.push(...part);
+    }
     const elapsed = performance.now() - t0;
     const errs = rs.filter((r) => r.status !== 201).length + setupErrs;
     const rate = errs / alvos.length;

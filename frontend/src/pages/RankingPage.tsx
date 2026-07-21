@@ -1,20 +1,29 @@
 import { useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api, formatCurrency, formatEventoWhen, formatMl } from '../lib/api';
-import type { RankingEntry } from '../types';
+import { api, formatEventoWhen } from '../lib/api';
+import type { Evento, RankingEntry } from '../types';
 import { useEvento } from '../contexts/EventoContext';
 import { useRankingLiveUpdates } from '../hooks/useRankingLiveUpdates';
+import { resolveRankingSerieId } from '../lib/ranking-links';
 import { Loading } from '../components/Loading';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState } from '../components/EmptyState';
+import { RankingList } from '../components/RankingList';
 
 interface RankingResponse {
-  evento: { id: string; nome: string; local: string; data: string | null; horaInicio?: string; horaFim?: string | null };
+  evento: {
+    id: string;
+    nome: string;
+    local: string;
+    data: string | null;
+    horaInicio?: string;
+    horaFim?: string | null;
+    serieId?: string | null;
+    trailerId?: string;
+  };
   ranking: RankingEntry[];
 }
-
-const MEDALS = ['🥇', '🥈', '🥉'];
 
 export function RankingPage() {
   const navigate = useNavigate();
@@ -38,6 +47,13 @@ export function RankingPage() {
     refetchInterval: 60_000,
   });
 
+  const { data: eventoDetalhe } = useQuery({
+    queryKey: ['evento', eventoId],
+    queryFn: () => api.get<Evento>(`/api/eventos/${eventoId!}`),
+    enabled: !!eventoId && !data?.evento?.serieId && !eventoAtivo?.serieId && !eventoAtivo?.serie?.id,
+    staleTime: 60_000,
+  });
+
   if (!eventoId) {
     return (
       <EmptyState
@@ -58,6 +74,13 @@ export function RankingPage() {
   if (isLoading) return <Loading />;
 
   const eventoInfo = data?.evento;
+  const serieId = resolveRankingSerieId(eventoId, [eventoInfo, eventoAtivo, eventoDetalhe]);
+  const mensalTo = serieId
+    ? `/ranking/serie/${serieId}?escopo=mensal`
+    : `/ranking/periodo/${eventoId}?escopo=mensal`;
+  const geralTo = serieId
+    ? `/ranking/serie/${serieId}?escopo=geral`
+    : `/ranking/periodo/${eventoId}?escopo=geral`;
 
   return (
     <div className="space-y-4">
@@ -77,44 +100,34 @@ export function RankingPage() {
               }`
             : undefined
         }
-        action={
-          <Link
-            to={`/ranking/tv/${eventoId}`}
-            className="touch-btn-secondary touch-btn-sm shrink-0"
-          >
-            📺 Tela cheia
-          </Link>
-        }
       />
 
-      <div className="space-y-3">
-        {data?.ranking.map((entry) => (
-          <div
-            key={entry.clienteId}
-            className={`card flex items-center gap-4 ${
-              entry.posicao <= 3 ? 'border-brand-400/20 bg-brand-400/5' : ''
-            }`}
+      <div className="space-y-2">
+        <Link
+          to={`/ranking/tv/${eventoId}`}
+          className="touch-btn-orange w-full min-h-12 flex items-center justify-center gap-2 text-base font-bold"
+        >
+          <span aria-hidden>📺</span>
+          Tela cheia
+        </Link>
+
+        <div className="grid grid-cols-2 gap-2">
+          <Link
+            to={mensalTo}
+            className="touch-btn-secondary min-h-12 flex items-center justify-center gap-2 text-sm font-semibold text-center px-2"
           >
-            <div className="text-2xl w-10 text-center">
-              {entry.posicao <= 3 ? MEDALS[entry.posicao - 1] : `#${entry.posicao}`}
-            </div>
-            <div className="flex-1 min-w-0">
-              <Link to={`/clientes/${entry.clienteId}`} className="font-bold text-lg truncate block hover:text-brand-600">
-                {entry.nome}
-              </Link>
-              <p className="text-sm text-ink-muted">{entry.pedidos} chopp(s)</p>
-            </div>
-            <div className="text-right shrink-0">
-              <p className="text-xl font-bold text-brand-600">{formatMl(entry.totalMl)}</p>
-              <p className="text-xs text-ink-faint">{formatCurrency(entry.totalValor)}</p>
-            </div>
-          </div>
-        ))}
+            Ranking mensal
+          </Link>
+          <Link
+            to={geralTo}
+            className="touch-btn-secondary min-h-12 flex items-center justify-center gap-2 text-sm font-semibold text-center px-2"
+          >
+            Ranking geral
+          </Link>
+        </div>
       </div>
 
-      {data?.ranking.length === 0 && (
-        <EmptyState icon="🏆" title="Ninguém no ranking ainda. Comece a vender!" />
-      )}
+      <RankingList entries={data?.ranking ?? []} />
     </div>
   );
 }

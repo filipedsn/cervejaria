@@ -119,6 +119,8 @@ export type AddItemInput = {
   tapId?: string;
 };
 
+const COMANDA_ITEM_TX = { maxWait: 15_000, timeout: 20_000 } as const;
+
 export async function addItemToComanda(params: {
   comandaId: string;
   cervejariaId: string;
@@ -141,7 +143,7 @@ export async function addItemToComanda(params: {
       isChope: inner.isChope,
       precoUnit: inner.precoUnit,
     };
-  });
+  }, COMANDA_ITEM_TX);
 }
 
 export async function removeItemFromComandaInTx(
@@ -185,7 +187,7 @@ export async function removeItemFromComanda(params: {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(abs(hashtext(${comandaItemsLockKey(params.comandaId)})))`;
     return removeItemFromComandaInTx(tx, params);
-  });
+  }, COMANDA_ITEM_TX);
 }
 
 export async function buildPublicEventCardapio(eventoId: string, trailerId: string, cervejariaId: string) {

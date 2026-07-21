@@ -135,8 +135,24 @@ model Usuario {
   comandasFechadas      Comanda[]             @relation("ComandaFechadaPor")
   pedidosConfirmados    PedidoCliente[]       @relation("PedidoConfirmadoPor")
   transacoes            TransacaoLog[]
+  pushSubscriptions     PushSubscription[]
 
   @@index([cervejariaId])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  usuarioId String
+  endpoint  String
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, endpoint])
+  @@index([usuarioId])
 }
 
 model PasswordResetToken {

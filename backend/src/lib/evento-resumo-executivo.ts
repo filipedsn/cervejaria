@@ -12,6 +12,8 @@ import { buildFluxoPorIntervalo, sumFluxoFechado, type FluxoRemocaoInput } from 
 
 import { buildTempoComandaStats } from './evento-comanda-tempo.js';
 
+import { accumulatePorPagamento } from './pagamento-report.js';
+
 
 
 export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId: string) {
@@ -330,11 +332,7 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
 
 
-    for (const pag of comanda.pagamentos) {
-
-      porPagamento.set(pag.forma, (porPagamento.get(pag.forma) ?? 0) + toNumber(pag.valor));
-
-    }
+    accumulatePorPagamento(porPagamento, comanda);
 
   }
 

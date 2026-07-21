@@ -1,6 +1,8 @@
 import { assetUrl } from '../lib/api';
 import type { Cervejaria, Trailer, Usuario } from '../types';
 import { formatTrailerLabel } from '../types';
+import { IconBell } from './NavIcons';
+import type { PedidoPushStatus } from '../hooks/usePedidoAlertSound';
 
 const PAPEL_LABELS: Record<Usuario['papel'], string> = {
   DONO: 'Dono',
@@ -25,6 +27,36 @@ interface AccountMenuProps {
   onLogout: () => void;
   trailer?: Trailer | null;
   onTrocarTrailer?: () => void;
+  alertEnabled?: boolean;
+  alertNeedsUnlock?: boolean;
+  pushStatus?: PedidoPushStatus;
+  wakeLockActive?: boolean;
+  onTogglePedidoAlert?: () => void;
+}
+
+function alertStatusText(
+  alertEnabled: boolean,
+  alertNeedsUnlock: boolean,
+  pushStatus: PedidoPushStatus,
+  wakeLockActive: boolean,
+): string {
+  if (!alertEnabled) {
+    return 'Toque na campainha para ativar som, vibração e notificações push';
+  }
+  if (alertNeedsUnlock) {
+    return 'Toque na campainha ou em qualquer lugar da tela para reativar o som';
+  }
+  if (pushStatus === 'denied') {
+    return 'Som e tela ligada ativos; permita notificações nas configurações do celular';
+  }
+  if (pushStatus === 'unsupported' || pushStatus === 'disabled') {
+    return wakeLockActive
+      ? 'Som, vibração e tela ligada ativos durante o evento'
+      : 'Som e vibração ativos para novos pedidos';
+  }
+  return wakeLockActive
+    ? 'Som, push, vibração e tela ligada ativos durante o evento'
+    : 'Som, push e vibração ativos para novos pedidos';
 }
 
 export function AccountMenu({
@@ -35,6 +67,11 @@ export function AccountMenu({
   onLogout,
   trailer,
   onTrocarTrailer,
+  alertEnabled = false,
+  alertNeedsUnlock = false,
+  pushStatus = 'unknown',
+  wakeLockActive = false,
+  onTogglePedidoAlert,
 }: AccountMenuProps) {
   if (!open) return null;
 
@@ -103,6 +140,38 @@ export function AccountMenu({
               <div className="border-t border-line pt-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Trailer de trabalho</p>
                 <p className="text-sm font-semibold text-ink mt-1">{formatTrailerLabel(trailer)}</p>
+              </div>
+            )}
+
+            {onTogglePedidoAlert && (
+              <div className="border-t border-line pt-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink">Alertas de pedidos</p>
+                  <p className="text-xs text-ink-muted mt-0.5">
+                    {alertStatusText(alertEnabled, alertNeedsUnlock, pushStatus, wakeLockActive)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void onTogglePedidoAlert()}
+                  aria-label={
+                    !alertEnabled
+                      ? 'Ativar alertas de pedidos'
+                      : alertNeedsUnlock
+                        ? 'Liberar som dos alertas de pedidos'
+                        : 'Desativar alertas de pedidos'
+                  }
+                  aria-pressed={alertEnabled}
+                  className={`min-h-12 min-w-12 flex items-center justify-center rounded-xl border shrink-0 transition-colors active:scale-95 ${
+                    !alertEnabled
+                      ? 'bg-surface border-line text-ink-muted'
+                      : alertNeedsUnlock
+                        ? 'bg-amber-100 border-amber-300 text-amber-700'
+                        : 'bg-orange-100 border-orange-300 text-orange-600'
+                  }`}
+                >
+                  <IconBell className="w-6 h-6" strokeWidth={alertEnabled ? 2.25 : 1.75} />
+                </button>
               </div>
             )}
           </div>

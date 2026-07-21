@@ -20,6 +20,63 @@ function Invoke-Kibana {
   return curl.exe @args
 }
 
+function Set-QuiverDataView {
+  param([string]$JsonFile)
+  if (-not (Test-Path $JsonFile)) { return $false }
+
+  $spec = Get-Content -Raw -Path $JsonFile | ConvertFrom-Json
+  $name = $spec.data_view.name
+  $title = $spec.data_view.title
+  $timeField = $spec.data_view.timeFieldName
+
+  $listRaw = Invoke-Kibana -Method GET -Path '/api/data_views'
+  $list = $listRaw | ConvertFrom-Json
+  $existing = $list.data_view | Where-Object { $_.name -eq $name } | Select-Object -First 1
+
+  if ($existing -and $existing.title -ne $title) {
+    $deleted = Invoke-Kibana -Method DELETE -Path "/api/data_views/data_view/$($existing.id)"
+    if ($deleted -match '"id"' -or $deleted -match 'not_found' -or $deleted -match '404') {
+      $existing = $null
+    } else {
+      Write-Host "   $([System.IO.Path]::GetFileName($JsonFile)) DELETE: $deleted" -ForegroundColor Yellow
+    }
+  }
+
+  if ($existing -and $existing.title -eq $title) {
+    Write-Host "   OK $([System.IO.Path]::GetFileName($JsonFile)) (ja existe)" -ForegroundColor Green
+    return $true
+  }
+
+  if ($existing) {
+    $updateBody = @{
+      data_view = @{
+        title = $title
+        name = $name
+        timeFieldName = $timeField
+      }
+    } | ConvertTo-Json -Depth 4 -Compress
+    $tmp = Join-Path $env:TEMP "quiver-kibana-dv-$([guid]::NewGuid().ToString('N')).json"
+    try {
+      Set-Content -Path $tmp -Value $updateBody -Encoding UTF8 -NoNewline
+      $result = Invoke-Kibana -Method PUT -Path "/api/data_views/data_view/$($existing.id)" -BodyFile $tmp
+      if ($result -match '"id"') {
+        Write-Host "   OK $([System.IO.Path]::GetFileName($JsonFile)) (atualizado: $($existing.title) -> $title)" -ForegroundColor Green
+        return $true
+      }
+    } finally {
+      Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue
+    }
+  }
+
+  $result = Invoke-Kibana -Method POST -Path '/api/data_views/data_view' -BodyFile $JsonFile
+  if ($result -match '"id"' -or $result -match 'Duplicate data view') {
+    Write-Host "   OK $([System.IO.Path]::GetFileName($JsonFile)) (criado)" -ForegroundColor Green
+    return $true
+  }
+  Write-Host "   $([System.IO.Path]::GetFileName($JsonFile)) : $result" -ForegroundColor Yellow
+  return $false
+}
+
 Write-Host ''
 Write-Host 'Quiver Tap - Configurando Kibana' -ForegroundColor Cyan
 Write-Host '=================================' -ForegroundColor Cyan
@@ -60,17 +117,12 @@ $viewFiles = @(
   'kibana-audit-data-view-dev.json',
   'kibana-metrics-infra-data-view.json',
   'kibana-logs-data-view-prd.json',
-  'kibana-traces-data-view-prd.json'
+  'kibana-logs-data-view-dev.json',
+  'kibana-traces-data-view-prd.json',
+  'kibana-traces-data-view-dev.json'
 )
 foreach ($vf in $viewFiles) {
-  $path = Join-Path $ObsDir $vf
-  if (-not (Test-Path $path)) { continue }
-  $result = Invoke-Kibana -Method POST -Path '/api/data_views/data_view' -BodyFile $path
-  if ($result -match '"id"' -or $result -match 'Duplicate data view') {
-    Write-Host "   OK $vf" -ForegroundColor Green
-  } else {
-    Write-Host "   $vf : $result" -ForegroundColor Yellow
-  }
+  Set-QuiverDataView -JsonFile (Join-Path $ObsDir $vf) | Out-Null
 }
 
 # 2. Dashboard + visualizations via saved objects import
@@ -150,10 +202,12 @@ Write-Host ''
 Write-Host 'Links uteis:' -ForegroundColor Cyan
 Write-Host "  Dashboard:  $KibanaBase/app/dashboards#/view/quiver-tap-observability" -ForegroundColor Gray
 Write-Host "  Discover:   $KibanaBase/app/discover#/?_a=(index:'metrics-generic.otel-default*')" -ForegroundColor Gray
-Write-Host "  Audit PRD:  $KibanaBase/app/discover#/?_a=(index:'audit-*.otel-prd')" -ForegroundColor Gray
-Write-Host "  Audit DEV:  $KibanaBase/app/discover#/?_a=(index:'audit-*.otel-dev')" -ForegroundColor Gray
+Write-Host "  Audit PRD:  $KibanaBase/app/discover#/?_a=(index:'logs-audit*.otel-prd')" -ForegroundColor Gray
+Write-Host "  Audit DEV:  $KibanaBase/app/discover#/?_a=(index:'logs-audit*.otel-dev')" -ForegroundColor Gray
 Write-Host "  Logs PRD:   $KibanaBase/app/discover#/?_a=(index:'logs-*.otel-prd')" -ForegroundColor Gray
+Write-Host "  Logs DEV:   $KibanaBase/app/discover#/?_a=(index:'logs-*.otel-dev')" -ForegroundColor Gray
 Write-Host "  Traces PRD: $KibanaBase/app/discover#/?_a=(index:'traces-*.otel-prd')" -ForegroundColor Gray
+Write-Host "  Traces DEV: $KibanaBase/app/discover#/?_a=(index:'traces-*.otel-dev')" -ForegroundColor Gray
 Write-Host "  Infra:      $KibanaBase/app/discover#/?_a=(index:'metrics-infra.otel-*')" -ForegroundColor Gray
 Write-Host "  Alertas:    $KibanaBase/app/management/insightsAndAlerting/triggersActions/rules" -ForegroundColor Gray
 Write-Host "  Service Inv:$KibanaBase/app/apm/services (requer traces APM)" -ForegroundColor Gray

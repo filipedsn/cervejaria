@@ -12,7 +12,7 @@
     "size": 100,
     "timeWindowSize": 10,
     "timeWindowUnit": "m",
-    "thresholdComparator": "lt",
+    "thresholdComparator": "<",
     "threshold": [1],
     "aggType": "count",
     "groupBy": "all",

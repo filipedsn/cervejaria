@@ -427,6 +427,34 @@ export interface RankingEntry {
   pedidos: number;
 }
 
+export interface RankingSerieResponse {
+  serie: {
+    id: string;
+    nome: string;
+    local: string;
+    diaSemana: number | null;
+  };
+  escopo: 'mensal' | 'geral';
+  mes: string | null;
+  mesesDisponiveis: string[];
+  entries: RankingEntry[];
+}
+
+export interface RankingPeriodoResponse {
+  evento: {
+    id: string;
+    nome: string;
+    local: string;
+    data: string;
+    trailerId: string;
+    trailer?: Pick<Trailer, 'id' | 'nome' | 'identificador'> | null;
+  };
+  escopo: 'mensal' | 'geral';
+  mes: string | null;
+  mesesDisponiveis: string[];
+  entries: RankingEntry[];
+}
+
 export interface CervejariaDashboard {
   periodo: { ano: number; mes: number; label: string };
   resumo: {

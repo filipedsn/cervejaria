@@ -1,5 +1,5 @@
 import { createBrowserRouter, RouterProvider, Navigate, Outlet, useSearchParams, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { EventoProvider, useEvento } from './contexts/EventoContext';
 import { LoginPage } from './pages/LoginPage';
@@ -14,7 +14,11 @@ import { ComandaDetailPage } from './pages/ComandaDetailPage';
 import { NovaComandaPage } from './pages/NovaComandaPage';
 import { VendaAvulsaPage } from './pages/VendaAvulsaPage';
 import { RankingPage } from './pages/RankingPage';
+import { RankingPeriodoPage } from './pages/RankingPeriodoPage';
+import { RankingSeriePage } from './pages/RankingSeriePage';
 import { RankingFullscreenPage } from './pages/RankingFullscreenPage';
+import { RankingSerieFullscreenPage } from './pages/RankingSerieFullscreenPage';
+import { RankingPeriodoFullscreenPage } from './pages/RankingPeriodoFullscreenPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ResumoExecutivoPage } from './pages/ResumoExecutivoPage';
 import { ConfiguracoesPage } from './pages/ConfiguracoesPage';
@@ -129,18 +133,14 @@ function CatchAll() {
   return <Navigate to={isAdmin ? '/admin/cervejarias' : '/'} replace />;
 }
 
-function RankingTvEntry() {
-  const [searchParams] = useSearchParams();
+function RankingTvShell({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading, isAdmin } = useAuth();
+  const [searchParams] = useSearchParams();
   const demoCount = Number.parseInt(searchParams.get('demo') ?? '', 10);
   const isDemo = Number.isFinite(demoCount) && demoCount > 0;
 
   if (isDemo) {
-    return (
-      <div className="qt-tv">
-        <RankingFullscreenPage />
-      </div>
-    );
+    return <div className="qt-tv">{children}</div>;
   }
 
   if (isLoading) return <Loading fullScreen />;
@@ -149,10 +149,32 @@ function RankingTvEntry() {
 
   return (
     <div className="qt-tv">
-      <EventoProvider>
-        <RankingFullscreenPage />
-      </EventoProvider>
+      <EventoProvider>{children}</EventoProvider>
     </div>
+  );
+}
+
+function RankingTvEntry() {
+  return (
+    <RankingTvShell>
+      <RankingFullscreenPage />
+    </RankingTvShell>
+  );
+}
+
+function RankingSerieTvEntry() {
+  return (
+    <RankingTvShell>
+      <RankingSerieFullscreenPage />
+    </RankingTvShell>
+  );
+}
+
+function RankingPeriodoTvEntry() {
+  return (
+    <RankingTvShell>
+      <RankingPeriodoFullscreenPage />
+    </RankingTvShell>
   );
 }
 
@@ -160,6 +182,8 @@ const router = createBrowserRouter([
   {
     element: <RootLayout />,
     children: [
+      { path: '/ranking/tv/serie/:serieId', element: <RankingSerieTvEntry /> },
+      { path: '/ranking/tv/periodo/:eventoId', element: <RankingPeriodoTvEntry /> },
       { path: '/ranking/tv/:eventoId', element: <RankingTvEntry /> },
       { path: '/c/:slug/cadastro', element: <CadastroLinkDescontinuadoPage /> },
       { path: '/c/:slug/t/:trailerId', element: <PortalClientePage /> },
@@ -211,6 +235,8 @@ const router = createBrowserRouter([
                   { index: true, element: <TenantEntryRedirect /> },
                   { path: 'trailer', element: <SelecionarTrailerPage /> },
                   { path: 'eventos', element: <EventoPage /> },
+                  { path: 'ranking/serie/:serieId', element: <RankingSeriePage /> },
+                  { path: 'ranking/periodo/:eventoId', element: <RankingPeriodoPage /> },
                   { path: 'clientes', element: <ClientesPage /> },
                   { path: 'clientes/:id', element: <ClienteDetailPage /> },
                   {

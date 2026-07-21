@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -216,7 +216,7 @@ function ActiveSessionHero({
 
         <button
           type="button"
-          className="flex flex-1 min-w-0 items-center justify-center min-h-12 rounded-xl bg-success text-white font-bold shadow-md hover:bg-green-600 transition active:scale-[0.98]"
+          className="touch-btn-orange flex flex-1 min-w-0 items-center justify-center min-h-12 rounded-xl font-bold"
           onClick={onComandas}
         >
           Continuar comandas
@@ -324,6 +324,13 @@ function AgendaSerieCard({
 
         <EditEventoButton onClick={onEdit} primary />
 
+        <Link
+          to={`/ranking/serie/${serie.id}`}
+          className="touch-btn-secondary touch-btn-sm px-4 inline-flex items-center justify-center"
+        >
+          Ranking da agenda
+        </Link>
+
         <button
           type="button"
           className="touch-btn-danger touch-btn-sm px-4 disabled:opacity-40"
@@ -391,7 +398,7 @@ function AgendaSessaoCard({
       {sessao.status === 'ABERTO' && (
         <div className="space-y-2">
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="touch-btn-primary flex-1 min-w-[10rem]" onClick={onRetomar}>
+            <button type="button" className="touch-btn-orange flex-1 min-w-[10rem]" onClick={onRetomar}>
               Continuar comandas
             </button>
             <VerRankingButton eventoId={sessao.id} fullWidth={false} />
@@ -411,13 +418,9 @@ function AgendaSessaoCard({
 
         <div className="space-y-2">
 
-          <div className="flex flex-wrap gap-2">
+          <ReabrirEventoButton eventoId={sessao.id} encerradoEm={sessao.encerradoEm} />
 
-            <ReabrirEventoButton eventoId={sessao.id} encerradoEm={sessao.encerradoEm} />
-
-            <VerRankingButton eventoId={sessao.id} fullWidth={false} />
-
-          </div>
+          <VerRankingButton eventoId={sessao.id} primary />
 
           {reabrirPrazoExpirado(sessao.encerradoEm) && (
             <p className="text-xs text-ink-faint">

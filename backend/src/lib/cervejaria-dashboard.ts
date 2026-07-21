@@ -7,6 +7,7 @@ import {
   type ReportFechadoPorContext,
 } from './fechado-por-report.js';
 import { getScheduledEventWindow } from './evento-vendas-intervalo.js';
+import { accumulatePorPagamento } from './pagamento-report.js';
 
 const MS_HOUR = 3_600_000;
 
@@ -108,9 +109,7 @@ function aggregateComandas(comandas: ClosedComanda[], fechadoPorCtx: ReportFecha
       }
     }
 
-    for (const pag of comanda.pagamentos) {
-      porPagamento.set(pag.forma, (porPagamento.get(pag.forma) ?? 0) + toNumber(pag.valor));
-    }
+    accumulatePorPagamento(porPagamento, comanda);
   }
 
   const comandasAtendidas = comandas.length;

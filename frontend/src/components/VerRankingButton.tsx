@@ -6,6 +6,7 @@ interface VerRankingButtonProps {
   className?: string;
   fullWidth?: boolean;
   iconOnly?: boolean;
+  primary?: boolean;
 }
 
 export function VerRankingButton({
@@ -13,6 +14,7 @@ export function VerRankingButton({
   className = '',
   fullWidth = true,
   iconOnly = false,
+  primary = false,
 }: VerRankingButtonProps) {
   if (iconOnly) {
     return (
@@ -27,12 +29,18 @@ export function VerRankingButton({
     );
   }
 
+  const btnClass = primary
+    ? `touch-btn-primary inline-flex items-center justify-center gap-2 ${
+        fullWidth ? 'w-full min-h-12 text-base' : 'touch-btn-sm px-4'
+      }`
+    : `touch-btn-secondary touch-btn-sm inline-flex items-center justify-center gap-2 ${
+        fullWidth ? 'w-full' : ''
+      }`;
+
   return (
     <Link
       to={`/ranking/${eventoId}`}
-      className={`touch-btn-secondary touch-btn-sm inline-flex items-center justify-center gap-2 ${
-        fullWidth ? 'w-full' : ''
-      } ${className}`}
+      className={`${btnClass} ${className}`}
     >
       <IconTrophy className="w-4 h-4" />
       Ver ranking

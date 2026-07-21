@@ -11,6 +11,9 @@ export default defineConfig({  plugins: [
     react(),
     tailwindcss(),
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'autoUpdate',
       injectRegister: null,
       devOptions: {
@@ -51,22 +54,8 @@ export default defineConfig({  plugins: [
           },
         ],
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        skipWaiting: true,
-        clientsClaim: true,
-        runtimeCaching: [
-          {
-            urlPattern: ({ request, url }) =>
-              request.method === 'GET' && /\/api\/(produtos|taps|trailers)(\?|$|\/)/.test(url.pathname),
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'catalog-cache',
-              expiration: { maxEntries: 30, maxAgeSeconds: 120 },
-              networkTimeoutSeconds: 5,
-            },
-          },
-        ],
       },
     }),
   ],

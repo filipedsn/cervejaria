@@ -180,11 +180,26 @@ export function portalTestPhone(prefix: number, index: number): string {
   return `11${String(prefix).padStart(2, '0')}${String(index).padStart(7, '0')}`;
 }
 
+/** Telefone único por execução (evita colisão entre runs da suíte QA). */
+export function uniquePortalTestPhone(prefix: number, salt = 0): string {
+  const idx = ((Date.now() + salt * 9973) % 9_000_000) + 1_000_000;
+  return portalTestPhone(prefix, idx);
+}
+
 /** Body para POST /api/comandas (staff) com telefone válido. */
 export function staffComandaBody(eventoId: string, nome: string, phoneIndex: number) {
   return {
     eventoId,
     clienteNome: nome,
     clienteTelefone: portalTestPhone(50, phoneIndex),
+  };
+}
+
+/** Body staff com telefone único por execução (multi-tenant / runs repetidos). */
+export function uniqueStaffComandaBody(eventoId: string, nome: string, salt = 0) {
+  return {
+    eventoId,
+    clienteNome: nome,
+    clienteTelefone: uniquePortalTestPhone(50, salt),
   };
 }

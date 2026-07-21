@@ -111,17 +111,20 @@ export function EventoTapMontagemPanel({
   eventoAberto,
   sectionId,
   variant = 'card',
+  presentation = 'inline',
 }: {
   eventoId: string;
   eventoAberto: boolean;
   sectionId?: string;
   variant?: 'hero' | 'card';
+  presentation?: 'inline' | 'modal';
 }) {
   const queryClient = useQueryClient();
   const [selectedTap, setSelectedTap] = useState<TapComChope | null>(null);
   const [modalMode, setModalMode] = useState<TapModalMode>('menu');
   const [montagemProdutoId, setMontagemProdutoId] = useState('');
   const [error, setError] = useState('');
+  const [showTapsModal, setShowTapsModal] = useState(false);
 
   const { data: taps, isLoading } = useQuery({
     queryKey: ['evento-taps', eventoId],
@@ -195,9 +198,11 @@ export function EventoTapMontagemPanel({
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao alterar tap'),
   });
 
+  const isModal = presentation === 'modal';
+
   if (isLoading) {
     if (variant === 'hero') return null;
-    return <Loading />;
+    if (!isModal) return <Loading />;
   }
 
   const prevista = taps?.some((t) => t.montagemPrevista);
@@ -206,65 +211,60 @@ export function EventoTapMontagemPanel({
 
   const showHeader = isHero || prevista;
 
-  return (
-    <section id={sectionId} className="space-y-2 scroll-mt-4">
-      {showHeader && (
-        <div>
-          <h2
-            className={
-              isHero
-                ? 'text-xs font-bold uppercase tracking-wide text-white/80'
-                : 'section-label'
-            }
-          >
-            {label}
-          </h2>
-        </div>
-      )}
+  const semChope = eventoAberto && !!taps?.length && taps.every((t) => !t.chopeAtual);
+  const needsAttention = !!prevista || semChope;
+  const totalTaps = taps?.length ?? 0;
+  const comChope = taps?.filter((t) => t.chopeAtual).length ?? 0;
 
-      {error && (
-        <p
-          className={
-            isHero
-              ? 'text-sm text-red-100 bg-red-900/40 border border-red-400/40 rounded-lg px-3 py-2'
-              : 'text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2'
-          }
-        >
-          {error}
+  const onboardingHint = (
+    <>
+      {isHero && eventoAberto && semChope && (
+        <p className="text-xs text-white/85 leading-snug rounded-lg bg-white/10 px-3 py-2">
+          Toque em cada tap abaixo e escolha qual chope está na torneira. Só depois disso dá para vender chope nas comandas.
         </p>
       )}
-
-      {!taps?.length ? (
-        !isHero && (
-          <p className="text-sm text-ink-faint text-center py-4">Nenhum tap cadastrado no trailer deste evento.</p>
-        )
-      ) : (
-        <>
-          {isHero && eventoAberto && taps.every((t) => !t.chopeAtual) && (
-            <p className="text-xs text-white/85 leading-snug rounded-lg bg-white/10 px-3 py-2">
-              Toque em cada tap abaixo e escolha qual chope está na torneira. Só depois disso dá para vender chope nas comandas.
-            </p>
-          )}
-          <TapEventoGrid
-            taps={taps}
-            variant={variant}
-            interactive={eventoAberto}
-            onTapClick={openTap}
-          />
-        </>
+      {!isHero && eventoAberto && semChope && (
+        <p className="text-sm text-ink-muted leading-snug rounded-lg bg-surface-lighter border border-line px-3 py-2">
+          Toque em cada tap e escolha qual chope está na torneira. Só depois disso dá para vender chope nas comandas.
+        </p>
       )}
+    </>
+  );
 
-      {selectedTap && (
-        <Modal
-          open
-          onClose={closeModal}
-          title={
-            modalMode === 'trocar' || modalMode === 'confirm-trocar'
-              ? `Tap ${selectedTap.numero} — ${selectedTap.chopeAtual ? 'Trocar chope' : 'Posicionar chope'}`
-              : `Tap ${selectedTap.numero}${selectedTap.nome ? ` — ${selectedTap.nome}` : ''}`
-          }
-        >
-          {modalMode === 'menu' && (
+  const gridBody = isLoading ? (
+    <Loading />
+  ) : !taps?.length ? (
+    !isHero && (
+      <p className="text-sm text-ink-faint text-center py-4">Nenhum tap cadastrado no trailer deste evento.</p>
+    )
+  ) : (
+    <>
+      {onboardingHint}
+      <TapEventoGrid
+        taps={taps}
+        variant={variant}
+        interactive={eventoAberto}
+        onTapClick={openTap}
+      />
+    </>
+  );
+
+  const tapDetailTitle = selectedTap
+    ? modalMode === 'trocar' || modalMode === 'confirm-trocar'
+      ? `Tap ${selectedTap.numero} — ${selectedTap.chopeAtual ? 'Trocar chope' : 'Posicionar chope'}`
+      : `Tap ${selectedTap.numero}${selectedTap.nome ? ` — ${selectedTap.nome}` : ''}`
+    : '';
+
+  const errorBanner = error ? (
+    <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">
+      {error}
+    </p>
+  ) : null;
+
+  const tapDetailBody = selectedTap && (
+    <>
+      {errorBanner}
+      {modalMode === 'menu' && (
             <div className="space-y-2">
               {selectedTap.chopeAtual && (
                 <p className="text-sm text-ink-muted mb-3">
@@ -390,6 +390,81 @@ export function EventoTapMontagemPanel({
               </button>
             </form>
           )}
+    </>
+  );
+
+  if (isModal) {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setShowTapsModal(true)}
+          className="touch-btn-secondary touch-btn-sm inline-flex w-full min-h-12 items-center justify-center gap-2 px-3"
+        >
+          <span aria-hidden>🍺</span>
+          <span>Taps do evento</span>
+          <span className="text-ink-faint">
+            {totalTaps > 0 ? `(${comChope}/${totalTaps})` : ''}
+          </span>
+          {needsAttention && (
+            <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden />
+          )}
+        </button>
+
+        <Modal
+          open={showTapsModal}
+          onClose={() => {
+            setShowTapsModal(false);
+            closeModal();
+          }}
+          title={selectedTap ? tapDetailTitle : prevista ? 'Montagem prevista' : 'Taps do evento'}
+        >
+          {selectedTap ? (
+            tapDetailBody
+          ) : (
+            <div className="space-y-2">
+              {errorBanner}
+              {gridBody}
+            </div>
+          )}
+        </Modal>
+      </>
+    );
+  }
+
+  return (
+    <section id={sectionId} className="space-y-2 scroll-mt-4">
+      {showHeader && (
+        <div>
+          <h2
+            className={
+              isHero
+                ? 'text-xs font-bold uppercase tracking-wide text-white/80'
+                : 'section-label'
+            }
+          >
+            {label}
+          </h2>
+        </div>
+      )}
+
+      {error && (
+        <p
+          className={
+            isHero
+              ? 'text-sm text-red-100 bg-red-900/40 border border-red-400/40 rounded-lg px-3 py-2'
+              : 'text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2'
+          }
+        >
+          {error}
+        </p>
+      )}
+
+      {gridBody}
+
+      {selectedTap && (
+        <Modal open onClose={closeModal} title={tapDetailTitle}>
+          {tapDetailBody}
         </Modal>
       )}
     </section>

@@ -176,25 +176,27 @@ export function ComandasPage() {
 
   return (
     <div className={`space-y-4 ${eventoAberto ? 'page-with-action-bar' : 'pb-2'}`}>
-      <EventoTapMontagemPanel
-        eventoId={evento.id}
-        eventoAberto={eventoAberto}
-        sectionId="evento-taps"
-      />
+      <FilaPedidosPanel />
 
       {!selectMode && eventoAberto && (
-        <div className="flex gap-2">
-          <Link to="/comandas/nova" className="touch-btn-hero flex-1 min-w-0">
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface/20 text-2xl leading-none font-normal">
+        <div className="grid grid-cols-2 gap-2">
+          <Link
+            to="/comandas/nova"
+            className="touch-btn-hero min-h-[3.75rem] gap-2 px-3 text-base font-bold"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface/20 text-xl leading-none font-normal">
               +
             </span>
-            Nova Comanda
+            Comanda
           </Link>
           <Link
             to="/comandas/venda-avulsa"
-            className="touch-btn-secondary flex-1 min-w-0 min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl font-bold text-base px-4"
+            className="touch-btn-orange min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold"
           >
-            <span className="text-xl leading-none" aria-hidden>
+            <span
+              className="flex h-9 w-9 shrink-0 items-center justify-center text-xl leading-none"
+              aria-hidden
+            >
               ⚡
             </span>
             Venda avulsa
@@ -207,7 +209,7 @@ export function ComandasPage() {
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface/20 text-2xl leading-none font-normal">
             +
           </span>
-          Nova Comanda
+          Comanda
         </Link>
       )}
 
@@ -225,9 +227,14 @@ export function ComandasPage() {
         </div>
       )}
 
-      <VerRankingButton eventoId={evento.id} />
-
-      <FilaPedidosPanel />
+      <div className="grid grid-cols-2 gap-2">
+        <VerRankingButton eventoId={evento.id} />
+        <EventoTapMontagemPanel
+          eventoId={evento.id}
+          eventoAberto={eventoAberto}
+          presentation="modal"
+        />
+      </div>
 
       {canSelect && (resumo?.comandasAbertas ?? comandas?.length ?? 0) >= 2 && (
         selectMode ? (

@@ -77,6 +77,7 @@ import { getReadinessStatus } from './lib/health.js';
 import { createLogger } from './lib/logger.js';
 import { registerAuditHooks } from './lib/audit-hooks.js';
 import { auditRoutes } from './routes/audit.js';
+import { pushRoutes } from './routes/push.js';
 
 import type { JwtPayload } from './types/auth.js';
 
@@ -267,6 +268,8 @@ export async function buildApp() {
   await app.register(publicRoutes, { prefix: '/api/public' });
 
   await app.register(pedidosRoutes, { prefix: '/api/pedidos' });
+
+  await app.register(pushRoutes, { prefix: '/api/push' });
 
 
 

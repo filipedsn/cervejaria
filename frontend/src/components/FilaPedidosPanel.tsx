@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../lib/api';
 import type { PedidoCliente } from '../types';
@@ -6,10 +6,17 @@ import { useEvento } from '../contexts/EventoContext';
 import { useAuth } from '../contexts/AuthContext';
 import { connectSocket, getSocket, joinEvento } from '../lib/socket';
 import { Modal } from './Modal';
+import { PedidoElapsedTimer } from './PedidoElapsedTimer';
 
 function formatVolume(ml: number) {
   if (ml <= 1) return '';
   return ml >= 1000 ? `${ml / 1000}L` : `${ml}ml`;
+}
+
+function sortPedidosFifo(pedidos: PedidoCliente[]): PedidoCliente[] {
+  return [...pedidos].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
 }
 
 function pedidoNotFoundError(err: unknown): boolean {
@@ -72,7 +79,7 @@ export function FilaPedidosPanel() {
       queryClient.setQueryData<PedidoCliente[]>(pedidosQueryKey, (old) => {
         const list = old ?? [];
         if (list.some((p) => p.id === pedido.id)) return list;
-        return [...list, pedido];
+        return sortPedidosFifo([...list, pedido]);
       });
       void queryClient.invalidateQueries({ queryKey: pedidosQueryKey });
     };
@@ -131,33 +138,47 @@ export function FilaPedidosPanel() {
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao recusar'),
   });
 
-  if (!evento || pedidos.length === 0) return null;
+  const pedidosOrdenados = useMemo(() => sortPedidosFifo(pedidos), [pedidos]);
+
+  if (!evento || pedidosOrdenados.length === 0) return null;
 
   return (
     <section className="space-y-3">
       <div className="flex items-center gap-2">
         <h2 className="font-bold text-lg">Pedidos do cliente</h2>
-        <span className="badge-live">{pedidos.length} pendente(s)</span>
+        <span className="badge-live">{pedidosOrdenados.length} pendente(s)</span>
       </div>
       <p className="text-sm text-ink-muted -mt-1">
         Confirme para lançar os itens na comanda do cliente.
       </p>
       {error && <div className="alert-error">{error}</div>}
-      {pedidos.map((pedido) => (
-        <article key={pedido.id} className="card space-y-3 border-brand-200/50">
-          <div className="flex justify-between gap-2">
-            <div>
-              <p className="font-bold">{pedido.cliente?.nome ?? 'Cliente'}</p>
-              <p className="text-xs text-ink-muted">
-                {new Date(pedido.createdAt).toLocaleTimeString('pt-BR', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </p>
+      {pedidosOrdenados.map((pedido, index) => (
+        <article key={pedido.id} className="card pedido-card-alert !p-3 space-y-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs font-bold uppercase tracking-wide text-brand-600 shrink-0">
+                #{index + 1}
+              </span>
+              <p className="text-xl font-bold truncate">{pedido.cliente?.nome ?? 'Cliente'}</p>
             </div>
-            <p className="font-bold text-brand-600">{formatCurrency(pedido.totalEstimado)}</p>
+            <p className="text-lg font-bold text-brand-600 whitespace-nowrap">
+              {formatCurrency(pedido.totalEstimado)}
+            </p>
           </div>
-          <ul className="text-sm space-y-0.5">
+          <div className="flex items-baseline gap-2">
+            <PedidoElapsedTimer
+              createdAt={pedido.createdAt}
+              className="text-2xl font-mono font-bold tabular-nums text-orange leading-none"
+            />
+            <span className="text-xs text-ink-muted">
+              desde{' '}
+              {new Date(pedido.createdAt).toLocaleTimeString('pt-BR', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
+          </div>
+          <ul className="text-base space-y-0.5">
             {pedido.itens.map((item) => (
               <li key={item.id}>
                 {item.quantidade}x {item.produto.nome}{' '}
