@@ -1,7 +1,9 @@
 import { assetUrl } from '../lib/api';
 import type { Cervejaria, Trailer, Usuario } from '../types';
 import { formatTrailerLabel } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 import { IconBell } from './NavIcons';
+import { SettingsRow, ThemeSegmentedControl } from './SettingsRow';
 import type { PedidoPushStatus } from '../hooks/usePedidoAlertSound';
 
 const PAPEL_LABELS: Record<Usuario['papel'], string> = {
@@ -73,6 +75,8 @@ export function AccountMenu({
   wakeLockActive = false,
   onTogglePedidoAlert,
 }: AccountMenuProps) {
+  const { theme, setTheme } = useTheme();
+
   if (!open) return null;
 
   const logo = assetUrl(cervejaria?.logoUrl);
@@ -88,7 +92,7 @@ export function AccountMenu({
         className="relative w-full max-w-lg bg-surface rounded-t-3xl sm:rounded-2xl border border-line safe-area-pb animate-slide-up shadow-xl"
       >
         <div className="flex justify-center pt-3 pb-1 sm:hidden">
-          <div className="w-10 h-1 rounded-full bg-line" aria-hidden />
+          <div className="w-10 h-1 rounded-full bg-line-soft" aria-hidden />
         </div>
 
         <div className="px-4 pb-4 pt-2">
@@ -104,7 +108,7 @@ export function AccountMenu({
             </button>
           </div>
 
-          <div className="rounded-2xl bg-surface-lighter border border-line p-4 space-y-4">
+          <div className="settings-card p-4 space-y-4 mb-4">
             <div className="flex items-center gap-3">
               {logo ? (
                 <img
@@ -142,42 +146,52 @@ export function AccountMenu({
                 <p className="text-sm font-semibold text-ink mt-1">{formatTrailerLabel(trailer)}</p>
               </div>
             )}
+          </div>
 
-            {onTogglePedidoAlert && (
-              <div className="border-t border-line pt-4 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-ink">Alertas de pedidos</p>
-                  <p className="text-xs text-ink-muted mt-0.5">
-                    {alertStatusText(alertEnabled, alertNeedsUnlock, pushStatus, wakeLockActive)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void onTogglePedidoAlert()}
-                  aria-label={
-                    !alertEnabled
-                      ? 'Ativar alertas de pedidos'
-                      : alertNeedsUnlock
-                        ? 'Liberar som dos alertas de pedidos'
-                        : 'Desativar alertas de pedidos'
+          <div className="mb-4">
+            <p className="section-label px-1 mb-2">Preferências</p>
+            <div className="settings-card">
+              {onTogglePedidoAlert && (
+                <SettingsRow
+                  title="Alertas de pedidos"
+                  description={alertStatusText(alertEnabled, alertNeedsUnlock, pushStatus, wakeLockActive)}
+                  control={
+                    <button
+                      type="button"
+                      onClick={() => void onTogglePedidoAlert()}
+                      aria-label={
+                        !alertEnabled
+                          ? 'Ativar alertas de pedidos'
+                          : alertNeedsUnlock
+                            ? 'Liberar som dos alertas de pedidos'
+                            : 'Desativar alertas de pedidos'
+                      }
+                      aria-pressed={alertEnabled}
+                      className={`min-h-12 min-w-12 flex items-center justify-center rounded-xl shrink-0 transition-colors active:scale-95 ${
+                        !alertEnabled
+                          ? 'bg-surface border border-line text-ink-muted'
+                          : alertNeedsUnlock
+                            ? 'alert-warn-btn'
+                            : 'alert-active-btn'
+                      }`}
+                    >
+                      <IconBell className="w-6 h-6" strokeWidth={alertEnabled ? 2.25 : 1.75} />
+                    </button>
                   }
-                  aria-pressed={alertEnabled}
-                  className={`min-h-12 min-w-12 flex items-center justify-center rounded-xl border shrink-0 transition-colors active:scale-95 ${
-                    !alertEnabled
-                      ? 'bg-surface border-line text-ink-muted'
-                      : alertNeedsUnlock
-                        ? 'bg-amber-100 border-amber-300 text-amber-700'
-                        : 'bg-orange-100 border-orange-300 text-orange-600'
-                  }`}
-                >
-                  <IconBell className="w-6 h-6" strokeWidth={alertEnabled ? 2.25 : 1.75} />
-                </button>
-              </div>
-            )}
+                />
+              )}
+
+              <SettingsRow
+                stacked
+                title="Aparência"
+                description="Salvo neste dispositivo"
+                control={<ThemeSegmentedControl value={theme} onChange={setTheme} />}
+              />
+            </div>
           </div>
 
           {onTrocarTrailer && (
-            <button type="button" onClick={onTrocarTrailer} className="touch-btn-secondary w-full mt-4">
+            <button type="button" onClick={onTrocarTrailer} className="touch-btn-secondary w-full">
               Trocar trailer
             </button>
           )}
@@ -200,13 +214,12 @@ export function AccountMenu({
 
 export function UserAvatarButton({ nome, onClick }: { nome: string; onClick: () => void }) {
   const initials = getInitials(nome);
-
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label="Abrir conta"
-      className="shrink-0 h-10 w-10 rounded-full bg-brand-50 border border-brand-100 flex items-center justify-center text-sm font-bold text-brand-600 active:scale-95 transition-transform"
+      className="h-10 w-10 rounded-full bg-brand-50 border border-brand-100 flex items-center justify-center text-sm font-bold text-brand-600 shrink-0 active:scale-95 transition-transform"
     >
       {initials}
     </button>

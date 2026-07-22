@@ -144,7 +144,7 @@ export function Layout() {
     <div className="min-h-screen flex flex-col pb-nav bg-canvas">
       <ConnectionStatus />
 
-      <header className="sticky top-0 z-40 bg-surface/95 backdrop-blur border-b border-line safe-area-pt shadow-sm">
+      <header className="app-shell-header safe-area-pt">
         <div className={`w-full max-w-6xl mx-auto ${onEventsPage || onTrailerPage ? 'px-4 py-3' : 'px-4 py-2 space-y-2'}`}>
           {onEventsPage || onTrailerPage ? (
             <div className="flex items-center justify-between gap-3 min-h-10">
@@ -205,7 +205,7 @@ export function Layout() {
 
       <nav
         aria-label="Navegação principal"
-        className="fixed bottom-0 left-0 right-0 z-40 bg-surface border-t border-line safe-area-pb"
+        className="app-bottom-nav safe-area-pb"
         style={{ height: 'calc(var(--bottom-nav-height) + env(safe-area-inset-bottom))' }}
       >
         <div className="flex items-stretch justify-around w-full max-w-6xl mx-auto h-[var(--bottom-nav-height)] px-1">

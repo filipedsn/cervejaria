@@ -41,7 +41,7 @@ function ClienteResumo({ cliente, isNew }: { cliente: Cliente | null; isNew: boo
         </Link>
       </div>
       {!cliente.telefone && (
-        <p className="text-xs text-amber-700">Cadastro legado — o telefone informado será vinculado a este perfil.</p>
+        <p className="text-xs text-warn">Cadastro legado — o telefone informado será vinculado a este perfil.</p>
       )}
       <div className="grid grid-cols-3 gap-2 text-center text-sm">
         <div>
@@ -235,7 +235,7 @@ export function NovaComandaPage() {
           <label className="label">Telefone</label>
           <input
             ref={phoneInputRef}
-            className={linkingLegacy ? 'input border-amber-400 ring-1 ring-amber-200/80' : 'input'}
+            className={linkingLegacy ? 'input input-warn' : 'input'}
             type="tel"
             inputMode="numeric"
             autoComplete="tel"
@@ -269,9 +269,9 @@ export function NovaComandaPage() {
             Nome exibido na comanda. Você também pode buscar clientes cadastrados pelo nome.
           </p>
           {linkingLegacy && selectedCliente && (
-            <p className="text-xs text-amber-800 mt-1">
+            <p className="text-xs text-warn mt-1">
               <span className="font-semibold">{selectedCliente.nome}</span>
-              <span className="text-amber-700"> · sem telefone</span>
+              <span className="opacity-80"> · sem telefone</span>
             </p>
           )}
           {showNameSuggestions && nameSuggestions.length > 0 && (
@@ -287,7 +287,7 @@ export function NovaComandaPage() {
                   {c.telefone ? (
                     <span className="text-ink-faint ml-2 text-sm">{formatPhone(c.telefone)}</span>
                   ) : (
-                    <span className="text-amber-700 ml-2 text-xs">sem telefone — informe abaixo</span>
+                    <span className="text-warn ml-2 text-xs">sem telefone — informe abaixo</span>
                   )}
                 </button>
               ))}
@@ -296,16 +296,16 @@ export function NovaComandaPage() {
         </div>
 
         {linkingLegacy && (
-          <div className="card bg-amber-50/80 border-amber-200/60 space-y-1">
-            <p className="text-sm font-semibold text-amber-900">Cadastro legado selecionado</p>
-            <p className="text-xs text-amber-800 leading-relaxed">
+          <div className="card-notice-warn">
+            <p className="text-sm font-semibold text-warn">Cadastro legado selecionado</p>
+            <p className="text-xs text-warn leading-relaxed opacity-90">
               Informe o telefone de &quot;{selectedCliente.nome}&quot; para vincular ao perfil e abrir a comanda.
             </p>
           </div>
         )}
 
         {telefone && nomeReferenciaTelefone && nome.trim() !== nomeReferenciaTelefone.trim() && !selectedCliente && (
-          <p className="text-xs text-amber-700">
+          <p className="text-xs text-warn">
             Telefone de &quot;{nomeReferenciaTelefone}&quot; — a comanda usará &quot;{nome.trim()}&quot;.
           </p>
         )}

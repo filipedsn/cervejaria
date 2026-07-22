@@ -22,7 +22,7 @@ export function Modal({ open, onClose, title, children, footer, hideHeaderClose 
         className="relative bg-surface rounded-t-3xl sm:rounded-2xl w-full max-w-lg sm:max-w-2xl max-h-[92dvh] flex flex-col overflow-hidden border border-line sm:mx-4 animate-slide-up shadow-xl"
       >
         <div className="flex justify-center pt-3 pb-1 sm:hidden shrink-0">
-          <div className="w-10 h-1 rounded-full bg-line" aria-hidden />
+          <div className="w-10 h-1 rounded-full bg-line-soft" aria-hidden />
         </div>
         <div className="shrink-0 px-4 sm:px-6 pt-2 sm:pt-6">
           <div

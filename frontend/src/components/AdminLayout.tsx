@@ -1,7 +1,9 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { ConnectionStatus } from './ConnectionStatus';
 import { AppLogo } from './AppLogo';
+import { ThemeSegmentedControl } from './SettingsRow';
 
 const navItems = [
   { path: '/admin/cervejarias', label: 'Cervejarias', icon: '🏭' },
@@ -10,6 +12,7 @@ const navItems = [
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const { usuario, logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const location = useLocation();
 
   return (
@@ -41,7 +44,11 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="p-4 border-t border-line">
+        <div className="p-4 border-t border-line space-y-3">
+          <div>
+            <p className="section-label mb-2">Aparência</p>
+            <ThemeSegmentedControl value={theme} onChange={setTheme} />
+          </div>
           <p className="text-sm font-medium truncate text-ink">{usuario?.nome}</p>
           <p className="text-xs text-ink-faint truncate mb-3">{usuario?.email}</p>
           <button onClick={logout} className="touch-btn-secondary w-full text-sm min-h-10">
@@ -51,7 +58,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0 pb-20 md:pb-0">
-        <header className="md:hidden sticky top-0 z-40 bg-surface/95 backdrop-blur border-b border-line px-4 py-3 flex items-center justify-between shadow-sm">
+        <header className="app-shell-header md:hidden px-4 py-3 flex items-center justify-between">
           <div>
             <h1 className="text-lg font-bold text-brand-600">Admin</h1>
             <p className="text-xs text-ink-muted truncate max-w-[200px]">{usuario?.nome}</p>
@@ -62,7 +69,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         <main className="flex-1 w-full px-4 sm:px-6 lg:px-10 py-6 lg:py-8">{children}</main>
       </div>
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur border-t border-line px-2 py-2 z-40 safe-area-pb shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+      <nav className="md:hidden app-bottom-nav px-2 py-2 safe-area-pb">
         <div className="flex justify-around gap-1">
           {navItems.map((item) => {
             const active = location.pathname.startsWith(item.path);

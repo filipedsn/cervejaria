@@ -13,6 +13,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Quiver Tap</title>
+    <script>
+      (function () {
+        var t = localStorage.getItem('quiver:theme');
+        if (t === 'dark') document.documentElement.dataset.theme = 'dark';
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

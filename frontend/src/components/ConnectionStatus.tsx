@@ -42,8 +42,8 @@ export function ConnectionStatus({ trackSocket = true }: ConnectionStatusProps) 
 
   return (
     <div
-      className={`fixed top-0 left-0 right-0 z-50 text-center py-1 text-xs font-medium ${
-        !online ? 'bg-red-600' : 'bg-yellow-600'
+      className={`fixed top-0 left-0 right-0 z-50 text-center py-1.5 text-xs font-semibold text-white safe-area-pt ${
+        !online ? 'bg-danger' : 'bg-orange'
       }`}
     >
       {!online ? 'Sem conexão — verifique a internet' : 'Reconectando...'}

@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouterProvider, Navigate, Outlet, useSearchParams, useLocation } from 'react-router-dom';
 import { useEffect, type ReactNode } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ThemeProvider, restoreAppThemeFromStorage } from './contexts/ThemeContext';
 import { EventoProvider, useEvento } from './contexts/EventoContext';
 import { LoginPage } from './pages/LoginPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
@@ -55,13 +56,12 @@ function PublicAuthShell() {
     ensureAppShellBranding();
 
     const themeMeta = document.querySelector('meta[name="theme-color"]');
-    const prevTheme = themeMeta?.getAttribute('content') ?? '#f7f8fa';
     themeMeta?.setAttribute('content', '#004c4c');
     document.body.classList.add('auth-screen');
 
     return () => {
-      themeMeta?.setAttribute('content', prevTheme);
       document.body.classList.remove('auth-screen');
+      restoreAppThemeFromStorage();
     };
   }, []);
 
@@ -275,8 +275,10 @@ const router = createBrowserRouter([
 
 export default function App() {
   return (
-    <AuthProvider>
-      <RouterProvider router={router} />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

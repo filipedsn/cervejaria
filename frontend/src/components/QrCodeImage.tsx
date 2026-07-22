@@ -11,7 +11,7 @@ type Props = {
 export function QrCodeImage({ value, size = 90, className = '', title }: Props) {
   return (
     <div
-      className={`rounded-lg border border-line bg-white p-1 shrink-0 ${className}`}
+      className={`rounded-lg border border-line bg-surface p-1 shrink-0 ${className}`}
       style={{ width: size, height: size }}
       title={title}
     >

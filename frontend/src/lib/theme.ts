@@ -1,19 +1,7 @@
 import type { Cervejaria, BrandTheme } from '../types';
+import { applyAppTheme, getAppTheme } from './app-theme';
 
 const SHADES = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900'] as const;
-
-/** Status bar / PWA theme-color no tema claro Quiver Tap. */
-const DEFAULT_THEME_COLOR = '#f7f8fa';
-
-function setMetaThemeColor(color: string) {
-  let meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
-  if (!meta) {
-    meta = document.createElement('meta');
-    meta.name = 'theme-color';
-    document.head.appendChild(meta);
-  }
-  meta.content = color;
-}
 
 /**
  * Remove quaisquer overrides de cor por cervejaria e volta à paleta Quiver.
@@ -28,7 +16,7 @@ export function resetBreweryTheme(): void {
   root.style.removeProperty('--color-surface');
   root.style.removeProperty('--color-surface-light');
   root.style.removeProperty('--color-surface-lighter');
-  setMetaThemeColor(DEFAULT_THEME_COLOR);
+  applyAppTheme(getAppTheme());
 }
 
 /** Mantido por compatibilidade — a paleta é fixa, então apenas normaliza. */

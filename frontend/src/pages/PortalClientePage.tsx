@@ -443,7 +443,7 @@ export function PortalClientePage() {
                 O telefone <span className="font-semibold text-ink">{formatPhone(telefone)}</span> está vinculado a
                 outra pessoa em nosso cadastro.
               </p>
-              <div className="rounded-xl bg-amber-50 border border-amber-200/60 px-4 py-3 text-sm text-amber-900 leading-relaxed">
+              <div className="notice-warn">
                 Procure um atendente no balcão para regularizar seu cadastro antes de usar o portal.
               </div>
               <button type="button" className="touch-btn-warning w-full" onClick={resetLoginFlow}>
@@ -464,7 +464,7 @@ export function PortalClientePage() {
 
   return (
     <div className="min-h-screen bg-canvas pb-24 safe-area-pt">
-      <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur border-b border-line px-4 py-3">
+      <header className="app-shell-header px-4 py-3">
         <div className="max-w-lg mx-auto flex items-center gap-3">
           {logo && <img src={logo} alt="" className="h-9 w-9 rounded-lg object-contain" />}
           <div className="min-w-0">
@@ -515,16 +515,16 @@ export function PortalClientePage() {
 
             {pedidosPendentes.length > 0 && (
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                <p className="notice-warn-label">
                   Aguardando confirmação
                 </p>
                 {pedidosPendentes.map((pedido) => (
                   <article
                     key={pedido.id}
-                    className="card space-y-2 border-amber-200/60 bg-amber-50/40"
+                    className="card-notice-warn space-y-2"
                   >
                     <div className="flex justify-between gap-2">
-                      <p className="font-semibold text-amber-900">
+                      <p className="font-semibold text-warn">
                         {PEDIDO_STATUS_LABEL[pedido.status]}
                       </p>
                       <p className="text-sm font-medium">{formatCurrency(pedido.totalEstimado)}</p>
@@ -558,13 +558,13 @@ export function PortalClientePage() {
 
             {pedidosRecusados.length > 0 && (
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-red-700">
+                <p className="notice-danger-label">
                   Recusados
                 </p>
                 {pedidosRecusados.map((pedido) => (
-                  <article key={pedido.id} className="card space-y-2 border-red-200/50">
+                  <article key={pedido.id} className="card-notice-danger">
                     <div className="flex justify-between gap-2">
-                      <p className="font-semibold text-red-800">
+                      <p className="notice-danger-title">
                         {PEDIDO_STATUS_LABEL[pedido.status]}
                       </p>
                       <p className="text-sm font-medium">{formatCurrency(pedido.totalEstimado)}</p>
@@ -578,7 +578,7 @@ export function PortalClientePage() {
                       ))}
                     </ul>
                     {pedido.recusadoMotivo && (
-                      <p className="text-xs text-red-700">Motivo: {pedido.recusadoMotivo}</p>
+                      <p className="text-xs text-danger">Motivo: {pedido.recusadoMotivo}</p>
                     )}
                   </article>
                 ))}
@@ -738,7 +738,7 @@ export function PortalClientePage() {
 
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-surface border-t border-line safe-area-pb">
+      <nav className="app-bottom-nav safe-area-pb">
         <div className="max-w-lg mx-auto flex">
           {(
             [
