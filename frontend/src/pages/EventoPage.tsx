@@ -303,37 +303,32 @@ function AgendaSerieCard({
 
       </div>
 
-      <div className="flex flex-wrap gap-2">
-
-        {isToday ? (
-
+      <div className="space-y-2 pt-1">
+        {isToday && (
           <button
             type="button"
-            className="touch-btn-primary flex-1 min-w-[10rem] disabled:opacity-40"
+            className="touch-btn-primary w-full disabled:opacity-40"
             disabled={pending || cancelPending}
             onClick={onIniciar}
           >
             {pending ? 'Iniciando…' : 'Iniciar sessão'}
           </button>
-
-        ) : (
-
-          <p className="flex-1 text-sm text-ink-faint py-2">Agendado</p>
-
         )}
 
-        <EditEventoButton onClick={onEdit} primary />
-
-        <Link
-          to={`/ranking/serie/${serie.id}`}
-          className="touch-btn-secondary touch-btn-sm px-4 inline-flex items-center justify-center"
-        >
-          Ranking da agenda
-        </Link>
+        <div className="grid grid-cols-2 gap-2">
+          <EditEventoButton onClick={onEdit} primary className="w-full min-h-[3rem]" />
+          <Link
+            to={`/ranking/serie/${serie.id}`}
+            className="touch-btn-secondary touch-btn-sm w-full inline-flex items-center justify-center min-h-[3rem]"
+          >
+            <span className="sm:hidden">Ranking</span>
+            <span className="hidden sm:inline">Ranking da agenda</span>
+          </Link>
+        </div>
 
         <button
           type="button"
-          className="touch-btn-danger touch-btn-sm px-4 disabled:opacity-40"
+          className="touch-btn-danger w-full disabled:opacity-40"
           disabled={cancelPending || pending}
           onClick={onCancel}
         >
@@ -341,15 +336,14 @@ function AgendaSerieCard({
         </button>
 
         {onRemove && (
-
-          <button type="button" className="touch-btn-danger touch-btn-sm px-4" onClick={onRemove}>
-
+          <button
+            type="button"
+            className="touch-btn-secondary w-full text-danger border-danger/20 active:bg-danger-soft"
+            onClick={onRemove}
+          >
             Remover
-
           </button>
-
         )}
-
       </div>
 
     </div>

@@ -89,14 +89,14 @@ export function AccountMenu({
         role="dialog"
         aria-modal
         aria-label="Conta"
-        className="relative w-full max-w-lg bg-surface rounded-t-3xl sm:rounded-2xl border border-line safe-area-pb animate-slide-up shadow-xl"
+        className="relative w-full max-w-lg bg-surface rounded-t-3xl sm:rounded-2xl border border-line animate-slide-up shadow-xl max-h-[92dvh] flex flex-col"
       >
-        <div className="flex justify-center pt-3 pb-1 sm:hidden">
+        <div className="flex justify-center pt-3 pb-1 sm:hidden shrink-0">
           <div className="w-10 h-1 rounded-full bg-line-soft" aria-hidden />
         </div>
 
-        <div className="px-4 pb-4 pt-2">
-          <div className="flex items-center justify-between mb-4 px-1">
+        <div className="shrink-0 px-4 pt-2 pb-3">
+          <div className="flex items-center justify-between px-1">
             <h2 className="text-lg font-bold text-ink">Conta</h2>
             <button
               type="button"
@@ -107,7 +107,9 @@ export function AccountMenu({
               ×
             </button>
           </div>
+        </div>
 
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
           <div className="settings-card p-4 space-y-4 mb-4">
             <div className="flex items-center gap-3">
               {logo ? (
@@ -189,6 +191,12 @@ export function AccountMenu({
               />
             </div>
           </div>
+        </div>
+
+        <div className="shrink-0 border-t border-line px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-2">
+          <button type="button" onClick={onClose} className="touch-btn-secondary w-full">
+            Voltar
+          </button>
 
           {onTrocarTrailer && (
             <button type="button" onClick={onTrocarTrailer} className="touch-btn-secondary w-full">
@@ -202,7 +210,7 @@ export function AccountMenu({
               onClose();
               onLogout();
             }}
-            className="touch-btn-secondary w-full mt-4 text-danger border-danger/20 active:bg-danger-soft"
+            className="touch-btn-secondary w-full text-danger border-danger/20 active:bg-danger-soft"
           >
             Sair da conta
           </button>
