@@ -10,8 +10,9 @@ import { AccountMenu, UserAvatarButton } from './AccountMenu';
 import { BackToEventosLink } from './BackToEventosLink';
 import { PortalQrButton } from './PortalQrButton';
 import { TrailerSwitcher } from './TrailerSwitcher';
-import { NAV_ITEMS, IconBell } from './NavIcons';
+import { NAV_ITEMS, NAV_ITEMS_QUIOSQUE, IconBell } from './NavIcons';
 import { usePedidoAlertSound } from '../hooks/usePedidoAlertSound';
+import { useQuiosqueContexto } from '../hooks/useQuiosqueContexto';
 
 function ChevronRightIcon({ className }: { className?: string }) {
   return (
@@ -119,12 +120,22 @@ export function Layout() {
   const navigate = useNavigate();
   const [accountOpen, setAccountOpen] = useState(false);
 
-  const navItems = NAV_ITEMS.filter((item) => !('donoOnly' in item && item.donoOnly) || isDono);
+  const { contexto: quiosque } = useQuiosqueContexto();
+  const navItems = [
+    ...(quiosque.ativo && quiosque.exclusivo
+      ? []
+      : NAV_ITEMS.filter((item) => !('donoOnly' in item && item.donoOnly) || isDono)),
+    ...(quiosque.ativo ? NAV_ITEMS_QUIOSQUE : []),
+  ];
   const { alertEnabled, alertNeedsUnlock, pushStatus, wakeLockActive, togglePedidoAlert } =
     usePedidoAlertSound();
   const onEventsPage = location.pathname === '/eventos';
   const onTrailerPage = location.pathname === '/trailer';
+  // Evento e trailer sao da cervejaria: nao aparecem no quiosque, nem em
+  // empresa que so opera quiosque.
   const hideOperacionalChrome =
+    (quiosque.ativo && quiosque.exclusivo) ||
+    location.pathname.startsWith('/quiosque') ||
     onEventsPage ||
     onTrailerPage ||
     location.pathname === '/dashboard' ||

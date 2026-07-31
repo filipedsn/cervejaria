@@ -134,10 +134,27 @@ export function IconPencil({ className = 'w-5 h-5', strokeWidth = 1.75 }: IconPr
   );
 }
 
+export function IconStore({ className = 'w-6 h-6', strokeWidth = 1.75 }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 9.5 4.5 4h15L21 9.5" />
+      <path d="M3 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 3 0" />
+      <path d="M5 12v8h14v-8" />
+      <path d="M10 20v-5h4v5" />
+    </svg>
+  );
+}
+
+/** Navegacao do modulo cervejaria. */
 export const NAV_ITEMS = [
   { path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const },
   { path: '/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
   { path: '/clientes', label: 'Clientes', shortLabel: 'Clientes', Icon: IconUsers },
   { path: '/dashboard', label: 'Dashboard', shortLabel: 'Dashboard', Icon: IconBarChart, donoOnly: true as const },
   { path: '/configuracoes', label: 'Configurações', shortLabel: 'Config.', Icon: IconSettings, donoOnly: true as const },
+];
+
+/** Navegacao do modulo quiosque, adicionada apenas quando o modulo esta ativo. */
+export const NAV_ITEMS_QUIOSQUE = [
+  { path: '/quiosque', label: 'Quiosque', shortLabel: 'Quiosque', Icon: IconStore, exact: true as const },
 ];

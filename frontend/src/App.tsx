@@ -7,6 +7,8 @@ import { LoginPage } from './pages/LoginPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { AdminCervejariasPage } from './pages/AdminCervejariasPage';
+import { QuiosqueCatalogoPage } from './pages/quiosque/QuiosqueCatalogoPage';
+import { useQuiosqueContexto } from './hooks/useQuiosqueContexto';
 import { AdminConfiguracoesPage } from './pages/AdminConfiguracoesPage';
 import { SelecionarTrailerPage } from './pages/SelecionarTrailerPage';
 import { EventoPage } from './pages/EventoPage';
@@ -70,7 +72,10 @@ function PublicAuthShell() {
 
 function TenantEntryRedirect() {
   const { needsTrailerSelection, evento, isLoading } = useEvento();
-  if (isLoading) return <Loading fullScreen />;
+  const { contexto: quiosque, isLoading: quiosqueLoading } = useQuiosqueContexto();
+  if (isLoading || quiosqueLoading) return <Loading fullScreen />;
+  // Empresa so de quiosque nao tem trailer nem evento para escolher.
+  if (quiosque.ativo && quiosque.exclusivo) return <Navigate to="/quiosque" replace />;
   if (needsTrailerSelection) return <Navigate to="/trailer" replace />;
   if (evento?.status === 'ABERTO') return <Navigate to="/comandas" replace />;
   return <Navigate to="/eventos" replace />;
@@ -101,6 +106,20 @@ function RequireTenant() {
   const { isAdmin, isLoading } = useAuth();
   if (isLoading) return <Loading fullScreen />;
   if (isAdmin) return <Navigate to="/admin/cervejarias" replace />;
+  return <Outlet />;
+}
+
+function RequireModuloQuiosque() {
+  const { contexto, isLoading } = useQuiosqueContexto();
+  if (isLoading) return <Loading fullScreen />;
+  if (!contexto.ativo) return <Navigate to="/" replace />;
+  return <Outlet />;
+}
+
+function RequireModuloCervejaria() {
+  const { contexto, isLoading } = useQuiosqueContexto();
+  if (isLoading) return <Loading fullScreen />;
+  if (contexto.ativo && contexto.exclusivo) return <Navigate to="/quiosque" replace />;
   return <Outlet />;
 }
 
@@ -233,33 +252,44 @@ const router = createBrowserRouter([
                 element: <TenantShell />,
                 children: [
                   { index: true, element: <TenantEntryRedirect /> },
-                  { path: 'trailer', element: <SelecionarTrailerPage /> },
-                  { path: 'eventos', element: <EventoPage /> },
-                  { path: 'ranking/serie/:serieId', element: <RankingSeriePage /> },
-                  { path: 'ranking/periodo/:eventoId', element: <RankingPeriodoPage /> },
-                  { path: 'clientes', element: <ClientesPage /> },
-                  { path: 'clientes/:id', element: <ClienteDetailPage /> },
                   {
-                    element: <RequireTrailerContext />,
+                    element: <RequireModuloQuiosque />,
                     children: [
-                      { path: 'comandas', element: <ComandasPage /> },
-                      { path: 'comandas/nova', element: <NovaComandaPage /> },
-                      { path: 'comandas/venda-avulsa', element: <VendaAvulsaPage /> },
-                      { path: 'comandas/:id', element: <ComandaDetailPage /> },
-                      { path: 'ranking/:eventoId?', element: <RankingPage /> },
+                      { path: 'quiosque', element: <QuiosqueCatalogoPage /> },
                     ],
                   },
                   {
-                    element: <RequireDono />,
+                    element: <RequireModuloCervejaria />,
                     children: [
-                      { path: 'dashboard', element: <DashboardPage /> },
-                      { path: 'eventos/:eventoId/resumo', element: <ResumoExecutivoPage /> },
-                      { path: 'configuracoes', element: <Navigate to="/configuracoes/equipe" replace /> },
-                      { path: 'configuracoes/:tab', element: <ConfiguracoesPage /> },
-                      { path: 'catalogo', element: <Navigate to="/configuracoes/catalogo" replace /> },
-                      { path: 'funcionarios', element: <Navigate to="/configuracoes/equipe" replace /> },
-                      { path: 'aparencia', element: <Navigate to="/configuracoes/aparencia" replace /> },
-                      { path: 'relatorios', element: <Navigate to="/dashboard" replace /> },
+                      { path: 'trailer', element: <SelecionarTrailerPage /> },
+                      { path: 'eventos', element: <EventoPage /> },
+                      { path: 'ranking/serie/:serieId', element: <RankingSeriePage /> },
+                      { path: 'ranking/periodo/:eventoId', element: <RankingPeriodoPage /> },
+                      { path: 'clientes', element: <ClientesPage /> },
+                      { path: 'clientes/:id', element: <ClienteDetailPage /> },
+                      {
+                        element: <RequireTrailerContext />,
+                        children: [
+                          { path: 'comandas', element: <ComandasPage /> },
+                          { path: 'comandas/nova', element: <NovaComandaPage /> },
+                          { path: 'comandas/venda-avulsa', element: <VendaAvulsaPage /> },
+                          { path: 'comandas/:id', element: <ComandaDetailPage /> },
+                          { path: 'ranking/:eventoId?', element: <RankingPage /> },
+                        ],
+                      },
+                      {
+                        element: <RequireDono />,
+                        children: [
+                          { path: 'dashboard', element: <DashboardPage /> },
+                          { path: 'eventos/:eventoId/resumo', element: <ResumoExecutivoPage /> },
+                          { path: 'configuracoes', element: <Navigate to="/configuracoes/equipe" replace /> },
+                          { path: 'configuracoes/:tab', element: <ConfiguracoesPage /> },
+                          { path: 'catalogo', element: <Navigate to="/configuracoes/catalogo" replace /> },
+                          { path: 'funcionarios', element: <Navigate to="/configuracoes/equipe" replace /> },
+                          { path: 'aparencia', element: <Navigate to="/configuracoes/aparencia" replace /> },
+                          { path: 'relatorios', element: <Navigate to="/dashboard" replace /> },
+                        ],
+                      },
                     ],
                   },
                 ],
