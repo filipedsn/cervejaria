@@ -10,6 +10,7 @@ import {
   resumoComanda,
   totalEmCentavos,
 } from '../../lib/quiosque/venda.js';
+import { notificarPedidoNovo } from '../../lib/quiosque/cozinha.js';
 
 const vendaAvulsaSchema = z.object({
   pontoVendaId: z.string().min(1),
@@ -45,7 +46,7 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
    * paralelo de venda solta.
    */
   app.post('/', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId, temCozinha } = request.quiosque;
     const user = getAuthUser(request);
     const body = vendaAvulsaSchema.parse(request.body);
     const dia = diaOperacional();
@@ -55,7 +56,7 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
     });
     if (!pontoVenda) return reply.status(404).send({ error: 'Ponto de venda não encontrado' });
 
-    const comanda = await prisma.$transaction(async (tx) => {
+    const { comanda, pedido } = await prisma.$transaction(async (tx) => {
       const itens = await resolverItens(tx, cervejariaId, body.itens);
       const pagamentos = resolverPagamentos(body.pagamentos, totalEmCentavos(itens));
       const agora = new Date();
@@ -73,7 +74,7 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
         },
       });
 
-      await criarPedido(tx, {
+      const pedidoCriado = await criarPedido(tx, {
         cervejariaId,
         comandaId: criada.id,
         pontoVendaId: body.pontoVendaId,
@@ -94,11 +95,16 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
         })),
       });
 
-      return tx.comandaQuiosque.findUniqueOrThrow({
-        where: { id: criada.id },
-        include: INCLUDE_COMANDA,
-      });
+      return {
+        comanda: await tx.comandaQuiosque.findUniqueOrThrow({
+          where: { id: criada.id },
+          include: INCLUDE_COMANDA,
+        }),
+        pedido: pedidoCriado,
+      };
     });
+
+    if (temCozinha) await notificarPedidoNovo(app, cervejariaId, pedido);
 
     return reply.status(201).send(resumoComanda(comanda));
   });

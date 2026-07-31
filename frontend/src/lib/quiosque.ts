@@ -36,13 +36,35 @@ export interface ItemPedido {
   exigePreparo: boolean;
 }
 
+export type StatusPedido = 'RECEBIDO' | 'EM_PREPARO' | 'PRONTO' | 'ENTREGUE' | 'CANCELADO';
+
 export interface PedidoQuiosque {
   id: string;
   numero: number;
-  status: 'RECEBIDO' | 'EM_PREPARO' | 'PRONTO' | 'ENTREGUE' | 'CANCELADO';
+  status: StatusPedido;
   observacao: string | null;
   createdAt: string;
   itens: ItemPedido[];
+}
+
+/** O pedido como a cozinha ve: so os itens de preparo e de quem e a conta. */
+export interface PedidoCozinha {
+  id: string;
+  numero: number;
+  status: StatusPedido;
+  observacao: string | null;
+  createdAt: string;
+  comanda: {
+    id: string;
+    tipo: TipoComanda;
+    identificador: string | null;
+  };
+  itens: Array<{
+    id: string;
+    nome: string;
+    quantidade: number;
+    precoUnit: number;
+  }>;
 }
 
 export interface PagamentoQuiosque {

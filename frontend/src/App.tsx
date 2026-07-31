@@ -12,6 +12,7 @@ import { QuiosquePdvPage } from './pages/quiosque/QuiosquePdvPage';
 import { QuiosqueComandasPage } from './pages/quiosque/QuiosqueComandasPage';
 import { QuiosqueComandaDetailPage } from './pages/quiosque/QuiosqueComandaDetailPage';
 import { QuiosqueCatalogoPage } from './pages/quiosque/QuiosqueCatalogoPage';
+import { QuiosqueCozinhaPage } from './pages/quiosque/QuiosqueCozinhaPage';
 import { useQuiosqueContexto } from './hooks/useQuiosqueContexto';
 import { AdminConfiguracoesPage } from './pages/AdminConfiguracoesPage';
 import { SelecionarTrailerPage } from './pages/SelecionarTrailerPage';
@@ -117,6 +118,14 @@ function RequireModuloQuiosque() {
   const { contexto, isLoading } = useQuiosqueContexto();
   if (isLoading) return <Loading fullScreen />;
   if (!contexto.ativo) return <Navigate to="/" replace />;
+  return <Outlet />;
+}
+
+/** Quiosque sem cozinha nao tem fila: a tela nao existe nem por URL direta. */
+function RequireCozinhaQuiosque() {
+  const { contexto, isLoading } = useQuiosqueContexto();
+  if (isLoading) return <Loading fullScreen />;
+  if (!contexto.ativo || !contexto.temCozinha) return <Navigate to="/quiosque" replace />;
   return <Outlet />;
 }
 
@@ -266,6 +275,10 @@ const router = createBrowserRouter([
                           { index: true, element: <QuiosquePdvPage /> },
                           { path: 'comandas', element: <QuiosqueComandasPage /> },
                           { path: 'comandas/:id', element: <QuiosqueComandaDetailPage /> },
+                          {
+                            element: <RequireCozinhaQuiosque />,
+                            children: [{ path: 'cozinha', element: <QuiosqueCozinhaPage /> }],
+                          },
                           { path: 'catalogo', element: <QuiosqueCatalogoPage /> },
                         ],
                       },

@@ -105,13 +105,21 @@ function playBeeps() {
   beep(880, 180, 400);
 }
 
-export async function playPedidoAlertChime(): Promise<boolean> {
-  if (!isPedidoAlertEnabled()) return false;
+/**
+ * Toca sem consultar a preferencia de alerta de pedidos do cliente. Serve a
+ * quem tem a propria chave de preferencia, como a tela de cozinha do quiosque.
+ */
+export async function playAlertaAgora(): Promise<boolean> {
   vibrateAlert();
   const ok = await ensurePedidoAlertAudioRunning();
   if (!ok) return false;
   playBeeps();
   return true;
+}
+
+export async function playPedidoAlertChime(): Promise<boolean> {
+  if (!isPedidoAlertEnabled()) return false;
+  return playAlertaAgora();
 }
 
 export async function playPedidoAlert(pedidoId: string): Promise<boolean> {
