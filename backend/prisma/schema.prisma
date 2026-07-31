@@ -588,6 +588,9 @@ model ConfiguracaoQuiosque {
   ativo           Boolean  @default(true)
   controlaEstoque Boolean  @default(false)
   temCozinha      Boolean  @default(false)
+  /// Empresa que so opera quiosque. Esconde as telas de cervejaria sem precisar
+  /// de nenhuma coluna nova no schema public.
+  exclusivo       Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
