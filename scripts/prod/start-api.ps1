@@ -1,4 +1,4 @@
-# Inicia a API de produção (backend/dist) em segundo plano.
+# Inicia a API de produção (deploy/prod-artifacts) em segundo plano.
 
 param(
   [switch]$Force,
@@ -7,6 +7,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
+. "$PSScriptRoot\publish-artifacts.ps1"
 
 $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
@@ -21,17 +22,29 @@ if (Test-ApiHealthy -HealthUrl $paths.ReadyUrl) {
   }
 }
 
-if (-not (Test-Path $paths.ApiEntry)) {
-  Write-Host "Build ausente. Execute na raiz: npm run build" -ForegroundColor Red
+if (-not (Test-Path $paths.ProdApiEntry)) {
+  Ensure-ProdArtifactsBaseline -Paths $paths
+}
+if (-not (Test-Path $paths.ProdApiEntry)) {
+  Write-Host ('ProdApiEntry ausente: ' + $paths.ProdApiEntry) -ForegroundColor Red
+  Write-Host 'Artefatos de producao ausentes. Execute: npm run prod:deploy' -ForegroundColor Red
   exit 1
 }
 
-if ($paths.ServeFrontendFromApi) {
-  $frontendDist = Join-Path $paths.ProjectRoot 'frontend\dist\index.html'
-  if (-not (Test-Path $frontendDist)) {
-    Write-Host "Frontend dist ausente. Execute: npm run build --prefix frontend" -ForegroundColor Red
-    exit 1
+try {
+  Install-ProdBackendRuntimeLinks -Paths $paths
+} catch {
+  Write-Host $_.Exception.Message -ForegroundColor Red
+  exit 1
+}
+
+$artifactErrors = Test-ProdArtifactsReady -Paths $paths
+if ($artifactErrors.Count -gt 0) {
+  foreach ($err in $artifactErrors) {
+    Write-Host $err -ForegroundColor Red
   }
+  Write-Host 'Artefatos de producao incompletos. Execute: npm run prod:deploy' -ForegroundColor Red
+  exit 1
 }
 
 if (Test-Path $paths.ApiPidFile) {
@@ -70,11 +83,12 @@ if (Test-PortListening -Port $paths.ApiPort) {
 $nodeDir = Split-Path $paths.NodeExe -Parent
 $env:Path = "$nodeDir;$env:Path"
 $env:NODE_ENV = 'production'
+$env:FRONTEND_DIST = $paths.ProdFrontendDist
 Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment production
 
 $proc = Start-Process `
   -FilePath $paths.NodeExe `
-  -ArgumentList @('--import', '@elastic/opentelemetry-node', 'dist\index.js') `
+  -ArgumentList @('--import', '@elastic/opentelemetry-node', $paths.ProdApiEntry) `
   -WorkingDirectory $paths.BackendDir `
   -WindowStyle Hidden `
   -RedirectStandardOutput $paths.ApiLog `

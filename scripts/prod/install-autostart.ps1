@@ -49,31 +49,42 @@ if (-not (Test-Path $npmCmd)) {
   $npmCmd = (Get-Command npm.cmd -ErrorAction SilentlyContinue).Source
 }
 
+. "$PSScriptRoot\_config.ps1"
+. "$PSScriptRoot\publish-artifacts.ps1"
+$settings = Get-QuiverTapSettings
+$paths = Resolve-QuiverTapPaths -Settings $settings
+
 if (-not $SkipBuild) {
-  Write-Host 'Build frontend (producao)...' -ForegroundColor Cyan
+  Write-Host 'Build e publicacao de artefatos de producao...' -ForegroundColor Cyan
+  Ensure-ProdArtifactsBaseline -Paths $paths
+  Initialize-ProdStaging -Paths $paths
+
   if ($npmCmd) {
-    & $npmCmd run build:deploy --prefix frontend
+    & $npmCmd run build:prod --prefix frontend
   } else {
-    npm run build:deploy --prefix frontend
+    npm run build:prod --prefix frontend
   }
   if ($LASTEXITCODE -ne 0) {
-    Write-Host 'Build do frontend falhou.' -ForegroundColor Red
+    Write-Host 'Build do frontend (prod) falhou.' -ForegroundColor Red
     exit 1
   }
 
-  $distEntry = Join-Path $projectRoot 'backend\dist\index.js'
-  if (-not (Test-Path $distEntry)) {
+  if (-not (Test-Path $paths.DevApiEntry)) {
     Write-Host 'Build do backend (dist ausente)...' -ForegroundColor Cyan
     if ($npmCmd) {
-      & $npmCmd run build --prefix backend
+      & $npmCmd run build:deploy --prefix backend
     } else {
-      npm run build --prefix backend
+      npm run build:deploy --prefix backend
     }
     if ($LASTEXITCODE -ne 0) {
       Write-Host 'Build do backend falhou e backend/dist nao existe.' -ForegroundColor Red
       exit 1
     }
   }
+
+  Stage-BackendArtifacts -Paths $paths
+  Publish-ProdArtifactsSwap -Paths $paths -Frontend -Backend
+  Write-ProdManifest -Paths $paths -DeployMeta @{ source = 'prod:install' }
 }
 
 $nodePath = Join-Path ${env:ProgramFiles} 'nodejs'

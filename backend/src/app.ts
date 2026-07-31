@@ -83,6 +83,28 @@ import type { JwtPayload } from './types/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+function resolveFrontendDist(): string | null {
+  const envDist = process.env.FRONTEND_DIST?.trim();
+  if (envDist) {
+    const resolved = path.isAbsolute(envDist) ? envDist : path.resolve(__dirname, envDist);
+    if (fs.existsSync(resolved)) {
+      return resolved;
+    }
+  }
+
+  const legacyDist = path.join(__dirname, '../../frontend/dist');
+  if (fs.existsSync(legacyDist)) {
+    if (process.env.NODE_ENV === 'production' && !envDist) {
+      console.warn(
+        '[quiver-tap] FRONTEND_DIST nao definido; servindo frontend/dist legado. Publique via prod:deploy.',
+      );
+    }
+    return legacyDist;
+  }
+
+  return null;
+}
+
 export async function buildApp() {
   const app = Fastify({ loggerInstance: createLogger() });
 
@@ -283,13 +305,19 @@ export async function buildApp() {
 
     decorateReply: false,
 
+    setHeaders(res, filePath) {
+      if (filePath.includes(`${path.sep}logos${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+      }
+    },
+
   });
 
 
 
-  const frontendDist = path.join(__dirname, '../../frontend/dist');
+  const frontendDist = resolveFrontendDist();
 
-  if (fs.existsSync(frontendDist)) {
+  if (frontendDist) {
 
     await app.register(fastifyStatic, {
 

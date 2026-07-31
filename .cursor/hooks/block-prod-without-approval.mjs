@@ -43,6 +43,8 @@ if (!cmd) allow();
 
 const readOnly = [
   /prod:status\b/,
+  /prod:verify\b/,
+  /verify-prod-artifacts\.ps1/,
   /status\.ps1/,
   /curl(\.exe)?.*3001.*\/api\/health/,
   /curl(\.exe)?.*3001.*\/api\/ready/,
@@ -85,6 +87,25 @@ if (isProdHost && isWrite) {
   ask(
     'Requisicao de escrita em PRODUCAO (:3001) bloqueada. Testes e validacao devem usar DEV (:3002).',
     'Hook block-prod-without-approval: POST/PUT/PATCH/DELETE em prod detectado. Usar dev para testes.',
+  );
+}
+
+const deployAuthorized =
+  /prod:deploy\b/.test(cmd) ||
+  /deploy\.ps1/.test(cmd) ||
+  /publish-artifacts\.ps1/.test(cmd) ||
+  /install-autostart\.ps1/.test(cmd);
+
+const prodArtifactWrites = [
+  /\bbuild:prod\b/,
+  /prod-artifacts/,
+  /vite build.*outdir.*prod-artifacts/,
+];
+
+if (!deployAuthorized && prodArtifactWrites.some((re) => re.test(cmd))) {
+  ask(
+    'Escrita em artefatos de PRODUCAO bloqueada. Builds locais (ci:frontend, vite build) vao para frontend/dist e NAO afetam prod. Publicar somente via npm run prod:deploy apos autorizacao explicita.',
+    'Hook block-prod-without-approval: tentativa de escrever em deploy/prod-artifacts ou build:prod fora do deploy.',
   );
 }
 

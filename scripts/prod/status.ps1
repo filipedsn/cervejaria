@@ -83,4 +83,27 @@ foreach ($name in @('QuiverTap-AtLogon', 'QuiverTap-AtStartup')) {
 
 Write-Host ''
 Write-Host "Logs: $($paths.LogDir)"
+
+if (Test-Path $paths.ProdManifest) {
+  try {
+    $manifest = Get-Content -Path $paths.ProdManifest -Raw -Encoding UTF8 | ConvertFrom-Json
+    Write-Host ''
+    Write-Host 'Artefatos prod:' -ForegroundColor Cyan
+    Write-Host "  Dir:      $($paths.ProdArtifactsDir)"
+    Write-Host "  Deploy:   $($manifest.deployedAt)"
+    Write-Host "  gitSha:   $($manifest.gitSha)"
+    & "$PSScriptRoot\verify-prod-artifacts.ps1" -Quiet
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host '  Verificacao: DRIFT (rode npm run prod:verify)' -ForegroundColor Red
+    } else {
+      Write-Host '  Verificacao: OK' -ForegroundColor Green
+    }
+  } catch {
+    Write-Host '  Manifest ilegivel.' -ForegroundColor Yellow
+  }
+} else {
+  Write-Host ''
+  Write-Host 'Artefatos prod: manifest ausente (rode prod:deploy)' -ForegroundColor Yellow
+}
+
 Write-Host ''

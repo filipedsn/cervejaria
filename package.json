@@ -19,6 +19,7 @@
     "db:backfill:dev": "npm run db:backfill-cliente-stats --prefix backend",
     "prod:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/deploy.ps1",
     "prod:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/restart-api.ps1",
+    "prod:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/verify-prod-artifacts.ps1",
     "prod:ensure": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/ensure-running.ps1",
     "prod:fix-flickering": "scripts\\prod\\fix-flickering.cmd",
     "prod:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/stop-all.ps1",

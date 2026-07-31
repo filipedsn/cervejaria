@@ -22,6 +22,14 @@ alwaysApply: true
 | Frontend | Vite `:5202` | estatico via `:3001` |
 | Banco | `cervejaria_dev` | `cervejaria` |
 | Env | `.env.development` | `.env.production` |
+| Artefatos UI/API | `frontend/dist` + `backend/dist` (local/CI) | `deploy/prod-artifacts/` (somente `prod:deploy`) |
+
+## Isolamento de artefatos
+
+- **`npm run ci:frontend`**, **`vite build`** e **`npx vite build`** escrevem em `frontend/dist` — **nao publicam prod**.
+- Prod serve estatico de **`deploy/prod-artifacts/frontend`** (variavel `FRONTEND_DIST` na API).
+- Prod executa backend compilado em **`deploy/prod-artifacts/backend/dist`**.
+- **`prod:restart`** recarrega o que esta em `prod-artifacts`, nao o que voce buildou localmente em `frontend/dist`.
 
 ## Proibido sem autorizacao explicita de deploy
 
@@ -36,6 +44,7 @@ alwaysApply: true
 - `npm run dev:start`, `dev:status`, `dev:stop`
 - `npm run qa:*`, `test:unit`, `ci:validate` (sem restart prod)
 - `npm run prod:status` e GET `/api/health` / `/api/ready` em `:3001` (somente leitura)
+- `npm run prod:verify` — compara manifest vs frontend servido
 
 ## Deploy autorizado
 

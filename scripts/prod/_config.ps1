@@ -115,11 +115,34 @@ function Resolve-QuiverTapPaths {
     $cfConfig = Join-Path $env:USERPROFILE '.cloudflared\config.yml'
   }
 
+  $prodArtifactsDir = if ($Settings.ProdArtifactsDir) {
+    $Settings.ProdArtifactsDir
+  } else {
+    Join-Path $root 'deploy\prod-artifacts'
+  }
+  if (-not [System.IO.Path]::IsPathRooted($prodArtifactsDir)) {
+    $prodArtifactsDir = Join-Path $root $prodArtifactsDir
+  }
+  $prodArtifactsDir = (Resolve-Path (New-Item -ItemType Directory -Force -Path $prodArtifactsDir)).Path
+  $prodStagingDir = Join-Path $prodArtifactsDir '.staging'
+  $prodFrontendDist = Join-Path $prodArtifactsDir 'frontend'
+  $prodBackendDist = Join-Path $prodArtifactsDir 'backend\dist'
+  $prodApiEntry = Join-Path $prodBackendDist 'index.js'
+  $prodManifest = Join-Path $prodArtifactsDir 'manifest.json'
+
   @{
     ProjectRoot       = (Resolve-Path $root).Path
     BackendDir        = Join-Path $root 'backend'
     FrontendDir       = Join-Path $root 'frontend'
-    ApiEntry          = Join-Path $root 'backend\dist\index.js'
+    DevFrontendDist   = Join-Path $root 'frontend\dist'
+    DevApiEntry       = Join-Path $root 'backend\dist\index.js'
+    ProdArtifactsDir  = $prodArtifactsDir
+    ProdStagingDir    = $prodStagingDir
+    ProdFrontendDist  = $prodFrontendDist
+    ProdBackendDist   = $prodBackendDist
+    ProdApiEntry      = $prodApiEntry
+    ProdManifest      = $prodManifest
+    ApiEntry          = $prodApiEntry
     ApiPort           = $apiPort
     FrontendPort      = $frontendPort
     ServeFrontendFromApi = $serveFrontendFromApi

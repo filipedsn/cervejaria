@@ -1,5 +1,5 @@
 /** Auditoria: produção alinhada com workspace? */
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { PrismaClient } from '@prisma/client';
@@ -16,6 +16,13 @@ for (const line of readFileSync(join(__dirname, '../.env.production'), 'utf8').s
 }
 process.env.NODE_ENV = 'production';
 
+const prodFrontendIndex = join(__dirname, '../../deploy/prod-artifacts/frontend/index.html');
+const legacyFrontendIndex = join(__dirname, '../../frontend/dist/index.html');
+const indexLocalPathResolved = existsSync(prodFrontendIndex)
+  ? prodFrontendIndex
+  : legacyFrontendIndex;
+process.env.FRONTEND_DIST = dirname(indexLocalPathResolved);
+
 const prisma = new PrismaClient();
 const dono = await prisma.usuario.findFirst({
   where: { cervejaria: { slug: 'cia-maritima' }, papel: 'DONO' },
@@ -27,7 +34,7 @@ const token = signUserToken(app, dono);
 
 const checks = [];
 
-const indexLocal = readFileSync(join(__dirname, '../../frontend/dist/index.html'), 'utf8');
+const indexLocal = readFileSync(indexLocalPathResolved, 'utf8');
 const bundleMatch = indexLocal.match(/assets\/(index-[^"]+\.js)/);
 const expectedBundle = bundleMatch?.[1] ?? '?';
 

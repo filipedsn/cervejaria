@@ -12,6 +12,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
+. "$PSScriptRoot\publish-artifacts.ps1"
 
 if ($FrontendOnly -and $BackendOnly) {
   Write-Host 'Use apenas -FrontendOnly ou -BackendOnly, nao ambos.' -ForegroundColor Red
@@ -35,6 +36,7 @@ $plan = [ordered]@{
   BuildBE  = $buildBackend
   Migrate  = -not $SkipMigrate
   Backfill = -not $SkipBackfill -and -not $SkipMigrate
+  Publish  = $true
   Restart  = $true
   Smoke    = $true
 }
@@ -43,6 +45,7 @@ Write-Host ''
 Write-Host 'Quiver Tap - Deploy de producao' -ForegroundColor Cyan
 Write-Host '================================' -ForegroundColor Cyan
 Write-Host "Projeto: $($paths.ProjectRoot)"
+Write-Host "Artefatos: $($paths.ProdArtifactsDir)"
 Write-Host "API:     http://127.0.0.1:$($paths.ApiPort)"
 Write-Host "Publico: https://tap.quivercloud.com.br"
 Write-Host ''
@@ -95,28 +98,25 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Backup falhou.' }
   }
 
+  Ensure-ProdArtifactsBaseline -Paths $paths
+  Initialize-ProdStaging -Paths $paths
+
   if ($plan.BuildFE) {
-    Invoke-NpmStep -Label 'Build frontend (vite)' -NpmArgs @('run', 'build:deploy', '--prefix', 'frontend')
-    $frontendIndex = Join-Path $paths.ProjectRoot 'frontend\dist\index.html'
-    if (-not (Test-Path $frontendIndex)) {
-      throw 'frontend/dist/index.html nao encontrado apos build.'
+    Invoke-NpmStep -Label 'Build frontend (prod staging)' -NpmArgs @('run', 'build:prod', '--prefix', 'frontend')
+    $stagingIndex = Join-Path $paths.ProdStagingDir 'frontend\index.html'
+    if (-not (Test-Path $stagingIndex)) {
+      throw 'staging frontend/index.html nao encontrado apos build:prod.'
     }
   }
 
   if ($plan.BuildBE) {
-    Invoke-NpmStep -Label 'Build backend (tsc)' -NpmArgs @('run', 'build:deploy', '--prefix', 'backend')
-    if (-not (Test-Path $paths.ApiEntry)) {
+    Invoke-NpmStep -Label 'Build backend (tsc -> backend/dist)' -NpmArgs @('run', 'build:deploy', '--prefix', 'backend')
+    if (-not (Test-Path $paths.DevApiEntry)) {
       throw 'backend/dist/index.js nao encontrado apos build.'
     }
-  } elseif (-not (Test-Path $paths.ApiEntry)) {
-    throw 'backend/dist ausente. Rode build do backend ou use deploy completo.'
-  }
-
-  if ($paths.ServeFrontendFromApi) {
-    $frontendIndex = Join-Path $paths.ProjectRoot 'frontend\dist\index.html'
-    if (-not (Test-Path $frontendIndex)) {
-      throw 'Frontend dist ausente. Build do frontend e obrigatorio em ServeFrontendFromApi.'
-    }
+    Stage-BackendArtifacts -Paths $paths
+  } elseif (-not (Test-Path $paths.ProdApiEntry)) {
+    throw 'backend prod-artifacts ausente. Rode deploy completo ou -BackendOnly primeiro.'
   }
 
   if ($plan.Migrate) {
@@ -125,6 +125,23 @@ try {
 
   if ($plan.Backfill) {
     Invoke-NpmStep -Label 'Backfill ClienteEstatisticas (producao)' -NpmArgs @('run', 'db:backfill-cliente-stats:prod', '--prefix', 'backend')
+  }
+
+  if ($plan.Publish) {
+    Write-Host ''
+    Write-Host 'Publicando artefatos de producao...' -ForegroundColor Cyan
+    Publish-ProdArtifactsSwap -Paths $paths -Frontend:$buildFrontend -Backend:$buildBackend
+    Write-ProdManifest -Paths $paths -DeployMeta @{
+      frontendOnly = [bool]$FrontendOnly
+      backendOnly  = [bool]$BackendOnly
+      skipBackup   = [bool]$SkipBackup
+      skipMigrate  = [bool]$SkipMigrate
+    }
+  }
+
+  $artifactErrors = Test-ProdArtifactsReady -Paths $paths
+  if ($artifactErrors.Count -gt 0) {
+    throw ($artifactErrors -join '; ')
   }
 
   Write-Host ''

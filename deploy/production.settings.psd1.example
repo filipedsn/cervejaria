@@ -17,4 +17,7 @@
 
   LogDir     = ''
   RuntimeDir = ''
+
+  # Artefatos publicados somente via prod:deploy (nao compartilha frontend/dist)
+  ProdArtifactsDir = ''
 }

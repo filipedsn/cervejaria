@@ -9,7 +9,7 @@ description: Explains Quiver Tap dev vs prod segregation (ports, databases, env 
 
 ## Resposta rapida
 
-**Sim — alteracoes em dev nao afetam producao** enquanto voce usa os comandos e envs de desenvolvimento. Producao so muda com deploy explicito (`npm run prod:deploy`).
+**Codigo e banco de dev nao alteram prod diretamente**, mas builds locais em `frontend/dist` **tambem nao publicam prod** desde o isolamento de artefatos. Producao so muda com **`npm run prod:deploy`** (publica em `deploy/prod-artifacts/`).
 
 ## Tabela de segregacao
 
@@ -21,6 +21,8 @@ description: Explains Quiver Tap dev vs prod segregation (ports, databases, env 
 | Usuario PG | `cervejaria_dev` | `cervejaria_prod` |
 | Uploads | `backend/uploads-dev` | `backend/uploads-prod` |
 | Env | `backend/.env.development` | `backend/.env.production` |
+| Build UI | `frontend/dist` (CI/dev) | `deploy/prod-artifacts/frontend` |
+| Build API | `backend/dist` (CI/dev) | `deploy/prod-artifacts/backend/dist` |
 | URL | http://localhost:5202 | https://tap.quivercloud.com.br |
 
 ## Comandos do dia a dia
@@ -38,8 +40,9 @@ npm run restart-dev    # dev com logs no terminal
 
 ```powershell
 npm run prod:status    # health check
+npm run prod:verify    # manifest vs bundle servido
 npm run prod:deploy    # publicar alteracoes (com confirmacao)
-npm run prod:restart   # reinicia so a API
+npm run prod:restart   # reinicia so a API (nao rebuild)
 ```
 
 ## Guardrails

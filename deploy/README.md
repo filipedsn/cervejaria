@@ -10,6 +10,18 @@
 | Usuario PG | `cervejaria_dev` | `cervejaria_prod` |
 | Uploads | `backend/uploads-dev` | `backend/uploads-prod` |
 | Env | `backend/.env.development` | `backend/.env.production` |
+| Build UI (local/CI) | `frontend/dist` | — |
+| Build UI (publicado) | — | `deploy/prod-artifacts/frontend` |
+| Build API (local/CI) | `backend/dist` | — |
+| Build API (publicado) | — | `deploy/prod-artifacts/backend/dist` |
+
+### Isolamento de artefatos
+
+- `npm run ci:frontend` / `vite build` escrevem em **`frontend/dist`** — nao alteram prod.
+- Somente **`npm run prod:deploy`** publica em **`deploy/prod-artifacts/`** (manifest em `manifest.json`).
+- A API prod usa `FRONTEND_DIST` apontando para `prod-artifacts/frontend`.
+- O entry da API e `prod-artifacts/backend/dist/index.js`; `node_modules` e um junction para `backend/node_modules` (resolucao ESM do Node).
+- Verificar alinhamento: `npm run prod:verify`.
 
 ## Politica no mesmo PC
 
@@ -44,10 +56,11 @@ npm run prod:deploy
 O script pede confirmacao digitando `DEPLOY`, depois executa:
 
 1. Backup do banco `cervejaria`
-2. Build frontend (`build:deploy`) e backend (`tsc`)
-3. Migrations em producao (`db:migrate:prod`)
-4. Restart da API (`:3001`) — tunnel Cloudflare permanece ativo
-5. Smoke test (`/api/ready`, `/`) + `prod:status`
+2. Build frontend em staging (`build:prod`) e backend (`backend/dist`)
+3. Publicacao atomica em `deploy/prod-artifacts/` + `manifest.json`
+4. Migrations em producao (`db:migrate:prod`)
+5. Restart da API (`:3001`) — tunnel Cloudflare permanece ativo
+6. Smoke test (`/api/ready`, `/`) + `prod:status`
 
 ### Flags uteis
 
@@ -65,20 +78,19 @@ npm run prod:deploy -- -SkipBackup          # emergencia (evitar)
 | Comando | Uso |
 |---------|-----|
 | `npm run prod:status` | Health check |
+| `npm run prod:verify` | Manifest vs bundle servido |
 | `npm run prod:restart` | Reinicia API sem rebuild |
 | `npm run prod:backup` | Backup manual |
 | `npm run prod:ensure` | Watchdog — nao aplica codigo novo |
 
 ## Checklist manual (avancado)
 
-Se precisar rodar passos isolados:
+Se precisar rodar passos isolados (nao recomendado — use `prod:deploy`):
 
 1. `npm run prod:backup`
-2. `npm run build:deploy --prefix frontend`
-3. `npm run build --prefix backend`
-4. `npm run db:migrate:prod`
-5. `npm run prod:restart`
-6. Smoke: `GET http://127.0.0.1:3001/api/ready` e login em https://tap.quivercloud.com.br
+2. `npm run prod:deploy -- -Confirmed` (publica artefatos + restart)
+
+Builds locais (`ci:frontend`, `npm run build`) **nao** publicam prod.
 
 ## Rollback
 

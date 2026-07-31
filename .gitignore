@@ -41,6 +41,10 @@ deploy/backups/*.sql
 !deploy/backups/.gitkeep
 deploy/backups-external/
 
+# Artefatos publicados em producao (somente via prod:deploy)
+deploy/prod-artifacts/*
+!deploy/prod-artifacts/.gitkeep
+
 # Scripts de diagnostico/temporarios (nao versionar)
 backend/scripts/diag-*.mjs
 backend/scripts/browser-test-*.mjs
