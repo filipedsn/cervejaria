@@ -4,6 +4,8 @@ import { prisma } from '../../lib/prisma.js';
 import { getAuthUser } from '../../types/auth.js';
 import { getConfiguracaoQuiosque, requireModuloQuiosque } from '../../lib/quiosque/modulo.js';
 import { produtosQuiosqueRoutes } from './produtos.js';
+import { comandasQuiosqueRoutes } from './comandas.js';
+import { vendasQuiosqueRoutes } from './vendas.js';
 
 const createPontoVendaSchema = z.object({
   nome: z.string().trim().min(1),
@@ -59,5 +61,7 @@ export async function quiosqueRoutes(app: FastifyInstance) {
     });
 
     await moduloScope.register(produtosQuiosqueRoutes, { prefix: '/produtos' });
+    await moduloScope.register(comandasQuiosqueRoutes, { prefix: '/comandas' });
+    await moduloScope.register(vendasQuiosqueRoutes, { prefix: '/vendas' });
   });
 }

@@ -126,6 +126,8 @@ model Cervejaria {
   configuracaoQuiosque ConfiguracaoQuiosque?
   pontosVenda          PontoVenda[]
   produtosQuiosque     ProdutoQuiosque[]
+  comandasQuiosque     ComandaQuiosque[]
+  pedidosQuiosque      PedidoQuiosque[]
 
   @@schema("public")
 }
@@ -608,7 +610,9 @@ model PontoVenda {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  cervejaria Cervejaria        @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  comandas   ComandaQuiosque[]
+  pedidos    PedidoQuiosque[]
 
   @@index([cervejariaId, ativo])
   @@schema("quiosque")
@@ -629,8 +633,139 @@ model ProdutoQuiosque {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  cervejaria Cervejaria           @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  itens      ItemPedidoQuiosque[]
 
   @@index([cervejariaId, ativo, ordem])
+  @@schema("quiosque")
+}
+
+enum TipoComandaQuiosque {
+  /// Venda paga na hora, sem conta aberta.
+  AVULSA
+  APELIDO
+  MESA
+  FICHA
+
+  @@schema("quiosque")
+}
+
+enum StatusComandaQuiosque {
+  ABERTA
+  FECHADA
+  CANCELADA
+
+  @@schema("quiosque")
+}
+
+enum StatusPedidoQuiosque {
+  RECEBIDO
+  EM_PREPARO
+  PRONTO
+  ENTREGUE
+  CANCELADO
+
+  @@schema("quiosque")
+}
+
+enum FormaPagamentoQuiosque {
+  DINHEIRO
+  PIX
+  CARTAO_DEBITO
+  CARTAO_CREDITO
+
+  @@schema("quiosque")
+}
+
+/// Conta do cliente. A venda avulsa tambem vira comanda (tipo AVULSA), aberta e
+/// fechada na mesma transacao, para que caixa e historico tenham um lugar so.
+model ComandaQuiosque {
+  id             String                @id @default(cuid())
+  cervejariaId   String
+  pontoVendaId   String
+  tipo           TipoComandaQuiosque
+  /// Apelido, numero da mesa ou da ficha. Nulo na venda avulsa.
+  identificador  String?
+  status         StatusComandaQuiosque @default(ABERTA)
+  /// Dia da operacao em America/Sao_Paulo. O quiosque vira a noite, entao a data
+  /// civil do instante UTC nao serve para fechar o caixa.
+  diaOperacional DateTime              @db.Date
+  /// Referencias de usuario ficam por id, sem relation, para nao espalhar o
+  /// modulo dentro do modelo Usuario.
+  abertaPorId    String
+  fechadaPorId   String?
+  fechadaEm      DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  cervejaria Cervejaria          @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda          @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
+  pedidos    PedidoQuiosque[]
+  pagamentos PagamentoQuiosque[]
+
+  @@index([cervejariaId, status, createdAt])
+  @@index([cervejariaId, diaOperacional])
+  @@index([pontoVendaId, status])
+  @@schema("quiosque")
+}
+
+/// Uma rodada de itens dentro da comanda. E a unidade que a cozinha ve na fila.
+model PedidoQuiosque {
+  id             String               @id @default(cuid())
+  cervejariaId   String
+  comandaId      String
+  pontoVendaId   String
+  /// Senha mostrada ao cliente, reiniciada a cada dia de operacao.
+  numero         Int
+  diaOperacional DateTime             @db.Date
+  status         StatusPedidoQuiosque @default(RECEBIDO)
+  observacao     String?
+  criadoPorId    String
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  cervejaria Cervejaria           @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  comanda    ComandaQuiosque      @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda           @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
+  itens      ItemPedidoQuiosque[]
+
+  @@unique([cervejariaId, diaOperacional, numero])
+  @@index([cervejariaId, status, createdAt])
+  @@index([comandaId])
+  @@schema("quiosque")
+}
+
+model ItemPedidoQuiosque {
+  id           String  @id @default(cuid())
+  pedidoId     String
+  produtoId    String
+  /// Nome e preco sao copiados na venda: mexer no catalogo depois nao pode
+  /// reescrever o que o cliente pagou.
+  nome         String
+  precoUnit    Decimal @db.Decimal(10, 2)
+  quantidade   Int
+  exigePreparo Boolean @default(false)
+
+  pedido  PedidoQuiosque  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  produto ProdutoQuiosque @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@index([pedidoId])
+  @@schema("quiosque")
+}
+
+model PagamentoQuiosque {
+  id              String                 @id @default(cuid())
+  comandaId       String
+  forma           FormaPagamentoQuiosque
+  valor           Decimal                @db.Decimal(10, 2)
+  /// So no dinheiro: quanto o cliente entregou e quanto voltou de troco.
+  valorRecebido   Decimal?               @db.Decimal(10, 2)
+  troco           Decimal?               @db.Decimal(10, 2)
+  registradoPorId String
+  pagoEm          DateTime               @default(now())
+
+  comanda ComandaQuiosque @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+
+  @@index([comandaId])
   @@schema("quiosque")
 }

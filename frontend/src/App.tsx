@@ -7,6 +7,10 @@ import { LoginPage } from './pages/LoginPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { AdminCervejariasPage } from './pages/AdminCervejariasPage';
+import { QuiosqueLayout } from './pages/quiosque/QuiosqueLayout';
+import { QuiosquePdvPage } from './pages/quiosque/QuiosquePdvPage';
+import { QuiosqueComandasPage } from './pages/quiosque/QuiosqueComandasPage';
+import { QuiosqueComandaDetailPage } from './pages/quiosque/QuiosqueComandaDetailPage';
 import { QuiosqueCatalogoPage } from './pages/quiosque/QuiosqueCatalogoPage';
 import { useQuiosqueContexto } from './hooks/useQuiosqueContexto';
 import { AdminConfiguracoesPage } from './pages/AdminConfiguracoesPage';
@@ -255,7 +259,16 @@ const router = createBrowserRouter([
                   {
                     element: <RequireModuloQuiosque />,
                     children: [
-                      { path: 'quiosque', element: <QuiosqueCatalogoPage /> },
+                      {
+                        path: 'quiosque',
+                        element: <QuiosqueLayout />,
+                        children: [
+                          { index: true, element: <QuiosquePdvPage /> },
+                          { path: 'comandas', element: <QuiosqueComandasPage /> },
+                          { path: 'comandas/:id', element: <QuiosqueComandaDetailPage /> },
+                          { path: 'catalogo', element: <QuiosqueCatalogoPage /> },
+                        ],
+                      },
                     ],
                   },
                   {
