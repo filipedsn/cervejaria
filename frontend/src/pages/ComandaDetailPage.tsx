@@ -152,7 +152,13 @@ export function ComandaDetailPage() {
       }
       navigate(`/comandas/${nova.id}`);
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao abrir nova comanda'),
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409 && typeof err.body?.comandaId === 'string') {
+        navigate(`/comandas/${err.body.comandaId}`);
+        return;
+      }
+      setError(err instanceof ApiError ? err.message : 'Erro ao abrir nova comanda');
+    },
   });
 
   const openPayment = () => {
@@ -227,18 +233,12 @@ export function ComandaDetailPage() {
 
       {/* Itens */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="section-label">Itens</h3>
-          {isOpen && (
-            <button
-              type="button"
-              className="touch-btn-orange touch-btn-sm shrink-0"
-              onClick={() => setShowAddItem(true)}
-            >
-              + Itens
-            </button>
-          )}
-        </div>
+        <h3 className="section-label">Itens</h3>
+        {isOpen && (
+          <button type="button" className="touch-btn-orange w-full" onClick={() => setShowAddItem(true)}>
+            + Itens
+          </button>
+        )}
         {comanda.itens.map((item) => (
           <div key={item.id} className="card flex items-center justify-between gap-3 py-3">
             <div className="min-w-0">
@@ -261,9 +261,9 @@ export function ComandaDetailPage() {
             </div>
           </div>
         ))}
-        {comanda.itens.length === 0 && (
-          <p className="text-ink-faint text-center py-4">
-            Nenhum item ainda. Toque em <span className="font-semibold text-orange">+ Itens</span> para adicionar.
+        {isOpen && comanda.itens.length === 0 && (
+          <p className="text-sm text-ink-faint text-center py-2">
+            Nenhum item ainda. Adicione itens para registrar consumo.
           </p>
         )}
       </div>
@@ -299,9 +299,6 @@ export function ComandaDetailPage() {
       {/* Ações fixas — comanda aberta */}
       {isOpen && comanda.itens.length > 0 && (
         <MobileActionBar>
-          <button type="button" className="touch-btn-orange w-full" onClick={() => setShowAddItem(true)}>
-            + Itens
-          </button>
           <button type="button" className="touch-btn-primary w-full" onClick={openPayment}>
             Fechar Comanda · {formatCurrency(comanda.total)}
           </button>
@@ -313,9 +310,6 @@ export function ComandaDetailPage() {
 
       {isOpen && comanda.itens.length === 0 && (
         <MobileActionBar>
-          <button type="button" className="touch-btn-orange w-full" onClick={() => setShowAddItem(true)}>
-            + Itens
-          </button>
           <p className="text-xs text-center text-ink-faint px-2">
             Sem consumação — use Encerrar comanda para cancelar.
           </p>

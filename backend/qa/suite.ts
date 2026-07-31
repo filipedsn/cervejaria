@@ -1100,6 +1100,44 @@ async function main() {
     return { message: 'Fluxo telefone-only OK', expected: tel, actual: cliente.telefone ?? 'null' };
   });
 
+  await test({ id: 'RF-17e', category: 'Funcional', name: 'Comanda duplicada retorna 409', requirement: 'RF-17' }, async () => {
+    const tel = uniquePortalTestPhone(88, 9);
+    const nome = `QA Dup Comanda ${Date.now()}`;
+
+    const first = await api<{ id: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: {
+        eventoId: lifecycle.eventoId,
+        clienteNome: nome,
+        clienteTelefone: tel,
+      },
+    });
+    if (first.status !== 201) {
+      return { status: 'failed', message: 'Setup: primeira comanda deveria retornar 201', actual: String(first.status) };
+    }
+
+    const dup = await api<{ error: string; comandaId: string }>('POST', '/api/comandas', {
+      token: lifecycle.atendenteTokens[0],
+      body: {
+        eventoId: lifecycle.eventoId,
+        clienteNome: nome,
+        clienteTelefone: tel,
+      },
+    });
+    if (dup.status !== 409) {
+      return { status: 'failed', message: 'Comanda duplicada deveria retornar 409', expected: '409', actual: String(dup.status) };
+    }
+    if (dup.data?.comandaId !== first.data!.id) {
+      return {
+        status: 'failed',
+        message: '409 deveria referenciar a comanda aberta existente',
+        expected: first.data!.id,
+        actual: dup.data?.comandaId ?? 'null',
+      };
+    }
+    return { message: 'Comanda duplicada bloqueada', expected: first.data!.id, actual: dup.data.comandaId };
+  });
+
   await test({ id: 'RF-17d', category: 'Funcional', name: 'Legado: portal não auto-vincula', requirement: 'RF-17' }, async () => {
     const legacyName = `QA Portal Legado ${Date.now()}`;
     const legacy = await prisma.cliente.create({
@@ -1754,6 +1792,217 @@ async function main() {
     if (resumo.status !== 200) return { status: 'failed', message: `Resumo (FECHADO) HTTP ${resumo.status}`, expected: '200', actual: String(resumo.status) };
     const reabrir = await api('PATCH', `/api/eventos/${lifecycle.eventoId}/reabrir`, { token: lifecycle.donoToken });
     return expectStatus(reabrir.status, 200, 'Ciclo evento OK (fechar/resumo/reabrir)');
+  });
+
+  await test({ id: 'RF-04a', category: 'Funcional', name: 'Reverter sessão de série sem vendas → agendado', requirement: 'RF-04' }, async () => {
+    const stamp = Date.now();
+    const slot = stamp % 10;
+    const hStart = 5 + slot;
+    const horaInicio = `${String(hStart).padStart(2, '0')}:00`;
+    const horaFim = `${String(hStart + 1).padStart(2, '0')}:00`;
+    const diaSemana = new Date().getDay();
+
+    const serie = await api<{ id: string }>('POST', '/api/eventos', {
+      token: cat.donoToken,
+      body: {
+        nome: `QA Revert Serie ${stamp}`,
+        local: 'Revert Local',
+        horaInicio,
+        horaFim,
+        recorrencia: 'SEMANAL',
+        diaSemana,
+        trailerId: cat.trailerId,
+      },
+    });
+    if (serie.status !== 201 || !serie.data?.id) {
+      return { status: 'failed', message: 'Setup RF-04a: série não criada', actual: String(serie.status) };
+    }
+
+    const iniciar = await api<{ id: string }>('POST', `/api/eventos/${serie.data.id}/iniciar`, {
+      token: cat.donoToken,
+    });
+    if (iniciar.status !== 201 || !iniciar.data?.id) {
+      return { status: 'failed', message: 'Setup RF-04a: iniciar sessão falhou', actual: String(iniciar.status) };
+    }
+
+    const revert = await api<{ modo: string; mensagem: string }>(
+      'POST',
+      `/api/eventos/${iniciar.data.id}/reverter-para-agendado`,
+      { token: cat.donoToken },
+    );
+    if (revert.status !== 200) {
+      return { status: 'failed', message: 'Reverter sessão falhou', expected: '200', actual: String(revert.status) };
+    }
+    if (revert.data?.modo !== 'serie') {
+      return { status: 'failed', message: 'Modo deveria ser serie', expected: 'serie', actual: String(revert.data?.modo) };
+    }
+
+    const list = await api<{ series: Array<{ id: string }>; sessoes: Array<{ id: string; serieId?: string | null }> }>(
+      'GET',
+      '/api/eventos',
+      { token: cat.donoToken },
+    );
+    const serieStillThere = list.data?.series.some((s) => s.id === serie.data!.id);
+    const sessaoRemovida = !(list.data?.sessoes ?? []).some((s) => s.id === iniciar.data!.id);
+    if (!serieStillThere || !sessaoRemovida) {
+      return {
+        status: 'failed',
+        message: 'Série deveria permanecer e sessão sumir',
+        expected: 'serie ok / sessao gone',
+        actual: `${serieStillThere}/${sessaoRemovida}`,
+      };
+    }
+
+    await prisma.evento.delete({ where: { id: serie.data.id } });
+    return { message: 'Sessão revertida; compromisso volta ao agendado', expected: '200', actual: 'ok' };
+  });
+
+  await test({ id: 'RF-04b', category: 'Funcional', name: 'Reverter evento avulso aberto sem vendas', requirement: 'RF-04' }, async () => {
+    const stamp = Date.now();
+    const slot = (stamp % 10) + 10;
+    const horaInicio = `${String(slot).padStart(2, '0')}:00`;
+    const horaFim = `${String(slot + 1).padStart(2, '0')}:00`;
+    const today = new Date().toISOString().slice(0, 10);
+
+    const created = await api<{ id: string }>('POST', '/api/eventos', {
+      token: cat.donoToken,
+      body: {
+        nome: `QA Revert Avulso ${stamp}`,
+        local: 'Revert Local',
+        data: today,
+        horaInicio,
+        horaFim,
+        abrirAgora: true,
+        trailerId: cat.trailerId,
+      },
+    });
+    if (created.status !== 201 || !created.data?.id) {
+      return { status: 'failed', message: 'Setup RF-04b: evento não criado', actual: String(created.status) };
+    }
+
+    const revert = await api<{ modo: string }>('POST', `/api/eventos/${created.data.id}/reverter-para-agendado`, {
+      token: cat.donoToken,
+    });
+    if (revert.status !== 200) {
+      return { status: 'failed', message: 'Reverter avulso falhou', expected: '200', actual: String(revert.status) };
+    }
+    if (revert.data?.modo !== 'avulso') {
+      return { status: 'failed', message: 'Modo deveria ser avulso', expected: 'avulso', actual: String(revert.data?.modo) };
+    }
+
+    const getOne = await api('GET', `/api/eventos/${created.data.id}`, { token: cat.donoToken });
+    return expectStatus(getOne.status, 404, 'Evento avulso removido após revert');
+  });
+
+  await test({ id: 'RF-04c', category: 'Funcional', name: 'Reverter bloqueado com venda registrada → 409', requirement: 'RF-04' }, async () => {
+    const stamp = Date.now();
+    const slot = (stamp % 10) + 15;
+    const horaInicio = `${String(slot).padStart(2, '0')}:00`;
+    const horaFim = `${String(slot + 1).padStart(2, '0')}:00`;
+    const today = new Date().toISOString().slice(0, 10);
+
+    const created = await api<{ id: string }>('POST', '/api/eventos', {
+      token: cat.donoToken,
+      body: {
+        nome: `QA Revert Block ${stamp}`,
+        local: 'Revert Local',
+        data: today,
+        horaInicio,
+        horaFim,
+        abrirAgora: true,
+        trailerId: cat.trailerId,
+      },
+    });
+    if (created.status !== 201 || !created.data?.id) {
+      return { status: 'failed', message: 'Setup RF-04c: evento não criado', actual: String(created.status) };
+    }
+
+    const comanda = await api<{ id: string }>('POST', '/api/comandas', {
+      token: cat.atendenteTokens[0],
+      body: staffComandaBody(created.data.id, `RevertBlock ${stamp}`, 70),
+    });
+    if (comanda.status !== 201 || !comanda.data?.id) {
+      return { status: 'failed', message: 'Setup RF-04c: comanda não criada', actual: String(comanda.status) };
+    }
+
+    const item = await api('POST', `/api/comandas/${comanda.data.id}/itens`, {
+      token: cat.atendenteTokens[0],
+      body: chopeItemBody(cat.produtoId, cat.tapId, cat.volumeMl),
+    });
+    if (item.status !== 201) {
+      return { status: 'failed', message: 'Setup RF-04c: item não adicionado', actual: String(item.status) };
+    }
+
+    const cur = await api<{ total: string | number }>('GET', `/api/comandas/${comanda.data.id}`, {
+      token: cat.donoToken,
+    });
+    const total = Number(cur.data?.total ?? 0);
+    const close = await api('POST', `/api/pagamentos/comandas/${comanda.data.id}/fechar`, {
+      token: cat.atendenteTokens[0],
+      body: { pagamentos: [{ forma: 'DINHEIRO', valor: total }] },
+    });
+    if (close.status !== 200) {
+      return { status: 'failed', message: 'Setup RF-04c: fechar comanda falhou', actual: String(close.status) };
+    }
+
+    const revert = await api('POST', `/api/eventos/${created.data.id}/reverter-para-agendado`, {
+      token: cat.donoToken,
+    });
+    await prisma.evento.delete({ where: { id: created.data.id } }).catch(() => undefined);
+    return expectStatus(revert.status, 409, 'Revert bloqueado com venda');
+  });
+
+  await test({ id: 'RF-04d', category: 'Funcional', name: 'Reverter cancela comanda vazia e conclui', requirement: 'RF-04' }, async () => {
+    const stamp = Date.now();
+    const slot = (stamp % 10) + 20;
+    const horaInicio = `${String(slot).padStart(2, '0')}:00`;
+    const horaFim = `${String(slot + 1).padStart(2, '0')}:00`;
+    const today = new Date().toISOString().slice(0, 10);
+
+    const created = await api<{ id: string }>('POST', '/api/eventos', {
+      token: cat.donoToken,
+      body: {
+        nome: `QA Revert Empty ${stamp}`,
+        local: 'Revert Local',
+        data: today,
+        horaInicio,
+        horaFim,
+        abrirAgora: true,
+        trailerId: cat.trailerId,
+      },
+    });
+    if (created.status !== 201 || !created.data?.id) {
+      return { status: 'failed', message: 'Setup RF-04d: evento não criado', actual: String(created.status) };
+    }
+
+    const comanda = await api<{ id: string }>('POST', '/api/comandas', {
+      token: cat.atendenteTokens[0],
+      body: staffComandaBody(created.data.id, `RevertEmpty ${stamp}`, 71),
+    });
+    if (comanda.status !== 201 || !comanda.data?.id) {
+      await prisma.evento.delete({ where: { id: created.data.id } }).catch(() => undefined);
+      return { status: 'failed', message: 'Setup RF-04d: comanda não criada', actual: String(comanda.status) };
+    }
+
+    const revert = await api('POST', `/api/eventos/${created.data.id}/reverter-para-agendado`, {
+      token: cat.donoToken,
+    });
+    if (revert.status !== 200) {
+      await prisma.evento.delete({ where: { id: created.data.id } }).catch(() => undefined);
+      return { status: 'failed', message: 'Reverter com comanda vazia falhou', expected: '200', actual: String(revert.status) };
+    }
+
+    const comandaAfter = await prisma.comanda.findUnique({ where: { id: comanda.data.id } });
+    if (comandaAfter && comandaAfter.status !== 'CANCELADA') {
+      return {
+        status: 'failed',
+        message: 'Comanda vazia deveria ser cancelada',
+        expected: 'CANCELADA',
+        actual: comandaAfter.status,
+      };
+    }
+
+    return { message: 'Revert OK com comanda vazia auto-cancelada', expected: '200', actual: 'ok' };
   });
 
   await test({ id: 'RF-09', category: 'Funcional', name: 'Resumo de evento ABERTO negado → 403', requirement: 'RF-09' }, async () => {

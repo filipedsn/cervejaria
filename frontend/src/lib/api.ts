@@ -3,16 +3,30 @@ const API_BASE = import.meta.env.VITE_API_URL ?? '';
 class ApiError extends Error {
   constructor(
     message: string,
-    public status: number
+    public status: number,
+    public body?: Record<string, unknown>,
   ) {
     super(message);
   }
 }
 
-export function assetUrl(path: string | null | undefined): string | null {
+export function assetUrl(
+  path: string | null | undefined,
+  cacheBust?: string | number | Date | null,
+): string | null {
   if (!path) return null;
-  if (path.startsWith('http://') || path.startsWith('https://')) return path;
-  return `${API_BASE}${path}`;
+
+  let url = path;
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `${API_BASE}${path}`;
+  }
+
+  if (cacheBust == null) return url;
+
+  const version =
+    cacheBust instanceof Date ? cacheBust.getTime() : String(cacheBust);
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}v=${encodeURIComponent(version)}`;
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -44,7 +58,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       (res.status === 502 || res.status === 503
         ? 'Backend offline. Execute npm run restart na raiz do projeto.'
         : `Erro na requisição (${res.status})`);
-    throw new ApiError(message, res.status);
+    throw new ApiError(message, res.status, body);
   }
 
   if (res.status === 204) return undefined as T;

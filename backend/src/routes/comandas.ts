@@ -10,11 +10,22 @@ import { resolveClienteParaComanda, TelefoneConflitoError } from '../lib/cliente
 import { isTelefoneClienteAvulsoReservado } from '../lib/cliente-avulso.js';
 import { normalizePhone } from '../lib/phone.js';
 import { registrarTransacao } from '../lib/transacao-log.js';
+import { isUniqueViolation } from '../lib/prisma-errors.js';
 import {
   addItemToComanda,
   comandaDetailInclude,
   removeItemFromComanda,
 } from '../lib/comanda-service.js';
+
+function comandaAbertaResponse(
+  reply: { status: (code: number) => { send: (body: unknown) => unknown } },
+  comandaId: string,
+) {
+  return reply.status(409).send({
+    error: 'Este cliente já possui comanda aberta neste evento',
+    comandaId,
+  });
+}
 
 const createComandaSchema = z
   .object({
@@ -237,13 +248,41 @@ export async function comandasRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: message });
     }
 
-    const comanda = await prisma.comanda.create({
-      data: {
+    const comandaAberta = await prisma.comanda.findFirst({
+      where: {
         eventoId: body.eventoId,
         clienteId: cliente.id,
+        status: 'ABERTA',
       },
-      include: comandaDetailInclude,
+      select: { id: true },
     });
+    if (comandaAberta) {
+      return comandaAbertaResponse(reply, comandaAberta.id);
+    }
+
+    let comanda;
+    try {
+      comanda = await prisma.comanda.create({
+        data: {
+          eventoId: body.eventoId,
+          clienteId: cliente.id,
+        },
+        include: comandaDetailInclude,
+      });
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        const dup = await prisma.comanda.findFirst({
+          where: {
+            eventoId: body.eventoId,
+            clienteId: cliente.id,
+            status: 'ABERTA',
+          },
+          select: { id: true },
+        });
+        if (dup) return comandaAbertaResponse(reply, dup.id);
+      }
+      throw err;
+    }
 
     await registrarTransacao({
       cervejariaId: user.cervejariaId!,

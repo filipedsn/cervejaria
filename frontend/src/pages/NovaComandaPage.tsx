@@ -213,6 +213,10 @@ export function NovaComandaPage() {
       });
       navigate(`/comandas/${comanda.id}`);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409 && typeof err.body?.comandaId === 'string') {
+        navigate(`/comandas/${err.body.comandaId}`);
+        return;
+      }
       setError(err instanceof ApiError ? err.message : 'Erro ao criar comanda');
     } finally {
       setLoading(false);
