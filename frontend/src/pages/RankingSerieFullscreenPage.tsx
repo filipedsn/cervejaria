@@ -52,7 +52,7 @@ export function RankingSerieFullscreenPage() {
     [isDemo, demoCount],
   );
 
-  const { data: apiData, isLoading: loadingRanking } = useQuery({
+  const { data: apiData, isLoading: loadingRanking, dataUpdatedAt } = useQuery({
     queryKey: ['ranking-serie', serieId, escopo, escopo === 'mensal' ? mes : null],
     queryFn: () => {
       const query = escopo === 'mensal' && mes ? `?mes=${encodeURIComponent(mes)}` : '';
@@ -82,13 +82,14 @@ export function RankingSerieFullscreenPage() {
 
   return (
     <RankingTvView
-      kicker={escopo === 'mensal' ? 'Ranking mensal da agenda' : 'Ranking geral da agenda'}
+      kicker={escopo === 'mensal' ? 'Ranking mensal ao vivo' : 'Ranking geral ao vivo'}
       title={isDemo ? 'Simulação de ranking' : (data?.serie.nome ?? 'Agenda')}
       subtitle={subtitle}
       badge={isDemo ? `Simulação · ${demoCount} participantes` : undefined}
       exitTo={serieId ? rankingSeriePageUrl(serieId, escopo) : '/eventos'}
       entries={entries}
-      footerNote="Atualiza automaticamente a cada venda ou ajuste de chope nesta agenda"
+      lastUpdatedAt={isDemo ? Date.now() : dataUpdatedAt}
+      isDemo={isDemo}
     />
   );
 }

@@ -47,10 +47,12 @@ export async function cervejariaRoutes(app: FastifyInstance) {
   app.get('/dashboard', async (request, reply) => {
     const user = getAuthUser(request);
     const now = new Date();
-    const query = request.query as { ano?: string; mes?: string; trailerId?: string };
+    const query = request.query as { ano?: string; mes?: string; trailerId?: string; tipo?: string };
     const ano = query.ano ? Number.parseInt(query.ano, 10) : now.getFullYear();
     const mes = query.mes ? Number.parseInt(query.mes, 10) : now.getMonth() + 1;
     const trailerId = query.trailerId?.trim() || undefined;
+    const tipoRaw = query.tipo?.trim();
+    const tipo = tipoRaw === 'agendado' || tipoRaw === 'avulso' ? tipoRaw : 'todos';
 
     if (!Number.isFinite(ano) || !Number.isFinite(mes) || mes < 1 || mes > 12) {
       return reply.status(400).send({ error: 'Período inválido' });
@@ -59,7 +61,7 @@ export async function cervejariaRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Não é possível consultar períodos futuros' });
     }
 
-    return buildCervejariaDashboard(user.cervejariaId!, ano, mes, trailerId);
+    return buildCervejariaDashboard(user.cervejariaId!, ano, mes, trailerId, tipo);
   });
 
   app.get('/branding', async (request) => {

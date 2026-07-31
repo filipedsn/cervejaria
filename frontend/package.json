@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:deploy": "vite build",
+    "build:prod": "vite build --outDir ../deploy/prod-artifacts/.staging/frontend",
     "preview": "vite preview",
     "icons": "node scripts/generate-pwa-icons.mjs"
   },

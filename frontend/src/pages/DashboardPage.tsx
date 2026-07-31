@@ -5,6 +5,9 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  ComposedChart,
+  LabelList,
+  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -114,6 +117,38 @@ function EventoChartTooltip({
   );
 }
 
+function WeeklyTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: { receita?: number; comandas?: number; ticket?: number } }>;
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload;
+  if (!row) return null;
+  return (
+    <div className="rounded-lg border border-line bg-surface px-3 py-2 text-sm shadow-lg">
+      <p className="font-semibold text-ink">{label}</p>
+      <p className="text-brand-600 font-bold tabular-nums mt-1">{formatCurrency(row.receita ?? 0)}</p>
+      <p className="text-ink-muted text-xs mt-0.5 tabular-nums">
+        {row.comandas ?? 0} comandas · ticket {formatCurrency(row.ticket ?? 0)}
+      </p>
+    </div>
+  );
+}
+
+function EventoMetric({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-sm font-semibold tabular-nums text-ink leading-none">{value}</p>
+      <p className="text-[11px] text-ink-faint mt-1 leading-none">{label}</p>
+    </div>
+  );
+}
+
 function KpiCard({
   label,
   value,
@@ -151,6 +186,7 @@ export function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { ano, mes } = useMemo(() => parsePeriod(searchParams), [searchParams]);
   const [trailerId, setTrailerId] = useState<string>('all');
+  const [tipoEvento, setTipoEvento] = useState<'todos' | 'agendado' | 'avulso'>('todos');
 
   const { data: trailers = [] } = useQuery({
     queryKey: ['trailers', 'ativo'],
@@ -166,12 +202,12 @@ export function DashboardPage() {
     ano < now.getFullYear() || (ano === now.getFullYear() && mes < now.getMonth() + 1);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['cervejaria-dashboard', ano, mes, trailerParam],
+    queryKey: ['cervejaria-dashboard', ano, mes, trailerParam, tipoEvento],
     queryFn: () =>
       api.get<CervejariaDashboard>(
         `/api/cervejaria/dashboard?ano=${ano}&mes=${mes}${
           trailerParam ? `&trailerId=${encodeURIComponent(trailerParam)}` : ''
-        }`,
+        }${tipoEvento !== 'todos' ? `&tipo=${tipoEvento}` : ''}`,
       ),
     staleTime: 30_000,
   });
@@ -201,10 +237,22 @@ export function DashboardPage() {
     setSearchParams({ ano: String(newAno), mes: String(newMes) });
   };
 
-  const weeklyChart = useMemo(
-    () => data?.evolucaoSemanal.map((w) => ({ name: `Sem ${w.semana}`, receita: w.receita, comandas: w.comandas, label: w.label })) ?? [],
-    [data?.evolucaoSemanal],
-  );
+  const weeklyChart = useMemo(() => {
+    const rows =
+      data?.evolucaoSemanal.map((w) => ({
+        name: w.label,
+        receita: w.receita,
+        comandas: w.comandas,
+        ticket: w.comandas > 0 ? w.receita / w.comandas : 0,
+      })) ?? [];
+    // Remove semanas zeradas no início e no fim (mantém buracos internos p/ continuidade)
+    const isEmpty = (r: { receita: number; comandas: number }) => r.receita === 0 && r.comandas === 0;
+    let start = 0;
+    let end = rows.length - 1;
+    while (start <= end && isEmpty(rows[start])) start += 1;
+    while (end >= start && isEmpty(rows[end])) end -= 1;
+    return start > end ? rows : rows.slice(start, end + 1);
+  }, [data?.evolucaoSemanal]);
 
   const annualChart = useMemo(
     () => data?.receitaAnual.map((m) => ({ name: m.label, receita: m.receita, comandas: m.comandas })) ?? [],
@@ -231,9 +279,26 @@ export function DashboardPage() {
     [data?.eventosRecentes],
   );
 
+  const maxReceitaEvento = useMemo(
+    () => Math.max(0, ...(data?.eventosRecentes ?? []).map((e) => e.receitaTotal)),
+    [data?.eventosRecentes],
+  );
+
+  const maxMediaAgenda = useMemo(
+    () => Math.max(0, ...(data?.comparativoAgendas ?? []).map((g) => g.mediaPorSessao)),
+    [data?.comparativoAgendas],
+  );
+
   if (isLoading || !data) return <Loading />;
 
-  const { resumo, porPagamento, porProduto, porFuncionario, eventosRecentes = [] } = data;
+  const {
+    resumo,
+    porPagamento,
+    porProduto,
+    porFuncionario,
+    eventosRecentes = [],
+    comparativoAgendas = [],
+  } = data;
   const mesSelecionadoIdx = mes - 1;
 
   return (
@@ -244,72 +309,100 @@ export function DashboardPage() {
         <p className="page-subtitle">Performance mensal do negócio</p>
       </div>
 
-      {showTrailerFilter && (
-        <div className="space-y-2">
-          <p className="section-label">Trailer</p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setTrailerId('all')}
-              className={`min-h-10 rounded-xl px-3 text-sm font-semibold transition-colors ${
-                trailerId === 'all'
-                  ? 'bg-brand-600 text-white'
-                  : 'bg-surface border border-line text-ink-muted'
-              }`}
-            >
-              Todos
-            </button>
-            {trailers.map((trailer) => (
-              <button
-                key={trailer.id}
-                type="button"
-                onClick={() => setTrailerId(trailer.id)}
-                className={`min-h-10 rounded-xl px-3 text-sm font-semibold transition-colors truncate max-w-full ${
-                  trailerId === trailer.id
-                    ? 'bg-brand-600 text-white'
-                    : 'bg-surface border border-line text-ink-muted'
-                }`}
-              >
-                {formatTrailerLabel(trailer)}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 2xl:grid-cols-6 gap-3 items-center">
+        {/* Mês/ano — mesma largura do primeiro card */}
+        <div className="flex items-center justify-between gap-1 rounded-2xl border border-line bg-surface px-1.5 py-1.5">
           <button
             type="button"
             onClick={() => goMonth(-1)}
-            className="touch-btn-secondary touch-btn-sm min-w-11 px-0 text-lg"
+            className="touch-btn-secondary min-h-9 min-w-9 px-0 text-base shrink-0"
             aria-label="Mês anterior"
           >
             ◀
           </button>
-          <div className="text-center min-w-[10rem]">
-            <p className="font-bold text-lg">{MESES[mesSelecionadoIdx]}</p>
-            <p className="text-sm text-ink-muted tabular-nums">{ano}</p>
-          </div>
+          <p className="flex-1 min-w-0 text-center font-bold text-sm sm:text-base tabular-nums whitespace-nowrap">
+            {MESES[mesSelecionadoIdx]}/{ano}
+          </p>
           <button
             type="button"
             onClick={() => goMonth(1)}
             disabled={!canGoNext}
-            className="touch-btn-secondary min-h-11 min-w-11 px-0 text-lg disabled:opacity-30"
+            className="touch-btn-secondary min-h-9 min-w-9 px-0 text-base shrink-0 disabled:opacity-30"
             aria-label="Próximo mês"
           >
             ▶
           </button>
         </div>
-        {!isCurrentMonth && (
-          <button
-            type="button"
-            onClick={() => setSearchParams({})}
-            className="touch-btn-secondary touch-btn-sm px-4"
-          >
-            Mês atual
-          </button>
-        )}
+
+        {/* Filtros — ocupam as colunas restantes, na mesma linha */}
+        <div className="col-span-1 sm:col-span-2 2xl:col-span-5 flex flex-wrap items-center gap-x-6 gap-y-2">
+          {showTrailerFilter && (
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="section-label shrink-0">Trailer</span>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTrailerId('all')}
+                  className={`min-h-9 rounded-xl px-3 text-sm font-semibold transition-colors ${
+                    trailerId === 'all'
+                      ? 'bg-brand-600 text-white'
+                      : 'bg-surface border border-line text-ink-muted'
+                  }`}
+                >
+                  Todos
+                </button>
+                {trailers.map((trailer) => (
+                  <button
+                    key={trailer.id}
+                    type="button"
+                    onClick={() => setTrailerId(trailer.id)}
+                    className={`min-h-9 rounded-xl px-3 text-sm font-semibold transition-colors truncate max-w-full ${
+                      trailerId === trailer.id
+                        ? 'bg-brand-600 text-white'
+                        : 'bg-surface border border-line text-ink-muted'
+                    }`}
+                  >
+                    {formatTrailerLabel(trailer)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <span className="section-label shrink-0">Tipo</span>
+            <div className="flex flex-wrap gap-2">
+              {([
+                ['todos', 'Todos'],
+                ['agendado', 'Agendados'],
+                ['avulso', 'Avulsos'],
+              ] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setTipoEvento(id)}
+                  className={`min-h-9 rounded-xl px-3 text-sm font-semibold transition-colors ${
+                    tipoEvento === id
+                      ? 'bg-brand-600 text-white'
+                      : 'bg-surface border border-line text-ink-muted'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!isCurrentMonth && (
+            <button
+              type="button"
+              onClick={() => setSearchParams({})}
+              className="touch-btn-secondary touch-btn-sm px-4 ml-auto"
+            >
+              Mês atual
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 2xl:grid-cols-6 gap-3">
@@ -339,70 +432,221 @@ export function DashboardPage() {
                 <div className="h-52 sm:h-60 -mx-1">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={eventosChart} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(17,24,39,0.06)" vertical={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line-soft)" vertical={false} />
                       <XAxis hide />
                       <YAxis
-                        tick={{ fill: '#9ca3af', fontSize: 11 }}
+                        tick={{ fill: 'var(--color-ink-faint)', fontSize: 11 }}
                         axisLine={false}
                         tickLine={false}
                         tickFormatter={(v) => (v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`)}
                         width={48}
                       />
                       <Tooltip content={<EventoChartTooltip />} />
-                      <Bar dataKey="receita" fill="var(--color-brand-600)" radius={[6, 6, 0, 0]} maxBarSize={48} />
+                      <Bar dataKey="receita" fill="var(--color-chart-primary)" radius={[6, 6, 0, 0]} maxBarSize={48} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
 
               <div className="card divide-y divide-line p-0 overflow-hidden">
-                {eventosOrdenados.map((e) => (
-                  <Link
-                    key={e.eventoId}
-                    to={`/eventos/${e.eventoId}/resumo`}
-                    className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 hover:bg-surface-lighter transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold truncate">{e.nome}</p>
-                      <p className="text-xs text-ink-faint truncate">
-                        {formatEventoDataCurta(e.data, e.horaInicio)}
-                        {e.local ? ` · ${e.local}` : ''}
-                      </p>
+                {eventosOrdenados.map((e) => {
+                  const semMovimento = e.receitaTotal === 0 && e.comandasAtendidas === 0;
+                  const barPct =
+                    maxReceitaEvento > 0 && e.receitaTotal > 0
+                      ? Math.max((e.receitaTotal / maxReceitaEvento) * 100, 3)
+                      : 0;
+                  return (
+                    <Link
+                      key={e.eventoId}
+                      to={`/eventos/${e.eventoId}/resumo`}
+                      className={`block px-4 py-3.5 hover:bg-surface-lighter transition-colors ${
+                        semMovimento ? 'opacity-60' : ''
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate">{e.nome}</p>
+                          <p className="text-xs text-ink-faint truncate mt-0.5">
+                            {formatEventoDataCurta(e.data, e.horaInicio)}
+                            {e.local ? ` · ${e.local}` : ''}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-bold text-brand-600 text-lg tabular-nums leading-none">
+                            {formatCurrency(e.receitaTotal)}
+                          </p>
+                          <p className="text-[11px] text-ink-faint mt-1 leading-none">receita total</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-2.5 h-1.5 rounded-full bg-surface-lighter overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-brand-600 to-brand-400"
+                          style={{ width: `${barPct}%` }}
+                        />
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+                        <EventoMetric value={String(e.comandasAtendidas)} label="comandas" />
+                        <EventoMetric value={`${formatCurrency(e.receitaPorHora)}/h`} label="receita/h" />
+                        <EventoMetric value={`${e.chopeLitrosPorHora.toFixed(1)} L/h`} label="chope/h" />
+                        <EventoMetric value={formatCurrency(e.ticketMedio)} label="ticket médio" />
+                        {e.vendasAvulsas > 0 && (
+                          <EventoMetric
+                            value={`${e.vendasAvulsas} · ${formatCurrency(e.receitaAvulsa)}`}
+                            label="avulsas"
+                          />
+                        )}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {tipoEvento !== 'avulso' && comparativoAgendas.length > 0 && (
+            <section className="space-y-4">
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 className="section-label mb-0">Comparativo por agenda</h2>
+                <p className="text-xs text-ink-faint">Ranqueado por receita média/sessão</p>
+              </div>
+
+              <div className="card divide-y divide-line p-0 overflow-hidden">
+                {comparativoAgendas.map((g, i) => {
+                  const barPct =
+                    maxMediaAgenda > 0 && g.mediaPorSessao > 0
+                      ? Math.max((g.mediaPorSessao / maxMediaAgenda) * 100, 3)
+                      : 0;
+                  const isTop = i === 0 && comparativoAgendas.length > 1;
+                  return (
+                    <div key={g.serieId} className="px-4 py-3.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-2.5">
+                          <span
+                            className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold tabular-nums ${
+                              isTop
+                                ? 'bg-brand-600 text-white'
+                                : 'bg-surface-lighter text-ink-muted'
+                            }`}
+                          >
+                            {i + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="font-semibold truncate">
+                              {g.nome}
+                              {isTop && (
+                                <span className="ml-2 rounded-full bg-brand-600/15 px-2 py-0.5 text-[10px] font-semibold text-brand-600 align-middle">
+                                  Mais rentável
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-ink-faint truncate mt-0.5">
+                              {g.local ? `${g.local} · ` : ''}
+                              {g.sessoes} {g.sessoes === 1 ? 'sessão' : 'sessões'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-bold text-brand-600 text-lg tabular-nums leading-none">
+                            {formatCurrency(g.mediaPorSessao)}
+                          </p>
+                          <p className="text-[11px] text-ink-faint mt-1 leading-none">média/sessão</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-2.5 h-1.5 rounded-full bg-surface-lighter overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-brand-600 to-brand-400"
+                          style={{ width: `${barPct}%` }}
+                        />
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+                        <EventoMetric value={formatCurrency(g.receitaTotal)} label="receita total" />
+                        <EventoMetric value={formatCurrency(g.ticketMedio)} label="ticket médio" />
+                        <EventoMetric value={`${formatCurrency(g.receitaPorHora)}/h`} label="receita/h" />
+                        <EventoMetric value={`${g.chopeLitros.toFixed(1)} L`} label="chope" />
+                        <EventoMetric value={String(g.comandasAtendidas)} label="comandas" />
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums shrink-0">
-                      <span className="font-bold text-brand-600">{formatCurrency(e.receitaTotal)}</span>
-                      <span className="text-ink-muted">{formatCurrency(e.receitaPorHora)}/h</span>
-                      <span className="text-ink-muted">{e.chopeLitrosPorHora.toFixed(1)} L/h</span>
-                      <span className="text-ink-faint">{e.comandasAtendidas} comandas</span>
-                      {e.vendasAvulsas > 0 && (
-                        <span className="text-ink-faint">
-                          {e.vendasAvulsas} avulsas · {formatCurrency(e.receitaAvulsa)}
-                        </span>
-                      )}
-                    </div>
-                  </Link>
-                ))}
+                  );
+                })}
               </div>
             </section>
           )}
 
           <section className="card p-4 sm:p-5">
-            <h2 className="section-label mb-4">Evolução semanal</h2>
-            <div className="h-56 sm:h-64 -mx-1">
+            <div className="flex items-baseline justify-between gap-2 mb-4">
+              <h2 className="section-label mb-0">Evolução semanal</h2>
+              <p className="text-xs text-ink-faint">Receita e comandas por semana</p>
+            </div>
+            <div className="h-60 sm:h-72 -mx-1">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={weeklyChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(17,24,39,0.06)" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} />
+                <ComposedChart data={weeklyChart} margin={{ top: 20, right: 4, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="weeklyReceitaFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--color-chart-primary)" stopOpacity={0.95} />
+                      <stop offset="100%" stopColor="var(--color-chart-primary)" stopOpacity={0.5} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line-soft)" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: 'var(--color-ink-muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
                   <YAxis
-                    tick={{ fill: '#9ca3af', fontSize: 11 }}
+                    yAxisId="receita"
+                    tick={{ fill: 'var(--color-ink-faint)', fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
                     tickFormatter={(v) => (v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`)}
                     width={48}
                   />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Bar dataKey="receita" fill="var(--color-brand-600)" radius={[6, 6, 0, 0]} maxBarSize={48} />
-                </BarChart>
+                  <YAxis
+                    yAxisId="comandas"
+                    orientation="right"
+                    allowDecimals={false}
+                    tick={{ fill: 'var(--color-purple)', fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={28}
+                  />
+                  <Tooltip content={<WeeklyTooltip />} cursor={{ fill: 'var(--color-line-soft)', opacity: 0.4 }} />
+                  <Legend
+                    verticalAlign="top"
+                    align="right"
+                    height={28}
+                    iconType="circle"
+                    iconSize={9}
+                    wrapperStyle={{ fontSize: 12 }}
+                  />
+                  <Bar
+                    yAxisId="receita"
+                    dataKey="receita"
+                    name="Receita"
+                    fill="url(#weeklyReceitaFill)"
+                    radius={[6, 6, 0, 0]}
+                    maxBarSize={52}
+                  >
+                    <LabelList
+                      dataKey="receita"
+                      position="top"
+                      fill="var(--color-ink-faint)"
+                      fontSize={10}
+                      formatter={(v: number) =>
+                        v > 0 ? (v >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${v.toFixed(0)}`) : ''
+                      }
+                    />
+                  </Bar>
+                  <Line
+                    yAxisId="comandas"
+                    type="monotone"
+                    dataKey="comandas"
+                    name="Comandas"
+                    stroke="var(--color-purple)"
+                    strokeWidth={2.5}
+                    dot={{ fill: 'var(--color-purple)', strokeWidth: 0, r: 3.5 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </section>
@@ -420,7 +664,7 @@ export function DashboardPage() {
                   </div>
                   <div className="h-2 rounded-full bg-surface-lighter overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-brand-600 to-brand-400"
+                      className="chart-bar-fill"
                       style={{ width: `${Math.max(p.percentual, 4)}%` }}
                     />
                   </div>
@@ -428,19 +672,29 @@ export function DashboardPage() {
               ))}
             </section>
 
-            <section className="space-y-3">
-              <h2 className="section-label">Produtos mais vendidos</h2>
-              <div className="card divide-y divide-line p-0 overflow-hidden">
+            <section className="card p-4 sm:p-5">
+              <h2 className="section-label mb-2">Produtos mais vendidos</h2>
+              <div className="divide-y divide-line">
                 {porProduto.map((p, i) => (
-                  <div key={p.produtoId} className="flex items-center gap-3 px-4 py-3">
-                    <span className="w-6 text-sm font-bold text-ink-faint tabular-nums">{i + 1}</span>
+                  <div key={p.produtoId} className="flex items-center gap-4 py-3">
+                    <span className="w-6 shrink-0 text-sm font-bold text-ink-faint tabular-nums">{i + 1}</span>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold truncate">{p.nome}</p>
                       <p className="text-xs text-ink-faint">
                         {p.quantidade} un · {p.percentual}% do faturamento
                       </p>
                     </div>
-                    <p className="font-bold text-brand-600 tabular-nums shrink-0">{formatCurrency(p.receita)}</p>
+                    <div className="w-20 shrink-0 text-right">
+                      {p.chopeMl > 0 ? (
+                        <>
+                          <p className="font-semibold tabular-nums text-ink leading-none">{formatLiters(p.chopeMl)}</p>
+                          <p className="text-[11px] text-ink-faint mt-1 leading-none">chope</p>
+                        </>
+                      ) : (
+                        <span className="text-ink-faint">—</span>
+                      )}
+                    </div>
+                    <p className="w-28 shrink-0 text-right font-bold text-brand-600 tabular-nums">{formatCurrency(p.receita)}</p>
                   </div>
                 ))}
               </div>
@@ -474,10 +728,10 @@ export function DashboardPage() {
         <div className="h-64 sm:h-72 -mx-1">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={annualChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(17,24,39,0.06)" vertical={false} />
-              <XAxis dataKey="name" tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line-soft)" vertical={false} />
+              <XAxis dataKey="name" tick={{ fill: 'var(--color-ink-muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
               <YAxis
-                tick={{ fill: '#9ca3af', fontSize: 11 }}
+                tick={{ fill: 'var(--color-ink-faint)', fontSize: 11 }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v) => (v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`)}
@@ -487,10 +741,10 @@ export function DashboardPage() {
               <Line
                 type="monotone"
                 dataKey="receita"
-                stroke="var(--color-brand-600)"
+                stroke="var(--color-chart-primary)"
                 strokeWidth={2.5}
-                dot={{ fill: 'var(--color-brand-600)', strokeWidth: 0, r: 4 }}
-                activeDot={{ r: 6, fill: 'var(--color-brand-500)' }}
+                dot={{ fill: 'var(--color-chart-primary)', strokeWidth: 0, r: 4 }}
+                activeDot={{ r: 6, fill: 'var(--color-chart-primary-active)' }}
               />
             </LineChart>
           </ResponsiveContainer>

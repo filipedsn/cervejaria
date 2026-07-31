@@ -58,9 +58,9 @@ export function AparenciaPage({ embedded }: { embedded?: boolean } = {}) {
           A logo aparece no topo do app para identificar sua cervejaria. O visual do app usa a identidade padrão Quiver Tap.
         </p>
         <div className="flex items-center gap-4">
-          {(logoPreview || assetUrl(cervejaria?.logoUrl)) ? (
+          {(logoPreview || assetUrl(cervejaria?.logoUrl, cervejaria?.updatedAt)) ? (
             <img
-              src={logoPreview ?? assetUrl(cervejaria?.logoUrl)!}
+              src={logoPreview ?? assetUrl(cervejaria?.logoUrl, cervejaria?.updatedAt)!}
               alt="Logo"
               className="h-20 w-20 rounded-xl object-contain bg-surface-lighter border border-line"
             />
@@ -88,9 +88,9 @@ export function AparenciaPage({ embedded }: { embedded?: boolean } = {}) {
       <div className="card space-y-3">
         <h3 className="font-semibold text-ink">Pré-visualização</h3>
         <div className="rounded-xl border border-line bg-canvas p-4 flex items-center gap-3">
-          {(logoPreview || assetUrl(cervejaria?.logoUrl)) ? (
+          {(logoPreview || assetUrl(cervejaria?.logoUrl, cervejaria?.updatedAt)) ? (
             <img
-              src={logoPreview ?? assetUrl(cervejaria?.logoUrl)!}
+              src={logoPreview ?? assetUrl(cervejaria?.logoUrl, cervejaria?.updatedAt)!}
               alt=""
               className="h-8 w-8 rounded-lg object-contain bg-surface border border-line shrink-0"
             />

@@ -41,9 +41,23 @@ function weekLabel(ano: number, mes: number, semana: number): string {
   return `${start}–${end} ${mesAbrev}`;
 }
 
+export type EventoTipoFiltro = 'todos' | 'agendado' | 'avulso';
+
+function eventoTipoWhere(tipo: EventoTipoFiltro) {
+  if (tipo === 'agendado') return { serieId: { not: null } };
+  if (tipo === 'avulso') return { serieId: null, recorrencia: 'NENHUMA' as const };
+  return {};
+}
+
 type ClosedComanda = Awaited<ReturnType<typeof fetchClosedComandas>>[number];
 
-async function fetchClosedComandas(cervejariaId: string, inicio: Date, fim: Date, trailerId?: string) {
+async function fetchClosedComandas(
+  cervejariaId: string,
+  inicio: Date,
+  fim: Date,
+  trailerId?: string,
+  tipo: EventoTipoFiltro = 'todos',
+) {
   return prisma.comanda.findMany({
     where: {
       status: 'FECHADA',
@@ -52,6 +66,7 @@ async function fetchClosedComandas(cervejariaId: string, inicio: Date, fim: Date
         cervejariaId,
         status: 'FECHADO',
         ...(trailerId ? { trailerId } : {}),
+        ...eventoTipoWhere(tipo),
       },
     },
     include: {
@@ -68,7 +83,7 @@ function aggregateComandas(comandas: ClosedComanda[], fechadoPorCtx: ReportFecha
   let receitaAvulsa = 0;
   let chopeMl = 0;
   const porPagamento = new Map<string, number>();
-  const porProduto = new Map<string, { produtoId: string; nome: string; quantidade: number; receita: number }>();
+  const porProduto = new Map<string, { produtoId: string; nome: string; quantidade: number; receita: number; chopeMl: number }>();
   const porFuncionario = new Map<string, { usuarioId: string | null; nome: string; comandas: number; receita: number }>();
 
   for (const comanda of comandas) {
@@ -99,14 +114,18 @@ function aggregateComandas(comandas: ClosedComanda[], fechadoPorCtx: ReportFecha
         nome: item.produto.nome,
         quantidade: 0,
         receita: 0,
+        chopeMl: 0,
       };
       prod.quantidade += item.quantidade;
       prod.receita += itemValor;
-      porProduto.set(item.produtoId, prod);
 
       if (isBebidaChope(item.produto.tipo, item.produto.formato)) {
-        chopeMl += item.volumeMl * item.quantidade;
+        const ml = item.volumeMl * item.quantidade;
+        chopeMl += ml;
+        prod.chopeMl += ml;
       }
+
+      porProduto.set(item.produtoId, prod);
     }
 
     accumulatePorPagamento(porPagamento, comanda);
@@ -177,11 +196,62 @@ function eventDurationHours(evento: {
   return Math.max(Math.round(hours * 100) / 100, 0.25);
 }
 
+type EventoDuracaoInput = {
+  data: Date | null;
+  horaInicio: string;
+  horaFim: string | null;
+  createdAt: Date;
+  encerradoEm: Date | null;
+};
+
+/**
+ * Busca o instante real de início de cada sessão a partir do TransacaoLog
+ * (ação de abertura). Retorna o createdAt mais antigo por evento.
+ */
+async function fetchSessaoInicios(eventoIds: string[]): Promise<Map<string, Date>> {
+  const map = new Map<string, Date>();
+  if (eventoIds.length === 0) return map;
+
+  const logs = await prisma.transacaoLog.findMany({
+    where: {
+      eventoId: { in: eventoIds },
+      tipo: { in: ['EVENTO_SESSAO_INICIADA', 'EVENTO_CRIADO', 'EVENTO_REABERTO'] },
+    },
+    select: { eventoId: true, createdAt: true },
+  });
+
+  for (const log of logs) {
+    if (!log.eventoId) continue;
+    const atual = map.get(log.eventoId);
+    if (!atual || log.createdAt < atual) map.set(log.eventoId, log.createdAt);
+  }
+
+  return map;
+}
+
+/**
+ * Duração real da sessão: do "Iniciar sessão" (TransacaoLog, com fallback para
+ * createdAt do evento) até o "Encerrar evento" (encerradoEm). Se não der para
+ * determinar, cai na janela planejada (horaInicio/horaFim).
+ */
+function eventRealDurationHours(evento: EventoDuracaoInput, sessaoInicio?: Date): number {
+  const start = sessaoInicio ?? evento.createdAt ?? null;
+  const end = evento.encerradoEm ?? null;
+
+  if (start && end) {
+    const hours = (end.getTime() - start.getTime()) / MS_HOUR;
+    if (hours > 0) return Math.max(Math.round(hours * 100) / 100, 0.25);
+  }
+
+  return eventDurationHours(evento);
+}
+
 async function buildEventosRecentes(
   cervejariaId: string,
   inicio: Date,
   fim: Date,
   trailerId?: string,
+  tipo: EventoTipoFiltro = 'todos',
 ) {
   const eventos = await prisma.evento.findMany({
     where: {
@@ -189,6 +259,7 @@ async function buildEventosRecentes(
       status: 'FECHADO',
       data: { gte: inicio, lte: fim },
       ...(trailerId ? { trailerId } : {}),
+      ...eventoTipoWhere(tipo),
     },
     select: {
       id: true,
@@ -197,6 +268,8 @@ async function buildEventosRecentes(
       data: true,
       horaInicio: true,
       horaFim: true,
+      createdAt: true,
+      encerradoEm: true,
     },
     orderBy: [{ data: 'desc' }, { horaInicio: 'desc' }],
     take: 8,
@@ -204,13 +277,18 @@ async function buildEventosRecentes(
 
   if (eventos.length === 0) return [];
 
-  const comandas = await prisma.comanda.findMany({
-    where: {
-      eventoId: { in: eventos.map((e) => e.id) },
-      status: 'FECHADA',
-    },
-    include: { itens: { include: { produto: true } } },
-  });
+  const eventoIds = eventos.map((e) => e.id);
+
+  const [comandas, sessaoInicios] = await Promise.all([
+    prisma.comanda.findMany({
+      where: {
+        eventoId: { in: eventoIds },
+        status: 'FECHADA',
+      },
+      include: { itens: { include: { produto: true } } },
+    }),
+    fetchSessaoInicios(eventoIds),
+  ]);
 
   const comandasByEvento = new Map<string, typeof comandas>();
   for (const comanda of comandas) {
@@ -242,7 +320,7 @@ async function buildEventosRecentes(
 
     const comandasAtendidas = evComandas.length;
     const ticketMedio = comandasAtendidas > 0 ? receitaTotal / comandasAtendidas : 0;
-    const duracaoHoras = eventDurationHours(evento);
+    const duracaoHoras = eventRealDurationHours(evento, sessaoInicios.get(evento.id));
 
     return {
       eventoId: evento.id,
@@ -270,11 +348,128 @@ async function buildEventosRecentes(
   });
 }
 
+/**
+ * Comparativo de rentabilidade por agenda (série recorrente).
+ * Agrupa as ocorrências agendadas (serieId != null) do período pela série-mãe.
+ */
+async function buildComparativoAgendas(
+  cervejariaId: string,
+  inicio: Date,
+  fim: Date,
+  trailerId?: string,
+) {
+  const eventos = await prisma.evento.findMany({
+    where: {
+      cervejariaId,
+      status: 'FECHADO',
+      data: { gte: inicio, lte: fim },
+      serieId: { not: null },
+      ...(trailerId ? { trailerId } : {}),
+    },
+    select: {
+      id: true,
+      serieId: true,
+      nome: true,
+      local: true,
+      data: true,
+      horaInicio: true,
+      horaFim: true,
+      createdAt: true,
+      encerradoEm: true,
+      serie: { select: { nome: true, local: true } },
+    },
+  });
+
+  if (eventos.length === 0) return [];
+
+  const eventoIds = eventos.map((e) => e.id);
+
+  const [comandas, sessaoInicios] = await Promise.all([
+    prisma.comanda.findMany({
+      where: {
+        eventoId: { in: eventoIds },
+        status: 'FECHADA',
+      },
+      include: { itens: { include: { produto: true } } },
+    }),
+    fetchSessaoInicios(eventoIds),
+  ]);
+
+  const comandasByEvento = new Map<string, typeof comandas>();
+  for (const comanda of comandas) {
+    const list = comandasByEvento.get(comanda.eventoId) ?? [];
+    list.push(comanda);
+    comandasByEvento.set(comanda.eventoId, list);
+  }
+
+  type Grupo = {
+    serieId: string;
+    nome: string;
+    local: string;
+    sessoes: number;
+    receitaTotal: number;
+    comandasAtendidas: number;
+    chopeMl: number;
+    horasTotais: number;
+  };
+
+  const grupos = new Map<string, Grupo>();
+
+  for (const evento of eventos) {
+    const serieId = evento.serieId!;
+    const grupo = grupos.get(serieId) ?? {
+      serieId,
+      nome: evento.serie?.nome ?? evento.nome,
+      local: evento.serie?.local ?? evento.local,
+      sessoes: 0,
+      receitaTotal: 0,
+      comandasAtendidas: 0,
+      chopeMl: 0,
+      horasTotais: 0,
+    };
+
+    const evComandas = comandasByEvento.get(evento.id) ?? [];
+    grupo.sessoes += 1;
+    grupo.comandasAtendidas += evComandas.length;
+    grupo.horasTotais += eventRealDurationHours(evento, sessaoInicios.get(evento.id));
+
+    for (const comanda of evComandas) {
+      grupo.receitaTotal += toNumber(comanda.total);
+      for (const item of comanda.itens) {
+        if (isBebidaChope(item.produto.tipo, item.produto.formato)) {
+          grupo.chopeMl += item.volumeMl * item.quantidade;
+        }
+      }
+    }
+
+    grupos.set(serieId, grupo);
+  }
+
+  return Array.from(grupos.values())
+    .map((g) => ({
+      serieId: g.serieId,
+      nome: g.nome,
+      local: g.local,
+      sessoes: g.sessoes,
+      receitaTotal: Math.round(g.receitaTotal * 100) / 100,
+      mediaPorSessao: g.sessoes > 0 ? Math.round((g.receitaTotal / g.sessoes) * 100) / 100 : 0,
+      ticketMedio:
+        g.comandasAtendidas > 0 ? Math.round((g.receitaTotal / g.comandasAtendidas) * 100) / 100 : 0,
+      receitaPorHora: g.horasTotais > 0 ? Math.round((g.receitaTotal / g.horasTotais) * 100) / 100 : 0,
+      comandasAtendidas: g.comandasAtendidas,
+      chopeLitros: Math.round((g.chopeMl / 1000) * 10) / 10,
+      litrosPorHora:
+        g.horasTotais > 0 ? Math.round((g.chopeMl / 1000 / g.horasTotais) * 100) / 100 : 0,
+    }))
+    .sort((a, b) => b.mediaPorSessao - a.mediaPorSessao);
+}
+
 export async function buildCervejariaDashboard(
   cervejariaId: string,
   ano: number,
   mes: number,
   trailerId?: string,
+  tipo: EventoTipoFiltro = 'todos',
 ) {
   const now = new Date();
   const anoVigente = now.getFullYear();
@@ -282,10 +477,11 @@ export async function buildCervejariaDashboard(
 
   const fechadoPorCtx = await getReportFechadoPorContext(cervejariaId);
 
-  const [comandasMes, comandasAno, eventosRecentes] = await Promise.all([
-    fetchClosedComandas(cervejariaId, inicio, fim, trailerId),
-    fetchClosedComandas(cervejariaId, yearBounds(anoVigente).inicio, yearBounds(anoVigente).fim, trailerId),
-    buildEventosRecentes(cervejariaId, inicio, fim, trailerId),
+  const [comandasMes, comandasAno, eventosRecentes, comparativoAgendas] = await Promise.all([
+    fetchClosedComandas(cervejariaId, inicio, fim, trailerId, tipo),
+    fetchClosedComandas(cervejariaId, yearBounds(anoVigente).inicio, yearBounds(anoVigente).fim, trailerId, tipo),
+    buildEventosRecentes(cervejariaId, inicio, fim, trailerId, tipo),
+    buildComparativoAgendas(cervejariaId, inicio, fim, trailerId),
   ]);
 
   const resumo = aggregateComandas(comandasMes, fechadoPorCtx);
@@ -306,7 +502,7 @@ export async function buildCervejariaDashboard(
 
   const mesAnterior = mes === 1 ? { ano: ano - 1, mes: 12 } : { ano, mes: mes - 1 };
   const boundsAnterior = monthBounds(mesAnterior.ano, mesAnterior.mes);
-  const comandasMesAnterior = await fetchClosedComandas(cervejariaId, boundsAnterior.inicio, boundsAnterior.fim, trailerId);
+  const comandasMesAnterior = await fetchClosedComandas(cervejariaId, boundsAnterior.inicio, boundsAnterior.fim, trailerId, tipo);
   const resumoAnterior = aggregateComandas(comandasMesAnterior, fechadoPorCtx);
 
   const variacaoReceita =
@@ -334,6 +530,7 @@ export async function buildCervejariaDashboard(
     porProduto: resumo.porProduto,
     porFuncionario: resumo.porFuncionario,
     eventosRecentes,
+    comparativoAgendas,
     receitaAnual: receitaAnual.map((m) => ({
       ...m,
       receita: Math.round(m.receita * 100) / 100,

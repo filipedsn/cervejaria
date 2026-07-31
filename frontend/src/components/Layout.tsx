@@ -167,9 +167,9 @@ export function Layout() {
             <>
               <div className="flex items-center justify-between gap-3 min-h-10">
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  {assetUrl(cervejaria?.logoUrl) ? (
+                  {assetUrl(cervejaria?.logoUrl, cervejaria?.updatedAt) ? (
                     <img
-                      src={assetUrl(cervejaria?.logoUrl)!}
+                      src={assetUrl(cervejaria?.logoUrl, cervejaria?.updatedAt)!}
                       alt={cervejaria?.nome ?? 'Logo da cervejaria'}
                       data-brewery-branding
                       className="h-8 w-8 rounded-lg object-contain bg-surface-lighter border border-line shrink-0"

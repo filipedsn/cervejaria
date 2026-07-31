@@ -51,7 +51,7 @@ export function RankingPeriodoFullscreenPage() {
     [isDemo, demoCount],
   );
 
-  const { data: apiData, isLoading: loadingRanking } = useQuery({
+  const { data: apiData, isLoading: loadingRanking, dataUpdatedAt } = useQuery({
     queryKey: ['ranking-periodo', eventoId, escopo, escopo === 'mensal' ? mes : null],
     queryFn: () => {
       const query = escopo === 'mensal' ? `?mes=${encodeURIComponent(mes)}` : '';
@@ -80,13 +80,14 @@ export function RankingPeriodoFullscreenPage() {
 
   return (
     <RankingTvView
-      kicker={escopo === 'mensal' ? 'Ranking mensal' : 'Ranking geral'}
+      kicker={escopo === 'mensal' ? 'Ranking mensal ao vivo' : 'Ranking geral ao vivo'}
       title={isDemo ? 'Simulação de ranking' : (data?.evento.nome ?? 'Evento')}
       subtitle={subtitle}
       badge={isDemo ? `Simulação · ${demoCount} participantes` : undefined}
       exitTo={eventoId ? rankingPeriodoPageUrl(eventoId, escopo) : '/eventos'}
       entries={entries}
-      footerNote="Atualiza automaticamente a cada venda ou ajuste de chope neste trailer"
+      lastUpdatedAt={isDemo ? Date.now() : dataUpdatedAt}
+      isDemo={isDemo}
     />
   );
 }

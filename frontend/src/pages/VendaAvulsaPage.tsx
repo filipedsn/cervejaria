@@ -176,19 +176,14 @@ export function VendaAvulsaPage() {
       {error && !showPayment && <div className="alert-error">{error}</div>}
 
       <div className="card space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="section-label mb-0">Itens</h2>
-          <button
-            type="button"
-            className="touch-btn-orange touch-btn-sm shrink-0"
-            onClick={() => setShowAddItem(true)}
-          >
-            + Item
-          </button>
-        </div>
+        <h2 className="section-label mb-0">Itens</h2>
+
+        <button type="button" className="touch-btn-orange w-full" onClick={() => setShowAddItem(true)}>
+          + Item
+        </button>
 
         {cart.length === 0 ? (
-          <p className="text-sm text-ink-faint text-center py-6">Adicione itens para vender</p>
+          <p className="text-sm text-ink-faint text-center py-2">Adicione itens para vender</p>
         ) : (
           <div className="space-y-2">
             {cart.map((line) => (

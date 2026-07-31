@@ -19,6 +19,7 @@ export interface CervejariaAuthPayload {
   corPrimaria: string | null;
   corSecundaria: string | null;
   corPaleta: BrandThemeV2 | null;
+  updatedAt: string;
 }
 
 type CervejariaBrandingRow = {
@@ -28,6 +29,7 @@ type CervejariaBrandingRow = {
   logoUrl: string | null;
   corPrimaria: string | null;
   corPaleta: unknown;
+  updatedAt: Date;
 };
 
 export function formatCervejariaAuth(cervejaria: CervejariaBrandingRow): CervejariaAuthPayload {
@@ -40,6 +42,7 @@ export function formatCervejariaAuth(cervejaria: CervejariaBrandingRow): Cerveja
     corPrimaria: cervejaria.corPrimaria,
     corSecundaria: theme?.corSecundaria ?? null,
     corPaleta: theme,
+    updatedAt: cervejaria.updatedAt.toISOString(),
   };
 }
 

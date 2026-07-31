@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, formatEventoWhen } from '../lib/api';
 import type { RankingEntry } from '../types';
 import { buildDemoRankingResponse } from '../lib/ranking-demo';
 import { useRankingLiveUpdates, useRankingSocketReconnect } from '../hooks/useRankingLiveUpdates';
@@ -10,7 +10,14 @@ import { Loading } from '../components/Loading';
 import { RankingTvView } from '../components/RankingTvView';
 
 interface RankingResponse {
-  evento: { id: string; nome: string; local: string; data: string | null };
+  evento: {
+    id: string;
+    nome: string;
+    local: string;
+    data: string | null;
+    horaInicio?: string;
+    horaFim?: string | null;
+  };
   ranking: RankingEntry[];
 }
 
@@ -29,7 +36,7 @@ export function RankingFullscreenPage() {
   useRankingLiveUpdates(eventoId, !isDemo);
   useRankingSocketReconnect(eventoId, !isDemo);
 
-  const { data: apiData, isLoading: loadingRanking } = useQuery({
+  const { data: apiData, isLoading: loadingRanking, dataUpdatedAt } = useQuery({
     queryKey: ['ranking', eventoId],
     queryFn: () => api.get<RankingResponse>(`/api/ranking/evento/${eventoId}`),
     enabled: !!eventoId && !isDemo && !authLoading,
@@ -41,15 +48,26 @@ export function RankingFullscreenPage() {
 
   if (!isDemo && (authLoading || loadingRanking)) return <Loading />;
 
+  const subtitle = isDemo
+    ? 'Simulação'
+    : [data?.evento.local, data?.evento.data ? formatEventoWhen({
+        data: data.evento.data,
+        horaInicio: data.evento.horaInicio ?? '00:00',
+        horaFim: data.evento.horaFim,
+      }) : null]
+        .filter(Boolean)
+        .join(' · ');
+
   return (
     <RankingTvView
-      kicker="Ranking do evento"
+      kicker="Ranking ao vivo"
       title={data?.evento.nome ?? '...'}
-      subtitle={data?.evento.local}
+      subtitle={subtitle || undefined}
       badge={isDemo ? `Simulação · ${demoCount} participantes` : undefined}
       exitTo={isDemo ? '/ranking' : `/ranking/${eventoId}`}
       entries={data?.ranking ?? []}
-      footerNote="Atualiza automaticamente a cada venda ou ajuste de chope neste evento"
+      lastUpdatedAt={isDemo ? Date.now() : dataUpdatedAt}
+      isDemo={isDemo}
     />
   );
 }

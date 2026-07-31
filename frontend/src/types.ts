@@ -37,6 +37,7 @@ export interface Cervejaria {
   corPrimaria?: string | null;
   corSecundaria?: string | null;
   corPaleta?: BrandTheme | null;
+  updatedAt?: string;
 }
 
 export interface AuthResponse {
@@ -479,6 +480,7 @@ export interface CervejariaDashboard {
     quantidade: number;
     receita: number;
     percentual: number;
+    chopeMl: number;
   }>;
   porFuncionario: Array<{
     usuarioId: string | null;
@@ -501,6 +503,19 @@ export interface CervejariaDashboard {
     duracaoHoras: number;
     receitaPorHora: number;
     chopeLitrosPorHora: number;
+  }>;
+  comparativoAgendas: Array<{
+    serieId: string;
+    nome: string;
+    local: string;
+    sessoes: number;
+    receitaTotal: number;
+    mediaPorSessao: number;
+    ticketMedio: number;
+    receitaPorHora: number;
+    comandasAtendidas: number;
+    chopeLitros: number;
+    litrosPorHora: number;
   }>;
   receitaAnual: Array<{
     mes: number;

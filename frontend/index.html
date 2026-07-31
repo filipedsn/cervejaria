@@ -16,7 +16,11 @@
     <script>
       (function () {
         var t = localStorage.getItem('quiver:theme');
-        if (t === 'dark') document.documentElement.dataset.theme = 'dark';
+        if (t === 'dark') {
+          document.documentElement.dataset.theme = 'dark';
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.content = '#0b1116';
+        }
       })();
     </script>
   </head>

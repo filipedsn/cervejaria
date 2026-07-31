@@ -1,56 +1,14 @@
-import { useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import { formatLiters } from '../lib/api';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { computeRankingStats } from '../lib/ranking-tv-stats';
 import type { RankingEntry } from '../types';
-
-const MEDALS = ['🥇', '🥈', '🥉'] as const;
-
-function podiumClass(posicao: number) {
-  if (posicao === 1) return 'border-brand-300/40 bg-brand-400/15';
-  if (posicao === 2) return 'border-white/20 bg-white/5';
-  if (posicao === 3) return 'border-amber-700/30 bg-amber-900/20';
-  return 'border-white/8 bg-surface-light/80';
-}
-
-function RankingRow({ entry, compact }: { entry: RankingEntry; compact?: boolean }) {
-  const isTop3 = entry.posicao <= 3;
-
-  return (
-    <div
-      className={`flex items-center gap-3 rounded-xl border ${podiumClass(entry.posicao)} ${
-        compact ? 'px-3 py-2.5' : 'px-4 py-3 md:px-5 md:py-4'
-      } ${isTop3 && !compact ? 'md:py-5' : ''}`}
-    >
-      <div
-        className={`shrink-0 flex items-center justify-center font-bold tabular-nums ${
-          isTop3 ? 'text-2xl md:text-3xl w-10 md:w-12' : 'text-base md:text-lg w-8 md:w-10 text-white/45'
-        }`}
-      >
-        {isTop3 ? MEDALS[entry.posicao - 1] : `#${entry.posicao}`}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <p
-          className={`font-bold truncate ${
-            isTop3 ? 'text-lg md:text-2xl' : 'text-sm md:text-base'
-          }`}
-        >
-          {entry.nome}
-        </p>
-      </div>
-
-      <div className="shrink-0 text-right">
-        <p
-          className={`font-bold text-brand-300 tabular-nums ${
-            isTop3 ? 'text-xl md:text-3xl' : 'text-base md:text-lg'
-          }`}
-        >
-          {formatLiters(entry.totalMl)}
-        </p>
-      </div>
-    </div>
-  );
-}
+import { RankingHeader } from './ranking/RankingHeader';
+import { RankingPodium } from './ranking/RankingPodium';
+import { RankingRestGrid } from './ranking/RankingRestGrid';
+import { RankingStatsBar } from './ranking/RankingStatsBar';
+import { QuiverTapSignature } from './ranking/QuiverTapSignature';
+import { RankingUpdatedAt } from './ranking/RankingUpdatedAt';
+import { useRankingLiveIndicator, useRankingSocketConnected } from '../hooks/useRankingSocketConnected';
 
 export interface RankingTvViewProps {
   kicker: string;
@@ -59,7 +17,18 @@ export interface RankingTvViewProps {
   badge?: string;
   exitTo: string;
   entries: RankingEntry[];
-  footerNote?: string;
+  lastUpdatedAt?: number;
+  isDemo?: boolean;
+  breweryName?: string | null;
+  breweryLogoUrl?: string | null;
+}
+
+function EmptyIcon() {
+  return (
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-40" aria-hidden>
+      <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 export function RankingTvView({
@@ -69,125 +38,85 @@ export function RankingTvView({
   badge,
   exitTo,
   entries,
-  footerNote = 'Atualiza automaticamente a cada venda ou ajuste de chope',
+  lastUpdatedAt,
+  isDemo = false,
+  breweryName: breweryNameProp,
+  breweryLogoUrl: breweryLogoUrlProp,
 }: RankingTvViewProps) {
-  const listRef = useRef<HTMLDivElement>(null);
-  const top3 = entries.filter((e) => e.posicao <= 3);
-  const rest = entries.filter((e) => e.posicao > 3);
+  const { cervejaria } = useAuth();
+  const socketConnected = useRankingSocketConnected(!isDemo);
+  const isLive = useRankingLiveIndicator(socketConnected, isDemo);
+  const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
+
+  const breweryName = breweryNameProp ?? cervejaria?.nome ?? (isDemo ? 'Cervejaria Demo' : null);
+  const breweryLogoUrl = breweryLogoUrlProp ?? cervejaria?.logoUrl ?? null;
+
+  const stats = useMemo(() => computeRankingStats(entries), [entries]);
+  const leaderMl = stats?.leaderMl ?? 0;
+
+  const syncFullscreen = useCallback(() => {
+    setIsNativeFullscreen(!!document.fullscreenElement);
+  }, []);
 
   useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
+    document.addEventListener('fullscreenchange', syncFullscreen);
+    return () => document.removeEventListener('fullscreenchange', syncFullscreen);
+  }, [syncFullscreen]);
 
-    const overflow = el.scrollHeight > el.clientHeight + 8;
-    if (!overflow) return;
+  const toggleNativeFullscreen = useCallback(() => {
+    const root = document.querySelector('.qt-tv');
+    if (!root) return;
 
-    let direction = 1;
-    let pauseUntil = 0;
-
-    const tick = () => {
-      if (Date.now() < pauseUntil) return;
-
-      el.scrollTop += direction * 0.6;
-
-      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
-      const atTop = el.scrollTop <= 0;
-
-      if (atBottom && direction === 1) {
-        direction = -1;
-        pauseUntil = Date.now() + 2500;
-      } else if (atTop && direction === -1) {
-        direction = 1;
-        pauseUntil = Date.now() + 2500;
-      }
-    };
-
-    const interval = window.setInterval(tick, 30);
-    const pauseScroll = () => {
-      pauseUntil = Date.now() + 8000;
-    };
-
-    el.addEventListener('mouseenter', pauseScroll);
-    el.addEventListener('touchstart', pauseScroll, { passive: true });
-
-    return () => {
-      window.clearInterval(interval);
-      el.removeEventListener('mouseenter', pauseScroll);
-      el.removeEventListener('touchstart', pauseScroll);
-    };
-  }, [entries.length]);
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void root.requestFullscreen?.();
+    }
+  }, []);
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-surface overflow-hidden">
-      <header className="shrink-0 px-4 md:px-8 pt-3 md:pt-5 pb-2 md:pb-3 border-b border-white/5 text-center relative">
-        <Link
-          to={exitTo}
-          className="absolute top-3 right-4 md:top-4 md:right-8 touch-btn-secondary text-xs md:text-sm min-h-10 px-3 md:px-4 z-10"
-          aria-label="Sair da tela cheia"
-        >
-          <span className="md:hidden">✕ Sair</span>
-          <span className="hidden md:inline">Sair da tela cheia</span>
-        </Link>
-        {badge && (
-          <p className="inline-flex items-center gap-2 text-xs md:text-sm font-semibold px-3 py-0.5 rounded-full bg-brand-400/15 text-brand-300 border border-brand-400/25 mb-2">
-            {badge}
-          </p>
-        )}
-        <p className="text-brand-400 text-xs md:text-sm font-semibold tracking-[0.2em] uppercase">
-          {kicker}
-        </p>
-        <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold mt-0.5 leading-tight truncate px-2">
-          {title}
-        </h1>
-        {subtitle && <p className="text-white/45 text-sm md:text-base mt-0.5">{subtitle}</p>}
-      </header>
+    <div className="tap-champions">
+      <RankingHeader
+        kicker={kicker}
+        title={title}
+        subtitle={subtitle}
+        badge={badge}
+        breweryName={breweryName}
+        breweryLogoUrl={breweryLogoUrl}
+        breweryLogoVersion={cervejaria?.updatedAt}
+        isLive={isLive}
+      />
 
-      <main className="flex-1 min-h-0 flex flex-col px-4 md:px-8 py-4 md:py-6 gap-4 md:gap-5">
-        {entries.length === 0 && (
-          <div className="flex-1 flex flex-col items-center justify-center text-center">
-            <p className="text-6xl md:text-8xl mb-4">🍺</p>
-            <p className="text-xl md:text-3xl text-white/50">Aguardando chope nas taps...</p>
-          </div>
-        )}
+      <RankingStatsBar
+        stats={stats}
+        exitTo={exitTo}
+        isNativeFullscreen={isNativeFullscreen}
+        onToggleNativeFullscreen={toggleNativeFullscreen}
+      />
 
-        {top3.length > 0 && (
-          <section
-            className={`shrink-0 grid gap-2 md:gap-3 ${
-              top3.length === 1
-                ? 'grid-cols-1 max-w-md mx-auto w-full'
-                : top3.length === 2
-                  ? 'grid-cols-2 max-w-3xl mx-auto w-full'
-                  : 'grid-cols-1 sm:grid-cols-3'
-            }`}
-          >
-            {top3.map((entry) => (
-              <RankingRow key={entry.clienteId} entry={entry} />
-            ))}
-          </section>
-        )}
-
-        {rest.length > 0 && (
-          <section className="flex-1 min-h-0 flex flex-col">
-            <p className="shrink-0 text-xs md:text-sm font-semibold uppercase tracking-wide text-white/35 mb-2 px-1">
-              Demais colocações
+      <main className="tap-champions-main">
+        {entries.length === 0 ? (
+          <div className="tap-champions-empty">
+            <EmptyIcon />
+            <p className="tap-champions-empty-title">
+              Ainda não há consumo registrado neste evento.
             </p>
-            <div
-              ref={listRef}
-              className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-smooth ranking-tv-scroll pr-1"
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2 md:gap-2.5 pb-4">
-                {rest.map((entry) => (
-                  <RankingRow key={entry.clienteId} entry={entry} compact />
-                ))}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {entries.length > 0 && entries.length <= 3 && (
-          <p className="shrink-0 text-center text-white/25 text-xs md:text-sm">{footerNote}</p>
+          </div>
+        ) : (
+          <>
+            <RankingPodium entries={entries} leaderMl={leaderMl} />
+            <RankingRestGrid entries={entries} leaderMl={leaderMl} />
+          </>
         )}
       </main>
+
+      <footer className="tap-champions-footer">
+        <RankingUpdatedAt lastUpdatedAt={lastUpdatedAt} />
+        <p className="tap-champions-footer-note">
+          Quiver TAP: Transforme consumo em experiência.
+        </p>
+        <QuiverTapSignature />
+      </footer>
     </div>
   );
 }

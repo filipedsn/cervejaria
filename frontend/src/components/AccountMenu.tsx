@@ -79,7 +79,7 @@ export function AccountMenu({
 
   if (!open) return null;
 
-  const logo = assetUrl(cervejaria?.logoUrl);
+  const logo = assetUrl(cervejaria?.logoUrl, cervejaria?.updatedAt);
   const initials = getInitials(usuario.nome);
 
   return (
@@ -96,17 +96,7 @@ export function AccountMenu({
         </div>
 
         <div className="shrink-0 px-4 pt-2 pb-3">
-          <div className="flex items-center justify-between px-1">
-            <h2 className="text-lg font-bold text-ink">Conta</h2>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Fechar"
-              className="min-h-12 min-w-12 flex items-center justify-center text-2xl text-ink-muted rounded-xl active:bg-surface-lighter"
-            >
-              ×
-            </button>
-          </div>
+          <h2 className="text-lg font-bold text-ink px-1">Conta</h2>
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
@@ -194,7 +184,7 @@ export function AccountMenu({
         </div>
 
         <div className="shrink-0 border-t border-line px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-2">
-          <button type="button" onClick={onClose} className="touch-btn-secondary w-full">
+          <button type="button" onClick={onClose} className="touch-btn-danger w-full">
             Voltar
           </button>
 

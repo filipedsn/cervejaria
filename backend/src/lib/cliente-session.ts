@@ -93,7 +93,7 @@ export async function verifyClienteSession(
 export function emitPortalSessionExpired(
   io: SocketIOServer | undefined,
   eventoId: string,
-  reason: 'evento_fechado' | 'evento_reaberto',
+  reason: 'evento_fechado' | 'evento_reaberto' | 'evento_revertido',
 ) {
   io?.to(`evento:${eventoId}`).emit('portal:session-expired', { eventoId, reason });
 }

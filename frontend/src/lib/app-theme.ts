@@ -4,7 +4,7 @@ const STORAGE_KEY = 'quiver:theme';
 
 export const THEME_COLORS: Record<AppTheme, string> = {
   light: '#f7f8fa',
-  dark: '#0a1218',
+  dark: '#0b1116',
 };
 
 export function getAppTheme(): AppTheme {

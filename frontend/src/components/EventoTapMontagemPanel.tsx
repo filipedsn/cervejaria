@@ -157,6 +157,11 @@ export function EventoTapMontagemPanel({
     setMontagemProdutoId('');
   };
 
+  const closeTapsModal = () => {
+    setShowTapsModal(false);
+    closeModal();
+  };
+
   const openTap = (tap: TapComChope) => {
     if (!eventoAberto) return;
     setSelectedTap(tap);
@@ -413,11 +418,14 @@ export function EventoTapMontagemPanel({
 
         <Modal
           open={showTapsModal}
-          onClose={() => {
-            setShowTapsModal(false);
-            closeModal();
-          }}
+          onClose={closeTapsModal}
           title={selectedTap ? tapDetailTitle : prevista ? 'Montagem prevista' : 'Taps do evento'}
+          hideHeaderClose
+          footer={
+            <button type="button" className="touch-btn-secondary w-full" onClick={closeTapsModal}>
+              Fechar
+            </button>
+          }
         >
           {selectedTap ? (
             tapDetailBody
