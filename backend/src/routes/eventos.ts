@@ -26,6 +26,7 @@ import {
 } from '../lib/tap-montagem.js';
 import { ensureDefaultTaps, assertTrailerChopeDisponivel } from '../lib/trailer-defaults.js';
 import { registrarTransacao, listTransacoesEvento, transacoesToCsv } from '../lib/transacao-log.js';
+import { reverterEventoParaAgendado } from '../lib/evento-reverter.js';
 import {
   getEventoCardapio,
   salvarCardapioEvento,
@@ -903,6 +904,31 @@ export async function eventosRoutes(app: FastifyInstance) {
 
     emitToCervejaria(app.io, user.cervejariaId!, { type: 'evento:updated', data: updated });
     return updated;
+  });
+
+  app.post('/:id/reverter-para-agendado', async (request, reply) => {
+    const user = getAuthUser(request);
+    const { id } = request.params as { id: string };
+
+    const result = await reverterEventoParaAgendado({
+      eventoId: id,
+      cervejariaId: user.cervejariaId!,
+      usuarioId: user.sub,
+      io: app.io,
+    });
+
+    if (!('ok' in result) || !result.ok) {
+      return reply.status(result.status).send({ error: result.error });
+    }
+
+    emitToCervejaria(app.io, user.cervejariaId!, { type: 'evento:deleted', data: { id } });
+
+    return {
+      modo: result.modo,
+      serieId: result.serieId,
+      data: result.dataKey,
+      mensagem: result.mensagem,
+    };
   });
 
   app.delete('/:id', async (request, reply) => {

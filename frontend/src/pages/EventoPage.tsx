@@ -21,6 +21,7 @@ import { AgendaWeekStrip } from '../components/AgendaWeekStrip';
 import { ReabrirEventoButton } from '../components/ReabrirEventoButton';
 
 import { ExcluirEventoButton, canExcluirEvento } from '../components/ExcluirEventoButton';
+import { ReverterEventoButton } from '../components/ReverterEventoButton';
 
 import { reabrirPrazoExpirado } from '../lib/evento-utils';
 
@@ -144,11 +145,19 @@ function EditEventoButton({
   onClick,
   className,
   primary = false,
+  orange = false,
 }: {
   onClick: () => void;
   className?: string;
   primary?: boolean;
+  orange?: boolean;
 }) {
+
+  const variant = orange
+    ? 'touch-btn-orange touch-btn-sm px-4'
+    : primary
+      ? 'touch-btn-primary touch-btn-sm px-4'
+      : 'btn-outline-light touch-btn-sm';
 
   return (
 
@@ -156,7 +165,7 @@ function EditEventoButton({
 
       type="button"
 
-      className={`${primary ? 'touch-btn-primary touch-btn-sm px-4' : 'btn-outline-light touch-btn-sm'} ${className ?? ''}`}
+      className={`${variant} ${className ?? ''}`}
 
       onClick={onClick}
 
@@ -219,7 +228,7 @@ function ActiveSessionHero({
           className="touch-btn-orange flex flex-1 min-w-0 items-center justify-center min-h-12 rounded-xl font-bold"
           onClick={onComandas}
         >
-          Continuar comandas
+          Comandas
         </button>
 
         <EditarCardapioEventoButton eventoId={evento.id} eventoAberto iconOnly />
@@ -235,11 +244,11 @@ function ActiveSessionHero({
 
       </div>
 
-      {canExcluirEvento(evento) && (
-        <ExcluirEventoButton
+      {evento.status === 'ABERTO' && (
+        <ReverterEventoButton
           eventoId={evento.id}
           eventoNome={evento.nome}
-          eventoAberto
+          isSessaoSerie={!!evento.serieId}
           compact
           className="w-full"
         />
@@ -316,7 +325,7 @@ function AgendaSerieCard({
         )}
 
         <div className="grid grid-cols-2 gap-2">
-          <EditEventoButton onClick={onEdit} primary className="w-full min-h-[3rem]" />
+          <EditEventoButton onClick={onEdit} orange className="w-full min-h-[3rem]" />
           <Link
             to={`/ranking/serie/${serie.id}`}
             className="touch-btn-secondary touch-btn-sm w-full inline-flex items-center justify-center min-h-[3rem]"
@@ -393,18 +402,16 @@ function AgendaSessaoCard({
         <div className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <button type="button" className="touch-btn-orange flex-1 min-w-[10rem]" onClick={onRetomar}>
-              Continuar comandas
+              Comandas
             </button>
             <VerRankingButton eventoId={sessao.id} fullWidth={false} />
           </div>
           <EditEventoButton onClick={onEdit} className="w-full" />
-          {canExcluirEvento(sessao) && (
-            <ExcluirEventoButton
-              eventoId={sessao.id}
-              eventoNome={sessao.nome}
-              eventoAberto
-            />
-          )}
+          <ReverterEventoButton
+            eventoId={sessao.id}
+            eventoNome={sessao.nome}
+            isSessaoSerie={!!sessao.serieId}
+          />
         </div>
       )}
 
