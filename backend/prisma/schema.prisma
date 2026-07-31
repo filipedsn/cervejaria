@@ -5,28 +5,37 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  schemas  = ["public", "quiosque"]
 }
 
 enum UserRole {
   ADMIN
   DONO
   ATENDENTE
+
+  @@schema("public")
 }
 
 enum EventStatus {
   ABERTO
   FECHADO
+
+  @@schema("public")
 }
 
 enum ComandaStatus {
   ABERTA
   FECHADA
   CANCELADA
+
+  @@schema("public")
 }
 
 enum ComandaTipo {
   COMANDA
   AVULSA
+
+  @@schema("public")
 }
 
 enum PaymentMethod {
@@ -35,11 +44,15 @@ enum PaymentMethod {
   CARTAO
   CARTAO_DEBITO
   CARTAO_CREDITO
+
+  @@schema("public")
 }
 
 enum ProdutoTipo {
   BEBIDA
   COMIDA
+
+  @@schema("public")
 }
 
 enum FormatoBebida {
@@ -48,6 +61,8 @@ enum FormatoBebida {
   LONGNECK
   GARRAFA
   OUTRO
+
+  @@schema("public")
 }
 
 enum TransacaoTipo {
@@ -66,12 +81,16 @@ enum TransacaoTipo {
   TAP_CHOPE_POSICIONADO
   TAP_CHOPE_REMOVIDO
   TAP_ATIVO_ALTERADO
+
+  @@schema("public")
 }
 
 enum CadastroOrigem {
   STAFF
   AUTO_ATENDIMENTO
   COMANDA
+
+  @@schema("public")
 }
 
 enum PedidoClienteStatus {
@@ -79,6 +98,8 @@ enum PedidoClienteStatus {
   CONFIRMADO
   RECUSADO
   CANCELADO
+
+  @@schema("public")
 }
 
 model Cervejaria {
@@ -101,6 +122,12 @@ model Cervejaria {
   cardapios Cardapio[]
   transacoes TransacaoLog[]
   eventoSerieExclusoes EventoSerieExclusao[]
+
+  configuracaoQuiosque ConfiguracaoQuiosque?
+  pontosVenda          PontoVenda[]
+  produtosQuiosque     ProdutoQuiosque[]
+
+  @@schema("public")
 }
 
 model Trailer {
@@ -117,6 +144,8 @@ model Trailer {
   eventos    Evento[]
 
   @@index([cervejariaId])
+
+  @@schema("public")
 }
 
 model Usuario {
@@ -138,6 +167,8 @@ model Usuario {
   pushSubscriptions     PushSubscription[]
 
   @@index([cervejariaId])
+
+  @@schema("public")
 }
 
 model PushSubscription {
@@ -153,6 +184,8 @@ model PushSubscription {
 
   @@unique([usuarioId, endpoint])
   @@index([usuarioId])
+
+  @@schema("public")
 }
 
 model PasswordResetToken {
@@ -166,6 +199,8 @@ model PasswordResetToken {
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
   @@index([usuarioId])
+
+  @@schema("public")
 }
 
 model Produto {
@@ -191,6 +226,8 @@ model Produto {
   cardapios  CardapioProduto[]
 
   @@index([cervejariaId])
+
+  @@schema("public")
 }
 
 model Preco {
@@ -202,6 +239,8 @@ model Preco {
   produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 
   @@unique([produtoId, volumeMl])
+
+  @@schema("public")
 }
 
 model Tap {
@@ -222,6 +261,8 @@ model Tap {
   @@unique([trailerId, numero])
   @@index([cervejariaId])
   @@index([trailerId])
+
+  @@schema("public")
 }
 
 /// Chope posicionado em um tap durante um evento (histórico de trocas no dia).
@@ -239,11 +280,15 @@ model TapMontagem {
 
   @@index([eventoId, encerradoEm])
   @@index([tapId, eventoId])
+
+  @@schema("public")
 }
 
 enum RecorrenciaTipo {
   NENHUMA
   SEMANAL
+
+  @@schema("public")
 }
 
 model Evento {
@@ -282,6 +327,8 @@ model Evento {
   @@index([cervejariaId, recorrencia])
   @@index([trailerId])
   @@index([cardapioId])
+
+  @@schema("public")
 }
 
 /// Ocorrência cancelada de uma agenda fixa semanal (pula um dia específico).
@@ -297,6 +344,8 @@ model EventoSerieExclusao {
 
   @@unique([serieId, data])
   @@index([cervejariaId])
+
+  @@schema("public")
 }
 
 /// Cardápio reutilizável (comida e bebidas, sem chope).
@@ -313,6 +362,8 @@ model Cardapio {
   eventos    Evento[]
 
   @@index([cervejariaId])
+
+  @@schema("public")
 }
 
 model CardapioProduto {
@@ -325,6 +376,8 @@ model CardapioProduto {
 
   @@unique([cardapioId, produtoId])
   @@index([cardapioId])
+
+  @@schema("public")
 }
 
 model Cliente {
@@ -351,6 +404,8 @@ model Cliente {
   @@unique([cervejariaId, telefone])
   @@index([cervejariaId, nome])
   @@index([cervejariaId, ativo])
+
+  @@schema("public")
 }
 
 /// Agregados de consumo — extensível para fidelização (pontos) no futuro.
@@ -364,6 +419,8 @@ model ClienteEstatisticas {
   updatedAt              DateTime @updatedAt
 
   cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@schema("public")
 }
 
 model Comanda {
@@ -389,6 +446,8 @@ model Comanda {
   @@index([eventoId, status])
   @@index([eventoId, status, tipo])
   @@index([fechadoPorId])
+
+  @@schema("public")
 }
 
 model ItemComanda {
@@ -407,6 +466,8 @@ model ItemComanda {
 
   @@index([comandaId])
   @@index([tapId])
+
+  @@schema("public")
 }
 
 model PedidoCliente {
@@ -431,6 +492,8 @@ model PedidoCliente {
   @@index([eventoId, status])
   @@index([comandaId])
   @@index([clienteId])
+
+  @@schema("public")
 }
 
 model PedidoClienteItem {
@@ -446,6 +509,8 @@ model PedidoClienteItem {
   produto Produto       @relation(fields: [produtoId], references: [id], onDelete: Restrict)
 
   @@index([pedidoId])
+
+  @@schema("public")
 }
 
 /// Comida e bebidas (não chope) disponíveis no evento — definido antes de abrir.
@@ -460,6 +525,8 @@ model EventoProduto {
 
   @@unique([eventoId, produtoId])
   @@index([eventoId])
+
+  @@schema("public")
 }
 
 model Pagamento {
@@ -472,6 +539,8 @@ model Pagamento {
   comanda Comanda @relation(fields: [comandaId], references: [id], onDelete: Cascade)
 
   @@index([comandaId])
+
+  @@schema("public")
 }
 
 model TransacaoLog {
@@ -495,10 +564,70 @@ model TransacaoLog {
   @@index([eventoId, createdAt])
   @@index([comandaId, createdAt])
   @@index([tipo])
+
+  @@schema("public")
 }
 
 model SystemConfig {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Modulo Quiosque — schema proprio, isolado da operacao de cervejaria.
+// Compartilha apenas Cervejaria (cadastro da empresa) e Usuario (autenticacao).
+// ---------------------------------------------------------------------------
+
+/// Ativa o modulo Quiosque para uma empresa. A existencia da linha e o que liga
+/// o modulo, evitando qualquer coluna nova nas tabelas da cervejaria.
+model ConfiguracaoQuiosque {
+  cervejariaId    String   @id
+  ativo           Boolean  @default(true)
+  controlaEstoque Boolean  @default(false)
+  temCozinha      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+
+  @@schema("quiosque")
+}
+
+/// Quiosque fisico. Uma empresa pode ter varios.
+model PontoVenda {
+  id           String   @id @default(cuid())
+  cervejariaId String
+  nome         String
+  ativo        Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+
+  @@index([cervejariaId, ativo])
+  @@schema("quiosque")
+}
+
+/// Catalogo proprio do quiosque, sem volume e sem tap: o produto e vendido por
+/// unidade. Separado de Produto para nao carregar as regras de chope.
+model ProdutoQuiosque {
+  id              String   @id @default(cuid())
+  cervejariaId    String
+  nome            String
+  categoria       String?
+  precoUnit       Decimal  @db.Decimal(10, 2)
+  exigePreparo    Boolean  @default(false)
+  controlaEstoque Boolean  @default(true)
+  ativo           Boolean  @default(true)
+  ordem           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+
+  @@index([cervejariaId, ativo, ordem])
+  @@schema("quiosque")
 }
