@@ -4,6 +4,7 @@ import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
 const ABAS = [
   { to: '/quiosque', label: 'Vender', end: true, somenteCozinha: false },
   { to: '/quiosque/comandas', label: 'Comandas', end: false, somenteCozinha: false },
+  { to: '/quiosque/caixa', label: 'Caixa', end: false, somenteCozinha: false },
   { to: '/quiosque/cozinha', label: 'Cozinha', end: false, somenteCozinha: true },
   { to: '/quiosque/catalogo', label: 'Catálogo', end: false, somenteCozinha: false },
 ];

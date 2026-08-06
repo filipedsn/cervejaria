@@ -114,3 +114,59 @@ export function rotuloComanda(comanda: Pick<ComandaQuiosque, 'tipo' | 'identific
   const prefixo = comanda.tipo === 'MESA' ? 'Mesa' : comanda.tipo === 'FICHA' ? 'Ficha' : '';
   return prefixo ? `${prefixo} ${comanda.identificador}` : (comanda.identificador ?? '');
 }
+
+export type StatusCaixa = 'ABERTO' | 'FECHADO';
+export type TipoMovimentoCaixa = 'SANGRIA' | 'SUPRIMENTO';
+
+export interface MovimentoCaixa {
+  id: string;
+  tipo: TipoMovimentoCaixa;
+  valor: number;
+  observacao: string | null;
+  registradoPorId: string;
+  createdAt: string;
+}
+
+export interface ResumoCaixa {
+  id: string;
+  pontoVendaId: string;
+  diaOperacional: string;
+  status: StatusCaixa;
+  trocoInicial: number;
+  abertoPorId: string;
+  abertoEm: string;
+  fechadoPorId: string | null;
+  fechadoEm: string | null;
+  observacaoFechamento: string | null;
+  gaveta: {
+    trocoInicial: number;
+    entradasDinheiro: number;
+    suprimentos: number;
+    sangrias: number;
+    esperadoDinheiro: number;
+  };
+  esperado: {
+    dinheiro: number;
+    pix: number;
+    cartaoDebito: number;
+    cartaoCredito: number;
+    totalVendas: number;
+  };
+  contado: {
+    dinheiro: number;
+    pix: number;
+    cartaoDebito: number;
+    cartaoCredito: number;
+  } | null;
+  diferencas: {
+    dinheiro: number;
+    pix: number;
+    cartaoDebito: number;
+    cartaoCredito: number;
+  } | null;
+  movimentos: MovimentoCaixa[];
+}
+
+export interface CaixaResposta {
+  sessao: ResumoCaixa | null;
+}

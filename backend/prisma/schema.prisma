@@ -128,6 +128,7 @@ model Cervejaria {
   produtosQuiosque     ProdutoQuiosque[]
   comandasQuiosque     ComandaQuiosque[]
   pedidosQuiosque      PedidoQuiosque[]
+  sessoesCaixaQuiosque SessaoCaixaQuiosque[]
 
   @@schema("public")
 }
@@ -610,9 +611,10 @@ model PontoVenda {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  cervejaria Cervejaria        @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  cervejaria Cervejaria          @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   comandas   ComandaQuiosque[]
   pedidos    PedidoQuiosque[]
+  sessoesCaixa SessaoCaixaQuiosque[]
 
   @@index([cervejariaId, ativo])
   @@schema("quiosque")
@@ -767,5 +769,62 @@ model PagamentoQuiosque {
   comanda ComandaQuiosque @relation(fields: [comandaId], references: [id], onDelete: Cascade)
 
   @@index([comandaId])
+  @@schema("quiosque")
+}
+
+enum StatusCaixaQuiosque {
+  ABERTO
+  FECHADO
+
+  @@schema("quiosque")
+}
+
+enum TipoMovimentoCaixaQuiosque {
+  SANGRIA
+  SUPRIMENTO
+
+  @@schema("quiosque")
+}
+
+/// Uma sessao de caixa por ponto de venda e dia de operacao.
+model SessaoCaixaQuiosque {
+  id             String              @id @default(cuid())
+  cervejariaId   String
+  pontoVendaId   String
+  diaOperacional DateTime            @db.Date
+  status         StatusCaixaQuiosque @default(ABERTO)
+  trocoInicial   Decimal             @db.Decimal(10, 2)
+  abertoPorId    String
+  abertoEm       DateTime            @default(now())
+  fechadoPorId   String?
+  fechadoEm      DateTime?
+  /// Conferencia fisica no fechamento. Nulo enquanto o caixa esta aberto.
+  contadoDinheiro    Decimal? @db.Decimal(10, 2)
+  contadoPix         Decimal? @db.Decimal(10, 2)
+  contadoCartaoDebito  Decimal? @db.Decimal(10, 2)
+  contadoCartaoCredito Decimal? @db.Decimal(10, 2)
+  observacaoFechamento String?
+
+  cervejaria  Cervejaria               @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  pontoVenda  PontoVenda               @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
+  movimentos  MovimentoCaixaQuiosque[]
+
+  @@unique([pontoVendaId, diaOperacional])
+  @@index([cervejariaId, diaOperacional])
+  @@schema("quiosque")
+}
+
+model MovimentoCaixaQuiosque {
+  id              String                     @id @default(cuid())
+  sessaoId        String
+  tipo            TipoMovimentoCaixaQuiosque
+  valor           Decimal                    @db.Decimal(10, 2)
+  observacao      String?
+  registradoPorId String
+  createdAt       DateTime                   @default(now())
+
+  sessao SessaoCaixaQuiosque @relation(fields: [sessaoId], references: [id], onDelete: Cascade)
+
+  @@index([sessaoId])
   @@schema("quiosque")
 }

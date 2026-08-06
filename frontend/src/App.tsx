@@ -13,6 +13,7 @@ import { QuiosqueComandasPage } from './pages/quiosque/QuiosqueComandasPage';
 import { QuiosqueComandaDetailPage } from './pages/quiosque/QuiosqueComandaDetailPage';
 import { QuiosqueCatalogoPage } from './pages/quiosque/QuiosqueCatalogoPage';
 import { QuiosqueCozinhaPage } from './pages/quiosque/QuiosqueCozinhaPage';
+import { QuiosqueCaixaPage } from './pages/quiosque/QuiosqueCaixaPage';
 import { useQuiosqueContexto } from './hooks/useQuiosqueContexto';
 import { AdminConfiguracoesPage } from './pages/AdminConfiguracoesPage';
 import { SelecionarTrailerPage } from './pages/SelecionarTrailerPage';
@@ -275,6 +276,7 @@ const router = createBrowserRouter([
                           { index: true, element: <QuiosquePdvPage /> },
                           { path: 'comandas', element: <QuiosqueComandasPage /> },
                           { path: 'comandas/:id', element: <QuiosqueComandaDetailPage /> },
+                          { path: 'caixa', element: <QuiosqueCaixaPage /> },
                           {
                             element: <RequireCozinhaQuiosque />,
                             children: [{ path: 'cozinha', element: <QuiosqueCozinhaPage /> }],

@@ -7,6 +7,7 @@ import { produtosQuiosqueRoutes } from './produtos.js';
 import { comandasQuiosqueRoutes } from './comandas.js';
 import { vendasQuiosqueRoutes } from './vendas.js';
 import { cozinhaQuiosqueRoutes } from './cozinha.js';
+import { caixaQuiosqueRoutes } from './caixa.js';
 
 const createPontoVendaSchema = z.object({
   nome: z.string().trim().min(1),
@@ -65,5 +66,6 @@ export async function quiosqueRoutes(app: FastifyInstance) {
     await moduloScope.register(comandasQuiosqueRoutes, { prefix: '/comandas' });
     await moduloScope.register(vendasQuiosqueRoutes, { prefix: '/vendas' });
     await moduloScope.register(cozinhaQuiosqueRoutes, { prefix: '/cozinha' });
+    await moduloScope.register(caixaQuiosqueRoutes, { prefix: '/caixa' });
   });
 }

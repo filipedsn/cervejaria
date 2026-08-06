@@ -15,6 +15,7 @@ import {
   notificarPedidoNovo,
   notificarPedidosDaComanda,
 } from '../../lib/quiosque/cozinha.js';
+import { assertCaixaAberto } from '../../lib/quiosque/caixa.js';
 
 const itemSchema = z.object({
   produtoId: z.string().min(1),
@@ -99,6 +100,10 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
     });
     if (!pontoVenda) return reply.status(404).send({ error: 'Ponto de venda não encontrado' });
 
+    if (body.itens.length > 0) {
+      await assertCaixaAberto(cervejariaId, body.pontoVendaId, dia);
+    }
+
     const jaAberta = await prisma.comandaQuiosque.findFirst({
       where: {
         cervejariaId,
@@ -167,6 +172,8 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'Esta comanda já foi fechada' });
     }
 
+    await assertCaixaAberto(cervejariaId, comanda.pontoVendaId, comanda.diaOperacional);
+
     const { atualizada, pedido } = await prisma.$transaction(async (tx) => {
       const itens = await resolverItens(tx, cervejariaId, body.itens);
       const pedidoCriado = await criarPedido(tx, {
@@ -212,6 +219,8 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
     if (resumo.total === 0) {
       return reply.status(409).send({ error: 'Lance ao menos um item antes de cobrar' });
     }
+
+    await assertCaixaAberto(cervejariaId, comanda.pontoVendaId, comanda.diaOperacional);
 
     const saldoEmCentavos = centavos(resumo.saldo);
     const pagamentos = resolverPagamentos(body.pagamentos, saldoEmCentavos);

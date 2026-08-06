@@ -11,6 +11,7 @@ import {
   totalEmCentavos,
 } from '../../lib/quiosque/venda.js';
 import { notificarPedidoNovo } from '../../lib/quiosque/cozinha.js';
+import { assertCaixaAberto } from '../../lib/quiosque/caixa.js';
 
 const vendaAvulsaSchema = z.object({
   pontoVendaId: z.string().min(1),
@@ -55,6 +56,8 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
       where: { id: body.pontoVendaId, cervejariaId, ativo: true },
     });
     if (!pontoVenda) return reply.status(404).send({ error: 'Ponto de venda não encontrado' });
+
+    await assertCaixaAberto(cervejariaId, body.pontoVendaId, dia);
 
     const { comanda, pedido } = await prisma.$transaction(async (tx) => {
       const itens = await resolverItens(tx, cervejariaId, body.itens);

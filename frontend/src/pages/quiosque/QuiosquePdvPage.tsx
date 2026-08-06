@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../../lib/api';
 import { Modal } from '../../components/Modal';
@@ -11,6 +11,7 @@ import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
 import {
   TIPOS_COMANDA,
   totalCarrinho,
+  type CaixaResposta,
   type ComandaQuiosque,
   type FormaPagamento,
   type LinhaCarrinho,
@@ -33,12 +34,21 @@ export function QuiosquePdvPage() {
   const [erro, setErro] = useState('');
   const [recibo, setRecibo] = useState<ComandaQuiosque | null>(null);
 
+  const pontoAtivo = pontoVendaId || pontosVenda[0]?.id || '';
+
   const { data: produtos, isLoading } = useQuery({
     queryKey: ['quiosque-produtos-ativos'],
     queryFn: () => api.get<ProdutoQuiosque[]>('/api/quiosque/produtos'),
   });
 
-  const pontoAtivo = pontoVendaId || pontosVenda[0]?.id || '';
+  const { data: caixaData } = useQuery({
+    queryKey: ['quiosque-caixa', pontoAtivo],
+    queryFn: () => api.get<CaixaResposta>(`/api/quiosque/caixa?pontoVendaId=${pontoAtivo}`),
+    enabled: Boolean(pontoAtivo),
+    refetchInterval: 30_000,
+  });
+
+  const caixaAberto = caixaData?.sessao?.status === 'ABERTO';
   const temCozinha = contexto.ativo && contexto.temCozinha;
   const total = totalCarrinho(carrinho);
 
@@ -82,6 +92,7 @@ export function QuiosquePdvPage() {
       }),
     onSuccess: (venda) => {
       queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
+      queryClient.invalidateQueries({ queryKey: ['quiosque-caixa', pontoAtivo] });
       limpar();
       setRecibo(venda);
     },
@@ -118,6 +129,16 @@ export function QuiosquePdvPage() {
 
   return (
     <div className={`space-y-4 ${carrinho.length > 0 ? 'page-with-action-bar' : ''}`}>
+      {!caixaAberto && pontoAtivo && (
+        <div className="alert-error">
+          Caixa fechado.{' '}
+          <Link to="/quiosque/caixa" className="underline font-semibold">
+            Abra o caixa
+          </Link>{' '}
+          para registrar vendas.
+        </div>
+      )}
+
       {pontosVenda.length > 1 && (
         <div>
           <label className="label">Ponto de venda</label>
@@ -155,6 +176,7 @@ export function QuiosquePdvPage() {
               <button
                 type="button"
                 className="touch-btn-primary"
+                disabled={!caixaAberto}
                 onClick={() => {
                   setErro('');
                   setDialogo('comanda');
@@ -165,6 +187,7 @@ export function QuiosquePdvPage() {
               <button
                 type="button"
                 className="touch-btn-orange"
+                disabled={!caixaAberto}
                 onClick={() => {
                   setErro('');
                   setDialogo('pagamento');
