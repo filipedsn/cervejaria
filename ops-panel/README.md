@@ -79,7 +79,7 @@ O deploy e **recusado** (HTTP 409) quando:
 | Impedimento | Motivo |
 |---|---|
 | `head-fora-do-main` | o commit local nao esta em `origin/main` — falta merge do PR |
-| `working-tree-suja` | ha arquivo nao commitado, e o `deploy.ps1` compila a working tree |
+| `working-tree-suja` | ha arquivo nao commitado (o painel lista os caminhos) |
 | `ci-nao-verificavel` | sem `GITHUB_TOKEN` ou com erro na API do GitHub |
 | `check-ausente` / `check-rodando` / `check-falhou` | um check obrigatorio nao passou |
 | `migrations-sem-confirmacao` | ha migration nova e falta o aceite explicito na tela |
@@ -97,6 +97,23 @@ A regra do gate e uma funcao pura testada em `src/release.test.mjs`:
 
 ```powershell
 npm run ops:test
+```
+
+### Roteiro no painel (sem depender do agente)
+
+O console de release mostra um **roteiro numerado** (passos 1–4):
+
+1. `git pull origin main` — avisa se o PC esta atrasado
+2. Working tree — lista arquivos sujos e o que fazer
+3. CI / gate — checks obrigatorios
+4. Campo **DEPLOY** — habilita o botao **Liberar deploy** (sem `prompt()` do navegador)
+
+Apos o deploy, o **Passo 5 (smoke)** roda sozinho: `/api/ready`, frontend, manifest e amostra de logo.
+
+No terminal, antes de abrir o painel:
+
+```powershell
+npm run prod:ready
 ```
 
 ## Rollback

@@ -166,11 +166,13 @@ export function evaluateReleaseGate(state, options = {}) {
   }
 
   if (state.workingTreeDirty) {
+    const lista = (state.dirtyFiles || []).slice(0, 5).join(', ');
+    const sufixo = lista ? ` Arquivos: ${lista}${state.dirtyCount > 5 ? '…' : ''}.` : '';
     blockers.push({
       code: 'working-tree-suja',
       message:
         `Ha ${state.dirtyCount} arquivo(s) alterado(s) e nao commitado(s). O deploy compila a working tree, ` +
-        'ou seja, publicaria codigo que nao esta em nenhum commit.',
+        `ou seja, publicaria codigo que nao esta em nenhum commit.${sufixo}`,
       overridable: true,
     });
   }
@@ -276,12 +278,17 @@ export async function collectGitState(projectRoot, deployedSha) {
   const [author = '', date = '', message = ''] = (subject.stdout || '').split('\u001f');
 
   const dirtyLines = (status.stdout || '').split('\n').filter((l) => l.trim());
+  const dirtyFiles = dirtyLines.map((line) => line.slice(3).trim()).filter(Boolean);
   const headOnOriginMain = originMain.ok
     ? (await runGit(['merge-base', '--is-ancestor', head.stdout, 'origin/main'], projectRoot)).ok
     : false;
 
   const behind = originMain.ok
     ? await runGit(['rev-list', '--count', `${head.stdout}..origin/main`], projectRoot)
+    : { ok: false, stdout: '0' };
+
+  const ahead = originMain.ok
+    ? await runGit(['rev-list', '--count', `origin/main..${head.stdout}`], projectRoot)
     : { ok: false, stdout: '0' };
 
   const pending = deployedSha
@@ -300,6 +307,7 @@ export async function collectGitState(projectRoot, deployedSha) {
     head: { sha: head.stdout, branch: branch.stdout, author, date, message },
     workingTreeDirty: dirtyLines.length > 0,
     dirtyCount: dirtyLines.length,
+    dirtyFiles,
     originMain: {
       sha: originMain.ok ? originMain.stdout : null,
       fetchOk: fetch.ok,
@@ -307,6 +315,7 @@ export async function collectGitState(projectRoot, deployedSha) {
     },
     headOnOriginMain,
     behindOriginMain: Number(behind.stdout || 0) || 0,
+    aheadOriginMain: Number(ahead.stdout || 0) || 0,
     pending: pending.commits,
     pendingError: pending.error,
     migrationsChanged: (migrations.stdout || '').split('\n').filter((l) => l.trim()),

@@ -1,0 +1,108 @@
+# Verificacoes de prontidao para deploy (somente leitura).
+# Equivalente ao que o ops-panel mostra no roteiro - rode antes de abrir :3099.
+
+$ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\_config.ps1"
+
+function Test-DockerContainerRunning {
+  param([string]$Name)
+  try {
+    $found = & docker ps --filter "name=$Name" --filter 'status=running' --format '{{.Names}}' 2>$null
+  } catch {
+    return $false
+  }
+  return [bool]($found -match [regex]::Escape($Name))
+}
+
+$settings = Get-QuiverTapSettings
+$paths = Resolve-QuiverTapPaths -Settings $settings
+Set-Location $paths.ProjectRoot
+
+Write-Host ''
+Write-Host 'Quiver Tap - Prontidao para deploy' -ForegroundColor Cyan
+Write-Host '===================================' -ForegroundColor Cyan
+Write-Host ''
+
+$blockers = 0
+
+Write-Host '[1/4] Git sincronizado' -ForegroundColor Cyan
+$branch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim()
+$fetch = git fetch origin main --quiet 2>&1
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "  AVISO: git fetch falhou: $fetch" -ForegroundColor Yellow
+}
+
+$behind = [int](git rev-list --count HEAD..origin/main 2>$null)
+$ahead = [int](git rev-list --count origin/main..HEAD 2>$null)
+$onMain = git merge-base --is-ancestor HEAD origin/main 2>$null; $ancestorOk = ($LASTEXITCODE -eq 0)
+
+if ($branch -ne 'main') {
+  Write-Host "  BLOQUEIO: branch atual e '$branch', esperado main." -ForegroundColor Red
+  $blockers++
+} elseif ($behind -gt 0) {
+  Write-Host "  BLOQUEIO: faltam $behind commit(s). Rode: git pull origin main" -ForegroundColor Red
+  $blockers++
+} elseif (-not $ancestorOk) {
+  Write-Host '  BLOQUEIO: HEAD nao esta em origin/main (merge o PR e faca pull).' -ForegroundColor Red
+  $blockers++
+} elseif ($ahead -gt 0) {
+  Write-Host "  AVISO: local esta $ahead commit(s) a frente de origin/main." -ForegroundColor Yellow
+} else {
+  Write-Host "  OK - main alinhada com origin/main ($((git rev-parse --short HEAD).Trim()))" -ForegroundColor Green
+}
+
+Write-Host ''
+Write-Host '[2/4] Working tree' -ForegroundColor Cyan
+$dirty = git status --porcelain
+if ($dirty) {
+  Write-Host '  BLOQUEIO: arquivos sujos (apague, commite ou ignore):' -ForegroundColor Red
+  $dirty | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+  $blockers++
+} else {
+  Write-Host '  OK - working tree limpa' -ForegroundColor Green
+}
+
+Write-Host ''
+Write-Host '[3/4] Ambiente' -ForegroundColor Cyan
+if (Test-DockerContainerRunning -Name 'cervejaria-db') {
+  Write-Host '  OK - container cervejaria-db rodando' -ForegroundColor Green
+} else {
+  Write-Host '  BLOQUEIO: container cervejaria-db parado' -ForegroundColor Red
+  $blockers++
+}
+
+$logosDir = Join-Path $paths.ProdUploadsDir 'logos'
+if (Test-Path $logosDir) {
+  $logoCount = (Get-ChildItem $logosDir -Filter '*.webp' -ErrorAction SilentlyContinue).Count
+  Write-Host "  OK - uploads em backend/uploads-prod ($logoCount logo(s))" -ForegroundColor Green
+} else {
+  Write-Host '  AVISO: pasta backend/uploads-prod/logos ainda nao existe' -ForegroundColor Yellow
+}
+
+Write-Host ''
+Write-Host '[4/4] Ops-panel' -ForegroundColor Cyan
+try {
+  $release = Invoke-RestMethod -Uri 'http://127.0.0.1:3099/api/release' -TimeoutSec 10
+  if ($release.gate.allowed) {
+    Write-Host '  OK - gate liberado em http://127.0.0.1:3099' -ForegroundColor Green
+    Write-Host "  Pendentes: $($release.pending.Count) commit(s)" -ForegroundColor Gray
+  } else {
+    Write-Host '  BLOQUEIO: gate do ops-panel recusou:' -ForegroundColor Red
+    $release.gate.blockers | ForEach-Object { Write-Host "    - $($_.message)" -ForegroundColor Red }
+    $blockers++
+  }
+} catch {
+  Write-Host '  AVISO: ops-panel indisponivel - rode npm run ops:start' -ForegroundColor Yellow
+  Write-Host "    $($_.Exception.Message)" -ForegroundColor Gray
+}
+
+Write-Host ''
+if ($blockers -gt 0) {
+  Write-Host "Prontidao: $blockers bloqueio(s). Corrija antes de Liberar deploy." -ForegroundColor Red
+  Write-Host 'Painel: http://127.0.0.1:3099 (npm run ops:open)' -ForegroundColor Gray
+  exit 1
+}
+
+Write-Host 'Prontidao: OK - abra o ops-panel, digite DEPLOY e clique em Liberar deploy.' -ForegroundColor Green
+Write-Host 'Painel: http://127.0.0.1:3099' -ForegroundColor Gray
+exit 0

@@ -15,6 +15,7 @@ import {
   isAgentBranch,
   readManifest,
   readRollbackPoint,
+  runGit,
   summarizeChecks,
 } from './release.mjs';
 import { isTrustedLocalOperator } from './local-auth.mjs';
@@ -767,6 +768,57 @@ app.post('/api/prod/restart', async (request, reply) => {
 app.get('/api/release', async (request, reply) => {
   try {
     return await buildReleaseState();
+  } catch (err) {
+    return reply.code(500).send({ error: String(err.message || err) });
+  }
+});
+
+/** Verificacao pos-deploy (somente leitura) — evita depender do agente para o passo 5. */
+app.get('/api/prod/smoke', async (request, reply) => {
+  try {
+    const apiPort = PROD_PORTS.prodApi;
+    const base = `http://127.0.0.1:${apiPort}`;
+    const [readyRes, frontRes] = await Promise.all([
+      fetch(`${base}/api/ready`).catch(() => null),
+      fetch(`${base}/`).catch(() => null),
+    ]);
+
+    const deployed = readManifest(PROD_MANIFEST);
+    const head = await runGit(['rev-parse', 'HEAD'], PROJECT_ROOT);
+    const headSha = head.ok ? head.stdout.trim() : '';
+    const deployedSha = deployed?.gitSha || '';
+    const manifestAligned = Boolean(
+      deployedSha && headSha && (deployedSha === headSha || headSha.startsWith(deployedSha) || deployedSha.startsWith(headSha.slice(0, 7))),
+    );
+
+    const logosDir = path.join(PROJECT_ROOT, 'backend', 'uploads-prod', 'logos');
+    let logoSample = null;
+    if (fs.existsSync(logosDir)) {
+      const sampleFile = fs.readdirSync(logosDir).find((name) => name.endsWith('.webp'));
+      if (sampleFile) {
+        const logoRes = await fetch(`${base}/uploads/logos/${sampleFile}`).catch(() => null);
+        const contentType = logoRes?.headers?.get('content-type') || '';
+        logoSample = {
+          file: sampleFile,
+          ok: Boolean(logoRes?.ok && contentType.includes('image')),
+          contentType,
+        };
+      }
+    }
+
+    const release = await buildReleaseState();
+    const pendingCount = release.pending?.length ?? 0;
+
+    return {
+      ready: Boolean(readyRes?.ok),
+      frontend: Boolean(frontRes?.ok),
+      manifestAligned,
+      deployedSha: deployedSha ? deployedSha.slice(0, 7) : null,
+      headSha: headSha ? headSha.slice(0, 7) : null,
+      pendingCount,
+      logoSample,
+      ok: Boolean(readyRes?.ok && frontRes?.ok && manifestAligned && pendingCount === 0 && (!logoSample || logoSample.ok)),
+    };
   } catch (err) {
     return reply.code(500).send({ error: String(err.message || err) });
   }

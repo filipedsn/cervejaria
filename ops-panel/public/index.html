@@ -230,6 +230,8 @@
 
           <div id="releaseGate" class="release-gate"></div>
 
+          <div id="deployPlaybook" class="deploy-playbook" aria-label="Roteiro de deploy"></div>
+
           <div class="release-commits">
             <h4 class="release-subtitle">Commits pendentes de publicacao</h4>
             <div id="releaseCommits" class="metrics"></div>
@@ -241,6 +243,10 @@
           </div>
 
           <div class="release-options">
+            <label class="field" id="deployConfirmField">
+              <span class="field-label">Passo 4 — confirmacao</span>
+              <input type="text" id="deployConfirm" placeholder="Digite DEPLOY para habilitar o botao" autocomplete="off" spellcheck="false" />
+            </label>
             <label class="release-check">
               <input type="checkbox" id="ackMigrations" />
               <span>Confirmo as migrations deste deploy (nao voltam com rollback de artefato)</span>
@@ -270,6 +276,7 @@
             </button>
           </div>
           <p class="card-hint" id="rollbackHint">Rollback volta os artefatos da release anterior. <strong>Nao reverte banco.</strong></p>
+          <div id="postDeploySmoke" class="post-deploy-smoke" hidden aria-live="polite"></div>
         </article>
       </section>
 
@@ -307,7 +314,7 @@ A saida aparecera aqui linha a linha.</pre>
     </main>
 
     <footer class="footer">
-      <p><strong>Fluxo sugerido:</strong> desenvolver → PR + CI verde → merge na main → <em>Deploy prod</em> → conferir site.</p>
+      <p><strong>Fluxo sugerido:</strong> merge na main → <code>git pull</code> → verificar release → digitar <code>DEPLOY</code> → <em>Liberar deploy</em> → conferir smoke abaixo.</p>
     </footer>
   </div>
 

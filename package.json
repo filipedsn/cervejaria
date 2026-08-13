@@ -20,6 +20,7 @@
     "db:backfill:dev": "npm run db:backfill-cliente-stats --prefix backend",
     "prod:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/deploy.ps1",
     "prod:preflight": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/deploy.ps1 -PreflightOnly",
+    "prod:ready": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/prod-ready.ps1",
     "prod:rollback": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/rollback.ps1",
     "prod:materialize-runtime": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/materialize-prod-runtime.ps1",
     "prod:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/restart-api.ps1",

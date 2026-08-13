@@ -80,10 +80,14 @@ test('bloqueia commit que nao esta em origin/main', () => {
 });
 
 test('bloqueia working tree suja, porque o deploy compila o local', () => {
-  const result = evaluateReleaseGate(estadoLimpo({ workingTreeDirty: true, dirtyCount: 312 }));
+  const result = evaluateReleaseGate(estadoLimpo({
+    workingTreeDirty: true,
+    dirtyCount: 2,
+    dirtyFiles: ['backend/foo.txt', 'deploy/logs/x.log'],
+  }));
   assert.equal(result.allowed, false);
   assert.ok(codigos(result).includes('working-tree-suja'));
-  assert.match(result.blockers[0].message, /312/);
+  assert.match(result.blockers[0].message, /backend\/foo\.txt/);
 });
 
 test('bloqueia check que falhou, que esta rodando e que nao existe', () => {
