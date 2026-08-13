@@ -1,0 +1,23 @@
+{
+  "name": "quiver-tap-es-cluster-not-green",
+  "tags": ["quiver-tap", "observability", "infra"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "5m" },
+  "enabled": false,
+  "params": {
+    "index": ["metrics-httpcheckreceiver.otel-infra*"],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"must_not\":[{\"term\":{\"attributes.elasticsearch.cluster.status\":\"green\"}}],\"filter\":[{\"exists\":{\"field\":\"attributes.elasticsearch.cluster.status\"}}]}}}",
+    "size": 10,
+    "timeWindowSize": 15,
+    "timeWindowUnit": "m",
+    "thresholdComparator": ">",
+    "threshold": [0],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery"
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

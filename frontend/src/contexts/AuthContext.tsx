@@ -1,9 +1,12 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import type { Usuario, Cervejaria, AuthResponse } from '../types';
 import { api } from '../lib/api';
+import { queryClient } from '../lib/query-client';
 import { connectSocket, disconnectSocket } from '../lib/socket';
 import { resetBreweryTheme, syncBreweryTheme } from '../lib/theme';
 import { ensureAppShellBranding } from '../lib/app-branding';
+import { setUnauthorizedHandler } from '../lib/auth-session';
+import { flushPendingAuditAfterAuth } from '../lib/audit-tracker';
 
 interface AuthContextType {
   usuario: Usuario | null;
@@ -15,6 +18,7 @@ interface AuthContextType {
   updateCervejaria: (cervejaria: Cervejaria) => void;
   isDono: boolean;
   isAdmin: boolean;
+  podeDarDescontoQuiosque: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -45,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     localStorage.removeItem('eventoAtivo');
     localStorage.removeItem('trailerAtivo');
+    queryClient.removeQueries({ queryKey: ['quiosque-contexto'] });
     setUsuario(null);
     setCervejaria(null);
     disconnectSocket();
@@ -60,6 +65,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    setUnauthorizedHandler(async () => {
+      await logout();
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
+      }
+    });
+    return () => setUnauthorizedHandler(() => {});
+  }, [logout]);
+
+  useEffect(() => {
     api
       .get<{ usuario: Usuario; cervejaria: Cervejaria | null }>('/api/auth/me')
       .then((data) => {
@@ -71,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (data.cervejaria) {
           connectSocket(data.cervejaria.id);
         }
+        flushPendingAuditAfterAuth();
       })
       .catch(() => {
         resetBreweryTheme();
@@ -84,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, senha: string) => {
     const data = await api.post<AuthResponse>('/api/auth/login', { email, senha });
     applyAuth(data);
+    flushPendingAuditAfterAuth();
     return data;
   };
 
@@ -99,6 +116,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updateCervejaria,
         isDono: usuario?.papel === 'DONO',
         isAdmin: usuario?.papel === 'ADMIN',
+        podeDarDescontoQuiosque:
+          usuario?.papel === 'DONO' ||
+          usuario?.papel === 'ADMIN' ||
+          Boolean(usuario?.podeDarDescontoQuiosque),
       }}
     >
       {children}

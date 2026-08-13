@@ -1,0 +1,23 @@
+{
+  "name": "quiver-tap-postgres-tcp-down-prd",
+  "tags": ["quiver-tap", "observability", "production", "infra", "postgres"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "1m" },
+  "enabled": true,
+  "params": {
+    "index": ["metrics-tcpcheckreceiver.otel-infra*"],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"wildcard\":{\"attributes.tcpcheck.endpoint\":\"*5432*\"}}],\"must_not\":[{\"term\":{\"metrics.tcpcheck.status\":1}}]}}}",
+    "size": 10,
+    "timeWindowSize": 3,
+    "timeWindowUnit": "m",
+    "thresholdComparator": ">",
+    "threshold": [0],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery"
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

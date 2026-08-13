@@ -9,19 +9,49 @@ function formatElapsed(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-export function PedidoElapsedTimer({ createdAt, className }: { createdAt: string; className?: string }) {
-  const [elapsed, setElapsed] = useState(() => Date.now() - new Date(createdAt).getTime());
+interface Props {
+  /** Inicio da contagem (criacao do pedido ou inicio do status atual). */
+  startedAt: string;
+  /** Quando preenchido, congela o cronometro neste instante. */
+  stoppedAt?: string | null;
+  className?: string;
+  /** Acessibilidade: descreve o que esta sendo medido. */
+  ariaLabel?: string;
+}
+
+export function PedidoElapsedTimer({ startedAt, stoppedAt, className, ariaLabel }: Props) {
+  const calcular = () => {
+    const fim = stoppedAt ? new Date(stoppedAt).getTime() : Date.now();
+    return fim - new Date(startedAt).getTime();
+  };
+
+  const [elapsed, setElapsed] = useState(calcular);
 
   useEffect(() => {
-    const tick = () => setElapsed(Date.now() - new Date(createdAt).getTime());
-    tick();
-    const id = window.setInterval(tick, 1000);
+    setElapsed(calcular());
+    if (stoppedAt) return;
+
+    const id = window.setInterval(() => setElapsed(calcular()), 1000);
     return () => window.clearInterval(id);
-  }, [createdAt]);
+  }, [startedAt, stoppedAt]);
 
   return (
-    <span className={className ?? 'text-xs font-mono tabular-nums text-ink-muted'} aria-label="Tempo aguardando">
+    <span
+      className={className ?? 'text-xs font-mono tabular-nums text-ink-muted'}
+      aria-label={ariaLabel ?? (stoppedAt ? 'Tempo total do pedido' : 'Tempo no status atual')}
+    >
       {formatElapsed(elapsed)}
     </span>
   );
+}
+
+/** Compatibilidade com telas que ainda passam createdAt. */
+export function PedidoElapsedTimerFromCreated({
+  createdAt,
+  className,
+}: {
+  createdAt: string;
+  className?: string;
+}) {
+  return <PedidoElapsedTimer startedAt={createdAt} className={className} />;
 }

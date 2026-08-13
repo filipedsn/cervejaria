@@ -6,6 +6,7 @@ import type { RankingPeriodoResponse } from '../types';
 import { formatTrailerLabel } from '../types';
 import { useEvento } from '../contexts/EventoContext';
 import { useRankingLiveUpdates } from '../hooks/useRankingLiveUpdates';
+import { usePollInterval } from '../hooks/usePollInterval';
 import { Loading } from '../components/Loading';
 import { PageHeader } from '../components/PageHeader';
 import { RankingList } from '../components/RankingList';
@@ -32,6 +33,7 @@ export function RankingPeriodoPage() {
   }, [searchParams]);
 
   useRankingLiveUpdates(eventoAtivo?.id ?? eventoId, !!(eventoAtivo?.id ?? eventoId), alsoRefetch);
+  const pollMs = usePollInterval(60_000);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['ranking-periodo', eventoId, escopo, escopo === 'mensal' ? mes : null],
@@ -41,7 +43,7 @@ export function RankingPeriodoPage() {
     },
     enabled: !!eventoId,
     staleTime: 0,
-    refetchInterval: 60_000,
+    refetchInterval: pollMs,
   });
 
   useEffect(() => {

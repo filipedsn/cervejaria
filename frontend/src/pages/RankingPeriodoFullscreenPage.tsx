@@ -8,6 +8,7 @@ import { buildDemoRankingResponse } from '../lib/ranking-demo';
 import { useEvento } from '../contexts/EventoContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useRankingLiveUpdates, useRankingSocketReconnect } from '../hooks/useRankingLiveUpdates';
+import { usePollInterval } from '../hooks/usePollInterval';
 import { Loading } from '../components/Loading';
 import { RankingTvView } from '../components/RankingTvView';
 import { rankingPeriodoPageUrl } from '../lib/ranking-tv-url';
@@ -45,6 +46,7 @@ export function RankingPeriodoFullscreenPage() {
 
   useRankingLiveUpdates(liveEventoId, !isDemo && !!liveEventoId, alsoRefetch);
   useRankingSocketReconnect(liveEventoId, !isDemo);
+  const pollMs = usePollInterval(60_000);
 
   const demoData = useMemo(
     () => (isDemo ? buildDemoRankingResponse(demoCount) : null),
@@ -59,7 +61,7 @@ export function RankingPeriodoFullscreenPage() {
     },
     enabled: !!eventoId && !isDemo && !authLoading,
     staleTime: 0,
-    refetchInterval: 60_000,
+    refetchInterval: pollMs,
   });
 
   const data = isDemo ? null : apiData;

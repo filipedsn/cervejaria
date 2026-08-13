@@ -46,6 +46,7 @@ export async function cancelarComandaVazia(params: {
       clienteNome: updated.cliente.nome,
       motivo: params.motivo ?? 'manual',
     },
+    payload: updated,
   });
 
   return { ok: true as const, comanda: updated, eventoId: comanda.eventoId };

@@ -1,11 +1,17 @@
+import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { getZonedParts } from '../event-datetime.js';
 import { toNumber } from '../utils.js';
+import { pedidoContaNaComanda, registrarHistoricoStatusPedido } from './cozinha.js';
 
 /**
  * Erro de regra de venda. O statusCode faz o Fastify responder 400 com a
  * mensagem pronta para o operador, em vez de registrar falha do servidor.
  */
+import { mapPrecosCardapioQuiosque } from '../cardapio-preco.js';
+import { quiosqueUsaCardapio } from '../cardapio-toggle.js';
+import { assertProdutoNoCardapioTurno } from './sessao-cardapio.js';
+
 export class VendaInvalidaError extends Error {
   statusCode = 400;
 }
@@ -39,6 +45,7 @@ export interface ItemResolvido {
   precoUnit: number;
   quantidade: number;
   exigePreparo: boolean;
+  controlaEstoque: boolean;
 }
 
 type TxClient = Prisma.TransactionClient;
@@ -51,6 +58,7 @@ export async function resolverItens(
   tx: TxClient,
   cervejariaId: string,
   itens: ItemVendaInput[],
+  opts?: { sessaoCaixaId?: string },
 ): Promise<ItemResolvido[]> {
   if (itens.length === 0) throw new VendaInvalidaError('Inclua ao menos um item na venda');
 
@@ -71,12 +79,45 @@ export async function resolverItens(
     throw new VendaInvalidaError('Produto indisponível no catálogo do quiosque');
   }
 
+  if (opts?.sessaoCaixaId) {
+    const usaCardapio = await quiosqueUsaCardapio(cervejariaId);
+    if (usaCardapio) {
+      const sessao = await tx.sessaoCaixaQuiosque.findUnique({
+        where: { id: opts.sessaoCaixaId },
+        select: { cardapioQuiosqueId: true },
+      });
+      const precosTemplate = sessao?.cardapioQuiosqueId
+        ? await mapPrecosCardapioQuiosque(sessao.cardapioQuiosqueId)
+        : null;
+
+      for (const produto of produtos) {
+        const noCardapio = await assertProdutoNoCardapioTurno(opts.sessaoCaixaId, produto.id);
+        if (!noCardapio) {
+          throw new VendaInvalidaError('Este item não está no cardápio deste turno');
+        }
+      }
+
+      return produtos.map((produto) => {
+        const precoTemplate = precosTemplate?.get(produto.id);
+        return {
+          produtoId: produto.id,
+          nome: produto.nome,
+          precoUnit: precoTemplate ?? toNumber(produto.precoUnit),
+          quantidade: quantidadePorProduto.get(produto.id)!,
+          exigePreparo: produto.exigePreparo,
+          controlaEstoque: produto.controlaEstoque,
+        };
+      });
+    }
+  }
+
   return produtos.map((produto) => ({
     produtoId: produto.id,
     nome: produto.nome,
     precoUnit: toNumber(produto.precoUnit),
     quantidade: quantidadePorProduto.get(produto.id)!,
     exigePreparo: produto.exigePreparo,
+    controlaEstoque: produto.controlaEstoque,
   }));
 }
 
@@ -88,9 +129,22 @@ export function totalEmCentavos(itens: Array<{ precoUnit: unknown; quantidade: n
 }
 
 /**
+ * Chave de 64 bits estavel para o advisory lock. Derivada do par empresa+dia,
+ * que e exatamente o escopo em que a senha precisa ser unica.
+ */
+function lockKeyDaSenha(cervejariaId: string, dia: Date): bigint {
+  const digest = createHash('sha256')
+    .update(`pedido-quiosque:${cervejariaId}:${dia.toISOString().slice(0, 10)}`)
+    .digest();
+  return BigInt.asIntN(64, digest.readBigUInt64BE(0));
+}
+
+/**
  * Cria o pedido com a senha do dia. A senha e sequencial por empresa e reinicia
- * a cada dia de operacao; duas vendas simultaneas podem pedir a mesma, entao a
- * colisao da unique e reprocessada em vez de estourar para o operador.
+ * a cada dia de operacao. Um advisory lock de transacao serializa a alocacao do
+ * numero: sem ele, duas vendas simultaneas leem o mesmo maximo e a segunda viola
+ * a unique — e no Postgres esse erro aborta a transacao inteira, entao nao ha
+ * como tentar de novo por dentro dela.
  */
 export async function criarPedido(
   tx: TxClient,
@@ -104,53 +158,54 @@ export async function criarPedido(
     itens: ItemResolvido[];
   },
 ) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKeyDaSenha(params.cervejariaId, params.dia)})`;
+
   const ultimo = await tx.pedidoQuiosque.findFirst({
     where: { cervejariaId: params.cervejariaId, diaOperacional: params.dia },
     orderBy: { numero: 'desc' },
     select: { numero: true },
   });
 
-  let numero = (ultimo?.numero ?? 0) + 1;
+  const pedido = await tx.pedidoQuiosque.create({
+    data: {
+      cervejariaId: params.cervejariaId,
+      comandaId: params.comandaId,
+      pontoVendaId: params.pontoVendaId,
+      numero: (ultimo?.numero ?? 0) + 1,
+      diaOperacional: params.dia,
+      criadoPorId: params.criadoPorId,
+      observacao: params.observacao,
+      itens: {
+        create: params.itens.map((item) => ({
+          produtoId: item.produtoId,
+          nome: item.nome,
+          precoUnit: item.precoUnit,
+          quantidade: item.quantidade,
+          exigePreparo: item.exigePreparo,
+        })),
+      },
+    },
+    include: { itens: true },
+  });
 
-  for (let tentativa = 0; tentativa < 5; tentativa++) {
-    try {
-      return await tx.pedidoQuiosque.create({
-        data: {
-          cervejariaId: params.cervejariaId,
-          comandaId: params.comandaId,
-          pontoVendaId: params.pontoVendaId,
-          numero,
-          diaOperacional: params.dia,
-          criadoPorId: params.criadoPorId,
-          observacao: params.observacao,
-          itens: {
-            create: params.itens.map((item) => ({
-              produtoId: item.produtoId,
-              nome: item.nome,
-              precoUnit: item.precoUnit,
-              quantidade: item.quantidade,
-              exigePreparo: item.exigePreparo,
-            })),
-          },
-        },
-        include: { itens: true },
-      });
-    } catch (error) {
-      if ((error as { code?: string }).code !== 'P2002') throw error;
-      numero += 1;
-    }
-  }
+  await registrarHistoricoStatusPedido(tx, pedido.id, 'RECEBIDO', pedido.createdAt);
 
-  throw new VendaInvalidaError('Não foi possível gerar a senha do pedido, tente de novo');
+  return pedido;
 }
 
 type ComandaCompleta = Prisma.ComandaQuiosqueGetPayload<{
   include: { pedidos: { include: { itens: true } }; pagamentos: true };
 }>;
 
+export function subtotalComandaEmCentavos(comanda: ComandaCompleta): number {
+  return comanda.pedidos
+    .filter((pedido) => pedidoContaNaComanda(pedido, comanda))
+    .reduce((soma, pedido) => soma + totalEmCentavos(pedido.itens), 0);
+}
+
 /**
  * Monta a conta como o operador ve: total, quanto ja entrou e quanto falta.
- * Pedido cancelado nao entra no total.
+ * Pedido cancelado nao entra no total. Pedido da cozinha so conta apos ENTREGUE.
  */
 export function resumoComanda(comanda: ComandaCompleta) {
   const pedidos = comanda.pedidos.map((pedido) => ({
@@ -170,9 +225,10 @@ export function resumoComanda(comanda: ComandaCompleta) {
     })),
   }));
 
-  const totalEmCents = comanda.pedidos
-    .filter((pedido) => pedido.status !== 'CANCELADO')
-    .reduce((soma, pedido) => soma + totalEmCentavos(pedido.itens), 0);
+  const subtotalEmCents = subtotalComandaEmCentavos(comanda);
+
+  const descontoEmCents = centavos(toNumber(comanda.desconto ?? 0));
+  const totalEmCents = Math.max(0, subtotalEmCents - descontoEmCents);
 
   const pagoEmCents = comanda.pagamentos.reduce(
     (soma, pagamento) => soma + centavos(pagamento.valor),
@@ -183,10 +239,13 @@ export function resumoComanda(comanda: ComandaCompleta) {
     id: comanda.id,
     tipo: comanda.tipo,
     identificador: comanda.identificador,
+    numero: comanda.numero,
     status: comanda.status,
     pontoVendaId: comanda.pontoVendaId,
     createdAt: comanda.createdAt,
     fechadaEm: comanda.fechadaEm,
+    subtotal: reais(subtotalEmCents),
+    desconto: reais(descontoEmCents),
     total: reais(totalEmCents),
     pago: reais(pagoEmCents),
     saldo: reais(totalEmCents - pagoEmCents),

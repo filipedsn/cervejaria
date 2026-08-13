@@ -16,6 +16,13 @@ interface MesAtualStats {
   produtoMaisVende: string | null;
 }
 
+interface ModulosAdmin {
+  cervejaria: boolean;
+  quiosque: boolean;
+  quiosqueControlaEstoque: boolean;
+  quiosqueTemCozinha: boolean;
+}
+
 interface CervejariaAdmin {
   id: string;
   nome: string;
@@ -25,9 +32,37 @@ interface CervejariaAdmin {
   corPrimaria?: string | null;
   corSecundaria?: string | null;
   corPaleta?: BrandTheme | null;
+  modulos: ModulosAdmin;
   mesAtual: MesAtualStats;
   _count: { usuarios: number; eventos: number };
   usuarios: Array<{ id: string; nome: string; email: string }>;
+}
+
+function ModulosBadges({ modulos }: { modulos: ModulosAdmin }) {
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {modulos.cervejaria && (
+        <span className="rounded-full bg-brand-400/15 px-2 py-0.5 text-[10px] font-semibold text-brand-600">
+          Cervejaria
+        </span>
+      )}
+      {modulos.quiosque && (
+        <span className="rounded-full bg-orange/15 px-2 py-0.5 text-[10px] font-semibold text-orange">
+          Quiosque
+        </span>
+      )}
+      {modulos.quiosque && modulos.quiosqueTemCozinha && (
+        <span className="rounded-full bg-surface-lighter px-2 py-0.5 text-[10px] font-medium text-ink-faint">
+          Cozinha
+        </span>
+      )}
+      {modulos.quiosque && modulos.quiosqueControlaEstoque && (
+        <span className="rounded-full bg-surface-lighter px-2 py-0.5 text-[10px] font-medium text-ink-faint">
+          Estoque
+        </span>
+      )}
+    </div>
+  );
 }
 
 function CervejariaLogo({ nome, logoUrl }: { nome: string; logoUrl?: string | null }) {
@@ -115,7 +150,7 @@ function ModuloOption({
 const MODULOS_PADRAO = {
   cervejaria: true,
   quiosque: false,
-  quiosqueControlaEstoque: true,
+  quiosqueControlaEstoque: false,
   quiosqueTemCozinha: false,
 };
 
@@ -348,6 +383,7 @@ export function AdminCervejariasPage() {
                   </td>
                   <td className="px-4 py-4">
                     <p className="font-semibold">{c.nome}</p>
+                    <ModulosBadges modulos={c.modulos} />
                     {!c.ativo && (
                       <span className="text-xs text-danger">Inativa</span>
                     )}
@@ -367,6 +403,8 @@ export function AdminCervejariasPage() {
                       <ToggleAtivo
                         ativo={c.ativo}
                         loading={togglingId === c.id}
+                        labelAtivo="Desativar cervejaria"
+                        labelInativo="Ativar cervejaria"
                         onToggle={() => handleToggle(c)}
                       />
                     </div>
@@ -401,8 +439,13 @@ export function AdminCervejariasPage() {
               <ToggleAtivo
                 ativo={c.ativo}
                 loading={togglingId === c.id}
+                labelAtivo="Desativar cervejaria"
+                labelInativo="Ativar cervejaria"
                 onToggle={() => handleToggle(c)}
               />
+            </div>
+            <div className="mt-2">
+              <ModulosBadges modulos={c.modulos} />
             </div>
             {c.usuarios[0] && (
               <>

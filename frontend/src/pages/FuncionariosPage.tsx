@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import type { Usuario } from '../types';
@@ -7,12 +8,53 @@ import { ModalFormFooter } from '../components/ModalFormFooter';
 import { Loading } from '../components/Loading';
 import { PageHeader } from '../components/PageHeader';
 import { PasswordWithConfirmFields, validatePasswordPair } from '../components/PasswordWithConfirmFields';
+import { ToggleAtivo } from '../components/ToggleAtivo';
+import { ConfigKpisComandaPanel } from '../components/ConfigKpisComandaPanel';
+import { ConfigComandasLayoutPanel } from '../components/ConfigComandasLayoutPanel';
+
+const TOGGLE_DESCONTO_ATIVO = 'Desativar desconto no quiosque';
+const TOGGLE_DESCONTO_INATIVO = 'Ativar desconto no quiosque';
+
+function PermissaoDescontoRow({
+  ativo,
+  loading,
+  onToggle,
+}: {
+  ativo: boolean;
+  loading?: boolean;
+  onToggle: (ativo: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface-lighter px-3 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-base font-semibold text-ink">Pode dar desconto no quiosque</p>
+        <p className="text-sm text-ink-muted mt-0.5">Permite aplicar desconto ao fechar comandas.</p>
+      </div>
+      <ToggleAtivo
+        ativo={ativo}
+        loading={loading}
+        labelAtivo={TOGGLE_DESCONTO_ATIVO}
+        labelInativo={TOGGLE_DESCONTO_INATIVO}
+        onToggle={() => onToggle(!ativo)}
+      />
+    </div>
+  );
+}
 
 export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const inQuiosque = location.pathname.startsWith('/quiosque');
   const [showModal, setShowModal] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ nome: '', email: '', senha: '', senhaConfirm: '' });
+  const [form, setForm] = useState({
+    nome: '',
+    email: '',
+    senha: '',
+    senhaConfirm: '',
+    podeDarDescontoQuiosque: false,
+  });
 
   const { data: funcionarios, isLoading } = useQuery({
     queryKey: ['funcionarios'],
@@ -20,14 +62,29 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => api.post('/api/usuarios', { nome: form.nome, email: form.email, senha: form.senha }),
+    mutationFn: () =>
+      api.post('/api/usuarios', {
+        nome: form.nome,
+        email: form.email,
+        senha: form.senha,
+        podeDarDescontoQuiosque: form.podeDarDescontoQuiosque,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['funcionarios'] });
       setShowModal(false);
-      setForm({ nome: '', email: '', senha: '', senhaConfirm: '' });
+      setForm({ nome: '', email: '', senha: '', senhaConfirm: '', podeDarDescontoQuiosque: false });
       setError('');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao cadastrar'),
+  });
+
+  const permissoesMutation = useMutation({
+    mutationFn: ({ id, podeDarDescontoQuiosque }: { id: string; podeDarDescontoQuiosque: boolean }) =>
+      api.patch(`/api/usuarios/${id}/permissoes-quiosque`, { podeDarDescontoQuiosque }),
+    onMutate: ({ id }) => setTogglingId(id),
+    onSettled: () => setTogglingId(null),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['funcionarios'] }),
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao atualizar permissão'),
   });
 
   const handleSubmit = (e: FormEvent) => {
@@ -48,7 +105,7 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
       {!embedded ? (
         <PageHeader
           title="Funcionários"
-          subtitle="Cadastre atendentes da sua cervejaria"
+          subtitle={inQuiosque ? 'Cadastre atendentes do quiosque' : 'Cadastre atendentes da sua cervejaria'}
           action={
             <button type="button" className="touch-btn-primary touch-btn-sm" onClick={() => setShowModal(true)}>
               + Novo Atendente
@@ -63,18 +120,37 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
         </div>
       )}
 
+      {inQuiosque && (
+        <>
+          <ConfigKpisComandaPanel />
+          <ConfigComandasLayoutPanel />
+        </>
+      )}
+
       <div className="space-y-3">
+        {error && !showModal && <div className="alert-error">{error}</div>}
         {funcionarios?.map((f) => (
-          <div key={f.id} className="card flex items-center justify-between">
-            <div>
-              <p className="font-bold">{f.nome}</p>
-              <p className="text-sm text-ink-muted">{f.email}</p>
+          <div key={f.id} className="card space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-bold truncate">{f.nome}</p>
+                <p className="text-sm text-ink-muted truncate">{f.email}</p>
+              </div>
+              <span className={`text-xs px-2 py-1 rounded-full shrink-0 ${
+                f.papel === 'DONO' ? 'bg-brand-50 text-brand-600' : 'badge-inactive'
+              }`}>
+                {f.papel === 'DONO' ? 'Proprietário' : 'Atendente'}
+              </span>
             </div>
-            <span className={`text-xs px-2 py-1 rounded-full ${
-              f.papel === 'DONO' ? 'bg-brand-50 text-brand-600' : 'badge-inactive'
-            }`}>
-              {f.papel === 'DONO' ? 'Proprietário' : 'Atendente'}
-            </span>
+            {f.papel === 'ATENDENTE' && (
+              <PermissaoDescontoRow
+                ativo={Boolean(f.podeDarDescontoQuiosque)}
+                loading={togglingId === f.id}
+                onToggle={(podeDarDescontoQuiosque) =>
+                  permissoesMutation.mutate({ id: f.id, podeDarDescontoQuiosque })
+                }
+              />
+            )}
           </div>
         ))}
       </div>
@@ -98,6 +174,11 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
             onConfirmarChange={(v) => setForm({ ...form, senhaConfirm: v })}
             senhaLabel="Senha inicial"
             required
+          />
+
+          <PermissaoDescontoRow
+            ativo={form.podeDarDescontoQuiosque}
+            onToggle={(podeDarDescontoQuiosque) => setForm({ ...form, podeDarDescontoQuiosque })}
           />
 
           <ModalFormFooter

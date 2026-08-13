@@ -1,6 +1,7 @@
 import { prisma } from './prisma.js';
 import { registerOrUpdateCliente } from './cliente-resolver.js';
 import { normalizePhone } from './phone.js';
+import { proximoNumeroComandaEvento } from './comanda-numero.js';
 
 export type PortalClienteLookupResult =
   | { encontrado: true; nome: string }
@@ -82,6 +83,7 @@ export async function resolveTrailerPortalContext(slug: string, trailerId: strin
 export async function findOrCreateComandaAberta(params: {
   eventoId: string;
   clienteId: string;
+  contadorDesde: Date;
 }) {
   const where = {
     eventoId: params.eventoId,
@@ -95,10 +97,12 @@ export async function findOrCreateComandaAberta(params: {
     const existing = await tx.comanda.findFirst({ where });
     if (existing) return existing;
 
+    const numero = await proximoNumeroComandaEvento(tx, params.eventoId, params.contadorDesde);
     return tx.comanda.create({
       data: {
         eventoId: params.eventoId,
         clienteId: params.clienteId,
+        numero,
       },
     });
   });
@@ -118,7 +122,7 @@ export async function startClientePortalSession(params: {
       trailerId: params.trailerId,
       status: 'ABERTO',
     },
-    select: { id: true, portalGeneration: true },
+    select: { id: true, portalGeneration: true, comandasContadorDesde: true },
   });
   if (!evento) {
     throw new Error('Evento não está mais aberto');
@@ -135,6 +139,7 @@ export async function startClientePortalSession(params: {
   const comanda = await findOrCreateComandaAberta({
     eventoId: params.eventoId,
     clienteId: cliente.id,
+    contadorDesde: evento.comandasContadorDesde,
   });
 
   return { cliente, comanda, portalGeneration: evento.portalGeneration };

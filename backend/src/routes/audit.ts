@@ -6,7 +6,7 @@ import { verifySession } from '../lib/session.js';
 import { verifyClienteSession } from '../lib/cliente-session.js';
 
 const uiEventSchema = z.object({
-  type: z.enum(['click', 'page_view', 'submit']),
+  type: z.enum(['click', 'page_view', 'submit', 'error']),
   page: z.string().min(1).max(500),
   element: z.string().max(200).optional(),
   label: z.string().max(300).optional(),
@@ -45,12 +45,14 @@ export async function auditRoutes(app: FastifyInstance) {
       const message =
         event.type === 'page_view'
           ? describePageView(event.page)
-          : describeUiAction(label, event.page);
+          : event.type === 'error'
+            ? `Erro na interface: ${label}`
+            : describeUiAction(label, event.page);
 
       emitAuditEvent({
         action: `ui.${event.type}`,
         message,
-        outcome: 'success',
+        outcome: event.type === 'error' ? 'failure' : 'success',
         ui: {
           page: event.page,
           element: event.element,

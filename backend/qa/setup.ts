@@ -1,7 +1,8 @@
 import { prisma } from '../src/lib/prisma.js';
 import { API_BASE, api } from './lib/http.js';
+import { assertQaEnvironment } from './lib/guard.js';
 import { jwtSecret } from './lib/jwt.js';
-import { cleanupQa, seedArena, seedMultiTrailer, seedTenants } from './lib/seed.js';
+import { cleanupQa, seedAdmin, seedArena, seedConfigTenants, seedMultiTrailer, seedTenants } from './lib/seed.js';
 import { CONTEXT_PATH, ensureDirs, clearWorkerResults, writeJson } from './lib/store.js';
 import type { QaContext } from './lib/types.js';
 
@@ -10,6 +11,7 @@ const COMANDAS = Number(process.env.QA_COMANDAS ?? 10);
 const ATENDENTES = Number(process.env.QA_ATENDENTES ?? 3);
 
 async function main() {
+  assertQaEnvironment({ apiBase: API_BASE });
   console.log('[setup] Verificando API...');
   const health = await api<{ status: string }>('GET', '/api/health');
   if (health.status !== 200) {
@@ -29,14 +31,22 @@ async function main() {
   console.log('[setup] Criando cervejaria multi-trailer (2 eventos abertos)...');
   const multiTrailer = await seedMultiTrailer();
 
+  console.log('[setup] Semeando 9 configuracoes de empresa (CFG)...');
+  const configTenants = await seedConfigTenants();
+
+  console.log('[setup] Criando ADMIN de plataforma...');
+  const admin = await seedAdmin();
+
   const context: QaContext = {
     createdAt: new Date().toISOString(),
     apiBase: API_BASE,
     jwtSecret: jwtSecret(),
     loadProfile: { breweries: BREWERIES, employeesPerBrewery: ATENDENTES + 1, comandasPerBrewery: COMANDAS },
     tenants,
+    configTenants,
     arena,
     multiTrailer,
+    admin,
   };
 
   ensureDirs();
@@ -44,7 +54,7 @@ async function main() {
   writeJson(CONTEXT_PATH, context);
 
   const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
-  console.log(`[setup] OK — ${tenants.length} cervejarias + arena em ${elapsed}s`);
+  console.log(`[setup] OK — ${tenants.length} cervejarias + ${configTenants.length} configs + arena em ${elapsed}s`);
   console.log(`[setup] Contexto salvo em ${CONTEXT_PATH}`);
   await prisma.$disconnect();
 }

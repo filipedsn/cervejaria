@@ -1,10 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
+import {
+  CATEGORIAS_PRODUTO_QUIOSQUE,
+  categoriaProdutoQuiosqueSchema,
+} from '../../lib/quiosque/categorias.js';
+import { diaOperacional } from '../../lib/quiosque/venda.js';
+import { listProdutosOperacionaisTurno } from '../../lib/quiosque/sessao-cardapio.js';
 
 const createProdutoSchema = z.object({
   nome: z.string().min(1),
-  categoria: z.string().trim().min(1).optional(),
+  categoria: categoriaProdutoQuiosqueSchema.default('Bebidas'),
   precoUnit: z.number().positive(),
   exigePreparo: z.boolean().default(false),
   controlaEstoque: z.boolean().default(true),
@@ -13,20 +19,36 @@ const createProdutoSchema = z.object({
 
 const updateProdutoSchema = createProdutoSchema.partial().extend({
   ativo: z.boolean().optional(),
+  categoria: categoriaProdutoQuiosqueSchema.optional(),
 });
 
 export async function produtosQuiosqueRoutes(app: FastifyInstance) {
+  app.get('/categorias', async () => ({
+    categorias: [...CATEGORIAS_PRODUTO_QUIOSQUE],
+  }));
+
   app.get('/', async (request) => {
     const { cervejariaId } = request.quiosque;
-    const { incluirInativos } = z
-      .object({ incluirInativos: z.coerce.boolean().default(false) })
+    const query = z
+      .object({
+        incluirInativos: z.coerce.boolean().default(false),
+        pontoVendaId: z.string().min(1).optional(),
+      })
       .parse(request.query);
 
+    if (query.incluirInativos) {
+      return prisma.produtoQuiosque.findMany({
+        where: { cervejariaId },
+        orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
+      });
+    }
+
+    if (query.pontoVendaId) {
+      return listProdutosOperacionaisTurno(cervejariaId, query.pontoVendaId, diaOperacional());
+    }
+
     return prisma.produtoQuiosque.findMany({
-      where: {
-        cervejariaId,
-        ...(incluirInativos ? {} : { ativo: true }),
-      },
+      where: { cervejariaId, ativo: true },
       orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
     });
   });

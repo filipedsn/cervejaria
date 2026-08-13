@@ -73,6 +73,29 @@ export interface MultiTrailerFixture {
   }>;
 }
 
+export interface ConfigTenantFixture {
+  code: string;
+  slug: string;
+  cervejariaId: string;
+  donoEmail: string;
+  donoToken: string;
+  moduloCervejaria: boolean;
+  moduloQuiosque: boolean;
+  controlaEstoque: boolean;
+  temCozinha: boolean;
+  exclusivo: boolean;
+  pontoVendaId?: string;
+  produtoId?: string;
+  produtoPreparoId?: string;
+  eventoId?: string;
+}
+
+export interface AdminFixture {
+  email: string;
+  senha: string;
+  token: string;
+}
+
 export interface QaContext {
   createdAt: string;
   apiBase: string;
@@ -83,8 +106,10 @@ export interface QaContext {
     comandasPerBrewery: number;
   };
   tenants: TenantFixture[];
+  configTenants: ConfigTenantFixture[];
   arena: Arena;
   multiTrailer: MultiTrailerFixture;
+  admin: AdminFixture;
 }
 
 export interface WorkerItemOps {

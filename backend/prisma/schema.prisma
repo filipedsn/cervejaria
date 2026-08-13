@@ -81,6 +81,21 @@ enum TransacaoTipo {
   TAP_CHOPE_POSICIONADO
   TAP_CHOPE_REMOVIDO
   TAP_ATIVO_ALTERADO
+  QUIOSQUE_CAIXA_ABERTO
+  QUIOSQUE_CAIXA_MOVIMENTO
+  QUIOSQUE_CAIXA_FECHADO
+  QUIOSQUE_COMANDA_CRIADA
+  QUIOSQUE_COMANDA_FECHADA
+  QUIOSQUE_COMANDA_CANCELADA
+  QUIOSQUE_PEDIDO_CRIADO
+  QUIOSQUE_PAGAMENTO_REGISTRADO
+  QUIOSQUE_COMANDA_GRUPO_FECHADO
+  QUIOSQUE_PEDIDO_COZINHA
+  QUIOSQUE_ESTOQUE_MOVIMENTO
+  QUIOSQUE_DESCONTO_APLICADO
+  QUIOSQUE_VENDA_AVULSA
+  PORTAL_PEDIDO_CRIADO
+  PORTAL_PEDIDO_RECUSADO
 
   @@schema("public")
 }
@@ -110,6 +125,12 @@ model Cervejaria {
   logoUrl     String?
   corPrimaria String?
   corPaleta   Json?
+  /** KPIs da tela de comandas (cervejaria e quiosque). */
+  exibirKpisComanda Boolean @default(true)
+  /** Lista de comandas em coluna única (ligado) ou duas colunas (desligado). */
+  comandasColunaUnica Boolean @default(true)
+  /** Cardápios com preço por evento (ligado) ou só catálogo tradicional (desligado). */
+  usaCardapio Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -126,9 +147,12 @@ model Cervejaria {
   configuracaoQuiosque ConfiguracaoQuiosque?
   pontosVenda          PontoVenda[]
   produtosQuiosque     ProdutoQuiosque[]
+  cardapiosQuiosque    CardapioQuiosque[]
   comandasQuiosque     ComandaQuiosque[]
   pedidosQuiosque      PedidoQuiosque[]
   sessoesCaixaQuiosque SessaoCaixaQuiosque[]
+  saldosEstoqueQuiosque EstoqueSaldoQuiosque[]
+  movimentosEstoqueQuiosque MovimentoEstoqueQuiosque[]
 
   @@schema("public")
 }
@@ -157,6 +181,8 @@ model Usuario {
   email              String    @unique
   senhaHash          String
   papel              UserRole  @default(ATENDENTE)
+  /// Autoriza aplicar desconto manual em comandas do quiosque. Dono sempre pode.
+  podeDarDescontoQuiosque Boolean @default(false)
   cervejariaId       String?
   passwordChangedAt  DateTime  @default(now())
   createdAt          DateTime  @default(now())
@@ -306,6 +332,8 @@ model Evento {
   serieId      String?
   status           EventStatus     @default(ABERTO)
   encerradoEm      DateTime?
+  /// Reinicia o numerador de comandas ao reabrir o evento.
+  comandasContadorDesde DateTime      @default(now())
   portalGeneration Int             @default(0)
   cervejariaId     String
   trailerId    String
@@ -370,9 +398,10 @@ model Cardapio {
 }
 
 model CardapioProduto {
-  id         String @id @default(cuid())
+  id         String  @id @default(cuid())
   cardapioId String
   produtoId  String
+  precoUnit  Decimal @db.Decimal(10, 2)
 
   cardapio Cardapio @relation(fields: [cardapioId], references: [id], onDelete: Cascade)
   produto  Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
@@ -432,6 +461,8 @@ model Comanda {
   clienteId    String
   status       ComandaStatus @default(ABERTA)
   tipo         ComandaTipo   @default(COMANDA)
+  /// Sequencial da comanda dentro do evento (vendas avulsas ficam sem numero).
+  numero       Int?
   total        Decimal       @default(0) @db.Decimal(10, 2)
   fechadoPorId String?
   fechadaEm    DateTime?
@@ -594,6 +625,8 @@ model ConfiguracaoQuiosque {
   /// Empresa que so opera quiosque. Esconde as telas de cervejaria sem precisar
   /// de nenhuma coluna nova no schema public.
   exclusivo       Boolean  @default(false)
+  /// Cardápios com preço por turno (ligado) ou só catálogo tradicional (desligado).
+  usaCardapio     Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -615,6 +648,8 @@ model PontoVenda {
   comandas   ComandaQuiosque[]
   pedidos    PedidoQuiosque[]
   sessoesCaixa SessaoCaixaQuiosque[]
+  saldosEstoque EstoqueSaldoQuiosque[]
+  movimentosEstoque MovimentoEstoqueQuiosque[]
 
   @@index([cervejariaId, ativo])
   @@schema("quiosque")
@@ -637,8 +672,43 @@ model ProdutoQuiosque {
 
   cervejaria Cervejaria           @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   itens      ItemPedidoQuiosque[]
+  saldosEstoque EstoqueSaldoQuiosque[]
+  movimentosEstoque MovimentoEstoqueQuiosque[]
+  cardapios  CardapioQuiosqueProduto[]
+  sessoesCaixa SessaoCaixaProdutoQuiosque[]
 
   @@index([cervejariaId, ativo, ordem])
+  @@schema("quiosque")
+}
+
+/// Templates reutilizaveis de cardapio do quiosque (espelha Cardapio da cervejaria).
+model CardapioQuiosque {
+  id           String   @id @default(cuid())
+  nome         String
+  ativo        Boolean  @default(true)
+  cervejariaId String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  cervejaria Cervejaria                @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  produtos   CardapioQuiosqueProduto[]
+  sessoes    SessaoCaixaQuiosque[]
+
+  @@index([cervejariaId])
+  @@schema("quiosque")
+}
+
+model CardapioQuiosqueProduto {
+  id                String  @id @default(cuid())
+  cardapioId        String
+  produtoQuiosqueId String
+  precoUnit         Decimal @db.Decimal(10, 2)
+
+  cardapio CardapioQuiosque @relation(fields: [cardapioId], references: [id], onDelete: Cascade)
+  produto  ProdutoQuiosque  @relation(fields: [produtoQuiosqueId], references: [id], onDelete: Cascade)
+
+  @@unique([cardapioId, produtoQuiosqueId])
+  @@index([cardapioId])
   @@schema("quiosque")
 }
 
@@ -688,6 +758,8 @@ model ComandaQuiosque {
   tipo           TipoComandaQuiosque
   /// Apelido, numero da mesa ou da ficha. Nulo na venda avulsa.
   identificador  String?
+  /// Sequencial da comanda no turno de caixa (vendas avulsas ficam sem numero).
+  numero         Int?
   status         StatusComandaQuiosque @default(ABERTA)
   /// Dia da operacao em America/Sao_Paulo. O quiosque vira a noite, entao a data
   /// civil do instante UTC nao serve para fechar o caixa.
@@ -697,6 +769,8 @@ model ComandaQuiosque {
   abertaPorId    String
   fechadaPorId   String?
   fechadaEm      DateTime?
+  /// Desconto manual aplicado na comanda (valor absoluto em reais).
+  desconto       Decimal               @default(0) @db.Decimal(10, 2)
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
 
@@ -723,6 +797,10 @@ model PedidoQuiosque {
   status         StatusPedidoQuiosque @default(RECEBIDO)
   observacao     String?
   criadoPorId    String
+  /// Inicio do status atual — o cronometro da cozinha reinicia a cada transicao.
+  statusDesde    DateTime             @default(now())
+  /// Preenchido ao marcar ENTREGUE; congela o tempo total do pedido.
+  entregueEm     DateTime?
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
@@ -730,10 +808,25 @@ model PedidoQuiosque {
   comanda    ComandaQuiosque      @relation(fields: [comandaId], references: [id], onDelete: Cascade)
   pontoVenda PontoVenda           @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
   itens      ItemPedidoQuiosque[]
+  movimentosEstoque MovimentoEstoqueQuiosque[]
+  historicoStatus   PedidoQuiosqueStatusHistorico[]
 
   @@unique([cervejariaId, diaOperacional, numero])
   @@index([cervejariaId, status, createdAt])
   @@index([comandaId])
+  @@schema("quiosque")
+}
+
+/// Marca cada transicao de status na fila da cozinha (auditoria e tempos por fase).
+model PedidoQuiosqueStatusHistorico {
+  id           String               @id @default(cuid())
+  pedidoId     String
+  status       StatusPedidoQuiosque
+  registradoEm DateTime             @default(now())
+
+  pedido PedidoQuiosque @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  @@index([pedidoId, registradoEm])
   @@schema("quiosque")
 }
 
@@ -786,7 +879,7 @@ enum TipoMovimentoCaixaQuiosque {
   @@schema("quiosque")
 }
 
-/// Uma sessao de caixa por ponto de venda e dia de operacao.
+/// Sessao de caixa por turno: o mesmo ponto pode abrir/fechar varias vezes no dia.
 model SessaoCaixaQuiosque {
   id             String              @id @default(cuid())
   cervejariaId   String
@@ -804,13 +897,33 @@ model SessaoCaixaQuiosque {
   contadoCartaoDebito  Decimal? @db.Decimal(10, 2)
   contadoCartaoCredito Decimal? @db.Decimal(10, 2)
   observacaoFechamento String?
+  /// Template usado na abertura do turno (referencia historica).
+  cardapioQuiosqueId   String?
 
   cervejaria  Cervejaria               @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   pontoVenda  PontoVenda               @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
+  cardapio    CardapioQuiosque?        @relation(fields: [cardapioQuiosqueId], references: [id], onDelete: SetNull)
   movimentos  MovimentoCaixaQuiosque[]
+  produtos    SessaoCaixaProdutoQuiosque[]
 
-  @@unique([pontoVendaId, diaOperacional])
+  @@index([pontoVendaId, diaOperacional, status])
   @@index([cervejariaId, diaOperacional])
+  @@index([cardapioQuiosqueId])
+  @@schema("quiosque")
+}
+
+/// Cardapio operacional do turno de caixa (espelha EventoProduto).
+model SessaoCaixaProdutoQuiosque {
+  id               String   @id @default(cuid())
+  sessaoCaixaId    String
+  produtoQuiosqueId String
+  createdAt        DateTime @default(now())
+
+  sessao  SessaoCaixaQuiosque @relation(fields: [sessaoCaixaId], references: [id], onDelete: Cascade)
+  produto ProdutoQuiosque     @relation(fields: [produtoQuiosqueId], references: [id], onDelete: Cascade)
+
+  @@unique([sessaoCaixaId, produtoQuiosqueId])
+  @@index([sessaoCaixaId])
   @@schema("quiosque")
 }
 
@@ -826,5 +939,57 @@ model MovimentoCaixaQuiosque {
   sessao SessaoCaixaQuiosque @relation(fields: [sessaoId], references: [id], onDelete: Cascade)
 
   @@index([sessaoId])
+  @@schema("quiosque")
+}
+
+enum TipoMovimentoEstoqueQuiosque {
+  ENTRADA
+  SAIDA_VENDA
+  ESTORNO_VENDA
+  PERDA
+  CORTESIA
+  CONSUMO_INTERNO
+  AJUSTE
+
+  @@schema("quiosque")
+}
+
+/// Saldo materializado por ponto de venda e produto.
+model EstoqueSaldoQuiosque {
+  id           String   @id @default(cuid())
+  cervejariaId String
+  pontoVendaId String
+  produtoId    String
+  quantidade   Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  cervejaria Cervejaria     @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda     @relation(fields: [pontoVendaId], references: [id], onDelete: Cascade)
+  produto    ProdutoQuiosque @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([pontoVendaId, produtoId])
+  @@index([cervejariaId, pontoVendaId])
+  @@schema("quiosque")
+}
+
+model MovimentoEstoqueQuiosque {
+  id              String                       @id @default(cuid())
+  cervejariaId    String
+  pontoVendaId    String
+  produtoId       String
+  tipo            TipoMovimentoEstoqueQuiosque
+  quantidade      Int
+  observacao      String?
+  registradoPorId String
+  pedidoId        String?
+  createdAt       DateTime                     @default(now())
+
+  cervejaria Cervejaria      @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda      @relation(fields: [pontoVendaId], references: [id], onDelete: Cascade)
+  produto    ProdutoQuiosque @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  pedido     PedidoQuiosque? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+
+  @@index([pontoVendaId, produtoId, createdAt])
+  @@index([pedidoId])
   @@schema("quiosque")
 }

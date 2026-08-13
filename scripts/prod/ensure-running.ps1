@@ -16,8 +16,15 @@ try {
 }
 
 $apiOk = Test-ApiHealthy -HealthUrl $paths.ReadyUrl
+$alertPollerOk = Test-AlertPollerHealthy -HealthUrl $paths.AlertPollerHealthUrl
 $frontendOk = Test-FrontendHealthy -FrontendUrl $paths.FrontendUrl
 $tunnelOk = Test-CloudflaredRunning
+
+if (-not $alertPollerOk) {
+  Write-WatchdogLog -Paths $paths -Message 'Alert poller fora do ar - iniciando.'
+  & "$PSScriptRoot\start-alert-poller.ps1" -Quiet:$Quiet
+  $alertPollerOk = Test-AlertPollerHealthy -HealthUrl $paths.AlertPollerHealthUrl
+}
 
 if (-not $apiOk -and (Test-PortListening -Port $paths.ApiPort)) {
   Start-Sleep -Seconds 3
@@ -49,12 +56,13 @@ if (-not $tunnelOk) {
   $tunnelOk = Test-CloudflaredRunning
 }
 
-if ($apiOk -and $frontendOk -and $tunnelOk) {
-  if (-not $Quiet) { Write-Host 'OK - API, frontend e tunnel no ar.' -ForegroundColor Green }
+if ($apiOk -and $alertPollerOk -and $frontendOk -and $tunnelOk) {
+  if (-not $Quiet) { Write-Host 'OK - API, alert poller, frontend e tunnel no ar.' -ForegroundColor Green }
   exit 0
 }
 
 if (-not $Quiet) {
+  if (-not $alertPollerOk) { Write-Host 'Falha: alert poller indisponivel.' -ForegroundColor Red }
   if (-not $apiOk) { Write-Host 'Falha: API indisponivel.' -ForegroundColor Red }
   if (-not $frontendOk) { Write-Host 'Falha: frontend indisponivel.' -ForegroundColor Red }
   if (-not $tunnelOk) { Write-Host 'Falha: tunnel indisponivel.' -ForegroundColor Red }

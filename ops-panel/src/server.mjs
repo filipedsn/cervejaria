@@ -2,9 +2,27 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
+
+import {
+  DEFAULT_REQUIRED_CHECKS,
+  OVERRIDE_CONFIRM,
+  checkVerdict,
+  collectGitState,
+  evaluateReleaseGate,
+  isAgentBranch,
+  readManifest,
+  readRollbackPoint,
+  summarizeChecks,
+} from './release.mjs';
+import { isTrustedLocalOperator } from './local-auth.mjs';
+import {
+  applyConfigPatch,
+  collectSupportAgentSnapshot,
+  setKillSwitch,
+} from './support-agent.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OPS_PANEL_DIR = path.resolve(__dirname, '..');
@@ -22,6 +40,22 @@ const RUNTIME_DIR = path.join(PROJECT_ROOT, 'deploy', 'runtime');
 const LOG_DIR = path.join(PROJECT_ROOT, 'deploy', 'logs');
 const BACKUP_DIR = path.join(PROJECT_ROOT, 'deploy', 'backups');
 const AUDIT_LOG = path.join(LOG_DIR, 'ops-panel.log');
+const OPS_PANEL_META = path.join(RUNTIME_DIR, 'ops-panel.meta.json');
+const OPS_PANEL_VERSION = 2;
+const STARTED_AT = new Date().toISOString();
+const PROD_ARTIFACTS_DIR = path.join(PROJECT_ROOT, 'deploy', 'prod-artifacts');
+const PROD_MANIFEST = path.join(PROD_ARTIFACTS_DIR, 'manifest.json');
+const PROD_ARTIFACTS_PREVIOUS = path.join(PROJECT_ROOT, 'deploy', 'prod-artifacts.previous');
+
+const SUPPORT_AGENT_DIR = path.join(PROJECT_ROOT, 'support-agent');
+const SUPPORT_AGENT_ENV = path.join(SUPPORT_AGENT_DIR, '.env');
+const SUPPORT_AGENT_KILL_SWITCH = path.join(RUNTIME_DIR, 'support-agent-fixer.disabled');
+const DEFAULT_OTLP_ENDPOINT = 'http://127.0.0.1:4318';
+
+const REQUIRED_CHECKS = (process.env.OPS_PANEL_REQUIRED_CHECKS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 const PORTS = {
   prodApi: 3001,
@@ -51,7 +85,10 @@ function logMeta(name) {
 
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
-  for (const line of fs.readFileSync(filePath, 'utf8').split('\n')) {
+  // O BOM que o PowerShell 5.1 escreve gruda na primeira chave (\uFEFFGITHUB_TOKEN),
+  // e a variavel some sem nenhum erro visivel.
+  const content = fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, '');
+  for (const line of content.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
     const eq = trimmed.indexOf('=');
@@ -61,7 +98,9 @@ function loadEnvFile(filePath) {
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
-    if (!process.env[key]) process.env[key] = value;
+    // O arquivo local ganha, exceto porta: permite fallback quando :3099 esta presa.
+    if (key === 'OPS_PANEL_PORT' && process.env.OPS_PANEL_PORT) continue;
+    process.env[key] = value;
   }
 }
 
@@ -69,6 +108,27 @@ function audit(message) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
   const line = `[${new Date().toISOString()}] ${message}\n`;
   fs.appendFileSync(AUDIT_LOG, line, 'utf8');
+}
+
+function writeOpsPanelMeta() {
+  fs.mkdirSync(RUNTIME_DIR, { recursive: true });
+  const meta = {
+    version: OPS_PANEL_VERSION,
+    port: PORT,
+    host: HOST,
+    pid: process.pid,
+    startedAt: STARTED_AT,
+    url: `http://${HOST}:${PORT}`,
+  };
+  fs.writeFileSync(OPS_PANEL_META, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+}
+
+function removeOpsPanelMeta() {
+  try {
+    if (fs.existsSync(OPS_PANEL_META)) fs.rmSync(OPS_PANEL_META);
+  } catch {
+    // ignore
+  }
 }
 
 function readPid(name) {
@@ -83,7 +143,9 @@ function isProcessAlive(pid) {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
+  } catch (err) {
+    // Windows: kill(0) em processo de outro contexto retorna EPERM mesmo vivo.
+    if (err && err.code === 'EPERM') return true;
     return false;
   }
 }
@@ -136,16 +198,12 @@ function cooldownRemaining(action) {
 }
 
 function requireToken(request, reply) {
-  if (!OPS_TOKEN) {
-    reply.code(503).send({ error: 'OPS_PANEL_TOKEN nao configurado em ops-panel/.env' });
-    return false;
-  }
-  const header = request.headers['x-ops-token'];
-  if (header !== OPS_TOKEN) {
-    reply.code(401).send({ error: 'Token invalido. Salve o token do ops-panel/.env no campo acima.' });
-    return false;
-  }
-  return true;
+  if (isTrustedLocalOperator(request, { port: PORT })) return true;
+  if (OPS_TOKEN && request.headers['x-ops-token'] === OPS_TOKEN) return true;
+  reply.code(403).send({
+    error: 'Ops panel so aceita o navegador local (http://127.0.0.1:3099).',
+  });
+  return false;
 }
 
 function checkCooldown(action, reply) {
@@ -161,6 +219,81 @@ function checkCooldown(action, reply) {
   }
   lastActionAt.set(action, Date.now());
   return true;
+}
+
+function runSupportAgentScript(scriptName) {
+  const scriptPath = path.join(PROJECT_ROOT, 'scripts', 'support-agent', `${scriptName}.ps1`);
+  const result = spawnSync(
+    'powershell',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-Quiet'],
+    { cwd: PROJECT_ROOT, encoding: 'utf8', timeout: 45_000 },
+  );
+  return {
+    ok: result.status === 0,
+    output: `${result.stdout || ''}${result.stderr || ''}`.trim(),
+    code: result.status ?? 1,
+  };
+}
+
+function writeSupportAgentEnv(content) {
+  fs.mkdirSync(path.dirname(SUPPORT_AGENT_ENV), { recursive: true });
+  if (!fs.existsSync(SUPPORT_AGENT_ENV) && fs.existsSync(path.join(SUPPORT_AGENT_DIR, '.env.example'))) {
+    fs.copyFileSync(path.join(SUPPORT_AGENT_DIR, '.env.example'), SUPPORT_AGENT_ENV);
+  }
+  fs.writeFileSync(SUPPORT_AGENT_ENV, content.replace(/^\uFEFF/, ''), 'utf8');
+}
+
+async function applySupportAgentPatch(body) {
+  const envContent = fs.existsSync(SUPPORT_AGENT_ENV)
+    ? fs.readFileSync(SUPPORT_AGENT_ENV, 'utf8').replace(/^\uFEFF/, '')
+    : '';
+  const before = await collectSupportAgentSnapshot(PROJECT_ROOT);
+  const notes = [];
+
+  const configPatch = {};
+  if (body.shadow != null) configPatch.shadow = Boolean(body.shadow);
+  if (body.dryRun != null) configPatch.dryRun = Boolean(body.dryRun);
+  if (body.fixerEnabled != null) configPatch.fixerEnabled = Boolean(body.fixerEnabled);
+  if (body.otlpMetrics != null) configPatch.otlpMetrics = Boolean(body.otlpMetrics);
+
+  let nextEnv = envContent;
+  if (Object.keys(configPatch).length) {
+    const { content } = applyConfigPatch(envContent, configPatch, DEFAULT_OTLP_ENDPOINT);
+    nextEnv = content;
+    writeSupportAgentEnv(nextEnv);
+    notes.push('config atualizada');
+  }
+
+  if (body.killSwitch != null) {
+    const engage = Boolean(body.killSwitch);
+    setKillSwitch(
+      SUPPORT_AGENT_KILL_SWITCH,
+      engage,
+      engage ? 'desligado pelo ops-panel' : '',
+    );
+    notes.push(engage ? 'kill switch ativado' : 'kill switch liberado');
+  }
+
+  if (body.monitoring != null) {
+    const wantOn = Boolean(body.monitoring);
+    if (wantOn && !before.process.running) {
+      const r = runSupportAgentScript('start');
+      if (!r.ok) throw new Error(r.output || 'Falha ao iniciar o agente');
+      notes.push('agente iniciado');
+    } else if (!wantOn && before.process.running) {
+      const r = runSupportAgentScript('stop');
+      if (!r.ok) throw new Error(r.output || 'Falha ao parar o agente');
+      notes.push('agente parado');
+    }
+  } else if (before.process.running && Object.keys(configPatch).length) {
+    runSupportAgentScript('stop');
+    const r = runSupportAgentScript('start');
+    if (!r.ok) throw new Error(r.output || 'Falha ao reiniciar o agente apos mudanca de config');
+    notes.push('agente reiniciado para aplicar config');
+  }
+
+  const after = await collectSupportAgentSnapshot(PROJECT_ROOT);
+  return { notes, before, after };
 }
 
 function validateBackupDestination(dir) {
@@ -353,6 +486,97 @@ async function githubSummary() {
   }
 }
 
+const requiredChecks = REQUIRED_CHECKS.length ? REQUIRED_CHECKS : DEFAULT_REQUIRED_CHECKS;
+
+/** Enriquece cada commit pendente com o PR de origem e a marca de agente automatico. */
+async function annotatePendingCommits(commits) {
+  if (!GITHUB_TOKEN || !commits.length) return commits;
+
+  // Limite deliberado: a API do GitHub cobra uma chamada por commit e a lista costuma
+  // ser curta. Acima disso o painel mostra o commit sem PR em vez de estourar o rate limit.
+  const limited = commits.slice(0, 15);
+  const annotated = await Promise.all(
+    limited.map(async (commit) => {
+      try {
+        const pulls = await githubFetch(`/commits/${commit.sha}/pulls`);
+        const pr = Array.isArray(pulls) ? pulls[0] : null;
+        if (!pr) return { ...commit, pr: null, fromAgent: false };
+        return {
+          ...commit,
+          pr: { number: pr.number, title: pr.title, url: pr.html_url, branch: pr.head?.ref || null },
+          fromAgent: isAgentBranch(pr.head?.ref),
+        };
+      } catch {
+        return { ...commit, pr: null, fromAgent: false, prError: true };
+      }
+    }),
+  );
+
+  return [...annotated, ...commits.slice(limited.length).map((c) => ({ ...c, pr: null, fromAgent: false }))];
+}
+
+async function fetchChecksForSha(sha) {
+  if (!GITHUB_TOKEN || !sha) return { checks: [], configured: false };
+  try {
+    const data = await githubFetch(`/commits/${sha}/check-runs?per_page=50`);
+    return { checks: summarizeChecks(data.check_runs), configured: true };
+  } catch (err) {
+    return { checks: [], configured: true, error: String(err.message || err) };
+  }
+}
+
+async function buildReleaseState() {
+  const deployed = readManifest(PROD_MANIFEST);
+  const git = await collectGitState(PROJECT_ROOT, deployed?.gitSha || null);
+
+  if (!git.gitAvailable) {
+    const gate = evaluateReleaseGate({ gitAvailable: false }, { requiredChecks });
+    return {
+      deployed,
+      rollback: readRollbackPoint(PROD_ARTIFACTS_PREVIOUS),
+      ...git,
+      checks: [],
+      gate,
+      gateWithMigrationsAck: gate,
+      overridable: false,
+      requiredChecks,
+    };
+  }
+
+  const [{ checks, configured, error }, pending] = await Promise.all([
+    fetchChecksForSha(git.head.sha),
+    annotatePendingCommits(git.pending),
+  ]);
+
+  const state = { ...git, deployed, pending, checks, checksConfigured: configured, checksError: error || null };
+  const gate = evaluateReleaseGate(state, { requiredChecks });
+
+  return {
+    ...state,
+    // Os dois veredictos vao prontos para a tela decidir se habilita o botao sem
+    // reimplementar a regra no navegador. O POST /api/prod/deploy reavalia de todo jeito:
+    // a decisao final nunca depende do que o cliente mandou.
+    gate,
+    gateWithMigrationsAck: evaluateReleaseGate(state, { requiredChecks, acknowledgeMigrations: true }),
+    overridable: gate.blockers.every((b) => b.overridable),
+    rollback: readRollbackPoint(PROD_ARTIFACTS_PREVIOUS),
+    requiredChecks,
+  };
+}
+
+function releaseSummaryForAudit(state, gate, body) {
+  return [
+    `head=${state.head?.sha?.slice(0, 7) || '?'}`,
+    `branch=${state.head?.branch || '?'}`,
+    `publicado=${state.deployed?.gitSha || 'nenhum'}`,
+    `pendentes=${state.pending?.length ?? 0}`,
+    `migrations=${state.migrationsChanged?.length ?? 0}`,
+    `checks=${(state.checks || []).map((c) => `${c.name}:${checkVerdict(c)}`).join('|') || 'nenhum'}`,
+    `override=${gate.overridden ? `SIM motivo="${(body.overrideReason || '').slice(0, 120)}"` : 'nao'}`,
+    `impedimentos=${gate.blockers.map((b) => b.code).join('|') || 'nenhum'}`,
+  ].join(' ');
+}
+
 function streamLine(reply, line) {
   reply.raw.write(`${line}\n`);
 }
@@ -432,6 +656,19 @@ await app.register(fastifyStatic, {
 });
 
 app.get('/api/health', async () => ({ ok: true, service: 'ops-panel' }));
+
+app.get('/api/meta', async () => ({
+  version: OPS_PANEL_VERSION,
+  port: PORT,
+  host: HOST,
+  pid: process.pid,
+  startedAt: STARTED_AT,
+  url: `http://${HOST}:${PORT}`,
+}));
+
+app.get('/api/session', async (request) => ({
+  trusted: isTrustedLocalOperator(request, { port: PORT }),
+}));
 
 app.get('/api/logs', async () => ({
   files: Object.keys(LOG_FILES).map((name) => {
@@ -527,6 +764,14 @@ app.post('/api/prod/restart', async (request, reply) => {
   });
 });
 
+app.get('/api/release', async (request, reply) => {
+  try {
+    return await buildReleaseState();
+  } catch (err) {
+    return reply.code(500).send({ error: String(err.message || err) });
+  }
+});
+
 app.post('/api/prod/deploy', async (request, reply) => {
   if (!requireToken(request, reply)) return;
 
@@ -534,12 +779,75 @@ app.post('/api/prod/deploy', async (request, reply) => {
   if (body.confirm !== 'DEPLOY') {
     return reply.code(400).send({ error: 'Digite DEPLOY para confirmar deploy em producao.' });
   }
-  if (!checkCooldown('prod-deploy', reply)) return;
+
+  // O gate e reavaliado no servidor: o estado pode ter mudado desde que a tela carregou,
+  // e a decisao nao pode depender do que o navegador afirma.
+  let state;
+  try {
+    state = await buildReleaseState();
+  } catch (err) {
+    return reply.code(500).send({ error: `Nao foi possivel verificar a release: ${String(err.message || err)}` });
+  }
+
+  const override = body.override === true && body.overrideConfirm === OVERRIDE_CONFIRM;
+  if (body.override === true && !override) {
+    return reply.code(400).send({
+      error: `Para ignorar o gate, envie overrideConfirm com o texto ${OVERRIDE_CONFIRM}.`,
+    });
+  }
+  if (override && !String(body.overrideReason || '').trim()) {
+    return reply.code(400).send({ error: 'Informe o motivo do override — ele fica registrado na auditoria.' });
+  }
+
+  const gate = evaluateReleaseGate(state, {
+    requiredChecks,
+    acknowledgeMigrations: body.acknowledgeMigrations === true,
+    override,
+  });
+
+  if (!gate.allowed) {
+    audit(`acao=prod-deploy RECUSADO ${releaseSummaryForAudit(state, gate, body)}`);
+    return reply.code(409).send({
+      error: 'Deploy recusado pelo gate de release.',
+      blockers: gate.blockers,
+      warnings: gate.warnings,
+    });
+  }
+
+  audit(`acao=prod-deploy LIBERADO ${releaseSummaryForAudit(state, gate, body)}`);
 
   return handleStreamAction(request, reply, {
     action: 'prod-deploy',
-    label: 'Deploy producao',
+    label: gate.overridden ? 'Deploy producao (GATE IGNORADO)' : 'Deploy producao',
     scriptRelative: 'scripts/prod/deploy.ps1',
+    psArgs: ['-Confirmed'],
+    extraLogs: ['api-error.log'],
+  });
+});
+
+app.post('/api/prod/rollback', async (request, reply) => {
+  if (!requireToken(request, reply)) return;
+
+  const body = request.body || {};
+  if (body.confirm !== 'ROLLBACK') {
+    return reply.code(400).send({ error: 'Digite ROLLBACK para voltar a release anterior.' });
+  }
+
+  const rollback = readRollbackPoint(PROD_ARTIFACTS_PREVIOUS);
+  if (!rollback.available) {
+    return reply.code(409).send({
+      error:
+        'Nenhuma release anterior preservada. O rollback fica disponivel a partir do primeiro deploy ' +
+        'que salva prod-artifacts.previous.',
+    });
+  }
+
+  audit(`acao=prod-rollback para=${rollback.gitSha || 'desconhecido'} partes=${(rollback.parts || []).join('|')}`);
+
+  return handleStreamAction(request, reply, {
+    action: 'prod-rollback',
+    label: 'Rollback producao',
+    scriptRelative: 'scripts/prod/rollback.ps1',
     psArgs: ['-Confirmed'],
     extraLogs: ['api-error.log'],
   });
@@ -586,14 +894,60 @@ app.post('/api/infra/sync-prod-to-dev', async (request, reply) => {
   if (body.confirm !== 'SYNC-DEV') {
     return reply.code(400).send({ error: 'Digite SYNC-DEV para confirmar copia prod -> dev.' });
   }
-  if (!checkCooldown('infra-sync-prod-dev', reply)) return;
 
+  // O cooldown e aplicado dentro de handleStreamAction; checar aqui tambem faria a
+  // segunda chamada encontrar o proprio registro e responder 429 sempre.
   return handleStreamAction(request, reply, {
     action: 'infra-sync-prod-dev',
     label: 'Copiar producao para dev',
     scriptRelative: 'scripts/prod/sync-prod-to-dev.ps1',
     psArgs: ['-Confirmed'],
   });
+});
+
+app.get('/api/support-agent', async (request, reply) => {
+  try {
+    return await collectSupportAgentSnapshot(PROJECT_ROOT);
+  } catch (err) {
+    return reply.code(500).send({ error: String(err.message || err) });
+  }
+});
+
+app.patch('/api/support-agent', async (request, reply) => {
+  if (!requireToken(request, reply)) return;
+
+  const body = request.body || {};
+  if (
+    body.monitoring == null &&
+    body.shadow == null &&
+    body.dryRun == null &&
+    body.fixerEnabled == null &&
+    body.killSwitch == null &&
+    body.otlpMetrics == null
+  ) {
+    return reply.code(400).send({ error: 'Nenhum parametro para alterar.' });
+  }
+
+  if (body.fixerEnabled === true && body.shadow !== false) {
+    const snap = await collectSupportAgentSnapshot(PROJECT_ROOT);
+    if (snap.config.shadow && body.shadow !== false) {
+      return reply.code(400).send({
+        error: 'Desligue o modo sombra antes de ligar o fixer.',
+      });
+    }
+  }
+
+  try {
+    const result = await applySupportAgentPatch(body);
+    audit(`acao=support-agent-patch ${result.notes.join('; ')}`);
+    return {
+      ok: true,
+      notes: result.notes,
+      agent: result.after,
+    };
+  } catch (err) {
+    return reply.code(500).send({ error: String(err.message || err) });
+  }
 });
 
 app.setNotFoundHandler((request, reply) => {
@@ -605,16 +959,30 @@ app.setNotFoundHandler((request, reply) => {
 
 try {
   fs.mkdirSync(RUNTIME_DIR, { recursive: true });
-  fs.writeFileSync(path.join(RUNTIME_DIR, 'ops-panel.pid'), String(process.pid), 'utf8');
+  // Uma segunda instancia (porta alternativa, teste) nao pode roubar o pid da instancia
+  // que esta no ar, senao prod:status e stop-all passam a mirar o processo errado.
+  const owner = readPid('ops-panel.pid');
+  if (owner && owner !== process.pid && isProcessAlive(owner)) {
+    console.warn(`ops-panel.pid pertence ao PID ${owner}, que esta vivo. Mantendo o arquivo intacto.`);
+  } else {
+    fs.writeFileSync(path.join(RUNTIME_DIR, 'ops-panel.pid'), String(process.pid), 'utf8');
+  }
 } catch {
   // ignore
 }
 
-process.on('SIGINT', () => process.exit(0));
-process.on('SIGTERM', () => process.exit(0));
+process.on('SIGINT', () => {
+  removeOpsPanelMeta();
+  process.exit(0);
+});
+process.on('SIGTERM', () => {
+  removeOpsPanelMeta();
+  process.exit(0);
+});
 
 try {
   await app.listen({ host: HOST, port: PORT });
+  writeOpsPanelMeta();
   audit(`ops-panel iniciado em http://${HOST}:${PORT} pid=${process.pid}`);
   console.log(`Quiver Tap Ops Panel: http://${HOST}:${PORT}`);
 } catch (err) {

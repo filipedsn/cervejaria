@@ -5,6 +5,7 @@ import { api, formatEventoWhen } from '../lib/api';
 import type { Evento, RankingEntry } from '../types';
 import { useEvento } from '../contexts/EventoContext';
 import { useRankingLiveUpdates } from '../hooks/useRankingLiveUpdates';
+import { usePollInterval } from '../hooks/usePollInterval';
 import { resolveRankingSerieId } from '../lib/ranking-links';
 import { Loading } from '../components/Loading';
 import { PageHeader } from '../components/PageHeader';
@@ -38,13 +39,14 @@ export function RankingPage() {
   }, [eventoAtivo?.id, eventoIdParam, navigate]);
 
   useRankingLiveUpdates(eventoId);
+  const pollMs = usePollInterval(60_000);
 
   const { data, isLoading } = useQuery({
     queryKey: ['ranking', eventoId],
     queryFn: () => api.get<RankingResponse>(`/api/ranking/evento/${eventoId!}`),
     enabled: !!eventoId,
     staleTime: 0,
-    refetchInterval: 60_000,
+    refetchInterval: pollMs,
   });
 
   const { data: eventoDetalhe } = useQuery({

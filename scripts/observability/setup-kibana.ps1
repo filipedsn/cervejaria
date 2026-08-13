@@ -1,7 +1,8 @@
 # Verifica infra OTel e guia configuracao do Kibana Observability.
 
 $ErrorActionPreference = 'Stop'
-$ProjectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+. (Join-Path $PSScriptRoot '_elastic-auth.ps1')
+$ProjectRoot = $ObsProjectRoot
 Set-Location $ProjectRoot
 
 function Test-HttpStatus {
@@ -9,7 +10,9 @@ function Test-HttpStatus {
     [string]$Url,
     [string[]]$OkCodes = @('200')
   )
-  $code = curl.exe -s -o NUL -w '%{http_code}' $Url 2>$null
+  $curlArgs = @('-s', '-o', 'NUL', '-w', '%{http_code}', $Url)
+  $curlArgs += Get-ElasticCurlAuthArgs
+  $code = curl.exe @curlArgs 2>$null
   return $OkCodes -contains $code
 }
 
@@ -18,8 +21,8 @@ Write-Host 'Quiver Tap - Setup Kibana Observability' -ForegroundColor Cyan
 Write-Host '========================================' -ForegroundColor Cyan
 Write-Host ''
 
-$esOk = Test-HttpStatus -Url 'http://localhost:9200'
-$kbOk = Test-HttpStatus -Url 'http://localhost:5601/api/status'
+$esOk = Test-ElasticHttpStatus -Url "$EsBase/_cluster/health"
+$kbOk = Test-ElasticHttpStatus -Url "$KibanaBase/api/status"
 $otlpOk = Test-HttpStatus -Url 'http://localhost:4318/' -OkCodes @('200', '404', '405')
 
 Write-Host "Elasticsearch (:9200): $(if ($esOk) { 'OK' } else { 'FORA' })" -ForegroundColor $(if ($esOk) { 'Green' } else { 'Red' })
@@ -40,8 +43,7 @@ $packages = @(
 )
 
 foreach ($pkg in $packages) {
-  $installUrl = "http://localhost:5601/api/fleet/epm/packages/$pkg"
-  $result = curl.exe -s -X POST $installUrl -H 'kbn-xsrf: true' -H 'Content-Type: application/json' -d '{}' 2>$null
+  $result = Invoke-Kibana -Method POST -Path "/api/fleet/epm/packages/$pkg" -Body '{}'
   if ($LASTEXITCODE -eq 0 -and $result -notmatch '"statusCode":(4|5)\d\d') {
     Write-Host "  $pkg : instalado ou ja presente" -ForegroundColor Green
   } else {

@@ -110,6 +110,7 @@ export function PagamentoPanel({ total, confirmando, textoConfirmar, onConfirmar
         type="button"
         className="touch-btn-primary w-full"
         disabled={!podeConfirmar}
+        data-audit="quiosque-confirmar-pagamento"
         onClick={confirmar}
       >
         {confirmando ? 'Registrando...' : textoConfirmar}

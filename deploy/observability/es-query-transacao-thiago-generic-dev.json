@@ -1,0 +1,23 @@
+{
+  "size": 5,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "bool": {
+      "must": [
+        { "term": { "resource.attributes.deployment.environment.name": "development" } },
+        { "term": { "attributes.cervejaria.slug": "churrasquinho-do-thiago" } },
+        { "term": { "attributes.event.action": "transacao.quiosque_comanda_criada" } }
+      ],
+      "filter": [{ "range": { "@timestamp": { "gte": "now-30m" } } }]
+    }
+  },
+  "_source": [
+    "@timestamp",
+    "attributes.event.action",
+    "attributes.event.local_time",
+    "attributes.cervejaria.slug",
+    "attributes.transacao.payload",
+    "attributes.metadata.identificador",
+    "attributes.metadata.validacao"
+  ]
+}

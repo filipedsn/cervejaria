@@ -1,0 +1,10 @@
+{
+  "size": 3,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "query_string": {
+      "query": "OBS-TEST-* OR observabilidade-payload OR transacao.quiosque_comanda_criada",
+      "default_field": "*"
+    }
+  }
+}

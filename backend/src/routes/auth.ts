@@ -66,49 +66,29 @@ const resetPasswordSchema = z.object({
 
 
 function authResponse(
-
   usuario: {
-
     id: string;
-
     nome: string;
-
     email: string;
-
     papel: string;
-
     cervejariaId: string | null;
-
     passwordChangedAt: Date;
-
+    podeDarDescontoQuiosque?: boolean;
   },
-
   cervejaria: Parameters<typeof formatCervejariaAuth>[0] | null,
-
   token: string,
-
 ) {
-
   return {
-
     token,
-
     usuario: {
-
       id: usuario.id,
-
       nome: usuario.nome,
-
       email: usuario.email,
-
       papel: usuario.papel,
-
+      podeDarDescontoQuiosque: usuario.podeDarDescontoQuiosque ?? false,
     },
-
     cervejaria: cervejaria ? formatCervejariaAuth(cervejaria) : null,
-
   };
-
 }
 
 
@@ -348,21 +328,14 @@ export async function authRoutes(app: FastifyInstance) {
 
 
     return {
-
       usuario: {
-
         id: usuario.id,
-
         nome: usuario.nome,
-
         email: usuario.email,
-
         papel: usuario.papel,
-
+        podeDarDescontoQuiosque: usuario.podeDarDescontoQuiosque,
       },
-
       cervejaria: usuario.cervejaria ? formatCervejariaAuth(usuario.cervejaria) : null,
-
     };
 
   });

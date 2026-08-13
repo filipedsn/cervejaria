@@ -74,14 +74,16 @@ If the user runs deploy themselves in terminal (without agent), they omit `-Conf
 | Command | Purpose |
 |---------|---------|
 | `npm run prod:status` | Health check |
-| `npm run ops:open` | Painel ops local (:3099) |
+| `npm run ops:open` | Release console / painel ops local (:3099) |
+| `npm run prod:rollback -- -Confirmed` | Back to previous release (code only, not DB) |
 | `npm run prod:restart` | Restart API only (no build) |
 | `npm run prod:backup` | Manual backup |
 | `npm run prod:ensure` | Watchdog — keeps services up, does **not** apply new code |
 
 ## Rollback
 
-See [reference.md](reference.md).
+`npm run prod:rollback -- -Confirmed` restores `deploy/prod-artifacts.previous` in seconds.
+Code only — the database is never reverted. Details in [reference.md](reference.md).
 
 ## Additional resources
 

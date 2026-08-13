@@ -19,6 +19,9 @@ export interface CervejariaAuthPayload {
   corPrimaria: string | null;
   corSecundaria: string | null;
   corPaleta: BrandThemeV2 | null;
+  exibirKpisComanda: boolean;
+  comandasColunaUnica: boolean;
+  usaCardapio: boolean;
   updatedAt: string;
 }
 
@@ -29,6 +32,9 @@ type CervejariaBrandingRow = {
   logoUrl: string | null;
   corPrimaria: string | null;
   corPaleta: unknown;
+  exibirKpisComanda: boolean;
+  comandasColunaUnica: boolean;
+  usaCardapio: boolean;
   updatedAt: Date;
 };
 
@@ -42,6 +48,9 @@ export function formatCervejariaAuth(cervejaria: CervejariaBrandingRow): Cerveja
     corPrimaria: cervejaria.corPrimaria,
     corSecundaria: theme?.corSecundaria ?? null,
     corPaleta: theme,
+    exibirKpisComanda: cervejaria.exibirKpisComanda,
+    comandasColunaUnica: cervejaria.comandasColunaUnica,
+    usaCardapio: cervejaria.usaCardapio,
     updatedAt: cervejaria.updatedAt.toISOString(),
   };
 }

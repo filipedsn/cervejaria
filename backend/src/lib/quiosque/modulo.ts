@@ -7,6 +7,7 @@ export interface ContextoQuiosque {
   controlaEstoque: boolean;
   temCozinha: boolean;
   exclusivo: boolean;
+  usaCardapio: boolean;
 }
 
 declare module 'fastify' {
@@ -73,6 +74,7 @@ export function requireModuloQuiosque(app: FastifyInstance) {
       controlaEstoque: configuracao.controlaEstoque,
       temCozinha: configuracao.temCozinha,
       exclusivo: configuracao.exclusivo,
+      usaCardapio: configuracao.usaCardapio,
     };
   };
 }

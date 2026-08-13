@@ -1,12 +1,48 @@
 import { prisma } from '../../src/lib/prisma.js';
+import { ativarModuloQuiosque } from '../../src/lib/quiosque/modulo.js';
 import { inicializarMontagemEvento } from '../../src/lib/tap-montagem.js';
 import { hashPassword } from '../../src/lib/utils.js';
 import { signToken, userJwtPayload } from './jwt.js';
-import type { Arena, MultiTrailerFixture, TenantFixture } from './types.js';
+import type { AdminFixture, Arena, ConfigTenantFixture, MultiTrailerFixture, TenantFixture } from './types.js';
 export const QA_PREFIX = 'qa-load-';
+export const CFG_PREFIX = 'qa-cfg-';
 export const ARENA_SLUG = 'qa-arena';
 export const MULTI_TRAILER_SLUG = 'qa-multi-trailer';
+export const QA_ADMIN_EMAIL = 'qa-admin@qa.test';
 const PWD = 'qa123456';
+
+export const CONFIG_DEFINITIONS = [
+  { code: 'CERVEJARIA', slug: `${CFG_PREFIX}cervejaria`, moduloCervejaria: true, moduloQuiosque: false, controlaEstoque: false, temCozinha: false, exclusivo: false },
+  { code: 'QUIOSQUE-00', slug: `${CFG_PREFIX}quiosque-00`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: false, temCozinha: false, exclusivo: true },
+  { code: 'QUIOSQUE-10', slug: `${CFG_PREFIX}quiosque-10`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: true, temCozinha: false, exclusivo: true },
+  { code: 'QUIOSQUE-01', slug: `${CFG_PREFIX}quiosque-01`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: false, temCozinha: true, exclusivo: true },
+  { code: 'QUIOSQUE-11', slug: `${CFG_PREFIX}quiosque-11`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: true, temCozinha: true, exclusivo: true },
+  { code: 'HIBRIDA-00', slug: `${CFG_PREFIX}hibrida-00`, moduloCervejaria: true, moduloQuiosque: true, controlaEstoque: false, temCozinha: false, exclusivo: false },
+  { code: 'HIBRIDA-10', slug: `${CFG_PREFIX}hibrida-10`, moduloCervejaria: true, moduloQuiosque: true, controlaEstoque: true, temCozinha: false, exclusivo: false },
+  { code: 'HIBRIDA-01', slug: `${CFG_PREFIX}hibrida-01`, moduloCervejaria: true, moduloQuiosque: true, controlaEstoque: false, temCozinha: true, exclusivo: false },
+  { code: 'HIBRIDA-11', slug: `${CFG_PREFIX}hibrida-11`, moduloCervejaria: true, moduloQuiosque: true, controlaEstoque: true, temCozinha: true, exclusivo: false },
+] as const;
+
+async function cleanupQuiosqueForBrewery(cervejariaId: string) {
+  await prisma.movimentoEstoqueQuiosque.deleteMany({ where: { cervejariaId } });
+  const sessoes = await prisma.sessaoCaixaQuiosque.findMany({ where: { cervejariaId }, select: { id: true } });
+  const sessaoIds = sessoes.map((s) => s.id);
+  if (sessaoIds.length) {
+    await prisma.movimentoCaixaQuiosque.deleteMany({ where: { sessaoId: { in: sessaoIds } } });
+  }
+  await prisma.sessaoCaixaQuiosque.deleteMany({ where: { cervejariaId } });
+  const comandas = await prisma.comandaQuiosque.findMany({ where: { cervejariaId }, select: { id: true } });
+  const comandaIds = comandas.map((c) => c.id);
+  if (comandaIds.length) {
+    await prisma.pagamentoQuiosque.deleteMany({ where: { comandaId: { in: comandaIds } } });
+    await prisma.pedidoQuiosque.deleteMany({ where: { comandaId: { in: comandaIds } } });
+    await prisma.comandaQuiosque.deleteMany({ where: { id: { in: comandaIds } } });
+  }
+  await prisma.estoqueSaldoQuiosque.deleteMany({ where: { cervejariaId } });
+  await prisma.produtoQuiosque.deleteMany({ where: { cervejariaId } });
+  await prisma.pontoVenda.deleteMany({ where: { cervejariaId } });
+  await prisma.configuracaoQuiosque.deleteMany({ where: { cervejariaId } });
+}
 
 function tenantSlug(i: number) {
   return `${QA_PREFIX}${String(i).padStart(3, '0')}`;
@@ -15,10 +51,18 @@ function tenantSlug(i: number) {
 /** Deletes all QA breweries respecting FK order (ItemComanda.produto is Restrict). */
 export async function cleanupQa() {
   const breweries = await prisma.cervejaria.findMany({
-    where: { OR: [{ slug: { startsWith: QA_PREFIX } }, { slug: ARENA_SLUG }, { slug: MULTI_TRAILER_SLUG }] },
+    where: {
+      OR: [
+        { slug: { startsWith: QA_PREFIX } },
+        { slug: { startsWith: CFG_PREFIX } },
+        { slug: ARENA_SLUG },
+        { slug: MULTI_TRAILER_SLUG },
+      ],
+    },
     select: { id: true },
   });
   for (const { id } of breweries) {
+    await cleanupQuiosqueForBrewery(id);
     const eventos = await prisma.evento.findMany({ where: { cervejariaId: id }, select: { id: true } });
     const eventoIds = eventos.map((e) => e.id);
     if (eventoIds.length) {
@@ -44,6 +88,28 @@ export async function cleanupQa() {
     await prisma.usuario.deleteMany({ where: { cervejariaId: id } });
     await prisma.cervejaria.delete({ where: { id } });
   }
+  await prisma.usuario.deleteMany({ where: { email: QA_ADMIN_EMAIL } });
+}
+
+/** ADMIN da plataforma (sem cervejaria) para testes de isolamento e rotas /api/admin. */
+export async function seedAdmin(): Promise<AdminFixture> {
+  const senhaHash = await hashPassword(PWD);
+  await prisma.usuario.deleteMany({ where: { email: QA_ADMIN_EMAIL } });
+  const admin = await prisma.usuario.create({
+    data: {
+      nome: 'QA Admin Plataforma',
+      email: QA_ADMIN_EMAIL,
+      senhaHash,
+      papel: 'ADMIN',
+    },
+    select: { id: true, email: true, nome: true, papel: true, cervejariaId: true, passwordChangedAt: true },
+  });
+
+  return {
+    email: QA_ADMIN_EMAIL,
+    senha: PWD,
+    token: signToken(userJwtPayload(admin), { expiresInSec: 8 * 3600 }),
+  };
 }
 
 async function createBrewery(slug: string, nome: string, atendentes: number) {
@@ -311,4 +377,153 @@ export async function seedMultiTrailer(): Promise<MultiTrailerFixture> {
       { id: trailerB.id, nome: trailerB.nome, eventoId: eventoB.id, comandaId: comandaB.id, tapId: tapB.id },
     ],
   };
+}
+
+/** Nove configuracoes de empresa para matriz CFG (modulos e subflags). */
+export async function seedConfigTenants(): Promise<ConfigTenantFixture[]> {
+  const senhaHash = await hashPassword(PWD);
+  const fixtures: ConfigTenantFixture[] = [];
+
+  for (const def of CONFIG_DEFINITIONS) {
+    const donoEmail = `${def.slug}-dono@qa.test`;
+
+    const cervejaria = await prisma.cervejaria.create({
+      data: {
+        nome: `QA ${def.code}`,
+        slug: def.slug,
+        ...(def.moduloCervejaria ? { trailers: { create: { nome: 'Principal CFG' } } } : {}),
+      },
+      include: { trailers: true },
+    });
+
+    const dono = await prisma.usuario.create({
+      data: {
+        nome: `Dono ${def.code}`,
+        email: donoEmail,
+        senhaHash,
+        papel: 'DONO',
+        cervejariaId: cervejaria.id,
+      },
+      select: { id: true, email: true, nome: true, papel: true, cervejariaId: true, passwordChangedAt: true },
+    });
+
+    await prisma.usuario.createMany({
+      data: [1, 2].map((n) => ({
+        nome: `Atendente ${n} ${def.code}`,
+        email: `${def.slug}-a${n}@qa.test`,
+        senhaHash,
+        papel: 'ATENDENTE' as const,
+        cervejariaId: cervejaria.id,
+      })),
+    });
+
+    let pontoVendaId: string | undefined;
+    let produtoId: string | undefined;
+    let produtoPreparoId: string | undefined;
+    let eventoId: string | undefined;
+
+    if (def.moduloQuiosque) {
+      const { pontoVenda } = await prisma.$transaction(async (tx) =>
+        ativarModuloQuiosque(tx, {
+          cervejariaId: cervejaria.id,
+          controlaEstoque: def.controlaEstoque,
+          temCozinha: def.temCozinha,
+          exclusivo: def.exclusivo,
+          nomePontoVenda: `PDV ${def.code}`,
+        }),
+      );
+      pontoVendaId = pontoVenda.id;
+
+      const bebida = await prisma.produtoQuiosque.create({
+        data: {
+          cervejariaId: cervejaria.id,
+          nome: 'Cerveja CFG',
+          categoria: 'Cervejas',
+          precoUnit: 8,
+          exigePreparo: false,
+          controlaEstoque: def.controlaEstoque,
+          ordem: 1,
+        },
+      });
+      produtoId = bebida.id;
+
+      const preparo = await prisma.produtoQuiosque.create({
+        data: {
+          cervejariaId: cervejaria.id,
+          nome: 'Pastel CFG',
+          categoria: 'Salgados',
+          precoUnit: 12,
+          exigePreparo: true,
+          controlaEstoque: def.controlaEstoque,
+          ordem: 2,
+        },
+      });
+      produtoPreparoId = preparo.id;
+
+      if (def.controlaEstoque) {
+        await prisma.estoqueSaldoQuiosque.createMany({
+          data: [
+            { cervejariaId: cervejaria.id, pontoVendaId, produtoId: bebida.id, quantidade: 100 },
+            { cervejariaId: cervejaria.id, pontoVendaId, produtoId: preparo.id, quantidade: 100 },
+          ],
+        });
+      }
+    }
+
+    if (def.moduloCervejaria && cervejaria.trailers[0]) {
+      const trailer = cervejaria.trailers[0];
+      const produto = await prisma.produto.create({
+        data: {
+          nome: 'Pilsen CFG',
+          estilo: 'Pilsen',
+          cor: '#F5C842',
+          tipo: 'BEBIDA',
+          formato: 'CHOPE',
+          cervejariaId: cervejaria.id,
+          precos: { create: [{ volumeMl: 500, preco: 12 }] },
+        },
+      });
+      await prisma.tap.create({
+        data: {
+          numero: 1,
+          nome: 'Tap CFG',
+          produtoId: produto.id,
+          cervejariaId: cervejaria.id,
+          trailerId: trailer.id,
+        },
+      });
+      const evento = await prisma.evento.create({
+        data: {
+          nome: `Evento CFG ${def.code}`,
+          local: 'Local CFG',
+          data: new Date(),
+          horaInicio: '18:00',
+          status: 'ABERTO',
+          cervejariaId: cervejaria.id,
+          trailerId: trailer.id,
+        },
+      });
+      await inicializarMontagemEvento(evento.id, trailer.id);
+      eventoId = evento.id;
+    }
+
+    fixtures.push({
+      code: def.code,
+      slug: def.slug,
+      cervejariaId: cervejaria.id,
+      donoEmail,
+      donoToken: signToken(userJwtPayload(dono), { expiresInSec: 8 * 3600 }),
+      moduloCervejaria: def.moduloCervejaria,
+      moduloQuiosque: def.moduloQuiosque,
+      controlaEstoque: def.controlaEstoque,
+      temCozinha: def.temCozinha,
+      exclusivo: def.exclusivo,
+      pontoVendaId,
+      produtoId,
+      produtoPreparoId,
+      eventoId,
+    });
+  }
+
+  return fixtures;
 }

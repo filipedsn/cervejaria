@@ -17,6 +17,18 @@ $env:NODE_ENV = 'development'
 . (Join-Path $PSScriptRoot '..\prod\_config.ps1')
 Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment development
 
+# OTel só no backend — frontend (Vite) não tem @elastic/opentelemetry-node.
+$otelImport = '--import @elastic/opentelemetry-node'
+$savedNodeOptions = $env:NODE_OPTIONS
+$backendNodeOptions = $otelImport
+if ($savedNodeOptions) {
+  if ($savedNodeOptions -notlike '*opentelemetry-node*') {
+    $backendNodeOptions = "$savedNodeOptions $otelImport"
+  } else {
+    $backendNodeOptions = $savedNodeOptions
+  }
+}
+
 function Start-DevService {
   param(
     [string]$Label,
@@ -73,10 +85,18 @@ function Start-DevService {
 Push-Location $paths.BackendDir
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = 'SilentlyContinue'
-& $paths.NpmCmd exec prisma generate *> $null
+if (-not (Test-DevPortListening -Port $paths.BackendPort)) {
+  & $paths.NpmCmd exec prisma generate *> $null
+  if ($LASTEXITCODE -ne 0) {
+    Write-DevLog -Paths $paths -Message 'prisma generate falhou (API parada) — reinicie dev apos fechar processos node.'
+  }
+} else {
+  Write-DevLog -Paths $paths -Message 'prisma generate ignorado — API dev ativa na porta (evita EPERM no query engine).'
+}
 $ErrorActionPreference = $prevEap
 Pop-Location
 
+$env:NODE_OPTIONS = $backendNodeOptions
 $backendOk = Start-DevService `
   -Label 'API dev' `
   -WorkingDir $paths.BackendDir `
@@ -84,6 +104,9 @@ $backendOk = Start-DevService `
   -Port $paths.BackendPort `
   -StdoutLog $paths.BackendLog `
   -StderrLog $paths.BackendErrLog
+
+# Vite não deve herdar NODE_OPTIONS do backend.
+$env:NODE_OPTIONS = ''
 
 $frontendOk = Start-DevService `
   -Label 'Frontend dev' `
@@ -100,6 +123,7 @@ if ($backendOk -or $frontendOk) {
 
 if ($backendOk -and $frontendOk) {
   Write-Host "Dev no ar: http://localhost:$($paths.FrontendPort) (API :$($paths.BackendPort))" -ForegroundColor Green
+  Write-Host "Internet (Cloudflare): https://tapdev.quivercloud.com.br" -ForegroundColor Cyan
   $lanIp = Get-DevLanIPv4
   if ($lanIp) {
     Write-Host "Celular (mesma Wi-Fi): http://${lanIp}:$($paths.FrontendPort)" -ForegroundColor Cyan

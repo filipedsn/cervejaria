@@ -1,0 +1,10 @@
+{
+  "index_patterns": ["metrics-*.otel-*", "logs-*.otel-*", "traces-*.otel-*"],
+  "template": {
+    "settings": {
+      "number_of_replicas": 0
+    }
+  },
+  "priority": 250,
+  "data_stream": {}
+}

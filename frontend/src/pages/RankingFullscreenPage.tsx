@@ -5,6 +5,7 @@ import { api, formatEventoWhen } from '../lib/api';
 import type { RankingEntry } from '../types';
 import { buildDemoRankingResponse } from '../lib/ranking-demo';
 import { useRankingLiveUpdates, useRankingSocketReconnect } from '../hooks/useRankingLiveUpdates';
+import { usePollInterval } from '../hooks/usePollInterval';
 import { useAuth } from '../contexts/AuthContext';
 import { Loading } from '../components/Loading';
 import { RankingTvView } from '../components/RankingTvView';
@@ -35,13 +36,14 @@ export function RankingFullscreenPage() {
 
   useRankingLiveUpdates(eventoId, !isDemo);
   useRankingSocketReconnect(eventoId, !isDemo);
+  const pollMs = usePollInterval(60_000);
 
   const { data: apiData, isLoading: loadingRanking, dataUpdatedAt } = useQuery({
     queryKey: ['ranking', eventoId],
     queryFn: () => api.get<RankingResponse>(`/api/ranking/evento/${eventoId}`),
     enabled: !!eventoId && !isDemo && !authLoading,
     staleTime: 0,
-    refetchInterval: 60_000,
+    refetchInterval: pollMs,
   });
 
   const data = isDemo ? demoData : apiData;

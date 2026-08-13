@@ -1,6 +1,6 @@
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
-type UiEventType = 'click' | 'page_view' | 'submit';
+type UiEventType = 'click' | 'page_view' | 'submit' | 'error';
 
 type UiEvent = {
   type: UiEventType;
@@ -12,25 +12,78 @@ type UiEvent = {
 };
 
 const queue: UiEvent[] = [];
+const pendingPreAuth: UiEvent[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let initialized = false;
+
+/** Dedup de ui.error — evita laço em render quebrado. */
+const errorDedup = new Map<string, number>();
+const ERROR_DEDUP_MS = 60_000;
+const ERROR_MAX_PER_SESSION = 20;
+let errorCountSession = 0;
 
 function currentPage(): string {
   return `${window.location.pathname}${window.location.search}`;
+}
+
+function clickSelector(): string {
+  return 'button, a, [role="button"], [data-audit]';
+}
+
+function resolveClickLabel(el: HTMLElement): string {
+  return (
+    el.getAttribute('data-audit') ??
+    el.getAttribute('aria-label') ??
+    el.textContent?.trim().slice(0, 120) ??
+    el.tagName.toLowerCase()
+  );
+}
+
+function errorFingerprint(message: string, stack?: string): string {
+  const base = `${message}|${(stack ?? '').slice(0, 200)}`;
+  let h = 0;
+  for (let i = 0; i < base.length; i++) h = (h * 31 + base.charCodeAt(i)) | 0;
+  return String(h);
+}
+
+function shouldEmitError(message: string, stack?: string): boolean {
+  if (errorCountSession >= ERROR_MAX_PER_SESSION) return false;
+  const fp = errorFingerprint(message, stack);
+  const now = Date.now();
+  const last = errorDedup.get(fp);
+  if (last != null && now - last < ERROR_DEDUP_MS) return false;
+  errorDedup.set(fp, now);
+  errorCountSession += 1;
+  return true;
 }
 
 async function flushEvents(): Promise<void> {
   if (queue.length === 0) return;
   const batch = queue.splice(0, 50);
   try {
-    await fetch(`${API_BASE}/api/audit/events`, {
+    const res = await fetch(`${API_BASE}/api/audit/events`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ events: batch }),
     });
+    if (res.status === 401) {
+      pendingPreAuth.push(...batch);
+      return;
+    }
+    if (!res.ok) {
+      queue.unshift(...batch);
+    }
   } catch {
     queue.unshift(...batch);
   }
+}
+
+/** Drena eventos enfileirados antes do login (ex.: page_view em /login). */
+export function flushPendingAuditAfterAuth(): void {
+  if (pendingPreAuth.length === 0) return;
+  queue.push(...pendingPreAuth.splice(0, pendingPreAuth.length));
+  void flushEvents();
 }
 
 function scheduleFlush(): void {
@@ -57,11 +110,12 @@ export function trackPageView(page: string = currentPage()): void {
   enqueue({ type: 'page_view', page });
 }
 
-export function trackClick(label: string, meta?: Record<string, unknown>): void {
+export function trackClick(label: string, meta?: Record<string, unknown>, element?: string): void {
   enqueue({
     type: 'click',
     page: currentPage(),
     label,
+    element,
     meta,
   });
 }
@@ -75,22 +129,36 @@ export function trackSubmit(label: string, meta?: Record<string, unknown>): void
   });
 }
 
+export function trackUiError(message: string, stack?: string, meta?: Record<string, unknown>): void {
+  if (!shouldEmitError(message, stack)) return;
+  enqueue({
+    type: 'error',
+    page: currentPage(),
+    label: message.slice(0, 300),
+    meta: {
+      stack: stack?.slice(0, 2000),
+      ...meta,
+    },
+  });
+}
+
 export function initAuditTracker(): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || initialized) return;
+  initialized = true;
 
   document.addEventListener(
     'click',
     (ev) => {
       const target = ev.target as HTMLElement | null;
       if (!target) return;
-      const el = target.closest('button, a, [data-audit]') as HTMLElement | null;
+      const el = target.closest(clickSelector()) as HTMLElement | null;
       if (!el) return;
-      const label =
+      const label = resolveClickLabel(el);
+      const element =
         el.getAttribute('data-audit') ??
-        el.getAttribute('aria-label') ??
-        el.textContent?.trim().slice(0, 120) ??
+        (el.id ? `#${el.id}` : undefined) ??
         el.tagName.toLowerCase();
-      trackClick(label, { tag: el.tagName.toLowerCase() });
+      trackClick(label, { tag: el.tagName.toLowerCase() }, element);
     },
     { capture: true },
   );
@@ -99,6 +167,19 @@ export function initAuditTracker(): void {
     const form = ev.target as HTMLFormElement | null;
     const label = form?.getAttribute('data-audit') ?? form?.getAttribute('name') ?? 'form';
     trackSubmit(label);
+  });
+
+  window.addEventListener('error', (ev) => {
+    const msg = ev.message || 'Erro JavaScript';
+    const stack = ev.error instanceof Error ? ev.error.stack : undefined;
+    trackUiError(msg, stack, { source: ev.filename, line: ev.lineno });
+  });
+
+  window.addEventListener('unhandledrejection', (ev) => {
+    const reason = ev.reason;
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    const stack = reason instanceof Error ? reason.stack : undefined;
+    trackUiError(msg, stack, { kind: 'unhandledrejection' });
   });
 
   window.addEventListener('beforeunload', () => {

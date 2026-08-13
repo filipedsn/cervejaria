@@ -8,6 +8,9 @@ import { comandasQuiosqueRoutes } from './comandas.js';
 import { vendasQuiosqueRoutes } from './vendas.js';
 import { cozinhaQuiosqueRoutes } from './cozinha.js';
 import { caixaQuiosqueRoutes } from './caixa.js';
+import { cardapiosQuiosqueRoutes } from './cardapios.js';
+import { estoqueQuiosqueRoutes } from './estoque.js';
+import { dashboardQuiosqueRoutes } from './dashboard.js';
 
 const createPontoVendaSchema = z.object({
   nome: z.string().trim().min(1),
@@ -36,12 +39,25 @@ export async function quiosqueRoutes(app: FastifyInstance) {
       controlaEstoque: configuracao.controlaEstoque,
       temCozinha: configuracao.temCozinha,
       exclusivo: configuracao.exclusivo,
+      usaCardapio: configuracao.usaCardapio,
       pontosVenda,
     };
   });
 
   await app.register(async (moduloScope) => {
     moduloScope.addHook('preHandler', requireModuloQuiosque(app));
+
+    moduloScope.patch('/config', { preHandler: [app.requireDono] }, async (request) => {
+      const { cervejariaId } = request.quiosque;
+      const body = z.object({ usaCardapio: z.boolean() }).parse(request.body);
+
+      const updated = await prisma.configuracaoQuiosque.update({
+        where: { cervejariaId },
+        data: { usaCardapio: body.usaCardapio },
+      });
+
+      return { usaCardapio: updated.usaCardapio };
+    });
 
     moduloScope.get('/pontos-venda', async (request) => {
       const { cervejariaId } = request.quiosque;
@@ -63,9 +79,12 @@ export async function quiosqueRoutes(app: FastifyInstance) {
     });
 
     await moduloScope.register(produtosQuiosqueRoutes, { prefix: '/produtos' });
+    await moduloScope.register(cardapiosQuiosqueRoutes, { prefix: '/cardapios' });
     await moduloScope.register(comandasQuiosqueRoutes, { prefix: '/comandas' });
     await moduloScope.register(vendasQuiosqueRoutes, { prefix: '/vendas' });
     await moduloScope.register(cozinhaQuiosqueRoutes, { prefix: '/cozinha' });
     await moduloScope.register(caixaQuiosqueRoutes, { prefix: '/caixa' });
+    await moduloScope.register(estoqueQuiosqueRoutes, { prefix: '/estoque' });
+    await moduloScope.register(dashboardQuiosqueRoutes, { prefix: '/dashboard' });
   });
 }

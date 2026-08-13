@@ -30,8 +30,20 @@ function scoreLanCandidate(name: string, address: string) {
   return score;
 }
 
-/** URL do frontend dev acessível na LAN (celular na mesma Wi-Fi). */
+/** URL do frontend dev acessível na LAN (celular na mesma Wi-Fi) ou via túnel público. */
 export function getDevFrontendOrigin(): string | null {
+  const appUrl = process.env.APP_URL?.trim();
+  if (appUrl) {
+    try {
+      const hostname = new URL(appUrl).hostname;
+      if (hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== '[::1]') {
+        return appUrl.replace(/\/$/, '');
+      }
+    } catch {
+      // ignore URL inválida
+    }
+  }
+
   const port = process.env.DEV_FRONTEND_PORT ?? '5202';
   const nets = os.networkInterfaces();
   const candidates: Array<{ name: string; address: string; score: number }> = [];

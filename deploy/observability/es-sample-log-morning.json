@@ -1,0 +1,12 @@
+{
+  "size": 1,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "bool": {
+      "filter": [
+        { "range": { "@timestamp": { "gte": "2026-08-10T10:00:00Z", "lte": "2026-08-10T11:00:00Z" } } }
+      ]
+    }
+  },
+  "_source": true
+}

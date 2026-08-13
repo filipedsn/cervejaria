@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
+import { csvRow } from '../lib/csv.js';
 import { getAuthUser } from '../types/auth.js';
 import { toNumber } from '../lib/utils.js';
 import { isBebidaChope } from '../lib/produto-utils.js';
@@ -95,24 +96,24 @@ export async function relatoriosRoutes(app: FastifyInstance) {
       for (const item of comanda.itens) {
         const subtotal = toNumber(item.precoUnit) * item.quantidade;
         lines.push(
-          [
-            `"${comanda.cliente.nome}"`,
+          csvRow([
+            comanda.cliente.nome,
             comanda.cliente.telefone ?? '',
-            `"${item.produto.nome}"`,
+            item.produto.nome,
             item.volumeMl,
             item.quantidade,
             toNumber(item.precoUnit).toFixed(2),
             subtotal.toFixed(2),
-            `"${formas}"`,
+            formas,
             toNumber(comanda.total).toFixed(2),
             comanda.updatedAt.toISOString(),
-          ].join(',')
+          ]),
         );
       }
     }
 
     reply.header('Content-Type', 'text/csv; charset=utf-8');
     reply.header('Content-Disposition', `attachment; filename="relatorio-${evento.id}.csv"`);
-    return lines.join('\n');
+    return '\uFEFF' + lines.join('\n');
   });
 }

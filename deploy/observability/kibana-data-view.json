@@ -1,7 +1,7 @@
 {
   "data_view": {
     "title": "metrics-generic.otel-default*",
-    "name": "Quiver Tap OTel Metrics",
+    "name": "Quiver Tap OTel Metrics (legado)",
     "timeFieldName": "@timestamp"
   }
 }

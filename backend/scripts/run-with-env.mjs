@@ -53,6 +53,10 @@ function assertDatabaseEnvironment(name, databaseUrl) {
       console.error('PRODUCAO: DATABASE_URL aponta para cervejaria_dev.');
       process.exit(1);
     }
+    if (databaseUrl.includes(':5434')) {
+      console.error('PRODUCAO: DATABASE_URL nao pode usar porta 5434 (container dev).');
+      process.exit(1);
+    }
     if (!/\/cervejaria(\?|$)/.test(databaseUrl)) {
       console.error('PRODUCAO: DATABASE_URL deve usar o banco cervejaria.');
       process.exit(1);
@@ -60,6 +64,10 @@ function assertDatabaseEnvironment(name, databaseUrl) {
   } else {
     if (!databaseUrl.includes('cervejaria_dev')) {
       console.error('DESENVOLVIMENTO: DATABASE_URL deve usar cervejaria_dev.');
+      process.exit(1);
+    }
+    if (databaseUrl.includes('cervejaria_dev') && !databaseUrl.includes(':5434')) {
+      console.error('DESENVOLVIMENTO: DATABASE_URL deve usar porta 5434 (container dev isolado).');
       process.exit(1);
     }
     if (/\/cervejaria(\?|$)/.test(databaseUrl) && !databaseUrl.includes('cervejaria_dev')) {

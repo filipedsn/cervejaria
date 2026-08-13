@@ -1,43 +1,479 @@
-import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { api, formatCurrency } from '../../lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, ApiError, formatCurrency } from '../../lib/api';
 import { Loading } from '../../components/Loading';
-import { rotuloComanda, type ComandaQuiosque } from '../../lib/quiosque';
+import { EmptyState } from '../../components/EmptyState';
+import { ComandasBuscaInput } from '../../components/ComandasBuscaInput';
+import { StatusBadge, comandaStatusVariant } from '../../components/StatusBadge';
+import { MobileActionBar } from '../../components/MobileActionBar';
+import {
+  PaymentFormModal,
+  createDefaultPaymentForm,
+  toPaymentForma,
+  type PaymentFormRow,
+} from '../../components/PaymentFormModal';
+import { parseCurrencyInput } from '../../lib/currency';
+import { textoCorrespondeBuscaComanda } from '../../lib/comandas-busca';
+import { PainelCaixaQuiosque } from '../../components/quiosque/PainelCaixaQuiosque';
+import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
+import { usePollInterval } from '../../hooks/usePollInterval';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  comandasFechadasNoTurno,
+  diaOperacionalQuery,
+  RESUMO_TURNO_VAZIO,
+  rotuloComanda,
+  totalItensComanda,
+  type CaixaResposta,
+  type ComandaQuiosque,
+  type FecharGrupoQuiosqueResponse,
+} from '../../lib/quiosque';
+
+function StatCard({ label, value, accent }: { label: string; value: string; accent?: 'brand' | 'green' }) {
+  return (
+    <div className="metric-card">
+      <p className={`metric-value w-full ${accent === 'green' ? 'metric-value-success' : ''}`}>{value}</p>
+      <p className="text-xs sm:text-sm text-ink-muted leading-tight w-full">{label}</p>
+    </div>
+  );
+}
 
 export function QuiosqueComandasPage() {
-  const { data: comandas, isLoading } = useQuery({
-    queryKey: ['quiosque-comandas'],
-    queryFn: () => api.get<ComandaQuiosque[]>('/api/quiosque/comandas?status=ABERTA'),
-    refetchInterval: 30_000,
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { cervejaria } = useAuth();
+  const exibirKpis = cervejaria?.exibirKpisComanda ?? true;
+  const colunaUnica = cervejaria?.comandasColunaUnica ?? true;
+  const { contexto } = useQuiosqueContexto();
+  const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
+  const [pontoVendaId, setPontoVendaId] = useState('');
+  const [comandaTab, setComandaTab] = useState<'ABERTA' | 'FECHADA'>('ABERTA');
+  const [buscaComanda, setBuscaComanda] = useState('');
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showGroupPayment, setShowGroupPayment] = useState(false);
+  const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([{ forma: 'PIX', valor: '' }]);
+  const [groupError, setGroupError] = useState('');
+  const [groupSuccess, setGroupSuccess] = useState('');
+
+  const pontoAtivo = pontoVendaId || pontosVenda[0]?.id || '';
+  const dia = diaOperacionalQuery();
+  const pontoQuery = pontoAtivo ? `&pontoVendaId=${pontoAtivo}` : '';
+  const pollMs = usePollInterval(30_000);
+
+  const { data: caixaData } = useQuery({
+    queryKey: ['quiosque-caixa', pontoAtivo],
+    queryFn: () => api.get<CaixaResposta>(`/api/quiosque/caixa?pontoVendaId=${pontoAtivo}`),
+    enabled: Boolean(pontoAtivo),
+    refetchInterval: pollMs,
+  });
+  const caixaAberto = caixaData?.sessao?.status === 'ABERTO';
+  const turnoAbertoEm = caixaAberto ? caixaData!.sessao!.abertoEm : null;
+
+  const { data: abertas, isLoading: loadingAbertas } = useQuery({
+    queryKey: ['quiosque-comandas', 'ABERTA', pontoAtivo],
+    queryFn: () => api.get<ComandaQuiosque[]>(`/api/quiosque/comandas?status=ABERTA${pontoQuery}`),
+    refetchInterval: pollMs,
+    enabled: Boolean(pontoAtivo) && caixaAberto,
   });
 
-  if (isLoading) return <Loading />;
+  const { data: fechadasHoje, isLoading: loadingFechadas } = useQuery({
+    queryKey: ['quiosque-comandas', 'FECHADA', pontoAtivo, dia],
+    queryFn: () =>
+      api.get<ComandaQuiosque[]>(`/api/quiosque/comandas?status=FECHADA&dia=${dia}${pontoQuery}`),
+    refetchInterval: pollMs,
+    enabled: Boolean(pontoAtivo) && caixaAberto,
+  });
 
-  if (!comandas || comandas.length === 0) {
-    return (
-      <p className="text-ink-faint text-center py-10">
-        Nenhuma comanda aberta. Lance os itens em Vender e escolha "Abrir comanda".
-      </p>
-    );
-  }
+  const abertasTurno = caixaAberto ? (abertas ?? []) : [];
+  const fechadasTurno = turnoAbertoEm ? comandasFechadasNoTurno(fechadasHoje ?? [], turnoAbertoEm) : [];
+
+  const comandas = comandaTab === 'ABERTA' ? abertasTurno : fechadasTurno.filter((c) => c.tipo !== 'AVULSA');
+
+  const comandasFiltradas = useMemo(
+    () =>
+      comandas.filter((comanda) =>
+        textoCorrespondeBuscaComanda(
+          buscaComanda,
+          rotuloComanda(comanda),
+          comanda.numero,
+          comanda.identificador,
+        ),
+      ),
+    [comandas, buscaComanda],
+  );
+
+  const resumo = useMemo(() => {
+    if (!caixaAberto) return { ...RESUMO_TURNO_VAZIO };
+
+    const contas = fechadasTurno.filter((c) => c.tipo !== 'AVULSA');
+    const avulsas = fechadasTurno.filter((c) => c.tipo === 'AVULSA');
+    return {
+      comandasAbertas: abertasTurno.length,
+      comandasFechadas: contas.length,
+      vendasAvulsas: avulsas.length,
+      receitaAvulsa: avulsas.reduce((soma, c) => soma + c.total, 0),
+      valorAberto: abertasTurno.reduce((soma, c) => soma + c.saldo, 0),
+      valorFechado: contas.reduce((soma, c) => soma + c.total, 0),
+    };
+  }, [caixaAberto, abertasTurno, fechadasTurno]);
+
+  const selectedComandas = useMemo(
+    () => abertasTurno.filter((c) => selectedIds.includes(c.id)),
+    [abertasTurno, selectedIds],
+  );
+
+  const totalGrupo = useMemo(
+    () => selectedComandas.filter((c) => c.saldo > 0).reduce((sum, c) => sum + c.saldo, 0),
+    [selectedComandas],
+  );
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds([]);
+    setShowGroupPayment(false);
+    setGroupError('');
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const fecharGrupoMutation = useMutation({
+    mutationFn: (pagamentos: { forma: 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO'; valor: number }[]) =>
+      api.post<FecharGrupoQuiosqueResponse>('/api/quiosque/comandas/fechar-grupo', {
+        comandaIds: selectedIds,
+        pagamentos,
+      }),
+    onSuccess: (data) => {
+      const parts: string[] = [];
+      if (data.comandas.length > 0) parts.push(`${data.comandas.length} comanda(s) fechada(s)`);
+      if (data.canceladas.length > 0) parts.push(`${data.canceladas.length} cancelada(s)`);
+      setGroupSuccess(parts.join(' · ') || 'Operação concluída');
+      setShowGroupPayment(false);
+      exitSelectMode();
+      queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
+    },
+    onError: (err) => {
+      setGroupError(err instanceof ApiError ? err.message : 'Erro ao fechar comandas');
+    },
+  });
+
+  const openGroupPayment = () => {
+    setPaymentForm(createDefaultPaymentForm(totalGrupo));
+    setGroupError('');
+    setShowGroupPayment(true);
+  };
+
+  const handleGroupClose = () => {
+    const pagamentos = paymentForm.map((p) => ({
+      forma: toPaymentForma(p),
+      valor: parseCurrencyInput(p.valor),
+    }));
+    fecharGrupoMutation.mutate(pagamentos);
+  };
+
+  useEffect(() => {
+    if (comandaTab !== 'ABERTA') exitSelectMode();
+  }, [comandaTab]);
+
+  if (loadingAbertas && caixaAberto) return <Loading />;
+  if (loadingFechadas && caixaAberto) return <Loading />;
+
+  const isAbertas = comandaTab === 'ABERTA';
+  const canSelect = isAbertas;
+  const showPayBar = selectMode && selectedIds.length >= 2 && totalGrupo > 0;
 
   return (
-    <div className="space-y-2">
-      {comandas.map((comanda) => (
-        <Link
-          key={comanda.id}
-          to={`/quiosque/comandas/${comanda.id}`}
-          className="card flex items-center justify-between gap-3 py-3"
-        >
-          <div className="min-w-0">
-            <p className="truncate font-semibold">{rotuloComanda(comanda)}</p>
-            <p className="text-xs text-ink-faint">
-              {comanda.pedidos.length} {comanda.pedidos.length === 1 ? 'rodada' : 'rodadas'}
-            </p>
-          </div>
-          <span className="shrink-0 text-lg font-bold">{formatCurrency(comanda.saldo)}</span>
-        </Link>
-      ))}
+    <div className={`space-y-4 ${showPayBar ? 'page-with-action-bar' : 'pb-2'}`}>
+      {pontosVenda.length > 1 && (
+        <div>
+          <label className="label">Ponto de venda</label>
+          <select className="input" value={pontoAtivo} onChange={(e) => setPontoVendaId(e.target.value)}>
+            {pontosVenda.map((ponto) => (
+              <option key={ponto.id} value={ponto.id}>
+                {ponto.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {pontoAtivo && (
+        <PainelCaixaQuiosque
+          pontoVendaId={pontoAtivo}
+          compacto
+          comandasAbertas={abertasTurno.length}
+        />
+      )}
+
+      {!selectMode && (
+        <div className="grid grid-cols-2 gap-2">
+          <Link
+            to="/quiosque/comandas/nova"
+            className={`touch-btn-orange min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold ${
+              !caixaAberto ? 'pointer-events-none opacity-50' : ''
+            }`}
+            aria-disabled={!caixaAberto}
+            tabIndex={caixaAberto ? undefined : -1}
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-xl leading-none font-normal">
+              +
+            </span>
+            Comanda
+          </Link>
+          <Link
+            to="/quiosque/comandas/venda-avulsa"
+            className={`touch-btn-secondary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold ${
+              !caixaAberto ? 'pointer-events-none opacity-50' : ''
+            }`}
+            aria-disabled={!caixaAberto}
+            tabIndex={caixaAberto ? undefined : -1}
+          >
+            <span
+              className="flex h-9 w-9 shrink-0 items-center justify-center text-xl leading-none text-orange"
+              aria-hidden
+            >
+              ⚡
+            </span>
+            Venda avulsa
+          </Link>
+        </div>
+      )}
+
+      {groupSuccess && <div className="alert-success">{groupSuccess}</div>}
+      {groupError && !showGroupPayment && <div className="alert-error">{groupError}</div>}
+
+      {caixaAberto && exibirKpis && (
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard label="Comandas abertas" value={String(resumo.comandasAbertas)} />
+          <StatCard label="Comandas fechadas" value={String(resumo.comandasFechadas)} accent="green" />
+          <StatCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} />
+          <StatCard label="Receita avulsa" value={formatCurrency(resumo.receitaAvulsa)} accent="green" />
+          <StatCard label="Valor em aberto" value={formatCurrency(resumo.valorAberto)} />
+          <StatCard label="Valor fechado" value={formatCurrency(resumo.valorFechado)} accent="green" />
+        </div>
+      )}
+
+      {canSelect && resumo.comandasAbertas >= 2 && (
+        selectMode ? (
+          <button
+            type="button"
+            onClick={exitSelectMode}
+            className="touch-btn-danger flex w-full items-center gap-3 min-h-[3.75rem] rounded-2xl px-4 py-3 shadow-lg shadow-red-600/20 ring-2 ring-red-200/40 active:scale-[0.98] transition-transform"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 text-2xl leading-none">
+              ×
+            </span>
+            <span className="flex min-w-0 flex-col items-start text-left">
+              <span className="text-base font-bold leading-tight">Cancelar seleção</span>
+              <span className="text-sm font-normal text-white/85 leading-snug">
+                {selectedIds.length > 0
+                  ? `${selectedIds.length} comanda(s) marcada(s) · toque para voltar ao normal`
+                  : 'Toque nas comandas abaixo para marcar · mínimo 2 para pagar juntas'}
+              </span>
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setSelectMode(true);
+              setGroupSuccess('');
+              setGroupError('');
+            }}
+            className="flex w-full items-center gap-3 min-h-[3.75rem] rounded-2xl bg-brand-600 text-white px-4 py-3 shadow-lg shadow-brand-600/25 ring-2 ring-brand-200/50 active:scale-[0.98] transition-transform"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/20 text-xl leading-none">
+              ✓
+            </span>
+            <span className="flex min-w-0 flex-col items-start text-left">
+              <span className="text-base font-bold leading-tight">Selecionar comandas</span>
+              <span className="text-sm font-normal text-white/85 leading-snug">
+                Pague 2 ou mais comandas juntas em um único pagamento
+              </span>
+            </span>
+          </button>
+        )
+      )}
+
+      <section className="space-y-3">
+        <h2 className="section-label mb-0">Comandas</h2>
+
+        <div className="segmented-control w-full">
+          <button
+            type="button"
+            onClick={() => setComandaTab('ABERTA')}
+            className={`segmented-control-btn ${
+              isAbertas ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'
+            }`}
+          >
+            Abertas ({resumo.comandasAbertas})
+          </button>
+          <button
+            type="button"
+            onClick={() => setComandaTab('FECHADA')}
+            className={`segmented-control-btn ${
+              !isAbertas ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'
+            }`}
+          >
+            Fechadas ({resumo.comandasFechadas})
+          </button>
+        </div>
+
+        <ComandasBuscaInput value={buscaComanda} onChange={setBuscaComanda} />
+
+        <div className={`grid gap-3 ${colunaUnica ? '' : 'grid-cols-2'}`}>
+          {comandasFiltradas.map((comanda) => {
+            const isSelected = selectedIds.includes(comanda.id);
+            const itens = totalItensComanda(comanda);
+            const valor = isAbertas ? comanda.saldo : comanda.total;
+            return (
+              <button
+                key={comanda.id}
+                type="button"
+                onClick={() => {
+                  if (selectMode) {
+                    toggleSelection(comanda.id);
+                    return;
+                  }
+                  navigate(`/quiosque/comandas/${comanda.id}`);
+                }}
+                className={`card-touch w-full ${colunaUnica ? 'min-h-[4.5rem]' : 'min-h-[5.5rem]'} ${
+                  selectMode
+                    ? isSelected
+                      ? 'border-brand-500 bg-brand-50/40'
+                      : 'hover:border-brand-400/30'
+                    : 'hover:border-brand-400/30'
+                }`}
+              >
+                <div className={colunaUnica ? 'flex items-center justify-between gap-3' : 'flex flex-col gap-1.5'}>
+                  {colunaUnica ? (
+                    <>
+                      <div className="flex items-center gap-3 min-w-0">
+                        {selectMode && (
+                          <span
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${
+                              isSelected ? 'border-brand-600 bg-brand-600 text-white' : 'border-line bg-surface'
+                            }`}
+                            aria-hidden
+                          >
+                            {isSelected ? '✓' : ''}
+                          </span>
+                        )}
+                        <div className="min-w-0 text-left">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="text-lg font-bold truncate">{rotuloComanda(comanda)}</h3>
+                            {!isAbertas && <StatusBadge variant={comandaStatusVariant(comanda.status)} />}
+                          </div>
+                          <p className="text-sm text-ink-faint">
+                            {comanda.pedidos.length} {comanda.pedidos.length === 1 ? 'rodada' : 'rodadas'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xl font-bold text-brand-600 tabular-nums">{formatCurrency(valor)}</p>
+                        <p className="text-xs text-ink-faint">{itens} item(ns)</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 items-start gap-2">
+                          {selectMode && (
+                            <span
+                              className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${
+                                isSelected ? 'border-brand-600 bg-brand-600 text-white' : 'border-line bg-surface'
+                              }`}
+                              aria-hidden
+                            >
+                              {isSelected ? '✓' : ''}
+                            </span>
+                          )}
+                          <div className="min-w-0 text-left">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h3 className="text-base font-bold truncate">{rotuloComanda(comanda)}</h3>
+                              {!isAbertas && <StatusBadge variant={comandaStatusVariant(comanda.status)} />}
+                            </div>
+                          </div>
+                        </div>
+                        <p className="shrink-0 text-base font-bold text-brand-600 tabular-nums">
+                          {formatCurrency(valor)}
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-xs text-ink-faint">
+                        <span>
+                          {comanda.pedidos.length} {comanda.pedidos.length === 1 ? 'rodada' : 'rodadas'}
+                        </span>
+                        <span>{itens} item(ns)</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {comandasFiltradas.length === 0 && (
+          <EmptyState
+            icon={buscaComanda.trim() ? '🔍' : isAbertas ? '📋' : '✅'}
+            title={
+              buscaComanda.trim()
+                ? 'Nenhuma comanda encontrada'
+                : isAbertas
+                  ? 'Nenhuma comanda aberta neste turno'
+                  : caixaAberto
+                    ? 'Nenhuma comanda fechada neste turno'
+                    : 'Turno encerrado'
+            }
+            description={
+              buscaComanda.trim()
+                ? 'Tente outro nome ou número.'
+                : isAbertas
+                  ? caixaAberto
+                    ? 'Use o botão Comanda acima para abrir uma nova conta.'
+                    : 'Abra o caixa para iniciar um novo turno.'
+                  : caixaAberto
+                    ? undefined
+                    : 'Abra o caixa para começar a operar de novo.'
+            }
+            action={
+              !buscaComanda.trim() && isAbertas && caixaAberto ? (
+                <Link to="/quiosque/comandas/nova" className="touch-btn-primary touch-btn-sm inline-block">
+                  Nova comanda
+                </Link>
+              ) : undefined
+            }
+          />
+        )}
+      </section>
+
+      {showPayBar && (
+        <MobileActionBar>
+          <button
+            type="button"
+            className="touch-btn-primary w-full"
+            onClick={openGroupPayment}
+            disabled={fecharGrupoMutation.isPending}
+          >
+            Pagar juntas ({selectedIds.length}) · {formatCurrency(totalGrupo)}
+          </button>
+        </MobileActionBar>
+      )}
+
+      <PaymentFormModal
+        open={showGroupPayment}
+        onClose={() => setShowGroupPayment(false)}
+        title="Pagar comandas juntas"
+        totalLabel="Total selecionado"
+        total={totalGrupo}
+        paymentForm={paymentForm}
+        setPaymentForm={setPaymentForm}
+        onConfirm={handleGroupClose}
+        isPending={fecharGrupoMutation.isPending}
+      />
     </div>
   );
 }

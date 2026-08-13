@@ -94,6 +94,7 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
             eventoId: body.eventoId,
             comandaId: created.id,
             metadata: { tipo: 'AVULSA' },
+            payload: comandaComItens,
           },
           tx,
         );

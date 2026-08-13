@@ -9,6 +9,13 @@ function namesMatch(a: string, b: string) {
   return a.trim().localeCompare(b.trim(), 'pt-BR', { sensitivity: 'accent' }) === 0;
 }
 
+function phonesCompatible(a: string | null | undefined, b: string | null | undefined): boolean {
+  const da = (a ?? '').replace(/\D/g, '');
+  const db = (b ?? '').replace(/\D/g, '');
+  if (!da || !db) return true;
+  return da === db;
+}
+
 function ClienteResumoCard({
   label,
   cliente,
@@ -85,6 +92,9 @@ export function UnirClienteModal({
 
   const candidates = (data?.items ?? []).filter((c) => c.id !== destino.id);
 
+  const phoneMismatch =
+    selected != null && !phonesCompatible(destino.telefone, selected.telefone);
+
   const handleClose = () => {
     if (pending) return;
     onClose();
@@ -109,7 +119,7 @@ export function UnirClienteModal({
             <button
               type="button"
               className="touch-btn-danger w-full min-h-14"
-              disabled={pending}
+              disabled={pending || phoneMismatch}
               onClick={() => onConfirm(selected.id)}
             >
               {pending ? 'Unindo...' : 'Unir clientes'}
@@ -150,6 +160,13 @@ export function UnirClienteModal({
         {selected && (
           <div className="space-y-2">
             <ClienteResumoCard label="Absorver e remover" cliente={selected} variant="remove" />
+            {phoneMismatch && (
+              <div className="alert-error text-sm">
+                Telefones diferentes ({destino.telefone ? formatPhone(destino.telefone) : 'sem tel.'}{' '}
+                vs {selected.telefone ? formatPhone(selected.telefone) : 'sem tel.'}). Unifique pelo
+                cadastro com o telefone correto antes de unir.
+              </div>
+            )}
             <p className="text-xs text-ink-faint">
               Esta ação não pode ser desfeita. Comandas e pedidos do cliente selecionado serão transferidos.
             </p>

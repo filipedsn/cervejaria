@@ -1,0 +1,11 @@
+{
+  "size": 3,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "bool": {
+      "filter": [{ "range": { "@timestamp": { "gte": "now-5m" } } }],
+      "must": [{ "query_string": { "query": "OBS-LIVE OR transacao.quiosque OR churrasquinho", "default_field": "*" } }]
+    }
+  },
+  "_source": true
+}

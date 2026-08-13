@@ -3,6 +3,7 @@ export interface Usuario {
   nome: string;
   email: string;
   papel: 'ADMIN' | 'DONO' | 'ATENDENTE';
+  podeDarDescontoQuiosque?: boolean;
 }
 
 export interface BrandPalette {
@@ -38,6 +39,12 @@ export interface Cervejaria {
   corSecundaria?: string | null;
   corPaleta?: BrandTheme | null;
   updatedAt?: string;
+  /** KPIs da tela de comandas (cervejaria e quiosque). */
+  exibirKpisComanda?: boolean;
+  /** Lista em coluna única (true) ou duas colunas (false). */
+  comandasColunaUnica?: boolean;
+  /** Cardápios com preço por evento (cervejaria). */
+  usaCardapio?: boolean;
 }
 
 export interface AuthResponse {
@@ -86,6 +93,14 @@ export interface Produto {
   formato?: FormatoBebida | null;
   ativo: boolean;
   precos: Preco[];
+  /** Preço do template quando evento/cardápio vinculado; senão igual ao catálogo. */
+  precoEfetivo?: number;
+}
+
+export interface CardapioItem {
+  produtoId: string;
+  precoUnit: number;
+  produto?: Produto;
 }
 
 export interface Trailer {
@@ -142,6 +157,7 @@ export interface Cardapio {
   ativo: boolean;
   cervejariaId: string;
   produtoIds: string[];
+  itens?: CardapioItem[];
   produtos?: Produto[];
   itemCount?: number;
 }
@@ -378,12 +394,22 @@ export interface Comanda {
   clienteId: string;
   status: 'ABERTA' | 'FECHADA' | 'CANCELADA';
   tipo?: 'COMANDA' | 'AVULSA';
+  numero?: number | null;
   total: string;
   cliente: Cliente;
   itens: ItemComanda[];
   pagamentos: Pagamento[];
   createdAt: string;
   updatedAt: string;
+}
+
+export function rotuloComandaCervejaria(
+  comanda: Pick<Comanda, 'tipo' | 'numero'>,
+  cliente: Pick<Cliente, 'nome'>,
+): string {
+  if (comanda.tipo === 'AVULSA') return 'Venda avulsa';
+  if (comanda.numero != null) return `${comanda.numero} - ${cliente.nome}`;
+  return cliente.nome;
 }
 
 export interface FecharGrupoResponse {

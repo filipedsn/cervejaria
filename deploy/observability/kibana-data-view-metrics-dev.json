@@ -1,0 +1,8 @@
+{
+  "data_view": {
+    "id": "quiver-metrics-dev",
+    "title": "metrics-generic.otel-dev*",
+    "name": "Quiver Tap Metrics DEV",
+    "timeFieldName": "@timestamp"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "quiver-tap-slo-availability-burn-prd",
+  "tags": ["quiver-tap", "observability", "production", "slo"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "1m" },
+  "enabled": true,
+  "params": {
+    "index": ["metrics-httpcheckreceiver.otel-infra*"],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"wildcard\":{\"attributes.http.url\":\"*tap.quivercloud.com.br/api/ready*\"}}],\"must_not\":[{\"term\":{\"attributes.http.status_code\":200}}]}}}",
+    "size": 10,
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m",
+    "thresholdComparator": ">",
+    "threshold": [1],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery",
+    "excludeHitsFromPreviousRun": true
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

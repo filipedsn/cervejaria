@@ -7,6 +7,8 @@ import type { Cliente, ClienteListResponse } from '../types';
 import { useEvento } from '../contexts/EventoContext';
 import { PageHeader } from '../components/PageHeader';
 
+type ComandaResumo = { id: string; clienteId: string | null; status: string };
+
 function formatDate(iso: string | null | undefined) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -101,6 +103,19 @@ export function NovaComandaPage() {
     },
     enabled: phoneDigits.length >= 10,
   });
+
+  const clienteAtivo = selectedCliente ?? phoneLookup ?? null;
+
+  const { data: comandasAbertas } = useQuery({
+    queryKey: ['comandas-abertas-evento', evento?.id],
+    queryFn: () =>
+      api.get<ComandaResumo[]>(`/api/comandas/evento/${evento!.id}?status=ABERTA`),
+    enabled: !!evento?.id,
+  });
+
+  const comandaAbertaCliente = comandasAbertas?.find(
+    (c) => clienteAtivo && c.clienteId === clienteAtivo.id,
+  );
 
   useEffect(() => {
     phoneInputRef.current?.focus();
@@ -202,6 +217,10 @@ export function NovaComandaPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!evento || !canSubmit) return;
+    if (comandaAbertaCliente) {
+      navigate(`/comandas/${comandaAbertaCliente.id}`);
+      return;
+    }
     setError('');
     setLoading(true);
     try {
@@ -234,6 +253,18 @@ export function NovaComandaPage() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <div className="alert-error">{error}</div>}
+
+        {comandaAbertaCliente && (
+          <div className="alert-error space-y-2">
+            <p>Este cliente já possui comanda aberta neste evento.</p>
+            <Link
+              to={`/comandas/${comandaAbertaCliente.id}`}
+              className="inline-block text-sm font-semibold underline"
+            >
+              Ir para comanda aberta
+            </Link>
+          </div>
+        )}
 
         <div>
           <label className="label">Telefone</label>
@@ -325,7 +356,7 @@ export function NovaComandaPage() {
           <button type="button" className="touch-btn-danger flex-1" onClick={() => navigate('/comandas')}>
             Cancelar
           </button>
-          <button type="submit" className="touch-btn-primary flex-1" disabled={!canSubmit}>
+          <button type="submit" className="touch-btn-primary flex-1" disabled={!canSubmit} data-audit="comanda-abrir">
             {loading ? 'Abrindo...' : 'Abrir Comanda'}
           </button>
         </div>

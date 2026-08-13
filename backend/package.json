@@ -25,7 +25,9 @@
     "qa:teardown": "node scripts/run-with-env.mjs development npx tsx qa/teardown.ts",
     "qa:test": "node scripts/run-with-env.mjs development npx tsx qa/run.ts",
     "qa:validate-jul21": "node scripts/run-with-env.mjs development npx tsx qa/validate-jul21-session.ts",
-    "test:unit": "node --import tsx --test src/lib/evento-vendas-intervalo.test.ts src/lib/evento-fluxo-intervalo.test.ts src/lib/evento-comanda-tempo.test.ts src/lib/fechar-comanda.test.ts"
+    "alert-poller:start": "node scripts/run-with-env.mjs production npx tsx src/alert-poller-worker.ts",
+    "alert-poller:worker": "node scripts/run-with-env.mjs production npx tsx src/alert-poller-worker.ts",
+    "test:unit": "node --import tsx --test src/lib/evento-vendas-intervalo.test.ts src/lib/evento-fluxo-intervalo.test.ts src/lib/evento-comanda-tempo.test.ts src/lib/fechar-comanda.test.ts src/lib/fechar-comanda.property.test.ts src/lib/quiosque/caixa.property.test.ts"
   },
   "dependencies": {
     "@elastic/opentelemetry-node": "^1.16.0",
@@ -56,6 +58,7 @@
     "@types/node": "^22.13.10",
     "@types/nodemailer": "^6.4.24",
     "@types/web-push": "^3.6.4",
+    "fast-check": "^3.23.2",
     "prisma": "^6.5.0",
     "socket.io-client": "^4.8.3",
     "tsx": "^4.19.3",

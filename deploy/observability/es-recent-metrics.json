@@ -1,0 +1,16 @@
+{
+  "size": 0,
+  "query": {
+    "range": {
+      "@timestamp": { "gte": "now-5m" }
+    }
+  },
+  "aggs": {
+    "by_ns": {
+      "terms": { "field": "data_stream.namespace", "size": 5 }
+    },
+    "by_svc": {
+      "terms": { "field": "resource.attributes.service.name", "size": 10 }
+    }
+  }
+}

@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 
 import { ZodError } from 'zod';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 import cors from '@fastify/cors';
 
@@ -79,6 +80,7 @@ import { createLogger } from './lib/logger.js';
 import { registerAuditHooks } from './lib/audit-hooks.js';
 import { auditRoutes } from './routes/audit.js';
 import { pushRoutes } from './routes/push.js';
+import { observabilityRoutes } from './routes/observability.js';
 
 import type { JwtPayload } from './types/auth.js';
 
@@ -175,6 +177,24 @@ export async function buildApp() {
 
 
 
+  // Rotas de tenant assumem `cervejariaId` presente; o token de plataforma (ADMIN)
+  // nao tem um, e sem essa barreira a consulta explode em 500 em vez de 403.
+  app.decorate('requireTenant', async (request) => {
+
+    await verifySession(app, request);
+
+    const user = request.user as JwtPayload;
+
+    if (!user.cervejariaId) {
+
+      throw app.httpErrors.forbidden('Rota exclusiva de cervejaria');
+
+    }
+
+  });
+
+
+
   app.decorate('requireDono', async (request) => {
 
     if (!request.user) await verifySession(app, request);
@@ -238,6 +258,12 @@ export async function buildApp() {
 
     }
 
+    const span = trace.getActiveSpan();
+    if (span) {
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+    }
+
     app.log.error(error);
 
     return reply.status(500).send({ error: 'Erro interno do servidor' });
@@ -259,6 +285,8 @@ export async function buildApp() {
   await app.register(authRoutes, { prefix: '/api/auth' });
 
   await app.register(auditRoutes, { prefix: '/api/audit' });
+
+  await app.register(observabilityRoutes, { prefix: '/api/observability' });
 
   await app.register(usuariosRoutes, { prefix: '/api/usuarios' });
 

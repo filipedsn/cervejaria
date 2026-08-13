@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify';
-import type { Prisma, StatusPedidoQuiosque } from '@prisma/client';
+import type { Prisma, StatusPedidoQuiosque, TipoComandaQuiosque } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { emitToCervejaria } from '../realtime.js';
 import { toNumber } from '../utils.js';
+
+type TxClient = Prisma.TransactionClient;
 
 /** Pedidos que ainda ocupam a fila da cozinha. */
 export const STATUS_NA_FILA: StatusPedidoQuiosque[] = ['RECEBIDO', 'EM_PREPARO', 'PRONTO'];
@@ -21,7 +23,7 @@ export const TRANSICOES: Record<StatusPedidoQuiosque, StatusPedidoQuiosque[]> = 
 
 export const INCLUDE_PEDIDO_COZINHA = {
   itens: true,
-  comanda: { select: { id: true, tipo: true, identificador: true } },
+  comanda: { select: { id: true, tipo: true, identificador: true, numero: true } },
 } as const;
 
 type PedidoCozinha = Prisma.PedidoQuiosqueGetPayload<{
@@ -39,10 +41,13 @@ export function resumoPedidoCozinha(pedido: PedidoCozinha) {
     status: pedido.status,
     observacao: pedido.observacao,
     createdAt: pedido.createdAt,
+    statusDesde: pedido.statusDesde,
+    entregueEm: pedido.entregueEm,
     comanda: {
       id: pedido.comanda.id,
       tipo: pedido.comanda.tipo,
       identificador: pedido.comanda.identificador,
+      numero: pedido.comanda.numero,
     },
     itens: pedido.itens
       .filter((item) => item.exigePreparo)
@@ -55,8 +60,77 @@ export function resumoPedidoCozinha(pedido: PedidoCozinha) {
   };
 }
 
+/** Registra a transicao e reinicia statusDesde; entregueEm congela o cronometro total. */
+export async function registrarHistoricoStatusPedido(
+  tx: TxClient,
+  pedidoId: string,
+  status: StatusPedidoQuiosque,
+  registradoEm = new Date(),
+) {
+  await tx.pedidoQuiosqueStatusHistorico.create({
+    data: { pedidoId, status, registradoEm },
+  });
+}
+
+export async function aplicarStatusPedidoCozinha(
+  tx: TxClient,
+  pedido: { id: string; status: StatusPedidoQuiosque },
+  novoStatus: StatusPedidoQuiosque,
+  agora = new Date(),
+) {
+  await registrarHistoricoStatusPedido(tx, pedido.id, novoStatus, agora);
+
+  return tx.pedidoQuiosque.update({
+    where: { id: pedido.id },
+    data: {
+      status: novoStatus,
+      statusDesde: agora,
+      entregueEm:
+        novoStatus === 'ENTREGUE'
+          ? agora
+          : pedido.status === 'ENTREGUE'
+            ? null
+            : undefined,
+    },
+    include: INCLUDE_PEDIDO_COZINHA,
+  });
+}
+
 export function pedidoVaiParaCozinha(itens: Array<{ exigePreparo: boolean }>): boolean {
   return itens.some((item) => item.exigePreparo);
+}
+
+/** Pedido da cozinha so entra no total da comanda apos ENTREGUE; demais contam na hora. */
+export function pedidoContaNaComanda(
+  pedido: {
+    status: StatusPedidoQuiosque;
+    itens: Array<{ exigePreparo: boolean }>;
+  },
+  comanda?: { tipo: TipoComandaQuiosque },
+): boolean {
+  if (pedido.status === 'CANCELADO') return false;
+  if (comanda?.tipo === 'AVULSA') return true;
+  if (pedidoVaiParaCozinha(pedido.itens)) return pedido.status === 'ENTREGUE';
+  return true;
+}
+
+export function temPedidoCozinhaPendente(
+  pedidos: Array<{ status: StatusPedidoQuiosque; itens: Array<{ exigePreparo: boolean }> }>,
+): boolean {
+  return pedidos.some(
+    (pedido) => pedidoVaiParaCozinha(pedido.itens) && STATUS_NA_FILA.includes(pedido.status),
+  );
+}
+
+export function notificarComandaQuiosqueAtualizada(
+  app: FastifyInstance,
+  cervejariaId: string,
+  comandaId: string,
+) {
+  emitToCervejaria(app.io, cervejariaId, {
+    type: 'quiosque:comanda-atualizada',
+    data: { comandaId },
+  });
 }
 
 /**

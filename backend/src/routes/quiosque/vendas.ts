@@ -9,9 +9,13 @@ import {
   resolverPagamentos,
   resumoComanda,
   totalEmCentavos,
+  centavos,
 } from '../../lib/quiosque/venda.js';
 import { notificarPedidoNovo } from '../../lib/quiosque/cozinha.js';
 import { assertCaixaAberto } from '../../lib/quiosque/caixa.js';
+import { baixarEstoqueDoPedido } from '../../lib/quiosque/estoque.js';
+import { registrarTransacao } from '../../lib/transacao-log.js';
+import { recordVendaAvulsa } from '../../lib/business-metrics.js';
 
 const vendaAvulsaSchema = z.object({
   pontoVendaId: z.string().min(1),
@@ -47,7 +51,7 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
    * paralelo de venda solta.
    */
   app.post('/', async (request, reply) => {
-    const { cervejariaId, temCozinha } = request.quiosque;
+    const { cervejariaId, temCozinha, controlaEstoque } = request.quiosque;
     const user = getAuthUser(request);
     const body = vendaAvulsaSchema.parse(request.body);
     const dia = diaOperacional();
@@ -57,10 +61,10 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
     });
     if (!pontoVenda) return reply.status(404).send({ error: 'Ponto de venda não encontrado' });
 
-    await assertCaixaAberto(cervejariaId, body.pontoVendaId, dia);
+    const sessao = await assertCaixaAberto(cervejariaId, body.pontoVendaId, dia);
 
     const { comanda, pedido } = await prisma.$transaction(async (tx) => {
-      const itens = await resolverItens(tx, cervejariaId, body.itens);
+      const itens = await resolverItens(tx, cervejariaId, body.itens, { sessaoCaixaId: sessao.id });
       const pagamentos = resolverPagamentos(body.pagamentos, totalEmCentavos(itens));
       const agora = new Date();
 
@@ -87,6 +91,15 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
         itens,
       });
 
+      await baixarEstoqueDoPedido(tx, {
+        moduloControlaEstoque: controlaEstoque,
+        cervejariaId,
+        pontoVendaId: body.pontoVendaId,
+        pedidoId: pedidoCriado.id,
+        registradoPorId: user.sub,
+        itens,
+      });
+
       await tx.pagamentoQuiosque.createMany({
         data: pagamentos.map((pagamento) => ({
           comandaId: criada.id,
@@ -109,6 +122,17 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
 
     if (temCozinha) await notificarPedidoNovo(app, cervejariaId, pedido);
 
-    return reply.status(201).send(resumoComanda(comanda));
+    const res = resumoComanda(comanda);
+    recordVendaAvulsa(centavos(res.total));
+    void registrarTransacao({
+      cervejariaId,
+      tipo: 'QUIOSQUE_VENDA_AVULSA',
+      usuarioId: user.sub,
+      comandaId: comanda.id,
+      metadata: { total: res.total },
+      payload: res,
+    });
+
+    return reply.status(201).send(res);
   });
 }

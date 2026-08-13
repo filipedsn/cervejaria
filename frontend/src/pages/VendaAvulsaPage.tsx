@@ -231,7 +231,7 @@ export function VendaAvulsaPage() {
 
       {cart.length > 0 && (
         <MobileActionBar>
-          <button type="button" className="touch-btn-primary w-full" onClick={openPayment}>
+          <button type="button" className="touch-btn-primary w-full" onClick={openPayment} data-audit="venda-avulsa-pagar">
             Pagar · {formatCurrency(total)}
           </button>
         </MobileActionBar>

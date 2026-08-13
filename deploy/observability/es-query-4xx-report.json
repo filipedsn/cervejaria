@@ -1,0 +1,18 @@
+{
+  "size": 0,
+  "query": {
+    "bool": {
+      "filter": [
+        { "range": { "@timestamp": { "gte": "now-14d" } } },
+        { "wildcard": { "_index": "*logs-audit*otel-prd*" } },
+        { "term": { "attributes.event.outcome": "failure" } },
+        { "range": { "attributes.http.response.status_code": { "gte": 400 } } }
+      ]
+    }
+  },
+  "aggs": {
+    "by_status": { "terms": { "field": "attributes.http.response.status_code", "size": 10 } },
+    "by_route": { "terms": { "field": "attributes.http.route", "size": 20 } },
+    "timeline": { "date_histogram": { "field": "@timestamp", "calendar_interval": "day" } }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "size": 5,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "bool": {
+      "must": [
+        { "term": { "resource.attributes.deployment.environment.name": "development" } },
+        { "term": { "attributes.cervejaria.slug": "churrasquinho-do-thiago" } },
+        { "prefix": { "attributes.event.action": "transacao." } }
+      ],
+      "filter": [{ "range": { "@timestamp": { "gte": "now-15m" } } }]
+    }
+  },
+  "_source": [
+    "@timestamp",
+    "attributes.event.action",
+    "attributes.event.local_time",
+    "attributes.message",
+    "attributes.transacao.payload",
+    "attributes.metadata.validacao",
+    "attributes.metadata.identificador"
+  ]
+}

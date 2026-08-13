@@ -10,8 +10,8 @@ fora do modulo o referencia, mas convem limpar.
 ## Como reverter
 
 ```powershell
-# dev
-docker exec -i cervejaria-db psql -U cervejaria -d cervejaria_dev -v ON_ERROR_STOP=1 -f /caminho/do/arquivo.sql
+# dev (container cervejaria-db-dev, porta 5434)
+docker exec -i cervejaria-db-dev psql -U cervejaria -d cervejaria_dev -v ON_ERROR_STOP=1 -f /caminho/do/arquivo.sql
 ```
 
 Depois, remover a linha correspondente de `_prisma_migrations`:

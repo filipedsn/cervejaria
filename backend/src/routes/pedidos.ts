@@ -104,6 +104,7 @@ export async function pedidosRoutes(app: FastifyInstance) {
           precoUnit: result.precoUnit,
           origem: 'pedido_cliente',
         },
+        payload: { pedido, item, comanda: result.comanda },
       });
 
       emitToEvento(app.io, pedido.eventoId, { type: 'item:added', data: result.comanda });
@@ -164,6 +165,18 @@ export async function pedidosRoutes(app: FastifyInstance) {
     const serialized = serializePedido(updated);
     emitToEvento(app.io, pedido.eventoId, { type: 'pedido:recusado', data: serialized });
     emitToComanda(app.io, pedido.comandaId, { type: 'pedido:recusado', data: serialized });
+
+    void registrarTransacao({
+      cervejariaId: user.cervejariaId!,
+      tipo: 'PORTAL_PEDIDO_RECUSADO',
+      usuarioId: user.sub,
+      eventoId: pedido.eventoId,
+      comandaId: pedido.comandaId,
+      entidadeId: pedido.id,
+      metadata: { motivo: body.motivo.trim() },
+      payload: serialized,
+    });
+
     return serialized;
   });
 }

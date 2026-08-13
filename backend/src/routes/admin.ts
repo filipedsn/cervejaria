@@ -140,15 +140,31 @@ function formatAdminCervejaria(
     logoUrl: string | null;
     corPrimaria: string | null;
     corPaleta: unknown;
+    configuracaoQuiosque?: {
+      ativo: boolean;
+      exclusivo: boolean;
+      controlaEstoque: boolean;
+      temCozinha: boolean;
+    } | null;
     _count?: { usuarios: number; eventos: number };
     usuarios?: Array<{ id: string; nome: string; email: string }>;
   },
   mesAtual?: ReturnType<typeof emptyMesAtualStats>,
 ) {
   const branding = formatCervejariaAuth(c);
+  const quiosque = c.configuracaoQuiosque;
+  const temQuiosque = quiosque?.ativo === true;
+  const temCervejaria = !temQuiosque || !quiosque.exclusivo;
+
   return {
     ...branding,
     ativo: c.ativo,
+    modulos: {
+      cervejaria: temCervejaria,
+      quiosque: temQuiosque,
+      quiosqueControlaEstoque: temQuiosque && quiosque.controlaEstoque,
+      quiosqueTemCozinha: temQuiosque && quiosque.temCozinha,
+    },
     mesAtual,
     _count: c._count,
     usuarios: c.usuarios,
@@ -161,6 +177,14 @@ async function mapCervejariasList() {
       orderBy: { nome: 'asc' },
       include: {
         _count: { select: { usuarios: true, eventos: true } },
+        configuracaoQuiosque: {
+          select: {
+            ativo: true,
+            exclusivo: true,
+            controlaEstoque: true,
+            temCozinha: true,
+          },
+        },
         usuarios: {
           where: { papel: 'DONO' },
           select: { id: true, nome: true, email: true },
@@ -189,6 +213,14 @@ export async function adminRoutes(app: FastifyInstance) {
     const cervejaria = await prisma.cervejaria.findUnique({
       where: { id },
       include: {
+        configuracaoQuiosque: {
+          select: {
+            ativo: true,
+            exclusivo: true,
+            controlaEstoque: true,
+            temCozinha: true,
+          },
+        },
         usuarios: {
           where: { papel: 'DONO' },
           select: { id: true, nome: true, email: true },

@@ -3,7 +3,9 @@ import { prisma } from './prisma.js';
 import { toNumber } from './utils.js';
 import { isBebidaChope, isVendaUnitaria } from './produto-utils.js';
 import { assertChopeAtivoNoTap, listTapsComChopeAtual } from './tap-montagem.js';
-import { assertProdutoNoCardapioEvento, listProdutosDoEvento } from './evento-cardapio.js';
+import { assertProdutoNoCardapioEvento, listCatalogoCardapio, listProdutosDoEvento } from './evento-cardapio.js';
+import { resolvePrecoCardapioCervejaria, mapPrecosCardapioCervejaria } from './cardapio-preco.js';
+import { cervejariaUsaCardapio } from './cardapio-toggle.js';
 
 export const comandaDetailInclude = {
   cliente: true,
@@ -54,6 +56,13 @@ export async function addItemToComandaInTx(
   });
   if (!comanda) return { error: 'Comanda não encontrada ou fechada' as const };
 
+  const evento = await tx.evento.findFirst({
+    where: { id: eventoId, cervejariaId },
+    select: { cardapioId: true },
+  });
+
+  const usaCardapio = await cervejariaUsaCardapio(cervejariaId);
+
   const produto = await tx.produto.findFirst({
     where: { id: item.produtoId, cervejariaId, ativo: true },
     include: { precos: true },
@@ -81,7 +90,7 @@ export async function addItemToComandaInTx(
     if (!chopeNoTap) {
       return { error: 'Este chope não está posicionado no tap selecionado' as const };
     }
-  } else if (isVendaUnitaria(produto.tipo, produto.formato)) {
+  } else if (isVendaUnitaria(produto.tipo, produto.formato) && usaCardapio) {
     const noCardapio = await assertProdutoNoCardapioEvento(eventoId, item.produtoId);
     if (!noCardapio) {
       return { error: 'Este item não está no cardápio deste evento' as const };
@@ -91,6 +100,12 @@ export async function addItemToComandaInTx(
   const preco = produto.precos.find((p) => p.volumeMl === item.volumeMl);
   if (!preco) return { error: 'Preço não encontrado para este volume' as const };
 
+  let precoUnit = toNumber(preco.preco);
+  if (usaCardapio && evento?.cardapioId && isVendaUnitaria(produto.tipo, produto.formato) && !isChope) {
+    const templatePreco = await resolvePrecoCardapioCervejaria(evento.cardapioId, item.produtoId);
+    if (templatePreco !== null) precoUnit = templatePreco;
+  }
+
   await tx.itemComanda.create({
     data: {
       comandaId,
@@ -98,7 +113,7 @@ export async function addItemToComandaInTx(
       tapId: isChope ? tapId : null,
       volumeMl: item.volumeMl,
       quantidade: item.quantidade,
-      precoUnit: preco.preco,
+      precoUnit,
     },
   });
 
@@ -108,7 +123,7 @@ export async function addItemToComandaInTx(
     total,
     produto,
     isChope,
-    precoUnit: toNumber(preco.preco),
+    precoUnit,
   };
 }
 
@@ -191,9 +206,22 @@ export async function removeItemFromComanda(params: {
 }
 
 export async function buildPublicEventCardapio(eventoId: string, trailerId: string, cervejariaId: string) {
+  const [evento, usaCardapio] = await Promise.all([
+    prisma.evento.findFirst({
+      where: { id: eventoId, cervejariaId },
+      select: { cardapioId: true },
+    }),
+    cervejariaUsaCardapio(cervejariaId),
+  ]);
+
+  const precosTemplate =
+    usaCardapio && evento?.cardapioId
+      ? await mapPrecosCardapioCervejaria(evento.cardapioId)
+      : null;
+
   const [tapsComChope, produtosEvento] = await Promise.all([
     listTapsComChopeAtual(eventoId, trailerId),
-    listProdutosDoEvento(eventoId),
+    usaCardapio ? listProdutosDoEvento(eventoId) : listCatalogoCardapio(cervejariaId),
   ]);
 
   const chopes = tapsComChope
@@ -221,22 +249,36 @@ export async function buildPublicEventCardapio(eventoId: string, trailerId: stri
 
   return {
     chopes,
-    bebidas: bebidas.map(serializeProduto),
-    comidas: comidas.map(serializeProduto),
+    bebidas: bebidas.map((p) => serializeProduto(p, precosTemplate)),
+    comidas: comidas.map((p) => serializeProduto(p, precosTemplate)),
   };
 }
 
-function serializeProduto(p: Awaited<ReturnType<typeof listProdutosDoEvento>>[number]) {
+function serializeProduto(
+  p: Awaited<ReturnType<typeof listProdutosDoEvento>>[number],
+  precosTemplate: Map<string, number> | null,
+) {
+  const templatePreco = precosTemplate?.get(p.id);
+  const precos =
+    templatePreco !== undefined
+      ? p.precos.length
+        ? p.precos.map((pr, idx) =>
+            idx === 0 ? { volumeMl: pr.volumeMl, preco: templatePreco } : { volumeMl: pr.volumeMl, preco: toNumber(pr.preco) },
+          )
+        : [{ volumeMl: 0, preco: templatePreco }]
+      : p.precos.map((pr) => ({
+          volumeMl: pr.volumeMl,
+          preco: toNumber(pr.preco),
+        }));
+
   return {
     id: p.id,
     nome: p.nome,
     descricao: p.descricao,
     tipo: p.tipo,
     formato: p.formato,
-    precos: p.precos.map((pr) => ({
-      volumeMl: pr.volumeMl,
-      preco: toNumber(pr.preco),
-    })),
+    precos,
+    precoEfetivo: templatePreco ?? (precos[0]?.preco ?? 0),
   };
 }
 

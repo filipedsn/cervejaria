@@ -1,0 +1,8 @@
+{
+  "type": "http",
+  "name": "quiver-tap-api-ready-prd",
+  "url": "https://tap.quivercloud.com.br/api/ready",
+  "schedule": 5,
+  "enabled": true,
+  "tags": ["quiver-tap", "production"]
+}

@@ -1,0 +1,18 @@
+{
+  "size": 5,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "bool": {
+      "filter": [{ "range": { "@timestamp": { "gte": "now-1h" } } }],
+      "should": [
+        { "term": { "scope.name": "quiver-tap-audit" } },
+        { "term": { "scope.name": "@opentelemetry/instrumentation-pino" } }
+      ],
+      "minimum_should_match": 1
+    }
+  },
+  "aggs": {
+    "by_scope": { "terms": { "field": "scope.name", "size": 10 } }
+  },
+  "_source": ["scope.name", "body", "attributes.event.category", "@timestamp"]
+}

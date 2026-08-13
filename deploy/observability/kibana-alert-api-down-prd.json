@@ -1,0 +1,23 @@
+{
+  "name": "quiver-tap-api-down-prd",
+  "tags": ["quiver-tap", "observability", "production", "uptime"],
+  "rule_type_id": "xpack.uptime.alerts.monitorStatus",
+  "consumer": "uptime",
+  "schedule": { "interval": "1m" },
+  "enabled": true,
+  "params": {
+    "shouldCheckStatus": true,
+    "shouldCheckAvailability": true,
+    "numTimes": 3,
+    "timerangeUnit": "m",
+    "timerangeCount": 5,
+    "search": "monitor.id:quiver-tap-api-ready-prd",
+    "filters": {
+      "tags": [],
+      "locations": [],
+      "ports": []
+    }
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

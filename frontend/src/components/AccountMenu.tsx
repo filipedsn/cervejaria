@@ -1,7 +1,10 @@
+import { Link, useLocation } from 'react-router-dom';
 import { assetUrl } from '../lib/api';
 import type { Cervejaria, Trailer, Usuario } from '../types';
 import { formatTrailerLabel } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
+import { useQuiosqueContexto } from '../hooks/useQuiosqueContexto';
 import { IconBell } from './NavIcons';
 import { SettingsRow, ThemeSegmentedControl } from './SettingsRow';
 import type { PedidoPushStatus } from '../hooks/usePedidoAlertSound';
@@ -76,6 +79,14 @@ export function AccountMenu({
   onTogglePedidoAlert,
 }: AccountMenuProps) {
   const { theme, setTheme } = useTheme();
+  const { isDono } = useAuth();
+  const { contexto: quiosque } = useQuiosqueContexto();
+  const location = useLocation();
+  const inQuiosque = location.pathname.startsWith('/quiosque');
+  const equipeHref =
+    inQuiosque || (quiosque.ativo && quiosque.exclusivo)
+      ? '/quiosque/equipe'
+      : '/configuracoes/equipe';
 
   if (!open) return null;
 
@@ -184,9 +195,15 @@ export function AccountMenu({
         </div>
 
         <div className="shrink-0 border-t border-line px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-2">
-          <button type="button" onClick={onClose} className="touch-btn-danger w-full">
-            Voltar
-          </button>
+          {isDono && (
+            <Link
+              to={equipeHref}
+              onClick={onClose}
+              className="touch-btn-secondary w-full inline-flex items-center justify-center"
+            >
+              Configurações
+            </Link>
+          )}
 
           {onTrocarTrailer && (
             <button type="button" onClick={onTrocarTrailer} className="touch-btn-secondary w-full">
@@ -203,6 +220,10 @@ export function AccountMenu({
             className="touch-btn-secondary w-full text-danger border-danger/20 active:bg-danger-soft"
           >
             Sair da conta
+          </button>
+
+          <button type="button" onClick={onClose} className="touch-btn-danger w-full">
+            Voltar
           </button>
         </div>
       </div>

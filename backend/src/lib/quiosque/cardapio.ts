@@ -1,0 +1,211 @@
+import { prisma } from '../prisma.js';
+import { toNumber } from '../utils.js';
+import type { CardapioItemInput } from '../cardapio-preco.js';
+
+export type QuiosqueCardapioItemInput = { produtoId: string; precoUnit: number };
+
+function defaultPrecoCatalogoQuiosque(produto: { precoUnit: unknown }): number {
+  return toNumber(produto.precoUnit);
+}
+
+export async function normalizeItensCardapioQuiosque(
+  cervejariaId: string,
+  itens?: QuiosqueCardapioItemInput[],
+  produtoIds?: string[],
+): Promise<{ ok: true; itens: QuiosqueCardapioItemInput[] } | { error: string }> {
+  if (itens?.length) {
+    const ids = itens.map((i) => i.produtoId);
+    const validated = await validateProdutosCardapioQuiosque(cervejariaId, ids);
+    if ('error' in validated) return validated;
+
+    const invalidPreco = itens.find((i) => !(i.precoUnit > 0));
+    if (invalidPreco) return { error: 'Informe preço maior que zero para todos os itens' };
+
+    const unique = new Map<string, QuiosqueCardapioItemInput>();
+    for (const item of itens) unique.set(item.produtoId, item);
+    return { ok: true, itens: [...unique.values()] };
+  }
+
+  if (produtoIds?.length) {
+    const validated = await validateProdutosCardapioQuiosque(cervejariaId, produtoIds);
+    if ('error' in validated) return validated;
+
+    const produtos = await prisma.produtoQuiosque.findMany({
+      where: { id: { in: validated.produtoIds }, cervejariaId },
+    });
+    const porId = new Map(produtos.map((p) => [p.id, p]));
+    return {
+      ok: true,
+      itens: validated.produtoIds.map((produtoId) => ({
+        produtoId,
+        precoUnit: defaultPrecoCatalogoQuiosque(porId.get(produtoId)!),
+      })),
+    };
+  }
+
+  return { ok: true, itens: [] };
+}
+
+export async function validateProdutosCardapioQuiosque(cervejariaId: string, produtoIds: string[]) {
+  const uniqueIds = [...new Set(produtoIds)];
+  if (uniqueIds.length === 0) return { ok: true as const, produtoIds: [] as string[] };
+
+  const produtos = await prisma.produtoQuiosque.findMany({
+    where: { id: { in: uniqueIds }, cervejariaId, ativo: true },
+  });
+
+  if (produtos.length !== uniqueIds.length) {
+    return { error: 'Um ou mais itens do cardápio são inválidos' as const };
+  }
+
+  return { ok: true as const, produtoIds: uniqueIds };
+}
+
+export async function listCardapiosQuiosque(cervejariaId: string, opts?: { ativo?: boolean }) {
+  return prisma.cardapioQuiosque.findMany({
+    where: {
+      cervejariaId,
+      ...(opts?.ativo !== undefined ? { ativo: opts.ativo } : {}),
+    },
+    include: {
+      produtos: {
+        include: { produto: true },
+        orderBy: { produto: { nome: 'asc' } },
+      },
+      _count: { select: { produtos: true } },
+    },
+    orderBy: [{ ativo: 'desc' }, { nome: 'asc' }],
+  });
+}
+
+export function mapCardapioQuiosqueResponse(
+  cardapio: Awaited<ReturnType<typeof listCardapiosQuiosque>>[number],
+) {
+  return {
+    id: cardapio.id,
+    nome: cardapio.nome,
+    ativo: cardapio.ativo,
+    cervejariaId: cardapio.cervejariaId,
+    produtoIds: cardapio.produtos.map((p) => p.produtoQuiosqueId),
+    itens: cardapio.produtos.map((p) => ({
+      produtoId: p.produtoQuiosqueId,
+      precoUnit: toNumber(p.precoUnit),
+      produto: p.produto,
+    })),
+    produtos: cardapio.produtos.map((p) => ({
+      ...p.produto,
+      precoUnit: String(toNumber(p.precoUnit)),
+      precoEfetivo: toNumber(p.precoUnit),
+    })),
+    itemCount: cardapio._count.produtos,
+  };
+}
+
+export async function getCardapioQuiosqueById(id: string, cervejariaId: string) {
+  const cardapio = await prisma.cardapioQuiosque.findFirst({
+    where: { id, cervejariaId },
+    include: {
+      produtos: {
+        include: { produto: true },
+        orderBy: { produto: { nome: 'asc' } },
+      },
+      _count: { select: { produtos: true } },
+    },
+  });
+  if (!cardapio) return null;
+  return mapCardapioQuiosqueResponse(cardapio);
+}
+
+async function replaceCardapioQuiosqueProdutos(
+  cardapioId: string,
+  itens: QuiosqueCardapioItemInput[],
+) {
+  await prisma.$transaction(async (tx) => {
+    await tx.cardapioQuiosqueProduto.deleteMany({ where: { cardapioId } });
+    if (itens.length > 0) {
+      await tx.cardapioQuiosqueProduto.createMany({
+        data: itens.map((item) => ({
+          cardapioId,
+          produtoQuiosqueId: item.produtoId,
+          precoUnit: item.precoUnit,
+        })),
+      });
+    }
+  });
+}
+
+export async function createCardapioQuiosque(params: {
+  cervejariaId: string;
+  nome: string;
+  itens?: QuiosqueCardapioItemInput[];
+  produtoIds?: string[];
+}) {
+  const normalized = await normalizeItensCardapioQuiosque(
+    params.cervejariaId,
+    params.itens,
+    params.produtoIds,
+  );
+  if ('error' in normalized) return normalized;
+
+  const cardapio = await prisma.cardapioQuiosque.create({
+    data: {
+      nome: params.nome.trim(),
+      cervejariaId: params.cervejariaId,
+    },
+  });
+
+  await replaceCardapioQuiosqueProdutos(cardapio.id, normalized.itens);
+  return getCardapioQuiosqueById(cardapio.id, params.cervejariaId);
+}
+
+export async function updateCardapioQuiosque(params: {
+  id: string;
+  cervejariaId: string;
+  nome?: string;
+  itens?: QuiosqueCardapioItemInput[];
+  produtoIds?: string[];
+}) {
+  const existing = await prisma.cardapioQuiosque.findFirst({
+    where: { id: params.id, cervejariaId: params.cervejariaId },
+  });
+  if (!existing) return { error: 'Cardápio não encontrado' as const };
+
+  if (params.itens !== undefined || params.produtoIds !== undefined) {
+    const normalized = await normalizeItensCardapioQuiosque(
+      params.cervejariaId,
+      params.itens,
+      params.produtoIds,
+    );
+    if ('error' in normalized) return normalized;
+    await replaceCardapioQuiosqueProdutos(params.id, normalized.itens);
+  }
+
+  if (params.nome !== undefined) {
+    await prisma.cardapioQuiosque.update({
+      where: { id: params.id },
+      data: { nome: params.nome.trim() },
+    });
+  }
+
+  const updated = await getCardapioQuiosqueById(params.id, params.cervejariaId);
+  return updated!;
+}
+
+export async function getProdutoIdsFromCardapioQuiosque(cardapioId: string, cervejariaId: string) {
+  const cardapio = await prisma.cardapioQuiosque.findFirst({
+    where: { id: cardapioId, cervejariaId, ativo: true },
+    include: { produtos: { select: { produtoQuiosqueId: true } } },
+  });
+  if (!cardapio) return { error: 'Cardápio não encontrado' as const };
+  return { ok: true as const, produtoIds: cardapio.produtos.map((p) => p.produtoQuiosqueId) };
+}
+
+export async function listCatalogoCardapioQuiosque(cervejariaId: string) {
+  return prisma.produtoQuiosque.findMany({
+    where: { cervejariaId, ativo: true },
+    orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
+  });
+}
+
+// re-export for typing compatibility
+export type { CardapioItemInput };

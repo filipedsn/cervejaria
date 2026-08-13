@@ -126,6 +126,15 @@ export async function getAppUrl(): Promise<string> {
   return process.env.APP_URL ?? DEFAULTS.appUrl;
 }
 
+function smtpFromAddress(from: string | undefined, user: string): string {
+  const trimmed = from?.trim();
+  if (trimmed && !trimmed.includes('noreply@localhost') && !trimmed.includes('@localhost>')) {
+    return trimmed;
+  }
+  if (user.trim()) return `Quiver Tap Alertas <${user.trim()}>`;
+  return trimmed ?? DEFAULTS.smtp.from;
+}
+
 export async function getSmtpCredentials(): Promise<{
   configured: boolean;
   host: string;
@@ -135,7 +144,12 @@ export async function getSmtpCredentials(): Promise<{
   pass: string;
   from: string;
 }> {
-  const raw = await readRaw();
+  let raw: PlatformSettings | null = null;
+  try {
+    raw = await readRaw();
+  } catch {
+    raw = null;
+  }
 
   if (raw?.smtp.enabled && raw.smtp.host && raw.smtp.user && raw.smtp.passEnc) {
     return {
@@ -145,11 +159,12 @@ export async function getSmtpCredentials(): Promise<{
       secure: raw.smtp.secure,
       user: raw.smtp.user,
       pass: decryptSecret(raw.smtp.passEnc),
-      from: raw.smtp.from,
+      from: smtpFromAddress(raw.smtp.from, raw.smtp.user),
     };
   }
 
   if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    const from = smtpFromAddress(process.env.SMTP_FROM, process.env.SMTP_USER);
     return {
       configured: true,
       host: process.env.SMTP_HOST,
@@ -157,7 +172,7 @@ export async function getSmtpCredentials(): Promise<{
       secure: process.env.SMTP_SECURE === 'true',
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
-      from: process.env.SMTP_FROM ?? DEFAULTS.smtp.from,
+      from,
     };
   }
 

@@ -1,0 +1,6 @@
+{
+  "ruleName": "teste-index-poller",
+  "alertState": "active",
+  "reason": "Simulacao connector .index -> poll ES -> SMTP",
+  "@timestamp": "2026-08-10T14:35:00.000Z"
+}

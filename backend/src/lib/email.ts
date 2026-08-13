@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { formatBrazilDateTime } from './event-datetime.js';
 import { getSmtpCredentials } from './system-config.js';
 
 let cachedKey: string | null = null;
@@ -73,8 +74,55 @@ export async function sendTestEmail(to: string): Promise<void> {
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
         <h2>Teste de e-mail</h2>
         <p>Se você recebeu esta mensagem, o SMTP está configurado corretamente.</p>
-        <p style="color:#666;font-size:14px;">Enviado em ${new Date().toLocaleString('pt-BR')}</p>
+        <p style="color:#666;font-size:14px;">Enviado em ${formatBrazilDateTime()} (horário de São Paulo)</p>
       </div>
     `,
+  });
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+export async function sendObservabilityAlertEmail(
+  to: string | string[],
+  alert: {
+    ruleName?: string;
+    alertState?: string;
+    reason?: string;
+    viewInAppUrl?: string;
+  },
+): Promise<void> {
+  const creds = await getSmtpCredentials();
+  const transport = await getTransporter();
+  if (!transport) {
+    throw new Error('SMTP não configurado. Preencha host, usuário e senha.');
+  }
+
+  const ruleName = alert.ruleName ?? 'Alerta Quiver Tap';
+  const state = alert.alertState ?? 'disparado';
+  const reason = alert.reason ?? 'Sem detalhes adicionais.';
+  const link = alert.viewInAppUrl;
+
+  const html = `
+    <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto;">
+      <h2 style="color:#e69500;">Alerta de observabilidade</h2>
+      <p><strong>Regra:</strong> ${escapeHtml(ruleName)}</p>
+      <p><strong>Estado:</strong> ${escapeHtml(state)}</p>
+      <p><strong>Motivo:</strong> ${escapeHtml(reason)}</p>
+      ${link ? `<p><a href="${escapeHtml(link)}" style="color:#e69500;">Abrir no Kibana</a></p>` : ''}
+      <p style="color:#666;font-size:12px;">Enviado em ${formatBrazilDateTime()} (horário de São Paulo)</p>
+    </div>
+  `;
+
+  await transport.sendMail({
+    from: creds.from,
+    to,
+    subject: `[Quiver Tap] ${ruleName} — ${state}`,
+    html,
   });
 }

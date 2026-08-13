@@ -1,0 +1,16 @@
+{
+  "size": 5,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "bool": {
+      "filter": [{ "range": { "@timestamp": { "gte": "now-15m" } } }],
+      "should": [
+        { "term": { "scope.name": "quiver-tap-audit" } },
+        { "wildcard": { "attributes.event.action": "transacao.*" } },
+        { "match_phrase": { "body.text": "Validacao OTel" } }
+      ],
+      "minimum_should_match": 1
+    }
+  },
+  "_source": true
+}

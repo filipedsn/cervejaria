@@ -1,0 +1,13 @@
+{
+  "size": 1,
+  "query": {
+    "bool": {
+      "must": [
+        { "term": { "resource.attributes.service.name": "quiver-tap-api" } },
+        { "term": { "data_stream.namespace": "prd" } },
+        { "range": { "@timestamp": { "gte": "now-5m" } } }
+      ]
+    }
+  },
+  "_source": ["data_stream", "resource.attributes.service.name", "resource.attributes.deployment.environment.name"]
+}

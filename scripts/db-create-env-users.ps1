@@ -1,18 +1,22 @@
-# Cria usuarios Postgres segregados (cervejaria_prod / cervejaria_dev) no container existente.
+﻿# Cria usuarios Postgres segregados — prod no container prod, dev no container dev.
 
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+. (Join-Path $PSScriptRoot 'db\_containers.ps1')
+
 $prodPass = 'QvPr0d_xK9m2026'
 $devPass = 'QvDev_pL4n2026'
 
 Write-Host 'Criando usuarios Postgres segregados...' -ForegroundColor Cyan
 
-Get-Content (Join-Path $ProjectRoot 'deploy\db\create-env-users-prod.sql') -Raw |
-  docker exec -i cervejaria-db psql -U cervejaria -d cervejaria -v ON_ERROR_STOP=1
+Assert-DbProdContainer
+Get-Content (Join-Path $ProjectRoot 'deploy\db\create-env-users-prod-only.sql') -Raw |
+  docker exec -i $DbProdContainer psql -U cervejaria -d cervejaria -v ON_ERROR_STOP=1
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
-Get-Content (Join-Path $ProjectRoot 'deploy\db\create-env-users-dev.sql') -Raw |
-  docker exec -i cervejaria-db psql -U cervejaria -d cervejaria_dev -v ON_ERROR_STOP=1
+Assert-DbDevContainer
+Get-Content (Join-Path $ProjectRoot 'deploy\db\create-env-users-dev-container.sql') -Raw |
+  docker exec -i $DbDevContainer psql -U cervejaria -d cervejaria_dev -v ON_ERROR_STOP=1
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
 function Update-DatabaseUrl {
@@ -20,11 +24,12 @@ function Update-DatabaseUrl {
     [string]$EnvFile,
     [string]$User,
     [string]$Password,
-    [string]$Database
+    [string]$Database,
+    [int]$Port
   )
   if (-not (Test-Path $EnvFile)) { return }
   $escaped = [uri]::EscapeDataString($Password)
-  $newUrl = "postgresql://${User}:${escaped}@localhost:5432/${Database}?schema=public"
+  $newUrl = "postgresql://${User}:${escaped}@localhost:${Port}/${Database}?schema=public"
   $lines = Get-Content $EnvFile -Encoding UTF8
   $updated = $false
   $result = foreach ($line in $lines) {
@@ -42,8 +47,8 @@ function Update-DatabaseUrl {
 }
 
 Update-DatabaseUrl -EnvFile (Join-Path $ProjectRoot 'backend\.env.production') `
-  -User 'cervejaria_prod' -Password $prodPass -Database 'cervejaria'
+  -User 'cervejaria_prod' -Password $prodPass -Database 'cervejaria' -Port $DbProdPort
 Update-DatabaseUrl -EnvFile (Join-Path $ProjectRoot 'backend\.env.development') `
-  -User 'cervejaria_dev' -Password $devPass -Database 'cervejaria_dev'
+  -User 'cervejaria_dev' -Password $devPass -Database 'cervejaria_dev' -Port $DbDevPort
 
 Write-Host 'Usuarios Postgres segregados criados.' -ForegroundColor Green

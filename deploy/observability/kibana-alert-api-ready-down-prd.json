@@ -1,0 +1,23 @@
+{
+  "name": "quiver-tap-api-ready-down-prd",
+  "tags": ["quiver-tap", "observability", "production", "healthcheck"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "1m" },
+  "enabled": true,
+  "params": {
+    "index": ["metrics-httpcheckreceiver.otel-infra*"],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"wildcard\":{\"attributes.http.url\":\"*3001/api/ready*\"}}],\"must_not\":[{\"term\":{\"attributes.http.status_code\":200}}]}}}",
+    "size": 10,
+    "timeWindowSize": 3,
+    "timeWindowUnit": "m",
+    "thresholdComparator": ">",
+    "threshold": [0],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery"
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

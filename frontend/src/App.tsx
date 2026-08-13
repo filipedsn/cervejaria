@@ -8,12 +8,18 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { AdminCervejariasPage } from './pages/AdminCervejariasPage';
 import { QuiosqueLayout } from './pages/quiosque/QuiosqueLayout';
-import { QuiosquePdvPage } from './pages/quiosque/QuiosquePdvPage';
 import { QuiosqueComandasPage } from './pages/quiosque/QuiosqueComandasPage';
+import { QuiosqueNovaComandaPage } from './pages/quiosque/QuiosqueNovaComandaPage';
+import { QuiosqueVendaAvulsaPage } from './pages/quiosque/QuiosqueVendaAvulsaPage';
 import { QuiosqueComandaDetailPage } from './pages/quiosque/QuiosqueComandaDetailPage';
 import { QuiosqueCatalogoPage } from './pages/quiosque/QuiosqueCatalogoPage';
 import { QuiosqueCozinhaPage } from './pages/quiosque/QuiosqueCozinhaPage';
+import { QuiosqueCozinhaTvPage } from './pages/quiosque/QuiosqueCozinhaTvPage';
 import { QuiosqueCaixaPage } from './pages/quiosque/QuiosqueCaixaPage';
+import { QuiosqueEstoquePage } from './pages/quiosque/QuiosqueEstoquePage';
+import { QuiosqueDashboardPage } from './pages/quiosque/QuiosqueDashboardPage';
+import { QuiosqueTurnoResumoPage } from './pages/quiosque/QuiosqueTurnoResumoPage';
+import { FuncionariosPage } from './pages/FuncionariosPage';
 import { useQuiosqueContexto } from './hooks/useQuiosqueContexto';
 import { AdminConfiguracoesPage } from './pages/AdminConfiguracoesPage';
 import { SelecionarTrailerPage } from './pages/SelecionarTrailerPage';
@@ -42,19 +48,21 @@ import { Loading } from './components/Loading';
 import { ensureAppShellBranding } from './lib/app-branding';
 import { resetBreweryTheme } from './lib/theme';
 import { AuditTracker } from './components/AuditTracker';
+import { AuditErrorBoundary } from './components/AuditErrorBoundary';
 
 function RootLayout() {
   const { pathname } = useLocation();
   const hideInstallBanner =
     pathname.startsWith('/ranking/tv') ||
+    pathname.startsWith('/quiosque/cozinha/tv') ||
     pathname.startsWith('/c/');
 
   return (
-    <>
+    <AuditErrorBoundary>
       {!hideInstallBanner && <InstallAppBanner />}
       <AuditTracker />
       <Outlet />
-    </>
+    </AuditErrorBoundary>
   );
 }
 
@@ -81,7 +89,7 @@ function TenantEntryRedirect() {
   const { contexto: quiosque, isLoading: quiosqueLoading } = useQuiosqueContexto();
   if (isLoading || quiosqueLoading) return <Loading fullScreen />;
   // Empresa so de quiosque nao tem trailer nem evento para escolher.
-  if (quiosque.ativo && quiosque.exclusivo) return <Navigate to="/quiosque" replace />;
+  if (quiosque.ativo && quiosque.exclusivo) return <Navigate to="/quiosque/comandas" replace />;
   if (needsTrailerSelection) return <Navigate to="/trailer" replace />;
   if (evento?.status === 'ABERTO') return <Navigate to="/comandas" replace />;
   return <Navigate to="/eventos" replace />;
@@ -126,14 +134,21 @@ function RequireModuloQuiosque() {
 function RequireCozinhaQuiosque() {
   const { contexto, isLoading } = useQuiosqueContexto();
   if (isLoading) return <Loading fullScreen />;
-  if (!contexto.ativo || !contexto.temCozinha) return <Navigate to="/quiosque" replace />;
+  if (!contexto.ativo || !contexto.temCozinha) return <Navigate to="/quiosque/comandas" replace />;
+  return <Outlet />;
+}
+
+function RequireEstoqueQuiosque() {
+  const { contexto, isLoading } = useQuiosqueContexto();
+  if (isLoading) return <Loading fullScreen />;
+  if (!contexto.ativo || !contexto.controlaEstoque) return <Navigate to="/quiosque/comandas" replace />;
   return <Outlet />;
 }
 
 function RequireModuloCervejaria() {
   const { contexto, isLoading } = useQuiosqueContexto();
   if (isLoading) return <Loading fullScreen />;
-  if (contexto.ativo && contexto.exclusivo) return <Navigate to="/quiosque" replace />;
+  if (contexto.ativo && contexto.exclusivo) return <Navigate to="/quiosque/comandas" replace />;
   return <Outlet />;
 }
 
@@ -141,6 +156,13 @@ function RequireDono() {
   const { isDono, isLoading } = useAuth();
   if (isLoading) return <Loading fullScreen />;
   if (!isDono) return <Navigate to="/comandas" replace />;
+  return <Outlet />;
+}
+
+function RequireDonoQuiosque() {
+  const { isDono, isLoading } = useAuth();
+  if (isLoading) return <Loading fullScreen />;
+  if (!isDono) return <Navigate to="/quiosque/comandas" replace />;
   return <Outlet />;
 }
 
@@ -211,6 +233,26 @@ function RankingPeriodoTvEntry() {
   );
 }
 
+function CozinhaTvShell({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isLoading, isAdmin } = useAuth();
+  const { contexto, isLoading: qLoading } = useQuiosqueContexto();
+
+  if (isLoading || qLoading) return <Loading fullScreen />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (isAdmin) return <Navigate to="/admin/cervejarias" replace />;
+  if (!contexto.ativo || !contexto.temCozinha) return <Navigate to="/quiosque/comandas" replace />;
+
+  return <div className="qt-tv qt-cozinha-tv">{children}</div>;
+}
+
+function CozinhaTvEntry() {
+  return (
+    <CozinhaTvShell>
+      <QuiosqueCozinhaTvPage />
+    </CozinhaTvShell>
+  );
+}
+
 const router = createBrowserRouter([
   {
     element: <RootLayout />,
@@ -218,6 +260,7 @@ const router = createBrowserRouter([
       { path: '/ranking/tv/serie/:serieId', element: <RankingSerieTvEntry /> },
       { path: '/ranking/tv/periodo/:eventoId', element: <RankingPeriodoTvEntry /> },
       { path: '/ranking/tv/:eventoId', element: <RankingTvEntry /> },
+      { path: '/quiosque/cozinha/tv', element: <CozinhaTvEntry /> },
       { path: '/c/:slug/cadastro', element: <CadastroLinkDescontinuadoPage /> },
       { path: '/c/:slug/t/:trailerId', element: <PortalClientePage /> },
       {
@@ -273,15 +316,29 @@ const router = createBrowserRouter([
                         path: 'quiosque',
                         element: <QuiosqueLayout />,
                         children: [
-                          { index: true, element: <QuiosquePdvPage /> },
+                          { index: true, element: <Navigate to="comandas" replace /> },
                           { path: 'comandas', element: <QuiosqueComandasPage /> },
+                          { path: 'comandas/nova', element: <QuiosqueNovaComandaPage /> },
+                          { path: 'comandas/venda-avulsa', element: <QuiosqueVendaAvulsaPage /> },
                           { path: 'comandas/:id', element: <QuiosqueComandaDetailPage /> },
                           { path: 'caixa', element: <QuiosqueCaixaPage /> },
+                          {
+                            element: <RequireEstoqueQuiosque />,
+                            children: [{ path: 'estoque', element: <QuiosqueEstoquePage /> }],
+                          },
                           {
                             element: <RequireCozinhaQuiosque />,
                             children: [{ path: 'cozinha', element: <QuiosqueCozinhaPage /> }],
                           },
                           { path: 'catalogo', element: <QuiosqueCatalogoPage /> },
+                          {
+                            element: <RequireDonoQuiosque />,
+                            children: [
+                              { path: 'dashboard', element: <QuiosqueDashboardPage /> },
+                              { path: 'turnos/:sessaoId', element: <QuiosqueTurnoResumoPage /> },
+                              { path: 'equipe', element: <FuncionariosPage /> },
+                            ],
+                          },
                         ],
                       },
                     ],

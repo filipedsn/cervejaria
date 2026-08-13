@@ -1,6 +1,9 @@
 import { prisma } from './prisma.js';
 import { getProdutoIdsFromCardapio, validateProdutosCardapio } from './cardapio.js';
+import { mapPrecosCardapioCervejaria } from './cardapio-preco.js';
+import { cervejariaUsaCardapio } from './cardapio-toggle.js';
 import { isVendaUnitaria } from './produto-utils.js';
+import { toNumber } from './utils.js';
 
 const produtoInclude = {
   include: { precos: { orderBy: { volumeMl: 'asc' as const } } },
@@ -9,7 +12,32 @@ const produtoInclude = {
 export async function findEventoCardapioSessao(eventoId: string, cervejariaId: string) {
   return prisma.evento.findFirst({
     where: { id: eventoId, cervejariaId, recorrencia: 'NENHUMA' },
-    select: { id: true, status: true },
+    select: { id: true, status: true, cardapioId: true },
+  });
+}
+
+function enriquecerProdutosComPrecoTemplate<
+  T extends { id: string; precos: { volumeMl: number; preco: unknown }[] },
+>(produtos: T[], precosTemplate: Map<string, number> | null) {
+  if (!precosTemplate) {
+    return produtos.map((p) => ({
+      ...p,
+      precoEfetivo: p.precos[0] ? toNumber(p.precos[0].preco) : 0,
+    }));
+  }
+
+  return produtos.map((p) => {
+    const templatePreco = precosTemplate.get(p.id);
+    if (templatePreco === undefined) {
+      return { ...p, precoEfetivo: p.precos[0] ? toNumber(p.precos[0].preco) : 0 };
+    }
+    return {
+      ...p,
+      precoEfetivo: templatePreco,
+      precos: p.precos.length
+        ? p.precos.map((pr, idx) => (idx === 0 ? { ...pr, preco: templatePreco } : pr))
+        : [{ volumeMl: 0, preco: templatePreco }],
+    };
   });
 }
 
@@ -37,16 +65,37 @@ export async function getEventoCardapio(eventoId: string, cervejariaId: string) 
   const evento = await findEventoCardapioSessao(eventoId, cervejariaId);
   if (!evento) return null;
 
-  const [produtos, catalogo] = await Promise.all([
+  const usaCardapio = await cervejariaUsaCardapio(cervejariaId);
+  if (!usaCardapio) {
+    const catalogoRaw = await listCatalogoCardapio(cervejariaId);
+    const produtos = enriquecerProdutosComPrecoTemplate(catalogoRaw, null);
+    return {
+      produtos,
+      produtoIds: produtos.map((p) => p.id),
+      catalogo: produtos,
+      editavel: false,
+      cardapioId: null,
+    };
+  }
+
+  const [produtosRaw, catalogoRaw] = await Promise.all([
     listProdutosDoEvento(eventoId),
     listCatalogoCardapio(cervejariaId),
   ]);
+
+  const precosTemplate = evento.cardapioId
+    ? await mapPrecosCardapioCervejaria(evento.cardapioId)
+    : null;
+
+  const produtos = enriquecerProdutosComPrecoTemplate(produtosRaw, precosTemplate);
+  const catalogo = enriquecerProdutosComPrecoTemplate(catalogoRaw, precosTemplate);
 
   return {
     produtos,
     produtoIds: produtos.map((p) => p.id),
     catalogo,
     editavel: true,
+    cardapioId: evento.cardapioId,
   };
 }
 
@@ -130,6 +179,10 @@ export async function salvarCardapioEvento(params: {
   produtoIds?: string[];
 }) {
   const { eventoId, cervejariaId, cardapioId, produtoIds } = params;
+
+  if (!(await cervejariaUsaCardapio(cervejariaId))) {
+    return { error: 'Cardápio desativado para esta empresa' as const };
+  }
 
   const evento = await findEventoCardapioSessao(eventoId, cervejariaId);
   if (!evento) return { error: 'Evento não encontrado' as const };

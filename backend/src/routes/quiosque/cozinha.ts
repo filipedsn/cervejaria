@@ -7,10 +7,15 @@ import {
   INCLUDE_PEDIDO_COZINHA,
   STATUS_NA_FILA,
   TRANSICOES,
+  aplicarStatusPedidoCozinha,
   notificarCozinha,
+  notificarComandaQuiosqueAtualizada,
   pedidoVaiParaCozinha,
   resumoPedidoCozinha,
+  temPedidoCozinhaPendente,
 } from '../../lib/quiosque/cozinha.js';
+import { registrarTransacao } from '../../lib/transacao-log.js';
+import { recordTempoPreparoCozinha } from '../../lib/business-metrics.js';
 
 const alterarStatusSchema = z.object({
   status: z.enum(['RECEBIDO', 'EM_PREPARO', 'PRONTO', 'ENTREGUE', 'CANCELADO']),
@@ -77,14 +82,31 @@ export async function cozinhaQuiosqueRoutes(app: FastifyInstance) {
       }
     }
 
-    const atualizado = await prisma.pedidoQuiosque.update({
-      where: { id: pedido.id },
-      data: { status },
-      include: INCLUDE_PEDIDO_COZINHA,
-    });
+    const atualizado = await prisma.$transaction(async (tx) =>
+      aplicarStatusPedidoCozinha(tx, pedido, status),
+    );
 
     notificarCozinha(app, cervejariaId, atualizado, false);
 
-    return resumoPedidoCozinha(atualizado);
+    if (status === 'ENTREGUE' || status === 'CANCELADO') {
+      notificarComandaQuiosqueAtualizada(app, cervejariaId, atualizado.comanda.id);
+    }
+
+    if (status === 'ENTREGUE') {
+      recordTempoPreparoCozinha(Date.now() - pedido.createdAt.getTime());
+    }
+
+    const resumo = resumoPedidoCozinha(atualizado);
+    void registrarTransacao({
+      cervejariaId,
+      tipo: 'QUIOSQUE_PEDIDO_COZINHA',
+      usuarioId: user.sub,
+      comandaId: pedido.comandaId,
+      entidadeId: pedido.id,
+      metadata: { statusAnterior: pedido.status, status },
+      payload: resumo,
+    });
+
+    return resumo;
   });
 }

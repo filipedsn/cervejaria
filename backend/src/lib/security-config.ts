@@ -49,6 +49,10 @@ export function getCorsOrigin():
       callback(null, true);
       return;
     }
+    if (/^https?:\/\/([a-z0-9-]+\.)*quivercloud\.com\.br(:\d+)?$/i.test(origin)) {
+      callback(null, true);
+      return;
+    }
     callback(null, false);
   };
 }
@@ -66,6 +70,13 @@ export function jwtExpiresInSeconds(): number {
 
 export const AUTH_COOKIE_NAME = 'token';
 
-export const RATE_LIMIT_LOGIN_MAX = Number(process.env.RATE_LIMIT_LOGIN_MAX ?? 10);
+/**
+ * A suíte de QA autentica dezenas de vezes por minuto a partir de um único IP,
+ * o que estouraria o limite real. Mesma válvula já usada nas rotas públicas.
+ */
+export const RATE_LIMIT_LOGIN_MAX =
+  process.env.QA_MODE === '1'
+    ? Number(process.env.QA_RATE_LIMIT_LOGIN_MAX ?? 500)
+    : Number(process.env.RATE_LIMIT_LOGIN_MAX ?? 10);
 export const RATE_LIMIT_FORGOT_MAX = Number(process.env.RATE_LIMIT_FORGOT_MAX ?? 5);
 export const RATE_LIMIT_WINDOW = process.env.RATE_LIMIT_WINDOW ?? '1 minute';

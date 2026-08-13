@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { computeChopeMlFromItens, incrementClienteStatsOnComandaFechada } from './cliente-stats.js';
 import { registrarTransacao } from './transacao-log.js';
+import { recordComandaFechada } from './business-metrics.js';
 import { toNumber } from './utils.js';
 
 export type PagamentoInput = {
@@ -93,7 +94,7 @@ export async function fecharComandaComPagamentos(
   },
 ) {
   const { comanda, pagamentos, cervejariaId, usuarioId, fechadaEm } = params;
-  const total = toNumber(comanda.total);
+  const total = toNumber(comanda.total as number);
 
   const fechou = await tx.comanda.updateMany({
     where: { id: comanda.id, status: 'ABERTA' },
@@ -117,6 +118,11 @@ export async function fecharComandaComPagamentos(
     metadata.comandaIdsGrupo = params.comandaIdsGrupo;
   }
 
+  const fechada = await tx.comanda.findUniqueOrThrow({
+    where: { id: comanda.id },
+    include: comandaFechadaInclude,
+  });
+
   await registrarTransacao(
     {
       cervejariaId,
@@ -125,9 +131,12 @@ export async function fecharComandaComPagamentos(
       eventoId: comanda.eventoId,
       comandaId: comanda.id,
       metadata,
+      payload: { comanda: fechada, pagamentos },
     },
     tx,
   );
+
+  recordComandaFechada(Math.round(total * 100), 'cervejaria');
 
   const totalMlChope = computeChopeMlFromItens(comanda.itens);
   if (comanda.tipo !== 'AVULSA') {
@@ -139,10 +148,7 @@ export async function fecharComandaComPagamentos(
     });
   }
 
-  return tx.comanda.findUniqueOrThrow({
-    where: { id: comanda.id },
-    include: comandaFechadaInclude,
-  });
+  return fechada;
 }
 
 export async function cancelarComandaVaziaInTx(
@@ -193,6 +199,7 @@ export async function cancelarComandaVaziaInTx(
         clienteNome: updated.cliente.nome,
         motivo: params.motivo ?? 'manual',
       },
+      payload: updated,
     },
     tx,
   );

@@ -2,6 +2,12 @@ import type { FormaPagamentoQuiosque, Prisma, SessaoCaixaQuiosque } from '@prism
 import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
 import { centavos, diaOperacional, reais } from './venda.js';
+import { pedidoContaNaComanda } from './cozinha.js';
+import {
+  aplicarCardapioCatalogoSeVazio,
+  aplicarCardapioInicialTurno,
+} from './sessao-cardapio.js';
+import { quiosqueUsaCardapio } from '../cardapio-toggle.js';
 
 export class CaixaInvalidoError extends Error {
   statusCode = 400;
@@ -20,21 +26,22 @@ function somaCentavos(valores: number[]): number {
   return valores.reduce((soma, valor) => soma + valor, 0);
 }
 
-async function pagamentosDoDia(cervejariaId: string, pontoVendaId: string, dia: Date) {
-  return prisma.pagamentoQuiosque.findMany({
-    where: {
-      comanda: {
-        cervejariaId,
-        pontoVendaId,
-        diaOperacional: dia,
-        status: 'FECHADA',
-      },
-    },
-    select: { forma: true, valor: true },
-  });
+/** Dinheiro esperado na gaveta: troco inicial + vendas em espécie + suprimentos − sangrias. */
+export function calcularEsperadoDinheiroGaveta(params: {
+  trocoInicial: number;
+  entradasDinheiro: number;
+  suprimentos: number;
+  sangrias: number;
+}): number {
+  return reais(
+    centavos(params.trocoInicial) +
+      centavos(params.entradasDinheiro) +
+      centavos(params.suprimentos) -
+      centavos(params.sangrias),
+  );
 }
 
-function totaisPorForma(pagamentos: Array<{ forma: FormaPagamentoQuiosque; valor: unknown }>) {
+export function totaisPorForma(pagamentos: Array<{ forma: FormaPagamentoQuiosque; valor: unknown }>) {
   const centavosPorForma: Record<FormaPagamentoQuiosque, number> = {
     DINHEIRO: 0,
     PIX: 0,
@@ -55,7 +62,7 @@ function totaisPorForma(pagamentos: Array<{ forma: FormaPagamentoQuiosque; valor
   };
 }
 
-function totaisMovimentos(movimentos: SessaoCompleta['movimentos']) {
+export function totaisMovimentos(movimentos: Array<{ tipo: 'SANGRIA' | 'SUPRIMENTO'; valor: unknown }>) {
   let sangrias = 0;
   let suprimentos = 0;
 
@@ -68,14 +75,57 @@ function totaisMovimentos(movimentos: SessaoCompleta['movimentos']) {
   return { sangrias: reais(sangrias), suprimentos: reais(suprimentos) };
 }
 
+async function pagamentosDaSessao(sessao: SessaoCompleta, cervejariaId: string) {
+  const fechadaAte =
+    sessao.status === 'FECHADO' && sessao.fechadoEm ? sessao.fechadoEm : undefined;
+
+  return prisma.pagamentoQuiosque.findMany({
+    where: {
+      comanda: {
+        cervejariaId,
+        pontoVendaId: sessao.pontoVendaId,
+        diaOperacional: sessao.diaOperacional,
+        status: 'FECHADA',
+        fechadaEm: {
+          gte: sessao.abertoEm,
+          ...(fechadaAte ? { lte: fechadaAte } : {}),
+        },
+      },
+    },
+    select: { forma: true, valor: true },
+  });
+}
+
+export async function contarComandasAbertas(cervejariaId: string, pontoVendaId: string) {
+  return prisma.comandaQuiosque.count({
+    where: {
+      cervejariaId,
+      pontoVendaId,
+      status: 'ABERTA',
+      tipo: { not: 'AVULSA' },
+    },
+  });
+}
+
+export async function assertSemComandasAbertas(cervejariaId: string, pontoVendaId: string) {
+  const abertas = await contarComandasAbertas(cervejariaId, pontoVendaId);
+  if (abertas > 0) {
+    const rotulo = abertas === 1 ? '1 comanda aberta' : `${abertas} comandas abertas`;
+    throw new CaixaInvalidoError(
+      `Não é possível fechar o caixa: há ${rotulo}. Feche ou cancele todas antes de encerrar o turno.`,
+    );
+  }
+}
+
 export async function buscarSessaoAtual(
   cervejariaId: string,
   pontoVendaId: string,
   dia = diaOperacional(),
 ) {
-  return prisma.sessaoCaixaQuiosque.findUnique({
-    where: { pontoVendaId_diaOperacional: { pontoVendaId, diaOperacional: dia } },
+  return prisma.sessaoCaixaQuiosque.findFirst({
+    where: { cervejariaId, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
     include: { movimentos: { orderBy: { createdAt: 'asc' } } },
+    orderBy: { abertoEm: 'desc' },
   });
 }
 
@@ -96,13 +146,16 @@ export async function montarResumoCaixa(
   sessao: SessaoCompleta,
   cervejariaId: string,
 ) {
-  const pagamentos = await pagamentosDoDia(cervejariaId, sessao.pontoVendaId, sessao.diaOperacional);
+  const pagamentos = await pagamentosDaSessao(sessao, cervejariaId);
   const esperado = totaisPorForma(pagamentos);
   const { sangrias, suprimentos } = totaisMovimentos(sessao.movimentos);
   const trocoInicial = toNumber(sessao.trocoInicial);
-  const esperadoDinheiro = reais(
-    centavos(trocoInicial) + centavos(esperado.dinheiro) + centavos(suprimentos) - centavos(sangrias),
-  );
+  const esperadoDinheiro = calcularEsperadoDinheiroGaveta({
+    trocoInicial,
+    entradasDinheiro: esperado.dinheiro,
+    suprimentos,
+    sangrias,
+  });
 
   const contado =
     sessao.contadoDinheiro === null
@@ -165,6 +218,8 @@ export async function abrirCaixa(params: {
   pontoVendaId: string;
   trocoInicial: number;
   abertoPorId: string;
+  cardapioId?: string;
+  produtoIds?: string[];
 }) {
   if (params.trocoInicial < 0) {
     throw new CaixaInvalidoError('O troco inicial não pode ser negativo');
@@ -176,14 +231,14 @@ export async function abrirCaixa(params: {
   if (!pontoVenda) throw new CaixaInvalidoError('Ponto de venda não encontrado');
 
   const dia = diaOperacional();
-  const existente = await buscarSessaoAtual(params.cervejariaId, params.pontoVendaId, dia);
-  if (existente) {
-    throw new CaixaInvalidoError(
-      existente.status === 'ABERTO'
-        ? 'O caixa deste ponto já está aberto hoje'
-        : 'O caixa deste ponto já foi fechado hoje',
-    );
+  const aberta = await buscarSessaoAtual(params.cervejariaId, params.pontoVendaId, dia);
+  if (aberta) {
+    throw new CaixaInvalidoError('O caixa deste ponto já está aberto');
   }
+
+  const usaCardapio = await quiosqueUsaCardapio(params.cervejariaId);
+  const cardapioId = usaCardapio ? params.cardapioId : undefined;
+  const produtoIds = usaCardapio ? params.produtoIds : undefined;
 
   const sessao = await prisma.sessaoCaixaQuiosque.create({
     data: {
@@ -192,9 +247,18 @@ export async function abrirCaixa(params: {
       diaOperacional: dia,
       trocoInicial: params.trocoInicial,
       abertoPorId: params.abertoPorId,
+      cardapioQuiosqueId: cardapioId ?? null,
     },
     include: { movimentos: true },
   });
+
+  await aplicarCardapioInicialTurno({
+    sessaoCaixaId: sessao.id,
+    cervejariaId: params.cervejariaId,
+    cardapioId,
+    produtoIds,
+  });
+  await aplicarCardapioCatalogoSeVazio(sessao.id, params.cervejariaId);
 
   return montarResumoCaixa(sessao, params.cervejariaId);
 }
@@ -250,6 +314,7 @@ export async function fecharCaixa(params: {
   }
 
   const sessao = await assertCaixaAberto(params.cervejariaId, params.pontoVendaId);
+  await assertSemComandasAbertas(params.cervejariaId, params.pontoVendaId);
 
   const fechada = await prisma.sessaoCaixaQuiosque.update({
     where: { id: sessao.id },
@@ -267,4 +332,119 @@ export async function fecharCaixa(params: {
   });
 
   return montarResumoCaixa(fechada, params.cervejariaId);
+}
+
+export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId: string) {
+  const sessao = await prisma.sessaoCaixaQuiosque.findFirst({
+    where: { id: sessaoId, cervejariaId, status: 'FECHADO' },
+    include: { movimentos: true, pontoVenda: { select: { id: true, nome: true } } },
+  });
+  if (!sessao?.fechadoEm) {
+    throw new CaixaInvalidoError('Turno não encontrado');
+  }
+
+  const caixa = await montarResumoCaixa(sessao, cervejariaId);
+  const pagamentos = await prisma.pagamentoQuiosque.findMany({
+    where: {
+      comanda: {
+        cervejariaId,
+        pontoVendaId: sessao.pontoVendaId,
+        diaOperacional: sessao.diaOperacional,
+        status: 'FECHADA',
+        fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm },
+      },
+    },
+    select: { comandaId: true },
+  });
+  const comandaIds = new Set(pagamentos.map((pagamento) => pagamento.comandaId));
+
+  const vendasAvulsas = await prisma.comandaQuiosque.count({
+    where: {
+      cervejariaId,
+      pontoVendaId: sessao.pontoVendaId,
+      tipo: 'AVULSA',
+      status: 'FECHADA',
+      fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm },
+    },
+  });
+
+  const duracaoMinutos = Math.max(
+    1,
+    Math.round((sessao.fechadoEm.getTime() - sessao.abertoEm.getTime()) / 60_000),
+  );
+  const duracaoHoras = Math.max(0.25, Math.round((duracaoMinutos / 60) * 100) / 100);
+
+  const usuarioIds = [sessao.abertoPorId, sessao.fechadoPorId].filter(Boolean) as string[];
+  const usuarios = usuarioIds.length
+    ? await prisma.usuario.findMany({
+        where: { id: { in: usuarioIds } },
+        select: { id: true, nome: true },
+      })
+    : [];
+  const nomeUsuario = (id: string | null) => usuarios.find((usuario) => usuario.id === id)?.nome ?? null;
+
+  const comandas = await prisma.comandaQuiosque.findMany({
+    where: {
+      cervejariaId,
+      pontoVendaId: sessao.pontoVendaId,
+      diaOperacional: sessao.diaOperacional,
+      status: 'FECHADA',
+      fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm },
+    },
+    include: { pedidos: { include: { itens: true } } },
+  });
+
+  const porProduto = new Map<
+    string,
+    { produtoId: string; nome: string; quantidade: number; receita: number }
+  >();
+  let itensVendidos = 0;
+
+  for (const comanda of comandas) {
+    for (const pedido of comanda.pedidos) {
+      if (!pedidoContaNaComanda(pedido, comanda)) continue;
+      for (const item of pedido.itens) {
+        itensVendidos += item.quantidade;
+        const itemValor = toNumber(item.precoUnit) * item.quantidade;
+        const prod = porProduto.get(item.produtoId) ?? {
+          produtoId: item.produtoId,
+          nome: item.nome,
+          quantidade: 0,
+          receita: 0,
+        };
+        prod.quantidade += item.quantidade;
+        prod.receita += itemValor;
+        porProduto.set(item.produtoId, prod);
+      }
+    }
+  }
+
+  const receitaTotal = caixa.esperado.totalVendas;
+  const porProdutoArr = Array.from(porProduto.values())
+    .map((produto) => ({
+      ...produto,
+      receita: Math.round(produto.receita * 100) / 100,
+      percentual: receitaTotal > 0 ? Math.round((produto.receita / receitaTotal) * 100) : 0,
+    }))
+    .sort((a, b) => b.receita - a.receita);
+
+  return {
+    caixa,
+    pontoNome: sessao.pontoVenda.nome,
+    abertoPorNome: nomeUsuario(sessao.abertoPorId) ?? '—',
+    fechadoPorNome: nomeUsuario(sessao.fechadoPorId),
+    comandasAtendidas: comandaIds.size,
+    vendasAvulsas,
+    itensVendidos,
+    porProduto: porProdutoArr,
+    ticketMedio:
+      comandaIds.size > 0
+        ? Math.round((caixa.esperado.totalVendas / comandaIds.size) * 100) / 100
+        : 0,
+    duracaoMinutos,
+    receitaPorHora:
+      duracaoHoras > 0
+        ? Math.round((caixa.esperado.totalVendas / duracaoHoras) * 100) / 100
+        : 0,
+  };
 }

@@ -512,7 +512,8 @@ export function EventoPage() {
 
   const { evento, setEvento, setTrailer, trailerId } = useEvento();
 
-  const { isDono } = useAuth();
+  const { isDono, cervejaria } = useAuth();
+  const usaCardapio = cervejaria?.usaCardapio ?? false;
 
   const [showNew, setShowNew] = useState(false);
 
@@ -1025,7 +1026,7 @@ export function EventoPage() {
 
             e.preventDefault();
 
-            if (cardapioForm.cardapioModo === 'salvo' && !cardapioForm.cardapioId) {
+            if (usaCardapio && cardapioForm.cardapioModo === 'salvo' && !cardapioForm.cardapioId) {
               setError('Selecione um cardápio salvo ou escolha outra opção.');
               return;
             }
@@ -1042,7 +1043,7 @@ export function EventoPage() {
 
           <EventoFormFields form={form} setForm={setForm} trailers={trailers ?? []} />
 
-          <EventoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />
+          {usaCardapio && <EventoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />}
 
           <button
             type="submit"
@@ -1050,7 +1051,7 @@ export function EventoPage() {
             disabled={
               createMutation.isPending ||
               !form.trailerId ||
-              (cardapioForm.cardapioModo === 'salvo' && !cardapioForm.cardapioId)
+              (usaCardapio && cardapioForm.cardapioModo === 'salvo' && !cardapioForm.cardapioId)
             }
           >
 
