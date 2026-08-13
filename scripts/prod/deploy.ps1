@@ -1,4 +1,11 @@
-# Deploy de producao: backup, build, migrate, restart API e smoke test.
+# Deploy de producao: preflight, backup, build, migrate, publicacao, restart e smoke test.
+#
+# O watchdog sobe a API elevada (tarefas agendadas com RunLevel=Highest) e um shell comum nao
+# consegue encerrar processo elevado. Por isso o deploy se relanca elevado sozinho quando o
+# preflight detecta que nao tem direito de encerrar os processos de producao.
+#
+# O preflight roda antes de qualquer acao destrutiva: sem isso o script descobria o bloqueio
+# somente na publicacao, deixando o banco migrado e o codigo antigo no ar.
 
 param(
   [switch]$Confirmed,
@@ -7,7 +14,12 @@ param(
   [switch]$SkipBackfill,
   [switch]$FrontendOnly,
   [switch]$BackendOnly,
-  [switch]$DryRun
+  [switch]$DryRun,
+  [switch]$PreflightOnly,
+  # Internos: preenchidos quando o script se relanca elevado.
+  [switch]$NoElevate,
+  [string]$LogFile = '',
+  [string]$ExitCodeFile = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -29,6 +41,7 @@ Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment production
 
 $buildFrontend = -not $BackendOnly
 $buildBackend = -not $FrontendOnly
+$watchdogPidFile = Join-Path $paths.RuntimeDir 'watchdog.pid'
 
 $plan = [ordered]@{
   Backup   = -not $SkipBackup
@@ -41,36 +54,233 @@ $plan = [ordered]@{
   Smoke    = $true
 }
 
-Write-Host ''
-Write-Host 'Quiver Tap - Deploy de producao' -ForegroundColor Cyan
-Write-Host '================================' -ForegroundColor Cyan
-Write-Host "Projeto: $($paths.ProjectRoot)"
-Write-Host "Artefatos: $($paths.ProdArtifactsDir)"
-Write-Host "API:     http://127.0.0.1:$($paths.ApiPort)"
-Write-Host "Publico: https://tap.quivercloud.com.br"
-Write-Host ''
-Write-Host 'Plano:' -ForegroundColor Cyan
-foreach ($step in $plan.Keys) {
-  $enabled = $plan[$step]
-  $label = if ($enabled) { 'SIM' } else { 'nao' }
-  Write-Host "  $step : $label"
-}
-Write-Host ''
+# ---------------------------------------------------------------- preflight
 
-if ($DryRun) {
-  Write-Host 'Dry-run: nenhuma acao executada.' -ForegroundColor Yellow
-  Write-Host 'Para deploy real: npm run prod:deploy'
-  exit 0
+function Get-DeployProcessTargets {
+  $targets = @()
+  $seen = @{}
+
+  $entries = @(
+    @{ Label = 'API';          PidFile = $paths.ApiPidFile },
+    @{ Label = 'Alert poller'; PidFile = $paths.AlertPollerPidFile }
+  )
+
+  foreach ($entry in $entries) {
+    $procId = Get-PidFromFile -PidFile $entry.PidFile
+    if ($procId -gt 0 -and (Test-ProcessAlive -ProcessId $procId) -and -not $seen.ContainsKey($procId)) {
+      $seen[$procId] = $true
+      $targets += [pscustomobject]@{ Label = $entry.Label; ProcessId = $procId }
+    }
+  }
+
+  # Deteccao por porta cobre o caso de arquivo de PID perdido (deploy anterior abortado):
+  # esses processos seguram handles em prod-artifacts e travam a publicacao.
+  $ports = @(
+    @{ Label = 'API';          Port = $paths.ApiPort },
+    @{ Label = 'Alert poller'; Port = $paths.AlertPollerHealthPort }
+  )
+  foreach ($entry in $ports) {
+    if (-not $entry.Port) { continue }
+    $listenerPid = Get-PortListenerPid -Port $entry.Port
+    if ($listenerPid -gt 0 -and -not $seen.ContainsKey($listenerPid)) {
+      $seen[$listenerPid] = $true
+      $targets += [pscustomobject]@{
+        Label     = "$($entry.Label) na porta $($entry.Port)"
+        ProcessId = $listenerPid
+      }
+    }
+  }
+
+  return $targets
 }
 
-if (-not $Confirmed) {
-  Write-Host 'ATENCAO: isto altera PRODUCAO (banco cervejaria, porta 3001).' -ForegroundColor Yellow
-  $answer = Read-Host 'Digite DEPLOY para continuar'
-  if ($answer -ne 'DEPLOY') {
-    Write-Host 'Deploy cancelado.' -ForegroundColor Yellow
-    exit 1
+function Test-DockerContainerRunning {
+  param([string]$Name)
+
+  try {
+    $found = & docker ps --filter "name=$Name" --filter 'status=running' --format '{{.Names}}' 2>$null
+  } catch {
+    return $false
+  }
+  return [bool]($found -match [regex]::Escape($Name))
+}
+
+function Invoke-DeployPreflight {
+  Write-Host 'Preflight' -ForegroundColor Cyan
+  Write-Host '---------' -ForegroundColor Cyan
+
+  $blockers = New-Object 'System.Collections.Generic.List[string]'
+  $warnings = New-Object 'System.Collections.Generic.List[string]'
+  $needsElevation = $false
+
+  $elevated = Test-IsElevated
+  Write-Host "  Shell elevado           : $(if ($elevated) { 'sim' } else { 'nao' })"
+
+  if ($paths.NpmCmd -and (Test-Path $paths.NpmCmd)) {
+    Write-Host '  npm.cmd                 : OK'
+  } else {
+    $blockers.Add('npm.cmd nao encontrado. Instale Node 20+ ou ajuste o PATH.')
+    Write-Host '  npm.cmd                 : FALTA' -ForegroundColor Red
+  }
+
+  if ($plan.Backup -or $plan.Migrate) {
+    if (Test-DockerContainerRunning -Name 'cervejaria-db') {
+      Write-Host '  Container cervejaria-db : rodando'
+    } else {
+      $blockers.Add('Container cervejaria-db nao esta rodando. Suba o banco antes (docker start cervejaria-db).')
+      Write-Host '  Container cervejaria-db : PARADO' -ForegroundColor Red
+    }
+  }
+
+  try {
+    $drive = (Get-Item $paths.ProdArtifactsDir).PSDrive
+    if ($drive -and $null -ne $drive.Free) {
+      $freeGb = [math]::Round($drive.Free / 1GB, 1)
+      Write-Host "  Espaco livre em $($drive.Name):      $freeGb GB"
+      if ($freeGb -lt 2) {
+        $warnings.Add("Apenas $freeGb GB livres em $($drive.Name): - backup e artefatos podem falhar.")
+      }
+    }
+  } catch {
+    $warnings.Add('Nao foi possivel medir espaco livre em disco.')
+  }
+
+  $targets = @(Get-DeployProcessTargets)
+  if ($targets.Count -eq 0) {
+    Write-Host '  Processos de producao   : nenhum ativo'
+  } else {
+    foreach ($target in $targets) {
+      $canKill = Test-CanTerminateProcess -ProcessId $target.ProcessId
+      if ($canKill) {
+        Write-Host "  $($target.Label) (PID $($target.ProcessId)) : pode encerrar"
+      } else {
+        $needsElevation = $true
+        Write-Host "  $($target.Label) (PID $($target.ProcessId)) : SEM PERMISSAO (processo elevado)" -ForegroundColor Yellow
+      }
+    }
+  }
+
+  if ($needsElevation -and $elevated) {
+    $stuck = ($targets | Where-Object { -not (Test-CanTerminateProcess -ProcessId $_.ProcessId) } |
+      ForEach-Object { "$($_.Label) PID $($_.ProcessId)" }) -join ', '
+    $blockers.Add("Mesmo elevado nao ha permissao para encerrar: $stuck. Encerre pelo Gerenciador de Tarefas.")
+  }
+
+  foreach ($warning in $warnings) {
+    Write-Host "  aviso: $warning" -ForegroundColor Yellow
+  }
+
+  Write-Host ''
+
+  return [pscustomobject]@{
+    Ok             = ($blockers.Count -eq 0)
+    NeedsElevation = ($needsElevation -and -not $elevated)
+    Blockers       = $blockers
+    Elevated       = $elevated
+    Targets        = $targets
   }
 }
+
+# ------------------------------------------------------------- auto-elevacao
+
+function Write-LogTail {
+  param(
+    [string]$Path,
+    [ref]$Position
+  )
+
+  if (-not (Test-Path $Path)) { return }
+
+  try {
+    $stream = [System.IO.File]::Open(
+      $Path,
+      [System.IO.FileMode]::Open,
+      [System.IO.FileAccess]::Read,
+      [System.IO.FileShare]::ReadWrite
+    )
+  } catch {
+    return
+  }
+
+  try {
+    $length = $stream.Length
+    $pending = [int]($length - $Position.Value)
+    if ($pending -le 0) { return }
+
+    [void]$stream.Seek([int64]$Position.Value, [System.IO.SeekOrigin]::Begin)
+    $buffer = New-Object byte[] $pending
+    $read = $stream.Read($buffer, 0, $pending)
+    if ($read -le 0) { return }
+
+    $Position.Value = $Position.Value + $read
+    Write-Host -NoNewline ([System.Text.Encoding]::UTF8.GetString($buffer, 0, $read))
+  } finally {
+    $stream.Dispose()
+  }
+}
+
+function Invoke-SelfElevatedDeploy {
+  $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+  $log = Join-Path $paths.LogDir "deploy-$stamp.log"
+  $exitFile = Join-Path $paths.RuntimeDir "deploy-$stamp.exit"
+  Remove-Item $exitFile -Force -ErrorAction SilentlyContinue
+
+  $childArgs = @(
+    '-NoProfile',
+    '-ExecutionPolicy', 'Bypass',
+    '-File', "`"$PSCommandPath`"",
+    '-NoElevate',
+    '-Confirmed',
+    '-LogFile', "`"$log`"",
+    '-ExitCodeFile', "`"$exitFile`""
+  )
+  foreach ($switchName in @('SkipBackup', 'SkipMigrate', 'SkipBackfill', 'FrontendOnly', 'BackendOnly')) {
+    if ($PSBoundParameters.ContainsKey($switchName) -and $PSBoundParameters[$switchName]) {
+      $childArgs += "-$switchName"
+    }
+  }
+
+  Write-Host 'Elevando o deploy (confirme o UAC)...' -ForegroundColor Cyan
+  Write-Host "Log: $log" -ForegroundColor DarkGray
+  Write-Host ''
+
+  try {
+    $child = Start-Process -FilePath 'powershell.exe' -ArgumentList $childArgs `
+      -Verb RunAs -WindowStyle Hidden -PassThru
+  } catch {
+    Write-Host ''
+    Write-Host 'UAC recusado ou elevacao indisponivel. Deploy nao executado.' -ForegroundColor Red
+    Write-Host 'Alternativa: abra PowerShell como Administrador e rode o mesmo comando.' -ForegroundColor Yellow
+    $script:deployExit = 1
+    return
+  }
+
+  $position = [int64]0
+  while (-not $child.HasExited) {
+    Start-Sleep -Milliseconds 400
+    Write-LogTail -Path $log -Position ([ref]$position)
+  }
+  Start-Sleep -Milliseconds 400
+  Write-LogTail -Path $log -Position ([ref]$position)
+
+  $exitCode = 1
+  $raw = ''
+  if (Test-Path $exitFile) {
+    $raw = ("" + (Get-Content $exitFile -ErrorAction SilentlyContinue | Select-Object -First 1)).Trim()
+    Remove-Item $exitFile -Force -ErrorAction SilentlyContinue
+  }
+  if ($raw -match '^\d+$') {
+    $exitCode = [int]$raw
+  } elseif ($null -ne $child.ExitCode) {
+    $exitCode = [int]$child.ExitCode
+  }
+
+  Write-Host ''
+  Write-Host "Log completo: $log" -ForegroundColor DarkGray
+  $script:deployExit = $exitCode
+}
+
+# ------------------------------------------------------------------- deploy
 
 function Invoke-NpmStep {
   param(
@@ -90,7 +300,35 @@ function Invoke-NpmStep {
   }
 }
 
-try {
+function Stop-ProcessById {
+  param([int]$ProcessId, [string]$Label)
+
+  if ($ProcessId -le 0 -or -not (Test-ProcessAlive -ProcessId $ProcessId)) { return }
+
+  Write-Host "Encerrando $Label (PID $ProcessId)..." -ForegroundColor Yellow
+
+  # taskkill via cmd: com $ErrorActionPreference = 'Stop' a stderr de executavel nativo
+  # virava erro terminante e abortava o deploy antes de tentar as alternativas.
+  $prevEap = $ErrorActionPreference
+  $ErrorActionPreference = 'SilentlyContinue'
+  try {
+    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+    if (Test-ProcessAlive -ProcessId $ProcessId) {
+      cmd /c "taskkill /F /PID $ProcessId" 2>$null | Out-Null
+    }
+  } finally {
+    $ErrorActionPreference = $prevEap
+  }
+
+  for ($i = 0; $i -lt 20; $i++) {
+    if (-not (Test-ProcessAlive -ProcessId $ProcessId)) { return }
+    Start-Sleep -Milliseconds 300
+  }
+
+  throw "Nao foi possivel encerrar $Label (PID $ProcessId)."
+}
+
+function Invoke-DeployBody {
   if ($plan.Backup) {
     Write-Host ''
     Write-Host 'Backup do banco cervejaria...' -ForegroundColor Cyan
@@ -129,6 +367,21 @@ try {
 
   if ($plan.Publish) {
     Write-Host ''
+    Write-Host 'Liberando artefatos (parando API e alert poller)...' -ForegroundColor Cyan
+    foreach ($target in @(Get-DeployProcessTargets)) {
+      Stop-ProcessById -ProcessId $target.ProcessId -Label $target.Label
+    }
+    Remove-Item $paths.ApiPidFile -Force -ErrorAction SilentlyContinue
+    Remove-Item $paths.AlertPollerPidFile -Force -ErrorAction SilentlyContinue
+
+    foreach ($port in @($paths.ApiPort, $paths.AlertPollerHealthPort)) {
+      if ($port -and (Test-PortListening -Port $port)) {
+        $stalePid = Get-PortListenerPid -Port $port
+        throw "Porta $port continua em uso (PID $stalePid) apos encerrar os processos."
+      }
+    }
+    Start-Sleep -Seconds 1
+
     Write-Host 'Publicando artefatos de producao...' -ForegroundColor Cyan
     Publish-ProdArtifactsSwap -Paths $paths -Frontend:$buildFrontend -Backend:$buildBackend
     Write-ProdManifest -Paths $paths -DeployMeta @{
@@ -160,19 +413,121 @@ try {
   if (-not $readyOk -or -not $frontendOk) {
     Write-Host ''
     Write-Host "Deploy concluido com falha no smoke test. Veja $($paths.ApiErrLog)" -ForegroundColor Red
-    exit 1
+    $script:deployExit = 1
+    return
   }
 
   Write-Host ''
   Write-Host 'Deploy concluido com sucesso.' -ForegroundColor Green
   Write-Host "  Local:  http://127.0.0.1:$($paths.ApiPort)"
   Write-Host '  Publico: https://tap.quivercloud.com.br'
+  $script:deployExit = 0
+}
+
+# --------------------------------------------------------------------- fluxo
+
+$transcriptStarted = $false
+if ($LogFile) {
+  try {
+    Start-Transcript -Path $LogFile -Force | Out-Null
+    $transcriptStarted = $true
+  } catch {
+    # Sem transcript o deploy continua; o pai apenas nao vera o log em tempo real.
+  }
+}
+
+$deployExit = 1
+try {
   Write-Host ''
-  & "$PSScriptRoot\status.ps1"
-  exit 0
+  Write-Host 'Quiver Tap - Deploy de producao' -ForegroundColor Cyan
+  Write-Host '================================' -ForegroundColor Cyan
+  Write-Host "Projeto: $($paths.ProjectRoot)"
+  Write-Host "Artefatos: $($paths.ProdArtifactsDir)"
+  Write-Host "API:     http://127.0.0.1:$($paths.ApiPort)"
+  Write-Host "Publico: https://tap.quivercloud.com.br"
+  Write-Host ''
+  Write-Host 'Plano:' -ForegroundColor Cyan
+  foreach ($step in $plan.Keys) {
+    Write-Host "  $step : $(if ($plan[$step]) { 'SIM' } else { 'nao' })"
+  }
+  Write-Host ''
+
+  $preflight = Invoke-DeployPreflight
+
+  if (-not $preflight.Ok) {
+    Write-Host 'Preflight bloqueou o deploy (nada foi alterado):' -ForegroundColor Red
+    foreach ($blocker in $preflight.Blockers) {
+      Write-Host "  - $blocker" -ForegroundColor Red
+    }
+    $deployExit = 1
+  } elseif ($PreflightOnly) {
+    Write-Host 'Preflight OK. Deploy pode rodar.' -ForegroundColor Green
+    if ($preflight.NeedsElevation) {
+      Write-Host 'O deploy pedira elevacao (UAC) para encerrar a API.' -ForegroundColor Yellow
+    }
+    $deployExit = 0
+  } elseif ($DryRun) {
+    Write-Host 'Dry-run: nenhuma acao executada.' -ForegroundColor Yellow
+    if ($preflight.NeedsElevation) {
+      Write-Host 'O deploy real pedira elevacao (UAC) para encerrar a API.' -ForegroundColor Yellow
+    }
+    Write-Host 'Para deploy real: npm run prod:deploy -- -Confirmed'
+    $deployExit = 0
+  } else {
+    if (-not $Confirmed) {
+      Write-Host 'ATENCAO: isto altera PRODUCAO (banco cervejaria, porta 3001).' -ForegroundColor Yellow
+      $answer = Read-Host 'Digite DEPLOY para continuar'
+      if ($answer -ne 'DEPLOY') {
+        Write-Host 'Deploy cancelado.' -ForegroundColor Yellow
+        $deployExit = 1
+        throw [System.OperationCanceledException]::new('cancelado pelo usuario')
+      }
+      $Confirmed = $true
+    }
+
+    if ($preflight.NeedsElevation) {
+      if ($NoElevate) {
+        throw 'Sem permissao para encerrar a API e -NoElevate ativo. Rode em PowerShell como Administrador.'
+      }
+      Invoke-SelfElevatedDeploy
+    } else {
+      Set-DeployPause -Paths $paths -Reason 'prod:deploy'
+      Invoke-DeployBody
+    }
+  }
+} catch [System.OperationCanceledException] {
+  $deployExit = 1
 } catch {
   Write-Host ''
   Write-Host $_.Exception.Message -ForegroundColor Red
-  Write-Host 'Deploy abortado. Producao pode estar parcialmente atualizada — verifique npm run prod:status' -ForegroundColor Yellow
-  exit 1
+  Write-Host 'Deploy abortado. Verifique npm run prod:status' -ForegroundColor Yellow
+  $deployExit = 1
+} finally {
+  Clear-DeployPause -Paths $paths
+
+  # Watchdog de volta no ar mesmo em falha: se o deploy abortou, ele recupera a release anterior.
+  if (-not $DryRun -and -not $PreflightOnly -and $Confirmed) {
+    $watchdogPid = Get-PidFromFile -PidFile $watchdogPidFile
+    if (-not (Test-ProcessAlive -ProcessId $watchdogPid)) {
+      Write-Host ''
+      Write-Host 'Reativando watchdog daemon...' -ForegroundColor Cyan
+      & "$PSScriptRoot\start-watchdog-daemon.ps1" -Quiet
+    }
+  }
+
+  if ($ExitCodeFile) {
+    Set-Content -Path $ExitCodeFile -Value ([string]$deployExit) -Encoding ASCII
+  }
+  if ($transcriptStarted) {
+    Stop-Transcript | Out-Null
+  }
 }
+
+# Quando houve auto-elevacao, o processo filho ja imprimiu o status: nao repete aqui.
+$ranLocally = ($null -ne $preflight) -and -not $preflight.NeedsElevation
+if ($deployExit -eq 0 -and -not $DryRun -and -not $PreflightOnly -and $ranLocally) {
+  Write-Host ''
+  & "$PSScriptRoot\status.ps1"
+}
+
+exit $deployExit

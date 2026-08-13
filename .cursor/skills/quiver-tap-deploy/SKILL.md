@@ -5,8 +5,6 @@ description: Orchestrates Quiver Tap production deploy on Windows (backup, build
 
 # Quiver Tap — Deploy de producao
 
-> **Aviso:** Scripts de deploy completos (`prod:deploy`, ops-panel, CI GitHub) estão na branch `feat/ops-panel-ci`; pendente merge.
-
 Deploy orquestrado para o Quiver Tap (PWA Fastify + React, Windows local).
 
 ## Quando usar
@@ -38,8 +36,12 @@ Ask the user to confirm explicitly. Wait for yes.
 After confirmation, run from project root:
 
 ```powershell
-npm run prod:deploy -- -Confirmed
+.\deploy.cmd -Confirmed
 ```
+
+`deploy.cmd` e a entrada preferida: roda via `cmd`, entao nao depende da execution policy do
+PowerShell (que costuma bloquear `npm.ps1`). O equivalente por npm continua valendo:
+`npm run prod:deploy -- -Confirmed`.
 
 Optional flags (add after `-Confirmed`):
 
@@ -49,17 +51,38 @@ Optional flags (add after `-Confirmed`):
 | `-BackendOnly` | Only API changed |
 | `-SkipMigrate` | No Prisma migration in this release |
 | `-SkipBackup` | Emergency re-deploy (discourage unless user insists) |
-| `-DryRun` | Show plan only, no changes |
+| `-DryRun` | Show plan + preflight only, no changes |
+| `-PreflightOnly` | Only the readiness checks (`npm run prod:preflight`) |
 
 Examples:
 
 ```powershell
-npm run prod:deploy -- -Confirmed -FrontendOnly
-npm run prod:deploy -- -Confirmed -BackendOnly -SkipMigrate
-npm run prod:deploy -- -DryRun
+.\deploy.cmd -Confirmed -FrontendOnly
+.\deploy.cmd -Confirmed -BackendOnly -SkipMigrate
+.\deploy.cmd -DryRun
 ```
 
 If the user runs deploy themselves in terminal (without agent), they omit `-Confirmed` and type `DEPLOY` when prompted.
+
+## Como o deploy se protege
+
+O deploy nao precisa mais de um PowerShell aberto como Administrador:
+
+1. **Preflight** roda antes de qualquer acao destrutiva (~7s, nao altera nada): npm, container
+   `cervejaria-db`, espaco em disco e — o mais importante — se ha permissao para encerrar a API
+   e o alert poller. Se algo bloqueia, aborta ali, com producao intacta.
+2. **Auto-elevacao**: o watchdog sobe a API elevada (tarefas agendadas com `RunLevel=Highest`) e
+   um shell comum nao consegue encerrar processo elevado. Quando o preflight detecta isso, o
+   script se relanca elevado — **o usuario ve um prompt de UAC e precisa aceitar**. A saida do
+   processo elevado e espelhada em tempo real no terminal original e salva em
+   `deploy/logs/deploy-<timestamp>.log`.
+3. **Pausa do watchdog** via `deploy/runtime/deploy.pause`: `ensure-running.ps1` ignora seus
+   ciclos durante o deploy, entao o watchdog nao sobe a API no meio da publicacao. A pausa e
+   descartada se o processo que a criou morrer, para o watchdog voltar a recuperar producao.
+4. **Watchdog reativado no final**, mesmo se o deploy falhar — assim uma falha volta a servir a
+   release anterior em vez de deixar producao sem supervisao.
+
+Se o usuario recusar o UAC, o deploy nao executa nada e retorna erro.
 
 ## Post-deploy
 
@@ -74,6 +97,7 @@ If the user runs deploy themselves in terminal (without agent), they omit `-Conf
 | Command | Purpose |
 |---------|---------|
 | `npm run prod:status` | Health check |
+| `npm run prod:preflight` | Verificacoes de prontidao, sem alterar nada |
 | `npm run ops:open` | Release console / painel ops local (:3099) |
 | `npm run prod:rollback -- -Confirmed` | Back to previous release (code only, not DB) |
 | `npm run prod:restart` | Restart API only (no build) |

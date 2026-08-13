@@ -374,12 +374,18 @@ function Stop-PortListener {
       Write-Host "Encerrando listener na porta $Port (PID $listenerPid, tentativa $attempt/5)..." -ForegroundColor Yellow
     }
 
+    # cmd /c evita que a stderr do taskkill vire erro terminante sob $ErrorActionPreference='Stop'.
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
     try {
       Stop-Process -Id $listenerPid -Force -ErrorAction SilentlyContinue
-    } catch {}
-    try {
-      & taskkill /F /PID $listenerPid *>$null
-    } catch {}
+      if (Test-ProcessAlive -ProcessId $listenerPid) {
+        cmd /c "taskkill /F /PID $listenerPid" 2>$null | Out-Null
+      }
+    } catch {
+    } finally {
+      $ErrorActionPreference = $prevEap
+    }
     Start-Sleep -Seconds 1
   }
 
@@ -402,4 +408,140 @@ function Write-WatchdogLog {
 
   $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
   Add-Content -Path $Paths.WatchdogLog -Value $line -Encoding UTF8
+}
+
+function Get-PidFromFile {
+  param([string]$PidFile)
+
+  if (-not $PidFile -or -not (Test-Path $PidFile)) { return 0 }
+  $raw = Get-Content $PidFile -ErrorAction SilentlyContinue | Select-Object -First 1
+  $parsed = 0
+  if ([int]::TryParse(("" + $raw).Trim(), [ref]$parsed)) { return $parsed }
+  return 0
+}
+
+function Test-IsElevated {
+  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+  return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Initialize-QuiverTapWin32 {
+  if ('QuiverTap.Win32' -as [type]) { return }
+  Add-Type -Namespace 'QuiverTap' -Name 'Win32' -MemberDefinition @'
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern IntPtr OpenProcess(uint desiredAccess, bool inheritHandle, uint processId);
+
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern bool CloseHandle(IntPtr handle);
+'@
+}
+
+# Processo elevado nao expone CommandLine nem Path para um shell de integridade media.
+# Ler esses campos e, portanto, um teste barato de "estou no mesmo contexto de seguranca".
+function Test-ProcessContextReadable {
+  param([int]$ProcessId)
+
+  if (-not $ProcessId -or $ProcessId -le 0) { return $true }
+
+  try {
+    $wmi = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction Stop
+    if ($wmi -and $wmi.CommandLine) { return $true }
+  } catch {}
+
+  try {
+    $proc = Get-Process -Id $ProcessId -ErrorAction Stop
+    if ($proc.Path) { return $true }
+  } catch {}
+
+  return $false
+}
+
+# Testa (sem matar nada) se o processo atual consegue encerrar o PID informado.
+# Retorna $true para PID inexistente/morto: nada a encerrar nao e um bloqueio.
+#
+# OpenProcess(PROCESS_TERMINATE) sozinho da falso positivo contra processo elevado neste host,
+# entao o resultado so vale se tambem estivermos no mesmo contexto de seguranca. Na duvida o
+# teste responde $false: pedir UAC a mais custa um clique, errar aqui aborta o deploy no meio.
+function Test-CanTerminateProcess {
+  param([int]$ProcessId)
+
+  if (-not $ProcessId -or $ProcessId -le 0) { return $true }
+  if (-not (Test-ProcessAlive -ProcessId $ProcessId)) { return $true }
+
+  $elevated = Test-IsElevated
+  if (-not $elevated -and -not (Test-ProcessContextReadable -ProcessId $ProcessId)) {
+    return $false
+  }
+
+  try {
+    Initialize-QuiverTapWin32
+  } catch {
+    return $elevated
+  }
+
+  $PROCESS_TERMINATE = 0x0001
+  $handle = [QuiverTap.Win32]::OpenProcess([uint32]$PROCESS_TERMINATE, $false, [uint32]$ProcessId)
+  if ($handle -eq [IntPtr]::Zero) { return $false }
+  [void][QuiverTap.Win32]::CloseHandle($handle)
+  return $true
+}
+
+function Get-DeployPauseFile {
+  param([hashtable]$Paths)
+
+  return (Join-Path $Paths.RuntimeDir 'deploy.pause')
+}
+
+function Set-DeployPause {
+  param(
+    [hashtable]$Paths,
+    [string]$Reason = 'deploy em andamento'
+  )
+
+  $payload = [ordered]@{
+    pid       = $PID
+    reason    = $Reason
+    startedAt = (Get-Date).ToString('o')
+  } | ConvertTo-Json -Compress
+
+  Set-Content -Path (Get-DeployPauseFile -Paths $Paths) -Value $payload -Encoding UTF8
+}
+
+function Clear-DeployPause {
+  param([hashtable]$Paths)
+
+  Remove-Item (Get-DeployPauseFile -Paths $Paths) -Force -ErrorAction SilentlyContinue
+}
+
+# Pausa vale enquanto o processo que a criou estiver vivo e dentro da janela maxima.
+# Pausa orfa e descartada para o watchdog voltar a subir producao sozinho.
+function Test-DeployPaused {
+  param(
+    [hashtable]$Paths,
+    [int]$MaxAgeMinutes = 60
+  )
+
+  $pauseFile = Get-DeployPauseFile -Paths $Paths
+  if (-not (Test-Path $pauseFile)) { return $false }
+
+  $ageMinutes = ((Get-Date) - (Get-Item $pauseFile).LastWriteTime).TotalMinutes
+  if ($ageMinutes -gt $MaxAgeMinutes) {
+    Remove-Item $pauseFile -Force -ErrorAction SilentlyContinue
+    return $false
+  }
+
+  try {
+    $data = Get-Content $pauseFile -Raw -ErrorAction Stop | ConvertFrom-Json
+    $ownerPid = 0
+    if ($data.pid) { $ownerPid = [int]$data.pid }
+    if ($ownerPid -gt 0 -and -not (Test-ProcessAlive -ProcessId $ownerPid)) {
+      Remove-Item $pauseFile -Force -ErrorAction SilentlyContinue
+      return $false
+    }
+  } catch {
+    # Arquivo ilegivel: trata como pausa valida ate expirar por idade.
+  }
+
+  return $true
 }

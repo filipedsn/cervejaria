@@ -5,8 +5,6 @@ description: Guides Quiver Tap Git flow on GitHub (feature branches, pull reques
 
 # Quiver Tap — Git workflow (GitHub)
 
-> **Aviso:** Scripts de deploy completos (`prod:deploy`, ops-panel, CI GitHub) estão na branch `feat/ops-panel-ci`; pendente merge.
-
 ## Regras
 
 1. **`main`** = codigo pronto para producao. Evite push direto; use branch + PR.
