@@ -283,7 +283,7 @@ export function AdminCervejariasPage() {
 
   const updateMutation = useMutation({
     mutationFn: () => {
-      if (!editing) throw new Error('Nenhuma cervejaria selecionada');
+      if (!editing) throw new Error('Nenhuma empresa selecionada');
       const data = new FormData();
       data.append('cervejariaNome', form.cervejariaNome);
       data.append('donoNome', form.donoNome);
@@ -302,7 +302,7 @@ export function AdminCervejariasPage() {
 
   const reextractMutation = useMutation({
     mutationFn: () => {
-      if (!editing) throw new Error('Nenhuma cervejaria selecionada');
+      if (!editing) throw new Error('Nenhuma empresa selecionada');
       return api.post<CervejariaAdmin>(`/api/admin/cervejarias/${editing.id}/branding/reextract`);
     },
     onSuccess: (updated) => {
@@ -336,14 +336,14 @@ export function AdminCervejariasPage() {
     <div className="w-full space-y-6 lg:space-y-8">
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
         <div>
-          <h2 className="text-2xl lg:text-3xl font-bold">Cervejarias</h2>
+          <h2 className="text-2xl lg:text-3xl font-bold">Empresas</h2>
           <p className="text-ink-muted mt-1">
-            Gerencie todas as cervejarias cadastradas no sistema
+            Gerencie todas as empresas cadastradas no sistema
             {stats.mes && <span className="text-ink-faint"> · Métricas de {stats.mes}</span>}
           </p>
         </div>
         <button className="touch-btn-primary min-h-12 px-8 shrink-0 self-start lg:self-auto" onClick={() => setShowModal(true)}>
-          + Nova Cervejaria
+          + Nova Empresa
         </button>
       </div>
 
@@ -360,7 +360,7 @@ export function AdminCervejariasPage() {
             <thead>
               <tr className="border-b border-line text-xs text-ink-faint uppercase tracking-wide">
                 <th className="px-4 py-4 font-medium w-16"><span className="sr-only">Logo</span></th>
-                <th className="px-4 py-4 font-medium">Cervejaria</th>
+                <th className="px-4 py-4 font-medium">Empresa</th>
                 <th className="px-4 py-4 font-medium">Proprietário</th>
                 <th className="px-4 py-4 font-medium text-right">Faturamento</th>
                 <th className="px-4 py-4 font-medium text-center">Comandas</th>
@@ -403,8 +403,8 @@ export function AdminCervejariasPage() {
                       <ToggleAtivo
                         ativo={c.ativo}
                         loading={togglingId === c.id}
-                        labelAtivo="Desativar cervejaria"
-                        labelInativo="Ativar cervejaria"
+                        labelAtivo="Desativar empresa"
+                        labelInativo="Ativar empresa"
                         onToggle={() => handleToggle(c)}
                       />
                     </div>
@@ -439,8 +439,8 @@ export function AdminCervejariasPage() {
               <ToggleAtivo
                 ativo={c.ativo}
                 loading={togglingId === c.id}
-                labelAtivo="Desativar cervejaria"
-                labelInativo="Ativar cervejaria"
+                labelAtivo="Desativar empresa"
+                labelInativo="Ativar empresa"
                 onToggle={() => handleToggle(c)}
               />
             </div>
@@ -470,21 +470,21 @@ export function AdminCervejariasPage() {
       {cervejarias?.length === 0 && (
         <div className="card text-center py-20">
           <p className="text-5xl mb-4">🏭</p>
-          <p className="text-xl text-ink-muted">Nenhuma cervejaria cadastrada</p>
-          <p className="text-ink-faint mt-2 mb-6">Comece cadastrando a primeira cervejaria do sistema</p>
+          <p className="text-xl text-ink-muted">Nenhuma empresa cadastrada</p>
+          <p className="text-ink-faint mt-2 mb-6">Comece cadastrando a primeira empresa do sistema</p>
           <button className="touch-btn-primary inline-block px-10" onClick={() => setShowModal(true)}>
-            Cadastrar cervejaria
+            Cadastrar empresa
           </button>
         </div>
       )}
 
-      <Modal open={showModal} onClose={() => { setShowModal(false); resetForm(); }} title="Cadastrar Cervejaria">
+      <Modal open={showModal} onClose={() => { setShowModal(false); resetForm(); }} title="Cadastrar Empresa">
         <form onSubmit={handleCreate} className="space-y-4">
           {error && <div className="alert-error">{error}</div>}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
-              <label className="label">Nome da cervejaria</label>
+              <label className="label">Nome da empresa</label>
               <input className="input" value={form.cervejariaNome} onChange={(e) => setForm({ ...form, cervejariaNome: e.target.value })} required />
             </div>
             <div className="sm:col-span-2">
@@ -496,7 +496,7 @@ export function AdminCervejariasPage() {
                 onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
               />
               <p className="text-xs text-ink-faint mt-1">
-                As cores da logo serão extraídas automaticamente para personalizar o app desta cervejaria.
+                As cores da logo serão extraídas automaticamente para personalizar o app desta empresa.
               </p>
               {logoPreview && (
                 <div className="mt-3 flex items-center gap-3">
@@ -581,7 +581,7 @@ export function AdminCervejariasPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
-              <label className="label">Nome da cervejaria</label>
+              <label className="label">Nome da empresa</label>
               <input className="input" value={form.cervejariaNome} onChange={(e) => setForm({ ...form, cervejariaNome: e.target.value })} required />
             </div>
             <div>

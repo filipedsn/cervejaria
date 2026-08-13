@@ -19,7 +19,7 @@ import { QuiosqueCaixaPage } from './pages/quiosque/QuiosqueCaixaPage';
 import { QuiosqueEstoquePage } from './pages/quiosque/QuiosqueEstoquePage';
 import { QuiosqueDashboardPage } from './pages/quiosque/QuiosqueDashboardPage';
 import { QuiosqueTurnoResumoPage } from './pages/quiosque/QuiosqueTurnoResumoPage';
-import { FuncionariosPage } from './pages/FuncionariosPage';
+import { QuiosqueConfiguracoesPage } from './pages/quiosque/QuiosqueConfiguracoesPage';
 import { useQuiosqueContexto } from './hooks/useQuiosqueContexto';
 import { AdminConfiguracoesPage } from './pages/AdminConfiguracoesPage';
 import { SelecionarTrailerPage } from './pages/SelecionarTrailerPage';
@@ -336,7 +336,9 @@ const router = createBrowserRouter([
                             children: [
                               { path: 'dashboard', element: <QuiosqueDashboardPage /> },
                               { path: 'turnos/:sessaoId', element: <QuiosqueTurnoResumoPage /> },
-                              { path: 'equipe', element: <FuncionariosPage /> },
+                              { path: 'configuracoes', element: <Navigate to="/quiosque/configuracoes/equipe" replace /> },
+                              { path: 'configuracoes/:tab', element: <QuiosqueConfiguracoesPage /> },
+                              { path: 'equipe', element: <Navigate to="/quiosque/configuracoes/equipe" replace /> },
                             ],
                           },
                         ],

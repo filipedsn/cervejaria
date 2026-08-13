@@ -9,8 +9,6 @@ import { Loading } from '../components/Loading';
 import { PageHeader } from '../components/PageHeader';
 import { PasswordWithConfirmFields, validatePasswordPair } from '../components/PasswordWithConfirmFields';
 import { ToggleAtivo } from '../components/ToggleAtivo';
-import { ConfigKpisComandaPanel } from '../components/ConfigKpisComandaPanel';
-import { ConfigComandasLayoutPanel } from '../components/ConfigComandasLayoutPanel';
 
 const TOGGLE_DESCONTO_ATIVO = 'Desativar desconto no quiosque';
 const TOGGLE_DESCONTO_INATIVO = 'Ativar desconto no quiosque';
@@ -118,13 +116,6 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
             + Novo Atendente
           </button>
         </div>
-      )}
-
-      {inQuiosque && (
-        <>
-          <ConfigKpisComandaPanel />
-          <ConfigComandasLayoutPanel />
-        </>
       )}
 
       <div className="space-y-3">
