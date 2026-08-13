@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { assetUrl } from '../lib/api';
+import { assetUrl, logoAssetUrl } from '../lib/api';
 import type { Cervejaria, Trailer, Usuario } from '../types';
 import { formatTrailerLabel } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
@@ -90,7 +90,7 @@ export function AccountMenu({
 
   if (!open) return null;
 
-  const logo = assetUrl(cervejaria?.logoUrl, cervejaria?.updatedAt);
+  const logo = logoAssetUrl(cervejaria);
   const initials = getInitials(usuario.nome);
 
   return (

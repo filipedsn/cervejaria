@@ -1,7 +1,10 @@
 import nodemailer from 'nodemailer';
 import { formatBrazilDateTime } from './event-datetime.js';
 import { getSmtpCredentials } from './system-config.js';
-
+import {
+  formatObservabilityAlertEmailHtml,
+  formatObservabilityAlertEmailSubject,
+} from './observability-alert-format.js';
 let cachedKey: string | null = null;
 let transporter: nodemailer.Transporter | null = null;
 
@@ -80,14 +83,6 @@ export async function sendTestEmail(to: string): Promise<void> {
   });
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 export async function sendObservabilityAlertEmail(
   to: string | string[],
   alert: {
@@ -103,26 +98,13 @@ export async function sendObservabilityAlertEmail(
     throw new Error('SMTP não configurado. Preencha host, usuário e senha.');
   }
 
-  const ruleName = alert.ruleName ?? 'Alerta Quiver Tap';
-  const state = alert.alertState ?? 'disparado';
-  const reason = alert.reason ?? 'Sem detalhes adicionais.';
-  const link = alert.viewInAppUrl;
-
-  const html = `
-    <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto;">
-      <h2 style="color:#e69500;">Alerta de observabilidade</h2>
-      <p><strong>Regra:</strong> ${escapeHtml(ruleName)}</p>
-      <p><strong>Estado:</strong> ${escapeHtml(state)}</p>
-      <p><strong>Motivo:</strong> ${escapeHtml(reason)}</p>
-      ${link ? `<p><a href="${escapeHtml(link)}" style="color:#e69500;">Abrir no Kibana</a></p>` : ''}
-      <p style="color:#666;font-size:12px;">Enviado em ${formatBrazilDateTime()} (horário de São Paulo)</p>
-    </div>
-  `;
+  const html = formatObservabilityAlertEmailHtml(alert);
+  const subject = formatObservabilityAlertEmailSubject(alert);
 
   await transport.sendMail({
     from: creds.from,
     to,
-    subject: `[Quiver Tap] ${ruleName} — ${state}`,
+    subject,
     html,
   });
 }

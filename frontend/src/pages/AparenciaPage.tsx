@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
-import { api, ApiError, assetUrl } from '../lib/api';
+import { api, ApiError, logoAssetUrl } from '../lib/api';
 import type { Cervejaria } from '../types';
 
 export function AparenciaPage({ embedded }: { embedded?: boolean } = {}) {
@@ -38,6 +38,8 @@ export function AparenciaPage({ embedded }: { embedded?: boolean } = {}) {
     e.target.value = '';
   };
 
+  const savedLogo = logoAssetUrl(cervejaria);
+
   return (
     <div className={`space-y-6 ${embedded ? '' : 'max-w-lg mx-auto'}`}>
       {!embedded && (
@@ -58,9 +60,9 @@ export function AparenciaPage({ embedded }: { embedded?: boolean } = {}) {
           A logo aparece no topo do app para identificar sua cervejaria. O visual do app usa a identidade padrão Quiver Tap.
         </p>
         <div className="flex items-center gap-4">
-          {(logoPreview || assetUrl(cervejaria?.logoUrl, cervejaria?.updatedAt)) ? (
+          {(logoPreview || savedLogo) ? (
             <img
-              src={logoPreview ?? assetUrl(cervejaria?.logoUrl, cervejaria?.updatedAt)!}
+              src={logoPreview ?? savedLogo!}
               alt="Logo"
               className="h-20 w-20 rounded-xl object-contain bg-surface-lighter border border-line"
             />
@@ -88,9 +90,9 @@ export function AparenciaPage({ embedded }: { embedded?: boolean } = {}) {
       <div className="card space-y-3">
         <h3 className="font-semibold text-ink">Pré-visualização</h3>
         <div className="rounded-xl border border-line bg-canvas p-4 flex items-center gap-3">
-          {(logoPreview || assetUrl(cervejaria?.logoUrl, cervejaria?.updatedAt)) ? (
+          {(logoPreview || savedLogo) ? (
             <img
-              src={logoPreview ?? assetUrl(cervejaria?.logoUrl, cervejaria?.updatedAt)!}
+              src={logoPreview ?? savedLogo!}
               alt=""
               className="h-8 w-8 rounded-lg object-contain bg-surface border border-line shrink-0"
             />

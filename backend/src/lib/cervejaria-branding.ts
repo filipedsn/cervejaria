@@ -1,5 +1,6 @@
 import path from 'path';
-import fs from 'fs/promises';
+import fs from 'fs';
+import fsp from 'fs/promises';
 import sharp from 'sharp';
 import { prisma } from './prisma.js';
 import {
@@ -23,6 +24,8 @@ export interface CervejariaAuthPayload {
   comandasColunaUnica: boolean;
   usaCardapio: boolean;
   updatedAt: string;
+  /** Mtime do arquivo de logo — invalida cache do navegador quando o arquivo muda sem update no banco. */
+  logoVersion: string | null;
 }
 
 type CervejariaBrandingRow = {
@@ -38,6 +41,19 @@ type CervejariaBrandingRow = {
   updatedAt: Date;
 };
 
+function resolveLogoVersion(cervejaria: CervejariaBrandingRow): string | null {
+  if (!cervejaria.logoUrl) return null;
+
+  const filename = path.basename(cervejaria.logoUrl);
+  const logoPath = path.join(getLogosDir(), filename);
+  try {
+    const stat = fs.statSync(logoPath);
+    return new Date(stat.mtimeMs).toISOString();
+  } catch {
+    return cervejaria.updatedAt.toISOString();
+  }
+}
+
 export function formatCervejariaAuth(cervejaria: CervejariaBrandingRow): CervejariaAuthPayload {
   const theme = normalizeTheme(cervejaria.corPaleta, cervejaria.corPrimaria);
   return {
@@ -52,6 +68,7 @@ export function formatCervejariaAuth(cervejaria: CervejariaBrandingRow): Cerveja
     comandasColunaUnica: cervejaria.comandasColunaUnica,
     usaCardapio: cervejaria.usaCardapio,
     updatedAt: cervejaria.updatedAt.toISOString(),
+    logoVersion: resolveLogoVersion(cervejaria),
   };
 }
 
@@ -70,7 +87,7 @@ export async function saveLogoAndExtractBranding(cervejariaId: string, buffer: B
     .toBuffer();
 
   const filename = `${cervejariaId}.webp`;
-  await fs.writeFile(path.join(logosDir, filename), webpBuffer);
+  await fsp.writeFile(path.join(logosDir, filename), webpBuffer);
 
   const { corPrimaria, theme } = await brandingFromBuffer(webpBuffer);
   const logoUrl = `/uploads/logos/${filename}`;
@@ -84,7 +101,7 @@ export async function saveLogoAndExtractBranding(cervejariaId: string, buffer: B
 export async function reextractBrandingFromLogo(cervejariaId: string) {
   const logoPath = path.join(getLogosDir(), `${cervejariaId}.webp`);
   try {
-    const buffer = await fs.readFile(logoPath);
+    const buffer = await fsp.readFile(logoPath);
     const { corPrimaria, theme } = await brandingFromBuffer(buffer);
     return prisma.cervejaria.update({
       where: { id: cervejariaId },

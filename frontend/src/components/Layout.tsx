@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useEvento } from '../contexts/EventoContext';
-import { assetUrl, formatEventoWhen } from '../lib/api';
+import { formatEventoWhen, logoAssetUrl } from '../lib/api';
 import type { Evento, Trailer } from '../types';
 import { formatTrailerLabel } from '../types';
 import { ConnectionStatus } from './ConnectionStatus';
@@ -127,6 +127,12 @@ export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [accountOpen, setAccountOpen] = useState(false);
+  const logoSrc = logoAssetUrl(cervejaria);
+  const [logoError, setLogoError] = useState(false);
+
+  useEffect(() => {
+    setLogoError(false);
+  }, [logoSrc]);
 
   const { contexto: quiosque, isLoading: quiosqueLoading } = useQuiosqueContexto();
   const inQuiosque = location.pathname.startsWith('/quiosque');
@@ -205,12 +211,13 @@ export function Layout() {
             <>
               <div className="flex items-center justify-between gap-3 min-h-10">
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  {assetUrl(cervejaria?.logoUrl, cervejaria?.updatedAt) ? (
+                  {logoSrc && !logoError ? (
                     <img
-                      src={assetUrl(cervejaria?.logoUrl, cervejaria?.updatedAt)!}
+                      src={logoSrc}
                       alt={cervejaria?.nome ?? 'Logo da cervejaria'}
                       data-brewery-branding
                       className="h-8 w-8 rounded-lg object-contain bg-surface-lighter border border-line shrink-0"
+                      onError={() => setLogoError(true)}
                     />
                   ) : (
                     <div className="h-8 w-8 rounded-lg bg-brand-50 border border-brand-100 flex items-center justify-center text-sm shrink-0">

@@ -39,6 +39,8 @@ export interface Cervejaria {
   corSecundaria?: string | null;
   corPaleta?: BrandTheme | null;
   updatedAt?: string;
+  /** Mtime do arquivo de logo (cache-bust independente do updatedAt do registro). */
+  logoVersion?: string | null;
   /** KPIs da tela de comandas (cervejaria e quiosque). */
   exibirKpisComanda?: boolean;
   /** Lista em coluna única (true) ou duas colunas (false). */
