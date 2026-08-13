@@ -1,8 +1,11 @@
 import { trace } from '@opentelemetry/api';
+import { BRAZIL_TZ, formatBrazilDateTime } from '../event-datetime.js';
 import { logger } from '../logger.js';
+import { emitAuditLogRecord } from './emit-otel-log.js';
 import {
   auditIndexName,
   getTelemetryContextOrDefault,
+  sanitizeSlugForIndex,
   type TelemetryActor,
 } from '../telemetry-context.js';
 
@@ -39,14 +42,17 @@ export function emitAuditEvent(input: AuditEventInput): void {
   const traceId = span?.spanContext().traceId;
   const spanId = span?.spanContext().spanId;
 
+  const slugSafe = sanitizeSlugForIndex(slug);
   const payload: Record<string, unknown> = {
     'event.category': 'audit',
     'event.action': input.action,
     'event.outcome': input.outcome ?? 'success',
+    'event.timezone': BRAZIL_TZ,
+    'event.local_time': formatBrazilDateTime(),
     message: input.message,
     'cervejaria.id': ctx.cervejariaId,
     'cervejaria.slug': slug,
-    'data_stream.dataset': `audit-${slug}`,
+    'data_stream.dataset': `audit_${slugSafe}`,
     'data_stream.namespace': env,
     'elasticsearch.index': auditIndexName(slug, env),
     ...actorFields(actor),
@@ -68,7 +74,11 @@ export function emitAuditEvent(input: AuditEventInput): void {
   if (input.ui?.label) payload['ui.label'] = input.ui.label;
   if (input.metadata && Object.keys(input.metadata).length > 0) {
     payload.metadata = input.metadata;
+    if (input.metadata.payload != null) {
+      payload['transacao.payload'] = input.metadata.payload;
+    }
   }
 
+  emitAuditLogRecord(payload, input.message, input.outcome ?? 'success');
   logger.info(payload, input.message);
 }

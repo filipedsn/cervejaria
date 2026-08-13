@@ -13,10 +13,11 @@
         <div class="brand-mark" aria-hidden="true">QT</div>
         <div>
           <h1>Quiver Tap Ops</h1>
-          <p class="subtitle">Painel local de operacoes · porta 3099</p>
+          <p class="subtitle" id="opsPanelSubtitle">Painel local de operacoes</p>
         </div>
       </div>
       <div class="topbar-actions">
+        <span id="opsPanelLiveBadge" class="ops-live-badge ops-live-badge--unknown" title="Status do painel">—</span>
         <span id="lastUpdate" class="last-update"></span>
         <button type="button" id="btnRefresh" class="btn btn-ghost">
           <span class="btn-icon" aria-hidden="true">↻</span>
@@ -25,22 +26,22 @@
       </div>
     </header>
 
-    <section class="auth-panel" id="authPanel">
+    <section class="auth-panel auth-panel--local" id="authPanel">
       <div class="auth-info">
         <span class="auth-icon" aria-hidden="true">🔐</span>
         <div>
-          <strong>Autenticacao</strong>
-          <p>Cole o valor de <code>OPS_PANEL_TOKEN</code> do arquivo <code>ops-panel/.env</code> para executar acoes.</p>
+          <strong id="authTitle">Sessao local</strong>
+          <p id="authHint">Painel em localhost — acoes autorizadas neste computador, sem colar token.</p>
         </div>
       </div>
-      <div class="auth-form">
+      <div class="auth-form" id="authForm" hidden>
         <label class="field">
           <span class="field-label">Token de operacao</span>
           <input type="password" id="opsToken" placeholder="Cole o token aqui" autocomplete="off" />
         </label>
         <button type="button" id="btnSaveToken" class="btn btn-secondary">Salvar</button>
       </div>
-      <div id="tokenStatus" class="token-status token-status--missing">Token nao salvo</div>
+      <div id="tokenStatus" class="token-status token-status--ok">Localhost</div>
     </section>
 
     <section class="overview" aria-label="Resumo rapido">
@@ -59,6 +60,10 @@
       <div class="overview-card" id="overviewInfra">
         <span class="overview-label">Infra local</span>
         <span class="overview-value" id="overviewInfraValue">—</span>
+      </div>
+      <div class="overview-card" id="overviewAgent">
+        <span class="overview-label">Agente suporte</span>
+        <span class="overview-value" id="overviewAgentValue">—</span>
       </div>
     </section>
 
@@ -87,12 +92,8 @@
                 <span class="btn-icon" aria-hidden="true">⟳</span>
                 Reiniciar API
               </button>
-              <button type="button" id="btnDeploy" class="btn btn-danger">
-                <span class="btn-icon" aria-hidden="true">▲</span>
-                Deploy prod
-              </button>
             </div>
-            <p class="card-hint">Deploy pede confirmacao digitando <strong>DEPLOY</strong>.</p>
+            <p class="card-hint">O deploy fica no <a href="#releaseSection">console de release</a>, que verifica CI e procedencia antes de liberar.</p>
           </article>
 
           <article class="card card--dev" id="cardDev">
@@ -165,6 +166,111 @@
             <p class="card-hint">Backup abre seletor de pasta do Windows. Copiar prod→dev <strong>substitui</strong> <code>cervejaria_dev</code> e para o ambiente dev antes.</p>
           </article>
         </div>
+      </section>
+
+      <section class="panel-section" id="supportAgentSection">
+        <div class="section-title">
+          <h2>Agente de suporte autonomo</h2>
+          <p>Monitora o Elasticsearch, tria alertas e (opcionalmente) corrige codigo via PR.</p>
+        </div>
+
+        <article class="card card--agent">
+          <header class="card-header">
+            <div class="card-title">
+              <span class="card-icon" aria-hidden="true">🤖</span>
+              <div>
+                <h3>Saude e configuracao</h3>
+                <p>Elastic · GitHub · modo sombra · fixer</p>
+              </div>
+            </div>
+            <span id="agentHealthBadge" class="chip chip--neutral">—</span>
+          </header>
+
+          <div class="agent-health" id="agentHealth">
+            <div class="agent-health-score">
+              <span class="agent-health-label">KPI geral</span>
+              <strong id="agentHealthScore">—</strong>
+              <span id="agentHealthLevel" class="agent-health-level">—</span>
+            </div>
+            <div class="agent-health-checks" id="agentHealthChecks"></div>
+          </div>
+
+          <div class="metrics" id="agentMetrics"></div>
+
+          <div class="agent-controls" id="agentControls" aria-label="Parametros do agente"></div>
+
+          <p class="card-hint" id="agentHint">
+            Alteracoes em parametros reiniciam o agente automaticamente se ele estiver rodando.
+            O fixer exige <code>CURSOR_API_KEY</code> em <code>support-agent/.env</code>.
+          </p>
+        </article>
+      </section>
+
+      <section class="panel-section" id="releaseSection">
+        <div class="section-title">
+          <h2>Console de release</h2>
+          <p>O que esta publicado, o que esta pendente, e se o codigo tem procedencia para ir ao ar.</p>
+        </div>
+
+        <article class="card card--release">
+          <header class="card-header">
+            <div class="card-title">
+              <span class="card-icon" aria-hidden="true">📦</span>
+              <div>
+                <h3>Liberacao para producao</h3>
+                <p>Gate local no lugar da branch protection (plano Free)</p>
+              </div>
+            </div>
+            <span id="releaseBadge" class="chip chip--neutral">—</span>
+          </header>
+
+          <div class="metrics" id="releaseMetrics">
+            <div class="metric-row"><span class="label">Estado</span><span class="value status-muted">Carregando…</span></div>
+          </div>
+
+          <div id="releaseGate" class="release-gate"></div>
+
+          <div class="release-commits">
+            <h4 class="release-subtitle">Commits pendentes de publicacao</h4>
+            <div id="releaseCommits" class="metrics"></div>
+          </div>
+
+          <div class="release-commits">
+            <h4 class="release-subtitle">Checks do commit local</h4>
+            <div id="releaseChecks" class="metrics"></div>
+          </div>
+
+          <div class="release-options">
+            <label class="release-check">
+              <input type="checkbox" id="ackMigrations" />
+              <span>Confirmo as migrations deste deploy (nao voltam com rollback de artefato)</span>
+            </label>
+            <label class="release-check">
+              <input type="checkbox" id="overrideGate" />
+              <span>Ignorar o gate (registra motivo na auditoria)</span>
+            </label>
+            <label class="field" id="overrideReasonField" hidden>
+              <span class="field-label">Motivo do override</span>
+              <input type="text" id="overrideReason" placeholder="Ex.: hotfix de indisponibilidade, PR #123 revisado manualmente" />
+            </label>
+          </div>
+
+          <div class="card-actions">
+            <button type="button" id="btnReleaseRefresh" class="btn btn-secondary">
+              <span class="btn-icon" aria-hidden="true">↻</span>
+              Verificar release
+            </button>
+            <button type="button" id="btnDeploy" class="btn btn-danger" disabled>
+              <span class="btn-icon" aria-hidden="true">▲</span>
+              Liberar deploy
+            </button>
+            <button type="button" id="btnRollback" class="btn btn-secondary" disabled>
+              <span class="btn-icon" aria-hidden="true">↩</span>
+              Rollback
+            </button>
+          </div>
+          <p class="card-hint" id="rollbackHint">Rollback volta os artefatos da release anterior. <strong>Nao reverte banco.</strong></p>
+        </article>
       </section>
 
       <section class="panel-section" id="terminalSection">

@@ -1,0 +1,7 @@
+{
+  "size": 1,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "range": { "@timestamp": { "gte": "now-10m" } }
+  }
+}

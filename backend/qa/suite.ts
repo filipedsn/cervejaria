@@ -1,5 +1,27 @@
 import { prisma } from '../src/lib/prisma.js';
 import { API_BASE, api, chopeItemBody, login, percentile, portalPedidoBody, portalSessao, portalTestPhone, staffComandaBody, uniquePortalTestPhone, uniqueStaffComandaBody } from './lib/http.js';
+import { runAdminTests } from './lib/admin-tests.js';
+import { runCfgTests } from './lib/cfg-tests.js';
+import { assertQaEnvironment } from './lib/guard.js';
+import { runAuthResetTests } from './lib/auth-reset-tests.js';
+import { runCardapioTemplateTests } from './lib/cardapio-template-tests.js';
+import { runCrmMergeTests } from './lib/crm-merge-tests.js';
+import { runCsvTests } from './lib/csv-tests.js';
+import { runEventoJanelaTests } from './lib/evento-janela-tests.js';
+import { runPerfQuiosqueTests } from './lib/perf-quiosque-tests.js';
+import { runPortalJwtTests } from './lib/portal-jwt-tests.js';
+import { runPagamentoFormasTests } from './lib/pagamento-formas-tests.js';
+import { runObsTests } from './lib/obs-tests.js';
+import { runQuiosqueCaixaTests } from './lib/quiosque-caixa-tests.js';
+import { runQuiosqueCardapioTests } from './lib/quiosque-cardapio-tests.js';
+import { runQuiosqueComandaTests } from './lib/quiosque-comanda-tests.js';
+import { runQuiosqueCozinhaTests } from './lib/quiosque-cozinha-tests.js';
+import { runQuiosqueEstoqueTests } from './lib/quiosque-estoque-tests.js';
+import { runQuiosqueSmokeTests } from './lib/quiosque-smoke-tests.js';
+import { runRealtimeTests } from './lib/realtime-tests.js';
+import { runTapMontagemTests } from './lib/tap-montagem-tests.js';
+import { runTenQuiosqueTests } from './lib/ten-quiosque-tests.js';
+import { runTransacaoLogTests } from './lib/transacao-log-tests.js';
 import { decodeToken, jwtSecret, signToken, tamperSignature, userJwtPayload } from './lib/jwt.js';
 import { CONTEXT_PATH, SUITE_PATH, readJson, writeJson } from './lib/store.js';
 import type { PerfMetric, QaContext, SuiteArtifact, TestResult, TestStatus } from './lib/types.js';
@@ -49,7 +71,7 @@ function rbacOutcome(status: number, who: string): Outcome {
   if (status === 403) return { message: `${who} bloqueado (403)`, expected: '403', actual: '403' };
   if (status === 500) {
     return {
-      status: 'warning',
+      status: 'failed',
       message: `${who} bloqueado, mas HTTP 500 (esperado 403)`,
       expected: '403',
       actual: '500',
@@ -65,6 +87,30 @@ function expectStatus(actual: number, expected: number | number[], ctx: string):
     return { message: ctx, expected: list.join('/'), actual: String(actual) };
   }
   return { status: 'failed', message: ctx, expected: list.join('/'), actual: String(actual) };
+}
+
+/** Remove eventos do trailer no dia (comandas, montagem, filhos de série) para evitar 409 em RF-04. */
+async function limparEventosTrailerNoDia(cervejariaId: string, trailerId: string, dataIso: string) {
+  const inicio = new Date(`${dataIso}T00:00:00`);
+  const fim = new Date(`${dataIso}T23:59:59.999`);
+  const eventos = await prisma.evento.findMany({
+    where: { cervejariaId, trailerId, data: { gte: inicio, lte: fim } },
+    select: { id: true },
+  });
+  for (const { id } of eventos) {
+    const filhos = await prisma.evento.findMany({ where: { serieId: id }, select: { id: true } });
+    for (const f of filhos) {
+      await prisma.comanda.deleteMany({ where: { eventoId: f.id } });
+      await prisma.tapMontagem.deleteMany({ where: { eventoId: f.id } });
+      await prisma.eventoProduto.deleteMany({ where: { eventoId: f.id } });
+      await prisma.evento.delete({ where: { id: f.id } });
+    }
+    await prisma.comanda.deleteMany({ where: { eventoId: id } });
+    await prisma.tapMontagem.deleteMany({ where: { eventoId: id } });
+    await prisma.eventoProduto.deleteMany({ where: { eventoId: id } });
+    await prisma.eventoSerieExclusao.deleteMany({ where: { serieId: id } });
+    await prisma.evento.delete({ where: { id } });
+  }
 }
 
 async function bench(label: string, samples: number, target: number, fn: () => Promise<number>) {
@@ -92,6 +138,7 @@ async function bench(label: string, samples: number, target: number, fn: () => P
 }
 
 async function main() {
+  assertQaEnvironment({ apiBase: API_BASE });
   const runStart = performance.now();
   const ctx = readJson<QaContext>(CONTEXT_PATH);
   const A = ctx.tenants[0];
@@ -195,7 +242,7 @@ async function main() {
     if (!secretOk) return { status: 'skipped', message: 'Secret local difere do servidor' };
     if (r.status === 403) return { message: 'Acesso bloqueado (403)', expected: '403', actual: '403' };
     if (r.status === 500) {
-      return { status: 'warning', message: 'Bloqueado, mas HTTP 500 (esperado 403)', expected: '403', actual: '500', details: 'assertCervejariaAtiva usa app.httpErrors sem @fastify/sensible.' };
+      return { status: 'failed', message: 'Bloqueado, mas HTTP 500 (esperado 403)', expected: '403', actual: '500', details: 'assertCervejariaAtiva deve responder 403 via @fastify/sensible.' };
     }
     return { status: 'failed', message: 'Cervejaria desativada NÃO bloqueou acesso', expected: '403', actual: String(r.status) };
   });
@@ -271,6 +318,10 @@ async function main() {
     });
   });
 
+  await runRealtimeTests(ctx, test, (label, ms) => {
+    perf.push({ label, samples: 1, p50: ms, p95: ms, p99: ms, max: ms, errors: 0, target: 1500 });
+  });
+
   console.log('\n=== RBAC ===');
   await test({ id: 'RBAC-01', category: 'RBAC', name: 'ATENDENTE cria produto', requirement: 'RBAC-01' }, async () => {
     const r = await api('POST', '/api/produtos', { token: A.atendenteTokens[0], body: { nome: 'X', precos: [{ volumeMl: 300, preco: 5 }] } });
@@ -296,6 +347,48 @@ async function main() {
     const r = await api('POST', '/api/usuarios', { token: cat.donoToken, body: { nome: 'Func Novo', email: `func-${Date.now()}@qa.test`, senha: '123456' } });
     return expectStatus(r.status, 201, 'DONO cria atendente');
   });
+
+  console.log('\n=== CONFIGURAÇÕES DE EMPRESA (CFG) ===');
+  await runCfgTests(ctx, test);
+
+  console.log('\n=== MULTI-TENANT QUIOSQUE (TEN-Q) ===');
+  await runTenQuiosqueTests(ctx, test);
+
+  console.log('\n=== QUIOSQUE COZINHA / ESTOQUE (smoke) ===');
+  await runQuiosqueSmokeTests(ctx, test);
+
+  console.log('\n=== QUIOSQUE CAIXA (QCX) ===');
+  await runQuiosqueCaixaTests(ctx, test);
+
+  console.log('\n=== QUIOSQUE CARDÁPIO (QCD) ===');
+  await runQuiosqueCardapioTests(ctx, test);
+
+  console.log('\n=== QUIOSQUE COMANDAS (QCM) ===');
+  await runQuiosqueComandaTests(ctx, test);
+
+  console.log('\n=== QUIOSQUE ESTOQUE (QES) ===');
+  await runQuiosqueEstoqueTests(ctx, test);
+
+  console.log('\n=== QUIOSQUE COZINHA (QCZ) ===');
+  await runQuiosqueCozinhaTests(ctx, test);
+
+  console.log('\n=== ADMIN DA PLATAFORMA (ADM) ===');
+  await runAdminTests(ctx, test);
+
+  console.log('\n=== FORMAS DE PAGAMENTO (PAG) ===');
+  await runPagamentoFormasTests(ctx, test);
+
+  console.log('\n=== EXPORTAÇÃO CSV (CSV) ===');
+  await runCsvTests(ctx, test);
+
+  console.log('\n=== CRM CONCORRENTE (CRM-C) ===');
+  await runCrmMergeTests(ctx, test);
+
+  console.log('\n=== PORTAL JWT (PJW) ===');
+  await runPortalJwtTests(ctx, test);
+
+  console.log('\n=== JANELA DE EVENTO (EVJ) ===');
+  await runEventoJanelaTests(ctx, test);
 
   console.log('\n=== MULTI-TENANT (IDOR) ===');
   const bTap = await prisma.tap.findFirstOrThrow({ where: { cervejariaId: B.cervejariaId } });
@@ -329,16 +422,25 @@ async function main() {
   });
 
   await test({ id: 'TEN-15', category: 'Multi-tenant', name: 'ADMIN não vê eventos de tenant via rota tenant', requirement: 'TEN-15' }, async () => {
-    let adminToken: string;
-    try {
-      adminToken = await login('contato@quivercloud.com.br', 'M1H2sy27!pedro01');
-    } catch {
-      return { status: 'skipped', message: 'Credenciais admin indisponíveis' };
-    }
-    const r = await api<{ sessoes?: unknown[]; series?: unknown[] }>('GET', '/api/eventos', { token: adminToken });
+    const r = await api<{ sessoes?: unknown[]; series?: unknown[]; error?: string }>('GET', '/api/eventos', {
+      token: ctx.admin.token,
+    });
+    if (r.status === 403) return { message: 'ADMIN bloqueado na rota de tenant (403)', expected: '403', actual: '403' };
     const total = (r.data.sessoes?.length ?? 0) + (r.data.series?.length ?? 0);
-    if (total > 0) return { status: 'warning', message: `ADMIN vê ${total} eventos via rota tenant`, expected: '0', actual: String(total) };
-    return { message: 'ADMIN isolado de dados de tenant', expected: '0', actual: '0' };
+    if (total > 0) {
+      return { status: 'failed', message: `ADMIN vê ${total} eventos via rota tenant`, expected: '403', actual: `${r.status} com ${total} eventos` };
+    }
+    return {
+      status: 'failed',
+      message: 'ADMIN não vazou dados, mas a rota de tenant não devolveu 403',
+      expected: '403',
+      actual: String(r.status),
+    };
+  });
+
+  await test({ id: 'TEN-16', category: 'Multi-tenant', name: 'ADMIN autentica com token de plataforma', requirement: 'TEN-16' }, async () => {
+    const r = await api('GET', '/api/admin/cervejarias', { token: ctx.admin.token });
+    return expectStatus(r.status, 200, 'ADMIN acessa rotas da plataforma');
   });
 
   console.log('\n=== FUNCIONAL (ciclo de vida) ===');
@@ -699,6 +801,13 @@ async function main() {
     if (close.status !== 200) {
       return { status: 'failed', message: 'Setup RF-14: fechar grupo falhou', actual: String(close.status) };
     }
+
+    const fechadoEm = new Date(rf14PastDate);
+    fechadoEm.setHours(20, 30, 0, 0);
+    await prisma.comanda.updateMany({
+      where: { id: { in: [rf14ComandaA, rf14ComandaB] } },
+      data: { updatedAt: fechadoEm },
+    });
 
     return {
       message: `Grupo fechado R$ ${rf14TotalGrupo.toFixed(2)} (A=${rf14TotalA}, B=${rf14TotalB})`,
@@ -1794,6 +1903,9 @@ async function main() {
     return expectStatus(reabrir.status, 200, 'Ciclo evento OK (fechar/resumo/reabrir)');
   });
 
+  const rf04Hoje = new Date().toISOString().slice(0, 10);
+  await limparEventosTrailerNoDia(cat.cervejariaId, cat.trailerId, rf04Hoje);
+
   await test({ id: 'RF-04a', category: 'Funcional', name: 'Reverter sessão de série sem vendas → agendado', requirement: 'RF-04' }, async () => {
     const stamp = Date.now();
     const slot = stamp % 10;
@@ -1821,7 +1933,7 @@ async function main() {
     const iniciar = await api<{ id: string }>('POST', `/api/eventos/${serie.data.id}/iniciar`, {
       token: cat.donoToken,
     });
-    if (iniciar.status !== 201 || !iniciar.data?.id) {
+    if (![200, 201].includes(iniciar.status) || !iniciar.data?.id) {
       return { status: 'failed', message: 'Setup RF-04a: iniciar sessão falhou', actual: String(iniciar.status) };
     }
 
@@ -2340,14 +2452,15 @@ async function main() {
       },
     });
 
+    // Fixture escreve direto no banco: total precisa acompanhar os itens abaixo (DB-01).
     const comandaJul = await prisma.comanda.create({
-      data: { eventoId: sessaoJul.id, clienteId: rsClienteId, tipo: 'COMANDA', status: 'FECHADA' },
+      data: { eventoId: sessaoJul.id, clienteId: rsClienteId, tipo: 'COMANDA', status: 'FECHADA', total: 12 },
     });
     const comandaAgo = await prisma.comanda.create({
-      data: { eventoId: sessaoAgo.id, clienteId: rsClienteId, tipo: 'COMANDA', status: 'FECHADA' },
+      data: { eventoId: sessaoAgo.id, clienteId: rsClienteId, tipo: 'COMANDA', status: 'FECHADA', total: 8 },
     });
     const comandaOutra = await prisma.comanda.create({
-      data: { eventoId: sessaoOutraSerie.id, clienteId: rsClienteId, tipo: 'COMANDA', status: 'FECHADA' },
+      data: { eventoId: sessaoOutraSerie.id, clienteId: rsClienteId, tipo: 'COMANDA', status: 'FECHADA', total: 20 },
     });
 
     await prisma.itemComanda.createMany({
@@ -2877,6 +2990,24 @@ async function main() {
     return { message: 'Sessões invalidadas; nova sessão OK', expected: '401→401→201', actual: 'OK' };
   });
 
+  console.log('\n=== OBSERVABILIDADE / ERROS HTTP ===');
+  await runObsTests(ctx, test);
+
+  console.log('\n=== AUTH FORGOT / RESET ===');
+  await runAuthResetTests(func, test);
+
+  console.log('\n=== TRANSACAO LOG ===');
+  await runTransacaoLogTests(func, test);
+
+  console.log('\n=== CARDÁPIOS TEMPLATE ===');
+  const { ensureTenantEventoAberto } = await import('./lib/tenant-evento.js');
+  await ensureTenantEventoAberto(cat);
+  await runCardapioTemplateTests(cat, test);
+
+  console.log('\n=== MONTAGEM DE TAPS ===');
+  await ensureTenantEventoAberto(cat);
+  await runTapMontagemTests(cat, test);
+
   console.log('\n=== NÃO-FUNCIONAL (performance) ===');
   await bench('POST /api/auth/login', 50, 500, async () => {
     const t0 = performance.now();
@@ -2890,19 +3021,59 @@ async function main() {
     return (await api('POST', `/api/comandas/${A.comandaIds[0]}/itens`, { token: A.atendenteTokens[0], body: chopeItemBody(A.produtoId, A.tapId, 500) })).durationMs;
   });
 
+  await runPerfQuiosqueTests(ctx, bench, test);
+
   await test({ id: 'RNF-04', category: 'Não-funcional', name: 'Throughput multi-tenant (1 op/tenant)', requirement: 'RNF-04' }, async () => {
-    // Comanda nova por tenant (fora da janela de medição). Setup sequencial evita
-    // burst no pool; medição em ondas limita transações Prisma concorrentes no dev.
-    const alvos: Array<{ t: (typeof ctx.tenants)[0]; comandaId?: string; prepared: boolean }> = [];
     for (const t of ctx.tenants) {
-      const r = await api<{ id: string }>('POST', '/api/comandas', {
-        token: t.atendenteTokens[0],
-        body: uniqueStaffComandaBody(t.eventoId, `RNF04 ${t.index}-${Date.now()}`, t.index),
-      });
-      alvos.push({ t, comandaId: r.data?.id, prepared: r.status === 201 && Boolean(r.data?.id) });
+      const ev = await prisma.evento.findUnique({ where: { id: t.eventoId }, select: { status: true } });
+      if (ev?.status !== 'ABERTO') {
+        await api('PATCH', `/api/eventos/${t.eventoId}/reabrir`, { token: t.donoToken });
+      }
+    }
+
+    const candidatos = [];
+    for (const t of ctx.tenants) {
+      const ev = await prisma.evento.findUnique({ where: { id: t.eventoId }, select: { status: true } });
+      if (ev?.status === 'ABERTO') candidatos.push(t);
+    }
+    if (candidatos.length < 3) {
+      return {
+        status: 'failed',
+        message: `Apenas ${candidatos.length} tenant(s) com evento ABERTO para throughput`,
+        expected: '≥3 tenants',
+        actual: String(candidatos.length),
+      };
+    }
+
+    const alvos: Array<{ t: (typeof ctx.tenants)[0]; comandaId?: string; prepared: boolean }> = [];
+    for (const t of candidatos) {
+      let comandaId: string | undefined;
+      let prepared = false;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const r = await api<{ id: string }>('POST', '/api/comandas', {
+          token: t.atendenteTokens[0],
+          body: uniqueStaffComandaBody(t.eventoId, `RNF04 ${t.index}-${Date.now()}-${attempt}`, t.index),
+        });
+        if (r.status === 201 && r.data?.id) {
+          comandaId = r.data.id;
+          prepared = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 120 * (attempt + 1)));
+      }
+      alvos.push({ t, comandaId, prepared });
+      await new Promise((resolve) => setTimeout(resolve, 40));
     }
     const prontos = alvos.filter((a): a is typeof a & { comandaId: string } => a.prepared && Boolean(a.comandaId));
     const setupErrs = alvos.length - prontos.length;
+    if (setupErrs > 0) {
+      return {
+        status: 'failed',
+        message: `${setupErrs} tenant(s) não conseguiram comanda de preparação após 5 tentativas`,
+        expected: `${alvos.length}/${alvos.length} setup OK`,
+        actual: `${prontos.length}/${alvos.length}`,
+      };
+    }
 
     const waveSize = 8;
     const t0 = performance.now();
@@ -2920,11 +3091,17 @@ async function main() {
       rs.push(...part);
     }
     const elapsed = performance.now() - t0;
-    const errs = rs.filter((r) => r.status !== 201).length + setupErrs;
-    const rate = errs / alvos.length;
-    const msg = `${alvos.length - errs}/${alvos.length} OK em ${elapsed.toFixed(0)}ms`;
-    const details = setupErrs > 0 ? `${setupErrs} tenant(s) não conseguiram criar comanda de preparação.` : undefined;
-    if (rate > 0.05) return { status: 'warning', message: `${msg} — ${(rate * 100).toFixed(0)}% erros`, expected: '<5% erros', actual: `${(rate * 100).toFixed(0)}%`, details };
+    const itemErrs = rs.filter((r) => r.status !== 201).length;
+    const rate = itemErrs / prontos.length;
+    const msg = `${prontos.length - itemErrs}/${prontos.length} OK em ${elapsed.toFixed(0)}ms`;
+    if (rate > 0.05) {
+      return {
+        status: 'warning',
+        message: `${msg} — ${(rate * 100).toFixed(0)}% erros nos POST /itens`,
+        expected: '<5% erros',
+        actual: `${(rate * 100).toFixed(0)}%`,
+      };
+    }
     return { message: msg, expected: '<5% erros', actual: `${(rate * 100).toFixed(0)}%` };
   });
 
@@ -2983,7 +3160,7 @@ async function main() {
   console.log(`\n[suite] ${passed} OK · ${failed} falhas · ${warn} alertas · ${results.length} casos`);
   console.log(`[suite] Secret local ${secretOk ? 'confere' : 'NÃO confere'} com o servidor.`);
   await prisma.$disconnect();
-  process.exit(0);
+  process.exit(failed > 0 ? 1 : 0);
 }
 
 main().catch(async (err) => {

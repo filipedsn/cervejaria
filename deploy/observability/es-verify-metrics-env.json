@@ -1,0 +1,31 @@
+{
+  "size": 0,
+  "query": {
+    "bool": {
+      "should": [
+        {
+          "bool": {
+            "must": [
+              { "term": { "resource.attributes.service.name": "quiver-tap-api" } },
+              { "term": { "data_stream.namespace": "prd" } }
+            ]
+          }
+        },
+        {
+          "bool": {
+            "must": [
+              { "term": { "resource.attributes.service.name": "quiver-tap-api-dev" } },
+              { "term": { "data_stream.namespace": "dev" } }
+            ]
+          }
+        }
+      ],
+      "minimum_should_match": 1
+    }
+  },
+  "aggs": {
+    "by_namespace": {
+      "terms": { "field": "data_stream.namespace", "size": 5 }
+    }
+  }
+}

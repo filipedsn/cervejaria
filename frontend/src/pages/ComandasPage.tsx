@@ -3,12 +3,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, formatCurrency, ApiError } from '../lib/api';
 import type { Comanda, EventoDashboard, FecharGrupoResponse } from '../types';
+import { rotuloComandaCervejaria } from '../types';
 import { useEvento } from '../contexts/EventoContext';
 import { getSocket } from '../lib/socket';
 import { Loading } from '../components/Loading';
 import { EncerrarEventoButton } from '../components/EncerrarEventoButton';
 import { VerRankingButton } from '../components/VerRankingButton';
 import { EmptyState } from '../components/EmptyState';
+import { ComandasBuscaInput } from '../components/ComandasBuscaInput';
 import { StatusBadge } from '../components/StatusBadge';
 import { EventoTapMontagemPanel } from '../components/EventoTapMontagemPanel';
 import { FilaPedidosPanel } from '../components/FilaPedidosPanel';
@@ -20,6 +22,8 @@ import {
   type PaymentFormRow,
 } from '../components/PaymentFormModal';
 import { parseCurrencyInput } from '../lib/currency';
+import { textoCorrespondeBuscaComanda } from '../lib/comandas-busca';
+import { useAuth } from '../contexts/AuthContext';
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent?: 'brand' | 'green' }) {
   return (
@@ -37,8 +41,12 @@ function StatCard({ label, value, accent }: { label: string; value: string; acce
 export function ComandasPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { cervejaria } = useAuth();
+  const exibirKpis = cervejaria?.exibirKpisComanda ?? true;
+  const colunaUnica = cervejaria?.comandasColunaUnica ?? true;
   const { evento, trailer } = useEvento();
   const [comandaTab, setComandaTab] = useState<'ABERTA' | 'FECHADA'>('ABERTA');
+  const [buscaComanda, setBuscaComanda] = useState('');
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showGroupPayment, setShowGroupPayment] = useState(false);
@@ -151,6 +159,19 @@ export function ComandasPage() {
     if (comandaTab !== 'ABERTA') exitSelectMode();
   }, [comandaTab]);
 
+  const comandasFiltradas = useMemo(() => {
+    if (!comandas) return [];
+    return comandas.filter((c) =>
+      textoCorrespondeBuscaComanda(
+        buscaComanda,
+        c.tipo === 'AVULSA' ? 'Venda avulsa' : rotuloComandaCervejaria(c, c.cliente),
+        c.numero,
+        c.cliente.nome,
+        c.cliente.telefone,
+      ),
+    );
+  }, [comandas, buscaComanda]);
+
   if (!evento) {
     return (
       <div className="empty-state py-12 space-y-3">
@@ -216,7 +237,7 @@ export function ComandasPage() {
       {groupSuccess && <div className="alert-success">{groupSuccess}</div>}
       {groupError && !showGroupPayment && <div className="alert-error">{groupError}</div>}
 
-      {resumo && (
+      {resumo && exibirKpis && (
         <div className="grid grid-cols-2 gap-3">
           <StatCard label="Comandas abertas" value={String(resumo.comandasAbertas)} />
           <StatCard label="Comandas fechadas" value={String(resumo.comandasFechadas)} accent="green" />
@@ -302,8 +323,10 @@ export function ComandasPage() {
           </button>
         </div>
 
-        <div className="grid gap-3">
-          {comandas?.map((c) => {
+        <ComandasBuscaInput value={buscaComanda} onChange={setBuscaComanda} />
+
+        <div className={`grid gap-3 ${colunaUnica ? '' : 'grid-cols-2'}`}>
+          {comandasFiltradas.map((c) => {
             const isSelected = selectedIds.includes(c.id);
             const isAvulsa = c.tipo === 'AVULSA';
             return (
@@ -317,7 +340,7 @@ export function ComandasPage() {
                   }
                   navigate(`/comandas/${c.id}`);
                 }}
-                className={`card-touch min-h-[4.5rem] w-full ${
+                className={`card-touch w-full ${colunaUnica ? 'min-h-[4.5rem]' : 'min-h-[5.5rem]'} ${
                   selectMode
                     ? isSelected
                       ? 'border-brand-500 bg-brand-50/40'
@@ -325,51 +348,102 @@ export function ComandasPage() {
                     : 'hover:border-brand-400/30'
                 }`}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    {selectMode && (
-                      <span
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${
-                          isSelected ? 'border-brand-600 bg-brand-600 text-white' : 'border-line bg-surface'
-                        }`}
-                        aria-hidden
-                      >
-                        {isSelected ? '✓' : ''}
-                      </span>
-                    )}
-                    <div className="min-w-0 text-left">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-lg font-bold truncate">
-                          {isAvulsa ? 'Venda avulsa' : c.cliente.nome}
-                        </h3>
-                        {!isAbertas && (
-                          isAvulsa ? (
-                            <StatusBadge variant="venda-avulsa" />
-                          ) : (
-                            <StatusBadge variant="comanda-fechada" />
-                          )
+                <div className={colunaUnica ? 'flex items-center justify-between gap-3' : 'flex flex-col gap-1.5'}>
+                  {colunaUnica ? (
+                    <>
+                      <div className="flex items-center gap-3 min-w-0">
+                        {selectMode && (
+                          <span
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${
+                              isSelected ? 'border-brand-600 bg-brand-600 text-white' : 'border-line bg-surface'
+                            }`}
+                            aria-hidden
+                          >
+                            {isSelected ? '✓' : ''}
+                          </span>
                         )}
+                        <div className="min-w-0 text-left">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="text-lg font-bold truncate">
+                              {isAvulsa ? 'Venda avulsa' : rotuloComandaCervejaria(c, c.cliente)}
+                            </h3>
+                            {!isAbertas && (
+                              isAvulsa ? (
+                                <StatusBadge variant="venda-avulsa" />
+                              ) : (
+                                <StatusBadge variant="comanda-fechada" />
+                              )
+                            )}
+                          </div>
+                          {!isAvulsa && c.cliente.telefone && (
+                            <p className="text-sm text-ink-faint">{c.cliente.telefone}</p>
+                          )}
+                        </div>
                       </div>
-                      {!isAvulsa && c.cliente.telefone && (
-                        <p className="text-sm text-ink-faint">{c.cliente.telefone}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-xl font-bold text-brand-600 tabular-nums">{formatCurrency(c.total)}</p>
-                    <p className="text-xs text-ink-faint">{c.itens.length} item(ns)</p>
-                  </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xl font-bold text-brand-600 tabular-nums">{formatCurrency(c.total)}</p>
+                        <p className="text-xs text-ink-faint">{c.itens.length} item(ns)</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 items-start gap-2">
+                          {selectMode && (
+                            <span
+                              className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${
+                                isSelected ? 'border-brand-600 bg-brand-600 text-white' : 'border-line bg-surface'
+                              }`}
+                              aria-hidden
+                            >
+                              {isSelected ? '✓' : ''}
+                            </span>
+                          )}
+                          <div className="min-w-0 text-left">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h3 className="text-base font-bold truncate">
+                                {isAvulsa ? 'Venda avulsa' : rotuloComandaCervejaria(c, c.cliente)}
+                              </h3>
+                              {!isAbertas && (
+                                isAvulsa ? (
+                                  <StatusBadge variant="venda-avulsa" />
+                                ) : (
+                                  <StatusBadge variant="comanda-fechada" />
+                                )
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <p className="shrink-0 text-base font-bold text-brand-600 tabular-nums">
+                          {formatCurrency(c.total)}
+                        </p>
+                      </div>
+                      <p className="text-xs text-ink-faint">{c.itens.length} item(ns)</p>
+                    </>
+                  )}
                 </div>
               </button>
             );
           })}
         </div>
 
-        {comandas?.length === 0 && (
+        {comandasFiltradas.length === 0 && (
           <EmptyState
-            icon={isAbertas ? '📋' : '✅'}
-            title={isAbertas ? 'Nenhuma comanda aberta ainda' : 'Nenhuma comanda fechada ainda'}
-            description={isAbertas ? 'Use o botão acima para abrir a primeira' : undefined}
+            icon={buscaComanda.trim() ? '🔍' : isAbertas ? '📋' : '✅'}
+            title={
+              buscaComanda.trim()
+                ? 'Nenhuma comanda encontrada'
+                : isAbertas
+                  ? 'Nenhuma comanda aberta ainda'
+                  : 'Nenhuma comanda fechada ainda'
+            }
+            description={
+              buscaComanda.trim()
+                ? 'Tente outro nome ou número.'
+                : isAbertas
+                  ? 'Use o botão acima para abrir a primeira'
+                  : undefined
+            }
           />
         )}
       </section>
@@ -410,7 +484,7 @@ export function ComandasPage() {
               .filter((c) => c.itens.length > 0)
               .map((c) => (
                 <div key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                  <span className="font-medium truncate">{c.cliente.nome}</span>
+                  <span className="font-medium truncate">{rotuloComandaCervejaria(c, c.cliente)}</span>
                   <span className="font-semibold tabular-nums text-brand-600 shrink-0">
                     {formatCurrency(c.total)}
                   </span>

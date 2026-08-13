@@ -1,0 +1,8 @@
+{
+  "size": 1,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "term": { "attributes.event.category": "audit" }
+  },
+  "_source": ["@timestamp", "attributes.event.action", "attributes.cervejaria.slug", "attributes.transacao.payload", "data_stream", "resource.attributes.service.name"]
+}

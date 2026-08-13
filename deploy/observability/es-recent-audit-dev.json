@@ -1,0 +1,16 @@
+{
+  "size": 0,
+  "query": {
+    "bool": {
+      "must": [
+        { "term": { "resource.attributes.deployment.environment.name": "development" } },
+        { "range": { "@timestamp": { "gte": "now-5m" } } }
+      ]
+    }
+  },
+  "aggs": {
+    "by_action": {
+      "terms": { "field": "attributes.event.action", "size": 10 }
+    }
+  }
+}

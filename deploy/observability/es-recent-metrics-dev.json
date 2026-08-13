@@ -1,0 +1,13 @@
+{
+  "size": 3,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "bool": {
+      "must": [
+        { "term": { "resource.attributes.service.name": "quiver-tap-api-dev" } },
+        { "range": { "@timestamp": { "gte": "now-5m" } } }
+      ]
+    }
+  },
+  "_source": ["@timestamp", "resource.attributes.deployment.environment.name", "resource.attributes.service.name", "instrumentation_scope.name"]
+}

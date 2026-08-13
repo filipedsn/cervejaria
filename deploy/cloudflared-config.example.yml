@@ -4,4 +4,6 @@ credentials-file: C:\Users\SEU_USUARIO\.cloudflared\SEU_TUNNEL_ID.json
 ingress:
   - hostname: tap.quivercloud.com.br
     service: http://localhost:3001
+  - hostname: tapdev.quivercloud.com.br
+    service: http://localhost:5202
   - service: http_status:404

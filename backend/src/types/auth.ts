@@ -19,6 +19,7 @@ declare module '@fastify/jwt' {
 declare module 'fastify' {
   interface FastifyInstance {
     authenticate: (request: FastifyRequest) => Promise<void>;
+    requireTenant: (request: FastifyRequest) => Promise<void>;
     requireDono: (request: FastifyRequest) => Promise<void>;
     requireAdmin: (request: FastifyRequest) => Promise<void>;
   }

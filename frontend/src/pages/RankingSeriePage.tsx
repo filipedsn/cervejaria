@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import type { RankingSerieResponse } from '../types';
 import { useEvento } from '../contexts/EventoContext';
 import { useRankingLiveUpdates } from '../hooks/useRankingLiveUpdates';
+import { usePollInterval } from '../hooks/usePollInterval';
 import { Loading } from '../components/Loading';
 import { PageHeader } from '../components/PageHeader';
 import { RankingList } from '../components/RankingList';
@@ -33,6 +34,7 @@ export function RankingSeriePage() {
   }, [searchParams]);
 
   useRankingLiveUpdates(eventoAtivo?.id, !!eventoAtivo?.id, alsoRefetch);
+  const pollMs = usePollInterval(60_000);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['ranking-serie', serieId, escopo, escopo === 'mensal' ? mes : null],
@@ -42,7 +44,7 @@ export function RankingSeriePage() {
     },
     enabled: !!serieId,
     staleTime: 0,
-    refetchInterval: 60_000,
+    refetchInterval: pollMs,
     refetchOnWindowFocus: true,
   });
 

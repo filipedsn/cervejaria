@@ -1,0 +1,17 @@
+{
+  "size": 5,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "range": { "@timestamp": { "gte": "now-10m" } }
+  },
+  "_source": [
+    "@timestamp",
+    "body",
+    "scope.name",
+    "attributes.event.action",
+    "attributes.cervejaria.slug",
+    "attributes.transacao.payload",
+    "attributes.metadata",
+    "data_stream"
+  ]
+}

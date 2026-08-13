@@ -1,7 +1,10 @@
 import type { Prisma, TransacaoTipo } from '@prisma/client';
 import { prisma } from './prisma.js';
+import { csvRow } from './csv.js';
 import { emitAuditEvent } from './audit/emit-audit-event.js';
 import { describeTransacao } from './audit/describe.js';
+import { mergeTransacaoMetadata } from './transacao-payload.js';
+import { recordTransacaoMetric } from './business-metrics.js';
 
 export type RegistrarTransacaoInput = {
   cervejariaId: string;
@@ -12,7 +15,21 @@ export type RegistrarTransacaoInput = {
   entidadeTipo?: string | null;
   entidadeId?: string | null;
   metadata?: Record<string, unknown>;
+  /** Objeto transacionado (comanda, pedido, caixa…) — vai para metadata.payload no Elastic. */
+  payload?: unknown;
 };
+
+import { getTelemetryContextOrDefault } from './telemetry-context.js';
+
+async function auditSlugForTransacao(cervejariaId: string): Promise<string | undefined> {
+  const ctx = getTelemetryContextOrDefault();
+  if (ctx.slug && ctx.slug !== 'system' && ctx.slug !== 'unknown') return ctx.slug;
+  const row = await prisma.cervejaria.findUnique({
+    where: { id: cervejariaId },
+    select: { slug: true },
+  });
+  return row?.slug;
+}
 
 export async function registrarTransacao(
   input: RegistrarTransacaoInput,
@@ -26,6 +43,8 @@ export async function registrarTransacao(
       return null;
     }
 
+    const metadata = mergeTransacaoMetadata(input.metadata, input.payload) as Prisma.InputJsonValue;
+
     const row = await logClient.create({
       data: {
         cervejariaId: input.cervejariaId,
@@ -35,27 +54,46 @@ export async function registrarTransacao(
         comandaId: input.comandaId ?? null,
         entidadeTipo: input.entidadeTipo ?? null,
         entidadeId: input.entidadeId ?? null,
-        metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
+        metadata,
       },
     });
 
+    const metaObj = metadata as Record<string, unknown>;
+    const slug = await auditSlugForTransacao(input.cervejariaId);
     emitAuditEvent({
       action: `transacao.${input.tipo.toLowerCase()}`,
-      message: describeTransacao(input.tipo, input.metadata ?? {}),
+      message: describeTransacao(input.tipo, metaObj),
       outcome: 'success',
       entityType: input.entidadeTipo ?? undefined,
       entityId: input.entidadeId ?? undefined,
+      slug,
       metadata: {
         tipo: input.tipo,
         eventoId: input.eventoId,
         comandaId: input.comandaId,
-        ...(input.metadata ?? {}),
+        ...metaObj,
       },
     });
+
+    recordTransacaoMetric(input.tipo, 'success', slug);
 
     return row;
   } catch (err) {
     console.error('[transacao-log] Falha ao registrar transação:', err);
+    const failMeta = mergeTransacaoMetadata(input.metadata, input.payload);
+    const slug = await auditSlugForTransacao(input.cervejariaId);
+    emitAuditEvent({
+      action: `transacao.${input.tipo.toLowerCase()}`,
+      message: `${describeTransacao(input.tipo, failMeta)} — falha ao persistir`,
+      outcome: 'failure',
+      slug,
+      metadata: {
+        tipo: input.tipo,
+        error: err instanceof Error ? err.message : String(err),
+        ...failMeta,
+      },
+    });
+    recordTransacaoMetric(input.tipo, 'failure', slug);
     return null;
   }
 }
@@ -139,6 +177,48 @@ export function formatTransacaoDescricao(tipo: TransacaoTipo, metadata: unknown)
       return `Tap ${num(m.tapNumero) ?? '?'}: chope removido`;
     case 'TAP_ATIVO_ALTERADO':
       return `Tap ${num(m.tapNumero) ?? '?'} ${m.ativo === false ? 'inativado' : 'reativado'}`;
+    case 'QUIOSQUE_CAIXA_ABERTO':
+      return `Caixa aberto — troco R$ ${(num(m.trocoInicial) ?? 0).toFixed(2)}`;
+    case 'QUIOSQUE_CAIXA_MOVIMENTO':
+      return `${str(m.tipo) ?? 'Movimento'} R$ ${(num(m.valor) ?? 0).toFixed(2)}`;
+    case 'QUIOSQUE_CAIXA_FECHADO':
+      return `Caixa fechado${num(m.divergenciaCentavos) != null ? ` — divergência R$ ${((num(m.divergenciaCentavos) ?? 0) / 100).toFixed(2)}` : ''}`;
+    case 'QUIOSQUE_COMANDA_CRIADA':
+      return `Comanda quiosque ${str(m.identificador) ?? ''}`.trim();
+    case 'QUIOSQUE_COMANDA_FECHADA':
+      return `Comanda quiosque fechada — R$ ${(num(m.total) ?? 0).toFixed(2)}`;
+    case 'QUIOSQUE_COMANDA_CANCELADA':
+      return `Comanda quiosque cancelada — ${str(m.identificador) ?? ''}`;
+    case 'QUIOSQUE_PEDIDO_CRIADO': {
+      const itens = Array.isArray(m.itens) ? m.itens.length : num(m.qtdItens);
+      return `Pedido quiosque #${num(m.pedidoNumero) ?? '?'} — ${itens ?? 0} item(ns)`;
+    }
+    case 'QUIOSQUE_PAGAMENTO_REGISTRADO': {
+      const pagamentos = Array.isArray(m.pagamentos) ? m.pagamentos : [];
+      const formas = pagamentos
+        .map((p) => {
+          const row = p as Record<string, unknown>;
+          const forma = PAYMENT_LABELS[String(row.forma)] ?? String(row.forma);
+          const valor = num(row.valor);
+          return valor != null ? `${forma} R$ ${valor.toFixed(2)}` : forma;
+        })
+        .join(', ');
+      return `Pagamento quiosque${formas ? ` (${formas})` : ''}`;
+    }
+    case 'QUIOSQUE_COMANDA_GRUPO_FECHADO':
+      return `Grupo de comandas fechado — ${num(m.qtdComandas) ?? '?'} conta(s), R$ ${(num(m.totalGrupo) ?? 0).toFixed(2)}`;
+    case 'QUIOSQUE_PEDIDO_COZINHA':
+      return `Pedido cozinha ${str(m.statusAnterior) ?? '?'} → ${str(m.status) ?? '?'}`;
+    case 'QUIOSQUE_ESTOQUE_MOVIMENTO':
+      return `Estoque ${str(m.operacao) ?? 'movimento'} — ${str(m.produtoNome) ?? 'produto'}`;
+    case 'QUIOSQUE_DESCONTO_APLICADO':
+      return `Desconto ${num(m.desconto) ?? 0}% na comanda`;
+    case 'QUIOSQUE_VENDA_AVULSA':
+      return `Venda avulsa — R$ ${(num(m.total) ?? 0).toFixed(2)}`;
+    case 'PORTAL_PEDIDO_CRIADO':
+      return `Pedido portal criado — comanda ${str(m.comandaId) ?? ''}`;
+    case 'PORTAL_PEDIDO_RECUSADO':
+      return `Pedido portal recusado — ${str(m.motivo) ?? 'sem motivo'}`;
     default:
       return tipo;
   }
@@ -174,15 +254,8 @@ export function transacoesToCsv(
   rows: Awaited<ReturnType<typeof listTransacoesEvento>>,
 ): string {
   const header = 'data_hora,tipo,descricao,usuario,comanda_id';
-  const lines = rows.map((r) => {
-    const cols = [
-      r.createdAt,
-      r.tipo,
-      r.descricao.replace(/"/g, '""'),
-      r.usuario?.nome?.replace(/"/g, '""') ?? '',
-      r.comandaId ?? '',
-    ];
-    return cols.map((c) => `"${c}"`).join(',');
-  });
+  const lines = rows.map((r) =>
+    csvRow([r.createdAt, r.tipo, r.descricao, r.usuario?.nome ?? '', r.comandaId ?? '']),
+  );
   return [header, ...lines].join('\n');
 }

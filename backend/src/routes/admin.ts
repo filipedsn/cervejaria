@@ -15,6 +15,7 @@ import {
   updateBrandingColors,
 } from '../lib/cervejaria-branding.js';
 import { ensureDefaultTaps } from '../lib/trailer-defaults.js';
+import { ativarModuloQuiosque } from '../lib/quiosque/modulo.js';
 import {
   encryptSecret,
   getAdminSettingsResponse,
@@ -26,12 +27,37 @@ import { getBackupFilePath, listBackupFiles, runDatabaseBackup } from '../lib/ba
 
 const ALLOWED_LOGO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
-const createCervejariaSchema = z.object({
-  cervejariaNome: z.string().min(2),
-  donoNome: z.string().min(2),
-  donoEmail: z.string().email(),
-  donoSenha: z.string().min(6),
-});
+/// Multipart entrega tudo como string, e z.coerce.boolean() trataria "false"
+/// como true por ser string nao vazia.
+const flagMultipart = z
+  .union([z.boolean(), z.string()])
+  .optional()
+  .transform((valor) => {
+    if (typeof valor === 'boolean') return valor;
+    if (valor == null) return undefined;
+    return valor === 'true' || valor === '1' || valor === 'on';
+  });
+
+const createCervejariaSchema = z
+  .object({
+    cervejariaNome: z.string().min(2),
+    donoNome: z.string().min(2),
+    donoEmail: z.string().email(),
+    donoSenha: z.string().min(6),
+    moduloCervejaria: flagMultipart,
+    moduloQuiosque: flagMultipart,
+    quiosqueControlaEstoque: flagMultipart,
+    quiosqueTemCozinha: flagMultipart,
+  })
+  .superRefine((data, ctx) => {
+    if (data.moduloCervejaria === false && data.moduloQuiosque !== true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Selecione ao menos um módulo para a empresa',
+        path: ['moduloCervejaria'],
+      });
+    }
+  });
 
 const updateCervejariaSchema = z.object({
   cervejariaNome: z.string().min(2),
@@ -80,15 +106,9 @@ function badRequest(message: string) {
   return err;
 }
 
-async function parseMultipartCervejaria(
+async function parseMultipartCervejaria<T>(
   request: import('fastify').FastifyRequest,
-  schema: z.ZodType<{
-    cervejariaNome: string;
-    donoNome: string;
-    donoEmail: string;
-    donoSenha?: string;
-    corPrimaria?: string;
-  }>,
+  schema: z.ZodType<T>,
 ) {
   const fields: Record<string, string> = {};
   let logoBuffer: Buffer | null = null;
@@ -120,15 +140,31 @@ function formatAdminCervejaria(
     logoUrl: string | null;
     corPrimaria: string | null;
     corPaleta: unknown;
+    configuracaoQuiosque?: {
+      ativo: boolean;
+      exclusivo: boolean;
+      controlaEstoque: boolean;
+      temCozinha: boolean;
+    } | null;
     _count?: { usuarios: number; eventos: number };
     usuarios?: Array<{ id: string; nome: string; email: string }>;
   },
   mesAtual?: ReturnType<typeof emptyMesAtualStats>,
 ) {
   const branding = formatCervejariaAuth(c);
+  const quiosque = c.configuracaoQuiosque;
+  const temQuiosque = quiosque?.ativo === true;
+  const temCervejaria = !temQuiosque || !quiosque.exclusivo;
+
   return {
     ...branding,
     ativo: c.ativo,
+    modulos: {
+      cervejaria: temCervejaria,
+      quiosque: temQuiosque,
+      quiosqueControlaEstoque: temQuiosque && quiosque.controlaEstoque,
+      quiosqueTemCozinha: temQuiosque && quiosque.temCozinha,
+    },
     mesAtual,
     _count: c._count,
     usuarios: c.usuarios,
@@ -141,6 +177,14 @@ async function mapCervejariasList() {
       orderBy: { nome: 'asc' },
       include: {
         _count: { select: { usuarios: true, eventos: true } },
+        configuracaoQuiosque: {
+          select: {
+            ativo: true,
+            exclusivo: true,
+            controlaEstoque: true,
+            temCozinha: true,
+          },
+        },
         usuarios: {
           where: { papel: 'DONO' },
           select: { id: true, nome: true, email: true },
@@ -169,6 +213,14 @@ export async function adminRoutes(app: FastifyInstance) {
     const cervejaria = await prisma.cervejaria.findUnique({
       where: { id },
       include: {
+        configuracaoQuiosque: {
+          select: {
+            ativo: true,
+            exclusivo: true,
+            controlaEstoque: true,
+            temCozinha: true,
+          },
+        },
         usuarios: {
           where: { papel: 'DONO' },
           select: { id: true, nome: true, email: true },
@@ -196,12 +248,17 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const senhaHash = await hashPassword(body.donoSenha);
 
+    const moduloQuiosque = body.moduloQuiosque === true;
+    const moduloCervejaria = body.moduloCervejaria !== false;
+
     const result = await prisma.$transaction(async (tx) => {
       const cervejaria = await tx.cervejaria.create({
         data: {
           nome: body.cervejariaNome,
           slug,
-          trailers: { create: { nome: 'Principal' } },
+          // Trailer e taps sao artefatos da cervejaria: empresa so de quiosque
+          // nao nasce com eles.
+          ...(moduloCervejaria ? { trailers: { create: { nome: 'Principal' } } } : {}),
         },
       });
 
@@ -216,6 +273,15 @@ export async function adminRoutes(app: FastifyInstance) {
         select: { id: true, nome: true, email: true, papel: true },
       });
 
+      if (moduloQuiosque) {
+        await ativarModuloQuiosque(tx, {
+          cervejariaId: cervejaria.id,
+          controlaEstoque: body.quiosqueControlaEstoque === true,
+          temCozinha: body.quiosqueTemCozinha === true,
+          exclusivo: !moduloCervejaria,
+        });
+      }
+
       return { cervejaria, dono };
     });
 
@@ -224,12 +290,14 @@ export async function adminRoutes(app: FastifyInstance) {
       cervejaria = await saveLogoAndExtractBranding(cervejaria.id, logoBuffer);
     }
 
-    const trailer = await prisma.trailer.findFirst({
-      where: { cervejariaId: cervejaria.id },
-      orderBy: { createdAt: 'asc' },
-    });
-    if (trailer) {
-      await ensureDefaultTaps(trailer.id, cervejaria.id);
+    if (moduloCervejaria) {
+      const trailer = await prisma.trailer.findFirst({
+        where: { cervejariaId: cervejaria.id },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (trailer) {
+        await ensureDefaultTaps(trailer.id, cervejaria.id);
+      }
     }
 
     return reply.status(201).send({ cervejaria, dono: result.dono });

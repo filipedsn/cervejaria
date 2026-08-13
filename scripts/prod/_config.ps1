@@ -1,4 +1,4 @@
-# Carrega deploy/production.settings.ps1
+﻿# Carrega deploy/production.settings.ps1
 
 function Import-BackendEnvFile {
   param(
@@ -27,6 +27,42 @@ function Import-BackendEnvFile {
   Assert-DatabaseEnvironment -Environment $Environment
 }
 
+function Import-ObservabilityEnvFile {
+  param([string]$ProjectRoot = '')
+
+  if (-not $ProjectRoot) {
+    $ProjectRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+  }
+
+  $envFile = Join-Path $ProjectRoot 'deploy\observability\.env.observability'
+  if (-not (Test-Path $envFile)) { return }
+
+  Get-Content $envFile -Encoding UTF8 | ForEach-Object {
+    $line = $_.Trim()
+    if (-not $line -or $line.StartsWith('#')) { return }
+    $eq = $line.IndexOf('=')
+    if ($eq -lt 1) { return }
+    $key = $line.Substring(0, $eq).Trim()
+    $value = $line.Substring($eq + 1).Trim().Trim('"').Trim("'")
+    if ($key -and $value) {
+      Set-Item -Path "env:$key" -Value $value
+    }
+  }
+
+  if (-not $env:KIBANA_ALERT_ES_API_KEY -and $env:ELASTIC_API_KEY_ALERT_POLLER) {
+    $env:KIBANA_ALERT_ES_API_KEY = $env:ELASTIC_API_KEY_ALERT_POLLER
+  }
+  if (-not $env:KIBANA_ALERT_ES_USER -and $env:ELASTIC_USER) {
+    $env:KIBANA_ALERT_ES_USER = $env:ELASTIC_USER
+  }
+  if (-not $env:KIBANA_ALERT_ES_PASSWORD -and $env:ELASTIC_PASSWORD) {
+    $env:KIBANA_ALERT_ES_PASSWORD = $env:ELASTIC_PASSWORD
+  }
+  if (-not $env:KIBANA_ALERT_ES_URL -and $env:ELASTICSEARCH_URL) {
+    $env:KIBANA_ALERT_ES_URL = $env:ELASTICSEARCH_URL
+  }
+}
+
 function Assert-DatabaseEnvironment {
   param(
     [ValidateSet('development', 'production')]
@@ -42,12 +78,18 @@ function Assert-DatabaseEnvironment {
     if ($url -match 'cervejaria_dev') {
       throw 'PRODUCAO: DATABASE_URL aponta para cervejaria_dev. Corrija backend/.env.production.'
     }
+    if ($url -match ':5434') {
+      throw 'PRODUCAO: DATABASE_URL nao pode usar porta 5434 (container dev).'
+    }
     if ($url -notmatch '/cervejaria(\?|$|")') {
       throw 'PRODUCAO: DATABASE_URL deve usar o banco cervejaria.'
     }
   } else {
     if ($url -notmatch 'cervejaria_dev') {
       throw 'DESENVOLVIMENTO: DATABASE_URL deve usar o banco cervejaria_dev.'
+    }
+    if ($url -match 'cervejaria_dev' -and $url -notmatch ':5434') {
+      throw 'DESENVOLVIMENTO: DATABASE_URL deve usar porta 5434 (container dev isolado).'
     }
     if ($url -match '/cervejaria(\?|$|")' -and $url -notmatch 'cervejaria_dev') {
       throw 'DESENVOLVIMENTO: DATABASE_URL aponta para o banco de producao.'
@@ -126,9 +168,15 @@ function Resolve-QuiverTapPaths {
   $prodArtifactsDir = (Resolve-Path (New-Item -ItemType Directory -Force -Path $prodArtifactsDir)).Path
   $prodStagingDir = Join-Path $prodArtifactsDir '.staging'
   $prodFrontendDist = Join-Path $prodArtifactsDir 'frontend'
-  $prodBackendDist = Join-Path $prodArtifactsDir 'backend\dist'
+  $prodBackendRoot = Join-Path $prodArtifactsDir 'backend'
+  $prodBackendDist = Join-Path $prodBackendRoot 'dist'
   $prodApiEntry = Join-Path $prodBackendDist 'index.js'
+  $prodBackendPrisma = Join-Path $prodBackendRoot 'prisma'
+  $prodBackendNodeModules = Join-Path $prodBackendRoot 'node_modules'
   $prodManifest = Join-Path $prodArtifactsDir 'manifest.json'
+  # Release anterior, preservada a cada publicacao para permitir rollback em segundos.
+  # Fica ao lado (nao dentro) de prod-artifacts para nao ser servida nem varrida pelo verify.
+  $prodArtifactsPrevious = Join-Path (Split-Path $prodArtifactsDir -Parent) ((Split-Path $prodArtifactsDir -Leaf) + '.previous')
 
   @{
     ProjectRoot       = (Resolve-Path $root).Path
@@ -139,9 +187,13 @@ function Resolve-QuiverTapPaths {
     ProdArtifactsDir  = $prodArtifactsDir
     ProdStagingDir    = $prodStagingDir
     ProdFrontendDist  = $prodFrontendDist
+    ProdBackendRoot   = $prodBackendRoot
     ProdBackendDist   = $prodBackendDist
     ProdApiEntry      = $prodApiEntry
+    ProdBackendPrisma = $prodBackendPrisma
+    ProdBackendNodeModules = $prodBackendNodeModules
     ProdManifest      = $prodManifest
+    ProdArtifactsPrevious = $prodArtifactsPrevious
     ApiEntry          = $prodApiEntry
     ApiPort           = $apiPort
     FrontendPort      = $frontendPort
@@ -167,7 +219,12 @@ function Resolve-QuiverTapPaths {
     TunnelLog         = Join-Path $logDir 'tunnel.log'
     TunnelErrLog      = Join-Path $logDir 'tunnel-error.log'
     WatchdogLog       = Join-Path $logDir 'watchdog.log'
+    AlertPollerLog    = Join-Path $logDir 'alert-poller.log'
+    AlertPollerErrLog = Join-Path $logDir 'alert-poller-error.log'
     ApiPidFile        = Join-Path $runtimeDir 'api.pid'
+    AlertPollerPidFile = Join-Path $runtimeDir 'alert-poller.pid'
+    AlertPollerHealthPort = 3098
+    AlertPollerHealthUrl = 'http://127.0.0.1:3098/health'
     FrontendPidFile   = Join-Path $runtimeDir 'frontend.pid'
     TunnelPidFile     = Join-Path $runtimeDir 'tunnel.pid'
   }
@@ -198,6 +255,22 @@ function Find-CloudflaredExe {
 function Test-ApiHealthy {
   param(
     [string]$HealthUrl,
+    [int]$Retries = 2
+  )
+
+  for ($i = 0; $i -lt $Retries; $i++) {
+    try {
+      $res = Invoke-WebRequest -Uri $HealthUrl -UseBasicParsing -TimeoutSec 5
+      if ($res.StatusCode -eq 200) { return $true }
+    } catch {}
+    if ($i -lt ($Retries - 1)) { Start-Sleep -Milliseconds 750 }
+  }
+  return $false
+}
+
+function Test-AlertPollerHealthy {
+  param(
+    [string]$HealthUrl = 'http://127.0.0.1:3098/health',
     [int]$Retries = 2
   )
 

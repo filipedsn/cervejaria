@@ -435,6 +435,39 @@ body.auth-screen {
   color: #66747b;
 }
 
+select.input {
+  appearance: none;
+  cursor: pointer;
+  padding-right: 2.75rem;
+  background-repeat: no-repeat;
+  background-position: right 0.875rem center;
+  background-size: 1rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+[data-theme="dark"] select.input {
+  color-scheme: dark;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+[data-theme="dark"] select.input option {
+  background-color: #162229;
+  color: #e8edf0;
+}
+
+.chip-picker {
+  @apply grid grid-cols-2 gap-1.5 rounded-xl bg-surface-lighter p-1.5 sm:grid-cols-3;
+}
+
+[data-theme="dark"] .chip-picker {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.chip-picker-btn {
+  @apply min-h-[2.75rem] rounded-lg px-2 text-sm font-semibold transition-colors active:scale-[0.98];
+}
+
 [data-theme="dark"] .page-eyebrow,
 [data-theme="dark"] .section-label {
   @apply text-brand-200;
@@ -809,6 +842,384 @@ html:has(.qt-tv) {
 .qt-tv .touch-btn-secondary {
   background: var(--ranking-surface-lighter);
   color: var(--ranking-text-primary);
+  border-color: var(--ranking-border);
+}
+
+/* Cozinha — telão KDS (estilo McDonald's) */
+.qt-cozinha-tv {
+  --cozinha-card-min: clamp(11rem, 18vw, 16rem);
+  padding: clamp(0.75rem, 1.5vw, 1.25rem);
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cozinha-tv-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: clamp(0.5rem, 1vw, 0.75rem);
+}
+
+.cozinha-tv-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-shrink: 0;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--ranking-border-soft);
+}
+
+.cozinha-tv-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ranking-orange);
+}
+
+.cozinha-tv-title {
+  font-size: clamp(1.25rem, 2.2vw, 1.875rem);
+  font-weight: 700;
+  color: var(--ranking-text-primary);
+  line-height: 1.15;
+}
+
+.cozinha-tv-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.cozinha-tv-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 3.5rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 0.75rem;
+  background: var(--ranking-surface-elevated);
+  border: 1px solid var(--ranking-border);
+}
+
+.cozinha-tv-stat--alert {
+  border-color: var(--ranking-orange-border);
+  background: var(--ranking-orange-soft);
+}
+
+.cozinha-tv-stat-value {
+  font-size: clamp(1.125rem, 2vw, 1.5rem);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--ranking-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.cozinha-tv-stat--alert .cozinha-tv-stat-value {
+  color: var(--ranking-orange);
+}
+
+.cozinha-tv-stat-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ranking-text-muted);
+  margin-top: 0.15rem;
+}
+
+.cozinha-tv-bell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--ranking-border);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.cozinha-tv-bell-off {
+  background: var(--ranking-surface-elevated);
+  color: var(--ranking-text-muted);
+}
+
+.cozinha-tv-bell-on {
+  background: var(--ranking-orange-soft);
+  border-color: var(--ranking-orange-border);
+  color: var(--ranking-orange);
+}
+
+.cozinha-tv-bell-warn {
+  background: rgba(245, 185, 66, 0.18);
+  border-color: var(--ranking-gold-border);
+  color: var(--ranking-gold);
+}
+
+.cozinha-tv-link-operacional {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ranking-text-muted);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--ranking-border);
+  background: var(--ranking-surface-elevated);
+  white-space: nowrap;
+}
+
+.cozinha-tv-link-operacional:hover {
+  color: var(--ranking-text-primary);
+  border-color: var(--ranking-border-strong);
+}
+
+.cozinha-tv-hint {
+  font-size: 0.75rem;
+  color: var(--ranking-text-muted);
+  flex-shrink: 0;
+}
+
+.cozinha-tv-erro {
+  flex-shrink: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.625rem;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+  font-size: 0.875rem;
+}
+
+.cozinha-tv-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cozinha-tv-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--cozinha-card-min), 1fr));
+  gap: clamp(0.65rem, 1.2vw, 1rem);
+  align-content: start;
+  padding-bottom: 0.5rem;
+}
+
+.cozinha-tv-card {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: clamp(0.65rem, 1.1vw, 0.9rem);
+  border-radius: 1rem;
+  background: var(--ranking-surface-elevated);
+  border: 2px solid var(--ranking-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.cozinha-tv-card--recebido {
+  border-color: rgba(249, 115, 22, 0.65);
+  background: linear-gradient(180deg, rgba(249, 115, 22, 0.12) 0%, var(--ranking-surface-elevated) 45%);
+  animation: cozinha-tv-pulse 2s ease-in-out infinite;
+}
+
+.cozinha-tv-card--preparo {
+  border-color: rgba(245, 185, 66, 0.55);
+  background: linear-gradient(180deg, rgba(245, 185, 66, 0.1) 0%, var(--ranking-surface-elevated) 45%);
+}
+
+.cozinha-tv-card--pronto {
+  border-color: rgba(34, 197, 94, 0.55);
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.12) 0%, var(--ranking-surface-elevated) 45%);
+}
+
+.cozinha-tv-card--entregue {
+  opacity: 0.55;
+}
+
+@keyframes cozinha-tv-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(249, 115, 22, 0);
+  }
+}
+
+.cozinha-tv-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.cozinha-tv-card-pos {
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ranking-orange);
+  line-height: 1;
+}
+
+.cozinha-tv-card-comanda {
+  font-size: clamp(1rem, 1.6vw, 1.35rem);
+  font-weight: 800;
+  color: var(--ranking-text-primary);
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cozinha-tv-card-senha {
+  font-size: clamp(0.75rem, 1.1vw, 0.875rem);
+  font-weight: 600;
+  color: var(--ranking-text-muted);
+  margin-top: 0.15rem;
+}
+
+.cozinha-tv-card-badge {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.25rem 0.45rem;
+  border-radius: 999px;
+  background: var(--ranking-surface-lighter);
+  color: var(--ranking-text-secondary);
+  border: 1px solid var(--ranking-border);
+}
+
+.cozinha-tv-card--recebido .cozinha-tv-card-badge {
+  background: var(--ranking-orange-soft);
+  color: var(--ranking-orange);
+  border-color: var(--ranking-orange-border);
+}
+
+.cozinha-tv-card--preparo .cozinha-tv-card-badge {
+  background: var(--ranking-gold-soft);
+  color: var(--ranking-gold);
+  border-color: var(--ranking-gold-border);
+}
+
+.cozinha-tv-card--pronto .cozinha-tv-card-badge {
+  background: rgba(34, 197, 94, 0.14);
+  color: var(--ranking-up);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.cozinha-tv-card-timer-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0;
+  margin: 0.25rem 0;
+}
+
+.cozinha-tv-card-timer {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: clamp(1.75rem, 3.2vw, 2.5rem);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--ranking-orange);
+}
+
+.cozinha-tv-card--preparo .cozinha-tv-card-timer {
+  color: var(--ranking-gold);
+}
+
+.cozinha-tv-card--pronto .cozinha-tv-card-timer {
+  color: var(--ranking-up);
+}
+
+.cozinha-tv-card-itens {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.cozinha-tv-card-itens li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: clamp(0.8125rem, 1.2vw, 0.9375rem);
+  line-height: 1.25;
+  color: var(--ranking-text-primary);
+}
+
+.cozinha-tv-card-qtd {
+  font-weight: 800;
+  color: var(--ranking-orange);
+  flex-shrink: 0;
+}
+
+.cozinha-tv-card-nome {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cozinha-tv-card-obs {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  color: var(--ranking-text-muted);
+  margin-top: 0.15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cozinha-tv-card-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 0.35rem;
+  margin-top: auto;
+  padding-top: 0.35rem;
+}
+
+.cozinha-tv-card-btn {
+  flex: 1;
+  min-height: 2.25rem;
+  border-radius: 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  transition: opacity 0.15s;
+}
+
+.cozinha-tv-card-btn:disabled {
+  opacity: 0.5;
+}
+
+.cozinha-tv-card-btn-primary {
+  background: var(--ranking-teal);
+  color: #ecfdf5;
+  border-color: rgba(94, 234, 212, 0.35);
+}
+
+.cozinha-tv-card-btn-ghost {
+  flex: 0 0 auto;
+  padding: 0 0.65rem;
+  background: var(--ranking-surface-lighter);
+  color: var(--ranking-text-muted);
   border-color: var(--ranking-border);
 }
 

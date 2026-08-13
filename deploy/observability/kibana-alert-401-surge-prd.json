@@ -1,0 +1,24 @@
+{
+  "name": "quiver-tap-401-surge-prd",
+  "tags": ["quiver-tap", "observability", "production", "functional"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "5m" },
+  "enabled": true,
+  "params": {
+    "index": ["logs-audit*.otel-prd"],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"term\":{\"attributes.http.response.status_code\":401}}]}}}",
+    "size": 20,
+    "timeWindowSize": 10,
+    "timeWindowUnit": "m",
+    "thresholdComparator": ">",
+    "threshold": [10],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery",
+    "excludeHitsFromPreviousRun": true
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

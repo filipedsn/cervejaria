@@ -1,0 +1,20 @@
+{
+  "size": 3,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "bool": {
+      "must": [
+        { "term": { "attributes.cervejaria.slug": "churrasquinho-do-thiago" } },
+        { "term": { "attributes.validacao": true } }
+      ],
+      "filter": [{ "range": { "@timestamp": { "gte": "now-5m" } } }]
+    }
+  },
+  "_source": [
+    "@timestamp",
+    "attributes.event.action",
+    "attributes.transacao.payload",
+    "data_stream.dataset",
+    "resource.attributes.service.name"
+  ]
+}

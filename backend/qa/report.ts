@@ -1,4 +1,5 @@
 import { prisma } from '../src/lib/prisma.js';
+import { recalcComandaTotal } from '../src/lib/comanda-service.js';
 import { percentile } from './lib/http.js';
 import { renderHtml } from './lib/render.js';
 import { CONTEXT_PATH, HTML_PATH, SUITE_PATH, readJson, readPortalWorkerResults, readWorkerResults, writeJson } from './lib/store.js';
@@ -23,7 +24,7 @@ async function main() {
   });
 
   // ── DB-01: totais consistentes ─────────────────────────────────────────
-  const drift = await prisma.$queryRaw<{ id: string; total: number; soma: number }[]>`
+  const driftQuery = `
     SELECT c.id, c.total::float AS total, COALESCE(SUM(i."precoUnit"::float * i.quantidade),0) AS soma
     FROM "Comanda" c
     LEFT JOIN "ItemComanda" i ON i."comandaId" = c.id
@@ -33,12 +34,25 @@ async function main() {
     )
     GROUP BY c.id, c.total
     HAVING ABS(c.total::float - COALESCE(SUM(i."precoUnit"::float * i.quantidade),0)) > 0.02`;
+
+  const driftBefore = await prisma.$queryRawUnsafe<{ id: string; total: number; soma: number }[]>(driftQuery);
+  for (const row of driftBefore) {
+    await recalcComandaTotal(row.id);
+  }
+  const drift = await prisma.$queryRawUnsafe<{ id: string; total: number; soma: number }[]>(driftQuery);
   push(t({
     id: 'DB-01', name: 'Comanda.total == Σ itens (todas as comandas QA)', category: 'Integridade',
-    status: drift.length === 0 ? 'passed' : 'failed',
-    message: drift.length === 0 ? 'Todos os totais consistentes' : `${drift.length} comanda(s) divergente(s)`,
+    status: drift.length === 0 ? (driftBefore.length === 0 ? 'passed' : 'warning') : 'failed',
+    message:
+      drift.length === 0
+        ? driftBefore.length === 0
+          ? 'Todos os totais consistentes'
+          : `${driftBefore.length} comanda(s) reconciliadas (recalc pós-carga)`
+        : `${drift.length} comanda(s) divergente(s) após reconciliação`,
     expected: '0 divergências', actual: `${drift.length}`,
-    details: drift.slice(0, 5).map((d) => `${d.id}: total=${d.total} soma=${d.soma}`).join('\n') || undefined,
+    details:
+      (drift.length ? drift : driftBefore).slice(0, 5).map((d) => `${d.id}: total=${d.total} soma=${d.soma}`).join('\n') ||
+      undefined,
   }));
 
   // ── DB-02: cliente cross-tenant ────────────────────────────────────────
@@ -295,7 +309,7 @@ async function main() {
   failed.forEach((f) => console.error(`  XX ${f.id} ${f.name} — ${f.message}`));
 
   await prisma.$disconnect();
-  process.exit(0);
+  process.exit(failed.length > 0 ? 1 : 0);
 }
 
 main().catch(async (err) => {

@@ -8,8 +8,9 @@ Guia prático para investigar **quem fez o quê**, em **qual tela**, via **qual 
 
 | Item | Valor |
 |------|-------|
-| Kibana | http://localhost:5601 |
-| Elasticsearch | http://localhost:9200 |
+| Kibana | http://localhost:5601 (login: `elastic` + senha em `deploy/observability/.env.observability`) |
+| Elasticsearch | http://localhost:9200 (xpack.security habilitado) |
+| Credenciais | Copie `deploy/observability/.env.observability.example` → `.env.observability` |
 | Collector OTel | `npm run obs:up` |
 | Configurar data views | `npm run obs:configure` |
 
@@ -21,17 +22,23 @@ Use **Discover** e selecione o data view conforme o ambiente:
 |-----------|----------|------------------|
 | **Quiver Tap Audit PRD** | Produção (`:3001`) | `logs-audit*.otel-prd` |
 | **Quiver Tap Audit DEV** | Desenvolvimento (`:3002`) | `logs-audit*.otel-dev` |
+| **Quiver Tap Metrics PRD** | Produção (`:3001`) | `metrics-generic.otel-prd*` |
+| **Quiver Tap Metrics DEV** | Desenvolvimento (`:3002`) | `metrics-generic.otel-dev*` |
 
 > **Dica:** no seletor de data views, digite `audit` no campo *Find a data view*.
 
 **Alternativa:** *Quiver Tap Logs PRD* / *Logs DEV* também contém audit, mas mistura logs técnicos da API. Prefira os data views **Audit**.
+
+> Métricas auto do Node.js (CPU, event loop, heap) usam o namespace derivado de `deployment.environment.name` no collector OTel. Logs, traces e audit já vinham segregados por `otel-prd` / `otel-dev`.
 
 ### Links rápidos
 
 - [Discover Audit PRD](http://localhost:5601/app/discover#/?_a=(index:'logs-audit*.otel-prd')&_g=(time:(from:now-7d,to:now)))
 - [Discover Audit DEV](http://localhost:5601/app/discover#/?_a=(index:'logs-audit*.otel-dev')&_g=(time:(from:now-7d,to:now)))
 - [Regras de alerta](http://localhost:5601/app/management/insightsAndAlerting/triggersActions/rules)
-- [Dashboard métricas](http://localhost:5601/app/dashboards#/view/quiver-tap-observability)
+- [Dashboard métricas PRD](http://localhost:5601/app/dashboards#/view/quiver-tap-observability-prd)
+- [Dashboard métricas DEV](http://localhost:5601/app/dashboards#/view/quiver-tap-observability-dev)
+- [Dashboard infra](http://localhost:5601/app/dashboards#/view/quiver-tap-observability-infra)
 
 ---
 
@@ -103,13 +110,20 @@ Todos os eventos incluem `event.category: audit` e campos de **tenant** (`cervej
 
 ### 3.4 Interface (telas e cliques)
 
+O frontend usa estratégia **híbrida** (`frontend/src/lib/audit-tracker.ts`):
+
+1. **Fallback genérico** — captura cliques em `button`, `a`, `[role="button"]` e `[data-audit]`
+2. **Labels semânticos** — botões críticos usam `data-audit="..."` (ex.: `quiosque-caixa-fechar`, `comanda-abrir`)
+3. **Ordem de rótulo** — `data-audit` → `aria-label` → texto do botão → tag HTML
+4. **Erros de UI** — `ui.error` via `AuditErrorBoundary` (dedup 60s, máx. 20/sessão)
+
 | Campo | Descrição | Exemplo |
 |-------|-----------|---------|
 | `ui.page` | Rota SPA (path + query) | `/clientes`, `/comandas/abc123` |
-| `ui.label` | Rótulo do clique | `Excluir`, `Salvar` ou `data-audit` |
-| `ui.element` | Tag HTML ou seletor | `button`, `a` |
+| `ui.label` | Rótulo do clique | `quiosque-caixa-fechar`, `Abrir Comanda` |
+| `ui.element` | Tag HTML ou seletor | `button`, `a`, `data-audit` |
 
-**Actions:** `ui.page_view`, `ui.click`, `ui.submit`
+**Actions:** `ui.page_view`, `ui.click`, `ui.submit`, `ui.error`
 
 ### 3.5 HTTP (API)
 
@@ -442,7 +456,7 @@ Trecho de clique na interface (trace **diferente**):
 | Limitação | Detalhe |
 |-----------|---------|
 | UI ↔ HTTP | Clique e API têm `trace_id` diferentes; correlacione por **horário + actor** (segundos de diferença) |
-| Labels de clique | Vêm do texto do botão; `data-audit` ainda não está amplo no frontend |
+| Labels de clique | Fluxos críticos têm `data-audit`; demais usam texto/`aria-label` do botão |
 | Volume SQL | `AUDIT_SQL_SAMPLE_RATE=1` gera muitos eventos `db.*`; filtre quando não precisar |
 | GETs | Body não é registrado em GETs com sucesso |
 | Dados sensíveis | Senhas, tokens e telefones são redigidos — não espere ver valores completos |
@@ -469,7 +483,108 @@ Trecho de clique na interface (trace **diferente**):
 
 ---
 
-## 10. Comandos úteis
+## 10. Investigação de erros 4xx (UX)
+
+### KQL — falhas HTTP em produção
+
+```
+data_stream.namespace: "prd" and attributes.event.outcome: "failure" and attributes.http.response.status_code >= 400
+```
+
+Data view: **Quiver Tap Audit PRD** (`logs-audit*.otel-prd`).
+
+Campos úteis: `attributes.http.route`, `attributes.http.response.status_code`, `attributes.actor.name`, `attributes.ui.page`, `metadata.responseError.error`, `trace_id`.
+
+### Correlacionar jornada do usuário (trace_id)
+
+1. No Discover, filtre um evento HTTP com `attributes.event.outcome: failure`.
+2. Copie o `trace_id` do documento.
+3. Nova busca: `trace_id: "<id>"` no mesmo data view (±30 min).
+4. Ordene por `@timestamp` — reconstrua: `ui.page_view` → `ui.click` → `http.post`/`http.get` falho.
+
+Eventos UI e HTTP compartilham `trace_id` quando gerados na mesma requisição/trace OTel.
+
+### Relatório CLI (sem PII)
+
+```powershell
+npm run obs:report-4xx
+```
+
+Agrega contagem por status, rota e dia (últimos 14 dias).
+
+---
+
+## 11. Alertas por e-mail e Telegram
+
+### Fluxo (licença Kibana Basic)
+
+```mermaid
+flowchart LR
+  Kibana["Regras quiver-tap-*"] --> Index["ES quiver-tap-alert-events"]
+  Index --> Poller["alert-poller-worker"]
+  Poller --> Email["E-mail SMTP"]
+  Poller --> Telegram["Telegram Bot API"]
+```
+
+1. Regras Kibana disparam e gravam no índice `quiver-tap-alert-events` (connector `.index`).
+2. O worker `alert-poller` consulta o ES a cada ~30s.
+3. Notifica por **e-mail** e/ou **Telegram**, conforme variáveis de ambiente.
+
+Setup inicial:
+
+```powershell
+npm run obs:alert-email   # índice + connector + vincular regras
+npm run alert-poller:start
+```
+
+### Variáveis de ambiente
+
+| Variável | Canal | Descrição |
+|----------|-------|-----------|
+| `OBS_ALERT_EMAIL_TO` | E-mail | Destinatários (vírgula ou ponto-e-vírgula) |
+| `OBS_ALERT_TELEGRAM_BOT_TOKEN` | Telegram | Token do bot criado no @BotFather |
+| `OBS_ALERT_TELEGRAM_CHAT_ID` | Telegram | ID do chat (usuário ou grupo) |
+
+Pelo menos **um** canal deve estar configurado. E-mail e Telegram podem coexistir.
+
+### Ativar bot Telegram (uma vez)
+
+1. No Telegram, abra **@BotFather** → `/newbot` → copie o **token**.
+2. Abra conversa com seu bot e envie `/start`.
+3. Descubra o **chat_id**: acesse `https://api.telegram.org/bot<TOKEN>/getUpdates` e procure `"chat":{"id":...}`.
+4. Preencha `OBS_ALERT_TELEGRAM_BOT_TOKEN` e `OBS_ALERT_TELEGRAM_CHAT_ID` em `backend/.env.production` (ou `.env.development` para testes).
+5. Teste: `npm run obs:test-telegram`
+
+**Grupo (opcional):** adicione o bot ao grupo, envie uma mensagem, repita `getUpdates` e use o `chat_id` do grupo (geralmente negativo).
+
+### Regras que disparam alertas
+
+Todas as regras `quiver-tap-*` habilitadas via `npm run obs:configure` / `obs:alert-email`, incluindo:
+
+- `quiver-tap-ui-error-prd` — erros de tela (`ui.error`)
+- `quiver-tap-5xx-rate-prd` — HTTP 5xx (>2 em 15 min)
+- `quiver-tap-api-ready-down-prd` — API fora do ar
+- `quiver-tap-transacao-failure-prd` — falhas transacionais
+- SLOs, event loop, postgres, telemetry gap, etc.
+
+Variantes `-dev` também notificam se habilitadas.
+
+### Limitações
+
+- Dedup de 5 min no poller evita spam da mesma regra.
+- Cada regra Kibana tem janela própria (ex.: 5xx só dispara se >2 em 15 min).
+- O usuário precisa ter enviado `/start` ao bot antes de receber mensagens.
+
+### Testes
+
+```powershell
+npm run obs:test-webhook    # POST /api/observability/kibana-alert → e-mail
+npm run obs:test-telegram   # Bot API direto → Telegram
+```
+
+---
+
+## 12. Comandos úteis
 
 ```powershell
 # Subir collector
@@ -478,13 +593,26 @@ npm run obs:up
 # Criar/atualizar data views, dashboard e alertas
 npm run obs:configure
 
+# Corrigir cluster ES yellow (single-node)
+npm run obs:fix-es-replicas
+
+# Politicas ILM (traces 30d, audit 90d)
+npm run obs:ilm
+
+# Relatorio agregado 4xx prod
+npm run obs:report-4xx
+
+# Testar alertas
+npm run obs:test-webhook
+npm run obs:test-telegram
+
 # Verificar saúde Kibana/Fleet
 npm run obs:kibana
 ```
 
 ---
 
-## 11. Referência cruzada no código
+## 13. Referência cruzada no código
 
 | Fonte | Arquivo |
 |-------|---------|
@@ -495,6 +623,7 @@ npm run obs:kibana
 | Transações | `backend/src/lib/transacao-log.ts` |
 | Mensagens PT-BR | `backend/src/lib/audit/describe.ts` |
 | Redação | `backend/src/lib/audit/redact.ts` |
+| Alertas e-mail/Telegram | `backend/src/lib/kibana-alert-email.ts`, `backend/src/lib/telegram-alert.ts` |
 | Data views Kibana | `deploy/observability/kibana-audit-data-view-*.json` |
 
 ---

@@ -1,0 +1,12 @@
+{
+  "size": 5,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": { "range": { "@timestamp": { "gte": "now-10m" } } },
+  "_source": [
+    "@timestamp",
+    "metrics.httpcheck.status",
+    "attributes.http.url",
+    "attributes.http.status_code",
+    "resource.attributes.service.name"
+  ]
+}

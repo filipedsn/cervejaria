@@ -1,0 +1,13 @@
+{
+  "size": 5,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "bool": {
+      "must": [
+        { "wildcard": { "attributes.cervejaria.slug": "*thiago*" } }
+      ],
+      "filter": [{ "range": { "@timestamp": { "gte": "now-15m" } } }]
+    }
+  },
+  "_source": ["@timestamp", "attributes.event.action", "attributes.cervejaria.slug", "attributes.transacao.payload", "resource.attributes.deployment.environment.name"]
+}

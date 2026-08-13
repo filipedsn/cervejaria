@@ -1,0 +1,15 @@
+{
+  "size": 5,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "bool": {
+      "filter": [{ "range": { "@timestamp": { "gte": "now-5m" } } }],
+      "should": [
+        { "match_phrase": { "body.text": "Validacao OTel logs" } },
+        { "term": { "scope.name": "quiver-tap-audit" } }
+      ],
+      "minimum_should_match": 1
+    }
+  },
+  "_source": true
+}

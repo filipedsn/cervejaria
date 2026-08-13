@@ -1,0 +1,11 @@
+{
+  "size": 5,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "bool": {
+      "filter": [{ "range": { "@timestamp": { "gte": "now-15m" } } }],
+      "must": [{ "term": { "attributes.event.category": "audit" } }]
+    }
+  },
+  "_source": ["@timestamp", "attributes.event.action", "attributes.cervejaria.slug", "attributes.transacao.payload", "data_stream", "scope.name"]
+}

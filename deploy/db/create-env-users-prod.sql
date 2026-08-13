@@ -1,3 +1,7 @@
+-- LEGADO: cria usuarios prod + dev no mesmo container.
+-- Preferir create-env-users-prod-only.sql (prod) e create-env-users-dev-container.sql (dev).
+-- Ver scripts/db-create-env-users.ps1
+
 DO $$ BEGIN
   CREATE USER cervejaria_prod WITH PASSWORD 'QvPr0d_xK9m2026';
 EXCEPTION WHEN duplicate_object THEN

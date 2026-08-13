@@ -44,7 +44,8 @@ async function main() {
   if (suite !== 0) console.warn('[run] suite retornou erro');
 
   const report = await run('report.ts');
-  process.exit(report);
+  const exitCode = Math.max(suite, report, failedWorkers > 0 ? 1 : 0, failedPortalWorkers > 0 ? 1 : 0);
+  process.exit(exitCode);
 }
 
 main();

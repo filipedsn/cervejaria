@@ -1,10 +1,11 @@
 {
   "name": "quiver-tap-api-down",
-  "tags": ["quiver-tap", "observability"],
+  "_deprecated": "Substituido por quiver-tap-telemetry-gap-prd/dev + quiver-tap-api-down-prd (uptime). Mantido apenas como referencia.",
+  "tags": ["quiver-tap", "observability", "deprecated"],
   "rule_type_id": ".es-query",
   "consumer": "stackAlerts",
   "schedule": { "interval": "5m" },
-  "enabled": true,
+  "enabled": false,
   "params": {
     "index": ["metrics-generic.otel-default*"],
     "timeField": "@timestamp",

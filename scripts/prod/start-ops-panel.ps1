@@ -1,4 +1,4 @@
-# Inicia o ops-panel (porta 3099) se ainda nao estiver ativo.
+# Inicia o ops-panel na porta configurada (padrao 3099). Sem fallback silencioso.
 
 param(
   [switch]$Quiet
@@ -6,12 +6,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
+. "$PSScriptRoot\ops-panel-lib.ps1"
 
 $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
 
 $opsPanelDir = Join-Path $paths.ProjectRoot 'ops-panel'
 $opsPidFile = Join-Path $paths.RuntimeDir 'ops-panel.pid'
+$metaFile = Join-Path $paths.RuntimeDir 'ops-panel.meta.json'
 $envFile = Join-Path $opsPanelDir '.env'
 $envExample = Join-Path $opsPanelDir '.env.example'
 
@@ -20,24 +22,50 @@ if (-not (Test-Path $opsPanelDir)) {
   exit 1
 }
 
-if (Test-Path $opsPidFile) {
-  $existingPid = [int](Get-Content $opsPidFile -ErrorAction SilentlyContinue)
-  if (Test-ProcessAlive -ProcessId $existingPid) {
-    try {
-      $health = Invoke-WebRequest -Uri 'http://127.0.0.1:3099/api/health' -UseBasicParsing -TimeoutSec 3
-      if ($health.StatusCode -eq 200) {
-        if (-not $Quiet) { Write-Host "Ops panel ja ativo (PID $existingPid)." -ForegroundColor Green }
-        exit 0
-      }
-    } catch {}
-    Stop-Process -Id $existingPid -Force -ErrorAction SilentlyContinue
+$port = Get-OpsPanelConfiguredPort -EnvFile $envFile
+$live = Get-OpsPanelLiveStatus -Port $port -MetaFile $metaFile
+
+if ($live.state -eq 'current') {
+  if (-not $Quiet) {
+    Write-Host "Ops panel ja ativo: $($live.url) (PID $($live.pid))" -ForegroundColor Green
   }
+  exit 0
+}
+
+if ($live.state -eq 'legacy') {
+  if (-not $Quiet) {
+    Write-Host "Instancia LEGADA na porta $port (PID $($live.pid))." -ForegroundColor Red
+    Write-Host 'Tentando encerrar...' -ForegroundColor Yellow
+  }
+  if (-not (Stop-PortListener -Port $port -Quiet:$Quiet)) {
+    if (-not $Quiet) {
+      Write-Host ''
+      Write-Host "Nao foi possivel liberar a porta $port." -ForegroundColor Red
+      Write-Host 'Abra o PowerShell como Administrador e rode:' -ForegroundColor Yellow
+      Write-Host "  taskkill /F /PID $($live.pid)" -ForegroundColor Gray
+      Write-Host '  npm run ops:start' -ForegroundColor Gray
+      Write-Host ''
+      Write-Host 'O ops-panel usa SEMPRE a porta configurada em ops-panel/.env (padrao 3099).' -ForegroundColor Yellow
+      Write-Host 'Nao ha porta alternativa automatica - isso evita abrir o painel errado.' -ForegroundColor Yellow
+    }
+    exit 1
+  }
+} elseif ($live.state -eq 'blocked') {
+  if (-not $Quiet) {
+    Write-Host "Porta $port ocupada pelo PID $($live.pid), mas nao e o ops-panel." -ForegroundColor Red
+    Write-Host "Encerre o processo ou mude OPS_PANEL_PORT em ops-panel/.env" -ForegroundColor Yellow
+  }
+  exit 1
+}
+
+if (Test-Path $opsPidFile) {
   Remove-Item $opsPidFile -Force -ErrorAction SilentlyContinue
 }
+Remove-Item $metaFile -Force -ErrorAction SilentlyContinue
 
 if (-not (Test-Path $envFile) -and (Test-Path $envExample)) {
   Copy-Item $envExample $envFile
-  Write-WatchdogLog -Paths $paths -Message 'ops-panel/.env criado a partir de .env.example — defina OPS_PANEL_TOKEN.'
+  Write-WatchdogLog -Paths $paths -Message 'ops-panel/.env criado a partir de .env.example.'
 }
 
 $nodeModules = Join-Path $opsPanelDir 'node_modules'
@@ -67,6 +95,11 @@ $serverEntry = Join-Path $opsPanelDir 'src\server.mjs'
 $opsLog = Join-Path $paths.LogDir 'ops-panel-stdout.log'
 $opsErrLog = Join-Path $paths.LogDir 'ops-panel-error.log'
 
+# Porta vem do .env; nao sobrescrever com fallback.
+if ($env:OPS_PANEL_PORT -and [int]$env:OPS_PANEL_PORT -ne $port) {
+  $env:OPS_PANEL_PORT = "$port"
+}
+
 $proc = Start-Process `
   -FilePath $paths.NodeExe `
   -ArgumentList @($serverEntry) `
@@ -78,6 +111,19 @@ $proc = Start-Process `
 
 Start-Sleep -Seconds 2
 
+if (-not (Test-OpsPanelCurrent -Port $port)) {
+  $errTail = ''
+  if (Test-Path $opsErrLog) {
+    $errTail = (Get-Content $opsErrLog -Tail 5 -ErrorAction SilentlyContinue) -join ' '
+  }
+  if (-not $Quiet) {
+    Write-Host "Ops panel nao subiu em http://127.0.0.1:$port" -ForegroundColor Red
+    if ($errTail) { Write-Host $errTail -ForegroundColor Gray }
+    Write-Host 'Rode npm run ops:status para diagnostico.' -ForegroundColor Yellow
+  }
+  exit 1
+}
+
 if (Test-Path $opsPidFile) {
   $panelPid = [int](Get-Content $opsPidFile -ErrorAction SilentlyContinue)
 } else {
@@ -85,9 +131,10 @@ if (Test-Path $opsPidFile) {
   Set-Content -Path $opsPidFile -Value $proc.Id -Encoding ASCII
 }
 
-Write-WatchdogLog -Paths $paths -Message "Ops panel iniciado PID $panelPid."
+Write-WatchdogLog -Paths $paths -Message "Ops panel iniciado PID $panelPid porta $port."
 if (-not $Quiet) {
-  Write-Host "Ops panel: http://127.0.0.1:3099 (PID $panelPid)" -ForegroundColor Green
+  Write-Host "Ops panel: http://127.0.0.1:$port (PID $panelPid)" -ForegroundColor Green
+  Write-Host 'Status: npm run ops:status' -ForegroundColor Gray
 }
 
 exit 0

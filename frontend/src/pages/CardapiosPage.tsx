@@ -1,18 +1,31 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
-import type { Cardapio, Produto } from '../types';
+import type { Cardapio, CardapioItem, Produto } from '../types';
 import { Modal } from '../components/Modal';
 import { ModalFormFooter } from '../components/ModalFormFooter';
 import { Loading } from '../components/Loading';
 import { CardapioProdutosPicker } from '../components/CardapioProdutosPicker';
+
+function itensFromCardapio(cardapio: Cardapio): CardapioItem[] {
+  if (cardapio.itens?.length) {
+    return cardapio.itens.map((i) => ({ produtoId: i.produtoId, precoUnit: i.precoUnit }));
+  }
+  if (cardapio.produtos?.length) {
+    return cardapio.produtos.map((p) => ({
+      produtoId: p.id,
+      precoUnit: p.precoEfetivo ?? parseFloat(String(p.precos[0]?.preco ?? 0)),
+    }));
+  }
+  return (cardapio.produtoIds ?? []).map((produtoId) => ({ produtoId, precoUnit: 0 }));
+}
 
 export function CardapiosPage({ embedded }: { embedded?: boolean } = {}) {
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Cardapio | null>(null);
   const [nome, setNome] = useState('');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [itens, setItens] = useState<CardapioItem[]>([]);
   const [error, setError] = useState('');
 
   const { data: cardapios, isLoading } = useQuery({
@@ -29,10 +42,10 @@ export function CardapiosPage({ embedded }: { embedded?: boolean } = {}) {
   useEffect(() => {
     if (editing) {
       setNome(editing.nome);
-      setSelectedIds(editing.produtoIds ?? editing.produtos?.map((p) => p.id) ?? []);
+      setItens(itensFromCardapio(editing));
     } else {
       setNome('');
-      setSelectedIds([]);
+      setItens([]);
     }
   }, [editing, showModal]);
 
@@ -48,13 +61,24 @@ export function CardapiosPage({ embedded }: { embedded?: boolean } = {}) {
     setShowModal(true);
   };
 
-  const toggleProduto = (id: string) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const toggleProduto = (produtoId: string, defaultPreco: number) => {
+    setItens((prev) => {
+      const exists = prev.some((i) => i.produtoId === produtoId);
+      if (exists) return prev.filter((i) => i.produtoId !== produtoId);
+      return [...prev, { produtoId, precoUnit: defaultPreco }];
+    });
+  };
+
+  const changePreco = (produtoId: string, precoUnit: number) => {
+    setItens((prev) => prev.map((i) => (i.produtoId === produtoId ? { ...i, precoUnit } : i)));
   };
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const payload = { nome: nome.trim(), produtoIds: selectedIds };
+      const payload = {
+        nome: nome.trim(),
+        itens: itens.map((i) => ({ produtoId: i.produtoId, precoUnit: i.precoUnit })),
+      };
       return editing
         ? api.put<Cardapio>(`/api/cardapios/${editing.id}`, payload)
         : api.post<Cardapio>('/api/cardapios', payload);
@@ -175,8 +199,9 @@ export function CardapiosPage({ embedded }: { embedded?: boolean } = {}) {
             {catalogo && (
               <CardapioProdutosPicker
                 catalogo={catalogo}
-                selectedIds={selectedIds}
+                itens={itens}
                 onToggle={toggleProduto}
+                onPrecoChange={changePreco}
               />
             )}
             <ModalFormFooter

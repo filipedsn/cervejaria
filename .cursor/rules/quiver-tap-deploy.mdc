@@ -33,7 +33,7 @@ alwaysApply: true
 
 ## Proibido sem autorizacao explicita de deploy
 
-- `npm run prod:restart`, `prod:deploy`, `prod:stop`, `prod:ensure`
+- `npm run prod:restart`, `prod:deploy`, `prod:rollback`, `prod:stop`, `prod:ensure`
 - `db:migrate:prod`, editar `.env.production`
 - `taskkill` em processos da API prod
 - POST/PUT/PATCH/DELETE em `localhost:3001` ou `tap.quivercloud.com.br`

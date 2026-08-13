@@ -39,6 +39,7 @@ import {
 
 import { emitToEvento, emitToComanda, emitToCervejaria } from '../lib/realtime.js';
 import { notifyPedidoCreated } from '../lib/push-notifications.js';
+import { registrarTransacao } from '../lib/transacao-log.js';
 
 import { getDevFrontendOrigin } from '../lib/lan-url.js';
 
@@ -556,6 +557,21 @@ export async function publicRoutes(app: FastifyInstance) {
         clienteNome: pedido.cliente?.nome ?? 'Cliente',
         resumoItens: resumoItens || 'Pedido pendente',
         pendenteCount,
+      });
+
+      void registrarTransacao({
+        cervejariaId: session.cervejariaId,
+        tipo: 'PORTAL_PEDIDO_CRIADO',
+        eventoId: session.eventoId,
+        comandaId: session.comandaId,
+        entidadeTipo: 'pedido',
+        entidadeId: pedido.id,
+        metadata: {
+          clienteId: session.clienteId,
+          itemCount: pedido.itens.length,
+          numero: pedido.numero,
+        },
+        payload: serializePedido(pedido),
       });
 
       return reply.status(201).send(serializePedido(pedido));

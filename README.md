@@ -53,6 +53,7 @@ npm run restart
 ```
 
 - Frontend: http://localhost:5202
+- Dev (internet): https://tapdev.quivercloud.com.br
 - API: http://localhost:3002
 - Health check: http://localhost:3002/api/health
 
@@ -207,15 +208,17 @@ O serviço Windows **Cloudflared** (via token) já cobre o tunnel 24/7. O watchd
 
 ### Variáveis de produção
 
-Atualize `backend/.env`:
+Atualize `backend/.env.production` (veja `.env.production.example`):
 
 ```env
-DATABASE_URL="postgresql://cervejaria:SENHA_FORTE@localhost:5432/cervejaria"
+DATABASE_URL="postgresql://cervejaria_prod:SENHA@localhost:5432/cervejaria?schema=public"
 JWT_SECRET="gere-um-segredo-longo-e-aleatorio"
 PORT=3001
 HOST=0.0.0.0
-CORS_ORIGIN="https://app.seudominio.com.br"
+CORS_ORIGIN="https://tap.quivercloud.com.br"
 ```
+
+Desenvolvimento usa container Postgres separado (`cervejaria-db-dev`, porta **5434**) — veja `deploy/README.md`.
 
 ## Instalar como PWA no tablet
 

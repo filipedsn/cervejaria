@@ -8,6 +8,7 @@ const SENSITIVE_KEYS = new Set([
   'cookie',
   'JWT_SECRET',
   'SMTP_PASS',
+  'OBS_ALERT_TELEGRAM_BOT_TOKEN',
   'secret',
 ]);
 

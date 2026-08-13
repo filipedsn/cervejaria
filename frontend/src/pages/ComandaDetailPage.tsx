@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, formatCurrency, ApiError } from '../lib/api';
 import type { Comanda, TapComChope, EventoCardapio, Evento } from '../types';
-import { PAYMENT_LABELS, formatItemDetail, isBebidaChope, isVendaUnitaria } from '../types';
+import { PAYMENT_LABELS, formatItemDetail, isBebidaChope, isVendaUnitaria, rotuloComandaCervejaria } from '../types';
 import { useEvento } from '../contexts/EventoContext';
 import { getSocket } from '../lib/socket';
 import { Loading } from '../components/Loading';
@@ -221,7 +221,7 @@ export function ComandaDetailPage() {
       <div className="card">
         <div className="flex items-start justify-between gap-3">
           <h2 className="text-xl font-bold min-w-0 truncate leading-tight">
-            {comanda.tipo === 'AVULSA' ? 'Venda avulsa' : comanda.cliente.nome}
+            {rotuloComandaCervejaria(comanda, comanda.cliente)}
           </h2>
           <StatusBadge variant={comandaStatusVariant(comanda.status)} />
         </div>
@@ -299,7 +299,7 @@ export function ComandaDetailPage() {
       {/* Ações fixas — comanda aberta */}
       {isOpen && comanda.itens.length > 0 && (
         <MobileActionBar>
-          <button type="button" className="touch-btn-primary w-full" onClick={openPayment}>
+          <button type="button" className="touch-btn-primary w-full" onClick={openPayment} data-audit="comanda-fechar">
             Fechar Comanda · {formatCurrency(comanda.total)}
           </button>
           <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/comandas')}>
@@ -318,6 +318,7 @@ export function ComandaDetailPage() {
             className="touch-btn-danger w-full"
             onClick={() => cancelMutation.mutate()}
             disabled={cancelMutation.isPending}
+            data-audit="comanda-cancelar"
           >
             {cancelMutation.isPending ? 'Encerrando...' : 'Encerrar comanda'}
           </button>
@@ -339,7 +340,7 @@ export function ComandaDetailPage() {
             >
               {novaComandaMutation.isPending
                 ? 'Abrindo...'
-                : `Nova comanda · ${comanda.cliente.nome}`}
+                : `Nova comanda · ${rotuloComandaCervejaria(comanda, comanda.cliente)}`}
             </button>
           )}
           <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/comandas')}>
@@ -378,7 +379,7 @@ export function ComandaDetailPage() {
         {closedComanda && (
           <div className="space-y-4 text-center">
             <div className="text-4xl">✅</div>
-            <p className="text-xl font-bold">{closedComanda.cliente.nome}</p>
+            <p className="text-xl font-bold">{rotuloComandaCervejaria(closedComanda, closedComanda.cliente)}</p>
             <p className="text-3xl font-bold text-brand-600">{formatCurrency(closedComanda.total)}</p>
             <div className="space-y-1">
               {closedComanda.pagamentos.map((p) => (

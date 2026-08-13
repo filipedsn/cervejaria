@@ -1,0 +1,8 @@
+{
+  "size": 1,
+  "sort": [{ "@timestamp": "desc" }],
+  "query": {
+    "prefix": { "attributes.event.action": "transacao." }
+  },
+  "_source": true
+}

@@ -10,6 +10,7 @@ import { resolveClienteParaComanda, TelefoneConflitoError } from '../lib/cliente
 import { isTelefoneClienteAvulsoReservado } from '../lib/cliente-avulso.js';
 import { normalizePhone } from '../lib/phone.js';
 import { registrarTransacao } from '../lib/transacao-log.js';
+import { proximoNumeroComandaEvento } from '../lib/comanda-numero.js';
 import { isUniqueViolation } from '../lib/prisma-errors.js';
 import {
   addItemToComanda,
@@ -111,6 +112,7 @@ export async function comandasRoutes(app: FastifyInstance) {
         precoUnit,
         tapId: body.tapId ?? null,
       },
+      payload: updated,
     });
     emitToEvento(app.io, comanda.eventoId, { type: 'item:added', data: updated });
     if (isChope) {
@@ -154,6 +156,7 @@ export async function comandasRoutes(app: FastifyInstance) {
         quantidade: item.quantidade,
         precoUnit: toNumber(item.precoUnit),
       },
+      payload: { comanda: updated, itemRemovido: item },
     });
     const chopeAfetado = isBebidaChope(item.produto.tipo, item.produto.formato);
     emitToEvento(app.io, comanda.eventoId, { type: 'item:removed', data: updated });
@@ -201,6 +204,7 @@ export async function comandasRoutes(app: FastifyInstance) {
 
     const evento = await prisma.evento.findFirst({
       where: { id: body.eventoId, cervejariaId: user.cervejariaId, status: 'ABERTO' },
+      select: { id: true, comandasContadorDesde: true },
     });
     if (!evento) return reply.status(400).send({ error: 'Evento não encontrado ou fechado' });
 
@@ -262,12 +266,16 @@ export async function comandasRoutes(app: FastifyInstance) {
 
     let comanda;
     try {
-      comanda = await prisma.comanda.create({
-        data: {
-          eventoId: body.eventoId,
-          clienteId: cliente.id,
-        },
-        include: comandaDetailInclude,
+      comanda = await prisma.$transaction(async (tx) => {
+        const numero = await proximoNumeroComandaEvento(tx, body.eventoId, evento.comandasContadorDesde);
+        return tx.comanda.create({
+          data: {
+            eventoId: body.eventoId,
+            clienteId: cliente.id,
+            numero,
+          },
+          include: comandaDetailInclude,
+        });
       });
     } catch (err) {
       if (isUniqueViolation(err)) {
@@ -294,6 +302,7 @@ export async function comandasRoutes(app: FastifyInstance) {
         clienteNome: cliente.nome,
         clienteTelefone: cliente.telefone,
       },
+      payload: comanda,
     });
 
     emitToEvento(app.io, body.eventoId, { type: 'comanda:created', data: comanda });

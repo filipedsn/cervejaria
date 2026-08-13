@@ -1,0 +1,24 @@
+{
+  "name": "quiver-tap-slo-transacao-failure-rate-prd",
+  "tags": ["quiver-tap", "observability", "production", "slo", "business"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "5m" },
+  "enabled": true,
+  "params": {
+    "index": ["logs-audit*.otel-prd"],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"wildcard\":{\"attributes.event.action\":\"transacao.*\"}},{\"term\":{\"attributes.event.outcome\":\"failure\"}}]}}}",
+    "size": 20,
+    "timeWindowSize": 60,
+    "timeWindowUnit": "m",
+    "thresholdComparator": ">",
+    "threshold": [5],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery",
+    "excludeHitsFromPreviousRun": true
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

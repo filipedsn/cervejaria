@@ -1,8 +1,9 @@
-# Cria o banco cervejaria_dev e aplica migrations + seed de demonstracao.
+﻿# Cria o banco cervejaria_dev no container dedicado e aplica migrations + seed.
 
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $ProjectRoot
+. (Join-Path $PSScriptRoot 'db\_containers.ps1')
 
 $NodePath = 'C:\Program Files\nodejs'
 if (Test-Path $NodePath) { $env:Path = "$NodePath;$env:Path" }
@@ -24,22 +25,16 @@ if (-not (Test-Path $devEnv)) {
   }
 }
 
-Write-Host 'Verificando Postgres (Docker)...' -ForegroundColor Gray
-$container = docker ps --filter 'name=cervejaria-db' --format '{{.Names}}' 2>$null
-if (-not $container) {
-  Write-Host 'Container cervejaria-db nao esta rodando. Subindo...' -ForegroundColor Yellow
-  docker compose up -d postgres
+Write-Host 'Verificando Postgres dev (Docker)...' -ForegroundColor Gray
+$devRunning = docker ps --filter "name=^${DbDevContainer}$" --format '{{.Names}}' 2>$null
+if (-not $devRunning) {
+  Write-Host "Container $DbDevContainer nao esta rodando. Subindo..." -ForegroundColor Yellow
+  docker compose up -d postgres-dev
   Start-Sleep -Seconds 5
 }
 
-Write-Host 'Criando banco cervejaria_dev (se nao existir)...' -ForegroundColor Gray
-$exists = docker exec cervejaria-db psql -U cervejaria -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'cervejaria_dev'" 2>$null
-if ($exists -ne '1') {
-  docker exec cervejaria-db psql -U cervejaria -d postgres -c 'CREATE DATABASE cervejaria_dev;'
-  Write-Host 'Banco cervejaria_dev criado.' -ForegroundColor Green
-} else {
-  Write-Host 'Banco cervejaria_dev ja existe.' -ForegroundColor Green
-}
+Assert-DbDevContainer
+Write-Host "Banco dev no container $DbDevContainer (porta $DbDevPort)." -ForegroundColor Green
 
 Push-Location (Join-Path $ProjectRoot 'backend')
 
@@ -63,7 +58,8 @@ Pop-Location
 
 Write-Host ''
 Write-Host 'Desenvolvimento pronto:' -ForegroundColor Green
-Write-Host '  Banco: cervejaria_dev' -ForegroundColor Gray
+Write-Host "  Container: $DbDevContainer" -ForegroundColor Gray
+Write-Host "  Banco: $DbDevName (porta $DbDevPort)" -ForegroundColor Gray
 Write-Host '  Login demo: dono@demo.com / 123456' -ForegroundColor Gray
-Write-Host '  Inicie com: npm run restart' -ForegroundColor Gray
+Write-Host '  Inicie com: npm run dev:start' -ForegroundColor Gray
 Write-Host ''

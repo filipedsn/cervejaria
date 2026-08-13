@@ -10,8 +10,17 @@ import { AccountMenu, UserAvatarButton } from './AccountMenu';
 import { BackToEventosLink } from './BackToEventosLink';
 import { PortalQrButton } from './PortalQrButton';
 import { TrailerSwitcher } from './TrailerSwitcher';
-import { NAV_ITEMS, IconBell } from './NavIcons';
+import {
+  NAV_ITEMS,
+  NAV_ITEMS_QUIOSQUE,
+  QUIOSQUE_NAV_ITEMS,
+  getQuiosqueNavItems,
+  isQuiosqueNavActive,
+  IconBell,
+  IconCalendar,
+} from './NavIcons';
 import { usePedidoAlertSound } from '../hooks/usePedidoAlertSound';
+import { useQuiosqueContexto } from '../hooks/useQuiosqueContexto';
 
 function ChevronRightIcon({ className }: { className?: string }) {
   return (
@@ -119,12 +128,41 @@ export function Layout() {
   const navigate = useNavigate();
   const [accountOpen, setAccountOpen] = useState(false);
 
-  const navItems = NAV_ITEMS.filter((item) => !('donoOnly' in item && item.donoOnly) || isDono);
+  const { contexto: quiosque, isLoading: quiosqueLoading } = useQuiosqueContexto();
+  const inQuiosque = location.pathname.startsWith('/quiosque');
+
+  const navItemsComandasQuiosque = QUIOSQUE_NAV_ITEMS.filter((item) => item.path === '/quiosque/comandas');
+
+  const navItems = inQuiosque
+    ? quiosqueLoading
+      ? navItemsComandasQuiosque
+      : quiosque.ativo
+        ? [
+            ...getQuiosqueNavItems({
+              temCozinha: quiosque.temCozinha,
+              controlaEstoque: quiosque.controlaEstoque,
+              isDono,
+            }),
+            ...(!quiosque.exclusivo
+              ? [{ path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const }]
+              : []),
+          ]
+        : navItemsComandasQuiosque
+    : [
+        ...(quiosque.ativo && quiosque.exclusivo
+          ? []
+          : NAV_ITEMS.filter((item) => !('donoOnly' in item && item.donoOnly) || isDono)),
+        ...(quiosque.ativo ? NAV_ITEMS_QUIOSQUE : []),
+      ];
   const { alertEnabled, alertNeedsUnlock, pushStatus, wakeLockActive, togglePedidoAlert } =
     usePedidoAlertSound();
   const onEventsPage = location.pathname === '/eventos';
   const onTrailerPage = location.pathname === '/trailer';
+  // Evento e trailer sao da cervejaria: nao aparecem no quiosque, nem em
+  // empresa que so opera quiosque.
   const hideOperacionalChrome =
+    (quiosque.ativo && quiosque.exclusivo) ||
+    location.pathname.startsWith('/quiosque') ||
     onEventsPage ||
     onTrailerPage ||
     location.pathname === '/dashboard' ||
@@ -204,13 +242,16 @@ export function Layout() {
       </main>
 
       <nav
-        aria-label="Navegação principal"
+        aria-label={inQuiosque && (quiosqueLoading || quiosque.ativo) ? 'Navegação do quiosque' : 'Navegação principal'}
         className="app-bottom-nav safe-area-pb"
         style={{ height: 'calc(var(--bottom-nav-height) + env(safe-area-inset-bottom))' }}
       >
         <div className="flex items-stretch justify-around w-full max-w-6xl mx-auto h-[var(--bottom-nav-height)] px-1">
           {navItems.map((item) => {
-            const active = isNavActive(item.path, location.pathname, item.exact);
+            const active =
+              inQuiosque && (quiosqueLoading || quiosque.ativo)
+                ? isQuiosqueNavActive(item.path, location.pathname, item.exact)
+                : isNavActive(item.path, location.pathname, item.exact);
             const { Icon } = item;
             return (
               <Link

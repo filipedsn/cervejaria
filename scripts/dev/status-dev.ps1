@@ -20,6 +20,7 @@ if (Test-Path $paths.SupervisorPidFile) {
 
 if ($backendOk -and $frontendOk) {
   Write-Host ''
-  Write-Host "Abra: http://localhost:$($paths.FrontendPort)" -ForegroundColor Gray
+  Write-Host "Local:    http://localhost:$($paths.FrontendPort)" -ForegroundColor Gray
+  Write-Host "Internet: https://tapdev.quivercloud.com.br" -ForegroundColor Gray
 }
 Write-Host ''

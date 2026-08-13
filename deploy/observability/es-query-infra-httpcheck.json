@@ -1,0 +1,7 @@
+{
+  "size": 0,
+  "query": { "range": { "@timestamp": { "gte": "now-5m" } } },
+  "aggs": {
+    "by_metric": { "terms": { "field": "metrics.httpcheck.status", "size": 5 } }
+  }
+}

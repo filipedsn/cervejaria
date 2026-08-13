@@ -75,3 +75,17 @@ export function formatIntervalLabel(date: Date, timeZone = BRAZIL_TZ): string {
   const p = getZonedParts(date, timeZone);
   return `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
 }
+
+/** Data/hora legível em São Paulo (ex.: e-mails, audit humano). */
+export function formatBrazilDateTime(date = new Date(), timeZone = BRAZIL_TZ): string {
+  return date.toLocaleString('pt-BR', {
+    timeZone,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}

@@ -3,10 +3,14 @@
 
 services:
   edot-collector:
-    image: otel/opentelemetry-collector-contrib:0.120.0
+    image: otel/opentelemetry-collector-contrib:0.130.1
     container_name: quiver-edot-collector
     restart: unless-stopped
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    env_file:
+      - deploy/observability/.env.observability
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./deploy/observability/otel-collector-config.yml:/etc/otelcol-contrib/config.yaml:ro
     ports:

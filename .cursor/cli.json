@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "permissions": {
+    "deny": [
+      "Shell(npm run prod:deploy)",
+      "Shell(npm run prod:rollback)",
+      "Shell(npm run prod:restart)",
+      "Shell(npm run prod:stop)",
+      "Shell(npm run prod:ensure)",
+      "Shell(npm run prod:install)",
+      "Shell(npm run prod:uninstall)",
+      "Shell(npm run prod:materialize-runtime)",
+      "Shell(npm run db:migrate:prod)",
+      "Shell(npm run db:sync-prod-to-dev)",
+      "Shell(taskkill)",
+      "Write(deploy/prod-artifacts/**)",
+      "Write(deploy/prod-artifacts.previous/**)",
+      "Write(deploy/backups/**)",
+      "Write(deploy/runtime/support-agent-fixer.disabled)",
+      "Write(**/.env)",
+      "Write(**/.env.*)",
+      "Write(.cursor/hooks/**)",
+      "Write(.cursor/cli.json)",
+      "Write(backend/prisma/migrations/**)",
+      "Write(deploy/production.settings.psd1)"
+    ]
+  }
+}

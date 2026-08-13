@@ -1,0 +1,99 @@
+import { expect, test } from '@playwright/test';
+import path from 'node:path';
+import { apiLogin, apiRequest } from './helpers/api';
+import { CREDENTIALS } from './helpers/auth';
+
+const cozinhaAuth = path.join(process.cwd(), 'e2e/.auth/quiosque-cozinha.json');
+
+interface ProdutoQuiosque {
+  id: string;
+  nome: string;
+  exigePreparo: boolean;
+}
+
+interface ComandaCriada {
+  id: string;
+  pedidos?: Array<{ id: string; numero: number }>;
+}
+
+test.use({ storageState: cozinhaAuth });
+test.describe.configure({ mode: 'serial' });
+
+test.describe('Quiosque — fila da cozinha e cancelamento', () => {
+  const stamp = Date.now();
+  const identificador = `E2E-${stamp}`;
+  let donoToken = '';
+  let pedidoId = '';
+
+  test.beforeAll(async () => {
+    donoToken = await apiLogin(CREDENTIALS.quiosqueCozinha.email, CREDENTIALS.quiosqueCozinha.password);
+
+    const ponto = await apiRequest<{ id: string }>('POST', '/api/quiosque/pontos-venda', {
+      token: donoToken,
+      body: { nome: `E2E Cozinha ${stamp}` },
+    });
+    expect(ponto.status).toBe(201);
+
+    const caixa = await apiRequest('POST', '/api/quiosque/caixa/abrir', {
+      token: donoToken,
+      body: { pontoVendaId: ponto.data.id, trocoInicial: 100 },
+    });
+    expect(caixa.status).toBe(201);
+
+    const produtos = await apiRequest<ProdutoQuiosque[]>('GET', '/api/quiosque/produtos', { token: donoToken });
+    const preparo = produtos.data?.find((p) => p.exigePreparo);
+    expect(preparo, 'seed precisa de um produto que exige preparo').toBeTruthy();
+
+    const comanda = await apiRequest<ComandaCriada>('POST', '/api/quiosque/comandas', {
+      token: donoToken,
+      body: {
+        pontoVendaId: ponto.data.id,
+        tipo: 'MESA',
+        identificador,
+        itens: [{ produtoId: preparo!.id, quantidade: 2 }],
+      },
+    });
+    expect(comanda.status).toBe(201);
+    pedidoId = comanda.data.pedidos?.[0]?.id ?? '';
+    expect(pedidoId, 'item de preparo deve gerar pedido na cozinha').toBeTruthy();
+  });
+
+  test('pedido aparece na fila e avança para preparo', async ({ page }) => {
+    await page.goto('/quiosque/cozinha');
+
+    const card = page.locator('article').filter({ hasText: `Mesa ${identificador}` });
+    await expect(card).toBeVisible();
+    await expect(card.getByText('Na fila')).toBeVisible();
+
+    await card.getByRole('button', { name: 'Iniciar preparo' }).click();
+    await expect(card.getByText('Preparando')).toBeVisible();
+    await expect(card.getByRole('button', { name: 'Pronto' })).toBeVisible();
+  });
+
+  test('ATENDENTE não cancela pedido em preparo', async () => {
+    const slug = CREDENTIALS.quiosqueCozinha.email.replace('-dono@qa.test', '');
+    const atendenteToken = await apiLogin(`${slug}-a1@qa.test`, CREDENTIALS.quiosqueCozinha.password);
+
+    const r = await apiRequest('PATCH', `/api/quiosque/cozinha/${pedidoId}/status`, {
+      token: atendenteToken,
+      body: { status: 'CANCELADO' },
+    });
+    expect(r.status, 'cancelamento é exclusivo do DONO').toBe(403);
+  });
+
+  test('DONO cancela pedido em preparo e ele sai da fila', async ({ page }) => {
+    // A tela da cozinha não expõe cancelamento hoje: o DONO cancela pela API e
+    // a fila precisa refletir a saída do pedido.
+    const cancelar = await apiRequest('PATCH', `/api/quiosque/cozinha/${pedidoId}/status`, {
+      token: donoToken,
+      body: { status: 'CANCELADO' },
+    });
+    expect(cancelar.status).toBe(200);
+
+    await page.goto('/quiosque/cozinha');
+    await expect(page.locator('article').filter({ hasText: `Mesa ${identificador}` })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Entregues' }).click();
+    await expect(page.locator('article').filter({ hasText: `Mesa ${identificador}` })).toHaveCount(0);
+  });
+});

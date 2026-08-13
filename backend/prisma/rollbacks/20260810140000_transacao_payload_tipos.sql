@@ -1,0 +1,1 @@
+-- Rollback manual: enum values cannot be removed in PostgreSQL without recreating the type.

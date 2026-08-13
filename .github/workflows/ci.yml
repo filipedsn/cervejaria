@@ -32,6 +32,8 @@ jobs:
   backend-validate:
     name: backend-validate
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
     defaults:
       run:
         working-directory: backend
@@ -48,10 +50,71 @@ jobs:
       - run: npx prisma generate
       - run: npx prisma validate
 
+  backend-test:
+    name: backend-test
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run test:unit
+
+  support-agent-test:
+    name: support-agent-test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: support-agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: support-agent/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:unit
+
+  ops-panel-test:
+    name: ops-panel-test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ops-panel
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Sem npm ci: o gate de release nao depende das dependencias de runtime do painel,
+      # e rodar so os testes mantem o job em segundos.
+      - run: npm run test:unit
+
+  # continue-on-error permanece ate zerar os erros de tsc pre-existentes;
+  # ate la o job e informativo e quem barra PR quebrado e backend-test.
   backend-build:
     name: backend-build
     runs-on: ubuntu-latest
     continue-on-error: true
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
     defaults:
       run:
         working-directory: backend

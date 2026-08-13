@@ -13,8 +13,14 @@ const els = {
   terminalStatus: document.getElementById('terminalStatus'),
   terminalSection: document.getElementById('terminalSection'),
   lastUpdate: document.getElementById('lastUpdate'),
+  opsPanelSubtitle: document.getElementById('opsPanelSubtitle'),
+  opsPanelLiveBadge: document.getElementById('opsPanelLiveBadge'),
   opsToken: document.getElementById('opsToken'),
   tokenStatus: document.getElementById('tokenStatus'),
+  authPanel: document.getElementById('authPanel'),
+  authForm: document.getElementById('authForm'),
+  authTitle: document.getElementById('authTitle'),
+  authHint: document.getElementById('authHint'),
   linkPulls: document.getElementById('linkPulls'),
   linkActions: document.getElementById('linkActions'),
   linkBranches: document.getElementById('linkBranches'),
@@ -25,18 +31,44 @@ const els = {
   overviewDev: document.getElementById('overviewDev'),
   overviewCi: document.getElementById('overviewCi'),
   overviewInfra: document.getElementById('overviewInfra'),
+  overviewAgent: document.getElementById('overviewAgent'),
   overviewProdValue: document.getElementById('overviewProdValue'),
   overviewDevValue: document.getElementById('overviewDevValue'),
   overviewCiValue: document.getElementById('overviewCiValue'),
   overviewInfraValue: document.getElementById('overviewInfraValue'),
+  overviewAgentValue: document.getElementById('overviewAgentValue'),
+  agentHealthBadge: document.getElementById('agentHealthBadge'),
+  agentHealthScore: document.getElementById('agentHealthScore'),
+  agentHealthLevel: document.getElementById('agentHealthLevel'),
+  agentHealthChecks: document.getElementById('agentHealthChecks'),
+  agentMetrics: document.getElementById('agentMetrics'),
+  agentControls: document.getElementById('agentControls'),
   toast: document.getElementById('toast'),
+  releaseBadge: document.getElementById('releaseBadge'),
+  releaseMetrics: document.getElementById('releaseMetrics'),
+  releaseGate: document.getElementById('releaseGate'),
+  releaseCommits: document.getElementById('releaseCommits'),
+  releaseChecks: document.getElementById('releaseChecks'),
+  ackMigrations: document.getElementById('ackMigrations'),
+  overrideGate: document.getElementById('overrideGate'),
+  overrideReason: document.getElementById('overrideReason'),
+  overrideReasonField: document.getElementById('overrideReasonField'),
+  rollbackHint: document.getElementById('rollbackHint'),
 };
 
 let actionRunning = false;
 let toastTimer;
+let release = null;
+let localSession = false;
+let supportAgent = null;
+let agentPatchBusy = false;
 
 function getToken() {
   return sessionStorage.getItem(TOKEN_KEY) || '';
+}
+
+function canAct() {
+  return localSession || Boolean(getToken());
 }
 
 function showToast(message, kind = 'ok') {
@@ -49,6 +81,19 @@ function showToast(message, kind = 'ok') {
 }
 
 function updateTokenStatus() {
+  if (localSession) {
+    els.authPanel.classList.add('auth-panel--local');
+    els.authForm.hidden = true;
+    els.authTitle.textContent = 'Sessao local';
+    els.authHint.textContent = 'Painel em localhost — acoes autorizadas neste computador, sem colar token.';
+    els.tokenStatus.textContent = 'Localhost';
+    els.tokenStatus.className = 'token-status token-status--ok';
+    return;
+  }
+  els.authPanel.classList.remove('auth-panel--local');
+  els.authForm.hidden = false;
+  els.authTitle.textContent = 'Autenticacao';
+  els.authHint.textContent = 'Este acesso nao e localhost. Cole OPS_PANEL_TOKEN de ops-panel/.env para executar acoes.';
   const hasToken = Boolean(getToken());
   els.tokenStatus.textContent = hasToken ? 'Token salvo' : 'Token nao salvo';
   els.tokenStatus.className = `token-status token-status--${hasToken ? 'ok' : 'missing'}`;
@@ -117,8 +162,17 @@ function setTerminalStatus(text, kind = '') {
 }
 
 function setButtonsDisabled(disabled) {
-  for (const id of ['btnRestart', 'btnDeploy', 'btnDevStart', 'btnDevStop', 'btnBackupDb', 'btnSyncProdDev']) {
+  const ids = ['btnRestart', 'btnDevStart', 'btnDevStop', 'btnBackupDb', 'btnSyncProdDev', 'btnReleaseRefresh'];
+  for (const id of ids) {
     document.getElementById(id).disabled = disabled;
+  }
+  // Deploy e rollback nao voltam habilitados so porque a acao terminou: quem manda
+  // neles e o gate de release, reavaliado logo depois.
+  if (disabled) {
+    document.getElementById('btnDeploy').disabled = true;
+    document.getElementById('btnRollback').disabled = true;
+  } else {
+    applyReleaseToButtons();
   }
 }
 
@@ -127,6 +181,138 @@ function formatDate(iso) {
   return new Date(iso).toLocaleString('pt-BR', {
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   });
+}
+
+function agentOverviewState(health, processRunning) {
+  if (!health) return { text: '—', state: 'warn' };
+  if (!processRunning) return { text: 'Parado', state: 'warn' };
+  if (health.level === 'saudavel') return { text: `Saudavel ${health.score}`, state: 'ok' };
+  if (health.level === 'critico') return { text: `Critico ${health.score}`, state: 'bad' };
+  return { text: `Atencao ${health.score}`, state: 'warn' };
+}
+
+function healthCheckClass(status) {
+  if (status === 'ok') return 'agent-check--ok';
+  if (status === 'bad') return 'agent-check--bad';
+  if (status === 'info') return 'agent-check--info';
+  return 'agent-check--warn';
+}
+
+function buildAgentPatch(ctrl, checked) {
+  switch (ctrl.id) {
+    case 'monitoring': return { monitoring: checked };
+    case 'shadow': return { shadow: checked };
+    case 'dryRun': return { dryRun: checked };
+    case 'fixerEnabled': return { fixerEnabled: checked };
+    case 'killSwitch': return { killSwitch: ctrl.inverted ? !checked : checked };
+    case 'otlpMetrics': return { otlpMetrics: checked };
+    default: return {};
+  }
+}
+
+function renderSupportAgent(data) {
+  if (!data) return;
+  supportAgent = data;
+
+  const ov = agentOverviewState(data.health, data.process.running);
+  setOverviewCard(els.overviewAgent, ov.state, ov.text);
+
+  const levelCls =
+    data.health.level === 'saudavel' ? 'chip--ok'
+      : data.health.level === 'critico' ? 'chip--bad' : 'chip--warn';
+  els.agentHealthBadge.className = `chip ${levelCls}`;
+  els.agentHealthBadge.textContent = data.health.label;
+
+  els.agentHealthScore.textContent = String(data.health.score);
+  els.agentHealthLevel.textContent = data.health.label;
+  els.agentHealthLevel.className = `agent-health-level agent-health-level--${data.health.level}`;
+
+  els.agentHealthChecks.innerHTML = data.health.checks.map((c) =>
+    `<div class="agent-check ${healthCheckClass(c.status)}">` +
+    `<span class="agent-check-dot" aria-hidden="true"></span>` +
+    `<span>${escapeHtml(c.message)}</span></div>`,
+  ).join('');
+
+  const st = data.state || {};
+  els.agentMetrics.innerHTML = [
+    row('Processo', data.process.running ? `No ar (PID ${data.process.pid})` : pill(false, 'Parado', 'Parado')),
+    row('Ultimo poll', st.lastPollIso ? formatDate(st.lastPollIso) : '—'),
+    row('Alertas vistos', st.processedCount ?? 0),
+    row('Fingerprints', st.fingerprintCount ?? 0),
+    row('PRs hoje', st.prsToday ?? 0),
+    row('Execucoes CLI hoje', st.runsToday ?? 0),
+    row('Fixer efetivo', data.config.fixerEffective.enabled ? pill(true, 'Ligado') : data.config.fixerEffective.reason),
+    row('Modo', data.config.shadow ? 'Sombra' : 'Completo'),
+  ].join('');
+
+  els.agentControls.innerHTML = '';
+  for (const ctrl of data.controls) {
+    const wrap = document.createElement('div');
+    wrap.className = `agent-control${ctrl.disabled ? ' agent-control--disabled' : ''}`;
+
+    const label = document.createElement('label');
+    label.className = 'switch';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = Boolean(ctrl.value);
+    input.disabled = ctrl.disabled || agentPatchBusy;
+    input.dataset.controlId = ctrl.id;
+    input.addEventListener('change', () => patchAgentControl(ctrl, input.checked, input));
+
+    const slider = document.createElement('span');
+    slider.className = 'switch-slider';
+    label.appendChild(input);
+    label.appendChild(slider);
+
+    const text = document.createElement('div');
+    text.className = 'agent-control-text';
+    text.innerHTML = `<strong>${escapeHtml(ctrl.label)}</strong>` +
+      `<p>${escapeHtml(ctrl.description)}</p>` +
+      (ctrl.disabledReason ? `<span class="agent-control-note">${escapeHtml(ctrl.disabledReason)}</span>` : '') +
+      (ctrl.engaged && ctrl.reason ? `<span class="agent-control-note">Motivo: ${escapeHtml(ctrl.reason)}</span>` : '');
+
+    wrap.appendChild(label);
+    wrap.appendChild(text);
+    els.agentControls.appendChild(wrap);
+  }
+}
+
+async function refreshSupportAgent() {
+  try {
+    const data = await fetchJson('/api/support-agent');
+    renderSupportAgent(data);
+  } catch (err) {
+    setOverviewCard(els.overviewAgent, 'bad', 'Erro');
+    els.agentHealthBadge.textContent = 'Erro';
+    els.agentHealthBadge.className = 'chip chip--bad';
+    els.agentHealthChecks.innerHTML =
+      `<div class="agent-check agent-check--bad"><span class="agent-check-dot"></span>` +
+      `<span>${escapeHtml(err.message || 'Falha ao carregar agente')}</span></div>`;
+  }
+}
+
+async function patchAgentControl(ctrl, checked, inputEl) {
+  if (agentPatchBusy) return;
+  agentPatchBusy = true;
+  inputEl.disabled = true;
+
+  try {
+    const patch = buildAgentPatch(ctrl, checked);
+    const res = await fetchJson('/api/support-agent', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    renderSupportAgent(res.agent);
+    const note = res.notes?.length ? res.notes.join('; ') : 'Atualizado';
+    showToast(note);
+  } catch (err) {
+    inputEl.checked = !checked;
+    showToast(err.message || 'Falha ao atualizar parametro.', 'bad');
+  } finally {
+    agentPatchBusy = false;
+    inputEl.disabled = ctrl.disabled;
+  }
 }
 
 function formatPullList(pulls) {
@@ -187,6 +373,153 @@ function formatCi(gh) {
     overview: ok ? 'CI passou' : bad ? 'CI falhou' : text,
     overviewState: ok ? 'ok' : bad ? 'bad' : 'warn',
   };
+}
+
+function escapeHtml(text) {
+  return String(text ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function releaseItem(kind, icon, text) {
+  return `<div class="release-item release-item--${kind}"><span class="release-item-icon" aria-hidden="true">${icon}</span><span>${text}</span></div>`;
+}
+
+function checkPill(check) {
+  const verdict = check.verdict;
+  const cls = verdict === 'sucesso' ? 'pill--ok'
+    : verdict === 'falhou' ? 'pill--bad'
+      : verdict === 'rodando' ? 'pill--warn' : 'pill--muted';
+  const label = verdict === 'sucesso' ? 'passou'
+    : verdict === 'falhou' ? `falhou (${check.conclusion})`
+      : verdict === 'rodando' ? 'rodando' : verdict;
+  const pillHtml = `<span class="pill ${cls}"><span class="pill-dot"></span>${label}</span>`;
+  return check.url ? `<a href="${check.url}" target="_blank" rel="noopener">${pillHtml}</a>` : pillHtml;
+}
+
+function verdictOf(check) {
+  if (!check) return 'ausente';
+  if (check.status !== 'completed') return 'rodando';
+  if (check.conclusion === 'success') return 'sucesso';
+  if (check.conclusion === 'skipped' || check.conclusion === 'neutral') return 'ignorado';
+  return 'falhou';
+}
+
+/** Dos dois veredictos calculados pelo servidor, escolhe o que vale agora na tela. */
+function effectiveGate() {
+  if (!release) return null;
+  return els.ackMigrations.checked ? release.gateWithMigrationsAck || release.gate : release.gate;
+}
+
+function applyReleaseToButtons() {
+  const deploy = document.getElementById('btnDeploy');
+  const rollback = document.getElementById('btnRollback');
+  if (!release) {
+    deploy.disabled = true;
+    rollback.disabled = true;
+    return;
+  }
+
+  const gate = effectiveGate();
+  const canDeploy = els.overrideGate.checked
+    ? Boolean(release.overridable) && Boolean(els.overrideReason.value.trim())
+    : Boolean(gate?.allowed);
+
+  deploy.disabled = actionRunning || !canDeploy;
+  rollback.disabled = actionRunning || !release.rollback?.available;
+}
+
+function renderRelease(data) {
+  release = data;
+  const gate = effectiveGate() || {};
+  const head = data.head || {};
+  const migrations = data.migrationsChanged || [];
+
+  const badgeState = !data.gitAvailable ? 'bad' : gate.allowed ? 'ok' : 'warn';
+  els.releaseBadge.className = `chip chip--${badgeState}`;
+  els.releaseBadge.textContent = !data.gitAvailable
+    ? 'Sem git'
+    : gate.allowed ? 'Liberado' : `${gate.blockers.length} impedimento(s)`;
+
+  const publicado = data.deployed?.gitSha
+    ? `<code>${escapeHtml(data.deployed.gitSha)}</code> <span class="status-muted">${formatDate(data.deployed.deployedAt)}</span>`
+    : '<span class="status-muted">Nenhum manifest em prod-artifacts</span>';
+
+  const local = head.sha
+    ? `<code>${escapeHtml(head.sha.slice(0, 7))}</code> ${escapeHtml((head.message || '').slice(0, 52))}<br>` +
+      `<span class="status-muted">${escapeHtml(head.branch || '?')} · ${escapeHtml(head.author || '')}</span>`
+    : '<span class="status-muted">—</span>';
+
+  els.releaseMetrics.innerHTML = [
+    row('Publicado em prod', publicado),
+    row('Commit local (HEAD)', local),
+    row('origin/main', data.originMain?.sha
+      ? `<code>${escapeHtml(data.originMain.sha.slice(0, 7))}</code>${data.behindOriginMain ? ` <span class="status-warn">HEAD esta ${data.behindOriginMain} atras</span>` : ''}`
+      : '<span class="status-bad">nao lido</span>'),
+    row('Working tree', data.workingTreeDirty
+      ? `<span class="status-bad">${data.dirtyCount} arquivo(s) nao commitado(s)</span>`
+      : '<span class="status-ok">limpa</span>'),
+    row('Migrations no deploy', migrations.length
+      ? `<span class="status-warn">${migrations.length}</span>`
+      : '<span class="status-muted">nenhuma</span>'),
+    row('Rollback disponivel', data.rollback?.available
+      ? `<code>${escapeHtml(data.rollback.gitSha || '?')}</code> <span class="status-muted">${formatDate(data.rollback.savedAt)}</span>`
+      : '<span class="status-muted">nenhuma release anterior</span>'),
+  ].join('');
+
+  const items = [];
+  for (const blocker of gate.blockers || []) {
+    items.push(releaseItem('bad', '⛔', escapeHtml(blocker.message)));
+  }
+  for (const warning of gate.warnings || []) {
+    items.push(releaseItem('warn', '⚠', escapeHtml(warning)));
+  }
+  if (!items.length) {
+    items.push(releaseItem('ok', '✓', 'Commit esta em origin/main, working tree limpa e CI verde. Liberado para publicar.'));
+  }
+  els.releaseGate.innerHTML = items.join('');
+
+  const commits = data.pending || [];
+  els.releaseCommits.innerHTML = commits.length
+    ? commits.map((c) => {
+        const pr = c.pr
+          ? `<a href="${c.pr.url}" target="_blank" rel="noopener">#${c.pr.number}</a>`
+          : '<span class="status-muted">sem PR</span>';
+        const agente = c.fromAgent ? '<span class="release-agent">agente</span>' : '';
+        return row(
+          `<code>${escapeHtml(c.shortSha)}</code> ${escapeHtml((c.message || '').slice(0, 46))}${agente}`,
+          `${pr} <span class="status-muted">${escapeHtml(c.author || '')}</span>`,
+        );
+      }).join('')
+    : `<div class="metric-row"><span class="status-muted">${data.pendingError ? escapeHtml(data.pendingError) : 'Nada novo em relacao ao que esta publicado.'}</span></div>`;
+
+  const required = data.requiredChecks || [];
+  els.releaseChecks.innerHTML = data.checksConfigured === false
+    ? '<div class="metric-row"><span class="status-muted">GITHUB_TOKEN nao configurado: sem verificacao de CI.</span></div>'
+    : required.map((name) => {
+        const check = (data.checks || []).find((c) => c.name === name);
+        return row(`<code>${escapeHtml(name)}</code>`, checkPill({ ...(check || {}), verdict: verdictOf(check) }));
+      }).join('');
+
+  els.rollbackHint.innerHTML = data.rollback?.available
+    ? `Rollback volta para <code>${escapeHtml(data.rollback.gitSha || '?')}</code> (${escapeHtml((data.rollback.parts || []).join(', ') || 'artefatos salvos')}). <strong>Nao reverte banco.</strong>`
+    : 'Rollback fica disponivel depois do primeiro deploy que preserva <code>prod-artifacts.previous</code>.';
+
+  applyReleaseToButtons();
+}
+
+async function refreshRelease() {
+  els.releaseBadge.className = 'chip chip--neutral';
+  els.releaseBadge.textContent = 'Verificando…';
+  try {
+    renderRelease(await fetchJson('/api/release'));
+  } catch (err) {
+    els.releaseBadge.className = 'chip chip--bad';
+    els.releaseBadge.textContent = 'Erro';
+    els.releaseGate.innerHTML = releaseItem('bad', '⛔', escapeHtml(err.message || 'Falha ao verificar a release.'));
+    release = null;
+    applyReleaseToButtons();
+  }
 }
 
 async function refreshStatus() {
@@ -304,8 +637,8 @@ async function selectLogTab(name, description) {
 }
 
 async function postActionStream(url, body, label) {
-  if (!getToken()) {
-    showToast('Salve o token antes de executar acoes.', 'bad');
+  if (!canAct()) {
+    showToast('Acesso remoto exige o token de ops-panel/.env.', 'bad');
     els.opsToken.focus();
     return;
   }
@@ -323,8 +656,9 @@ async function postActionStream(url, body, label) {
   try {
     const headers = {
       'Content-Type': 'application/json',
-      'X-Ops-Token': getToken(),
     };
+    const token = getToken();
+    if (token) headers['X-Ops-Token'] = token;
     const res = await fetch(url, {
       method: 'POST',
       headers,
@@ -334,7 +668,10 @@ async function postActionStream(url, body, label) {
     const contentType = res.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
       const err = await res.json();
-      throw new Error(err.error || `HTTP ${res.status}`);
+      const detalhe = err.blockers?.length
+        ? `\n\n${err.blockers.map((b) => `- ${b.message}`).join('\n')}`
+        : '';
+      throw new Error(`${err.error || `HTTP ${res.status}`}${detalhe}`);
     }
 
     if (!res.ok) {
@@ -364,6 +701,7 @@ async function postActionStream(url, body, label) {
     }
 
     await refreshStatus();
+    await refreshRelease();
     const active = document.querySelector('.log-tabs button.active');
     if (active) await selectLogTab(active.dataset.log, els.logDescription.textContent);
   } catch (err) {
@@ -377,17 +715,52 @@ async function postActionStream(url, body, label) {
 }
 
 document.getElementById('btnSaveToken').addEventListener('click', saveToken);
-document.getElementById('btnRefresh').addEventListener('click', () => refreshStatus().catch(showError));
+document.getElementById('btnRefresh').addEventListener('click', () => {
+  refreshStatus().catch(showError);
+  refreshRelease();
+  refreshSupportAgent();
+});
 
 document.getElementById('btnRestart').addEventListener('click', () => {
   if (!confirm('Reiniciar a API de producao (:3001)?')) return;
   postActionStream('/api/prod/restart', {}, 'Reiniciar API prod');
 });
 
+document.getElementById('btnReleaseRefresh').addEventListener('click', () => {
+  refreshRelease();
+});
+
+els.ackMigrations.addEventListener('change', () => {
+  if (release) renderRelease(release);
+});
+els.overrideReason.addEventListener('input', applyReleaseToButtons);
+els.overrideGate.addEventListener('change', () => {
+  els.overrideReasonField.hidden = !els.overrideGate.checked;
+  applyReleaseToButtons();
+});
+
 document.getElementById('btnDeploy').addEventListener('click', () => {
-  const confirmText = prompt('Digite DEPLOY para confirmar o deploy em producao:');
-  if (confirmText !== 'DEPLOY') return;
-  postActionStream('/api/prod/deploy', { confirm: 'DEPLOY' }, 'Deploy producao');
+  const override = els.overrideGate.checked;
+  const alvo = release?.head?.sha ? release.head.sha.slice(0, 7) : '?';
+  const aviso = override
+    ? `Você está IGNORANDO o gate de release e publicando ${alvo}.\n\nDigite DEPLOY para confirmar:`
+    : `Publicar o commit ${alvo} em producao?\n\nDigite DEPLOY para confirmar:`;
+  if (prompt(aviso) !== 'DEPLOY') return;
+
+  postActionStream('/api/prod/deploy', {
+    confirm: 'DEPLOY',
+    acknowledgeMigrations: els.ackMigrations.checked,
+    override,
+    overrideConfirm: override ? 'DEPLOY-SEM-GATE' : undefined,
+    overrideReason: override ? els.overrideReason.value.trim() : undefined,
+  }, 'Deploy producao');
+});
+
+document.getElementById('btnRollback').addEventListener('click', () => {
+  const alvo = release?.rollback?.gitSha || 'release anterior';
+  const aviso = `Voltar producao para ${alvo}?\n\nO banco NAO e revertido: migrations aplicadas continuam aplicadas.\n\nDigite ROLLBACK para confirmar:`;
+  if (prompt(aviso) !== 'ROLLBACK') return;
+  postActionStream('/api/prod/rollback', { confirm: 'ROLLBACK' }, 'Rollback producao');
 });
 
 document.getElementById('btnDevStart').addEventListener('click', () => {
@@ -399,8 +772,8 @@ document.getElementById('btnDevStop').addEventListener('click', () => {
 });
 
 document.getElementById('btnBackupDb').addEventListener('click', async () => {
-  if (!getToken()) {
-    showToast('Salve o token antes de executar acoes.', 'bad');
+  if (!canAct()) {
+    showToast('Acesso remoto exige o token de ops-panel/.env.', 'bad');
     els.opsToken.focus();
     return;
   }
@@ -441,8 +814,67 @@ function showError(err) {
   showToast(err.message || 'Erro ao carregar dados.', 'bad');
 }
 
+function updateOpsPanelMeta(meta) {
+  if (!meta) return;
+  els.opsPanelSubtitle.textContent = `Painel local · ${meta.url}`;
+  els.opsPanelLiveBadge.textContent = `Online · PID ${meta.pid}`;
+  els.opsPanelLiveBadge.className = 'ops-live-badge ops-live-badge--ok';
+  els.opsPanelLiveBadge.title = `Iniciado em ${formatDate(meta.startedAt)}`;
+}
+
+async function loadOpsPanelMeta() {
+  try {
+    const meta = await fetchJson('/api/meta');
+    updateOpsPanelMeta(meta);
+    return meta;
+  } catch {
+    els.opsPanelLiveBadge.textContent = 'Meta indisponivel';
+    els.opsPanelLiveBadge.className = 'ops-live-badge ops-live-badge--warn';
+    return null;
+  }
+}
+
+async function initSession() {
+  const host = window.location.hostname;
+  const browserLocal = host === '127.0.0.1' || host === 'localhost' || host === '[::1]';
+
+  try {
+    const res = await fetch('/api/session');
+    if (res.ok) {
+      const session = await res.json();
+      localSession = Boolean(session.trusted);
+      updateTokenStatus();
+      return;
+    }
+    if (res.status === 404 && browserLocal) {
+      els.authTitle.textContent = 'Instancia antiga';
+      els.authHint.innerHTML =
+        'Esta pagina nao e a versao atual do ops-panel (falta <code>/api/session</code>). ' +
+        'Rode <code>npm run ops:status</code> no terminal — ele mostra a URL certa e o que fazer.';
+      els.authForm.hidden = true;
+      els.tokenStatus.textContent = 'Use ops:status';
+      els.tokenStatus.className = 'token-status token-status--missing';
+      els.opsPanelLiveBadge.textContent = 'Versao antiga';
+      els.opsPanelLiveBadge.className = 'ops-live-badge ops-live-badge--warn';
+      return;
+    }
+  } catch {
+    // segue para fallback
+  }
+
+  localSession = browserLocal;
+  updateTokenStatus();
+}
+
 els.opsToken.value = getToken();
-updateTokenStatus();
-refreshStatus().catch(showError);
-loadLogCatalog().catch(showError);
+initSession()
+  .then(() => loadOpsPanelMeta())
+  .then(() => {
+    refreshStatus().catch(showError);
+    loadLogCatalog().catch(showError);
+    refreshRelease();
+    refreshSupportAgent();
+  })
+  .catch(showError);
 setInterval(() => refreshStatus().catch(() => {}), 30_000);
+setInterval(() => refreshSupportAgent(), 60_000);

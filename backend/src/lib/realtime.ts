@@ -19,6 +19,9 @@ export type RealtimeEvent =
   | { type: 'pedido:confirmed'; data: unknown }
   | { type: 'pedido:recusado'; data: unknown }
   | { type: 'pedido:cancelado'; data: unknown }
+  | { type: 'quiosque:pedido-novo'; data: unknown }
+  | { type: 'quiosque:pedido-atualizado'; data: unknown }
+  | { type: 'quiosque:comanda-atualizada'; data: { comandaId: string } }
   | { type: 'portal:session-expired'; data: { eventoId: string; reason: string } };
 
 export function emitToCervejaria(

@@ -5,6 +5,8 @@ build/
 .env.local
 .env.development
 .env.production
+deploy/observability/.env.connectors
+deploy/observability/.env.observability
 *.log
 .DS_Store
 Thumbs.db
@@ -28,6 +30,11 @@ reports/qa-report.html
 reports/browser/
 reports/cliente-teste-prod-diagnostico.md
 
+# Playwright (gerados)
+e2e/.auth/
+test-results/
+playwright-report/
+
 # Uploads locais por ambiente
 backend/uploads-dev/
 backend/uploads-prod/
@@ -35,6 +42,10 @@ backend/uploads-prod/
 # Ops panel (local até decisão de infra)
 ops-panel/node_modules/
 ops-panel/.env
+
+# Agente de suporte autônomo (local)
+support-agent/node_modules/
+support-agent/.env
 
 # Dumps SQL locais
 deploy/backups/*.sql
@@ -45,8 +56,13 @@ deploy/backups-external/
 deploy/prod-artifacts/*
 !deploy/prod-artifacts/.gitkeep
 
+# Release anterior preservada para rollback (gerada por publish-artifacts.ps1)
+deploy/prod-artifacts.previous/
+deploy/prod-artifacts.previous.swap/
+
 # Scripts de diagnostico/temporarios (nao versionar)
 backend/scripts/diag-*.mjs
 backend/scripts/browser-test-*.mjs
+backend/scripts/tmp-*
 backend/qa/validate-jul21-session.ts
 backend/reports/

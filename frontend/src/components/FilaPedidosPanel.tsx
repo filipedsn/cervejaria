@@ -27,7 +27,7 @@ function pedidoNotFoundError(err: unknown): boolean {
 
 export function FilaPedidosPanel() {
   const { evento } = useEvento();
-  const { cervejaria } = useAuth();
+  const { cervejaria, isAuthenticated, isLoading } = useAuth();
   const queryClient = useQueryClient();
   const [recusarId, setRecusarId] = useState<string | null>(null);
   const [motivo, setMotivo] = useState('');
@@ -50,6 +50,7 @@ export function FilaPedidosPanel() {
     queryFn: () => api.get<PedidoCliente[]>(`/api/pedidos/eventos/${evento!.id}/pedidos?status=PENDENTE`),
     enabled: !!evento,
     refetchInterval: (query) => {
+      if (!isAuthenticated || isLoading) return false;
       const list = query.state.data ?? [];
       return list.length > 0 ? 3000 : false;
     },
@@ -167,7 +168,7 @@ export function FilaPedidosPanel() {
           </div>
           <div className="flex items-baseline gap-2">
             <PedidoElapsedTimer
-              createdAt={pedido.createdAt}
+              startedAt={pedido.createdAt}
               className="text-2xl font-mono font-bold tabular-nums text-orange leading-none"
             />
             <span className="text-xs text-ink-muted">

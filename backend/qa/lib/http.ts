@@ -10,6 +10,8 @@ export interface ApiResponse<T = unknown> {
 export interface PortalSessaoResult {
   status: number;
   cookie: string | null;
+  /** Set-Cookie cru — necessário para inspecionar Max-Age, HttpOnly e SameSite. */
+  setCookies: string[];
   comandaId: string | null;
   clienteId: string | null;
   durationMs: number;
@@ -42,6 +44,30 @@ export function parseClienteCookie(setCookieHeaders: string | string[] | null): 
   return null;
 }
 
+export interface MultipartFile {
+  fieldname: string;
+  filename: string;
+  contentType: string;
+  content: Buffer | Uint8Array;
+}
+
+export interface MultipartPayload {
+  fields?: Record<string, string | number | boolean>;
+  files?: MultipartFile[];
+}
+
+function buildFormData(payload: MultipartPayload): FormData {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(payload.fields ?? {})) {
+    form.append(key, String(value));
+  }
+  for (const file of payload.files ?? []) {
+    const bytes = new Uint8Array(file.content);
+    form.append(file.fieldname, new Blob([bytes], { type: file.contentType }), file.filename);
+  }
+  return form;
+}
+
 export async function api<T = unknown>(
   method: string,
   path: string,
@@ -50,6 +76,8 @@ export async function api<T = unknown>(
     rawToken?: string;
     cookie?: string;
     body?: unknown;
+    /** Envia como multipart/form-data — o boundary fica por conta do fetch. */
+    multipart?: MultipartPayload;
     headers?: Record<string, string>;
   } = {},
 ): Promise<ApiResponse<T>> {
@@ -66,7 +94,11 @@ export async function api<T = unknown>(
     const res = await fetch(`${API_BASE}${path}`, {
       method,
       headers,
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      body: opts.multipart
+        ? buildFormData(opts.multipart)
+        : opts.body !== undefined
+          ? JSON.stringify(opts.body)
+          : undefined,
     });
     status = res.status;
     raw = await res.text();
@@ -88,6 +120,28 @@ export async function api<T = unknown>(
   return { status, data, durationMs: performance.now() - start, raw };
 }
 
+/**
+ * Corpo em bytes crus. `Response.text()` remove o BOM UTF-8 por especificação,
+ * então testar a presença do BOM exige ler o buffer.
+ */
+export async function apiBytes(
+  method: string,
+  path: string,
+  opts: { token?: string } = {},
+): Promise<{ status: number; bytes: Buffer; text: string; contentType: string | null }> {
+  const headers: Record<string, string> = {};
+  if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
+
+  const res = await fetch(`${API_BASE}${path}`, { method, headers });
+  const bytes = Buffer.from(await res.arrayBuffer());
+  return {
+    status: res.status,
+    bytes,
+    text: bytes.toString('utf-8'),
+    contentType: res.headers.get('content-type'),
+  };
+}
+
 export async function portalSessao(
   slug: string,
   trailerId: string,
@@ -97,6 +151,7 @@ export async function portalSessao(
   let status = 0;
   let raw = '';
   let cookie: string | null = null;
+  let setCookieHeaders: string[] = [];
   let comandaId: string | null = null;
   let clienteId: string | null = null;
 
@@ -112,6 +167,7 @@ export async function portalSessao(
       typeof res.headers.getSetCookie === 'function'
         ? res.headers.getSetCookie()
         : [res.headers.get('set-cookie')].filter((v): v is string => !!v);
+    setCookieHeaders = setCookies;
     cookie = parseClienteCookie(setCookies.length ? setCookies : null);
 
     if (raw) {
@@ -129,6 +185,7 @@ export async function portalSessao(
   return {
     status,
     cookie,
+    setCookies: setCookieHeaders,
     comandaId,
     clienteId,
     durationMs: performance.now() - start,

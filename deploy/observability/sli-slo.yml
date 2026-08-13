@@ -1,0 +1,89 @@
+# Quiver Tap — SLI / SLO (fonte da verdade)
+# Implementação: alertas Kibana (burn rate simplificado) + npm run obs:report-slo
+
+version: 1
+updated: 2026-08-11
+
+environments:
+  production:
+    namespace: prd
+    public_url: https://tap.quivercloud.com.br
+    origin_ready: http://127.0.0.1:3001/api/ready
+
+slis:
+  - id: api_availability_public
+    name: Disponibilidade API (público)
+    description: HTTPS /api/ready via DNS + Cloudflare + tunnel + origin
+    formula: httpcheck public ready status == 200 / total checks
+    slo_target: 99.5%
+    window: 30d
+    source:
+      index: metrics-httpcheckreceiver.otel-infra*
+      filter: attributes.http.url:*tap.quivercloud.com.br/api/ready*
+    alert: quiver-tap-slo-availability-burn-prd
+
+  - id: api_availability_origin
+    name: Disponibilidade API (origin)
+    description: localhost :3001/api/ready
+    formula: httpcheck origin ready status == 200 / total checks
+    slo_target: 99.9%
+    window: 30d
+    source:
+      index: metrics-httpcheckreceiver.otel-infra*
+      filter: attributes.http.url:*3001/api/ready*
+    alert: quiver-tap-api-ready-down-prd
+
+  - id: api_latency_p95
+    name: Latência API
+    formula: p95 http.server.duration < 500ms
+    slo_target: 95% das requisições
+    window: 30d
+    source:
+      index: metrics-generic.otel-prd*
+      metric: metrics.http.server.duration
+
+  - id: http_error_rate
+    name: Taxa de erro HTTP
+    formula: audit outcome=failure com status >= 500 / mutações
+    slo_target: < 1%
+    window: 15m
+    source:
+      index: logs-audit*.otel-prd
+    alert: quiver-tap-5xx-rate-prd
+
+  - id: transacao_success
+    name: Sucesso transacional
+    formula: quiver.transacao.total - quiver.transacao.failure / quiver.transacao.total
+    slo_target: "> 99%"
+    window: 1h
+    source:
+      index: metrics-generic.otel-prd*
+      metrics:
+        - quiver.transacao.total
+        - quiver.transacao.failure
+    alert: quiver-tap-slo-transacao-failure-rate-prd
+
+  - id: cozinha_tempo_preparo
+    name: Tempo cozinha
+    formula: p95 quiver.cozinha.tempo_preparo_ms < 15min
+    slo_target: 90%
+    window: 24h
+    source:
+      index: metrics-generic.otel-prd*
+      metric: metrics.quiver.cozinha.tempo_preparo_ms
+    alert: quiver-tap-slo-cozinha-slow-prd
+
+  - id: caixa_divergencia
+    name: Divergência caixa
+    formula: quiver.caixa.divergencia_centavos == 0 em fechamentos
+    slo_target: 100%
+    window: 30d
+    source:
+      index: metrics-generic.otel-prd*
+      metric: metrics.quiver.caixa.divergencia_centavos
+
+error_budget:
+  report_script: scripts/observability/report-slo.ps1
+  notes: >
+    Kibana Basic não possui app SLO nativa. O script report-slo.ps1 calcula
+    disponibilidade e falhas transacionais a partir do Elasticsearch.

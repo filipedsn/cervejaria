@@ -1,5 +1,4 @@
-# Copia dados de producao (cervejaria) para desenvolvimento (cervejaria_dev).
-# Sobrescreve completamente o banco dev.
+﻿# Copia dados de producao (cervejaria-db) para desenvolvimento (cervejaria-db-dev).
 
 param(
   [switch]$Confirmed
@@ -7,17 +6,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
-
-function Assert-PostgresContainer {
-  $container = docker ps --filter 'name=cervejaria-db' --format '{{.Names}}' 2>$null
-  if (-not $container) {
-    throw 'Container cervejaria-db nao esta rodando. Execute: npm run db:up'
-  }
-}
+. (Join-Path (Split-Path $PSScriptRoot -Parent) 'db\_containers.ps1')
 
 Write-Host '=== Copiar producao -> desenvolvimento ===' -ForegroundColor Cyan
 Write-Host 'ATENCAO: todos os dados de cervejaria_dev serao substituidos.' -ForegroundColor Yellow
-Assert-PostgresContainer
+Assert-DbContainers
 
 $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
@@ -35,43 +28,40 @@ $dumpFile = Join-Path $backupDir "sync-prod-to-dev-$timestamp.sql"
 Write-Host ''
 Write-Host '2/5 Gerando dump de producao (cervejaria)...' -ForegroundColor Yellow
 $containerDump = "/tmp/sync-prod-to-dev-$timestamp.sql"
-docker exec cervejaria-db pg_dump -U cervejaria -d cervejaria --no-owner --no-acl -f $containerDump
+docker exec $DbProdContainer pg_dump -U cervejaria -d cervejaria --no-owner --no-acl -f $containerDump
 if ($LASTEXITCODE -ne 0) { throw 'pg_dump falhou.' }
-docker cp "cervejaria-db:$containerDump" $dumpFile
+docker cp "${DbProdContainer}:$containerDump" $dumpFile
 if ($LASTEXITCODE -ne 0) { throw "Falha ao copiar dump para $dumpFile" }
 
 $sizeKb = [math]::Round((Get-Item $dumpFile).Length / 1024, 1)
 Write-Host "Dump salvo: $dumpFile ($sizeKb KB)" -ForegroundColor Gray
 
 Write-Host ''
-Write-Host '3/5 Preparando banco cervejaria_dev...' -ForegroundColor Yellow
-$exists = docker exec cervejaria-db psql -U cervejaria -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'cervejaria_dev'" 2>$null
-if (-not ($exists -match '1')) {
-  Write-Host 'Criando banco cervejaria_dev...' -ForegroundColor Gray
-  docker exec cervejaria-db psql -U cervejaria -d postgres -c 'CREATE DATABASE cervejaria_dev OWNER cervejaria;' | Out-Null
-} else {
-  docker exec cervejaria-db psql -U cervejaria -d postgres -c `
-    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'cervejaria_dev' AND pid <> pg_backend_pid();" | Out-Null
-  docker exec cervejaria-db psql -U cervejaria -d cervejaria_dev -c `
-    'DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO cervejaria; GRANT ALL ON SCHEMA public TO public;' | Out-Null
-}
+Write-Host '3/5 Preparando banco cervejaria_dev no container dev...' -ForegroundColor Yellow
+docker exec $DbDevContainer psql -U cervejaria -d postgres -c `
+  "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DbDevName' AND pid <> pg_backend_pid();" | Out-Null
+docker exec $DbDevContainer psql -U cervejaria -d $DbDevName -c `
+  'DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO cervejaria; GRANT ALL ON SCHEMA public TO public;' | Out-Null
 
 Write-Host ''
-Write-Host '4/5 Restaurando dump em cervejaria_dev...' -ForegroundColor Yellow
-docker exec cervejaria-db psql -U cervejaria -d cervejaria_dev -v ON_ERROR_STOP=1 -f $containerDump
+Write-Host '4/5 Restaurando dump em cervejaria_dev (container dev)...' -ForegroundColor Yellow
+docker cp $dumpFile "${DbDevContainer}:$containerDump"
+if ($LASTEXITCODE -ne 0) { throw 'Falha ao copiar dump para container dev.' }
+docker exec $DbDevContainer psql -U cervejaria -d $DbDevName -v ON_ERROR_STOP=1 -f $containerDump
 if ($LASTEXITCODE -ne 0) {
-  docker exec cervejaria-db rm -f $containerDump 2>$null | Out-Null
+  docker exec $DbDevContainer rm -f $containerDump 2>$null | Out-Null
   throw "Restauracao falhou (exit $LASTEXITCODE). Dump local: $dumpFile"
 }
-docker exec cervejaria-db rm -f $containerDump 2>$null | Out-Null
+docker exec $DbDevContainer rm -f $containerDump 2>$null | Out-Null
+docker exec $DbProdContainer rm -f $containerDump 2>$null | Out-Null
 
 Write-Host ''
 Write-Host '5/5 Aplicando permissoes cervejaria_dev...' -ForegroundColor Yellow
-$grantsFile = Join-Path $paths.ProjectRoot 'deploy\db\create-env-users-dev.sql'
+$grantsFile = Join-Path $paths.ProjectRoot 'deploy\db\create-env-users-dev-container.sql'
 if (-not (Test-Path $grantsFile)) {
   throw "Arquivo de grants nao encontrado: $grantsFile"
 }
-Get-Content $grantsFile -Raw | docker exec -i cervejaria-db psql -U cervejaria -d cervejaria_dev -v ON_ERROR_STOP=1 | Out-Null
+Get-Content $grantsFile -Raw | docker exec -i $DbDevContainer psql -U cervejaria -d $DbDevName -v ON_ERROR_STOP=1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
   throw 'Falha ao aplicar grants em cervejaria_dev.'
 }

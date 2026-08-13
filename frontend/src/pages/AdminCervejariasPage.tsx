@@ -16,6 +16,13 @@ interface MesAtualStats {
   produtoMaisVende: string | null;
 }
 
+interface ModulosAdmin {
+  cervejaria: boolean;
+  quiosque: boolean;
+  quiosqueControlaEstoque: boolean;
+  quiosqueTemCozinha: boolean;
+}
+
 interface CervejariaAdmin {
   id: string;
   nome: string;
@@ -25,9 +32,37 @@ interface CervejariaAdmin {
   corPrimaria?: string | null;
   corSecundaria?: string | null;
   corPaleta?: BrandTheme | null;
+  modulos: ModulosAdmin;
   mesAtual: MesAtualStats;
   _count: { usuarios: number; eventos: number };
   usuarios: Array<{ id: string; nome: string; email: string }>;
+}
+
+function ModulosBadges({ modulos }: { modulos: ModulosAdmin }) {
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {modulos.cervejaria && (
+        <span className="rounded-full bg-brand-400/15 px-2 py-0.5 text-[10px] font-semibold text-brand-600">
+          Cervejaria
+        </span>
+      )}
+      {modulos.quiosque && (
+        <span className="rounded-full bg-orange/15 px-2 py-0.5 text-[10px] font-semibold text-orange">
+          Quiosque
+        </span>
+      )}
+      {modulos.quiosque && modulos.quiosqueTemCozinha && (
+        <span className="rounded-full bg-surface-lighter px-2 py-0.5 text-[10px] font-medium text-ink-faint">
+          Cozinha
+        </span>
+      )}
+      {modulos.quiosque && modulos.quiosqueControlaEstoque && (
+        <span className="rounded-full bg-surface-lighter px-2 py-0.5 text-[10px] font-medium text-ink-faint">
+          Estoque
+        </span>
+      )}
+    </div>
+  );
 }
 
 function CervejariaLogo({ nome, logoUrl }: { nome: string; logoUrl?: string | null }) {
@@ -85,6 +120,40 @@ function StatCard({ label, value }: { label: string; value: number | string }) {
   );
 }
 
+function ModuloOption({
+  titulo,
+  descricao,
+  marcado,
+  onChange,
+}: {
+  titulo: string;
+  descricao: string;
+  marcado: boolean;
+  onChange: (valor: boolean) => void;
+}) {
+  return (
+    <label className="card flex cursor-pointer items-start gap-3 py-3">
+      <input
+        type="checkbox"
+        className="mt-1 h-5 w-5 shrink-0 accent-brand-400"
+        checked={marcado}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="min-w-0">
+        <span className="block font-semibold">{titulo}</span>
+        <span className="block text-xs text-ink-faint">{descricao}</span>
+      </span>
+    </label>
+  );
+}
+
+const MODULOS_PADRAO = {
+  cervejaria: true,
+  quiosque: false,
+  quiosqueControlaEstoque: false,
+  quiosqueTemCozinha: false,
+};
+
 export function AdminCervejariasPage() {
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
@@ -101,6 +170,7 @@ export function AdminCervejariasPage() {
   const [corPrimaria, setCorPrimaria] = useState(BRANDING_DEFAULT_PRIMARY);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [modulos, setModulos] = useState({ ...MODULOS_PADRAO });
 
   useEffect(() => {
     if (!logoFile) return;
@@ -119,6 +189,7 @@ export function AdminCervejariasPage() {
     setCorPrimaria(BRANDING_DEFAULT_PRIMARY);
     setLogoFile(null);
     setLogoPreview(null);
+    setModulos({ ...MODULOS_PADRAO });
     setError('');
   };
 
@@ -167,6 +238,10 @@ export function AdminCervejariasPage() {
       setError(pwdErr);
       return;
     }
+    if (!modulos.cervejaria && !modulos.quiosque) {
+      setError('Selecione ao menos um módulo para a empresa');
+      return;
+    }
     setError('');
     createMutation.mutate();
   };
@@ -189,6 +264,12 @@ export function AdminCervejariasPage() {
       data.append('donoNome', form.donoNome);
       data.append('donoEmail', form.donoEmail);
       data.append('donoSenha', form.donoSenha);
+      data.append('moduloCervejaria', String(modulos.cervejaria));
+      data.append('moduloQuiosque', String(modulos.quiosque));
+      if (modulos.quiosque) {
+        data.append('quiosqueControlaEstoque', String(modulos.quiosqueControlaEstoque));
+        data.append('quiosqueTemCozinha', String(modulos.quiosqueTemCozinha));
+      }
       if (logoFile) data.append('logo', logoFile);
       return api.postFormData('/api/admin/cervejarias', data);
     },
@@ -302,6 +383,7 @@ export function AdminCervejariasPage() {
                   </td>
                   <td className="px-4 py-4">
                     <p className="font-semibold">{c.nome}</p>
+                    <ModulosBadges modulos={c.modulos} />
                     {!c.ativo && (
                       <span className="text-xs text-danger">Inativa</span>
                     )}
@@ -321,6 +403,8 @@ export function AdminCervejariasPage() {
                       <ToggleAtivo
                         ativo={c.ativo}
                         loading={togglingId === c.id}
+                        labelAtivo="Desativar cervejaria"
+                        labelInativo="Ativar cervejaria"
                         onToggle={() => handleToggle(c)}
                       />
                     </div>
@@ -355,8 +439,13 @@ export function AdminCervejariasPage() {
               <ToggleAtivo
                 ativo={c.ativo}
                 loading={togglingId === c.id}
+                labelAtivo="Desativar cervejaria"
+                labelInativo="Ativar cervejaria"
                 onToggle={() => handleToggle(c)}
               />
+            </div>
+            <div className="mt-2">
+              <ModulosBadges modulos={c.modulos} />
             </div>
             {c.usuarios[0] && (
               <>
@@ -440,6 +529,44 @@ export function AdminCervejariasPage() {
                 required
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="label">Módulos da empresa</label>
+            <p className="text-xs text-ink-faint">
+              Define quais operações a empresa enxerga. Pode ativar os dois.
+            </p>
+
+            <ModuloOption
+              titulo="Cervejaria"
+              descricao="Eventos, chope por tap, ranking e portal do cliente."
+              marcado={modulos.cervejaria}
+              onChange={(v) => setModulos((m) => ({ ...m, cervejaria: v }))}
+            />
+
+            <ModuloOption
+              titulo="Quiosque"
+              descricao="Venda rápida, comanda por apelido e fechamento de caixa diário."
+              marcado={modulos.quiosque}
+              onChange={(v) => setModulos((m) => ({ ...m, quiosque: v }))}
+            />
+
+            {modulos.quiosque && (
+              <div className="ml-4 space-y-2 border-l-2 border-surface-lighter pl-4">
+                <ModuloOption
+                  titulo="Controlar estoque"
+                  descricao="Baixa na venda, reposição e registro de perdas."
+                  marcado={modulos.quiosqueControlaEstoque}
+                  onChange={(v) => setModulos((m) => ({ ...m, quiosqueControlaEstoque: v }))}
+                />
+                <ModuloOption
+                  titulo="Tem cozinha"
+                  descricao="Tela de pedidos em preparo, na ordem de chegada."
+                  marcado={modulos.quiosqueTemCozinha}
+                  onChange={(v) => setModulos((m) => ({ ...m, quiosqueTemCozinha: v }))}
+                />
+              </div>
+            )}
           </div>
 
           <button type="submit" className="touch-btn-primary w-full" disabled={createMutation.isPending}>

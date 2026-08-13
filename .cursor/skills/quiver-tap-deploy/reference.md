@@ -8,7 +8,8 @@
 |---|-----------------|----------|
 | API | `:3002` | `:3001` |
 | Frontend | Vite `:5202` | Build estatico via API `:3001` |
-| Banco | `cervejaria_dev` | `cervejaria` |
+| Banco | `cervejaria_dev` (:5434) | `cervejaria` (:5432) |
+| Container PG | `cervejaria-db-dev` | `cervejaria-db` |
 | Usuario PG | `cervejaria_dev` | `cervejaria_prod` |
 | Uploads | `backend/uploads-dev` | `backend/uploads-prod` |
 | Env | `backend/.env.development` | `backend/.env.production` |
@@ -45,7 +46,23 @@ Ingress must point to **`http://localhost:3001`** (API serves static frontend).
 
 ## Rollback
 
-**API / code:**
+**API / code — fastest path (seconds):**
+
+`publish-artifacts.ps1` moves the live release to `deploy/prod-artifacts.previous` before
+publishing, so the last release is always on disk:
+
+```powershell
+npm run prod:rollback -- -Confirmed     # add -DryRun to inspect first
+```
+
+It swaps the directories back, restarts the API and runs the smoke test. It is a
+production command — needs explicit user authorization like any deploy. Also available as
+a button in the release console (`:3099`).
+
+**It does not revert the database.** An applied migration stays applied; if the deploy you
+are undoing ran a destructive migration, restore the dump from `deploy/backups` too.
+
+**API / code — when there is no rollback point:**
 
 1. Revert git changes or checkout previous commit
 2. Rebuild + `npm run prod:deploy -- -Confirmed`

@@ -6,6 +6,7 @@ Set-Location $ProjectRoot
 
 Write-Host 'Subindo EDOT Collector...' -ForegroundColor Cyan
 docker compose -f docker-compose.observability.yml up -d
+docker compose -f docker-compose.observability.yml restart edot-collector | Out-Null
 
 Start-Sleep -Seconds 3
 

@@ -1,0 +1,1 @@
+{"query":{"range":{"@timestamp":{"gte":"now-7d"}}},"size":0,"aggs":{"max_time":{"max":{"field":"@timestamp"}}}}

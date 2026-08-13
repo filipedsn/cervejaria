@@ -134,6 +134,57 @@ export function IconPencil({ className = 'w-5 h-5', strokeWidth = 1.75 }: IconPr
   );
 }
 
+export function IconStore({ className = 'w-6 h-6', strokeWidth = 1.75 }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 9.5 4.5 4h15L21 9.5" />
+      <path d="M3 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 3 0" />
+      <path d="M5 12v8h14v-8" />
+      <path d="M10 20v-5h4v5" />
+    </svg>
+  );
+}
+
+export function IconCashRegister({ className = 'w-6 h-6', strokeWidth = 1.75 }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <path d="M6 10h12M6 14h4" />
+      <path d="M8 6V4M16 6V4" />
+    </svg>
+  );
+}
+
+export function IconPackage({ className = 'w-6 h-6', strokeWidth = 1.75 }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M21 8.5 12 3 3 8.5 12 14l9-5.5Z" />
+      <path d="M3 8.5V16.5L12 22l9-5.5V8.5" />
+      <path d="M12 14v8" />
+    </svg>
+  );
+}
+
+export function IconChefHat({ className = 'w-6 h-6', strokeWidth = 1.75 }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M6 13c0-2.8 2.2-5 5-5s5 2.2 5 5" />
+      <path d="M4 13h16v3a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-3Z" />
+      <path d="M8 19v2M16 19v2" />
+    </svg>
+  );
+}
+
+export function IconListMenu({ className = 'w-6 h-6', strokeWidth = 1.75 }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M8 6h13M8 12h13M8 18h13" />
+      <path d="M3 6h.01M3 12h.01M3 18h.01" />
+    </svg>
+  );
+}
+
+/** Navegacao do modulo cervejaria. */
 export const NAV_ITEMS = [
   { path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const },
   { path: '/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
@@ -141,3 +192,58 @@ export const NAV_ITEMS = [
   { path: '/dashboard', label: 'Dashboard', shortLabel: 'Dashboard', Icon: IconBarChart, donoOnly: true as const },
   { path: '/configuracoes', label: 'Configurações', shortLabel: 'Config.', Icon: IconSettings, donoOnly: true as const },
 ];
+
+/** Navegacao do modulo quiosque, adicionada apenas quando o modulo esta ativo. */
+export const NAV_ITEMS_QUIOSQUE = [
+  { path: '/quiosque/comandas', label: 'Quiosque', shortLabel: 'Quiosque', Icon: IconStore },
+];
+
+type QuiosqueNavContext = {
+  temCozinha: boolean;
+  controlaEstoque: boolean;
+};
+
+/** Abas do quiosque na barra inferior — mesmo padrao mobile da cervejaria. */
+export const QUIOSQUE_NAV_ITEMS = [
+  { path: '/quiosque/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
+  {
+    path: '/quiosque/cozinha',
+    label: 'Cozinha',
+    shortLabel: 'Cozinha',
+    Icon: IconChefHat,
+    somenteCozinha: true as const,
+  },
+  {
+    path: '/quiosque/estoque',
+    label: 'Estoque',
+    shortLabel: 'Estoque',
+    Icon: IconPackage,
+    somenteEstoque: true as const,
+  },
+  {
+    path: '/quiosque/dashboard',
+    label: 'Dashboard',
+    shortLabel: 'Dashboard',
+    Icon: IconBarChart,
+    donoOnly: true as const,
+  },
+  { path: '/quiosque/catalogo', label: 'Cardápio', shortLabel: 'Cardápio', Icon: IconListMenu },
+];
+
+type QuiosqueNavFilterContext = QuiosqueNavContext & { isDono: boolean };
+
+export function getQuiosqueNavItems(contexto: QuiosqueNavFilterContext) {
+  return QUIOSQUE_NAV_ITEMS.filter(
+    (item) =>
+      (!('donoOnly' in item && item.donoOnly) || contexto.isDono) &&
+      (!('somenteCozinha' in item && item.somenteCozinha) || contexto.temCozinha) &&
+      (!('somenteEstoque' in item && item.somenteEstoque) || contexto.controlaEstoque),
+  );
+}
+
+export function isQuiosqueNavActive(path: string, current: string, exact?: boolean) {
+  if (path === '/quiosque/comandas') return current.startsWith('/quiosque/comandas');
+  if (path === '/quiosque/dashboard') return current === path || current.startsWith('/quiosque/turnos/');
+  if (exact) return current === path;
+  return current.startsWith(path);
+}

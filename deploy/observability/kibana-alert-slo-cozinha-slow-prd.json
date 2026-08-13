@@ -1,0 +1,24 @@
+{
+  "name": "quiver-tap-slo-cozinha-slow-prd",
+  "tags": ["quiver-tap", "observability", "production", "slo", "business"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "5m" },
+  "enabled": true,
+  "params": {
+    "index": ["metrics-generic.otel-prd*"],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"range\":{\"metrics.quiver.cozinha.tempo_preparo_ms\":{\"gte\":900000}}}]}}}",
+    "size": 20,
+    "timeWindowSize": 15,
+    "timeWindowUnit": "m",
+    "thresholdComparator": ">",
+    "threshold": [0],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery",
+    "excludeHitsFromPreviousRun": true
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

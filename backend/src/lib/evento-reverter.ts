@@ -14,10 +14,15 @@ export type EventoRevertivel = {
   data: Date | null;
 };
 
+/**
+ * Colunas `@db.Date` chegam do Prisma como meia-noite UTC. Ler com getters
+ * locais joga a chave para o dia anterior em qualquer fuso negativo, que e o
+ * caso do Brasil — daí a leitura em UTC.
+ */
 export function dateOnlyToKey(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
 
@@ -143,6 +148,7 @@ export async function reverterEventoParaAgendado(params: {
       data: dataKey,
       modo,
     },
+    payload: evento,
   });
 
   await prisma.evento.delete({ where: { id: evento.id } });

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { prisma } from './prisma.js';
 import { recalculateClienteStats } from './cliente-stats.js';
 
@@ -22,6 +23,12 @@ export type MergeClientesResult = {
   pedidosMovidos: number;
 };
 
+/** Chave de 64 bits estável para o advisory lock de um cliente. */
+function lockKeyDoCliente(clienteId: string): bigint {
+  const digest = createHash('sha256').update(`cliente-merge:${clienteId}`).digest();
+  return BigInt.asIntN(64, digest.readBigUInt64BE(0));
+}
+
 export async function mergeClientes(params: MergeClientesParams): Promise<MergeClientesResult> {
   const { cervejariaId, destinoId, fonteId } = params;
 
@@ -29,31 +36,34 @@ export async function mergeClientes(params: MergeClientesParams): Promise<MergeC
     throw new ClienteMergeError('Selecione outro cliente para unir', 400);
   }
 
-  const [destino, fonte] = await Promise.all([
-    prisma.cliente.findFirst({
-      where: { id: destinoId, cervejariaId },
-    }),
-    prisma.cliente.findFirst({
-      where: { id: fonteId, cervejariaId },
-    }),
-  ]);
-
-  if (!destino || !fonte) {
-    throw new ClienteMergeError('Cliente não encontrado', 404);
-  }
-
-  if (destino.isSistema || fonte.isSistema) {
-    throw new ClienteMergeError('Cliente de sistema não pode ser unido', 409);
-  }
-
-  if (destino.telefone && fonte.telefone && destino.telefone !== fonte.telefone) {
-    throw new ClienteMergeError(
-      'Os clientes têm telefones diferentes. Abra a ficha do cliente com o telefone correto e tente unir novamente.',
-      409,
-    );
-  }
-
   return prisma.$transaction(async (tx) => {
+    // Dois merges simultâneos sobre a mesma fonte deixariam o segundo apagar um
+    // registro já removido (P2025 → 500). Os locks serializam o par; a ordem
+    // fixa por id evita deadlock quando alguém tenta A→B e B→A ao mesmo tempo.
+    for (const id of [destinoId, fonteId].sort()) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKeyDoCliente(id)})`;
+    }
+
+    const [destino, fonte] = await Promise.all([
+      tx.cliente.findFirst({ where: { id: destinoId, cervejariaId } }),
+      tx.cliente.findFirst({ where: { id: fonteId, cervejariaId } }),
+    ]);
+
+    if (!destino || !fonte) {
+      throw new ClienteMergeError('Cliente não encontrado', 404);
+    }
+
+    if (destino.isSistema || fonte.isSistema) {
+      throw new ClienteMergeError('Cliente de sistema não pode ser unido', 409);
+    }
+
+    if (destino.telefone && fonte.telefone && destino.telefone !== fonte.telefone) {
+      throw new ClienteMergeError(
+        'Os clientes têm telefones diferentes. Abra a ficha do cliente com o telefone correto e tente unir novamente.',
+        409,
+      );
+    }
+
     const comandasMovidas = await tx.comanda.updateMany({
       where: { clienteId: fonteId },
       data: { clienteId: destinoId },

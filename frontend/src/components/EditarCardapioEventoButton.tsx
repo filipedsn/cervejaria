@@ -5,6 +5,7 @@ import type { EventoCardapio } from '../types';
 import { IconClipboard } from './NavIcons';
 import { Modal } from './Modal';
 import { EventoCardapioPanel } from './EventoCardapioPanel';
+import { useAuth } from '../contexts/AuthContext';
 
 interface EditarCardapioEventoButtonProps {
   eventoId: string;
@@ -19,13 +20,17 @@ export function EditarCardapioEventoButton({
   className = '',
   iconOnly = false,
 }: EditarCardapioEventoButtonProps) {
+  const { cervejaria } = useAuth();
+  const usaCardapio = cervejaria?.usaCardapio ?? false;
   const [open, setOpen] = useState(false);
 
   const { data: cardapio } = useQuery({
     queryKey: ['evento-cardapio', eventoId],
     queryFn: () => api.get<EventoCardapio>(`/api/eventos/${eventoId}/cardapio`),
-    enabled: !!eventoId,
+    enabled: usaCardapio && !!eventoId,
   });
+
+  if (!usaCardapio) return null;
 
   const cardapioVazio = (cardapio?.produtos.length ?? 0) === 0;
   const label = eventoAberto && cardapioVazio ? 'Configurar cardápio do evento' : 'Editar cardápio do evento';

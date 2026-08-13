@@ -16,6 +16,20 @@ const updateBrandingSchema = z.object({
   corPrimaria: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida. Use formato #RRGGBB'),
 });
 
+const updateOperacaoSchema = z
+  .object({
+    exibirKpisComanda: z.boolean().optional(),
+    comandasColunaUnica: z.boolean().optional(),
+    usaCardapio: z.boolean().optional(),
+  })
+  .refine(
+    (body) =>
+      body.exibirKpisComanda !== undefined ||
+      body.comandasColunaUnica !== undefined ||
+      body.usaCardapio !== undefined,
+    { message: 'Informe ao menos uma preferência' },
+  );
+
 function badRequest(message: string) {
   const err = new Error(message) as Error & { statusCode: number };
   err.statusCode = 400;
@@ -73,6 +87,20 @@ export async function cervejariaRoutes(app: FastifyInstance) {
     const user = getAuthUser(request);
     const body = updateBrandingSchema.parse(request.body);
     const updated = await updateBrandingColors(user.cervejariaId!, body.corPrimaria);
+    return formatCervejariaAuth(updated);
+  });
+
+  app.patch('/operacao', async (request) => {
+    const user = getAuthUser(request);
+    const body = updateOperacaoSchema.parse(request.body);
+    const updated = await prisma.cervejaria.update({
+      where: { id: user.cervejariaId! },
+      data: {
+        ...(body.exibirKpisComanda !== undefined ? { exibirKpisComanda: body.exibirKpisComanda } : {}),
+        ...(body.comandasColunaUnica !== undefined ? { comandasColunaUnica: body.comandasColunaUnica } : {}),
+        ...(body.usaCardapio !== undefined ? { usaCardapio: body.usaCardapio } : {}),
+      },
+    });
     return formatCervejariaAuth(updated);
   });
 

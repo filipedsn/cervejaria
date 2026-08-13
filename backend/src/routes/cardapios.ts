@@ -9,16 +9,31 @@ import {
   updateCardapio,
 } from '../lib/cardapio.js';
 import { listCatalogoCardapio } from '../lib/evento-cardapio.js';
+import { cervejariaUsaCardapio } from '../lib/cardapio-toggle.js';
 import { prisma } from '../lib/prisma.js';
+
+const itemCardapioSchema = z.object({
+  produtoId: z.string().min(1),
+  precoUnit: z.number().positive(),
+});
 
 const saveCardapioSchema = z.object({
   nome: z.string().min(1),
-  produtoIds: z.array(z.string().min(1)),
+  produtoIds: z.array(z.string().min(1)).optional(),
+  itens: z.array(itemCardapioSchema).optional(),
 });
 
 export async function cardapiosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
   app.addHook('preHandler', app.requireDono);
+
+  app.addHook('preHandler', async (request, reply) => {
+    const user = getAuthUser(request);
+    const usa = await cervejariaUsaCardapio(user.cervejariaId!);
+    if (!usa) {
+      return reply.status(403).send({ error: 'Cardápio desativado para esta empresa' });
+    }
+  });
 
   app.get('/', async (request) => {
     const user = getAuthUser(request);
@@ -52,6 +67,7 @@ export async function cardapiosRoutes(app: FastifyInstance) {
     const result = await createCardapio({
       cervejariaId: user.cervejariaId!,
       nome: body.nome,
+      itens: body.itens,
       produtoIds: body.produtoIds,
     });
     if (!result || 'error' in result) {
@@ -70,6 +86,7 @@ export async function cardapiosRoutes(app: FastifyInstance) {
       id,
       cervejariaId: user.cervejariaId!,
       nome: body.nome,
+      itens: body.itens,
       produtoIds: body.produtoIds,
     });
     if ('error' in result) return reply.status(400).send({ error: result.error });

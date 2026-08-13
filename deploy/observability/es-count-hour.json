@@ -1,0 +1,1 @@
+{"query":{"range":{"@timestamp":{"gte":"now-60m"}}}}

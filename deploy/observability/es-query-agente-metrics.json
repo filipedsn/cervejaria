@@ -1,0 +1,11 @@
+{
+  "size": 3,
+  "query": {
+    "term": { "resource.attributes.service.name": "quiver-tap-support-agent" }
+  },
+  "sort": [{ "@timestamp": "desc" }],
+  "_source": ["@timestamp", "data_stream.namespace", "metrics.*"],
+  "aggs": {
+    "por_namespace": { "terms": { "field": "data_stream.namespace", "size": 5 } }
+  }
+}

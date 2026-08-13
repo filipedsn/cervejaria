@@ -1,6 +1,7 @@
 {
   "data_view": {
-    "title": "metrics-infra.otel-*",
+    "id": "quiver-metrics-infra",
+    "title": "metrics-*.otel-infra*",
     "name": "Quiver Tap Metrics Infra",
     "timeFieldName": "@timestamp"
   }

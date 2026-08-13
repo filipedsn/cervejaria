@@ -1,0 +1,12 @@
+{
+  "index_patterns": ["metrics-*", "logs-*", "traces-*", "audit-*"],
+  "template": {
+    "settings": {
+      "number_of_replicas": 0
+    }
+  },
+  "priority": 200,
+  "_meta": {
+    "description": "Quiver Tap OTel indices — single-node cluster (no replicas)"
+  }
+}

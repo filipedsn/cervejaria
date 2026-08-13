@@ -32,7 +32,8 @@ if (-not (Test-Path $paths.ProdApiEntry)) {
 }
 
 try {
-  Install-ProdBackendRuntimeLinks -Paths $paths
+  Ensure-ProdBackendRuntime -Paths $paths -Quiet:$Quiet
+  Assert-ProdDatabaseSchemaSync -Paths $paths
 } catch {
   Write-Host $_.Exception.Message -ForegroundColor Red
   exit 1
@@ -89,7 +90,7 @@ Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment production
 $proc = Start-Process `
   -FilePath $paths.NodeExe `
   -ArgumentList @('--import', '@elastic/opentelemetry-node', $paths.ProdApiEntry) `
-  -WorkingDirectory $paths.BackendDir `
+  -WorkingDirectory $paths.ProdBackendRoot `
   -WindowStyle Hidden `
   -RedirectStandardOutput $paths.ApiLog `
   -RedirectStandardError $paths.ApiErrLog `

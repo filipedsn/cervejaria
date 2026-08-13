@@ -26,7 +26,7 @@ import {
 } from '../lib/tap-montagem.js';
 import { ensureDefaultTaps, assertTrailerChopeDisponivel } from '../lib/trailer-defaults.js';
 import { registrarTransacao, listTransacoesEvento, transacoesToCsv } from '../lib/transacao-log.js';
-import { reverterEventoParaAgendado } from '../lib/evento-reverter.js';
+import { dateOnlyToKey, reverterEventoParaAgendado } from '../lib/evento-reverter.js';
 import {
   getEventoCardapio,
   salvarCardapioEvento,
@@ -35,6 +35,7 @@ import {
   copiarCardapioEntreEventos,
 } from '../lib/evento-cardapio.js';
 import { getProdutoIdsFromCardapio, validateProdutosCardapio } from '../lib/cardapio.js';
+import { cervejariaUsaCardapio } from '../lib/cardapio-toggle.js';
 
 const createEventoSchema = z
   .object({
@@ -79,13 +80,6 @@ function parseDateOnly(dateStr: string) {
   return new Date(dateStr + 'T12:00:00');
 }
 
-function dateOnlyToKey(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 function weekdayFromDateKey(dateKey: string): number {
   return new Date(`${dateKey}T12:00:00`).getDay();
 }
@@ -95,6 +89,10 @@ async function validarCardapioCriacao(
   cardapioId?: string,
   produtoIds?: string[],
 ) {
+  if (!cardapioId && !produtoIds?.length) return { ok: true as const, produtoIds: [] as string[] };
+  if (!(await cervejariaUsaCardapio(cervejariaId))) {
+    return { ok: true as const, produtoIds: [] as string[] };
+  }
   if (cardapioId) return getProdutoIdsFromCardapio(cardapioId, cervejariaId);
   if (produtoIds?.length) return validateProdutosCardapio(cervejariaId, produtoIds);
   return { ok: true as const, produtoIds: [] as string[] };
@@ -111,7 +109,7 @@ const eventoListCount = {
 } as const;
 
 export async function eventosRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', app.requireTenant);
 
   app.get('/', async (request) => {
     const user = getAuthUser(request);
@@ -285,6 +283,7 @@ export async function eventosRoutes(app: FastifyInstance) {
         chopeNovo: result.chopeNovo,
         produtoId: body.produtoId,
       },
+      payload: result,
     });
 
     emitToCervejaria(app.io, user.cervejariaId!, { type: 'tap-montagem:updated', data: { eventoId: id } });
@@ -321,6 +320,7 @@ export async function eventosRoutes(app: FastifyInstance) {
       entidadeTipo: 'Tap',
       entidadeId: tapId,
       metadata: { tapNumero: result.tapNumero },
+      payload: result,
     });
 
     emitToCervejaria(app.io, user.cervejariaId!, { type: 'tap-montagem:updated', data: { eventoId: id } });
@@ -355,6 +355,7 @@ export async function eventosRoutes(app: FastifyInstance) {
       entidadeTipo: 'Tap',
       entidadeId: tapId,
       metadata: { tapNumero: result.tapNumero, ativo: body.ativo },
+      payload: result,
     });
 
     emitToCervejaria(app.io, user.cervejariaId!, { type: 'tap-montagem:updated', data: { eventoId: id } });
@@ -393,7 +394,12 @@ export async function eventosRoutes(app: FastifyInstance) {
       cardapioId: body.cardapioId,
       produtoIds: body.produtoIds,
     });
-    if ('error' in result) return reply.status(400).send({ error: result.error });
+    if ('error' in result) {
+      const status = result.error.includes('desativado') ? 403 : 400;
+      return reply.status(status).send({ error: result.error });
+    }
+
+    const cardapio = await getEventoCardapio(id, user.cervejariaId!);
 
     await registrarTransacao({
       cervejariaId: user.cervejariaId!,
@@ -404,9 +410,9 @@ export async function eventosRoutes(app: FastifyInstance) {
         cardapioId: body.cardapioId ?? null,
         produtoIds: body.produtoIds ?? null,
       },
+      payload: cardapio,
     });
 
-    const cardapio = await getEventoCardapio(id, user.cervejariaId!);
     emitToCervejaria(app.io, user.cervejariaId!, { type: 'evento-cardapio:updated', data: { eventoId: id } });
     return cardapio;
   });
@@ -437,6 +443,10 @@ export async function eventosRoutes(app: FastifyInstance) {
     const cardapioCheck = await validarCardapioCriacao(user.cervejariaId!, body.cardapioId, body.produtoIds);
     if ('error' in cardapioCheck) return reply.status(400).send({ error: cardapioCheck.error });
 
+    const usaCardapio = await cervejariaUsaCardapio(user.cervejariaId!);
+    const cardapioId = usaCardapio ? body.cardapioId : undefined;
+    const produtoIds = usaCardapio ? body.produtoIds : undefined;
+
     if (body.recorrencia === 'SEMANAL') {
       const conflitoSerie = await findSerieTrailerConflict({
         cervejariaId: user.cervejariaId!,
@@ -460,7 +470,7 @@ export async function eventosRoutes(app: FastifyInstance) {
           status: 'FECHADO',
           cervejariaId: user.cervejariaId!,
           trailerId: body.trailerId,
-          cardapioId: body.cardapioId ?? null,
+          cardapioId: cardapioId ?? null,
         },
         include: eventoInclude,
       });
@@ -468,8 +478,8 @@ export async function eventosRoutes(app: FastifyInstance) {
       await aplicarCardapioInicialEvento({
         eventoId: serie.id,
         cervejariaId: user.cervejariaId!,
-        cardapioId: body.cardapioId,
-        produtoIds: body.produtoIds,
+        cardapioId,
+        produtoIds,
       });
 
       await registrarTransacao({
@@ -478,6 +488,7 @@ export async function eventosRoutes(app: FastifyInstance) {
         usuarioId: user.sub,
         eventoId: serie.id,
         metadata: { nome: serie.nome, recorrencia: 'SEMANAL' },
+        payload: serie,
       });
 
       emitToCervejaria(app.io, user.cervejariaId!, { type: 'evento:updated', data: serie });
@@ -512,7 +523,7 @@ export async function eventosRoutes(app: FastifyInstance) {
         status: body.abrirAgora ? 'ABERTO' : 'FECHADO',
         cervejariaId: user.cervejariaId!,
         trailerId: body.trailerId,
-        cardapioId: body.cardapioId ?? null,
+        cardapioId: cardapioId ?? null,
       },
       include: eventoInclude,
     });
@@ -520,8 +531,8 @@ export async function eventosRoutes(app: FastifyInstance) {
     await aplicarCardapioInicialEvento({
       eventoId: evento.id,
       cervejariaId: user.cervejariaId!,
-      cardapioId: body.cardapioId,
-      produtoIds: body.produtoIds,
+      cardapioId,
+      produtoIds,
     });
     await aplicarCardapioCatalogoSeVazio(evento.id, user.cervejariaId!);
 
@@ -535,6 +546,7 @@ export async function eventosRoutes(app: FastifyInstance) {
         status: evento.status,
         abrirAgora: body.abrirAgora ?? false,
       },
+      payload: evento,
     });
 
     emitToCervejaria(app.io, user.cervejariaId!, { type: 'evento:updated', data: evento });
@@ -635,6 +647,7 @@ export async function eventosRoutes(app: FastifyInstance) {
       usuarioId: user.sub,
       eventoId: sessao.id,
       metadata: { nome: sessao.nome, serieId: serie.id },
+      payload: sessao,
     });
 
     return reply.status(201).send(sessao);
@@ -688,6 +701,7 @@ export async function eventosRoutes(app: FastifyInstance) {
       usuarioId: user.sub,
       eventoId: serie.id,
       metadata: { acao: 'cancelar_agendamento', data: body.data, nome: serie.nome },
+      payload: { serie, exclusao },
     });
 
     emitToCervejaria(app.io, user.cervejariaId!, { type: 'evento:updated', data: serie });
@@ -730,6 +744,7 @@ export async function eventosRoutes(app: FastifyInstance) {
       usuarioId: user.sub,
       eventoId: id,
       metadata: { nome: evento.nome },
+      payload: updated,
     });
 
     emitToCervejaria(app.io, user.cervejariaId!, { type: 'evento:updated', data: updated });
@@ -775,7 +790,7 @@ export async function eventosRoutes(app: FastifyInstance) {
 
     const updated = await prisma.evento.update({
       where: { id },
-      data: { status: 'ABERTO', encerradoEm: null, portalGeneration: { increment: 1 } },
+      data: { status: 'ABERTO', encerradoEm: null, comandasContadorDesde: new Date(), portalGeneration: { increment: 1 } },
       include: eventoInclude,
     });
 
@@ -791,6 +806,7 @@ export async function eventosRoutes(app: FastifyInstance) {
       usuarioId: user.sub,
       eventoId: id,
       metadata: { nome: updated.nome },
+      payload: updated,
     });
 
     return updated;
@@ -843,6 +859,7 @@ export async function eventosRoutes(app: FastifyInstance) {
         usuarioId: user.sub,
         eventoId: id,
         metadata: { nome: updated.nome, recorrencia: 'SEMANAL' },
+        payload: updated,
       });
 
       emitToCervejaria(app.io, user.cervejariaId!, { type: 'evento:updated', data: updated });
@@ -900,6 +917,7 @@ export async function eventosRoutes(app: FastifyInstance) {
       usuarioId: user.sub,
       eventoId: id,
       metadata: { nome: updated.nome },
+      payload: updated,
     });
 
     emitToCervejaria(app.io, user.cervejariaId!, { type: 'evento:updated', data: updated });
@@ -971,6 +989,7 @@ export async function eventosRoutes(app: FastifyInstance) {
       usuarioId: user.sub,
       eventoId: id,
       metadata: { nome: evento.nome, recorrencia: evento.recorrencia },
+      payload: evento,
     });
 
     await prisma.evento.delete({ where: { id } });
