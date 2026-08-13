@@ -329,6 +329,8 @@ function Stop-ProcessById {
 }
 
 function Invoke-DeployBody {
+  Merge-StrayProdUploads -Paths $paths
+
   if ($plan.Backup) {
     Write-Host ''
     Write-Host 'Backup do banco cervejaria...' -ForegroundColor Cyan

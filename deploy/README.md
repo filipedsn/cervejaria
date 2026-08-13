@@ -8,7 +8,7 @@
 | Frontend | Vite `:5202` | Build estatico via API `:3001` |
 | Banco | `cervejaria_dev` (:5434) | `cervejaria` (:5432) |
 | Usuario PG | `cervejaria_dev` | `cervejaria_prod` |
-| Uploads | `backend/uploads-dev` | `backend/uploads-prod` |
+| Uploads | `backend/uploads-dev` | `backend/uploads-prod` (fora de `prod-artifacts`; ver `Set-ProdUploadsEnv`) |
 | Env | `backend/.env.development` | `backend/.env.production` |
 | Build UI (local/CI) | `frontend/dist` | â€” |
 | Build UI (publicado) | â€” | `deploy/prod-artifacts/frontend` |

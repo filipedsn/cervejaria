@@ -27,6 +27,40 @@ function Import-BackendEnvFile {
   Assert-DatabaseEnvironment -Environment $Environment
 }
 
+# Uploads de producao ficam em backend/uploads-prod (fora de prod-artifacts).
+# A API roda com cwd em deploy/prod-artifacts/backend; UPLOADS_DIR relativo no .env
+# apontaria para dentro do artefato trocado a cada deploy e perderia as logos.
+function Set-ProdUploadsEnv {
+  param([hashtable]$Paths)
+
+  $logosDir = Join-Path $Paths.ProdUploadsDir 'logos'
+  New-Item -ItemType Directory -Force -Path $logosDir | Out-Null
+  $env:UPLOADS_DIR = (Resolve-Path $Paths.ProdUploadsDir).Path
+}
+
+function Merge-StrayProdUploads {
+  param([hashtable]$Paths)
+
+  $canonicalLogos = Join-Path $Paths.ProdUploadsDir 'logos'
+  New-Item -ItemType Directory -Force -Path $canonicalLogos | Out-Null
+
+  $strayDirs = @(
+    (Join-Path $Paths.ProdBackendRoot 'uploads-prod\logos')
+    (Join-Path $Paths.ProdArtifactsPrevious 'backend\uploads-prod\logos')
+  )
+
+  foreach ($stray in $strayDirs) {
+    if (-not (Test-Path $stray)) { continue }
+    Get-ChildItem -Path $stray -File -Filter '*.webp' -ErrorAction SilentlyContinue | ForEach-Object {
+      $dest = Join-Path $canonicalLogos $_.Name
+      if (-not (Test-Path $dest)) {
+        Copy-Item -Path $_.FullName -Destination $dest -Force
+        Write-Host "Logo migrada para backend/uploads-prod/logos: $($_.Name)" -ForegroundColor Yellow
+      }
+    }
+  }
+}
+
 function Import-ObservabilityEnvFile {
   param([string]$ProjectRoot = '')
 
@@ -177,6 +211,7 @@ function Resolve-QuiverTapPaths {
   # Release anterior, preservada a cada publicacao para permitir rollback em segundos.
   # Fica ao lado (nao dentro) de prod-artifacts para nao ser servida nem varrida pelo verify.
   $prodArtifactsPrevious = Join-Path (Split-Path $prodArtifactsDir -Parent) ((Split-Path $prodArtifactsDir -Leaf) + '.previous')
+  $prodUploadsDir = Join-Path $root 'backend\uploads-prod'
 
   @{
     ProjectRoot       = (Resolve-Path $root).Path
@@ -194,6 +229,7 @@ function Resolve-QuiverTapPaths {
     ProdBackendNodeModules = $prodBackendNodeModules
     ProdManifest      = $prodManifest
     ProdArtifactsPrevious = $prodArtifactsPrevious
+    ProdUploadsDir    = $prodUploadsDir
     ApiEntry          = $prodApiEntry
     ApiPort           = $apiPort
     FrontendPort      = $frontendPort

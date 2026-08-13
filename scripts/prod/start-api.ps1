@@ -86,6 +86,7 @@ $env:Path = "$nodeDir;$env:Path"
 $env:NODE_ENV = 'production'
 $env:FRONTEND_DIST = $paths.ProdFrontendDist
 Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment production
+Set-ProdUploadsEnv -Paths $paths
 
 $proc = Start-Process `
   -FilePath $paths.NodeExe `
