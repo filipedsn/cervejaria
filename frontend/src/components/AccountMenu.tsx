@@ -85,7 +85,7 @@ export function AccountMenu({
   const inQuiosque = location.pathname.startsWith('/quiosque');
   const equipeHref =
     inQuiosque || (quiosque.ativo && quiosque.exclusivo)
-      ? '/quiosque/equipe'
+      ? '/quiosque/configuracoes/equipe'
       : '/configuracoes/equipe';
 
   if (!open) return null;

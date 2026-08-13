@@ -228,6 +228,13 @@ export const QUIOSQUE_NAV_ITEMS = [
     donoOnly: true as const,
   },
   { path: '/quiosque/catalogo', label: 'Cardápio', shortLabel: 'Cardápio', Icon: IconListMenu },
+  {
+    path: '/quiosque/configuracoes',
+    label: 'Configurações',
+    shortLabel: 'Config.',
+    Icon: IconSettings,
+    donoOnly: true as const,
+  },
 ];
 
 type QuiosqueNavFilterContext = QuiosqueNavContext & { isDono: boolean };
@@ -244,6 +251,9 @@ export function getQuiosqueNavItems(contexto: QuiosqueNavFilterContext) {
 export function isQuiosqueNavActive(path: string, current: string, exact?: boolean) {
   if (path === '/quiosque/comandas') return current.startsWith('/quiosque/comandas');
   if (path === '/quiosque/dashboard') return current === path || current.startsWith('/quiosque/turnos/');
+  if (path === '/quiosque/configuracoes') {
+    return current.startsWith('/quiosque/configuracoes') || current === '/quiosque/equipe';
+  }
   if (exact) return current === path;
   return current.startsWith(path);
 }

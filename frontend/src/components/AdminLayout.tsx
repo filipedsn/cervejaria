@@ -6,7 +6,7 @@ import { AppLogo } from './AppLogo';
 import { ThemeSegmentedControl } from './SettingsRow';
 
 const navItems = [
-  { path: '/admin/cervejarias', label: 'Cervejarias', icon: '🏭' },
+  { path: '/admin/cervejarias', label: 'Empresas', icon: '🏭' },
   { path: '/admin/configuracoes', label: 'Configurações', icon: '⚙️' },
 ];
 

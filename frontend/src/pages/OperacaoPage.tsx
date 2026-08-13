@@ -4,7 +4,13 @@ import { ConfigComandasLayoutPanel } from '../components/ConfigComandasLayoutPan
 import { ConfigCardapioPanel } from '../components/ConfigCardapioPanel';
 import { ConfigCardapioQuiosquePanel } from '../components/ConfigCardapioQuiosquePanel';
 
-export function OperacaoPage({ embedded }: { embedded?: boolean } = {}) {
+type OperacaoPageProps = {
+  embedded?: boolean;
+  /** Quiosque: só preferências do quiosque; cervejaria (padrão): inclui cardápio por evento. */
+  modo?: 'cervejaria' | 'quiosque';
+};
+
+export function OperacaoPage({ embedded, modo = 'cervejaria' }: OperacaoPageProps = {}) {
   return (
     <div className="space-y-4">
       {!embedded && (
@@ -12,8 +18,9 @@ export function OperacaoPage({ embedded }: { embedded?: boolean } = {}) {
       )}
       <ConfigKpisComandaPanel />
       <ConfigComandasLayoutPanel />
-      <ConfigCardapioPanel />
-      <ConfigCardapioQuiosquePanel />
+      {modo === 'cervejaria' && <ConfigCardapioPanel />}
+      {modo === 'quiosque' && <ConfigCardapioQuiosquePanel />}
+      {modo === 'cervejaria' && <ConfigCardapioQuiosquePanel />}
     </div>
   );
 }
