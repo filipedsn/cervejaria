@@ -883,9 +883,10 @@ document.getElementById('btnDeploy').addEventListener('click', () => {
 
   const override = els.overrideGate.checked;
   const alvo = release?.head?.sha ? release.head.sha.slice(0, 7) : '?';
+  const uacNote = '\n\nIMPORTANTE: o Windows vai pedir permissao de Administrador (UAC). Clique em SIM.\nO prompt pode aparecer atras do navegador — verifique a barra de tarefas.';
   if (!confirm(override
-    ? `Ignorar o gate e publicar ${alvo} em producao?`
-    : `Publicar o commit ${alvo} em producao?`)) {
+    ? `Ignorar o gate e publicar ${alvo} em producao?${uacNote}`
+    : `Publicar o commit ${alvo} em producao?${uacNote}`)) {
     return;
   }
 
