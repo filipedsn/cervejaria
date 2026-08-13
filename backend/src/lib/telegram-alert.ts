@@ -1,12 +1,7 @@
-const TELEGRAM_API_BASE = 'https://api.telegram.org';
-const MAX_MESSAGE_CHARS = 4000;
+import type { KibanaAlertPayload } from './kibana-alert-email.js';
+import { formatObservabilityAlertTelegramText } from './observability-alert-format.js';
 
-export type ObservabilityAlertMessage = {
-  ruleName?: string;
-  alertState?: string;
-  reason?: string;
-  viewInAppUrl?: string;
-};
+export type ObservabilityAlertMessage = KibanaAlertPayload;
 
 export function isTelegramAlertConfigured(): boolean {
   return Boolean(
@@ -15,32 +10,7 @@ export function isTelegramAlertConfigured(): boolean {
   );
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-export function formatObservabilityAlertTelegramText(alert: ObservabilityAlertMessage): string {
-  const ruleName = alert.ruleName ?? 'Alerta Quiver Tap';
-  const state = alert.alertState ?? 'disparado';
-  const reason = alert.reason ?? 'Sem detalhes adicionais.';
-  const link = alert.viewInAppUrl;
-
-  const lines = [
-    `<b>Quiver Tap — ${escapeHtml(ruleName)}</b>`,
-    `Estado: ${escapeHtml(state)}`,
-    `Motivo: ${escapeHtml(reason)}`,
-  ];
-  if (link) lines.push(`<a href="${escapeHtml(link)}">Abrir no Kibana</a>`);
-
-  let text = lines.join('\n');
-  if (text.length > MAX_MESSAGE_CHARS) {
-    text = `${text.slice(0, MAX_MESSAGE_CHARS - 1)}…`;
-  }
-  return text;
-}
+export { formatObservabilityAlertTelegramText };
 
 export async function sendObservabilityAlertTelegram(
   alert: ObservabilityAlertMessage,
@@ -52,7 +22,7 @@ export async function sendObservabilityAlertTelegram(
   }
 
   const text = formatObservabilityAlertTelegramText(alert);
-  const url = `${TELEGRAM_API_BASE}/bot${token}/sendMessage`;
+  const url = `https://api.telegram.org/bot${token}/sendMessage`;
 
   const res = await fetch(url, {
     method: 'POST',

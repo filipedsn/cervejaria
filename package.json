@@ -69,6 +69,7 @@
     "obs:webhook": "npm run obs:alert-email",
     "obs:test-webhook": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/observability/test-webhook.ps1",
     "obs:test-telegram": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/observability/test-telegram.ps1",
+    "obs:test-telegram-example": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/observability/test-telegram-example.ps1",
     "obs:report-slo": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/observability/report-slo.ps1",
     "obs:create-api-keys": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/observability/create-elastic-api-keys.ps1",
     "alert-poller:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/start-alert-poller.ps1",

@@ -12,6 +12,16 @@ class ApiError extends Error {
   }
 }
 
+export function logoAssetUrl(
+  cervejaria?: {
+    logoUrl?: string | null;
+    logoVersion?: string | null;
+    updatedAt?: string | null;
+  } | null,
+): string | null {
+  return assetUrl(cervejaria?.logoUrl, cervejaria?.logoVersion ?? cervejaria?.updatedAt);
+}
+
 export function assetUrl(
   path: string | null | undefined,
   cacheBust?: string | number | Date | null,

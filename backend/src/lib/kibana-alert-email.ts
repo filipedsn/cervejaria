@@ -1,4 +1,6 @@
 import { sendObservabilityAlertEmail } from './email.js';
+import { enrichAlertContext } from './observability-alert-enrich.js';
+import type { AlertEnrichedContext } from './observability-alert-enrich.js';
 import { isTelegramAlertConfigured, sendObservabilityAlertTelegram } from './telegram-alert.js';
 
 export type KibanaAlertPayload = {
@@ -7,6 +9,7 @@ export type KibanaAlertPayload = {
   reason?: string;
   viewInAppUrl?: string;
   raw?: unknown;
+  context?: AlertEnrichedContext;
 };
 
 export type AlertNotifyResult = {
@@ -70,6 +73,9 @@ export async function handleKibanaAlertWebhook(
     return { sent: false, deduped: true };
   }
 
+  const context = await enrichAlertContext(payload);
+  const notifyPayload: KibanaAlertPayload = context ? { ...payload, context } : payload;
+
   const emailTo = process.env.OBS_ALERT_EMAIL_TO?.split(/[;,]/).map((s) => s.trim()).filter(Boolean);
   const sendEmail = Boolean(emailTo?.length);
   const sendTelegram = isTelegramAlertConfigured();
@@ -85,7 +91,7 @@ export async function handleKibanaAlertWebhook(
 
   if (sendEmail) {
     try {
-      await sendObservabilityAlertEmail(emailTo!, payload);
+      await sendObservabilityAlertEmail(emailTo!, notifyPayload);
       channels.email = true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -95,7 +101,7 @@ export async function handleKibanaAlertWebhook(
 
   if (sendTelegram) {
     try {
-      await sendObservabilityAlertTelegram(payload);
+      await sendObservabilityAlertTelegram(notifyPayload);
       channels.telegram = true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

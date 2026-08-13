@@ -28,7 +28,7 @@ if (-not $token -or -not $chatId) {
 
 $body = @{
   chat_id = $chatId
-  text = "<b>Quiver Tap — teste-manual-telegram</b>`nEstado: active`nMotivo: Validacao do canal Telegram via npm run obs:test-telegram"
+  text = "<b>Quiver Tap - teste-manual-telegram</b>`nEstado: active`nMotivo: Validacao do canal Telegram via npm run obs:test-telegram"
   parse_mode = 'HTML'
   disable_web_page_preview = $true
 } | ConvertTo-Json -Compress
@@ -45,8 +45,8 @@ Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue
 Write-Host $result
 
 if ($result -match '"ok":true' -or $result -match 'HTTP:200') {
-  Write-Host 'OK — verifique o Telegram em alguns segundos' -ForegroundColor Green
+  Write-Host 'OK - verifique o Telegram em alguns segundos' -ForegroundColor Green
 } else {
-  Write-Host 'Falha — confira token, chat_id e se voce enviou /start ao bot' -ForegroundColor Yellow
+  Write-Host 'Falha - confira token, chat_id e se voce enviou /start ao bot' -ForegroundColor Yellow
   exit 1
 }
