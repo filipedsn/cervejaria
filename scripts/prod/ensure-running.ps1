@@ -15,6 +15,14 @@ try {
   exit 1
 }
 
+if (Test-DeployPaused -Paths $paths) {
+  Write-WatchdogLog -Paths $paths -Message 'Ciclo ignorado: deploy em andamento (deploy.pause).'
+  if (-not $Quiet) {
+    Write-Host 'Watchdog pausado: deploy em andamento.' -ForegroundColor Yellow
+  }
+  exit 0
+}
+
 $apiOk = Test-ApiHealthy -HealthUrl $paths.ReadyUrl
 $alertPollerOk = Test-AlertPollerHealthy -HealthUrl $paths.AlertPollerHealthUrl
 $frontendOk = Test-FrontendHealthy -FrontendUrl $paths.FrontendUrl

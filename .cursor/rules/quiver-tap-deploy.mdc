@@ -45,14 +45,19 @@ alwaysApply: true
 - `npm run qa:*`, `test:unit`, `ci:validate` (sem restart prod)
 - `npm run prod:status` e GET `/api/health` / `/api/ready` em `:3001` (somente leitura)
 - `npm run prod:verify` — compara manifest vs frontend servido
+- `npm run prod:preflight` / `.\deploy.cmd -PreflightOnly` — verificacoes, nao altera nada
+- `.\deploy.cmd -DryRun` — plano + preflight, nao altera nada
 
 ## Deploy autorizado
 
 Apos confirmacao explicita, usar skill `.cursor/skills/quiver-tap-deploy/SKILL.md`:
 
 ```powershell
-npm run prod:deploy -- -Confirmed
+.\deploy.cmd -Confirmed
 ```
+
+O script se auto-eleva quando precisa encerrar a API (o watchdog a sobe elevada). O usuario
+precisa aceitar o prompt de UAC; a saida e espelhada no terminal e em `deploy/logs/deploy-*.log`.
 
 `prod:ensure` mantem servicos no ar — **nao aplica codigo novo**.
 
