@@ -64,5 +64,6 @@ deploy/prod-artifacts.previous.swap/
 backend/scripts/diag-*.mjs
 backend/scripts/browser-test-*.mjs
 backend/scripts/tmp-*
+backend/p.*
 backend/qa/validate-jul21-session.ts
 backend/reports/

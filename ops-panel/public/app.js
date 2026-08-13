@@ -54,6 +54,9 @@ const els = {
   overrideReason: document.getElementById('overrideReason'),
   overrideReasonField: document.getElementById('overrideReasonField'),
   rollbackHint: document.getElementById('rollbackHint'),
+  deployPlaybook: document.getElementById('deployPlaybook'),
+  deployConfirm: document.getElementById('deployConfirm'),
+  postDeploySmoke: document.getElementById('postDeploySmoke'),
 };
 
 let actionRunning = false;
@@ -424,9 +427,133 @@ function applyReleaseToButtons() {
   const canDeploy = els.overrideGate.checked
     ? Boolean(release.overridable) && Boolean(els.overrideReason.value.trim())
     : Boolean(gate?.allowed);
+  const confirmOk = els.deployConfirm.value.trim() === 'DEPLOY';
 
-  deploy.disabled = actionRunning || !canDeploy;
+  deploy.disabled = actionRunning || !canDeploy || !confirmOk;
   rollback.disabled = actionRunning || !release.rollback?.available;
+}
+
+function playbookStep(num, status, title, body) {
+  return (
+    `<div class="deploy-step deploy-step--${status}">` +
+    `<span class="deploy-step-num">${num}</span>` +
+    `<div class="deploy-step-body"><strong>${title}</strong>${body}</div></div>`
+  );
+}
+
+function renderDeployPlaybook(data, gate) {
+  if (!els.deployPlaybook) return;
+
+  const steps = [];
+  const behind = data.behindOriginMain || 0;
+  const ahead = data.aheadOriginMain || 0;
+  const syncOk = data.headOnOriginMain && behind === 0 && ahead === 0;
+
+  if (syncOk) {
+    steps.push(playbookStep(
+      1,
+      'ok',
+      'Git sincronizado',
+      `Branch <code>${escapeHtml(data.head?.branch || '?')}</code> alinhada com <code>origin/main</code>.`,
+    ));
+  } else if (behind > 0) {
+    steps.push(playbookStep(
+      1,
+      'warn',
+      'Rode git pull',
+      `Faltam <strong>${behind}</strong> commit(s) neste PC. No PowerShell:<br>` +
+      '<code>git pull origin main</code><br>Depois clique em <em>Verificar release</em>.',
+    ));
+  } else if (!data.headOnOriginMain) {
+    steps.push(playbookStep(
+      1,
+      'bad',
+      'Merge o PR antes',
+      `HEAD nao esta em <code>origin/main</code> (branch <code>${escapeHtml(data.head?.branch || '?')}</code>). ` +
+      'Faca merge no GitHub e depois <code>git pull origin main</code>.',
+    ));
+  } else if (ahead > 0) {
+    steps.push(playbookStep(
+      1,
+      'warn',
+      'Push pendente',
+      `O PC esta <strong>${ahead}</strong> commit(s) a frente de origin/main — faca push ou alinhe com o remoto.`,
+    ));
+  }
+
+  if (!data.workingTreeDirty) {
+    steps.push(playbookStep(2, 'ok', 'Working tree limpa', 'Nenhum arquivo sujo bloqueando o gate.'));
+  } else {
+    const files = (data.dirtyFiles || [])
+      .slice(0, 6)
+      .map((file) => `<code>${escapeHtml(file)}</code>`)
+      .join(', ');
+    const extra = data.dirtyCount > 6 ? '…' : '';
+    steps.push(playbookStep(
+      2,
+      'bad',
+      'Limpe arquivos sujos',
+      `${data.dirtyCount} arquivo(s): ${files || '?'}${extra}. Apague, commite ou ignore; depois <em>Verificar release</em>.`,
+    ));
+  }
+
+  const blockers = gate?.blockers || [];
+  if (blockers.length === 0) {
+    steps.push(playbookStep(3, 'ok', 'CI e gate', 'Checks obrigatorios verdes. Liberado para publicar.'));
+  } else {
+    steps.push(playbookStep(
+      3,
+      'bad',
+      'Gate com impedimento',
+      escapeHtml(blockers.map((b) => b.message).join(' ')),
+    ));
+  }
+
+  const confirmOk = els.deployConfirm.value.trim() === 'DEPLOY';
+  steps.push(playbookStep(
+    4,
+    confirmOk ? 'ok' : 'warn',
+    'Confirmar deploy',
+    confirmOk
+      ? 'Confirmacao <code>DEPLOY</code> preenchida — clique em <em>Liberar deploy</em>.'
+      : 'Digite <code>DEPLOY</code> no campo abaixo para habilitar o botao.',
+  ));
+
+  els.deployPlaybook.innerHTML = steps.join('');
+}
+
+async function runPostDeploySmoke() {
+  if (!els.postDeploySmoke) return;
+
+  els.postDeploySmoke.hidden = false;
+  els.postDeploySmoke.className = 'post-deploy-smoke';
+  els.postDeploySmoke.innerHTML = '<strong>Passo 5 — verificando producao…</strong>';
+
+  try {
+    const smoke = await fetchJson('/api/prod/smoke');
+    const items = [
+      ['API /api/ready', smoke.ready],
+      ['Frontend /', smoke.frontend],
+      ['Manifest alinhado', smoke.manifestAligned],
+      ['Nada pendente no painel', smoke.pendingCount === 0],
+    ];
+    if (smoke.logoSample) {
+      items.push([`Upload de logo (${smoke.logoSample.file})`, smoke.logoSample.ok]);
+    }
+
+    const html = items.map(([label, ok]) =>
+      `<div class="${ok ? 'status-ok' : 'status-bad'}">${ok ? '✓' : '✗'} ${escapeHtml(label)}</div>`,
+    ).join('');
+
+    els.postDeploySmoke.className = `post-deploy-smoke ${smoke.ok ? 'post-deploy-smoke--ok' : 'post-deploy-smoke--bad'}`;
+    els.postDeploySmoke.innerHTML =
+      `<strong>Passo 5 — smoke ${smoke.ok ? 'OK' : 'com falha'}</strong>${html}` +
+      '<p class="status-muted">Confira no site: ' +
+      '<a href="https://tap.quivercloud.com.br" target="_blank" rel="noopener">tap.quivercloud.com.br</a></p>';
+  } catch (err) {
+    els.postDeploySmoke.className = 'post-deploy-smoke post-deploy-smoke--bad';
+    els.postDeploySmoke.innerHTML = `<strong>Passo 5 — falhou</strong><p>${escapeHtml(err.message || String(err))}</p>`;
+  }
 }
 
 function renderRelease(data) {
@@ -505,6 +632,7 @@ function renderRelease(data) {
     ? `Rollback volta para <code>${escapeHtml(data.rollback.gitSha || '?')}</code> (${escapeHtml((data.rollback.parts || []).join(', ') || 'artefatos salvos')}). <strong>Nao reverte banco.</strong>`
     : 'Rollback fica disponivel depois do primeiro deploy que preserva <code>prod-artifacts.previous</code>.';
 
+  renderDeployPlaybook(data, gate);
   applyReleaseToButtons();
 }
 
@@ -695,6 +823,10 @@ async function postActionStream(url, body, label) {
     } else if (output.includes('SUCESSO')) {
       setTerminalStatus('Concluido com sucesso', 'ok');
       showToast(`${label}: concluido com sucesso.`);
+      if (/deploy/i.test(label)) {
+        els.deployConfirm.value = '';
+        await runPostDeploySmoke();
+      }
     } else {
       setTerminalStatus('Concluido', 'ok');
       showToast(`${label}: concluido.`);
@@ -738,14 +870,24 @@ els.overrideGate.addEventListener('change', () => {
   els.overrideReasonField.hidden = !els.overrideGate.checked;
   applyReleaseToButtons();
 });
+els.deployConfirm.addEventListener('input', () => {
+  if (release) renderRelease(release);
+});
 
 document.getElementById('btnDeploy').addEventListener('click', () => {
+  if (els.deployConfirm.value.trim() !== 'DEPLOY') {
+    showToast('Digite DEPLOY no campo de confirmacao.', 'bad');
+    els.deployConfirm.focus();
+    return;
+  }
+
   const override = els.overrideGate.checked;
   const alvo = release?.head?.sha ? release.head.sha.slice(0, 7) : '?';
-  const aviso = override
-    ? `Você está IGNORANDO o gate de release e publicando ${alvo}.\n\nDigite DEPLOY para confirmar:`
-    : `Publicar o commit ${alvo} em producao?\n\nDigite DEPLOY para confirmar:`;
-  if (prompt(aviso) !== 'DEPLOY') return;
+  if (!confirm(override
+    ? `Ignorar o gate e publicar ${alvo} em producao?`
+    : `Publicar o commit ${alvo} em producao?`)) {
+    return;
+  }
 
   postActionStream('/api/prod/deploy', {
     confirm: 'DEPLOY',
