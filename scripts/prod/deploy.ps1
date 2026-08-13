@@ -219,11 +219,38 @@ function Write-LogTail {
   }
 }
 
+function Show-UacDeployNotice {
+  $message = @(
+    'O Windows vai pedir permissao de Administrador para encerrar a API em producao.'
+    ''
+    'Clique em SIM no prompt UAC (pode aparecer atras do navegador ou na barra de tarefas).'
+    ''
+    'Se cancelar ou ignorar, o deploy nao sera executado e nada sera alterado.'
+  ) -join "`n"
+
+  try {
+    Add-Type -AssemblyName System.Windows.Forms
+    [void][System.Windows.Forms.MessageBox]::Show(
+      $message,
+      'Quiver Tap - Confirmar UAC',
+      [System.Windows.Forms.MessageBoxButtons]::OK,
+      [System.Windows.Forms.MessageBoxIcon]::Information
+    )
+  } catch {
+    Write-Host ''
+    Write-Host '>>> ACEITE O PROMPT UAC DO WINDOWS (clique em Sim) <<<' -ForegroundColor Yellow
+    Write-Host 'O prompt pode aparecer atras do navegador.' -ForegroundColor Yellow
+    Write-Host ''
+  }
+}
+
 function Invoke-SelfElevatedDeploy {
   $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
   $log = Join-Path $paths.LogDir "deploy-$stamp.log"
   $exitFile = Join-Path $paths.RuntimeDir "deploy-$stamp.exit"
   Remove-Item $exitFile -Force -ErrorAction SilentlyContinue
+
+  Show-UacDeployNotice
 
   $childArgs = @(
     '-NoProfile',
@@ -246,11 +273,12 @@ function Invoke-SelfElevatedDeploy {
 
   try {
     $child = Start-Process -FilePath 'powershell.exe' -ArgumentList $childArgs `
-      -Verb RunAs -WindowStyle Hidden -PassThru
+      -Verb RunAs -WindowStyle Normal -PassThru
   } catch {
     Write-Host ''
     Write-Host 'UAC recusado ou elevacao indisponivel. Deploy nao executado.' -ForegroundColor Red
-    Write-Host 'Alternativa: abra PowerShell como Administrador e rode o mesmo comando.' -ForegroundColor Yellow
+    Write-Host 'Nada foi alterado. Tente de novo e clique em Sim no UAC.' -ForegroundColor Yellow
+    Write-Host 'Alternativa: abra PowerShell como Administrador e rode: .\deploy.cmd -Confirmed' -ForegroundColor Yellow
     $script:deployExit = 1
     return
   }
@@ -273,6 +301,12 @@ function Invoke-SelfElevatedDeploy {
     $exitCode = [int]$raw
   } elseif ($null -ne $child.ExitCode) {
     $exitCode = [int]$child.ExitCode
+  }
+
+  if ($exitCode -ne 0 -and -not (Test-Path $exitFile) -and -not (Test-Path $log)) {
+    Write-Host ''
+    Write-Host 'UAC cancelado ou elevacao negada. Nenhum artefato foi alterado.' -ForegroundColor Red
+    Write-Host 'Tente de novo: clique em Sim no prompt UAC do Windows.' -ForegroundColor Yellow
   }
 
   Write-Host ''
