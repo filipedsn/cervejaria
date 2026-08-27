@@ -3,15 +3,17 @@ $ErrorActionPreference = 'Stop'
 $deployScript = Join-Path $PSScriptRoot 'deploy.ps1'
 $configScript = Join-Path $PSScriptRoot '_config.ps1'
 $clearRecoveryScript = Join-Path $PSScriptRoot 'clear-deploy-recovery.ps1'
+$rollbackScript = Join-Path $PSScriptRoot 'rollback.ps1'
 $deploySource = Get-Content $deployScript -Raw
 $clearRecoverySource = Get-Content $clearRecoveryScript -Raw
+$rollbackSource = Get-Content $rollbackScript -Raw
 
 # As funcoes de pausa nao executam deploy nem acessam banco quando carregadas.
 . $configScript
 
 Describe 'Contrato seguro do deploy de producao' {
   It 'tem sintaxe PowerShell valida sem executar deploy ou recovery' {
-    foreach ($source in @($deploySource, $clearRecoverySource)) {
+    foreach ($source in @($deploySource, $clearRecoverySource, $rollbackSource)) {
       $tokens = $null
       $errors = $null
       [void][System.Management.Automation.Language.Parser]::ParseInput(
@@ -79,5 +81,34 @@ Describe 'Contrato seguro do deploy de producao' {
     $clearRecoverySource | Should Match 'LIBERAR-WATCHDOG-APOS-VALIDACAO'
     $clearRecoverySource | Should Match 'Remove-Item \$recoveryFile'
     $clearRecoverySource | Should Not Match 'start-api\.ps1|restart-api\.ps1|pg_restore|prisma migrate'
+  }
+
+  It 'mantem ledger atomico, limitado e sem sobrescrever arquivo corrompido' {
+    $runtimeDir = Join-Path $TestDrive 'runtime'
+    $paths = @{ RuntimeDir = $runtimeDir }
+    1..52 | ForEach-Object {
+      Add-ReleaseHistoryEvent -Paths $paths -Event @{ id = "deploy-$_"; type = 'DEPLOY'; result = 'SUCCESS' } | Should Be $true
+    }
+    $history = Get-Content (Get-ReleaseHistoryFile -Paths $paths) -Raw | ConvertFrom-Json
+    $history.events.Count | Should Be 50
+    $history.events[0].id | Should Be 'deploy-3'
+
+    Set-Content (Get-ReleaseHistoryFile -Paths $paths) -Value '{invalido' -Encoding UTF8
+    Add-ReleaseHistoryEvent -Paths $paths -Event @{ id = 'nao-gravar'; type = 'DEPLOY' } | Should Be $false
+    (Get-Content (Get-ReleaseHistoryFile -Paths $paths) -Raw) | Should Match 'invalido'
+  }
+
+  It 'integra eventos de deploy sem alterar o contrato de recovery' {
+    $deploySource | Should Match 'Write-DeployLedgerEvent'
+    $deploySource | Should Match "'RECOVERY_REQUIRED'"
+    $deploySource | Should Match 'Write-DeployRecoveryState'
+  }
+
+  It 'integra rollback com origem, destino, duracao e smoke no ledger' {
+    $rollbackSource | Should Match 'Add-ReleaseHistoryEvent'
+    $rollbackSource | Should Match 'removedGitSha'
+    $rollbackSource | Should Match 'restoredGitSha'
+    $rollbackSource | Should Match 'durationSeconds'
+    $rollbackSource | Should Match 'rollbackSmoke'
   }
 }

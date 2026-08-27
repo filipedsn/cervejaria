@@ -25,6 +25,10 @@ $previousFrontend = Join-Path $previous 'frontend'
 $previousBackend = Join-Path $previous 'backend'
 $previousManifest = Join-Path $previous 'manifest.json'
 $previousMeta = Join-Path $previous 'rollback-point.json'
+$rollbackStartedAt = $null
+$rollbackResult = 'FAILED'
+$rollbackSmoke = 'NOT_RUN'
+$rollbackError = $null
 
 function Read-JsonFile {
   param([string]$Path)
@@ -91,6 +95,8 @@ if (-not $Confirmed) {
     exit 1
   }
 }
+
+$rollbackStartedAt = (Get-Date).ToUniversalTime()
 
 $swap = "$previous.swap"
 $restored = @()
@@ -164,7 +170,10 @@ try {
   }
   $record | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $paths.RuntimeDir 'last-rollback.json') -Encoding UTF8
 
+  $rollbackSmoke = if ($readyOk -and $frontendOk) { 'PASS' } else { 'FAIL' }
+
   if (-not $readyOk -or -not $frontendOk) {
+    $rollbackError = 'Smoke test falhou para /api/ready ou frontend.'
     Write-Host ''
     Write-Host "Rollback aplicado, mas o smoke test falhou. Veja $($paths.ApiErrLog)" -ForegroundColor Red
     exit 1
@@ -173,13 +182,32 @@ try {
   Write-Host ''
   Write-Host "Rollback concluido: producao esta em $(Format-Release $target)." -ForegroundColor Green
   Write-Host 'Rodar rollback de novo devolve a release que acabou de sair do ar.' -ForegroundColor Cyan
+  $rollbackResult = 'SUCCESS'
   Write-Host ''
   & "$PSScriptRoot\status.ps1"
   exit 0
 } catch {
+  $rollbackError = $_.Exception.Message
   Write-Host ''
   Write-Host $_.Exception.Message -ForegroundColor Red
   Write-Host "Rollback abortado. Verifique $($paths.ProdArtifactsDir) e $swap antes de tentar de novo." -ForegroundColor Yellow
   Write-Host 'npm run prod:status mostra o estado atual.' -ForegroundColor Yellow
   exit 1
+} finally {
+  if ($rollbackStartedAt) {
+    $finishedAt = (Get-Date).ToUniversalTime()
+    $event = [ordered]@{
+      id = "rollback-$($rollbackStartedAt.ToString('yyyyMMddTHHmmssfffZ'))-$PID"
+      type = 'ROLLBACK'
+      startedAt = $rollbackStartedAt.ToString('o')
+      finishedAt = $finishedAt.ToString('o')
+      durationSeconds = [math]::Round(($finishedAt - $rollbackStartedAt).TotalSeconds, 3)
+      removedGitSha = if ($current) { $current.gitSha } else { $null }
+      restoredGitSha = if ($target) { $target.gitSha } else { $null }
+      result = $rollbackResult
+      smoke = $rollbackSmoke
+      errorSummary = if ($rollbackResult -ne 'SUCCESS') { Get-SafeRecoveryErrorSummary -Message $rollbackError } else { $null }
+    }
+    [void](Add-ReleaseHistoryEvent -Paths $paths -Event $event)
+  }
 }

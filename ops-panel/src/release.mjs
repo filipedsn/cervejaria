@@ -97,6 +97,53 @@ export function readRollbackPoint(previousDir) {
   };
 }
 
+/** Le o ledger local; arquivo ausente ou corrompido nunca impede o Ops Panel. */
+export function readReleaseHistory(historyPath, limit = 10) {
+  if (!fs.existsSync(historyPath)) {
+    return { exists: false, corrupted: false, events: [], lastDeploy: null, lastSuccessfulDeploy: null, lastRollback: null };
+  }
+  const raw = readJsonFile(historyPath);
+  if (!raw || !Array.isArray(raw.events)) {
+    return { exists: true, corrupted: true, events: [], lastDeploy: null, lastSuccessfulDeploy: null, lastRollback: null };
+  }
+  const events = raw.events
+    .filter((event) => event && (event.type === 'DEPLOY' || event.type === 'ROLLBACK'))
+    .map((event) => {
+      const base = {
+        id: typeof event.id === 'string' ? event.id.slice(0, 120) : null,
+        type: event.type,
+        startedAt: event.startedAt || null,
+        finishedAt: event.finishedAt || null,
+        durationSeconds: Number.isFinite(Number(event.durationSeconds)) ? Number(event.durationSeconds) : null,
+        result: event.result || null,
+        smoke: event.smoke || 'NOT_RUN',
+        errorSummary: safeRecoveryText(event.errorSummary, null),
+      };
+      return event.type === 'DEPLOY'
+        ? {
+            ...base,
+            gitSha: event.gitSha || null,
+            gitShortSha: event.gitShortSha || null,
+            previousGitSha: event.previousGitSha || null,
+            backup: event.backup?.name ? { name: event.backup.name } : null,
+            migrations: { executed: event.migrations?.executed === 'SIM' ? 'SIM' : 'NAO', appliedCount: event.migrations?.appliedCount ?? null },
+            backfillExecuted: event.backfillExecuted === 'SIM' ? 'SIM' : 'NAO',
+            finalPhase: event.finalPhase || null,
+            rollbackAvailable: event.rollbackAvailable === 'SIM' ? 'SIM' : 'NAO',
+          }
+        : { ...base, removedGitSha: event.removedGitSha || null, restoredGitSha: event.restoredGitSha || null };
+    });
+  const newestFirst = [...events].reverse();
+  return {
+    exists: true,
+    corrupted: false,
+    events: newestFirst.slice(0, limit),
+    lastDeploy: newestFirst.find((event) => event.type === 'DEPLOY') || null,
+    lastSuccessfulDeploy: newestFirst.find((event) => event.type === 'DEPLOY' && event.result === 'SUCCESS') || null,
+    lastRollback: newestFirst.find((event) => event.type === 'ROLLBACK') || null,
+  };
+}
+
 function safeRecoveryText(value, fallback) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (!text) return fallback;

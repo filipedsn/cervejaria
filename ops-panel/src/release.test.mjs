@@ -10,6 +10,7 @@ import {
   evaluateReleaseGate,
   isAgentBranch,
   readDeployRecovery,
+  readReleaseHistory,
   shouldAutoSyncMain,
   summarizeChecks,
 } from './release.mjs';
@@ -159,6 +160,41 @@ test('le recovery sem expor campos fora do contrato operacional', () => {
     assert.equal(recovery.migration.started, true);
     assert.equal('databaseUrl' in recovery, false);
     assert.doesNotMatch(recovery.failureReason, /usuario:senha/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('le ledger inexistente, limita eventos e nao expoe campos estranhos', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'quiver-history-'));
+  const file = path.join(dir, 'release-history.json');
+  try {
+    assert.deepEqual(readReleaseHistory(file).events, []);
+    fs.writeFileSync(file, JSON.stringify({
+      version: 1,
+      events: [
+        { type: 'DEPLOY', id: 'one', gitSha: 'a'.repeat(40), gitShortSha: 'aaaaaaa', result: 'SUCCESS', smoke: 'PASS', durationSeconds: 12, token: 'never-return' },
+        { type: 'ROLLBACK', id: 'two', restoredGitSha: 'b'.repeat(40), result: 'SUCCESS', smoke: 'PASS', durationSeconds: 4 },
+      ],
+    }));
+    const history = readReleaseHistory(file, 1);
+    assert.equal(history.events.length, 1);
+    assert.equal(history.lastDeploy.gitShortSha, 'aaaaaaa');
+    assert.equal(history.lastRollback.restoredGitSha, 'b'.repeat(40));
+    assert.equal('token' in history.lastDeploy, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ledger corrompido e tratado somente como leitura indisponivel', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'quiver-history-'));
+  const file = path.join(dir, 'release-history.json');
+  try {
+    fs.writeFileSync(file, '{invalido');
+    const history = readReleaseHistory(file);
+    assert.equal(history.corrupted, true);
+    assert.deepEqual(history.events, []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

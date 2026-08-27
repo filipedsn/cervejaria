@@ -59,6 +59,11 @@ $script:swapCompletedAt = $null
 $script:recoveryContext = $null
 $script:productionProcessesStopped = $false
 $script:deployPauseOwned = $false
+$script:ledgerStartedAt = $null
+$script:ledgerPreviousSha = $null
+$script:ledgerCandidateSha = $null
+$script:ledgerBackup = $null
+$script:ledgerSmoke = 'NOT_RUN'
 
 $plan = [ordered]@{
   Backup   = -not $SkipBackup
@@ -398,6 +403,50 @@ function Initialize-DeployRecoveryContext {
   }
 }
 
+function Initialize-ReleaseLedgerContext {
+  $script:ledgerStartedAt = (Get-Date).ToUniversalTime()
+  $previous = Get-DeployManifestSummary
+  $script:ledgerPreviousSha = if ($previous) { $previous.gitSha } else { $null }
+  $script:ledgerCandidateSha = Get-GitSha -ProjectRoot $paths.ProjectRoot
+}
+
+function Write-DeployLedgerEvent {
+  if (-not $script:ledgerStartedAt) { return }
+
+  $finishedAt = (Get-Date).ToUniversalTime()
+  $result = if ($deployExit -eq 0) {
+    'SUCCESS'
+  } elseif ($script:databaseTransitionStarted) {
+    'RECOVERY_REQUIRED'
+  } else {
+    'FAILED'
+  }
+  $rollbackAvailable = (Test-Path (Join-Path $paths.ProdArtifactsPrevious 'frontend\index.html')) -or
+    (Test-Path (Join-Path $paths.ProdArtifactsPrevious 'backend\dist\index.js'))
+  $event = [ordered]@{
+    id = "deploy-$($script:ledgerStartedAt.ToString('yyyyMMddTHHmmssfffZ'))-$PID"
+    type = 'DEPLOY'
+    startedAt = $script:ledgerStartedAt.ToString('o')
+    finishedAt = $finishedAt.ToString('o')
+    durationSeconds = [math]::Round(($finishedAt - $script:ledgerStartedAt).TotalSeconds, 3)
+    gitSha = $script:ledgerCandidateSha
+    gitShortSha = if ($script:ledgerCandidateSha) { $script:ledgerCandidateSha.Substring(0, [math]::Min(7, $script:ledgerCandidateSha.Length)) } else { $null }
+    previousGitSha = $script:ledgerPreviousSha
+    result = $result
+    backup = $script:ledgerBackup
+    migrations = [ordered]@{
+      executed = if ($script:migrationStartedAt) { 'SIM' } else { 'NAO' }
+      appliedCount = $null
+    }
+    backfillExecuted = if ($script:backfillStarted) { 'SIM' } else { 'NAO' }
+    smoke = $script:ledgerSmoke
+    finalPhase = $script:databaseTransitionPhase
+    errorSummary = if ($deployExit -ne 0) { Get-SafeRecoveryErrorSummary -Message $script:failureReason } else { $null }
+    rollbackAvailable = if ($rollbackAvailable) { 'SIM' } else { 'NAO' }
+  }
+  [void](Add-ReleaseHistoryEvent -Paths $paths -Event $event)
+}
+
 function Write-DeployRecoveryState {
   $state = [ordered]@{
     active           = $true
@@ -487,6 +536,7 @@ function Stop-ProductionDatabaseConsumers {
 
 function Invoke-DeployBody {
   Initialize-DeployRecoveryContext
+  Initialize-ReleaseLedgerContext
   Merge-StrayProdUploads -Paths $paths
 
   if ($plan.Backup) {
@@ -495,6 +545,7 @@ function Invoke-DeployBody {
     & "$PSScriptRoot\backup-db.ps1"
     if ($LASTEXITCODE -ne 0) { throw 'Backup falhou.' }
     $script:recoveryContext.backup = Get-LatestProdBackupSummary
+    $script:ledgerBackup = $script:recoveryContext.backup
   }
 
   Ensure-ProdArtifactsBaseline -Paths $paths
@@ -597,12 +648,14 @@ function Invoke-DeployBody {
   if (-not $readyOk -or -not $frontendOk) {
     $script:databaseTransitionPhase = 'SMOKE_FAILED'
     $script:failureReason = 'Smoke test falhou para /api/ready ou frontend.'
+    $script:ledgerSmoke = 'FAIL'
     Write-Host ''
     Write-Host "Deploy concluido com falha no smoke test. Veja $($paths.ApiErrLog)" -ForegroundColor Red
     $script:deployExit = 1
     return
   }
 
+  $script:ledgerSmoke = 'PASS'
   Write-Host ''
   Write-Host 'Deploy concluido com sucesso.' -ForegroundColor Green
   Write-Host "  Local:  http://127.0.0.1:$($paths.ApiPort)"
@@ -691,6 +744,7 @@ try {
   if ($script:databaseTransitionStarted) {
     Write-Host "Falha apos inicio da alteracao do banco (fase: $($script:databaseTransitionPhase))." -ForegroundColor Red
   }
+
   Write-Host 'Deploy abortado. Verifique npm run prod:status' -ForegroundColor Yellow
   $deployExit = 1
 } finally {
@@ -714,6 +768,9 @@ try {
     }
     Clear-DeployPause -Paths $paths
   }
+
+  # Falha de ledger nunca muda o resultado do deploy nem o estado de recovery.
+  Write-DeployLedgerEvent
 
   # Em falha anterior a migration, o watchdog pode recuperar a release atual. Depois
   # de uma transicao de banco, deploy.pause permanece e bloqueia essa recuperacao.

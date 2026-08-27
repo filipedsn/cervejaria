@@ -590,6 +590,71 @@ function Get-DeployRecoveryFile {
   return (Join-Path $Paths.RuntimeDir 'deploy-recovery.json')
 }
 
+# Historico imutavel de operacoes de release. Ao contrario de deploy-recovery.json,
+# este arquivo nao e estado de seguranca e nunca deve controlar o watchdog.
+function Get-ReleaseHistoryFile {
+  param([hashtable]$Paths)
+
+  return (Join-Path $Paths.RuntimeDir 'release-history.json')
+}
+
+function Add-ReleaseHistoryEvent {
+  param(
+    [hashtable]$Paths,
+    [hashtable]$Event,
+    [int]$MaxEvents = 50
+  )
+
+  $historyFile = Get-ReleaseHistoryFile -Paths $Paths
+  $tempFile = $null
+  try {
+    New-Item -ItemType Directory -Force -Path $Paths.RuntimeDir | Out-Null
+    $events = @()
+    if (Test-Path $historyFile) {
+      try {
+        $existing = Get-Content -Path $historyFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($null -eq $existing -or $null -eq $existing.events) {
+          throw 'formato sem events'
+        }
+        $events = @($existing.events)
+      } catch {
+        Write-Warning "Historico de release nao foi gravado: arquivo existente ilegivel ($historyFile). Preserve-o e corrija-o manualmente."
+        return $false
+      }
+    }
+
+    $allEvents = @($events) + @([pscustomobject]$Event)
+    if ($allEvents.Count -gt $MaxEvents) {
+      $allEvents = @($allEvents | Select-Object -Last $MaxEvents)
+    }
+    $document = [ordered]@{
+      version = 1
+      events  = $allEvents
+    }
+
+    $tempFile = "$historyFile.$PID.$([guid]::NewGuid().ToString('N')).tmp"
+    $json = $document | ConvertTo-Json -Depth 8
+    [System.IO.File]::WriteAllText($tempFile, $json + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+    if (Test-Path $historyFile) {
+      try {
+        [System.IO.File]::Replace($tempFile, $historyFile, $null)
+      } catch {
+        Move-Item -Path $tempFile -Destination $historyFile -Force
+      }
+    } else {
+      Move-Item -Path $tempFile -Destination $historyFile
+    }
+    return $true
+  } catch {
+    Write-Warning "Historico de release nao foi gravado: $($_.Exception.Message)"
+    return $false
+  } finally {
+    if ($tempFile -and (Test-Path $tempFile)) {
+      Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
+    }
+  }
+}
+
 function Set-DeployPause {
   param(
     [hashtable]$Paths,

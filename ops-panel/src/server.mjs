@@ -15,6 +15,7 @@ import {
   isAgentBranch,
   readDeployRecovery,
   readManifest,
+  readReleaseHistory,
   readRollbackPoint,
   runGit,
   summarizeChecks,
@@ -49,6 +50,7 @@ const PROD_ARTIFACTS_DIR = path.join(PROJECT_ROOT, 'deploy', 'prod-artifacts');
 const PROD_MANIFEST = path.join(PROD_ARTIFACTS_DIR, 'manifest.json');
 const PROD_ARTIFACTS_PREVIOUS = path.join(PROJECT_ROOT, 'deploy', 'prod-artifacts.previous');
 const DEPLOY_RECOVERY = path.join(RUNTIME_DIR, 'deploy-recovery.json');
+const RELEASE_HISTORY = path.join(RUNTIME_DIR, 'release-history.json');
 
 const SUPPORT_AGENT_DIR = path.join(PROJECT_ROOT, 'support-agent');
 const SUPPORT_AGENT_ENV = path.join(SUPPORT_AGENT_DIR, '.env');
@@ -531,6 +533,7 @@ async function fetchChecksForSha(sha) {
 async function buildReleaseState() {
   const deployed = readManifest(PROD_MANIFEST);
   const recovery = readDeployRecovery(DEPLOY_RECOVERY);
+  const history = readReleaseHistory(RELEASE_HISTORY);
   const { git, sync } = await collectGitStateWithAutoSync(PROJECT_ROOT, deployed?.gitSha || null);
 
   if (!git.gitAvailable) {
@@ -538,6 +541,7 @@ async function buildReleaseState() {
     return {
       deployed,
       recovery,
+      history,
       rollback: readRollbackPoint(PROD_ARTIFACTS_PREVIOUS),
       sync,
       ...git,
@@ -554,7 +558,7 @@ async function buildReleaseState() {
     annotatePendingCommits(git.pending),
   ]);
 
-  const state = { ...git, deployed, recovery, pending, checks, checksConfigured: configured, checksError: error || null };
+  const state = { ...git, deployed, recovery, history, pending, checks, checksConfigured: configured, checksError: error || null };
   const gate = evaluateReleaseGate(state, { requiredChecks });
 
   return {

@@ -49,6 +49,7 @@ const els = {
   releaseGate: document.getElementById('releaseGate'),
   releaseCommits: document.getElementById('releaseCommits'),
   releaseChecks: document.getElementById('releaseChecks'),
+  releaseHistory: document.getElementById('releaseHistory'),
   ackMigrations: document.getElementById('ackMigrations'),
   overrideGate: document.getElementById('overrideGate'),
   overrideReason: document.getElementById('overrideReason'),
@@ -671,7 +672,25 @@ function renderRelease(data) {
     : required.map((name) => {
         const check = (data.checks || []).find((c) => c.name === name);
         return row(`<code>${escapeHtml(name)}</code>`, checkPill({ ...(check || {}), verdict: verdictOf(check) }));
-      }).join('');
+       }).join('');
+
+  const history = data.history || { events: [] };
+  if (history.corrupted) {
+    els.releaseHistory.innerHTML = '<div class="metric-row"><span class="status-warn">Histórico ilegível; o deploy continua disponível. Preserve o arquivo para análise.</span></div>';
+  } else if (!history.events?.length) {
+    els.releaseHistory.innerHTML = '<div class="metric-row"><span class="status-muted">Sem histórico registrado.</span></div>';
+  } else {
+    const eventLabel = (event) => {
+      const sha = event.type === 'DEPLOY' ? (event.gitShortSha || event.gitSha || '?') : (event.restoredGitSha || '?');
+      return `${event.type === 'DEPLOY' ? 'Deploy' : 'Rollback'} <code>${escapeHtml(String(sha).slice(0, 7))}</code>`;
+    };
+    const eventValue = (event) => {
+      const result = escapeHtml(event.result || '—');
+      const duration = event.durationSeconds == null ? '' : ` · ${escapeHtml(String(event.durationSeconds))}s`;
+      return `<span class="status-${event.result === 'SUCCESS' ? 'ok' : event.result === 'RECOVERY_REQUIRED' ? 'bad' : 'warn'}">${result}</span> · ${escapeHtml(formatDate(event.finishedAt) || 'data não informada')}${duration} · smoke ${escapeHtml(event.smoke || 'NOT_RUN')}`;
+    };
+    els.releaseHistory.innerHTML = history.events.slice(0, 5).map((event) => row(eventLabel(event), eventValue(event))).join('');
+  }
 
   els.rollbackHint.innerHTML = data.rollback?.available
     ? `Rollback volta para <code>${escapeHtml(data.rollback.gitSha || '?')}</code> (${escapeHtml((data.rollback.parts || []).join(', ') || 'artefatos salvos')}). <strong>Nao reverte banco.</strong>`
