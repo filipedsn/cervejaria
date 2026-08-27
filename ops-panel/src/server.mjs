@@ -10,7 +10,7 @@ import {
   DEFAULT_REQUIRED_CHECKS,
   OVERRIDE_CONFIRM,
   checkVerdict,
-  collectGitState,
+  collectGitStateWithAutoSync,
   evaluateReleaseGate,
   isAgentBranch,
   readManifest,
@@ -528,13 +528,14 @@ async function fetchChecksForSha(sha) {
 
 async function buildReleaseState() {
   const deployed = readManifest(PROD_MANIFEST);
-  const git = await collectGitState(PROJECT_ROOT, deployed?.gitSha || null);
+  const { git, sync } = await collectGitStateWithAutoSync(PROJECT_ROOT, deployed?.gitSha || null);
 
   if (!git.gitAvailable) {
     const gate = evaluateReleaseGate({ gitAvailable: false }, { requiredChecks });
     return {
       deployed,
       rollback: readRollbackPoint(PROD_ARTIFACTS_PREVIOUS),
+      sync,
       ...git,
       checks: [],
       gate,
@@ -554,6 +555,7 @@ async function buildReleaseState() {
 
   return {
     ...state,
+    sync,
     // Os dois veredictos vao prontos para a tela decidir se habilita o botao sem
     // reimplementar a regra no navegador. O POST /api/prod/deploy reavalia de todo jeito:
     // a decisao final nunca depende do que o cliente mandou.

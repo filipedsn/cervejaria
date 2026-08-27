@@ -35,6 +35,7 @@ export function paymentSummary(form: PaymentFormRow[], total: number) {
 }
 
 export function createDefaultPaymentForm(total: number): PaymentFormRow[] {
+  if (total <= 0.01) return [];
   return [{ forma: 'PIX', valor: formatCurrencyInputFromNumber(total) }];
 }
 
@@ -66,9 +67,12 @@ export function PaymentFormModal({
   headerExtra?: React.ReactNode;
 }) {
   const [step, setStep] = useState<PaymentStep>('form');
+  const isCourtesy = total <= 0.01;
   const { informed, remaining, isBalanced } = paymentSummary(paymentForm, total);
   const progress = total > 0 ? Math.min(100, (informed / total) * 100) : 100;
-  const canReview = isBalanced && isPaymentFormValid(paymentForm);
+  const canReview = isCourtesy
+    ? paymentForm.length === 0
+    : paymentForm.length > 0 && isBalanced && isPaymentFormValid(paymentForm);
 
   useEffect(() => {
     if (!open) setStep('form');
@@ -111,13 +115,15 @@ export function PaymentFormModal({
     ]);
   };
 
-  const modalTitle = step === 'form' ? title : 'Confirmar pagamento?';
+  const modalTitle = step === 'form' ? title : isCourtesy ? 'Confirmar cortesia?' : 'Confirmar pagamento?';
 
   return (
     <Modal
       open={open}
       onClose={handleClose}
       title={modalTitle}
+      hideHeaderClose
+      closeOnBackdrop={false}
       footer={
         step === 'confirm' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -135,10 +141,33 @@ export function PaymentFormModal({
               disabled={isPending}
               onClick={onConfirm}
             >
-              {isPending ? 'Processando...' : `Efetuar pagamento · ${formatCurrency(total)}`}
+              {isPending
+                ? 'Processando...'
+                : isCourtesy
+                  ? 'Concluir cortesia'
+                  : `Efetuar pagamento · ${formatCurrency(total)}`}
             </button>
           </div>
-        ) : undefined
+        ) : (
+          <div className="space-y-2">
+            <button
+              type="button"
+              className="touch-btn-primary w-full min-h-14"
+              onClick={() => setStep('confirm')}
+              disabled={isPending || !canReview}
+            >
+              {isCourtesy ? 'Revisar cortesia' : `Revisar pagamento · ${formatCurrency(total)}`}
+            </button>
+            <button
+              type="button"
+              className="touch-btn-danger w-full min-h-14"
+              disabled={isPending}
+              onClick={handleClose}
+            >
+              Fechar
+            </button>
+          </div>
+        )
       }
     >
       {step === 'form' ? (
@@ -150,6 +179,12 @@ export function PaymentFormModal({
             <p className="text-3xl font-bold text-brand-600 tabular-nums">{formatCurrency(total)}</p>
           </div>
 
+          {isCourtesy ? (
+            <div className="rounded-xl bg-surface-lighter border border-line p-4 text-center space-y-1">
+              <p className="font-semibold text-success">Cortesia — sem pagamento</p>
+              <p className="text-sm text-ink-muted">O desconto cobre o valor integral da venda.</p>
+            </div>
+          ) : (
           <div className="rounded-xl bg-surface-lighter border border-line p-4 space-y-3">
             <div className="flex items-center justify-between text-sm">
               <span className="text-ink-muted">Informado</span>
@@ -173,8 +208,9 @@ export function PaymentFormModal({
               </p>
             )}
           </div>
+          )}
 
-          <div className="space-y-3">
+          {!isCourtesy && <div className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
               {paymentForm.length > 1 ? 'Dividir pagamento' : 'Forma de pagamento'}
             </p>
@@ -256,22 +292,13 @@ export function PaymentFormModal({
                 </div>
               </div>
             ))}
-          </div>
+          </div>}
 
-          {paymentForm.length < 3 && !isBalanced && (
+          {!isCourtesy && paymentForm.length < 3 && !isBalanced && (
             <button type="button" onClick={addSplit} className="touch-btn-secondary w-full min-h-12 text-sm">
               + Dividir pagamento
             </button>
           )}
-
-          <button
-            type="button"
-            className="touch-btn-primary w-full"
-            onClick={() => setStep('confirm')}
-            disabled={isPending || !canReview}
-          >
-            {`Revisar pagamento · ${formatCurrency(total)}`}
-          </button>
         </div>
       ) : (
         <div className="space-y-5">
@@ -282,6 +309,11 @@ export function PaymentFormModal({
             <p className="text-3xl font-bold text-brand-600 tabular-nums">{formatCurrency(total)}</p>
           </div>
 
+          {isCourtesy ? (
+            <div className="rounded-xl border border-line bg-surface-lighter px-4 py-4 text-center">
+              <p className="font-semibold text-success">Cortesia — nenhum pagamento será registrado</p>
+            </div>
+          ) : (
           <div className="rounded-xl border border-line bg-surface-lighter divide-y divide-line">
             {paymentForm.map((row, i) => {
               const forma = toPaymentForma(row);
@@ -296,6 +328,7 @@ export function PaymentFormModal({
               );
             })}
           </div>
+          )}
 
           <p className="text-sm text-ink-soft leading-relaxed">{confirmMessage}</p>
         </div>

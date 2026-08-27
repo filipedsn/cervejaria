@@ -225,7 +225,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
   );
 
   await test(
-    { id: 'QCZ-10', category: 'Quiosque cozinha', name: 'Comanda só cobra após ENTREGUE na cozinha', requirement: 'QCZ-10' },
+    { id: 'QCZ-10', category: 'Quiosque cozinha', name: 'Cozinha pendente bloqueia pagamento; total já inclui itens', requirement: 'QCZ-10' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCZ-01 incompleto' };
       const comanda = await api<{ id: string; total: number; pedidos?: Array<{ id: string }> }>(
@@ -245,26 +245,31 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
       if (comanda.status !== 201 || !novo) {
         return { status: 'failed', message: 'Setup comanda paga', expected: '201', actual: String(comanda.status) };
       }
-      if (comanda.data.total !== 0) {
+      if (!comanda.data.total || comanda.data.total <= 0) {
         return {
           status: 'failed',
-          message: 'Total antes da entrega',
-          expected: '0',
+          message: 'Total inclui item de cozinha ao lançar',
+          expected: '> 0',
           actual: String(comanda.data.total),
         };
       }
 
       const pagarAntes = await api('POST', `/api/quiosque/comandas/${comanda.data.id}/pagamentos`, {
         token: cfg.donoToken,
-        body: { pagamentos: [{ forma: 'PIX', valor: 0 }] },
+        body: { pagamentos: [{ forma: 'PIX', valor: comanda.data.total }] },
       });
-      if (pagarAntes.status !== 409) {
+      if (pagarAntes.status !== 409 || !pagarAntes.data?.error?.includes('cozinha')) {
         return {
           status: 'failed',
           message: 'Cobrar antes da entrega',
-          expected: '409',
-          actual: String(pagarAntes.status),
+          expected: '409 cozinha',
+          actual: `${pagarAntes.status} ${pagarAntes.data?.error ?? ''}`,
         };
+      }
+
+      const preparo = await setStatus(novo, 'EM_PREPARO');
+      if (preparo.status !== 200) {
+        return { status: 'failed', message: 'Marcar em preparo', expected: '200', actual: String(preparo.status) };
       }
 
       const entrega = await setStatus(novo, 'PRONTO');
@@ -305,7 +310,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
           actual: `${r.status} ${r.data?.error ?? ''}`,
         };
       }
-      return { message: 'Total liberado só após ENTREGUE', expected: '200', actual: '200' };
+      return { message: 'Pagamento liberado após ENTREGUE', expected: '200', actual: '200' };
     },
   );
 

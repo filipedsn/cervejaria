@@ -3,8 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, formatCurrency, ApiError } from '../lib/api';
 import type { Comanda, TapComChope, EventoCardapio, Evento } from '../types';
-import { PAYMENT_LABELS, formatItemDetail, isBebidaChope, isVendaUnitaria, rotuloComandaCervejaria } from '../types';
+import { PAYMENT_LABELS, formatItemDetail, isBebidaChope, isVendaUnitaria, rotuloComandaCervejaria, descontoComandaCervejaria, subtotalComandaCervejaria } from '../types';
 import { useEvento } from '../contexts/EventoContext';
+import { useAuth } from '../contexts/AuthContext';
 import { getSocket } from '../lib/socket';
 import { Loading } from '../components/Loading';
 import { Modal } from '../components/Modal';
@@ -13,19 +14,21 @@ import { MobileActionBar } from '../components/MobileActionBar';
 import { StatusBadge, comandaStatusVariant } from '../components/StatusBadge';
 import { IconTrash } from '../components/NavIcons';
 import { AdicionarItemComandaModal } from '../components/AdicionarItemComandaModal';
+import { PaymentDiscountFields } from '../components/checkout/PaymentDiscountFields';
 import {
   PaymentFormModal,
   createDefaultPaymentForm,
   toPaymentForma,
   type PaymentFormRow,
 } from '../components/PaymentFormModal';
-import { parseCurrencyInput } from '../lib/currency';
+import { parseCurrencyInput, formatCurrencyInputFromNumber } from '../lib/currency';
 
 export function ComandaDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { evento } = useEvento();
+  const { podeDarDescontoQuiosque } = useAuth();
 
   const [showAddItem, setShowAddItem] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
@@ -34,6 +37,7 @@ export function ComandaDetailPage() {
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([
     { forma: 'PIX', valor: '' },
   ]);
+  const [descontoInput, setDescontoInput] = useState('');
   const [error, setError] = useState('');
 
   const { data: comanda, isLoading, isError, error: queryError } = useQuery({
@@ -89,6 +93,20 @@ export function ComandaDetailPage() {
     };
   }, [id, eventoIdForTaps, evento?.id, queryClient]);
 
+  useEffect(() => {
+    if (!showPayment || !comanda) return;
+    const subtotal = subtotalComandaCervejaria(comanda);
+    const total = Math.max(0, subtotal - parseCurrencyInput(descontoInput));
+    setPaymentForm((prev) => {
+      if (total <= 0.01) return prev.length === 0 ? prev : [];
+      if (prev.length === 0) return createDefaultPaymentForm(total);
+      if (prev.length !== 1) return prev;
+      const atual = parseCurrencyInput(prev[0].valor);
+      if (Math.abs(atual - total) < 0.01) return prev;
+      return [{ ...prev[0], valor: formatCurrencyInputFromNumber(total) }];
+    });
+  }, [descontoInput, showPayment, comanda?.itens]);
+
   const addItemMutation = useMutation({
     mutationFn: (data: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string }) =>
       api.post<Comanda>(`/api/comandas/${id}/itens`, data),
@@ -112,8 +130,22 @@ export function ComandaDetailPage() {
   });
 
   const closeMutation = useMutation({
-    mutationFn: (pagamentos: { forma: 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO'; valor: number }[]) =>
-      api.post<Comanda>(`/api/pagamentos/comandas/${id}/fechar`, { pagamentos }),
+    mutationFn: async ({
+      pagamentos,
+      desconto,
+      descontoAnterior,
+      aplicarDesconto,
+    }: {
+      pagamentos: { forma: 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO'; valor: number }[];
+      desconto: number;
+      descontoAnterior: number;
+      aplicarDesconto: boolean;
+    }) => {
+      if (aplicarDesconto && desconto !== descontoAnterior) {
+        await api.patch<Comanda>(`/api/comandas/${id}/desconto`, { desconto });
+      }
+      return api.post<Comanda>(`/api/pagamentos/comandas/${id}/fechar`, { pagamentos });
+    },
     onSuccess: (data) => {
       setClosedComanda(data);
       setShowPayment(false);
@@ -163,17 +195,33 @@ export function ComandaDetailPage() {
 
   const openPayment = () => {
     if (!comanda) return;
-    setPaymentForm(createDefaultPaymentForm(parseFloat(comanda.total)));
+    const subtotal = subtotalComandaCervejaria(comanda);
+    const desconto = descontoComandaCervejaria(comanda);
+    setDescontoInput(formatCurrencyInputFromNumber(desconto));
+    setPaymentForm(createDefaultPaymentForm(Math.max(0, subtotal - desconto)));
     setShowPayment(true);
     setError('');
   };
 
   const handleClose = () => {
+    if (!comanda) return;
+    const desconto = parseCurrencyInput(descontoInput);
+    const subtotal = subtotalComandaCervejaria(comanda);
+    const podeAplicarDesconto = podeDarDescontoQuiosque;
+    if (podeAplicarDesconto && desconto > subtotal) {
+      setError('O desconto não pode ser maior que o subtotal da comanda');
+      return;
+    }
     const pagamentos = paymentForm.map((p) => ({
       forma: toPaymentForma(p),
       valor: parseCurrencyInput(p.valor),
     }));
-    closeMutation.mutate(pagamentos);
+    closeMutation.mutate({
+      pagamentos,
+      desconto,
+      descontoAnterior: descontoComandaCervejaria(comanda),
+      aplicarDesconto: podeAplicarDesconto,
+    });
   };
 
   const comandaTotal = comanda ? parseFloat(comanda.total) : 0;
@@ -214,6 +262,28 @@ export function ComandaDetailPage() {
   const bebidasEmbalagem = cardapio?.produtos.filter((p) => isVendaUnitaria(p) && p.tipo === 'BEBIDA') ?? [];
   const comidas = cardapio?.produtos.filter((p) => p.tipo === 'COMIDA') ?? [];
   const hasActionBar = isOpen || !isOpen;
+  const podeAplicarDesconto = podeDarDescontoQuiosque;
+  const subtotal = subtotalComandaCervejaria(comanda);
+  const descontoValor = parseCurrencyInput(descontoInput);
+  const totalComDesconto = Math.max(0, subtotal - descontoValor);
+  const descontoSalvo = descontoComandaCervejaria(comanda);
+
+  const paymentHeaderExtra = (
+    <div className="space-y-3">
+      {error && showPayment && <div className="alert-error text-sm">{error}</div>}
+      {podeAplicarDesconto && (
+        <PaymentDiscountFields
+          inputId="desconto-fechar"
+          subtotal={subtotal}
+          discountValue={descontoValor}
+          discountInput={descontoInput}
+          onDiscountChange={setDescontoInput}
+          total={totalComDesconto}
+          disabled={closeMutation.isPending}
+        />
+      )}
+    </div>
+  );
 
   return (
     <div className={`space-y-4 ${hasActionBar ? 'page-with-action-bar' : 'pb-2'}`}>
@@ -227,9 +297,25 @@ export function ComandaDetailPage() {
         </div>
         {comanda.cliente.telefone && <p className="text-sm text-ink-faint mt-1">{comanda.cliente.telefone}</p>}
         <p className="text-2xl sm:text-3xl font-bold text-brand-600 mt-2 tabular-nums">{formatCurrency(comanda.total)}</p>
+        {!isOpen && descontoSalvo > 0 && (
+          <div className="mt-3 space-y-1 text-sm border-t border-line pt-3">
+            <div className="flex justify-between text-ink-muted">
+              <span>Subtotal</span>
+              <span className="tabular-nums">{formatCurrency(subtotal)}</span>
+            </div>
+            <div className="flex justify-between text-ink-muted">
+              <span>Desconto</span>
+              <span className="tabular-nums text-red-600">− {formatCurrency(descontoSalvo)}</span>
+            </div>
+            <div className="flex justify-between font-semibold">
+              <span>Total</span>
+              <span className="tabular-nums">{formatCurrency(comanda.total)}</span>
+            </div>
+          </div>
+        )}
       </div>
 
-      {error && <div className="alert-error">{error}</div>}
+      {error && !showAddItem && !showPayment && <div className="alert-error">{error}</div>}
 
       {/* Itens */}
       <div className="space-y-2">
@@ -277,6 +363,8 @@ export function ComandaDetailPage() {
               Pagamento confirmado — comanda registrada, sem edição.
               Para novos pedidos, use <span className="font-semibold text-ink-soft">Nova comanda</span> abaixo.
             </>
+          ) : descontoSalvo >= subtotal && subtotal > 0 ? (
+            <>Cortesia confirmada — comanda encerrada sem pagamento.</>
           ) : (
             <>Comanda fechada — somente leitura.</>
           )}
@@ -364,14 +452,18 @@ export function ComandaDetailPage() {
 
       <PaymentFormModal
         open={showPayment}
-        onClose={() => setShowPayment(false)}
+        onClose={() => {
+          setShowPayment(false);
+          setError('');
+        }}
         title="Fechar Comanda"
-        totalLabel="Total da comanda"
-        total={comandaTotal}
+        totalLabel="Total a pagar"
+        total={podeAplicarDesconto ? totalComDesconto : comandaTotal}
         paymentForm={paymentForm}
         setPaymentForm={setPaymentForm}
         onConfirm={handleClose}
         isPending={closeMutation.isPending}
+        headerExtra={paymentHeaderExtra}
       />
 
       {/* Recibo */}
@@ -382,9 +474,13 @@ export function ComandaDetailPage() {
             <p className="text-xl font-bold">{rotuloComandaCervejaria(closedComanda, closedComanda.cliente)}</p>
             <p className="text-3xl font-bold text-brand-600">{formatCurrency(closedComanda.total)}</p>
             <div className="space-y-1">
-              {closedComanda.pagamentos.map((p) => (
-                <p key={p.id} className="text-ink-muted">{PAYMENT_LABELS[p.forma]}: {formatCurrency(p.valor)}</p>
-              ))}
+              {closedComanda.pagamentos.length === 0 ? (
+                <p className="font-semibold text-success">Cortesia — sem pagamento</p>
+              ) : (
+                closedComanda.pagamentos.map((p) => (
+                  <p key={p.id} className="text-ink-muted">{PAYMENT_LABELS[p.forma]}: {formatCurrency(p.valor)}</p>
+                ))
+              )}
             </div>
             <button className="touch-btn-primary w-full" onClick={() => { setShowReceipt(false); navigate('/comandas'); }}>
               OK

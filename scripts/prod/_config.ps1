@@ -388,6 +388,61 @@ function Test-PortListening {
   return $null -ne (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
 }
 
+# Teste de baixo custo para a dependencia que sobe mais tarde apos o boot
+# (Docker Desktop/PostgreSQL). Nao usa credenciais nem expõe DATABASE_URL em logs.
+function Test-DatabasePortReachable {
+  param([string]$DatabaseUrl = $env:DATABASE_URL)
+
+  if (-not $DatabaseUrl) { return $false }
+
+  try {
+    $uri = [System.Uri]$DatabaseUrl
+    $hostName = $uri.Host
+    $port = if ($uri.Port -gt 0) { $uri.Port } else { 5432 }
+    if (-not $hostName) { return $false }
+
+    $client = New-Object System.Net.Sockets.TcpClient
+    try {
+      $connect = $client.BeginConnect($hostName, $port, $null, $null)
+      if (-not $connect.AsyncWaitHandle.WaitOne(2000, $false)) { return $false }
+      $client.EndConnect($connect)
+      return $client.Connected
+    } catch {
+      return $false
+    } finally {
+      $client.Close()
+    }
+  } catch {
+    return $false
+  }
+}
+
+function Wait-ProdDatabaseReachable {
+  param(
+    [hashtable]$Paths,
+    [int]$TimeoutSeconds = 300,
+    [int]$RetrySeconds = 5
+  )
+
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $attempt = 0
+  do {
+    $attempt++
+    if (Test-DatabasePortReachable) {
+      Write-WatchdogLog -Paths $Paths -Message "Banco de producao acessivel (tentativa $attempt)."
+      return $true
+    }
+
+    if (($attempt -eq 1) -or ($attempt % 3 -eq 0)) {
+      Write-WatchdogLog -Paths $Paths -Message "Aguardando banco de producao antes de iniciar API (tentativa $attempt)."
+    }
+    Start-Sleep -Seconds $RetrySeconds
+  } while ((Get-Date) -lt $deadline)
+
+  Write-WatchdogLog -Paths $Paths -Message "Banco de producao indisponivel apos $TimeoutSeconds segundos; API nao iniciada neste ciclo."
+  return $false
+}
+
 function Get-PortListenerPid {
   param([int]$Port)
 

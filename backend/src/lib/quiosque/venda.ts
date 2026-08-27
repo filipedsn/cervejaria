@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { getZonedParts } from '../event-datetime.js';
 import { toNumber } from '../utils.js';
-import { pedidoContaNaComanda, registrarHistoricoStatusPedido } from './cozinha.js';
+import { registrarHistoricoStatusPedido } from './cozinha.js';
 
 /**
  * Erro de regra de venda. O statusCode faz o Fastify responder 400 com a
@@ -15,6 +15,9 @@ import { assertProdutoNoCardapioTurno } from './sessao-cardapio.js';
 export class VendaInvalidaError extends Error {
   statusCode = 400;
 }
+
+/** Vendas concorrentes serializam no advisory lock do pedido; defaults do Prisma estouram antes. */
+export const QUIOSQUE_VENDA_TX = { maxWait: 15_000, timeout: 20_000 } as const;
 
 /**
  * Dia da operacao no fuso de Brasilia. O quiosque costuma virar a meia-noite,
@@ -90,6 +93,18 @@ export async function resolverItens(
         ? await mapPrecosCardapioQuiosque(sessao.cardapioQuiosqueId)
         : null;
 
+      const overridesTurno = await tx.sessaoCaixaProdutoQuiosque.findMany({
+        where: {
+          sessaoCaixaId: opts.sessaoCaixaId,
+          produtoQuiosqueId: { in: ids },
+          precoUnit: { not: null },
+        },
+        select: { produtoQuiosqueId: true, precoUnit: true },
+      });
+      const precosTurno = new Map(
+        overridesTurno.map((r) => [r.produtoQuiosqueId, toNumber(r.precoUnit!)]),
+      );
+
       for (const produto of produtos) {
         const noCardapio = await assertProdutoNoCardapioTurno(opts.sessaoCaixaId, produto.id);
         if (!noCardapio) {
@@ -98,11 +113,12 @@ export async function resolverItens(
       }
 
       return produtos.map((produto) => {
+        const precoTurno = precosTurno.get(produto.id);
         const precoTemplate = precosTemplate?.get(produto.id);
         return {
           produtoId: produto.id,
           nome: produto.nome,
-          precoUnit: precoTemplate ?? toNumber(produto.precoUnit),
+          precoUnit: precoTurno ?? precoTemplate ?? toNumber(produto.precoUnit),
           quantidade: quantidadePorProduto.get(produto.id)!,
           exigePreparo: produto.exigePreparo,
           controlaEstoque: produto.controlaEstoque,
@@ -175,49 +191,58 @@ export async function criarPedido(
       diaOperacional: params.dia,
       criadoPorId: params.criadoPorId,
       observacao: params.observacao,
-      itens: {
-        create: params.itens.map((item) => ({
-          produtoId: item.produtoId,
-          nome: item.nome,
-          precoUnit: item.precoUnit,
-          quantidade: item.quantidade,
-          exigePreparo: item.exigePreparo,
-        })),
-      },
     },
-    include: { itens: true },
+  });
+
+  await tx.itemComanda.createMany({
+    data: params.itens.map((item) => ({
+      comandaId: params.comandaId,
+      produtoQuiosqueId: item.produtoId,
+      volumeMl: 0,
+      quantidade: item.quantidade,
+      precoUnit: item.precoUnit,
+      nome: item.nome,
+      exigePreparo: item.exigePreparo,
+      pedidoCozinhaId: pedido.id,
+    })),
+  });
+
+  const pedidoComItens = await tx.pedidoQuiosque.findUniqueOrThrow({
+    where: { id: pedido.id },
+    include: { itensComanda: true },
   });
 
   await registrarHistoricoStatusPedido(tx, pedido.id, 'RECEBIDO', pedido.createdAt);
 
-  return pedido;
+  return pedidoComItens;
 }
 
-type ComandaCompleta = Prisma.ComandaQuiosqueGetPayload<{
-  include: { pedidos: { include: { itens: true } }; pagamentos: true };
+type ComandaCompleta = Prisma.ComandaGetPayload<{
+  include: {
+    pedidosQuiosque: { include: { itensComanda: true } };
+    itens: true;
+    pagamentos: true;
+  };
 }>;
 
 export function subtotalComandaEmCentavos(comanda: ComandaCompleta): number {
-  return comanda.pedidos
-    .filter((pedido) => pedidoContaNaComanda(pedido, comanda))
-    .reduce((soma, pedido) => soma + totalEmCentavos(pedido.itens), 0);
+  return totalEmCentavos(comanda.itens);
 }
 
 /**
- * Monta a conta como o operador ve: total, quanto ja entrou e quanto falta.
- * Pedido cancelado nao entra no total. Pedido da cozinha so conta apos ENTREGUE.
+ * Monta a conta como o operador ve. Total vem persistido na comanda (padrão cervejaria).
  */
 export function resumoComanda(comanda: ComandaCompleta) {
-  const pedidos = comanda.pedidos.map((pedido) => ({
+  const pedidos = comanda.pedidosQuiosque.map((pedido) => ({
     id: pedido.id,
     numero: pedido.numero,
     status: pedido.status,
     observacao: pedido.observacao,
     createdAt: pedido.createdAt,
-    itens: pedido.itens.map((item) => ({
+    itens: pedido.itensComanda.map((item) => ({
       id: item.id,
-      produtoId: item.produtoId,
-      nome: item.nome,
+      produtoId: item.produtoQuiosqueId ?? '',
+      nome: item.nome ?? '',
       precoUnit: toNumber(item.precoUnit),
       quantidade: item.quantidade,
       subtotal: reais(centavos(item.precoUnit) * item.quantidade),
@@ -226,14 +251,8 @@ export function resumoComanda(comanda: ComandaCompleta) {
   }));
 
   const subtotalEmCents = subtotalComandaEmCentavos(comanda);
-
   const descontoEmCents = centavos(toNumber(comanda.desconto ?? 0));
-  const totalEmCents = Math.max(0, subtotalEmCents - descontoEmCents);
-
-  const pagoEmCents = comanda.pagamentos.reduce(
-    (soma, pagamento) => soma + centavos(pagamento.valor),
-    0,
-  );
+  const totalEmCents = centavos(toNumber(comanda.total));
 
   return {
     id: comanda.id,
@@ -247,8 +266,6 @@ export function resumoComanda(comanda: ComandaCompleta) {
     subtotal: reais(subtotalEmCents),
     desconto: reais(descontoEmCents),
     total: reais(totalEmCents),
-    pago: reais(pagoEmCents),
-    saldo: reais(totalEmCents - pagoEmCents),
     pedidos,
     pagamentos: comanda.pagamentos.map((pagamento) => ({
       id: pagamento.id,
@@ -281,7 +298,10 @@ export function resolverPagamentos(
   pagamentos: PagamentoInput[],
   devidoEmCentavos: number,
 ): PagamentoResolvido[] {
-  if (pagamentos.length === 0) throw new VendaInvalidaError('Informe como o cliente pagou');
+  if (pagamentos.length === 0) {
+    if (devidoEmCentavos === 0) return [];
+    throw new VendaInvalidaError('Informe como o cliente pagou');
+  }
 
   const somaEmCentavos = pagamentos.reduce((soma, pagamento) => soma + centavos(pagamento.valor), 0);
 

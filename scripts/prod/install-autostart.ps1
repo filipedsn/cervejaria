@@ -5,7 +5,10 @@
 param(
   [switch]$SkipBuild,
   [switch]$SkipTunnelServiceHint,
-  [switch]$UserOnly
+  [switch]$UserOnly,
+  # Reinstala somente as tarefas agendadas. Seguro para aplicar a correcao de
+  # boot: nao faz build, deploy, migracao nem toca nos artefatos publicados.
+  [switch]$RepairTasksOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -54,7 +57,7 @@ if (-not (Test-Path $npmCmd)) {
 $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
 
-if (-not $SkipBuild) {
+if (-not $SkipBuild -and -not $RepairTasksOnly) {
   Write-Host 'Build e publicacao de artefatos de producao...' -ForegroundColor Cyan
   Ensure-ProdArtifactsBaseline -Paths $paths
   Initialize-ProdStaging -Paths $paths
@@ -90,32 +93,36 @@ if (-not $SkipBuild) {
 $nodePath = Join-Path ${env:ProgramFiles} 'nodejs'
 if (Test-Path $nodePath) { $env:Path = "$nodePath;$env:Path" }
 
-Write-Host 'Migrations (producao)...' -ForegroundColor Cyan
-Push-Location (Join-Path $projectRoot 'backend')
-$env:NODE_ENV = 'production'
-if ($npmCmd) {
-  node scripts/run-with-env.mjs production $npmCmd exec prisma migrate deploy
-} else {
-  node scripts/run-with-env.mjs production npx prisma migrate deploy
-}
-if ($LASTEXITCODE -ne 0) {
+if (-not $RepairTasksOnly) {
+  Write-Host 'Migrations (producao)...' -ForegroundColor Cyan
+  Push-Location (Join-Path $projectRoot 'backend')
+  $env:NODE_ENV = 'production'
+  if ($npmCmd) {
+    node scripts/run-with-env.mjs production $npmCmd exec prisma migrate deploy
+  } else {
+    node scripts/run-with-env.mjs production npx prisma migrate deploy
+  }
+  if ($LASTEXITCODE -ne 0) {
+    Pop-Location
+    Write-Host 'prisma migrate deploy falhou.' -ForegroundColor Red
+    exit 1
+  }
+
+  Write-Host 'Prisma generate...' -ForegroundColor Cyan
+  if ($npmCmd) {
+    & $npmCmd exec prisma generate
+  } else {
+    npx prisma generate
+  }
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host 'Prisma generate falhou (backend rodando?). Continuando.' -ForegroundColor Yellow
+  }
   Pop-Location
-  Write-Host 'prisma migrate deploy falhou.' -ForegroundColor Red
-  exit 1
-}
-
-Write-Host 'Prisma generate...' -ForegroundColor Cyan
-if ($npmCmd) {
-  & $npmCmd exec prisma generate
 } else {
-  npx prisma generate
+  Write-Host 'Modo reparo: build, migracoes e artefatos nao serao alterados.' -ForegroundColor Yellow
 }
-if ($LASTEXITCODE -ne 0) {
-  Write-Host 'Prisma generate falhou (backend rodando?). Continuando.' -ForegroundColor Yellow
-}
-Pop-Location
 
-$action = New-ScheduledTaskAction `
+$logonAction = New-ScheduledTaskAction `
   -Execute 'wscript.exe' `
   -Argument "`"$(Join-Path $PSScriptRoot 'start-watchdog-daemon-hidden.vbs')`""
 
@@ -135,17 +142,26 @@ $settings = New-ScheduledTaskSettingsSet `
 
 $logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 
-Register-ScheduledTask -TaskName 'QuiverTap-AtLogon' -Action $action -Trigger $logonTrigger -Principal $principal -Settings $settings -Force | Out-Null
+Register-ScheduledTask -TaskName 'QuiverTap-AtLogon' -Action $logonAction -Trigger $logonTrigger -Principal $principal -Settings $settings -Force | Out-Null
 
 Write-Host ''
 Write-Host 'Tarefas instaladas:' -ForegroundColor Green
 Write-Host '  QuiverTap-AtLogon    - ao entrar no Windows (inicia daemon oculto)'
 
 if ($isAdmin -and -not $UserOnly) {
+  # Diferente do gatilho de login, o boot precisa funcionar sem sessao de usuario.
+  # SYSTEM tambem evita depender do Docker Desktop ja ter aberto uma janela.
+  $bootAction = New-ScheduledTaskAction `
+    -Execute (Join-Path $PSHOME 'powershell.exe') `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $PSScriptRoot 'start-watchdog-daemon.ps1')`" -Quiet"
+  $bootPrincipal = New-ScheduledTaskPrincipal `
+    -UserId 'SYSTEM' `
+    -LogonType ServiceAccount `
+    -RunLevel Highest
   $startupTrigger = New-ScheduledTaskTrigger -AtStartup
   $startupTrigger.Delay = 'PT1M'
-  Register-ScheduledTask -TaskName 'QuiverTap-AtStartup' -Action $action -Trigger $startupTrigger -Principal $principal -Settings $settings -Force | Out-Null
-  Write-Host '  QuiverTap-AtStartup  - 1 min apos ligar o PC (inicia daemon oculto)'
+  Register-ScheduledTask -TaskName 'QuiverTap-AtStartup' -Action $bootAction -Trigger $startupTrigger -Principal $bootPrincipal -Settings $settings -Force | Out-Null
+  Write-Host '  QuiverTap-AtStartup  - 1 min apos ligar o PC, como SYSTEM (sem depender de login)'
 } else {
   Write-Host ''
   Write-Host 'Modo parcial: QuiverTap-AtStartup NAO instalada (precisa de admin).' -ForegroundColor Yellow

@@ -447,9 +447,29 @@ function renderDeployPlaybook(data, gate) {
   const steps = [];
   const behind = data.behindOriginMain || 0;
   const ahead = data.aheadOriginMain || 0;
-  const syncOk = data.headOnOriginMain && behind === 0 && ahead === 0;
+  const sync = data.sync || {};
+  const syncOk = data.headOnOriginMain && behind === 0 && ahead === 0 && data.head?.branch === 'main';
 
-  if (syncOk) {
+  if (sync.performed) {
+    const fromBranch = sync.previousBranch && sync.previousBranch !== 'main'
+      ? `<code>${escapeHtml(sync.previousBranch)}</code> → `
+      : '';
+    steps.push(playbookStep(
+      1,
+      'ok',
+      'Git sincronizado automaticamente',
+      `${fromBranch}<code>main</code> alinhada com <code>origin/main</code>` +
+      (sync.newSha ? ` (<code>${escapeHtml(sync.newSha.slice(0, 7))}</code>).` : '.') +
+      ' Clique em <em>Verificar release</em> se acabou de mergear uma PR.',
+    ));
+  } else if (sync.attempted && sync.error) {
+    steps.push(playbookStep(
+      1,
+      'bad',
+      'Falha ao sincronizar main',
+      `${escapeHtml(sync.error)}<br>Manual: <code>git checkout main</code> e <code>git pull --ff-only origin main</code>.`,
+    ));
+  } else if (syncOk) {
     steps.push(playbookStep(
       1,
       'ok',
@@ -460,9 +480,9 @@ function renderDeployPlaybook(data, gate) {
     steps.push(playbookStep(
       1,
       'warn',
-      'Rode git pull',
-      `Faltam <strong>${behind}</strong> commit(s) neste PC. No PowerShell:<br>` +
-      '<code>git pull origin main</code><br>Depois clique em <em>Verificar release</em>.',
+      'Main desatualizada',
+      `Faltam <strong>${behind}</strong> commit(s) neste PC. Clique em <em>Verificar release</em> para sincronizar automaticamente ` +
+      '(ou rode <code>git pull --ff-only origin main</code>).',
     ));
   } else if (!data.headOnOriginMain) {
     steps.push(playbookStep(
@@ -470,7 +490,7 @@ function renderDeployPlaybook(data, gate) {
       'bad',
       'Merge o PR antes',
       `HEAD nao esta em <code>origin/main</code> (branch <code>${escapeHtml(data.head?.branch || '?')}</code>). ` +
-      'Faca merge no GitHub e depois <code>git pull origin main</code>.',
+      'Faca merge no GitHub e clique em <em>Verificar release</em> para ir para <code>main</code>.',
     ));
   } else if (ahead > 0) {
     steps.push(playbookStep(
@@ -478,6 +498,13 @@ function renderDeployPlaybook(data, gate) {
       'warn',
       'Push pendente',
       `O PC esta <strong>${ahead}</strong> commit(s) a frente de origin/main — faca push ou alinhe com o remoto.`,
+    ));
+  } else if (data.head?.branch !== 'main') {
+    steps.push(playbookStep(
+      1,
+      'warn',
+      'Troque para main',
+      `Branch atual: <code>${escapeHtml(data.head?.branch || '?')}</code>. Clique em <em>Verificar release</em> para sincronizar.`,
     ));
   }
 

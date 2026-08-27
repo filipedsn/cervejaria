@@ -65,7 +65,7 @@ export function setupSocketAuth(io: SocketIOServer, app: FastifyInstance) {
   io.on('connection', (socket) => {
     if (socket.data.authType === 'cliente') {
       const session = socket.data.clienteSession as ClienteSessionPayload;
-      socket.join(`evento:${session.eventoId}`);
+      socket.join(`portal:evento:${session.eventoId}`);
       socket.join(`comanda:${session.comandaId}`);
       return;
     }

@@ -12,6 +12,16 @@ $ErrorActionPreference = 'Stop'
 $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
 
+# Carrega o ambiente antes da verificacao de dependencia. O artefato publicado e
+# propositalmente sem segredos; as variaveis vivem em backend/.env.production.
+try {
+  Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment production
+} catch {
+  Write-WatchdogLog -Paths $paths -Message "Falha ao carregar ambiente de producao: $($_.Exception.Message)"
+  Write-Host $_.Exception.Message -ForegroundColor Red
+  exit 1
+}
+
 if (Test-ApiHealthy -HealthUrl $paths.ReadyUrl) {
   if (-not $Force) {
     Write-Host "API ja esta no ar ($($paths.ReadyUrl))." -ForegroundColor Green
@@ -32,9 +42,14 @@ if (-not (Test-Path $paths.ProdApiEntry)) {
 }
 
 try {
+  if (-not (Wait-ProdDatabaseReachable -Paths $paths)) {
+    Write-Host 'Banco de producao ainda indisponivel; nova tentativa sera feita pelo watchdog.' -ForegroundColor Yellow
+    exit 1
+  }
   Ensure-ProdBackendRuntime -Paths $paths -Quiet:$Quiet
   Assert-ProdDatabaseSchemaSync -Paths $paths
 } catch {
+  Write-WatchdogLog -Paths $paths -Message "Preflight da API falhou: $($_.Exception.Message)"
   Write-Host $_.Exception.Message -ForegroundColor Red
   exit 1
 }
@@ -85,7 +100,6 @@ $nodeDir = Split-Path $paths.NodeExe -Parent
 $env:Path = "$nodeDir;$env:Path"
 $env:NODE_ENV = 'production'
 $env:FRONTEND_DIST = $paths.ProdFrontendDist
-Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment production
 Set-ProdUploadsEnv -Paths $paths
 
 $proc = Start-Process `

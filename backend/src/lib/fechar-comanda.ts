@@ -4,10 +4,13 @@ import { computeChopeMlFromItens, incrementClienteStatsOnComandaFechada } from '
 import { registrarTransacao } from './transacao-log.js';
 import { recordComandaFechada } from './business-metrics.js';
 import { toNumber } from './utils.js';
+import { lockComandaItemsInTx } from './comanda-service.js';
 
 export type PagamentoInput = {
   forma: 'DINHEIRO' | 'PIX' | 'CARTAO' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO';
   valor: number;
+  valorRecebido?: number;
+  troco?: number | null;
 };
 
 type ComandaTotal = { id: string; total: number };
@@ -15,22 +18,57 @@ type ComandaTotal = { id: string; total: number };
 type ItemWithProduto = {
   volumeMl: number;
   quantidade: number;
-  produto: { tipo: string; formato: string | null };
+  produto?: { tipo: string; formato: string | null } | null;
 };
 
 export type ComandaParaFechar = {
   id: string;
-  eventoId: string;
-  clienteId: string;
-  tipo?: 'COMANDA' | 'AVULSA';
+  eventoId?: string | null;
+  clienteId?: string | null;
+  tipo?: 'COMANDA' | 'AVULSA' | 'MESA' | 'FICHA' | 'APELIDO';
   total: unknown;
+  desconto?: unknown;
   itens: ItemWithProduto[];
+  origem?: 'EVENTO' | 'QUIOSQUE';
 };
+
+/**
+ * Total positivo exige ao menos um pagamento; total zero (cortesia) exige lista vazia.
+ * Não confunde comanda vazia (sem itens) — isso fica nas rotas de cancelamento.
+ */
+export function assertPagamentosParaTotal(
+  total: number,
+  pagamentos: ReadonlyArray<{ valor: number }>,
+): void {
+  const devidoCents = Math.round(toNumber(total) * 100);
+  if (devidoCents > 0) {
+    if (pagamentos.length === 0) {
+      throw Object.assign(new Error('Informe como o cliente pagou'), { statusCode: 400 });
+    }
+  } else if (pagamentos.length > 0) {
+    throw Object.assign(new Error('Conta zerada não exige pagamento'), { statusCode: 400 });
+  }
+}
+
+export function assertValorPagamentosParaTotal(
+  total: number,
+  pagamentos: ReadonlyArray<{ valor: number }>,
+): void {
+  const totalPagamentos = pagamentos.reduce((sum, pagamento) => sum + pagamento.valor, 0);
+  if (Math.abs(totalPagamentos - toNumber(total)) > 0.01) {
+    throw Object.assign(
+      new Error(
+        `Total dos pagamentos (R$ ${totalPagamentos.toFixed(2)}) difere do total da comanda (R$ ${toNumber(total).toFixed(2)})`,
+      ),
+      { statusCode: 400 },
+    );
+  }
+}
 
 export const comandaFechadaInclude = {
   cliente: true,
   itens: {
-    include: { produto: true },
+    include: { produto: true, produtoQuiosque: true },
     orderBy: { createdAt: 'desc' as const },
   },
   pagamentos: true,
@@ -91,57 +129,89 @@ export async function fecharComandaComPagamentos(
     fechadaEm: Date;
     grupoPagamentoId?: string;
     comandaIdsGrupo?: string[];
+    origem?: 'EVENTO' | 'QUIOSQUE';
+    pagamentosDetalhados?: PagamentoInput[];
   },
 ) {
   const { comanda, pagamentos, cervejariaId, usuarioId, fechadaEm } = params;
-  const total = toNumber(comanda.total as number);
+
+  await lockComandaItemsInTx(tx, comanda.id);
+  const comandaAtual = await tx.comanda.findUnique({
+    where: { id: comanda.id },
+    include: comandaFechadaInclude,
+  });
+  if (!comandaAtual || comandaAtual.status !== 'ABERTA') {
+    throw Object.assign(new Error('Comanda não encontrada ou já fechada'), { statusCode: 404 });
+  }
+
+  const total = toNumber(comandaAtual.total);
+  const desconto = toNumber(comandaAtual.desconto ?? 0);
+  const origem = params.origem ?? comandaAtual.origem;
+  const linhasPagamento = params.pagamentosDetalhados ?? pagamentos;
+
+  assertPagamentosParaTotal(total, linhasPagamento);
+  assertValorPagamentosParaTotal(total, linhasPagamento);
 
   const fechou = await tx.comanda.updateMany({
-    where: { id: comanda.id, status: 'ABERTA' },
+    where: { id: comandaAtual.id, status: 'ABERTA' },
     data: { status: 'FECHADA', fechadoPorId: usuarioId, fechadaEm },
   });
   if (fechou.count === 0) {
     throw Object.assign(new Error('Comanda não encontrada ou já fechada'), { statusCode: 404 });
   }
 
-  await tx.pagamento.createMany({
-    data: pagamentos.map((p) => ({
-      comandaId: comanda.id,
-      forma: p.forma,
-      valor: p.valor,
-    })),
-  });
+  if (linhasPagamento.length > 0) {
+    await tx.pagamento.createMany({
+      data: linhasPagamento.map((p) => ({
+        comandaId: comandaAtual.id,
+        forma: p.forma,
+        valor: p.valor,
+        valorRecebido: p.valorRecebido ?? null,
+        troco: p.troco ?? null,
+        registradoPorId: params.usuarioId,
+      })),
+    });
+  }
 
-  const metadata: Record<string, unknown> = { total, pagamentos };
+  const metadata: Record<string, unknown> = { total, pagamentos: linhasPagamento };
+  if (desconto > 0) metadata.desconto = desconto;
   if (params.grupoPagamentoId) {
     metadata.grupoPagamentoId = params.grupoPagamentoId;
     metadata.comandaIdsGrupo = params.comandaIdsGrupo;
   }
 
   const fechada = await tx.comanda.findUniqueOrThrow({
-    where: { id: comanda.id },
+    where: { id: comandaAtual.id },
     include: comandaFechadaInclude,
   });
+
+  const tipoTransacao = origem === 'QUIOSQUE' ? 'QUIOSQUE_COMANDA_FECHADA' : 'COMANDA_FECHADA';
 
   await registrarTransacao(
     {
       cervejariaId,
-      tipo: 'COMANDA_FECHADA',
+      tipo: tipoTransacao,
       usuarioId,
-      eventoId: comanda.eventoId,
-      comandaId: comanda.id,
+      eventoId: comandaAtual.eventoId ?? undefined,
+      comandaId: comandaAtual.id,
       metadata,
-      payload: { comanda: fechada, pagamentos },
+      payload: { comanda: fechada, pagamentos: linhasPagamento },
     },
     tx,
   );
 
-  recordComandaFechada(Math.round(total * 100), 'cervejaria');
+  recordComandaFechada(Math.round(total * 100), origem === 'QUIOSQUE' ? 'quiosque' : 'cervejaria');
 
-  const totalMlChope = computeChopeMlFromItens(comanda.itens);
-  if (comanda.tipo !== 'AVULSA') {
+  const totalMlChope = computeChopeMlFromItens(
+    comandaAtual.itens.filter((item) => item.produto) as Array<{
+      volumeMl: number;
+      quantidade: number;
+      produto: { tipo: string; formato: string | null };
+    }>,
+  );
+  if (origem === 'EVENTO' && comandaAtual.tipo !== 'AVULSA' && comandaAtual.clienteId) {
     await incrementClienteStatsOnComandaFechada(tx, {
-      clienteId: comanda.clienteId,
+      clienteId: comandaAtual.clienteId,
       totalGasto: total,
       totalMlChope,
       fechadoEm: fechadaEm,
@@ -160,13 +230,17 @@ export async function cancelarComandaVaziaInTx(
     motivo?: 'manual' | 'empty_on_close' | 'empty_on_group_close';
   },
 ) {
+  await lockComandaItemsInTx(tx, params.comandaId);
   const comanda = await tx.comanda.findFirst({
     where: {
       id: params.comandaId,
       status: 'ABERTA',
-      evento: { cervejariaId: params.cervejariaId },
+      OR: [
+        { evento: { cervejariaId: params.cervejariaId } },
+        { origem: 'QUIOSQUE', pontoVenda: { cervejariaId: params.cervejariaId } },
+      ],
     },
-    include: { itens: true },
+    include: { itens: true, cliente: true },
   });
 
   if (!comanda) {
@@ -193,10 +267,10 @@ export async function cancelarComandaVaziaInTx(
       cervejariaId: params.cervejariaId,
       tipo: 'COMANDA_CANCELADA',
       usuarioId: params.fechadoPorId,
-      eventoId: comanda.eventoId,
+      eventoId: comanda.eventoId ?? undefined,
       comandaId: comanda.id,
       metadata: {
-        clienteNome: updated.cliente.nome,
+        clienteNome: updated.cliente?.nome ?? updated.identificador,
         motivo: params.motivo ?? 'manual',
       },
       payload: updated,

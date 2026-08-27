@@ -140,6 +140,12 @@ npm run db:down:all    # para tudo (emergencia)
 npm run db:cleanup-dev-from-prod  # remove vestigios de dev do container prod
 ```
 
+Variaveis externas exigidas para criar ou recriar os containers:
+
+- `POSTGRES_PROD_PASSWORD` para `postgres` (producao);
+- `POSTGRES_DEV_PASSWORD` para `postgres-dev` (desenvolvimento);
+- `npm run db:up` exige ambas.
+
 ## Setup inicial (usuarios Postgres segregados)
 
 ```powershell

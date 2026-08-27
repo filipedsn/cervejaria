@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Prisma, TipoMovimentoEstoqueQuiosque } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import type { ItemResolvido } from './venda.js';
@@ -9,6 +10,25 @@ export class EstoqueInvalidoError extends Error {
 type TxClient = Prisma.TransactionClient;
 
 const SAIDA_MANUAL: TipoMovimentoEstoqueQuiosque[] = ['PERDA', 'CORTESIA', 'CONSUMO_INTERNO'];
+
+/** Serializa mutações do saldo materializado de um produto em um ponto de venda. */
+function chaveLockEstoque(cervejariaId: string, pontoVendaId: string, produtoId: string): bigint {
+  const digest = createHash('sha256')
+    .update(`estoque-quiosque:${cervejariaId}:${pontoVendaId}:${produtoId}`)
+    .digest();
+  return BigInt.asIntN(64, digest.readBigUInt64BE(0));
+}
+
+async function lockEstoqueEmTx(
+  tx: Pick<TxClient, '$executeRaw'>,
+  params: { cervejariaId: string; pontoVendaId: string; produtoId: string },
+) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${chaveLockEstoque(
+    params.cervejariaId,
+    params.pontoVendaId,
+    params.produtoId,
+  )})`;
+}
 
 function deveControlar(moduloControlaEstoque: boolean, produtoControlaEstoque: boolean): boolean {
   return moduloControlaEstoque && produtoControlaEstoque;
@@ -76,6 +96,7 @@ async function baixarQuantidade(
     pedidoId?: string;
   },
 ) {
+  await lockEstoqueEmTx(tx, params);
   await garantirSaldo(tx, params);
 
   const atualizado = await tx.estoqueSaldoQuiosque.updateMany({
@@ -116,6 +137,7 @@ async function entrarQuantidade(
     pedidoId?: string;
   },
 ) {
+  await lockEstoqueEmTx(tx, params);
   await garantirSaldo(tx, params);
 
   await tx.estoqueSaldoQuiosque.update({
@@ -161,6 +183,64 @@ export async function baixarEstoqueDoPedido(
   }
 }
 
+/** Devolve ao estoque a quantidade removida ou reduzida de um item na comanda. */
+export async function estornarEstoqueItemPedido(
+  tx: TxClient,
+  params: {
+    moduloControlaEstoque: boolean;
+    cervejariaId: string;
+    pontoVendaId: string;
+    pedidoId: string;
+    produtoId: string;
+    nome: string;
+    quantidade: number;
+    controlaEstoque: boolean;
+    registradoPorId: string;
+  },
+) {
+  if (!params.moduloControlaEstoque || !params.controlaEstoque || params.quantidade <= 0) return;
+
+  await entrarQuantidade(tx, {
+    cervejariaId: params.cervejariaId,
+    pontoVendaId: params.pontoVendaId,
+    produtoId: params.produtoId,
+    quantidade: params.quantidade,
+    tipo: 'ESTORNO_VENDA',
+    observacao: 'Estorno item da comanda',
+    registradoPorId: params.registradoPorId,
+    pedidoId: params.pedidoId,
+  });
+}
+
+/** Baixa estoque ao aumentar a quantidade de um item ja lancado na comanda. */
+export async function baixarEstoqueItemPedido(
+  tx: TxClient,
+  params: {
+    moduloControlaEstoque: boolean;
+    cervejariaId: string;
+    pontoVendaId: string;
+    pedidoId: string;
+    produtoId: string;
+    nome: string;
+    quantidade: number;
+    controlaEstoque: boolean;
+    registradoPorId: string;
+  },
+) {
+  if (!params.moduloControlaEstoque || !params.controlaEstoque || params.quantidade <= 0) return;
+
+  await baixarQuantidade(tx, {
+    cervejariaId: params.cervejariaId,
+    pontoVendaId: params.pontoVendaId,
+    produtoId: params.produtoId,
+    quantidade: params.quantidade,
+    nomeProduto: params.nome,
+    tipo: 'SAIDA_VENDA',
+    registradoPorId: params.registradoPorId,
+    pedidoId: params.pedidoId,
+  });
+}
+
 /** Devolve ao estoque os itens dos pedidos de uma comanda cancelada. */
 export async function estornarEstoqueDaComanda(
   tx: TxClient,
@@ -173,26 +253,30 @@ export async function estornarEstoqueDaComanda(
 ) {
   if (!params.moduloControlaEstoque) return;
 
-  const pedidos = await tx.pedidoQuiosque.findMany({
-    where: { comandaId: params.comandaId, cervejariaId: params.cervejariaId },
-    include: { itens: { include: { produto: true } } },
+  const itens = await tx.itemComanda.findMany({
+    where: {
+      comandaId: params.comandaId,
+      produtoQuiosqueId: { not: null },
+    },
+    include: {
+      produtoQuiosque: true,
+      pedidoCozinha: { select: { id: true, pontoVendaId: true } },
+    },
   });
 
-  for (const pedido of pedidos) {
-    for (const item of pedido.itens) {
-      if (!item.produto.controlaEstoque) continue;
+  for (const item of itens) {
+    if (!item.produtoQuiosque?.controlaEstoque || !item.pedidoCozinha) continue;
 
-      await entrarQuantidade(tx, {
-        cervejariaId: params.cervejariaId,
-        pontoVendaId: pedido.pontoVendaId,
-        produtoId: item.produtoId,
-        quantidade: item.quantidade,
-        tipo: 'ESTORNO_VENDA',
-        observacao: `Estorno comanda cancelada`,
-        registradoPorId: params.registradoPorId,
-        pedidoId: pedido.id,
-      });
-    }
+    await entrarQuantidade(tx, {
+      cervejariaId: params.cervejariaId,
+      pontoVendaId: item.pedidoCozinha.pontoVendaId,
+      produtoId: item.produtoQuiosque.id,
+      quantidade: item.quantidade,
+      tipo: 'ESTORNO_VENDA',
+      observacao: `Estorno comanda cancelada`,
+      registradoPorId: params.registradoPorId,
+      pedidoId: item.pedidoCozinha.id,
+    });
   }
 }
 
@@ -323,6 +407,7 @@ export async function ajustarSaldo(params: {
   if (!pontoVenda) throw new EstoqueInvalidoError('Ponto de venda não encontrado');
 
   await prisma.$transaction(async (tx) => {
+    await lockEstoqueEmTx(tx, params);
     const saldo = await garantirSaldo(tx, {
       cervejariaId: params.cervejariaId,
       pontoVendaId: params.pontoVendaId,

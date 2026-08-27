@@ -114,7 +114,7 @@ export function QuiosqueComandasPage() {
       comandasFechadas: contas.length,
       vendasAvulsas: avulsas.length,
       receitaAvulsa: avulsas.reduce((soma, c) => soma + c.total, 0),
-      valorAberto: abertasTurno.reduce((soma, c) => soma + c.saldo, 0),
+      valorAberto: abertasTurno.reduce((soma, c) => soma + c.total, 0),
       valorFechado: contas.reduce((soma, c) => soma + c.total, 0),
     };
   }, [caixaAberto, abertasTurno, fechadasTurno]);
@@ -125,7 +125,7 @@ export function QuiosqueComandasPage() {
   );
 
   const totalGrupo = useMemo(
-    () => selectedComandas.filter((c) => c.saldo > 0).reduce((sum, c) => sum + c.saldo, 0),
+    () => selectedComandas.filter((c) => c.total > 0).reduce((sum, c) => sum + c.total, 0),
     [selectedComandas],
   );
 
@@ -328,7 +328,7 @@ export function QuiosqueComandasPage() {
           {comandasFiltradas.map((comanda) => {
             const isSelected = selectedIds.includes(comanda.id);
             const itens = totalItensComanda(comanda);
-            const valor = isAbertas ? comanda.saldo : comanda.total;
+            const valor = comanda.total;
             return (
               <button
                 key={comanda.id}

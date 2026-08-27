@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { getAuthUser } from '../types/auth.js';
-import { emitToEvento, emitRankingUpdated } from '../lib/realtime.js';
+import { emitToComanda, emitToEvento, emitRankingUpdated } from '../lib/realtime.js';
 import { toNumber } from '../lib/utils.js';
 import { isBebidaChope } from '../lib/produto-utils.js';
 import { cancelarComandaVazia } from '../lib/comanda-cancelar.js';
@@ -14,9 +14,16 @@ import { proximoNumeroComandaEvento } from '../lib/comanda-numero.js';
 import { isUniqueViolation } from '../lib/prisma-errors.js';
 import {
   addItemToComanda,
+  aplicarDescontoComanda,
   comandaDetailInclude,
   removeItemFromComanda,
 } from '../lib/comanda-service.js';
+
+function eventoIdDaComanda(comanda: { eventoId: string | null }): string {
+  if (!comanda.eventoId) throw new Error('Comanda sem evento associado');
+  return comanda.eventoId;
+}
+import { assertPodeDarDescontoQuiosque, DescontoInvalidoError } from '../lib/quiosque/desconto.js';
 
 function comandaAbertaResponse(
   reply: { status: (code: number) => { send: (body: unknown) => unknown } },
@@ -46,6 +53,10 @@ const addItemSchema = z.object({
   tapId: z.string().optional(),
 });
 
+const descontoSchema = z.object({
+  desconto: z.number().min(0),
+});
+
 export async function comandasRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
@@ -55,7 +66,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     const { status } = request.query as { status?: 'ABERTA' | 'FECHADA' };
 
     const evento = await prisma.evento.findFirst({
-      where: { id: eventoId, cervejariaId: user.cervejariaId },
+      where: { id: eventoId, cervejariaId: user.cervejariaId! },
     });
     if (!evento) return reply.status(404).send({ error: 'Evento não encontrado' });
 
@@ -75,7 +86,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     const body = addItemSchema.parse(request.body);
 
     const comanda = await prisma.comanda.findFirst({
-      where: { id, status: 'ABERTA', evento: { cervejariaId: user.cervejariaId } },
+      where: { id, status: 'ABERTA', evento: { cervejariaId: user.cervejariaId! } },
       include: { evento: { select: { id: true } } },
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada ou fechada' });
@@ -83,7 +94,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     const result = await addItemToComanda({
       comandaId: id,
       cervejariaId: user.cervejariaId!,
-      eventoId: comanda.eventoId,
+      eventoId: eventoIdDaComanda(comanda),
       item: {
         produtoId: body.produtoId,
         volumeMl: body.volumeMl,
@@ -95,13 +106,17 @@ export async function comandasRoutes(app: FastifyInstance) {
     if ('error' in result) {
       return reply.status(400).send({ error: result.error });
     }
+    if (!('comanda' in result)) {
+      return reply.status(400).send({ error: 'Falha ao adicionar item' });
+    }
 
     const { comanda: updated, produto, isChope, precoUnit } = result;
+    const eventoId = eventoIdDaComanda(comanda);
     await registrarTransacao({
       cervejariaId: user.cervejariaId!,
       tipo: 'COMANDA_ITEM_ADICIONADO',
       usuarioId: user.sub,
-      eventoId: comanda.eventoId,
+      eventoId,
       comandaId: id,
       entidadeTipo: 'Produto',
       entidadeId: body.produtoId,
@@ -114,9 +129,10 @@ export async function comandasRoutes(app: FastifyInstance) {
       },
       payload: updated,
     });
-    emitToEvento(app.io, comanda.eventoId, { type: 'item:added', data: updated });
+    emitToEvento(app.io, eventoId, { type: 'item:added', data: updated });
+    emitToComanda(app.io, id, { type: 'item:added', data: { comandaId: id } });
     if (isChope) {
-      emitRankingUpdated(app.io, user.cervejariaId!, comanda.eventoId);
+      emitRankingUpdated(app.io, user.cervejariaId!, eventoId);
     }
     return reply.status(201).send(updated);
   });
@@ -126,7 +142,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     const { id, itemId } = request.params as { id: string; itemId: string };
 
     const comanda = await prisma.comanda.findFirst({
-      where: { id, status: 'ABERTA', evento: { cervejariaId: user.cervejariaId } },
+      where: { id, status: 'ABERTA', evento: { cervejariaId: user.cervejariaId! } },
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada ou fechada' });
 
@@ -134,7 +150,7 @@ export async function comandasRoutes(app: FastifyInstance) {
       comandaId: id,
       itemId,
       cervejariaId: user.cervejariaId!,
-      eventoId: comanda.eventoId,
+      eventoId: eventoIdDaComanda(comanda),
     });
 
     if ('error' in result) {
@@ -146,23 +162,64 @@ export async function comandasRoutes(app: FastifyInstance) {
       cervejariaId: user.cervejariaId!,
       tipo: 'COMANDA_ITEM_REMOVIDO',
       usuarioId: user.sub,
-      eventoId: comanda.eventoId,
+      eventoId: eventoIdDaComanda(comanda),
       comandaId: id,
       entidadeTipo: 'ItemComanda',
       entidadeId: itemId,
       metadata: {
-        produtoNome: item.produto.nome,
+        produtoNome: item.produto!.nome,
         volumeMl: item.volumeMl,
         quantidade: item.quantidade,
         precoUnit: toNumber(item.precoUnit),
       },
       payload: { comanda: updated, itemRemovido: item },
     });
-    const chopeAfetado = isBebidaChope(item.produto.tipo, item.produto.formato);
-    emitToEvento(app.io, comanda.eventoId, { type: 'item:removed', data: updated });
+    const chopeAfetado = isBebidaChope(item.produto!.tipo, item.produto!.formato);
+    const eventoId = eventoIdDaComanda(comanda);
+    emitToEvento(app.io, eventoId, { type: 'item:removed', data: updated });
     if (chopeAfetado) {
-      emitRankingUpdated(app.io, user.cervejariaId!, comanda.eventoId);
+      emitRankingUpdated(app.io, user.cervejariaId!, eventoId);
     }
+    return updated;
+  });
+
+  app.patch('/:id/desconto', async (request, reply) => {
+    const user = getAuthUser(request);
+    const { id } = request.params as { id: string };
+    const body = descontoSchema.parse(request.body);
+
+    try {
+      await assertPodeDarDescontoQuiosque(user);
+    } catch (err) {
+      if (err instanceof DescontoInvalidoError) {
+        return reply.status(err.statusCode).send({ error: err.message });
+      }
+      throw err;
+    }
+
+    const result = await aplicarDescontoComanda({
+      comandaId: id,
+      cervejariaId: user.cervejariaId!,
+      desconto: body.desconto,
+    });
+
+    if ('error' in result) {
+      const status = result.error === 'Comanda não encontrada ou fechada' ? 404 : 409;
+      return reply.status(status).send({ error: result.error });
+    }
+
+    const { comanda: updated, subtotal } = result;
+    await registrarTransacao({
+      cervejariaId: user.cervejariaId!,
+      tipo: 'COMANDA_DESCONTO_APLICADO',
+      usuarioId: user.sub,
+      eventoId: eventoIdDaComanda(updated),
+      comandaId: id,
+      metadata: { desconto: body.desconto, subtotal },
+      payload: updated,
+    });
+
+    emitToEvento(app.io, eventoIdDaComanda(updated), { type: 'comanda:updated', data: updated });
     return updated;
   });
 
@@ -178,7 +235,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     });
     if ('error' in result) return reply.status(400).send({ error: result.error });
 
-    emitToEvento(app.io, result.eventoId, { type: 'comanda:closed', data: result.comanda });
+    emitToEvento(app.io, result.eventoId!, { type: 'comanda:closed', data: result.comanda });
     return result.comanda;
   });
 
@@ -189,7 +246,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     const comanda = await prisma.comanda.findFirst({
       where: {
         id,
-        evento: { cervejariaId: user.cervejariaId },
+        evento: { cervejariaId: user.cervejariaId! },
       },
       include: comandaDetailInclude,
     });
@@ -203,7 +260,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     const body = createComandaSchema.parse(request.body);
 
     const evento = await prisma.evento.findFirst({
-      where: { id: body.eventoId, cervejariaId: user.cervejariaId, status: 'ABERTO' },
+      where: { id: body.eventoId, cervejariaId: user.cervejariaId!, status: 'ABERTO' },
       select: { id: true, comandasContadorDesde: true },
     });
     if (!evento) return reply.status(400).send({ error: 'Evento não encontrado ou fechado' });
@@ -220,7 +277,7 @@ export async function comandasRoutes(app: FastifyInstance) {
       const clienteSelecionado = await prisma.cliente.findFirst({
         where: {
           id: body.clienteId,
-          cervejariaId: user.cervejariaId,
+          cervejariaId: user.cervejariaId!,
           isSistema: false,
           ativo: true,
         },

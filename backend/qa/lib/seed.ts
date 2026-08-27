@@ -31,12 +31,16 @@ async function cleanupQuiosqueForBrewery(cervejariaId: string) {
     await prisma.movimentoCaixaQuiosque.deleteMany({ where: { sessaoId: { in: sessaoIds } } });
   }
   await prisma.sessaoCaixaQuiosque.deleteMany({ where: { cervejariaId } });
-  const comandas = await prisma.comandaQuiosque.findMany({ where: { cervejariaId }, select: { id: true } });
+  const comandas = await prisma.comanda.findMany({
+    where: { origem: 'QUIOSQUE', pontoVenda: { cervejariaId } },
+    select: { id: true },
+  });
   const comandaIds = comandas.map((c) => c.id);
   if (comandaIds.length) {
-    await prisma.pagamentoQuiosque.deleteMany({ where: { comandaId: { in: comandaIds } } });
+    await prisma.itemComanda.deleteMany({ where: { comandaId: { in: comandaIds } } });
+    await prisma.pagamento.deleteMany({ where: { comandaId: { in: comandaIds } } });
     await prisma.pedidoQuiosque.deleteMany({ where: { comandaId: { in: comandaIds } } });
-    await prisma.comandaQuiosque.deleteMany({ where: { id: { in: comandaIds } } });
+    await prisma.comanda.deleteMany({ where: { id: { in: comandaIds } } });
   }
   await prisma.estoqueSaldoQuiosque.deleteMany({ where: { cervejariaId } });
   await prisma.produtoQuiosque.deleteMany({ where: { cervejariaId } });

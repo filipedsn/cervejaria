@@ -426,7 +426,7 @@ body.auth-screen {
 }
 
 [data-theme="dark"] .input {
-  background: rgba(0, 0, 0, 0.18);
+  background-color: rgba(0, 0, 0, 0.18);
   border-color: rgba(255, 255, 255, 0.1);
   @apply focus:border-orange focus:ring-orange/30;
 }
@@ -447,6 +447,10 @@ select.input {
 
 [data-theme="dark"] select.input {
   color-scheme: dark;
+  background-color: rgba(0, 0, 0, 0.18);
+  background-repeat: no-repeat;
+  background-position: right 0.875rem center;
+  background-size: 1rem;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
 

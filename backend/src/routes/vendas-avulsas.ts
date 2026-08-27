@@ -5,12 +5,13 @@ import { getAuthUser } from '../types/auth.js';
 import { emitToEvento } from '../lib/realtime.js';
 import { toNumber } from '../lib/utils.js';
 import { ensureClienteAvulso } from '../lib/cliente-avulso.js';
-import { addItemToComandaInTx } from '../lib/comanda-service.js';
+import { addItemToComandaInTx, recalcComandaTotalInTx } from '../lib/comanda-service.js';
 import {
   fecharComandaComPagamentos,
   type PagamentoInput,
 } from '../lib/fechar-comanda.js';
 import { registrarTransacao } from '../lib/transacao-log.js';
+import { assertPodeDarDescontoQuiosque, DescontoInvalidoError } from '../lib/quiosque/desconto.js';
 
 const itemSchema = z.object({
   produtoId: z.string(),
@@ -27,7 +28,8 @@ const pagamentoSchema = z.object({
 const vendaAvulsaSchema = z.object({
   eventoId: z.string(),
   itens: z.array(itemSchema).min(1),
-  pagamentos: z.array(pagamentoSchema).min(1),
+  pagamentos: z.array(pagamentoSchema),
+  desconto: z.number().min(0).optional(),
 });
 
 export async function vendasAvulsasRoutes(app: FastifyInstance) {
@@ -36,9 +38,21 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
   app.post('/', async (request, reply) => {
     const user = getAuthUser(request);
     const body = vendaAvulsaSchema.parse(request.body);
+    const desconto = body.desconto ?? 0;
+
+    if (desconto > 0) {
+      try {
+        await assertPodeDarDescontoQuiosque(user);
+      } catch (err) {
+        if (err instanceof DescontoInvalidoError) {
+          return reply.status(err.statusCode).send({ error: err.message });
+        }
+        throw err;
+      }
+    }
 
     const evento = await prisma.evento.findFirst({
-      where: { id: body.eventoId, cervejariaId: user.cervejariaId, status: 'ABERTO' },
+      where: { id: body.eventoId, cervejariaId: user.cervejariaId!, status: 'ABERTO' },
     });
     if (!evento) {
       return reply.status(400).send({ error: 'Evento não encontrado ou fechado' });
@@ -70,20 +84,52 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
           }
         }
 
-        const comandaComItens = await tx.comanda.findUniqueOrThrow({
+        let comandaComItens = await tx.comanda.findUniqueOrThrow({
           where: { id: created.id },
           include: { itens: { include: { produto: true } } },
         });
 
-        const total = toNumber(comandaComItens.total);
-        const totalPagamentos = body.pagamentos.reduce((sum, p) => sum + p.valor, 0);
-        if (Math.abs(totalPagamentos - total) > 0.01) {
+        const subtotal = comandaComItens.itens.reduce(
+          (sum, item) => sum + toNumber(item.precoUnit) * item.quantidade,
+          0,
+        );
+        if (desconto > subtotal + 0.001) {
           throw Object.assign(
-            new Error(
-              `Total dos pagamentos (R$ ${totalPagamentos.toFixed(2)}) difere do total (R$ ${total.toFixed(2)})`,
-            ),
+            new Error('O desconto não pode ser maior que o subtotal da comanda'),
             { statusCode: 400 },
           );
+        }
+
+        if (desconto > 0) {
+          await tx.comanda.update({
+            where: { id: created.id },
+            data: { desconto },
+          });
+          await recalcComandaTotalInTx(tx, created.id);
+          comandaComItens = await tx.comanda.findUniqueOrThrow({
+            where: { id: created.id },
+            include: { itens: { include: { produto: true } } },
+          });
+        }
+
+        const total = toNumber(comandaComItens.total);
+        if (total <= 0.001) {
+          if (body.pagamentos.length > 0) {
+            throw Object.assign(new Error('Conta zerada não exige pagamento'), { statusCode: 400 });
+          }
+        } else {
+          if (body.pagamentos.length === 0) {
+            throw Object.assign(new Error('Informe como o cliente pagou'), { statusCode: 400 });
+          }
+          const totalPagamentos = body.pagamentos.reduce((sum, p) => sum + p.valor, 0);
+          if (Math.abs(totalPagamentos - total) > 0.01) {
+            throw Object.assign(
+              new Error(
+                `Total dos pagamentos (R$ ${totalPagamentos.toFixed(2)}) difere do total (R$ ${total.toFixed(2)})`,
+              ),
+              { statusCode: 400 },
+            );
+          }
         }
 
         await registrarTransacao(
@@ -93,14 +139,22 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
             usuarioId: user.sub,
             eventoId: body.eventoId,
             comandaId: created.id,
-            metadata: { tipo: 'AVULSA' },
+            metadata: {
+              tipo: 'AVULSA',
+              total,
+              ...(desconto > 0 ? { desconto } : {}),
+            },
             payload: comandaComItens,
           },
           tx,
         );
 
         return fecharComandaComPagamentos(tx, {
-          comanda: { ...comandaComItens, tipo: 'AVULSA' },
+          comanda: {
+            ...comandaComItens,
+            tipo: 'AVULSA',
+            desconto: comandaComItens.desconto,
+          },
           pagamentos: body.pagamentos as PagamentoInput[],
           cervejariaId: user.cervejariaId!,
           usuarioId: user.sub,

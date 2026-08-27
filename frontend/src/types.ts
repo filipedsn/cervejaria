@@ -397,12 +397,22 @@ export interface Comanda {
   status: 'ABERTA' | 'FECHADA' | 'CANCELADA';
   tipo?: 'COMANDA' | 'AVULSA';
   numero?: number | null;
+  desconto?: string | number;
   total: string;
   cliente: Cliente;
   itens: ItemComanda[];
   pagamentos: Pagamento[];
   createdAt: string;
   updatedAt: string;
+}
+
+export function descontoComandaCervejaria(comanda: Pick<Comanda, 'desconto'>): number {
+  if (comanda.desconto == null || comanda.desconto === '') return 0;
+  return typeof comanda.desconto === 'number' ? comanda.desconto : parseFloat(comanda.desconto);
+}
+
+export function subtotalComandaCervejaria(comanda: Pick<Comanda, 'itens'>): number {
+  return comanda.itens.reduce((soma, item) => soma + parseFloat(item.precoUnit) * item.quantidade, 0);
 }
 
 export function rotuloComandaCervejaria(

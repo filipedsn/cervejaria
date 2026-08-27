@@ -1,17 +1,17 @@
--- LEGADO: cria usuarios prod + dev no mesmo container.
+﻿-- LEGADO: cria usuarios prod + dev no mesmo container.
 -- Preferir create-env-users-prod-only.sql (prod) e create-env-users-dev-container.sql (dev).
 -- Ver scripts/db-create-env-users.ps1
 
 DO $$ BEGIN
-  CREATE USER cervejaria_prod WITH PASSWORD 'QvPr0d_xK9m2026';
+  CREATE USER cervejaria_prod WITH PASSWORD :'PROD_PASSWORD';
 EXCEPTION WHEN duplicate_object THEN
-  ALTER USER cervejaria_prod WITH PASSWORD 'QvPr0d_xK9m2026';
+  ALTER USER cervejaria_prod WITH PASSWORD :'PROD_PASSWORD';
 END $$;
 
 DO $$ BEGIN
-  CREATE USER cervejaria_dev WITH PASSWORD 'QvDev_pL4n2026';
+  CREATE USER cervejaria_dev WITH PASSWORD :'DEV_PASSWORD';
 EXCEPTION WHEN duplicate_object THEN
-  ALTER USER cervejaria_dev WITH PASSWORD 'QvDev_pL4n2026';
+  ALTER USER cervejaria_dev WITH PASSWORD :'DEV_PASSWORD';
 END $$;
 
 REVOKE ALL ON DATABASE cervejaria FROM PUBLIC;

@@ -45,9 +45,10 @@ export async function proximoNumeroComandaQuiosqueTurno(
 ): Promise<number> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKeyComandaQuiosqueTurno(cervejariaId, pontoVendaId, turnoAbertoEm)})`;
 
-  const ultimo = await tx.comandaQuiosque.findFirst({
+  const ultimo = await tx.comanda.findFirst({
     where: {
-      cervejariaId,
+      origem: 'QUIOSQUE',
+      pontoVenda: { cervejariaId },
       pontoVendaId,
       tipo: { not: 'AVULSA' },
       createdAt: { gte: turnoAbertoEm },

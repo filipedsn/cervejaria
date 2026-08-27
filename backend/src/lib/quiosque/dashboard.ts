@@ -1,4 +1,4 @@
-import type { FormaPagamentoQuiosque, Prisma } from '@prisma/client';
+import type { PaymentMethod, Prisma } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
 import { totaisPorForma } from './caixa.js';
@@ -49,16 +49,17 @@ async function fetchClosedComandas(
   fim: Date,
   pontoVendaId?: string,
 ) {
-  return prisma.comandaQuiosque.findMany({
+  return prisma.comanda.findMany({
     where: {
-      cervejariaId,
+      origem: 'QUIOSQUE',
+      pontoVenda: { cervejariaId },
       status: 'FECHADA',
       fechadaEm: { gte: inicio, lte: fim },
       ...(pontoVendaId ? { pontoVendaId } : {}),
     },
     include: {
       pagamentos: true,
-      pedidos: { include: { itens: true } },
+      itens: true,
       pontoVenda: { select: { id: true, nome: true } },
     },
   });
@@ -78,7 +79,7 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
   let vendasAvulsas = 0;
   let receitaAvulsa = 0;
   let itensVendidos = 0;
-  const porPagamento = new Map<FormaPagamentoQuiosque, number>();
+  const porPagamento = new Map<PaymentMethod, number>();
   const porProduto = new Map<string, { produtoId: string; nome: string; quantidade: number; receita: number }>();
   const porFuncionario = new Map<string, { usuarioId: string | null; nome: string; comandas: number; receita: number }>();
 
@@ -91,10 +92,10 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
       receitaAvulsa += valor;
     }
 
-    const funcKey = comanda.fechadaPorId ?? '__sem__';
+    const funcKey = comanda.fechadoPorId ?? '__sem__';
     const func = porFuncionario.get(funcKey) ?? {
-      usuarioId: comanda.fechadaPorId,
-      nome: comanda.fechadaPorId ? (nomesPorId.get(comanda.fechadaPorId) ?? 'Operador') : 'Sem registro',
+      usuarioId: comanda.fechadoPorId,
+      nome: comanda.fechadoPorId ? (nomesPorId.get(comanda.fechadoPorId) ?? 'Operador') : 'Sem registro',
       comandas: 0,
       receita: 0,
     };
@@ -107,21 +108,19 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
       porPagamento.set(pagamento.forma, atual + toNumber(pagamento.valor));
     }
 
-    for (const pedido of comanda.pedidos) {
-      if (!pedidoContaNaComanda(pedido, comanda)) continue;
-      for (const item of pedido.itens) {
-        itensVendidos += item.quantidade;
-        const itemValor = toNumber(item.precoUnit) * item.quantidade;
-        const prod = porProduto.get(item.produtoId) ?? {
-          produtoId: item.produtoId,
-          nome: item.nome,
-          quantidade: 0,
-          receita: 0,
-        };
-        prod.quantidade += item.quantidade;
-        prod.receita += itemValor;
-        porProduto.set(item.produtoId, prod);
-      }
+    for (const item of comanda.itens) {
+      if (!item.produtoQuiosqueId) continue;
+      itensVendidos += item.quantidade;
+      const itemValor = toNumber(item.precoUnit) * item.quantidade;
+      const prod = porProduto.get(item.produtoQuiosqueId) ?? {
+        produtoId: item.produtoQuiosqueId,
+        nome: item.nome ?? 'Item',
+        quantidade: 0,
+        receita: 0,
+      };
+      prod.quantidade += item.quantidade;
+      prod.receita += itemValor;
+      porProduto.set(item.produtoQuiosqueId, prod);
     }
   }
 
@@ -185,10 +184,11 @@ async function pagamentosDoTurno(
   cervejariaId: string,
 ) {
   const fechadaAte = sessao.fechadoEm ?? undefined;
-  return prisma.pagamentoQuiosque.findMany({
+  return prisma.pagamento.findMany({
     where: {
       comanda: {
-        cervejariaId,
+        origem: 'QUIOSQUE',
+        pontoVenda: { cervejariaId },
         pontoVendaId: sessao.pontoVendaId,
         diaOperacional: sessao.diaOperacional,
         status: 'FECHADA',
@@ -267,9 +267,10 @@ async function buildTurnosRecentes(
   }
 
   for (const turno of resultados) {
-    const avulsas = await prisma.comandaQuiosque.count({
+    const avulsas = await prisma.comanda.count({
       where: {
-        cervejariaId,
+        origem: 'QUIOSQUE',
+        pontoVenda: { cervejariaId },
         pontoVendaId: turno.pontoVendaId,
         tipo: 'AVULSA',
         status: 'FECHADA',
@@ -296,7 +297,7 @@ async function buildComparativoPontos(
   const grupos = [];
   for (const ponto of pontos) {
     const comandas = await fetchClosedComandas(cervejariaId, inicio, fim, ponto.id);
-    const ids = [...new Set(comandas.map((comanda) => comanda.fechadaPorId).filter(Boolean) as string[])];
+    const ids = [...new Set(comandas.map((comanda) => comanda.fechadoPorId).filter(Boolean) as string[])];
     const nomes = await fetchUsuariosNomes(ids);
     const resumo = aggregateComandas(comandas, nomes);
     const turnos = await prisma.sessaoCaixaQuiosque.count({
@@ -340,10 +341,10 @@ export async function buildQuiosqueDashboard(
     pontoVendaId ? Promise.resolve([]) : buildComparativoPontos(cervejariaId, inicio, fim),
   ]);
 
-  const fechadaPorIds = [
-    ...new Set(comandasMes.map((comanda) => comanda.fechadaPorId).filter(Boolean) as string[]),
+  const fechadoPorIds = [
+    ...new Set(comandasMes.map((comanda) => comanda.fechadoPorId).filter(Boolean) as string[]),
   ];
-  const nomesPorId = await fetchUsuariosNomes(fechadaPorIds);
+  const nomesPorId = await fetchUsuariosNomes(fechadoPorIds);
 
   const resumo = aggregateComandas(comandasMes, nomesPorId);
   const evolucaoSemanal = weeklyEvolution(comandasMes, ano, mes);
@@ -373,7 +374,7 @@ export async function buildQuiosqueDashboard(
   const resumoAnterior = aggregateComandas(
     comandasMesAnterior,
     await fetchUsuariosNomes(
-      [...new Set(comandasMesAnterior.map((c) => c.fechadaPorId).filter(Boolean) as string[])],
+      [...new Set(comandasMesAnterior.map((c) => c.fechadoPorId).filter(Boolean) as string[])],
     ),
   );
 

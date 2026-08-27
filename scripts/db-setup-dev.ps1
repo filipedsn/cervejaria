@@ -29,6 +29,9 @@ Write-Host 'Verificando Postgres dev (Docker)...' -ForegroundColor Gray
 $devRunning = docker ps --filter "name=^${DbDevContainer}$" --format '{{.Names}}' 2>$null
 if (-not $devRunning) {
   Write-Host "Container $DbDevContainer nao esta rodando. Subindo..." -ForegroundColor Yellow
+  if ([string]::IsNullOrWhiteSpace($env:POSTGRES_DEV_PASSWORD)) {
+    throw 'Defina POSTGRES_DEV_PASSWORD antes de subir o PostgreSQL de desenvolvimento.'
+  }
   docker compose up -d postgres-dev
   Start-Sleep -Seconds 5
 }

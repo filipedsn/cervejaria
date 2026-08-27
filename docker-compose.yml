@@ -5,7 +5,7 @@
     restart: unless-stopped
     environment:
       POSTGRES_USER: cervejaria
-      POSTGRES_PASSWORD: cervejaria123
+      POSTGRES_PASSWORD: ${POSTGRES_PROD_PASSWORD:?POSTGRES_PROD_PASSWORD must be set}
       POSTGRES_DB: cervejaria
     ports:
       - "5432:5432"
@@ -23,7 +23,7 @@
     restart: unless-stopped
     environment:
       POSTGRES_USER: cervejaria
-      POSTGRES_PASSWORD: cervejaria123
+      POSTGRES_PASSWORD: ${POSTGRES_DEV_PASSWORD:?POSTGRES_DEV_PASSWORD must be set}
       POSTGRES_DB: cervejaria_dev
     ports:
       - "5434:5432"

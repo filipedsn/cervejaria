@@ -1,5 +1,13 @@
 import type { Socket } from 'socket.io-client';
-import { API_BASE, api, chopeItemBody, uniqueStaffComandaBody } from './http.js';
+import { prisma } from '../../src/lib/prisma.js';
+import {
+  API_BASE,
+  api,
+  chopeItemBody,
+  portalSessao,
+  uniquePortalTestPhone,
+  uniqueStaffComandaBody,
+} from './http.js';
 import { ensureTenantEventoAberto } from './tenant-evento.js';
 import type { QaContext, TenantFixture } from './types.js';
 
@@ -32,6 +40,30 @@ async function connectStaff(token: string): Promise<Socket> {
 
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Timeout no handshake')), CONNECT_TIMEOUT_MS);
+    socket.on('connect', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    socket.on('connect_error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+
+  return socket;
+}
+
+async function connectCliente(cookie: string): Promise<Socket> {
+  const { io: ioClient } = await import('socket.io-client');
+  const socket = ioClient(API_BASE, {
+    transports: ['websocket'],
+    timeout: 5000,
+    reconnection: false,
+    extraHeaders: { Cookie: cookie },
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Timeout no handshake do cliente')), CONNECT_TIMEOUT_MS);
     socket.on('connect', () => {
       clearTimeout(timer);
       resolve();
@@ -91,6 +123,7 @@ function settle(ms = 350) {
 
 interface ComandaEventPayload {
   id?: string;
+  comandaId?: string;
   itens?: Array<{ id: string }>;
 }
 
@@ -115,7 +148,11 @@ export async function runRealtimeTests(ctx: QaContext, test: TestFn, perfSink?: 
 
   let socketA: Socket | null = null;
   let socketB: Socket | null = null;
+  let clienteA: Socket | null = null;
+  let clienteB: Socket | null = null;
   let comandaA = '';
+  let comandaClienteA = '';
+  let comandaClienteB = '';
 
   try {
     try {
@@ -429,8 +466,183 @@ export async function runRealtimeTests(ctx: QaContext, test: TestFn, perfSink?: 
         }
       },
     );
+
+    await test(
+      { id: 'RT-13', category: 'Realtime', name: 'Cliente A não recebe item:added da comanda B', requirement: 'TQ-001-A' },
+      async () => {
+        const [sessaoA, sessaoB] = await Promise.all([
+          portalSessao(tenantA.slug, tenantA.trailerId, {
+            nome: 'TQ001 Cliente A',
+            telefone: uniquePortalTestPhone(71, 1),
+          }),
+          portalSessao(tenantA.slug, tenantA.trailerId, {
+            nome: 'TQ001 Cliente B',
+            telefone: uniquePortalTestPhone(71, 2),
+          }),
+        ]);
+        if (
+          sessaoA.status !== 201 ||
+          sessaoB.status !== 201 ||
+          !sessaoA.cookie ||
+          !sessaoB.cookie ||
+          !sessaoA.comandaId ||
+          !sessaoB.comandaId
+        ) {
+          return {
+            status: 'failed',
+            message: 'Setup das sessões do portal falhou',
+            expected: 'duas sessões 201',
+            actual: `${sessaoA.status}/${sessaoB.status}`,
+          };
+        }
+
+        comandaClienteA = sessaoA.comandaId;
+        comandaClienteB = sessaoB.comandaId;
+        clienteA = await connectCliente(sessaoA.cookie);
+        clienteB = await connectCliente(sessaoB.cookie);
+        await settle();
+
+        const eventosA = collect<ComandaEventPayload>(clienteA, 'item:added');
+        const eventosB = collect<ComandaEventPayload>(clienteB, 'item:added');
+        const eventosStaff = collect<ComandaEventPayload>(socketA!, 'item:added');
+        const r = await api('POST', `/api/comandas/${comandaClienteB}/itens`, {
+          token: tenantA.atendenteTokens[0],
+          body: chopeItemBody(tenantA.produtoId, tenantA.tapId, tenantA.volumeMl),
+        });
+        const recebidoB = await eventosB.wait((p) => p?.comandaId === comandaClienteB);
+        const recebidoStaff = await eventosStaff.wait((p) => p?.id === comandaClienteB);
+        await settle();
+        const vazouParaA = eventosA.received.some(
+          (p) => p?.id === comandaClienteB || p?.comandaId === comandaClienteB,
+        );
+        eventosA.dispose();
+        eventosB.dispose();
+        eventosStaff.dispose();
+
+        if (r.status !== 201) {
+          return { status: 'failed', message: 'Inclusão de item', expected: '201', actual: String(r.status) };
+        }
+        if (!recebidoB || !recebidoStaff) {
+          return {
+            status: 'failed',
+            message: 'Evento não chegou aos destinatários legítimos',
+            expected: 'cliente B e staff',
+            actual: `clienteB=${!!recebidoB}, staff=${!!recebidoStaff}`,
+          };
+        }
+        if (vazouParaA) {
+          return {
+            status: 'failed',
+            message: 'Cliente A recebeu evento privado da comanda B',
+            expected: 'isolado',
+            actual: 'vazou',
+          };
+        }
+        return { message: 'Comandas de clientes isoladas', expected: 'isolado', actual: 'isolado' };
+      },
+    );
+
+    await test(
+      { id: 'RT-14', category: 'Realtime', name: 'Cliente recebe sinal mínimo da própria comanda', requirement: 'TQ-001-B' },
+      async () => {
+        if (!clienteB || !comandaClienteB) return { status: 'failed', message: 'RT-13 não preparou cliente B' };
+        const eventos = collect<ComandaEventPayload>(clienteB, 'item:added');
+        const r = await api('POST', `/api/comandas/${comandaClienteB}/itens`, {
+          token: tenantA.atendenteTokens[0],
+          body: chopeItemBody(tenantA.produtoId, tenantA.tapId, tenantA.volumeMl),
+        });
+        const hit = await eventos.wait((p) => p?.comandaId === comandaClienteB);
+        eventos.dispose();
+        if (r.status !== 201 || !hit) {
+          return {
+            status: 'failed',
+            message: 'Cliente B não recebeu atualização da própria comanda',
+            expected: comandaClienteB,
+            actual: hit?.comandaId ?? `HTTP ${r.status}`,
+          };
+        }
+        const keys = Object.keys(hit).sort();
+        if (keys.length !== 1 || keys[0] !== 'comandaId') {
+          return {
+            status: 'failed',
+            message: 'Payload do cliente contém dados além do identificador',
+            expected: 'comandaId',
+            actual: keys.join(','),
+          };
+        }
+        return { message: 'Sinal privado mínimo entregue', expected: 'comandaId', actual: keys.join(',') };
+      },
+    );
+
+    await test(
+      { id: 'RT-15', category: 'Realtime', name: 'Funcionário mantém atualização completa do evento', requirement: 'TQ-001-C' },
+      async () => {
+        if (!comandaClienteB) return { status: 'failed', message: 'RT-13 não preparou comanda B' };
+        const eventos = collect<ComandaEventPayload>(socketA!, 'item:added');
+        const r = await api('POST', `/api/comandas/${comandaClienteB}/itens`, {
+          token: tenantA.atendenteTokens[0],
+          body: chopeItemBody(tenantA.produtoId, tenantA.tapId, tenantA.volumeMl),
+        });
+        const hit = await eventos.wait((p) => p?.id === comandaClienteB && Array.isArray(p.itens));
+        eventos.dispose();
+        if (r.status !== 201 || !hit) {
+          return {
+            status: 'failed',
+            message: 'Room operacional perdeu a atualização completa',
+            expected: comandaClienteB,
+            actual: hit?.id ?? `HTTP ${r.status}`,
+          };
+        }
+        return { message: 'Evento operacional preservado', expected: comandaClienteB, actual: hit.id ?? '' };
+      },
+    );
+
+    await test(
+      { id: 'RT-16', category: 'Realtime', name: 'Aviso público de sessão expirada usa room do portal', requirement: 'TQ-001' },
+      async () => {
+        if (!clienteA || !clienteB) return { status: 'failed', message: 'RT-13 não preparou clientes do portal' };
+        const expiradoA = collect<{ eventoId?: string; reason?: string }>(clienteA, 'portal:session-expired');
+        const expiradoB = collect<{ eventoId?: string; reason?: string }>(clienteB, 'portal:session-expired');
+        const expiradoStaff = collect<{ eventoId?: string }>(socketA!, 'portal:session-expired');
+
+        await prisma.comanda.updateMany({
+          where: { eventoId: tenantA.eventoId, status: 'ABERTA' },
+          data: { status: 'CANCELADA' },
+        });
+        const r = await api('PATCH', `/api/eventos/${tenantA.eventoId}/fechar`, { token: tenantA.donoToken });
+        const [hitA, hitB] = await Promise.all([
+          expiradoA.wait((p) => p?.eventoId === tenantA.eventoId && p.reason === 'evento_fechado'),
+          expiradoB.wait((p) => p?.eventoId === tenantA.eventoId && p.reason === 'evento_fechado'),
+        ]);
+        await settle();
+        const vazouParaStaff = expiradoStaff.received.some((p) => p?.eventoId === tenantA.eventoId);
+        expiradoA.dispose();
+        expiradoB.dispose();
+        expiradoStaff.dispose();
+
+        if (r.status !== 200 || !hitA || !hitB) {
+          return {
+            status: 'failed',
+            message: 'Aviso de expiração não chegou aos clientes do portal',
+            expected: 'cliente A e cliente B',
+            actual: `HTTP=${r.status}, A=${!!hitA}, B=${!!hitB}`,
+          };
+        }
+        if (vazouParaStaff) {
+          return {
+            status: 'failed',
+            message: 'Aviso exclusivo do portal chegou à room operacional',
+            expected: 'somente portal',
+            actual: 'staff recebeu',
+          };
+        }
+        return { message: 'Expiração pública preservada e separada', expected: 'portal', actual: 'portal' };
+      },
+    );
   } finally {
     socketA?.disconnect();
     socketB?.disconnect();
+    clienteA?.disconnect();
+    clienteB?.disconnect();
   }
 }

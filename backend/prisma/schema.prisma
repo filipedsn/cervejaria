@@ -34,6 +34,16 @@ enum ComandaStatus {
 enum ComandaTipo {
   COMANDA
   AVULSA
+  MESA
+  FICHA
+  APELIDO
+
+  @@schema("public")
+}
+
+enum ComandaOrigem {
+  EVENTO
+  QUIOSQUE
 
   @@schema("public")
 }
@@ -69,6 +79,7 @@ enum TransacaoTipo {
   COMANDA_CRIADA
   COMANDA_ITEM_ADICIONADO
   COMANDA_ITEM_REMOVIDO
+  COMANDA_DESCONTO_APLICADO
   COMANDA_FECHADA
   COMANDA_CANCELADA
   EVENTO_CRIADO
@@ -148,7 +159,6 @@ model Cervejaria {
   pontosVenda          PontoVenda[]
   produtosQuiosque     ProdutoQuiosque[]
   cardapiosQuiosque    CardapioQuiosque[]
-  comandasQuiosque     ComandaQuiosque[]
   pedidosQuiosque      PedidoQuiosque[]
   sessoesCaixaQuiosque SessaoCaixaQuiosque[]
   saldosEstoqueQuiosque EstoqueSaldoQuiosque[]
@@ -456,50 +466,72 @@ model ClienteEstatisticas {
 }
 
 model Comanda {
-  id           String        @id @default(cuid())
-  eventoId     String
-  clienteId    String
-  status       ComandaStatus @default(ABERTA)
-  tipo         ComandaTipo   @default(COMANDA)
-  /// Sequencial da comanda dentro do evento (vendas avulsas ficam sem numero).
-  numero       Int?
-  total        Decimal       @default(0) @db.Decimal(10, 2)
-  fechadoPorId String?
-  fechadaEm    DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id             String        @id @default(cuid())
+  origem         ComandaOrigem @default(EVENTO)
+  eventoId       String?
+  clienteId      String?
+  status         ComandaStatus @default(ABERTA)
+  tipo           ComandaTipo   @default(COMANDA)
+  /// Sequencial da comanda dentro do evento ou turno de caixa (vendas avulsas ficam sem numero).
+  numero         Int?
+  /// Desconto manual aplicado na comanda (valor absoluto em reais).
+  desconto       Decimal       @default(0) @db.Decimal(10, 2)
+  total          Decimal       @default(0) @db.Decimal(10, 2)
+  fechadoPorId   String?
+  fechadaEm      DateTime?
+  /// Quiosque: ponto de venda, dia operacional e identificador da mesa/ficha/apelido.
+  pontoVendaId   String?
+  diaOperacional DateTime?     @db.Date
+  identificador  String?
+  abertaPorId    String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  evento     Evento    @relation(fields: [eventoId], references: [id], onDelete: Cascade)
-  cliente    Cliente   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  fechadoPor Usuario?  @relation("ComandaFechadaPor", fields: [fechadoPorId], references: [id], onDelete: SetNull)
+  evento     Evento?     @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  cliente    Cliente?    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda? @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
+  fechadoPor Usuario?   @relation("ComandaFechadaPor", fields: [fechadoPorId], references: [id], onDelete: SetNull)
   itens      ItemComanda[]
   pagamentos Pagamento[]
   pedidos    PedidoCliente[]
+  pedidosQuiosque PedidoQuiosque[]
   transacoes TransacaoLog[]
 
   @@index([eventoId, status])
   @@index([eventoId, status, tipo])
   @@index([fechadoPorId])
+  @@index([origem, status, createdAt])
+  @@index([pontoVendaId, status])
+  @@index([origem, diaOperacional])
 
   @@schema("public")
 }
 
 model ItemComanda {
-  id         String   @id @default(cuid())
-  comandaId  String
-  produtoId  String
-  tapId      String?
-  volumeMl   Int
-  quantidade Int      @default(1)
-  precoUnit  Decimal  @db.Decimal(10, 2)
-  createdAt  DateTime @default(now())
+  id                String   @id @default(cuid())
+  comandaId         String
+  produtoId         String?
+  produtoQuiosqueId String?
+  tapId             String?
+  volumeMl          Int      @default(0)
+  quantidade        Int      @default(1)
+  precoUnit         Decimal  @db.Decimal(10, 2)
+  /// Snapshot do nome no quiosque (catalogo pode mudar depois).
+  nome              String?
+  exigePreparo      Boolean  @default(false)
+  pedidoCozinhaId   String?
+  createdAt         DateTime @default(now())
 
-  comanda Comanda @relation(fields: [comandaId], references: [id], onDelete: Cascade)
-  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict)
-  tap     Tap?    @relation(fields: [tapId], references: [id], onDelete: SetNull)
+  comanda         Comanda          @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  produto         Produto?         @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  produtoQuiosque ProdutoQuiosque? @relation(fields: [produtoQuiosqueId], references: [id], onDelete: Restrict)
+  tap             Tap?             @relation(fields: [tapId], references: [id], onDelete: SetNull)
+  pedidoCozinha   PedidoQuiosque?  @relation(fields: [pedidoCozinhaId], references: [id], onDelete: SetNull)
 
   @@index([comandaId])
   @@index([tapId])
+  @@index([produtoQuiosqueId])
+  @@index([pedidoCozinhaId])
 
   @@schema("public")
 }
@@ -564,11 +596,15 @@ model EventoProduto {
 }
 
 model Pagamento {
-  id        String        @id @default(cuid())
-  comandaId String
-  forma     PaymentMethod
-  valor     Decimal       @db.Decimal(10, 2)
-  pagoEm    DateTime      @default(now())
+  id              String        @id @default(cuid())
+  comandaId       String
+  forma           PaymentMethod
+  valor           Decimal       @db.Decimal(10, 2)
+  /// Só no dinheiro: quanto o cliente entregou e quanto voltou de troco.
+  valorRecebido   Decimal?      @db.Decimal(10, 2)
+  troco           Decimal?      @db.Decimal(10, 2)
+  registradoPorId String?
+  pagoEm          DateTime      @default(now())
 
   comanda Comanda @relation(fields: [comandaId], references: [id], onDelete: Cascade)
 
@@ -645,7 +681,7 @@ model PontoVenda {
   updatedAt    DateTime @updatedAt
 
   cervejaria Cervejaria          @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
-  comandas   ComandaQuiosque[]
+  comandas   Comanda[]
   pedidos    PedidoQuiosque[]
   sessoesCaixa SessaoCaixaQuiosque[]
   saldosEstoque EstoqueSaldoQuiosque[]
@@ -671,7 +707,7 @@ model ProdutoQuiosque {
   updatedAt       DateTime @updatedAt
 
   cervejaria Cervejaria           @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
-  itens      ItemPedidoQuiosque[]
+  itens      ItemComanda[]
   saldosEstoque EstoqueSaldoQuiosque[]
   movimentosEstoque MovimentoEstoqueQuiosque[]
   cardapios  CardapioQuiosqueProduto[]
@@ -712,24 +748,6 @@ model CardapioQuiosqueProduto {
   @@schema("quiosque")
 }
 
-enum TipoComandaQuiosque {
-  /// Venda paga na hora, sem conta aberta.
-  AVULSA
-  APELIDO
-  MESA
-  FICHA
-
-  @@schema("quiosque")
-}
-
-enum StatusComandaQuiosque {
-  ABERTA
-  FECHADA
-  CANCELADA
-
-  @@schema("quiosque")
-}
-
 enum StatusPedidoQuiosque {
   RECEBIDO
   EM_PREPARO
@@ -737,51 +755,6 @@ enum StatusPedidoQuiosque {
   ENTREGUE
   CANCELADO
 
-  @@schema("quiosque")
-}
-
-enum FormaPagamentoQuiosque {
-  DINHEIRO
-  PIX
-  CARTAO_DEBITO
-  CARTAO_CREDITO
-
-  @@schema("quiosque")
-}
-
-/// Conta do cliente. A venda avulsa tambem vira comanda (tipo AVULSA), aberta e
-/// fechada na mesma transacao, para que caixa e historico tenham um lugar so.
-model ComandaQuiosque {
-  id             String                @id @default(cuid())
-  cervejariaId   String
-  pontoVendaId   String
-  tipo           TipoComandaQuiosque
-  /// Apelido, numero da mesa ou da ficha. Nulo na venda avulsa.
-  identificador  String?
-  /// Sequencial da comanda no turno de caixa (vendas avulsas ficam sem numero).
-  numero         Int?
-  status         StatusComandaQuiosque @default(ABERTA)
-  /// Dia da operacao em America/Sao_Paulo. O quiosque vira a noite, entao a data
-  /// civil do instante UTC nao serve para fechar o caixa.
-  diaOperacional DateTime              @db.Date
-  /// Referencias de usuario ficam por id, sem relation, para nao espalhar o
-  /// modulo dentro do modelo Usuario.
-  abertaPorId    String
-  fechadaPorId   String?
-  fechadaEm      DateTime?
-  /// Desconto manual aplicado na comanda (valor absoluto em reais).
-  desconto       Decimal               @default(0) @db.Decimal(10, 2)
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
-
-  cervejaria Cervejaria          @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
-  pontoVenda PontoVenda          @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
-  pedidos    PedidoQuiosque[]
-  pagamentos PagamentoQuiosque[]
-
-  @@index([cervejariaId, status, createdAt])
-  @@index([cervejariaId, diaOperacional])
-  @@index([pontoVendaId, status])
   @@schema("quiosque")
 }
 
@@ -805,9 +778,9 @@ model PedidoQuiosque {
   updatedAt      DateTime             @updatedAt
 
   cervejaria Cervejaria           @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
-  comanda    ComandaQuiosque      @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  comanda    Comanda              @relation(fields: [comandaId], references: [id], onDelete: Cascade)
   pontoVenda PontoVenda           @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
-  itens      ItemPedidoQuiosque[]
+  itensComanda ItemComanda[]
   movimentosEstoque MovimentoEstoqueQuiosque[]
   historicoStatus   PedidoQuiosqueStatusHistorico[]
 
@@ -827,41 +800,6 @@ model PedidoQuiosqueStatusHistorico {
   pedido PedidoQuiosque @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
 
   @@index([pedidoId, registradoEm])
-  @@schema("quiosque")
-}
-
-model ItemPedidoQuiosque {
-  id           String  @id @default(cuid())
-  pedidoId     String
-  produtoId    String
-  /// Nome e preco sao copiados na venda: mexer no catalogo depois nao pode
-  /// reescrever o que o cliente pagou.
-  nome         String
-  precoUnit    Decimal @db.Decimal(10, 2)
-  quantidade   Int
-  exigePreparo Boolean @default(false)
-
-  pedido  PedidoQuiosque  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
-  produto ProdutoQuiosque @relation(fields: [produtoId], references: [id], onDelete: Restrict)
-
-  @@index([pedidoId])
-  @@schema("quiosque")
-}
-
-model PagamentoQuiosque {
-  id              String                 @id @default(cuid())
-  comandaId       String
-  forma           FormaPagamentoQuiosque
-  valor           Decimal                @db.Decimal(10, 2)
-  /// So no dinheiro: quanto o cliente entregou e quanto voltou de troco.
-  valorRecebido   Decimal?               @db.Decimal(10, 2)
-  troco           Decimal?               @db.Decimal(10, 2)
-  registradoPorId String
-  pagoEm          DateTime               @default(now())
-
-  comanda ComandaQuiosque @relation(fields: [comandaId], references: [id], onDelete: Cascade)
-
-  @@index([comandaId])
   @@schema("quiosque")
 }
 
@@ -917,6 +855,8 @@ model SessaoCaixaProdutoQuiosque {
   id               String   @id @default(cuid())
   sessaoCaixaId    String
   produtoQuiosqueId String
+  /// Override só deste turno; null herda template (ou catálogo).
+  precoUnit        Decimal? @db.Decimal(10, 2)
   createdAt        DateTime @default(now())
 
   sessao  SessaoCaixaQuiosque @relation(fields: [sessaoCaixaId], references: [id], onDelete: Cascade)

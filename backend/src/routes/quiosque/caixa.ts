@@ -12,7 +12,7 @@ import {
   montarResumoCaixa,
   registrarMovimento,
 } from '../../lib/quiosque/caixa.js';
-import { getCardapioTurno, salvarCardapioTurno } from '../../lib/quiosque/sessao-cardapio.js';
+import { getCardapioTurno, salvarCardapioTurno, alterarPrecoCardapioTurno } from '../../lib/quiosque/sessao-cardapio.js';
 import { getProdutoIdsFromCardapioQuiosque, validateProdutosCardapioQuiosque } from '../../lib/quiosque/cardapio.js';
 import { registrarTransacao } from '../../lib/transacao-log.js';
 import { recordDivergenciaCaixa } from '../../lib/business-metrics.js';
@@ -207,6 +207,35 @@ export async function caixaQuiosqueRoutes(app: FastifyInstance) {
       produtoIds: body.produtoIds,
     });
     if ('error' in result) return reply.status(400).send({ error: result.error });
+
+    const cardapio = await getCardapioTurno(sessao.id, cervejariaId);
+    return cardapio;
+  });
+
+  app.patch('/cardapio/preco', async (request, reply) => {
+    const { cervejariaId } = request.quiosque;
+    const { pontoVendaId } = pontoVendaQuery.parse(request.query);
+    const body = z
+      .object({
+        produtoId: z.string().min(1),
+        precoUnit: z.number().positive(),
+        escopo: z.enum(['TURNO', 'TEMPLATE']),
+      })
+      .parse(request.body);
+
+    const sessao = await buscarSessaoAtual(cervejariaId, pontoVendaId);
+    if (!sessao) return reply.status(404).send({ error: 'Caixa não está aberto' });
+
+    const result = await alterarPrecoCardapioTurno({
+      sessaoCaixaId: sessao.id,
+      cervejariaId,
+      produtoId: body.produtoId,
+      precoUnit: body.precoUnit,
+      escopo: body.escopo,
+    });
+    if ('error' in result) {
+      return reply.status(result.statusCode).send({ error: result.error });
+    }
 
     const cardapio = await getCardapioTurno(sessao.id, cervejariaId);
     return cardapio;

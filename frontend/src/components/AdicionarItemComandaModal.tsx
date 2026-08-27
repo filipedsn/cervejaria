@@ -128,8 +128,8 @@ export function AdicionarItemComandaModal({
       >
         {isPending ? 'Adicionando...' : 'Adicionar à comanda'}
       </button>
-      <button type="button" className="touch-btn-secondary w-full" onClick={onClose} disabled={isPending}>
-        Fechar
+      <button type="button" className="touch-btn-danger w-full" onClick={onClose} disabled={isPending}>
+        Cancelar
       </button>
     </>
   );

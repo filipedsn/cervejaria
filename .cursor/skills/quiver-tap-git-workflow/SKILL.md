@@ -21,7 +21,7 @@ main (atualizada)
   → Pull Request → main
   → CI verde
   → Squash and merge
-  → git pull main no PC
+  → git pull origin main no PC (ou Verificar release no ops-panel — sincroniza automaticamente)
   → npm.cmd run prod:deploy
 ```
 

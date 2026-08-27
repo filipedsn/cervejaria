@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from 'react';
+import { useState, type Dispatch, SetStateAction } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import {
@@ -9,6 +9,7 @@ import {
   buildTurnoCardapioAbrirPayload,
 } from '../../lib/quiosque';
 import { CardapioQuiosqueProdutosPicker } from './CardapioQuiosqueProdutosPicker';
+import { CardapioSalvoModal, cardapioSalvoLabel } from '../CardapioSalvoModal';
 
 export { defaultTurnoCardapioForm, buildTurnoCardapioAbrirPayload };
 export type { TurnoCardapioFormState };
@@ -20,6 +21,8 @@ export function TurnoCardapioFormFields({
   form: TurnoCardapioFormState;
   setForm: Dispatch<SetStateAction<TurnoCardapioFormState>>;
 }) {
+  const [modalSalvoAberto, setModalSalvoAberto] = useState(false);
+
   const { data: cardapios } = useQuery({
     queryKey: ['quiosque-cardapios', 'ativo'],
     queryFn: () => api.get<CardapioQuiosque[]>('/api/quiosque/cardapios?ativo=true'),
@@ -40,12 +43,26 @@ export function TurnoCardapioFormFields({
     }));
   };
 
+  const resumoSalvo = cardapioSalvoLabel(cardapios, form.cardapioId);
+
   return (
     <div className="space-y-3 border-t border-line pt-4">
       <div>
         <label className="label">Cardápio do turno</label>
         <p className="text-xs text-ink-faint mt-0.5">Itens disponíveis para venda enquanto o caixa estiver aberto.</p>
       </div>
+
+      {form.cardapioModo === 'salvo' && (
+        <input
+          type="text"
+          className="sr-only"
+          tabIndex={-1}
+          value={form.cardapioId}
+          required
+          onChange={() => {}}
+          aria-hidden
+        />
+      )}
 
       <div className="grid grid-cols-3 gap-2">
         {(
@@ -61,35 +78,20 @@ export function TurnoCardapioFormFields({
             className={`min-h-11 rounded-xl text-xs font-semibold px-2 leading-tight ${
               form.cardapioModo === modo ? 'bg-brand-600 text-white' : 'bg-surface-lighter text-ink-muted'
             }`}
-            onClick={() => setForm({ ...form, cardapioModo: modo })}
+            onClick={() => {
+              setForm({ ...form, cardapioModo: modo });
+              if (modo === 'salvo') setModalSalvoAberto(true);
+            }}
           >
             {label}
           </button>
         ))}
       </div>
 
-      {form.cardapioModo === 'salvo' && (
-        <div>
-          <label className="label">Selecione o cardápio</label>
-          <select
-            className="input"
-            value={form.cardapioId}
-            onChange={(e) => setForm({ ...form, cardapioId: e.target.value })}
-            required
-          >
-            <option value="">Escolha um cardápio</option>
-            {(cardapios ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome} ({c.itemCount ?? c.produtos?.length ?? 0} itens)
-              </option>
-            ))}
-          </select>
-          {(cardapios?.length ?? 0) === 0 && (
-            <p className="text-xs text-ink-faint mt-1">
-              Nenhum cardápio cadastrado. Crie em Cardápio → Cardápios salvos.
-            </p>
-          )}
-        </div>
+      {form.cardapioModo === 'salvo' && resumoSalvo && (
+        <p className="text-sm text-ink-muted">
+          Selecionado: <span className="font-semibold text-ink">{resumoSalvo}</span>
+        </p>
       )}
 
       {form.cardapioModo === 'montar' && catalogo && (
@@ -105,6 +107,15 @@ export function TurnoCardapioFormFields({
           Você poderá montar o cardápio com o caixa aberto, ou o catálogo completo será usado automaticamente.
         </p>
       )}
+
+      <CardapioSalvoModal
+        open={modalSalvoAberto}
+        onClose={() => setModalSalvoAberto(false)}
+        value={form.cardapioId}
+        onChange={(cardapioId) => setForm({ ...form, cardapioId })}
+        cardapios={cardapios}
+        emptyMessage="Nenhum cardápio cadastrado. Crie em Cardápio → Cardápios salvos."
+      />
     </div>
   );
 }

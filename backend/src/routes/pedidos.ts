@@ -4,7 +4,9 @@ import { prisma } from '../lib/prisma.js';
 import { getAuthUser } from '../types/auth.js';
 import { emitToEvento, emitToComanda, emitRankingUpdated } from '../lib/realtime.js';
 import {
-  addItemToComanda,
+  addItemToComandaInTx,
+  comandaDetailInclude,
+  lockComandaItemsInTx,
   pedidoInclude,
   serializePedido,
 } from '../lib/comanda-service.js';
@@ -18,6 +20,16 @@ const recusarSchema = z.object({
 const confirmarSchema = z.object({
   tapIds: z.record(z.string(), z.string()).optional(),
 });
+
+class PedidoConfirmacaoError extends Error {
+  constructor(
+    message: string,
+    readonly itemId?: string,
+    readonly statusCode = 400,
+  ) {
+    super(message);
+  }
+}
 
 export async function pedidosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
@@ -51,44 +63,86 @@ export async function pedidosRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = confirmarSchema.parse(request.body ?? {});
 
-    const pedido = await prisma.pedidoCliente.findFirst({
-      where: {
-        id,
-        status: 'PENDENTE',
-        evento: { cervejariaId: user.cervejariaId },
-      },
-      include: {
-        ...pedidoInclude,
-        evento: { select: { id: true, cervejariaId: true } },
-      },
-    });
-    if (!pedido) return reply.status(404).send({ error: 'Pedido não encontrado' });
+    let confirmed;
+    try {
+      confirmed = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.pedidoCliente.updateMany({
+          where: {
+            id,
+            status: 'PENDENTE',
+            evento: { cervejariaId: user.cervejariaId! },
+          },
+          data: {
+            status: 'CONFIRMADO',
+            confirmadoPorId: user.sub,
+            confirmadoEm: new Date(),
+          },
+        });
+        if (claimed.count !== 1) {
+          throw new PedidoConfirmacaoError('Pedido não encontrado', undefined, 404);
+        }
 
-    const comanda = await prisma.comanda.findFirst({
-      where: { id: pedido.comandaId, status: 'ABERTA' },
-    });
-    if (!comanda) return reply.status(400).send({ error: 'Comanda não está aberta' });
+        const pedido = await tx.pedidoCliente.findUniqueOrThrow({
+          where: { id },
+          include: pedidoInclude,
+        });
+        await lockComandaItemsInTx(tx, pedido.comandaId);
 
-    let lastComanda = null;
-    for (const item of pedido.itens) {
-      const tapId = item.tapId ?? body.tapIds?.[item.id];
-      const result = await addItemToComanda({
-        comandaId: pedido.comandaId,
-        cervejariaId: user.cervejariaId!,
-        eventoId: pedido.eventoId,
-        item: {
-          produtoId: item.produtoId,
-          volumeMl: item.volumeMl,
-          quantidade: item.quantidade,
-          tapId: tapId ?? undefined,
-        },
+        const comanda = await tx.comanda.findFirst({
+          where: { id: pedido.comandaId, status: 'ABERTA' },
+        });
+        if (!comanda) {
+          throw new PedidoConfirmacaoError('Comanda não está aberta');
+        }
+
+        const itensConfirmados = [] as Array<{
+          item: (typeof pedido.itens)[number];
+          produtoNome: string;
+          precoUnit: number;
+          isChope: boolean;
+        }>;
+
+        for (const item of pedido.itens) {
+          const tapId = item.tapId ?? body.tapIds?.[item.id];
+          const result = await addItemToComandaInTx(tx, {
+            comandaId: pedido.comandaId,
+            cervejariaId: user.cervejariaId!,
+            eventoId: pedido.eventoId,
+            item: {
+              produtoId: item.produtoId,
+              volumeMl: item.volumeMl,
+              quantidade: item.quantidade,
+              tapId: tapId ?? undefined,
+            },
+          });
+          if ('error' in result) {
+            throw new PedidoConfirmacaoError(result.error ?? 'Falha ao adicionar item', item.id);
+          }
+          itensConfirmados.push({
+            item,
+            produtoNome: result.produto.nome,
+            precoUnit: result.precoUnit,
+            isChope: result.isChope,
+          });
+        }
+
+        const comandaAtualizada = await tx.comanda.findUniqueOrThrow({
+          where: { id: pedido.comandaId },
+          include: comandaDetailInclude,
+        });
+        return { pedido, comanda: comandaAtualizada, itensConfirmados };
       });
-
-      if ('error' in result) {
-        return reply.status(400).send({ error: result.error, itemId: item.id });
+    } catch (error) {
+      if (error instanceof PedidoConfirmacaoError) {
+        return reply
+          .status(error.statusCode)
+          .send({ error: error.message, ...(error.itemId ? { itemId: error.itemId } : {}) });
       }
+      throw error;
+    }
 
-      lastComanda = result.comanda;
+    const { pedido, comanda: lastComanda, itensConfirmados } = confirmed;
+    for (const itemConfirmado of itensConfirmados) {
       await registrarTransacao({
         cervejariaId: user.cervejariaId!,
         tipo: 'COMANDA_ITEM_ADICIONADO',
@@ -98,36 +152,27 @@ export async function pedidosRoutes(app: FastifyInstance) {
         entidadeTipo: 'PedidoCliente',
         entidadeId: pedido.id,
         metadata: {
-          produtoNome: result.produto.nome,
-          volumeMl: item.volumeMl,
-          quantidade: item.quantidade,
-          precoUnit: result.precoUnit,
+          produtoNome: itemConfirmado.produtoNome,
+          volumeMl: itemConfirmado.item.volumeMl,
+          quantidade: itemConfirmado.item.quantidade,
+          precoUnit: itemConfirmado.precoUnit,
           origem: 'pedido_cliente',
         },
-        payload: { pedido, item, comanda: result.comanda },
+        payload: { pedido, item: itemConfirmado.item, comanda: lastComanda },
       });
 
-      emitToEvento(app.io, pedido.eventoId, { type: 'item:added', data: result.comanda });
-      if (result.isChope) {
+      emitToEvento(app.io, pedido.eventoId, { type: 'item:added', data: lastComanda });
+      if (itemConfirmado.isChope) {
         emitRankingUpdated(app.io, user.cervejariaId!, pedido.eventoId);
       }
     }
 
-    const updated = await prisma.pedidoCliente.update({
-      where: { id },
-      data: {
-        status: 'CONFIRMADO',
-        confirmadoPorId: user.sub,
-        confirmadoEm: new Date(),
-      },
-      include: pedidoInclude,
-    });
-
+    const updated = pedido;
     const serialized = serializePedido(updated);
     emitToEvento(app.io, pedido.eventoId, { type: 'pedido:confirmed', data: serialized });
-    emitToComanda(app.io, pedido.comandaId, { type: 'pedido:confirmed', data: serialized });
+    emitToComanda(app.io, pedido.comandaId, { type: 'pedido:confirmed', data: { comandaId: pedido.comandaId } });
     if (lastComanda) {
-      emitToComanda(app.io, pedido.comandaId, { type: 'item:added', data: lastComanda });
+      emitToComanda(app.io, pedido.comandaId, { type: 'item:added', data: { comandaId: pedido.comandaId } });
     }
 
     return {
@@ -164,7 +209,7 @@ export async function pedidosRoutes(app: FastifyInstance) {
 
     const serialized = serializePedido(updated);
     emitToEvento(app.io, pedido.eventoId, { type: 'pedido:recusado', data: serialized });
-    emitToComanda(app.io, pedido.comandaId, { type: 'pedido:recusado', data: serialized });
+    emitToComanda(app.io, pedido.comandaId, { type: 'pedido:recusado', data: { comandaId: pedido.comandaId } });
 
     void registrarTransacao({
       cervejariaId: user.cervejariaId!,

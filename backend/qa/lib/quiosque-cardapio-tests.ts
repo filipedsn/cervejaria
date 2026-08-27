@@ -297,6 +297,174 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
   );
 
   await test(
+    {
+      id: 'QCD-13',
+      category: 'Quiosque cardápio',
+      name: 'Alterar preço só do turno não muda o cardápio salvo',
+      requirement: 'QCD-13',
+    },
+    async () => {
+      if (!produtoExtraId || !cardapioPrecoA || !pontoPrecoId) {
+        return { status: 'failed', message: 'QCD-09/10 incompleto' };
+      }
+      const PRECO_TURNO = 7;
+
+      const abrir = await api('POST', '/api/quiosque/caixa/abrir', {
+        token: cfg.donoToken,
+        body: { pontoVendaId: pontoPrecoId, trocoInicial: 50, cardapioId: cardapioPrecoA },
+      });
+      if (abrir.status !== 201) {
+        return { status: 'failed', message: 'Abrir caixa', expected: '201', actual: String(abrir.status) };
+      }
+
+      const patch = await api('PATCH', `/api/quiosque/caixa/cardapio/preco?pontoVendaId=${pontoPrecoId}`, {
+        token: cfg.donoToken,
+        body: { produtoId: produtoExtraId, precoUnit: PRECO_TURNO, escopo: 'TURNO' },
+      });
+      if (patch.status !== 200) {
+        return {
+          status: 'failed',
+          message: 'PATCH preço TURNO',
+          expected: '200',
+          actual: `${patch.status} ${patch.raw.slice(0, 120)}`,
+        };
+      }
+
+      const produtos = await api<Array<{ precoEfetivo?: number; precoOverrideTurno?: boolean }>>(
+        'GET',
+        `/api/quiosque/produtos?pontoVendaId=${pontoPrecoId}`,
+        { token: cfg.donoToken },
+      );
+      const efetivo = produtos.data?.[0]?.precoEfetivo;
+      if (efetivo !== PRECO_TURNO) {
+        return {
+          status: 'failed',
+          message: 'PDV com override do turno',
+          expected: String(PRECO_TURNO),
+          actual: String(efetivo),
+        };
+      }
+
+      const template = await api<{ itens?: Array<{ produtoId: string; precoUnit: number }> }>(
+        'GET',
+        `/api/quiosque/cardapios/${cardapioPrecoA}`,
+        { token: cfg.donoToken },
+      );
+      const precoSalvo = template.data?.itens?.find((i) => i.produtoId === produtoExtraId)?.precoUnit;
+      if (precoSalvo !== PRECO_TEMPLATE_A) {
+        return {
+          status: 'failed',
+          message: 'Template intacto após TURNO',
+          expected: String(PRECO_TEMPLATE_A),
+          actual: String(precoSalvo),
+        };
+      }
+
+      const venda = await api('POST', '/api/quiosque/vendas', {
+        token: cfg.donoToken,
+        body: {
+          pontoVendaId: pontoPrecoId,
+          itens: [{ produtoId: produtoExtraId, quantidade: 1 }],
+          pagamentos: [{ forma: 'PIX', valor: PRECO_TURNO }],
+        },
+      });
+      if (venda.status !== 201) {
+        return { status: 'failed', message: 'Venda com preço do turno', expected: '201', actual: String(venda.status) };
+      }
+
+      await api('POST', '/api/quiosque/caixa/fechar', {
+        token: cfg.donoToken,
+        body: {
+          pontoVendaId: pontoPrecoId,
+          contadoDinheiro: 50,
+          contadoPix: PRECO_TURNO,
+          contadoCartaoDebito: 0,
+          contadoCartaoCredito: 0,
+        },
+      });
+      return { message: `Override turno R$ ${PRECO_TURNO}`, expected: 'template intacto', actual: 'OK' };
+    },
+  );
+
+  await test(
+    {
+      id: 'QCD-14',
+      category: 'Quiosque cardápio',
+      name: 'Alterar preço definitivo atualiza o cardápio salvo',
+      requirement: 'QCD-14',
+    },
+    async () => {
+      if (!produtoExtraId || !cardapioPrecoA || !pontoPrecoId) {
+        return { status: 'failed', message: 'QCD-09/10 incompleto' };
+      }
+      const PRECO_DEF = 9;
+
+      const abrir = await api('POST', '/api/quiosque/caixa/abrir', {
+        token: cfg.donoToken,
+        body: { pontoVendaId: pontoPrecoId, trocoInicial: 50, cardapioId: cardapioPrecoA },
+      });
+      if (abrir.status !== 201) {
+        return { status: 'failed', message: 'Abrir caixa', expected: '201', actual: String(abrir.status) };
+      }
+
+      const patch = await api('PATCH', `/api/quiosque/caixa/cardapio/preco?pontoVendaId=${pontoPrecoId}`, {
+        token: cfg.donoToken,
+        body: { produtoId: produtoExtraId, precoUnit: PRECO_DEF, escopo: 'TEMPLATE' },
+      });
+      if (patch.status !== 200) {
+        return {
+          status: 'failed',
+          message: 'PATCH preço TEMPLATE',
+          expected: '200',
+          actual: `${patch.status} ${patch.raw.slice(0, 120)}`,
+        };
+      }
+
+      const template = await api<{ itens?: Array<{ produtoId: string; precoUnit: number }> }>(
+        'GET',
+        `/api/quiosque/cardapios/${cardapioPrecoA}`,
+        { token: cfg.donoToken },
+      );
+      const precoSalvo = template.data?.itens?.find((i) => i.produtoId === produtoExtraId)?.precoUnit;
+      if (precoSalvo !== PRECO_DEF) {
+        return {
+          status: 'failed',
+          message: 'Template atualizado',
+          expected: String(PRECO_DEF),
+          actual: String(precoSalvo),
+        };
+      }
+
+      const produtos = await api<Array<{ precoEfetivo?: number }>>(
+        'GET',
+        `/api/quiosque/produtos?pontoVendaId=${pontoPrecoId}`,
+        { token: cfg.donoToken },
+      );
+      const efetivo = produtos.data?.[0]?.precoEfetivo;
+      if (efetivo !== PRECO_DEF) {
+        return {
+          status: 'failed',
+          message: 'PDV herda template',
+          expected: String(PRECO_DEF),
+          actual: String(efetivo),
+        };
+      }
+
+      await api('POST', '/api/quiosque/caixa/fechar', {
+        token: cfg.donoToken,
+        body: {
+          pontoVendaId: pontoPrecoId,
+          contadoDinheiro: 50,
+          contadoPix: 0,
+          contadoCartaoDebito: 0,
+          contadoCartaoCredito: 0,
+        },
+      });
+      return { message: `Template R$ ${PRECO_DEF}`, expected: String(PRECO_DEF), actual: 'OK' };
+    },
+  );
+
+  await test(
     { id: 'QCD-04', category: 'Quiosque cardápio', name: 'DONO cria ponto de venda dedicado', requirement: 'QCD-04' },
     async () => {
       const r = await api<{ id: string }>('POST', '/api/quiosque/pontos-venda', {

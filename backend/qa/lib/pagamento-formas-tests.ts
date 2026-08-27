@@ -180,4 +180,249 @@ export async function runPagamentoFormasTests(ctx: QaContext, test: TestFn) {
       return { message: 'CARTAO aceito na venda avulsa', expected: '201', actual: '201' };
     },
   );
+
+  await test(
+    { id: 'PAG-08', category: 'Formas de pagamento', name: 'Venda avulsa com desconto parcial (DONO)', requirement: 'PAG-08' },
+    async () => {
+      const desconto = Math.min(2, tenant.preco);
+      const totalEsperado = Number((tenant.preco - desconto).toFixed(2));
+      const r = await api<{ total?: number | string; desconto?: number | string; status?: string }>(
+        'POST',
+        '/api/vendas-avulsas',
+        {
+          token: tenant.donoToken,
+          body: {
+            eventoId: tenant.eventoId,
+            itens: [{ produtoId: tenant.produtoId, volumeMl: tenant.volumeMl, quantidade: 1, tapId: tenant.tapId }],
+            desconto,
+            pagamentos: [{ forma: 'PIX', valor: totalEsperado }],
+          },
+        },
+      );
+      if (r.status !== 201) {
+        return {
+          status: 'failed',
+          message: 'Avulsa com desconto',
+          expected: '201',
+          actual: `${r.status} ${r.raw.slice(0, 140)}`,
+        };
+      }
+      const total = Number(r.data?.total ?? -1);
+      const desc = Number(r.data?.desconto ?? -1);
+      if (Math.abs(total - totalEsperado) > 0.01 || Math.abs(desc - desconto) > 0.01) {
+        return {
+          status: 'failed',
+          message: 'Totais líquidos',
+          expected: `total=${totalEsperado} desconto=${desconto}`,
+          actual: `total=${total} desconto=${desc}`,
+        };
+      }
+      return { message: `Net R$ ${totalEsperado}`, expected: String(totalEsperado), actual: String(total) };
+    },
+  );
+
+  await test(
+    {
+      id: 'PAG-09',
+      category: 'Formas de pagamento',
+      name: 'Venda avulsa desconto sem permissão → 403',
+      requirement: 'PAG-09',
+    },
+    async () => {
+      const r = await api('POST', '/api/vendas-avulsas', {
+        token: tenant.atendenteTokens[0],
+        body: {
+          eventoId: tenant.eventoId,
+          itens: [{ produtoId: tenant.produtoId, volumeMl: tenant.volumeMl, quantidade: 1, tapId: tenant.tapId }],
+          desconto: 1,
+          pagamentos: [{ forma: 'PIX', valor: Math.max(0.01, tenant.preco - 1) }],
+        },
+      });
+      if (r.status !== 403) {
+        return {
+          status: 'failed',
+          message: 'Desconto sem permissão',
+          expected: '403',
+          actual: `${r.status} ${r.raw.slice(0, 120)}`,
+        };
+      }
+      return { message: 'Atendente bloqueado no desconto avulso', expected: '403', actual: '403' };
+    },
+  );
+
+  await test(
+    {
+      id: 'PAG-10',
+      category: 'Formas de pagamento',
+      name: 'Venda avulsa desconto > subtotal → 400',
+      requirement: 'PAG-10',
+    },
+    async () => {
+      const r = await api('POST', '/api/vendas-avulsas', {
+        token: tenant.donoToken,
+        body: {
+          eventoId: tenant.eventoId,
+          itens: [{ produtoId: tenant.produtoId, volumeMl: tenant.volumeMl, quantidade: 1, tapId: tenant.tapId }],
+          desconto: tenant.preco + 5,
+          pagamentos: [],
+        },
+      });
+      if (r.status !== 400) {
+        return {
+          status: 'failed',
+          message: 'Desconto acima do subtotal',
+          expected: '400',
+          actual: `${r.status} ${r.raw.slice(0, 120)}`,
+        };
+      }
+      return { message: 'Desconto excessivo rejeitado', expected: '400', actual: '400' };
+    },
+  );
+
+  await test(
+    {
+      id: 'PAG-11',
+      category: 'Formas de pagamento',
+      name: 'Venda avulsa pagamento stale (valor antigo) → 400',
+      requirement: 'PAG-11',
+    },
+    async () => {
+      const desconto = Math.min(2, tenant.preco);
+      const r = await api('POST', '/api/vendas-avulsas', {
+        token: tenant.donoToken,
+        body: {
+          eventoId: tenant.eventoId,
+          itens: [{ produtoId: tenant.produtoId, volumeMl: tenant.volumeMl, quantidade: 1, tapId: tenant.tapId }],
+          desconto,
+          pagamentos: [{ forma: 'PIX', valor: tenant.preco }],
+        },
+      });
+      if (r.status !== 400) {
+        return {
+          status: 'failed',
+          message: 'Pagamento pelo subtotal após desconto',
+          expected: '400',
+          actual: `${r.status} ${r.raw.slice(0, 120)}`,
+        };
+      }
+      return { message: 'Pagamento stale rejeitado', expected: '400', actual: '400' };
+    },
+  );
+
+  await test(
+    {
+      id: 'PAG-12',
+      category: 'Formas de pagamento',
+      name: 'Venda avulsa cortesia 100% com pagamentos []',
+      requirement: 'PAG-12',
+    },
+    async () => {
+      const r = await api<{ total?: number | string; status?: string; pagamentos?: unknown[] }>(
+        'POST',
+        '/api/vendas-avulsas',
+        {
+          token: tenant.donoToken,
+          body: {
+            eventoId: tenant.eventoId,
+            itens: [{ produtoId: tenant.produtoId, volumeMl: tenant.volumeMl, quantidade: 1, tapId: tenant.tapId }],
+            desconto: tenant.preco,
+            pagamentos: [],
+          },
+        },
+      );
+      if (r.status !== 201) {
+        return {
+          status: 'failed',
+          message: 'Cortesia avulsa',
+          expected: '201',
+          actual: `${r.status} ${r.raw.slice(0, 140)}`,
+        };
+      }
+      const total = Number(r.data?.total ?? -1);
+      if (Math.abs(total) > 0.01 || (r.data?.pagamentos?.length ?? -1) !== 0) {
+        return {
+          status: 'failed',
+          message: 'Cortesia sem pagamento',
+          expected: 'total=0 pagamentos=[]',
+          actual: `total=${total} pagamentos=${r.data?.pagamentos?.length}`,
+        };
+      }
+      return { message: 'Cortesia avulsa fechada', expected: '201', actual: '201' };
+    },
+  );
+
+  await test(
+    {
+      id: 'PAG-13',
+      category: 'Formas de pagamento',
+      name: 'Fechar comanda com total positivo e pagamentos [] → 400',
+      requirement: 'PAG-13',
+    },
+    async () => {
+      const comanda = await comandaComItem('PAG vazio');
+      if (typeof comanda === 'string') return { status: 'failed', message: comanda };
+      const r = await api('POST', `/api/pagamentos/comandas/${comanda.id}/fechar`, {
+        token: tenant.atendenteTokens[0],
+        body: { pagamentos: [] },
+      });
+      if (r.status !== 400) {
+        return {
+          status: 'failed',
+          message: 'Pagamento vazio com total > 0',
+          expected: '400',
+          actual: String(r.status),
+        };
+      }
+      return { message: 'Pagamento vazio rejeitado', expected: '400', actual: '400' };
+    },
+  );
+
+  await test(
+    {
+      id: 'PAG-14',
+      category: 'Formas de pagamento',
+      name: 'Fechar comanda cortesia 100% com pagamentos []',
+      requirement: 'PAG-14',
+    },
+    async () => {
+      const comanda = await comandaComItem('PAG cortesia');
+      if (typeof comanda === 'string') return { status: 'failed', message: comanda };
+
+      const desc = await api('PATCH', `/api/comandas/${comanda.id}/desconto`, {
+        token: tenant.donoToken,
+        body: { desconto: comanda.total },
+      });
+      if (desc.status !== 200) {
+        return {
+          status: 'failed',
+          message: 'Aplicar desconto 100%',
+          expected: '200',
+          actual: `${desc.status} ${desc.raw.slice(0, 120)}`,
+        };
+      }
+
+      const r = await api<{ status?: string; total?: number | string; pagamentos?: unknown[] }>(
+        'POST',
+        `/api/pagamentos/comandas/${comanda.id}/fechar`,
+        { token: tenant.donoToken, body: { pagamentos: [] } },
+      );
+      if (r.status !== 200 || r.data?.status !== 'FECHADA') {
+        return {
+          status: 'failed',
+          message: 'Fechar cortesia',
+          expected: '200 FECHADA',
+          actual: `${r.status} ${r.data?.status ?? r.raw.slice(0, 100)}`,
+        };
+      }
+      if (Number(r.data?.total ?? -1) !== 0 || (r.data?.pagamentos?.length ?? -1) !== 0) {
+        return {
+          status: 'failed',
+          message: 'Estado da cortesia',
+          expected: 'total=0 pagamentos=[]',
+          actual: `total=${r.data?.total} len=${r.data?.pagamentos?.length}`,
+        };
+      }
+      return { message: 'Cortesia de comanda fechada', expected: 'FECHADA', actual: 'FECHADA' };
+    },
+  );
 }

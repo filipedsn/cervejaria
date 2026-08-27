@@ -136,6 +136,8 @@ export function formatTransacaoDescricao(tipo: TransacaoTipo, metadata: unknown)
       const prod = str(m.produtoNome) ?? 'item';
       return `− ${q}x ${prod} removido`;
     }
+    case 'COMANDA_DESCONTO_APLICADO':
+      return `Desconto de R$ ${(num(m.desconto) ?? 0).toFixed(2)} na comanda`;
     case 'COMANDA_FECHADA': {
       const total = num(m.total);
       const pagamentos = Array.isArray(m.pagamentos) ? m.pagamentos : [];

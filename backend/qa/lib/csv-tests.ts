@@ -172,6 +172,19 @@ export async function runCsvTests(ctx: QaContext, test: TestFn) {
       }
 
       // Venda unitária só é lançável se o produto estiver no cardápio do evento.
+      const ativarCardapio = await api('PATCH', '/api/cervejaria/operacao', {
+        token: tenant.donoToken,
+        body: { usaCardapio: true },
+      });
+      if (ativarCardapio.status !== 200) {
+        return {
+          status: 'failed',
+          message: 'Ativar cardápio',
+          expected: '200',
+          actual: String(ativarCardapio.status),
+        };
+      }
+
       const cardapio = await api<{ produtoIds: string[] }>('GET', `/api/eventos/${tenant.eventoId}/cardapio`, {
         token: tenant.donoToken,
       });

@@ -1,5 +1,6 @@
 import { prisma } from './prisma.js';
 import { registrarTransacao } from './transacao-log.js';
+import { lockComandaItemsInTx } from './comanda-service.js';
 
 const comandaInclude = {
   cliente: true,
@@ -16,38 +17,45 @@ export async function cancelarComandaVazia(params: {
   fechadoPorId: string;
   motivo?: 'manual' | 'empty_on_close';
 }) {
-  const comanda = await prisma.comanda.findFirst({
-    where: {
-      id: params.comandaId,
-      status: 'ABERTA',
-      evento: { cervejariaId: params.cervejariaId },
-    },
-    include: { itens: true },
+  return prisma.$transaction(async (tx) => {
+    await lockComandaItemsInTx(tx, params.comandaId);
+    const comanda = await tx.comanda.findFirst({
+      where: {
+        id: params.comandaId,
+        status: 'ABERTA',
+        evento: { cervejariaId: params.cervejariaId },
+      },
+      include: { itens: true },
+    });
+
+    if (!comanda) return { error: 'Comanda não encontrada ou já encerrada' as const };
+    if (comanda.itens.length > 0) {
+      return { error: 'Comanda com consumação deve ser fechada com pagamento' as const };
+    }
+
+    if (!comanda.eventoId) {
+      return { error: 'Comanda sem evento associado' as const };
+    }
+
+    const updated = await tx.comanda.update({
+      where: { id: params.comandaId },
+      data: { status: 'CANCELADA', fechadoPorId: params.fechadoPorId },
+      include: { ...comandaInclude, cliente: true },
+    });
+
+    await registrarTransacao({
+      cervejariaId: params.cervejariaId,
+      tipo: 'COMANDA_CANCELADA',
+      usuarioId: params.fechadoPorId,
+      eventoId: comanda.eventoId,
+      comandaId: comanda.id,
+      metadata: {
+        clienteNome: updated.cliente?.nome ?? '',
+        motivo: params.motivo ?? 'manual',
+      },
+      payload: updated,
+    }, tx);
+
+    return { ok: true as const, comanda: updated, eventoId: comanda.eventoId };
   });
-
-  if (!comanda) return { error: 'Comanda não encontrada ou já encerrada' as const };
-  if (comanda.itens.length > 0) {
-    return { error: 'Comanda com consumação deve ser fechada com pagamento' as const };
-  }
-
-  const updated = await prisma.comanda.update({
-    where: { id: params.comandaId },
-    data: { status: 'CANCELADA', fechadoPorId: params.fechadoPorId },
-    include: { ...comandaInclude, cliente: true },
-  });
-
-  await registrarTransacao({
-    cervejariaId: params.cervejariaId,
-    tipo: 'COMANDA_CANCELADA',
-    usuarioId: params.fechadoPorId,
-    eventoId: comanda.eventoId,
-    comandaId: comanda.id,
-    metadata: {
-      clienteNome: updated.cliente.nome,
-      motivo: params.motivo ?? 'manual',
-    },
-    payload: updated,
-  });
-
-  return { ok: true as const, comanda: updated, eventoId: comanda.eventoId };
 }

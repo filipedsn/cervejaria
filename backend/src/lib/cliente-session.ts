@@ -95,7 +95,7 @@ export function emitPortalSessionExpired(
   eventoId: string,
   reason: 'evento_fechado' | 'evento_reaberto' | 'evento_revertido',
 ) {
-  io?.to(`evento:${eventoId}`).emit('portal:session-expired', { eventoId, reason });
+  io?.to(`portal:evento:${eventoId}`).emit('portal:session-expired', { eventoId, reason });
 }
 
 export function registerClienteSessionAuth(app: FastifyInstance) {

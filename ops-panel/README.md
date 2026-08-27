@@ -103,7 +103,7 @@ npm run ops:test
 
 O console de release mostra um **roteiro numerado** (passos 1–4):
 
-1. `git pull origin main` — avisa se o PC esta atrasado
+1. **Verificar release** no painel — sincroniza `main` com `origin/main` automaticamente (checkout + pull) quando a working tree esta limpa
 2. Working tree — lista arquivos sujos e o que fazer
 3. CI / gate — checks obrigatorios
 4. Campo **DEPLOY** — habilita o botao **Liberar deploy** (sem `prompt()` do navegador)

@@ -6,9 +6,9 @@ import { Modal } from '../../components/Modal';
 import { Loading } from '../../components/Loading';
 import { MobileActionBar } from '../../components/MobileActionBar';
 import { StatusBadge, comandaStatusVariant } from '../../components/StatusBadge';
-import { CurrencyInput } from '../../components/CurrencyInput';
-import { GradeProdutos } from '../../components/quiosque/GradeProdutos';
-import { ResumoCarrinho } from '../../components/quiosque/ResumoCarrinho';
+import { IconTrash } from '../../components/NavIcons';
+import { AdicionarItensQuiosqueModal } from '../../components/quiosque/AdicionarItensQuiosqueModal';
+import { PaymentDiscountFields } from '../../components/checkout/PaymentDiscountFields';
 import {
   PaymentFormModal,
   createDefaultPaymentForm,
@@ -25,12 +25,13 @@ import {
   mapSaldosEstoque,
   pedidoConfirmadoNaComanda,
   pedidoVaiParaCozinha,
+  podeEditarItemComanda,
+  podeIncrementarItemComanda,
   podeIncrementarLinhaCarrinho,
   produtosOperacionaisUrl,
   rotuloComanda,
   rotuloStatusPedido,
   temPedidoCozinhaPendente,
-  totalCarrinho,
   totalItensComanda,
   type CaixaResposta,
   type ComandaQuiosque,
@@ -80,7 +81,7 @@ export function QuiosqueComandaDetailPage() {
   const { data: estoqueData } = useQuery({
     queryKey: ['quiosque-estoque', comanda?.pontoVendaId],
     queryFn: () => api.get<SaldoEstoque[]>(`/api/quiosque/estoque?pontoVendaId=${comanda!.pontoVendaId}`),
-    enabled: Boolean(comanda?.pontoVendaId) && controlaEstoque && showAddItem,
+    enabled: Boolean(comanda?.pontoVendaId) && controlaEstoque && (showAddItem || comanda?.status === 'ABERTA'),
     refetchInterval: showAddItem ? poll15 : false,
   });
 
@@ -89,9 +90,9 @@ export function QuiosqueComandaDetailPage() {
     [estoqueData],
   );
 
-  const quantidadesNoCarrinho = useMemo(
-    () => new Map(carrinho.map((linha) => [linha.produto.id, linha.quantidade])),
-    [carrinho],
+  const produtoPorId = useMemo(
+    () => new Map((produtos ?? []).map((produto) => [produto.id, produto])),
+    [produtos],
   );
 
   const invalidar = () => {
@@ -122,30 +123,17 @@ export function QuiosqueComandaDetailPage() {
   }, [cervejaria?.id, id, queryClient]);
 
   useEffect(() => {
-    if (comanda) {
-      setDescontoInput(formatCurrencyInputFromNumber(comanda.desconto ?? 0));
-    }
-  }, [comanda?.id, comanda?.desconto]);
-
-  const salvarDesconto = useMutation({
-    mutationFn: (desconto: number) =>
-      api.patch<ComandaQuiosque>(`/api/quiosque/comandas/${id}/desconto`, { desconto }),
-    onSuccess: () => {
-      invalidar();
-      setErro('');
-    },
-    onError: (err) => {
-      setErro(err instanceof ApiError ? err.message : 'Não foi possível aplicar o desconto');
-      if (comanda) setDescontoInput(formatCurrencyInputFromNumber(comanda.desconto ?? 0));
-    },
-  });
-
-  const aplicarDesconto = () => {
-    if (!comanda) return;
-    const valor = parseCurrencyInput(descontoInput);
-    if (valor === (comanda.desconto ?? 0)) return;
-    salvarDesconto.mutate(valor);
-  };
+    if (!showPayment || !comanda) return;
+    const total = Math.max(0, comanda.subtotal - parseCurrencyInput(descontoInput));
+    setPaymentForm((prev) => {
+      if (total <= 0.01) return prev.length === 0 ? prev : [];
+      if (prev.length === 0) return createDefaultPaymentForm(total);
+      if (prev.length !== 1) return prev;
+      const atual = parseCurrencyInput(prev[0].valor);
+      if (Math.abs(atual - total) < 0.01) return prev;
+      return [{ ...prev[0], valor: formatCurrencyInputFromNumber(total) }];
+    });
+  }, [descontoInput, showPayment, comanda?.subtotal]);
 
   const adicionar = (produto: ProdutoQuiosque) => {
     setCarrinho((atual) => {
@@ -211,53 +199,65 @@ export function QuiosqueComandaDetailPage() {
     setErro('');
   };
 
-  const addItemFooter = (
-    <>
-      {carrinho.length > 0 && (
-        <div className="space-y-3">
-          <div className="max-h-32 overflow-y-auto -mx-1 px-1">
-            <ResumoCarrinho
-              linhas={carrinho}
-              onAlterar={alterarQuantidade}
-              saldos={saldos}
-              controlaEstoque={controlaEstoque}
-            />
-          </div>
-          <div className="flex items-baseline justify-between">
-            <span className="text-sm text-ink-faint">Nesta rodada</span>
-            <span className="text-xl font-bold tabular-nums">{formatCurrency(totalCarrinho(carrinho))}</span>
-          </div>
-        </div>
-      )}
-      <button
-        type="button"
-        className="touch-btn-primary w-full"
-        disabled={carrinho.length === 0 || lancarItens.isPending}
-        onClick={() => lancarItens.mutate()}
-        data-audit="quiosque-comanda-lancar-itens"
-      >
-        {lancarItens.isPending ? 'Lançando...' : 'Lançar na comanda'}
-      </button>
-      <button
-        type="button"
-        className="touch-btn-secondary w-full"
-        onClick={fecharAdicionarItens}
-        disabled={lancarItens.isPending}
-      >
-        Cancelar
-      </button>
-    </>
-  );
+  const invalidarEstoque = () => {
+    if (comanda?.pontoVendaId) {
+      queryClient.invalidateQueries({ queryKey: ['quiosque-estoque', comanda.pontoVendaId] });
+    }
+  };
+
+  const removerItem = useMutation({
+    mutationFn: (itemId: string) =>
+      api.delete<ComandaQuiosque>(`/api/quiosque/comandas/${id}/itens/${itemId}`),
+    onSuccess: (atualizada) => {
+      queryClient.setQueryData(['quiosque-comanda', id], atualizada);
+      queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
+      invalidarEstoque();
+      setErro('');
+    },
+    onError: (err) => {
+      invalidarEstoque();
+      setErro(err instanceof ApiError ? err.message : 'Não foi possível remover o item');
+    },
+  });
+
+  const alterarQuantidadeItem = useMutation({
+    mutationFn: ({ itemId, quantidade }: { itemId: string; quantidade: number }) =>
+      api.patch<ComandaQuiosque>(`/api/quiosque/comandas/${id}/itens/${itemId}`, { quantidade }),
+    onSuccess: (atualizada) => {
+      queryClient.setQueryData(['quiosque-comanda', id], atualizada);
+      queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
+      invalidarEstoque();
+      setErro('');
+    },
+    onError: (err) => {
+      invalidarEstoque();
+      setErro(err instanceof ApiError ? err.message : 'Não foi possível alterar o item');
+    },
+  });
+
+  const itemEmEdicao = removerItem.isPending || alterarQuantidadeItem.isPending;
 
   const fechar = useMutation({
-    mutationFn: (pagamentos: { forma: 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO'; valor: number }[]) =>
-      api.post<ComandaQuiosque>(`/api/quiosque/comandas/${id}/pagamentos`, { pagamentos }),
+    mutationFn: async ({
+      pagamentos,
+      desconto,
+      descontoAnterior,
+      aplicarDesconto,
+    }: {
+      pagamentos: { forma: 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO'; valor: number }[];
+      desconto: number;
+      descontoAnterior: number;
+      aplicarDesconto: boolean;
+    }) => {
+      if (aplicarDesconto && desconto !== descontoAnterior) {
+        await api.patch<ComandaQuiosque>(`/api/quiosque/comandas/${id}/desconto`, { desconto });
+      }
+      return api.post<ComandaQuiosque>(`/api/quiosque/comandas/${id}/pagamentos`, { pagamentos });
+    },
     onSuccess: (data) => {
       setShowPayment(false);
-      if (data.status === 'FECHADA') {
-        setClosedComanda(data);
-        setShowReceipt(true);
-      }
+      setClosedComanda(data);
+      setShowReceipt(true);
       invalidar();
     },
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível fechar a comanda'),
@@ -297,17 +297,31 @@ export function QuiosqueComandaDetailPage() {
 
   const openPayment = () => {
     if (!comanda) return;
-    setPaymentForm(createDefaultPaymentForm(comanda.saldo));
+    setDescontoInput(formatCurrencyInputFromNumber(comanda.desconto ?? 0));
+    const total = Math.max(0, comanda.subtotal - (comanda.desconto ?? 0));
+    setPaymentForm(createDefaultPaymentForm(total));
     setShowPayment(true);
     setErro('');
   };
 
   const handleClose = () => {
+    if (!comanda) return;
+    const desconto = parseCurrencyInput(descontoInput);
+    const podeAplicarDesconto = podeDarDescontoQuiosque;
+    if (podeAplicarDesconto && desconto > comanda.subtotal) {
+      setErro('O desconto não pode ser maior que o subtotal da comanda');
+      return;
+    }
     const pagamentos = paymentForm.map((p) => ({
       forma: toPaymentForma(p),
       valor: parseCurrencyInput(p.valor),
     }));
-    fechar.mutate(pagamentos);
+    fechar.mutate({
+      pagamentos,
+      desconto,
+      descontoAnterior: comanda.desconto ?? 0,
+      aplicarDesconto: podeAplicarDesconto,
+    });
   };
 
   if (isLoading) return <Loading />;
@@ -316,8 +330,30 @@ export function QuiosqueComandaDetailPage() {
   const aberta = comanda.status === 'ABERTA';
   const cancelada = comanda.status === 'CANCELADA';
   const temItens = totalItensComanda(comanda) > 0;
+  const cozinhaPendente = temPedidoCozinhaPendente(comanda);
+  const podeFechar = aberta && temItens && !cozinhaPendente;
   const hasActionBar = aberta || !aberta;
-  const mostraDesconto = aberta && comanda.tipo !== 'AVULSA' && podeDarDescontoQuiosque;
+  const podeAplicarDesconto = podeDarDescontoQuiosque;
+  const descontoValor = parseCurrencyInput(descontoInput);
+  const totalComDesconto = Math.max(0, comanda.subtotal - descontoValor);
+  const totalAPagar = Math.max(0, totalComDesconto);
+
+  const paymentHeaderExtra = (
+    <div className="space-y-3">
+      {erro && showPayment && <div className="alert-error text-sm">{erro}</div>}
+      {podeAplicarDesconto && (
+        <PaymentDiscountFields
+          inputId="desconto-fechar"
+          subtotal={comanda.subtotal}
+          discountValue={descontoValor}
+          discountInput={descontoInput}
+          onDiscountChange={setDescontoInput}
+          total={totalComDesconto}
+          disabled={fechar.isPending}
+        />
+      )}
+    </div>
+  );
 
   return (
     <div className={`space-y-4 ${hasActionBar ? 'page-with-action-bar' : 'pb-2'}`}>
@@ -327,45 +363,27 @@ export function QuiosqueComandaDetailPage() {
           <StatusBadge variant={comandaStatusVariant(comanda.status)} />
         </div>
         <p className="text-2xl sm:text-3xl font-bold text-brand-600 mt-2 tabular-nums">
-          {formatCurrency(aberta ? comanda.saldo : comanda.total)}
+          {formatCurrency(comanda.total)}
         </p>
-        {(aberta && (comanda.subtotal > 0 || comanda.desconto > 0)) || (!aberta && comanda.desconto > 0) ? (
+        {!aberta && comanda.desconto > 0 && (
           <div className="mt-3 space-y-1 text-sm border-t border-line pt-3">
             <div className="flex justify-between text-ink-muted">
               <span>Subtotal</span>
               <span className="tabular-nums">{formatCurrency(comanda.subtotal)}</span>
             </div>
-            {mostraDesconto ? (
-              <div className="flex items-center justify-between gap-3">
-                <label htmlFor="desconto-comanda" className="text-ink-muted shrink-0">
-                  Desconto
-                </label>
-                <div className="flex items-center gap-2 min-w-0 flex-1 justify-end">
-                  <CurrencyInput
-                    id="desconto-comanda"
-                    className="input w-28 text-right tabular-nums py-2"
-                    value={descontoInput}
-                    onChange={setDescontoInput}
-                    onBlur={aplicarDesconto}
-                    disabled={salvarDesconto.isPending}
-                  />
-                </div>
-              </div>
-            ) : comanda.desconto > 0 ? (
-              <div className="flex justify-between text-ink-muted">
-                <span>Desconto</span>
-                <span className="tabular-nums text-red-600">− {formatCurrency(comanda.desconto)}</span>
-              </div>
-            ) : null}
+            <div className="flex justify-between text-ink-muted">
+              <span>Desconto</span>
+              <span className="tabular-nums text-red-600">− {formatCurrency(comanda.desconto)}</span>
+            </div>
             <div className="flex justify-between font-semibold">
               <span>Total</span>
               <span className="tabular-nums">{formatCurrency(comanda.total)}</span>
             </div>
           </div>
-        ) : null}
+        )}
       </div>
 
-      {erro && !showAddItem && <div className="alert-error">{erro}</div>}
+      {erro && !showAddItem && !showPayment && <div className="alert-error">{erro}</div>}
 
       <div className="space-y-2">
         <h3 className="section-label">Itens</h3>
@@ -397,23 +415,87 @@ export function QuiosqueComandaDetailPage() {
                 {pedido.observacao && <span className="text-xs text-ink-faint">{pedido.observacao}</span>}
               </div>
             </div>
-            {pedido.itens.map((item) => (
+            {pedido.itens.map((item) => {
+              const editavel = aberta && podeEditarItemComanda(comanda, pedido);
+              const produto = produtoPorId.get(item.produtoId);
+              const podeIncrementar = podeIncrementarItemComanda(produto, saldos, controlaEstoque);
+              const alterandoEsteItem =
+                (removerItem.isPending && removerItem.variables === item.id) ||
+                (alterarQuantidadeItem.isPending && alterarQuantidadeItem.variables?.itemId === item.id);
+
+              return (
               <div key={item.id} className="flex items-center justify-between gap-3 text-sm">
                 <span className={`min-w-0 flex-1 truncate ${confirmado ? '' : 'text-ink-faint'}`}>
-                  {item.quantidade}× {item.nome}
+                  {editavel ? item.nome : `${item.quantidade}× ${item.nome}`}
                 </span>
-                <span className={`shrink-0 font-semibold tabular-nums ${confirmado ? '' : 'text-ink-faint'}`}>
-                  {confirmado ? formatCurrency(item.subtotal) : '—'}
-                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  {editavel ? (
+                    <div className="flex items-center rounded-xl border border-line bg-surface p-0.5 shadow-sm">
+                      <button
+                        type="button"
+                        aria-label={`Remover um ${item.nome}`}
+                        className="flex min-h-9 min-w-9 items-center justify-center rounded-lg text-base font-bold text-ink-muted transition-transform active:scale-95 active:bg-surface-lighter disabled:opacity-40"
+                        disabled={itemEmEdicao}
+                        onClick={() => {
+                          if (item.quantidade <= 1) {
+                            removerItem.mutate(item.id);
+                            return;
+                          }
+                          alterarQuantidadeItem.mutate({
+                            itemId: item.id,
+                            quantidade: item.quantidade - 1,
+                          });
+                        }}
+                      >
+                        −
+                      </button>
+                      <span className="min-w-[1.75rem] text-center text-sm font-bold tabular-nums">
+                        {item.quantidade}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Adicionar um ${item.nome}`}
+                        className="flex min-h-9 min-w-9 items-center justify-center rounded-lg text-base font-bold text-ink transition-transform active:scale-95 active:bg-surface-lighter disabled:opacity-40"
+                        disabled={itemEmEdicao || !podeIncrementar}
+                        onClick={() =>
+                          alterarQuantidadeItem.mutate({
+                            itemId: item.id,
+                            quantidade: item.quantidade + 1,
+                          })
+                        }
+                      >
+                        +
+                      </button>
+                    </div>
+                  ) : null}
+                  <span className={`w-20 text-right font-semibold tabular-nums ${confirmado ? '' : 'text-ink-faint'}`}>
+                    {confirmado ? formatCurrency(item.subtotal) : '—'}
+                  </span>
+                  {editavel && (
+                    <button
+                      type="button"
+                      aria-label={`Remover ${item.nome}`}
+                      onClick={() => removerItem.mutate(item.id)}
+                      disabled={itemEmEdicao}
+                      className="icon-btn-danger"
+                    >
+                      <IconTrash />
+                    </button>
+                  )}
+                </div>
+                {alterandoEsteItem && (
+                  <span className="sr-only">Atualizando item</span>
+                )}
               </div>
-            ))}
+            );
+            })}
           </section>
         );
         })}
 
-        {aberta && temItens && temPedidoCozinhaPendente(comanda) && comanda.saldo === 0 && (
+        {aberta && temItens && cozinhaPendente && (
           <p className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
-            Itens na cozinha ainda não entram no total. Marque como entregue na cozinha para cobrar.
+            Aguarde a entrega dos itens da cozinha antes de fechar a comanda.
           </p>
         )}
 
@@ -433,6 +515,8 @@ export function QuiosqueComandaDetailPage() {
               Pagamento confirmado — comanda registrada, sem edição.
               Para novos pedidos, use <span className="font-semibold text-ink-soft">Nova comanda</span> abaixo.
             </>
+          ) : comanda.desconto >= comanda.subtotal && comanda.subtotal > 0 ? (
+            <>Cortesia confirmada — comanda encerrada sem pagamento.</>
           ) : (
             <>Comanda fechada — somente leitura.</>
           )}
@@ -451,19 +535,11 @@ export function QuiosqueComandaDetailPage() {
         </div>
       )}
 
-      {aberta && comanda.saldo > 0 && (
+      {podeFechar && (
         <MobileActionBar>
           <button type="button" className="touch-btn-primary w-full" onClick={openPayment} data-audit="quiosque-comanda-fechar">
-            Fechar Comanda · {formatCurrency(comanda.saldo)}
+            Fechar Comanda · {formatCurrency(comanda.total)}
           </button>
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/quiosque/comandas')}>
-            Voltar às comandas
-          </button>
-        </MobileActionBar>
-      )}
-
-      {aberta && comanda.saldo === 0 && temItens && (
-        <MobileActionBar>
           <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/quiosque/comandas')}>
             Voltar às comandas
           </button>
@@ -512,36 +588,35 @@ export function QuiosqueComandaDetailPage() {
         </MobileActionBar>
       )}
 
-      <Modal
+      <AdicionarItensQuiosqueModal
         open={showAddItem}
         onClose={fecharAdicionarItens}
-        title="Adicionar itens"
-        footer={addItemFooter}
-      >
-        <div className="space-y-4">
-          {erro && showAddItem && <div className="alert-error text-sm">{erro}</div>}
-          {produtos && (
-            <GradeProdutos
-              produtos={produtos}
-              onSelecionar={adicionar}
-              saldos={saldos}
-              controlaEstoque={controlaEstoque}
-              quantidadesNoCarrinho={quantidadesNoCarrinho}
-            />
-          )}
-        </div>
-      </Modal>
+        produtos={produtos ?? []}
+        linhas={carrinho}
+        onSelecionar={adicionar}
+        onAlterar={alterarQuantidade}
+        onConfirm={() => lancarItens.mutate()}
+        isPending={lancarItens.isPending}
+        error={showAddItem ? erro : undefined}
+        saldos={saldos}
+        controlaEstoque={controlaEstoque}
+        confirmLabel="Lançar na comanda"
+      />
 
       <PaymentFormModal
         open={showPayment}
-        onClose={() => setShowPayment(false)}
+        onClose={() => {
+          setShowPayment(false);
+          setErro('');
+        }}
         title="Fechar Comanda"
-        totalLabel="Total da comanda"
-        total={comanda.saldo}
+        totalLabel="Total a pagar"
+        total={totalAPagar}
         paymentForm={paymentForm}
         setPaymentForm={setPaymentForm}
         onConfirm={handleClose}
         isPending={fechar.isPending}
+        headerExtra={paymentHeaderExtra}
       />
 
       <Modal
@@ -558,11 +633,15 @@ export function QuiosqueComandaDetailPage() {
             <p className="text-xl font-bold">{rotuloComanda(closedComanda)}</p>
             <p className="text-3xl font-bold text-brand-600 tabular-nums">{formatCurrency(closedComanda.total)}</p>
             <div className="space-y-1">
-              {closedComanda.pagamentos.map((pagamento) => (
-                <p key={pagamento.id} className="text-ink-muted">
-                  {PAYMENT_LABELS[pagamento.forma]}: {formatCurrency(pagamento.valor)}
-                </p>
-              ))}
+              {closedComanda.pagamentos.length === 0 ? (
+                <p className="font-semibold text-success">Cortesia — sem pagamento</p>
+              ) : (
+                closedComanda.pagamentos.map((pagamento) => (
+                  <p key={pagamento.id} className="text-ink-muted">
+                    {PAYMENT_LABELS[pagamento.forma]}: {formatCurrency(pagamento.valor)}
+                  </p>
+                ))
+              )}
             </div>
             <button
               className="touch-btn-primary w-full"

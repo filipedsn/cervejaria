@@ -23,25 +23,29 @@ async function main() {
     ...over,
   });
 
-  // ── DB-01: totais consistentes ─────────────────────────────────────────
+  // ── DB-01: totais consistentes (líquidos de desconto) ──────────────────
   const driftQuery = `
-    SELECT c.id, c.total::float AS total, COALESCE(SUM(i."precoUnit"::float * i.quantidade),0) AS soma
+    SELECT c.id, c.total::float AS total, c.desconto::float AS desconto,
+      COALESCE(SUM(i."precoUnit"::float * i.quantidade),0) AS soma
     FROM "Comanda" c
     LEFT JOIN "ItemComanda" i ON i."comandaId" = c.id
     WHERE c."eventoId" IN (
       SELECT e.id FROM "Evento" e JOIN "Cervejaria" cb ON cb.id = e."cervejariaId"
       WHERE cb.slug LIKE 'qa-load-%' OR cb.slug = 'qa-arena' OR cb.slug = 'qa-multi-trailer'
     )
-    GROUP BY c.id, c.total
-    HAVING ABS(c.total::float - COALESCE(SUM(i."precoUnit"::float * i.quantidade),0)) > 0.02`;
+    GROUP BY c.id, c.total, c.desconto
+    HAVING ABS(
+      c.total::float -
+      GREATEST(0, COALESCE(SUM(i."precoUnit"::float * i.quantidade),0) - c.desconto::float)
+    ) > 0.02`;
 
-  const driftBefore = await prisma.$queryRawUnsafe<{ id: string; total: number; soma: number }[]>(driftQuery);
+  const driftBefore = await prisma.$queryRawUnsafe<{ id: string; total: number; desconto: number; soma: number }[]>(driftQuery);
   for (const row of driftBefore) {
     await recalcComandaTotal(row.id);
   }
-  const drift = await prisma.$queryRawUnsafe<{ id: string; total: number; soma: number }[]>(driftQuery);
+  const drift = await prisma.$queryRawUnsafe<{ id: string; total: number; desconto: number; soma: number }[]>(driftQuery);
   push(t({
-    id: 'DB-01', name: 'Comanda.total == Σ itens (todas as comandas QA)', category: 'Integridade',
+    id: 'DB-01', name: 'Comanda.total == max(0, Σ itens − desconto)', category: 'Integridade',
     status: drift.length === 0 ? (driftBefore.length === 0 ? 'passed' : 'warning') : 'failed',
     message:
       drift.length === 0
@@ -51,7 +55,10 @@ async function main() {
         : `${drift.length} comanda(s) divergente(s) após reconciliação`,
     expected: '0 divergências', actual: `${drift.length}`,
     details:
-      (drift.length ? drift : driftBefore).slice(0, 5).map((d) => `${d.id}: total=${d.total} soma=${d.soma}`).join('\n') ||
+      (drift.length ? drift : driftBefore)
+        .slice(0, 5)
+        .map((d) => `${d.id}: total=${d.total} soma=${d.soma} desconto=${d.desconto}`)
+        .join('\n') ||
       undefined,
   }));
 

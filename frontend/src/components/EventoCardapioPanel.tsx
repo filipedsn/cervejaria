@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import type { Cardapio, EventoCardapio } from '../types';
 import { CardapioProdutosPicker, CardapioProdutosResumo } from './CardapioProdutosPicker';
+import { CardapioSalvoModal, cardapioSalvoLabel } from './CardapioSalvoModal';
 import { Loading } from './Loading';
 
 type CardapioModo = 'salvo' | 'montar';
@@ -25,6 +26,7 @@ export function EventoCardapioPanel({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState('');
+  const [modalSalvoAberto, setModalSalvoAberto] = useState(false);
 
   const { data: cardapio, isLoading } = useQuery({
     queryKey: ['evento-cardapio', eventoId],
@@ -153,6 +155,7 @@ export function EventoCardapioPanel({
                 onClick={() => {
                   setModo(value);
                   setError('');
+                  if (value === 'salvo') setModalSalvoAberto(true);
                 }}
               >
                 {label}
@@ -161,32 +164,27 @@ export function EventoCardapioPanel({
           </div>
 
           {modo === 'salvo' ? (
-            <div>
-              <label className="label">Selecione o cardápio</label>
-              <select
-                className="input"
-                value={cardapioId}
-                onChange={(e) => {
-                  setCardapioId(e.target.value);
-                  setError('');
-                }}
-              >
-                <option value="">Escolha um cardápio</option>
-                {(cardapiosSalvos ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome} ({c.itemCount ?? c.produtos?.length ?? 0} itens)
-                  </option>
-                ))}
-              </select>
-              {(cardapiosSalvos?.length ?? 0) === 0 && (
-                <p className="text-xs text-ink-faint mt-1">
-                  Nenhum cardápio cadastrado. Crie em Configurações → Cardápios.
-                </p>
-              )}
-            </div>
+            cardapioSalvoLabel(cardapiosSalvos, cardapioId) ? (
+              <p className="text-sm text-ink-muted">
+                Selecionado:{' '}
+                <span className="font-semibold text-ink">{cardapioSalvoLabel(cardapiosSalvos, cardapioId)}</span>
+              </p>
+            ) : null
           ) : (
             <CardapioProdutosPicker catalogo={catalogo} selectedIds={selectedIds} onToggle={toggle} />
           )}
+
+          <CardapioSalvoModal
+            open={modalSalvoAberto}
+            onClose={() => setModalSalvoAberto(false)}
+            value={cardapioId}
+            onChange={(id) => {
+              setCardapioId(id);
+              setError('');
+            }}
+            cardapios={cardapiosSalvos}
+            emptyMessage="Nenhum cardápio cadastrado. Crie em Configurações → Cardápios."
+          />
 
           <div className="space-y-2">
             <button

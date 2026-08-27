@@ -13,6 +13,7 @@ import {
   newGrupoPagamentoId,
   type PagamentoInput,
 } from '../lib/fechar-comanda.js';
+import { lockComandasInTx } from '../lib/comanda-service.js';
 
 const pagamentoSchema = z.object({
   forma: z.enum(['DINHEIRO', 'PIX', 'CARTAO', 'CARTAO_DEBITO', 'CARTAO_CREDITO']),
@@ -20,7 +21,7 @@ const pagamentoSchema = z.object({
 });
 
 const fecharComandaSchema = z.object({
-  pagamentos: z.array(pagamentoSchema).min(1),
+  pagamentos: z.array(pagamentoSchema),
 });
 
 const fecharGrupoSchema = z.object({
@@ -55,12 +56,20 @@ export async function pagamentosRoutes(app: FastifyInstance) {
     }
 
     const total = toNumber(comanda.total);
-    const totalPagamentos = body.pagamentos.reduce((sum, p) => sum + p.valor, 0);
-
-    if (Math.abs(totalPagamentos - total) > 0.01) {
-      return reply.status(400).send({
-        error: `Total dos pagamentos (R$ ${totalPagamentos.toFixed(2)}) difere do total da comanda (R$ ${total.toFixed(2)})`,
-      });
+    if (total <= 0.001) {
+      if (body.pagamentos.length > 0) {
+        return reply.status(400).send({ error: 'Conta zerada não exige pagamento' });
+      }
+    } else {
+      if (body.pagamentos.length === 0) {
+        return reply.status(400).send({ error: 'Informe como o cliente pagou' });
+      }
+      const totalPagamentos = body.pagamentos.reduce((sum, p) => sum + p.valor, 0);
+      if (Math.abs(totalPagamentos - total) > 0.01) {
+        return reply.status(400).send({
+          error: `Total dos pagamentos (R$ ${totalPagamentos.toFixed(2)}) difere do total da comanda (R$ ${total.toFixed(2)})`,
+        });
+      }
     }
 
     let updated;
@@ -79,6 +88,9 @@ export async function pagamentosRoutes(app: FastifyInstance) {
       const statusCode = (err as { statusCode?: number }).statusCode;
       if (statusCode === 404) {
         return reply.status(404).send({ error: 'Comanda não encontrada ou já fechada' });
+      }
+      if (statusCode === 400) {
+        return reply.status(400).send({ error: (err as Error).message });
       }
       throw err;
     }
@@ -159,6 +171,7 @@ export async function pagamentosRoutes(app: FastifyInstance) {
 
     try {
       const result = await prisma.$transaction(async (tx) => {
+        await lockComandasInTx(tx, uniqueIds);
         const closed: typeof fechadas = [];
         const cancelled: typeof canceladas = [];
 

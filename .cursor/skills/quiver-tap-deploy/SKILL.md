@@ -17,13 +17,13 @@ Use when the user asks to deploy, publish, release, or push changes to productio
 2. **Never pass `-Confirmed` to the deploy script** until the user has confirmed in this conversation.
 3. **Never edit `backend/.env.production`** or run `db:migrate:prod` without confirmation.
 4. Prefer **`npm run prod:deploy`** over manual step-by-step commands.
-5. **Code must be merged in `main` and pulled locally** before deploy (`git checkout main` → `git pull origin main`). If user is on a feature branch, remind them to merge via PR first (skill `quiver-tap-git-workflow`).
+5. **Code must be merged in `main` and synced locally** before deploy. The ops-panel auto-syncs on **Verificar release** and before deploy (`checkout main` + `pull --ff-only`) when the working tree is clean. Manual fallback: `git checkout main` → `git pull origin main`.
 
 ## Pre-deploy checklist (agent)
 
 Before running deploy, present a short summary:
 
-1. **Git**: on `main`? Up to date with `origin/main`? Recent merge completed?
+1. **Git**: on `main`? Up to date with `origin/main`? Recent merge completed? (ops-panel syncs automatically on release check)
 2. **Changes**: `git status` and brief `git diff --stat` (what will go to prod).
 3. **Scope**: frontend only, backend only, or both? Any Prisma schema/migration changes?
 4. **Dev tested?** If unclear, suggest `npm run dev:status` and testing at http://localhost:5202.

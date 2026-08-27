@@ -417,6 +417,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
           open={dialogo === 'cardapio'}
           onClose={() => setDialogo('nenhum')}
           title="Cardápio do turno"
+          hideHeaderClose
         >
           <QuiosqueTurnoCardapioPanel
             pontoVendaId={pontoVendaId}

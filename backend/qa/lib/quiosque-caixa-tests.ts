@@ -19,6 +19,7 @@ type TestFn = (
 interface ResumoCaixa {
   id: string;
   status: string;
+  fechadoEm?: string;
   trocoInicial: number;
   gaveta: {
     trocoInicial: number;
@@ -491,6 +492,120 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Venda com caixa fechado', expected: '400', actual: String(r.status) };
       }
       return { message: 'Venda bloqueada após fechamento', expected: '400', actual: '400' };
+    },
+  );
+
+  await test(
+    { id: 'QCX-16', category: 'Quiosque caixa', name: 'Duas aberturas simultâneas criam um único caixa', requirement: 'TQ-005-B' },
+    async () => {
+      if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
+      const tentativas = await Promise.all(
+        [100, 101].map((trocoInicial) =>
+          api<ResumoCaixa>('POST', '/api/quiosque/caixa/abrir', {
+            token: cfg.donoToken,
+            body: { pontoVendaId: pontoId, trocoInicial },
+          }),
+        ),
+      );
+      const abertas = tentativas.filter((r) => r.status === 201);
+      const rejeitadas = tentativas.filter((r) => r.status === 400);
+      const atual = await api<{ sessao: ResumoCaixa | null }>('GET', `/api/quiosque/caixa?pontoVendaId=${pontoId}`, {
+        token: cfg.donoToken,
+      });
+      if (abertas.length !== 1 || rejeitadas.length !== 1 || atual.data?.sessao?.status !== 'ABERTO') {
+        return {
+          status: 'failed',
+          message: 'Abertura concorrente gerou resultado inválido',
+          expected: '1x 201, 1x 400 e uma sessão ABERTA',
+          actual: `${tentativas.map((r) => r.status).join('/')} / ${atual.data?.sessao?.status ?? 'sem sessão'}`,
+        };
+      }
+      return { message: 'Uma sessão aberta e uma tentativa rejeitada', expected: '201/400', actual: '201/400' };
+    },
+  );
+
+  await test(
+    { id: 'QCX-17', category: 'Quiosque caixa', name: 'Fechamento concorrente com venda mantém corte consistente', requirement: 'TQ-005-D' },
+    async () => {
+      if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
+      const [fechamento, venda] = await Promise.all([
+        api<ResumoCaixa>('POST', '/api/quiosque/caixa/fechar', {
+          token: cfg.donoToken,
+          body: {
+            pontoVendaId: pontoId,
+            contadoDinheiro: 100,
+            contadoPix: 0,
+            contadoCartaoDebito: 0,
+            contadoCartaoCredito: 0,
+          },
+        }),
+        api<{ fechadaEm?: string }>('POST', '/api/quiosque/vendas', {
+          token: cfg.donoToken,
+          body: {
+            pontoVendaId: pontoId,
+            itens: [{ produtoId: cfg.produtoId, quantidade: 1 }],
+            pagamentos: [{ forma: 'DINHEIRO', valor: PRECO }],
+          },
+        }),
+      ]);
+
+      if (fechamento.status !== 200 || !fechamento.data?.id || ![201, 400].includes(venda.status)) {
+        return {
+          status: 'failed',
+          message: 'Resultado inválido na corrida venda/fechamento',
+          expected: 'fechamento 200; venda 201 ou 400',
+          actual: `${fechamento.status}/${venda.status}`,
+        };
+      }
+      if (venda.status === 201 && venda.data?.fechadaEm && fechamento.data.fechadoEm) {
+        if (new Date(venda.data.fechadaEm) > new Date(fechamento.data.fechadoEm)) {
+          return {
+            status: 'failed',
+            message: 'Venda foi concluída após o caixa fechado',
+            expected: 'venda.fechadaEm <= caixa.fechadoEm',
+            actual: `${venda.data.fechadaEm} > ${fechamento.data.fechadoEm}`,
+          };
+        }
+      }
+      return { message: `Fechamento 200; venda ${venda.status}`, expected: '200/201|400', actual: `200/${venda.status}` };
+    },
+  );
+
+  await test(
+    { id: 'QCX-18', category: 'Quiosque caixa', name: 'Duplo fechamento tem resultado consistente', requirement: 'TQ-005-F' },
+    async () => {
+      if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
+      const abrir = await api('POST', '/api/quiosque/caixa/abrir', {
+        token: cfg.donoToken,
+        body: { pontoVendaId: pontoId, trocoInicial: 50 },
+      });
+      if (abrir.status !== 201) return { status: 'failed', message: 'Preparação do duplo fechamento', actual: String(abrir.status) };
+
+      const respostas = await Promise.all(
+        Array.from({ length: 2 }, () =>
+          api('POST', '/api/quiosque/caixa/fechar', {
+            token: cfg.donoToken,
+            body: {
+              pontoVendaId: pontoId,
+              contadoDinheiro: 50,
+              contadoPix: 0,
+              contadoCartaoDebito: 0,
+              contadoCartaoCredito: 0,
+            },
+          }),
+        ),
+      );
+      const sucesso = respostas.filter((r) => r.status === 200).length;
+      const rejeitada = respostas.filter((r) => r.status === 400).length;
+      if (sucesso !== 1 || rejeitada !== 1) {
+        return {
+          status: 'failed',
+          message: 'Duplo fechamento não respeitou a regra atual',
+          expected: '1x 200 e 1x 400',
+          actual: respostas.map((r) => r.status).join('/'),
+        };
+      }
+      return { message: 'Primeiro fechamento vence; segundo é rejeitado', expected: '200/400', actual: '200/400' };
     },
   );
 }

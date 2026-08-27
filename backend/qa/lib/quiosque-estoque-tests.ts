@@ -198,7 +198,9 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
       if (!pontoId) return { status: 'failed', message: 'QES-01 incompleto' };
       const antes = await saldoAtual(cfg.produtoId!);
 
-      const comandasAntes = await prisma.comandaQuiosque.count({ where: { pontoVendaId: pontoId } });
+      const comandasAntes = await prisma.comanda.count({
+        where: { origem: 'QUIOSQUE', pontoVendaId: pontoId },
+      });
       const r = await api<{ error?: string }>('POST', '/api/quiosque/vendas', {
         token: cfg.donoToken,
         body: {
@@ -215,7 +217,9 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
       }
 
       const depois = await saldoAtual(cfg.produtoId!);
-      const comandasDepois = await prisma.comandaQuiosque.count({ where: { pontoVendaId: pontoId } });
+      const comandasDepois = await prisma.comanda.count({
+        where: { origem: 'QUIOSQUE', pontoVendaId: pontoId },
+      });
       if (depois !== antes) {
         return { status: 'failed', message: 'Saldo alterado apesar do erro', expected: String(antes), actual: String(depois) };
       }
@@ -347,6 +351,106 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Ajuste negativo aceito', expected: '400', actual: String(r.status) };
       }
       return { message: 'Ajuste negativo rejeitado', expected: '400', actual: '400' };
+    },
+  );
+
+  await test(
+    { id: 'QES-11', category: 'Quiosque estoque', name: 'Ajuste absoluto normal preserva o valor contado', requirement: 'TQ-007-A' },
+    async () => {
+      if (!pontoId) return { status: 'failed', message: 'QES-01 incompleto' };
+      const ajuste = await api<Saldo[]>('POST', '/api/quiosque/estoque/ajuste', {
+        token: cfg.donoToken,
+        body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, quantidadeNova: 10, observacao: 'TQ-007 ajuste normal' },
+      });
+      const saldo = saldoDe(ajuste.data, cfg.produtoId!);
+      if (ajuste.status !== 201 || saldo !== 10) {
+        return { status: 'failed', message: 'Ajuste absoluto', expected: '201 / saldo 10', actual: `${ajuste.status} / ${saldo}` };
+      }
+      return { message: 'Saldo ajustado para 10', expected: '10', actual: '10' };
+    },
+  );
+
+  await test(
+    { id: 'QES-12', category: 'Quiosque estoque', name: 'Ajuste absoluto concorrente com venda é serializado', requirement: 'TQ-007-B' },
+    async () => {
+      if (!pontoId) return { status: 'failed', message: 'QES-01 incompleto' };
+      const inicio = new Date();
+      const marcador = `TQ-007 concorrente ${stamp}`;
+      const [ajuste, venda] = await Promise.all([
+        api<Saldo[]>('POST', '/api/quiosque/estoque/ajuste', {
+          token: cfg.donoToken,
+          body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, quantidadeNova: 20, observacao: marcador },
+        }),
+        api('POST', '/api/quiosque/vendas', {
+          token: cfg.donoToken,
+          body: {
+            pontoVendaId: pontoId,
+            itens: [{ produtoId: cfg.produtoId, quantidade: 1 }],
+            pagamentos: [{ forma: 'DINHEIRO', valor: PRECO }],
+          },
+        }),
+      ]);
+      if (ajuste.status !== 201 || venda.status !== 201) {
+        return { status: 'failed', message: 'Operações concorrentes', expected: '201/201', actual: `${ajuste.status}/${venda.status}` };
+      }
+
+      const [movAjuste, movVenda] = await Promise.all([
+        prisma.movimentoEstoqueQuiosque.findFirst({
+          where: { pontoVendaId: pontoId, produtoId: cfg.produtoId, tipo: 'AJUSTE', observacao: marcador },
+        }),
+        prisma.movimentoEstoqueQuiosque.findFirst({
+          where: { pontoVendaId: pontoId, produtoId: cfg.produtoId, tipo: 'SAIDA_VENDA', createdAt: { gte: inicio } },
+          orderBy: { createdAt: 'desc' },
+        }),
+      ]);
+      if (!movAjuste || !movVenda) return { status: 'failed', message: 'Movimentos concorrentes ausentes' };
+
+      const vendaAntesDoAjuste = movVenda.createdAt < movAjuste.createdAt;
+      const esperado = vendaAntesDoAjuste ? 20 : 19;
+      const saldo = await saldoAtual(cfg.produtoId!);
+      if (saldo !== esperado) {
+        return {
+          status: 'failed',
+          message: 'Saldo final não respeita a ordem serializada',
+          expected: String(esperado),
+          actual: String(saldo),
+          details: `vendaAntesDoAjuste=${vendaAntesDoAjuste}; ajuste=${movAjuste.quantidade}`,
+        };
+      }
+      return { message: `Ordem serializada; saldo ${saldo}`, expected: String(esperado), actual: String(saldo) };
+    },
+  );
+
+  await test(
+    { id: 'QES-13', category: 'Quiosque estoque', name: 'Saídas manuais concorrentes não deixam saldo negativo', requirement: 'TQ-007-C,D' },
+    async () => {
+      if (!pontoId) return { status: 'failed', message: 'QES-01 incompleto' };
+      const ajuste = await api<Saldo[]>('POST', '/api/quiosque/estoque/ajuste', {
+        token: cfg.donoToken,
+        body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, quantidadeNova: 1, observacao: 'TQ-007 saída manual' },
+      });
+      if (ajuste.status !== 201) return { status: 'failed', message: 'Preparar saldo 1', actual: String(ajuste.status) };
+
+      const respostas = await Promise.all(
+        ['PERDA', 'CORTESIA'].map((tipo) =>
+          api('POST', '/api/quiosque/estoque/saida', {
+            token: cfg.donoToken,
+            body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, tipo, quantidade: 1 },
+          }),
+        ),
+      );
+      const sucesso = respostas.filter((r) => r.status === 201).length;
+      const insuficiente = respostas.filter((r) => r.status === 400).length;
+      const saldo = await saldoAtual(cfg.produtoId!);
+      if (sucesso !== 1 || insuficiente !== 1 || saldo !== 0) {
+        return {
+          status: 'failed',
+          message: 'Concorrência de saídas manuais',
+          expected: '1x 201 / 1x 400 / saldo 0',
+          actual: `${sucesso}x 201 / ${insuficiente}x 400 / saldo ${saldo}`,
+        };
+      }
+      return { message: 'Uma saída rejeitada sem saldo negativo', expected: '1/1/0', actual: '1/1/0' };
     },
   );
 

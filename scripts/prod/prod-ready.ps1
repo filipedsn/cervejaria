@@ -27,28 +27,67 @@ $blockers = 0
 
 Write-Host '[1/4] Git sincronizado' -ForegroundColor Cyan
 $branch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim()
-$fetch = git fetch origin main --quiet 2>&1
+$fetchOut = git fetch origin main --quiet 2>&1
 if ($LASTEXITCODE -ne 0) {
-  Write-Host "  AVISO: git fetch falhou: $fetch" -ForegroundColor Yellow
+  Write-Host "  AVISO: git fetch falhou: $fetchOut" -ForegroundColor Yellow
 }
 
+$dirtyPreSync = git status --porcelain
 $behind = [int](git rev-list --count HEAD..origin/main 2>$null)
 $ahead = [int](git rev-list --count origin/main..HEAD 2>$null)
-$onMain = git merge-base --is-ancestor HEAD origin/main 2>$null; $ancestorOk = ($LASTEXITCODE -eq 0)
+git merge-base --is-ancestor HEAD origin/main 2>$null | Out-Null
+$ancestorOk = ($LASTEXITCODE -eq 0)
 
-if ($branch -ne 'main') {
-  Write-Host "  BLOQUEIO: branch atual e '$branch', esperado main." -ForegroundColor Red
-  $blockers++
-} elseif ($behind -gt 0) {
-  Write-Host "  BLOQUEIO: faltam $behind commit(s). Rode: git pull origin main" -ForegroundColor Red
-  $blockers++
-} elseif (-not $ancestorOk) {
-  Write-Host '  BLOQUEIO: HEAD nao esta em origin/main (merge o PR e faca pull).' -ForegroundColor Red
-  $blockers++
-} elseif ($ahead -gt 0) {
-  Write-Host "  AVISO: local esta $ahead commit(s) a frente de origin/main." -ForegroundColor Yellow
-} else {
-  Write-Host "  OK - main alinhada com origin/main ($((git rev-parse --short HEAD).Trim()))" -ForegroundColor Green
+$shouldSync = (-not $dirtyPreSync) -and (
+  ($branch -ne 'main') -or ($behind -gt 0) -or (-not $ancestorOk)
+) -and -not ($branch -eq 'main' -and $ahead -gt 0)
+
+if ($shouldSync) {
+  $prevBranch = $branch
+  if ($branch -ne 'main') {
+    Write-Host "  Auto-sync: checkout main (era $prevBranch)..." -ForegroundColor Cyan
+    git checkout main 2>&1 | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host '  BLOQUEIO: git checkout main falhou.' -ForegroundColor Red
+      $blockers++
+    }
+  }
+  if ($blockers -eq 0) {
+    Write-Host '  Auto-sync: git pull --ff-only origin main...' -ForegroundColor Cyan
+    git pull --ff-only origin main 2>&1 | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host '  BLOQUEIO: git pull --ff-only falhou. Resolva manualmente.' -ForegroundColor Red
+      $blockers++
+    } else {
+      $branch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim()
+      $behind = [int](git rev-list --count HEAD..origin/main 2>$null)
+      $ahead = [int](git rev-list --count origin/main..HEAD 2>$null)
+      git merge-base --is-ancestor HEAD origin/main 2>$null | Out-Null
+      $ancestorOk = ($LASTEXITCODE -eq 0)
+      if ($prevBranch -ne 'main') {
+        Write-Host "  OK - sincronizado automaticamente ($prevBranch -> main, $((git rev-parse --short HEAD).Trim()))" -ForegroundColor Green
+      } else {
+        Write-Host "  OK - main atualizada ($((git rev-parse --short HEAD).Trim()))" -ForegroundColor Green
+      }
+    }
+  }
+}
+
+if ($blockers -eq 0) {
+  if ($branch -ne 'main') {
+    Write-Host "  BLOQUEIO: branch atual e '$branch', esperado main." -ForegroundColor Red
+    $blockers++
+  } elseif ($behind -gt 0) {
+    Write-Host "  BLOQUEIO: faltam $behind commit(s) apos auto-sync." -ForegroundColor Red
+    $blockers++
+  } elseif (-not $ancestorOk) {
+    Write-Host '  BLOQUEIO: HEAD nao esta em origin/main (merge o PR no GitHub).' -ForegroundColor Red
+    $blockers++
+  } elseif ($ahead -gt 0) {
+    Write-Host "  AVISO: local esta $ahead commit(s) a frente de origin/main." -ForegroundColor Yellow
+  } else {
+    Write-Host "  OK - main alinhada com origin/main ($((git rev-parse --short HEAD).Trim()))" -ForegroundColor Green
+  }
 }
 
 Write-Host ''

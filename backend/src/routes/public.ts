@@ -624,7 +624,10 @@ export async function publicRoutes(app: FastifyInstance) {
 
       emitToEvento(app.io, updated.eventoId, { type: 'pedido:cancelado', data: serialized });
 
-      emitToComanda(app.io, updated.comandaId, { type: 'pedido:cancelado', data: serialized });
+      emitToComanda(app.io, updated.comandaId, {
+        type: 'pedido:cancelado',
+        data: { comandaId: updated.comandaId },
+      });
 
       emitToCervejaria(app.io, session.cervejariaId, { type: 'pedido:cancelado', data: serialized });
 

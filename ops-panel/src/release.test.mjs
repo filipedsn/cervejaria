@@ -6,6 +6,7 @@ import {
   checkVerdict,
   evaluateReleaseGate,
   isAgentBranch,
+  shouldAutoSyncMain,
   summarizeChecks,
 } from './release.mjs';
 
@@ -189,4 +190,44 @@ test('isAgentBranch reconhece so o padrao do fixer', () => {
   assert.equal(isAgentBranch('fix/auto-manual'), false);
   assert.equal(isAgentBranch('feat/modo-quiosque'), false);
   assert.equal(isAgentBranch(undefined), false);
+});
+
+function estadoGit(overrides = {}) {
+  return {
+    gitAvailable: true,
+    workingTreeDirty: false,
+    originMain: { sha: HEAD },
+    head: { sha: HEAD, branch: 'main' },
+    headOnOriginMain: true,
+    behindOriginMain: 0,
+    aheadOriginMain: 0,
+    ...overrides,
+  };
+}
+
+test('shouldAutoSyncMain nao sincroniza quando main ja esta alinhada', () => {
+  assert.equal(shouldAutoSyncMain(estadoGit()), false);
+});
+
+test('shouldAutoSyncMain sincroniza main atrasada', () => {
+  assert.equal(shouldAutoSyncMain(estadoGit({ behindOriginMain: 1 })), true);
+});
+
+test('shouldAutoSyncMain sincroniza branch de feature apos merge', () => {
+  assert.equal(shouldAutoSyncMain(estadoGit({
+    head: { sha: 'b'.repeat(40), branch: 'feat/x' },
+    headOnOriginMain: false,
+  })), true);
+});
+
+test('shouldAutoSyncMain nao sincroniza com working tree suja', () => {
+  assert.equal(shouldAutoSyncMain(estadoGit({ workingTreeDirty: true, behindOriginMain: 2 })), false);
+});
+
+test('shouldAutoSyncMain nao sincroniza main a frente do remoto', () => {
+  assert.equal(shouldAutoSyncMain(estadoGit({ aheadOriginMain: 1 })), false);
+});
+
+test('shouldAutoSyncMain nao sincroniza sem origin/main', () => {
+  assert.equal(shouldAutoSyncMain(estadoGit({ originMain: { sha: null } })), false);
 });

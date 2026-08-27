@@ -7,14 +7,27 @@ interface ModalProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   hideHeaderClose?: boolean;
+  closeOnBackdrop?: boolean;
 }
 
-export function Modal({ open, onClose, title, children, footer, hideHeaderClose }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  footer,
+  hideHeaderClose,
+  closeOnBackdrop = true,
+}: ModalProps) {
   if (!open) return null;
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center">
-      <div className="overlay-backdrop" onClick={onClose} aria-hidden />
+      <div
+        className="overlay-backdrop"
+        onClick={closeOnBackdrop ? onClose : undefined}
+        aria-hidden
+      />
       <div
         role="dialog"
         aria-modal

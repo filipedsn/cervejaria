@@ -12,6 +12,7 @@ import {
   notificarComandaQuiosqueAtualizada,
   pedidoVaiParaCozinha,
   resumoPedidoCozinha,
+  StatusPedidoCozinhaDesatualizadoError,
   temPedidoCozinhaPendente,
 } from '../../lib/quiosque/cozinha.js';
 import { registrarTransacao } from '../../lib/transacao-log.js';
@@ -41,7 +42,7 @@ export async function cozinhaQuiosqueRoutes(app: FastifyInstance) {
         diaOperacional: diaOperacional(),
         status: incluirEntregues ? { not: 'CANCELADO' } : { in: STATUS_NA_FILA },
         // Rodada so de bebida nao ocupa a cozinha.
-        itens: { some: { exigePreparo: true } },
+        itensComanda: { some: { exigePreparo: true } },
       },
       include: INCLUDE_PEDIDO_COZINHA,
       // Ordem de chegada: e a regra da fila, nao a senha, que pode ser reemitida.
@@ -62,14 +63,8 @@ export async function cozinhaQuiosqueRoutes(app: FastifyInstance) {
       include: { ...INCLUDE_PEDIDO_COZINHA, comanda: { select: { id: true, tipo: true, identificador: true, status: true } } },
     });
     if (!pedido) return reply.status(404).send({ error: 'Pedido não encontrado' });
-    if (!pedidoVaiParaCozinha(pedido.itens)) {
+    if (!pedidoVaiParaCozinha(pedido.itensComanda)) {
       return reply.status(404).send({ error: 'Pedido não é da cozinha' });
-    }
-
-    if (!TRANSICOES[pedido.status].includes(status)) {
-      return reply
-        .status(409)
-        .send({ error: `Não é possível ir de ${pedido.status} para ${status}` });
     }
 
     if (status === 'CANCELADO') {
@@ -82,9 +77,23 @@ export async function cozinhaQuiosqueRoutes(app: FastifyInstance) {
       }
     }
 
-    const atualizado = await prisma.$transaction(async (tx) =>
-      aplicarStatusPedidoCozinha(tx, pedido, status),
-    );
+    if (!TRANSICOES[pedido.status].includes(status)) {
+      return reply
+        .status(409)
+        .send({ error: `Não é possível ir de ${pedido.status} para ${status}` });
+    }
+
+    let atualizado;
+    try {
+      atualizado = await prisma.$transaction(async (tx) =>
+        aplicarStatusPedidoCozinha(tx, pedido, status),
+      );
+    } catch (error) {
+      if (error instanceof StatusPedidoCozinhaDesatualizadoError) {
+        return reply.status(409).send({ error: error.message });
+      }
+      throw error;
+    }
 
     notificarCozinha(app, cervejariaId, atualizado, false);
 

@@ -1,7 +1,7 @@
 ﻿DO $$ BEGIN
-  CREATE USER cervejaria_dev WITH PASSWORD 'QvDev_pL4n2026';
+  CREATE USER cervejaria_dev WITH PASSWORD :'DEV_PASSWORD';
 EXCEPTION WHEN duplicate_object THEN
-  ALTER USER cervejaria_dev WITH PASSWORD 'QvDev_pL4n2026';
+  ALTER USER cervejaria_dev WITH PASSWORD :'DEV_PASSWORD';
 END $$;
 
 REVOKE ALL ON DATABASE cervejaria_dev FROM PUBLIC;

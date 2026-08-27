@@ -1,22 +1,31 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../lib/api';
 import type { Comanda, EventoCardapio, TapComChope } from '../types';
-import { formatItemDetail, isBebidaChope, isVendaUnitaria, PAYMENT_LABELS } from '../types';
+import {
+  descontoComandaCervejaria,
+  isBebidaChope,
+  isVendaUnitaria,
+  PAYMENT_LABELS,
+  subtotalComandaCervejaria,
+} from '../types';
 import { useEvento } from '../contexts/EventoContext';
+import { useAuth } from '../contexts/AuthContext';
 import { PageHeader } from '../components/PageHeader';
 import { Loading } from '../components/Loading';
 import { MobileActionBar } from '../components/MobileActionBar';
 import { Modal } from '../components/Modal';
 import { AdicionarItemComandaModal } from '../components/AdicionarItemComandaModal';
+import { CheckoutItemsCard } from '../components/checkout/CheckoutItemsCard';
+import { PaymentDiscountFields } from '../components/checkout/PaymentDiscountFields';
 import {
   PaymentFormModal,
   createDefaultPaymentForm,
   toPaymentForma,
   type PaymentFormRow,
 } from '../components/PaymentFormModal';
-import { parseCurrencyInput } from '../lib/currency';
+import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../lib/currency';
 
 type CartLine = {
   key: string;
@@ -39,6 +48,7 @@ export function VendaAvulsaPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { evento } = useEvento();
+  const { podeDarDescontoQuiosque } = useAuth();
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [showAddItem, setShowAddItem] = useState(false);
@@ -46,6 +56,7 @@ export function VendaAvulsaPage() {
   const [showReceipt, setShowReceipt] = useState(false);
   const [closedComanda, setClosedComanda] = useState<Comanda | null>(null);
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([{ forma: 'PIX', valor: '' }]);
+  const [descontoInput, setDescontoInput] = useState('');
   const [error, setError] = useState('');
 
   const eventoId = evento?.id;
@@ -66,6 +77,20 @@ export function VendaAvulsaPage() {
     () => cart.reduce((sum, line) => sum + line.precoUnit * line.quantidade, 0),
     [cart],
   );
+  const descontoValor = podeDarDescontoQuiosque ? parseCurrencyInput(descontoInput) : 0;
+  const totalComDesconto = Math.max(0, total - descontoValor);
+
+  useEffect(() => {
+    if (!showPayment) return;
+    setPaymentForm((prev) => {
+      if (totalComDesconto <= 0.01) return prev.length === 0 ? prev : [];
+      if (prev.length === 0) return createDefaultPaymentForm(totalComDesconto);
+      if (prev.length !== 1) return prev;
+      const atual = parseCurrencyInput(prev[0].valor);
+      if (Math.abs(atual - totalComDesconto) < 0.01) return prev;
+      return [{ ...prev[0], valor: formatCurrencyInputFromNumber(totalComDesconto) }];
+    });
+  }, [descontoInput, showPayment, totalComDesconto]);
 
   const tapsComChope = taps?.filter((t) => t.ativo && t.chopeAtual && isBebidaChope(t.chopeAtual)) ?? [];
   const bebidasEmbalagem =
@@ -73,7 +98,13 @@ export function VendaAvulsaPage() {
   const comidas = cardapio?.produtos.filter((p) => p.tipo === 'COMIDA') ?? [];
 
   const vendaMutation = useMutation({
-    mutationFn: (pagamentos: { forma: 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO'; valor: number }[]) =>
+    mutationFn: ({
+      pagamentos,
+      desconto,
+    }: {
+      pagamentos: { forma: 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO'; valor: number }[];
+      desconto: number;
+    }) =>
       api.post<Comanda>('/api/vendas-avulsas', {
         eventoId: eventoId!,
         itens: cart.map((line) => ({
@@ -83,6 +114,7 @@ export function VendaAvulsaPage() {
           ...(line.tapId ? { tapId: line.tapId } : {}),
         })),
         pagamentos,
+        desconto,
       }),
     onSuccess: (data) => {
       setClosedComanda(data);
@@ -141,18 +173,40 @@ export function VendaAvulsaPage() {
 
   const openPayment = () => {
     if (cart.length === 0) return;
+    setDescontoInput(formatCurrencyInputFromNumber(0));
     setPaymentForm(createDefaultPaymentForm(total));
     setShowPayment(true);
     setError('');
   };
 
   const handleConfirmPayment = () => {
+    if (descontoValor > total) {
+      setError('O desconto não pode ser maior que o subtotal da venda');
+      return;
+    }
     const pagamentos = paymentForm.map((p) => ({
       forma: toPaymentForma(p),
       valor: parseCurrencyInput(p.valor),
     }));
-    vendaMutation.mutate(pagamentos);
+    vendaMutation.mutate({ pagamentos, desconto: descontoValor });
   };
+
+  const paymentHeaderExtra = (
+    <div className="space-y-3">
+      {error && showPayment && <div className="alert-error text-sm">{error}</div>}
+      {podeDarDescontoQuiosque && (
+        <PaymentDiscountFields
+          inputId="desconto-venda-avulsa"
+          subtotal={total}
+          discountValue={descontoValor}
+          discountInput={descontoInput}
+          onDiscountChange={setDescontoInput}
+          total={totalComDesconto}
+          disabled={vendaMutation.isPending}
+        />
+      )}
+    </div>
+  );
 
   if (!evento || evento.status !== 'ABERTO') {
     return (
@@ -175,17 +229,11 @@ export function VendaAvulsaPage() {
 
       {error && !showPayment && <div className="alert-error">{error}</div>}
 
-      <div className="card space-y-3">
-        <h2 className="section-label mb-0">Itens</h2>
-
-        <button type="button" className="touch-btn-orange w-full" onClick={() => setShowAddItem(true)}>
-          + Item
-        </button>
-
-        {cart.length === 0 ? (
-          <p className="text-sm text-ink-faint text-center py-2">Adicione itens para vender</p>
-        ) : (
-          <div className="space-y-2">
+      <CheckoutItemsCard
+        empty={cart.length === 0}
+        total={total}
+        onAdd={() => setShowAddItem(true)}
+      >
             {cart.map((line) => (
               <div
                 key={line.key}
@@ -194,11 +242,11 @@ export function VendaAvulsaPage() {
                 <div className="min-w-0">
                   <p className="font-semibold text-ink truncate">{line.produtoNome}</p>
                   <p className="text-sm text-ink-muted">
-                    {formatItemDetail({
-                      volumeMl: line.volumeMl,
-                      quantidade: line.quantidade,
-                      produto: { tipo: 'BEBIDA', formato: line.tapId ? 'CHOPE' : null },
-                    })}
+                    {line.tapId
+                      ? `${line.volumeMl}ml × ${line.quantidade}`
+                      : line.quantidade > 1
+                        ? `${line.quantidade} unidades`
+                        : '1 unidade'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -216,14 +264,7 @@ export function VendaAvulsaPage() {
                 </div>
               </div>
             ))}
-          </div>
-        )}
-
-        <div className="flex items-center justify-between border-t border-line pt-3">
-          <span className="text-sm font-medium text-ink-muted">Total</span>
-          <span className="text-2xl font-bold text-brand-600 tabular-nums">{formatCurrency(total)}</span>
-        </div>
-      </div>
+      </CheckoutItemsCard>
 
       <button type="button" className="touch-btn-danger w-full" onClick={() => navigate('/comandas')}>
         Cancelar
@@ -254,12 +295,13 @@ export function VendaAvulsaPage() {
         onClose={() => setShowPayment(false)}
         title="Venda avulsa"
         totalLabel="Total da venda"
-        total={total}
+        total={totalComDesconto}
         paymentForm={paymentForm}
         setPaymentForm={setPaymentForm}
         onConfirm={handleConfirmPayment}
         isPending={vendaMutation.isPending}
         confirmMessage="A venda será registrada e não poderá ser editada."
+        headerExtra={paymentHeaderExtra}
       />
 
       <Modal
@@ -275,12 +317,32 @@ export function VendaAvulsaPage() {
             <div className="text-4xl">✅</div>
             <p className="text-xl font-bold">Venda avulsa</p>
             <p className="text-3xl font-bold text-brand-600">{formatCurrency(closedComanda.total)}</p>
+            {descontoComandaCervejaria(closedComanda) > 0 && (
+              <div className="rounded-xl border border-line bg-surface-lighter p-3 space-y-1 text-sm text-left">
+                <div className="flex justify-between text-ink-muted">
+                  <span>Subtotal</span>
+                  <span>{formatCurrency(subtotalComandaCervejaria(closedComanda))}</span>
+                </div>
+                <div className="flex justify-between text-ink-muted">
+                  <span>Desconto</span>
+                  <span>− {formatCurrency(descontoComandaCervejaria(closedComanda))}</span>
+                </div>
+                <div className="flex justify-between font-semibold">
+                  <span>Total</span>
+                  <span>{formatCurrency(closedComanda.total)}</span>
+                </div>
+              </div>
+            )}
             <div className="space-y-1">
-              {closedComanda.pagamentos.map((p) => (
-                <p key={p.id} className="text-ink-muted">
-                  {PAYMENT_LABELS[p.forma]}: {formatCurrency(p.valor)}
-                </p>
-              ))}
+              {closedComanda.pagamentos.length === 0 ? (
+                <p className="font-semibold text-success">Cortesia — sem pagamento</p>
+              ) : (
+                closedComanda.pagamentos.map((p) => (
+                  <p key={p.id} className="text-ink-muted">
+                    {PAYMENT_LABELS[p.forma]}: {formatCurrency(p.valor)}
+                  </p>
+                ))
+              )}
             </div>
             <button
               type="button"

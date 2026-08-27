@@ -1,7 +1,9 @@
 # Daemon unico: monitora producao em loop sem abrir novas janelas a cada ciclo.
 
 param(
-  [int]$IntervalSeconds = 300
+  # Apos um boot, Docker e seus containers podem levar alguns minutos para ficar
+  # prontos. Um ciclo curto reduz a indisponibilidade sem criar processos extras.
+  [int]$IntervalSeconds = 60
 )
 
 $ErrorActionPreference = 'Continue'

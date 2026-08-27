@@ -18,7 +18,12 @@ export const comandaDetailInclude = {
 
 export async function recalcComandaTotal(comandaId: string) {
   const itens = await prisma.itemComanda.findMany({ where: { comandaId } });
-  const total = itens.reduce((sum, item) => sum + toNumber(item.precoUnit) * item.quantidade, 0);
+  const comanda = await prisma.comanda.findUnique({
+    where: { id: comandaId },
+    select: { desconto: true },
+  });
+  const subtotal = itens.reduce((sum, item) => sum + toNumber(item.precoUnit) * item.quantidade, 0);
+  const total = Math.max(0, subtotal - toNumber(comanda?.desconto ?? 0));
   return prisma.comanda.update({
     where: { id: comandaId },
     data: { total },
@@ -26,9 +31,14 @@ export async function recalcComandaTotal(comandaId: string) {
   });
 }
 
-async function recalcComandaTotalInTx(tx: Prisma.TransactionClient, comandaId: string) {
+export async function recalcComandaTotalInTx(tx: Prisma.TransactionClient, comandaId: string) {
+  const comanda = await tx.comanda.findUnique({
+    where: { id: comandaId },
+    select: { desconto: true },
+  });
   const itens = await tx.itemComanda.findMany({ where: { comandaId } });
-  const total = itens.reduce((sum, item) => sum + toNumber(item.precoUnit) * item.quantidade, 0);
+  const subtotal = itens.reduce((sum, item) => sum + toNumber(item.precoUnit) * item.quantidade, 0);
+  const total = Math.max(0, subtotal - toNumber(comanda?.desconto ?? 0));
   await tx.comanda.update({
     where: { id: comandaId },
     data: { total },
@@ -38,6 +48,20 @@ async function recalcComandaTotalInTx(tx: Prisma.TransactionClient, comandaId: s
 
 function comandaItemsLockKey(comandaId: string) {
   return `comanda-items:${comandaId}`;
+}
+
+export async function lockComandaItemsInTx(tx: Prisma.TransactionClient, comandaId: string) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(abs(hashtext(${comandaItemsLockKey(comandaId)})))`;
+}
+
+/**
+ * Locks are taken in a deterministic order for operations involving more than
+ * one comanda (such as group closing), avoiding lock-order inversions.
+ */
+export async function lockComandasInTx(tx: Prisma.TransactionClient, comandaIds: readonly string[]) {
+  for (const comandaId of [...new Set(comandaIds)].sort()) {
+    await lockComandaItemsInTx(tx, comandaId);
+  }
 }
 
 export async function addItemToComandaInTx(
@@ -143,7 +167,7 @@ export async function addItemToComanda(params: {
   item: AddItemInput;
 }) {
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(abs(hashtext(${comandaItemsLockKey(params.comandaId)})))`;
+    await lockComandaItemsInTx(tx, params.comandaId);
     const inner = await addItemToComandaInTx(tx, params);
     if ('error' in inner) return inner;
 
@@ -280,6 +304,47 @@ function serializeProduto(
     precos,
     precoEfetivo: templatePreco ?? (precos[0]?.preco ?? 0),
   };
+}
+
+export async function aplicarDescontoComanda(params: {
+  comandaId: string;
+  cervejariaId: string;
+  desconto: number;
+}) {
+  return prisma.$transaction(async (tx) => {
+    await lockComandaItemsInTx(tx, params.comandaId);
+    const comanda = await tx.comanda.findFirst({
+      where: {
+        id: params.comandaId,
+        status: 'ABERTA',
+        evento: { cervejariaId: params.cervejariaId },
+      },
+      include: { itens: true },
+    });
+    if (!comanda) return { error: 'Comanda não encontrada ou fechada' as const };
+    if (comanda.tipo === 'AVULSA') {
+      return { error: 'Venda avulsa não permite desconto' as const };
+    }
+
+    const subtotal = comanda.itens.reduce(
+      (sum, item) => sum + toNumber(item.precoUnit) * item.quantidade,
+      0,
+    );
+    if (params.desconto > subtotal + 0.001) {
+      return { error: 'O desconto não pode ser maior que o subtotal da comanda' as const };
+    }
+
+    await tx.comanda.update({
+      where: { id: params.comandaId },
+      data: { desconto: params.desconto },
+    });
+    await recalcComandaTotalInTx(tx, params.comandaId);
+    const updated = await tx.comanda.findUniqueOrThrow({
+      where: { id: params.comandaId },
+      include: comandaDetailInclude,
+    });
+    return { ok: true as const, comanda: updated, subtotal };
+  }, COMANDA_ITEM_TX);
 }
 
 export const pedidoInclude = {

@@ -32,7 +32,12 @@ export function loadAppEnv(): void {
   if (!fs.existsSync(envFile)) {
     const legacy = path.join(backendRoot, '.env');
     if (fs.existsSync(legacy)) return;
-    console.warn(`[env] Arquivo nao encontrado: ${envFile}`);
+    // Em producao os segredos ficam fora de prod-artifacts e sao injetados pelo
+    // launcher. Nessa situacao a ausencia do arquivo no artefato e esperada.
+    const injectedRuntimeEnv = Boolean(process.env.DATABASE_URL && process.env.JWT_SECRET);
+    if (!injectedRuntimeEnv) {
+      console.warn(`[env] Arquivo nao encontrado: ${envFile}`);
+    }
     return;
   }
 

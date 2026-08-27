@@ -1,4 +1,5 @@
-import type { FormaPagamentoQuiosque, Prisma, SessaoCaixaQuiosque } from '@prisma/client';
+import { createHash } from 'node:crypto';
+import type { PaymentMethod, Prisma, SessaoCaixaQuiosque } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
 import { centavos, diaOperacional, reais } from './venda.js';
@@ -15,12 +16,31 @@ export class CaixaInvalidoError extends Error {
 
 type SessaoCompleta = Prisma.SessaoCaixaQuiosqueGetPayload<{ include: { movimentos: true } }>;
 
-const FORMAS: FormaPagamentoQuiosque[] = [
+const FORMAS: PaymentMethod[] = [
   'DINHEIRO',
   'PIX',
   'CARTAO_DEBITO',
   'CARTAO_CREDITO',
 ];
+
+const CAIXA_TX = { maxWait: 15_000, timeout: 20_000 } as const;
+
+/** Serializa as mutações de um ponto no mesmo dia operacional. */
+function chaveLockCaixa(cervejariaId: string, pontoVendaId: string, dia: Date): bigint {
+  const digest = createHash('sha256')
+    .update(`caixa-quiosque:${cervejariaId}:${pontoVendaId}:${dia.toISOString().slice(0, 10)}`)
+    .digest();
+  return BigInt.asIntN(64, digest.readBigUInt64BE(0));
+}
+
+export async function lockCaixaEmTx(
+  tx: Pick<Prisma.TransactionClient, '$executeRaw'>,
+  cervejariaId: string,
+  pontoVendaId: string,
+  dia: Date,
+) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${chaveLockCaixa(cervejariaId, pontoVendaId, dia)})`;
+}
 
 function somaCentavos(valores: number[]): number {
   return valores.reduce((soma, valor) => soma + valor, 0);
@@ -41,8 +61,8 @@ export function calcularEsperadoDinheiroGaveta(params: {
   );
 }
 
-export function totaisPorForma(pagamentos: Array<{ forma: FormaPagamentoQuiosque; valor: unknown }>) {
-  const centavosPorForma: Record<FormaPagamentoQuiosque, number> = {
+export function totaisPorForma(pagamentos: Array<{ forma: PaymentMethod; valor: unknown }>) {
+  const centavosPorForma: Record<'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO', number> = {
     DINHEIRO: 0,
     PIX: 0,
     CARTAO_DEBITO: 0,
@@ -50,7 +70,9 @@ export function totaisPorForma(pagamentos: Array<{ forma: FormaPagamentoQuiosque
   };
 
   for (const pagamento of pagamentos) {
-    centavosPorForma[pagamento.forma] += centavos(pagamento.valor);
+    if (pagamento.forma in centavosPorForma) {
+      centavosPorForma[pagamento.forma as keyof typeof centavosPorForma] += centavos(pagamento.valor);
+    }
   }
 
   return {
@@ -79,10 +101,11 @@ async function pagamentosDaSessao(sessao: SessaoCompleta, cervejariaId: string) 
   const fechadaAte =
     sessao.status === 'FECHADO' && sessao.fechadoEm ? sessao.fechadoEm : undefined;
 
-  return prisma.pagamentoQuiosque.findMany({
+  return prisma.pagamento.findMany({
     where: {
       comanda: {
-        cervejariaId,
+        origem: 'QUIOSQUE',
+        pontoVenda: { cervejariaId },
         pontoVendaId: sessao.pontoVendaId,
         diaOperacional: sessao.diaOperacional,
         status: 'FECHADA',
@@ -96,10 +119,15 @@ async function pagamentosDaSessao(sessao: SessaoCompleta, cervejariaId: string) 
   });
 }
 
-export async function contarComandasAbertas(cervejariaId: string, pontoVendaId: string) {
-  return prisma.comandaQuiosque.count({
+export async function contarComandasAbertas(
+  cervejariaId: string,
+  pontoVendaId: string,
+  db: Pick<Prisma.TransactionClient, 'comanda'> = prisma,
+) {
+  return db.comanda.count({
     where: {
-      cervejariaId,
+      origem: 'QUIOSQUE',
+      pontoVenda: { cervejariaId },
       pontoVendaId,
       status: 'ABERTA',
       tipo: { not: 'AVULSA' },
@@ -107,8 +135,12 @@ export async function contarComandasAbertas(cervejariaId: string, pontoVendaId: 
   });
 }
 
-export async function assertSemComandasAbertas(cervejariaId: string, pontoVendaId: string) {
-  const abertas = await contarComandasAbertas(cervejariaId, pontoVendaId);
+export async function assertSemComandasAbertas(
+  cervejariaId: string,
+  pontoVendaId: string,
+  db: Pick<Prisma.TransactionClient, 'comanda'> = prisma,
+) {
+  const abertas = await contarComandasAbertas(cervejariaId, pontoVendaId, db);
   if (abertas > 0) {
     const rotulo = abertas === 1 ? '1 comanda aberta' : `${abertas} comandas abertas`;
     throw new CaixaInvalidoError(
@@ -134,8 +166,13 @@ export async function assertCaixaAberto(
   cervejariaId: string,
   pontoVendaId: string,
   dia = diaOperacional(),
+  db: Pick<Prisma.TransactionClient, 'sessaoCaixaQuiosque'> = prisma,
 ) {
-  const sessao = await buscarSessaoAtual(cervejariaId, pontoVendaId, dia);
+  const sessao = await db.sessaoCaixaQuiosque.findFirst({
+    where: { cervejariaId, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
+    include: { movimentos: { orderBy: { createdAt: 'asc' } } },
+    orderBy: { abertoEm: 'desc' },
+  });
   if (!sessao || sessao.status !== 'ABERTO') {
     throw new CaixaInvalidoError('Abra o caixa do dia antes de registrar vendas');
   }
@@ -240,17 +277,31 @@ export async function abrirCaixa(params: {
   const cardapioId = usaCardapio ? params.cardapioId : undefined;
   const produtoIds = usaCardapio ? params.produtoIds : undefined;
 
-  const sessao = await prisma.sessaoCaixaQuiosque.create({
-    data: {
-      cervejariaId: params.cervejariaId,
-      pontoVendaId: params.pontoVendaId,
-      diaOperacional: dia,
-      trocoInicial: params.trocoInicial,
-      abertoPorId: params.abertoPorId,
-      cardapioQuiosqueId: cardapioId ?? null,
-    },
-    include: { movimentos: true },
-  });
+  const sessao = await prisma.$transaction(async (tx) => {
+    await lockCaixaEmTx(tx, params.cervejariaId, params.pontoVendaId, dia);
+    const abertaAgora = await tx.sessaoCaixaQuiosque.findFirst({
+      where: {
+        cervejariaId: params.cervejariaId,
+        pontoVendaId: params.pontoVendaId,
+        diaOperacional: dia,
+        status: 'ABERTO',
+      },
+      select: { id: true },
+    });
+    if (abertaAgora) throw new CaixaInvalidoError('O caixa deste ponto já está aberto');
+
+    return tx.sessaoCaixaQuiosque.create({
+      data: {
+        cervejariaId: params.cervejariaId,
+        pontoVendaId: params.pontoVendaId,
+        diaOperacional: dia,
+        trocoInicial: params.trocoInicial,
+        abertoPorId: params.abertoPorId,
+        cardapioQuiosqueId: cardapioId ?? null,
+      },
+      include: { movimentos: true },
+    });
+  }, CAIXA_TX);
 
   await aplicarCardapioInicialTurno({
     sessaoCaixaId: sessao.id,
@@ -273,20 +324,26 @@ export async function registrarMovimento(params: {
 }) {
   if (params.valor <= 0) throw new CaixaInvalidoError('Informe um valor maior que zero');
 
-  const sessao = await assertCaixaAberto(params.cervejariaId, params.pontoVendaId);
+  const atualizada = await prisma.$transaction(async (tx) => {
+    const dia = diaOperacional();
+    await lockCaixaEmTx(tx, params.cervejariaId, params.pontoVendaId, dia);
+    const sessao = await assertCaixaAberto(params.cervejariaId, params.pontoVendaId, dia, tx);
 
-  await prisma.movimentoCaixaQuiosque.create({
-    data: {
-      sessaoId: sessao.id,
-      tipo: params.tipo,
-      valor: params.valor,
-      observacao: params.observacao,
-      registradoPorId: params.registradoPorId,
-    },
-  });
+    await tx.movimentoCaixaQuiosque.create({
+      data: {
+        sessaoId: sessao.id,
+        tipo: params.tipo,
+        valor: params.valor,
+        observacao: params.observacao,
+        registradoPorId: params.registradoPorId,
+      },
+    });
 
-  const atualizada = await buscarSessaoAtual(params.cervejariaId, params.pontoVendaId);
-  if (!atualizada) throw new CaixaInvalidoError('Sessão de caixa não encontrada');
+    return tx.sessaoCaixaQuiosque.findUniqueOrThrow({
+      where: { id: sessao.id },
+      include: { movimentos: { orderBy: { createdAt: 'asc' } } },
+    });
+  }, CAIXA_TX);
 
   return montarResumoCaixa(atualizada, params.cervejariaId);
 }
@@ -313,23 +370,27 @@ export async function fecharCaixa(params: {
     if (campo < 0) throw new CaixaInvalidoError('Valores contados não podem ser negativos');
   }
 
-  const sessao = await assertCaixaAberto(params.cervejariaId, params.pontoVendaId);
-  await assertSemComandasAbertas(params.cervejariaId, params.pontoVendaId);
+  const fechada = await prisma.$transaction(async (tx) => {
+    const dia = diaOperacional();
+    await lockCaixaEmTx(tx, params.cervejariaId, params.pontoVendaId, dia);
+    const sessao = await assertCaixaAberto(params.cervejariaId, params.pontoVendaId, dia, tx);
+    await assertSemComandasAbertas(params.cervejariaId, params.pontoVendaId, tx);
 
-  const fechada = await prisma.sessaoCaixaQuiosque.update({
-    where: { id: sessao.id },
-    data: {
-      status: 'FECHADO',
-      fechadoPorId: params.fechadoPorId,
-      fechadoEm: new Date(),
-      contadoDinheiro: params.contadoDinheiro,
-      contadoPix: params.contadoPix,
-      contadoCartaoDebito: params.contadoCartaoDebito,
-      contadoCartaoCredito: params.contadoCartaoCredito,
-      observacaoFechamento: params.observacaoFechamento,
-    },
-    include: { movimentos: { orderBy: { createdAt: 'asc' } } },
-  });
+    return tx.sessaoCaixaQuiosque.update({
+      where: { id: sessao.id },
+      data: {
+        status: 'FECHADO',
+        fechadoPorId: params.fechadoPorId,
+        fechadoEm: new Date(),
+        contadoDinheiro: params.contadoDinheiro,
+        contadoPix: params.contadoPix,
+        contadoCartaoDebito: params.contadoCartaoDebito,
+        contadoCartaoCredito: params.contadoCartaoCredito,
+        observacaoFechamento: params.observacaoFechamento,
+      },
+      include: { movimentos: { orderBy: { createdAt: 'asc' } } },
+    });
+  }, CAIXA_TX);
 
   return montarResumoCaixa(fechada, params.cervejariaId);
 }
@@ -344,10 +405,11 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
   }
 
   const caixa = await montarResumoCaixa(sessao, cervejariaId);
-  const pagamentos = await prisma.pagamentoQuiosque.findMany({
+  const pagamentos = await prisma.pagamento.findMany({
     where: {
       comanda: {
-        cervejariaId,
+        origem: 'QUIOSQUE',
+        pontoVenda: { cervejariaId },
         pontoVendaId: sessao.pontoVendaId,
         diaOperacional: sessao.diaOperacional,
         status: 'FECHADA',
@@ -358,9 +420,10 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
   });
   const comandaIds = new Set(pagamentos.map((pagamento) => pagamento.comandaId));
 
-  const vendasAvulsas = await prisma.comandaQuiosque.count({
+  const vendasAvulsas = await prisma.comanda.count({
     where: {
-      cervejariaId,
+      origem: 'QUIOSQUE',
+      pontoVenda: { cervejariaId },
       pontoVendaId: sessao.pontoVendaId,
       tipo: 'AVULSA',
       status: 'FECHADA',
@@ -383,15 +446,16 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
     : [];
   const nomeUsuario = (id: string | null) => usuarios.find((usuario) => usuario.id === id)?.nome ?? null;
 
-  const comandas = await prisma.comandaQuiosque.findMany({
+  const comandas = await prisma.comanda.findMany({
     where: {
-      cervejariaId,
+      origem: 'QUIOSQUE',
+      pontoVenda: { cervejariaId },
       pontoVendaId: sessao.pontoVendaId,
       diaOperacional: sessao.diaOperacional,
       status: 'FECHADA',
       fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm },
     },
-    include: { pedidos: { include: { itens: true } } },
+    include: { itens: true },
   });
 
   const porProduto = new Map<
@@ -401,21 +465,19 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
   let itensVendidos = 0;
 
   for (const comanda of comandas) {
-    for (const pedido of comanda.pedidos) {
-      if (!pedidoContaNaComanda(pedido, comanda)) continue;
-      for (const item of pedido.itens) {
-        itensVendidos += item.quantidade;
-        const itemValor = toNumber(item.precoUnit) * item.quantidade;
-        const prod = porProduto.get(item.produtoId) ?? {
-          produtoId: item.produtoId,
-          nome: item.nome,
-          quantidade: 0,
-          receita: 0,
-        };
-        prod.quantidade += item.quantidade;
-        prod.receita += itemValor;
-        porProduto.set(item.produtoId, prod);
-      }
+    for (const item of comanda.itens) {
+      if (!item.produtoQuiosqueId) continue;
+      itensVendidos += item.quantidade;
+      const itemValor = toNumber(item.precoUnit) * item.quantidade;
+      const prod = porProduto.get(item.produtoQuiosqueId) ?? {
+        produtoId: item.produtoQuiosqueId,
+        nome: item.nome ?? 'Item',
+        quantidade: 0,
+        receita: 0,
+      };
+      prod.quantidade += item.quantidade;
+      prod.receita += itemValor;
+      porProduto.set(item.produtoQuiosqueId, prod);
     }
   }
 

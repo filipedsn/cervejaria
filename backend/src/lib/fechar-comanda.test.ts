@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { allocatePagamentosToComandas } from './fechar-comanda.js';
+import {
+  allocatePagamentosToComandas,
+  assertPagamentosParaTotal,
+  assertValorPagamentosParaTotal,
+} from './fechar-comanda.js';
 
 describe('allocatePagamentosToComandas', () => {
   it('distribui pagamento único entre comandas em ordem de id', () => {
@@ -89,6 +93,45 @@ describe('allocatePagamentosToComandas', () => {
       () =>
         allocatePagamentosToComandas([{ id: 'a', total: 50 }], [{ forma: 'PIX', valor: 60 }]),
       /Sobra no pool/,
+    );
+  });
+});
+
+describe('assertPagamentosParaTotal', () => {
+  it('aceita lista vazia quando total é zero (cortesia)', () => {
+    assert.doesNotThrow(() => assertPagamentosParaTotal(0, []));
+  });
+
+  it('rejeita pagamento vazio com total positivo', () => {
+    assert.throws(() => assertPagamentosParaTotal(10, []), /Informe como o cliente pagou/);
+  });
+
+  it('rejeita pagamento não vazio com total zero', () => {
+    assert.throws(
+      () => assertPagamentosParaTotal(0, [{ valor: 1 }]),
+      /Conta zerada não exige pagamento/,
+    );
+  });
+
+  it('aceita pagamento não vazio com total positivo', () => {
+    assert.doesNotThrow(() => assertPagamentosParaTotal(25.5, [{ valor: 25.5 }]));
+  });
+});
+
+describe('assertValorPagamentosParaTotal', () => {
+  it('rejeita pagamento calculado sobre total desatualizado', () => {
+    assert.throws(
+      () => assertValorPagamentosParaTotal(24, [{ valor: 12 }]),
+      /difere do total da comanda/,
+    );
+  });
+
+  it('aceita pagamentos que somam o total final', () => {
+    assert.doesNotThrow(() =>
+      assertValorPagamentosParaTotal(24, [
+        { valor: 10 },
+        { valor: 14 },
+      ]),
     );
   });
 });

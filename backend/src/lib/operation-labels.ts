@@ -4,6 +4,7 @@ const OPERATION_LABELS: Record<string, string> = {
   'transacao.comanda_criada': 'Abrir comanda',
   'transacao.comanda_item_adicionado': 'Incluir item na comanda',
   'transacao.comanda_item_removido': 'Remover item da comanda',
+  'transacao.comanda_desconto_aplicado': 'Aplicar desconto na comanda',
   'transacao.comanda_fechada': 'Fechar comanda',
   'transacao.comanda_cancelada': 'Cancelar comanda',
   'transacao.evento_criado': 'Criar evento',

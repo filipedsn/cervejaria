@@ -5,6 +5,8 @@ export interface ProdutoQuiosque {
   precoUnit: string;
   /** Preço do template quando turno/cardápio vinculado; senão igual ao catálogo. */
   precoEfetivo?: number;
+  /** True quando há override gravado só neste turno. */
+  precoOverrideTurno?: boolean;
   exigePreparo: boolean;
   controlaEstoque: boolean;
   ativo: boolean;
@@ -33,6 +35,8 @@ export interface CardapioTurnoQuiosque {
   produtoIds: string[];
   catalogo: ProdutoQuiosque[];
   editavel: boolean;
+  cardapioId?: string | null;
+  cardapioNome?: string | null;
 }
 
 export type TurnoCardapioModo = 'salvo' | 'montar' | 'depois';
@@ -186,8 +190,6 @@ export interface ComandaQuiosque {
   subtotal: number;
   desconto: number;
   total: number;
-  pago: number;
-  saldo: number;
   pedidos: PedidoQuiosque[];
   pagamentos: PagamentoQuiosque[];
 }
@@ -235,11 +237,9 @@ export function pedidoVaiParaCozinha(itens: Array<{ exigePreparo: boolean }>): b
   return itens.some((item) => item.exigePreparo);
 }
 
-/** Pedido da cozinha so entra no total da comanda apos ENTREGUE. */
+/** Itens cancelados não entram na exibição de valores confirmados. */
 export function pedidoConfirmadoNaComanda(pedido: PedidoQuiosque): boolean {
-  if (pedido.status === 'CANCELADO') return false;
-  if (pedido.itens.some((item) => item.exigePreparo)) return pedido.status === 'ENTREGUE';
-  return true;
+  return pedido.status !== 'CANCELADO';
 }
 
 export function temPedidoCozinhaPendente(comanda: Pick<ComandaQuiosque, 'pedidos'>): boolean {
@@ -422,6 +422,24 @@ export function podeIncrementarLinhaCarrinho(
   const limite = limiteEstoqueCarrinho(produto, saldos, moduloControlaEstoque);
   if (limite === null) return true;
   return quantidadeAtual < limite;
+}
+
+/** Item ja lancado na comanda: o estoque ja foi baixado, so precisa de saldo livre para subir. */
+export function podeIncrementarItemComanda(
+  produto: Pick<ProdutoQuiosque, 'id' | 'controlaEstoque'> | undefined,
+  saldos: Map<string, number> | undefined,
+  moduloControlaEstoque: boolean,
+): boolean {
+  if (!produto) return true;
+  if (!moduloControlaEstoque || !produto.controlaEstoque || !saldos) return true;
+  return (saldos.get(produto.id) ?? 0) > 0;
+}
+
+export function podeEditarItemComanda(
+  comanda: Pick<ComandaQuiosque, 'status'>,
+  pedido: Pick<PedidoQuiosque, 'status'>,
+): boolean {
+  return comanda.status === 'ABERTA' && pedido.status !== 'CANCELADO';
 }
 
 export const TIPOS_SAIDA_ESTOQUE: Array<{ valor: TipoSaidaEstoque; label: string }> = [

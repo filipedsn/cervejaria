@@ -44,7 +44,7 @@ export function recordComandaFechada(valorCentavos: number, origem: 'cervejaria'
 export function recordVendaAvulsa(valorCentavos: number): void {
   const attrs = businessAttrs('venda_avulsa');
   comandasFechadas.add(1, attrs);
-  valorVendidoCentavos.add(valorCentavos, attrs);
+  if (valorCentavos > 0) valorVendidoCentavos.add(valorCentavos, attrs);
 }
 
 export function recordTempoPreparoCozinha(durationMs: number): void {

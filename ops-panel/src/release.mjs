@@ -129,6 +129,98 @@ export function isAgentBranch(branch) {
 }
 
 /**
+ * Decide se o repositorio local deve ser alinhado com origin/main automaticamente.
+ * Funcao pura — testavel sem executar git.
+ */
+export function shouldAutoSyncMain(state) {
+  if (!state.gitAvailable) return false;
+  if (state.workingTreeDirty) return false;
+  if (!state.originMain?.sha) return false;
+
+  const branch = state.head?.branch || '';
+  const behind = state.behindOriginMain || 0;
+  const ahead = state.aheadOriginMain || 0;
+  const onMain = branch === 'main';
+
+  if (onMain && ahead > 0) return false;
+  if (onMain && behind === 0 && ahead === 0 && state.headOnOriginMain) return false;
+
+  return branch !== 'main' || behind > 0 || !state.headOnOriginMain;
+}
+
+/**
+ * Executa checkout main + pull --ff-only quando shouldAutoSyncMain permitir.
+ * Chamado ao verificar release e antes do deploy.
+ */
+export async function tryAutoSyncLocalMain(projectRoot, state) {
+  if (!shouldAutoSyncMain(state)) {
+    return { attempted: false, performed: false };
+  }
+
+  const previousBranch = state.head?.branch;
+  const previousSha = state.head?.sha;
+
+  const fetch = await runGit(['fetch', 'origin', 'main', '--quiet'], projectRoot, 60_000);
+  if (!fetch.ok) {
+    return {
+      attempted: true,
+      performed: false,
+      previousBranch,
+      previousSha,
+      error: fetch.stderr || 'git fetch origin main falhou',
+    };
+  }
+
+  if (previousBranch !== 'main') {
+    const checkout = await runGit(['checkout', 'main'], projectRoot);
+    if (!checkout.ok) {
+      return {
+        attempted: true,
+        performed: false,
+        previousBranch,
+        previousSha,
+        error: checkout.stderr || 'git checkout main falhou',
+      };
+    }
+  }
+
+  const pull = await runGit(['pull', '--ff-only', 'origin', 'main'], projectRoot, 60_000);
+  if (!pull.ok) {
+    return {
+      attempted: true,
+      performed: false,
+      previousBranch,
+      previousSha,
+      error: pull.stderr || 'git pull --ff-only origin main falhou',
+    };
+  }
+
+  const newHead = await runGit(['rev-parse', 'HEAD'], projectRoot);
+  return {
+    attempted: true,
+    performed: true,
+    previousBranch,
+    previousSha,
+    newSha: newHead.ok ? newHead.stdout : undefined,
+  };
+}
+
+/** Coleta estado git e tenta alinhar main com origin/main quando seguro. */
+export async function collectGitStateWithAutoSync(projectRoot, deployedSha) {
+  let git = await collectGitState(projectRoot, deployedSha);
+  if (!git.gitAvailable) {
+    return { git, sync: { attempted: false, performed: false } };
+  }
+
+  const sync = await tryAutoSyncLocalMain(projectRoot, git);
+  if (sync.performed) {
+    git = await collectGitState(projectRoot, deployedSha);
+  }
+
+  return { git, sync };
+}
+
+/**
  * Decide se o deploy pode rodar. Funcao pura: recebe os fatos ja coletados e
  * devolve os impedimentos, para que a regra seja testavel sem git nem rede.
  */

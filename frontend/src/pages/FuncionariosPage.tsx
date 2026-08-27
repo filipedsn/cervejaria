@@ -10,8 +10,8 @@ import { PageHeader } from '../components/PageHeader';
 import { PasswordWithConfirmFields, validatePasswordPair } from '../components/PasswordWithConfirmFields';
 import { ToggleAtivo } from '../components/ToggleAtivo';
 
-const TOGGLE_DESCONTO_ATIVO = 'Desativar desconto no quiosque';
-const TOGGLE_DESCONTO_INATIVO = 'Ativar desconto no quiosque';
+const TOGGLE_DESCONTO_ATIVO = 'Desativar desconto nas comandas';
+const TOGGLE_DESCONTO_INATIVO = 'Ativar desconto nas comandas';
 
 function PermissaoDescontoRow({
   ativo,
@@ -25,8 +25,8 @@ function PermissaoDescontoRow({
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface-lighter px-3 py-3">
       <div className="min-w-0 flex-1">
-        <p className="text-base font-semibold text-ink">Pode dar desconto no quiosque</p>
-        <p className="text-sm text-ink-muted mt-0.5">Permite aplicar desconto ao fechar comandas.</p>
+        <p className="text-base font-semibold text-ink">Pode dar desconto nas comandas</p>
+        <p className="text-sm text-ink-muted mt-0.5">Permite aplicar desconto ao fechar comandas no quiosque e em eventos.</p>
       </div>
       <ToggleAtivo
         ativo={ativo}

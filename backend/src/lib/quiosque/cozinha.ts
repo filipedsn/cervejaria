@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { Prisma, StatusPedidoQuiosque, TipoComandaQuiosque } from '@prisma/client';
+import type { Prisma, StatusPedidoQuiosque, ComandaTipo } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { emitToCervejaria } from '../realtime.js';
 import { toNumber } from '../utils.js';
@@ -22,7 +22,7 @@ export const TRANSICOES: Record<StatusPedidoQuiosque, StatusPedidoQuiosque[]> = 
 };
 
 export const INCLUDE_PEDIDO_COZINHA = {
-  itens: true,
+  itensComanda: true,
   comanda: { select: { id: true, tipo: true, identificador: true, numero: true } },
 } as const;
 
@@ -49,11 +49,11 @@ export function resumoPedidoCozinha(pedido: PedidoCozinha) {
       identificador: pedido.comanda.identificador,
       numero: pedido.comanda.numero,
     },
-    itens: pedido.itens
+    itens: pedido.itensComanda
       .filter((item) => item.exigePreparo)
       .map((item) => ({
         id: item.id,
-        nome: item.nome,
+        nome: item.nome ?? '',
         quantidade: item.quantidade,
         precoUnit: toNumber(item.precoUnit),
       })),
@@ -72,16 +72,26 @@ export async function registrarHistoricoStatusPedido(
   });
 }
 
+/** A linha foi alterada por outra transição depois da leitura que a originou. */
+export class StatusPedidoCozinhaDesatualizadoError extends Error {
+  statusCode = 409;
+
+  constructor() {
+    super('O status do pedido foi alterado por outra operação. Atualize a fila e tente novamente.');
+    this.name = 'StatusPedidoCozinhaDesatualizadoError';
+  }
+}
+
 export async function aplicarStatusPedidoCozinha(
   tx: TxClient,
   pedido: { id: string; status: StatusPedidoQuiosque },
   novoStatus: StatusPedidoQuiosque,
   agora = new Date(),
 ) {
-  await registrarHistoricoStatusPedido(tx, pedido.id, novoStatus, agora);
-
-  return tx.pedidoQuiosque.update({
-    where: { id: pedido.id },
+  // A comparação no WHERE é o controle otimista: uma leitura anterior não
+  // autoriza sobrescrever a transição que já venceu a corrida.
+  const resultado = await tx.pedidoQuiosque.updateMany({
+    where: { id: pedido.id, status: pedido.status },
     data: {
       status: novoStatus,
       statusDesde: agora,
@@ -92,6 +102,14 @@ export async function aplicarStatusPedidoCozinha(
             ? null
             : undefined,
     },
+  });
+
+  if (resultado.count !== 1) throw new StatusPedidoCozinhaDesatualizadoError();
+
+  await registrarHistoricoStatusPedido(tx, pedido.id, novoStatus, agora);
+
+  return tx.pedidoQuiosque.findUniqueOrThrow({
+    where: { id: pedido.id },
     include: INCLUDE_PEDIDO_COZINHA,
   });
 }
@@ -100,26 +118,25 @@ export function pedidoVaiParaCozinha(itens: Array<{ exigePreparo: boolean }>): b
   return itens.some((item) => item.exigePreparo);
 }
 
-/** Pedido da cozinha so entra no total da comanda apos ENTREGUE; demais contam na hora. */
+/** Itens cancelados não entram no total; demais contam ao ser lançados. */
 export function pedidoContaNaComanda(
   pedido: {
     status: StatusPedidoQuiosque;
     itens: Array<{ exigePreparo: boolean }>;
   },
-  comanda?: { tipo: TipoComandaQuiosque },
+  _comanda?: { tipo: ComandaTipo },
 ): boolean {
   if (pedido.status === 'CANCELADO') return false;
-  if (comanda?.tipo === 'AVULSA') return true;
-  if (pedidoVaiParaCozinha(pedido.itens)) return pedido.status === 'ENTREGUE';
   return true;
 }
 
 export function temPedidoCozinhaPendente(
-  pedidos: Array<{ status: StatusPedidoQuiosque; itens: Array<{ exigePreparo: boolean }> }>,
+  pedidos: Array<{ status: StatusPedidoQuiosque; itens?: Array<{ exigePreparo: boolean }>; itensComanda?: Array<{ exigePreparo: boolean }> }>,
 ): boolean {
-  return pedidos.some(
-    (pedido) => pedidoVaiParaCozinha(pedido.itens) && STATUS_NA_FILA.includes(pedido.status),
-  );
+  return pedidos.some((pedido) => {
+    const itens = pedido.itensComanda ?? pedido.itens ?? [];
+    return pedidoVaiParaCozinha(itens) && STATUS_NA_FILA.includes(pedido.status);
+  });
 }
 
 export function notificarComandaQuiosqueAtualizada(
@@ -143,7 +160,7 @@ export function notificarCozinha(
   pedido: PedidoCozinha,
   novo: boolean,
 ) {
-  if (!pedidoVaiParaCozinha(pedido.itens)) return;
+  if (!pedidoVaiParaCozinha(pedido.itensComanda)) return;
 
   emitToCervejaria(app.io, cervejariaId, {
     type: novo ? 'quiosque:pedido-novo' : 'quiosque:pedido-atualizado',
@@ -158,9 +175,9 @@ export function notificarCozinha(
 export async function notificarPedidoNovo(
   app: FastifyInstance,
   cervejariaId: string,
-  pedido: { id: string; itens: Array<{ exigePreparo: boolean }> },
+  pedido: { id: string; itensComanda: Array<{ exigePreparo: boolean }> },
 ) {
-  if (!pedidoVaiParaCozinha(pedido.itens)) return;
+  if (!pedidoVaiParaCozinha(pedido.itensComanda)) return;
 
   const completo = await prisma.pedidoQuiosque.findUnique({
     where: { id: pedido.id },

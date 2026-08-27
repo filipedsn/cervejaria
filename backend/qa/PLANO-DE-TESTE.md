@@ -107,7 +107,7 @@ Token da **Cervejaria A** tentando acessar recursos da **Cervejaria B**. Esperad
 
 | ID | Verificação |
 |----|-------------|
-| DB-01 | `Comanda.total == Σ(item.precoUnit × qtd)` em todas as comandas QA |
+| DB-01 | `Comanda.total == max(0, Σ(item.precoUnit × qtd) − desconto)` em todas as comandas QA |
 | DB-02 | Nenhuma comanda com cliente de outra cervejaria |
 | DB-03 | Nenhum item órfão / produto de outra cervejaria numa comanda |
 | DB-04 | Arena: nº de itens == Σ sucessos dos workers |
