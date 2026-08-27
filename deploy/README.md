@@ -81,10 +81,21 @@ O script pede confirmacao digitando `DEPLOY`, depois executa:
 
 1. Backup do banco `cervejaria`
 2. Build frontend em staging (`build:prod`) e backend (`backend/dist`)
-3. Publicacao atomica em `deploy/prod-artifacts/` + `manifest.json`
-4. Migrations em producao (`db:migrate:prod`)
-5. Restart da API (`:3001`) â€” tunnel Cloudflare permanece ativo
-6. Smoke test (`/api/ready`, `/`) + `prod:status`
+3. Parada da API e do Alert Poller, depois de staging valido
+4. Migrations e backfill em producao (`db:migrate:prod`)
+5. Publicacao atomica em `deploy/prod-artifacts/` + `manifest.json`
+6. Restart da API (`:3001`) â€” tunnel Cloudflare permanece ativo
+7. Smoke test (`/api/ready`, `/`) + `prod:status`
+
+A API e os processos consumidores do banco sao interrompidos antes de migrations de
+producao para impedir que a versao anterior execute sobre um schema em transicao. Se
+uma migration, backfill, swap, start ou smoke falhar depois desse ponto, o watchdog fica
+pausado ate intervencao operacional validar banco e artefatos; nao ha rollback automatico
+de banco nem reinicio automatico da release anterior.
+
+O deploy nao faz pre-analise propria para distinguir migration pendente de no-op. Assim,
+quando `-SkipMigrate` nao for usado, aplica a mesma janela controlada antes de chamar o
+Prisma; isso evita criar um parser ou uma segunda regra de migrations.
 
 ### Flags uteis
 

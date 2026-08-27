@@ -42,6 +42,23 @@ Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment production
 $buildFrontend = -not $BackendOnly
 $buildBackend = -not $FrontendOnly
 $watchdogPidFile = Join-Path $paths.RuntimeDir 'watchdog.pid'
+$script:databaseTransitionStarted = $false
+$script:databaseTransitionPhase = 'PRE_MIGRATION'
+$script:failureReason = ''
+$script:migrationStartedAt = $null
+$script:migrationCompleted = $false
+$script:migrationCompletedAt = $null
+$script:backfillStarted = $false
+$script:backfillStartedAt = $null
+$script:backfillCompleted = $false
+$script:backfillCompletedAt = $null
+$script:swapStarted = $false
+$script:swapStartedAt = $null
+$script:swapCompleted = $false
+$script:swapCompletedAt = $null
+$script:recoveryContext = $null
+$script:productionProcessesStopped = $false
+$script:deployPauseOwned = $false
 
 $plan = [ordered]@{
   Backup   = -not $SkipBackup
@@ -334,6 +351,91 @@ function Invoke-NpmStep {
   }
 }
 
+function Get-DeployManifestSummary {
+  if (-not (Test-Path $paths.ProdManifest)) { return $null }
+  try {
+    $manifest = Get-Content $paths.ProdManifest -Raw -Encoding UTF8 | ConvertFrom-Json
+    return [ordered]@{
+      gitSha     = if ($manifest.gitSha) { [string]$manifest.gitSha } else { $null }
+      deployedAt = if ($manifest.deployedAt) { [string]$manifest.deployedAt } else { $null }
+    }
+  } catch {
+    return $null
+  }
+}
+
+function Get-LatestProdBackupSummary {
+  $backupDir = Join-Path $paths.ProjectRoot 'deploy\backups'
+  $file = Get-ChildItem -Path $backupDir -Filter 'backup-prod-*.sql' -File -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTimeUtc -Descending |
+    Select-Object -First 1
+  if (-not $file) { return $null }
+
+  return [ordered]@{
+    name        = $file.Name
+    createdAt   = $file.LastWriteTimeUtc.ToString('o')
+    relativePath = 'deploy/backups/' + $file.Name
+  }
+}
+
+function Get-SafeRecoveryErrorSummary {
+  param([string]$Message)
+
+  $summary = (($Message -replace '\s+', ' ').Trim())
+  $summary = [regex]::Replace($summary, '(?i)[a-z][a-z0-9+.-]*://\S+', '[url-removida]')
+  $summary = [regex]::Replace($summary, '(?i)(password|token|secret|api[_-]?key)\s*[=:]\s*\S+', '$1=[removido]')
+  if ($summary.Length -gt 500) { $summary = $summary.Substring(0, 500) + '...' }
+  if (-not $summary) { return 'Falha sem mensagem resumida. Consulte o log do deploy.' }
+  return $summary
+}
+
+function Initialize-DeployRecoveryContext {
+  $script:recoveryContext = [ordered]@{
+    deployStartedAt = (Get-Date).ToUniversalTime().ToString('o')
+    previousRelease = Get-DeployManifestSummary
+    candidateRelease = [ordered]@{ gitSha = Get-GitSha -ProjectRoot $paths.ProjectRoot }
+    backup = $null
+  }
+}
+
+function Write-DeployRecoveryState {
+  $state = [ordered]@{
+    active           = $true
+    recordedAt       = (Get-Date).ToUniversalTime().ToString('o')
+    deployStartedAt  = $script:recoveryContext.deployStartedAt
+    failedAt         = (Get-Date).ToUniversalTime().ToString('o')
+    failurePhase     = $script:databaseTransitionPhase
+    failureReason    = Get-SafeRecoveryErrorSummary -Message $script:failureReason
+    previousRelease  = $script:recoveryContext.previousRelease
+    candidateRelease = $script:recoveryContext.candidateRelease
+    backup           = $script:recoveryContext.backup
+    migration        = [ordered]@{
+      started   = [bool]$script:databaseTransitionStarted
+      startedAt = $script:migrationStartedAt
+      completed = [bool]$script:migrationCompleted
+      completedAt = $script:migrationCompletedAt
+    }
+    backfill = [ordered]@{
+      started   = [bool]$script:backfillStarted
+      startedAt = $script:backfillStartedAt
+      completed = [bool]$script:backfillCompleted
+      completedAt = $script:backfillCompletedAt
+    }
+    swap = [ordered]@{
+      started   = [bool]$script:swapStarted
+      startedAt = $script:swapStartedAt
+      completed = [bool]$script:swapCompleted
+      completedAt = $script:swapCompletedAt
+    }
+    watchdog = [ordered]@{
+      paused    = $true
+      pauseFile = 'deploy/runtime/deploy.pause'
+    }
+  }
+
+  $state | ConvertTo-Json -Depth 6 | Set-Content -Path (Get-DeployRecoveryFile -Paths $paths) -Encoding UTF8
+}
+
 function Stop-ProcessById {
   param([int]$ProcessId, [string]$Label)
 
@@ -362,7 +464,29 @@ function Stop-ProcessById {
   throw "Nao foi possivel encerrar $Label (PID $ProcessId)."
 }
 
+function Stop-ProductionDatabaseConsumers {
+  if ($script:productionProcessesStopped) { return }
+
+  Write-Host ''
+  Write-Host 'Parando API e alert poller antes da alteracao do banco...' -ForegroundColor Cyan
+  foreach ($target in @(Get-DeployProcessTargets)) {
+    Stop-ProcessById -ProcessId $target.ProcessId -Label $target.Label
+  }
+  Remove-Item $paths.ApiPidFile -Force -ErrorAction SilentlyContinue
+  Remove-Item $paths.AlertPollerPidFile -Force -ErrorAction SilentlyContinue
+
+  foreach ($port in @($paths.ApiPort, $paths.AlertPollerHealthPort)) {
+    if ($port -and (Test-PortListening -Port $port)) {
+      $stalePid = Get-PortListenerPid -Port $port
+      throw "Porta $port continua em uso (PID $stalePid) apos encerrar os processos."
+    }
+  }
+  Start-Sleep -Seconds 1
+  $script:productionProcessesStopped = $true
+}
+
 function Invoke-DeployBody {
+  Initialize-DeployRecoveryContext
   Merge-StrayProdUploads -Paths $paths
 
   if ($plan.Backup) {
@@ -370,6 +494,7 @@ function Invoke-DeployBody {
     Write-Host 'Backup do banco cervejaria...' -ForegroundColor Cyan
     & "$PSScriptRoot\backup-db.ps1"
     if ($LASTEXITCODE -ne 0) { throw 'Backup falhou.' }
+    $script:recoveryContext.backup = Get-LatestProdBackupSummary
   }
 
   Ensure-ProdArtifactsBaseline -Paths $paths
@@ -393,33 +518,47 @@ function Invoke-DeployBody {
     throw 'backend prod-artifacts ausente. Rode deploy completo ou -BackendOnly primeiro.'
   }
 
+  # Backup, build e staging ja foram validados. A partir daqui nenhum consumidor
+  # da release anterior pode operar enquanto o schema ou os dados mudam.
+  if ($plan.Migrate -or $plan.Backfill) {
+    Stop-ProductionDatabaseConsumers
+  }
+
   if ($plan.Migrate) {
+    $script:databaseTransitionStarted = $true
+    $script:databaseTransitionPhase = 'MIGRATION_STARTED'
+    $script:migrationStartedAt = (Get-Date).ToUniversalTime().ToString('o')
     Invoke-NpmStep -Label 'Migrations (producao)' -NpmArgs @('run', 'db:migrate:prod')
+    $script:migrationCompleted = $true
+    $script:migrationCompletedAt = (Get-Date).ToUniversalTime().ToString('o')
+    $script:databaseTransitionPhase = 'MIGRATION_COMPLETED'
   }
 
   if ($plan.Backfill) {
+    $script:databaseTransitionPhase = 'BACKFILL_STARTED'
+    $script:backfillStarted = $true
+    $script:backfillStartedAt = (Get-Date).ToUniversalTime().ToString('o')
     Invoke-NpmStep -Label 'Backfill ClienteEstatisticas (producao)' -NpmArgs @('run', 'db:backfill-cliente-stats:prod', '--prefix', 'backend')
+    $script:backfillCompleted = $true
+    $script:backfillCompletedAt = (Get-Date).ToUniversalTime().ToString('o')
+    $script:databaseTransitionPhase = 'BACKFILL_COMPLETED'
   }
 
   if ($plan.Publish) {
-    Write-Host ''
-    Write-Host 'Liberando artefatos (parando API e alert poller)...' -ForegroundColor Cyan
-    foreach ($target in @(Get-DeployProcessTargets)) {
-      Stop-ProcessById -ProcessId $target.ProcessId -Label $target.Label
-    }
-    Remove-Item $paths.ApiPidFile -Force -ErrorAction SilentlyContinue
-    Remove-Item $paths.AlertPollerPidFile -Force -ErrorAction SilentlyContinue
-
-    foreach ($port in @($paths.ApiPort, $paths.AlertPollerHealthPort)) {
-      if ($port -and (Test-PortListening -Port $port)) {
-        $stalePid = Get-PortListenerPid -Port $port
-        throw "Porta $port continua em uso (PID $stalePid) apos encerrar os processos."
-      }
-    }
-    Start-Sleep -Seconds 1
+    Stop-ProductionDatabaseConsumers
 
     Write-Host 'Publicando artefatos de producao...' -ForegroundColor Cyan
+    if ($script:databaseTransitionStarted) {
+      $script:databaseTransitionPhase = 'SWAP_STARTED'
+      $script:swapStarted = $true
+      $script:swapStartedAt = (Get-Date).ToUniversalTime().ToString('o')
+    }
     Publish-ProdArtifactsSwap -Paths $paths -Frontend:$buildFrontend -Backend:$buildBackend
+    if ($script:databaseTransitionStarted) {
+      $script:swapCompleted = $true
+      $script:swapCompletedAt = (Get-Date).ToUniversalTime().ToString('o')
+      $script:databaseTransitionPhase = 'SWAP_COMPLETED'
+    }
     Write-ProdManifest -Paths $paths -DeployMeta @{
       frontendOnly = [bool]$FrontendOnly
       backendOnly  = [bool]$BackendOnly
@@ -435,11 +574,20 @@ function Invoke-DeployBody {
 
   Write-Host ''
   Write-Host 'Reiniciando API...' -ForegroundColor Cyan
+  if ($script:databaseTransitionStarted) {
+    $script:databaseTransitionPhase = 'STARTING_NEW_API'
+  }
   & "$PSScriptRoot\restart-api.ps1" -Quiet
-  if ($LASTEXITCODE -ne 0) { throw 'Restart da API falhou.' }
+  if ($LASTEXITCODE -ne 0) {
+    $script:databaseTransitionPhase = 'START_FAILED'
+    throw 'Restart da API falhou.'
+  }
 
   Write-Host ''
   Write-Host 'Smoke test...' -ForegroundColor Cyan
+  if ($script:databaseTransitionStarted) {
+    $script:databaseTransitionPhase = 'SMOKE_RUNNING'
+  }
   $readyOk = Test-ApiHealthy -HealthUrl $paths.ReadyUrl -Retries 5
   $frontendOk = Test-FrontendHealthy -FrontendUrl $paths.FrontendUrl -Retries 3
 
@@ -447,6 +595,8 @@ function Invoke-DeployBody {
   Write-Host "  /          : $(if ($frontendOk) { 'OK' } else { 'FALHOU' })" -ForegroundColor $(if ($frontendOk) { 'Green' } else { 'Red' })
 
   if (-not $readyOk -or -not $frontendOk) {
+    $script:databaseTransitionPhase = 'SMOKE_FAILED'
+    $script:failureReason = 'Smoke test falhou para /api/ready ou frontend.'
     Write-Host ''
     Write-Host "Deploy concluido com falha no smoke test. Veja $($paths.ApiErrLog)" -ForegroundColor Red
     $script:deployExit = 1
@@ -528,6 +678,7 @@ try {
       Invoke-SelfElevatedDeploy
     } else {
       Set-DeployPause -Paths $paths -Reason 'prod:deploy'
+      $script:deployPauseOwned = $true
       Invoke-DeployBody
     }
   }
@@ -536,12 +687,36 @@ try {
 } catch {
   Write-Host ''
   Write-Host $_.Exception.Message -ForegroundColor Red
+  $script:failureReason = Get-SafeRecoveryErrorSummary -Message $_.Exception.Message
+  if ($script:databaseTransitionStarted) {
+    Write-Host "Falha apos inicio da alteracao do banco (fase: $($script:databaseTransitionPhase))." -ForegroundColor Red
+  }
   Write-Host 'Deploy abortado. Verifique npm run prod:status' -ForegroundColor Yellow
   $deployExit = 1
 } finally {
-  Clear-DeployPause -Paths $paths
+  $manualInterventionRequired = $script:databaseTransitionStarted -and $deployExit -ne 0
+  if ($manualInterventionRequired) {
+    Set-DeployPause -Paths $paths `
+      -Reason "deploy recovery manual: $($script:databaseTransitionPhase)" `
+      -ManualInterventionRequired
+    try {
+      Write-DeployRecoveryState
+    } catch {
+      Write-Host 'Nao foi possivel persistir deploy-recovery.json; deploy.pause continua ativo por seguranca.' -ForegroundColor Red
+    }
+    Write-Host ''
+    Write-Host 'PRODUCAO EM ESTADO DE RECUPERACAO MANUAL' -ForegroundColor Red
+    Write-Host "Estado: $(Get-DeployRecoveryFile -Paths $paths)" -ForegroundColor Yellow
+    Write-Host 'O watchdog permanece pausado. Valide banco e artefatos antes de liberar o estado.' -ForegroundColor Yellow
+  } elseif ($script:deployPauseOwned) {
+    if ($deployExit -eq 0) {
+      Remove-Item (Get-DeployRecoveryFile -Paths $paths) -Force -ErrorAction SilentlyContinue
+    }
+    Clear-DeployPause -Paths $paths
+  }
 
-  # Watchdog de volta no ar mesmo em falha: se o deploy abortou, ele recupera a release anterior.
+  # Em falha anterior a migration, o watchdog pode recuperar a release atual. Depois
+  # de uma transicao de banco, deploy.pause permanece e bloqueia essa recuperacao.
   if (-not $DryRun -and -not $PreflightOnly -and $Confirmed) {
     $watchdogPid = Get-PidFromFile -PidFile $watchdogPidFile
     if (-not (Test-ProcessAlive -ProcessId $watchdogPid)) {

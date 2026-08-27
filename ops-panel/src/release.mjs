@@ -97,6 +97,59 @@ export function readRollbackPoint(previousDir) {
   };
 }
 
+function safeRecoveryText(value, fallback) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return fallback;
+  return text
+    .replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, '[url-removida]')
+    .replace(/(password|token|secret|api[_-]?key)\s*[=:]\s*\S+/gi, '$1=[removido]')
+    .slice(0, 500);
+}
+
+/** Le o bloqueio persistente criado somente apos uma transicao de banco falhar. */
+export function readDeployRecovery(recoveryPath) {
+  if (!fs.existsSync(recoveryPath)) return { active: false };
+
+  const raw = readJsonFile(recoveryPath);
+  if (!raw || raw.active !== true) {
+    return {
+      active: true,
+      failurePhase: 'UNKNOWN',
+      failureReason: 'Arquivo de recovery ilegivel ou incompleto. Intervencao manual necessaria.',
+    };
+  }
+
+  return {
+    active: true,
+    recordedAt: raw.recordedAt || null,
+    deployStartedAt: raw.deployStartedAt || null,
+    failedAt: raw.failedAt || null,
+    failurePhase: raw.failurePhase || 'UNKNOWN',
+    failureReason: safeRecoveryText(raw.failureReason, 'Falha sem resumo. Consulte o log do deploy.'),
+    previousRelease: {
+      gitSha: raw.previousRelease?.gitSha || null,
+      deployedAt: raw.previousRelease?.deployedAt || null,
+    },
+    candidateRelease: { gitSha: raw.candidateRelease?.gitSha || null },
+    backup: raw.backup
+      ? { name: raw.backup.name || null, createdAt: raw.backup.createdAt || null, relativePath: raw.backup.relativePath || null }
+      : null,
+    migration: {
+      started: raw.migration?.started === true,
+      completed: raw.migration?.completed === true,
+    },
+    backfill: {
+      started: raw.backfill?.started === true,
+      completed: raw.backfill?.completed === true,
+    },
+    swap: {
+      started: raw.swap?.started === true,
+      completed: raw.swap?.completed === true,
+    },
+    watchdog: { paused: raw.watchdog?.paused === true },
+  };
+}
+
 /** Agrega os check-runs de um commit num unico veredito por nome de check. */
 export function summarizeChecks(checkRuns) {
   const byName = new Map();
@@ -228,6 +281,16 @@ export function evaluateReleaseGate(state, options = {}) {
   const requiredChecks = options.requiredChecks || DEFAULT_REQUIRED_CHECKS;
   const blockers = [];
   const warnings = [];
+
+  if (state.recovery?.active) {
+    blockers.push({
+      code: 'recovery-manual-required',
+      message:
+        `INTERVENCAO MANUAL NECESSARIA: producao esta em recovery (${state.recovery.failurePhase || 'UNKNOWN'}). ` +
+        'Valide banco e artefatos conforme deploy/RECOVERY.md antes de liberar o watchdog.',
+      overridable: false,
+    });
+  }
 
   if (!state.gitAvailable) {
     blockers.push({

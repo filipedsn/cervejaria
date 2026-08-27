@@ -588,11 +588,13 @@ function renderRelease(data) {
   const gate = effectiveGate() || {};
   const head = data.head || {};
   const migrations = data.migrationsChanged || [];
+  const recovery = data.recovery || { active: false };
 
-  const badgeState = !data.gitAvailable ? 'bad' : gate.allowed ? 'ok' : 'warn';
+  const badgeState = recovery.active || !data.gitAvailable ? 'bad' : gate.allowed ? 'ok' : 'warn';
   els.releaseBadge.className = `chip chip--${badgeState}`;
-  els.releaseBadge.textContent = !data.gitAvailable
-    ? 'Sem git'
+  els.releaseBadge.textContent = recovery.active
+    ? 'Recovery manual'
+    : !data.gitAvailable ? 'Sem git'
     : gate.allowed ? 'Liberado' : `${gate.blockers.length} impedimento(s)`;
 
   const publicado = data.deployed?.gitSha
@@ -604,7 +606,23 @@ function renderRelease(data) {
       `<span class="status-muted">${escapeHtml(head.branch || '?')} · ${escapeHtml(head.author || '')}</span>`
     : '<span class="status-muted">—</span>';
 
+  const recoveryRows = recovery.active
+    ? [
+        row('Recovery', '<span class="status-bad">INTERVENCAO MANUAL NECESSARIA</span>'),
+        row('Fase da falha', `<code>${escapeHtml(recovery.failurePhase || 'UNKNOWN')}</code>`),
+        row('Release anterior', `<code>${escapeHtml(recovery.previousRelease?.gitSha || '?')}</code>`),
+        row('Release candidata', `<code>${escapeHtml(recovery.candidateRelease?.gitSha || '?')}</code>`),
+        row('Migration', `${recovery.migration?.started ? 'iniciada' : 'nao iniciada'} / ${recovery.migration?.completed ? 'concluida' : 'nao concluida'}`),
+        row('Swap', `${recovery.swap?.started ? 'iniciado' : 'nao iniciado'} / ${recovery.swap?.completed ? 'concluido' : 'nao concluido'}`),
+        row('Watchdog', recovery.watchdog?.paused ? '<span class="status-bad">pausado por seguranca</span>' : 'estado nao informado'),
+        row('Backup associado', escapeHtml(recovery.backup?.name || 'nao informado')),
+        row('Falhou em', escapeHtml(formatDate(recovery.failedAt) || 'nao informado')),
+        row('Resumo', escapeHtml(recovery.failureReason || 'Consulte o log do deploy.')),
+      ]
+    : [];
+
   els.releaseMetrics.innerHTML = [
+    ...recoveryRows,
     row('Publicado em prod', publicado),
     row('Commit local (HEAD)', local),
     row('origin/main', data.originMain?.sha
@@ -682,12 +700,17 @@ async function refreshStatus() {
   const p = data.prod;
   const d = data.dev;
   const i = data.infra;
+  const recoveryActive = Boolean(p.recovery?.active);
 
-  const prodOk = p.ready && p.health && p.frontend;
+  const prodOk = !recoveryActive && p.ready && p.health && p.frontend;
   els.prodBadge.className = `chip chip--${prodOk ? 'ok' : 'bad'}`;
-  els.prodBadge.textContent = prodOk ? 'Saudavel' : 'Com problemas';
+  els.prodBadge.textContent = recoveryActive ? 'Recovery manual' : prodOk ? 'Saudavel' : 'Com problemas';
+  document.getElementById('btnRestart').disabled = recoveryActive;
 
   els.prodMetrics.innerHTML = [
+    ...(recoveryActive
+      ? [row('Recovery', `<span class="status-bad">INTERVENCAO MANUAL NECESSARIA (${escapeHtml(p.recovery.failurePhase || 'UNKNOWN')})</span>`)]
+      : []),
     row('Health check', pill(p.ready, 'Pronto', 'Indisponivel')),
     row('API health', pill(p.health)),
     row('Frontend :3001', pill(p.frontend)),

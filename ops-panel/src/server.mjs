@@ -13,6 +13,7 @@ import {
   collectGitStateWithAutoSync,
   evaluateReleaseGate,
   isAgentBranch,
+  readDeployRecovery,
   readManifest,
   readRollbackPoint,
   runGit,
@@ -47,6 +48,7 @@ const STARTED_AT = new Date().toISOString();
 const PROD_ARTIFACTS_DIR = path.join(PROJECT_ROOT, 'deploy', 'prod-artifacts');
 const PROD_MANIFEST = path.join(PROD_ARTIFACTS_DIR, 'manifest.json');
 const PROD_ARTIFACTS_PREVIOUS = path.join(PROJECT_ROOT, 'deploy', 'prod-artifacts.previous');
+const DEPLOY_RECOVERY = path.join(RUNTIME_DIR, 'deploy-recovery.json');
 
 const SUPPORT_AGENT_DIR = path.join(PROJECT_ROOT, 'support-agent');
 const SUPPORT_AGENT_ENV = path.join(SUPPORT_AGENT_DIR, '.env');
@@ -528,12 +530,14 @@ async function fetchChecksForSha(sha) {
 
 async function buildReleaseState() {
   const deployed = readManifest(PROD_MANIFEST);
+  const recovery = readDeployRecovery(DEPLOY_RECOVERY);
   const { git, sync } = await collectGitStateWithAutoSync(PROJECT_ROOT, deployed?.gitSha || null);
 
   if (!git.gitAvailable) {
-    const gate = evaluateReleaseGate({ gitAvailable: false }, { requiredChecks });
+    const gate = evaluateReleaseGate({ gitAvailable: false, recovery }, { requiredChecks });
     return {
       deployed,
+      recovery,
       rollback: readRollbackPoint(PROD_ARTIFACTS_PREVIOUS),
       sync,
       ...git,
@@ -550,7 +554,7 @@ async function buildReleaseState() {
     annotatePendingCommits(git.pending),
   ]);
 
-  const state = { ...git, deployed, pending, checks, checksConfigured: configured, checksError: error || null };
+  const state = { ...git, deployed, recovery, pending, checks, checksConfigured: configured, checksError: error || null };
   const gate = evaluateReleaseGate(state, { requiredChecks });
 
   return {
@@ -696,6 +700,8 @@ app.get('/api/status', async () => {
 
   const ci = await githubSummary();
 
+  const recovery = readDeployRecovery(DEPLOY_RECOVERY);
+
   return {
     timestamp: new Date().toISOString(),
     prod: {
@@ -706,6 +712,7 @@ app.get('/api/status', async () => {
       apiPid,
       apiAlive: isProcessAlive(apiPid),
       publicUrl: 'https://tap.quivercloud.com.br',
+      recovery,
     },
     dev: {
       apiPort: PORTS.devApi,
@@ -759,6 +766,12 @@ app.post('/api/dev/stop', async (request, reply) => {
 });
 
 app.post('/api/prod/restart', async (request, reply) => {
+  const recovery = readDeployRecovery(DEPLOY_RECOVERY);
+  if (recovery.active) {
+    return reply.code(409).send({
+      error: `INTERVENCAO MANUAL NECESSARIA: recovery ativo (${recovery.failurePhase}). Reinicio bloqueado.`,
+    });
+  }
   return handleStreamAction(request, reply, {
     action: 'prod-restart',
     label: 'Reiniciar API producao',
@@ -778,7 +791,7 @@ app.get('/api/release', async (request, reply) => {
 /** Verificacao pos-deploy (somente leitura) — evita depender do agente para o passo 5. */
 app.get('/api/prod/smoke', async (request, reply) => {
   try {
-    const apiPort = PROD_PORTS.prodApi;
+    const apiPort = PORTS.prodApi;
     const base = `http://127.0.0.1:${apiPort}`;
     const [readyRes, frontRes] = await Promise.all([
       fetch(`${base}/api/ready`).catch(() => null),

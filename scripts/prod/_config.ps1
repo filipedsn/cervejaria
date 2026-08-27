@@ -584,16 +584,27 @@ function Get-DeployPauseFile {
   return (Join-Path $Paths.RuntimeDir 'deploy.pause')
 }
 
+function Get-DeployRecoveryFile {
+  param([hashtable]$Paths)
+
+  return (Join-Path $Paths.RuntimeDir 'deploy-recovery.json')
+}
+
 function Set-DeployPause {
   param(
     [hashtable]$Paths,
-    [string]$Reason = 'deploy em andamento'
+    [string]$Reason = 'deploy em andamento',
+    # Mantem o mesmo deploy.pause apos o processo de deploy encerrar. E usado
+    # somente quando o banco pode ter sido alterado e a recuperacao exige decisao
+    # operacional; o watchdog nao deve escolher uma release por conta propria.
+    [switch]$ManualInterventionRequired
   )
 
   $payload = [ordered]@{
-    pid       = $PID
-    reason    = $Reason
-    startedAt = (Get-Date).ToString('o')
+    pid                        = $PID
+    reason                     = $Reason
+    startedAt                  = (Get-Date).ToString('o')
+    manualInterventionRequired = [bool]$ManualInterventionRequired
   } | ConvertTo-Json -Compress
 
   Set-Content -Path (Get-DeployPauseFile -Paths $Paths) -Value $payload -Encoding UTF8
@@ -616,6 +627,18 @@ function Test-DeployPaused {
   $pauseFile = Get-DeployPauseFile -Paths $Paths
   if (-not (Test-Path $pauseFile)) { return $false }
 
+  $manualInterventionRequired = $false
+  try {
+    $data = Get-Content $pauseFile -Raw -ErrorAction Stop | ConvertFrom-Json
+    $manualInterventionRequired = [bool]$data.manualInterventionRequired
+  } catch {
+    # Arquivo ilegivel: trata como pausa valida ate expirar por idade.
+  }
+
+  # Falha apos o inicio de uma migration nao pode virar recuperacao automatica.
+  # A pausa e liberada somente pela intervencao operacional que validou o banco.
+  if ($manualInterventionRequired) { return $true }
+
   $ageMinutes = ((Get-Date) - (Get-Item $pauseFile).LastWriteTime).TotalMinutes
   if ($ageMinutes -gt $MaxAgeMinutes) {
     Remove-Item $pauseFile -Force -ErrorAction SilentlyContinue
@@ -623,7 +646,6 @@ function Test-DeployPaused {
   }
 
   try {
-    $data = Get-Content $pauseFile -Raw -ErrorAction Stop | ConvertFrom-Json
     $ownerPid = 0
     if ($data.pid) { $ownerPid = [int]$data.pid }
     if ($ownerPid -gt 0 -and -not (Test-ProcessAlive -ProcessId $ownerPid)) {

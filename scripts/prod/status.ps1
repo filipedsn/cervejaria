@@ -34,6 +34,19 @@ if (Test-Path $watchdogPidFile) {
   Write-Host "Watchdog daemon: $(if ($alive) { 'OK' } else { 'FORA' }) (PID $processId)" -ForegroundColor $(if ($alive) { 'Green' } else { 'Red' })
 }
 
+$recoveryFile = Get-DeployRecoveryFile -Paths $paths
+if (Test-Path $recoveryFile) {
+  try {
+    $recovery = Get-Content $recoveryFile -Raw -Encoding UTF8 | ConvertFrom-Json
+    Write-Host 'RECOVERY MANUAL: INTERVENCAO NECESSARIA' -ForegroundColor Red
+    Write-Host "  Fase:      $($recovery.failurePhase)"
+    Write-Host "  Falhou em: $($recovery.failedAt)"
+    Write-Host "  Arquivo:   $recoveryFile"
+  } catch {
+    Write-Host "RECOVERY MANUAL: arquivo ilegivel ($recoveryFile)" -ForegroundColor Red
+  }
+}
+
 $opsPidFile = Join-Path $paths.RuntimeDir 'ops-panel.pid'
 if (Test-Path $opsPidFile) {
   $processId = Get-Content $opsPidFile

@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 
 import {
@@ -6,6 +9,7 @@ import {
   checkVerdict,
   evaluateReleaseGate,
   isAgentBranch,
+  readDeployRecovery,
   shouldAutoSyncMain,
   summarizeChecks,
 } from './release.mjs';
@@ -124,6 +128,40 @@ test('migration exige confirmacao explicita', () => {
   assert.equal(evaluateReleaseGate(state).allowed, false);
   assert.ok(codigos(evaluateReleaseGate(state)).includes('migrations-sem-confirmacao'));
   assert.equal(evaluateReleaseGate(state, { acknowledgeMigrations: true }).allowed, true);
+});
+
+test('recovery ativo bloqueia deploy inclusive com override', () => {
+  const recovery = { active: true, failurePhase: 'SWAP_STARTED' };
+  const result = evaluateReleaseGate(estadoLimpo({ recovery }), { override: true });
+  assert.equal(result.allowed, false);
+  assert.ok(codigos(result).includes('recovery-manual-required'));
+  assert.equal(result.blockers.find((b) => b.code === 'recovery-manual-required').overridable, false);
+});
+
+test('le recovery sem expor campos fora do contrato operacional', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'quiver-recovery-'));
+  const file = path.join(dir, 'deploy-recovery.json');
+  fs.writeFileSync(file, JSON.stringify({
+    active: true,
+    failurePhase: 'MIGRATION_STARTED',
+    failureReason: 'SQL falhou em postgresql://usuario:senha@host/banco',
+    previousRelease: { gitSha: 'old1234' },
+    candidateRelease: { gitSha: 'new5678' },
+    migration: { started: true, completed: false },
+    backfill: { started: false, completed: false },
+    swap: { started: false, completed: false },
+    watchdog: { paused: true },
+    databaseUrl: 'postgres://nao-deve-sair',
+  }));
+  try {
+    const recovery = readDeployRecovery(file);
+    assert.equal(recovery.active, true);
+    assert.equal(recovery.migration.started, true);
+    assert.equal('databaseUrl' in recovery, false);
+    assert.doesNotMatch(recovery.failureReason, /usuario:senha/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('override libera impedimentos overridable', () => {
