@@ -10,6 +10,10 @@ import {
   isClienteSessionPayload,
   type ClienteSessionPayload,
 } from '../types/cliente-session.js';
+import {
+  ClienteSessionValidationError,
+  validateClienteSession,
+} from './cliente-session.js';
 
 function extractStaffToken(socket: Socket): string | null {
   const fromAuth = socket.handshake.auth?.token;
@@ -31,25 +35,66 @@ function extractClienteToken(socket: Socket): string | null {
   return cookies[CLIENTE_COOKIE_NAME] ?? null;
 }
 
+function requestId(socket: Socket): string | undefined {
+  const value = socket.handshake.headers['x-request-id'] ?? socket.handshake.headers['x-correlation-id'];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function logSocketAuthDenied(
+  app: FastifyInstance,
+  socket: Socket,
+  authType: 'cliente' | 'staff',
+  reason: string,
+  session?: ClienteSessionPayload,
+) {
+  app.log.warn({
+    event: 'socket_auth_denied',
+    authType,
+    reason,
+    requestId: requestId(socket),
+    ...(session ? {
+      cervejariaId: session.cervejariaId,
+      eventoId: session.eventoId,
+      comandaId: session.comandaId,
+    } : {}),
+  }, 'Socket authentication denied');
+}
+
 export function setupSocketAuth(io: SocketIOServer, app: FastifyInstance) {
   io.use(async (socket, next) => {
     try {
       const clienteToken = extractClienteToken(socket);
       if (clienteToken) {
+        let decoded: unknown;
         try {
-          const decoded = app.jwt.verify(clienteToken);
-          if (isClienteSessionPayload(decoded)) {
-            socket.data.authType = 'cliente';
-            socket.data.clienteSession = decoded;
-            return next();
-          }
+          decoded = app.jwt.verify(clienteToken);
         } catch {
-          /* tenta auth staff */
+          logSocketAuthDenied(app, socket, 'cliente', 'token_invalido');
+          return next(new Error('Unauthorized'));
+        }
+
+        if (!isClienteSessionPayload(decoded)) {
+          logSocketAuthDenied(app, socket, 'cliente', 'payload_invalido');
+          return next(new Error('Unauthorized'));
+        }
+
+        try {
+          const session = await validateClienteSession(decoded);
+          socket.data.authType = 'cliente';
+          socket.data.clienteSession = session;
+          return next();
+        } catch (error) {
+          const reason = error instanceof ClienteSessionValidationError
+            ? error.reason
+            : 'validacao_indisponivel';
+          logSocketAuthDenied(app, socket, 'cliente', reason, decoded);
+          return next(new Error('Unauthorized'));
         }
       }
 
       const raw = extractStaffToken(socket);
       if (!raw) {
+        logSocketAuthDenied(app, socket, 'staff', 'token_ausente');
         return next(new Error('Unauthorized'));
       }
       const decoded = app.jwt.verify<JwtPayload>(raw);
@@ -58,6 +103,7 @@ export function setupSocketAuth(io: SocketIOServer, app: FastifyInstance) {
       socket.data.user = user;
       next();
     } catch {
+      logSocketAuthDenied(app, socket, 'staff', 'token_invalido');
       next(new Error('Unauthorized'));
     }
   });

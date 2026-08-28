@@ -10,6 +10,24 @@ import {
 
 const CLIENTE_SESSION_MAX_AGE = 12 * 60 * 60; // 12h
 
+export type ClienteSessionFailureReason =
+  | 'evento_invalido'
+  | 'evento_fechado'
+  | 'portal_generation_invalida'
+  | 'contexto_portal_invalido'
+  | 'comanda_invalida';
+
+/** Erro de sessão categorizado para logs internos; a resposta externa continua genérica. */
+export class ClienteSessionValidationError extends Error {
+  constructor(
+    readonly reason: ClienteSessionFailureReason,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ClienteSessionValidationError';
+  }
+}
+
 export function signClienteSession(app: FastifyInstance, payload: Omit<ClienteSessionPayload, 'type'>) {
   return app.jwt.sign({ type: 'cliente', ...payload }, { expiresIn: '12h' });
 }
@@ -48,7 +66,23 @@ export async function verifyClienteSession(
     throw app.httpErrors.unauthorized('Sessão inválida.');
   }
 
-  const session = decoded;
+  try {
+    return await validateClienteSession(decoded);
+  } catch (error) {
+    if (error instanceof ClienteSessionValidationError) {
+      throw app.httpErrors.unauthorized(error.message);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Fonte única de verdade da sessão do portal para HTTP e Socket.IO.
+ * Os campos do JWT são apenas uma alegação assinada: o estado atual vem do banco.
+ */
+export async function validateClienteSession(
+  session: ClienteSessionPayload,
+): Promise<ClienteSessionPayload> {
 
   const evento = await prisma.evento.findFirst({
     where: { id: session.eventoId, cervejariaId: session.cervejariaId },
@@ -60,17 +94,33 @@ export async function verifyClienteSession(
     },
   });
 
-  if (!evento || evento.status !== 'ABERTO') {
-    throw app.httpErrors.unauthorized('Sessão encerrada. Escaneie o QR Code novamente.');
+  if (!evento) {
+    throw new ClienteSessionValidationError(
+      'evento_invalido',
+      'Sessão encerrada. Escaneie o QR Code novamente.',
+    );
+  }
+
+  if (evento.status !== 'ABERTO') {
+    throw new ClienteSessionValidationError(
+      'evento_fechado',
+      'Sessão encerrada. Escaneie o QR Code novamente.',
+    );
   }
 
   if (evento.portalGeneration !== session.portalGeneration) {
-    throw app.httpErrors.unauthorized('Sessão encerrada. Escaneie o QR Code novamente.');
+    throw new ClienteSessionValidationError(
+      'portal_generation_invalida',
+      'Sessão encerrada. Escaneie o QR Code novamente.',
+    );
   }
 
   const openEvento = await findOpenEventoForTrailer(session.cervejariaId, session.trailerId);
   if (!openEvento || openEvento.id !== session.eventoId) {
-    throw app.httpErrors.unauthorized('Sessão encerrada. Escaneie o QR Code novamente.');
+    throw new ClienteSessionValidationError(
+      'contexto_portal_invalido',
+      'Sessão encerrada. Escaneie o QR Code novamente.',
+    );
   }
 
   const comanda = await prisma.comanda.findFirst({
@@ -84,7 +134,10 @@ export async function verifyClienteSession(
   });
 
   if (!comanda) {
-    throw app.httpErrors.unauthorized('Sessão encerrada. Escaneie o QR Code novamente.');
+    throw new ClienteSessionValidationError(
+      'comanda_invalida',
+      'Sessão encerrada. Escaneie o QR Code novamente.',
+    );
   }
 
   return session;

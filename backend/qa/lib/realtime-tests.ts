@@ -8,6 +8,7 @@ import {
   uniquePortalTestPhone,
   uniqueStaffComandaBody,
 } from './http.js';
+import { decodeToken, signToken, tamperSignature } from './jwt.js';
 import { ensureTenantEventoAberto } from './tenant-evento.js';
 import type { QaContext, TenantFixture } from './types.js';
 
@@ -70,11 +71,31 @@ async function connectCliente(cookie: string): Promise<Socket> {
     });
     socket.on('connect_error', (err) => {
       clearTimeout(timer);
+      socket.disconnect();
       reject(err);
     });
   });
 
   return socket;
+}
+
+async function clienteRejeitado(cookie: string): Promise<boolean> {
+  try {
+    const socket = await connectCliente(cookie);
+    socket.disconnect();
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function clientePayload(cookie: string): Record<string, unknown> | null {
+  const token = cookie.match(/(?:^|;\s*)cliente_token=([^;]+)/)?.[1];
+  return token ? decodeToken(token)?.payload ?? null : null;
+}
+
+function clienteCookie(payload: Record<string, unknown>, expiresInSec = 3600): string {
+  return `cliente_token=${signToken({ type: 'cliente', ...payload }, { expiresInSec })}`;
 }
 
 /** Coleta eventos a partir de agora; resolve no primeiro que casar com o predicado. */
@@ -468,6 +489,166 @@ export async function runRealtimeTests(ctx: QaContext, test: TestFn, perfSink?: 
     );
 
     await test(
+      {
+        id: 'RT-17',
+        category: 'Realtime',
+        name: 'Portal válido só recebe sua comanda e não entra em rooms staff',
+        requirement: 'TQ-SEC-02-AHI',
+      },
+      async () => {
+        const sessao = await portalSessao(tenantA.slug, tenantA.trailerId, {
+          nome: 'QA Socket Portal Valido',
+          telefone: uniquePortalTestPhone(73, 1),
+        });
+        if (sessao.status !== 201 || !sessao.cookie) {
+          return { status: 'failed', message: 'Sessão portal', expected: '201 + cookie', actual: String(sessao.status) };
+        }
+
+        let portal: Socket | null = null;
+        try {
+          portal = await connectCliente(sessao.cookie);
+          const staffOnly = collect<ComandaEventPayload>(portal, 'comanda:created');
+          const staffDelivery = collect<ComandaEventPayload>(socketA!, 'comanda:created');
+
+          // O portal não possui listeners de join; estas mensagens não podem conceder rooms de staff.
+          portal.emit('join:evento', tenantA.eventoId);
+          portal.emit('join:cervejaria', tenantA.cervejariaId);
+          portal.emit('join:evento', tenantB.eventoId);
+          portal.emit('join:cervejaria', tenantB.cervejariaId);
+          await settle();
+
+          const r = await api<{ id: string }>('POST', '/api/comandas', {
+            token: tenantA.atendenteTokens[0],
+            body: uniqueStaffComandaBody(tenantA.eventoId, `RT Portal Staff ${Date.now()}`, 74),
+          });
+          const id = r.data?.id ?? '';
+          const staffHit = id ? await staffDelivery.wait((p) => p?.id === id) : null;
+          await settle();
+          const leaked = staffOnly.received.some((p) => p?.id === id);
+          staffOnly.dispose();
+          staffDelivery.dispose();
+
+          if (r.status !== 201 || !id || !staffHit) {
+            return { status: 'failed', message: 'Evento operacional', expected: 'staff recebeu', actual: `HTTP=${r.status}` };
+          }
+          if (leaked) {
+            return { status: 'failed', message: 'Portal entrou em room staff', expected: 'isolado', actual: 'vazou comanda:created' };
+          }
+          return { message: 'Handshake válido e rooms staff inacessíveis ao portal', expected: 'isolado', actual: 'isolado' };
+        } finally {
+          portal?.disconnect();
+        }
+      },
+    );
+
+    await test(
+      { id: 'RT-18', category: 'Realtime', name: 'Assinatura do portal inválida é rejeitada', requirement: 'TQ-SEC-02-B' },
+      async () => {
+        const sessao = await portalSessao(tenantA.slug, tenantA.trailerId, {
+          nome: 'QA Socket Assinatura',
+          telefone: uniquePortalTestPhone(73, 2),
+        });
+        const token = sessao.cookie?.match(/cliente_token=([^;]+)/)?.[1];
+        if (sessao.status !== 201 || !token) {
+          return { status: 'failed', message: 'Sessão portal', expected: '201 + token', actual: String(sessao.status) };
+        }
+        const rejected = await clienteRejeitado(`cliente_token=${tamperSignature(token)}`);
+        return rejected
+          ? { message: 'Assinatura adulterada rejeitada', expected: 'rejeitado', actual: 'rejeitado' }
+          : { status: 'failed', message: 'Socket aceitou assinatura adulterada', expected: 'rejeitado', actual: 'conectou' };
+      },
+    );
+
+    await test(
+      { id: 'RT-19', category: 'Realtime', name: 'Portal cross-tenant é rejeitado', requirement: 'TQ-SEC-02-C' },
+      async () => {
+        const sessao = await portalSessao(tenantA.slug, tenantA.trailerId, {
+          nome: 'QA Socket Cross Tenant',
+          telefone: uniquePortalTestPhone(73, 3),
+        });
+        const payload = sessao.cookie ? clientePayload(sessao.cookie) : null;
+        if (sessao.status !== 201 || !payload) {
+          return { status: 'failed', message: 'Sessão portal', expected: '201 + payload', actual: String(sessao.status) };
+        }
+        const rejected = await clienteRejeitado(clienteCookie({ ...payload, cervejariaId: tenantB.cervejariaId }));
+        return rejected
+          ? { message: 'Claim de tenant divergente rejeitada', expected: 'rejeitado', actual: 'rejeitado' }
+          : { status: 'failed', message: 'Socket aceitou portal cross-tenant', expected: 'rejeitado', actual: 'conectou' };
+      },
+    );
+
+    await test(
+      { id: 'RT-20', category: 'Realtime', name: 'Comanda fechada é rejeitada no handshake', requirement: 'TQ-SEC-02-D' },
+      async () => {
+        const sessao = await portalSessao(tenantA.slug, tenantA.trailerId, {
+          nome: 'QA Socket Comanda Fechada',
+          telefone: uniquePortalTestPhone(73, 4),
+        });
+        if (sessao.status !== 201 || !sessao.cookie || !sessao.comandaId) {
+          return { status: 'failed', message: 'Sessão portal', expected: '201 + comanda', actual: String(sessao.status) };
+        }
+        await prisma.comanda.update({ where: { id: sessao.comandaId }, data: { status: 'CANCELADA' } });
+        const rejected = await clienteRejeitado(sessao.cookie);
+        return rejected
+          ? { message: 'Comanda não aberta não entra no Socket', expected: 'rejeitado', actual: 'rejeitado' }
+          : { status: 'failed', message: 'Socket aceitou comanda fechada', expected: 'rejeitado', actual: 'conectou' };
+      },
+    );
+
+    await test(
+      { id: 'RT-21', category: 'Realtime', name: 'Evento fechado e geração antiga são rejeitados', requirement: 'TQ-SEC-02-EF' },
+      async () => {
+        const sessao = await portalSessao(tenantB.slug, tenantB.trailerId, {
+          nome: 'QA Socket Evento Fechado',
+          telefone: uniquePortalTestPhone(73, 5),
+        });
+        const payload = sessao.cookie ? clientePayload(sessao.cookie) : null;
+        if (sessao.status !== 201 || !sessao.cookie || !payload) {
+          return { status: 'failed', message: 'Sessão portal', expected: '201 + payload', actual: String(sessao.status) };
+        }
+
+        const generationRejected = await clienteRejeitado(clienteCookie({
+          ...payload,
+          portalGeneration: Number(payload.portalGeneration) - 1,
+        }));
+
+        await prisma.evento.update({ where: { id: tenantB.eventoId }, data: { status: 'FECHADO' } });
+        try {
+          const closedRejected = await clienteRejeitado(sessao.cookie);
+          if (!generationRejected || !closedRejected) {
+            return {
+              status: 'failed',
+              message: 'Socket aceitou sessão expirada',
+              expected: 'geração e evento rejeitados',
+              actual: `geração=${generationRejected}, evento=${closedRejected}`,
+            };
+          }
+          return { message: 'Geração antiga e evento fechado rejeitados', expected: 'rejeitados', actual: 'rejeitados' };
+        } finally {
+          await prisma.evento.update({ where: { id: tenantB.eventoId }, data: { status: 'ABERTO', encerradoEm: null } });
+        }
+      },
+    );
+
+    await test(
+      { id: 'RT-22', category: 'Realtime', name: 'Comanda de outro evento é rejeitada', requirement: 'TQ-SEC-02-G' },
+      async () => {
+        const [sessaoA, sessaoB] = await Promise.all([
+          portalSessao(tenantA.slug, tenantA.trailerId, { nome: 'QA Socket Evento A', telefone: uniquePortalTestPhone(73, 6) }),
+          portalSessao(tenantB.slug, tenantB.trailerId, { nome: 'QA Socket Evento B', telefone: uniquePortalTestPhone(73, 7) }),
+        ]);
+        const payloadA = sessaoA.cookie ? clientePayload(sessaoA.cookie) : null;
+        if (sessaoA.status !== 201 || sessaoB.status !== 201 || !payloadA || !sessaoB.comandaId) {
+          return { status: 'failed', message: 'Sessões portal', expected: 'duas sessões válidas', actual: `${sessaoA.status}/${sessaoB.status}` };
+        }
+        const rejected = await clienteRejeitado(clienteCookie({ ...payloadA, comandaId: sessaoB.comandaId }));
+        return rejected
+          ? { message: 'Vínculo comanda/evento revalidado', expected: 'rejeitado', actual: 'rejeitado' }
+          : { status: 'failed', message: 'Socket aceitou comanda de outro evento', expected: 'rejeitado', actual: 'conectou' };
+      },
+    );
+
+    await test(
       { id: 'RT-13', category: 'Realtime', name: 'Cliente A não recebe item:added da comanda B', requirement: 'TQ-001-A' },
       async () => {
         const [sessaoA, sessaoB] = await Promise.all([
@@ -640,9 +821,7 @@ export async function runRealtimeTests(ctx: QaContext, test: TestFn, perfSink?: 
       },
     );
   } finally {
-    socketA?.disconnect();
-    socketB?.disconnect();
-    clienteA?.disconnect();
-    clienteB?.disconnect();
+    const sockets: Array<Socket | null> = [socketA, socketB, clienteA, clienteB];
+    for (const socket of sockets) socket?.disconnect();
   }
 }
