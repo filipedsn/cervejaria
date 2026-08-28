@@ -136,8 +136,8 @@ export async function extractBrandTheme(buffer: Buffer): Promise<{
   }
 
   const primaryBucket =
-    bestBucket(vibrantBuckets, (b) => b.count * (0.5 + b.s)) ??
-    bestBucket(darkBuckets, (b) => b.count * (0.3 + b.s));
+    bestBucket(vibrantBuckets, (b) => b.count * (0.5 + b.sat)) ??
+    bestBucket(darkBuckets, (b) => b.count * (0.3 + b.sat));
 
   const corPrimaria = primaryBucket ? bucketAvg(primaryBucket) : DEFAULT_PRIMARY;
   const primaryHue = primaryBucket?.hue ?? hexToHsl(corPrimaria).h;
@@ -145,7 +145,7 @@ export async function extractBrandTheme(buffer: Buffer): Promise<{
   const darkBucket =
     bestBucket(darkBuckets, (b) => {
       const hueBonus = hueDistance(b.hue, primaryHue) < 45 ? 2.5 : 1;
-      return b.count * hueBonus * (0.4 + b.s);
+      return b.count * hueBonus * (0.4 + b.sat);
     }) ?? bestBucket(darkBuckets);
 
   const darkSampleHex = darkBucket ? bucketAvg(darkBucket) : undefined;
@@ -153,9 +153,9 @@ export async function extractBrandTheme(buffer: Buffer): Promise<{
   let corSecundaria: string | null = null;
   const secondaryBucket = bestBucket(vibrantBuckets, (b) => {
     if (hueDistance(b.hue, primaryHue) < 45) return 0;
-    return b.count * b.s;
+    return b.count * b.sat;
   });
-  if (secondaryBucket && secondaryBucket.count >= 3 && secondaryBucket.s >= 0.22) {
+  if (secondaryBucket && secondaryBucket.count >= 3 && secondaryBucket.sat >= 0.22) {
     corSecundaria = bucketAvg(secondaryBucket);
   }
 
