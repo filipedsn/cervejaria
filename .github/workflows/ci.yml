@@ -27,7 +27,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - run: npm ci
-      - run: npm run build:deploy
+      - run: npm run build
 
   backend-validate:
     name: backend-validate
