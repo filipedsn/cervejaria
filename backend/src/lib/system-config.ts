@@ -49,6 +49,53 @@ function encryptionKey(): Buffer {
   return crypto.createHash('sha256').update(getJwtSecret()).digest();
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function stringOrDefault(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function booleanOrDefault(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function numberOrDefault(value: unknown, fallback: number): number {
+  return typeof value === 'number' ? value : fallback;
+}
+
+export function parsePlatformSettings(value: unknown): PlatformSettings | null {
+  if (!isRecord(value)) return null;
+
+  const smtp = isRecord(value.smtp) ? value.smtp : {};
+  const backup = isRecord(value.backup) ? value.backup : {};
+  const lastBackupAt = typeof value.lastBackupAt === 'string' ? value.lastBackupAt : undefined;
+  const lastBackupFile = typeof value.lastBackupFile === 'string' ? value.lastBackupFile : undefined;
+  const lastBackupSize = typeof value.lastBackupSize === 'number' ? value.lastBackupSize : undefined;
+
+  return {
+    appUrl: stringOrDefault(value.appUrl, DEFAULTS.appUrl),
+    smtp: {
+      enabled: booleanOrDefault(smtp.enabled, DEFAULTS.smtp.enabled),
+      host: stringOrDefault(smtp.host, DEFAULTS.smtp.host),
+      port: numberOrDefault(smtp.port, DEFAULTS.smtp.port),
+      secure: booleanOrDefault(smtp.secure, DEFAULTS.smtp.secure),
+      user: stringOrDefault(smtp.user, DEFAULTS.smtp.user),
+      from: stringOrDefault(smtp.from, DEFAULTS.smtp.from),
+      ...(typeof smtp.passEnc === 'string' ? { passEnc: smtp.passEnc } : {}),
+    },
+    backup: {
+      enabled: booleanOrDefault(backup.enabled, DEFAULTS.backup.enabled),
+      retentionDays: numberOrDefault(backup.retentionDays, DEFAULTS.backup.retentionDays),
+      scheduleHour: numberOrDefault(backup.scheduleHour, DEFAULTS.backup.scheduleHour),
+    },
+    ...(lastBackupAt === undefined ? {} : { lastBackupAt }),
+    ...(lastBackupFile === undefined ? {} : { lastBackupFile }),
+    ...(lastBackupSize === undefined ? {} : { lastBackupSize }),
+  };
+}
+
 export function encryptSecret(plain: string): string {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey(), iv);
@@ -70,7 +117,7 @@ export function decryptSecret(enc: string): string {
 async function readRaw(): Promise<PlatformSettings | null> {
   const row = await prisma.systemConfig.findUnique({ where: { key: PLATFORM_KEY } });
   if (!row) return null;
-  return row.value as PlatformSettings;
+  return parsePlatformSettings(row.value);
 }
 
 function mergeStored(stored: PlatformSettings): PlatformSettings {

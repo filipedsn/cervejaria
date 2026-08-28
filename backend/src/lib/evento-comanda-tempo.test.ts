@@ -10,12 +10,14 @@ test('buildTempoComandaStats calcula media e distribuicao por faixa', () => {
       {
         fechadaEm: parseTimeOnEventDate(eventoData, '20:20'),
         updatedAt: parseTimeOnEventDate(eventoData, '20:20'),
+        total: 0,
         pagamentos: [{ pagoEm: parseTimeOnEventDate(eventoData, '20:20') }],
         itens: [{ createdAt: parseTimeOnEventDate(eventoData, '20:00') }],
       },
       {
         fechadaEm: parseTimeOnEventDate(eventoData, '21:00'),
         updatedAt: parseTimeOnEventDate(eventoData, '21:00'),
+        total: 0,
         pagamentos: [{ pagoEm: parseTimeOnEventDate(eventoData, '21:00') }],
         itens: [{ createdAt: parseTimeOnEventDate(eventoData, '20:30') }],
       },
@@ -33,6 +35,7 @@ test('buildTempoComandaStats ignora comandas sem itens', () => {
       {
         fechadaEm: parseTimeOnEventDate(eventoData, '20:20'),
         updatedAt: parseTimeOnEventDate(eventoData, '20:20'),
+        total: 0,
         pagamentos: [],
         itens: [],
       },

@@ -33,7 +33,7 @@ export async function assertTrailerChopeDisponivel(trailerId: string, cervejaria
   });
 
   if (taps.length === 0) {
-    return { error: TRAILER_SEM_CHOPE_MSG as const };
+    return { error: TRAILER_SEM_CHOPE_MSG };
   }
 
   const comChope = taps.filter(
@@ -45,7 +45,7 @@ export async function assertTrailerChopeDisponivel(trailerId: string, cervejaria
   );
 
   if (comChope.length === 0) {
-    return { error: TRAILER_SEM_CHOPE_MSG as const };
+    return { error: TRAILER_SEM_CHOPE_MSG };
   }
 
   return { ok: true as const };

@@ -140,6 +140,10 @@ function formatAdminCervejaria(
     logoUrl: string | null;
     corPrimaria: string | null;
     corPaleta: unknown;
+    exibirKpisComanda: boolean;
+    comandasColunaUnica: boolean;
+    usaCardapio: boolean;
+    updatedAt: Date;
     configuracaoQuiosque?: {
       ativo: boolean;
       exclusivo: boolean;
@@ -175,7 +179,18 @@ async function mapCervejariasList() {
   const [cervejarias, statsMap] = await Promise.all([
     prisma.cervejaria.findMany({
       orderBy: { nome: 'asc' },
-      include: {
+      select: {
+        id: true,
+        nome: true,
+        slug: true,
+        ativo: true,
+        logoUrl: true,
+        corPrimaria: true,
+        corPaleta: true,
+        exibirKpisComanda: true,
+        comandasColunaUnica: true,
+        usaCardapio: true,
+        updatedAt: true,
         _count: { select: { usuarios: true, eventos: true } },
         configuracaoQuiosque: {
           select: {

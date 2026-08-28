@@ -216,13 +216,17 @@ export async function salvarCardapioTurno(params: {
  * Altera o preço de um produto do cardápio do turno.
  * TURNO = só esta sessão; TEMPLATE = grava no cardápio salvo vinculado.
  */
+type AlterarPrecoCardapioTurnoResult =
+  | { ok: true; escopo: 'TURNO' | 'TEMPLATE' }
+  | { error: string; statusCode: 400 | 404 };
+
 export async function alterarPrecoCardapioTurno(params: {
   sessaoCaixaId: string;
   cervejariaId: string;
   produtoId: string;
   precoUnit: number;
   escopo: 'TURNO' | 'TEMPLATE';
-}) {
+}): Promise<AlterarPrecoCardapioTurnoResult> {
   const { sessaoCaixaId, cervejariaId, produtoId, precoUnit, escopo } = params;
 
   if (!(await quiosqueUsaCardapio(cervejariaId))) {
