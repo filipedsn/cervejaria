@@ -631,8 +631,12 @@ export function DashboardPage() {
                       position="top"
                       fill="var(--color-ink-faint)"
                       fontSize={10}
-                      formatter={(v: number) =>
-                        v > 0 ? (v >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${v.toFixed(0)}`) : ''
+                      formatter={(value) =>
+                        typeof value === 'number' && value > 0
+                          ? value >= 1000
+                            ? `R$${(value / 1000).toFixed(1)}k`
+                            : `R$${value.toFixed(0)}`
+                          : ''
                       }
                     />
                   </Bar>

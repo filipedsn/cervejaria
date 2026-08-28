@@ -466,6 +466,22 @@ export interface RankingEntry {
   pedidos: number;
 }
 
+export interface RankingEventoResumo {
+  id: string;
+  nome: string;
+  local: string;
+  data: string | null;
+  horaInicio?: string;
+  horaFim?: string | null;
+  serieId?: string | null;
+  trailerId?: string;
+}
+
+export interface RankingResponse {
+  evento: RankingEventoResumo;
+  ranking: RankingEntry[];
+}
+
 export interface RankingSerieResponse {
   serie: {
     id: string;

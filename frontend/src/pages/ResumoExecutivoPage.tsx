@@ -52,17 +52,22 @@ function FluxChartTooltip({
   label,
 }: {
   active?: boolean;
-  payload?: Array<{ dataKey?: string; value?: number; color?: string }>;
-  label?: string;
+  payload?: Array<{
+    dataKey?: string | number;
+    value?: number | string;
+    color?: string;
+    payload?: {
+      fechado?: number;
+      fechadoAvulsa?: number;
+      aberto?: number;
+      comandasFechadas?: number;
+      comandasAvulsas?: number;
+    };
+  }>;
+  label?: string | number;
 }) {
   if (!active || !payload?.length) return null;
-  const row = payload[0]?.payload as {
-    fechado?: number;
-    fechadoAvulsa?: number;
-    aberto?: number;
-    comandasFechadas?: number;
-    comandasAvulsas?: number;
-  };
+  const row = payload[0]?.payload;
   return (
     <div className="rounded-lg border border-line bg-surface px-3 py-2 text-sm shadow-lg space-y-1">
       <p className="font-semibold text-ink">{label}</p>

@@ -2,25 +2,13 @@ import { useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, formatEventoWhen } from '../lib/api';
-import type { RankingEntry } from '../types';
+import type { RankingResponse } from '../types';
 import { buildDemoRankingResponse } from '../lib/ranking-demo';
 import { useRankingLiveUpdates, useRankingSocketReconnect } from '../hooks/useRankingLiveUpdates';
 import { usePollInterval } from '../hooks/usePollInterval';
 import { useAuth } from '../contexts/AuthContext';
 import { Loading } from '../components/Loading';
 import { RankingTvView } from '../components/RankingTvView';
-
-interface RankingResponse {
-  evento: {
-    id: string;
-    nome: string;
-    local: string;
-    data: string | null;
-    horaInicio?: string;
-    horaFim?: string | null;
-  };
-  ranking: RankingEntry[];
-}
 
 export function RankingFullscreenPage() {
   const { eventoId } = useParams<{ eventoId: string }>();

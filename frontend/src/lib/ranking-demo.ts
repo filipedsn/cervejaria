@@ -1,4 +1,4 @@
-import type { RankingEntry } from '../types';
+import type { RankingEntry, RankingResponse } from '../types';
 
 const DEMO_NOMES = [
   'Poliana',
@@ -50,7 +50,7 @@ export function buildDemoRanking(count = 20): RankingEntry[] {
   });
 }
 
-export function buildDemoRankingResponse(count = 20) {
+export function buildDemoRankingResponse(count = 20): RankingResponse {
   return {
     evento: {
       id: 'demo',

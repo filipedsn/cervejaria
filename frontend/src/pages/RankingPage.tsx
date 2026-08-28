@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, formatEventoWhen } from '../lib/api';
-import type { Evento, RankingEntry } from '../types';
+import type { Evento, RankingResponse } from '../types';
 import { useEvento } from '../contexts/EventoContext';
 import { useRankingLiveUpdates } from '../hooks/useRankingLiveUpdates';
 import { usePollInterval } from '../hooks/usePollInterval';
@@ -11,20 +11,6 @@ import { Loading } from '../components/Loading';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState } from '../components/EmptyState';
 import { RankingList } from '../components/RankingList';
-
-interface RankingResponse {
-  evento: {
-    id: string;
-    nome: string;
-    local: string;
-    data: string | null;
-    horaInicio?: string;
-    horaFim?: string | null;
-    serieId?: string | null;
-    trailerId?: string;
-  };
-  ranking: RankingEntry[];
-}
 
 export function RankingPage() {
   const navigate = useNavigate();
