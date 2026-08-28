@@ -22,6 +22,29 @@ export function formatCurrency(value: number | string): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
 }
 
-export function toNumber(value: { toString(): string } | number): number {
-  return typeof value === 'number' ? value : parseFloat(value.toString());
+export function toNumber(value: unknown): number {
+  if (typeof value === 'number') return value;
+
+  if (typeof value === 'bigint') {
+    const converted = Number(value);
+    if (Number.isSafeInteger(converted)) return converted;
+    throw new TypeError('Valor bigint fora do intervalo seguro para number');
+  }
+
+  if (typeof value === 'string') return parseNumericString(value);
+
+  if (value && typeof value === 'object' && typeof value.toString === 'function') {
+    return parseNumericString(value.toString());
+  }
+
+  throw new TypeError('Valor numérico inválido');
+}
+
+function parseNumericString(value: string): number {
+  const normalized = value.trim();
+  if (!normalized) throw new TypeError('Valor numérico inválido');
+
+  const converted = Number(normalized);
+  if (Number.isFinite(converted)) return converted;
+  throw new TypeError('Valor numérico inválido');
 }

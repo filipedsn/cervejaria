@@ -29,7 +29,7 @@ export function diaOperacional(referencia = new Date()): Date {
 }
 
 /** Dinheiro em centavos: soma de float erra centavo em venda com muitos itens. */
-export function centavos(valor: number | { toString(): string }): number {
+export function centavos(valor: unknown): number {
   return Math.round(toNumber(valor) * 100);
 }
 
@@ -139,7 +139,7 @@ export async function resolverItens(
 
 export function totalEmCentavos(itens: Array<{ precoUnit: unknown; quantidade: number }>): number {
   return itens.reduce(
-    (soma, item) => soma + centavos(item.precoUnit as number) * item.quantidade,
+    (soma, item) => soma + centavos(item.precoUnit) * item.quantidade,
     0,
   );
 }
