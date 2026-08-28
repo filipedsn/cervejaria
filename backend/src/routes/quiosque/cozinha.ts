@@ -5,9 +5,9 @@ import { getAuthUser } from '../../types/auth.js';
 import { diaOperacional } from '../../lib/quiosque/venda.js';
 import {
   INCLUDE_PEDIDO_COZINHA,
-  STATUS_NA_FILA,
   TRANSICOES,
   aplicarStatusPedidoCozinha,
+  filtroListaPedidosCozinha,
   notificarCozinha,
   notificarComandaQuiosqueAtualizada,
   pedidoVaiParaCozinha,
@@ -39,8 +39,7 @@ export async function cozinhaQuiosqueRoutes(app: FastifyInstance) {
     const pedidos = await prisma.pedidoQuiosque.findMany({
       where: {
         cervejariaId,
-        diaOperacional: diaOperacional(),
-        status: incluirEntregues ? { not: 'CANCELADO' } : { in: STATUS_NA_FILA },
+        ...filtroListaPedidosCozinha(incluirEntregues, diaOperacional()),
         // Rodada so de bebida nao ocupa a cozinha.
         itensComanda: { some: { exigePreparo: true } },
       },

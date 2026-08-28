@@ -10,6 +10,24 @@ type TxClient = Prisma.TransactionClient;
 export const STATUS_NA_FILA: StatusPedidoQuiosque[] = ['RECEBIDO', 'EM_PREPARO', 'PRONTO'];
 
 /**
+ * A fila operacional não pode abandonar um pedido pendente na troca de dia.
+ * Já os entregues são histórico de turno e ficam limitados ao dia atual.
+ */
+export function filtroListaPedidosCozinha(
+  incluirEntregues: boolean,
+  diaAtual: Date,
+): Prisma.PedidoQuiosqueWhereInput {
+  if (!incluirEntregues) return { status: { in: STATUS_NA_FILA } };
+
+  return {
+    OR: [
+      { status: { in: STATUS_NA_FILA } },
+      { status: 'ENTREGUE', diaOperacional: diaAtual },
+    ],
+  };
+}
+
+/**
  * Para onde cada status pode ir. O caminho de volta existe porque na correria a
  * cozinha erra o toque, e obrigar a cancelar o pedido para corrigir seria pior.
  */

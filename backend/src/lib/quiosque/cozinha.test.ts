@@ -4,6 +4,7 @@ import {
   StatusPedidoCozinhaDesatualizadoError,
   TRANSICOES,
   aplicarStatusPedidoCozinha,
+  filtroListaPedidosCozinha,
 } from './cozinha.js';
 
 type Status = 'RECEBIDO' | 'EM_PREPARO' | 'PRONTO' | 'ENTREGUE' | 'CANCELADO';
@@ -79,5 +80,24 @@ describe('aplicarStatusPedidoCozinha', () => {
 
   it('mantém bloqueado o salto RECEBIDO para ENTREGUE pela regra da rota', () => {
     assert.equal(TRANSICOES.RECEBIDO.includes('ENTREGUE'), false);
+  });
+});
+
+describe('filtroListaPedidosCozinha', () => {
+  const hoje = new Date('2026-08-27T03:00:00.000Z');
+
+  it('mantém pedidos pendentes de dias anteriores visíveis na fila', () => {
+    assert.deepEqual(filtroListaPedidosCozinha(false, hoje), {
+      status: { in: ['RECEBIDO', 'EM_PREPARO', 'PRONTO'] },
+    });
+  });
+
+  it('inclui apenas entregues do dia atual ao carregar fila e entregues juntos', () => {
+    assert.deepEqual(filtroListaPedidosCozinha(true, hoje), {
+      OR: [
+        { status: { in: ['RECEBIDO', 'EM_PREPARO', 'PRONTO'] } },
+        { status: 'ENTREGUE', diaOperacional: hoje },
+      ],
+    });
   });
 });

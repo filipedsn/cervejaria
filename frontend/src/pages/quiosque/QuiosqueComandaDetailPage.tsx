@@ -550,6 +550,17 @@ export function QuiosqueComandaDetailPage() {
         </MobileActionBar>
       )}
 
+      {aberta && temItens && cozinhaPendente && (
+        <MobileActionBar>
+          <button type="button" className="touch-btn-primary w-full" disabled>
+            Aguardando entrega da cozinha
+          </button>
+          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/quiosque/comandas')}>
+            Voltar às comandas
+          </button>
+        </MobileActionBar>
+      )}
+
       {aberta && !temItens && (
         <MobileActionBar>
           <p className="text-xs text-center text-ink-faint px-2">

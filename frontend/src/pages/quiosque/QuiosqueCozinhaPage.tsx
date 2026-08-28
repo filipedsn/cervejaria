@@ -33,7 +33,7 @@ export function QuiosqueCozinhaPage() {
             onClick={() => setVerEntregues(true)}
             className={`segmented-control-btn ${verEntregues ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
           >
-            Entregues
+            Entregues hoje
           </button>
         </nav>
         <Link
