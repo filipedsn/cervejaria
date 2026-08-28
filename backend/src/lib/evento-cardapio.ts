@@ -5,6 +5,8 @@ import { cervejariaUsaCardapio } from './cardapio-toggle.js';
 import { isVendaUnitaria } from './produto-utils.js';
 import { toNumber } from './utils.js';
 
+type AplicarCardapioResult = { ok: true; count: number } | { error: string };
+
 const produtoInclude = {
   include: { precos: { orderBy: { volumeMl: 'asc' as const } } },
 };
@@ -134,7 +136,7 @@ export async function aplicarCardapioInicialEvento(params: {
   cervejariaId: string;
   cardapioId?: string;
   produtoIds?: string[];
-}) {
+}): Promise<AplicarCardapioResult> {
   const { eventoId, cervejariaId, cardapioId, produtoIds } = params;
   if (!cardapioId && !produtoIds?.length) return { ok: true as const, count: 0 };
 
@@ -148,7 +150,7 @@ export async function aplicarCardapioInicialEvento(params: {
       data: { cardapioId },
     });
   } else {
-    const validated = await validateProdutosCardapio(cervejariaId, produtoIds!);
+    const validated = await validateProdutosCardapio(cervejariaId, produtoIds ?? []);
     if ('error' in validated) return validated;
     ids = validated.produtoIds;
   }

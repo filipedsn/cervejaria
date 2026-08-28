@@ -5,6 +5,14 @@ import type { CardapioItemInput } from './cardapio-preco.js';
 
 export type { CardapioItemInput };
 
+export type ProdutoIdsCardapioResult =
+  | { ok: true; produtoIds: string[] }
+  | { error: string };
+
+type ItensCardapioResult =
+  | { ok: true; itens: CardapioItemInput[] }
+  | { error: string };
+
 const produtoInclude = {
   include: { precos: { orderBy: { volumeMl: 'asc' as const } } },
 };
@@ -21,7 +29,7 @@ export async function normalizeItensCardapio(
   cervejariaId: string,
   itens?: CardapioItemInput[],
   produtoIds?: string[],
-): Promise<{ ok: true; itens: CardapioItemInput[] } | { error: string }> {
+): Promise<ItensCardapioResult> {
   if (itens?.length) {
     const ids = itens.map((i) => i.produtoId);
     const validated = await validateProdutosCardapio(cervejariaId, ids);
@@ -44,19 +52,22 @@ export async function normalizeItensCardapio(
       include: { precos: { orderBy: { volumeMl: 'asc' } } },
     });
     const porId = new Map(produtos.map((p) => [p.id, p]));
-    return {
-      ok: true,
-      itens: validated.produtoIds.map((produtoId) => ({
-        produtoId,
-        precoUnit: defaultPrecoCatalogo(porId.get(produtoId)!),
-      })),
-    };
+    const itensNormalizados: CardapioItemInput[] = [];
+    for (const produtoId of validated.produtoIds) {
+      const produto = porId.get(produtoId);
+      if (!produto) return { error: 'Um ou mais itens do cardápio são inválidos' };
+      itensNormalizados.push({ produtoId, precoUnit: defaultPrecoCatalogo(produto) });
+    }
+    return { ok: true, itens: itensNormalizados };
   }
 
   return { ok: true, itens: [] };
 }
 
-export async function validateProdutosCardapio(cervejariaId: string, produtoIds: string[]) {
+export async function validateProdutosCardapio(
+  cervejariaId: string,
+  produtoIds: string[],
+): Promise<ProdutoIdsCardapioResult> {
   const uniqueIds = [...new Set(produtoIds)];
   if (uniqueIds.length === 0) return { ok: true as const, produtoIds: [] as string[] };
 
@@ -200,10 +211,14 @@ export async function updateCardapio(params: {
   }
 
   const updated = await getCardapioById(params.id, params.cervejariaId);
-  return updated!;
+  if (!updated) throw new Error('Cardápio não encontrado');
+  return updated;
 }
 
-export async function getProdutoIdsFromCardapio(cardapioId: string, cervejariaId: string) {
+export async function getProdutoIdsFromCardapio(
+  cardapioId: string,
+  cervejariaId: string,
+): Promise<ProdutoIdsCardapioResult> {
   const cardapio = await prisma.cardapio.findFirst({
     where: { id: cardapioId, cervejariaId, ativo: true },
     include: { produtos: { select: { produtoId: true } } },

@@ -1,8 +1,13 @@
 import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
 import type { CardapioItemInput } from '../cardapio-preco.js';
+import type { ProdutoIdsCardapioResult } from '../cardapio.js';
 
 export type QuiosqueCardapioItemInput = { produtoId: string; precoUnit: number };
+
+type ItensCardapioQuiosqueResult =
+  | { ok: true; itens: QuiosqueCardapioItemInput[] }
+  | { error: string };
 
 function defaultPrecoCatalogoQuiosque(produto: { precoUnit: unknown }): number {
   return toNumber(produto.precoUnit);
@@ -12,7 +17,7 @@ export async function normalizeItensCardapioQuiosque(
   cervejariaId: string,
   itens?: QuiosqueCardapioItemInput[],
   produtoIds?: string[],
-): Promise<{ ok: true; itens: QuiosqueCardapioItemInput[] } | { error: string }> {
+): Promise<ItensCardapioQuiosqueResult> {
   if (itens?.length) {
     const ids = itens.map((i) => i.produtoId);
     const validated = await validateProdutosCardapioQuiosque(cervejariaId, ids);
@@ -34,19 +39,22 @@ export async function normalizeItensCardapioQuiosque(
       where: { id: { in: validated.produtoIds }, cervejariaId },
     });
     const porId = new Map(produtos.map((p) => [p.id, p]));
-    return {
-      ok: true,
-      itens: validated.produtoIds.map((produtoId) => ({
-        produtoId,
-        precoUnit: defaultPrecoCatalogoQuiosque(porId.get(produtoId)!),
-      })),
-    };
+    const itensNormalizados: QuiosqueCardapioItemInput[] = [];
+    for (const produtoId of validated.produtoIds) {
+      const produto = porId.get(produtoId);
+      if (!produto) return { error: 'Um ou mais itens do cardápio são inválidos' };
+      itensNormalizados.push({ produtoId, precoUnit: defaultPrecoCatalogoQuiosque(produto) });
+    }
+    return { ok: true, itens: itensNormalizados };
   }
 
   return { ok: true, itens: [] };
 }
 
-export async function validateProdutosCardapioQuiosque(cervejariaId: string, produtoIds: string[]) {
+export async function validateProdutosCardapioQuiosque(
+  cervejariaId: string,
+  produtoIds: string[],
+): Promise<ProdutoIdsCardapioResult> {
   const uniqueIds = [...new Set(produtoIds)];
   if (uniqueIds.length === 0) return { ok: true as const, produtoIds: [] as string[] };
 
@@ -188,10 +196,14 @@ export async function updateCardapioQuiosque(params: {
   }
 
   const updated = await getCardapioQuiosqueById(params.id, params.cervejariaId);
-  return updated!;
+  if (!updated) throw new Error('Cardápio não encontrado');
+  return updated;
 }
 
-export async function getProdutoIdsFromCardapioQuiosque(cardapioId: string, cervejariaId: string) {
+export async function getProdutoIdsFromCardapioQuiosque(
+  cardapioId: string,
+  cervejariaId: string,
+): Promise<ProdutoIdsCardapioResult> {
   const cardapio = await prisma.cardapioQuiosque.findFirst({
     where: { id: cardapioId, cervejariaId, ativo: true },
     include: { produtos: { select: { produtoQuiosqueId: true } } },

@@ -2,6 +2,8 @@ import { prisma } from '../prisma.js';
 import { mapPrecosCardapioQuiosque } from '../cardapio-preco.js';
 import { quiosqueUsaCardapio } from '../cardapio-toggle.js';
 import { toNumber } from '../utils.js';
+
+type AplicarCardapioTurnoResult = { ok: true; count: number } | { error: string };
 import {
   getProdutoIdsFromCardapioQuiosque,
   listCatalogoCardapioQuiosque,
@@ -34,7 +36,11 @@ export async function mapPrecosTurno(sessaoCaixaId: string) {
     where: { sessaoCaixaId, precoUnit: { not: null } },
     select: { produtoQuiosqueId: true, precoUnit: true },
   });
-  return new Map(rows.map((r) => [r.produtoQuiosqueId, toNumber(r.precoUnit!)]));
+  return new Map(
+    rows.flatMap((row) =>
+      row.precoUnit === null ? [] : [[row.produtoQuiosqueId, toNumber(row.precoUnit)]],
+    ),
+  );
 }
 
 export async function listProdutosDoTurno(sessaoCaixaId: string) {
@@ -119,7 +125,7 @@ export async function aplicarCardapioInicialTurno(params: {
   cervejariaId: string;
   cardapioId?: string;
   produtoIds?: string[];
-}) {
+}): Promise<AplicarCardapioTurnoResult> {
   const { sessaoCaixaId, cervejariaId, cardapioId, produtoIds } = params;
   if (!cardapioId && !produtoIds?.length) return { ok: true as const, count: 0 };
 
@@ -133,7 +139,7 @@ export async function aplicarCardapioInicialTurno(params: {
       data: { cardapioQuiosqueId: cardapioId },
     });
   } else {
-    const validated = await validateProdutosCardapioQuiosque(cervejariaId, produtoIds!);
+    const validated = await validateProdutosCardapioQuiosque(cervejariaId, produtoIds ?? []);
     if ('error' in validated) return validated;
     ids = validated.produtoIds;
   }
