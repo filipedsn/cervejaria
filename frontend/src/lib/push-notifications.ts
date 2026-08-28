@@ -5,15 +5,16 @@ type PushKeyResponse = {
   publicKey: string | null;
 };
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+function urlBase64ToArrayBuffer(base64String: string): ArrayBuffer {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const raw = atob(base64);
-  const output = new Uint8Array(raw.length);
+  const buffer = new ArrayBuffer(raw.length);
+  const output = new Uint8Array(buffer);
   for (let i = 0; i < raw.length; i += 1) {
     output[i] = raw.charCodeAt(i);
   }
-  return output;
+  return buffer;
 }
 
 async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
@@ -21,7 +22,7 @@ async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration
   const existing = await navigator.serviceWorker.getRegistration();
   if (existing) return existing;
   await navigator.serviceWorker.ready;
-  return navigator.serviceWorker.getRegistration();
+  return (await navigator.serviceWorker.getRegistration()) ?? null;
 }
 
 export function isPushSupported(): boolean {
@@ -47,7 +48,7 @@ export async function subscribePedidoPush(): Promise<'granted' | 'denied' | 'uns
   if (!subscription) {
     subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(keyResponse.publicKey),
+      applicationServerKey: urlBase64ToArrayBuffer(keyResponse.publicKey),
     });
   }
 

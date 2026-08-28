@@ -17,7 +17,7 @@ cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST);
 
 self.addEventListener('push', (event) => {
-  const fallback: PushPayload = {
+  const fallback: Required<PushPayload> = {
     title: 'Novo pedido do cliente',
     body: 'Confira a fila de pedidos',
     url: '/comandas',
@@ -33,19 +33,19 @@ self.addEventListener('push', (event) => {
     // usa fallback
   }
 
-  event.waitUntil(
-    self.registration.showNotification(payload.title ?? fallback.title!, {
-      body: payload.body ?? fallback.body,
-      icon: '/icons/pwa-192.png',
-      badge: '/icons/pwa-192.png',
-      tag: payload.tag ?? fallback.tag,
-      renotify: true,
-      vibrate: [200, 100, 200, 100, 200],
-      requireInteraction: true,
-      silent: false,
-      data: { url: payload.url ?? fallback.url },
-    }),
-  );
+  const notificationOptions = {
+    body: payload.body ?? fallback.body,
+    icon: '/icons/pwa-192.png',
+    badge: '/icons/pwa-192.png',
+    tag: payload.tag ?? fallback.tag,
+    renotify: true,
+    vibrate: [200, 100, 200, 100, 200],
+    requireInteraction: true,
+    silent: false,
+    data: { url: payload.url ?? fallback.url },
+  };
+
+  event.waitUntil(self.registration.showNotification(payload.title ?? fallback.title, notificationOptions));
 });
 
 self.addEventListener('notificationclick', (event) => {
