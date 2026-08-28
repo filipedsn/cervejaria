@@ -34,6 +34,7 @@ export async function relatoriosRoutes(app: FastifyInstance) {
     for (const comanda of comandas) {
       totalVendido += toNumber(comanda.total);
       for (const item of comanda.itens) {
+        if (!item.produto || !item.produtoId) continue;
         if (isBebidaChope(item.produto.tipo, item.produto.formato)) {
           totalMl += item.volumeMl * item.quantidade;
         }
@@ -97,9 +98,9 @@ export async function relatoriosRoutes(app: FastifyInstance) {
         const subtotal = toNumber(item.precoUnit) * item.quantidade;
         lines.push(
           csvRow([
-            comanda.cliente.nome,
-            comanda.cliente.telefone ?? '',
-            item.produto.nome,
+            comanda.cliente?.nome ?? '',
+            comanda.cliente?.telefone ?? '',
+            item.produto?.nome ?? item.nome ?? '',
             item.volumeMl,
             item.quantidade,
             toNumber(item.precoUnit).toFixed(2),

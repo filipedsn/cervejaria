@@ -43,6 +43,9 @@ export async function pagamentosRoutes(app: FastifyInstance) {
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada ou já fechada' });
 
+    const eventoId = comanda.eventoId;
+    if (!eventoId) return reply.status(404).send({ error: 'Comanda sem evento' });
+
     if (comanda.itens.length === 0) {
       const cancelled = await cancelarComandaVazia({
         comandaId: id,
@@ -95,7 +98,7 @@ export async function pagamentosRoutes(app: FastifyInstance) {
       throw err;
     }
 
-    emitToEvento(app.io, comanda.eventoId, { type: 'comanda:closed', data: updated });
+    emitToEvento(app.io, eventoId, { type: 'comanda:closed', data: updated });
     return updated;
   });
 
@@ -131,7 +134,8 @@ export async function pagamentosRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Todas as comandas devem ser do mesmo evento' });
     }
 
-    const eventoId = comandas[0]!.eventoId;
+    const eventoId = comandas[0]?.eventoId;
+    if (!eventoId) return reply.status(404).send({ error: 'Comandas sem evento' });
     const comandasComItens = comandas.filter((c) => c.itens.length > 0);
     const comandasVazias = comandas.filter((c) => c.itens.length === 0);
     const totalGrupo = comandasComItens.reduce((sum, c) => sum + toNumber(c.total), 0);

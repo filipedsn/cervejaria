@@ -2,7 +2,7 @@ import type { FormatoBebida, ProdutoTipo } from '@prisma/client';
 
 export const UNIT_ML = 1;
 
-export function isBebidaChope(tipo: ProdutoTipo, formato: FormatoBebida | null | undefined): boolean {
+export function isBebidaChope(tipo: ProdutoTipo | string, formato: FormatoBebida | string | null | undefined): boolean {
   return tipo === 'BEBIDA' && (formato ?? 'CHOPE') === 'CHOPE';
 }
 

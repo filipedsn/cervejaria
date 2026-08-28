@@ -85,6 +85,7 @@ export async function getComandaCountsByClienteIds(
   });
 
   for (const row of rows) {
+    if (!row.clienteId) continue;
     const current = map.get(row.clienteId) ?? { abertas: 0, fechadas: 0 };
     if (row.status === 'ABERTA') current.abertas = row._count._all;
     if (row.status === 'FECHADA') current.fechadas = row._count._all;

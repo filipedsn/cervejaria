@@ -108,6 +108,8 @@ function aggregateComandas(comandas: ClosedComanda[], fechadoPorCtx: ReportFecha
     porFuncionario.set(funcKey, func);
 
     for (const item of comanda.itens) {
+      if (!item.produto || !item.produtoId) continue;
+
       const itemValor = toNumber(item.precoUnit) * item.quantidade;
       const prod = porProduto.get(item.produtoId) ?? {
         produtoId: item.produtoId,
@@ -292,6 +294,7 @@ async function buildEventosRecentes(
 
   const comandasByEvento = new Map<string, typeof comandas>();
   for (const comanda of comandas) {
+    if (!comanda.eventoId) continue;
     const list = comandasByEvento.get(comanda.eventoId) ?? [];
     list.push(comanda);
     comandasByEvento.set(comanda.eventoId, list);
@@ -312,7 +315,7 @@ async function buildEventosRecentes(
         receitaAvulsa += valor;
       }
       for (const item of comanda.itens) {
-        if (isBebidaChope(item.produto.tipo, item.produto.formato)) {
+        if (item.produto && isBebidaChope(item.produto.tipo, item.produto.formato)) {
           chopeMl += item.volumeMl * item.quantidade;
         }
       }
@@ -397,6 +400,7 @@ async function buildComparativoAgendas(
 
   const comandasByEvento = new Map<string, typeof comandas>();
   for (const comanda of comandas) {
+    if (!comanda.eventoId) continue;
     const list = comandasByEvento.get(comanda.eventoId) ?? [];
     list.push(comanda);
     comandasByEvento.set(comanda.eventoId, list);
@@ -416,7 +420,8 @@ async function buildComparativoAgendas(
   const grupos = new Map<string, Grupo>();
 
   for (const evento of eventos) {
-    const serieId = evento.serieId!;
+    if (!evento.serieId) continue;
+    const serieId = evento.serieId;
     const grupo = grupos.get(serieId) ?? {
       serieId,
       nome: evento.serie?.nome ?? evento.nome,
@@ -436,7 +441,7 @@ async function buildComparativoAgendas(
     for (const comanda of evComandas) {
       grupo.receitaTotal += toNumber(comanda.total);
       for (const item of comanda.itens) {
-        if (isBebidaChope(item.produto.tipo, item.produto.formato)) {
+        if (item.produto && isBebidaChope(item.produto.tipo, item.produto.formato)) {
           grupo.chopeMl += item.volumeMl * item.quantidade;
         }
       }

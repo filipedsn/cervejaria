@@ -569,7 +569,7 @@ export async function publicRoutes(app: FastifyInstance) {
         metadata: {
           clienteId: session.clienteId,
           itemCount: pedido.itens.length,
-          numero: pedido.numero,
+          numero: pedido.comanda?.numero ?? null,
         },
         payload: serializePedido(pedido),
       });

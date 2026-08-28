@@ -169,7 +169,7 @@ export async function clientesRoutes(app: FastifyInstance) {
         evento: c.evento,
         itens: c.itens.map((i) => ({
           id: i.id,
-          produto: i.produto.nome,
+          produto: i.produto?.nome ?? i.nome,
           volumeMl: i.volumeMl,
           quantidade: i.quantidade,
           precoUnit: toNumber(i.precoUnit),

@@ -16,13 +16,13 @@ export interface ChopeRankingEntry extends ChopeRankingRow {
 }
 
 type ComandaForRanking = {
-  clienteId: string;
-  cliente: { nome: string; telefone: string | null };
+  clienteId: string | null;
+  cliente: { nome: string; telefone: string | null } | null;
   itens: Array<{
     volumeMl: number;
     quantidade: number;
     precoUnit: unknown;
-    produto: { tipo: ProdutoTipo; formato: FormatoBebida | null };
+    produto: { tipo: ProdutoTipo; formato: FormatoBebida | null } | null;
   }>;
 };
 
@@ -30,6 +30,7 @@ export function aggregateChopeRanking(comandas: ComandaForRanking[]): ChopeRanki
   const rankingMap = new Map<string, ChopeRankingRow>();
 
   for (const comanda of comandas) {
+    if (!comanda.clienteId || !comanda.cliente) continue;
     const key = comanda.clienteId;
     const current = rankingMap.get(key) ?? {
       clienteId: comanda.clienteId,
@@ -41,6 +42,7 @@ export function aggregateChopeRanking(comandas: ComandaForRanking[]): ChopeRanki
     };
 
     for (const item of comanda.itens) {
+      if (!item.produto) continue;
       if (isBebidaChope(item.produto.tipo, item.produto.formato)) {
         current.totalMl += item.volumeMl * item.quantidade;
         current.pedidos += item.quantidade;

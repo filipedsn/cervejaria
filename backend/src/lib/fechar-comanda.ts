@@ -202,13 +202,7 @@ export async function fecharComandaComPagamentos(
 
   recordComandaFechada(Math.round(total * 100), origem === 'QUIOSQUE' ? 'quiosque' : 'cervejaria');
 
-  const totalMlChope = computeChopeMlFromItens(
-    comandaAtual.itens.filter((item) => item.produto) as Array<{
-      volumeMl: number;
-      quantidade: number;
-      produto: { tipo: string; formato: string | null };
-    }>,
-  );
+  const totalMlChope = computeChopeMlFromItens(comandaAtual.itens);
   if (origem === 'EVENTO' && comandaAtual.tipo !== 'AVULSA' && comandaAtual.clienteId) {
     await incrementClienteStatsOnComandaFechada(tx, {
       clienteId: comandaAtual.clienteId,

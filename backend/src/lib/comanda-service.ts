@@ -350,7 +350,7 @@ export async function aplicarDescontoComanda(params: {
 export const pedidoInclude = {
   itens: { include: { produto: true } },
   cliente: { select: { id: true, nome: true, telefone: true } },
-  comanda: { select: { id: true, total: true, status: true } },
+  comanda: { select: { id: true, numero: true, total: true, status: true } },
 } satisfies Prisma.PedidoClienteInclude;
 
 export function serializePedido(
@@ -392,7 +392,7 @@ export async function serializeComandaForCliente(comandaId: string) {
     total: toNumber(comanda.total),
     itens: comanda.itens.map((i) => ({
       id: i.id,
-      produto: i.produto.nome,
+      produto: i.produto?.nome ?? i.nome,
       volumeMl: i.volumeMl,
       quantidade: i.quantidade,
       precoUnit: toNumber(i.precoUnit),

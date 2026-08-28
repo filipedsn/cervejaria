@@ -22,7 +22,7 @@ type EventoWindowInput = {
 export type FluxoComandaInput = ComandaCloseInput & {
   id: string;
   status: string;
-  tipo?: 'COMANDA' | 'AVULSA';
+  tipo?: string;
   createdAt: Date;
   itens: Array<{
     id: string;
@@ -30,7 +30,7 @@ export type FluxoComandaInput = ComandaCloseInput & {
     precoUnit: unknown;
     quantidade: number;
     volumeMl?: number;
-    produto?: { tipo: string; formato: string | null };
+    produto?: { tipo: string; formato: string | null } | null;
   }>;
 };
 

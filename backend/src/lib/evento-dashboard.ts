@@ -72,7 +72,11 @@ export async function buildEventoDashboard(eventoId: string, cervejariaId: strin
       if (!isAvulsa) {
         comandasAbertas += 1;
         valorAberto += toNumber(comanda.total);
-        for (const item of comanda.itens) addItem(aberto, item);
+        for (const item of comanda.itens) {
+          if (item.produto && item.produtoId) {
+            addItem(aberto, { ...item, produtoId: item.produtoId, produto: item.produto });
+          }
+        }
       }
     } else if (comanda.status === 'FECHADA') {
       if (isAvulsa) {
@@ -82,7 +86,11 @@ export async function buildEventoDashboard(eventoId: string, cervejariaId: strin
         comandasFechadas += 1;
         valorFechado += toNumber(comanda.total);
       }
-      for (const item of comanda.itens) addItem(fechado, item);
+      for (const item of comanda.itens) {
+        if (item.produto && item.produtoId) {
+          addItem(fechado, { ...item, produtoId: item.produtoId, produto: item.produto });
+        }
+      }
     }
   }
 

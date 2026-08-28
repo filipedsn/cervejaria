@@ -212,22 +212,26 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
     const isAvulsa = comanda.tipo === 'AVULSA';
 
+    const clienteId = !isAvulsa ? comanda.clienteId : null;
+
+    const cliente = !isAvulsa ? comanda.cliente : null;
+
     if (isAvulsa) {
       vendasAvulsas += 1;
       receitaAvulsa += valor;
     } else {
       comandasRegulares += 1;
-      clientes.add(comanda.clienteId);
+      if (clienteId) clientes.add(clienteId);
     }
 
 
 
-    if (!isAvulsa) {
-      const topCliente = topClientesMap.get(comanda.clienteId) ?? {
+    if (clienteId && cliente) {
+      const topCliente = topClientesMap.get(clienteId) ?? {
 
-        clienteId: comanda.clienteId,
+        clienteId,
 
-        nome: comanda.cliente.nome,
+        nome: cliente.nome,
 
         receita: 0,
 
@@ -239,7 +243,7 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
       topCliente.comandas += 1;
 
-      topClientesMap.set(comanda.clienteId, topCliente);
+      topClientesMap.set(clienteId, topCliente);
     }
 
 
@@ -269,6 +273,8 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
 
     for (const item of comanda.itens) {
+
+      if (!item.produto || !item.produtoId) continue;
 
       const itemValor = toNumber(item.precoUnit) * item.quantidade;
 
@@ -302,12 +308,12 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
 
 
-        if (!isAvulsa) {
-          const rank = rankingMap.get(comanda.clienteId) ?? {
+        if (clienteId && cliente) {
+          const rank = rankingMap.get(clienteId) ?? {
 
-            clienteId: comanda.clienteId,
+            clienteId,
 
-            nome: comanda.cliente.nome,
+            nome: cliente.nome,
 
             totalMl: 0,
 
@@ -323,7 +329,7 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
           rank.pedidos += item.quantidade;
 
-          rankingMap.set(comanda.clienteId, rank);
+          rankingMap.set(clienteId, rank);
         }
 
       }

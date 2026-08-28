@@ -49,6 +49,7 @@ export async function getStatsMesAtualPorCervejaria(): Promise<Map<string, MesAt
   >();
 
   for (const comanda of comandas) {
+    if (!comanda.evento) continue;
     const cid = comanda.evento.cervejariaId;
     const current = byCervejaria.get(cid) ?? {
       faturamento: 0,
@@ -60,6 +61,7 @@ export async function getStatsMesAtualPorCervejaria(): Promise<Map<string, MesAt
     current.comandas += 1;
 
     for (const item of comanda.itens) {
+      if (!item.produto || !item.produtoId) continue;
       const p = current.produtos.get(item.produtoId) ?? {
         nome: item.produto.nome,
         qtd: 0,

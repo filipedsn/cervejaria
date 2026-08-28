@@ -5,13 +5,13 @@ import { toNumber } from './utils.js';
 type ItemWithProduto = {
   volumeMl: number;
   quantidade: number;
-  produto: { tipo: string; formato: string | null };
+  produto: { tipo: string; formato: string | null } | null;
 };
 
 export function computeChopeMlFromItens(itens: ItemWithProduto[]): number {
   let totalMl = 0;
   for (const item of itens) {
-    if (isBebidaChope(item.produto.tipo as 'BEBIDA' | 'COMIDA', item.produto.formato as import('@prisma/client').FormatoBebida | null)) {
+    if (item.produto && isBebidaChope(item.produto.tipo, item.produto.formato)) {
       totalMl += item.volumeMl * item.quantidade;
     }
   }
