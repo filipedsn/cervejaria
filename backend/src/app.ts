@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyBaseLogger } from 'fastify';
 
 import { ZodError } from 'zod';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
@@ -18,6 +18,7 @@ import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { Server as SocketIOServer } from 'socket.io';
 import path from 'path';
+import type { IncomingMessage, Server as HttpServer, ServerResponse } from 'node:http';
 
 import { fileURLToPath } from 'url';
 
@@ -68,6 +69,7 @@ import {
   AUTH_COOKIE_NAME,
 
   getCorsOrigin,
+  getSocketCorsOrigin,
 
   getJwtExpiresIn,
 
@@ -109,7 +111,9 @@ function resolveFrontendDist(): string | null {
 }
 
 export async function buildApp() {
-  const app = Fastify({ loggerInstance: createLogger() });
+  const app = Fastify<HttpServer, IncomingMessage, ServerResponse<IncomingMessage>, FastifyBaseLogger>({
+    loggerInstance: createLogger(),
+  });
 
   await app.register(helmet, {
 
@@ -396,7 +400,7 @@ export function setupSocketIO(app: Awaited<ReturnType<typeof buildApp>>, server:
 
     cors: {
 
-      origin: getCorsOrigin(),
+      origin: getSocketCorsOrigin(),
 
       credentials: true,
 

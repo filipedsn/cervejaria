@@ -1,4 +1,10 @@
+import type { FastifyCorsOptions } from '@fastify/cors';
+import type { CorsOptions } from 'cors';
+
 const isProd = process.env.NODE_ENV === 'production';
+
+type FastifyCorsOrigin = NonNullable<FastifyCorsOptions['origin']>;
+type SocketCorsOrigin = NonNullable<CorsOptions['origin']>;
 
 export function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -12,48 +18,57 @@ export function getJwtExpiresIn(): string {
   return process.env.JWT_EXPIRES_IN ?? '8h';
 }
 
-export function getCorsOrigin():
-  | string[]
-  | boolean
-  | ((origin: string, callback: (err: Error | null, allow: boolean) => void) => void) {
+function getConfiguredCorsOrigins(): string[] {
+  const raw = process.env.CORS_ORIGIN;
+
+  return raw?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
+}
+
+function isAllowedDevCorsOrigin(origin: string | undefined, explicit: string[]): boolean {
+  if (!origin) return true;
+  if (explicit.includes(origin)) return true;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin)) return true;
+  if (
+    /^https?:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(
+      origin,
+    )
+  ) {
+    return true;
+  }
+  return /^https?:\/\/([a-z0-9-]+\.)*quivercloud\.com\.br(:\d+)?$/i.test(origin);
+}
+
+export function getCorsOrigin(): FastifyCorsOrigin {
   const raw = process.env.CORS_ORIGIN;
 
   if (isProd) {
     if (!raw) {
       throw new Error('CORS_ORIGIN é obrigatório em produção');
     }
-    return raw.split(',').map((o) => o.trim()).filter(Boolean);
+    return getConfiguredCorsOrigins();
   }
 
-  const explicit = raw?.split(',').map((o) => o.trim()).filter(Boolean) ?? [];
+  const explicit = getConfiguredCorsOrigins();
 
   // Dev: localhost + IPs da rede local (teste no celular via Wi-Fi)
   return (origin, callback) => {
-    if (!origin) {
-      callback(null, true);
-      return;
+    callback(null, isAllowedDevCorsOrigin(origin, explicit));
+  };
+}
+
+export function getSocketCorsOrigin(): SocketCorsOrigin {
+  const raw = process.env.CORS_ORIGIN;
+
+  if (isProd) {
+    if (!raw) {
+      throw new Error('CORS_ORIGIN é obrigatório em produção');
     }
-    if (explicit.includes(origin)) {
-      callback(null, true);
-      return;
-    }
-    if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin)) {
-      callback(null, true);
-      return;
-    }
-    if (
-      /^https?:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(
-        origin,
-      )
-    ) {
-      callback(null, true);
-      return;
-    }
-    if (/^https?:\/\/([a-z0-9-]+\.)*quivercloud\.com\.br(:\d+)?$/i.test(origin)) {
-      callback(null, true);
-      return;
-    }
-    callback(null, false);
+    return getConfiguredCorsOrigins();
+  }
+
+  const explicit = getConfiguredCorsOrigins();
+  return (origin, callback) => {
+    callback(null, isAllowedDevCorsOrigin(origin, explicit));
   };
 }
 

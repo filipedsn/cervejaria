@@ -15,6 +15,8 @@ export type RealtimeEvent =
   | { type: 'ranking:updated'; data: unknown }
   | { type: 'evento:updated'; data: unknown }
   | { type: 'evento:deleted'; data: { id: string } }
+  | { type: 'tap-montagem:updated'; data: { eventoId: string } }
+  | { type: 'evento-cardapio:updated'; data: { eventoId: string } }
   | { type: 'pedido:created'; data: unknown }
   | { type: 'pedido:confirmed'; data: unknown }
   | { type: 'pedido:recusado'; data: unknown }
