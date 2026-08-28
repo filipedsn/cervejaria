@@ -88,6 +88,31 @@ import type { JwtPayload } from './types/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+function hasErrorProperty<Key extends string>(
+  value: unknown,
+  key: Key,
+): value is Record<Key, unknown> {
+  return typeof value === 'object' && value !== null && key in value;
+}
+
+function getErrorMessage(error: unknown): string | undefined {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return hasErrorProperty(error, 'message') && typeof error.message === 'string'
+    ? error.message
+    : undefined;
+}
+
+function getErrorStatusCode(error: unknown): number | undefined {
+  if (!hasErrorProperty(error, 'statusCode') || typeof error.statusCode !== 'number') {
+    return undefined;
+  }
+
+  return Number.isInteger(error.statusCode) && error.statusCode >= 400 && error.statusCode <= 599
+    ? error.statusCode
+    : undefined;
+}
+
 function resolveFrontendDist(): string | null {
   const envDist = process.env.FRONTEND_DIST?.trim();
   if (envDist) {
@@ -237,6 +262,11 @@ export async function buildApp() {
 
   app.setErrorHandler((error, _request, reply) => {
 
+    const validation = hasErrorProperty(error, 'validation') ? error.validation : undefined;
+    const code = hasErrorProperty(error, 'code') && typeof error.code === 'string' ? error.code : '';
+    const message = getErrorMessage(error);
+    const statusCode = getErrorStatusCode(error);
+
     if (error instanceof ZodError) {
 
       const message = error.errors[0]?.message ?? 'Dados inválidos';
@@ -245,30 +275,34 @@ export async function buildApp() {
 
     }
 
-    if (error.validation) {
+    if (validation) {
 
-      return reply.status(400).send({ error: 'Dados inválidos', details: error.validation });
+      return reply.status(400).send({ error: 'Dados inválidos', details: validation });
 
     }
 
-    const code = (error as { code?: string }).code ?? '';
     if (code.startsWith('FST_JWT_') || code === 'FAST_JWT_MISSING_SIGNATURE') {
-      return reply.status(401).send({ error: error.message || 'Não autorizado' });
+      return reply.status(401).send({ error: message || 'Não autorizado' });
     }
 
-    if (error.statusCode) {
+    if (statusCode) {
 
-      return reply.status(error.statusCode).send({ error: error.message });
+      return reply.status(statusCode).send({ error: message });
 
     }
 
     const span = trace.getActiveSpan();
     if (span) {
-      span.recordException(error);
-      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      const exception = error instanceof Error
+        ? error
+        : { name: 'Error', message: message ?? 'Erro interno do servidor' };
+      span.recordException(exception);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: exception.message });
     }
 
-    app.log.error(error);
+    if (error instanceof Error) app.log.error(error);
+    else if (message) app.log.error({ err: error }, message);
+    else app.log.error({ err: error });
 
     return reply.status(500).send({ error: 'Erro interno do servidor' });
 
