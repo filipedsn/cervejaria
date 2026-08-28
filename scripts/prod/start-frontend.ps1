@@ -14,7 +14,7 @@ if (Test-FrontendHealthy -FrontendUrl $paths.FrontendUrl) {
   exit 0
 }
 if (-not $paths.NpmCmd -or -not (Test-Path $paths.NpmCmd)) {
-  Write-Host 'npm.cmd nao encontrado. Instale Node.js 20+.' -ForegroundColor Red
+  Write-Host 'npm.cmd nao encontrado. Instale Node.js 20.' -ForegroundColor Red
   exit 1
 }
 

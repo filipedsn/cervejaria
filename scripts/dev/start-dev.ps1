@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 $paths = Get-DevPaths
 
 if (-not $paths.NpmCmd -or -not (Test-Path $paths.NpmCmd)) {
-  Write-Host 'npm.cmd nao encontrado. Instale Node.js 20+.' -ForegroundColor Red
+  Write-Host 'npm.cmd nao encontrado. Instale Node.js 20.' -ForegroundColor Red
   exit 1
 }
 

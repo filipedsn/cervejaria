@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "description": "PWA para cervejarias mÃ³veis - comandas, pagamentos e ranking",
+  "engines": {
+    "node": ">=20 <21"
+  },
   "scripts": {
+    "check:node": "node scripts/check-node-version.mjs",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",

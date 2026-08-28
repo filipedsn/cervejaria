@@ -20,10 +20,12 @@ Aplicação web (PWA) para cervejarias móveis — controle de comandas, pagamen
 
 ## Pré-requisitos
 
-- Node.js 20+
+- Node.js 20 (baseline suportado; outros majors não são baseline suportado)
 - Docker e Docker Compose
 
 ## Desenvolvimento local
+
+O runtime oficial do projeto é Node.js 20. Use o `.nvmrc` (`nvm use`) ou confirme o ambiente com `npm run check:node`. A CI também executa em Node.js 20; versões de outros majors podem funcionar, mas não são baseline suportado.
 
 ```bash
 # 1. Subir o banco Postgres
@@ -164,7 +166,7 @@ Cloudflare → API :3001 (frontend estático + API)
 
 ### 1. Pré-requisitos
 
-- Node.js 20+, PostgreSQL rodando (Docker ou serviço)
+- Node.js 20, PostgreSQL rodando (Docker ou serviço)
 - Build do backend (`backend/dist`) e frontend (`frontend/dist`) — o instalador tenta gerar automaticamente
 - No painel Cloudflare, `tap.quivercloud.com.br` apontando para **`http://localhost:3001`**
 - `backend/.env.production` com `APP_URL` e `CORS_ORIGIN` = `https://tap.quivercloud.com.br`
