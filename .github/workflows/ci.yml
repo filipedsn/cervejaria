@@ -107,12 +107,9 @@ jobs:
       # e rodar so os testes mantem o job em segundos.
       - run: npm run test:unit
 
-  # continue-on-error permanece ate zerar os erros de tsc pre-existentes;
-  # ate la o job e informativo e quem barra PR quebrado e backend-test.
   backend-build:
     name: backend-build
     runs-on: ubuntu-latest
-    continue-on-error: true
     env:
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
     defaults:
