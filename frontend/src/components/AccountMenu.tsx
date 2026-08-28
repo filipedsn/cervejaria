@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { assetUrl, logoAssetUrl } from '../lib/api';
+import { logoAssetUrl } from '../lib/api';
 import type { Cervejaria, Trailer, Usuario } from '../types';
 import { formatTrailerLabel } from '../types';
 import { useTheme } from '../contexts/ThemeContext';

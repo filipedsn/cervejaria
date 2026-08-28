@@ -11,7 +11,6 @@ type CardapioModo = 'salvo' | 'montar';
 
 export function EventoCardapioPanel({
   eventoId,
-  eventoAberto,
   embedded = false,
   onClose,
 }: {

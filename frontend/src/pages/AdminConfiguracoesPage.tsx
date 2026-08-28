@@ -113,7 +113,7 @@ export function AdminConfiguracoesPage() {
   });
 
   const testMutation = useMutation({
-    mutationFn: () => api.post('/api/admin/settings/smtp/test', { email: testEmail }),
+    mutationFn: () => api.post<{ message: string }>('/api/admin/settings/smtp/test', { email: testEmail }),
     onSuccess: (data: { message: string }) => {
       setMessage(data.message);
       setError('');

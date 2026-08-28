@@ -184,8 +184,19 @@ export function IconListMenu({ className = 'w-6 h-6', strokeWidth = 1.75 }: Icon
   );
 }
 
+export type NavItem = {
+  path: string;
+  label: string;
+  shortLabel: string;
+  Icon: (props: IconProps) => ReturnType<typeof IconCalendar>;
+  exact?: boolean;
+  donoOnly?: boolean;
+  somenteCozinha?: boolean;
+  somenteEstoque?: boolean;
+};
+
 /** Navegacao do modulo cervejaria. */
-export const NAV_ITEMS = [
+export const NAV_ITEMS: NavItem[] = [
   { path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const },
   { path: '/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
   { path: '/clientes', label: 'Clientes', shortLabel: 'Clientes', Icon: IconUsers },
@@ -194,7 +205,7 @@ export const NAV_ITEMS = [
 ];
 
 /** Navegacao do modulo quiosque, adicionada apenas quando o modulo esta ativo. */
-export const NAV_ITEMS_QUIOSQUE = [
+export const NAV_ITEMS_QUIOSQUE: NavItem[] = [
   { path: '/quiosque/comandas', label: 'Quiosque', shortLabel: 'Quiosque', Icon: IconStore },
 ];
 
@@ -204,7 +215,7 @@ type QuiosqueNavContext = {
 };
 
 /** Abas do quiosque na barra inferior — mesmo padrao mobile da cervejaria. */
-export const QUIOSQUE_NAV_ITEMS = [
+export const QUIOSQUE_NAV_ITEMS: NavItem[] = [
   { path: '/quiosque/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
   {
     path: '/quiosque/cozinha',

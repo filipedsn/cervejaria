@@ -78,9 +78,6 @@ export function AdicionarItemComandaModal({
         ? parseFloat(String(unitProduto.preco))
         : 0;
 
-  const volumeMl =
-    tab === 'chope' ? selectedVolume ?? 0 : unitProduto?.volumeMl ?? 0;
-
   const canAddChope = tab === 'chope' && !!selectedTap && !!selectedVolume && !!chopePreco;
   const canAddUnit = tab !== 'chope' && !!selectedProduto && !!unitProduto;
   const canAdd = (canAddChope || canAddUnit) && quantity > 0 && !isPending;
