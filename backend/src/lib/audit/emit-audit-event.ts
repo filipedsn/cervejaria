@@ -2,6 +2,7 @@ import { trace } from '@opentelemetry/api';
 import { BRAZIL_TZ, formatBrazilDateTime } from '../event-datetime.js';
 import { logger } from '../logger.js';
 import { emitAuditLogRecord } from './emit-otel-log.js';
+import { redactObject } from './redact.js';
 import {
   auditIndexName,
   getTelemetryContextOrDefault,
@@ -72,10 +73,11 @@ export function emitAuditEvent(input: AuditEventInput): void {
   if (input.ui?.page) payload['ui.page'] = input.ui.page;
   if (input.ui?.element) payload['ui.element'] = input.ui.element;
   if (input.ui?.label) payload['ui.label'] = input.ui.label;
-  if (input.metadata && Object.keys(input.metadata).length > 0) {
-    payload.metadata = input.metadata;
-    if (input.metadata.payload != null) {
-      payload['transacao.payload'] = input.metadata.payload;
+  const metadata = input.metadata ? (redactObject(input.metadata) as Record<string, unknown>) : undefined;
+  if (metadata && Object.keys(metadata).length > 0) {
+    payload.metadata = metadata;
+    if (metadata.payload != null) {
+      payload['transacao.payload'] = metadata.payload;
     }
   }
 

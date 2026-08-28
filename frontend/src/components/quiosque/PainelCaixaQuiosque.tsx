@@ -19,7 +19,7 @@ import {
 } from './TurnoCardapioFormFields';
 import { QuiosqueTurnoCardapioPanel } from './QuiosqueTurnoCardapioPanel';
 
-type Dialogo = 'nenhum' | 'movimento' | 'fechar' | 'cardapio';
+type Dialogo = 'nenhum' | 'movimento' | 'correcao' | 'fechar' | 'cardapio';
 
 function LinhaResumo({ rotulo, valor, destaque = false }: { rotulo: string; valor: number; destaque?: boolean }) {
   return (
@@ -59,6 +59,12 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
   const [tipoMovimento, setTipoMovimento] = useState<'SANGRIA' | 'SUPRIMENTO'>('SANGRIA');
   const [valorMovimento, setValorMovimento] = useState('');
   const [obsMovimento, setObsMovimento] = useState('');
+  const [movimentoParaCorrigir, setMovimentoParaCorrigir] = useState<ResumoCaixa['movimentos'][number] | null>(null);
+  const [valorCorrigido, setValorCorrigido] = useState('');
+  const [motivoCorrecao, setMotivoCorrecao] = useState('');
+  const [autorizadorEmail, setAutorizadorEmail] = useState('');
+  const [autorizadorSenha, setAutorizadorSenha] = useState('');
+  const [historicoAberto, setHistoricoAberto] = useState<string | null>(null);
   const [contado, setContado] = useState<Record<string, string>>({});
   const [obsFechamento, setObsFechamento] = useState('');
   const [erro, setErro] = useState('');
@@ -132,6 +138,30 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
       setErro('');
     },
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível fechar o caixa'),
+  });
+
+  const corrigir = useMutation({
+    mutationFn: () => {
+      if (!movimentoParaCorrigir) throw new Error('Movimento não selecionado');
+      return api.post<ResumoCaixa>(`/api/quiosque/caixa/movimentos/${movimentoParaCorrigir.id}/corrigir`, {
+        pontoVendaId,
+        valorCorrigido: parseCurrencyInput(valorCorrigido),
+        motivo: motivoCorrecao.trim(),
+        autorizadorEmail: autorizadorEmail.trim(),
+        autorizadorSenha,
+      });
+    },
+    onSuccess: () => {
+      invalidar();
+      setDialogo('nenhum');
+      setMovimentoParaCorrigir(null);
+      setValorCorrigido('');
+      setMotivoCorrecao('');
+      setAutorizadorEmail('');
+      setAutorizadorSenha('');
+      setErro('');
+    },
+    onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível corrigir o movimento'),
   });
 
   const abrirDialogoFechar = (atual: ResumoCaixa) => {
@@ -301,16 +331,34 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
           {sessao.movimentos.length > 0 && (
             <div className="card space-y-2">
               <h3 className="font-semibold">Movimentos</h3>
-              {sessao.movimentos.map((mov) => (
+              {sessao.movimentos.filter((mov) => !mov.correcaoDeId).map((mov) => (
                 <div key={mov.id} className="flex items-baseline justify-between gap-2 text-sm">
                   <span>
                     {mov.tipo === 'SANGRIA' ? 'Sangria' : 'Suprimento'}
+                    {mov.corrigidoEm && <span className="ml-2 text-xs font-semibold text-amber-700">CORRIGIDA</span>}
                     {mov.observacao ? ` — ${mov.observacao}` : ''}
                   </span>
                   <span className={mov.tipo === 'SANGRIA' ? 'text-red-600' : 'text-green-600'}>
                     {mov.tipo === 'SANGRIA' ? '-' : '+'}
-                    {formatCurrency(mov.valor)}
+                    {formatCurrency(sessao.movimentos.find((item) => item.correcaoDeId === mov.id && item.naturezaCorrecao === 'SUBSTITUICAO')?.valor ?? mov.valor)}
                   </span>
+                  {!mov.corrigidoEm && (
+                    <button type="button" className="mt-1 text-xs text-primary underline" onClick={() => {
+                      setMovimentoParaCorrigir(mov);
+                      setValorCorrigido(formatCurrencyInputFromNumber(mov.valor));
+                      setMotivoCorrecao(''); setAutorizadorEmail(''); setAutorizadorSenha(''); setErro(''); setDialogo('correcao');
+                    }}>Corrigir</button>
+                  )}
+                  {mov.corrigidoEm && (
+                    <button type="button" className="mt-1 text-xs text-primary underline" onClick={() => setHistoricoAberto(historicoAberto === mov.id ? null : mov.id)}>Ver histórico</button>
+                  )}
+                  {historicoAberto === mov.id && <div className="mt-2 rounded bg-ink/5 p-2 text-xs text-ink-faint">
+                    <div>Original: {formatCurrency(mov.valor)}</div>
+                    <div>Estorno: {formatCurrency(sessao.movimentos.find((item) => item.correcaoDeId === mov.id && item.naturezaCorrecao === 'ESTORNO')?.valor ?? 0)}</div>
+                    <div>Novo valor: {formatCurrency(sessao.movimentos.find((item) => item.correcaoDeId === mov.id && item.naturezaCorrecao === 'SUBSTITUICAO')?.valor ?? mov.valor)}</div>
+                    <div>Motivo: {mov.motivoCorrecao}</div>
+                    <div>Autorizado por: {mov.autorizadoPorId}</div>
+                  </div>}
                 </div>
               ))}
             </div>
@@ -454,6 +502,25 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
           <button type="submit" className="touch-btn-primary w-full" disabled={movimento.isPending} data-audit={tipoMovimento === 'SANGRIA' ? 'quiosque-caixa-sangria' : 'quiosque-caixa-suprimento'}>
             {movimento.isPending ? 'Salvando...' : 'Confirmar'}
           </button>
+        </form>
+      </Modal>
+
+      <Modal open={dialogo === 'correcao'} onClose={() => !corrigir.isPending && setDialogo('nenhum')} title="Corrigir movimentação">
+        <form className="space-y-4" onSubmit={(e) => {
+          e.preventDefault();
+          if (!valorCorrigido.trim() || parseCurrencyInput(valorCorrigido) <= 0) return setErro('Informe o novo valor');
+          if (!motivoCorrecao.trim()) return setErro('Informe o motivo da correção');
+          corrigir.mutate();
+        }}>
+          {erro && <div className="alert-error">{erro}</div>}
+          <p className="text-sm text-ink-faint">Valor atual: {movimentoParaCorrigir && formatCurrency(movimentoParaCorrigir.valor)}</p>
+          <div><label className="label">Novo valor (R$)</label><CurrencyInput autoFocus value={valorCorrigido} onChange={setValorCorrigido} /></div>
+          <div><label className="label">Motivo</label><input className="input" value={motivoCorrecao} onChange={(e) => setMotivoCorrecao(e.target.value)} maxLength={500} /></div>
+          <fieldset className="space-y-3 border-t border-ink/10 pt-3"><legend className="text-sm font-semibold">Autorização do responsável</legend>
+            <div><label className="label">E-mail do DONO</label><input className="input" type="email" autoComplete="username" value={autorizadorEmail} onChange={(e) => setAutorizadorEmail(e.target.value)} /></div>
+            <div><label className="label">Senha</label><input className="input" type="password" autoComplete="current-password" value={autorizadorSenha} onChange={(e) => setAutorizadorSenha(e.target.value)} /></div>
+          </fieldset>
+          <button type="submit" className="touch-btn-primary w-full" disabled={corrigir.isPending} data-audit="quiosque-caixa-corrigir">{corrigir.isPending ? 'Corrigindo...' : 'Autorizar e corrigir'}</button>
         </form>
       </Modal>
 

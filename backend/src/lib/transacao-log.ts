@@ -183,6 +183,8 @@ export function formatTransacaoDescricao(tipo: TransacaoTipo, metadata: unknown)
       return `Caixa aberto — troco R$ ${(num(m.trocoInicial) ?? 0).toFixed(2)}`;
     case 'QUIOSQUE_CAIXA_MOVIMENTO':
       return `${str(m.tipo) ?? 'Movimento'} R$ ${(num(m.valor) ?? 0).toFixed(2)}`;
+    case 'QUIOSQUE_CAIXA_MOVIMENTO_CORRIGIDO':
+      return `Movimento de caixa corrigido â€” R$ ${(num(m.valorOriginal) ?? 0).toFixed(2)} → R$ ${(num(m.valorCorrigido) ?? 0).toFixed(2)}`;
     case 'QUIOSQUE_CAIXA_FECHADO':
       return `Caixa fechado${num(m.divergenciaCentavos) != null ? ` — divergência R$ ${((num(m.divergenciaCentavos) ?? 0) / 100).toFixed(2)}` : ''}`;
     case 'QUIOSQUE_COMANDA_CRIADA':

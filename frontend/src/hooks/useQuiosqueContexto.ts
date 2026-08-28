@@ -17,6 +17,7 @@ export type QuiosqueContexto =
       /** Empresa que so opera quiosque: esconde a navegacao de cervejaria. */
       exclusivo: boolean;
       usaCardapio: boolean;
+      quantidadeMesas: number;
       pontosVenda: PontoVenda[];
     };
 

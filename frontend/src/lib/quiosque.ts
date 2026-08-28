@@ -218,8 +218,82 @@ export function rotuloComanda(
   if (comanda.tipo === 'AVULSA') return 'Venda avulsa';
   const prefixo = comanda.tipo === 'MESA' ? 'Mesa' : comanda.tipo === 'FICHA' ? 'Ficha' : '';
   const base = prefixo ? `${prefixo} ${comanda.identificador}` : (comanda.identificador ?? '');
-  if (comanda.numero != null && base) return `${comanda.numero} - ${base}`;
   return base;
+}
+
+/**
+ * Número sequencial interno da venda. Não é a identificação operacional da
+ * mesa e, por isso, só deve aparecer onde a auditoria da comanda é útil.
+ */
+export function rotuloInternoComanda(comanda: Pick<ComandaQuiosque, 'numero'>): string | null {
+  return comanda.numero == null ? null : `Comanda #${comanda.numero}`;
+}
+
+function numeroMesa(identificador: string | null): bigint | null {
+  const match = identificador?.trim().match(/^\d+$/);
+  return match ? BigInt(match[0]) : null;
+}
+
+export interface MesaOperacional {
+  numero: number;
+  comanda: ComandaQuiosque | null;
+}
+
+/**
+ * Cria as posições físicas 1..N e associa as comandas abertas. Mesas já
+ * ocupadas acima do limite configurado continuam visíveis para que uma
+ * redução da configuração nunca esconda uma comanda em aberto.
+ */
+export function mesasOperacionais(
+  quantidadeMesas: number,
+  comandasAbertas: ComandaQuiosque[],
+): MesaOperacional[] {
+  const abertasPorNumero = new Map<number, ComandaQuiosque>();
+  for (const comanda of comandasAbertas) {
+    if (comanda.tipo !== 'MESA' || !comanda.identificador) continue;
+    const numero = Number(comanda.identificador.trim());
+    if (!Number.isSafeInteger(numero) || numero < 1) continue;
+    abertasPorNumero.set(numero, comanda);
+  }
+
+  const mesasConfiguradas = Array.from({ length: quantidadeMesas }, (_, index) => {
+    const numero = index + 1;
+    return { numero, comanda: abertasPorNumero.get(numero) ?? null };
+  });
+
+  const mesasOcupadasForaDoLimite = [...abertasPorNumero.entries()]
+    .filter(([numero]) => numero > quantidadeMesas)
+    .sort(([a], [b]) => a - b)
+    .map(([numero, comanda]) => ({ numero, comanda }));
+
+  return [...mesasConfiguradas, ...mesasOcupadasForaDoLimite];
+}
+
+/**
+ * A operação encontra primeiro as mesas físicas, em ordem natural. O número
+ * sequencial da comanda nunca participa desta ordem, pois ele muda a cada
+ * abertura da mesma mesa.
+ */
+export function ordenarComandasParaOperacao(comandas: ComandaQuiosque[]): ComandaQuiosque[] {
+  return [...comandas].sort((a, b) => {
+    if (a.tipo === 'MESA' && b.tipo !== 'MESA') return -1;
+    if (a.tipo !== 'MESA' && b.tipo === 'MESA') return 1;
+
+    if (a.tipo === 'MESA' && b.tipo === 'MESA') {
+      const numeroA = numeroMesa(a.identificador);
+      const numeroB = numeroMesa(b.identificador);
+      if (numeroA != null && numeroB != null && numeroA !== numeroB) return numeroA < numeroB ? -1 : 1;
+      if (numeroA != null && numeroB == null) return -1;
+      if (numeroA == null && numeroB != null) return 1;
+    }
+
+    const porIdentificador = rotuloComanda(a).localeCompare(rotuloComanda(b), 'pt-BR', {
+      numeric: true,
+      sensitivity: 'base',
+    });
+    if (porIdentificador !== 0) return porIdentificador;
+    return (a.numero ?? 0) - (b.numero ?? 0);
+  });
 }
 
 export function totalItensComanda(comanda: ComandaQuiosque): number {
@@ -301,6 +375,12 @@ export interface MovimentoCaixa {
   valor: number;
   observacao: string | null;
   registradoPorId: string;
+  correcaoDeId: string | null;
+  naturezaCorrecao: 'ESTORNO' | 'SUBSTITUICAO' | null;
+  motivoCorrecao: string | null;
+  autorizadoPorId: string | null;
+  solicitadoPorId: string | null;
+  corrigidoEm: string | null;
   createdAt: string;
 }
 

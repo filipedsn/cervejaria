@@ -40,6 +40,7 @@ export async function quiosqueRoutes(app: FastifyInstance) {
       temCozinha: configuracao.temCozinha,
       exclusivo: configuracao.exclusivo,
       usaCardapio: configuracao.usaCardapio,
+      quantidadeMesas: configuracao.quantidadeMesas,
       pontosVenda,
     };
   });
@@ -49,14 +50,20 @@ export async function quiosqueRoutes(app: FastifyInstance) {
 
     moduloScope.patch('/config', { preHandler: [app.requireDono] }, async (request) => {
       const { cervejariaId } = request.quiosque;
-      const body = z.object({ usaCardapio: z.boolean() }).parse(request.body);
+      const body = z
+        .object({
+          usaCardapio: z.boolean().optional(),
+          quantidadeMesas: z.number().int().min(0).max(500).optional(),
+        })
+        .refine((value) => value.usaCardapio !== undefined || value.quantidadeMesas !== undefined)
+        .parse(request.body);
 
       const updated = await prisma.configuracaoQuiosque.update({
         where: { cervejariaId },
-        data: { usaCardapio: body.usaCardapio },
+        data: body,
       });
 
-      return { usaCardapio: updated.usaCardapio };
+      return { usaCardapio: updated.usaCardapio, quantidadeMesas: updated.quantidadeMesas };
     });
 
     moduloScope.get('/pontos-venda', async (request) => {

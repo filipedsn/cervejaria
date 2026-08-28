@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test:unit": "node --import ../backend/node_modules/tsx/dist/loader.mjs --test tests/quiosque.test.ts",
     "build:deploy": "vite build",
     "build:prod": "vite build --outDir ../deploy/prod-artifacts/.staging/frontend",
     "preview": "vite preview",

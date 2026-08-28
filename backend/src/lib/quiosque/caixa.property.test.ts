@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fc from 'fast-check';
 import {
   calcularEsperadoDinheiroGaveta,
+  planoCorrecaoMovimento,
   totaisMovimentos,
   totaisPorForma,
 } from './caixa.js';
@@ -80,6 +81,23 @@ describe('caixa quiosque (property-based)', () => {
       ),
       { numRuns: 150 },
     );
+  });
+
+  it('correção compensa exatamente o original e mantém somente o novo valor no saldo', () => {
+    for (const tipo of ['SANGRIA', 'SUPRIMENTO'] as const) {
+      const plano = planoCorrecaoMovimento({ tipo, valorOriginal: 150, valorCorrigido: 15 });
+      const antes = totaisMovimentos([{ tipo, valor: 150 }]);
+      const depois = totaisMovimentos([
+        { tipo, valor: 150 },
+        plano.estorno,
+        plano.substituicao,
+      ]);
+      assert.equal(tipo === 'SANGRIA' ? antes.sangrias : antes.suprimentos, 150);
+      const impactoOriginal = antes.suprimentos - antes.sangrias;
+      const impactoCorrigido = depois.suprimentos - depois.sangrias;
+      assert.equal(impactoOriginal, tipo === 'SUPRIMENTO' ? 150 : -150);
+      assert.equal(impactoCorrigido, tipo === 'SUPRIMENTO' ? 15 : -15);
+    }
   });
 
   it('resolverPagamentos: troco = recebido − valor quando soma bate', () => {

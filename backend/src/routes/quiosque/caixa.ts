@@ -7,6 +7,7 @@ import {
   buscarRelatorioTurnoFechado,
   buscarSessaoAtual,
   CaixaInvalidoError,
+  corrigirMovimento,
   contarComandasAbertas,
   fecharCaixa,
   montarResumoCaixa,
@@ -47,6 +48,15 @@ const fecharSchema = z.object({
   contadoCartaoDebito: z.number().min(0),
   contadoCartaoCredito: z.number().min(0),
   observacaoFechamento: z.string().trim().max(500).optional(),
+});
+
+const corrigirMovimentoSchema = z.object({
+  pontoVendaId: z.string().min(1),
+  movimentoId: z.string().min(1),
+  valorCorrigido: z.number().positive(),
+  motivo: z.string().trim().min(1, 'Informe o motivo da correção').max(500),
+  autorizadorEmail: z.string().trim().email(),
+  autorizadorSenha: z.string().min(1),
 });
 
 export async function caixaQuiosqueRoutes(app: FastifyInstance) {
@@ -137,6 +147,46 @@ export async function caixaQuiosqueRoutes(app: FastifyInstance) {
       payload: sessao,
     });
     return reply.status(201).send(sessao);
+  });
+
+  app.post('/movimentos/:movimentoId/corrigir', async (request, reply) => {
+    const { cervejariaId } = request.quiosque;
+    const user = getAuthUser(request);
+    const body = corrigirMovimentoSchema
+      .extend({ movimentoId: z.string().min(1) })
+      .parse({ ...(request.body as object), movimentoId: (request.params as { movimentoId: string }).movimentoId });
+
+    const resumo = await corrigirMovimento({
+      cervejariaId,
+      pontoVendaId: body.pontoVendaId,
+      movimentoId: body.movimentoId,
+      valorCorrigido: body.valorCorrigido,
+      motivo: body.motivo,
+      solicitanteId: user.sub,
+      autorizadorEmail: body.autorizadorEmail,
+      autorizadorSenha: body.autorizadorSenha,
+    });
+    const original = resumo.movimentos.find((movimento) => movimento.id === body.movimentoId);
+    // Credencial e senha nunca fazem parte do payload de transacao/auditoria.
+    void registrarTransacao({
+      cervejariaId,
+      tipo: 'QUIOSQUE_CAIXA_MOVIMENTO_CORRIGIDO',
+      usuarioId: user.sub,
+      entidadeTipo: 'MovimentoCaixaQuiosque',
+      entidadeId: body.movimentoId,
+      metadata: {
+        sessaoCaixaId: resumo.id,
+        pontoVendaId: body.pontoVendaId,
+        movimentoOriginalId: body.movimentoId,
+        tipo: original?.tipo,
+        valorOriginal: original?.valor,
+        valorCorrigido: body.valorCorrigido,
+        motivo: body.motivo,
+        solicitanteId: user.sub,
+        autorizadorId: original?.autorizadoPorId,
+      },
+    });
+    return reply.status(201).send(resumo);
   });
 
   app.post('/fechar', async (request) => {

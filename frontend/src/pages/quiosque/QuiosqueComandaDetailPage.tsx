@@ -30,6 +30,7 @@ import {
   podeIncrementarLinhaCarrinho,
   produtosOperacionaisUrl,
   rotuloComanda,
+  rotuloInternoComanda,
   rotuloStatusPedido,
   temPedidoCozinhaPendente,
   totalItensComanda,
@@ -362,6 +363,9 @@ export function QuiosqueComandaDetailPage() {
           <h2 className="text-xl font-bold min-w-0 truncate leading-tight">{rotuloComanda(comanda)}</h2>
           <StatusBadge variant={comandaStatusVariant(comanda.status)} />
         </div>
+        {rotuloInternoComanda(comanda) && (
+          <p className="mt-1 text-xs font-medium text-ink-faint">{rotuloInternoComanda(comanda)}</p>
+        )}
         <p className="text-2xl sm:text-3xl font-bold text-brand-600 mt-2 tabular-nums">
           {formatCurrency(comanda.total)}
         </p>

@@ -3,6 +3,7 @@ import { ConfigKpisComandaPanel } from '../components/ConfigKpisComandaPanel';
 import { ConfigComandasLayoutPanel } from '../components/ConfigComandasLayoutPanel';
 import { ConfigCardapioPanel } from '../components/ConfigCardapioPanel';
 import { ConfigCardapioQuiosquePanel } from '../components/ConfigCardapioQuiosquePanel';
+import { ConfigMesasQuiosquePanel } from '../components/ConfigMesasQuiosquePanel';
 
 type OperacaoPageProps = {
   embedded?: boolean;
@@ -20,6 +21,7 @@ export function OperacaoPage({ embedded, modo = 'cervejaria' }: OperacaoPageProp
       <ConfigComandasLayoutPanel />
       {modo === 'cervejaria' && <ConfigCardapioPanel />}
       {modo === 'quiosque' && <ConfigCardapioQuiosquePanel />}
+      {modo === 'quiosque' && <ConfigMesasQuiosquePanel />}
       {modo === 'cervejaria' && <ConfigCardapioQuiosquePanel />}
     </div>
   );

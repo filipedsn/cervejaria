@@ -204,6 +204,28 @@ body.auth-screen {
     inset 0 1px 0 rgba(255, 255, 255, 0.025);
 }
 
+/* Sobrescreve intencionalmente a superfície padrão dos cards no tema escuro. */
+[data-theme="dark"] .card-touch.quiosque-mesa-ocupada {
+  background: linear-gradient(145deg, rgba(15, 118, 110, 0.3), rgba(17, 40, 43, 0.98));
+  border-color: rgba(45, 212, 191, 0.58);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.22),
+    inset 4px 0 0 rgba(45, 212, 191, 0.82),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.quiosque-mesa-ocupada {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--color-brand-400) 18%, white),
+    color-mix(in srgb, var(--color-brand-100) 62%, var(--color-surface))
+  );
+  border-color: color-mix(in srgb, var(--color-brand-500) 60%, white);
+  box-shadow:
+    inset 5px 0 0 var(--color-brand-500),
+    0 5px 14px color-mix(in srgb, var(--color-brand-600) 20%, transparent);
+}
+
 [data-theme="dark"] .card-hero {
   background: linear-gradient(145deg, rgba(22, 34, 41, 0.98), rgba(17, 26, 32, 0.98));
   border: 1px solid rgba(255, 255, 255, 0.08);

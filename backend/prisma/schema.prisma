@@ -94,6 +94,7 @@ enum TransacaoTipo {
   TAP_ATIVO_ALTERADO
   QUIOSQUE_CAIXA_ABERTO
   QUIOSQUE_CAIXA_MOVIMENTO
+  QUIOSQUE_CAIXA_MOVIMENTO_CORRIGIDO
   QUIOSQUE_CAIXA_FECHADO
   QUIOSQUE_COMANDA_CRIADA
   QUIOSQUE_COMANDA_FECHADA
@@ -663,6 +664,7 @@ model ConfiguracaoQuiosque {
   exclusivo       Boolean  @default(false)
   /// Cardápios com preço por turno (ligado) ou só catálogo tradicional (desligado).
   usaCardapio     Boolean  @default(false)
+  quantidadeMesas Int      @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -817,6 +819,14 @@ enum TipoMovimentoCaixaQuiosque {
   @@schema("quiosque")
 }
 
+/// Identifica os registros derivados de uma correcao, sem alterar o lancamento original.
+enum NaturezaCorrecaoMovimentoCaixaQuiosque {
+  ESTORNO
+  SUBSTITUICAO
+
+  @@schema("quiosque")
+}
+
 /// Sessao de caixa por turno: o mesmo ponto pode abrir/fechar varias vezes no dia.
 model SessaoCaixaQuiosque {
   id             String              @id @default(cuid())
@@ -874,11 +884,22 @@ model MovimentoCaixaQuiosque {
   valor           Decimal                    @db.Decimal(10, 2)
   observacao      String?
   registradoPorId String
+  /// O movimento manual original que esta sendo compensado/substituido.
+  correcaoDeId   String?
+  naturezaCorrecao NaturezaCorrecaoMovimentoCaixaQuiosque?
+  /// Dados da autorizacao ficam no encadeamento contabil, nunca em logs de senha.
+  motivoCorrecao String?
+  autorizadoPorId String?
+  solicitadoPorId String?
+  corrigidoEm      DateTime?
   createdAt       DateTime                   @default(now())
 
-  sessao SessaoCaixaQuiosque @relation(fields: [sessaoId], references: [id], onDelete: Cascade)
+  sessao       SessaoCaixaQuiosque @relation(fields: [sessaoId], references: [id], onDelete: Cascade)
+  correcaoDe   MovimentoCaixaQuiosque? @relation("CorrecaoMovimentoCaixaQuiosque", fields: [correcaoDeId], references: [id], onDelete: Restrict)
+  correcoes    MovimentoCaixaQuiosque[] @relation("CorrecaoMovimentoCaixaQuiosque")
 
   @@index([sessaoId])
+  @@index([correcaoDeId])
   @@schema("quiosque")
 }
 

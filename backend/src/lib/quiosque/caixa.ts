@@ -9,6 +9,7 @@ import {
   aplicarCardapioInicialTurno,
 } from './sessao-cardapio.js';
 import { quiosqueUsaCardapio } from '../cardapio-toggle.js';
+import { verifyPassword } from '../utils.js';
 
 export class CaixaInvalidoError extends Error {
   statusCode = 400;
@@ -95,6 +96,24 @@ export function totaisMovimentos(movimentos: Array<{ tipo: 'SANGRIA' | 'SUPRIMEN
   }
 
   return { sangrias: reais(sangrias), suprimentos: reais(suprimentos) };
+}
+
+/** As duas pernas imutaveis que anulam o lancamento errado e registram o valor correto. */
+export function planoCorrecaoMovimento(params: {
+  tipo: 'SANGRIA' | 'SUPRIMENTO';
+  valorOriginal: number;
+  valorCorrigido: number;
+}) {
+  if (params.valorOriginal <= 0 || params.valorCorrigido <= 0) {
+    throw new CaixaInvalidoError('Informe um valor corrigido maior que zero');
+  }
+  return {
+    estorno: {
+      tipo: params.tipo === 'SANGRIA' ? 'SUPRIMENTO' : 'SANGRIA',
+      valor: params.valorOriginal,
+    } as const,
+    substituicao: { tipo: params.tipo, valor: params.valorCorrigido } as const,
+  };
 }
 
 async function pagamentosDaSessao(sessao: SessaoCompleta, cervejariaId: string) {
@@ -245,6 +264,12 @@ export async function montarResumoCaixa(
       valor: toNumber(movimento.valor),
       observacao: movimento.observacao,
       registradoPorId: movimento.registradoPorId,
+      correcaoDeId: movimento.correcaoDeId,
+      naturezaCorrecao: movimento.naturezaCorrecao,
+      motivoCorrecao: movimento.motivoCorrecao,
+      autorizadoPorId: movimento.autorizadoPorId,
+      solicitadoPorId: movimento.solicitadoPorId,
+      corrigidoEm: movimento.corrigidoEm,
       createdAt: movimento.createdAt,
     })),
   };
@@ -337,6 +362,93 @@ export async function registrarMovimento(params: {
         observacao: params.observacao,
         registradoPorId: params.registradoPorId,
       },
+    });
+
+    return tx.sessaoCaixaQuiosque.findUniqueOrThrow({
+      where: { id: sessao.id },
+      include: { movimentos: { orderBy: { createdAt: 'asc' } } },
+    });
+  }, CAIXA_TX);
+
+  return montarResumoCaixa(atualizada, params.cervejariaId);
+}
+
+/**
+ * Corrige exclusivamente movimentos manuais do turno aberto. O valor original
+ * e imutavel: criamos um estorno e uma substituicao no mesmo lock do caixa.
+ */
+export async function corrigirMovimento(params: {
+  cervejariaId: string;
+  pontoVendaId: string;
+  movimentoId: string;
+  valorCorrigido: number;
+  motivo: string;
+  solicitanteId: string;
+  autorizadorEmail: string;
+  autorizadorSenha: string;
+}) {
+  if (params.valorCorrigido <= 0) throw new CaixaInvalidoError('Informe um valor corrigido maior que zero');
+  if (!params.motivo.trim()) throw new CaixaInvalidoError('Informe o motivo da correção');
+
+  const atualizada = await prisma.$transaction(async (tx) => {
+    const dia = diaOperacional();
+    await lockCaixaEmTx(tx, params.cervejariaId, params.pontoVendaId, dia);
+    const sessao = await assertCaixaAberto(params.cervejariaId, params.pontoVendaId, dia, tx);
+
+    const autorizador = await tx.usuario.findFirst({
+      where: {
+        email: params.autorizadorEmail.trim().toLowerCase(),
+        papel: 'DONO',
+        cervejariaId: params.cervejariaId,
+      },
+      select: { id: true, senhaHash: true },
+    });
+    if (!autorizador || !(await verifyPassword(params.autorizadorSenha, autorizador.senhaHash))) {
+      throw new CaixaInvalidoError('Credencial do proprietário inválida');
+    }
+
+    const original = await tx.movimentoCaixaQuiosque.findFirst({
+      where: {
+        id: params.movimentoId,
+        sessaoId: sessao.id,
+        correcaoDeId: null,
+        naturezaCorrecao: null,
+        corrigidoEm: null,
+      },
+    });
+    if (!original) {
+      throw new CaixaInvalidoError('Movimento não elegível para correção ou já corrigido');
+    }
+
+    const plano = planoCorrecaoMovimento({
+      tipo: original.tipo,
+      valorOriginal: toNumber(original.valor),
+      valorCorrigido: params.valorCorrigido,
+    });
+    const agora = new Date();
+    const comum = {
+      sessaoId: sessao.id,
+      correcaoDeId: original.id,
+      motivoCorrecao: params.motivo.trim(),
+      autorizadoPorId: autorizador.id,
+      solicitadoPorId: params.solicitanteId,
+      registradoPorId: params.solicitanteId,
+    };
+
+    await tx.movimentoCaixaQuiosque.update({
+      where: { id: original.id },
+      data: {
+        corrigidoEm: agora,
+        motivoCorrecao: params.motivo.trim(),
+        autorizadoPorId: autorizador.id,
+        solicitadoPorId: params.solicitanteId,
+      },
+    });
+    await tx.movimentoCaixaQuiosque.create({
+      data: { ...comum, ...plano.estorno, naturezaCorrecao: 'ESTORNO' },
+    });
+    await tx.movimentoCaixaQuiosque.create({
+      data: { ...comum, ...plano.substituicao, naturezaCorrecao: 'SUBSTITUICAO' },
     });
 
     return tx.sessaoCaixaQuiosque.findUniqueOrThrow({

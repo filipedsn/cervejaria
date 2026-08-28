@@ -22,6 +22,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   comandasFechadasNoTurno,
   diaOperacionalQuery,
+  mesasOperacionais,
+  ordenarComandasParaOperacao,
   RESUMO_TURNO_VAZIO,
   rotuloComanda,
   totalItensComanda,
@@ -56,6 +58,7 @@ export function QuiosqueComandasPage() {
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([{ forma: 'PIX', valor: '' }]);
   const [groupError, setGroupError] = useState('');
   const [groupSuccess, setGroupSuccess] = useState('');
+  const isAbertas = comandaTab === 'ABERTA';
 
   const pontoAtivo = pontoVendaId || pontosVenda[0]?.id || '';
   const dia = diaOperacionalQuery();
@@ -89,19 +92,35 @@ export function QuiosqueComandasPage() {
   const abertasTurno = caixaAberto ? (abertas ?? []) : [];
   const fechadasTurno = turnoAbertoEm ? comandasFechadasNoTurno(fechadasHoje ?? [], turnoAbertoEm) : [];
 
-  const comandas = comandaTab === 'ABERTA' ? abertasTurno : fechadasTurno.filter((c) => c.tipo !== 'AVULSA');
+  const comandas = ordenarComandasParaOperacao(
+    comandaTab === 'ABERTA' ? abertasTurno : fechadasTurno.filter((c) => c.tipo !== 'AVULSA'),
+  );
+
+  const quantidadeMesas = contexto.ativo ? (contexto.quantidadeMesas ?? 0) : 0;
+  const mesas = useMemo(
+    () => (quantidadeMesas <= 0 ? null : mesasOperacionais(quantidadeMesas, abertasTurno)),
+    [quantidadeMesas, abertasTurno],
+  );
+
+  const itensLista = useMemo(
+    () =>
+      (isAbertas && mesas
+        ? mesas.map((mesa) => ({ mesa, comanda: mesa.comanda }))
+        : comandas.map((comanda) => ({ mesa: null, comanda }))),
+    [comandas, isAbertas, mesas],
+  );
 
   const comandasFiltradas = useMemo(
     () =>
-      comandas.filter((comanda) =>
+      itensLista.filter(({ mesa, comanda }) =>
         textoCorrespondeBuscaComanda(
           buscaComanda,
-          rotuloComanda(comanda),
-          comanda.numero,
-          comanda.identificador,
+          comanda ? rotuloComanda(comanda) : `Mesa ${mesa!.numero}`,
+          comanda?.numero,
+          comanda?.identificador ?? String(mesa?.numero ?? ''),
         ),
       ),
-    [comandas, buscaComanda],
+    [itensLista, buscaComanda],
   );
 
   const resumo = useMemo(() => {
@@ -160,6 +179,27 @@ export function QuiosqueComandasPage() {
     },
   });
 
+  const abrirMesaLivreMutation = useMutation({
+    mutationFn: (numeroMesa: number) =>
+      api.post<ComandaQuiosque>('/api/quiosque/comandas', {
+        pontoVendaId: pontoAtivo,
+        tipo: 'MESA',
+        identificador: String(numeroMesa),
+        itens: [],
+      }),
+    onSuccess: (comanda) => {
+      queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
+      navigate(`/quiosque/comandas/${comanda.id}`);
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409 && typeof err.body?.comandaId === 'string') {
+        navigate(`/quiosque/comandas/${err.body.comandaId}`);
+        return;
+      }
+      setGroupError(err instanceof ApiError ? err.message : 'Não foi possível abrir a mesa');
+    },
+  });
+
   const openGroupPayment = () => {
     setPaymentForm(createDefaultPaymentForm(totalGrupo));
     setGroupError('');
@@ -181,7 +221,6 @@ export function QuiosqueComandasPage() {
   if (loadingAbertas && caixaAberto) return <Loading />;
   if (loadingFechadas && caixaAberto) return <Loading />;
 
-  const isAbertas = comandaTab === 'ABERTA';
   const canSelect = isAbertas;
   const showPayBar = selectMode && selectedIds.length >= 2 && totalGrupo > 0;
 
@@ -325,22 +364,30 @@ export function QuiosqueComandasPage() {
         <ComandasBuscaInput value={buscaComanda} onChange={setBuscaComanda} />
 
         <div className={`grid gap-3 ${colunaUnica ? '' : 'grid-cols-2'}`}>
-          {comandasFiltradas.map((comanda) => {
-            const isSelected = selectedIds.includes(comanda.id);
-            const itens = totalItensComanda(comanda);
-            const valor = comanda.total;
+          {comandasFiltradas.map(({ mesa, comanda }) => {
+            const livre = !comanda;
+            const mesaOcupada = mesa != null && comanda != null;
+            const isSelected = comanda ? selectedIds.includes(comanda.id) : false;
+            const itens = comanda ? totalItensComanda(comanda) : 0;
+            const valor = comanda?.total ?? 0;
+            const titulo = comanda ? rotuloComanda(comanda) : `Mesa ${mesa!.numero}`;
             return (
               <button
-                key={comanda.id}
+                key={comanda?.id ?? `mesa-livre-${mesa!.numero}`}
                 type="button"
                 onClick={() => {
-                  if (selectMode) {
+                  if (livre) {
+                    if (caixaAberto) abrirMesaLivreMutation.mutate(mesa!.numero);
+                    return;
+                  }
+                  if (selectMode && comanda) {
                     toggleSelection(comanda.id);
                     return;
                   }
-                  navigate(`/quiosque/comandas/${comanda.id}`);
+                  navigate(`/quiosque/comandas/${comanda!.id}`);
                 }}
-                className={`card-touch w-full ${colunaUnica ? 'min-h-[4.5rem]' : 'min-h-[5.5rem]'} ${
+                disabled={livre && (!caixaAberto || abrirMesaLivreMutation.isPending)}
+                className={`card-touch w-full ${colunaUnica ? 'min-h-[4.5rem]' : 'min-h-[5.5rem]'} ${livre ? 'border-dashed border-green-300 bg-green-50/30' : ''} ${mesaOcupada ? 'quiosque-mesa-ocupada' : ''} ${
                   selectMode
                     ? isSelected
                       ? 'border-brand-500 bg-brand-50/40'
@@ -352,7 +399,7 @@ export function QuiosqueComandasPage() {
                   {colunaUnica ? (
                     <>
                       <div className="flex items-center gap-3 min-w-0">
-                        {selectMode && (
+                        {selectMode && !livre && (
                           <span
                             className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${
                               isSelected ? 'border-brand-600 bg-brand-600 text-white' : 'border-line bg-surface'
@@ -364,11 +411,12 @@ export function QuiosqueComandasPage() {
                         )}
                         <div className="min-w-0 text-left">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-lg font-bold truncate">{rotuloComanda(comanda)}</h3>
-                            {!isAbertas && <StatusBadge variant={comandaStatusVariant(comanda.status)} />}
+                            <h3 className="text-lg font-bold break-words">{titulo}</h3>
+                            {mesaOcupada && <span className="badge-brand">Ocupada</span>}
+                            {comanda && !isAbertas && <StatusBadge variant={comandaStatusVariant(comanda.status)} />}
                           </div>
                           <p className="text-sm text-ink-faint">
-                            {comanda.pedidos.length} {comanda.pedidos.length === 1 ? 'rodada' : 'rodadas'}
+                            {livre ? 'Livre · toque para abrir' : `${comanda.pedidos.length} ${comanda.pedidos.length === 1 ? 'rodada' : 'rodadas'}`}
                           </p>
                         </div>
                       </div>
@@ -381,7 +429,7 @@ export function QuiosqueComandasPage() {
                     <>
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex min-w-0 items-start gap-2">
-                          {selectMode && (
+                        {selectMode && !livre && (
                             <span
                               className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${
                                 isSelected ? 'border-brand-600 bg-brand-600 text-white' : 'border-line bg-surface'
@@ -393,8 +441,9 @@ export function QuiosqueComandasPage() {
                           )}
                           <div className="min-w-0 text-left">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <h3 className="text-base font-bold truncate">{rotuloComanda(comanda)}</h3>
-                              {!isAbertas && <StatusBadge variant={comandaStatusVariant(comanda.status)} />}
+                              <h3 className="text-base font-bold break-words">{titulo}</h3>
+                              {mesaOcupada && <span className="badge-brand">Ocupada</span>}
+                              {comanda && !isAbertas && <StatusBadge variant={comandaStatusVariant(comanda.status)} />}
                             </div>
                           </div>
                         </div>
@@ -404,7 +453,7 @@ export function QuiosqueComandasPage() {
                       </div>
                       <div className="flex items-center justify-between gap-2 text-xs text-ink-faint">
                         <span>
-                          {comanda.pedidos.length} {comanda.pedidos.length === 1 ? 'rodada' : 'rodadas'}
+                          {livre ? 'Livre · toque para abrir' : `${comanda.pedidos.length} ${comanda.pedidos.length === 1 ? 'rodada' : 'rodadas'}`}
                         </span>
                         <span>{itens} item(ns)</span>
                       </div>

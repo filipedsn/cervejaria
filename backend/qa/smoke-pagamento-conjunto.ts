@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { api, chopeItemBody, staffComandaBody } from './lib/http.js';
+import { api, chopeItemBody, login, staffComandaBody } from './lib/http.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ctx = JSON.parse(readFileSync(path.join(__dirname, '../../reports/qa/context.json'), 'utf-8'));
@@ -13,6 +13,12 @@ const func = ctx.tenants[3];
 
 async function main() {
   const checks: Array<{ id: string; ok: boolean; detail: string }> = [];
+  // Tokens persistidos no contexto ficam inválidos quando a API é reiniciada
+  // com outra chave JWT. O smoke sempre autentica a fixture atual.
+  const [donoToken, atendenteToken] = await Promise.all([
+    login(func.donoEmail, 'qa123456'),
+    login(`${func.slug}-a1@qa.test`, 'qa123456'),
+  ]);
 
   const push = (id: string, ok: boolean, detail: string) => {
     checks.push({ id, ok, detail });
@@ -21,11 +27,11 @@ async function main() {
 
   // UI-1/2: pré-requisito — evento aberto + 2 comandas com itens
   const c1 = await api<{ id: string }>('POST', '/api/comandas', {
-    token: func.atendenteTokens[0],
+    token: atendenteToken,
     body: staffComandaBody(func.eventoId, `Smoke A ${Date.now()}`, 40),
   });
   const c2 = await api<{ id: string }>('POST', '/api/comandas', {
-    token: func.atendenteTokens[0],
+    token: atendenteToken,
     body: staffComandaBody(func.eventoId, `Smoke B ${Date.now()}`, 41),
   });
   push('UI-1', c1.status === 201 && c2.status === 201, `Comandas criadas (${c1.status}/${c2.status})`);
@@ -42,17 +48,17 @@ async function main() {
   const dashBefore = await api<{ resumo: { valorFechado: number; comandasFechadas: number } }>(
     'GET',
     `/api/eventos/${func.eventoId}/dashboard`,
-    { token: func.donoToken },
+    { token: donoToken },
   );
   const beforeFechado = dashBefore.data?.resumo.valorFechado ?? 0;
 
-  const fullA = await api<{ total: string | number }>('GET', `/api/comandas/${c1.data!.id}`, { token: func.donoToken });
-  const fullB = await api<{ total: string | number }>('GET', `/api/comandas/${c2.data!.id}`, { token: func.donoToken });
+  const fullA = await api<{ total: string | number }>('GET', `/api/comandas/${c1.data!.id}`, { token: donoToken });
+  const fullB = await api<{ total: string | number }>('GET', `/api/comandas/${c2.data!.id}`, { token: donoToken });
   const totalGrupo = Number(fullA.data.total) + Number(fullB.data.total);
 
   // UI-5: POST /fechar-grupo (mesmo endpoint da ComandasPage)
   const close = await api<{ comandas: unknown[]; totalGrupo: number }>('POST', '/api/pagamentos/fechar-grupo', {
-    token: func.atendenteTokens[0],
+    token: atendenteToken,
     body: {
       comandaIds: [c1.data!.id, c2.data!.id],
       pagamentos: [{ forma: 'PIX', valor: totalGrupo }],
@@ -63,23 +69,23 @@ async function main() {
   const dashAfter = await api<{ resumo: { valorFechado: number; comandasFechadas: number } }>(
     'GET',
     `/api/eventos/${func.eventoId}/dashboard`,
-    { token: func.donoToken },
+    { token: donoToken },
   );
   const delta = (dashAfter.data?.resumo.valorFechado ?? 0) - beforeFechado;
   push('UI-6', Math.abs(delta - totalGrupo) <= 0.01, `Dashboard valorFechado +${delta.toFixed(2)}`);
 
   // UI-8: regressão fechamento individual
   const c3 = await api<{ id: string }>('POST', '/api/comandas', {
-    token: func.atendenteTokens[0],
+    token: atendenteToken,
     body: staffComandaBody(func.eventoId, `Smoke solo ${Date.now()}`, 42),
   });
   await api('POST', `/api/comandas/${c3.data!.id}/itens`, {
-    token: func.atendenteTokens[0],
+    token: atendenteToken,
     body: chopeItemBody(func.produtoId, func.tapId, 300),
   });
-  const solo = await api<{ total: string | number }>('GET', `/api/comandas/${c3.data!.id}`, { token: func.donoToken });
+  const solo = await api<{ total: string | number }>('GET', `/api/comandas/${c3.data!.id}`, { token: donoToken });
   const soloClose = await api('POST', `/api/pagamentos/comandas/${c3.data!.id}/fechar`, {
-    token: func.atendenteTokens[0],
+    token: atendenteToken,
     body: { pagamentos: [{ forma: 'DINHEIRO', valor: Number(solo.data.total) }] },
   });
   push('UI-8', soloClose.status === 200, `Fechamento individual HTTP ${soloClose.status}`);
