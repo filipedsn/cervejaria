@@ -1,4 +1,4 @@
-import { api } from './http.js';
+import { api, login } from './http.js';
 import type { ConfigTenantFixture, QaContext } from './types.js';
 
 type TestStatus = 'passed' | 'failed' | 'skipped' | 'warning';
@@ -69,10 +69,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Abrir caixa', expected: '201', actual: String(caixa.status) };
       }
 
-      const login = await api<{ token: string }>('POST', '/api/auth/login', {
-        body: { email: `${cfg.slug}-a1@qa.test`, senha: 'qa123456' },
-      });
-      atendenteToken = login.data?.token ?? '';
+      atendenteToken = await login(`${cfg.slug}-a1@qa.test`, 'qa123456');
 
       const comanda = await api<{ id: string; pedidos?: Array<{ id: string }> }>('POST', '/api/quiosque/comandas', {
         token: cfg.donoToken,

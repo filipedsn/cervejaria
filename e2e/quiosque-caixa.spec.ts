@@ -14,9 +14,9 @@ test.describe('Quiosque — ciclo de caixa', () => {
 
   test.beforeAll(async () => {
     // Ponto dedicado para não interferir com outros testes de quiosque.
-    const token = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
+    const cookie = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
     const ponto = await apiRequest<{ id: string }>('POST', '/api/quiosque/pontos-venda', {
-      token,
+      cookie,
       body: { nome: nomePonto },
     });
     expect(ponto.status, 'ponto de venda criado por API').toBe(201);
@@ -86,9 +86,9 @@ test.describe('Quiosque — ciclo de caixa', () => {
     await page.getByRole('button', { name: 'Abrir caixa' }).click();
     await expect(page.getByRole('heading', { name: 'Caixa aberto' })).toBeVisible();
 
-    const token = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
+    const cookie = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
     const reabrir = await apiRequest('POST', '/api/quiosque/caixa/abrir', {
-      token,
+      cookie,
       body: { pontoVendaId: pontoId, trocoInicial: 10 },
     });
     expect(reabrir.status, 'API recusa segundo caixa aberto simultâneo').toBe(400);

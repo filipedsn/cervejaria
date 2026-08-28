@@ -22,30 +22,30 @@ test.describe.configure({ mode: 'serial' });
 test.describe('Quiosque — fila da cozinha e cancelamento', () => {
   const stamp = Date.now();
   const identificador = `E2E-${stamp}`;
-  let donoToken = '';
+  let donoCookie = '';
   let pedidoId = '';
 
   test.beforeAll(async () => {
-    donoToken = await apiLogin(CREDENTIALS.quiosqueCozinha.email, CREDENTIALS.quiosqueCozinha.password);
+    donoCookie = await apiLogin(CREDENTIALS.quiosqueCozinha.email, CREDENTIALS.quiosqueCozinha.password);
 
     const ponto = await apiRequest<{ id: string }>('POST', '/api/quiosque/pontos-venda', {
-      token: donoToken,
+      cookie: donoCookie,
       body: { nome: `E2E Cozinha ${stamp}` },
     });
     expect(ponto.status).toBe(201);
 
     const caixa = await apiRequest('POST', '/api/quiosque/caixa/abrir', {
-      token: donoToken,
+      cookie: donoCookie,
       body: { pontoVendaId: ponto.data.id, trocoInicial: 100 },
     });
     expect(caixa.status).toBe(201);
 
-    const produtos = await apiRequest<ProdutoQuiosque[]>('GET', '/api/quiosque/produtos', { token: donoToken });
+    const produtos = await apiRequest<ProdutoQuiosque[]>('GET', '/api/quiosque/produtos', { cookie: donoCookie });
     const preparo = produtos.data?.find((p) => p.exigePreparo);
     expect(preparo, 'seed precisa de um produto que exige preparo').toBeTruthy();
 
     const comanda = await apiRequest<ComandaCriada>('POST', '/api/quiosque/comandas', {
-      token: donoToken,
+      cookie: donoCookie,
       body: {
         pontoVendaId: ponto.data.id,
         tipo: 'MESA',
@@ -72,10 +72,10 @@ test.describe('Quiosque — fila da cozinha e cancelamento', () => {
 
   test('ATENDENTE não cancela pedido em preparo', async () => {
     const slug = CREDENTIALS.quiosqueCozinha.email.replace('-dono@qa.test', '');
-    const atendenteToken = await apiLogin(`${slug}-a1@qa.test`, CREDENTIALS.quiosqueCozinha.password);
+    const atendenteCookie = await apiLogin(`${slug}-a1@qa.test`, CREDENTIALS.quiosqueCozinha.password);
 
     const r = await apiRequest('PATCH', `/api/quiosque/cozinha/${pedidoId}/status`, {
-      token: atendenteToken,
+      cookie: atendenteCookie,
       body: { status: 'CANCELADO' },
     });
     expect(r.status, 'cancelamento é exclusivo do DONO').toBe(403);
@@ -85,7 +85,7 @@ test.describe('Quiosque — fila da cozinha e cancelamento', () => {
     // A tela da cozinha não expõe cancelamento hoje: o DONO cancela pela API e
     // a fila precisa refletir a saída do pedido.
     const cancelar = await apiRequest('PATCH', `/api/quiosque/cozinha/${pedidoId}/status`, {
-      token: donoToken,
+      cookie: donoCookie,
       body: { status: 'CANCELADO' },
     });
     expect(cancelar.status).toBe(200);

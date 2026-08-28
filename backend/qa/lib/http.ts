@@ -5,6 +5,7 @@ export interface ApiResponse<T = unknown> {
   data: T;
   durationMs: number;
   raw: string;
+  setCookies: string[];
 }
 
 export interface PortalSessaoResult {
@@ -40,6 +41,17 @@ export function parseClienteCookie(setCookieHeaders: string | string[] | null): 
   for (const header of parts) {
     const match = header.match(/cliente_token=([^;]+)/);
     if (match) return `cliente_token=${match[1]}`;
+  }
+  return null;
+}
+
+/** Extrai header Cookie `token=...` da sessão de staff emitida no login. */
+export function parseAuthCookie(setCookieHeaders: string | string[] | null): string | null {
+  if (!setCookieHeaders) return null;
+  const parts = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
+  for (const header of parts) {
+    const match = header.match(/(?:^|,\s*)token=([^;]+)/);
+    if (match) return `token=${match[1]}`;
   }
   return null;
 }
@@ -83,13 +95,17 @@ export async function api<T = unknown>(
 ): Promise<ApiResponse<T>> {
   const start = performance.now();
   const headers: Record<string, string> = { Accept: 'application/json', ...opts.headers };
-  if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
+  // Fixtures antigas chamam este campo de token; logins novos retornam somente
+  // o cookie HttpOnly e precisam continuar exercitando a autenticação real.
+  if (opts.token?.startsWith('token=')) headers.Cookie = opts.token;
+  else if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
   if (opts.rawToken !== undefined) headers.Authorization = opts.rawToken;
   if (opts.cookie) headers.Cookie = opts.cookie;
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
 
   let status = 0;
   let raw = '';
+  let setCookies: string[] = [];
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       method,
@@ -101,6 +117,9 @@ export async function api<T = unknown>(
           : undefined,
     });
     status = res.status;
+    setCookies = typeof res.headers.getSetCookie === 'function'
+      ? res.headers.getSetCookie()
+      : [res.headers.get('set-cookie')].filter((v): v is string => !!v);
     raw = await res.text();
   } catch (err) {
     return {
@@ -108,6 +127,7 @@ export async function api<T = unknown>(
       data: { error: err instanceof Error ? err.message : String(err) } as T,
       durationMs: performance.now() - start,
       raw: '',
+      setCookies,
     };
   }
 
@@ -117,7 +137,7 @@ export async function api<T = unknown>(
   } catch {
     data = { raw } as T;
   }
-  return { status, data, durationMs: performance.now() - start, raw };
+  return { status, data, durationMs: performance.now() - start, raw, setCookies };
 }
 
 /**
@@ -207,13 +227,14 @@ export function portalPedidoBody(
 }
 
 export async function login(email: string, senha: string): Promise<string> {
-  const res = await api<{ token: string }>('POST', '/api/auth/login', {
+  const res = await api<Record<string, unknown>>('POST', '/api/auth/login', {
     body: { email, senha },
   });
-  if (res.status !== 200 || !res.data.token) {
+  const cookie = parseAuthCookie(res.setCookies);
+  if (res.status !== 200 || 'token' in res.data || !cookie) {
     throw new Error(`Login falhou para ${email}: HTTP ${res.status} ${res.raw.slice(0, 120)}`);
   }
-  return res.data.token;
+  return cookie;
 }
 
 export function chopeItemBody(

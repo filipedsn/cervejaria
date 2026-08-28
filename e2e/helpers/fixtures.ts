@@ -31,11 +31,14 @@ async function discoverArenaViaApi(): Promise<ArenaFixture | null> {
   });
   if (!loginRes.ok) return null;
 
-  const { token } = (await loginRes.json()) as { token?: string };
-  if (!token) return null;
+  const body = (await loginRes.json()) as Record<string, unknown>;
+  if ('token' in body) return null;
+  const setCookie = loginRes.headers.get('set-cookie');
+  const match = setCookie?.match(/(?:^|,\s*)token=([^;]+)/);
+  if (!match) return null;
 
   const eventosRes = await fetch(`${API_BASE}/api/eventos`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    headers: { Cookie: `token=${match[1]}`, Accept: 'application/json' },
   });
   if (!eventosRes.ok) return null;
 

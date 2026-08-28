@@ -11,7 +11,7 @@ const senha = 'F02B-senha-secreta';
 async function api(path: string, token: string, method = 'GET', body?: unknown) {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+    headers: { Cookie: token, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const raw = await res.text();

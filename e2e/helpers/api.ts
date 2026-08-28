@@ -2,12 +2,12 @@ import type { Locator, Page } from '@playwright/test';
 
 export const API_BASE = process.env.E2E_API_BASE ?? 'http://localhost:3002';
 
-/** `/api/auth/login` tem rate limit; um token por e-mail basta para a suíte. */
-const tokenCache = new Map<string, Promise<string>>();
+/** `/api/auth/login` tem rate limit; uma sessão por e-mail basta para a suíte. */
+const sessionCookieCache = new Map<string, Promise<string>>();
 
-/** Token de staff para preparar massa de teste sem passar pela UI. */
+/** Cookie HttpOnly de staff para preparar massa de teste sem passar pela UI. */
 export function apiLogin(email: string, senha: string): Promise<string> {
-  const cached = tokenCache.get(email);
+  const cached = sessionCookieCache.get(email);
   if (cached) return cached;
 
   const pending = (async () => {
@@ -17,23 +17,26 @@ export function apiLogin(email: string, senha: string): Promise<string> {
       body: JSON.stringify({ email, senha }),
     });
     if (!res.ok) throw new Error(`Login de API falhou para ${email}: HTTP ${res.status}`);
-    const { token } = (await res.json()) as { token?: string };
-    if (!token) throw new Error(`Login de API sem token para ${email}`);
-    return token;
+    const body = (await res.json()) as Record<string, unknown>;
+    if ('token' in body) throw new Error(`Login de API expôs token no body para ${email}`);
+    const setCookie = res.headers.get('set-cookie');
+    const match = setCookie?.match(/(?:^|,\s*)token=([^;]+)/);
+    if (!match) throw new Error(`Login de API sem cookie de sessão para ${email}`);
+    return `token=${match[1]}`;
   })();
 
-  tokenCache.set(email, pending);
-  pending.catch(() => tokenCache.delete(email));
+  sessionCookieCache.set(email, pending);
+  pending.catch(() => sessionCookieCache.delete(email));
   return pending;
 }
 
 export async function apiRequest<T = unknown>(
   method: string,
   path: string,
-  opts: { token?: string; body?: unknown } = {},
+  opts: { cookie?: string; body?: unknown } = {},
 ): Promise<{ status: number; data: T }> {
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
+  if (opts.cookie) headers.Cookie = opts.cookie;
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
 
   const res = await fetch(`${API_BASE}${path}`, {

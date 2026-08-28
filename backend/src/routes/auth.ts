@@ -76,10 +76,8 @@ function authResponse(
     podeDarDescontoQuiosque?: boolean;
   },
   cervejaria: Parameters<typeof formatCervejariaAuth>[0] | null,
-  token: string,
 ) {
   return {
-    token,
     usuario: {
       id: usuario.id,
       nome: usuario.nome,
@@ -147,7 +145,7 @@ export async function authRoutes(app: FastifyInstance) {
 
       setAuthCookie(reply, token);
 
-      return authResponse(usuario, usuario.cervejaria, token);
+      return authResponse(usuario, usuario.cervejaria);
 
     });
 

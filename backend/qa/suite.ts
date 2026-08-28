@@ -1,5 +1,5 @@
 import { prisma } from '../src/lib/prisma.js';
-import { API_BASE, api, chopeItemBody, login, percentile, portalPedidoBody, portalSessao, portalTestPhone, staffComandaBody, uniquePortalTestPhone, uniqueStaffComandaBody } from './lib/http.js';
+import { API_BASE, api, chopeItemBody, login, parseAuthCookie, percentile, portalPedidoBody, portalSessao, portalTestPhone, staffComandaBody, uniquePortalTestPhone, uniqueStaffComandaBody } from './lib/http.js';
 import { runAdminTests } from './lib/admin-tests.js';
 import { runCfgTests } from './lib/cfg-tests.js';
 import { assertQaEnvironment } from './lib/guard.js';
@@ -152,6 +152,66 @@ async function main() {
   console.log('\n=== SESSÃO / JWT ===');
   const realPayload = decodeToken(A.donoToken)?.payload ?? {};
   const secretOk = (await api('GET', '/api/eventos', { token: signToken(realPayload, { expiresInSec: 3600 }) })).status === 200;
+
+  await test({ id: 'SESS-00', category: 'Sessão', name: 'Login emite somente cookie HttpOnly', requirement: 'TQ-SEC-01' }, async () => {
+    const loginResponse = await api<Record<string, unknown>>('POST', '/api/auth/login', {
+      body: { email: A.donoEmail, senha: 'qa123456' },
+    });
+    const setCookie = loginResponse.setCookies.join('; ');
+    const cookie = parseAuthCookie(loginResponse.setCookies);
+    const bodyHasJwt = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/.test(loginResponse.raw);
+    if (
+      loginResponse.status !== 200 ||
+      'token' in loginResponse.data ||
+      bodyHasJwt ||
+      !cookie ||
+      !/HttpOnly/i.test(setCookie) ||
+      !/SameSite=Lax/i.test(setCookie) ||
+      !/Path=\//i.test(setCookie) ||
+      !/Max-Age=\d+/i.test(setCookie)
+    ) {
+      return {
+        status: 'failed',
+        message: 'Contrato de login/cookie inválido',
+        expected: '200 + cookie HttpOnly, sem JWT no body',
+        actual: `${loginResponse.status} ${loginResponse.raw.slice(0, 160)}`,
+      };
+    }
+
+    const authenticated = await api('GET', '/api/eventos', { cookie });
+    const unauthenticated = await api('GET', '/api/eventos');
+    const logout = await api('POST', '/api/auth/logout', { cookie });
+    const logoutHeader = logout.setCookies.join('; ');
+    const logoutCleared = /(?:^|,\s*)token=;/i.test(logoutHeader)
+      && /(?:Max-Age=0|Expires=Thu, 01 Jan 1970)/i.test(logoutHeader);
+    if (authenticated.status !== 200 || unauthenticated.status !== 401 || logout.status !== 200 || !logoutCleared) {
+      return {
+        status: 'failed',
+        message: 'Sessão via cookie, ausência de cookie ou logout falhou',
+        expected: '200 / 401 / 200 com cookie removido',
+        actual: `${authenticated.status} / ${unauthenticated.status} / ${logout.status} (${logoutHeader})`,
+      };
+    }
+    return { message: 'Cookie autentica; body não contém JWT; logout limpa cookie', expected: '200/401/200', actual: '200/401/200' };
+  });
+
+  await test({ id: 'SESS-13', category: 'Sessão', name: 'ATENDENTE autentica via cookie', requirement: 'TQ-SEC-01' }, async () => {
+    const cookie = await login(A.atendenteEmails[0]!, 'qa123456');
+    const r = await api('GET', '/api/eventos', { cookie });
+    return expectStatus(r.status, 200, 'ATENDENTE autenticado somente por cookie');
+  });
+
+  await test({ id: 'SESS-14', category: 'Sessão', name: 'ADMIN autentica via cookie', requirement: 'TQ-SEC-01' }, async () => {
+    const cookie = await login(ctx.admin.email, ctx.admin.senha);
+    const r = await api('GET', '/api/admin/cervejarias', { cookie });
+    return expectStatus(r.status, 200, 'ADMIN autenticado somente por cookie');
+  });
+
+  await test({ id: 'SESS-15', category: 'Sessão', name: 'Cookie do DONO mantém isolamento entre tenants', requirement: 'TQ-SEC-01' }, async () => {
+    const cookie = await login(A.donoEmail, 'qa123456');
+    const r = await api('GET', `/api/eventos/${B.eventoId}`, { cookie });
+    return expectStatus(r.status, 404, 'Cookie de A não acessa evento de B');
+  });
 
   await test({ id: 'SESS-01', category: 'Sessão', name: 'Sem token → 401', requirement: 'SESS-01' }, async () => {
     const r = await api('GET', '/api/eventos');

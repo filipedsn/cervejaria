@@ -50,7 +50,6 @@ export interface Cervejaria {
 }
 
 export interface AuthResponse {
-  token: string;
   usuario: Usuario;
   cervejaria: Cervejaria | null;
 }

@@ -3,9 +3,9 @@
  */
 const API = process.env.QA_API_BASE ?? 'http://127.0.0.1:3002';
 
-async function req(method, path, { token, body } = {}) {
+async function req(method, path, { cookie, body } = {}) {
   const headers = { Accept: 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (cookie) headers.Cookie = cookie;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${API}${path}`, {
     method,
@@ -19,17 +19,18 @@ async function req(method, path, { token, body } = {}) {
   } catch {
     data = { raw };
   }
-  return { status: res.status, data };
+  return { status: res.status, data, setCookie: res.headers.get('set-cookie') };
 }
 
 const login = await req('POST', '/api/auth/login', {
   body: { email: 'qa-load-003-dono@qa.test', senha: 'qa123456' },
 });
-const token = login.data?.token;
-if (!token) {
+const cookieMatch = login.setCookie?.match(/(?:^|,\s*)token=([^;]+)/);
+if ('token' in login.data || !cookieMatch) {
   console.error('FAIL login', login.status);
   process.exit(1);
 }
+const cookie = `token=${cookieMatch[1]}`;
 
 const ctx = await import('fs').then((fs) =>
   JSON.parse(fs.readFileSync(new URL('../../reports/qa/context.json', import.meta.url), 'utf8')),
@@ -38,7 +39,7 @@ const t = ctx.tenants[2];
 const phone = `117${String(Date.now()).slice(-8)}`;
 
 const created = await req('POST', '/api/clientes', {
-  token: t.donoToken,
+  cookie,
   body: { nome: `QA Teste Excluir ${Date.now()}`, telefone: phone },
 });
 if (created.status !== 201) {
@@ -47,7 +48,7 @@ if (created.status !== 201) {
 }
 
 const comanda = await req('POST', '/api/comandas', {
-  token: t.atendenteTokens[0],
+  cookie,
   body: {
     eventoId: t.eventoId,
     clienteNome: created.data.nome,
@@ -60,14 +61,14 @@ if (comanda.status !== 201) {
 }
 
 const cancel = await req('POST', `/api/comandas/${comanda.data.id}/cancelar`, {
-  token: t.atendenteTokens[0],
+  cookie,
 });
 if (cancel.status !== 200) {
   console.error('FAIL cancel comanda', cancel.status, cancel.data);
   process.exit(1);
 }
 
-const fetched = await req('GET', `/api/clientes/${created.data.id}`, { token: t.donoToken });
+const fetched = await req('GET', `/api/clientes/${created.data.id}`, { cookie });
 const c = fetched.data;
 console.log('podeExcluir:', c?.podeExcluir);
 console.log('motivoExclusao:', c?.motivoExclusao);
@@ -78,7 +79,7 @@ if (!c?.podeExcluir) {
   process.exit(1);
 }
 
-const del = await req('DELETE', `/api/clientes/${created.data.id}`, { token: t.donoToken });
+const del = await req('DELETE', `/api/clientes/${created.data.id}`, { cookie });
 if (del.status !== 204) {
   console.error('FAIL delete', del.status, del.data);
   process.exit(1);

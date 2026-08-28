@@ -1,4 +1,4 @@
-import { api } from './http.js';
+import { api, login } from './http.js';
 import type { ConfigTenantFixture, QaContext } from './types.js';
 
 type TestStatus = 'passed' | 'failed' | 'skipped' | 'warning';
@@ -55,14 +55,9 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
   await test(
     { id: 'QCX-01', category: 'Quiosque caixa', name: 'ATENDENTE não cria ponto de venda', requirement: 'QCX-01' },
     async () => {
-      const atendente = await api<{ token: string }>('POST', '/api/auth/login', {
-        body: { email: `${cfg.slug}-a1@qa.test`, senha: 'qa123456' },
-      });
-      if (atendente.status !== 200 || !atendente.data?.token) {
-        return { status: 'skipped', message: `Login atendente indisponível (HTTP ${atendente.status})` };
-      }
+      const atendenteCookie = await login(`${cfg.slug}-a1@qa.test`, 'qa123456');
       const r = await api('POST', '/api/quiosque/pontos-venda', {
-        token: atendente.data.token,
+        cookie: atendenteCookie,
         body: { nome: `Bloqueado ${stamp}` },
       });
       if (r.status !== 403) {

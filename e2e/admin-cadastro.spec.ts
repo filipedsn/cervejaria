@@ -46,16 +46,16 @@ test.describe('Admin — cadastro de cervejarias', () => {
   test.afterAll(async () => {
     // Sem rota de exclusão no painel: desativa para não liberar login e deixa o
     // cleanup do próximo `qa:setup` remover pelo prefixo do slug.
-    const token = await apiLogin(CREDENTIALS.admin.email, CREDENTIALS.admin.password);
+    const cookie = await apiLogin(CREDENTIALS.admin.email, CREDENTIALS.admin.password);
     for (const id of criadas) {
-      await apiRequest('PATCH', `/api/admin/cervejarias/${id}/ativo`, { token, body: { ativo: false } });
+      await apiRequest('PATCH', `/api/admin/cervejarias/${id}/ativo`, { cookie, body: { ativo: false } });
     }
     fs.rmSync(logoPath, { force: true });
   });
 
   async function buscarPorNome(nome: string): Promise<CervejariaAdmin | undefined> {
-    const token = await apiLogin(CREDENTIALS.admin.email, CREDENTIALS.admin.password);
-    const r = await apiRequest<CervejariaAdmin[]>('GET', '/api/admin/cervejarias', { token });
+    const cookie = await apiLogin(CREDENTIALS.admin.email, CREDENTIALS.admin.password);
+    const r = await apiRequest<CervejariaAdmin[]>('GET', '/api/admin/cervejarias', { cookie });
     return r.data?.find((c) => c.nome === nome);
   }
 
