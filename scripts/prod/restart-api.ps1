@@ -14,20 +14,8 @@ if (-not $Quiet) {
   Write-Host "Reiniciando API de producao (porta $($paths.ApiPort))..." -ForegroundColor Cyan
 }
 
-if (Test-Path $paths.ApiPidFile) {
-  $oldPid = [int](Get-Content $paths.ApiPidFile -ErrorAction SilentlyContinue)
-  if (Test-ProcessAlive -ProcessId $oldPid) {
-    if (-not $Quiet) { Write-Host "Encerrando API (PID $oldPid)..." -ForegroundColor Yellow }
-    try {
-      Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
-    } catch {}
-    try {
-      & taskkill /F /PID $oldPid *>$null
-    } catch {}
-    Start-Sleep -Seconds 1
-  }
-  Remove-Item $paths.ApiPidFile -Force -ErrorAction SilentlyContinue
-}
+Stop-ManagedPidFile -PidFile $paths.ApiPidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('index.js') -Label 'API' | Out-Null
+Start-Sleep -Seconds 1
 
 if (Test-PortListening -Port $paths.ApiPort) {
   if (-not (Stop-PortListener -Port $paths.ApiPort -Quiet:$Quiet)) {

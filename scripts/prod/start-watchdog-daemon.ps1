@@ -11,18 +11,16 @@ $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
 
 $watchdogPidFile = Join-Path $paths.RuntimeDir 'watchdog.pid'
-if (Test-Path $watchdogPidFile) {
-  $existingPid = [int](Get-Content $watchdogPidFile -ErrorAction SilentlyContinue)
-  if (Test-ProcessAlive -ProcessId $existingPid) {
+$daemonScript = Join-Path $PSScriptRoot 'watchdog-daemon.ps1'
+$watchdogIdentity = Test-ManagedPidFile -PidFile $watchdogPidFile -ExpectedProcessNames @('powershell.exe', 'pwsh.exe') -CommandLinePatterns @('watchdog-daemon.ps1')
+if ($watchdogIdentity.State -eq 'VALID') {
     if (-not $Quiet) {
-      Write-Host "Watchdog daemon ja ativo (PID $existingPid)." -ForegroundColor Green
+      Write-Host "Watchdog daemon ja ativo (PID $($watchdogIdentity.ProcessId))." -ForegroundColor Green
     }
     exit 0
-  }
-  Remove-Item $watchdogPidFile -Force -ErrorAction SilentlyContinue
 }
+if ($watchdogIdentity.State -ne 'MISSING') { Clear-InvalidManagedPidFile -Identity $watchdogIdentity -PidFile $watchdogPidFile | Out-Null }
 
-$daemonScript = Join-Path $PSScriptRoot 'watchdog-daemon.ps1'
 $nodeDir = Split-Path $paths.NodeExe -Parent
 $env:Path = "$nodeDir;$env:Path"
 
@@ -40,7 +38,7 @@ $proc = Start-Process `
 Start-Sleep -Seconds 1
 
 if (Test-Path $watchdogPidFile) {
-  $daemonPid = [int](Get-Content $watchdogPidFile -ErrorAction SilentlyContinue)
+  $daemonPid = Get-PidFromFile -PidFile $watchdogPidFile
 } else {
   $daemonPid = $proc.Id
 }

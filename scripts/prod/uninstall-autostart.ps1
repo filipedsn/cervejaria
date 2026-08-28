@@ -11,14 +11,7 @@ foreach ($name in @('QuiverTap-AtLogon', 'QuiverTap-AtStartup', 'QuiverTap-Watch
 try {
   $paths = Resolve-QuiverTapPaths -Settings (Get-QuiverTapSettings)
   $watchdogPidFile = Join-Path $paths.RuntimeDir 'watchdog.pid'
-  if (Test-Path $watchdogPidFile) {
-    $processId = [int](Get-Content $watchdogPidFile -ErrorAction SilentlyContinue)
-    if (Test-ProcessAlive -ProcessId $processId) {
-      Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
-      Write-Host "Encerrado watchdog daemon (PID $processId)"
-    }
-    Remove-Item $watchdogPidFile -Force -ErrorAction SilentlyContinue
-  }
+  Stop-ManagedPidFile -PidFile $watchdogPidFile -ExpectedProcessNames @('powershell.exe', 'pwsh.exe') -CommandLinePatterns @('watchdog-daemon.ps1') -Label 'Watchdog daemon' | Out-Null
 } catch {}
 
 Write-Host 'Concluido. Processos em execucao nao foram encerrados (use stop-all.ps1).' -ForegroundColor Green

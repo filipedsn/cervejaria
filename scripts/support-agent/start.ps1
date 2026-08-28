@@ -10,6 +10,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\prod\_config.ps1')
 
 $ProjectRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $AgentDir = Join-Path $ProjectRoot 'support-agent'
@@ -33,20 +34,16 @@ if (-not (Test-Path (Join-Path $AgentDir '.env'))) {
   Write-Host 'Criado support-agent/.env a partir do example (modo sombra).' -ForegroundColor Yellow
 }
 
-if (Test-Path $PidFile) {
-  $oldPid = [int](Get-Content $PidFile -ErrorAction SilentlyContinue)
-  $alive = $false
-  if ($oldPid -gt 0) {
-    $alive = $null -ne (Get-Process -Id $oldPid -ErrorAction SilentlyContinue)
+$agentIdentity = Test-ManagedPidFile -PidFile $PidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('tsx', 'index.ts')
+if ($agentIdentity.State -eq 'VALID') {
+  if (-not $Force) {
+    if (-not $Quiet) { Write-Host "Agente de suporte ja esta rodando (PID $($agentIdentity.ProcessId))." -ForegroundColor Green }
+    exit 0
   }
-  if ($alive) {
-    if (-not $Force) {
-      if (-not $Quiet) { Write-Host "Agente de suporte ja esta rodando (PID $oldPid)." -ForegroundColor Green }
-      exit 0
-    }
-    Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
-  }
+  Stop-ManagedPidFile -PidFile $PidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('tsx', 'index.ts') -Label 'Agente de suporte' | Out-Null
+  Start-Sleep -Seconds 1
+} elseif ($agentIdentity.State -ne 'MISSING') {
+  Clear-InvalidManagedPidFile -Identity $agentIdentity -PidFile $PidFile | Out-Null
 }
 
 $nodeExe = (Get-Command node -ErrorAction Stop).Source

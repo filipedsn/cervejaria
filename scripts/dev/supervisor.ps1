@@ -12,13 +12,12 @@ $ErrorActionPreference = 'Continue'
 $paths = Get-DevPaths
 
 if (-not $Detached) {
-  if (Test-Path $paths.SupervisorPidFile) {
-    $existingPid = [int](Get-Content $paths.SupervisorPidFile -ErrorAction SilentlyContinue)
-    if (Test-DevProcessAlive -ProcessId $existingPid) {
+  $supervisorIdentity = Test-ManagedPidFile -PidFile $paths.SupervisorPidFile -ExpectedProcessNames @('powershell.exe','pwsh.exe') -CommandLinePatterns @('supervisor.ps1', 'Detached')
+  if ($supervisorIdentity.State -eq 'VALID') {
       Write-Host 'Supervisor dev ja esta ativo.' -ForegroundColor DarkGray
       exit 0
-    }
   }
+  if ($supervisorIdentity.State -ne 'MISSING') { Clear-InvalidManagedPidFile -Identity $supervisorIdentity -PidFile $paths.SupervisorPidFile | Out-Null }
 
   $argsList = @(
     '-NoProfile',

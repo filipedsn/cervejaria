@@ -5,40 +5,15 @@
 $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
 
-function Stop-ByPidFile {
-  param([string]$PidFile, [string]$Label)
-
-  if (-not (Test-Path $PidFile)) { return }
-  $processId = [int](Get-Content $PidFile -ErrorAction SilentlyContinue)
-  if (Test-ProcessAlive -ProcessId $processId) {
-    Write-Host "Encerrando $Label (PID $processId)..."
-    Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
-  }
-  Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
-}
-
-Stop-ByPidFile -PidFile $paths.ApiPidFile -Label 'API'
-Stop-ByPidFile -PidFile $paths.AlertPollerPidFile -Label 'Alert poller'
-Stop-ByPidFile -PidFile (Join-Path $paths.RuntimeDir 'watchdog.pid') -Label 'Watchdog daemon'
-Stop-ByPidFile -PidFile (Join-Path $paths.RuntimeDir 'ops-panel.pid') -Label 'Ops panel'
-Stop-ByPidFile -PidFile $paths.FrontendPidFile -Label 'Frontend'
-Stop-ByPidFile -PidFile $paths.TunnelPidFile -Label 'Tunnel'
+Stop-ManagedPidFile -PidFile $paths.ApiPidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('index.js') -Label 'API' | Out-Null
+Stop-ManagedPidFile -PidFile $paths.AlertPollerPidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('alert-poller') -Label 'Alert poller' | Out-Null
+Stop-ManagedPidFile -PidFile (Join-Path $paths.RuntimeDir 'watchdog.pid') -ExpectedProcessNames @('powershell.exe','pwsh.exe') -CommandLinePatterns @('watchdog-daemon.ps1') -Label 'Watchdog daemon' | Out-Null
+Stop-ManagedPidFile -PidFile (Join-Path $paths.RuntimeDir 'ops-panel.pid') -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('server.mjs') -Label 'Ops panel' | Out-Null
+Stop-ManagedPidFile -PidFile $paths.FrontendPidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('vite') -Label 'Frontend' | Out-Null
+Stop-ManagedPidFile -PidFile $paths.TunnelPidFile -ExpectedProcessNames @('cloudflared.exe') -CommandLinePatterns @('tunnel', $paths.TunnelName) -Label 'Tunnel' | Out-Null
 
 # Não para o serviço Cloudflared instalado via `cloudflared service install`
-$procs = Get-Process -Name 'cloudflared' -ErrorAction SilentlyContinue
-if ($procs -and -not (Get-Service -Name 'Cloudflared' -ErrorAction SilentlyContinue)) {
-  Write-Host 'Encerrando processos cloudflared...'
-  $procs | Stop-Process -Force -ErrorAction SilentlyContinue
-}
-
-foreach ($port in @($paths.ApiPort, $paths.FrontendPort)) {
-  $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-  foreach ($c in $conns) {
-    if ($c.OwningProcess) {
-      Write-Host "Encerrando listener na porta $port (PID $($c.OwningProcess))..."
-      Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
-    }
-  }
-}
+# Processos sem PID file (inclusive listeners de porta) nao sao encerrados: podem
+# pertencer a outro usuario ou aplicacao. O status aponta o bloqueio para acao manual.
 
 Write-Host 'Concluído.' -ForegroundColor Green

@@ -1,4 +1,5 @@
 # Config compartilhada do ambiente de desenvolvimento (portas 3002 / 5202).
+. (Join-Path $PSScriptRoot '..\prod\_config.ps1')
 
 $script:DevBackendPort = 3002
 $script:DevFrontendPort = 5202

@@ -28,6 +28,10 @@ $alertPollerOk = Test-AlertPollerHealthy -HealthUrl $paths.AlertPollerHealthUrl
 $frontendOk = Test-FrontendHealthy -FrontendUrl $paths.FrontendUrl
 $tunnelOk = Test-CloudflaredRunning
 
+# O painel tem health proprio e o start e idempotente; uma tentativa por ciclo
+# (padrao 60s) tambem recupera quedas apos o boot sem polling agressivo.
+& "$PSScriptRoot\start-ops-panel.ps1" -Quiet
+
 if (-not $alertPollerOk) {
   Write-WatchdogLog -Paths $paths -Message 'Alert poller fora do ar - iniciando.'
   & "$PSScriptRoot\start-alert-poller.ps1" -Quiet:$Quiet

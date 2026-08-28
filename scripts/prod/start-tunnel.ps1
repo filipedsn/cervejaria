@@ -6,11 +6,6 @@ $ErrorActionPreference = 'Stop'
 $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
 
-if (Test-CloudflaredRunning) {
-  Write-Host 'Cloudflare Tunnel ja esta em execucao.' -ForegroundColor Green
-  exit 0
-}
-
 $cfExe = Find-CloudflaredExe -Preferred $paths.CloudflaredExe
 if (-not $cfExe) {
   Write-Host 'cloudflared nao encontrado. Instale: winget install Cloudflare.cloudflared' -ForegroundColor Red
@@ -23,13 +18,12 @@ if (-not (Test-Path $paths.CloudflaredConfig)) {
   exit 1
 }
 
-if (Test-Path $paths.TunnelPidFile) {
-  $oldPid = [int](Get-Content $paths.TunnelPidFile -ErrorAction SilentlyContinue)
-  if (Test-ProcessAlive -ProcessId $oldPid) {
-    Write-Host "Tunnel PID $oldPid ainda ativo." -ForegroundColor Yellow
-    exit 0
-  }
+$tunnelIdentity = Test-ManagedPidFile -PidFile $paths.TunnelPidFile -ExpectedProcessNames @('cloudflared.exe') -CommandLinePatterns @('tunnel', $paths.TunnelName)
+if ($tunnelIdentity.State -eq 'VALID') {
+  Write-Host "Cloudflare Tunnel ja esta em execucao (PID $($tunnelIdentity.ProcessId))." -ForegroundColor Green
+  exit 0
 }
+if ($tunnelIdentity.State -ne 'MISSING') { Clear-InvalidManagedPidFile -Identity $tunnelIdentity -PidFile $paths.TunnelPidFile | Out-Null }
 
 $args = @(
   'tunnel',

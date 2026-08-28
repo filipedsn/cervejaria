@@ -14,17 +14,12 @@ $port = Get-OpsPanelConfiguredPort -EnvFile $envFile
 
 $stopped = $false
 
-if (Test-Path $pidFile) {
-  $panelPid = [int](Get-Content $pidFile -ErrorAction SilentlyContinue)
-  if ($panelPid -gt 0 -and (Test-ProcessAlive -ProcessId $panelPid)) {
-    Stop-Process -Id $panelPid -Force -ErrorAction SilentlyContinue
-    if (Test-ProcessAlive -ProcessId $panelPid) {
-      & taskkill.exe /F /PID $panelPid 2>$null | Out-Null
-    }
-    Write-Host "Ops panel parado (PID $panelPid)." -ForegroundColor Green
-    $stopped = $true
-  }
-  Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
+$panelIdentity = Test-ManagedPidFile -PidFile $pidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('server.mjs')
+if ($panelIdentity.State -eq 'VALID') {
+  Stop-ManagedPidFile -PidFile $pidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('server.mjs') -Label 'Ops panel' | Out-Null
+  $stopped = $true
+} elseif ($panelIdentity.State -ne 'MISSING') {
+  Clear-InvalidManagedPidFile -Identity $panelIdentity -PidFile $pidFile | Out-Null
 }
 
 if (Get-PortListenerPid -Port $port) {

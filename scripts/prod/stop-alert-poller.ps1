@@ -5,14 +5,7 @@
 $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
 
-if (Test-Path $paths.AlertPollerPidFile) {
-  $processId = [int](Get-Content $paths.AlertPollerPidFile -ErrorAction SilentlyContinue)
-  if (Test-ProcessAlive -ProcessId $processId) {
-    Write-Host "Encerrando Alert poller (PID $processId)..."
-    Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
-  }
-  Remove-Item $paths.AlertPollerPidFile -Force -ErrorAction SilentlyContinue
-}
+Stop-ManagedPidFile -PidFile $paths.AlertPollerPidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('alert-poller') -Label 'Alert poller' | Out-Null
 
 $port = $paths.AlertPollerHealthPort
 $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue

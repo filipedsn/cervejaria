@@ -26,6 +26,10 @@ $port = Get-OpsPanelConfiguredPort -EnvFile $envFile
 $live = Get-OpsPanelLiveStatus -Port $port -MetaFile $metaFile
 
 if ($live.state -eq 'current') {
+  # Health e a evidencia principal. Regrava somente com o PID que realmente
+  # esta escutando, eliminando eventual referencia persistida de boot anterior.
+  $listenerPid = Get-PortListenerPid -Port $port
+  if ($listenerPid) { Set-Content -Path $opsPidFile -Value $listenerPid -Encoding ASCII }
   if (-not $Quiet) {
     Write-Host "Ops panel ja ativo: $($live.url) (PID $($live.pid))" -ForegroundColor Green
   }

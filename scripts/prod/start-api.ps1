@@ -63,22 +63,13 @@ if ($artifactErrors.Count -gt 0) {
   exit 1
 }
 
-if (Test-Path $paths.ApiPidFile) {
-  $oldPid = [int](Get-Content $paths.ApiPidFile -ErrorAction SilentlyContinue)
-  if (Test-ProcessAlive -ProcessId $oldPid) {
-    if ($Force) {
-      if (-not $Quiet) {
-        Write-Host "Forcando parada da API PID $oldPid..." -ForegroundColor Yellow
-      }
-      Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
-      Start-Sleep -Seconds 1
-    } else {
-      Write-Host "Processo API PID $oldPid ainda ativo; aguardando health..." -ForegroundColor Yellow
-      Start-Sleep -Seconds 2
-      if (Test-ApiHealthy -HealthUrl $paths.ReadyUrl) { exit 0 }
-      Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
-    }
-  }
+$apiIdentity = Test-ManagedPidFile -PidFile $paths.ApiPidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('index.js')
+if ($apiIdentity.State -eq 'VALID') {
+  if (-not $Quiet) { Write-Host "API gerenciada PID $($apiIdentity.ProcessId) sem health; reiniciando." -ForegroundColor Yellow }
+  Stop-ManagedPidFile -PidFile $paths.ApiPidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('index.js') -Label 'API' | Out-Null
+  Start-Sleep -Seconds 1
+} elseif ($apiIdentity.State -ne 'MISSING') {
+  Clear-InvalidManagedPidFile -Identity $apiIdentity -PidFile $paths.ApiPidFile | Out-Null
 }
 
 if (Test-PortListening -Port $paths.ApiPort) {
@@ -87,13 +78,15 @@ if (Test-PortListening -Port $paths.ApiPort) {
   } else {
     Write-WatchdogLog -Paths $paths -Message "Porta $($paths.ApiPort) em uso sem health OK - tentando liberar."
   }
-  $conns = Get-NetTCPConnection -LocalPort $paths.ApiPort -State Listen -ErrorAction SilentlyContinue
-  foreach ($c in $conns) {
-    if ($c.OwningProcess) {
-      Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
-    }
+  $listenerPid = Get-PortListenerPid -Port $paths.ApiPort
+  $listener = if ($listenerPid) { Get-CimInstance Win32_Process -Filter "ProcessId=$listenerPid" -ErrorAction SilentlyContinue } else { $null }
+  if ($listener -and $listener.Name -ieq 'node.exe' -and $listener.CommandLine -like '*index.js*') {
+    Stop-Process -Id $listenerPid -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+  } else {
+    Write-Host "Porta $($paths.ApiPort) ocupada por processo nao identificado; ele nao sera encerrado." -ForegroundColor Red
+    exit 1
   }
-  Start-Sleep -Seconds 1
 }
 
 $nodeDir = Split-Path $paths.NodeExe -Parent

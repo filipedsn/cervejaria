@@ -45,12 +45,13 @@ function Start-DevService {
   }
 
   if (Test-Path $PidFile) {
-    $oldPid = [int](Get-Content $PidFile -ErrorAction SilentlyContinue)
-    if (Test-DevProcessAlive -ProcessId $oldPid) {
-      Write-DevLog -Paths $paths -Message "$Label PID $oldPid ainda ativo mas porta $Port fechada - reiniciando."
-      Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+    # O PID pode ser de boot anterior/reutilizado. Nao encerre por numero: a
+    # porta e a evidencia operacional; o arquivo antigo e apenas descartado.
+    $identity = Test-ManagedPidFile -PidFile $PidFile -ExpectedProcessNames @('node.exe')
+    if ($identity.State -eq 'REUSED') {
+      Write-DevLog -Paths $paths -Message "$Label PID $($identity.ProcessId) reutilizado; referencia descartada sem encerrar processo alheio."
     }
-    Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
   }
 
   $proc = Start-HiddenNpm `

@@ -43,6 +43,11 @@ function Stop-PortListener {
   param([int]$Port, [switch]$Quiet)
   $procId = Get-PortListenerPid -Port $Port
   if (-not $procId) { return $false }
+  $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$procId" -ErrorAction SilentlyContinue
+  if (-not $proc -or $proc.Name -ine 'node.exe' -or $proc.CommandLine -notlike '*server.mjs*') {
+    if (-not $Quiet) { Write-Host "Listener :$Port (PID $procId) nao e o Ops Panel identificado; nao sera encerrado." -ForegroundColor Yellow }
+    return $false
+  }
   if (-not $Quiet) { Write-Host "Encerrando listener :$Port (PID $procId)..." -ForegroundColor Yellow }
   Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
   Start-Sleep -Milliseconds 400

@@ -511,6 +511,72 @@ function Get-PidFromFile {
   return 0
 }
 
+# PID files persistem entre boots; portanto um PID existente nunca e evidencia
+# suficiente. Estes helpers sao deliberadamente conservadores: na duvida o PID
+# file e descartado, mas nenhum processo e encerrado.
+function Test-ManagedPidFile {
+  param(
+    [Parameter(Mandatory)][string]$PidFile,
+    [string[]]$ExpectedProcessNames = @(),
+    [string[]]$CommandLinePatterns = @()
+  )
+
+  $result = [ordered]@{ State = 'MISSING'; ProcessId = 0; Process = $null; CommandLine = $null }
+  if (-not (Test-Path -LiteralPath $PidFile)) { return [pscustomobject]$result }
+  $raw = Get-Content -LiteralPath $PidFile -ErrorAction SilentlyContinue | Select-Object -First 1
+  $pidValue = 0
+  if (-not [int]::TryParse(("" + $raw).Trim(), [ref]$pidValue) -or $pidValue -le 0) {
+    $result.State = 'INVALID'; return [pscustomobject]$result
+  }
+  $result.ProcessId = $pidValue
+  $proc = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
+  if (-not $proc) { $result.State = 'STALE'; return [pscustomobject]$result }
+  $result.Process = $proc
+
+  $cim = Get-CimInstance Win32_Process -Filter "ProcessId=$pidValue" -ErrorAction SilentlyContinue
+  $processName = if ($cim -and $cim.Name) { [IO.Path]::GetFileName($cim.Name) } else { "$($proc.ProcessName).exe" }
+  if ($ExpectedProcessNames.Count -gt 0 -and -not ($ExpectedProcessNames | Where-Object { $_ -ieq $processName })) {
+    $result.State = 'REUSED'; return [pscustomobject]$result
+  }
+  $commandLine = if ($cim) { $cim.CommandLine } else { $null }
+  $result.CommandLine = $commandLine
+  if ($CommandLinePatterns.Count -gt 0) {
+    if (-not $commandLine) { $result.State = 'INVALID'; return [pscustomobject]$result }
+    foreach ($pattern in $CommandLinePatterns) {
+      if ($commandLine -notlike "*$pattern*") { $result.State = 'REUSED'; return [pscustomobject]$result }
+    }
+  }
+  $result.State = 'VALID'
+  return [pscustomobject]$result
+}
+
+function Clear-InvalidManagedPidFile {
+  param([Parameter(Mandatory)][psobject]$Identity, [Parameter(Mandatory)][string]$PidFile)
+  if ($Identity.State -ne 'VALID' -and (Test-Path -LiteralPath $PidFile)) {
+    Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
+  }
+  return $Identity.State
+}
+
+function Stop-ManagedPidFile {
+  param(
+    [Parameter(Mandatory)][string]$PidFile,
+    [string[]]$ExpectedProcessNames = @(),
+    [string[]]$CommandLinePatterns = @(),
+    [string]$Label = 'processo'
+  )
+  $identity = Test-ManagedPidFile -PidFile $PidFile -ExpectedProcessNames $ExpectedProcessNames -CommandLinePatterns $CommandLinePatterns
+  if ($identity.State -eq 'VALID') {
+    Stop-Process -Id $identity.ProcessId -Force -ErrorAction SilentlyContinue
+    Write-Host "$Label parado (PID $($identity.ProcessId))." -ForegroundColor Green
+  } elseif ($identity.State -eq 'REUSED') {
+    Write-Host "${Label}: PID $($identity.ProcessId) pertence a outro processo; nao sera encerrado." -ForegroundColor Yellow
+  }
+  Clear-InvalidManagedPidFile -Identity $identity -PidFile $PidFile | Out-Null
+  if ($identity.State -eq 'VALID') { Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue }
+  return $identity.State
+}
+
 function Test-IsElevated {
   $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
   $principal = New-Object Security.Principal.WindowsPrincipal($identity)

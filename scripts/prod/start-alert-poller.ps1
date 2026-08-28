@@ -18,18 +18,13 @@ if ((Test-AlertPollerHealthy -HealthUrl $paths.AlertPollerHealthUrl) -and -not $
   exit 0
 }
 
-if (Test-Path $paths.AlertPollerPidFile) {
-  $oldPid = [int](Get-Content $paths.AlertPollerPidFile -ErrorAction SilentlyContinue)
-  if (Test-ProcessAlive -ProcessId $oldPid) {
-    if ($Force) {
-      Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
-      Start-Sleep -Seconds 1
-    } elseif (Test-AlertPollerHealthy -HealthUrl $paths.AlertPollerHealthUrl) {
-      exit 0
-    } else {
-      Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
-    }
-  }
+$pollerIdentity = Test-ManagedPidFile -PidFile $paths.AlertPollerPidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('alert-poller')
+if ($pollerIdentity.State -eq 'VALID') {
+  # PID correto, mas sem health, pode ser somente o nosso worker travado.
+  Stop-ManagedPidFile -PidFile $paths.AlertPollerPidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('alert-poller') -Label 'Alert poller' | Out-Null
+  Start-Sleep -Seconds 1
+} elseif ($pollerIdentity.State -ne 'MISSING') {
+  Clear-InvalidManagedPidFile -Identity $pollerIdentity -PidFile $paths.AlertPollerPidFile | Out-Null
 }
 
 $nodeDir = Split-Path $paths.NodeExe -Parent
