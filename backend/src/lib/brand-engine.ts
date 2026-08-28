@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import type { Prisma } from '@prisma/client';
 import {
   generateBrandPalette,
   hexToHsl,
@@ -196,6 +197,11 @@ export function normalizeTheme(
   return null;
 }
 
-export function themeToStorage(theme: BrandThemeV2): BrandThemeV2 {
-  return theme;
+export function themeToStorage(theme: BrandThemeV2): Prisma.InputJsonObject {
+  return {
+    v: theme.v,
+    brand: { ...theme.brand },
+    surface: { ...theme.surface },
+    corSecundaria: theme.corSecundaria,
+  };
 }
