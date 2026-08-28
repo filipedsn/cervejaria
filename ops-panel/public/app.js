@@ -30,12 +30,19 @@ const els = {
   overviewProd: document.getElementById('overviewProd'),
   overviewDev: document.getElementById('overviewDev'),
   overviewCi: document.getElementById('overviewCi'),
+  overviewRelease: document.getElementById('overviewRelease'),
   overviewInfra: document.getElementById('overviewInfra'),
   overviewAgent: document.getElementById('overviewAgent'),
   overviewProdValue: document.getElementById('overviewProdValue'),
+  overviewProdDetail: document.getElementById('overviewProdDetail'),
   overviewDevValue: document.getElementById('overviewDevValue'),
+  overviewDevDetail: document.getElementById('overviewDevDetail'),
   overviewCiValue: document.getElementById('overviewCiValue'),
+  overviewCiDetail: document.getElementById('overviewCiDetail'),
+  overviewReleaseValue: document.getElementById('overviewReleaseValue'),
+  overviewReleaseDetail: document.getElementById('overviewReleaseDetail'),
   overviewInfraValue: document.getElementById('overviewInfraValue'),
+  overviewInfraDetail: document.getElementById('overviewInfraDetail'),
   overviewAgentValue: document.getElementById('overviewAgentValue'),
   agentHealthBadge: document.getElementById('agentHealthBadge'),
   agentHealthScore: document.getElementById('agentHealthScore'),
@@ -45,6 +52,7 @@ const els = {
   agentControls: document.getElementById('agentControls'),
   toast: document.getElementById('toast'),
   releaseBadge: document.getElementById('releaseBadge'),
+  releaseSummary: document.getElementById('releaseSummary'),
   releaseMetrics: document.getElementById('releaseMetrics'),
   releaseGate: document.getElementById('releaseGate'),
   releaseCommits: document.getElementById('releaseCommits'),
@@ -57,8 +65,46 @@ const els = {
   rollbackHint: document.getElementById('rollbackHint'),
   deployPlaybook: document.getElementById('deployPlaybook'),
   deployConfirm: document.getElementById('deployConfirm'),
+  prepareRelease: document.getElementById('btnPrepareRelease'),
+  releaseDetails: document.getElementById('btnReleaseDetails'),
+  releaseFlow: document.getElementById('releaseFlow'),
   postDeploySmoke: document.getElementById('postDeploySmoke'),
+  serviceList: document.getElementById('serviceList'),
+  globalState: document.getElementById('globalState'),
+  globalStateTitle: document.getElementById('globalStateTitle'),
+  globalStateSummary: document.getElementById('globalStateSummary'),
+  investigate: document.getElementById('btnInvestigate'),
+  stateDetails: document.getElementById('btnStateDetails'),
+  globalStateActionTitle: document.getElementById('globalStateActionTitle'),
+  globalStateActionHint: document.getElementById('globalStateActionHint'),
+  recentOperations: document.getElementById('recentOperations'),
 };
+
+// A release e a decisao principal; os detalhes operacionais continuam acessiveis abaixo.
+const releaseSection = document.getElementById('releaseSection');
+const overview = document.getElementById('overview');
+const serviceStrip = document.querySelector('.service-strip');
+const quickActions = document.querySelector('.quick-actions');
+if (releaseSection && overview && serviceStrip && quickActions) {
+  const homeControlGrid = document.createElement('div');
+  homeControlGrid.className = 'home-control-grid';
+  overview.after(homeControlGrid);
+  homeControlGrid.append(releaseSection, serviceStrip, quickActions);
+}
+
+// Mantem as mesmas acoes/endpoints, mas as agrupa no cockpit para a leitura direta da home.
+const releasePrimaryActions = document.querySelector('.release-primary-action');
+for (const id of ['btnReleaseRefresh', 'btnDeploy', 'btnRollback']) {
+  const action = document.getElementById(id);
+  if (action && releasePrimaryActions) releasePrimaryActions.appendChild(action);
+}
+
+document.querySelectorAll('.section-nav-link').forEach((link) => {
+  link.addEventListener('click', () => {
+    document.querySelectorAll('.section-nav-link').forEach((item) => item.classList.remove('is-active'));
+    link.classList.add('is-active');
+  });
+});
 
 let actionRunning = false;
 let toastTimer;
@@ -66,6 +112,8 @@ let release = null;
 let localSession = false;
 let supportAgent = null;
 let agentPatchBusy = false;
+let statusSnapshot = null;
+let releaseDetailsVisible = false;
 
 function getToken() {
   return sessionStorage.getItem(TOKEN_KEY) || '';
@@ -130,8 +178,146 @@ function row(label, value) {
 }
 
 function setOverviewCard(cardEl, state, text) {
+  if (!cardEl) return;
   cardEl.className = `overview-card overview-card--${state}`;
   cardEl.querySelector('.overview-value').textContent = text;
+}
+
+function setOverviewDetail(el, text) {
+  if (el) el.textContent = text;
+}
+
+function serviceState(ok) {
+  return ok === true ? 'OK' : ok === false ? 'OFFLINE' : 'UNKNOWN';
+}
+
+function renderServices(data) {
+  const p = data.prod || {};
+  const i = data.infra || {};
+  const services = [
+    ['Aplicacao', 'API', serviceState(p.ready && p.health), ':3001'],
+    ['Aplicacao', 'Frontend', serviceState(p.frontend), 'local'],
+    ['Dados', 'PostgreSQL', serviceState(i.postgres?.ok), i.postgres?.ok === true ? 'readiness da API' : 'estado nao atribuivel'],
+    ['Conectividade', 'Cloudflare', serviceState(i.cloudflare?.ok), i.cloudflare?.pid ? `PID ${i.cloudflare.pid}` : 'sem PID runtime'],
+    ['Automacao', 'Watchdog', serviceState(i.watchdogPid ? i.watchdogAlive : null), i.watchdogPid ? `PID ${i.watchdogPid}` : 'nao detectado'],
+    ['Automacao', 'Alert Poller', serviceState(i.alertPoller?.ok), `health :${i.alertPoller?.port || 3098}`],
+    ['Operacao', 'Ops Panel', serviceState(i.opsPanelPid ? i.opsPanelAlive : null), i.opsPanelPid ? `PID ${i.opsPanelPid}` : 'nao detectado'],
+    ['Operacao', 'Support Agent', supportAgent?.process?.running ? 'OK' : supportAgent ? 'OFFLINE' : 'UNKNOWN', supportAgent?.process?.running ? 'ativo' : 'sem sinal'],
+  ];
+  const groups = new Map();
+  for (const [domain, name, state, detail] of services) {
+    if (!groups.has(domain)) groups.set(domain, []);
+    groups.get(domain).push([name, state, detail]);
+  }
+  els.serviceList.innerHTML = [...groups].map(([domain, items]) =>
+    `<div class="service-group"><span class="service-group-title">${domain}</span>${items.map(([name, state, detail]) => {
+      const kind = state === 'OK' ? 'ok' : state === 'OFFLINE' ? 'bad' : 'unknown';
+      return `<span class="service-signal service-signal--${kind}"><span aria-hidden="true">${kind === 'ok' ? '●' : kind === 'bad' ? '×' : '?'}</span><strong>${name}</strong> ${state}<small>${detail}</small></span>`;
+    }).join('')}</div>`,
+  ).join('');
+
+  // A home usa tiles individuais para leitura operacional imediata. Nao ha sparkline:
+  // o painel so mostra tendencia quando existir historico real para ela.
+  const serviceTiles = [
+    ['API', serviceState(p.ready && p.health), ':3001'],
+    ['Frontend', serviceState(p.frontend), 'local'],
+    ['PostgreSQL', serviceState(i.postgres?.ok), i.postgres?.ok === true ? 'readiness da API' : 'estado nao atribuivel'],
+    ['Alert Poller', serviceState(i.alertPoller?.ok), `health :${i.alertPoller?.port || 3098}`],
+    ['Watchdog', serviceState(i.watchdogPid ? i.watchdogAlive : null), i.watchdogPid ? `PID ${i.watchdogPid}` : 'nao detectado'],
+    ['Cloudflare', serviceState(i.cloudflare?.ok), i.cloudflare?.pid ? `PID ${i.cloudflare.pid}` : 'sem PID runtime'],
+    ['Support Agent', supportAgent?.process?.running ? 'OK' : supportAgent ? 'OFFLINE' : 'UNKNOWN', supportAgent?.process?.running ? 'ativo' : 'sem sinal'],
+  ];
+  els.serviceList.innerHTML = serviceTiles.map(([name, state, detail]) => {
+    const kind = state === 'OK' ? 'ok' : state === 'OFFLINE' ? 'bad' : 'unknown';
+    const label = state === 'OK' ? 'SAUDAVEL' : state === 'OFFLINE' ? 'OFFLINE' : 'DESCONHECIDO';
+    return `<article class="service-tile service-tile--${kind}"><span class="service-tile-icon" aria-hidden="true"></span><strong>${name}</strong><span class="service-tile-state">${label}</span><small>${detail}</small></article>`;
+  }).join('');
+
+  const operational = [
+    p.ready && p.health,
+    p.frontend,
+    i.postgres?.ok,
+    i.alertPoller?.ok,
+    i.watchdogPid ? i.watchdogAlive : null,
+    i.cloudflare?.ok,
+    i.opsPanelPid ? i.opsPanelAlive : null,
+  ];
+  const healthy = operational.filter((value) => value === true).length;
+  const offline = operational.some((value) => value === false);
+  const unknown = operational.some((value) => value == null);
+  setOverviewCard(els.overviewInfra, offline ? 'bad' : unknown ? 'warn' : 'ok', `${healthy}/${operational.length} saudaveis`);
+  setOverviewDetail(els.overviewInfraDetail, offline ? 'Servico offline' : unknown ? 'Sinal pendente' : 'Sinais verificados');
+}
+
+function releaseStateForDisplay(data, gate) {
+  if (data.recovery?.active) return { label: 'BLOCKED', tone: 'bad' };
+  if (gate?.allowed) return { label: 'READY', tone: 'ok' };
+  const blockers = gate?.blockers || [];
+  const migrationOnly = blockers.length > 0 && blockers.every((blocker) => blocker.code === 'migrations-sem-confirmacao');
+  return migrationOnly ? { label: 'ATTENTION', tone: 'warn' } : { label: 'BLOCKED', tone: 'bad' };
+}
+
+function renderGlobalState() {
+  if (!statusSnapshot || !release) return;
+  const prod = statusSnapshot.prod || {};
+  const infra = statusSnapshot.infra || {};
+  const recovery = prod.recovery?.active || release.recovery?.active;
+  const prodOnline = prod.ready && prod.health && prod.frontend;
+  const releaseState = releaseStateForDisplay(release, effectiveGate());
+  const unknownServices = [infra.postgres?.ok, infra.alertPoller?.ok, infra.cloudflare?.ok].filter((value) => value == null).length;
+  let tone = 'ok';
+  let title = 'SAUDAVEL';
+  let summary = `Producao saudavel. Release ${releaseState.label}. ${unknownServices} sinais aguardam fonte confiavel.`;
+  let actionTarget = '#observabilitySection';
+  let actionLabel = 'Investigar servico';
+  let actionTitle = 'Verificar estado';
+  let actionHint = 'Os sinais verificados indicam que nenhuma acao imediata e necessaria.';
+
+  if (recovery) {
+    tone = 'bad';
+    title = 'RECOVERY';
+    summary = `Recovery ativo em ${release.recovery?.failurePhase || prod.recovery?.failurePhase || 'UNKNOWN'}. Acoes normais de release estao bloqueadas.`;
+    actionTarget = '#releaseSection';
+    actionLabel = 'Abrir recovery';
+    actionTitle = 'Abrir recovery';
+    actionHint = 'A intervencao manual domina as operacoes normais.';
+  } else if (!prod.ready) {
+    tone = 'bad';
+    title = 'CRITICO';
+    summary = 'A API de producao nao respondeu ao readiness local. Investigue Ambientes e Observabilidade.';
+    actionTarget = '#environmentsSection';
+    actionTitle = 'Verificar API de producao';
+    actionHint = 'O readiness local nao respondeu.';
+  } else if (!prodOnline || releaseState.tone === 'bad') {
+    tone = 'warn';
+    title = 'ATENCAO';
+    summary = releaseState.tone === 'bad'
+      ? `${effectiveGate()?.blockers?.length || 0} impedimento(s) de release. A producao continua sob monitoramento.`
+      : 'Um ou mais sinais de producao nao estao saudaveis. Verifique Ambientes.';
+    actionTarget = releaseState.tone === 'bad' ? '#releaseSection' : '#environmentsSection';
+    actionLabel = releaseState.tone === 'bad' ? 'Verificar release' : 'Investigar servico';
+    actionTitle = releaseState.tone === 'bad' ? 'Verificar bloqueios de release' : 'Verificar servico de producao';
+    actionHint = releaseState.tone === 'bad' ? 'O gate precisa de uma decisao antes de publicar.' : 'Um sinal de producao precisa de atencao.';
+  } else if (releaseState.tone === 'warn') {
+    tone = 'warn';
+    title = 'ATENCAO';
+    summary = 'A release possui migration ou outro ponto que exige confirmacao humana.';
+    actionTarget = '#releaseSection';
+    actionLabel = 'Verificar release';
+    actionTitle = 'Confirmar release';
+    actionHint = 'Existe uma confirmacao operacional pendente.';
+  }
+
+  els.globalState.className = `global-state global-state--${tone}`;
+  els.globalStateTitle.textContent = title;
+  els.globalStateSummary.textContent = summary;
+  els.globalState.querySelector('.global-state-icon').textContent = tone === 'ok' ? 'OK' : tone === 'warn' ? '!' : 'X';
+  if (els.investigate) {
+    els.investigate.textContent = actionLabel;
+    els.investigate.dataset.target = actionTarget;
+  }
+  if (els.globalStateActionTitle) els.globalStateActionTitle.textContent = actionTitle;
+  if (els.globalStateActionHint) els.globalStateActionHint.textContent = actionHint;
 }
 
 async function fetchJson(url, options = {}) {
@@ -217,6 +403,7 @@ function buildAgentPatch(ctrl, checked) {
 function renderSupportAgent(data) {
   if (!data) return;
   supportAgent = data;
+  if (statusSnapshot) renderServices(statusSnapshot);
 
   const ov = agentOverviewState(data.health, data.process.running);
   setOverviewCard(els.overviewAgent, ov.state, ov.text);
@@ -340,6 +527,7 @@ function formatBranchList(branches) {
 }
 
 function scrollToTerminal() {
+  els.terminalSection.open = true;
   els.terminalSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -584,12 +772,51 @@ async function runPostDeploySmoke() {
   }
 }
 
+function renderRecentOperations(history) {
+  if (!els.recentOperations) return;
+  if (history?.corrupted) {
+    els.recentOperations.innerHTML = '<span class="status-warn">Historico ilegivel; consulte os detalhes de release.</span>';
+    return;
+  }
+  const events = history?.events || [];
+  if (!events.length) {
+    els.recentOperations.innerHTML = '<span class="status-muted">Sem eventos registrados no ledger.</span>';
+    return;
+  }
+  els.recentOperations.innerHTML = events.slice(0, 4).map((event) => {
+    const success = event.result === 'SUCCESS';
+    const label = event.type === 'DEPLOY' ? 'DEPLOY PARA PRODUCAO' : event.type === 'ROLLBACK' ? 'ROLLBACK' : escapeHtml(event.type || 'OPERACAO');
+    const version = event.gitShortSha || event.gitSha || event.restoredGitSha || '—';
+    return `<div class="recent-operation"><strong>${label}</strong><span class="status-${success ? 'ok' : event.result === 'RECOVERY_REQUIRED' ? 'bad' : 'warn'}">${escapeHtml(event.result || 'UNKNOWN')}</span><small>${escapeHtml(String(version).slice(0, 7))} · ${escapeHtml(formatDate(event.finishedAt) || 'data desconhecida')}</small></div>`;
+  }).join('');
+}
+
 function renderRelease(data) {
   release = data;
   const gate = effectiveGate() || {};
   const head = data.head || {};
   const migrations = data.migrationsChanged || [];
   const recovery = data.recovery || { active: false };
+  const candidateDiffers = Boolean(head.sha && data.deployed?.gitSha && !head.sha.startsWith(data.deployed.gitSha));
+  const ciVerdicts = (data.requiredChecks || []).map((name) => {
+    const check = (data.checks || []).find((item) => item.name === name);
+    return verdictOf(check);
+  });
+  const ciState = !data.gitAvailable || data.checksConfigured === false || data.checksError
+    ? 'DESCONHECIDO'
+    : ciVerdicts.some((value) => value === 'falhou') ? 'FALHANDO'
+      : ciVerdicts.some((value) => value === 'rodando' || value === 'ausente') ? 'EXECUTANDO'
+        : 'VERDE';
+
+  setOverviewDetail(els.overviewProdDetail, `Versao: ${data.deployed?.gitSha?.slice(0, 7) || 'UNKNOWN'} · ${formatDate(data.deployed?.deployedAt) || 'data desconhecida'}`);
+  setOverviewDetail(els.overviewDevDetail, `HEAD: ${head.sha?.slice(0, 7) || 'UNKNOWN'} · ${head.branch || 'branch desconhecida'}`);
+  setOverviewDetail(els.overviewCiDetail, `Checks: ${data.requiredChecks?.length || 0} · ${ciState}`);
+  setOverviewCard(
+    els.overviewDev,
+    !data.deployed?.gitSha || !head.sha ? 'warn' : candidateDiffers ? 'warn' : 'ok',
+    !data.deployed?.gitSha || !head.sha ? 'UNKNOWN' : candidateDiffers ? 'Nova versao' : 'Alinhado com PROD',
+  );
+  setOverviewCard(els.overviewCi, ciState === 'VERDE' ? 'ok' : ciState === 'FALHANDO' ? 'bad' : 'warn', ciState);
 
   const badgeState = recovery.active || !data.gitAvailable ? 'bad' : gate.allowed ? 'ok' : 'warn';
   els.releaseBadge.className = `chip chip--${badgeState}`;
@@ -597,6 +824,39 @@ function renderRelease(data) {
     ? 'Recovery manual'
     : !data.gitAvailable ? 'Sem git'
     : gate.allowed ? 'Liberado' : `${gate.blockers.length} impedimento(s)`;
+
+  const releaseState = releaseStateForDisplay(data, gate);
+  const history = data.history || { events: [] };
+  renderRecentOperations(history);
+  const lastDeploy = history.lastDeploy;
+  const backup = statusSnapshot?.backup || lastDeploy?.backup;
+  const gateStatus = (label, tone, value) =>
+    `<span class="release-summary-gate"><span>${label}</span><strong class="status-${tone}">${value}</strong></span>`;
+  els.releaseSummary.innerHTML = [
+    `<div class="release-summary-state"><span>Decisao de release</span><strong class="status-${releaseState.tone}">${releaseState.label}</strong><small>${gate.blockers?.length || 0} impedimento(s) · ${gate.warnings?.length || 0} aviso(s)</small></div>`,
+    `<div class="release-summary-version"><span>PROD</span><code>${escapeHtml(data.deployed?.gitSha?.slice(0, 7) || 'UNKNOWN')}</code></div>`,
+    `<div class="release-summary-version"><span>CANDIDATO</span><code>${escapeHtml(head.sha?.slice(0, 7) || 'UNKNOWN')}</code></div>`,
+    `<div class="release-summary-version"><span>ANTERIOR</span><code>${escapeHtml(data.rollback?.gitSha?.slice(0, 7) || '—')}</code></div>`,
+    `<div class="release-summary-gates">${[
+      gateStatus('Git', data.headOnOriginMain && !data.workingTreeDirty ? 'ok' : 'bad', data.headOnOriginMain && !data.workingTreeDirty ? 'OK' : 'VERIFICAR'),
+      gateStatus('CI', ciState === 'VERDE' ? 'ok' : ciState === 'FALHANDO' ? 'bad' : 'warn', ciState),
+      gateStatus('Migration', migrations.length ? 'warn' : 'ok', migrations.length ? `${migrations.length} DETECTADA(S)` : 'NENHUMA'),
+      gateStatus('Backup', backup ? 'ok' : 'warn', backup ? 'DISPONIVEL' : 'UNKNOWN'),
+      gateStatus('Recovery', recovery.active ? 'bad' : 'ok', recovery.active ? 'ATIVO' : 'INATIVO'),
+    ].join('')}</div>`,
+    lastDeploy ? `<div class="release-summary-last"><span>Ultima release</span><strong>${escapeHtml(lastDeploy.gitShortSha || lastDeploy.gitSha || '?').slice(0, 7)} · ${escapeHtml(lastDeploy.result || 'UNKNOWN')}</strong><small>${escapeHtml(formatDate(lastDeploy.finishedAt) || 'data desconhecida')}${lastDeploy.durationSeconds == null ? '' : ` · ${lastDeploy.durationSeconds}s`}</small></div>` : '',
+  ].join('');
+
+  setOverviewCard(els.overviewRelease, releaseState.tone, releaseState.label);
+  setOverviewDetail(els.overviewReleaseDetail, `${gate.blockers?.length || 0} impedimento(s) · recovery ${recovery.active ? 'ativo' : 'inativo'}`);
+  els.releaseMetrics.hidden = !releaseDetailsVisible && !recovery.active;
+  els.releaseDetails.textContent = releaseDetailsVisible ? 'Ocultar detalhes' : 'Detalhes de release';
+  els.releaseDetails.setAttribute('aria-expanded', String(releaseDetailsVisible || recovery.active));
+  releaseSection?.classList.toggle('release-details', releaseDetailsVisible || recovery.active);
+
+  els.prepareRelease.hidden = recovery.active;
+  els.prepareRelease.disabled = recovery.active || !data.gitAvailable;
+  if (recovery.active) els.releaseFlow.hidden = true;
 
   const publicado = data.deployed?.gitSha
     ? `<code>${escapeHtml(data.deployed.gitSha)}</code> <span class="status-muted">${formatDate(data.deployed.deployedAt)}</span>`
@@ -650,7 +910,14 @@ function renderRelease(data) {
   if (!items.length) {
     items.push(releaseItem('ok', '✓', 'Commit esta em origin/main, working tree limpa e CI verde. Liberado para publicar.'));
   }
-  els.releaseGate.innerHTML = items.join('');
+  const visibleItems = items.slice(0, 2);
+  const hiddenCount = items.length - visibleItems.length;
+  if (hiddenCount > 0 && !releaseDetailsVisible) {
+    visibleItems.push(releaseItem('warn', '…', `Mais ${hiddenCount} sinal(is). Abra Detalhes de release para investigar.`));
+  } else if (releaseDetailsVisible) {
+    visibleItems.push(...items.slice(2));
+  }
+  els.releaseGate.innerHTML = visibleItems.join('');
 
   const commits = data.pending || [];
   els.releaseCommits.innerHTML = commits.length
@@ -674,7 +941,6 @@ function renderRelease(data) {
         return row(`<code>${escapeHtml(name)}</code>`, checkPill({ ...(check || {}), verdict: verdictOf(check) }));
        }).join('');
 
-  const history = data.history || { events: [] };
   if (history.corrupted) {
     els.releaseHistory.innerHTML = '<div class="metric-row"><span class="status-warn">Histórico ilegível; o deploy continua disponível. Preserve o arquivo para análise.</span></div>';
   } else if (!history.events?.length) {
@@ -698,6 +964,7 @@ function renderRelease(data) {
 
   renderDeployPlaybook(data, gate);
   applyReleaseToButtons();
+  renderGlobalState();
 }
 
 async function refreshRelease() {
@@ -716,6 +983,7 @@ async function refreshRelease() {
 
 async function refreshStatus() {
   const data = await fetchJson('/api/status');
+  statusSnapshot = data;
   const p = data.prod;
   const d = data.dev;
   const i = data.infra;
@@ -790,10 +1058,11 @@ async function refreshStatus() {
     ? row('Ultimo backup', `${b.name} · ${Math.round(b.size / 1024)} KB`)
     : row('Ultimo backup', '<span class="status-muted">Nenhum</span>');
 
-  setOverviewCard(els.overviewProd, prodOk ? 'ok' : 'bad', prodOk ? 'Tudo OK' : 'Verificar');
-  setOverviewCard(els.overviewDev, devOk ? 'ok' : 'bad', devOk ? 'Rodando' : 'Parado');
-  setOverviewCard(els.overviewCi, ci.overviewState, ci.overview);
-  setOverviewCard(els.overviewInfra, infraOk ? 'ok' : 'warn', infraOk ? 'Ativa' : 'Parcial');
+  setOverviewCard(els.overviewProd, recoveryActive ? 'bad' : prodOk ? 'ok' : 'bad', recoveryActive ? 'RECOVERY' : prodOk ? 'SAUDAVEL' : 'DEGRADADO');
+  setOverviewDetail(els.overviewInfraDetail, `${infraOk ? 'Watchdog e painel ativos' : 'Sinal local parcial'}`);
+  setOverviewCard(els.overviewInfra, infraOk ? 'ok' : 'warn', infraOk ? 'OK' : 'ATENCAO');
+  renderServices(data);
+  renderGlobalState();
 
   els.lastUpdate.textContent = `Atualizado ${new Date(data.timestamp).toLocaleTimeString('pt-BR')}`;
 }
@@ -922,6 +1191,37 @@ document.getElementById('btnRefresh').addEventListener('click', () => {
   refreshSupportAgent();
 });
 
+els.investigate?.addEventListener('click', () => {
+  const target = document.querySelector(els.investigate.dataset.target || '#observabilitySection');
+  target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+els.stateDetails?.addEventListener('click', () => {
+  const target = document.querySelector(els.investigate?.dataset.target || '#releaseSection');
+  target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+document.querySelectorAll('[data-quick-action]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const action = button.dataset.quickAction;
+    const actionMap = {
+      refresh: 'btnRefresh',
+      restart: 'btnRestart',
+      'dev-start': 'btnDevStart',
+      'dev-stop': 'btnDevStop',
+      backup: 'btnBackupDb',
+      sync: 'btnSyncProdDev',
+    };
+    if (action === 'logs') {
+      const logs = document.getElementById('logsSection');
+      logs.open = true;
+      logs.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    document.getElementById(actionMap[action])?.click();
+  });
+});
+
 document.getElementById('btnRestart').addEventListener('click', () => {
   if (!confirm('Reiniciar a API de producao (:3001)?')) return;
   postActionStream('/api/prod/restart', {}, 'Reiniciar API prod');
@@ -929,6 +1229,19 @@ document.getElementById('btnRestart').addEventListener('click', () => {
 
 document.getElementById('btnReleaseRefresh').addEventListener('click', () => {
   refreshRelease();
+});
+
+els.prepareRelease.addEventListener('click', () => {
+  els.releaseFlow.hidden = false;
+  releaseDetailsVisible = true;
+  if (release) renderRelease(release);
+  els.releaseFlow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  els.deployConfirm.focus();
+});
+
+els.releaseDetails.addEventListener('click', () => {
+  releaseDetailsVisible = !releaseDetailsVisible;
+  if (release) renderRelease(release);
 });
 
 els.ackMigrations.addEventListener('change', () => {
@@ -1028,8 +1341,8 @@ function showError(err) {
 
 function updateOpsPanelMeta(meta) {
   if (!meta) return;
-  els.opsPanelSubtitle.textContent = `Painel local · ${meta.url}`;
-  els.opsPanelLiveBadge.textContent = `Online · PID ${meta.pid}`;
+  els.opsPanelSubtitle.textContent = 'Control Center';
+  els.opsPanelLiveBadge.textContent = 'AO VIVO';
   els.opsPanelLiveBadge.className = 'ops-live-badge ops-live-badge--ok';
   els.opsPanelLiveBadge.title = `Iniciado em ${formatDate(meta.startedAt)}`;
 }

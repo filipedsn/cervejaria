@@ -689,18 +689,20 @@ app.get('/api/logs', async () => ({
 }));
 
 app.get('/api/status', async () => {
-  const [prodReady, prodHealth, prodFrontend, devApi, devFrontend] = await Promise.all([
+  const [prodReady, prodHealth, prodFrontend, devApi, devFrontend, alertPoller] = await Promise.all([
     checkHttp(`http://127.0.0.1:${PORTS.prodApi}/api/ready`),
     checkHttp(`http://127.0.0.1:${PORTS.prodApi}/api/health`),
     checkHttp(`http://127.0.0.1:${PORTS.prodApi}/`),
     checkHttp(`http://127.0.0.1:${PORTS.devApi}/api/health`),
     checkHttp(`http://127.0.0.1:${PORTS.devFrontend}/`),
+    checkHttp('http://127.0.0.1:3098/health'),
   ]);
 
   const apiPid = readPid('api.pid');
   const watchdogPid = readPid('watchdog.pid');
   const opsPid = readPid('ops-panel.pid');
   const devSupervisorPid = readPid('dev-supervisor.pid');
+  const tunnelPid = readPid('tunnel.pid');
 
   const ci = await githubSummary();
 
@@ -731,6 +733,11 @@ app.get('/api/status', async () => {
       watchdogAlive: isProcessAlive(watchdogPid),
       opsPanelPid: opsPid,
       opsPanelAlive: isProcessAlive(opsPid),
+      // /api/ready executa SELECT 1 no Prisma; se a API nao respondeu, nao
+      // atribuímos a falha especificamente ao banco.
+      postgres: { ok: prodReady.ok ? true : null, source: 'api-ready' },
+      alertPoller: { ok: alertPoller.ok, port: 3098, source: 'health' },
+      cloudflare: { ok: tunnelPid ? isProcessAlive(tunnelPid) : null, pid: tunnelPid, source: 'runtime-pid' },
     },
     backup: latestBackup(),
     github: ci,

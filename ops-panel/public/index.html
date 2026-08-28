@@ -7,13 +7,30 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="app">
+  <div class="ops-shell">
+    <aside class="sidebar" aria-label="Navegacao principal">
+      <a class="sidebar-brand" href="#overview" aria-label="QUVER TAP OPS - Visao Geral">
+        <span class="brand-mark" aria-hidden="true">QT</span>
+        <span><strong>QUVER TAP</strong><small>OPS</small></span>
+      </a>
+      <nav class="section-nav" aria-label="Navegacao operacional">
+        <a href="#overview" class="section-nav-link is-active"><span aria-hidden="true">◈</span> Visao Geral</a>
+        <a href="#releaseSection" class="section-nav-link"><span aria-hidden="true">↗</span> Release</a>
+        <a href="#environmentsSection" class="section-nav-link"><span aria-hidden="true">□</span> Ambientes</a>
+        <a href="#observabilitySection" class="section-nav-link"><span aria-hidden="true">⌁</span> Observabilidade</a>
+        <a href="#backupsSection" class="section-nav-link"><span aria-hidden="true">◇</span> Protecao</a>
+        <a href="#supportAgentSection" class="section-nav-link"><span aria-hidden="true">◌</span> Suporte</a>
+        <a href="#toolsSection" class="section-nav-link"><span aria-hidden="true">≡</span> Logs</a>
+      </nav>
+      <div class="sidebar-footer"><span>OPERADOR</span><strong>Painel Local</strong><small>● Conexao local</small></div>
+    </aside>
+    <div class="app">
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">QT</div>
         <div>
-          <h1>Quiver Tap Ops</h1>
-          <p class="subtitle" id="opsPanelSubtitle">Painel local de operacoes</p>
+          <h1>Painel Local</h1>
+          <p class="subtitle" id="opsPanelSubtitle">Control Center</p>
         </div>
       </div>
       <div class="topbar-actions">
@@ -44,21 +61,50 @@
       <div id="tokenStatus" class="token-status token-status--ok">Localhost</div>
     </section>
 
-    <section class="overview" aria-label="Resumo rapido">
+    <section class="global-state global-state--unknown" id="globalState" aria-live="polite">
+      <div class="global-state-icon" aria-hidden="true">?</div>
+      <div class="global-state-status">
+        <p class="global-state-eyebrow">Estado do ecossistema</p>
+        <h2 id="globalStateTitle">Verificando sistemas</h2>
+        <p id="globalStateSummary">Aguardando sinais locais de producao, release e servicos.</p>
+        <button type="button" id="btnStateDetails" class="state-details">Ver detalhes <span aria-hidden="true">›</span></button>
+      </div>
+      <div class="global-state-action">
+        <p class="global-state-eyebrow">Proxima acao recomendada</p>
+        <strong id="globalStateActionTitle">Verificar estado</strong>
+        <p id="globalStateActionHint">Use os sinais verificados para decidir o proximo passo.</p>
+        <button type="button" id="btnInvestigate" class="btn btn-primary">Investigar servico <span aria-hidden="true">›</span></button>
+      </div>
+    </section>
+
+    <section class="overview" id="overview" aria-label="Resumo do ecossistema">
       <div class="overview-card" id="overviewProd">
+        <span class="overview-icon" aria-hidden="true">▱</span>
         <span class="overview-label">Producao</span>
+        <span class="overview-detail" id="overviewProdDetail">Versao</span>
         <span class="overview-value" id="overviewProdValue">—</span>
       </div>
       <div class="overview-card" id="overviewDev">
-        <span class="overview-label">Desenvolvimento</span>
+        <span class="overview-icon" aria-hidden="true">↗</span>
+        <span class="overview-label">Release Candidate</span>
+        <span class="overview-detail" id="overviewDevDetail">HEAD</span>
         <span class="overview-value" id="overviewDevValue">—</span>
       </div>
       <div class="overview-card" id="overviewCi">
-        <span class="overview-label">GitHub CI</span>
+        <span class="overview-icon" aria-hidden="true">∞</span>
+        <span class="overview-label">CI obrigatorio</span>
+        <span class="overview-detail" id="overviewCiDetail">Checks</span>
         <span class="overview-value" id="overviewCiValue">—</span>
       </div>
+      <div class="overview-card" id="overviewRelease">
+        <span class="overview-label">Release</span>
+        <span class="overview-detail" id="overviewReleaseDetail">Gates operacionais</span>
+        <span class="overview-value" id="overviewReleaseValue">â€”</span>
+      </div>
       <div class="overview-card" id="overviewInfra">
-        <span class="overview-label">Infra local</span>
+        <span class="overview-icon" aria-hidden="true">⬡</span>
+        <span class="overview-label">Servicos</span>
+        <span class="overview-detail" id="overviewInfraDetail">Sinais locais</span>
         <span class="overview-value" id="overviewInfraValue">—</span>
       </div>
       <div class="overview-card" id="overviewAgent">
@@ -67,8 +113,39 @@
       </div>
     </section>
 
+    <section class="service-strip" id="observabilitySection" aria-labelledby="servicesTitle">
+      <div class="service-strip-heading">
+        <h2 id="servicesTitle">Servicos</h2>
+        <p>Apenas sinais verificados localmente; ausencia de fonte aparece como UNKNOWN.</p>
+      </div>
+      <div class="service-list" id="serviceList" aria-live="polite"></div>
+      <div class="quick-actions" aria-label="Acoes rapidas">
+        <div class="quick-actions-heading"><h2>Acoes rapidas</h2><p>Acoes existentes, com suas protecoes originais.</p></div>
+        <div class="quick-action-list">
+          <button type="button" class="quick-action" data-quick-action="restart"><span aria-hidden="true">↻</span> Reiniciar API</button>
+          <button type="button" class="quick-action" data-quick-action="dev-start"><span aria-hidden="true">▷</span> Iniciar DEV</button>
+          <button type="button" class="quick-action" data-quick-action="dev-stop"><span aria-hidden="true">■</span> Parar DEV</button>
+          <button type="button" class="quick-action" data-quick-action="backup"><span aria-hidden="true">▣</span> Backup banco</button>
+          <button type="button" class="quick-action" data-quick-action="logs"><span aria-hidden="true">▤</span> Abrir logs</button>
+          <button type="button" class="quick-action quick-action--secondary" data-quick-action="refresh">Mais acoes</button>
+          <button type="button" class="quick-action quick-action--critical" data-quick-action="sync">Copiar PROD → DEV</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="home-bottom" aria-label="Resumo operacional">
+      <article class="home-card recent-operations">
+        <div class="home-card-heading"><div><p>Ledger de release</p><h2>Operacoes recentes</h2></div><a href="#releaseSection">Ver historico completo</a></div>
+        <div id="recentOperations" class="recent-operation-list"><span class="status-muted">Carregando historico real…</span></div>
+      </article>
+      <article class="home-card observability-card">
+        <div class="home-card-heading"><div><p>Visao operacional</p><h2>Observabilidade</h2></div><a href="#toolsSection">Abrir logs</a></div>
+        <div class="observability-empty"><strong>SEM DADOS</strong><span>Incidentes, logs e traces nao sao exibidos sem uma fonte leve e confiavel.</span></div>
+      </article>
+    </section>
+
     <main class="layout">
-      <section class="panel-section">
+      <section class="panel-section" id="environmentsSection">
         <div class="section-title">
           <h2>Ambientes</h2>
           <p>Monitore servicos e execute acoes com um clique.</p>
@@ -141,7 +218,7 @@
             </div>
           </article>
 
-          <article class="card card--infra">
+          <article class="card card--infra" id="backupsSection">
             <header class="card-header">
               <div class="card-title">
                 <span class="card-icon" aria-hidden="true">⚙</span>
@@ -224,7 +301,9 @@
             <span id="releaseBadge" class="chip chip--neutral">—</span>
           </header>
 
-          <div class="metrics" id="releaseMetrics">
+          <div class="release-summary" id="releaseSummary" aria-live="polite"></div>
+
+          <div class="metrics release-metrics" id="releaseMetrics">
             <div class="metric-row"><span class="label">Estado</span><span class="value status-muted">Carregando…</span></div>
           </div>
 
@@ -247,7 +326,12 @@
             <div id="releaseHistory" class="metrics"></div>
           </div>
 
-          <div class="release-options">
+          <div class="card-actions release-primary-action">
+            <button type="button" id="btnPrepareRelease" class="btn btn-primary">Preparar release</button>
+            <button type="button" id="btnReleaseDetails" class="btn btn-secondary" aria-expanded="false">Detalhes de release</button>
+          </div>
+
+          <div class="release-options" id="releaseFlow" hidden>
             <label class="field" id="deployConfirmField">
               <span class="field-label">Passo 4 — confirmacao</span>
               <input type="text" id="deployConfirm" placeholder="Digite DEPLOY para habilitar o botao" autocomplete="off" spellcheck="false" />
@@ -286,12 +370,14 @@
         </article>
       </section>
 
-      <section class="panel-section" id="terminalSection">
+      <section class="panel-section" id="toolsSection">
         <div class="section-title">
-          <h2>Terminal de execucao</h2>
-          <p>Saida em tempo real dos scripts PowerShell ao clicar nos botoes acima.</p>
+          <h2>Logs e ferramentas</h2>
+          <p>Detalhes de execucao e investigacao.</p>
         </div>
 
+        <details class="secondary-details" id="terminalSection">
+          <summary>Terminal de execucao <span>abre automaticamente durante uma operacao</span></summary>
         <article class="card card--terminal" id="terminalCard">
           <div class="terminal-bar">
             <div class="terminal-dots" aria-hidden="true">
@@ -304,24 +390,24 @@
 Clique em Iniciar dev, Backup banco prod, Copiar prod → dev, etc.
 A saida aparecera aqui linha a linha.</pre>
         </article>
+        </details>
       </section>
 
       <section class="panel-section">
-        <div class="section-title">
-          <h2>Logs do disco</h2>
-          <p id="logDescription">Arquivos persistentes em deploy/logs/</p>
-        </div>
-
+        <details class="secondary-details" id="logsSection">
+          <summary>Logs do disco <span id="logDescription">Arquivos persistentes em deploy/logs/</span></summary>
         <article class="card card--logs">
           <div class="log-tabs" id="logTabs" role="tablist" aria-label="Logs disponiveis"></div>
           <pre id="logOutput" class="log log--file"></pre>
         </article>
+        </details>
       </section>
     </main>
 
     <footer class="footer">
       <p><strong>Fluxo sugerido:</strong> merge na main → <em>Verificar release</em> (sincroniza <code>main</code> automaticamente) → digitar <code>DEPLOY</code> → <em>Liberar deploy</em> → conferir smoke abaixo.</p>
     </footer>
+    </div>
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
