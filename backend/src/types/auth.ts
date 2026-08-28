@@ -1,4 +1,4 @@
-import type { FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ClienteSessionPayload } from './cliente-session.js';
 
 export interface JwtPayload {
@@ -17,6 +17,8 @@ declare module '@fastify/jwt' {
   }
 }
 
+export type TenantJwtPayload = JwtPayload & { cervejariaId: string };
+
 declare module 'fastify' {
   interface FastifyInstance {
     authenticate: (request: FastifyRequest) => Promise<void>;
@@ -28,4 +30,13 @@ declare module 'fastify' {
 
 export function getAuthUser(request: FastifyRequest): JwtPayload {
   return request.user;
+}
+
+export function getTenantUser(app: FastifyInstance, request: FastifyRequest): TenantJwtPayload {
+  const user = getAuthUser(request);
+  const { cervejariaId } = user;
+  if (!cervejariaId) {
+    throw app.httpErrors.forbidden('Rota exclusiva de cervejaria');
+  }
+  return { ...user, cervejariaId };
 }

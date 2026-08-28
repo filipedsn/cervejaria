@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
-import { getAuthUser } from '../types/auth.js';
+import { getTenantUser } from '../types/auth.js';
 import { isSerie } from '../lib/evento-utils.js';
 import {
   aggregateChopeRanking,
@@ -13,7 +13,7 @@ export async function rankingRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
   app.get('/evento/:eventoId', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { eventoId } = request.params as { eventoId: string };
 
     const evento = await prisma.evento.findFirst({
@@ -47,7 +47,7 @@ export async function rankingRoutes(app: FastifyInstance) {
   });
 
   app.get('/evento/:eventoId/periodo', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { eventoId } = request.params as { eventoId: string };
     const { mes } = request.query as { mes?: string };
 
@@ -116,7 +116,7 @@ export async function rankingRoutes(app: FastifyInstance) {
   });
 
   app.get('/serie/:serieId', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { serieId } = request.params as { serieId: string };
     const { mes } = request.query as { mes?: string };
 

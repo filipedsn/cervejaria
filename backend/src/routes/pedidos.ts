@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { getAuthUser } from '../types/auth.js';
+import { getTenantUser } from '../types/auth.js';
 import { emitToEvento, emitToComanda, emitRankingUpdated } from '../lib/realtime.js';
 import {
   addItemToComandaInTx,
@@ -35,7 +35,7 @@ export async function pedidosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
   app.get('/eventos/:eventoId/pedidos', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { eventoId } = request.params as { eventoId: string };
     const { status } = z
       .object({ status: z.enum(['PENDENTE', 'CONFIRMADO', 'RECUSADO', 'CANCELADO']).optional() })
@@ -59,7 +59,7 @@ export async function pedidosRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/confirmar', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = confirmarSchema.parse(request.body ?? {});
 
@@ -182,7 +182,7 @@ export async function pedidosRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/recusar', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = recusarSchema.parse(request.body);
 

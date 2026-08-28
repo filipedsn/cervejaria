@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { getAuthUser } from '../types/auth.js';
+import { getTenantUser } from '../types/auth.js';
 import { emitToEvento } from '../lib/realtime.js';
 import { toNumber } from '../lib/utils.js';
 import { cancelarComandaVazia } from '../lib/comanda-cancelar.js';
@@ -33,7 +33,7 @@ export async function pagamentosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
   app.post('/comandas/:id/fechar', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = fecharComandaSchema.parse(request.body);
 
@@ -100,7 +100,7 @@ export async function pagamentosRoutes(app: FastifyInstance) {
   });
 
   app.post('/fechar-grupo', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const body = fecharGrupoSchema.parse(request.body);
     const uniqueIds = [...new Set(body.comandaIds)];
     if (uniqueIds.length !== body.comandaIds.length) {

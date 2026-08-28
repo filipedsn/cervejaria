@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { getAuthUser } from '../types/auth.js';
+import { getTenantUser } from '../types/auth.js';
 import { trailerSelect } from '../lib/trailer-utils.js';
 
 const createTrailerSchema = z.object({
@@ -15,7 +15,7 @@ export async function trailersRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
   app.get('/operacional', async (request) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
 
     const trailers = await prisma.trailer.findMany({
       where: { cervejariaId: user.cervejariaId, ativo: true },
@@ -43,7 +43,7 @@ export async function trailersRoutes(app: FastifyInstance) {
   });
 
   app.get('/', async (request) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const query = z
       .object({
         ativo: z.enum(['true', 'false']).optional(),
@@ -60,7 +60,7 @@ export async function trailersRoutes(app: FastifyInstance) {
   });
 
   app.post('/', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const body = createTrailerSchema.parse(request.body);
 
     const trailer = await prisma.trailer.create({
@@ -75,7 +75,7 @@ export async function trailersRoutes(app: FastifyInstance) {
   });
 
   app.put('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = updateTrailerSchema.parse(request.body);
 
@@ -96,7 +96,7 @@ export async function trailersRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id/ativo', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const { ativo } = z.object({ ativo: z.boolean() }).parse(request.body);
 
@@ -125,7 +125,7 @@ export async function trailersRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const existing = await prisma.trailer.findFirst({

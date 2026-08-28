@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { csvRow } from '../lib/csv.js';
-import { getAuthUser } from '../types/auth.js';
+import { getTenantUser } from '../types/auth.js';
 import { toNumber } from '../lib/utils.js';
 import { isBebidaChope } from '../lib/produto-utils.js';
 
@@ -10,7 +10,7 @@ export async function relatoriosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.requireDono);
 
   app.get('/evento/:eventoId', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { eventoId } = request.params as { eventoId: string };
 
     const evento = await prisma.evento.findFirst({
@@ -71,7 +71,7 @@ export async function relatoriosRoutes(app: FastifyInstance) {
   });
 
   app.get('/evento/:eventoId/csv', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { eventoId } = request.params as { eventoId: string };
 
     const evento = await prisma.evento.findFirst({

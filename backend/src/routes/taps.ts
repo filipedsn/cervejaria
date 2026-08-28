@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { getAuthUser } from '../types/auth.js';
+import { getTenantUser } from '../types/auth.js';
 import { assertTapPodeExcluir } from '../lib/catalogo-utils.js';
 import { isBebidaChope } from '../lib/produto-utils.js';
 import { findTrailerForTenant } from '../lib/trailer-utils.js';
@@ -39,7 +39,7 @@ export async function tapsRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
   app.get('/', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const query = z
       .object({
         trailerId: z.string().optional(),
@@ -66,7 +66,7 @@ export async function tapsRoutes(app: FastifyInstance) {
   });
 
   app.post('/', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const body = createTapSchema.parse(request.body);
 
     const trailer = await findTrailerForTenant(body.trailerId, user.cervejariaId!);
@@ -97,7 +97,7 @@ export async function tapsRoutes(app: FastifyInstance) {
   });
 
   app.put('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = updateTapSchema.parse(request.body);
 
@@ -141,7 +141,7 @@ export async function tapsRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id/ativo', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const { ativo } = z.object({ ativo: z.boolean() }).parse(request.body);
 
@@ -162,7 +162,7 @@ export async function tapsRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const existing = await prisma.tap.findFirst({

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { getAuthUser } from '../types/auth.js';
+import { getTenantUser } from '../types/auth.js';
 import {
   createCardapio,
   getCardapioById,
@@ -28,7 +28,7 @@ export async function cardapiosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.requireDono);
 
   app.addHook('preHandler', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const usa = await cervejariaUsaCardapio(user.cervejariaId!);
     if (!usa) {
       return reply.status(403).send({ error: 'Cardápio desativado para esta empresa' });
@@ -36,7 +36,7 @@ export async function cardapiosRoutes(app: FastifyInstance) {
   });
 
   app.get('/', async (request) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const query = z.object({ ativo: z.enum(['true', 'false']).optional() }).parse(request.query);
 
     const cardapios = await listCardapios(user.cervejariaId!, {
@@ -47,12 +47,12 @@ export async function cardapiosRoutes(app: FastifyInstance) {
   });
 
   app.get('/catalogo', async (request) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     return listCatalogoCardapio(user.cervejariaId!);
   });
 
   app.get('/:id', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const cardapio = await getCardapioById(id, user.cervejariaId!);
@@ -61,7 +61,7 @@ export async function cardapiosRoutes(app: FastifyInstance) {
   });
 
   app.post('/', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const body = saveCardapioSchema.parse(request.body);
 
     const result = await createCardapio({
@@ -78,7 +78,7 @@ export async function cardapiosRoutes(app: FastifyInstance) {
   });
 
   app.put('/:id', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = saveCardapioSchema.parse(request.body);
 
@@ -94,7 +94,7 @@ export async function cardapiosRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id/ativo', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const { ativo } = z.object({ ativo: z.boolean() }).parse(request.body);
 
@@ -109,7 +109,7 @@ export async function cardapiosRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:id', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const existing = await prisma.cardapio.findFirst({

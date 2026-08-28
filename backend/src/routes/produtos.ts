@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { getAuthUser } from '../types/auth.js';
+import { getTenantUser } from '../types/auth.js';
 import { assertProdutoPodeExcluir } from '../lib/catalogo-utils.js';
 import { isBebidaChope, isVendaUnitaria, normalizePrecos, produtoFieldsForSave } from '../lib/produto-utils.js';
 
@@ -82,7 +82,7 @@ export async function produtosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
   app.get('/', async (request) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     return prisma.produto.findMany({
       where: { cervejariaId: user.cervejariaId },
       include: { precos: { orderBy: { volumeMl: 'asc' } } },
@@ -91,7 +91,7 @@ export async function produtosRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const produto = await prisma.produto.findFirst({
@@ -104,7 +104,7 @@ export async function produtosRoutes(app: FastifyInstance) {
   });
 
   app.post('/', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const body = createProdutoSchema.parse(request.body);
     const formato = body.tipo === 'BEBIDA' ? (body.formato ?? 'CHOPE') : null;
     const precos = normalizePrecos(body.tipo, formato, body.precos);
@@ -130,7 +130,7 @@ export async function produtosRoutes(app: FastifyInstance) {
   });
 
   app.put('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = updateProdutoSchema.parse(request.body);
 
@@ -175,7 +175,7 @@ export async function produtosRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id/ativo', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const { ativo } = z.object({ ativo: z.boolean() }).parse(request.body);
 
@@ -194,7 +194,7 @@ export async function produtosRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const existing = await prisma.produto.findFirst({

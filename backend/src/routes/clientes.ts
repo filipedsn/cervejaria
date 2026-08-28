@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
-import { getAuthUser } from '../types/auth.js';
+import { getTenantUser } from '../types/auth.js';
 import { resolveClienteParaComanda } from '../lib/cliente-resolver.js';
 import { normalizePhone, formatPhoneBr } from '../lib/phone.js';
 import { toNumber } from '../lib/utils.js';
@@ -88,7 +88,7 @@ export async function clientesRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
   app.get('/', async (request) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { q, ordenar, page, limit } = listQuerySchema.parse(request.query);
     const skip = (page - 1) * limit;
 
@@ -130,7 +130,7 @@ export async function clientesRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id/historico', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const { page, limit } = historicoQuerySchema.parse(request.query);
     const skip = (page - 1) * limit;
@@ -185,7 +185,7 @@ export async function clientesRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const cliente = await prisma.cliente.findFirst({
@@ -198,7 +198,7 @@ export async function clientesRoutes(app: FastifyInstance) {
   });
 
   app.post('/', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const body = createClienteSchema.parse(request.body);
     const telefone = normalizePhone(body.telefone);
 
@@ -233,7 +233,7 @@ export async function clientesRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = patchClienteSchema.parse(request.body);
     const isDono = user.papel === 'DONO';
@@ -288,7 +288,7 @@ export async function clientesRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/unir', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = z.object({ fonteId: z.string().min(1) }).parse(request.body);
 
@@ -318,7 +318,7 @@ export async function clientesRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const blockReason = await assertClientePodeExcluir(id, user.cervejariaId!);
@@ -334,7 +334,7 @@ export async function clientesRoutes(app: FastifyInstance) {
   });
 
   app.post('/find-or-create', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const body = createClienteSchema.parse(request.body);
 
     let cliente;

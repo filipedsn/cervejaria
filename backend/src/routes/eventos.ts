@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { getAuthUser } from '../types/auth.js';
+import { getTenantUser } from '../types/auth.js';
 import { emitToCervejaria } from '../lib/realtime.js';
 import { emitPortalSessionExpired } from '../lib/cliente-session.js';
 import { isSerie, todayDateString, todayWeekday, reabrirPrazoExpirado, REABRIR_PRAZO_EXPIRADO_MSG, comandaImpedeExclusaoWhere } from '../lib/evento-utils.js';
@@ -112,7 +112,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.requireTenant);
 
   app.get('/', async (request) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const eventos = await prisma.evento.findMany({
       where: { cervejariaId: user.cervejariaId },
       orderBy: [{ data: 'desc' }, { horaInicio: 'asc' }, { createdAt: 'desc' }],
@@ -141,7 +141,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.get('/ativos', async (request) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const query = z
       .object({
         trailerId: z.string().min(1).optional(),
@@ -161,7 +161,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.get('/ativo', async (request) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     return prisma.evento.findFirst({
       where: {
         cervejariaId: user.cervejariaId,
@@ -174,7 +174,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id/dashboard', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const dashboard = await buildEventoDashboard(id, user.cervejariaId!);
@@ -183,7 +183,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id/resumo-executivo', { preHandler: app.requireDono }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const result = await buildEventoResumoExecutivo(id, user.cervejariaId!);
@@ -195,7 +195,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id/transacoes', { preHandler: app.requireDono }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const query = z.object({ limit: z.coerce.number().int().min(1).max(500).optional() }).parse(request.query);
 
@@ -213,7 +213,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id/transacoes/csv', { preHandler: app.requireDono }, async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const evento = await prisma.evento.findFirst({
@@ -236,7 +236,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id/taps', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const evento = await findEventoSessao(id, user.cervejariaId!);
@@ -251,7 +251,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.put('/:id/taps/:tapId/chope', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id, tapId } = request.params as { id: string; tapId: string };
     const body = z.object({ produtoId: z.string().min(1) }).parse(request.body);
 
@@ -295,7 +295,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:id/taps/:tapId/chope', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id, tapId } = request.params as { id: string; tapId: string };
 
     const evento = await findEventoSessao(id, user.cervejariaId!);
@@ -328,7 +328,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id/taps/:tapId/ativo', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id, tapId } = request.params as { id: string; tapId: string };
     const body = z.object({ ativo: z.boolean() }).parse(request.body);
 
@@ -367,7 +367,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id/cardapio', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const cardapio = await getEventoCardapio(id, user.cervejariaId!);
@@ -376,7 +376,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.put('/:id/cardapio', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = z
       .object({
@@ -418,7 +418,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const evento = await prisma.evento.findFirst({
@@ -434,7 +434,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.post('/', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const body = createEventoSchema.parse(request.body);
 
     const trailer = await findTrailerForTenant(body.trailerId, user.cervejariaId!, { requireAtivo: true });
@@ -558,7 +558,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/iniciar', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const serie = await prisma.evento.findFirst({
@@ -654,7 +654,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/cancelar-agendamento', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = z
       .object({
@@ -713,7 +713,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id/fechar', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const evento = await prisma.evento.findFirst({
@@ -752,7 +752,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id/reabrir', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const evento = await prisma.evento.findFirst({
@@ -813,7 +813,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = updateEventoSchema.parse(request.body);
 
@@ -925,7 +925,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/reverter-para-agendado', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const result = await reverterEventoParaAgendado({
@@ -950,7 +950,7 @@ export async function eventosRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:id', async (request, reply) => {
-    const user = getAuthUser(request);
+    const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
     const evento = await prisma.evento.findFirst({
