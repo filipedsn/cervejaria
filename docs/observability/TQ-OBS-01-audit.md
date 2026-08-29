@@ -315,6 +315,13 @@ Eventos semanticos de autenticacao e autorizacao usam as acoes `auth.login.succe
 `auth.authorization.denied`. Os motivos sao codificados, nao registram credenciais e
 preservam o contexto de request/correlacao existente.
 
+### TQ-OBS-02D
+
+Decisoes criticas de Socket.IO agora registram `realtime.session.accepted`,
+`realtime.session.rejected`, `realtime.room.joined` e `realtime.room.denied`.
+Os campos sao limitados a contexto de autorizacao seguro (tipo de ator, tenant,
+role, entidade, socket e correlacao valida), sem token, cookie ou payload Socket.
+
 ## 14. Validação e limites da evidência
 
 Foram inspecionados os produtores e consumidores relevantes, arquivos de configuração do collector/Kibana, regras de alerta, scripts de PROD, schema Prisma e Support Agent. A presença de manifests/regras não comprova que credenciais, collector, data views, regras, canais ou serviços estejam ativos em PROD; essa validação exigiria acesso operacional, explicitamente fora deste ticket.
