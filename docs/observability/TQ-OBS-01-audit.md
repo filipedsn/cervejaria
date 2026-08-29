@@ -292,6 +292,14 @@ Nenhuma onda deve ser iniciada por este ticket. Antes de cada mudança, validar 
 - IA autônoma para corrigir/deployar incidentes: o Support Agent permanece corretamente em sombra e com PR/revisão humana.
 - Registrar bodies completos, tokens, headers ou payloads Socket para “melhorar” correlação; isso pioraria a privacidade.
 
+## Nota de implementacao - TQ-OBS-02A
+
+G-01 recebeu sua primeira camada de correlacao HTTP. O frontend envia um UUID v4
+em `X-Correlation-Id` por requisicao. O backend o valida ou substitui com seguranca,
+devolve-o na resposta e o associa ao `requestId` do Fastify no contexto de telemetria,
+nos logs de erro e nos eventos de audit. Socket.IO, telemetria Prisma, dashboards e PROD
+permanecem fora do escopo.
+
 ## 14. Validação e limites da evidência
 
 Foram inspecionados os produtores e consumidores relevantes, arquivos de configuração do collector/Kibana, regras de alerta, scripts de PROD, schema Prisma e Support Agent. A presença de manifests/regras não comprova que credenciais, collector, data views, regras, canais ou serviços estejam ativos em PROD; essa validação exigiria acesso operacional, explicitamente fora deste ticket.

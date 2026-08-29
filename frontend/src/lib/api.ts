@@ -1,4 +1,6 @@
-const API_BASE = import.meta.env.VITE_API_URL ?? '';
+import { CORRELATION_ID_HEADER, createCorrelationId } from './correlation-id';
+
+const API_BASE = import.meta.env?.VITE_API_URL ?? '';
 
 let unauthorizedNotified = false;
 
@@ -41,7 +43,7 @@ export function assetUrl(
   return `${url}${separator}v=${encodeURIComponent(version)}`;
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export function buildRequestHeaders(options: RequestInit = {}): Record<string, string> {
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
   };
@@ -51,6 +53,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (hasJsonBody) {
     headers['Content-Type'] = 'application/json';
   }
+  headers[CORRELATION_ID_HEADER] = createCorrelationId();
+  return headers;
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers = buildRequestHeaders(options);
 
   let res: Response;
   try {
@@ -151,7 +159,10 @@ export function formatLiters(ml: number): string {
 }
 
 export async function downloadCsv(path: string, filename: string): Promise<void> {
-  const res = await fetch(`${API_BASE}${path}`, { credentials: 'include' });
+  const res = await fetch(`${API_BASE}${path}`, {
+    credentials: 'include',
+    headers: { [CORRELATION_ID_HEADER]: createCorrelationId() },
+  });
   if (!res.ok) throw new ApiError('Erro ao exportar', res.status);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);

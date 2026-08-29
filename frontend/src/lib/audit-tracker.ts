@@ -1,4 +1,6 @@
-const API_BASE = import.meta.env.VITE_API_URL ?? '';
+import { CORRELATION_ID_HEADER, createCorrelationId } from './correlation-id';
+
+const API_BASE = import.meta.env?.VITE_API_URL ?? '';
 
 type UiEventType = 'click' | 'page_view' | 'submit' | 'error';
 
@@ -64,7 +66,7 @@ async function flushEvents(): Promise<void> {
     const res = await fetch(`${API_BASE}/api/audit/events`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', [CORRELATION_ID_HEADER]: createCorrelationId() },
       body: JSON.stringify({ events: batch }),
     });
     if (res.status === 401) {

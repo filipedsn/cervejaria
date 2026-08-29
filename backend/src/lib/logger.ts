@@ -61,6 +61,10 @@ function buildPinoLogger(): pino.Logger {
 
       return {
 
+        requestId: ctx.requestId,
+
+        correlationId: ctx.correlationId,
+
         cervejariaId: ctx.cervejariaId,
 
         cervejariaSlug: ctx.slug,

@@ -36,6 +36,12 @@ function shouldSkipAudit(url: string, method?: string): boolean {
   return false;
 }
 
+// UI audit events emit their own records, so they need context even though we do
+// not create a second HTTP audit event for the batch endpoint.
+function shouldInitializeTelemetry(url: string, method?: string): boolean {
+  return !shouldSkipAudit(url, method) || url.startsWith('/api/audit/events');
+}
+
 /** 401 em /api/auth/me é esperado (cookie expirado ao reabrir aba). */
 function shouldSkipHttpAudit(route: string, method: string, statusCode: number): boolean {
   if (route === '/api/auth/me' && method.toUpperCase() === 'GET' && statusCode === 401) {
@@ -74,7 +80,7 @@ function parseResponseError(payload: unknown): Record<string, unknown> | undefin
 
 export function registerAuditHooks(app: FastifyInstance): void {
   app.addHook('onRequest', async (request, reply) => {
-    if (shouldSkipAudit(request.url, request.method)) return;
+    if (!shouldInitializeTelemetry(request.url, request.method)) return;
 
     const ctx = await resolveTelemetryFromRequest(request);
     enterTelemetryContext(ctx);
@@ -88,6 +94,19 @@ export function registerAuditHooks(app: FastifyInstance): void {
       if (err) (request as AuditRequest).auditResponseError = err;
     }
     return payload;
+  });
+
+  // Fastify executes handlers in a distinct async chain from onRequest. Re-enter
+  // the stored context at the last common hook so handler logs and emitted audit
+  // events inherit it as well.
+  app.addHook('preHandler', async (request) => {
+    if (!shouldInitializeTelemetry(request.url, request.method)) return;
+
+    const req = request as AuditRequest;
+    const ctx = req.telemetryCtx ?? (await resolveTelemetryFromRequest(request));
+    req.telemetryCtx = ctx;
+    enterTelemetryContext(ctx);
+    applyTelemetryContext(ctx);
   });
 
   app.addHook('onResponse', async (request, reply) => {

@@ -15,6 +15,9 @@ export type TelemetryActor = {
 };
 
 export type TelemetryContext = {
+  /** Fastify's per-request ID, separate from the logical correlation ID. */
+  requestId?: string;
+  correlationId?: string;
   cervejariaId?: string;
   slug: string;
   env: 'dev' | 'prd';
@@ -104,6 +107,7 @@ function actorFromJwtUser(user: JwtPayload): TelemetryActor {
 export async function resolveTelemetryFromRequest(request: FastifyRequest): Promise<TelemetryContext> {
   const env = getObservabilityEnv();
   const publicSlug = slugFromPublicPath(request.url);
+  const requestContext = { requestId: request.id, correlationId: request.correlationId };
 
   let user = request.user as JwtPayload | undefined;
   if (!user) {
@@ -118,6 +122,7 @@ export async function resolveTelemetryFromRequest(request: FastifyRequest): Prom
   if (user?.cervejariaId) {
     const slug = (await resolveSlugByCervejariaId(user.cervejariaId)) ?? 'unknown';
     return {
+      ...requestContext,
       cervejariaId: user.cervejariaId,
       slug,
       env,
@@ -127,6 +132,7 @@ export async function resolveTelemetryFromRequest(request: FastifyRequest): Prom
 
   if (publicSlug) {
     return {
+      ...requestContext,
       slug: publicSlug,
       env,
       actor: { type: 'anonymous' },
@@ -141,6 +147,7 @@ export async function resolveTelemetryFromRequest(request: FastifyRequest): Prom
         const slug =
           (await resolveSlugByCervejariaId(decoded.cervejariaId)) ?? publicSlug ?? 'unknown';
         return {
+          ...requestContext,
           cervejariaId: decoded.cervejariaId,
           slug,
           env,
@@ -157,10 +164,11 @@ export async function resolveTelemetryFromRequest(request: FastifyRequest): Prom
   }
 
   if (user?.papel === 'ADMIN') {
-    return { slug: 'system', env, actor: actorFromJwtUser(user) };
+    return { ...requestContext, slug: 'system', env, actor: actorFromJwtUser(user) };
   }
 
   return {
+    ...requestContext,
     slug: publicSlug ?? 'system',
     env,
     actor: user ? actorFromJwtUser(user) : { type: 'anonymous' },
@@ -172,6 +180,8 @@ export function applyTelemetryContext(ctx: TelemetryContext): void {
   if (!span) return;
 
   const dataset = logsIndexDataset(ctx.slug);
+  if (ctx.requestId) span.setAttribute('request.id', ctx.requestId);
+  if (ctx.correlationId) span.setAttribute('correlation.id', ctx.correlationId);
   span.setAttribute('cervejaria.id', ctx.cervejariaId ?? '');
   span.setAttribute('cervejaria.slug', ctx.slug);
   span.setAttribute('data_stream.dataset', dataset);

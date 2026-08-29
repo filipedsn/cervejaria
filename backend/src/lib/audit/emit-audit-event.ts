@@ -34,7 +34,7 @@ function actorFields(actor: TelemetryActor): Record<string, string | undefined> 
   };
 }
 
-export function emitAuditEvent(input: AuditEventInput): void {
+export function buildAuditPayload(input: AuditEventInput): Record<string, unknown> {
   const ctx = getTelemetryContextOrDefault();
   const slug = input.slug ?? ctx.slug;
   const env = ctx.env;
@@ -59,6 +59,8 @@ export function emitAuditEvent(input: AuditEventInput): void {
     ...actorFields(actor),
     trace_id: traceId,
     span_id: spanId,
+    requestId: ctx.requestId,
+    correlationId: ctx.correlationId,
   };
 
   if (input.entityType) payload['entity.type'] = input.entityType;
@@ -81,6 +83,11 @@ export function emitAuditEvent(input: AuditEventInput): void {
     }
   }
 
+  return payload;
+}
+
+export function emitAuditEvent(input: AuditEventInput): void {
+  const payload = buildAuditPayload(input);
   emitAuditLogRecord(payload, input.message, input.outcome ?? 'success');
   logger.info(payload, input.message);
 }
