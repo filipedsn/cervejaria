@@ -51,6 +51,7 @@ support-agent/.env
 deploy/backups/*.sql
 !deploy/backups/.gitkeep
 deploy/backups-external/
+deploy/restore-drills/
 
 # Artefatos publicados em producao (somente via prod:deploy)
 deploy/prod-artifacts/*
