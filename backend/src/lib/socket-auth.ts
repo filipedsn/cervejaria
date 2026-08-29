@@ -42,7 +42,7 @@ function correlationId(socket: Socket): string | undefined {
   return validCorrelationId(candidate) ? candidate : undefined;
 }
 
-function realtimeEvent(
+export function realtimeEvent(
   app: FastifyInstance,
   socket: Socket,
   action: 'realtime.session.accepted' | 'realtime.session.rejected' | 'realtime.room.joined' | 'realtime.room.denied',
