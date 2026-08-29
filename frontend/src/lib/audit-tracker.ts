@@ -2,7 +2,19 @@ import { CORRELATION_ID_HEADER, createCorrelationId } from './correlation-id';
 
 const API_BASE = import.meta.env?.VITE_API_URL ?? '';
 
-type UiEventType = 'click' | 'page_view' | 'submit' | 'error';
+type UiEventType = 'click' | 'page_view' | 'submit' | 'error' | 'http_request';
+
+export type HttpRequestOutcome = 'success' | 'client_error' | 'server_error' | 'network_error' | 'aborted' | 'timeout';
+
+export type HttpRequestTelemetry = {
+  method: string;
+  route: string;
+  statusCode?: number;
+  durationMs: number;
+  outcome: HttpRequestOutcome;
+  correlationId: string;
+  requestId?: string;
+};
 
 type UiEvent = {
   type: UiEventType;
@@ -11,6 +23,7 @@ type UiEvent = {
   label?: string;
   timestamp?: string;
   meta?: Record<string, unknown>;
+  http?: HttpRequestTelemetry;
 };
 
 const queue: UiEvent[] = [];
@@ -59,7 +72,11 @@ function shouldEmitError(message: string, stack?: string): boolean {
   return true;
 }
 
-async function flushEvents(): Promise<void> {
+export async function flushAuditEvents(): Promise<void> {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
   if (queue.length === 0) return;
   const batch = queue.splice(0, 50);
   try {
@@ -85,14 +102,14 @@ async function flushEvents(): Promise<void> {
 export function flushPendingAuditAfterAuth(): void {
   if (pendingPreAuth.length === 0) return;
   queue.push(...pendingPreAuth.splice(0, pendingPreAuth.length));
-  void flushEvents();
+  void flushAuditEvents();
 }
 
 function scheduleFlush(): void {
   if (flushTimer) return;
   flushTimer = setTimeout(() => {
     flushTimer = null;
-    void flushEvents();
+    void flushAuditEvents();
   }, 5000);
 }
 
@@ -102,7 +119,7 @@ function enqueue(event: UiEvent): void {
     timestamp: event.timestamp ?? new Date().toISOString(),
   });
   if (queue.length >= 20) {
-    void flushEvents();
+    void flushAuditEvents();
     return;
   }
   scheduleFlush();
@@ -129,6 +146,11 @@ export function trackSubmit(label: string, meta?: Record<string, unknown>): void
     label,
     meta,
   });
+}
+
+/** One terminal record per API request. The transport bypasses api.ts, preventing recursion. */
+export function trackHttpRequest(http: HttpRequestTelemetry): void {
+  enqueue({ type: 'http_request', page: http.route, http });
 }
 
 export function trackUiError(message: string, stack?: string, meta?: Record<string, unknown>): void {

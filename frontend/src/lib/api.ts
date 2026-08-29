@@ -1,4 +1,5 @@
-import { CORRELATION_ID_HEADER, createCorrelationId } from './correlation-id';
+import { trackHttpRequest, type HttpRequestOutcome } from './audit-tracker';
+import { CORRELATION_ID_HEADER, createCorrelationId, isCorrelationId } from './correlation-id';
 
 const API_BASE = import.meta.env?.VITE_API_URL ?? '';
 
@@ -57,8 +58,59 @@ export function buildRequestHeaders(options: RequestInit = {}): Record<string, s
   return headers;
 }
 
+function now(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+function sanitizedRoute(path: string): string {
+  try {
+    return new URL(path, 'http://frontend.local').pathname;
+  } catch {
+    return path.split('?')[0] || '/';
+  }
+}
+
+function responseOutcome(statusCode: number): HttpRequestOutcome {
+  if (statusCode < 400) return 'success';
+  if (statusCode < 500) return 'client_error';
+  return 'server_error';
+}
+
+function fetchFailureOutcome(error: unknown): HttpRequestOutcome {
+  if (error instanceof Error && error.name === 'AbortError') return 'aborted';
+  if (error instanceof Error && error.name === 'TimeoutError') return 'timeout';
+  return 'network_error';
+}
+
+function reportHttpRequest(input: {
+  method: string;
+  path: string;
+  statusCode?: number;
+  outcome: HttpRequestOutcome;
+  startedAt: number;
+  correlationId: string;
+  requestId?: string;
+}): void {
+  try {
+    trackHttpRequest({
+      method: input.method,
+      route: sanitizedRoute(input.path),
+      statusCode: input.statusCode,
+      durationMs: Math.max(0, Math.round(now() - input.startedAt)),
+      outcome: input.outcome,
+      correlationId: input.correlationId,
+      requestId: input.requestId,
+    });
+  } catch {
+    // Observability is fail-open: a local telemetry failure never affects API behavior.
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = buildRequestHeaders(options);
+  const correlationId = headers[CORRELATION_ID_HEADER];
+  const method = (options.method ?? 'GET').toUpperCase();
+  const startedAt = now();
 
   let res: Response;
   try {
@@ -67,9 +119,27 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       headers,
       credentials: 'include',
     });
-  } catch {
+  } catch (error) {
+    reportHttpRequest({
+      method,
+      path,
+      outcome: fetchFailureOutcome(error),
+      startedAt,
+      correlationId,
+    });
     throw new ApiError('Servidor indisponível. Execute npm run restart na raiz do projeto.', 0);
   }
+
+  const returnedCorrelationId = res.headers.get(CORRELATION_ID_HEADER);
+  reportHttpRequest({
+    method,
+    path,
+    statusCode: res.status,
+    outcome: responseOutcome(res.status),
+    startedAt,
+    correlationId: isCorrelationId(returnedCorrelationId) ? returnedCorrelationId : correlationId,
+    requestId: res.headers.get('x-request-id') ?? undefined,
+  });
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: null }));

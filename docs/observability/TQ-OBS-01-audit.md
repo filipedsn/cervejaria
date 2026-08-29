@@ -300,6 +300,14 @@ devolve-o na resposta e o associa ao `requestId` do Fastify no contexto de telem
 nos logs de erro e nos eventos de audit. Socket.IO, telemetria Prisma, dashboards e PROD
 permanecem fora do escopo.
 
+### TQ-OBS-02B
+
+O wrapper HTTP central agora emite um unico evento terminal `http.request.completed`
+para o transporte de audit existente. O evento registra somente metodo, rota sem query
+string, status quando houver, duracao, resultado e os IDs de correlacao/request
+disponiveis. Falhas de rede, abort e timeout sao distintos; a falha do transporte de
+telemetria e fail-open e nao usa o wrapper, evitando recursao.
+
 ## 14. Validação e limites da evidência
 
 Foram inspecionados os produtores e consumidores relevantes, arquivos de configuração do collector/Kibana, regras de alerta, scripts de PROD, schema Prisma e Support Agent. A presença de manifests/regras não comprova que credenciais, collector, data views, regras, canais ou serviços estejam ativos em PROD; essa validação exigiria acesso operacional, explicitamente fora deste ticket.

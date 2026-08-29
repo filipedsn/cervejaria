@@ -22,6 +22,8 @@ export type AuditEventInput = {
   ui?: { page?: string; element?: string; label?: string };
   metadata?: Record<string, unknown>;
   slug?: string;
+  requestId?: string;
+  correlationId?: string;
 };
 
 function actorFields(actor: TelemetryActor): Record<string, string | undefined> {
@@ -59,8 +61,8 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
     ...actorFields(actor),
     trace_id: traceId,
     span_id: spanId,
-    requestId: ctx.requestId,
-    correlationId: ctx.correlationId,
+    requestId: input.requestId ?? ctx.requestId,
+    correlationId: input.correlationId ?? ctx.correlationId,
   };
 
   if (input.entityType) payload['entity.type'] = input.entityType;
