@@ -28,7 +28,7 @@
     "qa:tq-sec-02": "node scripts/run-with-env.mjs development npx tsx qa/tq-sec-02-realtime.ts",
     "alert-poller:start": "node scripts/run-with-env.mjs production npx tsx src/alert-poller-worker.ts",
     "alert-poller:worker": "node scripts/run-with-env.mjs production npx tsx src/alert-poller-worker.ts",
-    "test:unit": "node --import tsx --test src/app-error-handler.test.ts src/lib/brand-engine.test.ts src/lib/correlation-context.test.ts src/lib/evento-vendas-intervalo.test.ts src/lib/evento-fluxo-intervalo.test.ts src/lib/evento-comanda-tempo.test.ts src/lib/fechar-comanda.test.ts src/lib/fechar-comanda.property.test.ts src/lib/quiosque/caixa.property.test.ts src/lib/quiosque/venda.test.ts src/lib/observability-alert-copy.test.ts src/lib/system-config.test.ts"
+    "test:unit": "node --import tsx --test src/app-error-handler.test.ts src/lib/auth-observability.test.ts src/lib/brand-engine.test.ts src/lib/correlation-context.test.ts src/lib/evento-vendas-intervalo.test.ts src/lib/evento-fluxo-intervalo.test.ts src/lib/evento-comanda-tempo.test.ts src/lib/fechar-comanda.test.ts src/lib/fechar-comanda.property.test.ts src/lib/quiosque/caixa.property.test.ts src/lib/quiosque/venda.test.ts src/lib/observability-alert-copy.test.ts src/lib/system-config.test.ts"
   },
   "dependencies": {
     "@elastic/opentelemetry-node": "^1.16.0",

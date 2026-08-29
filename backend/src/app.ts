@@ -81,6 +81,7 @@ import { getReadinessStatus } from './lib/health.js';
 import { createLogger } from './lib/logger.js';
 import { registerAuditHooks } from './lib/audit-hooks.js';
 import { registerCorrelationContext } from './lib/correlation-context.js';
+import { emitAuthEvent, sessionReasonCode } from './lib/auth-observability.js';
 import { auditRoutes } from './routes/audit.js';
 import { pushRoutes } from './routes/push.js';
 import { observabilityRoutes } from './routes/observability.js';
@@ -217,6 +218,11 @@ export async function buildApp() {
 
     if (!user.cervejariaId) {
 
+      emitAuthEvent(request, 'auth.authorization.denied', {
+        reasonCode: 'TENANT_MISMATCH',
+        user,
+      });
+
       throw app.httpErrors.forbidden('Rota exclusiva de cervejaria');
 
     }
@@ -233,6 +239,8 @@ export async function buildApp() {
 
     if (user.papel !== 'DONO') {
 
+      emitAuthEvent(request, 'auth.authorization.denied', { reasonCode: 'ROLE_DENIED', user });
+
       throw app.httpErrors.forbidden('Acesso restrito ao proprietário');
 
     }
@@ -248,6 +256,8 @@ export async function buildApp() {
     const user = request.user as JwtPayload;
 
     if (user.papel !== 'ADMIN') {
+
+      emitAuthEvent(request, 'auth.authorization.denied', { reasonCode: 'ROLE_DENIED', user });
 
       throw app.httpErrors.forbidden('Acesso restrito ao administrador');
 
@@ -268,6 +278,10 @@ export async function buildApp() {
     const code = hasErrorProperty(error, 'code') && typeof error.code === 'string' ? error.code : '';
     const message = getErrorMessage(error);
     const statusCode = getErrorStatusCode(error);
+
+    if (statusCode === 401 && !request.url.startsWith('/api/auth/login')) {
+      emitAuthEvent(request, 'auth.session.rejected', { reasonCode: sessionReasonCode(error) });
+    }
 
     if (error instanceof ZodError) {
 

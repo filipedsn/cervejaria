@@ -70,7 +70,11 @@ export async function verifyClienteSession(
     return await validateClienteSession(decoded);
   } catch (error) {
     if (error instanceof ClienteSessionValidationError) {
-      throw app.httpErrors.unauthorized(error.message);
+      const rejection = app.httpErrors.unauthorized(error.message) as Error & {
+        authReasonCode?: string;
+      };
+      rejection.authReasonCode = 'PORTAL_SESSION_INVALID';
+      throw rejection;
     }
     throw error;
   }

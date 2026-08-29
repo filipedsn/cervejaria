@@ -308,6 +308,13 @@ string, status quando houver, duracao, resultado e os IDs de correlacao/request
 disponiveis. Falhas de rede, abort e timeout sao distintos; a falha do transporte de
 telemetria e fail-open e nao usa o wrapper, evitando recursao.
 
+### TQ-OBS-02C
+
+Eventos semanticos de autenticacao e autorizacao usam as acoes `auth.login.succeeded`,
+`auth.login.failed`, `auth.logout`, `auth.session.rejected` e
+`auth.authorization.denied`. Os motivos sao codificados, nao registram credenciais e
+preservam o contexto de request/correlacao existente.
+
 ## 14. Validação e limites da evidência
 
 Foram inspecionados os produtores e consumidores relevantes, arquivos de configuração do collector/Kibana, regras de alerta, scripts de PROD, schema Prisma e Support Agent. A presença de manifests/regras não comprova que credenciais, collector, data views, regras, canais ou serviços estejam ativos em PROD; essa validação exigiria acesso operacional, explicitamente fora deste ticket.

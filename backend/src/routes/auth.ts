@@ -34,6 +34,7 @@ import {
   RATE_LIMIT_WINDOW,
 
 } from '../lib/security-config.js';
+import { emitAuthEvent } from '../lib/auth-observability.js';
 
 
 
@@ -122,6 +123,7 @@ export async function authRoutes(app: FastifyInstance) {
 
 
       if (!usuario || !(await verifyPassword(body.senha, usuario.senhaHash))) {
+        emitAuthEvent(request, 'auth.login.failed', { reasonCode: 'INVALID_CREDENTIALS' });
 
         return reply.status(401).send({ error: 'E-mail ou senha inválidos' });
 
@@ -144,6 +146,8 @@ export async function authRoutes(app: FastifyInstance) {
       const token = signUserToken(app, usuario);
 
       setAuthCookie(reply, token);
+
+      emitAuthEvent(request, 'auth.login.succeeded', { user: usuario, role: usuario.papel });
 
       return authResponse(usuario, usuario.cervejaria);
 
@@ -279,7 +283,14 @@ export async function authRoutes(app: FastifyInstance) {
 
 
 
-  app.post('/logout', async (_request, reply) => {
+  app.post('/logout', async (request, reply) => {
+
+    try {
+      await request.jwtVerify();
+      emitAuthEvent(request, 'auth.logout');
+    } catch {
+      // Logout is intentionally idempotent.
+    }
 
     clearAuthCookie(reply);
 
