@@ -26,7 +26,7 @@ $crossDev = @{
 $tmp = Join-Path $env:TEMP 'quiver-seg-cross.json'
 Set-Content -Path $tmp -Value $crossDev -Encoding UTF8 -NoNewline
 
-foreach ($idx in @('metrics-generic.otel-dev', 'logs-generic.otel-dev', 'traces-*.otel-dev')) {
+foreach ($idx in @('metrics-generic.otel-dev', 'logs-generic.otel-dev', 'logs-technical.otel-dev', 'traces-*.otel-dev')) {
   $raw = Invoke-Elastic -Method POST -Path "/$idx/_count" -BodyFile $tmp
   if ($raw -match '"count":(\d+)' -and [int]$Matches[1] -gt 0) {
     Write-Host "  FALHA: $($Matches[1]) docs production em $idx (ultima hora)" -ForegroundColor Red

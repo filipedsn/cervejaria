@@ -79,6 +79,7 @@ import {
 
 import { getReadinessStatus } from './lib/health.js';
 import { createLogger } from './lib/logger.js';
+import { logUnhandledRequestError } from './lib/technical-log.js';
 import { registerAuditHooks } from './lib/audit-hooks.js';
 import { registerCorrelationContext } from './lib/correlation-context.js';
 import { emitAuthEvent, sessionReasonCode } from './lib/auth-observability.js';
@@ -316,10 +317,7 @@ export async function buildApp() {
       span.setStatus({ code: SpanStatusCode.ERROR, message: exception.message });
     }
 
-    const errorContext = { requestId: request.id, correlationId: request.correlationId };
-    if (error instanceof Error) app.log.error({ err: error, ...errorContext });
-    else if (message) app.log.error({ err: error, ...errorContext }, message);
-    else app.log.error({ err: error, ...errorContext });
+    logUnhandledRequestError(app.log, request, reply, error);
 
     return reply.status(500).send({ error: 'Erro interno do servidor' });
 

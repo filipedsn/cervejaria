@@ -13,7 +13,7 @@ foreach ($pair in @(
   @{ Name = 'quiver-otel-traces-30d'; File = 'es-ilm-policy-traces.json'; Pattern = 'traces-*' },
   @{ Name = 'quiver-otel-audit-90d'; File = 'es-ilm-policy-audit.json'; Pattern = 'logs-audit*' },
   @{ Name = 'quiver-otel-metrics-45d'; File = 'es-ilm-policy-metrics.json'; Pattern = 'metrics-generic.otel-*' },
-  @{ Name = 'quiver-otel-logs-30d'; File = 'es-ilm-policy-logs.json'; Pattern = 'logs-generic.otel-*' },
+  @{ Name = 'quiver-otel-logs-30d'; File = 'es-ilm-policy-logs.json'; Pattern = 'logs-{generic,technical}.otel-*' },
   @{ Name = 'quiver-otel-infra-15d'; File = 'es-ilm-policy-infra.json'; Pattern = 'metrics-infra.otel-*' }
 )) {
   Write-Host "Politica $($pair.Name)..." -ForegroundColor Yellow

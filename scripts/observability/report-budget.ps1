@@ -23,6 +23,8 @@ $indices = @(
   'metrics-*.otel-infra*',
   'logs-generic.otel-dev*',
   'logs-generic.otel-prd*',
+  'logs-technical.otel-dev*',
+  'logs-technical.otel-prd*',
   'logs-audit*.otel-dev*',
   'logs-audit*.otel-prd*',
   'traces-*.otel-dev*',
