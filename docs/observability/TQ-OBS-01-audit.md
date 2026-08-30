@@ -322,6 +322,15 @@ Decisoes criticas de Socket.IO agora registram `realtime.session.accepted`,
 Os campos sao limitados a contexto de autorizacao seguro (tipo de ator, tenant,
 role, entidade, socket e correlacao valida), sem token, cookie ou payload Socket.
 
+### TQ-OBS-02F
+
+O gap de diagnóstico Prisma/DB da Onda C recebeu sinais técnicos de baixo volume:
+operações lentas, falhas de operação/conexão e falhas técnicas de transação. A
+classificação usa códigos explícitos para timeout, deadlock, lock timeout, constraint,
+not found e conexão; SQL, argumentos e valores não são registrados. Métricas de pool
+continuam indisponíveis sem exporter/polling adicional. Consulte
+`docs/observability/TQ-OBS-02F-prisma-db.md`.
+
 ## 14. Validação e limites da evidência
 
 Foram inspecionados os produtores e consumidores relevantes, arquivos de configuração do collector/Kibana, regras de alerta, scripts de PROD, schema Prisma e Support Agent. A presença de manifests/regras não comprova que credenciais, collector, data views, regras, canais ou serviços estejam ativos em PROD; essa validação exigiria acesso operacional, explicitamente fora deste ticket.
