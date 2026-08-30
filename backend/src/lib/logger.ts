@@ -69,6 +69,8 @@ function buildPinoLogger(destination?: pino.DestinationStream): pino.Logger {
       return {
         service: process.env.OTEL_SERVICE_NAME ?? 'quiver-tap-api',
         environment: process.env.NODE_ENV ?? 'development',
+        'data_stream.dataset': 'technical',
+        'data_stream.namespace': ctx?.env ?? (isProd ? 'prd' : 'dev'),
         ...(ctx
           ? {
               requestId: ctx.requestId,

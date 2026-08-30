@@ -40,6 +40,8 @@ test('redacts secrets recursively and preserves safe request context in a Pino c
   assert.equal(event.role, 'DONO');
   assert.equal(event.method, 'POST');
   assert.equal(event.route, '/api/test');
+  assert.equal(event['data_stream.dataset'], 'technical');
+  assert.equal(event['data_stream.namespace'], 'dev');
   assert.equal(event.safe, 'kept');
   assert.equal(event.authorization, '[REDACTED]');
   assert.deepEqual(event.nested, { accessToken: '[REDACTED]', connectionString: '[REDACTED]' });

@@ -91,18 +91,6 @@ processors:
           - set(attributes["deployment.environment.name"], "infra")
           - set(attributes["service.name"], "quiver-tap-infra")
 
-  # Pino fields become LogRecord attributes. Promote the requested audit dataset
-  # to the resource (used by the Elasticsearch dynamic data-stream exporter) and
-  # route every other application log to the bounded technical dataset.
-  transform/log-dataset:
-    error_mode: ignore
-    log_statements:
-      - context: log
-        statements:
-          - set(resource.attributes["data_stream.dataset"], attributes["data_stream.dataset"]) where attributes["data_stream.dataset"] != nil
-          - set(resource.attributes["data_stream.namespace"], attributes["data_stream.namespace"]) where attributes["data_stream.namespace"] != nil
-          - set(resource.attributes["data_stream.dataset"], "technical") where resource.attributes["data_stream.dataset"] == nil
-
   filter/infra-allowlist:
     error_mode: ignore
     metrics:
@@ -169,5 +157,5 @@ service:
       exporters: [elasticsearch]
     logs:
       receivers: [otlp]
-      processors: [transform/namespace, transform/log-dataset, batch]
+      processors: [transform/namespace, batch]
       exporters: [elasticsearch]

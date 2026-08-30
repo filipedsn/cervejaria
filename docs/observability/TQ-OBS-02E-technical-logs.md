@@ -4,13 +4,13 @@ Data: 2026-08-29. Escopo: DEV/local e arquivos versionados. PROD não foi consul
 
 ## Resultado e pipeline
 
-Antes desta alteração a configuração de DEV e PROD já habilitava o envio Pino (`ELASTIC_OTEL_NODE_ENABLE_LOG_SENDING=true`, `OTEL_LOGS_EXPORTER=otlp`) e o collector tinha um pipeline OTLP de logs. A evidência local mostra documentos em `logs-generic.otel-dev*` e `logs-generic.otel-prd*`, mas o collector não promovia o dataset presente no LogRecord para o recurso usado pelo exporter dinâmico. Portanto, os logs técnicos Pino chegavam de forma **PARCIAL**: havia entrega genérica, sem uma rota técnica explícita e verificável por aplicação.
+Antes desta alteração a configuração de DEV e PROD já habilitava o envio Pino (`ELASTIC_OTEL_NODE_ENABLE_LOG_SENDING=true`, `OTEL_LOGS_EXPORTER=otlp`) e o collector tinha um pipeline OTLP de logs. A evidência local mostra documentos em `logs-generic.otel-dev*` e `logs-generic.otel-prd*`. Portanto, os logs técnicos Pino chegavam de forma **PARCIAL**: havia entrega genérica, sem uma rota técnica explícita e verificável por aplicação.
 
 O fluxo agora é:
 
 `Fastify/Pino (stdout + instrumentação EDOT) → OTLP HTTP :4318 → edot-collector → Elasticsearch (mapping otel)`.
 
-O processador `transform/log-dataset` preserva `audit-*` quando o evento o informa e atribui `technical` aos demais logs Pino. O destino técnico é `logs-technical.otel-dev*` ou `logs-technical.otel-prd*`; audit permanece em `logs-audit*.otel-{dev|prd}`. Traces e business events continuam seus pipelines existentes, e não são logs técnicos.
+O logger Pino declara `data_stream.dataset=technical` em cada log técnico; os eventos audit já sobrescrevem esse campo com `audit-*`. Assim o exporter dinâmico usa o atributo do próprio LogRecord, sem mutar o recurso compartilhado de uma requisição. O destino técnico é `logs-technical.otel-dev*` ou `logs-technical.otel-prd*`; audit permanece em `logs-audit*.otel-{dev|prd}`. Traces e business events continuam seus pipelines existentes, e não são logs técnicos.
 
 ## Contrato dos logs
 
@@ -34,3 +34,9 @@ O stdout continua sendo a destination primária do Pino. O envio EDOT/OTLP é as
 4. Em Discover, filtre `correlationId`, `requestId`, `route` ou `err.message` no data view `logs-*.otel-{dev|prd}`; o mesmo `correlationId` permite cruzar o log técnico com `logs-audit*.otel-{dev|prd}`.
 
 Sem alertas novos: estes procedimentos apenas tornam a falha detectável.
+
+## Validação DEV persistente — TQ-OBS-02E1
+
+Em 2026-08-30, a API DEV normal na porta 3002 recebeu um 500 controlado com correlation ID `0c6bd9b8-9a50-4768-95ea-629b5912cb1c`. O Elasticsearch retornou um único evento técnico `error` em `logs-technical.otel-dev*`, com request ID, método `GET`, rota, status 500, duração, serviço, ambiente, mensagem e stack da exceção. O mesmo request também gerou o log padrão de conclusão HTTP em nível `info`; ele não é uma cópia equivalente do erro técnico. O documento não continha Authorization, cookie, JWT, senha, token, connection string nem body de request.
+
+A validação revelou e corrigiu uma falha do primeiro roteamento: promover o dataset do LogRecord para o recurso compartilhado fazia o erro seguir para o índice audit quando o evento audit da mesma request era emitido depois. A atribuição do dataset no próprio logger elimina essa contaminação.
