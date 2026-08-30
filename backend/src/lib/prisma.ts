@@ -1,6 +1,8 @@
 import type { Prisma } from '@prisma/client';
 import { PrismaClient } from '@prisma/client';
-import { createPrismaObservabilityExtension, observeDbTransaction } from './prisma-observability.js';
+import { logger } from './logger.js';
+import { getTelemetryContext } from './telemetry-context.js';
+import { observeDbOperation, observeDbTransaction } from './prisma-observability.js';
 
 function databaseUrlWithPool(url: string | undefined): string | undefined {
   if (!url) return url;
@@ -24,15 +26,53 @@ const baseClient = new PrismaClient(
     ? { datasources: { db: { url: databaseUrl } } }
     : undefined,
 );
-const extended = baseClient.$extends(createPrismaObservabilityExtension());
+function observeDelegate(model: string, delegate: object): object {
+  return new Proxy(delegate, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (typeof property !== 'string' || typeof value !== 'function') return value;
+      return (...args: unknown[]) => {
+        const context = getTelemetryContext();
+        return observeDbOperation(
+          { model, operation: property },
+          () => value.apply(target, args),
+          logger,
+          Date.now,
+          context,
+        );
+      };
+    },
+  });
+}
 
-// Prisma query extensions cover individual operations. This proxy adds one
-// distinct transaction signal and deliberately ignores functional rollbacks.
-const observed = new Proxy(extended, {
+// Capture AsyncLocalStorage before crossing Prisma's native engine boundary.
+// This covers all model delegates, raw operations and transactions without
+// creating a log for successful normal queries.
+const observed = new Proxy(baseClient, {
   get(target, property, receiver) {
     const value = Reflect.get(target, property, receiver);
-    if (property !== '$transaction' || typeof value !== 'function') return value;
-    return (...args: unknown[]) => observeDbTransaction(() => value.apply(target, args));
+    if (property === '$transaction' && typeof value === 'function') {
+      return (...args: unknown[]) => {
+        const context = getTelemetryContext();
+        return observeDbTransaction(() => value.apply(target, args), logger, Date.now, context);
+      };
+    }
+    if ((property === '$queryRaw' || property === '$executeRaw') && typeof value === 'function') {
+      return (...args: unknown[]) => {
+        const context = getTelemetryContext();
+        return observeDbOperation(
+          { operation: property.slice(1) },
+          () => value.apply(target, args),
+          logger,
+          Date.now,
+          context,
+        );
+      };
+    }
+    if (typeof property === 'string' && !property.startsWith('$') && typeof value === 'object' && value) {
+      return observeDelegate(property, value);
+    }
+    return value;
   },
 });
 

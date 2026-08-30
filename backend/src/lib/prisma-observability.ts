@@ -1,6 +1,11 @@
 import { Prisma } from '@prisma/client';
 
 import { logger } from './logger.js';
+import {
+  getTelemetryContext,
+  runWithTelemetryContext,
+  type TelemetryContext,
+} from './telemetry-context.js';
 
 export type DbErrorCategory =
   | 'CONNECTION'
@@ -21,6 +26,18 @@ type DbLogger = {
   warn(fields: Record<string, unknown>, message: string): void;
   error(fields: Record<string, unknown>, message: string): void;
 };
+
+function loggerWithTelemetryContext(targetLogger: DbLogger, context: TelemetryContext | undefined): DbLogger {
+  if (!context) return targetLogger;
+  return {
+    warn(fields, message) {
+      runWithTelemetryContext(context, () => targetLogger.warn(fields, message));
+    },
+    error(fields, message) {
+      runWithTelemetryContext(context, () => targetLogger.error(fields, message));
+    },
+  };
+}
 
 const CONNECTION_PRISMA_CODES = new Set(['P1000', 'P1001', 'P1002', 'P1017']);
 const TIMEOUT_PRISMA_CODES = new Set(['P1008', 'P2024']);
@@ -170,20 +187,24 @@ export async function observeDbOperation<T>(
   execute: () => Promise<T>,
   targetLogger: DbLogger = logger,
   now: () => number = Date.now,
+  telemetryContext: TelemetryContext | undefined = getTelemetryContext(),
 ): Promise<T> {
+  // Prisma's native engine may continue the query in an async resource that
+  // does not retain AsyncLocalStorage. Snapshot it before crossing that boundary.
+  const contextLogger = loggerWithTelemetryContext(targetLogger, telemetryContext);
   const start = now();
   try {
     const result = await execute();
     const durationMs = Math.max(0, now() - start);
     if (durationMs >= slowDbThresholdMs()) {
-      safeLog(targetLogger, 'warn',
+      safeLog(contextLogger, 'warn',
         { event: 'db.operation.slow', model: operation.model, operation: operation.operation, durationMs },
         'db.operation.slow',
       );
     }
     return result;
   } catch (error) {
-    logDbOperationFailure(operation, Math.max(0, now() - start), error, targetLogger);
+    logDbOperationFailure(operation, Math.max(0, now() - start), error, contextLogger);
     throw error;
   }
 }
@@ -192,7 +213,9 @@ export async function observeDbTransaction<T>(
   execute: () => Promise<T>,
   targetLogger: DbLogger = logger,
   now: () => number = Date.now,
+  telemetryContext: TelemetryContext | undefined = getTelemetryContext(),
 ): Promise<T> {
+  const contextLogger = loggerWithTelemetryContext(targetLogger, telemetryContext);
   const start = now();
   try {
     return await execute();
@@ -211,27 +234,8 @@ export async function observeDbTransaction<T>(
         'error.message': sanitizedDbErrorMessage(category),
         err: sanitizedError(error, category),
       };
-      safeLog(targetLogger, errorLevel(category), fields, fields.event);
+      safeLog(contextLogger, errorLevel(category), fields, fields.event);
     }
     throw error;
   }
-}
-
-export function createPrismaObservabilityExtension() {
-  return Prisma.defineExtension({
-    name: 'db-observability',
-    query: {
-      $allModels: {
-        $allOperations({ model, operation, query, args }) {
-          return observeDbOperation({ model, operation }, () => query(args));
-        },
-      },
-      $queryRaw({ query, args }) {
-        return observeDbOperation({ operation: 'queryRaw' }, () => query(args));
-      },
-      $executeRaw({ query, args }) {
-        return observeDbOperation({ operation: 'executeRaw' }, () => query(args));
-      },
-    },
-  });
 }

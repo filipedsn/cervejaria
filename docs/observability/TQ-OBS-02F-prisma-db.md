@@ -76,6 +76,28 @@ controlada, curta e um `correlationId` próprio, sem tocar em PROD.
 
 ## Validação
 
+### Tentativa controlada de ingestão DEV (TQ-OBS-02F1)
+
+Foi adicionado `npm run obs:validate-prisma-ingestion`, executado pelo carregador
+`run-with-env.mjs development`. Ele primeiro reserva e libera a porta loopback
+`127.0.0.1:65432` para comprovar que está sem listener; em seguida, somente no
+processo efêmero, aponta Prisma para essa porta e executa `$queryRaw`. A API DEV e
+sua `DATABASE_URL` não são alteradas.
+
+Em 2026-08-30, a execução com correlation ID
+`c4e2b2af-6763-4fa9-9d60-2e98f20c447c` produziu um
+`PrismaClientInitializationError` real, classificado e escrito pelo Pino como
+`db.connection.failed` / `CONNECTION`, com serviço DEV e correlação. A busca por
+`attributes.correlationId` no data stream `logs-technical.otel-dev*` retornou zero
+documentos, inclusive após flush e janela de 10 segundos. Portanto esta tentativa
+**não comprova ingestão Elasticsearch**; não se deve afirmar o contrário.
+
+O collector estava acessível e a segregação DEV/PRD permaneceu verde. O próximo passo
+é diagnosticar por que logs Pino de processos efêmeros não chegam ao receiver OTLP ou
+ao exporter, usando ambiente descartável ou endpoint DEV temporário — sem usar o banco
+DEV compartilhado. A consulta Elastic para logs Pino deve usar
+`attributes.correlationId`, pois os campos Pino são atributos OTLP.
+
 Os testes cobrem sucesso rápido sem evento, lentidão, Prisma `P2002`, deadlock/lock
 timeout/timeout por códigos explícitos, falha técnica e funcional de transação,
 contexto HTTP, sanitização e telemetria fail-open. Execute:
