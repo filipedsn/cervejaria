@@ -1,0 +1,26 @@
+[
+  {
+    "schemaVersion": 1,
+    "eventId": "replay-db-a",
+    "timestamp": "2026-08-31T12:00:00.000Z",
+    "source": "technical",
+    "eventType": "db.connection.failed",
+    "service": "quiver-api",
+    "releaseSha": "replay-r1",
+    "http": { "route": "/api/comandas/123/fechar", "statusCode": 500 },
+    "db": { "category": "CONNECTION" },
+    "rawRef": { "index": "synthetic", "id": "replay-db-a" }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "replay-db-b",
+    "timestamp": "2026-08-31T12:03:00.000Z",
+    "source": "technical",
+    "eventType": "db.connection.failed",
+    "service": "quiver-api",
+    "releaseSha": "replay-r1",
+    "http": { "route": "/api/comandas/456/fechar", "statusCode": 500 },
+    "db": { "category": "CONNECTION" },
+    "rawRef": { "index": "synthetic", "id": "replay-db-b" }
+  }
+]

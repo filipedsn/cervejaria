@@ -72,3 +72,62 @@ export type NormalizationFailure =
 export type NormalizationResult =
   | { ok: true; event: NormalizedEvent }
   | { ok: false; reason: NormalizationFailure };
+
+export type IncidentStatus = 'NEW' | 'OBSERVING' | 'ASSESSED' | 'CLOSED';
+export type IncidentClass =
+  | 'APPLICATION_ERROR' | 'DATABASE_FAILURE' | 'DATABASE_SLOW' | 'AUTH_FAILURE'
+  | 'AUTHORIZATION_DENIED' | 'REALTIME_AUTH_FAILURE' | 'FRONTEND_ERROR'
+  | 'AVAILABILITY' | 'PERFORMANCE' | 'BUSINESS_FAILURE' | 'TELEMETRY_FAILURE' | 'UNKNOWN';
+export type IncidentSeverity = 'SEV1' | 'SEV2' | 'SEV3' | 'SEV4';
+export type IncidentConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
+
+/** Small, allowlisted evidence used by deterministic incident rules. */
+export type IncidentSignals = {
+  sources: Array<NormalizedEvent['source']>;
+  dbCategories: Array<Exclude<NonNullable<NormalizedEvent['db']>['category'], undefined>>;
+  maxHttpStatus?: number;
+  hasAvailabilitySignal: boolean;
+  deterministicRelationCount: number;
+  nonWeakRelationCount: number;
+  weakRelationCount: number;
+  conflictCount: number;
+  sourceFailureCount: number;
+};
+
+export type IncidentReason = { code: string; detail?: string };
+
+export type Incident = {
+  schemaVersion: 1;
+  incidentId: string;
+  fingerprint: string;
+  status: IncidentStatus;
+  class: IncidentClass;
+  severity: IncidentSeverity;
+  confidence: IncidentConfidence;
+  firstSeen: string;
+  lastSeen: string;
+  occurrences: number;
+  eventIds: string[];
+  affectedTenantIds: string[];
+  affectedTenantCount: number;
+  affectedReleaseShas: string[];
+  service?: string;
+  route?: string;
+  signals: IncidentSignals;
+  reasons: IncidentReason[];
+  createdAt: string;
+  updatedAt: string;
+  duplicateOfIncidentId?: string;
+};
+
+export type ProcessingHealth = {
+  schemaVersion: 1;
+  processStartedAt?: string;
+  lastProcessingAt?: string;
+  lastProcessingSuccessAt?: string;
+  eventsProcessed: number;
+  eventsRejected: number;
+  incidentsCreated: number;
+  incidentsUpdated: number;
+  processingFailures: number;
+};

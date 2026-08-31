@@ -386,10 +386,11 @@ Tickets pequenos, testáveis e reversíveis após esta discovery:
 | `TQ-SA-LEGACY-01` | Freeze, inventário de side effects e plano de transição do Support Agent legado; não altera seu comportamento. |
 | `TQ-SA-03` | **Concluído:** package/processo isolado, config sem fallback privilegiado, `NormalizedEvent` e fixtures DEV sanitizadas. |
 | `TQ-SA-04` | **Concluído:** Sources Elastic DEV read-only com source filter, parser, correlação por IDs e fallback temporal limitado; smoke read-only validado. |
-| `TQ-SA-05` | Grouping/dedupe, estados, classe, severidade/confidence determinísticos e persistência local. |
+| `TQ-SA-05` | **Concluído:** grouping/dedupe, estados, classe, severidade/confidence determinísticos e persistência local. |
 | `TQ-SA-06` | Contexto/dossiê determinístico, privacy guard e feedback JSONL. |
 | `TQ-SA-07` | Integração Ollama local opcional: inventário de modelo Gemma real, timeout/fallback, prompt/schema e testes mockados. |
 | `TQ-SA-08` | Replay, baseline de qualidade e relatório de métricas; correção de falsos positivos antes do piloto. |
+| `TQ-SA-HEALTH-01` | Heartbeat, process health, Elastic/LLM health, watchdog externo, `health.json` e status read-only opcional. |
 | `TQ-SA-09` | Piloto shadow sem saída externa, runbook e avaliação humana periódica. |
 | `TQ-SA-LEGACY-02` | Decommission concluído antes de `TQ-SA-03`; runtime legado removido, rollback preservado no Git. |
 | `TQ-SA-10` | Desenho/validação de adapters novos e gated para Telegram/GitHub; qualquer Remediation Executor futuro é processo separado e não reutiliza o runtime legado. |

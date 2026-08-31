@@ -4,7 +4,8 @@ import { readAnalystConfig } from './config.js';
 import { normalizeEvent } from './normalize/index.js';
 import { ElasticsearchSources } from './sources/index.js';
 import { normalizeBatch } from './sources/pipeline.js';
-import type { RawEventDocument } from './types.js';
+import { IncidentGrouper } from './incidents/grouper.js';
+import type { NormalizedEvent, RawEventDocument } from './types.js';
 
 const help = `Support Analyst core (TQ-SA-03)
 
@@ -12,6 +13,7 @@ Usage:
   support-analyst --help
   support-analyst --validate-config
   support-analyst --normalize-fixture <file>
+  support-analyst --incident-replay
 
   support-analyst --dev-smoke
 
@@ -62,6 +64,14 @@ async function main(args: string[]): Promise<number> {
       return 0;
     } catch (error) { console.error(error instanceof Error ? error.message : 'DEV smoke failed'); return 1; }
   }
+  if (command === '--incident-replay') {
+    let fixture: readonly NormalizedEvent[];
+    try { fixture = JSON.parse(await readFile(new URL('../test/fixtures/incident-replay.json', import.meta.url), 'utf8')) as NormalizedEvent[]; }
+    catch { console.error('Unable to read the synthetic incident replay fixture.'); return 2; }
+    const result = new IncidentGrouper().group({ events: fixture, relations: [], existingIncidents: [], referenceTime: '2026-08-31T12:04:00.000Z' });
+    console.log(JSON.stringify(result.incidents.map((incident) => ({ class: incident.class, severity: incident.severity, confidence: incident.confidence, occurrences: incident.occurrences })), null, 2));
+    return 0;
+  }
   console.error('Unsupported command. Use --help.');
   return 2;
 }
@@ -76,4 +86,5 @@ export * from './privacy/sanitize.js';
 export * from './correlation.js';
 export * from './sources/index.js';
 export * from './sources/pipeline.js';
+export * from './incidents/index.js';
 export type * from './types.js';
