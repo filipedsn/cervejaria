@@ -5,7 +5,6 @@ import { getReleaseContext } from '../release-context.js';
 import { emitAuditLogRecord } from './emit-otel-log.js';
 import { redactObject } from './redact.js';
 import {
-  auditIndexName,
   getTelemetryContextOrDefault,
   sanitizeSlugForIndex,
   type TelemetryActor,
@@ -62,7 +61,6 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
     'cervejaria.slug': slug,
     'data_stream.dataset': `audit_${slugSafe}`,
     'data_stream.namespace': env,
-    'elasticsearch.index': auditIndexName(slug, env),
     ...actorFields(actor),
     trace_id: traceId,
     span_id: spanId,

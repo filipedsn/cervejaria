@@ -46,10 +46,6 @@ export function sanitizeSlugForIndex(slug: string): string {
     .slice(0, 80) || 'unknown';
 }
 
-export function auditIndexName(slug: string, env: 'dev' | 'prd' = getObservabilityEnv()): string {
-  return `audit-${sanitizeSlugForIndex(slug)}.otel-${env}`;
-}
-
 export function logsIndexDataset(slug: string): string {
   return sanitizeSlugForIndex(slug);
 }
