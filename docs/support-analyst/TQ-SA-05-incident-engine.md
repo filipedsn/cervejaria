@@ -1,6 +1,6 @@
 # TQ-SA-05 — Incident engine determinístico
 
-Data: 2026-08-31  
+Data: 2026-08-31
 Status: concluído — testes offline, typecheck, build e replay sintético validados.
 
 ## Modelo e fronteira
