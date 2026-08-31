@@ -1,7 +1,9 @@
 # TQ-SA-02 — Elasticsearch read-only e contratos operacionais do Support Analyst
 
-Data: 2026-08-31  
-Resultado: **PARCIAL** — discovery e contrato DEV concluídos; identidade runtime e testes de permissão pendentes de autorização explícita de provisionamento.  
+Data: 2026-08-31
+
+Resultado: **PARCIAL** — discovery e contrato DEV concluídos; identidade runtime e testes de permissão pendentes de autorização explícita de provisionamento.
+
 Escopo executado: repositório e Elasticsearch local, somente fontes DEV e metadata necessária. PROD não foi consultada, alterada ou reiniciada.
 
 ## 1. Ambiente validado
