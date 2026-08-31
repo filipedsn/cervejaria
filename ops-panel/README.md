@@ -90,7 +90,7 @@ A regra do gate e uma funcao pura testada em `src/release.test.mjs`:
 npm run ops:test
 ```
 
-### Roteiro no painel (sem depender do agente)
+### Roteiro no painel
 
 O console de release mostra um **roteiro numerado** (passos 1–4):
 

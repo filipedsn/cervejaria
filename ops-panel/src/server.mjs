@@ -12,7 +12,6 @@ import {
   checkVerdict,
   collectGitStateWithAutoSync,
   evaluateReleaseGate,
-  isAgentBranch,
   readDeployRecovery,
   readManifest,
   readReleaseHistory,
@@ -408,7 +407,7 @@ async function githubSummary() {
 
 const requiredChecks = REQUIRED_CHECKS.length ? REQUIRED_CHECKS : DEFAULT_REQUIRED_CHECKS;
 
-/** Enriquece cada commit pendente com o PR de origem e a marca de agente automatico. */
+/** Enriquece cada commit pendente com o PR de origem. */
 async function annotatePendingCommits(commits) {
   if (!GITHUB_TOKEN || !commits.length) return commits;
 
@@ -420,19 +419,18 @@ async function annotatePendingCommits(commits) {
       try {
         const pulls = await githubFetch(`/commits/${commit.sha}/pulls`);
         const pr = Array.isArray(pulls) ? pulls[0] : null;
-        if (!pr) return { ...commit, pr: null, fromAgent: false };
+        if (!pr) return { ...commit, pr: null };
         return {
           ...commit,
           pr: { number: pr.number, title: pr.title, url: pr.html_url, branch: pr.head?.ref || null },
-          fromAgent: isAgentBranch(pr.head?.ref),
         };
       } catch {
-        return { ...commit, pr: null, fromAgent: false, prError: true };
+        return { ...commit, pr: null, prError: true };
       }
     }),
   );
 
-  return [...annotated, ...commits.slice(limited.length).map((c) => ({ ...c, pr: null, fromAgent: false }))];
+  return [...annotated, ...commits.slice(limited.length).map((c) => ({ ...c, pr: null }))];
 }
 
 async function fetchChecksForSha(sha) {
@@ -714,7 +712,7 @@ app.get('/api/release', async (request, reply) => {
   }
 });
 
-/** Verificacao pos-deploy (somente leitura) — evita depender do agente para o passo 5. */
+/** Verificacao pos-deploy somente leitura do passo 5. */
 app.get('/api/prod/smoke', async (request, reply) => {
   try {
     const apiPort = PORTS.prodApi;

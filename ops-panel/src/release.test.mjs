@@ -27,7 +27,7 @@ function estadoLimpo(overrides = {}) {
     headOnOriginMain: true,
     behindOriginMain: 0,
     deployed: { gitSha: 'b'.repeat(7), deployedAt: '2026-08-11T10:00:00Z' },
-    pending: [{ sha: HEAD, shortSha: HEAD.slice(0, 7), message: 'fix: algo', fromAgent: false }],
+    pending: [{ sha: HEAD, shortSha: HEAD.slice(0, 7), message: 'fix: algo' }],
     migrationsChanged: [],
     checks: DEFAULT_REQUIRED_CHECKS.map((name) => ({
       name,
@@ -228,11 +228,6 @@ test('avisa quando nao ha commit novo', () => {
 test('avisa quando o HEAD esta atras de origin/main', () => {
   const result = evaluateReleaseGate(estadoLimpo({ behindOriginMain: 3 }));
   assert.match(result.warnings.join(' '), /3 commit/);
-});
-
-test('avisa quando ha commit de agente', () => {
-  const state = estadoLimpo({ pending: [{ sha: HEAD, shortSha: 'aaaaaaa', message: 'fix', fromAgent: true }] });
-  assert.match(evaluateReleaseGate(state).warnings.join(' '), /agente automatico/);
 });
 
 test('summarizeChecks mantem a execucao mais recente de cada check', () => {

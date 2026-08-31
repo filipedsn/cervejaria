@@ -780,9 +780,8 @@ function renderRelease(data) {
         const pr = c.pr
           ? `<a href="${c.pr.url}" target="_blank" rel="noopener">#${c.pr.number}</a>`
           : '<span class="status-muted">sem PR</span>';
-        const agente = c.fromAgent ? '<span class="release-agent">agente</span>' : '';
         return row(
-          `<code>${escapeHtml(c.shortSha)}</code> ${escapeHtml((c.message || '').slice(0, 46))}${agente}`,
+          `<code>${escapeHtml(c.shortSha)}</code> ${escapeHtml((c.message || '').slice(0, 46))}`,
           `${pr} <span class="status-muted">${escapeHtml(c.author || '')}</span>`,
         );
       }).join('')

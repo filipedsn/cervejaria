@@ -41,6 +41,8 @@ No pré-check, `main` estava ativa e a árvore limpa. `npm run agent:status` inf
 
 Foram removidos somente a seção visual, card de overview, service tile, polling, rota `/api/support-agent`, edição de `support-agent/.env`, start/stop, shadow, dry-run, fixer, kill switch e métricas exclusivas. Release, ambientes, observabilidade, backup, logs e controles não relacionados permanecem.
 
+Também foi removida a marcação de commits/PRs `fix/auto-*` como originados pelo Agent; o histórico de release continua exibindo a origem do PR, sem semântica operacional legada.
+
 ## 8. CI
 
 O job `support-agent-test` foi removido. Os jobs `frontend`, `backend-validate`, `backend-test`, `ops-panel-test` e demais checks ativos permanecem; o release gate não exige mais um check inexistente.

@@ -437,10 +437,6 @@ export function evaluateReleaseGate(state, options = {}) {
     );
   }
 
-  if (state.pending?.some((c) => c.fromAgent)) {
-    warnings.push('Ha commit escrito por agente automatico neste deploy. Confira a causa raiz, nao apenas o CI verde.');
-  }
-
   const overridden = Boolean(options.override) && blockers.every((b) => b.overridable);
   return {
     allowed: blockers.length === 0 || overridden,
