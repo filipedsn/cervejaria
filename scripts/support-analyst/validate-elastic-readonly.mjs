@@ -10,7 +10,7 @@
  * - never calls an Elasticsearch write endpoint.
  */
 
-const ALERT_INDEX = 'quiver-tap-alert-events';
+const SHARED_ALERT_INDEX = 'quiver-tap-alert-events';
 const MAX_SEARCH_SIZE = 3;
 const SEARCH_LOOKBACK_HOURS = 24;
 const ELASTIC_SEARCH_TIMEOUT = '5s';
@@ -61,18 +61,22 @@ if (correlationId && !isUuid(correlationId)) {
 
 const auditPattern = `logs-audit*.otel-${environment}*`;
 const technicalPattern = `logs-technical*.otel-${environment}*`;
-const allowedPatterns = [ALERT_INDEX, auditPattern, technicalPattern];
+const alertIndex = environment === 'dev' ? 'quiver-tap-alert-events-dev' : SHARED_ALERT_INDEX;
+const alertRuleNameExactField = environment === 'dev' ? 'ruleName' : 'ruleName.keyword';
+const allowedPatterns = [alertIndex, auditPattern, technicalPattern];
 const outsidePatterns = [
-  `traces-*.otel-${environment}*`,
-  `logs-generic*.otel-${environment}*`,
-  `metrics-*.otel-${environment}*`,
+  ...(environment === 'dev'
+    ? [SHARED_ALERT_INDEX, 'logs-audit*.otel-prd*', 'logs-technical*.otel-prd*']
+    : []),
+  'traces-*',
+  'logs-generic*',
+  'metrics-*',
   '.kibana*',
 ];
 
 const sourceAllowlist = [
   '@timestamp',
   'severity_text',
-  'body.text',
   'data_stream.dataset',
   'data_stream.namespace',
   'resource.attributes.service.name',
@@ -163,6 +167,12 @@ const fieldCapsResult = await check('field-caps', async () => {
     'attributes.role*',
   ].join(',');
   const output = {};
+  const alertBody = await request(
+    `/${encodeURIComponent(alertIndex)}/_field_caps?fields=${encodeURIComponent(
+      '@timestamp,ruleName*,alertState*,reason*,viewInAppUrl*,environment*',
+    )}&include_unmapped=true`,
+  );
+  output[alertIndex] = summarizeFieldCaps(alertBody.fields || {});
   for (const pattern of [auditPattern, technicalPattern]) {
     const body = await request(
       `/${encodeURIComponent(pattern)}/_field_caps?fields=${encodeURIComponent(fields)}&include_unmapped=true`,
@@ -176,18 +186,27 @@ const fieldCapsResult = await check('field-caps', async () => {
   requireKeyword(output[technicalPattern], 'attributes.correlationId.keyword', technicalPattern);
   requireKeyword(output[technicalPattern], 'attributes.requestId.keyword', technicalPattern);
   requireKeyword(output[technicalPattern], 'attributes.releaseSha.keyword', technicalPattern);
+  requireKeyword(output[alertIndex], 'ruleName', alertIndex);
+  requireKeyword(output[alertIndex], 'alertState', alertIndex);
+  requireKeyword(output[alertIndex], 'viewInAppUrl', alertIndex);
+  requireKeyword(output[alertIndex], 'environment', alertIndex);
   return output;
 });
 
 await check('search-alert-events', async () => {
-  const body = await search(ALERT_INDEX, {
+  const alertFilters = [
+    recentRange(),
+    { wildcard: { [alertRuleNameExactField]: `*-${environment}` } },
+  ];
+  if (environment === 'dev') alertFilters.push({ term: { environment: 'dev' } });
+  const body = await search(alertIndex, {
     bool: {
-      filter: [
-        recentRange(),
-        { wildcard: { 'ruleName.keyword': `*-${environment}` } },
-      ],
+      filter: alertFilters,
     },
-  }, ['@timestamp', 'ruleName', 'alertState', 'reason', 'viewInAppUrl']);
+  }, ['@timestamp', 'ruleName', 'alertState', 'reason', 'viewInAppUrl', 'environment']);
+  if (!body.hits?.hits?.length) {
+    throw new Error(`nenhum alerta ${environment} recente encontrado em ${alertIndex}`);
+  }
   return { hits: body.hits?.hits?.length || 0, total: boundedTotal(body.hits?.total) };
 });
 
@@ -383,7 +402,8 @@ function summarizeFieldCaps(fields) {
 }
 
 function requireKeyword(fields, name, pattern) {
-  if (!fields?.[name]?.keyword?.searchable) {
+  const types = fields?.[name];
+  if (!types?.keyword?.searchable) {
     throw new Error(`${name} keyword pesquisável ausente em ${pattern}`);
   }
 }

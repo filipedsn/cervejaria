@@ -68,7 +68,7 @@ Nenhuma consulta a PROD foi executada. A tabela abaixo combina os contratos vers
 
 | Fonte | Finalidade e campos úteis | Retenção/configuração versionada | Situação DEV e limite |
 |---|---|---|---|
-| `quiver-tap-alert-events` | Gatilho: `ruleName`, `alertState`, `reason`, `viewInAppUrl`, `@timestamp`. | Não documentada como ILM neste repositório; validar. | Consumida pelo watcher/poller; não usar como estado mutável do Analyst. |
+| `quiver-tap-alert-events-dev` em DEV; destino PRD pendente de onboarding | Gatilho: `ruleName`, `alertState`, `reason`, `viewInAppUrl`, `environment`, `@timestamp`. | Sem ILM em DEV; backlog TQ-OBS-MAINT-01. | TQ-SA-02A isolou DEV em índice próprio; não usar como estado mutável do Analyst. |
 | `logs-audit*.otel-prd*` | HTTP e negócio: `event.action/outcome/category`, `http.*`, `cervejaria.*`, ator, `requestId`, `correlationId`, trace/span, `releaseSha`, `service`, `environment`. | Política audit: rollover 14 d ou 30 GB; delete aos 90 d. | Equivalente DEV `logs-audit*.otel-dev*` comprovado com `attributes.*.keyword`. Dataset varia por tenant (`audit_<slug>`). |
 | `logs-technical*.otel-prd*` | Pino/5xx, DB e realtime: severidade, `event`, `category`, `durationMs`, erro sanitizado, `requestId`, `correlationId`, tenant/ator/role, release. | Política logs: rollover 7 d; delete aos 30 d. | Equivalente DEV comprovado; campos Pino chegam como `attributes.*`; `attributes.correlationId.keyword` é confirmado. |
 | `metrics-generic.otel-prd*` | Métricas de aplicação e do Agent: disponibilidade/negócio, event loop e métricas `quiver.*` quando existentes. | Política metrics versionada: rollover 7 d; delete aos 45 d. | Equivalente `metrics-generic.otel-dev*`; TQ-SA-02 removeu metrics da role inicial por não ser necessária ao MVP e ter volume muito superior. |
@@ -89,9 +89,9 @@ Criar futuramente uma API key própria, por exemplo `quiver-support-analyst-shad
     "indices": [
       {
         "names": [
-          "quiver-tap-alert-events",
-          "logs-audit*.otel-prd*",
-          "logs-technical*.otel-prd*"
+          "quiver-tap-alert-events-<env>",
+          "logs-audit*.otel-<env>*",
+          "logs-technical*.otel-<env>*"
         ],
         "privileges": ["read", "view_index_metadata"]
       }
@@ -102,7 +102,7 @@ Criar futuramente uma API key própria, por exemplo `quiver-support-analyst-shad
 
 TQ-SA-02 confirmou em DEV que os padrões lógicos resolvem diretamente para data streams; backing indices não precisam entrar na role. Metrics e `metrics-httpcheckreceiver.otel-infra*` ficam fora até uma necessidade comprovada. Não conceder `monitor`, `manage`, `manage_ilm`, `manage_index_templates`, `write`, `create`, `index`, `delete`, `delete_index`, `all`, permissões de usuário/API key ou acesso a `traces-*`.
 
-Nota operacional de TQ-SA-02: no cluster DEV observado, audit e technical estavam `managed=false`; os prazos de retenção desta discovery são configuração versionada, não prova de ILM efetivamente associado. `quiver-tap-alert-events` também não tinha ILM e não expunha campo de ambiente, tornando seu isolamento DEV/PRD uma pendência do onboarding.
+Nota operacional de TQ-SA-02A: DEV usa `quiver-tap-alert-events-dev`, com key exclusiva e `read`/`view_index_metadata` comprovados; o índice compartilhado antigo é negado. Audit e technical DEV continuam `managed=false`; retenção é backlog TQ-OBS-MAINT-01. O padrão `<env>` permanece conceitual para PRD até onboarding autorizado.
 
 O processo só pode usar `/_search`, `/_msearch`, `/_field_caps`/`_mapping` e `/_resolve/index` compatíveis com essas permissões. Não chama `/_cluster/health`: health vem de alertas autorizados e de consultas de métrica limitadas. Antes de provisionar, aplicar field/document-level security, se suportado pelo licenciamento, para negar explicitamente campos livres e PII; source filtering no cliente é obrigatório, mas não substitui controle de acesso.
 

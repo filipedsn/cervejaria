@@ -8,15 +8,15 @@ $webhookBodyTemplate = '{"ruleName":"{{rule.name}}","alertState":"{{alertState}}
 $connectors = Invoke-Kibana -Path '/api/actions/connectors' | ConvertFrom-Json
 $webhook = $connectors | Where-Object { $_.name -eq 'quiver-tap-webhook' } | Select-Object -First 1
 $indexConn = $connectors | Where-Object { $_.name -eq 'quiver-tap-alert-index' } | Select-Object -First 1
+$indexConnDev = $connectors | Where-Object { $_.name -eq 'quiver-tap-alert-index-dev' } | Select-Object -First 1
 
-if (-not $webhook -and -not $indexConn) {
+if (-not $webhook -and -not $indexConn -and -not $indexConnDev) {
   Write-Host 'Nenhum connector encontrado — rode npm run obs:alert-email primeiro.' -ForegroundColor Yellow
   exit 0
 }
 
 $useWebhook = $null -ne $webhook
-$connector = if ($useWebhook) { $webhook } else { $indexConn }
-$mode = if ($useWebhook) { 'webhook' } else { 'index' }
+$mode = if ($useWebhook) { 'webhook/index-dev' } else { 'index' }
 
 Write-Host ''
 Write-Host "Quiver Tap - Vincular $mode aos alertas" -ForegroundColor Cyan
@@ -29,10 +29,22 @@ foreach ($rule in $find.data) {
   if (-not $rule.enabled) { continue }
   if ($rule.name -match '^quiver-tap-(api-down|eventloop-high)$') { continue }
 
+  $isDev = $rule.name -match '-dev$' -and @($rule.tags) -contains 'development'
+  if ($isDev -and -not $indexConnDev) {
+    Write-Host "   $($rule.name): connector quiver-tap-alert-index-dev ausente; regra DEV nao sera ligada ao indice compartilhado." -ForegroundColor Yellow
+    continue
+  }
+  if (-not $isDev -and -not $webhook -and -not $indexConn) {
+    Write-Host "   $($rule.name): nenhum connector aplicavel; regra nao sera alterada." -ForegroundColor Yellow
+    continue
+  }
+
+  $connector = if ($isDev) { $indexConnDev } elseif ($useWebhook) { $webhook } else { $indexConn }
+
   $detailRaw = Invoke-Kibana -Path "/api/alerting/rule/$($rule.id)"
   $detail = $detailRaw | ConvertFrom-Json
 
-  if ($useWebhook) {
+  if ($useWebhook -and -not $isDev) {
     $action = @{
       group = 'query matched'
       id = $connector.id
@@ -46,6 +58,7 @@ foreach ($rule in $find.data) {
       viewInAppUrl = '{{context.viewInAppUrl}}'
       '@timestamp' = '{{date}}'
     }
+    if ($isDev) { $doc.environment = 'dev' }
     $action = @{
       group = 'query matched'
       id = $connector.id

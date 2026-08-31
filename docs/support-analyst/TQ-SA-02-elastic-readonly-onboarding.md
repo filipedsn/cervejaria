@@ -2,24 +2,24 @@
 
 Data: 2026-08-31
 
-Resultado: **PARCIAL** — discovery e contrato DEV concluídos; identidade runtime e testes de permissão pendentes de autorização explícita de provisionamento.
+Resultado: **DEV COMPLETE / PRD PENDING AUTHORIZATION** — identidade runtime DEV exclusiva criada e validada; PROD não foi consultada.
 
-Escopo executado: repositório e Elasticsearch local, somente fontes DEV e metadata necessária. PROD não foi consultada, alterada ou reiniciada.
+Escopo executado: repositório, Elasticsearch/Kibana locais e somente recursos DEV autorizados. Foram criados o índice/connector DEV e a API key DEV, e quatro regras DEV foram religadas ao novo destino. PROD não foi consultada, alterada ou reiniciada.
 
 ## 1. Ambiente validado
 
 O Elasticsearch local em `http://localhost:9200` respondeu como versão `8.17.0`, com security habilitada e licença `basic` ativa. O collector local usa esse cluster e separa os dados OTel por `data_stream.namespace=dev|prd|infra`.
 
-Foram executadas apenas operações GET e buscas POST read-only, pequenas e com `_source:false` ou source filtering. A credencial administrativa já existente foi usada exclusivamente pelo processo de onboarding para metadata DEV; ela não é proposta nem usada como credencial runtime do Analyst. Nenhum documento, índice, template, ILM, role ou API key foi criado/alterado.
+O onboarding administrativo criou somente `quiver-tap-alert-events-dev`, o connector `quiver-tap-alert-index-dev` e a API key `quiver-support-analyst-shadow-dev`; também atualizou apenas quatro regras com nome `*-dev` e tag `development`. Um único alerta sintético seguro foi emitido pelo connector DEV para provar o caminho legítimo. O validator usou exclusivamente a nova key e executou apenas authenticate, resolve, field caps, buscas limitadas e `_has_privileges`.
 
 ## 2. Autorização disponível
 
 - DEV: autorizado para validação técnica read-only.
 - PROD: **sem autorização explícita**; não foi consultada.
-- Provisionamento de role/API key: a tarefa condiciona a criação a autorização explícita de onboarding. Não foi encontrada autorização específica para mutar o security state do cluster compartilhado, portanto a identidade não foi criada.
-- `SUPPORT_ANALYST_ES_API_KEY`: não existia no processo nem no mecanismo local de configuração auditado.
+- Provisionamento de role/API key DEV: explicitamente autorizado por TQ-SA-02A e concluído.
+- `SUPPORT_ANALYST_ES_API_KEY`: criada e armazenada somente no arquivo local ignorado `deploy/runtime/support-analyst-dev.env`, com herança de ACL removida e acesso limitado ao usuário atual e `SYSTEM`.
 
-Consequência: mappings, resolução, retenção e volume DEV foram comprovados; testes positivos e negativos com a futura identidade exclusiva permanecem `NÃO EXECUTADO`. Pelos critérios da tarefa, `TQ-SA-02 DEV` ainda não pode ser declarado PASS.
+Consequência: pelos critérios da tarefa, `TQ-SA-02 DEV = PASS`. O onboarding PRD continua pendente de autorização explícita.
 
 ## 3. Configuração e credenciais existentes
 
@@ -30,7 +30,7 @@ Consequência: mappings, resolução, retenção e volume DEV foram comprovados;
 | `ELASTIC_API_KEY_COLLECTOR` | Exportação OTel para `metrics-*`, `logs-*`, `traces-*`. | Escrita/auto-configure; proibida ao Analyst. |
 | `ELASTIC_API_KEY_ALERT_POLLER` | Leitura e marcação de `quiver-tap-alert-events`. | Tem escrita; proibida ao Analyst. |
 | `ELASTIC_API_KEY_SUPPORT_AGENT` / `SUPPORT_AGENT_ES_API_KEY` | Agent atual lê fontes amplas e marca alertas. | Contrato atual permite escrita no índice de alertas; não reutilizar. |
-| `SUPPORT_ANALYST_ES_API_KEY` | Futura identidade exclusiva. | Ausente; deve ter somente `read` e `view_index_metadata`. |
+| `SUPPORT_ANALYST_ES_API_KEY` | Identidade exclusiva DEV. | Criada com somente `read` e `view_index_metadata`; sem fallback. |
 
 Arquivos auditados: `docker-compose.observability.yml`, `deploy/observability/otel-collector-config.yml`, políticas `es-ilm-policy-*.json`, `scripts/observability/setup-ilm.ps1`, `setup-index-defaults.ps1`, `create-elastic-api-keys.ps1`, Support Agent e Alert Poller. Nenhum valor secreto foi incorporado a documento, script versionado, relatório ou commit.
 
@@ -38,14 +38,14 @@ Arquivos auditados: `docker-compose.observability.yml`, `deploy/observability/ot
 
 | Source | Query pattern DEV recomendado | Data stream/índice observado | Dataset / environment | Retenção efetiva DEV | Analyst precisa? | Justificativa |
 |---|---|---|---|---|---|---|
-| Alert events | `quiver-tap-alert-events` | Índice comum, sem alias/data stream | Sem campo `environment` comprovado; regras DEV usam sufixo `-dev` | Sem ILM | **SIM**, com ressalva | Gatilho do pipeline, mas mistura regras DEV/PRD no mesmo índice. |
+| Alert events | `quiver-tap-alert-events-dev` | Índice DEV dedicado, sem alias/data stream | `environment=dev` | Sem ILM | **SIM** | Fronteira física DEV; não depende de filtro documental. |
 | Audit | `logs-audit*.otel-dev*` | 56 data streams por dataset/tenant; sem alias | `audit_<slug>.otel` / `dev` | Backings unmanaged | **SIM** | HTTP, negócio, auth, tenant, release e IDs. |
 | Technical | `logs-technical*.otel-dev*` | `logs-technical.otel-dev`; sem alias | `technical.otel` / `dev` | Backing unmanaged | **SIM** | Pino, 5xx, DB e futuro realtime. |
 | Metrics | `metrics-generic.otel-dev*` | `metrics-generic.otel-dev`; sem alias | `generic.otel` / `dev` | Inconsistente; ver seção 8 | **NÃO** | Alertas + audit/technical bastam ao MVP; volume muito maior. |
 
 Os padrões lógicos resolvem diretamente para os data streams. **Backing indices não precisam entrar na role**; foram observados apenas para explicar geração, volume e ILM. Não há aliases adicionais para essas fontes.
 
-O índice de alertas é um ponto de isolamento pendente: possui documentos DEV e possivelmente PRD, mas não tem `environment` no mapping observado. O filtro por `ruleName.keyword=*-dev` limita a query, porém source filtering/query filtering não é fronteira de autorização. Antes de uma identidade DEV completa, escolher uma destas soluções em ticket autorizado: adicionar ambiente ao contrato/índice de alertas, separar o índice por ambiente ou aprovar conscientemente o acesso ao índice compartilhado. Não alterar isso neste ticket.
+TQ-SA-02A resolveu o isolamento com o índice simples `quiver-tap-alert-events-dev`. O índice compartilhado antigo não foi alterado nem concedido à key. Os produtores DEV atualizados foram `telemetry-gap-dev`, `eventloop-high-dev`, `postgres-tcp-down-dev` e `public-ready-down-dev`; nome `*-dev` e tag `development` são exigidos pelo script antes de qualquer update. PRD continua no connector antigo.
 
 ## 5. Backing indices e volume DEV
 
@@ -56,7 +56,7 @@ O onboarding observou:
 | Audit | 56 | 28,1 mil | dezenas de MB | 2026-08-10 a 2026-08-31 |
 | Technical | 1 | 12,3 mil | 12,9 MB | 2026-08-29 a 2026-08-31 |
 | Metrics | 2 | 7,53 milhões | 770,5 MB | 2026-07-16 a 2026-08-15 |
-| Alert events | 1 índice | 7 no total; 2 regras DEV | 45,6 KB | regras DEV entre 2026-08-10 e 2026-08-11 |
+| Alert events DEV dedicado | 1 índice | 1 alerta de validação | baixo volume | 2026-08-31 |
 
 Foram usados `_cat/indices`, duas buscas de `size:1` ordenadas por timestamp e `track_total_hits:false` para logs. Não houve scroll, PIT, full scan de conteúdo ou agregação pesada. O volume confirma a decisão de excluir metrics da role inicial.
 
@@ -98,14 +98,14 @@ Não usar term query no campo `text`; IDs, release, serviço, dataset, environme
 
 ### Alert events
 
-`@timestamp` é `date`; `ruleName`, `alertState`, `reason` e `viewInAppUrl` são `text` com `.keyword`. Não foi observado campo environment, dataset ou namespace nesse índice.
+No índice dedicado, `@timestamp` é `date`; `ruleName`, `alertState`, `viewInAppUrl` e `environment` são `keyword`; `reason` é `text`. Lookup exato usa o campo direto, sem `.keyword`. O mapping é `dynamic=strict` e aceita somente o contrato aprovado.
 
 ## 7. Aliases e padrão final de query
 
 - Alias audit: nenhum; usar `logs-audit*.otel-{env}*`.
 - Alias technical: nenhum; usar `logs-technical*.otel-{env}*`.
 - Alias metrics: nenhum; fora do MVP.
-- Alert events: índice concreto `quiver-tap-alert-events`.
+- Alert events DEV: índice concreto `quiver-tap-alert-events-dev`.
 - Backing `.ds-*`: não conceder diretamente.
 
 O wildcard lógico é estável porque o dataset audit varia por tenant. Ele sempre deve ser acompanhado de range temporal e source filter.
@@ -126,24 +126,24 @@ O wildcard lógico é estável porque o dataset audit varia por tenant. Ele semp
 - todos os 56 backings audit: `managed=false`;
 - backing technical: `managed=false`;
 - metrics: backing antigo gerenciado pela política built-in `metrics` (somente hot/rollover 30 d ou 50 GB, sem delete observado); backing atual `managed=false`;
-- `quiver-tap-alert-events`: nenhuma lifecycle setting/ILM observada.
+- `quiver-tap-alert-events-dev`: sem ILM, por decisão explícita de não corrigir lifecycle neste ticket.
 
 Portanto, os prazos 90/30/45 dias são intenção versionada, **não retenção efetiva do cluster DEV**. A diferença provável está na aplicação/prioridade dos templates: `quiver-otel-replicas-zero` foi observado com prioridade 250, enquanto os templates ILM propostos pelo script usam prioridade 110. Corrigir templates/ILM é trabalho administrativo de observabilidade separado; não ampliar privilégios runtime do Analyst para isso.
 
-## 9. Role mínima final proposta
+## 9. Role mínima efetiva DEV
 
-Metrics e backing indices foram removidos. A role runtime por ambiente fica:
+O role descriptor `support_analyst_shadow_dev`, embutido na API key, foi aplicado assim:
 
 ```json
 {
-  "support_analyst_shadow": {
+  "support_analyst_shadow_dev": {
     "cluster": [],
     "indices": [
       {
         "names": [
-          "quiver-tap-alert-events",
-          "logs-audit*.otel-<env>*",
-          "logs-technical*.otel-<env>*"
+          "quiver-tap-alert-events-dev",
+          "logs-audit*.otel-dev*",
+          "logs-technical*.otel-dev*"
         ],
         "privileges": ["read", "view_index_metadata"]
       }
@@ -152,11 +152,11 @@ Metrics e backing indices foram removidos. A role runtime por ambiente fica:
 }
 ```
 
-`<env>` deve ser materializado como `dev` ou `prd`; não conceder ambos à mesma key. Para DEV, o índice compartilhado de alertas precisa da decisão de isolamento da seção 4 antes da aplicação. A licença `basic` foi observada; não assumir que field/document-level security estará disponível. Source filtering é obrigatório, mas não substitui uma separação de autorização do índice compartilhado.
+Não foram concedidos índice compartilhado, PRD, metrics, traces, generic logs, `.kibana*`, infra ou backing `.ds-*`. A fronteira é o nome do índice/data stream, compatível com a licença Basic.
 
 ## 10. API key identity
 
-Nome proposto: `quiver-support-analyst-shadow-dev` para validação DEV e, futuramente, uma key separada `quiver-support-analyst-shadow-prd` após autorização PRD.
+Identidade criada: `quiver-support-analyst-shadow-dev`, com expiração de 90 dias. Uma futura key PRD deverá ser separada e só pode existir após autorização PRD.
 
 Requisitos:
 
@@ -167,11 +167,11 @@ Requisitos:
 - rotação por sobreposição curta e revogação da chave anterior;
 - nunca imprimir a key.
 
-Nenhuma role/key foi aplicada neste ticket porque não havia autorização explícita de provisionamento. A definição acima está pronta para revisão administrativa.
+O segredo nunca foi impresso, versionado ou incluído em relatório. O arquivo local de runtime está coberto por `deploy/runtime/*` no `.gitignore`, com ACL protegida e duas regras de acesso.
 
 ## 11. Permissões concedidas e explicitamente ausentes
 
-Na definição proposta:
+Comprovado pela própria API key via `_has_privileges`:
 
 - cluster: `[]`;
 - índices allowlisted: `read`, `view_index_metadata`;
@@ -179,23 +179,23 @@ Na definição proposta:
 - ausentes no cluster: `monitor`, `manage`, `manage_security`, `manage_api_key`, `manage_own_api_key`, `manage_ilm`, `manage_index_templates`, `all`;
 - fora da allowlist: traces, `.kibana*`, `logs-generic*`, metrics e quaisquer outras aplicações.
 
-Como a key não foi criada, essa ausência ainda não foi comprovada contra uma identidade aplicada. O validador criado usa `_has_privileges` da própria identidade e falha se qualquer capacidade proibida aparecer, sem tentar escrita/delete reais.
+O teste de isolamento confirmou `read=false` e `view_index_metadata=false` para `quiver-tap-alert-events`, audit/technical PRD, traces, generic logs, metrics e `.kibana*`. Nenhuma operação de escrita/delete real foi tentada.
 
 ## 12. Testes positivos
 
 | Teste | Descoberta administrativa DEV | Com API key Analyst | Resultado do ticket |
 |---|---|---|---|
-| A — alert events | Índice resolve; 2 alertas DEV identificados por metadata. | Não executado. | `NÃO EXECUTADO` |
-| B — audit | 56 streams resolvem; field caps e eventos recentes confirmados. | Não executado. | `NÃO EXECUTADO` |
-| C — technical | Stream resolve; field caps/DB recentes confirmados. | Não executado. | `NÃO EXECUTADO` |
-| D — mapping/field caps | PASS com onboarding administrativo read-only. | Não executado. | `PASS` para contrato; pendente para runtime key. |
+| A — alert events | Índice DEV + alerta via connector. | 1 hit recente. | `PASS` |
+| B — audit | 56 streams resolvem. | 3 hits limitados. | `PASS` |
+| C — technical | 1 stream resolve. | 3 hits limitados. | `PASS` |
+| D — mapping/field caps | Contrato verificado. | Executado pela key. | `PASS` |
 | E — metrics | Stream observado para decisão de escopo. | Não aplicável. | `NÃO NECESSÁRIO` |
 
-Não declarar acesso runtime PASS até esses testes rodarem com `SUPPORT_ANALYST_ES_API_KEY` exclusiva.
+Authenticate e resolve index também passaram com authentication type `api_key` e o nome esperado.
 
 ## 13. Testes negativos e isolamento
 
-Nenhuma operação destrutiva foi executada. Não houve tentativa de index, update, create ou delete. Como a identidade não existe, os testes negativos não foram executados contra o cluster.
+Nenhuma operação destrutiva foi executada. Não houve tentativa de index, update, create ou delete com a key. Os testes negativos foram executados por inspeção de privilégios e passaram.
 
 O script `scripts/support-analyst/validate-elastic-readonly.mjs` consulta `_security/user/_has_privileges` autenticado pela própria key e exige:
 
@@ -219,7 +219,7 @@ Allowlist inicial:
 Campos livres condicionais:
 
 - alerta `reason`: máximo 1.000 caracteres após sanitizer;
-- `body.text`/mensagem técnica: máximo 2.000 caracteres após sanitizer;
+- mensagem técnica livre: fora do validator; qualquer inclusão futura exige justificativa e sanitizer;
 - stack: fora da consulta inicial; buscar separadamente somente para incidente técnico confirmado, truncar e sanitizar.
 
 Excluídos: authorization, cookie, JWT/token, senha, API key, connection string, SQL/bindings, body HTTP, payload completo, e-mail, telefone, nome completo, dados financeiros individuais e `_source` completo.
@@ -228,7 +228,7 @@ Excluídos: authorization, cookie, JWT/token, senha, API key, connection string,
 
 O LLM não gera DSL. As futuras Sources usam funções fechadas:
 
-- `findAlertEvents(cursor, until, limit<=50)`: índice fixo, range obrigatório, filtro de ambiente, source allowlist e sort asc;
+- `findAlertEvents(cursor, until, limit<=50)`: `quiver-tap-alert-events-dev`, range obrigatório, `environment=dev`, source allowlist e sort asc;
 - `findByCorrelationId(id, from, to, limit<=50)`: term em `attributes.correlationId.keyword`, msearch nos padrões audit/technical;
 - `findByRequestId(...)`: term em `attributes.requestId.keyword`;
 - `findByTraceId(...)`: term em `trace_id.keyword`, sem conceder `traces-*`;
@@ -258,36 +258,36 @@ Todo template possui pattern allowlisted, range, size, `_source`, timeout, sort 
 - key inválida: validator retorna exit code diferente de zero;
 - nenhuma queda para `ELASTIC_PASSWORD`, basic auth ou key de outro componente.
 
-## 18. Script de onboarding
+## 18. Scripts de onboarding e validação
 
-Criado `scripts/support-analyst/validate-elastic-readonly.mjs`, disponível por:
+Criado `scripts/support-analyst/onboard-elastic-dev.ps1`, disponível por `npm run analyst:onboard-elastic-dev`, para provisionamento DEV idempotente. O alerta sintético só é emitido quando o script é chamado diretamente com `-EmitValidationAlert`.
+
+O validator `scripts/support-analyst/validate-elastic-readonly.mjs` continua disponível por:
 
 ```powershell
 npm run analyst:validate-elastic
 ```
 
-O script:
+O script atualizado:
 
 - exige `SUPPORT_ANALYST_ES_API_KEY`;
 - bloqueia PRD até `SUPPORT_ANALYST_ALLOW_PRD=true` após autorização;
-- valida resolve index, field caps, três buscas limitadas e privilégios;
+- usa `quiver-tap-alert-events-dev` em DEV, removeu `body.text` e valida alert field caps;
+- valida resolve index, três buscas limitadas e privilégios;
 - exclui metrics;
 - não imprime documentos nem secret;
 - não possui endpoint de escrita;
 - retorna 1 se contrato falhar e 2 para configuração inválida.
 
-Nesta tarefa foram validados syntax/help e o fail-closed sem key. A validação real aguarda provisionamento autorizado.
+O onboarding foi executado com `scripts/support-analyst/onboard-elastic-dev.ps1 -EmitValidationAlert`; o resultado sanitizado local registrou `ok=true`, sem warnings/failures.
 
 ## 19. Pendências para DEV e PRD
 
 DEV:
 
-1. Autorizar provisionamento da key exclusiva.
-2. Resolver isolamento do índice compartilhado de alertas.
-3. Aplicar role descriptor e armazenar secret fora do Git.
-4. Rodar o validator e anexar resultado sanitizado.
-5. Tratar o gap de ILM audit/technical em ticket de observabilidade separado.
-6. Gerar fixture realtime sanitizada para comprovar mapping de `reasonCode`/ator/role.
+1. Rotacionar a key antes da expiração de 90 dias.
+2. Tratar o gap de ILM audit/technical no backlog `TQ-OBS-MAINT-01`.
+3. Gerar fixture realtime sanitizada para comprovar mapping de `reasonCode`/ator/role; isso não bloqueia R-01.
 
 PRD:
 
@@ -298,6 +298,6 @@ PRD:
 
 ## 20. Conclusão
 
-O contrato mínimo ficou menor e mais preciso: alert events + audit + technical, sem metrics e sem backing indices. Os campos centrais de correlation/request/release e DB estão disponíveis com lookups exatos `.keyword`; realtime ainda carece de evidência operacional. A retenção efetiva DEV é uma lacuna real: audit e technical estão unmanaged.
+O contrato mínimo DEV ficou isolado e comprovado: alert events dedicado + audit + technical, sem metrics e sem backing indices. Os campos centrais de correlation/request/release e DB estão disponíveis; realtime ainda carece de evidência operacional. A retenção efetiva DEV continua como backlog e não amplia a key runtime.
 
-R-01 está **desenhado e comprovado quanto a fontes/mappings em DEV**, mas **não encerrado operacionalmente** porque nenhuma identidade exclusiva foi autorizada/aplicada e os testes de privilégios não puderam rodar. PRD permanece `PENDING AUTHORIZATION`.
+**R-01 DEV = PASS. TQ-SA-02 = DEV COMPLETE / PRD PENDING.** PRD permanece `PENDING AUTHORIZATION` e não foi consultada.

@@ -94,6 +94,7 @@
     "agent:fixer:status": "npm run fixer:switch --prefix support-agent -- status",
     "agent:review": "npm run review --prefix support-agent",
     "analyst:validate-elastic": "node scripts/support-analyst/validate-elastic-readonly.mjs",
+    "analyst:onboard-elastic-dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/support-analyst/onboard-elastic-dev.ps1",
     "ops:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/status-ops-panel.ps1",
     "ops:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/stop-ops-panel.ps1",
     "ops:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/start-ops-panel.ps1",
