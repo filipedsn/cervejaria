@@ -1,0 +1,20 @@
+{
+  "fixtureMetadata": {
+    "origin": "synthetic / producer-contract",
+    "operationalElasticsearchMappingProven": false
+  },
+  "index": "logs-technical.otel-dev-000001",
+  "id": "technical-synthetic-realtime-001",
+  "sourceType": "technical",
+  "source": {
+    "@timestamp": "2026-08-31T15:05:00Z",
+    "attributes": {
+      "event": "realtime.connection.denied",
+      "correlationId": "corr-synthetic-realtime",
+      "service": "quiver-api",
+      "environment": "dev",
+      "realtime": { "action": "connection.denied" },
+      "metadata": { "reasonCode": "TENANT_ACCESS_DENIED" }
+    }
+  }
+}

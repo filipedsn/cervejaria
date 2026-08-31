@@ -1,0 +1,23 @@
+{
+  "index": "logs-audit_cervejaria-demo.otel-dev-000001",
+  "id": "audit-synthetic-001",
+  "sourceType": "audit",
+  "source": {
+    "@timestamp": "2026-08-31T15:01:02.003Z",
+    "data_stream": { "dataset": "audit_cervejaria-demo.otel", "namespace": "dev" },
+    "attributes": {
+      "correlationId": "corr-synthetic-001",
+      "requestId": "req-synthetic-001",
+      "releaseSha": "abc123synthetic",
+      "service": "quiver-api",
+      "environment": "dev",
+      "event": { "action": "pedido.confirm", "outcome": "success" },
+      "http": { "request": { "method": "POST" }, "route": "/api/pedidos/:id", "response": { "status_code": 200 } },
+      "cervejaria": { "id": "tenant-synthetic-001", "slug": "brew-demo" },
+      "actor": { "id": "actor-synthetic-001", "type": "usuario", "name": "Ignored Person", "email": "ignored@example.test" },
+      "role": "manager"
+    },
+    "trace_id": "trace-synthetic-001",
+    "span_id": "span-synthetic-001"
+  }
+}

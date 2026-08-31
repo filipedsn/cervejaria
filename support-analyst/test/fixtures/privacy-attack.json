@@ -1,0 +1,21 @@
+{
+  "index": "logs-audit_cervejaria-demo.otel-dev-000001",
+  "id": "audit-synthetic-privacy-001",
+  "sourceType": "audit",
+  "source": {
+    "@timestamp": "2026-08-31T15:06:00Z",
+    "attributes": {
+      "correlationId": "corr-synthetic-privacy",
+      "event": { "action": "auth.login", "outcome": "failure" },
+      "actor": { "id": "actor-synthetic-privacy", "type": "anonymous", "name": "Jane Example", "email": "jane@example.test", "phone": "+55-11-99999-9999" },
+      "authorization": "Bearer secret-not-exported",
+      "cookie": "session=secret-not-exported",
+      "jwt": "eyJheader.payload.signature",
+      "password": "secret-not-exported",
+      "sql": "SELECT * FROM users",
+      "connectionString": "postgresql://user:password@example.test/db",
+      "body": { "email": "jane@example.test" },
+      "unknownPayload": { "financial": "4111111111111111" }
+    }
+  }
+}

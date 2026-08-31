@@ -1,0 +1,13 @@
+{
+  "index": "quiver-tap-alert-events-dev",
+  "id": "alert-synthetic-001",
+  "sourceType": "alert",
+  "source": {
+    "@timestamp": "2026-08-31T12:00:00-03:00",
+    "ruleName": "telemetry-gap-dev",
+    "alertState": "active",
+    "environment": "dev",
+    "reason": "No telemetry received for the synthetic service.",
+    "viewInAppUrl": "http://kibana.example.test/app/observability/alerts"
+  }
+}

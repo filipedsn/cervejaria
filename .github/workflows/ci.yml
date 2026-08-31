@@ -88,6 +88,26 @@ jobs:
       # e rodar so os testes mantem o job em segundos.
       - run: npm run test:unit
 
+  support-analyst-test:
+    name: support-analyst-test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: support-analyst
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: support-analyst/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+
   backend-build:
     name: backend-build
     runs-on: ubuntu-latest

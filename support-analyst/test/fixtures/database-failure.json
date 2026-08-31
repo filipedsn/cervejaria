@@ -1,0 +1,17 @@
+{
+  "index": "logs-technical.otel-dev-000001",
+  "id": "technical-synthetic-db-001",
+  "sourceType": "technical",
+  "source": {
+    "@timestamp": "2026-08-31T15:04:00Z",
+    "attributes": {
+      "event": "db.connection.failed",
+      "category": "CONNECTION",
+      "durationMs": 250,
+      "correlationId": "corr-synthetic-db",
+      "releaseSha": "abc123synthetic",
+      "service": "quiver-api",
+      "environment": "dev"
+    }
+  }
+}

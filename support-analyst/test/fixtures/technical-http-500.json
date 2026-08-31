@@ -1,0 +1,21 @@
+{
+  "index": "logs-technical.otel-dev-000001",
+  "id": "technical-synthetic-001",
+  "sourceType": "technical",
+  "source": {
+    "@timestamp": "2026-08-31T15:03:00Z",
+    "data_stream": { "dataset": "technical.otel" },
+    "attributes": {
+      "event": "http.request.failed",
+      "correlationId": "corr-synthetic-001",
+      "requestId": "req-synthetic-001",
+      "releaseSha": "abc123synthetic",
+      "service": "quiver-api",
+      "environment": "dev",
+      "http": { "request": { "method": "POST" }, "route": "/api/pedidos/:id", "response": { "status_code": 500 } },
+      "durationMs": 87
+    },
+    "trace_id": "trace-synthetic-001",
+    "span_id": "span-synthetic-002"
+  }
+}

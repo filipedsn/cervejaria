@@ -1,0 +1,18 @@
+{
+  "index": "logs-audit_cervejaria-demo.otel-dev-000001",
+  "id": "audit-synthetic-002",
+  "sourceType": "audit",
+  "source": {
+    "@timestamp": "2026-08-31T15:02:00Z",
+    "attributes": {
+      "correlationId": "corr-synthetic-auth",
+      "requestId": "req-synthetic-auth",
+      "releaseSha": "abc123synthetic",
+      "service": "quiver-api",
+      "environment": "dev",
+      "event": { "action": "auth.login", "outcome": "failure" },
+      "metadata": { "reasonCode": "INVALID_CREDENTIALS" },
+      "actor": { "id": "actor-synthetic-auth", "type": "anonymous", "email": "never-export@example.test" }
+    }
+  }
+}
