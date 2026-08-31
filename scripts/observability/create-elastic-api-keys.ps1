@@ -79,40 +79,17 @@ $pollerKey = New-ElasticApiKey -Name 'quiver-alert-poller' -RoleDescriptors @{
   }
 }
 
-# Agente de suporte: le alertas e correlaciona com logs/traces. Somente leitura,
-# exceto pelo flag de triagem que ele grava no proprio indice de alertas.
-$supportAgentKey = New-ElasticApiKey -Name 'quiver-support-agent' -RoleDescriptors @{
-  support_agent = @{
-    cluster = @('monitor')
-    index = @(
-      @{
-        names = @('quiver-tap-alert-events')
-        privileges = @('read', 'write', 'index')
-      },
-      @{
-        names = @('logs-*', 'traces-*', 'metrics-*', '.ds-logs-*', '.ds-traces-*', '.ds-metrics-*')
-        privileges = @('read', 'view_index_metadata')
-      }
-    )
-  }
-}
-
 $lines = Get-Content -LiteralPath $EnvFile
-$seenSupportAgent = $false
 $out = foreach ($line in $lines) {
   if ($line -match '^ELASTIC_API_KEY_COLLECTOR=') {
     "ELASTIC_API_KEY_COLLECTOR=$collectorKey"
   } elseif ($line -match '^ELASTIC_API_KEY_ALERT_POLLER=') {
     "ELASTIC_API_KEY_ALERT_POLLER=$pollerKey"
   } elseif ($line -match '^ELASTIC_API_KEY_SUPPORT_AGENT=') {
-    $seenSupportAgent = $true
-    "ELASTIC_API_KEY_SUPPORT_AGENT=$supportAgentKey"
+    continue
   } else {
     $line
   }
-}
-if (-not $seenSupportAgent) {
-  $out = @($out) + @('', '# Agente de suporte autonomo (support-agent/)', "ELASTIC_API_KEY_SUPPORT_AGENT=$supportAgentKey")
 }
 $utf8 = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllLines($EnvFile, $out, $utf8)
@@ -120,7 +97,6 @@ $utf8 = New-Object System.Text.UTF8Encoding $false
 Write-Host 'API keys criadas e salvas em deploy/observability/.env.observability' -ForegroundColor Green
 Write-Host '  quiver-collector' -ForegroundColor Gray
 Write-Host '  quiver-alert-poller' -ForegroundColor Gray
-Write-Host '  quiver-support-agent' -ForegroundColor Gray
 Write-Host ''
 Write-Host 'Reinicie o collector: npm run obs:up' -ForegroundColor Yellow
 Write-Host ''

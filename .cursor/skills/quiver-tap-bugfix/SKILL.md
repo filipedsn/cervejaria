@@ -1,12 +1,12 @@
 ---
 name: quiver-tap-bugfix
-description: Guia para corrigir bugs de produção do Quiver Tap a partir de um dossiê de erro (Issue de auto-triagem). Use quando estiver corrigindo um bug reportado pelo agente de suporte, investigando erro 5xx em produção, ou escrevendo teste de regressão para comanda, caixa, cozinha, quiosque ou portal.
+description: Guia para corrigir bugs de produção do Quiver Tap a partir de um dossiê de erro. Use quando estiver corrigindo um bug reportado por um dossiê ou Issue, investigando erro 5xx em produção, ou escrevendo teste de regressão para comanda, caixa, cozinha, quiosque ou portal.
 ---
 
 # Quiver Tap — correção de bug a partir de dossiê
 
-Esta skill é o insumo de inteligência do agente de suporte autônomo (`support-agent/`),
-mas vale igualmente para você corrigindo um bug à mão a partir de uma Issue.
+Esta skill orienta a correção manual a partir de um dossiê ou de uma Issue. Ela não
+depende de runtime, credenciais ou capacidades do Support Agent legado.
 
 ## Regra que vale mais que todas as outras
 

@@ -19,7 +19,6 @@
         <a href="#environmentsSection" class="section-nav-link"><span aria-hidden="true">□</span> Ambientes</a>
         <a href="#observabilitySection" class="section-nav-link"><span aria-hidden="true">⌁</span> Observabilidade</a>
         <a href="#backupsSection" class="section-nav-link"><span aria-hidden="true">◇</span> Protecao</a>
-        <a href="#supportAgentSection" class="section-nav-link"><span aria-hidden="true">◌</span> Suporte</a>
         <a href="#toolsSection" class="section-nav-link"><span aria-hidden="true">≡</span> Logs</a>
       </nav>
       <div class="sidebar-footer"><span>OPERADOR</span><strong>Painel Local</strong><small>● Conexao local</small></div>
@@ -106,10 +105,6 @@
         <span class="overview-label">Servicos</span>
         <span class="overview-detail" id="overviewInfraDetail">Sinais locais</span>
         <span class="overview-value" id="overviewInfraValue">—</span>
-      </div>
-      <div class="overview-card" id="overviewAgent">
-        <span class="overview-label">Agente suporte</span>
-        <span class="overview-value" id="overviewAgentValue">—</span>
       </div>
     </section>
 
@@ -243,44 +238,6 @@
             <p class="card-hint">Backup abre seletor de pasta do Windows. Copiar prod→dev <strong>substitui</strong> <code>cervejaria_dev</code> e para o ambiente dev antes.</p>
           </article>
         </div>
-      </section>
-
-      <section class="panel-section" id="supportAgentSection">
-        <div class="section-title">
-          <h2>Agente de suporte autonomo</h2>
-          <p>Monitora o Elasticsearch, tria alertas e (opcionalmente) corrige codigo via PR.</p>
-        </div>
-
-        <article class="card card--agent">
-          <header class="card-header">
-            <div class="card-title">
-              <span class="card-icon" aria-hidden="true">🤖</span>
-              <div>
-                <h3>Saude e configuracao</h3>
-                <p>Elastic · GitHub · modo sombra · fixer</p>
-              </div>
-            </div>
-            <span id="agentHealthBadge" class="chip chip--neutral">—</span>
-          </header>
-
-          <div class="agent-health" id="agentHealth">
-            <div class="agent-health-score">
-              <span class="agent-health-label">KPI geral</span>
-              <strong id="agentHealthScore">—</strong>
-              <span id="agentHealthLevel" class="agent-health-level">—</span>
-            </div>
-            <div class="agent-health-checks" id="agentHealthChecks"></div>
-          </div>
-
-          <div class="metrics" id="agentMetrics"></div>
-
-          <div class="agent-controls" id="agentControls" aria-label="Parametros do agente"></div>
-
-          <p class="card-hint" id="agentHint">
-            Alteracoes em parametros reiniciam o agente automaticamente se ele estiver rodando.
-            O fixer exige <code>CURSOR_API_KEY</code> em <code>support-agent/.env</code>.
-          </p>
-        </article>
       </section>
 
       <section class="panel-section" id="releaseSection">

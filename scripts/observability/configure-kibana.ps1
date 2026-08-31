@@ -194,7 +194,7 @@ foreach ($vf in $viewFiles) {
 
 # 2. Dashboards DEV + PRD
 Write-Host '2. Dashboards Quiver Tap (DEV / PRD)...' -ForegroundColor Yellow
-foreach ($dashFile in @('quiver-tap-dashboard-prd.ndjson', 'quiver-tap-dashboard-dev.ndjson', 'quiver-tap-dashboard-infra.ndjson', 'quiver-tap-dashboard-slo.ndjson', 'quiver-tap-dashboard-business.ndjson', 'quiver-tap-dashboard-agente.ndjson')) {
+foreach ($dashFile in @('quiver-tap-dashboard-prd.ndjson', 'quiver-tap-dashboard-dev.ndjson', 'quiver-tap-dashboard-infra.ndjson', 'quiver-tap-dashboard-slo.ndjson', 'quiver-tap-dashboard-business.ndjson')) {
   $ndjson = Join-Path $ObsDir $dashFile
   if (-not (Test-Path $ndjson)) {
     Write-Host "   Arquivo ausente: $dashFile" -ForegroundColor Red

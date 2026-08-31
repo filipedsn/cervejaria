@@ -43,10 +43,6 @@ backend/uploads-prod/
 ops-panel/node_modules/
 ops-panel/.env
 
-# Agente de suporte autônomo (local)
-support-agent/node_modules/
-support-agent/.env
-
 # Dumps SQL locais
 deploy/backups/*.sql
 !deploy/backups/.gitkeep

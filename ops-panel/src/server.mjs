@@ -21,11 +21,6 @@ import {
   summarizeChecks,
 } from './release.mjs';
 import { isTrustedLocalOperator } from './local-auth.mjs';
-import {
-  applyConfigPatch,
-  collectSupportAgentSnapshot,
-  setKillSwitch,
-} from './support-agent.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OPS_PANEL_DIR = path.resolve(__dirname, '..');
@@ -51,11 +46,6 @@ const PROD_MANIFEST = path.join(PROD_ARTIFACTS_DIR, 'manifest.json');
 const PROD_ARTIFACTS_PREVIOUS = path.join(PROJECT_ROOT, 'deploy', 'prod-artifacts.previous');
 const DEPLOY_RECOVERY = path.join(RUNTIME_DIR, 'deploy-recovery.json');
 const RELEASE_HISTORY = path.join(RUNTIME_DIR, 'release-history.json');
-
-const SUPPORT_AGENT_DIR = path.join(PROJECT_ROOT, 'support-agent');
-const SUPPORT_AGENT_ENV = path.join(SUPPORT_AGENT_DIR, '.env');
-const SUPPORT_AGENT_KILL_SWITCH = path.join(RUNTIME_DIR, 'support-agent-fixer.disabled');
-const DEFAULT_OTLP_ENDPOINT = 'http://127.0.0.1:4318';
 
 const REQUIRED_CHECKS = (process.env.OPS_PANEL_REQUIRED_CHECKS || '')
   .split(',')
@@ -224,81 +214,6 @@ function checkCooldown(action, reply) {
   }
   lastActionAt.set(action, Date.now());
   return true;
-}
-
-function runSupportAgentScript(scriptName) {
-  const scriptPath = path.join(PROJECT_ROOT, 'scripts', 'support-agent', `${scriptName}.ps1`);
-  const result = spawnSync(
-    'powershell',
-    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-Quiet'],
-    { cwd: PROJECT_ROOT, encoding: 'utf8', timeout: 45_000 },
-  );
-  return {
-    ok: result.status === 0,
-    output: `${result.stdout || ''}${result.stderr || ''}`.trim(),
-    code: result.status ?? 1,
-  };
-}
-
-function writeSupportAgentEnv(content) {
-  fs.mkdirSync(path.dirname(SUPPORT_AGENT_ENV), { recursive: true });
-  if (!fs.existsSync(SUPPORT_AGENT_ENV) && fs.existsSync(path.join(SUPPORT_AGENT_DIR, '.env.example'))) {
-    fs.copyFileSync(path.join(SUPPORT_AGENT_DIR, '.env.example'), SUPPORT_AGENT_ENV);
-  }
-  fs.writeFileSync(SUPPORT_AGENT_ENV, content.replace(/^\uFEFF/, ''), 'utf8');
-}
-
-async function applySupportAgentPatch(body) {
-  const envContent = fs.existsSync(SUPPORT_AGENT_ENV)
-    ? fs.readFileSync(SUPPORT_AGENT_ENV, 'utf8').replace(/^\uFEFF/, '')
-    : '';
-  const before = await collectSupportAgentSnapshot(PROJECT_ROOT);
-  const notes = [];
-
-  const configPatch = {};
-  if (body.shadow != null) configPatch.shadow = Boolean(body.shadow);
-  if (body.dryRun != null) configPatch.dryRun = Boolean(body.dryRun);
-  if (body.fixerEnabled != null) configPatch.fixerEnabled = Boolean(body.fixerEnabled);
-  if (body.otlpMetrics != null) configPatch.otlpMetrics = Boolean(body.otlpMetrics);
-
-  let nextEnv = envContent;
-  if (Object.keys(configPatch).length) {
-    const { content } = applyConfigPatch(envContent, configPatch, DEFAULT_OTLP_ENDPOINT);
-    nextEnv = content;
-    writeSupportAgentEnv(nextEnv);
-    notes.push('config atualizada');
-  }
-
-  if (body.killSwitch != null) {
-    const engage = Boolean(body.killSwitch);
-    setKillSwitch(
-      SUPPORT_AGENT_KILL_SWITCH,
-      engage,
-      engage ? 'desligado pelo ops-panel' : '',
-    );
-    notes.push(engage ? 'kill switch ativado' : 'kill switch liberado');
-  }
-
-  if (body.monitoring != null) {
-    const wantOn = Boolean(body.monitoring);
-    if (wantOn && !before.process.running) {
-      const r = runSupportAgentScript('start');
-      if (!r.ok) throw new Error(r.output || 'Falha ao iniciar o agente');
-      notes.push('agente iniciado');
-    } else if (!wantOn && before.process.running) {
-      const r = runSupportAgentScript('stop');
-      if (!r.ok) throw new Error(r.output || 'Falha ao parar o agente');
-      notes.push('agente parado');
-    }
-  } else if (before.process.running && Object.keys(configPatch).length) {
-    runSupportAgentScript('stop');
-    const r = runSupportAgentScript('start');
-    if (!r.ok) throw new Error(r.output || 'Falha ao reiniciar o agente apos mudanca de config');
-    notes.push('agente reiniciado para aplicar config');
-  }
-
-  const after = await collectSupportAgentSnapshot(PROJECT_ROOT);
-  return { notes, before, after };
 }
 
 function validateBackupDestination(dir) {
@@ -981,51 +896,6 @@ app.post('/api/infra/sync-prod-to-dev', async (request, reply) => {
     scriptRelative: 'scripts/prod/sync-prod-to-dev.ps1',
     psArgs: ['-Confirmed'],
   });
-});
-
-app.get('/api/support-agent', async (request, reply) => {
-  try {
-    return await collectSupportAgentSnapshot(PROJECT_ROOT);
-  } catch (err) {
-    return reply.code(500).send({ error: String(err.message || err) });
-  }
-});
-
-app.patch('/api/support-agent', async (request, reply) => {
-  if (!requireToken(request, reply)) return;
-
-  const body = request.body || {};
-  if (
-    body.monitoring == null &&
-    body.shadow == null &&
-    body.dryRun == null &&
-    body.fixerEnabled == null &&
-    body.killSwitch == null &&
-    body.otlpMetrics == null
-  ) {
-    return reply.code(400).send({ error: 'Nenhum parametro para alterar.' });
-  }
-
-  if (body.fixerEnabled === true && body.shadow !== false) {
-    const snap = await collectSupportAgentSnapshot(PROJECT_ROOT);
-    if (snap.config.shadow && body.shadow !== false) {
-      return reply.code(400).send({
-        error: 'Desligue o modo sombra antes de ligar o fixer.',
-      });
-    }
-  }
-
-  try {
-    const result = await applySupportAgentPatch(body);
-    audit(`acao=support-agent-patch ${result.notes.join('; ')}`);
-    return {
-      ok: true,
-      notes: result.notes,
-      agent: result.after,
-    };
-  } catch (err) {
-    return reply.code(500).send({ error: String(err.message || err) });
-  }
 });
 
 app.setNotFoundHandler((request, reply) => {

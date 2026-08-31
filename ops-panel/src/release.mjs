@@ -19,13 +19,10 @@ export const DEFAULT_REQUIRED_CHECKS = [
   'frontend',
   'backend-validate',
   'backend-test',
-  'support-agent-test',
   'ops-panel-test',
 ];
 
 export const OVERRIDE_CONFIRM = 'DEPLOY-SEM-GATE';
-
-const AGENT_BRANCH_RE = /^fix\/auto-\d+$/;
 
 export function runGit(args, cwd, timeoutMs = 20_000) {
   return new Promise((resolve) => {
@@ -222,10 +219,6 @@ export function checkVerdict(check) {
   if (check.conclusion === 'success') return 'sucesso';
   if (check.conclusion === 'skipped' || check.conclusion === 'neutral') return 'ignorado';
   return 'falhou';
-}
-
-export function isAgentBranch(branch) {
-  return typeof branch === 'string' && AGENT_BRANCH_RE.test(branch);
 }
 
 /**

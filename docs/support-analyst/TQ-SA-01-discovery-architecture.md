@@ -3,6 +3,8 @@
 Data: 2026-08-31  
 Escopo: descoberta, auditoria e desenho. Nenhum código funcional, credencial, índice, regra Kibana, banco, serviço, deploy ou ambiente PROD foi alterado ou consultado nesta tarefa.
 
+Nota de status: o Support Agent descrito historicamente neste documento foi decomissionado em `TQ-SA-LEGACY-02`; o Support Analyst continua sendo um processo novo e independente.
+
 ## 1. Resumo executivo
 
 O TAP Quiver possui sinais suficientes para iniciar um **Support Analyst local em modo shadow e não-remediador**. O caminho HTTP já carrega `correlationId`, `requestId`, tenant, contexto de release e, quando aplicável, sinais técnicos, DB, autenticação e realtime. A decisão é **C — processo separado reutilizando apenas componentes e contratos seguros do Support Agent atual**.
@@ -389,8 +391,8 @@ Tickets pequenos, testáveis e reversíveis após esta discovery:
 | `TQ-SA-07` | Integração Ollama local opcional: inventário de modelo Gemma real, timeout/fallback, prompt/schema e testes mockados. |
 | `TQ-SA-08` | Replay, baseline de qualidade e relatório de métricas; correção de falsos positivos antes do piloto. |
 | `TQ-SA-09` | Piloto shadow sem saída externa, runbook e avaliação humana periódica. |
-| `TQ-SA-LEGACY-02` | Retirement Decision após o piloto: decidir `RETIRE NOW`, `RETIRE PARTIAL` ou `KEEP TEMPORARILY`, com plano de rollback e revogação de credenciais. |
-| `TQ-SA-10` | Desenho/validação de gates para Telegram e GitHub, sem ativação até aprovação humana explícita. |
+| `TQ-SA-LEGACY-02` | Decommission concluído antes de `TQ-SA-03`; runtime legado removido, rollback preservado no Git. |
+| `TQ-SA-10` | Desenho/validação de adapters novos e gated para Telegram/GitHub; qualquer Remediation Executor futuro é processo separado e não reutiliza o runtime legado. |
 
 ## 29. Riscos
 

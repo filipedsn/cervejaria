@@ -32,7 +32,6 @@ const els = {
   overviewCi: document.getElementById('overviewCi'),
   overviewRelease: document.getElementById('overviewRelease'),
   overviewInfra: document.getElementById('overviewInfra'),
-  overviewAgent: document.getElementById('overviewAgent'),
   overviewProdValue: document.getElementById('overviewProdValue'),
   overviewProdDetail: document.getElementById('overviewProdDetail'),
   overviewDevValue: document.getElementById('overviewDevValue'),
@@ -43,13 +42,6 @@ const els = {
   overviewReleaseDetail: document.getElementById('overviewReleaseDetail'),
   overviewInfraValue: document.getElementById('overviewInfraValue'),
   overviewInfraDetail: document.getElementById('overviewInfraDetail'),
-  overviewAgentValue: document.getElementById('overviewAgentValue'),
-  agentHealthBadge: document.getElementById('agentHealthBadge'),
-  agentHealthScore: document.getElementById('agentHealthScore'),
-  agentHealthLevel: document.getElementById('agentHealthLevel'),
-  agentHealthChecks: document.getElementById('agentHealthChecks'),
-  agentMetrics: document.getElementById('agentMetrics'),
-  agentControls: document.getElementById('agentControls'),
   toast: document.getElementById('toast'),
   releaseBadge: document.getElementById('releaseBadge'),
   releaseSummary: document.getElementById('releaseSummary'),
@@ -110,8 +102,6 @@ let actionRunning = false;
 let toastTimer;
 let release = null;
 let localSession = false;
-let supportAgent = null;
-let agentPatchBusy = false;
 let statusSnapshot = null;
 let releaseDetailsVisible = false;
 
@@ -202,7 +192,6 @@ function renderServices(data) {
     ['Automacao', 'Watchdog', serviceState(i.watchdogPid ? i.watchdogAlive : null), i.watchdogPid ? `PID ${i.watchdogPid}` : 'nao detectado'],
     ['Automacao', 'Alert Poller', serviceState(i.alertPoller?.ok), `health :${i.alertPoller?.port || 3098}`],
     ['Operacao', 'Ops Panel', serviceState(i.opsPanelPid ? i.opsPanelAlive : null), i.opsPanelPid ? `PID ${i.opsPanelPid}` : 'nao detectado'],
-    ['Operacao', 'Support Agent', supportAgent?.process?.running ? 'OK' : supportAgent ? 'OFFLINE' : 'UNKNOWN', supportAgent?.process?.running ? 'ativo' : 'sem sinal'],
   ];
   const groups = new Map();
   for (const [domain, name, state, detail] of services) {
@@ -225,7 +214,6 @@ function renderServices(data) {
     ['Alert Poller', serviceState(i.alertPoller?.ok), `health :${i.alertPoller?.port || 3098}`],
     ['Watchdog', serviceState(i.watchdogPid ? i.watchdogAlive : null), i.watchdogPid ? `PID ${i.watchdogPid}` : 'nao detectado'],
     ['Cloudflare', serviceState(i.cloudflare?.ok), i.cloudflare?.pid ? `PID ${i.cloudflare.pid}` : 'sem PID runtime'],
-    ['Support Agent', supportAgent?.process?.running ? 'OK' : supportAgent ? 'OFFLINE' : 'UNKNOWN', supportAgent?.process?.running ? 'ativo' : 'sem sinal'],
   ];
   els.serviceList.innerHTML = serviceTiles.map(([name, state, detail]) => {
     const kind = state === 'OK' ? 'ok' : state === 'OFFLINE' ? 'bad' : 'unknown';
@@ -371,139 +359,6 @@ function formatDate(iso) {
   return new Date(iso).toLocaleString('pt-BR', {
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   });
-}
-
-function agentOverviewState(health, processRunning) {
-  if (!health) return { text: '—', state: 'warn' };
-  if (!processRunning) return { text: 'Parado', state: 'warn' };
-  if (health.level === 'saudavel') return { text: `Saudavel ${health.score}`, state: 'ok' };
-  if (health.level === 'critico') return { text: `Critico ${health.score}`, state: 'bad' };
-  return { text: `Atencao ${health.score}`, state: 'warn' };
-}
-
-function healthCheckClass(status) {
-  if (status === 'ok') return 'agent-check--ok';
-  if (status === 'bad') return 'agent-check--bad';
-  if (status === 'info') return 'agent-check--info';
-  return 'agent-check--warn';
-}
-
-function buildAgentPatch(ctrl, checked) {
-  switch (ctrl.id) {
-    case 'monitoring': return { monitoring: checked };
-    case 'shadow': return { shadow: checked };
-    case 'dryRun': return { dryRun: checked };
-    case 'fixerEnabled': return { fixerEnabled: checked };
-    case 'killSwitch': return { killSwitch: ctrl.inverted ? !checked : checked };
-    case 'otlpMetrics': return { otlpMetrics: checked };
-    default: return {};
-  }
-}
-
-function renderSupportAgent(data) {
-  if (!data) return;
-  supportAgent = data;
-  if (statusSnapshot) renderServices(statusSnapshot);
-
-  const ov = agentOverviewState(data.health, data.process.running);
-  setOverviewCard(els.overviewAgent, ov.state, ov.text);
-
-  const levelCls =
-    data.health.level === 'saudavel' ? 'chip--ok'
-      : data.health.level === 'critico' ? 'chip--bad' : 'chip--warn';
-  els.agentHealthBadge.className = `chip ${levelCls}`;
-  els.agentHealthBadge.textContent = data.health.label;
-
-  els.agentHealthScore.textContent = String(data.health.score);
-  els.agentHealthLevel.textContent = data.health.label;
-  els.agentHealthLevel.className = `agent-health-level agent-health-level--${data.health.level}`;
-
-  els.agentHealthChecks.innerHTML = data.health.checks.map((c) =>
-    `<div class="agent-check ${healthCheckClass(c.status)}">` +
-    `<span class="agent-check-dot" aria-hidden="true"></span>` +
-    `<span>${escapeHtml(c.message)}</span></div>`,
-  ).join('');
-
-  const st = data.state || {};
-  els.agentMetrics.innerHTML = [
-    row('Processo', data.process.running ? `No ar (PID ${data.process.pid})` : pill(false, 'Parado', 'Parado')),
-    row('Ultimo poll', st.lastPollIso ? formatDate(st.lastPollIso) : '—'),
-    row('Alertas vistos', st.processedCount ?? 0),
-    row('Fingerprints', st.fingerprintCount ?? 0),
-    row('PRs hoje', st.prsToday ?? 0),
-    row('Execucoes CLI hoje', st.runsToday ?? 0),
-    row('Fixer efetivo', data.config.fixerEffective.enabled ? pill(true, 'Ligado') : data.config.fixerEffective.reason),
-    row('Modo', data.config.shadow ? 'Sombra' : 'Completo'),
-  ].join('');
-
-  els.agentControls.innerHTML = '';
-  for (const ctrl of data.controls) {
-    const wrap = document.createElement('div');
-    wrap.className = `agent-control${ctrl.disabled ? ' agent-control--disabled' : ''}`;
-
-    const label = document.createElement('label');
-    label.className = 'switch';
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = Boolean(ctrl.value);
-    input.disabled = ctrl.disabled || agentPatchBusy;
-    input.dataset.controlId = ctrl.id;
-    input.addEventListener('change', () => patchAgentControl(ctrl, input.checked, input));
-
-    const slider = document.createElement('span');
-    slider.className = 'switch-slider';
-    label.appendChild(input);
-    label.appendChild(slider);
-
-    const text = document.createElement('div');
-    text.className = 'agent-control-text';
-    text.innerHTML = `<strong>${escapeHtml(ctrl.label)}</strong>` +
-      `<p>${escapeHtml(ctrl.description)}</p>` +
-      (ctrl.disabledReason ? `<span class="agent-control-note">${escapeHtml(ctrl.disabledReason)}</span>` : '') +
-      (ctrl.engaged && ctrl.reason ? `<span class="agent-control-note">Motivo: ${escapeHtml(ctrl.reason)}</span>` : '');
-
-    wrap.appendChild(label);
-    wrap.appendChild(text);
-    els.agentControls.appendChild(wrap);
-  }
-}
-
-async function refreshSupportAgent() {
-  try {
-    const data = await fetchJson('/api/support-agent');
-    renderSupportAgent(data);
-  } catch (err) {
-    setOverviewCard(els.overviewAgent, 'bad', 'Erro');
-    els.agentHealthBadge.textContent = 'Erro';
-    els.agentHealthBadge.className = 'chip chip--bad';
-    els.agentHealthChecks.innerHTML =
-      `<div class="agent-check agent-check--bad"><span class="agent-check-dot"></span>` +
-      `<span>${escapeHtml(err.message || 'Falha ao carregar agente')}</span></div>`;
-  }
-}
-
-async function patchAgentControl(ctrl, checked, inputEl) {
-  if (agentPatchBusy) return;
-  agentPatchBusy = true;
-  inputEl.disabled = true;
-
-  try {
-    const patch = buildAgentPatch(ctrl, checked);
-    const res = await fetchJson('/api/support-agent', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
-    });
-    renderSupportAgent(res.agent);
-    const note = res.notes?.length ? res.notes.join('; ') : 'Atualizado';
-    showToast(note);
-  } catch (err) {
-    inputEl.checked = !checked;
-    showToast(err.message || 'Falha ao atualizar parametro.', 'bad');
-  } finally {
-    agentPatchBusy = false;
-    inputEl.disabled = ctrl.disabled;
-  }
 }
 
 function formatPullList(pulls) {
@@ -1188,7 +1043,6 @@ document.getElementById('btnSaveToken').addEventListener('click', saveToken);
 document.getElementById('btnRefresh').addEventListener('click', () => {
   refreshStatus().catch(showError);
   refreshRelease();
-  refreshSupportAgent();
 });
 
 els.investigate?.addEventListener('click', () => {
@@ -1398,8 +1252,6 @@ initSession()
     refreshStatus().catch(showError);
     loadLogCatalog().catch(showError);
     refreshRelease();
-    refreshSupportAgent();
   })
   .catch(showError);
 setInterval(() => refreshStatus().catch(() => {}), 30_000);
-setInterval(() => refreshSupportAgent(), 60_000);

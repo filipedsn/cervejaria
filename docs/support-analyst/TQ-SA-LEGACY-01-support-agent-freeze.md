@@ -4,6 +4,8 @@ Data: 2026-08-31
 
 Escopo: auditoria, governança e plano de transição. Nenhum código funcional, credencial, processo, Elasticsearch, banco, aplicação, Ops Panel, Alert Poller, CI ou ambiente PROD foi alterado ou consultado.
 
+Nota de status: o plano deste documento foi superado pela decisão aprovada e pelo decomissionamento executado em `TQ-SA-LEGACY-02`. O inventário permanece como evidência histórica.
+
 ## 1. Resumo executivo
 
 O `support-agent/` é um mecanismo legado de triagem orientado a abrir Issues e, quando explicitamente liberado, executar correção automática. Ele não é uma base segura para o novo `support-analyst/`: combina leitura de Elasticsearch com basic auth de fallback, escrita em alertas, GitHub, subprocessos, worktree, Git, Cursor CLI e PR.

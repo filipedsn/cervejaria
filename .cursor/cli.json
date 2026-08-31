@@ -16,7 +16,6 @@
       "Write(deploy/prod-artifacts/**)",
       "Write(deploy/prod-artifacts.previous/**)",
       "Write(deploy/backups/**)",
-      "Write(deploy/runtime/support-agent-fixer.disabled)",
       "Write(**/.env)",
       "Write(**/.env.*)",
       "Write(.cursor/hooks/**)",

@@ -36,17 +36,8 @@ Se `ops:status` mostrar **LEGADO**, encerre o PID indicado (PowerShell como Admi
 
 Abra sempre a URL que `ops:status` imprimir — hoje e `http://127.0.0.1:3099`.
 
-## Agente de suporte autonomo
+## Segurança de ações
 
-Secao **Agente de suporte autonomo** no painel:
-
-- **KPI geral** (0–100): processo, Elasticsearch, frescor do ultimo poll, dry-run, kill switch, GitHub
-- **Toggles** com descricao para cada parametro:
-  - Monitoramento continuo (liga/desliga o processo)
-  - Modo sombra, dry-run, fixer, kill switch, metricas OTLP
-- Alterar parametro grava `support-agent/.env` e reinicia o agente se ele estiver rodando
-
-API: `GET /api/support-agent`, `PATCH /api/support-agent` (JSON com `monitoring`, `shadow`, `dryRun`, `fixerEnabled`, `killSwitch`, `otlpMetrics`).
 Acoes destrutivas ainda pedem confirmacao digitada (`DEPLOY`, `ROLLBACK`, `SYNC-DEV`).
 Uma pagina em outra origem nao consegue disparar essas acoes (checagem de Origin).
 
@@ -86,7 +77,7 @@ O deploy e **recusado** (HTTP 409) quando:
 | `git-indisponivel` | nao da para ler o repositorio (unico impedimento sem override) |
 
 Checks obrigatorios padrao: `frontend`, `backend-validate`, `backend-test`,
-`support-agent-test`, `ops-panel-test`. Ajuste com `OPS_PANEL_REQUIRED_CHECKS`
+`ops-panel-test`. Ajuste com `OPS_PANEL_REQUIRED_CHECKS`
 (lista separada por virgula). `backend-build` fica fora porque tem `continue-on-error`
 no workflow enquanto os erros de `tsc` pre-existentes nao forem zerados.
 

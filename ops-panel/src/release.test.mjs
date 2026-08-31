@@ -8,7 +8,6 @@ import {
   DEFAULT_REQUIRED_CHECKS,
   checkVerdict,
   evaluateReleaseGate,
-  isAgentBranch,
   readDeployRecovery,
   readReleaseHistory,
   shouldAutoSyncMain,
@@ -105,7 +104,7 @@ test('bloqueia check que falhou, que esta rodando e que nao existe', () => {
         { name: 'backend-test', status: 'in_progress', conclusion: null },
       ],
     }),
-    { requiredChecks: ['frontend', 'backend-validate', 'backend-test', 'support-agent-test'] },
+    { requiredChecks: ['frontend', 'backend-validate', 'backend-test', 'ops-panel-test'] },
   );
   assert.equal(result.allowed, false);
   assert.deepEqual(codigos(result), ['check-falhou', 'check-rodando', 'check-ausente']);
@@ -257,13 +256,6 @@ test('checkVerdict cobre os estados do GitHub', () => {
   assert.equal(checkVerdict({ status: 'completed', conclusion: 'success' }), 'sucesso');
   assert.equal(checkVerdict({ status: 'completed', conclusion: 'timed_out' }), 'falhou');
   assert.equal(checkVerdict({ status: 'completed', conclusion: 'skipped' }), 'ignorado');
-});
-
-test('isAgentBranch reconhece so o padrao do fixer', () => {
-  assert.equal(isAgentBranch('fix/auto-42'), true);
-  assert.equal(isAgentBranch('fix/auto-manual'), false);
-  assert.equal(isAgentBranch('feat/modo-quiosque'), false);
-  assert.equal(isAgentBranch(undefined), false);
 });
 
 function estadoGit(overrides = {}) {
