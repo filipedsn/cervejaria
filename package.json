@@ -87,6 +87,7 @@
     "analyst:test": "npm run test --prefix support-analyst",
     "analyst:typecheck": "npm run typecheck --prefix support-analyst",
     "analyst:validate": "npm run validate --prefix support-analyst",
+    "analyst:dev-smoke": "npm run dev-smoke --prefix support-analyst",
     "ops:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/status-ops-panel.ps1",
     "ops:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/stop-ops-panel.ps1",
     "ops:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/start-ops-panel.ps1",

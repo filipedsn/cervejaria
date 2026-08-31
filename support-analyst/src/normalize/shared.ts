@@ -36,8 +36,10 @@ export function firstNumber(source: SourceRecord, ...paths: string[]): number | 
 export function normalizedTimestamp(source: SourceRecord): { value?: string; reason?: NormalizationFailure } {
   const timestamp = firstString(source, '@timestamp', 'timestamp');
   if (!timestamp) return { reason: 'missing_timestamp' };
-  const parsed = Date.parse(timestamp);
-  if (Number.isNaN(parsed)) return { reason: 'invalid_timestamp' };
+  // Elasticsearch date-nanos values can be returned as epoch milliseconds
+  // serialized with a decimal suffix (for example, "1788204490623.0").
+  const parsed = /^\d+(?:\.\d+)?$/.test(timestamp) ? Number(timestamp) : Date.parse(timestamp);
+  if (!Number.isFinite(parsed)) return { reason: 'invalid_timestamp' };
   return { value: new Date(parsed).toISOString() };
 }
 

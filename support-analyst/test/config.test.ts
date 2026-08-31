@@ -24,14 +24,13 @@ test('rejects legacy and privileged credential environment variables', () => {
   assert.deepEqual(config, { ok: false, reason: 'privileged Elasticsearch credentials are not accepted' });
 });
 
-test('future PRD runtime is fail-closed behind an explicit gate', () => {
+test('TQ-SA-04 runtime is fail-closed for PRD even with a future-looking gate', () => {
   const structural = readAnalystConfig({ SUPPORT_ANALYST_ENV: 'prd', SUPPORT_ANALYST_ES_URL: 'https://elastic.example.test', SUPPORT_ANALYST_ES_API_KEY: 'api-key-secret' });
   assert.equal(structural.ok, true);
-  const blocked = requireRuntimeElasticsearchConfig(structural.config, {});
+  const blocked = requireRuntimeElasticsearchConfig(structural.config, { SUPPORT_ANALYST_ALLOW_PRD: 'true' });
   assert.equal(blocked.ok, false);
+  assert.deepEqual(blocked, { ok: false, reason: 'PRD access is not enabled for TQ-SA-04.' });
   assert.equal(blocked.reason.includes('api-key-secret'), false);
-  const allowed = requireRuntimeElasticsearchConfig(structural.config, { SUPPORT_ANALYST_ALLOW_PRD: 'true' });
-  assert.equal(allowed.ok, true);
 });
 
 test('future runtime requires its exclusive URL and API key', () => {

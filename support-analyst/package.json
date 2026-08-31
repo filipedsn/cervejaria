@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "validate": "npm run typecheck && npm run test && npm run build",
+    "dev-smoke": "tsx src/index.ts --dev-smoke",
     "start": "node dist/index.js"
   },
   "devDependencies": {

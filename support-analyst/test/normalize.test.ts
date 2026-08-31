@@ -123,6 +123,13 @@ test('invalid or absent timestamps return an explicit failure', () => {
   assert.deepEqual(normalizeEvent(absent), { ok: false, reason: 'missing_timestamp' });
 });
 
+test('normalizes Elasticsearch epoch-milliseconds serialized with a decimal suffix', () => {
+  const raw: RawEventDocument = { index: 'logs-technical.otel-dev-000001', id: 'epoch', sourceType: 'technical', source: { '@timestamp': '1788204490623.0' } };
+  const result = normalizeEvent(raw);
+  assert.equal(result.ok, true);
+  assert.equal(result.event.timestamp, '2026-08-31T19:28:10.623Z');
+});
+
 test('missing raw references return an explicit failure', () => {
   const raw: RawEventDocument = { index: '', id: '', sourceType: 'alert', source: { '@timestamp': '2026-08-31T12:00:00Z' } };
   assert.deepEqual(normalizeEvent(raw), { ok: false, reason: 'missing_raw_ref' });

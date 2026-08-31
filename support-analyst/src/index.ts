@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { readAnalystConfig } from './config.js';
 import { normalizeEvent } from './normalize/index.js';
+import { ElasticsearchSources } from './sources/index.js';
+import { normalizeBatch } from './sources/pipeline.js';
 import type { RawEventDocument } from './types.js';
 
 const help = `Support Analyst core (TQ-SA-03)
@@ -11,7 +13,9 @@ Usage:
   support-analyst --validate-config
   support-analyst --normalize-fixture <file>
 
-No Elasticsearch source, polling, or network calls are implemented.`;
+  support-analyst --dev-smoke
+
+The dev smoke is read-only, requires DEV credentials, and prints only counts.`;
 
 async function main(args: string[]): Promise<number> {
   const [command, file] = args;
@@ -43,6 +47,21 @@ async function main(args: string[]): Promise<number> {
       return 2;
     }
   }
+  if (command === '--dev-smoke') {
+    const parsed = readAnalystConfig(process.env);
+    if (!parsed.ok) { console.error(`Configuration invalid: ${parsed.reason}`); return 2; }
+    try {
+      const sources = ElasticsearchSources.fromConfig(parsed.config, process.env);
+      const now = Date.now();
+      const range = { from: new Date(now - 24 * 60 * 60_000).toISOString(), to: new Date(now).toISOString() };
+      const [alerts, audit, technical] = await Promise.all([sources.findAlertEvents({ range, limit: 3 }), sources.findAuditAround({ timestamp: range.to, windowMinutes: 15, limit: 3 }), sources.findTechnicalAround({ timestamp: range.to, windowMinutes: 15, limit: 3 })]);
+      const correlationId = process.env.SUPPORT_ANALYST_TEST_CORRELATION_ID;
+      const exact = correlationId ? await sources.findByCorrelationId(correlationId, { range, limit: 3 }) : [];
+      const normalized = normalizeBatch([...alerts, ...audit, ...technical, ...exact]);
+      console.log(JSON.stringify({ environment: 'dev', readOnly: true, alerts: alerts.length, audit: audit.length, technical: technical.length, exactCorrelationLookup: correlationId ? exact.length : 'not_requested', normalization: { received: normalized.received, normalized: normalized.normalized, rejected: normalized.rejected, rejectedReasons: normalized.rejectedReasons } }));
+      return 0;
+    } catch (error) { console.error(error instanceof Error ? error.message : 'DEV smoke failed'); return 1; }
+  }
   console.error('Unsupported command. Use --help.');
   return 2;
 }
@@ -54,4 +73,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 export * from './config.js';
 export * from './normalize/index.js';
 export * from './privacy/sanitize.js';
+export * from './correlation.js';
+export * from './sources/index.js';
+export * from './sources/pipeline.js';
 export type * from './types.js';

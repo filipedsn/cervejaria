@@ -1,0 +1,8 @@
+{
+  "description": "Synthetic TQ-SA-04 correlation cases. No production identifiers or payloads.",
+  "cases": [
+    "same correlationId", "same requestId", "same traceId",
+    "service/release/tenant/route in a short window", "partial contextual evidence",
+    "time only", "conflicting correlationIds", "distant timestamps", "duplicate eventId"
+  ]
+}

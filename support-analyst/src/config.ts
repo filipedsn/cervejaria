@@ -54,13 +54,17 @@ export function readAnalystConfig(env: Env): ConfigResult {
   };
 }
 
-/** Reserved for a future source implementation. TQ-SA-03 never invokes it. */
+/**
+ * Runtime credentials are deliberately exclusive to the Analyst.  TQ-SA-04 is
+ * DEV-only: a future ticket must make an explicit, reviewed change before any
+ * PRD runtime can exist.
+ */
 export function requireRuntimeElasticsearchConfig(config: AnalystConfig, env: Env): ConfigResult {
   if (!config.elasticsearchUrl || !config.elasticsearchApiKey) {
     return { ok: false, reason: 'runtime Elasticsearch configuration requires SUPPORT_ANALYST_ES_URL and SUPPORT_ANALYST_ES_API_KEY' };
   }
-  if (config.environment === 'prd' && env.SUPPORT_ANALYST_ALLOW_PRD !== 'true') {
-    return { ok: false, reason: 'PRD runtime access requires the explicit SUPPORT_ANALYST_ALLOW_PRD=true gate' };
+  if (config.environment === 'prd') {
+    return { ok: false, reason: 'PRD access is not enabled for TQ-SA-04.' };
   }
   return { ok: true, config };
 }

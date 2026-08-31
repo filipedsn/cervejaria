@@ -385,7 +385,7 @@ Tickets pequenos, testáveis e reversíveis após esta discovery:
 | `TQ-SA-02` | Onboarding R-01: role/API key proposta aplicada somente em ambiente autorizado, aliases/mapping/retenção documentados, três consultas read-only verificadas. |
 | `TQ-SA-LEGACY-01` | Freeze, inventário de side effects e plano de transição do Support Agent legado; não altera seu comportamento. |
 | `TQ-SA-03` | **Concluído:** package/processo isolado, config sem fallback privilegiado, `NormalizedEvent` e fixtures DEV sanitizadas. |
-| `TQ-SA-04` | Sources Elastic com source filter, parser, correlação por IDs e fallback temporal limitado; testes offline. |
+| `TQ-SA-04` | **Concluído:** Sources Elastic DEV read-only com source filter, parser, correlação por IDs e fallback temporal limitado; smoke read-only validado. |
 | `TQ-SA-05` | Grouping/dedupe, estados, classe, severidade/confidence determinísticos e persistência local. |
 | `TQ-SA-06` | Contexto/dossiê determinístico, privacy guard e feedback JSONL. |
 | `TQ-SA-07` | Integração Ollama local opcional: inventário de modelo Gemma real, timeout/fallback, prompt/schema e testes mockados. |
