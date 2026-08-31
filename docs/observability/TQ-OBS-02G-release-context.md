@@ -30,6 +30,12 @@ e Socket.IO. O contexto HTTP tambem adiciona os atributos a spans OTel ativos.
 eventos HTTP, de negocio e da extensao Prisma herdam o release sem alterar cada
 produtor. Os eventos `realtime.session.*` e `realtime.room.*` usam o mesmo logger.
 
+O audit e roteado exclusivamente pelos campos `data_stream.dataset` e
+`data_stream.namespace` (`audit_<slug>` e `dev`/`prd`). Nao deve ser enviado
+`elasticsearch.index`: no exporter Elasticsearch esse atributo tem precedencia sobre
+o data stream e desviava os eventos para um indice explicito inexistente. O teste do
+payload impede a reintroducao desse atributo.
+
 Os valores sao somente SHA, nome de servico e ambiente; nenhum secret, token, path ou
 saida de comando e registrado por esta mudanca.
 
@@ -47,7 +53,7 @@ pelos mecanismos de QA existentes. Em Discover, use o data view
 `logs-*.otel-dev` e uma consulta como:
 
 ```text
-releaseSha : * and service : "quiver-tap-api" and correlationId : "<uuid>"
+attributes.releaseSha : * and attributes.service : "quiver-tap-api" and attributes.correlationId : "<uuid>"
 ```
 
 Para cruzar o audit com o log tecnico, mantenha o mesmo `correlationId` e pesquise nos
@@ -93,3 +99,36 @@ foi feita no collector, Elastic, banco ou PROD.
 
 O frontend recebe `VITE_RELEASE_SHA` como metadado estatico do build; o valor e
 normalizado no browser e nao envolve Git, path, comando, token ou secret.
+
+## Validacao DEV persistente de audit - TQ-OBS-02G2
+
+Em 2026-08-31, uma tentativa real de login com credencial ficticia invalida retornou
+401 no processo DEV em `:3002`, usando o correlation ID
+`84c6ec76-7f9f-4f64-8369-0302f98bef0e`. A aplicacao gerou localmente o evento de
+negocio `auth.login.failed` e o evento HTTP `http.post`; ambos tinham
+`releaseSha=dev`, `service=quiver-tap-api-dev`, `environment=development`,
+`requestId=req-8`, a mesma correlacao, categoria `audit`, resultado `failure` e
+dataset `audit_system`/namespace `dev`.
+
+Depois do batch normal do collector, a busca abaixo retornou exatamente esses dois
+documentos em `.ds-logs-audit_system.otel-dev-2026.08.10-000001` (um por acao):
+
+```json
+{
+  "query": {
+    "bool": {
+      "filter": [
+        { "term": { "attributes.correlationId.keyword": "84c6ec76-7f9f-4f64-8369-0302f98bef0e" } },
+        { "term": { "attributes.event.category.keyword": "audit" } }
+      ]
+    }
+  }
+}
+```
+
+O mapping do proprio data stream confirma os subcampos `keyword` para
+`attributes.releaseSha`, `attributes.service`, `attributes.environment`,
+`attributes.requestId`, `attributes.correlationId` e `attributes.event.action`.
+O data stream de auditoria permaneceu separado de `logs-technical.otel-dev*`.
+Nenhuma alteracao foi feita no collector, Elasticsearch, banco ou PROD; o unico
+ajuste foi remover o roteamento explicito incorreto do produtor de audit.
