@@ -1,6 +1,6 @@
 # TQ-SA-03 — Core isolado e `NormalizedEvent`
 
-Data: 2026-08-31  
+Data: 2026-08-31
 Status: concluído localmente; sem acesso a Elasticsearch ou PROD.
 
 ## Implementação
