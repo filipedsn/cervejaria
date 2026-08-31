@@ -106,3 +106,8 @@ test('dossier health extension only records local counters', () => {
   assert.equal(health.dossiersGenerated, 1); assert.equal(health.feedbackRecorded, 1);
   assert.equal(health.dossierFailures, 0); assert.equal(health.feedbackFailures, 0);
 });
+
+test('synthetic dossier fixture declares the reviewed scenario matrix', async () => {
+  const fixture = JSON.parse(await readFile(new URL('./fixtures/dossier-contexts.json', import.meta.url), 'utf8')) as Array<{ name: string }>;
+  assert.deepEqual(fixture.map((item) => item.name), ['DATABASE_FAILURE', 'DATABASE_SLOW', 'APPLICATION_ERROR', 'AUTH_FAILURE', 'AUTHORIZATION_DENIED', 'REALTIME_AUTH_FAILURE', 'TELEMETRY_FAILURE', 'UNKNOWN', 'SOURCE_FAILURE', 'TRUNCATED_CONTEXT', 'MULTIPLE_TENANTS', 'MULTIPLE_RELEASES']);
+});

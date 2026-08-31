@@ -1,0 +1,14 @@
+[
+  { "name": "DATABASE_FAILURE", "event": { "eventType": "db.connection.failed", "dbCategory": "CONNECTION" } },
+  { "name": "DATABASE_SLOW", "event": { "eventType": "db.query.slow", "dbCategory": "TIMEOUT" } },
+  { "name": "APPLICATION_ERROR", "event": { "eventType": "http.request.failed", "httpStatus": 500 } },
+  { "name": "AUTH_FAILURE", "event": { "eventType": "auth.login.failed", "reasonCode": "INVALID_CREDENTIALS" } },
+  { "name": "AUTHORIZATION_DENIED", "event": { "eventType": "authorization.denied", "httpStatus": 403 } },
+  { "name": "REALTIME_AUTH_FAILURE", "event": { "eventType": "realtime.auth.failed", "realtimeReason": "SESSION_REJECTED" } },
+  { "name": "TELEMETRY_FAILURE", "event": { "eventType": "telemetry.delivery.failed" } },
+  { "name": "UNKNOWN", "event": { "eventType": "unmapped.signal" } },
+  { "name": "SOURCE_FAILURE", "sourceFailure": { "source": "audit", "kind": "timeout" } },
+  { "name": "TRUNCATED_CONTEXT", "eventCount": 41 },
+  { "name": "MULTIPLE_TENANTS", "tenants": ["tenant-a", "tenant-b", "tenant-c"] },
+  { "name": "MULTIPLE_RELEASES", "releases": ["release-a", "release-b"] }
+]
