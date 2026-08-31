@@ -98,6 +98,24 @@ ao exporter, usando ambiente descartável ou endpoint DEV temporário — sem us
 DEV compartilhado. A consulta Elastic para logs Pino deve usar
 `attributes.correlationId`, pois os campos Pino são atributos OTLP.
 
+### Diagnóstico de lifecycle (TQ-OBS-02F2)
+
+O launcher padrão `--import @elastic/opentelemetry-node` inicia o SDK, mas não
+expõe seu lifecycle ao script. Em processo efêmero, a API pública de logs observada
+era um `ProxyLoggerProvider`, sem `forceFlush` ou `shutdown`; portanto não havia uma
+forma confiável de drenar o `BatchLogRecordProcessor`. O validador agora usa
+`bootstrap-prisma-observability-validation.mjs`: ele reutiliza o hook e
+`startNodeSDK` do pacote Elastic, aguarda o hook e executa `telemetry.shutdown()`
+explicitamente ao final, sem sleep arbitrário.
+
+Com `OTEL_LOG_LEVEL=DEBUG` somente no processo de diagnóstico, foi comprovado que o
+provider real é `LoggerProvider`, que o Pino criou o LogRecord
+`db.connection.failed` com dataset `technical`, e que o OTLP exporter enviou o lote
+para `127.0.0.1:4318`, recebendo resposta HTTP 200 do receiver do collector. A busca
+por uma nova correlação no Elasticsearch continuou sem documentos. Assim, a perda
+remanescente está após o receiver, no pipeline/exporter do collector para Elasticsearch;
+não houve mudança no collector sem um erro específico de indexação que a justifique.
+
 Os testes cobrem sucesso rápido sem evento, lentidão, Prisma `P2002`, deadlock/lock
 timeout/timeout por códigos explícitos, falha técnica e funcional de transação,
 contexto HTTP, sanitização e telemetria fail-open. Execute:

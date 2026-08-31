@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { logs } from '@opentelemetry/api-logs';
 
 import { runWithTelemetryContext } from '../src/lib/telemetry-context.js';
 import { classifyDbError, isDbTechnicalError, prismaErrorCode } from '../src/lib/prisma-observability.js';
@@ -65,11 +64,6 @@ async function main(): Promise<void> {
     await prisma.$disconnect();
   }
 
-  // Flush the real Pino/OTel pipeline before this short-lived process exits.
-  const provider = logs.getLoggerProvider() as { forceFlush?: () => Promise<void> };
-  await provider.forceFlush?.();
-  // Bounded grace period for transports that finish just after forceFlush.
-  await new Promise((resolve) => setTimeout(resolve, 10_000));
 }
 
 await main();
