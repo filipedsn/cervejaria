@@ -376,11 +376,12 @@ Sem setas para Elasticsearch write, banco, GitHub, Telegram, deploy, shell ou ap
 
 ## 28. Roadmap
 
-Nove tickets pequenos, testáveis e reversíveis após esta discovery:
+Tickets pequenos, testáveis e reversíveis após esta discovery:
 
 | Ticket | Entrega e critério de aceite |
 |---|---|
 | `TQ-SA-02` | Onboarding R-01: role/API key proposta aplicada somente em ambiente autorizado, aliases/mapping/retenção documentados, três consultas read-only verificadas. |
+| `TQ-SA-LEGACY-01` | Freeze, inventário de side effects e plano de transição do Support Agent legado; não altera seu comportamento. |
 | `TQ-SA-03` | Package/processo isolado, config sem fallback privilegiado, `NormalizedEvent` e fixtures DEV sanitizadas. |
 | `TQ-SA-04` | Sources Elastic com source filter, parser, correlação por IDs e fallback temporal limitado; testes offline. |
 | `TQ-SA-05` | Grouping/dedupe, estados, classe, severidade/confidence determinísticos e persistência local. |
@@ -388,6 +389,7 @@ Nove tickets pequenos, testáveis e reversíveis após esta discovery:
 | `TQ-SA-07` | Integração Ollama local opcional: inventário de modelo Gemma real, timeout/fallback, prompt/schema e testes mockados. |
 | `TQ-SA-08` | Replay, baseline de qualidade e relatório de métricas; correção de falsos positivos antes do piloto. |
 | `TQ-SA-09` | Piloto shadow sem saída externa, runbook e avaliação humana periódica. |
+| `TQ-SA-LEGACY-02` | Retirement Decision após o piloto: decidir `RETIRE NOW`, `RETIRE PARTIAL` ou `KEEP TEMPORARILY`, com plano de rollback e revogação de credenciais. |
 | `TQ-SA-10` | Desenho/validação de gates para Telegram e GitHub, sem ativação até aprovação humana explícita. |
 
 ## 29. Riscos
