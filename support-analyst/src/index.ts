@@ -5,6 +5,7 @@ import { normalizeEvent } from './normalize/index.js';
 import { ElasticsearchSources } from './sources/index.js';
 import { normalizeBatch } from './sources/pipeline.js';
 import { IncidentGrouper } from './incidents/grouper.js';
+import { ContextBuilder, buildDeterministicDossier, DossierStore, FeedbackStore, renderDossierMarkdown } from './dossiers/index.js';
 import type { NormalizedEvent, RawEventDocument } from './types.js';
 
 const help = `Support Analyst core (TQ-SA-03)
@@ -14,6 +15,8 @@ Usage:
   support-analyst --validate-config
   support-analyst --normalize-fixture <file>
   support-analyst --incident-replay
+  support-analyst --dossier-replay [--show-markdown]
+  support-analyst --feedback <dossierId> <USEFUL|PARTIAL|WRONG> --created-at <ISO> [--flags A,B] [--comment <text>]
 
   support-analyst --dev-smoke
 
@@ -72,6 +75,35 @@ async function main(args: string[]): Promise<number> {
     console.log(JSON.stringify(result.incidents.map((incident) => ({ class: incident.class, severity: incident.severity, confidence: incident.confidence, occurrences: incident.occurrences })), null, 2));
     return 0;
   }
+  if (command === '--dossier-replay') {
+    let fixture: readonly NormalizedEvent[];
+    try { fixture = JSON.parse(await readFile(new URL('../test/fixtures/incident-replay.json', import.meta.url), 'utf8')) as NormalizedEvent[]; }
+    catch { console.error('Unable to read the synthetic dossier replay fixture.'); return 2; }
+    const grouped = new IncidentGrouper().group({ events: fixture, relations: [], existingIncidents: [], referenceTime: '2026-08-31T12:04:00.000Z' });
+    const incident = grouped.incidents[0];
+    if (!incident) { console.error('Dossier replay did not create an incident.'); return 1; }
+    const context = new ContextBuilder().build({ incident, events: fixture, relations: [] });
+    const dossier = buildDeterministicDossier({ context, generatedAt: '2026-08-31T12:04:00.000Z' });
+    console.log(JSON.stringify({ dossierId: dossier.dossierId, class: dossier.class, severity: dossier.severity, confidence: dossier.confidence, factCount: dossier.facts.length, evidenceCount: dossier.evidence.length, hypothesisCount: dossier.hypotheses.length, gapCount: dossier.gaps.length, recommendedCheckCount: dossier.recommendedChecks.length, contextHash: dossier.contextHash }, null, 2));
+    if (args.includes('--show-markdown')) console.log(renderDossierMarkdown(dossier));
+    return 0;
+  }
+  if (command === '--feedback') {
+    const dossierId = file;
+    const rating = args[2] as 'USEFUL' | 'PARTIAL' | 'WRONG' | undefined;
+    const createdAtIndex = args.indexOf('--created-at');
+    const flagsIndex = args.indexOf('--flags');
+    const commentIndex = args.indexOf('--comment');
+    const createdAt = createdAtIndex >= 0 ? args[createdAtIndex + 1] : undefined;
+    const runtimeDir = process.env.SUPPORT_ANALYST_RUNTIME_DIR;
+    if (!dossierId || !rating || !createdAt || !runtimeDir) { console.error('Feedback requires dossierId, rating, --created-at, and SUPPORT_ANALYST_RUNTIME_DIR.'); return 2; }
+    try {
+      const dossiers = new DossierStore(runtimeDir);
+      const feedback = await new FeedbackStore(runtimeDir).append({ dossierId, rating, createdAt, flags: flagsIndex >= 0 && args[flagsIndex + 1] ? args[flagsIndex + 1].split(',') as never[] : [], comment: commentIndex >= 0 ? args[commentIndex + 1] : undefined }, (id) => dossiers.exists(id));
+      console.log(JSON.stringify({ feedbackId: feedback.feedbackId, dossierId: feedback.dossierId, rating: feedback.rating }, null, 2));
+      return 0;
+    } catch (error) { console.error(error instanceof Error ? error.message : 'Unable to record feedback.'); return 1; }
+  }
   console.error('Unsupported command. Use --help.');
   return 2;
 }
@@ -87,4 +119,5 @@ export * from './correlation.js';
 export * from './sources/index.js';
 export * from './sources/pipeline.js';
 export * from './incidents/index.js';
+export * from './dossiers/index.js';
 export type * from './types.js';

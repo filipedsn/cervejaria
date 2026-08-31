@@ -1,0 +1,11 @@
+import type { DeterministicDossier } from './types.js';
+
+export function renderDossierMarkdown(dossier: DeterministicDossier): string {
+  const line = (value: string | undefined): string => escapeMarkdown(value ?? 'não informado');
+  const bullets = (items: readonly string[]): string => items.length ? items.map((item) => `- ${escapeMarkdown(item)}`).join('\n') : '- Nenhum item.';
+  const factById = new Map(dossier.facts.map((fact) => [fact.factId, fact.statement]));
+  return `# Incident ${line(dossier.incidentId)}\n\n## Resumo\n\nForam observadas ${dossier.occurrences} ocorrência(s) classificadas como ${line(dossier.class)} entre ${line(dossier.firstSeen)} e ${line(dossier.lastSeen)}. O incidente está classificado como ${line(dossier.severity)} com confidence ${line(dossier.confidence)}.\n\n## Status técnico\n\n- Status: ${line(dossier.status)}\n- Serviço: ${line(dossier.service)}\n- Rota: ${line(dossier.route)}\n- Releases: ${dossier.releases.length ? dossier.releases.map(line).join(', ') : 'não informadas'}\n\n## Facts\n\n${bullets(dossier.facts.map((fact) => `${fact.type}: ${fact.statement} [${fact.evidenceRefs.length} evidência(s)]`))}\n\n## Evidence\n\n${bullets(dossier.evidence.map((item) => `${item.evidenceId}: ${item.rawRef.index}/${item.rawRef.id}${item.relationLevel ? ` (${item.relationLevel})` : ''}`))}\n\n## Timeline\n\n${bullets(dossier.timeline.map((item) => `${item.timestamp} | ${item.source} | ${item.eventType ?? item.action ?? 'evento técnico'} | ${item.rawRef.index}/${item.rawRef.id}`))}\n\n## Hypotheses\n\n${bullets(dossier.hypotheses.map((item) => `${item.statement} (${item.supportLevel}; facts: ${item.basedOnFactIds.map((id) => factById.get(id) ?? id).join(' | ')})`))}\n\n## Gaps / Unknowns\n\n${bullets(dossier.gaps.map((item) => item.statement))}\n\n## Recommended checks\n\n${bullets(dossier.recommendedChecks.map((item) => item.statement))}\n\n## Provenance\n\n- Schema: ${dossier.schemaVersion}\n- Context hash: ${line(dossier.contextHash)}\n- Generated at: ${line(dossier.generatedAt)}\n- Analyst version: ${line(dossier.analyst.version)}\n- LLM used: false\n`;
+}
+
+/** Prevent external fields from becoming Markdown structure, HTML, or links. */
+export function escapeMarkdown(value: string): string { return value.replace(/[\\`*_{}\[\]<>()#+.!|~-]/g, '\\$&').replace(/[\r\n]/g, ' '); }

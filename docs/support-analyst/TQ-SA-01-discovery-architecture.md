@@ -387,7 +387,7 @@ Tickets pequenos, testáveis e reversíveis após esta discovery:
 | `TQ-SA-03` | **Concluído:** package/processo isolado, config sem fallback privilegiado, `NormalizedEvent` e fixtures DEV sanitizadas. |
 | `TQ-SA-04` | **Concluído:** Sources Elastic DEV read-only com source filter, parser, correlação por IDs e fallback temporal limitado; smoke read-only validado. |
 | `TQ-SA-05` | **Concluído:** grouping/dedupe, estados, classe, severidade/confidence determinísticos e persistência local. |
-| `TQ-SA-06` | Contexto/dossiê determinístico, privacy guard e feedback JSONL. |
+| `TQ-SA-06` | **Concluído:** ContextBuilder limitado, dossiê determinístico/imutável, privacy guard, Markdown e feedback JSONL local. |
 | `TQ-SA-07` | Integração Ollama local opcional: inventário de modelo Gemma real, timeout/fallback, prompt/schema e testes mockados. |
 | `TQ-SA-08` | Replay, baseline de qualidade e relatório de métricas; correção de falsos positivos antes do piloto. |
 | `TQ-SA-HEALTH-01` | Heartbeat, process health, Elastic/LLM health, watchdog externo, `health.json` e status read-only opcional. |

@@ -48,7 +48,7 @@ export class IncidentStore {
   }
 }
 
-export function emptyHealth(): ProcessingHealth { return { schemaVersion: 1, eventsProcessed: 0, eventsRejected: 0, incidentsCreated: 0, incidentsUpdated: 0, processingFailures: 0 }; }
+export function emptyHealth(): ProcessingHealth { return { schemaVersion: 1, eventsProcessed: 0, eventsRejected: 0, incidentsCreated: 0, incidentsUpdated: 0, processingFailures: 0, dossiersGenerated: 0, dossierFailures: 0, feedbackRecorded: 0, feedbackFailures: 0 }; }
 /** Caller-supplied timestamps keep local health deterministic during replay. */
 export function recordProcessingHealth(current: ProcessingHealth, update: { referenceTime: string; eventsProcessed: number; eventsRejected?: number; incidentsCreated?: number; incidentsUpdated?: number; failed?: boolean }): ProcessingHealth {
   return {
@@ -60,8 +60,20 @@ export function recordProcessingHealth(current: ProcessingHealth, update: { refe
     eventsRejected: current.eventsRejected + (update.eventsRejected ?? 0),
     incidentsCreated: current.incidentsCreated + (update.incidentsCreated ?? 0),
     incidentsUpdated: current.incidentsUpdated + (update.incidentsUpdated ?? 0),
-    processingFailures: current.processingFailures + (update.failed ? 1 : 0)
+    processingFailures: current.processingFailures + (update.failed ? 1 : 0),
+    dossiersGenerated: current.dossiersGenerated ?? 0,
+    dossierFailures: current.dossierFailures ?? 0,
+    feedbackRecorded: current.feedbackRecorded ?? 0,
+    feedbackFailures: current.feedbackFailures ?? 0
   };
+}
+/** Counters only: dossier and feedback state remain independent from Incident lifecycle. */
+export function recordDossierHealth(current: ProcessingHealth, update: { dossierGenerated?: boolean; dossierFailed?: boolean; feedbackRecorded?: boolean; feedbackFailed?: boolean }): ProcessingHealth {
+  return { ...current,
+    dossiersGenerated: (current.dossiersGenerated ?? 0) + (update.dossierGenerated ? 1 : 0),
+    dossierFailures: (current.dossierFailures ?? 0) + (update.dossierFailed ? 1 : 0),
+    feedbackRecorded: (current.feedbackRecorded ?? 0) + (update.feedbackRecorded ? 1 : 0),
+    feedbackFailures: (current.feedbackFailures ?? 0) + (update.feedbackFailed ? 1 : 0) };
 }
 function emptyIncidents(): IncidentStoreSnapshot { return { schemaVersion: 1, storeVersion: 1, incidents: [] }; }
 function emptyState(): StateSnapshot { return { schemaVersion: 1, storeVersion: 1, health: emptyHealth() }; }

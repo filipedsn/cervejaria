@@ -130,4 +130,8 @@ export type ProcessingHealth = {
   incidentsCreated: number;
   incidentsUpdated: number;
   processingFailures: number;
+  dossiersGenerated: number;
+  dossierFailures: number;
+  feedbackRecorded: number;
+  feedbackFailures: number;
 };
