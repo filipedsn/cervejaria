@@ -125,3 +125,35 @@ npm.cmd run test:unit --prefix backend
 npm.cmd run build --prefix backend
 npx prisma validate
 ```
+
+### Diagnóstico final e correção (TQ-OBS-02F3)
+
+A configuração efetivamente montada no Collector DEV confirmou o caminho
+`otlp/http -> transform/namespace -> batch -> elasticsearch`. O arquivo
+versionado é montado somente-leitura em `/etc/otelcol-contrib/config.yaml`, que
+também é o argumento de inicialização do container. O processor somente completa
+o namespace; não há filtro, routing alternativo ou descarte de LogRecords.
+
+A causa raiz estava antes do Collector: o bootstrap iniciava o SDK Elastic antes
+de carregar `.env.development`. Sem o opt-in já existente
+`ELASTIC_OTEL_NODE_ENABLE_LOG_SENDING=true`, o SDK aplica
+`disableLogSending: true` ao Pino. Assim, o evento Prisma aparecia no stdout, mas
+não virava LogRecord OTLP. O bootstrap agora carrega as configurações de
+telemetria antes de criar o SDK.
+
+Após a correção, o erro Prisma real com correlation ID
+`c9a4bdb5-8d76-4e8f-8f32-d44c22dd99c8` gerou exatamente um
+`db.connection.failed` / `CONNECTION` em
+`.ds-logs-technical.otel-dev-2026.08.29-000001`. Os contadores do Collector foram
+de 16 para 17 em receiver aceito, processor entrada/saída e exporter enviado;
+recusados e falhas de envio continuaram em zero. Dataset, namespace, serviço e
+ambiente foram preservados: `technical.otel`, `dev`, `quiver-tap-api-dev` e
+`development`.
+
+A busca exata deve usar `attributes.correlationId.keyword`; consultar o campo
+analisado sem `.keyword` gera falso negativo para UUID. O documento não contém
+SQL, parâmetros, URL de conexão, senha ou segredos/PII. O 500 técnico controlado
+com correlation ID `4c445bcb-5b4e-4f7e-a680-3e1e6e3621a8` continuou no mesmo data
+stream (um evento de erro 500 e o log normal de conclusão da requisição). A API
+DEV respondeu saudável em `/api/health`; Collector e PostgreSQL DEV permaneceram
+saudáveis. Nenhuma configuração persistente do Collector precisou mudar.
