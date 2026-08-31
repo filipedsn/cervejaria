@@ -71,7 +71,7 @@ Nenhuma consulta a PROD foi executada. A tabela abaixo combina os contratos vers
 | `quiver-tap-alert-events` | Gatilho: `ruleName`, `alertState`, `reason`, `viewInAppUrl`, `@timestamp`. | Não documentada como ILM neste repositório; validar. | Consumida pelo watcher/poller; não usar como estado mutável do Analyst. |
 | `logs-audit*.otel-prd*` | HTTP e negócio: `event.action/outcome/category`, `http.*`, `cervejaria.*`, ator, `requestId`, `correlationId`, trace/span, `releaseSha`, `service`, `environment`. | Política audit: rollover 14 d ou 30 GB; delete aos 90 d. | Equivalente DEV `logs-audit*.otel-dev*` comprovado com `attributes.*.keyword`. Dataset varia por tenant (`audit_<slug>`). |
 | `logs-technical*.otel-prd*` | Pino/5xx, DB e realtime: severidade, `event`, `category`, `durationMs`, erro sanitizado, `requestId`, `correlationId`, tenant/ator/role, release. | Política logs: rollover 7 d; delete aos 30 d. | Equivalente DEV comprovado; campos Pino chegam como `attributes.*`; `attributes.correlationId.keyword` é confirmado. |
-| `metrics-generic.otel-prd*` | Métricas de aplicação e do Agent: disponibilidade/negócio, event loop e métricas `quiver.*` quando existentes. | Política metrics: rollover 7 d; delete aos 45 d. | Equivalente `metrics-generic.otel-dev*`; só entrar no MVP para health já ligado a alerta. |
+| `metrics-generic.otel-prd*` | Métricas de aplicação e do Agent: disponibilidade/negócio, event loop e métricas `quiver.*` quando existentes. | Política metrics versionada: rollover 7 d; delete aos 45 d. | Equivalente `metrics-generic.otel-dev*`; TQ-SA-02 removeu metrics da role inicial por não ser necessária ao MVP e ter volume muito superior. |
 | `metrics-httpcheckreceiver.otel-infra*` | Saúde permitida de HTTP/TCP/host; útil só como confirmação de alertas de disponibilidade. | Validar a política/alias específico. | Namespace é `infra`, não `prd`; não é requisito inicial se o alerta trouxer a evidência. |
 
 Os campos devem ser lidos com source filtering e com fallback entre a raiz e `attributes.*`, pois o mapeamento OTel expõe os payloads do produtor como atributos. Chaves de alta cardinalidade (`requestId`, `correlationId`, `traceId`, `spanId`, IDs de ator/tenant) servem para busca e ligação, não para agregações ou fingerprint padrão. E-mail, nome, telefone, payload, token, cookie, header authorization, conexão SQL, SQL e bindings não fazem parte do contrato do Analyst/LLM.
@@ -90,9 +90,8 @@ Criar futuramente uma API key própria, por exemplo `quiver-support-analyst-shad
       {
         "names": [
           "quiver-tap-alert-events",
-          "logs-audit*.otel-prd*", ".ds-logs-audit*.otel-prd-*",
-          "logs-technical*.otel-prd*", ".ds-logs-technical*.otel-prd-*",
-          "metrics-generic.otel-prd*", ".ds-metrics-generic.otel-prd-*"
+          "logs-audit*.otel-prd*",
+          "logs-technical*.otel-prd*"
         ],
         "privileges": ["read", "view_index_metadata"]
       }
@@ -101,7 +100,9 @@ Criar futuramente uma API key própria, por exemplo `quiver-support-analyst-shad
 }
 ```
 
-Os nomes de backing index são candidatos a confirmar com `/_resolve/index` no ambiente autorizado; se o alias já resolver sob `read`, não ampliar a lista. `metrics-httpcheckreceiver.otel-infra*` só entra numa revisão explícita quando sua evidência for necessária. Não conceder `monitor`, `manage`, `manage_ilm`, `manage_index_templates`, `write`, `create`, `index`, `delete`, `delete_index`, `all`, permissões de usuário/API key ou acesso a `traces-*`.
+TQ-SA-02 confirmou em DEV que os padrões lógicos resolvem diretamente para data streams; backing indices não precisam entrar na role. Metrics e `metrics-httpcheckreceiver.otel-infra*` ficam fora até uma necessidade comprovada. Não conceder `monitor`, `manage`, `manage_ilm`, `manage_index_templates`, `write`, `create`, `index`, `delete`, `delete_index`, `all`, permissões de usuário/API key ou acesso a `traces-*`.
+
+Nota operacional de TQ-SA-02: no cluster DEV observado, audit e technical estavam `managed=false`; os prazos de retenção desta discovery são configuração versionada, não prova de ILM efetivamente associado. `quiver-tap-alert-events` também não tinha ILM e não expunha campo de ambiente, tornando seu isolamento DEV/PRD uma pendência do onboarding.
 
 O processo só pode usar `/_search`, `/_msearch`, `/_field_caps`/`_mapping` e `/_resolve/index` compatíveis com essas permissões. Não chama `/_cluster/health`: health vem de alertas autorizados e de consultas de métrica limitadas. Antes de provisionar, aplicar field/document-level security, se suportado pelo licenciamento, para negar explicitamente campos livres e PII; source filtering no cliente é obrigatório, mas não substitui controle de acesso.
 
