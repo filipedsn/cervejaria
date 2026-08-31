@@ -331,6 +331,13 @@ not found e conexão; SQL, argumentos e valores não são registrados. Métricas
 continuam indisponíveis sem exporter/polling adicional. Consulte
 `docs/observability/TQ-OBS-02F-prisma-db.md`.
 
+### TQ-OBS-02G
+
+O gap G-07 de release recebeu `releaseSha`, `service` e `environment` no contexto
+central de logs tecnicos e audit. O SHA da release publicada vem do manifesto de
+artefato e e alinhado ao ledger; Prisma e Socket.IO o herdam pelo logger central.
+Consulte `docs/observability/TQ-OBS-02G-release-context.md`.
+
 ## 14. Validação e limites da evidência
 
 Foram inspecionados os produtores e consumidores relevantes, arquivos de configuração do collector/Kibana, regras de alerta, scripts de PROD, schema Prisma e Support Agent. A presença de manifests/regras não comprova que credenciais, collector, data views, regras, canais ou serviços estejam ativos em PROD; essa validação exigiria acesso operacional, explicitamente fora deste ticket.

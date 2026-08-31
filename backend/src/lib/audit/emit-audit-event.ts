@@ -1,6 +1,7 @@
 import { trace } from '@opentelemetry/api';
 import { BRAZIL_TZ, formatBrazilDateTime } from '../event-datetime.js';
 import { logger } from '../logger.js';
+import { getReleaseContext } from '../release-context.js';
 import { emitAuditLogRecord } from './emit-otel-log.js';
 import { redactObject } from './redact.js';
 import {
@@ -44,6 +45,7 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
   const span = trace.getActiveSpan();
   const traceId = span?.spanContext().traceId;
   const spanId = span?.spanContext().spanId;
+  const release = getReleaseContext();
 
   const slugSafe = sanitizeSlugForIndex(slug);
   const payload: Record<string, unknown> = {
@@ -53,6 +55,9 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
     'event.timezone': BRAZIL_TZ,
     'event.local_time': formatBrazilDateTime(),
     message: input.message,
+    releaseSha: release.releaseSha,
+    service: release.service,
+    environment: release.environment,
     'cervejaria.id': ctx.cervejariaId,
     'cervejaria.slug': slug,
     'data_stream.dataset': `audit_${slugSafe}`,

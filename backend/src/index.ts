@@ -3,6 +3,7 @@ import { buildApp, setupSocketIO } from './app.js';
 import { startKibanaAlertPoller, stopKibanaAlertPoller } from './lib/kibana-alert-poller.js';
 import { prisma } from './lib/prisma.js';
 import { registerProcessErrorHandlers } from './lib/process-handlers.js';
+import { getReleaseContext } from './lib/release-context.js';
 
 registerProcessErrorHandlers();
 
@@ -15,7 +16,7 @@ async function main() {
 
   await app.listen({ port: PORT, host: HOST });
 
-  app.log.info(`API rodando em http://${HOST}:${PORT}`);
+  app.log.info({ ...getReleaseContext() }, `API rodando em http://${HOST}:${PORT}`);
   startKibanaAlertPoller(app.log, 'api');
 }
 

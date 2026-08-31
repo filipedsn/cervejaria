@@ -13,6 +13,8 @@ if (-not $paths.NpmCmd -or -not (Test-Path $paths.NpmCmd)) {
 $nodeDir = Split-Path $paths.NpmCmd -Parent
 $env:Path = "$nodeDir;$env:Path"
 $env:NODE_ENV = 'development'
+$env:RELEASE_SHA = 'dev'
+$env:VITE_RELEASE_SHA = 'dev'
 
 . (Join-Path $PSScriptRoot '..\prod\_config.ps1')
 Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment development

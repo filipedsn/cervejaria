@@ -93,6 +93,18 @@ $nodeDir = Split-Path $paths.NodeExe -Parent
 $env:Path = "$nodeDir;$env:Path"
 $env:NODE_ENV = 'production'
 $env:FRONTEND_DIST = $paths.ProdFrontendDist
+# O manifest e o artefato publicado sao a fonte de verdade do processo em execucao.
+# Manifest ausente/corrompido e fail-safe: a API continua com release "unknown".
+$env:RELEASE_SHA = 'unknown'
+if (Test-Path $paths.ProdManifest) {
+  try {
+    $manifest = Get-Content -Path $paths.ProdManifest -Raw -Encoding UTF8 | ConvertFrom-Json
+    $candidate = if ($manifest.gitSha) { ([string]$manifest.gitSha).Trim().ToLowerInvariant() } else { '' }
+    if ($candidate -match '^[a-f0-9]{7,40}$') { $env:RELEASE_SHA = $candidate }
+  } catch {
+    # A telemetria nao bloqueia startup quando metadata de release esta indisponivel.
+  }
+}
 Set-ProdUploadsEnv -Paths $paths
 
 $proc = Start-Process `

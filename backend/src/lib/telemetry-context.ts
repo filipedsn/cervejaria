@@ -3,6 +3,7 @@ import type { FastifyRequest } from 'fastify';
 import { trace } from '@opentelemetry/api';
 import type { JwtPayload } from '../types/auth.js';
 import { isClienteSessionPayload, CLIENTE_COOKIE_NAME } from '../types/cliente-session.js';
+import { getReleaseContext } from './release-context.js';
 
 export type AuditActorType = 'usuario' | 'cliente' | 'system' | 'anonymous';
 
@@ -181,7 +182,11 @@ export function applyTelemetryContext(ctx: TelemetryContext): void {
   const span = trace.getActiveSpan();
   if (!span) return;
 
+  const release = getReleaseContext();
   const dataset = logsIndexDataset(ctx.slug);
+  span.setAttribute('releaseSha', release.releaseSha);
+  span.setAttribute('service.name', release.service);
+  span.setAttribute('deployment.environment.name', release.environment);
   if (ctx.requestId) span.setAttribute('request.id', ctx.requestId);
   if (ctx.correlationId) span.setAttribute('correlation.id', ctx.correlationId);
   span.setAttribute('cervejaria.id', ctx.cervejariaId ?? '');

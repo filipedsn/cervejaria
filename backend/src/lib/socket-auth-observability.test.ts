@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { realtimeEvent } from './socket-auth.js';
+import { createLoggerForDestination } from './logger.js';
 
 test('emite contexto realtime seguro e preserva correlation ID válido', () => {
   const records: unknown[] = [];
@@ -12,6 +13,21 @@ test('emite contexto realtime seguro e preserva correlation ID válido', () => {
   });
   assert.equal(JSON.stringify(records[0]).includes('token'), false);
   assert.equal(JSON.stringify(records[0]).includes('cookie'), false);
+});
+
+test('realtime events inherit release context from the central logger', () => {
+  const lines: string[] = [];
+  const log = createLoggerForDestination({ write: (line: string) => lines.push(line) });
+  const app = { log };
+  const socket = { id: 'socket-release', handshake: { headers: {} } };
+
+  realtimeEvent(app as never, socket as never, 'realtime.room.joined', { actorType: 'staff' });
+
+  const event = JSON.parse(lines[0] ?? '{}') as Record<string, unknown>;
+  assert.equal(event.event, 'realtime.room.joined');
+  assert.equal(event.releaseSha, 'dev');
+  assert.equal(event.service, 'quiver-tap-api');
+  assert.equal(event.environment, 'development');
 });
 
 test('falha de telemetria realtime é fail-open', () => {

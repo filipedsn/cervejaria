@@ -30,4 +30,7 @@ test('audit herda requestId e correlationId do contexto da requisição', () => 
 
   assert.equal(payload.requestId, 'req-123');
   assert.equal(payload.correlationId, suppliedId);
+  assert.equal(payload.releaseSha, 'dev');
+  assert.equal(payload.service, 'quiver-tap-api');
+  assert.equal(payload.environment, 'development');
 });

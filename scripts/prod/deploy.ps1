@@ -537,6 +537,10 @@ function Stop-ProductionDatabaseConsumers {
 function Invoke-DeployBody {
   Initialize-DeployRecoveryContext
   Initialize-ReleaseLedgerContext
+  # Uma unica resolucao por deploy alimenta frontend, backend, manifest e ledger.
+  # Nenhum processo de runtime executa git para descobrir a release.
+  $env:RELEASE_SHA = $script:ledgerCandidateSha
+  $env:VITE_RELEASE_SHA = $script:ledgerCandidateSha
   Merge-StrayProdUploads -Paths $paths
 
   if ($plan.Backup) {
@@ -610,7 +614,7 @@ function Invoke-DeployBody {
       $script:swapCompletedAt = (Get-Date).ToUniversalTime().ToString('o')
       $script:databaseTransitionPhase = 'SWAP_COMPLETED'
     }
-    Write-ProdManifest -Paths $paths -DeployMeta @{
+    Write-ProdManifest -Paths $paths -GitSha $script:ledgerCandidateSha -DeployMeta @{
       frontendOnly = [bool]$FrontendOnly
       backendOnly  = [bool]$BackendOnly
       skipBackup   = [bool]$SkipBackup

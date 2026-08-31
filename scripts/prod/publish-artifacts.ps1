@@ -318,6 +318,7 @@ function Publish-ProdArtifactsSwap {
 function Write-ProdManifest {
   param(
     [hashtable]$Paths,
+    [string]$GitSha,
     [hashtable]$DeployMeta
   )
 
@@ -333,7 +334,7 @@ function Write-ProdManifest {
 
   $manifest = [ordered]@{
     deployedAt = (Get-Date).ToUniversalTime().ToString('o')
-    gitSha     = Get-GitSha -ProjectRoot $Paths.ProjectRoot
+    gitSha     = if ($GitSha) { $GitSha } else { Get-GitSha -ProjectRoot $Paths.ProjectRoot }
     frontend   = [ordered]@{
       indexHtml = if (Test-Path (Join-Path $Paths.ProdFrontendDist 'index.html')) {
         (Get-FileHash -Path (Join-Path $Paths.ProdFrontendDist 'index.html') -Algorithm SHA256).Hash.ToLowerInvariant()

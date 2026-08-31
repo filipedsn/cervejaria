@@ -144,6 +144,7 @@ test('sinal de banco preserva request, correlação e contexto seguro', async ()
   assert.equal(event.cervejariaId, 'brewery-42');
   assert.equal(event.userId, 'user-42');
   assert.equal(event.role, 'DONO');
+  assert.equal(event.releaseSha, 'dev');
 });
 
 test('falha do logger é fail-open para operação e erro de banco', async () => {

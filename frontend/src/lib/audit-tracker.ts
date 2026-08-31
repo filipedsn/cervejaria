@@ -1,4 +1,5 @@
 import { CORRELATION_ID_HEADER, createCorrelationId } from './correlation-id';
+import { frontendReleaseSha } from './release-context';
 
 const API_BASE = import.meta.env?.VITE_API_URL ?? '';
 
@@ -116,6 +117,7 @@ function scheduleFlush(): void {
 function enqueue(event: UiEvent): void {
   queue.push({
     ...event,
+    meta: { frontendReleaseSha, ...event.meta },
     timestamp: event.timestamp ?? new Date().toISOString(),
   });
   if (queue.length >= 20) {

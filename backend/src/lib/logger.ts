@@ -1,6 +1,7 @@
 import pino from 'pino';
 
 import { getTelemetryContext } from './telemetry-context.js';
+import { getReleaseContext, type ReleaseContext } from './release-context.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 const REDACTED = '[REDACTED]';
@@ -55,7 +56,7 @@ export function redactLogValue(value: unknown, key?: string, depth = 0): unknown
   return out;
 }
 
-function buildPinoLogger(destination?: pino.DestinationStream): pino.Logger {
+function buildPinoLogger(destination?: pino.DestinationStream, release = getReleaseContext()): pino.Logger {
   return pino({
     level: process.env.LOG_LEVEL ?? (isProd ? 'info' : 'debug'),
     redact: { paths: redactPaths, censor: REDACTED },
@@ -67,8 +68,9 @@ function buildPinoLogger(destination?: pino.DestinationStream): pino.Logger {
     mixin() {
       const ctx = getTelemetryContext();
       return {
-        service: process.env.OTEL_SERVICE_NAME ?? 'quiver-tap-api',
-        environment: process.env.NODE_ENV ?? 'development',
+        releaseSha: release.releaseSha,
+        service: release.service,
+        environment: release.environment,
         'data_stream.dataset': 'technical',
         'data_stream.namespace': ctx?.env ?? (isProd ? 'prd' : 'dev'),
         ...(ctx
@@ -98,8 +100,11 @@ export function createLogger(): pino.Logger {
 }
 
 /** Test-only factory that leaves the production singleton and its stdout destination untouched. */
-export function createLoggerForDestination(destination: pino.DestinationStream): pino.Logger {
-  return buildPinoLogger(destination);
+export function createLoggerForDestination(
+  destination: pino.DestinationStream,
+  release?: ReleaseContext,
+): pino.Logger {
+  return buildPinoLogger(destination, release);
 }
 
 export const logger: pino.Logger = new Proxy({} as pino.Logger, {
