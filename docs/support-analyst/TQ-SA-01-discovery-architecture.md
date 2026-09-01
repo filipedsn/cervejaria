@@ -390,7 +390,7 @@ Tickets pequenos, testáveis e reversíveis após esta discovery:
 | `TQ-SA-06` | **Concluído:** ContextBuilder limitado, dossiê determinístico/imutável, privacy guard, Markdown e feedback JSONL local. |
 | `TQ-SA-07A` | **CLOSED / BENCHMARK COMPLETE:** inventário Ollama/GPU, candidatos locais, prompt/schema, validação offline e benchmark sanitizado; não integra LLM ao Analyst. |
 | `TQ-SA-07A-HR` | **CLOSED / GEMMA SELECTED:** revisão humana registrada; `gemma4:12b` selecionado para o MVP de SA-07B e Qwen mantido como fallback aprovado. |
-| `TQ-SA-07B` | **RELEASED (handoff):** LocalLlmAnalyzer opcional com Gemma 4 12B, validator/fallback e interaction recording; implementação deliberadamente não iniciada neste ticket e sem poder sobre decisões determinísticas. |
+| `TQ-SA-07B` | **CLOSED:** LocalLlmAnalyzer opcional com Gemma 4 12B, validator/fallback, enrichment separado e interaction recording; sem poder sobre decisões determinísticas. |
 | `TQ-SA-08` | Replay, baseline de qualidade e relatório de métricas; correção de falsos positivos antes do piloto. |
 | `TQ-SA-HEALTH-01` | Heartbeat, process health, Elastic/LLM health, watchdog externo, `health.json` e status read-only opcional. |
 | `TQ-SA-09` | Piloto shadow sem saída externa, runbook e avaliação humana periódica. |

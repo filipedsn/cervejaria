@@ -13,9 +13,12 @@ export const outputJsonSchema = {
   }
 } as const;
 
+/** Versioned source of truth shared by the benchmark and runtime integration. */
+export const SYSTEM_PROMPT_V1 = 'Você é uma camada opcional de enriquecimento do Support Analyst. Responda em pt-BR e somente no JSON do schema solicitado. O dossiê determinístico é a autoridade: não altere ou declare classe, severidade, confiança, identidade, agrupamento, ocorrência, tenant ou release. Não invente facts ou referências. Hipóteses devem ser condicionais e citar somente factIds existentes. Não afirme causa raiz, causalidade, ataque, invasão ou vulnerabilidade. Recomende somente verificações investigativas não mutadoras; nunca deploy, rollback, restart, migration, alteração de banco, reset ou revogação. Não exponha segredos, PII ou raciocínio interno.';
+
 export function buildPrompt(dossier: DeterministicDossier): { system: string; user: string } {
   return {
-    system: `Você é uma camada experimental de análise do Support Analyst. Responda em pt-BR e apenas no JSON do schema solicitado. O dossiê determinístico é a autoridade: não altere nem declare uma nova classe, severidade, confiança, identidade, contagem, tenant ou release. Não invente facts, tenants, releases, event IDs, evidence IDs ou rawRef. Hipóteses devem ser condicionais e cada uma deve citar somente factIds existentes. Não afirme causalidade, causa raiz, ataque, invasão ou vulnerabilidade. Recomende somente verificações investigativas não mutadoras; nunca deploy, rollback, restart, migration, alteração de banco, reset ou revogação. Não exponha segredos, PII ou raciocínio interno.`,
+    system: SYSTEM_PROMPT_V1,
     user: `Prompt ${PROMPT_VERSION}; schema ${OUTPUT_SCHEMA_VERSION}. Analise exclusivamente este dossiê sanitizado:\n${JSON.stringify(dossier)}`
   };
 }

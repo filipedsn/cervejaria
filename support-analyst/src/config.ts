@@ -7,6 +7,15 @@ export type AnalystConfig = {
   runtimeDir?: string;
 };
 
+export type LocalLlmConfig = {
+  enabled: boolean;
+  endpoint: string;
+  model: string;
+  timeoutMs: number;
+  numCtx: number;
+  keepAlive: string;
+};
+
 export type ConfigResult =
   | { ok: true; config: AnalystConfig }
   | { ok: false; reason: string };
@@ -67,4 +76,26 @@ export function requireRuntimeElasticsearchConfig(config: AnalystConfig, env: En
     return { ok: false, reason: 'PRD access is not enabled for TQ-SA-04.' };
   }
   return { ok: true, config };
+}
+
+/** Configuration deliberately separate from Elasticsearch and legacy Agent settings. */
+export function readLocalLlmConfig(env: Env): { ok: true; config: LocalLlmConfig } | { ok: false; reason: string } {
+  const enabledValue = env.SUPPORT_ANALYST_LLM_ENABLED ?? 'false';
+  if (enabledValue !== 'true' && enabledValue !== 'false') return { ok: false, reason: 'SUPPORT_ANALYST_LLM_ENABLED must be true or false' };
+  const endpoint = env.SUPPORT_ANALYST_LLM_ENDPOINT ?? 'http://127.0.0.1:11434';
+  try {
+    const url = new URL(endpoint);
+    if (url.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) return { ok: false, reason: 'SUPPORT_ANALYST_LLM_ENDPOINT must be an HTTP loopback URL' };
+  } catch { return { ok: false, reason: 'SUPPORT_ANALYST_LLM_ENDPOINT must be an HTTP loopback URL' }; }
+  const number = (name: string, fallback: number): number | undefined => {
+    const value = env[name]; if (value === undefined) return fallback;
+    const parsed = Number(value); return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+  };
+  const timeoutMs = number('SUPPORT_ANALYST_LLM_TIMEOUT_MS', 60_000);
+  const numCtx = number('SUPPORT_ANALYST_LLM_NUM_CTX', 8192);
+  if (!timeoutMs) return { ok: false, reason: 'SUPPORT_ANALYST_LLM_TIMEOUT_MS must be a positive integer' };
+  if (!numCtx) return { ok: false, reason: 'SUPPORT_ANALYST_LLM_NUM_CTX must be a positive integer' };
+  const model = env.SUPPORT_ANALYST_LLM_MODEL ?? 'gemma4:12b';
+  if (!model.trim()) return { ok: false, reason: 'SUPPORT_ANALYST_LLM_MODEL must not be empty' };
+  return { ok: true, config: { enabled: enabledValue === 'true', endpoint, model, timeoutMs, numCtx, keepAlive: '5m' } };
 }

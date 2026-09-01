@@ -120,4 +120,5 @@ export * from './sources/index.js';
 export * from './sources/pipeline.js';
 export * from './incidents/index.js';
 export * from './dossiers/index.js';
+export * from './local-llm/index.js';
 export type * from './types.js';

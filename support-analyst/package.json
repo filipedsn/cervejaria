@@ -11,11 +11,14 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "validate": "npm run typecheck && npm run test && npm run build",
+    "analyst:validate": "npm run validate",
     "dev-smoke": "tsx src/index.ts --dev-smoke",
     "incident-replay": "tsx src/index.ts --incident-replay",
     "dossier-replay": "tsx src/index.ts --dossier-replay",
     "feedback": "tsx src/index.ts --feedback",
     "analyst:llm-benchmark": "tsx src/llm-benchmark/cli.ts",
+    "analyst:llm-smoke": "tsx src/local-llm/cli.ts --smoke",
+    "analyst:llm-status": "tsx src/local-llm/cli.ts --status",
     "start": "node dist/index.js"
   },
   "devDependencies": {
