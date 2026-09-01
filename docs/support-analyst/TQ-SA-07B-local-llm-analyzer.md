@@ -36,4 +36,12 @@ Append-only interaction records live at `SUPPORT_ANALYST_RUNTIME_DIR/llm/interac
 
 `npm run analyst:llm-status` is a read-only loopback availability check. `SUPPORT_ANALYST_LLM_ENABLED=true SUPPORT_ANALYST_RUNTIME_DIR=<local-dir> npm run analyst:llm-smoke` uses only the synthetic `DATABASE_FAILURE` fixture, validates and records it; it never calls Elastic or production. Ollama offline, a missing model, timeout, invalid response, guardrail block, input rejection, or recorder/enrichment failure returns explicit `FALLBACK` and leaves deterministic authority intact.
 
+PowerShell:
+
+```powershell
+$env:SUPPORT_ANALYST_LLM_ENABLED = "true"
+$env:SUPPORT_ANALYST_RUNTIME_DIR = "<local-dir>"
+npm run analyst:llm-smoke
+```
+
 SA-08 remains the next task: replay, quality baseline and A/B comparison of deterministic output versus Gemma. It may refine model settings or validator evidence policy, but is not started here.
