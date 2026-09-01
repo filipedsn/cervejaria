@@ -51,3 +51,17 @@ test('benchmark records parsed metrics and never persists unsafe output or think
     assert.doesNotMatch(persisted, /Authorization|Bearer/i);
   } finally { await rm(runtime, { recursive: true, force: true }); }
 });
+
+test('benchmark fixture sanity keeps scenario names aligned with deterministic dossier classes', () => {
+  const expected = new Map([
+    ['DATABASE_FAILURE', 'DATABASE_FAILURE'], ['DATABASE_SLOW', 'DATABASE_SLOW'],
+    ['APPLICATION_ERROR', 'APPLICATION_ERROR'], ['AUTH_FAILURE', 'AUTH_FAILURE'],
+    ['UNKNOWN', 'UNKNOWN']
+  ]);
+  for (const scenario of buildSyntheticScenarios()) {
+    const expectedClass = expected.get(scenario.name);
+    if (expectedClass) assert.equal(scenario.dossier.class, expectedClass, `${scenario.name} fixture drifted`);
+    assert.equal(scenario.dossier.schemaVersion, 1);
+    assert.ok(scenario.dossier.contextHash.startsWith('ctx1:'));
+  }
+});

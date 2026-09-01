@@ -4,7 +4,7 @@
 
 This is an experimental local-only bake-off. The deterministic dossier remains the authority for incident class, severity, confidence, facts, evidence, correlation and grouping. No `LocalLlmAnalyzer` is implemented by this ticket, no production/Elastic/database service was contacted, and no model response becomes part of a dossier.
 
-Status: **BENCHMARK COMPLETE — human review required before TQ-SA-07B.**
+Status: **CLOSED / BENCHMARK COMPLETE — human review recorded; Gemma selected for the SA-07B MVP.**
 
 ## Machine and Ollama inventory
 
@@ -79,8 +79,22 @@ The generated, compact side-by-side samples for `DATABASE_FAILURE`, `AUTH_FAILUR
 2. **Qwen 3.5 9B.** Strongest throughput and lowest VRAM, but repeated causal-language flags are a material factual-fidelity concern.
 3. **Phi-4 14B.** Full GPU operation and clean completed outputs, but operationally unsuitable in this configuration because of systematic timeout rate and highest VRAM use.
 
-This is not a final winner: a fourth model was not tested, no cloud model was used, and TQ-SA-07B is **not released**. The next action is human review of the generated samples and flags, especially Qwen/Gemma language fidelity and Phi timeout behavior.
+This is a selected MVP candidate, not an authorization to implement or deploy it. A fourth model was not tested and no cloud model was used. TQ-SA-07B is released as an implementation handoff only; its code, daemon, automatic call and dossier integration are intentionally not present in this ticket.
+
+## Human review record (TQ-SA-07A-HR)
+
+Decision: `SELECTED_LOCAL_LLM=gemma4:12b` (`4eb23ef187e2…`, `Q4_K_M`). Qwen remains the `approved fallback candidate`; Phi is `not selected for MVP` because of operational timeout rate, not because of a general quality judgment.
+
+Reviewed Gemma flags:
+
+- `TRUNCATED_CONTEXT`, execution 1, `CAUSAL_LANGUAGE`: `TRUE_POSITIVE` — inferred stable/normal operation without sufficient evidence.
+- `TRUNCATED_CONTEXT`, execution 2, `CAUSAL_LANGUAGE`: `TRUE_POSITIVE` — inferred heartbeat/telemetry behavior without sufficient evidence.
+- `MULTIPLE_RELEASES`, `UNSUPPORTED_REFERENCE`: `BORDERLINE` — the timeline contained multiple releases, but the reference exceeded the validator contract. Guardrails remain unchanged.
+
+Required SA-07B guardrails: Gemma cannot decide or alter class, severity, confidence, correlation, grouping, fingerprint, facts or evidence. Every output must pass the deterministic validator. `AUTHORITY_VIOLATION`, `PRIVACY_VIOLATION`, remediation violation, invalid schema or malformed JSON discard enrichment. `CAUSAL_LANGUAGE` and `UNSUPPORTED_REFERENCE` also prevent automatic dossier entry and trigger deterministic fallback; unsafe text is never silently repaired.
+
+The diagnostic run `llm-benchmark-2026-08-31T23-19-41-422Z-e33a57ef` is excluded from comparative scoring: it ran Gemma only, used pre-sanity fixtures (`DATABASE_SLOW` and `AUTH_FAILURE` class drift), and was captured while the harness/validator was being stabilized. The valid qualification run is `llm-benchmark-2026-08-31T23-33-33-988Z-019ee48f`; the valid stress run is `llm-benchmark-2026-08-31T23-39-49-439Z-07dcc616`.
 
 ## Implementation verification
 
-The harness is isolated in `support-analyst/src/llm-benchmark/`; it does not alter the Analyst core or production workflow. Offline tests cover loopback-only enforcement, malformed/schema-invalid output, unknown fact IDs, authority/causal/vulnerability/remediation/privacy flags, metrics, unsafe output non-persistence and thinking non-persistence. CI never calls Ollama or downloads models.
+The harness is isolated in `support-analyst/src/llm-benchmark/`; it does not alter the Analyst core or production workflow. Offline tests cover loopback-only enforcement, malformed/schema-invalid output, unknown fact IDs, authority/causal/vulnerability/remediation/privacy flags, metrics, unsafe output non-persistence, thinking non-persistence and fixture/class sanity. CI never calls Ollama or downloads models.
