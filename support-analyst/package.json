@@ -15,6 +15,7 @@
     "incident-replay": "tsx src/index.ts --incident-replay",
     "dossier-replay": "tsx src/index.ts --dossier-replay",
     "feedback": "tsx src/index.ts --feedback",
+    "analyst:llm-benchmark": "tsx src/llm-benchmark/cli.ts",
     "start": "node dist/index.js"
   },
   "devDependencies": {
