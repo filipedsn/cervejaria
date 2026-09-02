@@ -22,7 +22,10 @@ export function useQuiosqueCozinha() {
   });
 
   const naFila = useMemo(
-    () => (query.data ?? []).filter((pedido) => pedido.status !== 'ENTREGUE'),
+    () =>
+      (query.data ?? []).filter(
+        (pedido) => pedido.status !== 'ENTREGUE' && pedido.status !== 'CANCELADO',
+      ),
     [query.data],
   );
   const entregues = useMemo(

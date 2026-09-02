@@ -2,13 +2,19 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
+import { Modal } from '../../components/Modal';
 import { CozinhaPedidoCard } from '../../components/quiosque/CozinhaPedidoCard';
 import { IconBell } from '../../components/NavIcons';
+import { useAuth } from '../../contexts/AuthContext';
 import { useQuiosqueCozinha } from '../../hooks/useQuiosqueCozinha';
+import { rotuloComanda, type PedidoCozinha } from '../../lib/quiosque';
 
 export function QuiosqueCozinhaPage() {
   const [verEntregues, setVerEntregues] = useState(false);
   const [erroLocal, setErroLocal] = useState('');
+  const [sucessoLocal, setSucessoLocal] = useState('');
+  const [pedidoParaCancelar, setPedidoParaCancelar] = useState<PedidoCozinha | null>(null);
+  const { isDono } = useAuth();
 
   const { naFila, entregues, alerta, mudarStatus, isLoading, erroMutation } = useQuiosqueCozinha();
 
@@ -16,6 +22,24 @@ export function QuiosqueCozinhaPage() {
 
   const lista = verEntregues ? entregues : naFila;
   const erro = erroLocal || erroMutation;
+
+  const confirmarCancelamento = () => {
+    if (!pedidoParaCancelar || mudarStatus.isPending) return;
+    setErroLocal('');
+    setSucessoLocal('');
+    mudarStatus.mutate(
+      { id: pedidoParaCancelar.id, status: 'CANCELADO' },
+      {
+        onSuccess: () => {
+          setPedidoParaCancelar(null);
+          setSucessoLocal('Pedido cancelado e removido da fila.');
+        },
+        onError: (error) => {
+          setErroLocal(error instanceof Error ? error.message : 'Não foi possível cancelar o pedido');
+        },
+      },
+    );
+  };
 
   return (
     <div className="space-y-3 pb-2">
@@ -76,6 +100,7 @@ export function QuiosqueCozinhaPage() {
       )}
 
       {erro && <div className="alert-error">{erro}</div>}
+      {sucessoLocal && <div className="alert-success">{sucessoLocal}</div>}
 
       {lista.length === 0 && (
         <EmptyState
@@ -93,6 +118,7 @@ export function QuiosqueCozinhaPage() {
           disabled={mudarStatus.isPending}
           onAvancar={(status) => {
             setErroLocal('');
+            setSucessoLocal('');
             mudarStatus.mutate(
               { id: pedido.id, status },
               { onError: () => setErroLocal('Não foi possível atualizar o pedido') },
@@ -100,13 +126,70 @@ export function QuiosqueCozinhaPage() {
           }}
           onVoltar={(status) => {
             setErroLocal('');
+            setSucessoLocal('');
             mudarStatus.mutate(
               { id: pedido.id, status },
               { onError: () => setErroLocal('Não foi possível atualizar o pedido') },
             );
           }}
+          podeCancelar={isDono}
+          onCancelar={() => {
+            setErroLocal('');
+            setSucessoLocal('');
+            setPedidoParaCancelar(pedido);
+          }}
         />
       ))}
+
+      <Modal
+        open={pedidoParaCancelar !== null}
+        onClose={() => {
+          if (!mudarStatus.isPending) setPedidoParaCancelar(null);
+        }}
+        closeOnBackdrop={!mudarStatus.isPending}
+        title="Cancelar pedido da cozinha"
+        footer={
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              className="touch-btn-ghost w-full min-h-14"
+              disabled={mudarStatus.isPending}
+              onClick={() => setPedidoParaCancelar(null)}
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              className="touch-btn-danger w-full min-h-14"
+              disabled={mudarStatus.isPending}
+              data-audit="quiosque-cozinha-confirmar-cancelamento"
+              onClick={confirmarCancelamento}
+            >
+              {mudarStatus.isPending ? 'Cancelando...' : 'Cancelar pedido'}
+            </button>
+          </div>
+        }
+      >
+        {pedidoParaCancelar && (
+          <div className="space-y-3">
+            <p>
+              Você está cancelando o pedido da {rotuloComanda(pedidoParaCancelar.comanda)} (senha{' '}
+              {pedidoParaCancelar.numero}), atualmente em{' '}
+              {pedidoParaCancelar.status === 'RECEBIDO' ? 'fila' : 'preparo'}.
+            </p>
+            <ul className="rounded-xl bg-surface-lighter p-3 text-sm space-y-1">
+              {pedidoParaCancelar.itens.map((item) => (
+                <li key={item.id}>
+                  {item.quantidade}× {item.nome}
+                </li>
+              ))}
+            </ul>
+            <p className="text-sm text-ink-muted">
+              Os itens cancelados deixam de compor o total da comanda aberta e o pedido sai da fila.
+            </p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -70,7 +70,7 @@ test.describe('Quiosque — fila da cozinha e cancelamento', () => {
     await expect(card.getByRole('button', { name: 'Pronto' })).toBeVisible();
   });
 
-  test('ATENDENTE não cancela pedido em preparo', async () => {
+  test('ATENDENTE não consegue cancelar pedido em preparo', async () => {
     const slug = CREDENTIALS.quiosqueCozinha.email.replace('-dono@qa.test', '');
     const atendenteCookie = await apiLogin(`${slug}-a1@qa.test`, CREDENTIALS.quiosqueCozinha.password);
 
@@ -81,16 +81,17 @@ test.describe('Quiosque — fila da cozinha e cancelamento', () => {
     expect(r.status, 'cancelamento é exclusivo do DONO').toBe(403);
   });
 
-  test('DONO cancela pedido em preparo e ele sai da fila', async ({ page }) => {
-    // A tela da cozinha não expõe cancelamento hoje: o DONO cancela pela API e
-    // a fila precisa refletir a saída do pedido.
-    const cancelar = await apiRequest('PATCH', `/api/quiosque/cozinha/${pedidoId}/status`, {
-      cookie: donoCookie,
-      body: { status: 'CANCELADO' },
-    });
-    expect(cancelar.status).toBe(200);
-
+  test('DONO cancela pedido em preparo pela interface e ele sai da fila', async ({ page }) => {
     await page.goto('/quiosque/cozinha');
+    const card = page.locator('article').filter({ hasText: `Mesa ${identificador}` });
+    await card.getByRole('button', { name: 'Cancelar pedido' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Cancelar pedido da cozinha' });
+    await expect(dialog).toContainText(`Mesa ${identificador}`);
+    await expect(dialog).toContainText('atualmente em preparo');
+    await dialog.getByRole('button', { name: 'Cancelar pedido', exact: true }).click();
+
+    await expect(page.getByText('Pedido cancelado e removido da fila.')).toBeVisible();
     await expect(page.locator('article').filter({ hasText: `Mesa ${identificador}` })).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Entregues' }).click();

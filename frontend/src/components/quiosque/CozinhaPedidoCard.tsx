@@ -13,6 +13,8 @@ export const VOLTA_COZINHA: Partial<Record<StatusPedido, StatusPedido>> = {
   ENTREGUE: 'PRONTO',
 };
 
+const STATUS_CANCELAVEIS: StatusPedido[] = ['RECEBIDO', 'EM_PREPARO'];
+
 const BADGE: Record<string, { classe: string; label: string; tvClasse: string }> = {
   RECEBIDO: { classe: 'badge-open', label: 'Na fila', tvClasse: 'cozinha-tv-card--recebido' },
   EM_PREPARO: { classe: 'badge-warning', label: 'Preparando', tvClasse: 'cozinha-tv-card--preparo' },
@@ -28,6 +30,8 @@ interface Props {
   disabled?: boolean;
   onAvancar: (status: StatusPedido) => void;
   onVoltar?: (status: StatusPedido) => void;
+  podeCancelar?: boolean;
+  onCancelar?: () => void;
 }
 
 export function CozinhaPedidoCard({
@@ -38,6 +42,8 @@ export function CozinhaPedidoCard({
   disabled,
   onAvancar,
   onVoltar,
+  podeCancelar = false,
+  onCancelar,
 }: Props) {
   const avanco = AVANCO_COZINHA[pedido.status];
   const volta = VOLTA_COZINHA[pedido.status];
@@ -145,7 +151,7 @@ export function CozinhaPedidoCard({
 
       {pedido.observacao && <p className="text-xs text-ink-muted">Obs: {pedido.observacao}</p>}
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {avanco && (
           <button
             type="button"
@@ -164,6 +170,17 @@ export function CozinhaPedidoCard({
             onClick={() => onVoltar(volta)}
           >
             Voltar
+          </button>
+        )}
+        {podeCancelar && STATUS_CANCELAVEIS.includes(pedido.status) && onCancelar && (
+          <button
+            type="button"
+            className="touch-btn-danger touch-btn-sm"
+            disabled={disabled}
+            data-audit="quiosque-cozinha-cancelar"
+            onClick={onCancelar}
+          >
+            Cancelar pedido
           </button>
         )}
       </div>
