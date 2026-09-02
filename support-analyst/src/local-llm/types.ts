@@ -22,5 +22,5 @@ export type LlmInteraction = {
   validationStatus: LlmValidationStatus | 'DISABLED'; validationFlags: LlmValidationStatus[]; llmStatus: 'DISABLED' | 'OK' | 'TIMEOUT' | 'UNAVAILABLE' | 'MODEL_UNAVAILABLE' | 'INVALID'; inputTruncated: boolean; enrichmentId?: string;
   input?: unknown; output?: LlmAnalysis;
 };
-export type LocalLlmDependencies = { fetchImpl?: typeof fetch; now?: () => Date; record?: (interaction: LlmInteraction) => Promise<void>; saveEnrichment?: (value: LlmEnrichment) => Promise<void> };
+export type LocalLlmDependencies = { fetchImpl?: typeof fetch; now?: () => Date; record?: (interaction: LlmInteraction) => Promise<void>; saveEnrichment?: (value: LlmEnrichment) => Promise<void>; healthObserver?: { attempt(): void; result(value: { success?: boolean; reachable?: boolean; modelAvailable?: boolean; timeout?: boolean; fallback?: boolean; invalid?: boolean; guardrailBlock?: boolean }): void } };
 export type AnalyzeRequest = { dossier: DeterministicDossier; generatedAt: string };

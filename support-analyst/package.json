@@ -21,6 +21,10 @@
     "analyst:llm-status": "tsx src/local-llm/cli.ts --status",
     "analyst:quality-run": "tsx src/quality/cli.ts --run",
     "analyst:quality-summary": "tsx src/quality/cli.ts --summary",
+    "analyst:health-status": "tsx src/health/cli.ts",
+    "analyst:health-check": "tsx src/health/cli.ts",
+    "analyst:health-json": "tsx src/health/cli.ts --json",
+    "analyst:health-smoke": "tsx src/health/smoke.ts",
     "start": "node dist/index.js"
   },
   "devDependencies": {

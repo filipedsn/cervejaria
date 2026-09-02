@@ -16,6 +16,14 @@ export type LocalLlmConfig = {
   keepAlive: string;
 };
 
+export type HealthConfig = {
+  enabled: boolean;
+  heartbeatIntervalMs: number;
+  heartbeatStaleMs: number;
+  snapshotStaleMs: number;
+  processingStaleMs: number;
+};
+
 export type ConfigResult =
   | { ok: true; config: AnalystConfig }
   | { ok: false; reason: string };
@@ -98,4 +106,21 @@ export function readLocalLlmConfig(env: Env): { ok: true; config: LocalLlmConfig
   const model = env.SUPPORT_ANALYST_LLM_MODEL ?? 'gemma4:12b';
   if (!model.trim()) return { ok: false, reason: 'SUPPORT_ANALYST_LLM_MODEL must not be empty' };
   return { ok: true, config: { enabled: enabledValue === 'true', endpoint, model, timeoutMs, numCtx, keepAlive: '5m' } };
+}
+
+/** File-only operational health settings; deliberately independent from ES and LLM settings. */
+export function readHealthConfig(env: Env): { ok: true; config: HealthConfig } | { ok: false; reason: string } {
+  const enabled = env.SUPPORT_ANALYST_HEALTH_ENABLED ?? 'true';
+  if (enabled !== 'true' && enabled !== 'false') return { ok: false, reason: 'SUPPORT_ANALYST_HEALTH_ENABLED must be true or false' };
+  const positive = (name: string, fallback: number): number | undefined => {
+    const raw = env[name]; if (raw === undefined) return fallback;
+    const value = Number(raw); return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  };
+  const heartbeatIntervalMs = positive('SUPPORT_ANALYST_HEARTBEAT_INTERVAL_MS', 30_000);
+  const heartbeatStaleMs = positive('SUPPORT_ANALYST_HEARTBEAT_STALE_MS', 90_000);
+  const snapshotStaleMs = positive('SUPPORT_ANALYST_HEALTH_STALE_MS', 120_000);
+  const processingStaleMs = positive('SUPPORT_ANALYST_PROCESSING_STALE_MS', 300_000);
+  if (!heartbeatIntervalMs || !heartbeatStaleMs || !snapshotStaleMs || !processingStaleMs) return { ok: false, reason: 'health intervals must be positive integers' };
+  if (heartbeatStaleMs < heartbeatIntervalMs) return { ok: false, reason: 'SUPPORT_ANALYST_HEARTBEAT_STALE_MS must be at least the heartbeat interval' };
+  return { ok: true, config: { enabled: enabled === 'true', heartbeatIntervalMs, heartbeatStaleMs, snapshotStaleMs, processingStaleMs } };
 }

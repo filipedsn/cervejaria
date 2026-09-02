@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import { readAnalystConfig } from './config.js';
+import { readAnalystConfig, readHealthConfig, readLocalLlmConfig } from './config.js';
 import { normalizeEvent } from './normalize/index.js';
 import { ElasticsearchSources } from './sources/index.js';
 import { normalizeBatch } from './sources/pipeline.js';
+import { HealthStore, HealthTracker } from './health/index.js';
 import { IncidentGrouper } from './incidents/grouper.js';
 import { ContextBuilder, buildDeterministicDossier, DossierStore, FeedbackStore, renderDossierMarkdown } from './dossiers/index.js';
 import type { NormalizedEvent, RawEventDocument } from './types.js';
@@ -55,7 +56,10 @@ async function main(args: string[]): Promise<number> {
   if (command === '--dev-smoke') {
     const parsed = readAnalystConfig(process.env);
     if (!parsed.ok) { console.error(`Configuration invalid: ${parsed.reason}`); return 2; }
+    const healthConfig = readHealthConfig(process.env); const llmConfig = readLocalLlmConfig(process.env);
+    const tracker = parsed.config.runtimeDir && healthConfig.ok && llmConfig.ok ? new HealthTracker(new HealthStore(parsed.config.runtimeDir), healthConfig.config, llmConfig.config, Boolean(parsed.config.elasticsearchUrl && parsed.config.elasticsearchApiKey)) : undefined;
     try {
+      await tracker?.start(); tracker?.cycleStarted(); const cycleStart = Date.now();
       const sources = ElasticsearchSources.fromConfig(parsed.config, process.env);
       const now = Date.now();
       const range = { from: new Date(now - 24 * 60 * 60_000).toISOString(), to: new Date(now).toISOString() };
@@ -63,9 +67,10 @@ async function main(args: string[]): Promise<number> {
       const correlationId = process.env.SUPPORT_ANALYST_TEST_CORRELATION_ID;
       const exact = correlationId ? await sources.findByCorrelationId(correlationId, { range, limit: 3 }) : [];
       const normalized = normalizeBatch([...alerts, ...audit, ...technical, ...exact]);
+      tracker?.elasticReadSucceeded(); tracker?.cycleCompleted({ eventsRead: alerts.length + audit.length + technical.length + exact.length, eventsNormalized: normalized.normalized, durationMs: Date.now() - cycleStart });
       console.log(JSON.stringify({ environment: 'dev', readOnly: true, alerts: alerts.length, audit: audit.length, technical: technical.length, exactCorrelationLookup: correlationId ? exact.length : 'not_requested', normalization: { received: normalized.received, normalized: normalized.normalized, rejected: normalized.rejected, rejectedReasons: normalized.rejectedReasons } }));
       return 0;
-    } catch (error) { console.error(error instanceof Error ? error.message : 'DEV smoke failed'); return 1; }
+    } catch (error) { tracker?.cycleFailed(); console.error(error instanceof Error ? error.message : 'DEV smoke failed'); return 1; }
   }
   if (command === '--incident-replay') {
     let fixture: readonly NormalizedEvent[];
@@ -121,4 +126,5 @@ export * from './sources/pipeline.js';
 export * from './incidents/index.js';
 export * from './dossiers/index.js';
 export * from './local-llm/index.js';
+export * from './health/index.js';
 export type * from './types.js';
