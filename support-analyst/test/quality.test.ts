@@ -57,6 +57,6 @@ test('review store is append-only, sanitizes comments, rejects identity, and sum
     await (await import('node:fs/promises')).writeFile(join(directory, 'manifest.json'), JSON.stringify(manifest));
     await (await import('node:fs/promises')).writeFile(join(directory, 'blind-mapping.json'), JSON.stringify(createBlindMapping(42)));
     const summary = await summarizeQualityRun(runtime, runId) as { humanReviewCount: number; decision: string };
-    assert.equal(summary.humanReviewCount, 1); assert.equal(summary.decision, 'REQUIRES_HUMAN_DECISION');
+    assert.equal(summary.humanReviewCount, 1); assert.equal(summary.decision, 'CONDITIONAL_VALUE'); assert.equal(summary.reviewType, 'SOURCE_AWARE_HUMAN_REVIEW');
   } finally { await rm(runtime, { recursive: true, force: true }); }
 });

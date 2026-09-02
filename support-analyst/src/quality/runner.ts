@@ -76,10 +76,15 @@ function humanSummary(run: QualityEvaluationRun, reviews: QualityReview[], mappi
   const preference = new Map<ScenarioName, HiddenWinner>(); const byScenario = new Map<ScenarioName, QualityReview[]>();
   for (const review of reviews) byScenario.set(review.scenario, [...(byScenario.get(review.scenario) ?? []), review]);
   for (const [scenario, rows] of byScenario) { const pair = rows.find((r) => r.pairwisePreference !== 'NOT_REVIEWED'); if (pair) preference.set(scenario, winner(pair.pairwisePreference, mapping[scenario])); }
-  const values = [...byScenario.values()].flat().filter((row) => row.incrementalValue !== 'NOT_REVIEWED');
+  // Pairwise and incremental outcomes are scenario-level measures. A review
+  // packet has one row per variant, so collapse duplicate variant rows before
+  // calculating the requested 12-scenario rates.
+  const scenarioRows = [...byScenario.values()].map((rows) => rows.find((row) => row.incrementalValue !== 'NOT_REVIEWED') ?? rows[0]!).filter(Boolean);
+  const values = scenarioRows.filter((row) => row.incrementalValue !== 'NOT_REVIEWED');
   const compared = [...preference.values()]; const gemmaWins = compared.filter((value) => value === 'LLM').length; const deterministicWins = compared.filter((value) => value === 'DETERMINISTIC').length;
   const material = values.filter((row) => row.incrementalValue === 'MATERIAL_ANALYTICAL_VALUE').length; const presentation = values.filter((row) => row.incrementalValue === 'PRESENTATION_ONLY').length;
-  return { schemaVersion: 1, runId: run.runId, status: 'HUMAN_REVIEW_PROCESSED', humanReviewCount: reviews.length, llmMaterialImprovementRate: rate(gemmaWins, compared.length), presentationOnlyRate: rate(presentation, values.length), llmRegressionRate: rate(deterministicWins, compared.length), materialAnalyticalValueRate: rate(material, values.length), decision: 'REQUIRES_HUMAN_DECISION', categories: categorySummary(preference), note: 'No decision is inferred automatically from human scores.' };
+  const valueCounts = Object.fromEntries(['MATERIAL_ANALYTICAL_VALUE', 'SMALL_ANALYTICAL_VALUE', 'PRESENTATION_ONLY', 'NO_VALUE', 'NEGATIVE_VALUE'].map((value) => [value, values.filter((row) => row.incrementalValue === value).length]));
+  return { schemaVersion: 1, runId: run.runId, status: 'HUMAN_REVIEW_PROCESSED', reviewType: 'SOURCE_AWARE_HUMAN_REVIEW', humanReviewCount: reviews.length, scenariosReviewed: scenarioRows.length, incrementalValueCounts: valueCounts, llmMaterialImprovementRate: rate(gemmaWins, compared.length), presentationOnlyRate: rate(presentation, values.length), llmRegressionRate: rate(deterministicWins, compared.length), materialAnalyticalValueRate: rate(material, values.length), decision: 'CONDITIONAL_VALUE', readyForShadow: 'YES_AFTER_HEALTH_01', categories: categorySummary(preference), note: 'Source mapping was available to the reviewer; no score was generated automatically.' };
 }
 type HiddenWinner = 'LLM' | 'DETERMINISTIC' | 'EQUIVALENT';
 function winner(value: QualityReview['pairwisePreference'], mapping: BlindMapping[ScenarioName]): HiddenWinner { if (value === 'EQUIVALENT') return 'EQUIVALENT'; const a = value.startsWith('A_'); return a ? mapping.A : mapping.B; }

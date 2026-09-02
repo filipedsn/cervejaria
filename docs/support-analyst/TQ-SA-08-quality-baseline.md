@@ -2,7 +2,7 @@
 
 ## Status
 
-`TECHNICAL COMPLETE / HUMAN REVIEW PENDING` after a local technical run. No human quality score, decision, shadow operation, deployment, daemon, training, RAG, or model/prompt tuning is performed by this ticket.
+`CLOSED` after a source-aware human review of the local technical run. The blind mapping was made available during review, so this is not claimed as a still-blind final decision. No shadow operation, deployment, daemon, training, RAG, or model/prompt tuning is performed by this ticket.
 
 ## Method
 
@@ -27,6 +27,24 @@ Objective metrics include attempts, valid enrichments/fallbacks, each guardrail 
 The human packet asks for factual fidelity, summary, hypotheses, checks, clarity, investigation value, usefulness, pairwise preference, incremental value, next-action help, and perceived time saving. It distinguishes `MATERIAL_ANALYTICAL_VALUE` from `PRESENTATION_ONLY`. The eventual category breakdown includes Clear Evidence (database/application), Challenge (unknown/source/truncated/multi-tenant/multi-release/auth), and Security (auth/authz/realtime), with a separate telemetry interpretation check.
 
 Potential post-review classifications are STRONG_VALUE, CONDITIONAL_VALUE, PRESENTATION_VALUE_ONLY, NO_MEANINGFUL_VALUE, or NEGATIVE_VALUE. `READY_FOR_SHADOW` can only be recommended after a human review demonstrates analytical value, acceptable stability, understood regressions, working fallback, and no critical authority/privacy/remediation failure. SA-08 does not start shadow operation.
+
+## Source-aware human review result
+
+All 12 scenarios were reviewed (24 variant rows). The review explicitly used the revealed mapping and was persisted as `SOURCE_AWARE_HUMAN_REVIEW`.
+
+| Incremental value | Count | Rate |
+| --- | ---: | ---: |
+| Material analytical value | 2 | 16.7% |
+| Small analytical value | 4 | 33.3% |
+| Presentation only | 2 | 16.7% |
+| No value | 1 | 8.3% |
+| Negative value | 3 | 25.0% |
+
+Analytical value (material + small) is 6/12 (50.0%); material value alone is 2/12 (16.7%). Pairwise outcomes were Gemma 8, deterministic 3, equivalent 1. The strongest Gemma cases were APPLICATION_ERROR (route, HTTP 500 and release) and REALTIME_AUTH_FAILURE (`SESSION_REJECTED`). The weakest were DATABASE_SLOW, TRUNCATED_CONTEXT (timeout/unavailable), and MULTIPLE_RELEASES.
+
+Clear Evidence was mixed: Gemma won 2/3 and deterministic won DATABASE_SLOW. Security was safe in this baseline, with Gemma winning all three without attack, intrusion, vulnerability, or compromised-credential claims. Challenge was mixed (Gemma 3, deterministic 2, equivalent 1); deterministic remains essential for timeout and multi-context regressions. Telemetry was correctly understood as an observability-delivery problem.
+
+The final classification is `CONDITIONAL_VALUE`: Gemma is not universally better than the deterministic dossier; its demonstrated value is selective and scenario-dependent. `SELECTIVE_LLM_POLICY` is a promising future optimization, but is not implemented here. `READY_FOR_SHADOW = YES — AFTER HEALTH-01`; complete TQ-SA-HEALTH-01 before SA-09. Shadow must remain non-remediating with no external writes.
 
 ## Objective corrections found by sanity checking
 
