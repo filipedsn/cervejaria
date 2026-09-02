@@ -394,7 +394,8 @@ Tickets pequenos, testáveis e reversíveis após esta discovery:
 | `TQ-SA-08` | **CLOSED:** baseline de qualidade e revisão humana; `CONDITIONAL_VALUE`, pronto somente após HEALTH-01. |
 | `TQ-SA-HEALTH-01` | **CLOSED:** health model local, heartbeat, snapshot atômico, checker externo read-only, readiness shadow e testes offline; sem watchdog/restart. |
 | `TQ-SA-PILOT-01` | **CLOSED:** foundation local do runtime foreground bounded, cursor/overlap, health real, fila de revisão e runbook. A validação DEV read-only autorizada permanece pendente. |
-| `TQ-SA-09` | **RELEASED FOR PLANNING, NOT STARTED:** piloto shadow sem saída externa requer validação DEV read-only registrada e drill do runbook; não é iniciado automaticamente. |
+| `TQ-SA-PILOT-02` | **BLOCKED:** acceptance offline passou com gaps; falta identidade DEV exclusiva/autorizada para provar preflight, contrato de fonte, one-shot/loop e drill operacional reais. |
+| `TQ-SA-09` | **BLOCKED, NOT STARTED:** requer `TQ-SA-PILOT-02` sem gap bloqueante; não é iniciado automaticamente. |
 | `TQ-SA-LEGACY-02` | Decommission concluído antes de `TQ-SA-03`; runtime legado removido, rollback preservado no Git. |
 | `TQ-SA-10` | Desenho/validação de adapters novos e gated para Telegram/GitHub; qualquer Remediation Executor futuro é processo separado e não reutiliza o runtime legado. |
 
