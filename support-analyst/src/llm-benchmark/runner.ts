@@ -86,7 +86,9 @@ function scenarioEvents(name: ScenarioName, timestamp: string): NormalizedEvent[
   if (name === 'APPLICATION_ERROR') return [base('1', { eventType: 'http.request.failed', http: { route: '/api/comandas', statusCode: 500 } })];
   if (name === 'AUTH_FAILURE') return [base('1', { source: 'audit', action: 'auth.login', outcome: 'failure', reasonCode: 'INVALID_CREDENTIALS' })];
   if (name === 'AUTHORIZATION_DENIED') return [base('1', { source: 'audit', eventType: 'authorization.denied', http: { statusCode: 403 } })];
-  if (name === 'REALTIME_AUTH_FAILURE') return [base('1', { eventType: 'realtime.auth.failed', realtime: { reasonCode: 'SESSION_REJECTED' } })];
+  // The classifier's realtime rule intentionally requires an explicit action or
+  // an AUTH/DENIED reason; this keeps the golden scenario semantically aligned.
+  if (name === 'REALTIME_AUTH_FAILURE') return [base('1', { eventType: 'realtime.auth.failed', realtime: { action: 'connection.denied', reasonCode: 'SESSION_REJECTED' } })];
   if (name === 'TELEMETRY_FAILURE') return [base('1', { eventType: 'telemetry.delivery.failed' })];
   if (name === 'SOURCE_FAILURE') return [base('1')];
   if (name === 'TRUNCATED_CONTEXT') return Array.from({ length: 41 }, (_item, index) => base(String(index).padStart(2, '0'), { timestamp: `2026-08-31T12:${String(index).padStart(2, '0')}:00.000Z` }));

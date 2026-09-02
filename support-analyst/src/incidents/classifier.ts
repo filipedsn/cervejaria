@@ -18,11 +18,13 @@ export function classifyEvent(event: NormalizedEvent): Classification {
   if (includesAny(realtime, ['auth', 'denied', 'rejected']) || (event.realtime && includesAny(event.realtime.reasonCode, ['AUTH', 'DENIED']))) return decision('REALTIME_AUTH_FAILURE', 'CLASS_REALTIME_AUTH_FAILURE');
   if (includesAny(action, ['authorization', 'permission', 'access.denied']) || event.http?.statusCode === 403) return decision('AUTHORIZATION_DENIED', 'CLASS_AUTHORIZATION_DENIED');
   if (includesAny(action, ['auth.', 'login', 'session']) && event.outcome === 'failure' || event.http?.statusCode === 401) return decision('AUTH_FAILURE', 'CLASS_AUTH_FAILURE');
+  // Observability delivery is a dedicated class, even when its event name ends
+  // in ".failed"; the generic application rule must not mask that distinction.
+  if (event.source === 'alert' && includesAny(event.alert?.ruleName, ['telemetry', 'ingest', 'observability']) || includesAny(eventType, ['telemetry', 'ingest'])) return decision('TELEMETRY_FAILURE', 'CLASS_TELEMETRY_FAILURE');
   if ((event.http?.statusCode ?? 0) >= 500 || includesAny(eventType, ['exception', '.failed', '.error'])) return decision('APPLICATION_ERROR', 'CLASS_APPLICATION_ERROR');
   if (includesAny(eventType, ['frontend', 'ui.', 'browser'])) return decision('FRONTEND_ERROR', 'CLASS_FRONTEND_ERROR');
   if ((event.http?.durationMs ?? 0) >= 1_000) return decision('PERFORMANCE', 'CLASS_PERFORMANCE');
   if (includesAny(eventType, ['business', 'domain.']) || (event.outcome === 'failure' && Boolean(action))) return decision('BUSINESS_FAILURE', 'CLASS_BUSINESS_FAILURE');
-  if (event.source === 'alert' && includesAny(event.alert?.ruleName, ['telemetry', 'ingest', 'observability']) || includesAny(eventType, ['telemetry', 'ingest'])) return decision('TELEMETRY_FAILURE', 'CLASS_TELEMETRY_FAILURE');
   return decision('UNKNOWN', 'CLASS_UNKNOWN');
 }
 

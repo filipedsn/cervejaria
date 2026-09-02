@@ -28,7 +28,9 @@ export class LlmInputBuilder {
 }
 
 export function assertLlmInputPrivacy(value: unknown): void {
-  const prohibited = /\b(?:https?:\/\/|authorization|cookie|token|password|secret|api[-_ ]?key|actor\s*id|email|e-mail|telefone|phone|sql|bindings|stack|_source|rawref)\b/i;
+  // A header-like Authorization value is unsafe, but the allowlisted incident
+  // class AUTHORIZATION_DENIED is a safe classification identifier.
+  const prohibited = /(?:\bhttps?:\/\/|\bauthorization\s*:|\bcookie\b|\btoken\b|\bpassword\b|\bsecret\b|\bapi[-_ ]?key\b|\bactor\s*id\b|\bemail\b|\be-mail\b|\btelefone\b|\bphone\b|\bsql\b|\bbindings\b|\bstack\b|\b_source\b|\brawref\b)/i;
   const visit = (item: unknown): void => { if (typeof item === 'string') { if (prohibited.test(item)) throw new Error('LLM input violates the privacy boundary.'); return; } if (Array.isArray(item)) return void item.forEach(visit); if (item && typeof item === 'object') for (const [key, nested] of Object.entries(item as Record<string, unknown>)) { if (prohibited.test(key)) throw new Error('LLM input violates the privacy boundary.'); visit(nested); } };
   visit(value);
 }

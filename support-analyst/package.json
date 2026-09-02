@@ -19,6 +19,8 @@
     "analyst:llm-benchmark": "tsx src/llm-benchmark/cli.ts",
     "analyst:llm-smoke": "tsx src/local-llm/cli.ts --smoke",
     "analyst:llm-status": "tsx src/local-llm/cli.ts --status",
+    "analyst:quality-run": "tsx src/quality/cli.ts --run",
+    "analyst:quality-summary": "tsx src/quality/cli.ts --summary",
     "start": "node dist/index.js"
   },
   "devDependencies": {

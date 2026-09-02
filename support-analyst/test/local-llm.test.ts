@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { readLocalLlmConfig } from '../src/config.js';
-import { LocalLlmAnalyzer, LlmInputBuilder, InteractionStore, validateLlmOutput } from '../src/local-llm/index.js';
+import { LocalLlmAnalyzer, LlmInputBuilder, InteractionStore, assertLlmInputPrivacy, validateLlmOutput } from '../src/local-llm/index.js';
 import { buildSyntheticScenarios } from '../src/llm-benchmark/index.js';
 
 const dossier = buildSyntheticScenarios().find((item) => item.name === 'DATABASE_FAILURE')!.dossier;
@@ -30,6 +30,12 @@ test('input builder minimizes dossier context and removes raw references', () =>
   assert.doesNotMatch(input.serialized, /rawRef|synthetic|eventId|tenant-a/i);
   assert.match(input.serialized, /fact:db_failures/);
   assert.match(input.serialized, /DATABASE_FAILURE/);
+});
+
+test('input builder permits the allowlisted AUTHORIZATION_DENIED class while rejecting Authorization headers', () => {
+  const authorizationDossier = buildSyntheticScenarios().find((item) => item.name === 'AUTHORIZATION_DENIED')!.dossier;
+  assert.match(new LlmInputBuilder().build(authorizationDossier).serialized, /AUTHORIZATION_DENIED/);
+  assert.throws(() => assertLlmInputPrivacy({ header: 'Authorization: Bearer unsafe' }), /privacy/);
 });
 
 test('disabled local analyzer makes no Ollama call', async () => {
