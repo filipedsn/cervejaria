@@ -23,6 +23,7 @@ export function AdicionarItemComandaModal({
   onAdd,
   isPending,
   error,
+  successMessage,
 }: {
   open: boolean;
   onClose: () => void;
@@ -34,6 +35,7 @@ export function AdicionarItemComandaModal({
   onAdd: (data: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string }) => void;
   isPending: boolean;
   error?: string;
+  successMessage?: string;
 }) {
   const [tab, setTab] = useState<TabId>('chope');
   const [selectedTap, setSelectedTap] = useState<TapComChope | null>(null);
@@ -123,7 +125,11 @@ export function AdicionarItemComandaModal({
         onClick={handleAdd}
         disabled={!canAdd}
       >
-        {isPending ? 'Adicionando...' : 'Adicionar à comanda'}
+        {isPending
+          ? 'Adicionando...'
+          : successMessage
+            ? 'Adicionar novamente à comanda'
+            : 'Adicionar à comanda'}
       </button>
       <button type="button" className="touch-btn-danger w-full" onClick={onClose} disabled={isPending}>
         Cancelar
@@ -135,6 +141,7 @@ export function AdicionarItemComandaModal({
     <Modal open={open} onClose={onClose} title="Adicionar item" hideHeaderClose footer={footer}>
       <div className="space-y-4">
         {error && <div className="alert-error text-sm">{error}</div>}
+        {successMessage && <div className="alert-success text-sm" role="status">{successMessage}</div>}
 
         {nothingAvailable && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 space-y-2">

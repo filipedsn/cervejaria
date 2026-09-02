@@ -14,6 +14,7 @@ export function AdicionarItensQuiosqueModal({
   onConfirm,
   isPending,
   error,
+  successMessage,
   saldos,
   controlaEstoque,
   confirmLabel = 'Adicionar itens',
@@ -27,6 +28,7 @@ export function AdicionarItensQuiosqueModal({
   onConfirm: () => void;
   isPending: boolean;
   error?: string;
+  successMessage?: string;
   saldos?: Map<string, number>;
   controlaEstoque: boolean;
   confirmLabel?: string;
@@ -68,6 +70,7 @@ export function AdicionarItensQuiosqueModal({
     <Modal open={open} onClose={onClose} title="Adicionar item" hideHeaderClose footer={footer}>
       <div className="space-y-4">
         {error && <div className="alert-error text-sm">{error}</div>}
+        {successMessage && <div className="alert-success text-sm" role="status">{successMessage}</div>}
         <GradeProdutos
           produtos={produtos}
           onSelecionar={onSelecionar}

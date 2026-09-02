@@ -361,7 +361,11 @@ export function QuiosqueComandasPage() {
           </button>
         </div>
 
-        <ComandasBuscaInput value={buscaComanda} onChange={setBuscaComanda} />
+        <ComandasBuscaInput
+          value={buscaComanda}
+          onChange={setBuscaComanda}
+          placeholder="Buscar nº, mesa, ficha ou apelido..."
+        />
 
         <div className={`grid gap-3 ${colunaUnica ? '' : 'grid-cols-2'}`}>
           {comandasFiltradas.map(({ mesa, comanda }) => {

@@ -39,6 +39,7 @@ export function ComandaDetailPage() {
   ]);
   const [descontoInput, setDescontoInput] = useState('');
   const [error, setError] = useState('');
+  const [itemAddedMessage, setItemAddedMessage] = useState('');
 
   const { data: comanda, isLoading, isError, error: queryError } = useQuery({
     queryKey: ['comanda', id],
@@ -113,10 +114,13 @@ export function ComandaDetailPage() {
     onSuccess: (updated) => {
       queryClient.setQueryData(['comanda', id], updated);
       if (evento) queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
-      setShowAddItem(false);
       setError('');
+      setItemAddedMessage('Item adicionado. Confira os dados e lance o próximo item.');
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao adicionar item'),
+    onError: (err) => {
+      setItemAddedMessage('');
+      setError(err instanceof ApiError ? err.message : 'Erro ao adicionar item');
+    },
   });
 
   const removeItemMutation = useMutation({
@@ -321,7 +325,15 @@ export function ComandaDetailPage() {
       <div className="space-y-2">
         <h3 className="section-label">Itens</h3>
         {isOpen && (
-          <button type="button" className="touch-btn-orange w-full" onClick={() => setShowAddItem(true)}>
+          <button
+            type="button"
+            className="touch-btn-orange w-full"
+            onClick={() => {
+              setError('');
+              setItemAddedMessage('');
+              setShowAddItem(true);
+            }}
+          >
             + Itens
           </button>
         )}
@@ -439,7 +451,10 @@ export function ComandaDetailPage() {
 
       <AdicionarItemComandaModal
         open={showAddItem}
-        onClose={() => setShowAddItem(false)}
+        onClose={() => {
+          setShowAddItem(false);
+          setItemAddedMessage('');
+        }}
         tapsComChope={tapsComChope}
         bebidas={bebidasEmbalagem}
         comidas={comidas}
@@ -448,6 +463,7 @@ export function ComandaDetailPage() {
         onAdd={(data) => addItemMutation.mutate(data)}
         isPending={addItemMutation.isPending}
         error={showAddItem ? error : undefined}
+        successMessage={showAddItem ? itemAddedMessage : undefined}
       />
 
       <PaymentFormModal

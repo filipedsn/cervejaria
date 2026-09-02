@@ -318,7 +318,7 @@ O cliente consegue começar se receber orientação, mas o sistema não confirma
 |---|---|---|---|---|---|---|---|---|
 | PROD-01 | Caixa cervejaria | Registro de pagamento não confere gaveta. | Abrir, movimentar, contar e fechar caixa por evento com diferença/histórico. | Atendente/dono | NEW_CAPABILITY | 5/5/5/L | P1 | quiosque já possui modelo; cervejaria não. |
 | PROD-02 | Comandas | Venda fechada errada não tem exceção segura. | Estorno/correção autorizado, auditado e refletido no caixa/relatório. | Dono | FUNCTIONAL_GAP | 5/3/5/L | P1 | fechada é somente leitura. |
-| PROD-03 | Fluxo de venda | Muitos toques para localizar e lançar item. | Busca rápida, recentes e favoritos/default por evento. | Atendente | IMPROVEMENT | 5/5/3/M | P0 | jornada e frequência. |
+| PROD-03 | Fluxo de venda | Muitos toques para localizar e lançar item. | Busca rápida e continuidade segura do lançamento. | Atendente | IMPROVEMENT | 5/5/3/M | DONE | Busca local já disponível, pós-lançamento otimizado e validação transacional preservada. |
 | PROD-04 | Cozinha | Cancelamento antes exigia contorno pela API. | Ação de dono com confirmação contextual e atualização de conta/fila. | Dono | FUNCTIONAL_GAP | 5/3/4/S | DONE | UI operacional e E2E cobrem o fluxo; o contrato atual não possui motivo. |
 | PROD-05 | Estoque | Saldo não antecipa ruptura. | Mínimo por item, alerta e indisponibilidade clara. | Atendente/dono | FUNCTIONAL_GAP | 5/4/4/M | P1 | estoque atual sem mínimo. |
 | PROD-06 | Onboarding | Configuração inicial depende de conhecimento do produto. | Checklist por modo até primeira venda. | Admin/dono | IMPROVEMENT | 5/3/3/M | P1 | rotas existem, sem jornada guiada. |
@@ -359,6 +359,23 @@ Dependências reais: PROD-03 usa dados atuais de comandas/produtos; PROD-04 usa 
 **PROD-03**
 
 Given um atendente com evento/turno ativo, When procura uma comanda ou lança item recorrente, Then consegue selecionar o destino e registrar o item com menos passos, mantendo produto, quantidade, total e restrições atuais visíveis antes da confirmação.
+
+### PROD-03 — fechamento funcional (2026-09-02)
+
+**Baseline reconstruída no código**
+
+| Fluxo | Antes | Depois |
+|---|---|---|
+| Localizar comanda — cervejaria | Aba → busca por nome/número/telefone → selecionar cartão. A busca já era local. | Mesmo fluxo; o campo explicita os três identificadores suportados. |
+| Localizar comanda — quiosque | Aba → busca por número/mesa/ficha/apelido → selecionar cartão. A busca já era local. | Mesmo fluxo; o campo explicita os quatro identificadores suportados. |
+| Lançar próximo item — cervejaria | Confirmar item → modal fecha → tocar `+ Itens` → abrir modal outra vez. | Confirmar item → modal permanece aberto, mostra sucesso e conserva produto, volume, quantidade e total visíveis para revisão/novo lançamento. |
+| Lançar próxima rodada — quiosque | Confirmar itens → modal fecha → tocar `+ Itens` → abrir modal outra vez. | Confirmar itens → carrinho limpa e modal permanece aberto para selecionar a próxima rodada. |
+
+**Resultado:** dois toques/modais eliminados por rodada adicional nos fluxos de item da cervejaria e do quiosque. A confirmação continua explícita e o backend continua validando preço, disponibilidade/estoque e estado concorrente da comanda.
+
+**Decisões de escopo:** não foram criadas comandas recentes (persistência/risco de destino errado), favoritos (exigiria configuração ou fonte segura de ranking), nem novo volume padrão (o primeiro volume configurado já é escolhido de forma visível). Quantidade 1 e a busca local sem requests por tecla já existiam e foram preservadas. Venda avulsa foi preservada.
+
+**Backlog derivado:** `PROD-03-F01` — avaliar recentes por sessão somente após observação de operação; benefício é reduzir busca, mas ficou fora por risco de seleção errada e ausência de persistência/contexto seguro. `PROD-03-F02` — avaliar favoritos derivados de turno/evento quando houver uma fonte de dados já autorizada; ficou fora para não criar modelo/CRUD novo.
 
 **PROD-01**
 

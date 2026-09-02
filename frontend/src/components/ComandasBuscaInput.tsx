@@ -1,14 +1,19 @@
 interface Props {
   value: string;
   onChange: (value: string) => void;
+  placeholder?: string;
 }
 
-export function ComandasBuscaInput({ value, onChange }: Props) {
+export function ComandasBuscaInput({
+  value,
+  onChange,
+  placeholder = 'Buscar comanda...',
+}: Props) {
   return (
     <input
       type="search"
       className="input w-full"
-      placeholder="Buscar por nome ou número..."
+      placeholder={placeholder}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       aria-label="Buscar comandas"

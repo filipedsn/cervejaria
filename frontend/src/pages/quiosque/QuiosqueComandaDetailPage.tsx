@@ -56,6 +56,7 @@ export function QuiosqueComandaDetailPage() {
   const [carrinho, setCarrinho] = useState<LinhaCarrinho[]>([]);
   const [descontoInput, setDescontoInput] = useState('');
   const [erro, setErro] = useState('');
+  const [itensAdicionadosMessage, setItensAdicionadosMessage] = useState('');
   const poll30 = usePollInterval(30_000);
   const poll15 = usePollInterval(15_000);
 
@@ -182,10 +183,11 @@ export function QuiosqueComandaDetailPage() {
         queryClient.invalidateQueries({ queryKey: ['quiosque-estoque', comanda.pontoVendaId] });
       }
       setCarrinho([]);
-      setShowAddItem(false);
       setErro('');
+      setItensAdicionadosMessage('Itens lançados. Selecione os próximos itens.');
     },
     onError: (err) => {
+      setItensAdicionadosMessage('');
       if (comanda?.pontoVendaId) {
         queryClient.invalidateQueries({ queryKey: ['quiosque-estoque', comanda.pontoVendaId] });
       }
@@ -198,6 +200,7 @@ export function QuiosqueComandaDetailPage() {
     setCarrinho([]);
     setShowAddItem(false);
     setErro('');
+    setItensAdicionadosMessage('');
   };
 
   const invalidarEstoque = () => {
@@ -392,7 +395,15 @@ export function QuiosqueComandaDetailPage() {
       <div className="space-y-2">
         <h3 className="section-label">Itens</h3>
         {aberta && (
-          <button type="button" className="touch-btn-orange w-full" onClick={() => { setErro(''); setShowAddItem(true); }}>
+          <button
+            type="button"
+            className="touch-btn-orange w-full"
+            onClick={() => {
+              setErro('');
+              setItensAdicionadosMessage('');
+              setShowAddItem(true);
+            }}
+          >
             + Itens
           </button>
         )}
@@ -613,6 +624,7 @@ export function QuiosqueComandaDetailPage() {
         onConfirm={() => lancarItens.mutate()}
         isPending={lancarItens.isPending}
         error={showAddItem ? erro : undefined}
+        successMessage={showAddItem ? itensAdicionadosMessage : undefined}
         saldos={saldos}
         controlaEstoque={controlaEstoque}
         confirmLabel="Lançar na comanda"

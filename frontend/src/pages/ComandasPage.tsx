@@ -323,7 +323,11 @@ export function ComandasPage() {
           </button>
         </div>
 
-        <ComandasBuscaInput value={buscaComanda} onChange={setBuscaComanda} />
+        <ComandasBuscaInput
+          value={buscaComanda}
+          onChange={setBuscaComanda}
+          placeholder="Buscar nº, nome ou telefone..."
+        />
 
         <div className={`grid gap-3 ${colunaUnica ? '' : 'grid-cols-2'}`}>
           {comandasFiltradas.map((c) => {
