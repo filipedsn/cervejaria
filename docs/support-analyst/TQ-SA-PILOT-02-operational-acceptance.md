@@ -41,7 +41,7 @@ Não foi iniciado `analyst:pilot-once`/`analyst:pilot-run` contra Elastic: isso 
 | Watermark / replay / dedupe | PASS | teste de runtime com overlap e reinício |
 | Review queue / feedback | PASS_WITH_LIMITATION | queue e FeedbackStore validados por testes; sem dossiê real para drill humano |
 | Health / idle / stale | PASS | smoke/check local e testes controlados |
-| Continuous loop / graceful stop reais | PASS_WITH_LIMITATION | caminho e semântica testados; não executado contra fonte DEV |
+| Continuous loop / graceful stop reais | NOT_APPLICABLE | requer fonte DEV autorizada; o E2E offline cobre ciclos isolados, não uma sessão foreground real |
 | Source failure / filesystem recovery | PASS_WITH_LIMITATION | harness/limites atômicos; nenhum serviço/disco externo alterado |
 | LLM fail-soft | PASS | teste offline; LLM permaneceu desligado na acceptance |
 | Negative capabilities | PASS_WITH_LIMITATION | inspeção de design/testes; sem prova externa de papel Elastic |
