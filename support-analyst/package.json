@@ -25,6 +25,8 @@
     "analyst:health-check": "tsx src/health/cli.ts",
     "analyst:health-json": "tsx src/health/cli.ts --json",
     "analyst:health-smoke": "tsx src/health/smoke.ts",
+    "analyst:pilot-once": "tsx src/index.ts --pilot-once",
+    "analyst:pilot-run": "tsx src/index.ts --pilot-run",
     "start": "node dist/index.js"
   },
   "devDependencies": {

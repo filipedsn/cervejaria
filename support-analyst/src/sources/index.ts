@@ -28,6 +28,11 @@ export class ElasticsearchSources implements AlertSource, SignalSource {
     return this.find(DEV_INDICES.alerts, 'alert', body);
   }
 
+  /** Strict bounded read used only by pilot startup to detect a missing approved index. */
+  async preflightAlertSource(range: TimeRange): Promise<void> {
+    await this.client.search(DEV_INDICES.alerts, searchBody(rangeFilter(range), ALERT_SOURCE_FIELDS, 1), { ignoreUnavailable: false });
+  }
+
   findByCorrelationId(correlationId: string, options: LookupOptions): Promise<RawEventDocument[]> {
     return this.findExact('attributes.correlationId.keyword', correlationId, options);
   }

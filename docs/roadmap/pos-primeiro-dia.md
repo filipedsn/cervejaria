@@ -20,6 +20,14 @@ Primeiro dia de operação real com cervejarias clientes usando o PWA em evento 
 
 ---
 
+## Trilhas de prioridade
+
+Há duas trilhas independentes: **A — PRODUCT FUNCTIONAL EVOLUTION**, registrada neste roadmap com feedback real de clientes e operação; e **B — PLATFORM / SUPPORT ANALYST**, registrada nos documentos `docs/support-analyst/`. Engenharia e Analyst existem para sustentar valor de produto, não para substituir evolução funcional.
+
+### Functional Value Gate
+
+Antes de iniciar grandes ciclos técnicos após SA-09, revisar feedback de usuários, necessidades operacionais, requisitos funcionais parciais, oportunidades de produtividade e impacto comercial. Uma funcionalidade de produto baseada em evidência real pode ter prioridade maior que trabalho técnico do Analyst.
+
 ## Resumo executivo
 
 | Prioridade | Quantidade | Status |

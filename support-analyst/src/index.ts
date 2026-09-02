@@ -1,12 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import { readAnalystConfig, readHealthConfig, readLocalLlmConfig } from './config.js';
+import { readAnalystConfig, readHealthConfig, readLocalLlmConfig, readPilotRuntimeConfig, requireRuntimeElasticsearchConfig } from './config.js';
 import { normalizeEvent } from './normalize/index.js';
 import { ElasticsearchSources } from './sources/index.js';
 import { normalizeBatch } from './sources/pipeline.js';
 import { HealthStore, HealthTracker } from './health/index.js';
 import { IncidentGrouper } from './incidents/grouper.js';
 import { ContextBuilder, buildDeterministicDossier, DossierStore, FeedbackStore, renderDossierMarkdown } from './dossiers/index.js';
+import { PilotElasticAlertSource, ReviewQueueStore, SupportAnalystRuntime } from './runtime/index.js';
 import type { NormalizedEvent, RawEventDocument } from './types.js';
 
 const help = `Support Analyst core (TQ-SA-03)
@@ -18,6 +19,8 @@ Usage:
   support-analyst --incident-replay
   support-analyst --dossier-replay [--show-markdown]
   support-analyst --feedback <dossierId> <USEFUL|PARTIAL|WRONG> --created-at <ISO> [--flags A,B] [--comment <text>]
+  support-analyst --pilot-once
+  support-analyst --pilot-run
 
   support-analyst --dev-smoke
 
@@ -72,6 +75,22 @@ async function main(args: string[]): Promise<number> {
       return 0;
     } catch (error) { tracker?.cycleFailed(); console.error(error instanceof Error ? error.message : 'DEV smoke failed'); return 1; }
   }
+  if (command === '--pilot-once' || command === '--pilot-run') {
+    const analyst = readAnalystConfig(process.env); const pilot = readPilotRuntimeConfig(process.env); const health = readHealthConfig(process.env); const llm = readLocalLlmConfig(process.env);
+    const runtimeConfig = analyst.ok ? requireRuntimeElasticsearchConfig(analyst.config, process.env) : analyst;
+    if (!runtimeConfig.ok || !pilot.ok || !health.ok || !llm.ok || !runtimeConfig.config.runtimeDir) {
+      console.error(`Pilot configuration invalid: ${!runtimeConfig.ok ? runtimeConfig.reason : !pilot.ok ? pilot.reason : !health.ok ? health.reason : !llm.ok ? llm.reason : 'SUPPORT_ANALYST_RUNTIME_DIR is required'}`); return 2;
+    }
+    const source = new PilotElasticAlertSource(ElasticsearchSources.fromConfig(runtimeConfig.config, process.env));
+    const runtime = new SupportAnalystRuntime({ source, runtimeDir: runtimeConfig.config.runtimeDir, pilot: pilot.config, health: health.config, llm: llm.config });
+    const shutdown = () => runtime.requestStop(); process.once('SIGINT', shutdown); process.once('SIGTERM', shutdown);
+    try {
+      await runtime.start();
+      if (command === '--pilot-once') { const result = await runtime.runOnce(); console.log(JSON.stringify({ mode: 'PILOT_READ_ONLY_NO_EXTERNAL_ACTIONS', ...result }, null, 2)); return result.outcome === 'COMPLETED' ? 0 : 1; }
+      console.log('Support Analyst pilot foreground runtime started: READ_ONLY, NO_EXTERNAL_ACTIONS.'); await runtime.run(); return 0;
+    } catch (error) { runtime.healthTracker().markFatalError(); console.error(error instanceof Error ? error.message : 'Pilot runtime failed'); return 1; }
+    finally { await runtime.stop(true); process.removeListener('SIGINT', shutdown); process.removeListener('SIGTERM', shutdown); }
+  }
   if (command === '--incident-replay') {
     let fixture: readonly NormalizedEvent[];
     try { fixture = JSON.parse(await readFile(new URL('../test/fixtures/incident-replay.json', import.meta.url), 'utf8')) as NormalizedEvent[]; }
@@ -105,6 +124,7 @@ async function main(args: string[]): Promise<number> {
     try {
       const dossiers = new DossierStore(runtimeDir);
       const feedback = await new FeedbackStore(runtimeDir).append({ dossierId, rating, createdAt, flags: flagsIndex >= 0 && args[flagsIndex + 1] ? args[flagsIndex + 1].split(',') as never[] : [], comment: commentIndex >= 0 ? args[commentIndex + 1] : undefined }, (id) => dossiers.exists(id));
+      await new ReviewQueueStore(runtimeDir).markReviewed(dossierId);
       console.log(JSON.stringify({ feedbackId: feedback.feedbackId, dossierId: feedback.dossierId, rating: feedback.rating }, null, 2));
       return 0;
     } catch (error) { console.error(error instanceof Error ? error.message : 'Unable to record feedback.'); return 1; }
@@ -127,4 +147,5 @@ export * from './incidents/index.js';
 export * from './dossiers/index.js';
 export * from './local-llm/index.js';
 export * from './health/index.js';
+export * from './runtime/index.js';
 export type * from './types.js';

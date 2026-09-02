@@ -24,6 +24,14 @@ export type HealthConfig = {
   processingStaleMs: number;
 };
 
+/** Settings for the foreground, read-only pilot process. */
+export type PilotRuntimeConfig = {
+  pollIntervalMs: number;
+  overlapMs: number;
+  initialWindowMs: number;
+  maxEvents: number;
+};
+
 export type ConfigResult =
   | { ok: true; config: AnalystConfig }
   | { ok: false; reason: string };
@@ -123,4 +131,19 @@ export function readHealthConfig(env: Env): { ok: true; config: HealthConfig } |
   if (!heartbeatIntervalMs || !heartbeatStaleMs || !snapshotStaleMs || !processingStaleMs) return { ok: false, reason: 'health intervals must be positive integers' };
   if (heartbeatStaleMs < heartbeatIntervalMs) return { ok: false, reason: 'SUPPORT_ANALYST_HEARTBEAT_STALE_MS must be at least the heartbeat interval' };
   return { ok: true, config: { enabled: enabled === 'true', heartbeatIntervalMs, heartbeatStaleMs, snapshotStaleMs, processingStaleMs } };
+}
+
+/** Deliberately small polling surface: no queue, scheduler, or service manager. */
+export function readPilotRuntimeConfig(env: Env): { ok: true; config: PilotRuntimeConfig } | { ok: false; reason: string } {
+  const positive = (name: string, fallback: number): number | undefined => {
+    const raw = env[name]; if (raw === undefined) return fallback;
+    const value = Number(raw); return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  };
+  const pollIntervalMs = positive('SUPPORT_ANALYST_POLL_INTERVAL_MS', 60_000);
+  const overlapMs = positive('SUPPORT_ANALYST_OVERLAP_MS', 120_000);
+  const initialWindowMs = positive('SUPPORT_ANALYST_INITIAL_WINDOW_MS', 300_000);
+  const maxEvents = positive('SUPPORT_ANALYST_MAX_EVENTS', 50);
+  if (!pollIntervalMs || !overlapMs || !initialWindowMs || !maxEvents || maxEvents > 100) return { ok: false, reason: 'pilot runtime settings must be positive integers and SUPPORT_ANALYST_MAX_EVENTS must be at most 100' };
+  if (overlapMs > initialWindowMs) return { ok: false, reason: 'SUPPORT_ANALYST_OVERLAP_MS must not exceed SUPPORT_ANALYST_INITIAL_WINDOW_MS' };
+  return { ok: true, config: { pollIntervalMs, overlapMs, initialWindowMs, maxEvents } };
 }

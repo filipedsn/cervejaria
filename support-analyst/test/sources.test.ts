@@ -32,6 +32,14 @@ test('findAlertEvents has a mandatory range, predictable cursor, bounded size an
   assert.equal(body(calls[0]!)._source.includes('processed'), false);
 });
 
+test('pilot preflight is a strict bounded read that detects a missing approved index without a write probe', async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const sources = new ElasticsearchSources(new ElasticReadOnlyClient('https://elastic.test', 'safe-key', async (url, init) => { calls.push({ url, init }); return new Response(JSON.stringify({ hits: { hits: [] } }), { status: 200 }); }));
+  await sources.preflightAlertSource({ from: '2026-09-02T12:00:00.000Z', to: '2026-09-02T12:01:00.000Z' });
+  assert.equal(calls[0]?.url, 'https://elastic.test/quiver-tap-alert-events-dev/_search');
+  assert.equal(calls[0]?.init?.method, 'POST');
+});
+
 test('exact lookup templates query only approved DEV audit and technical patterns with keyword terms', async () => {
   const calls: Call[] = [];
   const source = new ElasticsearchSources(new ElasticReadOnlyClient('https://elastic.test', 'secret-key', fake(validResponse(hit()), calls)));

@@ -24,10 +24,11 @@ export class ElasticReadOnlyClient {
     this.baseUrl = url.replace(/\/$/, '');
   }
 
-  async search(index: string, body: unknown): Promise<unknown> {
+  async search(index: string, body: unknown, options: { ignoreUnavailable?: boolean } = {}): Promise<unknown> {
     let response: Response;
     try {
-      response = await this.fetchImpl(`${this.baseUrl}/${encodeURIComponent(index)}/_search?ignore_unavailable=true`, {
+      const query = options.ignoreUnavailable === false ? '' : '?ignore_unavailable=true';
+      response = await this.fetchImpl(`${this.baseUrl}/${encodeURIComponent(index)}/_search${query}`, {
         method: 'POST',
         headers: { authorization: `ApiKey ${this.apiKey}`, 'content-type': 'application/json' },
         body: JSON.stringify(body),
