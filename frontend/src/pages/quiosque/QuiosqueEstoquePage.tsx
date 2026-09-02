@@ -6,6 +6,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { Modal } from '../../components/Modal';
 import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   TIPOS_SAIDA_ESTOQUE,
   type SaldoEstoque,
@@ -18,13 +19,15 @@ type Dialogo = 'nenhum' | 'entrada' | 'saida' | 'ajuste';
 export function QuiosqueEstoquePage() {
   const queryClient = useQueryClient();
   const { contexto } = useQuiosqueContexto();
+  const { isDono } = useAuth();
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
 
   const [pontoVendaId, setPontoVendaId] = useState('');
-  const [dialogo, setDialogo] = useState<Dialogo>('nenhum');
+  const [dialogo, setDialogo] = useState<Dialogo | 'minimo'>('nenhum');
   const [produtoSelecionado, setProdutoSelecionado] = useState<SaldoEstoque | null>(null);
   const [quantidade, setQuantidade] = useState('1');
   const [quantidadeNova, setQuantidadeNova] = useState('');
+  const [estoqueMinimo, setEstoqueMinimo] = useState('');
   const [tipoSaida, setTipoSaida] = useState<TipoSaidaEstoque>('PERDA');
   const [observacao, setObservacao] = useState('');
   const [erro, setErro] = useState('');
@@ -48,6 +51,7 @@ export function QuiosqueEstoquePage() {
     setProdutoSelecionado(null);
     setQuantidade('1');
     setQuantidadeNova('');
+    setEstoqueMinimo('');
     setObservacao('');
     setErro('');
   };
@@ -75,6 +79,13 @@ export function QuiosqueEstoquePage() {
     setObservacao('');
     setErro('');
     setDialogo('ajuste');
+  };
+
+  const abrirMinimo = (produto: SaldoEstoque) => {
+    setProdutoSelecionado(produto);
+    setEstoqueMinimo(produto.estoqueMinimo === null ? '' : String(produto.estoqueMinimo));
+    setErro('');
+    setDialogo('minimo');
   };
 
   const entrada = useMutation({
@@ -123,6 +134,20 @@ export function QuiosqueEstoquePage() {
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível ajustar'),
   });
 
+  const minimo = useMutation({
+    mutationFn: () =>
+      api.put<SaldoEstoque[]>('/api/quiosque/estoque/minimo', {
+        pontoVendaId: pontoAtivo,
+        produtoId: produtoSelecionado!.produtoId,
+        estoqueMinimo: estoqueMinimo === '' ? null : Number(estoqueMinimo),
+      }),
+    onSuccess: () => {
+      invalidar();
+      fecharDialogo();
+    },
+    onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível salvar o aviso'),
+  });
+
   if (isLoading) return <Loading />;
 
   if (pontosVenda.length === 0) {
@@ -161,7 +186,10 @@ export function QuiosqueEstoquePage() {
         />
       ) : (
         <div className="space-y-2">
-          {saldos.map((item) => (
+          {[...saldos].sort((a, b) => {
+            const prioridade = { OUT_OF_STOCK: 0, LOW: 1, NORMAL: 2 };
+            return prioridade[a.statusEstoque] - prioridade[b.statusEstoque];
+          }).map((item) => (
             <div key={item.produtoId} className="card-touch space-y-3 py-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -171,11 +199,17 @@ export function QuiosqueEstoquePage() {
                   )}
                 </div>
                 <span
-                  className={`shrink-0 text-2xl font-bold ${item.quantidade === 0 ? 'text-red-600' : ''}`}
+                  className={`shrink-0 text-2xl font-bold ${item.statusEstoque === 'OUT_OF_STOCK' ? 'text-red-600' : ''}`}
                 >
                   {item.quantidade}
                 </span>
               </div>
+
+              {item.statusEstoque === 'OUT_OF_STOCK' ? (
+                <p className="text-sm font-semibold text-red-600">Esgotado</p>
+              ) : item.statusEstoque === 'LOW' ? (
+                <p className="text-sm font-semibold text-orange-700">Estoque baixo · restam {item.quantidade}</p>
+              ) : null}
 
               <div className="grid grid-cols-3 gap-2">
                 <button type="button" className="touch-btn-primary touch-btn-sm" onClick={() => abrirEntrada(item)} data-audit="quiosque-estoque-repor">
@@ -188,6 +222,11 @@ export function QuiosqueEstoquePage() {
                   Ajustar
                 </button>
               </div>
+              {isDono && (
+                <button type="button" className="touch-btn-secondary touch-btn-sm w-full" onClick={() => abrirMinimo(item)} data-audit="quiosque-estoque-minimo">
+                  {item.estoqueMinimo === null ? 'Definir aviso de estoque baixo' : `Avisar quando chegar a ${item.estoqueMinimo}`}
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -302,6 +341,29 @@ export function QuiosqueEstoquePage() {
           </div>
           <button type="submit" className="touch-btn-primary w-full" disabled={ajuste.isPending} data-audit="quiosque-estoque-ajuste-confirmar">
             {ajuste.isPending ? 'Salvando...' : 'Confirmar ajuste'}
+          </button>
+        </form>
+      </Modal>
+
+      <Modal open={dialogo === 'minimo'} onClose={fecharDialogo} title={`Aviso de estoque — ${produtoSelecionado?.nome ?? ''}`}>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (estoqueMinimo !== '' && (!Number.isInteger(Number(estoqueMinimo)) || Number(estoqueMinimo) < 0)) {
+              return setErro('Informe um número inteiro igual ou maior que zero');
+            }
+            minimo.mutate();
+          }}
+        >
+          {erro && <div className="alert-error">{erro}</div>}
+          <p className="text-sm text-ink-faint">Saldo atual: {produtoSelecionado?.quantidade ?? 0}. Deixe vazio para não avisar quando estiver baixo.</p>
+          <div>
+            <label className="label">Avisar quando chegar a</label>
+            <input className="input" autoFocus inputMode="numeric" value={estoqueMinimo} onChange={(e) => setEstoqueMinimo(e.target.value)} placeholder="Ex.: 3" />
+          </div>
+          <button type="submit" className="touch-btn-primary w-full" disabled={minimo.isPending} data-audit="quiosque-estoque-minimo-confirmar">
+            {minimo.isPending ? 'Salvando...' : 'Salvar aviso'}
           </button>
         </form>
       </Modal>

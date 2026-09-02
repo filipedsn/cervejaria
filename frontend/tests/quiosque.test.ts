@@ -5,6 +5,7 @@ import {
   mesasOperacionais,
   rotuloComanda,
   rotuloInternoComanda,
+  classificarEstoque,
   type ComandaQuiosque,
 } from '../src/lib/quiosque.ts';
 
@@ -66,4 +67,10 @@ test('TQ-F01B: reduzir a quantidade configurada não esconde mesa ocupada acima 
 
   assert.deepEqual(mesas.map((mesa) => mesa.numero), [...Array.from({ length: 10 }, (_, index) => index + 1), 12]);
   assert.equal(mesas.at(-1)?.comanda?.id, 'comanda-mesa-12');
+});
+
+test('PROD-05: classifica estoque sem poluir estado normal e prioriza esgotado', () => {
+  assert.equal(classificarEstoque(3, null), 'NORMAL');
+  assert.equal(classificarEstoque(3, 3), 'LOW');
+  assert.equal(classificarEstoque(0, 3), 'OUT_OF_STOCK');
 });

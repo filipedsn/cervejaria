@@ -3,12 +3,13 @@ import {
   limiteEstoqueCarrinho,
   podeIncrementarLinhaCarrinho,
   type LinhaCarrinho,
+  type SaldoEstoque,
 } from '../../lib/quiosque';
 
 interface Props {
   linhas: LinhaCarrinho[];
   onAlterar: (produtoId: string, delta: number) => void;
-  saldos?: Map<string, number>;
+  saldos?: Map<string, SaldoEstoque>;
   controlaEstoque?: boolean;
 }
 

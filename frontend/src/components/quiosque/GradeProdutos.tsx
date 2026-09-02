@@ -2,12 +2,13 @@ import { useMemo } from 'react';
 import { formatCurrency } from '../../lib/api';
 import type { ProdutoQuiosque } from '../../lib/quiosque';
 import { normalizeCategoriaProduto } from '../../lib/quiosque';
+import type { SaldoEstoque } from '../../lib/quiosque';
 
 interface Props {
   produtos: ProdutoQuiosque[];
   onSelecionar: (produto: ProdutoQuiosque) => void;
   /** Saldo por produtoId, quando o modulo controla estoque. */
-  saldos?: Map<string, number>;
+  saldos?: Map<string, SaldoEstoque>;
   controlaEstoque?: boolean;
   /** Unidades ja selecionadas nesta rodada (para calcular saldo restante). */
   quantidadesNoCarrinho?: Map<string, number>;
@@ -39,14 +40,17 @@ export function GradeProdutos({
           </h3>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {itens.map((produto) => {
-              const saldoBruto =
+              const saldoEstoque =
                 controlaEstoque && produto.controlaEstoque
-                  ? (saldos?.get(produto.id) ?? 0)
+                  ? saldos?.get(produto.id)
                   : null;
               const noCarrinho = quantidadesNoCarrinho?.get(produto.id) ?? 0;
               const saldo =
-                saldoBruto !== null ? Math.max(0, saldoBruto - noCarrinho) : null;
+                saldoEstoque !== null && saldoEstoque !== undefined
+                  ? Math.max(0, saldoEstoque.quantidade - noCarrinho)
+                  : saldoEstoque === undefined && controlaEstoque && produto.controlaEstoque ? 0 : null;
               const esgotado = saldo !== null && saldo <= 0;
+              const baixo = saldo !== null && saldo > 0 && saldoEstoque?.statusEstoque === 'LOW';
               const precoDisplay = produto.precoEfetivo ?? (parseFloat(produto.precoUnit) || 0);
 
               return (
@@ -62,11 +66,11 @@ export function GradeProdutos({
                   <span className="font-semibold leading-tight">{produto.nome}</span>
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-sm text-ink-faint">{formatCurrency(precoDisplay)}</span>
-                    {saldo !== null && (
-                      <span className={`text-xs font-semibold ${esgotado ? 'text-red-600' : 'text-ink-faint'}`}>
-                        {saldo} un
-                      </span>
-                    )}
+                    {esgotado ? (
+                      <span className="text-xs font-semibold text-red-600">Esgotado</span>
+                    ) : baixo ? (
+                      <span className="text-xs font-semibold text-orange-700">Estoque baixo · {saldo}</span>
+                    ) : saldo !== null ? <span className="text-xs font-semibold text-ink-faint">{saldo} un</span> : null}
                   </div>
                 </button>
               );

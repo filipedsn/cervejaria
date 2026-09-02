@@ -17,7 +17,12 @@ type TestFn = (
   fn: () => Promise<Outcome>,
 ) => Promise<void>;
 
-type Saldo = { produtoId: string; quantidade: number };
+type Saldo = {
+  produtoId: string;
+  quantidade: number;
+  estoqueMinimo?: number | null;
+  statusEstoque?: 'NORMAL' | 'LOW' | 'OUT_OF_STOCK';
+};
 
 function saldoDe(lista: Saldo[] | undefined, produtoId: string): number {
   return lista?.find((s) => s.produtoId === produtoId)?.quantidade ?? 0;
@@ -367,6 +372,38 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Ajuste absoluto', expected: '201 / saldo 10', actual: `${ajuste.status} / ${saldo}` };
       }
       return { message: 'Saldo ajustado para 10', expected: '10', actual: '10' };
+    },
+  );
+
+  await test(
+    { id: 'QES-14', category: 'Quiosque estoque', name: 'Mínimo alerta baixo e aceita limpeza', requirement: 'PROD-05' },
+    async () => {
+      if (!pontoId) return { status: 'failed', message: 'QES-01 incompleto' };
+
+      const minimo = await api<Saldo[]>('PUT', '/api/quiosque/estoque/minimo', {
+        token: cfg.donoToken,
+        body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, estoqueMinimo: 10 },
+      });
+      if (minimo.status !== 200 || !Array.isArray(minimo.data)) {
+        return { status: 'failed', message: 'Configurar mínimo', expected: '200 com saldos', actual: `${minimo.status} ${minimo.raw.slice(0, 120)}` };
+      }
+      const baixo = minimo.data.find((saldo) => saldo.produtoId === cfg.produtoId);
+      if (baixo?.estoqueMinimo !== 10 || baixo.statusEstoque !== 'LOW') {
+        return { status: 'failed', message: 'Mínimo configurado', expected: '200 / LOW / mínimo 10', actual: `${minimo.status} / ${baixo?.statusEstoque} / ${baixo?.estoqueMinimo}` };
+      }
+
+      const limpar = await api<Saldo[]>('PUT', '/api/quiosque/estoque/minimo', {
+        token: cfg.donoToken,
+        body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, estoqueMinimo: null },
+      });
+      if (limpar.status !== 200 || !Array.isArray(limpar.data)) {
+        return { status: 'failed', message: 'Limpar mínimo', expected: '200 com saldos', actual: `${limpar.status} ${limpar.raw.slice(0, 120)}` };
+      }
+      const semMinimo = limpar.data.find((saldo) => saldo.produtoId === cfg.produtoId);
+      if (semMinimo?.estoqueMinimo !== null || semMinimo.statusEstoque !== 'NORMAL') {
+        return { status: 'failed', message: 'Limpar mínimo', expected: '200 / null / NORMAL', actual: `${limpar.status} / ${semMinimo?.estoqueMinimo} / ${semMinimo?.statusEstoque}` };
+      }
+      return { message: 'LOW derivado do saldo; mínimo é opcional', expected: 'LOW → NORMAL', actual: 'ok' };
     },
   );
 

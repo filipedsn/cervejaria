@@ -476,27 +476,37 @@ export interface SaldoEstoque {
   nome: string;
   categoria: string | null;
   quantidade: number;
+  estoqueMinimo: number | null;
+  statusEstoque: StatusEstoque;
+}
+
+export type StatusEstoque = 'NORMAL' | 'LOW' | 'OUT_OF_STOCK';
+
+export function classificarEstoque(quantidade: number, estoqueMinimo: number | null): StatusEstoque {
+  if (quantidade <= 0) return 'OUT_OF_STOCK';
+  if (estoqueMinimo !== null && quantidade <= estoqueMinimo) return 'LOW';
+  return 'NORMAL';
 }
 
 /** Mapa produtoId → saldo disponível no ponto de venda. */
-export function mapSaldosEstoque(itens: SaldoEstoque[]): Map<string, number> {
-  return new Map(itens.map((item) => [item.produtoId, item.quantidade]));
+export function mapSaldosEstoque(itens: SaldoEstoque[]): Map<string, SaldoEstoque> {
+  return new Map(itens.map((item) => [item.produtoId, item]));
 }
 
 /** Máximo que ainda pode entrar no carrinho desta rodada. null = sem controle de estoque. */
 export function limiteEstoqueCarrinho(
   produto: Pick<ProdutoQuiosque, 'id' | 'controlaEstoque'>,
-  saldos: Map<string, number> | undefined,
+  saldos: Map<string, SaldoEstoque> | undefined,
   moduloControlaEstoque: boolean,
 ): number | null {
   if (!moduloControlaEstoque || !produto.controlaEstoque || !saldos) return null;
-  return Math.max(0, saldos.get(produto.id) ?? 0);
+  return Math.max(0, saldos.get(produto.id)?.quantidade ?? 0);
 }
 
 export function podeIncrementarLinhaCarrinho(
   produto: Pick<ProdutoQuiosque, 'id' | 'controlaEstoque'>,
   quantidadeAtual: number,
-  saldos: Map<string, number> | undefined,
+  saldos: Map<string, SaldoEstoque> | undefined,
   moduloControlaEstoque: boolean,
 ): boolean {
   const limite = limiteEstoqueCarrinho(produto, saldos, moduloControlaEstoque);
@@ -507,12 +517,12 @@ export function podeIncrementarLinhaCarrinho(
 /** Item ja lancado na comanda: o estoque ja foi baixado, so precisa de saldo livre para subir. */
 export function podeIncrementarItemComanda(
   produto: Pick<ProdutoQuiosque, 'id' | 'controlaEstoque'> | undefined,
-  saldos: Map<string, number> | undefined,
+  saldos: Map<string, SaldoEstoque> | undefined,
   moduloControlaEstoque: boolean,
 ): boolean {
   if (!produto) return true;
   if (!moduloControlaEstoque || !produto.controlaEstoque || !saldos) return true;
-  return (saldos.get(produto.id) ?? 0) > 0;
+  return (saldos.get(produto.id)?.quantidade ?? 0) > 0;
 }
 
 export function podeEditarItemComanda(

@@ -11,6 +11,14 @@ type TxClient = Prisma.TransactionClient;
 
 const SAIDA_MANUAL: TipoMovimentoEstoqueQuiosque[] = ['PERDA', 'CORTESIA', 'CONSUMO_INTERNO'];
 
+export type StatusEstoque = 'NORMAL' | 'LOW' | 'OUT_OF_STOCK';
+
+export function classificarEstoque(quantidade: number, estoqueMinimo: number | null): StatusEstoque {
+  if (quantidade <= 0) return 'OUT_OF_STOCK';
+  if (estoqueMinimo !== null && quantidade <= estoqueMinimo) return 'LOW';
+  return 'NORMAL';
+}
+
 /** Serializa mutações do saldo materializado de um produto em um ponto de venda. */
 function chaveLockEstoque(cervejariaId: string, pontoVendaId: string, produtoId: string): bigint {
   const digest = createHash('sha256')
@@ -290,14 +298,49 @@ export async function listarSaldos(cervejariaId: string, pontoVendaId: string) {
     where: { cervejariaId, pontoVendaId, produtoId: { in: produtos.map((p) => p.id) } },
   });
 
-  const saldoPorProduto = new Map(saldos.map((saldo) => [saldo.produtoId, saldo.quantidade]));
+  const saldoPorProduto = new Map(saldos.map((saldo) => [saldo.produtoId, saldo]));
 
   return produtos.map((produto) => ({
     produtoId: produto.id,
     nome: produto.nome,
     categoria: produto.categoria,
-    quantidade: saldoPorProduto.get(produto.id) ?? 0,
+    quantidade: saldoPorProduto.get(produto.id)?.quantidade ?? 0,
+    estoqueMinimo: saldoPorProduto.get(produto.id)?.estoqueMinimo ?? null,
+    statusEstoque: classificarEstoque(
+      saldoPorProduto.get(produto.id)?.quantidade ?? 0,
+      saldoPorProduto.get(produto.id)?.estoqueMinimo ?? null,
+    ),
   }));
+}
+
+export async function atualizarEstoqueMinimo(params: {
+  cervejariaId: string;
+  pontoVendaId: string;
+  produtoId: string;
+  estoqueMinimo: number | null;
+}) {
+  const produto = await prisma.produtoQuiosque.findFirst({
+    where: { id: params.produtoId, cervejariaId: params.cervejariaId, ativo: true, controlaEstoque: true },
+    select: { id: true },
+  });
+  if (!produto) throw new EstoqueInvalidoError('Produto não encontrado ou sem controle de estoque');
+
+  const pontoVenda = await prisma.pontoVenda.findFirst({
+    where: { id: params.pontoVendaId, cervejariaId: params.cervejariaId, ativo: true },
+    select: { id: true },
+  });
+  if (!pontoVenda) throw new EstoqueInvalidoError('Ponto de venda não encontrado');
+
+  await prisma.$transaction(async (tx) => {
+    await lockEstoqueEmTx(tx, params);
+    await garantirSaldo(tx, params);
+    await tx.estoqueSaldoQuiosque.update({
+      where: { pontoVendaId_produtoId: { pontoVendaId: params.pontoVendaId, produtoId: params.produtoId } },
+      data: { estoqueMinimo: params.estoqueMinimo },
+    });
+  });
+
+  return listarSaldos(params.cervejariaId, params.pontoVendaId);
 }
 
 export async function registrarEntrada(params: {

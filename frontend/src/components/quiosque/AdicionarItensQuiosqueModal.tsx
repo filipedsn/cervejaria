@@ -2,7 +2,7 @@ import { Modal } from '../Modal';
 import { GradeProdutos } from './GradeProdutos';
 import { ResumoCarrinho } from './ResumoCarrinho';
 import { formatCurrency } from '../../lib/api';
-import { totalCarrinho, type LinhaCarrinho, type ProdutoQuiosque } from '../../lib/quiosque';
+import { totalCarrinho, type LinhaCarrinho, type ProdutoQuiosque, type SaldoEstoque } from '../../lib/quiosque';
 
 export function AdicionarItensQuiosqueModal({
   open,
@@ -29,7 +29,7 @@ export function AdicionarItensQuiosqueModal({
   isPending: boolean;
   error?: string;
   successMessage?: string;
-  saldos?: Map<string, number>;
+  saldos?: Map<string, SaldoEstoque>;
   controlaEstoque: boolean;
   confirmLabel?: string;
 }) {

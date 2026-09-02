@@ -4,6 +4,7 @@ import { prisma } from '../../lib/prisma.js';
 import { getAuthUser } from '../../types/auth.js';
 import {
   ajustarSaldo,
+  atualizarEstoqueMinimo,
   listarSaldos,
   registrarEntrada,
   registrarSaidaManual,
@@ -34,6 +35,12 @@ const ajusteSchema = z.object({
   produtoId: z.string().min(1),
   quantidadeNova: z.number().int().min(0),
   observacao: z.string().trim().max(280).optional(),
+});
+
+const estoqueMinimoSchema = z.object({
+  pontoVendaId: z.string().min(1),
+  produtoId: z.string().min(1),
+  estoqueMinimo: z.number().int().min(0).nullable(),
 });
 
 export async function estoqueQuiosqueRoutes(app: FastifyInstance) {
@@ -129,5 +136,11 @@ export async function estoqueQuiosqueRoutes(app: FastifyInstance) {
     });
 
     return reply.status(201).send(saldos);
+  });
+
+  app.put('/minimo', { preHandler: [app.requireDono] }, async (request) => {
+    const { cervejariaId } = request.quiosque;
+    const body = estoqueMinimoSchema.parse(request.body);
+    return atualizarEstoqueMinimo({ cervejariaId, ...body });
   });
 }

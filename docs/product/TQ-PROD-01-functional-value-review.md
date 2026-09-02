@@ -8,9 +8,13 @@
 
 O TAP Quiver é um **produto operacional de ponto de venda para eventos e quiosques**, não apenas uma base técnica. Ele já permite que uma pequena cervejaria opere evento com comandas, taps, venda avulsa, pagamentos divididos, portal por QR, clientes, ranking e análise posterior; e que um quiosque opere turno com caixa, comandas por mesa/ficha/apelido, balcão, cozinha e estoque opcionais.
 
-O produto está em **USABLE_PRODUCT**, com prontidão comercial **YES_WITH_GAPS**. O núcleo transacional é forte e testado, mas a experiência ainda tem lacunas de valor muito concretas: o dono de cervejaria não tem uma conferência de caixa equivalente à do quiosque; estoque é somente do quiosque e não oferece mínimo/alerta; a cozinha não permite cancelamento pela tela; onboarding não conduz a primeira venda; e a entrada de comandas/pedidos continua exigindo mais contexto e passos do que o ideal no pico.
+O produto está em **USABLE_PRODUCT**, com prontidão comercial **YES_WITH_GAPS**. O núcleo transacional é forte e testado; o quiosque já oferece alerta simples de estoque e cancelamento de cozinha na UI. As lacunas mais concretas são onboarding até a primeira venda, exceções operacionais do dono e reduzir contexto/passos no pico. A proposta de caixa separado para cervejaria foi reframada, não é uma iniciativa ativa.
 
 O próximo ciclo deve priorizar produtividade e controle diário. Não há evidência para priorizar mais IA, BI sofisticado, integrações de adquirência, offline-first ou CRM enterprise.
+
+### Street Trailer Principle
+
+O cliente típico opera um trailer ou quiosque simples, com uma ou duas pessoas, operação dinâmica e uso mobile-first. **O sistema deve ajudar a registrar a operação enquanto a pessoa trabalha, e não fazer a pessoa trabalhar para registrar no sistema.** Por isso, controles adicionais só entram quando reduzem risco ou trabalho de turno de forma observável; um caixa separado para cervejaria permanece `DEFERRED / REFRAMED` até haver essa evidência.
 
 **Functional fit:** **8/10**. O produto atende bem à operação que escolheu, mas precisa fechar os “últimos metros” das rotinas repetidas e da confiança financeira do dono.
 
@@ -45,7 +49,7 @@ O produto não elimina a necessidade de conferir dinheiro físico nem substitui 
 | Só Cervejaria | Eventos, trailer, taps, comandas, portal, clientes, ranking e dashboard; sem navegação de quiosque. | Coerente e suficiente para a proposta de evento. |
 | Só Quiosque | Entrada cai em `/quiosque/comandas`; telas de cervejaria, trailer e evento são ocultadas/bloqueadas. | Coerente; reduz distração operacional. |
 | Híbrida | Mesma sessão permite alternar entre cervejaria e quiosque; ambos aparecem na navegação. | Funcional e coberto por E2E, mas a troca pode confundir operação se os nomes/objetivos dos módulos não forem explicitados no onboarding. |
-| `controlaEstoque` | Mostra rota/nav/API de estoque e baixa estoque em vendas. | Coerente; faltam mínimo, alerta e leitura de perda por produto. |
+| `controlaEstoque` | Mostra rota/nav/API de estoque, baixa em vendas e alerta mínimo por produto/ponto. | Coerente; leitura de perda por produto continua futura. |
 | `temCozinha` | Mostra fila/cozinha/TV e gera pedidos para itens com preparo. | Coerente; cancelamento não está exposto na tela e o ciclo de entrega não é visível ao cliente. |
 | `usaCardapio` | Habilita templates e preço por evento/turno. | Útil para operação variável, mas é uma decisão avançada; deve vir desligada/explicada por padrão. |
 | `quantidadeMesas` | Gera grade de mesas no quiosque. | Útil quando há mesa; configuração numérica é um bom candidato a default por tipo de operação. |
@@ -65,7 +69,7 @@ As nove combinações de empresa (cervejaria; quiosque com/sem estoque/cozinha; 
 | G. Estoque | Saldo por ponto, entrada, perda/cortesia/consumo interno, ajuste e baixa por venda no quiosque. | PARTIAL: sem mínimo/alerta e não cobre estoque da cervejaria/taps. |
 | H. Chope/Taps | Cadastro/ativação, montagem por evento, troca/histórico, volume e ranking. | IMPLEMENTED |
 | I. Quiosque | PDV avulso, comandas, ponto de venda, turnos e mesa configurável. | IMPLEMENTED |
-| J. Cozinha | Fila, estados recebido/preparo/pronto/entregue, TV e realtime. | PARTIAL: cancelar só por API e sem visão de atraso. |
+| J. Cozinha | Fila, estados recebido/preparo/pronto/entregue, TV, realtime e cancelamento por dono. | PARTIAL: sem visão de atraso; cancelamento não devolve estoque automaticamente por decisão aberta. |
 | K. Caixa/Financeiro | Quiosque: abertura, troco, sangria, suprimento, correção autorizada, fechamento/divergência/histórico. Cervejaria: pagamentos e relatórios por evento. | PARTIAL: ausência de caixa operacional na cervejaria. |
 | L. Portal do Cliente | QR, identidade, comanda, cardápio, pedido/cancelamento, confirmação/recusa. | IMPLEMENTED, com autonomia deliberadamente limitada. |
 | M. Ranking/TV | Ranking por chope de evento, período/série e TV/demo. | IMPLEMENTED; valor depende do tipo de evento. |
@@ -95,7 +99,7 @@ As nove combinações de empresa (cervejaria; quiosque com/sem estoque/cozinha; 
 | RF-14 | Caixa | Abrir, movimentar, fechar e conferir turno do quiosque. | Atendente/dono | IMPLEMENTED | `quiosque/caixa.ts`, `PainelCaixaQuiosque.tsx`, QCX-* | HIGH |
 | RF-15 | Caixa | Ter equivalente de abertura/fechamento de caixa em evento de cervejaria. | Atendente/dono | MISSING | só pagamentos/relatórios no módulo de evento | HIGH |
 | RF-16 | Estoque | Baixar por venda e registrar entrada/saída/ajuste por ponto. | Atendente | IMPLEMENTED | `quiosque/estoque.ts`, QES-* | HIGH |
-| RF-17 | Estoque | Sinalizar saldo mínimo e item indisponível antes da venda. | Atendente/dono | PARTIAL | baixa rejeita saldo insuficiente; sem mínimo/alerta configurável | HIGH |
+| RF-17 | Estoque | Sinalizar saldo mínimo e item indisponível antes da venda. | Atendente/dono | IMPLEMENTED | mínimo por produto/ponto, LOW/OUT_OF_STOCK e bloqueio de venda sem saldo | HIGH |
 | RF-18 | Cozinha | Operar fila com estados e atualização em tempo real. | Atendente | IMPLEMENTED | `quiosque/cozinha.ts`, `CozinhaPedidoCard.tsx`, QCZ-* | HIGH |
 | RF-19 | Cozinha | Cancelar pedido aberto pela interface, com confirmação contextual e reflexo financeiro. | Dono | IMPLEMENTED | UI operacional, API existente e E2E de cancelamento | HIGH |
 | RF-20 | Relatórios | Dono consulta venda, ticket, produto, pagamento e período. | Dono | IMPLEMENTED | dashboards/resumos, `relatorios.ts` | HIGH |
@@ -146,7 +150,7 @@ Pontos fortes: modelo de tap preserva troca no evento; comanda e pagamento são 
 
 Selecionar ponto → abrir caixa (troco e, se aplicável, cardápio do turno) → abrir comanda ou venda avulsa → produto/quantidade → baixa de estoque e pedido de cozinha quando aplicável → preparo/pronto/entregue → pagamento → fechamento de comandas → sangria/suprimento/correção autorizada → contar por forma e fechar → consultar resumo do turno.
 
-É o fluxo funcionalmente mais completo e tem boa velocidade na venda avulsa. A exigência de ponto/caixa antes de vender é correta para controle, mas representa treinamento inicial. Cancelamento de cozinha pela API é o ponto incompleto mais claro; estoque depende de entrada manual e não avisa antecipadamente saldo crítico.
+É o fluxo funcionalmente mais completo e tem boa velocidade na venda avulsa. A exigência de ponto/caixa antes de vender é correta para controle, mas representa treinamento inicial. Cancelamento de cozinha já está na UI; estoque continua dependente de entrada manual, mas agora antecipa saldo crítico e indisponibilidade.
 
 ## 12. High-Frequency Operations
 
@@ -189,8 +193,7 @@ Selecionar ponto → abrir caixa (troco e, se aplicável, cardápio do turno) �
 
 `NEAR_COMPLETE_HIGH_VALUE`
 
-1. **Cancelamento de pedido de cozinha na interface** — regra/API, restrição de dono e remoção da fila existem; falta a ação explícita com motivo e efeito visível. Valor 5/5, esforço S.
-2. **Exceções acionáveis do dono no quiosque** — dados de divergência, estoque, pedidos e dashboards existem; falta consolidar poucos alertas de atenção. Valor 5/5, esforço M.
+1. **Exceções acionáveis do dono no quiosque** — dados de divergência, estoque, pedidos e dashboards existem; falta consolidar poucos alertas de atenção. Valor 5/5, esforço M.
 3. **Status percebido do pedido do portal** — estados pendente/confirmado/recusado e realtime existem; falta comunicar próxima etapa/tempo e, onde aplicável, pronto/entregue. Valor 4/5, esforço M.
 4. **Estoque operacional** — entradas, baixas e saldo existem; falta mínimo configurável e bloqueio/alerta preventivo no catálogo/PDV. Valor 5/5, esforço M.
 5. **Reconhecimento de recorrentes** — histórico e estatística existem; falta uma lista/indicador simples de retorno e última visita. Valor 3/5, esforço S/M.
@@ -241,7 +244,7 @@ Faltam mínimo por produto, destaque de criticidade e explicação de indisponib
 
 O quiosque possui fila por ordem de chegada, pedidos de itens que exigem preparo, estados `RECEBIDO → EM_PREPARO → PRONTO → ENTREGUE`, retorno para corrigir toque, TV e realtime. A fila preserva pendências através da mudança de dia, que evita perda operacional.
 
-Fragilidade: o cancelamento é protegido e funciona por API, mas não está na tela; não há tempo/alerta de atraso claramente voltado ao operador; e o cliente do portal não recebe ciclo de cozinha. Priorizar a interface de cancelamento e idade do pedido antes de qualquer integração sofisticada.
+Fragilidade: o cancelamento protegido está na tela do dono, mas não há tempo/alerta de atraso claramente voltado ao operador; e o cliente do portal não recebe ciclo de cozinha. A devolução automática de estoque no cancelamento permanece uma decisão aberta; priorizar idade do pedido antes de qualquer integração sofisticada.
 
 ## 22. Comandas
 
@@ -316,11 +319,13 @@ O cliente consegue começar se receber orientação, mas o sistema não confirma
 
 | ID | Área | Problema | Requisito | Papel | Tipo | V/F/R/E* | Prioridade | Evidência |
 |---|---|---|---|---|---|---|---|---|
-| PROD-01 | Caixa cervejaria | Registro de pagamento não confere gaveta. | Abrir, movimentar, contar e fechar caixa por evento com diferença/histórico. | Atendente/dono | NEW_CAPABILITY | 5/5/5/L | P1 | quiosque já possui modelo; cervejaria não. |
+| PROD-01 | Caixa cervejaria | Registro de pagamento não confere gaveta. | Reframar a conferência leve de evento somente se observação de campo demonstrar necessidade. | Atendente/dono | DEFERRED / REFRAMED | - | DEFERRED | caixa separado adicionaria burocracia ao trailer simples sem evidência de uso. |
 | PROD-02 | Comandas | Venda fechada errada não tem exceção segura. | Estorno/correção autorizado, auditado e refletido no caixa/relatório. | Dono | FUNCTIONAL_GAP | 5/3/5/L | P1 | fechada é somente leitura. |
 | PROD-03 | Fluxo de venda | Muitos toques para localizar e lançar item. | Busca rápida e continuidade segura do lançamento. | Atendente | IMPROVEMENT | 5/5/3/M | DONE | Busca local já disponível, pós-lançamento otimizado e validação transacional preservada. |
 | PROD-04 | Cozinha | Cancelamento antes exigia contorno pela API. | Ação de dono com confirmação contextual e atualização de conta/fila. | Dono | FUNCTIONAL_GAP | 5/3/4/S | DONE | UI operacional e E2E cobrem o fluxo; o contrato atual não possui motivo. |
-| PROD-05 | Estoque | Saldo não antecipa ruptura. | Mínimo por item, alerta e indisponibilidade clara. | Atendente/dono | FUNCTIONAL_GAP | 5/4/4/M | P1 | estoque atual sem mínimo. |
+| PROD-05 | Estoque | Saldo não antecipava ruptura. | Mínimo por item, alerta e indisponibilidade clara. | Atendente/dono | FUNCTIONAL_GAP | 5/4/4/M | DONE | mínimo por produto/ponto, alerta LOW/OUT_OF_STOCK, indisponibilidade visível e validação integrada. |
+
+**PROD-04-F01 — OPEN PRODUCT DECISION:** o cancelamento de pedido de cozinha continua sem devolver estoque automaticamente. PROD-05 não altera essa regra financeira/operacional.
 | PROD-06 | Onboarding | Configuração inicial depende de conhecimento do produto. | Checklist por modo até primeira venda. | Admin/dono | IMPROVEMENT | 5/3/3/M | P1 | rotas existem, sem jornada guiada. |
 | PROD-07 | Dono | Dados não viram exceções priorizadas. | Painel curto de atenção operacional. | Dono | IMPROVEMENT | 5/3/4/M | P1 | dashboards, caixa/estoque/fila já fornecem dados. |
 | PROD-08 | Portal | Cliente não sabe se/como pedido avançou. | Estado claro e próxima ação; mapear entrega quando aplicável. | Cliente | IMPROVEMENT | 4/3/3/M | P2 | portal confirma/recusa, sem preparo/ETA. |
@@ -336,9 +341,8 @@ O cliente consegue começar se receber orientação, mas o sistema não confirma
 ## 31. Top 10 Functional Priorities
 
 1. **PROD-03 — Venda/comanda rápida:** atendente; menos tempo e conta errada; busca/favoritos/defaults; M; acontece a cada venda.
-2. **PROD-01 — Caixa de cervejaria:** dono/atendente; confiança no recebido; ciclo de caixa por evento; L; fecha lacuna comercial central.
-3. **PROD-05 — Estoque crítico do quiosque:** atendente/dono; evita ruptura; mínimo/alerta; M; usa base já disponível.
-4. **PROD-04 — Cancelamento de cozinha na UI:** dono; corrige pedido sem contorno técnico; ação protegida; S; quase completo.
+2. **PROD-05 — Estoque crítico do quiosque:** DONE; atendente/dono; evita ruptura; mínimo/alerta; M.
+3. **PROD-04 — Cancelamento de cozinha na UI:** DONE; dono; ação protegida; S.
 5. **PROD-06 — Onboarding até primeira venda:** admin/dono; reduz abandono/suporte; checklist por modo; M; melhora conversão inicial.
 6. **PROD-07 — Atenção do dono:** dono; menos perda e trabalho mental; exceções de caixa/estoque/fila; M; antes de novo BI.
 7. **PROD-02 — Correção financeira auditada:** dono; reduz erro irreversível; estorno autorizado; L; relevante, mas exige desenho cuidadoso.
@@ -346,13 +350,13 @@ O cliente consegue começar se receber orientação, mas o sistema não confirma
 9. **PROD-08 — Status do portal:** cliente; reduz espera e chamadas; estado/entrega; M; depende da operação local.
 10. **PROD-09 — Recorrência simples:** dono/atendente; atendimento e retenção; indicador de retorno; S/M; usa dados existentes.
 
-Dependências reais: PROD-03 usa dados atuais de comandas/produtos; PROD-04 usa transição/API existente; PROD-05 amplia saldo/movimento atuais; PROD-06 depende somente de estados já consultáveis; PROD-01 e PROD-02 devem compartilhar modelo de transação/caixa e suas regras de auditoria. Não há dependência de Support Analyst, LLM, refatoração preventiva ou novo banco analítico.
+Dependências reais: PROD-03 usa dados atuais de comandas/produtos; PROD-04 usa transição/API existente; PROD-05 amplia saldo/movimento atuais; PROD-06 depende somente de estados já consultáveis. PROD-01 só volta a discovery se houver evidência de campo. Não há dependência de Support Analyst, LLM, refatoração preventiva ou novo banco analítico.
 
 ## 32. Next 3 Functional Initiatives
 
 1. **PROD-03 — Acelerar venda e comanda.** Maior retorno por frequência e menor risco; aplicar em ambos os módulos quando o padrão for realmente compartilhado.
-2. **PROD-01 — Caixa de cervejaria.** Maior gap de confiança comercial para a vertical de evento; iniciar por discovery de rotina de fechamento com operadores.
-3. **PROD-05 — Estoque crítico do quiosque.** A baixa e o saldo já existem; transformar esse dado em alerta simples antes da venda reduz perda e frustração. **PROD-04** permanece o quick win independente mais imediato do ciclo.
+2. **PROD-06 — Onboarding até primeira venda.** Reduz abandono/suporte e já usa estados consultáveis.
+3. **PROD-07 — Atenção do dono.** Converte dados existentes em poucas exceções acionáveis. PROD-04 e PROD-05 estão concluídos.
 
 ### Acceptance concept
 
@@ -389,8 +393,8 @@ Given controle de estoque habilitado, When o saldo chega ao mínimo configurado 
 
 | Horizonte | TRACK A — PRODUCT FUNCTIONAL EVOLUTION | TRACK B — PLATFORM / SUPPORT ANALYST |
 |---|---|---|
-| Próximo ciclo | PROD-03; PROD-04; discovery de PROD-01; registrar feedback de 3–5 turnos. | Concluir somente o piloto/aceite já planejado, de modo separado e limitado. |
-| Ciclo seguinte | PROD-01 ou PROD-05 conforme evidência de campo; PROD-06; PROD-07. | Operar/revisar resultados do Analyst; corrigir apenas bloqueadores comprovados. |
+| Próximo ciclo | PROD-06; PROD-07; registrar feedback de 3–5 turnos. | Concluir somente o piloto/aceite já planejado, de modo separado e limitado. |
+| Ciclo seguinte | PROD-02 ou uma hipótese observada em campo; considerar PROD-01 somente se houver evidência. | Operar/revisar resultados do Analyst; corrigir apenas bloqueadores comprovados. |
 | Depois | PROD-02 e portal/recorrência conforme uso; decidir se estoque cervejaria merece discovery. | Evoluções técnicas somente com problema de produto/operacional explicitamente ligado. |
 
 ## 34. Product Scorecard

@@ -922,6 +922,8 @@ model EstoqueSaldoQuiosque {
   pontoVendaId String
   produtoId    String
   quantidade   Int      @default(0)
+  /// Alerta opcional por produto e ponto de venda; nao bloqueia vendas.
+  estoqueMinimo Int?
   updatedAt    DateTime @updatedAt
 
   cervejaria Cervejaria     @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
