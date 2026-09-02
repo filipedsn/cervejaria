@@ -10,6 +10,7 @@ export class HealthTracker {
   private lastElasticError?: 'unreachable' | 'timeout' | 'unauthorized' | 'forbidden' | 'rate_limited' | 'malformed_response' | 'request_failed';
   private lastCycleStartedAt?: string; private lastCycleCompletedAt?: string; private lastProgressAt?: string; private lastIncidentAt?: string; private lastDossierAt?: string; private lastLlmAttemptAt?: string; private lastLlmSuccessAt?: string;
   private llmReachable?: boolean; private llmModelAvailable?: boolean; private cleanShutdown = false; private fatalError = false; private timer?: NodeJS.Timeout;
+  private persistQueue: Promise<void> = Promise.resolve();
   constructor(private readonly store: HealthStore, private readonly config: HealthConfig, private readonly llmConfig: LocalLlmConfig, private readonly elasticConfigured: boolean, private readonly clock: Clock = { now: () => new Date() }, private readonly version = '0.1.0', private readonly gitSha = safeGitSha(process.env.GIT_SHA)) {}
   async start(): Promise<void> { if (!this.config.enabled) return; this.startedAt = this.now(); await this.persist(); this.timer = setInterval(() => { void this.persist(); }, this.config.heartbeatIntervalMs); this.timer.unref(); }
   async stop(clean = true): Promise<void> { this.cleanShutdown = clean; if (this.timer) clearInterval(this.timer); await this.persist(); }
@@ -23,7 +24,16 @@ export class HealthTracker {
   llmResult(result: { success?: boolean; reachable?: boolean; modelAvailable?: boolean; timeout?: boolean; fallback?: boolean; invalid?: boolean; guardrailBlock?: boolean }): void { if (result.success) { this.counters.llmSuccesses++; this.lastLlmSuccessAt = this.now(); } if (result.timeout) this.counters.llmTimeouts++; if (result.fallback) this.counters.llmFallbacks++; if (result.invalid) this.counters.llmInvalidOutputs++; if (result.guardrailBlock) this.counters.llmGuardrailBlocks++; if (result.reachable !== undefined) this.llmReachable = result.reachable; if (result.modelAvailable !== undefined) this.llmModelAvailable = result.modelAvailable; void this.persist(); }
   snapshot(): SupportAnalystHealthSnapshot { return this.evaluator.evaluate({ now: this.clock.now(), startedAt: this.startedAt, heartbeatAt: this.heartbeatAt, cleanShutdown: this.cleanShutdown, fatalError: this.fatalError, elasticConfigured: this.elasticConfigured, lastElasticReadAt: this.lastElasticReadAt, lastElasticReadSucceededAt: this.lastElasticReadSucceededAt, lastElasticError: this.lastElasticError, lastCycleStartedAt: this.lastCycleStartedAt, lastCycleCompletedAt: this.lastCycleCompletedAt, lastProgressAt: this.lastProgressAt, lastIncidentAt: this.lastIncidentAt, lastDossierAt: this.lastDossierAt, lastLlmAttemptAt: this.lastLlmAttemptAt, lastLlmSuccessAt: this.lastLlmSuccessAt, llmEnabled: this.llmConfig.enabled, llmReachable: this.llmReachable, llmModelAvailable: this.llmModelAvailable, counters: this.counters, heartbeatStaleMs: this.config.heartbeatStaleMs, processingStaleMs: this.config.processingStaleMs }); }
   healthCounters(): Readonly<HealthCounters> { return { ...this.counters }; }
-  private async persist(): Promise<void> { if (!this.config.enabled || !this.startedAt) return; try { this.heartbeatAt = this.now(); await this.store.writeHeartbeat({ schemaVersion: HEALTH_SCHEMA_VERSION, processStartedAt: this.startedAt, heartbeatAt: this.heartbeatAt, version: this.version, ...(this.gitSha ? { gitSha: this.gitSha } : {}) }); await this.store.writeSnapshot(this.snapshot()); } catch { /* Health must never terminate deterministic processing. */ } }
+  private persist(): Promise<void> {
+    if (!this.config.enabled || !this.startedAt) return Promise.resolve();
+    // Hooks may arrive in quick succession. Serialize atomic writes so an older
+    // snapshot cannot win a rename race after a completed-cycle snapshot.
+    this.persistQueue = this.persistQueue.then(async () => {
+      try { this.heartbeatAt = this.now(); await this.store.writeHeartbeat({ schemaVersion: HEALTH_SCHEMA_VERSION, processStartedAt: this.startedAt!, heartbeatAt: this.heartbeatAt, version: this.version, ...(this.gitSha ? { gitSha: this.gitSha } : {}) }); await this.store.writeSnapshot(this.snapshot()); }
+      catch { /* Health must never terminate deterministic processing. */ }
+    });
+    return this.persistQueue;
+  }
   private now(): string { return this.clock.now().toISOString(); }
 }
 function safeGitSha(value: string | undefined): string | undefined { return value && /^[a-f0-9]{7,64}$/i.test(value) ? value : undefined; }
