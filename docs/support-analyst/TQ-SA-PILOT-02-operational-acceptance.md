@@ -1,7 +1,7 @@
 # TQ-SA-PILOT-02 — acceptance operacional do Support Analyst
 
-**Data:** 2026-09-02  
-**Status:** `BLOCKED — authorized source validation pending`  
+**Data:** 2026-09-02
+**Status:** `BLOCKED — authorized source validation pending`
 **Escopo executado:** gates offline, runtime fake-source, health local, review do runbook e inspeção estática. PROD não foi consultado; nenhuma credencial foi lida, criada ou persistida.
 
 ## Pre-check
