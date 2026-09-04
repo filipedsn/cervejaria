@@ -69,6 +69,11 @@ test('poller processes an event and records mocked delivery success or failure',
     assert.equal(state.lastSuccessfulDeliveryAt, undefined);
     assert.equal(state.lastDeliveryErrorAt, clock().toISOString());
     assert.doesNotMatch(state.lastDeliveryError ?? '', /mock-secret/);
+
+    await pollOnce(log, { now: clock, notify: async () => ({ sent: true, channels: { email: true } }) });
+    state = loadAlertPollerState();
+    assert.equal(state.lastSuccessfulDeliveryAt, clock().toISOString());
+    assert.equal(state.lastDeliveryError, undefined);
   } finally {
     globalThis.fetch = originalFetch;
     if (previousFile === undefined) delete process.env.KIBANA_ALERT_POLL_STATE_FILE; else process.env.KIBANA_ALERT_POLL_STATE_FILE = previousFile;
