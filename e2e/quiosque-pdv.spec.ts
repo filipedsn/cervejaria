@@ -1,22 +1,61 @@
 import { expect, test } from '@playwright/test';
 import path from 'node:path';
+import { apiLogin, apiRequest, selectPorRotulo } from './helpers/api';
+import { CREDENTIALS } from './helpers/auth';
 
 const quiosqueAuth = path.join(process.cwd(), 'e2e/.auth/quiosque.json');
 
 test.use({ storageState: quiosqueAuth });
 
+let sequence = 0;
+
+async function prepararPdvAberto({ produto = false }: { produto?: boolean } = {}) {
+  const id = `${Date.now()}-${sequence++}`;
+  const cookie = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
+  const ponto = await apiRequest<{ id: string; nome: string }>('POST', '/api/quiosque/pontos-venda', {
+    cookie,
+    body: { nome: `E2E PDV ${id}` },
+  });
+  expect(ponto.status, 'ponto de venda E2E criado').toBe(201);
+
+  let nomeProduto = '';
+  if (produto) {
+    nomeProduto = `Produto PDV E2E ${id}`;
+    const produtoCriado = await apiRequest('POST', '/api/quiosque/produtos', {
+      cookie,
+      body: { nome: nomeProduto, precoUnit: 10, exigePreparo: false, controlaEstoque: false },
+    });
+    expect(produtoCriado.status, 'produto disponivel para venda avulsa criado').toBe(201);
+  }
+
+  const caixa = await apiRequest('POST', '/api/quiosque/caixa/abrir', {
+    cookie,
+    body: { pontoVendaId: ponto.data.id, trocoInicial: 0 },
+  });
+  expect(caixa.status, 'caixa do ponto E2E aberto').toBe(201);
+
+  return { ...ponto.data, nomeProduto };
+}
+
 test.describe('Quiosque comandas', () => {
   test('dono quiosque exclusivo abre hub de comandas como na cervejaria', async ({ page }) => {
+    const ponto = await prepararPdvAberto();
     await page.goto('/quiosque/comandas');
+    await selectPorRotulo(page, 'Ponto de venda').selectOption(ponto.id);
     await expect(page.getByRole('navigation', { name: 'Navegação do quiosque' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Comandas' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Comanda' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Venda avulsa' })).toBeVisible();
+    await expect(page.getByRole('link', { name: '+ Comanda', exact: true })).toBeEnabled();
+    await expect(page.getByRole('link', { name: 'Venda avulsa', exact: true })).toBeEnabled();
   });
 
-  test('venda avulsa lista produto seed CFG', async ({ page }) => {
+  test('venda avulsa lista produto disponivel com caixa aberto', async ({ page }) => {
+    const ponto = await prepararPdvAberto({ produto: true });
     await page.goto('/quiosque/comandas/venda-avulsa');
+    await selectPorRotulo(page, 'Ponto de venda').selectOption(ponto.id);
     await expect(page.getByRole('heading', { name: 'Venda avulsa' })).toBeVisible();
-    await expect(page.getByText('Cerveja CFG')).toBeVisible();
+    await page.getByRole('button', { name: '+ Item' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Adicionar item' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: new RegExp(`^${ponto.nomeProduto}\\b`) })).toBeVisible();
   });
 });
