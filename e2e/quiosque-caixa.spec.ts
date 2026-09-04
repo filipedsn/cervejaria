@@ -1,9 +1,18 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import path from 'node:path';
 import { apiLogin, apiRequest, campoPorRotulo, selectPorRotulo } from './helpers/api';
 import { CREDENTIALS } from './helpers/auth';
 
 const quiosqueAuth = path.join(process.cwd(), 'e2e/.auth/quiosque.json');
+
+/** Types a human BRL amount into the cent-based CurrencyInput. */
+async function fillCurrency(input: Locator, amount: number) {
+  await input.fill('');
+  await input.pressSequentially(String(Math.round(amount * 100)));
+  await expect(input).toHaveValue(
+    amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+  );
+}
 
 test.use({ storageState: quiosqueAuth });
 test.describe.configure({ mode: 'serial' });
@@ -29,7 +38,7 @@ test.describe('Quiosque — ciclo de caixa', () => {
     await selectPorRotulo(page, 'Ponto de venda').selectOption({ label: nomePonto });
     await expect(page.getByRole('heading', { name: 'Caixa do dia' })).toBeVisible();
 
-    await campoPorRotulo(page, 'Troco inicial (R$)').fill('100');
+    await fillCurrency(campoPorRotulo(page, 'Troco inicial (R$)'), 100);
     await page.getByRole('button', { name: 'Abrir caixa' }).click();
     await expect(page.getByRole('heading', { name: 'Caixa aberto' })).toBeVisible();
     await expect(page.getByText('Em operação')).toBeVisible();
@@ -37,7 +46,7 @@ test.describe('Quiosque — ciclo de caixa', () => {
     await page.getByRole('button', { name: 'Sangria' }).click();
     const modalSangria = page.getByRole('dialog');
     await expect(modalSangria.getByText('Registrar sangria')).toBeVisible();
-    await campoPorRotulo(modalSangria, 'Valor (R$)').fill('30');
+    await fillCurrency(campoPorRotulo(modalSangria, 'Valor (R$)'), 30);
     await campoPorRotulo(modalSangria, 'Observação (opcional)').fill('Retirada E2E');
     await modalSangria.getByRole('button', { name: 'Confirmar' }).click();
     await expect(modalSangria).not.toBeVisible();
@@ -45,7 +54,7 @@ test.describe('Quiosque — ciclo de caixa', () => {
     await page.getByRole('button', { name: 'Suprimento' }).click();
     const modalSuprimento = page.getByRole('dialog');
     await expect(modalSuprimento.getByText('Registrar suprimento')).toBeVisible();
-    await campoPorRotulo(modalSuprimento, 'Valor (R$)').fill('20');
+    await fillCurrency(campoPorRotulo(modalSuprimento, 'Valor (R$)'), 20);
     await campoPorRotulo(modalSuprimento, 'Observação (opcional)').fill('Reforço E2E');
     await modalSuprimento.getByRole('button', { name: 'Confirmar' }).click();
     await expect(modalSuprimento).not.toBeVisible();
@@ -57,7 +66,7 @@ test.describe('Quiosque — ciclo de caixa', () => {
     const modalFechar = page.getByRole('dialog');
     await expect(modalFechar.getByText('Fechar caixa')).toBeVisible();
     // Conta 10 a menos do que o esperado para provocar a divergência.
-    await campoPorRotulo(modalFechar, 'Contado — Dinheiro').fill('80');
+    await fillCurrency(campoPorRotulo(modalFechar, 'Contado — Dinheiro'), 80);
     await campoPorRotulo(modalFechar, 'Observação (opcional)').fill('Falta de troco E2E');
     await modalFechar.getByRole('button', { name: 'Confirmar fechamento' }).click();
 
@@ -71,18 +80,18 @@ test.describe('Quiosque — ciclo de caixa', () => {
     await selectPorRotulo(page, 'Ponto de venda').selectOption({ label: nomePonto });
     await expect(page.getByRole('heading', { name: 'Caixa do dia' })).toBeVisible();
 
-    await campoPorRotulo(page, 'Troco inicial (R$)').fill('50');
+    await fillCurrency(campoPorRotulo(page, 'Troco inicial (R$)'), 50);
     await page.getByRole('button', { name: 'Abrir caixa' }).click();
     await expect(page.getByRole('heading', { name: 'Caixa aberto' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Fechar caixa' }).click();
     const modalFechar = page.getByRole('dialog');
-    await campoPorRotulo(modalFechar, 'Contado — Dinheiro').fill('50');
+    await fillCurrency(campoPorRotulo(modalFechar, 'Contado — Dinheiro'), 50);
     await modalFechar.getByRole('button', { name: 'Confirmar fechamento' }).click();
     await expect(modalFechar).not.toBeVisible();
 
     await expect(page.getByRole('heading', { name: 'Caixa do dia' })).toBeVisible();
-    await campoPorRotulo(page, 'Troco inicial (R$)').fill('80');
+    await fillCurrency(campoPorRotulo(page, 'Troco inicial (R$)'), 80);
     await page.getByRole('button', { name: 'Abrir caixa' }).click();
     await expect(page.getByRole('heading', { name: 'Caixa aberto' })).toBeVisible();
 
