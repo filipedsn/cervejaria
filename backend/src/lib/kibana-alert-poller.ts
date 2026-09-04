@@ -3,6 +3,7 @@ import {
   loadAlertPollerState,
   markAlertProcessed,
   saveAlertPollerState,
+  summarizeAlertPollerError,
   type AlertPollerState,
 } from './alert-poller-state.js';
 import { handleKibanaAlertWebhook, isAlertNotifyConfigured } from './kibana-alert-email.js';
@@ -47,7 +48,7 @@ function esAuthHeaders(): Record<string, string> {
   return headers;
 }
 
-function pollIntervalMs(): number {
+export function pollIntervalMs(): number {
   const raw = process.env.KIBANA_ALERT_POLL_INTERVAL_MS;
   const n = raw ? parseInt(raw, 10) : DEFAULT_INTERVAL_MS;
   return Number.isFinite(n) && n >= 10_000 ? n : DEFAULT_INTERVAL_MS;
@@ -88,7 +89,40 @@ async function markProcessedInEs(alertId: string): Promise<void> {
   }
 }
 
-async function pollOnce(log: {
+export type AlertPollerHealth = {
+  status: 'healthy' | 'degraded';
+  process: 'up';
+  elasticsearch: 'ok' | 'error' | 'unknown';
+  lastPollAttemptAt?: string;
+  lastSuccessfulPollAt?: string;
+  lastPollError?: string;
+  lastEventProcessedAt?: string;
+  lastSuccessfulDeliveryAt?: string;
+  lastDeliveryError?: string;
+  stale: boolean;
+};
+
+/** Three polling intervals tolerate a single delayed request without inventing an SLA. */
+export function getAlertPollerHealth(now = Date.now()): AlertPollerHealth {
+  state = loadAlertPollerState();
+  const lastSuccess = state.lastSuccessfulPollAt ? Date.parse(state.lastSuccessfulPollAt) : NaN;
+  const stale = !Number.isFinite(lastSuccess) || now - lastSuccess > pollIntervalMs() * 3;
+  const hasRecentError = Boolean(state.lastPollErrorAt && (!Number.isFinite(lastSuccess) || Date.parse(state.lastPollErrorAt) >= lastSuccess));
+  return {
+    status: stale || hasRecentError ? 'degraded' : 'healthy',
+    process: 'up',
+    elasticsearch: hasRecentError ? 'error' : Number.isFinite(lastSuccess) ? 'ok' : 'unknown',
+    lastPollAttemptAt: state.lastPollAttemptAt,
+    lastSuccessfulPollAt: state.lastSuccessfulPollAt,
+    lastPollError: state.lastPollError,
+    lastEventProcessedAt: state.lastEventProcessedAt,
+    lastSuccessfulDeliveryAt: state.lastSuccessfulDeliveryAt,
+    lastDeliveryError: state.lastDeliveryError,
+    stale,
+  };
+}
+
+export async function pollOnce(log: {
   warn: (obj: unknown, msg?: string) => void;
   info: (obj: unknown, msg?: string) => void;
 }): Promise<void> {
@@ -97,6 +131,7 @@ async function pollOnce(log: {
 
   try {
     state = loadAlertPollerState();
+    state = { ...state, lastPollAttemptAt: new Date().toISOString() };
 
     const res = await fetch(`${esUrl()}/${encodeURIComponent(esIndex())}/_search`, {
       method: 'POST',
@@ -114,13 +149,20 @@ async function pollOnce(log: {
     });
 
     if (!res.ok) {
+      const now = new Date().toISOString();
+      state = { ...state, lastPollErrorAt: now, lastPollError: `Elasticsearch HTTP ${res.status}` };
+      saveAlertPollerState(state);
       log.warn({ status: res.status, index: esIndex() }, 'Kibana alert poller: falha ao consultar ES');
       return;
     }
 
     const data = (await res.json()) as { hits?: { hits?: EsHit[] } };
     const hits = data.hits?.hits ?? [];
-    if (!hits.length) return;
+    state = { ...state, lastSuccessfulPollAt: new Date().toISOString(), lastPollErrorAt: undefined, lastPollError: undefined };
+    if (!hits.length) {
+      saveAlertPollerState(state);
+      return;
+    }
 
     let maxTs = state.lastPollIso;
 
@@ -132,8 +174,10 @@ async function pollOnce(log: {
       if (isAlertProcessed(state, hit._id)) continue;
 
       try {
+        state = { ...state, lastDeliveryAttemptAt: new Date().toISOString() };
         const result = await handleKibanaAlertWebhook(src, hit._id);
         if (result.sent) {
+          state = { ...state, lastSuccessfulDeliveryAt: new Date().toISOString(), lastDeliveryErrorAt: undefined, lastDeliveryError: undefined };
           log.info(
             {
               ruleName: src.ruleName ?? src.rule_name,
@@ -145,10 +189,12 @@ async function pollOnce(log: {
         }
         if (hit._id) {
           state = markAlertProcessed(state, hit._id);
+          state = { ...state, lastEventProcessedAt: new Date().toISOString() };
           void markProcessedInEs(hit._id);
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = summarizeAlertPollerError(err);
+        state = { ...state, lastDeliveryErrorAt: new Date().toISOString(), lastDeliveryError: msg };
         log.warn({ err: msg, alertId: hit._id }, 'Kibana alert poller: falha ao enviar alerta');
       }
     }
@@ -156,7 +202,9 @@ async function pollOnce(log: {
     state = { ...state, lastPollIso: maxTs };
     saveAlertPollerState(state);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = summarizeAlertPollerError(err);
+    state = { ...state, lastPollErrorAt: new Date().toISOString(), lastPollError: msg };
+    saveAlertPollerState(state);
     log.warn({ err: msg }, 'Kibana alert poller: erro inesperado');
   } finally {
     polling = false;

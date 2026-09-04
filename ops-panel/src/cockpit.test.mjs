@@ -73,3 +73,14 @@ test('home do Control Center tem shell, quatro cards e acoes existentes', () => 
   assert.match(app, /operational = \[/);
   assert.match(app, /saudaveis/);
 });
+
+test('observabilidade apresenta alertas sem expor configuracao Elastic ao navegador', () => {
+  assert.match(server, /app\.get\('\/api\/alerts'/);
+  assert.match(server, /readAlertsFromElastic/);
+  assert.match(server, /OBS_ENV_FILE/);
+  assert.match(html, /id="activeAlerts"/);
+  assert.match(html, /id="pollerSemanticHealth"/);
+  assert.match(app, /refreshAlerts/);
+  assert.match(app, /Fonte indisponivel/);
+  assert.doesNotMatch(app, /ELASTIC_API_KEY|ELASTIC_PASSWORD|Authorization/);
+});

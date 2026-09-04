@@ -45,6 +45,7 @@ const PROD_MANIFEST = path.join(PROD_ARTIFACTS_DIR, 'manifest.json');
 const PROD_ARTIFACTS_PREVIOUS = path.join(PROJECT_ROOT, 'deploy', 'prod-artifacts.previous');
 const DEPLOY_RECOVERY = path.join(RUNTIME_DIR, 'deploy-recovery.json');
 const RELEASE_HISTORY = path.join(RUNTIME_DIR, 'release-history.json');
+const OBS_ENV_FILE = path.join(PROJECT_ROOT, 'deploy', 'observability', '.env.observability');
 
 const REQUIRED_CHECKS = (process.env.OPS_PANEL_REQUIRED_CHECKS || '')
   .split(',')
@@ -96,6 +97,60 @@ function loadEnvFile(filePath) {
     if (key === 'OPS_PANEL_PORT' && process.env.OPS_PANEL_PORT) continue;
     process.env[key] = value;
   }
+}
+
+function readObservabilityConfig() {
+  if (!fs.existsSync(OBS_ENV_FILE)) return null;
+  const values = {};
+  for (const line of fs.readFileSync(OBS_ENV_FILE, 'utf8').replace(/^\uFEFF/, '').split('\n')) {
+    const trimmed = line.trim();
+    const eq = trimmed.indexOf('=');
+    if (!trimmed || trimmed.startsWith('#') || eq < 1) continue;
+    values[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim().replace(/^['"]|['"]$/g, '');
+  }
+  const baseUrl = (values.ELASTICSEARCH_URL || '').replace(/\/$/, '');
+  if (!baseUrl) return null;
+  const authorization = values.ELASTIC_API_KEY
+    ? `ApiKey ${values.ELASTIC_API_KEY}`
+    : values.ELASTIC_PASSWORD
+      ? `Basic ${Buffer.from(`${values.ELASTIC_USER || 'elastic'}:${values.ELASTIC_PASSWORD}`).toString('base64')}`
+      : null;
+  return { baseUrl, authorization };
+}
+
+function alertSeverity(ruleName = '') {
+  if (/api-ready|public-ready|postgres|5xx|transacao-failure/.test(ruleName)) return 'critical';
+  if (/eventloop|ui-error|es-cluster|slo-availability/.test(ruleName)) return 'high';
+  return 'medium';
+}
+
+async function readAlertsFromElastic() {
+  const config = readObservabilityConfig();
+  if (!config) return { source: 'unavailable', reason: 'Configuracao Elastic ausente', alerts: [] };
+  const response = await fetch(`${config.baseUrl}/quiver-tap-alert-events/_search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(config.authorization ? { Authorization: config.authorization } : {}) },
+    body: JSON.stringify({ size: 30, sort: [{ '@timestamp': 'desc' }], _source: ['@timestamp', 'ruleId', 'ruleName', 'environment', 'alertState', 'severity', 'reason', 'viewInAppUrl'] }),
+  });
+  if (!response.ok) return { source: 'unavailable', reason: `Elastic HTTP ${response.status}`, alerts: [] };
+  const data = await response.json();
+  const alerts = (data.hits?.hits ?? []).map((hit) => {
+    const source = hit._source ?? {};
+    const ruleName = typeof source.ruleName === 'string' ? source.ruleName : 'Regra desconhecida';
+    const rawState = typeof source.alertState === 'string' ? source.alertState.trim() : '';
+    return {
+      id: typeof hit._id === 'string' ? hit._id : undefined,
+      ruleId: typeof source.ruleId === 'string' ? source.ruleId : undefined,
+      ruleName,
+      environment: typeof source.environment === 'string' ? source.environment : (ruleName.includes('-prd') ? 'prd' : ruleName.includes('-dev') ? 'dev' : 'unknown'),
+      state: rawState || 'UNKNOWN',
+      severity: typeof source.severity === 'string' ? source.severity : alertSeverity(ruleName),
+      timestamp: typeof source['@timestamp'] === 'string' ? source['@timestamp'] : undefined,
+      kibanaUrl: typeof source.viewInAppUrl === 'string' ? source.viewInAppUrl : undefined,
+      message: typeof source.reason === 'string' ? source.reason.slice(0, 300) : undefined,
+    };
+  });
+  return { source: 'elastic', alerts };
 }
 
 function audit(message) {
@@ -594,6 +649,14 @@ app.get('/api/session', async (request) => ({
   trusted: isTrustedLocalOperator(request, { port: PORT }),
 }));
 
+app.get('/api/alerts', async () => {
+  try {
+    return await readAlertsFromElastic();
+  } catch {
+    return { source: 'unavailable', reason: 'Falha ao consultar fonte de alertas', alerts: [] };
+  }
+});
+
 app.get('/api/logs', async () => ({
   files: Object.keys(LOG_FILES).map((name) => {
     const meta = logMeta(name);
@@ -608,7 +671,7 @@ app.get('/api/status', async () => {
     checkHttp(`http://127.0.0.1:${PORTS.prodApi}/`),
     checkHttp(`http://127.0.0.1:${PORTS.devApi}/api/health`),
     checkHttp(`http://127.0.0.1:${PORTS.devFrontend}/`),
-    checkHttp('http://127.0.0.1:3098/health'),
+    fetch('http://127.0.0.1:3098/health').then(async (res) => ({ ok: res.ok, status: res.status, body: await res.json().catch(() => null) })).catch(() => ({ ok: false, status: 0, body: null })),
   ]);
 
   const apiPid = readPid('api.pid');
@@ -649,7 +712,7 @@ app.get('/api/status', async () => {
       // /api/ready executa SELECT 1 no Prisma; se a API nao respondeu, nao
       // atribuímos a falha especificamente ao banco.
       postgres: { ok: prodReady.ok ? true : null, source: 'api-ready' },
-      alertPoller: { ok: alertPoller.ok, port: 3098, source: 'health' },
+      alertPoller: { ok: alertPoller.ok, port: 3098, source: 'health', semantic: alertPoller.body },
       cloudflare: { ok: tunnelPid ? isProcessAlive(tunnelPid) : null, pid: tunnelPid, source: 'runtime-pid' },
     },
     backup: latestBackup(),

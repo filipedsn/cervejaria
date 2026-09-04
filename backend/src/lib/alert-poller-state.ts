@@ -14,6 +14,15 @@ const MAX_PROCESSED_IDS = 2000;
 export type AlertPollerState = {
   lastPollIso: string;
   processedIds: string[];
+  lastPollAttemptAt?: string;
+  lastSuccessfulPollAt?: string;
+  lastPollErrorAt?: string;
+  lastPollError?: string;
+  lastEventProcessedAt?: string;
+  lastDeliveryAttemptAt?: string;
+  lastSuccessfulDeliveryAt?: string;
+  lastDeliveryErrorAt?: string;
+  lastDeliveryError?: string;
 };
 
 function stateFilePath(): string {
@@ -39,7 +48,15 @@ export function loadAlertPollerState(): AlertPollerState {
     const ids = Array.isArray(raw.processedIds)
       ? raw.processedIds.filter((id): id is string => typeof id === 'string')
       : [];
-    return { lastPollIso: raw.lastPollIso, processedIds: ids.slice(-MAX_PROCESSED_IDS) };
+    const state: AlertPollerState = { lastPollIso: raw.lastPollIso, processedIds: ids.slice(-MAX_PROCESSED_IDS) };
+    for (const key of [
+      'lastPollAttemptAt', 'lastSuccessfulPollAt', 'lastPollErrorAt', 'lastPollError',
+      'lastEventProcessedAt', 'lastDeliveryAttemptAt', 'lastSuccessfulDeliveryAt',
+      'lastDeliveryErrorAt', 'lastDeliveryError',
+    ] as const) {
+      if (typeof raw[key] === 'string') state[key] = raw[key];
+    }
+    return state;
   } catch {
     return defaultState();
   }
@@ -53,7 +70,26 @@ export function saveAlertPollerState(state: AlertPollerState): void {
     lastPollIso: state.lastPollIso,
     processedIds: state.processedIds.slice(-MAX_PROCESSED_IDS),
   };
-  fs.writeFileSync(file, JSON.stringify(trimmed, null, 2), 'utf8');
+  for (const key of [
+    'lastPollAttemptAt', 'lastSuccessfulPollAt', 'lastPollErrorAt', 'lastPollError',
+    'lastEventProcessedAt', 'lastDeliveryAttemptAt', 'lastSuccessfulDeliveryAt',
+    'lastDeliveryErrorAt', 'lastDeliveryError',
+  ] as const) {
+    if (state[key]) trimmed[key] = state[key];
+  }
+  const temp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(temp, JSON.stringify(trimmed, null, 2), 'utf8');
+  fs.renameSync(temp, file);
+}
+
+/** Error text is operational context, never a place for credentials or headers. */
+export function summarizeAlertPollerError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  return raw
+    .replace(/(api[_-]?key|authorization|password|token)\s*[:=]\s*[^\s;,]+/gi, '$1=REDACTED')
+    .replace(/https?:\/\/[^\s@]+@/gi, 'URL_REDACTED@')
+    .replace(/\s+/g, ' ')
+    .slice(0, 300) || 'Erro desconhecido';
 }
 
 export function markAlertProcessed(state: AlertPollerState, alertId: string): AlertPollerState {

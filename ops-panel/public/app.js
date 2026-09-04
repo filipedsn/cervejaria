@@ -70,6 +70,10 @@ const els = {
   globalStateActionTitle: document.getElementById('globalStateActionTitle'),
   globalStateActionHint: document.getElementById('globalStateActionHint'),
   recentOperations: document.getElementById('recentOperations'),
+  alertsSource: document.getElementById('alertsSource'),
+  activeAlerts: document.getElementById('activeAlerts'),
+  recoveredAlerts: document.getElementById('recoveredAlerts'),
+  pollerSemanticHealth: document.getElementById('pollerSemanticHealth'),
 };
 
 // A release e a decisao principal; os detalhes operacionais continuam acessiveis abaixo.
@@ -235,6 +239,34 @@ function renderServices(data) {
   const unknown = operational.some((value) => value == null);
   setOverviewCard(els.overviewInfra, offline ? 'bad' : unknown ? 'warn' : 'ok', `${healthy}/${operational.length} saudaveis`);
   setOverviewDetail(els.overviewInfraDetail, offline ? 'Servico offline' : unknown ? 'Sinal pendente' : 'Sinais verificados');
+}
+
+function renderAlertItem(alert) {
+  const link = alert.kibanaUrl ? ` <a href="${escapeHtml(alert.kibanaUrl)}" target="_blank" rel="noopener">Detalhes</a>` : '';
+  return row(`${escapeHtml(alert.ruleName)} <span class="status-muted">${escapeHtml(alert.severity || 'medium')} · ${escapeHtml(alert.environment || 'unknown')}</span>`, `${escapeHtml(alert.state || 'UNKNOWN')} · ${escapeHtml(formatDate(alert.timestamp) || 'horario desconhecido')}${link}`);
+}
+
+async function refreshAlerts(poller) {
+  const semantic = poller?.semantic;
+  els.pollerSemanticHealth.innerHTML = semantic
+    ? [row('Poller', `<span class="status-${semantic.status === 'healthy' ? 'ok' : 'warn'}">${escapeHtml(String(semantic.status).toUpperCase())}</span>`), row('Ultimo poll', escapeHtml(formatDate(semantic.lastSuccessfulPollAt) || 'ainda nao comprovado')), row('Staleness', semantic.stale ? '<span class="status-warn">STALE</span>' : 'OK'), semantic.lastPollError ? row('Ultimo erro', escapeHtml(semantic.lastPollError)) : ''].join('')
+    : row('Poller', '<span class="status-muted">Health semantico indisponivel</span>');
+  try {
+    const data = await fetchJson('/api/alerts');
+    const unavailable = data.source !== 'elastic';
+    els.alertsSource.className = `chip chip--${unavailable ? 'warn' : 'ok'}`;
+    els.alertsSource.textContent = unavailable ? 'Fonte indisponivel' : 'Elastic';
+    const alerts = data.alerts || [];
+    const active = alerts.filter((a) => /^(active|alert|firing)$/i.test(a.state || ''));
+    const recovered = alerts.filter((a) => /^(recovered|ok|resolved)$/i.test(a.state || ''));
+    els.activeAlerts.innerHTML = active.length ? `<div class="metric-row"><strong>Alertas ativos</strong></div>${active.map(renderAlertItem).join('')}` : '<div class="metric-row"><span class="status-muted">Nenhum alerta ativo comprovado.</span></div>';
+    els.recoveredAlerts.innerHTML = recovered.length ? `<div class="metric-row"><strong>Recuperados recentes</strong></div>${recovered.map(renderAlertItem).join('')}` : '';
+    if (unavailable) els.activeAlerts.innerHTML = `<div class="metric-row"><span class="status-warn">Alertas: ${escapeHtml(data.reason || 'fonte indisponivel')}</span></div>`;
+  } catch {
+    els.alertsSource.className = 'chip chip--warn';
+    els.alertsSource.textContent = 'Fonte indisponivel';
+    els.activeAlerts.innerHTML = '<div class="metric-row"><span class="status-warn">Alertas: fonte indisponivel.</span></div>';
+  }
 }
 
 function releaseStateForDisplay(data, gate) {
@@ -916,6 +948,7 @@ async function refreshStatus() {
   setOverviewDetail(els.overviewInfraDetail, `${infraOk ? 'Watchdog e painel ativos' : 'Sinal local parcial'}`);
   setOverviewCard(els.overviewInfra, infraOk ? 'ok' : 'warn', infraOk ? 'OK' : 'ATENCAO');
   renderServices(data);
+  refreshAlerts(i.alertPoller);
   renderGlobalState();
 
   els.lastUpdate.textContent = `Atualizado ${new Date(data.timestamp).toLocaleTimeString('pt-BR')}`;

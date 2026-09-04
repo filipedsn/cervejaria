@@ -114,6 +114,12 @@
         <p>Apenas sinais verificados localmente; ausencia de fonte aparece como UNKNOWN.</p>
       </div>
       <div class="service-list" id="serviceList" aria-live="polite"></div>
+      <article class="card" id="alertsPanel">
+        <div class="card-heading"><div><p>Alertas</p><h2>Atencao operacional</h2></div><span id="alertsSource" class="chip chip--neutral">Carregando</span></div>
+        <div id="pollerSemanticHealth" class="metrics"></div>
+        <div id="activeAlerts" class="metrics"></div>
+        <div id="recoveredAlerts" class="metrics"></div>
+      </article>
       <div class="quick-actions" aria-label="Acoes rapidas">
         <div class="quick-actions-heading"><h2>Acoes rapidas</h2><p>Acoes existentes, com suas protecoes originais.</p></div>
         <div class="quick-action-list">
