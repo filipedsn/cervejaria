@@ -255,25 +255,28 @@ export async function authRoutes(app: FastifyInstance) {
 
 
 
-    await prisma.$transaction([
-
-      prisma.usuario.update({
-
-        where: { id: resetToken.usuarioId },
-
-        data: { senhaHash, passwordChangedAt: now },
-
-      }),
-
-      prisma.passwordResetToken.update({
-
-        where: { id: resetToken.id },
-
+    await prisma.$transaction(async (tx) => {
+      // The observable Prisma client wraps delegate calls in native Promises,
+      // which cannot be passed to Prisma's array transaction API. Claim the
+      // one-time token inside an interactive transaction instead.
+      const claimedToken = await tx.passwordResetToken.updateMany({
+        where: {
+          id: resetToken.id,
+          usedAt: null,
+          expiresAt: { gt: now },
+        },
         data: { usedAt: now },
+      });
 
-      }),
+      if (claimedToken.count !== 1) {
+        throw app.httpErrors.badRequest('Link inv\u00e1lido ou expirado. Solicite um novo.');
+      }
 
-    ]);
+      await tx.usuario.update({
+        where: { id: resetToken.usuarioId },
+        data: { senhaHash, passwordChangedAt: now },
+      });
+    });
 
 
 

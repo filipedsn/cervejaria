@@ -114,6 +114,15 @@ export async function runAuthResetTests(tenant: TenantFixture, test: TestFn) {
             actual: `nova=${okNova} antiga=${okAntiga}`,
           };
         }
+        const login = await api('POST', '/api/auth/login', { body: { email, senha: senhaNova } });
+        if (login.status !== 200) {
+          return {
+            status: 'failed',
+            message: 'Login com a nova senha falhou',
+            expected: '200',
+            actual: String(login.status),
+          };
+        }
         return { message: 'Senha redefinida', expected: '200', actual: '200' };
       },
     );
@@ -141,6 +150,57 @@ export async function runAuthResetTests(tenant: TenantFixture, test: TestFn) {
           return { status: 'failed', message: 'Token inválido', expected: '400', actual: String(r.status) };
         }
         return { message: 'Rejeição de token inválido', expected: '400', actual: '400' };
+      },
+    );
+
+    const expiredToken = generateResetToken();
+    await prisma.passwordResetToken.create({
+      data: {
+        usuarioId: usuario.id,
+        tokenHash: hashResetToken(expiredToken),
+        expiresAt: new Date(Date.now() - 1_000),
+      },
+    });
+
+    await test(
+      { id: 'AUTH-RP-06', category: 'Auth reset', name: 'Expired token returns 400', requirement: 'AUTH-RP' },
+      async () => {
+        const r = await api('POST', '/api/auth/reset-password', {
+          body: { token: expiredToken, senha: 'abc123456' },
+        });
+        if (r.status !== 400) {
+          return { status: 'failed', message: 'Expired token must fail', expected: '400', actual: String(r.status) };
+        }
+        return { message: 'Expired token rejected', expected: '400', actual: '400' };
+      },
+    );
+
+    const concurrentToken = generateResetToken();
+    await prisma.passwordResetToken.create({
+      data: {
+        usuarioId: usuario.id,
+        tokenHash: hashResetToken(concurrentToken),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+
+    await test(
+      { id: 'AUTH-RP-07', category: 'Auth reset', name: 'Concurrent reset consumes token once without 500', requirement: 'AUTH-RP-03' },
+      async () => {
+        const [first, second] = await Promise.all([
+          api('POST', '/api/auth/reset-password', { body: { token: concurrentToken, senha: 'concorrente123' } }),
+          api('POST', '/api/auth/reset-password', { body: { token: concurrentToken, senha: 'concorrente123' } }),
+        ]);
+        const statuses = [first.status, second.status].sort((a, b) => a - b);
+        if (statuses[0] !== 200 || statuses[1] !== 400) {
+          return {
+            status: 'failed',
+            message: 'Only one request may consume the token',
+            expected: '200 and 400',
+            actual: statuses.join(' and '),
+          };
+        }
+        return { message: 'Token consumed once without 500', expected: '200 and 400', actual: statuses.join(' and ') };
       },
     );
   } finally {
