@@ -6,7 +6,7 @@ import {
   summarizeAlertPollerError,
   type AlertPollerState,
 } from './alert-poller-state.js';
-import { handleKibanaAlertWebhook, isAlertNotifyConfigured } from './kibana-alert-email.js';
+import { handleKibanaAlertWebhook, isAlertNotifyConfigured, type AlertNotifyResult } from './kibana-alert-email.js';
 import { isTelegramAlertConfigured } from './telegram-alert.js';
 
 const DEFAULT_ES_URL = 'http://127.0.0.1:9200';
@@ -122,16 +122,23 @@ export function getAlertPollerHealth(now = Date.now()): AlertPollerHealth {
   };
 }
 
+export type PollOnceDependencies = {
+  notify?: (body: unknown, alertId?: string) => Promise<AlertNotifyResult>;
+  now?: () => Date;
+};
+
 export async function pollOnce(log: {
   warn: (obj: unknown, msg?: string) => void;
   info: (obj: unknown, msg?: string) => void;
-}): Promise<void> {
+}, dependencies: PollOnceDependencies = {}): Promise<void> {
   if (polling) return;
   polling = true;
+  const now = dependencies.now ?? (() => new Date());
+  const notify = dependencies.notify ?? handleKibanaAlertWebhook;
 
   try {
     state = loadAlertPollerState();
-    state = { ...state, lastPollAttemptAt: new Date().toISOString() };
+    state = { ...state, lastPollAttemptAt: now().toISOString() };
 
     const res = await fetch(`${esUrl()}/${encodeURIComponent(esIndex())}/_search`, {
       method: 'POST',
@@ -149,8 +156,8 @@ export async function pollOnce(log: {
     });
 
     if (!res.ok) {
-      const now = new Date().toISOString();
-      state = { ...state, lastPollErrorAt: now, lastPollError: `Elasticsearch HTTP ${res.status}` };
+      const failedAt = now().toISOString();
+      state = { ...state, lastPollErrorAt: failedAt, lastPollError: `Elasticsearch HTTP ${res.status}` };
       saveAlertPollerState(state);
       log.warn({ status: res.status, index: esIndex() }, 'Kibana alert poller: falha ao consultar ES');
       return;
@@ -158,7 +165,7 @@ export async function pollOnce(log: {
 
     const data = (await res.json()) as { hits?: { hits?: EsHit[] } };
     const hits = data.hits?.hits ?? [];
-    state = { ...state, lastSuccessfulPollAt: new Date().toISOString(), lastPollErrorAt: undefined, lastPollError: undefined };
+    state = { ...state, lastSuccessfulPollAt: now().toISOString(), lastPollErrorAt: undefined, lastPollError: undefined };
     if (!hits.length) {
       saveAlertPollerState(state);
       return;
@@ -174,10 +181,10 @@ export async function pollOnce(log: {
       if (isAlertProcessed(state, hit._id)) continue;
 
       try {
-        state = { ...state, lastDeliveryAttemptAt: new Date().toISOString() };
-        const result = await handleKibanaAlertWebhook(src, hit._id);
+        state = { ...state, lastDeliveryAttemptAt: now().toISOString() };
+        const result = await notify(src, hit._id);
         if (result.sent) {
-          state = { ...state, lastSuccessfulDeliveryAt: new Date().toISOString(), lastDeliveryErrorAt: undefined, lastDeliveryError: undefined };
+          state = { ...state, lastSuccessfulDeliveryAt: now().toISOString(), lastDeliveryErrorAt: undefined, lastDeliveryError: undefined };
           log.info(
             {
               ruleName: src.ruleName ?? src.rule_name,
@@ -189,12 +196,12 @@ export async function pollOnce(log: {
         }
         if (hit._id) {
           state = markAlertProcessed(state, hit._id);
-          state = { ...state, lastEventProcessedAt: new Date().toISOString() };
+          state = { ...state, lastEventProcessedAt: now().toISOString() };
           void markProcessedInEs(hit._id);
         }
       } catch (err) {
         const msg = summarizeAlertPollerError(err);
-        state = { ...state, lastDeliveryErrorAt: new Date().toISOString(), lastDeliveryError: msg };
+        state = { ...state, lastDeliveryErrorAt: now().toISOString(), lastDeliveryError: msg };
         log.warn({ err: msg, alertId: hit._id }, 'Kibana alert poller: falha ao enviar alerta');
       }
     }
@@ -203,7 +210,7 @@ export async function pollOnce(log: {
     saveAlertPollerState(state);
   } catch (err) {
     const msg = summarizeAlertPollerError(err);
-    state = { ...state, lastPollErrorAt: new Date().toISOString(), lastPollError: msg };
+    state = { ...state, lastPollErrorAt: now().toISOString(), lastPollError: msg };
     saveAlertPollerState(state);
     log.warn({ err: msg }, 'Kibana alert poller: erro inesperado');
   } finally {
