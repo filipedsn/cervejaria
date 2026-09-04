@@ -188,8 +188,10 @@ export function QuiosqueDashboardPage() {
         <p className="page-subtitle">Performance mensal do quiosque</p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 2xl:grid-cols-6 gap-3 items-center">
-        <div className="flex items-center justify-between gap-1 rounded-2xl border border-line bg-surface px-1.5 py-1.5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(16rem,24rem)_minmax(0,1fr)] items-start">
+        <div className="min-w-0 space-y-2">
+          <span className="section-label block">Per&#237;odo</span>
+          <div className="flex w-full items-center justify-between gap-2 rounded-2xl border border-line bg-surface px-1.5 py-1.5">
           <button
             type="button"
             onClick={() => goMonth(-1)}
@@ -198,7 +200,7 @@ export function QuiosqueDashboardPage() {
           >
             ◀
           </button>
-          <p className="flex-1 min-w-0 text-center font-bold text-sm sm:text-base tabular-nums whitespace-nowrap">
+          <p className="min-w-[9rem] flex-1 text-center font-bold text-sm sm:text-base tabular-nums whitespace-nowrap">
             {MESES[mesSelecionadoIdx]}/{ano}
           </p>
           <button
@@ -210,9 +212,11 @@ export function QuiosqueDashboardPage() {
           >
             ▶
           </button>
+          </div>
         </div>
 
-        <div className="col-span-1 sm:col-span-2 2xl:col-span-5 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
           {showPontoFilter && (
             <div className="flex items-center gap-2 min-w-0">
               <span className="section-label shrink-0">Ponto</span>
@@ -246,11 +250,13 @@ export function QuiosqueDashboardPage() {
             </div>
           )}
 
+          </div>
+
           {!isCurrentMonth && (
             <button
               type="button"
               onClick={() => setSearchParams({})}
-              className="touch-btn-secondary touch-btn-sm px-4 ml-auto"
+              className="touch-btn-secondary touch-btn-sm px-4"
             >
               Mês atual
             </button>
