@@ -1,8 +1,12 @@
 ﻿DO $$ BEGIN
-  CREATE USER cervejaria_dev WITH PASSWORD :'DEV_PASSWORD';
+  CREATE USER cervejaria_dev;
 EXCEPTION WHEN duplicate_object THEN
-  ALTER USER cervejaria_dev WITH PASSWORD :'DEV_PASSWORD';
+  NULL;
 END $$;
+
+\if :{?DEV_PASSWORD}
+ALTER USER cervejaria_dev WITH PASSWORD :'DEV_PASSWORD';
+\endif
 
 REVOKE ALL ON DATABASE cervejaria_dev FROM PUBLIC;
 GRANT CONNECT ON DATABASE cervejaria_dev TO cervejaria, cervejaria_dev;

@@ -41,16 +41,17 @@ Write-Host '3/5 Preparando banco cervejaria_dev no container dev...' -Foreground
 docker exec $DbDevContainer psql -U cervejaria -d postgres -c `
   "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DbDevName' AND pid <> pg_backend_pid();" | Out-Null
 docker exec $DbDevContainer psql -U cervejaria -d $DbDevName -c `
-  'DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO cervejaria; GRANT ALL ON SCHEMA public TO public;' | Out-Null
+  'DROP SCHEMA IF EXISTS quiosque CASCADE; DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO cervejaria; GRANT ALL ON SCHEMA public TO public;' | Out-Null
 
 Write-Host ''
 Write-Host '4/5 Restaurando dump em cervejaria_dev (container dev)...' -ForegroundColor Yellow
 docker cp $dumpFile "${DbDevContainer}:$containerDump"
 if ($LASTEXITCODE -ne 0) { throw 'Falha ao copiar dump para container dev.' }
 docker exec $DbDevContainer psql -U cervejaria -d $DbDevName -v ON_ERROR_STOP=1 -f $containerDump
-if ($LASTEXITCODE -ne 0) {
+$restoreExitCode = $LASTEXITCODE
+if ($restoreExitCode -ne 0) {
   docker exec $DbDevContainer rm -f $containerDump 2>$null | Out-Null
-  throw "Restauracao falhou (exit $LASTEXITCODE). Dump local: $dumpFile"
+  throw "Restauracao falhou (exit $restoreExitCode). Dump local: $dumpFile"
 }
 docker exec $DbDevContainer rm -f $containerDump 2>$null | Out-Null
 docker exec $DbProdContainer rm -f $containerDump 2>$null | Out-Null
@@ -61,7 +62,17 @@ $grantsFile = Join-Path $paths.ProjectRoot 'deploy\db\create-env-users-dev-conta
 if (-not (Test-Path $grantsFile)) {
   throw "Arquivo de grants nao encontrado: $grantsFile"
 }
-Get-Content $grantsFile -Raw | docker exec -i $DbDevContainer psql -U cervejaria -d $DbDevName -v ON_ERROR_STOP=1 | Out-Null
+$devPass = $env:QUIVER_DEV_DB_PASSWORD
+if ([string]::IsNullOrWhiteSpace($devPass)) {
+  Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment development
+  $devDatabaseUri = [Uri]$env:DATABASE_URL
+  $devCredentials = $devDatabaseUri.UserInfo.Split(':', 2)
+  if ($devCredentials.Count -ne 2 -or [string]::IsNullOrWhiteSpace($devCredentials[1])) {
+    throw 'Nao foi possivel obter a senha de cervejaria_dev em backend/.env.development.'
+  }
+  $devPass = [Uri]::UnescapeDataString($devCredentials[1])
+}
+Get-Content $grantsFile -Raw | docker exec -i $DbDevContainer psql -U cervejaria -d $DbDevName -v ON_ERROR_STOP=1 -v "DEV_PASSWORD=$devPass" | Out-Null
 if ($LASTEXITCODE -ne 0) {
   throw 'Falha ao aplicar grants em cervejaria_dev.'
 }
