@@ -1515,7 +1515,7 @@ html:has(.qt-tv) {
 }
 
 .tap-champions-podium-card {
-  background: linear-gradient(145deg, rgba(22, 34, 41, 0.98), rgba(13, 20, 25, 0.98));
+  background: linear-gradient(145deg, rgba(16, 31, 48, 0.98), rgba(7, 16, 27, 0.98));
   border: 1px solid var(--ranking-border);
   border-radius: 12px;
   padding: 10px 14px 10px;
@@ -1532,10 +1532,12 @@ html:has(.qt-tv) {
 .tap-champions-podium-card--first {
   transform: translateY(-6px);
   padding: 12px 16px 10px;
-  border-color: var(--ranking-gold-border);
+  background: linear-gradient(145deg, rgba(18, 43, 65, 0.99), rgba(7, 18, 31, 0.99));
+  border-color: rgba(125, 211, 252, 0.46);
   box-shadow:
-    0 12px 28px rgba(245, 185, 66, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 14px 32px rgba(2, 132, 199, 0.16),
+    0 0 0 1px rgba(125, 211, 252, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .tap-champions-podium-card--second {
