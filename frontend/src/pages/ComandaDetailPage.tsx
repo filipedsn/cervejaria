@@ -41,6 +41,12 @@ export function ComandaDetailPage() {
   const [error, setError] = useState('');
   const [itemAddedMessage, setItemAddedMessage] = useState('');
 
+  useEffect(() => {
+    if (!itemAddedMessage) return;
+    const timeoutId = window.setTimeout(() => setItemAddedMessage(''), 5_000);
+    return () => window.clearTimeout(timeoutId);
+  }, [itemAddedMessage]);
+
   const { data: comanda, isLoading, isError, error: queryError } = useQuery({
     queryKey: ['comanda', id],
     queryFn: () => api.get<Comanda>(`/api/comandas/${id}`),
@@ -115,7 +121,7 @@ export function ComandaDetailPage() {
       queryClient.setQueryData(['comanda', id], updated);
       if (evento) queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
       setError('');
-      setItemAddedMessage('Item adicionado. Confira os dados e lance o próximo item.');
+      setItemAddedMessage('Itens lançados. Selecione os próximos itens.');
     },
     onError: (err) => {
       setItemAddedMessage('');

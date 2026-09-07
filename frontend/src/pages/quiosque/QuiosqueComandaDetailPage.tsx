@@ -60,6 +60,12 @@ export function QuiosqueComandaDetailPage() {
   const poll30 = usePollInterval(30_000);
   const poll15 = usePollInterval(15_000);
 
+  useEffect(() => {
+    if (!itensAdicionadosMessage) return;
+    const timeoutId = window.setTimeout(() => setItensAdicionadosMessage(''), 5_000);
+    return () => window.clearTimeout(timeoutId);
+  }, [itensAdicionadosMessage]);
+
   const { data: comanda, isLoading } = useQuery({
     queryKey: ['quiosque-comanda', id],
     queryFn: () => api.get<ComandaQuiosque>(`/api/quiosque/comandas/${id}`),
