@@ -558,7 +558,7 @@ export function QuiosqueComandaDetailPage() {
 
       {podeFechar && (
         <MobileActionBar>
-          <button type="button" className="touch-btn-primary w-full" onClick={openPayment} data-audit="quiosque-comanda-fechar">
+          <button type="button" className="touch-btn-orange w-full" onClick={openPayment} data-audit="quiosque-comanda-fechar">
             Fechar Comanda · {formatCurrency(comanda.total)}
           </button>
           <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/quiosque/comandas')}>
@@ -586,7 +586,7 @@ export function QuiosqueComandaDetailPage() {
           {isDono && (
             <button
               type="button"
-              className="touch-btn-danger w-full"
+              className="touch-btn-orange w-full"
               onClick={() => cancelar.mutate()}
               disabled={cancelar.isPending}
               data-audit="quiosque-comanda-cancelar"

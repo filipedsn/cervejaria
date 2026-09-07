@@ -353,7 +353,7 @@ export function NovaComandaPage() {
         )}
 
         <div className="flex gap-3 pt-2">
-          <button type="button" className="touch-btn-danger flex-1" onClick={() => navigate('/comandas')}>
+          <button type="button" className="touch-btn-secondary flex-1" onClick={() => navigate('/comandas')}>
             Cancelar
           </button>
           <button type="submit" className="touch-btn-primary flex-1" disabled={!canSubmit} data-audit="comanda-abrir">

@@ -160,7 +160,7 @@ export function PaymentFormModal({
             </button>
             <button
               type="button"
-              className="touch-btn-danger w-full min-h-14"
+              className="touch-btn-secondary w-full min-h-14"
               disabled={isPending}
               onClick={handleClose}
             >

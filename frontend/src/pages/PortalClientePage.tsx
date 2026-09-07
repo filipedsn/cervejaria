@@ -403,13 +403,13 @@ export function PortalClientePage() {
               </button>
               <button
                 type="button"
-                className="touch-btn-danger w-full"
+                className="touch-btn-secondary w-full"
                 disabled={sessaoMutation.isPending}
                 onClick={handleConfirmNo}
               >
                 Não sou eu
               </button>
-              <button type="button" className="touch-btn-warning w-full" onClick={resetLoginFlow}>
+              <button type="button" className="touch-btn-secondary w-full" onClick={resetLoginFlow}>
                 Usar outro telefone
               </button>
             </div>
@@ -438,7 +438,7 @@ export function PortalClientePage() {
               <button type="submit" className="touch-btn-primary w-full" disabled={sessaoMutation.isPending}>
                 {sessaoMutation.isPending ? 'Abrindo...' : 'Abrir comanda'}
               </button>
-              <button type="button" className="touch-btn-warning w-full" onClick={resetLoginFlow}>
+              <button type="button" className="touch-btn-secondary w-full" onClick={resetLoginFlow}>
                 Usar outro telefone
               </button>
             </form>
@@ -454,7 +454,7 @@ export function PortalClientePage() {
               <div className="notice-warn">
                 Procure um atendente no balcão para regularizar seu cadastro antes de usar o portal.
               </div>
-              <button type="button" className="touch-btn-warning w-full" onClick={resetLoginFlow}>
+              <button type="button" className="touch-btn-secondary w-full" onClick={resetLoginFlow}>
                 Usar outro telefone
               </button>
             </div>
@@ -731,7 +731,7 @@ export function PortalClientePage() {
                     </button>
                     <button
                       type="button"
-                      className="touch-btn-danger w-full"
+                      className="touch-btn-secondary w-full"
                       disabled={pedidoMutation.isPending}
                       onClick={() => setCart([])}
                     >

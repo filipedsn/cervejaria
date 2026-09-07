@@ -319,7 +319,7 @@ export function EventoTapMontagemPanel({
                 </button>
               )}
 
-              <button type="button" className="touch-btn-danger w-full" onClick={closeModal}>
+              <button type="button" className="touch-btn-secondary w-full" onClick={closeModal}>
                 Cancelar
               </button>
             </div>

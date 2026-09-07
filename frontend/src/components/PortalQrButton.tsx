@@ -47,7 +47,7 @@ export function PortalQrButton({
       title="QR Code — Abrir comanda"
       hideHeaderClose
       footer={
-        <button type="button" className="touch-btn-danger w-full" onClick={closeModal}>
+        <button type="button" className="touch-btn-secondary w-full" onClick={closeModal}>
           Fechar
         </button>
       }

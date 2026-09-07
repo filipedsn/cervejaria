@@ -103,7 +103,7 @@ export function RankingPage() {
 
         <Link
           to={`/ranking/tv/${eventoId}`}
-          className="touch-btn-primary w-full min-h-12 flex items-center justify-center gap-2 text-base font-bold"
+          className="touch-btn-orange w-full min-h-12 flex items-center justify-center gap-2 text-base font-bold"
         >
           <span aria-hidden>📺</span>
           Tela cheia

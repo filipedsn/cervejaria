@@ -69,10 +69,10 @@
   --color-brand-800: #075985;
   --color-brand-900: #0c4a6e;
 
-  /* Superfícies navy */
-  --color-surface: #0b1f36;
-  --color-surface-light: #102a46;
-  --color-surface-lighter: #173653;
+  /* Superfícies navy profundas, com separação sem efeito de bloco azul */
+  --color-surface: #0b1623;
+  --color-surface-light: #101f30;
+  --color-surface-lighter: #172a3d;
 
   --color-orange-soft: rgba(249, 115, 22, 0.14);
   --color-orange-dark: #fdba74;
@@ -83,13 +83,13 @@
   --color-purple-soft: #2e1065;
 
   /* Tipografia — branco quente + cinzas */
-  --color-ink: #f8fbff;
-  --color-ink-soft: #c9d8e8;
-  --color-ink-muted: #93a9bf;
-  --color-ink-faint: #6f879f;
-  --color-line: rgba(255, 255, 255, 0.1);
-  --color-line-soft: rgba(255, 255, 255, 0.06);
-  --color-canvas: #061426;
+  --color-ink: #f5f9fd;
+  --color-ink-soft: #c4d0dc;
+  --color-ink-muted: #91a4b7;
+  --color-ink-faint: #697d91;
+  --color-line: rgba(203, 224, 244, 0.11);
+  --color-line-soft: rgba(203, 224, 244, 0.065);
+  --color-canvas: #040a12;
 
   --pedido-pulse-border: #92400e;
   --pedido-pulse-bg: rgba(249, 115, 22, 0.14);
@@ -109,8 +109,8 @@
 
 [data-theme="dark"] body {
   background:
-    radial-gradient(circle at 50% -10%, rgba(14, 165, 233, 0.13), transparent 36%),
-    linear-gradient(180deg, #071a30 0%, #04101f 100%);
+    radial-gradient(circle at 50% -12%, rgba(14, 165, 233, 0.075), transparent 38%),
+    linear-gradient(180deg, #071321 0%, #030810 100%);
   background-color: var(--color-canvas);
   color: var(--color-ink);
 }
@@ -173,14 +173,14 @@ body.auth-screen {
 }
 
 [data-theme="dark"] .app-shell-header {
-  background: rgba(6, 20, 38, 0.9);
-  border-bottom-color: rgba(255, 255, 255, 0.08);
+  background: rgba(6, 14, 23, 0.92);
+  border-bottom-color: rgba(203, 224, 244, 0.09);
 }
 
 [data-theme="dark"] .app-bottom-nav {
-  background: rgba(4, 16, 31, 0.95);
-  border-top-color: rgba(255, 255, 255, 0.08);
-  box-shadow: none;
+  background: rgba(3, 8, 14, 0.96);
+  border-top-color: rgba(203, 224, 244, 0.09);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.3);
 }
 
 [data-theme="dark"] .app-bottom-nav a.text-brand-600 {
@@ -188,8 +188,8 @@ body.auth-screen {
 }
 
 [data-theme="dark"] .mobile-action-bar {
-  background: rgba(6, 20, 38, 0.94);
-  border-top-color: rgba(255, 255, 255, 0.08);
+  background: rgba(6, 14, 23, 0.95);
+  border-top-color: rgba(203, 224, 244, 0.09);
 }
 
 [data-theme="dark"] .card,
@@ -197,11 +197,11 @@ body.auth-screen {
 [data-theme="dark"] .settings-card,
 [data-theme="dark"] .metric-card,
 [data-theme="dark"] .dashboard-kpi-card {
-  background: linear-gradient(145deg, rgba(16, 42, 70, 0.96), rgba(11, 31, 54, 0.96));
-  border-color: rgba(255, 255, 255, 0.08);
+  background: linear-gradient(145deg, rgba(17, 32, 48, 0.98), rgba(10, 20, 31, 0.98));
+  border-color: rgba(203, 224, 244, 0.09);
   box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.025);
+    0 14px 32px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 /* Sobrescreve intencionalmente a superfície padrão dos cards no tema escuro. */
@@ -227,8 +227,8 @@ body.auth-screen {
 }
 
 [data-theme="dark"] .card-hero {
-  background: linear-gradient(145deg, rgba(16, 42, 70, 0.98), rgba(11, 31, 54, 0.98));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(145deg, rgba(18, 35, 52, 0.98), rgba(10, 20, 31, 0.98));
+  border: 1px solid rgba(203, 224, 244, 0.09);
   box-shadow:
     0 12px 28px rgba(0, 0, 0, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.025);
@@ -368,12 +368,12 @@ body.auth-screen {
 }
 
 [data-theme="dark"] .touch-btn-secondary {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(203, 224, 244, 0.055);
   @apply border-line text-ink-soft;
 }
 
 [data-theme="dark"] .touch-btn-secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(203, 224, 244, 0.1);
 }
 
 [data-theme="dark"] .touch-btn-danger {
@@ -415,6 +415,20 @@ body.auth-screen {
   background: #ea580c;
 }
 
+[data-theme="dark"] .touch-btn-orange {
+  background: #e8650a;
+  border: 1px solid rgba(253, 186, 116, 0.28);
+  box-shadow: 0 8px 20px rgba(234, 88, 12, 0.24);
+}
+
+[data-theme="dark"] .touch-btn-orange:hover:not(:disabled) {
+  background: #f97316;
+}
+
+[data-theme="dark"] .touch-btn-orange:active:not(:disabled) {
+  background: #c94e08;
+}
+
 .touch-btn-secondary {
   @apply min-h-[3rem] px-5 py-3 rounded-xl font-semibold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100 bg-surface text-ink hover:bg-surface-lighter border border-line;
 }
@@ -448,8 +462,8 @@ body.auth-screen {
 }
 
 [data-theme="dark"] .input {
-  background-color: rgba(0, 0, 0, 0.18);
-  border-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(1, 7, 13, 0.42);
+  border-color: rgba(203, 224, 244, 0.12);
   @apply focus:border-brand-400 focus:ring-brand-400/30;
 }
 

@@ -327,7 +327,7 @@ export function QuiosqueVendaAvulsaPage() {
 
       <button
         type="button"
-        className="touch-btn-danger w-full"
+        className="touch-btn-secondary w-full"
         onClick={() => navigate('/quiosque/comandas')}
       >
         Cancelar

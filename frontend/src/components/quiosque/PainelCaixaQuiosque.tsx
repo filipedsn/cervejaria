@@ -274,7 +274,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
 
           <button
             type="button"
-            className="touch-btn-primary w-full disabled:opacity-50"
+            className="touch-btn-orange w-full disabled:opacity-50"
             disabled={bloqueioFechamento}
             onClick={() => abrirDialogoFechar(sessao)}
             data-audit="quiosque-caixa-fechar"
@@ -393,7 +393,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
 
           <button
             type="button"
-            className="touch-btn-primary w-full disabled:opacity-50"
+            className="touch-btn-orange w-full disabled:opacity-50"
             disabled={bloqueioFechamento}
             onClick={() => abrirDialogoFechar(sessao)}
             data-audit="quiosque-caixa-fechar"
@@ -549,7 +549,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
             <button
               type="submit"
               form="fechar-caixa-form"
-              className="touch-btn-primary w-full min-h-14"
+              className="touch-btn-orange w-full min-h-14"
               disabled={fechar.isPending}
               data-audit="quiosque-caixa-fechar-confirmar"
             >

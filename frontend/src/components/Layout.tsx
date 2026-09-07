@@ -89,7 +89,7 @@ function EventoBar({
         <Link
           to="/eventos"
           aria-label="Ir para lista de eventos"
-          className="touch-btn-danger touch-btn-sm flex shrink-0 items-center gap-1.5 px-4 min-w-[5.5rem] rounded-none border-0 border-l border-line uppercase tracking-wide leading-none"
+          className="touch-btn-secondary touch-btn-sm flex shrink-0 items-center gap-1.5 px-4 min-w-[5.5rem] rounded-none border-0 border-l border-line uppercase tracking-wide leading-none"
         >
           <span className="text-xs font-bold uppercase tracking-wide leading-none">Eventos</span>
           <ChevronRightIcon className="w-5 h-5 shrink-0" />

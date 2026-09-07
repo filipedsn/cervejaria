@@ -52,7 +52,7 @@ export function CardapioSalvoModal({
       title="Escolher cardápio"
       hideHeaderClose
       footer={
-        <button type="button" className="touch-btn-danger w-full" onClick={onClose}>
+        <button type="button" className="touch-btn-secondary w-full" onClick={onClose}>
           Cancelar
         </button>
       }

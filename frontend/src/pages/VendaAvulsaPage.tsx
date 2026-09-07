@@ -266,7 +266,7 @@ export function VendaAvulsaPage() {
             ))}
       </CheckoutItemsCard>
 
-      <button type="button" className="touch-btn-danger w-full" onClick={() => navigate('/comandas')}>
+      <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/comandas')}>
         Cancelar
       </button>
 
