@@ -7,7 +7,7 @@ export const APP_ICON_192 = '/icons/pwa-192.png';
 export const APP_ICON_512 = '/icons/pwa-512.png';
 /** Logo completa (login, admin) */
 export const APP_LOGO = '/logo.png';
-export const APP_THEME_COLOR = '#f7f8fa';
+export const APP_THEME_COLOR = '#f6f9fc';
 
 function upsertLink(rel: string, href: string, sizes?: string) {
   const selector = sizes

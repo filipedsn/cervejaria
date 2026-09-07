@@ -126,7 +126,7 @@ export function ResumoExecutivoPage() {
       <EmptyState
         title="Resumo disponível apenas para eventos encerrados"
         action={
-          <Link to="/eventos" className="touch-btn-danger touch-btn-sm inline-block">
+          <Link to="/eventos" className="touch-btn-secondary touch-btn-sm inline-block">
             Voltar para Eventos
           </Link>
         }

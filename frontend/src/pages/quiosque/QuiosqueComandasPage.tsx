@@ -251,7 +251,7 @@ export function QuiosqueComandasPage() {
         <div className="grid grid-cols-2 gap-2">
           <Link
             to="/quiosque/comandas/nova"
-            className={`touch-btn-orange min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold ${
+            className={`touch-btn-primary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold ${
               !caixaAberto ? 'pointer-events-none opacity-50' : ''
             }`}
             aria-disabled={!caixaAberto}

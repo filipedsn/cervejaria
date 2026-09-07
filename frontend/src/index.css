@@ -1,17 +1,17 @@
 @import "tailwindcss";
 
 @theme {
-  /* Quiver Tap — teal */
-  --color-brand-50: #e6f4f3;
-  --color-brand-100: #cfeae8;
-  --color-brand-200: #a6d6d2;
-  --color-brand-300: #1f8078;
-  --color-brand-400: #0c6e67;
-  --color-brand-500: #045e58;
-  --color-brand-600: #004c4c;
-  --color-brand-700: #00423f;
-  --color-brand-800: #00363a;
-  --color-brand-900: #002a2c;
+  /* Quiver Cloud — cyan / azul elétrico */
+  --color-brand-50: #f0f9ff;
+  --color-brand-100: #e0f2fe;
+  --color-brand-200: #bae6fd;
+  --color-brand-300: #7dd3fc;
+  --color-brand-400: #38bdf8;
+  --color-brand-500: #0ea5e9;
+  --color-brand-600: #0369a1;
+  --color-brand-700: #075985;
+  --color-brand-800: #0c4a6e;
+  --color-brand-900: #082f49;
 
   /* Superfícies */
   --color-surface: #ffffff;
@@ -34,7 +34,7 @@
   --color-ink-faint: #9ca3af;
   --color-line: #e5e7eb;
   --color-line-soft: #eef0f3;
-  --color-canvas: #f7f8fa;
+  --color-canvas: #f6f9fc;
 }
 
 :root {
@@ -57,22 +57,22 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  /* Brewery Noir — teal coadjuvante (não dominante) */
-  --color-brand-50: rgba(15, 118, 110, 0.16);
-  --color-brand-100: rgba(15, 118, 110, 0.22);
-  --color-brand-200: #5eead4;
-  --color-brand-300: #2dd4bf;
-  --color-brand-400: #14b8a6;
-  --color-brand-500: #0d9488;
-  --color-brand-600: #0f766e;
-  --color-brand-700: #0d655f;
-  --color-brand-800: #115e59;
-  --color-brand-900: #134e4a;
+  /* Quiver Cloud — navy com cyan interativo */
+  --color-brand-50: rgba(14, 165, 233, 0.14);
+  --color-brand-100: rgba(14, 165, 233, 0.22);
+  --color-brand-200: #bae6fd;
+  --color-brand-300: #7dd3fc;
+  --color-brand-400: #38bdf8;
+  --color-brand-500: #0ea5e9;
+  --color-brand-600: #0284c7;
+  --color-brand-700: #0369a1;
+  --color-brand-800: #075985;
+  --color-brand-900: #0c4a6e;
 
-  /* Superfícies carvão */
-  --color-surface: #111a20;
-  --color-surface-light: #162229;
-  --color-surface-lighter: #1b2a31;
+  /* Superfícies navy */
+  --color-surface: #0b1f36;
+  --color-surface-light: #102a46;
+  --color-surface-lighter: #173653;
 
   --color-orange-soft: rgba(249, 115, 22, 0.14);
   --color-orange-dark: #fdba74;
@@ -83,13 +83,13 @@
   --color-purple-soft: #2e1065;
 
   /* Tipografia — branco quente + cinzas */
-  --color-ink: #f8f7f3;
-  --color-ink-soft: #c6c9c8;
-  --color-ink-muted: #8f999d;
-  --color-ink-faint: #66747b;
+  --color-ink: #f8fbff;
+  --color-ink-soft: #c9d8e8;
+  --color-ink-muted: #93a9bf;
+  --color-ink-faint: #6f879f;
   --color-line: rgba(255, 255, 255, 0.1);
   --color-line-soft: rgba(255, 255, 255, 0.06);
-  --color-canvas: #0b1116;
+  --color-canvas: #061426;
 
   --pedido-pulse-border: #92400e;
   --pedido-pulse-bg: rgba(249, 115, 22, 0.14);
@@ -103,14 +103,14 @@
   --alert-active-border: rgba(249, 115, 22, 0.4);
   --alert-active-text: #fb923c;
 
-  --color-chart-primary: #f97316;
-  --color-chart-primary-active: #ea580c;
+  --color-chart-primary: #0ea5e9;
+  --color-chart-primary-active: #38bdf8;
 }
 
 [data-theme="dark"] body {
   background:
-    radial-gradient(circle at 50% -10%, rgba(15, 118, 110, 0.1), transparent 36%),
-    linear-gradient(180deg, #0b1116 0%, #080b0c 100%);
+    radial-gradient(circle at 50% -10%, rgba(14, 165, 233, 0.13), transparent 36%),
+    linear-gradient(180deg, #071a30 0%, #04101f 100%);
   background-color: var(--color-canvas);
   color: var(--color-ink);
 }
@@ -135,7 +135,7 @@ body {
 }
 
 body.auth-screen {
-  background: #00363a;
+  background: #061426;
 }
 
 .safe-area-pt {
@@ -173,22 +173,22 @@ body.auth-screen {
 }
 
 [data-theme="dark"] .app-shell-header {
-  background: rgba(11, 17, 22, 0.88);
+  background: rgba(6, 20, 38, 0.9);
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
 [data-theme="dark"] .app-bottom-nav {
-  background: rgba(8, 11, 12, 0.94);
+  background: rgba(4, 16, 31, 0.95);
   border-top-color: rgba(255, 255, 255, 0.08);
   box-shadow: none;
 }
 
 [data-theme="dark"] .app-bottom-nav a.text-brand-600 {
-  @apply text-orange;
+  color: var(--color-brand-300);
 }
 
 [data-theme="dark"] .mobile-action-bar {
-  background: rgba(11, 17, 22, 0.92);
+  background: rgba(6, 20, 38, 0.94);
   border-top-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -197,7 +197,7 @@ body.auth-screen {
 [data-theme="dark"] .settings-card,
 [data-theme="dark"] .metric-card,
 [data-theme="dark"] .dashboard-kpi-card {
-  background: linear-gradient(145deg, rgba(22, 34, 41, 0.96), rgba(17, 26, 32, 0.96));
+  background: linear-gradient(145deg, rgba(16, 42, 70, 0.96), rgba(11, 31, 54, 0.96));
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow:
     0 12px 28px rgba(0, 0, 0, 0.2),
@@ -206,11 +206,11 @@ body.auth-screen {
 
 /* Sobrescreve intencionalmente a superfície padrão dos cards no tema escuro. */
 [data-theme="dark"] .card-touch.quiosque-mesa-ocupada {
-  background: linear-gradient(145deg, rgba(15, 118, 110, 0.3), rgba(17, 40, 43, 0.98));
-  border-color: rgba(45, 212, 191, 0.58);
+  background: linear-gradient(145deg, rgba(2, 132, 199, 0.3), rgba(11, 38, 64, 0.98));
+  border-color: rgba(56, 189, 248, 0.58);
   box-shadow:
     0 12px 28px rgba(0, 0, 0, 0.22),
-    inset 4px 0 0 rgba(45, 212, 191, 0.82),
+    inset 4px 0 0 rgba(56, 189, 248, 0.82),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
@@ -227,7 +227,7 @@ body.auth-screen {
 }
 
 [data-theme="dark"] .card-hero {
-  background: linear-gradient(145deg, rgba(22, 34, 41, 0.98), rgba(17, 26, 32, 0.98));
+  background: linear-gradient(145deg, rgba(16, 42, 70, 0.98), rgba(11, 31, 54, 0.98));
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow:
     0 12px 28px rgba(0, 0, 0, 0.22),
@@ -349,22 +349,22 @@ body.auth-screen {
 
 .touch-btn-primary {
   @apply min-h-[3rem] px-5 py-3 rounded-xl font-semibold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100 bg-brand-600 text-white hover:bg-brand-500;
-  box-shadow: 0 4px 14px rgba(0, 76, 76, 0.18);
+  box-shadow: 0 4px 14px rgba(3, 105, 161, 0.22);
 }
 
 [data-theme="dark"] .touch-btn-primary {
-  background: #0d9488;
+  background: #0284c7;
   color: #ffffff;
-  border: 1px solid rgba(94, 234, 212, 0.22);
-  box-shadow: 0 8px 20px rgba(13, 148, 136, 0.28);
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  box-shadow: 0 8px 20px rgba(2, 132, 199, 0.3);
 }
 
 [data-theme="dark"] .touch-btn-primary:hover:not(:disabled) {
-  background: #14b8a6;
+  background: #0ea5e9;
 }
 
 [data-theme="dark"] .touch-btn-primary:active:not(:disabled) {
-  background: #0f766e;
+  background: #0369a1;
 }
 
 [data-theme="dark"] .touch-btn-secondary {
@@ -399,10 +399,10 @@ body.auth-screen {
 }
 
 [data-theme="dark"] .touch-btn-hero {
-  background: linear-gradient(to right, #f97316, #ea580c);
+  background: linear-gradient(to right, #0369a1, #0ea5e9);
   color: #ffffff;
-  box-shadow: 0 8px 24px rgba(249, 115, 22, 0.22);
-  --tw-ring-color: rgba(249, 115, 22, 0.25);
+  box-shadow: 0 8px 24px rgba(14, 165, 233, 0.24);
+  --tw-ring-color: rgba(56, 189, 248, 0.28);
 }
 
 .touch-btn-orange {
@@ -450,7 +450,7 @@ body.auth-screen {
 [data-theme="dark"] .input {
   background-color: rgba(0, 0, 0, 0.18);
   border-color: rgba(255, 255, 255, 0.1);
-  @apply focus:border-orange focus:ring-orange/30;
+  @apply focus:border-brand-400 focus:ring-brand-400/30;
 }
 
 [data-theme="dark"] .input::placeholder {
@@ -657,8 +657,8 @@ select.input {
 }
 
 [data-theme="dark"] .segmented-control-btn-active {
-  background: #0f766e;
-  border: 1px solid rgba(94, 234, 212, 0.18);
+  background: #0284c7;
+  border: 1px solid rgba(125, 211, 252, 0.2);
   color: #ffffff;
   box-shadow: none;
 }
@@ -689,7 +689,7 @@ select.input {
 }
 
 [data-theme="dark"] .chart-bar-fill {
-  background: linear-gradient(to right, #f97316, #fb923c);
+  background: linear-gradient(to right, #0284c7, #38bdf8);
 }
 
 .metric-card {
@@ -777,13 +777,13 @@ html:has(.qt-tv) {
 /* Telão — Tap Champions (Brewery Noir) */
 .qt-tv {
   /* Ranking tokens */
-  --ranking-canvas: #0b1116;
-  --ranking-canvas-deep: #080b0c;
-  --ranking-canvas-soft: #0e151a;
-  --ranking-surface: #111a20;
-  --ranking-surface-elevated: #162229;
-  --ranking-surface-lighter: #1b2a31;
-  --ranking-surface-active: #20343a;
+  --ranking-canvas: #061426;
+  --ranking-canvas-deep: #04101f;
+  --ranking-canvas-soft: #081a2e;
+  --ranking-surface: #0b1f36;
+  --ranking-surface-elevated: #102a46;
+  --ranking-surface-lighter: #173653;
+  --ranking-surface-active: #1c4568;
   --ranking-border: rgba(255, 255, 255, 0.09);
   --ranking-border-soft: rgba(255, 255, 255, 0.06);
   --ranking-border-strong: rgba(255, 255, 255, 0.16);
@@ -796,9 +796,9 @@ html:has(.qt-tv) {
   --ranking-orange-active: #c94e08;
   --ranking-orange-soft: rgba(249, 115, 22, 0.14);
   --ranking-orange-border: rgba(249, 115, 22, 0.4);
-  --ranking-teal: #0f766e;
-  --ranking-teal-soft: rgba(15, 118, 110, 0.14);
-  --ranking-teal-text: #5eead4;
+  --ranking-teal: #0284c7;
+  --ranking-teal-soft: rgba(14, 165, 233, 0.14);
+  --ranking-teal-text: #7dd3fc;
   --ranking-gold: #f5b942;
   --ranking-gold-soft: rgba(245, 185, 66, 0.16);
   --ranking-gold-border: rgba(245, 185, 66, 0.62);
@@ -823,7 +823,7 @@ html:has(.qt-tv) {
 
   background:
     radial-gradient(circle at 50% 18%, rgba(249, 115, 22, 0.09), transparent 32%),
-    radial-gradient(circle at 20% 0%, rgba(15, 118, 110, 0.06), transparent 28%),
+    radial-gradient(circle at 20% 0%, rgba(14, 165, 233, 0.09), transparent 28%),
     var(--ranking-canvas);
   color: var(--ranking-text-primary);
   position: relative;
@@ -1238,7 +1238,7 @@ html:has(.qt-tv) {
 .cozinha-tv-card-btn-primary {
   background: var(--ranking-teal);
   color: #ecfdf5;
-  border-color: rgba(94, 234, 212, 0.35);
+  border-color: rgba(125, 211, 252, 0.35);
 }
 
 .cozinha-tv-card-btn-ghost {
@@ -1944,16 +1944,19 @@ html:has(.qt-tv) {
   }
 }
 
-/* Login — fundo teal escuro */
+/* Login — composição institucional navy/cyan */
 .login-shell {
-  background: linear-gradient(180deg, #00363a 0%, #004c4c 45%, #00423f 100%);
+  background:
+    radial-gradient(circle at 50% 12%, rgba(56, 189, 248, 0.2), transparent 28%),
+    radial-gradient(circle at 8% 88%, rgba(14, 165, 233, 0.12), transparent 32%),
+    linear-gradient(180deg, #04101f 0%, #071b31 52%, #061426 100%);
   color: #ffffff;
   min-height: 100dvh;
 }
 
 .login-input {
-  background: rgba(0, 0, 0, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(2, 12, 25, 0.56);
+  border: 1px solid rgba(125, 211, 252, 0.2);
   color: #ffffff;
   font-size: 16px;
   -webkit-appearance: none;
@@ -1968,7 +1971,7 @@ html:has(.qt-tv) {
 .login-input:-webkit-autofill:hover,
 .login-input:-webkit-autofill:focus {
   -webkit-text-fill-color: #ffffff;
-  -webkit-box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.22) inset;
+  -webkit-box-shadow: 0 0 0 1000px #07182b inset;
   caret-color: #ffffff;
   transition: background-color 9999s ease-out 0s;
 }
@@ -1979,20 +1982,21 @@ html:has(.qt-tv) {
 
 .login-btn-primary {
   @apply min-h-[3.25rem] rounded-xl font-bold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100;
-  background: #f97316;
+  background: linear-gradient(135deg, #0284c7, #0ea5e9);
   color: #ffffff;
+  box-shadow: 0 10px 28px rgba(14, 165, 233, 0.26);
 }
 
 .login-btn-primary:hover:not(:disabled) {
-  background: #ea580c;
+  background: linear-gradient(135deg, #0369a1, #0284c7);
 }
 
 .login-link {
-  color: #f97316;
+  color: #7dd3fc;
 }
 
 .login-link:hover {
-  color: #fb923c;
+  color: #bae6fd;
 }
 
 /* Eventos — hero ao vivo */

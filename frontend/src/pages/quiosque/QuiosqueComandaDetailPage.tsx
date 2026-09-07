@@ -403,7 +403,7 @@ export function QuiosqueComandaDetailPage() {
         {aberta && (
           <button
             type="button"
-            className="touch-btn-orange w-full"
+            className="touch-btn-primary w-full"
             onClick={() => {
               setErro('');
               setItensAdicionadosMessage('');

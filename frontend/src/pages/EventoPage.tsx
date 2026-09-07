@@ -154,7 +154,7 @@ function EditEventoButton({
 }) {
 
   const variant = orange
-    ? 'touch-btn-orange touch-btn-sm px-4'
+    ? 'touch-btn-primary touch-btn-sm px-4'
     : primary
       ? 'touch-btn-primary touch-btn-sm px-4'
       : 'btn-outline-light touch-btn-sm';
@@ -225,7 +225,7 @@ function ActiveSessionHero({
 
         <button
           type="button"
-          className="touch-btn-orange flex flex-1 min-w-0 items-center justify-center min-h-12 rounded-xl font-bold"
+          className="touch-btn-primary flex flex-1 min-w-0 items-center justify-center min-h-12 rounded-xl font-bold"
           onClick={onComandas}
         >
           Comandas
@@ -401,7 +401,7 @@ function AgendaSessaoCard({
       {sessao.status === 'ABERTO' && (
         <div className="space-y-2">
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="touch-btn-orange flex-1 min-w-[10rem]" onClick={onRetomar}>
+            <button type="button" className="touch-btn-primary flex-1 min-w-[10rem]" onClick={onRetomar}>
               Comandas
             </button>
             <VerRankingButton eventoId={sessao.id} fullWidth={false} />
@@ -878,7 +878,7 @@ export function EventoPage() {
 
           <button
             type="button"
-            className="touch-btn-orange w-full min-h-12 flex items-center justify-center gap-2"
+            className="touch-btn-primary w-full min-h-12 flex items-center justify-center gap-2"
             onClick={openNew}
           >
             <IconPlus />
@@ -1138,7 +1138,7 @@ export function EventoPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
-              className="touch-btn-primary w-full min-h-14"
+              className="touch-btn-secondary w-full min-h-14"
               disabled={cancelAgendamentoMutation.isPending}
               onClick={() => setCancelAgendamentoTarget(null)}
             >

@@ -203,7 +203,7 @@ export function ComandasPage() {
         <div className="grid grid-cols-2 gap-2">
           <Link
             to="/comandas/nova"
-            className="touch-btn-orange min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold"
+            className="touch-btn-primary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold"
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-xl leading-none font-normal">
               +
@@ -226,7 +226,7 @@ export function ComandasPage() {
       )}
 
       {!selectMode && !eventoAberto && (
-        <Link to="/comandas/nova" className="touch-btn-orange w-full min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl text-base font-bold">
+        <Link to="/comandas/nova" className="touch-btn-primary w-full min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl text-base font-bold">
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-2xl leading-none font-normal">
             +
           </span>

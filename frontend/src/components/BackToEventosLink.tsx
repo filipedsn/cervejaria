@@ -17,7 +17,7 @@ export function BackToEventosLink({ className }: { className?: string }) {
     <Link
       to="/eventos"
       aria-label="Voltar para lista de eventos"
-      className={`touch-btn-danger touch-btn-sm inline-flex items-center gap-1.5 uppercase tracking-wide leading-none ${className ?? ''}`}
+      className={`touch-btn-secondary touch-btn-sm inline-flex items-center gap-1.5 uppercase tracking-wide leading-none ${className ?? ''}`}
     >
       <ChevronLeftIcon className="w-5 h-5 shrink-0" />
       <span className="text-xs font-bold uppercase tracking-wide leading-none">Eventos</span>

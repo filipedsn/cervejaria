@@ -110,7 +110,7 @@ export function UnirClienteModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
-              className="touch-btn-danger w-full min-h-14"
+              className="touch-btn-secondary w-full min-h-14"
               disabled={pending}
               onClick={handleClose}
             >
@@ -126,7 +126,7 @@ export function UnirClienteModal({
             </button>
           </div>
         ) : (
-          <button type="button" className="touch-btn-danger w-full min-h-14" onClick={handleClose}>
+          <button type="button" className="touch-btn-secondary w-full min-h-14" onClick={handleClose}>
             Voltar
           </button>
         )

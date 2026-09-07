@@ -72,7 +72,7 @@ function PublicAuthShell() {
     ensureAppShellBranding();
 
     const themeMeta = document.querySelector('meta[name="theme-color"]');
-    themeMeta?.setAttribute('content', '#004c4c');
+    themeMeta?.setAttribute('content', '#061426');
     document.body.classList.add('auth-screen');
 
     return () => {

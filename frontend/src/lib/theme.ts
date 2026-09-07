@@ -4,8 +4,8 @@ import { applyAppTheme, getAppTheme } from './app-theme';
 const SHADES = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900'] as const;
 
 /**
- * Remove quaisquer overrides de cor por cervejaria e volta à paleta Quiver.
- * A identidade visual passou a ser fixa (teal Quiver via `.qt-light`); a logo
+ * Remove quaisquer overrides de cor por cervejaria e volta à paleta Quiver Cloud.
+ * A identidade visual da plataforma é fixa; a logo
  * da cervejaria continua sendo exibida no header, mas as cores são padronizadas.
  */
 export function resetBreweryTheme(): void {

@@ -20,7 +20,7 @@ export function CheckoutItemsCard({
     <div className="card space-y-3">
       <h2 className="section-label mb-0">Itens</h2>
       {canAdd && onAdd && (
-        <button type="button" className="touch-btn-orange w-full" onClick={onAdd}>
+        <button type="button" className="touch-btn-primary w-full" onClick={onAdd}>
           {addLabel}
         </button>
       )}

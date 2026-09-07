@@ -14,7 +14,7 @@ function ChevronLeftIcon({ className }: { className?: string }) {
 
 export function BackLink({ to, label = 'Voltar', className }: { to: string; label?: string; className?: string }) {
   return (
-    <Link to={to} className={`touch-btn-danger touch-btn-sm inline-flex items-center gap-1.5 ${className ?? ''}`}>
+    <Link to={to} className={`touch-btn-secondary touch-btn-sm inline-flex items-center gap-1.5 ${className ?? ''}`}>
       <ChevronLeftIcon className="w-4 h-4 shrink-0" />
       {label}
     </Link>

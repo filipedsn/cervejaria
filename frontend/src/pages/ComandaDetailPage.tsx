@@ -333,7 +333,7 @@ export function ComandaDetailPage() {
         {isOpen && (
           <button
             type="button"
-            className="touch-btn-orange w-full"
+            className="touch-btn-primary w-full"
             onClick={() => {
               setError('');
               setItemAddedMessage('');
