@@ -810,6 +810,11 @@ html:has(.qt-tv) {
   --ranking-orange-active: #c94e08;
   --ranking-orange-soft: rgba(249, 115, 22, 0.14);
   --ranking-orange-border: rgba(249, 115, 22, 0.4);
+  --ranking-cyan: #0ea5e9;
+  --ranking-cyan-light: #38bdf8;
+  --ranking-cyan-soft: rgba(14, 165, 233, 0.1);
+  --ranking-cyan-border: rgba(56, 189, 248, 0.22);
+  --ranking-cyan-border-strong: rgba(56, 189, 248, 0.38);
   --ranking-teal: #0284c7;
   --ranking-teal-soft: rgba(14, 165, 233, 0.14);
   --ranking-teal-text: #7dd3fc;
@@ -1269,9 +1274,15 @@ html:has(.qt-tv) {
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  --ranking-border: var(--ranking-cyan-border);
+  --ranking-border-soft: rgba(56, 189, 248, 0.11);
+  --ranking-border-strong: var(--ranking-cyan-border-strong);
   --tap-champions-pad-x: 32px;
   --tap-champions-logo-scale: 1.1;
   --tap-champions-side: calc(280px * var(--tap-champions-logo-scale));
+  background:
+    radial-gradient(circle at 50% 14%, var(--ranking-cyan-soft), transparent 34%),
+    linear-gradient(180deg, var(--ranking-canvas-soft) 0%, var(--ranking-canvas) 32%, var(--ranking-canvas-deep) 100%);
 }
 
 .tap-champions-header {
@@ -1281,6 +1292,7 @@ html:has(.qt-tv) {
   min-height: 120px;
   padding: 16px var(--tap-champions-pad-x);
   border-bottom: 1px solid var(--ranking-border-soft);
+  background: linear-gradient(180deg, var(--ranking-surface) 0%, var(--ranking-canvas) 100%);
   flex-shrink: 0;
 }
 
@@ -1321,7 +1333,7 @@ html:has(.qt-tv) {
   min-height: 64px;
   padding: 12px var(--tap-champions-pad-x);
   border-bottom: 1px solid var(--ranking-border-soft);
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--ranking-canvas-deep);
   flex-shrink: 0;
 }
 
@@ -1367,11 +1379,12 @@ html:has(.qt-tv) {
 
 .tap-champions-icon-btn:hover {
   background: var(--ranking-surface-lighter);
-  color: var(--ranking-text-primary);
+  border-color: var(--ranking-cyan-border-strong);
+  color: var(--ranking-cyan-light);
 }
 
 .tap-champions-icon-btn:focus-visible {
-  outline: 2px solid var(--ranking-orange);
+  outline: 2px solid var(--ranking-cyan);
   outline-offset: 2px;
 }
 
@@ -1438,8 +1451,8 @@ html:has(.qt-tv) {
   align-items: center;
   justify-content: center;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--ranking-surface-elevated);
+  border: 1px solid var(--ranking-border);
   font-weight: 700;
   font-size: 1.125rem;
   color: var(--ranking-text-primary);
@@ -1515,7 +1528,7 @@ html:has(.qt-tv) {
 }
 
 .tap-champions-podium-card {
-  background: linear-gradient(145deg, rgba(16, 31, 48, 0.98), rgba(7, 16, 27, 0.98));
+  background: linear-gradient(145deg, var(--ranking-surface-elevated), var(--ranking-surface));
   border: 1px solid var(--ranking-border);
   border-radius: 12px;
   padding: 10px 14px 10px;
@@ -1532,11 +1545,13 @@ html:has(.qt-tv) {
 .tap-champions-podium-card--first {
   transform: translateY(-6px);
   padding: 12px 16px 10px;
-  background: linear-gradient(145deg, rgba(18, 43, 65, 0.99), rgba(7, 18, 31, 0.99));
-  border-color: rgba(125, 211, 252, 0.46);
+  background:
+    radial-gradient(circle at 50% 0%, var(--ranking-cyan-soft), transparent 48%),
+    linear-gradient(145deg, var(--ranking-surface-elevated), var(--ranking-surface));
+  border-color: var(--ranking-gold-border);
   box-shadow:
-    0 14px 32px rgba(2, 132, 199, 0.16),
-    0 0 0 1px rgba(125, 211, 252, 0.08),
+    0 14px 32px rgba(245, 185, 66, 0.1),
+    0 0 24px rgba(14, 165, 233, 0.07),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
@@ -1629,7 +1644,7 @@ html:has(.qt-tv) {
   width: 100%;
   height: 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--ranking-surface-lighter);
   margin-top: 6px;
   overflow: hidden;
 }
@@ -1689,7 +1704,7 @@ html:has(.qt-tv) {
 }
 
 .tap-champions-rest-card {
-  background: linear-gradient(145deg, rgba(22, 34, 41, 0.85), rgba(13, 20, 25, 0.9));
+  background: linear-gradient(145deg, var(--ranking-surface-elevated), var(--ranking-surface));
   border: 1px solid var(--ranking-border-soft);
   border-radius: 12px;
   padding: 12px 14px;
@@ -1712,7 +1727,7 @@ html:has(.qt-tv) {
   height: clamp(36px, 3vw, 44px);
   padding: 0 8px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--ranking-surface-lighter);
   border: 1px solid var(--ranking-border);
   font-size: clamp(1.0625rem, 1.485vw, 1.375rem);
   font-weight: 800;
@@ -1774,7 +1789,7 @@ html:has(.qt-tv) {
   gap: 16px;
   padding: 12px 32px max(14px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--ranking-border-soft);
-  background: rgba(0, 0, 0, 0.12);
+  background: var(--ranking-canvas-deep);
 }
 
 .tap-champions-footer-updated {
