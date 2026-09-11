@@ -69,10 +69,18 @@
   --color-brand-800: #075985;
   --color-brand-900: #0c4a6e;
 
-  /* Superfícies navy profundas, com separação sem efeito de bloco azul */
-  --color-surface: #0b1623;
-  --color-surface-light: #101f30;
-  --color-surface-lighter: #172a3d;
+  /* Superfícies em camadas: canvas quase preto, shell neutro e cards azul-acinzentados. */
+  --color-canvas: #040a12;
+  --color-surface: #0b121a;
+  --color-surface-light: #121c27;
+  --color-surface-lighter: #192531;
+  --color-card: #121c27;
+  --color-card-hover: #162330;
+  --color-input: #070d14;
+  --color-nav: rgba(8, 14, 21, 0.97);
+  --color-modal: #111b26;
+  --color-elevated-border: rgba(173, 195, 215, 0.17);
+  --color-depth-shadow: rgba(0, 0, 0, 0.27);
 
   --color-orange-soft: rgba(249, 115, 22, 0.14);
   --color-orange-dark: #fdba74;
@@ -83,13 +91,12 @@
   --color-purple-soft: #2e1065;
 
   /* Tipografia — branco quente + cinzas */
-  --color-ink: #f5f9fd;
-  --color-ink-soft: #c4d0dc;
-  --color-ink-muted: #91a4b7;
-  --color-ink-faint: #697d91;
-  --color-line: rgba(203, 224, 244, 0.11);
-  --color-line-soft: rgba(203, 224, 244, 0.065);
-  --color-canvas: #040a12;
+  --color-ink: #f4f7fa;
+  --color-ink-soft: #c6d0da;
+  --color-ink-muted: #92a3b4;
+  --color-ink-faint: #6f8192;
+  --color-line: rgba(173, 195, 215, 0.15);
+  --color-line-soft: rgba(173, 195, 215, 0.085);
 
   --pedido-pulse-border: #92400e;
   --pedido-pulse-bg: rgba(249, 115, 22, 0.14);
@@ -108,9 +115,7 @@
 }
 
 [data-theme="dark"] body {
-  background:
-    radial-gradient(circle at 50% -12%, rgba(14, 165, 233, 0.075), transparent 38%),
-    linear-gradient(180deg, #071321 0%, #030810 100%);
+  background: linear-gradient(180deg, #060c13 0%, var(--color-canvas) 42%, #03070c 100%);
   background-color: var(--color-canvas);
   color: var(--color-ink);
 }
@@ -168,19 +173,24 @@ body.auth-screen {
 }
 
 [data-theme="dark"] .overlay-backdrop {
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(1, 4, 8, 0.72);
   backdrop-filter: blur(4px);
 }
 
 [data-theme="dark"] .app-shell-header {
-  background: rgba(6, 14, 23, 0.92);
-  border-bottom-color: rgba(203, 224, 244, 0.09);
+  background: rgba(10, 17, 25, 0.94);
+  border-bottom-color: var(--color-line-soft);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
 }
 
 [data-theme="dark"] .app-bottom-nav {
-  background: rgba(3, 8, 14, 0.96);
-  border-top-color: rgba(203, 224, 244, 0.09);
-  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.3);
+  background: var(--color-nav);
+  border-top-color: var(--color-line);
+  box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.28);
+}
+
+[data-theme="dark"] .app-bottom-nav a:not(.text-brand-600) {
+  color: var(--color-ink-muted);
 }
 
 [data-theme="dark"] .app-bottom-nav a.text-brand-600 {
@@ -188,8 +198,9 @@ body.auth-screen {
 }
 
 [data-theme="dark"] .mobile-action-bar {
-  background: rgba(6, 14, 23, 0.95);
-  border-top-color: rgba(203, 224, 244, 0.09);
+  background: var(--color-nav);
+  border-top-color: var(--color-line);
+  box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.24);
 }
 
 [data-theme="dark"] .card,
@@ -197,21 +208,25 @@ body.auth-screen {
 [data-theme="dark"] .settings-card,
 [data-theme="dark"] .metric-card,
 [data-theme="dark"] .dashboard-kpi-card {
-  background: linear-gradient(145deg, rgba(17, 32, 48, 0.98), rgba(10, 20, 31, 0.98));
-  border-color: rgba(203, 224, 244, 0.09);
+  background: var(--color-card);
+  border-color: var(--color-elevated-border);
   box-shadow:
-    0 14px 32px rgba(0, 0, 0, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    0 8px 24px var(--color-depth-shadow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+[data-theme="dark"] .card-touch:hover {
+  background: var(--color-card-hover);
 }
 
 /* Sobrescreve intencionalmente a superfície padrão dos cards no tema escuro. */
 [data-theme="dark"] .card-touch.quiosque-mesa-ocupada {
-  background: linear-gradient(145deg, rgba(2, 132, 199, 0.3), rgba(11, 38, 64, 0.98));
-  border-color: rgba(56, 189, 248, 0.58);
+  background: linear-gradient(145deg, rgba(2, 132, 199, 0.2), var(--color-card));
+  border-color: rgba(56, 189, 248, 0.46);
   box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.22),
-    inset 4px 0 0 rgba(56, 189, 248, 0.82),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 8px 22px var(--color-depth-shadow),
+    inset 4px 0 0 rgba(56, 189, 248, 0.74),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 .quiosque-mesa-ocupada {
@@ -227,12 +242,28 @@ body.auth-screen {
 }
 
 [data-theme="dark"] .card-hero {
-  background: linear-gradient(145deg, rgba(18, 35, 52, 0.98), rgba(10, 20, 31, 0.98));
-  border: 1px solid rgba(203, 224, 244, 0.09);
+  background: linear-gradient(145deg, #152534, var(--color-card));
+  border: 1px solid var(--color-elevated-border);
   box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.025);
+    0 9px 26px var(--color-depth-shadow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
   color: var(--color-ink);
+}
+
+[data-theme="dark"] [role="dialog"] {
+  background: var(--color-modal);
+  border-color: var(--color-elevated-border);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="dark"] [role="dialog"] .card,
+[data-theme="dark"] [role="dialog"] .card-touch,
+[data-theme="dark"] [role="dialog"] .settings-card {
+  background: var(--color-surface-lighter);
+  border-color: var(--color-line);
+  box-shadow: none;
 }
 
 .app-shell-header {
@@ -355,8 +386,8 @@ body.auth-screen {
 [data-theme="dark"] .touch-btn-primary {
   background: #0284c7;
   color: #ffffff;
-  border: 1px solid rgba(125, 211, 252, 0.24);
-  box-shadow: 0 8px 20px rgba(2, 132, 199, 0.3);
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  box-shadow: 0 5px 14px rgba(2, 132, 199, 0.22);
 }
 
 [data-theme="dark"] .touch-btn-primary:hover:not(:disabled) {
@@ -368,12 +399,14 @@ body.auth-screen {
 }
 
 [data-theme="dark"] .touch-btn-secondary {
-  background: rgba(203, 224, 244, 0.055);
-  @apply border-line text-ink-soft;
+  background: var(--color-surface-lighter);
+  border-color: var(--color-line);
+  @apply text-ink-soft;
 }
 
 [data-theme="dark"] .touch-btn-secondary:hover:not(:disabled) {
-  background: rgba(203, 224, 244, 0.1);
+  background: var(--color-card-hover);
+  border-color: var(--color-elevated-border);
 }
 
 [data-theme="dark"] .touch-btn-danger {
@@ -401,7 +434,7 @@ body.auth-screen {
 [data-theme="dark"] .touch-btn-hero {
   background: linear-gradient(to right, #0369a1, #0ea5e9);
   color: #ffffff;
-  box-shadow: 0 8px 24px rgba(14, 165, 233, 0.24);
+  box-shadow: 0 6px 18px rgba(14, 165, 233, 0.2);
   --tw-ring-color: rgba(56, 189, 248, 0.28);
 }
 
@@ -418,7 +451,7 @@ body.auth-screen {
 [data-theme="dark"] .touch-btn-orange {
   background: #e8650a;
   border: 1px solid rgba(253, 186, 116, 0.28);
-  box-shadow: 0 8px 20px rgba(234, 88, 12, 0.24);
+  box-shadow: 0 5px 14px rgba(234, 88, 12, 0.2);
 }
 
 [data-theme="dark"] .touch-btn-orange:hover:not(:disabled) {
@@ -462,13 +495,14 @@ body.auth-screen {
 }
 
 [data-theme="dark"] .input {
-  background-color: rgba(1, 7, 13, 0.42);
-  border-color: rgba(203, 224, 244, 0.12);
+  background-color: var(--color-input);
+  border-color: rgba(173, 195, 215, 0.2);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.22);
   @apply focus:border-brand-400 focus:ring-brand-400/30;
 }
 
 [data-theme="dark"] .input::placeholder {
-  color: #66747b;
+  color: var(--color-ink-faint);
 }
 
 select.input {
@@ -483,7 +517,7 @@ select.input {
 
 [data-theme="dark"] select.input {
   color-scheme: dark;
-  background-color: rgba(0, 0, 0, 0.18);
+  background-color: var(--color-input);
   background-repeat: no-repeat;
   background-position: right 0.875rem center;
   background-size: 1rem;
@@ -491,8 +525,8 @@ select.input {
 }
 
 [data-theme="dark"] select.input option {
-  background-color: #162229;
-  color: #e8edf0;
+  background-color: var(--color-surface-light);
+  color: var(--color-ink);
 }
 
 .chip-picker {
@@ -500,8 +534,8 @@ select.input {
 }
 
 [data-theme="dark"] .chip-picker {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
 }
 
 .chip-picker-btn {
@@ -544,8 +578,8 @@ select.input {
 }
 
 [data-theme="dark"] .btn-outline-light {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.16);
+  background: var(--color-surface-lighter);
+  border-color: var(--color-line);
   @apply text-ink-soft;
 }
 
@@ -666,15 +700,15 @@ select.input {
 }
 
 [data-theme="dark"] .segmented-control {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
 }
 
 [data-theme="dark"] .segmented-control-btn-active {
   background: #0284c7;
   border: 1px solid rgba(125, 211, 252, 0.2);
   color: #ffffff;
-  box-shadow: none;
+  box-shadow: 0 3px 10px rgba(2, 132, 199, 0.18);
 }
 
 [data-theme="dark"] .segmented-control-btn-inactive {
@@ -682,7 +716,7 @@ select.input {
 }
 
 [data-theme="dark"] .segmented-control-btn-inactive:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--color-surface-lighter);
   @apply text-ink-soft;
 }
 
