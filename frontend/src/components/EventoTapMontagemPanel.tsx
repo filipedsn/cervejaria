@@ -319,7 +319,7 @@ export function EventoTapMontagemPanel({
                 </button>
               )}
 
-              <button type="button" className="touch-btn-danger w-full" onClick={closeModal}>
+              <button type="button" className="touch-btn-secondary w-full" onClick={closeModal}>
                 Cancelar
               </button>
             </div>
@@ -332,7 +332,7 @@ export function EventoTapMontagemPanel({
                 {selectedTap.chopeAtual?.nome ?? 'vazio'} → {chopes.find((p) => p.id === montagemProdutoId)?.nome}
               </p>
               <div className="flex gap-2">
-                <button type="button" className="touch-btn-danger flex-1" onClick={() => setModalMode('trocar')}>
+                <button type="button" className="touch-btn-orange flex-1" onClick={() => setModalMode('trocar')}>
                   Voltar
                 </button>
                 <button
@@ -390,7 +390,7 @@ export function EventoTapMontagemPanel({
               >
                 {montagemMutation.isPending ? 'Salvando...' : selectedTap.chopeAtual ? 'Continuar' : 'Posicionar'}
               </button>
-              <button type="button" className="touch-btn-danger w-full" onClick={() => setModalMode('menu')}>
+              <button type="button" className="touch-btn-orange w-full" onClick={() => setModalMode('menu')}>
                 Voltar
               </button>
             </form>

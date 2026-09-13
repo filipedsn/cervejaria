@@ -403,7 +403,7 @@ export function QuiosqueComandaDetailPage() {
         {aberta && (
           <button
             type="button"
-            className="touch-btn-orange w-full"
+            className="touch-btn-primary w-full"
             onClick={() => {
               setErro('');
               setItensAdicionadosMessage('');
@@ -558,10 +558,10 @@ export function QuiosqueComandaDetailPage() {
 
       {podeFechar && (
         <MobileActionBar>
-          <button type="button" className="touch-btn-primary w-full" onClick={openPayment} data-audit="quiosque-comanda-fechar">
+          <button type="button" className="touch-btn-orange w-full" onClick={openPayment} data-audit="quiosque-comanda-fechar">
             Fechar Comanda · {formatCurrency(comanda.total)}
           </button>
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/quiosque/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/quiosque/comandas')}>
             Voltar às comandas
           </button>
         </MobileActionBar>
@@ -572,7 +572,7 @@ export function QuiosqueComandaDetailPage() {
           <button type="button" className="touch-btn-primary w-full" disabled>
             Aguardando entrega da cozinha
           </button>
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/quiosque/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/quiosque/comandas')}>
             Voltar às comandas
           </button>
         </MobileActionBar>
@@ -586,7 +586,7 @@ export function QuiosqueComandaDetailPage() {
           {isDono && (
             <button
               type="button"
-              className="touch-btn-danger w-full"
+              className="touch-btn-orange w-full"
               onClick={() => cancelar.mutate()}
               disabled={cancelar.isPending}
               data-audit="quiosque-comanda-cancelar"
@@ -594,7 +594,7 @@ export function QuiosqueComandaDetailPage() {
               {cancelar.isPending ? 'Encerrando...' : 'Encerrar comanda'}
             </button>
           )}
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/quiosque/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/quiosque/comandas')}>
             Voltar às comandas
           </button>
         </MobileActionBar>
@@ -614,7 +614,7 @@ export function QuiosqueComandaDetailPage() {
                 ? 'Caixa fechado — abra para nova comanda'
                 : `Nova comanda · ${rotuloComanda(comanda)}`}
           </button>
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/quiosque/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/quiosque/comandas')}>
             Voltar às comandas
           </button>
         </MobileActionBar>

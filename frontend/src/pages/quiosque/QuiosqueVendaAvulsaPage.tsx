@@ -202,7 +202,7 @@ export function QuiosqueVendaAvulsaPage() {
           title="Nenhum produto no catálogo"
           description="Cadastre produtos no catálogo para começar a vender."
           action={
-            <Link to="/quiosque/catalogo" className="touch-btn-orange inline-flex min-h-12 items-center px-6">
+            <Link to="/quiosque/catalogo" className="touch-btn-primary inline-flex min-h-12 items-center px-6">
               Ir ao catálogo
             </Link>
           }
@@ -327,7 +327,7 @@ export function QuiosqueVendaAvulsaPage() {
 
       <button
         type="button"
-        className="touch-btn-danger w-full"
+        className="touch-btn-secondary w-full"
         onClick={() => navigate('/quiosque/comandas')}
       >
         Cancelar

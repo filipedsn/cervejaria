@@ -72,7 +72,7 @@ export function RankingSeriePage() {
     return (
       <div className="card space-y-3">
         <p className="text-ink-soft">Não foi possível carregar o ranking da agenda.</p>
-        <Link to="/eventos" className="touch-btn-primary touch-btn-sm inline-block">
+        <Link to="/eventos" className="touch-btn-orange touch-btn-sm inline-block">
           Voltar aos eventos
         </Link>
       </div>

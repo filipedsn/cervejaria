@@ -225,7 +225,7 @@ export function QuiosqueCatalogoPage() {
 
       {isDono && (
         <MobileActionBar>
-          <button type="button" className="touch-btn-orange w-full" onClick={abrirNovo}>
+          <button type="button" className="touch-btn-primary w-full" onClick={abrirNovo}>
             + Produto
           </button>
         </MobileActionBar>

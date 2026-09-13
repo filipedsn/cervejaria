@@ -73,7 +73,7 @@ export function QuiosqueTurnoResumoPage() {
       <EmptyState
         title="Relatório disponível apenas para turnos encerrados"
         action={
-          <Link to={dashboardHref} className="touch-btn-danger touch-btn-sm inline-block">
+          <Link to={dashboardHref} className="touch-btn-orange touch-btn-sm inline-block">
             Voltar ao dashboard
           </Link>
         }
@@ -90,7 +90,7 @@ export function QuiosqueTurnoResumoPage() {
         <Link
           to={dashboardHref}
           aria-label="Voltar ao dashboard"
-          className="touch-btn-danger touch-btn-sm inline-flex items-center gap-1.5 uppercase tracking-wide leading-none mb-3"
+          className="touch-btn-secondary touch-btn-sm inline-flex items-center gap-1.5 uppercase tracking-wide leading-none mb-3"
         >
           <ChevronLeftIcon className="w-5 h-5 shrink-0" />
           <span className="text-xs font-bold uppercase tracking-wide leading-none">Dashboard</span>

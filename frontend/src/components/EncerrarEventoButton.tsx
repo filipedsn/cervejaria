@@ -92,7 +92,7 @@ export function EncerrarEventoButton({
       <div className={className ?? ''}>
         <button
           type="button"
-          className="touch-btn-danger w-full text-lg min-h-14 disabled:cursor-not-allowed"
+          className="touch-btn-orange w-full text-lg min-h-14 disabled:cursor-not-allowed"
           disabled={!isSuccess || fecharMutation.isPending}
           onClick={handleClick}
         >
@@ -108,7 +108,7 @@ export function EncerrarEventoButton({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
-              className="touch-btn-danger w-full min-h-14"
+              className="touch-btn-secondary w-full min-h-14"
               disabled={fecharMutation.isPending}
               onClick={() => setShowConfirmModal(false)}
             >
@@ -116,7 +116,7 @@ export function EncerrarEventoButton({
             </button>
             <button
               type="button"
-              className="touch-btn-danger w-full min-h-14"
+              className="touch-btn-orange w-full min-h-14"
               disabled={fecharMutation.isPending}
               onClick={handleConfirmEncerrar}
             >

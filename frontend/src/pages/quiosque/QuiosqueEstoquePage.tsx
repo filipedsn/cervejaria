@@ -304,7 +304,7 @@ export function QuiosqueEstoquePage() {
             <label className="label">Observação (opcional)</label>
             <input className="input" value={observacao} onChange={(e) => setObservacao(e.target.value)} />
           </div>
-          <button type="submit" className="touch-btn-orange w-full" disabled={saida.isPending} data-audit="quiosque-estoque-saida-confirmar">
+          <button type="submit" className="touch-btn-primary w-full" disabled={saida.isPending} data-audit="quiosque-estoque-saida-confirmar">
             {saida.isPending ? 'Salvando...' : 'Registrar saída'}
           </button>
         </form>

@@ -70,7 +70,7 @@ export function RankingPeriodoPage() {
     return (
       <div className="card space-y-3">
         <p className="text-ink-soft">Não foi possível carregar o ranking.</p>
-        <Link to={`/ranking/${eventoId}`} className="touch-btn-primary touch-btn-sm inline-block">
+        <Link to={`/ranking/${eventoId}`} className="touch-btn-orange touch-btn-sm inline-block">
           Voltar ao ranking
         </Link>
       </div>

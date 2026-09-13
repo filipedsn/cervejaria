@@ -131,7 +131,7 @@ export function AdicionarItemComandaModal({
             ? 'Adicionar novamente à comanda'
             : 'Adicionar à comanda'}
       </button>
-      <button type="button" className="touch-btn-secondary w-full" onClick={onClose} disabled={isPending}>
+      <button type="button" className="touch-btn-orange w-full" onClick={onClose} disabled={isPending}>
         Voltar
       </button>
     </>

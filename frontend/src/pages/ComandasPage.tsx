@@ -203,7 +203,7 @@ export function ComandasPage() {
         <div className="grid grid-cols-2 gap-2">
           <Link
             to="/comandas/nova"
-            className="touch-btn-orange min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold"
+            className="touch-btn-primary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold"
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-xl leading-none font-normal">
               +
@@ -226,7 +226,7 @@ export function ComandasPage() {
       )}
 
       {!selectMode && !eventoAberto && (
-        <Link to="/comandas/nova" className="touch-btn-orange w-full min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl text-base font-bold">
+        <Link to="/comandas/nova" className="touch-btn-primary w-full min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl text-base font-bold">
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-2xl leading-none font-normal">
             +
           </span>
@@ -262,14 +262,14 @@ export function ComandasPage() {
           <button
             type="button"
             onClick={exitSelectMode}
-            className="touch-btn-danger flex w-full items-center gap-3 min-h-[3.75rem] rounded-2xl px-4 py-3 shadow-lg shadow-red-600/20 ring-2 ring-red-200/40 active:scale-[0.98] transition-transform"
+            className="touch-btn-secondary flex w-full items-center gap-3 min-h-[3.75rem] rounded-2xl px-4 py-3 active:scale-[0.98] transition-transform"
           >
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 text-2xl leading-none">
               ×
             </span>
             <span className="flex min-w-0 flex-col items-start text-left">
               <span className="text-base font-bold leading-tight">Cancelar seleção</span>
-              <span className="text-sm font-normal text-white/85 leading-snug">
+              <span className="text-sm font-normal text-ink-muted leading-snug">
                 {selectedIds.length > 0
                   ? `${selectedIds.length} comanda(s) marcada(s) · toque para voltar ao normal`
                   : 'Toque nas comandas abaixo para marcar · mínimo 2 para pagar juntas'}

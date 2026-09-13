@@ -333,7 +333,7 @@ export function ComandaDetailPage() {
         {isOpen && (
           <button
             type="button"
-            className="touch-btn-orange w-full"
+            className="touch-btn-primary w-full"
             onClick={() => {
               setError('');
               setItemAddedMessage('');
@@ -405,10 +405,10 @@ export function ComandaDetailPage() {
       {/* Ações fixas — comanda aberta */}
       {isOpen && comanda.itens.length > 0 && (
         <MobileActionBar>
-          <button type="button" className="touch-btn-primary w-full" onClick={openPayment} data-audit="comanda-fechar">
+          <button type="button" className="touch-btn-orange w-full" onClick={openPayment} data-audit="comanda-fechar">
             Fechar Comanda · {formatCurrency(comanda.total)}
           </button>
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/comandas')}>
             Voltar ao evento
           </button>
         </MobileActionBar>
@@ -421,14 +421,14 @@ export function ComandaDetailPage() {
           </p>
           <button
             type="button"
-            className="touch-btn-danger w-full"
+            className="touch-btn-orange w-full"
             onClick={() => cancelMutation.mutate()}
             disabled={cancelMutation.isPending}
             data-audit="comanda-cancelar"
           >
             {cancelMutation.isPending ? 'Encerrando...' : 'Encerrar comanda'}
           </button>
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/comandas')}>
             Voltar ao evento
           </button>
         </MobileActionBar>
@@ -449,7 +449,7 @@ export function ComandaDetailPage() {
                 : `Nova comanda · ${rotuloComandaCervejaria(comanda, comanda.cliente)}`}
             </button>
           )}
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/comandas')}>
             Voltar ao evento
           </button>
         </MobileActionBar>

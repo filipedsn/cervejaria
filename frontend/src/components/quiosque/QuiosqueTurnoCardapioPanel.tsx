@@ -184,7 +184,7 @@ export function QuiosqueTurnoCardapioPanel({
   };
 
   const closeButton = onClose ? (
-    <button type="button" className="touch-btn-danger w-full" onClick={onClose}>
+    <button type="button" className="touch-btn-secondary w-full" onClick={onClose}>
       Fechar
     </button>
   ) : null;
@@ -374,7 +374,7 @@ export function QuiosqueTurnoCardapioPanel({
             ) : null}
             <button
               type="button"
-              className="touch-btn-danger w-full"
+              className="touch-btn-secondary w-full"
               disabled={precoMutation.isPending}
               onClick={cancelarPendingPreco}
             >

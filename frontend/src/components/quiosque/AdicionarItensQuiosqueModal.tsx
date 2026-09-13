@@ -60,7 +60,7 @@ export function AdicionarItensQuiosqueModal({
       >
         {isPending ? 'Salvando...' : confirmLabel}
       </button>
-      <button type="button" className="touch-btn-secondary w-full" onClick={onClose} disabled={isPending}>
+      <button type="button" className="touch-btn-orange w-full" onClick={onClose} disabled={isPending}>
         Voltar
       </button>
     </>

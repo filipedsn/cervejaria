@@ -95,7 +95,7 @@ export function ExcluirEventoButton({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
-              className="touch-btn-danger w-full min-h-14"
+              className="touch-btn-orange w-full min-h-14"
               disabled={excluirMutation.isPending}
               onClick={() => setShowConfirmModal(false)}
             >

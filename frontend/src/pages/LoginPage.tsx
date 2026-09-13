@@ -49,7 +49,7 @@ export function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="login-input w-full rounded-xl px-4 py-3.5 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/30"
+              className="login-input w-full rounded-xl px-4 py-3.5 text-base outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-400/30"
               placeholder="seu@email.com"
             />
           </div>
@@ -66,7 +66,7 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="login-input w-full rounded-xl px-4 py-3.5 pr-12 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/30"
+                className="login-input w-full rounded-xl px-4 py-3.5 pr-12 text-base outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-400/30"
                 placeholder="••••••••"
               />
               <button
@@ -86,7 +86,7 @@ export function LoginPage() {
                 type="checkbox"
                 checked={remember}
                 onChange={(e) => setRemember(e.target.checked)}
-                className="h-4 w-4 rounded border-white/30 bg-white/10 accent-orange-500"
+                className="h-4 w-4 rounded border-white/30 bg-white/10 accent-brand-400"
               />
               Lembrar-me
             </label>
