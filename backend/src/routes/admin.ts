@@ -16,6 +16,8 @@ import {
 } from '../lib/cervejaria-branding.js';
 import { ensureDefaultTaps } from '../lib/trailer-defaults.js';
 import { ativarModuloQuiosque } from '../lib/quiosque/modulo.js';
+import { atualizarCapacidadesQuiosque } from '../lib/quiosque/capacidades.js';
+import { getAuthUser } from '../types/auth.js';
 import {
   encryptSecret,
   getAdminSettingsResponse,
@@ -32,7 +34,7 @@ const ALLOWED_LOGO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'im
 const flagMultipart = z
   .union([z.boolean(), z.string()])
   .optional()
-  .transform((valor) => {
+  .transform<boolean | undefined>((valor) => {
     if (typeof valor === 'boolean') return valor;
     if (valor == null) return undefined;
     return valor === 'true' || valor === '1' || valor === 'on';
@@ -68,6 +70,9 @@ const updateCervejariaSchema = z.object({
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida. Use formato #RRGGBB')
     .optional(),
+  quiosqueControlaEstoque: flagMultipart,
+  quiosqueTemCozinha: flagMultipart,
+  confirmacaoEstoque: flagMultipart,
 });
 
 const toggleAtivoSchema = z.object({
@@ -106,10 +111,10 @@ function badRequest(message: string) {
   return err;
 }
 
-async function parseMultipartCervejaria<T>(
+async function parseMultipartCervejaria<S extends z.ZodTypeAny>(
   request: import('fastify').FastifyRequest,
-  schema: z.ZodType<T>,
-) {
+  schema: S,
+): Promise<{ body: z.output<S>; logoBuffer: Buffer | null }> {
   const fields: Record<string, string> = {};
   let logoBuffer: Buffer | null = null;
 
@@ -320,6 +325,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.patch('/cervejarias/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
+    const admin = getAuthUser(request);
     const { body, logoBuffer } = await parseMultipartCervejaria(request, updateCervejariaSchema);
 
     const existing = await prisma.cervejaria.findUnique({
@@ -358,6 +364,21 @@ export async function adminRoutes(app: FastifyInstance) {
         donoData.passwordChangedAt = new Date();
       }
       await tx.usuario.update({ where: { id: dono.id }, data: donoData });
+
+      if (
+        body.quiosqueTemCozinha !== undefined ||
+        body.quiosqueControlaEstoque !== undefined
+      ) {
+        await atualizarCapacidadesQuiosque(tx, {
+          cervejariaId: id,
+          usuarioId: admin.sub,
+          papel: 'ADMIN',
+          origem: 'ADMIN',
+          temCozinha: body.quiosqueTemCozinha,
+          controlaEstoque: body.quiosqueControlaEstoque,
+          confirmacaoEstoque: body.confirmacaoEstoque,
+        });
+      }
     });
 
     if (logoBuffer) {
@@ -371,6 +392,9 @@ export async function adminRoutes(app: FastifyInstance) {
       where: { id },
       include: {
         _count: { select: { usuarios: true, eventos: true } },
+        configuracaoQuiosque: {
+          select: { ativo: true, exclusivo: true, controlaEstoque: true, temCozinha: true },
+        },
         usuarios: { where: { papel: 'DONO' }, select: { id: true, nome: true, email: true }, take: 1 },
       },
     });

@@ -1,6 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolverPagamentos, VendaInvalidaError } from './venda.js';
+import { itemVaiParaCozinha, resolverPagamentos, VendaInvalidaError } from './venda.js';
+
+describe('itemVaiParaCozinha', () => {
+  it('não cria fila latente enquanto a cozinha está desligada', () => {
+    assert.equal(itemVaiParaCozinha(false, true), false);
+    assert.equal(itemVaiParaCozinha(true, true), true);
+    assert.equal(itemVaiParaCozinha(true, false), false);
+  });
+});
 
 describe('resolverPagamentos', () => {
   it('aceita lista vazia quando o devido é zero (cortesia)', () => {

@@ -60,8 +60,12 @@ export async function registrarTransacao(
 
     const metaObj = metadata as Record<string, unknown>;
     const slug = await auditSlugForTransacao(input.cervejariaId);
+    const action =
+      metaObj.operacao === 'QUIOSQUE_CAPACIDADE_ALTERADA'
+        ? 'quiosque.capacidade_alterada'
+        : `transacao.${input.tipo.toLowerCase()}`;
     emitAuditEvent({
-      action: `transacao.${input.tipo.toLowerCase()}`,
+      action,
       message: describeTransacao(input.tipo, metaObj),
       outcome: 'success',
       entityType: input.entidadeTipo ?? undefined,
@@ -83,7 +87,10 @@ export async function registrarTransacao(
     const failMeta = mergeTransacaoMetadata(input.metadata, input.payload);
     const slug = await auditSlugForTransacao(input.cervejariaId);
     emitAuditEvent({
-      action: `transacao.${input.tipo.toLowerCase()}`,
+      action:
+        failMeta.operacao === 'QUIOSQUE_CAPACIDADE_ALTERADA'
+          ? 'quiosque.capacidade_alterada'
+          : `transacao.${input.tipo.toLowerCase()}`,
       message: `${describeTransacao(input.tipo, failMeta)} — falha ao persistir`,
       outcome: 'failure',
       slug,
@@ -121,6 +128,10 @@ function num(v: unknown): number | undefined {
 
 export function formatTransacaoDescricao(tipo: TransacaoTipo, metadata: unknown): string {
   const m = (metadata && typeof metadata === 'object' ? metadata : {}) as Record<string, unknown>;
+
+  if (m.operacao === 'QUIOSQUE_CAPACIDADE_ALTERADA') {
+    return `Recurso do quiosque ${str(m.campo) ?? ''}: ${String(m.valorAnterior)} → ${String(m.valorNovo)}`;
+  }
 
   switch (tipo) {
     case 'COMANDA_CRIADA':

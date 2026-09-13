@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  mensagemConfirmacaoEstoque,
+  modoEmpresa,
+  QUIOSQUE_CAPACIDADES_INVALIDATION_KEYS,
+} from '../src/lib/quiosque-capacidades.ts';
+
+test('TAP-42: identifica os três modos da empresa como informação', () => {
+  assert.equal(modoEmpresa(true, false), 'Cervejaria');
+  assert.equal(modoEmpresa(false, true), 'Quiosque');
+  assert.equal(modoEmpresa(true, true), 'Híbrida');
+});
+
+test('TAP-42: confirma desligamento preservando saldo e histórico', () => {
+  const mensagem = mensagemConfirmacaoEstoque(false);
+  assert.match(mensagem, /novas vendas não movimentarão o estoque/i);
+  assert.match(mensagem, /saldos e históricos existentes serão preservados/i);
+});
+
+test('TAP-42: confirma reativação orientando revisão sem reconstrução implícita', () => {
+  const mensagem = mensagemConfirmacaoEstoque(true);
+  assert.match(mensagem, /não foram refletidas no saldo/i);
+  assert.match(mensagem, /revise as quantidades/i);
+});
+
+test('TAP-42: invalida contexto, cozinha e estoque após salvar', () => {
+  assert.deepEqual(QUIOSQUE_CAPACIDADES_INVALIDATION_KEYS, [
+    ['quiosque-contexto'],
+    ['quiosque-cozinha'],
+    ['quiosque-estoque'],
+  ]);
+});

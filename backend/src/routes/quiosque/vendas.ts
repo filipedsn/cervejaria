@@ -104,6 +104,7 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
           criadoPorId: user.sub,
           observacao: body.observacao,
           itens,
+          temCozinha,
         });
 
         await baixarEstoqueDoPedido(tx, {

@@ -11,6 +11,10 @@ import { caixaQuiosqueRoutes } from './caixa.js';
 import { cardapiosQuiosqueRoutes } from './cardapios.js';
 import { estoqueQuiosqueRoutes } from './estoque.js';
 import { dashboardQuiosqueRoutes } from './dashboard.js';
+import {
+  atualizarCapacidadesQuiosque,
+  updateCapacidadesQuiosqueSchema,
+} from '../../lib/quiosque/capacidades.js';
 
 const createPontoVendaSchema = z.object({
   nome: z.string().trim().min(1),
@@ -64,6 +68,21 @@ export async function quiosqueRoutes(app: FastifyInstance) {
       });
 
       return { usaCardapio: updated.usaCardapio, quantidadeMesas: updated.quantidadeMesas };
+    });
+
+    moduloScope.patch('/capacidades', { preHandler: [app.requireDono] }, async (request) => {
+      const user = getAuthUser(request);
+      const body = updateCapacidadesQuiosqueSchema.parse(request.body);
+
+      return prisma.$transaction((tx) =>
+        atualizarCapacidadesQuiosque(tx, {
+          cervejariaId: user.cervejariaId!,
+          usuarioId: user.sub,
+          papel: 'DONO',
+          origem: 'DONO',
+          ...body,
+        }),
+      );
     });
 
     moduloScope.get('/pontos-venda', async (request) => {
