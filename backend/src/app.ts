@@ -86,6 +86,7 @@ import { emitAuthEvent, sessionReasonCode } from './lib/auth-observability.js';
 import { auditRoutes } from './routes/audit.js';
 import { pushRoutes } from './routes/push.js';
 import { observabilityRoutes } from './routes/observability.js';
+import { onboardingRoutes } from './routes/onboarding.js';
 
 import type { JwtPayload } from './types/auth.js';
 
@@ -340,6 +341,8 @@ export async function buildApp() {
   await app.register(auditRoutes, { prefix: '/api/audit' });
 
   await app.register(observabilityRoutes, { prefix: '/api/observability' });
+
+  await app.register(onboardingRoutes, { prefix: '/api/onboarding' });
 
   await app.register(usuariosRoutes, { prefix: '/api/usuarios' });
 
