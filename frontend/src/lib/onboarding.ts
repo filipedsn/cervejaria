@@ -66,6 +66,13 @@ export type OnboardingUiAction =
 
 export const ONBOARDING_QUERY_KEY = 'onboarding-readiness';
 
+/** Refreshes the operational snapshot after a real mutation; it never changes onboarding UI state. */
+export function invalidateOnboardingReadiness(queryClient: {
+  invalidateQueries: (filters: { queryKey: readonly unknown[] }) => unknown;
+}): unknown {
+  return queryClient.invalidateQueries({ queryKey: [ONBOARDING_QUERY_KEY] });
+}
+
 export interface LocalStorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;

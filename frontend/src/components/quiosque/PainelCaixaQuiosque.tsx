@@ -18,6 +18,7 @@ import {
   type TurnoCardapioFormState,
 } from './TurnoCardapioFormFields';
 import { QuiosqueTurnoCardapioPanel } from './QuiosqueTurnoCardapioPanel';
+import { invalidateOnboardingReadiness } from '../../lib/onboarding';
 
 type Dialogo = 'nenhum' | 'movimento' | 'correcao' | 'fechar' | 'cardapio';
 
@@ -94,6 +95,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
       }),
     onSuccess: () => {
       invalidar();
+      invalidateOnboardingReadiness(queryClient);
       queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
       queryClient.invalidateQueries({ queryKey: ['quiosque-produtos-operacionais', pontoVendaId] });
       queryClient.invalidateQueries({ queryKey: ['quiosque-turno-cardapio', pontoVendaId] });
@@ -207,6 +209,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
             className="touch-btn-primary w-full"
             disabled={abrir.isPending}
             data-audit="quiosque-caixa-abrir"
+            data-onboarding-target="quiosque-open-cash"
             onClick={() => abrir.mutate()}
           >
             {abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}

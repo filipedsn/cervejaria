@@ -7,6 +7,7 @@ import { Modal } from '../../components/Modal';
 import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import { useAuth } from '../../contexts/AuthContext';
+import { invalidateOnboardingReadiness } from '../../lib/onboarding';
 import {
   TIPOS_SAIDA_ESTOQUE,
   type SaldoEstoque,
@@ -98,6 +99,7 @@ export function QuiosqueEstoquePage() {
       }),
     onSuccess: () => {
       invalidar();
+      invalidateOnboardingReadiness(queryClient);
       fecharDialogo();
     },
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível repor'),
@@ -114,6 +116,7 @@ export function QuiosqueEstoquePage() {
       }),
     onSuccess: () => {
       invalidar();
+      invalidateOnboardingReadiness(queryClient);
       fecharDialogo();
     },
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível registrar a saída'),
@@ -129,6 +132,7 @@ export function QuiosqueEstoquePage() {
       }),
     onSuccess: () => {
       invalidar();
+      invalidateOnboardingReadiness(queryClient);
       fecharDialogo();
     },
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível ajustar'),
@@ -218,7 +222,7 @@ export function QuiosqueEstoquePage() {
                 <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => abrirSaida(item)} data-audit="quiosque-estoque-saida">
                   Saída
                 </button>
-                <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => abrirAjuste(item)} data-audit="quiosque-estoque-ajustar">
+                <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => abrirAjuste(item)} data-audit="quiosque-estoque-ajustar" data-onboarding-target="quiosque-adjust-stock">
                   Ajustar
                 </button>
               </div>

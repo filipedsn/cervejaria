@@ -2085,6 +2085,14 @@ html:has(.qt-tv) {
   }
 }
 
+.onboarding-sheet { @apply fixed inset-x-0 bottom-16 z-50 p-3 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-[25rem]; pointer-events: none; }
+.onboarding-sheet-card { @apply pointer-events-auto rounded-2xl border border-line bg-surface p-4 shadow-2xl; animation: onboarding-enter 160ms ease-out; }
+.onboarding-checklist { @apply fixed bottom-20 right-3 z-40 max-w-[15rem] rounded-xl border border-line bg-surface px-3 py-2 shadow-lg sm:bottom-4 sm:right-4; }
+.onboarding-target-highlight { outline: 3px solid rgba(14, 165, 233, .65); outline-offset: 4px; animation: onboarding-pulse 1.4s ease-in-out infinite; }
+@keyframes onboarding-enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes onboarding-pulse { 50% { outline-color: rgba(14, 165, 233, .2); } }
+@media (prefers-reduced-motion: reduce) { .onboarding-sheet-card, .onboarding-target-highlight { animation: none !important; } }
+
 /* Login — composição institucional navy/cyan */
 .login-shell {
   background:

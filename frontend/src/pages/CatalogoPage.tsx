@@ -16,6 +16,7 @@ import { ModalFormFooter } from '../components/ModalFormFooter';
 import { CurrencyInput } from '../components/CurrencyInput';
 
 import { parseCurrencyInput, formatCurrencyInputFromNumber } from '../lib/currency';
+import { invalidateOnboardingReadiness } from '../lib/onboarding';
 
 
 
@@ -163,6 +164,8 @@ export function CatalogoPage({ embedded }: { embedded?: boolean } = {}) {
           <button
 
             className="touch-btn-primary touch-btn-sm w-full"
+
+            data-onboarding-target="brewery-add-chope"
 
             onClick={() => { setEditingProduto(null); setShowBebidaModal(true); }}
 
@@ -401,6 +404,7 @@ function BebidaModal({ open, onClose, produto, onError }: {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['produtos'] });
+      invalidateOnboardingReadiness(queryClient);
       onClose();
     },
     onError: (err) => onError(err instanceof ApiError ? err.message : 'Erro ao salvar'),

@@ -5,29 +5,28 @@ test.describe('Onboarding frontend engine', () => {
   test('DONO abre e fecha o resumo manual sem bloquear a operação', async ({ page }) => {
     await login(page, CREDENTIALS.dono.email, CREDENTIALS.dono.password);
 
-    const automaticDialog = page.getByRole('dialog', { name: 'Como começar a vender' });
-    if (await automaticDialog.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await automaticDialog.getByRole('button', { name: 'Fechar' }).click();
+    const tutorial = page.getByRole('region', { name: /Como começar a vender/i });
+    if (await tutorial.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await tutorial.getByRole('button', { name: 'Fechar' }).click();
     }
 
     await page.goto('/configuracoes/operacao');
-    const entry = page.getByRole('main').getByRole('heading', { name: 'Como começar a vender' });
+    const entry = page.getByRole('main').getByRole('heading', { name: /Como começar a vender/i });
     await expect(entry).toBeVisible();
-    if (await automaticDialog.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await automaticDialog.getByRole('button', { name: 'Fechar' }).click();
+    if (await tutorial.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await tutorial.getByRole('button', { name: 'Fechar' }).click();
     }
     await page.getByRole('button', { name: 'Abrir', exact: true }).click();
 
-    const dialog = page.getByRole('dialog', { name: 'Como começar a vender' });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: 'Fechar' }).click();
-    await expect(dialog).toBeHidden();
-    await expect(page.getByRole('heading', { name: 'Configurações' })).toBeVisible();
+    await expect(tutorial).toBeVisible();
+    await tutorial.getByRole('button', { name: 'Fechar' }).click();
+    await expect(tutorial).toBeHidden();
+    await expect(page.getByRole('heading', { name: /Configurações/i })).toBeVisible();
   });
 
   test('ATENDENTE não recebe a entrada manual', async ({ page }) => {
     await login(page, CREDENTIALS.atendente.email, CREDENTIALS.atendente.password);
     await page.goto('/configuracoes/operacao');
-    await expect(page.getByRole('heading', { name: 'Como começar a vender' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: /Como começar a vender/i })).toHaveCount(0);
   });
 });

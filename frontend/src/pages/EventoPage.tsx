@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { invalidateOnboardingReadiness } from '../lib/onboarding';
 
 import { api, formatTime, ApiError } from '../lib/api';
 
@@ -571,6 +572,7 @@ export function EventoPage() {
     const socket = getSocket();
     const refreshAgenda = () => {
       queryClient.invalidateQueries({ queryKey: ['eventos'] });
+      invalidateOnboardingReadiness(queryClient);
     };
     socket.on('evento:updated', refreshAgenda);
     socket.on('evento:deleted', refreshAgenda);
@@ -613,6 +615,7 @@ export function EventoPage() {
     onSuccess: (created) => {
 
       queryClient.invalidateQueries({ queryKey: ['eventos'] });
+      invalidateOnboardingReadiness(queryClient);
 
       setShowNew(false);
 
@@ -645,6 +648,7 @@ export function EventoPage() {
     onSuccess: (sessao) => {
 
       queryClient.invalidateQueries({ queryKey: ['eventos'] });
+      invalidateOnboardingReadiness(queryClient);
 
       setEvento(sessao);
 
@@ -841,7 +845,7 @@ export function EventoPage() {
 
           </p>
 
-          <button type="button" className="touch-btn-primary w-full max-w-sm mx-auto min-h-14" onClick={openNew}>
+          <button type="button" className="touch-btn-primary w-full max-w-sm mx-auto min-h-14" onClick={openNew} data-onboarding-target="brewery-open-operation">
 
             + Cadastrar compromisso
 

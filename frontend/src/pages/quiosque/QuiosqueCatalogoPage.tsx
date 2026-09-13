@@ -9,6 +9,7 @@ import { CurrencyInput } from '../../components/CurrencyInput';
 import { parseCurrencyInput, formatCurrencyInputFromNumber } from '../../lib/currency';
 import { useAuth } from '../../contexts/AuthContext';
 import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
+import { invalidateOnboardingReadiness } from '../../lib/onboarding';
 import {
   CATEGORIAS_PRODUTO_QUIOSQUE,
   normalizeCategoriaProduto,
@@ -104,6 +105,7 @@ export function QuiosqueCatalogoPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quiosque-produtos'] });
+      invalidateOnboardingReadiness(queryClient);
       fechar();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao salvar produto'),
@@ -225,7 +227,7 @@ export function QuiosqueCatalogoPage() {
 
       {isDono && (
         <MobileActionBar>
-          <button type="button" className="touch-btn-primary w-full" onClick={abrirNovo}>
+          <button type="button" className="touch-btn-primary w-full" onClick={abrirNovo} data-onboarding-target="quiosque-add-product">
             + Produto
           </button>
         </MobileActionBar>

@@ -51,6 +51,7 @@ import { AuditTracker } from './components/AuditTracker';
 import { AuditErrorBoundary } from './components/AuditErrorBoundary';
 import { OnboardingProvider } from './contexts/OnboardingContext';
 import { OnboardingSurface } from './components/OnboardingSurface';
+import { OnboardingChecklist } from './components/OnboardingChecklist';
 
 function RootLayout() {
   const { pathname } = useLocation();
@@ -182,6 +183,7 @@ function TenantShell() {
         <Layout />
       </EventoProvider>
       <OnboardingSurface />
+      <OnboardingChecklist />
     </OnboardingProvider>
   );
 }
