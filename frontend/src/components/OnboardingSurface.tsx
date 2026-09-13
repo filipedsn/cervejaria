@@ -49,9 +49,12 @@ export function OnboardingSurface() {
               {readiness.firstSaleCompleted ? 'Use este resumo como ajuda para a operação atual.' : 'Estado atual da operação carregado.'}
             </p>
             {isHybrid && !selectedModule && (
-              <div className="mt-4 flex gap-2">
-                <button type="button" className="btn-secondary" onClick={() => selectModule('QUIOSQUE')}>Quiosque</button>
-                <button type="button" className="btn-secondary" onClick={() => selectModule('CERVEJARIA')}>Cervejaria</button>
+              <div className="mt-4">
+                <p className="text-sm font-semibold">Onde você quer começar a vender?</p>
+                <div className="mt-2 flex gap-2">
+                  <button type="button" className="touch-btn-secondary min-h-12 flex-1" onClick={() => selectModule('QUIOSQUE')}>Quiosque</button>
+                  <button type="button" className="touch-btn-secondary min-h-12 flex-1" onClick={() => selectModule('CERVEJARIA')}>Cervejaria</button>
+                </div>
               </div>
             )}
             {action && (
