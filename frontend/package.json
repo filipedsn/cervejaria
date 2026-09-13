@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test:unit": "node --import ../backend/node_modules/tsx/dist/loader.mjs --test tests/quiosque.test.ts tests/quiosque-capacidades.test.ts tests/correlation-id.test.ts tests/auth-session.test.ts",
+    "test:unit": "node --import ../backend/node_modules/tsx/dist/loader.mjs --test tests/quiosque.test.ts tests/quiosque-capacidades.test.ts tests/correlation-id.test.ts tests/auth-session.test.ts tests/onboarding.test.ts",
     "build:deploy": "vite build",
     "build:prod": "vite build --outDir ../deploy/prod-artifacts/.staging/frontend",
     "preview": "vite preview",

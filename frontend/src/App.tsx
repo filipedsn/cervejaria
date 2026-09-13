@@ -49,6 +49,8 @@ import { ensureAppShellBranding } from './lib/app-branding';
 import { resetBreweryTheme } from './lib/theme';
 import { AuditTracker } from './components/AuditTracker';
 import { AuditErrorBoundary } from './components/AuditErrorBoundary';
+import { OnboardingProvider } from './contexts/OnboardingContext';
+import { OnboardingSurface } from './components/OnboardingSurface';
 
 function RootLayout() {
   const { pathname } = useLocation();
@@ -175,9 +177,12 @@ function RequireTrailerContext() {
 
 function TenantShell() {
   return (
-    <EventoProvider>
-      <Layout />
-    </EventoProvider>
+    <OnboardingProvider>
+      <EventoProvider>
+        <Layout />
+      </EventoProvider>
+      <OnboardingSurface />
+    </OnboardingProvider>
   );
 }
 
