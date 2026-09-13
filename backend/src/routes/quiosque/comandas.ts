@@ -352,6 +352,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
           criadoPorId: user.sub,
           observacao: body.observacao,
           itens,
+          temCozinha,
         });
 
         await baixarEstoqueDoPedido(tx, {
@@ -450,6 +451,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
         criadoPorId: user.sub,
         observacao: body.observacao,
         itens,
+        temCozinha,
       });
 
       await baixarEstoqueDoPedido(tx, {

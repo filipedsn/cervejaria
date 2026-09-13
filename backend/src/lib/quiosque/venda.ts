@@ -51,6 +51,10 @@ export interface ItemResolvido {
   controlaEstoque: boolean;
 }
 
+export function itemVaiParaCozinha(temCozinha: boolean, exigePreparo: boolean): boolean {
+  return temCozinha && exigePreparo;
+}
+
 type TxClient = Prisma.TransactionClient;
 
 /**
@@ -172,6 +176,7 @@ export async function criarPedido(
     criadoPorId: string;
     observacao?: string;
     itens: ItemResolvido[];
+    temCozinha: boolean;
   },
 ) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKeyDaSenha(params.cervejariaId, params.dia)})`;
@@ -202,7 +207,7 @@ export async function criarPedido(
       quantidade: item.quantidade,
       precoUnit: item.precoUnit,
       nome: item.nome,
-      exigePreparo: item.exigePreparo,
+      exigePreparo: itemVaiParaCozinha(params.temCozinha, item.exigePreparo),
       pedidoCozinhaId: pedido.id,
     })),
   });
