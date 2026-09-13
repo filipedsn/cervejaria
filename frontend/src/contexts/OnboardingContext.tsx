@@ -6,8 +6,10 @@ import {
   initialSelectedModule,
   isAutoStartAllowed,
   isManualStartAllowed,
+  isOnboardingDismissed,
   onboardingDismissStorageKey,
   onboardingUiReducer,
+  safeLocalStorageSet,
   type OnboardingModule,
   type OnboardingSource,
 } from '../lib/onboarding';
@@ -36,7 +38,7 @@ const OnboardingContext = createContext<OnboardingContextType | null>(null);
 const autoAttemptedInSession = new Set<string>();
 
 function readDismissed(storageKey: string | null): boolean {
-  return Boolean(storageKey && typeof window !== 'undefined' && window.localStorage.getItem(storageKey));
+  return Boolean(storageKey && isOnboardingDismissed(storageKey));
 }
 
 export function OnboardingProvider({ children }: { children: ReactNode }) {
@@ -113,7 +115,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const dismissAutoOnboarding = useCallback(() => {
-    if (storageKey && typeof window !== 'undefined') window.localStorage.setItem(storageKey, 'true');
+    if (storageKey) safeLocalStorageSet(storageKey, 'true');
     dispatch({ type: 'DISMISS_AUTO' });
   }, [storageKey]);
 

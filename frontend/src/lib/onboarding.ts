@@ -66,12 +66,50 @@ export type OnboardingUiAction =
 
 export const ONBOARDING_QUERY_KEY = 'onboarding-readiness';
 
+export interface LocalStorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+function browserLocalStorage(): LocalStorageLike | null {
+  try {
+    return typeof window === 'undefined' ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** Storage is an optional convenience only: onboarding must remain fail-open. */
+export function safeLocalStorageGet(key: string, storage: LocalStorageLike | null = browserLocalStorage()): string | null {
+  try {
+    return storage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function safeLocalStorageSet(
+  key: string,
+  value: string,
+  storage: LocalStorageLike | null = browserLocalStorage(),
+): void {
+  try {
+    storage?.setItem(key, value);
+  } catch {
+    // A blocked browser storage must not prevent the operational UI from continuing.
+  }
+}
+
 export function onboardingQueryKey(cervejariaId: string | null, usuarioId: string | null) {
   return [ONBOARDING_QUERY_KEY, cervejariaId, usuarioId] as const;
 }
 
 export function onboardingDismissStorageKey(cervejariaId: string, usuarioId: string): string {
   return `tap-quiver:onboarding-dismissed:${cervejariaId}:${usuarioId}`;
+}
+
+export function isOnboardingDismissed(storageKey: string, storage?: LocalStorageLike | null): boolean {
+  return Boolean(safeLocalStorageGet(storageKey, storage));
 }
 
 export function hasApplicableOnboardingModule(readiness: OnboardingReadiness | undefined): boolean {

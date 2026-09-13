@@ -8,6 +8,8 @@ import {
   isManualStartAllowed,
   onboardingDismissStorageKey,
   onboardingUiReducer,
+  isOnboardingDismissed,
+  safeLocalStorageSet,
   type OnboardingReadiness,
 } from '../src/lib/onboarding.ts';
 
@@ -46,6 +48,33 @@ test('onboarding: dispensa é isolada por tenant e usuário', () => {
   assert.equal(onboardingDismissStorageKey('cervejaria-a', 'usuario-a'), 'tap-quiver:onboarding-dismissed:cervejaria-a:usuario-a');
   assert.notEqual(onboardingDismissStorageKey('cervejaria-a', 'usuario-a'), onboardingDismissStorageKey('cervejaria-b', 'usuario-a'));
   assert.notEqual(onboardingDismissStorageKey('cervejaria-a', 'usuario-a'), onboardingDismissStorageKey('cervejaria-a', 'usuario-b'));
+});
+
+test('onboarding: SecurityError na leitura de storage degrada para não dispensado', () => {
+  const blockedStorage = {
+    getItem: () => { throw new DOMException('Blocked', 'SecurityError'); },
+    setItem: () => undefined,
+  };
+  const key = onboardingDismissStorageKey('cervejaria-a', 'usuario-a');
+  assert.equal(isOnboardingDismissed(key, blockedStorage), false);
+});
+
+test('onboarding: SecurityError na gravação de storage não escapa', () => {
+  const blockedStorage = {
+    getItem: () => null,
+    setItem: () => { throw new DOMException('Blocked', 'SecurityError'); },
+  };
+  const key = onboardingDismissStorageKey('cervejaria-a', 'usuario-a');
+  // The wrapper is directly injectable so the blocked-storage behavior stays deterministic in Node tests.
+  assert.doesNotThrow(() => safeLocalStorageSet(key, 'true', blockedStorage));
+});
+
+test('onboarding: dismiss fecha a sessão mesmo se a gravação local falhar', () => {
+  let state = createOnboardingUiState(false);
+  state = onboardingUiReducer(state, { type: 'OPEN', source: 'AUTO', selectedModule: 'QUIOSQUE' });
+  state = onboardingUiReducer(state, { type: 'DISMISS_AUTO' });
+  assert.equal(state.isOpen, false);
+  assert.equal(state.dismissedLocally, true);
 });
 
 test('onboarding: híbrida começa sem módulo e mantém a escolha transitória', () => {
