@@ -6,6 +6,7 @@ import { Loading } from '../components/Loading';
 import { ToggleAtivo } from '../components/ToggleAtivo';
 import { BrandingEditorFields, BRANDING_DEFAULT_PRIMARY, normalizeTheme } from '../components/BrandingEditorFields';
 import { PasswordWithConfirmFields, validatePasswordPair } from '../components/PasswordWithConfirmFields';
+import { mensagemConfirmacaoEstoque, modoEmpresa } from '../lib/quiosque-capacidades';
 import type { BrandTheme } from '../types';
 
 interface MesAtualStats {
@@ -205,6 +206,7 @@ export function AdminCervejariasPage() {
     setCorPrimaria(c.corPrimaria ?? BRANDING_DEFAULT_PRIMARY);
     setLogoFile(null);
     setLogoPreview(null);
+    setModulos({ ...c.modulos });
     setError('');
   };
 
@@ -254,7 +256,14 @@ export function AdminCervejariasPage() {
       return;
     }
     setError('');
-    updateMutation.mutate();
+    const alterouEstoque =
+      editing?.modulos.quiosque === true &&
+      editing.modulos.quiosqueControlaEstoque !== modulos.quiosqueControlaEstoque;
+    const confirmacaoEstoque = alterouEstoque
+      ? confirm(mensagemConfirmacaoEstoque(modulos.quiosqueControlaEstoque))
+      : false;
+    if (alterouEstoque && !confirmacaoEstoque) return;
+    updateMutation.mutate({ confirmacaoEstoque });
   };
 
   const createMutation = useMutation({
@@ -282,7 +291,7 @@ export function AdminCervejariasPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: ({ confirmacaoEstoque }: { confirmacaoEstoque: boolean }) => {
       if (!editing) throw new Error('Nenhuma empresa selecionada');
       const data = new FormData();
       data.append('cervejariaNome', form.cervejariaNome);
@@ -291,6 +300,11 @@ export function AdminCervejariasPage() {
       if (form.donoSenha) data.append('donoSenha', form.donoSenha);
       if (corPrimaria && /^#[0-9a-fA-F]{6}$/.test(corPrimaria)) data.append('corPrimaria', corPrimaria);
       if (logoFile) data.append('logo', logoFile);
+      if (editing.modulos.quiosque) {
+        data.append('quiosqueControlaEstoque', String(modulos.quiosqueControlaEstoque));
+        data.append('quiosqueTemCozinha', String(modulos.quiosqueTemCozinha));
+        if (confirmacaoEstoque) data.append('confirmacaoEstoque', 'true');
+      }
       return api.postFormData<CervejariaAdmin>(`/api/admin/cervejarias/${editing.id}`, data, { method: 'PATCH' });
     },
     onSuccess: () => {
@@ -603,6 +617,34 @@ export function AdminCervejariasPage() {
               />
             </div>
           </div>
+
+          {editing?.modulos && (
+            <div className="space-y-2">
+              <label className="label">Modo da empresa</label>
+              <div className="rounded-xl border border-line bg-surface-lighter px-4 py-3 text-sm font-semibold text-ink">
+                {modoEmpresa(editing.modulos.cervejaria, editing.modulos.quiosque)}
+                <span className="ml-2 font-normal text-ink-muted">(somente leitura)</span>
+              </div>
+
+              {editing.modulos.quiosque && (
+                <div className="space-y-2 pt-2">
+                  <p className="text-sm font-semibold text-ink">Recursos do Quiosque</p>
+                  <ModuloOption
+                    titulo="Controlar estoque"
+                    descricao="Baixa na venda, reposição e registro de perdas."
+                    marcado={modulos.quiosqueControlaEstoque}
+                    onChange={(v) => setModulos((m) => ({ ...m, quiosqueControlaEstoque: v }))}
+                  />
+                  <ModuloOption
+                    titulo="Tem cozinha"
+                    descricao="Fila e painel de pedidos em preparo."
+                    marcado={modulos.quiosqueTemCozinha}
+                    onChange={(v) => setModulos((m) => ({ ...m, quiosqueTemCozinha: v }))}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           <BrandingEditorFields
             currentLogoUrl={editing?.logoUrl}
