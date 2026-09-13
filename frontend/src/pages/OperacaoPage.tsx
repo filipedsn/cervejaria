@@ -5,6 +5,7 @@ import { ConfigCardapioPanel } from '../components/ConfigCardapioPanel';
 import { ConfigCardapioQuiosquePanel } from '../components/ConfigCardapioQuiosquePanel';
 import { ConfigMesasQuiosquePanel } from '../components/ConfigMesasQuiosquePanel';
 import { ConfigRecursosQuiosquePanel } from '../components/ConfigRecursosQuiosquePanel';
+import { OnboardingManualEntry } from '../components/OnboardingManualEntry';
 
 type OperacaoPageProps = {
   embedded?: boolean;
@@ -25,6 +26,7 @@ export function OperacaoPage({ embedded, modo = 'cervejaria' }: OperacaoPageProp
       {modo === 'quiosque' && <ConfigCardapioQuiosquePanel />}
       {modo === 'quiosque' && <ConfigMesasQuiosquePanel />}
       {modo === 'cervejaria' && <ConfigCardapioQuiosquePanel />}
+      <OnboardingManualEntry />
     </div>
   );
 }
