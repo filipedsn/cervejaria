@@ -311,7 +311,7 @@ export function ClienteDetailPage() {
         {!editMode && (
           <button
             type="button"
-            className="touch-btn-secondary w-full mt-2"
+            className="touch-btn-orange w-full mt-2"
             onClick={() => navigate('/clientes')}
           >
             Voltar
@@ -374,7 +374,7 @@ export function ClienteDetailPage() {
       {editMode && (
         <button
           type="button"
-          className="touch-btn-secondary w-full"
+          className="touch-btn-orange w-full"
           onClick={() => navigate('/clientes')}
         >
           Voltar

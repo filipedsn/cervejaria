@@ -222,7 +222,7 @@ export function AccountMenu({
             Sair da conta
           </button>
 
-          <button type="button" onClick={onClose} className="touch-btn-secondary w-full">
+          <button type="button" onClick={onClose} className="touch-btn-orange w-full">
             Voltar
           </button>
         </div>

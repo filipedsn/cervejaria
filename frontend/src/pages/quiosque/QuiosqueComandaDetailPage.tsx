@@ -561,7 +561,7 @@ export function QuiosqueComandaDetailPage() {
           <button type="button" className="touch-btn-orange w-full" onClick={openPayment} data-audit="quiosque-comanda-fechar">
             Fechar Comanda · {formatCurrency(comanda.total)}
           </button>
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/quiosque/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/quiosque/comandas')}>
             Voltar às comandas
           </button>
         </MobileActionBar>
@@ -572,7 +572,7 @@ export function QuiosqueComandaDetailPage() {
           <button type="button" className="touch-btn-primary w-full" disabled>
             Aguardando entrega da cozinha
           </button>
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/quiosque/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/quiosque/comandas')}>
             Voltar às comandas
           </button>
         </MobileActionBar>
@@ -594,7 +594,7 @@ export function QuiosqueComandaDetailPage() {
               {cancelar.isPending ? 'Encerrando...' : 'Encerrar comanda'}
             </button>
           )}
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/quiosque/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/quiosque/comandas')}>
             Voltar às comandas
           </button>
         </MobileActionBar>
@@ -614,7 +614,7 @@ export function QuiosqueComandaDetailPage() {
                 ? 'Caixa fechado — abra para nova comanda'
                 : `Nova comanda · ${rotuloComanda(comanda)}`}
           </button>
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/quiosque/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/quiosque/comandas')}>
             Voltar às comandas
           </button>
         </MobileActionBar>

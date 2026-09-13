@@ -46,7 +46,7 @@ export function ForgotPasswordPage() {
             {loading ? 'Enviando...' : 'Enviar link'}
           </button>
 
-          <Link to="/login" className="touch-btn-secondary w-full inline-flex items-center justify-center">
+          <Link to="/login" className="touch-btn-orange w-full inline-flex items-center justify-center">
             Voltar ao login
           </Link>
         </form>

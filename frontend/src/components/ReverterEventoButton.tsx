@@ -110,7 +110,7 @@ export function ReverterEventoButton({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
-              className="touch-btn-secondary w-full min-h-14"
+              className="touch-btn-orange w-full min-h-14"
               disabled={reverterMutation.isPending}
               onClick={() => setShowConfirmModal(false)}
             >

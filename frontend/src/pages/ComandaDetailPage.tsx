@@ -408,7 +408,7 @@ export function ComandaDetailPage() {
           <button type="button" className="touch-btn-orange w-full" onClick={openPayment} data-audit="comanda-fechar">
             Fechar Comanda · {formatCurrency(comanda.total)}
           </button>
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/comandas')}>
             Voltar ao evento
           </button>
         </MobileActionBar>
@@ -428,7 +428,7 @@ export function ComandaDetailPage() {
           >
             {cancelMutation.isPending ? 'Encerrando...' : 'Encerrar comanda'}
           </button>
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/comandas')}>
             Voltar ao evento
           </button>
         </MobileActionBar>
@@ -449,7 +449,7 @@ export function ComandaDetailPage() {
                 : `Nova comanda · ${rotuloComandaCervejaria(comanda, comanda.cliente)}`}
             </button>
           )}
-          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/comandas')}>
             Voltar ao evento
           </button>
         </MobileActionBar>
