@@ -62,12 +62,12 @@ test.describe('Admin — cadastro de cervejarias', () => {
   test('cadastra empresa só com módulo cervejaria', async ({ page }) => {
     const nome = `${nomeBase} Cervejaria`;
     await page.goto('/admin/cervejarias');
-    await page.getByRole('button', { name: '+ Nova Cervejaria' }).click();
+    await page.getByRole('button', { name: '+ Nova Empresa' }).click();
 
     const modal = page.getByRole('dialog');
-    await expect(modal.getByText('Cadastrar Cervejaria')).toBeVisible();
+    await expect(modal.getByText('Cadastrar Empresa')).toBeVisible();
 
-    await campoPorRotulo(modal, 'Nome da cervejaria').fill(nome);
+    await campoPorRotulo(modal, 'Nome da empresa').fill(nome);
     await campoPorRotulo(modal, 'Nome do proprietário').fill('Dono E2E');
     await campoPorRotulo(modal, 'E-mail do proprietário').fill(`qa-e2e-cerv-${stamp}@qa.test`);
     await campoPorRotulo(modal, 'Senha inicial').fill('qa123456');
@@ -90,10 +90,10 @@ test.describe('Admin — cadastro de cervejarias', () => {
   test('cadastra quiosque exclusivo com cozinha', async ({ page }) => {
     const nome = `${nomeBase} Quiosque`;
     await page.goto('/admin/cervejarias');
-    await page.getByRole('button', { name: '+ Nova Cervejaria' }).click();
+    await page.getByRole('button', { name: '+ Nova Empresa' }).click();
 
     const modal = page.getByRole('dialog');
-    await campoPorRotulo(modal, 'Nome da cervejaria').fill(nome);
+    await campoPorRotulo(modal, 'Nome da empresa').fill(nome);
     await campoPorRotulo(modal, 'Nome do proprietário').fill('Dono Quiosque E2E');
     await campoPorRotulo(modal, 'E-mail do proprietário').fill(`qa-e2e-quiosque-${stamp}@qa.test`);
     await campoPorRotulo(modal, 'Senha inicial').fill('qa123456');
@@ -121,10 +121,10 @@ test.describe('Admin — cadastro de cervejarias', () => {
   test('cadastra híbrida com logo e aplica branding', async ({ page }) => {
     const nome = `${nomeBase} Hibrida`;
     await page.goto('/admin/cervejarias');
-    await page.getByRole('button', { name: '+ Nova Cervejaria' }).click();
+    await page.getByRole('button', { name: '+ Nova Empresa' }).click();
 
     const modal = page.getByRole('dialog');
-    await campoPorRotulo(modal, 'Nome da cervejaria').fill(nome);
+    await campoPorRotulo(modal, 'Nome da empresa').fill(nome);
     await modal.locator('input[type="file"]').setInputFiles(logoPath);
     await expect(modal.getByAltText('Prévia da logo')).toBeVisible();
 
@@ -151,10 +151,10 @@ test.describe('Admin — cadastro de cervejarias', () => {
 
   test('cadastro sem módulo é bloqueado', async ({ page }) => {
     await page.goto('/admin/cervejarias');
-    await page.getByRole('button', { name: '+ Nova Cervejaria' }).click();
+    await page.getByRole('button', { name: '+ Nova Empresa' }).click();
 
     const modal = page.getByRole('dialog');
-    await campoPorRotulo(modal, 'Nome da cervejaria').fill(`${nomeBase} SemModulo`);
+    await campoPorRotulo(modal, 'Nome da empresa').fill(`${nomeBase} SemModulo`);
     await campoPorRotulo(modal, 'Nome do proprietário').fill('Sem Módulo');
     await campoPorRotulo(modal, 'E-mail do proprietário').fill(`qa-e2e-semmodulo-${stamp}@qa.test`);
     await campoPorRotulo(modal, 'Senha inicial').fill('qa123456');
@@ -169,10 +169,10 @@ test.describe('Admin — cadastro de cervejarias', () => {
 
   test('senhas divergentes bloqueiam o cadastro', async ({ page }) => {
     await page.goto('/admin/cervejarias');
-    await page.getByRole('button', { name: '+ Nova Cervejaria' }).click();
+    await page.getByRole('button', { name: '+ Nova Empresa' }).click();
 
     const modal = page.getByRole('dialog');
-    await campoPorRotulo(modal, 'Nome da cervejaria').fill(`${nomeBase} SenhaRuim`);
+    await campoPorRotulo(modal, 'Nome da empresa').fill(`${nomeBase} SenhaRuim`);
     await campoPorRotulo(modal, 'Nome do proprietário').fill('Senha Ruim');
     await campoPorRotulo(modal, 'E-mail do proprietário').fill(`qa-e2e-senha-${stamp}@qa.test`);
     await campoPorRotulo(modal, 'Senha inicial').fill('qa123456');

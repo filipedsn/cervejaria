@@ -8,7 +8,7 @@ test.use({ storageState: adminAuth });
 test.describe('Admin cervejarias', () => {
   test('admin vê lista com badges de módulos', async ({ page }) => {
     await page.goto('/admin/cervejarias');
-    await expect(page.getByRole('heading', { name: /cervejarias/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Empresas' })).toBeVisible();
     await expect(page.getByText('Cervejaria', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Quiosque', { exact: true }).first()).toBeVisible();
   });
