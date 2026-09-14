@@ -1,6 +1,10 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { prisma } from '../prisma.js';
 import { getAuthUser } from '../../types/auth.js';
+import {
+  getOperationalProfile,
+  type OperationalProfile,
+} from '../operational-profile.js';
 
 export interface ContextoQuiosque {
   cervejariaId: string;
@@ -22,6 +26,15 @@ export async function getConfiguracaoQuiosque(cervejariaId: string | null) {
   return prisma.configuracaoQuiosque.findFirst({
     where: { cervejariaId, ativo: true },
   });
+}
+
+/**
+ * The Quiosque route namespace currently serves direct sales. Keep the route
+ * contract, but make its availability a capability decision rather than a
+ * legacy configuration or company-mode decision.
+ */
+export function hasDirectSalesAccess(profile: OperationalProfile | null): boolean {
+  return profile?.capabilities.directSales === true;
 }
 
 /**
@@ -64,6 +77,17 @@ export async function ativarModuloQuiosque(
 export function requireModuloQuiosque(app: FastifyInstance) {
   return async (request: FastifyRequest) => {
     const user = getAuthUser(request);
+    const profile = user.cervejariaId
+      ? await getOperationalProfile(user.cervejariaId)
+      : null;
+
+    if (!hasDirectSalesAccess(profile)) {
+      throw app.httpErrors.notFound('Modulo Quiosque nÃ£o disponÃ­vel');
+    }
+
+    // Legacy configuration remains the compatibility source for route context
+    // fields that have not yet been migrated in later F3 slices. It is no
+    // longer the access decision for this module.
     const configuracao = await getConfiguracaoQuiosque(user.cervejariaId);
 
     if (!configuracao) {
