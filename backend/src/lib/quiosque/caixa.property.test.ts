@@ -2,8 +2,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fc from 'fast-check';
 import {
+  assertCaixaAberto,
   calcularEsperadoDinheiroGaveta,
   planoCorrecaoMovimento,
+  resolveCashRegisterCapability,
   totaisMovimentos,
   totaisPorForma,
 } from './caixa.js';
@@ -16,6 +18,64 @@ function roundMoney(n: number): number {
 }
 
 describe('caixa quiosque (property-based)', () => {
+  it('resolve a capacidade por unidade: explícito vence fallback, NULL preserva legado', () => {
+    assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: true, usaCaixa: true, legacyQuiosqueAtivo: false }), true);
+    assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: true, usaCaixa: false, legacyQuiosqueAtivo: true }), false);
+    assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: true, usaCaixa: null, legacyQuiosqueAtivo: true }), true);
+    assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: true, usaCaixa: null, legacyQuiosqueAtivo: false }), false);
+  });
+
+  it('não permite que unidade inativa herde ou habilite caixa', () => {
+    assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: false, usaCaixa: true, legacyQuiosqueAtivo: true }), false);
+  });
+
+  it('mantém decisões independentes entre unidades e tenants', () => {
+    const tenantA = [
+      resolveCashRegisterCapability({ pontoVendaAtivo: true, usaCaixa: true, legacyQuiosqueAtivo: false }),
+      resolveCashRegisterCapability({ pontoVendaAtivo: true, usaCaixa: false, legacyQuiosqueAtivo: true }),
+    ];
+    const tenantB = resolveCashRegisterCapability({ pontoVendaAtivo: true, usaCaixa: null, legacyQuiosqueAtivo: false });
+    assert.deepEqual(tenantA, [true, false]);
+    assert.equal(tenantB, false);
+  });
+
+  it('não confunde capacidade da unidade com sessão de caixa aberta', async () => {
+    const semSessao = {
+      pontoVenda: {
+        findFirst: async () => ({
+          ativo: true,
+          usaCaixa: true,
+          cervejaria: { configuracaoQuiosque: { ativo: false } },
+        }),
+      },
+      sessaoCaixaQuiosque: { findFirst: async () => null },
+    };
+    await assert.rejects(
+      assertCaixaAberto('tenant-a', 'unidade-a', new Date('2026-09-14'), semSessao as never),
+      /Abra o caixa do dia antes de registrar vendas/,
+    );
+
+    const explicitamenteDesabilitada = {
+      pontoVenda: {
+        findFirst: async () => ({
+          ativo: true,
+          usaCaixa: false,
+          cervejaria: { configuracaoQuiosque: { ativo: true } },
+        }),
+      },
+      sessaoCaixaQuiosque: { findFirst: async () => ({ status: 'ABERTO' }) },
+    };
+    await assert.rejects(
+      assertCaixaAberto(
+        'tenant-a',
+        'unidade-b',
+        new Date('2026-09-14'),
+        explicitamenteDesabilitada as never,
+      ),
+      /Caixa não habilitado para este ponto de venda/,
+    );
+  });
+
   it('totaisPorForma: soma das formas = totalVendas', () => {
     fc.assert(
       fc.property(
