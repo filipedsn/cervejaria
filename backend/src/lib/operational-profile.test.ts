@@ -13,6 +13,7 @@ function facts(overrides: Partial<OperationalProfileFacts> = {}): OperationalPro
     activeTrailers: 0,
     activePointsOfSale: 0,
     activePointOfSaleCashRegisterSettings: [],
+    operationalEnablement: null,
     activeTaps: 0,
     plannedOperationCount: 0,
     openPlannedOperationCount: 0,
@@ -96,6 +97,56 @@ test('each capability has an independent derivation rule', () => {
   }
 });
 
+test('explicit operational enablement wins over legacy resource fallback', () => {
+  const legacy = facts({
+    legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
+    activePointsOfSale: 1,
+    activeTrailers: 1,
+    activeTaps: 1,
+    operationalEnablement: {
+      directSalesEnabled: false,
+      plannedOperationsEnabled: false,
+      tapsEnabled: false,
+    },
+  });
+  const profile = deriveOperationalProfile(legacy);
+  assert.equal(profile.capabilities.directSales, false);
+  assert.equal(profile.capabilities.plannedOperations, false);
+  assert.equal(profile.capabilities.taps, false);
+});
+
+test('NULL operational enablement preserves legacy fallback independently', () => {
+  const profile = deriveOperationalProfile(facts({
+    legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
+    activePointsOfSale: 1,
+    activeTrailers: 1,
+    activeTaps: 1,
+    operationalEnablement: {
+      directSalesEnabled: null,
+      plannedOperationsEnabled: null,
+      tapsEnabled: null,
+    },
+  }));
+  assert.equal(profile.capabilities.directSales, true);
+  assert.equal(profile.capabilities.plannedOperations, true);
+  assert.equal(profile.capabilities.taps, true);
+});
+
+test('a new tenant can enable operations before physical resources exist', () => {
+  const profile = deriveOperationalProfile(facts({
+    operationalEnablement: {
+      directSalesEnabled: true,
+      plannedOperationsEnabled: true,
+      tapsEnabled: true,
+    },
+  }));
+  assert.equal(profile.capabilities.directSales, true);
+  assert.equal(profile.capabilities.plannedOperations, true);
+  assert.equal(profile.capabilities.taps, true);
+  assert.equal(profile.operationalUnits.pointsOfSale, 0);
+  assert.equal(profile.operationalUnits.trailers, 0);
+});
+
 test('inactive quiosque configuration does not advertise POS capabilities', () => {
   const profile = deriveOperationalProfile(facts({
     legacyQuiosque: { enabled: false, exclusivo: false, controlaEstoque: true, temCozinha: true },
@@ -132,8 +183,8 @@ test('all explicit false units and no active unit keep cash-register disabled', 
 
 test('reader is tenant-scoped and read-only', async () => {
   const records = new Map<string, OperationalProfileFacts>([
-    ['tenant-a', facts({ tenantId: 'tenant-a', activeTrailers: 1 })],
-    ['tenant-b', facts({ tenantId: 'tenant-b', activePointsOfSale: 1, legacyQuiosque: { enabled: true, exclusivo: true, controlaEstoque: false, temCozinha: false } })],
+    ['tenant-a', facts({ tenantId: 'tenant-a', activeTrailers: 1, operationalEnablement: { directSalesEnabled: false, plannedOperationsEnabled: false, tapsEnabled: false } })],
+    ['tenant-b', facts({ tenantId: 'tenant-b', activePointsOfSale: 1, legacyQuiosque: { enabled: true, exclusivo: true, controlaEstoque: false, temCozinha: false }, operationalEnablement: { directSalesEnabled: true, plannedOperationsEnabled: true, tapsEnabled: true } })],
   ]);
   const reads: string[] = [];
   const profile = await getOperationalProfile('tenant-a', async (tenantId) => {
@@ -145,6 +196,8 @@ test('reader is tenant-scoped and read-only', async () => {
   assert.equal(profile?.operationalUnits.trailers, 1);
   assert.equal(profile?.operationalUnits.pointsOfSale, 0);
   assert.equal(profile?.capabilities.directSales, false);
+  assert.equal(profile?.capabilities.plannedOperations, false);
+  assert.equal(profile?.capabilities.taps, false);
 });
 
 test('missing tenant returns null without a fallback profile', async () => {
