@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { deriveOperationalProfile, type OperationalProfileFacts } from '../operational-profile.js';
-import { hasDirectSalesAccess } from './modulo.js';
+import { hasDirectSalesAccess, hasKitchenAccess } from './modulo.js';
 
 function facts(overrides: Partial<OperationalProfileFacts> = {}): OperationalProfileFacts {
   return {
@@ -41,4 +41,18 @@ test('direct-sales guard does not infer access from cash-register capability', (
 
   assert.equal(profile.capabilities.cashRegister, false);
   assert.equal(hasDirectSalesAccess(profile), true);
+});
+
+test('kitchen context derives its global decision from the operational profile', () => {
+  const withKitchen = deriveOperationalProfile(facts({
+    legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: true },
+    activePointsOfSale: 1,
+  }));
+  const withoutKitchen = deriveOperationalProfile(facts({
+    legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
+    activePointsOfSale: 1,
+  }));
+
+  assert.equal(hasKitchenAccess(withKitchen), true);
+  assert.equal(hasKitchenAccess(withoutKitchen), false);
 });
