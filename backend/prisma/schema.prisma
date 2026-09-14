@@ -176,6 +176,8 @@ model ConfiguracaoOperacional {
   directSalesEnabled        Boolean?
   plannedOperationsEnabled  Boolean?
   tapsEnabled               Boolean?
+  inventoryEnabled          Boolean?
+  kitchenEnabled            Boolean?
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
