@@ -25,6 +25,13 @@ Describe 'Contrato seguro do deploy de producao' {
     }
   }
 
+  It 'mantem o preflight Prisma restrito ao runtime publicado' {
+    $publishSource = Get-Content (Join-Path $PSScriptRoot 'publish-artifacts.ps1') -Raw
+    $assertBody = $publishSource.Substring($publishSource.IndexOf('function Assert-ProdDatabaseSchemaSync'))
+    $assertBody | Should Match 'Join-Path \$Paths\.ProdBackendRoot ''scripts\\run-with-env\.mjs'''
+    $publishSource | Should Match 'Copy-Item -Path \(Join-Path \$Paths\.BackendDir ''scripts\\run-with-env\.mjs''\)'
+  }
+
   It 'valida backup e staging antes de parar consumidores do banco' {
     $bodyStart = $deploySource.IndexOf('function Invoke-DeployBody')
     $backup = $deploySource.IndexOf('& "$PSScriptRoot\backup-db.ps1"', $bodyStart)
