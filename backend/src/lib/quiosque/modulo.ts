@@ -42,6 +42,11 @@ export function hasKitchenAccess(profile: OperationalProfile | null): boolean {
   return profile?.capabilities.kitchen === true;
 }
 
+/** Inventory is tenant-wide; product stock participation remains separate. */
+export function hasInventoryAccess(profile: OperationalProfile | null): boolean {
+  return profile?.capabilities.inventory === true;
+}
+
 /**
  * Ativa o modulo para uma empresa e cria o primeiro ponto de venda.
  * Recebe o client da transacao para nascer junto com o cadastro da empresa.
@@ -101,7 +106,7 @@ export function requireModuloQuiosque(app: FastifyInstance) {
 
     request.quiosque = {
       cervejariaId: configuracao.cervejariaId,
-      controlaEstoque: configuracao.controlaEstoque,
+      controlaEstoque: hasInventoryAccess(profile),
       temCozinha: hasKitchenAccess(profile),
       exclusivo: configuracao.exclusivo,
       usaCardapio: configuracao.usaCardapio,

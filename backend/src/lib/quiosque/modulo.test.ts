@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { deriveOperationalProfile, type OperationalProfileFacts } from '../operational-profile.js';
-import { hasDirectSalesAccess, hasKitchenAccess } from './modulo.js';
+import { hasDirectSalesAccess, hasInventoryAccess, hasKitchenAccess } from './modulo.js';
 
 function facts(overrides: Partial<OperationalProfileFacts> = {}): OperationalProfileFacts {
   return {
@@ -55,4 +55,18 @@ test('kitchen context derives its global decision from the operational profile',
 
   assert.equal(hasKitchenAccess(withKitchen), true);
   assert.equal(hasKitchenAccess(withoutKitchen), false);
+});
+
+test('inventory context derives its global decision from the operational profile', () => {
+  const withInventory = deriveOperationalProfile(facts({
+    legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: true, temCozinha: false },
+    activePointsOfSale: 1,
+  }));
+  const withoutInventory = deriveOperationalProfile(facts({
+    legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
+    activePointsOfSale: 1,
+  }));
+
+  assert.equal(hasInventoryAccess(withInventory), true);
+  assert.equal(hasInventoryAccess(withoutInventory), false);
 });
