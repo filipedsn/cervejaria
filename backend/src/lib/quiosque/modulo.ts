@@ -37,6 +37,11 @@ export function hasDirectSalesAccess(profile: OperationalProfile | null): boolea
   return profile?.capabilities.directSales === true;
 }
 
+/** Kitchen is tenant-wide; product-level preparation remains a separate rule. */
+export function hasKitchenAccess(profile: OperationalProfile | null): boolean {
+  return profile?.capabilities.kitchen === true;
+}
+
 /**
  * Ativa o modulo para uma empresa e cria o primeiro ponto de venda.
  * Recebe o client da transacao para nascer junto com o cadastro da empresa.
@@ -97,7 +102,7 @@ export function requireModuloQuiosque(app: FastifyInstance) {
     request.quiosque = {
       cervejariaId: configuracao.cervejariaId,
       controlaEstoque: configuracao.controlaEstoque,
-      temCozinha: configuracao.temCozinha,
+      temCozinha: hasKitchenAccess(profile),
       exclusivo: configuracao.exclusivo,
       usaCardapio: configuracao.usaCardapio,
       quantidadeMesas: configuracao.quantidadeMesas,
