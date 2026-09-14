@@ -131,12 +131,6 @@ function Install-ProdBackendRuntime {
   Copy-Item -Path $packageJsonSrc -Destination (Join-Path $Paths.ProdBackendRoot 'package.json') -Force
   Copy-Item -Path $packageLockSrc -Destination (Join-Path $Paths.ProdBackendRoot 'package-lock.json') -Force
 
-  # The preflight must execute with the same release root as its schema and
-  # migrations. Keep this environment wrapper inside the published runtime.
-  $runtimeScripts = Join-Path $Paths.ProdBackendRoot 'scripts'
-  New-Item -ItemType Directory -Force -Path $runtimeScripts | Out-Null
-  Copy-Item -Path (Join-Path $Paths.BackendDir 'scripts\run-with-env.mjs') -Destination (Join-Path $runtimeScripts 'run-with-env.mjs') -Force
-
   if ($RefreshPrismaSchema -or -not (Test-Path (Join-Path $Paths.ProdBackendPrisma 'schema.prisma'))) {
     Copy-ProdPrismaSchema -Paths $Paths
   }
@@ -195,26 +189,14 @@ function Assert-ProdDatabaseSchemaSync {
     throw 'Schema Prisma de producao ausente em prod-artifacts/backend/prisma. Execute: npm run prod:materialize-runtime ou prod:deploy.'
   }
 
-  $runWithEnv = Join-Path $Paths.ProdBackendRoot 'scripts\run-with-env.mjs'
-  if (-not (Test-Path $runWithEnv)) {
-    # Releases published before the wrapper was packaged receive only this
-    # infrastructure helper; their schema and migrations are never replaced.
-    $sourceWrapper = Join-Path $Paths.BackendDir 'scripts\run-with-env.mjs'
-    if (-not (Test-Path $sourceWrapper)) {
-      throw "Script de ambiente ausente: $sourceWrapper"
-    }
-    New-Item -ItemType Directory -Force -Path (Split-Path $runWithEnv -Parent) | Out-Null
-    Copy-Item -Path $sourceWrapper -Destination $runWithEnv -Force
-  }
-  if (-not (Test-Path $runWithEnv)) {
-    throw "Script de ambiente ausente: $runWithEnv"
-  }
-
   $prevEap = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   Push-Location $Paths.ProdBackendRoot
   try {
-    $output = & $Paths.NodeExe $runWithEnv production npx prisma migrate status 2>&1
+    # start-api.ps1 imports and validates the production environment before
+    # reaching this preflight. Execute Prisma from the published backend so
+    # package resolution, schema and migrations are all release-scoped.
+    $output = & $Paths.NpmCmd exec prisma migrate status 2>&1
     $exitCode = $LASTEXITCODE
   } finally {
     Pop-Location
