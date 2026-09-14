@@ -26,6 +26,45 @@ const FORMAS: PaymentMethod[] = [
 
 const CAIXA_TX = { maxWait: 15_000, timeout: 20_000 } as const;
 
+/**
+ * The cash-register setting belongs to a physical point of sale. NULL keeps
+ * the pre-capability behaviour while an explicit value always wins.
+ */
+export function resolveCashRegisterCapability(params: {
+  pontoVendaAtivo: boolean;
+  usaCaixa: boolean | null;
+  legacyQuiosqueAtivo: boolean;
+}): boolean {
+  if (!params.pontoVendaAtivo) return false;
+  return params.usaCaixa ?? params.legacyQuiosqueAtivo;
+}
+
+type CaixaCapabilityReader = Pick<Prisma.TransactionClient, 'pontoVenda'>;
+
+/** Guards only the unit capability; session and financial rules stay separate. */
+export async function assertCashRegisterUnitEnabled(
+  cervejariaId: string,
+  pontoVendaId: string,
+  db: CaixaCapabilityReader = prisma,
+) {
+  const pontoVenda = await db.pontoVenda.findFirst({
+    where: { id: pontoVendaId, cervejariaId, ativo: true },
+    select: {
+      ativo: true,
+      usaCaixa: true,
+      cervejaria: { select: { configuracaoQuiosque: { select: { ativo: true } } } },
+    },
+  });
+  if (!pontoVenda) throw new CaixaInvalidoError('Ponto de venda não encontrado');
+
+  const enabled = resolveCashRegisterCapability({
+    pontoVendaAtivo: pontoVenda.ativo,
+    usaCaixa: pontoVenda.usaCaixa,
+    legacyQuiosqueAtivo: pontoVenda.cervejaria.configuracaoQuiosque?.ativo === true,
+  });
+  if (!enabled) throw new CaixaInvalidoError('Caixa não habilitado para este ponto de venda');
+}
+
 /** Serializa as mutações de um ponto no mesmo dia operacional. */
 function chaveLockCaixa(cervejariaId: string, pontoVendaId: string, dia: Date): bigint {
   const digest = createHash('sha256')
@@ -185,8 +224,9 @@ export async function assertCaixaAberto(
   cervejariaId: string,
   pontoVendaId: string,
   dia = diaOperacional(),
-  db: Pick<Prisma.TransactionClient, 'sessaoCaixaQuiosque'> = prisma,
+  db: Pick<Prisma.TransactionClient, 'sessaoCaixaQuiosque' | 'pontoVenda'> = prisma,
 ) {
+  await assertCashRegisterUnitEnabled(cervejariaId, pontoVendaId, db);
   const sessao = await db.sessaoCaixaQuiosque.findFirst({
     where: { cervejariaId, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
     include: { movimentos: { orderBy: { createdAt: 'asc' } } },
@@ -287,10 +327,7 @@ export async function abrirCaixa(params: {
     throw new CaixaInvalidoError('O troco inicial não pode ser negativo');
   }
 
-  const pontoVenda = await prisma.pontoVenda.findFirst({
-    where: { id: params.pontoVendaId, cervejariaId: params.cervejariaId, ativo: true },
-  });
-  if (!pontoVenda) throw new CaixaInvalidoError('Ponto de venda não encontrado');
+  await assertCashRegisterUnitEnabled(params.cervejariaId, params.pontoVendaId);
 
   const dia = diaOperacional();
   const aberta = await buscarSessaoAtual(params.cervejariaId, params.pontoVendaId, dia);
