@@ -10,7 +10,12 @@ test('CIA Maritima DEV golden profile reflects its actual event/tap-only operati
   const { prisma } = await import('./prisma.js');
   const tenant = await prisma.cervejaria.findUnique({
     where: { slug: 'cia-maritima' },
-    select: { id: true },
+    select: {
+      id: true,
+      configuracaoOperacional: {
+        select: { directSalesEnabled: true, plannedOperationsEnabled: true, tapsEnabled: true },
+      },
+    },
   });
   assert.ok(tenant, 'CIA Maritima tenant must exist in the refreshed DEV dump');
 
@@ -27,6 +32,11 @@ test('CIA Maritima DEV golden profile reflects its actual event/tap-only operati
   assert.equal(profile.operationalUnits.trailers, 1);
   assert.equal(profile.operationalUnits.pointsOfSale, 0);
   assert.equal(profile.legacy.quiosqueEnabled, false);
+  assert.deepEqual(tenant.configuracaoOperacional, {
+    directSalesEnabled: false,
+    plannedOperationsEnabled: true,
+    tapsEnabled: true,
+  });
 
   // DEV contains active POS units for dedicated QA tenants. CIA Maritima's
   // profile must not inherit them through an unscoped aggregate query.

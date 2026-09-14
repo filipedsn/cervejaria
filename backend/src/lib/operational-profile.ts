@@ -20,6 +20,11 @@ export interface OperationalProfileFacts {
   activeTrailers: number;
   activePointsOfSale: number;
   activePointOfSaleCashRegisterSettings: Array<boolean | null>;
+  operationalEnablement?: {
+    directSalesEnabled: boolean | null;
+    plannedOperationsEnabled: boolean | null;
+    tapsEnabled: boolean | null;
+  } | null;
   activeTaps: number;
   plannedOperationCount: number;
   openPlannedOperationCount: number;
@@ -59,6 +64,9 @@ export function deriveOperationalProfile(facts: OperationalProfileFacts): Operat
   const quiosqueEnabled = facts.legacyQuiosque?.enabled === true;
   const hasDirectSaleUnit = quiosqueEnabled && facts.activePointsOfSale > 0;
   const legacyCashRegister = hasDirectSaleUnit;
+  const directSalesEnabled = facts.operationalEnablement?.directSalesEnabled ?? hasDirectSaleUnit;
+  const plannedOperationsEnabled = facts.operationalEnablement?.plannedOperationsEnabled ?? facts.activeTrailers > 0;
+  const tapsEnabled = facts.operationalEnablement?.tapsEnabled ?? facts.activeTaps > 0;
   // Older in-memory fact producers only supplied the unit count. Interpret
   // their missing settings as NULL so the legacy fallback remains compatible.
   const cashRegisterSettings = facts.activePointOfSaleCashRegisterSettings.length > 0
@@ -78,11 +86,11 @@ export function deriveOperationalProfile(facts: OperationalProfileFacts): Operat
       inventory: quiosqueEnabled && facts.legacyQuiosque!.controlaEstoque,
       kitchen: quiosqueEnabled && facts.legacyQuiosque!.temCozinha,
       // Taps are evidenced by active physical resources, never tenant naming.
-      taps: facts.activeTaps > 0,
+      taps: tapsEnabled,
       // Today, direct sales are the POS flow and require an active POS unit.
-      directSales: hasDirectSaleUnit,
+      directSales: directSalesEnabled,
       // Today, an active Trailer is the prerequisite unit for Evento creation.
-      plannedOperations: facts.activeTrailers > 0,
+      plannedOperations: plannedOperationsEnabled,
     },
     operationalUnits: {
       trailers: facts.activeTrailers,
@@ -118,6 +126,13 @@ export const readOperationalProfileFacts: OperationalProfileFactsReader = async 
           temCozinha: true,
         },
       },
+      configuracaoOperacional: {
+        select: {
+          directSalesEnabled: true,
+          plannedOperationsEnabled: true,
+          tapsEnabled: true,
+        },
+      },
       trailers: { where: { ativo: true }, select: { id: true } },
       pontosVenda: { where: { ativo: true }, select: { id: true, usaCaixa: true } },
       taps: { where: { ativo: true }, select: { id: true } },
@@ -145,6 +160,7 @@ export const readOperationalProfileFacts: OperationalProfileFactsReader = async 
     activeTrailers: tenant.trailers.length,
     activePointsOfSale: tenant.pontosVenda.length,
     activePointOfSaleCashRegisterSettings: tenant.pontosVenda.map((pontoVenda) => pontoVenda.usaCaixa),
+    operationalEnablement: tenant.configuracaoOperacional,
     activeTaps: tenant.taps.length,
     plannedOperationCount,
     openPlannedOperationCount,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { planCashRegisterBackfill } from './cash-register-backfill.js';
+import { planOperationalEnablementBackfill } from './operational-enablement-backfill.js';
 
 test('backfill selects only null legacy units and preserves explicit decisions', () => {
   const plan = planCashRegisterBackfill([
@@ -16,4 +17,20 @@ test('a repeated backfill plan has no update once values are explicit', () => {
   const plan = planCashRegisterBackfill([{ id: 'legacy', usaCaixa: true, legacyQuiosqueActive: true }]);
   assert.deepEqual(plan.updateIds, []);
   assert.equal(plan.alreadyExplicitTrue, 1);
+});
+
+test('operational enablement backfill materializes only missing legacy values', () => {
+  const plan = planOperationalEnablementBackfill([
+    { id: 'legacy-events', directSalesEnabled: null, plannedOperationsEnabled: null, tapsEnabled: null, legacyDirectSales: false, legacyPlannedOperations: true, legacyTaps: true },
+    { id: 'explicit', directSalesEnabled: false, plannedOperationsEnabled: true, tapsEnabled: false, legacyDirectSales: true, legacyPlannedOperations: false, legacyTaps: true },
+  ]);
+  assert.deepEqual(plan.updates, [{ id: 'legacy-events', directSalesEnabled: false, plannedOperationsEnabled: true, tapsEnabled: true }]);
+});
+
+test('operational enablement backfill is idempotent after materialization', () => {
+  const plan = planOperationalEnablementBackfill([{
+    id: 'materialized', directSalesEnabled: false, plannedOperationsEnabled: true, tapsEnabled: true,
+    legacyDirectSales: true, legacyPlannedOperations: false, legacyTaps: false,
+  }]);
+  assert.deepEqual(plan.updates, []);
 });

@@ -14,6 +14,7 @@
     "db:backfill-cliente-stats": "node scripts/run-with-env.mjs development npx tsx scripts/backfill-cliente-stats.ts",
     "db:backfill-cliente-stats:prod": "node scripts/run-with-env.mjs production npx tsx scripts/backfill-cliente-stats.ts",
     "db:backfill-cash-register": "node scripts/run-with-env.mjs development npx tsx scripts/backfill-cash-register-capability.ts",
+    "db:backfill-operational-enablement": "node scripts/run-with-env.mjs development npx tsx scripts/backfill-operational-enablement.ts",
     "db:push": "node scripts/run-with-env.mjs development npx prisma db push",
     "db:seed": "node scripts/run-with-env.mjs development npx tsx prisma/seed.ts",
     "db:studio": "node scripts/run-with-env.mjs development npx prisma studio",

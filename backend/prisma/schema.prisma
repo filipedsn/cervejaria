@@ -157,6 +157,7 @@ model Cervejaria {
   eventoSerieExclusoes EventoSerieExclusao[]
 
   configuracaoQuiosque ConfiguracaoQuiosque?
+  configuracaoOperacional ConfiguracaoOperacional?
   pontosVenda          PontoVenda[]
   produtosQuiosque     ProdutoQuiosque[]
   cardapiosQuiosque    CardapioQuiosque[]
@@ -164,6 +165,21 @@ model Cervejaria {
   sessoesCaixaQuiosque SessaoCaixaQuiosque[]
   saldosEstoqueQuiosque EstoqueSaldoQuiosque[]
   movimentosEstoqueQuiosque MovimentoEstoqueQuiosque[]
+
+  @@schema("public")
+}
+
+/// Intenção operacional do estabelecimento. NULL preserva o fallback legado
+/// durante a migração; recursos físicos continuam sendo responsabilidade de readiness.
+model ConfiguracaoOperacional {
+  cervejariaId              String   @id
+  directSalesEnabled        Boolean?
+  plannedOperationsEnabled  Boolean?
+  tapsEnabled               Boolean?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }
