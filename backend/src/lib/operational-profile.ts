@@ -19,6 +19,7 @@ export interface OperationalProfileFacts {
   } | null;
   activeTrailers: number;
   activePointsOfSale: number;
+  activePointOfSaleCashRegisterSettings: Array<boolean | null>;
   activeTaps: number;
   plannedOperationCount: number;
   openPlannedOperationCount: number;
@@ -57,6 +58,15 @@ export type OperationalProfileFactsReader = (
 export function deriveOperationalProfile(facts: OperationalProfileFacts): OperationalProfile {
   const quiosqueEnabled = facts.legacyQuiosque?.enabled === true;
   const hasDirectSaleUnit = quiosqueEnabled && facts.activePointsOfSale > 0;
+  const legacyCashRegister = hasDirectSaleUnit;
+  // Older in-memory fact producers only supplied the unit count. Interpret
+  // their missing settings as NULL so the legacy fallback remains compatible.
+  const cashRegisterSettings = facts.activePointOfSaleCashRegisterSettings.length > 0
+    ? facts.activePointOfSaleCashRegisterSettings
+    : Array<boolean | null>(facts.activePointsOfSale).fill(null);
+  const hasCashRegisterUnit = cashRegisterSettings.some(
+    (usaCaixa) => usaCaixa ?? legacyCashRegister,
+  );
 
   return {
     tenantId: facts.tenantId,
@@ -64,7 +74,7 @@ export function deriveOperationalProfile(facts: OperationalProfileFacts): Operat
       // The current direct-sale route requires an open SessaoCaixaQuiosque.
       // A POS-capable tenant can therefore operate the cash-register workflow,
       // while an event-only tenant remains valid without it.
-      cashRegister: hasDirectSaleUnit,
+      cashRegister: hasCashRegisterUnit,
       inventory: quiosqueEnabled && facts.legacyQuiosque!.controlaEstoque,
       kitchen: quiosqueEnabled && facts.legacyQuiosque!.temCozinha,
       // Taps are evidenced by active physical resources, never tenant naming.
@@ -109,7 +119,7 @@ export const readOperationalProfileFacts: OperationalProfileFactsReader = async 
         },
       },
       trailers: { where: { ativo: true }, select: { id: true } },
-      pontosVenda: { where: { ativo: true }, select: { id: true } },
+      pontosVenda: { where: { ativo: true }, select: { id: true, usaCaixa: true } },
       taps: { where: { ativo: true }, select: { id: true } },
       eventos: { select: { status: true } },
       sessoesCaixaQuiosque: { where: { status: 'ABERTO' }, select: { id: true } },
@@ -134,6 +144,7 @@ export const readOperationalProfileFacts: OperationalProfileFactsReader = async 
     legacyQuiosque,
     activeTrailers: tenant.trailers.length,
     activePointsOfSale: tenant.pontosVenda.length,
+    activePointOfSaleCashRegisterSettings: tenant.pontosVenda.map((pontoVenda) => pontoVenda.usaCaixa),
     activeTaps: tenant.taps.length,
     plannedOperationCount,
     openPlannedOperationCount,

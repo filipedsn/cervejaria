@@ -12,6 +12,7 @@ function facts(overrides: Partial<OperationalProfileFacts> = {}): OperationalPro
     legacyQuiosque: null,
     activeTrailers: 0,
     activePointsOfSale: 0,
+    activePointOfSaleCashRegisterSettings: [],
     activeTaps: 0,
     plannedOperationCount: 0,
     openPlannedOperationCount: 0,
@@ -105,6 +106,28 @@ test('inactive quiosque configuration does not advertise POS capabilities', () =
   assert.equal(profile.capabilities.directSales, false);
   assert.equal(profile.capabilities.inventory, false);
   assert.equal(profile.capabilities.kitchen, false);
+});
+
+test('explicit cash-register settings override legacy fallback per active unit', () => {
+  const legacy = { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false };
+  assert.equal(deriveOperationalProfile(facts({ legacyQuiosque: legacy, activePointsOfSale: 1, activePointOfSaleCashRegisterSettings: [false] })).capabilities.cashRegister, false);
+  assert.equal(deriveOperationalProfile(facts({ legacyQuiosque: legacy, activePointsOfSale: 1, activePointOfSaleCashRegisterSettings: [null] })).capabilities.cashRegister, true);
+});
+
+test('cash-register aggregates explicit mixed unit settings without changing direct sales', () => {
+  const profile = deriveOperationalProfile(facts({
+    legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
+    activePointsOfSale: 2,
+    activePointOfSaleCashRegisterSettings: [true, false],
+  }));
+  assert.equal(profile.capabilities.cashRegister, true);
+  assert.equal(profile.capabilities.directSales, true);
+});
+
+test('all explicit false units and no active unit keep cash-register disabled', () => {
+  const legacy = { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false };
+  assert.equal(deriveOperationalProfile(facts({ legacyQuiosque: legacy, activePointsOfSale: 2, activePointOfSaleCashRegisterSettings: [false, false] })).capabilities.cashRegister, false);
+  assert.equal(deriveOperationalProfile(facts({ legacyQuiosque: legacy, activePointsOfSale: 0, activePointOfSaleCashRegisterSettings: [] })).capabilities.cashRegister, false);
 });
 
 test('reader is tenant-scoped and read-only', async () => {

@@ -679,6 +679,8 @@ model PontoVenda {
   cervejariaId String
   nome         String
   ativo        Boolean  @default(true)
+  /// null = legacy ainda não materializado; true/false = capacidade explícita da unidade.
+  usaCaixa     Boolean?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
