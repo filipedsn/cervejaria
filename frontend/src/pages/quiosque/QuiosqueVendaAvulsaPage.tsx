@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../../lib/api';
+import { invalidateOnboardingReadiness } from '../../lib/onboarding';
 import { Modal } from '../../components/Modal';
 import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
@@ -180,6 +181,7 @@ export function QuiosqueVendaAvulsaPage() {
       queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
       queryClient.invalidateQueries({ queryKey: ['quiosque-caixa', pontoAtivo] });
       queryClient.invalidateQueries({ queryKey: ['quiosque-estoque', pontoAtivo] });
+      invalidateOnboardingReadiness(queryClient);
       setCarrinho([]);
       setShowPayment(false);
       setClosedVenda(venda);

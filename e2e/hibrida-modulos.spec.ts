@@ -14,7 +14,7 @@ test.describe('Empresa híbrida', () => {
     await page.getByRole('link', { name: 'Quiosque' }).click();
     await expect(page).toHaveURL(/\/quiosque\/comandas/);
     await expect(page.getByRole('link', { name: 'Comandas' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Comanda' })).toBeVisible();
+    await expect(page.getByRole('link', { name: '+ Comanda', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Venda avulsa' })).toBeVisible();
 
     await page.goto('/eventos');

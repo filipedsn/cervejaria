@@ -6,6 +6,7 @@ import { isBebidaChope } from '../types';
 import { Modal } from './Modal';
 import { ModalFormFooter } from './ModalFormFooter';
 import { Loading } from './Loading';
+import { invalidateOnboardingReadiness } from '../lib/onboarding';
 
 function nextTapNumero(taps: Tap[]): number {
   if (taps.length === 0) return 1;
@@ -75,6 +76,7 @@ function TapModalForm({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['taps', trailerId] });
+      invalidateOnboardingReadiness(queryClient);
       onClose();
     },
     onError: (err) => onError(err instanceof ApiError ? err.message : 'Erro ao salvar'),
@@ -196,6 +198,7 @@ export function TrailerTapsSection({ trailerId }: { trailerId: string }) {
         <button
           type="button"
           className="touch-btn-primary touch-btn-sm"
+          data-onboarding-target="brewery-configure-tap"
           onClick={() => { setEditingTap(null); setShowTapModal(true); setError(''); }}
         >
           + Novo tap

@@ -264,6 +264,7 @@ export function QuiosqueComandasPage() {
           </Link>
           <Link
             to="/quiosque/comandas/venda-avulsa"
+            data-onboarding-target="quiosque-start-sale"
             className={`touch-btn-secondary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold ${
               !caixaAberto ? 'pointer-events-none opacity-50' : ''
             }`}

@@ -26,6 +26,7 @@ import {
   type PaymentFormRow,
 } from '../components/PaymentFormModal';
 import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../lib/currency';
+import { invalidateOnboardingReadiness } from '../lib/onboarding';
 
 type CartLine = {
   key: string;
@@ -125,6 +126,7 @@ export function VendaAvulsaPage() {
         queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
         queryClient.invalidateQueries({ queryKey: ['dashboard', evento.id] });
       }
+      invalidateOnboardingReadiness(queryClient);
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao registrar venda avulsa'),
   });

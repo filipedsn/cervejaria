@@ -23,6 +23,7 @@ interface OnboardingContextType {
   source: OnboardingSource | null;
   selectedModule: OnboardingModule | null;
   dismissedLocally: boolean;
+  autoStartAllowed: boolean;
   manualStartAllowed: boolean;
   manualEntryVisible: boolean;
   openError: string | null;
@@ -67,6 +68,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     [isAdmin, isDono, readinessQuery.data, readinessQuery.isError, readinessQuery.isLoading, state.dismissedLocally],
   );
   const manualStartAllowed = isManualStartAllowed(eligibility);
+  const autoStartAllowed = isAutoStartAllowed(eligibility);
   // In a degraded query state the owner still needs an entry point to retry;
   // opening remains guarded by a fresh readiness result.
   const manualEntryVisible = Boolean(
@@ -75,7 +77,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const sessionKey = storageKey;
-    if (!sessionKey || autoAttemptedInSession.has(sessionKey) || !isAutoStartAllowed(eligibility)) return;
+    if (!sessionKey || autoAttemptedInSession.has(sessionKey) || !autoStartAllowed) return;
 
     autoAttemptedInSession.add(sessionKey);
     dispatch({
@@ -83,7 +85,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       source: 'AUTO',
       selectedModule: initialSelectedModule(eligibility.readiness!),
     });
-  }, [eligibility, storageKey]);
+  }, [autoStartAllowed, eligibility.readiness, storageKey]);
 
   const openOnboarding = useCallback(async ({ source }: OpenOnboardingOptions): Promise<boolean> => {
     setOpenError(null);
@@ -124,6 +126,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     source: state.source,
     selectedModule: state.selectedModule,
     dismissedLocally: state.dismissedLocally,
+    autoStartAllowed,
     manualStartAllowed,
     manualEntryVisible,
     openError,
@@ -131,7 +134,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     closeOnboarding,
     dismissAutoOnboarding,
     selectModule: (selectedModule) => dispatch({ type: 'SELECT_MODULE', selectedModule }),
-  }), [closeOnboarding, dismissAutoOnboarding, manualEntryVisible, manualStartAllowed, openError, openOnboarding, state]);
+  }), [autoStartAllowed, closeOnboarding, dismissAutoOnboarding, manualEntryVisible, manualStartAllowed, openError, openOnboarding, state]);
 
   return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>;
 }

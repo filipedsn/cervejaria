@@ -8,6 +8,7 @@ import { ModalFormFooter } from '../components/ModalFormFooter';
 import { Loading } from '../components/Loading';
 import { TrailerTapsSection } from '../components/TrailerTapsSection';
 import { TrailerPortalQr } from '../components/TrailerPortalQr';
+import { invalidateOnboardingReadiness } from '../lib/onboarding';
 
 function sortByActiveThenName(items: Trailer[]) {
   return [...items].sort((a, b) => {
@@ -54,6 +55,7 @@ export function TrailersPage({ embedded }: { embedded?: boolean } = {}) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trailers'] });
+      invalidateOnboardingReadiness(queryClient);
       setShowModal(false);
       setError('');
     },
@@ -93,7 +95,7 @@ export function TrailersPage({ embedded }: { embedded?: boolean } = {}) {
     <div className="space-y-4">
       {!embedded && <h2 className="text-xl font-bold">Trailers</h2>}
 
-      <button type="button" className="touch-btn-primary touch-btn-sm w-full" onClick={openCreate}>
+      <button type="button" className="touch-btn-primary touch-btn-sm w-full" onClick={openCreate} data-onboarding-target="brewery-configure-tap">
         + Novo trailer
       </button>
 
