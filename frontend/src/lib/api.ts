@@ -143,7 +143,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: null }));
-    if (res.status === 401 && !path.startsWith('/api/auth/login')) {
+    // Client-portal 401 responses belong to its anonymous session, never to
+    // the staff session that controls the internal-login redirect.
+    if (res.status === 401 && !path.startsWith('/api/auth/login') && !path.startsWith('/api/public/')) {
       if (!unauthorizedNotified) {
         unauthorizedNotified = true;
         const { notifyUnauthorized } = await import('./auth-session.js');

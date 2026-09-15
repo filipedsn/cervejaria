@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { getAuthUser } from '../../types/auth.js';
 import { getConfiguracaoQuiosque, requireModuloQuiosque } from '../../lib/quiosque/modulo.js';
+import { getOperationalProfile } from '../../lib/operational-profile.js';
 import { produtosQuiosqueRoutes } from './produtos.js';
 import { comandasQuiosqueRoutes } from './comandas.js';
 import { vendasQuiosqueRoutes } from './vendas.js';
@@ -33,15 +34,20 @@ export async function quiosqueRoutes(app: FastifyInstance) {
 
     if (!configuracao) return { ativo: false as const };
 
-    const pontosVenda = await prisma.pontoVenda.findMany({
+    const [profile, pontosVenda] = await Promise.all([
+      getOperationalProfile(configuracao.cervejariaId),
+      prisma.pontoVenda.findMany({
       where: { cervejariaId: configuracao.cervejariaId, ativo: true },
       orderBy: { createdAt: 'asc' },
-    });
+      }),
+    ]);
 
     return {
       ativo: true as const,
-      controlaEstoque: configuracao.controlaEstoque,
-      temCozinha: configuracao.temCozinha,
+      // The context powers navigation and page guards, so it must expose the
+      // same persisted capability decision as the operational settings panel.
+      controlaEstoque: profile?.capabilities.inventory ?? configuracao.controlaEstoque,
+      temCozinha: profile?.capabilities.kitchen ?? configuracao.temCozinha,
       exclusivo: configuracao.exclusivo,
       usaCardapio: configuracao.usaCardapio,
       quantidadeMesas: configuracao.quantidadeMesas,

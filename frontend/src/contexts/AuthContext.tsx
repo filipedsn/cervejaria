@@ -5,7 +5,7 @@ import { queryClient } from '../lib/query-client';
 import { connectSocket, disconnectSocket } from '../lib/socket';
 import { resetBreweryTheme, syncBreweryTheme } from '../lib/theme';
 import { ensureAppShellBranding } from '../lib/app-branding';
-import { isPublicAuthPath, setUnauthorizedHandler } from '../lib/auth-session';
+import { isPublicPath, setUnauthorizedHandler } from '../lib/auth-session';
 import { flushPendingAuditAfterAuth } from '../lib/audit-tracker';
 
 interface AuthContextType {
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setUnauthorizedHandler(async () => {
       await logout();
-      if (typeof window !== 'undefined' && !isPublicAuthPath(window.location.pathname)) {
+      if (typeof window !== 'undefined' && !isPublicPath(window.location.pathname)) {
         window.location.href = '/login';
       }
     });

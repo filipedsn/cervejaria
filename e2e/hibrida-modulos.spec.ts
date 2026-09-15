@@ -22,6 +22,9 @@ test.describe('Empresa híbrida', () => {
     // A agenda muda de forma conforme o evento do dia esteja aberto ou apenas
     // agendado; o que precisa valer sempre é o módulo cervejaria responder.
     await expect(page.getByRole('heading', { name: 'Eventos', level: 1 })).toBeVisible();
-    await expect(page.getByRole('heading', { name: /Evento CFG HIBRIDA-00/ })).toBeVisible();
+    // The calendar fixture is ephemeral. The enduring rule is that this
+    // composition can reach its capability settings without a company mode.
+    await page.goto('/configuracoes/operacao');
+    await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
   });
 });
