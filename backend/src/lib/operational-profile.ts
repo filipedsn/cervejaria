@@ -24,6 +24,8 @@ export interface OperationalProfileFacts {
     directSalesEnabled: boolean | null;
     plannedOperationsEnabled: boolean | null;
     tapsEnabled: boolean | null;
+    inventoryEnabled: boolean | null;
+    kitchenEnabled: boolean | null;
   } | null;
   activeTaps: number;
   plannedOperationCount: number;
@@ -67,6 +69,10 @@ export function deriveOperationalProfile(facts: OperationalProfileFacts): Operat
   const directSalesEnabled = facts.operationalEnablement?.directSalesEnabled ?? hasDirectSaleUnit;
   const plannedOperationsEnabled = facts.operationalEnablement?.plannedOperationsEnabled ?? facts.activeTrailers > 0;
   const tapsEnabled = facts.operationalEnablement?.tapsEnabled ?? facts.activeTaps > 0;
+  const inventoryEnabled = facts.operationalEnablement?.inventoryEnabled
+    ?? (quiosqueEnabled && facts.legacyQuiosque!.controlaEstoque);
+  const kitchenEnabled = facts.operationalEnablement?.kitchenEnabled
+    ?? (quiosqueEnabled && facts.legacyQuiosque!.temCozinha);
   // Older in-memory fact producers only supplied the unit count. Interpret
   // their missing settings as NULL so the legacy fallback remains compatible.
   const cashRegisterSettings = facts.activePointOfSaleCashRegisterSettings.length > 0
@@ -83,8 +89,8 @@ export function deriveOperationalProfile(facts: OperationalProfileFacts): Operat
       // A POS-capable tenant can therefore operate the cash-register workflow,
       // while an event-only tenant remains valid without it.
       cashRegister: hasCashRegisterUnit,
-      inventory: quiosqueEnabled && facts.legacyQuiosque!.controlaEstoque,
-      kitchen: quiosqueEnabled && facts.legacyQuiosque!.temCozinha,
+      inventory: inventoryEnabled,
+      kitchen: kitchenEnabled,
       // Taps are evidenced by active physical resources, never tenant naming.
       taps: tapsEnabled,
       // Today, direct sales are the POS flow and require an active POS unit.
@@ -131,6 +137,8 @@ export const readOperationalProfileFacts: OperationalProfileFactsReader = async 
           directSalesEnabled: true,
           plannedOperationsEnabled: true,
           tapsEnabled: true,
+          inventoryEnabled: true,
+          kitchenEnabled: true,
         },
       },
       trailers: { where: { ativo: true }, select: { id: true } },

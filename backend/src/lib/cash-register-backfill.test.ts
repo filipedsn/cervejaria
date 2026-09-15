@@ -21,16 +21,16 @@ test('a repeated backfill plan has no update once values are explicit', () => {
 
 test('operational enablement backfill materializes only missing legacy values', () => {
   const plan = planOperationalEnablementBackfill([
-    { id: 'legacy-events', directSalesEnabled: null, plannedOperationsEnabled: null, tapsEnabled: null, legacyDirectSales: false, legacyPlannedOperations: true, legacyTaps: true },
-    { id: 'explicit', directSalesEnabled: false, plannedOperationsEnabled: true, tapsEnabled: false, legacyDirectSales: true, legacyPlannedOperations: false, legacyTaps: true },
+    { id: 'legacy-events', directSalesEnabled: null, plannedOperationsEnabled: null, tapsEnabled: null, inventoryEnabled: null, kitchenEnabled: null, legacyDirectSales: false, legacyPlannedOperations: true, legacyTaps: true, legacyInventory: false, legacyKitchen: false },
+    { id: 'explicit', directSalesEnabled: false, plannedOperationsEnabled: true, tapsEnabled: false, inventoryEnabled: false, kitchenEnabled: true, legacyDirectSales: true, legacyPlannedOperations: false, legacyTaps: true, legacyInventory: true, legacyKitchen: false },
   ]);
-  assert.deepEqual(plan.updates, [{ id: 'legacy-events', directSalesEnabled: false, plannedOperationsEnabled: true, tapsEnabled: true }]);
+  assert.deepEqual(plan.updates, [{ id: 'legacy-events', directSalesEnabled: false, plannedOperationsEnabled: true, tapsEnabled: true, inventoryEnabled: false, kitchenEnabled: false }]);
 });
 
 test('operational enablement backfill is idempotent after materialization', () => {
   const plan = planOperationalEnablementBackfill([{
-    id: 'materialized', directSalesEnabled: false, plannedOperationsEnabled: true, tapsEnabled: true,
-    legacyDirectSales: true, legacyPlannedOperations: false, legacyTaps: false,
+    id: 'materialized', directSalesEnabled: false, plannedOperationsEnabled: true, tapsEnabled: true, inventoryEnabled: false, kitchenEnabled: true,
+    legacyDirectSales: true, legacyPlannedOperations: false, legacyTaps: false, legacyInventory: true, legacyKitchen: false,
   }]);
   assert.deepEqual(plan.updates, []);
 });

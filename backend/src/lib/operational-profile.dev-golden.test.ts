@@ -13,7 +13,13 @@ test('CIA Maritima DEV golden profile reflects its actual event/tap-only operati
     select: {
       id: true,
       configuracaoOperacional: {
-        select: { directSalesEnabled: true, plannedOperationsEnabled: true, tapsEnabled: true },
+        select: {
+          directSalesEnabled: true,
+          plannedOperationsEnabled: true,
+          tapsEnabled: true,
+          inventoryEnabled: true,
+          kitchenEnabled: true,
+        },
       },
     },
   });
@@ -36,6 +42,8 @@ test('CIA Maritima DEV golden profile reflects its actual event/tap-only operati
     directSalesEnabled: false,
     plannedOperationsEnabled: true,
     tapsEnabled: true,
+    inventoryEnabled: false,
+    kitchenEnabled: false,
   });
 
   // DEV contains active POS units for dedicated QA tenants. CIA Maritima's
