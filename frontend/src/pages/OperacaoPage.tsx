@@ -4,7 +4,7 @@ import { ConfigComandasLayoutPanel } from '../components/ConfigComandasLayoutPan
 import { ConfigCardapioPanel } from '../components/ConfigCardapioPanel';
 import { ConfigCardapioQuiosquePanel } from '../components/ConfigCardapioQuiosquePanel';
 import { ConfigMesasQuiosquePanel } from '../components/ConfigMesasQuiosquePanel';
-import { ConfigRecursosQuiosquePanel } from '../components/ConfigRecursosQuiosquePanel';
+import { OperationalCapabilitiesPanel } from '../components/OperationalCapabilitiesPanel';
 import { OnboardingManualEntry } from '../components/OnboardingManualEntry';
 
 type OperacaoPageProps = {
@@ -19,7 +19,7 @@ export function OperacaoPage({ embedded, modo = 'cervejaria' }: OperacaoPageProp
       {!embedded && (
         <PageHeader title="Operação" subtitle="Preferências do dia a dia na tela de comandas" />
       )}
-      <ConfigRecursosQuiosquePanel />
+      <OperationalCapabilitiesPanel />
       <ConfigKpisComandaPanel />
       <ConfigComandasLayoutPanel />
       {modo === 'cervejaria' && <ConfigCardapioPanel />}
