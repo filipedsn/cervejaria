@@ -15,8 +15,8 @@ import {
   updateBrandingColors,
 } from '../lib/cervejaria-branding.js';
 import { ensureDefaultTaps } from '../lib/trailer-defaults.js';
-import { ativarModuloQuiosque } from '../lib/quiosque/modulo.js';
 import { atualizarCapacidadesQuiosque } from '../lib/quiosque/capacidades.js';
+import { adaptLegacyProvisioning, provisionEstablishment, provisionEstablishmentRequestSchema } from '../lib/provision-establishment.js';
 import { getAuthUser } from '../types/auth.js';
 import {
   encryptSecret,
@@ -252,6 +252,21 @@ export async function adminRoutes(app: FastifyInstance) {
     return formatAdminCervejaria(cervejaria);
   });
 
+  app.post('/cervejarias/provision', async (request, reply) => {
+    const body = provisionEstablishmentRequestSchema.parse(request.body);
+    const existing = await prisma.usuario.findUnique({ where: { email: body.dono.email } });
+    if (existing) return reply.status(409).send({ error: 'E-mail do proprietÃ¡rio jÃ¡ cadastrado' });
+    let slug = slugify(body.nome);
+    if (await prisma.cervejaria.findUnique({ where: { slug } })) slug = `${slug}-${Date.now().toString(36)}`;
+    const senhaHash = await hashPassword(body.dono.senha);
+    const result = await prisma.$transaction((tx) => provisionEstablishment(tx, {
+      ...body,
+      slug,
+      dono: { ...body.dono, senhaHash },
+    }));
+    return reply.status(201).send(result);
+  });
+
   app.post('/cervejarias', async (request, reply) => {
     const { body, logoBuffer } = await parseMultipartCervejaria(request, createCervejariaSchema);
 
@@ -271,39 +286,17 @@ export async function adminRoutes(app: FastifyInstance) {
     const moduloQuiosque = body.moduloQuiosque === true;
     const moduloCervejaria = body.moduloCervejaria !== false;
 
-    const result = await prisma.$transaction(async (tx) => {
-      const cervejaria = await tx.cervejaria.create({
-        data: {
-          nome: body.cervejariaNome,
-          slug,
-          // Trailer e taps sao artefatos da cervejaria: empresa so de quiosque
-          // nao nasce com eles.
-          ...(moduloCervejaria ? { trailers: { create: { nome: 'Principal' } } } : {}),
-        },
-      });
-
-      const dono = await tx.usuario.create({
-        data: {
-          nome: body.donoNome,
-          email: body.donoEmail,
-          senhaHash,
-          papel: 'DONO',
-          cervejariaId: cervejaria.id,
-        },
-        select: { id: true, nome: true, email: true, papel: true },
-      });
-
-      if (moduloQuiosque) {
-        await ativarModuloQuiosque(tx, {
-          cervejariaId: cervejaria.id,
-          controlaEstoque: body.quiosqueControlaEstoque === true,
-          temCozinha: body.quiosqueTemCozinha === true,
-          exclusivo: !moduloCervejaria,
-        });
-      }
-
-      return { cervejaria, dono };
-    });
+    const legacy = adaptLegacyProvisioning({
+      cervejariaNome: body.cervejariaNome,
+      donoNome: body.donoNome,
+      donoEmail: body.donoEmail,
+      senhaHash,
+      moduloCervejaria,
+      moduloQuiosque,
+      quiosqueControlaEstoque: body.quiosqueControlaEstoque === true,
+      quiosqueTemCozinha: body.quiosqueTemCozinha === true,
+    }, slug);
+    const result = await prisma.$transaction((tx) => provisionEstablishment(tx, legacy.input, legacy.resources));
 
     let cervejaria = result.cervejaria;
     if (logoBuffer) {
