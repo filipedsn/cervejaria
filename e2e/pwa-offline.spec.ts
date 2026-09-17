@@ -16,7 +16,16 @@ async function ensureServiceWorkerControls(page: Page) {
     const controlled = await page.evaluate(() => Boolean(navigator.serviceWorker.controller));
     if (controlled) return;
 
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    // A newly activated service worker can take control while this reload is
+    // in flight. Chromium then reports ERR_ABORTED even though the next
+    // document is correctly controlled; treat that takeover as expected and
+    // assert the resulting page state below.
+    try {
+      await page.reload({ waitUntil: 'domcontentloaded' });
+    } catch (error) {
+      if (!String(error).includes('ERR_ABORTED')) throw error;
+    }
+    await expect(page.locator('#email')).toBeVisible({ timeout: 15_000 });
     await page.waitForFunction(
       async () => {
         const reg = await navigator.serviceWorker.getRegistration();

@@ -6,10 +6,13 @@ const authDir = path.join(process.cwd(), 'e2e/.auth');
 
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: true,
+  // The full regression creates and changes shared QA fixtures (including
+  // operational capabilities). Run it serially so the official command is
+  // deterministic; dedicated QA suites retain their own concurrency coverage.
+  fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 2 : 1,
-  workers: process.env.CI ? 1 : 4,
+  retries: 0,
+  workers: 1,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,
