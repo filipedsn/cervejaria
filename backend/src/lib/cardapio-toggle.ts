@@ -1,7 +1,9 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 
-export async function cervejariaUsaCardapio(cervejariaId: string): Promise<boolean> {
-  const row = await prisma.cervejaria.findUnique({
+/** Accept the active transaction so callers never exhaust the pool from inside it. */
+export async function cervejariaUsaCardapio(cervejariaId: string, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<boolean> {
+  const row = await db.cervejaria.findUnique({
     where: { id: cervejariaId },
     select: { usaCardapio: true },
   });

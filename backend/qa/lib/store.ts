@@ -9,6 +9,7 @@ export const WORKERS_DIR = path.join(QA_DIR, 'workers');
 export const CONTEXT_PATH = path.join(QA_DIR, 'context.json');
 export const SUITE_PATH = path.join(QA_DIR, 'suite.json');
 export const HTML_PATH = path.join(REPORTS_DIR, 'qa-report.html');
+export const CONCURRENCY_PATH = path.join(QA_DIR, 'concurrency.json');
 
 export function ensureDirs() {
   mkdirSync(WORKERS_DIR, { recursive: true });

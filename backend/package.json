@@ -22,6 +22,7 @@
     "qa:restore-config-owner": "node scripts/run-with-env.mjs development npx tsx qa/restore-config-owner.ts",
     "qa:suite": "node scripts/run-with-env.mjs development npx tsx qa/suite.ts",
     "qa:worker": "node scripts/run-with-env.mjs development npx tsx qa/worker.ts",
+    "qa:concurrency": "node scripts/run-with-env.mjs development npx tsx qa/concurrency.ts",
     "qa:portal-worker": "node scripts/run-with-env.mjs development npx tsx qa/portal-worker.ts",
     "qa:portal-stress": "node scripts/run-with-env.mjs development npx tsx qa/run.ts",
     "qa:report": "node scripts/run-with-env.mjs development npx tsx qa/report.ts",

@@ -8,6 +8,7 @@ export const QA_PREFIX = 'qa-load-';
 export const CFG_PREFIX = 'qa-cfg-';
 export const ARENA_SLUG = 'qa-arena';
 export const MULTI_TRAILER_SLUG = 'qa-multi-trailer';
+export const CONCURRENCY_PREFIX = 'qa-concurrency-';
 export const QA_ADMIN_EMAIL = 'qa-admin@qa.test';
 const PWD = 'qa123456';
 
@@ -59,6 +60,7 @@ export async function cleanupQa() {
       OR: [
         { slug: { startsWith: QA_PREFIX } },
         { slug: { startsWith: CFG_PREFIX } },
+        { slug: { startsWith: CONCURRENCY_PREFIX } },
         { slug: ARENA_SLUG },
         { slug: MULTI_TRAILER_SLUG },
       ],
@@ -224,8 +226,9 @@ export async function seedTenants(count: number, comandasPer: number, atendentes
 }
 
 /** Dedicated brewery whose single comanda is hammered by concurrent workers. */
-export async function seedArena(): Promise<Arena> {
-  const b = await createBrewery(ARENA_SLUG, 'QA Arena Concorrência', 4);
+export async function seedArena(runId?: string, comandaCount = 1): Promise<Arena & { comandaIds?: string[] }> {
+  const slug = runId ? `${CONCURRENCY_PREFIX}${runId}` : ARENA_SLUG;
+  const b = await createBrewery(slug, 'QA Arena Concorrência', 4);
 
   const evento = await prisma.evento.create({
     data: {
@@ -246,9 +249,17 @@ export async function seedArena(): Promise<Arena> {
   const comanda = await prisma.comanda.create({
     data: { eventoId: evento.id, clienteId: cliente.id, status: 'ABERTA' },
   });
+  const comandaIds = [comanda.id];
+  for (let i = 1; i < comandaCount; i++) {
+    const extraCliente = await prisma.cliente.create({
+      data: { nome: `Cliente Arena ${i + 1}`, telefone: `000000${String(i).padStart(4, '0')}`, cervejariaId: b.cervejaria.id },
+    });
+    const extra = await prisma.comanda.create({ data: { eventoId: evento.id, clienteId: extraCliente.id, status: 'ABERTA' } });
+    comandaIds.push(extra.id);
+  }
 
   return {
-    slug: ARENA_SLUG,
+    slug,
     cervejariaId: b.cervejaria.id,
     eventoId: evento.id,
     trailerId: b.trailer.id,
@@ -259,7 +270,32 @@ export async function seedArena(): Promise<Arena> {
     preco: 12,
     atendenteTokens: b.atendenteTokens,
     donoToken: b.donoToken,
+    ...(runId ? { comandaIds } : {}),
   };
+}
+
+/** Removes only a disposable concurrency fixture; never accepts a non-QA slug. */
+export async function cleanupConcurrencyArena(slug: string) {
+  if (!slug.startsWith(CONCURRENCY_PREFIX)) throw new Error(`Recusa limpar fixture fora do escopo QA: ${slug}`);
+  const brewery = await prisma.cervejaria.findUnique({ where: { slug }, select: { id: true } });
+  if (!brewery) return;
+  const eventos = await prisma.evento.findMany({ where: { cervejariaId: brewery.id }, select: { id: true } });
+  const eventoIds = eventos.map((e) => e.id);
+  const comandas = await prisma.comanda.findMany({ where: { eventoId: { in: eventoIds } }, select: { id: true } });
+  const comandaIds = comandas.map((c) => c.id);
+  await prisma.itemComanda.deleteMany({ where: { comandaId: { in: comandaIds } } });
+  await prisma.pagamento.deleteMany({ where: { comandaId: { in: comandaIds } } });
+  await prisma.comanda.deleteMany({ where: { id: { in: comandaIds } } });
+  await prisma.tapMontagem.deleteMany({ where: { eventoId: { in: eventoIds } } });
+  await prisma.eventoProduto.deleteMany({ where: { eventoId: { in: eventoIds } } });
+  await prisma.evento.deleteMany({ where: { id: { in: eventoIds } } });
+  await prisma.cliente.deleteMany({ where: { cervejariaId: brewery.id } });
+  await prisma.tap.deleteMany({ where: { cervejariaId: brewery.id } });
+  await prisma.trailer.deleteMany({ where: { cervejariaId: brewery.id } });
+  await prisma.preco.deleteMany({ where: { produto: { cervejariaId: brewery.id } } });
+  await prisma.produto.deleteMany({ where: { cervejariaId: brewery.id } });
+  await prisma.usuario.deleteMany({ where: { cervejariaId: brewery.id } });
+  await prisma.cervejaria.delete({ where: { id: brewery.id } });
 }
 
 /** Cervejaria com 2 trailers e 2 eventos abertos simultâneos (cenário operacional multi-trailer). */

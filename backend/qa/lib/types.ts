@@ -129,6 +129,33 @@ export interface WorkerResult {
   duplicateEvent: { status: number; eventoId: string | null };
 }
 
+export interface ConcurrencyRun {
+  runId: string;
+  scenario: 'same-comanda' | 'independent-comandas';
+  concurrency: number;
+  startedAt: string;
+  finishedAt: string;
+  fixture: {
+    tenant: string;
+    comandaIds: string[];
+    produtoId: string;
+    eventoId: string;
+    initialState: 'ABERTA';
+    capabilities: { directSales: boolean; plannedOperations: boolean; taps: boolean; inventory: boolean; kitchen: boolean };
+    cashRegister: boolean;
+  };
+  success: number;
+  expectedConflict: number;
+  unexpectedError: number;
+  timeout: number;
+  p50: number;
+  p95: number;
+  p99: number;
+  throughput: number;
+  statuses: Record<string, number>;
+  integrity: { expectedItems: number; actualItems: number; expectedTotal: number; actualTotal: number; valid: boolean };
+}
+
 export interface PortalWorkerPedidoOps {
   attempted: number;
   success: number;

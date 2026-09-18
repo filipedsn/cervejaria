@@ -148,6 +148,20 @@ export async function runTapMontagemTests(tenant: TenantFixture, test: TestFn) {
   );
 
   await test(
+    { id: 'TAP-M-04a', category: 'Montagem taps', name: 'DELETE produto com histórico de tap → 409', requirement: 'TAP-M-04' },
+    async () => {
+      const r = await api<{ error?: string }>('DELETE', `/api/produtos/${chopeAltId}`, { token: tenant.donoToken });
+      if (r.status !== 409) {
+        return { status: 'failed', message: 'Excluir chope com histórico', expected: '409', actual: `${r.status} ${r.raw.slice(0, 120)}` };
+      }
+      if (!r.data?.error?.includes('montagem de um tap')) {
+        return { status: 'failed', message: 'Mensagem de bloqueio', expected: 'histórico de tap', actual: r.data?.error ?? r.raw };
+      }
+      return { message: r.data.error, expected: '409', actual: '409' };
+    },
+  );
+
+  await test(
     { id: 'TAP-M-05', category: 'Montagem taps', name: 'Produto não-chope → 400', requirement: 'TAP-M-05' },
     async () => {
       const lata = await api<{ id: string }>('POST', '/api/produtos', {

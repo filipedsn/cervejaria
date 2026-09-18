@@ -85,7 +85,7 @@ export async function addItemToComandaInTx(
     select: { cardapioId: true },
   });
 
-  const usaCardapio = await cervejariaUsaCardapio(cervejariaId);
+  const usaCardapio = await cervejariaUsaCardapio(cervejariaId, tx);
 
   const produto = await tx.produto.findFirst({
     where: { id: item.produtoId, cervejariaId, ativo: true },
@@ -110,7 +110,7 @@ export async function addItemToComandaInTx(
         return { error: 'Informe o tap para confirmar este chope' as const, needsTap: true as const };
       }
     }
-    const chopeNoTap = await assertChopeAtivoNoTap(eventoId, tapId, item.produtoId);
+    const chopeNoTap = await assertChopeAtivoNoTap(eventoId, tapId, item.produtoId, tx);
     if (!chopeNoTap) {
       return { error: 'Este chope não está posicionado no tap selecionado' as const };
     }

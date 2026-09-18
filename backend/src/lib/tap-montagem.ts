@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { isBebidaChope } from './produto-utils.js';
 import { ensureDefaultTaps } from './trailer-defaults.js';
@@ -110,8 +111,8 @@ export async function listTapsComChopeAtual(eventoId: string, trailerId: string)
   return taps.map((tap) => mapTapComChope(tap, montagemPorTap.get(tap.id), 'evento'));
 }
 
-export async function assertChopeAtivoNoTap(eventoId: string, tapId: string, produtoId: string) {
-  const montagem = await prisma.tapMontagem.findFirst({
+export async function assertChopeAtivoNoTap(eventoId: string, tapId: string, produtoId: string, db: Prisma.TransactionClient | typeof prisma = prisma) {
+  const montagem = await db.tapMontagem.findFirst({
     where: { eventoId, tapId, produtoId, encerradoEm: null },
   });
   return !!montagem;

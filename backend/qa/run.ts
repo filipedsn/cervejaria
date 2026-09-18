@@ -23,6 +23,9 @@ async function main() {
   const setup = await run('setup.ts');
   if (setup !== 0) process.exit(setup);
 
+  // Dedicated fixtures run before suite.ts can mutate shared QA resources.
+  const concurrency = await run('concurrency.ts');
+
   console.log(`\n[run] Disparando ${WORKERS} workers concorrentes (processos separados)...`);
   const workers = await Promise.all(
     Array.from({ length: WORKERS }, (_, i) => run('worker.ts', { QA_WORKER_ID: String(i + 1) })),
@@ -44,7 +47,7 @@ async function main() {
   if (suite !== 0) console.warn('[run] suite retornou erro');
 
   const report = await run('report.ts');
-  const exitCode = Math.max(suite, report, failedWorkers > 0 ? 1 : 0, failedPortalWorkers > 0 ? 1 : 0);
+  const exitCode = Math.max(concurrency, suite, report, failedWorkers > 0 ? 1 : 0, failedPortalWorkers > 0 ? 1 : 0);
   process.exit(exitCode);
 }
 
