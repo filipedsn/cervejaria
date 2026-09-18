@@ -39,33 +39,6 @@ interface CervejariaAdmin {
   usuarios: Array<{ id: string; nome: string; email: string }>;
 }
 
-function ModulosBadges({ modulos }: { modulos: ModulosAdmin }) {
-  return (
-    <div className="mt-1 flex flex-wrap gap-1">
-      {modulos.cervejaria && (
-        <span className="rounded-full bg-brand-400/15 px-2 py-0.5 text-[10px] font-semibold text-brand-600">
-          Cervejaria
-        </span>
-      )}
-      {modulos.quiosque && (
-        <span className="rounded-full bg-orange/15 px-2 py-0.5 text-[10px] font-semibold text-orange">
-          Quiosque
-        </span>
-      )}
-      {modulos.quiosque && modulos.quiosqueTemCozinha && (
-        <span className="rounded-full bg-surface-lighter px-2 py-0.5 text-[10px] font-medium text-ink-faint">
-          Cozinha
-        </span>
-      )}
-      {modulos.quiosque && modulos.quiosqueControlaEstoque && (
-        <span className="rounded-full bg-surface-lighter px-2 py-0.5 text-[10px] font-medium text-ink-faint">
-          Estoque
-        </span>
-      )}
-    </div>
-  );
-}
-
 function CervejariaLogo({ nome, logoUrl }: { nome: string; logoUrl?: string | null }) {
   const src = assetUrl(logoUrl);
   if (src) {
@@ -163,6 +136,13 @@ const CAPABILITY_OPTIONS = [
   ['kitchen', 'Cozinha / preparo', 'Usar o fluxo de preparo de pedidos.'],
 ] as const;
 type Enablements = Record<(typeof CAPABILITY_OPTIONS)[number][0], boolean>;
+const CAPABILITY_COPY: Record<keyof Enablements, { title: string; description: string }> = {
+  directSales: { title: 'Venda avulsa', description: 'Vender diretamente no balcão ou ponto de venda.' },
+  plannedOperations: { title: 'Operações', description: 'Trabalhar com operações iniciadas agora ou agendadas.' },
+  taps: { title: 'Torneiras de chope', description: 'Usar torneiras de chope nas operações.' },
+  inventory: { title: 'Controle de estoque', description: 'Controlar saldo e movimentação dos produtos.' },
+  kitchen: { title: 'Cozinha / preparo', description: 'Usar o fluxo de preparo de pedidos.' },
+};
 const ENABLEMENTS_PADRAO: Enablements = { directSales: false, plannedOperations: false, taps: false, inventory: false, kitchen: false };
 
 export function AdminCervejariasPage() {
@@ -181,6 +161,7 @@ export function AdminCervejariasPage() {
   const [corPrimaria, setCorPrimaria] = useState(BRANDING_DEFAULT_PRIMARY);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  // Compatibility projection is kept only for the unreachable legacy block below.
   const [modulos, setModulos] = useState({ ...MODULOS_PADRAO });
   const [enablements, setEnablements] = useState<Enablements>({ ...ENABLEMENTS_PADRAO });
 
@@ -218,7 +199,6 @@ export function AdminCervejariasPage() {
     setCorPrimaria(BRANDING_DEFAULT_PRIMARY);
     setLogoFile(null);
     setLogoPreview(null);
-    setModulos({ ...MODULOS_PADRAO });
     setEnablements({ ...ENABLEMENTS_PADRAO });
     setError('');
   };
@@ -235,7 +215,6 @@ export function AdminCervejariasPage() {
     setCorPrimaria(c.corPrimaria ?? BRANDING_DEFAULT_PRIMARY);
     setLogoFile(null);
     setLogoPreview(null);
-    setModulos({ ...c.modulos });
     setError('');
   };
 
@@ -269,10 +248,6 @@ export function AdminCervejariasPage() {
       setError(pwdErr);
       return;
     }
-    if (!modulos.cervejaria && !modulos.quiosque) {
-      setError('Selecione ao menos um módulo para a empresa');
-      return;
-    }
     setError('');
     createMutation.mutate();
   };
@@ -295,19 +270,11 @@ export function AdminCervejariasPage() {
 
   const createMutation = useMutation({
     mutationFn: () => {
-      const data = new FormData();
-      data.append('cervejariaNome', form.cervejariaNome);
-      data.append('donoNome', form.donoNome);
-      data.append('donoEmail', form.donoEmail);
-      data.append('donoSenha', form.donoSenha);
-      data.append('moduloCervejaria', String(modulos.cervejaria));
-      data.append('moduloQuiosque', String(modulos.quiosque));
-      if (modulos.quiosque) {
-        data.append('quiosqueControlaEstoque', String(modulos.quiosqueControlaEstoque));
-        data.append('quiosqueTemCozinha', String(modulos.quiosqueTemCozinha));
-      }
-      if (logoFile) data.append('logo', logoFile);
-      return api.postFormData('/api/admin/cervejarias', data);
+      return api.post('/api/admin/cervejarias/provision', {
+        nome: form.cervejariaNome,
+        dono: { nome: form.donoNome, email: form.donoEmail, senha: form.donoSenha },
+        enablements,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-cervejarias'] });
@@ -429,7 +396,6 @@ export function AdminCervejariasPage() {
                   </td>
                   <td className="px-4 py-4">
                     <p className="font-semibold">{c.nome}</p>
-                    <ModulosBadges modulos={c.modulos} />
                     {!c.ativo && (
                       <span className="text-xs text-danger">Inativa</span>
                     )}
@@ -491,7 +457,6 @@ export function AdminCervejariasPage() {
               />
             </div>
             <div className="mt-2">
-              <ModulosBadges modulos={c.modulos} />
             </div>
             {c.usuarios[0] && (
               <>
@@ -533,30 +498,6 @@ export function AdminCervejariasPage() {
               <label className="label">Nome da empresa</label>
               <input className="input" value={form.cervejariaNome} onChange={(e) => setForm({ ...form, cervejariaNome: e.target.value })} required />
             </div>
-            <div className="sm:col-span-2">
-              <label className="label">Logomarca</label>
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="input file:mr-4 file:rounded-lg file:border-0 file:bg-brand-400 file:px-4 file:py-2 file:text-surface file:font-semibold"
-                onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
-              />
-              <p className="text-xs text-ink-faint mt-1">
-                As cores da logo serão extraídas automaticamente para personalizar o app desta empresa.
-              </p>
-              {logoPreview && (
-                <div className="mt-3 flex items-center gap-3">
-                  <img src={logoPreview} alt="Prévia da logo" className="h-16 w-16 rounded-xl object-contain bg-surface-lighter" />
-                  <button
-                    type="button"
-                    className="text-sm text-ink-muted hover:text-ink"
-                    onClick={() => setLogoFile(null)}
-                  >
-                    Remover
-                  </button>
-                </div>
-              )}
-            </div>
             <div>
               <label className="label">Nome do proprietário</label>
               <input className="input" value={form.donoNome} onChange={(e) => setForm({ ...form, donoNome: e.target.value })} required />
@@ -578,41 +519,11 @@ export function AdminCervejariasPage() {
           </div>
 
           <div className="space-y-2">
-            <label className="label">Módulos da empresa</label>
-            <p className="text-xs text-ink-faint">
-              Define quais operações a empresa enxerga. Pode ativar os dois.
-            </p>
-
-            <ModuloOption
-              titulo="Cervejaria"
-              descricao="Eventos, chope por tap, ranking e portal do cliente."
-              marcado={modulos.cervejaria}
-              onChange={(v) => setModulos((m) => ({ ...m, cervejaria: v }))}
-            />
-
-            <ModuloOption
-              titulo="Quiosque"
-              descricao="Venda rápida, comanda por apelido e fechamento de caixa diário."
-              marcado={modulos.quiosque}
-              onChange={(v) => setModulos((m) => ({ ...m, quiosque: v }))}
-            />
-
-            {modulos.quiosque && (
-              <div className="ml-4 space-y-2 border-l-2 border-surface-lighter pl-4">
-                <ModuloOption
-                  titulo="Controlar estoque"
-                  descricao="Baixa na venda, reposição e registro de perdas."
-                  marcado={modulos.quiosqueControlaEstoque}
-                  onChange={(v) => setModulos((m) => ({ ...m, quiosqueControlaEstoque: v }))}
-                />
-                <ModuloOption
-                  titulo="Tem cozinha"
-                  descricao="Tela de pedidos em preparo, na ordem de chegada."
-                  marcado={modulos.quiosqueTemCozinha}
-                  onChange={(v) => setModulos((m) => ({ ...m, quiosqueTemCozinha: v }))}
-                />
-              </div>
-            )}
+            <label className="label">Capacidades operacionais</label>
+            <p className="text-xs text-ink-faint">Escolha somente os recursos que a empresa vai utilizar. Eles não criam trailer, ponto de venda, tap, evento ou produto automaticamente.</p>
+            {CAPABILITY_OPTIONS.map(([key]) => (
+              <ModuloOption key={key} titulo={CAPABILITY_COPY[key].title} descricao={CAPABILITY_COPY[key].description} marcado={enablements[key]} onChange={(value) => setEnablements((current) => ({ ...current, [key]: value }))} />
+            ))}
           </div>
 
           <button type="submit" className="touch-btn-primary w-full" disabled={createMutation.isPending}>
@@ -681,8 +592,8 @@ export function AdminCervejariasPage() {
           <div className="space-y-2">
             <label className="label">Capacidades operacionais</label>
             <p className="text-xs text-ink-faint">Defina os recursos que fazem parte desta operaÃ§Ã£o.</p>
-            {CAPABILITY_OPTIONS.map(([key, title, description]) => (
-              <ModuloOption key={key} titulo={title} descricao={description} marcado={enablements[key]} onChange={(value) => setEnablements((current) => ({ ...current, [key]: value }))} />
+            {CAPABILITY_OPTIONS.map(([key]) => (
+              <ModuloOption key={key} titulo={CAPABILITY_COPY[key].title} descricao={CAPABILITY_COPY[key].description} marcado={enablements[key]} onChange={(value) => setEnablements((current) => ({ ...current, [key]: value }))} />
             ))}
           </div>
 
