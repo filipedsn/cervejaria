@@ -27,8 +27,8 @@ test('direct-sales guard preserves legacy active-quiosque access when an active 
   assert.equal(hasDirectSalesAccess(profile), true);
 });
 
-test('direct-sales guard hides the module when the capability is absent', () => {
-  assert.equal(hasDirectSalesAccess(deriveOperationalProfile(facts())), false);
+test('direct-sales guard allows the default CAIXA mode', () => {
+  assert.equal(hasDirectSalesAccess(deriveOperationalProfile(facts())), true);
   assert.equal(hasDirectSalesAccess(null), false);
 });
 

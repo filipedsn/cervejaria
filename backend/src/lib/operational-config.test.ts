@@ -30,6 +30,15 @@ test('persists only the requested operational capability', async () => {
   }]);
 });
 
+test('maps one operation mode to mutually exclusive compatibility fields', async () => {
+  const db = database({ directSalesEnabled: true, plannedOperationsEnabled: false });
+  await updateOperationalConfig(db as any, 'tenant-a', { operationMode: 'EVENTO' });
+  assert.deepEqual(db.updates, [{
+    create: { cervejariaId: 'tenant-a', plannedOperationsEnabled: true, directSalesEnabled: false },
+    update: { plannedOperationsEnabled: true, directSalesEnabled: false },
+  }]);
+});
+
 test('requires explicit confirmation for an inventory change', async () => {
   const db = database({ inventoryEnabled: false });
   await assert.rejects(

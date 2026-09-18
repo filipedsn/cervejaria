@@ -135,7 +135,7 @@ const CAPABILITY_OPTIONS = [
   ['inventory', 'Controle de estoque', 'Controlar saldo e movimentaÃ§Ã£o dos produtos.'],
   ['kitchen', 'Cozinha / preparo', 'Usar o fluxo de preparo de pedidos.'],
 ] as const;
-type Enablements = Record<(typeof CAPABILITY_OPTIONS)[number][0], boolean>;
+type Enablements = { directSales: boolean; plannedOperations: boolean; taps: boolean; inventory: boolean; kitchen: boolean };
 const CAPABILITY_COPY: Record<keyof Enablements, { title: string; description: string }> = {
   directSales: { title: 'Venda avulsa', description: 'Vender diretamente no balcão ou ponto de venda.' },
   plannedOperations: { title: 'Operações', description: 'Trabalhar com operações iniciadas agora ou agendadas.' },
@@ -522,7 +522,13 @@ export function AdminCervejariasPage() {
           <div className="space-y-2">
             <label className="label">Capacidades operacionais</label>
             <p className="text-xs text-ink-faint">Escolha somente os recursos que a empresa vai utilizar. Eles não criam trailer, ponto de venda, tap, evento ou produto automaticamente.</p>
-            {CAPABILITY_OPTIONS.map(([key]) => (
+            <label className="label">Como este estabelecimento trabalha?</label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" className={`card text-left ${enablements.directSales ? 'ring-2 ring-brand-400' : ''}`} onClick={() => setEnablements((current) => ({ ...current, directSales: true, plannedOperations: false }))}>Por caixa</button>
+              <button type="button" className={`card text-left ${enablements.plannedOperations ? 'ring-2 ring-brand-400' : ''}`} onClick={() => setEnablements((current) => ({ ...current, directSales: false, plannedOperations: true }))}>Por operações / eventos</button>
+            </div>
+            <p className="text-xs text-ink-faint">Escolha um único modo. Os recursos abaixo são complementares.</p>
+            {CAPABILITY_OPTIONS.filter(([key]) => key !== 'directSales' && key !== 'plannedOperations').map(([key]) => (
               <ModuloOption key={key} titulo={CAPABILITY_COPY[key].title} descricao={CAPABILITY_COPY[key].description} marcado={enablements[key]} onChange={(value) => setEnablements((current) => ({ ...current, [key]: value }))} />
             ))}
           </div>
@@ -593,7 +599,12 @@ export function AdminCervejariasPage() {
           <div className="space-y-2">
             <label className="label">Capacidades operacionais</label>
             <p className="text-xs text-ink-faint">Defina os recursos que fazem parte desta operaÃ§Ã£o.</p>
-            {CAPABILITY_OPTIONS.map(([key]) => (
+            <label className="label">Como este estabelecimento trabalha?</label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" className={`card text-left ${enablements.directSales ? 'ring-2 ring-brand-400' : ''}`} onClick={() => setEnablements((current) => ({ ...current, directSales: true, plannedOperations: false }))}>Por caixa</button>
+              <button type="button" className={`card text-left ${enablements.plannedOperations ? 'ring-2 ring-brand-400' : ''}`} onClick={() => setEnablements((current) => ({ ...current, directSales: false, plannedOperations: true }))}>Por operações / eventos</button>
+            </div>
+            {CAPABILITY_OPTIONS.filter(([key]) => key !== 'directSales' && key !== 'plannedOperations').map(([key]) => (
               <ModuloOption key={key} titulo={CAPABILITY_COPY[key].title} descricao={CAPABILITY_COPY[key].description} marcado={enablements[key]} onChange={(value) => setEnablements((current) => ({ ...current, [key]: value }))} />
             ))}
           </div>

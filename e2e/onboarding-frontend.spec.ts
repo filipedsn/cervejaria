@@ -34,6 +34,7 @@ test.describe('Onboarding frontend engine', () => {
     await login(page, CREDENTIALS.dono.email, CREDENTIALS.dono.password);
     await page.goto('/configuracoes/operacao');
     const tutorial = page.getByRole('region', { name: /Como começar a vender/i });
+    await page.getByRole('button', { name: 'Abrir', exact: true }).click();
     await expect(tutorial).toBeVisible();
     const layout = await tutorial.evaluate((element) => {
       const rect = element.getBoundingClientRect();
@@ -50,6 +51,7 @@ test.describe('Onboarding frontend engine', () => {
     await login(page, CREDENTIALS.dono.email, CREDENTIALS.dono.password);
     await page.goto('/configuracoes/operacao');
     const tutorial = page.getByRole('region', { name: /Como começar a vender/i });
+    await page.getByRole('button', { name: 'Abrir', exact: true }).click();
     await expect(tutorial).toBeVisible();
 
     const animationName = await page.locator('.onboarding-sheet-card').evaluate(

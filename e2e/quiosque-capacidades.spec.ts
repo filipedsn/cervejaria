@@ -138,8 +138,10 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
     await row.getByRole('button', { name: 'Editar' }).click();
 
     const dialog = page.getByRole('dialog', { name: new RegExp(companyName) });
-    await expect(dialog.getByRole('checkbox')).toHaveCount(5);
+    await expect(dialog.getByRole('checkbox')).toHaveCount(3);
     await expect(dialog.getByRole('checkbox', { name: /Cervejaria/ })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Por caixa' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Por operações / eventos' })).toBeVisible();
     await dialog.getByRole('checkbox', { name: /Cozinha \/ preparo/ }).check();
     await dialog.getByRole('button', { name: 'Salvar alterações' }).click();
 

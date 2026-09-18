@@ -8,6 +8,8 @@ import {
 
 export const updateOperationalConfigSchema = z
   .object({
+    /** CAIXA is false and EVENTO is true in the persisted compatibility field. */
+    operationMode: z.enum(['CAIXA', 'EVENTO']).optional(),
     directSalesEnabled: z.boolean().optional(),
     plannedOperationsEnabled: z.boolean().optional(),
     tapsEnabled: z.boolean().optional(),
@@ -18,6 +20,7 @@ export const updateOperationalConfigSchema = z
   .strict()
   .refine(
     (body) =>
+      body.operationMode !== undefined ||
       body.directSalesEnabled !== undefined ||
       body.plannedOperationsEnabled !== undefined ||
       body.tapsEnabled !== undefined ||
@@ -35,6 +38,30 @@ export async function updateOperationalConfig(
   cervejariaId: string,
   input: UpdateOperationalConfigInput,
 ) {
+  const modeFromLegacyFields = input.plannedOperationsEnabled !== undefined
+    ? input.plannedOperationsEnabled
+      ? 'EVENTO'
+      : 'CAIXA'
+    : input.directSalesEnabled !== undefined
+      ? input.directSalesEnabled
+        ? 'CAIXA'
+        : 'EVENTO'
+      : undefined;
+  const operationMode = input.operationMode ?? modeFromLegacyFields;
+  if (
+    input.operationMode !== undefined &&
+    modeFromLegacyFields !== undefined &&
+    input.operationMode !== modeFromLegacyFields
+  ) {
+    throw new Error('Modo operacional contraditório');
+  }
+  if (
+    input.directSalesEnabled !== undefined &&
+    input.plannedOperationsEnabled !== undefined &&
+    input.directSalesEnabled === input.plannedOperationsEnabled
+  ) {
+    throw new Error('CAIXA e EVENTO são modos mutuamente exclusivos');
+  }
   const current = await db.configuracaoOperacional.findUnique({ where: { cervejariaId } });
   const inventoryChanges = input.inventoryEnabled !== undefined && input.inventoryEnabled !== current?.inventoryEnabled;
   const kitchenTurnsOff = input.kitchenEnabled === false && current?.kitchenEnabled !== false;
@@ -52,8 +79,13 @@ export async function updateOperationalConfig(
   }
 
   const data = {
-    ...(input.directSalesEnabled !== undefined ? { directSalesEnabled: input.directSalesEnabled } : {}),
-    ...(input.plannedOperationsEnabled !== undefined ? { plannedOperationsEnabled: input.plannedOperationsEnabled } : {}),
+    ...(operationMode !== undefined
+      ? {
+          plannedOperationsEnabled: operationMode === 'EVENTO',
+          // Kept as a physical compatibility projection until legacy readers are retired.
+          directSalesEnabled: operationMode === 'CAIXA',
+        }
+      : {}),
     ...(input.tapsEnabled !== undefined ? { tapsEnabled: input.tapsEnabled } : {}),
     ...(input.inventoryEnabled !== undefined ? { inventoryEnabled: input.inventoryEnabled } : {}),
     ...(input.kitchenEnabled !== undefined ? { kitchenEnabled: input.kitchenEnabled } : {}),

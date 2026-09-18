@@ -60,7 +60,7 @@ test('legacy QUIOSQUE derives direct sales, cash, inventory and kitchen from act
   assert.equal(profile.legacy.exclusivo, true);
 });
 
-test('legacy HIBRIDA is represented only by a composition of capabilities', () => {
+test('legacy hybrid data resolves to EVENTO instead of exposing two modes', () => {
   const profile = deriveOperationalProfile(facts({
     legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: true },
     activeTrailers: 1,
@@ -70,14 +70,14 @@ test('legacy HIBRIDA is represented only by a composition of capabilities', () =
   }));
 
   assert.deepEqual(profile.capabilities, {
-    cashRegister: true,
+    cashRegister: false,
     inventory: false,
     kitchen: true,
     taps: true,
-    directSales: true,
+    directSales: false,
     plannedOperations: true,
   });
-  assert.equal('HIBRIDA' in profile, false);
+  assert.equal(profile.operationMode, 'EVENTO');
   assert.equal(profile.legacy.exclusivo, false);
 });
 
@@ -112,7 +112,7 @@ test('explicit operational enablement wins over legacy resource fallback', () =>
     },
   });
   const profile = deriveOperationalProfile(legacy);
-  assert.equal(profile.capabilities.directSales, false);
+  assert.equal(profile.capabilities.directSales, true);
   assert.equal(profile.capabilities.plannedOperations, false);
   assert.equal(profile.capabilities.taps, false);
 });
@@ -131,7 +131,7 @@ test('NULL operational enablement preserves legacy fallback independently', () =
       kitchenEnabled: null,
     },
   }));
-  assert.equal(profile.capabilities.directSales, true);
+  assert.equal(profile.capabilities.directSales, false);
   assert.equal(profile.capabilities.plannedOperations, true);
   assert.equal(profile.capabilities.taps, true);
 });
@@ -139,14 +139,14 @@ test('NULL operational enablement preserves legacy fallback independently', () =
 test('a new tenant can enable operations before physical resources exist', () => {
   const profile = deriveOperationalProfile(facts({
     operationalEnablement: {
-      directSalesEnabled: true,
+      directSalesEnabled: false,
       plannedOperationsEnabled: true,
       tapsEnabled: true,
       inventoryEnabled: null,
       kitchenEnabled: null,
     },
   }));
-  assert.equal(profile.capabilities.directSales, true);
+  assert.equal(profile.capabilities.directSales, false);
   assert.equal(profile.capabilities.plannedOperations, true);
   assert.equal(profile.capabilities.taps, true);
   assert.equal(profile.operationalUnits.pointsOfSale, 0);
@@ -215,14 +215,14 @@ test('NULL inventory and kitchen preserve each legacy fallback independently', (
   assert.equal(kitchenProfile.capabilities.kitchen, true);
 });
 
-test('inactive quiosque configuration does not advertise POS capabilities', () => {
+test('cash mode does not imply a usable POS without a cash-register unit', () => {
   const profile = deriveOperationalProfile(facts({
     legacyQuiosque: { enabled: false, exclusivo: false, controlaEstoque: true, temCozinha: true },
     activePointsOfSale: 1,
   }));
 
   assert.equal(profile.capabilities.cashRegister, false);
-  assert.equal(profile.capabilities.directSales, false);
+  assert.equal(profile.capabilities.directSales, true);
   assert.equal(profile.capabilities.inventory, false);
   assert.equal(profile.capabilities.kitchen, false);
 });
@@ -263,7 +263,7 @@ test('reader is tenant-scoped and read-only', async () => {
   assert.deepEqual(reads, ['tenant-a']);
   assert.equal(profile?.operationalUnits.trailers, 1);
   assert.equal(profile?.operationalUnits.pointsOfSale, 0);
-  assert.equal(profile?.capabilities.directSales, false);
+  assert.equal(profile?.capabilities.directSales, true);
   assert.equal(profile?.capabilities.plannedOperations, false);
   assert.equal(profile?.capabilities.taps, false);
 });

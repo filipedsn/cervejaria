@@ -14,15 +14,15 @@ function tx() {
   };
 }
 
-test('new provisioning materializes capabilities without physical resources', async () => {
+test('new provisioning materializes one explicit operation mode without physical resources', async () => {
   const db = tx();
-  await provisionEstablishment(db, { nome: 'Novo', slug: 'novo', dono: { nome: 'Dono', email: 'dono@x.test', senhaHash: 'hash' }, enablements: { directSales: true, plannedOperations: true, taps: true, inventory: true, kitchen: true } });
+  await provisionEstablishment(db, { nome: 'Novo', slug: 'novo', dono: { nome: 'Dono', email: 'dono@x.test', senhaHash: 'hash' }, enablements: { directSales: false, plannedOperations: true, taps: true, inventory: true, kitchen: true } });
   assert.deepEqual(db.calls, ['tenant', 'owner', 'enablement']);
 });
 
 test('legacy adapter confines mode mapping and legacy resources', () => {
   const legacy = adaptLegacyProvisioning({ cervejariaNome: 'Legado', donoNome: 'Dono', donoEmail: 'd@x.test', senhaHash: 'hash', moduloCervejaria: true, moduloQuiosque: true, quiosqueControlaEstoque: true, quiosqueTemCozinha: false }, 'legado');
-  assert.deepEqual(legacy.input.enablements, { directSales: true, plannedOperations: true, taps: true, inventory: true, kitchen: false });
+  assert.deepEqual(legacy.input.enablements, { directSales: false, plannedOperations: true, taps: true, inventory: true, kitchen: false });
   assert.equal(legacy.resources.createTrailer, true);
   assert.equal(legacy.resources.createPointOfSale, true);
 });

@@ -1,4 +1,4 @@
-export type OnboardingMode = 'CERVEJARIA' | 'QUIOSQUE' | 'HIBRIDA';
+export type OnboardingMode = 'CAIXA' | 'EVENTO';
 export type OnboardingModule = 'QUIOSQUE' | 'CERVEJARIA';
 export type OnboardingSource = 'AUTO' | 'MANUAL';
 
@@ -147,7 +147,8 @@ export function isManualStartAllowed(input: Pick<OnboardingEligibilityInput, 'is
 }
 
 export function initialSelectedModule(readiness: OnboardingReadiness): OnboardingModule | null {
-  if (readiness.mode === 'HIBRIDA') return null;
+  if (readiness.mode === 'CAIXA') return 'QUIOSQUE';
+  if (readiness.mode === 'EVENTO') return 'CERVEJARIA';
   if (readiness.modules.quiosque.enabled) return 'QUIOSQUE';
   if (readiness.modules.cervejaria.enabled) return 'CERVEJARIA';
   return null;

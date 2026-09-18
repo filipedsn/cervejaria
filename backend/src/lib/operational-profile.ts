@@ -9,6 +9,8 @@ export interface OperationalCapabilities {
   plannedOperations: boolean;
 }
 
+export type OperationMode = 'CAIXA' | 'EVENTO';
+
 export interface OperationalProfileFacts {
   tenantId: string;
   legacyQuiosque: {
@@ -40,6 +42,7 @@ export interface OperationalProfileFacts {
  */
 export interface OperationalProfile {
   tenantId: string;
+  operationMode: OperationMode;
   capabilities: OperationalCapabilities;
   operationalUnits: {
     trailers: number;
@@ -66,8 +69,11 @@ export function deriveOperationalProfile(facts: OperationalProfileFacts): Operat
   const quiosqueEnabled = facts.legacyQuiosque?.enabled === true;
   const hasDirectSaleUnit = quiosqueEnabled && facts.activePointsOfSale > 0;
   const legacyCashRegister = hasDirectSaleUnit;
-  const directSalesEnabled = facts.operationalEnablement?.directSalesEnabled ?? hasDirectSaleUnit;
-  const plannedOperationsEnabled = facts.operationalEnablement?.plannedOperationsEnabled ?? facts.activeTrailers > 0;
+  // plannedOperationsEnabled is the persisted mode signal. Its inverse is a
+  // compatibility projection for direct sales; they are never independent.
+  const operationMode: OperationMode = (facts.operationalEnablement?.plannedOperationsEnabled ?? facts.activeTrailers > 0)
+    ? 'EVENTO'
+    : 'CAIXA';
   const tapsEnabled = facts.operationalEnablement?.tapsEnabled ?? facts.activeTaps > 0;
   const inventoryEnabled = facts.operationalEnablement?.inventoryEnabled
     ?? (quiosqueEnabled && facts.legacyQuiosque!.controlaEstoque);
@@ -78,12 +84,14 @@ export function deriveOperationalProfile(facts: OperationalProfileFacts): Operat
   const cashRegisterSettings = facts.activePointOfSaleCashRegisterSettings.length > 0
     ? facts.activePointOfSaleCashRegisterSettings
     : Array<boolean | null>(facts.activePointsOfSale).fill(null);
-  const hasCashRegisterUnit = cashRegisterSettings.some(
+  const hasCashRegisterUnit = operationMode === 'CAIXA' && cashRegisterSettings.some(
+    // Explicit usaCaixa is retained for old multi-PDV installations only.
     (usaCaixa) => usaCaixa ?? legacyCashRegister,
   );
 
   return {
     tenantId: facts.tenantId,
+    operationMode,
     capabilities: {
       // The current direct-sale route requires an open SessaoCaixaQuiosque.
       // A POS-capable tenant can therefore operate the cash-register workflow,
@@ -94,9 +102,9 @@ export function deriveOperationalProfile(facts: OperationalProfileFacts): Operat
       // Taps are evidenced by active physical resources, never tenant naming.
       taps: tapsEnabled,
       // Today, direct sales are the POS flow and require an active POS unit.
-      directSales: directSalesEnabled,
+      directSales: operationMode === 'CAIXA',
       // Today, an active Trailer is the prerequisite unit for Evento creation.
-      plannedOperations: plannedOperationsEnabled,
+      plannedOperations: operationMode === 'EVENTO',
     },
     operationalUnits: {
       trailers: facts.activeTrailers,
