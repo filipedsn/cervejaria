@@ -10,13 +10,14 @@
  * - never calls an Elasticsearch write endpoint.
  */
 
+import { assertDevElasticTarget } from './elastic-target-guard.mjs';
+
 const SHARED_ALERT_INDEX = 'quiver-tap-alert-events';
 const MAX_SEARCH_SIZE = 3;
 const SEARCH_LOOKBACK_HOURS = 24;
 const ELASTIC_SEARCH_TIMEOUT = '5s';
 
 const environment = (process.env.SUPPORT_ANALYST_ENV || 'dev').trim().toLowerCase();
-const allowPrd = process.env.SUPPORT_ANALYST_ALLOW_PRD === 'true';
 const apiKey = process.env.SUPPORT_ANALYST_ES_API_KEY?.trim();
 const baseUrl = (process.env.SUPPORT_ANALYST_ES_URL || 'http://127.0.0.1:9200').replace(
   /\/$/,
@@ -61,9 +62,14 @@ if (correlationId && !isUuid(correlationId)) {
 
 const auditPattern = `logs-audit*.otel-${environment}*`;
 const technicalPattern = `logs-technical*.otel-${environment}*`;
-const alertIndex = environment === 'dev' ? 'quiver-tap-alert-events-dev' : SHARED_ALERT_INDEX;
-const alertRuleNameExactField = environment === 'dev' ? 'ruleName' : 'ruleName.keyword';
+const alertIndex = 'quiver-tap-alert-events-dev';
+const alertRuleNameExactField = 'ruleName';
 const allowedPatterns = [alertIndex, auditPattern, technicalPattern];
+try {
+  assertDevElasticTarget({ environment, baseUrl, indexPatterns: allowedPatterns });
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
 const outsidePatterns = [
   ...(environment === 'dev'
     ? [SHARED_ALERT_INDEX, 'logs-audit*.otel-prd*', 'logs-technical*.otel-prd*']

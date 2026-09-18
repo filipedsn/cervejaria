@@ -17,6 +17,7 @@ import {
 import { ensureDefaultTaps } from '../lib/trailer-defaults.js';
 import { atualizarCapacidadesQuiosque } from '../lib/quiosque/capacidades.js';
 import { adaptLegacyProvisioning, provisionEstablishment, provisionEstablishmentRequestSchema } from '../lib/provision-establishment.js';
+import { updateOperationalConfig, updateOperationalConfigSchema } from '../lib/operational-config.js';
 import { getAuthUser } from '../types/auth.js';
 import {
   encryptSecret,
@@ -250,6 +251,23 @@ export async function adminRoutes(app: FastifyInstance) {
     });
     if (!cervejaria) return reply.status(404).send({ error: 'Cervejaria não encontrada' });
     return formatAdminCervejaria(cervejaria);
+  });
+
+  // The operational configuration is shared with the owner portal.  Admin
+  // never writes the legacy module projection.
+  app.get('/cervejarias/:id/configuracao-operacional', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const configuration = await prisma.configuracaoOperacional.findUnique({ where: { cervejariaId: id } });
+    if (!configuration) return reply.status(404).send({ error: 'ConfiguraÃ§Ã£o operacional nÃ£o encontrada' });
+    return configuration;
+  });
+
+  app.patch('/cervejarias/:id/configuracao-operacional', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const existing = await prisma.cervejaria.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return reply.status(404).send({ error: 'Cervejaria nÃ£o encontrada' });
+    const body = updateOperationalConfigSchema.parse(request.body);
+    return prisma.$transaction((tx) => updateOperationalConfig(tx, id, body));
   });
 
   app.post('/cervejarias/provision', async (request, reply) => {

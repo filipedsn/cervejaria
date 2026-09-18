@@ -155,6 +155,16 @@ const MODULOS_PADRAO = {
   quiosqueTemCozinha: false,
 };
 
+const CAPABILITY_OPTIONS = [
+  ['directSales', 'Venda avulsa', 'Vender diretamente no balcÃ£o ou ponto de venda.'],
+  ['plannedOperations', 'OperaÃ§Ãµes', 'Trabalhar com operaÃ§Ãµes iniciadas agora ou agendadas.'],
+  ['taps', 'Torneiras de chope', 'Usar torneiras de chope nas operaÃ§Ãµes.'],
+  ['inventory', 'Controle de estoque', 'Controlar saldo e movimentaÃ§Ã£o dos produtos.'],
+  ['kitchen', 'Cozinha / preparo', 'Usar o fluxo de preparo de pedidos.'],
+] as const;
+type Enablements = Record<(typeof CAPABILITY_OPTIONS)[number][0], boolean>;
+const ENABLEMENTS_PADRAO: Enablements = { directSales: false, plannedOperations: false, taps: false, inventory: false, kitchen: false };
+
 export function AdminCervejariasPage() {
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
@@ -172,6 +182,13 @@ export function AdminCervejariasPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [modulos, setModulos] = useState({ ...MODULOS_PADRAO });
+  const [enablements, setEnablements] = useState<Enablements>({ ...ENABLEMENTS_PADRAO });
+
+  const { data: editingConfiguration } = useQuery({
+    queryKey: ['admin-operational-configuration', editing?.id],
+    enabled: Boolean(editing?.id),
+    queryFn: () => api.get<Record<`${keyof Enablements}Enabled`, boolean>>(`/api/admin/cervejarias/${editing!.id}/configuracao-operacional`),
+  });
 
   useEffect(() => {
     if (!logoFile) return;
@@ -179,6 +196,17 @@ export function AdminCervejariasPage() {
     setLogoPreview(url);
     return () => URL.revokeObjectURL(url);
   }, [logoFile]);
+
+  useEffect(() => {
+    if (!editingConfiguration) return;
+    setEnablements({
+      directSales: editingConfiguration.directSalesEnabled,
+      plannedOperations: editingConfiguration.plannedOperationsEnabled,
+      taps: editingConfiguration.tapsEnabled,
+      inventory: editingConfiguration.inventoryEnabled,
+      kitchen: editingConfiguration.kitchenEnabled,
+    });
+  }, [editingConfiguration]);
 
   const savedTheme = useMemo(
     () => (editing ? normalizeTheme(editing.corPaleta ?? null, editing.corPrimaria ?? null) : null),
@@ -191,6 +219,7 @@ export function AdminCervejariasPage() {
     setLogoFile(null);
     setLogoPreview(null);
     setModulos({ ...MODULOS_PADRAO });
+    setEnablements({ ...ENABLEMENTS_PADRAO });
     setError('');
   };
 
@@ -256,11 +285,9 @@ export function AdminCervejariasPage() {
       return;
     }
     setError('');
-    const alterouEstoque =
-      editing?.modulos.quiosque === true &&
-      editing.modulos.quiosqueControlaEstoque !== modulos.quiosqueControlaEstoque;
+    const alterouEstoque = editingConfiguration?.inventoryEnabled !== undefined && editingConfiguration.inventoryEnabled !== enablements.inventory;
     const confirmacaoEstoque = alterouEstoque
-      ? confirm(mensagemConfirmacaoEstoque(modulos.quiosqueControlaEstoque))
+      ? confirm(mensagemConfirmacaoEstoque(enablements.inventory))
       : false;
     if (alterouEstoque && !confirmacaoEstoque) return;
     updateMutation.mutate({ confirmacaoEstoque });
@@ -300,12 +327,17 @@ export function AdminCervejariasPage() {
       if (form.donoSenha) data.append('donoSenha', form.donoSenha);
       if (corPrimaria && /^#[0-9a-fA-F]{6}$/.test(corPrimaria)) data.append('corPrimaria', corPrimaria);
       if (logoFile) data.append('logo', logoFile);
-      if (editing.modulos.quiosque) {
-        data.append('quiosqueControlaEstoque', String(modulos.quiosqueControlaEstoque));
-        data.append('quiosqueTemCozinha', String(modulos.quiosqueTemCozinha));
-        if (confirmacaoEstoque) data.append('confirmacaoEstoque', 'true');
-      }
-      return api.postFormData<CervejariaAdmin>(`/api/admin/cervejarias/${editing.id}`, data, { method: 'PATCH' });
+      return Promise.all([
+        api.postFormData<CervejariaAdmin>(`/api/admin/cervejarias/${editing.id}`, data, { method: 'PATCH' }),
+        api.patch(`/api/admin/cervejarias/${editing.id}/configuracao-operacional`, {
+          directSalesEnabled: enablements.directSales,
+          plannedOperationsEnabled: enablements.plannedOperations,
+          tapsEnabled: enablements.taps,
+          inventoryEnabled: enablements.inventory,
+          kitchenEnabled: enablements.kitchen,
+          ...(confirmacaoEstoque ? { confirmacaoEstoque: true } : {}),
+        }),
+      ]);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-cervejarias'] });
@@ -618,15 +650,15 @@ export function AdminCervejariasPage() {
             </div>
           </div>
 
-          {editing?.modulos && (
+          {editing && false && (
             <div className="space-y-2">
               <label className="label">Modo da empresa</label>
               <div className="rounded-xl border border-line bg-surface-lighter px-4 py-3 text-sm font-semibold text-ink">
-                {modoEmpresa(editing.modulos.cervejaria, editing.modulos.quiosque)}
+                {modoEmpresa(editing!.modulos.cervejaria, editing!.modulos.quiosque)}
                 <span className="ml-2 font-normal text-ink-muted">(somente leitura)</span>
               </div>
 
-              {editing.modulos.quiosque && (
+              {editing!.modulos.quiosque && (
                 <div className="space-y-2 pt-2">
                   <p className="text-sm font-semibold text-ink">Recursos do Quiosque</p>
                   <ModuloOption
@@ -645,6 +677,14 @@ export function AdminCervejariasPage() {
               )}
             </div>
           )}
+
+          <div className="space-y-2">
+            <label className="label">Capacidades operacionais</label>
+            <p className="text-xs text-ink-faint">Defina os recursos que fazem parte desta operaÃ§Ã£o.</p>
+            {CAPABILITY_OPTIONS.map(([key, title, description]) => (
+              <ModuloOption key={key} titulo={title} descricao={description} marcado={enablements[key]} onChange={(value) => setEnablements((current) => ({ ...current, [key]: value }))} />
+            ))}
+          </div>
 
           <BrandingEditorFields
             currentLogoUrl={editing?.logoUrl}
