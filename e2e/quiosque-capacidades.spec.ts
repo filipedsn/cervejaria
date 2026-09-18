@@ -129,7 +129,7 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
     await expect(page.getByRole('button', { name: 'Ativar Cozinha / preparo' })).toBeVisible();
   });
 
-  test('ADMIN edita recursos sem poder mudar o modo principal', async ({ page }) => {
+  test('ADMIN edita capacidades operacionais sem modo principal legado', async ({ page }) => {
     await login(page, CREDENTIALS.admin.email, CREDENTIALS.admin.password);
     await page.goto('/admin/cervejarias');
 
@@ -138,13 +138,13 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
     await row.getByRole('button', { name: 'Editar' }).click();
 
     const dialog = page.getByRole('dialog', { name: new RegExp(companyName) });
-    await expect(dialog.getByText('(somente leitura)', { exact: true })).toBeVisible();
-    await expect(dialog.getByRole('checkbox')).toHaveCount(2);
+    await expect(dialog.getByRole('checkbox')).toHaveCount(5);
     await expect(dialog.getByRole('checkbox', { name: /Cervejaria/ })).toHaveCount(0);
-    await dialog.getByRole('checkbox', { name: /Tem cozinha/ }).check();
+    await dialog.getByRole('checkbox', { name: /Cozinha \/ preparo/ }).check();
     await dialog.getByRole('button', { name: 'Salvar alterações' }).click();
 
     await expect(dialog).toBeHidden();
-    await expect(row.getByText('Cozinha', { exact: true })).toBeVisible();
+    await row.getByRole('button', { name: 'Editar' }).click();
+    await expect(dialog.getByRole('checkbox', { name: /Cozinha \/ preparo/ })).toBeChecked();
   });
 });

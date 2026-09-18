@@ -308,6 +308,7 @@ export function AdminCervejariasPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-cervejarias'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-operational-configuration', editing?.id] });
       closeEdit();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao atualizar'),
