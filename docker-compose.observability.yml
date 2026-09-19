@@ -14,8 +14,9 @@ services:
     volumes:
       - ./deploy/observability/otel-collector-config.yml:/etc/otelcol-contrib/config.yaml:ro
     ports:
-      - "4317:4317"
-      - "4318:4318"
+      # DEV-only: do not expose the collector to non-local/production clients.
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
     networks:
       - elastic
 
