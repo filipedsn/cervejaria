@@ -139,6 +139,22 @@ export function Layout() {
   const inQuiosque = location.pathname.startsWith('/quiosque');
 
   const navItemsComandasQuiosque = QUIOSQUE_NAV_ITEMS.filter((item) => item.path === '/quiosque/comandas');
+  const navItemsCervejaria =
+    quiosque.ativo && quiosque.exclusivo
+      ? []
+      : NAV_ITEMS.filter((item) => !('donoOnly' in item && item.donoOnly) || isDono);
+  const navItemsComplementares = quiosque.ativo
+    ? getComplementaryNavItems({ temCozinha: quiosque.temCozinha, controlaEstoque: quiosque.controlaEstoque })
+    : [];
+  const clientesIndex = navItemsCervejaria.findIndex((item) => item.path === '/clientes');
+  const navItemsCervejariaOrdenados =
+    clientesIndex >= 0
+      ? [
+          ...navItemsCervejaria.slice(0, clientesIndex + 1),
+          ...navItemsComplementares,
+          ...navItemsCervejaria.slice(clientesIndex + 1),
+        ]
+      : [...navItemsCervejaria, ...navItemsComplementares];
 
   const navItems = inQuiosque
     ? quiosqueLoading
@@ -155,15 +171,7 @@ export function Layout() {
               : []),
           ]
         : navItemsComandasQuiosque
-    : [
-        ...(quiosque.ativo && quiosque.exclusivo
-          ? []
-          : NAV_ITEMS.filter((item) => !('donoOnly' in item && item.donoOnly) || isDono)),
-        ...(quiosque.ativo ? NAV_ITEMS_QUIOSQUE : []),
-        ...(quiosque.ativo
-          ? getComplementaryNavItems({ temCozinha: quiosque.temCozinha, controlaEstoque: quiosque.controlaEstoque })
-          : []),
-      ];
+    : [...navItemsCervejariaOrdenados, ...(quiosque.ativo ? NAV_ITEMS_QUIOSQUE : [])];
   const { alertEnabled, alertNeedsUnlock, pushStatus, wakeLockActive, togglePedidoAlert } =
     usePedidoAlertSound();
   const onEventsPage = location.pathname === '/eventos';
