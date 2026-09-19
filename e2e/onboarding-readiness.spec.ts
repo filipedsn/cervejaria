@@ -41,9 +41,9 @@ test.describe('Onboarding readiness', () => {
     const response = await apiRequest<Readiness>('GET', '/api/onboarding/readiness', { cookie });
 
     expect(response.status).toBe(200);
-    expect(response.data.mode).toBe('EVENTO');
-    expect(response.data.modules.quiosque.enabled).toBe(false);
-    expect(response.data.modules.cervejaria.enabled).toBe(true);
+    expect(response.data.mode).toBe('CAIXA');
+    expect(response.data.modules.quiosque.enabled).toBe(true);
+    expect(response.data.modules.cervejaria.enabled).toBe(false);
   });
 
   test('atendente pode consultar sem receber capacidade administrativa', async () => {

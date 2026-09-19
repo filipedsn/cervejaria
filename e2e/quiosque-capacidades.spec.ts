@@ -97,13 +97,15 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
 
   test('exibe a seção para Híbrida e a oculta para Cervejaria pura', async ({ page }) => {
     await login(page, CREDENTIALS.hibrida.email, CREDENTIALS.hibrida.password);
-    await page.goto('/configuracoes/operacao');
+    await page.goto('/quiosque/configuracoes/operacao');
     await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Por caixa' })).toHaveAttribute('aria-pressed', 'true');
 
     await page.context().clearCookies();
     await login(page, CREDENTIALS.dono.email, CREDENTIALS.dono.password);
     await page.goto('/configuracoes/operacao');
     await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Por opera/ })).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('exibe de forma compreensível o bloqueio devolvido pelo backend', async ({ page }) => {
