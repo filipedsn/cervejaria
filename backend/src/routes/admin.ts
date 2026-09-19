@@ -15,7 +15,6 @@ import {
   updateBrandingColors,
 } from '../lib/cervejaria-branding.js';
 import { ensureDefaultTaps } from '../lib/trailer-defaults.js';
-import { atualizarCapacidadesQuiosque } from '../lib/quiosque/capacidades.js';
 import { adaptLegacyProvisioning, provisionEstablishment, provisionEstablishmentRequestSchema } from '../lib/provision-establishment.js';
 import { updateOperationalConfig, updateOperationalConfigSchema } from '../lib/operational-config.js';
 import { getAuthUser } from '../types/auth.js';
@@ -156,6 +155,12 @@ function formatAdminCervejaria(
       controlaEstoque: boolean;
       temCozinha: boolean;
     } | null;
+    configuracaoOperacional?: {
+      directSalesEnabled: boolean | null;
+      plannedOperationsEnabled: boolean | null;
+      inventoryEnabled: boolean | null;
+      kitchenEnabled: boolean | null;
+    } | null;
     _count?: { usuarios: number; eventos: number };
     usuarios?: Array<{ id: string; nome: string; email: string }>;
   },
@@ -163,8 +168,11 @@ function formatAdminCervejaria(
 ) {
   const branding = formatCervejariaAuth(c);
   const quiosque = c.configuracaoQuiosque;
-  const temQuiosque = quiosque?.ativo === true;
-  const temCervejaria = !temQuiosque || !quiosque.exclusivo;
+  const operacional = c.configuracaoOperacional;
+  const temQuiosque = operacional
+    ? operacional.directSalesEnabled === true || operacional.inventoryEnabled === true || operacional.kitchenEnabled === true
+    : quiosque?.ativo === true;
+  const temCervejaria = !temQuiosque || quiosque?.exclusivo !== true;
 
   return {
     ...branding,
@@ -172,8 +180,8 @@ function formatAdminCervejaria(
     modulos: {
       cervejaria: temCervejaria,
       quiosque: temQuiosque,
-      quiosqueControlaEstoque: temQuiosque && quiosque.controlaEstoque,
-      quiosqueTemCozinha: temQuiosque && quiosque.temCozinha,
+      quiosqueControlaEstoque: operacional?.inventoryEnabled ?? (temQuiosque && quiosque?.controlaEstoque === true),
+      quiosqueTemCozinha: operacional?.kitchenEnabled ?? (temQuiosque && quiosque?.temCozinha === true),
     },
     mesAtual,
     _count: c._count,
@@ -204,6 +212,14 @@ async function mapCervejariasList() {
             exclusivo: true,
             controlaEstoque: true,
             temCozinha: true,
+          },
+        },
+        configuracaoOperacional: {
+          select: {
+            directSalesEnabled: true,
+            plannedOperationsEnabled: true,
+            inventoryEnabled: true,
+            kitchenEnabled: true,
           },
         },
         usuarios: {
@@ -240,6 +256,14 @@ export async function adminRoutes(app: FastifyInstance) {
             exclusivo: true,
             controlaEstoque: true,
             temCozinha: true,
+          },
+        },
+        configuracaoOperacional: {
+          select: {
+            directSalesEnabled: true,
+            plannedOperationsEnabled: true,
+            inventoryEnabled: true,
+            kitchenEnabled: true,
           },
         },
         usuarios: {
@@ -380,14 +404,11 @@ export async function adminRoutes(app: FastifyInstance) {
         body.quiosqueTemCozinha !== undefined ||
         body.quiosqueControlaEstoque !== undefined
       ) {
-        await atualizarCapacidadesQuiosque(tx, {
-          cervejariaId: id,
-          usuarioId: admin.sub,
-          papel: 'ADMIN',
-          origem: 'ADMIN',
-          temCozinha: body.quiosqueTemCozinha,
-          controlaEstoque: body.quiosqueControlaEstoque,
-          confirmacaoEstoque: body.confirmacaoEstoque,
+        await updateOperationalConfig(tx, id, {
+          ...(body.quiosqueTemCozinha !== undefined ? { kitchenEnabled: body.quiosqueTemCozinha } : {}),
+          ...(body.quiosqueControlaEstoque !== undefined
+            ? { inventoryEnabled: body.quiosqueControlaEstoque, confirmacaoEstoque: body.confirmacaoEstoque }
+            : {}),
         });
       }
     });
@@ -405,6 +426,9 @@ export async function adminRoutes(app: FastifyInstance) {
         _count: { select: { usuarios: true, eventos: true } },
         configuracaoQuiosque: {
           select: { ativo: true, exclusivo: true, controlaEstoque: true, temCozinha: true },
+        },
+        configuracaoOperacional: {
+          select: { directSalesEnabled: true, plannedOperationsEnabled: true, inventoryEnabled: true, kitchenEnabled: true },
         },
         usuarios: { where: { papel: 'DONO' }, select: { id: true, nome: true, email: true }, take: 1 },
       },

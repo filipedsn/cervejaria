@@ -34,6 +34,13 @@ function criarCenario(
     quantidadeMesas: 0,
     ...overrides,
   };
+  let configuracaoOperacional = configuracao.ativo
+    ? {
+        cervejariaId: configuracao.cervejariaId,
+        inventoryEnabled: configuracao.controlaEstoque,
+        kitchenEnabled: configuracao.temCozinha,
+      }
+    : null;
   const auditorias: RegistrarTransacaoInput[] = [];
   let consultaPedido: unknown;
   let movimentosRetroativos = 0;
@@ -45,6 +52,17 @@ function criarCenario(
       update: async ({ data }: { data: Partial<Configuracao> }) => {
         configuracao = { ...configuracao, ...data };
         return configuracao;
+      },
+    },
+    configuracaoOperacional: {
+      findUnique: async ({ where }: { where: { cervejariaId: string } }) =>
+        where.cervejariaId === configuracao.cervejariaId ? configuracaoOperacional : null,
+      upsert: async ({ create, update }: { create: Record<string, unknown>; update: Record<string, unknown> }) => {
+        configuracaoOperacional = {
+          ...(configuracaoOperacional ?? create),
+          ...update,
+        } as typeof configuracaoOperacional;
+        return configuracaoOperacional;
       },
     },
     pedidoQuiosque: {
@@ -70,6 +88,7 @@ function criarCenario(
     audit,
     auditorias,
     configuracao: () => configuracao,
+    configuracaoOperacional: () => configuracaoOperacional,
     consultaPedido: () => consultaPedido,
     movimentosRetroativos: () => movimentosRetroativos,
   };

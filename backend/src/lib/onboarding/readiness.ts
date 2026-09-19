@@ -231,11 +231,7 @@ async function collectCervejariaFacts(cervejariaId: string) {
 
 /** Read-only operational state for the authenticated tenant. */
 export async function getOnboardingReadiness(cervejariaId: string, canConfigure: boolean) {
-  const [configuracaoQuiosque, hasHistoricalSale, profile] = await Promise.all([
-    prisma.configuracaoQuiosque.findFirst({
-      where: { cervejariaId, ativo: true },
-      select: { exclusivo: true, controlaEstoque: true, temCozinha: true },
-    }),
+  const [hasHistoricalSale, profile] = await Promise.all([
     prisma.comanda.count({
       where: {
         status: 'FECHADA',
