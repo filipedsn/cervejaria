@@ -47,8 +47,8 @@ export async function quiosqueRoutes(app: FastifyInstance) {
       ativo: true as const,
       // The context powers navigation and page guards, so it must expose the
       // same persisted capability decision as the operational settings panel.
-      controlaEstoque: profile?.capabilities.inventory ?? configuracao.controlaEstoque,
-      temCozinha: profile?.capabilities.kitchen ?? configuracao.temCozinha,
+      controlaEstoque: profile?.capabilities.inventory ?? configuracao?.controlaEstoque ?? false,
+      temCozinha: profile?.capabilities.kitchen ?? configuracao?.temCozinha ?? false,
       exclusivo: configuracao?.exclusivo ?? false,
       usaCardapio: configuracao?.usaCardapio ?? false,
       quantidadeMesas: configuracao?.quantidadeMesas ?? 0,

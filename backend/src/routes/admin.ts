@@ -407,7 +407,10 @@ export async function adminRoutes(app: FastifyInstance) {
         await updateOperationalConfig(tx, id, {
           ...(body.quiosqueTemCozinha !== undefined ? { kitchenEnabled: body.quiosqueTemCozinha } : {}),
           ...(body.quiosqueControlaEstoque !== undefined
-            ? { inventoryEnabled: body.quiosqueControlaEstoque, confirmacaoEstoque: body.confirmacaoEstoque }
+            ? {
+                inventoryEnabled: body.quiosqueControlaEstoque,
+                ...(body.confirmacaoEstoque === true ? { confirmacaoEstoque: true as const } : {}),
+              }
             : {}),
         });
       }

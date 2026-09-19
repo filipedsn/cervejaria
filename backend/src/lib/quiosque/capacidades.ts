@@ -108,7 +108,9 @@ export async function atualizarCapacidadesQuiosque(
 
   await updateOperationalConfig(tx, input.cervejariaId, {
     ...(alteraCozinha ? { kitchenEnabled: input.temCozinha } : {}),
-    ...(alteraEstoque ? { inventoryEnabled: input.controlaEstoque, confirmacaoEstoque: input.confirmacaoEstoque } : {}),
+    // The guard above establishes that every inventory change was explicitly
+    // confirmed. Preserve that invariant in the narrower operational input.
+    ...(alteraEstoque ? { inventoryEnabled: input.controlaEstoque, confirmacaoEstoque: true as const } : {}),
   });
 
   const atualizado = atual
