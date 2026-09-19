@@ -18,10 +18,12 @@ export const CONFIG_DEFINITIONS = [
   { code: 'QUIOSQUE-10', slug: `${CFG_PREFIX}quiosque-10`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: true, temCozinha: false, exclusivo: true },
   { code: 'QUIOSQUE-01', slug: `${CFG_PREFIX}quiosque-01`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: false, temCozinha: true, exclusivo: true },
   { code: 'QUIOSQUE-11', slug: `${CFG_PREFIX}quiosque-11`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: true, temCozinha: true, exclusivo: true },
-  { code: 'HIBRIDA-00', slug: `${CFG_PREFIX}hibrida-00`, moduloCervejaria: true, moduloQuiosque: true, controlaEstoque: false, temCozinha: false, exclusivo: false },
-  { code: 'HIBRIDA-10', slug: `${CFG_PREFIX}hibrida-10`, moduloCervejaria: true, moduloQuiosque: true, controlaEstoque: true, temCozinha: false, exclusivo: false },
-  { code: 'HIBRIDA-01', slug: `${CFG_PREFIX}hibrida-01`, moduloCervejaria: true, moduloQuiosque: true, controlaEstoque: false, temCozinha: true, exclusivo: false },
-  { code: 'HIBRIDA-11', slug: `${CFG_PREFIX}hibrida-11`, moduloCervejaria: true, moduloQuiosque: true, controlaEstoque: true, temCozinha: true, exclusivo: false },
+  // Legacy HIBRIDA labels remain fixture identifiers only. The former mixed
+  // combination is now represented by CAIXA plus optional capabilities.
+  { code: 'HIBRIDA-00', slug: `${CFG_PREFIX}hibrida-00`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: false, temCozinha: false, exclusivo: true },
+  { code: 'HIBRIDA-10', slug: `${CFG_PREFIX}hibrida-10`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: true, temCozinha: false, exclusivo: true },
+  { code: 'HIBRIDA-01', slug: `${CFG_PREFIX}hibrida-01`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: false, temCozinha: true, exclusivo: true },
+  { code: 'HIBRIDA-11', slug: `${CFG_PREFIX}hibrida-11`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: true, temCozinha: true, exclusivo: true },
 ] as const;
 
 async function cleanupQuiosqueForBrewery(cervejariaId: string) {

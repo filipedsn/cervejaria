@@ -3,7 +3,7 @@ import { apiLogin, apiRequest } from './helpers/api';
 import { CREDENTIALS } from './helpers/auth';
 
 interface Readiness {
-  mode: 'CERVEJARIA' | 'QUIOSQUE' | 'HIBRIDA';
+  mode: 'CAIXA' | 'EVENTO';
   canConfigure: boolean;
   firstSaleCompleted: boolean;
   modules: {
@@ -20,7 +20,7 @@ test.describe('Onboarding readiness', () => {
     const quiosqueCookie = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
     const baseline = await apiRequest<Readiness>('GET', '/api/onboarding/readiness', { cookie: quiosqueCookie });
     expect(baseline.status).toBe(200);
-    expect(baseline.data.mode).toBe('QUIOSQUE');
+    expect(baseline.data.mode).toBe('CAIXA');
     expect(baseline.data.canConfigure).toBe(true);
 
     // The endpoint has no tenant selector: an arbitrary query value cannot
@@ -41,8 +41,8 @@ test.describe('Onboarding readiness', () => {
     const response = await apiRequest<Readiness>('GET', '/api/onboarding/readiness', { cookie });
 
     expect(response.status).toBe(200);
-    expect(response.data.mode).toBe('HIBRIDA');
-    expect(response.data.modules.quiosque.enabled).toBe(true);
+    expect(response.data.mode).toBe('EVENTO');
+    expect(response.data.modules.quiosque.enabled).toBe(false);
     expect(response.data.modules.cervejaria.enabled).toBe(true);
   });
 
