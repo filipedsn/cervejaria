@@ -1,8 +1,9 @@
 import { isBebidaChope } from '../produto-utils.js';
 import { prisma } from '../prisma.js';
 import { diaOperacional } from '../quiosque/venda.js';
+import { getOperationalProfile } from '../operational-profile.js';
 
-export type OnboardingMode = 'CERVEJARIA' | 'QUIOSQUE' | 'HIBRIDA';
+export type OnboardingMode = 'CAIXA' | 'EVENTO';
 
 export type OnboardingStepCode =
   | 'QUIOSQUE_POINT'
@@ -119,11 +120,7 @@ export function deriveOnboardingReadiness(
     return true;
   }), 'CERVEJARIA_FIRST_SALE');
 
-  const mode: OnboardingMode = facts.quiosque.enabled
-    ? facts.cervejaria.enabled
-      ? 'HIBRIDA'
-      : 'QUIOSQUE'
-    : 'CERVEJARIA';
+  const mode: OnboardingMode = facts.cervejaria.enabled ? 'EVENTO' : 'CAIXA';
 
   return {
     mode,
@@ -234,11 +231,7 @@ async function collectCervejariaFacts(cervejariaId: string) {
 
 /** Read-only operational state for the authenticated tenant. */
 export async function getOnboardingReadiness(cervejariaId: string, canConfigure: boolean) {
-  const [configuracaoQuiosque, hasHistoricalSale] = await Promise.all([
-    prisma.configuracaoQuiosque.findFirst({
-      where: { cervejariaId, ativo: true },
-      select: { exclusivo: true, controlaEstoque: true, temCozinha: true },
-    }),
+  const [hasHistoricalSale, profile] = await Promise.all([
     prisma.comanda.count({
       where: {
         status: 'FECHADA',
@@ -249,16 +242,17 @@ export async function getOnboardingReadiness(cervejariaId: string, canConfigure:
         ],
       },
     }),
+    getOperationalProfile(cervejariaId),
   ]);
 
-  const quiosqueEnabled = Boolean(configuracaoQuiosque);
-  const cervejariaEnabled = !configuracaoQuiosque?.exclusivo;
+  const quiosqueEnabled = profile?.operationMode === 'CAIXA';
+  const cervejariaEnabled = profile?.operationMode === 'EVENTO';
   const [quiosque, cervejaria] = await Promise.all([
     quiosqueEnabled
       ? collectQuiosqueFacts(
           cervejariaId,
-          configuracaoQuiosque!.controlaEstoque,
-          configuracaoQuiosque!.temCozinha,
+          profile?.capabilities.inventory === true,
+          profile?.capabilities.kitchen === true,
         )
       : Promise.resolve({
           enabled: false,

@@ -39,33 +39,6 @@ interface CervejariaAdmin {
   usuarios: Array<{ id: string; nome: string; email: string }>;
 }
 
-function ModulosBadges({ modulos }: { modulos: ModulosAdmin }) {
-  return (
-    <div className="mt-1 flex flex-wrap gap-1">
-      {modulos.cervejaria && (
-        <span className="rounded-full bg-brand-400/15 px-2 py-0.5 text-[10px] font-semibold text-brand-600">
-          Cervejaria
-        </span>
-      )}
-      {modulos.quiosque && (
-        <span className="rounded-full bg-orange/15 px-2 py-0.5 text-[10px] font-semibold text-orange">
-          Quiosque
-        </span>
-      )}
-      {modulos.quiosque && modulos.quiosqueTemCozinha && (
-        <span className="rounded-full bg-surface-lighter px-2 py-0.5 text-[10px] font-medium text-ink-faint">
-          Cozinha
-        </span>
-      )}
-      {modulos.quiosque && modulos.quiosqueControlaEstoque && (
-        <span className="rounded-full bg-surface-lighter px-2 py-0.5 text-[10px] font-medium text-ink-faint">
-          Estoque
-        </span>
-      )}
-    </div>
-  );
-}
-
 function CervejariaLogo({ nome, logoUrl }: { nome: string; logoUrl?: string | null }) {
   const src = assetUrl(logoUrl);
   if (src) {
@@ -155,6 +128,23 @@ const MODULOS_PADRAO = {
   quiosqueTemCozinha: false,
 };
 
+const CAPABILITY_OPTIONS = [
+  ['directSales', 'Venda avulsa', 'Vender diretamente no balcÃ£o ou ponto de venda.'],
+  ['plannedOperations', 'OperaÃ§Ãµes', 'Trabalhar com operaÃ§Ãµes iniciadas agora ou agendadas.'],
+  ['taps', 'Torneiras de chope', 'Usar torneiras de chope nas operaÃ§Ãµes.'],
+  ['inventory', 'Controle de estoque', 'Controlar saldo e movimentaÃ§Ã£o dos produtos.'],
+  ['kitchen', 'Cozinha / preparo', 'Usar o fluxo de preparo de pedidos.'],
+] as const;
+type Enablements = { directSales: boolean; plannedOperations: boolean; taps: boolean; inventory: boolean; kitchen: boolean };
+const CAPABILITY_COPY: Record<keyof Enablements, { title: string; description: string }> = {
+  directSales: { title: 'Venda avulsa', description: 'Vender diretamente no balcão ou ponto de venda.' },
+  plannedOperations: { title: 'Operações', description: 'Trabalhar com operações iniciadas agora ou agendadas.' },
+  taps: { title: 'Torneiras de chope', description: 'Usar torneiras de chope nas operações.' },
+  inventory: { title: 'Controle de estoque', description: 'Controlar saldo e movimentação dos produtos.' },
+  kitchen: { title: 'Cozinha / preparo', description: 'Usar o fluxo de preparo de pedidos.' },
+};
+const ENABLEMENTS_PADRAO: Enablements = { directSales: false, plannedOperations: false, taps: false, inventory: false, kitchen: false };
+
 export function AdminCervejariasPage() {
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
@@ -171,7 +161,15 @@ export function AdminCervejariasPage() {
   const [corPrimaria, setCorPrimaria] = useState(BRANDING_DEFAULT_PRIMARY);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  // Compatibility projection is kept only for the unreachable legacy block below.
   const [modulos, setModulos] = useState({ ...MODULOS_PADRAO });
+  const [enablements, setEnablements] = useState<Enablements>({ ...ENABLEMENTS_PADRAO });
+
+  const { data: editingConfiguration } = useQuery({
+    queryKey: ['admin-operational-configuration', editing?.id],
+    enabled: Boolean(editing?.id),
+    queryFn: () => api.get<Record<`${keyof Enablements}Enabled`, boolean>>(`/api/admin/cervejarias/${editing!.id}/configuracao-operacional`),
+  });
 
   useEffect(() => {
     if (!logoFile) return;
@@ -179,6 +177,17 @@ export function AdminCervejariasPage() {
     setLogoPreview(url);
     return () => URL.revokeObjectURL(url);
   }, [logoFile]);
+
+  useEffect(() => {
+    if (!editingConfiguration) return;
+    setEnablements({
+      directSales: editingConfiguration.directSalesEnabled,
+      plannedOperations: editingConfiguration.plannedOperationsEnabled,
+      taps: editingConfiguration.tapsEnabled,
+      inventory: editingConfiguration.inventoryEnabled,
+      kitchen: editingConfiguration.kitchenEnabled,
+    });
+  }, [editingConfiguration]);
 
   const savedTheme = useMemo(
     () => (editing ? normalizeTheme(editing.corPaleta ?? null, editing.corPrimaria ?? null) : null),
@@ -190,7 +199,7 @@ export function AdminCervejariasPage() {
     setCorPrimaria(BRANDING_DEFAULT_PRIMARY);
     setLogoFile(null);
     setLogoPreview(null);
-    setModulos({ ...MODULOS_PADRAO });
+    setEnablements({ ...ENABLEMENTS_PADRAO });
     setError('');
   };
 
@@ -206,7 +215,6 @@ export function AdminCervejariasPage() {
     setCorPrimaria(c.corPrimaria ?? BRANDING_DEFAULT_PRIMARY);
     setLogoFile(null);
     setLogoPreview(null);
-    setModulos({ ...c.modulos });
     setError('');
   };
 
@@ -240,10 +248,6 @@ export function AdminCervejariasPage() {
       setError(pwdErr);
       return;
     }
-    if (!modulos.cervejaria && !modulos.quiosque) {
-      setError('Selecione ao menos um módulo para a empresa');
-      return;
-    }
     setError('');
     createMutation.mutate();
   };
@@ -256,11 +260,9 @@ export function AdminCervejariasPage() {
       return;
     }
     setError('');
-    const alterouEstoque =
-      editing?.modulos.quiosque === true &&
-      editing.modulos.quiosqueControlaEstoque !== modulos.quiosqueControlaEstoque;
+    const alterouEstoque = editingConfiguration?.inventoryEnabled !== undefined && editingConfiguration.inventoryEnabled !== enablements.inventory;
     const confirmacaoEstoque = alterouEstoque
-      ? confirm(mensagemConfirmacaoEstoque(modulos.quiosqueControlaEstoque))
+      ? confirm(mensagemConfirmacaoEstoque(enablements.inventory))
       : false;
     if (alterouEstoque && !confirmacaoEstoque) return;
     updateMutation.mutate({ confirmacaoEstoque });
@@ -268,19 +270,11 @@ export function AdminCervejariasPage() {
 
   const createMutation = useMutation({
     mutationFn: () => {
-      const data = new FormData();
-      data.append('cervejariaNome', form.cervejariaNome);
-      data.append('donoNome', form.donoNome);
-      data.append('donoEmail', form.donoEmail);
-      data.append('donoSenha', form.donoSenha);
-      data.append('moduloCervejaria', String(modulos.cervejaria));
-      data.append('moduloQuiosque', String(modulos.quiosque));
-      if (modulos.quiosque) {
-        data.append('quiosqueControlaEstoque', String(modulos.quiosqueControlaEstoque));
-        data.append('quiosqueTemCozinha', String(modulos.quiosqueTemCozinha));
-      }
-      if (logoFile) data.append('logo', logoFile);
-      return api.postFormData('/api/admin/cervejarias', data);
+      return api.post('/api/admin/cervejarias/provision', {
+        nome: form.cervejariaNome,
+        dono: { nome: form.donoNome, email: form.donoEmail, senha: form.donoSenha },
+        enablements,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-cervejarias'] });
@@ -300,15 +294,21 @@ export function AdminCervejariasPage() {
       if (form.donoSenha) data.append('donoSenha', form.donoSenha);
       if (corPrimaria && /^#[0-9a-fA-F]{6}$/.test(corPrimaria)) data.append('corPrimaria', corPrimaria);
       if (logoFile) data.append('logo', logoFile);
-      if (editing.modulos.quiosque) {
-        data.append('quiosqueControlaEstoque', String(modulos.quiosqueControlaEstoque));
-        data.append('quiosqueTemCozinha', String(modulos.quiosqueTemCozinha));
-        if (confirmacaoEstoque) data.append('confirmacaoEstoque', 'true');
-      }
-      return api.postFormData<CervejariaAdmin>(`/api/admin/cervejarias/${editing.id}`, data, { method: 'PATCH' });
+      return Promise.all([
+        api.postFormData<CervejariaAdmin>(`/api/admin/cervejarias/${editing.id}`, data, { method: 'PATCH' }),
+        api.patch(`/api/admin/cervejarias/${editing.id}/configuracao-operacional`, {
+          directSalesEnabled: enablements.directSales,
+          plannedOperationsEnabled: enablements.plannedOperations,
+          tapsEnabled: enablements.taps,
+          inventoryEnabled: enablements.inventory,
+          kitchenEnabled: enablements.kitchen,
+          ...(confirmacaoEstoque ? { confirmacaoEstoque: true } : {}),
+        }),
+      ]);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-cervejarias'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-operational-configuration', editing?.id] });
       closeEdit();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao atualizar'),
@@ -397,7 +397,6 @@ export function AdminCervejariasPage() {
                   </td>
                   <td className="px-4 py-4">
                     <p className="font-semibold">{c.nome}</p>
-                    <ModulosBadges modulos={c.modulos} />
                     {!c.ativo && (
                       <span className="text-xs text-danger">Inativa</span>
                     )}
@@ -459,7 +458,6 @@ export function AdminCervejariasPage() {
               />
             </div>
             <div className="mt-2">
-              <ModulosBadges modulos={c.modulos} />
             </div>
             {c.usuarios[0] && (
               <>
@@ -501,30 +499,6 @@ export function AdminCervejariasPage() {
               <label className="label">Nome da empresa</label>
               <input className="input" value={form.cervejariaNome} onChange={(e) => setForm({ ...form, cervejariaNome: e.target.value })} required />
             </div>
-            <div className="sm:col-span-2">
-              <label className="label">Logomarca</label>
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="input file:mr-4 file:rounded-lg file:border-0 file:bg-brand-400 file:px-4 file:py-2 file:text-surface file:font-semibold"
-                onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
-              />
-              <p className="text-xs text-ink-faint mt-1">
-                As cores da logo serão extraídas automaticamente para personalizar o app desta empresa.
-              </p>
-              {logoPreview && (
-                <div className="mt-3 flex items-center gap-3">
-                  <img src={logoPreview} alt="Prévia da logo" className="h-16 w-16 rounded-xl object-contain bg-surface-lighter" />
-                  <button
-                    type="button"
-                    className="text-sm text-ink-muted hover:text-ink"
-                    onClick={() => setLogoFile(null)}
-                  >
-                    Remover
-                  </button>
-                </div>
-              )}
-            </div>
             <div>
               <label className="label">Nome do proprietário</label>
               <input className="input" value={form.donoNome} onChange={(e) => setForm({ ...form, donoNome: e.target.value })} required />
@@ -546,41 +520,17 @@ export function AdminCervejariasPage() {
           </div>
 
           <div className="space-y-2">
-            <label className="label">Módulos da empresa</label>
-            <p className="text-xs text-ink-faint">
-              Define quais operações a empresa enxerga. Pode ativar os dois.
-            </p>
-
-            <ModuloOption
-              titulo="Cervejaria"
-              descricao="Eventos, chope por tap, ranking e portal do cliente."
-              marcado={modulos.cervejaria}
-              onChange={(v) => setModulos((m) => ({ ...m, cervejaria: v }))}
-            />
-
-            <ModuloOption
-              titulo="Quiosque"
-              descricao="Venda rápida, comanda por apelido e fechamento de caixa diário."
-              marcado={modulos.quiosque}
-              onChange={(v) => setModulos((m) => ({ ...m, quiosque: v }))}
-            />
-
-            {modulos.quiosque && (
-              <div className="ml-4 space-y-2 border-l-2 border-surface-lighter pl-4">
-                <ModuloOption
-                  titulo="Controlar estoque"
-                  descricao="Baixa na venda, reposição e registro de perdas."
-                  marcado={modulos.quiosqueControlaEstoque}
-                  onChange={(v) => setModulos((m) => ({ ...m, quiosqueControlaEstoque: v }))}
-                />
-                <ModuloOption
-                  titulo="Tem cozinha"
-                  descricao="Tela de pedidos em preparo, na ordem de chegada."
-                  marcado={modulos.quiosqueTemCozinha}
-                  onChange={(v) => setModulos((m) => ({ ...m, quiosqueTemCozinha: v }))}
-                />
-              </div>
-            )}
+            <label className="label">Capacidades operacionais</label>
+            <p className="text-xs text-ink-faint">Escolha somente os recursos que a empresa vai utilizar. Eles não criam trailer, ponto de venda, tap, evento ou produto automaticamente.</p>
+            <label className="label">Como este estabelecimento trabalha?</label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" className={`card text-left ${enablements.directSales ? 'ring-2 ring-brand-400' : ''}`} onClick={() => setEnablements((current) => ({ ...current, directSales: true, plannedOperations: false }))}>Por caixa</button>
+              <button type="button" className={`card text-left ${enablements.plannedOperations ? 'ring-2 ring-brand-400' : ''}`} onClick={() => setEnablements((current) => ({ ...current, directSales: false, plannedOperations: true }))}>Por operações / eventos</button>
+            </div>
+            <p className="text-xs text-ink-faint">Escolha um único modo. Os recursos abaixo são complementares.</p>
+            {CAPABILITY_OPTIONS.filter(([key]) => key !== 'directSales' && key !== 'plannedOperations').map(([key]) => (
+              <ModuloOption key={key} titulo={CAPABILITY_COPY[key].title} descricao={CAPABILITY_COPY[key].description} marcado={enablements[key]} onChange={(value) => setEnablements((current) => ({ ...current, [key]: value }))} />
+            ))}
           </div>
 
           <button type="submit" className="touch-btn-primary w-full" disabled={createMutation.isPending}>
@@ -618,15 +568,15 @@ export function AdminCervejariasPage() {
             </div>
           </div>
 
-          {editing?.modulos && (
+          {editing && false && (
             <div className="space-y-2">
               <label className="label">Modo da empresa</label>
               <div className="rounded-xl border border-line bg-surface-lighter px-4 py-3 text-sm font-semibold text-ink">
-                {modoEmpresa(editing.modulos.cervejaria, editing.modulos.quiosque)}
+                {modoEmpresa(editing!.modulos.cervejaria, editing!.modulos.quiosque)}
                 <span className="ml-2 font-normal text-ink-muted">(somente leitura)</span>
               </div>
 
-              {editing.modulos.quiosque && (
+              {editing!.modulos.quiosque && (
                 <div className="space-y-2 pt-2">
                   <p className="text-sm font-semibold text-ink">Recursos do Quiosque</p>
                   <ModuloOption
@@ -645,6 +595,19 @@ export function AdminCervejariasPage() {
               )}
             </div>
           )}
+
+          <div className="space-y-2">
+            <label className="label">Capacidades operacionais</label>
+            <p className="text-xs text-ink-faint">Defina os recursos que fazem parte desta operaÃ§Ã£o.</p>
+            <label className="label">Como este estabelecimento trabalha?</label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" className={`card text-left ${enablements.directSales ? 'ring-2 ring-brand-400' : ''}`} onClick={() => setEnablements((current) => ({ ...current, directSales: true, plannedOperations: false }))}>Por caixa</button>
+              <button type="button" className={`card text-left ${enablements.plannedOperations ? 'ring-2 ring-brand-400' : ''}`} onClick={() => setEnablements((current) => ({ ...current, directSales: false, plannedOperations: true }))}>Por operações / eventos</button>
+            </div>
+            {CAPABILITY_OPTIONS.filter(([key]) => key !== 'directSales' && key !== 'plannedOperations').map(([key]) => (
+              <ModuloOption key={key} titulo={CAPABILITY_COPY[key].title} descricao={CAPABILITY_COPY[key].description} marcado={enablements[key]} onChange={(value) => setEnablements((current) => ({ ...current, [key]: value }))} />
+            ))}
+          </div>
 
           <BrandingEditorFields
             currentLogoUrl={editing?.logoUrl}

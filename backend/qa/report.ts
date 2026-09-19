@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../src/lib/prisma.js';
 import { recalcComandaTotal } from '../src/lib/comanda-service.js';
 import { percentile } from './lib/http.js';
@@ -39,11 +40,14 @@ async function main() {
       GREATEST(0, COALESCE(SUM(i."precoUnit"::float * i.quantidade),0) - c.desconto::float)
     ) > 0.02`;
 
-  const driftBefore = await prisma.$queryRawUnsafe<{ id: string; total: number; desconto: number; soma: number }[]>(driftQuery);
+  // This is a static query assembled in this module. Prisma 6.19 rejects the
+  // no-parameter `$queryRawUnsafe` path on this runtime, so keep it parameter-
+  // free and use the tagged raw-query API instead.
+  const driftBefore = await prisma.$queryRaw<{ id: string; total: number; desconto: number; soma: number }[]>(Prisma.raw(driftQuery));
   for (const row of driftBefore) {
     await recalcComandaTotal(row.id);
   }
-  const drift = await prisma.$queryRawUnsafe<{ id: string; total: number; desconto: number; soma: number }[]>(driftQuery);
+  const drift = await prisma.$queryRaw<{ id: string; total: number; desconto: number; soma: number }[]>(Prisma.raw(driftQuery));
   push(t({
     id: 'DB-01', name: 'Comanda.total == max(0, Σ itens − desconto)', category: 'Integridade',
     status: drift.length === 0 ? (driftBefore.length === 0 ? 'passed' : 'warning') : 'failed',

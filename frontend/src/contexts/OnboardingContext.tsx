@@ -76,16 +76,10 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    const sessionKey = storageKey;
-    if (!sessionKey || autoAttemptedInSession.has(sessionKey) || !autoStartAllowed) return;
-
-    autoAttemptedInSession.add(sessionKey);
-    dispatch({
-      type: 'OPEN',
-      source: 'AUTO',
-      selectedModule: initialSelectedModule(eligibility.readiness!),
-    });
-  }, [autoStartAllowed, eligibility.readiness, storageKey]);
+    // Automatic guidance is intentionally rendered by the compact checklist.
+    // It must never cover a real operational control or block navigation.
+    if (storageKey && autoStartAllowed) autoAttemptedInSession.add(storageKey);
+  }, [autoStartAllowed, storageKey]);
 
   const openOnboarding = useCallback(async ({ source }: OpenOnboardingOptions): Promise<boolean> => {
     setOpenError(null);

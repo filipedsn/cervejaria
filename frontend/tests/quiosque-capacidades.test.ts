@@ -5,6 +5,7 @@ import {
   modoEmpresa,
   QUIOSQUE_CAPACIDADES_INVALIDATION_KEYS,
 } from '../src/lib/quiosque-capacidades.ts';
+import { getComplementaryNavItems } from '../src/components/NavIcons.tsx';
 
 test('TAP-42: identifica os três modos da empresa como informação', () => {
   assert.equal(modoEmpresa(true, false), 'Cervejaria');
@@ -30,4 +31,12 @@ test('TAP-42: invalida contexto, cozinha e estoque após salvar', () => {
     ['quiosque-cozinha'],
     ['quiosque-estoque'],
   ]);
+});
+
+test('TAP-50: mostra abas complementares quando capabilities estao ativas', () => {
+  assert.deepEqual(getComplementaryNavItems({ controlaEstoque: true, temCozinha: true }).map((item) => item.path), [
+    '/quiosque/cozinha',
+    '/quiosque/estoque',
+  ]);
+  assert.deepEqual(getComplementaryNavItems({ controlaEstoque: false, temCozinha: false }), []);
 });

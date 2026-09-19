@@ -91,6 +91,8 @@ export async function api<T = unknown>(
     /** Envia como multipart/form-data — o boundary fica por conta do fetch. */
     multipart?: MultipartPayload;
     headers?: Record<string, string>;
+    /** Prevent a stalled QA request from blocking an entire test run forever. */
+    timeoutMs?: number;
   } = {},
 ): Promise<ApiResponse<T>> {
   const start = performance.now();
@@ -115,6 +117,7 @@ export async function api<T = unknown>(
         : opts.body !== undefined
           ? JSON.stringify(opts.body)
           : undefined,
+      signal: opts.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined,
     });
     status = res.status;
     setCookies = typeof res.headers.getSetCookie === 'function'

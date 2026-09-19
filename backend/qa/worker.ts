@@ -61,6 +61,9 @@ async function main() {
   };
 
   writeJson(path.join(WORKERS_DIR, `worker-${WORKER_ID}.json`), result);
+  if (success === 0 && failed === OPS) {
+    throw new Error(`All ${OPS} concurrency operations failed.`);
+  }
   console.log(
     `[worker ${WORKER_ID}] pid=${process.pid} itens ${success}/${OPS} OK · dupEvento HTTP ${dup.status} · ${result.durationMs.toFixed(0)}ms`,
   );

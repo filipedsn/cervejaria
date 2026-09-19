@@ -6,7 +6,10 @@ export const establishmentEnablementsSchema = z.object({
   taps: z.boolean(),
   inventory: z.boolean(),
   kitchen: z.boolean(),
-});
+}).refine(
+  (enablements) => enablements.directSales !== enablements.plannedOperations,
+  'Escolha exatamente um modo operacional: caixa ou eventos.',
+);
 
 export const provisionEstablishmentRequestSchema = z.object({
   nome: z.string().min(2),
@@ -48,7 +51,8 @@ export async function provisionEstablishment(
   const configuracaoOperacional = await tx.configuracaoOperacional.create({
     data: {
       cervejariaId: cervejaria.id,
-      directSalesEnabled: enablements.directSales,
+      // directSales is the compatibility inverse of the persisted mode signal.
+      directSalesEnabled: !enablements.plannedOperations,
       plannedOperationsEnabled: enablements.plannedOperations,
       tapsEnabled: enablements.taps,
       inventoryEnabled: enablements.inventory,
@@ -82,7 +86,7 @@ export function adaptLegacyProvisioning(input: {
       slug,
       dono: { nome: input.donoNome, email: input.donoEmail, senhaHash: input.senhaHash },
       enablements: {
-        directSales: input.moduloQuiosque,
+        directSales: !input.moduloCervejaria,
         plannedOperations: input.moduloCervejaria,
         taps: input.moduloCervejaria,
         inventory: input.quiosqueControlaEstoque,

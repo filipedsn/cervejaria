@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { getAuthUser } from '../../types/auth.js';
 import { getConfiguracaoQuiosque, requireModuloQuiosque } from '../../lib/quiosque/modulo.js';
+import { getOperationalProfile } from '../../lib/operational-profile.js';
 import { produtosQuiosqueRoutes } from './produtos.js';
 import { comandasQuiosqueRoutes } from './comandas.js';
 import { vendasQuiosqueRoutes } from './vendas.js';
@@ -31,20 +32,26 @@ export async function quiosqueRoutes(app: FastifyInstance) {
     const user = getAuthUser(request);
     const configuracao = await getConfiguracaoQuiosque(user.cervejariaId);
 
-    if (!configuracao) return { ativo: false as const };
-
-    const pontosVenda = await prisma.pontoVenda.findMany({
-      where: { cervejariaId: configuracao.cervejariaId, ativo: true },
+    const [profile, pontosVenda] = await Promise.all([
+      getOperationalProfile(user.cervejariaId!),
+      prisma.pontoVenda.findMany({
+      where: { cervejariaId: user.cervejariaId!, ativo: true },
       orderBy: { createdAt: 'asc' },
-    });
+      }),
+    ]);
+
+    const ativo = Boolean(configuracao) || profile?.capabilities.directSales === true || profile?.capabilities.inventory === true || profile?.capabilities.kitchen === true;
+    if (!ativo) return { ativo: false as const };
 
     return {
       ativo: true as const,
-      controlaEstoque: configuracao.controlaEstoque,
-      temCozinha: configuracao.temCozinha,
-      exclusivo: configuracao.exclusivo,
-      usaCardapio: configuracao.usaCardapio,
-      quantidadeMesas: configuracao.quantidadeMesas,
+      // The context powers navigation and page guards, so it must expose the
+      // same persisted capability decision as the operational settings panel.
+      controlaEstoque: profile?.capabilities.inventory ?? configuracao?.controlaEstoque ?? false,
+      temCozinha: profile?.capabilities.kitchen ?? configuracao?.temCozinha ?? false,
+      exclusivo: configuracao?.exclusivo ?? false,
+      usaCardapio: configuracao?.usaCardapio ?? false,
+      quantidadeMesas: configuracao?.quantidadeMesas ?? 0,
       pontosVenda,
     };
   });

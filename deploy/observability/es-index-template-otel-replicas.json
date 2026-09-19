@@ -5,6 +5,6 @@
       "number_of_replicas": 0
     }
   },
-  "priority": 250,
+  "priority": 110,
   "data_stream": {}
 }

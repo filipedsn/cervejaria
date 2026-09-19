@@ -79,13 +79,13 @@ test('onboarding: dismiss fecha a sessão mesmo se a gravação local falhar', (
 
 test('onboarding: híbrida começa sem módulo e mantém a escolha transitória', () => {
   const hybrid = readiness({
-    mode: 'HIBRIDA',
+    mode: 'EVENTO',
     modules: {
       quiosque: { enabled: true, ready: false, missingSteps: [{ code: 'QUIOSQUE_PRODUCT', complete: false }] },
       cervejaria: { enabled: true, ready: false, missingSteps: [{ code: 'CERVEJARIA_PRODUCT', complete: false }] },
     },
   });
-  assert.equal(initialSelectedModule(hybrid), null);
+  assert.equal(initialSelectedModule(hybrid), 'CERVEJARIA');
   let state = createOnboardingUiState(false);
   state = onboardingUiReducer(state, { type: 'OPEN', source: 'MANUAL', selectedModule: null });
   state = onboardingUiReducer(state, { type: 'SELECT_MODULE', selectedModule: 'QUIOSQUE' });

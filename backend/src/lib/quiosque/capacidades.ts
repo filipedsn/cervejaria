@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { STATUS_NA_FILA } from './cozinha.js';
 import { registrarTransacao, type RegistrarTransacaoInput } from '../transacao-log.js';
+import { updateOperationalConfig } from '../operational-config.js';
 
 type TxClient = Prisma.TransactionClient;
 
@@ -80,57 +80,67 @@ export async function atualizarCapacidadesQuiosque(
     },
   });
 
-  if (!atual?.ativo) throw new QuiosqueInativoError();
+  const operacional = await tx.configuracaoOperacional.findUnique({ where: { cervejariaId: input.cervejariaId } });
+  if (!atual?.ativo && !operacional) throw new QuiosqueInativoError();
 
-  const alteraCozinha = input.temCozinha !== undefined && input.temCozinha !== atual.temCozinha;
+  const atualEstoque = operacional?.inventoryEnabled ?? atual?.controlaEstoque ?? false;
+  const atualCozinha = operacional?.kitchenEnabled ?? atual?.temCozinha ?? false;
+
+  const alteraCozinha = input.temCozinha !== undefined && input.temCozinha !== atualCozinha;
   const alteraEstoque =
-    input.controlaEstoque !== undefined && input.controlaEstoque !== atual.controlaEstoque;
+    input.controlaEstoque !== undefined && input.controlaEstoque !== atualEstoque;
 
   if (alteraEstoque && input.confirmacaoEstoque !== true) {
     throw new ConfirmacaoEstoqueObrigatoriaError();
   }
 
-  if (alteraCozinha && input.temCozinha === false) {
-    const pedidoAtivo = await tx.pedidoQuiosque.findFirst({
-      where: {
-        cervejariaId: input.cervejariaId,
-        status: { in: STATUS_NA_FILA },
-        itensComanda: { some: { exigePreparo: true } },
-      },
-      select: { id: true },
-    });
-    if (pedidoAtivo) throw new CozinhaComPedidosAtivosError();
+  if (!alteraCozinha && !alteraEstoque) {
+    return atual ?? {
+      cervejariaId: input.cervejariaId,
+      ativo: true,
+      exclusivo: false,
+      controlaEstoque: atualEstoque,
+      temCozinha: atualCozinha,
+      usaCardapio: false,
+      quantidadeMesas: 0,
+    };
   }
 
-  if (!alteraCozinha && !alteraEstoque) return atual;
-
-  const atualizado = await tx.configuracaoQuiosque.update({
-    where: { cervejariaId: input.cervejariaId },
-    data: {
-      ...(alteraCozinha ? { temCozinha: input.temCozinha } : {}),
-      ...(alteraEstoque ? { controlaEstoque: input.controlaEstoque } : {}),
-    },
-    select: {
-      cervejariaId: true,
-      ativo: true,
-      exclusivo: true,
-      controlaEstoque: true,
-      temCozinha: true,
-      usaCardapio: true,
-      quantidadeMesas: true,
-    },
+  await updateOperationalConfig(tx, input.cervejariaId, {
+    ...(alteraCozinha ? { kitchenEnabled: input.temCozinha } : {}),
+    // The guard above establishes that every inventory change was explicitly
+    // confirmed. Preserve that invariant in the narrower operational input.
+    ...(alteraEstoque ? { inventoryEnabled: input.controlaEstoque, confirmacaoEstoque: true as const } : {}),
   });
+
+  const atualizado = atual
+    ? await tx.configuracaoQuiosque.update({
+        where: { cervejariaId: input.cervejariaId },
+        data: {
+          ...(alteraCozinha ? { temCozinha: input.temCozinha } : {}),
+          ...(alteraEstoque ? { controlaEstoque: input.controlaEstoque } : {}),
+        },
+      })
+    : {
+        cervejariaId: input.cervejariaId,
+        ativo: true,
+        exclusivo: false,
+        controlaEstoque: input.controlaEstoque ?? atualEstoque,
+        temCozinha: input.temCozinha ?? atualCozinha,
+        usaCardapio: false,
+        quantidadeMesas: 0,
+      };
 
   const timestamp = new Date().toISOString();
   const alteracoes = [
     ...(alteraCozinha
-      ? [{ campo: 'temCozinha', anterior: atual.temCozinha, novo: atualizado.temCozinha }]
+      ? [{ campo: 'temCozinha', anterior: atualCozinha, novo: atualizado.temCozinha }]
       : []),
     ...(alteraEstoque
       ? [
           {
             campo: 'controlaEstoque',
-            anterior: atual.controlaEstoque,
+            anterior: atualEstoque,
             novo: atualizado.controlaEstoque,
           },
         ]
@@ -145,7 +155,7 @@ export async function atualizarCapacidadesQuiosque(
           ? 'QUIOSQUE_PEDIDO_COZINHA'
           : 'QUIOSQUE_ESTOQUE_MOVIMENTO',
       usuarioId: input.usuarioId,
-      entidadeTipo: 'ConfiguracaoQuiosque',
+      entidadeTipo: 'ConfiguracaoOperacional',
       entidadeId: input.cervejariaId,
       metadata: {
         operacao: 'QUIOSQUE_CAPACIDADE_ALTERADA',

@@ -72,44 +72,49 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
     await login(page, owner.email, owner.password);
     await page.goto('/quiosque/configuracoes/operacao');
 
-    await expect(page.getByRole('heading', { name: 'Recursos do Quiosque' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Ativar cozinha' }).click();
-    await expect(page.getByRole('button', { name: 'Desativar cozinha' })).toBeVisible();
+    const kitchenResponse = page.waitForResponse((response) =>
+      response.url().includes('/api/cervejaria/configuracao-operacional') && response.request().method() === 'PATCH',
+    );
+    await page.getByRole('button', { name: 'Ativar Cozinha / preparo' }).click();
+    expect((await kitchenResponse).status()).toBe(200);
+    await expect(page.getByRole('button', { name: 'Desativar Cozinha / preparo' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Cozinha' })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Desativar cozinha' }).click();
-    await expect(page.getByRole('button', { name: 'Ativar cozinha' })).toBeVisible();
+    await page.getByRole('button', { name: 'Desativar Cozinha / preparo' }).click();
+    await expect(page.getByRole('button', { name: 'Ativar Cozinha / preparo' })).toBeVisible();
 
     page.once('dialog', (dialog) => dialog.accept());
-    await page.getByRole('button', { name: 'Ativar controle de estoque' }).click();
-    await expect(page.getByRole('button', { name: 'Desativar controle de estoque' })).toBeVisible();
+    await page.getByRole('button', { name: 'Ativar Controle de estoque' }).click();
+    await expect(page.getByRole('button', { name: 'Desativar Controle de estoque' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Estoque', exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Revisar estoque' })).toBeVisible();
 
     page.once('dialog', (dialog) => dialog.accept());
-    await page.getByRole('button', { name: 'Desativar controle de estoque' }).click();
-    await expect(page.getByRole('button', { name: 'Ativar controle de estoque' })).toBeVisible();
+    await page.getByRole('button', { name: 'Desativar Controle de estoque' }).click();
+    await expect(page.getByRole('button', { name: 'Ativar Controle de estoque' })).toBeVisible();
   });
 
   test('exibe a seção para Híbrida e a oculta para Cervejaria pura', async ({ page }) => {
     await login(page, CREDENTIALS.hibrida.email, CREDENTIALS.hibrida.password);
-    await page.goto('/configuracoes/operacao');
-    await expect(page.getByRole('heading', { name: 'Recursos do Quiosque' })).toBeVisible();
+    await page.goto('/quiosque/configuracoes/operacao');
+    await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Por caixa' })).toHaveAttribute('aria-pressed', 'true');
 
     await page.context().clearCookies();
     await login(page, CREDENTIALS.dono.email, CREDENTIALS.dono.password);
     await page.goto('/configuracoes/operacao');
-    await expect(page.getByRole('heading', { name: 'Recursos do Quiosque' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Por opera/ })).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('exibe de forma compreensível o bloqueio devolvido pelo backend', async ({ page }) => {
     await login(page, owner.email, owner.password);
     await page.goto('/quiosque/configuracoes/operacao');
-    await page.getByRole('button', { name: 'Ativar cozinha' }).click();
-    await expect(page.getByRole('button', { name: 'Desativar cozinha' })).toBeVisible();
+    await page.getByRole('button', { name: 'Ativar Cozinha / preparo' }).click();
+    await expect(page.getByRole('button', { name: 'Desativar Cozinha / preparo' })).toBeVisible();
 
-    await page.route('**/api/quiosque/capacidades', async (route) => {
+    await page.route('**/api/cervejaria/configuracao-operacional', async (route) => {
       await route.fulfill({
         status: 409,
         contentType: 'application/json',
@@ -119,14 +124,14 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
       });
     });
 
-    await page.getByRole('button', { name: 'Desativar cozinha' }).click();
+    await page.getByRole('button', { name: 'Desativar Cozinha / preparo' }).click();
     await expect(page.getByText(/cozinha não pode ser desativada enquanto houver pedidos/i)).toBeVisible();
-    await page.unroute('**/api/quiosque/capacidades');
-    await page.getByRole('button', { name: 'Desativar cozinha' }).click();
-    await expect(page.getByRole('button', { name: 'Ativar cozinha' })).toBeVisible();
+    await page.unroute('**/api/cervejaria/configuracao-operacional');
+    await page.getByRole('button', { name: 'Desativar Cozinha / preparo' }).click();
+    await expect(page.getByRole('button', { name: 'Ativar Cozinha / preparo' })).toBeVisible();
   });
 
-  test('ADMIN edita recursos sem poder mudar o modo principal', async ({ page }) => {
+  test('ADMIN edita capacidades operacionais sem modo principal legado', async ({ page }) => {
     await login(page, CREDENTIALS.admin.email, CREDENTIALS.admin.password);
     await page.goto('/admin/cervejarias');
 
@@ -135,13 +140,15 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
     await row.getByRole('button', { name: 'Editar' }).click();
 
     const dialog = page.getByRole('dialog', { name: new RegExp(companyName) });
-    await expect(dialog.getByText('(somente leitura)', { exact: true })).toBeVisible();
-    await expect(dialog.getByRole('checkbox')).toHaveCount(2);
+    await expect(dialog.getByRole('checkbox')).toHaveCount(3);
     await expect(dialog.getByRole('checkbox', { name: /Cervejaria/ })).toHaveCount(0);
-    await dialog.getByRole('checkbox', { name: /Tem cozinha/ }).check();
+    await expect(dialog.getByRole('button', { name: 'Por caixa' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Por operações / eventos' })).toBeVisible();
+    await dialog.getByRole('checkbox', { name: /Cozinha \/ preparo/ }).check();
     await dialog.getByRole('button', { name: 'Salvar alterações' }).click();
 
     await expect(dialog).toBeHidden();
-    await expect(row.getByText('Cozinha', { exact: true })).toBeVisible();
+    await row.getByRole('button', { name: 'Editar' }).click();
+    await expect(dialog.getByRole('checkbox', { name: /Cozinha \/ preparo/ })).toBeChecked();
   });
 });

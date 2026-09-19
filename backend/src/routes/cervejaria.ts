@@ -9,6 +9,8 @@ import {
   updateBrandingColors,
 } from '../lib/cervejaria-branding.js';
 import { buildCervejariaDashboard } from '../lib/cervejaria-dashboard.js';
+import { getOperationalProfile } from '../lib/operational-profile.js';
+import { updateOperationalConfig, updateOperationalConfigSchema } from '../lib/operational-config.js';
 
 const ALLOWED_LOGO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
@@ -102,6 +104,24 @@ export async function cervejariaRoutes(app: FastifyInstance) {
       },
     });
     return formatCervejariaAuth(updated);
+  });
+
+  app.get('/configuracao-operacional', async (request) => {
+    const user = getAuthUser(request);
+    const [configuration, profile] = await Promise.all([
+      prisma.configuracaoOperacional.findUnique({ where: { cervejariaId: user.cervejariaId! } }),
+      getOperationalProfile(user.cervejariaId!),
+    ]);
+    return {
+      configuration,
+      enablements: profile?.capabilities ?? { directSales: false, plannedOperations: false, taps: false, inventory: false, kitchen: false },
+    };
+  });
+
+  app.patch('/configuracao-operacional', async (request) => {
+    const user = getAuthUser(request);
+    const body = updateOperationalConfigSchema.parse(request.body);
+    return prisma.$transaction((tx) => updateOperationalConfig(tx, user.cervejariaId!, body));
   });
 
   app.post('/branding/reextract', async (request) => {

@@ -37,7 +37,7 @@ test('quiosque 00 não exige estoque e fica pronto com produto, ponto e caixa', 
     quiosque: { ...facts().quiosque, hasOpenOperation: true },
   }), true);
 
-  assert.equal(result.mode, 'QUIOSQUE');
+  assert.equal(result.mode, 'CAIXA');
   assert.equal(result.modules.quiosque.ready, true);
   assert.deepEqual(codes(result, 'quiosque'), ['QUIOSQUE_FIRST_SALE']);
 });
@@ -165,8 +165,7 @@ test('híbrida calcula ambos os módulos sem selecionar um deles', () => {
     },
   }), true);
 
-  assert.equal(result.mode, 'HIBRIDA');
-  assert.equal(result.modules.quiosque.ready, true);
+  assert.equal(result.mode, 'EVENTO');
   assert.deepEqual(codes(result, 'cervejaria'), ['CERVEJARIA_PRODUCT']);
 });
 

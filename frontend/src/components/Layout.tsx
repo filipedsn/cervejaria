@@ -15,6 +15,7 @@ import {
   NAV_ITEMS_QUIOSQUE,
   QUIOSQUE_NAV_ITEMS,
   getQuiosqueNavItems,
+  getComplementaryNavItems,
   isQuiosqueNavActive,
   IconBell,
   IconCalendar,
@@ -159,6 +160,9 @@ export function Layout() {
           ? []
           : NAV_ITEMS.filter((item) => !('donoOnly' in item && item.donoOnly) || isDono)),
         ...(quiosque.ativo ? NAV_ITEMS_QUIOSQUE : []),
+        ...(quiosque.ativo
+          ? getComplementaryNavItems({ temCozinha: quiosque.temCozinha, controlaEstoque: quiosque.controlaEstoque })
+          : []),
       ];
   const { alertEnabled, alertNeedsUnlock, pushStatus, wakeLockActive, togglePedidoAlert } =
     usePedidoAlertSound();
