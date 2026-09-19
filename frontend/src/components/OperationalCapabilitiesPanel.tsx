@@ -25,7 +25,6 @@ export function OperationalCapabilitiesPanel() {
   async function toggle(key: CapabilityKey) {
     if (!data) return;
     const enabled = !data.enablements[ENABLEMENT_BY_KEY[key]];
-    if (key === 'inventoryEnabled' && !confirm('Confirma a alteração do controle de estoque? Saldos e histórico serão preservados.')) return;
     setSaving(key); setError('');
     try { await api.patch('/api/cervejaria/configuracao-operacional', { [key]: enabled, ...(key === 'inventoryEnabled' ? { confirmacaoEstoque: true } : {}) }); await refresh(); }
     catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Não foi possível salvar a configuração'); }
