@@ -32,15 +32,16 @@ export async function quiosqueRoutes(app: FastifyInstance) {
     const user = getAuthUser(request);
     const configuracao = await getConfiguracaoQuiosque(user.cervejariaId);
 
-    if (!configuracao) return { ativo: false as const };
-
     const [profile, pontosVenda] = await Promise.all([
-      getOperationalProfile(configuracao.cervejariaId),
+      getOperationalProfile(user.cervejariaId!),
       prisma.pontoVenda.findMany({
-      where: { cervejariaId: configuracao.cervejariaId, ativo: true },
+      where: { cervejariaId: user.cervejariaId!, ativo: true },
       orderBy: { createdAt: 'asc' },
       }),
     ]);
+
+    const ativo = Boolean(configuracao) || profile?.capabilities.directSales === true || profile?.capabilities.inventory === true || profile?.capabilities.kitchen === true;
+    if (!ativo) return { ativo: false as const };
 
     return {
       ativo: true as const,
@@ -48,9 +49,9 @@ export async function quiosqueRoutes(app: FastifyInstance) {
       // same persisted capability decision as the operational settings panel.
       controlaEstoque: profile?.capabilities.inventory ?? configuracao.controlaEstoque,
       temCozinha: profile?.capabilities.kitchen ?? configuracao.temCozinha,
-      exclusivo: configuracao.exclusivo,
-      usaCardapio: configuracao.usaCardapio,
-      quantidadeMesas: configuracao.quantidadeMesas,
+      exclusivo: configuracao?.exclusivo ?? false,
+      usaCardapio: configuracao?.usaCardapio ?? false,
+      quantidadeMesas: configuracao?.quantidadeMesas ?? 0,
       pontosVenda,
     };
   });

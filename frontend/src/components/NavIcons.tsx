@@ -259,6 +259,12 @@ export function getQuiosqueNavItems(contexto: QuiosqueNavFilterContext) {
   );
 }
 
+export function getComplementaryNavItems(contexto: Pick<QuiosqueNavContext, 'temCozinha' | 'controlaEstoque'>) {
+  return QUIOSQUE_NAV_ITEMS.filter((item) =>
+    (item.somenteCozinha && contexto.temCozinha) || (item.somenteEstoque && contexto.controlaEstoque),
+  );
+}
+
 export function isQuiosqueNavActive(path: string, current: string, exact?: boolean) {
   if (path === '/quiosque/comandas') return current.startsWith('/quiosque/comandas');
   if (path === '/quiosque/dashboard') return current === path || current.startsWith('/quiosque/turnos/');

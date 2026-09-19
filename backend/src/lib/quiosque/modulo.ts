@@ -47,6 +47,10 @@ export function hasInventoryAccess(profile: OperationalProfile | null): boolean 
   return profile?.capabilities.inventory === true;
 }
 
+export function hasComplementaryAccess(profile: OperationalProfile | null): boolean {
+  return profile?.capabilities.directSales === true || profile?.capabilities.inventory === true || profile?.capabilities.kitchen === true;
+}
+
 /**
  * Ativa o modulo para uma empresa e cria o primeiro ponto de venda.
  * Recebe o client da transacao para nascer junto com o cadastro da empresa.
@@ -91,7 +95,7 @@ export function requireModuloQuiosque(app: FastifyInstance) {
       ? await getOperationalProfile(user.cervejariaId)
       : null;
 
-    if (!hasDirectSalesAccess(profile)) {
+    if (!hasComplementaryAccess(profile)) {
       throw app.httpErrors.notFound('Modulo Quiosque nÃ£o disponÃ­vel');
     }
 
@@ -100,17 +104,17 @@ export function requireModuloQuiosque(app: FastifyInstance) {
     // longer the access decision for this module.
     const configuracao = await getConfiguracaoQuiosque(user.cervejariaId);
 
-    if (!configuracao) {
+    if (!configuracao && !hasComplementaryAccess(profile)) {
       throw app.httpErrors.notFound('Modulo Quiosque não disponível');
     }
 
     request.quiosque = {
-      cervejariaId: configuracao.cervejariaId,
+      cervejariaId: user.cervejariaId!,
       controlaEstoque: hasInventoryAccess(profile),
       temCozinha: hasKitchenAccess(profile),
-      exclusivo: configuracao.exclusivo,
-      usaCardapio: configuracao.usaCardapio,
-      quantidadeMesas: configuracao.quantidadeMesas,
+      exclusivo: configuracao?.exclusivo ?? false,
+      usaCardapio: configuracao?.usaCardapio ?? false,
+      quantidadeMesas: configuracao?.quantidadeMesas ?? 0,
     };
   };
 }
