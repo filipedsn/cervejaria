@@ -112,7 +112,7 @@ Source of truth: `backend/prisma/schema.prisma`; migration history under `backen
 | `Layout.tsx`, `NavIcons.tsx`, `AccountMenu.tsx` | menu and settings target use `ativo/exclusivo` | capability-driven navigation | REMOVE |
 | `useQuiosqueContexto.ts` | calls `/api/quiosque/contexto` and exposes legacy shape | operational profile hook | DEPRECATE |
 | `EventoContext.tsx`, trailer selector/QR components | selected Trailer and open Evento | selected unit/operation | MIGRATE |
-| `OperacaoPage.tsx`, `ConfigRecursosQuiosquePanel.tsx` | kitchen/stock setting under quiosque | operation capabilities | MIGRATE |
+| `OperacaoPage.tsx` | kitchen/stock setting under quiosque | operation capabilities | MIGRATE |
 | `AdminCervejariasPage.tsx` | module selector, badges and `modoEmpresa` | establishment setup/capabilities | REMOVE |
 | `lib/onboarding.ts`, `OnboardingContext.tsx`, `OnboardingSurface.tsx`, checklist | `mode`, `selectedModule`, hybrid selector | capability readiness and next action | DEPRECATE |
 | public portal `/c/:slug/t/:trailerId` | route and API contract name Trailer | public operational-unit portal | MIGRATE |
