@@ -151,3 +151,30 @@ Delivery proof: `OTLP_LOG_PROTOCOL=http/json` (the installed JSON HTTP exporter)
 | Routing type | `logs` | YES |
 
 `CANONICAL_LEGACY_FALLBACK_EVIDENCE=STRUCTURED_OTEL_LOG` is now end-to-end proven for the helper transport. `LEGACY_TELEMETRY_AVAILABLE=PASS`; positive legacy proof, reconciliation and zero-fallback proof remain pending and must run in that order. `SENSITIVE_DATA_PASS=PASS` for the helper document. `METRICS_VERSION_CONFLICT_RELATED_TO_LOG_BLOCKER=NO`; `METRICS_ISSUE_BLOCKS_BRIDGE=NO`.
+
+## DEV gate closure after delivery proof (2026-09-20)
+
+The synthetic `operational_config` positive control emitted through `recordLegacyFallback` was indexed with one hit in `.ds-logs-technical.otel-dev-2026.09.19-000002`. The read-only reconciliation then returned `131/131` operational modes materialized, `87/87` PDV cash capabilities explicit, and `fallbackRequired=0`. No backfill or data restoration was needed because the probe changed no database state.
+
+The synthetic TQ-F02B DEV smoke returned `TQ-F02B SMOKE PASS`. A new zero window after that smoke queried the same technical stream and returned `legacy_fallback` hits `0`.
+
+Positive legacy ES|QL:
+
+```esql
+FROM logs-technical.otel-dev*
+| WHERE attributes.event.action == "legacy_fallback"
+  AND attributes.legacy.kind IN ("operational_config", "direct_sales_compat", "cash_capability")
+| KEEP @timestamp, data_stream, resource.attributes.service.name, attributes.event.action, attributes.legacy.kind, trace_id, span_id
+| SORT @timestamp ASC
+```
+
+Zero-window ES|QL used after TQ-F02B smoke:
+
+```esql
+FROM logs-technical.otel-dev*
+| WHERE @timestamp >= TO_DATETIME("2026-09-20T04:01:35Z")
+  AND attributes.event.action == "legacy_fallback"
+| STATS legacy_fallback_hits = COUNT(*)
+```
+
+DEV gates now proven: `LEGACY_TELEMETRY_AVAILABLE=PASS`, `LEGACY_FALLBACK_POSITIVE_PROOF=PASS`, `LEGACY_FALLBACK_HITS_ZERO_DEV=PASS`, `SENSITIVE_DATA_PASS=PASS`, `RECONCILIATION_PASS=PASS`, and `SMOKE_PASS=PASS`. PROD remains untouched.
