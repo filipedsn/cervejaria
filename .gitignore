@@ -57,6 +57,9 @@ deploy/prod-artifacts/*
 deploy/prod-artifacts.previous/
 deploy/prod-artifacts.previous.swap/
 
+# Candidates de release retidos: fora do artefato ativo e nunca versionados.
+deploy/release-candidates/
+
 # Scripts de diagnostico/temporarios (nao versionar)
 backend/scripts/diag-*.mjs
 backend/scripts/browser-test-*.mjs

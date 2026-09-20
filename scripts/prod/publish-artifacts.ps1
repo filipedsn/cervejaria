@@ -1,6 +1,7 @@
 # Publica builds em deploy/prod-artifacts (isolado de frontend/dist e backend/dist locais).
 
 . "$PSScriptRoot\_config.ps1"
+. "$PSScriptRoot\release-candidate.ps1"
 
 function Get-GitSha {
   param([string]$ProjectRoot)
@@ -222,6 +223,34 @@ function Stage-BackendArtifacts {
 
   $stagingBackend = Join-Path $Paths.ProdStagingDir 'backend\dist'
   Copy-Item -Path (Join-Path (Split-Path $Paths.DevApiEntry -Parent) '*') -Destination $stagingBackend -Recurse -Force
+}
+
+function Stage-ReleaseCandidateArtifacts {
+  param(
+    [hashtable]$Paths,
+    [Parameter(Mandatory)][string]$CandidatePath,
+    [Parameter(Mandatory)][string]$ExpectedReleaseSha
+  )
+
+  # O candidate e revalidado antes de tocar no staging do swap. Nenhum build e feito
+  # aqui; o staging e apenas uma copia descartavel para a promocao atomica existente.
+  Test-ReleaseCandidate -CandidatePath $CandidatePath -ExpectedReleaseSha $ExpectedReleaseSha -ThrowOnError | Out-Null
+  Initialize-ProdStaging -Paths $Paths
+  Copy-Item -Path (Join-Path $CandidatePath 'frontend\*') -Destination (Join-Path $Paths.ProdStagingDir 'frontend') -Recurse -Force
+  Copy-Item -Path (Join-Path $CandidatePath 'backend\*') -Destination (Join-Path $Paths.ProdStagingDir 'backend') -Recurse -Force
+}
+
+function Publish-ReleaseCandidateArtifacts {
+  param(
+    [hashtable]$Paths,
+    [Parameter(Mandatory)][string]$CandidatePath,
+    [Parameter(Mandatory)][string]$ExpectedReleaseSha
+  )
+
+  Test-ReleaseCandidate -CandidatePath $CandidatePath -ExpectedReleaseSha $ExpectedReleaseSha -ThrowOnError | Out-Null
+  Stage-ReleaseCandidateArtifacts -Paths $Paths -CandidatePath $CandidatePath -ExpectedReleaseSha $ExpectedReleaseSha
+  Publish-ProdArtifactsSwap -Paths $Paths -Frontend -Backend
+  Write-ProdManifest -Paths $Paths -GitSha $ExpectedReleaseSha -DeployMeta @{ source = 'retained-candidate'; candidateManifest = 'candidate-manifest.json' }
 }
 
 function Reset-ProdRollbackPoint {
