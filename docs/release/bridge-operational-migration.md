@@ -25,6 +25,25 @@ Migration validation evidence for this preparation: `prisma migrate status` foun
 
 ## Migration and backfills
 
+### Explicit PROD command contract
+
+DEV commands remain unchanged. A future authorized PROD bridge must use only the explicit `:prod` commands below; they load `.env.production` through the official runner and fail closed for any missing or unknown target. Dry-runs and reconciliation are read-only:
+
+```powershell
+npm run db:backfill-operational-enablement:dry-run:prod --prefix backend
+npm run db:backfill-cash-register:dry-run:prod --prefix backend
+npm run db:reconcile-operational-materialization:prod --prefix backend
+```
+
+The two PROD write commands require a second, deliberate CLI marker. The marker is not embedded in package scripts, so selecting `production` alone cannot mutate the database:
+
+```powershell
+npm run db:backfill-operational-enablement:prod --prefix backend -- --allow-prod-maintenance
+npm run db:backfill-cash-register:prod --prefix backend -- --allow-prod-maintenance
+```
+
+Without `--allow-prod-maintenance`, the runner aborts before loading the environment or opening a database connection. This contract is validated by `backend/scripts/bridge-prod-command-contract.test.mjs` and must not be used outside an explicitly authorized TAP-61 window.
+
 1. Build and publish the release artifact.
 2. Controlled stop when required.
 3. Run `prisma migrate deploy`.
