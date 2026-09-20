@@ -46,6 +46,8 @@ Required counters: establishments, operational configs, materialized/unmateriali
 
 After reconciliation PASS, publish/restart, then verify health/readiness and run the current QA/API smoke and golden suites. Verify `tapquiver.legacy_fallback.hits` with only `kind` labels (`operational_config`, `direct_sales_compat`, `cash_capability`). The target is zero in exercised materialized flows; telemetry and database reconciliation are complementary.
 
+For the DEV evidence window, query `logs-technical*.otel-dev*` using the existing DEV read-only Analyst credential and filter `data_stream.namespace=dev`, `resource.attributes.service.name=quiver-tap-api-dev`, and the event fields `body.text=legacy_fallback`, `attributes.event.action=legacy_fallback`, or `attributes.legacy.kind`. The bridge also emits the same event through the OTel logs API. Do not treat stdout as Elastic evidence.
+
 ## Failure handling and rollback
 
 - Migration succeeds, backfill fails: keep the application on the compatibility path, inspect the error, and retry the idempotent backfill; do not drop legacy data.
@@ -67,10 +69,10 @@ After reconciliation PASS, publish/restart, then verify health/readiness and run
 | CASH_BACKFILL_IDEMPOTENT | PASS | PENDING_PROD | second run updated=0 |
 | RECONCILIATION_PASS | PASS | PENDING_PROD | read-only DEV result: 131/131 and 87/87 |
 | SMOKE_PASS | PASS | PENDING_PROD | synthetic TQ-F02B smoke |
-| LEGACY_TELEMETRY_AVAILABLE | PENDING | PENDING_PROD | code/tests PASS; Elastic DEV ingestion pending due collector version conflicts |
-| LEGACY_FALLBACK_HITS_ZERO_DEV | PENDING | PENDING_PROD | materialized path produced no local hit; Elastic window not queryable for new event |
+| LEGACY_TELEMETRY_AVAILABLE | BLOCKED | PENDING_PROD | metric export is not queryable; structured-log probe also returned zero hits in `logs-technical*.otel-dev*` |
+| LEGACY_FALLBACK_HITS_ZERO_DEV | BLOCKED | PENDING_PROD | materialized path produced no local hit; positive/zero Elastic windows cannot be proven until ingestion/queryability is restored |
 | ROLLBACK_COMPATIBLE | PASS | PENDING_PROD | legacy retained |
-| SENSITIVE_DATA_PASS | PENDING | PENDING_PROD | code uses `kind` only; Elastic end-to-end evidence pending |
+| SENSITIVE_DATA_PASS | BLOCKED | PENDING_PROD | code emits only allowlisted kinds, but Elastic end-to-end payload evidence is pending |
 
 ## F8 unlock criteria
 
@@ -79,3 +81,5 @@ After the future bridge PROD execution: `BRIDGE_DEPLOYED`, migrations, both back
 ## Evidence and explicit PROD-free boundary
 
 Record branch, base SHA, commits, PR/CI, backfill counters, reconciliation, smoke, Elastic DEV evidence, runbook path and pending PROD gates in Plane. This preparation intentionally performs no PROD query, backup, migration, backfill, deploy, restart, health check or smoke.
+
+Current DEV observability finding: the collector repeatedly reports `version_conflict_engine_exception` for generic metrics batches targeting `.ds-metrics-generic.otel-dev-2026.09.19-000005` (`otelcol.signal=metrics`). The error is not attributed to `tapquiver.legacy_fallback.hits`, and no safe exporter/template correction was made. A controlled structured-log probe emitted `event.action=legacy_fallback` and `legacy.kind` locally, but the corresponding Elastic DEV query returned zero documents. Canonical evidence is therefore **not selectable yet**: neither METRIC nor STRUCTURED_LOG is currently end-to-end queryable. Keep TAP-60 In Progress and do not unlock physical F8 removal.

@@ -17,9 +17,9 @@ export const recordLegacyFallback: LegacyFallbackRecorder = (kind) => {
     severityNumber: SeverityNumber.INFO,
     severityText: 'INFO',
     body: 'legacy_fallback',
-    attributes: { event: 'legacy_fallback', kind },
+    attributes: { 'event.action': 'legacy_fallback', 'legacy.kind': kind },
   });
-  logger.info({ event: 'legacy_fallback', kind }, 'legacy_fallback');
+  logger.info({ event: { action: 'legacy_fallback' }, legacy: { kind } }, 'legacy_fallback');
 };
 
 export function createLegacyFallbackRecorder(add: (value: number, attributes: { kind: LegacyFallbackKind }) => void): LegacyFallbackRecorder {
