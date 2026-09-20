@@ -106,18 +106,20 @@ The EDOT preload initializes trace, metric and log providers. Trace and metric e
 
 The provider resource and record carry the collector-required routing: `data_stream.type=logs`, `data_stream.dataset=technical`, and `data_stream.namespace` derived exclusively by `getObservabilityEnv()` (`dev` outside production, `prd` only in production). The only current business event is `legacy_fallback`; `legacy.kind` is compile-time restricted to `operational_config`, `direct_sales_compat`, or `cash_capability`. The synthetic probe action accepts only a generated `probe.id`. No arbitrary payload, PII, credential, cookie, token, or request body is accepted.
 
-The direct helper probe `tq-otel-helper-probe-20260920-c` was emitted with the real DEV OTLP endpoint and provider shutdown/flush. The SDK console exporter independently printed the expected LogRecord, including resource-level routing. The DEV Elastic query returned zero hits, and the Collector showed no log-export error (only the pre-existing generic-metrics `version_conflict_engine_exception`). Per the positive-control rule, no `legacy_fallback` positive proof, restore/backfill, or zero-fallback proof was run.
+The direct helper probe `tq-otel-helper-probe-20260920-c` was emitted with the real DEV OTLP endpoint and provider shutdown/flush. A broad DEV query found it in `.ds-logs-technical.otel-dev-2026.09.19-000002`; the previous zero was caused by querying `attributes.probe.id.keyword`, which is not the mapped field, and by checking too early during collector batching. The SDK console exporter independently printed the expected LogRecord, including resource-level routing. No log-export error appeared in Collector logs (only the pre-existing generic-metrics `version_conflict_engine_exception`).
+
+The follow-up probe `tq-otel-helper-probe-20260920-d` used the same helper, waited eight seconds, then called the controlled diagnostic flush and shutdown. It was indexed successfully with one hit. `forceFlush` is exposed only for controlled probes/tests and is not called per request.
 
 Helper probe ES|QL:
 
 ```esql
 FROM logs-technical.otel-dev*
-| WHERE attributes.probe.id == "tq-otel-helper-probe-20260920-c"
+| WHERE attributes.probe.id == "tq-otel-helper-probe-20260920-d"
 | KEEP @timestamp, data_stream, resource.attributes.service.name, attributes.event.action, attributes.probe.id, trace_id, span_id
 | SORT @timestamp ASC
 ```
 
-Positive legacy proof ES|QL (not executed because the helper positive control failed):
+Positive legacy proof ES|QL (not executed in this diagnostic pass):
 
 ```esql
 FROM logs-technical.otel-dev*
@@ -127,7 +129,7 @@ FROM logs-technical.otel-dev*
 | SORT @timestamp ASC
 ```
 
-Zero-window ES|QL (not executed because the helper positive control failed):
+Zero-window ES|QL (not executed in this diagnostic pass):
 
 ```esql
 FROM logs-technical.otel-dev*
@@ -136,4 +138,16 @@ FROM logs-technical.otel-dev*
 | STATS legacy_fallback_hits = COUNT(*)
 ```
 
-`CANONICAL_LEGACY_FALLBACK_EVIDENCE=STRUCTURED_OTEL_LOG` is implemented but not end-to-end proven. `LEGACY_TELEMETRY_AVAILABLE=BLOCKED`, `LEGACY_FALLBACK_POSITIVE_PROOF=BLOCKED`, `LEGACY_FALLBACK_HITS_ZERO_DEV=BLOCKED`, and `SENSITIVE_DATA_PASS=BLOCKED` until a helper record is queryable in the same pipeline. `METRICS_VERSION_CONFLICT_RELATED_TO_LOG_BLOCKER=NO`; `METRICS_ISSUE_BLOCKS_BRIDGE=NO`.
+Delivery proof: `OTLP_LOG_PROTOCOL=http/json` (the installed JSON HTTP exporter), host `127.0.0.1`, port `4318`, path `/v1/logs`, effective endpoint `http://127.0.0.1:4318/v1/logs`, no custom headers, exporter timeout default, and batch processor defaults. The direct probe and application exporter use the same endpoint semantics. Application dataset is `technical`; the Collector materializes the known `technical.otel` data stream. `MISROUTED_DOCUMENT_FOUND=NO`. `FORCE_FLUSH_RESULT=PASS`; `LONG_LIVED_PROBE_RESULT=PASS`; `OTLP_EXPORT_ATTEMPTED=YES`; `OTLP_EXPORT_RESULT=HTTP accepted and indexed`. Dedicated provider exports independently; no global-provider interference was observed. Collector internal metrics were not exposed on mapped ports, so no counter delta is claimed.
+
+| Field | Direct OTLP / application exporter | Match |
+|---|---|---|
+| Protocol | HTTP JSON | YES |
+| Host / port | `127.0.0.1:4318` | YES |
+| Path | `/v1/logs` | YES |
+| Resource service | `quiver-tap-api-dev` | YES |
+| Application dataset / materialized stream | `technical` / `technical.otel` | YES |
+| Namespace | `dev` | YES |
+| Routing type | `logs` | YES |
+
+`CANONICAL_LEGACY_FALLBACK_EVIDENCE=STRUCTURED_OTEL_LOG` is now end-to-end proven for the helper transport. `LEGACY_TELEMETRY_AVAILABLE=PASS`; positive legacy proof, reconciliation and zero-fallback proof remain pending and must run in that order. `SENSITIVE_DATA_PASS=PASS` for the helper document. `METRICS_VERSION_CONFLICT_RELATED_TO_LOG_BLOCKER=NO`; `METRICS_ISSUE_BLOCKS_BRIDGE=NO`.

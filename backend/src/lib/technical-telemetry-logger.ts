@@ -46,6 +46,11 @@ export function initializeTechnicalTelemetry(): void {
   getTechnicalLogger();
 }
 
+/** Explicit flush for bounded diagnostic probes; never used per request. */
+export async function forceFlushTechnicalTelemetry(): Promise<void> {
+  await technicalProvider?.forceFlush();
+}
+
 /** Flushes this dedicated technical transport during the existing app shutdown. */
 export async function shutdownTechnicalTelemetry(): Promise<void> {
   await technicalProvider?.shutdown();
