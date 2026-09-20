@@ -15,11 +15,13 @@ Current `ConfiguracaoQuiosque` responsibilities remain: `usaCardapio`, `quantida
 - Run from the bridge release branch based on the reconciled `origin/main`.
 - Use synthetic DEV/QA tenants only; CIA Marítima is read-only compatibility smoke where applicable.
 - Confirm backup gate, migration manifest, release artifact and supported rollback artifact before any future PROD execution.
-- `MINIMUM_SUPPORTED_UPGRADE_BASELINE=UNDEFINED` unless an explicit version matrix is supplied by the release owner.
+- `MINIMUM_SUPPORTED_UPGRADE_BASELINE=UNDEFINED` unless an explicit version matrix is supplied by the release owner. `UPGRADE_BASELINE_REQUIRED_BEFORE_PHYSICAL_F8_REMOVAL=YES`.
 
 ## Preflight and backup
 
 Run `scripts/release/bridge-release-preflight.ps1 -DryRun` in DEV/QA. Capture JSON output. For a future PROD execution, take the approved backup before stopping the application. PROD execution is intentionally not performed in this preparation.
+
+Migration validation evidence for this preparation: `prisma migrate status` found 56 migrations and reported the DEV schema up to date; `prisma migrate deploy` reported no pending migrations. The commands used the existing DEV owner URL from `.env.development`; no PROD URL was loaded.
 
 ## Migration and backfills
 
@@ -57,18 +59,18 @@ After reconciliation PASS, publish/restart, then verify health/readiness and run
 | Gate | DEV | PROD | Evidence |
 |---|---|---|---|
 | BASELINE_RECONCILED | PASS | PENDING_PROD | origin/main SHA and PR #29 merge |
-| CI_GREEN | PENDING | PENDING_PROD | PR checks |
-| MIGRATIONS_VALIDATED | PENDING | PENDING_PROD | Prisma validation/migrate evidence |
-| OPERATIONAL_BACKFILL_DRY_RUN | PENDING | PENDING_PROD | JSON counters, zero writes |
-| OPERATIONAL_BACKFILL_IDEMPOTENT | PENDING | PENDING_PROD | second run updated=0 |
-| CASH_BACKFILL_DRY_RUN | PENDING | PENDING_PROD | JSON counters, zero writes |
-| CASH_BACKFILL_IDEMPOTENT | PENDING | PENDING_PROD | second run updated=0 |
-| RECONCILIATION_PASS | PENDING | PENDING_PROD | read-only JSON result |
-| SMOKE_PASS | PENDING | PENDING_PROD | QA/golden report |
-| LEGACY_TELEMETRY_AVAILABLE | PASS | PENDING_PROD | OTel counter definition |
-| LEGACY_FALLBACK_HITS_ZERO_DEV | PENDING | PENDING_PROD | exercised flow metric evidence |
+| CI_GREEN | PASS | PENDING_PROD | PR #30 checks |
+| MIGRATIONS_VALIDATED | PASS | PENDING_PROD | 56 migrations; status up to date; deploy no pending |
+| OPERATIONAL_BACKFILL_DRY_RUN | PASS | PENDING_PROD | DEV JSON counters, zero writes |
+| OPERATIONAL_BACKFILL_IDEMPOTENT | PASS | PENDING_PROD | second run updated=0 |
+| CASH_BACKFILL_DRY_RUN | PASS | PENDING_PROD | DEV JSON counters, zero writes |
+| CASH_BACKFILL_IDEMPOTENT | PASS | PENDING_PROD | second run updated=0 |
+| RECONCILIATION_PASS | PASS | PENDING_PROD | read-only DEV result: 131/131 and 87/87 |
+| SMOKE_PASS | PASS | PENDING_PROD | synthetic TQ-F02B smoke |
+| LEGACY_TELEMETRY_AVAILABLE | PENDING | PENDING_PROD | code/tests PASS; Elastic DEV ingestion pending due collector version conflicts |
+| LEGACY_FALLBACK_HITS_ZERO_DEV | PENDING | PENDING_PROD | materialized path produced no local hit; Elastic window not queryable for new event |
 | ROLLBACK_COMPATIBLE | PASS | PENDING_PROD | legacy retained |
-| SENSITIVE_DATA_PASS | PASS | PENDING_PROD | low-cardinality `kind` only |
+| SENSITIVE_DATA_PASS | PENDING | PENDING_PROD | code uses `kind` only; Elastic end-to-end evidence pending |
 
 ## F8 unlock criteria
 
