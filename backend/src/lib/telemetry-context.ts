@@ -11,8 +11,6 @@ export type TelemetryActor = {
   type: AuditActorType;
   id?: string;
   role?: string;
-  name?: string;
-  email?: string;
   clienteId?: string;
 };
 
@@ -98,8 +96,6 @@ function actorFromJwtUser(user: JwtPayload): TelemetryActor {
     type: user.papel === 'ADMIN' ? 'system' : 'usuario',
     id: user.sub,
     role: user.papel,
-    name: user.nome,
-    email: user.email,
   };
 }
 

@@ -6,6 +6,9 @@ const SENSITIVE_KEYS = new Set([
   'jwt',
   'authorization',
   'cookie',
+  'email',
+  'endereco',
+  'address',
   'JWT_SECRET',
   'SMTP_PASS',
   'OBS_ALERT_TELEGRAM_BOT_TOKEN',
@@ -20,7 +23,14 @@ export function maskTelefone(value: string): string {
 
 function redactValue(key: string, value: unknown): unknown {
   const lower = key.toLowerCase();
-  if (SENSITIVE_KEYS.has(lower) || lower.includes('senha') || lower.includes('password')) {
+  if (
+    SENSITIVE_KEYS.has(lower) ||
+    lower.includes('senha') ||
+    lower.includes('password') ||
+    lower.includes('email') ||
+    lower.includes('endereco') ||
+    lower.includes('address')
+  ) {
     return '[REDACTED]';
   }
   if (lower.includes('telefone') && typeof value === 'string') {

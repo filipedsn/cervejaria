@@ -42,17 +42,11 @@ function currentPage(): string {
   return `${window.location.pathname}${window.location.search}`;
 }
 
-function clickSelector(): string {
-  return 'button, a, [role="button"], [data-audit]';
-}
-
-function resolveClickLabel(el: HTMLElement): string {
-  return (
-    el.getAttribute('data-audit') ??
-    el.getAttribute('aria-label') ??
-    el.textContent?.trim().slice(0, 120) ??
-    el.tagName.toLowerCase()
-  );
+function resolveSemanticAction(el: HTMLElement): string | null {
+  // Audit only an explicit, developer-defined action. Reading arbitrary DOM
+  // text here turns telemetry into an accidental PII collector and makes a
+  // "click" impossible to interpret operationally.
+  return el.getAttribute('data-audit');
 }
 
 function errorFingerprint(message: string, stack?: string): string {
@@ -160,9 +154,10 @@ export function trackUiError(message: string, stack?: string, meta?: Record<stri
   enqueue({
     type: 'error',
     page: currentPage(),
-    label: message.slice(0, 300),
+    // Browser and API errors can echo user input. Keep the fingerprint local
+    // for deduplication and send only the semantic failure category.
+    label: 'frontend_error',
     meta: {
-      stack: stack?.slice(0, 2000),
       ...meta,
     },
   });
@@ -177,22 +172,19 @@ export function initAuditTracker(): void {
     (ev) => {
       const target = ev.target as HTMLElement | null;
       if (!target) return;
-      const el = target.closest(clickSelector()) as HTMLElement | null;
+      const el = target.closest('[data-audit]') as HTMLElement | null;
       if (!el) return;
-      const label = resolveClickLabel(el);
-      const element =
-        el.getAttribute('data-audit') ??
-        (el.id ? `#${el.id}` : undefined) ??
-        el.tagName.toLowerCase();
-      trackClick(label, { tag: el.tagName.toLowerCase() }, element);
+      const action = resolveSemanticAction(el);
+      if (!action) return;
+      trackClick(action, { tag: el.tagName.toLowerCase() }, action);
     },
     { capture: true },
   );
 
   document.addEventListener('submit', (ev) => {
     const form = ev.target as HTMLFormElement | null;
-    const label = form?.getAttribute('data-audit') ?? form?.getAttribute('name') ?? 'form';
-    trackSubmit(label);
+    const action = form?.getAttribute('data-audit');
+    if (action) trackSubmit(action);
   });
 
   window.addEventListener('error', (ev) => {

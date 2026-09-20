@@ -36,8 +36,8 @@ test.describe('Onboarding readiness', () => {
     expect(admin.status).toBe(403);
   });
 
-  test('calcula módulos da híbrida separadamente', async () => {
-    const cookie = await apiLogin(CREDENTIALS.hibrida.email, CREDENTIALS.hibrida.password);
+  test('calcula o fluxo CAIXA sem expor um modo legado de empresa', async () => {
+    const cookie = await apiLogin(CREDENTIALS.caixa.email, CREDENTIALS.caixa.password);
     const response = await apiRequest<Readiness>('GET', '/api/onboarding/readiness', { cookie });
 
     expect(response.status).toBe(200);

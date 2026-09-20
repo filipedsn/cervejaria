@@ -36,7 +36,7 @@ setup('authenticate roles', async ({ page }) => {
     { file: 'atendente.json', ...CREDENTIALS.atendente },
     { file: 'quiosque.json', ...CREDENTIALS.quiosque },
     { file: 'quiosque-cozinha.json', ...CREDENTIALS.quiosqueCozinha },
-    { file: 'hibrida.json', ...CREDENTIALS.hibrida },
+    { file: 'caixa.json', ...CREDENTIALS.caixa },
     { file: 'arena.json', ...CREDENTIALS.arena },
   ] as const;
 

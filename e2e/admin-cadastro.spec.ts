@@ -7,7 +7,7 @@ const adminAuth = path.join(process.cwd(), 'e2e/.auth/admin.json');
 const stamp = Date.now();
 const nome = `QA Operation Mode ${stamp}`;
 let createdId = '';
-type Configuration = { directSalesEnabled: boolean; plannedOperationsEnabled: boolean; tapsEnabled: boolean; inventoryEnabled: boolean; kitchenEnabled: boolean };
+type Configuration = { plannedOperationsEnabled: boolean; tapsEnabled: boolean; inventoryEnabled: boolean; kitchenEnabled: boolean };
 
 test.use({ storageState: adminAuth });
 test.describe.configure({ mode: 'serial' });
@@ -36,6 +36,6 @@ test.describe('Admin — cadastro orientado por modo operacional', () => {
     const list = await apiRequest<Array<{ id: string; nome: string }>>('GET', '/api/admin/cervejarias', { cookie });
     createdId = list.data!.find((item) => item.nome === nome)!.id;
     const config = await apiRequest<Configuration>('GET', `/api/admin/cervejarias/${createdId}/configuracao-operacional`, { cookie });
-    expect(config.data).toMatchObject({ directSalesEnabled: false, plannedOperationsEnabled: true, tapsEnabled: true, inventoryEnabled: false, kitchenEnabled: false });
+    expect(config.data).toMatchObject({ plannedOperationsEnabled: true, tapsEnabled: true, inventoryEnabled: false, kitchenEnabled: false });
   });
 });

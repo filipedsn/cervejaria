@@ -34,6 +34,17 @@ const bodySchema = z.object({
   events: z.array(uiEventSchema).min(1).max(50),
 });
 
+/** Only telemetry keys produced by the client tracker are retained. */
+function safeUiMetadata(meta: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!meta) return {};
+  const out: Record<string, unknown> = {};
+  for (const key of ['frontendReleaseSha', 'tag', 'source', 'line', 'kind']) {
+    const value = meta[key];
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') out[key] = value;
+  }
+  return out;
+}
+
 export async function auditRoutes(app: FastifyInstance) {
   app.post('/events', async (request, reply) => {
     let staff = false;
@@ -98,7 +109,7 @@ export async function auditRoutes(app: FastifyInstance) {
         },
         metadata: {
           source: staff ? 'staff' : cliente ? 'cliente' : 'unknown',
-          ...(event.meta ?? {}),
+          ...safeUiMetadata(event.meta),
         },
       });
     }

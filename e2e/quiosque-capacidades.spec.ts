@@ -95,8 +95,8 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
     await expect(page.getByRole('button', { name: 'Ativar Controle de estoque' })).toBeVisible();
   });
 
-  test('exibe a seção para Híbrida e a oculta para Cervejaria pura', async ({ page }) => {
-    await login(page, CREDENTIALS.hibrida.email, CREDENTIALS.hibrida.password);
+  test('mantém CAIXA e EVENTO como escolhas independentes das capabilities', async ({ page }) => {
+    await login(page, CREDENTIALS.caixa.email, CREDENTIALS.caixa.password);
     await page.goto('/quiosque/configuracoes/operacao');
     await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Por caixa' })).toHaveAttribute('aria-pressed', 'true');

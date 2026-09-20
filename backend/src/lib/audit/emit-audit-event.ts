@@ -30,8 +30,6 @@ function actorFields(actor: TelemetryActor): Record<string, string | undefined> 
   return {
     'actor.type': actor.type,
     'actor.id': actor.id,
-    'actor.name': actor.name,
-    'actor.email': actor.email,
     'actor.cliente_id': actor.clienteId,
   };
 }
