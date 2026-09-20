@@ -21,6 +21,8 @@ $env:SUPPORT_ANALYST_LLM_ENABLED = 'false'
 Nunca salve API key em repositório, perfil PowerShell compartilhado, dossiê ou ticket. Os defaults são poll de 60 s, first window de 5 min, overlap de 2 min, no máximo 50 eventos, heartbeat de 30 s, stale de 90 s e processing-stall de 300 s. Só reduza limites em troubleshooting; `SUPPORT_ANALYST_MAX_EVENTS` nunca passa de 100.
 
 1. Rode `npm run analyst:validate`.
+
+Para o read-back PROD do TAP-61, o validator certificado exige a fase explicitamente: use `node scripts/support-analyst/validate-elastic-readonly.mjs --phase=predeploy` antes da bridge e `--phase=postdeploy` somente após a aplicação bridge iniciar. O modo `predeploy` valida o mapping estável já existente e não exige `attributes.event.action` nem `attributes.legacy.kind`; o modo `postdeploy` exige `attributes.event.action` e um positive control. A evidência de zero fallback é uma janela fechada com `attributes.event.action=legacy_fallback` e contagem zero. `attributes.legacy.kind` só é obrigatório quando houver hits de fallback para classificar.
 2. Rode `npm run analyst:pilot-once`. Ele faz preflight `_search` bounded/read-only e uma rodada. Espere JSON com `mode: PILOT_READ_ONLY_NO_EXTERNAL_ACTIONS` e `outcome: COMPLETED`.
 3. Inspecione `health/health.json`, `state/source-watermark.json`, `review-queue.json`, `incidents.json` e `dossiers/` em `SUPPORT_ANALYST_RUNTIME_DIR`.
 4. Para observação controlada, rode `npm run analyst:pilot-run` em terminal mantido aberto.

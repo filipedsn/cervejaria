@@ -46,6 +46,57 @@ export const CLUSTER_FORBIDDEN_PRIVILEGES = Object.freeze([
   'manage_ilm', 'manage_index_templates', 'all',
 ]);
 
+export const VALIDATION_PHASES = Object.freeze(['predeploy', 'postdeploy']);
+export const PROD_STABLE_FIELDS = Object.freeze([
+  '@timestamp',
+  'data_stream.dataset',
+  'data_stream.namespace',
+  'resource.attributes.service.name',
+  'trace_id',
+  'span_id',
+]);
+export const PROD_POSTDEPLOY_REQUIRED_FIELD = 'attributes.event.action';
+export const ALLOWED_LEGACY_KINDS = Object.freeze([
+  'operational_config',
+  'direct_sales_compat',
+  'cash_capability',
+]);
+
+export function resolveValidationPhase({ environment, argv = [], env = process.env } = {}) {
+  const cli = argv.find((arg) => arg.startsWith('--phase='))?.slice('--phase='.length).trim().toLowerCase();
+  const configured = String(env.SUPPORT_ANALYST_VALIDATION_PHASE || '').trim().toLowerCase();
+  if (cli && configured && cli !== configured) throw new Error('VALIDATION_PHASE_MISMATCH');
+  const phase = cli || configured;
+  if (phase && !VALIDATION_PHASES.includes(phase)) throw new Error('VALIDATION_PHASE_INVALID');
+  if (!phase && normalize(environment) === 'prd') throw new Error('VALIDATION_PHASE_REQUIRED_FOR_PROD');
+  return phase || 'postdeploy';
+}
+
+export function evaluateLegacyFallbackEvidence({ hits, kinds }) {
+  if (!Number.isInteger(hits) || hits < 0) throw new Error('LEGACY_FALLBACK_HITS_INVALID');
+  if (hits === 0) return { status: 'PASS', hits: 0, requiresKind: false, kinds: [] };
+  if (!Array.isArray(kinds) || kinds.length !== hits) throw new Error('LEGACY_KIND_REQUIRED_FOR_FALLBACK');
+  const unknown = kinds.filter((kind) => !ALLOWED_LEGACY_KINDS.includes(kind));
+  if (unknown.length) throw new Error('LEGACY_KIND_NOT_ALLOWED');
+  return { status: 'PASS', hits, requiresKind: true, kinds };
+}
+
+export function validateProdFieldContract(fields, phase) {
+  for (const field of PROD_STABLE_FIELDS) {
+    const types = fields?.[field];
+    if (!types || !Object.values(types).some((type) => type.searchable)) {
+      throw new Error(`${field} searchable mapping required`);
+    }
+  }
+  if (phase === 'postdeploy') {
+    const types = fields?.[PROD_POSTDEPLOY_REQUIRED_FIELD];
+    if (!types || !Object.values(types).some((type) => type.searchable)) {
+      throw new Error(`${PROD_POSTDEPLOY_REQUIRED_FIELD} searchable mapping required`);
+    }
+  }
+  return true;
+}
+
 export function getPrivilegeScope(environment) {
   const envName = normalize(environment);
   if (envName === 'dev') {

@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import {
   CLUSTER_FORBIDDEN_PRIVILEGES,
   INDEX_FORBIDDEN_PRIVILEGES,
+  evaluateLegacyFallbackEvidence,
   PROD_SOURCE_ALLOWLIST,
   getPrivilegeScope,
   resolveValidatorPolicy,
+  resolveValidationPhase,
+  validateProdFieldContract,
 } from './validator-policy.mjs';
 
 const base = {
@@ -100,4 +103,36 @@ test('privilege inspection forbids every mutable/admin privilege', () => {
   assert.ok(INDEX_FORBIDDEN_PRIVILEGES.includes('delete'));
   assert.ok(CLUSTER_FORBIDDEN_PRIVILEGES.includes('manage_security'));
   assert.ok(CLUSTER_FORBIDDEN_PRIVILEGES.includes('all'));
+});
+
+test('PROD phase is explicit and fails closed when missing or invalid', () => {
+  assert.equal(resolveValidationPhase({ environment: 'prd', argv: ['node', 'validator', '--phase=predeploy'], env: {} }), 'predeploy');
+  assert.throws(() => resolveValidationPhase({ environment: 'prd', argv: ['node', 'validator'], env: {} }), /VALIDATION_PHASE_REQUIRED_FOR_PROD/);
+  assert.throws(() => resolveValidationPhase({ environment: 'prd', argv: ['node', 'validator', '--phase=unknown'], env: {} }), /VALIDATION_PHASE_INVALID/);
+});
+
+test('DEV phase compatibility defaults safely to postdeploy', () => {
+  assert.equal(resolveValidationPhase({ environment: 'dev', argv: ['node', 'validator'], env: {} }), 'postdeploy');
+});
+
+test('zero legacy fallback passes without legacy.kind materialization', () => {
+  assert.deepEqual(evaluateLegacyFallbackEvidence({ hits: 0, kinds: [] }), {
+    status: 'PASS', hits: 0, requiresKind: false, kinds: [],
+  });
+});
+
+test('legacy fallback hits require allowed, complete classification', () => {
+  assert.equal(evaluateLegacyFallbackEvidence({ hits: 2, kinds: ['cash_capability', 'operational_config'] }).status, 'PASS');
+  assert.throws(() => evaluateLegacyFallbackEvidence({ hits: 1, kinds: [] }), /LEGACY_KIND_REQUIRED_FOR_FALLBACK/);
+  assert.throws(() => evaluateLegacyFallbackEvidence({ hits: 1, kinds: ['unexpected'] }), /LEGACY_KIND_NOT_ALLOWED/);
+});
+
+test('PROD predeploy accepts unmapped future fields while postdeploy requires event action', () => {
+  const stable = Object.fromEntries([
+    '@timestamp', 'data_stream.dataset', 'data_stream.namespace',
+    'resource.attributes.service.name', 'trace_id', 'span_id',
+  ].map((field) => [field, { text: { searchable: true } }]));
+  assert.doesNotThrow(() => validateProdFieldContract(stable, 'predeploy'));
+  assert.throws(() => validateProdFieldContract(stable, 'postdeploy'), /attributes.event.action/);
+  assert.doesNotThrow(() => validateProdFieldContract({ ...stable, 'attributes.event.action': { keyword: { searchable: true } } }, 'postdeploy'));
 });
