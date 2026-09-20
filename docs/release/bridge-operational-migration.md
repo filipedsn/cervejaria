@@ -69,10 +69,10 @@ For the DEV evidence window, query `logs-technical*.otel-dev*` using the existin
 | CASH_BACKFILL_IDEMPOTENT | PASS | PENDING_PROD | second run updated=0 |
 | RECONCILIATION_PASS | PASS | PENDING_PROD | read-only DEV result: 131/131 and 87/87 |
 | SMOKE_PASS | PASS | PENDING_PROD | synthetic TQ-F02B smoke |
-| LEGACY_TELEMETRY_AVAILABLE | BLOCKED | PENDING_PROD | metric export is not queryable; structured-log probe also returned zero hits in `logs-technical*.otel-dev*` |
-| LEGACY_FALLBACK_HITS_ZERO_DEV | BLOCKED | PENDING_PROD | materialized path produced no local hit; positive/zero Elastic windows cannot be proven until ingestion/queryability is restored |
+| LEGACY_TELEMETRY_AVAILABLE | PASS | PENDING_PROD | helper probe indexed in `.ds-logs-technical.otel-dev-*`; query uses mapped `attributes.probe.id` |
+| LEGACY_FALLBACK_HITS_ZERO_DEV | PASS | PENDING_PROD | positive control, reconciliation, TQ-F02B smoke and same-stream zero window passed |
 | ROLLBACK_COMPATIBLE | PASS | PENDING_PROD | legacy retained |
-| SENSITIVE_DATA_PASS | BLOCKED | PENDING_PROD | code emits only allowlisted kinds, but Elastic end-to-end payload evidence is pending |
+| SENSITIVE_DATA_PASS | PASS | PENDING_PROD | real helper and fallback documents contained only approved technical fields |
 
 ## F8 unlock criteria
 
@@ -82,9 +82,9 @@ After the future bridge PROD execution: `BRIDGE_DEPLOYED`, migrations, both back
 
 Record branch, base SHA, commits, PR/CI, backfill counters, reconciliation, smoke, Elastic DEV evidence, runbook path and pending PROD gates in Plane. This preparation intentionally performs no PROD query, backup, migration, backfill, deploy, restart, health check or smoke.
 
-Current DEV observability finding: the collector repeatedly reports `version_conflict_engine_exception` for generic metrics batches targeting `.ds-metrics-generic.otel-dev-2026.09.19-000005` (`otelcol.signal=metrics`). The error is not attributed to `tapquiver.legacy_fallback.hits`, and no safe exporter/template correction was made. The application control log (`incoming request`/`request completed`) is queryable in `.ds-logs-technical.otel-dev-*`. A direct OTLP probe without explicit data-stream routing was accepted by the receiver (`HTTP 200`, `partialSuccess={}`) but produced no Elastic document; the same probe with explicit `data_stream.type=logs`, `data_stream.dataset=technical` and `data_stream.namespace=dev` was indexed successfully in `.ds-logs-technical.otel-dev-*`. The bridge now emits one canonical Pino technical record with flat ECS fields and environment-derived routing (`event.action`, `legacy.kind`, `data_stream.*`); local unit/build/CI validation passes, but the controlled application event still produced no Elastic document in DEV. Canonical evidence is therefore **not selectable yet**: neither METRIC nor STRUCTURED_LOG is currently end-to-end queryable. Keep TAP-60 In Progress and do not unlock physical F8 removal.
+Historical DEV diagnostic: the collector reported `version_conflict_engine_exception` for generic metrics batches targeting `.ds-metrics-generic.otel-dev-2026.09.19-000005` (`otelcol.signal=metrics`). This remains unrelated to logs. The initial application probe was queried too narrowly and too early; the corrected broad query and long-lived helper probe now prove delivery. The technical evidence is selectable as `STRUCTURED_OTEL_LOG`; TAP-60 remains In Progress for review and physical F8 removal remains outside this bridge.
 
-Transport isolation update (2026-09-20): a temporary Fastify process using the same backend/Pino/EDOT bootstrap emitted the automatic `incoming request` and `request completed` records plus `legacy_fallback` in one request. A broad query over the real technical log data stream and the synthetic resource identifier returned zero documents for both. The runtime is configured for EDOT Pino instrumentation (`--import @elastic/opentelemetry-node`), `ELASTIC_OTEL_NODE_ENABLE_LOG_SENDING=true`, `OTEL_LOGS_EXPORTER=otlp`, and OTLP HTTP `127.0.0.1:4318`; however, this current-process probe does not prove delivery to Elastic. Classification is `APPLICATION_PINO_TO_ELASTIC_FAIL`, not `LEGACY_EVENT_SPECIFIC_FAILURE`. Do not change `legacy_fallback` or the metrics pipeline until the application Pino transport/collector receipt is independently observed.
+Transport isolation update (2026-09-20): the original Pino path remained non-queryable, while the dedicated technical provider was independently proven through the same OTLP endpoint and Collector. Classification remains `OTEL_LOGS_PROVIDER_EXISTS_BUT_PINO_NOT_CONNECTED`; no Pino or metrics-pipeline change was made.
 
 Broad diagnostic ES|QL used for the same-process probe:
 
