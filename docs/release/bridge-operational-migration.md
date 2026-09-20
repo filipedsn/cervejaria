@@ -162,7 +162,9 @@ Positive legacy ES|QL:
 
 ```esql
 FROM logs-technical.otel-dev*
-| WHERE attributes.event.action == "legacy_fallback"
+| WHERE @timestamp >= TO_DATETIME("2026-09-20T04:01:25Z")
+  AND @timestamp < TO_DATETIME("2026-09-20T04:01:40Z")
+  AND attributes.event.action == "legacy_fallback"
   AND attributes.legacy.kind IN ("operational_config", "direct_sales_compat", "cash_capability")
 | KEEP @timestamp, data_stream, resource.attributes.service.name, attributes.event.action, attributes.legacy.kind, trace_id, span_id
 | SORT @timestamp ASC
@@ -173,6 +175,7 @@ Zero-window ES|QL used after TQ-F02B smoke:
 ```esql
 FROM logs-technical.otel-dev*
 | WHERE @timestamp >= TO_DATETIME("2026-09-20T04:01:35Z")
+  AND @timestamp < TO_DATETIME("2026-09-20T04:02:05Z")
   AND attributes.event.action == "legacy_fallback"
 | STATS legacy_fallback_hits = COUNT(*)
 ```
