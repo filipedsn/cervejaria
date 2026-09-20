@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveValidatorPolicy } from './validator-policy.mjs';
+import {
+  CLUSTER_FORBIDDEN_PRIVILEGES,
+  INDEX_FORBIDDEN_PRIVILEGES,
+  PROD_SOURCE_ALLOWLIST,
+  getPrivilegeScope,
+  resolveValidatorPolicy,
+} from './validator-policy.mjs';
 
 const base = {
   SUPPORT_ANALYST_ES_API_KEY: 'synthetic-key',
@@ -56,4 +62,42 @@ test('PROD mode is resolvable only after explicit gates', () => {
   });
   assert.equal(policy.environment, 'prd');
   assert.equal(policy.allowPrd, true);
+});
+
+test('PROD privilege scope allows only technical PROD and denies DEV sources', () => {
+  const scope = getPrivilegeScope('prd');
+  assert.deepEqual(scope.allowed, ['logs-technical*.otel-prd*']);
+  assert.ok(scope.denied.includes('logs-technical*.otel-dev*'));
+  assert.ok(scope.denied.includes('logs-audit*.otel-dev*'));
+  assert.ok(scope.denied.includes('quiver-tap-alert-events-dev'));
+  assert.ok(scope.denied.includes('logs-audit*.otel-prd*'));
+  assert.ok(scope.denied.includes('traces-*'));
+});
+
+test('DEV privilege scope remains the existing DEV allowlist and denies PROD', () => {
+  const scope = getPrivilegeScope('dev');
+  assert.deepEqual(scope.allowed, ['quiver-tap-alert-events-dev', 'logs-audit*.otel-dev*', 'logs-technical*.otel-dev*']);
+  assert.ok(scope.denied.includes('logs-technical*.otel-prd*'));
+});
+
+test('PROD source allowlist excludes functional and PII-bearing fields', () => {
+  assert.deepEqual(PROD_SOURCE_ALLOWLIST, [
+    '@timestamp',
+    'data_stream.dataset',
+    'data_stream.namespace',
+    'resource.attributes.service.name',
+    'attributes.event.action',
+    'attributes.legacy.kind',
+    'trace_id',
+    'span_id',
+  ]);
+  assert.ok(!PROD_SOURCE_ALLOWLIST.some((field) => /actor|cervejaria|userId|role|http|reason|metadata/i.test(field)));
+});
+
+test('privilege inspection forbids every mutable/admin privilege', () => {
+  assert.ok(INDEX_FORBIDDEN_PRIVILEGES.includes('write'));
+  assert.ok(INDEX_FORBIDDEN_PRIVILEGES.includes('create_doc'));
+  assert.ok(INDEX_FORBIDDEN_PRIVILEGES.includes('delete'));
+  assert.ok(CLUSTER_FORBIDDEN_PRIVILEGES.includes('manage_security'));
+  assert.ok(CLUSTER_FORBIDDEN_PRIVILEGES.includes('all'));
 });

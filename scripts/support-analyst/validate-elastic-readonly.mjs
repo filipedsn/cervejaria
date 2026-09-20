@@ -11,9 +11,14 @@
  */
 
 import { assertElasticTarget } from './elastic-target-guard.mjs';
-import { resolveValidatorPolicy } from './validator-policy.mjs';
+import {
+  CLUSTER_FORBIDDEN_PRIVILEGES,
+  INDEX_FORBIDDEN_PRIVILEGES,
+  PROD_SOURCE_ALLOWLIST,
+  getPrivilegeScope,
+  resolveValidatorPolicy,
+} from './validator-policy.mjs';
 
-const SHARED_ALERT_INDEX = 'quiver-tap-alert-events';
 const MAX_SEARCH_SIZE = 3;
 const SEARCH_LOOKBACK_HOURS = 24;
 const ELASTIC_SEARCH_TIMEOUT = '5s';
@@ -54,6 +59,9 @@ Optional:
 if (correlationId && !isUuid(correlationId)) {
   fail('SUPPORT_ANALYST_TEST_CORRELATION_ID deve ser UUID válido.');
 }
+if (environment === 'prd' && correlationId) {
+  fail('PROD validator accepts only the bounded technical contract; correlation lookup is not enabled.');
+}
 
 const auditPattern = `logs-audit*.otel-${environment}*`;
 const technicalPattern = `logs-technical*.otel-${environment}*`;
@@ -67,15 +75,8 @@ try {
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }
-const outsidePatterns = [
-  ...(environment === 'dev'
-    ? [SHARED_ALERT_INDEX, 'logs-audit*.otel-prd*', 'logs-technical*.otel-prd*']
-    : ['logs-audit*.otel-prd*', SHARED_ALERT_INDEX]),
-  'traces-*',
-  'logs-generic*',
-  'metrics-*',
-  '.kibana*',
-];
+const privilegeScope = getPrivilegeScope(environment);
+const outsidePatterns = privilegeScope.denied;
 
 const sourceAllowlist = [
   '@timestamp',
@@ -112,6 +113,7 @@ const sourceAllowlist = [
   'trace_id',
   'span_id',
 ];
+const querySourceAllowlist = environment === 'prd' ? PROD_SOURCE_ALLOWLIST : sourceAllowlist;
 
 const failures = [];
 const warnings = [];
@@ -150,7 +152,16 @@ await check('resolve-index', async () => {
 });
 
 const fieldCapsResult = await check('field-caps', async () => {
-  const fields = [
+  const fields = environment === 'prd' ? [
+    '@timestamp',
+    'data_stream.dataset',
+    'data_stream.namespace',
+    'resource.attributes.service.name*',
+    'attributes.event.action*',
+    'attributes.legacy.kind*',
+    'trace_id*',
+    'span_id*',
+  ].join(',') : [
     '@timestamp',
     'attributes.correlationId*',
     'attributes.requestId*',
@@ -198,6 +209,14 @@ const fieldCapsResult = await check('field-caps', async () => {
   requireKeyword(output[technicalPattern], 'attributes.releaseSha.keyword', technicalPattern);
   requireKeyword(output[technicalPattern], 'attributes.event.action', technicalPattern);
   requireKeyword(output[technicalPattern], 'attributes.legacy.kind', technicalPattern);
+  if (environment === 'prd') {
+    requireSearchable(output[technicalPattern], '@timestamp', technicalPattern);
+    requireSearchable(output[technicalPattern], 'data_stream.dataset', technicalPattern);
+    requireSearchable(output[technicalPattern], 'data_stream.namespace', technicalPattern);
+    requireSearchable(output[technicalPattern], 'resource.attributes.service.name', technicalPattern);
+    requireSearchable(output[technicalPattern], 'trace_id', technicalPattern);
+    requireSearchable(output[technicalPattern], 'span_id', technicalPattern);
+  }
   if (alertIndex) {
     requireKeyword(output[alertIndex], 'ruleName', alertIndex);
     requireKeyword(output[alertIndex], 'alertState', alertIndex);
@@ -254,7 +273,7 @@ await check('search-technical', async () => {
         },
       }
     : { bool: { filter: [recentRange()] } };
-  const body = await search(technicalPattern, query, sourceAllowlist);
+  const body = await search(technicalPattern, query, querySourceAllowlist);
   return {
     hits: body.hits?.hits?.length || 0,
     total: boundedTotal(body.hits?.total),
@@ -263,44 +282,21 @@ await check('search-technical', async () => {
 });
 
 await check('runtime-privileges', async () => {
-  const clusterForbidden = [
-    'monitor',
-    'manage',
-    'manage_security',
-    'manage_api_key',
-    'manage_own_api_key',
-    'manage_ilm',
-    'manage_index_templates',
-    'all',
-  ];
-  const indexForbidden = [
-    'auto_configure',
-    'write',
-    'index',
-    'create',
-    'create_doc',
-    'create_index',
-    'delete',
-    'delete_index',
-    'manage',
-    'manage_data_stream_lifecycle',
-    'all',
-  ];
   const body = await request('/_security/user/_has_privileges', {
     method: 'POST',
     body: JSON.stringify({
-      cluster: clusterForbidden,
+      cluster: CLUSTER_FORBIDDEN_PRIVILEGES,
       index: [
         {
           names: allowedPatterns,
-          privileges: ['read', 'view_index_metadata', ...indexForbidden],
+          privileges: ['read', 'view_index_metadata', ...INDEX_FORBIDDEN_PRIVILEGES],
         },
         { names: outsidePatterns, privileges: ['read', 'view_index_metadata'] },
       ],
     }),
   });
 
-  for (const privilege of clusterForbidden) {
+  for (const privilege of CLUSTER_FORBIDDEN_PRIVILEGES) {
     if (body.cluster?.[privilege] !== false) {
       throw new Error(`cluster privilege inesperado: ${privilege}`);
     }
@@ -310,7 +306,7 @@ await check('runtime-privileges', async () => {
     if (privileges?.read !== true || privileges?.view_index_metadata !== true) {
       throw new Error(`read/view_index_metadata ausente para ${pattern}`);
     }
-    for (const privilege of indexForbidden) {
+    for (const privilege of INDEX_FORBIDDEN_PRIVILEGES) {
       if (privileges?.[privilege] !== false) {
         throw new Error(`index privilege inesperado em ${pattern}: ${privilege}`);
       }
@@ -326,7 +322,7 @@ await check('runtime-privileges', async () => {
   return {
     clusterPrivileges: [],
     allowedIndexPrivileges: ['read', 'view_index_metadata'],
-    forbiddenIndexPrivilegesConfirmed: indexForbidden,
+    forbiddenIndexPrivilegesConfirmed: INDEX_FORBIDDEN_PRIVILEGES,
     outsidePatternsDenied: outsidePatterns,
   };
 });
@@ -419,6 +415,13 @@ function requireKeyword(fields, name, pattern) {
   const types = fields?.[name];
   if (!types?.keyword?.searchable) {
     throw new Error(`${name} keyword pesquisável ausente em ${pattern}`);
+  }
+}
+
+function requireSearchable(fields, name, pattern) {
+  const types = fields?.[name];
+  if (!types || !Object.values(types).some((type) => type.searchable)) {
+    throw new Error(`${name} pesquisável ausente em ${pattern}`);
   }
 }
 

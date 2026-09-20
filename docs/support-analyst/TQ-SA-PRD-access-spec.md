@@ -17,7 +17,11 @@ The initial identity is limited to:
 
 Audit logs, alert events, traces, metrics, generic logs, Kibana indices, and backing-index patterns are outside the TAP-61 capability. They require a separately approved capability.
 
+The PROD negative privilege check must also deny `logs-technical*.otel-dev*`, `logs-audit*.otel-dev*`, and `quiver-tap-alert-events-dev`, as well as the other non-TAP-61 patterns. This prevents a PROD key from reading DEV data even if its role is accidentally broadened.
+
 The identity must explicitly lack `write`, `index`, `create`, `create_doc`, `delete`, `manage`, `manage_security`, `manage_index_templates`, `all`, and equivalent mutable privileges.
+
+The validator's PROD `_source` list is query minimization performed by tooling; it is not Elasticsearch Field Level Security. No FLS is configured by this PR. PROD queries return only timestamp/routing, service name, event action, legacy kind, and trace/span identifiers. DEV retains its broader existing support allowlist.
 
 ## Authentication and safety gates
 
@@ -38,3 +42,7 @@ Missing, ambiguous, or mismatched markers fail closed. The validator performs on
 ## Provisioning action required
 
 An authorized Elastic administrator must separately create/authorize the API key with the role descriptor above, place the secret in the approved non-versioned secret store, and provide the logical identity and endpoint classification to the release operator. TAP-61 can then run the PROD read-back validator and discover the actual technical data stream/namespace before any release write.
+
+## Release identity separation
+
+`RELEASE_SHA` remains the bridge runtime SHA `c195c77a18a254e992047693c51b108e80754db6`. A later merge commit for this validator-only PR is `TOOLING_SHA`; it must be used for support/release tooling only. The application artifact must continue to be built from `RELEASE_SHA`, never from `TOOLING_SHA` merely because the validator changed.

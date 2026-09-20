@@ -25,6 +25,44 @@ export function resolveValidatorPolicy(env = process.env) {
   return { environment, allowPrd, credentialEnvironment, endpointEnvironment, apiKey, baseUrl: rawUrl.replace(/\/$/, '') };
 }
 
+export const PROD_SOURCE_ALLOWLIST = Object.freeze([
+  '@timestamp',
+  'data_stream.dataset',
+  'data_stream.namespace',
+  'resource.attributes.service.name',
+  'attributes.event.action',
+  'attributes.legacy.kind',
+  'trace_id',
+  'span_id',
+]);
+
+export const INDEX_FORBIDDEN_PRIVILEGES = Object.freeze([
+  'auto_configure', 'write', 'index', 'create', 'create_doc', 'create_index',
+  'delete', 'delete_index', 'manage', 'manage_data_stream_lifecycle', 'all',
+]);
+
+export const CLUSTER_FORBIDDEN_PRIVILEGES = Object.freeze([
+  'monitor', 'manage', 'manage_security', 'manage_api_key', 'manage_own_api_key',
+  'manage_ilm', 'manage_index_templates', 'all',
+]);
+
+export function getPrivilegeScope(environment) {
+  const envName = normalize(environment);
+  if (envName === 'dev') {
+    return {
+      allowed: ['quiver-tap-alert-events-dev', 'logs-audit*.otel-dev*', 'logs-technical*.otel-dev*'],
+      denied: ['quiver-tap-alert-events', 'logs-audit*.otel-prd*', 'logs-technical*.otel-prd*', 'traces-*', 'logs-generic*', 'metrics-*', '.kibana*'],
+    };
+  }
+  if (envName === 'prd') {
+    return {
+      allowed: ['logs-technical*.otel-prd*'],
+      denied: ['logs-technical*.otel-dev*', 'logs-audit*.otel-dev*', 'quiver-tap-alert-events-dev', 'logs-audit*.otel-prd*', 'quiver-tap-alert-events', 'traces-*', 'logs-generic*', 'metrics-*', '.kibana*'],
+    };
+  }
+  throw new Error('Ambiente Elastic inválido.');
+}
+
 function normalize(value) { return String(value).trim().toLowerCase(); }
 function optionalEnvironment(value) {
   if (value === undefined || value === null || String(value).trim() === '') return null;
