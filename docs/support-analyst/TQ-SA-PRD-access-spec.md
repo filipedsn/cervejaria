@@ -23,6 +23,14 @@ The identity must explicitly lack `write`, `index`, `create`, `create_doc`, `del
 
 The validator's PROD `_source` list is query minimization performed by tooling; it is not Elasticsearch Field Level Security. No FLS is configured by this PR. PROD queries return only timestamp/routing, service name, event action, legacy kind, and trace/span identifiers. DEV retains its broader existing support allowlist.
 
+## Two-phase validation contract
+
+PROD validation requires an explicit phase: `--phase=predeploy` or `--phase=postdeploy` (the equivalent `SUPPORT_ANALYST_VALIDATION_PHASE` environment variable is accepted). Missing or invalid PROD phase fails closed.
+
+`predeploy` proves authentication, endpoint and credential classification, technical stream resolution, namespace/mapping fields that already exist, bounded read-back, cross-environment isolation, and read-only privileges. It does not require future bridge fields such as `attributes.event.action` or `attributes.legacy.kind`.
+
+`postdeploy` additionally requires searchable `attributes.event.action` and a positive technical control. The zero-fallback query filters `attributes.event.action=legacy_fallback`; zero hits pass without requiring `attributes.legacy.kind`. When fallback hits exist, every hit must expose an allowed `attributes.legacy.kind` (`operational_config`, `direct_sales_compat`, or `cash_capability`), otherwise validation fails. No PROD probe is emitted by the validator.
+
 ## Authentication and safety gates
 
 Use the existing API-key mechanism. Runtime accepts only `SUPPORT_ANALYST_ES_API_KEY`; it must not fall back to basic auth, Collector, Alert Poller, Agent, or DEV credentials.

@@ -14,9 +14,14 @@ import { assertElasticTarget } from './elastic-target-guard.mjs';
 import {
   CLUSTER_FORBIDDEN_PRIVILEGES,
   INDEX_FORBIDDEN_PRIVILEGES,
+  PROD_POSTDEPLOY_REQUIRED_FIELD,
   PROD_SOURCE_ALLOWLIST,
+  PROD_STABLE_FIELDS,
+  evaluateLegacyFallbackEvidence,
   getPrivilegeScope,
   resolveValidatorPolicy,
+  resolveValidationPhase,
+  validateProdFieldContract,
 } from './validator-policy.mjs';
 
 const MAX_SEARCH_SIZE = 3;
@@ -30,6 +35,12 @@ try {
   fail(error instanceof Error ? error.message : String(error));
 }
 const { environment, apiKey, baseUrl } = policy;
+let phase;
+try {
+  phase = resolveValidationPhase({ environment, argv: process.argv, env: process.env });
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
 const requestTimeoutMs = boundedInteger(
   process.env.SUPPORT_ANALYST_ES_TIMEOUT_MS,
   10_000,
@@ -45,6 +56,7 @@ Required:
   SUPPORT_ANALYST_ES_API_KEY       Exclusive read-only Analyst API key
 
 Optional:
+  --phase=predeploy|postdeploy   Required for PROD; phase contract
   SUPPORT_ANALYST_ES_URL           Elasticsearch URL (default http://127.0.0.1:9200)
   SUPPORT_ANALYST_ENV              dev (default) or prd
   SUPPORT_ANALYST_ALLOW_PRD        Must be true before the script accepts prd
@@ -152,16 +164,9 @@ await check('resolve-index', async () => {
 });
 
 const fieldCapsResult = await check('field-caps', async () => {
-  const fields = environment === 'prd' ? [
-    '@timestamp',
-    'data_stream.dataset',
-    'data_stream.namespace',
-    'resource.attributes.service.name*',
-    'attributes.event.action*',
-    'attributes.legacy.kind*',
-    'trace_id*',
-    'span_id*',
-  ].join(',') : [
+  const fields = environment === 'prd'
+    ? [...PROD_STABLE_FIELDS, PROD_POSTDEPLOY_REQUIRED_FIELD, 'attributes.legacy.kind'].join(',')
+    : [
     '@timestamp',
     'attributes.correlationId*',
     'attributes.requestId*',
@@ -209,15 +214,11 @@ const fieldCapsResult = await check('field-caps', async () => {
     requireKeyword(output[technicalPattern], 'attributes.requestId.keyword', technicalPattern);
     requireKeyword(output[technicalPattern], 'attributes.releaseSha.keyword', technicalPattern);
   }
-  requireKeyword(output[technicalPattern], 'attributes.event.action', technicalPattern);
-  requireKeyword(output[technicalPattern], 'attributes.legacy.kind', technicalPattern);
   if (environment === 'prd') {
-    requireSearchable(output[technicalPattern], '@timestamp', technicalPattern);
-    requireSearchable(output[technicalPattern], 'data_stream.dataset', technicalPattern);
-    requireSearchable(output[technicalPattern], 'data_stream.namespace', technicalPattern);
-    requireSearchable(output[technicalPattern], 'resource.attributes.service.name', technicalPattern);
-    requireSearchable(output[technicalPattern], 'trace_id', technicalPattern);
-    requireSearchable(output[technicalPattern], 'span_id', technicalPattern);
+    validateProdFieldContract(output[technicalPattern], phase);
+  } else {
+    requireKeyword(output[technicalPattern], 'attributes.event.action', technicalPattern);
+    requireKeyword(output[technicalPattern], 'attributes.legacy.kind', technicalPattern);
   }
   if (alertIndex) {
     requireKeyword(output[alertIndex], 'ruleName', alertIndex);
@@ -282,6 +283,28 @@ await check('search-technical', async () => {
     exactCorrelationTested: Boolean(correlationId),
   };
 });
+
+if (environment === 'prd' && phase === 'postdeploy') {
+  await check('postdeploy-positive-control', async () => {
+    const body = await search(technicalPattern, {
+      bool: { filter: [recentRange(), { exists: { field: 'attributes.event.action' } }] },
+    }, querySourceAllowlist);
+    const hits = body.hits?.hits || [];
+    if (!hits.length) throw new Error('positive technical control ausente no PROD');
+    return { hits: hits.length, total: boundedTotal(body.hits?.total) };
+  });
+
+  await check('legacy-fallback-evidence', async () => {
+    const body = await search(technicalPattern, {
+      bool: { filter: [recentRange(), { term: { 'attributes.event.action': 'legacy_fallback' } }] },
+    }, ['@timestamp', 'attributes.event.action', 'attributes.legacy.kind']);
+    const hits = body.hits?.hits || [];
+    const kinds = hits.map((hit) => hit?._source?.attributes?.legacy?.kind).filter(Boolean);
+    const evidence = evaluateLegacyFallbackEvidence({ hits: hits.length, kinds });
+    if (evidence.requiresKind && kinds.length !== hits.length) throw new Error('legacy.kind ausente para fallback existente');
+    return evidence;
+  });
+}
 
 await check('runtime-privileges', async () => {
   const body = await request('/_security/user/_has_privileges', {
