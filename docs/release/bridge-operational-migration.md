@@ -97,3 +97,43 @@ FROM logs-technical.otel-dev*
 | KEEP @timestamp, data_stream, resource, attributes, body, trace_id, span_id
 | SORT @timestamp ASC
 ```
+
+## Application OTLP technical-log transport (2026-09-20)
+
+Classification: `B — OTEL_LOGS_PROVIDER_EXISTS_BUT_PINO_NOT_CONNECTED`.
+
+The EDOT preload initializes trace, metric and log providers. Trace and metric exporters remain the existing OTLP configuration; metrics were not changed. EDOT Pino sending is configured, but the application/Pino probe did not reach Elastic. The technical evidence path is therefore `recordLegacyFallback` -> `emitTechnicalTelemetry` -> one dedicated `LoggerProvider` with one `BatchLogRecordProcessor` and OTLP/HTTP log exporter. It is initialized once at application startup and shut down with the existing SIGINT/error lifecycle. It does not replace general Pino logging and it emits no Pino duplicate for `legacy_fallback`.
+
+The provider resource and record carry the collector-required routing: `data_stream.type=logs`, `data_stream.dataset=technical`, and `data_stream.namespace` derived exclusively by `getObservabilityEnv()` (`dev` outside production, `prd` only in production). The only current business event is `legacy_fallback`; `legacy.kind` is compile-time restricted to `operational_config`, `direct_sales_compat`, or `cash_capability`. The synthetic probe action accepts only a generated `probe.id`. No arbitrary payload, PII, credential, cookie, token, or request body is accepted.
+
+The direct helper probe `tq-otel-helper-probe-20260920-c` was emitted with the real DEV OTLP endpoint and provider shutdown/flush. The SDK console exporter independently printed the expected LogRecord, including resource-level routing. The DEV Elastic query returned zero hits, and the Collector showed no log-export error (only the pre-existing generic-metrics `version_conflict_engine_exception`). Per the positive-control rule, no `legacy_fallback` positive proof, restore/backfill, or zero-fallback proof was run.
+
+Helper probe ES|QL:
+
+```esql
+FROM logs-technical.otel-dev*
+| WHERE attributes.probe.id == "tq-otel-helper-probe-20260920-c"
+| KEEP @timestamp, data_stream, resource.attributes.service.name, attributes.event.action, attributes.probe.id, trace_id, span_id
+| SORT @timestamp ASC
+```
+
+Positive legacy proof ES|QL (not executed because the helper positive control failed):
+
+```esql
+FROM logs-technical.otel-dev*
+| WHERE attributes.event.action == "legacy_fallback"
+  AND attributes.legacy.kind IN ("operational_config", "direct_sales_compat", "cash_capability")
+| KEEP @timestamp, data_stream, resource.attributes.service.name, attributes.event.action, attributes.legacy.kind, trace_id, span_id
+| SORT @timestamp ASC
+```
+
+Zero-window ES|QL (not executed because the helper positive control failed):
+
+```esql
+FROM logs-technical.otel-dev*
+| WHERE @timestamp >= TO_DATETIME("2026-09-20T03:35:31Z")
+  AND attributes.event.action == "legacy_fallback"
+| STATS legacy_fallback_hits = COUNT(*)
+```
+
+`CANONICAL_LEGACY_FALLBACK_EVIDENCE=STRUCTURED_OTEL_LOG` is implemented but not end-to-end proven. `LEGACY_TELEMETRY_AVAILABLE=BLOCKED`, `LEGACY_FALLBACK_POSITIVE_PROOF=BLOCKED`, `LEGACY_FALLBACK_HITS_ZERO_DEV=BLOCKED`, and `SENSITIVE_DATA_PASS=BLOCKED` until a helper record is queryable in the same pipeline. `METRICS_VERSION_CONFLICT_RELATED_TO_LOG_BLOCKER=NO`; `METRICS_ISSUE_BLOCKS_BRIDGE=NO`.

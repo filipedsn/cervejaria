@@ -4,6 +4,7 @@ import { startKibanaAlertPoller, stopKibanaAlertPoller } from './lib/kibana-aler
 import { prisma } from './lib/prisma.js';
 import { registerProcessErrorHandlers } from './lib/process-handlers.js';
 import { getReleaseContext } from './lib/release-context.js';
+import { initializeTechnicalTelemetry, shutdownTechnicalTelemetry } from './lib/technical-telemetry-logger.js';
 
 registerProcessErrorHandlers();
 
@@ -11,6 +12,7 @@ const PORT = parseInt(process.env.PORT ?? '3001', 10);
 const HOST = process.env.HOST ?? '0.0.0.0';
 
 async function main() {
+  initializeTechnicalTelemetry();
   const app = await buildApp();
   setupSocketIO(app, app.server);
 
@@ -22,12 +24,14 @@ async function main() {
 
 main().catch(async (err) => {
   console.error(err);
+  await shutdownTechnicalTelemetry();
   await prisma.$disconnect();
   process.exit(1);
 });
 
 process.on('SIGINT', async () => {
   stopKibanaAlertPoller();
+  await shutdownTechnicalTelemetry();
   await prisma.$disconnect();
   process.exit(0);
 });

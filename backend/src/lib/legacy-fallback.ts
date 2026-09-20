@@ -1,9 +1,8 @@
 import { metrics } from '@opentelemetry/api';
-import { logger } from './logger.js';
-import { getTelemetryContextOrDefault } from './telemetry-context.js';
+import { emitTechnicalTelemetry, type LegacyFallbackKind } from './technical-telemetry-logger.js';
 
 export const LEGACY_FALLBACK_METRIC = 'tapquiver.legacy_fallback.hits';
-export type LegacyFallbackKind = 'operational_config' | 'direct_sales_compat' | 'cash_capability';
+export type { LegacyFallbackKind } from './technical-telemetry-logger.js';
 export type LegacyFallbackRecorder = (kind: LegacyFallbackKind) => void;
 
 const counter = metrics.getMeter('tap-quiver-release').createCounter(LEGACY_FALLBACK_METRIC, {
@@ -11,17 +10,7 @@ const counter = metrics.getMeter('tap-quiver-release').createCounter(LEGACY_FALL
 });
 export const recordLegacyFallback: LegacyFallbackRecorder = (kind) => {
   counter.add(1, { kind });
-  const { env } = getTelemetryContextOrDefault();
-  logger.info({
-    'event.category': 'technical',
-    'event.action': 'legacy_fallback',
-    'event.outcome': 'success',
-    'legacy.kind': kind,
-    'data_stream.type': 'logs',
-    'data_stream.dataset': 'technical',
-    'data_stream.namespace': env,
-    message: 'legacy_fallback',
-  }, 'legacy_fallback');
+  emitTechnicalTelemetry({ action: 'legacy_fallback', legacyKind: kind });
 };
 
 export function createLegacyFallbackRecorder(add: (value: number, attributes: { kind: LegacyFallbackKind }) => void): LegacyFallbackRecorder {
