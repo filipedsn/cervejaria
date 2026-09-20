@@ -10,6 +10,7 @@ import {
 } from './sessao-cardapio.js';
 import { quiosqueUsaCardapio } from '../cardapio-toggle.js';
 import { verifyPassword } from '../utils.js';
+import { recordLegacyFallback, type LegacyFallbackRecorder } from '../legacy-fallback.js';
 
 export class CaixaInvalidoError extends Error {
   statusCode = 400;
@@ -34,8 +35,9 @@ export function resolveCashRegisterCapability(params: {
   pontoVendaAtivo: boolean;
   usaCaixa: boolean | null;
   legacyQuiosqueAtivo: boolean;
-}): boolean {
+}, onLegacyFallback: LegacyFallbackRecorder = recordLegacyFallback): boolean {
   if (!params.pontoVendaAtivo) return false;
+  if (params.usaCaixa === null || params.usaCaixa === undefined) onLegacyFallback('cash_capability');
   return params.usaCaixa ?? params.legacyQuiosqueAtivo;
 }
 
