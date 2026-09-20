@@ -83,3 +83,17 @@ After the future bridge PROD execution: `BRIDGE_DEPLOYED`, migrations, both back
 Record branch, base SHA, commits, PR/CI, backfill counters, reconciliation, smoke, Elastic DEV evidence, runbook path and pending PROD gates in Plane. This preparation intentionally performs no PROD query, backup, migration, backfill, deploy, restart, health check or smoke.
 
 Current DEV observability finding: the collector repeatedly reports `version_conflict_engine_exception` for generic metrics batches targeting `.ds-metrics-generic.otel-dev-2026.09.19-000005` (`otelcol.signal=metrics`). The error is not attributed to `tapquiver.legacy_fallback.hits`, and no safe exporter/template correction was made. The application control log (`incoming request`/`request completed`) is queryable in `.ds-logs-technical.otel-dev-*`. A direct OTLP probe without explicit data-stream routing was accepted by the receiver (`HTTP 200`, `partialSuccess={}`) but produced no Elastic document; the same probe with explicit `data_stream.type=logs`, `data_stream.dataset=technical` and `data_stream.namespace=dev` was indexed successfully in `.ds-logs-technical.otel-dev-*`. The bridge now emits one canonical Pino technical record with flat ECS fields and environment-derived routing (`event.action`, `legacy.kind`, `data_stream.*`); local unit/build/CI validation passes, but the controlled application event still produced no Elastic document in DEV. Canonical evidence is therefore **not selectable yet**: neither METRIC nor STRUCTURED_LOG is currently end-to-end queryable. Keep TAP-60 In Progress and do not unlock physical F8 removal.
+
+Transport isolation update (2026-09-20): a temporary Fastify process using the same backend/Pino/EDOT bootstrap emitted the automatic `incoming request` and `request completed` records plus `legacy_fallback` in one request. A broad query over the real technical log data stream and the synthetic resource identifier returned zero documents for both. The runtime is configured for EDOT Pino instrumentation (`--import @elastic/opentelemetry-node`), `ELASTIC_OTEL_NODE_ENABLE_LOG_SENDING=true`, `OTEL_LOGS_EXPORTER=otlp`, and OTLP HTTP `127.0.0.1:4318`; however, this current-process probe does not prove delivery to Elastic. Classification is `APPLICATION_PINO_TO_ELASTIC_FAIL`, not `LEGACY_EVENT_SPECIFIC_FAILURE`. Do not change `legacy_fallback` or the metrics pipeline until the application Pino transport/collector receipt is independently observed.
+
+Broad diagnostic ES|QL used for the same-process probe:
+
+```esql
+FROM logs-technical.otel-dev*
+| WHERE @timestamp >= TO_DATETIME("2026-09-20T03:12:35Z")
+  AND @timestamp < TO_DATETIME("2026-09-20T03:13:10Z")
+  AND resource.attributes.service.name == "quiver-tap-api-dev"
+  AND resource.attributes.service.instance.id == "obs-probe-20260920-a"
+| KEEP @timestamp, data_stream, resource, attributes, body, trace_id, span_id
+| SORT @timestamp ASC
+```
