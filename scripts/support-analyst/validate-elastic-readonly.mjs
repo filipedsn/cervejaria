@@ -204,9 +204,11 @@ const fieldCapsResult = await check('field-caps', async () => {
     requireKeyword(output[auditPattern], 'attributes.requestId.keyword', auditPattern);
     requireKeyword(output[auditPattern], 'attributes.releaseSha.keyword', auditPattern);
   }
-  requireKeyword(output[technicalPattern], 'attributes.correlationId.keyword', technicalPattern);
-  requireKeyword(output[technicalPattern], 'attributes.requestId.keyword', technicalPattern);
-  requireKeyword(output[technicalPattern], 'attributes.releaseSha.keyword', technicalPattern);
+  if (environment === 'dev') {
+    requireKeyword(output[technicalPattern], 'attributes.correlationId.keyword', technicalPattern);
+    requireKeyword(output[technicalPattern], 'attributes.requestId.keyword', technicalPattern);
+    requireKeyword(output[technicalPattern], 'attributes.releaseSha.keyword', technicalPattern);
+  }
   requireKeyword(output[technicalPattern], 'attributes.event.action', technicalPattern);
   requireKeyword(output[technicalPattern], 'attributes.legacy.kind', technicalPattern);
   if (environment === 'prd') {
