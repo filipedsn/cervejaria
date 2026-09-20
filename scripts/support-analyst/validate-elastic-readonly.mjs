@@ -10,19 +10,26 @@
  * - never calls an Elasticsearch write endpoint.
  */
 
-import { assertDevElasticTarget } from './elastic-target-guard.mjs';
+import { assertElasticTarget } from './elastic-target-guard.mjs';
+import {
+  CLUSTER_FORBIDDEN_PRIVILEGES,
+  INDEX_FORBIDDEN_PRIVILEGES,
+  PROD_SOURCE_ALLOWLIST,
+  getPrivilegeScope,
+  resolveValidatorPolicy,
+} from './validator-policy.mjs';
 
-const SHARED_ALERT_INDEX = 'quiver-tap-alert-events';
 const MAX_SEARCH_SIZE = 3;
 const SEARCH_LOOKBACK_HOURS = 24;
 const ELASTIC_SEARCH_TIMEOUT = '5s';
 
-const environment = (process.env.SUPPORT_ANALYST_ENV || 'dev').trim().toLowerCase();
-const apiKey = process.env.SUPPORT_ANALYST_ES_API_KEY?.trim();
-const baseUrl = (process.env.SUPPORT_ANALYST_ES_URL || 'http://127.0.0.1:9200').replace(
-  /\/$/,
-  '',
-);
+let policy;
+try {
+  policy = resolveValidatorPolicy(process.env);
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
+const { environment, apiKey, baseUrl } = policy;
 const requestTimeoutMs = boundedInteger(
   process.env.SUPPORT_ANALYST_ES_TIMEOUT_MS,
   10_000,
@@ -41,44 +48,35 @@ Optional:
   SUPPORT_ANALYST_ES_URL           Elasticsearch URL (default http://127.0.0.1:9200)
   SUPPORT_ANALYST_ENV              dev (default) or prd
   SUPPORT_ANALYST_ALLOW_PRD        Must be true before the script accepts prd
+  SUPPORT_ANALYST_CREDENTIAL_ENV   Credential classification (required for prd)
+  SUPPORT_ANALYST_ENDPOINT_ENV     Endpoint classification (required for prd)
   SUPPORT_ANALYST_ES_TIMEOUT_MS    HTTP timeout, 1000..15000 (default 10000)
   SUPPORT_ANALYST_TEST_CORRELATION_ID  Exact UUID to test without printing it
 `);
   process.exit(0);
 }
 
-if (environment !== 'dev' && environment !== 'prd') {
-  fail('SUPPORT_ANALYST_ENV deve ser dev ou prd.');
-}
-if (environment === 'prd' && !allowPrd) {
-  fail('Validação PRD bloqueada: defina SUPPORT_ANALYST_ALLOW_PRD=true após autorização explícita.');
-}
-if (!apiKey) {
-  fail('SUPPORT_ANALYST_ES_API_KEY é obrigatória; não existe fallback privilegiado.');
-}
 if (correlationId && !isUuid(correlationId)) {
   fail('SUPPORT_ANALYST_TEST_CORRELATION_ID deve ser UUID válido.');
+}
+if (environment === 'prd' && correlationId) {
+  fail('PROD validator accepts only the bounded technical contract; correlation lookup is not enabled.');
 }
 
 const auditPattern = `logs-audit*.otel-${environment}*`;
 const technicalPattern = `logs-technical*.otel-${environment}*`;
-const alertIndex = 'quiver-tap-alert-events-dev';
+const alertIndex = environment === 'dev' ? 'quiver-tap-alert-events-dev' : null;
 const alertRuleNameExactField = 'ruleName';
-const allowedPatterns = [alertIndex, auditPattern, technicalPattern];
+const allowedPatterns = environment === 'dev'
+  ? [alertIndex, auditPattern, technicalPattern]
+  : [technicalPattern];
 try {
-  assertDevElasticTarget({ environment, baseUrl, indexPatterns: allowedPatterns });
+  assertElasticTarget({ environment, baseUrl, indexPatterns: allowedPatterns });
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }
-const outsidePatterns = [
-  ...(environment === 'dev'
-    ? [SHARED_ALERT_INDEX, 'logs-audit*.otel-prd*', 'logs-technical*.otel-prd*']
-    : []),
-  'traces-*',
-  'logs-generic*',
-  'metrics-*',
-  '.kibana*',
-];
+const privilegeScope = getPrivilegeScope(environment);
+const outsidePatterns = privilegeScope.denied;
 
 const sourceAllowlist = [
   '@timestamp',
@@ -94,6 +92,7 @@ const sourceAllowlist = [
   'attributes.event',
   'attributes.event.action',
   'attributes.event.outcome',
+  'attributes.legacy.kind',
   'attributes.http.request.method',
   'attributes.http.route',
   'attributes.http.response.status_code',
@@ -114,6 +113,7 @@ const sourceAllowlist = [
   'trace_id',
   'span_id',
 ];
+const querySourceAllowlist = environment === 'prd' ? PROD_SOURCE_ALLOWLIST : sourceAllowlist;
 
 const failures = [];
 const warnings = [];
@@ -152,7 +152,16 @@ await check('resolve-index', async () => {
 });
 
 const fieldCapsResult = await check('field-caps', async () => {
-  const fields = [
+  const fields = environment === 'prd' ? [
+    '@timestamp',
+    'data_stream.dataset',
+    'data_stream.namespace',
+    'resource.attributes.service.name*',
+    'attributes.event.action*',
+    'attributes.legacy.kind*',
+    'trace_id*',
+    'span_id*',
+  ].join(',') : [
     '@timestamp',
     'attributes.correlationId*',
     'attributes.requestId*',
@@ -162,6 +171,7 @@ const fieldCapsResult = await check('field-caps', async () => {
     'trace_id*',
     'span_id*',
     'attributes.event*',
+    'attributes.legacy.kind*',
     'attributes.http*',
     'attributes.category*',
     'attributes.durationMs*',
@@ -173,33 +183,50 @@ const fieldCapsResult = await check('field-caps', async () => {
     'attributes.role*',
   ].join(',');
   const output = {};
-  const alertBody = await request(
-    `/${encodeURIComponent(alertIndex)}/_field_caps?fields=${encodeURIComponent(
-      '@timestamp,ruleName*,alertState*,reason*,viewInAppUrl*,environment*',
-    )}&include_unmapped=true`,
-  );
-  output[alertIndex] = summarizeFieldCaps(alertBody.fields || {});
-  for (const pattern of [auditPattern, technicalPattern]) {
+  if (alertIndex) {
+    const alertBody = await request(
+      `/${encodeURIComponent(alertIndex)}/_field_caps?fields=${encodeURIComponent(
+        '@timestamp,ruleName*,alertState*,reason*,viewInAppUrl*,environment*',
+      )}&include_unmapped=true`,
+    );
+    output[alertIndex] = summarizeFieldCaps(alertBody.fields || {});
+  }
+  const logPatterns = environment === 'dev' ? [auditPattern, technicalPattern] : [technicalPattern];
+  for (const pattern of logPatterns) {
     const body = await request(
       `/${encodeURIComponent(pattern)}/_field_caps?fields=${encodeURIComponent(fields)}&include_unmapped=true`,
     );
     output[pattern] = summarizeFieldCaps(body.fields || {});
   }
 
-  requireKeyword(output[auditPattern], 'attributes.correlationId.keyword', auditPattern);
-  requireKeyword(output[auditPattern], 'attributes.requestId.keyword', auditPattern);
-  requireKeyword(output[auditPattern], 'attributes.releaseSha.keyword', auditPattern);
+  if (environment === 'dev') {
+    requireKeyword(output[auditPattern], 'attributes.correlationId.keyword', auditPattern);
+    requireKeyword(output[auditPattern], 'attributes.requestId.keyword', auditPattern);
+    requireKeyword(output[auditPattern], 'attributes.releaseSha.keyword', auditPattern);
+  }
   requireKeyword(output[technicalPattern], 'attributes.correlationId.keyword', technicalPattern);
   requireKeyword(output[technicalPattern], 'attributes.requestId.keyword', technicalPattern);
   requireKeyword(output[technicalPattern], 'attributes.releaseSha.keyword', technicalPattern);
-  requireKeyword(output[alertIndex], 'ruleName', alertIndex);
-  requireKeyword(output[alertIndex], 'alertState', alertIndex);
-  requireKeyword(output[alertIndex], 'viewInAppUrl', alertIndex);
-  requireKeyword(output[alertIndex], 'environment', alertIndex);
+  requireKeyword(output[technicalPattern], 'attributes.event.action', technicalPattern);
+  requireKeyword(output[technicalPattern], 'attributes.legacy.kind', technicalPattern);
+  if (environment === 'prd') {
+    requireSearchable(output[technicalPattern], '@timestamp', technicalPattern);
+    requireSearchable(output[technicalPattern], 'data_stream.dataset', technicalPattern);
+    requireSearchable(output[technicalPattern], 'data_stream.namespace', technicalPattern);
+    requireSearchable(output[technicalPattern], 'resource.attributes.service.name', technicalPattern);
+    requireSearchable(output[technicalPattern], 'trace_id', technicalPattern);
+    requireSearchable(output[technicalPattern], 'span_id', technicalPattern);
+  }
+  if (alertIndex) {
+    requireKeyword(output[alertIndex], 'ruleName', alertIndex);
+    requireKeyword(output[alertIndex], 'alertState', alertIndex);
+    requireKeyword(output[alertIndex], 'viewInAppUrl', alertIndex);
+    requireKeyword(output[alertIndex], 'environment', alertIndex);
+  }
   return output;
 });
 
-await check('search-alert-events', async () => {
+if (alertIndex) await check('search-alert-events', async () => {
   const alertFilters = [
     recentRange(),
     { wildcard: { [alertRuleNameExactField]: `*-${environment}` } },
@@ -216,7 +243,7 @@ await check('search-alert-events', async () => {
   return { hits: body.hits?.hits?.length || 0, total: boundedTotal(body.hits?.total) };
 });
 
-await check('search-audit', async () => {
+if (environment === 'dev') await check('search-audit', async () => {
   const query = correlationId
     ? {
         bool: {
@@ -246,7 +273,7 @@ await check('search-technical', async () => {
         },
       }
     : { bool: { filter: [recentRange()] } };
-  const body = await search(technicalPattern, query, sourceAllowlist);
+  const body = await search(technicalPattern, query, querySourceAllowlist);
   return {
     hits: body.hits?.hits?.length || 0,
     total: boundedTotal(body.hits?.total),
@@ -255,44 +282,21 @@ await check('search-technical', async () => {
 });
 
 await check('runtime-privileges', async () => {
-  const clusterForbidden = [
-    'monitor',
-    'manage',
-    'manage_security',
-    'manage_api_key',
-    'manage_own_api_key',
-    'manage_ilm',
-    'manage_index_templates',
-    'all',
-  ];
-  const indexForbidden = [
-    'auto_configure',
-    'write',
-    'index',
-    'create',
-    'create_doc',
-    'create_index',
-    'delete',
-    'delete_index',
-    'manage',
-    'manage_data_stream_lifecycle',
-    'all',
-  ];
   const body = await request('/_security/user/_has_privileges', {
     method: 'POST',
     body: JSON.stringify({
-      cluster: clusterForbidden,
+      cluster: CLUSTER_FORBIDDEN_PRIVILEGES,
       index: [
         {
           names: allowedPatterns,
-          privileges: ['read', 'view_index_metadata', ...indexForbidden],
+          privileges: ['read', 'view_index_metadata', ...INDEX_FORBIDDEN_PRIVILEGES],
         },
         { names: outsidePatterns, privileges: ['read', 'view_index_metadata'] },
       ],
     }),
   });
 
-  for (const privilege of clusterForbidden) {
+  for (const privilege of CLUSTER_FORBIDDEN_PRIVILEGES) {
     if (body.cluster?.[privilege] !== false) {
       throw new Error(`cluster privilege inesperado: ${privilege}`);
     }
@@ -302,7 +306,7 @@ await check('runtime-privileges', async () => {
     if (privileges?.read !== true || privileges?.view_index_metadata !== true) {
       throw new Error(`read/view_index_metadata ausente para ${pattern}`);
     }
-    for (const privilege of indexForbidden) {
+    for (const privilege of INDEX_FORBIDDEN_PRIVILEGES) {
       if (privileges?.[privilege] !== false) {
         throw new Error(`index privilege inesperado em ${pattern}: ${privilege}`);
       }
@@ -318,7 +322,7 @@ await check('runtime-privileges', async () => {
   return {
     clusterPrivileges: [],
     allowedIndexPrivileges: ['read', 'view_index_metadata'],
-    forbiddenIndexPrivilegesConfirmed: indexForbidden,
+    forbiddenIndexPrivilegesConfirmed: INDEX_FORBIDDEN_PRIVILEGES,
     outsidePatternsDenied: outsidePatterns,
   };
 });
@@ -411,6 +415,13 @@ function requireKeyword(fields, name, pattern) {
   const types = fields?.[name];
   if (!types?.keyword?.searchable) {
     throw new Error(`${name} keyword pesquisável ausente em ${pattern}`);
+  }
+}
+
+function requireSearchable(fields, name, pattern) {
+  const types = fields?.[name];
+  if (!types || !Object.values(types).some((type) => type.searchable)) {
+    throw new Error(`${name} pesquisável ausente em ${pattern}`);
   }
 }
 
