@@ -48,8 +48,3 @@ test('navigation exposes Caixa only for the CAIXA mode', () => {
   assert.notEqual(NAV_ITEMS_QUIOSQUE[0].shortLabel, 'Quiosque');
   assert.notEqual(NAV_ITEMS_QUIOSQUE[0].shortLabel, 'Estabelecimento');
 });
-
-test('navigation exposes establishment, never the legacy Quiosque mode label', () => {
-  assert.equal(NAV_ITEMS_QUIOSQUE[0].shortLabel, 'Estabelecimento');
-  assert.notEqual(NAV_ITEMS_QUIOSQUE[0].shortLabel, 'Quiosque');
-});
