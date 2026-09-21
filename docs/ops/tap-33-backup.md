@@ -29,3 +29,7 @@ powershell -File scripts/backup/install-dev-scheduler.ps1 -Environment productio
 O restore drill usa uma cópia do destino off-host em banco temporário isolado;
 nunca em `cervejaria` ou `cervejaria_dev`. Se o destino falhar, preserve o
 arquivo local, registre o erro e permita nova tentativa automática.
+
+Cada execução grava uma linha JSON sem dados do banco em
+`deploy/logs/backup-development.log` ou `deploy/logs/backup-production.log`,
+com ambiente, arquivo, tamanho, SHA-256, resultado off-host, retenção e duração.
