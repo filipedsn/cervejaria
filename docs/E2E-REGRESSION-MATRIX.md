@@ -57,3 +57,23 @@ is an individual Playwright case; the expected order is compared positionally.
 | `quiosque-estoque-critico.spec.ts` | REUSE | inventory workflow |
 | `quiosque-cozinha-cancel.spec.ts` | REUSE | kitchen lifecycle |
 | `operational-capability-matrix.spec.ts` | NEW | exhaustive 16-combination configuration guard |
+
+## TAP-68 operational mode transition matrix
+
+Mode transitions are guarded server-side and the UI keeps the current selection
+when the API rejects a request. `evento.status=ABERTO` is the active-event
+condition; scheduled and closed events do not block returning to CAIXA.
+
+| Case | Precondition | Requested transition | Expected result | Direct API / UI evidence |
+| --- | --- | --- | --- | --- |
+| T68-01 | CAIXA, open cash session | CAIXA -> EVENTO | BLOCKED, HTTP 409, `OPEN_CASH_REGISTER` | service test + UI error |
+| T68-02 | CAIXA, no open cash | CAIXA -> EVENTO | ALLOWED | service test |
+| T68-03 | EVENTO, active event (`ABERTO`) | EVENTO -> CAIXA | BLOCKED, HTTP 409, `ACTIVE_EVENT` | service test + UI error |
+| T68-04 | EVENTO, scheduled event | EVENTO -> CAIXA | ALLOWED | service test |
+| T68-05 | EVENTO, closed event | EVENTO -> CAIXA | ALLOWED | service test |
+| T68-06 | Any guarded transition, concurrent requests | Same transition twice | no partial update; both requests observe guard | concurrency test |
+| T68-07 | Any capability combination | Mode rejection | inventory/kitchen/taps/direct-sales flags unchanged | 16-case static matrix |
+
+The static configuration oracle covers 16/16 combinations of mode, inventory,
+kitchen and direct-sales flags. Scheduled-event, refresh/repeat and direct API
+paths are included in the backend guard tests; no route can bypass the guard.

@@ -157,6 +157,26 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
     await expect(page.getByRole('button', { name: 'Ativar Cozinha / preparo' })).toBeVisible();
   });
 
+  test('preserva CAIXA quando a API bloqueia a mudanca para EVENTO', async ({ page }) => {
+    await login(page, owner.email, owner.password);
+    await page.goto('/quiosque/configuracoes/operacao');
+    const caixa = page.getByRole('button', { name: 'Por caixa' });
+    const evento = page.getByRole('button', { name: /Por opera/ });
+    await expect(caixa).toHaveAttribute('aria-pressed', 'true');
+    await page.route('**/api/cervejaria/configuracao-operacional', async (route) => {
+      if (route.request().method() !== 'PATCH') return route.continue();
+      await route.fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Feche o caixa antes de mudar para Opera\u00e7\u00f5es / Eventos.' }),
+      });
+    });
+    await evento.click();
+    await expect(page.getByText(/Feche o caixa antes de mudar/i)).toBeVisible();
+    await expect(caixa).toHaveAttribute('aria-pressed', 'true');
+    await expect(evento).toHaveAttribute('aria-pressed', 'false');
+  });
+
   test('ADMIN edita capacidades operacionais sem modo principal legado', async ({ page }) => {
     await login(page, CREDENTIALS.admin.email, CREDENTIALS.admin.password);
     await page.goto('/admin/cervejarias');
