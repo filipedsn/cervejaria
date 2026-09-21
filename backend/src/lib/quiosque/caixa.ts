@@ -57,8 +57,12 @@ export async function assertCashRegisterUnitEnabled(
   });
   if (!pontoVenda) throw new CaixaInvalidoError('Ponto de venda não encontrado');
 
-  const profile = await getOperationalProfile(cervejariaId);
-  const enabled = pontoVenda.ativo && pontoVenda.usaCaixa !== false && profile?.capabilities.cashRegister === true;
+  let enabled = pontoVenda.usaCaixa;
+  if (enabled === null) {
+    const profile = await getOperationalProfile(cervejariaId);
+    enabled = profile?.capabilities.cashRegister === true;
+  }
+  enabled = pontoVenda.ativo && enabled === true;
   if (!enabled) throw new CaixaInvalidoError('Caixa não habilitado para este ponto de venda');
 }
 
