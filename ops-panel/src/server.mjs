@@ -153,6 +153,116 @@ async function readAlertsFromElastic() {
   return { source: 'elastic', alerts };
 }
 
+const JOURNEY_SOURCE_FIELDS = [
+  // Raw messages are deliberately not queried: an operational timeline never needs
+  // arbitrary log text, which could reintroduce user-entered content or PII.
+  '@timestamp', 'trace_id', 'span_id',
+  'attributes.event.action', 'attributes.event.outcome',
+  'attributes.cervejaria.id', 'attributes.actor.id', 'attributes.actor.role',
+  'attributes.ui.page', 'attributes.http.route', 'attributes.http.request.method',
+  'attributes.http.response.status_code', 'attributes.durationMs',
+  'attributes.entity.type', 'attributes.entity.id',
+  'attributes.correlationId', 'attributes.requestId', 'attributes.event',
+].join(',');
+
+function journeyValue(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9._:/-]{1,200}$/.test(value) ? value : undefined;
+}
+
+function journeyRange(value, fallback) {
+  if (!value) return fallback;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? fallback : new Date(parsed).toISOString();
+}
+
+function readJourneyFilters(query = {}) {
+  const now = new Date();
+  const defaultFrom = new Date(now.getTime() - 24 * 60 * 60_000).toISOString();
+  const environment = query.environment === 'prd' ? 'prd' : 'dev';
+  return {
+    environment,
+    from: journeyRange(query.from, defaultFrom),
+    to: journeyRange(query.to, now.toISOString()),
+    tenantId: journeyValue(query.tenantId),
+    actorId: journeyValue(query.actorId),
+    action: journeyValue(query.action),
+    where: journeyValue(query.where),
+    outcome: query.outcome === 'success' || query.outcome === 'failure' ? query.outcome : undefined,
+    correlationId: journeyValue(query.correlationId),
+  };
+}
+
+function journeyTimestamp(value) {
+  if (typeof value === 'string' && !Number.isNaN(Date.parse(value))) return new Date(value).toISOString();
+  const epoch = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(epoch) ? new Date(epoch).toISOString() : undefined;
+}
+
+function journeyEvent(hit) {
+  const attributes = hit?._source?.attributes ?? {};
+  const text = (value) => typeof value === 'string' ? value : undefined;
+  const number = (value) => typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  return {
+    id: typeof hit?._id === 'string' ? hit._id : undefined,
+    timestamp: journeyTimestamp(hit?._source?.['@timestamp']),
+    source: String(hit?._index || '').includes('logs-technical') ? 'technical' : 'audit',
+    action: text(attributes['event.action']) || text(attributes.event),
+    outcome: text(attributes['event.outcome']),
+    tenantId: text(attributes['cervejaria.id']),
+    actorId: text(attributes['actor.id']),
+    actorRole: text(attributes['actor.role']) || text(attributes.role),
+    page: text(attributes['ui.page']),
+    route: text(attributes['http.route']),
+    method: text(attributes['http.request.method']),
+    statusCode: number(attributes['http.response.status_code']),
+    durationMs: number(attributes.durationMs),
+    entityType: text(attributes['entity.type']),
+    entityId: text(attributes['entity.id']),
+    correlationId: text(attributes.correlationId),
+    requestId: text(attributes.requestId),
+    traceId: text(hit?._source?.trace_id),
+    spanId: text(hit?._source?.span_id),
+  };
+}
+
+async function readOperationJourney(query) {
+  const config = readObservabilityConfig();
+  if (!config) return { source: 'unavailable', reason: 'Configuracao Elastic ausente', events: [] };
+  const filters = readJourneyFilters(query);
+  const clauses = [{ range: { '@timestamp': { gte: filters.from, lte: filters.to } } }];
+  const fields = {
+    // These custom OTel attributes are mapped as exact fields by the existing
+    // data streams; adding a `.keyword` suffix would make valid audit events
+    // disappear on clusters that use flattened attributes.
+    tenantId: 'attributes.cervejaria.id', actorId: 'attributes.actor.id',
+    where: 'attributes.http.route',
+    outcome: 'attributes.event.outcome', correlationId: 'attributes.correlationId',
+  };
+  for (const [key, field] of Object.entries(fields)) {
+    if (filters[key]) clauses.push({ term: { [field]: filters[key] } });
+  }
+  if (filters.action) {
+    // Audit uses event.action while a few inherited technical signals use the
+    // older attributes.event field. Both are existing schemas, not a fallback
+    // pipeline, so the visible action filter covers the whole journey.
+    clauses.push({ bool: { should: [
+      { term: { 'attributes.event.action': filters.action } },
+      { term: { 'attributes.event': filters.action } },
+    ], minimum_should_match: 1 } });
+  }
+  const body = JSON.stringify({ size: 200, sort: [{ '@timestamp': 'asc' }], _source: JOURNEY_SOURCE_FIELDS.split(','), query: { bool: { filter: clauses } } });
+  const headers = { 'Content-Type': 'application/json', ...(config.authorization ? { Authorization: config.authorization } : {}) };
+  const [audit, technical] = await Promise.all(['audit', 'technical'].map((kind) =>
+    fetch(`${config.baseUrl}/logs-${kind}*.otel-${filters.environment}*/_search`, { method: 'POST', headers, body }),
+  ));
+  if (!audit.ok || !technical.ok) return { source: 'unavailable', reason: `Elastic HTTP ${!audit.ok ? audit.status : technical.status}`, events: [] };
+  const [auditData, technicalData] = await Promise.all([audit.json(), technical.json()]);
+  const auditEvents = (auditData.hits?.hits ?? []).map(journeyEvent).filter((event) => event.timestamp && event.action);
+  const technicalEvents = (technicalData.hits?.hits ?? []).map(journeyEvent)
+    .filter((event) => event.timestamp && (event.action || (event.statusCode ?? 0) >= 400));
+  return { source: 'elastic', filters, events: [...auditEvents, ...technicalEvents].sort((a, b) => a.timestamp.localeCompare(b.timestamp)).slice(0, 200) };
+}
+
 function audit(message) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
   const line = `[${new Date().toISOString()}] ${message}\n`;
@@ -654,6 +764,15 @@ app.get('/api/alerts', async () => {
     return await readAlertsFromElastic();
   } catch {
     return { source: 'unavailable', reason: 'Falha ao consultar fonte de alertas', alerts: [] };
+  }
+});
+
+app.get('/api/operation-journey', async (request, reply) => {
+  if (!requireToken(request, reply)) return;
+  try {
+    return await readOperationJourney(request.query);
+  } catch {
+    return { source: 'unavailable', reason: 'Falha ao consultar a jornada', events: [] };
   }
 });
 

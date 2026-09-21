@@ -12,7 +12,7 @@ export const CREDENTIALS = {
     email: process.env.E2E_ARENA_EMAIL ?? 'qa-arena-dono@qa.test',
     password: process.env.E2E_ARENA_PASSWORD ?? 'qa123456',
   },
-  hibrida: {
+  caixa: {
     email: process.env.E2E_HIBRIDA_EMAIL ?? 'qa-cfg-hibrida-00-dono@qa.test',
     password: process.env.E2E_HIBRIDA_PASSWORD ?? 'qa123456',
   },

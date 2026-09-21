@@ -27,6 +27,25 @@
   --mono: Consolas, "Cascadia Mono", "Segoe UI Mono", monospace;
 }
 
+.journey-section { margin: 1.5rem 0; }
+.journey-card { padding: 1rem; }
+.journey-toolbar { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .65rem; align-items: end; }
+.journey-toolbar input, .journey-toolbar select { min-width: 0; width: 100%; padding: .5rem .6rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; font-size: .82rem; }
+.journey-toolbar .btn { min-height: 36px; }
+.journey-timeline { display: grid; gap: .55rem; margin-top: .8rem; }
+.journey-event { display: grid; grid-template-columns: 72px 1fr auto; gap: .7rem; align-items: start; padding: .7rem; border-left: 3px solid var(--blue); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--bg-elevated); }
+.journey-event--failure { border-left-color: var(--red); }
+.journey-event-time { color: var(--text-muted); font: .75rem var(--mono); }
+.journey-event-main strong { display: block; font-size: .9rem; }
+.journey-event-main p { margin: .14rem 0 0; color: var(--text-secondary); font-size: .78rem; }
+.journey-event details { margin-top: .45rem; color: var(--text-muted); font-size: .76rem; }
+.journey-event summary { cursor: pointer; }
+.journey-event dl { display: grid; grid-template-columns: max-content 1fr; gap: .15rem .5rem; margin: .45rem 0 0; font-family: var(--mono); font-size: .71rem; word-break: break-word; }
+.journey-event dt { color: var(--text-muted); }
+.journey-event dd { margin: 0; color: var(--text-secondary); }
+@media (max-width: 1000px) { .journey-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 620px) { .journey-toolbar { grid-template-columns: 1fr; } .journey-event { grid-template-columns: 1fr; gap: .25rem; } }
+
 * { box-sizing: border-box; }
 
 body {

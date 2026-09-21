@@ -18,7 +18,7 @@ type AuthAction =
   | 'auth.session.rejected'
   | 'auth.authorization.denied';
 
-type AuthUser = Pick<JwtPayload, 'nome' | 'papel' | 'cervejariaId'> & { sub?: string; id?: string };
+type AuthUser = Pick<JwtPayload, 'papel' | 'cervejariaId'> & { sub?: string; id?: string };
 
 function route(request: FastifyRequest): string {
   return request.routeOptions?.url ?? request.url.split('?')[0];
@@ -34,7 +34,7 @@ export function emitAuthEvent(
     action,
     message: action,
     outcome: action.endsWith('succeeded') || action === 'auth.logout' ? 'success' : 'failure',
-    actor: user ? { type: 'usuario', id: ('sub' in user ? user.sub : user.id), name: user.nome } : undefined,
+    actor: user ? { type: 'usuario', id: ('sub' in user ? user.sub : user.id), role: user.papel } : undefined,
     http: { method: request.method, route: route(request) },
     metadata: { reasonCode: options.reasonCode, role: options.role ?? user?.papel },
   });

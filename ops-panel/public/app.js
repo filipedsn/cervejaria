@@ -74,6 +74,17 @@ const els = {
   activeAlerts: document.getElementById('activeAlerts'),
   recoveredAlerts: document.getElementById('recoveredAlerts'),
   pollerSemanticHealth: document.getElementById('pollerSemanticHealth'),
+  journeyFrom: document.getElementById('journeyFrom'),
+  journeyTo: document.getElementById('journeyTo'),
+  journeyTenant: document.getElementById('journeyTenant'),
+  journeyActor: document.getElementById('journeyActor'),
+  journeyAction: document.getElementById('journeyAction'),
+  journeyWhere: document.getElementById('journeyWhere'),
+  journeyOutcome: document.getElementById('journeyOutcome'),
+  journeyCorrelation: document.getElementById('journeyCorrelation'),
+  journeyEnvironment: document.getElementById('journeyEnvironment'),
+  journeySource: document.getElementById('journeySource'),
+  journeyTimeline: document.getElementById('journeyTimeline'),
 };
 
 // A release e a decisao principal; os detalhes operacionais continuam acessiveis abaixo.
@@ -391,6 +402,110 @@ function formatDate(iso) {
   return new Date(iso).toLocaleString('pt-BR', {
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   });
+}
+
+function semanticJourneyAction(action, event) {
+  const key = String(action || '').toLowerCase();
+  if (key === 'auth.login.succeeded') return ['👤', 'Entrou no sistema'];
+  if (key === 'auth.logout') return ['👋', 'Saiu do sistema'];
+  if (key.includes('authorization.denied') || key.includes('room.denied') || key.includes('session.rejected')) return ['⚠️', 'Ação bloqueada por permissão'];
+  if (key === 'db.operation.slow') return ['⏱️', 'Operação demorou mais que o esperado'];
+  if (key.includes('caixa') && (key.includes('aberto') || key.includes('abrir'))) return ['💰', 'Abriu o caixa'];
+  if (key.includes('caixa') && (key.includes('fechado') || key.includes('fechar'))) return ['💰', 'Fechou o caixa'];
+  if (key.includes('comanda') && key.includes('criada')) return ['🛒', 'Iniciou uma venda'];
+  if ((key.includes('item') || key.includes('pedido')) && (key.includes('adicionado') || key.includes('criado'))) return ['➕', 'Adicionou item'];
+  if (key.includes('pagamento') && (key.includes('registrado') || key.includes('completed') || key.includes('confirm'))) return ['💳', 'Pagamento concluído'];
+  if (key.includes('venda_avulsa')) return ['🛒', 'Registrou venda avulsa'];
+  if ((key.includes('comanda') || key.includes('venda')) && (key.includes('fechada') || key.includes('completed'))) return ['✅', 'Venda concluída'];
+  if (event.outcome === 'failure' || (event.statusCode || 0) >= 400) return ['❌', 'Ação não concluída'];
+  if (key.startsWith('ui.page_view')) return ['🧭', 'Abriu uma tela'];
+  if (key.startsWith('http.') || key.startsWith('http.request.completed')) return ['↔', (event.statusCode || 0) >= 400 ? 'Requisição não concluída' : 'Requisição concluída'];
+  return ['•', 'Ação operacional'];
+}
+
+function addJourneyDetail(list, label, value) {
+  if (value === undefined || value === null || value === '') return;
+  const term = document.createElement('dt');
+  term.textContent = label;
+  const detail = document.createElement('dd');
+  detail.textContent = String(value);
+  list.append(term, detail);
+}
+
+function renderJourney(events) {
+  els.journeyTimeline.replaceChildren();
+  if (!events.length) {
+    const empty = document.createElement('span');
+    empty.className = 'status-muted';
+    empty.textContent = 'Nenhum evento encontrado para estes filtros.';
+    els.journeyTimeline.append(empty);
+    return;
+  }
+  for (const event of events) {
+    const [icon, title] = semanticJourneyAction(event.action, event);
+    const item = document.createElement('article');
+    item.className = `journey-event${event.outcome === 'failure' || (event.statusCode || 0) >= 400 ? ' journey-event--failure' : ''}`;
+    const time = document.createElement('time');
+    time.className = 'journey-event-time';
+    time.dateTime = event.timestamp;
+    time.textContent = formatDate(event.timestamp);
+    const main = document.createElement('div');
+    main.className = 'journey-event-main';
+    const heading = document.createElement('strong');
+    heading.textContent = `${icon} ${title}`;
+    const context = document.createElement('p');
+    context.textContent = [event.actorId && `ator ${event.actorId}`, event.actorRole, event.page || event.route, event.outcome].filter(Boolean).join(' · ') || 'Contexto operacional';
+    main.append(heading, context);
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Ver detalhes';
+    const level2 = document.createElement('dl');
+    addJourneyDetail(level2, 'Rota/tela', event.route || event.page);
+    addJourneyDetail(level2, 'Entidade', [event.entityType, event.entityId].filter(Boolean).join(':'));
+    addJourneyDetail(level2, 'HTTP', event.statusCode ? `${event.method || ''} ${event.statusCode}`.trim() : undefined);
+    addJourneyDetail(level2, 'Correlation ID', event.correlationId);
+    addJourneyDetail(level2, 'Trace ID', event.traceId);
+    addJourneyDetail(level2, 'Span ID', event.spanId);
+    addJourneyDetail(level2, 'Latência', event.durationMs !== undefined ? `${event.durationMs} ms` : undefined);
+    addJourneyDetail(level2, 'Event action', event.action);
+    details.append(summary, level2);
+    item.append(time, main, details);
+    els.journeyTimeline.append(item);
+  }
+}
+
+function journeyQuery() {
+  const params = new URLSearchParams({ environment: els.journeyEnvironment.value || 'dev' });
+  const values = {
+    from: els.journeyFrom.value ? new Date(els.journeyFrom.value).toISOString() : '',
+    to: els.journeyTo.value ? new Date(els.journeyTo.value).toISOString() : '',
+    tenantId: els.journeyTenant.value.trim(), actorId: els.journeyActor.value.trim(),
+    action: els.journeyAction.value.trim(), where: els.journeyWhere.value.trim(),
+    outcome: els.journeyOutcome.value, correlationId: els.journeyCorrelation.value.trim(),
+  };
+  for (const [key, value] of Object.entries(values)) if (value) params.set(key, value);
+  return params;
+}
+
+async function refreshJourney() {
+  if (!canAct()) {
+    els.journeySource.textContent = 'O acesso remoto exige o token do Ops Panel.';
+    return;
+  }
+  els.journeySource.textContent = 'Consultando os streams de auditoria e telemetria…';
+  try {
+    const data = await fetchJson(`/api/operation-journey?${journeyQuery()}`);
+    if (data.source !== 'elastic') {
+      els.journeySource.textContent = data.reason || 'Fonte de observabilidade indisponível.';
+      renderJourney([]);
+      return;
+    }
+    els.journeySource.textContent = `${data.events.length} evento(s), ordem cronológica. Fonte: audit + technical (${data.filters.environment.toUpperCase()}).`;
+    renderJourney(data.events);
+  } catch (error) {
+    els.journeySource.textContent = error.message || 'Não foi possível consultar a jornada.';
+    renderJourney([]);
+  }
 }
 
 function formatPullList(pulls) {
@@ -1075,7 +1190,10 @@ document.getElementById('btnSaveToken').addEventListener('click', saveToken);
 document.getElementById('btnRefresh').addEventListener('click', () => {
   refreshStatus().catch(showError);
   refreshRelease();
+  refreshJourney();
 });
+
+document.getElementById('btnJourneySearch').addEventListener('click', refreshJourney);
 
 els.investigate?.addEventListener('click', () => {
   const target = document.querySelector(els.investigate.dataset.target || '#observabilitySection');
@@ -1278,12 +1396,17 @@ async function initSession() {
 }
 
 els.opsToken.value = getToken();
+const journeyNow = new Date();
+const journeyLocal = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+els.journeyFrom.value = journeyLocal(new Date(journeyNow.getTime() - 24 * 60 * 60_000));
+els.journeyTo.value = journeyLocal(journeyNow);
 initSession()
   .then(() => loadOpsPanelMeta())
   .then(() => {
     refreshStatus().catch(showError);
     loadLogCatalog().catch(showError);
     refreshRelease();
+    refreshJourney();
   })
   .catch(showError);
 setInterval(() => refreshStatus().catch(() => {}), 30_000);

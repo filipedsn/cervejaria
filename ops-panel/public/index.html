@@ -18,6 +18,7 @@
         <a href="#releaseSection" class="section-nav-link"><span aria-hidden="true">↗</span> Release</a>
         <a href="#environmentsSection" class="section-nav-link"><span aria-hidden="true">□</span> Ambientes</a>
         <a href="#observabilitySection" class="section-nav-link"><span aria-hidden="true">⌁</span> Observabilidade</a>
+        <a href="#journeySection" class="section-nav-link"><span aria-hidden="true">≡</span> Jornada</a>
         <a href="#backupsSection" class="section-nav-link"><span aria-hidden="true">◇</span> Protecao</a>
         <a href="#toolsSection" class="section-nav-link"><span aria-hidden="true">≡</span> Logs</a>
       </nav>
@@ -132,6 +133,29 @@
           <button type="button" class="quick-action quick-action--critical" data-quick-action="sync">Copiar PROD → DEV</button>
         </div>
       </div>
+    </section>
+
+    <section class="panel-section journey-section" id="journeySection" aria-labelledby="journeyTitle">
+      <div class="section-title">
+        <h2 id="journeyTitle">Jornada da operação</h2>
+        <p>Reconstrói a história com audit e telemetria técnica já existentes. Nenhum dado é gravado pelo painel.</p>
+      </div>
+      <article class="card journey-card">
+        <div class="journey-toolbar">
+          <label class="field"><span class="field-label">Quando (início)</span><input id="journeyFrom" type="datetime-local" /></label>
+          <label class="field"><span class="field-label">Quando (fim)</span><input id="journeyTo" type="datetime-local" /></label>
+          <label class="field"><span class="field-label">Empresa (ID)</span><input id="journeyTenant" placeholder="tenant-id" /></label>
+          <label class="field"><span class="field-label">Quem (actor ID)</span><input id="journeyActor" placeholder="actor-id" /></label>
+          <label class="field"><span class="field-label">Ação</span><input id="journeyAction" placeholder="event.action" /></label>
+          <label class="field"><span class="field-label">Onde (rota)</span><input id="journeyWhere" placeholder="/api/..." /></label>
+          <label class="field"><span class="field-label">Resultado</span><select id="journeyOutcome"><option value="">Todos</option><option value="success">Sucesso</option><option value="failure">Falha</option></select></label>
+          <label class="field"><span class="field-label">Jornada / correlation ID</span><input id="journeyCorrelation" placeholder="UUID" /></label>
+          <label class="field"><span class="field-label">Ambiente</span><select id="journeyEnvironment"><option value="dev">DEV</option><option value="prd">PROD</option></select></label>
+          <button type="button" id="btnJourneySearch" class="btn btn-primary">Buscar jornada</button>
+        </div>
+        <p id="journeySource" class="card-hint">Preencha filtros ou use a janela padrão de 24 horas.</p>
+        <div id="journeyTimeline" class="journey-timeline" aria-live="polite"><span class="status-muted">Aguardando consulta.</span></div>
+      </article>
     </section>
 
     <section class="home-bottom" aria-label="Resumo operacional">
