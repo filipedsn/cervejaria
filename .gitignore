@@ -47,6 +47,7 @@ ops-panel/.env
 deploy/backups/*.sql
 !deploy/backups/.gitkeep
 deploy/backups-external/
+deploy/backups-development/
 deploy/restore-drills/
 
 # Artefatos publicados em producao (somente via prod:deploy)
