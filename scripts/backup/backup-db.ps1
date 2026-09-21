@@ -21,6 +21,25 @@ $name = "$($profile.Prefix)-$stamp.sql"
 $file = Join-Path $local $name
 $containerFile = "/tmp/$name"
 
+function Apply-Retention {
+  param([string]$Directory)
+  $dumps = @(Get-ChildItem -LiteralPath $Directory -Filter "$($profile.Prefix)-*.sql" -File | Sort-Object LastWriteTime -Descending)
+  $keep = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  $dumps | Select-Object -First $DailyRetention | ForEach-Object { [void]$keep.Add($_.Name) }
+  $weekly = @{}
+  foreach ($dump in $dumps) {
+    $week = '{0}-{1:00}' -f $dump.LastWriteTime.Year, [Globalization.CultureInfo]::InvariantCulture.Calendar.GetWeekOfYear($dump.LastWriteTime, [Globalization.CalendarWeekRule]::FirstFourDayWeek, [DayOfWeek]::Monday)
+    if (-not $weekly.ContainsKey($week)) { $weekly[$week] = $dump }
+  }
+  $weekly.Values | Sort-Object LastWriteTime -Descending | Select-Object -First $WeeklyRetention | ForEach-Object { [void]$keep.Add($_.Name) }
+  foreach ($dump in $dumps) {
+    if (-not $keep.Contains($dump.Name)) {
+      Remove-Item $dump.FullName -Force
+      Remove-Item "$($dump.FullName).sha256" -Force -ErrorAction SilentlyContinue
+    }
+  }
+}
+
 try {
   $running = docker ps --filter "name=^/$($profile.Container)$" --format '{{.Names}}'
   if ($LASTEXITCODE -ne 0 -or $running -ne $profile.Container) { throw "Container $($profile.Container) nao esta rodando." }
@@ -44,18 +63,9 @@ try {
     $remoteItem = Get-Item (Join-Path $remote $name)
     $remoteHash = (Get-FileHash -LiteralPath $remoteItem.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($remoteItem.Length -ne $item.Length -or $remoteHash -ne $hash) { throw 'Checksum off-host divergente.' }
+    Apply-Retention -Directory $remote
   }
-
-  $dumps = @(Get-ChildItem -LiteralPath $local -Filter "$($profile.Prefix)-*.sql" -File | Sort-Object LastWriteTime -Descending)
-  $keep = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-  $dumps | Select-Object -First $DailyRetention | ForEach-Object { [void]$keep.Add($_.Name) }
-  $weekly = @{}
-  foreach ($dump in $dumps) {
-    $week = '{0}-{1:00}' -f $dump.LastWriteTime.Year, [Globalization.CultureInfo]::InvariantCulture.Calendar.GetWeekOfYear($dump.LastWriteTime, [Globalization.CalendarWeekRule]::FirstFourDayWeek, [DayOfWeek]::Monday)
-    if (-not $weekly.ContainsKey($week)) { $weekly[$week] = $dump }
-  }
-  $weekly.Values | Sort-Object LastWriteTime -Descending | Select-Object -First $WeeklyRetention | ForEach-Object { [void]$keep.Add($_.Name) }
-  foreach ($dump in $dumps) { if (-not $keep.Contains($dump.Name)) { Remove-Item $dump.FullName -Force; Remove-Item "$($dump.FullName).sha256" -Force -ErrorAction SilentlyContinue } }
+  Apply-Retention -Directory $local
   [pscustomobject]@{ result='PASS'; environment=$Environment; file=$file; bytes=$item.Length; sha256=$hash; offHost=[bool]$OffHostDir; retention='PASS' } | ConvertTo-Json -Compress
 } catch {
   Write-Error $_
