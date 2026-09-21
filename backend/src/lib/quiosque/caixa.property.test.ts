@@ -19,23 +19,21 @@ function roundMoney(n: number): number {
 
 describe('caixa quiosque (property-based)', () => {
   it('resolve a capacidade por unidade: explícito vence fallback, NULL preserva legado', () => {
-    assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: true, usaCaixa: true, legacyQuiosqueAtivo: false }), true);
-    assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: true, usaCaixa: false, legacyQuiosqueAtivo: true }), false);
-    assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: true, usaCaixa: null, legacyQuiosqueAtivo: true }), true);
-    assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: true, usaCaixa: null, legacyQuiosqueAtivo: false }), false);
+    assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: true, operationMode: 'CAIXA' }), true);
+    assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: true, operationMode: 'EVENTO' }), false);
   });
 
   it('não permite que unidade inativa herde ou habilite caixa', () => {
-    assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: false, usaCaixa: true, legacyQuiosqueAtivo: true }), false);
+    assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: false, operationMode: 'CAIXA' }), false);
   });
 
   it('mantém decisões independentes entre unidades e tenants', () => {
     const tenantA = [
-      resolveCashRegisterCapability({ pontoVendaAtivo: true, usaCaixa: true, legacyQuiosqueAtivo: false }),
-      resolveCashRegisterCapability({ pontoVendaAtivo: true, usaCaixa: false, legacyQuiosqueAtivo: true }),
+      resolveCashRegisterCapability({ pontoVendaAtivo: true, operationMode: 'CAIXA' }),
+      resolveCashRegisterCapability({ pontoVendaAtivo: true, operationMode: 'CAIXA' }),
     ];
-    const tenantB = resolveCashRegisterCapability({ pontoVendaAtivo: true, usaCaixa: null, legacyQuiosqueAtivo: false });
-    assert.deepEqual(tenantA, [true, false]);
+    const tenantB = resolveCashRegisterCapability({ pontoVendaAtivo: true, operationMode: 'EVENTO' });
+    assert.deepEqual(tenantA, [true, true]);
     assert.equal(tenantB, false);
   });
 
@@ -51,7 +49,7 @@ describe('caixa quiosque (property-based)', () => {
       sessaoCaixaQuiosque: { findFirst: async () => null },
     };
     await assert.rejects(
-      assertCaixaAberto('tenant-a', 'unidade-a', new Date('2026-09-14'), semSessao as never),
+      assertCaixaAberto('tenant-a', 'unidade-a', new Date('2026-09-14'), semSessao as never, async () => ({ operationMode: 'CAIXA' }) as never),
       /Abra o caixa do dia antes de registrar vendas/,
     );
 
@@ -71,6 +69,7 @@ describe('caixa quiosque (property-based)', () => {
         'unidade-b',
         new Date('2026-09-14'),
         explicitamenteDesabilitada as never,
+        async () => ({ operationMode: 'EVENTO' }) as never,
       ),
       /Caixa não habilitado para este ponto de venda/,
     );

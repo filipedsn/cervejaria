@@ -19,5 +19,5 @@ test('current materialized path does not increment legacy fallback counter', () 
 test('legacy operational and cash fallbacks increment exactly once per decision', () => {
   const hits: string[] = [];
   deriveOperationalProfile(facts({ operationalEnablement: { directSalesEnabled: null, plannedOperationsEnabled: null, tapsEnabled: null, inventoryEnabled: null, kitchenEnabled: null }, activePointOfSaleCashRegisterSettings: [null] }), createLegacyFallbackRecorder((_value, attrs) => hits.push(attrs.kind)));
-  assert.deepEqual(hits, ['operational_config', 'cash_capability']);
+  assert.deepEqual(hits, ['operational_config']);
 });
