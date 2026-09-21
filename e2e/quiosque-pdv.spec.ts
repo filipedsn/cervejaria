@@ -38,11 +38,27 @@ async function prepararPdvAberto({ produto = false }: { produto?: boolean } = {}
 }
 
 test.describe('Quiosque comandas', () => {
+  test('caixa fechado oferece CTA funcional para abrir', async ({ page }) => {
+    const id = `${Date.now()}-${sequence++}`;
+    const cookie = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
+    const ponto = await apiRequest<{ id: string; nome: string }>('POST', '/api/quiosque/pontos-venda', {
+      cookie,
+      body: { nome: `E2E PDV fechado ${id}` },
+    });
+    expect(ponto.status).toBe(201);
+    await page.goto('/quiosque/comandas');
+    await selectPorRotulo(page, 'Ponto de venda').selectOption(ponto.data.id);
+    await expect(page.getByText(/Abra o caixa para iniciar um novo turno/)).toBeVisible();
+    await page.getByRole('link', { name: 'Abrir caixa', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Caixa do dia' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Abrir caixa', exact: true })).toBeEnabled();
+  });
+
   test('dono quiosque exclusivo abre hub de comandas como na cervejaria', async ({ page }) => {
     const ponto = await prepararPdvAberto();
     await page.goto('/quiosque/comandas');
     await selectPorRotulo(page, 'Ponto de venda').selectOption(ponto.id);
-    await expect(page.getByRole('navigation', { name: 'Navegação do quiosque' })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Navegação principal' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Comandas' })).toBeVisible();
     await expect(page.getByRole('link', { name: '+ Comanda', exact: true })).toBeEnabled();
     await expect(page.getByRole('link', { name: 'Venda avulsa', exact: true })).toBeEnabled();

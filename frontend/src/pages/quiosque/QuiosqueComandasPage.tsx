@@ -494,10 +494,16 @@ export function QuiosqueComandasPage() {
                     : 'Abra o caixa para começar a operar de novo.'
             }
             action={
-              !buscaComanda.trim() && isAbertas && caixaAberto ? (
-                <Link to="/quiosque/comandas/nova" className="touch-btn-primary touch-btn-sm inline-block">
-                  Nova comanda
-                </Link>
+              !buscaComanda.trim() && isAbertas ? (
+                caixaAberto ? (
+                  <Link to="/quiosque/comandas/nova" className="touch-btn-primary touch-btn-sm inline-block">
+                    Nova comanda
+                  </Link>
+                ) : (
+                  <Link to="/quiosque/caixa" className="touch-btn-primary touch-btn-sm inline-block">
+                    Abrir caixa
+                  </Link>
+                )
               ) : undefined
             }
           />

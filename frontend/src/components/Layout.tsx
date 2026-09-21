@@ -12,10 +12,10 @@ import { PortalQrButton } from './PortalQrButton';
 import { TrailerSwitcher } from './TrailerSwitcher';
 import {
   NAV_ITEMS,
-  NAV_ITEMS_QUIOSQUE,
   QUIOSQUE_NAV_ITEMS,
   getQuiosqueNavItems,
   getComplementaryNavItems,
+  getOperationalModeNavItems,
   isQuiosqueNavActive,
   IconBell,
   IconCalendar,
@@ -139,7 +139,11 @@ export function Layout() {
   const inQuiosque = location.pathname.startsWith('/quiosque');
 
   const navItemsComandasQuiosque = QUIOSQUE_NAV_ITEMS.filter((item) => item.path === '/quiosque/comandas');
-  const navItemsCervejaria = NAV_ITEMS.filter((item) => !('donoOnly' in item && item.donoOnly) || isDono);
+  const navItemsCervejaria = NAV_ITEMS.filter(
+    (item) =>
+      (!('donoOnly' in item && item.donoOnly) || isDono) &&
+      !(quiosque.operationMode === 'CAIXA' && item.path === '/eventos'),
+  );
   const navItemsComplementares = quiosque.ativo
     ? getComplementaryNavItems({ temCozinha: quiosque.temCozinha, controlaEstoque: quiosque.controlaEstoque })
     : [];
@@ -162,11 +166,14 @@ export function Layout() {
               temCozinha: quiosque.temCozinha,
               controlaEstoque: quiosque.controlaEstoque,
               isDono,
+              operationMode: quiosque.operationMode,
             }),
-            { path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const },
+            ...(quiosque.operationMode === 'EVENTO'
+              ? [{ path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const }]
+              : []),
           ]
         : navItemsComandasQuiosque
-    : [...navItemsCervejariaOrdenados, ...(quiosque.ativo ? NAV_ITEMS_QUIOSQUE : [])];
+    : [...navItemsCervejariaOrdenados, ...getOperationalModeNavItems(quiosque)];
   const { alertEnabled, alertNeedsUnlock, pushStatus, wakeLockActive, togglePedidoAlert } =
     usePedidoAlertSound();
   const onEventsPage = location.pathname === '/eventos';
@@ -255,7 +262,7 @@ export function Layout() {
       </main>
 
       <nav
-        aria-label={inQuiosque && (quiosqueLoading || quiosque.ativo) ? 'Navegação do quiosque' : 'Navegação principal'}
+        aria-label="Navegação principal"
         className="app-bottom-nav safe-area-pb"
         style={{ height: 'calc(var(--bottom-nav-height) + env(safe-area-inset-bottom))' }}
       >
