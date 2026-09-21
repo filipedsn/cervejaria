@@ -10,7 +10,7 @@ import {
 } from './sessao-cardapio.js';
 import { quiosqueUsaCardapio } from '../cardapio-toggle.js';
 import { verifyPassword } from '../utils.js';
-import { recordLegacyFallback, type LegacyFallbackRecorder } from '../legacy-fallback.js';
+import { getOperationalProfile } from '../operational-profile.js';
 
 export class CaixaInvalidoError extends Error {
   statusCode = 400;
@@ -35,9 +35,8 @@ export function resolveCashRegisterCapability(params: {
   pontoVendaAtivo: boolean;
   usaCaixa: boolean | null;
   legacyQuiosqueAtivo: boolean;
-}, onLegacyFallback: LegacyFallbackRecorder = recordLegacyFallback): boolean {
+}): boolean {
   if (!params.pontoVendaAtivo) return false;
-  if (params.usaCaixa === null || params.usaCaixa === undefined) onLegacyFallback('cash_capability');
   return params.usaCaixa ?? params.legacyQuiosqueAtivo;
 }
 
@@ -54,16 +53,16 @@ export async function assertCashRegisterUnitEnabled(
     select: {
       ativo: true,
       usaCaixa: true,
-      cervejaria: { select: { configuracaoQuiosque: { select: { ativo: true } } } },
     },
   });
   if (!pontoVenda) throw new CaixaInvalidoError('Ponto de venda não encontrado');
 
-  const enabled = resolveCashRegisterCapability({
-    pontoVendaAtivo: pontoVenda.ativo,
-    usaCaixa: pontoVenda.usaCaixa,
-    legacyQuiosqueAtivo: pontoVenda.cervejaria.configuracaoQuiosque?.ativo === true,
-  });
+  let enabled = pontoVenda.usaCaixa;
+  if (enabled === null) {
+    const profile = await getOperationalProfile(cervejariaId);
+    enabled = profile?.capabilities.cashRegister === true;
+  }
+  enabled = pontoVenda.ativo && enabled === true;
   if (!enabled) throw new CaixaInvalidoError('Caixa não habilitado para este ponto de venda');
 }
 
