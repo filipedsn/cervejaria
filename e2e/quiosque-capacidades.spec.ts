@@ -105,6 +105,7 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
     await login(page, CREDENTIALS.dono.email, CREDENTIALS.dono.password);
     await page.goto('/configuracoes/operacao');
     await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
+    await page.getByRole('button', { name: /Por opera/ }).click();
     await expect(page.getByRole('button', { name: /Por opera/ })).toHaveAttribute('aria-pressed', 'true');
   });
 

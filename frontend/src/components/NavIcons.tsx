@@ -206,8 +206,15 @@ export const NAV_ITEMS: NavItem[] = [
 
 /** Navegacao operacional do estabelecimento, adicionada por capacidade atual. */
 export const NAV_ITEMS_QUIOSQUE: NavItem[] = [
-  { path: '/quiosque/comandas', label: 'Estabelecimento', shortLabel: 'Estabelecimento', Icon: IconStore },
+  { path: '/quiosque/caixa', label: 'Caixa', shortLabel: 'Caixa', Icon: IconCashRegister },
 ];
+
+export function getOperationalModeNavItems(contexto: {
+  operationMode: 'CAIXA' | 'EVENTO' | null;
+  cashRegisterEnabled: boolean;
+}) {
+  return contexto.operationMode === 'CAIXA' ? NAV_ITEMS_QUIOSQUE : [];
+}
 
 type QuiosqueNavContext = {
   temCozinha: boolean;
@@ -216,6 +223,7 @@ type QuiosqueNavContext = {
 
 /** Abas do quiosque na barra inferior — mesmo padrao mobile da cervejaria. */
 export const QUIOSQUE_NAV_ITEMS: NavItem[] = [
+  { path: '/quiosque/caixa', label: 'Caixa', shortLabel: 'Caixa', Icon: IconCashRegister },
   { path: '/quiosque/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
   {
     path: '/quiosque/cozinha',
@@ -248,12 +256,13 @@ export const QUIOSQUE_NAV_ITEMS: NavItem[] = [
   },
 ];
 
-type QuiosqueNavFilterContext = QuiosqueNavContext & { isDono: boolean };
+type QuiosqueNavFilterContext = QuiosqueNavContext & { isDono: boolean; operationMode?: 'CAIXA' | 'EVENTO' | null };
 
 export function getQuiosqueNavItems(contexto: QuiosqueNavFilterContext) {
   return QUIOSQUE_NAV_ITEMS.filter(
     (item) =>
       (!('donoOnly' in item && item.donoOnly) || contexto.isDono) &&
+      (item.path !== '/quiosque/caixa' || contexto.operationMode === 'CAIXA') &&
       (!('somenteCozinha' in item && item.somenteCozinha) || contexto.temCozinha) &&
       (!('somenteEstoque' in item && item.somenteEstoque) || contexto.controlaEstoque),
   );
