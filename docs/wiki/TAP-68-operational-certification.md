@@ -37,3 +37,16 @@ são modos ou destinos operacionais.
 A matriz completa está em [E2E-REGRESSION-MATRIX.md](../E2E-REGRESSION-MATRIX.md).
 Cada combinação C01–C08 e E01–E08 possui teste Playwright individual e
  screenshot fixture-only no artefato do lote.
+
+## Protecao de transicao (TAP-68)
+
+O backend rejeita CAIXA -> EVENTO quando existe sessao de caixa `ABERTO` e
+rejeita EVENTO -> CAIXA quando existe evento `ABERTO`. A resposta e HTTP 409
+com mensagem acionavel; a UI mostra o erro e preserva o modo atual. Eventos
+agendados ou fechados nao bloqueiam a transicao. Cada bloqueio emite o evento
+de auditoria `operational_mode_change_blocked` com tenant, modos e razao.
+
+As transicoes sao serializadas por advisory lock quando executadas no cliente
+Prisma real. O bloqueio ocorre antes do upsert, portanto chamadas diretas de
+API e tentativas concorrentes nao deixam configuracao parcial. A matriz e os
+casos T68-01 a T68-07 estao em [E2E-REGRESSION-MATRIX.md](../E2E-REGRESSION-MATRIX.md).
