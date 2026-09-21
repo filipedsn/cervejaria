@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { getAuthUser } from '../../types/auth.js';
 import { getConfiguracaoQuiosque, requireModuloQuiosque } from '../../lib/quiosque/modulo.js';
-import { getOperationalProfile } from '../../lib/operational-profile.js';
+import { getOperationalProfile, shouldExposeEstablishmentSurface } from '../../lib/operational-profile.js';
 import { produtosQuiosqueRoutes } from './produtos.js';
 import { comandasQuiosqueRoutes } from './comandas.js';
 import { vendasQuiosqueRoutes } from './vendas.js';
@@ -40,7 +40,7 @@ export async function quiosqueRoutes(app: FastifyInstance) {
       }),
     ]);
 
-    const ativo = Boolean(configuracao) || profile?.capabilities.directSales === true || profile?.capabilities.inventory === true || profile?.capabilities.kitchen === true;
+    const ativo = profile ? shouldExposeEstablishmentSurface(profile.capabilities) : false;
     if (!ativo) return { ativo: false as const };
 
     return {
@@ -49,7 +49,6 @@ export async function quiosqueRoutes(app: FastifyInstance) {
       // same persisted capability decision as the operational settings panel.
       controlaEstoque: profile?.capabilities.inventory ?? configuracao?.controlaEstoque ?? false,
       temCozinha: profile?.capabilities.kitchen ?? configuracao?.temCozinha ?? false,
-      exclusivo: configuracao?.exclusivo ?? false,
       usaCardapio: configuracao?.usaCardapio ?? false,
       quantidadeMesas: configuracao?.quantidadeMesas ?? 0,
       pontosVenda,

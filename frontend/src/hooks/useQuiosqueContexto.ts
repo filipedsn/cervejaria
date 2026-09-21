@@ -14,8 +14,6 @@ export type QuiosqueContexto =
       ativo: true;
       controlaEstoque: boolean;
       temCozinha: boolean;
-      /** Empresa que so opera quiosque: esconde a navegacao de cervejaria. */
-      exclusivo: boolean;
       usaCardapio: boolean;
       quantidadeMesas: number;
       pontosVenda: PontoVenda[];
