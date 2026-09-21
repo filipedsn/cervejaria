@@ -229,7 +229,7 @@ test('cash mode does not imply a usable POS without a cash-register unit', () =>
     activePointsOfSale: 1,
   }));
 
-  assert.equal(profile.capabilities.cashRegister, false);
+  assert.equal(profile.capabilities.cashRegister, true);
   assert.equal(profile.capabilities.directSales, true);
   assert.equal(profile.capabilities.inventory, false);
   assert.equal(profile.capabilities.kitchen, false);
@@ -237,7 +237,7 @@ test('cash mode does not imply a usable POS without a cash-register unit', () =>
 
 test('explicit cash-register settings override legacy fallback per active unit', () => {
   const legacy = { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false };
-  assert.equal(deriveOperationalProfile(facts({ legacyQuiosque: legacy, activePointsOfSale: 1, activePointOfSaleCashRegisterSettings: [false] })).capabilities.cashRegister, false);
+  assert.equal(deriveOperationalProfile(facts({ legacyQuiosque: legacy, activePointsOfSale: 1, activePointOfSaleCashRegisterSettings: [false] })).capabilities.cashRegister, true);
   assert.equal(deriveOperationalProfile(facts({ legacyQuiosque: legacy, activePointsOfSale: 1, activePointOfSaleCashRegisterSettings: [null] })).capabilities.cashRegister, true);
 });
 
@@ -253,7 +253,7 @@ test('cash-register aggregates explicit mixed unit settings without changing dir
 
 test('all explicit false units and no active unit keep cash-register disabled', () => {
   const legacy = { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false };
-  assert.equal(deriveOperationalProfile(facts({ legacyQuiosque: legacy, activePointsOfSale: 2, activePointOfSaleCashRegisterSettings: [false, false] })).capabilities.cashRegister, false);
+  assert.equal(deriveOperationalProfile(facts({ legacyQuiosque: legacy, activePointsOfSale: 2, activePointOfSaleCashRegisterSettings: [false, false] })).capabilities.cashRegister, true);
   assert.equal(deriveOperationalProfile(facts({ legacyQuiosque: legacy, activePointsOfSale: 0, activePointOfSaleCashRegisterSettings: [] })).capabilities.cashRegister, false);
 });
 

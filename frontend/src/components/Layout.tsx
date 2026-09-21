@@ -162,15 +162,15 @@ export function Layout() {
       ? navItemsComandasQuiosque
       : quiosque.ativo
         ? [
+            ...(quiosque.operationMode === 'EVENTO'
+              ? [{ path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const }]
+              : []),
             ...getQuiosqueNavItems({
               temCozinha: quiosque.temCozinha,
               controlaEstoque: quiosque.controlaEstoque,
               isDono,
               operationMode: quiosque.operationMode,
             }),
-            ...(quiosque.operationMode === 'EVENTO'
-              ? [{ path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const }]
-              : []),
           ]
         : navItemsComandasQuiosque
     : [...navItemsCervejariaOrdenados, ...getOperationalModeNavItems(quiosque)];
