@@ -100,6 +100,8 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
     await page.goto('/quiosque/configuracoes/operacao');
     await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Por caixa' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'Por caixa' })).toContainText('Selecionado');
+    await expect(page.getByRole('navigation', { name: 'Navegação principal' }).getByRole('link').first()).toHaveAccessibleName('Caixa');
 
     await page.context().clearCookies();
     await login(page, CREDENTIALS.dono.email, CREDENTIALS.dono.password);
@@ -107,6 +109,29 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
     await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
     await page.getByRole('button', { name: /Por opera/ }).click();
     await expect(page.getByRole('button', { name: /Por opera/ })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: /Por opera/ })).toContainText('Selecionado');
+    await expect(page.getByRole('navigation', { name: 'Navegação principal' }).getByRole('link').first()).toHaveAccessibleName('Eventos');
+  });
+
+  test('cria o primeiro ponto de venda pela tela do caixa', async ({ page }) => {
+    await login(page, owner.email, owner.password);
+    let forceEmpty = true;
+    await page.route('**/api/quiosque/contexto', async (route) => {
+      const response = await route.fetch();
+      if (!forceEmpty) return route.fulfill({ response });
+      const body = await response.json() as { pontosVenda?: unknown[] };
+      body.pontosVenda = [];
+      await route.fulfill({ response, body: JSON.stringify(body) });
+    });
+    await page.goto('/quiosque/configuracoes/operacao');
+    await page.getByRole('button', { name: 'Por caixa' }).click();
+    await page.goto('/quiosque/caixa');
+    await expect(page.getByRole('heading', { name: 'Você ainda não possui um ponto de venda.' })).toBeVisible();
+    await page.getByLabel('Nome do ponto').fill(`PDV visual ${stamp}`);
+    forceEmpty = false;
+    await page.getByRole('button', { name: 'Criar ponto de venda' }).click();
+    await expect(page.getByRole('heading', { name: 'Caixa do dia' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Abrir caixa' })).toBeEnabled();
   });
 
   test('exibe de forma compreensível o bloqueio devolvido pelo backend', async ({ page }) => {
