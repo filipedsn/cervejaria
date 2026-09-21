@@ -68,6 +68,13 @@ test('blocks CAIXA to EVENTO while a cash session is open', async () => {
   assert.equal(db.updates.length, 0);
 });
 
+test('allows CAIXA to EVENTO when no cash session is open', async () => {
+  const db = database({ directSalesEnabled: true, plannedOperationsEnabled: false });
+  await updateOperationalConfig(db as any, 'tenant-a', { operationMode: 'EVENTO' });
+  assert.equal(db.updates.length, 1);
+  assert.deepEqual(db.updates[0], { plannedOperationsEnabled: true, directSalesEnabled: false });
+});
+
 test('blocks EVENTO to CAIXA while an event is active', async () => {
   const db = database({ directSalesEnabled: false, plannedOperationsEnabled: true }, false, false, true);
   await assert.rejects(
