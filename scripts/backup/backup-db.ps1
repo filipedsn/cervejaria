@@ -16,6 +16,9 @@ $profile = if ($Environment -eq 'development') {
 }
 $local = if ($DestinationDir) { [IO.Path]::GetFullPath($DestinationDir) } else { Join-Path $root "deploy\backups-$Environment" }
 New-Item -ItemType Directory -Force -Path $local | Out-Null
+$logFile = Join-Path $root "deploy\logs\backup-$Environment.log"
+New-Item -ItemType Directory -Force -Path (Split-Path $logFile -Parent) | Out-Null
+$startedAt = [DateTime]::UtcNow
 $stamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
 $name = "$($profile.Prefix)-$stamp.sql"
 $file = Join-Path $local $name
@@ -38,6 +41,11 @@ function Apply-Retention {
       Remove-Item "$($dump.FullName).sha256" -Force -ErrorAction SilentlyContinue
     }
   }
+}
+
+function Write-BackupLog {
+  param([hashtable]$Entry)
+  ($Entry | ConvertTo-Json -Compress) | Add-Content -LiteralPath $logFile -Encoding UTF8
 }
 
 try {
@@ -66,8 +74,11 @@ try {
     Apply-Retention -Directory $remote
   }
   Apply-Retention -Directory $local
-  [pscustomobject]@{ result='PASS'; environment=$Environment; file=$file; bytes=$item.Length; sha256=$hash; offHost=[bool]$OffHostDir; retention='PASS' } | ConvertTo-Json -Compress
+  $report = [ordered]@{ result='PASS'; environment=$Environment; file=$file; bytes=$item.Length; sha256=$hash; offHost=[bool]$OffHostDir; offHostFile=if($OffHostDir){Join-Path $OffHostDir $name}else{$null}; offHostChecksum=if($OffHostDir){'PASS'}else{'NOT_RUN'}; retention='PASS'; durationSeconds=[math]::Round(([DateTime]::UtcNow-$startedAt).TotalSeconds,3); completedAtUtc=[DateTime]::UtcNow.ToString('o') }
+  Write-BackupLog -Entry $report
+  $report | ConvertTo-Json -Compress
 } catch {
+  Write-BackupLog -Entry ([ordered]@{ result='FAIL'; environment=$Environment; file=$file; offHost=[bool]$OffHostDir; error=$_.Exception.Message; durationSeconds=[math]::Round(([DateTime]::UtcNow-$startedAt).TotalSeconds,3); completedAtUtc=[DateTime]::UtcNow.ToString('o') })
   Write-Error $_
   exit 1
 } finally {
