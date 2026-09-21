@@ -84,3 +84,23 @@ test('observabilidade apresenta alertas sem expor configuracao Elastic ao navega
   assert.match(app, /Fonte indisponivel/);
   assert.doesNotMatch(app, /ELASTIC_API_KEY|ELASTIC_PASSWORD|Authorization/);
 });
+
+test('jornada operacional consulta somente campos seguros e apresenta contexto progressivo', () => {
+  for (const id of ['journeySection', 'journeyTenant', 'journeyActor', 'journeyAction', 'journeyWhere', 'journeyOutcome', 'journeyCorrelation', 'journeyTimeline']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(server, /app\.get\('\/api\/operation-journey'/);
+  assert.match(server, /requireToken\(request, reply\)/);
+  assert.match(server, /readOperationJourney/);
+  assert.match(server, /attributes\.actor\.role/);
+  assert.match(server, /logs-\$\{kind\}\*\.otel-\$\{filters\.environment\}\*/);
+  assert.match(server, /Raw messages are deliberately not queried/);
+  assert.doesNotMatch(server, /'message'/);
+  assert.match(app, /semanticJourneyAction/);
+  assert.match(app, /Registrou venda avulsa/);
+  assert.match(app, /Ação bloqueada por permissão/);
+  assert.match(app, /Ver detalhes/);
+  assert.match(app, /Correlation ID/);
+  assert.match(app, /Trace ID/);
+  assert.doesNotMatch(app, /ELASTIC_API_KEY|ELASTIC_PASSWORD|Authorization/);
+});
