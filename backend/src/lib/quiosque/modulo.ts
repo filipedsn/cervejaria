@@ -10,7 +10,6 @@ export interface ContextoQuiosque {
   cervejariaId: string;
   controlaEstoque: boolean;
   temCozinha: boolean;
-  exclusivo: boolean;
   usaCardapio: boolean;
   quantidadeMesas: number;
 }
@@ -112,7 +111,6 @@ export function requireModuloQuiosque(app: FastifyInstance) {
       cervejariaId: user.cervejariaId!,
       controlaEstoque: hasInventoryAccess(profile),
       temCozinha: hasKitchenAccess(profile),
-      exclusivo: configuracao?.exclusivo ?? false,
       usaCardapio: configuracao?.usaCardapio ?? false,
       quantidadeMesas: configuracao?.quantidadeMesas ?? 0,
     };

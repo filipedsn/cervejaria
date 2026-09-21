@@ -5,7 +5,7 @@ import {
   modoEmpresa,
   QUIOSQUE_CAPACIDADES_INVALIDATION_KEYS,
 } from '../src/lib/quiosque-capacidades.ts';
-import { getComplementaryNavItems } from '../src/components/NavIcons.tsx';
+import { getComplementaryNavItems, NAV_ITEMS_QUIOSQUE } from '../src/components/NavIcons.tsx';
 
 test('TAP-42: identifica os três modos da empresa como informação', () => {
   assert.equal(modoEmpresa(true, false), 'Cervejaria');
@@ -39,4 +39,9 @@ test('TAP-50: mostra abas complementares quando capabilities estao ativas', () =
     '/quiosque/estoque',
   ]);
   assert.deepEqual(getComplementaryNavItems({ controlaEstoque: false, temCozinha: false }), []);
+});
+
+test('navigation exposes establishment, never the legacy Quiosque mode label', () => {
+  assert.equal(NAV_ITEMS_QUIOSQUE[0].shortLabel, 'Estabelecimento');
+  assert.notEqual(NAV_ITEMS_QUIOSQUE[0].shortLabel, 'Quiosque');
 });

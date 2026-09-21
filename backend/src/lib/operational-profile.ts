@@ -61,6 +61,16 @@ export interface OperationalProfile {
   };
 }
 
+/**
+ * The establishment surface is exposed only by current operational
+ * capabilities. Legacy ConfiguracaoQuiosque presence is not a capability.
+ */
+export function shouldExposeEstablishmentSurface(
+  capabilities: Pick<OperationalCapabilities, 'cashRegister' | 'inventory' | 'kitchen'>,
+): boolean {
+  return capabilities.cashRegister || capabilities.inventory || capabilities.kitchen;
+}
+
 export type OperationalProfileFactsReader = (
   tenantId: string,
 ) => Promise<OperationalProfileFacts | null>;

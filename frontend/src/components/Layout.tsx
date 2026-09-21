@@ -139,10 +139,7 @@ export function Layout() {
   const inQuiosque = location.pathname.startsWith('/quiosque');
 
   const navItemsComandasQuiosque = QUIOSQUE_NAV_ITEMS.filter((item) => item.path === '/quiosque/comandas');
-  const navItemsCervejaria =
-    quiosque.ativo && quiosque.exclusivo
-      ? []
-      : NAV_ITEMS.filter((item) => !('donoOnly' in item && item.donoOnly) || isDono);
+  const navItemsCervejaria = NAV_ITEMS.filter((item) => !('donoOnly' in item && item.donoOnly) || isDono);
   const navItemsComplementares = quiosque.ativo
     ? getComplementaryNavItems({ temCozinha: quiosque.temCozinha, controlaEstoque: quiosque.controlaEstoque })
     : [];
@@ -166,9 +163,7 @@ export function Layout() {
               controlaEstoque: quiosque.controlaEstoque,
               isDono,
             }),
-            ...(!quiosque.exclusivo
-              ? [{ path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const }]
-              : []),
+            { path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const },
           ]
         : navItemsComandasQuiosque
     : [...navItemsCervejariaOrdenados, ...(quiosque.ativo ? NAV_ITEMS_QUIOSQUE : [])];
@@ -176,10 +171,9 @@ export function Layout() {
     usePedidoAlertSound();
   const onEventsPage = location.pathname === '/eventos';
   const onTrailerPage = location.pathname === '/trailer';
-  // Evento e trailer sao da cervejaria: nao aparecem no quiosque, nem em
-  // empresa que so opera quiosque.
+  // Evento e trailer sao da cervejaria: nao aparecem dentro da superficie
+  // operacional do estabelecimento.
   const hideOperacionalChrome =
-    (quiosque.ativo && quiosque.exclusivo) ||
     location.pathname.startsWith('/quiosque') ||
     onEventsPage ||
     onTrailerPage ||

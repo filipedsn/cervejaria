@@ -3,8 +3,16 @@ import test from 'node:test';
 import {
   deriveOperationalProfile,
   getOperationalProfile,
+  shouldExposeEstablishmentSurface,
   type OperationalProfileFacts,
 } from './operational-profile.js';
+
+test('legacy ConfiguracaoQuiosque presence does not expose establishment surface', () => {
+  assert.equal(shouldExposeEstablishmentSurface({ cashRegister: false, inventory: false, kitchen: false }), false);
+  assert.equal(shouldExposeEstablishmentSurface({ cashRegister: true, inventory: false, kitchen: false }), true);
+  assert.equal(shouldExposeEstablishmentSurface({ cashRegister: false, inventory: true, kitchen: false }), true);
+  assert.equal(shouldExposeEstablishmentSurface({ cashRegister: false, inventory: false, kitchen: true }), true);
+});
 
 function facts(overrides: Partial<OperationalProfileFacts> = {}): OperationalProfileFacts {
   return {

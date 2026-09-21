@@ -89,10 +89,8 @@ function PublicAuthShell() {
 
 function TenantEntryRedirect() {
   const { needsTrailerSelection, evento, isLoading } = useEvento();
-  const { contexto: quiosque, isLoading: quiosqueLoading } = useQuiosqueContexto();
+  const { isLoading: quiosqueLoading } = useQuiosqueContexto();
   if (isLoading || quiosqueLoading) return <Loading fullScreen />;
-  // Empresa so de quiosque nao tem trailer nem evento para escolher.
-  if (quiosque.ativo && quiosque.exclusivo) return <Navigate to="/quiosque/comandas" replace />;
   if (needsTrailerSelection) return <Navigate to="/trailer" replace />;
   if (evento?.status === 'ABERTO') return <Navigate to="/comandas" replace />;
   return <Navigate to="/eventos" replace />;
@@ -149,9 +147,6 @@ function RequireEstoqueQuiosque() {
 }
 
 function RequireModuloCervejaria() {
-  const { contexto, isLoading } = useQuiosqueContexto();
-  if (isLoading) return <Loading fullScreen />;
-  if (contexto.ativo && contexto.exclusivo) return <Navigate to="/quiosque/comandas" replace />;
   return <Outlet />;
 }
 

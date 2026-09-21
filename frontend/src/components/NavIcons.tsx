@@ -204,9 +204,9 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/configuracoes', label: 'Configurações', shortLabel: 'Config.', Icon: IconSettings, donoOnly: true as const },
 ];
 
-/** Navegacao do modulo quiosque, adicionada apenas quando o modulo esta ativo. */
+/** Navegacao operacional do estabelecimento, adicionada por capacidade atual. */
 export const NAV_ITEMS_QUIOSQUE: NavItem[] = [
-  { path: '/quiosque/comandas', label: 'Quiosque', shortLabel: 'Quiosque', Icon: IconStore },
+  { path: '/quiosque/comandas', label: 'Estabelecimento', shortLabel: 'Estabelecimento', Icon: IconStore },
 ];
 
 type QuiosqueNavContext = {
