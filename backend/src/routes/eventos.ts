@@ -24,7 +24,7 @@ import {
   inicializarMontagemEvento,
   setTapAtivoNoEvento,
 } from '../lib/tap-montagem.js';
-import { ensureDefaultTaps, assertTrailerChopeDisponivel } from '../lib/trailer-defaults.js';
+import { ensureDefaultTaps } from '../lib/trailer-defaults.js';
 import { registrarTransacao, listTransacoesEvento, transacoesToCsv } from '../lib/transacao-log.js';
 import { dateOnlyToKey, reverterEventoParaAgendado } from '../lib/evento-reverter.js';
 import {
@@ -507,11 +507,6 @@ export async function eventosRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: trailerScheduleConflictMessage(conflitoSessao) });
     }
 
-    if (body.abrirAgora) {
-      const chopeCheck = await assertTrailerChopeDisponivel(body.trailerId, user.cervejariaId!);
-      if ('error' in chopeCheck) return reply.status(400).send({ error: chopeCheck.error });
-    }
-
     const evento = await prisma.evento.create({
       data: {
         nome: body.nome,
@@ -606,9 +601,6 @@ export async function eventosRoutes(app: FastifyInstance) {
     if (conflitoSessao) {
       return reply.status(409).send({ error: trailerScheduleConflictMessage(conflitoSessao) });
     }
-
-    const chopeCheck = await assertTrailerChopeDisponivel(serie.trailerId, user.cervejariaId!);
-    if ('error' in chopeCheck) return reply.status(400).send({ error: chopeCheck.error });
 
     let sessao;
     try {
@@ -784,9 +776,6 @@ export async function eventosRoutes(app: FastifyInstance) {
     if (conflitoSessao) {
       return reply.status(409).send({ error: trailerScheduleConflictMessage(conflitoSessao) });
     }
-
-    const chopeCheck = await assertTrailerChopeDisponivel(evento.trailerId, user.cervejariaId!);
-    if ('error' in chopeCheck) return reply.status(400).send({ error: chopeCheck.error });
 
     const updated = await prisma.evento.update({
       where: { id },
