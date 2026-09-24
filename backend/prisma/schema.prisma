@@ -264,11 +264,19 @@ model PasswordResetToken {
 model Produto {
   id           String      @id @default(cuid())
   nome         String
+  /// Categoria operacional livre (ex.: Bebidas, Comidas), preservada na convergência do catálogo legado.
+  categoria    String?
   descricao    String?
   cor          String?
   estilo       String?
   tipo         ProdutoTipo   @default(BEBIDA)
   formato      FormatoBebida?
+  /// Participa do ledger canônico quando inventoryEnabled estiver ativo.
+  controlaEstoque Boolean @default(false)
+  /// Entra na fila canônica quando kitchenEnabled estiver ativo.
+  exigePreparo     Boolean @default(false)
+  /// Ordem de apresentação para produtos unitários.
+  ordem            Int     @default(0)
   ativo        Boolean       @default(true)
   cervejariaId String
   createdAt    DateTime    @default(now())
@@ -297,6 +305,19 @@ model Preco {
   produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 
   @@unique([produtoId, volumeMl])
+
+  @@schema("public")
+}
+
+/// Evidência transitória do backfill ProdutoQuiosque → Produto. Não participa
+/// de regra operacional e será removida na migration CONTRACT após reconciliação.
+model ProdutoMigracaoMapa {
+  legacyProdutoId    String   @id
+  canonicalProdutoId String   @unique
+  source             String
+  reason             String
+  migrationRun       String
+  createdAt          DateTime @default(now())
 
   @@schema("public")
 }
