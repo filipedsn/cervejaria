@@ -62,6 +62,29 @@ test.describe('Quiosque comandas', () => {
     await expect(page.getByRole('link', { name: 'Comandas' })).toBeVisible();
     await expect(page.getByRole('link', { name: '+ Comanda', exact: true })).toBeEnabled();
     await expect(page.getByRole('link', { name: 'Venda avulsa', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'QR Code para abrir comanda' })).toBeVisible();
+  });
+
+  test('QR do Caixa permite ao cliente abrir e reutilizar a propria comanda', async ({ page }) => {
+    const ponto = await prepararPdvAberto();
+    const cookie = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
+    const perfil = await apiRequest<{ cervejaria: { slug: string } }>('GET', '/api/auth/me', { cookie });
+    expect(perfil.status, 'perfil do dono do quiosque').toBe(200);
+    const slug = perfil.data.cervejaria.slug;
+
+    await page.context().clearCookies();
+    await page.goto(`/c/${slug}/p/${ponto.id}`);
+    await expect(page.getByRole('heading', { name: 'Abrir comanda' })).toBeVisible();
+    await page.locator('#portal-pdv-nome').fill('Cliente QR E2E');
+    await page.locator('#portal-pdv-telefone').fill('11987654321');
+    await page.getByRole('button', { name: 'Abrir comanda' }).click();
+    await expect(page.getByRole('heading', { name: 'Comanda aberta!' })).toBeVisible();
+
+    const repetida = await apiRequest<{ reused: boolean }>('POST', `/api/public/cervejarias/${slug}/pontos-venda/${ponto.id}/comandas`, {
+      body: { nome: 'Cliente QR E2E', telefone: '11987654321' },
+    });
+    expect(repetida.status, 'segunda abertura retorna a comanda existente').toBe(200);
+    expect(repetida.data.reused).toBe(true);
   });
 
   test('venda avulsa lista produto disponivel com caixa aberto', async ({ page }) => {

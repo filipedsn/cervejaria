@@ -71,7 +71,6 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
           ativo?: boolean;
           controlaEstoque?: boolean;
           temCozinha?: boolean;
-          exclusivo?: boolean;
         }>('GET', '/api/quiosque/contexto', { token: cfg.donoToken });
 
         if (cfg.moduloQuiosque) {
@@ -92,14 +91,6 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
               message: 'temCozinha divergente',
               expected: String(cfg.temCozinha),
               actual: String(r.data.temCozinha),
-            };
-          }
-          if (r.data.exclusivo !== cfg.exclusivo) {
-            return {
-              status: 'failed',
-              message: 'exclusivo divergente',
-              expected: String(cfg.exclusivo),
-              actual: String(r.data.exclusivo),
             };
           }
           return { message: 'Contexto quiosque OK' };

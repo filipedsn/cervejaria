@@ -1,0 +1,16 @@
+import { useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { api, ApiError } from '../lib/api';
+import { Loading } from '../components/Loading';
+
+type Info = { cervejaria: { nome: string; logoUrl?: string | null }; pontoVenda: { nome: string }; disponivel: boolean };
+export function PortalPdvPage() {
+  const { slug, pontoVendaId } = useParams<{ slug: string; pontoVendaId: string }>();
+  const [nome, setNome] = useState(''); const [telefone, setTelefone] = useState(''); const [result, setResult] = useState<{ numero: number | null; reused: boolean } | null>(null);
+  const info = useQuery({ queryKey: ['portal-pdv-info', slug, pontoVendaId], queryFn: () => api.get<Info>(`/api/public/cervejarias/${slug}/pontos-venda/${pontoVendaId}/info`), enabled: Boolean(slug && pontoVendaId) });
+  const abrir = useMutation({ mutationFn: () => api.post<{ comanda: { numero: number | null }; reused: boolean; pontoVenda: { nome: string } }>(`/api/public/cervejarias/${slug}/pontos-venda/${pontoVendaId}/comandas`, { nome, telefone }), onSuccess: (data) => setResult({ numero: data.comanda.numero, reused: data.reused }) });
+  if (info.isLoading) return <Loading fullScreen />;
+  if (!info.data) return <div className="min-h-screen grid place-items-center p-4"><p className="card">Este QR Code não é válido.</p></div>;
+  return <main className="min-h-screen bg-canvas px-4 py-8 safe-area-pt"><div className="max-w-md mx-auto space-y-6"><header className="text-center"><h1 className="text-xl font-bold">{info.data.cervejaria.nome}</h1><p className="text-sm text-ink-muted">{info.data.pontoVenda.nome}</p></header>{!info.data.disponivel ? <div className="card text-center space-y-2"><h2 className="font-bold">Caixa indisponível</h2><p className="text-sm text-ink-muted">Este ponto de venda não está atendendo agora. Procure a equipe.</p></div> : result ? <div className="card text-center space-y-2"><h2 className="font-bold">{result.reused ? 'Comanda já está aberta!' : 'Comanda aberta!'}</h2><p className="text-sm text-ink-muted">Sua senha é <strong>{result.numero ?? '—'}</strong>. Aguarde o atendimento da equipe.</p></div> : <form className="card space-y-4" onSubmit={(e) => { e.preventDefault(); abrir.mutate(); }}><h2 className="font-bold">Abrir comanda</h2><p className="text-sm text-ink-muted">Informe seus dados para abrir sua comanda neste caixa.</p>{abrir.error && <div className="alert-error">{abrir.error instanceof ApiError ? abrir.error.message : 'Não foi possível abrir a comanda'}</div>}<label htmlFor="portal-pdv-nome"><span className="label">Nome</span><input id="portal-pdv-nome" className="input" value={nome} onChange={(e) => setNome(e.target.value)} required autoComplete="name" /></label><label htmlFor="portal-pdv-telefone"><span className="label">Telefone</span><input id="portal-pdv-telefone" className="input" type="tel" inputMode="numeric" value={telefone} onChange={(e) => setTelefone(e.target.value)} required autoComplete="tel" /></label><button className="touch-btn-primary w-full" disabled={abrir.isPending}>{abrir.isPending ? 'Abrindo...' : 'Abrir comanda'}</button></form>}</div></main>;
+}

@@ -170,7 +170,7 @@ function Resolve-QuiverTapPaths {
     $nodeExe = (Get-Command node -ErrorAction SilentlyContinue).Source
   }
   if (-not $nodeExe) {
-    throw 'Node.js nao encontrado. Instale Node 20 ou defina NodeExe em production.settings.ps1.'
+    throw 'Node.js nao encontrado. Instale Node 24 ou defina NodeExe em production.settings.ps1.'
   }
 
   $apiPort = if ($Settings.ApiPort) { [int]$Settings.ApiPort } else { 3001 }

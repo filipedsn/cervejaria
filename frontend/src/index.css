@@ -1013,6 +1013,19 @@ html:has(.qt-tv) {
   margin-top: 0.15rem;
 }
 
+.cozinha-tv-demo-badge {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--ranking-border);
+  border-radius: 999px;
+  color: var(--ranking-text-muted);
+  background: var(--ranking-surface-elevated);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .cozinha-tv-bell {
   display: flex;
   align-items: center;

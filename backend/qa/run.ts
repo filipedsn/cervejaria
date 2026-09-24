@@ -5,12 +5,13 @@ import { fileURLToPath } from 'node:url';
 // CLI orchestrator: setup -> suite -> N worker CHILD PROCESSES (true multi-process
 // concurrency) -> report. Mirrors the subagent-driven flow for a single command.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const hostShim = '../scripts/node24-tsx-host.mjs';
 const WORKERS = Number(process.env.QA_WORKERS ?? 6);
 const PORTAL_WORKERS = Number(process.env.QA_PORTAL_WORKERS ?? 10);
 
 function run(script: string, env: Record<string, string> = {}): Promise<number> {
   return new Promise((resolve) => {
-    const child = spawn('node', ['--import', 'tsx', path.join(__dirname, script)], {
+    const child = spawn('node', ['--import', hostShim, '--import', 'tsx', path.join(__dirname, script)], {
       stdio: 'inherit',
       env: { ...process.env, ...env },
       cwd: path.resolve(__dirname, '..'),

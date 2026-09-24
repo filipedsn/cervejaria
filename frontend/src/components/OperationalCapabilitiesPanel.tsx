@@ -7,7 +7,6 @@ type CapabilityKey = 'tapsEnabled' | 'inventoryEnabled' | 'kitchenEnabled';
 type OperationalConfiguration = Record<CapabilityKey | 'directSalesEnabled' | 'plannedOperationsEnabled', boolean | null>;
 type Enablements = { directSales: boolean; plannedOperations: boolean; taps: boolean; inventory: boolean; kitchen: boolean };
 type OperationalConfigResponse = { enablements: Enablements; configuration: OperationalConfiguration | null };
-
 const ENABLEMENT_BY_KEY: Record<CapabilityKey, keyof Enablements> = { tapsEnabled: 'taps', inventoryEnabled: 'inventory', kitchenEnabled: 'kitchen' };
 const CAPABILITIES: Array<{ key: CapabilityKey; title: string; description: string }> = [
   { key: 'tapsEnabled', title: 'Torneiras de chope', description: 'Utilizar torneiras nas operações.' },
@@ -21,7 +20,6 @@ export function OperationalCapabilitiesPanel() {
   const [error, setError] = useState('');
   const { data, isLoading } = useQuery({ queryKey: ['operational-configuration'], queryFn: () => api.get<OperationalConfigResponse>('/api/cervejaria/configuracao-operacional') });
   const refresh = () => Promise.all([queryClient.invalidateQueries({ queryKey: ['operational-configuration'] }), queryClient.invalidateQueries({ queryKey: ['quiosque-contexto'] })]);
-
   async function toggle(key: CapabilityKey) {
     if (!data) return;
     const enabled = !data.enablements[ENABLEMENT_BY_KEY[key]];

@@ -17,7 +17,7 @@ import { EstoqueInvalidoError } from '../../lib/quiosque/estoque.js';
 import { CaixaInvalidoError } from '../../lib/quiosque/caixa.js';
 import { notificarPedidoNovo } from '../../lib/quiosque/cozinha.js';
 import { assertCaixaAberto, lockCaixaEmTx } from '../../lib/quiosque/caixa.js';
-import { baixarEstoqueDoPedido } from '../../lib/quiosque/estoque.js';
+import { inventoryService } from '../../services/inventory-service.js';
 import { registrarTransacao } from '../../lib/transacao-log.js';
 import { recordVendaAvulsa } from '../../lib/business-metrics.js';
 import {
@@ -107,13 +107,14 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
           temCozinha,
         });
 
-        await baixarEstoqueDoPedido(tx, {
-          moduloControlaEstoque: controlaEstoque,
+        await inventoryService.consumeSale(tx, {
+          context: 'CAIXA',
+          moduleEnabled: controlaEstoque,
           cervejariaId,
           pontoVendaId: body.pontoVendaId,
           pedidoId: pedidoCriado.id,
           registradoPorId: user.sub,
-          itens,
+          items: itens,
         });
 
         await recalcComandaTotalQuiosque(tx, criada.id);

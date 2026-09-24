@@ -27,11 +27,11 @@ export async function mapPrecosCardapioCervejaria(cardapioId: string) {
 /** Preco do item no template do quiosque, ou null se nao encontrado. */
 export async function resolvePrecoCardapioQuiosque(
   cardapioId: string,
-  produtoQuiosqueId: string,
+  produtoId: string,
 ): Promise<number | null> {
   const row = await prisma.cardapioQuiosqueProduto.findUnique({
     where: {
-      cardapioId_produtoQuiosqueId: { cardapioId, produtoQuiosqueId },
+      cardapioId_produtoId: { cardapioId, produtoId },
     },
     select: { precoUnit: true },
   });
@@ -42,7 +42,7 @@ export async function resolvePrecoCardapioQuiosque(
 export async function mapPrecosCardapioQuiosque(cardapioId: string) {
   const rows = await prisma.cardapioQuiosqueProduto.findMany({
     where: { cardapioId },
-    select: { produtoQuiosqueId: true, precoUnit: true },
+    select: { produtoId: true, precoUnit: true },
   });
-  return new Map(rows.map((r) => [r.produtoQuiosqueId, toNumber(r.precoUnit)]));
+  return new Map(rows.map((r) => [r.produtoId, toNumber(r.precoUnit)]));
 }

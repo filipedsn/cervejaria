@@ -1,5 +1,5 @@
 # Reinicia backend (3002) e frontend (5202) em primeiro plano (logs no terminal).
-# O Cursor sobe/desmonta dev automaticamente via scripts/dev/supervisor.ps1.
+# Cursor/VS Code sobem/desmontam dev automaticamente via scripts/dev/supervisor.ps1.
 
 $ErrorActionPreference = "SilentlyContinue"
 $BackendPort = 3002

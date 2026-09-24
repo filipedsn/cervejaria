@@ -27,7 +27,7 @@ export const CONFIG_DEFINITIONS = [
 ] as const;
 
 async function cleanupQuiosqueForBrewery(cervejariaId: string) {
-  await prisma.movimentoEstoqueQuiosque.deleteMany({ where: { cervejariaId } });
+  await prisma.inventoryMovement.deleteMany({ where: { cervejariaId } });
   const sessoes = await prisma.sessaoCaixaQuiosque.findMany({ where: { cervejariaId }, select: { id: true } });
   const sessaoIds = sessoes.map((s) => s.id);
   if (sessaoIds.length) {
@@ -45,8 +45,7 @@ async function cleanupQuiosqueForBrewery(cervejariaId: string) {
     await prisma.pedidoQuiosque.deleteMany({ where: { comandaId: { in: comandaIds } } });
     await prisma.comanda.deleteMany({ where: { id: { in: comandaIds } } });
   }
-  await prisma.estoqueSaldoQuiosque.deleteMany({ where: { cervejariaId } });
-  await prisma.produtoQuiosque.deleteMany({ where: { cervejariaId } });
+  await prisma.inventoryBalance.deleteMany({ where: { cervejariaId } });
   await prisma.pontoVenda.deleteMany({ where: { cervejariaId } });
   await prisma.configuracaoQuiosque.deleteMany({ where: { cervejariaId } });
 }
@@ -476,12 +475,14 @@ export async function seedConfigTenants(): Promise<ConfigTenantFixture[]> {
       );
       pontoVendaId = pontoVenda.id;
 
-      const bebida = await prisma.produtoQuiosque.create({
+      const bebida = await prisma.produto.create({
         data: {
           cervejariaId: cervejaria.id,
           nome: 'Cerveja CFG',
           categoria: 'Cervejas',
-          precoUnit: 8,
+          tipo: 'BEBIDA',
+          formato: 'OUTRO',
+          precos: { create: [{ volumeMl: 1, preco: 8 }] },
           exigePreparo: false,
           controlaEstoque: def.controlaEstoque,
           ordem: 1,
@@ -489,12 +490,13 @@ export async function seedConfigTenants(): Promise<ConfigTenantFixture[]> {
       });
       produtoId = bebida.id;
 
-      const preparo = await prisma.produtoQuiosque.create({
+      const preparo = await prisma.produto.create({
         data: {
           cervejariaId: cervejaria.id,
           nome: 'Pastel CFG',
           categoria: 'Salgados',
-          precoUnit: 12,
+          tipo: 'COMIDA',
+          precos: { create: [{ volumeMl: 1, preco: 12 }] },
           exigePreparo: true,
           controlaEstoque: def.controlaEstoque,
           ordem: 2,
@@ -503,7 +505,7 @@ export async function seedConfigTenants(): Promise<ConfigTenantFixture[]> {
       produtoPreparoId = preparo.id;
 
       if (def.controlaEstoque) {
-        await prisma.estoqueSaldoQuiosque.createMany({
+        await prisma.inventoryBalance.createMany({
           data: [
             { cervejariaId: cervejaria.id, pontoVendaId, produtoId: bebida.id, quantidade: 100 },
             { cervejariaId: cervejaria.id, pontoVendaId, produtoId: preparo.id, quantidade: 100 },

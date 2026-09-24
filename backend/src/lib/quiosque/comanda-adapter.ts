@@ -13,7 +13,7 @@ export const INCLUDE_COMANDA_QUIOSQUE = {
   },
   itens: {
     orderBy: { createdAt: 'asc' as const },
-    include: { produto: true, produtoQuiosque: true },
+    include: { produto: true },
   },
   pagamentos: { orderBy: { pagoEm: 'asc' as const } },
 } satisfies Prisma.ComandaInclude;

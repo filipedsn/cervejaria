@@ -13,6 +13,7 @@ Thumbs.db
 .vscode/
 .idea/
 coverage/
+artifacts/certification/
 *.tsbuildinfo
 frontend/dev-dist/
 backend/uploads/logos/*
@@ -29,6 +30,12 @@ reports/qa/
 reports/qa-report.html
 reports/browser/
 reports/cliente-teste-prod-diagnostico.md
+reports/
+
+# Evidencias locais de resgate e snapshots de desenvolvimento (nao versionar)
+artifacts/rescue/
+artifacts/domain-convergence/*.sql
+work/
 
 # Playwright (gerados)
 e2e/.auth/

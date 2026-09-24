@@ -5,7 +5,7 @@ Status: concluído — offline e DEV smoke read-only validados em 2026-08-31.
 
 ## Sources e fronteira
 
-`support-analyst/` usa `fetch` nativo do Node 20; nenhuma dependência Elasticsearch foi adicionada. O cliente é mínimo e só emite `POST <índice>/_search`. Ele autentica exclusivamente com `SUPPORT_ANALYST_ES_API_KEY` no endereço `SUPPORT_ANALYST_ES_URL`. Não há Basic Auth, fallback para `ELASTIC_USER`, `ELASTIC_PASSWORD`, Collector, Alert Poller ou `SUPPORT_AGENT_*`.
+`support-analyst/` usa `fetch` nativo do Node 24; nenhuma dependência Elasticsearch foi adicionada. O cliente é mínimo e só emite `POST <índice>/_search`. Ele autentica exclusivamente com `SUPPORT_ANALYST_ES_API_KEY` no endereço `SUPPORT_ANALYST_ES_URL`. Não há Basic Auth, fallback para `ELASTIC_USER`, `ELASTIC_PASSWORD`, Collector, Alert Poller ou `SUPPORT_AGENT_*`.
 
 TQ-SA-04 é DEV-only. `SUPPORT_ANALYST_ENV=prd` sempre falha com `PRD access is not enabled for TQ-SA-04.`, mesmo que exista uma variável de gate futuro. Não há endpoint de escrita, cursor no Elasticsearch, polling, persistência, incidente, severidade, dossier ou Ollama.
 

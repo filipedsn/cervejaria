@@ -16,6 +16,7 @@ import {
 import { parseCurrencyInput } from '../../lib/currency';
 import { textoCorrespondeBuscaComanda } from '../../lib/comandas-busca';
 import { PainelCaixaQuiosque } from '../../components/quiosque/PainelCaixaQuiosque';
+import { PdvPortalQrButton } from '../../components/PdvPortalQrButton';
 import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import { useAuth } from '../../contexts/AuthContext';
@@ -240,11 +241,14 @@ export function QuiosqueComandasPage() {
       )}
 
       {pontoAtivo && (
-        <PainelCaixaQuiosque
-          pontoVendaId={pontoAtivo}
-          compacto
-          comandasAbertas={abertasTurno.length}
-        />
+        <>
+          <PainelCaixaQuiosque
+            pontoVendaId={pontoAtivo}
+            compacto
+            comandasAbertas={abertasTurno.length}
+          />
+          <PdvPortalQrButton pontoVendaId={pontoAtivo} />
+        </>
       )}
 
       {!selectMode && (
@@ -500,7 +504,7 @@ export function QuiosqueComandasPage() {
                     Nova comanda
                   </Link>
                 ) : (
-                  <Link to="/quiosque/caixa" className="touch-btn-primary touch-btn-sm inline-block">
+                    <Link to={`/quiosque/caixa?pontoVendaId=${encodeURIComponent(pontoAtivo)}`} className="touch-btn-primary touch-btn-sm inline-block">
                     Abrir caixa
                   </Link>
                 )

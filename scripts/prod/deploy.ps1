@@ -141,7 +141,7 @@ function Invoke-DeployPreflight {
   if ($paths.NpmCmd -and (Test-Path $paths.NpmCmd)) {
     Write-Host '  npm.cmd                 : OK'
   } else {
-    $blockers.Add('npm.cmd nao encontrado. Instale Node 20 ou ajuste o PATH.')
+    $blockers.Add('npm.cmd nao encontrado. Instale Node 24 ou ajuste o PATH.')
     Write-Host '  npm.cmd                 : FALTA' -ForegroundColor Red
   }
 

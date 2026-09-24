@@ -22,7 +22,7 @@ import {
 import { assertCaixaAberto, lockCaixaEmTx } from '../../lib/quiosque/caixa.js';
 import { proximoNumeroComandaQuiosqueTurno } from '../../lib/comanda-numero.js';
 import { assertPodeDarDescontoQuiosque, DescontoInvalidoError } from '../../lib/quiosque/desconto.js';
-import { baixarEstoqueDoPedido, estornarEstoqueDaComanda } from '../../lib/quiosque/estoque.js';
+import { inventoryService } from '../../services/inventory-service.js';
 import {
   removeItemFromComandaQuiosque,
   updateItemQuantidadeComandaQuiosque,
@@ -195,8 +195,9 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
         if (comanda.status !== 'ABERTA' || comanda.itens.length > 0) {
           throw Object.assign(new Error('Uma ou mais comandas foram alteradas antes do fechamento'), { statusCode: 409 });
         }
-        await estornarEstoqueDaComanda(tx, {
-          moduloControlaEstoque: request.quiosque.controlaEstoque,
+        await inventoryService.reverseComanda(tx, {
+          context: 'CAIXA',
+          moduleEnabled: request.quiosque.controlaEstoque,
           cervejariaId,
           comandaId: comanda.id,
           registradoPorId: user.sub,
@@ -355,13 +356,14 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
           temCozinha,
         });
 
-        await baixarEstoqueDoPedido(tx, {
-          moduloControlaEstoque: controlaEstoque,
+        await inventoryService.consumeSale(tx, {
+          context: 'CAIXA',
+          moduleEnabled: controlaEstoque,
           cervejariaId,
           pontoVendaId: body.pontoVendaId,
           pedidoId: pedidoCriado.id,
           registradoPorId: user.sub,
-          itens,
+          items: itens,
         });
         await recalcComandaTotalQuiosque(tx, criada.id);
       }
@@ -454,13 +456,14 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
         temCozinha,
       });
 
-      await baixarEstoqueDoPedido(tx, {
-        moduloControlaEstoque: controlaEstoque,
+      await inventoryService.consumeSale(tx, {
+        context: 'CAIXA',
+        moduleEnabled: controlaEstoque,
         cervejariaId,
         pontoVendaId: comandaAtual.pontoVendaId!,
         pedidoId: pedidoCriado.id,
         registradoPorId: user.sub,
-        itens,
+        items: itens,
       });
 
       await recalcComandaTotalQuiosque(tx, comandaAtual.id);
@@ -697,8 +700,9 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
     }
 
     const cancelada = await prisma.$transaction(async (tx) => {
-      await estornarEstoqueDaComanda(tx, {
-        moduloControlaEstoque: controlaEstoque,
+      await inventoryService.reverseComanda(tx, {
+        context: 'CAIXA',
+        moduleEnabled: controlaEstoque,
         cervejariaId,
         comandaId: comanda.id,
         registradoPorId: user.sub,

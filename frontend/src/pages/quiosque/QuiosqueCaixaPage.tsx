@@ -1,20 +1,24 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../../lib/api';
 import { Loading } from '../../components/Loading';
 import { PageHeader } from '../../components/PageHeader';
 import { PainelCaixaQuiosque } from '../../components/quiosque/PainelCaixaQuiosque';
 import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
+import { PdvPortalQrButton } from '../../components/PdvPortalQrButton';
 
 /** Rota legada /quiosque/caixa — o painel principal fica em Comandas. */
 export function QuiosqueCaixaPage() {
   const queryClient = useQueryClient();
   const { contexto } = useQuiosqueContexto();
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
+  const [searchParams] = useSearchParams();
   const [pontoVendaId, setPontoVendaId] = useState('');
   const [nomePonto, setNomePonto] = useState('Principal');
   const [erro, setErro] = useState('');
-  const pontoAtivo = pontoVendaId || pontosVenda[0]?.id || '';
+  const pontoSolicitado = searchParams.get('pontoVendaId');
+  const pontoAtivo = pontoVendaId || (pontoSolicitado && pontosVenda.some((ponto) => ponto.id === pontoSolicitado) ? pontoSolicitado : '') || pontosVenda[0]?.id || '';
   const criarPonto = useMutation({
     mutationFn: () => api.post<{ id: string }>('/api/quiosque/pontos-venda', { nome: nomePonto.trim() }),
     onSuccess: (ponto) => { setPontoVendaId(ponto.id); setErro(''); queryClient.invalidateQueries({ queryKey: ['quiosque-contexto'] }); },
@@ -47,7 +51,7 @@ export function QuiosqueCaixaPage() {
         </div>
       )}
 
-      {pontoAtivo ? <PainelCaixaQuiosque pontoVendaId={pontoAtivo} /> : <Loading />}
+      {pontoAtivo ? <><PainelCaixaQuiosque pontoVendaId={pontoAtivo} /><PdvPortalQrButton pontoVendaId={pontoAtivo} /></> : <Loading />}
     </div>
   );
 }

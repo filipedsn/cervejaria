@@ -139,8 +139,8 @@ export function deriveOnboardingReadiness(
 async function collectQuiosqueFacts(cervejariaId: string, controlaEstoque: boolean, temCozinha: boolean) {
   const [points, products] = await Promise.all([
     prisma.pontoVenda.findMany({ where: { cervejariaId, ativo: true }, select: { id: true } }),
-    prisma.produtoQuiosque.findMany({
-      where: { cervejariaId, ativo: true, precoUnit: { gt: 0 } },
+    prisma.produto.findMany({
+      where: { cervejariaId, ativo: true, precos: { some: { volumeMl: 1, preco: { gt: 0 } } } },
       select: { id: true, controlaEstoque: true },
     }),
   ]);
@@ -149,7 +149,7 @@ async function collectQuiosqueFacts(cervejariaId: string, controlaEstoque: boole
   const productIds = products.map((product) => product.id);
   const [saldos, sessions] = await Promise.all([
     controlaEstoque && pointIds.length > 0 && productIds.length > 0
-      ? prisma.estoqueSaldoQuiosque.findMany({
+      ? prisma.inventoryBalance.findMany({
           where: {
             cervejariaId,
             pontoVendaId: { in: pointIds },

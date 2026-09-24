@@ -15,6 +15,7 @@ import { QuiosqueComandaDetailPage } from './pages/quiosque/QuiosqueComandaDetai
 import { QuiosqueCatalogoPage } from './pages/quiosque/QuiosqueCatalogoPage';
 import { QuiosqueCozinhaPage } from './pages/quiosque/QuiosqueCozinhaPage';
 import { QuiosqueCozinhaTvPage } from './pages/quiosque/QuiosqueCozinhaTvPage';
+import { QuiosqueCozinhaTvDemoPage } from './pages/quiosque/QuiosqueCozinhaTvDemoPage';
 import { QuiosqueCaixaPage } from './pages/quiosque/QuiosqueCaixaPage';
 import { QuiosqueEstoquePage } from './pages/quiosque/QuiosqueEstoquePage';
 import { QuiosqueDashboardPage } from './pages/quiosque/QuiosqueDashboardPage';
@@ -41,6 +42,7 @@ import { ClientesPage } from './pages/ClientesPage';
 import { ClienteDetailPage } from './pages/ClienteDetailPage';
 import { CadastroLinkDescontinuadoPage } from './pages/CadastroLinkDescontinuadoPage';
 import { PortalClientePage } from './pages/PortalClientePage';
+import { PortalPdvPage } from './pages/PortalPdvPage';
 import { Layout } from './components/Layout';
 import { AdminLayout } from './components/AdminLayout';
 import { InstallAppBanner } from './components/InstallAppBanner';
@@ -248,6 +250,11 @@ function CozinhaTvShell({ children }: { children: ReactNode }) {
 }
 
 function CozinhaTvEntry() {
+  const [searchParams] = useSearchParams();
+  if (searchParams.get('demo') === '1') {
+    return <div className="qt-tv qt-cozinha-tv"><QuiosqueCozinhaTvDemoPage /></div>;
+  }
+
   return (
     <CozinhaTvShell>
       <QuiosqueCozinhaTvPage />
@@ -265,6 +272,7 @@ const router = createBrowserRouter([
       { path: '/quiosque/cozinha/tv', element: <CozinhaTvEntry /> },
       { path: '/c/:slug/cadastro', element: <CadastroLinkDescontinuadoPage /> },
       { path: '/c/:slug/t/:trailerId', element: <PortalClientePage /> },
+      { path: '/c/:slug/p/:pontoVendaId', element: <PortalPdvPage /> },
       {
         element: <PublicOnly />,
         children: [

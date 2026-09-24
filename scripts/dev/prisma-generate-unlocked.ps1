@@ -1,16 +1,15 @@
-# Para API prod/dev, gera Prisma client e sobe de novo.
-# Rode no PowerShell (nao no sandbox do Cursor): npm run prisma:generate:unlocked
+# Gera o Prisma client exclusivamente para DEV. Este script nunca pode tocar
+# serviços de produção: é usado também por migrations e certification locais.
 
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 Set-Location $root
 
-Write-Host 'Parando prod e dev...' -ForegroundColor Cyan
-npm run prod:stop
+Write-Host 'Parando somente DEV...' -ForegroundColor Cyan
 npm run dev:stop
 Start-Sleep -Seconds 2
 
-foreach ($port in @(3001, 3002)) {
+foreach ($port in @(3002)) {
   $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
   foreach ($c in $conns) {
     if ($c.OwningProcess) {
@@ -30,7 +29,6 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Set-Location $root
-Write-Host 'Subindo prod e dev...' -ForegroundColor Cyan
-npm run prod:ensure
+Write-Host 'Subindo somente DEV...' -ForegroundColor Cyan
 npm run dev:start
 Write-Host 'Concluido.' -ForegroundColor Green

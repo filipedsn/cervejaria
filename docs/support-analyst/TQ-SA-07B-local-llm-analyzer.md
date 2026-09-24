@@ -16,7 +16,7 @@ The selected default model is `gemma4:12b` (the qualified `Q4_K_M` build). There
 | `SUPPORT_ANALYST_LLM_TIMEOUT_MS` | `60000` |
 | `SUPPORT_ANALYST_LLM_NUM_CTX` | `8192` |
 
-Only HTTP loopback `127.0.0.1`, `localhost`, or `::1` is accepted; LAN, remote hostname, HTTPS/cloud endpoints and malformed URLs fail closed. Inference uses Node 20 `fetch` against Ollama `/api/chat`, with `stream:false`, `think:false`, structured JSON, temperature `0.1`, seed `42`, `num_predict:800`, and explicit `keep_alive:5m`. The model is not kept indefinitely. Ollama model digest, quantization, processor and VRAM are recorded only when supplied by Ollama.
+Only HTTP loopback `127.0.0.1`, `localhost`, or `::1` is accepted; LAN, remote hostname, HTTPS/cloud endpoints and malformed URLs fail closed. Inference uses Node 24 `fetch` against Ollama `/api/chat`, with `stream:false`, `think:false`, structured JSON, temperature `0.1`, seed `42`, `num_predict:800`, and explicit `keep_alive:5m`. The model is not kept indefinitely. Ollama model digest, quantization, processor and VRAM are recorded only when supplied by Ollama.
 
 ## Prompt, input, and validation
 

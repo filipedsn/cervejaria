@@ -11,6 +11,22 @@ export async function ensureTenantEventoAberto(tenant: TenantFixture): Promise<v
   });
 
   if (!ev) {
+    // The trailer relation is unique. A previous QA phase may have removed
+    // only the context marker while leaving its event behind, so reuse that
+    // event instead of attempting a duplicate insert.
+    const existingForTrailer = await prisma.evento.findFirst({
+      where: { trailerId: tenant.trailerId },
+      select: { id: true, status: true },
+    });
+    if (existingForTrailer) {
+      tenant.eventoId = existingForTrailer.id;
+      if (existingForTrailer.status !== 'ABERTO') {
+        await api('PATCH', `/api/eventos/${tenant.eventoId}/reabrir`, { token: tenant.donoToken });
+      }
+      await inicializarMontagemEvento(tenant.eventoId, tenant.trailerId);
+      return;
+    }
+
     const evento = await prisma.evento.create({
       data: {
         nome: `Evento QA ${tenant.index}`,

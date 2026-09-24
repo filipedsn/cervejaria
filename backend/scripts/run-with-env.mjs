@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { assertTestProdWriteGuard } from '../../scripts/test-prod-write-guard.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.join(__dirname, '..');
@@ -108,6 +109,16 @@ function assertDatabaseEnvironment(name, databaseUrl) {
 
 assertDatabaseEnvironment(envName, fileVars.DATABASE_URL);
 
+// Every mutable DEV command (seed, QA, backfill and experimental migration)
+// comes through this runner. Refuse inherited production state before spawn.
+if (envName === 'development') {
+  assertTestProdWriteGuard({
+    environment: { ...process.env, ...fileVars, NODE_ENV: 'development' },
+    requireDevDatabase: true,
+    context: 'development runner',
+  });
+}
+
 const isPrismaMigrate =
   command === 'npx' &&
   (args[0] === 'prisma' || args[0]?.endsWith('prisma')) &&
@@ -124,6 +135,9 @@ const childEnv = {
   DATABASE_URL: databaseUrl,
   NODE_ENV: envName === 'production' ? 'production' : 'development',
 };
+
+const tsxHostShim = pathToFileURL(path.join(backendRoot, '..', 'scripts', 'node24-tsx-host.mjs')).href;
+childEnv.NODE_OPTIONS = `${childEnv.NODE_OPTIONS ?? ''} --import=${tsxHostShim}`.trim();
 
 const resolvedCommand =
   process.platform === 'win32' && command === 'npx' ? 'npx.cmd' : command;

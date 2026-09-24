@@ -11,7 +11,7 @@ import {
 } from './cardapio.js';
 
 function enriquecerProdutosQuiosque<
-  T extends { id: string; precoUnit: unknown },
+  T extends { id: string; precos?: Array<{ preco: unknown }> },
 >(
   produtos: T[],
   precosTemplate: Map<string, number> | null,
@@ -20,7 +20,7 @@ function enriquecerProdutosQuiosque<
   return produtos.map((p) => {
     const turnoPreco = precosTurno?.get(p.id);
     const templatePreco = precosTemplate?.get(p.id);
-    const precoEfetivo = turnoPreco ?? templatePreco ?? toNumber(p.precoUnit);
+    const precoEfetivo = turnoPreco ?? templatePreco ?? toNumber(p.precos?.[0]?.preco ?? 0);
     return {
       ...p,
       precoUnit: String(precoEfetivo),
@@ -34,11 +34,11 @@ function enriquecerProdutosQuiosque<
 export async function mapPrecosTurno(sessaoCaixaId: string) {
   const rows = await prisma.sessaoCaixaProdutoQuiosque.findMany({
     where: { sessaoCaixaId, precoUnit: { not: null } },
-    select: { produtoQuiosqueId: true, precoUnit: true },
+    select: { produtoId: true, precoUnit: true },
   });
   return new Map(
     rows.flatMap((row) =>
-      row.precoUnit === null ? [] : [[row.produtoQuiosqueId, toNumber(row.precoUnit)]],
+      row.precoUnit === null ? [] : [[row.produtoId, toNumber(row.precoUnit)]],
     ),
   );
 }
@@ -46,7 +46,11 @@ export async function mapPrecosTurno(sessaoCaixaId: string) {
 export async function listProdutosDoTurno(sessaoCaixaId: string) {
   const rows = await prisma.sessaoCaixaProdutoQuiosque.findMany({
     where: { sessaoCaixaId },
-    include: { produto: true },
+    include: {
+      produto: {
+        include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 } },
+      },
+    },
     orderBy: { produto: { nome: 'asc' } },
   });
 
@@ -103,7 +107,7 @@ export async function getCardapioTurno(sessaoCaixaId: string, cervejariaId: stri
 
 export async function assertProdutoNoCardapioTurno(sessaoCaixaId: string, produtoId: string) {
   const row = await prisma.sessaoCaixaProdutoQuiosque.findUnique({
-    where: { sessaoCaixaId_produtoQuiosqueId: { sessaoCaixaId, produtoQuiosqueId: produtoId } },
+    where: { sessaoCaixaId_produtoId: { sessaoCaixaId, produtoId } },
   });
   return !!row;
 }
@@ -114,7 +118,7 @@ export async function setProdutosDoTurno(sessaoCaixaId: string, produtoIds: stri
     await tx.sessaoCaixaProdutoQuiosque.deleteMany({ where: { sessaoCaixaId } });
     if (uniqueIds.length > 0) {
       await tx.sessaoCaixaProdutoQuiosque.createMany({
-        data: uniqueIds.map((produtoQuiosqueId) => ({ sessaoCaixaId, produtoQuiosqueId })),
+        data: uniqueIds.map((produtoId) => ({ sessaoCaixaId, produtoId })),
       });
     }
   });
@@ -246,7 +250,7 @@ export async function alterarPrecoCardapioTurno(params: {
 
   const noTurno = await prisma.sessaoCaixaProdutoQuiosque.findUnique({
     where: {
-      sessaoCaixaId_produtoQuiosqueId: { sessaoCaixaId, produtoQuiosqueId: produtoId },
+      sessaoCaixaId_produtoId: { sessaoCaixaId, produtoId },
     },
   });
   if (!noTurno) {
@@ -270,9 +274,9 @@ export async function alterarPrecoCardapioTurno(params: {
 
   const templateItem = await prisma.cardapioQuiosqueProduto.findUnique({
     where: {
-      cardapioId_produtoQuiosqueId: {
+      cardapioId_produtoId: {
         cardapioId: sessao.cardapioQuiosqueId,
-        produtoQuiosqueId: produtoId,
+        produtoId,
       },
     },
   });
@@ -305,10 +309,12 @@ export async function listProdutosOperacionaisTurno(
 ) {
   const usaCardapio = await quiosqueUsaCardapio(cervejariaId);
   if (!usaCardapio) {
-    return prisma.produtoQuiosque.findMany({
+    const produtos = await prisma.produto.findMany({
       where: { cervejariaId, ativo: true },
+      include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 } },
       orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
     });
+    return enriquecerProdutosQuiosque(produtos, null);
   }
 
   const sessao = await prisma.sessaoCaixaQuiosque.findFirst({
@@ -318,10 +324,12 @@ export async function listProdutosOperacionaisTurno(
   });
 
   if (!sessao) {
-    return prisma.produtoQuiosque.findMany({
+    const produtos = await prisma.produto.findMany({
       where: { cervejariaId, ativo: true },
+      include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 } },
       orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
     });
+    return enriquecerProdutosQuiosque(produtos, null);
   }
 
   const [produtos, precosTemplate, precosTurno] = await Promise.all([

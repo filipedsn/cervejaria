@@ -46,7 +46,7 @@ async function garantirSaldo(
   tx: TxClient,
   params: { cervejariaId: string; pontoVendaId: string; produtoId: string },
 ) {
-  return tx.estoqueSaldoQuiosque.upsert({
+  return tx.inventoryBalance.upsert({
     where: {
       pontoVendaId_produtoId: {
         pontoVendaId: params.pontoVendaId,
@@ -76,7 +76,7 @@ async function registrarMovimento(
     pedidoId?: string;
   },
 ) {
-  await tx.movimentoEstoqueQuiosque.create({
+  await tx.inventoryMovement.create({
     data: {
       cervejariaId: params.cervejariaId,
       pontoVendaId: params.pontoVendaId,
@@ -107,7 +107,7 @@ async function baixarQuantidade(
   await lockEstoqueEmTx(tx, params);
   await garantirSaldo(tx, params);
 
-  const atualizado = await tx.estoqueSaldoQuiosque.updateMany({
+  const atualizado = await tx.inventoryBalance.updateMany({
     where: {
       pontoVendaId: params.pontoVendaId,
       produtoId: params.produtoId,
@@ -148,7 +148,7 @@ async function entrarQuantidade(
   await lockEstoqueEmTx(tx, params);
   await garantirSaldo(tx, params);
 
-  await tx.estoqueSaldoQuiosque.update({
+  await tx.inventoryBalance.update({
     where: {
       pontoVendaId_produtoId: {
         pontoVendaId: params.pontoVendaId,
@@ -264,21 +264,21 @@ export async function estornarEstoqueDaComanda(
   const itens = await tx.itemComanda.findMany({
     where: {
       comandaId: params.comandaId,
-      produtoQuiosqueId: { not: null },
+      produtoId: { not: null },
     },
     include: {
-      produtoQuiosque: true,
+      produto: true,
       pedidoCozinha: { select: { id: true, pontoVendaId: true } },
     },
   });
 
   for (const item of itens) {
-    if (!item.produtoQuiosque?.controlaEstoque || !item.pedidoCozinha) continue;
+    if (!item.produto?.controlaEstoque || !item.pedidoCozinha) continue;
 
     await entrarQuantidade(tx, {
       cervejariaId: params.cervejariaId,
       pontoVendaId: item.pedidoCozinha.pontoVendaId,
-      produtoId: item.produtoQuiosque.id,
+      produtoId: item.produto.id,
       quantidade: item.quantidade,
       tipo: 'ESTORNO_VENDA',
       observacao: `Estorno comanda cancelada`,
@@ -289,12 +289,12 @@ export async function estornarEstoqueDaComanda(
 }
 
 export async function listarSaldos(cervejariaId: string, pontoVendaId: string) {
-  const produtos = await prisma.produtoQuiosque.findMany({
+  const produtos = await prisma.produto.findMany({
     where: { cervejariaId, ativo: true, controlaEstoque: true },
     orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
   });
 
-  const saldos = await prisma.estoqueSaldoQuiosque.findMany({
+  const saldos = await prisma.inventoryBalance.findMany({
     where: { cervejariaId, pontoVendaId, produtoId: { in: produtos.map((p) => p.id) } },
   });
 
@@ -319,7 +319,7 @@ export async function atualizarEstoqueMinimo(params: {
   produtoId: string;
   estoqueMinimo: number | null;
 }) {
-  const produto = await prisma.produtoQuiosque.findFirst({
+  const produto = await prisma.produto.findFirst({
     where: { id: params.produtoId, cervejariaId: params.cervejariaId, ativo: true, controlaEstoque: true },
     select: { id: true },
   });
@@ -334,7 +334,7 @@ export async function atualizarEstoqueMinimo(params: {
   await prisma.$transaction(async (tx) => {
     await lockEstoqueEmTx(tx, params);
     await garantirSaldo(tx, params);
-    await tx.estoqueSaldoQuiosque.update({
+    await tx.inventoryBalance.update({
       where: { pontoVendaId_produtoId: { pontoVendaId: params.pontoVendaId, produtoId: params.produtoId } },
       data: { estoqueMinimo: params.estoqueMinimo },
     });
@@ -353,7 +353,7 @@ export async function registrarEntrada(params: {
 }) {
   if (params.quantidade <= 0) throw new EstoqueInvalidoError('Informe uma quantidade maior que zero');
 
-  const produto = await prisma.produtoQuiosque.findFirst({
+  const produto = await prisma.produto.findFirst({
     where: { id: params.produtoId, cervejariaId: params.cervejariaId, ativo: true },
   });
   if (!produto) throw new EstoqueInvalidoError('Produto não encontrado');
@@ -395,7 +395,7 @@ export async function registrarSaidaManual(params: {
   }
   if (params.quantidade <= 0) throw new EstoqueInvalidoError('Informe uma quantidade maior que zero');
 
-  const produto = await prisma.produtoQuiosque.findFirst({
+  const produto = await prisma.produto.findFirst({
     where: { id: params.produtoId, cervejariaId: params.cervejariaId, ativo: true },
   });
   if (!produto) throw new EstoqueInvalidoError('Produto não encontrado');
@@ -436,7 +436,7 @@ export async function ajustarSaldo(params: {
     throw new EstoqueInvalidoError('A quantidade contada não pode ser negativa');
   }
 
-  const produto = await prisma.produtoQuiosque.findFirst({
+  const produto = await prisma.produto.findFirst({
     where: { id: params.produtoId, cervejariaId: params.cervejariaId, ativo: true },
   });
   if (!produto) throw new EstoqueInvalidoError('Produto não encontrado');

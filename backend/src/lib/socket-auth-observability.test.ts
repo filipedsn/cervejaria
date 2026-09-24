@@ -26,7 +26,9 @@ test('realtime events inherit release context from the central logger', () => {
   const event = JSON.parse(lines[0] ?? '{}') as Record<string, unknown>;
   assert.equal(event.event, 'realtime.room.joined');
   assert.equal(event.releaseSha, 'dev');
-  assert.equal(event.service, 'quiver-tap-api');
+  // DEV observability may intentionally use a distinct service name; the
+  // default remains the production-safe canonical name when unset.
+  assert.equal(event.service, process.env.OTEL_SERVICE_NAME?.trim() || 'quiver-tap-api');
   assert.equal(event.environment, 'development');
 });
 
