@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../../lib/api';
 import { Loading } from '../../components/Loading';
@@ -12,10 +13,12 @@ export function QuiosqueCaixaPage() {
   const queryClient = useQueryClient();
   const { contexto } = useQuiosqueContexto();
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
+  const [searchParams] = useSearchParams();
   const [pontoVendaId, setPontoVendaId] = useState('');
   const [nomePonto, setNomePonto] = useState('Principal');
   const [erro, setErro] = useState('');
-  const pontoAtivo = pontoVendaId || pontosVenda[0]?.id || '';
+  const pontoSolicitado = searchParams.get('pontoVendaId');
+  const pontoAtivo = pontoVendaId || (pontoSolicitado && pontosVenda.some((ponto) => ponto.id === pontoSolicitado) ? pontoSolicitado : '') || pontosVenda[0]?.id || '';
   const criarPonto = useMutation({
     mutationFn: () => api.post<{ id: string }>('/api/quiosque/pontos-venda', { nome: nomePonto.trim() }),
     onSuccess: (ponto) => { setPontoVendaId(ponto.id); setErro(''); queryClient.invalidateQueries({ queryKey: ['quiosque-contexto'] }); },

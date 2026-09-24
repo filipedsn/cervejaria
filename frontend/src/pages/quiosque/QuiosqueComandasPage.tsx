@@ -504,7 +504,7 @@ export function QuiosqueComandasPage() {
                     Nova comanda
                   </Link>
                 ) : (
-                  <Link to="/quiosque/caixa" className="touch-btn-primary touch-btn-sm inline-block">
+                    <Link to={`/quiosque/caixa?pontoVendaId=${encodeURIComponent(pontoAtivo)}`} className="touch-btn-primary touch-btn-sm inline-block">
                     Abrir caixa
                   </Link>
                 )
