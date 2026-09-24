@@ -51,10 +51,13 @@ test('PROD bridge writes require explicit maintenance authorization before envir
   const withoutAuthorization = runRunner('production', 'npx', 'tsx', 'scripts/backfill-operational-enablement.ts');
   assert.notEqual(withoutAuthorization.status, 0);
   assert.match(withoutAuthorization.stderr, /--allow-prod-maintenance/);
-  const withAuthorization = runRunner('production', '--allow-prod-maintenance', 'npx', 'tsx', 'scripts/backfill-operational-enablement.ts');
-  assert.notEqual(withAuthorization.status, 0);
-  assert.doesNotMatch(withAuthorization.stderr, /requer autorizacao explicita/);
-  assert.match(withAuthorization.stderr, /\.env\.production/);
+
+  // Never invoke an authorized production write from a unit test: a developer
+  // may legitimately have .env.production configured locally. Verify the
+  // ordering directly instead, so the authorization guard remains fail-closed.
+  const runnerSource = fs.readFileSync(runner, 'utf8');
+  assert.ok(runnerSource.indexOf('isProdBridgeWrite && !hasMaintenanceAuthorization') < runnerSource.indexOf('const envFile'));
+
   const devAuthorization = runRunner('development', '--allow-prod-maintenance', 'node', '-e', 'process.exit(0)');
   assert.notEqual(devAuthorization.status, 0);
   assert.match(devAuthorization.stderr, /so pode ser usado com production/);
