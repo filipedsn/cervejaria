@@ -63,7 +63,7 @@ export async function runAuthResetTests(tenant: TenantFixture, test: TestFn) {
         const r = await api('POST', '/api/auth/forgot-password', { body: { email } });
         const depois = await prisma.passwordResetToken.count({ where: { usuarioId: usuario.id, usedAt: null } });
         if (r.status !== 200) {
-          return { status: 'failed', message: 'Forgot falhou', expected: '200', actual: String(r.status) };
+          return { status: 'failed', message: 'Forgot falhou', expected: '200', actual: `${r.status} ${r.raw.slice(0, 180)}` };
         }
         if (depois <= antes) {
           return {

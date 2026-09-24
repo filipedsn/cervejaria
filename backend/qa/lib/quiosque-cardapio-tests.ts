@@ -252,7 +252,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         body: { pontoVendaId: pontoPrecoId, trocoInicial: 50, produtoIds: [produtoExtraId] },
       });
       if (abrir.status !== 201) {
-        return { status: 'failed', message: 'Abrir caixa manual', expected: '201', actual: String(abrir.status) };
+        return { status: 'failed', message: 'Abrir caixa manual', expected: '201', actual: `${abrir.status} ${abrir.raw.slice(0, 180)}` };
       }
 
       const produtos = await api<Array<{ precoEfetivo?: number; precoUnit: string }>>(
@@ -309,7 +309,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         body: { pontoVendaId: pontoPrecoId, trocoInicial: 50, cardapioId: cardapioPrecoA },
       });
       if (abrir.status !== 201) {
-        return { status: 'failed', message: 'Abrir caixa', expected: '201', actual: String(abrir.status) };
+        return { status: 'failed', message: 'Abrir caixa', expected: '201', actual: `${abrir.status} ${abrir.raw.slice(0, 180)}` };
       }
 
       const patch = await api('PATCH', `/api/quiosque/caixa/cardapio/preco?pontoVendaId=${pontoPrecoId}`, {
@@ -399,7 +399,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         body: { pontoVendaId: pontoPrecoId, trocoInicial: 50, cardapioId: cardapioPrecoA },
       });
       if (abrir.status !== 201) {
-        return { status: 'failed', message: 'Abrir caixa', expected: '201', actual: String(abrir.status) };
+        return { status: 'failed', message: 'Abrir caixa', expected: '201', actual: `${abrir.status} ${abrir.raw.slice(0, 180)}` };
       }
 
       const patch = await api('PATCH', `/api/quiosque/caixa/cardapio/preco?pontoVendaId=${pontoPrecoId}`, {

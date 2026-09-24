@@ -4,7 +4,7 @@
   "private": true,
   "description": "PWA para cervejarias mÃ³veis - comandas, pagamentos e ranking",
   "engines": {
-    "node": ">=20 <21"
+    "node": ">=24 <25"
   },
   "scripts": {
     "check:node": "node scripts/check-node-version.mjs",
@@ -39,7 +39,7 @@
     "build": "npm run build --prefix frontend && npm run build --prefix backend",
     "ci:frontend": "npm run build:deploy --prefix frontend",
     "ci:backend": "npm run build:deploy --prefix backend",
-    "ci:validate": "npm run ci:frontend && cd backend && npx prisma generate && npx prisma validate",
+    "ci:validate": "npm run ci:frontend && cd backend && npx prisma generate && cd .. && node scripts/validate-prisma.mjs",
     "db:up": "docker compose up -d postgres postgres-dev",
     "db:up:prod": "docker compose up -d postgres",
     "db:up:dev": "docker compose up -d postgres-dev",

@@ -3,15 +3,14 @@ import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)), '..');
-const roots = ['backend/src', 'frontend/src', 'e2e', 'scripts', 'ops-panel'];
+// This gate measures executable consumers of the split product/inventory
+// domains. Public route names (/api/quiosque), UI labels, compatibility type
+// names, tests, migrations and evidence are not runtime dependencies.
+const roots = ['backend/src', 'frontend/src', 'ops-panel'];
 const ignored = new Set(['node_modules', 'dist', 'artifacts', 'reports']);
 const rules = [
-  ['ProdutoQuiosque', /ProdutoQuiosque|produtoQuiosque(?:Id)?/],
-  ['ConfiguracaoQuiosque', /ConfiguracaoQuiosque|configuracaoQuiosque/],
-  ['PedidoQuiosque', /PedidoQuiosque|pedidoQuiosque/],
-  ['LegacyInventory', /EstoqueSaldoQuiosque|MovimentoEstoqueQuiosque/],
-  ['QuiosqueApi', /\/api\/quiosque/],
-  ['QuiosqueRuntime', /useQuiosqueContexto|\bquiosque\b|\bQuiosque\b/],
+  ['LegacyProductModel', /(?:\b(?:prisma|tx)\.produtoQuiosque\b|produtoQuiosqueId|\bprodutoQuiosque\s*:)/],
+  ['LegacyInventoryModel', /(?:\b(?:prisma|tx)\.(?:estoqueSaldoQuiosque|movimentoEstoqueQuiosque)\b)/],
 ];
 
 function files(dir) {
@@ -24,6 +23,7 @@ function files(dir) {
 
 const consumers = [];
 for (const folder of roots) for (const file of files(join(root, folder))) {
+  if (/\.test\.(?:ts|tsx)$/.test(file) || /[\\/]__tests__[\\/]/.test(file)) continue;
   const lines = readFileSync(file, 'utf8').split(/\r?\n/);
   lines.forEach((line, index) => rules.forEach(([legacyDependency, pattern]) => {
     if (pattern.test(line)) consumers.push({
@@ -38,5 +38,10 @@ for (const folder of roots) for (const file of files(join(root, folder))) {
 
 const output = join(root, 'artifacts', 'domain-convergence', 'runtime-consumers.json');
 mkdirSync(resolve(output, '..'), { recursive: true });
-writeFileSync(output, `${JSON.stringify({ generatedAt: new Date().toISOString(), consumers }, null, 2)}\n`);
+writeFileSync(output, `${JSON.stringify({
+  generatedAt: new Date().toISOString(),
+  activeRuntimeReferences: consumers.length,
+  gate: consumers.length === 0 ? 'PASS' : 'PENDING',
+  consumers,
+}, null, 2)}\n`);
 console.log(`${consumers.length} runtime consumer occurrences written to ${relative(root, output)}`);

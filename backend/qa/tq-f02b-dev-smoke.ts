@@ -28,7 +28,7 @@ async function criarTenant(sufixo: string) {
   const { pontoVenda } = await prisma.$transaction((tx) => ativarModuloQuiosque(tx, {
     cervejariaId: cervejaria.id, controlaEstoque: false, temCozinha: false, exclusivo: true, nomePontoVenda: 'PDV smoke',
   }));
-  const produto = await prisma.produtoQuiosque.create({ data: { cervejariaId: cervejaria.id, nome: 'Produto smoke', precoUnit: 10, ordem: 1 } });
+  const produto = await prisma.produto.create({ data: { cervejariaId: cervejaria.id, nome: 'Produto smoke', tipo: 'COMIDA', categoria: 'Salgados', precos: { create: [{ volumeMl: 1, preco: 10 }] }, ordem: 1 } });
   const [donoToken, atendenteToken] = await Promise.all([
     login(dono.email, senha),
     login(atendente.email, senha),
@@ -50,7 +50,8 @@ async function limpar() {
     await prisma.pagamento.deleteMany({ where: { comanda: { pontoVenda: { cervejariaId: id } } } });
     await prisma.pedidoQuiosque.deleteMany({ where: { cervejariaId: id } });
     await prisma.comanda.deleteMany({ where: { pontoVenda: { cervejariaId: id } } });
-    await prisma.produtoQuiosque.deleteMany({ where: { cervejariaId: id } });
+    await prisma.preco.deleteMany({ where: { produto: { cervejariaId: id } } });
+    await prisma.produto.deleteMany({ where: { cervejariaId: id } });
     await prisma.pontoVenda.deleteMany({ where: { cervejariaId: id } });
     await prisma.configuracaoQuiosque.deleteMany({ where: { cervejariaId: id } });
     await prisma.transacaoLog.deleteMany({ where: { cervejariaId: id } });

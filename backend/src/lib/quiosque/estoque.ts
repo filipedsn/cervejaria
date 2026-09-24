@@ -46,7 +46,7 @@ async function garantirSaldo(
   tx: TxClient,
   params: { cervejariaId: string; pontoVendaId: string; produtoId: string },
 ) {
-  return tx.estoqueSaldoQuiosque.upsert({
+  return tx.inventoryBalance.upsert({
     where: {
       pontoVendaId_produtoId: {
         pontoVendaId: params.pontoVendaId,
@@ -76,7 +76,7 @@ async function registrarMovimento(
     pedidoId?: string;
   },
 ) {
-  await tx.movimentoEstoqueQuiosque.create({
+  await tx.inventoryMovement.create({
     data: {
       cervejariaId: params.cervejariaId,
       pontoVendaId: params.pontoVendaId,
@@ -107,7 +107,7 @@ async function baixarQuantidade(
   await lockEstoqueEmTx(tx, params);
   await garantirSaldo(tx, params);
 
-  const atualizado = await tx.estoqueSaldoQuiosque.updateMany({
+  const atualizado = await tx.inventoryBalance.updateMany({
     where: {
       pontoVendaId: params.pontoVendaId,
       produtoId: params.produtoId,
@@ -148,7 +148,7 @@ async function entrarQuantidade(
   await lockEstoqueEmTx(tx, params);
   await garantirSaldo(tx, params);
 
-  await tx.estoqueSaldoQuiosque.update({
+  await tx.inventoryBalance.update({
     where: {
       pontoVendaId_produtoId: {
         pontoVendaId: params.pontoVendaId,
@@ -294,7 +294,7 @@ export async function listarSaldos(cervejariaId: string, pontoVendaId: string) {
     orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
   });
 
-  const saldos = await prisma.estoqueSaldoQuiosque.findMany({
+  const saldos = await prisma.inventoryBalance.findMany({
     where: { cervejariaId, pontoVendaId, produtoId: { in: produtos.map((p) => p.id) } },
   });
 
@@ -334,7 +334,7 @@ export async function atualizarEstoqueMinimo(params: {
   await prisma.$transaction(async (tx) => {
     await lockEstoqueEmTx(tx, params);
     await garantirSaldo(tx, params);
-    await tx.estoqueSaldoQuiosque.update({
+    await tx.inventoryBalance.update({
       where: { pontoVendaId_produtoId: { pontoVendaId: params.pontoVendaId, produtoId: params.produtoId } },
       data: { estoqueMinimo: params.estoqueMinimo },
     });

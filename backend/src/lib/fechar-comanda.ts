@@ -68,7 +68,7 @@ export function assertValorPagamentosParaTotal(
 export const comandaFechadaInclude = {
   cliente: true,
   itens: {
-    include: { produto: true, produtoQuiosque: true },
+    include: { produto: true },
     orderBy: { createdAt: 'desc' as const },
   },
   pagamentos: true,

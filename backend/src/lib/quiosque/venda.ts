@@ -102,13 +102,13 @@ export async function resolverItens(
       const overridesTurno = await tx.sessaoCaixaProdutoQuiosque.findMany({
         where: {
           sessaoCaixaId: opts.sessaoCaixaId,
-          produtoQuiosqueId: { in: ids },
+          produtoId: { in: ids },
           precoUnit: { not: null },
         },
-        select: { produtoQuiosqueId: true, precoUnit: true },
+        select: { produtoId: true, precoUnit: true },
       });
       const precosTurno = new Map(
-        overridesTurno.map((r) => [r.produtoQuiosqueId, toNumber(r.precoUnit!)]),
+        overridesTurno.map((r) => [r.produtoId, toNumber(r.precoUnit!)]),
       );
 
       for (const produto of produtos) {

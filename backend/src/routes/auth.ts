@@ -209,7 +209,12 @@ export async function authRoutes(app: FastifyInstance) {
 
         const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
 
-        await sendPasswordResetEmail(usuario.email, resetUrl);
+        try {
+          await sendPasswordResetEmail(usuario.email, resetUrl);
+        } catch (error) {
+          if (process.env.NODE_ENV === 'production') throw error;
+          request.log.warn({ err: error }, 'Password reset email unavailable in development; token retained');
+        }
 
       }
 

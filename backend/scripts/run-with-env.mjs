@@ -96,6 +96,9 @@ const childEnv = {
   NODE_ENV: envName === 'production' ? 'production' : 'development',
 };
 
+const tsxHostShim = pathToFileURL(path.join(backendRoot, '..', 'scripts', 'node24-tsx-host.mjs')).href;
+childEnv.NODE_OPTIONS = `${childEnv.NODE_OPTIONS ?? ''} --import=${tsxHostShim}`.trim();
+
 const resolvedCommand =
   process.platform === 'win32' && command === 'npx' ? 'npx.cmd' : command;
 

@@ -9,8 +9,8 @@ type ItensCardapioQuiosqueResult =
   | { ok: true; itens: QuiosqueCardapioItemInput[] }
   | { error: string };
 
-function defaultPrecoCatalogoQuiosque(produto: { precoUnit: unknown }): number {
-  return toNumber(produto.precoUnit);
+function defaultPrecoCatalogoQuiosque(produto: { precos: Array<{ preco: unknown }> }): number {
+  return toNumber(produto.precos[0]?.preco ?? 0);
 }
 
 export async function normalizeItensCardapioQuiosque(
@@ -35,8 +35,9 @@ export async function normalizeItensCardapioQuiosque(
     const validated = await validateProdutosCardapioQuiosque(cervejariaId, produtoIds);
     if ('error' in validated) return validated;
 
-    const produtos = await prisma.produtoQuiosque.findMany({
+    const produtos = await prisma.produto.findMany({
       where: { id: { in: validated.produtoIds }, cervejariaId },
+      include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 } },
     });
     const porId = new Map(produtos.map((p) => [p.id, p]));
     const itensNormalizados: QuiosqueCardapioItemInput[] = [];
@@ -58,7 +59,7 @@ export async function validateProdutosCardapioQuiosque(
   const uniqueIds = [...new Set(produtoIds)];
   if (uniqueIds.length === 0) return { ok: true as const, produtoIds: [] as string[] };
 
-  const produtos = await prisma.produtoQuiosque.findMany({
+  const produtos = await prisma.produto.findMany({
     where: { id: { in: uniqueIds }, cervejariaId, ativo: true },
   });
 
@@ -94,9 +95,9 @@ export function mapCardapioQuiosqueResponse(
     nome: cardapio.nome,
     ativo: cardapio.ativo,
     cervejariaId: cardapio.cervejariaId,
-    produtoIds: cardapio.produtos.map((p) => p.produtoQuiosqueId),
+    produtoIds: cardapio.produtos.map((p) => p.produtoId),
     itens: cardapio.produtos.map((p) => ({
-      produtoId: p.produtoQuiosqueId,
+      produtoId: p.produtoId,
       precoUnit: toNumber(p.precoUnit),
       produto: p.produto,
     })),
@@ -134,7 +135,7 @@ async function replaceCardapioQuiosqueProdutos(
       await tx.cardapioQuiosqueProduto.createMany({
         data: itens.map((item) => ({
           cardapioId,
-          produtoQuiosqueId: item.produtoId,
+          produtoId: item.produtoId,
           precoUnit: item.precoUnit,
         })),
       });
@@ -206,15 +207,16 @@ export async function getProdutoIdsFromCardapioQuiosque(
 ): Promise<ProdutoIdsCardapioResult> {
   const cardapio = await prisma.cardapioQuiosque.findFirst({
     where: { id: cardapioId, cervejariaId, ativo: true },
-    include: { produtos: { select: { produtoQuiosqueId: true } } },
+    include: { produtos: { select: { produtoId: true } } },
   });
   if (!cardapio) return { error: 'Cardápio não encontrado' as const };
-  return { ok: true as const, produtoIds: cardapio.produtos.map((p) => p.produtoQuiosqueId) };
+  return { ok: true as const, produtoIds: cardapio.produtos.map((p) => p.produtoId) };
 }
 
 export async function listCatalogoCardapioQuiosque(cervejariaId: string) {
-  return prisma.produtoQuiosque.findMany({
+  return prisma.produto.findMany({
     where: { cervejariaId, ativo: true },
+    include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 } },
     orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
   });
 }

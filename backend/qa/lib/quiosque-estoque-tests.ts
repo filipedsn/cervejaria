@@ -106,7 +106,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Saldo após venda', expected: '7', actual: String(saldo) };
       }
 
-      const mov = await prisma.movimentoEstoqueQuiosque.findFirst({
+      const mov = await prisma.inventoryMovement.findFirst({
         where: { cervejariaId: cfg.cervejariaId, pontoVendaId: pontoId, produtoId: cfg.produtoId, tipo: 'SAIDA_VENDA' },
         orderBy: { createdAt: 'desc' },
       });
@@ -150,7 +150,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Saldo estornado', expected: String(antes), actual: String(depois) };
       }
 
-      const mov = await prisma.movimentoEstoqueQuiosque.findFirst({
+      const mov = await prisma.inventoryMovement.findFirst({
         where: { cervejariaId: cfg.cervejariaId, pontoVendaId: pontoId, tipo: 'ESTORNO_VENDA' },
         orderBy: { createdAt: 'desc' },
       });
@@ -186,7 +186,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Saldo após saídas', expected: String(antes - 2), actual: String(depois) };
       }
 
-      const tipos = await prisma.movimentoEstoqueQuiosque.findMany({
+      const tipos = await prisma.inventoryMovement.findMany({
         where: { pontoVendaId: pontoId, tipo: { in: ['CORTESIA', 'CONSUMO_INTERNO'] } },
         select: { tipo: true },
       });
@@ -432,10 +432,10 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
       }
 
       const [movAjuste, movVenda] = await Promise.all([
-        prisma.movimentoEstoqueQuiosque.findFirst({
+        prisma.inventoryMovement.findFirst({
           where: { pontoVendaId: pontoId, produtoId: cfg.produtoId, tipo: 'AJUSTE', observacao: marcador },
         }),
-        prisma.movimentoEstoqueQuiosque.findFirst({
+        prisma.inventoryMovement.findFirst({
           where: { pontoVendaId: pontoId, produtoId: cfg.produtoId, tipo: 'SAIDA_VENDA', createdAt: { gte: inicio } },
           orderBy: { createdAt: 'desc' },
         }),

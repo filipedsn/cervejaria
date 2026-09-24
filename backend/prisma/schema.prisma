@@ -159,12 +159,11 @@ model Cervejaria {
   configuracaoQuiosque ConfiguracaoQuiosque?
   configuracaoOperacional ConfiguracaoOperacional?
   pontosVenda          PontoVenda[]
-  produtosQuiosque     ProdutoQuiosque[]
   cardapiosQuiosque    CardapioQuiosque[]
   pedidosQuiosque      PedidoQuiosque[]
   sessoesCaixaQuiosque SessaoCaixaQuiosque[]
-  saldosEstoqueQuiosque EstoqueSaldoQuiosque[]
-  movimentosEstoqueQuiosque MovimentoEstoqueQuiosque[]
+   saldosEstoqueQuiosque InventoryBalance[]
+   movimentosEstoqueQuiosque InventoryMovement[]
 
   @@schema("public")
 }
@@ -290,6 +289,10 @@ model Produto {
   pedidoItens PedidoClienteItem[]
   eventos    EventoProduto[]
   cardapios  CardapioProduto[]
+  cardapiosQuiosque CardapioQuiosqueProduto[]
+   saldosEstoqueQuiosque InventoryBalance[]
+   movimentosEstoqueQuiosque InventoryMovement[]
+  sessoesCaixaQuiosque SessaoCaixaProdutoQuiosque[]
 
   @@index([cervejariaId])
 
@@ -309,8 +312,7 @@ model Preco {
   @@schema("public")
 }
 
-/// Evidência transitória do backfill ProdutoQuiosque → Produto. Não participa
-/// de regra operacional e será removida na migration CONTRACT após reconciliação.
+/// Evidência histórica do backfill do catálogo legado para Produto.
 model ProdutoMigracaoMapa {
   legacyProdutoId    String   @id
   canonicalProdutoId String   @unique
@@ -551,7 +553,6 @@ model ItemComanda {
   id                String   @id @default(cuid())
   comandaId         String
   produtoId         String?
-  produtoQuiosqueId String?
   tapId             String?
   volumeMl          Int      @default(0)
   quantidade        Int      @default(1)
@@ -564,13 +565,11 @@ model ItemComanda {
 
   comanda         Comanda          @relation(fields: [comandaId], references: [id], onDelete: Cascade)
   produto         Produto?         @relation(fields: [produtoId], references: [id], onDelete: Restrict)
-  produtoQuiosque ProdutoQuiosque? @relation(fields: [produtoQuiosqueId], references: [id], onDelete: Restrict)
   tap             Tap?             @relation(fields: [tapId], references: [id], onDelete: SetNull)
   pedidoCozinha   PedidoQuiosque?  @relation(fields: [pedidoCozinhaId], references: [id], onDelete: SetNull)
 
   @@index([comandaId])
   @@index([tapId])
-  @@index([produtoQuiosqueId])
   @@index([pedidoCozinhaId])
 
   @@schema("public")
@@ -727,36 +726,10 @@ model PontoVenda {
   comandas   Comanda[]
   pedidos    PedidoQuiosque[]
   sessoesCaixa SessaoCaixaQuiosque[]
-  saldosEstoque EstoqueSaldoQuiosque[]
-  movimentosEstoque MovimentoEstoqueQuiosque[]
+   saldosEstoque InventoryBalance[]
+   movimentosEstoque InventoryMovement[]
 
   @@index([cervejariaId, ativo])
-  @@schema("quiosque")
-}
-
-/// Catalogo proprio do quiosque, sem volume e sem tap: o produto e vendido por
-/// unidade. Separado de Produto para nao carregar as regras de chope.
-model ProdutoQuiosque {
-  id              String   @id @default(cuid())
-  cervejariaId    String
-  nome            String
-  categoria       String?
-  precoUnit       Decimal  @db.Decimal(10, 2)
-  exigePreparo    Boolean  @default(false)
-  controlaEstoque Boolean  @default(true)
-  ativo           Boolean  @default(true)
-  ordem           Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  cervejaria Cervejaria           @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
-  itens      ItemComanda[]
-  saldosEstoque EstoqueSaldoQuiosque[]
-  movimentosEstoque MovimentoEstoqueQuiosque[]
-  cardapios  CardapioQuiosqueProduto[]
-  sessoesCaixa SessaoCaixaProdutoQuiosque[]
-
-  @@index([cervejariaId, ativo, ordem])
   @@schema("quiosque")
 }
 
@@ -780,13 +753,13 @@ model CardapioQuiosque {
 model CardapioQuiosqueProduto {
   id                String  @id @default(cuid())
   cardapioId        String
-  produtoQuiosqueId String
+  produtoId         String
   precoUnit         Decimal @db.Decimal(10, 2)
 
   cardapio CardapioQuiosque @relation(fields: [cardapioId], references: [id], onDelete: Cascade)
-  produto  ProdutoQuiosque  @relation(fields: [produtoQuiosqueId], references: [id], onDelete: Cascade)
+  produto  Produto         @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 
-  @@unique([cardapioId, produtoQuiosqueId])
+  @@unique([cardapioId, produtoId])
   @@index([cardapioId])
   @@schema("quiosque")
 }
@@ -824,7 +797,7 @@ model PedidoQuiosque {
   comanda    Comanda              @relation(fields: [comandaId], references: [id], onDelete: Cascade)
   pontoVenda PontoVenda           @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
   itensComanda ItemComanda[]
-  movimentosEstoque MovimentoEstoqueQuiosque[]
+   movimentosEstoque InventoryMovement[]
   historicoStatus   PedidoQuiosqueStatusHistorico[]
 
   @@unique([cervejariaId, diaOperacional, numero])
@@ -905,15 +878,15 @@ model SessaoCaixaQuiosque {
 model SessaoCaixaProdutoQuiosque {
   id               String   @id @default(cuid())
   sessaoCaixaId    String
-  produtoQuiosqueId String
+  produtoId        String
   /// Override só deste turno; null herda template (ou catálogo).
   precoUnit        Decimal? @db.Decimal(10, 2)
   createdAt        DateTime @default(now())
 
   sessao  SessaoCaixaQuiosque @relation(fields: [sessaoCaixaId], references: [id], onDelete: Cascade)
-  produto ProdutoQuiosque     @relation(fields: [produtoQuiosqueId], references: [id], onDelete: Cascade)
+  produto Produto              @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 
-  @@unique([sessaoCaixaId, produtoQuiosqueId])
+  @@unique([sessaoCaixaId, produtoId])
   @@index([sessaoCaixaId])
   @@schema("quiosque")
 }
@@ -957,7 +930,7 @@ enum TipoMovimentoEstoqueQuiosque {
 }
 
 /// Saldo materializado por ponto de venda e produto.
-model EstoqueSaldoQuiosque {
+model InventoryBalance {
   id           String   @id @default(cuid())
   cervejariaId String
   pontoVendaId String
@@ -969,14 +942,15 @@ model EstoqueSaldoQuiosque {
 
   cervejaria Cervejaria     @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   pontoVenda PontoVenda     @relation(fields: [pontoVendaId], references: [id], onDelete: Cascade)
-  produto    ProdutoQuiosque @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  produto    Produto        @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 
   @@unique([pontoVendaId, produtoId])
   @@index([cervejariaId, pontoVendaId])
+  @@map("EstoqueSaldoQuiosque")
   @@schema("quiosque")
 }
 
-model MovimentoEstoqueQuiosque {
+model InventoryMovement {
   id              String                       @id @default(cuid())
   cervejariaId    String
   pontoVendaId    String
@@ -990,10 +964,11 @@ model MovimentoEstoqueQuiosque {
 
   cervejaria Cervejaria      @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   pontoVenda PontoVenda      @relation(fields: [pontoVendaId], references: [id], onDelete: Cascade)
-  produto    ProdutoQuiosque @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  produto    Produto         @relation(fields: [produtoId], references: [id], onDelete: Restrict)
   pedido     PedidoQuiosque? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
 
   @@index([pontoVendaId, produtoId, createdAt])
   @@index([pedidoId])
+  @@map("MovimentoEstoqueQuiosque")
   @@schema("quiosque")
 }

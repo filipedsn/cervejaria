@@ -5,7 +5,7 @@ Status: concluído localmente; sem acesso a Elasticsearch ou PROD.
 
 ## Implementação
 
-O novo processo está em `support-analyst/`. É um package Node 20 independente, sem imports de backend, Alert Poller, Ops Panel ou do Support Agent legado. Ele usa somente TypeScript, `tsx` para executar testes TypeScript e os módulos nativos do Node.
+O novo processo está em `support-analyst/`. É um package Node 24 independente, sem imports de backend, Alert Poller, Ops Panel ou do Support Agent legado. Ele usa somente TypeScript, `tsx` para executar testes TypeScript e os módulos nativos do Node.
 
 O entrypoint é fail-closed: sem argumento apenas informa que Sources Elasticsearch ainda não existem e encerra. Os únicos modos são `--help`, `--validate-config` e `--normalize-fixture <arquivo>`. Não há polling, rede, escrita local operacional, Elastic client, LLM, correlação, agrupamento, incidente ou remediação.
 
@@ -52,7 +52,7 @@ Há um teste de fronteira recursivo que verifica a ausência de chaves proibidas
 
 ## Comandos e CI
 
-No repositório raiz: `npm run analyst:typecheck`, `npm run analyst:test`, `npm run analyst:build` e `npm run analyst:validate`. O job bloqueante `support-analyst-test` instala dependências do package e executa typecheck, testes e build em Node 20 sem secrets ou rede Elasticsearch.
+No repositório raiz: `npm run analyst:typecheck`, `npm run analyst:test`, `npm run analyst:build` e `npm run analyst:validate`. O job bloqueante `support-analyst-test` instala dependências do package e executa typecheck, testes e build em Node 24 sem secrets ou rede Elasticsearch.
 
 ## Limitações e próximo passo
 
