@@ -612,18 +612,18 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
 
   for (const comanda of comandas) {
     for (const item of comanda.itens) {
-      if (!item.produtoQuiosqueId) continue;
+      if (!item.produtoId) continue;
       itensVendidos += item.quantidade;
       const itemValor = toNumber(item.precoUnit) * item.quantidade;
-      const prod = porProduto.get(item.produtoQuiosqueId) ?? {
-        produtoId: item.produtoQuiosqueId,
+      const prod = porProduto.get(item.produtoId) ?? {
+        produtoId: item.produtoId,
         nome: item.nome ?? 'Item',
         quantidade: 0,
         receita: 0,
       };
       prod.quantidade += item.quantidade;
       prod.receita += itemValor;
-      porProduto.set(item.produtoQuiosqueId, prod);
+      porProduto.set(item.produtoId, prod);
     }
   }
 
