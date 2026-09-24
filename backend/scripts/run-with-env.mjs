@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { assertTestProdWriteGuard } from '../../scripts/test-prod-write-guard.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.join(__dirname, '..');
@@ -107,6 +108,16 @@ function assertDatabaseEnvironment(name, databaseUrl) {
 }
 
 assertDatabaseEnvironment(envName, fileVars.DATABASE_URL);
+
+// Every mutable DEV command (seed, QA, backfill and experimental migration)
+// comes through this runner. Refuse inherited production state before spawn.
+if (envName === 'development') {
+  assertTestProdWriteGuard({
+    environment: { ...process.env, ...fileVars, NODE_ENV: 'development' },
+    requireDevDatabase: true,
+    context: 'development runner',
+  });
+}
 
 const isPrismaMigrate =
   command === 'npx' &&

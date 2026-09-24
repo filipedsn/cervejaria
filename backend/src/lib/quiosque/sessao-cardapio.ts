@@ -309,11 +309,12 @@ export async function listProdutosOperacionaisTurno(
 ) {
   const usaCardapio = await quiosqueUsaCardapio(cervejariaId);
   if (!usaCardapio) {
-    return prisma.produto.findMany({
+    const produtos = await prisma.produto.findMany({
       where: { cervejariaId, ativo: true },
       include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 } },
       orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
     });
+    return enriquecerProdutosQuiosque(produtos, null);
   }
 
   const sessao = await prisma.sessaoCaixaQuiosque.findFirst({
@@ -323,11 +324,12 @@ export async function listProdutosOperacionaisTurno(
   });
 
   if (!sessao) {
-    return prisma.produto.findMany({
+    const produtos = await prisma.produto.findMany({
       where: { cervejariaId, ativo: true },
       include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 } },
       orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
     });
+    return enriquecerProdutosQuiosque(produtos, null);
   }
 
   const [produtos, precosTemplate, precosTurno] = await Promise.all([

@@ -1,7 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 import path from 'node:path';
+import { assertTestProdWriteGuard } from './scripts/test-prod-write-guard.mjs';
 
 const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:5202';
+assertTestProdWriteGuard({ apiBase: baseURL, context: 'E2E runner' });
 const authDir = path.join(process.cwd(), 'e2e/.auth');
 
 export default defineConfig({
