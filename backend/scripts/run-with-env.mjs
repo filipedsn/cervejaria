@@ -27,11 +27,40 @@ function parseEnvFile(content) {
 }
 
 const envName = process.argv[2];
-const command = process.argv[3];
-const args = process.argv.slice(4);
+const rawArgs = process.argv.slice(3);
+const maintenanceAuthorization = '--allow-prod-maintenance';
+const hasMaintenanceAuthorization = rawArgs.includes(maintenanceAuthorization);
+const commandArgs = rawArgs.filter((arg) => arg !== maintenanceAuthorization);
+const command = commandArgs[0];
+const args = commandArgs.slice(1);
 
 if (!envName || !command) {
-  console.error('Uso: node scripts/run-with-env.mjs <development|production> <comando> [args...]');
+  console.error('Uso: node scripts/run-with-env.mjs <development|production> [--allow-prod-maintenance] <comando> [args...]');
+  process.exit(1);
+}
+
+if (!['development', 'production'].includes(envName)) {
+  console.error(`Ambiente invalido: ${envName}. Use development ou production.`);
+  process.exit(1);
+}
+
+const isProdBridgeWrite =
+  envName === 'production' &&
+  command === 'npx' &&
+  args[0] === 'tsx' &&
+  [
+    'scripts/backfill-operational-enablement.ts',
+    'scripts/backfill-cash-register-capability.ts',
+  ].includes(args[1]) &&
+  !args.includes('--dry-run');
+
+if (hasMaintenanceAuthorization && envName !== 'production') {
+  console.error(`${maintenanceAuthorization} so pode ser usado com production.`);
+  process.exit(1);
+}
+
+if (isProdBridgeWrite && !hasMaintenanceAuthorization) {
+  console.error(`Backfill PROD requer autorizacao explicita: ${maintenanceAuthorization}.`);
   process.exit(1);
 }
 

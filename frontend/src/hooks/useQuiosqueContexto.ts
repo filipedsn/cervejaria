@@ -8,21 +8,20 @@ export interface PontoVenda {
   ativo: boolean;
 }
 
-export type QuiosqueContexto =
-  {
-    ativo: boolean;
-    operationMode: 'CAIXA' | 'EVENTO' | null;
-    plannedOperationsEnabled: boolean;
-    cashRegisterEnabled: boolean;
-    tapsEnabled: boolean;
-    inventoryEnabled: boolean;
-    kitchenEnabled: boolean;
-    controlaEstoque: boolean;
-    temCozinha: boolean;
-    usaCardapio: boolean;
-    quantidadeMesas: number;
-    pontosVenda: PontoVenda[];
-  };
+export type QuiosqueContexto = {
+  ativo: boolean;
+  operationMode: 'CAIXA' | 'EVENTO' | null;
+  plannedOperationsEnabled: boolean;
+  cashRegisterEnabled: boolean;
+  tapsEnabled: boolean;
+  inventoryEnabled: boolean;
+  kitchenEnabled: boolean;
+  controlaEstoque: boolean;
+  temCozinha: boolean;
+  usaCardapio: boolean;
+  quantidadeMesas: number;
+  pontosVenda: PontoVenda[];
+};
 
 const CONTEXTO_INATIVO: QuiosqueContexto = {
   ativo: false,

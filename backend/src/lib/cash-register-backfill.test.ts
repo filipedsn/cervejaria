@@ -10,7 +10,7 @@ test('backfill selects only null legacy units and preserves explicit decisions',
     { id: 'false', usaCaixa: false, legacyQuiosqueActive: true },
     { id: 'cia', usaCaixa: null, legacyQuiosqueActive: false },
   ]);
-  assert.deepEqual(plan, { updateIds: ['null-legacy'], processed: 4, alreadyExplicitTrue: 1, alreadyExplicitFalse: 1, skipped: 1 });
+  assert.deepEqual(plan, { updateIds: ['null-legacy'], processed: 4, alreadyExplicitTrue: 1, alreadyExplicitFalse: 1, skipped: 1, fallbackRequired: 1 });
 });
 
 test('a repeated backfill plan has no update once values are explicit', () => {

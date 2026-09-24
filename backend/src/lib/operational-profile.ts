@@ -1,4 +1,5 @@
 import { prisma } from './prisma.js';
+import { recordLegacyFallback, type LegacyFallbackRecorder } from './legacy-fallback.js';
 
 export interface OperationalCapabilities {
   cashRegister: boolean;
@@ -75,13 +76,18 @@ export type OperationalProfileFactsReader = (
 ) => Promise<OperationalProfileFacts | null>;
 
 /** Pure mapping so legacy configurations can be validated without database I/O. */
-export function deriveOperationalProfile(facts: OperationalProfileFacts): OperationalProfile {
+export function deriveOperationalProfile(
+  facts: OperationalProfileFacts,
+  onLegacyFallback: LegacyFallbackRecorder = recordLegacyFallback,
+): OperationalProfile {
   const quiosqueEnabled = facts.legacyQuiosque?.enabled === true;
   const hasDirectSaleUnit = quiosqueEnabled && facts.activePointsOfSale > 0;
   const legacyCashRegister = hasDirectSaleUnit;
   // plannedOperationsEnabled is the persisted mode signal. Its inverse is a
   // compatibility projection for direct sales; they are never independent.
-  const operationMode: OperationMode = (facts.operationalEnablement?.plannedOperationsEnabled ?? facts.activeTrailers > 0)
+  const plannedOperationsEnabled = facts.operationalEnablement?.plannedOperationsEnabled;
+  if (plannedOperationsEnabled === null || plannedOperationsEnabled === undefined) onLegacyFallback('operational_config');
+  const operationMode: OperationMode = (plannedOperationsEnabled ?? facts.activeTrailers > 0)
     ? 'EVENTO'
     : 'CAIXA';
   const tapsEnabled = facts.operationalEnablement?.tapsEnabled ?? facts.activeTaps > 0;
@@ -96,7 +102,10 @@ export function deriveOperationalProfile(facts: OperationalProfileFacts): Operat
     : Array<boolean | null>(facts.activePointsOfSale).fill(null);
   const hasCashRegisterUnit = operationMode === 'CAIXA' && cashRegisterSettings.some(
     // Explicit usaCaixa is retained for old multi-PDV installations only.
-    (usaCaixa) => usaCaixa ?? legacyCashRegister,
+    (usaCaixa) => {
+      if (usaCaixa === null || usaCaixa === undefined) onLegacyFallback('cash_capability');
+      return usaCaixa ?? legacyCashRegister;
+    },
   );
 
   return {

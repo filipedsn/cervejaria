@@ -43,6 +43,7 @@ O Vite faz proxy de `/api`, `/uploads` e WebSocket para a API dev (`:3002`). **N
 
 - `npm run ci:frontend` / `vite build` escrevem em **`frontend/dist`** â€” nao alteram prod.
 - Somente **`npm run prod:deploy`** publica em **`deploy/prod-artifacts/`** (manifest em `manifest.json`).
+- Um candidate retido fica em `deploy/release-candidates/<SHA-completo>/`, fora do artifact ativo e da `.staging` transitória. Seu `candidate-manifest.json` tem hashes SHA-256 de todos os arquivos publicados; ele não é publicado automaticamente.
 - A API prod usa `FRONTEND_DIST` apontando para `prod-artifacts/frontend`.
 - O entry da API e `prod-artifacts/backend/dist/index.js`; `node_modules` e um junction para `backend/node_modules` (resolucao ESM do Node).
 - Verificar alinhamento: `npm run prod:verify`.
@@ -126,6 +127,17 @@ Se precisar rodar passos isolados (nao recomendado â€” use `prod:deploy`):
 2. `npm run prod:deploy -- -Confirmed` (publica artefatos + restart)
 
 Builds locais (`ci:frontend`, `npm run build`) **nao** publicam prod.
+
+### Candidate retido para release
+
+O candidate é preparado de uma worktree explícita, limpa e certificada. O SHA completo, a worktree de origem e o destino são obrigatórios; o comando falha se o HEAD, Node 20, arquivos tracked ou hashes não conferirem. Use o Node 20 provisionado:
+
+```powershell
+npm run release:candidate:prepare -- -SourceWorktree C:\caminho\runtime -ExpectedReleaseSha <sha-completo> -CandidateRoot C:\caminho\deploy\release-candidates
+npm run release:candidate:verify -- -CandidatePath C:\caminho\deploy\release-candidates\<sha-completo> -ExpectedReleaseSha <sha-completo>
+```
+
+O publish futuro deve chamar `Publish-ReleaseCandidateArtifacts` com o candidate e SHA explícitos. Ele revalida o manifest antes de copiar para a `.staging` transitória, faz o swap atômico existente e só então escreve o `manifest.json` **ativo**. O candidate nunca é reconstruído, alterado ou confundido com o manifest ativo.
 
 ## Rollback
 

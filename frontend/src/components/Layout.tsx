@@ -173,10 +173,7 @@ export function Layout() {
               : []),
           ]
         : navItemsComandasQuiosque
-    : [
-        ...navItemsCervejariaOrdenados,
-        ...getOperationalModeNavItems(quiosque),
-      ];
+    : [...navItemsCervejariaOrdenados, ...getOperationalModeNavItems(quiosque)];
   const { alertEnabled, alertNeedsUnlock, pushStatus, wakeLockActive, togglePedidoAlert } =
     usePedidoAlertSound();
   const onEventsPage = location.pathname === '/eventos';
