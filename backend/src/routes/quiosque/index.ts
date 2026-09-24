@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { getAuthUser } from '../../types/auth.js';
 import { getConfiguracaoQuiosque, requireModuloQuiosque } from '../../lib/quiosque/modulo.js';
-import { getOperationalProfile } from '../../lib/operational-profile.js';
+import { getOperationalProfile, shouldExposeEstablishmentSurface } from '../../lib/operational-profile.js';
 import { produtosQuiosqueRoutes } from './produtos.js';
 import { comandasQuiosqueRoutes } from './comandas.js';
 import { vendasQuiosqueRoutes } from './vendas.js';
@@ -40,16 +40,20 @@ export async function quiosqueRoutes(app: FastifyInstance) {
       }),
     ]);
 
-    const ativo = Boolean(configuracao) || profile?.capabilities.directSales === true || profile?.capabilities.inventory === true || profile?.capabilities.kitchen === true;
-    if (!ativo) return { ativo: false as const };
-
     return {
-      ativo: true as const,
+      // CAIXA remains a first-class workflow even before a POS is provisioned,
+      // so the operator can reach the page that explains/provisions the next step.
+      ativo: profile ? profile.operationMode === 'CAIXA' || shouldExposeEstablishmentSurface(profile.capabilities) : false,
+      operationMode: profile?.operationMode ?? null,
+      plannedOperationsEnabled: profile?.capabilities.plannedOperations ?? false,
+      cashRegisterEnabled: profile?.capabilities.cashRegister ?? false,
+      tapsEnabled: profile?.capabilities.taps ?? false,
+      inventoryEnabled: profile?.capabilities.inventory ?? false,
+      kitchenEnabled: profile?.capabilities.kitchen ?? false,
       // The context powers navigation and page guards, so it must expose the
       // same persisted capability decision as the operational settings panel.
       controlaEstoque: profile?.capabilities.inventory ?? configuracao?.controlaEstoque ?? false,
       temCozinha: profile?.capabilities.kitchen ?? configuracao?.temCozinha ?? false,
-      exclusivo: configuracao?.exclusivo ?? false,
       usaCardapio: configuracao?.usaCardapio ?? false,
       quantidadeMesas: configuracao?.quantidadeMesas ?? 0,
       pontosVenda,
@@ -103,9 +107,10 @@ export async function quiosqueRoutes(app: FastifyInstance) {
     moduloScope.post('/pontos-venda', { preHandler: [app.requireDono] }, async (request, reply) => {
       const { cervejariaId } = request.quiosque;
       const body = createPontoVendaSchema.parse(request.body);
+      const profile = await getOperationalProfile(cervejariaId);
 
       const pontoVenda = await prisma.pontoVenda.create({
-        data: { cervejariaId, nome: body.nome },
+        data: { cervejariaId, nome: body.nome, usaCaixa: profile?.capabilities.cashRegister ?? false },
       });
 
       return reply.status(201).send(pontoVenda);

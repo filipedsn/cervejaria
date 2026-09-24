@@ -28,6 +28,7 @@
     "qa:report": "node scripts/run-with-env.mjs development npx tsx qa/report.ts",
     "qa:teardown": "node scripts/run-with-env.mjs development npx tsx qa/teardown.ts",
     "qa:test": "node scripts/run-with-env.mjs development npx tsx qa/run.ts",
+    "certify:dataset": "node scripts/run-with-env.mjs development node --import tsx qa/certification-dataset.ts",
     "qa:validate-jul21": "node scripts/run-with-env.mjs development npx tsx qa/validate-jul21-session.ts",
     "qa:tq-sec-02": "node scripts/run-with-env.mjs development npx tsx qa/tq-sec-02-realtime.ts",
     "obs:validate-prisma-ingestion": "node --import tsx scripts/bootstrap-prisma-observability-validation.mjs",

@@ -12,6 +12,10 @@ import {
   startClientePortalSession,
 } from '../lib/portal-cliente.js';
 import { normalizePhone } from '../lib/phone.js';
+import { registerOrUpdateCliente } from '../lib/cliente-resolver.js';
+import { assertCaixaAberto, lockCaixaEmTx } from '../lib/quiosque/caixa.js';
+import { diaOperacional } from '../lib/quiosque/venda.js';
+import { proximoNumeroComandaQuiosqueTurno } from '../lib/comanda-numero.js';
 
 import {
 
@@ -64,6 +68,11 @@ const sessaoSchema = z.object({
 });
 
 const telefoneQuerySchema = z.object({
+  telefone: z.string().min(10),
+});
+
+const abrirComandaPdvSchema = z.object({
+  nome: z.string().trim().min(2).max(120),
   telefone: z.string().min(10),
 });
 
@@ -285,6 +294,63 @@ export async function publicRoutes(app: FastifyInstance) {
 
     };
 
+  });
+
+  app.get('/cervejarias/:slug/pontos-venda/:pontoVendaId/info', async (request, reply) => {
+    const { slug, pontoVendaId } = request.params as { slug: string; pontoVendaId: string };
+    const cervejaria = await prisma.cervejaria.findFirst({
+      where: { slug, ativo: true },
+      select: { id: true, nome: true, slug: true, logoUrl: true },
+    });
+    if (!cervejaria) return reply.status(404).send({ error: 'Link inválido' });
+
+    const pontoVenda = await prisma.pontoVenda.findFirst({
+      where: { id: pontoVendaId, cervejariaId: cervejaria.id, ativo: true },
+      select: { id: true, nome: true },
+    });
+    if (!pontoVenda) return reply.status(404).send({ error: 'Link inválido' });
+
+    const dia = diaOperacional();
+    const sessao = await prisma.sessaoCaixaQuiosque.findFirst({
+      where: { cervejariaId: cervejaria.id, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
+      select: { id: true },
+    });
+    return { cervejaria, pontoVenda, disponivel: Boolean(sessao) };
+  });
+
+  app.post('/cervejarias/:slug/pontos-venda/:pontoVendaId/comandas', {
+    config: { rateLimit: { max: PUBLIC_RATE_LIMIT_MAX, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const { slug, pontoVendaId } = request.params as { slug: string; pontoVendaId: string };
+    const body = abrirComandaPdvSchema.parse(request.body);
+    const cervejaria = await prisma.cervejaria.findFirst({ where: { slug, ativo: true }, select: { id: true, nome: true } });
+    if (!cervejaria) return reply.status(404).send({ error: 'Link inválido' });
+    const pontoVenda = await prisma.pontoVenda.findFirst({ where: { id: pontoVendaId, cervejariaId: cervejaria.id, ativo: true }, select: { id: true, nome: true } });
+    if (!pontoVenda) return reply.status(404).send({ error: 'Link inválido' });
+
+    const telefone = normalizePhone(body.telefone);
+    if (!telefone) return reply.status(400).send({ error: 'Telefone inválido. Informe DDD + número.' });
+    const dia = diaOperacional();
+    try {
+      const cliente = await registerOrUpdateCliente({ cervejariaId: cervejaria.id, nome: body.nome, telefone, optInMarketing: false, cadastradoVia: 'AUTO_ATENDIMENTO' });
+      const result = await prisma.$transaction(async (tx) => {
+        await lockCaixaEmTx(tx, cervejaria.id, pontoVenda.id, dia);
+        const sessao = await assertCaixaAberto(cervejaria.id, pontoVenda.id, dia, tx);
+        const existente = await tx.comanda.findFirst({ where: { origem: 'QUIOSQUE', pontoVendaId: pontoVenda.id, clienteId: cliente.id, status: 'ABERTA' } });
+        if (existente) return { comanda: existente, reused: true };
+        const numero = await proximoNumeroComandaQuiosqueTurno(tx, cervejaria.id, pontoVenda.id, sessao.abertoEm);
+        const comanda = await tx.comanda.create({ data: { origem: 'QUIOSQUE', pontoVendaId: pontoVenda.id, clienteId: cliente.id, tipo: 'APELIDO', identificador: cliente.nome, numero, diaOperacional: dia, status: 'ABERTA', total: 0 } });
+        return { comanda, reused: false };
+      });
+      void registrarTransacao({ cervejariaId: cervejaria.id, tipo: 'QUIOSQUE_COMANDA_CRIADA', comandaId: result.comanda.id, metadata: { origem: 'PORTAL_PDV', pontoVendaId, reused: result.reused }, payload: { numero: result.comanda.numero, identificador: result.comanda.identificador } });
+      if (!result.reused) {
+        emitToCervejaria(app.io, cervejaria.id, { type: 'comanda:created', data: result.comanda });
+      }
+      return reply.status(result.reused ? 200 : 201).send({ comanda: { id: result.comanda.id, numero: result.comanda.numero, identificador: result.comanda.identificador }, reused: result.reused, pontoVenda, cervejaria });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Não foi possível abrir a comanda';
+      return reply.status(409).send({ error: message });
+    }
   });
 
 

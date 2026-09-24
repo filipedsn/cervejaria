@@ -1,6 +1,6 @@
 # Supervisor do ambiente de desenvolvimento:
-# - sobe API/frontend dev quando o Cursor abre o workspace
-# - desmonta tudo quando o Cursor e fechado
+# - sobe API/frontend dev quando Cursor ou VS Code abre o workspace
+# - desmonta tudo quando os editores sao fechados
 
 param(
   [switch]$Detached
@@ -49,7 +49,7 @@ $backoffUntil = [DateTime]::MinValue
 try {
   & "$PSScriptRoot\start-dev.ps1" | Out-Null
 
-  while (Test-CursorRunning) {
+  while (Test-EditorRunning) {
     Start-Sleep -Seconds $checkIntervalSeconds
 
     if ((Get-Date) -lt $backoffUntil) { continue }

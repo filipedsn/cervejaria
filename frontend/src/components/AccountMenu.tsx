@@ -4,7 +4,6 @@ import type { Cervejaria, Trailer, Usuario } from '../types';
 import { formatTrailerLabel } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useQuiosqueContexto } from '../hooks/useQuiosqueContexto';
 import { IconBell } from './NavIcons';
 import { SettingsRow, ThemeSegmentedControl } from './SettingsRow';
 import type { PedidoPushStatus } from '../hooks/usePedidoAlertSound';
@@ -80,13 +79,9 @@ export function AccountMenu({
 }: AccountMenuProps) {
   const { theme, setTheme } = useTheme();
   const { isDono } = useAuth();
-  const { contexto: quiosque } = useQuiosqueContexto();
   const location = useLocation();
   const inQuiosque = location.pathname.startsWith('/quiosque');
-  const equipeHref =
-    inQuiosque || (quiosque.ativo && quiosque.exclusivo)
-      ? '/quiosque/configuracoes/equipe'
-      : '/configuracoes/equipe';
+  const equipeHref = inQuiosque ? '/quiosque/configuracoes/equipe' : '/configuracoes/equipe';
 
   if (!open) return null;
 

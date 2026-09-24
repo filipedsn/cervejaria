@@ -83,20 +83,21 @@ function Write-DevLog {
   Add-Content -Path $Paths.SupervisorLog -Value $line -Encoding UTF8
 }
 
-function Test-LaunchedFromCursor {
+function Test-LaunchedFromEditor {
   $processId = $PID
   for ($i = 0; $i -lt 25; $i++) {
     $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$processId" -ErrorAction SilentlyContinue
     if (-not $proc) { return $false }
-    if ($proc.Name -ieq 'Cursor.exe') { return $true }
+    if ($proc.Name -iin @('Cursor.exe', 'Code.exe', 'Code - Insiders.exe')) { return $true }
     if (-not $proc.ParentProcessId -or $proc.ParentProcessId -eq $processId) { return $false }
     $processId = $proc.ParentProcessId
   }
   return $false
 }
 
-function Test-CursorRunning {
-  return $null -ne (Get-Process -Name 'Cursor' -ErrorAction SilentlyContinue)
+function Test-EditorRunning {
+  $editorProcessNames = @('Cursor', 'Code', 'Code - Insiders')
+  return $null -ne (Get-Process -Name $editorProcessNames -ErrorAction SilentlyContinue)
 }
 
 function Start-HiddenNpm {

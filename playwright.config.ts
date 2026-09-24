@@ -18,6 +18,9 @@ export default defineConfig({
     baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    launchOptions: process.env.E2E_EXECUTABLE_PATH
+      ? { executablePath: process.env.E2E_EXECUTABLE_PATH }
+      : undefined,
   },
   projects: [
     { name: 'setup', testMatch: /auth\.setup\.ts/, timeout: 120_000 },

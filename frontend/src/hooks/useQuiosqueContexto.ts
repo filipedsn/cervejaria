@@ -9,19 +9,35 @@ export interface PontoVenda {
 }
 
 export type QuiosqueContexto =
-  | { ativo: false }
-  | {
-      ativo: true;
-      controlaEstoque: boolean;
-      temCozinha: boolean;
-      /** Empresa que so opera quiosque: esconde a navegacao de cervejaria. */
-      exclusivo: boolean;
-      usaCardapio: boolean;
-      quantidadeMesas: number;
-      pontosVenda: PontoVenda[];
-    };
+  {
+    ativo: boolean;
+    operationMode: 'CAIXA' | 'EVENTO' | null;
+    plannedOperationsEnabled: boolean;
+    cashRegisterEnabled: boolean;
+    tapsEnabled: boolean;
+    inventoryEnabled: boolean;
+    kitchenEnabled: boolean;
+    controlaEstoque: boolean;
+    temCozinha: boolean;
+    usaCardapio: boolean;
+    quantidadeMesas: number;
+    pontosVenda: PontoVenda[];
+  };
 
-const CONTEXTO_INATIVO: QuiosqueContexto = { ativo: false };
+const CONTEXTO_INATIVO: QuiosqueContexto = {
+  ativo: false,
+  operationMode: null,
+  plannedOperationsEnabled: false,
+  cashRegisterEnabled: false,
+  tapsEnabled: false,
+  inventoryEnabled: false,
+  kitchenEnabled: false,
+  controlaEstoque: false,
+  temCozinha: false,
+  usaCardapio: false,
+  quantidadeMesas: 0,
+  pontosVenda: [],
+};
 
 /**
  * Decide se o modulo Quiosque aparece para a empresa logada. Enquanto carrega,

@@ -13,6 +13,7 @@ Thumbs.db
 .vscode/
 .idea/
 coverage/
+artifacts/certification/
 *.tsbuildinfo
 frontend/dev-dist/
 backend/uploads/logos/*

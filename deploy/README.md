@@ -50,7 +50,7 @@ O Vite faz proxy de `/api`, `/uploads` e WebSocket para a API dev (`:3002`). **N
 ## Politica no mesmo PC
 
 - **Producao** roda 24/7 via daemon oculto + tarefas `QuiverTap-AtLogon` / `QuiverTap-AtStartup`.
-- **Desenvolvimento** so via supervisor Cursor ou `npm run dev:start`.
+- **Desenvolvimento** via supervisor do Cursor/VS Code ou `npm run dev:start`.
 - Evite rodar dev e prod sob carga pesada ao mesmo tempo (RAM).
 
 ### Tela piscando?

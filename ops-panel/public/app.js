@@ -85,6 +85,10 @@ const els = {
   journeyEnvironment: document.getElementById('journeyEnvironment'),
   journeySource: document.getElementById('journeySource'),
   journeyTimeline: document.getElementById('journeyTimeline'),
+  journeyPagination: document.getElementById('journeyPagination'),
+  journeyPrev: document.getElementById('journeyPrev'),
+  journeyNext: document.getElementById('journeyNext'),
+  journeyPageStatus: document.getElementById('journeyPageStatus'),
 };
 
 // A release e a decisao principal; os detalhes operacionais continuam acessiveis abaixo.
@@ -92,11 +96,19 @@ const releaseSection = document.getElementById('releaseSection');
 const overview = document.getElementById('overview');
 const serviceStrip = document.querySelector('.service-strip');
 const quickActions = document.querySelector('.quick-actions');
-if (releaseSection && overview && serviceStrip && quickActions) {
+const alertsPanel = document.getElementById('alertsPanel');
+if (releaseSection && overview && serviceStrip && alertsPanel && quickActions) {
   const homeControlGrid = document.createElement('div');
   homeControlGrid.className = 'home-control-grid';
+  const observabilityColumn = document.createElement('div');
+  observabilityColumn.className = 'observability-column';
+  const alertsRow = document.createElement('div');
+  alertsRow.className = 'alerts-row';
   overview.after(homeControlGrid);
-  homeControlGrid.append(releaseSection, serviceStrip, quickActions);
+  homeControlGrid.append(releaseSection, observabilityColumn, quickActions);
+  observabilityColumn.append(serviceStrip);
+  alertsRow.append(alertsPanel);
+  homeControlGrid.after(alertsRow);
 }
 
 // Mantem as mesmas acoes/endpoints, mas as agrupa no cockpit para a leitura direta da home.
@@ -432,16 +444,25 @@ function addJourneyDetail(list, label, value) {
   list.append(term, detail);
 }
 
-function renderJourney(events) {
+const JOURNEY_PAGE_SIZE = 10;
+let journeyEvents = [];
+let journeyPage = 1;
+
+function renderJourney(events, page = journeyPage) {
+  journeyEvents = events;
+  const totalPages = Math.max(1, Math.ceil(events.length / JOURNEY_PAGE_SIZE));
+  journeyPage = Math.min(Math.max(1, page), totalPages);
   els.journeyTimeline.replaceChildren();
   if (!events.length) {
+    els.journeyPagination.hidden = true;
     const empty = document.createElement('span');
     empty.className = 'status-muted';
     empty.textContent = 'Nenhum evento encontrado para estes filtros.';
     els.journeyTimeline.append(empty);
     return;
   }
-  for (const event of events) {
+  const start = (journeyPage - 1) * JOURNEY_PAGE_SIZE;
+  for (const event of events.slice(start, start + JOURNEY_PAGE_SIZE)) {
     const [icon, title] = semanticJourneyAction(event.action, event);
     const item = document.createElement('article');
     item.className = `journey-event${event.outcome === 'failure' || (event.statusCode || 0) >= 400 ? ' journey-event--failure' : ''}`;
@@ -472,6 +493,10 @@ function renderJourney(events) {
     item.append(time, main, details);
     els.journeyTimeline.append(item);
   }
+  els.journeyPagination.hidden = totalPages <= 1;
+  els.journeyPageStatus.textContent = `Página ${journeyPage} de ${totalPages} · ${events.length} evento(s)`;
+  els.journeyPrev.disabled = journeyPage <= 1;
+  els.journeyNext.disabled = journeyPage >= totalPages;
 }
 
 function journeyQuery() {
@@ -501,7 +526,7 @@ async function refreshJourney() {
       return;
     }
     els.journeySource.textContent = `${data.events.length} evento(s), ordem cronológica. Fonte: audit + technical (${data.filters.environment.toUpperCase()}).`;
-    renderJourney(data.events);
+    renderJourney(data.events, 1);
   } catch (error) {
     els.journeySource.textContent = error.message || 'Não foi possível consultar a jornada.';
     renderJourney([]);
@@ -1400,6 +1425,8 @@ const journeyNow = new Date();
 const journeyLocal = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 els.journeyFrom.value = journeyLocal(new Date(journeyNow.getTime() - 24 * 60 * 60_000));
 els.journeyTo.value = journeyLocal(journeyNow);
+els.journeyPrev.addEventListener('click', () => renderJourney(journeyEvents, journeyPage - 1));
+els.journeyNext.addEventListener('click', () => renderJourney(journeyEvents, journeyPage + 1));
 initSession()
   .then(() => loadOpsPanelMeta())
   .then(() => {
