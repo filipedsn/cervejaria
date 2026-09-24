@@ -39,7 +39,7 @@ test('direct-sales guard does not infer access from cash-register capability', (
     activePointOfSaleCashRegisterSettings: [false],
   }));
 
-  assert.equal(profile.capabilities.cashRegister, false);
+  assert.equal(profile.capabilities.cashRegister, true);
   assert.equal(hasDirectSalesAccess(profile), true);
 });
 

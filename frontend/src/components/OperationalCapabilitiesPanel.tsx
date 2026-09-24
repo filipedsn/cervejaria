@@ -31,7 +31,13 @@ export function OperationalCapabilitiesPanel() {
   async function selectMode(mode: 'CAIXA' | 'EVENTO') {
     setSaving('mode'); setError('');
     try { await api.patch('/api/cervejaria/configuracao-operacional', { operationMode: mode }); await refresh(); }
-    catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Não foi possível salvar o modo de operação'); }
+    catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409) {
+        setError(`Não foi possível alterar o modo: ${cause.message}`);
+      } else {
+        setError(cause instanceof ApiError ? cause.message : 'Não foi possível salvar o modo de operação');
+      }
+    }
     finally { setSaving(null); }
   }
   const operationMode = data?.enablements.plannedOperations ? 'EVENTO' : 'CAIXA';
@@ -45,6 +51,6 @@ export function OperationalCapabilitiesPanel() {
     <div className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
       {CAPABILITIES.map(({ key, title, description }) => <div key={key} className="flex min-h-20 items-center justify-between gap-3 px-4 py-4"><div className="min-w-0 flex-1"><p className="font-semibold text-ink">{title}</p><p className="mt-1 text-sm leading-relaxed text-ink-muted">{description}</p></div><ToggleAtivo ativo={data?.enablements[ENABLEMENT_BY_KEY[key]] ?? false} loading={isLoading || saving !== null} onToggle={() => toggle(key)} labelAtivo={`Desativar ${title}`} labelInativo={`Ativar ${title}`} /></div>)}
     </div>
-    {error && <div className="alert-error text-sm">{error}</div>}
+    {error && <div className="alert-error text-sm" role="alert" aria-live="assertive">{error}</div>}
   </section>;
 }

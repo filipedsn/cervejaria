@@ -107,10 +107,10 @@ export async function quiosqueRoutes(app: FastifyInstance) {
     moduloScope.post('/pontos-venda', { preHandler: [app.requireDono] }, async (request, reply) => {
       const { cervejariaId } = request.quiosque;
       const body = createPontoVendaSchema.parse(request.body);
-      const profile = await getOperationalProfile(cervejariaId);
-
       const pontoVenda = await prisma.pontoVenda.create({
-        data: { cervejariaId, nome: body.nome, usaCaixa: profile?.capabilities.cashRegister ?? false },
+        // `usaCaixa` is a legacy compatibility field. CAIXA access is
+        // derived from ConfiguracaoOperacional, never from this column.
+        data: { cervejariaId, nome: body.nome },
       });
 
       return reply.status(201).send(pontoVenda);

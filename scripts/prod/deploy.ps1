@@ -552,7 +552,12 @@ function Invoke-DeployBody {
     $script:ledgerBackup = $script:recoveryContext.backup
   }
 
-  Ensure-ProdArtifactsBaseline -Paths $paths
+  # Um deploy completo produz ambos os artefatos no staging e pode ser a primeira
+  # publicacao deste diretorio. Nesse caso nao exija um frontend legado antes do
+  # build; a protecao continua necessaria nos deploys parciais.
+  if (-not ($buildFrontend -and $buildBackend)) {
+    Ensure-ProdArtifactsBaseline -Paths $paths
+  }
   Initialize-ProdStaging -Paths $paths
 
   if ($plan.BuildFE) {

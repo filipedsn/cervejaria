@@ -95,18 +95,13 @@ export function deriveOperationalProfile(
     ?? (quiosqueEnabled && facts.legacyQuiosque!.controlaEstoque);
   const kitchenEnabled = facts.operationalEnablement?.kitchenEnabled
     ?? (quiosqueEnabled && facts.legacyQuiosque!.temCozinha);
-  // Older in-memory fact producers only supplied the unit count. Interpret
-  // their missing settings as NULL so the legacy fallback remains compatible.
-  const cashRegisterSettings = facts.activePointOfSaleCashRegisterSettings.length > 0
-    ? facts.activePointOfSaleCashRegisterSettings
-    : Array<boolean | null>(facts.activePointsOfSale).fill(null);
-  const hasCashRegisterUnit = operationMode === 'CAIXA' && cashRegisterSettings.some(
-    // Explicit usaCaixa is retained for old multi-PDV installations only.
-    (usaCaixa) => {
-      if (usaCaixa === null || usaCaixa === undefined) onLegacyFallback('cash_capability');
-      return usaCaixa ?? legacyCashRegister;
-    },
-  );
+  // `PontoVenda.usaCaixa` was a per-unit legacy toggle. There is no current
+  // product configuration for it, so using it as a runtime guard creates an
+  // unresolvable CAIXA state (including for the first point of sale). The
+  // current operational mode is the sole source of truth: every active point
+  // of sale is cash-capable in CAIXA. The column remains readable for
+  // compatibility/backfill diagnostics only.
+  const hasCashRegisterUnit = operationMode === 'CAIXA' && facts.activePointsOfSale > 0;
 
   return {
     tenantId: facts.tenantId,

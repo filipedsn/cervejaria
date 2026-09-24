@@ -11,7 +11,6 @@ import {
 import { quiosqueUsaCardapio } from '../cardapio-toggle.js';
 import { verifyPassword } from '../utils.js';
 import { getOperationalProfile } from '../operational-profile.js';
-import { recordLegacyFallback, type LegacyFallbackRecorder } from '../legacy-fallback.js';
 
 export class CaixaInvalidoError extends Error {
   statusCode = 400;
@@ -28,43 +27,37 @@ const FORMAS: PaymentMethod[] = [
 
 const CAIXA_TX = { maxWait: 15_000, timeout: 20_000 } as const;
 
-/**
- * The cash-register setting belongs to a physical point of sale. NULL keeps
- * the pre-capability behaviour while an explicit value always wins.
- */
+/** Compatibility projection for diagnostics; it is not a product guard. */
 export function resolveCashRegisterCapability(params: {
   pontoVendaAtivo: boolean;
-  usaCaixa: boolean | null;
-  legacyQuiosqueAtivo: boolean;
-}, onLegacyFallback: LegacyFallbackRecorder = recordLegacyFallback): boolean {
-  if (!params.pontoVendaAtivo) return false;
-  if (params.usaCaixa === null || params.usaCaixa === undefined) onLegacyFallback('cash_capability');
-  return params.usaCaixa ?? params.legacyQuiosqueAtivo;
+  operationMode: 'CAIXA' | 'EVENTO';
+}): boolean {
+  return params.pontoVendaAtivo && params.operationMode === 'CAIXA';
 }
 
 type CaixaCapabilityReader = Pick<Prisma.TransactionClient, 'pontoVenda'>;
+type OperationalProfileReader = typeof getOperationalProfile;
 
 /** Guards only the unit capability; session and financial rules stay separate. */
 export async function assertCashRegisterUnitEnabled(
   cervejariaId: string,
   pontoVendaId: string,
   db: CaixaCapabilityReader = prisma,
+  profileReader: OperationalProfileReader = getOperationalProfile,
 ) {
   const pontoVenda = await db.pontoVenda.findFirst({
     where: { id: pontoVendaId, cervejariaId, ativo: true },
     select: {
       ativo: true,
-      usaCaixa: true,
     },
   });
   if (!pontoVenda) throw new CaixaInvalidoError('Ponto de venda não encontrado');
 
-  let enabled = pontoVenda.usaCaixa;
-  if (enabled === null) {
-    const profile = await getOperationalProfile(cervejariaId);
-    enabled = profile?.capabilities.cashRegister === true;
-  }
-  enabled = pontoVenda.ativo && enabled === true;
+  const profile = await profileReader(cervejariaId);
+  const enabled = resolveCashRegisterCapability({
+    pontoVendaAtivo: pontoVenda.ativo,
+    operationMode: profile?.operationMode ?? 'EVENTO',
+  });
   if (!enabled) throw new CaixaInvalidoError('Caixa não habilitado para este ponto de venda');
 }
 
@@ -228,8 +221,9 @@ export async function assertCaixaAberto(
   pontoVendaId: string,
   dia = diaOperacional(),
   db: Pick<Prisma.TransactionClient, 'sessaoCaixaQuiosque' | 'pontoVenda'> = prisma,
+  profileReader: OperationalProfileReader = getOperationalProfile,
 ) {
-  await assertCashRegisterUnitEnabled(cervejariaId, pontoVendaId, db);
+  await assertCashRegisterUnitEnabled(cervejariaId, pontoVendaId, db, profileReader);
   const sessao = await db.sessaoCaixaQuiosque.findFirst({
     where: { cervejariaId, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
     include: { movimentos: { orderBy: { createdAt: 'asc' } } },
@@ -618,18 +612,18 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
 
   for (const comanda of comandas) {
     for (const item of comanda.itens) {
-      if (!item.produtoId) continue;
+      if (!item.produtoQuiosqueId) continue;
       itensVendidos += item.quantidade;
       const itemValor = toNumber(item.precoUnit) * item.quantidade;
-      const prod = porProduto.get(item.produtoId) ?? {
-        produtoId: item.produtoId,
+      const prod = porProduto.get(item.produtoQuiosqueId) ?? {
+        produtoId: item.produtoQuiosqueId,
         nome: item.nome ?? 'Item',
         quantidade: 0,
         receita: 0,
       };
       prod.quantidade += item.quantidade;
       prod.receita += itemValor;
-      porProduto.set(item.produtoId, prod);
+      porProduto.set(item.produtoQuiosqueId, prod);
     }
   }
 
