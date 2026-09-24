@@ -6,6 +6,8 @@ import { assertChopeAtivoNoTap, listTapsComChopeAtual } from './tap-montagem.js'
 import { assertProdutoNoCardapioEvento, listCatalogoCardapio, listProdutosDoEvento } from './evento-cardapio.js';
 import { resolvePrecoCardapioCervejaria, mapPrecosCardapioCervejaria } from './cardapio-preco.js';
 import { cervejariaUsaCardapio } from './cardapio-toggle.js';
+import { kitchenService } from '../services/kitchen-service.js';
+import { inventoryService } from '../services/inventory-service.js';
 
 export const comandaDetailInclude = {
   cliente: true,
@@ -124,6 +126,10 @@ export async function addItemToComandaInTx(
   const preco = produto.precos.find((p) => p.volumeMl === item.volumeMl);
   if (!preco) return { error: 'Preço não encontrado para este volume' as const };
 
+  // EVENTO uses the same canonical capability boundaries as CAIXA.
+  const participaDaCozinha = kitchenService.participates(produto, 'EVENTO');
+  inventoryService.participates(produto, 'EVENTO');
+
   let precoUnit = toNumber(preco.preco);
   if (usaCardapio && evento?.cardapioId && isVendaUnitaria(produto.tipo, produto.formato) && !isChope) {
     const templatePreco = await resolvePrecoCardapioCervejaria(evento.cardapioId, item.produtoId);
@@ -138,6 +144,7 @@ export async function addItemToComandaInTx(
       volumeMl: item.volumeMl,
       quantidade: item.quantidade,
       precoUnit,
+      exigePreparo: participaDaCozinha,
     },
   });
 

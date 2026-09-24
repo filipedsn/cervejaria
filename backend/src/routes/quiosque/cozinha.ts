@@ -15,6 +15,7 @@ import {
   StatusPedidoCozinhaDesatualizadoError,
   temPedidoCozinhaPendente,
 } from '../../lib/quiosque/cozinha.js';
+import { kitchenService } from '../../services/kitchen-service.js';
 import { registrarTransacao } from '../../lib/transacao-log.js';
 import { recordTempoPreparoCozinha } from '../../lib/business-metrics.js';
 
@@ -85,7 +86,7 @@ export async function cozinhaQuiosqueRoutes(app: FastifyInstance) {
     let atualizado;
     try {
       atualizado = await prisma.$transaction(async (tx) =>
-        aplicarStatusPedidoCozinha(tx, pedido, status),
+        kitchenService.applyStatus(tx, pedido, status),
       );
     } catch (error) {
       if (error instanceof StatusPedidoCozinhaDesatualizadoError) {

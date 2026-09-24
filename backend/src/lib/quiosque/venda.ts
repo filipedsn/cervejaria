@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { getZonedParts } from '../event-datetime.js';
 import { toNumber } from '../utils.js';
 import { registrarHistoricoStatusPedido } from './cozinha.js';
+import { kitchenService } from '../../services/kitchen-service.js';
 
 /**
  * Erro de regra de venda. O statusCode faz o Fastify responder 400 com a
@@ -52,7 +53,7 @@ export interface ItemResolvido {
 }
 
 export function itemVaiParaCozinha(temCozinha: boolean, exigePreparo: boolean): boolean {
-  return temCozinha && exigePreparo;
+  return temCozinha && kitchenService.participates({ exigePreparo }, 'CAIXA');
 }
 
 type TxClient = Prisma.TransactionClient;
@@ -78,8 +79,9 @@ export async function resolverItens(
   }
 
   const ids = [...quantidadePorProduto.keys()];
-  const produtos = await tx.produtoQuiosque.findMany({
+  const produtos = await tx.produto.findMany({
     where: { id: { in: ids }, cervejariaId, ativo: true },
+    include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 } },
   });
 
   if (produtos.length !== ids.length) {
@@ -122,7 +124,7 @@ export async function resolverItens(
         return {
           produtoId: produto.id,
           nome: produto.nome,
-          precoUnit: precoTurno ?? precoTemplate ?? toNumber(produto.precoUnit),
+          precoUnit: precoTurno ?? precoTemplate ?? toNumber(produto.precos[0]?.preco ?? 0),
           quantidade: quantidadePorProduto.get(produto.id)!,
           exigePreparo: produto.exigePreparo,
           controlaEstoque: produto.controlaEstoque,
@@ -134,7 +136,7 @@ export async function resolverItens(
   return produtos.map((produto) => ({
     produtoId: produto.id,
     nome: produto.nome,
-    precoUnit: toNumber(produto.precoUnit),
+    precoUnit: toNumber(produto.precos[0]?.preco ?? 0),
     quantidade: quantidadePorProduto.get(produto.id)!,
     exigePreparo: produto.exigePreparo,
     controlaEstoque: produto.controlaEstoque,
@@ -202,7 +204,7 @@ export async function criarPedido(
   await tx.itemComanda.createMany({
     data: params.itens.map((item) => ({
       comandaId: params.comandaId,
-      produtoQuiosqueId: item.produtoId,
+      produtoId: item.produtoId,
       volumeMl: 0,
       quantidade: item.quantidade,
       precoUnit: item.precoUnit,
@@ -246,7 +248,7 @@ export function resumoComanda(comanda: ComandaCompleta) {
     createdAt: pedido.createdAt,
     itens: pedido.itensComanda.map((item) => ({
       id: item.id,
-      produtoId: item.produtoQuiosqueId ?? '',
+      produtoId: item.produtoId ?? '',
       nome: item.nome ?? '',
       precoUnit: toNumber(item.precoUnit),
       quantidade: item.quantidade,

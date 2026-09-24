@@ -53,7 +53,7 @@ async function carregarItem(
       comanda: whereComandaQuiosque(cervejariaId),
     },
     include: {
-      produtoQuiosque: true,
+      produto: true,
       pedidoCozinha: {
         include: {
           comanda: { include: INCLUDE_COMANDA_QUIOSQUE },
@@ -118,16 +118,16 @@ export async function removeItemFromComandaQuiosque(params: {
       throw Object.assign(new Error('Este pedido já foi cancelado'), { statusCode: 409 });
     }
 
-    if (itemAtual.produtoQuiosque) {
+    if (itemAtual.produto) {
       await estornarEstoqueItemPedido(tx, {
         moduloControlaEstoque: params.moduloControlaEstoque,
         cervejariaId: params.cervejariaId,
         pontoVendaId: itemAtual.pedidoCozinha.pontoVendaId,
         pedidoId,
-        produtoId: itemAtual.produtoQuiosque!.id,
-        nome: itemAtual.nome ?? itemAtual.produtoQuiosque!.nome,
+        produtoId: itemAtual.produto.id,
+        nome: itemAtual.nome ?? itemAtual.produto.nome,
         quantidade: itemAtual.quantidade,
-        controlaEstoque: itemAtual.produtoQuiosque!.controlaEstoque,
+        controlaEstoque: itemAtual.produto.controlaEstoque,
         registradoPorId: params.registradoPorId,
       });
     }
@@ -201,17 +201,17 @@ export async function updateItemQuantidadeComandaQuiosque(params: {
       }
 
       const deltaAtual = params.quantidade - itemAtual.quantidade;
-      if (itemAtual.produtoQuiosque) {
+      if (itemAtual.produto) {
         if (deltaAtual > 0) {
           await baixarEstoqueItemPedido(tx, {
             moduloControlaEstoque: params.moduloControlaEstoque,
             cervejariaId: params.cervejariaId,
             pontoVendaId: itemAtual.pedidoCozinha.pontoVendaId,
             pedidoId,
-            produtoId: itemAtual.produtoQuiosque.id,
-            nome: itemAtual.nome ?? itemAtual.produtoQuiosque.nome,
+            produtoId: itemAtual.produto.id,
+            nome: itemAtual.nome ?? itemAtual.produto.nome,
             quantidade: deltaAtual,
-            controlaEstoque: itemAtual.produtoQuiosque.controlaEstoque,
+            controlaEstoque: itemAtual.produto.controlaEstoque,
             registradoPorId: params.registradoPorId,
           });
         } else {
@@ -220,10 +220,10 @@ export async function updateItemQuantidadeComandaQuiosque(params: {
             cervejariaId: params.cervejariaId,
             pontoVendaId: itemAtual.pedidoCozinha.pontoVendaId,
             pedidoId,
-            produtoId: itemAtual.produtoQuiosque.id,
-            nome: itemAtual.nome ?? itemAtual.produtoQuiosque.nome,
+            produtoId: itemAtual.produto.id,
+            nome: itemAtual.nome ?? itemAtual.produto.nome,
             quantidade: -deltaAtual,
-            controlaEstoque: itemAtual.produtoQuiosque.controlaEstoque,
+            controlaEstoque: itemAtual.produto.controlaEstoque,
             registradoPorId: params.registradoPorId,
           });
         }
