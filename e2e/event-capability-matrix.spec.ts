@@ -62,7 +62,6 @@ async function configure(item: (typeof matrix)[number]) {
     cookie: adminCookie,
     body: {
       plannedOperationsEnabled: true,
-      directSalesEnabled: false,
       tapsEnabled: item.taps,
       inventoryEnabled: item.inventoryEnabled,
       kitchenEnabled: item.kitchenEnabled,

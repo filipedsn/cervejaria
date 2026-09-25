@@ -31,7 +31,6 @@ async function configure(item: MatrixCase) {
     cookie: adminCookie,
     body: {
       plannedOperationsEnabled: item.mode === 'EVENTO',
-      directSalesEnabled: item.mode === 'CAIXA',
       tapsEnabled: item.taps,
       inventoryEnabled: item.inventory,
       kitchenEnabled: item.kitchen,
