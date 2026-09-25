@@ -11,7 +11,7 @@ import {
   type PagamentoInput,
 } from '../lib/fechar-comanda.js';
 import { registrarTransacao } from '../lib/transacao-log.js';
-import { assertPodeDarDescontoQuiosque, DescontoInvalidoError } from '../lib/quiosque/desconto.js';
+import { assertPodeDarDescontoOperacao, DescontoInvalidoError } from '../lib/operacao/desconto.js';
 
 const itemSchema = z.object({
   produtoId: z.string(),
@@ -42,7 +42,7 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
 
     if (desconto > 0) {
       try {
-        await assertPodeDarDescontoQuiosque(user);
+        await assertPodeDarDescontoOperacao(user);
       } catch (err) {
         if (err instanceof DescontoInvalidoError) {
           return reply.status(err.statusCode).send({ error: err.message });

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { PaymentMethod, Prisma, SessaoCaixaQuiosque } from '@prisma/client';
+import type { PaymentMethod, Prisma, SessaoCaixaOperacao } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
 import { centavos, diaOperacional, reais } from './venda.js';
@@ -8,7 +8,7 @@ import {
   aplicarCardapioCatalogoSeVazio,
   aplicarCardapioInicialTurno,
 } from './sessao-cardapio.js';
-import { quiosqueUsaCardapio } from '../cardapio-toggle.js';
+import { operacaoUsaCardapio } from '../cardapio-toggle.js';
 import { verifyPassword } from '../utils.js';
 import { getOperationalProfile } from '../operational-profile.js';
 
@@ -16,7 +16,7 @@ export class CaixaInvalidoError extends Error {
   statusCode = 400;
 }
 
-type SessaoCompleta = Prisma.SessaoCaixaQuiosqueGetPayload<{ include: { movimentos: true } }>;
+type SessaoCompleta = Prisma.SessaoCaixaOperacaoGetPayload<{ include: { movimentos: true } }>;
 
 const FORMAS: PaymentMethod[] = [
   'DINHEIRO',
@@ -64,7 +64,7 @@ export async function assertCashRegisterUnitEnabled(
 /** Serializa as mutações de um ponto no mesmo dia operacional. */
 function chaveLockCaixa(cervejariaId: string, pontoVendaId: string, dia: Date): bigint {
   const digest = createHash('sha256')
-    .update(`caixa-quiosque:${cervejariaId}:${pontoVendaId}:${dia.toISOString().slice(0, 10)}`)
+    .update(`caixa-operacao:${cervejariaId}:${pontoVendaId}:${dia.toISOString().slice(0, 10)}`)
     .digest();
   return BigInt.asIntN(64, digest.readBigUInt64BE(0));
 }
@@ -158,7 +158,7 @@ async function pagamentosDaSessao(sessao: SessaoCompleta, cervejariaId: string) 
   return prisma.pagamento.findMany({
     where: {
       comanda: {
-        origem: 'QUIOSQUE',
+        origem: 'CAIXA',
         pontoVenda: { cervejariaId },
         pontoVendaId: sessao.pontoVendaId,
         diaOperacional: sessao.diaOperacional,
@@ -180,7 +180,7 @@ export async function contarComandasAbertas(
 ) {
   return db.comanda.count({
     where: {
-      origem: 'QUIOSQUE',
+      origem: 'CAIXA',
       pontoVenda: { cervejariaId },
       pontoVendaId,
       status: 'ABERTA',
@@ -208,7 +208,7 @@ export async function buscarSessaoAtual(
   pontoVendaId: string,
   dia = diaOperacional(),
 ) {
-  return prisma.sessaoCaixaQuiosque.findFirst({
+  return prisma.sessaoCaixaOperacao.findFirst({
     where: { cervejariaId, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
     include: { movimentos: { orderBy: { createdAt: 'asc' } } },
     orderBy: { abertoEm: 'desc' },
@@ -220,11 +220,11 @@ export async function assertCaixaAberto(
   cervejariaId: string,
   pontoVendaId: string,
   dia = diaOperacional(),
-  db: Pick<Prisma.TransactionClient, 'sessaoCaixaQuiosque' | 'pontoVenda'> = prisma,
+  db: Pick<Prisma.TransactionClient, 'sessaoCaixaOperacao' | 'pontoVenda'> = prisma,
   profileReader: OperationalProfileReader = getOperationalProfile,
 ) {
   await assertCashRegisterUnitEnabled(cervejariaId, pontoVendaId, db, profileReader);
-  const sessao = await db.sessaoCaixaQuiosque.findFirst({
+  const sessao = await db.sessaoCaixaOperacao.findFirst({
     where: { cervejariaId, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
     include: { movimentos: { orderBy: { createdAt: 'asc' } } },
     orderBy: { abertoEm: 'desc' },
@@ -332,13 +332,13 @@ export async function abrirCaixa(params: {
     throw new CaixaInvalidoError('O caixa deste ponto já está aberto');
   }
 
-  const usaCardapio = await quiosqueUsaCardapio(params.cervejariaId);
+  const usaCardapio = await operacaoUsaCardapio(params.cervejariaId);
   const cardapioId = usaCardapio ? params.cardapioId : undefined;
   const produtoIds = usaCardapio ? params.produtoIds : undefined;
 
   const sessao = await prisma.$transaction(async (tx) => {
     await lockCaixaEmTx(tx, params.cervejariaId, params.pontoVendaId, dia);
-    const abertaAgora = await tx.sessaoCaixaQuiosque.findFirst({
+    const abertaAgora = await tx.sessaoCaixaOperacao.findFirst({
       where: {
         cervejariaId: params.cervejariaId,
         pontoVendaId: params.pontoVendaId,
@@ -349,14 +349,14 @@ export async function abrirCaixa(params: {
     });
     if (abertaAgora) throw new CaixaInvalidoError('O caixa deste ponto já está aberto');
 
-    return tx.sessaoCaixaQuiosque.create({
+    return tx.sessaoCaixaOperacao.create({
       data: {
         cervejariaId: params.cervejariaId,
         pontoVendaId: params.pontoVendaId,
         diaOperacional: dia,
         trocoInicial: params.trocoInicial,
         abertoPorId: params.abertoPorId,
-        cardapioQuiosqueId: cardapioId ?? null,
+        cardapioOperacaoId: cardapioId ?? null,
       },
       include: { movimentos: true },
     });
@@ -388,7 +388,7 @@ export async function registrarMovimento(params: {
     await lockCaixaEmTx(tx, params.cervejariaId, params.pontoVendaId, dia);
     const sessao = await assertCaixaAberto(params.cervejariaId, params.pontoVendaId, dia, tx);
 
-    await tx.movimentoCaixaQuiosque.create({
+    await tx.movimentoCaixaOperacao.create({
       data: {
         sessaoId: sessao.id,
         tipo: params.tipo,
@@ -398,7 +398,7 @@ export async function registrarMovimento(params: {
       },
     });
 
-    return tx.sessaoCaixaQuiosque.findUniqueOrThrow({
+    return tx.sessaoCaixaOperacao.findUniqueOrThrow({
       where: { id: sessao.id },
       include: { movimentos: { orderBy: { createdAt: 'asc' } } },
     });
@@ -441,7 +441,7 @@ export async function corrigirMovimento(params: {
       throw new CaixaInvalidoError('Credencial do proprietário inválida');
     }
 
-    const original = await tx.movimentoCaixaQuiosque.findFirst({
+    const original = await tx.movimentoCaixaOperacao.findFirst({
       where: {
         id: params.movimentoId,
         sessaoId: sessao.id,
@@ -469,7 +469,7 @@ export async function corrigirMovimento(params: {
       registradoPorId: params.solicitanteId,
     };
 
-    await tx.movimentoCaixaQuiosque.update({
+    await tx.movimentoCaixaOperacao.update({
       where: { id: original.id },
       data: {
         corrigidoEm: agora,
@@ -478,14 +478,14 @@ export async function corrigirMovimento(params: {
         solicitadoPorId: params.solicitanteId,
       },
     });
-    await tx.movimentoCaixaQuiosque.create({
+    await tx.movimentoCaixaOperacao.create({
       data: { ...comum, ...plano.estorno, naturezaCorrecao: 'ESTORNO' },
     });
-    await tx.movimentoCaixaQuiosque.create({
+    await tx.movimentoCaixaOperacao.create({
       data: { ...comum, ...plano.substituicao, naturezaCorrecao: 'SUBSTITUICAO' },
     });
 
-    return tx.sessaoCaixaQuiosque.findUniqueOrThrow({
+    return tx.sessaoCaixaOperacao.findUniqueOrThrow({
       where: { id: sessao.id },
       include: { movimentos: { orderBy: { createdAt: 'asc' } } },
     });
@@ -522,7 +522,7 @@ export async function fecharCaixa(params: {
     const sessao = await assertCaixaAberto(params.cervejariaId, params.pontoVendaId, dia, tx);
     await assertSemComandasAbertas(params.cervejariaId, params.pontoVendaId, tx);
 
-    return tx.sessaoCaixaQuiosque.update({
+    return tx.sessaoCaixaOperacao.update({
       where: { id: sessao.id },
       data: {
         status: 'FECHADO',
@@ -542,7 +542,7 @@ export async function fecharCaixa(params: {
 }
 
 export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId: string) {
-  const sessao = await prisma.sessaoCaixaQuiosque.findFirst({
+  const sessao = await prisma.sessaoCaixaOperacao.findFirst({
     where: { id: sessaoId, cervejariaId, status: 'FECHADO' },
     include: { movimentos: true, pontoVenda: { select: { id: true, nome: true } } },
   });
@@ -554,7 +554,7 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
   const pagamentos = await prisma.pagamento.findMany({
     where: {
       comanda: {
-        origem: 'QUIOSQUE',
+        origem: 'CAIXA',
         pontoVenda: { cervejariaId },
         pontoVendaId: sessao.pontoVendaId,
         diaOperacional: sessao.diaOperacional,
@@ -568,7 +568,7 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
 
   const vendasAvulsas = await prisma.comanda.count({
     where: {
-      origem: 'QUIOSQUE',
+      origem: 'CAIXA',
       pontoVenda: { cervejariaId },
       pontoVendaId: sessao.pontoVendaId,
       tipo: 'AVULSA',
@@ -594,7 +594,7 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
 
   const comandas = await prisma.comanda.findMany({
     where: {
-      origem: 'QUIOSQUE',
+      origem: 'CAIXA',
       pontoVenda: { cervejariaId },
       pontoVendaId: sessao.pontoVendaId,
       diaOperacional: sessao.diaOperacional,

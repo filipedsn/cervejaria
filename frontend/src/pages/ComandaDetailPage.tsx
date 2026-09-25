@@ -28,7 +28,7 @@ export function ComandaDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { evento } = useEvento();
-  const { podeDarDescontoQuiosque } = useAuth();
+  const { podeDarDescontoOperacao } = useAuth();
 
   const [showAddItem, setShowAddItem] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
@@ -217,7 +217,7 @@ export function ComandaDetailPage() {
     if (!comanda) return;
     const desconto = parseCurrencyInput(descontoInput);
     const subtotal = subtotalComandaCervejaria(comanda);
-    const podeAplicarDesconto = podeDarDescontoQuiosque;
+    const podeAplicarDesconto = podeDarDescontoOperacao;
     if (podeAplicarDesconto && desconto > subtotal) {
       setError('O desconto não pode ser maior que o subtotal da comanda');
       return;
@@ -272,7 +272,7 @@ export function ComandaDetailPage() {
   const bebidasEmbalagem = cardapio?.produtos.filter((p) => isVendaUnitaria(p) && p.tipo === 'BEBIDA') ?? [];
   const comidas = cardapio?.produtos.filter((p) => p.tipo === 'COMIDA') ?? [];
   const hasActionBar = isOpen || !isOpen;
-  const podeAplicarDesconto = podeDarDescontoQuiosque;
+  const podeAplicarDesconto = podeDarDescontoOperacao;
   const subtotal = subtotalComandaCervejaria(comanda);
   const descontoValor = parseCurrencyInput(descontoInput);
   const totalComDesconto = Math.max(0, subtotal - descontoValor);

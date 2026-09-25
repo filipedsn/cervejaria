@@ -1,5 +1,5 @@
-import { CozinhaPedidoCard } from '../../components/quiosque/CozinhaPedidoCard';
-import type { PedidoCozinha } from '../../lib/quiosque';
+import { CozinhaPedidoCard } from '../../components/operacao/CozinhaPedidoCard';
+import type { PedidoCozinha } from '../../lib/operacao';
 
 const fixedNow = '2026-09-24T21:00:00.000Z';
 const pedidos: PedidoCozinha[] = [
@@ -9,7 +9,7 @@ const pedidos: PedidoCozinha[] = [
   { id: 'demo-4', numero: 45, status: 'EM_PREPARO', observacao: null, createdAt: '2026-09-24T20:50:00.000Z', statusDesde: '2026-09-24T20:56:00.000Z', entregueEm: fixedNow, comanda: { id: 'comanda-4', tipo: 'MESA', identificador: '7' }, itens: [{ id: 'item-5', nome: 'Escondidinho de carne seca', quantidade: 1, precoUnit: 32 }] },
 ];
 
-export function QuiosqueCozinhaTvDemoPage() {
+export function OperacaoCozinhaTvDemoPage() {
   return <div className="cozinha-tv-shell" aria-label="Simulação da tela de cozinha">
     <header className="cozinha-tv-header">
       <div><p className="cozinha-tv-eyebrow">Cozinha · Simulação</p><h1 className="cozinha-tv-title">Tap Quiver Eventos</h1></div>

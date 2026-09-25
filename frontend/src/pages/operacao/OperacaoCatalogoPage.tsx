@@ -8,14 +8,14 @@ import { MobileActionBar } from '../../components/MobileActionBar';
 import { CurrencyInput } from '../../components/CurrencyInput';
 import { parseCurrencyInput, formatCurrencyInputFromNumber } from '../../lib/currency';
 import { useAuth } from '../../contexts/AuthContext';
-import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
+import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { invalidateOnboardingReadiness } from '../../lib/onboarding';
 import {
-  CATEGORIAS_PRODUTO_QUIOSQUE,
+  CATEGORIAS_PRODUTO_OPERACAO,
   normalizeCategoriaProduto,
-  type CategoriaProdutoQuiosque,
-} from '../../lib/quiosque';
-import { CardapiosQuiosquePage } from './CardapiosQuiosquePage';
+  type CategoriaProdutoOperacao,
+} from '../../lib/operacao';
+import { CardapiosOperacaoPage } from './CardapiosOperacaoPage';
 
 const TABS = [
   { id: 'catalogo', label: 'Catálogo' },
@@ -24,7 +24,7 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]['id'];
 
-interface ProdutoQuiosque {
+interface ProdutoOperacao {
   id: string;
   nome: string;
   categoria: string | null;
@@ -37,21 +37,21 @@ interface ProdutoQuiosque {
 
 const FORM_VAZIO = {
   nome: '',
-  categoria: 'Bebidas' as CategoriaProdutoQuiosque,
+  categoria: 'Bebidas' as CategoriaProdutoOperacao,
   precoUnit: '',
   exigePreparo: false,
   controlaEstoque: true,
 };
 
-export function QuiosqueCatalogoPage() {
+export function OperacaoCatalogoPage() {
   const queryClient = useQueryClient();
   const { isDono } = useAuth();
-  const { contexto } = useQuiosqueContexto();
+  const { contexto } = useOperacaoContexto();
   const usaCardapio = contexto.ativo ? (contexto.usaCardapio ?? false) : false;
   const tabs = TABS.filter((t) => t.id !== 'cardapios' || usaCardapio);
   const [tab, setTab] = useState<TabId>('catalogo');
   const [showModal, setShowModal] = useState(false);
-  const [editando, setEditando] = useState<ProdutoQuiosque | null>(null);
+  const [editando, setEditando] = useState<ProdutoOperacao | null>(null);
   const [form, setForm] = useState({ ...FORM_VAZIO });
   const [error, setError] = useState('');
 
@@ -59,8 +59,8 @@ export function QuiosqueCatalogoPage() {
   const temCozinha = contexto.ativo && contexto.temCozinha;
 
   const { data: produtos, isLoading } = useQuery({
-    queryKey: ['quiosque-produtos'],
-    queryFn: () => api.get<ProdutoQuiosque[]>('/api/quiosque/produtos?incluirInativos=true'),
+    queryKey: ['operacao-produtos'],
+    queryFn: () => api.get<ProdutoOperacao[]>('/api/operacao/produtos?incluirInativos=true'),
   });
 
   const fechar = () => {
@@ -77,7 +77,7 @@ export function QuiosqueCatalogoPage() {
     setShowModal(true);
   };
 
-  const abrirEdicao = (produto: ProdutoQuiosque) => {
+  const abrirEdicao = (produto: ProdutoOperacao) => {
     setEditando(produto);
     setForm({
       nome: produto.nome,
@@ -100,11 +100,11 @@ export function QuiosqueCatalogoPage() {
         controlaEstoque: form.controlaEstoque,
       };
       return editando
-        ? api.put(`/api/quiosque/produtos/${editando.id}`, corpo)
-        : api.post('/api/quiosque/produtos', corpo);
+        ? api.put(`/api/operacao/produtos/${editando.id}`, corpo)
+        : api.post('/api/operacao/produtos', corpo);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quiosque-produtos'] });
+      queryClient.invalidateQueries({ queryKey: ['operacao-produtos'] });
       invalidateOnboardingReadiness(queryClient);
       fechar();
     },
@@ -112,9 +112,9 @@ export function QuiosqueCatalogoPage() {
   });
 
   const alternarAtivo = useMutation({
-    mutationFn: (produto: ProdutoQuiosque) =>
-      api.put(`/api/quiosque/produtos/${produto.id}`, { ativo: !produto.ativo }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quiosque-produtos'] }),
+    mutationFn: (produto: ProdutoOperacao) =>
+      api.put(`/api/operacao/produtos/${produto.id}`, { ativo: !produto.ativo }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['operacao-produtos'] }),
   });
 
   const handleSubmit = (e: FormEvent) => {
@@ -152,7 +152,7 @@ export function QuiosqueCatalogoPage() {
         ))}
       </div>
 
-      {tab === 'cardapios' && usaCardapio && isDono && <CardapiosQuiosquePage embedded />}
+      {tab === 'cardapios' && usaCardapio && isDono && <CardapiosOperacaoPage embedded />}
       {tab === 'cardapios' && usaCardapio && !isDono && (
         <p className="text-sm text-ink-faint text-center py-6">Somente o dono pode gerenciar cardápios salvos.</p>
       )}
@@ -170,7 +170,7 @@ export function QuiosqueCatalogoPage() {
         <EmptyState
           icon="📋"
           title="Nenhum produto ainda"
-          description="Cadastre o que o quiosque vende para liberar a venda rápida."
+          description="Cadastre o que o operacao vende para liberar a venda rápida."
         />
       )}
 
@@ -227,7 +227,7 @@ export function QuiosqueCatalogoPage() {
 
       {isDono && (
         <MobileActionBar>
-          <button type="button" className="touch-btn-primary w-full" onClick={abrirNovo} data-onboarding-target="quiosque-add-product">
+          <button type="button" className="touch-btn-primary w-full" onClick={abrirNovo} data-onboarding-target="operacao-add-product">
             + Produto
           </button>
         </MobileActionBar>
@@ -263,7 +263,7 @@ export function QuiosqueCatalogoPage() {
           <div>
             <label className="label">Categoria</label>
             <div className="chip-picker" role="group" aria-label="Categoria do produto">
-              {CATEGORIAS_PRODUTO_QUIOSQUE.map((categoria) => (
+              {CATEGORIAS_PRODUTO_OPERACAO.map((categoria) => (
                 <button
                   key={categoria}
                   type="button"

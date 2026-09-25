@@ -1,16 +1,16 @@
 import { isBebidaChope } from '../produto-utils.js';
 import { prisma } from '../prisma.js';
-import { diaOperacional } from '../quiosque/venda.js';
+import { diaOperacional } from '../operacao/venda.js';
 import { getOperationalProfile } from '../operational-profile.js';
 
 export type OnboardingMode = 'CAIXA' | 'EVENTO';
 
 export type OnboardingStepCode =
-  | 'QUIOSQUE_POINT'
-  | 'QUIOSQUE_PRODUCT'
-  | 'QUIOSQUE_STOCK'
-  | 'QUIOSQUE_CASH_REGISTER'
-  | 'QUIOSQUE_FIRST_SALE'
+  | 'CAIXA_POINT'
+  | 'CAIXA_PRODUCT'
+  | 'CAIXA_STOCK'
+  | 'CAIXA_CASH_REGISTER'
+  | 'CAIXA_FIRST_SALE'
   | 'CERVEJARIA_TRAILER'
   | 'CERVEJARIA_PRODUCT'
   | 'CERVEJARIA_TAP'
@@ -31,7 +31,7 @@ interface ModuleReadinessFacts {
 }
 
 export interface OnboardingReadinessFacts {
-  quiosque: ModuleReadinessFacts & {
+  operacao: ModuleReadinessFacts & {
     controlaEstoque: boolean;
     temCozinha: boolean;
   };
@@ -56,7 +56,7 @@ export interface OnboardingReadiness {
   operationReady: boolean;
   canConfigure: boolean;
   modules: {
-    quiosque: OnboardingModuleReadiness;
+    operacao: OnboardingModuleReadiness;
     cervejaria: OnboardingModuleReadiness;
   };
 }
@@ -88,24 +88,24 @@ export function deriveOnboardingReadiness(
   facts: OnboardingReadinessFacts,
   canConfigure: boolean,
 ): OnboardingReadiness {
-  const quiosqueRequirements: Array<{ complete: boolean; code: OnboardingStepCode }> = [
-    { code: 'QUIOSQUE_POINT', complete: facts.quiosque.hasActivePointOrTrailer },
-    { code: 'QUIOSQUE_PRODUCT', complete: facts.quiosque.hasSellableProduct || facts.quiosque.hasSellableAssociation },
-    { code: 'QUIOSQUE_STOCK', complete: facts.quiosque.hasSellableAssociation },
-    { code: 'QUIOSQUE_CASH_REGISTER', complete: facts.quiosque.hasOpenOperation },
+  const operacaoRequirements: Array<{ complete: boolean; code: OnboardingStepCode }> = [
+    { code: 'CAIXA_POINT', complete: facts.operacao.hasActivePointOrTrailer },
+    { code: 'CAIXA_PRODUCT', complete: facts.operacao.hasSellableProduct || facts.operacao.hasSellableAssociation },
+    { code: 'CAIXA_STOCK', complete: facts.operacao.hasSellableAssociation },
+    { code: 'CAIXA_CASH_REGISTER', complete: facts.operacao.hasOpenOperation },
   ];
-  const quiosque = moduleReadiness(facts.quiosque.enabled, facts.hasHistoricalSale, quiosqueRequirements.filter((requirement) => {
+  const operacao = moduleReadiness(facts.operacao.enabled, facts.hasHistoricalSale, operacaoRequirements.filter((requirement) => {
     // A point is a prerequisite for stock and an open cash register; do not
     // advertise downstream actions before the owner has a point to use.
-    if (!facts.quiosque.hasActivePointOrTrailer && requirement.code !== 'QUIOSQUE_POINT') return false;
+    if (!facts.operacao.hasActivePointOrTrailer && requirement.code !== 'CAIXA_POINT') return false;
     // No product means there is no stock decision to make yet.
-    if (!facts.quiosque.hasSellableProduct && requirement.code === 'QUIOSQUE_STOCK') return false;
+    if (!facts.operacao.hasSellableProduct && requirement.code === 'CAIXA_STOCK') return false;
     // Stock is a module concern only when stock control is enabled.
-    if (!facts.quiosque.controlaEstoque && requirement.code === 'QUIOSQUE_STOCK') return false;
+    if (!facts.operacao.controlaEstoque && requirement.code === 'CAIXA_STOCK') return false;
     // A cash register only matters after at least one product can be sold.
-    if (!facts.quiosque.hasSellableAssociation && requirement.code === 'QUIOSQUE_CASH_REGISTER') return false;
+    if (!facts.operacao.hasSellableAssociation && requirement.code === 'CAIXA_CASH_REGISTER') return false;
     return true;
-  }), 'QUIOSQUE_FIRST_SALE');
+  }), 'CAIXA_FIRST_SALE');
 
   const cervejariaRequirements: Array<{ complete: boolean; code: OnboardingStepCode }> = [
     { code: 'CERVEJARIA_TRAILER', complete: facts.cervejaria.hasActivePointOrTrailer },
@@ -125,18 +125,18 @@ export function deriveOnboardingReadiness(
   return {
     mode,
     capacities: {
-      controlaEstoque: facts.quiosque.enabled && facts.quiosque.controlaEstoque,
-      temCozinha: facts.quiosque.enabled && facts.quiosque.temCozinha,
+      controlaEstoque: facts.operacao.enabled && facts.operacao.controlaEstoque,
+      temCozinha: facts.operacao.enabled && facts.operacao.temCozinha,
     },
     hasHistoricalSale: facts.hasHistoricalSale,
     firstSaleCompleted: facts.hasHistoricalSale,
-    operationReady: quiosque.ready || cervejaria.ready,
+    operationReady: operacao.ready || cervejaria.ready,
     canConfigure,
-    modules: { quiosque, cervejaria },
+    modules: { operacao, cervejaria },
   };
 }
 
-async function collectQuiosqueFacts(cervejariaId: string, controlaEstoque: boolean, temCozinha: boolean) {
+async function collectOperacaoFacts(cervejariaId: string, controlaEstoque: boolean, temCozinha: boolean) {
   const [points, products] = await Promise.all([
     prisma.pontoVenda.findMany({ where: { cervejariaId, ativo: true }, select: { id: true } }),
     prisma.produto.findMany({
@@ -160,7 +160,7 @@ async function collectQuiosqueFacts(cervejariaId: string, controlaEstoque: boole
         })
       : Promise.resolve([]),
     pointIds.length > 0
-      ? prisma.sessaoCaixaQuiosque.findMany({
+      ? prisma.sessaoCaixaOperacao.findMany({
           where: {
             cervejariaId,
             pontoVendaId: { in: pointIds },
@@ -245,11 +245,11 @@ export async function getOnboardingReadiness(cervejariaId: string, canConfigure:
     getOperationalProfile(cervejariaId),
   ]);
 
-  const quiosqueEnabled = profile?.operationMode === 'CAIXA';
+  const operacaoEnabled = profile?.operationMode === 'CAIXA';
   const cervejariaEnabled = profile?.operationMode === 'EVENTO';
-  const [quiosque, cervejaria] = await Promise.all([
-    quiosqueEnabled
-      ? collectQuiosqueFacts(
+  const [operacao, cervejaria] = await Promise.all([
+    operacaoEnabled
+      ? collectOperacaoFacts(
           cervejariaId,
           profile?.capabilities.inventory === true,
           profile?.capabilities.kitchen === true,
@@ -274,5 +274,5 @@ export async function getOnboardingReadiness(cervejariaId: string, canConfigure:
         }),
   ]);
 
-  return deriveOnboardingReadiness({ quiosque, cervejaria, hasHistoricalSale: hasHistoricalSale > 0 }, canConfigure);
+  return deriveOnboardingReadiness({ operacao, cervejaria, hasHistoricalSale: hasHistoricalSale > 0 }, canConfigure);
 }

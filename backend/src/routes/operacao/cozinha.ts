@@ -2,19 +2,19 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { getAuthUser } from '../../types/auth.js';
-import { diaOperacional } from '../../lib/quiosque/venda.js';
+import { diaOperacional } from '../../lib/operacao/venda.js';
 import {
   INCLUDE_PEDIDO_COZINHA,
   TRANSICOES,
   aplicarStatusPedidoCozinha,
   filtroListaPedidosCozinha,
   notificarCozinha,
-  notificarComandaQuiosqueAtualizada,
+  notificarComandaOperacaoAtualizada,
   pedidoVaiParaCozinha,
   resumoPedidoCozinha,
   StatusPedidoCozinhaDesatualizadoError,
   temPedidoCozinhaPendente,
-} from '../../lib/quiosque/cozinha.js';
+} from '../../lib/operacao/cozinha.js';
 import { kitchenService } from '../../services/kitchen-service.js';
 import { registrarTransacao } from '../../lib/transacao-log.js';
 import { recordTempoPreparoCozinha } from '../../lib/business-metrics.js';
@@ -23,21 +23,21 @@ const alterarStatusSchema = z.object({
   status: z.enum(['RECEBIDO', 'EM_PREPARO', 'PRONTO', 'ENTREGUE', 'CANCELADO']),
 });
 
-export async function cozinhaQuiosqueRoutes(app: FastifyInstance) {
+export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
   /** A empresa escolhe no cadastro se tem cozinha; sem ela a fila nem existe. */
   app.addHook('preHandler', async (request) => {
-    if (!request.quiosque.temCozinha) {
-      throw app.httpErrors.notFound('Quiosque sem cozinha');
+    if (!request.operacao.temCozinha) {
+      throw app.httpErrors.notFound('Operacao sem cozinha');
     }
   });
 
   app.get('/', async (request) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { incluirEntregues } = z
       .object({ incluirEntregues: z.coerce.boolean().default(false) })
       .parse(request.query);
 
-    const pedidos = await prisma.pedidoQuiosque.findMany({
+    const pedidos = await prisma.pedidoOperacao.findMany({
       where: {
         cervejariaId,
         ...filtroListaPedidosCozinha(incluirEntregues, diaOperacional()),
@@ -53,12 +53,12 @@ export async function cozinhaQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id/status', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
     const { status } = alterarStatusSchema.parse(request.body);
 
-    const pedido = await prisma.pedidoQuiosque.findFirst({
+    const pedido = await prisma.pedidoOperacao.findFirst({
       where: { id, cervejariaId },
       include: { ...INCLUDE_PEDIDO_COZINHA, comanda: { select: { id: true, tipo: true, identificador: true, status: true } } },
     });
@@ -98,7 +98,7 @@ export async function cozinhaQuiosqueRoutes(app: FastifyInstance) {
     notificarCozinha(app, cervejariaId, atualizado, false);
 
     if (status === 'ENTREGUE' || status === 'CANCELADO') {
-      notificarComandaQuiosqueAtualizada(app, cervejariaId, atualizado.comanda.id);
+      notificarComandaOperacaoAtualizada(app, cervejariaId, atualizado.comanda.id);
     }
 
     if (status === 'ENTREGUE') {
@@ -108,7 +108,7 @@ export async function cozinhaQuiosqueRoutes(app: FastifyInstance) {
     const resumo = resumoPedidoCozinha(atualizado);
     void registrarTransacao({
       cervejariaId,
-      tipo: 'QUIOSQUE_PEDIDO_COZINHA',
+      tipo: 'KITCHEN_ORDER_STATUS_CHANGED',
       usuarioId: user.sub,
       comandaId: pedido.comandaId,
       entidadeId: pedido.id,

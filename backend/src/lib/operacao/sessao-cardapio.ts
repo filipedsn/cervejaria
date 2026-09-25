@@ -1,16 +1,16 @@
 import { prisma } from '../prisma.js';
-import { mapPrecosCardapioQuiosque } from '../cardapio-preco.js';
-import { quiosqueUsaCardapio } from '../cardapio-toggle.js';
+import { mapPrecosCardapioOperacao } from '../cardapio-preco.js';
+import { operacaoUsaCardapio } from '../cardapio-toggle.js';
 import { toNumber } from '../utils.js';
 
 type AplicarCardapioTurnoResult = { ok: true; count: number } | { error: string };
 import {
-  getProdutoIdsFromCardapioQuiosque,
-  listCatalogoCardapioQuiosque,
-  validateProdutosCardapioQuiosque,
+  getProdutoIdsFromCardapioOperacao,
+  listCatalogoCardapioOperacao,
+  validateProdutosCardapioOperacao,
 } from './cardapio.js';
 
-function enriquecerProdutosQuiosque<
+function enriquecerProdutosOperacao<
   T extends { id: string; precos?: Array<{ preco: unknown }> },
 >(
   produtos: T[],
@@ -32,7 +32,7 @@ function enriquecerProdutosQuiosque<
 
 /** Overrides de preço gravados só neste turno (null no banco = herda). */
 export async function mapPrecosTurno(sessaoCaixaId: string) {
-  const rows = await prisma.sessaoCaixaProdutoQuiosque.findMany({
+  const rows = await prisma.sessaoCaixaProdutoOperacao.findMany({
     where: { sessaoCaixaId, precoUnit: { not: null } },
     select: { produtoId: true, precoUnit: true },
   });
@@ -44,7 +44,7 @@ export async function mapPrecosTurno(sessaoCaixaId: string) {
 }
 
 export async function listProdutosDoTurno(sessaoCaixaId: string) {
-  const rows = await prisma.sessaoCaixaProdutoQuiosque.findMany({
+  const rows = await prisma.sessaoCaixaProdutoOperacao.findMany({
     where: { sessaoCaixaId },
     include: {
       produto: {
@@ -58,21 +58,21 @@ export async function listProdutosDoTurno(sessaoCaixaId: string) {
 }
 
 export async function getCardapioTurno(sessaoCaixaId: string, cervejariaId: string) {
-  const sessao = await prisma.sessaoCaixaQuiosque.findFirst({
+  const sessao = await prisma.sessaoCaixaOperacao.findFirst({
     where: { id: sessaoCaixaId, cervejariaId },
     select: {
       id: true,
       status: true,
-      cardapioQuiosqueId: true,
+      cardapioOperacaoId: true,
       cardapio: { select: { id: true, nome: true } },
     },
   });
   if (!sessao) return null;
 
-  const usaCardapio = await quiosqueUsaCardapio(cervejariaId);
+  const usaCardapio = await operacaoUsaCardapio(cervejariaId);
   if (!usaCardapio) {
-    const catalogoRaw = await listCatalogoCardapioQuiosque(cervejariaId);
-    const produtos = enriquecerProdutosQuiosque(catalogoRaw, null);
+    const catalogoRaw = await listCatalogoCardapioOperacao(cervejariaId);
+    const produtos = enriquecerProdutosOperacao(catalogoRaw, null);
     return {
       produtos,
       produtoIds: produtos.map((p) => p.id),
@@ -84,29 +84,29 @@ export async function getCardapioTurno(sessaoCaixaId: string, cervejariaId: stri
   }
 
   const [precosTemplate, precosTurno, produtosRaw, catalogoRaw] = await Promise.all([
-    sessao.cardapioQuiosqueId
-      ? mapPrecosCardapioQuiosque(sessao.cardapioQuiosqueId)
+    sessao.cardapioOperacaoId
+      ? mapPrecosCardapioOperacao(sessao.cardapioOperacaoId)
       : Promise.resolve(null),
     mapPrecosTurno(sessaoCaixaId),
     listProdutosDoTurno(sessaoCaixaId),
-    listCatalogoCardapioQuiosque(cervejariaId),
+    listCatalogoCardapioOperacao(cervejariaId),
   ]);
 
-  const produtos = enriquecerProdutosQuiosque(produtosRaw, precosTemplate, precosTurno);
-  const catalogo = enriquecerProdutosQuiosque(catalogoRaw, precosTemplate, precosTurno);
+  const produtos = enriquecerProdutosOperacao(produtosRaw, precosTemplate, precosTurno);
+  const catalogo = enriquecerProdutosOperacao(catalogoRaw, precosTemplate, precosTurno);
 
   return {
     produtos,
     produtoIds: produtos.map((p) => p.id),
     catalogo,
     editavel: sessao.status === 'ABERTO',
-    cardapioId: sessao.cardapioQuiosqueId,
+    cardapioId: sessao.cardapioOperacaoId,
     cardapioNome: sessao.cardapio?.nome ?? null,
   };
 }
 
 export async function assertProdutoNoCardapioTurno(sessaoCaixaId: string, produtoId: string) {
-  const row = await prisma.sessaoCaixaProdutoQuiosque.findUnique({
+  const row = await prisma.sessaoCaixaProdutoOperacao.findUnique({
     where: { sessaoCaixaId_produtoId: { sessaoCaixaId, produtoId } },
   });
   return !!row;
@@ -115,9 +115,9 @@ export async function assertProdutoNoCardapioTurno(sessaoCaixaId: string, produt
 export async function setProdutosDoTurno(sessaoCaixaId: string, produtoIds: string[]) {
   const uniqueIds = [...new Set(produtoIds)];
   await prisma.$transaction(async (tx) => {
-    await tx.sessaoCaixaProdutoQuiosque.deleteMany({ where: { sessaoCaixaId } });
+    await tx.sessaoCaixaProdutoOperacao.deleteMany({ where: { sessaoCaixaId } });
     if (uniqueIds.length > 0) {
-      await tx.sessaoCaixaProdutoQuiosque.createMany({
+      await tx.sessaoCaixaProdutoOperacao.createMany({
         data: uniqueIds.map((produtoId) => ({ sessaoCaixaId, produtoId })),
       });
     }
@@ -135,15 +135,15 @@ export async function aplicarCardapioInicialTurno(params: {
 
   let ids: string[];
   if (cardapioId) {
-    const fromTemplate = await getProdutoIdsFromCardapioQuiosque(cardapioId, cervejariaId);
+    const fromTemplate = await getProdutoIdsFromCardapioOperacao(cardapioId, cervejariaId);
     if ('error' in fromTemplate) return fromTemplate;
     ids = fromTemplate.produtoIds;
-    await prisma.sessaoCaixaQuiosque.update({
+    await prisma.sessaoCaixaOperacao.update({
       where: { id: sessaoCaixaId },
-      data: { cardapioQuiosqueId: cardapioId },
+      data: { cardapioOperacaoId: cardapioId },
     });
   } else {
-    const validated = await validateProdutosCardapioQuiosque(cervejariaId, produtoIds ?? []);
+    const validated = await validateProdutosCardapioOperacao(cervejariaId, produtoIds ?? []);
     if ('error' in validated) return validated;
     ids = validated.produtoIds;
   }
@@ -154,10 +154,10 @@ export async function aplicarCardapioInicialTurno(params: {
 
 /** Se o turno ficou sem cardapio, inclui todos os produtos ativos do catalogo. */
 export async function aplicarCardapioCatalogoSeVazio(sessaoCaixaId: string, cervejariaId: string) {
-  const count = await prisma.sessaoCaixaProdutoQuiosque.count({ where: { sessaoCaixaId } });
+  const count = await prisma.sessaoCaixaProdutoOperacao.count({ where: { sessaoCaixaId } });
   if (count > 0) return count;
 
-  const catalog = await listCatalogoCardapioQuiosque(cervejariaId);
+  const catalog = await listCatalogoCardapioOperacao(cervejariaId);
   if (catalog.length === 0) return 0;
 
   await setProdutosDoTurno(
@@ -175,11 +175,11 @@ export async function salvarCardapioTurno(params: {
 }) {
   const { sessaoCaixaId, cervejariaId, cardapioId, produtoIds } = params;
 
-  if (!(await quiosqueUsaCardapio(cervejariaId))) {
+  if (!(await operacaoUsaCardapio(cervejariaId))) {
     return { error: 'Cardápio desativado para esta empresa' as const };
   }
 
-  const sessao = await prisma.sessaoCaixaQuiosque.findFirst({
+  const sessao = await prisma.sessaoCaixaOperacao.findFirst({
     where: { id: sessaoCaixaId, cervejariaId, status: 'ABERTO' },
   });
   if (!sessao) return { error: 'Turno de caixa não encontrado ou já fechado' as const };
@@ -197,20 +197,20 @@ export async function salvarCardapioTurno(params: {
   const uniqueIds = [...new Set(produtoIds ?? [])];
   if (uniqueIds.length === 0) {
     await setProdutosDoTurno(sessaoCaixaId, []);
-    await prisma.sessaoCaixaQuiosque.update({
+    await prisma.sessaoCaixaOperacao.update({
       where: { id: sessaoCaixaId },
-      data: { cardapioQuiosqueId: null },
+      data: { cardapioOperacaoId: null },
     });
     return { ok: true as const, count: 0 };
   }
 
-  const validated = await validateProdutosCardapioQuiosque(cervejariaId, uniqueIds);
+  const validated = await validateProdutosCardapioOperacao(cervejariaId, uniqueIds);
   if ('error' in validated) return validated;
 
   await setProdutosDoTurno(sessaoCaixaId, validated.produtoIds);
-  await prisma.sessaoCaixaQuiosque.update({
+  await prisma.sessaoCaixaOperacao.update({
     where: { id: sessaoCaixaId },
-    data: { cardapioQuiosqueId: null },
+    data: { cardapioOperacaoId: null },
   });
 
   return { ok: true as const, count: validated.produtoIds.length };
@@ -233,22 +233,22 @@ export async function alterarPrecoCardapioTurno(params: {
 }): Promise<AlterarPrecoCardapioTurnoResult> {
   const { sessaoCaixaId, cervejariaId, produtoId, precoUnit, escopo } = params;
 
-  if (!(await quiosqueUsaCardapio(cervejariaId))) {
+  if (!(await operacaoUsaCardapio(cervejariaId))) {
     return { error: 'Cardápio desativado para esta empresa' as const, statusCode: 400 as const };
   }
   if (!(precoUnit > 0)) {
     return { error: 'Informe um preço maior que zero' as const, statusCode: 400 as const };
   }
 
-  const sessao = await prisma.sessaoCaixaQuiosque.findFirst({
+  const sessao = await prisma.sessaoCaixaOperacao.findFirst({
     where: { id: sessaoCaixaId, cervejariaId, status: 'ABERTO' },
-    select: { id: true, cardapioQuiosqueId: true },
+    select: { id: true, cardapioOperacaoId: true },
   });
   if (!sessao) {
     return { error: 'Turno de caixa não encontrado ou já fechado' as const, statusCode: 404 as const };
   }
 
-  const noTurno = await prisma.sessaoCaixaProdutoQuiosque.findUnique({
+  const noTurno = await prisma.sessaoCaixaProdutoOperacao.findUnique({
     where: {
       sessaoCaixaId_produtoId: { sessaoCaixaId, produtoId },
     },
@@ -258,24 +258,24 @@ export async function alterarPrecoCardapioTurno(params: {
   }
 
   if (escopo === 'TURNO') {
-    await prisma.sessaoCaixaProdutoQuiosque.update({
+    await prisma.sessaoCaixaProdutoOperacao.update({
       where: { id: noTurno.id },
       data: { precoUnit },
     });
     return { ok: true as const, escopo: 'TURNO' as const };
   }
 
-  if (!sessao.cardapioQuiosqueId) {
+  if (!sessao.cardapioOperacaoId) {
     return {
       error: 'Nenhum cardápio salvo vinculado a este turno. Use alteração só do turno.',
       statusCode: 400 as const,
     };
   }
 
-  const templateItem = await prisma.cardapioQuiosqueProduto.findUnique({
+  const templateItem = await prisma.cardapioOperacaoProduto.findUnique({
     where: {
       cardapioId_produtoId: {
-        cardapioId: sessao.cardapioQuiosqueId,
+        cardapioId: sessao.cardapioOperacaoId,
         produtoId,
       },
     },
@@ -288,12 +288,12 @@ export async function alterarPrecoCardapioTurno(params: {
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.cardapioQuiosqueProduto.update({
+    await tx.cardapioOperacaoProduto.update({
       where: { id: templateItem.id },
       data: { precoUnit },
     });
     // Limpa override do turno para herdar o novo preço do template.
-    await tx.sessaoCaixaProdutoQuiosque.update({
+    await tx.sessaoCaixaProdutoOperacao.update({
       where: { id: noTurno.id },
       data: { precoUnit: null },
     });
@@ -307,20 +307,20 @@ export async function listProdutosOperacionaisTurno(
   pontoVendaId: string,
   dia: Date,
 ) {
-  const usaCardapio = await quiosqueUsaCardapio(cervejariaId);
+  const usaCardapio = await operacaoUsaCardapio(cervejariaId);
   if (!usaCardapio) {
     const produtos = await prisma.produto.findMany({
       where: { cervejariaId, ativo: true },
       include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 } },
       orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
     });
-    return enriquecerProdutosQuiosque(produtos, null);
+    return enriquecerProdutosOperacao(produtos, null);
   }
 
-  const sessao = await prisma.sessaoCaixaQuiosque.findFirst({
+  const sessao = await prisma.sessaoCaixaOperacao.findFirst({
     where: { cervejariaId, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
     orderBy: { abertoEm: 'desc' },
-    select: { id: true, cardapioQuiosqueId: true },
+    select: { id: true, cardapioOperacaoId: true },
   });
 
   if (!sessao) {
@@ -329,15 +329,15 @@ export async function listProdutosOperacionaisTurno(
       include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 } },
       orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
     });
-    return enriquecerProdutosQuiosque(produtos, null);
+    return enriquecerProdutosOperacao(produtos, null);
   }
 
   const [produtos, precosTemplate, precosTurno] = await Promise.all([
     listProdutosDoTurno(sessao.id),
-    sessao.cardapioQuiosqueId
-      ? mapPrecosCardapioQuiosque(sessao.cardapioQuiosqueId)
+    sessao.cardapioOperacaoId
+      ? mapPrecosCardapioOperacao(sessao.cardapioOperacaoId)
       : Promise.resolve(null),
     mapPrecosTurno(sessao.id),
   ]);
-  return enriquecerProdutosQuiosque(produtos.filter((p) => p.ativo), precosTemplate, precosTurno);
+  return enriquecerProdutosOperacao(produtos.filter((p) => p.ativo), precosTemplate, precosTurno);
 }

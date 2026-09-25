@@ -49,7 +49,7 @@ export function VendaAvulsaPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { evento } = useEvento();
-  const { podeDarDescontoQuiosque } = useAuth();
+  const { podeDarDescontoOperacao } = useAuth();
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [showAddItem, setShowAddItem] = useState(false);
@@ -78,7 +78,7 @@ export function VendaAvulsaPage() {
     () => cart.reduce((sum, line) => sum + line.precoUnit * line.quantidade, 0),
     [cart],
   );
-  const descontoValor = podeDarDescontoQuiosque ? parseCurrencyInput(descontoInput) : 0;
+  const descontoValor = podeDarDescontoOperacao ? parseCurrencyInput(descontoInput) : 0;
   const totalComDesconto = Math.max(0, total - descontoValor);
 
   useEffect(() => {
@@ -196,7 +196,7 @@ export function VendaAvulsaPage() {
   const paymentHeaderExtra = (
     <div className="space-y-3">
       {error && showPayment && <div className="alert-error text-sm">{error}</div>}
-      {podeDarDescontoQuiosque && (
+      {podeDarDescontoOperacao && (
         <PaymentDiscountFields
           inputId="desconto-venda-avulsa"
           subtotal={total}

@@ -7,7 +7,7 @@ import { Loading } from '../../components/Loading';
 import { MobileActionBar } from '../../components/MobileActionBar';
 import { StatusBadge, comandaStatusVariant } from '../../components/StatusBadge';
 import { IconTrash } from '../../components/NavIcons';
-import { AdicionarItensQuiosqueModal } from '../../components/quiosque/AdicionarItensQuiosqueModal';
+import { AdicionarItensOperacaoModal } from '../../components/operacao/AdicionarItensOperacaoModal';
 import { PaymentDiscountFields } from '../../components/checkout/PaymentDiscountFields';
 import {
   PaymentFormModal,
@@ -19,7 +19,7 @@ import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../../lib/cur
 import { PAYMENT_LABELS } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePollInterval } from '../../hooks/usePollInterval';
-import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
+import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { connectSocket, getSocket } from '../../lib/socket';
 import {
   mapSaldosEstoque,
@@ -35,23 +35,23 @@ import {
   temPedidoCozinhaPendente,
   totalItensComanda,
   type CaixaResposta,
-  type ComandaQuiosque,
-  type ProdutoQuiosque,
+  type ComandaOperacao,
+  type ProdutoOperacao,
   type LinhaCarrinho,
   type SaldoEstoque,
-} from '../../lib/quiosque';
+} from '../../lib/operacao';
 
-export function QuiosqueComandaDetailPage() {
+export function OperacaoComandaDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { isDono, cervejaria, podeDarDescontoQuiosque } = useAuth();
-  const { contexto } = useQuiosqueContexto();
+  const { isDono, cervejaria, podeDarDescontoOperacao } = useAuth();
+  const { contexto } = useOperacaoContexto();
   const controlaEstoque = contexto.ativo && contexto.controlaEstoque;
   const [showAddItem, setShowAddItem] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
-  const [closedComanda, setClosedComanda] = useState<ComandaQuiosque | null>(null);
+  const [closedComanda, setClosedComanda] = useState<ComandaOperacao | null>(null);
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([{ forma: 'PIX', valor: '' }]);
   const [carrinho, setCarrinho] = useState<LinhaCarrinho[]>([]);
   const [descontoInput, setDescontoInput] = useState('');
@@ -67,28 +67,28 @@ export function QuiosqueComandaDetailPage() {
   }, [itensAdicionadosMessage]);
 
   const { data: comanda, isLoading } = useQuery({
-    queryKey: ['quiosque-comanda', id],
-    queryFn: () => api.get<ComandaQuiosque>(`/api/quiosque/comandas/${id}`),
+    queryKey: ['operacao-comanda', id],
+    queryFn: () => api.get<ComandaOperacao>(`/api/operacao/comandas/${id}`),
   });
 
   const { data: produtos } = useQuery({
-    queryKey: ['quiosque-produtos-operacionais', comanda?.pontoVendaId],
+    queryKey: ['operacao-produtos-operacionais', comanda?.pontoVendaId],
     queryFn: () =>
-      api.get<ProdutoQuiosque[]>(produtosOperacionaisUrl(comanda!.pontoVendaId)),
+      api.get<ProdutoOperacao[]>(produtosOperacionaisUrl(comanda!.pontoVendaId)),
     enabled: Boolean(comanda?.pontoVendaId),
   });
 
   const { data: caixaData } = useQuery({
-    queryKey: ['quiosque-caixa', comanda?.pontoVendaId],
-    queryFn: () => api.get<CaixaResposta>(`/api/quiosque/caixa?pontoVendaId=${comanda!.pontoVendaId}`),
+    queryKey: ['operacao-caixa', comanda?.pontoVendaId],
+    queryFn: () => api.get<CaixaResposta>(`/api/operacao/caixa?pontoVendaId=${comanda!.pontoVendaId}`),
     enabled: Boolean(comanda?.pontoVendaId),
     refetchInterval: poll30,
   });
   const caixaAberto = caixaData?.sessao?.status === 'ABERTO';
 
   const { data: estoqueData } = useQuery({
-    queryKey: ['quiosque-estoque', comanda?.pontoVendaId],
-    queryFn: () => api.get<SaldoEstoque[]>(`/api/quiosque/estoque?pontoVendaId=${comanda!.pontoVendaId}`),
+    queryKey: ['operacao-estoque', comanda?.pontoVendaId],
+    queryFn: () => api.get<SaldoEstoque[]>(`/api/operacao/estoque?pontoVendaId=${comanda!.pontoVendaId}`),
     enabled: Boolean(comanda?.pontoVendaId) && controlaEstoque && (showAddItem || comanda?.status === 'ABERTA'),
     refetchInterval: showAddItem ? poll15 : false,
   });
@@ -104,8 +104,8 @@ export function QuiosqueComandaDetailPage() {
   );
 
   const invalidar = () => {
-    queryClient.invalidateQueries({ queryKey: ['quiosque-comanda', id] });
-    queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
+    queryClient.invalidateQueries({ queryKey: ['operacao-comanda', id] });
+    queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
   };
 
   useEffect(() => {
@@ -121,12 +121,12 @@ export function QuiosqueComandaDetailPage() {
       if (payload?.comanda?.id === id) invalidar();
     };
 
-    socket.on('quiosque:comanda-atualizada', onComandaAtualizada);
-    socket.on('quiosque:pedido-atualizado', onPedidoAtualizado);
+    socket.on('operacao:comanda-atualizada', onComandaAtualizada);
+    socket.on('operacao:pedido-atualizado', onPedidoAtualizado);
 
     return () => {
-      socket.off('quiosque:comanda-atualizada', onComandaAtualizada);
-      socket.off('quiosque:pedido-atualizado', onPedidoAtualizado);
+      socket.off('operacao:comanda-atualizada', onComandaAtualizada);
+      socket.off('operacao:pedido-atualizado', onPedidoAtualizado);
     };
   }, [cervejaria?.id, id, queryClient]);
 
@@ -143,7 +143,7 @@ export function QuiosqueComandaDetailPage() {
     });
   }, [descontoInput, showPayment, comanda?.subtotal]);
 
-  const adicionar = (produto: ProdutoQuiosque) => {
+  const adicionar = (produto: ProdutoOperacao) => {
     setCarrinho((atual) => {
       const existente = atual.find((linha) => linha.produto.id === produto.id);
       const quantidadeAtual = existente?.quantidade ?? 0;
@@ -177,7 +177,7 @@ export function QuiosqueComandaDetailPage() {
 
   const lancarItens = useMutation({
     mutationFn: () =>
-      api.post<ComandaQuiosque>(`/api/quiosque/comandas/${id}/pedidos`, {
+      api.post<ComandaOperacao>(`/api/operacao/comandas/${id}/pedidos`, {
         itens: carrinho.map((linha) => ({
           produtoId: linha.produto.id,
           quantidade: linha.quantidade,
@@ -186,7 +186,7 @@ export function QuiosqueComandaDetailPage() {
     onSuccess: () => {
       invalidar();
       if (comanda?.pontoVendaId) {
-        queryClient.invalidateQueries({ queryKey: ['quiosque-estoque', comanda.pontoVendaId] });
+        queryClient.invalidateQueries({ queryKey: ['operacao-estoque', comanda.pontoVendaId] });
       }
       setCarrinho([]);
       setErro('');
@@ -195,7 +195,7 @@ export function QuiosqueComandaDetailPage() {
     onError: (err) => {
       setItensAdicionadosMessage('');
       if (comanda?.pontoVendaId) {
-        queryClient.invalidateQueries({ queryKey: ['quiosque-estoque', comanda.pontoVendaId] });
+        queryClient.invalidateQueries({ queryKey: ['operacao-estoque', comanda.pontoVendaId] });
       }
       setErro(err instanceof ApiError ? err.message : 'Não foi possível lançar os itens');
     },
@@ -211,16 +211,16 @@ export function QuiosqueComandaDetailPage() {
 
   const invalidarEstoque = () => {
     if (comanda?.pontoVendaId) {
-      queryClient.invalidateQueries({ queryKey: ['quiosque-estoque', comanda.pontoVendaId] });
+      queryClient.invalidateQueries({ queryKey: ['operacao-estoque', comanda.pontoVendaId] });
     }
   };
 
   const removerItem = useMutation({
     mutationFn: (itemId: string) =>
-      api.delete<ComandaQuiosque>(`/api/quiosque/comandas/${id}/itens/${itemId}`),
+      api.delete<ComandaOperacao>(`/api/operacao/comandas/${id}/itens/${itemId}`),
     onSuccess: (atualizada) => {
-      queryClient.setQueryData(['quiosque-comanda', id], atualizada);
-      queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
+      queryClient.setQueryData(['operacao-comanda', id], atualizada);
+      queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
       invalidarEstoque();
       setErro('');
     },
@@ -232,10 +232,10 @@ export function QuiosqueComandaDetailPage() {
 
   const alterarQuantidadeItem = useMutation({
     mutationFn: ({ itemId, quantidade }: { itemId: string; quantidade: number }) =>
-      api.patch<ComandaQuiosque>(`/api/quiosque/comandas/${id}/itens/${itemId}`, { quantidade }),
+      api.patch<ComandaOperacao>(`/api/operacao/comandas/${id}/itens/${itemId}`, { quantidade }),
     onSuccess: (atualizada) => {
-      queryClient.setQueryData(['quiosque-comanda', id], atualizada);
-      queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
+      queryClient.setQueryData(['operacao-comanda', id], atualizada);
+      queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
       invalidarEstoque();
       setErro('');
     },
@@ -260,9 +260,9 @@ export function QuiosqueComandaDetailPage() {
       aplicarDesconto: boolean;
     }) => {
       if (aplicarDesconto && desconto !== descontoAnterior) {
-        await api.patch<ComandaQuiosque>(`/api/quiosque/comandas/${id}/desconto`, { desconto });
+        await api.patch<ComandaOperacao>(`/api/operacao/comandas/${id}/desconto`, { desconto });
       }
-      return api.post<ComandaQuiosque>(`/api/quiosque/comandas/${id}/pagamentos`, { pagamentos });
+      return api.post<ComandaOperacao>(`/api/operacao/comandas/${id}/pagamentos`, { pagamentos });
     },
     onSuccess: (data) => {
       setShowPayment(false);
@@ -274,10 +274,10 @@ export function QuiosqueComandaDetailPage() {
   });
 
   const cancelar = useMutation({
-    mutationFn: () => api.post<ComandaQuiosque>(`/api/quiosque/comandas/${id}/cancelar`),
+    mutationFn: () => api.post<ComandaOperacao>(`/api/operacao/comandas/${id}/cancelar`),
     onSuccess: () => {
       invalidar();
-      navigate('/quiosque/comandas');
+      navigate('/operacao/comandas');
     },
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível encerrar a comanda'),
   });
@@ -285,7 +285,7 @@ export function QuiosqueComandaDetailPage() {
   const abrirNova = useMutation({
     mutationFn: () => {
       if (!comanda || comanda.tipo === 'AVULSA') throw new Error('Comanda inválida');
-      return api.post<ComandaQuiosque>('/api/quiosque/comandas', {
+      return api.post<ComandaOperacao>('/api/operacao/comandas', {
         pontoVendaId: comanda.pontoVendaId,
         tipo: comanda.tipo,
         identificador: comanda.identificador,
@@ -294,11 +294,11 @@ export function QuiosqueComandaDetailPage() {
     },
     onSuccess: (nova) => {
       invalidar();
-      navigate(`/quiosque/comandas/${nova.id}`);
+      navigate(`/operacao/comandas/${nova.id}`);
     },
     onError: (err) => {
       if (err instanceof ApiError && err.status === 409 && typeof err.body?.comandaId === 'string') {
-        navigate(`/quiosque/comandas/${err.body.comandaId}`);
+        navigate(`/operacao/comandas/${err.body.comandaId}`);
         return;
       }
       setErro(err instanceof ApiError ? err.message : 'Não foi possível abrir nova comanda');
@@ -317,7 +317,7 @@ export function QuiosqueComandaDetailPage() {
   const handleClose = () => {
     if (!comanda) return;
     const desconto = parseCurrencyInput(descontoInput);
-    const podeAplicarDesconto = podeDarDescontoQuiosque;
+    const podeAplicarDesconto = podeDarDescontoOperacao;
     if (podeAplicarDesconto && desconto > comanda.subtotal) {
       setErro('O desconto não pode ser maior que o subtotal da comanda');
       return;
@@ -343,7 +343,7 @@ export function QuiosqueComandaDetailPage() {
   const cozinhaPendente = temPedidoCozinhaPendente(comanda);
   const podeFechar = aberta && temItens && !cozinhaPendente;
   const hasActionBar = aberta || !aberta;
-  const podeAplicarDesconto = podeDarDescontoQuiosque;
+  const podeAplicarDesconto = podeDarDescontoOperacao;
   const descontoValor = parseCurrencyInput(descontoInput);
   const totalComDesconto = Math.max(0, comanda.subtotal - descontoValor);
   const totalAPagar = Math.max(0, totalComDesconto);
@@ -558,10 +558,10 @@ export function QuiosqueComandaDetailPage() {
 
       {podeFechar && (
         <MobileActionBar>
-          <button type="button" className="touch-btn-orange w-full" onClick={openPayment} data-audit="quiosque-comanda-fechar">
+          <button type="button" className="touch-btn-orange w-full" onClick={openPayment} data-audit="operacao-comanda-fechar">
             Fechar Comanda · {formatCurrency(comanda.total)}
           </button>
-          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/quiosque/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/operacao/comandas')}>
             Voltar às comandas
           </button>
         </MobileActionBar>
@@ -572,7 +572,7 @@ export function QuiosqueComandaDetailPage() {
           <button type="button" className="touch-btn-primary w-full" disabled>
             Aguardando entrega da cozinha
           </button>
-          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/quiosque/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/operacao/comandas')}>
             Voltar às comandas
           </button>
         </MobileActionBar>
@@ -589,12 +589,12 @@ export function QuiosqueComandaDetailPage() {
               className="touch-btn-orange w-full"
               onClick={() => cancelar.mutate()}
               disabled={cancelar.isPending}
-              data-audit="quiosque-comanda-cancelar"
+              data-audit="operacao-comanda-cancelar"
             >
               {cancelar.isPending ? 'Encerrando...' : 'Encerrar comanda'}
             </button>
           )}
-          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/quiosque/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/operacao/comandas')}>
             Voltar às comandas
           </button>
         </MobileActionBar>
@@ -614,13 +614,13 @@ export function QuiosqueComandaDetailPage() {
                 ? 'Caixa fechado — abra para nova comanda'
                 : `Nova comanda · ${rotuloComanda(comanda)}`}
           </button>
-          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/quiosque/comandas')}>
+          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/operacao/comandas')}>
             Voltar às comandas
           </button>
         </MobileActionBar>
       )}
 
-      <AdicionarItensQuiosqueModal
+      <AdicionarItensOperacaoModal
         open={showAddItem}
         onClose={fecharAdicionarItens}
         produtos={produtos ?? []}
@@ -656,7 +656,7 @@ export function QuiosqueComandaDetailPage() {
         open={showReceipt}
         onClose={() => {
           setShowReceipt(false);
-          navigate('/quiosque/comandas');
+          navigate('/operacao/comandas');
         }}
         title="Comanda Fechada"
       >
@@ -680,7 +680,7 @@ export function QuiosqueComandaDetailPage() {
               className="touch-btn-primary w-full"
               onClick={() => {
                 setShowReceipt(false);
-                navigate('/quiosque/comandas');
+                navigate('/operacao/comandas');
               }}
             >
               OK

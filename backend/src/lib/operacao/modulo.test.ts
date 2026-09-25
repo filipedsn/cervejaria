@@ -6,7 +6,7 @@ import { hasDirectSalesAccess, hasInventoryAccess, hasKitchenAccess } from './mo
 function facts(overrides: Partial<OperationalProfileFacts> = {}): OperationalProfileFacts {
   return {
     tenantId: 'tenant-a',
-    legacyQuiosque: null,
+    legacyOperacao: null,
     activeTrailers: 0,
     activePointsOfSale: 0,
     activePointOfSaleCashRegisterSettings: [],
@@ -18,9 +18,9 @@ function facts(overrides: Partial<OperationalProfileFacts> = {}): OperationalPro
   };
 }
 
-test('direct-sales guard preserves legacy active-quiosque access when an active POS exists', () => {
+test('direct-sales guard preserves legacy active-operacao access when an active POS exists', () => {
   const profile = deriveOperationalProfile(facts({
-    legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
+    legacyOperacao: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
     activePointsOfSale: 1,
   }));
 
@@ -34,7 +34,7 @@ test('direct-sales guard allows the default CAIXA mode', () => {
 
 test('direct-sales guard does not infer access from cash-register capability', () => {
   const profile = deriveOperationalProfile(facts({
-    legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
+    legacyOperacao: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
     activePointsOfSale: 1,
     activePointOfSaleCashRegisterSettings: [false],
   }));
@@ -45,11 +45,11 @@ test('direct-sales guard does not infer access from cash-register capability', (
 
 test('kitchen context derives its global decision from the operational profile', () => {
   const withKitchen = deriveOperationalProfile(facts({
-    legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: true },
+    legacyOperacao: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: true },
     activePointsOfSale: 1,
   }));
   const withoutKitchen = deriveOperationalProfile(facts({
-    legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
+    legacyOperacao: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
     activePointsOfSale: 1,
   }));
 
@@ -59,11 +59,11 @@ test('kitchen context derives its global decision from the operational profile',
 
 test('inventory context derives its global decision from the operational profile', () => {
   const withInventory = deriveOperationalProfile(facts({
-    legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: true, temCozinha: false },
+    legacyOperacao: { enabled: true, exclusivo: false, controlaEstoque: true, temCozinha: false },
     activePointsOfSale: 1,
   }));
   const withoutInventory = deriveOperationalProfile(facts({
-    legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
+    legacyOperacao: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
     activePointsOfSale: 1,
   }));
 

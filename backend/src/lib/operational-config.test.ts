@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   CozinhaComPedidosAtivosError,
   ConfirmacaoEstoqueObrigatoriaError,
-} from './quiosque/capacidades.js';
+} from './operacao/capacidades.js';
 import { OperationalModeTransitionBlockedError, updateOperationalConfig } from './operational-config.js';
 
 function database(current: Record<string, boolean | null> | null, activeOrder = false, openCash = false, activeEvent = false) {
@@ -17,8 +17,8 @@ function database(current: Record<string, boolean | null> | null, activeOrder = 
         return { ...create, ...update };
       },
     },
-    pedidoQuiosque: { findFirst: async () => (activeOrder ? { id: 'pedido-aberto' } : null) },
-    sessaoCaixaQuiosque: { findFirst: async () => (openCash ? { id: 'caixa-aberto' } : null) },
+    pedidoOperacao: { findFirst: async () => (activeOrder ? { id: 'pedido-aberto' } : null) },
+    sessaoCaixaOperacao: { findFirst: async () => (openCash ? { id: 'caixa-aberto' } : null) },
     evento: { findFirst: async () => (activeEvent ? { id: 'evento-ativo' } : null) },
   };
 }
@@ -36,8 +36,8 @@ test('maps one operation mode to mutually exclusive compatibility fields', async
   const db = database({ directSalesEnabled: true, plannedOperationsEnabled: false });
   await updateOperationalConfig(db as any, 'tenant-a', { operationMode: 'EVENTO' });
   assert.deepEqual(db.updates, [{
-    create: { cervejariaId: 'tenant-a', plannedOperationsEnabled: true, directSalesEnabled: false },
-    update: { plannedOperationsEnabled: true, directSalesEnabled: false },
+    create: { cervejariaId: 'tenant-a', plannedOperationsEnabled: true },
+    update: { plannedOperationsEnabled: true },
   }]);
 });
 
@@ -72,7 +72,7 @@ test('allows CAIXA to EVENTO when no cash session is open', async () => {
   const db = database({ directSalesEnabled: true, plannedOperationsEnabled: false });
   await updateOperationalConfig(db as any, 'tenant-a', { operationMode: 'EVENTO' });
   assert.equal(db.updates.length, 1);
-  assert.deepEqual((db.updates[0] as any).update, { plannedOperationsEnabled: true, directSalesEnabled: false });
+  assert.deepEqual((db.updates[0] as any).update, { plannedOperationsEnabled: true });
 });
 
 test('blocks EVENTO to CAIXA while an event is active', async () => {

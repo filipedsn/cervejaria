@@ -17,7 +17,7 @@ function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-describe('caixa quiosque (property-based)', () => {
+describe('caixa operacao (property-based)', () => {
   it('resolve a capacidade por unidade: explícito vence fallback, NULL preserva legado', () => {
     assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: true, operationMode: 'CAIXA' }), true);
     assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: true, operationMode: 'EVENTO' }), false);
@@ -43,10 +43,10 @@ describe('caixa quiosque (property-based)', () => {
         findFirst: async () => ({
           ativo: true,
           usaCaixa: true,
-          cervejaria: { configuracaoQuiosque: { ativo: false } },
+          cervejaria: { configuracaoOperacao: { ativo: false } },
         }),
       },
-      sessaoCaixaQuiosque: { findFirst: async () => null },
+      sessaoCaixaOperacao: { findFirst: async () => null },
     };
     await assert.rejects(
       assertCaixaAberto('tenant-a', 'unidade-a', new Date('2026-09-14'), semSessao as never, async () => ({ operationMode: 'CAIXA' }) as never),
@@ -58,10 +58,10 @@ describe('caixa quiosque (property-based)', () => {
         findFirst: async () => ({
           ativo: true,
           usaCaixa: false,
-          cervejaria: { configuracaoQuiosque: { ativo: true } },
+          cervejaria: { configuracaoOperacao: { ativo: true } },
         }),
       },
-      sessaoCaixaQuiosque: { findFirst: async () => ({ status: 'ABERTO' }) },
+      sessaoCaixaOperacao: { findFirst: async () => ({ status: 'ABERTO' }) },
     };
     await assert.rejects(
       assertCaixaAberto(

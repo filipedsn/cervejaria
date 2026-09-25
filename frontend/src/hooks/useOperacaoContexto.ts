@@ -8,7 +8,7 @@ export interface PontoVenda {
   ativo: boolean;
 }
 
-export type QuiosqueContexto = {
+export type OperacaoContexto = {
   ativo: boolean;
   operationMode: 'CAIXA' | 'EVENTO' | null;
   plannedOperationsEnabled: boolean;
@@ -23,7 +23,7 @@ export type QuiosqueContexto = {
   pontosVenda: PontoVenda[];
 };
 
-const CONTEXTO_INATIVO: QuiosqueContexto = {
+const CONTEXTO_INATIVO: OperacaoContexto = {
   ativo: false,
   operationMode: null,
   plannedOperationsEnabled: false,
@@ -39,16 +39,16 @@ const CONTEXTO_INATIVO: QuiosqueContexto = {
 };
 
 /**
- * Decide se o modulo Quiosque aparece para a empresa logada. Enquanto carrega,
- * responde inativo para nao piscar a navegacao do quiosque em quem nao o tem.
+ * Decide se o modulo Operacao aparece para a empresa logada. Enquanto carrega,
+ * responde inativo para nao piscar a navegacao do operacao em quem nao o tem.
  */
-export function useQuiosqueContexto() {
+export function useOperacaoContexto() {
   const { cervejaria, isAdmin, isAuthenticated } = useAuth();
   const cervejariaId = cervejaria?.id ?? null;
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['quiosque-contexto', cervejariaId],
-    queryFn: () => api.get<QuiosqueContexto>('/api/quiosque/contexto'),
+    queryKey: ['operacao-contexto', cervejariaId],
+    queryFn: () => api.get<OperacaoContexto>('/api/operacao/contexto'),
     enabled: isAuthenticated && !isAdmin && Boolean(cervejariaId),
     staleTime: 5 * 60 * 1000,
   });

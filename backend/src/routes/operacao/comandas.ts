@@ -7,33 +7,33 @@ import {
   centavos,
   criarPedido,
   diaOperacional,
-  QUIOSQUE_VENDA_TX,
+  CAIXA_VENDA_TX,
   resolverItens,
   resolverPagamentos,
   resumoComanda,
   subtotalComandaEmCentavos,
-} from '../../lib/quiosque/venda.js';
+} from '../../lib/operacao/venda.js';
 import {
   STATUS_NA_FILA,
   notificarPedidoNovo,
   notificarPedidosDaComanda,
   temPedidoCozinhaPendente,
-} from '../../lib/quiosque/cozinha.js';
-import { assertCaixaAberto, lockCaixaEmTx } from '../../lib/quiosque/caixa.js';
-import { proximoNumeroComandaQuiosqueTurno } from '../../lib/comanda-numero.js';
-import { assertPodeDarDescontoQuiosque, DescontoInvalidoError } from '../../lib/quiosque/desconto.js';
+} from '../../lib/operacao/cozinha.js';
+import { assertCaixaAberto, lockCaixaEmTx } from '../../lib/operacao/caixa.js';
+import { proximoNumeroComandaOperacaoTurno } from '../../lib/comanda-numero.js';
+import { assertPodeDarDescontoOperacao, DescontoInvalidoError } from '../../lib/operacao/desconto.js';
 import { inventoryService } from '../../services/inventory-service.js';
 import {
-  removeItemFromComandaQuiosque,
-  updateItemQuantidadeComandaQuiosque,
-} from '../../lib/quiosque/comanda-itens.js';
+  removeItemFromComandaOperacao,
+  updateItemQuantidadeComandaOperacao,
+} from '../../lib/operacao/comanda-itens.js';
 import { registrarTransacao } from '../../lib/transacao-log.js';
 import {
-  INCLUDE_COMANDA_QUIOSQUE,
-  fecharComandaQuiosqueInTx,
-  recalcComandaTotalQuiosque,
-  whereComandaQuiosque,
-} from '../../lib/quiosque/comanda-adapter.js';
+  INCLUDE_COMANDA_OPERACAO,
+  fecharComandaOperacaoInTx,
+  recalcComandaTotalOperacao,
+  whereComandaOperacao,
+} from '../../lib/operacao/comanda-adapter.js';
 import { lockComandaItemsInTx, lockComandasInTx } from '../../lib/comanda-service.js';
 
 const itemSchema = z.object({
@@ -78,9 +78,9 @@ const fecharGrupoSchema = z.object({
   pagamentos: z.array(pagamentoSchema).min(1),
 });
 
-export async function comandasQuiosqueRoutes(app: FastifyInstance) {
+export async function comandasOperacaoRoutes(app: FastifyInstance) {
   app.get('/', async (request) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { status, pontoVendaId, dia } = z
       .object({
         status: z.enum(['ABERTA', 'FECHADA', 'CANCELADA']).default('ABERTA'),
@@ -97,13 +97,13 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
       : undefined;
 
     const comandas = await prisma.comanda.findMany({
-      where: whereComandaQuiosque(cervejariaId, {
+      where: whereComandaOperacao(cervejariaId, {
         status,
         ...(pontoVendaId ? { pontoVendaId } : {}),
         ...(diaOperacionalFiltro ? { diaOperacional: diaOperacionalFiltro } : {}),
         ...(status === 'ABERTA' ? { tipo: { not: 'AVULSA' } } : {}),
       }),
-      include: INCLUDE_COMANDA_QUIOSQUE,
+      include: INCLUDE_COMANDA_OPERACAO,
       orderBy: { createdAt: 'asc' },
     });
 
@@ -111,7 +111,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.post('/fechar-grupo', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = fecharGrupoSchema.parse(request.body);
     const uniqueIds = [...new Set(body.comandaIds)];
@@ -120,12 +120,12 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
     }
 
     const comandas = await prisma.comanda.findMany({
-      where: whereComandaQuiosque(cervejariaId, {
+      where: whereComandaOperacao(cervejariaId, {
         id: { in: uniqueIds },
         status: 'ABERTA',
         tipo: { not: 'AVULSA' },
       }),
-      include: INCLUDE_COMANDA_QUIOSQUE,
+      include: INCLUDE_COMANDA_OPERACAO,
     });
 
     if (comandas.length !== uniqueIds.length) {
@@ -143,7 +143,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
     const dia = comandas[0]!.diaOperacional!;
     await assertCaixaAberto(cervejariaId, pontoVendaId, dia);
 
-    if (comandas.some((comanda) => temPedidoCozinhaPendente(comanda.pedidosQuiosque))) {
+    if (comandas.some((comanda) => temPedidoCozinhaPendente(comanda.pedidosOperacao))) {
       return reply.status(409).send({
         error: 'Aguarde a entrega dos itens da cozinha antes de fechar as comandas',
       });
@@ -153,7 +153,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
     const comandasComItens = resumos.filter((c) => c.total > 0);
     const comandasVazias = resumos.filter((c) => {
       const comanda = comandas.find((item) => item.id === c.id)!;
-      return c.total === 0 && !comanda.pedidosQuiosque.some((pedido) => pedido.status !== 'CANCELADO');
+      return c.total === 0 && !comanda.pedidosOperacao.some((pedido) => pedido.status !== 'CANCELADO');
     });
     const totalGrupo = comandasComItens.reduce((sum, c) => sum + c.total, 0);
     const totalPagamentos = body.pagamentos.reduce((sum, p) => sum + p.valor, 0);
@@ -190,26 +190,26 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
       for (const resumo of comandasVazias) {
         const comanda = await tx.comanda.findUniqueOrThrow({
           where: { id: resumo.id },
-          include: INCLUDE_COMANDA_QUIOSQUE,
+          include: INCLUDE_COMANDA_OPERACAO,
         });
         if (comanda.status !== 'ABERTA' || comanda.itens.length > 0) {
           throw Object.assign(new Error('Uma ou mais comandas foram alteradas antes do fechamento'), { statusCode: 409 });
         }
         await inventoryService.reverseComanda(tx, {
           context: 'CAIXA',
-          moduleEnabled: request.quiosque.controlaEstoque,
+          moduleEnabled: request.operacao.controlaEstoque,
           cervejariaId,
           comandaId: comanda.id,
           registradoPorId: user.sub,
         });
-        await tx.pedidoQuiosque.updateMany({
+        await tx.pedidoOperacao.updateMany({
           where: { comandaId: comanda.id, status: { in: STATUS_NA_FILA } },
           data: { status: 'CANCELADO' },
         });
         const cancelada = await tx.comanda.update({
           where: { id: comanda.id },
           data: { status: 'CANCELADA', fechadaEm, fechadoPorId: user.sub },
-          include: INCLUDE_COMANDA_QUIOSQUE,
+          include: INCLUDE_COMANDA_OPERACAO,
         });
         canceladas.push(resumoComanda(cancelada));
       }
@@ -221,7 +221,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
           centavos(resumo.total),
         );
         const comandaCompleta = comandas.find((c) => c.id === resumo.id)!;
-        await fecharComandaQuiosqueInTx(tx, {
+        await fecharComandaOperacaoInTx(tx, {
           comanda: comandaCompleta,
           pagamentos,
           cervejariaId,
@@ -230,7 +230,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
         });
         const fechada = await tx.comanda.findUniqueOrThrow({
           where: { id: resumo.id },
-          include: INCLUDE_COMANDA_QUIOSQUE,
+          include: INCLUDE_COMANDA_OPERACAO,
         });
         fechadas.push(resumoComanda(fechada));
       }
@@ -241,7 +241,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
     for (const c of resultado.canceladas) {
       void registrarTransacao({
         cervejariaId,
-        tipo: 'QUIOSQUE_COMANDA_CANCELADA',
+        tipo: 'COMANDA_CANCELADA',
         usuarioId: user.sub,
         comandaId: c.id,
         metadata: { identificador: c.identificador, grupo: true, motivo: 'vazia' },
@@ -252,7 +252,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
     for (const c of resultado.fechadas) {
       void registrarTransacao({
         cervejariaId,
-        tipo: 'QUIOSQUE_COMANDA_FECHADA',
+        tipo: 'COMANDA_FECHADA',
         usuarioId: user.sub,
         comandaId: c.id,
         metadata: { total: c.total, grupo: true },
@@ -262,7 +262,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
 
     void registrarTransacao({
       cervejariaId,
-      tipo: 'QUIOSQUE_COMANDA_GRUPO_FECHADO',
+      tipo: 'COMANDA_GRUPO_FECHADO',
       usuarioId: user.sub,
       metadata: {
         qtdComandas: resultado.fechadas.length,
@@ -286,12 +286,12 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
 
     const comanda = await prisma.comanda.findFirst({
-      where: whereComandaQuiosque(cervejariaId, { id }),
-      include: INCLUDE_COMANDA_QUIOSQUE,
+      where: whereComandaOperacao(cervejariaId, { id }),
+      include: INCLUDE_COMANDA_OPERACAO,
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada' });
 
@@ -299,7 +299,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.post('/', async (request, reply) => {
-    const { cervejariaId, temCozinha, controlaEstoque } = request.quiosque;
+    const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
     const user = getAuthUser(request);
     const body = abrirComandaSchema.parse(request.body);
     const dia = diaOperacional();
@@ -313,7 +313,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
       await lockCaixaEmTx(tx, cervejariaId, body.pontoVendaId, dia);
       const sessao = await assertCaixaAberto(cervejariaId, body.pontoVendaId, dia, tx);
       const jaAberta = await tx.comanda.findFirst({
-        where: whereComandaQuiosque(cervejariaId, {
+        where: whereComandaOperacao(cervejariaId, {
           pontoVendaId: body.pontoVendaId,
           tipo: body.tipo,
           identificador: body.identificador,
@@ -322,7 +322,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
       });
       if (jaAberta) return { kind: 'conflito' as const, jaAberta };
 
-      const numero = await proximoNumeroComandaQuiosqueTurno(
+      const numero = await proximoNumeroComandaOperacaoTurno(
         tx,
         cervejariaId,
         body.pontoVendaId,
@@ -330,7 +330,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
       );
       const criada = await tx.comanda.create({
         data: {
-          origem: 'QUIOSQUE',
+          origem: 'CAIXA',
           pontoVendaId: body.pontoVendaId,
           tipo: body.tipo,
           identificador: body.identificador,
@@ -365,18 +365,18 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
           registradoPorId: user.sub,
           items: itens,
         });
-        await recalcComandaTotalQuiosque(tx, criada.id);
+        await recalcComandaTotalOperacao(tx, criada.id);
       }
 
       return {
         kind: 'criada' as const,
         comanda: await tx.comanda.findUniqueOrThrow({
           where: { id: criada.id },
-          include: INCLUDE_COMANDA_QUIOSQUE,
+          include: INCLUDE_COMANDA_OPERACAO,
         }),
         pedido: pedidoCriado,
       };
-    }, QUIOSQUE_VENDA_TX);
+    }, CAIXA_VENDA_TX);
 
     if (resultado.kind === 'conflito') {
       return reply.status(409).send({
@@ -392,7 +392,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
     const resumo = resumoComanda(comanda);
     void registrarTransacao({
       cervejariaId,
-      tipo: 'QUIOSQUE_COMANDA_CRIADA',
+      tipo: 'COMANDA_CRIADA',
       usuarioId: user.sub,
       comandaId: comanda.id,
       metadata: { identificador: body.identificador, tipo: body.tipo, numero: resumo.numero },
@@ -402,7 +402,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
     if (pedido) {
       void registrarTransacao({
         cervejariaId,
-        tipo: 'QUIOSQUE_PEDIDO_CRIADO',
+        tipo: 'KITCHEN_ORDER_CREATED',
         usuarioId: user.sub,
         comandaId: comanda.id,
         entidadeId: pedido.id,
@@ -415,13 +415,13 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/pedidos', async (request, reply) => {
-    const { cervejariaId, temCozinha, controlaEstoque } = request.quiosque;
+    const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
     const body = adicionarPedidoSchema.parse(request.body);
 
     const comanda = await prisma.comanda.findFirst({
-      where: whereComandaQuiosque(cervejariaId, { id }),
+      where: whereComandaOperacao(cervejariaId, { id }),
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada' });
     if (comanda.status !== 'ABERTA') {
@@ -438,7 +438,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
       );
       await lockComandaItemsInTx(tx, id);
       const comandaAtual = await tx.comanda.findFirst({
-        where: whereComandaQuiosque(cervejariaId, { id, status: 'ABERTA' }),
+        where: whereComandaOperacao(cervejariaId, { id, status: 'ABERTA' }),
       });
       if (!comandaAtual) {
         throw Object.assign(new Error('Esta comanda já foi fechada'), { statusCode: 409 });
@@ -466,23 +466,23 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
         items: itens,
       });
 
-      await recalcComandaTotalQuiosque(tx, comandaAtual.id);
+      await recalcComandaTotalOperacao(tx, comandaAtual.id);
 
       return {
         atualizada: await tx.comanda.findUniqueOrThrow({
           where: { id: comandaAtual.id },
-          include: INCLUDE_COMANDA_QUIOSQUE,
+          include: INCLUDE_COMANDA_OPERACAO,
         }),
         pedido: pedidoCriado,
       };
-    }, QUIOSQUE_VENDA_TX);
+    }, CAIXA_VENDA_TX);
 
     if (temCozinha) await notificarPedidoNovo(app, cervejariaId, pedido);
 
     const resumo = resumoComanda(atualizada);
     void registrarTransacao({
       cervejariaId,
-      tipo: 'QUIOSQUE_PEDIDO_CRIADO',
+      tipo: 'KITCHEN_ORDER_CREATED',
       usuarioId: user.sub,
       comandaId: comanda.id,
       entidadeId: pedido.id,
@@ -494,11 +494,11 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:comandaId/itens/:itemId', async (request, reply) => {
-    const { cervejariaId, temCozinha, controlaEstoque } = request.quiosque;
+    const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
     const user = getAuthUser(request);
     const { comandaId, itemId } = request.params as { comandaId: string; itemId: string };
 
-    const result = await removeItemFromComandaQuiosque({
+    const result = await removeItemFromComandaOperacao({
       app,
       cervejariaId,
       comandaId,
@@ -517,12 +517,12 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:comandaId/itens/:itemId', async (request, reply) => {
-    const { cervejariaId, temCozinha, controlaEstoque } = request.quiosque;
+    const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
     const user = getAuthUser(request);
     const { comandaId, itemId } = request.params as { comandaId: string; itemId: string };
     const body = itemQuantidadeSchema.parse(request.body);
 
-    const result = await updateItemQuantidadeComandaQuiosque({
+    const result = await updateItemQuantidadeComandaOperacao({
       app,
       cervejariaId,
       comandaId,
@@ -549,16 +549,16 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id/desconto', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
     const body = descontoSchema.parse(request.body);
 
-    await assertPodeDarDescontoQuiosque(user);
+    await assertPodeDarDescontoOperacao(user);
 
     const comanda = await prisma.comanda.findFirst({
-      where: whereComandaQuiosque(cervejariaId, { id }),
-      include: INCLUDE_COMANDA_QUIOSQUE,
+      where: whereComandaOperacao(cervejariaId, { id }),
+      include: INCLUDE_COMANDA_OPERACAO,
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada' });
     if (comanda.status !== 'ABERTA') {
@@ -577,7 +577,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
     const atualizada = await prisma.$transaction(async (tx) => {
       await lockComandaItemsInTx(tx, comanda.id);
       const comandaAtual = await tx.comanda.findFirst({
-        where: whereComandaQuiosque(cervejariaId, { id: comanda.id, status: 'ABERTA' }),
+        where: whereComandaOperacao(cervejariaId, { id: comanda.id, status: 'ABERTA' }),
         include: { itens: true },
       });
       if (!comandaAtual) {
@@ -597,17 +597,17 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
         where: { id: comanda.id },
         data: { desconto: body.desconto },
       });
-      await recalcComandaTotalQuiosque(tx, comanda.id);
+      await recalcComandaTotalOperacao(tx, comanda.id);
       return tx.comanda.findUniqueOrThrow({
         where: { id: comanda.id },
-        include: INCLUDE_COMANDA_QUIOSQUE,
+        include: INCLUDE_COMANDA_OPERACAO,
       });
-    }, QUIOSQUE_VENDA_TX);
+    }, CAIXA_VENDA_TX);
 
     const resumoAtualizado = resumoComanda(atualizada);
     void registrarTransacao({
       cervejariaId,
-      tipo: 'QUIOSQUE_DESCONTO_APLICADO',
+      tipo: 'COMANDA_DESCONTO_APLICADO',
       usuarioId: user.sub,
       comandaId: comanda.id,
       metadata: { desconto: body.desconto, subtotal: resumoAtualizado.subtotal },
@@ -618,14 +618,14 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/pagamentos', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
     const body = pagarSchema.parse(request.body);
 
     const comanda = await prisma.comanda.findFirst({
-      where: whereComandaQuiosque(cervejariaId, { id }),
-      include: INCLUDE_COMANDA_QUIOSQUE,
+      where: whereComandaOperacao(cervejariaId, { id }),
+      include: INCLUDE_COMANDA_OPERACAO,
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada' });
     if (comanda.status !== 'ABERTA') {
@@ -637,7 +637,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'Lance ao menos um item antes de cobrar' });
     }
 
-    if (temPedidoCozinhaPendente(comanda.pedidosQuiosque)) {
+    if (temPedidoCozinhaPendente(comanda.pedidosOperacao)) {
       return reply.status(409).send({
         error: 'Aguarde a entrega dos itens da cozinha antes de fechar a comanda',
       });
@@ -651,7 +651,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
     const fechada = await prisma.$transaction(async (tx) => {
       await lockCaixaEmTx(tx, cervejariaId, comanda.pontoVendaId!, comanda.diaOperacional!);
       await assertCaixaAberto(cervejariaId, comanda.pontoVendaId!, comanda.diaOperacional!, tx);
-      await fecharComandaQuiosqueInTx(tx, {
+      await fecharComandaOperacaoInTx(tx, {
         comanda,
         pagamentos,
         cervejariaId,
@@ -661,15 +661,15 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
 
       return tx.comanda.findUniqueOrThrow({
         where: { id: comanda.id },
-        include: INCLUDE_COMANDA_QUIOSQUE,
+        include: INCLUDE_COMANDA_OPERACAO,
       });
-    }, QUIOSQUE_VENDA_TX);
+    }, CAIXA_VENDA_TX);
 
     const resumoFechada = resumoComanda(fechada);
 
     void registrarTransacao({
       cervejariaId,
-      tipo: 'QUIOSQUE_PAGAMENTO_REGISTRADO',
+      tipo: 'SALE_PAYMENT_RECORDED',
       usuarioId: user.sub,
       comandaId: comanda.id,
       metadata: {
@@ -683,13 +683,13 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/cancelar', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const { cervejariaId, temCozinha, controlaEstoque } = request.quiosque;
+    const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
 
     const comanda = await prisma.comanda.findFirst({
-      where: whereComandaQuiosque(cervejariaId, { id }),
-      include: INCLUDE_COMANDA_QUIOSQUE,
+      where: whereComandaOperacao(cervejariaId, { id }),
+      include: INCLUDE_COMANDA_OPERACAO,
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada' });
     if (comanda.status !== 'ABERTA') {
@@ -709,7 +709,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
       });
 
       // Sem isso a rodada continuaria na fila da cozinha de uma conta que nao existe mais.
-      await tx.pedidoQuiosque.updateMany({
+      await tx.pedidoOperacao.updateMany({
         where: { comandaId: comanda.id, status: { in: STATUS_NA_FILA } },
         data: { status: 'CANCELADO' },
       });
@@ -717,7 +717,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
       return tx.comanda.update({
         where: { id: comanda.id },
         data: { status: 'CANCELADA', fechadaEm: new Date(), fechadoPorId: user.sub },
-        include: INCLUDE_COMANDA_QUIOSQUE,
+        include: INCLUDE_COMANDA_OPERACAO,
       });
     });
 
@@ -726,7 +726,7 @@ export async function comandasQuiosqueRoutes(app: FastifyInstance) {
     const resumoCancelada = resumoComanda(cancelada);
     void registrarTransacao({
       cervejariaId,
-      tipo: 'QUIOSQUE_COMANDA_CANCELADA',
+      tipo: 'COMANDA_CANCELADA',
       usuarioId: user.sub,
       comandaId: comanda.id,
       metadata: { identificador: comanda.identificador },

@@ -5,16 +5,16 @@ import { planOperationalEnablementBackfill } from './operational-enablement-back
 
 test('backfill selects only null legacy units and preserves explicit decisions', () => {
   const plan = planCashRegisterBackfill([
-    { id: 'null-legacy', usaCaixa: null, legacyQuiosqueActive: true },
-    { id: 'true', usaCaixa: true, legacyQuiosqueActive: true },
-    { id: 'false', usaCaixa: false, legacyQuiosqueActive: true },
-    { id: 'cia', usaCaixa: null, legacyQuiosqueActive: false },
+    { id: 'null-legacy', usaCaixa: null, legacyOperacaoActive: true },
+    { id: 'true', usaCaixa: true, legacyOperacaoActive: true },
+    { id: 'false', usaCaixa: false, legacyOperacaoActive: true },
+    { id: 'cia', usaCaixa: null, legacyOperacaoActive: false },
   ]);
   assert.deepEqual(plan, { updateIds: ['null-legacy'], processed: 4, alreadyExplicitTrue: 1, alreadyExplicitFalse: 1, skipped: 1, fallbackRequired: 1 });
 });
 
 test('a repeated backfill plan has no update once values are explicit', () => {
-  const plan = planCashRegisterBackfill([{ id: 'legacy', usaCaixa: true, legacyQuiosqueActive: true }]);
+  const plan = planCashRegisterBackfill([{ id: 'legacy', usaCaixa: true, legacyOperacaoActive: true }]);
   assert.deepEqual(plan.updateIds, []);
   assert.equal(plan.alreadyExplicitTrue, 1);
 });

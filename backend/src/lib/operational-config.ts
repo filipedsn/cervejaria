@@ -1,17 +1,16 @@
 import { z } from 'zod';
 import { prisma } from './prisma.js';
-import { STATUS_NA_FILA } from './quiosque/cozinha.js';
+import { STATUS_NA_FILA } from './operacao/cozinha.js';
 import {
   CozinhaComPedidosAtivosError,
   ConfirmacaoEstoqueObrigatoriaError,
-} from './quiosque/capacidades.js';
+} from './operacao/capacidades.js';
 import { emitAuditEvent } from './audit/emit-audit-event.js';
 
 export const updateOperationalConfigSchema = z
   .object({
     /** CAIXA is false and EVENTO is true in the persisted compatibility field. */
     operationMode: z.enum(['CAIXA', 'EVENTO']).optional(),
-    directSalesEnabled: z.boolean().optional(),
     plannedOperationsEnabled: z.boolean().optional(),
     tapsEnabled: z.boolean().optional(),
     inventoryEnabled: z.boolean().optional(),
@@ -22,7 +21,6 @@ export const updateOperationalConfigSchema = z
   .refine(
     (body) =>
       body.operationMode !== undefined ||
-      body.directSalesEnabled !== undefined ||
       body.plannedOperationsEnabled !== undefined ||
       body.tapsEnabled !== undefined ||
       body.inventoryEnabled !== undefined ||
@@ -30,8 +28,8 @@ export const updateOperationalConfigSchema = z
     'Informe ao menos uma capacidade para alterar',
   );
 
-type OperationalConfigClient = Pick<typeof prisma, 'configuracaoOperacional' | 'pedidoQuiosque'> &
-  Partial<Pick<typeof prisma, 'sessaoCaixaQuiosque' | 'evento'>>;
+type OperationalConfigClient = Pick<typeof prisma, 'configuracaoOperacional' | 'pedidoOperacao'> &
+  Partial<Pick<typeof prisma, 'sessaoCaixaOperacao' | 'evento'>>;
 export type UpdateOperationalConfigInput = z.infer<typeof updateOperationalConfigSchema>;
 
 export class OperationalModeTransitionBlockedError extends Error {
@@ -55,30 +53,11 @@ export async function updateOperationalConfig(
   cervejariaId: string,
   input: UpdateOperationalConfigInput,
 ) {
-  const modeFromLegacyFields = input.plannedOperationsEnabled !== undefined
-    ? input.plannedOperationsEnabled
-      ? 'EVENTO'
-      : 'CAIXA'
-    : input.directSalesEnabled !== undefined
-      ? input.directSalesEnabled
-        ? 'CAIXA'
-        : 'EVENTO'
-      : undefined;
-  const operationMode = input.operationMode ?? modeFromLegacyFields;
-  if (
-    input.operationMode !== undefined &&
-    modeFromLegacyFields !== undefined &&
-    input.operationMode !== modeFromLegacyFields
-  ) {
-    throw new Error('Modo operacional contraditório');
-  }
-  if (
-    input.directSalesEnabled !== undefined &&
-    input.plannedOperationsEnabled !== undefined &&
-    input.directSalesEnabled === input.plannedOperationsEnabled
-  ) {
-    throw new Error('CAIXA e EVENTO são modos mutuamente exclusivos');
-  }
+  const operationMode = input.operationMode ?? (
+    input.plannedOperationsEnabled === undefined
+      ? undefined
+      : input.plannedOperationsEnabled ? 'EVENTO' : 'CAIXA'
+  );
   const current = await db.configuracaoOperacional.findUnique({ where: { cervejariaId } });
   const currentMode = current?.plannedOperationsEnabled === true ? 'EVENTO' : 'CAIXA';
   const modeChanged = operationMode !== undefined && operationMode !== currentMode;
@@ -90,8 +69,8 @@ export async function updateOperationalConfig(
     await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${cervejariaId}, 0))`;
   }
 
-  if (modeChanged && operationMode === 'EVENTO' && db.sessaoCaixaQuiosque?.findFirst) {
-    const openCash = await db.sessaoCaixaQuiosque.findFirst({
+  if (modeChanged && operationMode === 'EVENTO' && db.sessaoCaixaOperacao?.findFirst) {
+    const openCash = await db.sessaoCaixaOperacao.findFirst({
       where: { cervejariaId, status: 'ABERTO' },
       select: { id: true },
     });
@@ -136,7 +115,7 @@ export async function updateOperationalConfig(
   }
 
   if (kitchenTurnsOff) {
-    const activeOrder = await db.pedidoQuiosque.findFirst({
+    const activeOrder = await db.pedidoOperacao.findFirst({
       where: { cervejariaId, status: { in: STATUS_NA_FILA }, itensComanda: { some: { exigePreparo: true } } },
       select: { id: true },
     });
@@ -147,8 +126,6 @@ export async function updateOperationalConfig(
     ...(operationMode !== undefined
       ? {
           plannedOperationsEnabled: operationMode === 'EVENTO',
-          // Kept as a physical compatibility projection until legacy readers are retired.
-          directSalesEnabled: operationMode === 'CAIXA',
         }
       : {}),
     ...(input.tapsEnabled !== undefined ? { tapsEnabled: input.tapsEnabled } : {}),

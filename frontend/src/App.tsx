@@ -7,21 +7,21 @@ import { LoginPage } from './pages/LoginPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { AdminCervejariasPage } from './pages/AdminCervejariasPage';
-import { QuiosqueLayout } from './pages/quiosque/QuiosqueLayout';
-import { QuiosqueComandasPage } from './pages/quiosque/QuiosqueComandasPage';
-import { QuiosqueNovaComandaPage } from './pages/quiosque/QuiosqueNovaComandaPage';
-import { QuiosqueVendaAvulsaPage } from './pages/quiosque/QuiosqueVendaAvulsaPage';
-import { QuiosqueComandaDetailPage } from './pages/quiosque/QuiosqueComandaDetailPage';
-import { QuiosqueCatalogoPage } from './pages/quiosque/QuiosqueCatalogoPage';
-import { QuiosqueCozinhaPage } from './pages/quiosque/QuiosqueCozinhaPage';
-import { QuiosqueCozinhaTvPage } from './pages/quiosque/QuiosqueCozinhaTvPage';
-import { QuiosqueCozinhaTvDemoPage } from './pages/quiosque/QuiosqueCozinhaTvDemoPage';
-import { QuiosqueCaixaPage } from './pages/quiosque/QuiosqueCaixaPage';
-import { QuiosqueEstoquePage } from './pages/quiosque/QuiosqueEstoquePage';
-import { QuiosqueDashboardPage } from './pages/quiosque/QuiosqueDashboardPage';
-import { QuiosqueTurnoResumoPage } from './pages/quiosque/QuiosqueTurnoResumoPage';
-import { QuiosqueConfiguracoesPage } from './pages/quiosque/QuiosqueConfiguracoesPage';
-import { useQuiosqueContexto } from './hooks/useQuiosqueContexto';
+import { OperacaoLayout } from './pages/operacao/OperacaoLayout';
+import { OperacaoComandasPage } from './pages/operacao/OperacaoComandasPage';
+import { OperacaoNovaComandaPage } from './pages/operacao/OperacaoNovaComandaPage';
+import { OperacaoVendaAvulsaPage } from './pages/operacao/OperacaoVendaAvulsaPage';
+import { OperacaoComandaDetailPage } from './pages/operacao/OperacaoComandaDetailPage';
+import { OperacaoCatalogoPage } from './pages/operacao/OperacaoCatalogoPage';
+import { OperacaoCozinhaPage } from './pages/operacao/OperacaoCozinhaPage';
+import { OperacaoCozinhaTvPage } from './pages/operacao/OperacaoCozinhaTvPage';
+import { OperacaoCozinhaTvDemoPage } from './pages/operacao/OperacaoCozinhaTvDemoPage';
+import { OperacaoCaixaPage } from './pages/operacao/OperacaoCaixaPage';
+import { OperacaoEstoquePage } from './pages/operacao/OperacaoEstoquePage';
+import { OperacaoDashboardPage } from './pages/operacao/OperacaoDashboardPage';
+import { OperacaoTurnoResumoPage } from './pages/operacao/OperacaoTurnoResumoPage';
+import { OperacaoConfiguracoesPage } from './pages/operacao/OperacaoConfiguracoesPage';
+import { useOperacaoContexto } from './hooks/useOperacaoContexto';
 import { AdminConfiguracoesPage } from './pages/AdminConfiguracoesPage';
 import { SelecionarTrailerPage } from './pages/SelecionarTrailerPage';
 import { EventoPage } from './pages/EventoPage';
@@ -59,7 +59,7 @@ function RootLayout() {
   const { pathname } = useLocation();
   const hideInstallBanner =
     pathname.startsWith('/ranking/tv') ||
-    pathname.startsWith('/quiosque/cozinha/tv') ||
+    pathname.startsWith('/operacao/cozinha/tv') ||
     pathname.startsWith('/c/');
 
   return (
@@ -91,8 +91,8 @@ function PublicAuthShell() {
 
 function TenantEntryRedirect() {
   const { needsTrailerSelection, evento, isLoading } = useEvento();
-  const { isLoading: quiosqueLoading } = useQuiosqueContexto();
-  if (isLoading || quiosqueLoading) return <Loading fullScreen />;
+  const { isLoading: operacaoLoading } = useOperacaoContexto();
+  if (isLoading || operacaoLoading) return <Loading fullScreen />;
   if (needsTrailerSelection) return <Navigate to="/trailer" replace />;
   if (evento?.status === 'ABERTO') return <Navigate to="/comandas" replace />;
   return <Navigate to="/eventos" replace />;
@@ -126,25 +126,25 @@ function RequireTenant() {
   return <Outlet />;
 }
 
-function RequireModuloQuiosque() {
-  const { contexto, isLoading } = useQuiosqueContexto();
+function RequireModuloOperacao() {
+  const { contexto, isLoading } = useOperacaoContexto();
   if (isLoading) return <Loading fullScreen />;
   if (!contexto.ativo) return <Navigate to="/" replace />;
   return <Outlet />;
 }
 
-/** Quiosque sem cozinha nao tem fila: a tela nao existe nem por URL direta. */
-function RequireCozinhaQuiosque() {
-  const { contexto, isLoading } = useQuiosqueContexto();
+/** Operacao sem cozinha nao tem fila: a tela nao existe nem por URL direta. */
+function RequireCozinhaOperacao() {
+  const { contexto, isLoading } = useOperacaoContexto();
   if (isLoading) return <Loading fullScreen />;
-  if (!contexto.ativo || !contexto.temCozinha) return <Navigate to="/quiosque/comandas" replace />;
+  if (!contexto.ativo || !contexto.temCozinha) return <Navigate to="/operacao/comandas" replace />;
   return <Outlet />;
 }
 
-function RequireEstoqueQuiosque() {
-  const { contexto, isLoading } = useQuiosqueContexto();
+function RequireEstoqueOperacao() {
+  const { contexto, isLoading } = useOperacaoContexto();
   if (isLoading) return <Loading fullScreen />;
-  if (!contexto.ativo || !contexto.controlaEstoque) return <Navigate to="/quiosque/comandas" replace />;
+  if (!contexto.ativo || !contexto.controlaEstoque) return <Navigate to="/operacao/comandas" replace />;
   return <Outlet />;
 }
 
@@ -159,10 +159,10 @@ function RequireDono() {
   return <Outlet />;
 }
 
-function RequireDonoQuiosque() {
+function RequireDonoOperacao() {
   const { isDono, isLoading } = useAuth();
   if (isLoading) return <Loading fullScreen />;
-  if (!isDono) return <Navigate to="/quiosque/comandas" replace />;
+  if (!isDono) return <Navigate to="/operacao/comandas" replace />;
   return <Outlet />;
 }
 
@@ -239,12 +239,12 @@ function RankingPeriodoTvEntry() {
 
 function CozinhaTvShell({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading, isAdmin } = useAuth();
-  const { contexto, isLoading: qLoading } = useQuiosqueContexto();
+  const { contexto, isLoading: qLoading } = useOperacaoContexto();
 
   if (isLoading || qLoading) return <Loading fullScreen />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (isAdmin) return <Navigate to="/admin/cervejarias" replace />;
-  if (!contexto.ativo || !contexto.temCozinha) return <Navigate to="/quiosque/comandas" replace />;
+  if (!contexto.ativo || !contexto.temCozinha) return <Navigate to="/operacao/comandas" replace />;
 
   return <div className="qt-tv qt-cozinha-tv">{children}</div>;
 }
@@ -252,12 +252,12 @@ function CozinhaTvShell({ children }: { children: ReactNode }) {
 function CozinhaTvEntry() {
   const [searchParams] = useSearchParams();
   if (searchParams.get('demo') === '1') {
-    return <div className="qt-tv qt-cozinha-tv"><QuiosqueCozinhaTvDemoPage /></div>;
+    return <div className="qt-tv qt-cozinha-tv"><OperacaoCozinhaTvDemoPage /></div>;
   }
 
   return (
     <CozinhaTvShell>
-      <QuiosqueCozinhaTvPage />
+      <OperacaoCozinhaTvPage />
     </CozinhaTvShell>
   );
 }
@@ -269,7 +269,7 @@ const router = createBrowserRouter([
       { path: '/ranking/tv/serie/:serieId', element: <RankingSerieTvEntry /> },
       { path: '/ranking/tv/periodo/:eventoId', element: <RankingPeriodoTvEntry /> },
       { path: '/ranking/tv/:eventoId', element: <RankingTvEntry /> },
-      { path: '/quiosque/cozinha/tv', element: <CozinhaTvEntry /> },
+      { path: '/operacao/cozinha/tv', element: <CozinhaTvEntry /> },
       { path: '/c/:slug/cadastro', element: <CadastroLinkDescontinuadoPage /> },
       { path: '/c/:slug/t/:trailerId', element: <PortalClientePage /> },
       { path: '/c/:slug/p/:pontoVendaId', element: <PortalPdvPage /> },
@@ -320,35 +320,35 @@ const router = createBrowserRouter([
                 children: [
                   { index: true, element: <TenantEntryRedirect /> },
                   {
-                    element: <RequireModuloQuiosque />,
+                    element: <RequireModuloOperacao />,
                     children: [
                       {
-                        path: 'quiosque',
-                        element: <QuiosqueLayout />,
+                        path: 'operacao',
+                        element: <OperacaoLayout />,
                         children: [
                           { index: true, element: <Navigate to="comandas" replace /> },
-                          { path: 'comandas', element: <QuiosqueComandasPage /> },
-                          { path: 'comandas/nova', element: <QuiosqueNovaComandaPage /> },
-                          { path: 'comandas/venda-avulsa', element: <QuiosqueVendaAvulsaPage /> },
-                          { path: 'comandas/:id', element: <QuiosqueComandaDetailPage /> },
-                          { path: 'caixa', element: <QuiosqueCaixaPage /> },
+                          { path: 'comandas', element: <OperacaoComandasPage /> },
+                          { path: 'comandas/nova', element: <OperacaoNovaComandaPage /> },
+                          { path: 'comandas/venda-avulsa', element: <OperacaoVendaAvulsaPage /> },
+                          { path: 'comandas/:id', element: <OperacaoComandaDetailPage /> },
+                          { path: 'caixa', element: <OperacaoCaixaPage /> },
                           {
-                            element: <RequireEstoqueQuiosque />,
-                            children: [{ path: 'estoque', element: <QuiosqueEstoquePage /> }],
+                            element: <RequireEstoqueOperacao />,
+                            children: [{ path: 'estoque', element: <OperacaoEstoquePage /> }],
                           },
                           {
-                            element: <RequireCozinhaQuiosque />,
-                            children: [{ path: 'cozinha', element: <QuiosqueCozinhaPage /> }],
+                            element: <RequireCozinhaOperacao />,
+                            children: [{ path: 'cozinha', element: <OperacaoCozinhaPage /> }],
                           },
-                          { path: 'catalogo', element: <QuiosqueCatalogoPage /> },
+                          { path: 'catalogo', element: <OperacaoCatalogoPage /> },
                           {
-                            element: <RequireDonoQuiosque />,
+                            element: <RequireDonoOperacao />,
                             children: [
-                              { path: 'dashboard', element: <QuiosqueDashboardPage /> },
-                              { path: 'turnos/:sessaoId', element: <QuiosqueTurnoResumoPage /> },
-                              { path: 'configuracoes', element: <Navigate to="/quiosque/configuracoes/equipe" replace /> },
-                              { path: 'configuracoes/:tab', element: <QuiosqueConfiguracoesPage /> },
-                              { path: 'equipe', element: <Navigate to="/quiosque/configuracoes/equipe" replace /> },
+                              { path: 'dashboard', element: <OperacaoDashboardPage /> },
+                              { path: 'turnos/:sessaoId', element: <OperacaoTurnoResumoPage /> },
+                              { path: 'configuracoes', element: <Navigate to="/operacao/configuracoes/equipe" replace /> },
+                              { path: 'configuracoes/:tab', element: <OperacaoConfiguracoesPage /> },
+                              { path: 'equipe', element: <Navigate to="/operacao/configuracoes/equipe" replace /> },
                             ],
                           },
                         ],

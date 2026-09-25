@@ -13,7 +13,7 @@ function txComPedido(statusInicial: Status) {
   let status = statusInicial;
   const historico: Status[] = [];
   const tx = {
-    pedidoQuiosque: {
+    pedidoOperacao: {
       updateMany: async ({ where, data }: { where: { status: Status }; data: { status: Status } }) => {
         if (status !== where.status) return { count: 0 };
         status = data.status;
@@ -26,7 +26,7 @@ function txComPedido(statusInicial: Status) {
         comanda: { id: 'comanda-1', tipo: 'MESA', identificador: null, numero: 1 },
       }),
     },
-    pedidoQuiosqueStatusHistorico: {
+    pedidoOperacaoStatusHistorico: {
       create: async ({ data }: { data: { status: Status } }) => {
         historico.push(data.status);
       },

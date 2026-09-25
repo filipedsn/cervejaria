@@ -26,7 +26,7 @@ function PermissaoDescontoRow({
     <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface-lighter px-3 py-3">
       <div className="min-w-0 flex-1">
         <p className="text-base font-semibold text-ink">Pode dar desconto nas comandas</p>
-        <p className="text-sm text-ink-muted mt-0.5">Permite aplicar desconto ao fechar comandas no quiosque e em eventos.</p>
+        <p className="text-sm text-ink-muted mt-0.5">Permite aplicar desconto ao fechar comandas no operacao e em eventos.</p>
       </div>
       <ToggleAtivo
         ativo={ativo}
@@ -42,7 +42,7 @@ function PermissaoDescontoRow({
 export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
   const queryClient = useQueryClient();
   const location = useLocation();
-  const inQuiosque = location.pathname.startsWith('/quiosque');
+  const inOperacao = location.pathname.startsWith('/operacao');
   const [showModal, setShowModal] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -51,7 +51,7 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
     email: '',
     senha: '',
     senhaConfirm: '',
-    podeDarDescontoQuiosque: false,
+    podeDarDescontoOperacao: false,
   });
 
   const { data: funcionarios, isLoading } = useQuery({
@@ -65,20 +65,20 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
         nome: form.nome,
         email: form.email,
         senha: form.senha,
-        podeDarDescontoQuiosque: form.podeDarDescontoQuiosque,
+        podeDarDescontoOperacao: form.podeDarDescontoOperacao,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['funcionarios'] });
       setShowModal(false);
-      setForm({ nome: '', email: '', senha: '', senhaConfirm: '', podeDarDescontoQuiosque: false });
+      setForm({ nome: '', email: '', senha: '', senhaConfirm: '', podeDarDescontoOperacao: false });
       setError('');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao cadastrar'),
   });
 
   const permissoesMutation = useMutation({
-    mutationFn: ({ id, podeDarDescontoQuiosque }: { id: string; podeDarDescontoQuiosque: boolean }) =>
-      api.patch(`/api/usuarios/${id}/permissoes-quiosque`, { podeDarDescontoQuiosque }),
+    mutationFn: ({ id, podeDarDescontoOperacao }: { id: string; podeDarDescontoOperacao: boolean }) =>
+      api.patch(`/api/usuarios/${id}/permissoes-operacao`, { podeDarDescontoOperacao }),
     onMutate: ({ id }) => setTogglingId(id),
     onSettled: () => setTogglingId(null),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['funcionarios'] }),
@@ -103,7 +103,7 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
       {!embedded ? (
         <PageHeader
           title="Funcionários"
-          subtitle={inQuiosque ? 'Cadastre atendentes do quiosque' : 'Cadastre atendentes da sua cervejaria'}
+          subtitle={inOperacao ? 'Cadastre atendentes do operacao' : 'Cadastre atendentes da sua cervejaria'}
           action={
             <button type="button" className="touch-btn-primary touch-btn-sm" onClick={() => setShowModal(true)}>
               + Novo Atendente
@@ -135,10 +135,10 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
             </div>
             {f.papel === 'ATENDENTE' && (
               <PermissaoDescontoRow
-                ativo={Boolean(f.podeDarDescontoQuiosque)}
+                ativo={Boolean(f.podeDarDescontoOperacao)}
                 loading={togglingId === f.id}
-                onToggle={(podeDarDescontoQuiosque) =>
-                  permissoesMutation.mutate({ id: f.id, podeDarDescontoQuiosque })
+                onToggle={(podeDarDescontoOperacao) =>
+                  permissoesMutation.mutate({ id: f.id, podeDarDescontoOperacao })
                 }
               />
             )}
@@ -168,8 +168,8 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
           />
 
           <PermissaoDescontoRow
-            ativo={form.podeDarDescontoQuiosque}
-            onToggle={(podeDarDescontoQuiosque) => setForm({ ...form, podeDarDescontoQuiosque })}
+            ativo={form.podeDarDescontoOperacao}
+            onToggle={(podeDarDescontoOperacao) => setForm({ ...form, podeDarDescontoOperacao })}
           />
 
           <ModalFormFooter

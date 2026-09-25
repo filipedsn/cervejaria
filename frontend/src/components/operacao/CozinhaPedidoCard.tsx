@@ -1,5 +1,5 @@
 import { PedidoElapsedTimer } from '../PedidoElapsedTimer';
-import { rotuloComanda, type PedidoCozinha, type StatusPedido } from '../../lib/quiosque';
+import { rotuloComanda, type PedidoCozinha, type StatusPedido } from '../../lib/operacao';
 
 export const AVANCO_COZINHA: Partial<Record<StatusPedido, { status: StatusPedido; label: string }>> = {
   RECEBIDO: { status: 'EM_PREPARO', label: 'Iniciar' },
@@ -92,7 +92,7 @@ export function CozinhaPedidoCard({
               type="button"
               className="cozinha-tv-card-btn cozinha-tv-card-btn-primary"
               disabled={disabled}
-              data-audit="quiosque-cozinha-avancar"
+              data-audit="operacao-cozinha-avancar"
               onClick={() => onAvancar(avanco.status)}
             >
               {avanco.label}
@@ -177,7 +177,7 @@ export function CozinhaPedidoCard({
             type="button"
             className="touch-btn-danger touch-btn-sm"
             disabled={disabled}
-            data-audit="quiosque-cozinha-cancelar"
+            data-audit="operacao-cozinha-cancelar"
             onClick={onCancelar}
           >
             Cancelar pedido

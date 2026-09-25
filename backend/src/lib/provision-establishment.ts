@@ -1,15 +1,11 @@
 import { z } from 'zod';
 
 export const establishmentEnablementsSchema = z.object({
-  directSales: z.boolean(),
   plannedOperations: z.boolean(),
   taps: z.boolean(),
   inventory: z.boolean(),
   kitchen: z.boolean(),
-}).refine(
-  (enablements) => enablements.directSales !== enablements.plannedOperations,
-  'Escolha exatamente um modo operacional: caixa ou eventos.',
-);
+});
 
 export const provisionEstablishmentRequestSchema = z.object({
   nome: z.string().min(2),
@@ -51,8 +47,6 @@ export async function provisionEstablishment(
   const configuracaoOperacional = await tx.configuracaoOperacional.create({
     data: {
       cervejariaId: cervejaria.id,
-      // directSales is the compatibility inverse of the persisted mode signal.
-      directSalesEnabled: !enablements.plannedOperations,
       plannedOperationsEnabled: enablements.plannedOperations,
       tapsEnabled: enablements.taps,
       inventoryEnabled: enablements.inventory,
@@ -61,7 +55,7 @@ export async function provisionEstablishment(
   });
   // This row is a temporary route-context projection, never the new source of truth.
   if (resources.legacyProjection) {
-    await tx.configuracaoQuiosque.create({
+    await tx.configuracaoOperacao.create({
       data: {
         cervejariaId: cervejaria.id,
         controlaEstoque: enablements.inventory,
@@ -78,7 +72,7 @@ export async function provisionEstablishment(
 
 export function adaptLegacyProvisioning(input: {
   cervejariaNome: string; donoNome: string; donoEmail: string; senhaHash: string;
-  moduloCervejaria: boolean; moduloQuiosque: boolean; quiosqueControlaEstoque: boolean; quiosqueTemCozinha: boolean;
+  moduloCervejaria: boolean; moduloOperacao: boolean; operacaoControlaEstoque: boolean; operacaoTemCozinha: boolean;
 }, slug: string) {
   return {
     input: {
@@ -86,17 +80,16 @@ export function adaptLegacyProvisioning(input: {
       slug,
       dono: { nome: input.donoNome, email: input.donoEmail, senhaHash: input.senhaHash },
       enablements: {
-        directSales: !input.moduloCervejaria,
         plannedOperations: input.moduloCervejaria,
         taps: input.moduloCervejaria,
-        inventory: input.quiosqueControlaEstoque,
-        kitchen: input.quiosqueTemCozinha,
+        inventory: input.operacaoControlaEstoque,
+        kitchen: input.operacaoTemCozinha,
       },
     },
     resources: {
       createTrailer: input.moduloCervejaria,
-      createPointOfSale: input.moduloQuiosque,
-      legacyProjection: input.moduloQuiosque,
+      createPointOfSale: input.moduloOperacao,
+      legacyProjection: input.moduloOperacao,
       legacyExclusivo: !input.moduloCervejaria,
     },
   };

@@ -29,7 +29,7 @@ export type ComandaParaFechar = {
   total: unknown;
   desconto?: unknown;
   itens: ItemWithProduto[];
-  origem?: 'EVENTO' | 'QUIOSQUE';
+  origem?: 'EVENTO' | 'CAIXA' | 'QUIOSQUE';
 };
 
 /**
@@ -129,7 +129,7 @@ export async function fecharComandaComPagamentos(
     fechadaEm: Date;
     grupoPagamentoId?: string;
     comandaIdsGrupo?: string[];
-    origem?: 'EVENTO' | 'QUIOSQUE';
+    origem?: 'EVENTO' | 'CAIXA' | 'QUIOSQUE';
     pagamentosDetalhados?: PagamentoInput[];
   },
 ) {
@@ -185,7 +185,7 @@ export async function fecharComandaComPagamentos(
     include: comandaFechadaInclude,
   });
 
-  const tipoTransacao = origem === 'QUIOSQUE' ? 'QUIOSQUE_COMANDA_FECHADA' : 'COMANDA_FECHADA';
+  const tipoTransacao = origem === 'CAIXA' ? 'COMANDA_FECHADA' : 'COMANDA_FECHADA';
 
   await registrarTransacao(
     {
@@ -200,7 +200,7 @@ export async function fecharComandaComPagamentos(
     tx,
   );
 
-  recordComandaFechada(Math.round(total * 100), origem === 'QUIOSQUE' ? 'quiosque' : 'cervejaria');
+  recordComandaFechada(Math.round(total * 100), origem === 'EVENTO' ? 'cervejaria' : 'operacao');
 
   const totalMlChope = computeChopeMlFromItens(comandaAtual.itens);
   if (origem === 'EVENTO' && comandaAtual.tipo !== 'AVULSA' && comandaAtual.clienteId) {
@@ -231,7 +231,7 @@ export async function cancelarComandaVaziaInTx(
       status: 'ABERTA',
       OR: [
         { evento: { cervejariaId: params.cervejariaId } },
-        { origem: 'QUIOSQUE', pontoVenda: { cervejariaId: params.cervejariaId } },
+        { origem: 'CAIXA', pontoVenda: { cervejariaId: params.cervejariaId } },
       ],
     },
     include: { itens: true, cliente: true },

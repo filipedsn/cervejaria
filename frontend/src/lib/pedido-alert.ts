@@ -107,7 +107,7 @@ function playBeeps() {
 
 /**
  * Toca sem consultar a preferencia de alerta de pedidos do cliente. Serve a
- * quem tem a propria chave de preferencia, como a tela de cozinha do quiosque.
+ * quem tem a propria chave de preferencia, como a tela de cozinha do operacao.
  */
 export async function playAlertaAgora(): Promise<boolean> {
   vibrateAlert();

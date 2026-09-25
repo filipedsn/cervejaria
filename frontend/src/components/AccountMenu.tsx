@@ -80,8 +80,8 @@ export function AccountMenu({
   const { theme, setTheme } = useTheme();
   const { isDono } = useAuth();
   const location = useLocation();
-  const inQuiosque = location.pathname.startsWith('/quiosque');
-  const equipeHref = inQuiosque ? '/quiosque/configuracoes/equipe' : '/configuracoes/equipe';
+  const inOperacao = location.pathname.startsWith('/operacao');
+  const equipeHref = inOperacao ? '/operacao/configuracoes/equipe' : '/configuracoes/equipe';
 
   if (!open) return null;
 

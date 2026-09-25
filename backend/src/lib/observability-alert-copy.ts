@@ -31,7 +31,7 @@ const RULE_COPY: Record<string, AlertCopy> = {
     summary:
       'A API de producao respondeu com erro 5xx (falha interna) mais vezes do que o limite em 15 minutos.',
     impact:
-      'Operacoes podem falhar para a equipe e clientes: comandas, pagamentos, ranking e quiosque.',
+      'Operacoes podem falhar para a equipe e clientes: comandas, pagamentos, ranking e operacao.',
     actions: [
       'Rode npm run prod:status e confira se a API esta no ar.',
       'Abra deploy/logs/api-error.log e procure o erro mais recente.',
@@ -218,9 +218,9 @@ const RULE_COPY: Record<string, AlertCopy> = {
     severity: 'medium',
     category: 'slo',
     summary: 'Pedidos estao demorando mais que o esperado para sair da fila da cozinha.',
-    impact: 'Clientes esperam mais; operacao do quiosque fica prejudicada.',
+    impact: 'Clientes esperam mais; operacao do operacao fica prejudicada.',
     actions: [
-      'Confira a tela de cozinha e fila de pedidos no quiosque.',
+      'Confira a tela de cozinha e fila de pedidos no operacao.',
       'Verifique se ha pico de pedidos ou problema de rede no local.',
     ],
   },

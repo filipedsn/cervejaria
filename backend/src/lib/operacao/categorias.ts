@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-/** Categorias padrao do catalogo do quiosque (agrupamento no PDV). */
-export const CATEGORIAS_PRODUTO_QUIOSQUE = [
+/** Categorias padrao do catalogo do operacao (agrupamento no PDV). */
+export const CATEGORIAS_PRODUTO_OPERACAO = [
   'Bebidas',
   'Cervejas',
   'Drinks',
@@ -13,19 +13,19 @@ export const CATEGORIAS_PRODUTO_QUIOSQUE = [
   'Outros',
 ] as const;
 
-export type CategoriaProdutoQuiosque = (typeof CATEGORIAS_PRODUTO_QUIOSQUE)[number];
+export type CategoriaProdutoOperacao = (typeof CATEGORIAS_PRODUTO_OPERACAO)[number];
 
-const categoriasSet = new Set<string>(CATEGORIAS_PRODUTO_QUIOSQUE);
+const categoriasSet = new Set<string>(CATEGORIAS_PRODUTO_OPERACAO);
 
-export function isCategoriaProdutoQuiosque(value: string): value is CategoriaProdutoQuiosque {
+export function isCategoriaProdutoOperacao(value: string): value is CategoriaProdutoOperacao {
   return categoriasSet.has(value);
 }
 
 /** Normaliza texto livre legado para a categoria canonica mais proxima. */
-export function normalizeCategoriaProduto(value: string | null | undefined): CategoriaProdutoQuiosque {
+export function normalizeCategoriaProduto(value: string | null | undefined): CategoriaProdutoOperacao {
   if (!value?.trim()) return 'Outros';
   const trimmed = value.trim();
-  const exact = CATEGORIAS_PRODUTO_QUIOSQUE.find((c) => c.toLowerCase() === trimmed.toLowerCase());
+  const exact = CATEGORIAS_PRODUTO_OPERACAO.find((c) => c.toLowerCase() === trimmed.toLowerCase());
   if (exact) return exact;
 
   const lower = trimmed.toLowerCase();
@@ -41,9 +41,9 @@ export function normalizeCategoriaProduto(value: string | null | undefined): Cat
   return 'Outros';
 }
 
-export const categoriaProdutoQuiosqueSchema = z
+export const categoriaProdutoOperacaoSchema = z
   .string()
   .trim()
   .min(1)
   .transform(normalizeCategoriaProduto)
-  .refine(isCategoriaProdutoQuiosque, { message: 'Categoria invalida' });
+  .refine(isCategoriaProdutoOperacao, { message: 'Categoria invalida' });

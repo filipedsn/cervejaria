@@ -1,7 +1,7 @@
-export const QUIOSQUE_CAPACIDADES_INVALIDATION_KEYS = [
-  ['quiosque-contexto'],
-  ['quiosque-cozinha'],
-  ['quiosque-estoque'],
+export const CAIXA_CAPACIDADES_INVALIDATION_KEYS = [
+  ['operacao-contexto'],
+  ['operacao-cozinha'],
+  ['operacao-estoque'],
 ] as const;
 
 export function mensagemConfirmacaoEstoque(ativar: boolean): string {
@@ -10,7 +10,7 @@ export function mensagemConfirmacaoEstoque(ativar: boolean): string {
     : 'A partir desta alteração, novas vendas não movimentarão o estoque. Os saldos e históricos existentes serão preservados. Deseja continuar?';
 }
 
-export function modoEmpresa(cervejaria: boolean, quiosque: boolean): 'Cervejaria' | 'Quiosque' | 'Híbrida' {
-  if (cervejaria && quiosque) return 'Híbrida';
-  return quiosque ? 'Quiosque' : 'Cervejaria';
+export function modoEmpresa(cervejaria: boolean, operacao: boolean): 'Cervejaria' | 'Operacao' | 'Híbrida' {
+  if (cervejaria && operacao) return 'Híbrida';
+  return operacao ? 'Operacao' : 'Cervejaria';
 }

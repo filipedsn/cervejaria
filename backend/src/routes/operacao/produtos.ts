@@ -2,15 +2,15 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import {
-  CATEGORIAS_PRODUTO_QUIOSQUE,
-  categoriaProdutoQuiosqueSchema,
-} from '../../lib/quiosque/categorias.js';
-import { diaOperacional } from '../../lib/quiosque/venda.js';
-import { listProdutosOperacionaisTurno } from '../../lib/quiosque/sessao-cardapio.js';
+  CATEGORIAS_PRODUTO_OPERACAO,
+  categoriaProdutoOperacaoSchema,
+} from '../../lib/operacao/categorias.js';
+import { diaOperacional } from '../../lib/operacao/venda.js';
+import { listProdutosOperacionaisTurno } from '../../lib/operacao/sessao-cardapio.js';
 
 const createProdutoSchema = z.object({
   nome: z.string().min(1),
-  categoria: categoriaProdutoQuiosqueSchema.default('Bebidas'),
+  categoria: categoriaProdutoOperacaoSchema.default('Bebidas'),
   precoUnit: z.number().positive(),
   exigePreparo: z.boolean().default(false),
   controlaEstoque: z.boolean().default(true),
@@ -19,7 +19,7 @@ const createProdutoSchema = z.object({
 
 const updateProdutoSchema = createProdutoSchema.partial().extend({
   ativo: z.boolean().optional(),
-  categoria: categoriaProdutoQuiosqueSchema.optional(),
+  categoria: categoriaProdutoOperacaoSchema.optional(),
 });
 
 function respostaProduto(produto: { precos?: Array<{ preco: unknown }>; [key: string]: unknown }) {
@@ -29,13 +29,13 @@ function respostaProduto(produto: { precos?: Array<{ preco: unknown }>; [key: st
   };
 }
 
-export async function produtosQuiosqueRoutes(app: FastifyInstance) {
+export async function produtosOperacaoRoutes(app: FastifyInstance) {
   app.get('/categorias', async () => ({
-    categorias: [...CATEGORIAS_PRODUTO_QUIOSQUE],
+    categorias: [...CATEGORIAS_PRODUTO_OPERACAO],
   }));
 
   app.get('/', async (request) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const query = z
       .object({
         incluirInativos: z.coerce.boolean().default(false),
@@ -65,7 +65,7 @@ export async function produtosQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.post('/', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const body = createProdutoSchema.parse(request.body);
 
     const produto = await prisma.produto.create({
@@ -84,7 +84,7 @@ export async function produtosQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.put('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
     const body = updateProdutoSchema.parse(request.body);
 
@@ -119,7 +119,7 @@ export async function produtosQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
 
     const existing = await prisma.produto.findFirst({ where: { id, cervejariaId } });

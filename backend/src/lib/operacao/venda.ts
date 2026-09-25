@@ -9,8 +9,8 @@ import { kitchenService } from '../../services/kitchen-service.js';
  * Erro de regra de venda. O statusCode faz o Fastify responder 400 com a
  * mensagem pronta para o operador, em vez de registrar falha do servidor.
  */
-import { mapPrecosCardapioQuiosque } from '../cardapio-preco.js';
-import { quiosqueUsaCardapio } from '../cardapio-toggle.js';
+import { mapPrecosCardapioOperacao } from '../cardapio-preco.js';
+import { operacaoUsaCardapio } from '../cardapio-toggle.js';
 import { assertProdutoNoCardapioTurno } from './sessao-cardapio.js';
 
 export class VendaInvalidaError extends Error {
@@ -18,10 +18,10 @@ export class VendaInvalidaError extends Error {
 }
 
 /** Vendas concorrentes serializam no advisory lock do pedido; defaults do Prisma estouram antes. */
-export const QUIOSQUE_VENDA_TX = { maxWait: 15_000, timeout: 20_000 } as const;
+export const CAIXA_VENDA_TX = { maxWait: 15_000, timeout: 20_000 } as const;
 
 /**
- * Dia da operacao no fuso de Brasilia. O quiosque costuma virar a meia-noite,
+ * Dia da operacao no fuso de Brasilia. O operacao costuma virar a meia-noite,
  * entao a data do instante UTC colocaria a mesma noite em dois caixas.
  */
 export function diaOperacional(referencia = new Date()): Date {
@@ -85,21 +85,21 @@ export async function resolverItens(
   });
 
   if (produtos.length !== ids.length) {
-    throw new VendaInvalidaError('Produto indisponível no catálogo do quiosque');
+    throw new VendaInvalidaError('Produto indisponível no catálogo do operacao');
   }
 
   if (opts?.sessaoCaixaId) {
-    const usaCardapio = await quiosqueUsaCardapio(cervejariaId);
+    const usaCardapio = await operacaoUsaCardapio(cervejariaId);
     if (usaCardapio) {
-      const sessao = await tx.sessaoCaixaQuiosque.findUnique({
+      const sessao = await tx.sessaoCaixaOperacao.findUnique({
         where: { id: opts.sessaoCaixaId },
-        select: { cardapioQuiosqueId: true },
+        select: { cardapioOperacaoId: true },
       });
-      const precosTemplate = sessao?.cardapioQuiosqueId
-        ? await mapPrecosCardapioQuiosque(sessao.cardapioQuiosqueId)
+      const precosTemplate = sessao?.cardapioOperacaoId
+        ? await mapPrecosCardapioOperacao(sessao.cardapioOperacaoId)
         : null;
 
-      const overridesTurno = await tx.sessaoCaixaProdutoQuiosque.findMany({
+      const overridesTurno = await tx.sessaoCaixaProdutoOperacao.findMany({
         where: {
           sessaoCaixaId: opts.sessaoCaixaId,
           produtoId: { in: ids },
@@ -156,7 +156,7 @@ export function totalEmCentavos(itens: Array<{ precoUnit: unknown; quantidade: n
  */
 function lockKeyDaSenha(cervejariaId: string, dia: Date): bigint {
   const digest = createHash('sha256')
-    .update(`pedido-quiosque:${cervejariaId}:${dia.toISOString().slice(0, 10)}`)
+    .update(`pedido-operacao:${cervejariaId}:${dia.toISOString().slice(0, 10)}`)
     .digest();
   return BigInt.asIntN(64, digest.readBigUInt64BE(0));
 }
@@ -183,13 +183,13 @@ export async function criarPedido(
 ) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKeyDaSenha(params.cervejariaId, params.dia)})`;
 
-  const ultimo = await tx.pedidoQuiosque.findFirst({
+  const ultimo = await tx.pedidoOperacao.findFirst({
     where: { cervejariaId: params.cervejariaId, diaOperacional: params.dia },
     orderBy: { numero: 'desc' },
     select: { numero: true },
   });
 
-  const pedido = await tx.pedidoQuiosque.create({
+  const pedido = await tx.pedidoOperacao.create({
     data: {
       cervejariaId: params.cervejariaId,
       comandaId: params.comandaId,
@@ -214,7 +214,7 @@ export async function criarPedido(
     })),
   });
 
-  const pedidoComItens = await tx.pedidoQuiosque.findUniqueOrThrow({
+  const pedidoComItens = await tx.pedidoOperacao.findUniqueOrThrow({
     where: { id: pedido.id },
     include: { itensComanda: true },
   });
@@ -226,7 +226,7 @@ export async function criarPedido(
 
 type ComandaCompleta = Prisma.ComandaGetPayload<{
   include: {
-    pedidosQuiosque: { include: { itensComanda: true } };
+    pedidosOperacao: { include: { itensComanda: true } };
     itens: true;
     pagamentos: true;
   };
@@ -240,7 +240,7 @@ export function subtotalComandaEmCentavos(comanda: ComandaCompleta): number {
  * Monta a conta como o operador ve. Total vem persistido na comanda (padrão cervejaria).
  */
 export function resumoComanda(comanda: ComandaCompleta) {
-  const pedidos = comanda.pedidosQuiosque.map((pedido) => ({
+  const pedidos = comanda.pedidosOperacao.map((pedido) => ({
     id: pedido.id,
     numero: pedido.numero,
     status: pedido.status,

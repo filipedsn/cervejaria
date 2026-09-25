@@ -1,9 +1,9 @@
 import type { Prisma } from '@prisma/client';
-import type { ItemResolvido } from '../lib/quiosque/venda.js';
+import type { ItemResolvido } from '../lib/operacao/venda.js';
 import {
   baixarEstoqueDoPedido,
   estornarEstoqueDaComanda,
-} from '../lib/quiosque/estoque.js';
+} from '../lib/operacao/estoque.js';
 
 export type OperationalContext = 'CAIXA' | 'EVENTO';
 

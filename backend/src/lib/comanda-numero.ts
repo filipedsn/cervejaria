@@ -8,9 +8,9 @@ function lockKeyComandaEvento(eventoId: string): bigint {
   return BigInt.asIntN(64, digest.readBigUInt64BE(0));
 }
 
-function lockKeyComandaQuiosqueTurno(cervejariaId: string, pontoVendaId: string, abertoEm: Date): bigint {
+function lockKeyComandaOperacaoTurno(cervejariaId: string, pontoVendaId: string, abertoEm: Date): bigint {
   const digest = createHash('sha256')
-    .update(`comanda-quiosque:${cervejariaId}:${pontoVendaId}:${abertoEm.toISOString()}`)
+    .update(`comanda-operacao:${cervejariaId}:${pontoVendaId}:${abertoEm.toISOString()}`)
     .digest();
   return BigInt.asIntN(64, digest.readBigUInt64BE(0));
 }
@@ -37,17 +37,17 @@ export async function proximoNumeroComandaEvento(
 }
 
 /** Numero sequencial da comanda no turno de caixa aberto (nao inclui vendas avulsas). */
-export async function proximoNumeroComandaQuiosqueTurno(
+export async function proximoNumeroComandaOperacaoTurno(
   tx: TxClient,
   cervejariaId: string,
   pontoVendaId: string,
   turnoAbertoEm: Date,
 ): Promise<number> {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKeyComandaQuiosqueTurno(cervejariaId, pontoVendaId, turnoAbertoEm)})`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKeyComandaOperacaoTurno(cervejariaId, pontoVendaId, turnoAbertoEm)})`;
 
   const ultimo = await tx.comanda.findFirst({
     where: {
-      origem: 'QUIOSQUE',
+      origem: 'CAIXA',
       pontoVenda: { cervejariaId },
       pontoVendaId,
       tipo: { not: 'AVULSA' },

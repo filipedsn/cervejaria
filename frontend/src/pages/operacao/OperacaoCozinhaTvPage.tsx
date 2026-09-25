@@ -1,14 +1,14 @@
 import { Link } from 'react-router-dom';
 import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
-import { CozinhaPedidoCard } from '../../components/quiosque/CozinhaPedidoCard';
+import { CozinhaPedidoCard } from '../../components/operacao/CozinhaPedidoCard';
 import { IconBell } from '../../components/NavIcons';
 import { useAuth } from '../../contexts/AuthContext';
-import { useQuiosqueCozinha } from '../../hooks/useQuiosqueCozinha';
+import { useOperacaoCozinha } from '../../hooks/useOperacaoCozinha';
 
-export function QuiosqueCozinhaTvPage() {
+export function OperacaoCozinhaTvPage() {
   const { cervejaria } = useAuth();
-  const { naFila, aguardando, alerta, mudarStatus, isLoading, erroMutation } = useQuiosqueCozinha();
+  const { naFila, aguardando, alerta, mudarStatus, isLoading, erroMutation } = useOperacaoCozinha();
 
   if (isLoading) return <Loading fullScreen />;
 
@@ -52,7 +52,7 @@ export function QuiosqueCozinhaTvPage() {
           >
             <IconBell className="w-7 h-7" strokeWidth={alerta.ativo ? 2.25 : 1.75} />
           </button>
-          <Link to="/quiosque/cozinha" className="cozinha-tv-link-operacional">
+          <Link to="/operacao/cozinha" className="cozinha-tv-link-operacional">
             Modo operacional
           </Link>
         </div>

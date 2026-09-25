@@ -11,22 +11,22 @@ export class DescontoInvalidoError extends Error {
   }
 }
 
-export function papelPodeDarDescontoQuiosque(
+export function papelPodeDarDescontoOperacao(
   papel: UserRole | JwtPayload['papel'],
-  podeDarDescontoQuiosque: boolean,
+  podeDarDescontoOperacao: boolean,
 ): boolean {
-  return papel === 'DONO' || papel === 'ADMIN' || podeDarDescontoQuiosque;
+  return papel === 'DONO' || papel === 'ADMIN' || podeDarDescontoOperacao;
 }
 
-export async function assertPodeDarDescontoQuiosque(user: JwtPayload) {
+export async function assertPodeDarDescontoOperacao(user: JwtPayload) {
   if (user.papel === 'DONO' || user.papel === 'ADMIN') return;
 
   const usuario = await prisma.usuario.findUnique({
     where: { id: user.sub },
-    select: { podeDarDescontoQuiosque: true },
+    select: { podeDarDescontoOperacao: true },
   });
 
-  if (!usuario?.podeDarDescontoQuiosque) {
+  if (!usuario?.podeDarDescontoOperacao) {
     throw new DescontoInvalidoError('Sem permissão para aplicar desconto na comanda', 403);
   }
 }

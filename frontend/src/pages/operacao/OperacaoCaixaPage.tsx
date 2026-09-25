@@ -4,14 +4,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../../lib/api';
 import { Loading } from '../../components/Loading';
 import { PageHeader } from '../../components/PageHeader';
-import { PainelCaixaQuiosque } from '../../components/quiosque/PainelCaixaQuiosque';
-import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
+import { PainelCaixaOperacao } from '../../components/operacao/PainelCaixaOperacao';
+import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { PdvPortalQrButton } from '../../components/PdvPortalQrButton';
 
-/** Rota legada /quiosque/caixa — o painel principal fica em Comandas. */
-export function QuiosqueCaixaPage() {
+/** Rota legada /operacao/caixa — o painel principal fica em Comandas. */
+export function OperacaoCaixaPage() {
   const queryClient = useQueryClient();
-  const { contexto } = useQuiosqueContexto();
+  const { contexto } = useOperacaoContexto();
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
   const [searchParams] = useSearchParams();
   const [pontoVendaId, setPontoVendaId] = useState('');
@@ -20,8 +20,8 @@ export function QuiosqueCaixaPage() {
   const pontoSolicitado = searchParams.get('pontoVendaId');
   const pontoAtivo = pontoVendaId || (pontoSolicitado && pontosVenda.some((ponto) => ponto.id === pontoSolicitado) ? pontoSolicitado : '') || pontosVenda[0]?.id || '';
   const criarPonto = useMutation({
-    mutationFn: () => api.post<{ id: string }>('/api/quiosque/pontos-venda', { nome: nomePonto.trim() }),
-    onSuccess: (ponto) => { setPontoVendaId(ponto.id); setErro(''); queryClient.invalidateQueries({ queryKey: ['quiosque-contexto'] }); },
+    mutationFn: () => api.post<{ id: string }>('/api/operacao/pontos-venda', { nome: nomePonto.trim() }),
+    onSuccess: (ponto) => { setPontoVendaId(ponto.id); setErro(''); queryClient.invalidateQueries({ queryKey: ['operacao-contexto'] }); },
     onError: (cause) => setErro(cause instanceof ApiError ? cause.message : 'Não foi possível criar o ponto de venda'),
   });
 
@@ -36,7 +36,7 @@ export function QuiosqueCaixaPage() {
 
   return (
     <div className="space-y-4 pb-2">
-      <PageHeader title="Caixa" backTo="/quiosque/comandas" backLabel="Comandas" />
+      <PageHeader title="Caixa" backTo="/operacao/comandas" backLabel="Comandas" />
 
       {pontosVenda.length > 1 && (
         <div>
@@ -51,7 +51,7 @@ export function QuiosqueCaixaPage() {
         </div>
       )}
 
-      {pontoAtivo ? <><PainelCaixaQuiosque pontoVendaId={pontoAtivo} /><PdvPortalQrButton pontoVendaId={pontoAtivo} /></> : <Loading />}
+      {pontoAtivo ? <><PainelCaixaOperacao pontoVendaId={pontoAtivo} /><PdvPortalQrButton pontoVendaId={pontoAtivo} /></> : <Loading />}
     </div>
   );
 }

@@ -3,7 +3,7 @@ export interface Usuario {
   nome: string;
   email: string;
   papel: 'ADMIN' | 'DONO' | 'ATENDENTE';
-  podeDarDescontoQuiosque?: boolean;
+  podeDarDescontoOperacao?: boolean;
 }
 
 export interface BrandPalette {
@@ -41,7 +41,7 @@ export interface Cervejaria {
   updatedAt?: string;
   /** Mtime do arquivo de logo (cache-bust independente do updatedAt do registro). */
   logoVersion?: string | null;
-  /** KPIs da tela de comandas (cervejaria e quiosque). */
+  /** KPIs da tela de comandas (cervejaria e operacao). */
   exibirKpisComanda?: boolean;
   /** Lista em coluna única (true) ou duas colunas (false). */
   comandasColunaUnica?: boolean;

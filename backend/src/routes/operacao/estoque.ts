@@ -8,7 +8,7 @@ import {
   listarSaldos,
   registrarEntrada,
   registrarSaidaManual,
-} from '../../lib/quiosque/estoque.js';
+} from '../../lib/operacao/estoque.js';
 import { registrarTransacao } from '../../lib/transacao-log.js';
 
 const pontoVendaQuery = z.object({
@@ -43,15 +43,15 @@ const estoqueMinimoSchema = z.object({
   estoqueMinimo: z.number().int().min(0).nullable(),
 });
 
-export async function estoqueQuiosqueRoutes(app: FastifyInstance) {
+export async function estoqueOperacaoRoutes(app: FastifyInstance) {
   app.addHook('preHandler', async (request) => {
-    if (!request.quiosque.controlaEstoque) {
-      throw app.httpErrors.notFound('Quiosque sem controle de estoque');
+    if (!request.operacao.controlaEstoque) {
+      throw app.httpErrors.notFound('Operacao sem controle de estoque');
     }
   });
 
   app.get('/', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { pontoVendaId } = pontoVendaQuery.parse(request.query);
 
     const pontoVenda = await prisma.pontoVenda.findFirst({
@@ -63,7 +63,7 @@ export async function estoqueQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.post('/entrada', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = entradaSchema.parse(request.body);
 
@@ -78,7 +78,7 @@ export async function estoqueQuiosqueRoutes(app: FastifyInstance) {
 
     void registrarTransacao({
       cervejariaId,
-      tipo: 'QUIOSQUE_ESTOQUE_MOVIMENTO',
+      tipo: 'INVENTORY_MOVEMENT',
       usuarioId: user.sub,
       metadata: { operacao: 'entrada', produtoId: body.produtoId, quantidade: body.quantidade },
       payload: { request: body, saldos },
@@ -88,7 +88,7 @@ export async function estoqueQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.post('/saida', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = saidaSchema.parse(request.body);
 
@@ -104,7 +104,7 @@ export async function estoqueQuiosqueRoutes(app: FastifyInstance) {
 
     void registrarTransacao({
       cervejariaId,
-      tipo: 'QUIOSQUE_ESTOQUE_MOVIMENTO',
+      tipo: 'INVENTORY_MOVEMENT',
       usuarioId: user.sub,
       metadata: { operacao: 'saida', tipo: body.tipo, produtoId: body.produtoId, quantidade: body.quantidade },
       payload: { request: body, saldos },
@@ -114,7 +114,7 @@ export async function estoqueQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.post('/ajuste', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = ajusteSchema.parse(request.body);
 
@@ -129,7 +129,7 @@ export async function estoqueQuiosqueRoutes(app: FastifyInstance) {
 
     void registrarTransacao({
       cervejariaId,
-      tipo: 'QUIOSQUE_ESTOQUE_MOVIMENTO',
+      tipo: 'INVENTORY_MOVEMENT',
       usuarioId: user.sub,
       metadata: { operacao: 'ajuste', produtoId: body.produtoId, quantidadeNova: body.quantidadeNova },
       payload: { request: body, saldos },
@@ -139,7 +139,7 @@ export async function estoqueQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.put('/minimo', { preHandler: [app.requireDono] }, async (request) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const body = estoqueMinimoSchema.parse(request.body);
     return atualizarEstoqueMinimo({ cervejariaId, ...body });
   });

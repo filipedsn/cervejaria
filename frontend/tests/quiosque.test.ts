@@ -7,7 +7,7 @@ import {
   rotuloInternoComanda,
   classificarEstoque,
   type ComandaQuiosque,
-} from '../src/lib/quiosque.ts';
+} from '../src/lib/operacao.ts';
 
 function comanda(id: string, identificador: string, numero: number): ComandaQuiosque {
   return {

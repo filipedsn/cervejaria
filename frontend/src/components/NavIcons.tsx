@@ -205,50 +205,50 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 /** Navegacao operacional do estabelecimento, adicionada por capacidade atual. */
-export const NAV_ITEMS_QUIOSQUE: NavItem[] = [
-  { path: '/quiosque/caixa', label: 'Caixa', shortLabel: 'Caixa', Icon: IconCashRegister },
+export const NAV_ITEMS_OPERACAO: NavItem[] = [
+  { path: '/operacao/caixa', label: 'Caixa', shortLabel: 'Caixa', Icon: IconCashRegister },
 ];
 
 export function getOperationalModeNavItems(contexto: {
   operationMode: 'CAIXA' | 'EVENTO' | null;
   cashRegisterEnabled: boolean;
 }) {
-  return contexto.operationMode === 'CAIXA' ? NAV_ITEMS_QUIOSQUE : [];
+  return contexto.operationMode === 'CAIXA' ? NAV_ITEMS_OPERACAO : [];
 }
 
-type QuiosqueNavContext = {
+type OperacaoNavContext = {
   temCozinha: boolean;
   controlaEstoque: boolean;
 };
 
-/** Abas do quiosque na barra inferior — mesmo padrao mobile da cervejaria. */
-export const QUIOSQUE_NAV_ITEMS: NavItem[] = [
-  { path: '/quiosque/caixa', label: 'Caixa', shortLabel: 'Caixa', Icon: IconCashRegister },
-  { path: '/quiosque/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
+/** Abas do operacao na barra inferior — mesmo padrao mobile da cervejaria. */
+export const CAIXA_NAV_ITEMS: NavItem[] = [
+  { path: '/operacao/caixa', label: 'Caixa', shortLabel: 'Caixa', Icon: IconCashRegister },
+  { path: '/operacao/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
   {
-    path: '/quiosque/cozinha',
+    path: '/operacao/cozinha',
     label: 'Cozinha',
     shortLabel: 'Cozinha',
     Icon: IconChefHat,
     somenteCozinha: true as const,
   },
   {
-    path: '/quiosque/estoque',
+    path: '/operacao/estoque',
     label: 'Estoque',
     shortLabel: 'Estoque',
     Icon: IconPackage,
     somenteEstoque: true as const,
   },
   {
-    path: '/quiosque/dashboard',
+    path: '/operacao/dashboard',
     label: 'Dashboard',
     shortLabel: 'Dashboard',
     Icon: IconBarChart,
     donoOnly: true as const,
   },
-  { path: '/quiosque/catalogo', label: 'Cardápio', shortLabel: 'Cardápio', Icon: IconListMenu },
+  { path: '/operacao/catalogo', label: 'Cardápio', shortLabel: 'Cardápio', Icon: IconListMenu },
   {
-    path: '/quiosque/configuracoes',
+    path: '/operacao/configuracoes',
     label: 'Configurações',
     shortLabel: 'Config.',
     Icon: IconSettings,
@@ -256,29 +256,29 @@ export const QUIOSQUE_NAV_ITEMS: NavItem[] = [
   },
 ];
 
-type QuiosqueNavFilterContext = QuiosqueNavContext & { isDono: boolean; operationMode?: 'CAIXA' | 'EVENTO' | null };
+type OperacaoNavFilterContext = OperacaoNavContext & { isDono: boolean; operationMode?: 'CAIXA' | 'EVENTO' | null };
 
-export function getQuiosqueNavItems(contexto: QuiosqueNavFilterContext) {
-  return QUIOSQUE_NAV_ITEMS.filter(
+export function getOperacaoNavItems(contexto: OperacaoNavFilterContext) {
+  return CAIXA_NAV_ITEMS.filter(
     (item) =>
       (!('donoOnly' in item && item.donoOnly) || contexto.isDono) &&
-      (item.path !== '/quiosque/caixa' || contexto.operationMode === 'CAIXA') &&
+      (item.path !== '/operacao/caixa' || contexto.operationMode === 'CAIXA') &&
       (!('somenteCozinha' in item && item.somenteCozinha) || contexto.temCozinha) &&
       (!('somenteEstoque' in item && item.somenteEstoque) || contexto.controlaEstoque),
   );
 }
 
-export function getComplementaryNavItems(contexto: Pick<QuiosqueNavContext, 'temCozinha' | 'controlaEstoque'>) {
-  return QUIOSQUE_NAV_ITEMS.filter((item) =>
+export function getComplementaryNavItems(contexto: Pick<OperacaoNavContext, 'temCozinha' | 'controlaEstoque'>) {
+  return CAIXA_NAV_ITEMS.filter((item) =>
     (item.somenteCozinha && contexto.temCozinha) || (item.somenteEstoque && contexto.controlaEstoque),
   );
 }
 
-export function isQuiosqueNavActive(path: string, current: string, exact?: boolean) {
-  if (path === '/quiosque/comandas') return current.startsWith('/quiosque/comandas');
-  if (path === '/quiosque/dashboard') return current === path || current.startsWith('/quiosque/turnos/');
-  if (path === '/quiosque/configuracoes') {
-    return current.startsWith('/quiosque/configuracoes') || current === '/quiosque/equipe';
+export function isOperacaoNavActive(path: string, current: string, exact?: boolean) {
+  if (path === '/operacao/comandas') return current.startsWith('/operacao/comandas');
+  if (path === '/operacao/dashboard') return current === path || current.startsWith('/operacao/turnos/');
+  if (path === '/operacao/configuracoes') {
+    return current.startsWith('/operacao/configuracoes') || current === '/operacao/equipe';
   }
   if (exact) return current === path;
   return current.startsWith(path);

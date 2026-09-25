@@ -5,27 +5,27 @@ import { getAuthUser } from '../../types/auth.js';
 import {
   criarPedido,
   diaOperacional,
-  QUIOSQUE_VENDA_TX,
+  CAIXA_VENDA_TX,
   resolverItens,
   resolverPagamentos,
   resumoComanda,
   totalEmCentavos,
   centavos,
   VendaInvalidaError,
-} from '../../lib/quiosque/venda.js';
-import { EstoqueInvalidoError } from '../../lib/quiosque/estoque.js';
-import { CaixaInvalidoError } from '../../lib/quiosque/caixa.js';
-import { notificarPedidoNovo } from '../../lib/quiosque/cozinha.js';
-import { assertCaixaAberto, lockCaixaEmTx } from '../../lib/quiosque/caixa.js';
+} from '../../lib/operacao/venda.js';
+import { EstoqueInvalidoError } from '../../lib/operacao/estoque.js';
+import { CaixaInvalidoError } from '../../lib/operacao/caixa.js';
+import { notificarPedidoNovo } from '../../lib/operacao/cozinha.js';
+import { assertCaixaAberto, lockCaixaEmTx } from '../../lib/operacao/caixa.js';
 import { inventoryService } from '../../services/inventory-service.js';
 import { registrarTransacao } from '../../lib/transacao-log.js';
 import { recordVendaAvulsa } from '../../lib/business-metrics.js';
 import {
-  fecharComandaQuiosqueInTx,
-  INCLUDE_COMANDA_QUIOSQUE,
-  recalcComandaTotalQuiosque,
-} from '../../lib/quiosque/comanda-adapter.js';
-import { assertPodeDarDescontoQuiosque, DescontoInvalidoError } from '../../lib/quiosque/desconto.js';
+  fecharComandaOperacaoInTx,
+  INCLUDE_COMANDA_OPERACAO,
+  recalcComandaTotalOperacao,
+} from '../../lib/operacao/comanda-adapter.js';
+import { assertPodeDarDescontoOperacao, DescontoInvalidoError } from '../../lib/operacao/desconto.js';
 
 const vendaAvulsaSchema = z.object({
   pontoVendaId: z.string().min(1),
@@ -48,17 +48,17 @@ const vendaAvulsaSchema = z.object({
   desconto: z.number().min(0).optional(),
 });
 
-export async function vendasQuiosqueRoutes(app: FastifyInstance) {
+export async function vendasOperacaoRoutes(app: FastifyInstance) {
   app.post('/', async (request, reply) => {
     try {
-      const { cervejariaId, temCozinha, controlaEstoque } = request.quiosque;
+      const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
       const user = getAuthUser(request);
       const body = vendaAvulsaSchema.parse(request.body);
       const desconto = body.desconto ?? 0;
       const dia = diaOperacional();
 
       if (desconto > 0) {
-        await assertPodeDarDescontoQuiosque(user);
+        await assertPodeDarDescontoOperacao(user);
       }
 
       const { comanda, pedido } = await prisma.$transaction(async (tx) => {
@@ -85,7 +85,7 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
 
         const criada = await tx.comanda.create({
           data: {
-            origem: 'QUIOSQUE',
+            origem: 'CAIXA',
             pontoVendaId: body.pontoVendaId,
             tipo: 'AVULSA',
             diaOperacional: dia,
@@ -117,14 +117,14 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
           items: itens,
         });
 
-        await recalcComandaTotalQuiosque(tx, criada.id);
+        await recalcComandaTotalOperacao(tx, criada.id);
 
         const comandaCompleta = await tx.comanda.findUniqueOrThrow({
           where: { id: criada.id },
-          include: INCLUDE_COMANDA_QUIOSQUE,
+          include: INCLUDE_COMANDA_OPERACAO,
         });
 
-        await fecharComandaQuiosqueInTx(tx, {
+        await fecharComandaOperacaoInTx(tx, {
           comanda: comandaCompleta,
           pagamentos,
           cervejariaId,
@@ -135,11 +135,11 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
         return {
           comanda: await tx.comanda.findUniqueOrThrow({
             where: { id: criada.id },
-            include: INCLUDE_COMANDA_QUIOSQUE,
+            include: INCLUDE_COMANDA_OPERACAO,
           }),
           pedido: pedidoCriado,
         };
-      }, QUIOSQUE_VENDA_TX);
+      }, CAIXA_VENDA_TX);
 
       if (temCozinha) await notificarPedidoNovo(app, cervejariaId, pedido);
 
@@ -147,7 +147,7 @@ export async function vendasQuiosqueRoutes(app: FastifyInstance) {
       recordVendaAvulsa(centavos(res.total));
       void registrarTransacao({
         cervejariaId,
-        tipo: 'QUIOSQUE_VENDA_AVULSA',
+        tipo: 'SALE_COMPLETED',
         usuarioId: user.sub,
         comandaId: comanda.id,
         metadata: {

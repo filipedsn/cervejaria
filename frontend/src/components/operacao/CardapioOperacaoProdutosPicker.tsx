@@ -1,14 +1,14 @@
-import type { CardapioQuiosqueItem, ProdutoQuiosque } from '../../lib/quiosque';
+import type { CardapioOperacaoItem, ProdutoOperacao } from '../../lib/operacao';
 import { formatCurrency } from '../../lib/api';
-import { normalizeCategoriaProduto } from '../../lib/quiosque';
+import { normalizeCategoriaProduto } from '../../lib/operacao';
 import { CurrencyInput } from '../CurrencyInput';
 import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../../lib/currency';
 
 
 
-function groupCatalogo(catalogo: ProdutoQuiosque[]) {
+function groupCatalogo(catalogo: ProdutoOperacao[]) {
 
-  const grupos = new Map<string, ProdutoQuiosque[]>();
+  const grupos = new Map<string, ProdutoOperacao[]>();
 
   for (const produto of catalogo) {
 
@@ -28,7 +28,7 @@ function groupCatalogo(catalogo: ProdutoQuiosque[]) {
 
 
 
-function defaultPrecoCatalogo(produto: ProdutoQuiosque): number {
+function defaultPrecoCatalogo(produto: ProdutoOperacao): number {
 
   return parseFloat(produto.precoUnit) || 0;
 
@@ -38,9 +38,9 @@ function defaultPrecoCatalogo(produto: ProdutoQuiosque): number {
 
 type TemplatePickerProps = {
 
-  catalogo: ProdutoQuiosque[];
+  catalogo: ProdutoOperacao[];
 
-  itens: CardapioQuiosqueItem[];
+  itens: CardapioOperacaoItem[];
 
   onToggle: (produtoId: string, defaultPreco: number) => void;
 
@@ -54,7 +54,7 @@ type TemplatePickerProps = {
 
 type SelectionPickerProps = {
 
-  catalogo: ProdutoQuiosque[];
+  catalogo: ProdutoOperacao[];
 
   selectedIds: string[];
 
@@ -68,7 +68,7 @@ type SelectionPickerProps = {
 
 
 
-export function CardapioQuiosqueProdutosPicker(props: TemplatePickerProps | SelectionPickerProps) {
+export function CardapioOperacaoProdutosPicker(props: TemplatePickerProps | SelectionPickerProps) {
 
   const { catalogo } = props;
 
@@ -88,7 +88,7 @@ export function CardapioQuiosqueProdutosPicker(props: TemplatePickerProps | Sele
 
 
 
-  const renderGroup = (titulo: string, items: ProdutoQuiosque[]) => {
+  const renderGroup = (titulo: string, items: ProdutoOperacao[]) => {
 
     if (items.length === 0) return null;
 
@@ -202,7 +202,7 @@ export function CardapioQuiosqueProdutosPicker(props: TemplatePickerProps | Sele
 
       <p className="text-sm text-ink-faint text-center py-3">
 
-        Cadastre produtos no catálogo do quiosque primeiro.
+        Cadastre produtos no catálogo do operacao primeiro.
 
       </p>
 
@@ -226,7 +226,7 @@ export function CardapioQuiosqueProdutosPicker(props: TemplatePickerProps | Sele
 
 
 
-export function CardapioQuiosqueProdutosResumo({
+export function CardapioOperacaoProdutosResumo({
 
   produtos,
 
@@ -234,9 +234,9 @@ export function CardapioQuiosqueProdutosResumo({
 
 }: {
 
-  produtos: ProdutoQuiosque[];
+  produtos: ProdutoOperacao[];
 
-  itens?: CardapioQuiosqueItem[];
+  itens?: CardapioOperacaoItem[];
 
 }) {
 

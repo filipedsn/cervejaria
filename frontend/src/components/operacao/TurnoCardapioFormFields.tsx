@@ -2,13 +2,13 @@ import { useState, type Dispatch, SetStateAction } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import {
-  type CardapioQuiosque,
-  type ProdutoQuiosque,
+  type CardapioOperacao,
+  type ProdutoOperacao,
   type TurnoCardapioFormState,
   defaultTurnoCardapioForm,
   buildTurnoCardapioAbrirPayload,
-} from '../../lib/quiosque';
-import { CardapioQuiosqueProdutosPicker } from './CardapioQuiosqueProdutosPicker';
+} from '../../lib/operacao';
+import { CardapioOperacaoProdutosPicker } from './CardapioOperacaoProdutosPicker';
 import { CardapioSalvoModal, cardapioSalvoLabel } from '../CardapioSalvoModal';
 
 export { defaultTurnoCardapioForm, buildTurnoCardapioAbrirPayload };
@@ -24,13 +24,13 @@ export function TurnoCardapioFormFields({
   const [modalSalvoAberto, setModalSalvoAberto] = useState(false);
 
   const { data: cardapios } = useQuery({
-    queryKey: ['quiosque-cardapios', 'ativo'],
-    queryFn: () => api.get<CardapioQuiosque[]>('/api/quiosque/cardapios?ativo=true'),
+    queryKey: ['operacao-cardapios', 'ativo'],
+    queryFn: () => api.get<CardapioOperacao[]>('/api/operacao/cardapios?ativo=true'),
   });
 
   const { data: catalogo } = useQuery({
-    queryKey: ['quiosque-cardapios', 'catalogo'],
-    queryFn: () => api.get<ProdutoQuiosque[]>('/api/quiosque/cardapios/catalogo'),
+    queryKey: ['operacao-cardapios', 'catalogo'],
+    queryFn: () => api.get<ProdutoOperacao[]>('/api/operacao/cardapios/catalogo'),
     enabled: form.cardapioModo === 'montar',
   });
 
@@ -95,7 +95,7 @@ export function TurnoCardapioFormFields({
       )}
 
       {form.cardapioModo === 'montar' && catalogo && (
-        <CardapioQuiosqueProdutosPicker
+        <CardapioOperacaoProdutosPicker
           catalogo={catalogo}
           selectedIds={form.produtoIds}
           onToggle={toggleProduto}

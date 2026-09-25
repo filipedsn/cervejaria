@@ -35,7 +35,7 @@ export function ConfigKpisComandaPanel() {
           <p className="text-base font-semibold text-ink">KPIs na tela de comandas</p>
           <p className="text-sm text-ink-muted mt-1 leading-relaxed">
             Exibe os 6 cards de resumo (comandas abertas/fechadas, vendas avulsas, receita e valores em
-            aberto/fechado) na cervejaria e no quiosque.
+            aberto/fechado) na cervejaria e no operacao.
           </p>
         </div>
         <ToggleAtivo

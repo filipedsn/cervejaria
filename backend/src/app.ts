@@ -55,7 +55,7 @@ import { cervejariaRoutes } from './routes/cervejaria.js';
 
 import { publicRoutes } from './routes/public.js';
 import { pedidosRoutes } from './routes/pedidos.js';
-import { quiosqueRoutes } from './routes/quiosque/index.js';
+import { operacaoRoutes } from './routes/operacao/index.js';
 import { registerClienteSessionAuth } from './lib/cliente-session.js';
 
 import { ensureUploadsDir, getUploadsRoot } from './lib/uploads.js';
@@ -378,7 +378,7 @@ export async function buildApp() {
 
   await app.register(pushRoutes, { prefix: '/api/push' });
 
-  await app.register(quiosqueRoutes, { prefix: '/api/quiosque' });
+  await app.register(operacaoRoutes, { prefix: '/api/operacao' });
 
 
 

@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { getAuthUser } from '../../types/auth.js';
-import { buildQuiosqueDashboard } from '../../lib/quiosque/dashboard.js';
+import { buildOperacaoDashboard } from '../../lib/operacao/dashboard.js';
 
-export async function dashboardQuiosqueRoutes(app: FastifyInstance) {
+export async function dashboardOperacaoRoutes(app: FastifyInstance) {
   app.get('/', { preHandler: [app.requireDono] }, async (request) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const now = new Date();
     const query = request.query as { ano?: string; mes?: string; pontoVendaId?: string };
 
@@ -14,6 +14,6 @@ export async function dashboardQuiosqueRoutes(app: FastifyInstance) {
       throw app.httpErrors.badRequest('Período inválido');
     }
 
-    return buildQuiosqueDashboard(cervejariaId, ano, mes, query.pontoVendaId);
+    return buildOperacaoDashboard(cervejariaId, ano, mes, query.pontoVendaId);
   });
 }

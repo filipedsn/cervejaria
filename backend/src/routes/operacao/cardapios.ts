@@ -2,14 +2,14 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import {
-  createCardapioQuiosque,
-  getCardapioQuiosqueById,
-  listCardapiosQuiosque,
-  listCatalogoCardapioQuiosque,
-  mapCardapioQuiosqueResponse,
-  updateCardapioQuiosque,
-} from '../../lib/quiosque/cardapio.js';
-import { quiosqueUsaCardapio } from '../../lib/cardapio-toggle.js';
+  createCardapioOperacao,
+  getCardapioOperacaoById,
+  listCardapiosOperacao,
+  listCatalogoCardapioOperacao,
+  mapCardapioOperacaoResponse,
+  updateCardapioOperacao,
+} from '../../lib/operacao/cardapio.js';
+import { operacaoUsaCardapio } from '../../lib/cardapio-toggle.js';
 
 const itemCardapioSchema = z.object({
   produtoId: z.string().min(1),
@@ -22,46 +22,46 @@ const saveCardapioSchema = z.object({
   itens: z.array(itemCardapioSchema).optional(),
 });
 
-export async function cardapiosQuiosqueRoutes(app: FastifyInstance) {
+export async function cardapiosOperacaoRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.requireDono);
 
   app.addHook('preHandler', async (request, reply) => {
-    const usa = await quiosqueUsaCardapio(request.quiosque.cervejariaId);
+    const usa = await operacaoUsaCardapio(request.operacao.cervejariaId);
     if (!usa) {
       return reply.status(403).send({ error: 'Cardápio desativado para esta empresa' });
     }
   });
 
   app.get('/', async (request) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const query = z.object({ ativo: z.enum(['true', 'false']).optional() }).parse(request.query);
 
-    const cardapios = await listCardapiosQuiosque(cervejariaId, {
+    const cardapios = await listCardapiosOperacao(cervejariaId, {
       ativo: query.ativo === 'true' ? true : query.ativo === 'false' ? false : undefined,
     });
 
-    return cardapios.map(mapCardapioQuiosqueResponse);
+    return cardapios.map(mapCardapioOperacaoResponse);
   });
 
   app.get('/catalogo', async (request) => {
-    const { cervejariaId } = request.quiosque;
-    return listCatalogoCardapioQuiosque(cervejariaId);
+    const { cervejariaId } = request.operacao;
+    return listCatalogoCardapioOperacao(cervejariaId);
   });
 
   app.get('/:id', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
 
-    const cardapio = await getCardapioQuiosqueById(id, cervejariaId);
+    const cardapio = await getCardapioOperacaoById(id, cervejariaId);
     if (!cardapio) return reply.status(404).send({ error: 'Cardápio não encontrado' });
     return cardapio;
   });
 
   app.post('/', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const body = saveCardapioSchema.parse(request.body);
 
-    const result = await createCardapioQuiosque({
+    const result = await createCardapioOperacao({
       cervejariaId,
       nome: body.nome,
       itens: body.itens,
@@ -77,11 +77,11 @@ export async function cardapiosQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.put('/:id', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
     const body = saveCardapioSchema.parse(request.body);
 
-    const result = await updateCardapioQuiosque({
+    const result = await updateCardapioOperacao({
       id,
       cervejariaId,
       nome: body.nome,
@@ -93,30 +93,30 @@ export async function cardapiosQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id/ativo', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
     const { ativo } = z.object({ ativo: z.boolean() }).parse(request.body);
 
-    const existing = await prisma.cardapioQuiosque.findFirst({
+    const existing = await prisma.cardapioOperacao.findFirst({
       where: { id, cervejariaId },
     });
     if (!existing) return reply.status(404).send({ error: 'Cardápio não encontrado' });
 
-    await prisma.cardapioQuiosque.update({ where: { id }, data: { ativo } });
-    const updated = await getCardapioQuiosqueById(id, cervejariaId);
+    await prisma.cardapioOperacao.update({ where: { id }, data: { ativo } });
+    const updated = await getCardapioOperacaoById(id, cervejariaId);
     return updated;
   });
 
   app.delete('/:id', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
 
-    const existing = await prisma.cardapioQuiosque.findFirst({
+    const existing = await prisma.cardapioOperacao.findFirst({
       where: { id, cervejariaId },
     });
     if (!existing) return reply.status(404).send({ error: 'Cardápio não encontrado' });
 
-    await prisma.cardapioQuiosque.delete({ where: { id } });
+    await prisma.cardapioOperacao.delete({ where: { id } });
     return reply.status(204).send();
   });
 }

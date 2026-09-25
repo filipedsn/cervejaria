@@ -3,20 +3,20 @@ import { Link } from 'react-router-dom';
 import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
 import { Modal } from '../../components/Modal';
-import { CozinhaPedidoCard } from '../../components/quiosque/CozinhaPedidoCard';
+import { CozinhaPedidoCard } from '../../components/operacao/CozinhaPedidoCard';
 import { IconBell } from '../../components/NavIcons';
 import { useAuth } from '../../contexts/AuthContext';
-import { useQuiosqueCozinha } from '../../hooks/useQuiosqueCozinha';
-import { rotuloComanda, type PedidoCozinha } from '../../lib/quiosque';
+import { useOperacaoCozinha } from '../../hooks/useOperacaoCozinha';
+import { rotuloComanda, type PedidoCozinha } from '../../lib/operacao';
 
-export function QuiosqueCozinhaPage() {
+export function OperacaoCozinhaPage() {
   const [verEntregues, setVerEntregues] = useState(false);
   const [erroLocal, setErroLocal] = useState('');
   const [sucessoLocal, setSucessoLocal] = useState('');
   const [pedidoParaCancelar, setPedidoParaCancelar] = useState<PedidoCozinha | null>(null);
   const { isDono } = useAuth();
 
-  const { naFila, entregues, alerta, mudarStatus, isLoading, erroMutation } = useQuiosqueCozinha();
+  const { naFila, entregues, alerta, mudarStatus, isLoading, erroMutation } = useOperacaoCozinha();
 
   if (isLoading) return <Loading />;
 
@@ -61,7 +61,7 @@ export function QuiosqueCozinhaPage() {
           </button>
         </nav>
         <Link
-          to="/quiosque/cozinha/tv"
+          to="/operacao/cozinha/tv"
           className="touch-btn-secondary touch-btn-sm shrink-0 hidden sm:inline-flex"
         >
           Modo TV
@@ -89,7 +89,7 @@ export function QuiosqueCozinhaPage() {
         </button>
       </div>
 
-      <Link to="/quiosque/cozinha/tv" className="touch-btn-secondary touch-btn-sm w-full sm:hidden">
+      <Link to="/operacao/cozinha/tv" className="touch-btn-secondary touch-btn-sm w-full sm:hidden">
         Abrir modo TV (telão)
       </Link>
 
@@ -162,7 +162,7 @@ export function QuiosqueCozinhaPage() {
               type="button"
               className="touch-btn-danger w-full min-h-14"
               disabled={mudarStatus.isPending}
-              data-audit="quiosque-cozinha-confirmar-cancelamento"
+              data-audit="operacao-cozinha-confirmar-cancelamento"
               onClick={confirmarCancelamento}
             >
               {mudarStatus.isPending ? 'Cancelando...' : 'Cancelar pedido'}

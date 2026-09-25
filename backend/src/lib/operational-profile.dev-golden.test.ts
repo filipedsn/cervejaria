@@ -30,12 +30,12 @@ test('CIA Maritima DEV compatibility smoke keeps persisted configuration consist
   const persisted = tenant.configuracaoOperacional;
   assert.ok(persisted, 'CIA Maritima must have explicit operational configuration');
   assert.equal(profile.capabilities.plannedOperations, persisted.plannedOperationsEnabled === true);
-  assert.equal(profile.capabilities.directSales, persisted.directSalesEnabled === true);
+  assert.equal(profile.capabilities.cashMode, persisted.directSalesEnabled === true);
   assert.equal(profile.capabilities.taps, persisted.tapsEnabled === true);
   assert.equal(profile.capabilities.inventory, persisted.inventoryEnabled === true);
   assert.equal(profile.capabilities.kitchen, persisted.kitchenEnabled === true);
   assert.equal(profile.operationMode, persisted.plannedOperationsEnabled === true ? 'EVENTO' : 'CAIXA');
-  assert.equal(profile.legacy.quiosqueEnabled, false);
+  assert.equal(profile.legacy.operacaoEnabled, false);
   assert.equal(profile.capabilities.cashRegister, false);
 
   // DEV contains active POS units for dedicated QA tenants. CIA Maritima's
@@ -50,10 +50,10 @@ test('CIA Maritima DEV compatibility smoke keeps persisted configuration consist
 
 test('DEV QA capability matrix derives legacy combinations without modes', { skip: !hasDevDatabase }, async () => {
   const cases = [
-    ['qa-cfg-quiosque-00', { directSales: true, cashRegister: true, inventory: false, kitchen: false, plannedOperations: false, taps: false }],
-    ['qa-cfg-quiosque-10', { directSales: true, cashRegister: true, inventory: true, kitchen: false, plannedOperations: false, taps: false }],
-    ['qa-cfg-quiosque-01', { directSales: true, cashRegister: true, inventory: false, kitchen: true, plannedOperations: false, taps: false }],
-    ['qa-cfg-quiosque-11', { directSales: true, cashRegister: true, inventory: true, kitchen: true, plannedOperations: false, taps: false }],
+    ['qa-cfg-operacao-00', { cashMode: true, cashRegister: true, inventory: false, kitchen: false, plannedOperations: false, taps: false }],
+    ['qa-cfg-operacao-10', { cashMode: true, cashRegister: true, inventory: true, kitchen: false, plannedOperations: false, taps: false }],
+    ['qa-cfg-operacao-01', { cashMode: true, cashRegister: true, inventory: false, kitchen: true, plannedOperations: false, taps: false }],
+    ['qa-cfg-operacao-11', { cashMode: true, cashRegister: true, inventory: true, kitchen: true, plannedOperations: false, taps: false }],
   ] as const;
   const { prisma } = await import('./prisma.js');
 

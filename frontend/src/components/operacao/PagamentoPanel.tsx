@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { formatCurrency } from '../../lib/api';
-import { FORMAS_PAGAMENTO, parseValor, type FormaPagamento } from '../../lib/quiosque';
+import { FORMAS_PAGAMENTO, parseValor, type FormaPagamento } from '../../lib/operacao';
 
 interface Props {
   total: number;
@@ -13,7 +13,7 @@ interface Props {
   }) => void;
 }
 
-/** Notas com que o cliente de quiosque costuma pagar. */
+/** Notas com que o cliente de operacao costuma pagar. */
 const NOTAS = [5, 10, 20, 50, 100];
 
 export function PagamentoPanel({ total, confirmando, textoConfirmar, onConfirmar }: Props) {
@@ -110,7 +110,7 @@ export function PagamentoPanel({ total, confirmando, textoConfirmar, onConfirmar
         type="button"
         className="touch-btn-primary w-full"
         disabled={!podeConfirmar}
-        data-audit="quiosque-confirmar-pagamento"
+        data-audit="operacao-confirmar-pagamento"
         onClick={confirmar}
       >
         {confirmando ? 'Registrando...' : textoConfirmar}

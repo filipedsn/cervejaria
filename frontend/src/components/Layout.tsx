@@ -12,16 +12,16 @@ import { PortalQrButton } from './PortalQrButton';
 import { TrailerSwitcher } from './TrailerSwitcher';
 import {
   NAV_ITEMS,
-  QUIOSQUE_NAV_ITEMS,
-  getQuiosqueNavItems,
+  CAIXA_NAV_ITEMS,
+  getOperacaoNavItems,
   getComplementaryNavItems,
   getOperationalModeNavItems,
-  isQuiosqueNavActive,
+  isOperacaoNavActive,
   IconBell,
   IconCalendar,
 } from './NavIcons';
 import { usePedidoAlertSound } from '../hooks/usePedidoAlertSound';
-import { useQuiosqueContexto } from '../hooks/useQuiosqueContexto';
+import { useOperacaoContexto } from '../hooks/useOperacaoContexto';
 
 function ChevronRightIcon({ className }: { className?: string }) {
   return (
@@ -135,17 +135,17 @@ export function Layout() {
     setLogoError(false);
   }, [logoSrc]);
 
-  const { contexto: quiosque, isLoading: quiosqueLoading } = useQuiosqueContexto();
-  const inQuiosque = location.pathname.startsWith('/quiosque');
+  const { contexto: operacao, isLoading: operacaoLoading } = useOperacaoContexto();
+  const inOperacao = location.pathname.startsWith('/operacao');
 
-  const navItemsComandasQuiosque = QUIOSQUE_NAV_ITEMS.filter((item) => item.path === '/quiosque/comandas');
+  const navItemsComandasOperacao = CAIXA_NAV_ITEMS.filter((item) => item.path === '/operacao/comandas');
   const navItemsCervejaria = NAV_ITEMS.filter(
     (item) =>
       (!('donoOnly' in item && item.donoOnly) || isDono) &&
-      !(quiosque.operationMode === 'CAIXA' && item.path === '/eventos'),
+      !(operacao.operationMode === 'CAIXA' && item.path === '/eventos'),
   );
-  const navItemsComplementares = quiosque.ativo
-    ? getComplementaryNavItems({ temCozinha: quiosque.temCozinha, controlaEstoque: quiosque.controlaEstoque })
+  const navItemsComplementares = operacao.ativo
+    ? getComplementaryNavItems({ temCozinha: operacao.temCozinha, controlaEstoque: operacao.controlaEstoque })
     : [];
   const clientesIndex = navItemsCervejaria.findIndex((item) => item.path === '/clientes');
   const navItemsCervejariaOrdenados =
@@ -157,23 +157,23 @@ export function Layout() {
         ]
       : [...navItemsCervejaria, ...navItemsComplementares];
 
-  const navItems = inQuiosque
-    ? quiosqueLoading
-      ? navItemsComandasQuiosque
-      : quiosque.ativo
+  const navItems = inOperacao
+    ? operacaoLoading
+      ? navItemsComandasOperacao
+      : operacao.ativo
         ? [
-            ...(quiosque.operationMode === 'EVENTO'
+            ...(operacao.operationMode === 'EVENTO'
               ? [{ path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const }]
               : []),
-            ...getQuiosqueNavItems({
-              temCozinha: quiosque.temCozinha,
-              controlaEstoque: quiosque.controlaEstoque,
+            ...getOperacaoNavItems({
+              temCozinha: operacao.temCozinha,
+              controlaEstoque: operacao.controlaEstoque,
               isDono,
-              operationMode: quiosque.operationMode,
+              operationMode: operacao.operationMode,
             }),
           ]
-        : navItemsComandasQuiosque
-    : [...navItemsCervejariaOrdenados, ...getOperationalModeNavItems(quiosque)];
+        : navItemsComandasOperacao
+    : [...navItemsCervejariaOrdenados, ...getOperationalModeNavItems(operacao)];
   const { alertEnabled, alertNeedsUnlock, pushStatus, wakeLockActive, togglePedidoAlert } =
     usePedidoAlertSound();
   const onEventsPage = location.pathname === '/eventos';
@@ -181,7 +181,7 @@ export function Layout() {
   // Evento e trailer sao da cervejaria: nao aparecem dentro da superficie
   // operacional do estabelecimento.
   const hideOperacionalChrome =
-    location.pathname.startsWith('/quiosque') ||
+    location.pathname.startsWith('/operacao') ||
     onEventsPage ||
     onTrailerPage ||
     location.pathname === '/dashboard' ||
@@ -269,8 +269,8 @@ export function Layout() {
         <div className="flex items-stretch justify-around w-full max-w-6xl mx-auto h-[var(--bottom-nav-height)] px-1">
           {navItems.map((item) => {
             const active =
-              inQuiosque && (quiosqueLoading || quiosque.ativo)
-                ? isQuiosqueNavActive(item.path, location.pathname, item.exact)
+              inOperacao && (operacaoLoading || operacao.ativo)
+                ? isOperacaoNavActive(item.path, location.pathname, item.exact)
                 : isNavActive(item.path, location.pathname, item.exact);
             const { Icon } = item;
             return (

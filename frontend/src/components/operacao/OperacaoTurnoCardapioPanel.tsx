@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../../lib/api';
-import type { CardapioQuiosque, CardapioTurnoQuiosque, ProdutoQuiosque } from '../../lib/quiosque';
-import { normalizeCategoriaProduto } from '../../lib/quiosque';
+import type { CardapioOperacao, CardapioTurnoOperacao, ProdutoOperacao } from '../../lib/operacao';
+import { normalizeCategoriaProduto } from '../../lib/operacao';
 import {
-  CardapioQuiosqueProdutosPicker,
-  CardapioQuiosqueProdutosResumo,
-} from './CardapioQuiosqueProdutosPicker';
+  CardapioOperacaoProdutosPicker,
+  CardapioOperacaoProdutosResumo,
+} from './CardapioOperacaoProdutosPicker';
 import { CardapioSalvoModal, cardapioSalvoLabel } from '../CardapioSalvoModal';
 import { Modal } from '../Modal';
 import { CurrencyInput } from '../CurrencyInput';
@@ -16,11 +16,11 @@ type CardapioModo = 'salvo' | 'montar';
 type EscopoPreco = 'TURNO' | 'TEMPLATE';
 
 type PendingPreco = {
-  produto: ProdutoQuiosque;
+  produto: ProdutoOperacao;
   precoUnit: number;
 };
 
-export function QuiosqueTurnoCardapioPanel({
+export function OperacaoTurnoCardapioPanel({
   pontoVendaId,
   embedded = false,
   onClose,
@@ -40,17 +40,17 @@ export function QuiosqueTurnoCardapioPanel({
   const [draftPrecos, setDraftPrecos] = useState<Record<string, string>>({});
 
   const { data: cardapio, isLoading } = useQuery({
-    queryKey: ['quiosque-turno-cardapio', pontoVendaId],
+    queryKey: ['operacao-turno-cardapio', pontoVendaId],
     queryFn: () =>
-      api.get<CardapioTurnoQuiosque>(
-        `/api/quiosque/caixa/cardapio?pontoVendaId=${encodeURIComponent(pontoVendaId)}`,
+      api.get<CardapioTurnoOperacao>(
+        `/api/operacao/caixa/cardapio?pontoVendaId=${encodeURIComponent(pontoVendaId)}`,
       ),
     enabled: Boolean(pontoVendaId),
   });
 
   const { data: cardapiosSalvos } = useQuery({
-    queryKey: ['quiosque-cardapios', 'ativo'],
-    queryFn: () => api.get<CardapioQuiosque[]>('/api/quiosque/cardapios?ativo=true'),
+    queryKey: ['operacao-cardapios', 'ativo'],
+    queryFn: () => api.get<CardapioOperacao[]>('/api/operacao/cardapios?ativo=true'),
     enabled: Boolean(pontoVendaId),
   });
 
@@ -72,13 +72,13 @@ export function QuiosqueTurnoCardapioPanel({
 
   const saveMutation = useMutation({
     mutationFn: (payload: { cardapioId?: string; produtoIds?: string[] }) =>
-      api.put<CardapioTurnoQuiosque>(
-        `/api/quiosque/caixa/cardapio?pontoVendaId=${encodeURIComponent(pontoVendaId)}`,
+      api.put<CardapioTurnoOperacao>(
+        `/api/operacao/caixa/cardapio?pontoVendaId=${encodeURIComponent(pontoVendaId)}`,
         payload,
       ),
     onSuccess: (data) => {
-      queryClient.setQueryData(['quiosque-turno-cardapio', pontoVendaId], data);
-      queryClient.invalidateQueries({ queryKey: ['quiosque-produtos-operacionais', pontoVendaId] });
+      queryClient.setQueryData(['operacao-turno-cardapio', pontoVendaId], data);
+      queryClient.invalidateQueries({ queryKey: ['operacao-produtos-operacionais', pontoVendaId] });
       setSelectedIds(data.produtoIds);
       setDirty(false);
       setError('');
@@ -89,15 +89,15 @@ export function QuiosqueTurnoCardapioPanel({
 
   const precoMutation = useMutation({
     mutationFn: (payload: { produtoId: string; precoUnit: number; escopo: EscopoPreco }) =>
-      api.patch<CardapioTurnoQuiosque>(
-        `/api/quiosque/caixa/cardapio/preco?pontoVendaId=${encodeURIComponent(pontoVendaId)}`,
+      api.patch<CardapioTurnoOperacao>(
+        `/api/operacao/caixa/cardapio/preco?pontoVendaId=${encodeURIComponent(pontoVendaId)}`,
         payload,
       ),
     onSuccess: (data, variables) => {
-      queryClient.setQueryData(['quiosque-turno-cardapio', pontoVendaId], data);
-      queryClient.invalidateQueries({ queryKey: ['quiosque-produtos-operacionais', pontoVendaId] });
+      queryClient.setQueryData(['operacao-turno-cardapio', pontoVendaId], data);
+      queryClient.invalidateQueries({ queryKey: ['operacao-produtos-operacionais', pontoVendaId] });
       if (variables.escopo === 'TEMPLATE') {
-        queryClient.invalidateQueries({ queryKey: ['quiosque-cardapios'] });
+        queryClient.invalidateQueries({ queryKey: ['operacao-cardapios'] });
       }
       setPendingPreco(null);
       setError('');
@@ -148,7 +148,7 @@ export function QuiosqueTurnoCardapioPanel({
 
   const canSave = alteracaoPendente && !saveMutation.isPending;
 
-  const solicitarAlteracaoPreco = (produto: ProdutoQuiosque, draft: string) => {
+  const solicitarAlteracaoPreco = (produto: ProdutoOperacao, draft: string) => {
     const atual = (produto.precoEfetivo ?? parseFloat(produto.precoUnit)) || 0;
     const novo = parseCurrencyInput(draft);
     if (!(novo > 0)) {
@@ -213,7 +213,7 @@ export function QuiosqueTurnoCardapioPanel({
       {!hasCatalogo ? (
         <div className="space-y-3">
           <p className="text-sm text-ink-faint text-center py-3">
-            Cadastre produtos no catálogo do quiosque primeiro.
+            Cadastre produtos no catálogo do operacao primeiro.
           </p>
           {closeButton}
         </div>
@@ -256,7 +256,7 @@ export function QuiosqueTurnoCardapioPanel({
               </p>
             ) : null
           ) : (
-            <CardapioQuiosqueProdutosPicker catalogo={catalogo} selectedIds={selectedIds} onToggle={toggle} />
+            <CardapioOperacaoProdutosPicker catalogo={catalogo} selectedIds={selectedIds} onToggle={toggle} />
           )}
 
           <CardapioSalvoModal
@@ -281,7 +281,7 @@ export function QuiosqueTurnoCardapioPanel({
                       · {cardapioSelecionado.nome}
                     </span>
                   </h3>
-                  <CardapioQuiosqueProdutosResumo produtos={cardapioSelecionado.produtos ?? []} />
+                  <CardapioOperacaoProdutosResumo produtos={cardapioSelecionado.produtos ?? []} />
                 </>
               ) : null}
               <p className="text-sm text-ink-faint bg-surface-lighter border border-line rounded-lg px-3 py-2">
@@ -342,7 +342,7 @@ export function QuiosqueTurnoCardapioPanel({
         </div>
       ) : (
         <div className="space-y-3">
-          <CardapioQuiosqueProdutosResumo produtos={cardapio?.produtos ?? []} />
+          <CardapioOperacaoProdutosResumo produtos={cardapio?.produtos ?? []} />
           {closeButton}
         </div>
       )}

@@ -15,14 +15,14 @@ import {
 
 function readiness(overrides: Partial<OnboardingReadiness> = {}): OnboardingReadiness {
   return {
-    mode: 'QUIOSQUE',
+    mode: 'CAIXA',
     capacities: { controlaEstoque: false, temCozinha: false },
     hasHistoricalSale: false,
     firstSaleCompleted: false,
     operationReady: false,
     canConfigure: true,
     modules: {
-      quiosque: { enabled: true, ready: false, missingSteps: [{ code: 'QUIOSQUE_POINT', complete: false }] },
+      operacao: { enabled: true, ready: false, missingSteps: [{ code: 'CAIXA_POINT', complete: false }] },
       cervejaria: { enabled: false, ready: false, missingSteps: [] },
     },
     ...overrides,
@@ -71,7 +71,7 @@ test('onboarding: SecurityError na gravação de storage não escapa', () => {
 
 test('onboarding: dismiss fecha a sessão mesmo se a gravação local falhar', () => {
   let state = createOnboardingUiState(false);
-  state = onboardingUiReducer(state, { type: 'OPEN', source: 'AUTO', selectedModule: 'QUIOSQUE' });
+  state = onboardingUiReducer(state, { type: 'OPEN', source: 'AUTO', selectedModule: 'CAIXA' });
   state = onboardingUiReducer(state, { type: 'DISMISS_AUTO' });
   assert.equal(state.isOpen, false);
   assert.equal(state.dismissedLocally, true);
@@ -81,39 +81,39 @@ test('onboarding: híbrida começa sem módulo e mantém a escolha transitória'
   const hybrid = readiness({
     mode: 'EVENTO',
     modules: {
-      quiosque: { enabled: true, ready: false, missingSteps: [{ code: 'QUIOSQUE_PRODUCT', complete: false }] },
+      operacao: { enabled: true, ready: false, missingSteps: [{ code: 'CAIXA_PRODUCT', complete: false }] },
       cervejaria: { enabled: true, ready: false, missingSteps: [{ code: 'CERVEJARIA_PRODUCT', complete: false }] },
     },
   });
   assert.equal(initialSelectedModule(hybrid), 'CERVEJARIA');
   let state = createOnboardingUiState(false);
   state = onboardingUiReducer(state, { type: 'OPEN', source: 'MANUAL', selectedModule: null });
-  state = onboardingUiReducer(state, { type: 'SELECT_MODULE', selectedModule: 'QUIOSQUE' });
-  assert.equal(state.selectedModule, 'QUIOSQUE');
+  state = onboardingUiReducer(state, { type: 'SELECT_MODULE', selectedModule: 'CAIXA' });
+  assert.equal(state.selectedModule, 'CAIXA');
   state = onboardingUiReducer(state, { type: 'SELECT_MODULE', selectedModule: 'CERVEJARIA' });
   assert.equal(state.selectedModule, 'CERVEJARIA');
 });
 
 test('onboarding: próxima ação respeita capacidades, módulo e primeira venda', () => {
-  const quiosque00 = readiness({ capacities: { controlaEstoque: false, temCozinha: false } });
-  const quiosque10 = readiness({ capacities: { controlaEstoque: true, temCozinha: false }, modules: { quiosque: { enabled: true, ready: false, missingSteps: [{ code: 'QUIOSQUE_STOCK', complete: false }] }, cervejaria: { enabled: false, ready: false, missingSteps: [] } } });
-  const quiosque01 = readiness({ capacities: { controlaEstoque: false, temCozinha: true } });
-  const quiosque11 = readiness({ capacities: { controlaEstoque: true, temCozinha: true }, modules: { quiosque: { enabled: true, ready: false, missingSteps: [{ code: 'QUIOSQUE_CASH_REGISTER', complete: false }] }, cervejaria: { enabled: false, ready: false, missingSteps: [] } } });
-  assert.equal(getNextOnboardingAction(quiosque00, 'QUIOSQUE'), 'QUIOSQUE_POINT');
-  assert.equal(getNextOnboardingAction(quiosque10, 'QUIOSQUE'), 'QUIOSQUE_STOCK');
-  assert.equal(getNextOnboardingAction(quiosque01, 'QUIOSQUE'), 'QUIOSQUE_POINT');
-  assert.equal(getNextOnboardingAction(quiosque11, 'QUIOSQUE'), 'QUIOSQUE_CASH_REGISTER');
+  const operacao00 = readiness({ capacities: { controlaEstoque: false, temCozinha: false } });
+  const operacao10 = readiness({ capacities: { controlaEstoque: true, temCozinha: false }, modules: { operacao: { enabled: true, ready: false, missingSteps: [{ code: 'CAIXA_STOCK', complete: false }] }, cervejaria: { enabled: false, ready: false, missingSteps: [] } } });
+  const operacao01 = readiness({ capacities: { controlaEstoque: false, temCozinha: true } });
+  const operacao11 = readiness({ capacities: { controlaEstoque: true, temCozinha: true }, modules: { operacao: { enabled: true, ready: false, missingSteps: [{ code: 'CAIXA_CASH_REGISTER', complete: false }] }, cervejaria: { enabled: false, ready: false, missingSteps: [] } } });
+  assert.equal(getNextOnboardingAction(operacao00, 'CAIXA'), 'CAIXA_POINT');
+  assert.equal(getNextOnboardingAction(operacao10, 'CAIXA'), 'CAIXA_STOCK');
+  assert.equal(getNextOnboardingAction(operacao01, 'CAIXA'), 'CAIXA_POINT');
+  assert.equal(getNextOnboardingAction(operacao11, 'CAIXA'), 'CAIXA_CASH_REGISTER');
 
-  const brewery = readiness({ mode: 'CERVEJARIA', modules: { quiosque: { enabled: false, ready: false, missingSteps: [] }, cervejaria: { enabled: true, ready: false, missingSteps: [{ code: 'CERVEJARIA_TAP', complete: false }] } } });
+  const brewery = readiness({ mode: 'CERVEJARIA', modules: { operacao: { enabled: false, ready: false, missingSteps: [] }, cervejaria: { enabled: true, ready: false, missingSteps: [{ code: 'CERVEJARIA_TAP', complete: false }] } } });
   assert.equal(getNextOnboardingAction(brewery, 'CERVEJARIA'), 'CERVEJARIA_TAP');
-  const hybrid = readiness({ mode: 'HIBRIDA', modules: { quiosque: { enabled: true, ready: false, missingSteps: [{ code: 'QUIOSQUE_PRODUCT', complete: false }] }, cervejaria: { enabled: true, ready: false, missingSteps: [{ code: 'CERVEJARIA_OPERATION', complete: false }] } } });
-  assert.equal(getNextOnboardingAction(hybrid, 'QUIOSQUE'), 'QUIOSQUE_PRODUCT');
+  const hybrid = readiness({ mode: 'HIBRIDA', modules: { operacao: { enabled: true, ready: false, missingSteps: [{ code: 'CAIXA_PRODUCT', complete: false }] }, cervejaria: { enabled: true, ready: false, missingSteps: [{ code: 'CERVEJARIA_OPERATION', complete: false }] } } });
+  assert.equal(getNextOnboardingAction(hybrid, 'CAIXA'), 'CAIXA_PRODUCT');
   assert.equal(getNextOnboardingAction(hybrid, 'CERVEJARIA'), 'CERVEJARIA_OPERATION');
-  const firstSale = readiness({ operationReady: true, modules: { quiosque: { enabled: true, ready: true, missingSteps: [{ code: 'QUIOSQUE_FIRST_SALE', complete: false }] }, cervejaria: { enabled: false, ready: false, missingSteps: [] } } });
-  assert.equal(getNextOnboardingAction(firstSale, 'QUIOSQUE'), 'QUIOSQUE_FIRST_SALE');
-  assert.equal(getNextOnboardingAction(readiness({ firstSaleCompleted: true }), 'QUIOSQUE'), 'QUIOSQUE_POINT');
+  const firstSale = readiness({ operationReady: true, modules: { operacao: { enabled: true, ready: true, missingSteps: [{ code: 'CAIXA_FIRST_SALE', complete: false }] }, cervejaria: { enabled: false, ready: false, missingSteps: [] } } });
+  assert.equal(getNextOnboardingAction(firstSale, 'CAIXA'), 'CAIXA_FIRST_SALE');
+  assert.equal(getNextOnboardingAction(readiness({ firstSaleCompleted: true }), 'CAIXA'), 'CAIXA_POINT');
   assert.equal(getNextOnboardingAction(readiness({
     firstSaleCompleted: true,
-    modules: { quiosque: { enabled: true, ready: true, missingSteps: [{ code: 'QUIOSQUE_FIRST_SALE', complete: false }] }, cervejaria: { enabled: false, ready: false, missingSteps: [] } },
-  }), 'QUIOSQUE'), null);
+    modules: { operacao: { enabled: true, ready: true, missingSteps: [{ code: 'CAIXA_FIRST_SALE', complete: false }] }, cervejaria: { enabled: false, ready: false, missingSteps: [] } },
+  }), 'CAIXA'), null);
 });

@@ -8,11 +8,11 @@ const createAtendenteSchema = z.object({
   nome: z.string().min(2),
   email: z.string().email(),
   senha: z.string().min(6),
-  podeDarDescontoQuiosque: z.boolean().optional(),
+  podeDarDescontoOperacao: z.boolean().optional(),
 });
 
-const permissoesQuiosqueSchema = z.object({
-  podeDarDescontoQuiosque: z.boolean(),
+const permissoesOperacaoSchema = z.object({
+  podeDarDescontoOperacao: z.boolean(),
 });
 
 export async function usuariosRoutes(app: FastifyInstance) {
@@ -31,7 +31,7 @@ export async function usuariosRoutes(app: FastifyInstance) {
         nome: true,
         email: true,
         papel: true,
-        podeDarDescontoQuiosque: true,
+        podeDarDescontoOperacao: true,
         createdAt: true,
       },
       orderBy: { nome: 'asc' },
@@ -59,14 +59,14 @@ export async function usuariosRoutes(app: FastifyInstance) {
         senhaHash,
         papel: 'ATENDENTE',
         cervejariaId: user.cervejariaId,
-        podeDarDescontoQuiosque: body.podeDarDescontoQuiosque ?? false,
+        podeDarDescontoOperacao: body.podeDarDescontoOperacao ?? false,
       },
       select: {
         id: true,
         nome: true,
         email: true,
         papel: true,
-        podeDarDescontoQuiosque: true,
+        podeDarDescontoOperacao: true,
         createdAt: true,
       },
     });
@@ -74,14 +74,14 @@ export async function usuariosRoutes(app: FastifyInstance) {
     return reply.status(201).send(usuario);
   });
 
-  app.patch('/:id/permissoes-quiosque', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.patch('/:id/permissoes-operacao', { preHandler: [app.requireDono] }, async (request, reply) => {
     const user = getAuthUser(request);
     if (!user.cervejariaId) {
       return reply.status(403).send({ error: 'Acesso restrito' });
     }
 
     const { id } = request.params as { id: string };
-    const body = permissoesQuiosqueSchema.parse(request.body);
+    const body = permissoesOperacaoSchema.parse(request.body);
 
     const alvo = await prisma.usuario.findFirst({
       where: { id, cervejariaId: user.cervejariaId },
@@ -93,13 +93,13 @@ export async function usuariosRoutes(app: FastifyInstance) {
 
     const atualizado = await prisma.usuario.update({
       where: { id: alvo.id },
-      data: { podeDarDescontoQuiosque: body.podeDarDescontoQuiosque },
+      data: { podeDarDescontoOperacao: body.podeDarDescontoOperacao },
       select: {
         id: true,
         nome: true,
         email: true,
         papel: true,
-        podeDarDescontoQuiosque: true,
+        podeDarDescontoOperacao: true,
         createdAt: true,
       },
     });

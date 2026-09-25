@@ -2,9 +2,9 @@ import { Modal } from '../Modal';
 import { GradeProdutos } from './GradeProdutos';
 import { ResumoCarrinho } from './ResumoCarrinho';
 import { formatCurrency } from '../../lib/api';
-import { totalCarrinho, type LinhaCarrinho, type ProdutoQuiosque, type SaldoEstoque } from '../../lib/quiosque';
+import { totalCarrinho, type LinhaCarrinho, type ProdutoOperacao, type SaldoEstoque } from '../../lib/operacao';
 
-export function AdicionarItensQuiosqueModal({
+export function AdicionarItensOperacaoModal({
   open,
   onClose,
   produtos,
@@ -21,9 +21,9 @@ export function AdicionarItensQuiosqueModal({
 }: {
   open: boolean;
   onClose: () => void;
-  produtos: ProdutoQuiosque[];
+  produtos: ProdutoOperacao[];
   linhas: LinhaCarrinho[];
-  onSelecionar: (produto: ProdutoQuiosque) => void;
+  onSelecionar: (produto: ProdutoOperacao) => void;
   onAlterar: (produtoId: string, delta: number) => void;
   onConfirm: () => void;
   isPending: boolean;

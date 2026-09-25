@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { api, ApiError } from '../../lib/api';
 
-import type { CardapioQuiosque, CardapioQuiosqueItem, ProdutoQuiosque } from '../../lib/quiosque';
+import type { CardapioOperacao, CardapioOperacaoItem, ProdutoOperacao } from '../../lib/operacao';
 
 import { Modal } from '../../components/Modal';
 
@@ -12,11 +12,11 @@ import { ModalFormFooter } from '../../components/ModalFormFooter';
 
 import { Loading } from '../../components/Loading';
 
-import { CardapioQuiosqueProdutosPicker } from '../../components/quiosque/CardapioQuiosqueProdutosPicker';
+import { CardapioOperacaoProdutosPicker } from '../../components/operacao/CardapioOperacaoProdutosPicker';
 
 
 
-function itensFromCardapio(cardapio: CardapioQuiosque): CardapioQuiosqueItem[] {
+function itensFromCardapio(cardapio: CardapioOperacao): CardapioOperacaoItem[] {
 
   if (cardapio.itens?.length) {
 
@@ -42,17 +42,17 @@ function itensFromCardapio(cardapio: CardapioQuiosque): CardapioQuiosqueItem[] {
 
 
 
-export function CardapiosQuiosquePage({ embedded }: { embedded?: boolean } = {}) {
+export function CardapiosOperacaoPage({ embedded }: { embedded?: boolean } = {}) {
 
   const queryClient = useQueryClient();
 
   const [showModal, setShowModal] = useState(false);
 
-  const [editing, setEditing] = useState<CardapioQuiosque | null>(null);
+  const [editing, setEditing] = useState<CardapioOperacao | null>(null);
 
   const [nome, setNome] = useState('');
 
-  const [itens, setItens] = useState<CardapioQuiosqueItem[]>([]);
+  const [itens, setItens] = useState<CardapioOperacaoItem[]>([]);
 
   const [error, setError] = useState('');
 
@@ -60,9 +60,9 @@ export function CardapiosQuiosquePage({ embedded }: { embedded?: boolean } = {})
 
   const { data: cardapios, isLoading } = useQuery({
 
-    queryKey: ['quiosque-cardapios'],
+    queryKey: ['operacao-cardapios'],
 
-    queryFn: () => api.get<CardapioQuiosque[]>('/api/quiosque/cardapios'),
+    queryFn: () => api.get<CardapioOperacao[]>('/api/operacao/cardapios'),
 
   });
 
@@ -70,9 +70,9 @@ export function CardapiosQuiosquePage({ embedded }: { embedded?: boolean } = {})
 
   const { data: catalogo } = useQuery({
 
-    queryKey: ['quiosque-cardapios', 'catalogo'],
+    queryKey: ['operacao-cardapios', 'catalogo'],
 
-    queryFn: () => api.get<ProdutoQuiosque[]>('/api/quiosque/cardapios/catalogo'),
+    queryFn: () => api.get<ProdutoOperacao[]>('/api/operacao/cardapios/catalogo'),
 
     enabled: showModal,
 
@@ -112,7 +112,7 @@ export function CardapiosQuiosquePage({ embedded }: { embedded?: boolean } = {})
 
 
 
-  const openEdit = (cardapio: CardapioQuiosque) => {
+  const openEdit = (cardapio: CardapioOperacao) => {
 
     setEditing(cardapio);
 
@@ -162,15 +162,15 @@ export function CardapiosQuiosquePage({ embedded }: { embedded?: boolean } = {})
 
       return editing
 
-        ? api.put<CardapioQuiosque>(`/api/quiosque/cardapios/${editing.id}`, payload)
+        ? api.put<CardapioOperacao>(`/api/operacao/cardapios/${editing.id}`, payload)
 
-        : api.post<CardapioQuiosque>('/api/quiosque/cardapios', payload);
+        : api.post<CardapioOperacao>('/api/operacao/cardapios', payload);
 
     },
 
     onSuccess: () => {
 
-      queryClient.invalidateQueries({ queryKey: ['quiosque-cardapios'] });
+      queryClient.invalidateQueries({ queryKey: ['operacao-cardapios'] });
 
       setShowModal(false);
 
@@ -188,9 +188,9 @@ export function CardapiosQuiosquePage({ embedded }: { embedded?: boolean } = {})
 
     mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>
 
-      api.patch(`/api/quiosque/cardapios/${id}/ativo`, { ativo }),
+      api.patch(`/api/operacao/cardapios/${id}/ativo`, { ativo }),
 
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quiosque-cardapios'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['operacao-cardapios'] }),
 
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao atualizar'),
 
@@ -200,9 +200,9 @@ export function CardapiosQuiosquePage({ embedded }: { embedded?: boolean } = {})
 
   const deleteMutation = useMutation({
 
-    mutationFn: (id: string) => api.delete(`/api/quiosque/cardapios/${id}`),
+    mutationFn: (id: string) => api.delete(`/api/operacao/cardapios/${id}`),
 
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quiosque-cardapios'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['operacao-cardapios'] }),
 
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao excluir'),
 
@@ -404,7 +404,7 @@ export function CardapiosQuiosquePage({ embedded }: { embedded?: boolean } = {})
 
             {catalogo && (
 
-              <CardapioQuiosqueProdutosPicker
+              <CardapioOperacaoProdutosPicker
 
                 catalogo={catalogo}
 

@@ -51,7 +51,7 @@ async function fetchClosedComandas(
 ) {
   return prisma.comanda.findMany({
     where: {
-      origem: 'QUIOSQUE',
+      origem: 'CAIXA',
       pontoVenda: { cervejariaId },
       status: 'FECHADA',
       fechadaEm: { gte: inicio, lte: fim },
@@ -180,14 +180,14 @@ function weeklyEvolution(comandas: ClosedComanda[], ano: number, mes: number) {
 }
 
 async function pagamentosDoTurno(
-  sessao: Prisma.SessaoCaixaQuiosqueGetPayload<{ include: { movimentos: true } }>,
+  sessao: Prisma.SessaoCaixaOperacaoGetPayload<{ include: { movimentos: true } }>,
   cervejariaId: string,
 ) {
   const fechadaAte = sessao.fechadoEm ?? undefined;
   return prisma.pagamento.findMany({
     where: {
       comanda: {
-        origem: 'QUIOSQUE',
+        origem: 'CAIXA',
         pontoVenda: { cervejariaId },
         pontoVendaId: sessao.pontoVendaId,
         diaOperacional: sessao.diaOperacional,
@@ -208,7 +208,7 @@ async function buildTurnosRecentes(
   fim: Date,
   pontoVendaId?: string,
 ) {
-  const sessoes = await prisma.sessaoCaixaQuiosque.findMany({
+  const sessoes = await prisma.sessaoCaixaOperacao.findMany({
     where: {
       cervejariaId,
       status: 'FECHADO',
@@ -269,7 +269,7 @@ async function buildTurnosRecentes(
   for (const turno of resultados) {
     const avulsas = await prisma.comanda.count({
       where: {
-        origem: 'QUIOSQUE',
+        origem: 'CAIXA',
         pontoVenda: { cervejariaId },
         pontoVendaId: turno.pontoVendaId,
         tipo: 'AVULSA',
@@ -300,7 +300,7 @@ async function buildComparativoPontos(
     const ids = [...new Set(comandas.map((comanda) => comanda.fechadoPorId).filter(Boolean) as string[])];
     const nomes = await fetchUsuariosNomes(ids);
     const resumo = aggregateComandas(comandas, nomes);
-    const turnos = await prisma.sessaoCaixaQuiosque.count({
+    const turnos = await prisma.sessaoCaixaOperacao.count({
       where: {
         cervejariaId,
         pontoVendaId: ponto.id,
@@ -324,7 +324,7 @@ async function buildComparativoPontos(
   return grupos.sort((a, b) => b.receitaTotal - a.receitaTotal);
 }
 
-export async function buildQuiosqueDashboard(
+export async function buildOperacaoDashboard(
   cervejariaId: string,
   ano: number,
   mes: number,
@@ -383,7 +383,7 @@ export async function buildQuiosqueDashboard(
       ? Math.round(((resumo.receitaTotal - resumoAnterior.receitaTotal) / resumoAnterior.receitaTotal) * 100)
       : null;
 
-  const turnosNoMes = await prisma.sessaoCaixaQuiosque.count({
+  const turnosNoMes = await prisma.sessaoCaixaOperacao.count({
     where: {
       cervejariaId,
       status: 'FECHADO',

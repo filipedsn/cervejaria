@@ -61,8 +61,8 @@ export async function registrarTransacao(
     const metaObj = metadata as Record<string, unknown>;
     const slug = await auditSlugForTransacao(input.cervejariaId);
     const action =
-      metaObj.operacao === 'QUIOSQUE_CAPACIDADE_ALTERADA'
-        ? 'quiosque.capacidade_alterada'
+      metaObj.operacao === 'CAPABILITY_CHANGED'
+        ? 'operacao.capacidade_alterada'
         : `transacao.${input.tipo.toLowerCase()}`;
     emitAuditEvent({
       action,
@@ -88,8 +88,8 @@ export async function registrarTransacao(
     const slug = await auditSlugForTransacao(input.cervejariaId);
     emitAuditEvent({
       action:
-        failMeta.operacao === 'QUIOSQUE_CAPACIDADE_ALTERADA'
-          ? 'quiosque.capacidade_alterada'
+        failMeta.operacao === 'CAPABILITY_CHANGED'
+          ? 'operacao.capacidade_alterada'
           : `transacao.${input.tipo.toLowerCase()}`,
       message: `${describeTransacao(input.tipo, failMeta)} — falha ao persistir`,
       outcome: 'failure',
@@ -129,8 +129,8 @@ function num(v: unknown): number | undefined {
 export function formatTransacaoDescricao(tipo: TransacaoTipo, metadata: unknown): string {
   const m = (metadata && typeof metadata === 'object' ? metadata : {}) as Record<string, unknown>;
 
-  if (m.operacao === 'QUIOSQUE_CAPACIDADE_ALTERADA') {
-    return `Recurso do quiosque ${str(m.campo) ?? ''}: ${String(m.valorAnterior)} → ${String(m.valorNovo)}`;
+  if (m.operacao === 'CAPABILITY_CHANGED') {
+    return `Recurso do operacao ${str(m.campo) ?? ''}: ${String(m.valorAnterior)} → ${String(m.valorNovo)}`;
   }
 
   switch (tipo) {
@@ -190,25 +190,25 @@ export function formatTransacaoDescricao(tipo: TransacaoTipo, metadata: unknown)
       return `Tap ${num(m.tapNumero) ?? '?'}: chope removido`;
     case 'TAP_ATIVO_ALTERADO':
       return `Tap ${num(m.tapNumero) ?? '?'} ${m.ativo === false ? 'inativado' : 'reativado'}`;
-    case 'QUIOSQUE_CAIXA_ABERTO':
+    case 'CASH_REGISTER_OPENED':
       return `Caixa aberto — troco R$ ${(num(m.trocoInicial) ?? 0).toFixed(2)}`;
-    case 'QUIOSQUE_CAIXA_MOVIMENTO':
+    case 'CASH_MOVEMENT_RECORDED':
       return `${str(m.tipo) ?? 'Movimento'} R$ ${(num(m.valor) ?? 0).toFixed(2)}`;
-    case 'QUIOSQUE_CAIXA_MOVIMENTO_CORRIGIDO':
+    case 'CASH_MOVEMENT_CORRECTED':
       return `Movimento de caixa corrigido â€” R$ ${(num(m.valorOriginal) ?? 0).toFixed(2)} → R$ ${(num(m.valorCorrigido) ?? 0).toFixed(2)}`;
-    case 'QUIOSQUE_CAIXA_FECHADO':
+    case 'CASH_REGISTER_CLOSED':
       return `Caixa fechado${num(m.divergenciaCentavos) != null ? ` — divergência R$ ${((num(m.divergenciaCentavos) ?? 0) / 100).toFixed(2)}` : ''}`;
-    case 'QUIOSQUE_COMANDA_CRIADA':
-      return `Comanda quiosque ${str(m.identificador) ?? ''}`.trim();
-    case 'QUIOSQUE_COMANDA_FECHADA':
-      return `Comanda quiosque fechada — R$ ${(num(m.total) ?? 0).toFixed(2)}`;
-    case 'QUIOSQUE_COMANDA_CANCELADA':
-      return `Comanda quiosque cancelada — ${str(m.identificador) ?? ''}`;
-    case 'QUIOSQUE_PEDIDO_CRIADO': {
+    case 'COMANDA_CRIADA':
+      return `Comanda operacao ${str(m.identificador) ?? ''}`.trim();
+    case 'COMANDA_FECHADA':
+      return `Comanda operacao fechada — R$ ${(num(m.total) ?? 0).toFixed(2)}`;
+    case 'COMANDA_CANCELADA':
+      return `Comanda operacao cancelada — ${str(m.identificador) ?? ''}`;
+    case 'KITCHEN_ORDER_CREATED': {
       const itens = Array.isArray(m.itens) ? m.itens.length : num(m.qtdItens);
-      return `Pedido quiosque #${num(m.pedidoNumero) ?? '?'} — ${itens ?? 0} item(ns)`;
+      return `Pedido operacao #${num(m.pedidoNumero) ?? '?'} — ${itens ?? 0} item(ns)`;
     }
-    case 'QUIOSQUE_PAGAMENTO_REGISTRADO': {
+    case 'SALE_PAYMENT_RECORDED': {
       const pagamentos = Array.isArray(m.pagamentos) ? m.pagamentos : [];
       const formas = pagamentos
         .map((p) => {
@@ -218,17 +218,17 @@ export function formatTransacaoDescricao(tipo: TransacaoTipo, metadata: unknown)
           return valor != null ? `${forma} R$ ${valor.toFixed(2)}` : forma;
         })
         .join(', ');
-      return `Pagamento quiosque${formas ? ` (${formas})` : ''}`;
+      return `Pagamento operacao${formas ? ` (${formas})` : ''}`;
     }
-    case 'QUIOSQUE_COMANDA_GRUPO_FECHADO':
+    case 'COMANDA_GRUPO_FECHADO':
       return `Grupo de comandas fechado — ${num(m.qtdComandas) ?? '?'} conta(s), R$ ${(num(m.totalGrupo) ?? 0).toFixed(2)}`;
-    case 'QUIOSQUE_PEDIDO_COZINHA':
+    case 'KITCHEN_ORDER_STATUS_CHANGED':
       return `Pedido cozinha ${str(m.statusAnterior) ?? '?'} → ${str(m.status) ?? '?'}`;
-    case 'QUIOSQUE_ESTOQUE_MOVIMENTO':
+    case 'INVENTORY_MOVEMENT':
       return `Estoque ${str(m.operacao) ?? 'movimento'} — ${str(m.produtoNome) ?? 'produto'}`;
-    case 'QUIOSQUE_DESCONTO_APLICADO':
+    case 'COMANDA_DESCONTO_APLICADO':
       return `Desconto ${num(m.desconto) ?? 0}% na comanda`;
-    case 'QUIOSQUE_VENDA_AVULSA':
+    case 'SALE_COMPLETED':
       return `Venda avulsa — R$ ${(num(m.total) ?? 0).toFixed(2)}`;
     case 'PORTAL_PEDIDO_CRIADO':
       return `Pedido portal criado — comanda ${str(m.comandaId) ?? ''}`;

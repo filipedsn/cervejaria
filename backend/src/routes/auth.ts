@@ -74,7 +74,7 @@ function authResponse(
     papel: string;
     cervejariaId: string | null;
     passwordChangedAt: Date;
-    podeDarDescontoQuiosque?: boolean;
+    podeDarDescontoOperacao?: boolean;
   },
   cervejaria: Parameters<typeof formatCervejariaAuth>[0] | null,
 ) {
@@ -84,7 +84,7 @@ function authResponse(
       nome: usuario.nome,
       email: usuario.email,
       papel: usuario.papel,
-      podeDarDescontoQuiosque: usuario.podeDarDescontoQuiosque ?? false,
+      podeDarDescontoOperacao: usuario.podeDarDescontoOperacao ?? false,
     },
     cervejaria: cervejaria ? formatCervejariaAuth(cervejaria) : null,
   };
@@ -350,7 +350,7 @@ export async function authRoutes(app: FastifyInstance) {
         nome: usuario.nome,
         email: usuario.email,
         papel: usuario.papel,
-        podeDarDescontoQuiosque: usuario.podeDarDescontoQuiosque,
+        podeDarDescontoOperacao: usuario.podeDarDescontoOperacao,
       },
       cervejaria: usuario.cervejaria ? formatCervejariaAuth(usuario.cervejaria) : null,
     };

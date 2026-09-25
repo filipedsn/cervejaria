@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
 import { formatCurrency } from '../../lib/api';
-import type { ProdutoQuiosque } from '../../lib/quiosque';
-import { normalizeCategoriaProduto } from '../../lib/quiosque';
-import type { SaldoEstoque } from '../../lib/quiosque';
+import type { ProdutoOperacao } from '../../lib/operacao';
+import { normalizeCategoriaProduto } from '../../lib/operacao';
+import type { SaldoEstoque } from '../../lib/operacao';
 
 interface Props {
-  produtos: ProdutoQuiosque[];
-  onSelecionar: (produto: ProdutoQuiosque) => void;
+  produtos: ProdutoOperacao[];
+  onSelecionar: (produto: ProdutoOperacao) => void;
   /** Saldo por produtoId, quando o modulo controla estoque. */
   saldos?: Map<string, SaldoEstoque>;
   controlaEstoque?: boolean;
@@ -23,7 +23,7 @@ export function GradeProdutos({
   quantidadesNoCarrinho,
 }: Props) {
   const categorias = useMemo(() => {
-    const agrupado = new Map<string, ProdutoQuiosque[]>();
+    const agrupado = new Map<string, ProdutoOperacao[]>();
     for (const produto of produtos) {
       const chave = normalizeCategoriaProduto(produto.categoria);
       agrupado.set(chave, [...(agrupado.get(chave) ?? []), produto]);

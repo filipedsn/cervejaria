@@ -35,7 +35,7 @@ function businessAttrs(tipo: string): Record<string, string> {
   return attrs;
 }
 
-export function recordComandaFechada(valorCentavos: number, origem: 'cervejaria' | 'quiosque'): void {
+export function recordComandaFechada(valorCentavos: number, origem: 'cervejaria' | 'operacao'): void {
   const attrs = businessAttrs(`comanda_fechada_${origem}`);
   comandasFechadas.add(1, attrs);
   if (valorCentavos > 0) valorVendidoCentavos.add(valorCentavos, attrs);

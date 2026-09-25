@@ -3,11 +3,11 @@ import { describe, it } from 'node:test';
 import type { Prisma } from '@prisma/client';
 import type { RegistrarTransacaoInput } from '../transacao-log.js';
 import {
-  atualizarCapacidadesQuiosque,
+  atualizarCapacidadesOperacao,
   CozinhaComPedidosAtivosError,
   ConfirmacaoEstoqueObrigatoriaError,
-  QuiosqueInativoError,
-  updateCapacidadesQuiosqueSchema,
+  OperacaoInativoError,
+  updateCapacidadesOperacaoSchema,
 } from './capacidades.js';
 
 type Configuracao = {
@@ -46,7 +46,7 @@ function criarCenario(
   let movimentosRetroativos = 0;
 
   const tx = {
-    configuracaoQuiosque: {
+    configuracaoOperacao: {
       findUnique: async ({ where }: { where: { cervejariaId: string } }) =>
         where.cervejariaId === configuracao.cervejariaId ? configuracao : null,
       update: async ({ data }: { data: Partial<Configuracao> }) => {
@@ -65,13 +65,13 @@ function criarCenario(
         return configuracaoOperacional;
       },
     },
-    pedidoQuiosque: {
+    pedidoOperacao: {
       findFirst: async (args: unknown) => {
         consultaPedido = args;
         return options.pedidoAtivo ? { id: 'pedido-ativo' } : null;
       },
     },
-    movimentoEstoqueQuiosque: {
+    movimentoEstoqueOperacao: {
       create: async () => {
         movimentosRetroativos += 1;
       },
@@ -101,10 +101,10 @@ const ator = {
   origem: 'DONO' as const,
 };
 
-describe('atualizarCapacidadesQuiosque', () => {
+describe('atualizarCapacidadesOperacao', () => {
   it('rejeita cervejariaId arbitrário no payload do DONO', () => {
     assert.throws(() =>
-      updateCapacidadesQuiosqueSchema.parse({
+      updateCapacidadesOperacaoSchema.parse({
         cervejariaId: 'tenant-b',
         temCozinha: true,
       }),
@@ -113,7 +113,7 @@ describe('atualizarCapacidadesQuiosque', () => {
 
   it('ativa cozinha sem criar dados artificiais', async () => {
     const cenario = criarCenario();
-    const result = await atualizarCapacidadesQuiosque(
+    const result = await atualizarCapacidadesOperacao(
       cenario.tx,
       { ...ator, temCozinha: true },
       cenario.audit,
@@ -126,7 +126,7 @@ describe('atualizarCapacidadesQuiosque', () => {
 
   it('desativa cozinha sem pedidos ativos', async () => {
     const cenario = criarCenario({ temCozinha: true });
-    const result = await atualizarCapacidadesQuiosque(
+    const result = await atualizarCapacidadesOperacao(
       cenario.tx,
       { ...ator, temCozinha: false },
       cenario.audit,
@@ -139,7 +139,7 @@ describe('atualizarCapacidadesQuiosque', () => {
       const cenario = criarCenario({ temCozinha: true }, { pedidoAtivo: true });
 
       await assert.rejects(
-        atualizarCapacidadesQuiosque(
+        atualizarCapacidadesOperacao(
           cenario.tx,
           { ...ator, temCozinha: false },
           cenario.audit,
@@ -158,7 +158,7 @@ describe('atualizarCapacidadesQuiosque', () => {
   it('exige confirmação explícita para desligar estoque', async () => {
     const cenario = criarCenario({ controlaEstoque: true });
     await assert.rejects(
-      atualizarCapacidadesQuiosque(
+      atualizarCapacidadesOperacao(
         cenario.tx,
         { ...ator, controlaEstoque: false },
         cenario.audit,
@@ -170,7 +170,7 @@ describe('atualizarCapacidadesQuiosque', () => {
 
   it('desativa estoque com confirmação e audita before/after', async () => {
     const cenario = criarCenario({ controlaEstoque: true });
-    await atualizarCapacidadesQuiosque(
+    await atualizarCapacidadesOperacao(
       cenario.tx,
       { ...ator, controlaEstoque: false, confirmacaoEstoque: true },
       cenario.audit,
@@ -185,7 +185,7 @@ describe('atualizarCapacidadesQuiosque', () => {
   it('reativa estoque somente com confirmação e sem reconstruir movimentos', async () => {
     const cenario = criarCenario({ controlaEstoque: false });
     await assert.rejects(
-      atualizarCapacidadesQuiosque(
+      atualizarCapacidadesOperacao(
         cenario.tx,
         { ...ator, controlaEstoque: true },
         cenario.audit,
@@ -193,7 +193,7 @@ describe('atualizarCapacidadesQuiosque', () => {
       ConfirmacaoEstoqueObrigatoriaError,
     );
 
-    await atualizarCapacidadesQuiosque(
+    await atualizarCapacidadesOperacao(
       cenario.tx,
       { ...ator, controlaEstoque: true, confirmacaoEstoque: true },
       cenario.audit,
@@ -203,34 +203,34 @@ describe('atualizarCapacidadesQuiosque', () => {
     assert.equal(cenario.auditorias[0]?.metadata?.avisoDivergenciaSaldoConfirmado, true);
   });
 
-  it('bloqueia empresa sem Quiosque ativo', async () => {
+  it('bloqueia empresa sem Operacao ativo', async () => {
     const cenario = criarCenario({ ativo: false });
     await assert.rejects(
-      atualizarCapacidadesQuiosque(
+      atualizarCapacidadesOperacao(
         cenario.tx,
         { ...ator, temCozinha: true },
         cenario.audit,
       ),
-      QuiosqueInativoError,
+      OperacaoInativoError,
     );
   });
 
   it('mantém a operação limitada ao tenant informado', async () => {
     const cenario = criarCenario();
     await assert.rejects(
-      atualizarCapacidadesQuiosque(
+      atualizarCapacidadesOperacao(
         cenario.tx,
         { ...ator, cervejariaId: 'tenant-b', temCozinha: true },
         cenario.audit,
       ),
-      QuiosqueInativoError,
+      OperacaoInativoError,
     );
     assert.equal(cenario.configuracao().temCozinha, false);
   });
 
   it('registra origem ADMIN sem permitir alteração do modo principal', async () => {
     const cenario = criarCenario({ exclusivo: true });
-    await atualizarCapacidadesQuiosque(
+    await atualizarCapacidadesOperacao(
       cenario.tx,
       {
         cervejariaId: 'tenant-a',

@@ -1,4 +1,4 @@
-export interface ProdutoQuiosque {
+export interface ProdutoOperacao {
   id: string;
   nome: string;
   categoria: string | null;
@@ -13,27 +13,27 @@ export interface ProdutoQuiosque {
   ordem: number;
 }
 
-export interface CardapioQuiosqueItem {
+export interface CardapioOperacaoItem {
   produtoId: string;
   precoUnit: number;
-  produto?: ProdutoQuiosque;
+  produto?: ProdutoOperacao;
 }
 
-export interface CardapioQuiosque {
+export interface CardapioOperacao {
   id: string;
   nome: string;
   ativo: boolean;
   cervejariaId: string;
   produtoIds: string[];
-  itens?: CardapioQuiosqueItem[];
-  produtos?: ProdutoQuiosque[];
+  itens?: CardapioOperacaoItem[];
+  produtos?: ProdutoOperacao[];
   itemCount?: number;
 }
 
-export interface CardapioTurnoQuiosque {
-  produtos: ProdutoQuiosque[];
+export interface CardapioTurnoOperacao {
+  produtos: ProdutoOperacao[];
   produtoIds: string[];
-  catalogo: ProdutoQuiosque[];
+  catalogo: ProdutoOperacao[];
   editavel: boolean;
   cardapioId?: string | null;
   cardapioNome?: string | null;
@@ -63,11 +63,11 @@ export function buildTurnoCardapioAbrirPayload(form: TurnoCardapioFormState) {
 
 /** URL de produtos operacionais do turno (PDV/comanda). */
 export function produtosOperacionaisUrl(pontoVendaId: string) {
-  return `/api/quiosque/produtos?pontoVendaId=${encodeURIComponent(pontoVendaId)}`;
+  return `/api/operacao/produtos?pontoVendaId=${encodeURIComponent(pontoVendaId)}`;
 }
 
-/** Categorias padrao do catalogo do quiosque (espelha backend). */
-export const CATEGORIAS_PRODUTO_QUIOSQUE = [
+/** Categorias padrao do catalogo do operacao (espelha backend). */
+export const CATEGORIAS_PRODUTO_OPERACAO = [
   'Bebidas',
   'Cervejas',
   'Drinks',
@@ -79,18 +79,18 @@ export const CATEGORIAS_PRODUTO_QUIOSQUE = [
   'Outros',
 ] as const;
 
-export type CategoriaProdutoQuiosque = (typeof CATEGORIAS_PRODUTO_QUIOSQUE)[number];
+export type CategoriaProdutoOperacao = (typeof CATEGORIAS_PRODUTO_OPERACAO)[number];
 
-const categoriasSet = new Set<string>(CATEGORIAS_PRODUTO_QUIOSQUE);
+const categoriasSet = new Set<string>(CATEGORIAS_PRODUTO_OPERACAO);
 
-export function isCategoriaProdutoQuiosque(value: string): value is CategoriaProdutoQuiosque {
+export function isCategoriaProdutoOperacao(value: string): value is CategoriaProdutoOperacao {
   return categoriasSet.has(value);
 }
 
-export function normalizeCategoriaProduto(value: string | null | undefined): CategoriaProdutoQuiosque {
+export function normalizeCategoriaProduto(value: string | null | undefined): CategoriaProdutoOperacao {
   if (!value?.trim()) return 'Outros';
   const trimmed = value.trim();
-  const exact = CATEGORIAS_PRODUTO_QUIOSQUE.find((c) => c.toLowerCase() === trimmed.toLowerCase());
+  const exact = CATEGORIAS_PRODUTO_OPERACAO.find((c) => c.toLowerCase() === trimmed.toLowerCase());
   if (exact) return exact;
 
   const lower = trimmed.toLowerCase();
@@ -135,7 +135,7 @@ export interface ItemPedido {
 
 export type StatusPedido = 'RECEBIDO' | 'EM_PREPARO' | 'PRONTO' | 'ENTREGUE' | 'CANCELADO';
 
-export interface PedidoQuiosque {
+export interface PedidoOperacao {
   id: string;
   numero: number;
   status: StatusPedido;
@@ -169,7 +169,7 @@ export interface PedidoCozinha {
   }>;
 }
 
-export interface PagamentoQuiosque {
+export interface PagamentoOperacao {
   id: string;
   forma: FormaPagamento;
   valor: number;
@@ -178,7 +178,7 @@ export interface PagamentoQuiosque {
   pagoEm: string;
 }
 
-export interface ComandaQuiosque {
+export interface ComandaOperacao {
   id: string;
   tipo: TipoComanda;
   identificador: string | null;
@@ -190,12 +190,12 @@ export interface ComandaQuiosque {
   subtotal: number;
   desconto: number;
   total: number;
-  pedidos: PedidoQuiosque[];
-  pagamentos: PagamentoQuiosque[];
+  pedidos: PedidoOperacao[];
+  pagamentos: PagamentoOperacao[];
 }
 
 export interface LinhaCarrinho {
-  produto: ProdutoQuiosque;
+  produto: ProdutoOperacao;
   quantidade: number;
 }
 
@@ -213,7 +213,7 @@ export function parseValor(entrada: string): number {
 }
 
 export function rotuloComanda(
-  comanda: Pick<ComandaQuiosque, 'tipo' | 'identificador' | 'numero'>,
+  comanda: Pick<ComandaOperacao, 'tipo' | 'identificador' | 'numero'>,
 ): string {
   if (comanda.tipo === 'AVULSA') return 'Venda avulsa';
   const prefixo = comanda.tipo === 'MESA' ? 'Mesa' : comanda.tipo === 'FICHA' ? 'Ficha' : '';
@@ -225,7 +225,7 @@ export function rotuloComanda(
  * Número sequencial interno da venda. Não é a identificação operacional da
  * mesa e, por isso, só deve aparecer onde a auditoria da comanda é útil.
  */
-export function rotuloInternoComanda(comanda: Pick<ComandaQuiosque, 'numero'>): string | null {
+export function rotuloInternoComanda(comanda: Pick<ComandaOperacao, 'numero'>): string | null {
   return comanda.numero == null ? null : `Comanda #${comanda.numero}`;
 }
 
@@ -236,7 +236,7 @@ function numeroMesa(identificador: string | null): bigint | null {
 
 export interface MesaOperacional {
   numero: number;
-  comanda: ComandaQuiosque | null;
+  comanda: ComandaOperacao | null;
 }
 
 /**
@@ -246,9 +246,9 @@ export interface MesaOperacional {
  */
 export function mesasOperacionais(
   quantidadeMesas: number,
-  comandasAbertas: ComandaQuiosque[],
+  comandasAbertas: ComandaOperacao[],
 ): MesaOperacional[] {
-  const abertasPorNumero = new Map<number, ComandaQuiosque>();
+  const abertasPorNumero = new Map<number, ComandaOperacao>();
   for (const comanda of comandasAbertas) {
     if (comanda.tipo !== 'MESA' || !comanda.identificador) continue;
     const numero = Number(comanda.identificador.trim());
@@ -274,7 +274,7 @@ export function mesasOperacionais(
  * sequencial da comanda nunca participa desta ordem, pois ele muda a cada
  * abertura da mesma mesa.
  */
-export function ordenarComandasParaOperacao(comandas: ComandaQuiosque[]): ComandaQuiosque[] {
+export function ordenarComandasParaOperacao(comandas: ComandaOperacao[]): ComandaOperacao[] {
   return [...comandas].sort((a, b) => {
     if (a.tipo === 'MESA' && b.tipo !== 'MESA') return -1;
     if (a.tipo !== 'MESA' && b.tipo === 'MESA') return 1;
@@ -296,7 +296,7 @@ export function ordenarComandasParaOperacao(comandas: ComandaQuiosque[]): Comand
   });
 }
 
-export function totalItensComanda(comanda: ComandaQuiosque): number {
+export function totalItensComanda(comanda: ComandaOperacao): number {
   return comanda.pedidos
     .filter((pedido) => pedido.status !== 'CANCELADO')
     .reduce(
@@ -312,11 +312,11 @@ export function pedidoVaiParaCozinha(itens: Array<{ exigePreparo: boolean }>): b
 }
 
 /** Itens cancelados não entram na exibição de valores confirmados. */
-export function pedidoConfirmadoNaComanda(pedido: PedidoQuiosque): boolean {
+export function pedidoConfirmadoNaComanda(pedido: PedidoOperacao): boolean {
   return pedido.status !== 'CANCELADO';
 }
 
-export function temPedidoCozinhaPendente(comanda: Pick<ComandaQuiosque, 'pedidos'>): boolean {
+export function temPedidoCozinhaPendente(comanda: Pick<ComandaOperacao, 'pedidos'>): boolean {
   return comanda.pedidos.some(
     (pedido) =>
       pedidoVaiParaCozinha(pedido.itens) && STATUS_COZINHA_PENDENTE.includes(pedido.status),
@@ -339,7 +339,7 @@ export function rotuloStatusPedido(status: StatusPedido): string {
 }
 
 /** Comandas fechadas a partir da abertura do turno de caixa (praia de dia, rua à noite). */
-export function comandasFechadasNoTurno(comandas: ComandaQuiosque[], abertoEm: string): ComandaQuiosque[] {
+export function comandasFechadasNoTurno(comandas: ComandaOperacao[], abertoEm: string): ComandaOperacao[] {
   const inicio = new Date(abertoEm).getTime();
   return comandas.filter(
     (comanda) => comanda.fechadaEm != null && new Date(comanda.fechadaEm).getTime() >= inicio,
@@ -360,9 +360,9 @@ export function diaOperacionalQuery(referencia = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(referencia);
 }
 
-export interface FecharGrupoQuiosqueResponse {
-  comandas: ComandaQuiosque[];
-  canceladas: ComandaQuiosque[];
+export interface FecharGrupoOperacaoResponse {
+  comandas: ComandaOperacao[];
+  canceladas: ComandaOperacao[];
   totalGrupo: number;
 }
 
@@ -460,7 +460,7 @@ export function formatDuracaoTurnoMinutos(minutos: number): string {
   return `${horas}h ${String(resto).padStart(2, '0')}min`;
 }
 
-export function pluralComandasQuiosque(qtd: number): string {
+export function pluralComandasOperacao(qtd: number): string {
   return qtd === 1 ? '1 comanda' : `${qtd} comandas`;
 }
 
@@ -495,7 +495,7 @@ export function mapSaldosEstoque(itens: SaldoEstoque[]): Map<string, SaldoEstoqu
 
 /** Máximo que ainda pode entrar no carrinho desta rodada. null = sem controle de estoque. */
 export function limiteEstoqueCarrinho(
-  produto: Pick<ProdutoQuiosque, 'id' | 'controlaEstoque'>,
+  produto: Pick<ProdutoOperacao, 'id' | 'controlaEstoque'>,
   saldos: Map<string, SaldoEstoque> | undefined,
   moduloControlaEstoque: boolean,
 ): number | null {
@@ -504,7 +504,7 @@ export function limiteEstoqueCarrinho(
 }
 
 export function podeIncrementarLinhaCarrinho(
-  produto: Pick<ProdutoQuiosque, 'id' | 'controlaEstoque'>,
+  produto: Pick<ProdutoOperacao, 'id' | 'controlaEstoque'>,
   quantidadeAtual: number,
   saldos: Map<string, SaldoEstoque> | undefined,
   moduloControlaEstoque: boolean,
@@ -516,7 +516,7 @@ export function podeIncrementarLinhaCarrinho(
 
 /** Item ja lancado na comanda: o estoque ja foi baixado, so precisa de saldo livre para subir. */
 export function podeIncrementarItemComanda(
-  produto: Pick<ProdutoQuiosque, 'id' | 'controlaEstoque'> | undefined,
+  produto: Pick<ProdutoOperacao, 'id' | 'controlaEstoque'> | undefined,
   saldos: Map<string, SaldoEstoque> | undefined,
   moduloControlaEstoque: boolean,
 ): boolean {
@@ -526,8 +526,8 @@ export function podeIncrementarItemComanda(
 }
 
 export function podeEditarItemComanda(
-  comanda: Pick<ComandaQuiosque, 'status'>,
-  pedido: Pick<PedidoQuiosque, 'status'>,
+  comanda: Pick<ComandaOperacao, 'status'>,
+  pedido: Pick<PedidoOperacao, 'status'>,
 ): boolean {
   return comanda.status === 'ABERTA' && pedido.status !== 'CANCELADO';
 }
@@ -538,7 +538,7 @@ export const TIPOS_SAIDA_ESTOQUE: Array<{ valor: TipoSaidaEstoque; label: string
   { valor: 'CONSUMO_INTERNO', label: 'Consumo interno' },
 ];
 
-export interface QuiosqueDashboard {
+export interface OperacaoDashboard {
   periodo: { ano: number; mes: number; label: string };
   resumo: {
     receitaTotal: number;

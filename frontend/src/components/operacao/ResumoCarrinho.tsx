@@ -4,7 +4,7 @@ import {
   podeIncrementarLinhaCarrinho,
   type LinhaCarrinho,
   type SaldoEstoque,
-} from '../../lib/quiosque';
+} from '../../lib/operacao';
 
 interface Props {
   linhas: LinhaCarrinho[];

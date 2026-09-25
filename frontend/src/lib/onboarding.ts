@@ -1,13 +1,13 @@
 export type OnboardingMode = 'CAIXA' | 'EVENTO';
-export type OnboardingModule = 'QUIOSQUE' | 'CERVEJARIA';
+export type OnboardingModule = 'CAIXA' | 'CERVEJARIA';
 export type OnboardingSource = 'AUTO' | 'MANUAL';
 
 export type OnboardingStepCode =
-  | 'QUIOSQUE_POINT'
-  | 'QUIOSQUE_PRODUCT'
-  | 'QUIOSQUE_STOCK'
-  | 'QUIOSQUE_CASH_REGISTER'
-  | 'QUIOSQUE_FIRST_SALE'
+  | 'CAIXA_POINT'
+  | 'CAIXA_PRODUCT'
+  | 'CAIXA_STOCK'
+  | 'CAIXA_CASH_REGISTER'
+  | 'CAIXA_FIRST_SALE'
   | 'CERVEJARIA_TRAILER'
   | 'CERVEJARIA_PRODUCT'
   | 'CERVEJARIA_TAP'
@@ -36,7 +36,7 @@ export interface OnboardingReadiness {
   operationReady: boolean;
   canConfigure: boolean;
   modules: {
-    quiosque: OnboardingModuleReadiness;
+    operacao: OnboardingModuleReadiness;
     cervejaria: OnboardingModuleReadiness;
   };
 }
@@ -120,7 +120,7 @@ export function isOnboardingDismissed(storageKey: string, storage?: LocalStorage
 }
 
 export function hasApplicableOnboardingModule(readiness: OnboardingReadiness | undefined): boolean {
-  return Boolean(readiness?.modules.quiosque.enabled || readiness?.modules.cervejaria.enabled);
+  return Boolean(readiness?.modules.operacao.enabled || readiness?.modules.cervejaria.enabled);
 }
 
 export function isAutoStartAllowed(input: OnboardingEligibilityInput): boolean {
@@ -147,9 +147,9 @@ export function isManualStartAllowed(input: Pick<OnboardingEligibilityInput, 'is
 }
 
 export function initialSelectedModule(readiness: OnboardingReadiness): OnboardingModule | null {
-  if (readiness.mode === 'CAIXA') return 'QUIOSQUE';
+  if (readiness.mode === 'CAIXA') return 'CAIXA';
   if (readiness.mode === 'EVENTO') return 'CERVEJARIA';
-  if (readiness.modules.quiosque.enabled) return 'QUIOSQUE';
+  if (readiness.modules.operacao.enabled) return 'CAIXA';
   if (readiness.modules.cervejaria.enabled) return 'CERVEJARIA';
   return null;
 }
@@ -163,7 +163,7 @@ export function getNextOnboardingAction(
   const module = selectedModule ?? initialSelectedModule(readiness);
   if (!module) return null;
 
-  const readinessModule = module === 'QUIOSQUE' ? readiness.modules.quiosque : readiness.modules.cervejaria;
+  const readinessModule = module === 'CAIXA' ? readiness.modules.operacao : readiness.modules.cervejaria;
   return readinessModule.missingSteps.find(
     (missingStep) => !readiness.firstSaleCompleted || !missingStep.code.endsWith('_FIRST_SALE'),
   )?.code ?? null;

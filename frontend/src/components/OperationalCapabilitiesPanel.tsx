@@ -4,8 +4,8 @@ import { api, ApiError } from '../lib/api';
 import { ToggleAtivo } from './ToggleAtivo';
 
 type CapabilityKey = 'tapsEnabled' | 'inventoryEnabled' | 'kitchenEnabled';
-type OperationalConfiguration = Record<CapabilityKey | 'directSalesEnabled' | 'plannedOperationsEnabled', boolean | null>;
-type Enablements = { directSales: boolean; plannedOperations: boolean; taps: boolean; inventory: boolean; kitchen: boolean };
+type OperationalConfiguration = Record<CapabilityKey | 'plannedOperationsEnabled', boolean | null>;
+type Enablements = { plannedOperations: boolean; taps: boolean; inventory: boolean; kitchen: boolean };
 type OperationalConfigResponse = { enablements: Enablements; configuration: OperationalConfiguration | null };
 const ENABLEMENT_BY_KEY: Record<CapabilityKey, keyof Enablements> = { tapsEnabled: 'taps', inventoryEnabled: 'inventory', kitchenEnabled: 'kitchen' };
 const CAPABILITIES: Array<{ key: CapabilityKey; title: string; description: string }> = [
@@ -19,7 +19,7 @@ export function OperationalCapabilitiesPanel() {
   const [saving, setSaving] = useState<CapabilityKey | 'mode' | null>(null);
   const [error, setError] = useState('');
   const { data, isLoading } = useQuery({ queryKey: ['operational-configuration'], queryFn: () => api.get<OperationalConfigResponse>('/api/cervejaria/configuracao-operacional') });
-  const refresh = () => Promise.all([queryClient.invalidateQueries({ queryKey: ['operational-configuration'] }), queryClient.invalidateQueries({ queryKey: ['quiosque-contexto'] })]);
+  const refresh = () => Promise.all([queryClient.invalidateQueries({ queryKey: ['operational-configuration'] }), queryClient.invalidateQueries({ queryKey: ['operacao-contexto'] })]);
   async function toggle(key: CapabilityKey) {
     if (!data) return;
     const enabled = !data.enablements[ENABLEMENT_BY_KEY[key]];

@@ -4,20 +4,20 @@ import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
 import {
   aplicarStatusPedidoCozinha,
-  notificarComandaQuiosqueAtualizada,
+  notificarComandaOperacaoAtualizada,
   notificarCozinha,
   pedidoVaiParaCozinha,
 } from './cozinha.js';
 import { EstoqueInvalidoError, baixarEstoqueItemPedido, estornarEstoqueItemPedido } from './estoque.js';
 import { centavos, reais, resumoComanda, subtotalComandaEmCentavos } from './venda.js';
 import {
-  INCLUDE_COMANDA_QUIOSQUE,
-  recalcComandaTotalQuiosque,
-  whereComandaQuiosque,
+  INCLUDE_COMANDA_OPERACAO,
+  recalcComandaTotalOperacao,
+  whereComandaOperacao,
 } from './comanda-adapter.js';
 import { lockComandaItemsInTx } from '../comanda-service.js';
 
-type ComandaCompleta = Prisma.ComandaGetPayload<{ include: typeof INCLUDE_COMANDA_QUIOSQUE }>;
+type ComandaCompleta = Prisma.ComandaGetPayload<{ include: typeof INCLUDE_COMANDA_OPERACAO }>;
 
 async function ajustarDescontoSeNecessario(tx: Prisma.TransactionClient, comanda: ComandaCompleta) {
   const subtotalEmCents = subtotalComandaEmCentavos(comanda);
@@ -31,7 +31,7 @@ async function ajustarDescontoSeNecessario(tx: Prisma.TransactionClient, comanda
 }
 
 async function cancelarPedidoSeVazio(tx: Prisma.TransactionClient, pedidoId: string) {
-  const pedido = await tx.pedidoQuiosque.findUnique({
+  const pedido = await tx.pedidoOperacao.findUnique({
     where: { id: pedidoId },
     include: { itensComanda: true },
   });
@@ -50,13 +50,13 @@ async function carregarItem(
     where: {
       id: itemId,
       comandaId,
-      comanda: whereComandaQuiosque(cervejariaId),
+      comanda: whereComandaOperacao(cervejariaId),
     },
     include: {
       produto: true,
       pedidoCozinha: {
         include: {
-          comanda: { include: INCLUDE_COMANDA_QUIOSQUE },
+          comanda: { include: INCLUDE_COMANDA_OPERACAO },
         },
       },
     },
@@ -71,7 +71,7 @@ async function notificarMudancaCozinha(
 ) {
   if (!temCozinha) return;
 
-  const pedido = await prisma.pedidoQuiosque.findUnique({
+  const pedido = await prisma.pedidoOperacao.findUnique({
     where: { id: pedidoId },
     include: {
       itensComanda: true,
@@ -83,7 +83,7 @@ async function notificarMudancaCozinha(
   }
 }
 
-export async function removeItemFromComandaQuiosque(params: {
+export async function removeItemFromComandaOperacao(params: {
   app: FastifyInstance;
   cervejariaId: string;
   comandaId: string;
@@ -137,24 +137,24 @@ export async function removeItemFromComandaQuiosque(params: {
 
     const comandaFresh = await tx.comanda.findUniqueOrThrow({
       where: { id: params.comandaId },
-      include: INCLUDE_COMANDA_QUIOSQUE,
+      include: INCLUDE_COMANDA_OPERACAO,
     });
     await ajustarDescontoSeNecessario(tx, comandaFresh);
-    await recalcComandaTotalQuiosque(tx, params.comandaId);
+    await recalcComandaTotalOperacao(tx, params.comandaId);
 
     return tx.comanda.findUniqueOrThrow({
       where: { id: params.comandaId },
-      include: INCLUDE_COMANDA_QUIOSQUE,
+      include: INCLUDE_COMANDA_OPERACAO,
     });
   });
 
-  notificarComandaQuiosqueAtualizada(params.app, params.cervejariaId, params.comandaId);
+  notificarComandaOperacaoAtualizada(params.app, params.cervejariaId, params.comandaId);
   await notificarMudancaCozinha(params.app, params.cervejariaId, params.temCozinha, pedidoId);
 
   return { ok: true as const, comanda: resumoComanda(atualizada), item };
 }
 
-export async function updateItemQuantidadeComandaQuiosque(params: {
+export async function updateItemQuantidadeComandaOperacao(params: {
   app: FastifyInstance;
   cervejariaId: string;
   comandaId: string;
@@ -236,18 +236,18 @@ export async function updateItemQuantidadeComandaQuiosque(params: {
 
       const comandaFresh = await tx.comanda.findUniqueOrThrow({
         where: { id: params.comandaId },
-        include: INCLUDE_COMANDA_QUIOSQUE,
+        include: INCLUDE_COMANDA_OPERACAO,
       });
       await ajustarDescontoSeNecessario(tx, comandaFresh);
-      await recalcComandaTotalQuiosque(tx, params.comandaId);
+      await recalcComandaTotalOperacao(tx, params.comandaId);
 
       return tx.comanda.findUniqueOrThrow({
         where: { id: params.comandaId },
-        include: INCLUDE_COMANDA_QUIOSQUE,
+        include: INCLUDE_COMANDA_OPERACAO,
       });
     });
 
-    notificarComandaQuiosqueAtualizada(params.app, params.cervejariaId, params.comandaId);
+    notificarComandaOperacaoAtualizada(params.app, params.cervejariaId, params.comandaId);
     await notificarMudancaCozinha(params.app, params.cervejariaId, params.temCozinha, pedidoId);
 
     return { ok: true as const, comanda: resumoComanda(atualizada), item };

@@ -13,9 +13,9 @@ import {
 } from '../lib/portal-cliente.js';
 import { normalizePhone } from '../lib/phone.js';
 import { registerOrUpdateCliente } from '../lib/cliente-resolver.js';
-import { assertCaixaAberto, lockCaixaEmTx } from '../lib/quiosque/caixa.js';
-import { diaOperacional } from '../lib/quiosque/venda.js';
-import { proximoNumeroComandaQuiosqueTurno } from '../lib/comanda-numero.js';
+import { assertCaixaAberto, lockCaixaEmTx } from '../lib/operacao/caixa.js';
+import { diaOperacional } from '../lib/operacao/venda.js';
+import { proximoNumeroComandaOperacaoTurno } from '../lib/comanda-numero.js';
 
 import {
 
@@ -311,7 +311,7 @@ export async function publicRoutes(app: FastifyInstance) {
     if (!pontoVenda) return reply.status(404).send({ error: 'Link inválido' });
 
     const dia = diaOperacional();
-    const sessao = await prisma.sessaoCaixaQuiosque.findFirst({
+    const sessao = await prisma.sessaoCaixaOperacao.findFirst({
       where: { cervejariaId: cervejaria.id, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
       select: { id: true },
     });
@@ -336,13 +336,13 @@ export async function publicRoutes(app: FastifyInstance) {
       const result = await prisma.$transaction(async (tx) => {
         await lockCaixaEmTx(tx, cervejaria.id, pontoVenda.id, dia);
         const sessao = await assertCaixaAberto(cervejaria.id, pontoVenda.id, dia, tx);
-        const existente = await tx.comanda.findFirst({ where: { origem: 'QUIOSQUE', pontoVendaId: pontoVenda.id, clienteId: cliente.id, status: 'ABERTA' } });
+        const existente = await tx.comanda.findFirst({ where: { origem: 'CAIXA', pontoVendaId: pontoVenda.id, clienteId: cliente.id, status: 'ABERTA' } });
         if (existente) return { comanda: existente, reused: true };
-        const numero = await proximoNumeroComandaQuiosqueTurno(tx, cervejaria.id, pontoVenda.id, sessao.abertoEm);
-        const comanda = await tx.comanda.create({ data: { origem: 'QUIOSQUE', pontoVendaId: pontoVenda.id, clienteId: cliente.id, tipo: 'APELIDO', identificador: cliente.nome, numero, diaOperacional: dia, status: 'ABERTA', total: 0 } });
+        const numero = await proximoNumeroComandaOperacaoTurno(tx, cervejaria.id, pontoVenda.id, sessao.abertoEm);
+        const comanda = await tx.comanda.create({ data: { origem: 'CAIXA', pontoVendaId: pontoVenda.id, clienteId: cliente.id, tipo: 'APELIDO', identificador: cliente.nome, numero, diaOperacional: dia, status: 'ABERTA', total: 0 } });
         return { comanda, reused: false };
       });
-      void registrarTransacao({ cervejariaId: cervejaria.id, tipo: 'QUIOSQUE_COMANDA_CRIADA', comandaId: result.comanda.id, metadata: { origem: 'PORTAL_PDV', pontoVendaId, reused: result.reused }, payload: { numero: result.comanda.numero, identificador: result.comanda.identificador } });
+      void registrarTransacao({ cervejariaId: cervejaria.id, tipo: 'COMANDA_CRIADA', comandaId: result.comanda.id, metadata: { origem: 'PORTAL_PDV', pontoVendaId, reused: result.reused }, payload: { numero: result.comanda.numero, identificador: result.comanda.identificador } });
       if (!result.reused) {
         emitToCervejaria(app.io, cervejaria.id, { type: 'comanda:created', data: result.comanda });
       }

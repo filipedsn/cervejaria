@@ -18,15 +18,15 @@ import {
 import { api, formatCurrency } from '../../lib/api';
 import { PAYMENT_LABELS } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
-import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
+import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { getSocket } from '../../lib/socket';
 import { Loading } from '../../components/Loading';
-import type { QuiosqueDashboard } from '../../lib/quiosque';
+import type { OperacaoDashboard } from '../../lib/operacao';
 import {
   formatDuracaoTurnoMinutos,
   formatTurnoTitulo,
-  pluralComandasQuiosque,
-} from '../../lib/quiosque';
+  pluralComandasOperacao,
+} from '../../lib/operacao';
 
 const MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -80,10 +80,10 @@ function TurnoMetric({ value, label }: { value: string; label: string }) {
   );
 }
 
-export function QuiosqueDashboardPage() {
+export function OperacaoDashboardPage() {
   const queryClient = useQueryClient();
   const { cervejaria } = useAuth();
-  const { contexto } = useQuiosqueContexto();
+  const { contexto } = useOperacaoContexto();
   const [searchParams, setSearchParams] = useSearchParams();
   const { ano, mes } = useMemo(() => parsePeriod(searchParams), [searchParams]);
   const [pontoVendaId, setPontoVendaId] = useState<string>('all');
@@ -98,10 +98,10 @@ export function QuiosqueDashboardPage() {
     ano < now.getFullYear() || (ano === now.getFullYear() && mes < now.getMonth() + 1);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['quiosque-dashboard', ano, mes, pontoParam],
+    queryKey: ['operacao-dashboard', ano, mes, pontoParam],
     queryFn: () =>
-      api.get<QuiosqueDashboard>(
-        `/api/quiosque/dashboard?ano=${ano}&mes=${mes}${
+      api.get<OperacaoDashboard>(
+        `/api/operacao/dashboard?ano=${ano}&mes=${mes}${
           pontoParam ? `&pontoVendaId=${encodeURIComponent(pontoParam)}` : ''
         }`,
       ),
@@ -110,10 +110,10 @@ export function QuiosqueDashboardPage() {
 
   useEffect(() => {
     const socket = getSocket();
-    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['quiosque-dashboard'] });
-    socket.on('quiosque:comanda-atualizada', invalidate);
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['operacao-dashboard'] });
+    socket.on('operacao:comanda-atualizada', invalidate);
     return () => {
-      socket.off('quiosque:comanda-atualizada', invalidate);
+      socket.off('operacao:comanda-atualizada', invalidate);
     };
   }, [queryClient]);
 
@@ -185,7 +185,7 @@ export function QuiosqueDashboardPage() {
       <div>
         <p className="page-eyebrow">Visão geral</p>
         <h1 className="page-title">{cervejaria?.nome ?? 'Dashboard'}</h1>
-        <p className="page-subtitle">Performance mensal do quiosque</p>
+        <p className="page-subtitle">Performance mensal do operacao</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(16rem,24rem)_minmax(0,1fr)] items-start">
@@ -311,7 +311,7 @@ export function QuiosqueDashboardPage() {
                                 {row.dataLabel} · {row.pontoNome}
                               </p>
                               <p className="text-brand-600 font-bold tabular-nums mt-1">{formatCurrency(row.receita)}</p>
-                              <p className="text-ink-muted text-xs mt-0.5">{pluralComandasQuiosque(row.comandas)}</p>
+                              <p className="text-ink-muted text-xs mt-0.5">{pluralComandasOperacao(row.comandas)}</p>
                             </div>
                           );
                         }}
@@ -325,8 +325,8 @@ export function QuiosqueDashboardPage() {
               <div className="card divide-y divide-line p-0 overflow-hidden">
                 {turnosOrdenados.map((turno) => {
                   const turnoHref = searchParams.toString()
-                    ? `/quiosque/turnos/${turno.sessaoId}?${searchParams.toString()}`
-                    : `/quiosque/turnos/${turno.sessaoId}`;
+                    ? `/operacao/turnos/${turno.sessaoId}?${searchParams.toString()}`
+                    : `/operacao/turnos/${turno.sessaoId}`;
 
                   return (
                     <Link
@@ -347,7 +347,7 @@ export function QuiosqueDashboardPage() {
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
-                        <TurnoMetric value={pluralComandasQuiosque(turno.comandasAtendidas)} label="atendidas" />
+                        <TurnoMetric value={pluralComandasOperacao(turno.comandasAtendidas)} label="atendidas" />
                         <TurnoMetric value={formatCurrency(turno.ticketMedio)} label="ticket médio" />
                         <TurnoMetric value={`${formatCurrency(turno.receitaPorHora)}/h`} label="receita/h" />
                         <TurnoMetric

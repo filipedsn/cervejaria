@@ -8,7 +8,7 @@ import {
 function facts(overrides: Partial<OnboardingReadinessFacts> = {}): OnboardingReadinessFacts {
   return {
     hasHistoricalSale: false,
-    quiosque: {
+    operacao: {
       enabled: true,
       controlaEstoque: false,
       temCozinha: false,
@@ -28,97 +28,97 @@ function facts(overrides: Partial<OnboardingReadinessFacts> = {}): OnboardingRea
   };
 }
 
-function codes(result: ReturnType<typeof deriveOnboardingReadiness>, module: 'quiosque' | 'cervejaria') {
+function codes(result: ReturnType<typeof deriveOnboardingReadiness>, module: 'operacao' | 'cervejaria') {
   return result.modules[module].missingSteps.map((item) => item.code);
 }
 
-test('quiosque 00 não exige estoque e fica pronto com produto, ponto e caixa', () => {
+test('operacao 00 não exige estoque e fica pronto com produto, ponto e caixa', () => {
   const result = deriveOnboardingReadiness(facts({
-    quiosque: { ...facts().quiosque, hasOpenOperation: true },
+    operacao: { ...facts().operacao, hasOpenOperation: true },
   }), true);
 
   assert.equal(result.mode, 'CAIXA');
-  assert.equal(result.modules.quiosque.ready, true);
-  assert.deepEqual(codes(result, 'quiosque'), ['QUIOSQUE_FIRST_SALE']);
+  assert.equal(result.modules.operacao.ready, true);
+  assert.deepEqual(codes(result, 'operacao'), ['CAIXA_FIRST_SALE']);
 });
 
-test('quiosque 10 bloqueia saldo somente quando não há produto vendável no ponto', () => {
+test('operacao 10 bloqueia saldo somente quando não há produto vendável no ponto', () => {
   const result = deriveOnboardingReadiness(facts({
-    quiosque: {
-      ...facts().quiosque,
+    operacao: {
+      ...facts().operacao,
       controlaEstoque: true,
       hasSellableAssociation: false,
     },
   }), true);
 
-  assert.deepEqual(codes(result, 'quiosque'), ['QUIOSQUE_STOCK']);
+  assert.deepEqual(codes(result, 'operacao'), ['CAIXA_STOCK']);
 });
 
-test('quiosque 10 aceita produto que não controla estoque', () => {
+test('operacao 10 aceita produto que não controla estoque', () => {
   const result = deriveOnboardingReadiness(facts({
-    quiosque: {
-      ...facts().quiosque,
+    operacao: {
+      ...facts().operacao,
       controlaEstoque: true,
       hasOpenOperation: true,
       hasSellableAssociation: true,
     },
   }), true);
 
-  assert.equal(result.modules.quiosque.ready, true);
+  assert.equal(result.modules.operacao.ready, true);
   assert.equal(result.capacities.controlaEstoque, true);
 });
 
-test('quiosque 01 não cria requisito artificial de cozinha', () => {
+test('operacao 01 não cria requisito artificial de cozinha', () => {
   const result = deriveOnboardingReadiness(facts({
-    quiosque: { ...facts().quiosque, temCozinha: true, hasOpenOperation: true },
+    operacao: { ...facts().operacao, temCozinha: true, hasOpenOperation: true },
   }), true);
 
-  assert.equal(result.modules.quiosque.ready, true);
+  assert.equal(result.modules.operacao.ready, true);
   assert.equal(result.capacities.temCozinha, true);
-  assert.deepEqual(codes(result, 'quiosque'), ['QUIOSQUE_FIRST_SALE']);
+  assert.deepEqual(codes(result, 'operacao'), ['CAIXA_FIRST_SALE']);
 });
 
-test('quiosque 11 mantém somente a pendência real de caixa após saldo disponível', () => {
+test('operacao 11 mantém somente a pendência real de caixa após saldo disponível', () => {
   const result = deriveOnboardingReadiness(facts({
-    quiosque: {
-      ...facts().quiosque,
+    operacao: {
+      ...facts().operacao,
       controlaEstoque: true,
       temCozinha: true,
       hasOpenOperation: false,
     },
   }), true);
 
-  assert.deepEqual(codes(result, 'quiosque'), ['QUIOSQUE_CASH_REGISTER']);
+  assert.deepEqual(codes(result, 'operacao'), ['CAIXA_CASH_REGISTER']);
 });
 
-test('quiosque sem produto não anuncia saldo nem caixa antecipadamente', () => {
+test('operacao sem produto não anuncia saldo nem caixa antecipadamente', () => {
   const result = deriveOnboardingReadiness(facts({
-    quiosque: {
-      ...facts().quiosque,
+    operacao: {
+      ...facts().operacao,
       controlaEstoque: true,
       hasSellableProduct: false,
       hasSellableAssociation: false,
     },
   }), true);
 
-  assert.deepEqual(codes(result, 'quiosque'), ['QUIOSQUE_PRODUCT']);
+  assert.deepEqual(codes(result, 'operacao'), ['CAIXA_PRODUCT']);
 });
 
 test('produto sem preço válido é tratado como produto pendente', () => {
   const result = deriveOnboardingReadiness(facts({
-    quiosque: {
-      ...facts().quiosque,
+    operacao: {
+      ...facts().operacao,
       hasSellableProduct: false,
       hasSellableAssociation: false,
     },
   }), true);
 
-  assert.deepEqual(codes(result, 'quiosque'), ['QUIOSQUE_PRODUCT']);
+  assert.deepEqual(codes(result, 'operacao'), ['CAIXA_PRODUCT']);
 });
 
 test('cervejaria distingue produto, tap e operação aberta', () => {
   const base = facts({
-    quiosque: { ...facts().quiosque, enabled: false },
+    operacao: { ...facts().operacao, enabled: false },
     cervejaria: {
       enabled: true,
       hasActivePointOrTrailer: true,
@@ -139,7 +139,7 @@ test('cervejaria distingue produto, tap e operação aberta', () => {
 
 test('cervejaria pronta sem venda mantém apenas FIRST_SALE', () => {
   const result = deriveOnboardingReadiness(facts({
-    quiosque: { ...facts().quiosque, enabled: false },
+    operacao: { ...facts().operacao, enabled: false },
     cervejaria: {
       enabled: true,
       hasActivePointOrTrailer: true,
@@ -155,7 +155,7 @@ test('cervejaria pronta sem venda mantém apenas FIRST_SALE', () => {
 
 test('híbrida calcula ambos os módulos sem selecionar um deles', () => {
   const result = deriveOnboardingReadiness(facts({
-    quiosque: { ...facts().quiosque, hasOpenOperation: true },
+    operacao: { ...facts().operacao, hasOpenOperation: true },
     cervejaria: {
       enabled: true,
       hasActivePointOrTrailer: true,
@@ -172,17 +172,17 @@ test('híbrida calcula ambos os módulos sem selecionar um deles', () => {
 test('venda histórica encerra FIRST_SALE sem esconder readiness atual', () => {
   const result = deriveOnboardingReadiness(facts({
     hasHistoricalSale: true,
-    quiosque: { ...facts().quiosque, hasOpenOperation: true },
+    operacao: { ...facts().operacao, hasOpenOperation: true },
   }), true);
 
   assert.equal(result.hasHistoricalSale, true);
   assert.equal(result.firstSaleCompleted, true);
-  assert.deepEqual(codes(result, 'quiosque'), []);
+  assert.deepEqual(codes(result, 'operacao'), []);
 });
 
 test('atendente recebe readiness mas não capacidade administrativa', () => {
   const result = deriveOnboardingReadiness(facts(), false);
 
   assert.equal(result.canConfigure, false);
-  assert.deepEqual(codes(result, 'quiosque'), ['QUIOSQUE_CASH_REGISTER']);
+  assert.deepEqual(codes(result, 'operacao'), ['CAIXA_CASH_REGISTER']);
 });

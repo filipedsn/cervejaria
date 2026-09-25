@@ -6,7 +6,7 @@ export interface OperationalCapabilities {
   inventory: boolean;
   kitchen: boolean;
   taps: boolean;
-  directSales: boolean;
+  cashMode: boolean;
   plannedOperations: boolean;
 }
 
@@ -14,7 +14,7 @@ export type OperationMode = 'CAIXA' | 'EVENTO';
 
 export interface OperationalProfileFacts {
   tenantId: string;
-  legacyQuiosque: {
+  legacyOperacao: {
     enabled: boolean;
     exclusivo: boolean;
     controlaEstoque: boolean;
@@ -24,7 +24,6 @@ export interface OperationalProfileFacts {
   activePointsOfSale: number;
   activePointOfSaleCashRegisterSettings: Array<boolean | null>;
   operationalEnablement?: {
-    directSalesEnabled: boolean | null;
     plannedOperationsEnabled: boolean | null;
     tapsEnabled: boolean | null;
     inventoryEnabled: boolean | null;
@@ -56,14 +55,14 @@ export interface OperationalProfile {
   };
   legacy: {
     compatibilityOnly: true;
-    quiosqueEnabled: boolean;
+    operacaoEnabled: boolean;
     exclusivo: boolean | null;
   };
 }
 
 /**
  * The establishment surface is exposed only by current operational
- * capabilities. Legacy ConfiguracaoQuiosque presence is not a capability.
+ * capabilities. Legacy ConfiguracaoOperacao presence is not a capability.
  */
 export function shouldExposeEstablishmentSurface(
   capabilities: Pick<OperationalCapabilities, 'cashRegister' | 'inventory' | 'kitchen'>,
@@ -80,34 +79,25 @@ export function deriveOperationalProfile(
   facts: OperationalProfileFacts,
   onLegacyFallback: LegacyFallbackRecorder = recordLegacyFallback,
 ): OperationalProfile {
-  const quiosqueEnabled = facts.legacyQuiosque?.enabled === true;
-  const hasDirectSaleUnit = quiosqueEnabled && facts.activePointsOfSale > 0;
-  const legacyCashRegister = hasDirectSaleUnit;
-  // plannedOperationsEnabled is the persisted mode signal. Its inverse is a
-  // compatibility projection for direct sales; they are never independent.
+  const operacaoEnabled = facts.legacyOperacao?.enabled === true;
+  // plannedOperationsEnabled is the sole persisted mode signal.
   const plannedOperationsEnabled = facts.operationalEnablement?.plannedOperationsEnabled;
   if (plannedOperationsEnabled === null || plannedOperationsEnabled === undefined) onLegacyFallback('operational_config');
-  const operationMode: OperationMode = (plannedOperationsEnabled ?? facts.activeTrailers > 0)
-    ? 'EVENTO'
-    : 'CAIXA';
+  const operationMode: OperationMode = plannedOperationsEnabled === true ? 'EVENTO' : 'CAIXA';
   const tapsEnabled = facts.operationalEnablement?.tapsEnabled ?? facts.activeTaps > 0;
   const inventoryEnabled = facts.operationalEnablement?.inventoryEnabled
-    ?? (quiosqueEnabled && facts.legacyQuiosque!.controlaEstoque);
+    ?? (operacaoEnabled && facts.legacyOperacao!.controlaEstoque);
   const kitchenEnabled = facts.operationalEnablement?.kitchenEnabled
-    ?? (quiosqueEnabled && facts.legacyQuiosque!.temCozinha);
-  // `PontoVenda.usaCaixa` was a per-unit legacy toggle. There is no current
-  // product configuration for it, so using it as a runtime guard creates an
-  // unresolvable CAIXA state (including for the first point of sale). The
-  // current operational mode is the sole source of truth: every active point
-  // of sale is cash-capable in CAIXA. The column remains readable for
-  // compatibility/backfill diagnostics only.
+    ?? (operacaoEnabled && facts.legacyOperacao!.temCozinha);
+  // Every active point of sale is cash-capable in CAIXA. Per-unit legacy
+  // toggles are intentionally excluded from this decision.
   const hasCashRegisterUnit = operationMode === 'CAIXA' && facts.activePointsOfSale > 0;
 
   return {
     tenantId: facts.tenantId,
     operationMode,
     capabilities: {
-      // The current direct-sale route requires an open SessaoCaixaQuiosque.
+      // The current direct-sale route requires an open SessaoCaixaOperacao.
       // A POS-capable tenant can therefore operate the cash-register workflow,
       // while an event-only tenant remains valid without it.
       cashRegister: hasCashRegisterUnit,
@@ -116,7 +106,7 @@ export function deriveOperationalProfile(
       // Taps are evidenced by active physical resources, never tenant naming.
       taps: tapsEnabled,
       // Today, direct sales are the POS flow and require an active POS unit.
-      directSales: operationMode === 'CAIXA',
+      cashMode: operationMode === 'CAIXA',
       // Today, an active Trailer is the prerequisite unit for Evento creation.
       plannedOperations: operationMode === 'EVENTO',
     },
@@ -131,8 +121,8 @@ export function deriveOperationalProfile(
     },
     legacy: {
       compatibilityOnly: true,
-      quiosqueEnabled,
-      exclusivo: quiosqueEnabled ? facts.legacyQuiosque!.exclusivo : null,
+      operacaoEnabled,
+      exclusivo: operacaoEnabled ? facts.legacyOperacao!.exclusivo : null,
     },
   };
 }
@@ -146,7 +136,7 @@ export const readOperationalProfileFacts: OperationalProfileFactsReader = async 
     where: { id: tenantId },
     select: {
       id: true,
-      configuracaoQuiosque: {
+      configuracaoOperacao: {
         select: {
           ativo: true,
           exclusivo: true,
@@ -156,7 +146,6 @@ export const readOperationalProfileFacts: OperationalProfileFactsReader = async 
       },
       configuracaoOperacional: {
         select: {
-          directSalesEnabled: true,
           plannedOperationsEnabled: true,
           tapsEnabled: true,
           inventoryEnabled: true,
@@ -164,21 +153,21 @@ export const readOperationalProfileFacts: OperationalProfileFactsReader = async 
         },
       },
       trailers: { where: { ativo: true }, select: { id: true } },
-      pontosVenda: { where: { ativo: true }, select: { id: true, usaCaixa: true } },
+      pontosVenda: { where: { ativo: true }, select: { id: true } },
       taps: { where: { ativo: true }, select: { id: true } },
       eventos: { select: { status: true } },
-      sessoesCaixaQuiosque: { where: { status: 'ABERTO' }, select: { id: true } },
+      sessoesCaixaOperacao: { where: { status: 'ABERTO' }, select: { id: true } },
     },
   });
 
   if (!tenant) return null;
 
-  const legacyQuiosque = tenant.configuracaoQuiosque?.ativo
+  const legacyOperacao = tenant.configuracaoOperacao?.ativo
     ? {
         enabled: true,
-        exclusivo: tenant.configuracaoQuiosque.exclusivo,
-        controlaEstoque: tenant.configuracaoQuiosque.controlaEstoque,
-        temCozinha: tenant.configuracaoQuiosque.temCozinha,
+        exclusivo: tenant.configuracaoOperacao.exclusivo,
+        controlaEstoque: tenant.configuracaoOperacao.controlaEstoque,
+        temCozinha: tenant.configuracaoOperacao.temCozinha,
       }
     : null;
   const plannedOperationCount = tenant.eventos.length;
@@ -186,15 +175,15 @@ export const readOperationalProfileFacts: OperationalProfileFactsReader = async 
 
   return {
     tenantId: tenant.id,
-    legacyQuiosque,
+    legacyOperacao,
     activeTrailers: tenant.trailers.length,
     activePointsOfSale: tenant.pontosVenda.length,
-    activePointOfSaleCashRegisterSettings: tenant.pontosVenda.map((pontoVenda) => pontoVenda.usaCaixa),
+    activePointOfSaleCashRegisterSettings: tenant.pontosVenda.map(() => null),
     operationalEnablement: tenant.configuracaoOperacional,
     activeTaps: tenant.taps.length,
     plannedOperationCount,
     openPlannedOperationCount,
-    openCashRegisterCount: tenant.sessoesCaixaQuiosque.length,
+    openCashRegisterCount: tenant.sessoesCaixaOperacao.length,
   };
 };
 

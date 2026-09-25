@@ -6,8 +6,8 @@ import {
 import { centavos } from './venda.js';
 import { toNumber } from '../utils.js';
 
-export const INCLUDE_COMANDA_QUIOSQUE = {
-  pedidosQuiosque: {
+export const INCLUDE_COMANDA_OPERACAO = {
+  pedidosOperacao: {
     include: { itensComanda: true },
     orderBy: { numero: 'asc' as const },
   },
@@ -18,22 +18,22 @@ export const INCLUDE_COMANDA_QUIOSQUE = {
   pagamentos: { orderBy: { pagoEm: 'asc' as const } },
 } satisfies Prisma.ComandaInclude;
 
-export type ComandaQuiosqueCompleta = Prisma.ComandaGetPayload<{
-  include: typeof INCLUDE_COMANDA_QUIOSQUE;
+export type ComandaOperacaoCompleta = Prisma.ComandaGetPayload<{
+  include: typeof INCLUDE_COMANDA_OPERACAO;
 }>;
 
-export function whereComandaQuiosque(
+export function whereComandaOperacao(
   cervejariaId: string,
   extra?: Prisma.ComandaWhereInput,
 ): Prisma.ComandaWhereInput {
   return {
-    origem: 'QUIOSQUE',
+    origem: 'CAIXA',
     pontoVenda: { cervejariaId },
     ...extra,
   };
 }
 
-export async function recalcComandaTotalQuiosque(
+export async function recalcComandaTotalOperacao(
   tx: Prisma.TransactionClient,
   comandaId: string,
 ) {
@@ -51,16 +51,16 @@ export async function recalcComandaTotalQuiosque(
   return total;
 }
 
-export interface PagamentoQuiosqueResolvido extends PagamentoInput {
+export interface PagamentoOperacaoResolvido extends PagamentoInput {
   valorRecebido?: number;
   troco: number | null;
 }
 
-export async function fecharComandaQuiosqueInTx(
+export async function fecharComandaOperacaoInTx(
   tx: Prisma.TransactionClient,
   params: {
-    comanda: ComandaQuiosqueCompleta;
-    pagamentos: PagamentoQuiosqueResolvido[];
+    comanda: ComandaOperacaoCompleta;
+    pagamentos: PagamentoOperacaoResolvido[];
     cervejariaId: string;
     usuarioId: string;
     fechadaEm: Date;
@@ -83,7 +83,7 @@ export async function fecharComandaQuiosqueInTx(
           ? { tipo: item.produto.tipo, formato: item.produto.formato }
           : null,
       })),
-      origem: 'QUIOSQUE',
+      origem: 'CAIXA',
     },
     pagamentos: params.pagamentos.map((p) => ({ forma: p.forma, valor: p.valor })),
     cervejariaId: params.cervejariaId,
@@ -91,7 +91,7 @@ export async function fecharComandaQuiosqueInTx(
     fechadaEm: params.fechadaEm,
     grupoPagamentoId: params.grupoPagamentoId,
     comandaIdsGrupo: params.comandaIdsGrupo,
-    origem: 'QUIOSQUE',
+    origem: 'CAIXA',
     pagamentosDetalhados: params.pagamentos,
   });
 }

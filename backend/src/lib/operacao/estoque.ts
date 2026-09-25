@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Prisma, TipoMovimentoEstoqueQuiosque } from '@prisma/client';
+import type { Prisma, TipoMovimentoEstoqueOperacao } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import type { ItemResolvido } from './venda.js';
 
@@ -9,7 +9,7 @@ export class EstoqueInvalidoError extends Error {
 
 type TxClient = Prisma.TransactionClient;
 
-const SAIDA_MANUAL: TipoMovimentoEstoqueQuiosque[] = ['PERDA', 'CORTESIA', 'CONSUMO_INTERNO'];
+const SAIDA_MANUAL: TipoMovimentoEstoqueOperacao[] = ['PERDA', 'CORTESIA', 'CONSUMO_INTERNO'];
 
 export type StatusEstoque = 'NORMAL' | 'LOW' | 'OUT_OF_STOCK';
 
@@ -22,7 +22,7 @@ export function classificarEstoque(quantidade: number, estoqueMinimo: number | n
 /** Serializa mutações do saldo materializado de um produto em um ponto de venda. */
 function chaveLockEstoque(cervejariaId: string, pontoVendaId: string, produtoId: string): bigint {
   const digest = createHash('sha256')
-    .update(`estoque-quiosque:${cervejariaId}:${pontoVendaId}:${produtoId}`)
+    .update(`estoque-operacao:${cervejariaId}:${pontoVendaId}:${produtoId}`)
     .digest();
   return BigInt.asIntN(64, digest.readBigUInt64BE(0));
 }
@@ -69,7 +69,7 @@ async function registrarMovimento(
     cervejariaId: string;
     pontoVendaId: string;
     produtoId: string;
-    tipo: TipoMovimentoEstoqueQuiosque;
+    tipo: TipoMovimentoEstoqueOperacao;
     quantidade: number;
     observacao?: string;
     registradoPorId: string;

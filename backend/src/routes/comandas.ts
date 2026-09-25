@@ -23,7 +23,7 @@ function eventoIdDaComanda(comanda: { eventoId: string | null }): string {
   if (!comanda.eventoId) throw new Error('Comanda sem evento associado');
   return comanda.eventoId;
 }
-import { assertPodeDarDescontoQuiosque, DescontoInvalidoError } from '../lib/quiosque/desconto.js';
+import { assertPodeDarDescontoOperacao, DescontoInvalidoError } from '../lib/operacao/desconto.js';
 
 function comandaAbertaResponse(
   reply: { status: (code: number) => { send: (body: unknown) => unknown } },
@@ -189,7 +189,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     const body = descontoSchema.parse(request.body);
 
     try {
-      await assertPodeDarDescontoQuiosque(user);
+      await assertPodeDarDescontoOperacao(user);
     } catch (err) {
       if (err instanceof DescontoInvalidoError) {
         return reply.status(err.statusCode).send({ error: err.message });

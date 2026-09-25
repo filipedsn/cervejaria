@@ -10,14 +10,14 @@ import {
   type ResumoCaixa,
   defaultTurnoCardapioForm,
   buildTurnoCardapioAbrirPayload,
-} from '../../lib/quiosque';
+} from '../../lib/operacao';
 import { usePollInterval } from '../../hooks/usePollInterval';
-import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
+import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import {
   TurnoCardapioFormFields,
   type TurnoCardapioFormState,
 } from './TurnoCardapioFormFields';
-import { QuiosqueTurnoCardapioPanel } from './QuiosqueTurnoCardapioPanel';
+import { OperacaoTurnoCardapioPanel } from './OperacaoTurnoCardapioPanel';
 import { invalidateOnboardingReadiness } from '../../lib/onboarding';
 
 type Dialogo = 'nenhum' | 'movimento' | 'correcao' | 'fechar' | 'cardapio';
@@ -50,9 +50,9 @@ interface Props {
   comandasAbertas?: number;
 }
 
-export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAbertas: comandasAbertasProp }: Props) {
+export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAbertas: comandasAbertasProp }: Props) {
   const queryClient = useQueryClient();
-  const { contexto } = useQuiosqueContexto();
+  const { contexto } = useOperacaoContexto();
   const usaCardapio = contexto.ativo ? (contexto.usaCardapio ?? false) : false;
   const pollMs = usePollInterval(30_000);
   const [trocoInicial, setTrocoInicial] = useState(() => formatCurrencyInputFromNumber(100));
@@ -72,8 +72,8 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
   const [cardapioForm, setCardapioForm] = useState<TurnoCardapioFormState>(defaultTurnoCardapioForm);
 
   const { data } = useQuery({
-    queryKey: ['quiosque-caixa', pontoVendaId],
-    queryFn: () => api.get<CaixaResposta>(`/api/quiosque/caixa?pontoVendaId=${pontoVendaId}`),
+    queryKey: ['operacao-caixa', pontoVendaId],
+    queryFn: () => api.get<CaixaResposta>(`/api/operacao/caixa?pontoVendaId=${pontoVendaId}`),
     enabled: Boolean(pontoVendaId),
     refetchInterval: pollMs,
   });
@@ -83,12 +83,12 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
   const bloqueioFechamento = comandasAbertas > 0;
 
   const invalidar = () => {
-    queryClient.invalidateQueries({ queryKey: ['quiosque-caixa', pontoVendaId] });
+    queryClient.invalidateQueries({ queryKey: ['operacao-caixa', pontoVendaId] });
   };
 
   const abrir = useMutation({
     mutationFn: () =>
-      api.post<ResumoCaixa>('/api/quiosque/caixa/abrir', {
+      api.post<ResumoCaixa>('/api/operacao/caixa/abrir', {
         pontoVendaId,
         trocoInicial: parseCurrencyInput(trocoInicial),
         ...buildTurnoCardapioAbrirPayload(cardapioForm),
@@ -96,9 +96,9 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
     onSuccess: () => {
       invalidar();
       invalidateOnboardingReadiness(queryClient);
-      queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
-      queryClient.invalidateQueries({ queryKey: ['quiosque-produtos-operacionais', pontoVendaId] });
-      queryClient.invalidateQueries({ queryKey: ['quiosque-turno-cardapio', pontoVendaId] });
+      queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
+      queryClient.invalidateQueries({ queryKey: ['operacao-produtos-operacionais', pontoVendaId] });
+      queryClient.invalidateQueries({ queryKey: ['operacao-turno-cardapio', pontoVendaId] });
       setCardapioForm(defaultTurnoCardapioForm());
       setErro('');
     },
@@ -107,7 +107,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
 
   const movimento = useMutation({
     mutationFn: () =>
-      api.post<ResumoCaixa>('/api/quiosque/caixa/movimentos', {
+      api.post<ResumoCaixa>('/api/operacao/caixa/movimentos', {
         pontoVendaId,
         tipo: tipoMovimento,
         valor: parseCurrencyInput(valorMovimento),
@@ -125,7 +125,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
 
   const fechar = useMutation({
     mutationFn: () =>
-      api.post<ResumoCaixa>('/api/quiosque/caixa/fechar', {
+      api.post<ResumoCaixa>('/api/operacao/caixa/fechar', {
         pontoVendaId,
         contadoDinheiro: parseCurrencyInput(contado.dinheiro ?? '0'),
         contadoPix: parseCurrencyInput(contado.pix ?? '0'),
@@ -135,7 +135,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
       }),
     onSuccess: () => {
       invalidar();
-      queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
+      queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
       setDialogo('nenhum');
       setErro('');
     },
@@ -145,7 +145,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
   const corrigir = useMutation({
     mutationFn: () => {
       if (!movimentoParaCorrigir) throw new Error('Movimento não selecionado');
-      return api.post<ResumoCaixa>(`/api/quiosque/caixa/movimentos/${movimentoParaCorrigir.id}/corrigir`, {
+      return api.post<ResumoCaixa>(`/api/operacao/caixa/movimentos/${movimentoParaCorrigir.id}/corrigir`, {
         pontoVendaId,
         valorCorrigido: parseCurrencyInput(valorCorrigido),
         motivo: motivoCorrecao.trim(),
@@ -208,8 +208,8 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
             type="button"
             className="touch-btn-primary w-full"
             disabled={abrir.isPending}
-            data-audit="quiosque-caixa-abrir"
-            data-onboarding-target="quiosque-open-cash"
+            data-audit="operacao-caixa-abrir"
+            data-onboarding-target="operacao-open-cash"
             onClick={() => abrir.mutate()}
           >
             {abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}
@@ -280,7 +280,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
             className="touch-btn-orange w-full disabled:opacity-50"
             disabled={bloqueioFechamento}
             onClick={() => abrirDialogoFechar(sessao)}
-            data-audit="quiosque-caixa-fechar"
+            data-audit="operacao-caixa-fechar"
           >
             Fechar caixa
           </button>
@@ -291,7 +291,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
         <>
           {usaCardapio && (
             <div className="card space-y-3">
-              <QuiosqueTurnoCardapioPanel pontoVendaId={pontoVendaId} embedded />
+              <OperacaoTurnoCardapioPanel pontoVendaId={pontoVendaId} embedded />
             </div>
           )}
 
@@ -399,7 +399,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
             className="touch-btn-orange w-full disabled:opacity-50"
             disabled={bloqueioFechamento}
             onClick={() => abrirDialogoFechar(sessao)}
-            data-audit="quiosque-caixa-fechar"
+            data-audit="operacao-caixa-fechar"
           >
             Fechar caixa
           </button>
@@ -470,7 +470,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
           title="Cardápio do turno"
           hideHeaderClose
         >
-          <QuiosqueTurnoCardapioPanel
+          <OperacaoTurnoCardapioPanel
             pontoVendaId={pontoVendaId}
             embedded
             onClose={() => setDialogo('nenhum')}
@@ -502,7 +502,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
             <label className="label">Observação (opcional)</label>
             <input className="input" value={obsMovimento} onChange={(e) => setObsMovimento(e.target.value)} />
           </div>
-          <button type="submit" className="touch-btn-primary w-full" disabled={movimento.isPending} data-audit={tipoMovimento === 'SANGRIA' ? 'quiosque-caixa-sangria' : 'quiosque-caixa-suprimento'}>
+          <button type="submit" className="touch-btn-primary w-full" disabled={movimento.isPending} data-audit={tipoMovimento === 'SANGRIA' ? 'operacao-caixa-sangria' : 'operacao-caixa-suprimento'}>
             {movimento.isPending ? 'Salvando...' : 'Confirmar'}
           </button>
         </form>
@@ -523,7 +523,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
             <div><label className="label">E-mail do DONO</label><input className="input" type="email" autoComplete="username" value={autorizadorEmail} onChange={(e) => setAutorizadorEmail(e.target.value)} /></div>
             <div><label className="label">Senha</label><input className="input" type="password" autoComplete="current-password" value={autorizadorSenha} onChange={(e) => setAutorizadorSenha(e.target.value)} /></div>
           </fieldset>
-          <button type="submit" className="touch-btn-primary w-full" disabled={corrigir.isPending} data-audit="quiosque-caixa-corrigir">{corrigir.isPending ? 'Corrigindo...' : 'Autorizar e corrigir'}</button>
+          <button type="submit" className="touch-btn-primary w-full" disabled={corrigir.isPending} data-audit="operacao-caixa-corrigir">{corrigir.isPending ? 'Corrigindo...' : 'Autorizar e corrigir'}</button>
         </form>
       </Modal>
 
@@ -554,7 +554,7 @@ export function PainelCaixaQuiosque({ pontoVendaId, compacto = false, comandasAb
               form="fechar-caixa-form"
               className="touch-btn-orange w-full min-h-14"
               disabled={fechar.isPending}
-              data-audit="quiosque-caixa-fechar-confirmar"
+              data-audit="operacao-caixa-fechar-confirmar"
             >
               {fechar.isPending ? 'Fechando...' : 'Confirmar fechamento'}
             </button>

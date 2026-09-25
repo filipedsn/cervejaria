@@ -14,13 +14,13 @@ import {
   toPaymentForma,
   type PaymentFormRow,
 } from '../../components/PaymentFormModal';
-import { AdicionarItensQuiosqueModal } from '../../components/quiosque/AdicionarItensQuiosqueModal';
+import { AdicionarItensOperacaoModal } from '../../components/operacao/AdicionarItensOperacaoModal';
 import { CheckoutItemsCard } from '../../components/checkout/CheckoutItemsCard';
 import { PaymentDiscountFields } from '../../components/checkout/PaymentDiscountFields';
 import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../../lib/currency';
 import { PAYMENT_LABELS } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
-import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
+import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import {
   mapSaldosEstoque,
@@ -29,21 +29,21 @@ import {
   produtosOperacionaisUrl,
   totalCarrinho,
   type CaixaResposta,
-  type ComandaQuiosque,
+  type ComandaOperacao,
   type LinhaCarrinho,
-  type ProdutoQuiosque,
+  type ProdutoOperacao,
   type SaldoEstoque,
-} from '../../lib/quiosque';
+} from '../../lib/operacao';
 
-function precoLinha(produto: ProdutoQuiosque): number {
+function precoLinha(produto: ProdutoOperacao): number {
   return produto.precoEfetivo ?? (parseFloat(produto.precoUnit) || 0);
 }
 
-export function QuiosqueVendaAvulsaPage() {
+export function OperacaoVendaAvulsaPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { contexto } = useQuiosqueContexto();
-  const { podeDarDescontoQuiosque } = useAuth();
+  const { contexto } = useOperacaoContexto();
+  const { podeDarDescontoOperacao } = useAuth();
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
 
   const [pontoVendaId, setPontoVendaId] = useState('');
@@ -52,7 +52,7 @@ export function QuiosqueVendaAvulsaPage() {
   const [showAddItem, setShowAddItem] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
-  const [closedVenda, setClosedVenda] = useState<ComandaQuiosque | null>(null);
+  const [closedVenda, setClosedVenda] = useState<ComandaOperacao | null>(null);
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([{ forma: 'PIX', valor: '' }]);
   const [descontoInput, setDescontoInput] = useState('');
   const [erro, setErro] = useState('');
@@ -63,21 +63,21 @@ export function QuiosqueVendaAvulsaPage() {
   const pollMs = usePollInterval(30_000);
 
   const { data: produtos, isLoading } = useQuery({
-    queryKey: ['quiosque-produtos-operacionais', pontoAtivo],
-    queryFn: () => api.get<ProdutoQuiosque[]>(produtosOperacionaisUrl(pontoAtivo)),
+    queryKey: ['operacao-produtos-operacionais', pontoAtivo],
+    queryFn: () => api.get<ProdutoOperacao[]>(produtosOperacionaisUrl(pontoAtivo)),
     enabled: Boolean(pontoAtivo),
   });
 
   const { data: caixaData } = useQuery({
-    queryKey: ['quiosque-caixa', pontoAtivo],
-    queryFn: () => api.get<CaixaResposta>(`/api/quiosque/caixa?pontoVendaId=${pontoAtivo}`),
+    queryKey: ['operacao-caixa', pontoAtivo],
+    queryFn: () => api.get<CaixaResposta>(`/api/operacao/caixa?pontoVendaId=${pontoAtivo}`),
     enabled: Boolean(pontoAtivo),
     refetchInterval: pollMs,
   });
 
   const { data: estoqueData } = useQuery({
-    queryKey: ['quiosque-estoque', pontoAtivo],
-    queryFn: () => api.get<SaldoEstoque[]>(`/api/quiosque/estoque?pontoVendaId=${pontoAtivo}`),
+    queryKey: ['operacao-estoque', pontoAtivo],
+    queryFn: () => api.get<SaldoEstoque[]>(`/api/operacao/estoque?pontoVendaId=${pontoAtivo}`),
     enabled: Boolean(pontoAtivo) && controlaEstoque,
     refetchInterval: pollMs,
   });
@@ -89,7 +89,7 @@ export function QuiosqueVendaAvulsaPage() {
 
   const caixaAberto = caixaData?.sessao?.status === 'ABERTO';
   const total = totalCarrinho(carrinho);
-  const descontoValor = podeDarDescontoQuiosque ? parseCurrencyInput(descontoInput) : 0;
+  const descontoValor = podeDarDescontoOperacao ? parseCurrencyInput(descontoInput) : 0;
   const totalComDesconto = Math.max(0, total - descontoValor);
 
   useEffect(() => {
@@ -104,7 +104,7 @@ export function QuiosqueVendaAvulsaPage() {
     });
   }, [descontoInput, showPayment, totalComDesconto]);
 
-  const adicionarNoModal = (produto: ProdutoQuiosque) => {
+  const adicionarNoModal = (produto: ProdutoOperacao) => {
     setItensModal((atual) => {
       const existente = atual.find((linha) => linha.produto.id === produto.id);
       const quantidadeCarrinho =
@@ -171,16 +171,16 @@ export function QuiosqueVendaAvulsaPage() {
       pagamentos: { forma: ReturnType<typeof toPaymentForma>; valor: number }[];
       desconto: number;
     }) =>
-      api.post<ComandaQuiosque>('/api/quiosque/vendas', {
+      api.post<ComandaOperacao>('/api/operacao/vendas', {
         pontoVendaId: pontoAtivo,
         itens: carrinho.map((linha) => ({ produtoId: linha.produto.id, quantidade: linha.quantidade })),
         pagamentos,
         desconto,
       }),
     onSuccess: (venda) => {
-      queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
-      queryClient.invalidateQueries({ queryKey: ['quiosque-caixa', pontoAtivo] });
-      queryClient.invalidateQueries({ queryKey: ['quiosque-estoque', pontoAtivo] });
+      queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
+      queryClient.invalidateQueries({ queryKey: ['operacao-caixa', pontoAtivo] });
+      queryClient.invalidateQueries({ queryKey: ['operacao-estoque', pontoAtivo] });
       invalidateOnboardingReadiness(queryClient);
       setCarrinho([]);
       setShowPayment(false);
@@ -188,7 +188,7 @@ export function QuiosqueVendaAvulsaPage() {
       setShowReceipt(true);
     },
     onError: (err) => {
-      queryClient.invalidateQueries({ queryKey: ['quiosque-estoque', pontoAtivo] });
+      queryClient.invalidateQueries({ queryKey: ['operacao-estoque', pontoAtivo] });
       setErro(err instanceof ApiError ? err.message : 'Não foi possível concluir a venda');
     },
   });
@@ -198,13 +198,13 @@ export function QuiosqueVendaAvulsaPage() {
   if (!produtos || produtos.length === 0) {
     return (
       <div className="space-y-4 pb-2">
-        <PageHeader title="Venda avulsa" backTo="/quiosque/comandas" backLabel="Comandas" />
+        <PageHeader title="Venda avulsa" backTo="/operacao/comandas" backLabel="Comandas" />
         <EmptyState
           icon="🛒"
           title="Nenhum produto no catálogo"
           description="Cadastre produtos no catálogo para começar a vender."
           action={
-            <Link to="/quiosque/catalogo" className="touch-btn-primary inline-flex min-h-12 items-center px-6">
+            <Link to="/operacao/catalogo" className="touch-btn-primary inline-flex min-h-12 items-center px-6">
               Ir ao catálogo
             </Link>
           }
@@ -236,9 +236,9 @@ export function QuiosqueVendaAvulsaPage() {
   const paymentHeaderExtra = (
     <div className="space-y-3">
       {erro && showPayment && <div className="alert-error text-sm">{erro}</div>}
-      {podeDarDescontoQuiosque && (
+      {podeDarDescontoOperacao && (
         <PaymentDiscountFields
-          inputId="desconto-venda-avulsa-quiosque"
+          inputId="desconto-venda-avulsa-operacao"
           subtotal={total}
           discountValue={descontoValor}
           discountInput={descontoInput}
@@ -252,7 +252,7 @@ export function QuiosqueVendaAvulsaPage() {
 
   return (
     <div className={`space-y-4 ${carrinho.length > 0 ? 'page-with-action-bar' : 'pb-2'}`}>
-      <PageHeader title="Venda avulsa" backTo="/quiosque/comandas" backLabel="Comandas" />
+      <PageHeader title="Venda avulsa" backTo="/operacao/comandas" backLabel="Comandas" />
 
       <p className="text-sm text-ink-muted leading-relaxed">
         Venda rápida sem abrir comanda. Não entra no ranking nem na fidelização.
@@ -261,7 +261,7 @@ export function QuiosqueVendaAvulsaPage() {
       {!caixaAberto && pontoAtivo && (
         <div className="alert-error">
           Caixa fechado.{' '}
-          <Link to="/quiosque/comandas" className="underline font-semibold">
+          <Link to="/operacao/comandas" className="underline font-semibold">
             Abra o caixa em Comandas
           </Link>{' '}
           para registrar vendas.
@@ -330,7 +330,7 @@ export function QuiosqueVendaAvulsaPage() {
       <button
         type="button"
         className="touch-btn-secondary w-full"
-        onClick={() => navigate('/quiosque/comandas')}
+        onClick={() => navigate('/operacao/comandas')}
       >
         Cancelar
       </button>
@@ -349,7 +349,7 @@ export function QuiosqueVendaAvulsaPage() {
         </MobileActionBar>
       )}
 
-      <AdicionarItensQuiosqueModal
+      <AdicionarItensOperacaoModal
         open={showAddItem}
         onClose={() => {
           setItensModal([]);
@@ -384,7 +384,7 @@ export function QuiosqueVendaAvulsaPage() {
         open={showReceipt}
         onClose={() => {
           setShowReceipt(false);
-          navigate('/quiosque/comandas');
+          navigate('/operacao/comandas');
         }}
         title="Venda concluída"
       >
@@ -431,7 +431,7 @@ export function QuiosqueVendaAvulsaPage() {
               className="touch-btn-primary w-full"
               onClick={() => {
                 setShowReceipt(false);
-                navigate('/quiosque/comandas');
+                navigate('/operacao/comandas');
               }}
             >
               OK

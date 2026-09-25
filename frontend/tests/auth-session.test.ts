@@ -21,5 +21,5 @@ test('private routes continue to redirect after an unauthenticated bootstrap', (
 test('customer portal and public TV routes never trigger the staff-login redirect', () => {
   assert.equal(isPublicPath('/c/arena/t/trailer-123'), true);
   assert.equal(isPublicPath('/ranking/tv/evento-123'), true);
-  assert.equal(isPublicPath('/quiosque/comandas'), false);
+  assert.equal(isPublicPath('/operacao/comandas'), false);
 });

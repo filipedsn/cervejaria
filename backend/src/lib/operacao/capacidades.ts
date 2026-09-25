@@ -7,7 +7,7 @@ type TxClient = Prisma.TransactionClient;
 
 export type OrigemAlteracaoCapacidade = 'ADMIN' | 'DONO';
 
-export type AtualizarCapacidadesQuiosqueInput = {
+export type AtualizarCapacidadesOperacaoInput = {
   cervejariaId: string;
   usuarioId: string;
   papel: 'ADMIN' | 'DONO';
@@ -19,7 +19,7 @@ export type AtualizarCapacidadesQuiosqueInput = {
 
 type AuditRecorder = (input: RegistrarTransacaoInput) => Promise<unknown>;
 
-export const updateCapacidadesQuiosqueSchema = z
+export const updateCapacidadesOperacaoSchema = z
   .object({
     temCozinha: z.boolean().optional(),
     controlaEstoque: z.boolean().optional(),
@@ -31,12 +31,12 @@ export const updateCapacidadesQuiosqueSchema = z
     'Informe ao menos uma capacidade para alterar',
   );
 
-export class QuiosqueInativoError extends Error {
+export class OperacaoInativoError extends Error {
   statusCode = 404;
 
   constructor() {
-    super('A empresa não possui Quiosque ativo');
-    this.name = 'QuiosqueInativoError';
+    super('A empresa não possui Operacao ativo');
+    this.name = 'OperacaoInativoError';
   }
 }
 
@@ -59,15 +59,15 @@ export class ConfirmacaoEstoqueObrigatoriaError extends Error {
 }
 
 /**
- * Atualiza somente capacidades do Quiosque. O modo principal (ativo/exclusivo)
+ * Atualiza somente capacidades do Operacao. O modo principal (ativo/exclusivo)
  * nunca faz parte desta operação.
  */
-export async function atualizarCapacidadesQuiosque(
+export async function atualizarCapacidadesOperacao(
   tx: TxClient,
-  input: AtualizarCapacidadesQuiosqueInput,
+  input: AtualizarCapacidadesOperacaoInput,
   auditRecorder: AuditRecorder = (audit) => registrarTransacao(audit, tx),
 ) {
-  const atual = await tx.configuracaoQuiosque.findUnique({
+  const atual = await tx.configuracaoOperacao.findUnique({
     where: { cervejariaId: input.cervejariaId },
     select: {
       cervejariaId: true,
@@ -81,7 +81,7 @@ export async function atualizarCapacidadesQuiosque(
   });
 
   const operacional = await tx.configuracaoOperacional.findUnique({ where: { cervejariaId: input.cervejariaId } });
-  if (!atual?.ativo && !operacional) throw new QuiosqueInativoError();
+  if (!atual?.ativo && !operacional) throw new OperacaoInativoError();
 
   const atualEstoque = operacional?.inventoryEnabled ?? atual?.controlaEstoque ?? false;
   const atualCozinha = operacional?.kitchenEnabled ?? atual?.temCozinha ?? false;
@@ -114,7 +114,7 @@ export async function atualizarCapacidadesQuiosque(
   });
 
   const atualizado = atual
-    ? await tx.configuracaoQuiosque.update({
+    ? await tx.configuracaoOperacao.update({
         where: { cervejariaId: input.cervejariaId },
         data: {
           ...(alteraCozinha ? { temCozinha: input.temCozinha } : {}),
@@ -152,13 +152,13 @@ export async function atualizarCapacidadesQuiosque(
       cervejariaId: input.cervejariaId,
       tipo:
         alteracao.campo === 'temCozinha'
-          ? 'QUIOSQUE_PEDIDO_COZINHA'
-          : 'QUIOSQUE_ESTOQUE_MOVIMENTO',
+          ? 'KITCHEN_ORDER_STATUS_CHANGED'
+          : 'INVENTORY_MOVEMENT',
       usuarioId: input.usuarioId,
       entidadeTipo: 'ConfiguracaoOperacional',
       entidadeId: input.cervejariaId,
       metadata: {
-        operacao: 'QUIOSQUE_CAPACIDADE_ALTERADA',
+        operacao: 'CAPABILITY_CHANGED',
         tenantId: input.cervejariaId,
         origem: input.origem,
         papel: input.papel,

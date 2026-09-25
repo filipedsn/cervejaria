@@ -22,7 +22,7 @@ const SKIP_ALWAYS_PREFIXES = [
 
 /** Skip apenas GET (polling); mutações continuam auditadas. */
 const SKIP_GET_ONLY_PREFIXES = [
-  '/api/quiosque/cozinha',
+  '/api/operacao/cozinha',
   '/api/pedidos/eventos/',
   '/api/ranking/',
   '/api/public/cliente/',

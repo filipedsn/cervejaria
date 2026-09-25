@@ -47,12 +47,12 @@ const createCervejariaSchema = z
     donoEmail: z.string().email(),
     donoSenha: z.string().min(6),
     moduloCervejaria: flagMultipart,
-    moduloQuiosque: flagMultipart,
-    quiosqueControlaEstoque: flagMultipart,
-    quiosqueTemCozinha: flagMultipart,
+    moduloOperacao: flagMultipart,
+    operacaoControlaEstoque: flagMultipart,
+    operacaoTemCozinha: flagMultipart,
   })
   .superRefine((data, ctx) => {
-    if (data.moduloCervejaria === false && data.moduloQuiosque !== true) {
+    if (data.moduloCervejaria === false && data.moduloOperacao !== true) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Selecione ao menos um módulo para a empresa',
@@ -70,8 +70,8 @@ const updateCervejariaSchema = z.object({
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida. Use formato #RRGGBB')
     .optional(),
-  quiosqueControlaEstoque: flagMultipart,
-  quiosqueTemCozinha: flagMultipart,
+  operacaoControlaEstoque: flagMultipart,
+  operacaoTemCozinha: flagMultipart,
   confirmacaoEstoque: flagMultipart,
 });
 
@@ -149,14 +149,13 @@ function formatAdminCervejaria(
     comandasColunaUnica: boolean;
     usaCardapio: boolean;
     updatedAt: Date;
-    configuracaoQuiosque?: {
+    configuracaoOperacao?: {
       ativo: boolean;
       exclusivo: boolean;
       controlaEstoque: boolean;
       temCozinha: boolean;
     } | null;
     configuracaoOperacional?: {
-      directSalesEnabled: boolean | null;
       plannedOperationsEnabled: boolean | null;
       inventoryEnabled: boolean | null;
       kitchenEnabled: boolean | null;
@@ -167,21 +166,21 @@ function formatAdminCervejaria(
   mesAtual?: ReturnType<typeof emptyMesAtualStats>,
 ) {
   const branding = formatCervejariaAuth(c);
-  const quiosque = c.configuracaoQuiosque;
+  const operacao = c.configuracaoOperacao;
   const operacional = c.configuracaoOperacional;
-  const temQuiosque = operacional
-    ? operacional.directSalesEnabled === true || operacional.inventoryEnabled === true || operacional.kitchenEnabled === true
-    : quiosque?.ativo === true;
-  const temCervejaria = !temQuiosque || quiosque?.exclusivo !== true;
+  const temOperacao = operacional
+    ? operacional.plannedOperationsEnabled !== null || operacional.inventoryEnabled === true || operacional.kitchenEnabled === true
+    : operacao?.ativo === true;
+  const temCervejaria = !temOperacao || operacao?.exclusivo !== true;
 
   return {
     ...branding,
     ativo: c.ativo,
     modulos: {
       cervejaria: temCervejaria,
-      quiosque: temQuiosque,
-      quiosqueControlaEstoque: operacional?.inventoryEnabled ?? (temQuiosque && quiosque?.controlaEstoque === true),
-      quiosqueTemCozinha: operacional?.kitchenEnabled ?? (temQuiosque && quiosque?.temCozinha === true),
+      operacao: temOperacao,
+      operacaoControlaEstoque: operacional?.inventoryEnabled ?? (temOperacao && operacao?.controlaEstoque === true),
+      operacaoTemCozinha: operacional?.kitchenEnabled ?? (temOperacao && operacao?.temCozinha === true),
     },
     mesAtual,
     _count: c._count,
@@ -206,7 +205,7 @@ async function mapCervejariasList() {
         usaCardapio: true,
         updatedAt: true,
         _count: { select: { usuarios: true, eventos: true } },
-        configuracaoQuiosque: {
+        configuracaoOperacao: {
           select: {
             ativo: true,
             exclusivo: true,
@@ -216,7 +215,6 @@ async function mapCervejariasList() {
         },
         configuracaoOperacional: {
           select: {
-            directSalesEnabled: true,
             plannedOperationsEnabled: true,
             inventoryEnabled: true,
             kitchenEnabled: true,
@@ -250,7 +248,7 @@ export async function adminRoutes(app: FastifyInstance) {
     const cervejaria = await prisma.cervejaria.findUnique({
       where: { id },
       include: {
-        configuracaoQuiosque: {
+        configuracaoOperacao: {
           select: {
             ativo: true,
             exclusivo: true,
@@ -260,7 +258,6 @@ export async function adminRoutes(app: FastifyInstance) {
         },
         configuracaoOperacional: {
           select: {
-            directSalesEnabled: true,
             plannedOperationsEnabled: true,
             inventoryEnabled: true,
             kitchenEnabled: true,
@@ -325,7 +322,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const senhaHash = await hashPassword(body.donoSenha);
 
-    const moduloQuiosque = body.moduloQuiosque === true;
+    const moduloOperacao = body.moduloOperacao === true;
     const moduloCervejaria = body.moduloCervejaria !== false;
 
     const legacy = adaptLegacyProvisioning({
@@ -334,9 +331,9 @@ export async function adminRoutes(app: FastifyInstance) {
       donoEmail: body.donoEmail,
       senhaHash,
       moduloCervejaria,
-      moduloQuiosque,
-      quiosqueControlaEstoque: body.quiosqueControlaEstoque === true,
-      quiosqueTemCozinha: body.quiosqueTemCozinha === true,
+      moduloOperacao,
+      operacaoControlaEstoque: body.operacaoControlaEstoque === true,
+      operacaoTemCozinha: body.operacaoTemCozinha === true,
     }, slug);
     const result = await prisma.$transaction((tx) => provisionEstablishment(tx, legacy.input, legacy.resources));
 
@@ -401,14 +398,14 @@ export async function adminRoutes(app: FastifyInstance) {
       await tx.usuario.update({ where: { id: dono.id }, data: donoData });
 
       if (
-        body.quiosqueTemCozinha !== undefined ||
-        body.quiosqueControlaEstoque !== undefined
+        body.operacaoTemCozinha !== undefined ||
+        body.operacaoControlaEstoque !== undefined
       ) {
         await updateOperationalConfig(tx, id, {
-          ...(body.quiosqueTemCozinha !== undefined ? { kitchenEnabled: body.quiosqueTemCozinha } : {}),
-          ...(body.quiosqueControlaEstoque !== undefined
+          ...(body.operacaoTemCozinha !== undefined ? { kitchenEnabled: body.operacaoTemCozinha } : {}),
+          ...(body.operacaoControlaEstoque !== undefined
             ? {
-                inventoryEnabled: body.quiosqueControlaEstoque,
+                inventoryEnabled: body.operacaoControlaEstoque,
                 ...(body.confirmacaoEstoque === true ? { confirmacaoEstoque: true as const } : {}),
               }
             : {}),
@@ -427,11 +424,11 @@ export async function adminRoutes(app: FastifyInstance) {
       where: { id },
       include: {
         _count: { select: { usuarios: true, eventos: true } },
-        configuracaoQuiosque: {
+        configuracaoOperacao: {
           select: { ativo: true, exclusivo: true, controlaEstoque: true, temCozinha: true },
         },
         configuracaoOperacional: {
-          select: { directSalesEnabled: true, plannedOperationsEnabled: true, inventoryEnabled: true, kitchenEnabled: true },
+          select: { plannedOperationsEnabled: true, inventoryEnabled: true, kitchenEnabled: true },
         },
         usuarios: { where: { papel: 'DONO' }, select: { id: true, nome: true, email: true }, take: 1 },
       },

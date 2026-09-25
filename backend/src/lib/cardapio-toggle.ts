@@ -10,8 +10,8 @@ export async function cervejariaUsaCardapio(cervejariaId: string, db: Prisma.Tra
   return row?.usaCardapio ?? false;
 }
 
-export async function quiosqueUsaCardapio(cervejariaId: string): Promise<boolean> {
-  const row = await prisma.configuracaoQuiosque.findUnique({
+export async function operacaoUsaCardapio(cervejariaId: string): Promise<boolean> {
+  const row = await prisma.configuracaoOperacao.findUnique({
     where: { cervejariaId },
     select: { usaCardapio: true },
   });

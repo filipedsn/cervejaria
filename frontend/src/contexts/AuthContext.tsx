@@ -18,7 +18,7 @@ interface AuthContextType {
   updateCervejaria: (cervejaria: Cervejaria) => void;
   isDono: boolean;
   isAdmin: boolean;
-  podeDarDescontoQuiosque: boolean;
+  podeDarDescontoOperacao: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -49,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     localStorage.removeItem('eventoAtivo');
     localStorage.removeItem('trailerAtivo');
-    queryClient.removeQueries({ queryKey: ['quiosque-contexto'] });
+    queryClient.removeQueries({ queryKey: ['operacao-contexto'] });
     setUsuario(null);
     setCervejaria(null);
     disconnectSocket();
@@ -116,10 +116,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updateCervejaria,
         isDono: usuario?.papel === 'DONO',
         isAdmin: usuario?.papel === 'ADMIN',
-        podeDarDescontoQuiosque:
+        podeDarDescontoOperacao:
           usuario?.papel === 'DONO' ||
           usuario?.papel === 'ADMIN' ||
-          Boolean(usuario?.podeDarDescontoQuiosque),
+          Boolean(usuario?.podeDarDescontoOperacao),
       }}
     >
       {children}

@@ -43,6 +43,7 @@ enum ComandaTipo {
 
 enum ComandaOrigem {
   EVENTO
+  CAIXA
   QUIOSQUE
 
   @@schema("public")
@@ -108,6 +109,17 @@ enum TransacaoTipo {
   QUIOSQUE_VENDA_AVULSA
   PORTAL_PEDIDO_CRIADO
   PORTAL_PEDIDO_RECUSADO
+  CASH_REGISTER_OPENED
+  CASH_MOVEMENT_RECORDED
+  CASH_MOVEMENT_CORRECTED
+  CASH_REGISTER_CLOSED
+  COMANDA_GRUPO_FECHADO
+  KITCHEN_ORDER_CREATED
+  SALE_PAYMENT_RECORDED
+  KITCHEN_ORDER_STATUS_CHANGED
+  INVENTORY_MOVEMENT
+  SALE_COMPLETED
+  CAPABILITY_CHANGED
 
   @@schema("public")
 }
@@ -156,14 +168,14 @@ model Cervejaria {
   transacoes TransacaoLog[]
   eventoSerieExclusoes EventoSerieExclusao[]
 
-  configuracaoQuiosque ConfiguracaoQuiosque?
+  configuracaoOperacao ConfiguracaoOperacao?
   configuracaoOperacional ConfiguracaoOperacional?
   pontosVenda          PontoVenda[]
-  cardapiosQuiosque    CardapioQuiosque[]
-  pedidosQuiosque      PedidoQuiosque[]
-  sessoesCaixaQuiosque SessaoCaixaQuiosque[]
-   saldosEstoqueQuiosque InventoryBalance[]
-   movimentosEstoqueQuiosque InventoryMovement[]
+  cardapiosOperacao    CardapioOperacao[]
+  pedidosOperacao      PedidoOperacao[]
+  sessoesCaixaOperacao SessaoCaixaOperacao[]
+   saldosEstoqueOperacao InventoryBalance[]
+   movimentosEstoqueOperacao InventoryMovement[]
 
   @@schema("public")
 }
@@ -210,7 +222,7 @@ model Usuario {
   senhaHash          String
   papel              UserRole  @default(ATENDENTE)
   /// Autoriza aplicar desconto manual em comandas do quiosque. Dono sempre pode.
-  podeDarDescontoQuiosque Boolean @default(false)
+  podeDarDescontoOperacao Boolean @default(false)
   cervejariaId       String?
   passwordChangedAt  DateTime  @default(now())
   createdAt          DateTime  @default(now())
@@ -289,10 +301,10 @@ model Produto {
   pedidoItens PedidoClienteItem[]
   eventos    EventoProduto[]
   cardapios  CardapioProduto[]
-  cardapiosQuiosque CardapioQuiosqueProduto[]
-   saldosEstoqueQuiosque InventoryBalance[]
-   movimentosEstoqueQuiosque InventoryMovement[]
-  sessoesCaixaQuiosque SessaoCaixaProdutoQuiosque[]
+  cardapiosOperacao CardapioOperacaoProduto[]
+   saldosEstoqueOperacao InventoryBalance[]
+   movimentosEstoqueOperacao InventoryMovement[]
+  sessoesCaixaOperacao SessaoCaixaProdutoOperacao[]
 
   @@index([cervejariaId])
 
@@ -521,7 +533,7 @@ model Comanda {
   total          Decimal       @default(0) @db.Decimal(10, 2)
   fechadoPorId   String?
   fechadaEm      DateTime?
-  /// Quiosque: ponto de venda, dia operacional e identificador da mesa/ficha/apelido.
+  /// Operacao: ponto de venda, dia operacional e identificador da mesa/ficha/apelido.
   pontoVendaId   String?
   diaOperacional DateTime?     @db.Date
   identificador  String?
@@ -536,7 +548,7 @@ model Comanda {
   itens      ItemComanda[]
   pagamentos Pagamento[]
   pedidos    PedidoCliente[]
-  pedidosQuiosque PedidoQuiosque[]
+  pedidosOperacao PedidoOperacao[]
   transacoes TransacaoLog[]
 
   @@index([eventoId, status])
@@ -566,7 +578,7 @@ model ItemComanda {
   comanda         Comanda          @relation(fields: [comandaId], references: [id], onDelete: Cascade)
   produto         Produto?         @relation(fields: [produtoId], references: [id], onDelete: Restrict)
   tap             Tap?             @relation(fields: [tapId], references: [id], onDelete: SetNull)
-  pedidoCozinha   PedidoQuiosque?  @relation(fields: [pedidoCozinhaId], references: [id], onDelete: SetNull)
+  pedidoCozinha   PedidoOperacao?  @relation(fields: [pedidoCozinhaId], references: [id], onDelete: SetNull)
 
   @@index([comandaId])
   @@index([tapId])
@@ -686,13 +698,13 @@ model SystemConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Modulo Quiosque — schema proprio, isolado da operacao de cervejaria.
+// Modulo Operacao — schema proprio, isolado da operacao de cervejaria.
 // Compartilha apenas Cervejaria (cadastro da empresa) e Usuario (autenticacao).
 // ---------------------------------------------------------------------------
 
-/// Ativa o modulo Quiosque para uma empresa. A existencia da linha e o que liga
+/// Ativa o modulo Operacao para uma empresa. A existencia da linha e o que liga
 /// o modulo, evitando qualquer coluna nova nas tabelas da cervejaria.
-model ConfiguracaoQuiosque {
+model ConfiguracaoOperacao {
   cervejariaId    String   @id
   ativo           Boolean  @default(true)
   controlaEstoque Boolean  @default(false)
@@ -709,9 +721,10 @@ model ConfiguracaoQuiosque {
   cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
 
   @@schema("quiosque")
+  @@map("ConfiguracaoQuiosque")
 }
 
-/// Quiosque fisico. Uma empresa pode ter varios.
+/// Operacao fisico. Uma empresa pode ter varios.
 model PontoVenda {
   id           String   @id @default(cuid())
   cervejariaId String
@@ -724,8 +737,8 @@ model PontoVenda {
 
   cervejaria Cervejaria          @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   comandas   Comanda[]
-  pedidos    PedidoQuiosque[]
-  sessoesCaixa SessaoCaixaQuiosque[]
+  pedidos    PedidoOperacao[]
+  sessoesCaixa SessaoCaixaOperacao[]
    saldosEstoque InventoryBalance[]
    movimentosEstoque InventoryMovement[]
 
@@ -734,7 +747,7 @@ model PontoVenda {
 }
 
 /// Templates reutilizaveis de cardapio do quiosque (espelha Cardapio da cervejaria).
-model CardapioQuiosque {
+model CardapioOperacao {
   id           String   @id @default(cuid())
   nome         String
   ativo        Boolean  @default(true)
@@ -743,28 +756,30 @@ model CardapioQuiosque {
   updatedAt    DateTime @updatedAt
 
   cervejaria Cervejaria                @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
-  produtos   CardapioQuiosqueProduto[]
-  sessoes    SessaoCaixaQuiosque[]
+  produtos   CardapioOperacaoProduto[]
+  sessoes    SessaoCaixaOperacao[]
 
   @@index([cervejariaId])
   @@schema("quiosque")
+  @@map("CardapioQuiosque")
 }
 
-model CardapioQuiosqueProduto {
+model CardapioOperacaoProduto {
   id                String  @id @default(cuid())
   cardapioId        String
   produtoId         String
   precoUnit         Decimal @db.Decimal(10, 2)
 
-  cardapio CardapioQuiosque @relation(fields: [cardapioId], references: [id], onDelete: Cascade)
+  cardapio CardapioOperacao @relation(fields: [cardapioId], references: [id], onDelete: Cascade)
   produto  Produto         @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 
   @@unique([cardapioId, produtoId])
   @@index([cardapioId])
   @@schema("quiosque")
+  @@map("CardapioQuiosqueProduto")
 }
 
-enum StatusPedidoQuiosque {
+enum StatusPedidoOperacao {
   RECEBIDO
   EM_PREPARO
   PRONTO
@@ -772,10 +787,11 @@ enum StatusPedidoQuiosque {
   CANCELADO
 
   @@schema("quiosque")
+  @@map("StatusPedidoQuiosque")
 }
 
 /// Uma rodada de itens dentro da comanda. E a unidade que a cozinha ve na fila.
-model PedidoQuiosque {
+model PedidoOperacao {
   id             String               @id @default(cuid())
   cervejariaId   String
   comandaId      String
@@ -783,7 +799,7 @@ model PedidoQuiosque {
   /// Senha mostrada ao cliente, reiniciada a cada dia de operacao.
   numero         Int
   diaOperacional DateTime             @db.Date
-  status         StatusPedidoQuiosque @default(RECEBIDO)
+  status         StatusPedidoOperacao @default(RECEBIDO)
   observacao     String?
   criadoPorId    String
   /// Inicio do status atual — o cronometro da cozinha reinicia a cada transicao.
@@ -798,56 +814,61 @@ model PedidoQuiosque {
   pontoVenda PontoVenda           @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
   itensComanda ItemComanda[]
    movimentosEstoque InventoryMovement[]
-  historicoStatus   PedidoQuiosqueStatusHistorico[]
+  historicoStatus   PedidoOperacaoStatusHistorico[]
 
   @@unique([cervejariaId, diaOperacional, numero])
   @@index([cervejariaId, status, createdAt])
   @@index([comandaId])
   @@schema("quiosque")
+  @@map("PedidoQuiosque")
 }
 
 /// Marca cada transicao de status na fila da cozinha (auditoria e tempos por fase).
-model PedidoQuiosqueStatusHistorico {
+model PedidoOperacaoStatusHistorico {
   id           String               @id @default(cuid())
   pedidoId     String
-  status       StatusPedidoQuiosque
+  status       StatusPedidoOperacao
   registradoEm DateTime             @default(now())
 
-  pedido PedidoQuiosque @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  pedido PedidoOperacao @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
 
   @@index([pedidoId, registradoEm])
   @@schema("quiosque")
+  @@map("PedidoQuiosqueStatusHistorico")
 }
 
-enum StatusCaixaQuiosque {
+enum StatusCaixaOperacao {
   ABERTO
   FECHADO
 
   @@schema("quiosque")
+  @@map("StatusCaixaQuiosque")
 }
 
-enum TipoMovimentoCaixaQuiosque {
+enum TipoMovimentoCaixaOperacao {
   SANGRIA
   SUPRIMENTO
 
   @@schema("quiosque")
+  @@map("TipoMovimentoCaixaQuiosque")
 }
 
 /// Identifica os registros derivados de uma correcao, sem alterar o lancamento original.
-enum NaturezaCorrecaoMovimentoCaixaQuiosque {
+enum NaturezaCorrecaoMovimentoCaixaOperacao {
   ESTORNO
   SUBSTITUICAO
 
   @@schema("quiosque")
+  @@map("NaturezaCorrecaoMovimentoCaixaQuiosque")
 }
 
 /// Sessao de caixa por turno: o mesmo ponto pode abrir/fechar varias vezes no dia.
-model SessaoCaixaQuiosque {
+model SessaoCaixaOperacao {
   id             String              @id @default(cuid())
   cervejariaId   String
   pontoVendaId   String
   diaOperacional DateTime            @db.Date
-  status         StatusCaixaQuiosque @default(ABERTO)
+  status         StatusCaixaOperacao @default(ABERTO)
   trocoInicial   Decimal             @db.Decimal(10, 2)
   abertoPorId    String
   abertoEm       DateTime            @default(now())
@@ -860,22 +881,23 @@ model SessaoCaixaQuiosque {
   contadoCartaoCredito Decimal? @db.Decimal(10, 2)
   observacaoFechamento String?
   /// Template usado na abertura do turno (referencia historica).
-  cardapioQuiosqueId   String?
+  cardapioOperacaoId   String? @map("cardapioQuiosqueId")
 
   cervejaria  Cervejaria               @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   pontoVenda  PontoVenda               @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
-  cardapio    CardapioQuiosque?        @relation(fields: [cardapioQuiosqueId], references: [id], onDelete: SetNull)
-  movimentos  MovimentoCaixaQuiosque[]
-  produtos    SessaoCaixaProdutoQuiosque[]
+  cardapio    CardapioOperacao?        @relation(fields: [cardapioOperacaoId], references: [id], onDelete: SetNull)
+  movimentos  MovimentoCaixaOperacao[]
+  produtos    SessaoCaixaProdutoOperacao[]
 
   @@index([pontoVendaId, diaOperacional, status])
   @@index([cervejariaId, diaOperacional])
-  @@index([cardapioQuiosqueId])
+  @@index([cardapioOperacaoId])
   @@schema("quiosque")
+  @@map("SessaoCaixaQuiosque")
 }
 
 /// Cardapio operacional do turno de caixa (espelha EventoProduto).
-model SessaoCaixaProdutoQuiosque {
+model SessaoCaixaProdutoOperacao {
   id               String   @id @default(cuid())
   sessaoCaixaId    String
   produtoId        String
@@ -883,24 +905,25 @@ model SessaoCaixaProdutoQuiosque {
   precoUnit        Decimal? @db.Decimal(10, 2)
   createdAt        DateTime @default(now())
 
-  sessao  SessaoCaixaQuiosque @relation(fields: [sessaoCaixaId], references: [id], onDelete: Cascade)
+  sessao  SessaoCaixaOperacao @relation(fields: [sessaoCaixaId], references: [id], onDelete: Cascade)
   produto Produto              @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 
   @@unique([sessaoCaixaId, produtoId])
   @@index([sessaoCaixaId])
   @@schema("quiosque")
+  @@map("SessaoCaixaProdutoQuiosque")
 }
 
-model MovimentoCaixaQuiosque {
+model MovimentoCaixaOperacao {
   id              String                     @id @default(cuid())
   sessaoId        String
-  tipo            TipoMovimentoCaixaQuiosque
+  tipo            TipoMovimentoCaixaOperacao
   valor           Decimal                    @db.Decimal(10, 2)
   observacao      String?
   registradoPorId String
   /// O movimento manual original que esta sendo compensado/substituido.
   correcaoDeId   String?
-  naturezaCorrecao NaturezaCorrecaoMovimentoCaixaQuiosque?
+  naturezaCorrecao NaturezaCorrecaoMovimentoCaixaOperacao?
   /// Dados da autorizacao ficam no encadeamento contabil, nunca em logs de senha.
   motivoCorrecao String?
   autorizadoPorId String?
@@ -908,16 +931,17 @@ model MovimentoCaixaQuiosque {
   corrigidoEm      DateTime?
   createdAt       DateTime                   @default(now())
 
-  sessao       SessaoCaixaQuiosque @relation(fields: [sessaoId], references: [id], onDelete: Cascade)
-  correcaoDe   MovimentoCaixaQuiosque? @relation("CorrecaoMovimentoCaixaQuiosque", fields: [correcaoDeId], references: [id], onDelete: Restrict)
-  correcoes    MovimentoCaixaQuiosque[] @relation("CorrecaoMovimentoCaixaQuiosque")
+  sessao       SessaoCaixaOperacao @relation(fields: [sessaoId], references: [id], onDelete: Cascade)
+  correcaoDe   MovimentoCaixaOperacao? @relation("CorrecaoMovimentoCaixaOperacao", fields: [correcaoDeId], references: [id], onDelete: Restrict)
+  correcoes    MovimentoCaixaOperacao[] @relation("CorrecaoMovimentoCaixaOperacao")
 
   @@index([sessaoId])
   @@index([correcaoDeId])
   @@schema("quiosque")
+  @@map("MovimentoCaixaQuiosque")
 }
 
-enum TipoMovimentoEstoqueQuiosque {
+enum TipoMovimentoEstoqueOperacao {
   ENTRADA
   SAIDA_VENDA
   ESTORNO_VENDA
@@ -927,6 +951,7 @@ enum TipoMovimentoEstoqueQuiosque {
   AJUSTE
 
   @@schema("quiosque")
+  @@map("TipoMovimentoEstoqueQuiosque")
 }
 
 /// Saldo materializado por ponto de venda e produto.
@@ -955,7 +980,7 @@ model InventoryMovement {
   cervejariaId    String
   pontoVendaId    String
   produtoId       String
-  tipo            TipoMovimentoEstoqueQuiosque
+  tipo            TipoMovimentoEstoqueOperacao
   quantidade      Int
   observacao      String?
   registradoPorId String
@@ -965,7 +990,7 @@ model InventoryMovement {
   cervejaria Cervejaria      @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   pontoVenda PontoVenda      @relation(fields: [pontoVendaId], references: [id], onDelete: Cascade)
   produto    Produto         @relation(fields: [produtoId], references: [id], onDelete: Restrict)
-  pedido     PedidoQuiosque? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  pedido     PedidoOperacao? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
 
   @@index([pontoVendaId, produtoId, createdAt])
   @@index([pedidoId])

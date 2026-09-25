@@ -5,9 +5,9 @@ import {
   FORMAS_PAGAMENTO,
   formatDuracaoTurnoMinutos,
   formatTurnoTitulo,
-  pluralComandasQuiosque,
+  pluralComandasOperacao,
   type RelatorioTurnoCaixa,
-} from '../../lib/quiosque';
+} from '../../lib/operacao';
 import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
 
@@ -52,16 +52,16 @@ function Diferenca({ valor }: { valor: number }) {
   );
 }
 
-export function QuiosqueTurnoResumoPage() {
+export function OperacaoTurnoResumoPage() {
   const { sessaoId } = useParams<{ sessaoId: string }>();
   const [searchParams] = useSearchParams();
   const dashboardHref = searchParams.toString()
-    ? `/quiosque/dashboard?${searchParams.toString()}`
-    : '/quiosque/dashboard';
+    ? `/operacao/dashboard?${searchParams.toString()}`
+    : '/operacao/dashboard';
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['quiosque-turno-resumo', sessaoId],
-    queryFn: () => api.get<RelatorioTurnoCaixa>(`/api/quiosque/caixa/sessoes/${sessaoId}`),
+    queryKey: ['operacao-turno-resumo', sessaoId],
+    queryFn: () => api.get<RelatorioTurnoCaixa>(`/api/operacao/caixa/sessoes/${sessaoId}`),
     enabled: Boolean(sessaoId),
     retry: false,
   });
@@ -114,7 +114,7 @@ export function QuiosqueTurnoResumoPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         <KpiCard label="Receita total" value={formatCurrency(caixa.esperado.totalVendas)} />
-        <KpiCard label="Comandas" value={pluralComandasQuiosque(data.comandasAtendidas)} />
+        <KpiCard label="Comandas" value={pluralComandasOperacao(data.comandasAtendidas)} />
         <KpiCard label="Ticket médio" value={formatCurrency(data.ticketMedio)} />
         <KpiCard label="Receita/hora" value={`${formatCurrency(data.receitaPorHora)}/h`} />
         <KpiCard label="Duração" value={formatDuracaoTurnoMinutos(data.duracaoMinutos)} />

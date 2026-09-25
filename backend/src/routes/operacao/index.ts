@@ -2,35 +2,35 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { getAuthUser } from '../../types/auth.js';
-import { getConfiguracaoQuiosque, requireModuloQuiosque } from '../../lib/quiosque/modulo.js';
+import { getConfiguracaoOperacao, requireModuloOperacao } from '../../lib/operacao/modulo.js';
 import { getOperationalProfile, shouldExposeEstablishmentSurface } from '../../lib/operational-profile.js';
-import { produtosQuiosqueRoutes } from './produtos.js';
-import { comandasQuiosqueRoutes } from './comandas.js';
-import { vendasQuiosqueRoutes } from './vendas.js';
-import { cozinhaQuiosqueRoutes } from './cozinha.js';
-import { caixaQuiosqueRoutes } from './caixa.js';
-import { cardapiosQuiosqueRoutes } from './cardapios.js';
-import { estoqueQuiosqueRoutes } from './estoque.js';
-import { dashboardQuiosqueRoutes } from './dashboard.js';
+import { produtosOperacaoRoutes } from './produtos.js';
+import { comandasOperacaoRoutes } from './comandas.js';
+import { vendasOperacaoRoutes } from './vendas.js';
+import { cozinhaOperacaoRoutes } from './cozinha.js';
+import { caixaOperacaoRoutes } from './caixa.js';
+import { cardapiosOperacaoRoutes } from './cardapios.js';
+import { estoqueOperacaoRoutes } from './estoque.js';
+import { dashboardOperacaoRoutes } from './dashboard.js';
 import {
-  atualizarCapacidadesQuiosque,
-  updateCapacidadesQuiosqueSchema,
-} from '../../lib/quiosque/capacidades.js';
+  atualizarCapacidadesOperacao,
+  updateCapacidadesOperacaoSchema,
+} from '../../lib/operacao/capacidades.js';
 
 const createPontoVendaSchema = z.object({
   nome: z.string().trim().min(1),
 });
 
-export async function quiosqueRoutes(app: FastifyInstance) {
+export async function operacaoRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
   /**
    * Sem a guarda de modulo de proposito: o frontend consulta para decidir se
-   * mostra o quiosque na navegacao, inclusive quando a empresa nao o tem.
+   * mostra o operacao na navegacao, inclusive quando a empresa nao o tem.
    */
   app.get('/contexto', async (request) => {
     const user = getAuthUser(request);
-    const configuracao = await getConfiguracaoQuiosque(user.cervejariaId);
+    const configuracao = await getConfiguracaoOperacao(user.cervejariaId);
 
     const [profile, pontosVenda] = await Promise.all([
       getOperationalProfile(user.cervejariaId!),
@@ -61,10 +61,10 @@ export async function quiosqueRoutes(app: FastifyInstance) {
   });
 
   await app.register(async (moduloScope) => {
-    moduloScope.addHook('preHandler', requireModuloQuiosque(app));
+    moduloScope.addHook('preHandler', requireModuloOperacao(app));
 
     moduloScope.patch('/config', { preHandler: [app.requireDono] }, async (request) => {
-      const { cervejariaId } = request.quiosque;
+      const { cervejariaId } = request.operacao;
       const body = z
         .object({
           usaCardapio: z.boolean().optional(),
@@ -73,7 +73,7 @@ export async function quiosqueRoutes(app: FastifyInstance) {
         .refine((value) => value.usaCardapio !== undefined || value.quantidadeMesas !== undefined)
         .parse(request.body);
 
-      const updated = await prisma.configuracaoQuiosque.update({
+      const updated = await prisma.configuracaoOperacao.update({
         where: { cervejariaId },
         data: body,
       });
@@ -83,10 +83,10 @@ export async function quiosqueRoutes(app: FastifyInstance) {
 
     moduloScope.patch('/capacidades', { preHandler: [app.requireDono] }, async (request) => {
       const user = getAuthUser(request);
-      const body = updateCapacidadesQuiosqueSchema.parse(request.body);
+      const body = updateCapacidadesOperacaoSchema.parse(request.body);
 
       return prisma.$transaction((tx) =>
-        atualizarCapacidadesQuiosque(tx, {
+        atualizarCapacidadesOperacao(tx, {
           cervejariaId: user.cervejariaId!,
           usuarioId: user.sub,
           papel: 'DONO',
@@ -97,7 +97,7 @@ export async function quiosqueRoutes(app: FastifyInstance) {
     });
 
     moduloScope.get('/pontos-venda', async (request) => {
-      const { cervejariaId } = request.quiosque;
+      const { cervejariaId } = request.operacao;
       return prisma.pontoVenda.findMany({
         where: { cervejariaId },
         orderBy: { createdAt: 'asc' },
@@ -105,24 +105,23 @@ export async function quiosqueRoutes(app: FastifyInstance) {
     });
 
     moduloScope.post('/pontos-venda', { preHandler: [app.requireDono] }, async (request, reply) => {
-      const { cervejariaId } = request.quiosque;
+      const { cervejariaId } = request.operacao;
       const body = createPontoVendaSchema.parse(request.body);
       const pontoVenda = await prisma.pontoVenda.create({
-        // `usaCaixa` is a legacy compatibility field. CAIXA access is
-        // derived from ConfiguracaoOperacional, never from this column.
+        // Cash access is derived from the operational mode, never per unit.
         data: { cervejariaId, nome: body.nome },
       });
 
       return reply.status(201).send(pontoVenda);
     });
 
-    await moduloScope.register(produtosQuiosqueRoutes, { prefix: '/produtos' });
-    await moduloScope.register(cardapiosQuiosqueRoutes, { prefix: '/cardapios' });
-    await moduloScope.register(comandasQuiosqueRoutes, { prefix: '/comandas' });
-    await moduloScope.register(vendasQuiosqueRoutes, { prefix: '/vendas' });
-    await moduloScope.register(cozinhaQuiosqueRoutes, { prefix: '/cozinha' });
-    await moduloScope.register(caixaQuiosqueRoutes, { prefix: '/caixa' });
-    await moduloScope.register(estoqueQuiosqueRoutes, { prefix: '/estoque' });
-    await moduloScope.register(dashboardQuiosqueRoutes, { prefix: '/dashboard' });
+    await moduloScope.register(produtosOperacaoRoutes, { prefix: '/produtos' });
+    await moduloScope.register(cardapiosOperacaoRoutes, { prefix: '/cardapios' });
+    await moduloScope.register(comandasOperacaoRoutes, { prefix: '/comandas' });
+    await moduloScope.register(vendasOperacaoRoutes, { prefix: '/vendas' });
+    await moduloScope.register(cozinhaOperacaoRoutes, { prefix: '/cozinha' });
+    await moduloScope.register(caixaOperacaoRoutes, { prefix: '/caixa' });
+    await moduloScope.register(estoqueOperacaoRoutes, { prefix: '/estoque' });
+    await moduloScope.register(dashboardOperacaoRoutes, { prefix: '/dashboard' });
   });
 }

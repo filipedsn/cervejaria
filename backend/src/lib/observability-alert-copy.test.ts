@@ -31,7 +31,7 @@ describe('observability alert copy', () => {
 
   it('maps transaction actions to readable operation names', () => {
     assert.equal(resolveOperationLabel('transacao.comanda_fechada'), 'Fechar comanda');
-    assert.equal(resolveOperationLabel('transacao.quiosque_caixa_aberto'), 'Abrir caixa do quiosque');
+    assert.equal(resolveOperationLabel('transacao.operacao_caixa_aberto'), 'Abrir caixa do operacao');
   });
 
   it('operational telegram uses empresa, usuario, operacao layout', () => {

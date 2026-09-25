@@ -5,19 +5,19 @@ import { useAuth } from '../contexts/AuthContext';
 import { useCozinhaAlerta } from './useCozinhaAlerta';
 import { usePollInterval } from './usePollInterval';
 import { connectSocket, getSocket } from '../lib/socket';
-import type { PedidoCozinha, StatusPedido } from '../lib/quiosque';
+import type { PedidoCozinha, StatusPedido } from '../lib/operacao';
 
-export const QUIOSQUE_COZINHA_QUERY_KEY = ['quiosque-cozinha'] as const;
+export const CAIXA_COZINHA_QUERY_KEY = ['operacao-cozinha'] as const;
 
-export function useQuiosqueCozinha() {
+export function useOperacaoCozinha() {
   const { cervejaria } = useAuth();
   const queryClient = useQueryClient();
   const semeado = useRef(false);
   const pollMs = usePollInterval(20_000);
 
   const query = useQuery({
-    queryKey: QUIOSQUE_COZINHA_QUERY_KEY,
-    queryFn: () => api.get<PedidoCozinha[]>('/api/quiosque/cozinha?incluirEntregues=true'),
+    queryKey: CAIXA_COZINHA_QUERY_KEY,
+    queryFn: () => api.get<PedidoCozinha[]>('/api/operacao/cozinha?incluirEntregues=true'),
     refetchInterval: pollMs,
   });
 
@@ -50,27 +50,27 @@ export function useQuiosqueCozinha() {
 
     const onNovo = (pedido: PedidoCozinha) => {
       alerta.avisar(pedido.id);
-      void queryClient.invalidateQueries({ queryKey: QUIOSQUE_COZINHA_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY });
     };
     const onAtualizado = () => {
-      void queryClient.invalidateQueries({ queryKey: QUIOSQUE_COZINHA_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY });
     };
 
-    socket.on('quiosque:pedido-novo', onNovo);
-    socket.on('quiosque:pedido-atualizado', onAtualizado);
+    socket.on('operacao:pedido-novo', onNovo);
+    socket.on('operacao:pedido-atualizado', onAtualizado);
 
     return () => {
-      socket.off('quiosque:pedido-novo', onNovo);
-      socket.off('quiosque:pedido-atualizado', onAtualizado);
+      socket.off('operacao:pedido-novo', onNovo);
+      socket.off('operacao:pedido-atualizado', onAtualizado);
     };
   }, [cervejaria?.id, queryClient, alerta.avisar]);
 
   const mudarStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: StatusPedido }) =>
-      api.patch<PedidoCozinha>(`/api/quiosque/cozinha/${id}/status`, { status }),
+      api.patch<PedidoCozinha>(`/api/operacao/cozinha/${id}/status`, { status }),
     onMutate: ({ id, status }) => {
       const agora = new Date().toISOString();
-      queryClient.setQueryData<PedidoCozinha[]>(QUIOSQUE_COZINHA_QUERY_KEY, (atual) =>
+      queryClient.setQueryData<PedidoCozinha[]>(CAIXA_COZINHA_QUERY_KEY, (atual) =>
         (atual ?? []).map((pedido) => {
           if (pedido.id !== id) return pedido;
           return {
@@ -87,7 +87,7 @@ export function useQuiosqueCozinha() {
         }),
       );
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: QUIOSQUE_COZINHA_QUERY_KEY }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY }),
   });
 
   return {

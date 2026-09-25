@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, ApiError } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
-import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
+import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
-import { TIPOS_COMANDA, type CaixaResposta, type ComandaQuiosque } from '../../lib/quiosque';
+import { TIPOS_COMANDA, type CaixaResposta, type ComandaOperacao } from '../../lib/operacao';
 
-export function QuiosqueNovaComandaPage() {
+export function OperacaoNovaComandaPage() {
   const navigate = useNavigate();
-  const { contexto } = useQuiosqueContexto();
+  const { contexto } = useOperacaoContexto();
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
 
   const [pontoVendaId, setPontoVendaId] = useState('');
@@ -21,8 +21,8 @@ export function QuiosqueNovaComandaPage() {
   const pollMs = usePollInterval(30_000);
 
   const { data: caixaData } = useQuery({
-    queryKey: ['quiosque-caixa', pontoAtivo],
-    queryFn: () => api.get<CaixaResposta>(`/api/quiosque/caixa?pontoVendaId=${pontoAtivo}`),
+    queryKey: ['operacao-caixa', pontoAtivo],
+    queryFn: () => api.get<CaixaResposta>(`/api/operacao/caixa?pontoVendaId=${pontoAtivo}`),
     enabled: Boolean(pontoAtivo),
     refetchInterval: pollMs,
   });
@@ -30,16 +30,16 @@ export function QuiosqueNovaComandaPage() {
 
   const abrir = useMutation({
     mutationFn: () =>
-      api.post<ComandaQuiosque>('/api/quiosque/comandas', {
+      api.post<ComandaOperacao>('/api/operacao/comandas', {
         pontoVendaId: pontoAtivo,
         tipo: tipoComanda,
         identificador: identificador.trim(),
         itens: [],
       }),
-    onSuccess: (comanda) => navigate(`/quiosque/comandas/${comanda.id}`),
+    onSuccess: (comanda) => navigate(`/operacao/comandas/${comanda.id}`),
     onError: (err) => {
       if (err instanceof ApiError && err.status === 409 && typeof err.body?.comandaId === 'string') {
-        navigate(`/quiosque/comandas/${err.body.comandaId}`);
+        navigate(`/operacao/comandas/${err.body.comandaId}`);
         return;
       }
       setErro(err instanceof ApiError ? err.message : 'Não foi possível abrir a comanda');
@@ -48,7 +48,7 @@ export function QuiosqueNovaComandaPage() {
 
   return (
     <div className="space-y-4 pb-2">
-      <PageHeader title="Nova comanda" backTo="/quiosque/comandas" backLabel="Comandas" />
+      <PageHeader title="Nova comanda" backTo="/operacao/comandas" backLabel="Comandas" />
 
       <p className="text-sm text-ink-muted leading-relaxed">
         Abra uma comanda por apelido, mesa ou ficha. Os itens são lançados na tela seguinte.
@@ -131,7 +131,7 @@ export function QuiosqueNovaComandaPage() {
         <button
           type="button"
           className="touch-btn-secondary w-full"
-          onClick={() => navigate('/quiosque/comandas')}
+          onClick={() => navigate('/operacao/comandas')}
         >
           Cancelar
         </button>

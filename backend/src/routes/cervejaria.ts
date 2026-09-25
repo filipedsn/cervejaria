@@ -114,7 +114,7 @@ export async function cervejariaRoutes(app: FastifyInstance) {
     ]);
     return {
       configuration,
-      enablements: profile?.capabilities ?? { directSales: false, plannedOperations: false, taps: false, inventory: false, kitchen: false },
+      enablements: profile?.capabilities ?? { cashMode: false, plannedOperations: false, taps: false, inventory: false, kitchen: false },
     };
   });
 

@@ -12,12 +12,12 @@ import {
   fecharCaixa,
   montarResumoCaixa,
   registrarMovimento,
-} from '../../lib/quiosque/caixa.js';
-import { getCardapioTurno, salvarCardapioTurno, alterarPrecoCardapioTurno } from '../../lib/quiosque/sessao-cardapio.js';
-import { getProdutoIdsFromCardapioQuiosque, validateProdutosCardapioQuiosque } from '../../lib/quiosque/cardapio.js';
+} from '../../lib/operacao/caixa.js';
+import { getCardapioTurno, salvarCardapioTurno, alterarPrecoCardapioTurno } from '../../lib/operacao/sessao-cardapio.js';
+import { getProdutoIdsFromCardapioOperacao, validateProdutosCardapioOperacao } from '../../lib/operacao/cardapio.js';
 import { registrarTransacao } from '../../lib/transacao-log.js';
 import { recordDivergenciaCaixa } from '../../lib/business-metrics.js';
-import { centavos } from '../../lib/quiosque/venda.js';
+import { centavos } from '../../lib/operacao/venda.js';
 
 const pontoVendaQuery = z.object({
   pontoVendaId: z.string().min(1),
@@ -59,9 +59,9 @@ const corrigirMovimentoSchema = z.object({
   autorizadorSenha: z.string().min(1),
 });
 
-export async function caixaQuiosqueRoutes(app: FastifyInstance) {
+export async function caixaOperacaoRoutes(app: FastifyInstance) {
   app.get('/sessoes/:sessaoId', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { sessaoId } = request.params as { sessaoId: string };
 
     try {
@@ -75,7 +75,7 @@ export async function caixaQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.get('/', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { pontoVendaId } = pontoVendaQuery.parse(request.query);
 
     const pontoVenda = await prisma.pontoVenda.findFirst({
@@ -94,16 +94,16 @@ export async function caixaQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.post('/abrir', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = abrirSchema.parse(request.body);
 
     if (body.cardapioId) {
-      const check = await getProdutoIdsFromCardapioQuiosque(body.cardapioId, cervejariaId);
+      const check = await getProdutoIdsFromCardapioOperacao(body.cardapioId, cervejariaId);
       if ('error' in check) return reply.status(400).send({ error: check.error });
     }
     if (body.produtoIds?.length) {
-      const check = await validateProdutosCardapioQuiosque(cervejariaId, body.produtoIds);
+      const check = await validateProdutosCardapioOperacao(cervejariaId, body.produtoIds);
       if ('error' in check) return reply.status(400).send({ error: check.error });
     }
 
@@ -117,7 +117,7 @@ export async function caixaQuiosqueRoutes(app: FastifyInstance) {
     });
     void registrarTransacao({
       cervejariaId,
-      tipo: 'QUIOSQUE_CAIXA_ABERTO',
+      tipo: 'CASH_REGISTER_OPENED',
       usuarioId: user.sub,
       entidadeId: sessao.id,
       metadata: { pontoVendaId: body.pontoVendaId, trocoInicial: body.trocoInicial },
@@ -127,7 +127,7 @@ export async function caixaQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.post('/movimentos', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = movimentoSchema.parse(request.body);
 
@@ -141,7 +141,7 @@ export async function caixaQuiosqueRoutes(app: FastifyInstance) {
     });
     void registrarTransacao({
       cervejariaId,
-      tipo: 'QUIOSQUE_CAIXA_MOVIMENTO',
+      tipo: 'CASH_MOVEMENT_RECORDED',
       usuarioId: user.sub,
       metadata: { tipo: body.tipo, valor: body.valor, pontoVendaId: body.pontoVendaId, observacao: body.observacao },
       payload: sessao,
@@ -150,7 +150,7 @@ export async function caixaQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.post('/movimentos/:movimentoId/corrigir', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = corrigirMovimentoSchema
       .extend({ movimentoId: z.string().min(1) })
@@ -170,9 +170,9 @@ export async function caixaQuiosqueRoutes(app: FastifyInstance) {
     // Credencial e senha nunca fazem parte do payload de transacao/auditoria.
     void registrarTransacao({
       cervejariaId,
-      tipo: 'QUIOSQUE_CAIXA_MOVIMENTO_CORRIGIDO',
+      tipo: 'CASH_MOVEMENT_CORRECTED',
       usuarioId: user.sub,
-      entidadeTipo: 'MovimentoCaixaQuiosque',
+      entidadeTipo: 'MovimentoCaixaOperacao',
       entidadeId: body.movimentoId,
       metadata: {
         sessaoCaixaId: resumo.id,
@@ -190,7 +190,7 @@ export async function caixaQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.post('/fechar', async (request) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = fecharSchema.parse(request.body);
 
@@ -214,7 +214,7 @@ export async function caixaQuiosqueRoutes(app: FastifyInstance) {
     if (divCent > 0) recordDivergenciaCaixa(divCent);
     void registrarTransacao({
       cervejariaId,
-      tipo: 'QUIOSQUE_CAIXA_FECHADO',
+      tipo: 'CASH_REGISTER_CLOSED',
       usuarioId: user.sub,
       metadata: { pontoVendaId: body.pontoVendaId, divergenciaCentavos: divCent },
       payload: resumo,
@@ -223,7 +223,7 @@ export async function caixaQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.get('/cardapio', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { pontoVendaId } = pontoVendaQuery.parse(request.query);
 
     const sessao = await buscarSessaoAtual(cervejariaId, pontoVendaId);
@@ -235,7 +235,7 @@ export async function caixaQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.put('/cardapio', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { pontoVendaId } = pontoVendaQuery.parse(request.query);
     const body = z
       .object({
@@ -263,7 +263,7 @@ export async function caixaQuiosqueRoutes(app: FastifyInstance) {
   });
 
   app.patch('/cardapio/preco', async (request, reply) => {
-    const { cervejariaId } = request.quiosque;
+    const { cervejariaId } = request.operacao;
     const { pontoVendaId } = pontoVendaQuery.parse(request.query);
     const body = z
       .object({

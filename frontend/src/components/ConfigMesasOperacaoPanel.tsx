@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
-import { useQuiosqueContexto } from '../hooks/useQuiosqueContexto';
+import { useOperacaoContexto } from '../hooks/useOperacaoContexto';
 
-export function ConfigMesasQuiosquePanel() {
-  const { contexto } = useQuiosqueContexto();
+export function ConfigMesasOperacaoPanel() {
+  const { contexto } = useOperacaoContexto();
   const queryClient = useQueryClient();
   const [quantidade, setQuantidade] = useState('0');
   const [loading, setLoading] = useState(false);
@@ -25,8 +25,8 @@ export function ConfigMesasQuiosquePanel() {
     setLoading(true);
     setErro('');
     try {
-      await api.patch('/api/quiosque/config', { quantidadeMesas });
-      await queryClient.invalidateQueries({ queryKey: ['quiosque-contexto'] });
+      await api.patch('/api/operacao/config', { quantidadeMesas });
+      await queryClient.invalidateQueries({ queryKey: ['operacao-contexto'] });
     } catch (err) {
       setErro(err instanceof ApiError ? err.message : 'Não foi possível salvar as mesas');
     } finally {

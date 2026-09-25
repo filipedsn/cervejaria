@@ -4,7 +4,7 @@ import { api, ApiError } from '../../lib/api';
 import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
 import { Modal } from '../../components/Modal';
-import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
+import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import { useAuth } from '../../contexts/AuthContext';
 import { invalidateOnboardingReadiness } from '../../lib/onboarding';
@@ -13,13 +13,13 @@ import {
   type SaldoEstoque,
   type TipoSaidaEstoque,
   normalizeCategoriaProduto,
-} from '../../lib/quiosque';
+} from '../../lib/operacao';
 
 type Dialogo = 'nenhum' | 'entrada' | 'saida' | 'ajuste';
 
-export function QuiosqueEstoquePage() {
+export function OperacaoEstoquePage() {
   const queryClient = useQueryClient();
-  const { contexto } = useQuiosqueContexto();
+  const { contexto } = useOperacaoContexto();
   const { isDono } = useAuth();
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
 
@@ -37,14 +37,14 @@ export function QuiosqueEstoquePage() {
   const pollMs = usePollInterval(30_000);
 
   const { data: saldos, isLoading } = useQuery({
-    queryKey: ['quiosque-estoque', pontoAtivo],
-    queryFn: () => api.get<SaldoEstoque[]>(`/api/quiosque/estoque?pontoVendaId=${pontoAtivo}`),
+    queryKey: ['operacao-estoque', pontoAtivo],
+    queryFn: () => api.get<SaldoEstoque[]>(`/api/operacao/estoque?pontoVendaId=${pontoAtivo}`),
     enabled: Boolean(pontoAtivo),
     refetchInterval: pollMs,
   });
 
   const invalidar = () => {
-    queryClient.invalidateQueries({ queryKey: ['quiosque-estoque', pontoAtivo] });
+    queryClient.invalidateQueries({ queryKey: ['operacao-estoque', pontoAtivo] });
   };
 
   const fecharDialogo = () => {
@@ -91,7 +91,7 @@ export function QuiosqueEstoquePage() {
 
   const entrada = useMutation({
     mutationFn: () =>
-      api.post<SaldoEstoque[]>('/api/quiosque/estoque/entrada', {
+      api.post<SaldoEstoque[]>('/api/operacao/estoque/entrada', {
         pontoVendaId: pontoAtivo,
         produtoId: produtoSelecionado!.produtoId,
         quantidade: Number(quantidade),
@@ -107,7 +107,7 @@ export function QuiosqueEstoquePage() {
 
   const saida = useMutation({
     mutationFn: () =>
-      api.post<SaldoEstoque[]>('/api/quiosque/estoque/saida', {
+      api.post<SaldoEstoque[]>('/api/operacao/estoque/saida', {
         pontoVendaId: pontoAtivo,
         produtoId: produtoSelecionado!.produtoId,
         tipo: tipoSaida,
@@ -124,7 +124,7 @@ export function QuiosqueEstoquePage() {
 
   const ajuste = useMutation({
     mutationFn: () =>
-      api.post<SaldoEstoque[]>('/api/quiosque/estoque/ajuste', {
+      api.post<SaldoEstoque[]>('/api/operacao/estoque/ajuste', {
         pontoVendaId: pontoAtivo,
         produtoId: produtoSelecionado!.produtoId,
         quantidadeNova: Number(quantidadeNova),
@@ -140,7 +140,7 @@ export function QuiosqueEstoquePage() {
 
   const minimo = useMutation({
     mutationFn: () =>
-      api.put<SaldoEstoque[]>('/api/quiosque/estoque/minimo', {
+      api.put<SaldoEstoque[]>('/api/operacao/estoque/minimo', {
         pontoVendaId: pontoAtivo,
         produtoId: produtoSelecionado!.produtoId,
         estoqueMinimo: estoqueMinimo === '' ? null : Number(estoqueMinimo),
@@ -216,18 +216,18 @@ export function QuiosqueEstoquePage() {
               ) : null}
 
               <div className="grid grid-cols-3 gap-2">
-                <button type="button" className="touch-btn-primary touch-btn-sm" onClick={() => abrirEntrada(item)} data-audit="quiosque-estoque-repor">
+                <button type="button" className="touch-btn-primary touch-btn-sm" onClick={() => abrirEntrada(item)} data-audit="operacao-estoque-repor">
                   Repor
                 </button>
-                <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => abrirSaida(item)} data-audit="quiosque-estoque-saida">
+                <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => abrirSaida(item)} data-audit="operacao-estoque-saida">
                   Saída
                 </button>
-                <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => abrirAjuste(item)} data-audit="quiosque-estoque-ajustar" data-onboarding-target="quiosque-adjust-stock">
+                <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => abrirAjuste(item)} data-audit="operacao-estoque-ajustar" data-onboarding-target="operacao-adjust-stock">
                   Ajustar
                 </button>
               </div>
               {isDono && (
-                <button type="button" className="touch-btn-secondary touch-btn-sm w-full" onClick={() => abrirMinimo(item)} data-audit="quiosque-estoque-minimo">
+                <button type="button" className="touch-btn-secondary touch-btn-sm w-full" onClick={() => abrirMinimo(item)} data-audit="operacao-estoque-minimo">
                   {item.estoqueMinimo === null ? 'Definir aviso de estoque baixo' : `Avisar quando chegar a ${item.estoqueMinimo}`}
                 </button>
               )}
@@ -260,7 +260,7 @@ export function QuiosqueEstoquePage() {
             <label className="label">Observação (opcional)</label>
             <input className="input" value={observacao} onChange={(e) => setObservacao(e.target.value)} />
           </div>
-          <button type="submit" className="touch-btn-primary w-full" disabled={entrada.isPending} data-audit="quiosque-estoque-repor-confirmar">
+          <button type="submit" className="touch-btn-primary w-full" disabled={entrada.isPending} data-audit="operacao-estoque-repor-confirmar">
             {entrada.isPending ? 'Salvando...' : 'Confirmar reposição'}
           </button>
         </form>
@@ -308,7 +308,7 @@ export function QuiosqueEstoquePage() {
             <label className="label">Observação (opcional)</label>
             <input className="input" value={observacao} onChange={(e) => setObservacao(e.target.value)} />
           </div>
-          <button type="submit" className="touch-btn-primary w-full" disabled={saida.isPending} data-audit="quiosque-estoque-saida-confirmar">
+          <button type="submit" className="touch-btn-primary w-full" disabled={saida.isPending} data-audit="operacao-estoque-saida-confirmar">
             {saida.isPending ? 'Salvando...' : 'Registrar saída'}
           </button>
         </form>
@@ -343,7 +343,7 @@ export function QuiosqueEstoquePage() {
             <label className="label">Observação (opcional)</label>
             <input className="input" value={observacao} onChange={(e) => setObservacao(e.target.value)} />
           </div>
-          <button type="submit" className="touch-btn-primary w-full" disabled={ajuste.isPending} data-audit="quiosque-estoque-ajuste-confirmar">
+          <button type="submit" className="touch-btn-primary w-full" disabled={ajuste.isPending} data-audit="operacao-estoque-ajuste-confirmar">
             {ajuste.isPending ? 'Salvando...' : 'Confirmar ajuste'}
           </button>
         </form>
@@ -366,7 +366,7 @@ export function QuiosqueEstoquePage() {
             <label className="label">Avisar quando chegar a</label>
             <input className="input" autoFocus inputMode="numeric" value={estoqueMinimo} onChange={(e) => setEstoqueMinimo(e.target.value)} placeholder="Ex.: 3" />
           </div>
-          <button type="submit" className="touch-btn-primary w-full" disabled={minimo.isPending} data-audit="quiosque-estoque-minimo-confirmar">
+          <button type="submit" className="touch-btn-primary w-full" disabled={minimo.isPending} data-audit="operacao-estoque-minimo-confirmar">
             {minimo.isPending ? 'Salvando...' : 'Salvar aviso'}
           </button>
         </form>

@@ -4,7 +4,7 @@ import { createLegacyFallbackRecorder } from './legacy-fallback.js';
 import { deriveOperationalProfile } from './operational-profile.js';
 
 const facts = (overrides: Record<string, unknown> = {}) => ({
-  tenantId: 'tenant', legacyQuiosque: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
+  tenantId: 'tenant', legacyOperacao: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },
   activeTrailers: 0, activePointsOfSale: 1, activePointOfSaleCashRegisterSettings: [true],
   operationalEnablement: { directSalesEnabled: true, plannedOperationsEnabled: false, tapsEnabled: false, inventoryEnabled: false, kitchenEnabled: false },
   activeTaps: 0, plannedOperationCount: 0, openPlannedOperationCount: 0, openCashRegisterCount: 0, ...overrides,

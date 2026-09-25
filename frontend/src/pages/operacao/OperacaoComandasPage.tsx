@@ -15,9 +15,9 @@ import {
 } from '../../components/PaymentFormModal';
 import { parseCurrencyInput } from '../../lib/currency';
 import { textoCorrespondeBuscaComanda } from '../../lib/comandas-busca';
-import { PainelCaixaQuiosque } from '../../components/quiosque/PainelCaixaQuiosque';
+import { PainelCaixaOperacao } from '../../components/operacao/PainelCaixaOperacao';
 import { PdvPortalQrButton } from '../../components/PdvPortalQrButton';
-import { useQuiosqueContexto } from '../../hooks/useQuiosqueContexto';
+import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -29,9 +29,9 @@ import {
   rotuloComanda,
   totalItensComanda,
   type CaixaResposta,
-  type ComandaQuiosque,
-  type FecharGrupoQuiosqueResponse,
-} from '../../lib/quiosque';
+  type ComandaOperacao,
+  type FecharGrupoOperacaoResponse,
+} from '../../lib/operacao';
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent?: 'brand' | 'green' }) {
   return (
@@ -42,13 +42,13 @@ function StatCard({ label, value, accent }: { label: string; value: string; acce
   );
 }
 
-export function QuiosqueComandasPage() {
+export function OperacaoComandasPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { cervejaria } = useAuth();
   const exibirKpis = cervejaria?.exibirKpisComanda ?? true;
   const colunaUnica = cervejaria?.comandasColunaUnica ?? true;
-  const { contexto } = useQuiosqueContexto();
+  const { contexto } = useOperacaoContexto();
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
   const [pontoVendaId, setPontoVendaId] = useState('');
   const [comandaTab, setComandaTab] = useState<'ABERTA' | 'FECHADA'>('ABERTA');
@@ -67,8 +67,8 @@ export function QuiosqueComandasPage() {
   const pollMs = usePollInterval(30_000);
 
   const { data: caixaData } = useQuery({
-    queryKey: ['quiosque-caixa', pontoAtivo],
-    queryFn: () => api.get<CaixaResposta>(`/api/quiosque/caixa?pontoVendaId=${pontoAtivo}`),
+    queryKey: ['operacao-caixa', pontoAtivo],
+    queryFn: () => api.get<CaixaResposta>(`/api/operacao/caixa?pontoVendaId=${pontoAtivo}`),
     enabled: Boolean(pontoAtivo),
     refetchInterval: pollMs,
   });
@@ -76,16 +76,16 @@ export function QuiosqueComandasPage() {
   const turnoAbertoEm = caixaAberto ? caixaData!.sessao!.abertoEm : null;
 
   const { data: abertas, isLoading: loadingAbertas } = useQuery({
-    queryKey: ['quiosque-comandas', 'ABERTA', pontoAtivo],
-    queryFn: () => api.get<ComandaQuiosque[]>(`/api/quiosque/comandas?status=ABERTA${pontoQuery}`),
+    queryKey: ['operacao-comandas', 'ABERTA', pontoAtivo],
+    queryFn: () => api.get<ComandaOperacao[]>(`/api/operacao/comandas?status=ABERTA${pontoQuery}`),
     refetchInterval: pollMs,
     enabled: Boolean(pontoAtivo) && caixaAberto,
   });
 
   const { data: fechadasHoje, isLoading: loadingFechadas } = useQuery({
-    queryKey: ['quiosque-comandas', 'FECHADA', pontoAtivo, dia],
+    queryKey: ['operacao-comandas', 'FECHADA', pontoAtivo, dia],
     queryFn: () =>
-      api.get<ComandaQuiosque[]>(`/api/quiosque/comandas?status=FECHADA&dia=${dia}${pontoQuery}`),
+      api.get<ComandaOperacao[]>(`/api/operacao/comandas?status=FECHADA&dia=${dia}${pontoQuery}`),
     refetchInterval: pollMs,
     enabled: Boolean(pontoAtivo) && caixaAberto,
   });
@@ -162,7 +162,7 @@ export function QuiosqueComandasPage() {
 
   const fecharGrupoMutation = useMutation({
     mutationFn: (pagamentos: { forma: 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO'; valor: number }[]) =>
-      api.post<FecharGrupoQuiosqueResponse>('/api/quiosque/comandas/fechar-grupo', {
+      api.post<FecharGrupoOperacaoResponse>('/api/operacao/comandas/fechar-grupo', {
         comandaIds: selectedIds,
         pagamentos,
       }),
@@ -173,7 +173,7 @@ export function QuiosqueComandasPage() {
       setGroupSuccess(parts.join(' · ') || 'Operação concluída');
       setShowGroupPayment(false);
       exitSelectMode();
-      queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
+      queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
     },
     onError: (err) => {
       setGroupError(err instanceof ApiError ? err.message : 'Erro ao fechar comandas');
@@ -182,19 +182,19 @@ export function QuiosqueComandasPage() {
 
   const abrirMesaLivreMutation = useMutation({
     mutationFn: (numeroMesa: number) =>
-      api.post<ComandaQuiosque>('/api/quiosque/comandas', {
+      api.post<ComandaOperacao>('/api/operacao/comandas', {
         pontoVendaId: pontoAtivo,
         tipo: 'MESA',
         identificador: String(numeroMesa),
         itens: [],
       }),
     onSuccess: (comanda) => {
-      queryClient.invalidateQueries({ queryKey: ['quiosque-comandas'] });
-      navigate(`/quiosque/comandas/${comanda.id}`);
+      queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
+      navigate(`/operacao/comandas/${comanda.id}`);
     },
     onError: (err) => {
       if (err instanceof ApiError && err.status === 409 && typeof err.body?.comandaId === 'string') {
-        navigate(`/quiosque/comandas/${err.body.comandaId}`);
+        navigate(`/operacao/comandas/${err.body.comandaId}`);
         return;
       }
       setGroupError(err instanceof ApiError ? err.message : 'Não foi possível abrir a mesa');
@@ -242,7 +242,7 @@ export function QuiosqueComandasPage() {
 
       {pontoAtivo && (
         <>
-          <PainelCaixaQuiosque
+          <PainelCaixaOperacao
             pontoVendaId={pontoAtivo}
             compacto
             comandasAbertas={abertasTurno.length}
@@ -254,7 +254,7 @@ export function QuiosqueComandasPage() {
       {!selectMode && (
         <div className="grid grid-cols-2 gap-2">
           <Link
-            to="/quiosque/comandas/nova"
+            to="/operacao/comandas/nova"
             className={`touch-btn-primary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold ${
               !caixaAberto ? 'pointer-events-none opacity-50' : ''
             }`}
@@ -267,8 +267,8 @@ export function QuiosqueComandasPage() {
             Comanda
           </Link>
           <Link
-            to="/quiosque/comandas/venda-avulsa"
-            data-onboarding-target="quiosque-start-sale"
+            to="/operacao/comandas/venda-avulsa"
+            data-onboarding-target="operacao-start-sale"
             className={`touch-btn-secondary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold ${
               !caixaAberto ? 'pointer-events-none opacity-50' : ''
             }`}
@@ -393,10 +393,10 @@ export function QuiosqueComandasPage() {
                     toggleSelection(comanda.id);
                     return;
                   }
-                  navigate(`/quiosque/comandas/${comanda!.id}`);
+                  navigate(`/operacao/comandas/${comanda!.id}`);
                 }}
                 disabled={livre && (!caixaAberto || abrirMesaLivreMutation.isPending)}
-                className={`card-touch w-full ${colunaUnica ? 'min-h-[4.5rem]' : 'min-h-[5.5rem]'} ${livre ? 'border-dashed border-green-300 bg-green-50/30' : ''} ${mesaOcupada ? 'quiosque-mesa-ocupada' : ''} ${
+                className={`card-touch w-full ${colunaUnica ? 'min-h-[4.5rem]' : 'min-h-[5.5rem]'} ${livre ? 'border-dashed border-green-300 bg-green-50/30' : ''} ${mesaOcupada ? 'operacao-mesa-ocupada' : ''} ${
                   selectMode
                     ? isSelected
                       ? 'border-brand-500 bg-brand-50/40'
@@ -500,11 +500,11 @@ export function QuiosqueComandasPage() {
             action={
               !buscaComanda.trim() && isAbertas ? (
                 caixaAberto ? (
-                  <Link to="/quiosque/comandas/nova" className="touch-btn-primary touch-btn-sm inline-block">
+                  <Link to="/operacao/comandas/nova" className="touch-btn-primary touch-btn-sm inline-block">
                     Nova comanda
                   </Link>
                 ) : (
-                    <Link to={`/quiosque/caixa?pontoVendaId=${encodeURIComponent(pontoAtivo)}`} className="touch-btn-primary touch-btn-sm inline-block">
+                    <Link to={`/operacao/caixa?pontoVendaId=${encodeURIComponent(pontoAtivo)}`} className="touch-btn-primary touch-btn-sm inline-block">
                     Abrir caixa
                   </Link>
                 )
