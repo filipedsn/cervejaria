@@ -45,14 +45,14 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
   let produtoSemControleId = '';
 
   async function saldoAtual(produtoId: string): Promise<number> {
-    const r = await api<Saldo[]>('GET', `/api/quiosque/estoque?pontoVendaId=${pontoId}`, { token: cfg.donoToken });
+    const r = await api<Saldo[]>('GET', `/api/operacao/estoque?pontoVendaId=${pontoId}`, { token: cfg.donoToken });
     return saldoDe(r.data, produtoId);
   }
 
   await test(
     { id: 'QES-01', category: 'Quiosque estoque', name: 'Setup ponto com caixa e estoque', requirement: 'QES-01' },
     async () => {
-      const ponto = await api<{ id: string }>('POST', '/api/quiosque/pontos-venda', {
+      const ponto = await api<{ id: string }>('POST', '/api/operacao/pontos-venda', {
         token: cfg.donoToken,
         body: { nome: `Estoque QA ${stamp}` },
       });
@@ -61,7 +61,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
       }
       pontoId = ponto.data.id;
 
-      const caixa = await api('POST', '/api/quiosque/caixa/abrir', {
+      const caixa = await api('POST', '/api/operacao/caixa/abrir', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, trocoInicial: 100 },
       });
@@ -69,7 +69,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Abrir caixa', expected: '201', actual: String(caixa.status) };
       }
 
-      const entrada = await api<Saldo[]>('POST', '/api/quiosque/estoque/entrada', {
+      const entrada = await api<Saldo[]>('POST', '/api/operacao/estoque/entrada', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, quantidade: 10, observacao: 'QA setup' },
       });
@@ -89,7 +89,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
     { id: 'QES-02', category: 'Quiosque estoque', name: 'Venda gera SAIDA_VENDA e baixa saldo', requirement: 'QES-02' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QES-01 incompleto' };
-      const venda = await api('POST', '/api/quiosque/vendas', {
+      const venda = await api('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -123,7 +123,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
       if (!pontoId) return { status: 'failed', message: 'QES-01 incompleto' };
       const antes = await saldoAtual(cfg.produtoId!);
 
-      const comanda = await api<{ id: string }>('POST', '/api/quiosque/comandas', {
+      const comanda = await api<{ id: string }>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -140,7 +140,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Baixa ao abrir comanda', expected: String(antes - 2), actual: String(durante) };
       }
 
-      const cancel = await api('POST', `/api/quiosque/comandas/${comanda.data.id}/cancelar`, { token: cfg.donoToken });
+      const cancel = await api('POST', `/api/operacao/comandas/${comanda.data.id}/cancelar`, { token: cfg.donoToken });
       if (cancel.status !== 200) {
         return { status: 'failed', message: 'Cancelar comanda', expected: '200', actual: String(cancel.status) };
       }
@@ -165,11 +165,11 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
       if (!pontoId) return { status: 'failed', message: 'QES-01 incompleto' };
       const antes = await saldoAtual(cfg.produtoId!);
 
-      const cortesia = await api<Saldo[]>('POST', '/api/quiosque/estoque/saida', {
+      const cortesia = await api<Saldo[]>('POST', '/api/operacao/estoque/saida', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, tipo: 'CORTESIA', quantidade: 1 },
       });
-      const consumo = await api<Saldo[]>('POST', '/api/quiosque/estoque/saida', {
+      const consumo = await api<Saldo[]>('POST', '/api/operacao/estoque/saida', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, tipo: 'CONSUMO_INTERNO', quantidade: 1 },
       });
@@ -204,9 +204,9 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
       const antes = await saldoAtual(cfg.produtoId!);
 
       const comandasAntes = await prisma.comanda.count({
-        where: { origem: 'QUIOSQUE', pontoVendaId: pontoId },
+        where: { origem: 'CAIXA', pontoVendaId: pontoId },
       });
-      const r = await api<{ error?: string }>('POST', '/api/quiosque/vendas', {
+      const r = await api<{ error?: string }>('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -223,7 +223,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
 
       const depois = await saldoAtual(cfg.produtoId!);
       const comandasDepois = await prisma.comanda.count({
-        where: { origem: 'QUIOSQUE', pontoVendaId: pontoId },
+        where: { origem: 'CAIXA', pontoVendaId: pontoId },
       });
       if (depois !== antes) {
         return { status: 'failed', message: 'Saldo alterado apesar do erro', expected: String(antes), actual: String(depois) };
@@ -245,7 +245,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QES-01 incompleto' };
 
-      const ajuste = await api<Saldo[]>('POST', '/api/quiosque/estoque/ajuste', {
+      const ajuste = await api<Saldo[]>('POST', '/api/operacao/estoque/ajuste', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, quantidadeNova: 1, observacao: 'QA último item' },
       });
@@ -256,7 +256,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
       const CONCORRENTES = 6;
       const respostas = await Promise.all(
         Array.from({ length: CONCORRENTES }, () =>
-          api<{ error?: string }>('POST', '/api/quiosque/vendas', {
+          api<{ error?: string }>('POST', '/api/operacao/vendas', {
             token: cfg.donoToken,
             body: {
               pontoVendaId: pontoId,
@@ -305,7 +305,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
     { id: 'QES-07', category: 'Quiosque estoque', name: 'Produto sem controle não bloqueia venda', requirement: 'QES-07' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QES-01 incompleto' };
-      const produto = await api<{ id: string }>('POST', '/api/quiosque/produtos', {
+      const produto = await api<{ id: string }>('POST', '/api/operacao/produtos', {
         token: cfg.donoToken,
         body: { nome: `Sem controle ${stamp}`, precoUnit: 5, exigePreparo: false, controlaEstoque: false },
       });
@@ -314,7 +314,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
       }
       produtoSemControleId = produto.data.id;
 
-      const venda = await api('POST', '/api/quiosque/vendas', {
+      const venda = await api('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -333,7 +333,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
     { id: 'QES-08', category: 'Quiosque estoque', name: 'Saída manual de produto sem controle → 400', requirement: 'QES-08' },
     async () => {
       if (!produtoSemControleId) return { status: 'failed', message: 'QES-07 incompleto' };
-      const r = await api<{ error?: string }>('POST', '/api/quiosque/estoque/saida', {
+      const r = await api<{ error?: string }>('POST', '/api/operacao/estoque/saida', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, produtoId: produtoSemControleId, tipo: 'PERDA', quantidade: 1 },
       });
@@ -348,7 +348,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
     { id: 'QES-09', category: 'Quiosque estoque', name: 'Ajuste com quantidade negativa → 400', requirement: 'QES-09' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QES-01 incompleto' };
-      const r = await api('POST', '/api/quiosque/estoque/ajuste', {
+      const r = await api('POST', '/api/operacao/estoque/ajuste', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, quantidadeNova: -3 },
       });
@@ -363,7 +363,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
     { id: 'QES-11', category: 'Quiosque estoque', name: 'Ajuste absoluto normal preserva o valor contado', requirement: 'TQ-007-A' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QES-01 incompleto' };
-      const ajuste = await api<Saldo[]>('POST', '/api/quiosque/estoque/ajuste', {
+      const ajuste = await api<Saldo[]>('POST', '/api/operacao/estoque/ajuste', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, quantidadeNova: 10, observacao: 'TQ-007 ajuste normal' },
       });
@@ -380,7 +380,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QES-01 incompleto' };
 
-      const minimo = await api<Saldo[]>('PUT', '/api/quiosque/estoque/minimo', {
+      const minimo = await api<Saldo[]>('PUT', '/api/operacao/estoque/minimo', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, estoqueMinimo: 10 },
       });
@@ -392,7 +392,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Mínimo configurado', expected: '200 / LOW / mínimo 10', actual: `${minimo.status} / ${baixo?.statusEstoque} / ${baixo?.estoqueMinimo}` };
       }
 
-      const limpar = await api<Saldo[]>('PUT', '/api/quiosque/estoque/minimo', {
+      const limpar = await api<Saldo[]>('PUT', '/api/operacao/estoque/minimo', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, estoqueMinimo: null },
       });
@@ -414,11 +414,11 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
       const inicio = new Date();
       const marcador = `TQ-007 concorrente ${stamp}`;
       const [ajuste, venda] = await Promise.all([
-        api<Saldo[]>('POST', '/api/quiosque/estoque/ajuste', {
+        api<Saldo[]>('POST', '/api/operacao/estoque/ajuste', {
           token: cfg.donoToken,
           body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, quantidadeNova: 20, observacao: marcador },
         }),
-        api('POST', '/api/quiosque/vendas', {
+        api('POST', '/api/operacao/vendas', {
           token: cfg.donoToken,
           body: {
             pontoVendaId: pontoId,
@@ -462,7 +462,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
     { id: 'QES-13', category: 'Quiosque estoque', name: 'Saídas manuais concorrentes não deixam saldo negativo', requirement: 'TQ-007-C,D' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QES-01 incompleto' };
-      const ajuste = await api<Saldo[]>('POST', '/api/quiosque/estoque/ajuste', {
+      const ajuste = await api<Saldo[]>('POST', '/api/operacao/estoque/ajuste', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, quantidadeNova: 1, observacao: 'TQ-007 saída manual' },
       });
@@ -470,7 +470,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
 
       const respostas = await Promise.all(
         ['PERDA', 'CORTESIA'].map((tipo) =>
-          api('POST', '/api/quiosque/estoque/saida', {
+          api('POST', '/api/operacao/estoque/saida', {
             token: cfg.donoToken,
             body: { pontoVendaId: pontoId, produtoId: cfg.produtoId, tipo, quantidade: 1 },
           }),
@@ -496,7 +496,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
     async () => {
       const semEstoque = ctx.configTenants?.find((c) => c.code === 'QUIOSQUE-00');
       if (!semEstoque?.pontoVendaId) return { status: 'skipped', message: 'QUIOSQUE-00 ausente' };
-      const r = await api('GET', `/api/quiosque/estoque?pontoVendaId=${semEstoque.pontoVendaId}`, {
+      const r = await api('GET', `/api/operacao/estoque?pontoVendaId=${semEstoque.pontoVendaId}`, {
         token: semEstoque.donoToken,
       });
       if (r.status !== 404) {

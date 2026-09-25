@@ -435,17 +435,17 @@ export async function runRealtimeTests(ctx: QaContext, test: TestFn, perfSink?: 
 
         const atual = await api<{ sessao?: { status: string } }>(
           'GET',
-          `/api/quiosque/caixa?pontoVendaId=${cfg.pontoVendaId}`,
+          `/api/operacao/caixa?pontoVendaId=${cfg.pontoVendaId}`,
           { token: cfg.donoToken },
         );
         if (atual.data?.sessao?.status !== 'ABERTO') {
-          await api('POST', '/api/quiosque/caixa/abrir', {
+          await api('POST', '/api/operacao/caixa/abrir', {
             token: cfg.donoToken,
             body: { pontoVendaId: cfg.pontoVendaId, trocoInicial: 50 },
           });
         }
 
-        const comanda = await api<{ id: string; pedidos?: Array<{ id: string }> }>('POST', '/api/quiosque/comandas', {
+        const comanda = await api<{ id: string; pedidos?: Array<{ id: string }> }>('POST', '/api/operacao/comandas', {
           token: cfg.donoToken,
           body: {
             pontoVendaId: cfg.pontoVendaId,

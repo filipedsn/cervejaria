@@ -1,5 +1,5 @@
 import { prisma } from '../../src/lib/prisma.js';
-import { ativarModuloQuiosque } from '../../src/lib/quiosque/modulo.js';
+import { ativarModuloOperacao } from '../../src/lib/operacao/modulo.js';
 import { inicializarMontagemEvento } from '../../src/lib/tap-montagem.js';
 import { hashPassword } from '../../src/lib/utils.js';
 import { signToken, userJwtPayload } from './jwt.js';
@@ -26,28 +26,28 @@ export const CONFIG_DEFINITIONS = [
   { code: 'HIBRIDA-11', slug: `${CFG_PREFIX}hibrida-11`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: true, temCozinha: true, exclusivo: true },
 ] as const;
 
-async function cleanupQuiosqueForBrewery(cervejariaId: string) {
+async function cleanupOperacaoForBrewery(cervejariaId: string) {
   await prisma.inventoryMovement.deleteMany({ where: { cervejariaId } });
-  const sessoes = await prisma.sessaoCaixaQuiosque.findMany({ where: { cervejariaId }, select: { id: true } });
+  const sessoes = await prisma.sessaoCaixaOperacao.findMany({ where: { cervejariaId }, select: { id: true } });
   const sessaoIds = sessoes.map((s) => s.id);
   if (sessaoIds.length) {
-    await prisma.movimentoCaixaQuiosque.deleteMany({ where: { sessaoId: { in: sessaoIds } } });
+    await prisma.movimentoCaixaOperacao.deleteMany({ where: { sessaoId: { in: sessaoIds } } });
   }
-  await prisma.sessaoCaixaQuiosque.deleteMany({ where: { cervejariaId } });
+  await prisma.sessaoCaixaOperacao.deleteMany({ where: { cervejariaId } });
   const comandas = await prisma.comanda.findMany({
-    where: { origem: 'QUIOSQUE', pontoVenda: { cervejariaId } },
+    where: { origem: 'CAIXA', pontoVenda: { cervejariaId } },
     select: { id: true },
   });
   const comandaIds = comandas.map((c) => c.id);
   if (comandaIds.length) {
     await prisma.itemComanda.deleteMany({ where: { comandaId: { in: comandaIds } } });
     await prisma.pagamento.deleteMany({ where: { comandaId: { in: comandaIds } } });
-    await prisma.pedidoQuiosque.deleteMany({ where: { comandaId: { in: comandaIds } } });
+    await prisma.pedidoOperacao.deleteMany({ where: { comandaId: { in: comandaIds } } });
     await prisma.comanda.deleteMany({ where: { id: { in: comandaIds } } });
   }
   await prisma.inventoryBalance.deleteMany({ where: { cervejariaId } });
   await prisma.pontoVenda.deleteMany({ where: { cervejariaId } });
-  await prisma.configuracaoQuiosque.deleteMany({ where: { cervejariaId } });
+  await prisma.configuracaoOperacao.deleteMany({ where: { cervejariaId } });
 }
 
 function tenantSlug(i: number) {
@@ -69,7 +69,7 @@ export async function cleanupQa() {
     select: { id: true },
   });
   for (const { id } of breweries) {
-    await cleanupQuiosqueForBrewery(id);
+    await cleanupOperacaoForBrewery(id);
     const eventos = await prisma.evento.findMany({ where: { cervejariaId: id }, select: { id: true } });
     const eventoIds = eventos.map((e) => e.id);
     if (eventoIds.length) {
@@ -465,7 +465,7 @@ export async function seedConfigTenants(): Promise<ConfigTenantFixture[]> {
 
     if (def.moduloQuiosque) {
       const { pontoVenda } = await prisma.$transaction(async (tx) =>
-        ativarModuloQuiosque(tx, {
+        ativarModuloOperacao(tx, {
           cervejariaId: cervejaria.id,
           controlaEstoque: def.controlaEstoque,
           temCozinha: def.temCozinha,

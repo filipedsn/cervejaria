@@ -56,7 +56,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-01', category: 'Quiosque caixa', name: 'ATENDENTE não cria ponto de venda', requirement: 'QCX-01' },
     async () => {
       const atendenteCookie = await login(`${cfg.slug}-a1@qa.test`, 'qa123456');
-      const r = await api('POST', '/api/quiosque/pontos-venda', {
+      const r = await api('POST', '/api/operacao/pontos-venda', {
         cookie: atendenteCookie,
         body: { nome: `Bloqueado ${stamp}` },
       });
@@ -70,7 +70,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
   await test(
     { id: 'QCX-02', category: 'Quiosque caixa', name: 'DONO cria ponto de venda dedicado', requirement: 'QCX-02' },
     async () => {
-      const r = await api<{ id: string }>('POST', '/api/quiosque/pontos-venda', {
+      const r = await api<{ id: string }>('POST', '/api/operacao/pontos-venda', {
         token: cfg.donoToken,
         body: { nome: `Caixa QA ${stamp}` },
       });
@@ -86,7 +86,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-03', category: 'Quiosque caixa', name: 'Ponto sem sessão retorna sessao null', requirement: 'QCX-03' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const r = await api<{ sessao: unknown }>('GET', `/api/quiosque/caixa?pontoVendaId=${pontoId}`, {
+      const r = await api<{ sessao: unknown }>('GET', `/api/operacao/caixa?pontoVendaId=${pontoId}`, {
         token: cfg.donoToken,
       });
       if (r.status !== 200 || r.data?.sessao !== null) {
@@ -100,7 +100,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-04', category: 'Quiosque caixa', name: 'Venda sem caixa aberto → 400', requirement: 'QCX-04' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const r = await api<{ error?: string }>('POST', '/api/quiosque/vendas', {
+      const r = await api<{ error?: string }>('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -122,7 +122,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-04b', category: 'Quiosque caixa', name: 'Comanda sem caixa aberto → 400', requirement: 'QCX-04' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const r = await api<{ error?: string }>('POST', '/api/quiosque/comandas', {
+      const r = await api<{ error?: string }>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -145,7 +145,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-05', category: 'Quiosque caixa', name: 'Troco inicial negativo → 400', requirement: 'QCX-05' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const r = await api('POST', '/api/quiosque/caixa/abrir', {
+      const r = await api('POST', '/api/operacao/caixa/abrir', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, trocoInicial: -10 },
       });
@@ -160,7 +160,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-06', category: 'Quiosque caixa', name: 'Abertura registra troco inicial na gaveta', requirement: 'QCX-06' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const r = await api<ResumoCaixa>('POST', '/api/quiosque/caixa/abrir', {
+      const r = await api<ResumoCaixa>('POST', '/api/operacao/caixa/abrir', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, trocoInicial: 100 },
       });
@@ -183,7 +183,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-07', category: 'Quiosque caixa', name: 'Reabrir caixa do dia → 400', requirement: 'QCX-07' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const r = await api<{ error?: string }>('POST', '/api/quiosque/caixa/abrir', {
+      const r = await api<{ error?: string }>('POST', '/api/operacao/caixa/abrir', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, trocoInicial: 50 },
       });
@@ -203,7 +203,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-08', category: 'Quiosque caixa', name: 'Movimento com valor zero → 400', requirement: 'QCX-08' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const r = await api('POST', '/api/quiosque/caixa/movimentos', {
+      const r = await api('POST', '/api/operacao/caixa/movimentos', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, tipo: 'SANGRIA', valor: 0 },
       });
@@ -218,14 +218,14 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-09', category: 'Quiosque caixa', name: 'Sangria e suprimento ajustam a gaveta', requirement: 'QCX-09' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const sangria = await api<ResumoCaixa>('POST', '/api/quiosque/caixa/movimentos', {
+      const sangria = await api<ResumoCaixa>('POST', '/api/operacao/caixa/movimentos', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, tipo: 'SANGRIA', valor: 30, observacao: 'QA sangria' },
       });
       if (sangria.status !== 201) {
         return { status: 'failed', message: 'Sangria', expected: '201', actual: String(sangria.status) };
       }
-      const suprimento = await api<ResumoCaixa>('POST', '/api/quiosque/caixa/movimentos', {
+      const suprimento = await api<ResumoCaixa>('POST', '/api/operacao/caixa/movimentos', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, tipo: 'SUPRIMENTO', valor: 20, observacao: 'QA suprimento' },
       });
@@ -254,7 +254,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-10', category: 'Quiosque caixa', name: 'Venda em dinheiro entra na gaveta', requirement: 'QCX-10' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const venda = await api('POST', '/api/quiosque/vendas', {
+      const venda = await api('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -266,7 +266,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Venda dinheiro', expected: '201', actual: `${venda.status} ${venda.raw.slice(0, 100)}` };
       }
 
-      const r = await api<{ sessao: ResumoCaixa }>('GET', `/api/quiosque/caixa?pontoVendaId=${pontoId}`, {
+      const r = await api<{ sessao: ResumoCaixa }>('GET', `/api/operacao/caixa?pontoVendaId=${pontoId}`, {
         token: cfg.donoToken,
       });
       const g = r.data?.sessao?.gaveta;
@@ -287,7 +287,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-11', category: 'Quiosque caixa', name: 'Venda PIX entra em esperado.pix', requirement: 'QCX-11' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const venda = await api('POST', '/api/quiosque/vendas', {
+      const venda = await api('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -298,7 +298,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
       if (venda.status !== 201) {
         return { status: 'failed', message: 'Venda PIX', expected: '201', actual: String(venda.status) };
       }
-      const r = await api<{ sessao: ResumoCaixa }>('GET', `/api/quiosque/caixa?pontoVendaId=${pontoId}`, {
+      const r = await api<{ sessao: ResumoCaixa }>('GET', `/api/operacao/caixa?pontoVendaId=${pontoId}`, {
         token: cfg.donoToken,
       });
       const esperado = r.data?.sessao?.esperado;
@@ -323,7 +323,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const comanda = await api<{ id?: string }>('POST', '/api/quiosque/comandas', {
+      const comanda = await api<{ id?: string }>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -340,7 +340,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
           actual: String(comanda.status),
         };
       }
-      const r = await api<{ error?: string }>('POST', '/api/quiosque/caixa/fechar', {
+      const r = await api<{ error?: string }>('POST', '/api/operacao/caixa/fechar', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -358,7 +358,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
           actual: `${r.status} ${r.data?.error ?? ''}`,
         };
       }
-      const cancelar = await api('POST', `/api/quiosque/comandas/${comanda.data.id}/cancelar`, {
+      const cancelar = await api('POST', `/api/operacao/comandas/${comanda.data.id}/cancelar`, {
         token: cfg.donoToken,
       });
       if (cancelar.status !== 200) {
@@ -378,7 +378,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
       // Conta 10 a menos em dinheiro para forçar diferença negativa.
-      const r = await api<ResumoCaixa>('POST', '/api/quiosque/caixa/fechar', {
+      const r = await api<ResumoCaixa>('POST', '/api/operacao/caixa/fechar', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -414,7 +414,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-13', category: 'Quiosque caixa', name: 'Movimento após fechamento → 400', requirement: 'QCX-13' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const r = await api('POST', '/api/quiosque/caixa/movimentos', {
+      const r = await api('POST', '/api/operacao/caixa/movimentos', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, tipo: 'SANGRIA', valor: 5 },
       });
@@ -429,7 +429,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-14', category: 'Quiosque caixa', name: 'Reabertura após fechar no mesmo dia → 201', requirement: 'QCX-14' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const r = await api<{ status?: string; trocoInicial?: number }>('POST', '/api/quiosque/caixa/abrir', {
+      const r = await api<{ status?: string; trocoInicial?: number }>('POST', '/api/operacao/caixa/abrir', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, trocoInicial: 50 },
       });
@@ -457,7 +457,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-15', category: 'Quiosque caixa', name: 'Venda após fechamento → 400', requirement: 'QCX-15' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const fechar = await api('POST', '/api/quiosque/caixa/fechar', {
+      const fechar = await api('POST', '/api/operacao/caixa/fechar', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -475,7 +475,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
           actual: String(fechar.status),
         };
       }
-      const r = await api('POST', '/api/quiosque/vendas', {
+      const r = await api('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -496,7 +496,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
       const tentativas = await Promise.all(
         [100, 101].map((trocoInicial) =>
-          api<ResumoCaixa>('POST', '/api/quiosque/caixa/abrir', {
+          api<ResumoCaixa>('POST', '/api/operacao/caixa/abrir', {
             token: cfg.donoToken,
             body: { pontoVendaId: pontoId, trocoInicial },
           }),
@@ -504,7 +504,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
       );
       const abertas = tentativas.filter((r) => r.status === 201);
       const rejeitadas = tentativas.filter((r) => r.status === 400);
-      const atual = await api<{ sessao: ResumoCaixa | null }>('GET', `/api/quiosque/caixa?pontoVendaId=${pontoId}`, {
+      const atual = await api<{ sessao: ResumoCaixa | null }>('GET', `/api/operacao/caixa?pontoVendaId=${pontoId}`, {
         token: cfg.donoToken,
       });
       if (abertas.length !== 1 || rejeitadas.length !== 1 || atual.data?.sessao?.status !== 'ABERTO') {
@@ -524,7 +524,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
       const [fechamento, venda] = await Promise.all([
-        api<ResumoCaixa>('POST', '/api/quiosque/caixa/fechar', {
+        api<ResumoCaixa>('POST', '/api/operacao/caixa/fechar', {
           token: cfg.donoToken,
           body: {
             pontoVendaId: pontoId,
@@ -534,7 +534,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
             contadoCartaoCredito: 0,
           },
         }),
-        api<{ fechadaEm?: string }>('POST', '/api/quiosque/vendas', {
+        api<{ fechadaEm?: string }>('POST', '/api/operacao/vendas', {
           token: cfg.donoToken,
           body: {
             pontoVendaId: pontoId,
@@ -570,7 +570,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCX-18', category: 'Quiosque caixa', name: 'Duplo fechamento tem resultado consistente', requirement: 'TQ-005-F' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCX-02 incompleto' };
-      const abrir = await api('POST', '/api/quiosque/caixa/abrir', {
+      const abrir = await api('POST', '/api/operacao/caixa/abrir', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, trocoInicial: 50 },
       });
@@ -578,7 +578,7 @@ export async function runQuiosqueCaixaTests(ctx: QaContext, test: TestFn) {
 
       const respostas = await Promise.all(
         Array.from({ length: 2 }, () =>
-          api('POST', '/api/quiosque/caixa/fechar', {
+          api('POST', '/api/operacao/caixa/fechar', {
             token: cfg.donoToken,
             body: {
               pontoVendaId: pontoId,

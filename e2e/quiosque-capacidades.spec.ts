@@ -55,13 +55,13 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
   });
 
   test('deriva o tenant da sessão e exige confirmação explícita de estoque', async () => {
-    const arbitraryTenant = await apiRequest('PATCH', '/api/quiosque/capacidades', {
+    const arbitraryTenant = await apiRequest('PATCH', '/api/operacao/capacidades', {
       cookie: ownerCookie,
       body: { cervejariaId: 'outro-tenant', temCozinha: true },
     });
     expect(arbitraryTenant.status).toBe(400);
 
-    const withoutConfirmation = await apiRequest('PATCH', '/api/quiosque/capacidades', {
+    const withoutConfirmation = await apiRequest('PATCH', '/api/operacao/capacidades', {
       cookie: ownerCookie,
       body: { controlaEstoque: true },
     });
@@ -70,7 +70,7 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
 
   test('DONO alterna cozinha e estoque, com atualização imediata da navegação', async ({ page }) => {
     await login(page, owner.email, owner.password);
-    await page.goto('/quiosque/configuracoes/operacao');
+    await page.goto('/operacao/configuracoes/operacao');
 
     await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
 
@@ -97,7 +97,7 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
 
   test('mantém CAIXA e EVENTO como escolhas independentes das capabilities', async ({ page }) => {
     await login(page, CREDENTIALS.caixa.email, CREDENTIALS.caixa.password);
-    await page.goto('/quiosque/configuracoes/operacao');
+    await page.goto('/operacao/configuracoes/operacao');
     await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Por caixa' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('button', { name: 'Por caixa' })).toContainText('Selecionado');
@@ -116,16 +116,16 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
   test('cria o primeiro ponto de venda pela tela do caixa', async ({ page }) => {
     await login(page, owner.email, owner.password);
     let forceEmpty = true;
-    await page.route('**/api/quiosque/contexto', async (route) => {
+    await page.route('**/api/operacao/contexto', async (route) => {
       const response = await route.fetch();
       if (!forceEmpty) return route.fulfill({ response });
       const body = await response.json() as { pontosVenda?: unknown[] };
       body.pontosVenda = [];
       await route.fulfill({ response, body: JSON.stringify(body) });
     });
-    await page.goto('/quiosque/configuracoes/operacao');
+    await page.goto('/operacao/configuracoes/operacao');
     await page.getByRole('button', { name: 'Por caixa' }).click();
-    await page.goto('/quiosque/caixa');
+    await page.goto('/operacao/caixa');
     await expect(page.getByRole('heading', { name: 'Você ainda não possui um ponto de venda.' })).toBeVisible();
     await page.getByLabel('Nome do ponto').fill(`PDV visual ${stamp}`);
     forceEmpty = false;
@@ -136,7 +136,7 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
 
   test('exibe de forma compreensível o bloqueio devolvido pelo backend', async ({ page }) => {
     await login(page, owner.email, owner.password);
-    await page.goto('/quiosque/configuracoes/operacao');
+    await page.goto('/operacao/configuracoes/operacao');
     await page.getByRole('button', { name: 'Ativar Cozinha / preparo' }).click();
     await expect(page.getByRole('button', { name: 'Desativar Cozinha / preparo' })).toBeVisible();
 
@@ -159,7 +159,7 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
 
   test('preserva CAIXA quando a API bloqueia a mudanca para EVENTO', async ({ page }) => {
     await login(page, owner.email, owner.password);
-    await page.goto('/quiosque/configuracoes/operacao');
+    await page.goto('/operacao/configuracoes/operacao');
     const caixa = page.getByRole('button', { name: 'Por caixa' });
     const evento = page.getByRole('button', { name: /Por opera/ });
     await expect(caixa).toHaveAttribute('aria-pressed', 'true');

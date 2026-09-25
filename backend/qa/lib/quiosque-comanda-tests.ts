@@ -49,7 +49,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
   await test(
     { id: 'QCM-01', category: 'Quiosque comandas', name: 'Setup ponto de venda + caixa aberto', requirement: 'QCM-01' },
     async () => {
-      const ponto = await api<{ id: string }>('POST', '/api/quiosque/pontos-venda', {
+      const ponto = await api<{ id: string }>('POST', '/api/operacao/pontos-venda', {
         token: cfg.donoToken,
         body: { nome: `Comandas QA ${stamp}` },
       });
@@ -58,7 +58,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
       }
       pontoId = ponto.data.id;
 
-      const caixa = await api('POST', '/api/quiosque/caixa/abrir', {
+      const caixa = await api('POST', '/api/operacao/caixa/abrir', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, trocoInicial: 200 },
       });
@@ -76,7 +76,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCM-02', category: 'Quiosque comandas', name: 'Comanda tipo MESA', requirement: 'QCM-02' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCM-01 incompleto' };
-      const r = await api<ResumoComanda>('POST', '/api/quiosque/comandas', {
+      const r = await api<ResumoComanda>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -100,7 +100,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCM-03', category: 'Quiosque comandas', name: 'Comanda tipo FICHA', requirement: 'QCM-03' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCM-01 incompleto' };
-      const r = await api<ResumoComanda>('POST', '/api/quiosque/comandas', {
+      const r = await api<ResumoComanda>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, tipo: 'FICHA', identificador: `F${stamp}`, itens: [] },
       });
@@ -119,7 +119,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCM-04', category: 'Quiosque comandas', name: 'Identificador duplicado no mesmo ponto → 409', requirement: 'QCM-04' },
     async () => {
       if (!mesaId) return { status: 'failed', message: 'QCM-02 incompleto' };
-      const r = await api<{ error?: string; comandaId?: string }>('POST', '/api/quiosque/comandas', {
+      const r = await api<{ error?: string; comandaId?: string }>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, tipo: 'MESA', identificador: `12-${stamp}`, itens: [] },
       });
@@ -144,7 +144,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
       if (!pontoId) return { status: 'failed', message: 'QCM-01 incompleto' };
       const identificador = `concorrente-${stamp}`;
       const abrir = () =>
-        api<ResumoComanda>('POST', '/api/quiosque/comandas', {
+        api<ResumoComanda>('POST', '/api/operacao/comandas', {
           token: cfg.donoToken,
           body: { pontoVendaId: pontoId, tipo: 'FICHA', identificador, itens: [] },
         });
@@ -160,7 +160,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
         };
       }
 
-      const abertas = await api<ResumoComanda[]>('GET', `/api/quiosque/comandas?status=ABERTA&pontoVendaId=${pontoId}`, {
+      const abertas = await api<ResumoComanda[]>('GET', `/api/operacao/comandas?status=ABERTA&pontoVendaId=${pontoId}`, {
         token: cfg.donoToken,
       });
       const correspondentes = abertas.data?.filter(
@@ -189,7 +189,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
       if (!pontoId) return { status: 'failed', message: 'QCM-01 incompleto' };
       const [primeira, segunda] = await Promise.all(
         ['a', 'b'].map((sufixo) =>
-          api<ResumoComanda>('POST', '/api/quiosque/comandas', {
+          api<ResumoComanda>('POST', '/api/operacao/comandas', {
             token: cfg.donoToken,
             body: { pontoVendaId: pontoId, tipo: 'FICHA', identificador: `distinto-${sufixo}-${stamp}`, itens: [] },
           }),
@@ -206,7 +206,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCM-05', category: 'Quiosque comandas', name: 'Mesmo identificador com outro tipo é permitido', requirement: 'QCM-05' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCM-01 incompleto' };
-      const r = await api<ResumoComanda>('POST', '/api/quiosque/comandas', {
+      const r = await api<ResumoComanda>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, tipo: 'APELIDO', identificador: `12-${stamp}`, itens: [] },
       });
@@ -222,7 +222,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCM-06', category: 'Quiosque comandas', name: 'Cobrar comanda zerada → 409', requirement: 'QCM-06' },
     async () => {
       if (!fichaId) return { status: 'failed', message: 'QCM-03 incompleto' };
-      const r = await api<{ error?: string }>('POST', `/api/quiosque/comandas/${fichaId}/pagamentos`, {
+      const r = await api<{ error?: string }>('POST', `/api/operacao/comandas/${fichaId}/pagamentos`, {
         token: cfg.donoToken,
         body: { pagamentos: [{ forma: 'DINHEIRO', valor: 1 }] },
       });
@@ -237,7 +237,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCM-07', category: 'Quiosque comandas', name: 'Pedido adicional soma no total', requirement: 'QCM-07' },
     async () => {
       if (!fichaId) return { status: 'failed', message: 'QCM-03 incompleto' };
-      const r = await api<ResumoComanda>('POST', `/api/quiosque/comandas/${fichaId}/pedidos`, {
+      const r = await api<ResumoComanda>('POST', `/api/operacao/comandas/${fichaId}/pedidos`, {
         token: atendenteToken || cfg.donoToken,
         body: { itens: [{ produtoId: cfg.produtoId, quantidade: 3 }] },
       });
@@ -260,7 +260,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCM-08', category: 'Quiosque comandas', name: 'Pagamento parcial rejeitado → 400', requirement: 'QCM-08' },
     async () => {
       if (!fichaId) return { status: 'failed', message: 'QCM-03 incompleto' };
-      const r = await api<{ error?: string }>('POST', `/api/quiosque/comandas/${fichaId}/pagamentos`, {
+      const r = await api<{ error?: string }>('POST', `/api/operacao/comandas/${fichaId}/pagamentos`, {
         token: cfg.donoToken,
         body: { pagamentos: [{ forma: 'PIX', valor: PRECO }] },
       });
@@ -278,7 +278,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCM-09', category: 'Quiosque comandas', name: 'Split multi-forma fecha a comanda', requirement: 'QCM-09' },
     async () => {
       if (!fichaId) return { status: 'failed', message: 'QCM-03 incompleto' };
-      const r = await api<ResumoComanda>('POST', `/api/quiosque/comandas/${fichaId}/pagamentos`, {
+      const r = await api<ResumoComanda>('POST', `/api/operacao/comandas/${fichaId}/pagamentos`, {
         token: cfg.donoToken,
         body: {
           pagamentos: [
@@ -311,7 +311,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCM-10', category: 'Quiosque comandas', name: 'Troco só existe em dinheiro', requirement: 'QCM-10' },
     async () => {
       if (!mesaId) return { status: 'failed', message: 'QCM-02 incompleto' };
-      const r = await api<{ error?: string }>('POST', `/api/quiosque/comandas/${mesaId}/pagamentos`, {
+      const r = await api<{ error?: string }>('POST', `/api/operacao/comandas/${mesaId}/pagamentos`, {
         token: cfg.donoToken,
         body: { pagamentos: [{ forma: 'PIX', valor: PRECO, valorRecebido: PRECO + 5 }] },
       });
@@ -331,7 +331,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCM-11', category: 'Quiosque comandas', name: 'Pagamento em dinheiro calcula troco', requirement: 'QCM-11' },
     async () => {
       if (!mesaId) return { status: 'failed', message: 'QCM-02 incompleto' };
-      const r = await api<ResumoComanda>('POST', `/api/quiosque/comandas/${mesaId}/pagamentos`, {
+      const r = await api<ResumoComanda>('POST', `/api/operacao/comandas/${mesaId}/pagamentos`, {
         token: cfg.donoToken,
         body: { pagamentos: [{ forma: 'DINHEIRO', valor: PRECO, valorRecebido: 20 }] },
       });
@@ -350,7 +350,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCM-12', category: 'Quiosque comandas', name: 'Pedido em comanda fechada → 409', requirement: 'QCM-12' },
     async () => {
       if (!mesaId) return { status: 'failed', message: 'QCM-02 incompleto' };
-      const r = await api('POST', `/api/quiosque/comandas/${mesaId}/pedidos`, {
+      const r = await api('POST', `/api/operacao/comandas/${mesaId}/pedidos`, {
         token: cfg.donoToken,
         body: { itens: [{ produtoId: cfg.produtoId, quantidade: 1 }] },
       });
@@ -366,7 +366,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!cancelavelId) return { status: 'failed', message: 'QCM-05 incompleto' };
       if (!atendenteToken) return { status: 'skipped', message: 'Token de atendente indisponível' };
-      const r = await api('POST', `/api/quiosque/comandas/${cancelavelId}/cancelar`, { token: atendenteToken });
+      const r = await api('POST', `/api/operacao/comandas/${cancelavelId}/cancelar`, { token: atendenteToken });
       if (r.status !== 403) {
         return { status: 'failed', message: 'ATENDENTE cancelou', expected: '403', actual: String(r.status) };
       }
@@ -378,7 +378,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCM-14', category: 'Quiosque comandas', name: 'DONO cancela comanda aberta', requirement: 'QCM-14' },
     async () => {
       if (!cancelavelId) return { status: 'failed', message: 'QCM-05 incompleto' };
-      const r = await api<ResumoComanda>('POST', `/api/quiosque/comandas/${cancelavelId}/cancelar`, {
+      const r = await api<ResumoComanda>('POST', `/api/operacao/comandas/${cancelavelId}/cancelar`, {
         token: cfg.donoToken,
       });
       if (r.status !== 200 || r.data?.status !== 'CANCELADA') {
@@ -397,7 +397,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCM-01 incompleto' };
-      const r = await api<ResumoComanda>('POST', '/api/quiosque/comandas', {
+      const r = await api<ResumoComanda>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, tipo: 'APELIDO', identificador: `12-${stamp}`, itens: [] },
       });
@@ -412,7 +412,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCM-15', category: 'Quiosque comandas', name: 'Comanda com pagamento não cancela → 409', requirement: 'QCM-15' },
     async () => {
       if (!mesaId) return { status: 'failed', message: 'QCM-02 incompleto' };
-      const r = await api<{ error?: string }>('POST', `/api/quiosque/comandas/${mesaId}/cancelar`, {
+      const r = await api<{ error?: string }>('POST', `/api/operacao/comandas/${mesaId}/cancelar`, {
         token: cfg.donoToken,
       });
       if (r.status !== 409) {
@@ -426,7 +426,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCM-16', category: 'Quiosque comandas', name: 'Listagem ABERTA não traz canceladas nem avulsas', requirement: 'QCM-16' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCM-01 incompleto' };
-      const venda = await api('POST', '/api/quiosque/vendas', {
+      const venda = await api('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -438,7 +438,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Venda avulsa', expected: '201', actual: String(venda.status) };
       }
 
-      const r = await api<ResumoComanda[]>('GET', `/api/quiosque/comandas?status=ABERTA&pontoVendaId=${pontoId}`, {
+      const r = await api<ResumoComanda[]>('GET', `/api/operacao/comandas?status=ABERTA&pontoVendaId=${pontoId}`, {
         token: cfg.donoToken,
       });
       if (r.status !== 200 || !Array.isArray(r.data)) {
@@ -466,7 +466,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!pontoId || !atendenteToken) return { status: 'failed', message: 'QCM-01 incompleto' };
 
-      const abrir = await api<ResumoComanda>('POST', '/api/quiosque/comandas', {
+      const abrir = await api<ResumoComanda>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -480,7 +480,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
       }
       descontoComandaId = abrir.data.id;
 
-      const r = await api<{ error?: string }>('PATCH', `/api/quiosque/comandas/${descontoComandaId}/desconto`, {
+      const r = await api<{ error?: string }>('PATCH', `/api/operacao/comandas/${descontoComandaId}/desconto`, {
         token: atendenteToken,
         body: { desconto: 2 },
       });
@@ -496,7 +496,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!descontoComandaId) return { status: 'failed', message: 'QCM-17 incompleto' };
 
-      const antes = await api<ResumoComanda>('GET', `/api/quiosque/comandas/${descontoComandaId}`, {
+      const antes = await api<ResumoComanda>('GET', `/api/operacao/comandas/${descontoComandaId}`, {
         token: cfg.donoToken,
       });
       if (antes.status !== 200 || !antes.data) {
@@ -504,7 +504,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
       }
 
       const desconto = 3;
-      const r = await api<ResumoComanda>('PATCH', `/api/quiosque/comandas/${descontoComandaId}/desconto`, {
+      const r = await api<ResumoComanda>('PATCH', `/api/operacao/comandas/${descontoComandaId}/desconto`, {
         token: cfg.donoToken,
         body: { desconto },
       });
@@ -530,14 +530,14 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!descontoComandaId) return { status: 'failed', message: 'QCM-17 incompleto' };
 
-      const atual = await api<ResumoComanda>('GET', `/api/quiosque/comandas/${descontoComandaId}`, {
+      const atual = await api<ResumoComanda>('GET', `/api/operacao/comandas/${descontoComandaId}`, {
         token: cfg.donoToken,
       });
       if (atual.status !== 200 || !atual.data) {
         return { status: 'failed', message: 'GET comanda', expected: '200', actual: String(atual.status) };
       }
 
-      const r = await api<{ error?: string }>('PATCH', `/api/quiosque/comandas/${descontoComandaId}/desconto`, {
+      const r = await api<{ error?: string }>('PATCH', `/api/operacao/comandas/${descontoComandaId}/desconto`, {
         token: cfg.donoToken,
         body: { desconto: atual.data.subtotal + 1 },
       });
@@ -559,7 +559,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
       if (!pontoId) return { status: 'failed', message: 'QCM-01 incompleto' };
       const desconto = 2;
       const totalEsperado = PRECO - desconto;
-      const r = await api<ResumoComanda>('POST', '/api/quiosque/vendas', {
+      const r = await api<ResumoComanda>('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -597,7 +597,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     },
     async () => {
       if (!pontoId || !atendenteToken) return { status: 'failed', message: 'QCM-01 incompleto' };
-      const r = await api<{ error?: string }>('POST', '/api/quiosque/vendas', {
+      const r = await api<{ error?: string }>('POST', '/api/operacao/vendas', {
         token: atendenteToken,
         body: {
           pontoVendaId: pontoId,
@@ -627,7 +627,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCM-01 incompleto' };
-      const r = await api<{ error?: string }>('POST', '/api/quiosque/vendas', {
+      const r = await api<{ error?: string }>('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -657,7 +657,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCM-01 incompleto' };
-      const r = await api<{ error?: string }>('POST', '/api/quiosque/vendas', {
+      const r = await api<{ error?: string }>('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -687,7 +687,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCM-01 incompleto' };
-      const r = await api<ResumoComanda>('POST', '/api/quiosque/vendas', {
+      const r = await api<ResumoComanda>('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -725,7 +725,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCM-01 incompleto' };
-      const abrir = await api<ResumoComanda>('POST', '/api/quiosque/comandas', {
+      const abrir = await api<ResumoComanda>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -743,7 +743,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
         };
       }
 
-      const desc = await api<ResumoComanda>('PATCH', `/api/quiosque/comandas/${abrir.data.id}/desconto`, {
+      const desc = await api<ResumoComanda>('PATCH', `/api/operacao/comandas/${abrir.data.id}/desconto`, {
         token: cfg.donoToken,
         body: { desconto: abrir.data.subtotal || PRECO },
       });
@@ -756,7 +756,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
         };
       }
 
-      const r = await api<ResumoComanda>('POST', `/api/quiosque/comandas/${abrir.data.id}/pagamentos`, {
+      const r = await api<ResumoComanda>('POST', `/api/operacao/comandas/${abrir.data.id}/pagamentos`, {
         token: cfg.donoToken,
         body: { pagamentos: [] },
       });
@@ -789,7 +789,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
     },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCM-01 incompleto' };
-      const abrir = await api<ResumoComanda>('POST', '/api/quiosque/comandas', {
+      const abrir = await api<ResumoComanda>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -806,7 +806,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
           actual: String(abrir.status),
         };
       }
-      const r = await api<{ error?: string }>('POST', `/api/quiosque/comandas/${abrir.data.id}/pagamentos`, {
+      const r = await api<{ error?: string }>('POST', `/api/operacao/comandas/${abrir.data.id}/pagamentos`, {
         token: cfg.donoToken,
         body: { pagamentos: [] },
       });
@@ -834,11 +834,11 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
 
       const statusCaixa = await api<{ sessao: unknown }>(
         'GET',
-        `/api/quiosque/caixa?pontoVendaId=${cfgCozinha.pontoVendaId}`,
+        `/api/operacao/caixa?pontoVendaId=${cfgCozinha.pontoVendaId}`,
         { token: cfgCozinha.donoToken },
       );
       if (!statusCaixa.data?.sessao) {
-        const caixa = await api('POST', '/api/quiosque/caixa/abrir', {
+        const caixa = await api('POST', '/api/operacao/caixa/abrir', {
           token: cfgCozinha.donoToken,
           body: { pontoVendaId: cfgCozinha.pontoVendaId, trocoInicial: 50 },
         });
@@ -847,7 +847,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
         }
       }
 
-      const abrir = await api<ResumoComanda>('POST', '/api/quiosque/comandas', {
+      const abrir = await api<ResumoComanda>('POST', '/api/operacao/comandas', {
         token: cfgCozinha.donoToken,
         body: {
           pontoVendaId: cfgCozinha.pontoVendaId,
@@ -861,7 +861,7 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
       }
       cozinhaComandaId = abrir.data.id;
 
-      const pagar = await api<{ error?: string }>('POST', `/api/quiosque/comandas/${cozinhaComandaId}/pagamentos`, {
+      const pagar = await api<{ error?: string }>('POST', `/api/operacao/comandas/${cozinhaComandaId}/pagamentos`, {
         token: cfgCozinha.donoToken,
         body: { pagamentos: [{ forma: 'PIX', valor: abrir.data.total }] },
       });

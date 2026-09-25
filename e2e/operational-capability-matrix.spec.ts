@@ -69,12 +69,12 @@ test.describe('TAP-68 — matriz cartesiana operacional', () => {
   for (const item of combinations) {
     test(`${item.id} ${item.mode} taps=${Number(item.taps)} inventory=${Number(item.inventory)} kitchen=${Number(item.kitchen)}`, async ({ page }, testInfo) => {
       await configure(item);
-      const context = await apiRequest<{ operationMode: string; tapsEnabled: boolean; inventoryEnabled: boolean; kitchenEnabled: boolean }>('GET', '/api/quiosque/contexto', { cookie: ownerCookie });
+      const context = await apiRequest<{ operationMode: string; tapsEnabled: boolean; inventoryEnabled: boolean; kitchenEnabled: boolean }>('GET', '/api/operacao/contexto', { cookie: ownerCookie });
       expect(context.status).toBe(200);
       expect(context.data).toMatchObject({ operationMode: item.mode, tapsEnabled: item.taps, inventoryEnabled: item.inventory, kitchenEnabled: item.kitchen });
 
       await login(page, owner.email, owner.password);
-      await page.goto(item.mode === 'CAIXA' ? '/quiosque/configuracoes/operacao' : '/configuracoes/operacao');
+      await page.goto(item.mode === 'CAIXA' ? '/operacao/configuracoes/operacao' : '/configuracoes/operacao');
       await page.reload();
       const selected = item.mode === 'CAIXA' ? 'Por caixa' : /Por opera/;
       await expect(page.getByRole('button', { name: selected })).toHaveAttribute('aria-pressed', 'true');

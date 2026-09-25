@@ -75,20 +75,20 @@ export async function runPerfQuiosqueTests(ctx: QaContext, bench: BenchFn, test:
 
   /** Ponto de venda dedicado com caixa aberto e, se houver controle, estoque. */
   async function abrirPonto(cfg: ConfigTenantFixture, nome: string, estoque?: { produtoId: string; quantidade: number }) {
-    const ponto = await api<{ id: string }>('POST', '/api/quiosque/pontos-venda', {
+    const ponto = await api<{ id: string }>('POST', '/api/operacao/pontos-venda', {
       token: cfg.donoToken,
       body: { nome },
     });
     if (ponto.status !== 201 || !ponto.data?.id) return null;
 
-    const caixa = await api('POST', '/api/quiosque/caixa/abrir', {
+    const caixa = await api('POST', '/api/operacao/caixa/abrir', {
       token: cfg.donoToken,
       body: { pontoVendaId: ponto.data.id, trocoInicial: 200 },
     });
     if (caixa.status !== 201) return null;
 
     if (estoque) {
-      const entrada = await api('POST', '/api/quiosque/estoque/entrada', {
+      const entrada = await api('POST', '/api/operacao/estoque/entrada', {
         token: cfg.donoToken,
         body: { pontoVendaId: ponto.data.id, produtoId: estoque.produtoId, quantidade: estoque.quantidade, observacao: 'QA perf' },
       });
@@ -121,8 +121,8 @@ export async function runPerfQuiosqueTests(ctx: QaContext, bench: BenchFn, test:
 
   if (!pontoPdv || !pontoCozinha) return;
 
-  await bench('POST /api/quiosque/vendas (PDV)', 30, 800, async () => {
-    const r = await api('POST', '/api/quiosque/vendas', {
+  await bench('POST /api/operacao/vendas (PDV)', 30, 800, async () => {
+    const r = await api('POST', '/api/operacao/vendas', {
       token: pdv.donoToken,
       body: {
         pontoVendaId: pontoPdv,
@@ -134,8 +134,8 @@ export async function runPerfQuiosqueTests(ctx: QaContext, bench: BenchFn, test:
     return r.durationMs;
   });
 
-  await bench('POST /api/quiosque/comandas (preparo)', 20, 900, async () => {
-    const r = await api('POST', '/api/quiosque/comandas', {
+  await bench('POST /api/operacao/comandas (preparo)', 20, 900, async () => {
+    const r = await api('POST', '/api/operacao/comandas', {
       token: cozinha.donoToken,
       body: {
         pontoVendaId: pontoCozinha,
@@ -148,8 +148,8 @@ export async function runPerfQuiosqueTests(ctx: QaContext, bench: BenchFn, test:
     return r.durationMs;
   });
 
-  await bench('GET /api/quiosque/cozinha', 30, 600, async () => {
-    const r = await api('GET', '/api/quiosque/cozinha', { token: cozinha.donoToken });
+  await bench('GET /api/operacao/cozinha', 30, 600, async () => {
+    const r = await api('GET', '/api/operacao/cozinha', { token: cozinha.donoToken });
     if (r.status !== 200) throw new Error(`HTTP ${r.status}`);
     return r.durationMs;
   });
@@ -168,7 +168,7 @@ export async function runPerfQuiosqueTests(ctx: QaContext, bench: BenchFn, test:
       const inicio = performance.now();
       const respostas = await Promise.all(
         Array.from({ length: 20 }, () =>
-          api('POST', '/api/quiosque/vendas', {
+          api('POST', '/api/operacao/vendas', {
             token: pdv.donoToken,
             body: {
               pontoVendaId: ponto,
@@ -196,7 +196,7 @@ export async function runPerfQuiosqueTests(ctx: QaContext, bench: BenchFn, test:
 
       const saldo = await api<Array<{ produtoId: string; quantidade: number }>>(
         'GET',
-        `/api/quiosque/estoque?pontoVendaId=${ponto}`,
+        `/api/operacao/estoque?pontoVendaId=${ponto}`,
         { token: pdv.donoToken },
       );
       const restante = saldo.data?.find((s) => s.produtoId === pdv.produtoId)?.quantidade ?? -1;
@@ -249,7 +249,7 @@ export async function runPerfQuiosqueTests(ctx: QaContext, bench: BenchFn, test:
           });
 
           const t0 = performance.now();
-          const venda = await api('POST', '/api/quiosque/comandas', {
+          const venda = await api('POST', '/api/operacao/comandas', {
             token: cozinha.donoToken,
             body: {
               pontoVendaId: pontoCozinha,

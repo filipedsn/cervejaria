@@ -3,7 +3,7 @@ import path from 'node:path';
 import { apiLogin, apiRequest, selectPorRotulo } from './helpers/api';
 import { CREDENTIALS } from './helpers/auth';
 
-const quiosqueAuth = path.join(process.cwd(), 'e2e/.auth/quiosque.json');
+const quiosqueAuth = path.join(process.cwd(), 'e2e/.auth/operacao.json');
 
 test.use({ storageState: quiosqueAuth });
 
@@ -12,7 +12,7 @@ let sequence = 0;
 async function prepararPdvAberto({ produto = false }: { produto?: boolean } = {}) {
   const id = `${Date.now()}-${sequence++}`;
   const cookie = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
-  const ponto = await apiRequest<{ id: string; nome: string }>('POST', '/api/quiosque/pontos-venda', {
+  const ponto = await apiRequest<{ id: string; nome: string }>('POST', '/api/operacao/pontos-venda', {
     cookie,
     body: { nome: `E2E PDV ${id}` },
   });
@@ -21,14 +21,14 @@ async function prepararPdvAberto({ produto = false }: { produto?: boolean } = {}
   let nomeProduto = '';
   if (produto) {
     nomeProduto = `Produto PDV E2E ${id}`;
-    const produtoCriado = await apiRequest('POST', '/api/quiosque/produtos', {
+    const produtoCriado = await apiRequest('POST', '/api/operacao/produtos', {
       cookie,
       body: { nome: nomeProduto, precoUnit: 10, exigePreparo: false, controlaEstoque: false },
     });
     expect(produtoCriado.status, 'produto disponivel para venda avulsa criado').toBe(201);
   }
 
-  const caixa = await apiRequest('POST', '/api/quiosque/caixa/abrir', {
+  const caixa = await apiRequest('POST', '/api/operacao/caixa/abrir', {
     cookie,
     body: { pontoVendaId: ponto.data.id, trocoInicial: 0 },
   });
@@ -41,12 +41,12 @@ test.describe('Quiosque comandas', () => {
   test('caixa fechado oferece CTA funcional para abrir', async ({ page }) => {
     const id = `${Date.now()}-${sequence++}`;
     const cookie = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
-    const ponto = await apiRequest<{ id: string; nome: string }>('POST', '/api/quiosque/pontos-venda', {
+    const ponto = await apiRequest<{ id: string; nome: string }>('POST', '/api/operacao/pontos-venda', {
       cookie,
       body: { nome: `E2E PDV fechado ${id}` },
     });
     expect(ponto.status).toBe(201);
-    await page.goto('/quiosque/comandas');
+    await page.goto('/operacao/comandas');
     await selectPorRotulo(page, 'Ponto de venda').selectOption(ponto.data.id);
     await expect(page.getByText(/Abra o caixa para iniciar um novo turno/)).toBeVisible();
     await page.getByRole('link', { name: 'Abrir caixa', exact: true }).click();
@@ -56,7 +56,7 @@ test.describe('Quiosque comandas', () => {
 
   test('dono quiosque exclusivo abre hub de comandas como na cervejaria', async ({ page }) => {
     const ponto = await prepararPdvAberto();
-    await page.goto('/quiosque/comandas');
+    await page.goto('/operacao/comandas');
     await selectPorRotulo(page, 'Ponto de venda').selectOption(ponto.id);
     await expect(page.getByRole('navigation', { name: 'Navegação principal' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Comandas' })).toBeVisible();
@@ -89,7 +89,7 @@ test.describe('Quiosque comandas', () => {
 
   test('venda avulsa lista produto disponivel com caixa aberto', async ({ page }) => {
     const ponto = await prepararPdvAberto({ produto: true });
-    await page.goto('/quiosque/comandas/venda-avulsa');
+    await page.goto('/operacao/comandas/venda-avulsa');
     await selectPorRotulo(page, 'Ponto de venda').selectOption(ponto.id);
     await expect(page.getByRole('heading', { name: 'Venda avulsa' })).toBeVisible();
     await page.getByRole('button', { name: '+ Item' }).click();

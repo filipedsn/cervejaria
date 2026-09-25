@@ -3,7 +3,7 @@ import path from 'node:path';
 import { apiLogin, apiRequest, campoPorRotulo, selectPorRotulo } from './helpers/api';
 import { CREDENTIALS } from './helpers/auth';
 
-const quiosqueAuth = path.join(process.cwd(), 'e2e/.auth/quiosque.json');
+const quiosqueAuth = path.join(process.cwd(), 'e2e/.auth/operacao.json');
 
 /** Types a human BRL amount into the cent-based CurrencyInput. */
 async function fillCurrency(input: Locator, amount: number) {
@@ -24,7 +24,7 @@ test.describe('Quiosque — ciclo de caixa', () => {
   test.beforeAll(async () => {
     // Ponto dedicado para não interferir com outros testes de quiosque.
     const cookie = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
-    const ponto = await apiRequest<{ id: string }>('POST', '/api/quiosque/pontos-venda', {
+    const ponto = await apiRequest<{ id: string }>('POST', '/api/operacao/pontos-venda', {
       cookie,
       body: { nome: nomePonto },
     });
@@ -33,7 +33,7 @@ test.describe('Quiosque — ciclo de caixa', () => {
   });
 
   test('abre caixa, registra sangria e suprimento e fecha com divergência', async ({ page }) => {
-    await page.goto('/quiosque/comandas');
+    await page.goto('/operacao/comandas');
 
     await selectPorRotulo(page, 'Ponto de venda').selectOption({ label: nomePonto });
     await expect(page.getByRole('heading', { name: 'Caixa do dia' })).toBeVisible();
@@ -75,7 +75,7 @@ test.describe('Quiosque — ciclo de caixa', () => {
   });
 
   test('após fechar, abre novo turno no mesmo dia', async ({ page }) => {
-    await page.goto('/quiosque/comandas');
+    await page.goto('/operacao/comandas');
 
     await selectPorRotulo(page, 'Ponto de venda').selectOption({ label: nomePonto });
     await expect(page.getByRole('heading', { name: 'Caixa do dia' })).toBeVisible();
@@ -96,7 +96,7 @@ test.describe('Quiosque — ciclo de caixa', () => {
     await expect(page.getByRole('heading', { name: 'Caixa aberto' })).toBeVisible();
 
     const cookie = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
-    const reabrir = await apiRequest('POST', '/api/quiosque/caixa/abrir', {
+    const reabrir = await apiRequest('POST', '/api/operacao/caixa/abrir', {
       cookie,
       body: { pontoVendaId: pontoId, trocoInicial: 10 },
     });

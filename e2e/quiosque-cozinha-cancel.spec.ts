@@ -3,7 +3,7 @@ import path from 'node:path';
 import { apiLogin, apiRequest } from './helpers/api';
 import { CREDENTIALS } from './helpers/auth';
 
-const cozinhaAuth = path.join(process.cwd(), 'e2e/.auth/quiosque-cozinha.json');
+const cozinhaAuth = path.join(process.cwd(), 'e2e/.auth/operacao-cozinha.json');
 
 interface ProdutoQuiosque {
   id: string;
@@ -28,23 +28,23 @@ test.describe('Quiosque — fila da cozinha e cancelamento', () => {
   test.beforeAll(async () => {
     donoCookie = await apiLogin(CREDENTIALS.quiosqueCozinha.email, CREDENTIALS.quiosqueCozinha.password);
 
-    const ponto = await apiRequest<{ id: string }>('POST', '/api/quiosque/pontos-venda', {
+    const ponto = await apiRequest<{ id: string }>('POST', '/api/operacao/pontos-venda', {
       cookie: donoCookie,
       body: { nome: `E2E Cozinha ${stamp}` },
     });
     expect(ponto.status).toBe(201);
 
-    const caixa = await apiRequest('POST', '/api/quiosque/caixa/abrir', {
+    const caixa = await apiRequest('POST', '/api/operacao/caixa/abrir', {
       cookie: donoCookie,
       body: { pontoVendaId: ponto.data.id, trocoInicial: 100 },
     });
     expect(caixa.status).toBe(201);
 
-    const produtos = await apiRequest<ProdutoQuiosque[]>('GET', '/api/quiosque/produtos', { cookie: donoCookie });
+    const produtos = await apiRequest<ProdutoQuiosque[]>('GET', '/api/operacao/produtos', { cookie: donoCookie });
     const preparo = produtos.data?.find((p) => p.exigePreparo);
     expect(preparo, 'seed precisa de um produto que exige preparo').toBeTruthy();
 
-    const comanda = await apiRequest<ComandaCriada>('POST', '/api/quiosque/comandas', {
+    const comanda = await apiRequest<ComandaCriada>('POST', '/api/operacao/comandas', {
       cookie: donoCookie,
       body: {
         pontoVendaId: ponto.data.id,
@@ -59,7 +59,7 @@ test.describe('Quiosque — fila da cozinha e cancelamento', () => {
   });
 
   test('pedido aparece na fila e avança para preparo', async ({ page }) => {
-    await page.goto('/quiosque/cozinha');
+    await page.goto('/operacao/cozinha');
 
     const card = page.locator('article').filter({ hasText: `Mesa ${identificador}` });
     await expect(card).toBeVisible();
@@ -74,7 +74,7 @@ test.describe('Quiosque — fila da cozinha e cancelamento', () => {
     const slug = CREDENTIALS.quiosqueCozinha.email.replace('-dono@qa.test', '');
     const atendenteCookie = await apiLogin(`${slug}-a1@qa.test`, CREDENTIALS.quiosqueCozinha.password);
 
-    const r = await apiRequest('PATCH', `/api/quiosque/cozinha/${pedidoId}/status`, {
+    const r = await apiRequest('PATCH', `/api/operacao/cozinha/${pedidoId}/status`, {
       cookie: atendenteCookie,
       body: { status: 'CANCELADO' },
     });
@@ -82,7 +82,7 @@ test.describe('Quiosque — fila da cozinha e cancelamento', () => {
   });
 
   test('DONO cancela pedido em preparo pela interface e ele sai da fila', async ({ page }) => {
-    await page.goto('/quiosque/cozinha');
+    await page.goto('/operacao/cozinha');
     const card = page.locator('article').filter({ hasText: `Mesa ${identificador}` });
     await card.getByRole('button', { name: 'Cancelar pedido' }).click();
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { prisma } from '../src/lib/prisma.js';
-import { ativarModuloQuiosque } from '../src/lib/quiosque/modulo.js';
+import { ativarModuloOperacao } from '../src/lib/operacao/modulo.js';
 import { hashPassword } from '../src/lib/utils.js';
 import { login } from './lib/http.js';
 
@@ -25,7 +25,7 @@ async function criarTenant(sufixo: string) {
     prisma.usuario.create({ data: { nome: `Dono ${sufixo}`, email: `${PREFIX}-${sufixo}-dono@qa.test`, senhaHash, papel: 'DONO', cervejariaId: cervejaria.id } }),
     prisma.usuario.create({ data: { nome: `Atendente ${sufixo}`, email: `${PREFIX}-${sufixo}-at@qa.test`, senhaHash, papel: 'ATENDENTE', cervejariaId: cervejaria.id } }),
   ]);
-  const { pontoVenda } = await prisma.$transaction((tx) => ativarModuloQuiosque(tx, {
+  const { pontoVenda } = await prisma.$transaction((tx) => ativarModuloOperacao(tx, {
     cervejariaId: cervejaria.id, controlaEstoque: false, temCozinha: false, exclusivo: true, nomePontoVenda: 'PDV smoke',
   }));
   const produto = await prisma.produto.create({ data: { cervejariaId: cervejaria.id, nome: 'Produto smoke', tipo: 'COMIDA', categoria: 'Salgados', precos: { create: [{ volumeMl: 1, preco: 10 }] }, ordem: 1 } });
@@ -43,17 +43,17 @@ async function criarTenant(sufixo: string) {
 async function limpar() {
   const cervejarias = await prisma.cervejaria.findMany({ where: { slug: { startsWith: PREFIX } }, select: { id: true } });
   for (const { id } of cervejarias) {
-    const sessoes = await prisma.sessaoCaixaQuiosque.findMany({ where: { cervejariaId: id }, select: { id: true } });
-    await prisma.movimentoCaixaQuiosque.deleteMany({ where: { sessaoId: { in: sessoes.map((s) => s.id) } } });
-    await prisma.sessaoCaixaQuiosque.deleteMany({ where: { cervejariaId: id } });
+    const sessoes = await prisma.sessaoCaixaOperacao.findMany({ where: { cervejariaId: id }, select: { id: true } });
+    await prisma.movimentoCaixaOperacao.deleteMany({ where: { sessaoId: { in: sessoes.map((s) => s.id) } } });
+    await prisma.sessaoCaixaOperacao.deleteMany({ where: { cervejariaId: id } });
     await prisma.itemComanda.deleteMany({ where: { comanda: { pontoVenda: { cervejariaId: id } } } });
     await prisma.pagamento.deleteMany({ where: { comanda: { pontoVenda: { cervejariaId: id } } } });
-    await prisma.pedidoQuiosque.deleteMany({ where: { cervejariaId: id } });
+    await prisma.pedidoOperacao.deleteMany({ where: { cervejariaId: id } });
     await prisma.comanda.deleteMany({ where: { pontoVenda: { cervejariaId: id } } });
     await prisma.preco.deleteMany({ where: { produto: { cervejariaId: id } } });
     await prisma.produto.deleteMany({ where: { cervejariaId: id } });
     await prisma.pontoVenda.deleteMany({ where: { cervejariaId: id } });
-    await prisma.configuracaoQuiosque.deleteMany({ where: { cervejariaId: id } });
+    await prisma.configuracaoOperacao.deleteMany({ where: { cervejariaId: id } });
     await prisma.transacaoLog.deleteMany({ where: { cervejariaId: id } });
     await prisma.usuario.deleteMany({ where: { cervejariaId: id } });
     await prisma.cervejaria.delete({ where: { id } });
@@ -65,26 +65,26 @@ async function main() {
   const b = await criarTenant('b');
   try {
     assert.notEqual(
-      (await api('/api/quiosque/config', a.atendenteToken, 'PATCH', { quantidadeMesas: 12 })).status,
+      (await api('/api/operacao/config', a.atendenteToken, 'PATCH', { quantidadeMesas: 12 })).status,
       200,
     );
-    let r = await api('/api/quiosque/config', a.donoToken, 'PATCH', { quantidadeMesas: 12 });
+    let r = await api('/api/operacao/config', a.donoToken, 'PATCH', { quantidadeMesas: 12 });
     assert.equal(r.status, 200);
-    r = await api('/api/quiosque/contexto', a.atendenteToken);
+    r = await api('/api/operacao/contexto', a.atendenteToken);
     assert.equal(r.status, 200); assert.equal(r.data.quantidadeMesas, 12);
 
-    r = await api('/api/quiosque/caixa/abrir', a.atendenteToken, 'POST', { pontoVendaId: a.pontoVenda.id, trocoInicial: 50 });
+    r = await api('/api/operacao/caixa/abrir', a.atendenteToken, 'POST', { pontoVendaId: a.pontoVenda.id, trocoInicial: 50 });
     assert.equal(r.status, 201);
-    r = await api('/api/quiosque/comandas', a.atendenteToken, 'POST', { pontoVendaId: a.pontoVenda.id, tipo: 'MESA', identificador: '3', itens: [{ produtoId: a.produto.id, quantidade: 1 }] });
+    r = await api('/api/operacao/comandas', a.atendenteToken, 'POST', { pontoVendaId: a.pontoVenda.id, tipo: 'MESA', identificador: '3', itens: [{ produtoId: a.produto.id, quantidade: 1 }] });
     assert.equal(r.status, 201); const mesaId = r.data.id;
-    r = await api(`/api/quiosque/comandas/${mesaId}/cancelar`, a.donoToken, 'POST'); assert.equal(r.status, 200);
-    r = await api('/api/quiosque/comandas', a.atendenteToken, 'POST', { pontoVendaId: a.pontoVenda.id, tipo: 'MESA', identificador: '3', itens: [{ produtoId: a.produto.id, quantidade: 1 }] });
+    r = await api(`/api/operacao/comandas/${mesaId}/cancelar`, a.donoToken, 'POST'); assert.equal(r.status, 200);
+    r = await api('/api/operacao/comandas', a.atendenteToken, 'POST', { pontoVendaId: a.pontoVenda.id, tipo: 'MESA', identificador: '3', itens: [{ produtoId: a.produto.id, quantidade: 1 }] });
     assert.equal(r.status, 201); assert.ok(r.data.numero > 0);
-    await api(`/api/quiosque/comandas/${r.data.id}/cancelar`, a.donoToken, 'POST');
+    await api(`/api/operacao/comandas/${r.data.id}/cancelar`, a.donoToken, 'POST');
 
-    r = await api('/api/quiosque/caixa/movimentos', a.atendenteToken, 'POST', { pontoVendaId: a.pontoVenda.id, tipo: 'SUPRIMENTO', valor: 150 });
+    r = await api('/api/operacao/caixa/movimentos', a.atendenteToken, 'POST', { pontoVendaId: a.pontoVenda.id, tipo: 'SUPRIMENTO', valor: 150 });
     assert.equal(r.status, 201); const original = r.data.movimentos.at(-1);
-    const corrigir = (token: string, body: object) => api(`/api/quiosque/caixa/movimentos/${original.id}/corrigir`, token, 'POST', body);
+    const corrigir = (token: string, body: object) => api(`/api/operacao/caixa/movimentos/${original.id}/corrigir`, token, 'POST', body);
     const base = { pontoVendaId: a.pontoVenda.id, valorCorrigido: 15, motivo: 'Valor digitado incorretamente', autorizadorEmail: a.dono.email };
     assert.notEqual((await corrigir(a.atendenteToken, base)).status, 201);
     assert.notEqual((await corrigir(a.atendenteToken, { ...base, autorizadorSenha: 'errada' })).status, 201);
@@ -98,27 +98,27 @@ async function main() {
     assert.equal(derivados.length, 2); assert.equal(derivados.filter((m: any) => m.naturezaCorrecao === 'ESTORNO').length, 1); assert.equal(derivados.filter((m: any) => m.naturezaCorrecao === 'SUBSTITUICAO' && Number(m.valor) === 15).length, 1);
     assert.equal(ok.data.gaveta.esperadoDinheiro, 65);
     assert.notEqual((await corrigir(a.atendenteToken, { ...base, autorizadorSenha: senha })).status, 201);
-    assert.notEqual((await api(`/api/quiosque/caixa/movimentos/${a.produto.id}/corrigir`, a.atendenteToken, 'POST', { ...base, autorizadorSenha: senha })).status, 201);
+    assert.notEqual((await api(`/api/operacao/caixa/movimentos/${a.produto.id}/corrigir`, a.atendenteToken, 'POST', { ...base, autorizadorSenha: senha })).status, 201);
 
-    r = await api('/api/quiosque/caixa/movimentos', a.atendenteToken, 'POST', { pontoVendaId: a.pontoVenda.id, tipo: 'SANGRIA', valor: 30 });
+    r = await api('/api/operacao/caixa/movimentos', a.atendenteToken, 'POST', { pontoVendaId: a.pontoVenda.id, tipo: 'SANGRIA', valor: 30 });
     assert.equal(r.status, 201); const concorrenteId = r.data.movimentos.at(-1).id;
     const corrida = await Promise.all([
-      api(`/api/quiosque/caixa/movimentos/${concorrenteId}/corrigir`, a.atendenteToken, 'POST', { ...base, valorCorrigido: 3, autorizadorSenha: senha }),
-      api(`/api/quiosque/caixa/movimentos/${concorrenteId}/corrigir`, a.atendenteToken, 'POST', { ...base, valorCorrigido: 3, autorizadorSenha: senha }),
+      api(`/api/operacao/caixa/movimentos/${concorrenteId}/corrigir`, a.atendenteToken, 'POST', { ...base, valorCorrigido: 3, autorizadorSenha: senha }),
+      api(`/api/operacao/caixa/movimentos/${concorrenteId}/corrigir`, a.atendenteToken, 'POST', { ...base, valorCorrigido: 3, autorizadorSenha: senha }),
     ]);
     assert.equal(corrida.filter((item) => item.status === 201).length, 1);
-    const filhosConcorrentes = await prisma.movimentoCaixaQuiosque.count({ where: { correcaoDeId: concorrenteId } });
+    const filhosConcorrentes = await prisma.movimentoCaixaOperacao.count({ where: { correcaoDeId: concorrenteId } });
     assert.equal(filhosConcorrentes, 2);
 
-    r = await api('/api/quiosque/caixa/movimentos', a.atendenteToken, 'POST', { pontoVendaId: a.pontoVenda.id, tipo: 'SUPRIMENTO', valor: 20 });
+    r = await api('/api/operacao/caixa/movimentos', a.atendenteToken, 'POST', { pontoVendaId: a.pontoVenda.id, tipo: 'SUPRIMENTO', valor: 20 });
     assert.equal(r.status, 201); const fecharCorrigirId = r.data.movimentos.at(-1).id;
     const [correcaoFechar, fechamento] = await Promise.all([
-      api(`/api/quiosque/caixa/movimentos/${fecharCorrigirId}/corrigir`, a.atendenteToken, 'POST', { ...base, valorCorrigido: 2, autorizadorSenha: senha }),
-      api('/api/quiosque/caixa/fechar', a.atendenteToken, 'POST', { pontoVendaId: a.pontoVenda.id, contadoDinheiro: 0, contadoPix: 0, contadoCartaoDebito: 0, contadoCartaoCredito: 0 }),
+      api(`/api/operacao/caixa/movimentos/${fecharCorrigirId}/corrigir`, a.atendenteToken, 'POST', { ...base, valorCorrigido: 2, autorizadorSenha: senha }),
+      api('/api/operacao/caixa/fechar', a.atendenteToken, 'POST', { pontoVendaId: a.pontoVenda.id, contadoDinheiro: 0, contadoPix: 0, contadoCartaoDebito: 0, contadoCartaoCredito: 0 }),
     ]);
     assert.ok([200, 201].includes(fechamento.status));
     assert.ok([201, 400].includes(correcaoFechar.status));
-    const registroFechar = await prisma.movimentoCaixaQuiosque.findUniqueOrThrow({ where: { id: fecharCorrigirId }, include: { correcoes: true } });
+    const registroFechar = await prisma.movimentoCaixaOperacao.findUniqueOrThrow({ where: { id: fecharCorrigirId }, include: { correcoes: true } });
     assert.ok((registroFechar.corrigidoEm === null && registroFechar.correcoes.length === 0) || (registroFechar.corrigidoEm !== null && registroFechar.correcoes.length === 2));
 
     await new Promise((resolve) => setTimeout(resolve, 150));

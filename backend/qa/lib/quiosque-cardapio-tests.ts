@@ -49,7 +49,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
   await test(
     { id: 'QCD-00', category: 'Quiosque cardápio', name: 'Ativar usaCardapio no quiosque', requirement: 'QCD-00' },
     async () => {
-      const r = await api('PATCH', '/api/quiosque/config', {
+      const r = await api('PATCH', '/api/operacao/config', {
         token: cfg.donoToken,
         body: { usaCardapio: true },
       });
@@ -61,10 +61,10 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
   );
 
   await test(
-    { id: 'QCD-01', category: 'Quiosque cardápio', name: 'ATENDENTE bloqueado em POST /quiosque/cardapios', requirement: 'QCD-01' },
+    { id: 'QCD-01', category: 'Quiosque cardápio', name: 'ATENDENTE bloqueado em POST /operacao/cardapios', requirement: 'QCD-01' },
     async () => {
       const atendenteCookie = await login(`${cfg.slug}-a1@qa.test`, 'qa123456');
-      const r = await api('POST', '/api/quiosque/cardapios', {
+      const r = await api('POST', '/api/operacao/cardapios', {
         cookie: atendenteCookie,
         body: { nome: 'Hack', produtoIds: [] },
       });
@@ -75,7 +75,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
   await test(
     { id: 'QCD-02', category: 'Quiosque cardápio', name: 'DONO cria produto extra para template', requirement: 'QCD-02' },
     async () => {
-      const r = await api<{ id: string }>('POST', '/api/quiosque/produtos', {
+      const r = await api<{ id: string }>('POST', '/api/operacao/produtos', {
         token: cfg.donoToken,
         body: {
           nome: `Extra QA ${stamp}`,
@@ -97,7 +97,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
     { id: 'QCD-03', category: 'Quiosque cardápio', name: 'DONO cria template com produto extra → 201', requirement: 'QCD-03' },
     async () => {
       if (!produtoExtraId) return { status: 'failed', message: 'QCD-02 não rodou' };
-      const r = await api<{ id: string; produtoIds?: string[] }>('POST', '/api/quiosque/cardapios', {
+      const r = await api<{ id: string; produtoIds?: string[] }>('POST', '/api/operacao/cardapios', {
         token: cfg.donoToken,
         body: { nome: `Template QA ${stamp}`, produtoIds: [produtoExtraId] },
       });
@@ -122,14 +122,14 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
     { id: 'QCD-09', category: 'Quiosque cardápio', name: 'Templates com preços distintos (R$5 e R$8)', requirement: 'QCD-09' },
     async () => {
       if (!produtoExtraId) return { status: 'failed', message: 'QCD-02 não rodou' };
-      const a = await api<{ id: string }>('POST', '/api/quiosque/cardapios', {
+      const a = await api<{ id: string }>('POST', '/api/operacao/cardapios', {
         token: cfg.donoToken,
         body: {
           nome: `Preço A ${stamp}`,
           itens: [{ produtoId: produtoExtraId, precoUnit: PRECO_TEMPLATE_A }],
         },
       });
-      const b = await api<{ id: string }>('POST', '/api/quiosque/cardapios', {
+      const b = await api<{ id: string }>('POST', '/api/operacao/cardapios', {
         token: cfg.donoToken,
         body: {
           nome: `Preço B ${stamp}`,
@@ -150,7 +150,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!produtoExtraId || !cardapioPrecoA) return { status: 'failed', message: 'QCD-09 incompleto' };
 
-      const ponto = await api<{ id: string }>('POST', '/api/quiosque/pontos-venda', {
+      const ponto = await api<{ id: string }>('POST', '/api/operacao/pontos-venda', {
         token: cfg.donoToken,
         body: { nome: `Preço QA A ${stamp}` },
       });
@@ -159,7 +159,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
       }
       pontoPrecoId = ponto.data.id;
 
-      const abrir = await api('POST', '/api/quiosque/caixa/abrir', {
+      const abrir = await api('POST', '/api/operacao/caixa/abrir', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoPrecoId, trocoInicial: 50, cardapioId: cardapioPrecoA },
       });
@@ -169,7 +169,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
 
       const produtos = await api<Array<{ precoEfetivo?: number; precoUnit: string }>>(
         'GET',
-        `/api/quiosque/produtos?pontoVendaId=${pontoPrecoId}`,
+        `/api/operacao/produtos?pontoVendaId=${pontoPrecoId}`,
         { token: cfg.donoToken },
       );
       const preco = produtos.data?.[0]?.precoEfetivo ?? parseFloat(produtos.data?.[0]?.precoUnit ?? '0');
@@ -177,7 +177,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Preço efetivo no PDV', expected: String(PRECO_TEMPLATE_A), actual: String(preco) };
       }
 
-      const venda = await api<{ total?: number }>('POST', '/api/quiosque/vendas', {
+      const venda = await api<{ total?: number }>('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoPrecoId,
@@ -189,7 +189,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Venda template A', expected: '201', actual: String(venda.status) };
       }
 
-      await api('POST', '/api/quiosque/caixa/fechar', {
+      await api('POST', '/api/operacao/caixa/fechar', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoPrecoId,
@@ -208,7 +208,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!produtoExtraId || !cardapioPrecoB || !pontoPrecoId) return { status: 'failed', message: 'QCD-10 incompleto' };
 
-      const abrir = await api('POST', '/api/quiosque/caixa/abrir', {
+      const abrir = await api('POST', '/api/operacao/caixa/abrir', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoPrecoId, trocoInicial: 50, cardapioId: cardapioPrecoB },
       });
@@ -216,7 +216,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Abrir caixa B', expected: '201', actual: String(abrir.status) };
       }
 
-      const venda = await api('POST', '/api/quiosque/vendas', {
+      const venda = await api('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoPrecoId,
@@ -228,7 +228,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Venda template B', expected: '201', actual: String(venda.status) };
       }
 
-      await api('POST', '/api/quiosque/caixa/fechar', {
+      await api('POST', '/api/operacao/caixa/fechar', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoPrecoId,
@@ -247,7 +247,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!produtoExtraId || !pontoPrecoId) return { status: 'failed', message: 'QCD-10 incompleto' };
 
-      const abrir = await api('POST', '/api/quiosque/caixa/abrir', {
+      const abrir = await api('POST', '/api/operacao/caixa/abrir', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoPrecoId, trocoInicial: 50, produtoIds: [produtoExtraId] },
       });
@@ -257,7 +257,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
 
       const produtos = await api<Array<{ precoEfetivo?: number; precoUnit: string }>>(
         'GET',
-        `/api/quiosque/produtos?pontoVendaId=${pontoPrecoId}`,
+        `/api/operacao/produtos?pontoVendaId=${pontoPrecoId}`,
         { token: cfg.donoToken },
       );
       const preco = produtos.data?.[0]?.precoEfetivo ?? parseFloat(produtos.data?.[0]?.precoUnit ?? '0');
@@ -265,7 +265,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Preço catálogo no PDV', expected: String(PRECO), actual: String(preco) };
       }
 
-      const venda = await api('POST', '/api/quiosque/vendas', {
+      const venda = await api('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoPrecoId,
@@ -277,7 +277,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Venda manual', expected: '201', actual: String(venda.status) };
       }
 
-      await api('POST', '/api/quiosque/caixa/fechar', {
+      await api('POST', '/api/operacao/caixa/fechar', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoPrecoId,
@@ -304,7 +304,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
       }
       const PRECO_TURNO = 7;
 
-      const abrir = await api('POST', '/api/quiosque/caixa/abrir', {
+      const abrir = await api('POST', '/api/operacao/caixa/abrir', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoPrecoId, trocoInicial: 50, cardapioId: cardapioPrecoA },
       });
@@ -312,7 +312,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Abrir caixa', expected: '201', actual: `${abrir.status} ${abrir.raw.slice(0, 180)}` };
       }
 
-      const patch = await api('PATCH', `/api/quiosque/caixa/cardapio/preco?pontoVendaId=${pontoPrecoId}`, {
+      const patch = await api('PATCH', `/api/operacao/caixa/cardapio/preco?pontoVendaId=${pontoPrecoId}`, {
         token: cfg.donoToken,
         body: { produtoId: produtoExtraId, precoUnit: PRECO_TURNO, escopo: 'TURNO' },
       });
@@ -327,7 +327,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
 
       const produtos = await api<Array<{ precoEfetivo?: number; precoOverrideTurno?: boolean }>>(
         'GET',
-        `/api/quiosque/produtos?pontoVendaId=${pontoPrecoId}`,
+        `/api/operacao/produtos?pontoVendaId=${pontoPrecoId}`,
         { token: cfg.donoToken },
       );
       const efetivo = produtos.data?.[0]?.precoEfetivo;
@@ -342,7 +342,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
 
       const template = await api<{ itens?: Array<{ produtoId: string; precoUnit: number }> }>(
         'GET',
-        `/api/quiosque/cardapios/${cardapioPrecoA}`,
+        `/api/operacao/cardapios/${cardapioPrecoA}`,
         { token: cfg.donoToken },
       );
       const precoSalvo = template.data?.itens?.find((i) => i.produtoId === produtoExtraId)?.precoUnit;
@@ -355,7 +355,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         };
       }
 
-      const venda = await api('POST', '/api/quiosque/vendas', {
+      const venda = await api('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoPrecoId,
@@ -367,7 +367,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Venda com preço do turno', expected: '201', actual: String(venda.status) };
       }
 
-      await api('POST', '/api/quiosque/caixa/fechar', {
+      await api('POST', '/api/operacao/caixa/fechar', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoPrecoId,
@@ -394,7 +394,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
       }
       const PRECO_DEF = 9;
 
-      const abrir = await api('POST', '/api/quiosque/caixa/abrir', {
+      const abrir = await api('POST', '/api/operacao/caixa/abrir', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoPrecoId, trocoInicial: 50, cardapioId: cardapioPrecoA },
       });
@@ -402,7 +402,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Abrir caixa', expected: '201', actual: `${abrir.status} ${abrir.raw.slice(0, 180)}` };
       }
 
-      const patch = await api('PATCH', `/api/quiosque/caixa/cardapio/preco?pontoVendaId=${pontoPrecoId}`, {
+      const patch = await api('PATCH', `/api/operacao/caixa/cardapio/preco?pontoVendaId=${pontoPrecoId}`, {
         token: cfg.donoToken,
         body: { produtoId: produtoExtraId, precoUnit: PRECO_DEF, escopo: 'TEMPLATE' },
       });
@@ -417,7 +417,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
 
       const template = await api<{ itens?: Array<{ produtoId: string; precoUnit: number }> }>(
         'GET',
-        `/api/quiosque/cardapios/${cardapioPrecoA}`,
+        `/api/operacao/cardapios/${cardapioPrecoA}`,
         { token: cfg.donoToken },
       );
       const precoSalvo = template.data?.itens?.find((i) => i.produtoId === produtoExtraId)?.precoUnit;
@@ -432,7 +432,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
 
       const produtos = await api<Array<{ precoEfetivo?: number }>>(
         'GET',
-        `/api/quiosque/produtos?pontoVendaId=${pontoPrecoId}`,
+        `/api/operacao/produtos?pontoVendaId=${pontoPrecoId}`,
         { token: cfg.donoToken },
       );
       const efetivo = produtos.data?.[0]?.precoEfetivo;
@@ -445,7 +445,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         };
       }
 
-      await api('POST', '/api/quiosque/caixa/fechar', {
+      await api('POST', '/api/operacao/caixa/fechar', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoPrecoId,
@@ -462,7 +462,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
   await test(
     { id: 'QCD-04', category: 'Quiosque cardápio', name: 'DONO cria ponto de venda dedicado', requirement: 'QCD-04' },
     async () => {
-      const r = await api<{ id: string }>('POST', '/api/quiosque/pontos-venda', {
+      const r = await api<{ id: string }>('POST', '/api/operacao/pontos-venda', {
         token: cfg.donoToken,
         body: { nome: `Cardápio QA ${stamp}` },
       });
@@ -479,7 +479,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!pontoId || !cardapioId) return { status: 'failed', message: 'QCD-03/04 não rodaram' };
 
-      const abrir = await api('POST', '/api/quiosque/caixa/abrir', {
+      const abrir = await api('POST', '/api/operacao/caixa/abrir', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, trocoInicial: 50, cardapioId },
       });
@@ -487,7 +487,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Abrir caixa', expected: '201', actual: String(abrir.status) };
       }
 
-      const produtos = await api<Array<{ id: string }>>('GET', `/api/quiosque/produtos?pontoVendaId=${pontoId}`, {
+      const produtos = await api<Array<{ id: string }>>('GET', `/api/operacao/produtos?pontoVendaId=${pontoId}`, {
         token: cfg.donoToken,
       });
       if (produtos.status !== 200 || !Array.isArray(produtos.data)) {
@@ -511,7 +511,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!pontoId || !cfg.produtoId) return { status: 'failed', message: 'Setup incompleto' };
 
-      const r = await api<{ error?: string }>('POST', '/api/quiosque/vendas', {
+      const r = await api<{ error?: string }>('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -539,7 +539,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCD-04 não rodou' };
 
-      const put = await api('PUT', `/api/quiosque/caixa/cardapio?pontoVendaId=${pontoId}`, {
+      const put = await api('PUT', `/api/operacao/caixa/cardapio?pontoVendaId=${pontoId}`, {
         token: cfg.donoToken,
         body: { produtoIds: [] },
       });
@@ -547,7 +547,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'PUT cardápio turno', expected: '200', actual: String(put.status) };
       }
 
-      const produtos = await api<Array<{ id: string }>>('GET', `/api/quiosque/produtos?pontoVendaId=${pontoId}`, {
+      const produtos = await api<Array<{ id: string }>>('GET', `/api/operacao/produtos?pontoVendaId=${pontoId}`, {
         token: cfg.donoToken,
       });
       if (produtos.status !== 200 || (produtos.data?.length ?? 0) !== 0) {
@@ -567,7 +567,7 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!pontoId) return { status: 'skipped', message: 'Sem ponto' };
 
-      const r = await api('POST', '/api/quiosque/caixa/fechar', {
+      const r = await api('POST', '/api/operacao/caixa/fechar', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,

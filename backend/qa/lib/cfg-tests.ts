@@ -32,12 +32,12 @@ function pickOther(cfg: ConfigTenantFixture, all: ConfigTenantFixture[]): Config
 }
 
 async function abrirCaixaSeNecessario(token: string, pontoVendaId: string) {
-  const atual = await api<{ sessao?: { status: string } }>('GET', `/api/quiosque/caixa?pontoVendaId=${pontoVendaId}`, { token });
+  const atual = await api<{ sessao?: { status: string } }>('GET', `/api/operacao/caixa?pontoVendaId=${pontoVendaId}`, { token });
   if (atual.data?.sessao?.status === 'ABERTO') return;
   if (atual.data?.sessao?.status === 'FECHADO') {
     throw new Error(`Caixa fechado no PDV ${pontoVendaId} — impossivel continuar CFG`);
   }
-  const abrir = await api('POST', '/api/quiosque/caixa/abrir', {
+  const abrir = await api('POST', '/api/operacao/caixa/abrir', {
     token,
     body: { pontoVendaId, trocoInicial: 50 },
   });
@@ -71,7 +71,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
           ativo?: boolean;
           controlaEstoque?: boolean;
           temCozinha?: boolean;
-        }>('GET', '/api/quiosque/contexto', { token: cfg.donoToken });
+        }>('GET', '/api/operacao/contexto', { token: cfg.donoToken });
 
         if (cfg.moduloQuiosque) {
           if (r.status !== 200 || r.data.ativo !== true) {
@@ -118,7 +118,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
         }
 
         await abrirCaixaSeNecessario(cfg.donoToken, cfg.pontoVendaId);
-        const venda = await api('POST', '/api/quiosque/vendas', {
+        const venda = await api('POST', '/api/operacao/vendas', {
           token: cfg.donoToken,
           body: {
             pontoVendaId: cfg.pontoVendaId,
@@ -134,14 +134,14 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
       { id: `${req}-03`, category: 'Configuração', name: `${cfg.code}: submodulos bloqueados na API`, requirement: req },
       async () => {
         if (!cfg.moduloQuiosque) {
-          const produtos = await api('GET', '/api/quiosque/produtos', { token: cfg.donoToken });
+          const produtos = await api('GET', '/api/operacao/produtos', { token: cfg.donoToken });
           return expectStatus(produtos.status, 404, 'Quiosque indisponivel sem modulo');
         }
 
         if (!cfg.pontoVendaId) return { status: 'failed', message: 'Sem ponto de venda' };
 
-        const estoque = await api('GET', `/api/quiosque/estoque?pontoVendaId=${cfg.pontoVendaId}`, { token: cfg.donoToken });
-        const cozinha = await api('GET', '/api/quiosque/cozinha', { token: cfg.donoToken });
+        const estoque = await api('GET', `/api/operacao/estoque?pontoVendaId=${cfg.pontoVendaId}`, { token: cfg.donoToken });
+        const cozinha = await api('GET', '/api/operacao/cozinha', { token: cfg.donoToken });
 
         const estoqueOk = cfg.controlaEstoque ? estoque.status === 200 : estoque.status === 404;
         const cozinhaOk = cfg.temCozinha ? cozinha.status === 200 : cozinha.status === 404;
@@ -178,7 +178,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
         }
 
         await abrirCaixaSeNecessario(cfg.donoToken, cfg.pontoVendaId);
-        const cross = await api('POST', '/api/quiosque/vendas', {
+        const cross = await api('POST', '/api/operacao/vendas', {
           token: cfg.donoToken,
           body: {
             pontoVendaId: cfg.pontoVendaId,
@@ -202,7 +202,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
       { id: `${req}-05`, category: 'Configuração', name: `${cfg.code}: cenario de erro`, requirement: req },
       async () => {
         if (!cfg.moduloQuiosque) {
-          const vendas = await api('POST', '/api/quiosque/vendas', {
+          const vendas = await api('POST', '/api/operacao/vendas', {
             token: cfg.donoToken,
             body: { pontoVendaId: 'x', itens: [], pagamentos: [] },
           });
@@ -214,7 +214,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
         }
 
         await abrirCaixaSeNecessario(cfg.donoToken, cfg.pontoVendaId);
-        const pagoMenos = await api('POST', '/api/quiosque/vendas', {
+        const pagoMenos = await api('POST', '/api/operacao/vendas', {
           token: cfg.donoToken,
           body: {
             pontoVendaId: cfg.pontoVendaId,

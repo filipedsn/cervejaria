@@ -43,7 +43,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
   let pedidoBebidaId = '';
 
   async function setStatus(id: string, status: string, token = cfg.donoToken) {
-    return api<PedidoCozinha & { error?: string }>('PATCH', `/api/quiosque/cozinha/${id}/status`, {
+    return api<PedidoCozinha & { error?: string }>('PATCH', `/api/operacao/cozinha/${id}/status`, {
       token,
       body: { status },
     });
@@ -52,7 +52,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
   await test(
     { id: 'QCZ-01', category: 'Quiosque cozinha', name: 'Setup ponto, caixa e comanda com preparo', requirement: 'QCZ-01' },
     async () => {
-      const ponto = await api<{ id: string }>('POST', '/api/quiosque/pontos-venda', {
+      const ponto = await api<{ id: string }>('POST', '/api/operacao/pontos-venda', {
         token: cfg.donoToken,
         body: { nome: `Cozinha QA ${stamp}` },
       });
@@ -61,7 +61,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
       }
       pontoId = ponto.data.id;
 
-      const caixa = await api('POST', '/api/quiosque/caixa/abrir', {
+      const caixa = await api('POST', '/api/operacao/caixa/abrir', {
         token: cfg.donoToken,
         body: { pontoVendaId: pontoId, trocoInicial: 100 },
       });
@@ -71,7 +71,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
 
       atendenteToken = await login(`${cfg.slug}-a1@qa.test`, 'qa123456');
 
-      const comanda = await api<{ id: string; pedidos?: Array<{ id: string }> }>('POST', '/api/quiosque/comandas', {
+      const comanda = await api<{ id: string; pedidos?: Array<{ id: string }> }>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -137,7 +137,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCZ-05', category: 'Quiosque cozinha', name: 'Salto RECEBIDO → ENTREGUE bloqueado → 409', requirement: 'QCZ-05' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCZ-01 incompleto' };
-      const comanda = await api<{ id: string; pedidos?: Array<{ id: string }> }>('POST', '/api/quiosque/comandas', {
+      const comanda = await api<{ id: string; pedidos?: Array<{ id: string }> }>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -167,7 +167,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Cancelar em preparo', expected: '200 CANCELADO', actual: `${r.status} ${r.data?.status}` };
       }
 
-      const fila = await api<PedidoCozinha[]>('GET', '/api/quiosque/cozinha', { token: cfg.donoToken });
+      const fila = await api<PedidoCozinha[]>('GET', '/api/operacao/cozinha', { token: cfg.donoToken });
       if (fila.data?.some((p) => p.id === pedidoId)) {
         return { status: 'failed', message: 'Pedido cancelado ainda na fila', expected: 'fora da fila', actual: 'presente' };
       }
@@ -191,7 +191,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCZ-08', category: 'Quiosque cozinha', name: 'Pedido só de bebida fica fora da fila', requirement: 'QCZ-08' },
     async () => {
       if (!comandaId) return { status: 'failed', message: 'QCZ-01 incompleto' };
-      const pedido = await api<{ pedidos?: Array<{ id: string }> }>('POST', `/api/quiosque/comandas/${comandaId}/pedidos`, {
+      const pedido = await api<{ pedidos?: Array<{ id: string }> }>('POST', `/api/operacao/comandas/${comandaId}/pedidos`, {
         token: cfg.donoToken,
         body: { itens: [{ produtoId: cfg.produtoId, quantidade: 1 }] },
       });
@@ -201,7 +201,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
       const pedidos = pedido.data?.pedidos ?? [];
       pedidoBebidaId = pedidos[pedidos.length - 1]?.id ?? '';
 
-      const fila = await api<PedidoCozinha[]>('GET', '/api/quiosque/cozinha', { token: cfg.donoToken });
+      const fila = await api<PedidoCozinha[]>('GET', '/api/operacao/cozinha', { token: cfg.donoToken });
       if (pedidoBebidaId && fila.data?.some((p) => p.id === pedidoBebidaId)) {
         return { status: 'failed', message: 'Bebida ocupou a cozinha', expected: 'fora da fila', actual: 'presente' };
       }
@@ -227,7 +227,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
       if (!pontoId) return { status: 'failed', message: 'QCZ-01 incompleto' };
       const comanda = await api<{ id: string; total: number; pedidos?: Array<{ id: string }> }>(
         'POST',
-        '/api/quiosque/comandas',
+        '/api/operacao/comandas',
         {
           token: cfg.donoToken,
           body: {
@@ -251,7 +251,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
         };
       }
 
-      const pagarAntes = await api('POST', `/api/quiosque/comandas/${comanda.data.id}/pagamentos`, {
+      const pagarAntes = await api('POST', `/api/operacao/comandas/${comanda.data.id}/pagamentos`, {
         token: cfg.donoToken,
         body: { pagamentos: [{ forma: 'PIX', valor: comanda.data.total }] },
       });
@@ -278,7 +278,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Marcar entregue', expected: '200', actual: String(entregue.status) };
       }
 
-      const detalhe = await api<{ total: number }>('GET', `/api/quiosque/comandas/${comanda.data.id}`, {
+      const detalhe = await api<{ total: number }>('GET', `/api/operacao/comandas/${comanda.data.id}`, {
         token: cfg.donoToken,
       });
       if (!detalhe.data?.total || detalhe.data.total <= 0) {
@@ -290,7 +290,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
         };
       }
 
-      const pagar = await api('POST', `/api/quiosque/comandas/${comanda.data.id}/pagamentos`, {
+      const pagar = await api('POST', `/api/operacao/comandas/${comanda.data.id}/pagamentos`, {
         token: cfg.donoToken,
         body: { pagamentos: [{ forma: 'PIX', valor: detalhe.data.total }] },
       });
@@ -321,7 +321,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCZ-01 incompleto' };
 
-      const comanda = await api<{ pedidos?: Array<{ id: string }> }>('POST', '/api/quiosque/comandas', {
+      const comanda = await api<{ pedidos?: Array<{ id: string }> }>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: pontoId,
@@ -335,7 +335,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Setup pedido cronômetro', expected: '201', actual: String(comanda.status) };
       }
 
-      const fila0 = await api<PedidoCozinha[]>('GET', '/api/quiosque/cozinha', { token: cfg.donoToken });
+      const fila0 = await api<PedidoCozinha[]>('GET', '/api/operacao/cozinha', { token: cfg.donoToken });
       const p0 = fila0.data?.find((p) => p.id === cronId);
       if (!p0?.statusDesde) {
         return { status: 'failed', message: 'statusDesde inicial', expected: 'definido', actual: 'ausente' };
@@ -365,7 +365,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
         };
       }
 
-      const fila1 = await api<PedidoCozinha[]>('GET', '/api/quiosque/cozinha?incluirEntregues=true', {
+      const fila1 = await api<PedidoCozinha[]>('GET', '/api/operacao/cozinha?incluirEntregues=true', {
         token: cfg.donoToken,
       });
       const p1 = fila1.data?.find((p) => p.id === cronId);

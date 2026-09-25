@@ -28,9 +28,9 @@ function expectStatus(actual: number, expected: number | number[], ctx: string):
 }
 
 async function abrirCaixa(token: string, pontoVendaId: string) {
-  const atual = await api<{ sessao?: { status: string } }>('GET', `/api/quiosque/caixa?pontoVendaId=${pontoVendaId}`, { token });
+  const atual = await api<{ sessao?: { status: string } }>('GET', `/api/operacao/caixa?pontoVendaId=${pontoVendaId}`, { token });
   if (atual.data?.sessao?.status === 'ABERTO') return;
-  const abrir = await api('POST', '/api/quiosque/caixa/abrir', {
+  const abrir = await api('POST', '/api/operacao/caixa/abrir', {
     token,
     body: { pontoVendaId, trocoInicial: 50 },
   });
@@ -50,7 +50,7 @@ async function prepararRecursosB(b: ConfigTenantFixture): Promise<RecursosTenant
   }
   await abrirCaixa(b.donoToken, b.pontoVendaId);
 
-  const comanda = await api<{ id: string; pedidos?: Array<{ id: string }> }>('POST', '/api/quiosque/comandas', {
+  const comanda = await api<{ id: string; pedidos?: Array<{ id: string }> }>('POST', '/api/operacao/comandas', {
     token: b.donoToken,
     body: {
       pontoVendaId: b.pontoVendaId,
@@ -67,7 +67,7 @@ async function prepararRecursosB(b: ConfigTenantFixture): Promise<RecursosTenant
   return { comandaId: comanda.data.id, pedidoId };
 }
 
-/** IDOR nas rotas /api/quiosque/* — token do tenant A acessando recursos do tenant B. */
+/** IDOR nas rotas /api/operacao/* — token do tenant A acessando recursos do tenant B. */
 export async function runTenQuiosqueTests(ctx: QaContext, test: TestFn) {
   const configs = ctx.configTenants ?? [];
   const a = configs.find((c) => c.code === 'QUIOSQUE-11');
@@ -98,15 +98,15 @@ export async function runTenQuiosqueTests(ctx: QaContext, test: TestFn) {
   const idor: Array<[string, string, () => Promise<number>, number[]]> = [
     [
       'TEN-Q-01',
-      'GET /quiosque/comandas/:id',
-      async () => (await api('GET', `/api/quiosque/comandas/${recursosB.comandaId}`, { token: a.donoToken })).status,
+      'GET /operacao/comandas/:id',
+      async () => (await api('GET', `/api/operacao/comandas/${recursosB.comandaId}`, { token: a.donoToken })).status,
       [404],
     ],
     [
       'TEN-Q-02',
-      'PUT /quiosque/produtos/:id',
+      'PUT /operacao/produtos/:id',
       async () =>
-        (await api('PUT', `/api/quiosque/produtos/${b.produtoId}`, {
+        (await api('PUT', `/api/operacao/produtos/${b.produtoId}`, {
           token: a.donoToken,
           body: { nome: 'Hack TEN-Q' },
         })).status,
@@ -114,15 +114,15 @@ export async function runTenQuiosqueTests(ctx: QaContext, test: TestFn) {
     ],
     [
       'TEN-Q-03',
-      'DELETE /quiosque/produtos/:id',
-      async () => (await api('DELETE', `/api/quiosque/produtos/${b.produtoId}`, { token: a.donoToken })).status,
+      'DELETE /operacao/produtos/:id',
+      async () => (await api('DELETE', `/api/operacao/produtos/${b.produtoId}`, { token: a.donoToken })).status,
       [404],
     ],
     [
       'TEN-Q-04',
-      'POST /quiosque/comandas (ponto de B)',
+      'POST /operacao/comandas (ponto de B)',
       async () =>
-        (await api('POST', '/api/quiosque/comandas', {
+        (await api('POST', '/api/operacao/comandas', {
           token: a.donoToken,
           body: {
             pontoVendaId: b.pontoVendaId,
@@ -135,9 +135,9 @@ export async function runTenQuiosqueTests(ctx: QaContext, test: TestFn) {
     ],
     [
       'TEN-Q-05',
-      'POST /quiosque/vendas (ponto de B)',
+      'POST /operacao/vendas (ponto de B)',
       async () =>
-        (await api('POST', '/api/quiosque/vendas', {
+        (await api('POST', '/api/operacao/vendas', {
           token: a.donoToken,
           body: {
             pontoVendaId: b.pontoVendaId,
@@ -149,9 +149,9 @@ export async function runTenQuiosqueTests(ctx: QaContext, test: TestFn) {
     ],
     [
       'TEN-Q-06',
-      'POST /quiosque/caixa/abrir (ponto de B)',
+      'POST /operacao/caixa/abrir (ponto de B)',
       async () =>
-        (await api('POST', '/api/quiosque/caixa/abrir', {
+        (await api('POST', '/api/operacao/caixa/abrir', {
           token: a.donoToken,
           body: { pontoVendaId: b.pontoVendaId, trocoInicial: 10 },
         })).status,
@@ -162,9 +162,9 @@ export async function runTenQuiosqueTests(ctx: QaContext, test: TestFn) {
   if (recursosB.pedidoId) {
     idor.push([
       'TEN-Q-07',
-      'PATCH /quiosque/cozinha/:id/status',
+      'PATCH /operacao/cozinha/:id/status',
       async () =>
-        (await api('PATCH', `/api/quiosque/cozinha/${recursosB.pedidoId}/status`, {
+        (await api('PATCH', `/api/operacao/cozinha/${recursosB.pedidoId}/status`, {
           token: a.donoToken,
           body: { status: 'EM_PREPARO' },
         })).status,
@@ -180,11 +180,11 @@ export async function runTenQuiosqueTests(ctx: QaContext, test: TestFn) {
   }
 
   await test(
-    { id: 'TEN-Q-08', category: 'Multi-tenant Quiosque', name: 'GET /quiosque/caixa?pontoVendaId=B', requirement: 'TEN-Q' },
+    { id: 'TEN-Q-08', category: 'Multi-tenant Quiosque', name: 'GET /operacao/caixa?pontoVendaId=B', requirement: 'TEN-Q' },
     async () => {
       const r = await api<{ sessao?: { id: string; pontoVendaId: string } | null }>(
         'GET',
-        `/api/quiosque/caixa?pontoVendaId=${b.pontoVendaId}`,
+        `/api/operacao/caixa?pontoVendaId=${b.pontoVendaId}`,
         { token: a.donoToken },
       );
       if (r.status === 404) return { message: 'Ponto de B nao visivel (404)' };
@@ -201,11 +201,11 @@ export async function runTenQuiosqueTests(ctx: QaContext, test: TestFn) {
   );
 
   await test(
-    { id: 'TEN-Q-09', category: 'Multi-tenant Quiosque', name: 'GET /quiosque/estoque?pontoVendaId=B', requirement: 'TEN-Q' },
+    { id: 'TEN-Q-09', category: 'Multi-tenant Quiosque', name: 'GET /operacao/estoque?pontoVendaId=B', requirement: 'TEN-Q' },
     async () => {
       const r = await api<Array<{ produtoId: string; quantidade: number }>>(
         'GET',
-        `/api/quiosque/estoque?pontoVendaId=${b.pontoVendaId}`,
+        `/api/operacao/estoque?pontoVendaId=${b.pontoVendaId}`,
         { token: a.donoToken },
       );
       if (r.status === 404) return { message: 'Estoque de B bloqueado (404)' };
@@ -225,7 +225,7 @@ export async function runTenQuiosqueTests(ctx: QaContext, test: TestFn) {
   await test(
     { id: 'TEN-Q-10', category: 'Multi-tenant Quiosque', name: 'Listagem produtos escopada', requirement: 'TEN-Q' },
     async () => {
-      const r = await api<Array<{ id: string }>>('GET', '/api/quiosque/produtos', { token: a.donoToken });
+      const r = await api<Array<{ id: string }>>('GET', '/api/operacao/produtos', { token: a.donoToken });
       if (r.status !== 200) return expectStatus(r.status, 200, 'Produtos tenant A');
       const vazou = (r.data ?? []).some((p) => p.id === b.produtoId);
       if (vazou) {

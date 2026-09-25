@@ -17,9 +17,9 @@ type TestFn = (
 ) => Promise<void>;
 
 async function abrirCaixa(token: string, pontoVendaId: string) {
-  const atual = await api<{ sessao?: { status: string } }>('GET', `/api/quiosque/caixa?pontoVendaId=${pontoVendaId}`, { token });
+  const atual = await api<{ sessao?: { status: string } }>('GET', `/api/operacao/caixa?pontoVendaId=${pontoVendaId}`, { token });
   if (atual.data?.sessao?.status === 'ABERTO') return;
-  const abrir = await api('POST', '/api/quiosque/caixa/abrir', { token, body: { pontoVendaId, trocoInicial: 50 } });
+  const abrir = await api('POST', '/api/operacao/caixa/abrir', { token, body: { pontoVendaId, trocoInicial: 50 } });
   if (abrir.status !== 201) throw new Error(`Caixa não abriu: HTTP ${abrir.status}`);
 }
 
@@ -50,7 +50,7 @@ export async function runQuiosqueSmokeTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: err instanceof Error ? err.message : String(err) };
       }
 
-      const comanda = await api<{ id: string; pedidos?: Array<{ id: string }> }>('POST', '/api/quiosque/comandas', {
+      const comanda = await api<{ id: string; pedidos?: Array<{ id: string }> }>('POST', '/api/operacao/comandas', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: cfg.pontoVendaId,
@@ -67,7 +67,7 @@ export async function runQuiosqueSmokeTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Pedido de preparo não criado' };
       }
 
-      const fila = await api<Array<{ id: string; status: string }>>('GET', '/api/quiosque/cozinha', {
+      const fila = await api<Array<{ id: string; status: string }>>('GET', '/api/operacao/cozinha', {
         token: cfg.donoToken,
       });
       if (fila.status !== 200) {
@@ -93,7 +93,7 @@ export async function runQuiosqueSmokeTests(ctx: QaContext, test: TestFn) {
 
       const steps: Array<'EM_PREPARO' | 'PRONTO' | 'ENTREGUE'> = ['EM_PREPARO', 'PRONTO', 'ENTREGUE'];
       for (const status of steps) {
-        const r = await api<{ status: string }>('PATCH', `/api/quiosque/cozinha/${pedidoId}/status`, {
+        const r = await api<{ status: string }>('PATCH', `/api/operacao/cozinha/${pedidoId}/status`, {
           token: cfg.donoToken,
           body: { status },
         });
@@ -114,7 +114,7 @@ export async function runQuiosqueSmokeTests(ctx: QaContext, test: TestFn) {
     { id: 'QSM-COZ-03', category: 'Quiosque smoke', name: 'Transição inválida → 409', requirement: 'QSM-COZ' },
     async () => {
       if (!pedidoId) return { status: 'failed', message: 'QSM-COZ-01 não rodou' };
-      const r = await api('PATCH', `/api/quiosque/cozinha/${pedidoId}/status`, {
+      const r = await api('PATCH', `/api/operacao/cozinha/${pedidoId}/status`, {
         token: cfg.donoToken,
         body: { status: 'RECEBIDO' },
       });
@@ -130,7 +130,7 @@ export async function runQuiosqueSmokeTests(ctx: QaContext, test: TestFn) {
     async () => {
       const r = await api<Array<{ produtoId: string; quantidade: number }>>(
         'GET',
-        `/api/quiosque/estoque?pontoVendaId=${cfg.pontoVendaId}`,
+        `/api/operacao/estoque?pontoVendaId=${cfg.pontoVendaId}`,
         { token: cfg.donoToken },
       );
       if (r.status !== 200 || !Array.isArray(r.data) || r.data.length === 0) {
@@ -145,7 +145,7 @@ export async function runQuiosqueSmokeTests(ctx: QaContext, test: TestFn) {
   await test(
     { id: 'QSM-EST-02', category: 'Quiosque smoke', name: 'Entrada manual incrementa saldo', requirement: 'QSM-EST' },
     async () => {
-      const r = await api<Array<{ produtoId: string; quantidade: number }>>('POST', '/api/quiosque/estoque/entrada', {
+      const r = await api<Array<{ produtoId: string; quantidade: number }>>('POST', '/api/operacao/estoque/entrada', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: cfg.pontoVendaId,
@@ -175,7 +175,7 @@ export async function runQuiosqueSmokeTests(ctx: QaContext, test: TestFn) {
   await test(
     { id: 'QSM-EST-03', category: 'Quiosque smoke', name: 'Saída PERDA decrementa saldo', requirement: 'QSM-EST' },
     async () => {
-      const r = await api<Array<{ produtoId: string; quantidade: number }>>('POST', '/api/quiosque/estoque/saida', {
+      const r = await api<Array<{ produtoId: string; quantidade: number }>>('POST', '/api/operacao/estoque/saida', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: cfg.pontoVendaId,
@@ -207,7 +207,7 @@ export async function runQuiosqueSmokeTests(ctx: QaContext, test: TestFn) {
     { id: 'QSM-EST-04', category: 'Quiosque smoke', name: 'Ajuste define saldo absoluto', requirement: 'QSM-EST' },
     async () => {
       const alvo = saldoInicial + 10;
-      const r = await api<Array<{ produtoId: string; quantidade: number }>>('POST', '/api/quiosque/estoque/ajuste', {
+      const r = await api<Array<{ produtoId: string; quantidade: number }>>('POST', '/api/operacao/estoque/ajuste', {
         token: cfg.donoToken,
         body: {
           pontoVendaId: cfg.pontoVendaId,

@@ -93,7 +93,7 @@ export async function runAdminTests(ctx: QaContext, test: TestFn) {
 
       const trailers = await prisma.trailer.count({ where: { cervejariaId } });
       const taps = await prisma.tap.count({ where: { cervejariaId } });
-      const quiosque = await prisma.configuracaoQuiosque.findUnique({ where: { cervejariaId } });
+      const quiosque = await prisma.configuracaoOperacao.findUnique({ where: { cervejariaId } });
       if (trailers !== 1 || taps === 0 || quiosque) {
         return {
           status: 'failed',
@@ -127,7 +127,7 @@ export async function runAdminTests(ctx: QaContext, test: TestFn) {
       criadas.push(quiosqueId);
 
       const trailers = await prisma.trailer.count({ where: { cervejariaId: quiosqueId } });
-      const cfg = await prisma.configuracaoQuiosque.findUnique({ where: { cervejariaId: quiosqueId } });
+      const cfg = await prisma.configuracaoOperacao.findUnique({ where: { cervejariaId: quiosqueId } });
       if (trailers !== 0 || !cfg?.exclusivo || !cfg.controlaEstoque || cfg.temCozinha) {
         return {
           status: 'failed',
@@ -163,7 +163,7 @@ export async function runAdminTests(ctx: QaContext, test: TestFn) {
       criadas.push(hibridaId);
 
       const trailers = await prisma.trailer.count({ where: { cervejariaId: hibridaId } });
-      const cfg = await prisma.configuracaoQuiosque.findUnique({ where: { cervejariaId: hibridaId } });
+      const cfg = await prisma.configuracaoOperacao.findUnique({ where: { cervejariaId: hibridaId } });
       if (trailers !== 1 || !cfg || cfg.exclusivo || !cfg.temCozinha) {
         return {
           status: 'failed',
