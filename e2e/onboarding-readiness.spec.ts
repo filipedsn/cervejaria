@@ -42,7 +42,7 @@ test.describe('Onboarding readiness', () => {
 
     expect(response.status).toBe(200);
     expect(response.data.mode).toBe('CAIXA');
-    expect(response.data.modules.quiosque.enabled).toBe(true);
+    expect(response.data.modules.operacao.enabled).toBe(true);
     expect(response.data.modules.cervejaria.enabled).toBe(false);
   });
 

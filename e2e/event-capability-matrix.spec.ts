@@ -41,9 +41,9 @@ async function createCompany() {
   data.append('donoEmail', owner.email);
   data.append('donoSenha', owner.password);
   data.append('moduloCervejaria', 'false');
-  data.append('moduloQuiosque', 'true');
-  data.append('quiosqueControlaEstoque', 'false');
-  data.append('quiosqueTemCozinha', 'false');
+  data.append('moduloOperacao', 'true');
+  data.append('operacaoControlaEstoque', 'false');
+  data.append('operacaoTemCozinha', 'false');
 
   const response = await fetch(`${API_BASE}/api/admin/cervejarias`, {
     method: 'POST',

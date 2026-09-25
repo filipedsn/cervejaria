@@ -80,7 +80,7 @@ export interface ConfigTenantFixture {
   donoEmail: string;
   donoToken: string;
   moduloCervejaria: boolean;
-  moduloQuiosque: boolean;
+  moduloOperacao: boolean;
   controlaEstoque: boolean;
   temCozinha: boolean;
   exclusivo: boolean;

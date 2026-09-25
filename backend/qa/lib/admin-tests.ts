@@ -27,8 +27,8 @@ interface CervejariaAdmin {
   modulos?: {
     cervejaria: boolean;
     quiosque: boolean;
-    quiosqueControlaEstoque: boolean;
-    quiosqueTemCozinha: boolean;
+    operacaoControlaEstoque: boolean;
+    operacaoTemCozinha: boolean;
   };
 }
 
@@ -83,7 +83,7 @@ export async function runAdminTests(ctx: QaContext, test: TestFn) {
     async () => {
       const r = await api<{ cervejaria: CervejariaAdmin }>('POST', '/api/admin/cervejarias', {
         token: adminToken,
-        multipart: { fields: novoCadastro('cerv', { moduloCervejaria: 'true', moduloQuiosque: 'false' }) },
+        multipart: { fields: novoCadastro('cerv', { moduloCervejaria: 'true', moduloOperacao: 'false' }) },
       });
       if (r.status !== 201 || !r.data?.cervejaria?.id) {
         return { status: 'failed', message: 'Cadastro cervejaria', expected: '201', actual: `${r.status} ${r.raw.slice(0, 120)}` };
@@ -114,9 +114,9 @@ export async function runAdminTests(ctx: QaContext, test: TestFn) {
         multipart: {
           fields: novoCadastro('quio', {
             moduloCervejaria: 'false',
-            moduloQuiosque: 'true',
-            quiosqueControlaEstoque: 'true',
-            quiosqueTemCozinha: 'false',
+            moduloOperacao: 'true',
+            operacaoControlaEstoque: 'true',
+            operacaoTemCozinha: 'false',
           }),
         },
       });
@@ -150,9 +150,9 @@ export async function runAdminTests(ctx: QaContext, test: TestFn) {
         multipart: {
           fields: novoCadastro('hib', {
             moduloCervejaria: 'true',
-            moduloQuiosque: 'true',
-            quiosqueControlaEstoque: 'true',
-            quiosqueTemCozinha: 'true',
+            moduloOperacao: 'true',
+            operacaoControlaEstoque: 'true',
+            operacaoTemCozinha: 'true',
           }),
         },
       });
@@ -181,7 +181,7 @@ export async function runAdminTests(ctx: QaContext, test: TestFn) {
     async () => {
       const r = await api('POST', '/api/admin/cervejarias', {
         token: adminToken,
-        multipart: { fields: novoCadastro('semmod', { moduloCervejaria: 'false', moduloQuiosque: 'false' }) },
+        multipart: { fields: novoCadastro('semmod', { moduloCervejaria: 'false', moduloOperacao: 'false' }) },
       });
       if (r.status !== 400) {
         return { status: 'failed', message: 'Empresa sem módulo aceita', expected: '400', actual: String(r.status) };

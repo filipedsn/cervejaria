@@ -28,7 +28,7 @@ function expectStatus(actual: number, expected: number | number[], ctx: string):
 }
 
 function pickOther(cfg: ConfigTenantFixture, all: ConfigTenantFixture[]): ConfigTenantFixture | undefined {
-  return all.find((o) => o.code !== cfg.code && o.moduloQuiosque && o.produtoId);
+  return all.find((o) => o.code !== cfg.code && o.moduloOperacao && o.produtoId);
 }
 
 async function abrirCaixaSeNecessario(token: string, pontoVendaId: string) {
@@ -59,7 +59,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
     return;
   }
 
-  const otherQuiosque = configs.find((c) => c.moduloQuiosque && c.produtoId);
+  const otherQuiosque = configs.find((c) => c.moduloOperacao && c.produtoId);
 
   for (const cfg of configs) {
     const req = `CFG-${cfg.code}`;
@@ -73,7 +73,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
           temCozinha?: boolean;
         }>('GET', '/api/operacao/contexto', { token: cfg.donoToken });
 
-        if (cfg.moduloQuiosque) {
+        if (cfg.moduloOperacao) {
           if (r.status !== 200 || r.data.ativo !== true) {
             return { status: 'failed', message: 'Modulo quiosque deveria estar ativo', actual: JSON.stringify(r.data) };
           }
@@ -112,7 +112,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
           }
         }
 
-        if (!cfg.moduloQuiosque || !cfg.pontoVendaId || !cfg.produtoId) {
+        if (!cfg.moduloOperacao || !cfg.pontoVendaId || !cfg.produtoId) {
           if (cfg.moduloCervejaria) return { message: 'Cervejaria operacional' };
           return { status: 'failed', message: 'Config quiosque sem ponto/produto no seed' };
         }
@@ -133,7 +133,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
     await test(
       { id: `${req}-03`, category: 'Configuração', name: `${cfg.code}: submodulos bloqueados na API`, requirement: req },
       async () => {
-        if (!cfg.moduloQuiosque) {
+        if (!cfg.moduloOperacao) {
           const produtos = await api('GET', '/api/operacao/produtos', { token: cfg.donoToken });
           return expectStatus(produtos.status, 404, 'Quiosque indisponivel sem modulo');
         }
@@ -161,7 +161,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
     await test(
       { id: `${req}-04`, category: 'Configuração', name: `${cfg.code}: isolamento multitenant`, requirement: req },
       async () => {
-        if (cfg.moduloCervejaria && !cfg.moduloQuiosque) {
+        if (cfg.moduloCervejaria && !cfg.moduloOperacao) {
           const otherEv = configs.find((o) => o.eventoId && o.cervejariaId !== cfg.cervejariaId);
           if (!otherEv?.eventoId) return { status: 'skipped', message: 'Sem evento de outro tenant no seed' };
           const leak = await api('GET', `/api/eventos/${otherEv.eventoId}`, { token: cfg.donoToken });
@@ -169,7 +169,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
         }
 
         const other = pickOther(cfg, configs) ?? otherQuiosque;
-        if (!other?.produtoId || !cfg.moduloQuiosque || !cfg.pontoVendaId) {
+        if (!other?.produtoId || !cfg.moduloOperacao || !cfg.pontoVendaId) {
           if (cfg.moduloCervejaria && other?.eventoId) {
             const leak = await api('GET', `/api/eventos/${other.eventoId}`, { token: cfg.donoToken });
             return expectStatus(leak.status, 404, 'Evento de outro tenant');
@@ -201,7 +201,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
     await test(
       { id: `${req}-05`, category: 'Configuração', name: `${cfg.code}: cenario de erro`, requirement: req },
       async () => {
-        if (!cfg.moduloQuiosque) {
+        if (!cfg.moduloOperacao) {
           const vendas = await api('POST', '/api/operacao/vendas', {
             token: cfg.donoToken,
             body: { pontoVendaId: 'x', itens: [], pagamentos: [] },

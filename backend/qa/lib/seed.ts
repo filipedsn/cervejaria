@@ -13,17 +13,17 @@ export const QA_ADMIN_EMAIL = 'qa-admin@qa.test';
 const PWD = 'qa123456';
 
 export const CONFIG_DEFINITIONS = [
-  { code: 'CERVEJARIA', slug: `${CFG_PREFIX}cervejaria`, moduloCervejaria: true, moduloQuiosque: false, controlaEstoque: false, temCozinha: false, exclusivo: false },
-  { code: 'QUIOSQUE-00', slug: `${CFG_PREFIX}quiosque-00`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: false, temCozinha: false, exclusivo: true },
-  { code: 'QUIOSQUE-10', slug: `${CFG_PREFIX}quiosque-10`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: true, temCozinha: false, exclusivo: true },
-  { code: 'QUIOSQUE-01', slug: `${CFG_PREFIX}quiosque-01`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: false, temCozinha: true, exclusivo: true },
-  { code: 'QUIOSQUE-11', slug: `${CFG_PREFIX}quiosque-11`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: true, temCozinha: true, exclusivo: true },
+  { code: 'CERVEJARIA', slug: `${CFG_PREFIX}cervejaria`, moduloCervejaria: true, moduloOperacao: false, controlaEstoque: false, temCozinha: false, exclusivo: false },
+  { code: 'QUIOSQUE-00', slug: `${CFG_PREFIX}quiosque-00`, moduloCervejaria: false, moduloOperacao: true, controlaEstoque: false, temCozinha: false, exclusivo: true },
+  { code: 'QUIOSQUE-10', slug: `${CFG_PREFIX}quiosque-10`, moduloCervejaria: false, moduloOperacao: true, controlaEstoque: true, temCozinha: false, exclusivo: true },
+  { code: 'QUIOSQUE-01', slug: `${CFG_PREFIX}quiosque-01`, moduloCervejaria: false, moduloOperacao: true, controlaEstoque: false, temCozinha: true, exclusivo: true },
+  { code: 'QUIOSQUE-11', slug: `${CFG_PREFIX}quiosque-11`, moduloCervejaria: false, moduloOperacao: true, controlaEstoque: true, temCozinha: true, exclusivo: true },
   // Legacy HIBRIDA labels remain fixture identifiers only. The former mixed
   // combination is now represented by CAIXA plus optional capabilities.
-  { code: 'HIBRIDA-00', slug: `${CFG_PREFIX}hibrida-00`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: false, temCozinha: false, exclusivo: true },
-  { code: 'HIBRIDA-10', slug: `${CFG_PREFIX}hibrida-10`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: true, temCozinha: false, exclusivo: true },
-  { code: 'HIBRIDA-01', slug: `${CFG_PREFIX}hibrida-01`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: false, temCozinha: true, exclusivo: true },
-  { code: 'HIBRIDA-11', slug: `${CFG_PREFIX}hibrida-11`, moduloCervejaria: false, moduloQuiosque: true, controlaEstoque: true, temCozinha: true, exclusivo: true },
+  { code: 'HIBRIDA-00', slug: `${CFG_PREFIX}hibrida-00`, moduloCervejaria: false, moduloOperacao: true, controlaEstoque: false, temCozinha: false, exclusivo: true },
+  { code: 'HIBRIDA-10', slug: `${CFG_PREFIX}hibrida-10`, moduloCervejaria: false, moduloOperacao: true, controlaEstoque: true, temCozinha: false, exclusivo: true },
+  { code: 'HIBRIDA-01', slug: `${CFG_PREFIX}hibrida-01`, moduloCervejaria: false, moduloOperacao: true, controlaEstoque: false, temCozinha: true, exclusivo: true },
+  { code: 'HIBRIDA-11', slug: `${CFG_PREFIX}hibrida-11`, moduloCervejaria: false, moduloOperacao: true, controlaEstoque: true, temCozinha: true, exclusivo: true },
 ] as const;
 
 async function cleanupOperacaoForBrewery(cervejariaId: string) {
@@ -463,7 +463,7 @@ export async function seedConfigTenants(): Promise<ConfigTenantFixture[]> {
     let produtoPreparoId: string | undefined;
     let eventoId: string | undefined;
 
-    if (def.moduloQuiosque) {
+    if (def.moduloOperacao) {
       const { pontoVenda } = await prisma.$transaction(async (tx) =>
         ativarModuloOperacao(tx, {
           cervejariaId: cervejaria.id,
@@ -558,7 +558,7 @@ export async function seedConfigTenants(): Promise<ConfigTenantFixture[]> {
       donoEmail,
       donoToken: signToken(userJwtPayload(dono), { expiresInSec: 8 * 3600 }),
       moduloCervejaria: def.moduloCervejaria,
-      moduloQuiosque: def.moduloQuiosque,
+      moduloOperacao: def.moduloOperacao,
       controlaEstoque: def.controlaEstoque,
       temCozinha: def.temCozinha,
       exclusivo: def.exclusivo,

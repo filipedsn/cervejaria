@@ -53,9 +53,9 @@ test.describe('TAP-68 — matriz cartesiana operacional', () => {
     data.append('donoEmail', owner.email);
     data.append('donoSenha', owner.password);
     data.append('moduloCervejaria', 'false');
-    data.append('moduloQuiosque', 'true');
-    data.append('quiosqueControlaEstoque', 'false');
-    data.append('quiosqueTemCozinha', 'false');
+    data.append('moduloOperacao', 'true');
+    data.append('operacaoControlaEstoque', 'false');
+    data.append('operacaoTemCozinha', 'false');
     const response = await fetch(`${API_BASE}/api/admin/cervejarias`, { method: 'POST', headers: { Cookie: adminCookie, Accept: 'application/json' }, body: data });
     expect(response.status).toBe(201);
     companyId = ((await response.json()) as { cervejaria: { id: string } }).cervejaria.id;
