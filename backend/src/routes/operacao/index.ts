@@ -41,9 +41,12 @@ export async function operacaoRoutes(app: FastifyInstance) {
     ]);
 
     return {
-      // CAIXA remains a first-class workflow even before a POS is provisioned,
-      // so the operator can reach the page that explains/provisions the next step.
-      ativo: profile ? profile.operationMode === 'CAIXA' || shouldExposeEstablishmentSurface(profile.capabilities) : false,
+      // CAIXA is exposed before a POS is provisioned only when the tenant has
+      // an operational profile or unit; a brewery-only tenant with taps/events
+      // must not gain the Operacao navigation surface by legacy fallback alone.
+      ativo: profile
+        ? (profile.operationalUnits.pointsOfSale > 0 || profile.capabilities.cashRegister || shouldExposeEstablishmentSurface(profile.capabilities))
+        : false,
       operationMode: profile?.operationMode ?? null,
       plannedOperationsEnabled: profile?.capabilities.plannedOperations ?? false,
       cashRegisterEnabled: profile?.capabilities.cashRegister ?? false,

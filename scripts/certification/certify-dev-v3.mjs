@@ -45,13 +45,25 @@ async function executeBatch(id) {
   if(id==='42-full-regression'){const r=await invoke('browser-e2e',['node_modules/@playwright/test/cli.js','test']);return r.status==='FAILED'&&!execEnv.E2E_EXECUTABLE_PATH?{...r,status:'HOST_BLOCKED_BROWSER',message:`${r.message}; browser-only evidence blocked`}:r;}
   if(id==='32-frontend-performance') return browserProbe();
   if(id==='39-observability'||id==='40-observability-goldens') return elasticEvidence(id);
-  if(id==='41-backup-restore-dev') return invoke('qa-backup-restore',['--import','tsx','backend/qa/suite.ts']);
+  if(id==='41-backup-restore-dev') return backupRestoreEvidence();
   if(['17-rbac','18-tenant-isolation','22-concurrency','24-security','29-realtime','30-performance','31-database-performance','33-dashboard-inventory','34-dashboard-reconciliation','35-dashboard-filters','36-dashboard-time','37-cross-dashboard','38-dashboard-freshness'].includes(id)) return runQaOnce();
   if(id==='43-coverage-reconciliation'||id==='44-report') return done('Computed from same-run atomic evidence');
   if(browserBatches.has(id)) return browserProbe();
   return runQaOnce();
 }
 async function runQaOnce(){if(qaEvidence)return {...qaEvidence,message:`Reused immutable same-run QA evidence for this independent category`,evidence:qaEvidence.evidence};qaEvidence=await invoke('qa-master',['--import','tsx','backend/qa/run.ts']);return qaEvidence;}
+async function backupRestoreEvidence(){
+  const backupDir=path.join(root,'deploy','backups-development',`certification-${runId}`);
+  mkdirSync(backupDir,{recursive:true});
+  const backupScript=path.join(root,'scripts','backup','backup-db.ps1');
+  const restoreScript=path.join(root,'scripts','backup','restore-drill-dev.ps1');
+  const created=await run('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',backupScript,'-Environment','development','-DestinationDir',backupDir],file('backup-create.log'));
+  if(!created)return fail('DEV backup command returned non-zero','backup-create.log');
+  const dump=readdirSync(backupDir).find(n=>/^backup-dev-.*\.sql$/i.test(n));
+  if(!dump)return fail('DEV backup command produced no SQL dump','backup-create.log');
+  const restored=await run('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',restoreScript,'-BackupFile',path.join(backupDir,dump)],file('restore-drill.log'));
+  return restored?done('DEV backup and isolated restore drill passed','restore-drill.log'):fail('DEV restore drill returned non-zero','restore-drill.log');
+}
 async function invoke(label,argv){const log=`${label}.log`,backend=argv.some(x=>x.startsWith('backend/')),actual=backend?argv.map(x=>x.startsWith('backend/')?x.slice('backend/'.length):x):argv,ok=await run(portableNode,actual,file(log),backend?path.join(root,'backend'):root);return ok?done(`${label} executed with Node 24 and DEV evidence`,log):fail(`${label} command returned non-zero`,log);}
 async function browserProbe(){const candidates=[`${process.env.LOCALAPPDATA??''}\\Google\\Chrome\\Application\\chrome.exe`,`${process.env['ProgramFiles']??''}\\Google\\Chrome\\Application\\chrome.exe`,`${process.env['ProgramFiles(x86)']??''}\\Microsoft\\Edge\\Application\\msedge.exe`].filter(Boolean);const script=`import {chromium} from 'playwright';const c=${JSON.stringify(candidates)};let out=[];for(const executablePath of c){try{const b=await chromium.launch({executablePath,headless:true});await b.close();out.push({executablePath,status:'PASS'});break}catch(e){out.push({executablePath,status:e.code||e.message})}}console.log(JSON.stringify({candidates:c,out}))`;const log=file('browser-probe.log');writeFileSync(log,'');const ok=await run(portableNode,['-e',script],log);return ok?done('A user-space browser executable was launched','browser-probe.log'):{status:'HOST_BLOCKED_BROWSER',message:'Chromium/Chrome/Edge launch failed without changing Windows security',evidence:'browser-probe.log'};}
 async function elasticEvidence(id){const url=(execEnv.KIBANA_ALERT_ES_URL??'http://127.0.0.1:9200').replace(/\/$/,'');const query={size:100,query:{bool:{should:[{match:{'attributes.test.run.id':runId}},{match:{'test.run.id':runId}}],minimum_should_match:1}}};const headers={'content-type':'application/json'};if(execEnv.ELASTIC_API_KEY_ALERT_POLLER)headers.authorization=`ApiKey ${execEnv.ELASTIC_API_KEY_ALERT_POLLER}`;else if(execEnv.ELASTIC_USER&&execEnv.ELASTIC_PASSWORD)headers.authorization=`Basic ${Buffer.from(`${execEnv.ELASTIC_USER}:${execEnv.ELASTIC_PASSWORD}`).toString('base64')}`;try{const res=await fetch(`${url}/_search`,{method:'POST',headers,body:JSON.stringify(query)}),body=await res.text();write(`${id}-elastic-response.json`,{url,status:res.status,query,response:JSON.parse(body)});return res.ok?done(`Elastic DEV query executed for ${runId}`,`${id}-elastic-response.json`):fail(`Elastic returned HTTP ${res.status}`,`${id}-elastic-response.json`);}catch(e){write(`${id}-elastic-response.json`,{url,query,error:String(e)});return fail(`Elastic DEV query unavailable: ${e}`,`${id}-elastic-response.json`);}}
