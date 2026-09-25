@@ -32,6 +32,7 @@ function classification(file, content) {
   if (/(^|\/)__tests__\//.test(normalized) || /\.(test|spec)\.(?:ts|tsx|mjs|js)$/.test(normalized)) return 'TEST_ONLY';
   if (/\.md$|documentation|docs\//i.test(normalized)) return 'DOCUMENTATION';
   if (normalized.endsWith('schema.prisma') || normalized.includes('/prisma/migrations/')) return 'PHYSICAL_DB_COMPATIBILITY';
+  if (/backfill|reconcile|legacy-fallback/i.test(normalized)) return 'PHYSICAL_DB_COMPATIBILITY';
   if (/migration|historical|legacy-only/i.test(content) && !normalized.includes('/src/')) return 'HISTORICAL_MIGRATION';
   if (/backend\/src\/(routes|lib)\/quiosque(?:\/|$)/.test(normalized) || /frontend\/src\/pages\/quiosque(?:\/|$)/.test(normalized)) return 'ACTIVE_RUNTIME';
   if (/frontend\/src\//.test(normalized) && /\/quiosque(?:[/'"`]|\?|\$\{|\)|\s)/.test(content)) return 'ACTIVE_RUNTIME';
@@ -55,13 +56,23 @@ export function inspectArchitecture(repoRoot = root) {
   }
   const active = occurrences.filter((item) => item.classification === 'ACTIVE_RUNTIME');
   const authorities = active.filter((item) => ['PontoVenda.usaCaixa', 'directSalesEnabled', 'ConfiguracaoQuiosque', 'PedidoQuiosque', 'SessaoCaixaQuiosque'].includes(item.legacyDependency));
+  const allSource = files.filter((file) => !file.endsWith('schema.prisma')).map((file) => readFileSync(file, 'utf8')).join('\n');
+  const schema = readFileSync(join(repoRoot, 'backend/prisma/schema.prisma'), 'utf8');
+  const canonical = {
+    product: /\bmodel Produto\b/.test(schema) && /\bprisma\.produto\b/.test(allSource),
+    inventory: /inventory-service\.ts/.test(files.join('\n')) && /inventoryBalance|InventoryBalance/.test(`${schema}\n${allSource}`),
+    kitchen: /kitchen-service\.ts/.test(files.join('\n')) && /PedidoOperacao|PedidoCozinha|pedidoOperacao/.test(`${schema}\n${allSource}`),
+    contexts: /plannedOperationsEnabled/.test(allSource) && /['"`]CAIXA['"`]/.test(allSource) && /['"`]EVENTO['"`]/.test(allSource),
+  };
   return {
     generatedAt: new Date().toISOString(), inspectedRoots: [...sourceRoots, 'backend/prisma/schema.prisma'],
     activeRuntimeReferences: active.length, activeLegacyAuthority: authorities.length,
+    canonical,
     gates: {
-      PRODUCT_SINGLE_SOURCE: active.every((item) => !['ProdutoQuiosque', 'CardapioQuiosque', 'produtoQuiosqueId'].includes(item.legacyDependency)),
-      INVENTORY_SINGLE_ENGINE: active.every((item) => !['EstoqueSaldoQuiosque', 'MovimentoEstoqueQuiosque'].includes(item.legacyDependency)),
-      KITCHEN_SINGLE_ENGINE: active.every((item) => !['PedidoQuiosque', 'quiosqueRoutes', '/api/quiosque'].includes(item.legacyDependency)),
+      PRODUCT_SINGLE_SOURCE: canonical.product && active.every((item) => !['ProdutoQuiosque', 'CardapioQuiosque', 'produtoQuiosqueId'].includes(item.legacyDependency)),
+      INVENTORY_SINGLE_ENGINE: canonical.inventory && active.every((item) => !['EstoqueSaldoQuiosque', 'MovimentoEstoqueQuiosque'].includes(item.legacyDependency)),
+      KITCHEN_SINGLE_ENGINE: canonical.kitchen && active.every((item) => !['PedidoQuiosque', 'quiosqueRoutes', '/api/quiosque'].includes(item.legacyDependency)),
+      EXACTLY_TWO_OPERATIONAL_CONTEXTS: canonical.contexts,
       NO_ACTIVE_QUIOSQUE_DOMAIN: active.length === 0, ACTIVE_LEGACY_AUTHORITY: authorities.length === 0,
     }, occurrences,
   };
@@ -71,6 +82,7 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
   const report = inspectArchitecture();
   const output = join(root, 'artifacts', 'domain-convergence', 'runtime-consumers.json');
   mkdirSync(resolve(output, '..'), { recursive: true }); writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
-  console.log(JSON.stringify({ output: relative(root, output).replaceAll('\\', '/'), activeRuntimeReferences: report.activeRuntimeReferences, activeLegacyAuthority: report.activeLegacyAuthority, gate: report.gates.NO_ACTIVE_QUIOSQUE_DOMAIN ? 'PASS' : 'FAIL' }));
-  process.exitCode = report.gates.NO_ACTIVE_QUIOSQUE_DOMAIN ? 0 : 1;
+  const architecturePass = Object.values(report.gates).every(Boolean);
+  console.log(JSON.stringify({ output: relative(root, output).replaceAll('\\', '/'), activeRuntimeReferences: report.activeRuntimeReferences, activeLegacyAuthority: report.activeLegacyAuthority, gate: architecturePass ? 'PASS' : 'FAIL' }));
+  process.exitCode = architecturePass ? 0 : 1;
 }
