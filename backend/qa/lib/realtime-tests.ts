@@ -415,7 +415,7 @@ export async function runRealtimeTests(ctx: QaContext, test: TestFn, perfSink?: 
     );
 
     await test(
-      { id: 'RT-11', category: 'Realtime', name: 'Quiosque emite pedido-novo na room cervejaria', requirement: 'RT-11' },
+      { id: 'RT-11', category: 'Realtime', name: 'Operacao emite pedido-novo na room cervejaria', requirement: 'RT-11' },
       async () => {
         const cfg = ctx.configTenants?.find((c) => c.code === 'QUIOSQUE-11');
         if (!cfg?.pontoVendaId || !cfg.produtoPreparoId) {
@@ -431,7 +431,7 @@ export async function runRealtimeTests(ctx: QaContext, test: TestFn, perfSink?: 
         socketQ.emit('join:cervejaria', cfg.cervejariaId);
         await settle();
 
-        const novos = collect<{ id?: string }>(socketQ, 'quiosque:pedido-novo');
+        const novos = collect<{ id?: string }>(socketQ, 'operacao:pedido-novo');
 
         const atual = await api<{ sessao?: { status: string } }>(
           'GET',
@@ -464,7 +464,7 @@ export async function runRealtimeTests(ctx: QaContext, test: TestFn, perfSink?: 
         novos.dispose();
         socketQ.disconnect();
         if (!hit) {
-          return { status: 'failed', message: 'quiosque:pedido-novo não chegou', expected: pedidoId ?? 'pedido', actual: 'timeout' };
+          return { status: 'failed', message: 'operacao:pedido-novo não chegou', expected: pedidoId ?? 'pedido', actual: 'timeout' };
         }
         return { message: 'Cozinha notificada via socket', expected: 'pedido-novo', actual: 'recebido' };
       },

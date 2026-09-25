@@ -237,15 +237,15 @@ export async function runPerfQuiosqueTests(ctx: QaContext, bench: BenchFn, test:
         for (let i = 0; i < 10; i += 1) {
           const chegada = new Promise<number | null>((resolve) => {
             const timer = setTimeout(() => {
-              socket.off('quiosque:pedido-novo', handler);
+              socket.off('operacao:pedido-novo', handler);
               resolve(null);
             }, 4000);
             const handler = () => {
               clearTimeout(timer);
-              socket.off('quiosque:pedido-novo', handler);
+              socket.off('operacao:pedido-novo', handler);
               resolve(performance.now());
             };
-            socket.on('quiosque:pedido-novo', handler);
+            socket.on('operacao:pedido-novo', handler);
           });
 
           const t0 = performance.now();
@@ -266,7 +266,7 @@ export async function runPerfQuiosqueTests(ctx: QaContext, bench: BenchFn, test:
           if (recebido === null) {
             return {
               status: 'failed',
-              message: 'Evento quiosque:pedido-novo não chegou em 4 s',
+              message: 'Evento operacao:pedido-novo não chegou em 4 s',
               expected: '10 eventos',
               actual: `${amostras.length} recebidos`,
             };

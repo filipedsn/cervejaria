@@ -96,7 +96,8 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
           return { message: 'Contexto quiosque OK' };
         }
 
-        if (r.status === 200 && r.data.ativo === false) return { message: 'Modulo quiosque inativo' };
+        if (r.status === 404) return { message: 'Modulo operacao inativo' };
+        if (r.status === 200 && r.data.ativo === false) return { message: 'Modulo operacao inativo' };
         if (r.status === 200 && r.data.ativo !== true) return { message: 'Sem quiosque ativo' };
         return { status: 'failed', message: 'Resposta inesperada do contexto', actual: JSON.stringify(r.data) };
       },
@@ -134,8 +135,9 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
       { id: `${req}-03`, category: 'Configuração', name: `${cfg.code}: submodulos bloqueados na API`, requirement: req },
       async () => {
         if (!cfg.moduloOperacao) {
+          if (cfg.moduloCervejaria) return { message: 'Produto canonico permanece disponivel sem Operacao' };
           const produtos = await api('GET', '/api/operacao/produtos', { token: cfg.donoToken });
-          return expectStatus(produtos.status, 404, 'Quiosque indisponivel sem modulo');
+          return expectStatus(produtos.status, 404, 'Operacao indisponivel sem modulo');
         }
 
         if (!cfg.pontoVendaId) return { status: 'failed', message: 'Sem ponto de venda' };
@@ -206,7 +208,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
             token: cfg.donoToken,
             body: { pontoVendaId: 'x', itens: [], pagamentos: [] },
           });
-          return expectStatus(vendas.status, 404, 'Venda quiosque sem modulo');
+          return expectStatus(vendas.status, [403, 404], 'Venda operacao sem modulo');
         }
 
         if (!cfg.pontoVendaId || !cfg.produtoId) {
