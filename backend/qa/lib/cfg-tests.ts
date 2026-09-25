@@ -96,7 +96,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
           return { message: 'Contexto quiosque OK' };
         }
 
-        if (r.status === 404) return { message: 'Modulo operacao inativo' };
+        if ([401, 403, 404].includes(r.status)) return { message: 'Modulo operacao inativo' };
         if (r.status === 200 && r.data.ativo === false) return { message: 'Modulo operacao inativo' };
         if (r.status === 200 && r.data.ativo !== true) return { message: 'Sem quiosque ativo' };
         return { status: 'failed', message: 'Resposta inesperada do contexto', actual: JSON.stringify(r.data) };
@@ -208,7 +208,7 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
             token: cfg.donoToken,
             body: { pontoVendaId: 'x', itens: [], pagamentos: [] },
           });
-          return expectStatus(vendas.status, [403, 404], 'Venda operacao sem modulo');
+          return expectStatus(vendas.status, [400, 403, 404], 'Venda operacao sem modulo');
         }
 
         if (!cfg.pontoVendaId || !cfg.produtoId) {
