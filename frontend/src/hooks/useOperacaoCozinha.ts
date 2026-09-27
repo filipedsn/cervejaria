@@ -12,7 +12,7 @@ export const CAIXA_COZINHA_QUERY_KEY = ['operacao-cozinha'] as const;
 export function useOperacaoCozinha() {
   const { cervejaria } = useAuth();
   const queryClient = useQueryClient();
-  const semeado = useRef(false);
+  const pedidosConhecidos = useRef<Set<string> | null>(null);
   const pollMs = usePollInterval(20_000);
 
   const query = useQuery({
@@ -33,14 +33,44 @@ export function useOperacaoCozinha() {
     [query.data],
   );
 
-  const aguardando = naFila.filter((pedido) => pedido.status === 'RECEBIDO').length;
+  const pedidosNaFila = naFila.filter((pedido) => pedido.status === 'RECEBIDO');
+  const itensNaFila = pedidosNaFila.reduce(
+    (total, pedido) => total + pedido.itens.reduce((subtotal, item) => subtotal + item.quantidade, 0),
+    0,
+  );
+  const pedidosEmPreparo = naFila.filter((pedido) => pedido.status === 'EM_PREPARO');
+  const emPreparo = pedidosEmPreparo
+    .reduce(
+      (total, pedido) => total + pedido.itens.reduce((subtotal, item) => subtotal + item.quantidade, 0),
+      0,
+    );
+  const pedidosProntos = naFila.filter((pedido) => pedido.status === 'PRONTO');
+  const prontos = pedidosProntos
+    .reduce(
+      (total, pedido) => total + pedido.itens.reduce((subtotal, item) => subtotal + item.quantidade, 0),
+      0,
+    );
+  const aguardando = pedidosNaFila.length;
   const alerta = useCozinhaAlerta(aguardando);
 
   useEffect(() => {
-    if (semeado.current || !query.data) return;
-    alerta.ignorar(query.data.map((pedido) => pedido.id));
-    semeado.current = true;
-  }, [query.data, alerta.ignorar]);
+    if (!query.data) return;
+
+    const idsAtuais = new Set(query.data.map((pedido) => pedido.id));
+    if (pedidosConhecidos.current === null) {
+      // Ao abrir a cozinha, os pedidos que ja existem nao sao novidades.
+      pedidosConhecidos.current = idsAtuais;
+      alerta.ignorar([...idsAtuais]);
+      return;
+    }
+
+    const novosPedidos = query.data.filter(
+      (pedido) =>
+        !pedidosConhecidos.current?.has(pedido.id) && pedido.status === 'RECEBIDO',
+    );
+    pedidosConhecidos.current = idsAtuais;
+    novosPedidos.forEach((pedido) => alerta.avisar(pedido.id));
+  }, [query.data, alerta.avisar, alerta.ignorar]);
 
   useEffect(() => {
     if (!cervejaria) return;
@@ -48,8 +78,7 @@ export function useOperacaoCozinha() {
     connectSocket(cervejaria.id);
     const socket = getSocket();
 
-    const onNovo = (pedido: PedidoCozinha) => {
-      alerta.avisar(pedido.id);
+    const onNovo = () => {
       void queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY });
     };
     const onAtualizado = () => {
@@ -90,13 +119,37 @@ export function useOperacaoCozinha() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY }),
   });
 
+  const removerItem = useMutation({
+    mutationFn: ({ comandaId, itemId }: { comandaId: string; itemId: string }) =>
+      api.delete(`/api/operacao/comandas/${comandaId}/itens/${itemId}`),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY }),
+  });
+
+  const confirmarCancelamentoItem = useMutation({
+    mutationFn: ({ pedidoId, itemId }: { pedidoId: string; itemId: string }) =>
+      api.patch(`/api/operacao/cozinha/${pedidoId}/itens/${itemId}/confirmar-cancelamento`, {}),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY }),
+  });
+
   return {
     ...query,
     naFila,
     entregues,
+    pedidosNaFila: pedidosNaFila.length,
+    itensNaFila,
     aguardando,
+    pedidosEmPreparo: pedidosEmPreparo.length,
+    emPreparo,
+    pedidosProntos: pedidosProntos.length,
+    prontos,
     alerta,
     mudarStatus,
+    removerItem,
+    confirmarCancelamentoItem,
     erroMutation: mudarStatus.error instanceof ApiError ? mudarStatus.error.message : null,
+    erroItemMutation: removerItem.error instanceof ApiError ? removerItem.error.message : null,
+    erroConfirmarCancelamentoItem: confirmarCancelamentoItem.error instanceof ApiError
+      ? confirmarCancelamentoItem.error.message
+      : null,
   };
 }

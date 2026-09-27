@@ -14,7 +14,9 @@ export function OperacaoCozinhaTvDemoPage() {
     <header className="cozinha-tv-header">
       <div><p className="cozinha-tv-eyebrow">Cozinha · Simulação</p><h1 className="cozinha-tv-title">Tap Quiver Eventos</h1></div>
       <div className="cozinha-tv-header-meta">
-        <div className="cozinha-tv-stat"><span className="cozinha-tv-stat-value">{pedidos.length}</span><span className="cozinha-tv-stat-label">na fila</span></div>
+        <div className="cozinha-tv-stat"><span className="cozinha-tv-stat-value">1 | 2</span><span className="cozinha-tv-stat-label">na fila</span></div>
+        <div className="cozinha-tv-stat cozinha-tv-stat--preparo"><span className="cozinha-tv-stat-value">2 | 4</span><span className="cozinha-tv-stat-label">em preparo</span></div>
+        <div className="cozinha-tv-stat cozinha-tv-stat--pronto"><span className="cozinha-tv-stat-value">1 | 3</span><span className="cozinha-tv-stat-label">prontos</span></div>
         <div className="cozinha-tv-stat cozinha-tv-stat--alert"><span className="cozinha-tv-stat-value">1</span><span className="cozinha-tv-stat-label">novo</span></div>
         <span className="cozinha-tv-demo-badge">Dados fictícios</span>
       </div>

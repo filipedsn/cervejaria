@@ -5,6 +5,7 @@ import { getAuthUser } from '../types/auth.js';
 import {
   formatCervejariaAuth,
   saveLogoAndExtractBranding,
+  savePortalBackground,
   reextractBrandingFromLogo,
   updateBrandingColors,
 } from '../lib/cervejaria-branding.js';
@@ -13,6 +14,7 @@ import { getOperationalProfile } from '../lib/operational-profile.js';
 import { updateOperationalConfig, updateOperationalConfigSchema } from '../lib/operational-config.js';
 
 const ALLOWED_LOGO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const ALLOWED_BACKGROUND_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 const updateBrandingSchema = z.object({
   corPrimaria: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida. Use formato #RRGGBB'),
@@ -152,6 +154,40 @@ export async function cervejariaRoutes(app: FastifyInstance) {
     }
 
     const updated = await saveLogoAndExtractBranding(user.cervejariaId!, logoBuffer);
+    return formatCervejariaAuth(updated);
+  });
+
+  app.post('/branding/portal-background', async (request) => {
+    const user = getAuthUser(request);
+    let imageBuffer: Buffer | null = null;
+
+    for await (const part of request.parts()) {
+      if (part.type !== 'file' || part.fieldname !== 'background') continue;
+      if (!ALLOWED_BACKGROUND_TYPES.has(part.mimetype)) {
+        throw badRequest('Formato inválido. Use PNG, JPG ou WEBP.');
+      }
+      imageBuffer = await part.toBuffer();
+      if (imageBuffer.length > 5 * 1024 * 1024) {
+        throw badRequest('A imagem deve ter no máximo 5 MB.');
+      }
+    }
+
+    if (!imageBuffer) throw badRequest('Nenhuma imagem enviada.');
+    try {
+      const updated = await savePortalBackground(user.cervejariaId!, imageBuffer);
+      return formatCervejariaAuth(updated);
+    } catch (err) {
+      if (err instanceof Error && 'statusCode' in err) throw err;
+      throw badRequest('A imagem enviada não pôde ser processada. Escolha outro arquivo.');
+    }
+  });
+
+  app.delete('/branding/portal-background', async (request) => {
+    const user = getAuthUser(request);
+    const updated = await prisma.cervejaria.update({
+      where: { id: user.cervejariaId! },
+      data: { portalBackgroundUrl: null },
+    });
     return formatCervejariaAuth(updated);
   });
 }

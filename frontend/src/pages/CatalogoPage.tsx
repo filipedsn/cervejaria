@@ -17,6 +17,7 @@ import { CurrencyInput } from '../components/CurrencyInput';
 
 import { parseCurrencyInput, formatCurrencyInputFromNumber } from '../lib/currency';
 import { invalidateOnboardingReadiness } from '../lib/onboarding';
+import { ProdutoOpcionaisModal } from '../components/ProdutoOpcionaisModal';
 
 
 
@@ -36,11 +37,13 @@ function CatalogItemActions({
   onEdit,
   onToggleActive,
   onDelete,
+  onOpcionais,
 }: {
   active: boolean;
   onEdit: () => void;
   onToggleActive: () => void;
   onDelete: () => void;
+  onOpcionais: () => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2 shrink-0">
@@ -53,6 +56,7 @@ function CatalogItemActions({
       <button type="button" className="touch-btn-danger touch-btn-sm" onClick={onDelete}>
         Excluir
       </button>
+      <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={onOpcionais}>Opcionais</button>
     </div>
   );
 }
@@ -72,6 +76,7 @@ export function CatalogoPage({ embedded }: { embedded?: boolean } = {}) {
   const [editingProduto, setEditingProduto] = useState<Produto | null>(null);
 
   const [error, setError] = useState('');
+  const [opcionaisProduto, setOpcionaisProduto] = useState<Produto | null>(null);
 
 
 
@@ -222,6 +227,7 @@ export function CatalogoPage({ embedded }: { embedded?: boolean } = {}) {
                 onEdit={() => { setEditingProduto(p); setShowBebidaModal(true); }}
                 onToggleActive={() => handleToggleProduto(p)}
                 onDelete={() => handleDeleteProduto(p)}
+                onOpcionais={() => setOpcionaisProduto(p)}
               />
 
             </div>
@@ -284,6 +290,7 @@ export function CatalogoPage({ embedded }: { embedded?: boolean } = {}) {
                   onEdit={() => { setEditingProduto(p); setShowComidaModal(true); }}
                   onToggleActive={() => handleToggleProduto(p)}
                   onDelete={() => handleDeleteProduto(p)}
+                  onOpcionais={() => setOpcionaisProduto(p)}
                 />
 
               </div>
@@ -300,6 +307,7 @@ export function CatalogoPage({ embedded }: { embedded?: boolean } = {}) {
 
 
 
+      {opcionaisProduto && <ProdutoOpcionaisModal open={!!opcionaisProduto} onClose={() => setOpcionaisProduto(null)} produtoId={opcionaisProduto.id} produtoNome={opcionaisProduto.nome} baseUrl="/api/produtos" />}
       <BebidaModal
 
         open={showBebidaModal}
@@ -341,6 +349,7 @@ function BebidaModal({ open, onClose, produto, onError }: {
 }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
+    tipo: 'BEBIDA' as 'BEBIDA' | 'COMIDA',
     nome: '',
     descricao: '',
     formato: 'CHOPE' as FormatoBebida,
@@ -348,15 +357,19 @@ function BebidaModal({ open, onClose, produto, onError }: {
     estilo: '',
     precoUnitario: '',
     precos: VOLUMES.map((v) => ({ volumeMl: v, preco: '' })),
+    controlaEstoque: true,
+    exigePreparo: false,
   });
 
-  const isChope = form.formato === 'CHOPE';
+  const isBebida = form.tipo === 'BEBIDA';
+  const isChope = isBebida && form.formato === 'CHOPE';
 
   useEffect(() => {
     if (!open) return;
     if (produto) {
       const chope = isBebidaChope(produto);
       setForm({
+        tipo: produto.tipo,
         nome: produto.nome,
         descricao: produto.descricao ?? '',
         formato: produto.formato ?? 'CHOPE',
@@ -367,9 +380,12 @@ function BebidaModal({ open, onClose, produto, onError }: {
           const p = produto.precos.find((pr) => pr.volumeMl === v);
           return { volumeMl: v, preco: p ? formatCurrencyInputFromNumber(p.preco) : '' };
         }),
+        controlaEstoque: produto.controlaEstoque ?? true,
+        exigePreparo: produto.exigePreparo ?? false,
       });
     } else {
       setForm({
+        tipo: 'BEBIDA',
         nome: '',
         descricao: '',
         formato: 'CHOPE',
@@ -377,6 +393,8 @@ function BebidaModal({ open, onClose, produto, onError }: {
         estilo: '',
         precoUnitario: '',
         precos: VOLUMES.map((v) => ({ volumeMl: v, preco: '' })),
+        controlaEstoque: true,
+        exigePreparo: false,
       });
     }
   }, [produto, open]);
@@ -390,13 +408,15 @@ function BebidaModal({ open, onClose, produto, onError }: {
         : [{ volumeMl: FOOD_UNIT_ML, preco: parseCurrencyInput(form.precoUnitario) }];
 
       const data = {
-        tipo: 'BEBIDA' as const,
-        formato: form.formato,
+        tipo: form.tipo,
+        formato: isBebida ? form.formato : undefined,
         nome: form.nome,
         descricao: form.descricao || undefined,
         cor: isChope ? form.cor : undefined,
         estilo: isChope ? form.estilo || undefined : undefined,
         precos,
+        controlaEstoque: form.controlaEstoque,
+        exigePreparo: form.exigePreparo,
       };
       return produto
         ? api.put(`/api/produtos/${produto.id}`, data)
@@ -411,21 +431,36 @@ function BebidaModal({ open, onClose, produto, onError }: {
   });
 
   return (
-    <Modal open={open} onClose={onClose} title={produto ? 'Editar Bebida' : 'Nova Bebida'}>
+    <Modal open={open} onClose={onClose} title={produto ? 'Editar produto' : 'Nova Bebida'}>
       <form onSubmit={(e) => { e.preventDefault(); save.mutate(); }} className="space-y-4">
-        <div>
-          <label className="label">Formato</label>
-          <select
-            className="input"
-            value={form.formato}
-            onChange={(e) => setForm({ ...form, formato: e.target.value as FormatoBebida })}
-          >
-            <option value="CHOPE">Chope (tap / copo)</option>
-            {FORMATOS_EMBALAGEM.map((f) => (
-              <option key={f} value={f}>{FORMATO_BEBIDA_LABELS[f]}</option>
-            ))}
-          </select>
-        </div>
+        {produto && (
+          <div>
+            <label className="label">Tipo</label>
+            <select
+              className="input"
+              value={form.tipo}
+              onChange={(e) => setForm({ ...form, tipo: e.target.value as 'BEBIDA' | 'COMIDA' })}
+            >
+              <option value="BEBIDA">Bebida</option>
+              <option value="COMIDA">Comida</option>
+            </select>
+          </div>
+        )}
+        {isBebida ? (
+          <div>
+            <label className="label">Formato</label>
+            <select
+              className="input"
+              value={form.formato}
+              onChange={(e) => setForm({ ...form, formato: e.target.value as FormatoBebida })}
+            >
+              <option value="CHOPE">Chope (tap / copo)</option>
+              {FORMATOS_EMBALAGEM.map((f) => (
+                <option key={f} value={f}>{FORMATO_BEBIDA_LABELS[f]}</option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div>
           <label className="label">Nome</label>
           <input className="input" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required />
@@ -473,6 +508,11 @@ function BebidaModal({ open, onClose, produto, onError }: {
             />
           </div>
         )}
+        <ProdutoOperacionalFields
+          controlaEstoque={form.controlaEstoque}
+          exigePreparo={form.exigePreparo}
+          onChange={(fields) => setForm({ ...form, ...fields })}
+        />
         <ModalFormFooter onCancel={onClose} pending={save.isPending} />
       </form>
     </Modal>
@@ -489,7 +529,7 @@ function ComidaModal({ open, onClose, produto, onError }: {
 
   const queryClient = useQueryClient();
 
-  const [form, setForm] = useState({ nome: '', descricao: '', preco: '' });
+  const [form, setForm] = useState({ nome: '', descricao: '', preco: '', controlaEstoque: true, exigePreparo: false });
 
 
 
@@ -499,19 +539,21 @@ function ComidaModal({ open, onClose, produto, onError }: {
 
     if (produto) {
 
-      setForm({
+        setForm({
 
         nome: produto.nome,
 
         descricao: produto.descricao ?? '',
 
-        preco: produto.precos[0] ? formatCurrencyInputFromNumber(produto.precos[0].preco) : '',
+          preco: produto.precos[0] ? formatCurrencyInputFromNumber(produto.precos[0].preco) : '',
+          controlaEstoque: produto.controlaEstoque ?? true,
+          exigePreparo: produto.exigePreparo ?? false,
 
       });
 
     } else {
 
-      setForm({ nome: '', descricao: '', preco: '' });
+      setForm({ nome: '', descricao: '', preco: '', controlaEstoque: true, exigePreparo: false });
 
     }
 
@@ -532,6 +574,8 @@ function ComidaModal({ open, onClose, produto, onError }: {
         descricao: form.descricao || undefined,
 
         precos: [{ volumeMl: FOOD_UNIT_ML, preco: parseCurrencyInput(form.preco) }],
+        controlaEstoque: form.controlaEstoque,
+        exigePreparo: form.exigePreparo,
 
       };
 
@@ -592,6 +636,12 @@ function ComidaModal({ open, onClose, produto, onError }: {
 
         </div>
 
+        <ProdutoOperacionalFields
+          controlaEstoque={form.controlaEstoque}
+          exigePreparo={form.exigePreparo}
+          onChange={(fields) => setForm({ ...form, ...fields })}
+        />
+
         <ModalFormFooter onCancel={onClose} pending={save.isPending} />
 
       </form>
@@ -600,6 +650,46 @@ function ComidaModal({ open, onClose, produto, onError }: {
 
   );
 
+}
+
+function ProdutoOperacionalFields({
+  controlaEstoque,
+  exigePreparo,
+  onChange,
+}: {
+  controlaEstoque: boolean;
+  exigePreparo: boolean;
+  onChange: (fields: { controlaEstoque: boolean; exigePreparo: boolean }) => void;
+}) {
+  return (
+    <div className="space-y-2 border-t border-line pt-3">
+      <p className="label">Comportamento operacional</p>
+      <label className="card flex cursor-pointer items-start gap-3 py-3">
+        <input
+          type="checkbox"
+          className="mt-1 h-5 w-5 shrink-0 accent-brand-400"
+          checked={exigePreparo}
+          onChange={(event) => onChange({ controlaEstoque, exigePreparo: event.target.checked })}
+        />
+        <span className="min-w-0">
+          <span className="block font-semibold">Vai para a cozinha</span>
+          <span className="block text-xs text-ink-faint">Gera pedido de preparo na fila da cozinha.</span>
+        </span>
+      </label>
+      <label className="card flex cursor-pointer items-start gap-3 py-3">
+        <input
+          type="checkbox"
+          className="mt-1 h-5 w-5 shrink-0 accent-brand-400"
+          checked={controlaEstoque}
+          onChange={(event) => onChange({ controlaEstoque: event.target.checked, exigePreparo })}
+        />
+        <span className="min-w-0">
+          <span className="block font-semibold">Controlar estoque</span>
+          <span className="block text-xs text-ink-faint">Baixa este item no controle de estoque.</span>
+        </span>
+      </label>
+    </div>
+  );
 }
 
 

@@ -15,6 +15,7 @@ import {
   type PaymentFormRow,
 } from '../../components/PaymentFormModal';
 import { AdicionarItensOperacaoModal } from '../../components/operacao/AdicionarItensOperacaoModal';
+import { SelecionarClienteOperacao } from '../../components/operacao/SelecionarClienteOperacao';
 import { CheckoutItemsCard } from '../../components/checkout/CheckoutItemsCard';
 import { PaymentDiscountFields } from '../../components/checkout/PaymentDiscountFields';
 import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../../lib/currency';
@@ -22,6 +23,7 @@ import { PAYMENT_LABELS } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
+import type { Cliente } from '../../types';
 import {
   mapSaldosEstoque,
   normalizeCategoriaProduto,
@@ -55,6 +57,7 @@ export function OperacaoVendaAvulsaPage() {
   const [closedVenda, setClosedVenda] = useState<ComandaOperacao | null>(null);
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([{ forma: 'PIX', valor: '' }]);
   const [descontoInput, setDescontoInput] = useState('');
+  const [cliente, setCliente] = useState<Cliente | null>(null);
   const [erro, setErro] = useState('');
 
   const pontoAtivo = pontoVendaId || pontosVenda[0]?.id || '';
@@ -104,18 +107,18 @@ export function OperacaoVendaAvulsaPage() {
     });
   }, [descontoInput, showPayment, totalComDesconto]);
 
-  const adicionarNoModal = (produto: ProdutoOperacao) => {
+  const adicionarNoModal = (produto: ProdutoOperacao, configuracao?: { quantidade?: number; paraViagem?: boolean; observacao?: string; opcionais?: LinhaCarrinho['opcionais'] }) => {
     setItensModal((atual) => {
-      const existente = atual.find((linha) => linha.produto.id === produto.id);
+      const existente = atual.find((linha) => linha.produto.id === produto.id && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []));
       const quantidadeCarrinho =
         carrinho.find((linha) => linha.produto.id === produto.id)?.quantidade ?? 0;
       const quantidadeAtual = quantidadeCarrinho + (existente?.quantidade ?? 0);
       if (!podeIncrementarLinhaCarrinho(produto, quantidadeAtual, saldos, controlaEstoque)) {
         return atual;
       }
-      if (!existente) return [...atual, { produto, quantidade: 1 }];
+      if (!existente) return [...atual, { produto, quantidade: configuracao?.quantidade ?? 1, paraViagem: configuracao?.paraViagem, observacao: configuracao?.observacao, opcionais: configuracao?.opcionais }];
       return atual.map((linha) =>
-        linha.produto.id === produto.id ? { ...linha, quantidade: linha.quantidade + 1 } : linha,
+        linha.produto.id === produto.id && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []) ? { ...linha, quantidade: linha.quantidade + (configuracao?.quantidade ?? 1) } : linha,
       );
     });
     setErro('');
@@ -149,7 +152,7 @@ export function OperacaoVendaAvulsaPage() {
     setCarrinho((atual) => {
       const next = [...atual];
       for (const linha of itensModal) {
-        const index = next.findIndex((item) => item.produto.id === linha.produto.id);
+        const index = next.findIndex((item) => item.produto.id === linha.produto.id && item.paraViagem === linha.paraViagem && item.observacao === linha.observacao && JSON.stringify(item.opcionais ?? []) === JSON.stringify(linha.opcionais ?? []));
         if (index < 0) next.push(linha);
         else next[index] = { ...next[index], quantidade: next[index].quantidade + linha.quantidade };
       }
@@ -173,7 +176,8 @@ export function OperacaoVendaAvulsaPage() {
     }) =>
       api.post<ComandaOperacao>('/api/operacao/vendas', {
         pontoVendaId: pontoAtivo,
-        itens: carrinho.map((linha) => ({ produtoId: linha.produto.id, quantidade: linha.quantidade })),
+        ...(cliente ? { clienteId: cliente.id } : {}),
+        itens: carrinho.map((linha) => ({ produtoId: linha.produto.id, quantidade: linha.quantidade, paraViagem: linha.paraViagem ?? false, observacao: linha.observacao, opcionais: linha.opcionais?.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })) })),
         pagamentos,
         desconto,
       }),
@@ -257,6 +261,8 @@ export function OperacaoVendaAvulsaPage() {
       <p className="text-sm text-ink-muted leading-relaxed">
         Venda rápida sem abrir comanda. Não entra no ranking nem na fidelização.
       </p>
+
+      <SelecionarClienteOperacao value={cliente} onChange={setCliente} />
 
       {!caixaAberto && pontoAtivo && (
         <div className="alert-error">

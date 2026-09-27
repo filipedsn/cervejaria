@@ -23,6 +23,7 @@ function enriquecerProdutosOperacao<
     const precoEfetivo = turnoPreco ?? templatePreco ?? toNumber(p.precos?.[0]?.preco ?? 0);
     return {
       ...p,
+      gruposOpcionais: ((p as T & { opcionaisVinculados?: Array<{ opcional: { id: string; nome: string; preco: unknown } }> }).opcionaisVinculados ?? []).length ? [{ id: 'opcionais', nome: 'Opcionais', obrigatorio: false, maximo: 99, opcoes: (p as T & { opcionaisVinculados: Array<{ opcional: { id: string; nome: string; preco: unknown } }> }).opcionaisVinculados.map(({ opcional }) => ({ id: opcional.id, nome: opcional.nome, precoAdicional: toNumber(opcional.preco) })) }] : [],
       precoUnit: String(precoEfetivo),
       precoEfetivo,
       precoOverrideTurno: turnoPreco !== undefined,
@@ -48,7 +49,7 @@ export async function listProdutosDoTurno(sessaoCaixaId: string) {
     where: { sessaoCaixaId },
     include: {
       produto: {
-        include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 } },
+        include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
       },
     },
     orderBy: { produto: { nome: 'asc' } },
@@ -311,7 +312,7 @@ export async function listProdutosOperacionaisTurno(
   if (!usaCardapio) {
     const produtos = await prisma.produto.findMany({
       where: { cervejariaId, ativo: true },
-      include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 } },
+      include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
       orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
     });
     return enriquecerProdutosOperacao(produtos, null);
@@ -326,7 +327,7 @@ export async function listProdutosOperacionaisTurno(
   if (!sessao) {
     const produtos = await prisma.produto.findMany({
       where: { cervejariaId, ativo: true },
-      include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 } },
+      include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
       orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
     });
     return enriquecerProdutosOperacao(produtos, null);

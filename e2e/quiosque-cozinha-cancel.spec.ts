@@ -76,23 +76,28 @@ test.describe('Quiosque — fila da cozinha e cancelamento', () => {
 
     const r = await apiRequest('PATCH', `/api/operacao/cozinha/${pedidoId}/status`, {
       cookie: atendenteCookie,
-      body: { status: 'CANCELADO' },
+      body: { status: 'CANCELAMENTO_PENDENTE' },
     });
     expect(r.status, 'cancelamento é exclusivo do DONO').toBe(403);
   });
 
-  test('DONO cancela pedido em preparo pela interface e ele sai da fila', async ({ page }) => {
+  test('DONO solicita cancelamento, pedido fica destacado e sai após confirmação da cozinha', async ({ page }) => {
     await page.goto('/operacao/cozinha');
     const card = page.locator('article').filter({ hasText: `Mesa ${identificador}` });
     await card.getByRole('button', { name: 'Cancelar pedido' }).click();
 
-    const dialog = page.getByRole('dialog', { name: 'Cancelar pedido da cozinha' });
+    const dialog = page.getByRole('dialog', { name: 'Solicitar cancelamento do pedido' });
     await expect(dialog).toContainText(`Mesa ${identificador}`);
     await expect(dialog).toContainText('atualmente em preparo');
-    await dialog.getByRole('button', { name: 'Cancelar pedido', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Solicitar cancelamento' }).click();
 
-    await expect(page.getByText('Pedido cancelado e removido da fila.')).toBeVisible();
-    await expect(page.locator('article').filter({ hasText: `Mesa ${identificador}` })).toHaveCount(0);
+    const card = page.locator('article').filter({ hasText: `Mesa ${identificador}` });
+    await expect(page.getByText('Cancelamento solicitado. O pedido permanecerá destacado até a confirmação da cozinha.')).toBeVisible();
+    await expect(card).toBeVisible();
+    await expect(card.getByText('Cancelamento solicitado')).toBeVisible();
+    await card.getByRole('button', { name: 'Confirmar cancelamento' }).click();
+    await expect(page.getByText('Cancelamento confirmado e pedido removido da fila.')).toBeVisible();
+    await expect(card).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Entregues' }).click();
     await expect(page.locator('article').filter({ hasText: `Mesa ${identificador}` })).toHaveCount(0);

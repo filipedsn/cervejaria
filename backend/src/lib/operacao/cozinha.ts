@@ -8,6 +8,7 @@ type TxClient = Prisma.TransactionClient;
 
 /** Pedidos que ainda ocupam a fila da cozinha. */
 export const STATUS_NA_FILA: StatusPedidoOperacao[] = ['RECEBIDO', 'EM_PREPARO', 'PRONTO'];
+export const STATUS_CANCELAMENTO_PENDENTE: StatusPedidoOperacao = 'CANCELAMENTO_PENDENTE';
 
 /**
  * A fila operacional não pode abandonar um pedido pendente na troca de dia.
@@ -17,11 +18,17 @@ export function filtroListaPedidosCozinha(
   incluirEntregues: boolean,
   diaAtual: Date,
 ): Prisma.PedidoOperacaoWhereInput {
-  if (!incluirEntregues) return { status: { in: STATUS_NA_FILA } };
+  const pendente = {
+    status: { in: STATUS_NA_FILA },
+    comanda: { status: 'ABERTA' as const },
+  };
+  const cancelamentoPendente = { status: STATUS_CANCELAMENTO_PENDENTE };
+  if (!incluirEntregues) return { OR: [pendente, cancelamentoPendente] };
 
   return {
     OR: [
-      { status: { in: STATUS_NA_FILA } },
+      pendente,
+      cancelamentoPendente,
       { status: 'ENTREGUE', diaOperacional: diaAtual },
     ],
   };
@@ -32,31 +39,54 @@ export function filtroListaPedidosCozinha(
  * cozinha erra o toque, e obrigar a cancelar o pedido para corrigir seria pior.
  */
 export const TRANSICOES: Record<StatusPedidoOperacao, StatusPedidoOperacao[]> = {
-  RECEBIDO: ['EM_PREPARO', 'CANCELADO'],
-  EM_PREPARO: ['PRONTO', 'RECEBIDO', 'CANCELADO'],
+  RECEBIDO: ['EM_PREPARO', 'CANCELAMENTO_PENDENTE'],
+  EM_PREPARO: ['PRONTO', 'RECEBIDO', 'CANCELAMENTO_PENDENTE'],
   PRONTO: ['ENTREGUE', 'EM_PREPARO'],
   ENTREGUE: ['PRONTO'],
+  CANCELAMENTO_PENDENTE: ['CANCELADO'],
   CANCELADO: [],
 };
 
 export const INCLUDE_PEDIDO_COZINHA = {
-  itensComanda: true,
+  itensComanda: { include: { opcionais: true } },
   comanda: { select: { id: true, tipo: true, identificador: true, numero: true } },
+} as const;
+
+export const INCLUDE_PEDIDO_COZINHA_COM_CLIENTE = {
+  ...INCLUDE_PEDIDO_COZINHA,
+  comanda: {
+    select: {
+      id: true,
+      tipo: true,
+      identificador: true,
+      numero: true,
+      cliente: { select: { id: true, nome: true, telefone: true } },
+    },
+  },
 } as const;
 
 type PedidoCozinha = Prisma.PedidoOperacaoGetPayload<{
   include: typeof INCLUDE_PEDIDO_COZINHA;
+}>;
+type PedidoCozinhaComCliente = Prisma.PedidoOperacaoGetPayload<{
+  include: typeof INCLUDE_PEDIDO_COZINHA_COM_CLIENTE;
 }>;
 
 /**
  * O que a cozinha precisa ver. Itens sem preparo (bebida, gelo) ficam de fora
  * para nao poluir a tela com o que ja saiu direto do balcao.
  */
-export function resumoPedidoCozinha(pedido: PedidoCozinha) {
+export function resumoPedidoCozinha(pedido: PedidoCozinha | PedidoCozinhaComCliente, incluirCliente = false) {
+  const itens = pedido.itensComanda.filter((item) => item.exigePreparo && !item.canceladoEm);
+  const cliente = 'cliente' in pedido.comanda ? pedido.comanda.cliente : null;
+
   return {
     id: pedido.id,
     numero: pedido.numero,
     status: pedido.status,
+    // Itens de comandas/eventos anteriores podem ter sido marcados para
+    // viagem antes de o campo do pedido operacional ser preenchido.
+    paraViagem: pedido.paraViagem || itens.some((item) => item.paraViagem),
     observacao: pedido.observacao,
     createdAt: pedido.createdAt,
     statusDesde: pedido.statusDesde,
@@ -66,14 +96,22 @@ export function resumoPedidoCozinha(pedido: PedidoCozinha) {
       tipo: pedido.comanda.tipo,
       identificador: pedido.comanda.identificador,
       numero: pedido.comanda.numero,
+      cliente: incluirCliente ? cliente : null,
     },
-    itens: pedido.itensComanda
-      .filter((item) => item.exigePreparo)
-      .map((item) => ({
+    itens: itens.map((item) => ({
         id: item.id,
         nome: item.nome ?? '',
         quantidade: item.quantidade,
+        cancelamentoPendente: Boolean(item.cancelamentoPendenteEm),
         precoUnit: toNumber(item.precoUnit),
+        paraViagem: item.paraViagem || pedido.paraViagem,
+        observacao: item.observacao,
+        opcionais: (item.opcionais ?? []).map((opcional) => ({
+          id: opcional.id,
+          nome: opcional.nome,
+          precoAdicional: toNumber(opcional.precoAdicional),
+          quantidade: opcional.quantidade,
+        })),
       })),
   };
 }
@@ -113,6 +151,10 @@ export async function aplicarStatusPedidoCozinha(
     data: {
       status: novoStatus,
       statusDesde: agora,
+      clienteAvisadoEm:
+        pedido.status !== novoStatus && (pedido.status === 'PRONTO' || novoStatus === 'PRONTO')
+          ? null
+          : undefined,
       entregueEm:
         novoStatus === 'ENTREGUE'
           ? agora
@@ -140,20 +182,21 @@ export function pedidoVaiParaCozinha(itens: Array<{ exigePreparo: boolean }>): b
 export function pedidoContaNaComanda(
   pedido: {
     status: StatusPedidoOperacao;
-    itens: Array<{ exigePreparo: boolean }>;
+    itens: Array<{ exigePreparo: boolean; cancelamentoPendenteEm?: Date | null; canceladoEm?: Date | null }>;
   },
   _comanda?: { tipo: ComandaTipo },
 ): boolean {
-  if (pedido.status === 'CANCELADO') return false;
-  return true;
+  if (pedido.status === 'CANCELADO' || pedido.status === 'CANCELAMENTO_PENDENTE') return false;
+  return pedido.itens.some((item) => !item.cancelamentoPendenteEm && !item.canceladoEm);
 }
 
 export function temPedidoCozinhaPendente(
-  pedidos: Array<{ status: StatusPedidoOperacao; itens?: Array<{ exigePreparo: boolean }>; itensComanda?: Array<{ exigePreparo: boolean }> }>,
+  pedidos: Array<{ status: StatusPedidoOperacao; itens?: Array<{ exigePreparo: boolean; cancelamentoPendenteEm?: Date | null; canceladoEm?: Date | null }>; itensComanda?: Array<{ exigePreparo: boolean; cancelamentoPendenteEm?: Date | null; canceladoEm?: Date | null }> }>,
 ): boolean {
   return pedidos.some((pedido) => {
     const itens = pedido.itensComanda ?? pedido.itens ?? [];
-    return pedidoVaiParaCozinha(itens) && STATUS_NA_FILA.includes(pedido.status);
+    return itens.some((item) => item.exigePreparo && !item.cancelamentoPendenteEm && !item.canceladoEm) &&
+      STATUS_NA_FILA.includes(pedido.status);
   });
 }
 
@@ -178,7 +221,7 @@ export function notificarCozinha(
   pedido: PedidoCozinha,
   novo: boolean,
 ) {
-  if (!pedidoVaiParaCozinha(pedido.itensComanda)) return;
+  if (pedido.status !== 'CANCELADO' && !pedidoVaiParaCozinha(pedido.itensComanda)) return;
 
   emitToCervejaria(app.io, cervejariaId, {
     type: novo ? 'operacao:pedido-novo' : 'operacao:pedido-atualizado',

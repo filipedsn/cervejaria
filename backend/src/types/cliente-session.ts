@@ -1,4 +1,5 @@
 export const CLIENTE_COOKIE_NAME = 'cliente_token';
+export const PDV_CLIENTE_COOKIE_NAME = 'cliente_pdv_token';
 
 export interface ClienteSessionPayload {
   type: 'cliente';
@@ -8,6 +9,14 @@ export interface ClienteSessionPayload {
   clienteId: string;
   comandaId: string;
   portalGeneration: number;
+}
+
+export interface PdvClienteSessionPayload {
+  type: 'cliente-pdv';
+  cervejariaId: string;
+  pontoVendaId: string;
+  clienteId: string;
+  comandaId: string;
 }
 
 export function isClienteSessionPayload(value: unknown): value is ClienteSessionPayload {

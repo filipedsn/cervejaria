@@ -1,11 +1,12 @@
 import { z } from 'zod';
 import { prisma } from './prisma.js';
-import { STATUS_NA_FILA } from './operacao/cozinha.js';
+import { STATUS_CANCELAMENTO_PENDENTE, STATUS_NA_FILA } from './operacao/cozinha.js';
 import {
   CozinhaComPedidosAtivosError,
   ConfirmacaoEstoqueObrigatoriaError,
 } from './operacao/capacidades.js';
 import { emitAuditEvent } from './audit/emit-audit-event.js';
+import { diaOperacional } from './operacao/venda.js';
 
 export const updateOperationalConfigSchema = z
   .object({
@@ -15,6 +16,8 @@ export const updateOperationalConfigSchema = z
     tapsEnabled: z.boolean().optional(),
     inventoryEnabled: z.boolean().optional(),
     kitchenEnabled: z.boolean().optional(),
+    whatsappPedidoProntoEnabled: z.boolean().optional(),
+    whatsappPedidoProntoNaCozinha: z.boolean().optional(),
     confirmacaoEstoque: z.literal(true).optional(),
   })
   .strict()
@@ -24,7 +27,9 @@ export const updateOperationalConfigSchema = z
       body.plannedOperationsEnabled !== undefined ||
       body.tapsEnabled !== undefined ||
       body.inventoryEnabled !== undefined ||
-      body.kitchenEnabled !== undefined,
+      body.kitchenEnabled !== undefined ||
+      body.whatsappPedidoProntoEnabled !== undefined ||
+      body.whatsappPedidoProntoNaCozinha !== undefined,
     'Informe ao menos uma capacidade para alterar',
   );
 
@@ -71,7 +76,7 @@ export async function updateOperationalConfig(
 
   if (modeChanged && operationMode === 'EVENTO' && db.sessaoCaixaOperacao?.findFirst) {
     const openCash = await db.sessaoCaixaOperacao.findFirst({
-      where: { cervejariaId, status: 'ABERTO' },
+      where: { cervejariaId, status: 'ABERTO', diaOperacional: diaOperacional() },
       select: { id: true },
     });
     if (openCash) {
@@ -116,7 +121,11 @@ export async function updateOperationalConfig(
 
   if (kitchenTurnsOff) {
     const activeOrder = await db.pedidoOperacao.findFirst({
-      where: { cervejariaId, status: { in: STATUS_NA_FILA }, itensComanda: { some: { exigePreparo: true } } },
+      where: {
+        cervejariaId,
+        status: { in: [...STATUS_NA_FILA, STATUS_CANCELAMENTO_PENDENTE] },
+        itensComanda: { some: { exigePreparo: true } },
+      },
       select: { id: true },
     });
     if (activeOrder) throw new CozinhaComPedidosAtivosError();
@@ -131,6 +140,12 @@ export async function updateOperationalConfig(
     ...(input.tapsEnabled !== undefined ? { tapsEnabled: input.tapsEnabled } : {}),
     ...(input.inventoryEnabled !== undefined ? { inventoryEnabled: input.inventoryEnabled } : {}),
     ...(input.kitchenEnabled !== undefined ? { kitchenEnabled: input.kitchenEnabled } : {}),
+    ...(input.whatsappPedidoProntoEnabled !== undefined
+      ? { whatsappPedidoProntoEnabled: input.whatsappPedidoProntoEnabled }
+      : {}),
+    ...(input.whatsappPedidoProntoNaCozinha !== undefined
+      ? { whatsappPedidoProntoNaCozinha: input.whatsappPedidoProntoNaCozinha }
+      : {}),
   };
 
   return db.configuracaoOperacional.upsert({

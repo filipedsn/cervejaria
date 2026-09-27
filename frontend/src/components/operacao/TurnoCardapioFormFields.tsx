@@ -46,11 +46,8 @@ export function TurnoCardapioFormFields({
   const resumoSalvo = cardapioSalvoLabel(cardapios, form.cardapioId);
 
   return (
-    <div className="space-y-3 border-t border-line pt-4">
-      <div>
-        <label className="label">Cardápio do turno</label>
-        <p className="text-xs text-ink-faint mt-0.5">Itens disponíveis para venda enquanto o caixa estiver aberto.</p>
-      </div>
+    <div className="grid gap-4 rounded-2xl border border-line bg-surface-lighter/50 p-3 sm:p-4 lg:grid-cols-[minmax(190px,.65fr)_minmax(0,1.7fr)] lg:items-center">
+      <div className="flex items-center gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-brand-500/25 bg-brand-500/10 text-brand-400"><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 3v7M4.5 3v4a2.5 2.5 0 0 0 5 0V3M7 9v12M16 3c-2 2-3 4-3 7v2h3v9M16 3v9"/></svg></span><span><strong className="block text-sm font-semibold sm:text-base">Cardápio do turno</strong><span className="mt-0.5 block text-xs leading-relaxed text-ink-muted">Itens disponíveis para venda enquanto o caixa estiver aberto.</span></span></div>
 
       {form.cardapioModo === 'salvo' && (
         <input
@@ -64,7 +61,7 @@ export function TurnoCardapioFormFields({
         />
       )}
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {(
           [
             ['salvo', 'Cardápio salvo'],
@@ -75,8 +72,8 @@ export function TurnoCardapioFormFields({
           <button
             key={modo}
             type="button"
-            className={`min-h-11 rounded-xl text-xs font-semibold px-2 leading-tight ${
-              form.cardapioModo === modo ? 'bg-brand-600 text-white' : 'bg-surface-lighter text-ink-muted'
+            className={`min-h-12 rounded-xl border px-2.5 text-xs font-semibold leading-tight transition sm:min-h-[4.25rem] sm:text-sm ${
+              form.cardapioModo === modo ? 'border-brand-400 bg-brand-600 text-white shadow-lg shadow-brand-600/20 ring-1 ring-brand-300/30' : 'border-line bg-surface text-ink-muted hover:border-brand-500/40 hover:text-ink'
             }`}
             onClick={() => {
               setForm({ ...form, cardapioModo: modo });
@@ -89,7 +86,7 @@ export function TurnoCardapioFormFields({
       </div>
 
       {form.cardapioModo === 'salvo' && resumoSalvo && (
-        <p className="text-sm text-ink-muted">
+        <p className="text-sm text-ink-muted lg:col-start-2">
           Selecionado: <span className="font-semibold text-ink">{resumoSalvo}</span>
         </p>
       )}
@@ -103,7 +100,7 @@ export function TurnoCardapioFormFields({
       )}
 
       {form.cardapioModo === 'depois' && (
-        <p className="text-sm text-ink-muted">
+        <p className="text-sm text-ink-muted lg:col-start-2">
           Você poderá montar o cardápio com o caixa aberto, ou o catálogo completo será usado automaticamente.
         </p>
       )}

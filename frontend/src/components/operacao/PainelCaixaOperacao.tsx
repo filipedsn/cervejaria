@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../../lib/api';
 import { Modal } from '../Modal';
@@ -19,6 +20,7 @@ import {
 } from './TurnoCardapioFormFields';
 import { OperacaoTurnoCardapioPanel } from './OperacaoTurnoCardapioPanel';
 import { invalidateOnboardingReadiness } from '../../lib/onboarding';
+import { IconEye, IconEyeOff } from '../NavIcons';
 
 type Dialogo = 'nenhum' | 'movimento' | 'correcao' | 'fechar' | 'cardapio';
 
@@ -40,6 +42,14 @@ function Diferenca({ valor }: { valor: number }) {
       {formatCurrency(valor)}
     </span>
   );
+}
+
+function IconeFechamento({ tipo }: { tipo: 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO' | 'OBS' }) {
+  const common = { className: 'h-6 w-6 sm:h-8 sm:w-8', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true as const };
+  if (tipo === 'DINHEIRO') return <svg {...common}><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 9h.01M18 15h.01"/></svg>;
+  if (tipo === 'PIX') return <svg {...common}><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v2m-3 4h2m1-1v2"/></svg>;
+  if (tipo === 'OBS') return <svg {...common}><path d="M5 3h10l4 4v14H5z"/><path d="M14 3v5h5M8 12h8M8 16h8"/></svg>;
+  return <svg {...common}><rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path d="M2.5 9h19M6.5 15h4"/></svg>;
 }
 
 interface Props {
@@ -70,8 +80,9 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const [obsFechamento, setObsFechamento] = useState('');
   const [erro, setErro] = useState('');
   const [cardapioForm, setCardapioForm] = useState<TurnoCardapioFormState>(defaultTurnoCardapioForm);
+  const [painelSuprimido, setPainelSuprimido] = useState(compacto);
 
-  const { data } = useQuery({
+  const { data, isLoading: caixaLoading } = useQuery({
     queryKey: ['operacao-caixa', pontoVendaId],
     queryFn: () => api.get<CaixaResposta>(`/api/operacao/caixa?pontoVendaId=${pontoVendaId}`),
     enabled: Boolean(pontoVendaId),
@@ -79,8 +90,18 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   });
 
   const sessao = data?.sessao ?? null;
+  useEffect(() => {
+    if (compacto) setPainelSuprimido(sessao?.status === 'ABERTO');
+  }, [compacto, sessao?.status, sessao?.abertoEm]);
+
   const comandasAbertas = comandasAbertasProp ?? data?.comandasAbertas ?? 0;
   const bloqueioFechamento = comandasAbertas > 0;
+  const diferencaFechamento = sessao ?
+    parseCurrencyInput(contado.dinheiro ?? '') - sessao.gaveta.esperadoDinheiro
+    + parseCurrencyInput(contado.pix ?? '') - sessao.esperado.pix
+    + parseCurrencyInput(contado.debito ?? '') - sessao.esperado.cartaoDebito
+    + parseCurrencyInput(contado.credito ?? '') - sessao.esperado.cartaoCredito
+    : 0;
 
   const invalidar = () => {
     queryClient.invalidateQueries({ queryKey: ['operacao-caixa', pontoVendaId] });
@@ -183,7 +204,27 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
 
   return (
     <>
-      {!sessao && (
+      {!sessao && compacto && !caixaLoading && (
+        <div className="card space-y-4 border-brand-600/30 bg-gradient-to-br from-surface via-surface to-brand-900/20 p-4 sm:space-y-5 sm:p-5">
+          <header className="flex items-center gap-3 border-b border-line pb-4 sm:gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-brand-500/30 bg-brand-500/10 text-brand-400 sm:h-16 sm:w-16"><svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8M10 17h4"/></svg></span>
+            <div className="min-w-0"><h2 className="text-xl font-bold sm:text-2xl">Caixa do dia</h2><p className="mt-0.5 max-w-3xl text-sm leading-relaxed text-ink-muted">Abra um turno de caixa para registrar comandas e vendas. Você pode fechar e abrir de novo no mesmo dia.</p></div>
+          </header>
+
+          {erro && <div className="alert-error">{erro}</div>}
+
+          <div className="grid gap-3 rounded-2xl border border-line bg-surface-lighter/60 p-3 sm:grid-cols-[minmax(210px,.7fr)_minmax(0,1.5fr)] sm:items-center sm:gap-5 sm:p-4">
+            <div className="flex items-center gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-brand-500/25 bg-brand-500/10 text-brand-400"><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 8.5c-.6-.6-1.5-.9-2.7-.9-1.5 0-2.5.7-2.5 1.8 0 2.8 5.4 1.2 5.4 4.2 0 1.2-1.1 2-2.8 2-1.1 0-2.2-.4-3-1.2M12 6v12"/></svg></span><span><strong className="block text-sm sm:text-base">Troco inicial (R$)</strong><span className="mt-0.5 block text-xs leading-relaxed text-ink-muted">Dinheiro disponível na gaveta para iniciar o turno.</span></span></div>
+            <CurrencyInput className="input min-h-12 text-base font-semibold sm:min-h-14" value={trocoInicial} onChange={setTrocoInicial} aria-label="Troco inicial em reais" />
+          </div>
+
+          {usaCardapio && <TurnoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />}
+
+          <button type="button" className="touch-btn-primary flex min-h-14 w-full items-center justify-center gap-3 text-base font-bold sm:min-h-16 sm:text-lg" disabled={abrir.isPending} data-audit="operacao-caixa-abrir" data-onboarding-target="operacao-open-cash" onClick={() => abrir.mutate()}><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8"/></svg>{abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}</button>
+        </div>
+      )}
+
+      {!sessao && !compacto && (
         <div className="card space-y-3">
           <div>
             <h2 className="text-base font-semibold">Caixa do dia</h2>
@@ -217,73 +258,55 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         </div>
       )}
 
-      {sessao?.status === 'ABERTO' && compacto && (
-        <div className="card space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-base font-semibold">Caixa aberto</h2>
-            <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
-              Em operação
-            </span>
-          </div>
-
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-ink-muted">
-            <span>
-              Gaveta: <strong className="text-ink">{formatCurrency(sessao.gaveta.esperadoDinheiro)}</strong>
-            </span>
-            <span>
-              Vendido: <strong className="text-ink">{formatCurrency(sessao.esperado.totalVendas)}</strong>
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              className="touch-btn-secondary touch-btn-sm"
-              onClick={() => {
-                setTipoMovimento('SUPRIMENTO');
-                setErro('');
-                setDialogo('movimento');
-              }}
-            >
-              Suprimento
-            </button>
-            <button
-              type="button"
-              className="touch-btn-secondary touch-btn-sm"
-              onClick={() => {
-                setTipoMovimento('SANGRIA');
-                setErro('');
-                setDialogo('movimento');
-              }}
-            >
-              Sangria
-            </button>
-          </div>
-
-          {erro && !dialogo && <div className="alert-error">{erro}</div>}
-
-          {usaCardapio && (
-            <button
-              type="button"
-              className="touch-btn-secondary touch-btn-sm w-full"
-              onClick={() => {
-                setErro('');
-                setDialogo('cardapio');
-              }}
-            >
-              Cardápio do turno
-            </button>
-          )}
-
+      {sessao?.status === 'ABERTO' && compacto && painelSuprimido && (
+        <div className="card flex min-h-14 items-center justify-between gap-3 border-brand-600/30 bg-gradient-to-br from-surface via-surface to-brand-900/20 px-4 py-2">
+          <span className="text-sm font-semibold text-ink">Caixa aberto <span className="font-normal text-ink-muted">· Em operação</span></span>
           <button
             type="button"
-            className="touch-btn-orange w-full disabled:opacity-50"
-            disabled={bloqueioFechamento}
-            onClick={() => abrirDialogoFechar(sessao)}
-            data-audit="operacao-caixa-fechar"
+            className="icon-btn-ghost"
+            aria-label="Mostrar painel do caixa"
+            title="Mostrar painel do caixa"
+            onClick={() => setPainelSuprimido(false)}
           >
-            Fechar caixa
+            <IconEye className="h-5 w-5" />
           </button>
+        </div>
+      )}
+
+      {sessao?.status === 'ABERTO' && compacto && !painelSuprimido && (
+        <div className="card grid gap-5 border-brand-600/30 bg-gradient-to-br from-surface via-surface to-brand-900/20 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,1.2fr)] lg:items-center lg:gap-7">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div><h2 className="text-xl font-bold">Caixa aberto</h2><p className="mt-0.5 text-sm text-ink-muted">Seu caixa está em operação.</p></div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1.5 text-xs font-semibold text-green-500"><span className="h-2 w-2 rounded-full bg-green-500" />Em operação</span>
+                <button
+                  type="button"
+                  className="icon-btn-ghost"
+                  aria-label="Suprimir painel do caixa"
+                  title="Suprimir painel do caixa"
+                  onClick={() => setPainelSuprimido(true)}
+                >
+                  <IconEyeOff className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="rounded-xl border border-line bg-surface-lighter/70 px-3 py-2.5"><p className="text-xs text-ink-muted">Gaveta</p><strong className="mt-0.5 block text-lg font-bold tabular-nums">{formatCurrency(sessao.gaveta.esperadoDinheiro)}</strong></div>
+              <div className="rounded-xl border border-line bg-surface-lighter/70 px-3 py-2.5"><p className="text-xs text-ink-muted">Recebido</p><strong className="mt-0.5 block text-lg font-bold tabular-nums">{formatCurrency(sessao.esperado.totalVendas)}</strong></div>
+            </div>
+          </div>
+
+          <div className="space-y-2.5 lg:border-l lg:border-line lg:pl-6">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SUPRIMENTO'); setErro(''); setDialogo('movimento'); }}>＋&nbsp; Suprimento</button>
+              <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SANGRIA'); setErro(''); setDialogo('movimento'); }}>−&nbsp; Sangria</button>
+              {usaCardapio && <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setErro(''); setDialogo('cardapio'); }}>Cardápio do turno</button>}
+              <Link to="/operacao/contas-pendentes" className="touch-btn-secondary touch-btn-sm flex items-center justify-center text-center leading-tight">Contas pendentes</Link>
+            </div>
+            {erro && !dialogo && <div className="alert-error">{erro}</div>}
+            <button type="button" className="touch-btn-orange w-full disabled:opacity-50" disabled={bloqueioFechamento} onClick={() => abrirDialogoFechar(sessao)} data-audit="operacao-caixa-fechar">Fechar caixa</button>
+          </div>
         </div>
       )}
 
@@ -304,7 +327,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             </div>
 
             <LinhaResumo rotulo="Troco inicial" valor={sessao.gaveta.trocoInicial} />
-            <LinhaResumo rotulo="Vendas em dinheiro" valor={sessao.gaveta.entradasDinheiro} />
+            <LinhaResumo rotulo="Recebimentos em dinheiro" valor={sessao.gaveta.entradasDinheiro} />
             <LinhaResumo rotulo="Suprimentos" valor={sessao.gaveta.suprimentos} />
             <LinhaResumo rotulo="Sangrias" valor={-sessao.gaveta.sangrias} />
             <div className="border-t border-ink/10 pt-2">
@@ -313,7 +336,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           </div>
 
           <div className="card space-y-2">
-            <h3 className="font-semibold">Vendas por forma</h3>
+            <h3 className="font-semibold">Recebimentos por forma</h3>
             {FORMAS_PAGAMENTO.map((forma) => {
               const chave =
                 forma.valor === 'DINHEIRO'
@@ -327,7 +350,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
               return <LinhaResumo key={forma.valor} rotulo={forma.label} valor={valor} />;
             })}
             <div className="border-t border-ink/10 pt-2">
-              <LinhaResumo rotulo="Total vendido" valor={sessao.esperado.totalVendas} destaque />
+              <LinhaResumo rotulo="Total recebido" valor={sessao.esperado.totalVendas} destaque />
             </div>
           </div>
 
@@ -529,6 +552,8 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
 
       <Modal
         open={dialogo === 'fechar'}
+        extraWide
+        hideHeader
         onClose={() => {
           if (fechar.isPending) return;
           setDialogo('nenhum');
@@ -537,10 +562,10 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         title="Fechar caixa"
         hideHeaderClose
         footer={
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
             <button
               type="button"
-              className="touch-btn-secondary w-full min-h-14"
+              className="touch-btn-secondary w-full min-h-[4.5rem] border-brand-500/25 bg-surface-lighter text-xl sm:min-h-[5.75rem] sm:text-2xl"
               disabled={fechar.isPending}
               onClick={() => {
                 setDialogo('nenhum');
@@ -552,7 +577,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             <button
               type="submit"
               form="fechar-caixa-form"
-              className="touch-btn-orange w-full min-h-14"
+              className="touch-btn-orange w-full min-h-[4.5rem] text-xl sm:min-h-[5.75rem] sm:text-2xl"
               disabled={fechar.isPending}
               data-audit="operacao-caixa-fechar-confirmar"
             >
@@ -563,40 +588,27 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
       >
         <form
           id="fechar-caixa-form"
-          className="space-y-4"
+          className="space-y-7 py-4 sm:space-y-9 sm:py-6"
           onSubmit={(e) => {
             e.preventDefault();
             fechar.mutate();
           }}
         >
+          <header className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(300px,.52fr)] sm:items-center sm:gap-8">
+            <div><h2 id="modal-title" className="text-3xl font-bold sm:text-5xl">Fechar caixa</h2><p className="mt-3 max-w-3xl text-base leading-relaxed text-ink-muted sm:text-2xl">Conte o que há fisicamente e ajuste se necessário.<br className="hidden xl:block" /> A diferença aparece no resumo.</p></div>
+            <div className="flex min-h-24 items-center gap-4 rounded-3xl border border-brand-500/30 bg-surface-lighter/40 p-4 sm:min-h-36 sm:gap-5 sm:p-6">
+              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-brand-500/10 text-brand-400 sm:h-20 sm:w-20"><svg viewBox="0 0 24 24" className="h-8 w-8 sm:h-10 sm:w-10" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 12 16 8M12 12v5"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg></span>
+              <span className="min-w-0"><span className="block text-base text-ink-muted sm:text-2xl">Diferença</span><strong className="mt-1 block truncate text-2xl font-bold tabular-nums text-brand-400 sm:text-4xl">{formatCurrency(diferencaFechamento)}</strong></span>
+              <span className="ml-auto text-3xl text-brand-400" aria-hidden="true">›</span>
+            </div>
+          </header>
           {erro && <div className="alert-error">{erro}</div>}
-          <p className="text-sm text-ink-faint">
-            Conte o que há fisicamente e ajuste se necessário. A diferença aparece no resumo.
-          </p>
-
-          {FORMAS_PAGAMENTO.map((forma) => {
-            const chave =
-              forma.valor === 'DINHEIRO'
-                ? 'dinheiro'
-                : forma.valor === 'PIX'
-                  ? 'pix'
-                  : forma.valor === 'CARTAO_DEBITO'
-                    ? 'debito'
-                    : 'credito';
-            return (
-              <div key={forma.valor}>
-                <label className="label">Contado — {forma.label}</label>
-                <CurrencyInput
-                  value={contado[chave] ?? ''}
-                  onChange={(valor) => setContado((atual) => ({ ...atual, [chave]: valor }))}
-                />
-              </div>
-            );
-          })}
-
-          <div>
-            <label className="label">Observação (opcional)</label>
-            <input className="input" value={obsFechamento} onChange={(e) => setObsFechamento(e.target.value)} />
+          <div className="grid gap-5 sm:grid-cols-2 sm:gap-x-8 sm:gap-y-7">
+            {FORMAS_PAGAMENTO.map((forma) => {
+              const chave = forma.valor === 'DINHEIRO' ? 'dinheiro' : forma.valor === 'PIX' ? 'pix' : forma.valor === 'CARTAO_DEBITO' ? 'debito' : 'credito';
+              return <div key={forma.valor}><label className="mb-3 block text-lg font-semibold text-ink sm:text-2xl">Contado — {forma.label}</label><div className="relative"><span className="absolute inset-y-0 left-0 flex w-16 items-center justify-center border-r border-line text-brand-300 sm:w-24"><IconeFechamento tipo={forma.valor} /></span><CurrencyInput className="input min-h-16 text-lg sm:min-h-24 sm:text-3xl" style={{ paddingLeft: '6.25rem' }} value={contado[chave] ?? ''} onChange={(valor) => setContado((atual) => ({ ...atual, [chave]: valor }))} /></div></div>;
+            })}
+            <div className="sm:col-span-2"><label className="mb-3 block text-lg font-semibold text-ink sm:text-2xl">Observação (opcional)</label><div className="relative"><span className="absolute inset-y-0 left-0 flex w-16 items-center justify-center border-r border-line text-ink-muted sm:w-24"><IconeFechamento tipo="OBS" /></span><input className="input min-h-16 text-lg sm:min-h-24 sm:text-2xl" style={{ paddingLeft: '6.25rem' }} value={obsFechamento} onChange={(e) => setObsFechamento(e.target.value)} placeholder="Adicione uma observação, se necessário..." /></div></div>
           </div>
         </form>
       </Modal>

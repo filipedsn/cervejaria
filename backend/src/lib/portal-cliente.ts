@@ -63,6 +63,7 @@ export async function resolveTrailerPortalContext(slug: string, trailerId: strin
       nome: true,
       slug: true,
       logoUrl: true,
+      portalBackgroundUrl: true,
       corPrimaria: true,
       corPaleta: true,
     },

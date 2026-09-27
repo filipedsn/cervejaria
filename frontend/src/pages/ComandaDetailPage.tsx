@@ -115,7 +115,7 @@ export function ComandaDetailPage() {
   }, [descontoInput, showPayment, comanda?.itens]);
 
   const addItemMutation = useMutation({
-    mutationFn: (data: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string }) =>
+    mutationFn: (data: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] }) =>
       api.post<Comanda>(`/api/comandas/${id}/itens`, data),
     onSuccess: (updated) => {
       queryClient.setQueryData(['comanda', id], updated);
@@ -274,6 +274,9 @@ export function ComandaDetailPage() {
   const hasActionBar = isOpen || !isOpen;
   const podeAplicarDesconto = podeDarDescontoOperacao;
   const subtotal = subtotalComandaCervejaria(comanda);
+  const valorPendente = comanda.itens
+    .filter((item) => item.exigePreparo && !item.cancelamentoPendenteEm && !item.canceladoEm && item.pedidoCozinha?.status !== 'ENTREGUE' && item.pedidoCozinha?.status !== 'CANCELADO' && item.pedidoCozinha?.status !== 'CANCELAMENTO_PENDENTE')
+    .reduce((total, item) => total + parseFloat(item.precoUnit) * item.quantidade, 0);
   const descontoValor = parseCurrencyInput(descontoInput);
   const totalComDesconto = Math.max(0, subtotal - descontoValor);
   const descontoSalvo = descontoComandaCervejaria(comanda);
@@ -307,6 +310,7 @@ export function ComandaDetailPage() {
         </div>
         {comanda.cliente.telefone && <p className="text-sm text-ink-faint mt-1">{comanda.cliente.telefone}</p>}
         <p className="text-2xl sm:text-3xl font-bold text-brand-600 mt-2 tabular-nums">{formatCurrency(comanda.total)}</p>
+        {valorPendente > 0 && <p className="mt-1 text-right text-sm font-semibold text-amber-400">Pendente na cozinha: {formatCurrency(valorPendente)}</p>}
         {!isOpen && descontoSalvo > 0 && (
           <div className="mt-3 space-y-1 text-sm border-t border-line pt-3">
             <div className="flex justify-between text-ink-muted">
@@ -344,14 +348,23 @@ export function ComandaDetailPage() {
           </button>
         )}
         {comanda.itens.map((item) => (
-          <div key={item.id} className="card flex items-center justify-between gap-3 py-3">
+          <div key={item.id} className={`card flex items-center justify-between gap-3 py-3 ${item.cancelamentoPendenteEm ? 'border-orange-500/70 bg-orange-950/20' : item.canceladoEm ? 'opacity-60' : ''}`}>
             <div className="min-w-0">
               <p className="font-semibold">{item.produto.nome}</p>
               <p className="text-sm text-ink-muted">{formatItemDetail(item)}</p>
+              {item.cancelamentoPendenteEm && <p className="mt-1 text-xs font-semibold text-orange-400">Cancelamento solicitado — aguardando confirmação da cozinha</p>}
+              {item.canceladoEm && <p className="mt-1 text-xs font-semibold text-ink-muted">Cancelado pela cozinha</p>}
+              {item.observacao && <p className="text-xs text-ink-muted">Obs: {item.observacao}</p>}
+              {item.opcionais?.length ? <p className="text-xs text-ink-muted">{item.opcionais.map((opcao) => opcao.nome).join(' · ')}</p> : null}
+              {item.paraViagem && (
+                <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">
+                  Para viagem
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="font-bold tabular-nums">{formatCurrency(parseFloat(item.precoUnit) * item.quantidade)}</span>
-              {isOpen && (
+              <span className="font-bold tabular-nums">{item.cancelamentoPendenteEm || item.canceladoEm ? '—' : formatCurrency(parseFloat(item.precoUnit) * item.quantidade)}</span>
+              {isOpen && !item.cancelamentoPendenteEm && !item.canceladoEm && (
                 <button
                   type="button"
                   aria-label={`Remover ${item.produto.nome}`}

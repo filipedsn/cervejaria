@@ -29,11 +29,15 @@ import { assertPodeDarDescontoOperacao, DescontoInvalidoError } from '../../lib/
 
 const vendaAvulsaSchema = z.object({
   pontoVendaId: z.string().min(1),
+  clienteId: z.string().min(1).optional(),
   itens: z
     .array(
       z.object({
         produtoId: z.string().min(1),
         quantidade: z.number().int().positive().max(999),
+        paraViagem: z.boolean().default(false),
+        observacao: z.string().trim().max(280).optional(),
+        opcionais: z.array(z.object({ opcionalId: z.string().min(1), quantidade: z.number().int().positive().max(99).optional() })).optional(),
       }),
     )
     .min(1),
@@ -45,6 +49,7 @@ const vendaAvulsaSchema = z.object({
     }),
   ),
   observacao: z.string().trim().max(280).optional(),
+  paraViagem: z.boolean().default(false),
   desconto: z.number().min(0).optional(),
 });
 
@@ -71,6 +76,15 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
 
         await lockCaixaEmTx(tx, cervejariaId, body.pontoVendaId, dia);
         const sessao = await assertCaixaAberto(cervejariaId, body.pontoVendaId, dia, tx);
+        const cliente = body.clienteId
+          ? await tx.cliente.findFirst({
+              where: { id: body.clienteId, cervejariaId, ativo: true, isSistema: false },
+              select: { id: true },
+            })
+          : null;
+        if (body.clienteId && !cliente) {
+          throw Object.assign(new Error('Cliente não encontrado'), { statusCode: 404 });
+        }
         const itens = await resolverItens(tx, cervejariaId, body.itens, { sessaoCaixaId: sessao.id });
         const subtotalEmCents = totalEmCentavos(itens);
         const descontoEmCents = centavos(desconto);
@@ -88,6 +102,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
             origem: 'CAIXA',
             pontoVendaId: body.pontoVendaId,
             tipo: 'AVULSA',
+            ...(cliente ? { clienteId: cliente.id } : {}),
             diaOperacional: dia,
             abertaPorId: user.sub,
             status: 'ABERTA',
@@ -102,6 +117,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
           pontoVendaId: body.pontoVendaId,
           dia,
           criadoPorId: user.sub,
+          paraViagem: body.paraViagem,
           observacao: body.observacao,
           itens,
           temCozinha,
@@ -130,6 +146,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
           cervejariaId,
           usuarioId: user.sub,
           fechadaEm: agora,
+          sessaoCaixaId: sessao.id,
         });
 
         return {

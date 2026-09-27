@@ -78,6 +78,7 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
             cervejariaId: user.cervejariaId!,
             eventoId: body.eventoId,
             item,
+            criadoPorId: user.sub,
           });
           if ('error' in result) {
             throw Object.assign(new Error(result.error), { statusCode: 400 });

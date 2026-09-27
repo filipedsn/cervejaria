@@ -393,7 +393,10 @@ export async function buildApp() {
     decorateReply: false,
 
     setHeaders(res, filePath) {
-      if (filePath.includes(`${path.sep}logos${path.sep}`)) {
+      if (
+        filePath.includes(`${path.sep}logos${path.sep}`) ||
+        filePath.includes(`${path.sep}portal-backgrounds${path.sep}`)
+      ) {
         res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
       }
     },

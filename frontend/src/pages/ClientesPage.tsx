@@ -59,6 +59,11 @@ function ClienteListItem({
           {metaParts.length > 0 && (
             <p className="text-xs text-ink-faint truncate mt-0.5">{metaParts.join(' · ')}</p>
           )}
+          {(cliente.valorPendente ?? 0) > 0 && (
+            <p className="mt-1 text-xs font-semibold text-orange-400">
+              Saldo pendente: {formatCurrency(cliente.valorPendente ?? 0)}
+            </p>
+          )}
         </Link>
 
         <div className="flex items-center gap-1 shrink-0">
@@ -144,6 +149,10 @@ export function ClientesPage() {
   return (
     <div className="space-y-4 pb-4">
       <PageHeader title="Clientes" subtitle="Cadastro, consumo e histórico" />
+
+      <button type="button" className="touch-btn-primary w-full" onClick={() => navigate('/clientes/novo')}>
+        + Novo cliente
+      </button>
 
       <form onSubmit={handleSearch} className="flex gap-2">
         <input

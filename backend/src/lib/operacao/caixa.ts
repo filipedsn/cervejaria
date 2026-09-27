@@ -157,17 +157,27 @@ async function pagamentosDaSessao(sessao: SessaoCompleta, cervejariaId: string) 
 
   return prisma.pagamento.findMany({
     where: {
-      comanda: {
-        origem: 'CAIXA',
-        pontoVenda: { cervejariaId },
-        pontoVendaId: sessao.pontoVendaId,
-        diaOperacional: sessao.diaOperacional,
-        status: 'FECHADA',
-        fechadaEm: {
-          gte: sessao.abertoEm,
-          ...(fechadaAte ? { lte: fechadaAte } : {}),
+      OR: [
+        {
+          sessaoCaixaId: sessao.id,
+          comanda: { origem: 'CAIXA', pontoVenda: { cervejariaId } },
         },
-      },
+        {
+          sessaoCaixaId: null,
+          contaReceberId: null,
+          comanda: {
+            origem: 'CAIXA',
+            pontoVenda: { cervejariaId },
+            pontoVendaId: sessao.pontoVendaId,
+            diaOperacional: sessao.diaOperacional,
+            status: 'FECHADA',
+            fechadaEm: {
+              gte: sessao.abertoEm,
+              ...(fechadaAte ? { lte: fechadaAte } : {}),
+            },
+          },
+        },
+      ],
     },
     select: { forma: true, valor: true },
   });
@@ -368,7 +378,11 @@ export async function abrirCaixa(params: {
     cardapioId,
     produtoIds,
   });
-  await aplicarCardapioCatalogoSeVazio(sessao.id, params.cervejariaId);
+  // Só usa todo o catálogo quando o caixa foi aberto sem uma seleção.
+  // Um cardápio salvo vazio (ou uma seleção manual vazia) deve continuar vazio.
+  if (!cardapioId && !produtoIds?.length) {
+    await aplicarCardapioCatalogoSeVazio(sessao.id, params.cervejariaId);
+  }
 
   return montarResumoCaixa(sessao, params.cervejariaId);
 }
@@ -551,21 +565,6 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
   }
 
   const caixa = await montarResumoCaixa(sessao, cervejariaId);
-  const pagamentos = await prisma.pagamento.findMany({
-    where: {
-      comanda: {
-        origem: 'CAIXA',
-        pontoVenda: { cervejariaId },
-        pontoVendaId: sessao.pontoVendaId,
-        diaOperacional: sessao.diaOperacional,
-        status: 'FECHADA',
-        fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm },
-      },
-    },
-    select: { comandaId: true },
-  });
-  const comandaIds = new Set(pagamentos.map((pagamento) => pagamento.comandaId));
-
   const vendasAvulsas = await prisma.comanda.count({
     where: {
       origem: 'CAIXA',
@@ -603,6 +602,8 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
     },
     include: { itens: true },
   });
+  const comandasAtendidas = comandas.length;
+  const vendasTotal = comandas.reduce((soma, comanda) => soma + toNumber(comanda.total), 0);
 
   const porProduto = new Map<
     string,
@@ -627,7 +628,7 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
     }
   }
 
-  const receitaTotal = caixa.esperado.totalVendas;
+  const receitaTotal = vendasTotal;
   const porProdutoArr = Array.from(porProduto.values())
     .map((produto) => ({
       ...produto,
@@ -641,18 +642,20 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
     pontoNome: sessao.pontoVenda.nome,
     abertoPorNome: nomeUsuario(sessao.abertoPorId) ?? '—',
     fechadoPorNome: nomeUsuario(sessao.fechadoPorId),
-    comandasAtendidas: comandaIds.size,
+    comandasAtendidas,
+    vendasTotal,
+    totalRecebido: caixa.esperado.totalVendas,
     vendasAvulsas,
     itensVendidos,
     porProduto: porProdutoArr,
     ticketMedio:
-      comandaIds.size > 0
-        ? Math.round((caixa.esperado.totalVendas / comandaIds.size) * 100) / 100
+      comandasAtendidas > 0
+        ? Math.round((vendasTotal / comandasAtendidas) * 100) / 100
         : 0,
     duracaoMinutos,
     receitaPorHora:
       duracaoHoras > 0
-        ? Math.round((caixa.esperado.totalVendas / duracaoHoras) * 100) / 100
+        ? Math.round((vendasTotal / duracaoHoras) * 100) / 100
         : 0,
   };
 }

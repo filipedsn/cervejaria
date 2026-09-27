@@ -1,11 +1,13 @@
 import { Navigate, NavLink, useParams } from 'react-router-dom';
 import { FuncionariosPage } from '../FuncionariosPage';
+import { TrailersPage } from '../TrailersPage';
 import { AparenciaPage } from '../AparenciaPage';
 import { OperacaoPage } from '../OperacaoPage';
 import { PageHeader } from '../../components/PageHeader';
 
 const TABS = [
   { id: 'equipe', label: 'Equipe' },
+  { id: 'trailers', label: 'Trailers' },
   { id: 'operacao', label: 'Operação' },
   { id: 'aparencia', label: 'Aparência' },
 ] as const;
@@ -23,7 +25,7 @@ export function OperacaoConfiguracoesPage() {
 
   return (
     <div className="space-y-5 pb-2">
-      <PageHeader title="Configurações" subtitle="Equipe, operação e aparência do operacao" />
+      <PageHeader title="Configurações" subtitle="Equipe, trailers, operação e aparência" />
 
       <div className="segmented-control">
         {TABS.map(({ id, label }) => (
@@ -40,6 +42,7 @@ export function OperacaoConfiguracoesPage() {
       </div>
 
       {tab === 'equipe' && <FuncionariosPage embedded />}
+      {tab === 'trailers' && <TrailersPage embedded />}
       {tab === 'operacao' && <OperacaoPage embedded modo="operacao" />}
       {tab === 'aparencia' && <AparenciaPage embedded />}
     </div>

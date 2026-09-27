@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { ClienteSessionPayload } from './cliente-session.js';
+import type { ClienteSessionPayload, PdvClienteSessionPayload } from './cliente-session.js';
 
 export interface JwtPayload {
   sub: string;
@@ -12,7 +12,7 @@ export interface JwtPayload {
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
-    payload: JwtPayload | ClienteSessionPayload;
+    payload: JwtPayload | ClienteSessionPayload | PdvClienteSessionPayload;
     user: JwtPayload;
   }
 }

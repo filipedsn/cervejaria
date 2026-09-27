@@ -9,6 +9,7 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { AdminCervejariasPage } from './pages/AdminCervejariasPage';
 import { OperacaoLayout } from './pages/operacao/OperacaoLayout';
 import { OperacaoComandasPage } from './pages/operacao/OperacaoComandasPage';
+import { OperacaoContasPendentesPage } from './pages/operacao/OperacaoContasPendentesPage';
 import { OperacaoNovaComandaPage } from './pages/operacao/OperacaoNovaComandaPage';
 import { OperacaoVendaAvulsaPage } from './pages/operacao/OperacaoVendaAvulsaPage';
 import { OperacaoComandaDetailPage } from './pages/operacao/OperacaoComandaDetailPage';
@@ -16,7 +17,6 @@ import { OperacaoCatalogoPage } from './pages/operacao/OperacaoCatalogoPage';
 import { OperacaoCozinhaPage } from './pages/operacao/OperacaoCozinhaPage';
 import { OperacaoCozinhaTvPage } from './pages/operacao/OperacaoCozinhaTvPage';
 import { OperacaoCozinhaTvDemoPage } from './pages/operacao/OperacaoCozinhaTvDemoPage';
-import { OperacaoCaixaPage } from './pages/operacao/OperacaoCaixaPage';
 import { OperacaoEstoquePage } from './pages/operacao/OperacaoEstoquePage';
 import { OperacaoDashboardPage } from './pages/operacao/OperacaoDashboardPage';
 import { OperacaoTurnoResumoPage } from './pages/operacao/OperacaoTurnoResumoPage';
@@ -39,6 +39,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ResumoExecutivoPage } from './pages/ResumoExecutivoPage';
 import { ConfiguracoesPage } from './pages/ConfiguracoesPage';
 import { ClientesPage } from './pages/ClientesPage';
+import { NovoClientePage } from './pages/NovoClientePage';
 import { ClienteDetailPage } from './pages/ClienteDetailPage';
 import { CadastroLinkDescontinuadoPage } from './pages/CadastroLinkDescontinuadoPage';
 import { PortalClientePage } from './pages/PortalClientePage';
@@ -91,9 +92,10 @@ function PublicAuthShell() {
 
 function TenantEntryRedirect() {
   const { needsTrailerSelection, evento, isLoading } = useEvento();
-  const { isLoading: operacaoLoading } = useOperacaoContexto();
+  const { contexto, isLoading: operacaoLoading } = useOperacaoContexto();
   if (isLoading || operacaoLoading) return <Loading fullScreen />;
   if (needsTrailerSelection) return <Navigate to="/trailer" replace />;
+  if (contexto.operationMode === 'CAIXA') return <Navigate to="/operacao/comandas" replace />;
   if (evento?.status === 'ABERTO') return <Navigate to="/comandas" replace />;
   return <Navigate to="/eventos" replace />;
 }
@@ -328,10 +330,11 @@ const router = createBrowserRouter([
                         children: [
                           { index: true, element: <Navigate to="comandas" replace /> },
                           { path: 'comandas', element: <OperacaoComandasPage /> },
+                          { path: 'contas-pendentes', element: <OperacaoContasPendentesPage /> },
                           { path: 'comandas/nova', element: <OperacaoNovaComandaPage /> },
                           { path: 'comandas/venda-avulsa', element: <OperacaoVendaAvulsaPage /> },
                           { path: 'comandas/:id', element: <OperacaoComandaDetailPage /> },
-                          { path: 'caixa', element: <OperacaoCaixaPage /> },
+                          { path: 'caixa', element: <Navigate to="/operacao/comandas" replace /> },
                           {
                             element: <RequireEstoqueOperacao />,
                             children: [{ path: 'estoque', element: <OperacaoEstoquePage /> }],
@@ -363,6 +366,7 @@ const router = createBrowserRouter([
                       { path: 'ranking/serie/:serieId', element: <RankingSeriePage /> },
                       { path: 'ranking/periodo/:eventoId', element: <RankingPeriodoPage /> },
                       { path: 'clientes', element: <ClientesPage /> },
+                      { path: 'clientes/novo', element: <NovoClientePage /> },
                       { path: 'clientes/:id', element: <ClienteDetailPage /> },
                       {
                         element: <RequireTrailerContext />,

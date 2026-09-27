@@ -147,6 +147,8 @@ model Cervejaria {
   slug        String   @unique
   ativo       Boolean  @default(true)
   logoUrl     String?
+  portalBackgroundUrl String?
+  operacaoCategoriasOrdem Json?
   corPrimaria String?
   corPaleta   Json?
   /** KPIs da tela de comandas (cervejaria e quiosque). */
@@ -160,6 +162,7 @@ model Cervejaria {
 
   usuarios Usuario[]
   produtos Produto[]
+  opcionais Opcional[]
   trailers Trailer[]
   taps     Tap[]
   eventos  Evento[]
@@ -189,6 +192,8 @@ model ConfiguracaoOperacional {
   tapsEnabled               Boolean?
   inventoryEnabled          Boolean?
   kitchenEnabled            Boolean?
+  whatsappPedidoProntoEnabled Boolean @default(false)
+  whatsappPedidoProntoNaCozinha Boolean @default(false)
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
@@ -302,6 +307,9 @@ model Produto {
   eventos    EventoProduto[]
   cardapios  CardapioProduto[]
   cardapiosOperacao CardapioOperacaoProduto[]
+  gruposOpcionais ProdutoOpcionalGrupo[]
+  opcionaisVinculados ProdutoOpcionalVinculo[]
+  opcionaisEstoque ProdutoOpcional[] @relation("ProdutoOpcionalEstoque")
    saldosEstoqueOperacao InventoryBalance[]
    movimentosEstoqueOperacao InventoryMovement[]
   sessoesCaixaOperacao SessaoCaixaProdutoOperacao[]
@@ -321,6 +329,74 @@ model Preco {
 
   @@unique([produtoId, volumeMl])
 
+  @@schema("public")
+}
+
+model ProdutoOpcionalGrupo {
+  id          String   @id @default(cuid())
+  produtoId   String
+  nome        String
+  obrigatorio Boolean  @default(false)
+  maximo      Int      @default(1)
+  ordem       Int      @default(0)
+  ativo       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  produto  Produto           @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  opcoes   ProdutoOpcional[]
+
+  @@index([produtoId, ativo, ordem])
+  @@schema("public")
+}
+
+model ProdutoOpcional {
+  id               String   @id @default(cuid())
+  grupoId          String
+  nome             String
+  precoAdicional   Decimal  @default(0) @db.Decimal(10, 2)
+  produtoEstoqueId String?
+  ordem            Int      @default(0)
+  ativo            Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  grupo          ProdutoOpcionalGrupo @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  produtoEstoque Produto?              @relation("ProdutoOpcionalEstoque", fields: [produtoEstoqueId], references: [id], onDelete: SetNull)
+  itens          ItemComandaOpcional[]
+
+  @@index([grupoId, ativo, ordem])
+  @@index([produtoEstoqueId])
+  @@schema("public")
+}
+
+model Opcional {
+  id          String   @id @default(cuid())
+  cervejariaId String
+  nome        String
+  preco       Decimal  @default(0) @db.Decimal(10, 2)
+  ativo       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  produtos ProdutoOpcionalVinculo[]
+  itens ItemComandaOpcional[]
+
+  @@unique([cervejariaId, nome])
+  @@index([cervejariaId, ativo, nome])
+  @@schema("public")
+}
+
+model ProdutoOpcionalVinculo {
+  id String @id @default(cuid())
+  produtoId String
+  opcionalId String
+  ordem Int @default(0)
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  opcional Opcional @relation(fields: [opcionalId], references: [id], onDelete: Cascade)
+  @@unique([produtoId, opcionalId])
+  @@index([produtoId, ordem])
   @@schema("public")
 }
 
@@ -494,6 +570,7 @@ model Cliente {
 
   cervejaria    Cervejaria           @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   comandas      Comanda[]
+  contasReceber ContaReceber[]
   pedidos       PedidoCliente[]
   estatisticas  ClienteEstatisticas?
 
@@ -547,6 +624,7 @@ model Comanda {
   fechadoPor Usuario?   @relation("ComandaFechadaPor", fields: [fechadoPorId], references: [id], onDelete: SetNull)
   itens      ItemComanda[]
   pagamentos Pagamento[]
+  contaReceber ContaReceber?
   pedidos    PedidoCliente[]
   pedidosOperacao PedidoOperacao[]
   transacoes TransacaoLog[]
@@ -571,7 +649,11 @@ model ItemComanda {
   precoUnit         Decimal  @db.Decimal(10, 2)
   /// Snapshot do nome no quiosque (catalogo pode mudar depois).
   nome              String?
+  observacao        String?
   exigePreparo      Boolean  @default(false)
+  paraViagem        Boolean  @default(false)
+  cancelamentoPendenteEm DateTime?
+  canceladoEm       DateTime?
   pedidoCozinhaId   String?
   createdAt         DateTime @default(now())
 
@@ -579,11 +661,31 @@ model ItemComanda {
   produto         Produto?         @relation(fields: [produtoId], references: [id], onDelete: Restrict)
   tap             Tap?             @relation(fields: [tapId], references: [id], onDelete: SetNull)
   pedidoCozinha   PedidoOperacao?  @relation(fields: [pedidoCozinhaId], references: [id], onDelete: SetNull)
+  opcionais       ItemComandaOpcional[]
 
   @@index([comandaId])
   @@index([tapId])
   @@index([pedidoCozinhaId])
 
+  @@schema("public")
+}
+
+model ItemComandaOpcional {
+  id             String  @id @default(cuid())
+  itemComandaId  String
+  opcionalId     String?
+  opcionalCatalogoId String?
+  nome           String
+  precoAdicional Decimal @default(0) @db.Decimal(10, 2)
+  quantidade     Int     @default(1)
+
+  itemComanda ItemComanda      @relation(fields: [itemComandaId], references: [id], onDelete: Cascade)
+  opcional    ProdutoOpcional? @relation(fields: [opcionalId], references: [id], onDelete: SetNull)
+  opcionalCatalogo Opcional? @relation(fields: [opcionalCatalogoId], references: [id], onDelete: SetNull)
+
+  @@index([itemComandaId])
+  @@index([opcionalId])
+  @@index([opcionalCatalogoId])
   @@schema("public")
 }
 
@@ -649,6 +751,8 @@ model EventoProduto {
 model Pagamento {
   id              String        @id @default(cuid())
   comandaId       String
+  contaReceberId  String?
+  sessaoCaixaId   String?
   forma           PaymentMethod
   valor           Decimal       @db.Decimal(10, 2)
   /// Só no dinheiro: quanto o cliente entregou e quanto voltou de troco.
@@ -658,9 +762,30 @@ model Pagamento {
   pagoEm          DateTime      @default(now())
 
   comanda Comanda @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  contaReceber ContaReceber? @relation(fields: [contaReceberId], references: [id], onDelete: SetNull)
 
   @@index([comandaId])
+  @@index([contaReceberId, pagoEm])
+  @@index([sessaoCaixaId, pagoEm])
 
+  @@schema("public")
+}
+
+/// Uma conta a receber nasce quando uma comanda de caixa e encerrada sem pagamento.
+/// O saldo e calculado pelos recebimentos vinculados, preservando o historico.
+model ContaReceber {
+  id             String   @id @default(cuid())
+  comandaId      String   @unique
+  clienteId      String
+  valorOriginal  Decimal  @db.Decimal(10, 2)
+  criadoPorId    String
+  createdAt      DateTime @default(now())
+
+  comanda   Comanda     @relation(fields: [comandaId], references: [id], onDelete: Restrict)
+  cliente   Cliente     @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  pagamentos Pagamento[]
+
+  @@index([clienteId, createdAt])
   @@schema("public")
 }
 
@@ -784,6 +909,7 @@ enum StatusPedidoOperacao {
   EM_PREPARO
   PRONTO
   ENTREGUE
+  CANCELAMENTO_PENDENTE
   CANCELADO
 
   @@schema("quiosque")
@@ -795,23 +921,25 @@ model PedidoOperacao {
   id             String               @id @default(cuid())
   cervejariaId   String
   comandaId      String
-  pontoVendaId   String
+  pontoVendaId   String?
   /// Senha mostrada ao cliente, reiniciada a cada dia de operacao.
   numero         Int
   diaOperacional DateTime             @db.Date
   status         StatusPedidoOperacao @default(RECEBIDO)
+  paraViagem     Boolean              @default(false)
   observacao     String?
   criadoPorId    String
   /// Inicio do status atual — o cronometro da cozinha reinicia a cada transicao.
   statusDesde    DateTime             @default(now())
   /// Preenchido ao marcar ENTREGUE; congela o tempo total do pedido.
   entregueEm     DateTime?
+  clienteAvisadoEm DateTime?
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
   cervejaria Cervejaria           @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   comanda    Comanda              @relation(fields: [comandaId], references: [id], onDelete: Cascade)
-  pontoVenda PontoVenda           @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
+  pontoVenda PontoVenda?          @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
   itensComanda ItemComanda[]
    movimentosEstoque InventoryMovement[]
   historicoStatus   PedidoOperacaoStatusHistorico[]

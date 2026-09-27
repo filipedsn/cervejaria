@@ -32,7 +32,7 @@ export function AdicionarItemComandaModal({
   comidas: Produto[];
   eventoAberto: boolean;
   comandaTotal: number;
-  onAdd: (data: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string }) => void;
+  onAdd: (data: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] }) => void;
   isPending: boolean;
   error?: string;
   successMessage?: string;
@@ -42,6 +42,9 @@ export function AdicionarItemComandaModal({
   const [selectedVolume, setSelectedVolume] = useState<VolumeMl | null>(null);
   const [selectedProduto, setSelectedProduto] = useState<Produto | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [paraViagem, setParaViagem] = useState(false);
+  const [observacao, setObservacao] = useState('');
+  const [opcionais, setOpcionais] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (!open) return;
@@ -49,6 +52,9 @@ export function AdicionarItemComandaModal({
     setSelectedVolume(null);
     setSelectedProduto(null);
     setQuantity(1);
+    setParaViagem(false);
+    setObservacao('');
+    setOpcionais({});
     if (tapsComChope.length > 0) setTab('chope');
     else if (bebidas.length > 0) setTab('bebidas');
     else setTab('comidas');
@@ -84,7 +90,11 @@ export function AdicionarItemComandaModal({
   const canAddUnit = tab !== 'chope' && !!selectedProduto && !!unitProduto;
   const canAdd = (canAddChope || canAddUnit) && quantity > 0 && !isPending;
 
-  const subtotal = unitPrice * quantity;
+  const opcionaisTotal = Object.entries(opcionais).reduce((sum, [id, qty]) => {
+    const option = selectedProduto?.gruposOpcionais?.flatMap((g) => g.opcoes).find((o) => o.id === id);
+    return sum + Number(option?.precoAdicional ?? 0) * qty;
+  }, 0);
+  const subtotal = (unitPrice + opcionaisTotal) * quantity;
   const newTotal = comandaTotal + subtotal;
 
   const handleAdd = () => {
@@ -95,6 +105,9 @@ export function AdicionarItemComandaModal({
         volumeMl: selectedVolume,
         quantidade: quantity,
         tapId: selectedTap.id,
+        paraViagem,
+        observacao: observacao.trim() || undefined,
+        opcionais: Object.entries(opcionais).map(([opcionalId, quantidade]) => ({ opcionalId, quantidade })),
       });
       return;
     }
@@ -103,6 +116,9 @@ export function AdicionarItemComandaModal({
       produtoId: selectedProduto.id,
       volumeMl: unitProduto.volumeMl,
       quantidade: quantity,
+      paraViagem,
+      observacao: observacao.trim() || undefined,
+      opcionais: Object.entries(opcionais).map(([opcionalId, quantidade]) => ({ opcionalId, quantidade })),
     });
   };
 
@@ -142,6 +158,19 @@ export function AdicionarItemComandaModal({
       <div className="space-y-4">
         {error && <div className="alert-error text-sm">{error}</div>}
         {successMessage && <div className="alert-success text-sm" role="status">{successMessage}</div>}
+
+        <label className="flex items-center gap-3 rounded-xl border border-line bg-surface-lighter px-3 py-3 text-sm font-semibold">
+          <input
+            type="checkbox"
+            className="h-5 w-5 accent-brand-600"
+            checked={paraViagem}
+            onChange={(event) => setParaViagem(event.target.checked)}
+          />
+          <span>
+            <span className="block">Para viagem</span>
+            <span className="block text-xs font-normal text-ink-muted">O item deve ser embalado.</span>
+          </span>
+        </label>
 
         {nothingAvailable && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 space-y-2">
@@ -279,6 +308,7 @@ export function AdicionarItemComandaModal({
                       onClick={() => {
                         setSelectedProduto(produto);
                         setQuantity(1);
+                        setOpcionais({});
                       }}
                       className={[
                         'rounded-xl border-2 p-3 text-left min-h-[4.5rem] transition-colors',
@@ -318,6 +348,7 @@ export function AdicionarItemComandaModal({
                       onClick={() => {
                         setSelectedProduto(produto);
                         setQuantity(1);
+                        setOpcionais({});
                       }}
                       className={[
                         'rounded-xl border-2 p-3 text-left min-h-[4.5rem] transition-colors',
@@ -393,6 +424,26 @@ export function AdicionarItemComandaModal({
                 Novo total da comanda: {formatCurrency(newTotal)}
               </p>
             </div>
+            {tab !== 'chope' && selectedProduto?.gruposOpcionais?.map((grupo) => (
+              <div key={grupo.id} className="rounded-xl border border-line p-3">
+                <p className="text-sm font-semibold">{grupo.nome}{grupo.obrigatorio ? ' *' : ''}</p>
+                <div className="mt-2 space-y-2">
+                  {grupo.opcoes.map((opcao) => {
+                    const checked = Boolean(opcionais[opcao.id]);
+                    return <label key={opcao.id} className="flex items-center gap-2 text-sm">
+                      <input type={grupo.maximo === 1 ? 'radio' : 'checkbox'} name={`grupo-${grupo.id}`} checked={checked} onChange={() => setOpcionais((atual) => {
+                        const next = { ...atual };
+                        if (checked) delete next[opcao.id];
+                        else { if (grupo.maximo === 1) grupo.opcoes.forEach((item) => delete next[item.id]); next[opcao.id] = 1; }
+                        return next;
+                      })} />
+                      <span>{opcao.nome}{Number(opcao.precoAdicional) > 0 ? ` (+${formatCurrency(Number(opcao.precoAdicional))})` : ''}</span>
+                    </label>;
+                  })}
+                </div>
+              </div>
+            ))}
+            {(canAddChope || canAddUnit) && <label className="block text-sm"><span className="font-semibold">Observação do item</span><textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} maxLength={280} rows={2} placeholder="Ex.: sem cebola" className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2" /></label>}
           </>
         )}
       </div>

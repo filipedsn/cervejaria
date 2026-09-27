@@ -14,6 +14,7 @@ Thumbs.db
 .idea/
 coverage/
 artifacts/certification/
+artifacts/audit/
 *.tsbuildinfo
 frontend/dev-dist/
 backend/uploads/logos/*
@@ -53,6 +54,8 @@ ops-panel/.env
 # Dumps SQL locais
 deploy/backups/*.sql
 !deploy/backups/.gitkeep
+# Snapshots locais criados pelos fluxos de recuperação; podem conter artefatos e configuração de ambiente.
+deploy/backups/prod-*-recovery-*/
 deploy/backups-external/
 deploy/backups-development/
 deploy/restore-drills/
@@ -72,6 +75,7 @@ deploy/release-candidates/
 backend/scripts/diag-*.mjs
 backend/scripts/browser-test-*.mjs
 backend/scripts/tmp-*
+backend/scripts/_inspect-*.mjs
 backend/p.*
 backend/qa/validate-jul21-session.ts
 backend/reports/

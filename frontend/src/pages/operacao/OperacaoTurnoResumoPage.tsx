@@ -113,7 +113,8 @@ export function OperacaoTurnoResumoPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-        <KpiCard label="Receita total" value={formatCurrency(caixa.esperado.totalVendas)} />
+        <KpiCard label="Vendas do turno" value={formatCurrency(data.vendasTotal)} />
+        <KpiCard label="Recebido no turno" value={formatCurrency(data.totalRecebido)} />
         <KpiCard label="Comandas" value={pluralComandasOperacao(data.comandasAtendidas)} />
         <KpiCard label="Ticket médio" value={formatCurrency(data.ticketMedio)} />
         <KpiCard label="Receita/hora" value={`${formatCurrency(data.receitaPorHora)}/h`} />
@@ -191,7 +192,7 @@ export function OperacaoTurnoResumoPage() {
         <section className="card space-y-3">
           <h2 className="section-label">Gaveta</h2>
           <LinhaResumo rotulo="Troco inicial" valor={caixa.gaveta.trocoInicial} />
-          <LinhaResumo rotulo="Vendas em dinheiro" valor={caixa.gaveta.entradasDinheiro} />
+          <LinhaResumo rotulo="Recebimentos em dinheiro" valor={caixa.gaveta.entradasDinheiro} />
           <LinhaResumo rotulo="Suprimentos" valor={caixa.gaveta.suprimentos} />
           <LinhaResumo rotulo="Sangrias" valor={-caixa.gaveta.sangrias} />
           <div className="border-t border-line pt-2">
@@ -200,7 +201,7 @@ export function OperacaoTurnoResumoPage() {
         </section>
 
         <section className="card space-y-2">
-          <h2 className="section-label">Vendas por forma</h2>
+          <h2 className="section-label">Recebimentos por forma</h2>
           {FORMAS_PAGAMENTO.map((forma) => {
             const chave =
               forma.valor === 'DINHEIRO'
@@ -214,7 +215,7 @@ export function OperacaoTurnoResumoPage() {
             return <LinhaResumo key={forma.valor} rotulo={forma.label} valor={valor} />;
           })}
           <div className="border-t border-line pt-2">
-            <LinhaResumo rotulo="Total vendido" valor={caixa.esperado.totalVendas} destaque />
+            <LinhaResumo rotulo="Total recebido" valor={caixa.esperado.totalVendas} destaque />
           </div>
         </section>
       </div>

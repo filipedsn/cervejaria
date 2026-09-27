@@ -6,6 +6,7 @@ import { ConfigCardapioOperacaoPanel } from '../components/ConfigCardapioOperaca
 import { ConfigMesasOperacaoPanel } from '../components/ConfigMesasOperacaoPanel';
 import { OperationalCapabilitiesPanel } from '../components/OperationalCapabilitiesPanel';
 import { OnboardingManualEntry } from '../components/OnboardingManualEntry';
+import { CategoriasProdutoOrdemPanel } from '../components/operacao/CategoriasProdutoOrdemPanel';
 
 type OperacaoPageProps = {
   embedded?: boolean;
@@ -25,6 +26,7 @@ export function OperacaoPage({ embedded, modo = 'cervejaria' }: OperacaoPageProp
       {modo === 'cervejaria' && <ConfigCardapioPanel />}
       {modo === 'operacao' && <ConfigCardapioOperacaoPanel />}
       {modo === 'operacao' && <ConfigMesasOperacaoPanel />}
+      {modo === 'operacao' && <CategoriasProdutoOrdemPanel />}
       {modo === 'cervejaria' && <ConfigCardapioOperacaoPanel />}
       <OnboardingManualEntry />
     </div>

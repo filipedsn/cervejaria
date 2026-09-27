@@ -114,6 +114,7 @@ export async function pedidosRoutes(app: FastifyInstance) {
               quantidade: item.quantidade,
               tapId: tapId ?? undefined,
             },
+            criadoPorId: user.sub,
           });
           if ('error' in result) {
             throw new PedidoConfirmacaoError(result.error ?? 'Falha ao adicionar item', item.id);

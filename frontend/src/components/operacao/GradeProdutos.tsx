@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { formatCurrency } from '../../lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { api, formatCurrency } from '../../lib/api';
 import type { ProdutoOperacao } from '../../lib/operacao';
-import { normalizeCategoriaProduto } from '../../lib/operacao';
+import { CATEGORIAS_PRODUTO_OPERACAO, normalizeCategoriaProduto } from '../../lib/operacao';
 import type { SaldoEstoque } from '../../lib/operacao';
 
 interface Props {
@@ -22,14 +23,20 @@ export function GradeProdutos({
   controlaEstoque = false,
   quantidadesNoCarrinho,
 }: Props) {
+  const { data: categoriaConfig } = useQuery({
+    queryKey: ['operacao-categorias'],
+    queryFn: () => api.get<{ ordem: string[] }>('/api/operacao/produtos/categorias'),
+  });
+  const ordemCategorias = categoriaConfig?.ordem ?? CATEGORIAS_PRODUTO_OPERACAO;
   const categorias = useMemo(() => {
     const agrupado = new Map<string, ProdutoOperacao[]>();
     for (const produto of produtos) {
       const chave = normalizeCategoriaProduto(produto.categoria);
       agrupado.set(chave, [...(agrupado.get(chave) ?? []), produto]);
     }
-    return [...agrupado.entries()];
-  }, [produtos]);
+    const prioridade = new Map(ordemCategorias.map((categoria, index) => [categoria, index]));
+    return [...agrupado.entries()].sort(([a], [b]) => (prioridade.get(a) ?? Infinity) - (prioridade.get(b) ?? Infinity));
+  }, [produtos, ordemCategorias]);
 
   return (
     <div className="space-y-4">

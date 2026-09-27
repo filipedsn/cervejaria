@@ -13,6 +13,14 @@ export const CATEGORIAS_PRODUTO_OPERACAO = [
   'Outros',
 ] as const;
 
+export function normalizarOrdemCategoriasProduto(value: unknown): string[] {
+  const custom = Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && categoriasSet.has(item))
+    : [];
+  const unique = [...new Set(custom)];
+  return [...unique, ...CATEGORIAS_PRODUTO_OPERACAO.filter((categoria) => !unique.includes(categoria))];
+}
+
 export type CategoriaProdutoOperacao = (typeof CATEGORIAS_PRODUTO_OPERACAO)[number];
 
 const categoriasSet = new Set<string>(CATEGORIAS_PRODUTO_OPERACAO);

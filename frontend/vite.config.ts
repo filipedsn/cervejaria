@@ -32,7 +32,7 @@ export default defineConfig({  plugins: [
         display: 'standalone',
         display_override: ['standalone', 'fullscreen'],
         orientation: 'portrait',
-        start_url: '/eventos',
+        start_url: '/',
         icons: [
           {
             src: 'icons/pwa-192.png',

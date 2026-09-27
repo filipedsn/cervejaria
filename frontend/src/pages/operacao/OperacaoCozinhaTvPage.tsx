@@ -5,10 +5,31 @@ import { CozinhaPedidoCard } from '../../components/operacao/CozinhaPedidoCard';
 import { IconBell } from '../../components/NavIcons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOperacaoCozinha } from '../../hooks/useOperacaoCozinha';
+import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
+import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
 
 export function OperacaoCozinhaTvPage() {
-  const { cervejaria } = useAuth();
-  const { naFila, aguardando, alerta, mudarStatus, isLoading, erroMutation } = useOperacaoCozinha();
+  const { cervejaria, isDono } = useAuth();
+  const { contexto } = useOperacaoContexto();
+  const avisoNaCozinha = contexto.whatsappPedidoProntoEnabled && contexto.whatsappPedidoProntoNaCozinha;
+  const {
+    naFila,
+    pedidosNaFila,
+    itensNaFila,
+    aguardando,
+    pedidosEmPreparo,
+    emPreparo,
+    pedidosProntos,
+    prontos,
+    alerta,
+    mudarStatus,
+    removerItem,
+    confirmarCancelamentoItem,
+    isLoading,
+    erroMutation,
+    erroItemMutation,
+    erroConfirmarCancelamentoItem,
+  } = useOperacaoCozinha();
 
   if (isLoading) return <Loading fullScreen />;
 
@@ -22,8 +43,16 @@ export function OperacaoCozinhaTvPage() {
 
         <div className="cozinha-tv-header-meta">
           <div className="cozinha-tv-stat">
-            <span className="cozinha-tv-stat-value">{naFila.length}</span>
+            <span className="cozinha-tv-stat-value">{pedidosNaFila} | {itensNaFila}</span>
             <span className="cozinha-tv-stat-label">na fila</span>
+          </div>
+          <div className="cozinha-tv-stat cozinha-tv-stat--preparo">
+            <span className="cozinha-tv-stat-value">{pedidosEmPreparo} | {emPreparo}</span>
+            <span className="cozinha-tv-stat-label">em preparo</span>
+          </div>
+          <div className="cozinha-tv-stat cozinha-tv-stat--pronto">
+            <span className="cozinha-tv-stat-value">{pedidosProntos} | {prontos}</span>
+            <span className="cozinha-tv-stat-label">prontos</span>
           </div>
           {aguardando > 0 && (
             <div className="cozinha-tv-stat cozinha-tv-stat--alert">
@@ -62,7 +91,9 @@ export function OperacaoCozinhaTvPage() {
         <p className="cozinha-tv-hint">Toque na campainha para liberar o som.</p>
       )}
 
-      {erroMutation && <div className="cozinha-tv-erro">{erroMutation}</div>}
+      {(erroMutation || erroItemMutation || erroConfirmarCancelamentoItem) && (
+        <div className="cozinha-tv-erro">{erroMutation || erroItemMutation || erroConfirmarCancelamentoItem}</div>
+      )}
 
       {naFila.length === 0 ? (
         <div className="cozinha-tv-empty">
@@ -76,9 +107,39 @@ export function OperacaoCozinhaTvPage() {
               pedido={pedido}
               indice={indice}
               variant="tv"
-              disabled={mudarStatus.isPending}
+              disabled={mudarStatus.isPending || removerItem.isPending || confirmarCancelamentoItem.isPending}
               onAvancar={(status) => mudarStatus.mutate({ id: pedido.id, status })}
               onVoltar={(status) => mudarStatus.mutate({ id: pedido.id, status })}
+              podeCancelar={isDono}
+              onCancelar={() => {
+                if (window.confirm(`Cancelar o pedido ${pedido.numero}?`)) {
+                  mudarStatus.mutate({ id: pedido.id, status: 'CANCELAMENTO_PENDENTE' });
+                }
+              }}
+              onConfirmarCancelamento={() => {
+                if (window.confirm(`Confirmar o cancelamento do pedido ${pedido.numero}?`)) {
+                  mudarStatus.mutate({ id: pedido.id, status: 'CANCELADO' });
+                }
+              }}
+              onCancelarItem={(itemId) => {
+                const item = pedido.itens.find((linha) => linha.id === itemId);
+                if (!item) return;
+                if (window.confirm(`Cancelar ${item.quantidade}x ${item.nome}?`)) {
+                  removerItem.mutate({ comandaId: pedido.comanda.id, itemId });
+                }
+              }}
+              onConfirmarCancelamentoItem={(itemId) => confirmarCancelamentoItem.mutate({ pedidoId: pedido.id, itemId })}
+              onAvisarCliente={avisoNaCozinha ? () => {
+                const cliente = pedido.comanda.cliente;
+                if (!cliente?.telefone) return;
+                const url = linkWhatsAppPedidoPronto({
+                  telefone: cliente.telefone,
+                  clienteNome: cliente.nome,
+                  numeroPedido: pedido.numero,
+                  nomeEmpresa: cervejaria?.nome ?? 'nossa empresa',
+                });
+                if (url) navegarParaWhatsApp(url);
+              } : undefined}
             />
           ))}
         </div>

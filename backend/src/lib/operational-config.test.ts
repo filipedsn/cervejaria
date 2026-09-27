@@ -8,8 +8,10 @@ import { OperationalModeTransitionBlockedError, updateOperationalConfig } from '
 
 function database(current: Record<string, boolean | null> | null, activeOrder = false, openCash = false, activeEvent = false) {
   const updates: unknown[] = [];
+  const cashQueries: unknown[] = [];
   return {
     updates,
+    cashQueries,
     configuracaoOperacional: {
       findUnique: async () => current,
       upsert: async ({ create, update }: any) => {
@@ -18,7 +20,7 @@ function database(current: Record<string, boolean | null> | null, activeOrder = 
       },
     },
     pedidoOperacao: { findFirst: async () => (activeOrder ? { id: 'pedido-aberto' } : null) },
-    sessaoCaixaOperacao: { findFirst: async () => (openCash ? { id: 'caixa-aberto' } : null) },
+    sessaoCaixaOperacao: { findFirst: async (query: unknown) => { cashQueries.push(query); return openCash ? { id: 'caixa-aberto' } : null; } },
     evento: { findFirst: async () => (activeEvent ? { id: 'evento-ativo' } : null) },
   };
 }
@@ -73,6 +75,39 @@ test('allows CAIXA to EVENTO when no cash session is open', async () => {
   await updateOperationalConfig(db as any, 'tenant-a', { operationMode: 'EVENTO' });
   assert.equal(db.updates.length, 1);
   assert.deepEqual((db.updates[0] as any).update, { plannedOperationsEnabled: true });
+});
+
+test('persists WhatsApp ready-order settings independently per tenant', async () => {
+  const db = database({
+    plannedOperationsEnabled: false,
+    tapsEnabled: false,
+    inventoryEnabled: false,
+    kitchenEnabled: true,
+    whatsappPedidoProntoEnabled: false,
+    whatsappPedidoProntoNaCozinha: false,
+  });
+  await updateOperationalConfig(db as any, 'tenant-a', {
+    whatsappPedidoProntoEnabled: true,
+    whatsappPedidoProntoNaCozinha: true,
+  });
+  assert.deepEqual(db.updates, [{
+    create: {
+      cervejariaId: 'tenant-a',
+      whatsappPedidoProntoEnabled: true,
+      whatsappPedidoProntoNaCozinha: true,
+    },
+    update: {
+      whatsappPedidoProntoEnabled: true,
+      whatsappPedidoProntoNaCozinha: true,
+    },
+  }]);
+});
+
+test('checks only the current operational day when guarding the mode transition', async () => {
+  const db = database({ directSalesEnabled: true, plannedOperationsEnabled: false });
+  await updateOperationalConfig(db as any, 'tenant-a', { operationMode: 'EVENTO' });
+  assert.equal((db.cashQueries[0] as any).where.status, 'ABERTO');
+  assert.ok((db.cashQueries[0] as any).where.diaOperacional instanceof Date);
 });
 
 test('blocks EVENTO to CAIXA while an event is active', async () => {

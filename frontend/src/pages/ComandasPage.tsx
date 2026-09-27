@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, formatCurrency, ApiError } from '../lib/api';
 import type { Comanda, EventoDashboard, FecharGrupoResponse } from '../types';
@@ -40,6 +40,7 @@ function StatCard({ label, value, accent }: { label: string; value: string; acce
 
 export function ComandasPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { cervejaria } = useAuth();
   const exibirKpis = cervejaria?.exibirKpisComanda ?? true;
@@ -172,6 +173,19 @@ export function ComandasPage() {
     );
   }, [comandas, buscaComanda]);
 
+  const isAbertas = comandaTab === 'ABERTA';
+  const eventoAberto = evento?.status === 'ABERTO';
+
+  useEffect(() => {
+    const mandanteId = searchParams.get('selecionar');
+    if (!mandanteId || !eventoAberto || !isAbertas || !comandas?.some((c) => c.id === mandanteId)) return;
+    setSelectMode(true);
+    setSelectedIds([mandanteId]);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('selecionar');
+    setSearchParams(nextParams, { replace: true });
+  }, [comandas, eventoAberto, isAbertas, searchParams, setSearchParams]);
+
   if (!evento) {
     return (
       <div className="empty-state py-12 space-y-3">
@@ -190,9 +204,6 @@ export function ComandasPage() {
   if (loadingDashboard || loadingComandas) return <Loading />;
 
   const resumo = dashboard?.resumo;
-  const isAbertas = comandaTab === 'ABERTA';
-  const eventoAberto = evento.status === 'ABERTO';
-  const canSelect = isAbertas && eventoAberto;
   const showPayBar = selectMode && selectedIds.length >= 2 && totalGrupo > 0;
 
   return (
@@ -257,7 +268,7 @@ export function ComandasPage() {
         />
       </div>
 
-      {canSelect && (resumo?.comandasAbertas ?? comandas?.length ?? 0) >= 2 && (
+      {false && (resumo?.comandasAbertas ?? comandas?.length ?? 0) >= 2 && (
         selectMode ? (
           <button
             type="button"

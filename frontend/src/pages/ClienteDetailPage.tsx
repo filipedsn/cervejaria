@@ -189,6 +189,13 @@ export function ClienteDetailPage() {
           <p className="text-xs text-ink-muted uppercase tracking-wide">Última visita</p>
           <p className="text-sm font-semibold mt-2">{formatDateTime(stats?.ultimaVisitaEm)}</p>
         </div>
+        {(cliente.valorPendente ?? 0) > 0 && (
+          <div className="card col-span-2 border-orange-500/40 bg-orange-500/5 text-center">
+            <p className="text-xs font-semibold uppercase tracking-wide text-orange-300">Saldo pendente</p>
+            <p className="mt-1 text-2xl font-bold text-orange-400">{formatCurrency(cliente.valorPendente ?? 0)}</p>
+            <p className="mt-1 text-xs text-ink-muted">Será incluído no total gasto conforme os pagamentos forem recebidos.</p>
+          </div>
+        )}
       </div>
 
       <div className="card space-y-2">
@@ -238,7 +245,7 @@ export function ClienteDetailPage() {
                 className="input"
                 value={telefone}
                 onChange={(e) => setTelefone(formatPhone(e.target.value))}
-                placeholder="(11) 99999-9999"
+                placeholder="(11) 9 9999-9999"
               />
             </div>
             {isDono && (
@@ -331,10 +338,15 @@ export function ClienteDetailPage() {
               <div>
                 <p className="font-semibold">{item.evento.nome}</p>
                 <p className="text-xs text-ink-muted">
-                  {item.evento.local} · {formatDateTime(item.fechadaEm)}
+                  {item.evento.local ? `${item.evento.local} · ` : ''}{formatDateTime(item.fechadaEm)}
                 </p>
               </div>
-              <p className="font-bold text-brand-600 shrink-0">{formatCurrency(item.total)}</p>
+              <div className="shrink-0 text-right">
+                <p className="font-bold text-brand-600">Pago: {formatCurrency(item.total)}</p>
+                {item.valorPendente > 0 && (
+                  <p className="mt-0.5 text-xs font-semibold text-orange-400">Pendente: {formatCurrency(item.valorPendente)}</p>
+                )}
+              </div>
             </div>
             <ul className="text-sm text-ink-muted space-y-0.5">
               {item.itens.map((i) => (

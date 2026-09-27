@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../../lib/api';
 import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
 import { ComandasBuscaInput } from '../../components/ComandasBuscaInput';
-import { StatusBadge, comandaStatusVariant } from '../../components/StatusBadge';
 import { MobileActionBar } from '../../components/MobileActionBar';
 import {
   PaymentFormModal,
@@ -16,10 +15,12 @@ import {
 import { parseCurrencyInput } from '../../lib/currency';
 import { textoCorrespondeBuscaComanda } from '../../lib/comandas-busca';
 import { PainelCaixaOperacao } from '../../components/operacao/PainelCaixaOperacao';
-import { PdvPortalQrButton } from '../../components/PdvPortalQrButton';
+import { IconWhatsApp } from '../../components/NavIcons';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import { useAuth } from '../../contexts/AuthContext';
+import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
+import { connectSocket, getSocket } from '../../lib/socket';
 import {
   comandasFechadasNoTurno,
   diaOperacionalQuery,
@@ -27,7 +28,6 @@ import {
   ordenarComandasParaOperacao,
   RESUMO_TURNO_VAZIO,
   rotuloComanda,
-  totalItensComanda,
   type CaixaResposta,
   type ComandaOperacao,
   type FecharGrupoOperacaoResponse,
@@ -50,7 +50,8 @@ export function OperacaoComandasPage() {
   const colunaUnica = cervejaria?.comandasColunaUnica ?? true;
   const { contexto } = useOperacaoContexto();
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
-  const [pontoVendaId, setPontoVendaId] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pontoVendaSelecionadoId = searchParams.get('pontoVendaId') ?? '';
   const [comandaTab, setComandaTab] = useState<'ABERTA' | 'FECHADA'>('ABERTA');
   const [buscaComanda, setBuscaComanda] = useState('');
   const [selectMode, setSelectMode] = useState(false);
@@ -58,10 +59,16 @@ export function OperacaoComandasPage() {
   const [showGroupPayment, setShowGroupPayment] = useState(false);
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([{ forma: 'PIX', valor: '' }]);
   const [groupError, setGroupError] = useState('');
-  const [groupSuccess, setGroupSuccess] = useState('');
+  const avisoWhatsAppStorageKey = 'quiver:aviso-whatsapp:comandas';
+  const [avisoWhatsAppAbertoId, setAvisoWhatsAppAbertoId] = useState<string | null>(() =>
+    window.sessionStorage.getItem(avisoWhatsAppStorageKey),
+  );
+  const [avisoError, setAvisoError] = useState('');
   const isAbertas = comandaTab === 'ABERTA';
 
-  const pontoAtivo = pontoVendaId || pontosVenda[0]?.id || '';
+  const pontoAtivo = pontosVenda.some((ponto) => ponto.id === pontoVendaSelecionadoId)
+    ? pontoVendaSelecionadoId
+    : pontosVenda[0]?.id || '';
   const dia = diaOperacionalQuery();
   const pontoQuery = pontoAtivo ? `&pontoVendaId=${pontoAtivo}` : '';
   const pollMs = usePollInterval(30_000);
@@ -89,6 +96,21 @@ export function OperacaoComandasPage() {
     refetchInterval: pollMs,
     enabled: Boolean(pontoAtivo) && caixaAberto,
   });
+
+  useEffect(() => {
+    if (!cervejaria?.id) return;
+    connectSocket(cervejaria.id);
+    const socket = getSocket();
+    const atualizarComandas = () => {
+      void queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
+    };
+    socket.on('operacao:comanda-atualizada', atualizarComandas);
+    socket.on('operacao:pedido-atualizado', atualizarComandas);
+    return () => {
+      socket.off('operacao:comanda-atualizada', atualizarComandas);
+      socket.off('operacao:pedido-atualizado', atualizarComandas);
+    };
+  }, [cervejaria?.id, queryClient]);
 
   const abertasTurno = caixaAberto ? (abertas ?? []) : [];
   const fechadasTurno = turnoAbertoEm ? comandasFechadasNoTurno(fechadasHoje ?? [], turnoAbertoEm) : [];
@@ -144,8 +166,25 @@ export function OperacaoComandasPage() {
     [abertasTurno, selectedIds],
   );
 
+  const marcarClienteAvisado = useMutation({
+    mutationFn: ({ comandaId, pedidoId }: { comandaId: string; pedidoId: string }) =>
+      api.patch<{ clienteAvisadoEm: string }>(
+        `/api/operacao/comandas/${comandaId}/pedidos/${pedidoId}/cliente-avisado`,
+        {},
+      ),
+    onSuccess: () => {
+      window.sessionStorage.removeItem(avisoWhatsAppStorageKey);
+      setAvisoWhatsAppAbertoId(null);
+      setAvisoError('');
+      void queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
+    },
+    onError: (cause) => {
+      setAvisoError(cause instanceof ApiError ? cause.message : 'NÃ£o foi possÃ­vel atualizar o aviso.');
+    },
+  });
+
   const totalGrupo = useMemo(
-    () => selectedComandas.filter((c) => c.total > 0).reduce((sum, c) => sum + c.total, 0),
+    () => selectedComandas.reduce((sum, c) => sum + c.total, 0),
     [selectedComandas],
   );
 
@@ -166,11 +205,7 @@ export function OperacaoComandasPage() {
         comandaIds: selectedIds,
         pagamentos,
       }),
-    onSuccess: (data) => {
-      const parts: string[] = [];
-      if (data.comandas.length > 0) parts.push(`${data.comandas.length} comanda(s) fechada(s)`);
-      if (data.canceladas.length > 0) parts.push(`${data.canceladas.length} cancelada(s)`);
-      setGroupSuccess(parts.join(' · ') || 'Operação concluída');
+    onSuccess: () => {
       setShowGroupPayment(false);
       exitSelectMode();
       queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
@@ -219,10 +254,19 @@ export function OperacaoComandasPage() {
     if (comandaTab !== 'ABERTA') exitSelectMode();
   }, [comandaTab]);
 
+  useEffect(() => {
+    const mandanteId = searchParams.get('selecionar');
+    if (!mandanteId || !isAbertas || !abertasTurno.some((c) => c.id === mandanteId)) return;
+    setSelectMode(true);
+    setSelectedIds([mandanteId]);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('selecionar');
+    setSearchParams(nextParams, { replace: true });
+  }, [abertasTurno, isAbertas, searchParams, setSearchParams]);
+
   if (loadingAbertas && caixaAberto) return <Loading />;
   if (loadingFechadas && caixaAberto) return <Loading />;
 
-  const canSelect = isAbertas;
   const showPayBar = selectMode && selectedIds.length >= 2 && totalGrupo > 0;
 
   return (
@@ -230,7 +274,15 @@ export function OperacaoComandasPage() {
       {pontosVenda.length > 1 && (
         <div>
           <label className="label">Ponto de venda</label>
-          <select className="input" value={pontoAtivo} onChange={(e) => setPontoVendaId(e.target.value)}>
+          <select
+            className="input"
+            value={pontoAtivo}
+            onChange={(e) => {
+              const nextParams = new URLSearchParams(searchParams);
+              nextParams.set('pontoVendaId', e.target.value);
+              setSearchParams(nextParams, { replace: true });
+            }}
+          >
             {pontosVenda.map((ponto) => (
               <option key={ponto.id} value={ponto.id}>
                 {ponto.nome}
@@ -241,53 +293,33 @@ export function OperacaoComandasPage() {
       )}
 
       {pontoAtivo && (
-        <>
-          <PainelCaixaOperacao
-            pontoVendaId={pontoAtivo}
-            compacto
-            comandasAbertas={abertasTurno.length}
-          />
-          <PdvPortalQrButton pontoVendaId={pontoAtivo} />
-        </>
+        <PainelCaixaOperacao
+          pontoVendaId={pontoAtivo}
+          compacto
+          comandasAbertas={abertasTurno.length}
+        />
       )}
 
       {!selectMode && (
-        <div className="grid grid-cols-2 gap-2">
-          <Link
-            to="/operacao/comandas/nova"
-            className={`touch-btn-primary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold ${
-              !caixaAberto ? 'pointer-events-none opacity-50' : ''
-            }`}
-            aria-disabled={!caixaAberto}
-            tabIndex={caixaAberto ? undefined : -1}
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-xl leading-none font-normal">
-              +
-            </span>
-            Comanda
-          </Link>
-          <Link
-            to="/operacao/comandas/venda-avulsa"
-            data-onboarding-target="operacao-start-sale"
-            className={`touch-btn-secondary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold ${
-              !caixaAberto ? 'pointer-events-none opacity-50' : ''
-            }`}
-            aria-disabled={!caixaAberto}
-            tabIndex={caixaAberto ? undefined : -1}
-          >
-            <span
-              className="flex h-9 w-9 shrink-0 items-center justify-center text-xl leading-none text-orange"
-              aria-hidden
-            >
-              ⚡
-            </span>
-            Venda avulsa
-          </Link>
-        </div>
+        <section className="space-y-2.5" aria-label="Ações rápidas">
+          <header><h2 className="text-xl font-bold">Ações rápidas</h2><p className="text-sm text-ink-muted">Acesso rápido às principais funcionalidades do seu dia a dia.</p></header>
+          <div className="grid grid-cols-2 gap-2">
+            <Link to="/operacao/comandas/nova" className={`group flex min-h-16 min-w-0 w-full items-center justify-center gap-1.5 rounded-2xl border border-sky-300/40 bg-gradient-to-br from-sky-500 to-blue-700 px-1.5 py-2 text-left text-white shadow-lg shadow-sky-500/20 transition hover:brightness-110 sm:min-h-20 sm:gap-3 sm:px-4 sm:py-3 ${!caixaAberto ? 'pointer-events-none opacity-50' : ''}`} aria-disabled={!caixaAberto} tabIndex={caixaAberto ? undefined : -1}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/30 bg-white/15 text-xl font-light leading-none sm:h-10 sm:w-10 sm:rounded-xl sm:text-3xl">+</span>
+              <span className="min-w-0"><strong className="block whitespace-nowrap text-[clamp(0.68rem,3.6vw,1rem)] font-bold leading-tight">Nova comanda</strong></span>
+              <span className="shrink-0 text-base text-white/90 transition-transform group-hover:translate-x-1 sm:text-xl" aria-hidden="true">›</span>
+            </Link>
+            <Link to="/operacao/comandas/venda-avulsa" data-onboarding-target="operacao-start-sale" className={`group flex min-h-16 min-w-0 w-full items-center justify-center gap-1.5 rounded-2xl border border-orange-300/50 bg-gradient-to-br from-orange-500 to-orange-700 px-1.5 py-2 text-left text-white shadow-lg shadow-orange-500/20 transition hover:brightness-110 sm:min-h-20 sm:gap-3 sm:px-4 sm:py-3 ${!caixaAberto ? 'pointer-events-none opacity-50' : ''}`} aria-disabled={!caixaAberto} tabIndex={caixaAberto ? undefined : -1}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/30 bg-white/15 sm:h-10 sm:w-10 sm:rounded-xl"><svg viewBox="0 0 24 24" className="h-4 w-4 fill-current sm:h-6 sm:w-6" aria-hidden="true"><path d="M13.2 1.8 4.9 13a1 1 0 0 0 .8 1.6h5l-.8 7.6 9.2-12a1 1 0 0 0-.8-1.6h-5.1l1-6a1 1 0 0 0-1.8-.8Z" /></svg></span>
+              <span className="min-w-0"><strong className="block whitespace-nowrap text-[clamp(0.68rem,3.6vw,1rem)] font-bold leading-tight">Venda avulsa</strong></span>
+              <span className="shrink-0 text-base text-white/90 transition-transform group-hover:translate-x-1 sm:text-xl" aria-hidden="true">›</span>
+            </Link>
+          </div>
+        </section>
       )}
 
-      {groupSuccess && <div className="alert-success">{groupSuccess}</div>}
       {groupError && !showGroupPayment && <div className="alert-error">{groupError}</div>}
+      {avisoError && <div className="alert-error" role="alert">{avisoError}</div>}
 
       {caixaAberto && exibirKpis && (
         <div className="grid grid-cols-2 gap-3">
@@ -296,11 +328,11 @@ export function OperacaoComandasPage() {
           <StatCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} />
           <StatCard label="Receita avulsa" value={formatCurrency(resumo.receitaAvulsa)} accent="green" />
           <StatCard label="Valor em aberto" value={formatCurrency(resumo.valorAberto)} />
-          <StatCard label="Valor fechado" value={formatCurrency(resumo.valorFechado)} accent="green" />
+          <StatCard label="Vendas encerradas" value={formatCurrency(resumo.valorFechado)} accent="green" />
         </div>
       )}
 
-      {canSelect && resumo.comandasAbertas >= 2 && (
+      {false && resumo.comandasAbertas >= 2 && (
         selectMode ? (
           <button
             type="button"
@@ -324,7 +356,6 @@ export function OperacaoComandasPage() {
             type="button"
             onClick={() => {
               setSelectMode(true);
-              setGroupSuccess('');
               setGroupError('');
             }}
             className="flex w-full items-center gap-3 min-h-[3.75rem] rounded-2xl bg-brand-600 text-white px-4 py-3 shadow-lg shadow-brand-600/25 ring-2 ring-brand-200/50 active:scale-[0.98] transition-transform"
@@ -342,8 +373,11 @@ export function OperacaoComandasPage() {
         )
       )}
 
-      <section className="space-y-3">
-        <h2 className="section-label mb-0">Comandas</h2>
+      <section className="space-y-3 rounded-2xl border border-brand-600/20 bg-gradient-to-br from-surface via-surface to-brand-900/10 p-3 shadow-sm sm:space-y-4 sm:p-5">
+        <header>
+          <h2 className="text-xl font-bold">Comandas</h2>
+          <p className="mt-0.5 text-sm text-ink-muted">Gerencie as comandas abertas e fechadas.</p>
+        </header>
 
         <div className="segmented-control w-full">
           <button
@@ -377,26 +411,84 @@ export function OperacaoComandasPage() {
             const livre = !comanda;
             const mesaOcupada = mesa != null && comanda != null;
             const isSelected = comanda ? selectedIds.includes(comanda.id) : false;
-            const itens = comanda ? totalItensComanda(comanda) : 0;
             const valor = comanda?.total ?? 0;
             const titulo = comanda ? rotuloComanda(comanda) : `Mesa ${mesa!.numero}`;
+            const pedidosProntosParaAvisar = comanda && isAbertas && !selectMode &&
+              contexto.whatsappPedidoProntoEnabled &&
+              !contexto.whatsappPedidoProntoNaCozinha &&
+              Boolean(comanda.cliente?.telefone)
+              ? comanda.pedidos.filter((pedido) =>
+                  pedido.status === 'PRONTO' &&
+                  !pedido.clienteAvisadoEm &&
+                  pedido.itens.some((item) =>
+                    item.exigePreparo && !item.cancelamentoPendenteEm && !item.canceladoEm,
+                  ),
+              )
+              : [];
+            const botoesAvisoCliente = pedidosProntosParaAvisar.map((pedido) => {
+              const jaAbriuWhatsApp = avisoWhatsAppAbertoId === pedido.id;
+              const aguardandoSalvar = marcarClienteAvisado.isPending &&
+                marcarClienteAvisado.variables?.pedidoId === pedido.id;
+              return (
+                <button
+                  key={pedido.id}
+                  type="button"
+                  disabled={marcarClienteAvisado.isPending}
+                  aria-label={jaAbriuWhatsApp
+                    ? `Confirmar envio da mensagem da senha ${pedido.numero}`
+                    : `Avisar cliente pelo WhatsApp, senha ${pedido.numero}`}
+                  title={jaAbriuWhatsApp ? 'Confirmar envio' : `Avisar cliente · senha ${pedido.numero}`}
+                  className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border p-0 text-white transition-colors disabled:opacity-50 ${
+                    jaAbriuWhatsApp
+                      ? 'border-brand-500/40 bg-brand-600 hover:bg-brand-500'
+                      : 'border-emerald-500/40 bg-emerald-600 hover:bg-emerald-500'
+                  }`}
+                  onClick={() => {
+                    if (jaAbriuWhatsApp) {
+                      marcarClienteAvisado.mutate({ comandaId: comanda!.id, pedidoId: pedido.id });
+                      return;
+                    }
+                    const url = linkWhatsAppPedidoPronto({
+                      telefone: comanda!.cliente?.telefone,
+                      clienteNome: comanda!.cliente?.nome ?? titulo,
+                      numeroPedido: pedido.numero,
+                      nomeEmpresa: cervejaria?.nome ?? 'nossa empresa',
+                    });
+                    if (!url) return;
+                    setAvisoError('');
+                    window.sessionStorage.setItem(avisoWhatsAppStorageKey, pedido.id);
+                    setAvisoWhatsAppAbertoId(pedido.id);
+                    navegarParaWhatsApp(url);
+                  }}
+                >
+                  {jaAbriuWhatsApp ? (
+                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="m5 12 4 4L19 6" />
+                    </svg>
+                  ) : <IconWhatsApp className="h-6 w-6" />}
+                  <span className="sr-only">{aguardandoSalvar ? 'Confirmando envio...' : jaAbriuWhatsApp ? 'Confirmar envio' : `Avisar cliente, senha ${pedido.numero}`}</span>
+                </button>
+              );
+            });
+            const abrirComanda = () => {
+              if (livre) {
+                if (caixaAberto) abrirMesaLivreMutation.mutate(mesa!.numero);
+                return;
+              }
+              if (selectMode && comanda) {
+                toggleSelection(comanda.id);
+                return;
+              }
+              navigate(`/operacao/comandas/${comanda!.id}`);
+            };
             return (
-              <button
+              <div
                 key={comanda?.id ?? `mesa-livre-${mesa!.numero}`}
-                type="button"
-                onClick={() => {
-                  if (livre) {
-                    if (caixaAberto) abrirMesaLivreMutation.mutate(mesa!.numero);
-                    return;
-                  }
-                  if (selectMode && comanda) {
-                    toggleSelection(comanda.id);
-                    return;
-                  }
-                  navigate(`/operacao/comandas/${comanda!.id}`);
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest('button')) return;
+                  abrirComanda();
                 }}
-                disabled={livre && (!caixaAberto || abrirMesaLivreMutation.isPending)}
-                className={`card-touch w-full ${colunaUnica ? 'min-h-[4.5rem]' : 'min-h-[5.5rem]'} ${livre ? 'border-dashed border-green-300 bg-green-50/30' : ''} ${mesaOcupada ? 'operacao-mesa-ocupada' : ''} ${
+                className={`card-touch @container w-full !min-h-16 !p-2.5 ${livre ? 'border-dashed border-green-300 bg-green-50/30' : ''} ${mesaOcupada ? 'operacao-mesa-ocupada' : ''} ${
                   selectMode
                     ? isSelected
                       ? 'border-brand-500 bg-brand-50/40'
@@ -404,72 +496,43 @@ export function OperacaoComandasPage() {
                     : 'hover:border-brand-400/30'
                 }`}
               >
-                <div className={colunaUnica ? 'flex items-center justify-between gap-3' : 'flex flex-col gap-1.5'}>
-                  {colunaUnica ? (
-                    <>
-                      <div className="flex items-center gap-3 min-w-0">
-                        {selectMode && !livre && (
-                          <span
-                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${
-                              isSelected ? 'border-brand-600 bg-brand-600 text-white' : 'border-line bg-surface'
-                            }`}
-                            aria-hidden
-                          >
-                            {isSelected ? '✓' : ''}
-                          </span>
-                        )}
-                        <div className="min-w-0 text-left">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-lg font-bold break-words">{titulo}</h3>
-                            {mesaOcupada && <span className="badge-brand">Ocupada</span>}
-                            {comanda && !isAbertas && <StatusBadge variant={comandaStatusVariant(comanda.status)} />}
-                          </div>
-                          <p className="text-sm text-ink-faint">
-                            {livre ? 'Livre · toque para abrir' : `${comanda.pedidos.length} ${comanda.pedidos.length === 1 ? 'rodada' : 'rodadas'}`}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-xl font-bold text-brand-600 tabular-nums">{formatCurrency(valor)}</p>
-                        <p className="text-xs text-ink-faint">{itens} item(ns)</p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex min-w-0 items-start gap-2">
-                        {selectMode && !livre && (
-                            <span
-                              className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${
-                                isSelected ? 'border-brand-600 bg-brand-600 text-white' : 'border-line bg-surface'
-                              }`}
-                              aria-hidden
-                            >
-                              {isSelected ? '✓' : ''}
-                            </span>
-                          )}
-                          <div className="min-w-0 text-left">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <h3 className="text-base font-bold break-words">{titulo}</h3>
-                              {mesaOcupada && <span className="badge-brand">Ocupada</span>}
-                              {comanda && !isAbertas && <StatusBadge variant={comandaStatusVariant(comanda.status)} />}
-                            </div>
-                          </div>
-                        </div>
-                        <p className="shrink-0 text-base font-bold text-brand-600 tabular-nums">
-                          {formatCurrency(valor)}
-                        </p>
-                      </div>
-                      <div className="flex items-center justify-between gap-2 text-xs text-ink-faint">
-                        <span>
-                          {livre ? 'Livre · toque para abrir' : `${comanda.pedidos.length} ${comanda.pedidos.length === 1 ? 'rodada' : 'rodadas'}`}
-                        </span>
-                        <span>{itens} item(ns)</span>
-                      </div>
-                    </>
+                <div className={`flex min-h-11 min-w-0 items-center gap-2 ${colunaUnica ? '' : 'comanda-card-duas-colunas'}`}>
+                  {selectMode && !livre && (
+                    <span
+                      className={`comanda-card-select flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${
+                        isSelected ? 'border-brand-600 bg-brand-600 text-white' : 'border-line bg-surface'
+                      }`}
+                      aria-hidden
+                    >
+                      {isSelected ? '✓' : ''}
+                    </span>
                   )}
+                  <button
+                    type="button"
+                    onClick={abrirComanda}
+                    disabled={livre && (!caixaAberto || abrirMesaLivreMutation.isPending)}
+                    className="comanda-card-main flex min-w-0 flex-1 items-center overflow-hidden rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                  >
+                    <h3 className={`flex min-w-0 flex-1 items-center whitespace-nowrap font-bold leading-tight ${colunaUnica ? 'text-[clamp(0.75rem,5cqi,1rem)]' : 'text-[clamp(0.875rem,5.5cqi,1.05rem)]'}`}>
+                      {comanda?.numero != null && <span className="mr-1 shrink-0 text-orange-dark">{comanda.numero} —</span>}
+                      <span className="min-w-0 truncate">{titulo}</span>
+                    </h3>
+                  </button>
+                  <div className="comanda-card-notify flex shrink-0 items-center gap-1.5">
+                    {botoesAvisoCliente}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={abrirComanda}
+                    disabled={livre && (!caixaAberto || abrirMesaLivreMutation.isPending)}
+                    className="comanda-card-amount shrink-0 rounded-lg text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                  >
+                    <span className="whitespace-nowrap font-bold tabular-nums text-brand-600 text-[clamp(0.75rem,4cqi,1.25rem)]">
+                      {formatCurrency(valor)}
+                    </span>
+                  </button>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -504,7 +567,7 @@ export function OperacaoComandasPage() {
                     Nova comanda
                   </Link>
                 ) : (
-                    <Link to={`/operacao/caixa?pontoVendaId=${encodeURIComponent(pontoAtivo)}`} className="touch-btn-primary touch-btn-sm inline-block">
+                    <Link to="/operacao/comandas" className="touch-btn-primary touch-btn-sm inline-block">
                     Abrir caixa
                   </Link>
                 )

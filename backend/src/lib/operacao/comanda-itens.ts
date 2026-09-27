@@ -35,7 +35,7 @@ async function cancelarPedidoSeVazio(tx: Prisma.TransactionClient, pedidoId: str
     where: { id: pedidoId },
     include: { itensComanda: true },
   });
-  if (!pedido || pedido.itensComanda.length > 0 || pedido.status === 'CANCELADO') return pedido;
+  if (!pedido || pedido.itensComanda.length > 0 || ['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(pedido.status)) return pedido;
 
   return aplicarStatusPedidoCozinha(tx, pedido, 'CANCELADO');
 }
@@ -54,6 +54,7 @@ async function carregarItem(
     },
     include: {
       produto: true,
+      opcionais: { include: { opcional: true } },
       pedidoCozinha: {
         include: {
           comanda: { include: INCLUDE_COMANDA_OPERACAO },
@@ -74,7 +75,7 @@ async function notificarMudancaCozinha(
   const pedido = await prisma.pedidoOperacao.findUnique({
     where: { id: pedidoId },
     include: {
-      itensComanda: true,
+      itensComanda: { include: { opcionais: true } },
       comanda: { select: { id: true, tipo: true, identificador: true, numero: true } },
     },
   });
@@ -90,7 +91,6 @@ export async function removeItemFromComandaOperacao(params: {
   itemId: string;
   registradoPorId: string;
   moduloControlaEstoque: boolean;
-  temCozinha: boolean;
 }) {
   const item = await carregarItem(prisma, params.comandaId, params.itemId, params.cervejariaId);
   if (!item || !item.pedidoCozinha) return { error: 'Item não encontrado' as const };
@@ -99,8 +99,14 @@ export async function removeItemFromComandaOperacao(params: {
   if (comanda.status !== 'ABERTA') {
     return { error: 'Comanda não encontrada ou fechada' as const };
   }
-  if (item.pedidoCozinha.status === 'CANCELADO') {
+  if (['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(item.pedidoCozinha.status)) {
     return { error: 'Este pedido já foi cancelado' as const };
+  }
+  if (item.cancelamentoPendenteEm || item.canceladoEm) {
+    return { error: 'Este item já está em cancelamento' as const };
+  }
+  if (item.pedidoCozinha.status === 'ENTREGUE') {
+    return { error: 'Este item já foi entregue' as const };
   }
 
   const pedidoId = item.pedidoCozinhaId!;
@@ -114,26 +120,42 @@ export async function removeItemFromComandaOperacao(params: {
     if (itemAtual.pedidoCozinha.comanda.status !== 'ABERTA') {
       throw Object.assign(new Error('Comanda não encontrada ou fechada'), { statusCode: 409 });
     }
-    if (itemAtual.pedidoCozinha.status === 'CANCELADO') {
+    if (['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(itemAtual.pedidoCozinha.status)) {
       throw Object.assign(new Error('Este pedido já foi cancelado'), { statusCode: 409 });
+    }
+    if (itemAtual.cancelamentoPendenteEm || itemAtual.canceladoEm) {
+      throw Object.assign(new Error('Este item já está em cancelamento'), { statusCode: 409 });
+    }
+    if (itemAtual.pedidoCozinha.status === 'ENTREGUE') {
+      throw Object.assign(new Error('Este item já foi entregue'), { statusCode: 409 });
     }
 
     if (itemAtual.produto) {
       await estornarEstoqueItemPedido(tx, {
         moduloControlaEstoque: params.moduloControlaEstoque,
         cervejariaId: params.cervejariaId,
-        pontoVendaId: itemAtual.pedidoCozinha.pontoVendaId,
+        pontoVendaId: itemAtual.pedidoCozinha.pontoVendaId!,
         pedidoId,
         produtoId: itemAtual.produto.id,
         nome: itemAtual.nome ?? itemAtual.produto.nome,
         quantidade: itemAtual.quantidade,
         controlaEstoque: itemAtual.produto.controlaEstoque,
         registradoPorId: params.registradoPorId,
+        opcionais: itemAtual.opcionais.map((o) => ({ produtoEstoqueId: o.opcional?.produtoEstoqueId ?? null, quantidade: o.quantidade })),
       });
     }
 
-    await tx.itemComanda.delete({ where: { id: itemAtual.id } });
-    await cancelarPedidoSeVazio(tx, pedidoId);
+    // A linha já foi encaminhada à cozinha; o estado atual da configuração
+    // não pode transformar o cancelamento em exclusão imediata.
+    if (itemAtual.exigePreparo && itemAtual.pedidoCozinhaId) {
+      await tx.itemComanda.update({
+        where: { id: itemAtual.id },
+        data: { cancelamentoPendenteEm: new Date() },
+      });
+    } else {
+      await tx.itemComanda.delete({ where: { id: itemAtual.id } });
+      await cancelarPedidoSeVazio(tx, pedidoId);
+    }
 
     const comandaFresh = await tx.comanda.findUniqueOrThrow({
       where: { id: params.comandaId },
@@ -149,9 +171,68 @@ export async function removeItemFromComandaOperacao(params: {
   });
 
   notificarComandaOperacaoAtualizada(params.app, params.cervejariaId, params.comandaId);
-  await notificarMudancaCozinha(params.app, params.cervejariaId, params.temCozinha, pedidoId);
+  await notificarMudancaCozinha(params.app, params.cervejariaId, item.exigePreparo, pedidoId);
 
-  return { ok: true as const, comanda: resumoComanda(atualizada), item };
+  return {
+    ok: true as const,
+    cancelamentoPendente: Boolean(item.pedidoCozinhaId && item.exigePreparo),
+    comanda: resumoComanda(atualizada),
+    item,
+  };
+}
+
+export async function confirmarCancelamentoItemComandaOperacao(params: {
+  app: FastifyInstance;
+  cervejariaId: string;
+  pedidoId: string;
+  itemId: string;
+}) {
+  const item = await prisma.itemComanda.findFirst({
+    where: {
+      id: params.itemId,
+      pedidoCozinhaId: params.pedidoId,
+      exigePreparo: true,
+      pedidoCozinha: { cervejariaId: params.cervejariaId },
+    },
+    include: { pedidoCozinha: true, comanda: { select: { eventoId: true } } },
+  });
+  if (!item?.pedidoCozinha) return { error: 'Item não encontrado' as const };
+  if (!item.cancelamentoPendenteEm || item.canceladoEm) {
+    return { error: 'Este item não possui cancelamento pendente' as const };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await lockComandaItemsInTx(tx, item.comandaId);
+    const atual = await tx.itemComanda.findFirst({
+      where: {
+        id: item.id,
+        pedidoCozinhaId: params.pedidoId,
+        pedidoCozinha: { cervejariaId: params.cervejariaId },
+      },
+      include: { pedidoCozinha: true },
+    });
+    if (!atual?.pedidoCozinha || !atual.cancelamentoPendenteEm || atual.canceladoEm) {
+      throw Object.assign(new Error('Este item não possui cancelamento pendente'), { statusCode: 409 });
+    }
+
+    await tx.itemComanda.update({
+      where: { id: atual.id },
+      data: { cancelamentoPendenteEm: null, canceladoEm: new Date() },
+    });
+
+    const itensAtivosDoPedido = await tx.itemComanda.count({
+      where: { pedidoCozinhaId: params.pedidoId, exigePreparo: true, canceladoEm: null },
+    });
+    if (itensAtivosDoPedido === 0 && atual.pedidoCozinha.status !== 'CANCELADO') {
+      await aplicarStatusPedidoCozinha(tx, atual.pedidoCozinha, 'CANCELADO');
+    }
+
+    await recalcComandaTotalOperacao(tx, atual.comandaId);
+  });
+
+  notificarComandaOperacaoAtualizada(params.app, params.cervejariaId, item.comandaId);
+  await notificarMudancaCozinha(params.app, params.cervejariaId, true, params.pedidoId);
+  return { ok: true as const, eventoId: item.comanda.eventoId, comandaId: item.comandaId };
 }
 
 export async function updateItemQuantidadeComandaOperacao(params: {
@@ -175,13 +256,21 @@ export async function updateItemQuantidadeComandaOperacao(params: {
   if (comanda.status !== 'ABERTA') {
     return { error: 'Comanda não encontrada ou fechada' as const };
   }
-  if (item.pedidoCozinha.status === 'CANCELADO') {
+  if (['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(item.pedidoCozinha.status)) {
     return { error: 'Este pedido já foi cancelado' as const };
+  }
+
+  if (item.cancelamentoPendenteEm || item.canceladoEm) {
+    return { error: 'Este item está em cancelamento' as const };
   }
 
   const delta = params.quantidade - item.quantidade;
   if (delta === 0) {
     return { ok: true as const, comanda: resumoComanda(comanda), item };
+  }
+
+  if (item.pedidoCozinha.status === 'ENTREGUE') {
+    return { error: 'Este pedido já foi entregue' as const };
   }
 
   const pedidoId = item.pedidoCozinhaId!;
@@ -196,8 +285,20 @@ export async function updateItemQuantidadeComandaOperacao(params: {
       if (itemAtual.pedidoCozinha.comanda.status !== 'ABERTA') {
         throw Object.assign(new Error('Comanda não encontrada ou fechada'), { statusCode: 409 });
       }
-      if (itemAtual.pedidoCozinha.status === 'CANCELADO') {
+      if (['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(itemAtual.pedidoCozinha.status)) {
         throw Object.assign(new Error('Este pedido já foi cancelado'), { statusCode: 409 });
+      }
+
+      if (itemAtual.cancelamentoPendenteEm || itemAtual.canceladoEm) {
+        throw Object.assign(new Error('Este item está em cancelamento'), { statusCode: 409 });
+      }
+
+      if (itemAtual.pedidoCozinha.status === 'ENTREGUE') {
+        throw Object.assign(new Error('Este pedido já foi entregue'), { statusCode: 409 });
+      }
+
+      if (itemAtual.exigePreparo) {
+        throw Object.assign(new Error('A quantidade nÃ£o pode ser alterada depois que o pedido foi enviado Ã  cozinha'), { statusCode: 409 });
       }
 
       const deltaAtual = params.quantidade - itemAtual.quantidade;
@@ -206,25 +307,27 @@ export async function updateItemQuantidadeComandaOperacao(params: {
           await baixarEstoqueItemPedido(tx, {
             moduloControlaEstoque: params.moduloControlaEstoque,
             cervejariaId: params.cervejariaId,
-            pontoVendaId: itemAtual.pedidoCozinha.pontoVendaId,
+            pontoVendaId: itemAtual.pedidoCozinha.pontoVendaId!,
             pedidoId,
             produtoId: itemAtual.produto.id,
             nome: itemAtual.nome ?? itemAtual.produto.nome,
             quantidade: deltaAtual,
             controlaEstoque: itemAtual.produto.controlaEstoque,
             registradoPorId: params.registradoPorId,
+            opcionais: itemAtual.opcionais.map((o) => ({ produtoEstoqueId: o.opcional?.produtoEstoqueId ?? null, quantidade: o.quantidade })),
           });
         } else {
           await estornarEstoqueItemPedido(tx, {
             moduloControlaEstoque: params.moduloControlaEstoque,
             cervejariaId: params.cervejariaId,
-            pontoVendaId: itemAtual.pedidoCozinha.pontoVendaId,
+            pontoVendaId: itemAtual.pedidoCozinha.pontoVendaId!,
             pedidoId,
             produtoId: itemAtual.produto.id,
             nome: itemAtual.nome ?? itemAtual.produto.nome,
             quantidade: -deltaAtual,
             controlaEstoque: itemAtual.produto.controlaEstoque,
             registradoPorId: params.registradoPorId,
+            opcionais: itemAtual.opcionais.map((o) => ({ produtoEstoqueId: o.opcional?.produtoEstoqueId ?? null, quantidade: o.quantidade })),
           });
         }
       }

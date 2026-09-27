@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../../lib/api';
+import { formatPhone } from '../../lib/phone';
+import { digitsOnly } from '../../lib/phone';
 import { Modal } from '../../components/Modal';
 import { Loading } from '../../components/Loading';
 import { MobileActionBar } from '../../components/MobileActionBar';
-import { StatusBadge, comandaStatusVariant } from '../../components/StatusBadge';
-import { IconTrash } from '../../components/NavIcons';
+import { IconTrash, IconWhatsApp } from '../../components/NavIcons';
 import { AdicionarItensOperacaoModal } from '../../components/operacao/AdicionarItensOperacaoModal';
 import { PaymentDiscountFields } from '../../components/checkout/PaymentDiscountFields';
 import {
@@ -21,19 +22,22 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { connectSocket, getSocket } from '../../lib/socket';
+import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
 import {
   mapSaldosEstoque,
   pedidoConfirmadoNaComanda,
   pedidoVaiParaCozinha,
   podeEditarItemComanda,
+  podeRemoverItemComanda,
   podeIncrementarItemComanda,
   podeIncrementarLinhaCarrinho,
   produtosOperacionaisUrl,
   rotuloComanda,
-  rotuloInternoComanda,
   rotuloStatusPedido,
+  resumirItensComanda,
   temPedidoCozinhaPendente,
   totalItensComanda,
+  totalPendenteComanda,
   type CaixaResposta,
   type ComandaOperacao,
   type ProdutoOperacao,
@@ -47,16 +51,22 @@ export function OperacaoComandaDetailPage() {
   const queryClient = useQueryClient();
   const { isDono, cervejaria, podeDarDescontoOperacao } = useAuth();
   const { contexto } = useOperacaoContexto();
+  const avisoWhatsAppStorageKey = `quiver:aviso-whatsapp:comanda:${id}`;
   const controlaEstoque = contexto.ativo && contexto.controlaEstoque;
   const [showAddItem, setShowAddItem] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
+  const [visaoItens, setVisaoItens] = useState<'RESUMO' | 'PEDIDOS'>('PEDIDOS');
   const [closedComanda, setClosedComanda] = useState<ComandaOperacao | null>(null);
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([{ forma: 'PIX', valor: '' }]);
   const [carrinho, setCarrinho] = useState<LinhaCarrinho[]>([]);
   const [descontoInput, setDescontoInput] = useState('');
   const [erro, setErro] = useState('');
   const [itensAdicionadosMessage, setItensAdicionadosMessage] = useState('');
+  const [cancelamentoItemMessage, setCancelamentoItemMessage] = useState('');
+  const [pedidoWhatsAppAbertoId, setPedidoWhatsAppAbertoId] = useState<string | null>(() =>
+    window.sessionStorage.getItem(avisoWhatsAppStorageKey),
+  );
   const poll30 = usePollInterval(30_000);
   const poll15 = usePollInterval(15_000);
 
@@ -103,6 +113,11 @@ export function OperacaoComandaDetailPage() {
     [produtos],
   );
 
+  const resumoItens = useMemo(
+    () => (comanda ? resumirItensComanda(comanda) : []),
+    [comanda],
+  );
+
   const invalidar = () => {
     queryClient.invalidateQueries({ queryKey: ['operacao-comanda', id] });
     queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
@@ -143,16 +158,16 @@ export function OperacaoComandaDetailPage() {
     });
   }, [descontoInput, showPayment, comanda?.subtotal]);
 
-  const adicionar = (produto: ProdutoOperacao) => {
+  const adicionar = (produto: ProdutoOperacao, configuracao?: { quantidade?: number; paraViagem?: boolean; observacao?: string; opcionais?: LinhaCarrinho['opcionais'] }) => {
     setCarrinho((atual) => {
-      const existente = atual.find((linha) => linha.produto.id === produto.id);
+      const existente = atual.find((linha) => linha.produto.id === produto.id && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []));
       const quantidadeAtual = existente?.quantidade ?? 0;
       if (!podeIncrementarLinhaCarrinho(produto, quantidadeAtual, saldos, controlaEstoque)) {
         return atual;
       }
-      if (!existente) return [...atual, { produto, quantidade: 1 }];
+      if (!existente) return [...atual, { produto, quantidade: configuracao?.quantidade ?? 1, paraViagem: configuracao?.paraViagem, observacao: configuracao?.observacao, opcionais: configuracao?.opcionais }];
       return atual.map((linha) =>
-        linha.produto.id === produto.id ? { ...linha, quantidade: linha.quantidade + 1 } : linha,
+        linha.produto.id === produto.id && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []) ? { ...linha, quantidade: linha.quantidade + (configuracao?.quantidade ?? 1) } : linha,
       );
     });
   };
@@ -181,6 +196,9 @@ export function OperacaoComandaDetailPage() {
         itens: carrinho.map((linha) => ({
           produtoId: linha.produto.id,
           quantidade: linha.quantidade,
+          paraViagem: linha.paraViagem ?? false,
+          observacao: linha.observacao,
+          opcionais: linha.opcionais?.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })),
         })),
       }),
     onSuccess: () => {
@@ -215,14 +233,34 @@ export function OperacaoComandaDetailPage() {
     }
   };
 
+  const marcarClienteAvisado = useMutation({
+    mutationFn: (pedidoId: string) =>
+      api.patch<{ clienteAvisadoEm: string }>(
+        `/api/operacao/comandas/${id}/pedidos/${pedidoId}/cliente-avisado`,
+        {},
+      ),
+    onSuccess: () => {
+      window.sessionStorage.removeItem(avisoWhatsAppStorageKey);
+      setPedidoWhatsAppAbertoId(null);
+      invalidar();
+    },
+    onError: (cause) => setErro(cause instanceof ApiError ? cause.message : 'Não foi possível atualizar o aviso.'),
+  });
+
   const removerItem = useMutation({
     mutationFn: (itemId: string) =>
       api.delete<ComandaOperacao>(`/api/operacao/comandas/${id}/itens/${itemId}`),
-    onSuccess: (atualizada) => {
+    onSuccess: (atualizada, itemId) => {
       queryClient.setQueryData(['operacao-comanda', id], atualizada);
       queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
       invalidarEstoque();
       setErro('');
+      const itemExigeCozinha = comanda?.pedidos.some((pedido) =>
+        pedido.itens.some((item) => item.id === itemId && item.exigePreparo),
+      );
+      setCancelamentoItemMessage(itemExigeCozinha
+        ? 'Cancelamento solicitado. O item ficará destacado na cozinha até a confirmação.'
+        : 'Item removido da comanda.');
     },
     onError: (err) => {
       invalidarEstoque();
@@ -253,16 +291,18 @@ export function OperacaoComandaDetailPage() {
       desconto,
       descontoAnterior,
       aplicarDesconto,
+      deixarPendente,
     }: {
       pagamentos: { forma: 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO'; valor: number }[];
       desconto: number;
       descontoAnterior: number;
       aplicarDesconto: boolean;
+      deixarPendente: boolean;
     }) => {
       if (aplicarDesconto && desconto !== descontoAnterior) {
         await api.patch<ComandaOperacao>(`/api/operacao/comandas/${id}/desconto`, { desconto });
       }
-      return api.post<ComandaOperacao>(`/api/operacao/comandas/${id}/pagamentos`, { pagamentos });
+      return api.post<ComandaOperacao>(`/api/operacao/comandas/${id}/pagamentos`, { pagamentos, deixarPendente });
     },
     onSuccess: (data) => {
       setShowPayment(false);
@@ -308,13 +348,13 @@ export function OperacaoComandaDetailPage() {
   const openPayment = () => {
     if (!comanda) return;
     setDescontoInput(formatCurrencyInputFromNumber(comanda.desconto ?? 0));
-    const total = Math.max(0, comanda.subtotal - (comanda.desconto ?? 0));
+    const total = comanda.total;
     setPaymentForm(createDefaultPaymentForm(total));
     setShowPayment(true);
     setErro('');
   };
 
-  const handleClose = () => {
+  const handleClose = (deixarPendente = false) => {
     if (!comanda) return;
     const desconto = parseCurrencyInput(descontoInput);
     const podeAplicarDesconto = podeDarDescontoOperacao;
@@ -327,10 +367,11 @@ export function OperacaoComandaDetailPage() {
       valor: parseCurrencyInput(p.valor),
     }));
     fechar.mutate({
-      pagamentos,
+      pagamentos: deixarPendente ? [] : pagamentos,
       desconto,
       descontoAnterior: comanda.desconto ?? 0,
       aplicarDesconto: podeAplicarDesconto,
+      deixarPendente,
     });
   };
 
@@ -347,6 +388,11 @@ export function OperacaoComandaDetailPage() {
   const descontoValor = parseCurrencyInput(descontoInput);
   const totalComDesconto = Math.max(0, comanda.subtotal - descontoValor);
   const totalAPagar = Math.max(0, totalComDesconto);
+  const totalParcialComanda = comanda.total;
+  const totalPendente = totalPendenteComanda(comanda);
+  const clienteElegivelParaPendente = Boolean(
+    comanda.cliente?.id && comanda.cliente.telefone && digitsOnly(comanda.cliente.telefone).length >= 10,
+  );
 
   const paymentHeaderExtra = (
     <div className="space-y-3">
@@ -362,22 +408,25 @@ export function OperacaoComandaDetailPage() {
           disabled={fechar.isPending}
         />
       )}
+      {!clienteElegivelParaPendente && (
+        <p className="rounded-xl border border-line bg-surface-lighter p-3 text-sm text-ink-muted">
+          Para deixar esta conta pendente, associe antes um cliente cadastrado com telefone válido.
+        </p>
+      )}
     </div>
   );
 
   return (
     <div className={`space-y-4 ${hasActionBar ? 'page-with-action-bar' : 'pb-2'}`}>
       <div className="card">
-        <div className="flex items-start justify-between gap-3">
-          <h2 className="text-xl font-bold min-w-0 truncate leading-tight">{rotuloComanda(comanda)}</h2>
-          <StatusBadge variant={comandaStatusVariant(comanda.status)} />
+        <div className="flex items-center gap-x-4 gap-y-2">
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold truncate leading-tight">{rotuloComanda(comanda)}</h2>
+            {comanda.cliente?.telefone && <p className="text-sm text-ink-faint mt-1">{formatPhone(comanda.cliente.telefone)}</p>}
+          </div>
+          <p className="ml-auto text-2xl sm:text-3xl font-bold text-brand-600 tabular-nums whitespace-nowrap">{formatCurrency(totalParcialComanda)}</p>
         </div>
-        {rotuloInternoComanda(comanda) && (
-          <p className="mt-1 text-xs font-medium text-ink-faint">{rotuloInternoComanda(comanda)}</p>
-        )}
-        <p className="text-2xl sm:text-3xl font-bold text-brand-600 mt-2 tabular-nums">
-          {formatCurrency(comanda.total)}
-        </p>
+        {totalPendente > 0 && <p className="mt-1 text-right text-sm font-semibold text-amber-400">Pendente na cozinha: {formatCurrency(totalPendente)}</p>}
         {!aberta && comanda.desconto > 0 && (
           <div className="mt-3 space-y-1 text-sm border-t border-line pt-3">
             <div className="flex justify-between text-ink-muted">
@@ -397,9 +446,10 @@ export function OperacaoComandaDetailPage() {
       </div>
 
       {erro && !showAddItem && !showPayment && <div className="alert-error">{erro}</div>}
+      {cancelamentoItemMessage && <div className="alert-success">{cancelamentoItemMessage}</div>}
 
       <div className="space-y-2">
-        <h3 className="section-label">Itens</h3>
+        <h3 className="section-label">Consumo da comanda</h3>
         {aberta && (
           <button
             type="button"
@@ -414,9 +464,50 @@ export function OperacaoComandaDetailPage() {
           </button>
         )}
 
+        <nav className="segmented-control" aria-label="Visualização dos itens da comanda">
+          <button
+            type="button"
+            className={`segmented-control-btn ${visaoItens === 'PEDIDOS' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
+            aria-pressed={visaoItens === 'PEDIDOS'}
+            onClick={() => setVisaoItens('PEDIDOS')}
+          >
+            Pedidos ({comanda.pedidos.length})
+          </button>
+          <button
+            type="button"
+            className={`segmented-control-btn ${visaoItens === 'RESUMO' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
+            aria-pressed={visaoItens === 'RESUMO'}
+            onClick={() => setVisaoItens('RESUMO')}
+          >
+            Resumo da conta
+          </button>
+        </nav>
+
+        {visaoItens === 'PEDIDOS' ? (
+          <>
         {comanda.pedidos.map((pedido) => {
           const confirmado = pedidoConfirmadoNaComanda(pedido);
           const naCozinha = pedidoVaiParaCozinha(pedido.itens) && pedido.status !== 'CANCELADO';
+          const podeAvisarCliente =
+            contexto.whatsappPedidoProntoEnabled &&
+            !contexto.whatsappPedidoProntoNaCozinha &&
+            pedido.status === 'PRONTO' &&
+            pedido.itens.some((item) => item.exigePreparo && !item.cancelamentoPendenteEm && !item.canceladoEm) &&
+            !pedido.clienteAvisadoEm;
+          const abrirWhatsAppPedidoPronto = () => {
+            const cliente = comanda.cliente;
+            if (!cliente?.telefone) return;
+            const url = linkWhatsAppPedidoPronto({
+              telefone: cliente.telefone,
+              clienteNome: cliente.nome,
+              numeroPedido: pedido.numero,
+              nomeEmpresa: cervejaria?.nome ?? 'nossa empresa',
+            });
+            if (!url) return;
+            window.sessionStorage.setItem(avisoWhatsAppStorageKey, pedido.id);
+            setPedidoWhatsAppAbertoId(pedido.id);
+            navegarParaWhatsApp(url);
+          };
           return (
           <section key={pedido.id} className="card space-y-2 py-3">
             <div className="flex items-center justify-between gap-2">
@@ -437,7 +528,10 @@ export function OperacaoComandaDetailPage() {
               </div>
             </div>
             {pedido.itens.map((item) => {
-              const editavel = aberta && podeEditarItemComanda(comanda, pedido);
+              const itemEmCancelamento = Boolean(item.cancelamentoPendenteEm || item.canceladoEm);
+              const editavel = aberta && !itemEmCancelamento && podeEditarItemComanda(comanda, pedido);
+              const removivel = aberta && !itemEmCancelamento && podeRemoverItemComanda(comanda, pedido);
+              const itemConfirmado = confirmado && !item.cancelamentoPendenteEm && !item.canceladoEm;
               const produto = produtoPorId.get(item.produtoId);
               const podeIncrementar = podeIncrementarItemComanda(produto, saldos, controlaEstoque);
               const alterandoEsteItem =
@@ -446,8 +540,12 @@ export function OperacaoComandaDetailPage() {
 
               return (
               <div key={item.id} className="flex items-center justify-between gap-3 text-sm">
-                <span className={`min-w-0 flex-1 truncate ${confirmado ? '' : 'text-ink-faint'}`}>
+                <span className={`min-w-0 flex-1 truncate ${itemConfirmado ? '' : 'text-ink-faint'}`}>
                   {editavel ? item.nome : `${item.quantidade}× ${item.nome}`}
+                  {item.cancelamentoPendenteEm && <small className="ml-2 rounded-full border border-orange-500/50 bg-orange-500/10 px-2 py-0.5 text-[10px] font-bold text-orange-400">Cancelamento solicitado</small>}
+                  {item.canceladoEm && <small className="ml-2 rounded-full bg-surface-lighter px-2 py-0.5 text-[10px] font-bold text-ink-faint">Cancelado</small>}
+                  {item.paraViagem && <small className="ml-2 rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-bold text-violet-300">Para viagem</small>}
+                  {(item.observacao || item.opcionais?.length) && <small className="block text-xs text-ink-muted">{item.observacao ? `Obs: ${item.observacao}` : ''}{item.opcionais?.length ? ` · ${item.opcionais.map((o) => o.nome).join(', ')}` : ''}</small>}
                 </span>
                 <div className="flex shrink-0 items-center gap-2">
                   {editavel ? (
@@ -489,10 +587,10 @@ export function OperacaoComandaDetailPage() {
                       </button>
                     </div>
                   ) : null}
-                  <span className={`w-20 text-right font-semibold tabular-nums ${confirmado ? '' : 'text-ink-faint'}`}>
-                    {confirmado ? formatCurrency(item.subtotal) : '—'}
+                  <span className={`w-20 text-right font-semibold tabular-nums ${itemConfirmado ? '' : 'text-ink-faint'}`}>
+                    {itemConfirmado ? formatCurrency(item.subtotal) : `Pendente · ${formatCurrency(item.subtotal)}`}
                   </span>
-                  {editavel && (
+                  {removivel && (
                     <button
                       type="button"
                       aria-label={`Remover ${item.nome}`}
@@ -510,9 +608,79 @@ export function OperacaoComandaDetailPage() {
               </div>
             );
             })}
+            {podeAvisarCliente && comanda.cliente?.telefone && (
+              <div className="flex justify-end border-t border-line pt-2">
+                {pedidoWhatsAppAbertoId === pedido.id ? (
+                  <button
+                    type="button"
+                    className="touch-btn-orange touch-btn-sm"
+                    disabled={marcarClienteAvisado.isPending}
+                    onClick={() => marcarClienteAvisado.mutate(pedido.id)}
+                  >
+                    {marcarClienteAvisado.isPending && marcarClienteAvisado.variables === pedido.id
+                      ? 'Salvando...'
+                      : 'Marcar como avisado'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-500"
+                    onClick={abrirWhatsAppPedidoPronto}
+                  >
+                    <IconWhatsApp className="h-5 w-5" /> Pedido pronto
+                  </button>
+                )}
+              </div>
+            )}
           </section>
         );
         })}
+          </>
+        ) : (
+          <section className="card space-y-3">
+            {resumoItens.length === 0 ? (
+              <p className="py-4 text-center text-sm text-ink-faint">Ainda não há itens válidos para resumir.</p>
+            ) : (
+              <>
+                <div className="hidden grid-cols-[minmax(0,1fr)_5rem_8rem_8rem] gap-3 border-b border-line pb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint sm:grid">
+                  <span>Produto</span><span className="text-right">Qtd.</span><span className="text-right">Preço médio</span><span className="text-right">Total</span>
+                </div>
+                <ul className="divide-y divide-line">
+                  {resumoItens.map((linha) => (
+                    <li key={linha.chave} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 py-3 sm:grid-cols-[minmax(0,1fr)_5rem_8rem_8rem] sm:items-center">
+                      <span className="min-w-0 font-medium">{linha.nome}</span>
+                      <span className="text-right text-sm tabular-nums">{linha.quantidade}x</span>
+                      <span className="col-start-1 text-xs text-ink-faint sm:col-auto sm:text-right">Preço médio {formatCurrency(linha.precoMedio)}</span>
+                      <strong className="row-span-2 self-center text-right tabular-nums sm:row-span-1">{formatCurrency(linha.total)}</strong>
+                    </li>
+                  ))}
+                </ul>
+                <div className="space-y-2 border-t border-line pt-3">
+                  <div className="flex justify-between text-sm text-ink-muted">
+                    <span>Subtotal dos itens</span>
+                    <span className="tabular-nums">{formatCurrency(comanda.subtotal)}</span>
+                  </div>
+                  {comanda.desconto > 0 && (
+                    <div className="flex justify-between text-sm text-ink-muted">
+                      <span>Desconto</span><span className="tabular-nums">− {formatCurrency(comanda.desconto)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t border-line pt-2 text-base font-bold">
+                    <span>Total da conta</span>
+                    <span className="tabular-nums text-brand-600">{formatCurrency(comanda.total)}</span>
+                  </div>
+                  {comanda.valorEmAberto > 0 && (
+                    <div className="flex justify-between text-sm font-semibold text-amber-500">
+                      <span>Valor em aberto</span>
+                      <span className="tabular-nums">{formatCurrency(comanda.valorEmAberto)}</span>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+            <p className="text-xs text-ink-faint">Itens cancelados ou com cancelamento pendente não entram neste resumo. Alterações nos pedidos aparecerão ao atualizar a comanda.</p>
+          </section>
+        )}
 
         {aberta && temItens && cozinhaPendente && (
           <p className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
@@ -536,6 +704,8 @@ export function OperacaoComandaDetailPage() {
               Pagamento confirmado — comanda registrada, sem edição.
               Para novos pedidos, use <span className="font-semibold text-ink-soft">Nova comanda</span> abaixo.
             </>
+          ) : comanda.contaPendente ? (
+            <>Conta pendente registrada para {comanda.cliente?.nome}.</>
           ) : comanda.desconto >= comanda.subtotal && comanda.subtotal > 0 ? (
             <>Cortesia confirmada — comanda encerrada sem pagamento.</>
           ) : (
@@ -556,10 +726,18 @@ export function OperacaoComandaDetailPage() {
         </div>
       )}
 
+      {comanda.contaPendente && (
+        <div className="card space-y-2 border-orange/30">
+          <h3 className="text-sm font-semibold text-orange-dark">Conta pendente</h3>
+          <div className="flex justify-between text-sm"><span>Recebido</span><strong>{formatCurrency(comanda.contaPendente.recebido)}</strong></div>
+          <div className="flex justify-between text-sm"><span>Saldo</span><strong>{formatCurrency(comanda.contaPendente.saldo)}</strong></div>
+        </div>
+      )}
+
       {podeFechar && (
         <MobileActionBar>
           <button type="button" className="touch-btn-orange w-full" onClick={openPayment} data-audit="operacao-comanda-fechar">
-            Fechar Comanda · {formatCurrency(comanda.total)}
+            Fechar Comanda · {formatCurrency(totalParcialComanda)}
           </button>
           <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/operacao/comandas')}>
             Voltar às comandas
@@ -647,9 +825,28 @@ export function OperacaoComandaDetailPage() {
         total={totalAPagar}
         paymentForm={paymentForm}
         setPaymentForm={setPaymentForm}
-        onConfirm={handleClose}
+        onConfirm={() => handleClose()}
         isPending={fechar.isPending}
         headerExtra={paymentHeaderExtra}
+        deferLabel="Deixar pendente"
+        secondaryAction={comanda ? (
+          <button
+            type="button"
+            className="touch-btn-secondary w-full min-h-14"
+            disabled={fechar.isPending}
+            onClick={() => navigate(`/operacao/comandas?pontoVendaId=${encodeURIComponent(comanda.pontoVendaId)}&selecionar=${encodeURIComponent(comanda.id)}`)}
+          >
+            Selecionar comandas
+          </button>
+        ) : undefined}
+        deferDisabled={!clienteElegivelParaPendente || totalAPagar <= 0}
+        deferConfirmation={(
+          <div className="space-y-3 rounded-xl border border-orange/30 bg-surface-lighter p-4">
+            <p className="font-semibold">A comanda será encerrada sem receber agora.</p>
+            <p className="text-sm text-ink-muted">O valor de {formatCurrency(totalAPagar)} ficará vinculado a {comanda.cliente?.nome} pelo telefone {formatPhone(comanda.cliente?.telefone ?? '')} e não entrará nos recebimentos deste caixa.</p>
+          </div>
+        )}
+        onConfirmDefer={() => handleClose(true)}
       />
 
       <Modal
@@ -666,7 +863,12 @@ export function OperacaoComandaDetailPage() {
             <p className="text-xl font-bold">{rotuloComanda(closedComanda)}</p>
             <p className="text-3xl font-bold text-brand-600 tabular-nums">{formatCurrency(closedComanda.total)}</p>
             <div className="space-y-1">
-              {closedComanda.pagamentos.length === 0 ? (
+              {closedComanda.contaPendente ? (
+                <div className="space-y-1">
+                  <p className="font-semibold text-orange-dark">Conta pendente registrada</p>
+                  <p className="text-sm text-ink-muted">Cliente: {closedComanda.cliente?.nome} · saldo {formatCurrency(closedComanda.contaPendente.saldo)}</p>
+                </div>
+              ) : closedComanda.pagamentos.length === 0 ? (
                 <p className="font-semibold text-success">Cortesia — sem pagamento</p>
               ) : (
                 closedComanda.pagamentos.map((pagamento) => (

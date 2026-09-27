@@ -5,7 +5,7 @@ import {
   modoEmpresa,
   CAIXA_CAPACIDADES_INVALIDATION_KEYS,
 } from '../src/lib/operacao-capacidades.ts';
-import { getComplementaryNavItems, getOperationalModeNavItems, NAV_ITEMS_OPERACAO } from '../src/components/NavIcons.tsx';
+import { getCervejariaNavItems, getComplementaryNavItems, getOperationalModeNavItems, NAV_ITEMS_OPERACAO } from '../src/components/NavIcons.tsx';
 
 test('TAP-42: identifica os três modos da empresa como informação', () => {
   assert.equal(modoEmpresa(true, false), 'Cervejaria');
@@ -41,10 +41,14 @@ test('TAP-50: mostra abas complementares quando capabilities estao ativas', () =
   assert.deepEqual(getComplementaryNavItems({ controlaEstoque: false, temCozinha: false }), []);
 });
 
-test('navigation exposes Caixa only for the CAIXA mode', () => {
-  assert.equal(NAV_ITEMS_OPERACAO[0].shortLabel, 'Caixa');
-  assert.deepEqual(getOperationalModeNavItems({ operationMode: 'CAIXA', cashRegisterEnabled: false }).map((item) => item.path), ['/operacao/caixa']);
+test('navigation exposes Comandas as the cash-register entry point', () => {
+  assert.equal(NAV_ITEMS_OPERACAO[0].shortLabel, 'Comandas');
+  assert.deepEqual(getOperationalModeNavItems({ operationMode: 'CAIXA', cashRegisterEnabled: false }).map((item) => item.path), ['/operacao/comandas']);
   assert.deepEqual(getOperationalModeNavItems({ operationMode: 'EVENTO', cashRegisterEnabled: true }), []);
-  assert.notEqual(NAV_ITEMS_OPERACAO[0].shortLabel, 'Operacao');
-  assert.notEqual(NAV_ITEMS_OPERACAO[0].shortLabel, 'Estabelecimento');
+});
+
+test('cash-register mode does not duplicate the brewery Comandas entry', () => {
+  const navItems = getCervejariaNavItems({ isDono: true, operationMode: 'CAIXA' });
+  assert.equal(navItems.some((item) => item.path === '/comandas'), false);
+  assert.deepEqual(getOperationalModeNavItems({ operationMode: 'CAIXA', cashRegisterEnabled: true }).map((item) => item.path), ['/operacao/comandas']);
 });

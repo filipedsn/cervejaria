@@ -9,10 +9,11 @@ import { ConnectionStatus } from './ConnectionStatus';
 import { AccountMenu, UserAvatarButton } from './AccountMenu';
 import { BackToEventosLink } from './BackToEventosLink';
 import { PortalQrButton } from './PortalQrButton';
+import { PdvPortalQrButton } from './PdvPortalQrButton';
 import { TrailerSwitcher } from './TrailerSwitcher';
 import {
-  NAV_ITEMS,
   CAIXA_NAV_ITEMS,
+  getCervejariaNavItems,
   getOperacaoNavItems,
   getComplementaryNavItems,
   getOperationalModeNavItems,
@@ -137,13 +138,14 @@ export function Layout() {
 
   const { contexto: operacao, isLoading: operacaoLoading } = useOperacaoContexto();
   const inOperacao = location.pathname.startsWith('/operacao');
+  const onOperacaoComandasPage = location.pathname === '/operacao/comandas';
+  const pontoVendaQrParam = new URLSearchParams(location.search).get('pontoVendaId');
+  const pontoVendaQrId = operacao.pontosVenda.some((ponto) => ponto.id === pontoVendaQrParam)
+    ? pontoVendaQrParam!
+    : operacao.pontosVenda[0]?.id;
 
   const navItemsComandasOperacao = CAIXA_NAV_ITEMS.filter((item) => item.path === '/operacao/comandas');
-  const navItemsCervejaria = NAV_ITEMS.filter(
-    (item) =>
-      (!('donoOnly' in item && item.donoOnly) || isDono) &&
-      !(operacao.operationMode === 'CAIXA' && item.path === '/eventos'),
-  );
+  const navItemsCervejaria = getCervejariaNavItems({ isDono, operationMode: operacao.operationMode });
   const navItemsComplementares = operacao.ativo
     ? getComplementaryNavItems({ temCozinha: operacao.temCozinha, controlaEstoque: operacao.controlaEstoque })
     : [];
@@ -157,6 +159,7 @@ export function Layout() {
         ]
       : [...navItemsCervejaria, ...navItemsComplementares];
 
+  const navItemsOperacaoModo = getOperationalModeNavItems(operacao);
   const navItems = inOperacao
     ? operacaoLoading
       ? navItemsComandasOperacao
@@ -173,7 +176,9 @@ export function Layout() {
             }),
           ]
         : navItemsComandasOperacao
-    : [...navItemsCervejariaOrdenados, ...getOperationalModeNavItems(operacao)];
+    : operacao.operationMode === 'CAIXA'
+      ? [...navItemsOperacaoModo, ...navItemsCervejariaOrdenados]
+      : [...navItemsCervejariaOrdenados, ...navItemsOperacaoModo];
   const { alertEnabled, alertNeedsUnlock, pushStatus, wakeLockActive, togglePedidoAlert } =
     usePedidoAlertSound();
   const onEventsPage = location.pathname === '/eventos';
@@ -239,7 +244,10 @@ export function Layout() {
                   )}
                   <p className="text-base font-bold text-ink truncate leading-tight">{cervejaria?.nome}</p>
                 </div>
-                {usuario && <UserAvatarButton nome={usuario.nome} onClick={() => setAccountOpen(true)} />}
+                <div className="flex items-center gap-2">
+                  {onOperacaoComandasPage && pontoVendaQrId && <PdvPortalQrButton pontoVendaId={pontoVendaQrId} iconOnly className="icon-btn-ghost" />}
+                  {usuario && <UserAvatarButton nome={usuario.nome} onClick={() => setAccountOpen(true)} />}
+                </div>
               </div>
               {showTrailerSwitcher && <TrailerSwitcher />}
               <EventoBar

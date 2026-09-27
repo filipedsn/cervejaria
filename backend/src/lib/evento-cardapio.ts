@@ -8,7 +8,8 @@ import { toNumber } from './utils.js';
 type AplicarCardapioResult = { ok: true; count: number } | { error: string };
 
 const produtoInclude = {
-  include: { precos: { orderBy: { volumeMl: 'asc' as const } } },
+  precos: { orderBy: { volumeMl: 'asc' as const } },
+  opcionaisVinculados: { include: { opcional: true }, orderBy: [{ ordem: 'asc' as const }] },
 };
 
 export async function findEventoCardapioSessao(eventoId: string, cervejariaId: string) {
@@ -46,7 +47,7 @@ function enriquecerProdutosComPrecoTemplate<
 export async function listCatalogoCardapio(cervejariaId: string) {
   const produtos = await prisma.produto.findMany({
     where: { cervejariaId, ativo: true },
-    ...produtoInclude,
+    include: produtoInclude,
     orderBy: [{ tipo: 'asc' }, { nome: 'asc' }],
   });
 
@@ -56,7 +57,7 @@ export async function listCatalogoCardapio(cervejariaId: string) {
 export async function listProdutosDoEvento(eventoId: string) {
   const rows = await prisma.eventoProduto.findMany({
     where: { eventoId },
-    include: { produto: produtoInclude },
+    include: { produto: { include: produtoInclude } },
     orderBy: { produto: { nome: 'asc' } },
   });
 

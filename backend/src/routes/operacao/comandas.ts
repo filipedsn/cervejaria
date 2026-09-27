@@ -17,6 +17,7 @@ import {
   STATUS_NA_FILA,
   notificarPedidoNovo,
   notificarPedidosDaComanda,
+  notificarComandaOperacaoAtualizada,
   temPedidoCozinhaPendente,
 } from '../../lib/operacao/cozinha.js';
 import { assertCaixaAberto, lockCaixaEmTx } from '../../lib/operacao/caixa.js';
@@ -35,10 +36,15 @@ import {
   whereComandaOperacao,
 } from '../../lib/operacao/comanda-adapter.js';
 import { lockComandaItemsInTx, lockComandasInTx } from '../../lib/comanda-service.js';
+import { resolveClienteParaComanda, TelefoneConflitoError } from '../../lib/cliente-resolver.js';
+import { normalizePhone } from '../../lib/phone.js';
 
 const itemSchema = z.object({
   produtoId: z.string().min(1),
   quantidade: z.number().int().positive().max(999),
+  paraViagem: z.boolean().default(false),
+  observacao: z.string().trim().max(280).optional(),
+  opcionais: z.array(z.object({ opcionalId: z.string().min(1), quantidade: z.number().int().positive().max(99).optional() })).optional(),
 });
 
 const pagamentoSchema = z.object({
@@ -53,16 +59,22 @@ const abrirComandaSchema = z.object({
   identificador: z.string().trim().min(1).max(60),
   /** Itens ja no ato de abrir, para o atendente nao precisar de duas telas. */
   itens: z.array(itemSchema).default([]),
+  clienteId: z.string().min(1).optional(),
+  clienteNome: z.string().trim().min(1).max(120).optional(),
+  clienteTelefone: z.string().optional(),
+  paraViagem: z.boolean().default(false),
   observacao: z.string().trim().max(280).optional(),
 });
 
 const adicionarPedidoSchema = z.object({
   itens: z.array(itemSchema).min(1),
+  paraViagem: z.boolean().default(false),
   observacao: z.string().trim().max(280).optional(),
 });
 
 const pagarSchema = z.object({
-  pagamentos: z.array(pagamentoSchema),
+  pagamentos: z.array(pagamentoSchema).default([]),
+  deixarPendente: z.boolean().default(false),
 });
 
 const descontoSchema = z.object({
@@ -72,6 +84,8 @@ const descontoSchema = z.object({
 const itemQuantidadeSchema = z.object({
   quantidade: z.number().int().positive().max(999),
 });
+
+const clienteSchema = z.object({ clienteId: z.string().min(1).nullable() });
 
 const fecharGrupoSchema = z.object({
   comandaIds: z.array(z.string().min(1)).min(2),
@@ -182,7 +196,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
 
     const resultado = await prisma.$transaction(async (tx) => {
       await lockCaixaEmTx(tx, cervejariaId, pontoVendaId, dia);
-      await assertCaixaAberto(cervejariaId, pontoVendaId, dia, tx);
+      const sessao = await assertCaixaAberto(cervejariaId, pontoVendaId, dia, tx);
       await lockComandasInTx(tx, uniqueIds);
       const fechadas = [];
       const canceladas = [];
@@ -202,10 +216,19 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           comandaId: comanda.id,
           registradoPorId: user.sub,
         });
+        const pedidosParaCancelar = await tx.pedidoOperacao.findMany({
+          where: { comandaId: comanda.id, status: { in: STATUS_NA_FILA } },
+          select: { id: true },
+        });
         await tx.pedidoOperacao.updateMany({
           where: { comandaId: comanda.id, status: { in: STATUS_NA_FILA } },
-          data: { status: 'CANCELADO' },
+          data: { status: 'CANCELAMENTO_PENDENTE' },
         });
+        if (pedidosParaCancelar.length) {
+          await tx.pedidoOperacaoStatusHistorico.createMany({
+            data: pedidosParaCancelar.map(({ id }) => ({ pedidoId: id, status: 'CANCELAMENTO_PENDENTE' })),
+          });
+        }
         const cancelada = await tx.comanda.update({
           where: { id: comanda.id },
           data: { status: 'CANCELADA', fechadaEm, fechadoPorId: user.sub },
@@ -227,6 +250,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           cervejariaId,
           usuarioId: user.sub,
           fechadaEm,
+          sessaoCaixaId: sessao.id,
         });
         const fechada = await tx.comanda.findUniqueOrThrow({
           where: { id: resumo.id },
@@ -298,6 +322,84 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     return resumoComanda(comanda);
   });
 
+  app.patch('/:id/pedidos/:pedidoId/cliente-avisado', async (request, reply) => {
+    const { cervejariaId } = request.operacao;
+    const { id: comandaId, pedidoId } = request.params as { id: string; pedidoId: string };
+    const configuracao = await prisma.configuracaoOperacional.findUnique({
+      where: { cervejariaId },
+      select: { whatsappPedidoProntoEnabled: true, whatsappPedidoProntoNaCozinha: true },
+    });
+    if (!configuracao?.whatsappPedidoProntoEnabled || configuracao.whatsappPedidoProntoNaCozinha) {
+      return reply.status(409).send({ error: 'O aviso pelo WhatsApp não está configurado para a comanda.' });
+    }
+
+    const comanda = await prisma.comanda.findFirst({
+      where: whereComandaOperacao(cervejariaId, { id: comandaId, status: 'ABERTA' }),
+      select: { id: true, cliente: { select: { telefone: true } } },
+    });
+    if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada ou já fechada.' });
+    if (!comanda.cliente?.telefone) {
+      return reply.status(409).send({ error: 'Associe um cliente com telefone antes de marcar o aviso.' });
+    }
+
+    const agora = new Date();
+    const atualizado = await prisma.pedidoOperacao.updateMany({
+      where: {
+        id: pedidoId,
+        comandaId,
+        cervejariaId,
+        status: 'PRONTO',
+        clienteAvisadoEm: null,
+        itensComanda: {
+          some: {
+            exigePreparo: true,
+            cancelamentoPendenteEm: null,
+            canceladoEm: null,
+          },
+        },
+      },
+      data: { clienteAvisadoEm: agora },
+    });
+    if (atualizado.count === 0) {
+      const pedidoAtual = await prisma.pedidoOperacao.findFirst({
+        where: { id: pedidoId, comandaId, cervejariaId, status: 'PRONTO' },
+        select: { clienteAvisadoEm: true },
+      });
+      if (!pedidoAtual) return reply.status(409).send({ error: 'Este pedido não está mais pronto.' });
+      if (!pedidoAtual.clienteAvisadoEm) return reply.status(409).send({ error: 'Não foi possível atualizar o aviso.' });
+      return { clienteAvisadoEm: pedidoAtual.clienteAvisadoEm };
+    }
+
+    notificarComandaOperacaoAtualizada(app, cervejariaId, comandaId);
+    return { clienteAvisadoEm: agora };
+  });
+
+  app.patch('/:id/cliente', async (request, reply) => {
+    const { cervejariaId } = request.operacao;
+    const { id } = request.params as { id: string };
+    const body = clienteSchema.parse(request.body);
+    const comanda = await prisma.comanda.findFirst({
+      where: whereComandaOperacao(cervejariaId, { id, status: 'ABERTA' }),
+      select: { id: true },
+    });
+    if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada ou já fechada' });
+
+    if (body.clienteId) {
+      const cliente = await prisma.cliente.findFirst({
+        where: { id: body.clienteId, cervejariaId, ativo: true, isSistema: false },
+        select: { id: true },
+      });
+      if (!cliente) return reply.status(404).send({ error: 'Cliente não encontrado' });
+    }
+
+    const atualizada = await prisma.comanda.update({
+      where: { id: comanda.id },
+      data: { clienteId: body.clienteId },
+      include: INCLUDE_COMANDA_OPERACAO,
+    });
+    return resumoComanda(atualizada);
+  });
+
   app.post('/', async (request, reply) => {
     const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
     const user = getAuthUser(request);
@@ -308,6 +410,27 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       where: { id: body.pontoVendaId, cervejariaId, ativo: true },
     });
     if (!pontoVenda) return reply.status(404).send({ error: 'Ponto de venda não encontrado' });
+
+    let clienteResolvido: { id: string } | null = null;
+    if (body.clienteNome || body.clienteId) {
+      const telefone = body.clienteTelefone ? normalizePhone(body.clienteTelefone) : null;
+      if (body.clienteTelefone && !telefone) {
+        return reply.status(400).send({ error: 'Telefone inválido. Informe DDD + número (10 ou 11 dígitos).' });
+      }
+      try {
+        const cliente = await resolveClienteParaComanda({
+          cervejariaId,
+          nome: body.clienteNome ?? 'Cliente',
+          ...(telefone ? { telefone } : {}),
+          ...(body.clienteId ? { clienteId: body.clienteId } : {}),
+          cadastradoVia: 'COMANDA',
+        });
+        clienteResolvido = { id: cliente.id };
+      } catch (err) {
+        if (err instanceof TelefoneConflitoError) return reply.status(409).send({ error: err.message });
+        return reply.status(400).send({ error: err instanceof Error ? err.message : 'Dados do cliente inválidos' });
+      }
+    }
 
     const resultado = await prisma.$transaction(async (tx) => {
       await lockCaixaEmTx(tx, cervejariaId, body.pontoVendaId, dia);
@@ -334,6 +457,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           pontoVendaId: body.pontoVendaId,
           tipo: body.tipo,
           identificador: body.identificador,
+          ...(clienteResolvido ? { clienteId: clienteResolvido.id } : {}),
           numero,
           diaOperacional: dia,
           abertaPorId: user.sub,
@@ -351,6 +475,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           pontoVendaId: body.pontoVendaId,
           dia,
           criadoPorId: user.sub,
+          paraViagem: body.paraViagem,
           observacao: body.observacao,
           itens,
           temCozinha,
@@ -451,6 +576,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         pontoVendaId: comandaAtual.pontoVendaId!,
         dia: comandaAtual.diaOperacional!,
         criadoPorId: user.sub,
+        paraViagem: body.paraViagem,
         observacao: body.observacao,
         itens,
         temCozinha,
@@ -494,7 +620,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:comandaId/itens/:itemId', async (request, reply) => {
-    const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
+    const { cervejariaId, controlaEstoque } = request.operacao;
     const user = getAuthUser(request);
     const { comandaId, itemId } = request.params as { comandaId: string; itemId: string };
 
@@ -505,7 +631,6 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       itemId,
       registradoPorId: user.sub,
       moduloControlaEstoque: controlaEstoque,
-      temCozinha,
     });
 
     if ('error' in result) {
@@ -578,7 +703,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       await lockComandaItemsInTx(tx, comanda.id);
       const comandaAtual = await tx.comanda.findFirst({
         where: whereComandaOperacao(cervejariaId, { id: comanda.id, status: 'ABERTA' }),
-        include: { itens: true },
+        include: { itens: true, pedidosOperacao: { include: { itensComanda: { include: { opcionais: true } } } } },
       });
       if (!comandaAtual) {
         throw Object.assign(new Error('Só é possível alterar desconto em comanda aberta'), { statusCode: 409 });
@@ -586,10 +711,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       if (comandaAtual.tipo === 'AVULSA') {
         throw Object.assign(new Error('Venda avulsa não permite desconto'), { statusCode: 409 });
       }
-      const subtotalAtualEmCents = comandaAtual.itens.reduce(
-        (sum, item) => sum + centavos(item.precoUnit) * item.quantidade,
-        0,
-      );
+      const subtotalAtualEmCents = subtotalComandaEmCentavos(comandaAtual);
       if (descontoEmCents > subtotalAtualEmCents) {
         throw new DescontoInvalidoError('O desconto não pode ser maior que o subtotal da comanda');
       }
@@ -643,20 +765,42 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       });
     }
 
+    if (body.deixarPendente) {
+      if (resumo.total <= 0) {
+        return reply.status(400).send({ error: 'Uma conta sem valor nÃ£o pode ficar pendente' });
+      }
+      const cliente = comanda.clienteId
+        ? await prisma.cliente.findFirst({
+            where: { id: comanda.clienteId, cervejariaId, ativo: true, isSistema: false },
+            select: { telefone: true },
+          })
+        : null;
+      if (!cliente || !normalizePhone(cliente.telefone)) {
+        return reply.status(400).send({
+          error: 'Para deixar a conta pendente, associe um cliente cadastrado com telefone vÃ¡lido.',
+        });
+      }
+      if (body.pagamentos.length > 0) {
+        return reply.status(400).send({ error: 'Remova os pagamentos para deixar o valor integral pendente' });
+      }
+    }
+
     await assertCaixaAberto(cervejariaId, comanda.pontoVendaId!, comanda.diaOperacional!);
 
     const totalEmCentavos = centavos(resumo.total);
-    const pagamentos = resolverPagamentos(body.pagamentos, totalEmCentavos);
+    const pagamentos = body.deixarPendente ? [] : resolverPagamentos(body.pagamentos, totalEmCentavos);
 
     const fechada = await prisma.$transaction(async (tx) => {
       await lockCaixaEmTx(tx, cervejariaId, comanda.pontoVendaId!, comanda.diaOperacional!);
-      await assertCaixaAberto(cervejariaId, comanda.pontoVendaId!, comanda.diaOperacional!, tx);
+      const sessao = await assertCaixaAberto(cervejariaId, comanda.pontoVendaId!, comanda.diaOperacional!, tx);
       await fecharComandaOperacaoInTx(tx, {
         comanda,
         pagamentos,
         cervejariaId,
         usuarioId: user.sub,
         fechadaEm: new Date(),
+        sessaoCaixaId: sessao.id,
+        deixarPendente: body.deixarPendente,
       });
 
       return tx.comanda.findUniqueOrThrow({
@@ -667,17 +811,16 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
 
     const resumoFechada = resumoComanda(fechada);
 
-    void registrarTransacao({
-      cervejariaId,
-      tipo: 'SALE_PAYMENT_RECORDED',
-      usuarioId: user.sub,
-      comandaId: comanda.id,
-      metadata: {
-        pagamentos,
-        total: resumoFechada.total,
-      },
-      payload: resumoFechada,
-    });
+    if (!body.deixarPendente) {
+      void registrarTransacao({
+        cervejariaId,
+        tipo: 'SALE_PAYMENT_RECORDED',
+        usuarioId: user.sub,
+        comandaId: comanda.id,
+        metadata: { pagamentos, total: resumoFechada.total },
+        payload: resumoFechada,
+      });
+    }
 
     return resumoFechada;
   });
@@ -709,10 +852,19 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       });
 
       // Sem isso a rodada continuaria na fila da cozinha de uma conta que nao existe mais.
+      const pedidosParaCancelar = await tx.pedidoOperacao.findMany({
+        where: { comandaId: comanda.id, status: { in: STATUS_NA_FILA } },
+        select: { id: true },
+      });
       await tx.pedidoOperacao.updateMany({
         where: { comandaId: comanda.id, status: { in: STATUS_NA_FILA } },
-        data: { status: 'CANCELADO' },
+        data: { status: 'CANCELAMENTO_PENDENTE' },
       });
+      if (pedidosParaCancelar.length) {
+        await tx.pedidoOperacaoStatusHistorico.createMany({
+          data: pedidosParaCancelar.map(({ id }) => ({ pedidoId: id, status: 'CANCELAMENTO_PENDENTE' })),
+        });
+      }
 
       return tx.comanda.update({
         where: { id: comanda.id },

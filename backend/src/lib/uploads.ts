@@ -14,6 +14,7 @@ function resolveUploadsRoot(): string {
 
 const UPLOADS_ROOT = resolveUploadsRoot();
 const LOGOS_DIR = path.join(UPLOADS_ROOT, 'logos');
+const PORTAL_BACKGROUNDS_DIR = path.join(UPLOADS_ROOT, 'portal-backgrounds');
 
 export function getUploadsRoot(): string {
   return UPLOADS_ROOT;
@@ -23,8 +24,15 @@ export function getLogosDir(): string {
   return LOGOS_DIR;
 }
 
+export function getPortalBackgroundsDir(): string {
+  return PORTAL_BACKGROUNDS_DIR;
+}
+
 export function ensureUploadsDir(): void {
   if (!fs.existsSync(LOGOS_DIR)) {
     fs.mkdirSync(LOGOS_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(PORTAL_BACKGROUNDS_DIR)) {
+    fs.mkdirSync(PORTAL_BACKGROUNDS_DIR, { recursive: true });
   }
 }

@@ -4,6 +4,11 @@ import { prisma } from '../lib/prisma.js';
 import { getTenantUser } from '../types/auth.js';
 import { assertProdutoPodeExcluir } from '../lib/catalogo-utils.js';
 import { isBebidaChope, isVendaUnitaria, normalizePrecos, produtoFieldsForSave } from '../lib/produto-utils.js';
+import { listarOpcionaisProduto, substituirOpcionaisProduto } from '../lib/produto-opcionais.js';
+
+const opcionaisSchema = z.object({
+  opcionalIds: z.array(z.string().min(1)).max(100),
+});
 
 const precoSchema = z.object({
   volumeMl: z.number().int().positive(),
@@ -89,11 +94,17 @@ const updateProdutoSchema = z
 export async function produtosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
+  const opcionalCadastroSchema = z.object({ nome: z.string().trim().min(1).max(80), preco: z.number().min(0).max(9999), ativo: z.boolean().optional() });
+  app.get('/opcionais', async (request) => { const user = getTenantUser(app, request); return prisma.opcional.findMany({ where: { cervejariaId: user.cervejariaId }, orderBy: { nome: 'asc' } }); });
+  app.post('/opcionais', { preHandler: [app.requireDono] }, async (request, reply) => { const user = getTenantUser(app, request); const body = opcionalCadastroSchema.parse(request.body); return reply.status(201).send(await prisma.opcional.create({ data: { cervejariaId: user.cervejariaId, nome: body.nome, preco: body.preco, ativo: body.ativo ?? true } })); });
+  app.put('/opcionais/:id', { preHandler: [app.requireDono] }, async (request) => { const body = opcionalCadastroSchema.partial().parse(request.body); return prisma.opcional.update({ where: { id: (request.params as { id: string }).id }, data: body }); });
+  app.delete('/opcionais/:id', { preHandler: [app.requireDono] }, async (request) => prisma.opcional.delete({ where: { id: (request.params as { id: string }).id } }));
+
   app.get('/', async (request) => {
     const user = getTenantUser(app, request);
     return prisma.produto.findMany({
       where: { cervejariaId: user.cervejariaId },
-      include: { precos: { orderBy: { volumeMl: 'asc' } } },
+      include: { precos: { orderBy: { volumeMl: 'asc' } }, gruposOpcionais: { where: { ativo: true }, include: { opcoes: { where: { ativo: true }, orderBy: { ordem: 'asc' } } }, orderBy: { ordem: 'asc' } } },
       orderBy: [{ tipo: 'asc' }, { formato: 'asc' }, { nome: 'asc' }],
     });
   });
@@ -109,6 +120,23 @@ export async function produtosRoutes(app: FastifyInstance) {
 
     if (!produto) return reply.status(404).send({ error: 'Produto não encontrado' });
     return produto;
+  });
+
+  app.get('/:id/opcionais', async (request, reply) => {
+    const user = getTenantUser(app, request);
+    const { id } = request.params as { id: string };
+    const produto = await prisma.produto.findFirst({ where: { id, cervejariaId: user.cervejariaId } });
+    if (!produto) return reply.status(404).send({ error: 'Produto nÃ£o encontrado' });
+    return listarOpcionaisProduto(prisma, id);
+  });
+
+  app.put('/:id/opcionais', { preHandler: [app.requireDono] }, async (request, reply) => {
+    const user = getTenantUser(app, request);
+    const { id } = request.params as { id: string };
+    const body = opcionaisSchema.parse(request.body);
+    const produto = await prisma.produto.findFirst({ where: { id, cervejariaId: user.cervejariaId } });
+    if (!produto) return reply.status(404).send({ error: 'Produto nÃ£o encontrado' });
+    return prisma.$transaction((tx) => substituirOpcionaisProduto(tx, id, body.opcionalIds));
   });
 
   app.post('/', { preHandler: [app.requireDono] }, async (request, reply) => {

@@ -35,10 +35,8 @@ function weekLabel(ano: number, mes: number, semana: number): string {
   return `${start}–${end} ${MESES[mes - 1]}`;
 }
 
-function totalComanda(comanda: {
-  pagamentos: Array<{ valor: unknown }>;
-}): number {
-  return comanda.pagamentos.reduce((soma, pagamento) => soma + toNumber(pagamento.valor), 0);
+function totalComanda(comanda: { total: unknown }): number {
+  return toNumber(comanda.total);
 }
 
 type ClosedComanda = Awaited<ReturnType<typeof fetchClosedComandas>>[number];
@@ -72,6 +70,51 @@ async function fetchUsuariosNomes(ids: string[]) {
     select: { id: true, nome: true },
   });
   return new Map(usuarios.map((usuario) => [usuario.id, usuario.nome]));
+}
+
+async function fetchRecebimentos(
+  cervejariaId: string,
+  inicio: Date,
+  fim: Date,
+  pontoVendaId?: string,
+) {
+  return prisma.pagamento.findMany({
+    where: {
+      pagoEm: { gte: inicio, lte: fim },
+      comanda: {
+        origem: 'CAIXA',
+        status: 'FECHADA',
+        pontoVenda: { cervejariaId },
+        ...(pontoVendaId ? { pontoVendaId } : {}),
+      },
+    },
+    select: { forma: true, valor: true, contaReceberId: true, sessaoCaixaId: true },
+  });
+}
+
+async function saldoContasPendentes(cervejariaId: string, pontoVendaId?: string) {
+  const contas = await prisma.contaReceber.findMany({
+    where: {
+      cliente: { cervejariaId },
+      comanda: { origem: 'CAIXA', status: 'FECHADA', ...(pontoVendaId ? { pontoVendaId } : {}) },
+    },
+    include: { pagamentos: { select: { valor: true } } },
+  });
+  return contas.reduce((total, conta) => {
+    const recebido = conta.pagamentos.reduce((soma, pagamento) => soma + toNumber(pagamento.valor), 0);
+    return total + Math.max(0, toNumber(conta.valorOriginal) - recebido);
+  }, 0);
+}
+
+function agregarFormasPagamento(pagamentos: Array<{ forma: PaymentMethod; valor: unknown }>) {
+  const porForma = new Map<PaymentMethod, number>();
+  for (const pagamento of pagamentos) {
+    porForma.set(pagamento.forma, (porForma.get(pagamento.forma) ?? 0) + toNumber(pagamento.valor));
+  }
+  const total = [...porForma.values()].reduce((soma, valor) => soma + valor, 0);
+  return [...porForma.entries()]
+    .map(([forma, valor]) => ({ forma, valor, percentual: total > 0 ? Math.round((valor / total) * 100) : 0 }))
+    .sort((a, b) => b.valor - a.valor);
 }
 
 function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, string>) {
@@ -186,19 +229,26 @@ async function pagamentosDoTurno(
   const fechadaAte = sessao.fechadoEm ?? undefined;
   return prisma.pagamento.findMany({
     where: {
-      comanda: {
-        origem: 'CAIXA',
-        pontoVenda: { cervejariaId },
-        pontoVendaId: sessao.pontoVendaId,
-        diaOperacional: sessao.diaOperacional,
-        status: 'FECHADA',
-        fechadaEm: {
-          gte: sessao.abertoEm,
-          ...(fechadaAte ? { lte: fechadaAte } : {}),
+      OR: [
+        { sessaoCaixaId: sessao.id, comanda: { origem: 'CAIXA', pontoVenda: { cervejariaId } } },
+        {
+          sessaoCaixaId: null,
+          contaReceberId: null,
+          comanda: {
+            origem: 'CAIXA',
+            pontoVenda: { cervejariaId },
+            pontoVendaId: sessao.pontoVendaId,
+            diaOperacional: sessao.diaOperacional,
+            status: 'FECHADA',
+            fechadaEm: {
+              gte: sessao.abertoEm,
+              ...(fechadaAte ? { lte: fechadaAte } : {}),
+            },
+          },
         },
-      },
+      ],
     },
-    select: { forma: true, valor: true, comandaId: true },
+    select: { forma: true, valor: true, comandaId: true, contaReceberId: true },
   });
 }
 
@@ -239,7 +289,19 @@ async function buildTurnosRecentes(
 
     const pagamentos = await pagamentosDoTurno(sessao, cervejariaId);
     const totais = totaisPorForma(pagamentos);
-    const comandaIds = new Set(pagamentos.map((pagamento) => pagamento.comandaId));
+    const comandasFechadas = await prisma.comanda.findMany({
+      where: {
+        origem: 'CAIXA',
+        pontoVenda: { cervejariaId },
+        pontoVendaId: sessao.pontoVendaId,
+        diaOperacional: sessao.diaOperacional,
+        status: 'FECHADA',
+        fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm },
+      },
+      select: { id: true, tipo: true, total: true },
+    });
+    const vendasTotal = comandasFechadas.reduce((soma, comanda) => soma + toNumber(comanda.total), 0);
+    const comandaIds = new Set(comandasFechadas.map((comanda) => comanda.id));
     const duracaoHoras = Math.max(
       Math.round(((sessao.fechadoEm.getTime() - sessao.abertoEm.getTime()) / MS_HOUR) * 100) / 100,
       0.25,
@@ -255,14 +317,15 @@ async function buildTurnosRecentes(
       abertoPorNome: nomesAbertura.get(sessao.abertoPorId) ?? '—',
       abertoEm: sessao.abertoEm,
       fechadoEm: sessao.fechadoEm,
-      receitaTotal: totais.totalVendas,
+      receitaTotal: vendasTotal,
+      totalRecebido: totais.totalVendas,
       comandasAtendidas: comandaIds.size,
       vendasAvulsas: 0,
       receitaAvulsa: 0,
-      ticketMedio: comandaIds.size > 0 ? totais.totalVendas / comandaIds.size : 0,
+      ticketMedio: comandaIds.size > 0 ? vendasTotal / comandaIds.size : 0,
       duracaoHoras,
       receitaPorHora:
-        duracaoHoras > 0 ? Math.round((totais.totalVendas / duracaoHoras) * 100) / 100 : 0,
+        duracaoHoras > 0 ? Math.round((vendasTotal / duracaoHoras) * 100) / 100 : 0,
     });
   }
 
@@ -334,11 +397,13 @@ export async function buildOperacaoDashboard(
   const anoVigente = now.getFullYear();
   const { inicio, fim } = monthBounds(ano, mes);
 
-  const [comandasMes, comandasAno, turnosRecentes, comparativoPontos] = await Promise.all([
+  const [comandasMes, comandasAno, turnosRecentes, comparativoPontos, recebimentosMes, saldoPendente] = await Promise.all([
     fetchClosedComandas(cervejariaId, inicio, fim, pontoVendaId),
     fetchClosedComandas(cervejariaId, yearBounds(anoVigente).inicio, yearBounds(anoVigente).fim, pontoVendaId),
     buildTurnosRecentes(cervejariaId, inicio, fim, pontoVendaId),
     pontoVendaId ? Promise.resolve([]) : buildComparativoPontos(cervejariaId, inicio, fim),
+    fetchRecebimentos(cervejariaId, inicio, fim, pontoVendaId),
+    saldoContasPendentes(cervejariaId, pontoVendaId),
   ]);
 
   const fechadoPorIds = [
@@ -347,6 +412,14 @@ export async function buildOperacaoDashboard(
   const nomesPorId = await fetchUsuariosNomes(fechadoPorIds);
 
   const resumo = aggregateComandas(comandasMes, nomesPorId);
+  const totalRecebido = recebimentosMes.reduce((soma, pagamento) => soma + toNumber(pagamento.valor), 0);
+  const totalPendurado = recebimentosMes.reduce(
+    (soma, pagamento) => pagamento.contaReceberId && !pagamento.sessaoCaixaId
+      ? soma + toNumber(pagamento.valor)
+      : soma,
+    0,
+  );
+  const porPagamento = agregarFormasPagamento(recebimentosMes);
   const evolucaoSemanal = weeklyEvolution(comandasMes, ano, mes);
 
   const receitaAnual = MESES.map((label, i) => ({
@@ -400,6 +473,9 @@ export async function buildOperacaoDashboard(
     },
     resumo: {
       receitaTotal: resumo.receitaTotal,
+      totalRecebido,
+      totalPendurado,
+      saldoPendente,
       comandasAtendidas: resumo.comandasAtendidas,
       vendasAvulsas: resumo.vendasAvulsas,
       receitaAvulsa: resumo.receitaAvulsa,
@@ -409,7 +485,7 @@ export async function buildOperacaoDashboard(
       variacaoReceitaMesAnterior: variacaoReceita,
     },
     evolucaoSemanal,
-    porPagamento: resumo.porPagamento,
+    porPagamento,
     porProduto: resumo.porProduto,
     porFuncionario: resumo.porFuncionario,
     turnosRecentes,

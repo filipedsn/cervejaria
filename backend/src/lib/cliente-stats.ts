@@ -20,85 +20,46 @@ export function computeChopeMlFromItens(itens: ItemWithProduto[]): number {
 
 type TxClient = Prisma.TransactionClient;
 
-export async function incrementClienteStatsOnComandaFechada(
-  tx: TxClient,
-  params: {
-    clienteId: string;
-    totalGasto: number;
-    totalMlChope: number;
-    fechadoEm: Date;
-  },
-) {
-  const existing = await tx.clienteEstatisticas.findUnique({
-    where: { clienteId: params.clienteId },
+type ComandaStats = {
+  total: unknown;
+  fechadaEm: Date | null;
+  updatedAt: Date;
+  pagamentos: Array<{ valor: unknown }>;
+  itens: ItemWithProduto[];
+};
+
+export function calcularEstatisticasCliente(comandas: ComandaStats[]) {
+  const pagas = comandas.flatMap((comanda) => {
+    const valorPago = comanda.pagamentos.reduce((soma, pagamento) => soma + toNumber(pagamento.valor), 0);
+    return valorPago > 0 ? [{ comanda, valorPago }] : [];
   });
 
-  if (!existing) {
-    await tx.clienteEstatisticas.create({
-      data: {
-        clienteId: params.clienteId,
-        totalComandasFechadas: 1,
-        totalGasto: params.totalGasto,
-        totalMlChope: params.totalMlChope,
-        primeiraVisitaEm: params.fechadoEm,
-        ultimaVisitaEm: params.fechadoEm,
-      },
-    });
-    return;
-  }
-
-  await tx.clienteEstatisticas.update({
-    where: { clienteId: params.clienteId },
-    data: {
-      totalComandasFechadas: { increment: 1 },
-      totalGasto: { increment: params.totalGasto },
-      totalMlChope: { increment: params.totalMlChope },
-      primeiraVisitaEm: existing.primeiraVisitaEm ?? params.fechadoEm,
-      ultimaVisitaEm: params.fechadoEm,
-    },
-  });
+  const visitas = pagas.map(({ comanda }) => comanda.fechadaEm ?? comanda.updatedAt);
+  return {
+    totalComandasFechadas: pagas.length,
+    totalGasto: pagas.reduce((soma, item) => soma + item.valorPago, 0),
+    totalMlChope: pagas.reduce((soma, item) => soma + computeChopeMlFromItens(item.comanda.itens), 0),
+    primeiraVisitaEm: visitas.length ? new Date(Math.min(...visitas.map((data) => data.getTime()))) : null,
+    ultimaVisitaEm: visitas.length ? new Date(Math.max(...visitas.map((data) => data.getTime()))) : null,
+  };
 }
 
 export async function recalculateClienteStats(tx: TxClient, clienteId: string) {
   const comandas = await tx.comanda.findMany({
-    where: { clienteId, status: 'FECHADA', tipo: 'COMANDA' },
+    where: { clienteId, status: 'FECHADA', tipo: { not: 'AVULSA' } },
     include: {
+      pagamentos: { select: { valor: true } },
       itens: { include: { produto: true } },
     },
-    orderBy: { updatedAt: 'asc' },
   });
-
-  let totalComandasFechadas = 0;
-  let totalGasto = 0;
-  let totalMlChope = 0;
-  let primeiraVisitaEm: Date | null = null;
-  let ultimaVisitaEm: Date | null = null;
-
-  for (const comanda of comandas) {
-    totalComandasFechadas += 1;
-    totalGasto += toNumber(comanda.total);
-    totalMlChope += computeChopeMlFromItens(comanda.itens);
-    const visitaEm = comanda.updatedAt;
-    if (!primeiraVisitaEm || visitaEm < primeiraVisitaEm) primeiraVisitaEm = visitaEm;
-    if (!ultimaVisitaEm || visitaEm > ultimaVisitaEm) ultimaVisitaEm = visitaEm;
-  }
+  const stats = calcularEstatisticasCliente(comandas);
 
   await tx.clienteEstatisticas.upsert({
     where: { clienteId },
     create: {
       clienteId,
-      totalComandasFechadas,
-      totalGasto,
-      totalMlChope,
-      primeiraVisitaEm,
-      ultimaVisitaEm,
+      ...stats,
     },
-    update: {
-      totalComandasFechadas,
-      totalGasto,
-      totalMlChope,
-      primeiraVisitaEm,
-      ultimaVisitaEm,
-    },
+    update: stats,
   });
 }

@@ -12,9 +12,6 @@ import { useScreenWakeLock } from './useScreenWakeLock';
  */
 const STORAGE_KEY = 'quiver:cozinha-alerta';
 
-/** Sem repetir, um pedido que chegou com a cozinha de costas fica esquecido. */
-const REPETICAO_MS = 25_000;
-
 function lerPreferencia(): boolean {
   if (typeof localStorage === 'undefined') return false;
   return localStorage.getItem(STORAGE_KEY) === '1';
@@ -24,7 +21,7 @@ function lerPreferencia(): boolean {
  * Som e tela ligada da fila da cozinha. `aguardando` e a quantidade de pedidos
  * ainda nao iniciados: enquanto houver algum, o alerta volta a tocar.
  */
-export function useCozinhaAlerta(aguardando: number) {
+export function useCozinhaAlerta(_aguardando: number) {
   const [ativo, setAtivo] = useState(lerPreferencia);
   const [audioBloqueado, setAudioBloqueado] = useState(() => isPedidoAlertAudioLocked());
   const jaAvisados = useRef(new Set<string>());
@@ -51,13 +48,6 @@ export function useCozinhaAlerta(aguardando: number) {
     };
   }, [ativo]);
 
-  useEffect(() => {
-    if (!ativo || aguardando <= 0) return;
-
-    const id = window.setInterval(() => void playAlertaAgora(), REPETICAO_MS);
-    return () => window.clearInterval(id);
-  }, [ativo, aguardando]);
-
   const alternar = useCallback(async () => {
     if (ativo && !audioBloqueado) {
       localStorage.removeItem(STORAGE_KEY);
@@ -67,7 +57,7 @@ export function useCozinhaAlerta(aguardando: number) {
 
     localStorage.setItem(STORAGE_KEY, '1');
     setAtivo(true);
-    const ok = await playAlertaAgora();
+    const ok = await ensurePedidoAlertAudioRunning();
     setAudioBloqueado(!ok);
   }, [ativo, audioBloqueado]);
 

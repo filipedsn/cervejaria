@@ -1,10 +1,11 @@
 import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { computeChopeMlFromItens, incrementClienteStatsOnComandaFechada } from './cliente-stats.js';
+import { recalculateClienteStats } from './cliente-stats.js';
 import { registrarTransacao } from './transacao-log.js';
 import { recordComandaFechada } from './business-metrics.js';
 import { toNumber } from './utils.js';
 import { lockComandaItemsInTx } from './comanda-service.js';
+import { normalizePhone } from './phone.js';
 
 export type PagamentoInput = {
   forma: 'DINHEIRO' | 'PIX' | 'CARTAO' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO';
@@ -131,6 +132,8 @@ export async function fecharComandaComPagamentos(
     comandaIdsGrupo?: string[];
     origem?: 'EVENTO' | 'CAIXA' | 'QUIOSQUE';
     pagamentosDetalhados?: PagamentoInput[];
+    sessaoCaixaId?: string;
+    deixarPendente?: boolean;
   },
 ) {
   const { comanda, pagamentos, cervejariaId, usuarioId, fechadaEm } = params;
@@ -149,8 +152,25 @@ export async function fecharComandaComPagamentos(
   const origem = params.origem ?? comandaAtual.origem;
   const linhasPagamento = params.pagamentosDetalhados ?? pagamentos;
 
-  assertPagamentosParaTotal(total, linhasPagamento);
-  assertValorPagamentosParaTotal(total, linhasPagamento);
+  if (params.deixarPendente) {
+    const cliente = comandaAtual.clienteId
+      ? await tx.cliente.findFirst({
+          where: {
+            id: comandaAtual.clienteId,
+            cervejariaId,
+            ativo: true,
+            isSistema: false,
+          },
+          select: { telefone: true },
+        })
+      : null;
+    if (origem !== 'CAIXA' || linhasPagamento.length > 0 || !cliente || !normalizePhone(cliente.telefone)) {
+      throw Object.assign(new Error('Conta pendente exige cliente cadastrado com telefone vÃ¡lido e nenhum pagamento no fechamento'), { statusCode: 400 });
+    }
+  } else {
+    assertPagamentosParaTotal(total, linhasPagamento);
+    assertValorPagamentosParaTotal(total, linhasPagamento);
+  }
 
   const fechou = await tx.comanda.updateMany({
     where: { id: comandaAtual.id, status: 'ABERTA' },
@@ -169,11 +189,27 @@ export async function fecharComandaComPagamentos(
         valorRecebido: p.valorRecebido ?? null,
         troco: p.troco ?? null,
         registradoPorId: params.usuarioId,
+        ...(params.sessaoCaixaId ? { sessaoCaixaId: params.sessaoCaixaId } : {}),
       })),
     });
   }
 
-  const metadata: Record<string, unknown> = { total, pagamentos: linhasPagamento };
+  if (params.deixarPendente) {
+    await tx.contaReceber.create({
+      data: {
+        comandaId: comandaAtual.id,
+        clienteId: comandaAtual.clienteId!,
+        valorOriginal: total,
+        criadoPorId: params.usuarioId,
+      },
+    });
+  }
+
+  const metadata: Record<string, unknown> = {
+    total,
+    pagamentos: linhasPagamento,
+    ...(params.deixarPendente ? { contaPendente: true } : {}),
+  };
   if (desconto > 0) metadata.desconto = desconto;
   if (params.grupoPagamentoId) {
     metadata.grupoPagamentoId = params.grupoPagamentoId;
@@ -202,14 +238,8 @@ export async function fecharComandaComPagamentos(
 
   recordComandaFechada(Math.round(total * 100), origem === 'EVENTO' ? 'cervejaria' : 'operacao');
 
-  const totalMlChope = computeChopeMlFromItens(comandaAtual.itens);
-  if (origem === 'EVENTO' && comandaAtual.tipo !== 'AVULSA' && comandaAtual.clienteId) {
-    await incrementClienteStatsOnComandaFechada(tx, {
-      clienteId: comandaAtual.clienteId,
-      totalGasto: total,
-      totalMlChope,
-      fechadoEm: fechadaEm,
-    });
+  if (comandaAtual.tipo !== 'AVULSA' && comandaAtual.clienteId) {
+    await recalculateClienteStats(tx, comandaAtual.clienteId);
   }
 
   return fechada;

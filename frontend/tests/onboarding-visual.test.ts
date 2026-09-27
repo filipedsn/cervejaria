@@ -10,7 +10,7 @@ test('tutorial visual: mapeia cada próximo passo para uma ação contextual est
     title: 'Abra o caixa para registrar vendas.',
     detail: 'Escolha o troco inicial e comece o turno.',
     cta: 'Abrir caixa',
-    to: '/operacao/caixa',
+    to: '/operacao/comandas',
     target: 'operacao-open-cash',
   });
 

@@ -10,7 +10,7 @@ import {
   themeToStorage,
   type BrandThemeV2,
 } from './brand-engine.js';
-import { ensureUploadsDir, getLogosDir } from './uploads.js';
+import { ensureUploadsDir, getLogosDir, getPortalBackgroundsDir } from './uploads.js';
 
 export interface CervejariaAuthPayload {
   id: string;
@@ -26,6 +26,8 @@ export interface CervejariaAuthPayload {
   updatedAt: string;
   /** Mtime do arquivo de logo — invalida cache do navegador quando o arquivo muda sem update no banco. */
   logoVersion: string | null;
+  portalBackgroundUrl: string | null;
+  portalBackgroundVersion: string | null;
 }
 
 type CervejariaBrandingRow = {
@@ -39,6 +41,7 @@ type CervejariaBrandingRow = {
   comandasColunaUnica: boolean;
   usaCardapio: boolean;
   updatedAt: Date;
+  portalBackgroundUrl?: string | null;
 };
 
 function resolveLogoVersion(cervejaria: CervejariaBrandingRow): string | null {
@@ -69,7 +72,19 @@ export function formatCervejariaAuth(cervejaria: CervejariaBrandingRow): Cerveja
     usaCardapio: cervejaria.usaCardapio,
     updatedAt: cervejaria.updatedAt.toISOString(),
     logoVersion: resolveLogoVersion(cervejaria),
+    portalBackgroundUrl: cervejaria.portalBackgroundUrl ?? null,
+    portalBackgroundVersion: resolvePortalBackgroundVersion(cervejaria),
   };
+}
+
+function resolvePortalBackgroundVersion(cervejaria: CervejariaBrandingRow): string | null {
+  if (!cervejaria.portalBackgroundUrl) return null;
+  try {
+    const filePath = path.join(getPortalBackgroundsDir(), path.basename(cervejaria.portalBackgroundUrl));
+    return new Date(fs.statSync(filePath).mtimeMs).toISOString();
+  } catch {
+    return cervejaria.updatedAt.toISOString();
+  }
 }
 
 async function brandingFromBuffer(buffer: Buffer) {
@@ -77,13 +92,59 @@ async function brandingFromBuffer(buffer: Buffer) {
   return { corPrimaria, corSecundaria, theme };
 }
 
+/** Remove apenas o fundo claro conectado às bordas, preservando áreas brancas internas da logo. */
+async function removeLightBackground(buffer: Buffer): Promise<Buffer> {
+  const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+  const visited = new Uint8Array(width * height);
+  const queue: number[] = [];
+
+  const isLightBackground = (index: number) => {
+    const offset = index * channels;
+    const r = data[offset];
+    const g = data[offset + 1];
+    const b = data[offset + 2];
+    return r >= 218 && g >= 218 && b >= 218 && Math.max(r, g, b) - Math.min(r, g, b) <= 24;
+  };
+
+  const enqueue = (index: number) => {
+    if (!visited[index] && isLightBackground(index)) {
+      visited[index] = 1;
+      queue.push(index);
+    }
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    enqueue(x);
+    enqueue((height - 1) * width + x);
+  }
+  for (let y = 1; y < height - 1; y += 1) {
+    enqueue(y * width);
+    enqueue(y * width + width - 1);
+  }
+
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const index = queue[cursor];
+    const x = index % width;
+    const y = Math.floor(index / width);
+    data[index * channels + 3] = 0;
+    if (x > 0) enqueue(index - 1);
+    if (x < width - 1) enqueue(index + 1);
+    if (y > 0) enqueue(index - width);
+    if (y < height - 1) enqueue(index + width);
+  }
+
+  return sharp(data, { raw: info }).webp({ quality: 90, alphaQuality: 100 }).toBuffer();
+}
+
 export async function saveLogoAndExtractBranding(cervejariaId: string, buffer: Buffer) {
   ensureUploadsDir();
   const logosDir = getLogosDir();
 
-  const webpBuffer = await sharp(buffer)
+  const transparentBuffer = await removeLightBackground(buffer);
+  const webpBuffer = await sharp(transparentBuffer)
     .resize(512, 512, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 85 })
+    .webp({ quality: 90, alphaQuality: 100 })
     .toBuffer();
 
   const filename = `${cervejariaId}.webp`;
@@ -95,6 +156,21 @@ export async function saveLogoAndExtractBranding(cervejariaId: string, buffer: B
   return prisma.cervejaria.update({
     where: { id: cervejariaId },
     data: { logoUrl, corPrimaria, corPaleta: themeToStorage(theme) },
+  });
+}
+
+export async function savePortalBackground(cervejariaId: string, buffer: Buffer) {
+  ensureUploadsDir();
+  const webpBuffer = await sharp(buffer)
+    .rotate()
+    .resize(2400, 2400, { fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 86 })
+    .toBuffer();
+  const filename = `${cervejariaId}.webp`;
+  await fsp.writeFile(path.join(getPortalBackgroundsDir(), filename), webpBuffer);
+  return prisma.cervejaria.update({
+    where: { id: cervejariaId },
+    data: { portalBackgroundUrl: `/uploads/portal-backgrounds/${filename}` },
   });
 }
 

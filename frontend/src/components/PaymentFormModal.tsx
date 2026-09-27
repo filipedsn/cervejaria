@@ -39,7 +39,7 @@ export function createDefaultPaymentForm(total: number): PaymentFormRow[] {
   return [{ forma: 'PIX', valor: formatCurrencyInputFromNumber(total) }];
 }
 
-type PaymentStep = 'form' | 'confirm';
+type PaymentStep = 'form' | 'confirm' | 'defer-confirm';
 
 export function PaymentFormModal({
   open,
@@ -53,6 +53,12 @@ export function PaymentFormModal({
   isPending,
   confirmMessage = 'A comanda será fechada e não poderá ser editada.',
   headerExtra,
+  deferLabel,
+  deferConfirmation,
+  onConfirmDefer,
+  deferDisabled = false,
+  allowPartial = false,
+  secondaryAction,
 }: {
   open: boolean;
   onClose: () => void;
@@ -65,6 +71,12 @@ export function PaymentFormModal({
   isPending: boolean;
   confirmMessage?: string;
   headerExtra?: React.ReactNode;
+  deferLabel?: string;
+  deferConfirmation?: React.ReactNode;
+  onConfirmDefer?: () => void;
+  deferDisabled?: boolean;
+  allowPartial?: boolean;
+  secondaryAction?: React.ReactNode;
 }) {
   const [step, setStep] = useState<PaymentStep>('form');
   const isCourtesy = total <= 0.01;
@@ -72,7 +84,10 @@ export function PaymentFormModal({
   const progress = total > 0 ? Math.min(100, (informed / total) * 100) : 100;
   const canReview = isCourtesy
     ? paymentForm.length === 0
-    : paymentForm.length > 0 && isBalanced && isPaymentFormValid(paymentForm);
+    : paymentForm.length > 0 &&
+      (isBalanced || (allowPartial && informed > 0 && informed < total && remaining > 0)) &&
+      isPaymentFormValid(paymentForm);
+  const amountToConfirm = allowPartial ? informed : total;
 
   useEffect(() => {
     if (!open) setStep('form');
@@ -115,7 +130,13 @@ export function PaymentFormModal({
     ]);
   };
 
-  const modalTitle = step === 'form' ? title : isCourtesy ? 'Confirmar cortesia?' : 'Confirmar pagamento?';
+  const modalTitle = step === 'form'
+    ? title
+    : step === 'defer-confirm'
+      ? 'Confirmar conta pendente'
+      : isCourtesy
+        ? 'Confirmar cortesia?'
+        : 'Confirmar pagamento?';
 
   return (
     <Modal
@@ -145,7 +166,16 @@ export function PaymentFormModal({
                 ? 'Processando...'
                 : isCourtesy
                   ? 'Concluir cortesia'
-                  : `Efetuar pagamento · ${formatCurrency(total)}`}
+                  : `${allowPartial ? 'Registrar recebimento' : 'Efetuar pagamento'} · ${formatCurrency(amountToConfirm)}`}
+            </button>
+          </div>
+        ) : step === 'defer-confirm' ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button type="button" className="touch-btn-orange w-full min-h-14" disabled={isPending} onClick={() => setStep('form')}>
+              Voltar
+            </button>
+            <button type="button" className="touch-btn-primary w-full min-h-14" disabled={isPending} onClick={onConfirmDefer}>
+              {isPending ? 'Processando...' : 'Confirmar pendência'}
             </button>
           </div>
         ) : (
@@ -156,8 +186,23 @@ export function PaymentFormModal({
               onClick={() => setStep('confirm')}
               disabled={isPending || !canReview}
             >
-              {isCourtesy ? 'Revisar cortesia' : `Revisar pagamento · ${formatCurrency(total)}`}
+              {isCourtesy ? 'Revisar cortesia' : `Revisar ${allowPartial ? 'recebimento' : 'pagamento'} · ${formatCurrency(amountToConfirm)}`}
             </button>
+            {(onConfirmDefer && deferLabel) || secondaryAction ? (
+              <div className="grid grid-cols-2 gap-2">
+                {onConfirmDefer && deferLabel && (
+                  <button
+                    type="button"
+                    className="touch-btn-secondary w-full min-h-14"
+                    disabled={isPending || deferDisabled}
+                    onClick={() => setStep('defer-confirm')}
+                  >
+                    {deferLabel}
+                  </button>
+                )}
+                {secondaryAction}
+              </div>
+            ) : null}
             <button
               type="button"
               className="touch-btn-secondary w-full min-h-14"
@@ -299,6 +344,11 @@ export function PaymentFormModal({
               + Dividir pagamento
             </button>
           )}
+        </div>
+      ) : step === 'defer-confirm' ? (
+        <div className="space-y-5">
+          {headerExtra}
+          {deferConfirmation ?? <p className="text-sm text-ink-soft">A comanda será encerrada e o saldo ficará pendente.</p>}
         </div>
       ) : (
         <div className="space-y-5">

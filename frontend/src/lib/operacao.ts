@@ -11,7 +11,11 @@ export interface ProdutoOperacao {
   controlaEstoque: boolean;
   ativo: boolean;
   ordem: number;
+  gruposOpcionais?: GrupoOpcionalProduto[];
 }
+
+export interface OpcaoProduto { id: string; nome: string; precoAdicional: number | string; quantidade?: number; }
+export interface GrupoOpcionalProduto { id: string; nome: string; obrigatorio: boolean; maximo: number; opcoes: OpcaoProduto[]; }
 
 export interface CardapioOperacaoItem {
   produtoId: string;
@@ -131,16 +135,23 @@ export interface ItemPedido {
   quantidade: number;
   subtotal: number;
   exigePreparo: boolean;
+  cancelamentoPendenteEm?: string | null;
+  canceladoEm?: string | null;
+  paraViagem?: boolean;
+  observacao?: string | null;
+  opcionais?: Array<{ id: string; nome: string; precoAdicional: number; quantidade: number }>;
 }
 
-export type StatusPedido = 'RECEBIDO' | 'EM_PREPARO' | 'PRONTO' | 'ENTREGUE' | 'CANCELADO';
+export type StatusPedido = 'RECEBIDO' | 'EM_PREPARO' | 'PRONTO' | 'ENTREGUE' | 'CANCELAMENTO_PENDENTE' | 'CANCELADO';
 
 export interface PedidoOperacao {
   id: string;
   numero: number;
   status: StatusPedido;
+  paraViagem?: boolean;
   observacao: string | null;
   createdAt: string;
+  clienteAvisadoEm?: string | null;
   itens: ItemPedido[];
 }
 
@@ -149,6 +160,7 @@ export interface PedidoCozinha {
   id: string;
   numero: number;
   status: StatusPedido;
+  paraViagem?: boolean;
   observacao: string | null;
   createdAt: string;
   /** Inicio do status atual — cronometro reinicia a cada transicao na cozinha. */
@@ -160,12 +172,17 @@ export interface PedidoCozinha {
     tipo: TipoComanda;
     identificador: string | null;
     numero?: number | null;
+    cliente?: { id: string; nome: string; telefone: string | null } | null;
   };
   itens: Array<{
     id: string;
     nome: string;
     quantidade: number;
+    cancelamentoPendente?: boolean;
     precoUnit: number;
+    paraViagem?: boolean;
+    observacao?: string | null;
+    opcionais?: Array<{ id: string; nome: string; precoAdicional: number; quantidade: number }>;
   }>;
 }
 
@@ -176,6 +193,7 @@ export interface PagamentoOperacao {
   valorRecebido: number | null;
   troco: number | null;
   pagoEm: string;
+  sessaoCaixaId?: string | null;
 }
 
 export interface ComandaOperacao {
@@ -190,18 +208,43 @@ export interface ComandaOperacao {
   subtotal: number;
   desconto: number;
   total: number;
+  valorEmAberto: number;
+  cliente: { id: string; nome: string; telefone: string | null } | null;
   pedidos: PedidoOperacao[];
+  pagamentos: PagamentoOperacao[];
+  contaPendente?: { id: string; valorOriginal: number; recebido: number; saldo: number } | null;
+}
+
+export interface ContaPendenteOperacao {
+  id: string;
+  cliente: { id: string; nome: string; telefone: string | null };
+  comanda: {
+    id: string;
+    numero: number | null;
+    identificador: string | null;
+    tipo: string;
+    fechadaEm: string | null;
+    pontoVenda: { id: string; nome: string } | null;
+    itens: Array<{ nome: string | null; quantidade: number; observacao?: string | null }>;
+  };
+  valorOriginal: number;
+  recebido: number;
+  saldo: number;
+  createdAt: string;
   pagamentos: PagamentoOperacao[];
 }
 
 export interface LinhaCarrinho {
   produto: ProdutoOperacao;
   quantidade: number;
+  paraViagem?: boolean;
+  observacao?: string;
+  opcionais?: Array<{ opcionalId: string; nome: string; precoAdicional: number; quantidade: number }>;
 }
 
 export function totalCarrinho(linhas: LinhaCarrinho[]): number {
   const centavos = linhas.reduce(
-    (soma, linha) => soma + Math.round(Number(linha.produto.precoUnit) * 100) * linha.quantidade,
+    (soma, linha) => soma + (Math.round(Number(linha.produto.precoUnit) * 100) + (linha.opcionais ?? []).reduce((v, o) => v + Math.round(o.precoAdicional * 100) * o.quantidade, 0)) * linha.quantidade,
     0,
   );
   return centavos / 100;
@@ -298,11 +341,10 @@ export function ordenarComandasParaOperacao(comandas: ComandaOperacao[]): Comand
 
 export function totalItensComanda(comanda: ComandaOperacao): number {
   return comanda.pedidos
-    .filter((pedido) => pedido.status !== 'CANCELADO')
-    .reduce(
-      (soma, pedido) => soma + pedido.itens.reduce((acc, item) => acc + item.quantidade, 0),
-      0,
-    );
+    .filter((pedido) => pedido.status !== 'CANCELADO' && pedido.status !== 'CANCELAMENTO_PENDENTE')
+    .reduce((soma, pedido) => soma + pedido.itens
+      .filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm)
+      .reduce((acc, item) => acc + item.quantidade, 0), 0);
 }
 
 const STATUS_COZINHA_PENDENTE: StatusPedido[] = ['RECEBIDO', 'EM_PREPARO', 'PRONTO'];
@@ -313,13 +355,14 @@ export function pedidoVaiParaCozinha(itens: Array<{ exigePreparo: boolean }>): b
 
 /** Itens cancelados não entram na exibição de valores confirmados. */
 export function pedidoConfirmadoNaComanda(pedido: PedidoOperacao): boolean {
-  return pedido.status !== 'CANCELADO';
+  return pedido.status === 'ENTREGUE' || (!pedidoVaiParaCozinha(pedido.itens) && pedido.status !== 'CANCELADO' && pedido.status !== 'CANCELAMENTO_PENDENTE');
 }
 
 export function temPedidoCozinhaPendente(comanda: Pick<ComandaOperacao, 'pedidos'>): boolean {
   return comanda.pedidos.some(
     (pedido) =>
-      pedidoVaiParaCozinha(pedido.itens) && STATUS_COZINHA_PENDENTE.includes(pedido.status),
+      pedido.itens.some((item) => item.exigePreparo && !item.cancelamentoPendenteEm && !item.canceladoEm) &&
+      STATUS_COZINHA_PENDENTE.includes(pedido.status),
   );
 }
 
@@ -333,6 +376,8 @@ export function rotuloStatusPedido(status: StatusPedido): string {
       return 'Pronto para entregar';
     case 'ENTREGUE':
       return 'Entregue';
+    case 'CANCELAMENTO_PENDENTE':
+      return 'Cancelamento solicitado';
     case 'CANCELADO':
       return 'Cancelado';
   }
@@ -430,6 +475,8 @@ export interface RelatorioTurnoCaixa {
   abertoPorNome: string;
   fechadoPorNome: string | null;
   comandasAtendidas: number;
+  vendasTotal: number;
+  totalRecebido: number;
   vendasAvulsas: number;
   itensVendidos: number;
   porProduto: Array<{
@@ -527,9 +574,69 @@ export function podeIncrementarItemComanda(
 
 export function podeEditarItemComanda(
   comanda: Pick<ComandaOperacao, 'status'>,
-  pedido: Pick<PedidoOperacao, 'status'>,
+  pedido: Pick<PedidoOperacao, 'status' | 'itens'>,
 ): boolean {
-  return comanda.status === 'ABERTA' && pedido.status !== 'CANCELADO';
+  if (comanda.status !== 'ABERTA' || ['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(pedido.status)) return false;
+  return !pedidoVaiParaCozinha(pedido.itens) || pedido.status === 'ENTREGUE';
+}
+
+export function totalPendenteComanda(comanda: Pick<ComandaOperacao, 'pedidos'>): number {
+  return comanda.pedidos
+    .filter((pedido) => pedido.status !== 'ENTREGUE' && pedido.status !== 'CANCELADO' && pedido.status !== 'CANCELAMENTO_PENDENTE')
+    .reduce((total, pedido) => total + (pedidoVaiParaCozinha(pedido.itens)
+      ? pedido.itens.filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm).reduce((subtotal, item) => subtotal + item.subtotal, 0)
+      : 0), 0);
+}
+
+export interface LinhaResumoConta {
+  chave: string;
+  nome: string;
+  quantidade: number;
+  total: number;
+  precoMedio: number;
+}
+
+/** Consolida preços históricos lançados, sem incluir pedidos cancelados. */
+export function resumirItensComanda(comanda: ComandaOperacao): LinhaResumoConta[] {
+  const agrupados = new Map<string, { nome: string; quantidade: number; totalCentavos: number }>();
+
+  for (const pedido of comanda.pedidos) {
+    if (pedido.status === 'CANCELADO' || pedido.status === 'CANCELAMENTO_PENDENTE') continue;
+    if (pedidoVaiParaCozinha(pedido.itens) && pedido.status !== 'ENTREGUE') continue;
+
+    for (const item of pedido.itens) {
+      if (item.cancelamentoPendenteEm || item.canceladoEm) continue;
+      const chave = item.produtoId || item.nome.trim().toLocaleLowerCase('pt-BR');
+      const existente = agrupados.get(chave) ?? {
+        nome: item.nome,
+        quantidade: 0,
+        totalCentavos: 0,
+      };
+      const totalCentavos = Math.round(item.subtotal * 100);
+      existente.quantidade += item.quantidade;
+      existente.totalCentavos += Number.isFinite(totalCentavos)
+        ? totalCentavos
+        : Math.round(item.precoUnit * 100) * item.quantidade;
+      agrupados.set(chave, existente);
+    }
+  }
+
+  return [...agrupados.entries()]
+    .map(([chave, item]) => ({
+      chave,
+      nome: item.nome,
+      quantidade: item.quantidade,
+      total: item.totalCentavos / 100,
+      precoMedio: item.quantidade > 0 ? item.totalCentavos / item.quantidade / 100 : 0,
+    }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }));
+}
+
+export function podeRemoverItemComanda(
+  comanda: Pick<ComandaOperacao, 'status'>,
+  pedido: Pick<PedidoOperacao, 'status' | 'itens'>,
+): boolean {
+  return comanda.status === 'ABERTA' && !['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(pedido.status);
 }
 
 export const TIPOS_SAIDA_ESTOQUE: Array<{ valor: TipoSaidaEstoque; label: string }> = [
@@ -542,6 +649,9 @@ export interface OperacaoDashboard {
   periodo: { ano: number; mes: number; label: string };
   resumo: {
     receitaTotal: number;
+    totalRecebido: number;
+    totalPendurado: number;
+    saldoPendente: number;
     comandasAtendidas: number;
     vendasAvulsas: number;
     receitaAvulsa: number;
@@ -576,6 +686,7 @@ export interface OperacaoDashboard {
     abertoEm: string;
     fechadoEm: string;
     receitaTotal: number;
+    totalRecebido: number;
     comandasAtendidas: number;
     vendasAvulsas: number;
     receitaAvulsa: number;

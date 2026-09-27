@@ -1,5 +1,14 @@
 type IconProps = { className?: string; strokeWidth?: number };
 
+export function IconWhatsApp({ className = 'w-5 h-5' }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M20.2 11.8a8.2 8.2 0 0 1-12.1 7.1L3 20l1.2-4.8a8.2 8.2 0 1 1 16-3.4Z" />
+      <path d="M8.2 7.8c.2-.5.5-.5.8-.5h.5c.2 0 .4.1.5.4l.8 1.8c.1.2.1.4-.1.6l-.6.7c-.2.2-.2.4-.1.6.6 1.1 1.5 2 2.7 2.6.2.1.4.1.6-.1l.8-1c.2-.2.4-.3.7-.2l1.7.8c.3.1.4.3.4.5 0 .4-.2 1.2-.8 1.7-.6.6-1.4.8-2.1.7-1.1-.2-2.4-.7-3.9-2-1.2-1.1-2.1-2.4-2.4-3.5-.3-1.1 0-2.1.5-2.6Z" />
+    </svg>
+  );
+}
+
 export function IconCalendar({ className = 'w-6 h-6', strokeWidth = 1.75 }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -206,8 +215,39 @@ export const NAV_ITEMS: NavItem[] = [
 
 /** Navegacao operacional do estabelecimento, adicionada por capacidade atual. */
 export const NAV_ITEMS_OPERACAO: NavItem[] = [
-  { path: '/operacao/caixa', label: 'Caixa', shortLabel: 'Caixa', Icon: IconCashRegister },
+  { path: '/operacao/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
 ];
+
+export function getCervejariaNavItems(contexto: {
+  isDono: boolean;
+  operationMode: 'CAIXA' | 'EVENTO' | null;
+}) {
+  return NAV_ITEMS.filter(
+    (item) =>
+      (!('donoOnly' in item && item.donoOnly) || contexto.isDono) &&
+      !(contexto.operationMode === 'CAIXA' && (item.path === '/eventos' || item.path === '/comandas')),
+  );
+}
+
+export function IconPlane({ className = 'w-5 h-5', strokeWidth = 1.75 }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M2 12h20" />
+      <path d="m13 12 4-8h2l-1 8" />
+      <path d="m13 12 4 8h2l-1-8" />
+      <path d="M7 12 4 7h2l5 5" />
+    </svg>
+  );
+}
+
+export function IconShoppingBag({ className = 'w-5 h-5', strokeWidth = 1.75 }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M5 8h14l1 13H4L5 8Z" />
+      <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+    </svg>
+  );
+}
 
 export function getOperationalModeNavItems(contexto: {
   operationMode: 'CAIXA' | 'EVENTO' | null;
@@ -223,8 +263,8 @@ type OperacaoNavContext = {
 
 /** Abas do operacao na barra inferior — mesmo padrao mobile da cervejaria. */
 export const CAIXA_NAV_ITEMS: NavItem[] = [
-  { path: '/operacao/caixa', label: 'Caixa', shortLabel: 'Caixa', Icon: IconCashRegister },
   { path: '/operacao/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
+  { path: '/clientes', label: 'Clientes', shortLabel: 'Clientes', Icon: IconUsers },
   {
     path: '/operacao/cozinha',
     label: 'Cozinha',
@@ -262,7 +302,6 @@ export function getOperacaoNavItems(contexto: OperacaoNavFilterContext) {
   return CAIXA_NAV_ITEMS.filter(
     (item) =>
       (!('donoOnly' in item && item.donoOnly) || contexto.isDono) &&
-      (item.path !== '/operacao/caixa' || contexto.operationMode === 'CAIXA') &&
       (!('somenteCozinha' in item && item.somenteCozinha) || contexto.temCozinha) &&
       (!('somenteEstoque' in item && item.somenteEstoque) || contexto.controlaEstoque),
   );

@@ -47,10 +47,12 @@ function KpiCard({
   label,
   value,
   trend,
+  hint,
 }: {
   label: string;
   value: string;
   trend?: number | null;
+  hint?: string;
 }) {
   return (
     <div className="dashboard-kpi-card">
@@ -61,6 +63,8 @@ function KpiCard({
           <p className={trend >= 0 ? 'text-success' : 'text-danger'}>
             {trend >= 0 ? '▲' : '▼'} {Math.abs(trend)}% vs mês anterior
           </p>
+        ) : hint ? (
+          <p className="text-ink-faint">{hint}</p>
         ) : (
           <span aria-hidden="true" className="invisible">
             —
@@ -264,12 +268,15 @@ export function OperacaoDashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 2xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
         <KpiCard
-          label="Receita total"
+          label="Vendas no período"
           value={formatCurrency(resumo.receitaTotal)}
           trend={resumo.variacaoReceitaMesAnterior}
         />
+        <KpiCard label="Recebido no período" value={formatCurrency(resumo.totalRecebido)} />
+        <KpiCard label="Pendurado" value={formatCurrency(resumo.totalPendurado)} hint="Parte do recebido, sem sessão de caixa" />
+        <KpiCard label="Saldo pendente" value={formatCurrency(resumo.saldoPendente)} />
         <KpiCard label="Comandas atendidas" value={String(resumo.comandasAtendidas)} />
         <KpiCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} />
         <KpiCard label="Ticket médio" value={formatCurrency(resumo.ticketMedio)} />
@@ -277,7 +284,7 @@ export function OperacaoDashboardPage() {
         <KpiCard label="Turnos de caixa" value={String(resumo.turnosCaixa)} />
       </div>
 
-      {resumo.receitaTotal === 0 ? (
+      {resumo.receitaTotal === 0 && resumo.totalRecebido === 0 ? (
         <div className="card text-center py-16">
           <p className="text-4xl mb-3">📊</p>
           <p className="text-ink-muted">Nenhuma venda fechada em {MESES[mesSelecionadoIdx]} {ano}</p>
@@ -342,12 +349,13 @@ export function OperacaoDashboardPage() {
                           <p className="font-bold text-brand-600 text-lg tabular-nums leading-none">
                             {formatCurrency(turno.receitaTotal)}
                           </p>
-                          <p className="text-[11px] text-ink-faint mt-1 leading-none">receita do turno</p>
+                          <p className="text-[11px] text-ink-faint mt-1 leading-none">vendas do turno</p>
                         </div>
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
                         <TurnoMetric value={pluralComandasOperacao(turno.comandasAtendidas)} label="atendidas" />
+                        <TurnoMetric value={formatCurrency(turno.totalRecebido)} label="recebido" />
                         <TurnoMetric value={formatCurrency(turno.ticketMedio)} label="ticket médio" />
                         <TurnoMetric value={`${formatCurrency(turno.receitaPorHora)}/h`} label="receita/h" />
                         <TurnoMetric
@@ -449,7 +457,7 @@ export function OperacaoDashboardPage() {
 
           <div className="grid lg:grid-cols-2 gap-5">
             <section className="card p-4 sm:p-5 space-y-4">
-              <h2 className="section-label">Receita × forma de pagamento</h2>
+              <h2 className="section-label">Recebimentos por forma</h2>
               {porPagamento.map((p) => (
                 <div key={p.forma} className="space-y-1.5">
                   <div className="flex justify-between text-sm gap-2">

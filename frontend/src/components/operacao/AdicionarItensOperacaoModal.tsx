@@ -1,84 +1,23 @@
+import { useState } from 'react';
 import { Modal } from '../Modal';
 import { GradeProdutos } from './GradeProdutos';
 import { ResumoCarrinho } from './ResumoCarrinho';
-import { formatCurrency } from '../../lib/api';
+import { IconChefHat, IconClipboard, IconPackage, IconPlus } from '../NavIcons';
+import { api, formatCurrency } from '../../lib/api';
 import { totalCarrinho, type LinhaCarrinho, type ProdutoOperacao, type SaldoEstoque } from '../../lib/operacao';
 
-export function AdicionarItensOperacaoModal({
-  open,
-  onClose,
-  produtos,
-  linhas,
-  onSelecionar,
-  onAlterar,
-  onConfirm,
-  isPending,
-  error,
-  successMessage,
-  saldos,
-  controlaEstoque,
-  confirmLabel = 'Adicionar itens',
-}: {
-  open: boolean;
-  onClose: () => void;
-  produtos: ProdutoOperacao[];
-  linhas: LinhaCarrinho[];
-  onSelecionar: (produto: ProdutoOperacao) => void;
-  onAlterar: (produtoId: string, delta: number) => void;
-  onConfirm: () => void;
-  isPending: boolean;
-  error?: string;
-  successMessage?: string;
-  saldos?: Map<string, SaldoEstoque>;
-  controlaEstoque: boolean;
-  confirmLabel?: string;
-}) {
-  const quantidades = new Map(linhas.map((linha) => [linha.produto.id, linha.quantidade]));
-  const footer = (
-    <>
-      {linhas.length > 0 && (
-        <div className="space-y-3">
-          <div className="max-h-32 overflow-y-auto -mx-1 px-1">
-            <ResumoCarrinho
-              linhas={linhas}
-              onAlterar={onAlterar}
-              saldos={saldos}
-              controlaEstoque={controlaEstoque}
-            />
-          </div>
-          <div className="flex items-baseline justify-between">
-            <span className="text-sm text-ink-faint">Itens selecionados</span>
-            <span className="text-xl font-bold tabular-nums">{formatCurrency(totalCarrinho(linhas))}</span>
-          </div>
-        </div>
-      )}
-      <button
-        type="button"
-        className="touch-btn-primary w-full"
-        disabled={linhas.length === 0 || isPending}
-        onClick={onConfirm}
-      >
-        {isPending ? 'Salvando...' : confirmLabel}
-      </button>
-      <button type="button" className="touch-btn-orange w-full" onClick={onClose} disabled={isPending}>
-        Voltar
-      </button>
-    </>
-  );
+type Config = { quantidade?: number; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; nome: string; precoAdicional: number; quantidade: number }[] };
+const IconHash = IconPackage;
 
-  return (
-    <Modal open={open} onClose={onClose} title="Adicionar item" hideHeaderClose footer={footer}>
-      <div className="space-y-4">
-        {error && <div className="alert-error text-sm">{error}</div>}
-        {successMessage && <div className="alert-success text-sm" role="status">{successMessage}</div>}
-        <GradeProdutos
-          produtos={produtos}
-          onSelecionar={onSelecionar}
-          saldos={saldos}
-          controlaEstoque={controlaEstoque}
-          quantidadesNoCarrinho={quantidades}
-        />
-      </div>
-    </Modal>
-  );
+export function AdicionarItensOperacaoModal({ open, onClose, produtos, linhas, onSelecionar, onAlterar, onConfirm, isPending, error, successMessage, saldos, controlaEstoque, confirmLabel = 'Adicionar itens' }: { open: boolean; onClose: () => void; produtos: ProdutoOperacao[]; linhas: LinhaCarrinho[]; onSelecionar: (produto: ProdutoOperacao, configuracao?: Config) => void; onAlterar: (produtoId: string, delta: number) => void; onConfirm: () => void; isPending: boolean; error?: string; successMessage?: string; saldos?: Map<string, SaldoEstoque>; controlaEstoque: boolean; confirmLabel?: string }) {
+  const [produto, setProduto] = useState<ProdutoOperacao | null>(null);
+  const [quantidade, setQuantidade] = useState(1);
+  const [paraViagemItem, setParaViagemItem] = useState(false);
+  const [observacao, setObservacao] = useState('');
+  const [opcionais, setOpcionais] = useState<Record<string, number>>({});
+  const quantidades = new Map(linhas.map((linha) => [linha.produto.id, linha.quantidade]));
+  const selecionar = (item: ProdutoOperacao) => { setProduto(item); setQuantidade(1); setParaViagemItem(false); setObservacao(''); setOpcionais({}); api.get<Array<{ opcional: { id: string; nome: string; preco: number | string } }>>(`/api/operacao/produtos/${item.id}/opcionais`).then((vinculos) => { const opcoes = vinculos.map(({ opcional }) => ({ id: opcional.id, nome: opcional.nome, precoAdicional: Number(opcional.preco) })); setProduto((atual) => atual?.id === item.id ? { ...atual, gruposOpcionais: opcoes.length ? [{ id: 'opcionais', nome: 'Opcionais', obrigatorio: false, maximo: 99, opcoes }] : [] } : atual); }).catch(() => undefined); };
+  const confirmar = () => { if (!produto) return; const opcoes = produto.gruposOpcionais?.flatMap((grupo) => grupo.opcoes.filter((opcao) => opcionais[opcao.id]).map((opcao) => ({ opcionalId: opcao.id, nome: opcao.nome, precoAdicional: Number(opcao.precoAdicional), quantidade: opcionais[opcao.id] }))) ?? []; onSelecionar(produto, { quantidade, paraViagem: paraViagemItem, observacao: observacao.trim() || undefined, opcionais: opcoes }); setProduto(null); };
+  const footer = <>{linhas.length > 0 && <div className="space-y-3"><div className="max-h-32 overflow-y-auto"><ResumoCarrinho linhas={linhas} onAlterar={onAlterar} saldos={saldos} controlaEstoque={controlaEstoque} /></div><div className="flex items-baseline justify-between"><span className="text-sm text-ink-faint">Itens selecionados</span><span className="text-xl font-bold">{formatCurrency(totalCarrinho(linhas))}</span></div></div>}<button type="button" className="touch-btn-primary w-full" disabled={!linhas.length || isPending} onClick={onConfirm}>{isPending ? 'Salvando...' : confirmLabel}</button><button type="button" className="touch-btn-orange w-full" onClick={onClose} disabled={isPending}>Voltar</button></>;
+  return <><Modal open={open} onClose={onClose} title="Adicionar item" hideHeaderClose footer={footer}><div className="space-y-4">{error && <div className="alert-error text-sm">{error}</div>}{successMessage && <div className="alert-success text-sm">{successMessage}</div>}<GradeProdutos produtos={produtos} onSelecionar={selecionar} saldos={saldos} controlaEstoque={controlaEstoque} quantidadesNoCarrinho={quantidades} /></div></Modal><Modal open={Boolean(produto)} onClose={() => setProduto(null)} title="" hideHeaderClose footer={<><button type="button" className="touch-btn-primary w-full flex items-center justify-center gap-2" onClick={confirmar}><IconPlus className="h-5 w-5" />Adicionar item</button><button type="button" className="touch-btn-orange w-full flex items-center justify-center gap-2" onClick={() => setProduto(null)}>Voltar</button></>}>{produto && <div className="space-y-6 rounded-2xl border border-line bg-surface-lighter p-5 sm:p-7"><h2 className="text-2xl sm:text-3xl font-bold text-ink">{produto.nome}</h2><section className="border-b border-line pb-5"><div className="mb-3 flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400"><IconChefHat className="h-6 w-6" /></span><div><h3 className="text-lg font-bold">Opcionais</h3><p className="text-sm text-ink-muted">Selecione os opcionais que desejar</p></div></div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{produto.gruposOpcionais?.flatMap((grupo) => grupo.opcoes).map((opcao) => <label key={opcao.id} className="flex min-h-16 cursor-pointer items-center justify-between gap-3 rounded-xl border border-line px-4 py-3 transition-colors has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10"><span className="flex items-center gap-3"><input className="h-5 w-5 accent-brand-500" type="checkbox" checked={Boolean(opcionais[opcao.id])} onChange={() => setOpcionais((atual) => atual[opcao.id] ? Object.fromEntries(Object.entries(atual).filter(([id]) => id !== opcao.id)) : { ...atual, [opcao.id]: 1 })} /><span className="font-semibold">{opcao.nome}</span></span><span className="text-sm text-ink-muted">{Number(opcao.precoAdicional) > 0 ? `+${formatCurrency(Number(opcao.precoAdicional))}` : 'Grátis'}</span></label>)}</div></section><section className="flex items-center justify-between gap-4 border-b border-line pb-5"><div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400"><IconHash className="h-6 w-6" /></span><div><h3 className="text-lg font-bold">Quantidade</h3><p className="text-sm text-ink-muted">Escolha a quantidade deste item</p></div></div><div className="flex items-center gap-4 rounded-2xl border border-line bg-surface px-3 py-2"><button type="button" className="min-h-10 min-w-10 rounded-xl bg-surface-lighter text-xl font-bold" onClick={() => setQuantidade((v) => Math.max(1, v - 1))}>−</button><span className="min-w-8 text-center text-2xl font-bold">{quantidade}</span><button type="button" className="min-h-10 min-w-10 rounded-xl bg-brand-600 text-xl font-bold text-white" onClick={() => setQuantidade((v) => v + 1)}><IconPlus className="mx-auto h-5 w-5" /></button></div></section><section><div className="mb-3 flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400"><IconChefHat className="h-6 w-6" /></span><div><h3 className="text-lg font-bold">Para viagem</h3><p className="text-sm text-ink-muted">A cozinha deve embalar este item</p></div></div><label className="flex cursor-pointer items-center gap-3 rounded-xl border border-line px-4 py-3"><input type="checkbox" className="h-5 w-5 accent-brand-500" checked={paraViagemItem} onChange={(e) => setParaViagemItem(e.target.checked)} /><span className="font-semibold">Marcar item para viagem</span></label></section><section><div className="mb-3 flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400"><IconClipboard className="h-6 w-6" /></span><div><h3 className="text-lg font-bold">Observação do item</h3><p className="text-sm text-ink-muted">Adicione alguma observação, se necessário</p></div></div><textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} maxLength={280} rows={2} placeholder="Ex.: sem cebola" className="w-full rounded-2xl border border-line bg-surface px-4 py-3" /></section></div>}</Modal></>;
 }

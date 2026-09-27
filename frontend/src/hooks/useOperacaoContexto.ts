@@ -20,6 +20,8 @@ export type OperacaoContexto = {
   temCozinha: boolean;
   usaCardapio: boolean;
   quantidadeMesas: number;
+  whatsappPedidoProntoEnabled: boolean;
+  whatsappPedidoProntoNaCozinha: boolean;
   pontosVenda: PontoVenda[];
 };
 
@@ -35,6 +37,8 @@ const CONTEXTO_INATIVO: OperacaoContexto = {
   temCozinha: false,
   usaCardapio: false,
   quantidadeMesas: 0,
+  whatsappPedidoProntoEnabled: false,
+  whatsappPedidoProntoNaCozinha: false,
   pontosVenda: [],
 };
 

@@ -928,7 +928,8 @@ html:has(.qt-tv) {
 
 /* Cozinha — telão KDS (estilo McDonald's) */
 .qt-cozinha-tv {
-  --cozinha-card-min: clamp(11rem, 18vw, 16rem);
+  --cozinha-card-min: 22rem;
+  --cozinha-card-max: 24rem;
   padding: clamp(0.75rem, 1.5vw, 1.25rem);
   height: 100dvh;
   display: flex;
@@ -980,7 +981,7 @@ html:has(.qt-tv) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 3.5rem;
+  min-width: 5rem;
   padding: 0.35rem 0.65rem;
   border-radius: 0.75rem;
   background: var(--ranking-surface-elevated);
@@ -998,10 +999,54 @@ html:has(.qt-tv) {
   line-height: 1;
   color: var(--ranking-text-primary);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.icon-btn-edit {
+  @apply min-h-11 min-w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 disabled:opacity-50 shrink-0 border border-sky-300/40 bg-sky-500/5 text-sky-500 hover:border-sky-300 hover:bg-sky-500/15;
+}
+
+.icon-btn-toggle {
+  @apply min-h-11 min-w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 disabled:opacity-50 shrink-0 border border-amber-300/40 bg-amber-500/5 text-amber-500 hover:border-amber-300 hover:bg-amber-500/15;
+}
+
+button[title="Editar"].icon-btn {
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: rgba(14, 165, 233, 0.05);
+  color: rgb(14, 165, 233);
+}
+
+button[title="Desativar"].icon-btn,
+button[title="Ativar"].icon-btn {
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  background: rgba(245, 158, 11, 0.05);
+  color: rgb(245, 158, 11);
+}
+
+button[title="Excluir"].icon-btn-danger {
+  color: rgb(248, 113, 113);
 }
 
 .cozinha-tv-stat--alert .cozinha-tv-stat-value {
   color: var(--ranking-orange);
+}
+
+.cozinha-tv-stat--preparo {
+  border-color: var(--ranking-gold-border);
+  background: rgba(245, 185, 66, 0.12);
+}
+
+.cozinha-tv-stat--preparo .cozinha-tv-stat-value {
+  color: var(--ranking-gold);
+}
+
+.cozinha-tv-stat--pronto {
+  border-color: rgba(34, 197, 94, 0.45);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.cozinha-tv-stat--pronto .cozinha-tv-stat-value {
+  color: #4ade80;
 }
 
 .cozinha-tv-stat-label {
@@ -1098,14 +1143,19 @@ html:has(.qt-tv) {
   min-height: 0;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--cozinha-card-min), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--cozinha-card-min)), var(--cozinha-card-max)));
+  grid-auto-rows: max-content;
   gap: clamp(0.65rem, 1.2vw, 1rem);
+  align-items: start;
   align-content: start;
   padding-bottom: 0.5rem;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
 }
 
 .cozinha-tv-card {
-  aspect-ratio: 1;
+  aspect-ratio: auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1148,6 +1198,7 @@ html:has(.qt-tv) {
 }
 
 .cozinha-tv-card-header {
+  order: 1;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1156,26 +1207,78 @@ html:has(.qt-tv) {
 }
 
 .cozinha-tv-card-pos {
-  font-size: 0.6875rem;
+  font-size: clamp(1.35rem, 2.5vw, 2.25rem);
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ranking-orange);
-  line-height: 1;
+  line-height: 0.95;
 }
 
 .cozinha-tv-card-comanda {
-  font-size: clamp(1rem, 1.6vw, 1.35rem);
+  max-width: none;
+  font-size: clamp(1rem, 1.7vw, 1.5rem);
   font-weight: 800;
   color: var(--ranking-text-primary);
   line-height: 1.15;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
+.cozinha-tv-card--cancelamento {
+  border-color: rgba(249, 115, 22, 0.9);
+  background: linear-gradient(180deg, rgba(249, 115, 22, 0.2) 0%, var(--ranking-surface-elevated) 55%);
+}
+
+.cozinha-tv-card-meta {
+  order: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  margin: 0.35rem 0 0.55rem;
+  padding: 0.35rem 0;
+  border-top: 1px solid rgba(125, 211, 252, 0.12);
+  border-bottom: 1px solid rgba(125, 211, 252, 0.12);
+  color: #93b4e5;
+  font-size: clamp(0.8rem, 1.15vw, 1rem);
+  font-weight: 600;
+}
+
+.cozinha-tv-card-created,
+.cozinha-tv-card-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cozinha-tv-card-created svg,
+.cozinha-tv-card-count svg {
+  width: 1.35rem;
+  height: 1.35rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cozinha-tv-card-header-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.cozinha-tv-card-header-badges .cozinha-tv-card-senha {
+  margin-top: 0.1rem;
+  text-align: right;
+}
+
 .cozinha-tv-card-senha {
-  font-size: clamp(0.75rem, 1.1vw, 0.875rem);
+  font-size: clamp(0.85rem, 1.15vw, 1rem);
   font-weight: 600;
   color: var(--ranking-text-muted);
   margin-top: 0.15rem;
@@ -1183,11 +1286,11 @@ html:has(.qt-tv) {
 
 .cozinha-tv-card-badge {
   flex-shrink: 0;
-  font-size: 0.625rem;
+  font-size: clamp(0.7rem, 1.1vw, 0.9rem);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  padding: 0.25rem 0.45rem;
+  padding: 0.35rem 0.65rem;
   border-radius: 999px;
   background: var(--ranking-surface-lighter);
   color: var(--ranking-text-secondary);
@@ -1212,18 +1315,47 @@ html:has(.qt-tv) {
   border-color: rgba(34, 197, 94, 0.4);
 }
 
+.cozinha-tv-card--cancelamento .cozinha-tv-card-badge {
+  background: var(--ranking-orange-soft);
+  color: var(--ranking-orange);
+  border-color: var(--ranking-orange-border);
+}
+
+.cozinha-tv-card .cozinha-tv-card-badge--viagem {
+  background: rgba(168, 85, 247, 0.16);
+  color: #d8b4fe;
+  border-color: rgba(168, 85, 247, 0.55);
+}
+
 .cozinha-tv-card-timer-wrap {
+  order: 4;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.35rem 0;
-  margin: 0.25rem 0;
+  gap: 0.35rem;
+  padding: 0.2rem 0;
+  margin: auto 0 0;
+}
+
+.cozinha-tv-card-badge--viagem {
+  background: rgba(168, 85, 247, 0.16);
+  color: #d8b4fe;
+  border-color: rgba(168, 85, 247, 0.55);
+}
+
+.cozinha-tv-card-timer-wrap::before {
+  content: 'Tempo';
+  font-size: clamp(0.8rem, 1.2vw, 1rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ranking-text-muted);
 }
 
 .cozinha-tv-card-timer {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: clamp(1.75rem, 3.2vw, 2.5rem);
+  font-size: clamp(1.5rem, 3vw, 2.5rem);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -1239,9 +1371,10 @@ html:has(.qt-tv) {
 }
 
 .cozinha-tv-card-itens {
-  flex: 1;
+  order: 3;
+  flex: 0 1 auto;
   min-height: 0;
-  overflow-y: auto;
+  overflow: visible;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1252,26 +1385,133 @@ html:has(.qt-tv) {
 
 .cozinha-tv-card-itens li {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: stretch;
   gap: 0.35rem;
-  font-size: clamp(0.8125rem, 1.2vw, 0.9375rem);
-  line-height: 1.25;
+  font-size: clamp(1rem, 1.5vw, 1.35rem);
+  font-weight: 600;
+  line-height: 1.15;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid rgba(125, 211, 252, 0.12);
+  border-radius: 0.75rem;
+  background: rgba(12, 35, 57, 0.72);
   color: var(--ranking-text-primary);
 }
 
+.cozinha-tv-card-item-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.cozinha-tv-card-item-heading > .cozinha-tv-card-btn {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 2.6rem;
+  white-space: nowrap;
+}
+
+.cozinha-tv-card-item--cancelamento {
+  border-color: rgba(249, 115, 22, 0.82) !important;
+  background: rgba(124, 45, 18, 0.34) !important;
+}
+
+.cozinha-tv-card-itens li > small {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  margin: 0;
+  width: 100%;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid rgba(125, 211, 252, 0.08);
+  border-radius: 0.55rem;
+  background: rgba(8, 27, 47, 0.58);
+  line-height: 1.2;
+}
+
+.cozinha-tv-card-item-details strong {
+  font-size: clamp(0.65rem, 0.9vw, 0.75rem);
+  letter-spacing: 0.06em;
+  color: #93c5fd;
+}
+
+.cozinha-tv-card-item-details > span {
+  display: block;
+  font-size: clamp(0.9rem, 1.15vw, 1.05rem);
+  color: var(--ranking-text-primary);
+}
+
+.cozinha-tv-card-item-options {
+  color: #bfdbfe;
+}
+
+.cozinha-tv-card-item-observation {
+  color: #93c5fd;
+}
+
 .cozinha-tv-card-qtd {
-  font-weight: 800;
+  font-size: clamp(1.35rem, 2vw, 1.85rem);
+  font-weight: 900;
   color: var(--ranking-orange);
   flex-shrink: 0;
 }
 
 .cozinha-tv-card-nome {
   min-width: 0;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.cozinha-tv-card-item-travel {
+  grid-column: 3;
+  justify-self: center;
+  flex: 0 0 auto;
+  width: 1.35rem;
+  height: 1.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(245, 185, 66, 0.65);
+  border-radius: 999px;
+  color: #f5b942;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.cozinha-tv-card-item-travel svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  display: block;
+}
+
+.cozinha-tv-card-item-cancel {
+  grid-column: 4;
+  justify-self: end;
+  flex: 0 0 auto;
+  width: 1.35rem;
+  height: 1.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  border-radius: 999px;
+  color: #fca5a5;
+  opacity: 0.8;
+}
+
+.cozinha-tv-card-item-cancel:hover {
+  background: rgba(239, 68, 68, 0.16);
+  opacity: 1;
 }
 
 .cozinha-tv-card-obs {
+  order: 3;
   flex-shrink: 0;
   font-size: 0.6875rem;
   color: var(--ranking-text-muted);
@@ -1282,18 +1522,19 @@ html:has(.qt-tv) {
 }
 
 .cozinha-tv-card-actions {
+  order: 5;
   flex-shrink: 0;
   display: flex;
-  gap: 0.35rem;
+  gap: 0.5rem;
   margin-top: auto;
   padding-top: 0.35rem;
 }
 
 .cozinha-tv-card-btn {
   flex: 1;
-  min-height: 2.25rem;
-  border-radius: 0.625rem;
-  font-size: 0.8125rem;
+  min-height: 3.25rem;
+  border-radius: 0.8rem;
+  font-size: clamp(1rem, 1.5vw, 1.35rem);
   font-weight: 700;
   border: 1px solid transparent;
   transition: opacity 0.15s;
@@ -1309,12 +1550,123 @@ html:has(.qt-tv) {
   border-color: rgba(125, 211, 252, 0.35);
 }
 
+.cozinha-tv-card-btn-whatsapp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: #047857;
+  color: #fff;
+  border-color: rgba(52, 211, 153, 0.5);
+}
+
 .cozinha-tv-card-btn-ghost {
   flex: 0 0 auto;
   padding: 0 0.65rem;
   background: var(--ranking-surface-lighter);
   color: var(--ranking-text-muted);
   border-color: var(--ranking-border);
+}
+
+.cozinha-tv-card-btn-danger {
+  flex: 0 0 auto;
+  padding: 0 0.65rem;
+  background: rgba(127, 29, 29, 0.3);
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+.cozinha-tv-card-btn-icon {
+  width: clamp(4.25rem, 6.5vw, 5.75rem);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (orientation: landscape) and (max-width: 1200px) {
+  .qt-cozinha-tv {
+    --cozinha-card-min: 18rem;
+    --cozinha-card-max: 20rem;
+    padding: 0.55rem 0.7rem;
+  }
+
+  .cozinha-tv-shell {
+    gap: 0.45rem;
+  }
+
+  .cozinha-tv-header {
+    gap: 0.6rem;
+  }
+
+  .cozinha-tv-title {
+    font-size: clamp(1.05rem, 1.8vw, 1.45rem);
+  }
+
+  .cozinha-tv-header-meta {
+    gap: 0.35rem;
+  }
+
+  .cozinha-tv-stat {
+    min-width: 4rem;
+    padding: 0.25rem 0.4rem;
+    border-radius: 0.6rem;
+  }
+
+  .cozinha-tv-stat-value {
+    font-size: clamp(0.9rem, 1.6vw, 1.15rem);
+  }
+
+  .cozinha-tv-stat-label {
+    font-size: 0.55rem;
+    margin-top: 0.1rem;
+  }
+
+  .cozinha-tv-bell {
+    width: 2.4rem;
+    height: 2.4rem;
+  }
+
+  .cozinha-tv-link-operacional {
+    padding: 0.35rem 0.45rem;
+    font-size: 0.65rem;
+  }
+
+  .cozinha-tv-grid {
+    gap: 0.55rem;
+  }
+}
+
+@media (max-width: 900px) {
+  .cozinha-tv-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .cozinha-tv-header-meta {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+}
+
+@media (pointer: coarse) {
+  .cozinha-tv-card-item-travel,
+  .cozinha-tv-card-item-cancel {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .cozinha-tv-card-item-travel svg {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+
+  .cozinha-tv-card-item-cancel svg {
+    width: 1.1rem;
+    height: 1.1rem;
+  }
 }
 
 /* Tap Champions layout */
@@ -2161,6 +2513,254 @@ html:has(.qt-tv) {
   color: #bae6fd;
 }
 
+/* Portal do cliente: acesso alinhado ao protótipo do caixa. */
+.portal-login-content {
+  width: min(100%, 58rem);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: clamp(0.5rem, 2.4vh, 2rem) 0 1.5rem;
+}
+
+.portal-login-brand {
+  min-height: clamp(12rem, 29vh, 22rem);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.portal-login-logo {
+  display: block;
+  width: min(25rem, 76vw);
+  height: clamp(12rem, 29vh, 22rem);
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 0.7rem 1rem rgba(0, 0, 0, 0.28));
+}
+
+.portal-login-logo-fallback {
+  font-size: clamp(4rem, 10vw, 7rem);
+  line-height: 1;
+  filter: drop-shadow(0 0.7rem 1rem rgba(0, 0, 0, 0.28));
+}
+
+.portal-login-card {
+  width: 100%;
+  padding: clamp(1.35rem, 3vw, 2.35rem) clamp(1.35rem, 3.4vw, 3rem) clamp(1.35rem, 3vw, 2.35rem);
+  border: 2px solid #f59e0b;
+  border-radius: 1.7rem;
+  background: linear-gradient(145deg, rgba(20, 28, 38, 0.95), rgba(7, 20, 32, 0.94));
+  box-shadow: 0 1.3rem 2.8rem rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.portal-login-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.35rem;
+  margin-bottom: 1.9rem;
+}
+
+.portal-login-heading h1 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: clamp(1.8rem, 3.2vw, 2.7rem);
+  line-height: 1.08;
+  font-weight: 800;
+}
+
+.portal-login-heading p {
+  margin: 0.8rem 0 0;
+  color: #a9bdd0;
+  font-size: clamp(1rem, 1.8vw, 1.45rem);
+  line-height: 1.3;
+}
+
+.portal-login-icon,
+.portal-login-field-icon {
+  flex: 0 0 auto;
+  fill: none;
+  stroke: #fbb316;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.6;
+}
+
+.portal-login-icon--receipt {
+  width: 3.9rem;
+  height: 3.9rem;
+  margin-top: 0.1rem;
+}
+
+.portal-login-field {
+  margin-top: 1.45rem;
+}
+
+.portal-login-field > span,
+.portal-login-field label {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 0 0 0.65rem;
+  color: #f8fafc;
+  font-size: clamp(1.05rem, 1.7vw, 1.35rem);
+  font-weight: 700;
+}
+
+.portal-login-field-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.portal-login-input {
+  display: block;
+  width: 100%;
+  min-height: 4.1rem;
+  padding: 0 1.45rem;
+  border: 2px solid #2474a8;
+  border-radius: 1rem;
+  outline: none;
+  background: rgba(2, 12, 25, 0.58);
+  color: #f8fafc;
+  font-size: clamp(1.1rem, 2vw, 1.45rem);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.portal-login-input::placeholder {
+  color: #70869b;
+}
+
+.portal-login-input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
+}
+
+.portal-login-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  width: 100%;
+  min-height: 4.25rem;
+  margin-top: 2rem;
+  border: 0;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, #0ea5e9, #0798df);
+  color: #fff;
+  font-size: clamp(1.15rem, 2vw, 1.5rem);
+  font-weight: 800;
+  box-shadow: 0 0.7rem 1.4rem rgba(14, 165, 233, 0.26);
+  transition: filter 160ms ease, transform 160ms ease;
+}
+
+.portal-login-submit:hover:not(:disabled) { filter: brightness(1.08); }
+.portal-login-submit:active:not(:disabled) { transform: scale(0.985); }
+.portal-login-submit:disabled { cursor: wait; opacity: 0.6; }
+
+.portal-login-arrow {
+  font-size: 2.45rem;
+  font-weight: 400;
+  line-height: 0.6;
+}
+
+.portal-pdv-workspace {
+  width: 100%;
+  color: #f8fafc;
+}
+.portal-pdv-account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.35rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 1.35rem;
+  background: rgba(16, 29, 43, 0.92);
+}
+.portal-pdv-account h2 { margin: 0; font-size: clamp(1.2rem, 2.2vw, 1.7rem); }
+.portal-pdv-account p { margin: .2rem 0 0; color: #8ca5ba; }
+.portal-pdv-account > strong { color: #b9e8ff; font-size: clamp(1.5rem, 3vw, 2.15rem); }
+.portal-pdv-status { margin: 1rem 0; color: #9db3c7; text-align: center; }
+.portal-pdv-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem; padding: .25rem; border-radius: .9rem; background: rgba(6, 16, 27, .72); }
+.portal-pdv-tabs button { min-height: 3.2rem; border: 0; border-radius: .7rem; background: transparent; color: #d1deea; font-weight: 700; font-size: 1rem; }
+.portal-pdv-tabs button.active { background: #0e8dcc; color: #fff; }
+.portal-pdv-orders, .portal-pdv-summary { margin-top: 1rem; }
+.portal-pdv-orders h3, .portal-pdv-summary h3 { margin: 0 0 .75rem; color: #b7e9ff; font-size: .95rem; text-transform: uppercase; letter-spacing: .05em; }
+.portal-pdv-category { margin-top: 1.15rem; }
+.portal-pdv-category h4 { margin: 0 0 .55rem; color: #9db3c7; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.portal-pdv-product-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
+.portal-pdv-product { display: flex; align-items: center; justify-content: space-between; gap: 1rem; width: 100%; margin-top: .55rem; padding: 1rem 1.1rem; border: 1px solid rgba(85, 137, 174, .35); border-radius: .9rem; background: rgba(10, 25, 39, .86); color: #f8fafc; text-align: left; }
+.portal-pdv-product-grid .portal-pdv-product { min-height: 5.35rem; margin-top: 0; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: .65rem; padding: .8rem .85rem; }
+.portal-pdv-product span { display: grid; gap: .2rem; }
+.portal-pdv-product small { color: #8ca5ba; }
+.portal-pdv-product b { color: #7dd3fc; white-space: nowrap; }
+.portal-pdv-cart { margin-bottom: 1.25rem; padding: 1rem; border: 1px solid #f59e0b; border-radius: 1rem; background: rgba(23, 32, 41, .95); }
+.portal-pdv-cart > div { display: flex; justify-content: space-between; gap: 1rem; }
+.portal-pdv-cart > div span { color: #b9e8ff; font-weight: 700; }
+.portal-pdv-cart p { margin: .45rem 0 0; color: #b8c9d7; }
+.portal-pdv-cart-item { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-top: .65rem; color: #b8c9d7; }
+.portal-pdv-cart-actions { display: grid; grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr); gap: .65rem; margin-top: .85rem; }
+.portal-pdv-cart-actions button { margin-top: 0; }
+.portal-pdv-cart-actions .portal-pdv-cart-cancel { border: 1px solid rgba(248, 113, 113, .7); background: rgba(127, 29, 29, .35); color: #fecaca; }
+.portal-pdv-quantity { display: inline-flex; align-items: center; gap: .55rem; }
+.portal-pdv-quantity button { width: 2rem; min-height: 2rem; margin: 0; border: 1px solid rgba(125, 211, 252, .55); border-radius: .5rem; background: rgba(14, 141, 204, .25); color: #fff; font-size: 1.25rem; line-height: 1; }
+.portal-pdv-quantity strong { min-width: 1.25rem; color: #fff; text-align: center; }
+.portal-pdv-cart button { width: 100%; min-height: 3rem; margin-top: .85rem; border: 0; border-radius: .7rem; background: #0ea5e9; color: #fff; font-weight: 800; }
+.portal-pdv-cart .portal-pdv-quantity button { width: 2rem; min-height: 2rem; margin: 0; border: 1px solid rgba(125, 211, 252, .55); border-radius: .5rem; background: rgba(14, 141, 204, .25); font-weight: 400; }
+@media (max-width: 480px) {
+  .portal-pdv-cart-actions { grid-template-columns: 1fr; }
+}
+.portal-pdv-summary article { margin-top: .6rem; padding: .9rem 1rem; border-radius: .85rem; background: rgba(16, 29, 43, .86); }
+.portal-pdv-summary article > span { float: right; color: #7dd3fc; font-size: .8rem; text-transform: uppercase; }
+.portal-pdv-summary article p { display: flex; justify-content: space-between; gap: .8rem; margin: .45rem 0 0; color: #a7bacb; }
+.portal-pdv-summary article p small { color: #8ca5ba; white-space: nowrap; }
+.portal-pdv-account-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; margin-bottom: .8rem; }
+.portal-pdv-account-totals > div { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .8rem 1rem; border: 1px solid rgba(148, 163, 184, .2); border-radius: .85rem; background: rgba(16, 29, 43, .86); }
+.portal-pdv-account-totals span { color: #9db3c7; }
+.portal-pdv-account-totals strong { color: #b9e8ff; white-space: nowrap; }
+.portal-pdv-no-close { margin-top: 1rem; color: #8ca5ba; font-size: .9rem; text-align: center; }
+
+@container (max-width: 285px) {
+  .comanda-card-duas-colunas {
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: .35rem;
+  }
+  .comanda-card-duas-colunas .comanda-card-main {
+    flex: 1 0 100%;
+    justify-content: center;
+    text-align: center;
+  }
+  .comanda-card-duas-colunas .comanda-card-main h3 {
+    justify-content: center;
+    font-size: clamp(.8125rem, 5.5cqi, 1rem);
+  }
+  .comanda-card-duas-colunas .comanda-card-amount {
+    flex: 1 0 100%;
+    text-align: center;
+  }
+  .comanda-card-duas-colunas .comanda-card-notify {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .portal-pdv-account-totals { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .portal-login-content { padding-top: 0; gap: 0.65rem; }
+  .portal-login-brand { min-height: 8.5rem; }
+  .portal-login-logo { height: 8.5rem; }
+  .portal-login-card { border-radius: 1.25rem; }
+  .portal-login-heading { gap: 0.8rem; margin-bottom: 1.25rem; }
+  .portal-login-icon--receipt { width: 3rem; height: 3rem; }
+  .portal-login-heading p { margin-top: 0.55rem; }
+  .portal-login-input { min-height: 3.6rem; }
+  .portal-login-submit { min-height: 3.8rem; margin-top: 1.55rem; }
+}
+
 /* Eventos — hero ao vivo */
 .event-hero-live-label {
   @apply text-[11px] font-bold uppercase tracking-[0.18em] text-orange;
@@ -2186,6 +2786,43 @@ html:has(.qt-tv) {
 
 .btn-outline-light {
   @apply inline-flex items-center justify-center min-h-11 px-4 rounded-xl border border-line font-semibold text-ink-soft bg-surface transition active:scale-[0.98];
+}
+
+/* Popup de especificação do item: visual limpo e sem elementos decorativos nos títulos. */
+.space-y-6.rounded-2xl.border.border-line.bg-surface-lighter.p-5 {
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.space-y-6.rounded-2xl.border.border-line.bg-surface-lighter.p-5 > section > .mb-3 > span,
+.space-y-6.rounded-2xl.border.border-line.bg-surface-lighter.p-5 > section.flex > div:first-child > span {
+  display: none !important;
+}
+
+.space-y-6.rounded-2xl.border.border-line.bg-surface-lighter.p-5 > section:last-child textarea {
+  min-height: 4.5rem;
+  height: 4.5rem;
+}
+
+.touch-btn-primary.w-full.flex.items-center.justify-center.gap-2,
+.touch-btn-orange.w-full.flex.items-center.justify-center.gap-2 {
+  font-size: 0;
+}
+
+.touch-btn-primary.w-full.flex.items-center.justify-center.gap-2 svg,
+.touch-btn-orange.w-full.flex.items-center.justify-center.gap-2 svg {
+  display: none;
+}
+
+.touch-btn-primary.w-full.flex.items-center.justify-center.gap-2::after {
+  content: 'Adicionar item';
+  font-size: 1rem;
+}
+
+.touch-btn-orange.w-full.flex.items-center.justify-center.gap-2::after {
+  content: 'Voltar';
+  font-size: 1rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

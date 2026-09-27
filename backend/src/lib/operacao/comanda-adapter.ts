@@ -3,19 +3,21 @@ import {
   fecharComandaComPagamentos,
   type PagamentoInput,
 } from '../fechar-comanda.js';
-import { centavos } from './venda.js';
+import { calcularFinanceiroComanda } from './venda.js';
 import { toNumber } from '../utils.js';
 
 export const INCLUDE_COMANDA_OPERACAO = {
   pedidosOperacao: {
-    include: { itensComanda: true },
+    include: { itensComanda: { include: { opcionais: true } } },
     orderBy: { numero: 'asc' as const },
   },
   itens: {
     orderBy: { createdAt: 'asc' as const },
-    include: { produto: true },
+    include: { produto: true, opcionais: true },
   },
   pagamentos: { orderBy: { pagoEm: 'asc' as const } },
+  contaReceber: { include: { pagamentos: true } },
+  cliente: { select: { id: true, nome: true, telefone: true } },
 } satisfies Prisma.ComandaInclude;
 
 export type ComandaOperacaoCompleta = Prisma.ComandaGetPayload<{
@@ -39,11 +41,31 @@ export async function recalcComandaTotalOperacao(
 ) {
   const comanda = await tx.comanda.findUnique({
     where: { id: comandaId },
-    select: { desconto: true },
+    select: { status: true, total: true, desconto: true },
   });
-  const itens = await tx.itemComanda.findMany({ where: { comandaId } });
-  const subtotal = itens.reduce((sum, item) => sum + toNumber(item.precoUnit) * item.quantidade, 0);
-  const total = Math.max(0, subtotal - toNumber(comanda?.desconto ?? 0));
+  const [pedidos, itensSemPedido] = await Promise.all([
+    tx.pedidoOperacao.findMany({
+      where: { comandaId },
+      select: {
+        status: true,
+        itensComanda: {
+          select: { precoUnit: true, quantidade: true, exigePreparo: true, cancelamentoPendenteEm: true, canceladoEm: true },
+        },
+      },
+    }),
+    tx.itemComanda.findMany({
+      where: { comandaId, pedidoCozinhaId: null },
+      select: { precoUnit: true, quantidade: true, exigePreparo: true, cancelamentoPendenteEm: true, canceladoEm: true },
+    }),
+  ]);
+  const financeiro = calcularFinanceiroComanda({
+    status: comanda?.status ?? 'ABERTA',
+    totalPersistido: comanda?.total,
+    desconto: comanda?.desconto,
+    itensSemPedido,
+    pedidos: pedidos.map((pedido) => ({ status: pedido.status, itens: pedido.itensComanda })),
+  });
+  const total = financeiro.total / 100;
   await tx.comanda.update({
     where: { id: comandaId },
     data: { total },
@@ -66,8 +88,14 @@ export async function fecharComandaOperacaoInTx(
     fechadaEm: Date;
     grupoPagamentoId?: string;
     comandaIdsGrupo?: string[];
+    sessaoCaixaId?: string;
+    deixarPendente?: boolean;
   },
 ) {
+  // O total pode estar desatualizado em comandas cujos pedidos foram entregues
+  // antes do recálculo ser executado no fluxo da cozinha.
+  await recalcComandaTotalOperacao(tx, params.comanda.id);
+
   return fecharComandaComPagamentos(tx, {
     comanda: {
       id: params.comanda.id,
@@ -93,5 +121,7 @@ export async function fecharComandaOperacaoInTx(
     comandaIdsGrupo: params.comandaIdsGrupo,
     origem: 'CAIXA',
     pagamentosDetalhados: params.pagamentos,
+    sessaoCaixaId: params.sessaoCaixaId,
+    deixarPendente: params.deixarPendente,
   });
 }

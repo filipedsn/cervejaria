@@ -29,6 +29,36 @@ type CartItem = {
   tapId?: string;
 };
 
+function ReceiptIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 32 32" className="portal-login-icon portal-login-icon--receipt">
+      <path d="M9 4h14v23l-3.5-2.5L16 27l-3.5-2.5L9 27V4Z" />
+      <path d="M12.5 10h7M12.5 14h7M12.5 18h5" />
+    </svg>
+  );
+}
+
+function UserIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 32 32" className="portal-login-field-icon">
+      <circle cx="16" cy="10" r="5" />
+      <path d="M7 27c.8-5.2 3.7-8 9-8s8.2 2.8 9 8" />
+    </svg>
+  );
+}
+
+function PhoneIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 32 32" className="portal-login-field-icon">
+      <path d="M9 5.5 13 4l3 7-3 2c1.3 3 3 4.7 6 6l2-3 7 3-1.5 4c-.5 1.4-2 2.2-3.4 1.8C14 22.6 8.4 17 6.2 7.9 5.8 6.5 7.6 6 9 5.5Z" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon() {
+  return <span aria-hidden="true" className="portal-login-arrow">›</span>;
+}
+
 const PEDIDO_STATUS_LABEL: Record<string, string> = {
   PENDENTE: 'Aguardando confirmação do atendente',
   RECUSADO: 'Recusado',
@@ -118,7 +148,7 @@ export function PortalClientePage() {
 
   useEffect(() => {
     if (authenticated || loginStep !== 'telefone') return;
-    phoneInputRef.current?.focus();
+    nomeInputRef.current?.focus();
   }, [authenticated, loginStep]);
 
   useEffect(() => {
@@ -184,7 +214,6 @@ export function PortalClientePage() {
         setLoginStep('confirmar');
       } else {
         setLookupNome('');
-        setNome('');
         setLoginStep('cadastro');
       }
     },
@@ -264,6 +293,10 @@ export function PortalClientePage() {
       setError('Informe um telefone válido com DDD');
       return;
     }
+    if (!nome.trim()) {
+      setError('Informe seu nome');
+      return;
+    }
     lookupMutation.mutate(phoneDigits);
   };
 
@@ -317,10 +350,19 @@ export function PortalClientePage() {
   }
 
   const logo = assetUrl(info.cervejaria.logoUrl);
+  const portalBackground = assetUrl(info.cervejaria.portalBackgroundUrl);
+  const portalBackgroundStyle = portalBackground
+    ? {
+        backgroundImage: `linear-gradient(rgba(6, 20, 38, 0.76), rgba(6, 20, 38, 0.88)), url("${portalBackground}")`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed' as const,
+      }
+    : undefined;
 
   if (!info.disponivel || !info.evento) {
     return (
-      <div className="min-h-screen bg-canvas px-4 py-8 safe-area-pt">
+      <div className="min-h-screen bg-canvas px-4 py-8 safe-area-pt" style={portalBackgroundStyle}>
         <div className="max-w-md mx-auto text-center space-y-4">
           {logo && <img src={logo} alt="" className="h-14 mx-auto rounded-xl" />}
           <h1 className="text-xl font-bold">{info.cervejaria.nome}</h1>
@@ -338,47 +380,61 @@ export function PortalClientePage() {
 
   if (!authenticated) {
     return (
-      <div className="min-h-screen bg-canvas px-4 py-8 safe-area-pt safe-area-pb">
-        <div className="max-w-md mx-auto space-y-6">
-          <div className="text-center space-y-2">
+      <div className="min-h-screen bg-canvas px-4 py-8 safe-area-pt safe-area-pb" style={portalBackgroundStyle}>
+        <div className="portal-login-content">
+          <div className="portal-login-brand">
             {logo ? (
-              <img src={logo} alt="" className="h-14 mx-auto rounded-xl object-contain" />
+              <img src={logo} alt={info.cervejaria.nome} className="portal-login-logo" />
             ) : (
-              <div className="text-3xl">🍺</div>
+              <div className="portal-login-logo-fallback" aria-hidden="true">🍺</div>
             )}
-            <h1 className="text-xl font-bold">{info.cervejaria.nome}</h1>
-            <p className="text-sm text-ink-muted">
-              {info.trailer.nome} · {info.evento.nome}
-            </p>
           </div>
 
           {loginStep === 'telefone' && (
-            <form onSubmit={handleContinuePhone} className="card space-y-4">
-              <h2 className="font-bold">Abrir comanda</h2>
-              <p className="text-sm text-ink-muted">
-                Informe seu telefone. Se já estiver cadastrado, confirmamos seu nome na sequência.
-              </p>
+            <form onSubmit={handleContinuePhone} className="portal-login-card">
+              <div className="portal-login-heading">
+                <ReceiptIcon />
+                <div>
+                  <h1>Abrir comanda</h1>
+                  <p>Informe seus dados para abrir sua comanda neste caixa.</p>
+                </div>
+              </div>
               {error && <div className="alert-error">{error}</div>}
-              <div>
-                <label className="label">Telefone</label>
+              <div className="portal-login-field">
+                <label htmlFor="portal-nome"><UserIcon />Nome</label>
                 <input
+                  id="portal-nome"
+                  ref={nomeInputRef}
+                  className="portal-login-input"
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
+                  placeholder="Digite seu nome"
+                  required
+                  autoComplete="name"
+                />
+              </div>
+              <div className="portal-login-field">
+                <label htmlFor="portal-telefone"><PhoneIcon />Telefone</label>
+                <input
+                  id="portal-telefone"
                   ref={phoneInputRef}
-                  className="input"
+                  className="portal-login-input"
                   type="tel"
                   inputMode="numeric"
                   autoComplete="tel"
                   value={telefone}
                   onChange={(e) => setTelefone(formatPhone(e.target.value))}
-                  placeholder="(11) 99999-9999"
+                  placeholder="(XX) XXXXX-XXXX"
                   required
                 />
               </div>
               <button
                 type="submit"
-                className="touch-btn-primary w-full"
+                className="portal-login-submit"
                 disabled={lookupMutation.isPending}
               >
-                {lookupMutation.isPending ? 'Verificando...' : 'Continuar'}
+                {lookupMutation.isPending ? 'Verificando...' : 'Abrir comanda'}
+                {!lookupMutation.isPending && <ArrowRightIcon />}
               </button>
             </form>
           )}
@@ -471,7 +527,7 @@ export function PortalClientePage() {
     !comanda?.itens.length && pedidosPendentes.length === 0 && pedidosRecusados.length === 0;
 
   return (
-    <div className="min-h-screen bg-canvas pb-24 safe-area-pt">
+    <div className="min-h-screen bg-canvas pb-24 safe-area-pt" style={portalBackgroundStyle}>
       <header className="app-shell-header px-4 py-3">
         <div className="max-w-lg mx-auto flex items-center gap-3">
           {logo && <img src={logo} alt="" className="h-9 w-9 rounded-lg object-contain" />}

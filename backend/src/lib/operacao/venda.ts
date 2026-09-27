@@ -12,6 +12,7 @@ import { kitchenService } from '../../services/kitchen-service.js';
 import { mapPrecosCardapioOperacao } from '../cardapio-preco.js';
 import { operacaoUsaCardapio } from '../cardapio-toggle.js';
 import { assertProdutoNoCardapioTurno } from './sessao-cardapio.js';
+import { resolverOpcionais, type OpcionalSelecionadoInput, type OpcionalResolvido } from '../produto-opcionais.js';
 
 export class VendaInvalidaError extends Error {
   statusCode = 400;
@@ -41,6 +42,9 @@ export function reais(valorEmCentavos: number): number {
 export interface ItemVendaInput {
   produtoId: string;
   quantidade: number;
+  paraViagem?: boolean;
+  observacao?: string;
+  opcionais?: OpcionalSelecionadoInput[];
 }
 
 export interface ItemResolvido {
@@ -50,6 +54,9 @@ export interface ItemResolvido {
   quantidade: number;
   exigePreparo: boolean;
   controlaEstoque: boolean;
+  paraViagem: boolean;
+  observacao: string | null;
+  opcionais: OpcionalResolvido[];
 }
 
 export function itemVaiParaCozinha(temCozinha: boolean, exigePreparo: boolean): boolean {
@@ -118,28 +125,43 @@ export async function resolverItens(
         }
       }
 
-      return produtos.map((produto) => {
+      const produtoPorId = new Map(produtos.map((produto) => [produto.id, produto]));
+      return Promise.all(itens.map(async (linha) => {
+        const produto = produtoPorId.get(linha.produtoId)!;
         const precoTurno = precosTurno.get(produto.id);
         const precoTemplate = precosTemplate?.get(produto.id);
+        const opcionais = await resolverOpcionais(tx, produto.id, linha.opcionais);
+        const precoBase = precoTurno ?? precoTemplate ?? toNumber(produto.precos[0]?.preco ?? 0);
         return {
           produtoId: produto.id,
           nome: produto.nome,
-          precoUnit: precoTurno ?? precoTemplate ?? toNumber(produto.precos[0]?.preco ?? 0),
-          quantidade: quantidadePorProduto.get(produto.id)!,
+          precoUnit: precoBase + opcionais.reduce((sum, opcional) => sum + opcional.precoAdicional * opcional.quantidade, 0),
+          quantidade: linha.quantidade,
           exigePreparo: produto.exigePreparo,
           controlaEstoque: produto.controlaEstoque,
+          paraViagem: linha.paraViagem ?? false,
+          observacao: linha.observacao?.trim() || null,
+          opcionais,
         };
-      });
+      }));
     }
   }
 
-  return produtos.map((produto) => ({
-    produtoId: produto.id,
-    nome: produto.nome,
-    precoUnit: toNumber(produto.precos[0]?.preco ?? 0),
-    quantidade: quantidadePorProduto.get(produto.id)!,
-    exigePreparo: produto.exigePreparo,
-    controlaEstoque: produto.controlaEstoque,
+  const produtoPorId = new Map(produtos.map((produto) => [produto.id, produto]));
+  return Promise.all(itens.map(async (linha) => {
+    const produto = produtoPorId.get(linha.produtoId)!;
+    const opcionais = await resolverOpcionais(tx, produto.id, linha.opcionais);
+    return {
+      produtoId: produto.id,
+      nome: produto.nome,
+      precoUnit: toNumber(produto.precos[0]?.preco ?? 0) + opcionais.reduce((sum, opcional) => sum + opcional.precoAdicional * opcional.quantidade, 0),
+      quantidade: linha.quantidade,
+      exigePreparo: produto.exigePreparo,
+      controlaEstoque: produto.controlaEstoque,
+      paraViagem: linha.paraViagem ?? false,
+      observacao: linha.observacao?.trim() || null,
+      opcionais,
+    };
   }));
 }
 
@@ -161,6 +183,16 @@ function lockKeyDaSenha(cervejariaId: string, dia: Date): bigint {
   return BigInt.asIntN(64, digest.readBigUInt64BE(0));
 }
 
+export async function proximoNumeroPedidoOperacao(tx: TxClient, cervejariaId: string, dia: Date) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKeyDaSenha(cervejariaId, dia)})`;
+  const ultimo = await tx.pedidoOperacao.findFirst({
+    where: { cervejariaId, diaOperacional: dia },
+    orderBy: { numero: 'desc' },
+    select: { numero: true },
+  });
+  return (ultimo?.numero ?? 0) + 1;
+}
+
 /**
  * Cria o pedido com a senha do dia. A senha e sequencial por empresa e reinicia
  * a cada dia de operacao. Um advisory lock de transacao serializa a alocacao do
@@ -176,43 +208,58 @@ export async function criarPedido(
     pontoVendaId: string;
     dia: Date;
     criadoPorId: string;
+    paraViagem?: boolean;
     observacao?: string;
     itens: ItemResolvido[];
     temCozinha: boolean;
   },
 ) {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKeyDaSenha(params.cervejariaId, params.dia)})`;
-
-  const ultimo = await tx.pedidoOperacao.findFirst({
-    where: { cervejariaId: params.cervejariaId, diaOperacional: params.dia },
-    orderBy: { numero: 'desc' },
-    select: { numero: true },
-  });
+  const numero = await proximoNumeroPedidoOperacao(tx, params.cervejariaId, params.dia);
 
   const pedido = await tx.pedidoOperacao.create({
     data: {
       cervejariaId: params.cervejariaId,
       comandaId: params.comandaId,
       pontoVendaId: params.pontoVendaId,
-      numero: (ultimo?.numero ?? 0) + 1,
+      numero,
       diaOperacional: params.dia,
       criadoPorId: params.criadoPorId,
+      paraViagem: Boolean(params.paraViagem || params.itens.some((item) => item.paraViagem)),
       observacao: params.observacao,
     },
   });
 
-  await tx.itemComanda.createMany({
-    data: params.itens.map((item) => ({
+  const itensCriados = [] as Array<{ id: string }>;
+  for (const item of params.itens) {
+    const criado = await tx.itemComanda.create({ data: {
       comandaId: params.comandaId,
       produtoId: item.produtoId,
       volumeMl: 0,
       quantidade: item.quantidade,
       precoUnit: item.precoUnit,
       nome: item.nome,
+      observacao: item.observacao,
+      paraViagem: item.paraViagem,
       exigePreparo: itemVaiParaCozinha(params.temCozinha, item.exigePreparo),
       pedidoCozinhaId: pedido.id,
-    })),
-  });
+    } });
+    itensCriados.push(criado);
+  }
+  for (const [indice, item] of params.itens.entries()) {
+    if (item.opcionais.length === 0) continue;
+    const itemCriado = itensCriados[indice];
+    if (!itemCriado) continue;
+    await tx.itemComandaOpcional.createMany({
+      data: item.opcionais.map((opcional) => ({
+        itemComandaId: itemCriado.id,
+        opcionalId: null,
+        opcionalCatalogoId: opcional.opcionalCatalogoId ?? opcional.opcionalId,
+        nome: opcional.nome,
+        precoAdicional: opcional.precoAdicional,
+        quantidade: opcional.quantidade,
+      })),
+    });
+  }
 
   const pedidoComItens = await tx.pedidoOperacao.findUniqueOrThrow({
     where: { id: pedido.id },
@@ -226,14 +273,63 @@ export async function criarPedido(
 
 type ComandaCompleta = Prisma.ComandaGetPayload<{
   include: {
-    pedidosOperacao: { include: { itensComanda: true } };
+    pedidosOperacao: { include: { itensComanda: { include: { opcionais: true } } } };
     itens: true;
     pagamentos: true;
+    contaReceber: { include: { pagamentos: true } };
+    cliente: { select: { id: true; nome: true; telefone: true } };
   };
 }>;
 
-export function subtotalComandaEmCentavos(comanda: ComandaCompleta): number {
-  return totalEmCentavos(comanda.itens);
+type LinhaFinanceiraComanda = {
+  precoUnit: unknown;
+  quantidade: number;
+  exigePreparo?: boolean;
+  cancelamentoPendenteEm?: unknown;
+  canceladoEm?: unknown;
+  pedidoCozinhaId?: string | null;
+};
+
+/** Regra canônica dos valores da comanda operacional, sempre em centavos. */
+export function calcularFinanceiroComanda(params: {
+  status: string;
+  totalPersistido?: unknown;
+  desconto?: unknown;
+  itensSemPedido: LinhaFinanceiraComanda[];
+  pedidos: Array<{ status: string; itens: LinhaFinanceiraComanda[] }>;
+}) {
+  const ativos = (item: LinhaFinanceiraComanda) => !item.cancelamentoPendenteEm && !item.canceladoEm;
+  const itensConsumidos = [
+    ...params.itensSemPedido.filter((item) => !item.pedidoCozinhaId && ativos(item)),
+    ...params.pedidos
+      .filter((pedido) => pedido.status === 'ENTREGUE' || !pedido.itens.some((item) => item.exigePreparo))
+      .flatMap((pedido) => pedido.itens.filter(ativos)),
+  ];
+  const subtotal = totalEmCentavos(itensConsumidos);
+  const valorEmAberto = params.status === 'ABERTA'
+    ? params.pedidos
+      .filter((pedido) =>
+        !['ENTREGUE', 'CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(pedido.status) &&
+        pedido.itens.some((item) => item.exigePreparo),
+      )
+      .reduce((soma, pedido) => soma + totalEmCentavos(pedido.itens.filter(ativos)), 0)
+    : 0;
+  const desconto = centavos(params.desconto ?? 0);
+  const total = params.status === 'ABERTA'
+    ? Math.max(0, subtotal - desconto)
+    : centavos(params.totalPersistido ?? 0);
+
+  return { subtotal, valorEmAberto, desconto, total };
+}
+
+export function subtotalComandaEmCentavos(comanda: Pick<ComandaCompleta, 'status' | 'total' | 'desconto' | 'itens' | 'pedidosOperacao'>): number {
+  return calcularFinanceiroComanda({
+    status: comanda.status,
+    desconto: comanda.desconto,
+    totalPersistido: comanda.total,
+    itensSemPedido: comanda.itens.filter((item) => !item.pedidoCozinhaId),
+    pedidos: comanda.pedidosOperacao.map((pedido) => ({ status: pedido.status, itens: pedido.itensComanda })),
+  }).subtotal;
 }
 
 /**
@@ -244,6 +340,8 @@ export function resumoComanda(comanda: ComandaCompleta) {
     id: pedido.id,
     numero: pedido.numero,
     status: pedido.status,
+    clienteAvisadoEm: pedido.clienteAvisadoEm,
+    paraViagem: pedido.paraViagem,
     observacao: pedido.observacao,
     createdAt: pedido.createdAt,
     itens: pedido.itensComanda.map((item) => ({
@@ -252,27 +350,43 @@ export function resumoComanda(comanda: ComandaCompleta) {
       nome: item.nome ?? '',
       precoUnit: toNumber(item.precoUnit),
       quantidade: item.quantidade,
+      paraViagem: item.paraViagem,
+      cancelamentoPendenteEm: item.cancelamentoPendenteEm,
+      canceladoEm: item.canceladoEm,
+      observacao: item.observacao,
+      opcionais: item.opcionais.map((opcional) => ({
+        id: opcional.id,
+        nome: opcional.nome,
+        precoAdicional: toNumber(opcional.precoAdicional),
+        quantidade: opcional.quantidade,
+      })),
       subtotal: reais(centavos(item.precoUnit) * item.quantidade),
       exigePreparo: item.exigePreparo,
     })),
   }));
 
-  const subtotalEmCents = subtotalComandaEmCentavos(comanda);
-  const descontoEmCents = centavos(toNumber(comanda.desconto ?? 0));
-  const totalEmCents = centavos(toNumber(comanda.total));
+  const financeiro = calcularFinanceiroComanda({
+    status: comanda.status,
+    totalPersistido: comanda.total,
+    desconto: comanda.desconto,
+    itensSemPedido: comanda.itens.filter((item) => !item.pedidoCozinhaId),
+    pedidos: comanda.pedidosOperacao.map((pedido) => ({ status: pedido.status, itens: pedido.itensComanda })),
+  });
 
   return {
     id: comanda.id,
     tipo: comanda.tipo,
     identificador: comanda.identificador,
     numero: comanda.numero,
+    cliente: comanda.cliente,
     status: comanda.status,
     pontoVendaId: comanda.pontoVendaId,
     createdAt: comanda.createdAt,
     fechadaEm: comanda.fechadaEm,
-    subtotal: reais(subtotalEmCents),
-    desconto: reais(descontoEmCents),
-    total: reais(totalEmCents),
+    subtotal: reais(financeiro.subtotal),
+    desconto: reais(financeiro.desconto),
+    total: reais(financeiro.total),
+    valorEmAberto: reais(financeiro.valorEmAberto),
     pedidos,
     pagamentos: comanda.pagamentos.map((pagamento) => ({
       id: pagamento.id,
@@ -282,6 +396,14 @@ export function resumoComanda(comanda: ComandaCompleta) {
       troco: pagamento.troco === null ? null : toNumber(pagamento.troco),
       pagoEm: pagamento.pagoEm,
     })),
+    contaPendente: comanda.contaReceber
+      ? {
+          id: comanda.contaReceber.id,
+          valorOriginal: toNumber(comanda.contaReceber.valorOriginal),
+          recebido: comanda.contaReceber.pagamentos.reduce((sum, pagamento) => sum + toNumber(pagamento.valor), 0),
+          saldo: Math.max(0, toNumber(comanda.contaReceber.valorOriginal) - comanda.contaReceber.pagamentos.reduce((sum, pagamento) => sum + toNumber(pagamento.valor), 0)),
+        }
+      : null,
   };
 }
 

@@ -47,11 +47,13 @@ const clienteInclude = {
 function serializeCliente(
   cliente: Prisma.ClienteGetPayload<{ include: typeof clienteInclude }>,
   exclusao = buildExclusaoMeta(cliente.isSistema, { abertas: 0, fechadas: 0 }),
+  valorPendente = 0,
 ) {
   return {
     ...cliente,
     telefone: cliente.telefone ? formatPhoneBr(cliente.telefone) : null,
     totalGasto: cliente.estatisticas ? toNumber(cliente.estatisticas.totalGasto) : 0,
+    valorPendente,
     estatisticas: cliente.estatisticas
       ? {
           ...cliente.estatisticas,
@@ -65,11 +67,34 @@ function serializeCliente(
   };
 }
 
+async function getSaldosPendentesPorCliente(clienteIds: string[]) {
+  const saldos = new Map<string, number>();
+  if (clienteIds.length === 0) return saldos;
+
+  const contas = await prisma.contaReceber.findMany({
+    where: { clienteId: { in: clienteIds } },
+    select: {
+      clienteId: true,
+      valorOriginal: true,
+      pagamentos: { select: { valor: true } },
+    },
+  });
+  for (const conta of contas) {
+    const recebido = conta.pagamentos.reduce((soma, pagamento) => soma + toNumber(pagamento.valor), 0);
+    const saldo = Math.max(0, Math.round((toNumber(conta.valorOriginal) - recebido) * 100) / 100);
+    saldos.set(conta.clienteId, (saldos.get(conta.clienteId) ?? 0) + saldo);
+  }
+  return saldos;
+}
+
 async function serializeClienteWithExclusao(
   cliente: Prisma.ClienteGetPayload<{ include: typeof clienteInclude }>,
 ) {
-  const counts = await getClienteComandaCounts(cliente.id);
-  return serializeCliente(cliente, buildExclusaoMeta(cliente.isSistema, counts));
+  const [counts, saldos] = await Promise.all([
+    getClienteComandaCounts(cliente.id),
+    getSaldosPendentesPorCliente([cliente.id]),
+  ]);
+  return serializeCliente(cliente, buildExclusaoMeta(cliente.isSistema, counts), saldos.get(cliente.id) ?? 0);
 }
 
 function orderByFromSort(ordenar: string): Prisma.ClienteOrderByWithRelationInput[] {
@@ -118,12 +143,19 @@ export async function clientesRoutes(app: FastifyInstance) {
       prisma.cliente.count({ where }),
     ]);
 
-    const countsByCliente = await getComandaCountsByClienteIds(items.map((c) => c.id));
+    const [countsByCliente, saldosPendentes] = await Promise.all([
+      getComandaCountsByClienteIds(items.map((c) => c.id)),
+      getSaldosPendentesPorCliente(items.map((c) => c.id)),
+    ]);
 
     return {
       items: items.map((cliente) => {
         const counts = countsByCliente.get(cliente.id) ?? { abertas: 0, fechadas: 0 };
-        return serializeCliente(cliente, buildExclusaoMeta(cliente.isSistema, counts));
+        return serializeCliente(
+          cliente,
+          buildExclusaoMeta(cliente.isSistema, counts),
+          saldosPendentes.get(cliente.id) ?? 0,
+        );
       }),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
@@ -141,13 +173,20 @@ export async function clientesRoutes(app: FastifyInstance) {
     });
     if (!cliente) return reply.status(404).send({ error: 'Cliente não encontrado' });
 
-    const where = { clienteId: id, status: 'FECHADA' as const, tipo: 'COMANDA' as const };
+    const where = {
+      clienteId: id,
+      status: 'FECHADA' as const,
+      tipo: { not: 'AVULSA' as const },
+      pagamentos: { some: { valor: { gt: 0 } } },
+    };
 
     const [comandas, total] = await Promise.all([
       prisma.comanda.findMany({
         where,
         include: {
           evento: { select: { id: true, nome: true, local: true, data: true } },
+          pontoVenda: { select: { id: true, nome: true } },
+          contaReceber: { select: { valorOriginal: true } },
           itens: {
             include: { produto: { select: { id: true, nome: true, tipo: true, formato: true } } },
             orderBy: { createdAt: 'asc' },
@@ -164,9 +203,18 @@ export async function clientesRoutes(app: FastifyInstance) {
     return {
       items: comandas.map((c) => ({
         id: c.id,
-        total: toNumber(c.total),
-        fechadaEm: c.updatedAt,
-        evento: c.evento,
+        total: c.pagamentos.reduce((soma, pagamento) => soma + toNumber(pagamento.valor), 0),
+        totalComanda: toNumber(c.total),
+        valorPendente: c.contaReceber
+          ? Math.max(0, toNumber(c.contaReceber.valorOriginal) - c.pagamentos.reduce((soma, pagamento) => soma + toNumber(pagamento.valor), 0))
+          : 0,
+        fechadaEm: c.fechadaEm ?? c.updatedAt,
+        evento: c.evento ?? {
+          id: c.pontoVenda?.id ?? c.id,
+          nome: c.pontoVenda ? `Caixa · ${c.pontoVenda.nome}` : 'Caixa',
+          local: '',
+          data: null,
+        },
         itens: c.itens.map((i) => ({
           id: i.id,
           produto: i.produto?.nome ?? i.nome,

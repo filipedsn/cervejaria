@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 
 import rateLimit from '@fastify/rate-limit';
 
@@ -14,7 +14,14 @@ import {
 import { normalizePhone } from '../lib/phone.js';
 import { registerOrUpdateCliente } from '../lib/cliente-resolver.js';
 import { assertCaixaAberto, lockCaixaEmTx } from '../lib/operacao/caixa.js';
-import { diaOperacional } from '../lib/operacao/venda.js';
+import { diaOperacional, CAIXA_VENDA_TX, criarPedido, resolverItens, resumoComanda } from '../lib/operacao/venda.js';
+import { INCLUDE_COMANDA_OPERACAO, recalcComandaTotalOperacao, whereComandaOperacao } from '../lib/operacao/comanda-adapter.js';
+import { listProdutosOperacionaisTurno } from '../lib/operacao/sessao-cardapio.js';
+import { CATEGORIAS_PRODUTO_OPERACAO, normalizarOrdemCategoriasProduto } from '../lib/operacao/categorias.js';
+import { notificarComandaOperacaoAtualizada, notificarPedidoNovo } from '../lib/operacao/cozinha.js';
+import { inventoryService } from '../services/inventory-service.js';
+import { lockComandaItemsInTx } from '../lib/comanda-service.js';
+import { getOperationalProfile } from '../lib/operational-profile.js';
 import { proximoNumeroComandaOperacaoTurno } from '../lib/comanda-numero.js';
 
 import {
@@ -28,6 +35,7 @@ import {
   signClienteSession,
 
 } from '../lib/cliente-session.js';
+import { PDV_CLIENTE_COOKIE_NAME, type PdvClienteSessionPayload } from '../types/cliente-session.js';
 
 import {
 
@@ -75,6 +83,39 @@ const abrirComandaPdvSchema = z.object({
   nome: z.string().trim().min(2).max(120),
   telefone: z.string().min(10),
 });
+
+const pedidoPdvSchema = z.object({
+  itens: z.array(z.object({
+    produtoId: z.string().min(1),
+    quantidade: z.number().int().positive().max(999),
+    paraViagem: z.boolean().default(false),
+    observacao: z.string().trim().max(280).optional(),
+    opcionais: z.array(z.object({ opcionalId: z.string().min(1), quantidade: z.number().int().positive().max(99).optional() })).optional(),
+  })).min(1),
+  paraViagem: z.boolean().default(false),
+  observacao: z.string().trim().max(280).optional(),
+});
+
+async function getPdvClienteSession(app: FastifyInstance, request: FastifyRequest) {
+  const token = request.cookies[PDV_CLIENTE_COOKIE_NAME];
+  if (!token) throw app.httpErrors.unauthorized('Sessão expirada. Identifique-se novamente.');
+  let decoded: unknown;
+  try {
+    decoded = await app.jwt.verify(token);
+  } catch {
+    throw app.httpErrors.unauthorized('Sessão inválida.');
+  }
+  const session = decoded as Partial<PdvClienteSessionPayload>;
+  if (session.type !== 'cliente-pdv' || !session.cervejariaId || !session.pontoVendaId || !session.clienteId || !session.comandaId) {
+    throw app.httpErrors.unauthorized('Sessão inválida.');
+  }
+  const comanda = await prisma.comanda.findFirst({
+    where: { ...whereComandaOperacao(session.cervejariaId, { id: session.comandaId, status: 'ABERTA' }), clienteId: session.clienteId, pontoVendaId: session.pontoVendaId },
+    include: INCLUDE_COMANDA_OPERACAO,
+  });
+  if (!comanda) throw app.httpErrors.unauthorized('Comanda encerrada. Identifique-se novamente.');
+  return { session: session as PdvClienteSessionPayload, comanda };
+}
 
 
 
@@ -182,7 +223,7 @@ async function validatePedidoItens(
 
     if (!produto) return { error: 'Item não disponível no cardápio' as const };
 
-    const preco = produto.precos.find((p) => p.volumeMl === item.volumeMl);
+    const preco = produto.precos.find((p: { volumeMl: number }) => p.volumeMl === item.volumeMl);
 
     if (!preco) return { error: 'Volume inválido para este produto' as const };
 
@@ -300,7 +341,7 @@ export async function publicRoutes(app: FastifyInstance) {
     const { slug, pontoVendaId } = request.params as { slug: string; pontoVendaId: string };
     const cervejaria = await prisma.cervejaria.findFirst({
       where: { slug, ativo: true },
-      select: { id: true, nome: true, slug: true, logoUrl: true },
+      select: { id: true, nome: true, slug: true, logoUrl: true, portalBackgroundUrl: true },
     });
     if (!cervejaria) return reply.status(404).send({ error: 'Link inválido' });
 
@@ -315,7 +356,114 @@ export async function publicRoutes(app: FastifyInstance) {
       where: { cervejariaId: cervejaria.id, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
       select: { id: true },
     });
-    return { cervejaria, pontoVenda, disponivel: Boolean(sessao) };
+    return {
+      cervejaria: { ...cervejaria, portalBackgroundUrl: cervejaria.portalBackgroundUrl ?? null },
+      pontoVenda,
+      disponivel: Boolean(sessao),
+    };
+  });
+
+  app.get('/cervejarias/:slug/pontos-venda/:pontoVendaId/cliente-por-telefone', {
+    config: { rateLimit: { max: PUBLIC_RATE_LIMIT_MAX, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const { slug, pontoVendaId } = request.params as { slug: string; pontoVendaId: string };
+    const query = telefoneQuerySchema.parse(request.query);
+    const cervejaria = await prisma.cervejaria.findFirst({
+      where: { slug, ativo: true },
+      select: { id: true },
+    });
+    if (!cervejaria) return reply.status(404).send({ error: 'Link inválido' });
+    const pontoVenda = await prisma.pontoVenda.findFirst({
+      where: { id: pontoVendaId, cervejariaId: cervejaria.id, ativo: true },
+      select: { id: true },
+    });
+    if (!pontoVenda) return reply.status(404).send({ error: 'Link inválido' });
+    const telefone = normalizePhone(query.telefone);
+    if (!telefone) return reply.status(400).send({ error: 'Telefone inválido. Informe DDD + número.' });
+    return lookupClientePortalPorTelefone(cervejaria.id, telefone);
+  });
+
+  app.get('/cervejarias/:slug/pontos-venda/:pontoVendaId/cardapio', async (request, reply) => {
+    const { session } = await getPdvClienteSession(app, request);
+    if (session.pontoVendaId !== (request.params as { pontoVendaId: string }).pontoVendaId) {
+      return reply.status(403).send({ error: 'Sessão inválida para este ponto de venda' });
+    }
+    return listProdutosOperacionaisTurno(session.cervejariaId, session.pontoVendaId, diaOperacional());
+  });
+
+  app.get('/cervejarias/:slug/pontos-venda/:pontoVendaId/cardapio/categorias', async (request, reply) => {
+    const { session } = await getPdvClienteSession(app, request);
+    if (session.pontoVendaId !== (request.params as { pontoVendaId: string }).pontoVendaId) {
+      return reply.status(403).send({ error: 'Sessão inválida para este ponto de venda' });
+    }
+    const cervejaria = await prisma.cervejaria.findUnique({
+      where: { id: session.cervejariaId },
+      select: { operacaoCategoriasOrdem: true },
+    });
+    return {
+      ordemCategorias: normalizarOrdemCategoriasProduto(
+        cervejaria?.operacaoCategoriasOrdem ?? CATEGORIAS_PRODUTO_OPERACAO,
+      ),
+    };
+  });
+
+  app.get('/cervejarias/:slug/pontos-venda/:pontoVendaId/comanda', async (request, reply) => {
+    const { session, comanda } = await getPdvClienteSession(app, request);
+    if (session.pontoVendaId !== (request.params as { pontoVendaId: string }).pontoVendaId) {
+      return reply.status(403).send({ error: 'Sessão inválida para este ponto de venda' });
+    }
+    return resumoComanda(comanda);
+  });
+
+  app.post('/cervejarias/:slug/pontos-venda/:pontoVendaId/comanda/pedidos', async (request, reply) => {
+    const { session } = await getPdvClienteSession(app, request);
+    if (session.pontoVendaId !== (request.params as { pontoVendaId: string }).pontoVendaId) {
+      return reply.status(403).send({ error: 'Sessão inválida para este ponto de venda' });
+    }
+    const body = pedidoPdvSchema.parse(request.body);
+    const profile = await getOperationalProfile(session.cervejariaId);
+    const temCozinha = profile?.capabilities.kitchen ?? false;
+    const controlaEstoque = profile?.capabilities.inventory ?? false;
+    const resultado = await prisma.$transaction(async (tx) => {
+      await lockCaixaEmTx(tx, session.cervejariaId, session.pontoVendaId, diaOperacional());
+      const sessao = await assertCaixaAberto(session.cervejariaId, session.pontoVendaId, diaOperacional(), tx);
+      await lockComandaItemsInTx(tx, session.comandaId);
+      const comanda = await tx.comanda.findFirst({
+        where: { ...whereComandaOperacao(session.cervejariaId, { id: session.comandaId, status: 'ABERTA' }), clienteId: session.clienteId },
+      });
+      if (!comanda) throw Object.assign(new Error('Esta comanda já foi fechada'), { statusCode: 409 });
+      const itens = await resolverItens(tx, session.cervejariaId, body.itens, { sessaoCaixaId: sessao.id });
+      const pedido = await criarPedido(tx, {
+        cervejariaId: session.cervejariaId,
+        comandaId: session.comandaId,
+        pontoVendaId: session.pontoVendaId,
+        dia: comanda.diaOperacional!,
+        criadoPorId: `PORTAL:${session.clienteId}`,
+        paraViagem: body.paraViagem,
+        observacao: body.observacao,
+        itens,
+        temCozinha,
+      });
+      await inventoryService.consumeSale(tx, {
+        context: 'CAIXA',
+        moduleEnabled: controlaEstoque,
+        cervejariaId: session.cervejariaId,
+        pontoVendaId: session.pontoVendaId,
+        pedidoId: pedido.id,
+        registradoPorId: `PORTAL:${session.clienteId}`,
+        items: itens,
+      });
+      await recalcComandaTotalOperacao(tx, session.comandaId);
+      return {
+        pedido,
+        comanda: await tx.comanda.findUniqueOrThrow({ where: { id: session.comandaId }, include: INCLUDE_COMANDA_OPERACAO }),
+      };
+    }, CAIXA_VENDA_TX);
+    // A tela geral de comandas precisa atualizar mesmo quando não há cozinha
+    // habilitada para o perfil operacional.
+    notificarComandaOperacaoAtualizada(app, session.cervejariaId, session.comandaId);
+    if (temCozinha) await notificarPedidoNovo(app, session.cervejariaId, resultado.pedido);
+    return reply.status(201).send(resumoComanda(resultado.comanda));
   });
 
   app.post('/cervejarias/:slug/pontos-venda/:pontoVendaId/comandas', {
@@ -346,7 +494,30 @@ export async function publicRoutes(app: FastifyInstance) {
       if (!result.reused) {
         emitToCervejaria(app.io, cervejaria.id, { type: 'comanda:created', data: result.comanda });
       }
-      return reply.status(result.reused ? 200 : 201).send({ comanda: { id: result.comanda.id, numero: result.comanda.numero, identificador: result.comanda.identificador }, reused: result.reused, pontoVenda, cervejaria });
+      const token = app.jwt.sign({
+        type: 'cliente-pdv',
+        cervejariaId: cervejaria.id,
+        pontoVendaId: pontoVenda.id,
+        clienteId: cliente.id,
+        comandaId: result.comanda.id,
+      } as PdvClienteSessionPayload, { expiresIn: '12h' });
+      reply.setCookie(PDV_CLIENTE_COOKIE_NAME, token, {
+        path: '/',
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 12 * 60 * 60,
+      });
+      const comanda = await prisma.comanda.findUniqueOrThrow({
+        where: { id: result.comanda.id },
+        include: INCLUDE_COMANDA_OPERACAO,
+      });
+      return reply.status(result.reused ? 200 : 201).send({
+        comanda: resumoComanda(comanda),
+        reused: result.reused,
+        pontoVenda,
+        cervejaria,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Não foi possível abrir a comanda';
       return reply.status(409).send({ error: message });

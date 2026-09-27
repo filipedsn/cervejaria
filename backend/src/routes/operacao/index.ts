@@ -12,6 +12,7 @@ import { caixaOperacaoRoutes } from './caixa.js';
 import { cardapiosOperacaoRoutes } from './cardapios.js';
 import { estoqueOperacaoRoutes } from './estoque.js';
 import { dashboardOperacaoRoutes } from './dashboard.js';
+import { contasPendentesOperacaoRoutes } from './contas-pendentes.js';
 import {
   atualizarCapacidadesOperacao,
   updateCapacidadesOperacaoSchema,
@@ -32,11 +33,15 @@ export async function operacaoRoutes(app: FastifyInstance) {
     const user = getAuthUser(request);
     const configuracao = await getConfiguracaoOperacao(user.cervejariaId);
 
-    const [profile, pontosVenda] = await Promise.all([
+    const [profile, pontosVenda, avisoPedidoPronto] = await Promise.all([
       getOperationalProfile(user.cervejariaId!),
       prisma.pontoVenda.findMany({
       where: { cervejariaId: user.cervejariaId!, ativo: true },
       orderBy: { createdAt: 'asc' },
+      }),
+      prisma.configuracaoOperacional.findUnique({
+        where: { cervejariaId: user.cervejariaId! },
+        select: { whatsappPedidoProntoEnabled: true, whatsappPedidoProntoNaCozinha: true },
       }),
     ]);
 
@@ -59,6 +64,8 @@ export async function operacaoRoutes(app: FastifyInstance) {
       temCozinha: profile?.capabilities.kitchen ?? configuracao?.temCozinha ?? false,
       usaCardapio: configuracao?.usaCardapio ?? false,
       quantidadeMesas: configuracao?.quantidadeMesas ?? 0,
+      whatsappPedidoProntoEnabled: avisoPedidoPronto?.whatsappPedidoProntoEnabled ?? false,
+      whatsappPedidoProntoNaCozinha: avisoPedidoPronto?.whatsappPedidoProntoNaCozinha ?? false,
       pontosVenda,
     };
   });
@@ -121,6 +128,7 @@ export async function operacaoRoutes(app: FastifyInstance) {
     await moduloScope.register(produtosOperacaoRoutes, { prefix: '/produtos' });
     await moduloScope.register(cardapiosOperacaoRoutes, { prefix: '/cardapios' });
     await moduloScope.register(comandasOperacaoRoutes, { prefix: '/comandas' });
+    await moduloScope.register(contasPendentesOperacaoRoutes, { prefix: '/contas-pendentes' });
     await moduloScope.register(vendasOperacaoRoutes, { prefix: '/vendas' });
     await moduloScope.register(cozinhaOperacaoRoutes, { prefix: '/cozinha' });
     await moduloScope.register(caixaOperacaoRoutes, { prefix: '/caixa' });

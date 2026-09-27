@@ -276,7 +276,7 @@ export function NovaComandaPage() {
             autoComplete="tel"
             value={telefone}
             onChange={(e) => handleTelefoneChange(e.target.value)}
-            placeholder="(11) 99999-9999"
+            placeholder="(11) 9 9999-9999"
             required={!selectedCliente || linkingLegacy}
             aria-invalid={linkingLegacy && !phoneValid}
           />

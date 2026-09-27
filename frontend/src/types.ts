@@ -35,12 +35,14 @@ export interface Cervejaria {
   nome: string;
   slug: string;
   logoUrl?: string | null;
+  portalBackgroundUrl?: string | null;
   corPrimaria?: string | null;
   corSecundaria?: string | null;
   corPaleta?: BrandTheme | null;
   updatedAt?: string;
   /** Mtime do arquivo de logo (cache-bust independente do updatedAt do registro). */
   logoVersion?: string | null;
+  portalBackgroundVersion?: string | null;
   /** KPIs da tela de comandas (cervejaria e operacao). */
   exibirKpisComanda?: boolean;
   /** Lista em coluna única (true) ou duas colunas (false). */
@@ -93,10 +95,16 @@ export interface Produto {
   tipo: ProdutoTipo;
   formato?: FormatoBebida | null;
   ativo: boolean;
+  controlaEstoque?: boolean;
+  exigePreparo?: boolean;
   precos: Preco[];
   /** Preço do template quando evento/cardápio vinculado; senão igual ao catálogo. */
   precoEfetivo?: number;
+  gruposOpcionais?: GrupoOpcionalProduto[];
 }
+
+export interface OpcaoProduto { id: string; nome: string; precoAdicional: string | number; quantidade?: number; }
+export interface GrupoOpcionalProduto { id: string; nome: string; obrigatorio: boolean; maximo: number; opcoes: OpcaoProduto[]; }
 
 export interface CardapioItem {
   produtoId: string;
@@ -211,6 +219,7 @@ export interface Cliente {
   updatedAt?: string;
   estatisticas?: ClienteEstatisticas | null;
   totalGasto?: number;
+  valorPendente?: number;
   podeExcluir?: boolean;
   motivoExclusao?: string | null;
   comandasAbertas?: number;
@@ -245,6 +254,8 @@ export interface UnirClientesResponse extends Cliente {
 export interface ClienteHistoricoItem {
   id: string;
   total: number;
+  totalComanda: number;
+  valorPendente: number;
   fechadaEm: string;
   evento: { id: string; nome: string; local: string; data: string | null };
   itens: {
@@ -272,6 +283,7 @@ export interface PublicCervejariaInfo {
   nome: string;
   slug: string;
   logoUrl?: string | null;
+  portalBackgroundUrl?: string | null;
   corPrimaria?: string | null;
   corPaleta?: BrandTheme | null;
 }
@@ -377,9 +389,16 @@ export interface ItemComanda {
   produtoId: string;
   volumeMl: number;
   quantidade: number;
+  paraViagem?: boolean;
+  exigePreparo?: boolean;
+  cancelamentoPendenteEm?: string | null;
+  canceladoEm?: string | null;
   precoUnit: string;
   produto: Produto;
   createdAt: string;
+  observacao?: string | null;
+  opcionais?: Array<{ id: string; nome: string; precoAdicional: string; quantidade: number }>;
+  pedidoCozinha?: { status: 'RECEBIDO' | 'EM_PREPARO' | 'PRONTO' | 'ENTREGUE' | 'CANCELAMENTO_PENDENTE' | 'CANCELADO' } | null;
 }
 
 export interface Pagamento {
@@ -411,7 +430,9 @@ export function descontoComandaCervejaria(comanda: Pick<Comanda, 'desconto'>): n
 }
 
 export function subtotalComandaCervejaria(comanda: Pick<Comanda, 'itens'>): number {
-  return comanda.itens.reduce((soma, item) => soma + parseFloat(item.precoUnit) * item.quantidade, 0);
+  return comanda.itens
+    .filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm && (!item.exigePreparo || item.pedidoCozinha?.status === 'ENTREGUE' || !item.pedidoCozinha))
+    .reduce((soma, item) => soma + parseFloat(item.precoUnit) * item.quantidade, 0);
 }
 
 export function rotuloComandaCervejaria(

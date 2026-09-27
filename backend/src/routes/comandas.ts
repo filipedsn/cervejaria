@@ -18,6 +18,7 @@ import {
   comandaDetailInclude,
   removeItemFromComanda,
 } from '../lib/comanda-service.js';
+import { INCLUDE_PEDIDO_COZINHA, notificarCozinha } from '../lib/operacao/cozinha.js';
 
 function eventoIdDaComanda(comanda: { eventoId: string | null }): string {
   if (!comanda.eventoId) throw new Error('Comanda sem evento associado');
@@ -51,6 +52,9 @@ const addItemSchema = z.object({
   volumeMl: z.number().int().positive(),
   quantidade: z.number().int().positive().default(1),
   tapId: z.string().optional(),
+  paraViagem: z.boolean().optional(),
+  observacao: z.string().trim().max(280).optional(),
+  opcionais: z.array(z.object({ opcionalId: z.string().min(1), quantidade: z.number().int().positive().max(99).optional() })).optional(),
 });
 
 const descontoSchema = z.object({
@@ -100,7 +104,11 @@ export async function comandasRoutes(app: FastifyInstance) {
         volumeMl: body.volumeMl,
         quantidade: body.quantidade,
         tapId: body.tapId,
+          paraViagem: body.paraViagem,
+          observacao: body.observacao,
+          opcionais: body.opcionais,
       },
+      criadoPorId: user.sub,
     });
 
     if ('error' in result) {
@@ -110,7 +118,14 @@ export async function comandasRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Falha ao adicionar item' });
     }
 
-    const { comanda: updated, produto, isChope, precoUnit } = result;
+    const { comanda: updated, produto, isChope, precoUnit, pedidoCozinha } = result;
+    if (pedidoCozinha) {
+      const cozinha = await prisma.pedidoOperacao.findUnique({
+        where: { id: pedidoCozinha.id },
+        include: INCLUDE_PEDIDO_COZINHA,
+      });
+      if (cozinha) notificarCozinha(app, user.cervejariaId!, cozinha, true);
+    }
     const eventoId = eventoIdDaComanda(comanda);
     await registrarTransacao({
       cervejariaId: user.cervejariaId!,
@@ -157,7 +172,7 @@ export async function comandasRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: result.error });
     }
 
-    const { comanda: updated, item } = result;
+    const { comanda: updated, item, cancelamentoPendente } = result;
     await registrarTransacao({
       cervejariaId: user.cervejariaId!,
       tipo: 'COMANDA_ITEM_REMOVIDO',
@@ -171,12 +186,20 @@ export async function comandasRoutes(app: FastifyInstance) {
         volumeMl: item.volumeMl,
         quantidade: item.quantidade,
         precoUnit: toNumber(item.precoUnit),
+        cancelamentoPendente,
       },
       payload: { comanda: updated, itemRemovido: item },
     });
     const chopeAfetado = isBebidaChope(item.produto!.tipo, item.produto!.formato);
     const eventoId = eventoIdDaComanda(comanda);
     emitToEvento(app.io, eventoId, { type: 'item:removed', data: updated });
+    if (cancelamentoPendente && item.pedidoCozinhaId) {
+      const pedidoCozinha = await prisma.pedidoOperacao.findUnique({
+        where: { id: item.pedidoCozinhaId },
+        include: INCLUDE_PEDIDO_COZINHA,
+      });
+      if (pedidoCozinha) notificarCozinha(app, user.cervejariaId!, pedidoCozinha, false);
+    }
     if (chopeAfetado) {
       emitRankingUpdated(app.io, user.cervejariaId!, eventoId);
     }

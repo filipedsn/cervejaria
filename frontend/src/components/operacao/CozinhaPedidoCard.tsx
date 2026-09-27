@@ -1,4 +1,5 @@
 import { PedidoElapsedTimer } from '../PedidoElapsedTimer';
+import { IconShoppingBag, IconTrash, IconWhatsApp } from '../NavIcons';
 import { rotuloComanda, type PedidoCozinha, type StatusPedido } from '../../lib/operacao';
 
 export const AVANCO_COZINHA: Partial<Record<StatusPedido, { status: StatusPedido; label: string }>> = {
@@ -20,6 +21,8 @@ const BADGE: Record<string, { classe: string; label: string; tvClasse: string }>
   EM_PREPARO: { classe: 'badge-warning', label: 'Preparando', tvClasse: 'cozinha-tv-card--preparo' },
   PRONTO: { classe: 'badge-live', label: 'Pronto', tvClasse: 'cozinha-tv-card--pronto' },
   ENTREGUE: { classe: 'badge-inactive', label: 'Entregue', tvClasse: 'cozinha-tv-card--entregue' },
+  CANCELAMENTO_PENDENTE: { classe: 'badge-warning', label: 'Cancelamento solicitado', tvClasse: 'cozinha-tv-card--cancelamento' },
+  CANCELADO: { classe: 'badge-inactive', label: 'Cancelado', tvClasse: 'cozinha-tv-card--cancelamento' },
 };
 
 interface Props {
@@ -32,6 +35,10 @@ interface Props {
   onVoltar?: (status: StatusPedido) => void;
   podeCancelar?: boolean;
   onCancelar?: () => void;
+  onConfirmarCancelamento?: () => void;
+  onCancelarItem?: (itemId: string) => void;
+  onConfirmarCancelamentoItem?: (itemId: string) => void;
+  onAvisarCliente?: () => void;
 }
 
 export function CozinhaPedidoCard({
@@ -44,11 +51,16 @@ export function CozinhaPedidoCard({
   onVoltar,
   podeCancelar = false,
   onCancelar,
+  onConfirmarCancelamento,
+  onCancelarItem,
+  onConfirmarCancelamentoItem,
+  onAvisarCliente,
 }: Props) {
   const avanco = AVANCO_COZINHA[pedido.status];
   const volta = VOLTA_COZINHA[pedido.status];
   const badge = BADGE[pedido.status];
   const timerStartedAt = pedido.entregueEm ? pedido.createdAt : (pedido.statusDesde ?? pedido.createdAt);
+  const quantidadeItens = pedido.itens.reduce((total, item) => total + item.quantidade, 0);
 
   if (variant === 'tv') {
     return (
@@ -59,9 +71,22 @@ export function CozinhaPedidoCard({
               <p className="cozinha-tv-card-pos">#{indice + 1}</p>
             )}
             <p className="cozinha-tv-card-comanda">{rotuloComanda(pedido.comanda)}</p>
+          </div>
+          <div className="cozinha-tv-card-header-badges">
+            <span className="cozinha-tv-card-badge">{badge.label}</span>
             <p className="cozinha-tv-card-senha">Senha {pedido.numero}</p>
           </div>
-          <span className="cozinha-tv-card-badge">{badge.label}</span>
+        </div>
+
+        <div className="cozinha-tv-card-meta">
+          <span className="cozinha-tv-card-created">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+            {new Date(pedido.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+          <span className="cozinha-tv-card-count">
+            {quantidadeItens} {quantidadeItens === 1 ? 'item' : 'itens'}
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h12M9 12h12M9 18h12" /><circle cx="4" cy="6" r="1" /><circle cx="4" cy="12" r="1" /><circle cx="4" cy="18" r="1" /></svg>
+          </span>
         </div>
 
         <div className="cozinha-tv-card-timer-wrap">
@@ -77,9 +102,29 @@ export function CozinhaPedidoCard({
 
         <ul className="cozinha-tv-card-itens">
           {pedido.itens.map((item) => (
-            <li key={item.id}>
+            <li key={item.id} className={item.cancelamentoPendente ? 'cozinha-tv-card-item--cancelamento' : ''}>
+              <div className="cozinha-tv-card-item-heading">
               <span className="cozinha-tv-card-qtd">{item.quantidade}×</span>
               <span className="cozinha-tv-card-nome">{item.nome}</span>
+                {item.paraViagem && <span className="cozinha-tv-card-item-travel" title="Para viagem" aria-label="Para viagem"><IconShoppingBag className="h-5 w-5" /></span>}
+                {item.cancelamentoPendente && onConfirmarCancelamentoItem ? (
+                  <button type="button" className="cozinha-tv-card-btn cozinha-tv-card-btn-danger" disabled={disabled} onClick={() => onConfirmarCancelamentoItem(item.id)}>
+                    Confirmar cancelamento
+                  </button>
+                ) : onCancelarItem && (
+                  <button
+                    type="button"
+                    className="cozinha-tv-card-item-cancel"
+                    disabled={disabled}
+                    aria-label={`Cancelar ${item.nome}`}
+                    onClick={() => onCancelarItem(item.id)}
+                  >
+                    <IconTrash className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+                {item.opcionais?.length ? <small className="cozinha-tv-card-item-details cozinha-tv-card-item-options"><strong>Complementos:</strong><span>{item.opcionais.map((o) => o.nome).join(', ')}</span></small> : null}
+                {item.observacao ? <small className="cozinha-tv-card-item-details cozinha-tv-card-item-observation"><strong>Obs:</strong><span>{item.observacao}</span></small> : null}
             </li>
           ))}
         </ul>
@@ -87,6 +132,16 @@ export function CozinhaPedidoCard({
         {pedido.observacao && <p className="cozinha-tv-card-obs">Obs: {pedido.observacao}</p>}
 
         <div className="cozinha-tv-card-actions">
+          {pedido.status === 'PRONTO' && onAvisarCliente && pedido.comanda.cliente?.telefone && (
+            <button type="button" className="cozinha-tv-card-btn cozinha-tv-card-btn-whatsapp" disabled={disabled} onClick={onAvisarCliente}>
+              <IconWhatsApp className="h-7 w-7" /> Avisar
+            </button>
+          )}
+          {pedido.status === 'CANCELAMENTO_PENDENTE' && onConfirmarCancelamento && (
+            <button type="button" className="cozinha-tv-card-btn cozinha-tv-card-btn-danger" disabled={disabled} onClick={onConfirmarCancelamento}>
+              Confirmar cancelamento
+            </button>
+          )}
           {avanco && (
             <button
               type="button"
@@ -108,6 +163,19 @@ export function CozinhaPedidoCard({
               Voltar
             </button>
           )}
+          {podeCancelar && STATUS_CANCELAVEIS.includes(pedido.status) && onCancelar && (
+            <button
+              type="button"
+              className="cozinha-tv-card-btn cozinha-tv-card-btn-danger cozinha-tv-card-btn-icon"
+              disabled={disabled}
+              data-audit="operacao-cozinha-cancelar"
+              aria-label="Cancelar pedido"
+              title="Cancelar pedido"
+              onClick={onCancelar}
+            >
+              <IconTrash className="w-5 h-5" />
+            </button>
+          )}
         </div>
       </article>
     );
@@ -115,7 +183,7 @@ export function CozinhaPedidoCard({
 
   return (
     <article
-      className={`card-touch !p-3 space-y-2 ${pedido.status === 'RECEBIDO' ? 'pedido-card-alert' : ''}`}
+      className={`card-touch !p-3 space-y-2 ${pedido.status === 'RECEBIDO' ? 'pedido-card-alert' : ''} ${pedido.status === 'CANCELAMENTO_PENDENTE' ? 'border-2 !border-orange-500 bg-orange-950/20' : ''}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
@@ -143,8 +211,19 @@ export function CozinhaPedidoCard({
 
       <ul className="text-base space-y-0.5">
         {pedido.itens.map((item) => (
-          <li key={item.id}>
-            {item.quantidade}× {item.nome}
+          <li key={item.id} className={item.cancelamentoPendente ? 'rounded-lg border border-orange-500/70 bg-orange-950/20 p-2' : ''}>
+            <div className="flex items-center gap-2">
+              {item.quantidade}× {item.nome}
+              {item.paraViagem && <span className="ml-2 inline-flex text-amber-300" title="Para viagem" aria-label="Para viagem"><IconShoppingBag className="h-4 w-4" /></span>}
+              {item.cancelamentoPendente && <span className="ml-auto text-xs font-semibold text-orange-400">Cancelamento solicitado</span>}
+            </div>
+            {item.cancelamentoPendente && onConfirmarCancelamentoItem && (
+              <button type="button" className="touch-btn-orange touch-btn-sm mt-2" disabled={disabled} onClick={() => onConfirmarCancelamentoItem(item.id)}>
+                Confirmar cancelamento
+              </button>
+            )}
+            {item.opcionais?.length ? <small className="block text-xs text-ink-muted">Complementos: {item.opcionais.map((o) => o.nome).join(', ')}</small> : null}
+            {item.observacao ? <small className="block text-xs text-ink-muted">Obs: {item.observacao}</small> : null}
           </li>
         ))}
       </ul>
@@ -152,6 +231,16 @@ export function CozinhaPedidoCard({
       {pedido.observacao && <p className="text-xs text-ink-muted">Obs: {pedido.observacao}</p>}
 
       <div className="flex flex-wrap gap-2">
+        {pedido.status === 'PRONTO' && onAvisarCliente && pedido.comanda.cliente?.telefone && (
+          <button type="button" className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-50" disabled={disabled} onClick={onAvisarCliente}>
+            <IconWhatsApp className="h-7 w-7" /> Avisar
+          </button>
+        )}
+        {pedido.status === 'CANCELAMENTO_PENDENTE' && onConfirmarCancelamento && (
+          <button type="button" className="touch-btn-danger flex-1 touch-btn-sm" disabled={disabled} onClick={onConfirmarCancelamento}>
+            Confirmar cancelamento
+          </button>
+        )}
         {avanco && (
           <button
             type="button"

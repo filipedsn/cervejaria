@@ -7,6 +7,8 @@ import { CozinhaPedidoCard } from '../../components/operacao/CozinhaPedidoCard';
 import { IconBell } from '../../components/NavIcons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOperacaoCozinha } from '../../hooks/useOperacaoCozinha';
+import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
+import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
 import { rotuloComanda, type PedidoCozinha } from '../../lib/operacao';
 
 export function OperacaoCozinhaPage() {
@@ -14,25 +16,27 @@ export function OperacaoCozinhaPage() {
   const [erroLocal, setErroLocal] = useState('');
   const [sucessoLocal, setSucessoLocal] = useState('');
   const [pedidoParaCancelar, setPedidoParaCancelar] = useState<PedidoCozinha | null>(null);
-  const { isDono } = useAuth();
+  const { isDono, cervejaria } = useAuth();
+  const { contexto } = useOperacaoContexto();
+  const avisoNaCozinha = contexto.whatsappPedidoProntoEnabled && contexto.whatsappPedidoProntoNaCozinha;
 
-  const { naFila, entregues, alerta, mudarStatus, isLoading, erroMutation } = useOperacaoCozinha();
+  const { naFila, entregues, alerta, mudarStatus, confirmarCancelamentoItem, isLoading, erroMutation, erroConfirmarCancelamentoItem } = useOperacaoCozinha();
 
   if (isLoading) return <Loading />;
 
   const lista = verEntregues ? entregues : naFila;
-  const erro = erroLocal || erroMutation;
+  const erro = erroLocal || erroMutation || erroConfirmarCancelamentoItem;
 
   const confirmarCancelamento = () => {
     if (!pedidoParaCancelar || mudarStatus.isPending) return;
     setErroLocal('');
     setSucessoLocal('');
     mudarStatus.mutate(
-      { id: pedidoParaCancelar.id, status: 'CANCELADO' },
+      { id: pedidoParaCancelar.id, status: 'CANCELAMENTO_PENDENTE' },
       {
         onSuccess: () => {
           setPedidoParaCancelar(null);
-          setSucessoLocal('Pedido cancelado e removido da fila.');
+          setSucessoLocal('Cancelamento solicitado. O pedido permanecerá destacado até a confirmação da cozinha.');
         },
         onError: (error) => {
           setErroLocal(error instanceof Error ? error.message : 'Não foi possível cancelar o pedido');
@@ -115,7 +119,7 @@ export function OperacaoCozinhaPage() {
           pedido={pedido}
           indice={indice}
           mostrarFila={!verEntregues}
-          disabled={mudarStatus.isPending}
+          disabled={mudarStatus.isPending || confirmarCancelamentoItem.isPending}
           onAvancar={(status) => {
             setErroLocal('');
             setSucessoLocal('');
@@ -138,6 +142,35 @@ export function OperacaoCozinhaPage() {
             setSucessoLocal('');
             setPedidoParaCancelar(pedido);
           }}
+          onConfirmarCancelamento={() => {
+            setErroLocal('');
+            setSucessoLocal('');
+            mudarStatus.mutate(
+              { id: pedido.id, status: 'CANCELADO' },
+              {
+                onSuccess: () => setSucessoLocal('Cancelamento confirmado e pedido removido da fila.'),
+                onError: () => setErroLocal('Não foi possível confirmar o cancelamento.'),
+              },
+            );
+          }}
+          onConfirmarCancelamentoItem={(itemId) => {
+            setErroLocal('');
+            confirmarCancelamentoItem.mutate(
+              { pedidoId: pedido.id, itemId },
+              { onError: () => setErroLocal('Não foi possível confirmar o cancelamento do item.') },
+            );
+          }}
+          onAvisarCliente={avisoNaCozinha ? () => {
+            const cliente = pedido.comanda.cliente;
+            if (!cliente?.telefone) return;
+            const url = linkWhatsAppPedidoPronto({
+              telefone: cliente.telefone,
+              clienteNome: cliente.nome,
+              numeroPedido: pedido.numero,
+              nomeEmpresa: cervejaria?.nome ?? 'nossa empresa',
+            });
+            if (url) navegarParaWhatsApp(url);
+          } : undefined}
         />
       ))}
 
@@ -147,7 +180,7 @@ export function OperacaoCozinhaPage() {
           if (!mudarStatus.isPending) setPedidoParaCancelar(null);
         }}
         closeOnBackdrop={!mudarStatus.isPending}
-        title="Cancelar pedido da cozinha"
+        title="Solicitar cancelamento do pedido"
         footer={
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
@@ -165,7 +198,7 @@ export function OperacaoCozinhaPage() {
               data-audit="operacao-cozinha-confirmar-cancelamento"
               onClick={confirmarCancelamento}
             >
-              {mudarStatus.isPending ? 'Cancelando...' : 'Cancelar pedido'}
+              {mudarStatus.isPending ? 'Solicitando...' : 'Solicitar cancelamento'}
             </button>
           </div>
         }
@@ -185,7 +218,7 @@ export function OperacaoCozinhaPage() {
               ))}
             </ul>
             <p className="text-sm text-ink-muted">
-              Os itens cancelados deixam de compor o total da comanda aberta e o pedido sai da fila.
+              O pedido será retirado do total e o estoque será ajustado. Ele continuará destacado na cozinha até alguém confirmar o cancelamento.
             </p>
           </div>
         )}

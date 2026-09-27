@@ -16,6 +16,7 @@ import {
   type CategoriaProdutoOperacao,
 } from '../../lib/operacao';
 import { CardapiosOperacaoPage } from './CardapiosOperacaoPage';
+import { ProdutoOpcionaisModal } from '../../components/ProdutoOpcionaisModal';
 
 const TABS = [
   { id: 'catalogo', label: 'Catálogo' },
@@ -33,6 +34,7 @@ interface ProdutoOperacao {
   controlaEstoque: boolean;
   ativo: boolean;
   ordem: number;
+  gruposOpcionais?: unknown[];
 }
 
 const FORM_VAZIO = {
@@ -54,6 +56,7 @@ export function OperacaoCatalogoPage() {
   const [editando, setEditando] = useState<ProdutoOperacao | null>(null);
   const [form, setForm] = useState({ ...FORM_VAZIO });
   const [error, setError] = useState('');
+  const [opcionaisProduto, setOpcionaisProduto] = useState<ProdutoOperacao | null>(null);
 
   const controlaEstoque = contexto.ativo && contexto.controlaEstoque;
   const temCozinha = contexto.ativo && contexto.temCozinha;
@@ -218,6 +221,7 @@ export function OperacaoCatalogoPage() {
                   >
                     Editar
                   </button>
+                  <button type="button" className="touch-btn-ghost touch-btn-sm" onClick={() => setOpcionaisProduto(produto)}>Opcionais</button>
                 </div>
               )}
             </div>
@@ -320,6 +324,7 @@ export function OperacaoCatalogoPage() {
           </button>
         </form>
       </Modal>
+      {opcionaisProduto && <ProdutoOpcionaisModal open={!!opcionaisProduto} onClose={() => setOpcionaisProduto(null)} produtoId={opcionaisProduto.id} produtoNome={opcionaisProduto.nome} baseUrl="/api/operacao/produtos" />}
         </>
       )}
     </div>
