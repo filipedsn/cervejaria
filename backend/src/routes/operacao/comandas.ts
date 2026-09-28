@@ -42,6 +42,8 @@ import { normalizePhone } from '../../lib/phone.js';
 const itemSchema = z.object({
   produtoId: z.string().min(1),
   quantidade: z.number().int().positive().max(999),
+  tapId: z.string().min(1).optional(),
+  volumeMl: z.number().int().positive().optional(),
   paraViagem: z.boolean().default(false),
   observacao: z.string().trim().max(280).optional(),
   opcionais: z.array(z.object({ opcionalId: z.string().min(1), quantidade: z.number().int().positive().max(99).optional() })).optional(),
@@ -401,7 +403,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
   });
 
   app.post('/', async (request, reply) => {
-    const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
+    const { cervejariaId, temCozinha, controlaEstoque, tapsEnabled } = request.operacao;
     const user = getAuthUser(request);
     const body = abrirComandaSchema.parse(request.body);
     const dia = diaOperacional();
@@ -468,7 +470,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
 
       let pedidoCriado = null;
       if (body.itens.length > 0) {
-        const itens = await resolverItens(tx, cervejariaId, body.itens, { sessaoCaixaId: sessao.id });
+        const itens = await resolverItens(tx, cervejariaId, body.itens, { sessaoCaixaId: sessao.id, tapsEnabled });
         pedidoCriado = await criarPedido(tx, {
           cervejariaId,
           comandaId: criada.id,
@@ -540,7 +542,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/pedidos', async (request, reply) => {
-    const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
+    const { cervejariaId, temCozinha, controlaEstoque, tapsEnabled } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
     const body = adicionarPedidoSchema.parse(request.body);
@@ -569,7 +571,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         throw Object.assign(new Error('Esta comanda já foi fechada'), { statusCode: 409 });
       }
 
-      const itens = await resolverItens(tx, cervejariaId, body.itens, { sessaoCaixaId: sessaoAtual.id });
+      const itens = await resolverItens(tx, cervejariaId, body.itens, { sessaoCaixaId: sessaoAtual.id, tapsEnabled });
       const pedidoCriado = await criarPedido(tx, {
         cervejariaId,
         comandaId: comandaAtual.id,

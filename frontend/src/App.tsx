@@ -9,6 +9,7 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { AdminCervejariasPage } from './pages/AdminCervejariasPage';
 import { OperacaoLayout } from './pages/operacao/OperacaoLayout';
 import { OperacaoComandasPage } from './pages/operacao/OperacaoComandasPage';
+import { OperacaoCaixaPage } from './pages/operacao/OperacaoCaixaPage';
 import { OperacaoContasPendentesPage } from './pages/operacao/OperacaoContasPendentesPage';
 import { OperacaoNovaComandaPage } from './pages/operacao/OperacaoNovaComandaPage';
 import { OperacaoVendaAvulsaPage } from './pages/operacao/OperacaoVendaAvulsaPage';
@@ -55,6 +56,7 @@ import { AuditErrorBoundary } from './components/AuditErrorBoundary';
 import { OnboardingProvider } from './contexts/OnboardingContext';
 import { OnboardingSurface } from './components/OnboardingSurface';
 import { OnboardingChecklist } from './components/OnboardingChecklist';
+import { OperationalSetupWizard } from './components/OperationalSetupWizard';
 
 function RootLayout() {
   const { pathname } = useLocation();
@@ -94,8 +96,10 @@ function TenantEntryRedirect() {
   const { needsTrailerSelection, evento, isLoading } = useEvento();
   const { contexto, isLoading: operacaoLoading } = useOperacaoContexto();
   if (isLoading || operacaoLoading) return <Loading fullScreen />;
+  if (contexto.operationMode === 'CAIXA') {
+    return <Navigate to={contexto.pontosVenda.length > 0 ? '/operacao/comandas' : '/operacao/caixa'} replace />;
+  }
   if (needsTrailerSelection) return <Navigate to="/trailer" replace />;
-  if (contexto.operationMode === 'CAIXA') return <Navigate to="/operacao/comandas" replace />;
   if (evento?.status === 'ABERTO') return <Navigate to="/comandas" replace />;
   return <Navigate to="/eventos" replace />;
 }
@@ -183,6 +187,7 @@ function TenantShell() {
       </EventoProvider>
       <OnboardingSurface />
       <OnboardingChecklist />
+      <OperationalSetupWizard />
     </OnboardingProvider>
   );
 }
@@ -334,7 +339,7 @@ const router = createBrowserRouter([
                           { path: 'comandas/nova', element: <OperacaoNovaComandaPage /> },
                           { path: 'comandas/venda-avulsa', element: <OperacaoVendaAvulsaPage /> },
                           { path: 'comandas/:id', element: <OperacaoComandaDetailPage /> },
-                          { path: 'caixa', element: <Navigate to="/operacao/comandas" replace /> },
+                          { path: 'caixa', element: <OperacaoCaixaPage /> },
                           {
                             element: <RequireEstoqueOperacao />,
                             children: [{ path: 'estoque', element: <OperacaoEstoquePage /> }],

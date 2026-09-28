@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import type { Produto, TapComChope, TapMontagemResponse } from '../types';
-import { isBebidaChope } from '../types';
+import { isChopeConfiguravelNaTap } from '../types';
 import { Modal } from './Modal';
 import { Loading } from './Loading';
 
@@ -137,7 +137,7 @@ export function EventoTapMontagemPanel({
     queryFn: () => api.get<Produto[]>('/api/produtos'),
   });
 
-  const chopes = produtos?.filter((p) => p.ativo && isBebidaChope(p)) ?? [];
+  const chopes = produtos?.filter((p) => p.ativo && isChopeConfiguravelNaTap(p)) ?? [];
 
   useEffect(() => {
     if (!eventoId) return;

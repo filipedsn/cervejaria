@@ -6,6 +6,37 @@ export function isBebidaChope(tipo: ProdutoTipo | string, formato: FormatoBebida
   return tipo === 'BEBIDA' && (formato ?? 'CHOPE') === 'CHOPE';
 }
 
+/**
+ * The former cash-operation product form stored unit prices at volume 1 but
+ * left formato null. Preserve those products as unit sales inside operation;
+ * event and legacy catalog flows keep using isBebidaChope's null fallback.
+ */
+export function isBebidaChopeOperacao(produto: {
+  tipo: ProdutoTipo | string;
+  formato: FormatoBebida | string | null | undefined;
+  categoria?: string | null;
+  precos?: Array<{ volumeMl: number }>;
+}): boolean {
+  if (produto.tipo !== 'BEBIDA') return false;
+  if (produto.formato === 'CHOPE') return true;
+  if (produto.formato) return false;
+  const precoUnitarioLegado = produto.categoria?.toLowerCase() !== 'chope'
+    && produto.precos?.length === 1
+    && produto.precos[0]?.volumeMl === UNIT_ML;
+  return !precoUnitarioLegado;
+}
+
+/** Only explicitly identified draft beer products may be assigned to an operation tap. */
+export function isChopeConfiguravelNaTapOperacao(produto: {
+  tipo: ProdutoTipo | string;
+  formato: FormatoBebida | string | null | undefined;
+  categoria?: string | null;
+}): boolean {
+  if (produto.tipo !== 'BEBIDA') return false;
+  if (produto.formato === 'CHOPE') return true;
+  return produto.formato == null && produto.categoria?.trim().toLocaleLowerCase('pt-BR') === 'chope';
+}
+
 export function isVendaUnitaria(tipo: ProdutoTipo, formato: FormatoBebida | null | undefined): boolean {
   return tipo === 'COMIDA' || (tipo === 'BEBIDA' && !isBebidaChope(tipo, formato));
 }

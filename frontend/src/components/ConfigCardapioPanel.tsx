@@ -32,17 +32,18 @@ export function ConfigCardapioPanel() {
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-4">
         <div className="min-w-0 flex-1">
-          <p className="text-base font-semibold text-ink">Cardápio com preços por evento</p>
+          <p className="text-base font-semibold text-ink">Cardápio com preços por operação</p>
           <p className="text-sm text-ink-muted mt-1 leading-relaxed">
-            Ligado: templates de cardápio, montagem no evento e preços do template quando vinculado.
-            Desligado: modo tradicional — só catálogo e preços do cadastro de produtos.
+            Ligado: um único modelo de cardápio pode ser aplicado a eventos e turnos, com preços do
+            template quando vinculado. Desligado: modo tradicional — só catálogo e preços do cadastro
+            de produtos.
           </p>
         </div>
         <ToggleAtivo
           ativo={ativo}
           loading={loading}
-          labelAtivo="Desativar cardápio por evento"
-          labelInativo="Ativar cardápio por evento"
+          labelAtivo="Desativar cardápio por operação"
+          labelInativo="Ativar cardápio por operação"
           onToggle={alternar}
         />
       </div>

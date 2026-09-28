@@ -10,7 +10,7 @@ export interface ContextoOperacao {
   cervejariaId: string;
   controlaEstoque: boolean;
   temCozinha: boolean;
-  usaCardapio: boolean;
+  tapsEnabled: boolean;
   quantidadeMesas: number;
 }
 
@@ -111,7 +111,7 @@ export function requireModuloOperacao(app: FastifyInstance) {
       cervejariaId: user.cervejariaId!,
       controlaEstoque: hasInventoryAccess(profile),
       temCozinha: hasKitchenAccess(profile),
-      usaCardapio: configuracao?.usaCardapio ?? false,
+      tapsEnabled: profile?.capabilities.taps ?? false,
       quantidadeMesas: configuracao?.quantidadeMesas ?? 0,
     };
   };

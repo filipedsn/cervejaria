@@ -8,6 +8,7 @@ import { lockComandaItemsInTx } from '../../lib/comanda-service.js';
 import { assertCashRegisterUnitEnabled, lockCaixaEmTx } from '../../lib/operacao/caixa.js';
 import { centavos, diaOperacional, reais } from '../../lib/operacao/venda.js';
 import { recalculateClienteStats } from '../../lib/cliente-stats.js';
+import { zonedTimeToUtc } from '../../lib/event-datetime.js';
 
 const recebimentoSchema = z.object({
   pontoVendaId: z.string().min(1),
@@ -48,6 +49,24 @@ function resumoConta(conta: {
 }
 
 export async function contasPendentesOperacaoRoutes(app: FastifyInstance) {
+  app.get('/resumo', async (request) => {
+    const { cervejariaId } = request.operacao;
+    const dia = diaOperacional();
+    const inicio = zonedTimeToUtc(dia.getUTCFullYear(), dia.getUTCMonth() + 1, dia.getUTCDate(), 0, 0);
+    const amanha = new Date(Date.UTC(dia.getUTCFullYear(), dia.getUTCMonth(), dia.getUTCDate() + 1));
+    const fim = zonedTimeToUtc(amanha.getUTCFullYear(), amanha.getUTCMonth() + 1, amanha.getUTCDate(), 0, 0);
+    const recebimentos = await prisma.pagamento.aggregate({
+      where: {
+        contaReceberId: { not: null },
+        pagoEm: { gte: inicio, lt: fim },
+        contaReceber: { cliente: { cervejariaId } },
+      },
+      _sum: { valor: true },
+    });
+
+    return { recebimentosHoje: Number(recebimentos._sum.valor ?? 0) };
+  });
+
   app.get('/', async (request) => {
     const { cervejariaId } = request.operacao;
     const contas = await prisma.contaReceber.findMany({

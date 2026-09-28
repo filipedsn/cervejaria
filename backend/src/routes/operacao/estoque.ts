@@ -18,7 +18,7 @@ const pontoVendaQuery = z.object({
 const entradaSchema = z.object({
   pontoVendaId: z.string().min(1),
   produtoId: z.string().min(1),
-  quantidade: z.number().int().positive(),
+  quantidade: z.number().positive(),
   observacao: z.string().trim().max(280).optional(),
 });
 
@@ -26,21 +26,21 @@ const saidaSchema = z.object({
   pontoVendaId: z.string().min(1),
   produtoId: z.string().min(1),
   tipo: z.enum(['PERDA', 'CORTESIA', 'CONSUMO_INTERNO']),
-  quantidade: z.number().int().positive(),
+  quantidade: z.number().positive(),
   observacao: z.string().trim().max(280).optional(),
 });
 
 const ajusteSchema = z.object({
   pontoVendaId: z.string().min(1),
   produtoId: z.string().min(1),
-  quantidadeNova: z.number().int().min(0),
+  quantidadeNova: z.number().min(0),
   observacao: z.string().trim().max(280).optional(),
 });
 
 const estoqueMinimoSchema = z.object({
   pontoVendaId: z.string().min(1),
   produtoId: z.string().min(1),
-  estoqueMinimo: z.number().int().min(0).nullable(),
+  estoqueMinimo: z.number().min(0).nullable(),
 });
 
 export async function estoqueOperacaoRoutes(app: FastifyInstance) {

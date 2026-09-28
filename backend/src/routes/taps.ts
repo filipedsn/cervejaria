@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { getTenantUser } from '../types/auth.js';
 import { assertTapPodeExcluir } from '../lib/catalogo-utils.js';
-import { isBebidaChope } from '../lib/produto-utils.js';
+import { isChopeConfiguravelNaTapOperacao } from '../lib/produto-utils.js';
 import { findTrailerForTenant } from '../lib/trailer-utils.js';
 
 const createTapSchema = z.object({
@@ -21,7 +21,7 @@ async function validateChopeProduto(produtoId: string | null | undefined, cervej
     where: { id: produtoId, cervejariaId, ativo: true },
   });
   if (!produto) return 'Chope inválido';
-  if (!isBebidaChope(produto.tipo, produto.formato)) return 'Apenas chope pode ser associado a um tap';
+  if (!isChopeConfiguravelNaTapOperacao(produto)) return 'Apenas chope pode ser associado a um tap';
   return null;
 }
 

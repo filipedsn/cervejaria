@@ -2,6 +2,11 @@ export interface ProdutoOperacao {
   id: string;
   nome: string;
   categoria: string | null;
+  tipo?: 'BEBIDA' | 'COMIDA';
+  formato?: 'CHOPE' | 'LATA' | 'LONGNECK' | 'GARRAFA' | 'OUTRO' | null;
+  precos?: Array<{ volumeMl: number; preco: number | string }>;
+  /** Volume da variante de chope dentro de um cardápio/turno; 0 representa item unitário. */
+  volumeMl?: number;
   precoUnit: string;
   /** Preço do template quando turno/cardápio vinculado; senão igual ao catálogo. */
   precoEfetivo?: number;
@@ -14,11 +19,30 @@ export interface ProdutoOperacao {
   gruposOpcionais?: GrupoOpcionalProduto[];
 }
 
+/** Compatibilidade: o cadastro antigo do caixa gravava unitários com formato nulo e preço volume 1. */
+export function isChopeOperacao(produto: Pick<ProdutoOperacao, 'tipo' | 'formato' | 'categoria' | 'precos'>): boolean {
+  if (produto.tipo !== 'BEBIDA') return false;
+  if (produto.formato === 'CHOPE') return true;
+  if (produto.formato) return false;
+  const precoUnitarioLegado = produto.categoria?.toLowerCase() !== 'chope'
+    && produto.precos?.length === 1
+    && produto.precos[0]?.volumeMl === 1;
+  return !precoUnitarioLegado;
+}
+
+/** Chope eligibility for tap setup is intentionally stricter than legacy sale classification. */
+export function isChopeConfiguravelNaTapOperacao(produto: Pick<ProdutoOperacao, 'tipo' | 'formato' | 'categoria'>): boolean {
+  if (produto.tipo !== 'BEBIDA') return false;
+  if (produto.formato === 'CHOPE') return true;
+  return produto.formato == null && produto.categoria?.trim().toLocaleLowerCase('pt-BR') === 'chope';
+}
+
 export interface OpcaoProduto { id: string; nome: string; precoAdicional: number | string; quantidade?: number; }
 export interface GrupoOpcionalProduto { id: string; nome: string; obrigatorio: boolean; maximo: number; opcoes: OpcaoProduto[]; }
 
 export interface CardapioOperacaoItem {
   produtoId: string;
+  volumeMl?: number;
   precoUnit: number;
   produto?: ProdutoOperacao;
 }
@@ -83,17 +107,18 @@ export const CATEGORIAS_PRODUTO_OPERACAO = [
   'Outros',
 ] as const;
 
-export type CategoriaProdutoOperacao = (typeof CATEGORIAS_PRODUTO_OPERACAO)[number];
+export type CategoriaProdutoOperacao = (typeof CATEGORIAS_PRODUTO_OPERACAO)[number] | 'Chope';
 
 const categoriasSet = new Set<string>(CATEGORIAS_PRODUTO_OPERACAO);
 
 export function isCategoriaProdutoOperacao(value: string): value is CategoriaProdutoOperacao {
-  return categoriasSet.has(value);
+  return categoriasSet.has(value) || value === 'Chope';
 }
 
 export function normalizeCategoriaProduto(value: string | null | undefined): CategoriaProdutoOperacao {
   if (!value?.trim()) return 'Outros';
   const trimmed = value.trim();
+  if (trimmed.toLowerCase() === 'chope') return 'Chope';
   const exact = CATEGORIAS_PRODUTO_OPERACAO.find((c) => c.toLowerCase() === trimmed.toLowerCase());
   if (exact) return exact;
 
@@ -133,6 +158,7 @@ export interface ItemPedido {
   nome: string;
   precoUnit: number;
   quantidade: number;
+  volumeMl: number;
   subtotal: number;
   exigePreparo: boolean;
   cancelamentoPendenteEm?: string | null;
@@ -237,6 +263,9 @@ export interface ContaPendenteOperacao {
 export interface LinhaCarrinho {
   produto: ProdutoOperacao;
   quantidade: number;
+  tapId?: string;
+  volumeMl?: number;
+  precoUnit?: number;
   paraViagem?: boolean;
   observacao?: string;
   opcionais?: Array<{ opcionalId: string; nome: string; precoAdicional: number; quantidade: number }>;
@@ -244,7 +273,7 @@ export interface LinhaCarrinho {
 
 export function totalCarrinho(linhas: LinhaCarrinho[]): number {
   const centavos = linhas.reduce(
-    (soma, linha) => soma + (Math.round(Number(linha.produto.precoUnit) * 100) + (linha.opcionais ?? []).reduce((v, o) => v + Math.round(o.precoAdicional * 100) * o.quantidade, 0)) * linha.quantidade,
+    (soma, linha) => soma + (Math.round((linha.precoUnit ?? Number(linha.produto.precoUnit)) * 100) + (linha.opcionais ?? []).reduce((v, o) => v + Math.round(o.precoAdicional * 100) * o.quantidade, 0)) * linha.quantidade,
     0,
   );
   return centavos / 100;
@@ -358,6 +387,12 @@ export function pedidoConfirmadoNaComanda(pedido: PedidoOperacao): boolean {
   return pedido.status === 'ENTREGUE' || (!pedidoVaiParaCozinha(pedido.itens) && pedido.status !== 'CANCELADO' && pedido.status !== 'CANCELAMENTO_PENDENTE');
 }
 
+export function itemConfirmadoNaComanda(pedido: PedidoOperacao, item: ItemPedido): boolean {
+  if (pedido.status === 'CANCELADO' || pedido.status === 'CANCELAMENTO_PENDENTE') return false;
+  if (item.cancelamentoPendenteEm || item.canceladoEm) return false;
+  return pedido.status === 'ENTREGUE' || !item.exigePreparo;
+}
+
 export function temPedidoCozinhaPendente(comanda: Pick<ComandaOperacao, 'pedidos'>): boolean {
   return comanda.pedidos.some(
     (pedido) =>
@@ -432,6 +467,7 @@ export interface MovimentoCaixa {
 export interface ResumoCaixa {
   id: string;
   pontoVendaId: string;
+  trailerId?: string | null;
   diaOperacional: string;
   status: StatusCaixa;
   trocoInicial: number;
@@ -440,6 +476,7 @@ export interface ResumoCaixa {
   fechadoPorId: string | null;
   fechadoEm: string | null;
   observacaoFechamento: string | null;
+  pendente: number;
   gaveta: {
     trocoInicial: number;
     entradasDinheiro: number;
@@ -482,9 +519,42 @@ export interface RelatorioTurnoCaixa {
   porProduto: Array<{
     produtoId: string;
     nome: string;
+    categoria: string;
+    volumeMl: number;
     quantidade: number;
     receita: number;
     percentual: number;
+  }>;
+  contasReceber: Array<{
+    contaReceberId: string;
+    comandaNumero: number | null;
+    identificador: string | null;
+    clienteNome: string;
+    valorOriginal: number;
+    recebido: number;
+    saldo: number;
+    recebimentos: Array<{
+      forma: string;
+      valor: number;
+      pagoEm: string;
+      nesteTurno: boolean;
+    }>;
+  }>;
+  contasPendentes: Array<{
+    contaReceberId: string;
+    comandaNumero: number | null;
+    identificador: string | null;
+    clienteNome: string;
+    valorOriginal: number;
+    recebido: number;
+    saldo: number;
+  }>;
+  totalPendente: number;
+  topClientes: Array<{
+    clienteId: string;
+    nome: string;
+    comandas: number;
+    consumo: number;
   }>;
   ticketMedio: number;
   duracaoMinutos: number;
@@ -524,6 +594,7 @@ export interface SaldoEstoque {
   categoria: string | null;
   quantidade: number;
   estoqueMinimo: number | null;
+  unidadeEstoque: 'L' | 'un';
   statusEstoque: StatusEstoque;
 }
 
@@ -555,9 +626,16 @@ export function podeIncrementarLinhaCarrinho(
   quantidadeAtual: number,
   saldos: Map<string, SaldoEstoque> | undefined,
   moduloControlaEstoque: boolean,
+  consumoChope?: { volumeMl: number; quantidadeAdicionar?: number; litrosJaNoCarrinho: number },
 ): boolean {
   const limite = limiteEstoqueCarrinho(produto, saldos, moduloControlaEstoque);
   if (limite === null) return true;
+  const saldo = saldos?.get(produto.id);
+  if (saldo?.unidadeEstoque === 'L') {
+    if (!consumoChope || consumoChope.volumeMl <= 0) return false;
+    const consumoNovo = consumoChope.litrosJaNoCarrinho + consumoChope.volumeMl * (consumoChope.quantidadeAdicionar ?? 1) / 1000;
+    return consumoNovo <= saldo.quantidade + 1e-9;
+  }
   return quantidadeAtual < limite;
 }
 
@@ -566,10 +644,13 @@ export function podeIncrementarItemComanda(
   produto: Pick<ProdutoOperacao, 'id' | 'controlaEstoque'> | undefined,
   saldos: Map<string, SaldoEstoque> | undefined,
   moduloControlaEstoque: boolean,
+  volumeMl?: number,
 ): boolean {
   if (!produto) return true;
   if (!moduloControlaEstoque || !produto.controlaEstoque || !saldos) return true;
-  return (saldos.get(produto.id)?.quantidade ?? 0) > 0;
+  const saldo = saldos.get(produto.id);
+  if (!saldo) return false;
+  return saldo.unidadeEstoque === 'L' ? saldo.quantidade >= (volumeMl ?? 0) / 1000 : saldo.quantidade > 0;
 }
 
 export function podeEditarItemComanda(
@@ -580,12 +661,34 @@ export function podeEditarItemComanda(
   return !pedidoVaiParaCozinha(pedido.itens) || pedido.status === 'ENTREGUE';
 }
 
+export interface TapTurno {
+  id: string;
+  numero: number;
+  nome?: string | null;
+  trailerId: string;
+  ativo: boolean;
+  chopeAtual: {
+    id: string;
+    nome: string;
+    tipo: 'BEBIDA' | 'COMIDA';
+    formato?: 'CHOPE' | 'LATA' | 'LONGNECK' | 'GARRAFA' | 'OUTRO' | null;
+    precos: Array<{ volumeMl: number; preco: number | string }>;
+  } | null;
+  chopeCadastro: TapTurno['chopeAtual'];
+  temMontagemAtiva: boolean;
+}
+
+export interface TapsTurnoResposta {
+  trailerId: string | null;
+  taps: TapTurno[];
+}
+
 export function totalPendenteComanda(comanda: Pick<ComandaOperacao, 'pedidos'>): number {
   return comanda.pedidos
     .filter((pedido) => pedido.status !== 'ENTREGUE' && pedido.status !== 'CANCELADO' && pedido.status !== 'CANCELAMENTO_PENDENTE')
-    .reduce((total, pedido) => total + (pedidoVaiParaCozinha(pedido.itens)
-      ? pedido.itens.filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm).reduce((subtotal, item) => subtotal + item.subtotal, 0)
-      : 0), 0);
+    .reduce((total, pedido) => total + pedido.itens
+      .filter((item) => item.exigePreparo && !item.cancelamentoPendenteEm && !item.canceladoEm)
+      .reduce((subtotal, item) => subtotal + item.subtotal, 0), 0);
 }
 
 export interface LinhaResumoConta {
@@ -602,10 +705,10 @@ export function resumirItensComanda(comanda: ComandaOperacao): LinhaResumoConta[
 
   for (const pedido of comanda.pedidos) {
     if (pedido.status === 'CANCELADO' || pedido.status === 'CANCELAMENTO_PENDENTE') continue;
-    if (pedidoVaiParaCozinha(pedido.itens) && pedido.status !== 'ENTREGUE') continue;
 
     for (const item of pedido.itens) {
       if (item.cancelamentoPendenteEm || item.canceladoEm) continue;
+      if (item.exigePreparo && pedido.status !== 'ENTREGUE') continue;
       const chave = item.produtoId || item.nome.trim().toLocaleLowerCase('pt-BR');
       const existente = agrupados.get(chave) ?? {
         nome: item.nome,
@@ -650,8 +753,7 @@ export interface OperacaoDashboard {
   resumo: {
     receitaTotal: number;
     totalRecebido: number;
-    totalPendurado: number;
-    saldoPendente: number;
+    totalPendente: number;
     comandasAtendidas: number;
     vendasAvulsas: number;
     receitaAvulsa: number;

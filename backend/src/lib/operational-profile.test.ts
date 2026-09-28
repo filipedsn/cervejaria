@@ -7,11 +7,12 @@ import {
   type OperationalProfileFacts,
 } from './operational-profile.js';
 
-test('legacy ConfiguracaoOperacao presence does not expose establishment surface', () => {
-  assert.equal(shouldExposeEstablishmentSurface({ cashRegister: false, inventory: false, kitchen: false }), false);
-  assert.equal(shouldExposeEstablishmentSurface({ cashRegister: true, inventory: false, kitchen: false }), true);
-  assert.equal(shouldExposeEstablishmentSurface({ cashRegister: false, inventory: true, kitchen: false }), true);
-  assert.equal(shouldExposeEstablishmentSurface({ cashRegister: false, inventory: false, kitchen: true }), true);
+test('explicit cash mode exposes setup without a POS; legacy data alone does not', () => {
+  assert.equal(shouldExposeEstablishmentSurface({ cashMode: false, cashRegister: false, inventory: false, kitchen: false }), false);
+  assert.equal(shouldExposeEstablishmentSurface({ cashMode: true, cashRegister: false, inventory: false, kitchen: false }), true);
+  assert.equal(shouldExposeEstablishmentSurface({ cashMode: false, cashRegister: true, inventory: false, kitchen: false }), true);
+  assert.equal(shouldExposeEstablishmentSurface({ cashMode: false, cashRegister: false, inventory: true, kitchen: false }), true);
+  assert.equal(shouldExposeEstablishmentSurface({ cashMode: false, cashRegister: false, inventory: false, kitchen: true }), true);
 });
 
 function facts(overrides: Partial<OperationalProfileFacts> = {}): OperationalProfileFacts {

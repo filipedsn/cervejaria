@@ -62,6 +62,22 @@ describe('subtotalComandaEmCentavos', () => {
 });
 
 describe('calcularFinanceiroComanda', () => {
+  it('inclui imediatamente item sem preparo de um pedido misto e mantém só o preparo em aberto', () => {
+    const financeiro = calcularFinanceiroComanda({
+      status: 'ABERTA',
+      itensSemPedido: [],
+      pedidos: [{
+        status: 'RECEBIDO',
+        itens: [
+          { precoUnit: 4, quantidade: 4, exigePreparo: false },
+          { precoUnit: 17, quantidade: 3, exigePreparo: true },
+        ],
+      }],
+    });
+
+    assert.deepEqual(financeiro, { subtotal: 1600, valorEmAberto: 5100, desconto: 0, total: 1600 });
+  });
+
   it('compartilha consumido, aberto e total líquido com itens avulsos e pedidos', () => {
     const financeiro = calcularFinanceiroComanda({
       status: 'ABERTA',

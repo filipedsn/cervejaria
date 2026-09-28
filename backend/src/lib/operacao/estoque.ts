@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Prisma, TipoMovimentoEstoqueOperacao } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import { isBebidaChopeOperacao } from '../produto-utils.js';
 import type { ItemResolvido } from './venda.js';
 
 export class EstoqueInvalidoError extends Error {
@@ -10,6 +11,19 @@ export class EstoqueInvalidoError extends Error {
 type TxClient = Prisma.TransactionClient;
 
 const SAIDA_MANUAL: TipoMovimentoEstoqueOperacao[] = ['PERDA', 'CORTESIA', 'CONSUMO_INTERNO'];
+function validarQuantidadePorUnidade(produto: { tipo: string; formato: string | null; categoria: string | null; precos?: Array<{ volumeMl: number }> }, quantidade: number) {
+  if (isBebidaChopeOperacao(produto)) {
+    if (Math.abs(Math.round(quantidade * 1000) / 1000 - quantidade) > 1e-9) {
+      throw new EstoqueInvalidoError('Informe litros com no m\u00e1ximo tr\u00eas casas decimais');
+    }
+  } else if (!Number.isInteger(quantidade)) {
+    throw new EstoqueInvalidoError('Produtos vendidos por unidade exigem quantidade inteira');
+  }
+}
+
+function quantidadeVendidaEstoque(item: Pick<ItemResolvido, 'tapId' | 'volumeMl' | 'quantidade'>) {
+  return item.tapId ? (item.volumeMl * item.quantidade) / 1000 : item.quantidade;
+}
 
 export type StatusEstoque = 'NORMAL' | 'LOW' | 'OUT_OF_STOCK';
 
@@ -168,7 +182,7 @@ export async function baixarEstoqueDoPedido(
     moduloControlaEstoque: boolean;
     cervejariaId: string;
     pontoVendaId: string;
-    pedidoId: string;
+    pedidoId?: string;
     registradoPorId: string;
     itens: ItemResolvido[];
   },
@@ -182,7 +196,7 @@ export async function baixarEstoqueDoPedido(
       cervejariaId: params.cervejariaId,
       pontoVendaId: params.pontoVendaId,
       produtoId: item.produtoId,
-      quantidade: item.quantidade,
+      quantidade: quantidadeVendidaEstoque(item),
       nomeProduto: item.nome,
       tipo: 'SAIDA_VENDA',
       registradoPorId: params.registradoPorId,
@@ -204,11 +218,13 @@ export async function estornarEstoqueItemPedido(
     moduloControlaEstoque: boolean;
     cervejariaId: string;
     pontoVendaId: string;
-    pedidoId: string;
+    pedidoId?: string;
     produtoId: string;
     nome: string;
     quantidade: number;
     controlaEstoque: boolean;
+    tapId?: string | null;
+    volumeMl?: number;
     registradoPorId: string;
     opcionais?: Array<{ produtoEstoqueId: string | null; quantidade: number }>;
   },
@@ -219,7 +235,7 @@ export async function estornarEstoqueItemPedido(
     cervejariaId: params.cervejariaId,
     pontoVendaId: params.pontoVendaId,
     produtoId: params.produtoId,
-    quantidade: params.quantidade,
+    quantidade: params.tapId ? ((params.volumeMl ?? 0) * params.quantidade) / 1000 : params.quantidade,
     tipo: 'ESTORNO_VENDA',
     observacao: 'Estorno item da comanda',
     registradoPorId: params.registradoPorId,
@@ -244,6 +260,8 @@ export async function baixarEstoqueItemPedido(
     nome: string;
     quantidade: number;
     controlaEstoque: boolean;
+    tapId?: string | null;
+    volumeMl?: number;
     registradoPorId: string;
     opcionais?: Array<{ produtoEstoqueId: string | null; quantidade: number }>;
   },
@@ -254,7 +272,7 @@ export async function baixarEstoqueItemPedido(
     cervejariaId: params.cervejariaId,
     pontoVendaId: params.pontoVendaId,
     produtoId: params.produtoId,
-    quantidade: params.quantidade,
+    quantidade: params.tapId ? ((params.volumeMl ?? 0) * params.quantidade) / 1000 : params.quantidade,
     nomeProduto: params.nome,
     tipo: 'SAIDA_VENDA',
     registradoPorId: params.registradoPorId,
@@ -298,7 +316,7 @@ export async function estornarEstoqueDaComanda(
       cervejariaId: params.cervejariaId,
       pontoVendaId: item.pedidoCozinha.pontoVendaId,
       produtoId: item.produto.id,
-      quantidade: item.quantidade,
+      quantidade: item.tapId ? (item.volumeMl * item.quantidade) / 1000 : item.quantidade,
       tipo: 'ESTORNO_VENDA',
       observacao: `Estorno comanda cancelada`,
       registradoPorId: params.registradoPorId,
@@ -316,6 +334,7 @@ export async function estornarEstoqueDaComanda(
 export async function listarSaldos(cervejariaId: string, pontoVendaId: string) {
   const produtos = await prisma.produto.findMany({
     where: { cervejariaId, ativo: true, controlaEstoque: true },
+    include: { precos: { select: { volumeMl: true } } },
     orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
   });
 
@@ -329,11 +348,12 @@ export async function listarSaldos(cervejariaId: string, pontoVendaId: string) {
     produtoId: produto.id,
     nome: produto.nome,
     categoria: produto.categoria,
-    quantidade: saldoPorProduto.get(produto.id)?.quantidade ?? 0,
-    estoqueMinimo: saldoPorProduto.get(produto.id)?.estoqueMinimo ?? null,
+    quantidade: Number(saldoPorProduto.get(produto.id)?.quantidade ?? 0),
+    estoqueMinimo: saldoPorProduto.get(produto.id)?.estoqueMinimo == null ? null : Number(saldoPorProduto.get(produto.id)!.estoqueMinimo),
+    unidadeEstoque: isBebidaChopeOperacao(produto) ? 'L' as const : 'un' as const,
     statusEstoque: classificarEstoque(
-      saldoPorProduto.get(produto.id)?.quantidade ?? 0,
-      saldoPorProduto.get(produto.id)?.estoqueMinimo ?? null,
+      Number(saldoPorProduto.get(produto.id)?.quantidade ?? 0),
+      saldoPorProduto.get(produto.id)?.estoqueMinimo == null ? null : Number(saldoPorProduto.get(produto.id)!.estoqueMinimo),
     ),
   }));
 }
@@ -346,8 +366,9 @@ export async function atualizarEstoqueMinimo(params: {
 }) {
   const produto = await prisma.produto.findFirst({
     where: { id: params.produtoId, cervejariaId: params.cervejariaId, ativo: true, controlaEstoque: true },
-    select: { id: true },
+    include: { precos: { select: { volumeMl: true } } },
   });
+  if (produto && params.estoqueMinimo !== null) validarQuantidadePorUnidade(produto, params.estoqueMinimo);
   if (!produto) throw new EstoqueInvalidoError('Produto não encontrado ou sem controle de estoque');
 
   const pontoVenda = await prisma.pontoVenda.findFirst({
@@ -380,7 +401,9 @@ export async function registrarEntrada(params: {
 
   const produto = await prisma.produto.findFirst({
     where: { id: params.produtoId, cervejariaId: params.cervejariaId, ativo: true },
+    include: { precos: { select: { volumeMl: true } } },
   });
+  if (produto) validarQuantidadePorUnidade(produto, params.quantidade);
   if (!produto) throw new EstoqueInvalidoError('Produto não encontrado');
   if (!produto.controlaEstoque) {
     throw new EstoqueInvalidoError('Este produto não controla estoque');
@@ -422,7 +445,9 @@ export async function registrarSaidaManual(params: {
 
   const produto = await prisma.produto.findFirst({
     where: { id: params.produtoId, cervejariaId: params.cervejariaId, ativo: true },
+    include: { precos: { select: { volumeMl: true } } },
   });
+  if (produto) validarQuantidadePorUnidade(produto, params.quantidade);
   if (!produto) throw new EstoqueInvalidoError('Produto não encontrado');
   if (!produto.controlaEstoque) {
     throw new EstoqueInvalidoError('Este produto não controla estoque');
@@ -463,7 +488,9 @@ export async function ajustarSaldo(params: {
 
   const produto = await prisma.produto.findFirst({
     where: { id: params.produtoId, cervejariaId: params.cervejariaId, ativo: true },
+    include: { precos: { select: { volumeMl: true } } },
   });
+  if (produto) validarQuantidadePorUnidade(produto, params.quantidadeNova);
   if (!produto) throw new EstoqueInvalidoError('Produto não encontrado');
   if (!produto.controlaEstoque) {
     throw new EstoqueInvalidoError('Este produto não controla estoque');
@@ -482,7 +509,7 @@ export async function ajustarSaldo(params: {
       produtoId: params.produtoId,
     });
 
-    const delta = params.quantidadeNova - saldo.quantidade;
+    const delta = params.quantidadeNova - Number(saldo.quantidade);
     if (delta === 0) return;
 
     if (delta > 0) {

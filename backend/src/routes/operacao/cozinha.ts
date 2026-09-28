@@ -131,6 +131,8 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
             nome: item.nome ?? item.produto.nome,
             quantidade: item.quantidade,
             controlaEstoque: item.produto.controlaEstoque,
+            tapId: item.tapId,
+            volumeMl: item.volumeMl,
             registradoPorId: user.sub,
           });
         }

@@ -275,8 +275,11 @@ export function OperacaoDashboardPage() {
           trend={resumo.variacaoReceitaMesAnterior}
         />
         <KpiCard label="Recebido no período" value={formatCurrency(resumo.totalRecebido)} />
-        <KpiCard label="Pendurado" value={formatCurrency(resumo.totalPendurado)} hint="Parte do recebido, sem sessão de caixa" />
-        <KpiCard label="Saldo pendente" value={formatCurrency(resumo.saldoPendente)} />
+        <KpiCard
+          label="Pendente"
+          value={formatCurrency(Number.isFinite(resumo.totalPendente) ? resumo.totalPendente : 0)}
+          hint="Saldo ainda não recebido das contas pendentes"
+        />
         <KpiCard label="Comandas atendidas" value={String(resumo.comandasAtendidas)} />
         <KpiCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} />
         <KpiCard label="Ticket médio" value={formatCurrency(resumo.ticketMedio)} />
@@ -284,7 +287,7 @@ export function OperacaoDashboardPage() {
         <KpiCard label="Turnos de caixa" value={String(resumo.turnosCaixa)} />
       </div>
 
-      {resumo.receitaTotal === 0 && resumo.totalRecebido === 0 ? (
+      {resumo.receitaTotal === 0 && resumo.totalRecebido === 0 && turnosRecentes.length === 0 ? (
         <div className="card text-center py-16">
           <p className="text-4xl mb-3">📊</p>
           <p className="text-ink-muted">Nenhuma venda fechada em {MESES[mesSelecionadoIdx]} {ano}</p>

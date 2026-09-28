@@ -20,7 +20,7 @@ function itensFromCardapio(cardapio: CardapioOperacao): CardapioOperacaoItem[] {
 
   if (cardapio.itens?.length) {
 
-    return cardapio.itens.map((i) => ({ produtoId: i.produtoId, precoUnit: i.precoUnit }));
+    return cardapio.itens.map((i) => ({ produtoId: i.produtoId, volumeMl: i.volumeMl, precoUnit: i.precoUnit }));
 
   }
 
@@ -29,6 +29,7 @@ function itensFromCardapio(cardapio: CardapioOperacao): CardapioOperacaoItem[] {
     return cardapio.produtos.map((p) => ({
 
       produtoId: p.id,
+      volumeMl: p.volumeMl,
 
       precoUnit: p.precoEfetivo ?? (parseFloat(p.precoUnit) || 0),
 
@@ -42,7 +43,7 @@ function itensFromCardapio(cardapio: CardapioOperacao): CardapioOperacaoItem[] {
 
 
 
-export function CardapiosOperacaoPage({ embedded }: { embedded?: boolean } = {}) {
+export function CardapiosOperacaoPage({ embedded, modo = 'caixa' }: { embedded?: boolean; modo?: 'caixa' | 'evento' } = {}) {
 
   const queryClient = useQueryClient();
 
@@ -124,15 +125,15 @@ export function CardapiosOperacaoPage({ embedded }: { embedded?: boolean } = {})
 
 
 
-  const toggleProduto = (produtoId: string, defaultPreco: number) => {
+  const toggleProduto = (produtoId: string, volumeMl: number, defaultPreco: number) => {
 
     setItens((prev) => {
 
-      const exists = prev.some((i) => i.produtoId === produtoId);
+      const exists = prev.some((i) => i.produtoId === produtoId && (i.volumeMl ?? 0) === volumeMl);
 
-      if (exists) return prev.filter((i) => i.produtoId !== produtoId);
+      if (exists) return prev.filter((i) => !(i.produtoId === produtoId && (i.volumeMl ?? 0) === volumeMl));
 
-      return [...prev, { produtoId, precoUnit: defaultPreco }];
+      return [...prev, { produtoId, volumeMl, precoUnit: defaultPreco }];
 
     });
 
@@ -140,9 +141,9 @@ export function CardapiosOperacaoPage({ embedded }: { embedded?: boolean } = {})
 
 
 
-  const changePreco = (produtoId: string, precoUnit: number) => {
+  const changePreco = (produtoId: string, volumeMl: number, precoUnit: number) => {
 
-    setItens((prev) => prev.map((i) => (i.produtoId === produtoId ? { ...i, precoUnit } : i)));
+    setItens((prev) => prev.map((i) => (i.produtoId === produtoId && (i.volumeMl ?? 0) === volumeMl ? { ...i, precoUnit } : i)));
 
   };
 
@@ -156,7 +157,7 @@ export function CardapiosOperacaoPage({ embedded }: { embedded?: boolean } = {})
 
         nome: nome.trim(),
 
-        itens: itens.map((i) => ({ produtoId: i.produtoId, precoUnit: i.precoUnit })),
+        itens: itens.map((i) => ({ produtoId: i.produtoId, volumeMl: i.volumeMl ?? 0, precoUnit: i.precoUnit })),
 
       };
 
@@ -171,6 +172,10 @@ export function CardapiosOperacaoPage({ embedded }: { embedded?: boolean } = {})
     onSuccess: () => {
 
       queryClient.invalidateQueries({ queryKey: ['operacao-cardapios'] });
+      if (editing) {
+        queryClient.invalidateQueries({ queryKey: ['operacao-produtos-operacionais'] });
+        queryClient.invalidateQueries({ queryKey: ['operacao-turno-cardapio'] });
+      }
 
       setShowModal(false);
 
@@ -234,7 +239,9 @@ export function CardapiosOperacaoPage({ embedded }: { embedded?: boolean } = {})
 
       <p className="text-sm text-ink-faint">
 
-        Templates reutilizáveis para aplicar na abertura do caixa ou durante o turno.
+        {modo === 'evento'
+          ? 'Cardápios reutilizáveis para aplicar aos eventos.'
+          : 'Templates reutilizáveis para aplicar na abertura do caixa ou durante o turno.'}
 
       </p>
 

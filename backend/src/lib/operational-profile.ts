@@ -65,9 +65,9 @@ export interface OperationalProfile {
  * capabilities. Legacy ConfiguracaoOperacao presence is not a capability.
  */
 export function shouldExposeEstablishmentSurface(
-  capabilities: Pick<OperationalCapabilities, 'cashRegister' | 'inventory' | 'kitchen'>,
+  capabilities: Pick<OperationalCapabilities, 'cashMode' | 'cashRegister' | 'inventory' | 'kitchen'>,
 ): boolean {
-  return capabilities.cashRegister || capabilities.inventory || capabilities.kitchen;
+  return capabilities.cashMode || capabilities.cashRegister || capabilities.inventory || capabilities.kitchen;
 }
 
 export type OperationalProfileFactsReader = (

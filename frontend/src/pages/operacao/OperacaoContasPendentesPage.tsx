@@ -74,6 +74,11 @@ export function OperacaoContasPendentesPage() {
     queryFn: () => api.get<ContaPendenteOperacao[]>('/api/operacao/contas-pendentes'),
     refetchInterval: pollMs,
   });
+  const resumoQuery = useQuery({
+    queryKey: ['operacao-contas-pendentes-resumo'],
+    queryFn: () => api.get<{ recebimentosHoje: number }>('/api/operacao/contas-pendentes/resumo'),
+    refetchInterval: pollMs,
+  });
   const caixaQuery = useQuery({
     queryKey: ['operacao-caixa', pontoAtivo],
     queryFn: () => api.get<CaixaResposta>('/api/operacao/caixa?pontoVendaId=' + pontoAtivo),
@@ -82,9 +87,7 @@ export function OperacaoContasPendentesPage() {
   });
   const caixaAberto = caixaQuery.data?.sessao?.status === 'ABERTO';
   const contas = contasQuery.data ?? [];
-  const recebimentosHoje = useMemo(() => contas.reduce((total, conta) => total + conta.pagamentos
-    .filter((pagamento) => dataLocal(pagamento.pagoEm) === dataLocal(new Date()))
-    .reduce((soma, pagamento) => soma + pagamento.valor, 0), 0), [contas]);
+  const recebimentosHoje = resumoQuery.data?.recebimentosHoje ?? 0;
   const valorPendente = contas.reduce((total, conta) => total + conta.saldo, 0);
   const clientesPendentes = new Set(contas.map((conta) => conta.cliente.id)).size;
   const contasVisiveis = useMemo(() => {
@@ -119,6 +122,7 @@ export function OperacaoContasPendentesPage() {
         : 'Recebimento de ' + formatCurrency(valorRecebido) + ' registrado · saldo restante ' + formatCurrency(conta.saldo) + '.');
       setContaSelecionada(null);
       queryClient.invalidateQueries({ queryKey: ['operacao-contas-pendentes'] });
+      queryClient.invalidateQueries({ queryKey: ['operacao-contas-pendentes-resumo'] });
       queryClient.invalidateQueries({ queryKey: ['operacao-caixa'] });
       queryClient.invalidateQueries({ queryKey: ['operacao-dashboard'] });
     },

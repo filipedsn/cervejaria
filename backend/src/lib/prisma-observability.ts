@@ -1,3 +1,4 @@
+import { metrics } from '@opentelemetry/api';
 import { Prisma } from '@prisma/client';
 
 import { logger } from './logger.js';
@@ -6,6 +7,30 @@ import {
   runWithTelemetryContext,
   type TelemetryContext,
 } from './telemetry-context.js';
+
+const dbMeter = metrics.getMeter('quiver-tap-database-transactions');
+const dbTransactionCount = dbMeter.createCounter('quiver.db.transaction.total', {
+  description: 'Todas as transações Prisma da aplicação, segmentadas por resultado.',
+});
+const dbTransactionDuration = dbMeter.createHistogram('quiver.db.transaction.duration_ms', {
+  description: 'Duração de todas as transações Prisma da aplicação.',
+  unit: 'ms',
+});
+
+function recordDbTransaction(outcome: 'success' | 'error', durationMs: number, context?: TelemetryContext): void {
+  const attributes = {
+    'db.system': 'postgresql',
+    'db.operation': 'transaction',
+    'outcome': outcome,
+    ...(context?.slug ? { 'cervejaria.slug': context.slug } : {}),
+  };
+  try {
+    dbTransactionCount.add(1, attributes);
+    dbTransactionDuration.record(durationMs, attributes);
+  } catch {
+    // Metrics are best-effort and never alter transaction semantics.
+  }
+}
 
 export type DbErrorCategory =
   | 'CONNECTION'
@@ -218,12 +243,15 @@ export async function observeDbTransaction<T>(
   const contextLogger = loggerWithTelemetryContext(targetLogger, telemetryContext);
   const start = now();
   try {
-    return await execute();
+    const result = await execute();
+    recordDbTransaction('success', Math.max(0, now() - start), telemetryContext);
+    return result;
   } catch (error) {
+    const durationMs = Math.max(0, now() - start);
+    recordDbTransaction('error', durationMs, telemetryContext);
     // Application validation/rollback exceptions do not become DB incidents.
     if (isDbTechnicalError(error)) {
       const category = classifyDbError(error);
-      const durationMs = Math.max(0, now() - start);
       const fields = {
         event: 'db.transaction.failed',
         category,

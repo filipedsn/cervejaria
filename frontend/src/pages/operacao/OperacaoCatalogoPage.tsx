@@ -12,9 +12,11 @@ import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { invalidateOnboardingReadiness } from '../../lib/onboarding';
 import {
   CATEGORIAS_PRODUTO_OPERACAO,
+  isChopeOperacao,
   normalizeCategoriaProduto,
   type CategoriaProdutoOperacao,
 } from '../../lib/operacao';
+import { FOOD_UNIT_ML, VOLUMES, type FormatoBebida } from '../../types';
 import { CardapiosOperacaoPage } from './CardapiosOperacaoPage';
 import { ProdutoOpcionaisModal } from '../../components/ProdutoOpcionaisModal';
 
@@ -24,12 +26,18 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
+type PrecoVolumeForm = { volumeMl: number; preco: string };
 
 interface ProdutoOperacao {
   id: string;
   nome: string;
   categoria: string | null;
   precoUnit: string;
+  tipo?: 'BEBIDA' | 'COMIDA';
+  formato?: FormatoBebida | null;
+  descricao?: string | null;
+  estilo?: string | null;
+  precos?: Array<{ volumeMl: number; preco: number | string }>;
   exigePreparo: boolean;
   controlaEstoque: boolean;
   ativo: boolean;
@@ -40,12 +48,18 @@ interface ProdutoOperacao {
 const FORM_VAZIO = {
   nome: '',
   categoria: 'Bebidas' as CategoriaProdutoOperacao,
+  descricao: '',
+  estilo: '',
   precoUnit: '',
+  precos: VOLUMES.map((volumeMl) => ({ volumeMl, preco: '' })) as PrecoVolumeForm[],
+  formato: 'OUTRO' as FormatoBebida,
   exigePreparo: false,
   controlaEstoque: true,
 };
 
-export function OperacaoCatalogoPage() {
+const CATEGORIAS_COMIDA = new Set(['Porções', 'Lanches', 'Salgados', 'Doces e sobremesas']);
+
+export function OperacaoCatalogoPage({ modo = 'caixa' }: { modo?: 'caixa' | 'evento' } = {}) {
   const queryClient = useQueryClient();
   const { isDono } = useAuth();
   const { contexto } = useOperacaoContexto();
@@ -82,10 +96,19 @@ export function OperacaoCatalogoPage() {
 
   const abrirEdicao = (produto: ProdutoOperacao) => {
     setEditando(produto);
+    const produtoChope = isChopeOperacao(produto);
+    const volumes = [...new Set([...VOLUMES, ...(produto.precos ?? []).map((item) => item.volumeMl).filter((volumeMl) => volumeMl > FOOD_UNIT_ML)])].sort((a, b) => a - b);
     setForm({
       nome: produto.nome,
-      categoria: normalizeCategoriaProduto(produto.categoria),
+      categoria: produtoChope ? 'Chope' : normalizeCategoriaProduto(produto.categoria),
+      descricao: produto.descricao ?? '',
+      estilo: produto.estilo ?? '',
       precoUnit: formatCurrencyInputFromNumber(produto.precoUnit),
+      precos: volumes.map((volumeMl) => {
+        const preco = produto.precos?.find((item) => item.volumeMl === volumeMl);
+        return { volumeMl, preco: preco ? formatCurrencyInputFromNumber(preco.preco) : '' };
+      }),
+      formato: produtoChope ? 'CHOPE' : produto.formato ?? 'OUTRO',
       exigePreparo: produto.exigePreparo,
       controlaEstoque: produto.controlaEstoque,
     });
@@ -98,8 +121,18 @@ export function OperacaoCatalogoPage() {
       const corpo = {
         nome: form.nome.trim(),
         categoria: form.categoria,
-        precoUnit: parseCurrencyInput(form.precoUnit),
-        exigePreparo: form.exigePreparo,
+        ...((editando && editando.tipo === 'BEBIDA' && editando.formato == null && editando.categoria !== 'Chope' && editando.precos?.length === 1 && editando.precos[0]?.volumeMl === FOOD_UNIT_ML && form.categoria !== 'Chope')
+          ? {}
+          : {
+              tipo: form.categoria === 'Chope' ? 'BEBIDA' : CATEGORIAS_COMIDA.has(form.categoria) ? 'COMIDA' : 'BEBIDA',
+              formato: form.categoria === 'Chope' ? 'CHOPE' : 'OUTRO',
+            }),
+        descricao: form.categoria === 'Chope' ? form.descricao.trim() || undefined : undefined,
+        estilo: form.categoria === 'Chope' ? form.estilo.trim() || undefined : undefined,
+        ...(form.categoria === 'Chope'
+          ? { precos: form.precos.filter((preco) => parseCurrencyInput(preco.preco) > 0).map((preco) => ({ volumeMl: preco.volumeMl, preco: parseCurrencyInput(preco.preco) })) }
+          : { precoUnit: parseCurrencyInput(form.precoUnit), precos: [{ volumeMl: FOOD_UNIT_ML, preco: parseCurrencyInput(form.precoUnit) }] }),
+        exigePreparo: form.categoria === 'Chope' ? false : form.exigePreparo,
         controlaEstoque: form.controlaEstoque,
       };
       return editando
@@ -124,7 +157,9 @@ export function OperacaoCatalogoPage() {
     e.preventDefault();
     const preco = parseCurrencyInput(form.precoUnit);
     if (!form.nome.trim()) return setError('Informe o nome do produto');
-    if (!preco || preco <= 0) return setError('Informe um preço maior que zero');
+    if (form.categoria === 'Chope') {
+      if (!form.precos.some((item) => parseCurrencyInput(item.preco) > 0)) return setError('Informe pelo menos um preço por volume');
+    } else if (!preco || preco <= 0) return setError('Informe um preço maior que zero');
     setError('');
     salvar.mutate();
   };
@@ -136,7 +171,9 @@ export function OperacaoCatalogoPage() {
       <div className="min-w-0">
         <h2 className="text-xl font-bold">Cardápio</h2>
         <p className="text-sm text-ink-faint">
-          Catálogo de produtos e templates para os turnos de caixa.
+          {modo === 'evento'
+            ? 'Catálogo de produtos e cardápios reutilizáveis em eventos.'
+            : 'Catálogo de produtos e templates para os turnos de caixa.'}
         </p>
       </div>
 
@@ -155,7 +192,7 @@ export function OperacaoCatalogoPage() {
         ))}
       </div>
 
-      {tab === 'cardapios' && usaCardapio && isDono && <CardapiosOperacaoPage embedded />}
+      {tab === 'cardapios' && usaCardapio && isDono && <CardapiosOperacaoPage embedded modo={modo} />}
       {tab === 'cardapios' && usaCardapio && !isDono && (
         <p className="text-sm text-ink-faint text-center py-6">Somente o dono pode gerenciar cardápios salvos.</p>
       )}
@@ -191,7 +228,11 @@ export function OperacaoCatalogoPage() {
                   {produto.nome}
                 </p>
                 <p className="flex flex-wrap items-center gap-1.5 text-xs text-ink-faint">
-                  <span>{formatCurrency(produto.precoUnit)}</span>
+                  {isChopeOperacao(produto) && produto.precos?.some((preco) => preco.volumeMl > FOOD_UNIT_ML)
+                    ? produto.precos.filter((preco) => preco.volumeMl > FOOD_UNIT_ML).map((preco) => (
+                        <span key={preco.volumeMl}>{preco.volumeMl}ml: {formatCurrency(preco.preco)}</span>
+                      ))
+                    : <span>{formatCurrency(produto.precoUnit)}</span>}
                   {produto.categoria && (
                     <span>· {normalizeCategoriaProduto(produto.categoria)}</span>
                   )}
@@ -241,38 +282,20 @@ export function OperacaoCatalogoPage() {
         open={showModal}
         onClose={fechar}
         title={editando ? `Editar — ${editando.nome}` : 'Novo produto'}
+        hideHeaderClose
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <div className="alert-error">{error}</div>}
 
           <div>
-            <label className="label">Nome</label>
-            <input
-              className="input"
-              value={form.nome}
-              onChange={(e) => setForm({ ...form, nome: e.target.value })}
-              required
-            />
-          </div>
-
-          <div>
-            <label className="label">Preço</label>
-            <CurrencyInput
-              value={form.precoUnit}
-              onChange={(precoUnit) => setForm({ ...form, precoUnit })}
-              required
-            />
-          </div>
-
-          <div>
             <label className="label">Categoria</label>
             <div className="chip-picker" role="group" aria-label="Categoria do produto">
-              {CATEGORIAS_PRODUTO_OPERACAO.map((categoria) => (
+              {[...CATEGORIAS_PRODUTO_OPERACAO, ...(contexto.tapsEnabled ? ['Chope' as const] : [])].map((categoria) => (
                 <button
                   key={categoria}
                   type="button"
                   aria-pressed={form.categoria === categoria}
-                  onClick={() => setForm({ ...form, categoria })}
+                  onClick={() => setForm({ ...form, categoria, formato: categoria === 'Chope' ? 'CHOPE' : 'OUTRO', exigePreparo: categoria === 'Chope' ? false : form.exigePreparo })}
                   className={`chip-picker-btn ${
                     form.categoria === categoria
                       ? 'segmented-control-btn-active'
@@ -285,7 +308,46 @@ export function OperacaoCatalogoPage() {
             </div>
           </div>
 
-          {temCozinha && (
+          <div>
+            <label className="label">Nome</label>
+            <input
+              className="input"
+              value={form.nome}
+              onChange={(e) => setForm({ ...form, nome: e.target.value })}
+              required
+            />
+          </div>
+
+          {form.categoria === 'Chope' && !contexto.tapsEnabled ? (
+            <p className="rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-800">Ative “Torneiras de chope” nas configurações para editar este produto.</p>
+          ) : form.categoria === 'Chope' ? (
+            <>
+              <div>
+                <label className="label">Descrição (opcional)</label>
+                <input className="input" value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} placeholder="Marca, origem..." />
+              </div>
+              <div>
+                <label className="label">Estilo</label>
+                <input className="input" value={form.estilo} onChange={(e) => setForm({ ...form, estilo: e.target.value })} placeholder="Pilsen, IPA, Weiss..." />
+              </div>
+              <div className="space-y-2">
+                <label className="label">Preços por volume</label>
+                {form.precos.map((item, index) => (
+                  <div key={item.volumeMl} className="flex items-center gap-2">
+                    <span className="w-16 text-ink-muted">{item.volumeMl}ml</span>
+                    <CurrencyInput className="input flex-1" value={item.preco} onChange={(preco) => setForm((atual) => ({ ...atual, precos: atual.precos.map((linha, i) => i === index ? { ...linha, preco } : linha) }))} />
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div>
+              <label className="label">Preço</label>
+              <CurrencyInput value={form.precoUnit} onChange={(precoUnit) => setForm({ ...form, precoUnit })} required />
+            </div>
+          )}
+
+          {temCozinha && form.categoria !== 'Chope' && (
             <label className="card flex cursor-pointer items-start gap-3 py-3">
               <input
                 type="checkbox"
@@ -319,8 +381,11 @@ export function OperacaoCatalogoPage() {
             </label>
           )}
 
-          <button type="submit" className="touch-btn-primary w-full" disabled={salvar.isPending}>
+          <button type="submit" className="touch-btn-primary w-full" disabled={salvar.isPending || (form.categoria === 'Chope' && !contexto.tapsEnabled)}>
             {salvar.isPending ? 'Salvando...' : 'Salvar'}
+          </button>
+          <button type="button" className="touch-btn-orange w-full" onClick={fechar}>
+            Fechar
           </button>
         </form>
       </Modal>

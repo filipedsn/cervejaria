@@ -1,14 +1,27 @@
 import type { CardapioOperacaoItem, ProdutoOperacao } from '../../lib/operacao';
 import { formatCurrency } from '../../lib/api';
-import { normalizeCategoriaProduto } from '../../lib/operacao';
+import { isChopeOperacao, normalizeCategoriaProduto } from '../../lib/operacao';
 import { CurrencyInput } from '../CurrencyInput';
 import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../../lib/currency';
+import { FOOD_UNIT_ML } from '../../types';
 
 
 
-function groupCatalogo(catalogo: ProdutoOperacao[]) {
+export type ProdutoCardapioPicker = {
+  id: string;
+  nome: string;
+  categoria?: string | null;
+  tipo?: 'BEBIDA' | 'COMIDA';
+  formato?: ProdutoOperacao['formato'];
+  precos?: Array<{ volumeMl: number; preco: number | string }>;
+  volumeMl?: number;
+  precoUnit?: string | number;
+  precoEfetivo?: number;
+};
 
-  const grupos = new Map<string, ProdutoOperacao[]>();
+function groupCatalogo(catalogo: ProdutoCardapioPicker[], incluirVolumesChope = false) {
+
+  const grupos = new Map<string, ProdutoCardapioPicker[]>();
 
   for (const produto of catalogo) {
 
@@ -16,7 +29,13 @@ function groupCatalogo(catalogo: ProdutoOperacao[]) {
 
     const lista = grupos.get(cat) ?? [];
 
-    lista.push(produto);
+    if (incluirVolumesChope && (isChopeOperacao({ ...produto, categoria: produto.categoria ?? null }) || produto.formato === 'CHOPE')) {
+      for (const preco of (produto.precos ?? []).filter((item) => item.volumeMl > FOOD_UNIT_ML)) {
+        lista.push({ ...produto, volumeMl: preco.volumeMl, precoUnit: String(preco.preco), precoEfetivo: Number(preco.preco) });
+      }
+    } else {
+      lista.push(produto);
+    }
 
     grupos.set(cat, lista);
 
@@ -28,9 +47,24 @@ function groupCatalogo(catalogo: ProdutoOperacao[]) {
 
 
 
-function defaultPrecoCatalogo(produto: ProdutoOperacao): number {
+function defaultPrecoCatalogo(produto: ProdutoCardapioPicker): number {
 
-  return parseFloat(produto.precoUnit) || 0;
+  if (isChopeOperacao({ ...produto, categoria: produto.categoria ?? null }) || produto.formato === 'CHOPE' || (produto.volumeMl ?? 0) > FOOD_UNIT_ML) {
+    const precoVariante = produto.volumeMl
+      ? produto.precos?.find((preco) => preco.volumeMl === produto.volumeMl)?.preco
+      : undefined;
+    if (Number(precoVariante) > 0) return Number(precoVariante);
+    const precoPorVolume = [...(produto.precos ?? [])]
+      .filter((preco) => preco.volumeMl > FOOD_UNIT_ML)
+      .sort((a, b) => a.volumeMl - b.volumeMl)[0]?.preco;
+    if (Number(precoPorVolume) > 0) return Number(precoPorVolume);
+  }
+
+  const precoUnit = Number(produto.precoUnit ?? produto.precoEfetivo);
+  if (Number.isFinite(precoUnit) && precoUnit > 0) return precoUnit;
+
+  const precoPadrao = produto.precos?.find((preco) => preco.volumeMl === FOOD_UNIT_ML)?.preco ?? produto.precos?.[0]?.preco;
+  return Number(precoPadrao) || 0;
 
 }
 
@@ -38,13 +72,13 @@ function defaultPrecoCatalogo(produto: ProdutoOperacao): number {
 
 type TemplatePickerProps = {
 
-  catalogo: ProdutoOperacao[];
+  catalogo: ProdutoCardapioPicker[];
 
   itens: CardapioOperacaoItem[];
 
-  onToggle: (produtoId: string, defaultPreco: number) => void;
+  onToggle: (produtoId: string, volumeMl: number, defaultPreco: number) => void;
 
-  onPrecoChange: (produtoId: string, precoUnit: number) => void;
+  onPrecoChange: (produtoId: string, volumeMl: number, precoUnit: number) => void;
 
   selectedIds?: never;
 
@@ -54,7 +88,7 @@ type TemplatePickerProps = {
 
 type SelectionPickerProps = {
 
-  catalogo: ProdutoOperacao[];
+  catalogo: ProdutoCardapioPicker[];
 
   selectedIds: string[];
 
@@ -76,7 +110,7 @@ export function CardapioOperacaoProdutosPicker(props: TemplatePickerProps | Sele
 
   const precoPorId = isTemplateMode
 
-    ? new Map(props.itens.map((i) => [i.produtoId, i.precoUnit]))
+    ? new Map(props.itens.map((i) => [`${i.produtoId}:${i.volumeMl ?? 0}`, i.precoUnit]))
 
     : null;
 
@@ -84,11 +118,11 @@ export function CardapioOperacaoProdutosPicker(props: TemplatePickerProps | Sele
 
 
 
-  const grupos = groupCatalogo(catalogo);
+  const grupos = groupCatalogo(catalogo, isTemplateMode);
 
 
 
-  const renderGroup = (titulo: string, items: ProdutoOperacao[]) => {
+  const renderGroup = (titulo: string, items: ProdutoCardapioPicker[]) => {
 
     if (items.length === 0) return null;
 
@@ -102,7 +136,9 @@ export function CardapioOperacaoProdutosPicker(props: TemplatePickerProps | Sele
 
           {items.map((p) => {
 
-            const checked = isTemplateMode ? precoPorId!.has(p.id) : selectedSet.has(p.id);
+            const volumeMl = p.volumeMl ?? 0;
+            const itemKey = `${p.id}:${volumeMl}`;
+            const checked = isTemplateMode ? precoPorId!.has(itemKey) : selectedSet.has(p.id);
 
             const catalogoPreco = defaultPrecoCatalogo(p);
 
@@ -110,7 +146,7 @@ export function CardapioOperacaoProdutosPicker(props: TemplatePickerProps | Sele
 
               <div
 
-                key={p.id}
+                key={itemKey}
 
                 className={[
 
@@ -136,7 +172,7 @@ export function CardapioOperacaoProdutosPicker(props: TemplatePickerProps | Sele
 
                       if (isTemplateMode) {
 
-                        props.onToggle(p.id, catalogoPreco);
+                        props.onToggle(p.id, volumeMl, catalogoPreco);
 
                       } else {
 
@@ -150,7 +186,7 @@ export function CardapioOperacaoProdutosPicker(props: TemplatePickerProps | Sele
 
                   <span className="min-w-0 flex-1">
 
-                    <span className="block text-sm font-semibold text-ink leading-tight">{p.nome}</span>
+                    <span className="block text-sm font-semibold text-ink leading-tight">{p.nome}{volumeMl > FOOD_UNIT_ML ? ` (${volumeMl} ml)` : ''}</span>
 
                     <span className="block text-xs text-ink-faint mt-0.5">
 
@@ -169,10 +205,10 @@ export function CardapioOperacaoProdutosPicker(props: TemplatePickerProps | Sele
                     <label className="text-xs font-medium text-ink-muted">Preço no cardápio</label>
                     <CurrencyInput
                       className="input mt-1"
-                      value={formatCurrencyInputFromNumber(precoPorId!.get(p.id) ?? catalogoPreco)}
+                      value={formatCurrencyInputFromNumber(precoPorId!.get(itemKey) ?? catalogoPreco)}
                       onChange={(value) => {
                         const val = parseCurrencyInput(value);
-                        if (val > 0) props.onPrecoChange(p.id, val);
+                        if (val > 0) props.onPrecoChange(p.id, volumeMl, val);
                       }}
                     />
 
@@ -248,7 +284,7 @@ export function CardapioOperacaoProdutosResumo({
 
 
 
-  const precoPorId = new Map((itens ?? []).map((i) => [i.produtoId, i.precoUnit]));
+  const precoPorId = new Map((itens ?? []).map((i) => [`${i.produtoId}:${i.volumeMl ?? 0}`, i.precoUnit]));
 
 
 
@@ -258,13 +294,13 @@ export function CardapioOperacaoProdutosResumo({
 
       {produtos.map((p) => {
 
-        const preco = precoPorId.get(p.id) ?? p.precoEfetivo ?? (parseFloat(p.precoUnit) || 0);
+        const preco = precoPorId.get(`${p.id}:${p.volumeMl ?? 0}`) ?? p.precoEfetivo ?? (parseFloat(p.precoUnit) || 0);
 
         return (
 
           <span
 
-            key={p.id}
+            key={`${p.id}:${p.volumeMl ?? 0}`}
 
             className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink"
 
@@ -277,6 +313,7 @@ export function CardapioOperacaoProdutosResumo({
             </span>
 
             {p.nome}
+            {(p.volumeMl ?? 0) > FOOD_UNIT_ML ? ` · ${p.volumeMl} ml` : ''}
 
             <span className="text-brand-700">{formatCurrency(preco)}</span>
 

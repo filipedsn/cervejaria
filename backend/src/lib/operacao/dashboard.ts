@@ -88,7 +88,7 @@ async function fetchRecebimentos(
         ...(pontoVendaId ? { pontoVendaId } : {}),
       },
     },
-    select: { forma: true, valor: true, contaReceberId: true, sessaoCaixaId: true },
+    select: { forma: true, valor: true },
   });
 }
 
@@ -269,12 +269,6 @@ async function buildTurnosRecentes(
     orderBy: [{ diaOperacional: 'asc' }, { abertoEm: 'asc' }],
   });
 
-  const turnosPorDia = new Map<string, number>();
-  for (const sessao of sessoes) {
-    const chaveDia = `${sessao.pontoVendaId}:${sessao.diaOperacional.toISOString().slice(0, 10)}`;
-    turnosPorDia.set(chaveDia, (turnosPorDia.get(chaveDia) ?? 0) + 1);
-  }
-
   const indiceTurnoDia = new Map<string, number>();
   const abertoPorIds = [...new Set(sessoes.map((sessao) => sessao.abertoPorId))];
   const nomesAbertura = await fetchUsuariosNomes(abertoPorIds);
@@ -283,12 +277,6 @@ async function buildTurnosRecentes(
   for (const sessao of sessoes) {
     if (!sessao.fechadoEm) continue;
     const chaveDia = `${sessao.pontoVendaId}:${sessao.diaOperacional.toISOString().slice(0, 10)}`;
-    const turnoDoDia = (indiceTurnoDia.get(chaveDia) ?? 0) + 1;
-    indiceTurnoDia.set(chaveDia, turnoDoDia);
-    const turnosNoDia = turnosPorDia.get(chaveDia) ?? 1;
-
-    const pagamentos = await pagamentosDoTurno(sessao, cervejariaId);
-    const totais = totaisPorForma(pagamentos);
     const comandasFechadas = await prisma.comanda.findMany({
       where: {
         origem: 'CAIXA',
@@ -300,6 +288,14 @@ async function buildTurnosRecentes(
       },
       select: { id: true, tipo: true, total: true },
     });
+    // Uma sessao aberta e fechada sem vendas nem movimentos de caixa nao representa um turno operacional.
+    if (comandasFechadas.length === 0 && sessao.movimentos.length === 0) continue;
+
+    const turnoDoDia = (indiceTurnoDia.get(chaveDia) ?? 0) + 1;
+    indiceTurnoDia.set(chaveDia, turnoDoDia);
+
+    const pagamentos = await pagamentosDoTurno(sessao, cervejariaId);
+    const totais = totaisPorForma(pagamentos);
     const vendasTotal = comandasFechadas.reduce((soma, comanda) => soma + toNumber(comanda.total), 0);
     const comandaIds = new Set(comandasFechadas.map((comanda) => comanda.id));
     const duracaoHoras = Math.max(
@@ -313,7 +309,7 @@ async function buildTurnosRecentes(
       pontoNome: sessao.pontoVenda.nome,
       diaOperacional: sessao.diaOperacional,
       turnoDoDia,
-      turnosNoDia,
+      turnosNoDia: 0,
       abertoPorNome: nomesAbertura.get(sessao.abertoPorId) ?? '—',
       abertoEm: sessao.abertoEm,
       fechadoEm: sessao.fechadoEm,
@@ -327,6 +323,16 @@ async function buildTurnosRecentes(
       receitaPorHora:
         duracaoHoras > 0 ? Math.round((vendasTotal / duracaoHoras) * 100) / 100 : 0,
     });
+  }
+
+  const turnosAtivosPorDia = new Map<string, number>();
+  for (const turno of resultados) {
+    const chaveDia = `${turno.pontoVendaId}:${turno.diaOperacional.toISOString().slice(0, 10)}`;
+    turnosAtivosPorDia.set(chaveDia, (turnosAtivosPorDia.get(chaveDia) ?? 0) + 1);
+  }
+  for (const turno of resultados) {
+    const chaveDia = `${turno.pontoVendaId}:${turno.diaOperacional.toISOString().slice(0, 10)}`;
+    turno.turnosNoDia = turnosAtivosPorDia.get(chaveDia) ?? 1;
   }
 
   for (const turno of resultados) {
@@ -350,6 +356,7 @@ async function buildComparativoPontos(
   cervejariaId: string,
   inicio: Date,
   fim: Date,
+  turnosRecentes: Awaited<ReturnType<typeof buildTurnosRecentes>>,
 ) {
   const pontos = await prisma.pontoVenda.findMany({
     where: { cervejariaId, ativo: true },
@@ -363,14 +370,7 @@ async function buildComparativoPontos(
     const ids = [...new Set(comandas.map((comanda) => comanda.fechadoPorId).filter(Boolean) as string[])];
     const nomes = await fetchUsuariosNomes(ids);
     const resumo = aggregateComandas(comandas, nomes);
-    const turnos = await prisma.sessaoCaixaOperacao.count({
-      where: {
-        cervejariaId,
-        pontoVendaId: ponto.id,
-        status: 'FECHADO',
-        fechadoEm: { gte: inicio, lte: fim },
-      },
-    });
+    const turnos = turnosRecentes.filter((turno) => turno.pontoVendaId === ponto.id).length;
 
     grupos.push({
       pontoVendaId: ponto.id,
@@ -397,14 +397,16 @@ export async function buildOperacaoDashboard(
   const anoVigente = now.getFullYear();
   const { inicio, fim } = monthBounds(ano, mes);
 
-  const [comandasMes, comandasAno, turnosRecentes, comparativoPontos, recebimentosMes, saldoPendente] = await Promise.all([
+  const [comandasMes, comandasAno, turnosRecentes, recebimentosMes, totalPendente] = await Promise.all([
     fetchClosedComandas(cervejariaId, inicio, fim, pontoVendaId),
     fetchClosedComandas(cervejariaId, yearBounds(anoVigente).inicio, yearBounds(anoVigente).fim, pontoVendaId),
     buildTurnosRecentes(cervejariaId, inicio, fim, pontoVendaId),
-    pontoVendaId ? Promise.resolve([]) : buildComparativoPontos(cervejariaId, inicio, fim),
     fetchRecebimentos(cervejariaId, inicio, fim, pontoVendaId),
     saldoContasPendentes(cervejariaId, pontoVendaId),
   ]);
+  const comparativoPontos = pontoVendaId
+    ? []
+    : await buildComparativoPontos(cervejariaId, inicio, fim, turnosRecentes);
 
   const fechadoPorIds = [
     ...new Set(comandasMes.map((comanda) => comanda.fechadoPorId).filter(Boolean) as string[]),
@@ -413,12 +415,6 @@ export async function buildOperacaoDashboard(
 
   const resumo = aggregateComandas(comandasMes, nomesPorId);
   const totalRecebido = recebimentosMes.reduce((soma, pagamento) => soma + toNumber(pagamento.valor), 0);
-  const totalPendurado = recebimentosMes.reduce(
-    (soma, pagamento) => pagamento.contaReceberId && !pagamento.sessaoCaixaId
-      ? soma + toNumber(pagamento.valor)
-      : soma,
-    0,
-  );
   const porPagamento = agregarFormasPagamento(recebimentosMes);
   const evolucaoSemanal = weeklyEvolution(comandasMes, ano, mes);
 
@@ -456,14 +452,7 @@ export async function buildOperacaoDashboard(
       ? Math.round(((resumo.receitaTotal - resumoAnterior.receitaTotal) / resumoAnterior.receitaTotal) * 100)
       : null;
 
-  const turnosNoMes = await prisma.sessaoCaixaOperacao.count({
-    where: {
-      cervejariaId,
-      status: 'FECHADO',
-      fechadoEm: { gte: inicio, lte: fim },
-      ...(pontoVendaId ? { pontoVendaId } : {}),
-    },
-  });
+  const turnosNoMes = turnosRecentes.length;
 
   return {
     periodo: {
@@ -474,8 +463,7 @@ export async function buildOperacaoDashboard(
     resumo: {
       receitaTotal: resumo.receitaTotal,
       totalRecebido,
-      totalPendurado,
-      saldoPendente,
+      totalPendente,
       comandasAtendidas: resumo.comandasAtendidas,
       vendasAvulsas: resumo.vendasAvulsas,
       receitaAvulsa: resumo.receitaAvulsa,

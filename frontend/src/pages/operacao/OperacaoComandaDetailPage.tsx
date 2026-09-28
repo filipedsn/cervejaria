@@ -24,6 +24,8 @@ import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { connectSocket, getSocket } from '../../lib/socket';
 import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
 import {
+  isChopeOperacao,
+  itemConfirmadoNaComanda,
   mapSaldosEstoque,
   pedidoConfirmadoNaComanda,
   pedidoVaiParaCozinha,
@@ -158,29 +160,41 @@ export function OperacaoComandaDetailPage() {
     });
   }, [descontoInput, showPayment, comanda?.subtotal]);
 
-  const adicionar = (produto: ProdutoOperacao, configuracao?: { quantidade?: number; paraViagem?: boolean; observacao?: string; opcionais?: LinhaCarrinho['opcionais'] }) => {
+  const adicionar = (produto: ProdutoOperacao, configuracao?: { quantidade?: number; tapId?: string; volumeMl?: number; precoUnit?: number; paraViagem?: boolean; observacao?: string; opcionais?: LinhaCarrinho['opcionais'] }) => {
     setCarrinho((atual) => {
-      const existente = atual.find((linha) => linha.produto.id === produto.id && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []));
+      const existente = atual.find((linha) => linha.produto.id === produto.id && linha.tapId === configuracao?.tapId && linha.volumeMl === configuracao?.volumeMl && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []));
       const quantidadeAtual = existente?.quantidade ?? 0;
-      if (!podeIncrementarLinhaCarrinho(produto, quantidadeAtual, saldos, controlaEstoque)) {
+      const litrosJaNoCarrinho = atual.filter((linha) => linha.produto.id === produto.id && isChopeOperacao(linha.produto)).reduce((total, linha) => total + ((linha.volumeMl ?? 0) * linha.quantidade) / 1000, 0);
+      const consumoChope = isChopeOperacao(produto) && configuracao?.volumeMl
+        ? { volumeMl: configuracao.volumeMl, quantidadeAdicionar: configuracao.quantidade ?? 1, litrosJaNoCarrinho }
+        : undefined;
+      if (!podeIncrementarLinhaCarrinho(produto, quantidadeAtual, saldos, controlaEstoque, consumoChope)) {
         return atual;
       }
-      if (!existente) return [...atual, { produto, quantidade: configuracao?.quantidade ?? 1, paraViagem: configuracao?.paraViagem, observacao: configuracao?.observacao, opcionais: configuracao?.opcionais }];
+      if (!existente) return [...atual, { produto, quantidade: configuracao?.quantidade ?? 1, tapId: configuracao?.tapId, volumeMl: configuracao?.volumeMl, precoUnit: configuracao?.precoUnit, paraViagem: configuracao?.paraViagem, observacao: configuracao?.observacao, opcionais: configuracao?.opcionais }];
       return atual.map((linha) =>
-        linha.produto.id === produto.id && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []) ? { ...linha, quantidade: linha.quantidade + (configuracao?.quantidade ?? 1) } : linha,
+        linha.produto.id === produto.id && linha.tapId === configuracao?.tapId && linha.volumeMl === configuracao?.volumeMl && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []) ? { ...linha, quantidade: linha.quantidade + (configuracao?.quantidade ?? 1) } : linha,
       );
     });
   };
 
-  const alterarQuantidade = (produtoId: string, delta: number) => {
+  const alterarQuantidade = (produtoId: string, delta: number, tapId?: string, volumeMl?: number) => {
     setCarrinho((atual) =>
       atual
         .map((linha) => {
-          if (linha.produto.id !== produtoId) return linha;
+          if (linha.produto.id !== produtoId || linha.tapId !== tapId || linha.volumeMl !== volumeMl) return linha;
           const novaQuantidade = linha.quantidade + delta;
           if (
             delta > 0 &&
-            !podeIncrementarLinhaCarrinho(linha.produto, linha.quantidade, saldos, controlaEstoque)
+            !podeIncrementarLinhaCarrinho(
+              linha.produto,
+              linha.quantidade,
+              saldos,
+              controlaEstoque,
+              isChopeOperacao(linha.produto) && volumeMl
+                ? { volumeMl, litrosJaNoCarrinho: atual.filter((item) => item.produto.id === produtoId && isChopeOperacao(item.produto)).reduce((total, item) => total + ((item.volumeMl ?? 0) * item.quantidade) / 1000, 0) }
+                : undefined,
+            )
           ) {
             return linha;
           }
@@ -196,6 +210,8 @@ export function OperacaoComandaDetailPage() {
         itens: carrinho.map((linha) => ({
           produtoId: linha.produto.id,
           quantidade: linha.quantidade,
+          tapId: linha.tapId,
+          volumeMl: linha.volumeMl,
           paraViagem: linha.paraViagem ?? false,
           observacao: linha.observacao,
           opcionais: linha.opcionais?.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })),
@@ -531,21 +547,21 @@ export function OperacaoComandaDetailPage() {
               const itemEmCancelamento = Boolean(item.cancelamentoPendenteEm || item.canceladoEm);
               const editavel = aberta && !itemEmCancelamento && podeEditarItemComanda(comanda, pedido);
               const removivel = aberta && !itemEmCancelamento && podeRemoverItemComanda(comanda, pedido);
-              const itemConfirmado = confirmado && !item.cancelamentoPendenteEm && !item.canceladoEm;
+              const itemConfirmado = itemConfirmadoNaComanda(pedido, item);
               const produto = produtoPorId.get(item.produtoId);
-              const podeIncrementar = podeIncrementarItemComanda(produto, saldos, controlaEstoque);
+              const podeIncrementar = podeIncrementarItemComanda(produto, saldos, controlaEstoque, item.volumeMl);
               const alterandoEsteItem =
                 (removerItem.isPending && removerItem.variables === item.id) ||
                 (alterarQuantidadeItem.isPending && alterarQuantidadeItem.variables?.itemId === item.id);
 
               return (
               <div key={item.id} className="flex items-center justify-between gap-3 text-sm">
-                <span className={`min-w-0 flex-1 truncate ${itemConfirmado ? '' : 'text-ink-faint'}`}>
+                <span className={`min-w-0 flex-1 truncate text-base font-semibold ${itemConfirmado ? '' : 'text-ink-faint'}`}>
                   {editavel ? item.nome : `${item.quantidade}× ${item.nome}`}
                   {item.cancelamentoPendenteEm && <small className="ml-2 rounded-full border border-orange-500/50 bg-orange-500/10 px-2 py-0.5 text-[10px] font-bold text-orange-400">Cancelamento solicitado</small>}
                   {item.canceladoEm && <small className="ml-2 rounded-full bg-surface-lighter px-2 py-0.5 text-[10px] font-bold text-ink-faint">Cancelado</small>}
                   {item.paraViagem && <small className="ml-2 rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-bold text-violet-300">Para viagem</small>}
-                  {(item.observacao || item.opcionais?.length) && <small className="block text-xs text-ink-muted">{item.observacao ? `Obs: ${item.observacao}` : ''}{item.opcionais?.length ? ` · ${item.opcionais.map((o) => o.nome).join(', ')}` : ''}</small>}
+                  {(item.observacao || (item.opcionais?.length ?? 0) > 0) && <small className="block text-xs text-ink-muted">{item.observacao ? `Obs: ${item.observacao}` : ''}{item.opcionais?.length ? ` · ${item.opcionais.map((o) => o.nome).join(', ')}` : ''}</small>}
                 </span>
                 <div className="flex shrink-0 items-center gap-2">
                   {editavel ? (
@@ -643,14 +659,14 @@ export function OperacaoComandaDetailPage() {
             ) : (
               <>
                 <div className="hidden grid-cols-[minmax(0,1fr)_5rem_8rem_8rem] gap-3 border-b border-line pb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint sm:grid">
-                  <span>Produto</span><span className="text-right">Qtd.</span><span className="text-right">Preço médio</span><span className="text-right">Total</span>
+                  <span>Produto</span><span className="text-right">Qtd.</span><span className="text-right">Valor</span><span className="text-right">Total</span>
                 </div>
                 <ul className="divide-y divide-line">
                   {resumoItens.map((linha) => (
                     <li key={linha.chave} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 py-3 sm:grid-cols-[minmax(0,1fr)_5rem_8rem_8rem] sm:items-center">
                       <span className="min-w-0 font-medium">{linha.nome}</span>
                       <span className="text-right text-sm tabular-nums">{linha.quantidade}x</span>
-                      <span className="col-start-1 text-xs text-ink-faint sm:col-auto sm:text-right">Preço médio {formatCurrency(linha.precoMedio)}</span>
+                      <span className="col-start-1 text-xs text-ink-faint sm:col-auto sm:text-right">Valor {formatCurrency(linha.precoMedio)}</span>
                       <strong className="row-span-2 self-center text-right tabular-nums sm:row-span-1">{formatCurrency(linha.total)}</strong>
                     </li>
                   ))}
@@ -801,6 +817,8 @@ export function OperacaoComandaDetailPage() {
       <AdicionarItensOperacaoModal
         open={showAddItem}
         onClose={fecharAdicionarItens}
+        pontoVendaId={comanda?.pontoVendaId ?? ''}
+        tapsEnabled={contexto.tapsEnabled}
         produtos={produtos ?? []}
         linhas={carrinho}
         onSelecionar={adicionar}

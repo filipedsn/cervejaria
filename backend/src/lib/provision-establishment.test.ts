@@ -20,6 +20,19 @@ test('new provisioning materializes one explicit operation mode without physical
   assert.deepEqual(db.calls, ['tenant', 'owner', 'enablement']);
 });
 
+test('new basic provisioning leaves operational setup pending for the owner first access', async () => {
+  const db = tx();
+  const result = await provisionEstablishment(db, {
+    nome: 'Novo',
+    slug: 'novo',
+    dono: { nome: 'Dono', email: 'dono@x.test', senhaHash: 'hash' },
+  });
+  assert.deepEqual(db.calls, ['tenant', 'owner', 'enablement']);
+  assert.equal(result.configuracaoOperacional.setupCompletedAt, null);
+  assert.equal('plannedOperationsEnabled' in result.configuracaoOperacional, false);
+  assert.equal('tapsEnabled' in result.configuracaoOperacional, false);
+});
+
 test('legacy adapter confines mode mapping and legacy resources', () => {
   const legacy = adaptLegacyProvisioning({ cervejariaNome: 'Legado', donoNome: 'Dono', donoEmail: 'd@x.test', senhaHash: 'hash', moduloCervejaria: true, moduloOperacao: true, operacaoControlaEstoque: true, operacaoTemCozinha: false }, 'legado');
   assert.deepEqual(legacy.input.enablements, { plannedOperations: true, taps: true, inventory: true, kitchen: false });

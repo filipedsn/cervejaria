@@ -10,6 +10,7 @@ import { kitchenService } from '../services/kitchen-service.js';
 import { inventoryService } from '../services/inventory-service.js';
 import { resolverOpcionais } from './produto-opcionais.js';
 import { diaOperacional, proximoNumeroPedidoOperacao } from './operacao/venda.js';
+import { estornarEstoqueItemPedido } from './operacao/estoque.js';
 
 export const comandaDetailInclude = {
   cliente: true,
@@ -60,6 +61,18 @@ export async function recalcComandaTotalInTx(tx: Prisma.TransactionClient, coman
 
 function comandaItemsLockKey(comandaId: string) {
   return `comanda-items:${comandaId}`;
+}
+
+async function estoqueOperacionalHabilitado(tx: Prisma.TransactionClient, cervejariaId: string) {
+  const empresa = await tx.cervejaria.findUnique({
+    where: { id: cervejariaId },
+    select: {
+      configuracaoOperacional: { select: { inventoryEnabled: true } },
+      configuracaoOperacao: { select: { ativo: true, controlaEstoque: true } },
+    },
+  });
+  return empresa?.configuracaoOperacional?.inventoryEnabled
+    ?? Boolean(empresa?.configuracaoOperacao?.ativo && empresa.configuracaoOperacao.controlaEstoque);
 }
 
 export async function lockComandaItemsInTx(tx: Prisma.TransactionClient, comandaId: string) {
@@ -143,9 +156,23 @@ export async function addItemToComandaInTx(
   }
   if (!preco) return { error: 'Preço não encontrado para este volume' as const };
 
-  // EVENTO uses the same canonical capability boundaries as CAIXA.
-  const participaDaCozinha = kitchenService.participates(produto, 'EVENTO');
-  inventoryService.participates(produto, 'EVENTO');
+  // EVENTO uses the same canonical capability boundaries and stock ledger as CAIXA.
+  const participaDaCozinha = !isChope && kitchenService.participates(produto, 'EVENTO');
+  const controlaEstoque = Boolean(await estoqueOperacionalHabilitado(tx, cervejariaId)
+    && inventoryService.participates(produto, 'EVENTO'));
+  let pontoVendaId = comanda.pontoVendaId;
+  if (controlaEstoque && !pontoVendaId) {
+    const pontos = await tx.pontoVenda.findMany({
+      where: { cervejariaId, ativo: true },
+      select: { id: true },
+      take: 2,
+    });
+    if (pontos.length !== 1) {
+      return { error: 'Vincule esta comanda a um ponto de venda para controlar o estoque do evento' as const };
+    }
+    pontoVendaId = pontos[0]!.id;
+    await tx.comanda.update({ where: { id: comandaId }, data: { pontoVendaId } });
+  }
 
   const dia = diaOperacional();
   const pedidoCozinha = participaDaCozinha
@@ -153,7 +180,7 @@ export async function addItemToComandaInTx(
         data: {
           cervejariaId,
           comandaId,
-            pontoVendaId: null,
+            pontoVendaId,
             numero: await proximoNumeroPedidoOperacao(tx, cervejariaId, dia),
             diaOperacional: dia,
             criadoPorId: params.criadoPorId,
@@ -162,11 +189,14 @@ export async function addItemToComandaInTx(
         })
     : null;
 
-  let precoUnit = toNumber(preco.preco) + opcionais.reduce((sum, opcional) => sum + opcional.precoAdicional * opcional.quantidade, 0);
+  let precoUnit = toNumber(preco.preco);
   if (usaCardapio && evento?.cardapioId && isVendaUnitaria(produto.tipo, produto.formato) && !isChope) {
     const templatePreco = await resolvePrecoCardapioCervejaria(evento.cardapioId, item.produtoId);
     if (templatePreco !== null) precoUnit = templatePreco;
   }
+  // O preço do cardápio substitui apenas o preço-base do produto; opcionais
+  // continuam sendo adicionais em qualquer modo de operação.
+  precoUnit += opcionais.reduce((sum, opcional) => sum + opcional.precoAdicional * opcional.quantidade, 0);
 
   await tx.itemComanda.create({
     data: {
@@ -198,6 +228,30 @@ export async function addItemToComandaInTx(
         precoAdicional: opcional.precoAdicional,
         quantidade: opcional.quantidade,
       })),
+    });
+  }
+
+  if (controlaEstoque && pontoVendaId) {
+    await inventoryService.consumeSale(tx, {
+      context: 'EVENTO',
+      moduleEnabled: true,
+      cervejariaId,
+      pontoVendaId,
+      ...(pedidoCozinha ? { pedidoId: pedidoCozinha.id } : {}),
+      registradoPorId: params.criadoPorId,
+      items: [{
+        produtoId: produto.id,
+        tapId: isChope ? tapId : null,
+        volumeMl: item.volumeMl,
+        nome: produto.nome,
+        precoUnit,
+        quantidade: item.quantidade,
+        exigePreparo: participaDaCozinha,
+        controlaEstoque: produto.controlaEstoque,
+        paraViagem: item.paraViagem ?? false,
+        observacao: item.observacao?.trim() || null,
+        opcionais,
+      }],
     });
   }
 
@@ -258,9 +312,10 @@ export async function removeItemFromComandaInTx(
     itemId: string;
     cervejariaId: string;
     eventoId: string;
+    registradoPorId: string;
   },
 ) {
-  const { comandaId, itemId, cervejariaId, eventoId } = params;
+  const { comandaId, itemId, cervejariaId, eventoId, registradoPorId } = params;
 
   const comanda = await tx.comanda.findFirst({
     where: { id: comandaId, status: 'ABERTA', eventoId, evento: { cervejariaId } },
@@ -280,6 +335,21 @@ export async function removeItemFromComandaInTx(
       data: { cancelamentoPendenteEm: new Date() },
     });
   } else {
+    if (await estoqueOperacionalHabilitado(tx, cervejariaId) && item.produto?.controlaEstoque && comanda.pontoVendaId) {
+      await estornarEstoqueItemPedido(tx, {
+        moduloControlaEstoque: true,
+        cervejariaId,
+        pontoVendaId: comanda.pontoVendaId,
+        ...(item.pedidoCozinhaId ? { pedidoId: item.pedidoCozinhaId } : {}),
+        produtoId: item.produto.id,
+        nome: item.nome ?? item.produto.nome,
+        quantidade: item.quantidade,
+        controlaEstoque: item.produto.controlaEstoque,
+        tapId: item.tapId,
+        volumeMl: item.volumeMl,
+        registradoPorId,
+      });
+    }
     await tx.itemComanda.delete({ where: { id: itemId } });
   }
   await recalcComandaTotalInTx(tx, comandaId);
@@ -296,6 +366,7 @@ export async function removeItemFromComanda(params: {
   itemId: string;
   cervejariaId: string;
   eventoId: string;
+  registradoPorId: string;
 }) {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(abs(hashtext(${comandaItemsLockKey(params.comandaId)})))`;

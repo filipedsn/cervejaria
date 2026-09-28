@@ -4,12 +4,13 @@ import { getZonedParts } from '../event-datetime.js';
 import { toNumber } from '../utils.js';
 import { registrarHistoricoStatusPedido } from './cozinha.js';
 import { kitchenService } from '../../services/kitchen-service.js';
+import { isBebidaChopeOperacao } from '../produto-utils.js';
 
 /**
  * Erro de regra de venda. O statusCode faz o Fastify responder 400 com a
  * mensagem pronta para o operador, em vez de registrar falha do servidor.
  */
-import { mapPrecosCardapioOperacao } from '../cardapio-preco.js';
+import { cardapioProdutoVolumeKey, mapPrecosCardapioOperacao } from '../cardapio-preco.js';
 import { operacaoUsaCardapio } from '../cardapio-toggle.js';
 import { assertProdutoNoCardapioTurno } from './sessao-cardapio.js';
 import { resolverOpcionais, type OpcionalSelecionadoInput, type OpcionalResolvido } from '../produto-opcionais.js';
@@ -42,6 +43,8 @@ export function reais(valorEmCentavos: number): number {
 export interface ItemVendaInput {
   produtoId: string;
   quantidade: number;
+  tapId?: string;
+  volumeMl?: number;
   paraViagem?: boolean;
   observacao?: string;
   opcionais?: OpcionalSelecionadoInput[];
@@ -49,6 +52,8 @@ export interface ItemVendaInput {
 
 export interface ItemResolvido {
   produtoId: string;
+  tapId: string | null;
+  volumeMl: number;
   nome: string;
   precoUnit: number;
   quantidade: number;
@@ -65,6 +70,44 @@ export function itemVaiParaCozinha(temCozinha: boolean, exigePreparo: boolean): 
 
 type TxClient = Prisma.TransactionClient;
 
+async function validarChopeDoTurno(
+  tx: TxClient,
+  sessaoCaixaId: string,
+  trailerId: string | null | undefined,
+  produtos: Array<{ id: string; tipo: Prisma.ProdutoGetPayload<{}>['tipo']; formato: Prisma.ProdutoGetPayload<{}>['formato']; categoria: string | null; precos: Array<{ volumeMl: number }> }>,
+  itens: ItemVendaInput[],
+  tapsEnabled: boolean,
+) {
+  for (const linha of itens) {
+    const produto = produtos.find((item) => item.id === linha.produtoId)!;
+    const chope = isBebidaChopeOperacao(produto);
+    if (chope && !tapsEnabled) {
+      throw new VendaInvalidaError('A venda de chope por Tap está desativada nas configurações');
+    }
+    if (!chope) {
+      if (linha.tapId || linha.volumeMl) throw new VendaInvalidaError('Tap e volume sÃ³ podem ser informados para chope');
+      continue;
+    }
+    if (!linha.tapId || !linha.volumeMl) throw new VendaInvalidaError('Selecione o Tap e o volume do chope');
+    if (!trailerId) throw new VendaInvalidaError('Este turno nÃ£o possui trailer vinculado para vender chope');
+
+    const montagem = await tx.tapMontagem.findFirst({
+      where: {
+        sessaoCaixaId,
+        tapId: linha.tapId,
+        produtoId: produto.id,
+        encerradoEm: null,
+        tap: { trailerId, ativo: true },
+      },
+      select: { id: true },
+    });
+    if (!montagem) throw new VendaInvalidaError('Este chope nÃ£o estÃ¡ montado neste Tap para o turno');
+    if (!produto.precos.some((preco) => preco.volumeMl === linha.volumeMl)) {
+      throw new VendaInvalidaError('O volume selecionado nÃ£o possui preÃ§o cadastrado para este chope');
+    }
+  }
+}
+
 /**
  * Confere que os produtos sao da empresa e estao ativos, e copia nome e preco
  * para o item. Quantidades repetidas do mesmo produto viram uma linha so.
@@ -73,7 +116,7 @@ export async function resolverItens(
   tx: TxClient,
   cervejariaId: string,
   itens: ItemVendaInput[],
-  opts?: { sessaoCaixaId?: string },
+  opts?: { sessaoCaixaId?: string; tapsEnabled?: boolean },
 ): Promise<ItemResolvido[]> {
   if (itens.length === 0) throw new VendaInvalidaError('Inclua ao menos um item na venda');
 
@@ -88,7 +131,7 @@ export async function resolverItens(
   const ids = [...quantidadePorProduto.keys()];
   const produtos = await tx.produto.findMany({
     where: { id: { in: ids }, cervejariaId, ativo: true },
-    include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 } },
+    include: { precos: { orderBy: { volumeMl: 'asc' } } },
   });
 
   if (produtos.length !== ids.length) {
@@ -100,10 +143,10 @@ export async function resolverItens(
     if (usaCardapio) {
       const sessao = await tx.sessaoCaixaOperacao.findUnique({
         where: { id: opts.sessaoCaixaId },
-        select: { cardapioOperacaoId: true },
+        select: { cardapioId: true, trailerId: true },
       });
-      const precosTemplate = sessao?.cardapioOperacaoId
-        ? await mapPrecosCardapioOperacao(sessao.cardapioOperacaoId)
+      const precosTemplate = sessao?.cardapioId
+        ? await mapPrecosCardapioOperacao(sessao.cardapioId)
         : null;
 
       const overridesTurno = await tx.sessaoCaixaProdutoOperacao.findMany({
@@ -112,32 +155,44 @@ export async function resolverItens(
           produtoId: { in: ids },
           precoUnit: { not: null },
         },
-        select: { produtoId: true, precoUnit: true },
+        select: { produtoId: true, volumeMl: true, precoUnit: true },
       });
       const precosTurno = new Map(
-        overridesTurno.map((r) => [r.produtoId, toNumber(r.precoUnit!)]),
+        overridesTurno.map((r) => [cardapioProdutoVolumeKey(r.produtoId, r.volumeMl), toNumber(r.precoUnit!)]),
       );
 
-      for (const produto of produtos) {
-        const noCardapio = await assertProdutoNoCardapioTurno(opts.sessaoCaixaId, produto.id);
+      const produtoPorId = new Map(produtos.map((produto) => [produto.id, produto]));
+      for (const linha of itens) {
+        const produto = produtoPorId.get(linha.produtoId)!;
+        const volumeMenu = isBebidaChopeOperacao(produto) ? linha.volumeMl! : 0;
+        const noCardapio = await assertProdutoNoCardapioTurno(opts.sessaoCaixaId, produto.id, volumeMenu);
         if (!noCardapio) {
           throw new VendaInvalidaError('Este item não está no cardápio deste turno');
         }
       }
 
-      const produtoPorId = new Map(produtos.map((produto) => [produto.id, produto]));
+      await validarChopeDoTurno(tx, opts.sessaoCaixaId, sessao?.trailerId, produtos, itens, opts.tapsEnabled ?? false);
+
       return Promise.all(itens.map(async (linha) => {
         const produto = produtoPorId.get(linha.produtoId)!;
-        const precoTurno = precosTurno.get(produto.id);
-        const precoTemplate = precosTemplate?.get(produto.id);
+        const chope = isBebidaChopeOperacao(produto);
+        const volumeMenu = chope ? linha.volumeMl! : 0;
+        const precoKey = cardapioProdutoVolumeKey(produto.id, volumeMenu);
+        const precoTurno = precosTurno.get(precoKey);
+        const precoTemplate = precosTemplate?.get(precoKey);
         const opcionais = await resolverOpcionais(tx, produto.id, linha.opcionais);
-        const precoBase = precoTurno ?? precoTemplate ?? toNumber(produto.precos[0]?.preco ?? 0);
+        const precoCatalogo = chope
+          ? toNumber(produto.precos.find((preco) => preco.volumeMl === linha.volumeMl)?.preco ?? 0)
+          : toNumber(produto.precos[0]?.preco ?? 0);
+        const precoBase = precoTurno ?? precoTemplate ?? precoCatalogo;
         return {
           produtoId: produto.id,
+          tapId: chope ? linha.tapId! : null,
+          volumeMl: chope ? linha.volumeMl! : 0,
           nome: produto.nome,
           precoUnit: precoBase + opcionais.reduce((sum, opcional) => sum + opcional.precoAdicional * opcional.quantidade, 0),
           quantidade: linha.quantidade,
-          exigePreparo: produto.exigePreparo,
+          exigePreparo: chope ? false : produto.exigePreparo,
           controlaEstoque: produto.controlaEstoque,
           paraViagem: linha.paraViagem ?? false,
           observacao: linha.observacao?.trim() || null,
@@ -147,16 +202,30 @@ export async function resolverItens(
     }
   }
 
+  if (opts?.sessaoCaixaId) {
+    const sessao = await tx.sessaoCaixaOperacao.findUnique({
+      where: { id: opts.sessaoCaixaId },
+      select: { trailerId: true },
+    });
+    await validarChopeDoTurno(tx, opts.sessaoCaixaId, sessao?.trailerId, produtos, itens, opts.tapsEnabled ?? false);
+  }
+
   const produtoPorId = new Map(produtos.map((produto) => [produto.id, produto]));
   return Promise.all(itens.map(async (linha) => {
     const produto = produtoPorId.get(linha.produtoId)!;
+    const chope = isBebidaChopeOperacao(produto);
+    const precoBase = chope
+      ? toNumber(produto.precos.find((preco) => preco.volumeMl === linha.volumeMl)?.preco ?? 0)
+      : toNumber(produto.precos[0]?.preco ?? 0);
     const opcionais = await resolverOpcionais(tx, produto.id, linha.opcionais);
     return {
       produtoId: produto.id,
+      tapId: chope ? linha.tapId! : null,
+      volumeMl: chope ? linha.volumeMl! : 0,
       nome: produto.nome,
-      precoUnit: toNumber(produto.precos[0]?.preco ?? 0) + opcionais.reduce((sum, opcional) => sum + opcional.precoAdicional * opcional.quantidade, 0),
+      precoUnit: precoBase + opcionais.reduce((sum, opcional) => sum + opcional.precoAdicional * opcional.quantidade, 0),
       quantidade: linha.quantidade,
-      exigePreparo: produto.exigePreparo,
+      exigePreparo: chope ? false : produto.exigePreparo,
       controlaEstoque: produto.controlaEstoque,
       paraViagem: linha.paraViagem ?? false,
       observacao: linha.observacao?.trim() || null,
@@ -231,10 +300,11 @@ export async function criarPedido(
 
   const itensCriados = [] as Array<{ id: string }>;
   for (const item of params.itens) {
-    const criado = await tx.itemComanda.create({ data: {
+      const criado = await tx.itemComanda.create({ data: {
       comandaId: params.comandaId,
       produtoId: item.produtoId,
-      volumeMl: 0,
+      tapId: item.tapId,
+      volumeMl: item.volumeMl,
       quantidade: item.quantidade,
       precoUnit: item.precoUnit,
       nome: item.nome,
@@ -302,8 +372,10 @@ export function calcularFinanceiroComanda(params: {
   const itensConsumidos = [
     ...params.itensSemPedido.filter((item) => !item.pedidoCozinhaId && ativos(item)),
     ...params.pedidos
-      .filter((pedido) => pedido.status === 'ENTREGUE' || !pedido.itens.some((item) => item.exigePreparo))
-      .flatMap((pedido) => pedido.itens.filter(ativos)),
+      .filter((pedido) => !['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(pedido.status))
+      .flatMap((pedido) => pedido.itens.filter((item) =>
+        ativos(item) && (!item.exigePreparo || pedido.status === 'ENTREGUE'),
+      )),
   ];
   const subtotal = totalEmCentavos(itensConsumidos);
   const valorEmAberto = params.status === 'ABERTA'
@@ -312,7 +384,7 @@ export function calcularFinanceiroComanda(params: {
         !['ENTREGUE', 'CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(pedido.status) &&
         pedido.itens.some((item) => item.exigePreparo),
       )
-      .reduce((soma, pedido) => soma + totalEmCentavos(pedido.itens.filter(ativos)), 0)
+      .reduce((soma, pedido) => soma + totalEmCentavos(pedido.itens.filter((item) => item.exigePreparo && ativos(item))), 0)
     : 0;
   const desconto = centavos(params.desconto ?? 0);
   const total = params.status === 'ABERTA'

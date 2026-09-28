@@ -75,7 +75,6 @@ export async function atualizarCapacidadesOperacao(
       exclusivo: true,
       controlaEstoque: true,
       temCozinha: true,
-      usaCardapio: true,
       quantidadeMesas: true,
     },
   });
@@ -101,7 +100,6 @@ export async function atualizarCapacidadesOperacao(
       exclusivo: false,
       controlaEstoque: atualEstoque,
       temCozinha: atualCozinha,
-      usaCardapio: false,
       quantidadeMesas: 0,
     };
   }
@@ -127,7 +125,6 @@ export async function atualizarCapacidadesOperacao(
         exclusivo: false,
         controlaEstoque: input.controlaEstoque ?? atualEstoque,
         temCozinha: input.temCozinha ?? atualCozinha,
-        usaCardapio: false,
         quantidadeMesas: 0,
       };
 

@@ -174,7 +174,6 @@ model Cervejaria {
   configuracaoOperacao ConfiguracaoOperacao?
   configuracaoOperacional ConfiguracaoOperacional?
   pontosVenda          PontoVenda[]
-  cardapiosOperacao    CardapioOperacao[]
   pedidosOperacao      PedidoOperacao[]
   sessoesCaixaOperacao SessaoCaixaOperacao[]
    saldosEstoqueOperacao InventoryBalance[]
@@ -187,6 +186,7 @@ model Cervejaria {
 /// durante a migração; recursos físicos continuam sendo responsabilidade de readiness.
 model ConfiguracaoOperacional {
   cervejariaId              String   @id
+  setupCompletedAt          DateTime?
   directSalesEnabled        Boolean?
   plannedOperationsEnabled  Boolean?
   tapsEnabled               Boolean?
@@ -214,6 +214,7 @@ model Trailer {
   cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   taps       Tap[]
   eventos    Evento[]
+  sessoesCaixaOperacao SessaoCaixaOperacao[]
 
   @@index([cervejariaId])
 
@@ -306,7 +307,6 @@ model Produto {
   pedidoItens PedidoClienteItem[]
   eventos    EventoProduto[]
   cardapios  CardapioProduto[]
-  cardapiosOperacao CardapioOperacaoProduto[]
   gruposOpcionais ProdutoOpcionalGrupo[]
   opcionaisVinculados ProdutoOpcionalVinculo[]
   opcionaisEstoque ProdutoOpcional[] @relation("ProdutoOpcionalEstoque")
@@ -439,16 +439,20 @@ model TapMontagem {
   id          String    @id @default(cuid())
   tapId       String
   produtoId   String
-  eventoId    String
+  eventoId    String?
+  sessaoCaixaId String?
   iniciadoEm  DateTime  @default(now())
   encerradoEm DateTime?
 
   tap     Tap     @relation(fields: [tapId], references: [id], onDelete: Cascade)
   produto Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict)
-  evento  Evento  @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  evento  Evento? @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  sessaoCaixa SessaoCaixaOperacao? @relation(fields: [sessaoCaixaId], references: [id], onDelete: Cascade)
 
   @@index([eventoId, encerradoEm])
+  @@index([sessaoCaixaId, encerradoEm])
   @@index([tapId, eventoId])
+  @@index([tapId, sessaoCaixaId])
 
   @@schema("public")
 }
@@ -519,11 +523,13 @@ model EventoSerieExclusao {
   @@schema("public")
 }
 
-/// Cardápio reutilizável (comida e bebidas, sem chope).
+/// Cardápio reutilizável entre eventos e turnos de caixa.
 model Cardapio {
   id           String   @id @default(cuid())
   nome         String
   ativo        Boolean  @default(true)
+  /// Indica que a composição operacional escolhe os volumes de chope explicitamente.
+  chopeVolumesConfigurados Boolean @default(false)
   cervejariaId String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -531,6 +537,7 @@ model Cardapio {
   cervejaria Cervejaria       @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   produtos   CardapioProduto[]
   eventos    Evento[]
+  sessoesCaixaOperacao SessaoCaixaOperacao[]
 
   @@index([cervejariaId])
 
@@ -541,12 +548,14 @@ model CardapioProduto {
   id         String  @id @default(cuid())
   cardapioId String
   produtoId  String
+  /// 0 para produtos unitários; chopes usam um registro por volume vendido.
+  volumeMl   Int     @default(0)
   precoUnit  Decimal @db.Decimal(10, 2)
 
   cardapio Cardapio @relation(fields: [cardapioId], references: [id], onDelete: Cascade)
   produto  Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 
-  @@unique([cardapioId, produtoId])
+  @@unique([cardapioId, produtoId, volumeMl])
   @@index([cardapioId])
 
   @@schema("public")
@@ -838,7 +847,6 @@ model ConfiguracaoOperacao {
   /// de nenhuma coluna nova no schema public.
   exclusivo       Boolean  @default(false)
   /// Cardápios com preço por turno (ligado) ou só catálogo tradicional (desligado).
-  usaCardapio     Boolean  @default(false)
   quantidadeMesas Int      @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -872,38 +880,6 @@ model PontoVenda {
 }
 
 /// Templates reutilizaveis de cardapio do quiosque (espelha Cardapio da cervejaria).
-model CardapioOperacao {
-  id           String   @id @default(cuid())
-  nome         String
-  ativo        Boolean  @default(true)
-  cervejariaId String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  cervejaria Cervejaria                @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
-  produtos   CardapioOperacaoProduto[]
-  sessoes    SessaoCaixaOperacao[]
-
-  @@index([cervejariaId])
-  @@schema("quiosque")
-  @@map("CardapioQuiosque")
-}
-
-model CardapioOperacaoProduto {
-  id                String  @id @default(cuid())
-  cardapioId        String
-  produtoId         String
-  precoUnit         Decimal @db.Decimal(10, 2)
-
-  cardapio CardapioOperacao @relation(fields: [cardapioId], references: [id], onDelete: Cascade)
-  produto  Produto         @relation(fields: [produtoId], references: [id], onDelete: Cascade)
-
-  @@unique([cardapioId, produtoId])
-  @@index([cardapioId])
-  @@schema("quiosque")
-  @@map("CardapioQuiosqueProduto")
-}
-
 enum StatusPedidoOperacao {
   RECEBIDO
   EM_PREPARO
@@ -995,6 +971,7 @@ model SessaoCaixaOperacao {
   id             String              @id @default(cuid())
   cervejariaId   String
   pontoVendaId   String
+  trailerId      String?
   diaOperacional DateTime            @db.Date
   status         StatusCaixaOperacao @default(ABERTO)
   trocoInicial   Decimal             @db.Decimal(10, 2)
@@ -1009,17 +986,20 @@ model SessaoCaixaOperacao {
   contadoCartaoCredito Decimal? @db.Decimal(10, 2)
   observacaoFechamento String?
   /// Template usado na abertura do turno (referencia historica).
-  cardapioOperacaoId   String? @map("cardapioQuiosqueId")
+  cardapioId      String?
 
   cervejaria  Cervejaria               @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   pontoVenda  PontoVenda               @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
-  cardapio    CardapioOperacao?        @relation(fields: [cardapioOperacaoId], references: [id], onDelete: SetNull)
+  trailer     Trailer?                 @relation(fields: [trailerId], references: [id], onDelete: SetNull)
+  cardapio    Cardapio?                @relation(fields: [cardapioId], references: [id], onDelete: SetNull)
   movimentos  MovimentoCaixaOperacao[]
   produtos    SessaoCaixaProdutoOperacao[]
+  montagensTaps TapMontagem[]
 
   @@index([pontoVendaId, diaOperacional, status])
   @@index([cervejariaId, diaOperacional])
-  @@index([cardapioOperacaoId])
+  @@index([trailerId])
+  @@index([cardapioId])
   @@schema("quiosque")
   @@map("SessaoCaixaQuiosque")
 }
@@ -1029,6 +1009,8 @@ model SessaoCaixaProdutoOperacao {
   id               String   @id @default(cuid())
   sessaoCaixaId    String
   produtoId        String
+  /// 0 para produtos unitários/legados; chopes usam uma linha por volume.
+  volumeMl         Int      @default(0)
   /// Override só deste turno; null herda template (ou catálogo).
   precoUnit        Decimal? @db.Decimal(10, 2)
   createdAt        DateTime @default(now())
@@ -1036,7 +1018,7 @@ model SessaoCaixaProdutoOperacao {
   sessao  SessaoCaixaOperacao @relation(fields: [sessaoCaixaId], references: [id], onDelete: Cascade)
   produto Produto              @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 
-  @@unique([sessaoCaixaId, produtoId])
+  @@unique([sessaoCaixaId, produtoId, volumeMl])
   @@index([sessaoCaixaId])
   @@schema("quiosque")
   @@map("SessaoCaixaProdutoQuiosque")
@@ -1088,9 +1070,10 @@ model InventoryBalance {
   cervejariaId String
   pontoVendaId String
   produtoId    String
-  quantidade   Int      @default(0)
-  /// Alerta opcional por produto e ponto de venda; nao bloqueia vendas.
-  estoqueMinimo Int?
+  /// Saldo em litros para chope; em unidades para os demais produtos.
+  quantidade   Decimal  @default(0) @db.Decimal(12, 3)
+  /// Alerta opcional na mesma unidade do saldo; nao bloqueia vendas.
+  estoqueMinimo Decimal? @db.Decimal(12, 3)
   updatedAt    DateTime @updatedAt
 
   cervejaria Cervejaria     @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
@@ -1109,7 +1092,8 @@ model InventoryMovement {
   pontoVendaId    String
   produtoId       String
   tipo            TipoMovimentoEstoqueOperacao
-  quantidade      Int
+  /// Volume em litros para chope; em unidades para os demais produtos.
+  quantidade      Decimal @db.Decimal(12, 3)
   observacao      String?
   registradoPorId String
   pedidoId        String?

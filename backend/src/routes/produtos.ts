@@ -181,6 +181,12 @@ export async function produtosRoutes(app: FastifyInstance) {
 
     const tipo = body.tipo ?? existing.tipo;
     const formato = tipo === 'BEBIDA' ? (body.formato ?? existing.formato ?? 'CHOPE') : null;
+    if (tipo !== existing.tipo || formato !== existing.formato) {
+      const vendasHistoricas = await prisma.itemComanda.count({ where: { produtoId: id } });
+      if (vendasHistoricas > 0) {
+        return reply.status(409).send({ error: 'Tipo/formato não pode ser alterado após vendas para preservar ranking e histórico de consumo' });
+      }
+    }
 
     const produto = await prisma.$transaction(async (tx) => {
       if (body.precos) {

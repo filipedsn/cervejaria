@@ -88,6 +88,8 @@ const pedidoPdvSchema = z.object({
   itens: z.array(z.object({
     produtoId: z.string().min(1),
     quantidade: z.number().int().positive().max(999),
+    tapId: z.string().min(1).optional(),
+    volumeMl: z.number().int().positive().optional(),
     paraViagem: z.boolean().default(false),
     observacao: z.string().trim().max(280).optional(),
     opcionais: z.array(z.object({ opcionalId: z.string().min(1), quantidade: z.number().int().positive().max(99).optional() })).optional(),
@@ -403,6 +405,7 @@ export async function publicRoutes(app: FastifyInstance) {
     return {
       ordemCategorias: normalizarOrdemCategoriasProduto(
         cervejaria?.operacaoCategoriasOrdem ?? CATEGORIAS_PRODUTO_OPERACAO,
+        true,
       ),
     };
   });
@@ -432,7 +435,10 @@ export async function publicRoutes(app: FastifyInstance) {
         where: { ...whereComandaOperacao(session.cervejariaId, { id: session.comandaId, status: 'ABERTA' }), clienteId: session.clienteId },
       });
       if (!comanda) throw Object.assign(new Error('Esta comanda já foi fechada'), { statusCode: 409 });
-      const itens = await resolverItens(tx, session.cervejariaId, body.itens, { sessaoCaixaId: sessao.id });
+      const itens = await resolverItens(tx, session.cervejariaId, body.itens, {
+        sessaoCaixaId: sessao.id,
+        tapsEnabled: profile?.capabilities.taps ?? false,
+      });
       const pedido = await criarPedido(tx, {
         cervejariaId: session.cervejariaId,
         comandaId: session.comandaId,

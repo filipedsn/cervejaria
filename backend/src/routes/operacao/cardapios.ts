@@ -13,6 +13,7 @@ import { operacaoUsaCardapio } from '../../lib/cardapio-toggle.js';
 
 const itemCardapioSchema = z.object({
   produtoId: z.string().min(1),
+  volumeMl: z.number().int().nonnegative().optional(),
   precoUnit: z.number().positive(),
 });
 
@@ -97,12 +98,12 @@ export async function cardapiosOperacaoRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const { ativo } = z.object({ ativo: z.boolean() }).parse(request.body);
 
-    const existing = await prisma.cardapioOperacao.findFirst({
+    const existing = await prisma.cardapio.findFirst({
       where: { id, cervejariaId },
     });
     if (!existing) return reply.status(404).send({ error: 'Cardápio não encontrado' });
 
-    await prisma.cardapioOperacao.update({ where: { id }, data: { ativo } });
+    await prisma.cardapio.update({ where: { id }, data: { ativo } });
     const updated = await getCardapioOperacaoById(id, cervejariaId);
     return updated;
   });
@@ -111,12 +112,12 @@ export async function cardapiosOperacaoRoutes(app: FastifyInstance) {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
 
-    const existing = await prisma.cardapioOperacao.findFirst({
+    const existing = await prisma.cardapio.findFirst({
       where: { id, cervejariaId },
     });
     if (!existing) return reply.status(404).send({ error: 'Cardápio não encontrado' });
 
-    await prisma.cardapioOperacao.delete({ where: { id } });
+    await prisma.cardapio.delete({ where: { id } });
     return reply.status(204).send();
   });
 }

@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
-import { isBebidaChope } from './produto-utils.js';
+import { isBebidaChopeOperacao, isChopeConfiguravelNaTapOperacao } from './produto-utils.js';
 import { ensureDefaultTaps } from './trailer-defaults.js';
 
 const produtoInclude = {
@@ -85,6 +85,31 @@ export async function inicializarMontagemEvento(eventoId: string, trailerId: str
   return { criados: toCreate.length };
 }
 
+/** Cria a montagem inicial dos taps para uma sessao de caixa vinculada ao trailer. */
+export async function inicializarMontagemSessaoCaixa(sessaoCaixaId: string, trailerId: string) {
+  const [taps, montagensAtivas] = await Promise.all([
+    loadTapsDoTrailer(trailerId, { apenasAtivos: true }),
+    prisma.tapMontagem.findMany({
+      where: { sessaoCaixaId, encerradoEm: null },
+      select: { tapId: true },
+    }),
+  ]);
+
+  const montados = new Set(montagensAtivas.map((m) => m.tapId));
+  const toCreate = taps.filter((t) => t.produtoId && !montados.has(t.id));
+  if (toCreate.length === 0) return { criados: 0 };
+
+  await prisma.tapMontagem.createMany({
+    data: toCreate.map((t) => ({
+      tapId: t.id,
+      produtoId: t.produtoId!,
+      sessaoCaixaId,
+    })),
+  });
+
+  return { criados: toCreate.length };
+}
+
 export async function ensureMontagemEvento(eventoId: string, trailerId: string, cervejariaId?: string) {
   if (cervejariaId) {
     await ensureDefaultTaps(trailerId, cervejariaId);
@@ -108,6 +133,19 @@ export async function listTapsComChopeAtual(eventoId: string, trailerId: string)
 
   const montagemPorTap = new Map(montagensAtivas.map((m) => [m.tapId, m]));
 
+  return taps.map((tap) => mapTapComChope(tap, montagemPorTap.get(tap.id), 'evento'));
+}
+
+export async function listTapsComChopeAtualSessaoCaixa(sessaoCaixaId: string, trailerId: string) {
+  const [taps, montagensAtivas] = await Promise.all([
+    loadTapsDoTrailer(trailerId, { apenasAtivos: false }),
+    prisma.tapMontagem.findMany({
+      where: { sessaoCaixaId, encerradoEm: null },
+      include: { produto: produtoInclude },
+    }),
+  ]);
+
+  const montagemPorTap = new Map(montagensAtivas.map((m) => [m.tapId, m]));
   return taps.map((tap) => mapTapComChope(tap, montagemPorTap.get(tap.id), 'evento'));
 }
 
@@ -137,7 +175,7 @@ export async function posicionarChopeNoTap(params: {
     where: { id: produtoId, cervejariaId, ativo: true },
   });
   if (!produto) return { error: 'Chope inválido' as const };
-  if (!isBebidaChope(produto.tipo, produto.formato)) {
+  if (!isChopeConfiguravelNaTapOperacao(produto)) {
     return { error: 'Apenas chope pode ser posicionado no tap' as const };
   }
 
@@ -155,6 +193,60 @@ export async function posicionarChopeNoTap(params: {
 
     await tx.tapMontagem.create({
       data: { tapId, produtoId, eventoId },
+    });
+  });
+
+  return {
+    ok: true as const,
+    tapNumero: tap.numero,
+    chopeAnterior: chopeAnterior?.produto.nome ?? tap.produto?.nome ?? null,
+    chopeNovo: produto.nome,
+  };
+}
+
+export async function posicionarChopeNoTurno(params: {
+  sessaoCaixaId: string;
+  trailerId: string;
+  tapId: string;
+  produtoId: string;
+  cervejariaId: string;
+}) {
+  const { sessaoCaixaId, trailerId, tapId, produtoId, cervejariaId } = params;
+
+  const sessao = await prisma.sessaoCaixaOperacao.findFirst({
+    where: { id: sessaoCaixaId, cervejariaId, trailerId, status: 'ABERTO' },
+    select: { id: true },
+  });
+  if (!sessao) return { error: 'Turno de caixa não encontrado ou sem trailer vinculado' as const };
+
+  const tap = await prisma.tap.findFirst({
+    where: { id: tapId, trailerId, cervejariaId, ativo: true },
+    include: { produto: { select: { id: true, nome: true } } },
+  });
+  if (!tap) return { error: 'Tap não encontrado' as const };
+
+  const produto = await prisma.produto.findFirst({
+    where: { id: produtoId, cervejariaId, ativo: true },
+    include: { precos: { select: { volumeMl: true } } },
+  });
+  if (!produto) return { error: 'Chope inválido' as const };
+  if (!isChopeConfiguravelNaTapOperacao(produto)) {
+    return { error: 'Apenas chope pode ser posicionado no Tap' as const };
+  }
+
+  const now = new Date();
+  const chopeAnterior = await prisma.tapMontagem.findFirst({
+    where: { sessaoCaixaId, tapId, encerradoEm: null },
+    include: { produto: { select: { nome: true } } },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.tapMontagem.updateMany({
+      where: { sessaoCaixaId, tapId, encerradoEm: null },
+      data: { encerradoEm: now },
+    });
+    await tx.tapMontagem.create({
+      data: { tapId, produtoId, sessaoCaixaId },
     });
   });
 
@@ -186,6 +278,33 @@ export async function removerChopeDoTap(params: {
   });
 
   if (updated.count === 0) return { error: 'Este tap não possui chope montado no evento' as const };
+  return { ok: true as const, tapNumero: tap.numero };
+}
+
+export async function removerChopeDoTurno(params: {
+  sessaoCaixaId: string;
+  trailerId: string;
+  tapId: string;
+  cervejariaId: string;
+}) {
+  const { sessaoCaixaId, trailerId, tapId, cervejariaId } = params;
+  const sessao = await prisma.sessaoCaixaOperacao.findFirst({
+    where: { id: sessaoCaixaId, cervejariaId, trailerId, status: 'ABERTO' },
+    select: { id: true },
+  });
+  if (!sessao) return { error: 'Turno de caixa não encontrado ou sem trailer vinculado' as const };
+
+  const tap = await prisma.tap.findFirst({
+    where: { id: tapId, trailerId, cervejariaId },
+    select: { numero: true },
+  });
+  if (!tap) return { error: 'Tap não encontrado' as const };
+
+  const updated = await prisma.tapMontagem.updateMany({
+    where: { sessaoCaixaId, tapId, encerradoEm: null },
+    data: { encerradoEm: new Date() },
+  });
+  if (updated.count === 0) return { error: 'Este Tap não possui chope montado no turno' as const };
   return { ok: true as const, tapNumero: tap.numero };
 }
 

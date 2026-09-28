@@ -1082,6 +1082,24 @@ button[title="Excluir"].icon-btn-danger {
   transition: background-color 0.15s, border-color 0.15s;
 }
 
+.cozinha-tv-fullscreen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--ranking-border);
+  background: var(--ranking-surface-elevated);
+  color: var(--ranking-text-primary);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.cozinha-tv-fullscreen:hover {
+  background: var(--ranking-surface-lighter);
+  border-color: var(--ranking-border-strong);
+}
+
 .cozinha-tv-bell-off {
   background: var(--ranking-surface-elevated);
   color: var(--ranking-text-muted);
@@ -1623,6 +1641,11 @@ button[title="Excluir"].icon-btn-danger {
   }
 
   .cozinha-tv-bell {
+    width: 2.4rem;
+    height: 2.4rem;
+  }
+
+  .cozinha-tv-fullscreen {
     width: 2.4rem;
     height: 2.4rem;
   }

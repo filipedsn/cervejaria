@@ -140,6 +140,8 @@ export async function removeItemFromComandaOperacao(params: {
         nome: itemAtual.nome ?? itemAtual.produto.nome,
         quantidade: itemAtual.quantidade,
         controlaEstoque: itemAtual.produto.controlaEstoque,
+        tapId: itemAtual.tapId,
+        volumeMl: itemAtual.volumeMl,
         registradoPorId: params.registradoPorId,
         opcionais: itemAtual.opcionais.map((o) => ({ produtoEstoqueId: o.opcional?.produtoEstoqueId ?? null, quantidade: o.quantidade })),
       });
@@ -313,6 +315,8 @@ export async function updateItemQuantidadeComandaOperacao(params: {
             nome: itemAtual.nome ?? itemAtual.produto.nome,
             quantidade: deltaAtual,
             controlaEstoque: itemAtual.produto.controlaEstoque,
+            tapId: itemAtual.tapId,
+            volumeMl: itemAtual.volumeMl,
             registradoPorId: params.registradoPorId,
             opcionais: itemAtual.opcionais.map((o) => ({ produtoEstoqueId: o.opcional?.produtoEstoqueId ?? null, quantidade: o.quantidade })),
           });
@@ -326,6 +330,8 @@ export async function updateItemQuantidadeComandaOperacao(params: {
             nome: itemAtual.nome ?? itemAtual.produto.nome,
             quantidade: -deltaAtual,
             controlaEstoque: itemAtual.produto.controlaEstoque,
+            tapId: itemAtual.tapId,
+            volumeMl: itemAtual.volumeMl,
             registradoPorId: params.registradoPorId,
             opcionais: itemAtual.opcionais.map((o) => ({ produtoEstoqueId: o.opcional?.produtoEstoqueId ?? null, quantidade: o.quantidade })),
           });

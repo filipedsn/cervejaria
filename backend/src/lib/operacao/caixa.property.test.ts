@@ -6,6 +6,7 @@ import {
   calcularEsperadoDinheiroGaveta,
   planoCorrecaoMovimento,
   resolveCashRegisterCapability,
+  totalPendenteContasReceber,
   totaisMovimentos,
   totaisPorForma,
 } from './caixa.js';
@@ -18,6 +19,14 @@ function roundMoney(n: number): number {
 }
 
 describe('caixa operacao (property-based)', () => {
+  it('calcula somente o saldo ainda não recebido das contas originadas no turno', () => {
+    assert.equal(totalPendenteContasReceber([
+      { valorOriginal: 70, pagamentos: [{ valor: 25 }] },
+      { valorOriginal: 30, pagamentos: [{ valor: 30 }] },
+      { valorOriginal: 10, pagamentos: [{ valor: 12 }] },
+    ]), 45);
+  });
+
   it('resolve a capacidade por unidade: explícito vence fallback, NULL preserva legado', () => {
     assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: true, operationMode: 'CAIXA' }), true);
     assert.equal(resolveCashRegisterCapability({ pontoVendaAtivo: true, operationMode: 'EVENTO' }), false);

@@ -11,6 +11,7 @@ import {
 import { operacaoUsaCardapio } from '../cardapio-toggle.js';
 import { verifyPassword } from '../utils.js';
 import { getOperationalProfile } from '../operational-profile.js';
+import { inicializarMontagemSessaoCaixa } from '../tap-montagem.js';
 
 export class CaixaInvalidoError extends Error {
   statusCode = 400;
@@ -118,6 +119,16 @@ export function totaisPorForma(pagamentos: Array<{ forma: PaymentMethod; valor: 
     cartaoCredito: reais(centavosPorForma.CARTAO_CREDITO),
     totalVendas: reais(somaCentavos(Object.values(centavosPorForma))),
   };
+}
+
+export function totalPendenteContasReceber(
+  contas: Array<{ valorOriginal: unknown; pagamentos: Array<{ valor: unknown }> }>,
+): number {
+  const saldoTotal = contas.reduce((total, conta) => {
+    const recebido = conta.pagamentos.reduce((soma, pagamento) => soma + centavos(pagamento.valor), 0);
+    return total + Math.max(0, centavos(conta.valorOriginal) - recebido);
+  }, 0);
+  return reais(saldoTotal);
 }
 
 export function totaisMovimentos(movimentos: Array<{ tipo: 'SANGRIA' | 'SUPRIMENTO'; valor: unknown }>) {
@@ -249,8 +260,27 @@ export async function montarResumoCaixa(
   sessao: SessaoCompleta,
   cervejariaId: string,
 ) {
-  const pagamentos = await pagamentosDaSessao(sessao, cervejariaId);
+  const [pagamentos, contasPendentes] = await Promise.all([
+    pagamentosDaSessao(sessao, cervejariaId),
+    prisma.contaReceber.findMany({
+      where: {
+        comanda: {
+          origem: 'CAIXA',
+          pontoVendaId: sessao.pontoVendaId,
+          pontoVenda: { cervejariaId },
+          diaOperacional: sessao.diaOperacional,
+          status: 'FECHADA',
+          fechadaEm: {
+            gte: sessao.abertoEm,
+            ...(sessao.status === 'FECHADO' && sessao.fechadoEm ? { lte: sessao.fechadoEm } : {}),
+          },
+        },
+      },
+      select: { valorOriginal: true, pagamentos: { select: { valor: true } } },
+    }),
+  ]);
   const esperado = totaisPorForma(pagamentos);
+  const pendente = totalPendenteContasReceber(contasPendentes);
   const { sangrias, suprimentos } = totaisMovimentos(sessao.movimentos);
   const trocoInicial = toNumber(sessao.trocoInicial);
   const esperadoDinheiro = calcularEsperadoDinheiroGaveta({
@@ -287,6 +317,7 @@ export async function montarResumoCaixa(
   return {
     id: sessao.id,
     pontoVendaId: sessao.pontoVendaId,
+    trailerId: sessao.trailerId,
     diaOperacional: sessao.diaOperacional,
     status: sessao.status,
     trocoInicial,
@@ -295,6 +326,7 @@ export async function montarResumoCaixa(
     fechadoPorId: sessao.fechadoPorId,
     fechadoEm: sessao.fechadoEm,
     observacaoFechamento: sessao.observacaoFechamento,
+    pendente,
     gaveta: {
       trocoInicial,
       entradasDinheiro: esperado.dinheiro,
@@ -325,6 +357,8 @@ export async function montarResumoCaixa(
 export async function abrirCaixa(params: {
   cervejariaId: string;
   pontoVendaId: string;
+  trailerId?: string;
+  tapsEnabled?: boolean;
   trocoInicial: number;
   abertoPorId: string;
   cardapioId?: string;
@@ -335,6 +369,32 @@ export async function abrirCaixa(params: {
   }
 
   await assertCashRegisterUnitEnabled(params.cervejariaId, params.pontoVendaId);
+
+  if (params.trailerId && !params.tapsEnabled) {
+    throw new CaixaInvalidoError('O submódulo de Tap/Chope está desativado nas configurações');
+  }
+  const trailersAtivos = params.tapsEnabled
+    ? await prisma.trailer.findMany({
+        where: { cervejariaId: params.cervejariaId, ativo: true },
+        select: { id: true },
+        take: 2,
+      })
+    : [];
+  const trailerId = params.tapsEnabled
+    ? params.trailerId ?? (trailersAtivos.length === 1 ? trailersAtivos[0]?.id : undefined)
+    : undefined;
+
+  if (params.tapsEnabled && trailersAtivos.length > 1 && !trailerId) {
+    throw new CaixaInvalidoError('Selecione o trailer que será usado neste turno');
+  }
+
+  if (trailerId) {
+    const trailer = await prisma.trailer.findFirst({
+      where: { id: trailerId, cervejariaId: params.cervejariaId, ativo: true },
+      select: { id: true },
+    });
+    if (!trailer) throw new CaixaInvalidoError('Trailer não encontrado ou inativo');
+  }
 
   const dia = diaOperacional();
   const aberta = await buscarSessaoAtual(params.cervejariaId, params.pontoVendaId, dia);
@@ -352,6 +412,7 @@ export async function abrirCaixa(params: {
       where: {
         cervejariaId: params.cervejariaId,
         pontoVendaId: params.pontoVendaId,
+        trailerId: trailerId ?? null,
         diaOperacional: dia,
         status: 'ABERTO',
       },
@@ -363,10 +424,11 @@ export async function abrirCaixa(params: {
       data: {
         cervejariaId: params.cervejariaId,
         pontoVendaId: params.pontoVendaId,
+        trailerId: trailerId ?? null,
         diaOperacional: dia,
         trocoInicial: params.trocoInicial,
         abertoPorId: params.abertoPorId,
-        cardapioOperacaoId: cardapioId ?? null,
+        cardapioId: cardapioId ?? null,
       },
       include: { movimentos: true },
     });
@@ -382,6 +444,9 @@ export async function abrirCaixa(params: {
   // Um cardápio salvo vazio (ou uma seleção manual vazia) deve continuar vazio.
   if (!cardapioId && !produtoIds?.length) {
     await aplicarCardapioCatalogoSeVazio(sessao.id, params.cervejariaId);
+  }
+  if (trailerId) {
+    await inicializarMontagemSessaoCaixa(sessao.id, trailerId);
   }
 
   return montarResumoCaixa(sessao, params.cervejariaId);
@@ -600,31 +665,119 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
       status: 'FECHADA',
       fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm },
     },
-    include: { itens: true },
+    include: {
+      cliente: { select: { id: true, nome: true } },
+      contaReceber: {
+        include: {
+          cliente: { select: { id: true, nome: true } },
+          pagamentos: { select: { forma: true, valor: true, pagoEm: true, sessaoCaixaId: true }, orderBy: { pagoEm: 'asc' } },
+        },
+      },
+      itens: {
+        include: {
+          produto: { select: { categoria: true } },
+        },
+      },
+    },
   });
   const comandasAtendidas = comandas.length;
   const vendasTotal = comandas.reduce((soma, comanda) => soma + toNumber(comanda.total), 0);
 
   const porProduto = new Map<
     string,
-    { produtoId: string; nome: string; quantidade: number; receita: number }
+    { produtoId: string; nome: string; categoria: string; volumeMl: number; quantidade: number; receita: number }
   >();
+  const porCliente = new Map<string, { clienteId: string; nome: string; comandas: number; consumo: number }>();
+  const contasReceber: Array<{
+    contaReceberId: string;
+    comandaNumero: number | null;
+    identificador: string | null;
+    clienteNome: string;
+    valorOriginal: number;
+    recebido: number;
+    saldo: number;
+    recebimentos: Array<{ forma: string; valor: number; pagoEm: Date; nesteTurno: boolean }>;
+  }> = [];
+  const contasPendentes: Array<{
+    contaReceberId: string;
+    comandaNumero: number | null;
+    identificador: string | null;
+    clienteNome: string;
+    valorOriginal: number;
+    recebido: number;
+    saldo: number;
+  }> = [];
   let itensVendidos = 0;
 
   for (const comanda of comandas) {
+    if (comanda.clienteId && comanda.cliente) {
+      const cliente = porCliente.get(comanda.clienteId) ?? {
+        clienteId: comanda.clienteId,
+        nome: comanda.cliente.nome,
+        comandas: 0,
+        consumo: 0,
+      };
+      cliente.comandas += 1;
+      cliente.consumo += toNumber(comanda.total);
+      porCliente.set(comanda.clienteId, cliente);
+    }
+
+    if (comanda.contaReceber) {
+      const conta = comanda.contaReceber;
+      const recebido = conta.pagamentos.reduce((soma, pagamento) => soma + toNumber(pagamento.valor), 0);
+      const valorOriginal = toNumber(conta.valorOriginal);
+      const saldo = Math.max(0, Math.round((valorOriginal - recebido) * 100) / 100);
+      const recebimentos = conta.pagamentos.map((pagamento) => ({
+        forma: pagamento.forma,
+        valor: toNumber(pagamento.valor),
+        pagoEm: pagamento.pagoEm,
+        nesteTurno: pagamento.sessaoCaixaId === sessao.id,
+      }));
+      contasReceber.push({
+        contaReceberId: conta.id,
+        comandaNumero: comanda.numero,
+        identificador: comanda.identificador,
+        clienteNome: conta.cliente.nome,
+        valorOriginal,
+        recebido: Math.round(recebido * 100) / 100,
+        saldo,
+        recebimentos,
+      });
+      if (saldo > 0) {
+        contasPendentes.push({
+          contaReceberId: conta.id,
+          comandaNumero: comanda.numero,
+          identificador: comanda.identificador,
+          clienteNome: conta.cliente.nome,
+          valorOriginal,
+          recebido,
+          saldo: Math.round(saldo * 100) / 100,
+        });
+      }
+    }
+
     for (const item of comanda.itens) {
       if (!item.produtoId) continue;
       itensVendidos += item.quantidade;
       const itemValor = toNumber(item.precoUnit) * item.quantidade;
-      const prod = porProduto.get(item.produtoId) ?? {
+      const volumeMl = item.volumeMl ?? 0;
+      const chaveProduto = `${item.produtoId}:${volumeMl}`;
+      const categoria = item.tapId ? 'Chope' : item.produto?.categoria?.trim() || 'Outros';
+      const nome = item.nome ?? 'Item';
+      const nomeComVolume = volumeMl > 0 && !new RegExp(`\\b${volumeMl}\\s*ml\\b`, 'i').test(nome)
+        ? `${nome} (${volumeMl} ml)`
+        : nome;
+      const prod = porProduto.get(chaveProduto) ?? {
         produtoId: item.produtoId,
-        nome: item.nome ?? 'Item',
+        nome: nomeComVolume,
+        categoria,
+        volumeMl,
         quantidade: 0,
         receita: 0,
       };
       prod.quantidade += item.quantidade;
       prod.receita += itemValor;
-      porProduto.set(item.produtoId, prod);
+      porProduto.set(chaveProduto, prod);
     }
   }
 
@@ -636,6 +789,10 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
       percentual: receitaTotal > 0 ? Math.round((produto.receita / receitaTotal) * 100) : 0,
     }))
     .sort((a, b) => b.receita - a.receita);
+  const porClienteArr = Array.from(porCliente.values())
+    .map((cliente) => ({ ...cliente, consumo: Math.round(cliente.consumo * 100) / 100 }))
+    .sort((a, b) => b.consumo - a.consumo)
+    .slice(0, 5);
 
   return {
     caixa,
@@ -648,6 +805,10 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
     vendasAvulsas,
     itensVendidos,
     porProduto: porProdutoArr,
+    contasReceber,
+    contasPendentes: contasPendentes.sort((a, b) => b.saldo - a.saldo),
+    totalPendente: Math.round(contasPendentes.reduce((soma, conta) => soma + conta.saldo, 0) * 100) / 100,
+    topClientes: porClienteArr,
     ticketMedio:
       comandasAtendidas > 0
         ? Math.round((vendasTotal / comandasAtendidas) * 100) / 100

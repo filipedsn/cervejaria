@@ -14,6 +14,12 @@ test.describe('Quiosque — estoque crítico', () => {
   test.beforeAll(async () => {
     cookie = await apiLogin(OWNER.email, OWNER.password);
 
+    const capacidadeEstoque = await apiRequest('PATCH', '/api/cervejaria/configuracao-operacional', {
+      cookie,
+      body: { inventoryEnabled: true, confirmacaoEstoque: true },
+    });
+    expect(capacidadeEstoque.status, 'capacidade de estoque ativada para o caso E2E').toBe(200);
+
     const ponto = await apiRequest<{ id: string }>('POST', '/api/operacao/pontos-venda', {
       cookie,
       body: { nome: `E2E estoque ${stamp}` },
@@ -58,6 +64,7 @@ test.describe('Quiosque — estoque crítico', () => {
     await expect(produto).toContainText('Estoque baixo · 2');
 
     await produto.click();
+    await page.getByRole('dialog').last().getByRole('button', { name: /Adicionar item/ }).click();
     await dialog.getByRole('button', { name: 'Adicionar à venda' }).click();
     await page.getByRole('button', { name: /Pagar/ }).click();
     await page.getByRole('button', { name: /Revisar pagamento/ }).click();
@@ -70,6 +77,7 @@ test.describe('Quiosque — estoque crítico', () => {
     await page.getByRole('button', { name: '+ Item' }).click();
     await expect(dialog.getByRole('button', { name: new RegExp(productName) })).toContainText('Estoque baixo · 1');
     await dialog.getByRole('button', { name: new RegExp(productName) }).click();
+    await page.getByRole('dialog').last().getByRole('button', { name: /Adicionar item/ }).click();
     await dialog.getByRole('button', { name: 'Adicionar à venda' }).click();
     await page.getByRole('button', { name: /Pagar/ }).click();
     await page.getByRole('button', { name: /Revisar pagamento/ }).click();

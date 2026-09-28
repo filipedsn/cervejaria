@@ -87,6 +87,41 @@ test.describe('Quiosque comandas', () => {
     expect(repetida.data.reused).toBe(true);
   });
 
+  test('portal do cliente no modo por caixa envia pedido para a comanda aberta', async ({ page }) => {
+    const ponto = await prepararPdvAberto({ produto: true });
+    const cookie = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
+    const perfil = await apiRequest<{ cervejaria: { slug: string } }>('GET', '/api/auth/me', { cookie });
+    expect(perfil.status).toBe(200);
+    const slug = perfil.data.cervejaria.slug;
+    const nomeCliente = `Cliente E2E ${Date.now()}`;
+    const telefone = `119${String(Date.now()).slice(-8)}`;
+
+    await page.context().clearCookies();
+    await page.goto(`/c/${slug}/p/${ponto.id}`);
+    await page.locator('#portal-pdv-telefone').fill(telefone);
+    // A busca pelo telefone pode limpar o nome quando ainda não há cadastro;
+    // aguarde a busca terminar e preencha o nome depois para evitar corrida.
+    await expect(page.locator('#portal-pdv-nome')).toHaveAttribute('placeholder', 'Digite seu nome');
+    await page.locator('#portal-pdv-nome').fill(nomeCliente);
+    await page.getByRole('button', { name: 'Abrir comanda' }).click();
+    await expect(page.getByRole('heading', { name: nomeCliente })).toBeVisible();
+
+    await page.getByRole('button', { name: new RegExp(`^${ponto.nomeProduto}`) }).click();
+    await page.getByRole('button', { name: 'Enviar pedido', exact: true }).click();
+    await expect(page.locator('.portal-pdv-account').getByText('R$ 10,00', { exact: true })).toBeVisible({ timeout: 15_000 });
+
+    const comandas = await apiRequest<Array<{
+      cliente?: { nome: string } | null;
+      pedidos?: Array<{ itens?: Array<{ nome: string; quantidade: number }> }>;
+    }>>('GET', `/api/operacao/comandas?status=ABERTA&pontoVendaId=${ponto.id}`, { cookie });
+    expect(comandas.status).toBe(200);
+    const comanda = comandas.data.find((item) => item.cliente?.nome === nomeCliente);
+    expect(comanda, 'pedido do portal aparece para a equipe do caixa').toBeTruthy();
+    expect(comanda?.pedidos?.flatMap((pedido) => pedido.itens ?? [])).toContainEqual(
+      expect.objectContaining({ nome: ponto.nomeProduto, quantidade: 1 }),
+    );
+  });
+
   test('venda avulsa lista produto disponivel com caixa aberto', async ({ page }) => {
     const ponto = await prepararPdvAberto({ produto: true });
     await page.goto('/operacao/comandas/venda-avulsa');

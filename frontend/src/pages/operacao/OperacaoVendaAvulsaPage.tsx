@@ -25,6 +25,7 @@ import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import type { Cliente } from '../../types';
 import {
+  isChopeOperacao,
   mapSaldosEstoque,
   normalizeCategoriaProduto,
   podeIncrementarLinhaCarrinho,
@@ -107,30 +108,33 @@ export function OperacaoVendaAvulsaPage() {
     });
   }, [descontoInput, showPayment, totalComDesconto]);
 
-  const adicionarNoModal = (produto: ProdutoOperacao, configuracao?: { quantidade?: number; paraViagem?: boolean; observacao?: string; opcionais?: LinhaCarrinho['opcionais'] }) => {
+  const adicionarNoModal = (produto: ProdutoOperacao, configuracao?: { quantidade?: number; tapId?: string; volumeMl?: number; precoUnit?: number; paraViagem?: boolean; observacao?: string; opcionais?: LinhaCarrinho['opcionais'] }) => {
     setItensModal((atual) => {
-      const existente = atual.find((linha) => linha.produto.id === produto.id && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []));
-      const quantidadeCarrinho =
-        carrinho.find((linha) => linha.produto.id === produto.id)?.quantidade ?? 0;
+      const existente = atual.find((linha) => linha.produto.id === produto.id && linha.tapId === configuracao?.tapId && linha.volumeMl === configuracao?.volumeMl && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []));
+      const quantidadeCarrinho = carrinho.filter((linha) => linha.produto.id === produto.id).reduce((total, linha) => total + linha.quantidade, 0);
       const quantidadeAtual = quantidadeCarrinho + (existente?.quantidade ?? 0);
-      if (!podeIncrementarLinhaCarrinho(produto, quantidadeAtual, saldos, controlaEstoque)) {
+      const litrosJaNoCarrinho = [...carrinho, ...atual].filter((linha) => linha.produto.id === produto.id && isChopeOperacao(linha.produto)).reduce((total, linha) => total + ((linha.volumeMl ?? 0) * linha.quantidade) / 1000, 0);
+      const consumoChope = isChopeOperacao(produto) && configuracao?.volumeMl
+        ? { volumeMl: configuracao.volumeMl, quantidadeAdicionar: configuracao.quantidade ?? 1, litrosJaNoCarrinho }
+        : undefined;
+      if (!podeIncrementarLinhaCarrinho(produto, quantidadeAtual, saldos, controlaEstoque, consumoChope)) {
         return atual;
       }
-      if (!existente) return [...atual, { produto, quantidade: configuracao?.quantidade ?? 1, paraViagem: configuracao?.paraViagem, observacao: configuracao?.observacao, opcionais: configuracao?.opcionais }];
+      if (!existente) return [...atual, { produto, quantidade: configuracao?.quantidade ?? 1, tapId: configuracao?.tapId, volumeMl: configuracao?.volumeMl, precoUnit: configuracao?.precoUnit, paraViagem: configuracao?.paraViagem, observacao: configuracao?.observacao, opcionais: configuracao?.opcionais }];
       return atual.map((linha) =>
-        linha.produto.id === produto.id && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []) ? { ...linha, quantidade: linha.quantidade + (configuracao?.quantidade ?? 1) } : linha,
+        linha.produto.id === produto.id && linha.tapId === configuracao?.tapId && linha.volumeMl === configuracao?.volumeMl && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []) ? { ...linha, quantidade: linha.quantidade + (configuracao?.quantidade ?? 1) } : linha,
       );
     });
     setErro('');
   };
 
-  const alterarQuantidadeModal = (produtoId: string, delta: number) => {
+  const alterarQuantidadeModal = (produtoId: string, delta: number, tapId?: string, volumeMl?: number) => {
     setItensModal((atual) =>
       atual
         .map((linha) => {
-          if (linha.produto.id !== produtoId) return linha;
-          const quantidadeCarrinho =
-            carrinho.find((item) => item.produto.id === produtoId)?.quantidade ?? 0;
+          if (linha.produto.id !== produtoId || linha.tapId !== tapId || linha.volumeMl !== volumeMl) return linha;
+          const quantidadeCarrinho = carrinho.filter((item) => item.produto.id === produtoId).reduce((total, item) => total + item.quantidade, 0);
+          const litrosJaNoCarrinho = [...carrinho, ...atual].filter((item) => item.produto.id === produtoId && isChopeOperacao(item.produto)).reduce((total, item) => total + ((item.volumeMl ?? 0) * item.quantidade) / 1000, 0);
           if (
             delta > 0 &&
             !podeIncrementarLinhaCarrinho(
@@ -138,6 +142,7 @@ export function OperacaoVendaAvulsaPage() {
               quantidadeCarrinho + linha.quantidade,
               saldos,
               controlaEstoque,
+              isChopeOperacao(linha.produto) && volumeMl ? { volumeMl, litrosJaNoCarrinho } : undefined,
             )
           ) {
             return linha;
@@ -152,7 +157,7 @@ export function OperacaoVendaAvulsaPage() {
     setCarrinho((atual) => {
       const next = [...atual];
       for (const linha of itensModal) {
-        const index = next.findIndex((item) => item.produto.id === linha.produto.id && item.paraViagem === linha.paraViagem && item.observacao === linha.observacao && JSON.stringify(item.opcionais ?? []) === JSON.stringify(linha.opcionais ?? []));
+        const index = next.findIndex((item) => item.produto.id === linha.produto.id && item.tapId === linha.tapId && item.volumeMl === linha.volumeMl && item.paraViagem === linha.paraViagem && item.observacao === linha.observacao && JSON.stringify(item.opcionais ?? []) === JSON.stringify(linha.opcionais ?? []));
         if (index < 0) next.push(linha);
         else next[index] = { ...next[index], quantidade: next[index].quantidade + linha.quantidade };
       }
@@ -177,7 +182,7 @@ export function OperacaoVendaAvulsaPage() {
       api.post<ComandaOperacao>('/api/operacao/vendas', {
         pontoVendaId: pontoAtivo,
         ...(cliente ? { clienteId: cliente.id } : {}),
-        itens: carrinho.map((linha) => ({ produtoId: linha.produto.id, quantidade: linha.quantidade, paraViagem: linha.paraViagem ?? false, observacao: linha.observacao, opcionais: linha.opcionais?.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })) })),
+        itens: carrinho.map((linha) => ({ produtoId: linha.produto.id, quantidade: linha.quantidade, tapId: linha.tapId, volumeMl: linha.volumeMl, paraViagem: linha.paraViagem ?? false, observacao: linha.observacao, opcionais: linha.opcionais?.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })) })),
         pagamentos,
         desconto,
       }),
@@ -302,14 +307,14 @@ export function OperacaoVendaAvulsaPage() {
         }}
       >
             {carrinho.map((linha) => {
-              const precoUnit = precoLinha(linha.produto);
+              const precoUnit = linha.precoUnit ?? precoLinha(linha.produto);
               return (
                 <div
-                  key={linha.produto.id}
+                  key={`${linha.produto.id}-${linha.tapId ?? 'unit'}-${linha.volumeMl ?? 0}`}
                   className="flex items-start justify-between gap-3 rounded-xl border border-line bg-surface-lighter px-3 py-2.5"
                 >
                   <div className="min-w-0">
-                    <p className="font-semibold text-ink truncate">{linha.produto.nome}</p>
+                    <p className="font-semibold text-ink truncate">{linha.produto.nome}{linha.volumeMl ? ` · ${linha.volumeMl} ml` : ''}</p>
                     <p className="text-sm text-ink-muted">
                       {normalizeCategoriaProduto(linha.produto.categoria)} · {linha.quantidade}x{' '}
                       {formatCurrency(precoUnit)}
@@ -361,6 +366,8 @@ export function OperacaoVendaAvulsaPage() {
           setItensModal([]);
           setShowAddItem(false);
         }}
+        pontoVendaId={pontoAtivo}
+        tapsEnabled={contexto.tapsEnabled}
         produtos={produtos}
         linhas={itensModal}
         onSelecionar={adicionarNoModal}

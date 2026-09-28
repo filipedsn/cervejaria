@@ -35,6 +35,8 @@ const vendaAvulsaSchema = z.object({
       z.object({
         produtoId: z.string().min(1),
         quantidade: z.number().int().positive().max(999),
+        tapId: z.string().min(1).optional(),
+        volumeMl: z.number().int().positive().optional(),
         paraViagem: z.boolean().default(false),
         observacao: z.string().trim().max(280).optional(),
         opcionais: z.array(z.object({ opcionalId: z.string().min(1), quantidade: z.number().int().positive().max(99).optional() })).optional(),
@@ -56,7 +58,7 @@ const vendaAvulsaSchema = z.object({
 export async function vendasOperacaoRoutes(app: FastifyInstance) {
   app.post('/', async (request, reply) => {
     try {
-      const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
+      const { cervejariaId, temCozinha, controlaEstoque, tapsEnabled } = request.operacao;
       const user = getAuthUser(request);
       const body = vendaAvulsaSchema.parse(request.body);
       const desconto = body.desconto ?? 0;
@@ -85,7 +87,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
         if (body.clienteId && !cliente) {
           throw Object.assign(new Error('Cliente não encontrado'), { statusCode: 404 });
         }
-        const itens = await resolverItens(tx, cervejariaId, body.itens, { sessaoCaixaId: sessao.id });
+        const itens = await resolverItens(tx, cervejariaId, body.itens, { sessaoCaixaId: sessao.id, tapsEnabled });
         const subtotalEmCents = totalEmCentavos(itens);
         const descontoEmCents = centavos(desconto);
 

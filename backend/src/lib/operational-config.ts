@@ -18,6 +18,7 @@ export const updateOperationalConfigSchema = z
     kitchenEnabled: z.boolean().optional(),
     whatsappPedidoProntoEnabled: z.boolean().optional(),
     whatsappPedidoProntoNaCozinha: z.boolean().optional(),
+    completeInitialSetup: z.boolean().optional(),
     confirmacaoEstoque: z.literal(true).optional(),
   })
   .strict()
@@ -29,8 +30,18 @@ export const updateOperationalConfigSchema = z
       body.inventoryEnabled !== undefined ||
       body.kitchenEnabled !== undefined ||
       body.whatsappPedidoProntoEnabled !== undefined ||
-      body.whatsappPedidoProntoNaCozinha !== undefined,
+      body.whatsappPedidoProntoNaCozinha !== undefined ||
+      body.completeInitialSetup === true,
     'Informe ao menos uma capacidade para alterar',
+  )
+  .refine(
+    (body) => body.completeInitialSetup !== true || (
+      body.operationMode !== undefined &&
+      body.tapsEnabled !== undefined &&
+      body.inventoryEnabled !== undefined &&
+      body.kitchenEnabled !== undefined
+    ),
+    'A configuração inicial precisa informar modo e recursos',
   );
 
 type OperationalConfigClient = Pick<typeof prisma, 'configuracaoOperacional' | 'pedidoOperacao'> &
@@ -112,7 +123,9 @@ export async function updateOperationalConfig(
     }
   }
 
-  const inventoryChanges = input.inventoryEnabled !== undefined && input.inventoryEnabled !== current?.inventoryEnabled;
+  // A new tenant has no persisted choice yet; treat that unset value as the
+  // default disabled state so saving the default does not trigger a warning.
+  const inventoryChanges = input.inventoryEnabled !== undefined && input.inventoryEnabled !== (current?.inventoryEnabled ?? false);
   const kitchenTurnsOff = input.kitchenEnabled === false && current?.kitchenEnabled !== false;
 
   if (inventoryChanges && input.confirmacaoEstoque !== true) {
@@ -146,6 +159,7 @@ export async function updateOperationalConfig(
     ...(input.whatsappPedidoProntoNaCozinha !== undefined
       ? { whatsappPedidoProntoNaCozinha: input.whatsappPedidoProntoNaCozinha }
       : {}),
+    ...(input.completeInitialSetup === true ? { setupCompletedAt: new Date() } : {}),
   };
 
   return db.configuracaoOperacional.upsert({

@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
@@ -9,6 +10,7 @@ import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
 
 export function OperacaoCozinhaTvPage() {
+  const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const { cervejaria, isDono } = useAuth();
   const { contexto } = useOperacaoContexto();
   const avisoNaCozinha = contexto.whatsappPedidoProntoEnabled && contexto.whatsappPedidoProntoNaCozinha;
@@ -30,6 +32,26 @@ export function OperacaoCozinhaTvPage() {
     erroItemMutation,
     erroConfirmarCancelamentoItem,
   } = useOperacaoCozinha();
+
+  const syncFullscreen = useCallback(() => {
+    setIsNativeFullscreen(Boolean(document.fullscreenElement));
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('fullscreenchange', syncFullscreen);
+    return () => document.removeEventListener('fullscreenchange', syncFullscreen);
+  }, [syncFullscreen]);
+
+  const toggleFullscreen = useCallback(() => {
+    const root = document.querySelector('.qt-cozinha-tv');
+    if (!root) return;
+
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void root.requestFullscreen?.();
+    }
+  }, []);
 
   if (isLoading) return <Loading fullScreen />;
 
@@ -54,6 +76,23 @@ export function OperacaoCozinhaTvPage() {
             <span className="cozinha-tv-stat-value">{pedidosProntos} | {prontos}</span>
             <span className="cozinha-tv-stat-label">prontos</span>
           </div>
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            aria-label={isNativeFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+            title={isNativeFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+            className="cozinha-tv-fullscreen"
+          >
+            {isNativeFullscreen ? (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M9 3H5a2 2 0 0 0-2 2v4m12-6h4a2 2 0 0 1 2 2v4M9 21H5a2 2 0 0 1-2-2v-4m12 6h4a2 2 0 0 0 2-2v-4" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M4 9V5a1 1 0 0 1 1-1h4m11 5V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4m11-5v4a1 1 0 0 1-1 1h-4" strokeLinecap="round" />
+              </svg>
+            )}
+          </button>
           {aguardando > 0 && (
             <div className="cozinha-tv-stat cozinha-tv-stat--alert">
               <span className="cozinha-tv-stat-value">{aguardando}</span>

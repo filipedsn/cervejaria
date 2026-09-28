@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import type { Cardapio, EventoCardapio } from '../types';
-import { CardapioProdutosPicker, CardapioProdutosResumo } from './CardapioProdutosPicker';
+import { CardapioProdutosResumo } from './CardapioProdutosPicker';
+import { CardapioOperacaoProdutosPicker } from './operacao/CardapioOperacaoProdutosPicker';
 import { CardapioSalvoModal, cardapioSalvoLabel } from './CardapioSalvoModal';
 import { Loading } from './Loading';
 
@@ -170,7 +171,7 @@ export function EventoCardapioPanel({
               </p>
             ) : null
           ) : (
-            <CardapioProdutosPicker catalogo={catalogo} selectedIds={selectedIds} onToggle={toggle} />
+            <CardapioOperacaoProdutosPicker catalogo={catalogo} selectedIds={selectedIds} onToggle={toggle} />
           )}
 
           <CardapioSalvoModal

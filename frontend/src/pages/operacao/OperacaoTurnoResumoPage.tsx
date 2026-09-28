@@ -83,6 +83,17 @@ export function OperacaoTurnoResumoPage() {
 
   const { caixa, pontoNome, abertoPorNome, fechadoPorNome } = data;
   const titulo = formatTurnoTitulo(caixa.abertoEm, caixa.fechadoEm!);
+  const produtosPorCategoria = data.porProduto.reduce((categorias, produto) => {
+    const produtos = categorias.get(produto.categoria) ?? [];
+    produtos.push(produto);
+    categorias.set(produto.categoria, produtos);
+    return categorias;
+  }, new Map<string, typeof data.porProduto>());
+  const recebimentosContasForaTurno = data.contasReceber.flatMap((conta) =>
+    conta.recebimentos
+      .filter((pagamento) => !pagamento.nesteTurno)
+      .map((pagamento) => ({ ...pagamento, conta })),
+  );
 
   return (
     <div className="space-y-6 pb-6">
@@ -115,6 +126,7 @@ export function OperacaoTurnoResumoPage() {
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         <KpiCard label="Vendas do turno" value={formatCurrency(data.vendasTotal)} />
         <KpiCard label="Recebido no turno" value={formatCurrency(data.totalRecebido)} />
+        <KpiCard label="Pendente do turno" value={formatCurrency(data.totalPendente ?? 0)} />
         <KpiCard label="Comandas" value={pluralComandasOperacao(data.comandasAtendidas)} />
         <KpiCard label="Ticket médio" value={formatCurrency(data.ticketMedio)} />
         <KpiCard label="Receita/hora" value={`${formatCurrency(data.receitaPorHora)}/h`} />
@@ -129,28 +141,103 @@ export function OperacaoTurnoResumoPage() {
 
       {data.porProduto.length > 0 && (
         <section className="space-y-3">
-          <h2 className="section-label">Produtos vendidos</h2>
-          <div className="card divide-y divide-line p-0 overflow-hidden">
-            {data.porProduto.map((produto, i) => (
-              <div key={produto.produtoId} className="flex items-center gap-3 px-4 py-3">
-                <span className="w-6 text-sm font-bold text-ink-faint tabular-nums">{i + 1}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold truncate">{produto.nome}</p>
-                  <p className="text-xs text-ink-faint">
-                    {produto.quantidade} un · {produto.percentual}%
+          <h2 className="section-label">Produtos vendidos por categoria</h2>
+          {[...produtosPorCategoria.entries()].map(([categoria, produtos]) => (
+            <div key={categoria} className="card divide-y divide-line p-0 overflow-hidden">
+              <div className="flex items-center justify-between gap-3 px-4 py-3 bg-surface-lighter">
+                <h3 className="font-semibold">{categoria}</h3>
+                <span className="font-semibold text-brand-600 tabular-nums">
+                  {formatCurrency(produtos.reduce((soma, produto) => soma + produto.receita, 0))}
+                </span>
+              </div>
+              {produtos.map((produto) => (
+                <div key={`${produto.produtoId}:${produto.volumeMl}`} className="flex items-center gap-3 px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold truncate">{produto.nome}</p>
+                    <p className="text-xs text-ink-faint">{produto.quantidade} un</p>
+                  </div>
+                  <p className="font-bold text-brand-600 tabular-nums shrink-0">
+                    {formatCurrency(produto.receita)}
                   </p>
                 </div>
-                <p className="font-bold text-brand-600 tabular-nums shrink-0">
-                  {formatCurrency(produto.receita)}
-                </p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ))}
         </section>
       )}
 
+      {recebimentosContasForaTurno.length === 0 && (
+      <section className="card space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="section-label">Contas a receber originadas neste turno</h2>
+          <span className="font-bold text-brand-600 tabular-nums">{formatCurrency(data.totalPendente ?? 0)}</span>
+        </div>
+        <p className="text-xs text-ink-faint">
+          Recebimentos vinculados a este caixa entram no fechamento; pagamentos posteriores ou fora do caixa ficam apenas no histórico da conta.
+        </p>
+        {data.contasReceber.length === 0 ? (
+          <p className="text-sm text-ink-faint">Nenhuma conta a receber foi originada neste turno.</p>
+        ) : (
+          <div className="divide-y divide-line">
+            {data.contasReceber.map((conta) => (
+              <div key={conta.contaReceberId} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
+                <div className="min-w-0">
+                  <p className="font-semibold truncate">{conta.clienteNome}</p>
+                  <p className="text-xs text-ink-faint">
+                    {conta.comandaNumero !== null ? `Comanda ${conta.comandaNumero}` : conta.identificador || 'Comanda sem identificação'}
+                    {` · Original ${formatCurrency(conta.valorOriginal)} · Recebido ${formatCurrency(conta.recebido)} · Saldo ${formatCurrency(conta.saldo)}`}
+                  </p>
+                  {conta.recebimentos.length > 0 && (
+                    <ul className="mt-1 space-y-0.5 text-xs text-ink-faint">
+                      {conta.recebimentos.map((pagamento, index) => {
+                        const forma = FORMAS_PAGAMENTO.find((item) => item.valor === pagamento.forma)?.label ?? pagamento.forma;
+                        const dataPagamento = new Date(pagamento.pagoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+                        return (
+                          <li key={`${conta.contaReceberId}:${index}`}>
+                            {forma}: {formatCurrency(pagamento.valor)} · {dataPagamento} · {pagamento.nesteTurno ? 'incluído no fechamento deste caixa' : 'fora do fechamento deste turno'}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+                <p className="font-bold text-brand-600 tabular-nums">{formatCurrency(conta.saldo)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      )}
+
+      <section className="card space-y-3">
+        <h2 className="section-label">Top 5 clientes por consumo</h2>
+        {data.topClientes.length === 0 ? (
+          <p className="text-sm text-ink-faint">Nenhuma comanda deste turno está vinculada a um cliente.</p>
+        ) : (
+          <div className="divide-y divide-line">
+            {data.topClientes.map((cliente, i) => (
+              <div key={cliente.clienteId} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                <span className="w-6 text-sm font-bold text-ink-faint tabular-nums">{i + 1}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold truncate">{cliente.nome}</p>
+                  <p className="text-xs text-ink-faint">
+                    {cliente.comandas} {cliente.comandas === 1 ? 'comanda' : 'comandas'}
+                  </p>
+                </div>
+                <p className="font-bold text-brand-600 tabular-nums">{formatCurrency(cliente.consumo)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {recebimentosContasForaTurno.length === 0 && (
+      <>
       <div className="card space-y-3">
         <h2 className="section-label">Conferência de fechamento</h2>
+        <p className="text-xs text-ink-faint">
+          Esta conferência considera somente pagamentos registrados neste caixa. Recebimentos posteriores de contas aparecem separados abaixo.
+        </p>
         {FORMAS_PAGAMENTO.map((forma) => {
           const esperadoChave =
             forma.valor === 'DINHEIRO'
@@ -201,7 +288,7 @@ export function OperacaoTurnoResumoPage() {
         </section>
 
         <section className="card space-y-2">
-          <h2 className="section-label">Recebimentos por forma</h2>
+          <h2 className="section-label">Recebimentos registrados neste caixa</h2>
           {FORMAS_PAGAMENTO.map((forma) => {
             const chave =
               forma.valor === 'DINHEIRO'
@@ -219,6 +306,42 @@ export function OperacaoTurnoResumoPage() {
           </div>
         </section>
       </div>
+      </>
+      )}
+
+      <section className="card space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="section-label">Recebimentos de contas fora deste turno</h2>
+          <span className="font-bold text-brand-600 tabular-nums">
+            {formatCurrency(recebimentosContasForaTurno.reduce((soma, pagamento) => soma + pagamento.valor, 0))}
+          </span>
+        </div>
+        <p className="text-xs text-ink-faint">
+          Valores recebidos fora desta sessão não alteram o fechamento acima.
+        </p>
+        {recebimentosContasForaTurno.length === 0 ? (
+          <p className="text-sm text-ink-faint">Nenhum recebimento de conta fora deste turno.</p>
+        ) : (
+          <div className="divide-y divide-line">
+            {recebimentosContasForaTurno.map((pagamento, index) => {
+              const forma = FORMAS_PAGAMENTO.find((item) => item.valor === pagamento.forma)?.label ?? pagamento.forma;
+              const dataPagamento = new Date(pagamento.pagoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+              const identificacao = pagamento.conta.comandaNumero !== null
+                ? `Comanda ${pagamento.conta.comandaNumero}`
+                : pagamento.conta.identificador || 'Comanda sem identificação';
+              return (
+                <div key={`${pagamento.conta.contaReceberId}:${index}`} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
+                  <div className="min-w-0">
+                    <p className="font-semibold truncate">{pagamento.conta.clienteNome} · {identificacao}</p>
+                    <p className="text-xs text-ink-faint">{forma} · {dataPagamento}</p>
+                  </div>
+                  <p className="font-bold text-brand-600 tabular-nums">{formatCurrency(pagamento.valor)}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {caixa.movimentos.length > 0 && (
         <section className="card space-y-2">

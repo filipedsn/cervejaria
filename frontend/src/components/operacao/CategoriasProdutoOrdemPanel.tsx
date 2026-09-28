@@ -2,14 +2,19 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { Modal } from '../Modal';
 import { CATEGORIAS_PRODUTO_OPERACAO } from '../../lib/operacao';
 
 export function CategoriasProdutoOrdemPanel() {
   const { isDono } = useAuth();
+  const { contexto } = useOperacaoContexto();
   const queryClient = useQueryClient();
   const [aberto, setAberto] = useState(false);
-  const [ordem, setOrdem] = useState<string[]>([...CATEGORIAS_PRODUTO_OPERACAO]);
+  const categoriasDisponiveis = contexto.tapsEnabled
+    ? [...CATEGORIAS_PRODUTO_OPERACAO, 'Chope']
+    : [...CATEGORIAS_PRODUTO_OPERACAO];
+  const [ordem, setOrdem] = useState<string[]>(categoriasDisponiveis);
 
   const { data } = useQuery({
     queryKey: ['operacao-categorias'],
@@ -21,7 +26,7 @@ export function CategoriasProdutoOrdemPanel() {
     mutationFn: () => api.put<{ ordem: string[] }>('/api/operacao/produtos/categorias/ordem', { ordem }),
     onSuccess: (result) => {
       queryClient.setQueryData(['operacao-categorias'], {
-        categorias: [...CATEGORIAS_PRODUTO_OPERACAO],
+        categorias: categoriasDisponiveis,
         ordem: result.ordem,
       });
       setAberto(false);
@@ -31,7 +36,7 @@ export function CategoriasProdutoOrdemPanel() {
   if (!isDono) return null;
 
   const abrir = () => {
-    setOrdem(data?.ordem ?? [...CATEGORIAS_PRODUTO_OPERACAO]);
+    setOrdem(data?.ordem ?? categoriasDisponiveis);
     salvar.reset();
     setAberto(true);
   };
@@ -70,7 +75,7 @@ export function CategoriasProdutoOrdemPanel() {
             <button type="button" className="touch-btn-primary w-full" disabled={salvar.isPending} onClick={() => salvar.mutate()}>
               {salvar.isPending ? 'Salvando...' : 'Salvar ordem'}
             </button>
-            <button type="button" className="touch-btn-secondary w-full" disabled={salvar.isPending} onClick={() => setOrdem([...CATEGORIAS_PRODUTO_OPERACAO])}>
+            <button type="button" className="touch-btn-secondary w-full" disabled={salvar.isPending} onClick={() => setOrdem(categoriasDisponiveis)}>
               Restaurar ordem padrão
             </button>
             <button type="button" className="touch-btn-orange w-full" disabled={salvar.isPending} onClick={() => setAberto(false)}>

@@ -76,6 +76,12 @@ export function isBebidaChope(produto: Pick<Produto, 'tipo' | 'formato'>): boole
   return produto.tipo === 'BEBIDA' && (produto.formato ?? 'CHOPE') === 'CHOPE';
 }
 
+export function isChopeConfiguravelNaTap(produto: Pick<Produto, 'tipo' | 'formato' | 'categoria'>): boolean {
+  if (produto.tipo !== 'BEBIDA') return false;
+  if (produto.formato === 'CHOPE') return true;
+  return produto.formato == null && produto.categoria?.trim().toLocaleLowerCase('pt-BR') === 'chope';
+}
+
 export function isVendaUnitaria(produto: Pick<Produto, 'tipo' | 'formato'>): boolean {
   return produto.tipo === 'COMIDA' || (produto.tipo === 'BEBIDA' && !isBebidaChope(produto));
 }
@@ -94,6 +100,7 @@ export interface Produto {
   estilo?: string | null;
   tipo: ProdutoTipo;
   formato?: FormatoBebida | null;
+  categoria?: string | null;
   ativo: boolean;
   controlaEstoque?: boolean;
   exigePreparo?: boolean;

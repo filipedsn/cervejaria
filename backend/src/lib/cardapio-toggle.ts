@@ -11,9 +11,7 @@ export async function cervejariaUsaCardapio(cervejariaId: string, db: Prisma.Tra
 }
 
 export async function operacaoUsaCardapio(cervejariaId: string): Promise<boolean> {
-  const row = await prisma.configuracaoOperacao.findUnique({
-    where: { cervejariaId },
-    select: { usaCardapio: true },
-  });
-  return row?.usaCardapio ?? false;
+  // Compatibility name kept for callers during the convergence. The source
+  // of truth is now the single tenant-wide flag used by both operation modes.
+  return cervejariaUsaCardapio(cervejariaId);
 }

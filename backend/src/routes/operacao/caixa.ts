@@ -18,14 +18,25 @@ import { getProdutoIdsFromCardapioOperacao, validateProdutosCardapioOperacao } f
 import { registrarTransacao } from '../../lib/transacao-log.js';
 import { recordDivergenciaCaixa } from '../../lib/business-metrics.js';
 import { centavos } from '../../lib/operacao/venda.js';
+import {
+  inicializarMontagemSessaoCaixa,
+  listTapsComChopeAtualSessaoCaixa,
+  posicionarChopeNoTurno,
+  removerChopeDoTurno,
+} from '../../lib/tap-montagem.js';
 
 const pontoVendaQuery = z.object({
+  pontoVendaId: z.string().min(1),
+});
+
+const tapTurnoQuery = z.object({
   pontoVendaId: z.string().min(1),
 });
 
 const abrirSchema = z
   .object({
     pontoVendaId: z.string().min(1),
+    trailerId: z.string().min(1).optional(),
     trocoInicial: z.number().min(0),
     cardapioId: z.string().optional(),
     produtoIds: z.array(z.string().min(1)).optional(),
@@ -40,6 +51,31 @@ const movimentoSchema = z.object({
   valor: z.number().positive(),
   observacao: z.string().trim().max(280).optional(),
 });
+
+/** Corrige sessões antigas abertas sem trailer somente quando há um único trailer ativo. */
+async function resolverTrailerSessao(sessao: { id: string; trailerId: string | null }, cervejariaId: string) {
+  if (sessao.trailerId) return sessao.trailerId;
+
+  const trailers = await prisma.trailer.findMany({
+    where: { cervejariaId, ativo: true },
+    select: { id: true },
+    take: 2,
+  });
+  if (trailers.length !== 1) return null;
+
+  const trailerId = trailers[0]!.id;
+  const vinculada = await prisma.sessaoCaixaOperacao.updateMany({
+    where: { id: sessao.id, cervejariaId, status: 'ABERTO', trailerId: null },
+    data: { trailerId },
+  });
+  if (vinculada.count === 1) return trailerId;
+
+  const atual = await prisma.sessaoCaixaOperacao.findFirst({
+    where: { id: sessao.id, cervejariaId, status: 'ABERTO' },
+    select: { trailerId: true },
+  });
+  return atual?.trailerId ?? null;
+}
 
 const fecharSchema = z.object({
   pontoVendaId: z.string().min(1),
@@ -93,8 +129,84 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     };
   });
 
+  app.get('/taps', async (request, reply) => {
+    const { cervejariaId, tapsEnabled } = request.operacao;
+    if (!tapsEnabled) return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
+    const { pontoVendaId } = tapTurnoQuery.parse(request.query);
+    const sessao = await prisma.sessaoCaixaOperacao.findFirst({
+      where: { cervejariaId, pontoVendaId, status: 'ABERTO' },
+      select: { id: true, trailerId: true },
+      orderBy: { abertoEm: 'desc' },
+    });
+    if (!sessao) return reply.status(404).send({ error: 'Abra o caixa antes de configurar os Taps' });
+    const trailerId = await resolverTrailerSessao(sessao, cervejariaId);
+    if (!trailerId) return { trailerId: null, taps: [] };
+
+    await inicializarMontagemSessaoCaixa(sessao.id, trailerId);
+    return {
+      trailerId,
+      taps: await listTapsComChopeAtualSessaoCaixa(sessao.id, trailerId),
+    };
+  });
+
+  app.put('/taps/:tapId/chope', async (request, reply) => {
+    const { cervejariaId, tapsEnabled } = request.operacao;
+    if (!tapsEnabled) return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
+    const { tapId } = request.params as { tapId: string };
+    const body = z.object({ pontoVendaId: z.string().min(1), produtoId: z.string().min(1) }).parse(request.body);
+    const sessao = await prisma.sessaoCaixaOperacao.findFirst({
+      where: { cervejariaId, pontoVendaId: body.pontoVendaId, status: 'ABERTO' },
+      select: { id: true, trailerId: true },
+      orderBy: { abertoEm: 'desc' },
+    });
+    if (!sessao) return reply.status(400).send({ error: 'O caixa não possui trailer vinculado' });
+    const trailerId = await resolverTrailerSessao(sessao, cervejariaId);
+    if (!trailerId) return reply.status(400).send({ error: 'O caixa não possui trailer vinculado' });
+
+    const result = await posicionarChopeNoTurno({
+      sessaoCaixaId: sessao.id,
+      trailerId,
+      tapId,
+      produtoId: body.produtoId,
+      cervejariaId,
+    });
+    if ('error' in result) return reply.status(400).send({ error: result.error });
+    return {
+      trailerId,
+      taps: await listTapsComChopeAtualSessaoCaixa(sessao.id, trailerId),
+      message: `Tap ${result.tapNumero}: ${result.chopeAnterior ?? 'vazio'} → ${result.chopeNovo}`,
+    };
+  });
+
+  app.delete('/taps/:tapId/chope', async (request, reply) => {
+    const { cervejariaId, tapsEnabled } = request.operacao;
+    if (!tapsEnabled) return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
+    const { tapId } = request.params as { tapId: string };
+    const body = z.object({ pontoVendaId: z.string().min(1) }).parse(request.body);
+    const sessao = await prisma.sessaoCaixaOperacao.findFirst({
+      where: { cervejariaId, pontoVendaId: body.pontoVendaId, status: 'ABERTO' },
+      select: { id: true, trailerId: true },
+      orderBy: { abertoEm: 'desc' },
+    });
+    if (!sessao) return reply.status(400).send({ error: 'O caixa não possui trailer vinculado' });
+    const trailerId = await resolverTrailerSessao(sessao, cervejariaId);
+    if (!trailerId) return reply.status(400).send({ error: 'O caixa não possui trailer vinculado' });
+
+    const result = await removerChopeDoTurno({
+      sessaoCaixaId: sessao.id,
+      trailerId,
+      tapId,
+      cervejariaId,
+    });
+    if ('error' in result) return reply.status(400).send({ error: result.error });
+    return {
+      trailerId,
+      taps: await listTapsComChopeAtualSessaoCaixa(sessao.id, trailerId),
+    };
+  });
+
   app.post('/abrir', async (request, reply) => {
-    const { cervejariaId } = request.operacao;
+    const { cervejariaId, tapsEnabled } = request.operacao;
     const user = getAuthUser(request);
     const body = abrirSchema.parse(request.body);
 
@@ -110,6 +222,8 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     const sessao = await abrirCaixa({
       cervejariaId,
       pontoVendaId: body.pontoVendaId,
+      trailerId: body.trailerId,
+      tapsEnabled,
       trocoInicial: body.trocoInicial,
       abertoPorId: user.sub,
       cardapioId: body.cardapioId,
@@ -268,6 +382,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     const body = z
       .object({
         produtoId: z.string().min(1),
+        volumeMl: z.number().int().nonnegative().optional(),
         precoUnit: z.number().positive(),
         escopo: z.enum(['TURNO', 'TEMPLATE']),
       })
@@ -280,6 +395,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       sessaoCaixaId: sessao.id,
       cervejariaId,
       produtoId: body.produtoId,
+      volumeMl: body.volumeMl,
       precoUnit: body.precoUnit,
       escopo: body.escopo,
     });

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { Cardapio, Produto } from '../types';
-import { CardapioProdutosPicker } from './CardapioProdutosPicker';
+import { CardapioOperacaoProdutosPicker } from './operacao/CardapioOperacaoProdutosPicker';
 import { CardapioSalvoModal, cardapioSalvoLabel } from './CardapioSalvoModal';
 export type EventoCardapioModo = 'salvo' | 'montar' | 'depois';
 
@@ -98,7 +98,7 @@ export function EventoCardapioFormFields({
       )}
 
       {form.cardapioModo === 'montar' && catalogo && (
-        <CardapioProdutosPicker
+        <CardapioOperacaoProdutosPicker
           catalogo={catalogo}
           selectedIds={form.produtoIds}
           onToggle={toggleProduto}

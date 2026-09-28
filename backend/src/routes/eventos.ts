@@ -93,7 +93,11 @@ async function validarCardapioCriacao(
   if (!(await cervejariaUsaCardapio(cervejariaId))) {
     return { ok: true as const, produtoIds: [] as string[] };
   }
-  if (cardapioId) return getProdutoIdsFromCardapio(cardapioId, cervejariaId);
+  if (cardapioId) {
+    const cardapio = await getProdutoIdsFromCardapio(cardapioId, cervejariaId);
+    if ('error' in cardapio) return cardapio;
+    return validateProdutosCardapio(cervejariaId, cardapio.produtoIds);
+  }
   if (produtoIds?.length) return validateProdutosCardapio(cervejariaId, produtoIds);
   return { ok: true as const, produtoIds: [] as string[] };
 }

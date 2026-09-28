@@ -21,6 +21,8 @@ import {
 import { OperacaoTurnoCardapioPanel } from './OperacaoTurnoCardapioPanel';
 import { invalidateOnboardingReadiness } from '../../lib/onboarding';
 import { IconEye, IconEyeOff } from '../NavIcons';
+import { OperacaoTurnoTapsPanel } from './OperacaoTurnoTapsPanel';
+import type { Trailer } from '../../types';
 
 type Dialogo = 'nenhum' | 'movimento' | 'correcao' | 'fechar' | 'cardapio';
 
@@ -81,6 +83,15 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const [erro, setErro] = useState('');
   const [cardapioForm, setCardapioForm] = useState<TurnoCardapioFormState>(defaultTurnoCardapioForm);
   const [painelSuprimido, setPainelSuprimido] = useState(compacto);
+  const [trailerId, setTrailerId] = useState('');
+
+  const { data: trailers = [] } = useQuery({
+    queryKey: ['operacao-trailers-tap'],
+    queryFn: () => api.get<Trailer[]>('/api/trailers?ativo=true'),
+    enabled: contexto.tapsEnabled,
+  });
+  const trailerDoTurno = trailerId || (trailers.length === 1 ? trailers[0]?.id ?? '' : '');
+  const precisaSelecionarTrailer = contexto.tapsEnabled && trailers.length > 1 && !trailerDoTurno;
 
   const { data, isLoading: caixaLoading } = useQuery({
     queryKey: ['operacao-caixa', pontoVendaId],
@@ -111,6 +122,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     mutationFn: () =>
       api.post<ResumoCaixa>('/api/operacao/caixa/abrir', {
         pontoVendaId,
+        trailerId: trailerDoTurno || undefined,
         trocoInicial: parseCurrencyInput(trocoInicial),
         ...buildTurnoCardapioAbrirPayload(cardapioForm),
       }),
@@ -187,20 +199,29 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível corrigir o movimento'),
   });
 
-  const abrirDialogoFechar = (atual: ResumoCaixa) => {
+  const abrirDialogoFechar = () => {
     if (bloqueioFechamento) return;
-    setContado({
-      dinheiro: formatCurrencyInputFromNumber(atual.gaveta.esperadoDinheiro),
-      pix: formatCurrencyInputFromNumber(atual.esperado.pix),
-      debito: formatCurrencyInputFromNumber(atual.esperado.cartaoDebito),
-      credito: formatCurrencyInputFromNumber(atual.esperado.cartaoCredito),
-    });
+    // The operator must count what's physically present; pre-filling expected
+    // values can silently conceal a cash/card reconciliation discrepancy.
+    setContado({ dinheiro: '', pix: '', debito: '', credito: '' });
     setObsFechamento('');
     setErro('');
     setDialogo('fechar');
   };
 
   if (!pontoVendaId) return null;
+
+  const seletorTrailer = contexto.tapsEnabled && trailers.length > 0 ? (
+    <div className="rounded-xl border border-line bg-surface-lighter/60 p-3">
+      <label className="label">Trailer dos Taps neste turno</label>
+      <select className="input" value={trailerDoTurno} onChange={(event) => setTrailerId(event.target.value)}>
+        <option value="">Sem trailer de Tap</option>
+        {trailers.map((trailer) => <option key={trailer.id} value={trailer.id}>{trailer.nome}{trailer.identificador ? ` (${trailer.identificador})` : ''}</option>)}
+      </select>
+      {precisaSelecionarTrailer && <p className="mt-2 text-sm text-amber-300">Selecione o trailer para abrir o turno com as Taps corretas.</p>}
+      <p className="mt-1 text-xs text-ink-faint">A seleção define quais Taps poderão ser usados neste turno.</p>
+    </div>
+  ) : null;
 
   return (
     <>
@@ -219,8 +240,10 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           </div>
 
           {usaCardapio && <TurnoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />}
+          {seletorTrailer}
 
-          <button type="button" className="touch-btn-primary flex min-h-14 w-full items-center justify-center gap-3 text-base font-bold sm:min-h-16 sm:text-lg" disabled={abrir.isPending} data-audit="operacao-caixa-abrir" data-onboarding-target="operacao-open-cash" onClick={() => abrir.mutate()}><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8"/></svg>{abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}</button>
+          <Link to="/operacao/contas-pendentes" className="touch-btn-secondary flex min-h-12 w-full items-center justify-center text-center">Contas pendentes</Link>
+          <button type="button" className="touch-btn-primary flex min-h-14 w-full items-center justify-center gap-3 text-base font-bold sm:min-h-16 sm:text-lg" disabled={abrir.isPending || precisaSelecionarTrailer} data-audit="operacao-caixa-abrir" data-onboarding-target="operacao-open-cash" onClick={() => abrir.mutate()}><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8"/></svg>{abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}</button>
         </div>
       )}
 
@@ -244,11 +267,13 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           {usaCardapio && (
             <TurnoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />
           )}
+          {seletorTrailer}
 
+          <Link to="/operacao/contas-pendentes" className="touch-btn-secondary flex w-full items-center justify-center text-center">Contas pendentes</Link>
           <button
             type="button"
             className="touch-btn-primary w-full"
-            disabled={abrir.isPending}
+            disabled={abrir.isPending || precisaSelecionarTrailer}
             data-audit="operacao-caixa-abrir"
             data-onboarding-target="operacao-open-cash"
             onClick={() => abrir.mutate()}
@@ -305,13 +330,14 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
               <Link to="/operacao/contas-pendentes" className="touch-btn-secondary touch-btn-sm flex items-center justify-center text-center leading-tight">Contas pendentes</Link>
             </div>
             {erro && !dialogo && <div className="alert-error">{erro}</div>}
-            <button type="button" className="touch-btn-orange w-full disabled:opacity-50" disabled={bloqueioFechamento} onClick={() => abrirDialogoFechar(sessao)} data-audit="operacao-caixa-fechar">Fechar caixa</button>
+            <button type="button" className="touch-btn-orange w-full disabled:opacity-50" disabled={bloqueioFechamento} onClick={abrirDialogoFechar} data-audit="operacao-caixa-fechar">Fechar caixa</button>
           </div>
         </div>
       )}
 
       {sessao?.status === 'ABERTO' && !compacto && (
         <>
+          {sessao.trailerId && <OperacaoTurnoTapsPanel pontoVendaId={pontoVendaId} />}
           {usaCardapio && (
             <div className="card space-y-3">
               <OperacaoTurnoCardapioPanel pontoVendaId={pontoVendaId} embedded />
@@ -421,7 +447,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             type="button"
             className="touch-btn-orange w-full disabled:opacity-50"
             disabled={bloqueioFechamento}
-            onClick={() => abrirDialogoFechar(sessao)}
+            onClick={abrirDialogoFechar}
             data-audit="operacao-caixa-fechar"
           >
             Fechar caixa
@@ -606,8 +632,40 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           <div className="grid gap-5 sm:grid-cols-2 sm:gap-x-8 sm:gap-y-7">
             {FORMAS_PAGAMENTO.map((forma) => {
               const chave = forma.valor === 'DINHEIRO' ? 'dinheiro' : forma.valor === 'PIX' ? 'pix' : forma.valor === 'CARTAO_DEBITO' ? 'debito' : 'credito';
-              return <div key={forma.valor}><label className="mb-3 block text-lg font-semibold text-ink sm:text-2xl">Contado — {forma.label}</label><div className="relative"><span className="absolute inset-y-0 left-0 flex w-16 items-center justify-center border-r border-line text-brand-300 sm:w-24"><IconeFechamento tipo={forma.valor} /></span><CurrencyInput className="input min-h-16 text-lg sm:min-h-24 sm:text-3xl" style={{ paddingLeft: '6.25rem' }} value={contado[chave] ?? ''} onChange={(valor) => setContado((atual) => ({ ...atual, [chave]: valor }))} /></div></div>;
+              const esperado = forma.valor === 'DINHEIRO'
+                ? sessao?.gaveta.esperadoDinheiro ?? 0
+                : forma.valor === 'PIX'
+                  ? sessao?.esperado.pix ?? 0
+                  : forma.valor === 'CARTAO_DEBITO'
+                    ? sessao?.esperado.cartaoDebito ?? 0
+                    : sessao?.esperado.cartaoCredito ?? 0;
+              const valorConferido = parseCurrencyInput(contado[chave] ?? '');
+              const diferenca = valorConferido - esperado;
+              const rotulo = forma.valor === 'DINHEIRO' ? 'Contado' : 'Conferido';
+              const rotuloEsperado = forma.valor === 'DINHEIRO' ? 'Esperado na gaveta' : 'Esperado neste caixa';
+              return (
+                <div key={forma.valor}>
+                  <label className="mb-2 block text-lg font-semibold text-ink sm:text-2xl">{rotulo} — {forma.label}</label>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 text-sm">
+                    <span className="text-ink-muted">{rotuloEsperado}: <strong className="text-ink">{formatCurrency(esperado)}</strong></span>
+                    <span className={diferenca === 0 ? 'text-ink-muted' : diferenca > 0 ? 'font-semibold text-green-500' : 'font-semibold text-red-500'}>
+                      Diferença: {diferenca > 0 ? '+' : ''}{formatCurrency(diferenca)}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 flex w-16 items-center justify-center border-r border-line text-brand-300 sm:w-24"><IconeFechamento tipo={forma.valor} /></span>
+                    <CurrencyInput aria-label={`${rotulo} — ${forma.label}`} className="input min-h-16 text-lg sm:min-h-24 sm:text-3xl" style={{ paddingLeft: '6.25rem' }} value={contado[chave] ?? ''} onChange={(valor) => setContado((atual) => ({ ...atual, [chave]: valor }))} />
+                  </div>
+                </div>
+              );
             })}
+            <div className="sm:col-span-2 flex items-center justify-between gap-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 px-4 py-4">
+              <div>
+                <p className="font-semibold text-ink">Pendente do turno</p>
+                <p className="mt-1 text-sm text-ink-muted">Contas ainda não recebidas; não entram na conferência dos valores pagos.</p>
+              </div>
+              <strong className="shrink-0 text-xl font-bold tabular-nums text-amber-400">{formatCurrency(sessao?.pendente ?? 0)}</strong>
+            </div>
             <div className="sm:col-span-2"><label className="mb-3 block text-lg font-semibold text-ink sm:text-2xl">Observação (opcional)</label><div className="relative"><span className="absolute inset-y-0 left-0 flex w-16 items-center justify-center border-r border-line text-ink-muted sm:w-24"><IconeFechamento tipo="OBS" /></span><input className="input min-h-16 text-lg sm:min-h-24 sm:text-2xl" style={{ paddingLeft: '6.25rem' }} value={obsFechamento} onChange={(e) => setObsFechamento(e.target.value)} placeholder="Adicione uma observação, se necessário..." /></div></div>
           </div>
         </form>

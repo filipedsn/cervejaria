@@ -5,15 +5,25 @@ import {
   CATEGORIAS_PRODUTO_OPERACAO,
   categoriaProdutoOperacaoSchema,
   normalizarOrdemCategoriasProduto,
+  normalizeCategoriaProduto,
 } from '../../lib/operacao/categorias.js';
 import { diaOperacional } from '../../lib/operacao/venda.js';
 import { listProdutosOperacionaisTurno } from '../../lib/operacao/sessao-cardapio.js';
 import { listarOpcionaisProduto, substituirOpcionaisProduto } from '../../lib/produto-opcionais.js';
 
+const precoProdutoSchema = z.object({ volumeMl: z.number().int().positive(), preco: z.number().positive() });
+const tipoProdutoSchema = z.enum(['BEBIDA', 'COMIDA']);
+const formatoProdutoSchema = z.enum(['CHOPE', 'LATA', 'LONGNECK', 'GARRAFA', 'OUTRO']);
+
 const createProdutoSchema = z.object({
   nome: z.string().min(1),
   categoria: categoriaProdutoOperacaoSchema.default('Bebidas'),
-  precoUnit: z.number().positive(),
+  precoUnit: z.number().positive().optional(),
+  precos: z.array(precoProdutoSchema).min(1).optional(),
+  tipo: tipoProdutoSchema.optional(),
+  formato: formatoProdutoSchema.optional(),
+  descricao: z.string().optional(),
+  estilo: z.string().optional(),
   exigePreparo: z.boolean().default(false),
   controlaEstoque: z.boolean().default(true),
   ordem: z.number().int().min(0).default(0),
@@ -27,8 +37,6 @@ const updateProdutoSchema = createProdutoSchema.partial().extend({
 const opcionaisSchema = z.object({
   opcionalIds: z.array(z.string().min(1)).max(100),
 });
-const categoriasDisponiveis = new Set<string>(CATEGORIAS_PRODUTO_OPERACAO);
-
 function respostaProduto(produto: { precos?: Array<{ preco: unknown }>; [key: string]: unknown }) {
   const vinculados = (produto.opcionaisVinculados as Array<{ opcional: { id: string; nome: string; preco: unknown } }> | undefined) ?? [];
   return {
@@ -46,22 +54,29 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
   app.delete('/opcionais/:id', { preHandler: [app.requireDono] }, async (request) => { return prisma.opcional.delete({ where: { id: (request.params as { id: string }).id } }); });
   app.get('/categorias', async (request) => {
     const { cervejariaId } = request.operacao;
+    const categorias = request.operacao.tapsEnabled
+      ? [...CATEGORIAS_PRODUTO_OPERACAO, 'Chope']
+      : [...CATEGORIAS_PRODUTO_OPERACAO];
     const cervejaria = await prisma.cervejaria.findUnique({
       where: { id: cervejariaId },
       select: { operacaoCategoriasOrdem: true },
     });
     return {
-      categorias: [...CATEGORIAS_PRODUTO_OPERACAO],
-      ordem: normalizarOrdemCategoriasProduto(cervejaria?.operacaoCategoriasOrdem),
+      categorias,
+      ordem: normalizarOrdemCategoriasProduto(cervejaria?.operacaoCategoriasOrdem, request.operacao.tapsEnabled),
     };
   });
 
   app.put('/categorias/ordem', { preHandler: [app.requireDono] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
+    const categorias = request.operacao.tapsEnabled
+      ? [...CATEGORIAS_PRODUTO_OPERACAO, 'Chope']
+      : [...CATEGORIAS_PRODUTO_OPERACAO];
+    const categoriasDisponiveis = new Set<string>(categorias);
     const body = z.object({
-      ordem: z.array(z.string()).length(CATEGORIAS_PRODUTO_OPERACAO.length).refine(
+      ordem: z.array(z.string()).length(categorias.length).refine(
         (ordem) =>
-          new Set(ordem).size === CATEGORIAS_PRODUTO_OPERACAO.length &&
+          new Set(ordem).size === categorias.length &&
           ordem.every((categoria) => categoriasDisponiveis.has(categoria)),
         'A ordem deve conter cada categoria disponível uma única vez',
       ),
@@ -71,7 +86,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
       data: { operacaoCategoriasOrdem: body.ordem },
       select: { operacaoCategoriasOrdem: true },
     });
-    return { ordem: normalizarOrdemCategoriasProduto(updated.operacaoCategoriasOrdem) };
+    return { ordem: normalizarOrdemCategoriasProduto(updated.operacaoCategoriasOrdem, request.operacao.tapsEnabled) };
   });
 
   app.get('/', async (request) => {
@@ -80,25 +95,26 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
       .object({
         incluirInativos: z.coerce.boolean().default(false),
         pontoVendaId: z.string().min(1).optional(),
+        incluirTodosChopes: z.coerce.boolean().default(false),
       })
       .parse(request.query);
 
     if (query.incluirInativos) {
       const produtos = await prisma.produto.findMany({
         where: { cervejariaId },
-        include: { precos: { where: { volumeMl: 1 }, take: 1 }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
+        include: { precos: { orderBy: { volumeMl: 'asc' } }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
         orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
       });
       return produtos.map(respostaProduto);
     }
 
     if (query.pontoVendaId) {
-      return listProdutosOperacionaisTurno(cervejariaId, query.pontoVendaId, diaOperacional());
+      return listProdutosOperacionaisTurno(cervejariaId, query.pontoVendaId, diaOperacional(), request.operacao.tapsEnabled, query.incluirTodosChopes);
     }
 
     const produtos = await prisma.produto.findMany({
       where: { cervejariaId, ativo: true },
-      include: { precos: { where: { volumeMl: 1 }, take: 1 }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
+      include: { precos: { orderBy: { volumeMl: 'asc' } }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
       orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
     });
     return produtos.map(respostaProduto);
@@ -122,54 +138,100 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
   });
 
   app.post('/', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const { cervejariaId } = request.operacao;
+    const { cervejariaId, tapsEnabled } = request.operacao;
     const body = createProdutoSchema.parse(request.body);
+    const chope = body.categoria === 'Chope' || body.formato === 'CHOPE';
+    if (chope && body.categoria !== 'Chope') return reply.status(400).send({ error: 'Selecione a categoria Chope para cadastrar preços por volume' });
+    if (chope && !tapsEnabled) return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
+    if (chope && !(body.precos ?? []).some((preco) => preco.volumeMl > 1 && preco.preco > 0)) {
+      return reply.status(400).send({ error: 'Informe pelo menos um preço por volume para o chope' });
+    }
+    if (!chope && !body.precoUnit) return reply.status(400).send({ error: 'Informe um preço unitário maior que zero' });
+
+    const tipo = chope ? 'BEBIDA' : body.tipo ?? 'BEBIDA';
+    const formato = chope ? 'CHOPE' : tipo === 'BEBIDA' ? body.formato ?? 'OUTRO' : null;
+    const precos = chope ? body.precos! : [{ volumeMl: 1, preco: body.precoUnit! }];
 
     const produto = await prisma.produto.create({
       data: {
         cervejariaId,
         nome: body.nome.trim(),
         categoria: body.categoria,
-        exigePreparo: body.exigePreparo,
+        tipo,
+        formato,
+        descricao: chope ? body.descricao : undefined,
+        estilo: chope ? body.estilo : undefined,
+        exigePreparo: chope ? false : body.exigePreparo,
         controlaEstoque: body.controlaEstoque,
         ordem: body.ordem,
-        precos: { create: { volumeMl: 1, preco: body.precoUnit } },
+        precos: { create: precos },
       },
+      include: { precos: { orderBy: { volumeMl: 'asc' } }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
     });
 
     return reply.status(201).send(respostaProduto(produto));
   });
 
   app.put('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
-    const { cervejariaId } = request.operacao;
+    const { cervejariaId, tapsEnabled } = request.operacao;
     const { id } = request.params as { id: string };
     const body = updateProdutoSchema.parse(request.body);
 
-    const existing = await prisma.produto.findFirst({ where: { id, cervejariaId }, include: { precos: { where: { volumeMl: 1 }, take: 1 } } });
+    const existing = await prisma.produto.findFirst({ where: { id, cervejariaId }, include: { precos: { orderBy: { volumeMl: 'asc' } } } });
     if (!existing) return reply.status(404).send({ error: 'Produto não encontrado' });
 
+    const categoria = body.categoria ?? normalizeCategoriaProduto(existing.categoria);
+    const chope = categoria === 'Chope' || body.formato === 'CHOPE' || (body.categoria === undefined && existing.tipo === 'BEBIDA' && existing.formato === 'CHOPE');
+    if (chope && categoria !== 'Chope') return reply.status(400).send({ error: 'Selecione a categoria Chope para cadastrar preços por volume' });
+    if (chope && !tapsEnabled && (body.categoria === 'Chope' || body.formato === 'CHOPE' || body.precos !== undefined || body.precoUnit !== undefined)) {
+      return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
+    }
+    const precosExistentesChope = body.precos ?? existing.precos;
+    if (body.categoria === 'Chope' && !precosExistentesChope.some((preco) => preco.volumeMl > 1 && Number(preco.preco) > 0)) {
+      return reply.status(400).send({ error: 'Informe pelo menos um preço por volume para o chope' });
+    }
+    if (chope && body.precoUnit !== undefined && body.precos === undefined) {
+      return reply.status(400).send({ error: 'Chope deve ser salvo com preços por volume' });
+    }
+    const classificationChanged = body.tipo !== undefined || body.formato !== undefined || body.categoria === 'Chope';
+    const tipoAtualizado = chope ? 'BEBIDA' : body.tipo ?? existing.tipo;
+    const formatoAtualizado = chope
+      ? 'CHOPE'
+      : classificationChanged
+        ? tipoAtualizado === 'BEBIDA' ? body.formato ?? existing.formato ?? 'OUTRO' : null
+        : existing.formato;
+    if (classificationChanged && (tipoAtualizado !== existing.tipo || formatoAtualizado !== existing.formato)) {
+      const vendasHistoricas = await prisma.itemComanda.count({ where: { produtoId: id } });
+      if (vendasHistoricas > 0) return reply.status(409).send({ error: 'Tipo/formato não pode ser alterado após vendas para preservar ranking e histórico de consumo' });
+    }
+
     const atualizado = await prisma.$transaction(async (tx) => {
+      const tipo = tipoAtualizado;
+      const formato = formatoAtualizado;
       const produto = await tx.produto.update({
         where: { id },
         data: {
           nome: body.nome?.trim(),
           categoria: body.categoria,
-          exigePreparo: body.exigePreparo,
+          ...(classificationChanged ? { tipo, formato } : {}),
+          descricao: body.descricao,
+          estilo: body.estilo,
+          exigePreparo: chope ? false : body.exigePreparo,
           controlaEstoque: body.controlaEstoque,
           ordem: body.ordem,
           ativo: body.ativo,
         },
       });
-      if (body.precoUnit !== undefined) {
-        await tx.preco.upsert({
-          where: { produtoId_volumeMl: { produtoId: id, volumeMl: 1 } },
-          create: { produtoId: id, volumeMl: 1, preco: body.precoUnit },
-          update: { preco: body.precoUnit },
+      const precosNovos = body.precos ?? (!chope && body.precoUnit !== undefined ? [{ volumeMl: 1, preco: body.precoUnit }] : undefined);
+      if (precosNovos) {
+        await tx.preco.deleteMany({ where: { produtoId: id } });
+        await tx.preco.createMany({
+          data: precosNovos.map((preco) => ({ produtoId: id, volumeMl: preco.volumeMl, preco: preco.preco })),
         });
       }
       return tx.produto.findUniqueOrThrow({
         where: { id: produto.id },
-        include: { precos: { where: { volumeMl: 1 }, take: 1 } },
+        include: { precos: { orderBy: { volumeMl: 'asc' } } },
       });
     });
     return respostaProduto(atualizado);

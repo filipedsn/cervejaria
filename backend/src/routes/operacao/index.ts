@@ -33,7 +33,7 @@ export async function operacaoRoutes(app: FastifyInstance) {
     const user = getAuthUser(request);
     const configuracao = await getConfiguracaoOperacao(user.cervejariaId);
 
-    const [profile, pontosVenda, avisoPedidoPronto] = await Promise.all([
+    const [profile, pontosVenda, avisoPedidoPronto, cervejaria] = await Promise.all([
       getOperationalProfile(user.cervejariaId!),
       prisma.pontoVenda.findMany({
       where: { cervejariaId: user.cervejariaId!, ativo: true },
@@ -43,14 +43,17 @@ export async function operacaoRoutes(app: FastifyInstance) {
         where: { cervejariaId: user.cervejariaId! },
         select: { whatsappPedidoProntoEnabled: true, whatsappPedidoProntoNaCozinha: true },
       }),
+      prisma.cervejaria.findUnique({
+        where: { id: user.cervejariaId! },
+        select: { usaCardapio: true },
+      }),
     ]);
 
     return {
-      // CAIXA is exposed before a POS is provisioned only when the tenant has
-      // an operational profile or unit; a brewery-only tenant with taps/events
-      // must not gain the Operacao navigation surface by legacy fallback alone.
+      // An explicit cash mode exposes the setup surface even before the owner
+      // creates a POS. Legacy-only data still cannot expose this surface.
       ativo: profile
-        ? (profile.operationalUnits.pointsOfSale > 0 || profile.capabilities.cashRegister || shouldExposeEstablishmentSurface(profile.capabilities))
+        ? (profile.operationalUnits.pointsOfSale > 0 || shouldExposeEstablishmentSurface(profile.capabilities))
         : false,
       operationMode: profile?.operationMode ?? null,
       plannedOperationsEnabled: profile?.capabilities.plannedOperations ?? false,
@@ -62,7 +65,7 @@ export async function operacaoRoutes(app: FastifyInstance) {
       // same persisted capability decision as the operational settings panel.
       controlaEstoque: profile?.capabilities.inventory ?? configuracao?.controlaEstoque ?? false,
       temCozinha: profile?.capabilities.kitchen ?? configuracao?.temCozinha ?? false,
-      usaCardapio: configuracao?.usaCardapio ?? false,
+      usaCardapio: cervejaria?.usaCardapio ?? false,
       quantidadeMesas: configuracao?.quantidadeMesas ?? 0,
       whatsappPedidoProntoEnabled: avisoPedidoPronto?.whatsappPedidoProntoEnabled ?? false,
       whatsappPedidoProntoNaCozinha: avisoPedidoPronto?.whatsappPedidoProntoNaCozinha ?? false,
@@ -77,10 +80,9 @@ export async function operacaoRoutes(app: FastifyInstance) {
       const { cervejariaId } = request.operacao;
       const body = z
         .object({
-          usaCardapio: z.boolean().optional(),
           quantidadeMesas: z.number().int().min(0).max(500).optional(),
         })
-        .refine((value) => value.usaCardapio !== undefined || value.quantidadeMesas !== undefined)
+        .refine((value) => value.quantidadeMesas !== undefined)
         .parse(request.body);
 
       const updated = await prisma.configuracaoOperacao.update({
@@ -88,7 +90,7 @@ export async function operacaoRoutes(app: FastifyInstance) {
         data: body,
       });
 
-      return { usaCardapio: updated.usaCardapio, quantidadeMesas: updated.quantidadeMesas };
+      return { quantidadeMesas: updated.quantidadeMesas };
     });
 
     moduloScope.patch('/capacidades', { preHandler: [app.requireDono] }, async (request) => {

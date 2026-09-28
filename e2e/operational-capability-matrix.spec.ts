@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { API_BASE, apiLogin, apiRequest } from './helpers/api';
-import { CREDENTIALS, login } from './helpers/auth';
+import { CREDENTIALS } from './helpers/auth';
 
 type MatrixCase = {
   id: string;
@@ -72,15 +72,27 @@ test.describe('TAP-68 — matriz cartesiana operacional', () => {
       expect(context.status).toBe(200);
       expect(context.data).toMatchObject({ operationMode: item.mode, tapsEnabled: item.taps, inventoryEnabled: item.inventory, kitchenEnabled: item.kitchen });
 
-      await login(page, owner.email, owner.password);
+      // A sessão já foi autenticada uma vez no setup. Reutilizá-la evita bater
+      // no rate limit de login durante a matriz (16 combinações sequenciais).
+      const apiOrigin = new URL(API_BASE);
+      await page.context().addCookies([{
+        name: 'token',
+        value: ownerCookie.replace(/^token=/, ''),
+        domain: apiOrigin.hostname,
+        path: '/',
+        httpOnly: true,
+        secure: apiOrigin.protocol === 'https:',
+        sameSite: 'Lax',
+      }]);
       await page.goto(item.mode === 'CAIXA' ? '/operacao/configuracoes/operacao' : '/configuracoes/operacao');
       await page.reload();
       const selected = item.mode === 'CAIXA' ? 'Por caixa' : /Por opera/;
       await expect(page.getByRole('button', { name: selected })).toHaveAttribute('aria-pressed', 'true');
 
       const navigation = page.getByRole('navigation', { name: 'Navegação principal' });
-      const links = navigation.getByRole('link');
-      await expect(links.first()).toHaveAccessibleName(item.mode === 'CAIXA' ? 'Caixa' : 'Eventos');
+      // A operaÃ§Ã£o muda a organizaÃ§Ã£o (caixa ou eventos), nÃ£o o mÃ³dulo de
+      // venda: comandas permanece disponÃ­vel com a mesma identidade nos dois.
+      await expect(navigation.getByRole('link', { name: 'Comandas', exact: true })).toHaveCount(1);
       await expect(navigation.getByRole('link', { name: 'Quiosque' })).toHaveCount(0);
       await expect(navigation.getByRole('link', { name: 'Estabelecimento' })).toHaveCount(0);
       await expect(navigation.getByRole('link', { name: 'Híbrida' })).toHaveCount(0);

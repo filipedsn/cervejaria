@@ -2,7 +2,6 @@ import { PageHeader } from '../components/PageHeader';
 import { ConfigKpisComandaPanel } from '../components/ConfigKpisComandaPanel';
 import { ConfigComandasLayoutPanel } from '../components/ConfigComandasLayoutPanel';
 import { ConfigCardapioPanel } from '../components/ConfigCardapioPanel';
-import { ConfigCardapioOperacaoPanel } from '../components/ConfigCardapioOperacaoPanel';
 import { ConfigMesasOperacaoPanel } from '../components/ConfigMesasOperacaoPanel';
 import { OperationalCapabilitiesPanel } from '../components/OperationalCapabilitiesPanel';
 import { OnboardingManualEntry } from '../components/OnboardingManualEntry';
@@ -23,11 +22,9 @@ export function OperacaoPage({ embedded, modo = 'cervejaria' }: OperacaoPageProp
       <OperationalCapabilitiesPanel />
       <ConfigKpisComandaPanel />
       <ConfigComandasLayoutPanel />
-      {modo === 'cervejaria' && <ConfigCardapioPanel />}
-      {modo === 'operacao' && <ConfigCardapioOperacaoPanel />}
+      <ConfigCardapioPanel />
       {modo === 'operacao' && <ConfigMesasOperacaoPanel />}
       {modo === 'operacao' && <CategoriasProdutoOrdemPanel />}
-      {modo === 'cervejaria' && <ConfigCardapioOperacaoPanel />}
       <OnboardingManualEntry />
     </div>
   );

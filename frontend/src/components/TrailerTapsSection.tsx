@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import type { Tap, Produto } from '../types';
-import { isBebidaChope } from '../types';
+import { isChopeConfiguravelNaTap } from '../types';
 import { Modal } from './Modal';
 import { ModalFormFooter } from './ModalFormFooter';
 import { Loading } from './Loading';
@@ -162,7 +162,7 @@ export function TrailerTapsSection({ trailerId }: { trailerId: string }) {
     queryFn: () => api.get<Produto[]>('/api/produtos'),
   });
 
-  const chopes = produtos?.filter((p) => p.ativo && isBebidaChope(p)) ?? [];
+  const chopes = produtos?.filter((p) => p.ativo && isChopeConfiguravelNaTap(p)) ?? [];
 
   const toggleTapAtivo = useMutation({
     mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>

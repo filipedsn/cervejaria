@@ -190,6 +190,12 @@ export function formatDate(date: string): string {
   return new Date(date).toLocaleDateString('pt-BR');
 }
 
+function formatDateOnly(date: string): string {
+  const [year, month, day] = date.slice(0, 10).split('-').map(Number);
+  if (!year || !month || !day) return formatDate(date);
+  return new Date(year, month - 1, day).toLocaleDateString('pt-BR');
+}
+
 export function formatTime(time: string): string {
   return time.slice(0, 5);
 }
@@ -210,7 +216,7 @@ export function formatEventoWhen(evento: {
   if (evento.data) {
     const hora = formatTime(evento.horaInicio);
     const fim = evento.horaFim ? ` – ${formatTime(evento.horaFim)}` : '';
-    return `${formatDate(evento.data)} · ${hora}${fim}`;
+    return `${formatDateOnly(evento.data)} · ${hora}${fim}`;
   }
   return formatTime(evento.horaInicio);
 }

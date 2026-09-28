@@ -1,15 +1,19 @@
 import { prisma } from './prisma.js';
 import { toNumber } from './utils.js';
 
-export type CardapioItemInput = { produtoId: string; precoUnit: number };
+export type CardapioItemInput = { produtoId: string; precoUnit: number; volumeMl?: number };
+
+export function cardapioProdutoVolumeKey(produtoId: string, volumeMl = 0) {
+  return `${produtoId}:${volumeMl}`;
+}
 
 /** Preco do item no template de cardapio da cervejaria, ou null se nao encontrado. */
 export async function resolvePrecoCardapioCervejaria(
   cardapioId: string,
   produtoId: string,
 ): Promise<number | null> {
-  const row = await prisma.cardapioProduto.findUnique({
-    where: { cardapioId_produtoId: { cardapioId, produtoId } },
+  const row = await prisma.cardapioProduto.findFirst({
+    where: { cardapioId, produtoId, volumeMl: 0 },
     select: { precoUnit: true },
   });
   return row ? toNumber(row.precoUnit) : null;
@@ -18,7 +22,7 @@ export async function resolvePrecoCardapioCervejaria(
 /** Mapa produtoId -> precoUnit para todos os itens de um template. */
 export async function mapPrecosCardapioCervejaria(cardapioId: string) {
   const rows = await prisma.cardapioProduto.findMany({
-    where: { cardapioId },
+    where: { cardapioId, volumeMl: 0 },
     select: { produtoId: true, precoUnit: true },
   });
   return new Map(rows.map((r) => [r.produtoId, toNumber(r.precoUnit)]));
@@ -29,10 +33,8 @@ export async function resolvePrecoCardapioOperacao(
   cardapioId: string,
   produtoId: string,
 ): Promise<number | null> {
-  const row = await prisma.cardapioOperacaoProduto.findUnique({
-    where: {
-      cardapioId_produtoId: { cardapioId, produtoId },
-    },
+  const row = await prisma.cardapioProduto.findFirst({
+    where: { cardapioId, produtoId, volumeMl: 0 },
     select: { precoUnit: true },
   });
   return row ? toNumber(row.precoUnit) : null;
@@ -40,9 +42,9 @@ export async function resolvePrecoCardapioOperacao(
 
 /** Mapa produtoId -> precoUnit para todos os itens de um template operacao. */
 export async function mapPrecosCardapioOperacao(cardapioId: string) {
-  const rows = await prisma.cardapioOperacaoProduto.findMany({
+  const rows = await prisma.cardapioProduto.findMany({
     where: { cardapioId },
-    select: { produtoId: true, precoUnit: true },
+    select: { produtoId: true, volumeMl: true, precoUnit: true },
   });
-  return new Map(rows.map((r) => [r.produtoId, toNumber(r.precoUnit)]));
+  return new Map(rows.map((r) => [cardapioProdutoVolumeKey(r.produtoId, r.volumeMl), toNumber(r.precoUnit)]));
 }

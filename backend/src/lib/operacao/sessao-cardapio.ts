@@ -1,32 +1,37 @@
 import { prisma } from '../prisma.js';
-import { mapPrecosCardapioOperacao } from '../cardapio-preco.js';
+import { cardapioProdutoVolumeKey, mapPrecosCardapioOperacao } from '../cardapio-preco.js';
 import { operacaoUsaCardapio } from '../cardapio-toggle.js';
+import { isBebidaChopeOperacao, isChopeConfiguravelNaTapOperacao } from '../produto-utils.js';
 import { toNumber } from '../utils.js';
 
 type AplicarCardapioTurnoResult = { ok: true; count: number } | { error: string };
 import {
-  getProdutoIdsFromCardapioOperacao,
+  getItensCardapioOperacao,
   listCatalogoCardapioOperacao,
   validateProdutosCardapioOperacao,
 } from './cardapio.js';
 
 function enriquecerProdutosOperacao<
-  T extends { id: string; precos?: Array<{ preco: unknown }> },
+  T extends { id: string; volumeMl?: number; precos?: Array<{ volumeMl: number; preco: unknown }> },
 >(
   produtos: T[],
   precosTemplate: Map<string, number> | null,
   precosTurno?: Map<string, number> | null,
 ) {
   return produtos.map((p) => {
-    const turnoPreco = precosTurno?.get(p.id);
-    const templatePreco = precosTemplate?.get(p.id);
-    const precoEfetivo = turnoPreco ?? templatePreco ?? toNumber(p.precos?.[0]?.preco ?? 0);
+    const volumeMl = p.volumeMl ?? 0;
+    const chave = cardapioProdutoVolumeKey(p.id, volumeMl);
+    const turnoPreco = precosTurno?.get(chave);
+    const templatePreco = precosTemplate?.get(chave);
+    const precoCatalogo = toNumber(p.precos?.find((preco) => preco.volumeMl === (volumeMl || 1))?.preco ?? 0);
+    const precoEfetivo = turnoPreco ?? templatePreco ?? precoCatalogo;
     return {
       ...p,
       gruposOpcionais: ((p as T & { opcionaisVinculados?: Array<{ opcional: { id: string; nome: string; preco: unknown } }> }).opcionaisVinculados ?? []).length ? [{ id: 'opcionais', nome: 'Opcionais', obrigatorio: false, maximo: 99, opcoes: (p as T & { opcionaisVinculados: Array<{ opcional: { id: string; nome: string; preco: unknown } }> }).opcionaisVinculados.map(({ opcional }) => ({ id: opcional.id, nome: opcional.nome, precoAdicional: toNumber(opcional.preco) })) }] : [],
       precoUnit: String(precoEfetivo),
       precoEfetivo,
       precoOverrideTurno: turnoPreco !== undefined,
+      volumeMl,
     };
   });
 }
@@ -35,11 +40,11 @@ function enriquecerProdutosOperacao<
 export async function mapPrecosTurno(sessaoCaixaId: string) {
   const rows = await prisma.sessaoCaixaProdutoOperacao.findMany({
     where: { sessaoCaixaId, precoUnit: { not: null } },
-    select: { produtoId: true, precoUnit: true },
+    select: { produtoId: true, volumeMl: true, precoUnit: true },
   });
   return new Map(
     rows.flatMap((row) =>
-      row.precoUnit === null ? [] : [[row.produtoId, toNumber(row.precoUnit)]],
+      row.precoUnit === null ? [] : [[cardapioProdutoVolumeKey(row.produtoId, row.volumeMl), toNumber(row.precoUnit)]],
     ),
   );
 }
@@ -49,13 +54,21 @@ export async function listProdutosDoTurno(sessaoCaixaId: string) {
     where: { sessaoCaixaId },
     include: {
       produto: {
-        include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
+        include: { precos: { orderBy: { volumeMl: 'asc' } }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
       },
     },
     orderBy: { produto: { nome: 'asc' } },
   });
 
-  return rows.map((r) => r.produto);
+  const produtosComVolume = new Set(rows.filter((row) => row.volumeMl > 1).map((row) => row.produtoId));
+  return rows.flatMap((r) => {
+    if (r.volumeMl === 0 && isBebidaChopeOperacao(r.produto)) {
+      if (produtosComVolume.has(r.produtoId)) return [];
+      return r.produto.precos.filter((preco) => preco.volumeMl > 1)
+        .map((preco) => ({ ...r.produto, volumeMl: preco.volumeMl }));
+    }
+    return [{ ...r.produto, volumeMl: r.volumeMl }];
+  });
 }
 
 export async function getCardapioTurno(sessaoCaixaId: string, cervejariaId: string) {
@@ -64,7 +77,7 @@ export async function getCardapioTurno(sessaoCaixaId: string, cervejariaId: stri
     select: {
       id: true,
       status: true,
-      cardapioOperacaoId: true,
+      cardapioId: true,
       cardapio: { select: { id: true, nome: true } },
     },
   });
@@ -76,7 +89,7 @@ export async function getCardapioTurno(sessaoCaixaId: string, cervejariaId: stri
     const produtos = enriquecerProdutosOperacao(catalogoRaw, null);
     return {
       produtos,
-      produtoIds: produtos.map((p) => p.id),
+      produtoIds: [...new Set(produtos.map((p) => p.id))],
       catalogo: produtos,
       editavel: false,
       cardapioId: null,
@@ -85,8 +98,8 @@ export async function getCardapioTurno(sessaoCaixaId: string, cervejariaId: stri
   }
 
   const [precosTemplate, precosTurno, produtosRaw, catalogoRaw] = await Promise.all([
-    sessao.cardapioOperacaoId
-      ? mapPrecosCardapioOperacao(sessao.cardapioOperacaoId)
+    sessao.cardapioId
+      ? mapPrecosCardapioOperacao(sessao.cardapioId)
       : Promise.resolve(null),
     mapPrecosTurno(sessaoCaixaId),
     listProdutosDoTurno(sessaoCaixaId),
@@ -98,31 +111,42 @@ export async function getCardapioTurno(sessaoCaixaId: string, cervejariaId: stri
 
   return {
     produtos,
-    produtoIds: produtos.map((p) => p.id),
+    produtoIds: [...new Set(produtos.map((p) => p.id))],
     catalogo,
     editavel: sessao.status === 'ABERTO',
-    cardapioId: sessao.cardapioOperacaoId,
+    cardapioId: sessao.cardapioId,
     cardapioNome: sessao.cardapio?.nome ?? null,
   };
 }
 
-export async function assertProdutoNoCardapioTurno(sessaoCaixaId: string, produtoId: string) {
-  const row = await prisma.sessaoCaixaProdutoOperacao.findUnique({
-    where: { sessaoCaixaId_produtoId: { sessaoCaixaId, produtoId } },
-  });
-  return !!row;
+export async function assertProdutoNoCardapioTurno(sessaoCaixaId: string, produtoId: string, volumeMl = 0) {
+  const row = await prisma.sessaoCaixaProdutoOperacao.findFirst({ where: { sessaoCaixaId, produtoId, volumeMl } });
+  if (row || volumeMl <= 1) return !!row;
+  const hasVariantRows = await prisma.sessaoCaixaProdutoOperacao.count({ where: { sessaoCaixaId, produtoId, volumeMl: { gt: 1 } } });
+  if (hasVariantRows > 0) return false;
+  return Boolean(await prisma.sessaoCaixaProdutoOperacao.findFirst({ where: { sessaoCaixaId, produtoId, volumeMl: 0 } }));
 }
 
-export async function setProdutosDoTurno(sessaoCaixaId: string, produtoIds: string[]) {
-  const uniqueIds = [...new Set(produtoIds)];
+export async function setProdutosDoTurno(sessaoCaixaId: string, itens: Array<{ produtoId: string; volumeMl: number }>) {
+  const unique = new Map(itens.map((item) => [`${item.produtoId}:${item.volumeMl}`, item]));
   await prisma.$transaction(async (tx) => {
     await tx.sessaoCaixaProdutoOperacao.deleteMany({ where: { sessaoCaixaId } });
-    if (uniqueIds.length > 0) {
+    if (unique.size > 0) {
       await tx.sessaoCaixaProdutoOperacao.createMany({
-        data: uniqueIds.map((produtoId) => ({ sessaoCaixaId, produtoId })),
+        data: [...unique.values()].map((item) => ({ sessaoCaixaId, produtoId: item.produtoId, volumeMl: item.volumeMl })),
       });
     }
   });
+}
+
+async function expandirProdutosEmVariantes(cervejariaId: string, produtoIds: string[]) {
+  const produtos = await prisma.produto.findMany({
+    where: { cervejariaId, ativo: true, id: { in: [...new Set(produtoIds)] } },
+    include: { precos: { select: { volumeMl: true } } },
+  });
+  return produtos.flatMap((produto) => isBebidaChopeOperacao(produto)
+    ? produto.precos.filter((preco) => preco.volumeMl > 1).map((preco) => ({ produtoId: produto.id, volumeMl: preco.volumeMl }))
+    : [{ produtoId: produto.id, volumeMl: 0 }]);
 }
 
 export async function aplicarCardapioInicialTurno(params: {
@@ -134,23 +158,23 @@ export async function aplicarCardapioInicialTurno(params: {
   const { sessaoCaixaId, cervejariaId, cardapioId, produtoIds } = params;
   if (!cardapioId && !produtoIds?.length) return { ok: true as const, count: 0 };
 
-  let ids: string[];
+  let itens: Array<{ produtoId: string; volumeMl: number }>;
   if (cardapioId) {
-    const fromTemplate = await getProdutoIdsFromCardapioOperacao(cardapioId, cervejariaId);
+    const fromTemplate = await getItensCardapioOperacao(cardapioId, cervejariaId);
     if ('error' in fromTemplate) return fromTemplate;
-    ids = fromTemplate.produtoIds;
+    itens = fromTemplate.itens;
     await prisma.sessaoCaixaOperacao.update({
       where: { id: sessaoCaixaId },
-      data: { cardapioOperacaoId: cardapioId },
+      data: { cardapioId },
     });
   } else {
     const validated = await validateProdutosCardapioOperacao(cervejariaId, produtoIds ?? []);
     if ('error' in validated) return validated;
-    ids = validated.produtoIds;
+    itens = await expandirProdutosEmVariantes(cervejariaId, validated.produtoIds);
   }
 
-  await setProdutosDoTurno(sessaoCaixaId, ids);
-  return { ok: true as const, count: ids.length };
+  await setProdutosDoTurno(sessaoCaixaId, itens);
+  return { ok: true as const, count: itens.length };
 }
 
 /** Se o turno ficou sem cardapio, inclui todos os produtos ativos do catalogo. */
@@ -163,7 +187,9 @@ export async function aplicarCardapioCatalogoSeVazio(sessaoCaixaId: string, cerv
 
   await setProdutosDoTurno(
     sessaoCaixaId,
-    catalog.map((p) => p.id),
+    catalog.flatMap((p) => isBebidaChopeOperacao(p)
+      ? p.precos.filter((preco) => preco.volumeMl > 1).map((preco) => ({ produtoId: p.id, volumeMl: preco.volumeMl }))
+      : [{ produtoId: p.id, volumeMl: 0 }]),
   );
   return catalog.length;
 }
@@ -200,7 +226,7 @@ export async function salvarCardapioTurno(params: {
     await setProdutosDoTurno(sessaoCaixaId, []);
     await prisma.sessaoCaixaOperacao.update({
       where: { id: sessaoCaixaId },
-      data: { cardapioOperacaoId: null },
+      data: { cardapioId: null },
     });
     return { ok: true as const, count: 0 };
   }
@@ -208,13 +234,14 @@ export async function salvarCardapioTurno(params: {
   const validated = await validateProdutosCardapioOperacao(cervejariaId, uniqueIds);
   if ('error' in validated) return validated;
 
-  await setProdutosDoTurno(sessaoCaixaId, validated.produtoIds);
+  const itens = await expandirProdutosEmVariantes(cervejariaId, validated.produtoIds);
+  await setProdutosDoTurno(sessaoCaixaId, itens);
   await prisma.sessaoCaixaOperacao.update({
     where: { id: sessaoCaixaId },
-    data: { cardapioOperacaoId: null },
+    data: { cardapioId: null },
   });
 
-  return { ok: true as const, count: validated.produtoIds.length };
+  return { ok: true as const, count: itens.length };
 }
 
 /**
@@ -229,10 +256,21 @@ export async function alterarPrecoCardapioTurno(params: {
   sessaoCaixaId: string;
   cervejariaId: string;
   produtoId: string;
+  volumeMl?: number;
   precoUnit: number;
   escopo: 'TURNO' | 'TEMPLATE';
 }): Promise<AlterarPrecoCardapioTurnoResult> {
-  const { sessaoCaixaId, cervejariaId, produtoId, precoUnit, escopo } = params;
+  const { sessaoCaixaId, cervejariaId, produtoId, volumeMl = 0, precoUnit, escopo } = params;
+
+  const produto = await prisma.produto.findFirst({
+    where: { id: produtoId, cervejariaId },
+    include: { precos: { select: { volumeMl: true } } },
+  });
+  if (produto && (isBebidaChopeOperacao(produto)
+    ? volumeMl <= 1 || !produto.precos.some((preco) => preco.volumeMl === volumeMl)
+    : volumeMl !== 0)) {
+    return { error: 'Volume invÃ¡lido para o item do cardÃ¡pio.' as const, statusCode: 400 as const };
+  }
 
   if (!(await operacaoUsaCardapio(cervejariaId))) {
     return { error: 'Cardápio desativado para esta empresa' as const, statusCode: 400 as const };
@@ -243,16 +281,14 @@ export async function alterarPrecoCardapioTurno(params: {
 
   const sessao = await prisma.sessaoCaixaOperacao.findFirst({
     where: { id: sessaoCaixaId, cervejariaId, status: 'ABERTO' },
-    select: { id: true, cardapioOperacaoId: true },
+    select: { id: true, cardapioId: true },
   });
   if (!sessao) {
     return { error: 'Turno de caixa não encontrado ou já fechado' as const, statusCode: 404 as const };
   }
 
-  const noTurno = await prisma.sessaoCaixaProdutoOperacao.findUnique({
-    where: {
-      sessaoCaixaId_produtoId: { sessaoCaixaId, produtoId },
-    },
+  const noTurno = await prisma.sessaoCaixaProdutoOperacao.findFirst({
+    where: { sessaoCaixaId, produtoId, volumeMl },
   });
   if (!noTurno) {
     return { error: 'Produto não está no cardápio deste turno' as const, statusCode: 400 as const };
@@ -266,20 +302,15 @@ export async function alterarPrecoCardapioTurno(params: {
     return { ok: true as const, escopo: 'TURNO' as const };
   }
 
-  if (!sessao.cardapioOperacaoId) {
+  if (!sessao.cardapioId) {
     return {
       error: 'Nenhum cardápio salvo vinculado a este turno. Use alteração só do turno.',
       statusCode: 400 as const,
     };
   }
 
-  const templateItem = await prisma.cardapioOperacaoProduto.findUnique({
-    where: {
-      cardapioId_produtoId: {
-        cardapioId: sessao.cardapioOperacaoId,
-        produtoId,
-      },
-    },
+  const templateItem = await prisma.cardapioProduto.findFirst({
+    where: { cardapioId: sessao.cardapioId, produtoId, volumeMl },
   });
   if (!templateItem) {
     return {
@@ -289,7 +320,7 @@ export async function alterarPrecoCardapioTurno(params: {
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.cardapioOperacaoProduto.update({
+    await tx.cardapioProduto.update({
       where: { id: templateItem.id },
       data: { precoUnit },
     });
@@ -307,12 +338,14 @@ export async function listProdutosOperacionaisTurno(
   cervejariaId: string,
   pontoVendaId: string,
   dia: Date,
+  tapsEnabled = false,
+  incluirTodosChopes = false,
 ) {
   const usaCardapio = await operacaoUsaCardapio(cervejariaId);
   if (!usaCardapio) {
     const produtos = await prisma.produto.findMany({
       where: { cervejariaId, ativo: true },
-      include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
+      include: { precos: { orderBy: { volumeMl: 'asc' } }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
       orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
     });
     return enriquecerProdutosOperacao(produtos, null);
@@ -321,13 +354,13 @@ export async function listProdutosOperacionaisTurno(
   const sessao = await prisma.sessaoCaixaOperacao.findFirst({
     where: { cervejariaId, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
     orderBy: { abertoEm: 'desc' },
-    select: { id: true, cardapioOperacaoId: true },
+    select: { id: true, cardapioId: true },
   });
 
   if (!sessao) {
     const produtos = await prisma.produto.findMany({
       where: { cervejariaId, ativo: true },
-      include: { precos: { orderBy: { volumeMl: 'asc' }, take: 1 }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
+      include: { precos: { orderBy: { volumeMl: 'asc' } }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
       orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
     });
     return enriquecerProdutosOperacao(produtos, null);
@@ -335,10 +368,19 @@ export async function listProdutosOperacionaisTurno(
 
   const [produtos, precosTemplate, precosTurno] = await Promise.all([
     listProdutosDoTurno(sessao.id),
-    sessao.cardapioOperacaoId
-      ? mapPrecosCardapioOperacao(sessao.cardapioOperacaoId)
+    sessao.cardapioId
+      ? mapPrecosCardapioOperacao(sessao.cardapioId)
       : Promise.resolve(null),
     mapPrecosTurno(sessao.id),
   ]);
-  return enriquecerProdutosOperacao(produtos.filter((p) => p.ativo), precosTemplate, precosTurno);
+  const produtosAtivos = produtos.filter((produto) => produto.ativo && (tapsEnabled || !isBebidaChopeOperacao(produto)));
+  const produtosMapeados = enriquecerProdutosOperacao(produtosAtivos, precosTemplate, precosTurno);
+  if (!incluirTodosChopes || !tapsEnabled) return produtosMapeados;
+  const chopes = await prisma.produto.findMany({
+    where: { cervejariaId, ativo: true, tipo: 'BEBIDA', OR: [{ formato: 'CHOPE' }, { formato: null }] },
+    include: { precos: { orderBy: { volumeMl: 'asc' } }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
+    orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
+  });
+  const chopesMapeados = enriquecerProdutosOperacao(chopes.filter(isChopeConfiguravelNaTapOperacao), null);
+  return [...produtosMapeados.filter((produto) => !isBebidaChopeOperacao(produto)), ...chopesMapeados];
 }

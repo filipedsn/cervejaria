@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { ToggleAtivo } from './ToggleAtivo';
 
 type CapabilityKey = 'tapsEnabled' | 'inventoryEnabled' | 'kitchenEnabled';
 type OperationalConfiguration = Record<CapabilityKey | 'plannedOperationsEnabled' | 'whatsappPedidoProntoEnabled' | 'whatsappPedidoProntoNaCozinha', boolean | null>;
-type Enablements = { plannedOperations: boolean; taps: boolean; inventory: boolean; kitchen: boolean };
+type Enablements = { plannedOperations: boolean; cashRegister: boolean; cashMode: boolean; taps: boolean; inventory: boolean; kitchen: boolean };
 type OperationalConfigResponse = { enablements: Enablements; configuration: OperationalConfiguration | null };
 const ENABLEMENT_BY_KEY: Record<CapabilityKey, keyof Enablements> = { tapsEnabled: 'taps', inventoryEnabled: 'inventory', kitchenEnabled: 'kitchen' };
 const CAPABILITIES: Array<{ key: CapabilityKey; title: string; description: string }> = [
@@ -55,6 +56,12 @@ export function OperationalCapabilitiesPanel() {
       <button type="button" className={`card text-left ${operationMode === 'CAIXA' ? 'ring-2 ring-brand-400 bg-brand-50/40' : ''}`} onClick={() => selectMode('CAIXA')} disabled={isLoading || saving !== null} aria-pressed={operationMode === 'CAIXA'} data-selected={operationMode === 'CAIXA'}><span className="flex items-center justify-between gap-2 font-semibold text-ink"><span>Por caixa</span>{operationMode === 'CAIXA' && <span className="text-xs font-bold uppercase tracking-wide text-brand-700">Selecionado</span>}</span><span className="mt-1 block text-sm text-ink-muted">Abra o caixa e venda diretamente no balcão.</span></button>
       <button type="button" className={`card text-left ${operationMode === 'EVENTO' ? 'ring-2 ring-brand-400 bg-brand-50/40' : ''}`} onClick={() => selectMode('EVENTO')} disabled={isLoading || saving !== null} aria-pressed={operationMode === 'EVENTO'} data-selected={operationMode === 'EVENTO'}><span className="flex items-center justify-between gap-2 font-semibold text-ink"><span>Por operações / eventos</span>{operationMode === 'EVENTO' && <span className="text-xs font-bold uppercase tracking-wide text-brand-700">Selecionado</span>}</span><span className="mt-1 block text-sm text-ink-muted">Inicie uma operação agora ou agende para outro momento.</span></button>
     </div>
+    {operationMode === 'CAIXA' && data && !data.enablements.cashRegister && (
+      <div className="flex flex-col gap-3 rounded-xl border border-brand-400/30 bg-brand-500/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-ink-muted">Modo por caixa selecionado. Para começar a vender, crie seu ponto de venda.</p>
+        <Link to="/operacao/caixa" className="touch-btn-primary inline-flex shrink-0 items-center justify-center px-4">Criar ponto de venda</Link>
+      </div>
+    )}
     <p className="text-sm font-semibold text-ink">Recursos complementares</p>
     <div className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
       {CAPABILITIES.map(({ key, title, description }) => <div key={key} className="flex min-h-20 items-center justify-between gap-3 px-4 py-4"><div className="min-w-0 flex-1"><p className="font-semibold text-ink">{title}</p><p className="mt-1 text-sm leading-relaxed text-ink-muted">{description}</p></div><ToggleAtivo ativo={data?.enablements[ENABLEMENT_BY_KEY[key]] ?? false} loading={isLoading || saving !== null} onToggle={() => toggle(key)} labelAtivo={`Desativar ${title}`} labelInativo={`Ativar ${title}`} /></div>)}

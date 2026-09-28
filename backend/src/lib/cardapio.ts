@@ -96,6 +96,7 @@ export async function listCardapios(cervejariaId: string, opts?: { ativo?: boole
     },
     include: {
       produtos: {
+        where: { volumeMl: 0 },
         include: { produto: produtoInclude },
         orderBy: { produto: { nome: 'asc' } },
       },
@@ -123,7 +124,7 @@ export function mapCardapioResponse(
       ...p.produto,
       precoEfetivo: toNumber(p.precoUnit),
     })),
-    itemCount: cardapio._count.produtos,
+    itemCount: cardapio.produtos.length,
   };
 }
 
@@ -132,6 +133,7 @@ export async function getCardapioById(id: string, cervejariaId: string) {
     where: { id, cervejariaId },
     include: {
       produtos: {
+        where: { volumeMl: 0 },
         include: { produto: produtoInclude },
         orderBy: { produto: { nome: 'asc' } },
       },
@@ -144,7 +146,7 @@ export async function getCardapioById(id: string, cervejariaId: string) {
 
 async function replaceCardapioProdutos(cardapioId: string, itens: CardapioItemInput[]) {
   await prisma.$transaction(async (tx) => {
-    await tx.cardapioProduto.deleteMany({ where: { cardapioId } });
+    await tx.cardapioProduto.deleteMany({ where: { cardapioId, volumeMl: 0 } });
     if (itens.length > 0) {
       await tx.cardapioProduto.createMany({
         data: itens.map((item) => ({
@@ -221,7 +223,7 @@ export async function getProdutoIdsFromCardapio(
 ): Promise<ProdutoIdsCardapioResult> {
   const cardapio = await prisma.cardapio.findFirst({
     where: { id: cardapioId, cervejariaId, ativo: true },
-    include: { produtos: { select: { produtoId: true } } },
+    include: { produtos: { where: { volumeMl: 0 }, select: { produtoId: true } } },
   });
   if (!cardapio) return { error: 'Cardápio não encontrado' as const };
   return { ok: true as const, produtoIds: cardapio.produtos.map((p) => p.produtoId) };

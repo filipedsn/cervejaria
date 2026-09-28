@@ -20,6 +20,8 @@ type PendingPreco = {
   precoUnit: number;
 };
 
+const precoKey = (produto: ProdutoOperacao) => `${produto.id}:${produto.volumeMl ?? 0}`;
+
 export function OperacaoTurnoCardapioPanel({
   pontoVendaId,
   embedded = false,
@@ -65,7 +67,7 @@ export function OperacaoTurnoCardapioPanel({
     const next: Record<string, string> = {};
     for (const p of cardapio.produtos) {
       const valor = (p.precoEfetivo ?? parseFloat(p.precoUnit)) || 0;
-      next[p.id] = formatCurrencyInputFromNumber(valor);
+      next[precoKey(p)] = formatCurrencyInputFromNumber(valor);
     }
     setDraftPrecos(next);
   }, [cardapio]);
@@ -88,7 +90,7 @@ export function OperacaoTurnoCardapioPanel({
   });
 
   const precoMutation = useMutation({
-    mutationFn: (payload: { produtoId: string; precoUnit: number; escopo: EscopoPreco }) =>
+    mutationFn: (payload: { produtoId: string; volumeMl: number; precoUnit: number; escopo: EscopoPreco }) =>
       api.patch<CardapioTurnoOperacao>(
         `/api/operacao/caixa/cardapio/preco?pontoVendaId=${encodeURIComponent(pontoVendaId)}`,
         payload,
@@ -154,7 +156,7 @@ export function OperacaoTurnoCardapioPanel({
     if (!(novo > 0)) {
       setDraftPrecos((prev) => ({
         ...prev,
-        [produto.id]: formatCurrencyInputFromNumber(atual),
+        [precoKey(produto)]: formatCurrencyInputFromNumber(atual),
       }));
       return;
     }
@@ -168,7 +170,7 @@ export function OperacaoTurnoCardapioPanel({
         (pendingPreco.produto.precoEfetivo ?? parseFloat(pendingPreco.produto.precoUnit)) || 0;
       setDraftPrecos((prev) => ({
         ...prev,
-        [pendingPreco.produto.id]: formatCurrencyInputFromNumber(atual),
+        [precoKey(pendingPreco.produto)]: formatCurrencyInputFromNumber(atual),
       }));
     }
     setPendingPreco(null);
@@ -178,6 +180,7 @@ export function OperacaoTurnoCardapioPanel({
     if (!pendingPreco) return;
     precoMutation.mutate({
       produtoId: pendingPreco.produto.id,
+      volumeMl: pendingPreco.produto.volumeMl ?? 0,
       precoUnit: pendingPreco.precoUnit,
       escopo,
     });
@@ -300,27 +303,34 @@ export function OperacaoTurnoCardapioPanel({
               </h3>
               <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
                 {(cardapio?.produtos ?? []).map((p) => {
-                  const valor = draftPrecos[p.id] ?? formatCurrencyInputFromNumber(p.precoEfetivo ?? 0);
+                  const valor = draftPrecos[precoKey(p)] ?? formatCurrencyInputFromNumber(p.precoEfetivo ?? 0);
                   return (
                     <div
-                      key={p.id}
+                      key={precoKey(p)}
                       className="rounded-xl border border-line bg-surface p-2.5 flex flex-col sm:flex-row sm:items-center gap-2"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-ink leading-tight">{p.nome}</p>
+                        <p className="text-sm font-semibold text-ink leading-tight">{p.nome}{(p.volumeMl ?? 0) > 1 ? ` · ${p.volumeMl} ml` : ''}</p>
                         <p className="text-xs text-ink-faint mt-0.5">
                           {normalizeCategoriaProduto(p.categoria)}
                           {p.precoOverrideTurno ? ' · preço só deste turno' : ''}
                         </p>
                       </div>
-                      <div className="w-full sm:w-36 shrink-0">
-                        <CurrencyInput
-                          className="input"
-                          value={valor}
-                          onChange={(v) => setDraftPrecos((prev) => ({ ...prev, [p.id]: v }))}
-                          onBlur={(e) => solicitarAlteracaoPreco(p, e.currentTarget.value)}
-                        />
-                      </div>
+                      {false ? (
+                        <p className="text-xs text-ink-muted sm:max-w-56">
+                          Preços por volume no cadastro:{' '}
+                          {(p.precos ?? []).map((preco) => `${preco.volumeMl} ml ${formatCurrency(Number(preco.preco))}`).join(' · ')}
+                        </p>
+                      ) : (
+                        <div className="w-full sm:w-36 shrink-0">
+                          <CurrencyInput
+                            className="input"
+                            value={valor}
+                            onChange={(v) => setDraftPrecos((prev) => ({ ...prev, [precoKey(p)]: v }))}
+                            onBlur={(e) => solicitarAlteracaoPreco(p, e.currentTarget.value)}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}

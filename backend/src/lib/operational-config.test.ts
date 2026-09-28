@@ -77,6 +77,40 @@ test('allows CAIXA to EVENTO when no cash session is open', async () => {
   assert.deepEqual((db.updates[0] as any).update, { plannedOperationsEnabled: true });
 });
 
+test('accepts the initial disabled inventory default without a change confirmation', async () => {
+  const db = database(null);
+  await updateOperationalConfig(db as any, 'tenant-a', { inventoryEnabled: false });
+  assert.deepEqual(db.updates, [{
+    create: { cervejariaId: 'tenant-a', inventoryEnabled: false },
+    update: { inventoryEnabled: false },
+  }]);
+});
+
+test('completes first access setup while saving mode and optional capabilities', async () => {
+  const db = database(null);
+  await updateOperationalConfig(db as any, 'tenant-a', {
+    operationMode: 'CAIXA',
+    tapsEnabled: true,
+    inventoryEnabled: true,
+    kitchenEnabled: false,
+    confirmacaoEstoque: true,
+    completeInitialSetup: true,
+  });
+  const update = (db.updates[0] as any).update;
+  assert.deepEqual({
+    plannedOperationsEnabled: update.plannedOperationsEnabled,
+    tapsEnabled: update.tapsEnabled,
+    inventoryEnabled: update.inventoryEnabled,
+    kitchenEnabled: update.kitchenEnabled,
+  }, {
+    plannedOperationsEnabled: false,
+    tapsEnabled: true,
+    inventoryEnabled: true,
+    kitchenEnabled: false,
+  });
+  assert.ok(update.setupCompletedAt instanceof Date);
+});
+
 test('persists WhatsApp ready-order settings independently per tenant', async () => {
   const db = database({
     plannedOperationsEnabled: false,

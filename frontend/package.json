@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite --configLoader runner",
     "build": "tsc -b && vite build --configLoader runner",
-    "test:unit": "node --import ../scripts/node24-tsx-host.mjs --import ../backend/node_modules/tsx/dist/loader.mjs --test tests/quiosque.test.ts tests/quiosque-capacidades.test.ts tests/correlation-id.test.ts tests/auth-session.test.ts tests/onboarding.test.ts tests/onboarding-visual.test.ts tests/phone.test.ts tests/whatsapp.test.ts",
+    "test:unit": "node --import ../scripts/node24-tsx-host.mjs --import ../backend/node_modules/tsx/dist/loader.mjs --test tests/api-date-format.test.ts tests/quiosque.test.ts tests/quiosque-capacidades.test.ts tests/correlation-id.test.ts tests/auth-session.test.ts tests/onboarding.test.ts tests/onboarding-visual.test.ts tests/phone.test.ts tests/whatsapp.test.ts tests/operacao-comanda.test.ts",
     "build:deploy": "vite build --configLoader runner",
     "build:prod": "vite build --outDir ../deploy/prod-artifacts/.staging/frontend",
     "preview": "vite preview",

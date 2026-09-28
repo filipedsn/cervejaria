@@ -10,13 +10,13 @@ export const establishmentEnablementsSchema = z.object({
 export const provisionEstablishmentRequestSchema = z.object({
   nome: z.string().min(2),
   dono: z.object({ nome: z.string().min(2), email: z.string().email(), senha: z.string().min(6) }),
-  enablements: establishmentEnablementsSchema,
+  enablements: establishmentEnablementsSchema.optional(),
 });
 
 export type ProvisionEstablishmentInput = {
   nome: string;
   dono: { nome: string; email: string; senhaHash: string };
-  enablements: z.infer<typeof establishmentEnablementsSchema>;
+  enablements?: z.infer<typeof establishmentEnablementsSchema>;
 };
 
 export type ProvisioningResources = {
@@ -47,14 +47,18 @@ export async function provisionEstablishment(
   const configuracaoOperacional = await tx.configuracaoOperacional.create({
     data: {
       cervejariaId: cervejaria.id,
-      plannedOperationsEnabled: enablements.plannedOperations,
-      tapsEnabled: enablements.taps,
-      inventoryEnabled: enablements.inventory,
-      kitchenEnabled: enablements.kitchen,
+      ...(enablements ? {
+        plannedOperationsEnabled: enablements.plannedOperations,
+        tapsEnabled: enablements.taps,
+        inventoryEnabled: enablements.inventory,
+        kitchenEnabled: enablements.kitchen,
+      } : {}),
+      setupCompletedAt: enablements ? new Date() : null,
     },
   });
   // This row is a temporary route-context projection, never the new source of truth.
   if (resources.legacyProjection) {
+    if (!enablements) throw new Error('Legacy provisioning requires explicit enablements');
     await tx.configuracaoOperacao.create({
       data: {
         cervejariaId: cervejaria.id,

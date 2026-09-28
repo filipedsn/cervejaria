@@ -166,6 +166,7 @@ export async function comandasRoutes(app: FastifyInstance) {
       itemId,
       cervejariaId: user.cervejariaId!,
       eventoId: eventoIdDaComanda(comanda),
+      registradoPorId: user.sub,
     });
 
     if ('error' in result) {

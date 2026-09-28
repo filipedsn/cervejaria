@@ -37,7 +37,7 @@ export function AdicionarItemComandaModal({
   error?: string;
   successMessage?: string;
 }) {
-  const [tab, setTab] = useState<TabId>('chope');
+  const [tab, setTab] = useState<TabId>('comidas');
   const [selectedTap, setSelectedTap] = useState<TapComChope | null>(null);
   const [selectedVolume, setSelectedVolume] = useState<VolumeMl | null>(null);
   const [selectedProduto, setSelectedProduto] = useState<Produto | null>(null);
@@ -55,9 +55,7 @@ export function AdicionarItemComandaModal({
     setParaViagem(false);
     setObservacao('');
     setOpcionais({});
-    if (tapsComChope.length > 0) setTab('chope');
-    else if (bebidas.length > 0) setTab('bebidas');
-    else setTab('comidas');
+    setTab('comidas');
   }, [open, tapsComChope, bebidas.length, comidas.length]);
 
   useEffect(() => {
@@ -106,8 +104,6 @@ export function AdicionarItemComandaModal({
         quantidade: quantity,
         tapId: selectedTap.id,
         paraViagem,
-        observacao: observacao.trim() || undefined,
-        opcionais: Object.entries(opcionais).map(([opcionalId, quantidade]) => ({ opcionalId, quantidade })),
       });
       return;
     }
@@ -443,7 +439,7 @@ export function AdicionarItemComandaModal({
                 </div>
               </div>
             ))}
-            {(canAddChope || canAddUnit) && <label className="block text-sm"><span className="font-semibold">Observação do item</span><textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} maxLength={280} rows={2} placeholder="Ex.: sem cebola" className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2" /></label>}
+            {canAddUnit && <label className="block text-sm"><span className="font-semibold">Observação do item</span><textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} maxLength={280} rows={2} placeholder="Ex.: sem cebola" className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2" /></label>}
           </>
         )}
       </div>

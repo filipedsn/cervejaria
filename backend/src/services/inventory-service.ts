@@ -18,7 +18,7 @@ export interface InventoryService {
       moduleEnabled: boolean;
       cervejariaId: string;
       pontoVendaId: string;
-      pedidoId: string;
+      pedidoId?: string;
       registradoPorId: string;
       items: ItemResolvido[];
     },

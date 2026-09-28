@@ -38,10 +38,11 @@ test.describe('Quiosque — ciclo de caixa', () => {
     await selectPorRotulo(page, 'Ponto de venda').selectOption({ label: nomePonto });
     await expect(page.getByRole('heading', { name: 'Caixa do dia' })).toBeVisible();
 
-    await fillCurrency(campoPorRotulo(page, 'Troco inicial (R$)'), 100);
-    await page.getByRole('button', { name: 'Abrir caixa' }).click();
+    await fillCurrency(page.getByRole('textbox', { name: 'Troco inicial em reais' }), 100);
+    await page.getByRole('main').getByRole('button', { name: 'Abrir caixa' }).click();
+    await page.getByRole('button', { name: 'Mostrar painel do caixa' }).click();
     await expect(page.getByRole('heading', { name: 'Caixa aberto' })).toBeVisible();
-    await expect(page.getByText('Em operação')).toBeVisible();
+    await expect(page.getByText('Em operação', { exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'Sangria' }).click();
     const modalSangria = page.getByRole('dialog');
@@ -60,14 +61,18 @@ test.describe('Quiosque — ciclo de caixa', () => {
     await expect(modalSuprimento).not.toBeVisible();
 
     // 100 de troco - 30 de sangria + 20 de suprimento = 90 esperados na gaveta.
-    await expect(page.getByText('Gaveta:').locator('..')).toContainText('90,00');
+    await expect(page.getByText('R$ 90,00', { exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'Fechar caixa' }).click();
     const modalFechar = page.getByRole('dialog');
     await expect(modalFechar.getByText('Fechar caixa')).toBeVisible();
+    const dinheiroContado = modalFechar.getByRole('textbox').nth(0);
+    const pixContado = modalFechar.getByRole('textbox').nth(1);
+    await expect(dinheiroContado).toHaveValue('');
+    await expect(pixContado).toHaveValue('');
     // Conta 10 a menos do que o esperado para provocar a divergência.
-    await fillCurrency(campoPorRotulo(modalFechar, 'Contado — Dinheiro'), 80);
-    await campoPorRotulo(modalFechar, 'Observação (opcional)').fill('Falta de troco E2E');
+    await fillCurrency(dinheiroContado, 80);
+    await modalFechar.getByRole('textbox').nth(4).fill('Falta de troco E2E');
     await modalFechar.getByRole('button', { name: 'Confirmar fechamento' }).click();
 
     await expect(modalFechar).not.toBeVisible();
@@ -80,19 +85,21 @@ test.describe('Quiosque — ciclo de caixa', () => {
     await selectPorRotulo(page, 'Ponto de venda').selectOption({ label: nomePonto });
     await expect(page.getByRole('heading', { name: 'Caixa do dia' })).toBeVisible();
 
-    await fillCurrency(campoPorRotulo(page, 'Troco inicial (R$)'), 50);
-    await page.getByRole('button', { name: 'Abrir caixa' }).click();
+    await fillCurrency(page.getByRole('textbox', { name: 'Troco inicial em reais' }), 50);
+    await page.getByRole('main').getByRole('button', { name: 'Abrir caixa' }).click();
+    await page.getByRole('button', { name: 'Mostrar painel do caixa' }).click();
     await expect(page.getByRole('heading', { name: 'Caixa aberto' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Fechar caixa' }).click();
     const modalFechar = page.getByRole('dialog');
-    await fillCurrency(campoPorRotulo(modalFechar, 'Contado — Dinheiro'), 50);
+    await fillCurrency(modalFechar.getByRole('textbox').nth(0), 50);
     await modalFechar.getByRole('button', { name: 'Confirmar fechamento' }).click();
     await expect(modalFechar).not.toBeVisible();
 
     await expect(page.getByRole('heading', { name: 'Caixa do dia' })).toBeVisible();
-    await fillCurrency(campoPorRotulo(page, 'Troco inicial (R$)'), 80);
-    await page.getByRole('button', { name: 'Abrir caixa' }).click();
+    await fillCurrency(page.getByRole('textbox', { name: 'Troco inicial em reais' }), 80);
+    await page.getByRole('main').getByRole('button', { name: 'Abrir caixa' }).click();
+    await page.getByRole('button', { name: 'Mostrar painel do caixa' }).click();
     await expect(page.getByRole('heading', { name: 'Caixa aberto' })).toBeVisible();
 
     const cookie = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
