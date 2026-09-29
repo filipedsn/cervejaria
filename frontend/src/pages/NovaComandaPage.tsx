@@ -21,8 +21,7 @@ function isPhoneValid(value: string) {
 function ClienteResumo({ cliente, isNew }: { cliente: Cliente | null; isNew: boolean }) {
   if (isNew) {
     return (
-      <div className="card bg-surface-lighter border-line space-y-1">
-        <p className="text-sm font-semibold text-ink">Novo cliente</p>
+      <div className="card bg-surface-lighter border-line">
         <p className="text-xs text-ink-muted">
           Este telefone ainda não está cadastrado. Será criado ao abrir a comanda.
         </p>
@@ -248,8 +247,12 @@ export function NovaComandaPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Nova Comanda" />
+    <div className="space-y-4 pb-2">
+      <PageHeader title="Nova comanda" />
+
+      <p className="text-sm text-ink-muted leading-relaxed">
+        Abra uma comanda por apelido, mesa ou ficha. Os itens são lançados na tela seguinte.
+      </p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <div className="alert-error">{error}</div>}
@@ -352,12 +355,12 @@ export function NovaComandaPage() {
           />
         )}
 
-        <div className="flex gap-3 pt-2">
-          <button type="button" className="touch-btn-secondary flex-1" onClick={() => navigate('/comandas')}>
-            Cancelar
+        <div className="space-y-3 pt-2">
+          <button type="submit" className="touch-btn-primary w-full" disabled={!canSubmit} data-audit="comanda-abrir">
+            {loading ? 'Abrindo...' : 'Abrir comanda'}
           </button>
-          <button type="submit" className="touch-btn-primary flex-1" disabled={!canSubmit} data-audit="comanda-abrir">
-            {loading ? 'Abrindo...' : 'Abrir Comanda'}
+          <button type="button" className="touch-btn-secondary w-full" onClick={() => navigate('/comandas')}>
+            Cancelar
           </button>
         </div>
       </form>
