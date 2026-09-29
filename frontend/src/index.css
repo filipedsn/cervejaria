@@ -470,6 +470,36 @@ body.auth-screen {
   @apply min-h-[3rem] px-5 py-3 rounded-xl font-semibold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100 bg-amber-400 text-amber-950 hover:bg-amber-500 border border-amber-500/40;
 }
 
+.caixa-contas-pendentes-link {
+  text-decoration: none;
+}
+
+.caixa-contas-pendentes-alerta {
+  color: var(--color-orange-dark);
+  animation: caixa-contas-pendentes-piscar 1.2s ease-in-out infinite;
+}
+
+@keyframes caixa-contas-pendentes-piscar {
+  0%, 100% {
+    background-color: var(--color-surface-lighter);
+    border-color: var(--color-line);
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+  }
+  50% {
+    background-color: var(--color-orange-soft);
+    border-color: var(--color-orange);
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.14);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caixa-contas-pendentes-alerta {
+    animation: none;
+    background-color: var(--color-orange-soft);
+    border-color: var(--color-orange);
+  }
+}
+
 .touch-btn-danger {
   @apply min-h-[3rem] px-5 py-3 rounded-xl font-semibold text-base transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100 bg-danger text-white hover:bg-red-500;
 }

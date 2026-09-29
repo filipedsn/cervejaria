@@ -8,6 +8,7 @@ import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../../lib/cur
 import {
   FORMAS_PAGAMENTO,
   type CaixaResposta,
+  type ContaPendenteOperacao,
   type ResumoCaixa,
   defaultTurnoCardapioForm,
   buildTurnoCardapioAbrirPayload,
@@ -99,6 +100,15 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     enabled: Boolean(pontoVendaId),
     refetchInterval: pollMs,
   });
+
+  const contasPendentesQuery = useQuery({
+    queryKey: ['operacao-contas-pendentes'],
+    queryFn: () => api.get<ContaPendenteOperacao[]>('/api/operacao/contas-pendentes'),
+    enabled: Boolean(pontoVendaId),
+    refetchInterval: pollMs,
+  });
+  const temContaPendente = contasPendentesQuery.data?.some((conta) => conta.saldo > 0) ?? false;
+  const classesContasPendentes = `touch-btn-secondary caixa-contas-pendentes-link${temContaPendente ? ' caixa-contas-pendentes-alerta' : ''}`;
 
   const sessao = data?.sessao ?? null;
   useEffect(() => {
@@ -242,7 +252,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           {usaCardapio && <TurnoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />}
           {seletorTrailer}
 
-          <Link to="/operacao/contas-pendentes" className="touch-btn-secondary flex min-h-12 w-full items-center justify-center text-center">Contas pendentes</Link>
+          <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} flex min-h-12 w-full items-center justify-center text-center`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>
           <button type="button" className="touch-btn-primary flex min-h-14 w-full items-center justify-center gap-3 text-base font-bold sm:min-h-16 sm:text-lg" disabled={abrir.isPending || precisaSelecionarTrailer} data-audit="operacao-caixa-abrir" data-onboarding-target="operacao-open-cash" onClick={() => abrir.mutate()}><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8"/></svg>{abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}</button>
         </div>
       )}
@@ -269,7 +279,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           )}
           {seletorTrailer}
 
-          <Link to="/operacao/contas-pendentes" className="touch-btn-secondary flex w-full items-center justify-center text-center">Contas pendentes</Link>
+          <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} flex w-full items-center justify-center text-center`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>
           <button
             type="button"
             className="touch-btn-primary w-full"
@@ -327,7 +337,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
               <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SUPRIMENTO'); setErro(''); setDialogo('movimento'); }}>＋&nbsp; Suprimento</button>
               <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SANGRIA'); setErro(''); setDialogo('movimento'); }}>−&nbsp; Sangria</button>
               {usaCardapio && <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setErro(''); setDialogo('cardapio'); }}>Cardápio do turno</button>}
-              <Link to="/operacao/contas-pendentes" className="touch-btn-secondary touch-btn-sm flex items-center justify-center text-center leading-tight">Contas pendentes</Link>
+              <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} touch-btn-sm flex items-center justify-center text-center leading-tight`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>
             </div>
             {erro && !dialogo && <div className="alert-error">{erro}</div>}
             <button type="button" className="touch-btn-orange w-full disabled:opacity-50" disabled={bloqueioFechamento} onClick={abrirDialogoFechar} data-audit="operacao-caixa-fechar">Fechar caixa</button>
