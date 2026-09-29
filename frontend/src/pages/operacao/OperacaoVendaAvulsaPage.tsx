@@ -15,7 +15,6 @@ import {
   type PaymentFormRow,
 } from '../../components/PaymentFormModal';
 import { AdicionarItensOperacaoModal } from '../../components/operacao/AdicionarItensOperacaoModal';
-import { SelecionarClienteOperacao } from '../../components/operacao/SelecionarClienteOperacao';
 import { CheckoutItemsCard } from '../../components/checkout/CheckoutItemsCard';
 import { PaymentDiscountFields } from '../../components/checkout/PaymentDiscountFields';
 import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../../lib/currency';
@@ -23,7 +22,6 @@ import { PAYMENT_LABELS } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
-import type { Cliente } from '../../types';
 import {
   isChopeOperacao,
   mapSaldosEstoque,
@@ -58,7 +56,6 @@ export function OperacaoVendaAvulsaPage() {
   const [closedVenda, setClosedVenda] = useState<ComandaOperacao | null>(null);
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([{ forma: 'PIX', valor: '' }]);
   const [descontoInput, setDescontoInput] = useState('');
-  const [cliente, setCliente] = useState<Cliente | null>(null);
   const [erro, setErro] = useState('');
 
   const pontoAtivo = pontoVendaId || pontosVenda[0]?.id || '';
@@ -181,7 +178,6 @@ export function OperacaoVendaAvulsaPage() {
     }) =>
       api.post<ComandaOperacao>('/api/operacao/vendas', {
         pontoVendaId: pontoAtivo,
-        ...(cliente ? { clienteId: cliente.id } : {}),
         itens: carrinho.map((linha) => ({ produtoId: linha.produto.id, quantidade: linha.quantidade, tapId: linha.tapId, volumeMl: linha.volumeMl, paraViagem: linha.paraViagem ?? false, observacao: linha.observacao, opcionais: linha.opcionais?.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })) })),
         pagamentos,
         desconto,
@@ -266,8 +262,6 @@ export function OperacaoVendaAvulsaPage() {
       <p className="text-sm text-ink-muted leading-relaxed">
         Venda rápida sem abrir comanda. Não entra no ranking nem na fidelização.
       </p>
-
-      <SelecionarClienteOperacao value={cliente} onChange={setCliente} />
 
       {!caixaAberto && pontoAtivo && (
         <div className="alert-error">
