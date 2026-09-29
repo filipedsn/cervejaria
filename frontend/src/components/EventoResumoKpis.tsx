@@ -6,9 +6,9 @@ import { getSocket } from '../lib/socket';
 
 function HeroStatCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl bg-white/15 border border-white/20 px-3 py-2.5 min-w-0">
-      <p className="text-[11px] text-white/70 leading-tight">{label}</p>
-      <p className="text-lg font-bold mt-1 truncate">{value}</p>
+    <div className="rounded-xl bg-surface-lighter/70 border border-line px-3 py-2.5 min-w-0">
+      <p className="text-[11px] text-ink-muted leading-tight">{label}</p>
+      <p className="text-lg font-bold text-ink mt-1 truncate">{value}</p>
     </div>
   );
 }

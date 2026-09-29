@@ -184,7 +184,7 @@ function ActiveSessionHero({
 
   return (
 
-    <div className="card-hero space-y-4">
+    <div className="card space-y-4 border-brand-600/20 bg-gradient-to-br from-surface via-surface to-brand-900/10 p-4 sm:p-5">
 
       <div className="flex items-start justify-between gap-3">
 
@@ -194,10 +194,10 @@ function ActiveSessionHero({
 
           <h2 className="text-xl font-bold mt-1.5 leading-tight">{evento.nome}</h2>
 
-          <p className="text-sm text-white/75 mt-1.5">{formatEventoMeta(evento)}</p>
+          <p className="text-sm text-ink-muted mt-1.5">{formatEventoMeta(evento)}</p>
 
           {evento.trailer && (
-            <p className="text-xs text-white/60 mt-1">{formatTrailerLabel(evento.trailer)}</p>
+            <p className="text-xs text-ink-faint mt-1">{formatTrailerLabel(evento.trailer)}</p>
           )}
 
         </div>
