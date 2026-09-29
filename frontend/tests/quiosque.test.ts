@@ -6,6 +6,8 @@ import {
   rotuloComanda,
   rotuloInternoComanda,
   classificarEstoque,
+  limiteQuantidadeProdutoNoCarrinho,
+  podeIncrementarQuantidadeProduto,
   resumirItensComanda,
   type ComandaQuiosque,
 } from '../src/lib/operacao.ts';
@@ -74,6 +76,21 @@ test('PROD-05: classifica estoque sem poluir estado normal e prioriza esgotado',
   assert.equal(classificarEstoque(3, null), 'NORMAL');
   assert.equal(classificarEstoque(3, 3), 'LOW');
   assert.equal(classificarEstoque(0, 3), 'OUT_OF_STOCK');
+});
+
+test('limita quantidade selecionável ao estoque restante do produto', () => {
+  const produto = { id: 'latao', controlaEstoque: true };
+  const saldos = new Map([['latao', {
+    produtoId: 'latao', nome: 'Latão Amistel', categoria: 'Cervejas', quantidade: 1,
+    estoqueMinimo: null, unidadeEstoque: 'un' as const, statusEstoque: 'NORMAL' as const,
+  }]]);
+  const limite = limiteQuantidadeProdutoNoCarrinho(produto, saldos, true);
+
+  assert.equal(limite, 1);
+  assert.equal(podeIncrementarQuantidadeProduto(1, limite), false);
+  assert.equal(limiteQuantidadeProdutoNoCarrinho(produto, saldos, true, 1), 0);
+  assert.equal(limiteQuantidadeProdutoNoCarrinho(produto, undefined, true), 0);
+  assert.equal(limiteQuantidadeProdutoNoCarrinho(produto, undefined, false), null);
 });
 
 test('consolida produtos repetidos usando valores históricos e ignora pedidos cancelados', () => {

@@ -7,7 +7,9 @@ import { IconChefHat, IconClipboard, IconPackage, IconPlus } from '../NavIcons';
 import { api, formatCurrency } from '../../lib/api';
 import {
   isChopeOperacao,
+  limiteQuantidadeProdutoNoCarrinho,
   normalizeCategoriaProduto,
+  podeIncrementarQuantidadeProduto,
   totalCarrinho,
   type LinhaCarrinho,
   type ProdutoOperacao,
@@ -83,7 +85,26 @@ export function AdicionarItensOperacaoModal({
 }) {
   const [produto, setProduto] = useState<ProdutoOperacao | null>(null);
   const [aba, setAba] = useState<AbaItens>('comidas');
-  const [quantidade, setQuantidade] = useState(1);
+  const [quantidade, setQuantidadeState] = useState(1);
+  const quantidadeProdutoNoCarrinho = (item: ProdutoOperacao) => linhas
+    .filter((linha) => linha.produto.id === item.id && !isChopeOperacao(linha.produto))
+    .reduce((soma, linha) => soma + linha.quantidade, 0);
+  const setQuantidade = (atualizar: number | ((atual: number) => number)) => {
+    setQuantidadeState((atual) => {
+      const proxima = typeof atualizar === 'function' ? atualizar(atual) : atualizar;
+      if (!produto) return proxima;
+      const limite = limiteQuantidadeProdutoNoCarrinho(
+        produto,
+        saldos,
+        controlaEstoque,
+        quantidadeProdutoNoCarrinho(produto),
+      );
+      if (limite === null) return proxima;
+      if (limite <= 0) return atual;
+      if (proxima > atual && !podeIncrementarQuantidadeProduto(atual, limite)) return atual;
+      return Math.max(1, Math.min(proxima, limite));
+    });
+  };
   const [tapId, setTapId] = useState('');
   const [volumeMl, setVolumeMl] = useState<number | undefined>();
   const [paraViagemItem, setParaViagemItem] = useState(false);
@@ -182,6 +203,13 @@ export function AdicionarItensOperacaoModal({
 
   const confirmar = () => {
     if (!produto) return;
+    const limite = limiteQuantidadeProdutoNoCarrinho(
+      produto,
+      saldos,
+      controlaEstoque,
+      quantidadeProdutoNoCarrinho(produto),
+    );
+    if (limite !== null && quantidade > limite) return;
     if (produtoEhChope && (!tapId || !volumeMl || !(precoSelecionado > 0))) return;
     const opcoes = produto.gruposOpcionais?.flatMap((grupo) => grupo.opcoes.filter((opcao) => opcionais[opcao.id]).map((opcao) => ({ opcionalId: opcao.id, nome: opcao.nome, precoAdicional: Number(opcao.precoAdicional), quantidade: opcionais[opcao.id] }))) ?? [];
     onSelecionar(produto, {
@@ -213,6 +241,9 @@ export function AdicionarItensOperacaoModal({
       : linha.quantidade;
     quantidadesNoCarrinho.set(linha.produto.id, (quantidadesNoCarrinho.get(linha.produto.id) ?? 0) + estoqueConsumido);
   }
+  const limiteQuantidadeSelecionada = produto && !produtoEhChope
+    ? limiteQuantidadeProdutoNoCarrinho(produto, saldos, controlaEstoque, quantidadeProdutoNoCarrinho(produto))
+    : null;
 
   const footer = <><div>{linhas.length > 0 && <div className="space-y-3"><div className="max-h-32 overflow-y-auto"><ResumoCarrinho linhas={linhas} onAlterar={onAlterar} saldos={saldos} controlaEstoque={controlaEstoque} /></div><div className="flex items-baseline justify-between"><span className="text-sm text-ink-faint">Itens selecionados</span><span className="text-xl font-bold">{formatCurrency(totalCarrinho(linhas))}</span></div></div>}</div><button type="button" className="touch-btn-primary w-full" disabled={!linhas.length || isPending} onClick={onConfirm}>{isPending ? 'Salvando...' : confirmLabel}</button><button type="button" className="touch-btn-orange w-full" onClick={onClose} disabled={isPending}>Voltar</button></>;
 
@@ -298,6 +329,7 @@ export function AdicionarItensOperacaoModal({
     <Modal open={Boolean(produto)} onClose={() => setProduto(null)} title="" hideHeaderClose footer={<><button type="button" className="touch-btn-primary w-full flex items-center justify-center gap-2" disabled={produtoEhChope && (!tapId || !volumeMl)} onClick={confirmar}><IconPlus className="h-5 w-5" />Adicionar item</button><button type="button" className="touch-btn-orange w-full flex items-center justify-center gap-2" onClick={() => setProduto(null)}>Voltar</button></>}>
       {produto && <div className="space-y-6 rounded-2xl border border-line bg-surface-lighter p-5 sm:p-7">
         <h2 className="text-2xl sm:text-3xl font-bold text-ink">{produto.nome}{produtoEhChope && (produto.volumeMl ?? 0) > 1 ? ` (${produto.volumeMl} ml)` : ''}</h2>
+        {limiteQuantidadeSelecionada !== null && <p className="text-sm text-ink-muted">Disponível para esta comanda: {limiteQuantidadeSelecionada} un</p>}
         {produtoEhChope && <section className="space-y-3 border-b border-line pb-5"><div><h3 className="text-lg font-bold">Tap e volume</h3><p className="text-sm text-ink-muted">Escolha o Tap com este chope montado e o volume da venda.</p></div>{tapsDoProduto.length === 0 ? <p className="rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-800">Nenhum Tap está montado com este chope no turno.</p> : <select className="input" value={tapId} onChange={(e) => setTapId(e.target.value)}><option value="">Selecione o Tap</option>{tapsDoProduto.map((tap) => <option key={tap.id} value={tap.id}>Tap {tap.numero}{tap.nome ? ` — ${tap.nome}` : ''}</option>)}</select>}<div className="grid grid-cols-2 gap-2">{precosChope.map((preco) => <button key={preco.volumeMl} type="button" className={`rounded-xl border px-3 py-3 text-left ${volumeMl === preco.volumeMl ? 'border-brand-500 bg-brand-500/10' : 'border-line bg-surface'}`} onClick={() => setVolumeMl(preco.volumeMl)}><span className="block font-semibold">{preco.volumeMl} ml</span><span className="text-sm text-ink-muted">{formatCurrency(Number(preco.preco))}</span></button>)}</div></section>}
         {!produtoEhChope && <section className="space-y-3 border-b border-line pb-5"><div className="mb-3 flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400"><IconChefHat className="h-6 w-6" /></span><div><h3 className="text-lg font-bold">Opcionais</h3><p className="text-sm text-ink-muted">Selecione os opcionais que desejar</p></div></div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{produto.gruposOpcionais?.flatMap((grupo) => grupo.opcoes).map((opcao) => <label key={opcao.id} className="flex min-h-16 cursor-pointer items-center justify-between gap-3 rounded-xl border border-line px-4 py-3 transition-colors has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10"><span className="flex items-center gap-3"><input className="h-5 w-5 accent-brand-500" type="checkbox" checked={Boolean(opcionais[opcao.id])} onChange={() => setOpcionais((atual) => atual[opcao.id] ? Object.fromEntries(Object.entries(atual).filter(([id]) => id !== opcao.id)) : { ...atual, [opcao.id]: 1 })} /><span className="font-semibold">{opcao.nome}</span></span><span className="text-sm text-ink-muted">{Number(opcao.precoAdicional) > 0 ? `+${formatCurrency(Number(opcao.precoAdicional))}` : 'Grátis'}</span></label>)}</div></section>}
         <section className="flex items-center justify-between gap-4 border-b border-line pb-5"><div className="flex items-center gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400"><IconHash className="h-6 w-6" /></span><div><h3 className="text-lg font-bold">Quantidade</h3><p className="text-sm text-ink-muted">Escolha a quantidade deste item</p></div></div><div className="flex items-center gap-4 rounded-2xl border border-line bg-surface px-3 py-2"><button type="button" className="min-h-10 min-w-10 rounded-xl bg-surface-lighter text-xl font-bold" onClick={() => setQuantidade((v) => Math.max(1, v - 1))}>−</button><span className="min-w-8 text-center text-2xl font-bold">{quantidade}</span><button type="button" className="min-h-10 min-w-10 rounded-xl bg-brand-600 text-xl font-bold text-white" onClick={() => setQuantidade((v) => v + 1)}><IconPlus className="mx-auto h-5 w-5" /></button></div></section>

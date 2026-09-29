@@ -651,6 +651,26 @@ export function limiteEstoqueCarrinho(
   return Math.max(0, saldos.get(produto.id)?.quantidade ?? 0);
 }
 
+/** Unidades ainda selecionáveis no modal, descontando o que já está no carrinho. */
+export function limiteQuantidadeProdutoNoCarrinho(
+  produto: Pick<ProdutoOperacao, 'id' | 'controlaEstoque'>,
+  saldos: Map<string, SaldoEstoque> | undefined,
+  moduloControlaEstoque: boolean,
+  quantidadeNoCarrinho = 0,
+): number | null {
+  if (!moduloControlaEstoque || !produto.controlaEstoque) return null;
+  const saldo = saldos?.get(produto.id);
+  if (!saldo) return 0;
+  return Math.max(0, Math.floor(saldo.quantidade - quantidadeNoCarrinho + 1e-9));
+}
+
+export function podeIncrementarQuantidadeProduto(
+  quantidade: number,
+  limite: number | null,
+): boolean {
+  return limite === null || quantidade < limite;
+}
+
 export function podeIncrementarLinhaCarrinho(
   produto: Pick<ProdutoOperacao, 'id' | 'controlaEstoque'>,
   quantidadeAtual: number,
