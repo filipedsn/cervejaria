@@ -8,11 +8,9 @@ import { useEvento } from '../contexts/EventoContext';
 import { getSocket } from '../lib/socket';
 import { Loading } from '../components/Loading';
 import { EncerrarEventoButton } from '../components/EncerrarEventoButton';
-import { VerRankingButton } from '../components/VerRankingButton';
 import { EmptyState } from '../components/EmptyState';
 import { ComandasBuscaInput } from '../components/ComandasBuscaInput';
 import { StatusBadge } from '../components/StatusBadge';
-import { EventoTapMontagemPanel } from '../components/EventoTapMontagemPanel';
 import { FilaPedidosPanel } from '../components/FilaPedidosPanel';
 import { MobileActionBar } from '../components/MobileActionBar';
 import {
@@ -261,15 +259,6 @@ export function ComandasPage() {
           <StatCard label={`Contas pendentes (${resumo.contasPendentes ?? 0})`} value={formatCurrency(resumo.valorPendente ?? 0)} accent={resumo.contasPendentes ? undefined : 'green'} />
         </div>
       )}
-
-      <div className="grid grid-cols-2 gap-2">
-        <VerRankingButton eventoId={evento.id} />
-        <EventoTapMontagemPanel
-          eventoId={evento.id}
-          eventoAberto={eventoAberto}
-          presentation="modal"
-        />
-      </div>
 
       {false && (resumo?.comandasAbertas ?? comandas?.length ?? 0) >= 2 && (
         selectMode ? (

@@ -112,12 +112,14 @@ export function EventoTapMontagemPanel({
   sectionId,
   variant = 'card',
   presentation = 'inline',
+  triggerClassName,
 }: {
   eventoId: string;
   eventoAberto: boolean;
   sectionId?: string;
   variant?: 'hero' | 'card';
   presentation?: 'inline' | 'modal';
+  triggerClassName?: string;
 }) {
   const queryClient = useQueryClient();
   const [selectedTap, setSelectedTap] = useState<TapComChope | null>(null);
@@ -404,7 +406,7 @@ export function EventoTapMontagemPanel({
         <button
           type="button"
           onClick={() => setShowTapsModal(true)}
-          className="touch-btn-secondary touch-btn-sm inline-flex w-full min-h-12 items-center justify-center gap-2 px-3"
+          className={triggerClassName ?? 'touch-btn-secondary touch-btn-sm inline-flex w-full min-h-12 items-center justify-center gap-2 px-3'}
         >
           <span aria-hidden>🍺</span>
           <span>Taps do evento</span>
