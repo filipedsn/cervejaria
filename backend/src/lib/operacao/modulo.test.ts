@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { deriveOperationalProfile, type OperationalProfileFacts } from '../operational-profile.js';
-import { hasDirectSalesAccess, hasInventoryAccess, hasKitchenAccess } from './modulo.js';
+import { hasCatalogAccess, hasComplementaryAccess, hasDirectSalesAccess, hasInventoryAccess, hasKitchenAccess } from './modulo.js';
 
 function facts(overrides: Partial<OperationalProfileFacts> = {}): OperationalProfileFacts {
   return {
@@ -69,4 +69,20 @@ test('inventory context derives its global decision from the operational profile
 
   assert.equal(hasInventoryAccess(withInventory), true);
   assert.equal(hasInventoryAccess(withoutInventory), false);
+});
+
+test('catalog access is independent of CAIXA/EVENTO mode but requires a tenant profile', () => {
+  const caixa = deriveOperationalProfile(facts({
+    operationalEnablement: { plannedOperationsEnabled: false, tapsEnabled: false, inventoryEnabled: false, kitchenEnabled: false },
+  }));
+  const evento = deriveOperationalProfile(facts({
+    operationalEnablement: { plannedOperationsEnabled: true, tapsEnabled: true, inventoryEnabled: false, kitchenEnabled: false },
+  }));
+
+  assert.equal(caixa.operationMode, 'CAIXA');
+  assert.equal(evento.operationMode, 'EVENTO');
+  assert.equal(hasCatalogAccess(caixa), true);
+  assert.equal(hasCatalogAccess(evento), true);
+  assert.equal(hasComplementaryAccess(evento), false);
+  assert.equal(hasCatalogAccess(null), false);
 });

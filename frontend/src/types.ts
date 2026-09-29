@@ -585,6 +585,20 @@ export interface CervejariaDashboard {
     receitaPorHora: number;
     chopeLitrosPorHora: number;
   }>;
+  turnosCaixaRecentes: Array<{
+    sessaoId: string;
+    pontoVendaId: string;
+    pontoNome: string;
+    diaOperacional: string;
+    status: 'ABERTO' | 'FECHADO';
+    abertoEm: string;
+    fechadoEm: string | null;
+    receitaTotal: number;
+    comandasAtendidas: number;
+    ticketMedio: number;
+    chopeMl: number;
+    movimentosCaixa: number;
+  }>;
   comparativoAgendas: Array<{
     serieId: string;
     nome: string;

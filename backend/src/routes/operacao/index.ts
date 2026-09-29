@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { getAuthUser } from '../../types/auth.js';
-import { getConfiguracaoOperacao, requireModuloOperacao } from '../../lib/operacao/modulo.js';
+import { getConfiguracaoOperacao, requireCatalogAccess, requireModuloOperacao } from '../../lib/operacao/modulo.js';
 import { getOperationalProfile, shouldExposeEstablishmentSurface } from '../../lib/operational-profile.js';
 import { produtosOperacaoRoutes } from './produtos.js';
 import { comandasOperacaoRoutes } from './comandas.js';
@@ -33,7 +33,7 @@ export async function operacaoRoutes(app: FastifyInstance) {
     const user = getAuthUser(request);
     const configuracao = await getConfiguracaoOperacao(user.cervejariaId);
 
-    const [profile, pontosVenda, avisoPedidoPronto, cervejaria] = await Promise.all([
+    const [profile, pontosVenda, avisoPedidoPronto] = await Promise.all([
       getOperationalProfile(user.cervejariaId!),
       prisma.pontoVenda.findMany({
       where: { cervejariaId: user.cervejariaId!, ativo: true },
@@ -42,10 +42,6 @@ export async function operacaoRoutes(app: FastifyInstance) {
       prisma.configuracaoOperacional.findUnique({
         where: { cervejariaId: user.cervejariaId! },
         select: { whatsappPedidoProntoEnabled: true, whatsappPedidoProntoNaCozinha: true },
-      }),
-      prisma.cervejaria.findUnique({
-        where: { id: user.cervejariaId! },
-        select: { usaCardapio: true },
       }),
     ]);
 
@@ -65,12 +61,19 @@ export async function operacaoRoutes(app: FastifyInstance) {
       // same persisted capability decision as the operational settings panel.
       controlaEstoque: profile?.capabilities.inventory ?? configuracao?.controlaEstoque ?? false,
       temCozinha: profile?.capabilities.kitchen ?? configuracao?.temCozinha ?? false,
-      usaCardapio: cervejaria?.usaCardapio ?? false,
+      // Cardápios salvos são padrão; o antigo toggle de ativação foi removido.
+      usaCardapio: true,
       quantidadeMesas: configuracao?.quantidadeMesas ?? 0,
       whatsappPedidoProntoEnabled: avisoPedidoPronto?.whatsappPedidoProntoEnabled ?? false,
       whatsappPedidoProntoNaCozinha: avisoPedidoPronto?.whatsappPedidoProntoNaCozinha ?? false,
       pontosVenda,
     };
+  });
+
+  await app.register(async (catalogScope) => {
+    catalogScope.addHook('preHandler', requireCatalogAccess(app));
+    await catalogScope.register(produtosOperacaoRoutes, { prefix: '/produtos' });
+    await catalogScope.register(cardapiosOperacaoRoutes, { prefix: '/cardapios' });
   });
 
   await app.register(async (moduloScope) => {
@@ -127,8 +130,6 @@ export async function operacaoRoutes(app: FastifyInstance) {
       return reply.status(201).send(pontoVenda);
     });
 
-    await moduloScope.register(produtosOperacaoRoutes, { prefix: '/produtos' });
-    await moduloScope.register(cardapiosOperacaoRoutes, { prefix: '/cardapios' });
     await moduloScope.register(comandasOperacaoRoutes, { prefix: '/comandas' });
     await moduloScope.register(contasPendentesOperacaoRoutes, { prefix: '/contas-pendentes' });
     await moduloScope.register(vendasOperacaoRoutes, { prefix: '/vendas' });

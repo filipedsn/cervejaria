@@ -216,6 +216,7 @@ export const NAV_ITEMS: NavItem[] = [
 /** Navegacao operacional do estabelecimento, adicionada por capacidade atual. */
 export const NAV_ITEMS_OPERACAO: NavItem[] = [
   { path: '/operacao/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
+  { path: '/operacao/catalogo', label: 'Cardápio', shortLabel: 'Cardápio', Icon: IconListMenu },
 ];
 
 export function getCervejariaNavItems(contexto: {
@@ -253,7 +254,9 @@ export function getOperationalModeNavItems(contexto: {
   operationMode: 'CAIXA' | 'EVENTO' | null;
   cashRegisterEnabled: boolean;
 }) {
-  return contexto.operationMode === 'CAIXA' ? NAV_ITEMS_OPERACAO : [];
+  if (contexto.operationMode === 'CAIXA') return NAV_ITEMS_OPERACAO;
+  if (contexto.operationMode === 'EVENTO') return [NAV_ITEMS_OPERACAO[1]];
+  return [];
 }
 
 type OperacaoNavContext = {
@@ -299,11 +302,17 @@ export const CAIXA_NAV_ITEMS: NavItem[] = [
 type OperacaoNavFilterContext = OperacaoNavContext & { isDono: boolean; operationMode?: 'CAIXA' | 'EVENTO' | null };
 
 export function getOperacaoNavItems(contexto: OperacaoNavFilterContext) {
-  return CAIXA_NAV_ITEMS.filter(
+  const items = CAIXA_NAV_ITEMS.filter(
     (item) =>
       (!('donoOnly' in item && item.donoOnly) || contexto.isDono) &&
       (!('somenteCozinha' in item && item.somenteCozinha) || contexto.temCozinha) &&
       (!('somenteEstoque' in item && item.somenteEstoque) || contexto.controlaEstoque),
+  );
+  if (contexto.operationMode !== 'EVENTO') return items;
+
+  // O catálogo é compartilhado, mas a tela de comandas do modo EVENTO não usa caixa/turno.
+  return items.map((item) =>
+    item.path === '/operacao/comandas' ? { ...item, path: '/comandas' } : item,
   );
 }
 

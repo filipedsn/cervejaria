@@ -5,7 +5,7 @@ import {
   modoEmpresa,
   CAIXA_CAPACIDADES_INVALIDATION_KEYS,
 } from '../src/lib/operacao-capacidades.ts';
-import { getCervejariaNavItems, getComplementaryNavItems, getOperationalModeNavItems, NAV_ITEMS_OPERACAO } from '../src/components/NavIcons.tsx';
+import { getCervejariaNavItems, getComplementaryNavItems, getOperacaoNavItems, getOperationalModeNavItems, NAV_ITEMS_OPERACAO } from '../src/components/NavIcons.tsx';
 
 test('TAP-42: identifica os três modos da empresa como informação', () => {
   assert.equal(modoEmpresa(true, false), 'Cervejaria');
@@ -41,14 +41,20 @@ test('TAP-50: mostra abas complementares quando capabilities estao ativas', () =
   assert.deepEqual(getComplementaryNavItems({ controlaEstoque: false, temCozinha: false }), []);
 });
 
-test('navigation exposes Comandas as the cash-register entry point', () => {
+test('navigation exposes Comandas and the traditional product catalog by operating mode', () => {
   assert.equal(NAV_ITEMS_OPERACAO[0].shortLabel, 'Comandas');
-  assert.deepEqual(getOperationalModeNavItems({ operationMode: 'CAIXA', cashRegisterEnabled: false }).map((item) => item.path), ['/operacao/comandas']);
-  assert.deepEqual(getOperationalModeNavItems({ operationMode: 'EVENTO', cashRegisterEnabled: true }), []);
+  assert.deepEqual(getOperationalModeNavItems({ operationMode: 'CAIXA', cashRegisterEnabled: false }).map((item) => item.path), ['/operacao/comandas', '/operacao/catalogo']);
+  assert.deepEqual(getOperationalModeNavItems({ operationMode: 'EVENTO', cashRegisterEnabled: true }).map((item) => item.path), ['/operacao/catalogo']);
 });
 
 test('cash-register mode does not duplicate the brewery Comandas entry', () => {
   const navItems = getCervejariaNavItems({ isDono: true, operationMode: 'CAIXA' });
   assert.equal(navItems.some((item) => item.path === '/comandas'), false);
-  assert.deepEqual(getOperationalModeNavItems({ operationMode: 'CAIXA', cashRegisterEnabled: true }).map((item) => item.path), ['/operacao/comandas']);
+  assert.deepEqual(getOperationalModeNavItems({ operationMode: 'CAIXA', cashRegisterEnabled: true }).map((item) => item.path), ['/operacao/comandas', '/operacao/catalogo']);
+});
+
+test('EVENTO navigation opens event commands and keeps CAIXA navigation unchanged', () => {
+  const capabilities = { temCozinha: true, controlaEstoque: true, isDono: true };
+  assert.equal(getOperacaoNavItems({ ...capabilities, operationMode: 'EVENTO' })[0].path, '/comandas');
+  assert.equal(getOperacaoNavItems({ ...capabilities, operationMode: 'CAIXA' })[0].path, '/operacao/comandas');
 });

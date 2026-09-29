@@ -11,7 +11,6 @@ import { useRankingLiveUpdates, useRankingSocketReconnect } from '../hooks/useRa
 import { usePollInterval } from '../hooks/usePollInterval';
 import { Loading } from '../components/Loading';
 import { RankingTvView } from '../components/RankingTvView';
-import { rankingPeriodoPageUrl } from '../lib/ranking-tv-url';
 
 type Escopo = 'mensal' | 'geral';
 
@@ -86,7 +85,9 @@ export function RankingPeriodoFullscreenPage() {
       title={isDemo ? 'Simulação de ranking' : (data?.evento.nome ?? 'Evento')}
       subtitle={subtitle}
       badge={isDemo ? `Simulação · ${demoCount} participantes` : undefined}
-      exitTo={eventoId ? rankingPeriodoPageUrl(eventoId, escopo) : '/eventos'}
+      exitTo={eventoId
+        ? `/ranking/${eventoId}?escopo=${escopo}${escopo === 'mensal' ? `&mes=${encodeURIComponent(mes)}` : ''}`
+        : '/eventos'}
       entries={entries}
       lastUpdatedAt={isDemo ? Date.now() : dataUpdatedAt}
       isDemo={isDemo}

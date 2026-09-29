@@ -3,13 +3,11 @@ import { FuncionariosPage } from './FuncionariosPage';
 import { TrailersPage } from './TrailersPage';
 import { AparenciaPage } from './AparenciaPage';
 import { OperacaoPage } from './OperacaoPage';
-import { OperacaoCatalogoPage } from './operacao/OperacaoCatalogoPage';
 import { PageHeader } from '../components/PageHeader';
 
 const BASE_TABS = [
   { id: 'equipe', label: 'Equipe' },
   { id: 'trailers', label: 'Trailers' },
-  { id: 'catalogo', label: 'Cardápio' },
   { id: 'operacao', label: 'Operação' },
   { id: 'aparencia', label: 'Aparência' },
 ] as const;
@@ -27,12 +25,12 @@ export function ConfiguracoesPage() {
   if (!tab) return <Navigate to="/configuracoes/equipe" replace />;
   if (tab === 'carretos') return <Navigate to="/configuracoes/trailers" replace />;
   if (tab === 'clientes') return <Navigate to="/configuracoes/trailers" replace />;
-  if (tab === 'cardapios') return <Navigate to="/configuracoes/catalogo" replace />;
+  if (tab === 'catalogo' || tab === 'cardapios') return <Navigate to="/operacao/catalogo" replace />;
   if (!isValidTab(tab)) return <Navigate to="/configuracoes/equipe" replace />;
 
   return (
     <div className="space-y-5 pb-2">
-      <PageHeader title="Configurações" subtitle="Equipe, trailers, cardápio e aparência" />
+      <PageHeader title="Configurações" subtitle="Equipe, trailers, operação e aparência" />
 
       <div className="segmented-control">
         {tabs.map(({ id, label }) => (
@@ -50,7 +48,6 @@ export function ConfiguracoesPage() {
 
       {tab === 'equipe' && <FuncionariosPage embedded />}
       {tab === 'trailers' && <TrailersPage embedded />}
-      {tab === 'catalogo' && <OperacaoCatalogoPage modo="evento" />}
       {tab === 'operacao' && <OperacaoPage embedded />}
       {tab === 'aparencia' && <AparenciaPage embedded />}
     </div>

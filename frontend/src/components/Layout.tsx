@@ -160,6 +160,15 @@ export function Layout() {
       : [...navItemsCervejaria, ...navItemsComplementares];
 
   const navItemsOperacaoModo = getOperationalModeNavItems(operacao);
+  const catalogoNavItem = navItemsOperacaoModo.find((item) => item.path === '/operacao/catalogo');
+  const navItemsCervejariaComCatalogo = catalogoNavItem
+    ? [
+        ...navItemsCervejariaOrdenados.slice(0, navItemsCervejariaOrdenados.findIndex((item) => item.path === '/clientes') + 1),
+        catalogoNavItem,
+        ...navItemsCervejariaOrdenados.slice(navItemsCervejariaOrdenados.findIndex((item) => item.path === '/clientes') + 1),
+      ]
+    : navItemsCervejariaOrdenados;
+  const navItemsOperacaoModoSemCatalogo = navItemsOperacaoModo.filter((item) => item.path !== '/operacao/catalogo');
   const navItems = inOperacao
     ? operacaoLoading
       ? navItemsComandasOperacao
@@ -177,8 +186,8 @@ export function Layout() {
           ]
         : navItemsComandasOperacao
     : operacao.operationMode === 'CAIXA'
-      ? [...navItemsOperacaoModo, ...navItemsCervejariaOrdenados]
-      : [...navItemsCervejariaOrdenados, ...navItemsOperacaoModo];
+      ? [...navItemsOperacaoModoSemCatalogo, ...navItemsCervejariaComCatalogo]
+      : [...navItemsCervejariaComCatalogo, ...navItemsOperacaoModoSemCatalogo];
   const { alertEnabled, alertNeedsUnlock, pushStatus, wakeLockActive, togglePedidoAlert } =
     usePedidoAlertSound();
   const onEventsPage = location.pathname === '/eventos';

@@ -139,6 +139,14 @@ function RequireModuloOperacao() {
   return <Outlet />;
 }
 
+/** Telas de caixa/turno são exclusivas do modo CAIXA; EVENTO volta ao fluxo de eventos. */
+function RequireCaixaMode() {
+  const { contexto, isLoading } = useOperacaoContexto();
+  if (isLoading) return <Loading fullScreen />;
+  if (contexto.operationMode === 'EVENTO') return <Navigate to="/" replace />;
+  return <Outlet />;
+}
+
 /** Operacao sem cozinha nao tem fila: a tela nao existe nem por URL direta. */
 function RequireCozinhaOperacao() {
   const { contexto, isLoading } = useOperacaoContexto();
@@ -334,12 +342,17 @@ const router = createBrowserRouter([
                         element: <OperacaoLayout />,
                         children: [
                           { index: true, element: <Navigate to="comandas" replace /> },
-                          { path: 'comandas', element: <OperacaoComandasPage /> },
-                          { path: 'contas-pendentes', element: <OperacaoContasPendentesPage /> },
-                          { path: 'comandas/nova', element: <OperacaoNovaComandaPage /> },
-                          { path: 'comandas/venda-avulsa', element: <OperacaoVendaAvulsaPage /> },
-                          { path: 'comandas/:id', element: <OperacaoComandaDetailPage /> },
-                          { path: 'caixa', element: <OperacaoCaixaPage /> },
+                          {
+                            element: <RequireCaixaMode />,
+                            children: [
+                              { path: 'comandas', element: <OperacaoComandasPage /> },
+                              { path: 'contas-pendentes', element: <OperacaoContasPendentesPage /> },
+                              { path: 'comandas/nova', element: <OperacaoNovaComandaPage /> },
+                              { path: 'comandas/venda-avulsa', element: <OperacaoVendaAvulsaPage /> },
+                              { path: 'comandas/:id', element: <OperacaoComandaDetailPage /> },
+                              { path: 'caixa', element: <OperacaoCaixaPage /> },
+                            ],
+                          },
                           {
                             element: <RequireEstoqueOperacao />,
                             children: [{ path: 'estoque', element: <OperacaoEstoquePage /> }],
@@ -353,7 +366,10 @@ const router = createBrowserRouter([
                             element: <RequireDonoOperacao />,
                             children: [
                               { path: 'dashboard', element: <OperacaoDashboardPage /> },
-                              { path: 'turnos/:sessaoId', element: <OperacaoTurnoResumoPage /> },
+                              {
+                                element: <RequireCaixaMode />,
+                                children: [{ path: 'turnos/:sessaoId', element: <OperacaoTurnoResumoPage /> }],
+                              },
                               { path: 'configuracoes', element: <Navigate to="/operacao/configuracoes/equipe" replace /> },
                               { path: 'configuracoes/:tab', element: <OperacaoConfiguracoesPage /> },
                               { path: 'equipe', element: <Navigate to="/operacao/configuracoes/equipe" replace /> },
@@ -390,7 +406,7 @@ const router = createBrowserRouter([
                           { path: 'eventos/:eventoId/resumo', element: <ResumoExecutivoPage /> },
                           { path: 'configuracoes', element: <Navigate to="/configuracoes/equipe" replace /> },
                           { path: 'configuracoes/:tab', element: <ConfiguracoesPage /> },
-                          { path: 'catalogo', element: <Navigate to="/configuracoes/catalogo" replace /> },
+                          { path: 'catalogo', element: <Navigate to="/operacao/catalogo" replace /> },
                           { path: 'funcionarios', element: <Navigate to="/configuracoes/equipe" replace /> },
                           { path: 'aparencia', element: <Navigate to="/configuracoes/aparencia" replace /> },
                           { path: 'relatorios', element: <Navigate to="/dashboard" replace /> },

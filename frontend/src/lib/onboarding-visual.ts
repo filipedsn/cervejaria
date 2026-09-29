@@ -17,7 +17,7 @@ const ACTIONS: Record<OnboardingStepCode, Omit<OnboardingVisualAction, 'code' | 
   CAIXA_CASH_REGISTER: { title: 'Abra o caixa para registrar vendas.', detail: 'Escolha o troco inicial e comece o turno.', cta: 'Abrir caixa', to: '/operacao/comandas', target: 'operacao-open-cash' },
   CAIXA_FIRST_SALE: { title: 'Tudo pronto. Faça sua primeira venda.', detail: 'A operação já está pronta para atender.', cta: 'Fazer venda', to: '/operacao/comandas/venda-avulsa', target: 'operacao-start-sale' },
   CERVEJARIA_TRAILER: { title: 'Escolha o trailer da operação.', detail: 'Use o trailer principal para começar.', cta: 'Ver trailers', to: '/configuracoes/trailers', target: 'brewery-configure-tap' },
-  CERVEJARIA_PRODUCT: { title: 'Cadastre seu primeiro chope.', detail: 'Defina um preço para começar a servir.', cta: 'Adicionar chope', to: '/configuracoes/catalogo', target: 'brewery-add-chope' },
+  CERVEJARIA_PRODUCT: { title: 'Cadastre seu primeiro chope.', detail: 'Defina um preço para começar a servir.', cta: 'Adicionar chope', to: '/operacao/catalogo', target: 'brewery-add-chope' },
   CERVEJARIA_TAP: { title: 'Associe o chope a um tap.', detail: 'Escolha um dos taps já disponíveis.', cta: 'Configurar tap', to: '/configuracoes/trailers', target: 'brewery-configure-tap' },
   CERVEJARIA_OPERATION: { title: 'Abra a operação.', detail: 'Inicie um evento para registrar as vendas.', cta: 'Abrir operação', to: '/eventos', target: 'brewery-open-operation' },
   CERVEJARIA_FIRST_SALE: { title: 'Tudo pronto. Faça sua primeira venda.', detail: 'Sirva o primeiro chope quando estiver pronto.', cta: 'Fazer venda', to: '/venda-avulsa', target: 'brewery-start-sale' },

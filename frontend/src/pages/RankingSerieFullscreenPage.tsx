@@ -39,6 +39,7 @@ export function RankingSerieFullscreenPage() {
   const isDemo = Number.isFinite(demoCount) && demoCount > 0;
   const escopo: Escopo = searchParams.get('escopo') === 'geral' ? 'geral' : 'mensal';
   const mes = searchParams.get('mes') ?? currentMesKey();
+  const eventoId = searchParams.get('eventoId');
   const liveEventoId = eventoAtivo?.id;
   const alsoRefetch = useMemo(
     () => (serieId ? [{ prefix: ['ranking-serie', serieId] as const }] : []),
@@ -88,7 +89,9 @@ export function RankingSerieFullscreenPage() {
       title={isDemo ? 'Simulação de ranking' : (data?.serie.nome ?? 'Agenda')}
       subtitle={subtitle}
       badge={isDemo ? `Simulação · ${demoCount} participantes` : undefined}
-      exitTo={serieId ? rankingSeriePageUrl(serieId, escopo) : '/eventos'}
+      exitTo={eventoId
+        ? `/ranking/${eventoId}?escopo=${escopo}${escopo === 'mensal' ? `&mes=${encodeURIComponent(mes)}` : ''}`
+        : serieId ? rankingSeriePageUrl(serieId, escopo) : '/eventos'}
       entries={entries}
       lastUpdatedAt={isDemo ? Date.now() : dataUpdatedAt}
       isDemo={isDemo}

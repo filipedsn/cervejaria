@@ -50,8 +50,21 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
   const opcionalCadastroSchema = z.object({ nome: z.string().trim().min(1).max(80), preco: z.number().min(0).max(9999), ativo: z.boolean().optional() });
   app.get('/opcionais', async (request) => prisma.opcional.findMany({ where: { cervejariaId: request.operacao.cervejariaId }, orderBy: { nome: 'asc' } }));
   app.post('/opcionais', { preHandler: [app.requireDono] }, async (request, reply) => { const body = opcionalCadastroSchema.parse(request.body); return reply.status(201).send(await prisma.opcional.create({ data: { cervejariaId: request.operacao.cervejariaId, nome: body.nome, preco: body.preco, ativo: body.ativo ?? true } })); });
-  app.put('/opcionais/:id', { preHandler: [app.requireDono] }, async (request) => { const body = opcionalCadastroSchema.partial().parse(request.body); return prisma.opcional.update({ where: { id: (request.params as { id: string }).id }, data: body }); });
-  app.delete('/opcionais/:id', { preHandler: [app.requireDono] }, async (request) => { return prisma.opcional.delete({ where: { id: (request.params as { id: string }).id } }); });
+  app.put('/opcionais/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
+    const { cervejariaId } = request.operacao;
+    const { id } = request.params as { id: string };
+    const body = opcionalCadastroSchema.partial().parse(request.body);
+    const existing = await prisma.opcional.findFirst({ where: { id, cervejariaId } });
+    if (!existing) return reply.status(404).send({ error: 'Opcional não encontrado' });
+    return prisma.opcional.update({ where: { id }, data: body });
+  });
+  app.delete('/opcionais/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
+    const { cervejariaId } = request.operacao;
+    const { id } = request.params as { id: string };
+    const existing = await prisma.opcional.findFirst({ where: { id, cervejariaId } });
+    if (!existing) return reply.status(404).send({ error: 'Opcional não encontrado' });
+    return prisma.opcional.delete({ where: { id } });
+  });
   app.get('/categorias', async (request) => {
     const { cervejariaId } = request.operacao;
     const categorias = request.operacao.tapsEnabled

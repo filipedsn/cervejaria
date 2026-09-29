@@ -2,6 +2,7 @@ import { prisma } from './prisma.js';
 import { isBebidaChope, isVendaUnitaria } from './produto-utils.js';
 import { toNumber } from './utils.js';
 import type { CardapioItemInput } from './cardapio-preco.js';
+import { syncOpenEventsWithCardapio } from './cardapio-event-sync.js';
 
 export type { CardapioItemInput };
 
@@ -144,7 +145,7 @@ export async function getCardapioById(id: string, cervejariaId: string) {
   return mapCardapioResponse(cardapio);
 }
 
-async function replaceCardapioProdutos(cardapioId: string, itens: CardapioItemInput[]) {
+async function replaceCardapioProdutos(cardapioId: string, cervejariaId: string, itens: CardapioItemInput[]) {
   await prisma.$transaction(async (tx) => {
     await tx.cardapioProduto.deleteMany({ where: { cardapioId, volumeMl: 0 } });
     if (itens.length > 0) {
@@ -156,6 +157,11 @@ async function replaceCardapioProdutos(cardapioId: string, itens: CardapioItemIn
         })),
       });
     }
+    await syncOpenEventsWithCardapio(tx, {
+      cardapioId,
+      cervejariaId,
+      produtoIds: itens.map((item) => item.produtoId),
+    });
   });
 }
 
@@ -179,7 +185,7 @@ export async function createCardapio(params: {
     },
   });
 
-  await replaceCardapioProdutos(cardapio.id, normalized.itens);
+  await replaceCardapioProdutos(cardapio.id, params.cervejariaId, normalized.itens);
   return getCardapioById(cardapio.id, params.cervejariaId);
 }
 
@@ -202,7 +208,7 @@ export async function updateCardapio(params: {
       params.produtoIds,
     );
     if ('error' in normalized) return normalized;
-    await replaceCardapioProdutos(params.id, normalized.itens);
+    await replaceCardapioProdutos(params.id, params.cervejariaId, normalized.itens);
   }
 
   if (params.nome !== undefined) {

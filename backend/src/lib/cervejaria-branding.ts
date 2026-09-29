@@ -69,7 +69,8 @@ export function formatCervejariaAuth(cervejaria: CervejariaBrandingRow): Cerveja
     corPaleta: theme,
     exibirKpisComanda: cervejaria.exibirKpisComanda,
     comandasColunaUnica: cervejaria.comandasColunaUnica,
-    usaCardapio: cervejaria.usaCardapio,
+    // Compatibilidade para clientes antigos: cardápios salvos sempre disponíveis.
+    usaCardapio: true,
     updatedAt: cervejaria.updatedAt.toISOString(),
     logoVersion: resolveLogoVersion(cervejaria),
     portalBackgroundUrl: cervejaria.portalBackgroundUrl ?? null,

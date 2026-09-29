@@ -10,6 +10,8 @@ import {
   updateCardapioOperacao,
 } from '../../lib/operacao/cardapio.js';
 import { operacaoUsaCardapio } from '../../lib/cardapio-toggle.js';
+import { emitToCervejaria } from '../../lib/realtime.js';
+import { listOpenEventsUsingCardapio } from '../../lib/cardapio-event-sync.js';
 
 const itemCardapioSchema = z.object({
   produtoId: z.string().min(1),
@@ -90,6 +92,15 @@ export async function cardapiosOperacaoRoutes(app: FastifyInstance) {
       produtoIds: body.produtoIds,
     });
     if ('error' in result) return reply.status(400).send({ error: result.error });
+    if (body.itens !== undefined || body.produtoIds !== undefined) {
+      const eventos = await listOpenEventsUsingCardapio(id, cervejariaId);
+      for (const evento of eventos) {
+        emitToCervejaria(app.io, cervejariaId, {
+          type: 'evento-cardapio:updated',
+          data: { eventoId: evento.id },
+        });
+      }
+    }
     return result;
   });
 

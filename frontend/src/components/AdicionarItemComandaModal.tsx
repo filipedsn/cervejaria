@@ -155,19 +155,6 @@ export function AdicionarItemComandaModal({
         {error && <div className="alert-error text-sm">{error}</div>}
         {successMessage && <div className="alert-success text-sm" role="status">{successMessage}</div>}
 
-        <label className="flex items-center gap-3 rounded-xl border border-line bg-surface-lighter px-3 py-3 text-sm font-semibold">
-          <input
-            type="checkbox"
-            className="h-5 w-5 accent-brand-600"
-            checked={paraViagem}
-            onChange={(event) => setParaViagem(event.target.checked)}
-          />
-          <span>
-            <span className="block">Para viagem</span>
-            <span className="block text-xs font-normal text-ink-muted">O item deve ser embalado.</span>
-          </span>
-        </label>
-
         {nothingAvailable && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 space-y-2">
             <p className="font-semibold">Nada disponível para vender ainda</p>
@@ -194,6 +181,7 @@ export function AdicionarItemComandaModal({
                   setTab(id);
                   setSelectedProduto(null);
                   setQuantity(1);
+                  setParaViagem(false);
                 }}
                 className={`segmented-control-btn ${
                   tab === id ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'
@@ -304,6 +292,7 @@ export function AdicionarItemComandaModal({
                       onClick={() => {
                         setSelectedProduto(produto);
                         setQuantity(1);
+                        setParaViagem(false);
                         setOpcionais({});
                       }}
                       className={[
@@ -344,6 +333,7 @@ export function AdicionarItemComandaModal({
                       onClick={() => {
                         setSelectedProduto(produto);
                         setQuantity(1);
+                        setParaViagem(false);
                         setOpcionais({});
                       }}
                       className={[
@@ -439,6 +429,18 @@ export function AdicionarItemComandaModal({
                 </div>
               </div>
             ))}
+            {canAddUnit && <label className="flex items-center gap-3 rounded-xl border border-line bg-surface-lighter px-3 py-3 text-sm font-semibold">
+              <input
+                type="checkbox"
+                className="h-5 w-5 accent-brand-600"
+                checked={paraViagem}
+                onChange={(event) => setParaViagem(event.target.checked)}
+              />
+              <span>
+                <span className="block">Para viagem</span>
+                <span className="block text-xs font-normal text-ink-muted">O item deve ser embalado.</span>
+              </span>
+            </label>}
             {canAddUnit && <label className="block text-sm"><span className="font-semibold">Observação do item</span><textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} maxLength={280} rows={2} placeholder="Ex.: sem cebola" className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2" /></label>}
           </>
         )}

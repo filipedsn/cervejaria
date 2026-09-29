@@ -186,7 +186,7 @@ export function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { ano, mes } = useMemo(() => parsePeriod(searchParams), [searchParams]);
   const [trailerId, setTrailerId] = useState<string>('all');
-  const [tipoEvento, setTipoEvento] = useState<'todos' | 'agendado' | 'avulso'>('todos');
+  const [tipoEvento, setTipoEvento] = useState<'todos' | 'agendado' | 'avulso' | 'caixa'>('todos');
 
   const { data: trailers = [] } = useQuery({
     queryKey: ['trailers', 'ativo'],
@@ -297,6 +297,7 @@ export function DashboardPage() {
     porProduto,
     porFuncionario,
     eventosRecentes = [],
+    turnosCaixaRecentes = [],
     comparativoAgendas = [],
   } = data;
   const mesSelecionadoIdx = mes - 1;
@@ -379,6 +380,7 @@ export function DashboardPage() {
                 ['todos', 'Todos'],
                 ['agendado', 'Agendados'],
                 ['avulso', 'Avulsos'],
+                ['caixa', 'Caixa'],
               ] as const).map(([id, label]) => (
                 <button
                   key={id}
@@ -500,6 +502,47 @@ export function DashboardPage() {
                             label="avulsas"
                           />
                         )}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {turnosCaixaRecentes.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="section-label">Turnos de caixa com movimentação</h2>
+              <div className="card divide-y divide-line p-0 overflow-hidden">
+                {turnosCaixaRecentes.map((turno) => {
+                  const inicioTurno = new Date(turno.abertoEm);
+                  const fimTurno = turno.fechadoEm ? new Date(turno.fechadoEm) : null;
+                  const periodoTurno = `${inicioTurno.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} · ${inicioTurno.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${fimTurno ? `–${fimTurno.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ' · em andamento'}`;
+                  return (
+                    <Link
+                      key={turno.sessaoId}
+                      to={`/operacao/turnos/${turno.sessaoId}`}
+                      className="block px-4 py-3.5 hover:bg-surface-lighter transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate">{turno.pontoNome}</p>
+                          <p className="text-xs text-ink-faint mt-0.5">{periodoTurno}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-bold text-brand-600 text-lg tabular-nums leading-none">
+                            {formatCurrency(turno.receitaTotal)}
+                          </p>
+                          <p className={`text-[11px] mt-1 leading-none ${turno.status === 'ABERTO' ? 'text-success' : 'text-ink-faint'}`}>
+                            {turno.status === 'ABERTO' ? 'em andamento' : 'turno encerrado'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+                        <EventoMetric value={String(turno.comandasAtendidas)} label="comandas" />
+                        <EventoMetric value={formatCurrency(turno.ticketMedio)} label="ticket médio" />
+                        {turno.chopeMl > 0 && <EventoMetric value={formatLiters(turno.chopeMl)} label="chope" />}
+                        {turno.movimentosCaixa > 0 && <EventoMetric value={String(turno.movimentosCaixa)} label="movimentos de caixa" />}
                       </div>
                     </Link>
                   );

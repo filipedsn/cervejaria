@@ -2,6 +2,7 @@ import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
 import type { CardapioItemInput } from '../cardapio-preco.js';
 import type { ProdutoIdsCardapioResult } from '../cardapio.js';
+import { syncOpenEventsWithCardapio } from '../cardapio-event-sync.js';
 import { isBebidaChopeOperacao } from '../produto-utils.js';
 
 export type OperacaoCardapioItemInput = { produtoId: string; volumeMl?: number; precoUnit: number };
@@ -164,6 +165,7 @@ export async function getCardapioOperacaoById(id: string, cervejariaId: string) 
 
 async function replaceCardapioOperacaoProdutos(
   cardapioId: string,
+  cervejariaId: string,
   itens: OperacaoCardapioItemInput[],
 ) {
   await prisma.$transaction(async (tx) => {
@@ -211,6 +213,11 @@ async function replaceCardapioOperacaoProdutos(
         })),
       });
     }
+    await syncOpenEventsWithCardapio(tx, {
+      cardapioId,
+      cervejariaId,
+      produtoIds: [...new Set(itens.filter((item) => (item.volumeMl ?? 0) === 0).map((item) => item.produtoId))],
+    });
     await tx.cardapio.update({ where: { id: cardapioId }, data: { chopeVolumesConfigurados: true } });
 
     // Atualiza a lista materializada de produtos dos turnos vinculados ao
@@ -250,7 +257,7 @@ export async function createCardapioOperacao(params: {
     },
   });
 
-  await replaceCardapioOperacaoProdutos(cardapio.id, normalized.itens);
+  await replaceCardapioOperacaoProdutos(cardapio.id, params.cervejariaId, normalized.itens);
   return getCardapioOperacaoById(cardapio.id, params.cervejariaId);
 }
 
@@ -273,7 +280,7 @@ export async function updateCardapioOperacao(params: {
       params.produtoIds,
     );
     if ('error' in normalized) return normalized;
-    await replaceCardapioOperacaoProdutos(params.id, normalized.itens);
+    await replaceCardapioOperacaoProdutos(params.id, params.cervejariaId, normalized.itens);
   }
 
   if (params.nome !== undefined) {

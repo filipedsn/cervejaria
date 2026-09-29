@@ -24,6 +24,8 @@ const updateOperacaoSchema = z
   .object({
     exibirKpisComanda: z.boolean().optional(),
     comandasColunaUnica: z.boolean().optional(),
+    // Mantido para que clientes antigos ainda possam enviar a preferência;
+    // o valor é ignorado porque o fluxo tradicional agora é único.
     usaCardapio: z.boolean().optional(),
   })
   .refine(
@@ -70,7 +72,7 @@ export async function cervejariaRoutes(app: FastifyInstance) {
     const mes = query.mes ? Number.parseInt(query.mes, 10) : now.getMonth() + 1;
     const trailerId = query.trailerId?.trim() || undefined;
     const tipoRaw = query.tipo?.trim();
-    const tipo = tipoRaw === 'agendado' || tipoRaw === 'avulso' ? tipoRaw : 'todos';
+    const tipo = tipoRaw === 'agendado' || tipoRaw === 'avulso' || tipoRaw === 'caixa' ? tipoRaw : 'todos';
 
     if (!Number.isFinite(ano) || !Number.isFinite(mes) || mes < 1 || mes > 12) {
       return reply.status(400).send({ error: 'Período inválido' });
@@ -102,7 +104,6 @@ export async function cervejariaRoutes(app: FastifyInstance) {
       data: {
         ...(body.exibirKpisComanda !== undefined ? { exibirKpisComanda: body.exibirKpisComanda } : {}),
         ...(body.comandasColunaUnica !== undefined ? { comandasColunaUnica: body.comandasColunaUnica } : {}),
-        ...(body.usaCardapio !== undefined ? { usaCardapio: body.usaCardapio } : {}),
       },
     });
     return formatCervejariaAuth(updated);

@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import type { Usuario, Cervejaria, AuthResponse } from '../types';
 import { api } from '../lib/api';
-import { queryClient } from '../lib/query-client';
+import { clearSessionQueryCache } from '../lib/query-client';
 import { connectSocket, disconnectSocket } from '../lib/socket';
 import { resetBreweryTheme, syncBreweryTheme } from '../lib/theme';
 import { ensureAppShellBranding } from '../lib/app-branding';
@@ -29,6 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const applyAuth = useCallback((data: AuthResponse) => {
+    clearSessionQueryCache();
     resetBreweryTheme();
     setUsuario(data.usuario);
     setCervejaria(data.cervejaria);
@@ -40,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    clearSessionQueryCache();
     resetBreweryTheme();
     ensureAppShellBranding();
     try {
@@ -49,7 +51,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     localStorage.removeItem('eventoAtivo');
     localStorage.removeItem('trailerAtivo');
-    queryClient.removeQueries({ queryKey: ['operacao-contexto'] });
     setUsuario(null);
     setCervejaria(null);
     disconnectSocket();
@@ -78,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api
       .get<{ usuario: Usuario; cervejaria: Cervejaria | null }>('/api/auth/me')
       .then((data) => {
+        clearSessionQueryCache();
         resetBreweryTheme();
         setUsuario(data.usuario);
         setCervejaria(data.cervejaria);
@@ -89,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         flushPendingAuditAfterAuth();
       })
       .catch(() => {
+        clearSessionQueryCache();
         resetBreweryTheme();
         ensureAppShellBranding();
         setUsuario(null);

@@ -1,8 +1,9 @@
 type Escopo = 'mensal' | 'geral';
 
-export function rankingSerieTvUrl(serieId: string, escopo: Escopo, mes?: string): string {
+export function rankingSerieTvUrl(serieId: string, escopo: Escopo, mes?: string, eventoId?: string): string {
   const params = new URLSearchParams({ escopo });
   if (escopo === 'mensal' && mes) params.set('mes', mes);
+  if (eventoId) params.set('eventoId', eventoId);
   return `/ranking/tv/serie/${serieId}?${params.toString()}`;
 }
 

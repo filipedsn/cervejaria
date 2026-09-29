@@ -50,6 +50,42 @@ export function hasComplementaryAccess(profile: OperationalProfile | null): bool
   return profile?.capabilities.cashMode === true || profile?.capabilities.inventory === true || profile?.capabilities.kitchen === true;
 }
 
+/** Tenant-owned catalog data is available independently of its operating mode. */
+export function hasCatalogAccess(profile: OperationalProfile | null): profile is OperationalProfile {
+  return profile !== null;
+}
+
+function attachOperacaoContext(
+  request: FastifyRequest,
+  cervejariaId: string,
+  profile: OperationalProfile,
+  quantidadeMesas: number,
+) {
+  request.operacao = {
+    cervejariaId,
+    controlaEstoque: hasInventoryAccess(profile),
+    temCozinha: hasKitchenAccess(profile),
+    tapsEnabled: profile.capabilities.taps,
+    quantidadeMesas,
+  };
+}
+
+/** Product and saved-menu APIs are tenant data and do not require CAIXA/EVENTO access. */
+export function requireCatalogAccess(app: FastifyInstance) {
+  return async (request: FastifyRequest) => {
+    const user = getAuthUser(request);
+    const cervejariaId = user.cervejariaId;
+    const profile = cervejariaId ? await getOperationalProfile(cervejariaId) : null;
+
+    if (!cervejariaId || !hasCatalogAccess(profile)) {
+      throw app.httpErrors.notFound('Catálogo não disponível');
+    }
+
+    const configuracao = await getConfiguracaoOperacao(cervejariaId);
+    attachOperacaoContext(request, cervejariaId, profile, configuracao?.quantidadeMesas ?? 0);
+  };
+}
+
 /**
  * Ativa o modulo para uma empresa e cria o primeiro ponto de venda.
  * Recebe o client da transacao para nascer junto com o cadastro da empresa.
@@ -94,7 +130,7 @@ export function requireModuloOperacao(app: FastifyInstance) {
       ? await getOperationalProfile(user.cervejariaId)
       : null;
 
-    if (!hasComplementaryAccess(profile)) {
+    if (!profile || !hasComplementaryAccess(profile)) {
       throw app.httpErrors.notFound('Modulo Operacao nÃ£o disponÃ­vel');
     }
 
@@ -107,12 +143,6 @@ export function requireModuloOperacao(app: FastifyInstance) {
       throw app.httpErrors.notFound('Modulo Operacao não disponível');
     }
 
-    request.operacao = {
-      cervejariaId: user.cervejariaId!,
-      controlaEstoque: hasInventoryAccess(profile),
-      temCozinha: hasKitchenAccess(profile),
-      tapsEnabled: profile?.capabilities.taps ?? false,
-      quantidadeMesas: configuracao?.quantidadeMesas ?? 0,
-    };
+    attachOperacaoContext(request, user.cervejariaId!, profile, configuracao?.quantidadeMesas ?? 0);
   };
 }

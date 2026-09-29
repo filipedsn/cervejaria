@@ -1,17 +1,8 @@
-import type { Prisma } from '@prisma/client';
-import { prisma } from './prisma.js';
-
-/** Accept the active transaction so callers never exhaust the pool from inside it. */
-export async function cervejariaUsaCardapio(cervejariaId: string, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<boolean> {
-  const row = await db.cervejaria.findUnique({
-    where: { id: cervejariaId },
-    select: { usaCardapio: true },
-  });
-  return row?.usaCardapio ?? false;
+/** Cardápios salvos estão sempre disponíveis; o antigo toggle foi removido. */
+export async function cervejariaUsaCardapio(_cervejariaId: string, _db?: unknown): Promise<boolean> {
+  return true;
 }
 
 export async function operacaoUsaCardapio(cervejariaId: string): Promise<boolean> {
-  // Compatibility name kept for callers during the convergence. The source
-  // of truth is now the single tenant-wide flag used by both operation modes.
   return cervejariaUsaCardapio(cervejariaId);
 }

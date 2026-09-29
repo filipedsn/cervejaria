@@ -20,11 +20,27 @@ export async function findEventoCardapioSessao(eventoId: string, cervejariaId: s
 }
 
 function enriquecerProdutosComPrecoTemplate<
-  T extends { id: string; precos: { volumeMl: number; preco: unknown }[] },
+  T extends {
+    id: string;
+    precos: { volumeMl: number; preco: unknown }[];
+    opcionaisVinculados?: Array<{ opcional: { id: string; nome: string; preco: unknown; ativo?: boolean } }>;
+  },
 >(produtos: T[], precosTemplate: Map<string, number> | null) {
+  const comOpcionais = (produto: T) => {
+    const opcoes = (produto.opcionaisVinculados ?? [])
+      .filter(({ opcional }) => opcional.ativo !== false)
+      .map(({ opcional }) => ({ id: opcional.id, nome: opcional.nome, precoAdicional: toNumber(opcional.preco) }));
+    return {
+      ...produto,
+      gruposOpcionais: opcoes.length
+        ? [{ id: 'opcionais', nome: 'Opcionais', obrigatorio: false, maximo: 99, opcoes }]
+        : [],
+    };
+  };
+
   if (!precosTemplate) {
     return produtos.map((p) => ({
-      ...p,
+      ...comOpcionais(p),
       precoEfetivo: p.precos[0] ? toNumber(p.precos[0].preco) : 0,
     }));
   }
@@ -32,10 +48,10 @@ function enriquecerProdutosComPrecoTemplate<
   return produtos.map((p) => {
     const templatePreco = precosTemplate.get(p.id);
     if (templatePreco === undefined) {
-      return { ...p, precoEfetivo: p.precos[0] ? toNumber(p.precos[0].preco) : 0 };
+      return { ...comOpcionais(p), precoEfetivo: p.precos[0] ? toNumber(p.precos[0].preco) : 0 };
     }
     return {
-      ...p,
+      ...comOpcionais(p),
       precoEfetivo: templatePreco,
       precos: p.precos.length
         ? p.precos.map((pr, idx) => (idx === 0 ? { ...pr, preco: templatePreco } : pr))

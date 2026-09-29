@@ -27,6 +27,7 @@ import {
 } from '../components/PaymentFormModal';
 import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../lib/currency';
 import { invalidateOnboardingReadiness } from '../lib/onboarding';
+import { getSocket } from '../lib/socket';
 
 type CartLine = {
   key: string;
@@ -73,6 +74,20 @@ export function VendaAvulsaPage() {
     queryFn: () => api.get<EventoCardapio>(`/api/eventos/${eventoId}/cardapio`),
     enabled: !!eventoId,
   });
+
+  useEffect(() => {
+    if (!eventoId) return;
+    const socket = getSocket();
+    const refreshMenu = (event: { eventoId: string }) => {
+      if (event.eventoId === eventoId) {
+        queryClient.invalidateQueries({ queryKey: ['evento-cardapio', eventoId] });
+      }
+    };
+    socket.on('evento-cardapio:updated', refreshMenu);
+    return () => {
+      socket.off('evento-cardapio:updated', refreshMenu);
+    };
+  }, [eventoId, queryClient]);
 
   const total = useMemo(
     () => cart.reduce((sum, line) => sum + line.precoUnit * line.quantidade, 0),

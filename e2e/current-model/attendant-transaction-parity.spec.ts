@@ -382,9 +382,26 @@ test.describe('Current operating model — attendant sales parity', () => {
             horaInicio: '18:00', recorrencia: 'NENHUMA', abrirAgora: true,
             trailerId: tenant.trailerId, cardapioId: savedMenu.id,
           });
+          await page.goto('/operacao/comandas');
+          await expect(page).toHaveURL(/^https?:\/\/[^/]+\/comandas(?:\?.*)?$/);
+          await expect(page.getByRole('heading', { name: /comandas/i }).first()).toBeVisible();
+          await page.goto('/operacao/turnos/rota-invalida');
+          await expect(page).toHaveURL(/^https?:\/\/[^/]+\/comandas(?:\?.*)?$/);
           const eventMenu = await required<Json>('GET', `/api/eventos/${event.id}/cardapio`, tenant.ownerCookie);
           expect(eventMenu.produtoIds).toEqual([tenant.foodId]);
           expect(eventMenu.catalogo.some((product: Json) => product.id === tenant.beerId)).toBe(false);
+          expect(eventMenu.produtos.find((product: Json) => product.id === tenant.foodId)?.gruposOpcionais)
+            .toEqual([expect.objectContaining({ opcoes: [expect.objectContaining({ id: tenant.optionalId })] })]);
+          const extraEventProduct = await required<Json>('POST', '/api/operacao/produtos', tenant.adminOwnerCookie, {
+            nome: `Refrigerante evento E2E ${runId}`, categoria: 'Bebidas', tipo: 'BEBIDA',
+            precoUnit: 7, exigePreparo: false, controlaEstoque: false,
+          });
+          await required('PUT', `/api/operacao/cardapios/${savedMenu.id}`, tenant.adminOwnerCookie, {
+            nome: savedMenu.nome, produtoIds: [tenant.foodId, tenant.beerId, extraEventProduct.id],
+          });
+          const refreshedEventMenu = await required<Json>('GET', `/api/eventos/${event.id}/cardapio`, tenant.ownerCookie);
+          expect(refreshedEventMenu.produtoIds).toEqual(expect.arrayContaining([tenant.foodId, extraEventProduct.id]));
+          expect(refreshedEventMenu.produtoIds).not.toContain(tenant.beerId);
           const eventTaps = await required<any[]>('GET', `/api/eventos/${event.id}/taps`, tenant.ownerCookie);
           const eventTap = eventTaps.find((item) => item.tapId === tenant.tapId || item.id === tenant.tapId);
           if (!eventTap || (eventTap.produtoId && eventTap.produtoId !== tenant.beerId)) {
@@ -431,6 +448,14 @@ test.describe('Current operating model — attendant sales parity', () => {
             eventoId: event.id, clienteNome: 'Cliente E2E', clienteTelefone: '11987654321',
           });
           comandaId = comanda.id;
+          await page.goto(`/comandas/${comandaId}`);
+          await page.getByRole('button', { name: '+ Itens' }).click();
+          const addItemDialog = page.getByRole('dialog', { name: 'Adicionar item' });
+          await expect(addItemDialog.getByRole('checkbox', { name: /Para viagem/ })).toHaveCount(0);
+          await page.getByRole('button', { name: /Porção E2E/ }).click();
+          await expect(addItemDialog.getByRole('checkbox', { name: /Para viagem/ })).toBeVisible();
+          await expect(page.getByRole('checkbox', { name: /Adicional E2E/ })).toBeVisible();
+          await page.getByRole('button', { name: 'Voltar', exact: true }).click();
           const foodItem = await required('POST', `/api/comandas/${comandaId}/itens`, tenant.ownerCookie, {
             produtoId: tenant.foodId, volumeMl: 1, quantidade: 1, observacao: 'Bem passado',
             opcionais: [{ opcionalId: tenant.optionalId, quantidade: 1 }],
@@ -467,12 +492,58 @@ test.describe('Current operating model — attendant sales parity', () => {
           for (const type of ['EVENTO_CRIADO', 'PORTAL_PEDIDO_CRIADO', 'COMANDA_ITEM_ADICIONADO', 'COMANDA_FECHADA', 'EVENTO_FECHADO']) {
             expect(transactions.some((transaction) => transaction.tipo === type), `transação observável ${type}`).toBe(true);
           }
+
+          // Mudança de modo durante o mesmo mês: somar o evento encerrado e as vendas posteriores no CAIXA.
+          await required('PATCH', `/api/admin/cervejarias/${tenant.companyId}/configuracao-operacional`, adminCookie, {
+            plannedOperationsEnabled: false,
+            tapsEnabled: true,
+            inventoryEnabled: true,
+            kitchenEnabled: true,
+            confirmacaoEstoque: true,
+          }, 200);
+          const postSwitchSession = await required('POST', '/api/operacao/caixa/abrir', tenant.ownerCookie, {
+            pontoVendaId: tenant.posId, trailerId: tenant.trailerId, trocoInicial: 0, cardapioId: savedMenu.id,
+          });
+          const postSwitchComanda = await required('POST', '/api/operacao/comandas', tenant.ownerCookie, {
+            pontoVendaId: tenant.posId, tipo: 'APELIDO', identificador: `Após mudança ${runId}`,
+            clienteNome: 'Cliente após mudança', clienteTelefone: '11987654326',
+          });
+          await required('POST', `/api/operacao/comandas/${postSwitchComanda.id}/pedidos`, tenant.ownerCookie, {
+            itens: [{ produtoId: tenant.beerId, quantidade: 1, tapId: tenant.tapId, volumeMl: 300 }],
+          });
+          await required('POST', `/api/operacao/comandas/${postSwitchComanda.id}/pagamentos`, tenant.ownerCookie, {
+            pagamentos: [{ forma: 'PIX', valor: 15 }],
+          }, 200);
+
+          const dashboardPeriodo = new Date();
+          const dashboardParams = `ano=${dashboardPeriodo.getFullYear()}&mes=${dashboardPeriodo.getMonth() + 1}`;
+          const dashboardUnificado = await required<Json>('GET', `/api/cervejaria/dashboard?${dashboardParams}`, tenant.adminOwnerCookie);
+          expect(dashboardUnificado.resumo).toMatchObject({ receitaTotal: 73, comandasAtendidas: 3, chopeMl: 1100 });
+          expect(dashboardUnificado.turnosCaixaRecentes).toEqual(expect.arrayContaining([
+            expect.objectContaining({ sessaoId: postSwitchSession.id, status: 'ABERTO', receitaTotal: 15, comandasAtendidas: 1 }),
+          ]));
+          const dashboardCaixa = await required<Json>('GET', `/api/cervejaria/dashboard?${dashboardParams}&tipo=caixa`, tenant.adminOwnerCookie);
+          expect(dashboardCaixa.resumo).toMatchObject({ receitaTotal: 15, comandasAtendidas: 1, chopeMl: 300 });
+          expect(dashboardCaixa.turnosCaixaRecentes).toEqual(expect.arrayContaining([
+            expect.objectContaining({ sessaoId: postSwitchSession.id, receitaTotal: 15 }),
+          ]));
+          await attachSession(page, tenant.adminOwnerCookie);
+          await page.goto('/dashboard');
+          const filtroCaixa = page.getByRole('button', { name: 'Caixa', exact: true });
+          await expect(filtroCaixa).toBeVisible();
+          const responseCaixa = page.waitForResponse((response) =>
+            response.url().includes('/api/cervejaria/dashboard') && response.url().includes('tipo=caixa'),
+          );
+          await filtroCaixa.click();
+          await responseCaixa;
+          await expect(page.getByRole('heading', { name: 'Turnos de caixa com movimentação' })).toBeVisible();
+          await expect(page.getByRole('link', { name: /Ponto principal/ })).toBeVisible();
         }
 
         const afterFood = await stock(tenant.ownerCookie, tenant.posId, tenant.foodId);
         const afterBeer = await stock(tenant.ownerCookie, tenant.posId, tenant.beerId);
         expect(afterFood).toMatchObject({ quantidade: 9, unidadeEstoque: 'un' });
-        expect(afterBeer.quantidade).toBeCloseTo(mode === 'CAIXA' ? 10.4 : 11.2, 6);
+        expect(afterBeer.quantidade).toBeCloseTo(mode === 'CAIXA' ? 10.4 : 10.9, 6);
         await expect(page.getByRole('link', { name: 'Estoque', exact: true })).toBeVisible();
       } finally {
         await cleanup(tenant.companyId);
