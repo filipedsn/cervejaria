@@ -64,7 +64,7 @@ test('sends the sequential comanda number, not the table or kitchen-ticket numbe
 
   assert.ok(link);
   const mensagem = new URL(link).searchParams.get('text');
-  assert.equal(mensagem, 'Olá, Poliana! O número sequencial da sua comanda no Cervejaria é 318.');
+  assert.equal(mensagem, 'Olá, Poliana! O número da sua comanda no Cervejaria é 318.');
   assert.equal(linkWhatsAppNumeroComanda({
     telefone: '(27) 9965-0060',
     clienteNome: 'Poliana',

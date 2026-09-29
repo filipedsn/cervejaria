@@ -64,7 +64,7 @@ export function linkWhatsAppNumeroComanda(params: {
   }
   if (telefone.length !== 10 && telefone.length !== 11) return null;
 
-  const texto = `Olá, ${params.clienteNome}! O número sequencial da sua comanda no ${params.nomeEmpresa} é ${params.numeroComanda}.`;
+  const texto = `Olá, ${params.clienteNome}! O número da sua comanda no ${params.nomeEmpresa} é ${params.numeroComanda}.`;
   return `https://wa.me/55${telefone}?text=${encodeURIComponent(texto)}`;
 }
 
