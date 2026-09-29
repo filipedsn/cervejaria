@@ -87,6 +87,10 @@ const itemQuantidadeSchema = z.object({
   quantidade: z.number().int().positive().max(999),
 });
 
+const cancelarItemSchema = z.object({
+  quantidade: z.number().int().positive().max(999).optional(),
+}).default({});
+
 const clienteSchema = z.object({ clienteId: z.string().min(1).nullable() });
 
 const fecharGrupoSchema = z.object({
@@ -625,12 +629,14 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     const { cervejariaId, controlaEstoque } = request.operacao;
     const user = getAuthUser(request);
     const { comandaId, itemId } = request.params as { comandaId: string; itemId: string };
+    const body = cancelarItemSchema.parse(request.body ?? {});
 
     const result = await removeItemFromComandaOperacao({
       app,
       cervejariaId,
       comandaId,
       itemId,
+      quantidade: body.quantidade,
       registradoPorId: user.sub,
       moduloControlaEstoque: controlaEstoque,
     });

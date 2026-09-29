@@ -120,8 +120,8 @@ export function useOperacaoCozinha() {
   });
 
   const removerItem = useMutation({
-    mutationFn: ({ comandaId, itemId }: { comandaId: string; itemId: string }) =>
-      api.delete(`/api/operacao/comandas/${comandaId}/itens/${itemId}`),
+    mutationFn: ({ comandaId, itemId, quantidade }: { comandaId: string; itemId: string; quantidade?: number }) =>
+      api.delete(`/api/operacao/comandas/${comandaId}/itens/${itemId}`, quantidade ? { quantidade } : undefined),
     onSettled: () => queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY }),
   });
 

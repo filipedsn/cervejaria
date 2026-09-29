@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
 import { CozinhaPedidoCard } from '../../components/operacao/CozinhaPedidoCard';
+import { CancelarQuantidadeModal } from '../../components/operacao/CancelarQuantidadeModal';
 import { IconBell } from '../../components/NavIcons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOperacaoCozinha } from '../../hooks/useOperacaoCozinha';
@@ -11,6 +12,12 @@ import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsap
 
 export function OperacaoCozinhaTvPage() {
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
+  const [itemParaCancelar, setItemParaCancelar] = useState<{
+    comandaId: string;
+    itemId: string;
+    nome: string;
+    quantidade: number;
+  } | null>(null);
   const { cervejaria, isDono } = useAuth();
   const { contexto } = useOperacaoContexto();
   const avisoNaCozinha = contexto.whatsappPedidoProntoEnabled && contexto.whatsappPedidoProntoNaCozinha;
@@ -163,7 +170,10 @@ export function OperacaoCozinhaTvPage() {
               onCancelarItem={(itemId) => {
                 const item = pedido.itens.find((linha) => linha.id === itemId);
                 if (!item) return;
-                if (window.confirm(`Cancelar ${item.quantidade}x ${item.nome}?`)) {
+                if (item.quantidade > 1) {
+                  removerItem.reset();
+                  setItemParaCancelar({ comandaId: pedido.comanda.id, itemId, nome: item.nome, quantidade: item.quantidade });
+                } else if (window.confirm(`Cancelar ${item.quantidade}x ${item.nome}?`)) {
                   removerItem.mutate({ comandaId: pedido.comanda.id, itemId });
                 }
               }}
@@ -183,6 +193,20 @@ export function OperacaoCozinhaTvPage() {
           ))}
         </div>
       )}
+      <CancelarQuantidadeModal
+        open={itemParaCancelar !== null}
+        nomeItem={itemParaCancelar?.nome ?? ''}
+        quantidadeDisponivel={itemParaCancelar?.quantidade ?? 0}
+        disabled={removerItem.isPending}
+        erro={erroItemMutation}
+        onClose={() => setItemParaCancelar(null)}
+        onConfirmar={(quantidade) => {
+          if (!itemParaCancelar) return;
+          removerItem.mutate({ ...itemParaCancelar, quantidade }, {
+            onSuccess: () => setItemParaCancelar(null),
+          });
+        }}
+      />
     </div>
   );
 }

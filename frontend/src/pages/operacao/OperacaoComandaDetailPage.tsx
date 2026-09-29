@@ -9,6 +9,7 @@ import { Loading } from '../../components/Loading';
 import { MobileActionBar } from '../../components/MobileActionBar';
 import { IconTrash, IconWhatsApp } from '../../components/NavIcons';
 import { AdicionarItensOperacaoModal } from '../../components/operacao/AdicionarItensOperacaoModal';
+import { CancelarQuantidadeModal } from '../../components/operacao/CancelarQuantidadeModal';
 import { PaymentDiscountFields } from '../../components/checkout/PaymentDiscountFields';
 import {
   PaymentFormModal,
@@ -68,6 +69,7 @@ export function OperacaoComandaDetailPage() {
   const [erro, setErro] = useState('');
   const [itensAdicionadosMessage, setItensAdicionadosMessage] = useState('');
   const [cancelamentoItemMessage, setCancelamentoItemMessage] = useState('');
+  const [itemParaCancelar, setItemParaCancelar] = useState<{ id: string; nome: string; quantidade: number } | null>(null);
   const [pedidoWhatsAppAbertoId, setPedidoWhatsAppAbertoId] = useState<string | null>(() =>
     window.sessionStorage.getItem(avisoWhatsAppStorageKey),
   );
@@ -297,12 +299,13 @@ export function OperacaoComandaDetailPage() {
   });
 
   const removerItem = useMutation({
-    mutationFn: (itemId: string) =>
-      api.delete<ComandaOperacao>(`/api/operacao/comandas/${id}/itens/${itemId}`),
-    onSuccess: (atualizada, itemId) => {
+    mutationFn: ({ itemId, quantidade }: { itemId: string; quantidade?: number }) =>
+      api.delete<ComandaOperacao>(`/api/operacao/comandas/${id}/itens/${itemId}`, quantidade ? { quantidade } : undefined),
+    onSuccess: (atualizada, { itemId }) => {
       queryClient.setQueryData(['operacao-comanda', id], atualizada);
       queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
       invalidarEstoque();
+      setItemParaCancelar(null);
       setErro('');
       const itemExigeCozinha = comanda?.pedidos.some((pedido) =>
         pedido.itens.some((item) => item.id === itemId && item.exigePreparo),
@@ -609,7 +612,7 @@ export function OperacaoComandaDetailPage() {
               const produto = produtoPorId.get(item.produtoId);
               const podeIncrementar = podeIncrementarItemComanda(produto, saldos, controlaEstoque, item.volumeMl);
               const alterandoEsteItem =
-                (removerItem.isPending && removerItem.variables === item.id) ||
+                (removerItem.isPending && removerItem.variables?.itemId === item.id) ||
                 (alterarQuantidadeItem.isPending && alterarQuantidadeItem.variables?.itemId === item.id);
 
               return (
@@ -631,7 +634,7 @@ export function OperacaoComandaDetailPage() {
                         disabled={itemEmEdicao}
                         onClick={() => {
                           if (item.quantidade <= 1) {
-                            removerItem.mutate(item.id);
+                            removerItem.mutate({ itemId: item.id });
                             return;
                           }
                           alterarQuantidadeItem.mutate({
@@ -678,7 +681,15 @@ export function OperacaoComandaDetailPage() {
                     <button
                       type="button"
                       aria-label={`Remover ${item.nome}`}
-                      onClick={() => removerItem.mutate(item.id)}
+                      onClick={() => {
+                        if (item.quantidade > 1) {
+                          removerItem.reset();
+                          setErro('');
+                          setItemParaCancelar({ id: item.id, nome: item.nome, quantidade: item.quantidade });
+                        } else {
+                          removerItem.mutate({ itemId: item.id });
+                        }
+                      }}
                       disabled={itemEmEdicao}
                       className="icon-btn-danger"
                     >
@@ -976,6 +987,18 @@ export function OperacaoComandaDetailPage() {
           </div>
         )}
       </Modal>
+      <CancelarQuantidadeModal
+        open={itemParaCancelar !== null}
+        nomeItem={itemParaCancelar?.nome ?? ''}
+        quantidadeDisponivel={itemParaCancelar?.quantidade ?? 0}
+        disabled={removerItem.isPending}
+        erro={removerItem.error instanceof ApiError ? removerItem.error.message : null}
+        onClose={() => setItemParaCancelar(null)}
+        onConfirmar={(quantidade) => {
+          if (!itemParaCancelar) return;
+          removerItem.mutate({ itemId: itemParaCancelar.id, quantidade });
+        }}
+      />
     </div>
   );
 }

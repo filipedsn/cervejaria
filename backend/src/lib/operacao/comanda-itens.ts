@@ -20,6 +20,13 @@ import { lockComandaItemsInTx } from '../comanda-service.js';
 
 type ComandaCompleta = Prisma.ComandaGetPayload<{ include: typeof INCLUDE_COMANDA_OPERACAO }>;
 
+export function resolverQuantidadeCancelamento(quantidadeAtual: number, solicitada?: number): number | null {
+  const quantidade = solicitada ?? quantidadeAtual;
+  return Number.isInteger(quantidade) && quantidade >= 1 && quantidade <= quantidadeAtual
+    ? quantidade
+    : null;
+}
+
 async function ajustarDescontoSeNecessario(tx: Prisma.TransactionClient, comanda: ComandaCompleta) {
   const subtotalEmCents = subtotalComandaEmCentavos(comanda);
   const descontoEmCents = centavos(toNumber(comanda.desconto ?? 0));
@@ -91,6 +98,7 @@ export async function removeItemFromComandaOperacao(params: {
   cervejariaId: string;
   comandaId: string;
   itemId: string;
+  quantidade?: number;
   registradoPorId: string;
   moduloControlaEstoque: boolean;
 }) {
@@ -132,6 +140,11 @@ export async function removeItemFromComandaOperacao(params: {
       throw Object.assign(new Error('Este item já foi entregue'), { statusCode: 409 });
     }
 
+    const quantidadeCancelada = resolverQuantidadeCancelamento(itemAtual.quantidade, params.quantidade);
+    if (quantidadeCancelada == null) {
+      throw Object.assign(new Error('Quantidade inválida para cancelamento'), { statusCode: 400 });
+    }
+
     if (itemAtual.produto) {
       await estornarEstoqueItemPedido(tx, {
         moduloControlaEstoque: params.moduloControlaEstoque,
@@ -140,7 +153,7 @@ export async function removeItemFromComandaOperacao(params: {
         pedidoId,
         produtoId: itemAtual.produto.id,
         nome: itemAtual.nome ?? itemAtual.produto.nome,
-        quantidade: itemAtual.quantidade,
+        quantidade: quantidadeCancelada,
         controlaEstoque: itemAtual.produto.controlaEstoque,
         tapId: itemAtual.tapId,
         volumeMl: itemAtual.volumeMl,
@@ -152,9 +165,50 @@ export async function removeItemFromComandaOperacao(params: {
     // A linha já foi encaminhada à cozinha; o estado atual da configuração
     // não pode transformar o cancelamento em exclusão imediata.
     if (itemAtual.exigePreparo && itemAtual.pedidoCozinhaId) {
+      const cancelamentoPendenteEm = new Date();
+      if (quantidadeCancelada < itemAtual.quantidade) {
+        await tx.itemComanda.update({
+          where: { id: itemAtual.id },
+          data: { quantidade: itemAtual.quantidade - quantidadeCancelada },
+        });
+        const itemCancelamento = await tx.itemComanda.create({
+          data: {
+            comandaId: itemAtual.comandaId,
+            produtoId: itemAtual.produtoId,
+            tapId: itemAtual.tapId,
+            volumeMl: itemAtual.volumeMl,
+            quantidade: quantidadeCancelada,
+            precoUnit: itemAtual.precoUnit,
+            nome: itemAtual.nome,
+            observacao: itemAtual.observacao,
+            exigePreparo: itemAtual.exigePreparo,
+            paraViagem: itemAtual.paraViagem,
+            cancelamentoPendenteEm,
+            pedidoCozinhaId: itemAtual.pedidoCozinhaId,
+          },
+        });
+        if (itemAtual.opcionais.length > 0) {
+          await tx.itemComandaOpcional.createMany({
+            data: itemAtual.opcionais.map((opcional) => ({
+              itemComandaId: itemCancelamento.id,
+              opcionalId: opcional.opcionalId,
+              opcionalCatalogoId: opcional.opcionalCatalogoId,
+              nome: opcional.nome,
+              precoAdicional: opcional.precoAdicional,
+              quantidade: opcional.quantidade,
+            })),
+          });
+        }
+      } else {
+        await tx.itemComanda.update({
+          where: { id: itemAtual.id },
+          data: { cancelamentoPendenteEm },
+        });
+      }
+    } else if (quantidadeCancelada < itemAtual.quantidade) {
       await tx.itemComanda.update({
         where: { id: itemAtual.id },
-        data: { cancelamentoPendenteEm: new Date() },
+        data: { quantidade: itemAtual.quantidade - quantidadeCancelada },
       });
     } else {
       await tx.itemComanda.delete({ where: { id: itemAtual.id } });
