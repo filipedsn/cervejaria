@@ -634,7 +634,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             <div><h2 id="modal-title" className="text-3xl font-bold sm:text-5xl">Fechar caixa</h2><p className="mt-3 max-w-3xl text-base leading-relaxed text-ink-muted sm:text-2xl">Conte o que há fisicamente e ajuste se necessário.<br className="hidden xl:block" /> A diferença aparece no resumo.</p></div>
             <div className="flex min-h-24 items-center gap-4 rounded-3xl border border-brand-500/30 bg-surface-lighter/40 p-4 sm:min-h-36 sm:gap-5 sm:p-6">
               <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-brand-500/10 text-brand-400 sm:h-20 sm:w-20"><svg viewBox="0 0 24 24" className="h-8 w-8 sm:h-10 sm:w-10" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 12 16 8M12 12v5"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg></span>
-              <span className="min-w-0"><span className="block text-base text-ink-muted sm:text-2xl">Diferença</span><strong className="mt-1 block truncate text-2xl font-bold tabular-nums text-brand-400 sm:text-4xl">{formatCurrency(diferencaFechamento)}</strong></span>
+              <span className="min-w-0"><span className="block text-base text-ink-muted sm:text-2xl">Diferença</span><strong className="mt-1 block whitespace-nowrap text-xl font-bold tabular-nums text-brand-400 sm:text-3xl">{formatCurrency(diferencaFechamento)}</strong></span>
               <span className="ml-auto text-3xl text-brand-400" aria-hidden="true">›</span>
             </div>
           </header>
