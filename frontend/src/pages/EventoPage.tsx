@@ -417,29 +417,26 @@ function AgendaSessaoCard({
       )}
 
       {sessao.status === 'FECHADO' && (
-
         <div className="space-y-2">
-
-          <ReabrirEventoButton eventoId={sessao.id} encerradoEm={sessao.encerradoEm} />
-
-          <VerRankingButton eventoId={sessao.id} primary />
-
           {reabrirPrazoExpirado(sessao.encerradoEm) && (
             <p className="text-xs text-ink-faint">
               Prazo para reabrir expirou (30 min após encerramento).
             </p>
           )}
-
-          {isDono && <VerResumoExecutivoButton eventoId={sessao.id} />}
-
-          <EditEventoButton onClick={onEdit} className="w-full" />
-
-          {canExcluirEvento(sessao) && (
-            <ExcluirEventoButton eventoId={sessao.id} eventoNome={sessao.nome} />
-          )}
-
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <ReabrirEventoButton
+              eventoId={sessao.id}
+              encerradoEm={sessao.encerradoEm}
+              className="sm:col-span-2"
+            />
+            <VerRankingButton eventoId={sessao.id} primary />
+            {isDono && <VerResumoExecutivoButton eventoId={sessao.id} />}
+            <EditEventoButton onClick={onEdit} className="w-full min-h-12 text-base" />
+            {canExcluirEvento(sessao) && (
+              <ExcluirEventoButton eventoId={sessao.id} eventoNome={sessao.nome} />
+            )}
+          </div>
         </div>
-
       )}
 
     </div>
