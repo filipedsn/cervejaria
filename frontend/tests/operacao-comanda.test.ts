@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   itemConfirmadoNaComanda,
+  podeAlterarQuantidadeItemComanda,
   resumirItensComanda,
   totalPendenteComanda,
   type PedidoOperacao,
@@ -34,4 +35,13 @@ test('item sem preparo compõe o resumo imediatamente, mesmo com o pedido ainda 
     { nome: 'Água', total: 16 },
   ]);
   assert.equal(totalPendenteComanda(comanda), 51);
+});
+
+test('quantidade de item entregue fica somente para leitura', () => {
+  const comanda = { status: 'ABERTA' } as Parameters<typeof podeAlterarQuantidadeItemComanda>[0];
+  const pedidoEntregue = { ...pedido, status: 'ENTREGUE' as const };
+  const pedidoSemPreparo = { ...pedido, itens: [pedido.itens[0]!] };
+
+  assert.equal(podeAlterarQuantidadeItemComanda(comanda, pedidoSemPreparo), true);
+  assert.equal(podeAlterarQuantidadeItemComanda(comanda, pedidoEntregue), false);
 });

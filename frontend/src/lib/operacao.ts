@@ -661,6 +661,14 @@ export function podeEditarItemComanda(
   return !pedidoVaiParaCozinha(pedido.itens) || pedido.status === 'ENTREGUE';
 }
 
+/** Quantidade pode ser corrigida enquanto o pedido está em andamento, nunca após a entrega. */
+export function podeAlterarQuantidadeItemComanda(
+  comanda: Pick<ComandaOperacao, 'status'>,
+  pedido: Pick<PedidoOperacao, 'status' | 'itens'>,
+): boolean {
+  return pedido.status !== 'ENTREGUE' && podeEditarItemComanda(comanda, pedido);
+}
+
 export interface TapTurno {
   id: string;
   numero: number;

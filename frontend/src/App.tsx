@@ -57,6 +57,7 @@ import { OnboardingProvider } from './contexts/OnboardingContext';
 import { OnboardingSurface } from './components/OnboardingSurface';
 import { OnboardingChecklist } from './components/OnboardingChecklist';
 import { OperationalSetupWizard } from './components/OperationalSetupWizard';
+import { getTenantCashEntryPath } from './lib/tenant-entry';
 
 function RootLayout() {
   const { pathname } = useLocation();
@@ -96,12 +97,20 @@ function TenantEntryRedirect() {
   const { needsTrailerSelection, evento, isLoading } = useEvento();
   const { contexto, isLoading: operacaoLoading } = useOperacaoContexto();
   if (isLoading || operacaoLoading) return <Loading fullScreen />;
-  if (contexto.operationMode === 'CAIXA') {
-    return <Navigate to={contexto.pontosVenda.length > 0 ? '/operacao/comandas' : '/operacao/caixa'} replace />;
-  }
+  const cashEntryPath = getTenantCashEntryPath(contexto.operationMode, contexto.pontosVenda.length);
+  if (cashEntryPath) return <Navigate to={cashEntryPath} replace />;
   if (needsTrailerSelection) return <Navigate to="/trailer" replace />;
   if (evento?.status === 'ABERTO') return <Navigate to="/comandas" replace />;
   return <Navigate to="/eventos" replace />;
+}
+
+/** Evita que um PWA restaurado em /eventos ignore o modo CAIXA da empresa. */
+function RequireEventoMode() {
+  const { contexto, isLoading } = useOperacaoContexto();
+  if (isLoading) return <Loading fullScreen />;
+  const cashEntryPath = getTenantCashEntryPath(contexto.operationMode, contexto.pontosVenda.length);
+  if (cashEntryPath) return <Navigate to={cashEntryPath} replace />;
+  return <Outlet />;
 }
 
 function PublicOnly() {
@@ -383,7 +392,10 @@ const router = createBrowserRouter([
                     element: <RequireModuloCervejaria />,
                     children: [
                       { path: 'trailer', element: <SelecionarTrailerPage /> },
-                      { path: 'eventos', element: <EventoPage /> },
+                      {
+                        element: <RequireEventoMode />,
+                        children: [{ path: 'eventos', element: <EventoPage /> }],
+                      },
                       { path: 'ranking/serie/:serieId', element: <RankingSeriePage /> },
                       { path: 'ranking/periodo/:eventoId', element: <RankingPeriodoPage /> },
                       { path: 'clientes', element: <ClientesPage /> },

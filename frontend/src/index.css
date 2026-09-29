@@ -2752,19 +2752,23 @@ button[title="Excluir"].icon-btn-danger {
   }
   .comanda-card-duas-colunas .comanda-card-main {
     flex: 1 0 100%;
-    justify-content: center;
-    text-align: center;
+    justify-content: flex-start;
+    text-align: left;
   }
   .comanda-card-duas-colunas .comanda-card-main h3 {
-    justify-content: center;
+    justify-content: flex-start;
     font-size: clamp(.8125rem, 5.5cqi, 1rem);
   }
   .comanda-card-duas-colunas .comanda-card-amount {
-    flex: 1 0 100%;
-    text-align: center;
+    flex: 1 1 auto;
+    text-align: right;
   }
   .comanda-card-duas-colunas .comanda-card-notify {
-    justify-content: center;
+    justify-content: flex-start;
+  }
+  .comanda-card-duas-colunas .comanda-card-notify button {
+    width: 2.5rem;
+    height: 2.5rem;
   }
 }
 

@@ -29,7 +29,7 @@ import {
   mapSaldosEstoque,
   pedidoConfirmadoNaComanda,
   pedidoVaiParaCozinha,
-  podeEditarItemComanda,
+  podeAlterarQuantidadeItemComanda,
   podeRemoverItemComanda,
   podeIncrementarItemComanda,
   podeIncrementarLinhaCarrinho,
@@ -545,7 +545,7 @@ export function OperacaoComandaDetailPage() {
             </div>
             {pedido.itens.map((item) => {
               const itemEmCancelamento = Boolean(item.cancelamentoPendenteEm || item.canceladoEm);
-              const editavel = aberta && !itemEmCancelamento && podeEditarItemComanda(comanda, pedido);
+              const quantidadeEditavel = aberta && !itemEmCancelamento && podeAlterarQuantidadeItemComanda(comanda, pedido);
               const removivel = aberta && !itemEmCancelamento && podeRemoverItemComanda(comanda, pedido);
               const itemConfirmado = itemConfirmadoNaComanda(pedido, item);
               const produto = produtoPorId.get(item.produtoId);
@@ -555,16 +555,16 @@ export function OperacaoComandaDetailPage() {
                 (alterarQuantidadeItem.isPending && alterarQuantidadeItem.variables?.itemId === item.id);
 
               return (
-              <div key={item.id} className="flex items-center justify-between gap-3 text-sm">
-                <span className={`min-w-0 flex-1 truncate text-base font-semibold ${itemConfirmado ? '' : 'text-ink-faint'}`}>
-                  {editavel ? item.nome : `${item.quantidade}× ${item.nome}`}
+              <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 text-sm">
+                <div className={`col-span-2 min-w-0 text-base font-semibold ${itemConfirmado ? '' : 'text-ink-faint'}`}>
+                  <div className="whitespace-normal break-words">{item.nome}</div>
                   {item.cancelamentoPendenteEm && <small className="ml-2 rounded-full border border-orange-500/50 bg-orange-500/10 px-2 py-0.5 text-[10px] font-bold text-orange-400">Cancelamento solicitado</small>}
                   {item.canceladoEm && <small className="ml-2 rounded-full bg-surface-lighter px-2 py-0.5 text-[10px] font-bold text-ink-faint">Cancelado</small>}
                   {item.paraViagem && <small className="ml-2 rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-bold text-violet-300">Para viagem</small>}
                   {(item.observacao || (item.opcionais?.length ?? 0) > 0) && <small className="block text-xs text-ink-muted">{item.observacao ? `Obs: ${item.observacao}` : ''}{item.opcionais?.length ? ` · ${item.opcionais.map((o) => o.nome).join(', ')}` : ''}</small>}
-                </span>
-                <div className="flex shrink-0 items-center gap-2">
-                  {editavel ? (
+                </div>
+                <div className="col-span-2 flex min-w-0 items-center gap-2">
+                  {quantidadeEditavel ? (
                     <div className="flex items-center rounded-xl border border-line bg-surface p-0.5 shadow-sm">
                       <button
                         type="button"
@@ -602,8 +602,12 @@ export function OperacaoComandaDetailPage() {
                         +
                       </button>
                     </div>
-                  ) : null}
-                  <span className={`w-20 text-right font-semibold tabular-nums ${itemConfirmado ? '' : 'text-ink-faint'}`}>
+                  ) : (
+                    <span className="shrink-0 rounded-lg bg-surface-lighter px-2.5 py-2 text-xs font-semibold text-ink-muted">
+                      Qtd. {item.quantidade}
+                    </span>
+                  )}
+                  <span className={`ml-auto shrink-0 text-right font-semibold tabular-nums ${itemConfirmado ? '' : 'text-ink-faint'}`}>
                     {itemConfirmado ? formatCurrency(item.subtotal) : `Pendente · ${formatCurrency(item.subtotal)}`}
                   </span>
                   {removivel && (
