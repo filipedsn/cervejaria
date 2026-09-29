@@ -14,6 +14,7 @@ import {
   type PagamentoInput,
 } from '../lib/fechar-comanda.js';
 import { lockComandasInTx } from '../lib/comanda-service.js';
+import { bloquearCaixaEvento, obterCaixaAtualEvento } from '../lib/evento-caixa.js';
 
 const pagamentoSchema = z.object({
   forma: z.enum(['DINHEIRO', 'PIX', 'CARTAO', 'CARTAO_DEBITO', 'CARTAO_CREDITO']),
@@ -22,6 +23,7 @@ const pagamentoSchema = z.object({
 
 const fecharComandaSchema = z.object({
   pagamentos: z.array(pagamentoSchema),
+  deixarPendente: z.boolean().optional().default(false),
 });
 
 const fecharGrupoSchema = z.object({
@@ -39,12 +41,13 @@ export async function pagamentosRoutes(app: FastifyInstance) {
 
     const comanda = await prisma.comanda.findFirst({
       where: { id, status: 'ABERTA', evento: { cervejariaId: user.cervejariaId } },
-      include: { itens: { include: { produto: true } } },
+      include: { itens: { include: { produto: true } }, evento: { select: { id: true, status: true } } },
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada ou já fechada' });
 
     const eventoId = comanda.eventoId;
     if (!eventoId) return reply.status(404).send({ error: 'Comanda sem evento' });
+    if (comanda.evento?.status !== 'ABERTO') return reply.status(409).send({ error: 'O evento está fechado' });
 
     if (comanda.itens.length === 0) {
       const cancelled = await cancelarComandaVazia({
@@ -59,7 +62,11 @@ export async function pagamentosRoutes(app: FastifyInstance) {
     }
 
     const total = toNumber(comanda.total);
-    if (total <= 0.001) {
+    if (body.deixarPendente) {
+      if (body.pagamentos.length > 0 || total <= 0.001) {
+        return reply.status(400).send({ error: 'Conta pendente exige saldo positivo e nenhum pagamento no fechamento' });
+      }
+    } else if (total <= 0.001) {
       if (body.pagamentos.length > 0) {
         return reply.status(400).send({ error: 'Conta zerada não exige pagamento' });
       }
@@ -79,12 +86,17 @@ export async function pagamentosRoutes(app: FastifyInstance) {
     try {
       const fechadaEm = new Date();
       updated = await prisma.$transaction(async (tx) => {
+        await bloquearCaixaEvento(tx, eventoId);
+        const caixa = await obterCaixaAtualEvento(eventoId, tx);
+        if (!caixa) throw Object.assign(new Error('Abra o caixa do evento antes de fechar comandas'), { statusCode: 409 });
         return fecharComandaComPagamentos(tx, {
           comanda,
           pagamentos: body.pagamentos as PagamentoInput[],
           cervejariaId: user.cervejariaId!,
           usuarioId: user.sub,
           fechadaEm,
+          sessaoCaixaEventoId: caixa.id,
+          deixarPendente: body.deixarPendente,
         });
       });
     } catch (err: unknown) {
@@ -95,6 +107,7 @@ export async function pagamentosRoutes(app: FastifyInstance) {
       if (statusCode === 400) {
         return reply.status(400).send({ error: (err as Error).message });
       }
+      if (statusCode === 409) return reply.status(409).send({ error: (err as Error).message });
       throw err;
     }
 
@@ -175,6 +188,9 @@ export async function pagamentosRoutes(app: FastifyInstance) {
 
     try {
       const result = await prisma.$transaction(async (tx) => {
+        await bloquearCaixaEvento(tx, eventoId);
+        const caixa = await obterCaixaAtualEvento(eventoId, tx);
+        if (!caixa) throw Object.assign(new Error('Abra o caixa do evento antes de fechar comandas'), { statusCode: 409 });
         await lockComandasInTx(tx, uniqueIds);
         const closed: typeof fechadas = [];
         const cancelled: typeof canceladas = [];
@@ -199,6 +215,7 @@ export async function pagamentosRoutes(app: FastifyInstance) {
             fechadaEm,
             grupoPagamentoId,
             comandaIdsGrupo: uniqueIds,
+            sessaoCaixaEventoId: caixa.id,
           });
           closed.push(updated);
         }
@@ -217,6 +234,7 @@ export async function pagamentosRoutes(app: FastifyInstance) {
       if (statusCode === 400) {
         return reply.status(400).send({ error: (err as Error).message });
       }
+      if (statusCode === 409) return reply.status(409).send({ error: (err as Error).message });
       throw err;
     }
 

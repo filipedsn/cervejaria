@@ -24,6 +24,9 @@ import {
 import { parseCurrencyInput } from '../lib/currency';
 import { textoCorrespondeBuscaComanda } from '../lib/comandas-busca';
 import { useAuth } from '../contexts/AuthContext';
+import { EventoCaixaPanel } from '../components/EventoCaixaPanel';
+
+type EstadoCaixaEvento = { aberto: boolean };
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent?: 'brand' | 'green' }) {
   return (
@@ -146,6 +149,8 @@ export function ComandasPage() {
     socket.on('comanda:closed', invalidate);
     socket.on('item:added', invalidate);
     socket.on('item:removed', invalidate);
+    const invalidateCash = () => queryClient.invalidateQueries({ queryKey: ['evento-caixa', evento.id] });
+    socket.on('evento-caixa:updated', invalidateCash);
 
     return () => {
       socket.off('comanda:created', invalidate);
@@ -153,6 +158,7 @@ export function ComandasPage() {
       socket.off('comanda:closed', invalidate);
       socket.off('item:added', invalidate);
       socket.off('item:removed', invalidate);
+      socket.off('evento-caixa:updated', invalidateCash);
     };
   }, [evento?.id, queryClient]);
 
@@ -175,6 +181,14 @@ export function ComandasPage() {
 
   const isAbertas = comandaTab === 'ABERTA';
   const eventoAberto = evento?.status === 'ABERTO';
+  const { data: estadoCaixaEvento } = useQuery({
+    queryKey: ['evento-caixa', evento?.id],
+    queryFn: () => api.get<EstadoCaixaEvento>(`/api/eventos/${evento!.id}/caixa`),
+    enabled: Boolean(evento?.id),
+    refetchInterval: 30_000,
+  });
+  const caixaEventoAberto = estadoCaixaEvento?.aberto === true;
+  const vendaLiberada = eventoAberto && caixaEventoAberto;
 
   useEffect(() => {
     const mandanteId = searchParams.get('selecionar');
@@ -208,13 +222,22 @@ export function ComandasPage() {
 
   return (
     <div className={`space-y-4 ${eventoAberto ? 'page-with-action-bar' : 'pb-2'}`}>
+      <EventoCaixaPanel eventoId={evento.id} eventoAberto={eventoAberto} comandasAbertas={resumo?.comandasAbertas ?? 0} />
       <FilaPedidosPanel />
 
+      {!selectMode && eventoAberto && !caixaEventoAberto && (
+        <div className="rounded-xl border border-orange/30 bg-orange/10 p-3 text-sm text-orange-dark" role="status">Abra o caixa do evento para iniciar comandas e vendas.</div>
+      )}
+
       {!selectMode && eventoAberto && (
+        <section className="space-y-2.5" aria-label="Ações rápidas">
+        <header><h2 className="text-xl font-bold">Ações rápidas</h2><p className="text-sm text-ink-muted">Acesso rápido às principais funções deste evento.</p></header>
         <div className="grid grid-cols-2 gap-2">
           <Link
             to="/comandas/nova"
-            className="touch-btn-primary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold"
+            className={`touch-btn-primary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold ${!vendaLiberada ? 'pointer-events-none opacity-50' : ''}`}
+            aria-disabled={!vendaLiberada}
+            tabIndex={vendaLiberada ? undefined : -1}
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-xl leading-none font-normal">
               +
@@ -223,7 +246,9 @@ export function ComandasPage() {
           </Link>
           <Link
             to="/comandas/venda-avulsa"
-            className="touch-btn-secondary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold"
+            className={`touch-btn-secondary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold ${!vendaLiberada ? 'pointer-events-none opacity-50' : ''}`}
+            aria-disabled={!vendaLiberada}
+            tabIndex={vendaLiberada ? undefined : -1}
           >
             <span
               className="flex h-9 w-9 shrink-0 items-center justify-center text-xl leading-none text-orange"
@@ -234,15 +259,7 @@ export function ComandasPage() {
             Venda avulsa
           </Link>
         </div>
-      )}
-
-      {!selectMode && !eventoAberto && (
-        <Link to="/comandas/nova" className="touch-btn-primary w-full min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl text-base font-bold">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-2xl leading-none font-normal">
-            +
-          </span>
-          Comanda
-        </Link>
+        </section>
       )}
 
       {groupSuccess && <div className="alert-success">{groupSuccess}</div>}
@@ -256,6 +273,7 @@ export function ComandasPage() {
           <StatCard label="Receita avulsa" value={formatCurrency(resumo.receitaAvulsa)} accent="green" />
           <StatCard label="Valor em aberto" value={formatCurrency(resumo.valorAberto)} />
           <StatCard label="Valor fechado" value={formatCurrency(resumo.valorFechado)} accent="green" />
+          <StatCard label={`Contas pendentes (${resumo.contasPendentes ?? 0})`} value={formatCurrency(resumo.valorPendente ?? 0)} accent={resumo.contasPendentes ? undefined : 'green'} />
         </div>
       )}
 
@@ -266,6 +284,9 @@ export function ComandasPage() {
           eventoAberto={eventoAberto}
           presentation="modal"
         />
+        <Link to={`/eventos/${evento.id}/contas-pendentes`} className="touch-btn-secondary min-h-11 flex items-center justify-center text-center">
+          Contas pendentes
+        </Link>
       </div>
 
       {false && (resumo?.comandasAbertas ?? comandas?.length ?? 0) >= 2 && (
@@ -310,8 +331,8 @@ export function ComandasPage() {
         )
       )}
 
-      <section className="space-y-3">
-        <h2 className="section-label mb-0">Comandas</h2>
+      <section className="space-y-3 rounded-2xl border border-brand-600/20 bg-gradient-to-br from-surface via-surface to-brand-900/10 p-3 shadow-sm sm:p-5">
+        <header><h2 className="text-xl font-bold">Comandas</h2><p className="text-sm text-ink-muted">Gerencie as comandas abertas e fechadas deste evento.</p></header>
 
         <div className="segmented-control w-full">
           <button

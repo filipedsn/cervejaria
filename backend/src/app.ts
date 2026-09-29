@@ -37,6 +37,7 @@ import { trailersRoutes } from './routes/trailers.js';
 import { cardapiosRoutes } from './routes/cardapios.js';
 
 import { eventosRoutes } from './routes/eventos.js';
+import { eventoCaixaRoutes } from './routes/evento-caixa.js';
 
 import { clientesRoutes } from './routes/clientes.js';
 
@@ -355,6 +356,7 @@ export async function buildApp() {
   await app.register(cardapiosRoutes, { prefix: '/api/cardapios' });
 
   await app.register(eventosRoutes, { prefix: '/api/eventos' });
+  await app.register(eventoCaixaRoutes, { prefix: '/api/eventos' });
 
   await app.register(clientesRoutes, { prefix: '/api/clientes' });
 

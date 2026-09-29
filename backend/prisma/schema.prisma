@@ -23,6 +23,20 @@ enum EventStatus {
   @@schema("public")
 }
 
+enum StatusCaixaEvento {
+  ABERTO
+  FECHADO
+
+  @@schema("public")
+}
+
+enum TipoMovimentoCaixaEvento {
+  SUPRIMENTO
+  SANGRIA
+
+  @@schema("public")
+}
+
 enum ComandaStatus {
   ABERTA
   FECHADA
@@ -90,6 +104,9 @@ enum TransacaoTipo {
   EVENTO_REABERTO
   EVENTO_EXCLUIDO
   EVENTO_CARDAPIO_ATUALIZADO
+  EVENTO_CAIXA_ABERTO
+  EVENTO_CAIXA_MOVIMENTO
+  EVENTO_CAIXA_FECHADO
   TAP_CHOPE_POSICIONADO
   TAP_CHOPE_REMOVIDO
   TAP_ATIVO_ALTERADO
@@ -240,6 +257,9 @@ model Usuario {
   pedidosConfirmados    PedidoCliente[]       @relation("PedidoConfirmadoPor")
   transacoes            TransacaoLog[]
   pushSubscriptions     PushSubscription[]
+  caixasEventoAbertos   SessaoCaixaEvento[] @relation("CaixaEventoAbertoPor")
+  caixasEventoFechados  SessaoCaixaEvento[] @relation("CaixaEventoFechadoPor")
+  movimentosCaixaEvento MovimentoCaixaEvento[]
 
   @@index([cervejariaId])
 
@@ -496,6 +516,7 @@ model Evento {
   montagens   TapMontagem[]
   produtos    EventoProduto[]
   transacoes  TransacaoLog[]
+  sessoesCaixa SessaoCaixaEvento[]
 
   @@unique([serieId, data])
   @@index([cervejariaId, status])
@@ -762,6 +783,7 @@ model Pagamento {
   comandaId       String
   contaReceberId  String?
   sessaoCaixaId   String?
+  sessaoCaixaEventoId String?
   forma           PaymentMethod
   valor           Decimal       @db.Decimal(10, 2)
   /// Só no dinheiro: quanto o cliente entregou e quanto voltou de troco.
@@ -772,11 +794,57 @@ model Pagamento {
 
   comanda Comanda @relation(fields: [comandaId], references: [id], onDelete: Cascade)
   contaReceber ContaReceber? @relation(fields: [contaReceberId], references: [id], onDelete: SetNull)
+  sessaoCaixaEvento SessaoCaixaEvento? @relation(fields: [sessaoCaixaEventoId], references: [id], onDelete: SetNull)
 
   @@index([comandaId])
   @@index([contaReceberId, pagoEm])
   @@index([sessaoCaixaId, pagoEm])
+  @@index([sessaoCaixaEventoId, pagoEm])
 
+  @@schema("public")
+}
+
+/// Caixa financeiro de uma sessão de evento; novas sessões preservam cada reabertura.
+model SessaoCaixaEvento {
+  id                  String            @id @default(cuid())
+  eventoId            String
+  status              StatusCaixaEvento @default(ABERTO)
+  trocoInicial        Decimal           @default(0) @db.Decimal(10, 2)
+  abertoPorId         String
+  abertoEm            DateTime          @default(now())
+  fechadoPorId        String?
+  fechadoEm           DateTime?
+  contadoDinheiro     Decimal?          @db.Decimal(10, 2)
+  contadoPix          Decimal?          @db.Decimal(10, 2)
+  contadoDebito       Decimal?          @db.Decimal(10, 2)
+  contadoCredito      Decimal?          @db.Decimal(10, 2)
+  contadoCartao       Decimal?          @db.Decimal(10, 2)
+  observacaoFechamento String?
+
+  evento     Evento        @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  abertoPor  Usuario       @relation("CaixaEventoAbertoPor", fields: [abertoPorId], references: [id], onDelete: Restrict)
+  fechadoPor Usuario?      @relation("CaixaEventoFechadoPor", fields: [fechadoPorId], references: [id], onDelete: SetNull)
+  movimentos MovimentoCaixaEvento[]
+  pagamentos Pagamento[]
+
+  @@index([eventoId, abertoEm])
+  @@index([eventoId, status])
+  @@schema("public")
+}
+
+model MovimentoCaixaEvento {
+  id              String                   @id @default(cuid())
+  sessaoId        String
+  tipo            TipoMovimentoCaixaEvento
+  valor           Decimal                  @db.Decimal(10, 2)
+  observacao      String?
+  registradoPorId String
+  createdAt       DateTime                 @default(now())
+
+  sessao        SessaoCaixaEvento @relation(fields: [sessaoId], references: [id], onDelete: Cascade)
+  registradoPor Usuario           @relation(fields: [registradoPorId], references: [id], onDelete: Restrict)
+
+  @@index([sessaoId, createdAt])
   @@schema("public")
 }
 

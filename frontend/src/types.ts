@@ -476,6 +476,8 @@ export interface EventoDashboard {
     valorAberto: number;
     valorFechado: number;
     receitaAvulsa: number;
+    contasPendentes: number;
+    valorPendente: number;
   };
   porProduto: {
     aberto: EventoDashboardProduto[];

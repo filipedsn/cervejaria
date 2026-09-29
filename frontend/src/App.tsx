@@ -27,6 +27,7 @@ import { AdminConfiguracoesPage } from './pages/AdminConfiguracoesPage';
 import { SelecionarTrailerPage } from './pages/SelecionarTrailerPage';
 import { EventoPage } from './pages/EventoPage';
 import { ComandasPage } from './pages/ComandasPage';
+import { EventoContasPendentesPage } from './pages/EventoContasPendentesPage';
 import { ComandaDetailPage } from './pages/ComandaDetailPage';
 import { NovaComandaPage } from './pages/NovaComandaPage';
 import { VendaAvulsaPage } from './pages/VendaAvulsaPage';
@@ -394,7 +395,10 @@ const router = createBrowserRouter([
                       { path: 'trailer', element: <SelecionarTrailerPage /> },
                       {
                         element: <RequireEventoMode />,
-                        children: [{ path: 'eventos', element: <EventoPage /> }],
+                        children: [
+                          { path: 'eventos', element: <EventoPage /> },
+                          { path: 'eventos/:eventoId/contas-pendentes', element: <EventoContasPendentesPage /> },
+                        ],
                       },
                       { path: 'ranking/serie/:serieId', element: <RankingSeriePage /> },
                       { path: 'ranking/periodo/:eventoId', element: <RankingPeriodoPage /> },

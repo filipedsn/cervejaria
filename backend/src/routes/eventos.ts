@@ -727,6 +727,14 @@ export async function eventosRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: `Existem ${abertas} comanda(s) aberta(s). Feche-as antes de encerrar o evento.` });
     }
 
+    const caixaAberto = await prisma.sessaoCaixaEvento.findFirst({
+      where: { eventoId: id, status: 'ABERTO' },
+      select: { id: true },
+    });
+    if (caixaAberto) {
+      return reply.status(409).send({ error: 'Feche e confira o caixa do evento antes de encerrar o evento.' });
+    }
+
     const updated = await prisma.evento.update({
       where: { id },
       data: { status: 'FECHADO', encerradoEm: new Date(), portalGeneration: { increment: 1 } },

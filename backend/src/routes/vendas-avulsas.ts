@@ -12,6 +12,7 @@ import {
 } from '../lib/fechar-comanda.js';
 import { registrarTransacao } from '../lib/transacao-log.js';
 import { assertPodeDarDescontoOperacao, DescontoInvalidoError } from '../lib/operacao/desconto.js';
+import { bloquearCaixaEvento, obterCaixaAtualEvento } from '../lib/evento-caixa.js';
 
 const itemSchema = z.object({
   produtoId: z.string(),
@@ -62,6 +63,9 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
 
     try {
       const comanda = await prisma.$transaction(async (tx) => {
+        await bloquearCaixaEvento(tx, body.eventoId);
+        const caixa = await obterCaixaAtualEvento(body.eventoId, tx);
+        if (!caixa) throw Object.assign(new Error('Abra o caixa do evento antes de registrar vendas'), { statusCode: 409 });
         const cliente = await ensureClienteAvulso(tx, user.cervejariaId!);
 
         const created = await tx.comanda.create({
@@ -160,6 +164,7 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
           cervejariaId: user.cervejariaId!,
           usuarioId: user.sub,
           fechadaEm,
+          sessaoCaixaEventoId: caixa.id,
         });
       });
 
@@ -173,6 +178,7 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
       if (statusCode === 404) {
         return reply.status(404).send({ error: (err as Error).message });
       }
+      if (statusCode === 409) return reply.status(409).send({ error: (err as Error).message });
       throw err;
     }
   });

@@ -4,6 +4,7 @@ import {
   allocatePagamentosToComandas,
   assertPagamentosParaTotal,
   assertValorPagamentosParaTotal,
+  podeDeixarContaPendente,
 } from './fechar-comanda.js';
 
 describe('allocatePagamentosToComandas', () => {
@@ -133,5 +134,13 @@ describe('assertValorPagamentosParaTotal', () => {
         { valor: 14 },
       ]),
     );
+  });
+});
+
+describe('podeDeixarContaPendente', () => {
+  it('permite contas a receber em CAIXA e EVENTO, mas não no quiosque', () => {
+    assert.equal(podeDeixarContaPendente('CAIXA'), true);
+    assert.equal(podeDeixarContaPendente('EVENTO'), true);
+    assert.equal(podeDeixarContaPendente('QUIOSQUE'), false);
   });
 });

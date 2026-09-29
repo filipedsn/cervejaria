@@ -34,6 +34,7 @@ export function ComandaDetailPage() {
   const [showPayment, setShowPayment] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [closedComanda, setClosedComanda] = useState<Comanda | null>(null);
+  const [closedAsPending, setClosedAsPending] = useState(false);
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([
     { forma: 'PIX', valor: '' },
   ]);
@@ -145,23 +146,27 @@ export function ComandaDetailPage() {
       desconto,
       descontoAnterior,
       aplicarDesconto,
+      deixarPendente,
     }: {
       pagamentos: { forma: 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO'; valor: number }[];
       desconto: number;
       descontoAnterior: number;
       aplicarDesconto: boolean;
+      deixarPendente: boolean;
     }) => {
       if (aplicarDesconto && desconto !== descontoAnterior) {
         await api.patch<Comanda>(`/api/comandas/${id}/desconto`, { desconto });
       }
-      return api.post<Comanda>(`/api/pagamentos/comandas/${id}/fechar`, { pagamentos });
+      return api.post<Comanda>(`/api/pagamentos/comandas/${id}/fechar`, { pagamentos, deixarPendente });
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       setClosedComanda(data);
+      setClosedAsPending(variables.deixarPendente);
       setShowPayment(false);
       setShowReceipt(true);
       queryClient.setQueryData(['comanda', id], data);
       if (evento) queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
+      if (evento) queryClient.invalidateQueries({ queryKey: ['evento-contas-pendentes', evento.id] });
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao fechar comanda'),
   });
@@ -213,7 +218,7 @@ export function ComandaDetailPage() {
     setError('');
   };
 
-  const handleClose = () => {
+  const handleClose = (deixarPendente = false) => {
     if (!comanda) return;
     const desconto = parseCurrencyInput(descontoInput);
     const subtotal = subtotalComandaCervejaria(comanda);
@@ -222,7 +227,7 @@ export function ComandaDetailPage() {
       setError('O desconto não pode ser maior que o subtotal da comanda');
       return;
     }
-    const pagamentos = paymentForm.map((p) => ({
+    const pagamentos = deixarPendente ? [] : paymentForm.map((p) => ({
       forma: toPaymentForma(p),
       valor: parseCurrencyInput(p.valor),
     }));
@@ -231,6 +236,7 @@ export function ComandaDetailPage() {
       desconto,
       descontoAnterior: descontoComandaCervejaria(comanda),
       aplicarDesconto: podeAplicarDesconto,
+      deixarPendente,
     });
   };
 
@@ -499,6 +505,10 @@ export function ComandaDetailPage() {
         onConfirm={handleClose}
         isPending={closeMutation.isPending}
         headerExtra={paymentHeaderExtra}
+        deferLabel="Deixar pendente"
+        deferDisabled={!comanda?.cliente.telefone || comanda.cliente.telefone.replace(/\D/g, '').length < 10 || comandaTotal <= 0}
+        deferConfirmation={<p className="rounded-xl border border-orange/30 bg-surface-lighter p-4 text-sm">A comanda será encerrada sem recebimento. O saldo ficará vinculado a {comanda?.cliente.nome ?? 'este cliente'} e aparecerá nas contas pendentes do evento.</p>}
+        onConfirmDefer={() => handleClose(true)}
       />
 
       {/* Recibo */}
@@ -509,7 +519,9 @@ export function ComandaDetailPage() {
             <p className="text-xl font-bold">{rotuloComandaCervejaria(closedComanda, closedComanda.cliente)}</p>
             <p className="text-3xl font-bold text-brand-600">{formatCurrency(closedComanda.total)}</p>
             <div className="space-y-1">
-              {closedComanda.pagamentos.length === 0 ? (
+              {closedAsPending ? (
+                <p className="font-semibold text-orange-dark">Conta pendente registrada · receba pelo painel do evento.</p>
+              ) : closedComanda.pagamentos.length === 0 ? (
                 <p className="font-semibold text-success">Cortesia — sem pagamento</p>
               ) : (
                 closedComanda.pagamentos.map((p) => (
