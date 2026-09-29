@@ -54,6 +54,15 @@ export function IconBell({ className = 'w-5 h-5', strokeWidth = 1.75 }: IconProp
   );
 }
 
+export function IconTv({ className = 'w-5 h-5', strokeWidth = 1.75 }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="5" width="18" height="13" rx="2" />
+      <path d="m8 21 4-3 4 3M8 2l4 3 4-3" />
+    </svg>
+  );
+}
+
 export function IconEye({ className = 'w-5 h-5', strokeWidth = 1.75 }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>

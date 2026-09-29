@@ -4,7 +4,7 @@ import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
 import { Modal } from '../../components/Modal';
 import { CozinhaPedidoCard } from '../../components/operacao/CozinhaPedidoCard';
-import { IconBell } from '../../components/NavIcons';
+import { IconBell, IconTv } from '../../components/NavIcons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOperacaoCozinha } from '../../hooks/useOperacaoCozinha';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
@@ -66,9 +66,11 @@ export function OperacaoCozinhaPage() {
         </nav>
         <Link
           to="/operacao/cozinha/tv"
-          className="touch-btn-secondary touch-btn-sm shrink-0 hidden sm:inline-flex"
+          className="icon-btn !h-11 !w-11 !min-h-11 !min-w-11 !p-0 rounded-xl bg-orange-600 text-white shadow-md shadow-orange-950/25 transition-colors hover:bg-orange-500"
+          aria-label="Abrir modo TV (telão)"
+          title="Abrir modo TV (telão)"
         >
-          Modo TV
+          <IconTv className="w-5 h-5" />
         </Link>
         <button
           type="button"
@@ -92,10 +94,6 @@ export function OperacaoCozinhaPage() {
           <IconBell className="w-6 h-6" strokeWidth={alerta.ativo ? 2.25 : 1.75} />
         </button>
       </div>
-
-      <Link to="/operacao/cozinha/tv" className="touch-btn-secondary touch-btn-sm w-full sm:hidden">
-        Abrir modo TV (telão)
-      </Link>
 
       {alerta.precisaLiberar && (
         <p className="text-xs text-ink-muted">
