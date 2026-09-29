@@ -88,7 +88,7 @@ test.describe('Quiosque — fila da cozinha e cancelamento', () => {
 
     const dialog = page.getByRole('dialog', { name: 'Solicitar cancelamento do pedido' });
     await expect(dialog).toContainText(`Mesa ${identificador}`);
-    await expect(dialog).toContainText('atualmente em fila');
+    await expect(dialog).toContainText('atualmente em preparo');
     await dialog.getByRole('button', { name: 'Solicitar cancelamento' }).click();
 
     await expect(page.getByText('Cancelamento solicitado. O pedido permanecerá destacado até a confirmação da cozinha.')).toBeVisible();
