@@ -57,6 +57,7 @@ test('cancelar o item de cozinha nao cancela a bebida no mesmo ticket', () => {
     quantidade: 1,
     precoUnit: 14,
     subtotal: 14,
+    cancelamentoPendenteEm: '2026-09-29T09:59:00.000Z',
     canceladoEm: '2026-09-29T10:00:00.000Z',
   };
   const cerveja = {

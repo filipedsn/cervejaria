@@ -94,6 +94,22 @@ describe('calcularFinanceiroComanda', () => {
     assert.deepEqual(financeiro, { subtotal: 1300, valorEmAberto: 0, desconto: 0, total: 1300 });
   });
 
+  it('mantem bebida ativa se o item cancelado ainda tiver a marca antiga de solicitacao', () => {
+    const financeiro = calcularFinanceiroComanda({
+      status: 'ABERTA',
+      itensSemPedido: [],
+      pedidos: [{
+        status: 'CANCELADO',
+        itens: [
+          { precoUnit: 14, quantidade: 1, exigePreparo: true, cancelamentoPendenteEm: new Date(), canceladoEm: new Date() },
+          { precoUnit: 13, quantidade: 1, exigePreparo: false, cancelamentoPendenteEm: null, canceladoEm: null },
+        ],
+      }],
+    });
+
+    assert.deepEqual(financeiro, { subtotal: 1300, valorEmAberto: 0, desconto: 0, total: 1300 });
+  });
+
   it('exclui todos os itens quando o cancelamento integral do ticket esta pendente', () => {
     const financeiro = calcularFinanceiroComanda({
       status: 'ABERTA',

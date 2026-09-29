@@ -399,7 +399,7 @@ export function pedidoCanceladoIntegralmente(pedido: Pick<PedidoOperacao, 'statu
   if (pedido.status !== 'CANCELADO') return false;
   if (pedido.itens.some((item) => item.exigePreparo && item.cancelamentoPendenteEm && !item.canceladoEm)) return true;
   const cancelouPreparoIndividualmente = pedido.itens.some((item) =>
-    item.exigePreparo && item.canceladoEm && !item.cancelamentoPendenteEm,
+    item.exigePreparo && item.canceladoEm,
   );
   const aindaHaItemAtivo = pedido.itens.some((item) => !item.cancelamentoPendenteEm && !item.canceladoEm);
   return !cancelouPreparoIndividualmente || !aindaHaItemAtivo;

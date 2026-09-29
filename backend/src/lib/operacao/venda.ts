@@ -376,8 +376,10 @@ export function calcularFinanceiroComanda(params: {
         if (pedido.status === 'CANCELAMENTO_PENDENTE') return false;
         if (pedido.status !== 'CANCELADO') return true;
         if (pedido.itens.some((item) => item.exigePreparo && item.cancelamentoPendenteEm && !item.canceladoEm)) return false;
+        // canceladoEm prevalece sobre uma marca de solicitação antiga que possa
+        // ter ficado gravada junto; itens ativos do mesmo ticket continuam devidos.
         const cancelouPreparoIndividualmente = pedido.itens.some((item) =>
-          item.exigePreparo && item.canceladoEm && !item.cancelamentoPendenteEm,
+          item.exigePreparo && item.canceladoEm,
         );
         const aindaHaItemAtivo = pedido.itens.some(ativos);
         return cancelouPreparoIndividualmente && aindaHaItemAtivo;

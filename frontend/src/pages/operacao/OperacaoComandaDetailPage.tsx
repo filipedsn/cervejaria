@@ -507,7 +507,10 @@ export function OperacaoComandaDetailPage() {
       </div>
 
       {erro && !showAddItem && !showPayment && <div className="alert-error">{erro}</div>}
-      {cancelamentoItemMessage && <div className="alert-success">{cancelamentoItemMessage}</div>}
+      {cancelamentoItemMessage && (!cancelamentoItemMessage.startsWith('Cancelamento solicitado') ||
+        comanda?.pedidos.some((pedido) => pedido.itens.some((item) => item.cancelamentoPendenteEm))) && (
+        <div className="alert-success">{cancelamentoItemMessage}</div>
+      )}
 
       <div className="space-y-2">
         <h3 className="section-label">Consumo da comanda</h3>
@@ -663,7 +666,13 @@ export function OperacaoComandaDetailPage() {
                     </span>
                   )}
                   <span className={`ml-auto shrink-0 text-right font-semibold tabular-nums ${itemConfirmado ? '' : 'text-ink-faint'}`}>
-                    {itemConfirmado ? formatCurrency(item.subtotal) : `Pendente · ${formatCurrency(item.subtotal)}`}
+                    {item.canceladoEm
+                      ? 'Cancelado'
+                      : item.cancelamentoPendenteEm
+                        ? `Cancelamento pendente · ${formatCurrency(item.subtotal)}`
+                        : itemConfirmado
+                          ? formatCurrency(item.subtotal)
+                          : `Pendente · ${formatCurrency(item.subtotal)}`}
                   </span>
                   {removivel && (
                     <button
