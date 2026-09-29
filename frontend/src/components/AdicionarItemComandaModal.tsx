@@ -124,6 +124,7 @@ export function AdicionarItemComandaModal({
 
   const nothingAvailable =
     tapsComChope.length === 0 && bebidas.length === 0 && comidas.length === 0;
+  const visibleTabs = TABS.filter((item) => item.id !== 'chope' || tapsComChope.length > 0);
 
   const renderEmpty = (message: string) => (
     <p className="text-sm text-ink-faint text-center py-8">{message}</p>
@@ -167,7 +168,7 @@ export function AdicionarItemComandaModal({
         )}
 
         <div className="segmented-control">
-          {TABS.map(({ id, label }) => {
+          {visibleTabs.map(({ id, label }) => {
             const disabled =
               (id === 'chope' && tapsComChope.length === 0) ||
               (id === 'bebidas' && bebidas.length === 0) ||
