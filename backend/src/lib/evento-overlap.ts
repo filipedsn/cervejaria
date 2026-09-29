@@ -39,6 +39,15 @@ type ScheduleInput = {
   excludeEventoId?: string;
 };
 
+export function sessaoReservaTrailerWhere() {
+  return {
+    OR: [
+      { status: 'ABERTO' as const },
+      { status: 'FECHADO' as const, encerradoEm: null },
+    ],
+  };
+}
+
 export async function findSessaoTrailerConflict(
   input: ScheduleInput & { data: Date },
 ): Promise<{ id: string; nome: string } | null> {
@@ -48,6 +57,7 @@ export async function findSessaoTrailerConflict(
       trailerId: input.trailerId,
       data: input.data,
       recorrencia: 'NENHUMA',
+      ...sessaoReservaTrailerWhere(),
       ...(input.excludeEventoId ? { id: { not: input.excludeEventoId } } : {}),
     },
     select: { id: true, nome: true, horaInicio: true, horaFim: true },

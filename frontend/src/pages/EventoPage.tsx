@@ -94,20 +94,6 @@ const DIAS_RECORRENCIA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 's
 
 const WEEKS_FUTURE = 12;
 
-const EVENTO_PENDENTE_ENCERRAMENTO_MSG =
-  'Existem eventos pendentes de encerramento. Finalize-os para iniciar um novo evento.';
-
-function isEventoPendenteEncerramentoError(err: unknown): boolean {
-  if (!(err instanceof ApiError)) return false;
-  const msg = err.message;
-  return (
-    msg === 'Já existe uma sessão nesta data para esta agenda.' ||
-    msg.startsWith('Este trailer já possui o evento')
-  );
-}
-
-
-
 function formatTimeRange(evento: Pick<Evento, 'horaInicio' | 'horaFim'>) {
 
   const start = formatTime(evento.horaInicio);
@@ -525,19 +511,12 @@ export function EventoPage() {
 
   const [error, setError] = useState('');
 
-  const [showPendingEventModal, setShowPendingEventModal] = useState(false);
-
   const [cancelAgendamentoTarget, setCancelAgendamentoTarget] = useState<{
     serie: Evento;
     dateKey: string;
   } | null>(null);
 
   const handleAgendaError = (err: unknown, fallback: string) => {
-    if (isEventoPendenteEncerramentoError(err)) {
-      setError('');
-      setShowPendingEventModal(true);
-      return;
-    }
     setError(err instanceof ApiError ? err.message : fallback);
   };
 
@@ -1168,23 +1147,6 @@ export function EventoPage() {
             {formatAgendaDateShort(cancelAgendamentoTarget.dateKey)}?
           </p>
         )}
-      </Modal>
-
-      <Modal
-        open={showPendingEventModal}
-        onClose={() => setShowPendingEventModal(false)}
-        title="Não foi possível iniciar"
-        footer={
-          <button
-            type="button"
-            className="touch-btn-primary w-full min-h-14"
-            onClick={() => setShowPendingEventModal(false)}
-          >
-            Fechar
-          </button>
-        }
-      >
-        <p className="text-ink-soft leading-relaxed">{EVENTO_PENDENTE_ENCERRAMENTO_MSG}</p>
       </Modal>
 
     </div>
