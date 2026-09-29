@@ -372,7 +372,16 @@ export function calcularFinanceiroComanda(params: {
   const itensConsumidos = [
     ...params.itensSemPedido.filter((item) => !item.pedidoCozinhaId && ativos(item)),
     ...params.pedidos
-      .filter((pedido) => !['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(pedido.status))
+      .filter((pedido) => {
+        if (pedido.status === 'CANCELAMENTO_PENDENTE') return false;
+        if (pedido.status !== 'CANCELADO') return true;
+        if (pedido.itens.some((item) => item.exigePreparo && item.cancelamentoPendenteEm && !item.canceladoEm)) return false;
+        const cancelouPreparoIndividualmente = pedido.itens.some((item) =>
+          item.exigePreparo && item.canceladoEm && !item.cancelamentoPendenteEm,
+        );
+        const aindaHaItemAtivo = pedido.itens.some(ativos);
+        return cancelouPreparoIndividualmente && aindaHaItemAtivo;
+      })
       .flatMap((pedido) => pedido.itens.filter((item) =>
         ativos(item) && (!item.exigePreparo || pedido.status === 'ENTREGUE'),
       )),

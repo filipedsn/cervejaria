@@ -78,6 +78,38 @@ describe('calcularFinanceiroComanda', () => {
     assert.deepEqual(financeiro, { subtotal: 1600, valorEmAberto: 5100, desconto: 0, total: 1600 });
   });
 
+  it('mantem bebida ativa quando o ultimo item de preparo foi cancelado individualmente', () => {
+    const financeiro = calcularFinanceiroComanda({
+      status: 'ABERTA',
+      itensSemPedido: [],
+      pedidos: [{
+        status: 'CANCELADO',
+        itens: [
+          { precoUnit: 14, quantidade: 1, exigePreparo: true, cancelamentoPendenteEm: null, canceladoEm: new Date() },
+          { precoUnit: 13, quantidade: 1, exigePreparo: false, cancelamentoPendenteEm: null, canceladoEm: null },
+        ],
+      }],
+    });
+
+    assert.deepEqual(financeiro, { subtotal: 1300, valorEmAberto: 0, desconto: 0, total: 1300 });
+  });
+
+  it('exclui todos os itens quando o cancelamento integral do ticket esta pendente', () => {
+    const financeiro = calcularFinanceiroComanda({
+      status: 'ABERTA',
+      itensSemPedido: [],
+      pedidos: [{
+        status: 'CANCELADO',
+        itens: [
+          { precoUnit: 14, quantidade: 1, exigePreparo: true, cancelamentoPendenteEm: new Date(), canceladoEm: null },
+          { precoUnit: 13, quantidade: 1, exigePreparo: false, cancelamentoPendenteEm: null, canceladoEm: null },
+        ],
+      }],
+    });
+
+    assert.deepEqual(financeiro, { subtotal: 0, valorEmAberto: 0, desconto: 0, total: 0 });
+  });
+
   it('compartilha consumido, aberto e total líquido com itens avulsos e pedidos', () => {
     const financeiro = calcularFinanceiroComanda({
       status: 'ABERTA',

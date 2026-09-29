@@ -546,8 +546,8 @@ export function OperacaoComandaDetailPage() {
             </div>
             {pedido.itens.map((item) => {
               const itemEmCancelamento = Boolean(item.cancelamentoPendenteEm || item.canceladoEm);
-              const quantidadeEditavel = aberta && !itemEmCancelamento && podeAlterarQuantidadeItemComanda(comanda, pedido);
-              const removivel = aberta && !itemEmCancelamento && podeRemoverItemComanda(comanda, pedido);
+              const quantidadeEditavel = aberta && !itemEmCancelamento && podeAlterarQuantidadeItemComanda(comanda, pedido, item);
+              const removivel = aberta && !itemEmCancelamento && podeRemoverItemComanda(comanda, pedido, item);
               const itemConfirmado = itemConfirmadoNaComanda(pedido, item);
               const produto = produtoPorId.get(item.produtoId);
               const podeIncrementar = podeIncrementarItemComanda(produto, saldos, controlaEstoque, item.volumeMl);

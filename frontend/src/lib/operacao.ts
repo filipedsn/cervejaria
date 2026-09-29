@@ -380,7 +380,7 @@ export function ordenarComandasParaOperacao(comandas: ComandaOperacao[]): Comand
 
 export function totalItensComanda(comanda: ComandaOperacao): number {
   return comanda.pedidos
-    .filter((pedido) => pedido.status !== 'CANCELADO' && pedido.status !== 'CANCELAMENTO_PENDENTE')
+    .filter((pedido) => !pedidoCanceladoIntegralmente(pedido))
     .reduce((soma, pedido) => soma + pedido.itens
       .filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm)
       .reduce((acc, item) => acc + item.quantidade, 0), 0);
@@ -392,14 +392,27 @@ export function pedidoVaiParaCozinha(itens: Array<{ exigePreparo: boolean }>): b
   return itens.some((item) => item.exigePreparo);
 }
 
+/** CANCELADO também pode significar que só foi cancelado o último item de preparo. */
+export function pedidoCanceladoIntegralmente(pedido: Pick<PedidoOperacao, 'status' | 'itens'>): boolean {
+  if (pedido.status === 'CANCELAMENTO_PENDENTE') return true;
+  if (pedido.status !== 'CANCELADO') return false;
+  if (pedido.itens.some((item) => item.exigePreparo && item.cancelamentoPendenteEm && !item.canceladoEm)) return true;
+  const cancelouPreparoIndividualmente = pedido.itens.some((item) =>
+    item.exigePreparo && item.canceladoEm && !item.cancelamentoPendenteEm,
+  );
+  const aindaHaItemAtivo = pedido.itens.some((item) => !item.cancelamentoPendenteEm && !item.canceladoEm);
+  return !cancelouPreparoIndividualmente || !aindaHaItemAtivo;
+}
+
 /** Itens cancelados não entram na exibição de valores confirmados. */
 export function pedidoConfirmadoNaComanda(pedido: PedidoOperacao): boolean {
   return pedido.status === 'ENTREGUE' || (!pedidoVaiParaCozinha(pedido.itens) && pedido.status !== 'CANCELADO' && pedido.status !== 'CANCELAMENTO_PENDENTE');
 }
 
 export function itemConfirmadoNaComanda(pedido: PedidoOperacao, item: ItemPedido): boolean {
-  if (pedido.status === 'CANCELADO' || pedido.status === 'CANCELAMENTO_PENDENTE') return false;
+  if (pedidoCanceladoIntegralmente(pedido)) return false;
   if (item.cancelamentoPendenteEm || item.canceladoEm) return false;
+  if (item.exigePreparo && pedido.status === 'CANCELADO') return false;
   return pedido.status === 'ENTREGUE' || !item.exigePreparo;
 }
 
@@ -666,17 +679,21 @@ export function podeIncrementarItemComanda(
 export function podeEditarItemComanda(
   comanda: Pick<ComandaOperacao, 'status'>,
   pedido: Pick<PedidoOperacao, 'status' | 'itens'>,
+  item?: Pick<ItemPedido, 'exigePreparo' | 'cancelamentoPendenteEm' | 'canceladoEm'>,
 ): boolean {
-  if (comanda.status !== 'ABERTA' || ['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(pedido.status)) return false;
-  return !pedidoVaiParaCozinha(pedido.itens) || pedido.status === 'ENTREGUE';
+  if (comanda.status !== 'ABERTA' || pedidoCanceladoIntegralmente(pedido)) return false;
+  if (item && (item.cancelamentoPendenteEm || item.canceladoEm || (item.exigePreparo && pedido.status === 'CANCELADO'))) return false;
+  if (pedido.status === 'CANCELADO' && !item) return false;
+  return item ? !item.exigePreparo || pedido.status === 'ENTREGUE' : !pedidoVaiParaCozinha(pedido.itens) || pedido.status === 'ENTREGUE';
 }
 
 /** Quantidade pode ser corrigida enquanto o pedido está em andamento, nunca após a entrega. */
 export function podeAlterarQuantidadeItemComanda(
   comanda: Pick<ComandaOperacao, 'status'>,
   pedido: Pick<PedidoOperacao, 'status' | 'itens'>,
+  item?: Pick<ItemPedido, 'exigePreparo' | 'cancelamentoPendenteEm' | 'canceladoEm'>,
 ): boolean {
-  return pedido.status !== 'ENTREGUE' && podeEditarItemComanda(comanda, pedido);
+  return pedido.status !== 'ENTREGUE' && podeEditarItemComanda(comanda, pedido, item);
 }
 
 export interface TapTurno {
@@ -722,7 +739,7 @@ export function resumirItensComanda(comanda: ComandaOperacao): LinhaResumoConta[
   const agrupados = new Map<string, { nome: string; quantidade: number; totalCentavos: number }>();
 
   for (const pedido of comanda.pedidos) {
-    if (pedido.status === 'CANCELADO' || pedido.status === 'CANCELAMENTO_PENDENTE') continue;
+    if (pedidoCanceladoIntegralmente(pedido)) continue;
 
     for (const item of pedido.itens) {
       if (item.cancelamentoPendenteEm || item.canceladoEm) continue;
@@ -756,8 +773,11 @@ export function resumirItensComanda(comanda: ComandaOperacao): LinhaResumoConta[
 export function podeRemoverItemComanda(
   comanda: Pick<ComandaOperacao, 'status'>,
   pedido: Pick<PedidoOperacao, 'status' | 'itens'>,
+  item?: Pick<ItemPedido, 'exigePreparo' | 'cancelamentoPendenteEm' | 'canceladoEm'>,
 ): boolean {
-  return comanda.status === 'ABERTA' && !['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(pedido.status);
+  if (comanda.status !== 'ABERTA' || pedidoCanceladoIntegralmente(pedido)) return false;
+  if (item && (item.cancelamentoPendenteEm || item.canceladoEm || (item.exigePreparo && pedido.status === 'CANCELADO'))) return false;
+  return pedido.status !== 'CANCELADO' || Boolean(item && !item.exigePreparo);
 }
 
 export const TIPOS_SAIDA_ESTOQUE: Array<{ valor: TipoSaidaEstoque; label: string }> = [

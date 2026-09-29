@@ -101,6 +101,13 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
     try {
       atualizado = await prisma.$transaction(async (tx) => {
         if (status !== 'CANCELAMENTO_PENDENTE') {
+          if (status === 'CANCELADO' && pedido.status === 'CANCELAMENTO_PENDENTE') {
+            await lockComandaItemsInTx(tx, pedido.comandaId);
+            await tx.itemComanda.updateMany({
+              where: { pedidoCozinhaId: pedido.id, canceladoEm: null },
+              data: { cancelamentoPendenteEm: null, canceladoEm: new Date() },
+            });
+          }
           const atualizado = await kitchenService.applyStatus(tx, pedido, status);
           await recalcComandaTotalOperacao(tx, pedido.comandaId);
           return atualizado;

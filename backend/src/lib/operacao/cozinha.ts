@@ -178,6 +178,32 @@ export function pedidoVaiParaCozinha(itens: Array<{ exigePreparo: boolean }>): b
   return itens.some((item) => item.exigePreparo);
 }
 
+/** O status da cozinha pode ser CANCELADO após cancelar apenas o último item de preparo.
+ * CANCELAMENTO_PENDENTE ou uma solicitação antiga ainda marcada em item de preparo
+ * identificam o cancelamento integral do pedido. */
+export function pedidoCanceladoIntegralmente(pedido: {
+  status: StatusPedidoOperacao;
+  itens?: Array<{ exigePreparo: boolean; cancelamentoPendenteEm?: Date | null; canceladoEm?: Date | null }>;
+  itensComanda?: Array<{ exigePreparo: boolean; cancelamentoPendenteEm?: Date | null; canceladoEm?: Date | null }>;
+}): boolean {
+  if (pedido.status === 'CANCELAMENTO_PENDENTE') return true;
+  const itens = pedido.itensComanda ?? pedido.itens ?? [];
+  if (pedido.status !== 'CANCELADO') return false;
+  if (itens.some((item) => item.exigePreparo && item.cancelamentoPendenteEm && !item.canceladoEm)) return true;
+  const cancelouPreparoIndividualmente = itens.some((item) => item.exigePreparo && item.canceladoEm && !item.cancelamentoPendenteEm);
+  const aindaHaItemAtivo = itens.some((item) => !item.cancelamentoPendenteEm && !item.canceladoEm);
+  return !cancelouPreparoIndividualmente || !aindaHaItemAtivo;
+}
+
+export function itemBloqueadoPorCancelamentoIntegral(pedido: {
+  status: StatusPedidoOperacao;
+  itens?: Array<{ exigePreparo: boolean; cancelamentoPendenteEm?: Date | null; canceladoEm?: Date | null }>;
+  itensComanda?: Array<{ exigePreparo: boolean; cancelamentoPendenteEm?: Date | null; canceladoEm?: Date | null }>;
+}, item: { exigePreparo: boolean; cancelamentoPendenteEm?: Date | null; canceladoEm?: Date | null }): boolean {
+  return pedidoCanceladoIntegralmente(pedido) || Boolean(item.cancelamentoPendenteEm || item.canceladoEm) ||
+    (item.exigePreparo && pedido.status === 'CANCELADO');
+}
+
 /** Itens cancelados não entram no total; demais contam ao ser lançados. */
 export function pedidoContaNaComanda(
   pedido: {
@@ -186,7 +212,7 @@ export function pedidoContaNaComanda(
   },
   _comanda?: { tipo: ComandaTipo },
 ): boolean {
-  if (pedido.status === 'CANCELADO' || pedido.status === 'CANCELAMENTO_PENDENTE') return false;
+  if (pedidoCanceladoIntegralmente(pedido)) return false;
   return pedido.itens.some((item) => !item.cancelamentoPendenteEm && !item.canceladoEm);
 }
 

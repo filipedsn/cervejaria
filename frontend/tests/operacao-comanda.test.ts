@@ -6,6 +6,7 @@ import {
   podeAlterarQuantidadeItemComanda,
   resumirItensComanda,
   totalPendenteComanda,
+  totalItensComanda,
   type PedidoOperacao,
 } from '../src/lib/operacao.ts';
 
@@ -45,6 +46,40 @@ test('quantidade de item entregue fica somente para leitura', () => {
 
   assert.equal(podeAlterarQuantidadeItemComanda(comanda, pedidoSemPreparo), true);
   assert.equal(podeAlterarQuantidadeItemComanda(comanda, pedidoEntregue), false);
+});
+
+test('cancelar o item de cozinha nao cancela a bebida no mesmo ticket', () => {
+  const comida = {
+    ...pedido.itens[1]!,
+    id: 'churrasquinho',
+    nome: 'Churrasquinho Boi',
+    quantidade: 1,
+    precoUnit: 14,
+    subtotal: 14,
+    canceladoEm: '2026-09-29T10:00:00.000Z',
+  };
+  const cerveja = {
+    ...pedido.itens[0]!,
+    id: 'cerveja',
+    nome: 'Long Neck Heineken Zero',
+    quantidade: 1,
+    precoUnit: 13,
+    subtotal: 13,
+  };
+  const pedidoComCancelamentoIndividual: PedidoOperacao = {
+    ...pedido,
+    status: 'CANCELADO',
+    itens: [comida, cerveja],
+  };
+  const comanda = { status: 'ABERTA', pedidos: [pedidoComCancelamentoIndividual] } as Parameters<typeof resumirItensComanda>[0];
+
+  assert.equal(itemConfirmadoNaComanda(pedidoComCancelamentoIndividual, comida), false);
+  assert.equal(itemConfirmadoNaComanda(pedidoComCancelamentoIndividual, cerveja), true);
+  assert.equal(totalItensComanda(comanda), 1);
+  assert.deepEqual(resumirItensComanda(comanda).map(({ nome, total }) => ({ nome, total })), [
+    { nome: 'Long Neck Heineken Zero', total: 13 },
+  ]);
+  assert.equal(podeAlterarQuantidadeItemComanda(comanda, pedidoComCancelamentoIndividual, cerveja), true);
 });
 
 test('pedidos da comanda aparecem do lançamento mais recente para o mais antigo sem mutar a lista', () => {

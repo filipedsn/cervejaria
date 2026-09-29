@@ -4,6 +4,7 @@ import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
 import {
   aplicarStatusPedidoCozinha,
+  itemBloqueadoPorCancelamentoIntegral,
   notificarComandaOperacaoAtualizada,
   notificarCozinha,
   pedidoVaiParaCozinha,
@@ -58,6 +59,7 @@ async function carregarItem(
       pedidoCozinha: {
         include: {
           comanda: { include: INCLUDE_COMANDA_OPERACAO },
+          itensComanda: { select: { exigePreparo: true, cancelamentoPendenteEm: true, canceladoEm: true } },
         },
       },
     },
@@ -99,7 +101,7 @@ export async function removeItemFromComandaOperacao(params: {
   if (comanda.status !== 'ABERTA') {
     return { error: 'Comanda não encontrada ou fechada' as const };
   }
-  if (['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(item.pedidoCozinha.status)) {
+  if (itemBloqueadoPorCancelamentoIntegral(item.pedidoCozinha, item)) {
     return { error: 'Este pedido já foi cancelado' as const };
   }
   if (item.cancelamentoPendenteEm || item.canceladoEm) {
@@ -120,7 +122,7 @@ export async function removeItemFromComandaOperacao(params: {
     if (itemAtual.pedidoCozinha.comanda.status !== 'ABERTA') {
       throw Object.assign(new Error('Comanda não encontrada ou fechada'), { statusCode: 409 });
     }
-    if (['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(itemAtual.pedidoCozinha.status)) {
+    if (itemBloqueadoPorCancelamentoIntegral(itemAtual.pedidoCozinha, itemAtual)) {
       throw Object.assign(new Error('Este pedido já foi cancelado'), { statusCode: 409 });
     }
     if (itemAtual.cancelamentoPendenteEm || itemAtual.canceladoEm) {
@@ -258,7 +260,7 @@ export async function updateItemQuantidadeComandaOperacao(params: {
   if (comanda.status !== 'ABERTA') {
     return { error: 'Comanda não encontrada ou fechada' as const };
   }
-  if (['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(item.pedidoCozinha.status)) {
+  if (itemBloqueadoPorCancelamentoIntegral(item.pedidoCozinha, item)) {
     return { error: 'Este pedido já foi cancelado' as const };
   }
 
@@ -287,7 +289,7 @@ export async function updateItemQuantidadeComandaOperacao(params: {
       if (itemAtual.pedidoCozinha.comanda.status !== 'ABERTA') {
         throw Object.assign(new Error('Comanda não encontrada ou fechada'), { statusCode: 409 });
       }
-      if (['CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(itemAtual.pedidoCozinha.status)) {
+      if (itemBloqueadoPorCancelamentoIntegral(itemAtual.pedidoCozinha, itemAtual)) {
         throw Object.assign(new Error('Este pedido já foi cancelado'), { statusCode: 409 });
       }
 
