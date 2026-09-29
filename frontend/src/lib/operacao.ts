@@ -404,6 +404,13 @@ export function pedidoCanceladoIntegralmente(pedido: Pick<PedidoOperacao, 'statu
   return !cancelouPreparoIndividualmente || !aindaHaItemAtivo;
 }
 
+/** Oculta somente rodadas vazias ou integralmente canceladas; pendências de confirmação continuam visíveis. */
+export function pedidoVisivelNaComanda(pedido: PedidoOperacao): boolean {
+  if (pedido.itens.length === 0) return false;
+  if (pedido.itens.every((item) => Boolean(item.canceladoEm))) return false;
+  return pedido.status !== 'CANCELADO' || !pedidoCanceladoIntegralmente(pedido);
+}
+
 /** Itens cancelados não entram na exibição de valores confirmados. */
 export function pedidoConfirmadoNaComanda(pedido: PedidoOperacao): boolean {
   return pedido.status === 'ENTREGUE' || (!pedidoVaiParaCozinha(pedido.itens) && pedido.status !== 'CANCELADO' && pedido.status !== 'CANCELAMENTO_PENDENTE');

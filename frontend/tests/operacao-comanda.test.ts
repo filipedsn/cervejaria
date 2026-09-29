@@ -7,6 +7,7 @@ import {
   resumirItensComanda,
   totalPendenteComanda,
   totalItensComanda,
+  pedidoVisivelNaComanda,
   type PedidoOperacao,
 } from '../src/lib/operacao.ts';
 
@@ -80,6 +81,23 @@ test('cancelar o item de cozinha nao cancela a bebida no mesmo ticket', () => {
     { nome: 'Long Neck Heineken Zero', total: 13 },
   ]);
   assert.equal(podeAlterarQuantidadeItemComanda(comanda, pedidoComCancelamentoIndividual, cerveja), true);
+  assert.equal(pedidoVisivelNaComanda(pedidoComCancelamentoIndividual), true);
+});
+
+test('oculta rodada sem itens ou com todos os itens cancelados, mas preserva cancelamento pendente', () => {
+  const todosCancelados: PedidoOperacao = {
+    ...pedido,
+    itens: pedido.itens.map((item) => ({ ...item, canceladoEm: '2026-09-29T10:00:00.000Z' })),
+  };
+  const cancelamentoPendente: PedidoOperacao = {
+    ...pedido,
+    status: 'CANCELAMENTO_PENDENTE',
+    itens: pedido.itens.map((item) => ({ ...item, cancelamentoPendenteEm: '2026-09-29T10:00:00.000Z' })),
+  };
+
+  assert.equal(pedidoVisivelNaComanda(todosCancelados), false);
+  assert.equal(pedidoVisivelNaComanda({ ...pedido, itens: [] }), false);
+  assert.equal(pedidoVisivelNaComanda(cancelamentoPendente), true);
 });
 
 test('pedidos da comanda aparecem do lançamento mais recente para o mais antigo sem mutar a lista', () => {
