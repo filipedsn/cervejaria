@@ -27,7 +27,7 @@ import { ReverterEventoButton } from '../components/ReverterEventoButton';
 import { reabrirPrazoExpirado } from '../lib/evento-utils';
 
 import { VerRankingButton } from '../components/VerRankingButton';
-import { PortalQrButton } from '../components/PortalQrButton';
+import { PdvPortalQrButton } from '../components/PdvPortalQrButton';
 
 import { VerResumoExecutivoButton } from '../components/VerResumoExecutivoButton';
 
@@ -220,11 +220,10 @@ function ActiveSessionHero({
 
         <EditarCardapioEventoButton eventoId={evento.id} eventoAberto iconOnly />
 
-        <PortalQrButton
+        <PdvPortalQrButton
           trailerId={evento.trailerId}
-          trailer={evento.trailer}
           iconOnly
-          variant="hero"
+          className="icon-btn-ghost"
         />
 
         <VerRankingButton eventoId={evento.id} iconOnly />
