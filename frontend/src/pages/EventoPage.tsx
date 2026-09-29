@@ -223,7 +223,7 @@ function ActiveSessionHero({
         <PdvPortalQrButton
           trailerId={evento.trailerId}
           iconOnly
-          className="icon-btn-ghost"
+          className="icon-btn-ghost h-12 w-12 border border-line bg-surface"
         />
 
         <VerRankingButton eventoId={evento.id} iconOnly />
