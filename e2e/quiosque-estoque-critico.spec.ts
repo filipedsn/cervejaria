@@ -16,7 +16,14 @@ test.describe('Quiosque — estoque crítico', () => {
 
     const capacidadeEstoque = await apiRequest('PATCH', '/api/cervejaria/configuracao-operacional', {
       cookie,
-      body: { inventoryEnabled: true, confirmacaoEstoque: true },
+      body: {
+        operationMode: 'CAIXA',
+        tapsEnabled: false,
+        inventoryEnabled: true,
+        kitchenEnabled: false,
+        confirmacaoEstoque: true,
+        completeInitialSetup: true,
+      },
     });
     expect(capacidadeEstoque.status, 'capacidade de estoque ativada para o caso E2E').toBe(200);
 
@@ -51,6 +58,12 @@ test.describe('Quiosque — estoque crítico', () => {
       body: { pontoVendaId, produtoId, estoqueMinimo: 2 },
     });
     expect(minimo.status).toBe(200);
+
+    const cardapio = await apiRequest('PUT', `/api/operacao/caixa/cardapio?pontoVendaId=${pontoVendaId}`, {
+      cookie,
+      body: { produtoIds: [produtoId] },
+    });
+    expect(cardapio.status, 'produto de teste incluído no cardápio salvo do turno').toBe(200);
   });
 
   test('mostra LOW e deixa ESGOTADO visível, porém indisponível, após a última venda', async ({ page }) => {

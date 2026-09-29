@@ -29,7 +29,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/restore-drill.p
   -TargetDatabase cervejaria_restore_drill_yyyyMMdd_HHmmss
 ```
 
-O script recusa `cervejaria`, `cervejaria_dev`, qualquer nome fora do padrao de drill e banco de destino ja existente. Ele cria o banco isolado e o restaura com o mesmo papel usado pela API, com `psql -v ON_ERROR_STOP=1`; confere schemas/tabelas/contagens, roda apenas `prisma migrate status` e `prisma validate`, gera um relatorio local em `deploy/restore-drills/` e remove o banco somente depois de um resultado bem-sucedido. Use `-KeepDatabase` apenas para investigacao controlada; depois remova-o manualmente com decisao humana.
+O script recusa `cervejaria`, `cervejaria_dev`, qualquer nome fora do padrao de drill e banco de destino ja existente. Ele cria o banco isolado e o restaura com o mesmo papel usado pela API, com `psql -v ON_ERROR_STOP=1`; confere schemas/tabelas/contagens e a historia das migrations. Migrations futuras sao aceitas somente quando a lista do Prisma coincide exatamente com as pastas ainda nao aplicadas e nao ha migration incompleta, falha ou historico desconhecido; isso permite validar um dump pre-cutover sem aplicar migrations. O script roda `prisma validate`, gera um relatorio local em `deploy/restore-drills/` e remove o banco somente depois de um resultado bem-sucedido. Use `-KeepDatabase` apenas para investigacao controlada; depois remova-o manualmente com decisao humana.
 
 Para dump em formato custom ou tar, pare antes de executar este script: ele aceita somente SQL texto. Use `pg_restore` compatível com a versao do dump em um banco temporario novo e siga as mesmas validacoes abaixo.
 

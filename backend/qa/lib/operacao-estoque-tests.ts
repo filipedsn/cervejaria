@@ -110,7 +110,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
         where: { cervejariaId: cfg.cervejariaId, pontoVendaId: pontoId, produtoId: cfg.produtoId, tipo: 'SAIDA_VENDA' },
         orderBy: { createdAt: 'desc' },
       });
-      if (!mov || mov.quantidade !== 3) {
+      if (!mov || Number(mov.quantidade) !== 3) {
         return { status: 'failed', message: 'Movimento SAIDA_VENDA', expected: '3', actual: String(mov?.quantidade ?? 'ausente') };
       }
       return { message: 'Saldo 10→7 com SAIDA_VENDA', expected: '7', actual: '7' };
@@ -314,6 +314,16 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
       }
       produtoSemControleId = produto.data.id;
 
+      // Cardápio salvo é o modo padrão. Inclua o produto recém-criado no
+      // cardápio deste turno antes de validar a regra de estoque da venda.
+      const cardapio = await api('PUT', `/api/operacao/caixa/cardapio?pontoVendaId=${pontoId}`, {
+        token: cfg.donoToken,
+        body: { produtoIds: [produtoSemControleId, cfg.produtoId] },
+      });
+      if (cardapio.status !== 200) {
+        return { status: 'failed', message: 'Incluir produto no cardápio do turno', expected: '200', actual: `${cardapio.status} ${cardapio.raw.slice(0, 100)}` };
+      }
+
       const venda = await api('POST', '/api/operacao/vendas', {
         token: cfg.donoToken,
         body: {
@@ -323,7 +333,7 @@ export async function runQuiosqueEstoqueTests(ctx: QaContext, test: TestFn) {
         },
       });
       if (venda.status !== 201) {
-        return { status: 'failed', message: 'Venda sem controle de estoque', expected: '201', actual: String(venda.status) };
+        return { status: 'failed', message: 'Venda sem controle de estoque', expected: '201', actual: `${venda.status} ${venda.raw.slice(0, 120)}` };
       }
       return { message: 'Produto sem controle vende livremente', expected: '201', actual: '201' };
     },

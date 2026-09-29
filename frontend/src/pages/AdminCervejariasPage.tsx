@@ -165,7 +165,7 @@ export function AdminCervejariasPage() {
   const [modulos, setModulos] = useState({ ...MODULOS_PADRAO });
   const [enablements, setEnablements] = useState<Enablements>({ ...ENABLEMENTS_PADRAO });
 
-  const { data: editingConfiguration } = useQuery({
+  const { data: editingConfiguration, isLoading: isEditingConfigurationLoading } = useQuery({
     queryKey: ['admin-operational-configuration', editing?.id],
     enabled: Boolean(editing?.id),
     queryFn: () => api.get<Record<`${keyof Enablements}Enabled`, boolean>>(`/api/admin/cervejarias/${editing!.id}/configuracao-operacional`),
@@ -584,7 +584,10 @@ export function AdminCervejariasPage() {
             </div>
           )}
 
-          <div className="space-y-2">
+          {editing && <div className="space-y-2">
+            {isEditingConfigurationLoading || !editingConfiguration ? (
+              <p role="status" className="text-sm text-ink-muted">Carregando capacidades operacionais...</p>
+            ) : <>
             <label className="label">Capacidades operacionais</label>
             <p className="text-xs text-ink-faint">Defina os recursos que fazem parte desta operaÃ§Ã£o.</p>
             <label className="label">Como este estabelecimento trabalha?</label>
@@ -595,7 +598,8 @@ export function AdminCervejariasPage() {
             {CAPABILITY_OPTIONS.filter(([key]) => key !== 'cashMode' && key !== 'plannedOperations').map(([key]) => (
               <ModuloOption key={key} titulo={CAPABILITY_COPY[key].title} descricao={CAPABILITY_COPY[key].description} marcado={enablements[key]} onChange={(value) => setEnablements((current) => ({ ...current, [key]: value }))} />
             ))}
-          </div>
+            </>}
+          </div>}
 
           <BrandingEditorFields
             currentLogoUrl={editing?.logoUrl}

@@ -11,6 +11,7 @@ test.describe.configure({ mode: 'serial' });
 test.describe('Quiosque — lançamento contínuo de itens', () => {
   const stamp = Date.now();
   let comandaId = '';
+  let produtoNome = '';
 
   test.beforeAll(async () => {
     const cookie = await apiLogin(CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password);
@@ -25,6 +26,18 @@ test.describe('Quiosque — lançamento contínuo de itens', () => {
       body: { pontoVendaId: ponto.data.id, trocoInicial: 0 },
     });
     expect(caixa.status).toBe(201);
+
+    produtoNome = `E2E Item ${stamp}`;
+    const produto = await apiRequest<{ id: string }>('POST', '/api/operacao/produtos', {
+      cookie,
+      body: { nome: produtoNome, precoUnit: 7, exigePreparo: false, controlaEstoque: false },
+    });
+    expect(produto.status).toBe(201);
+    const cardapio = await apiRequest('PUT', `/api/operacao/caixa/cardapio?pontoVendaId=${ponto.data.id}`, {
+      cookie,
+      body: { produtoIds: [produto.data.id] },
+    });
+    expect(cardapio.status).toBe(200);
 
     const comanda = await apiRequest<{ id: string }>('POST', '/api/operacao/comandas', {
       cookie,
@@ -45,7 +58,8 @@ test.describe('Quiosque — lançamento contínuo de itens', () => {
 
     const dialog = page.getByRole('dialog', { name: 'Adicionar item' });
     await expect(dialog).toBeVisible();
-    await dialog.locator('button.card-touch').first().click();
+    await dialog.getByRole('button', { name: new RegExp(`^${produtoNome}`) }).click();
+    await page.getByRole('dialog').last().getByRole('button', { name: 'Adicionar item' }).click();
     await dialog.getByRole('button', { name: 'Lançar na comanda' }).click();
 
     await expect(dialog).toBeVisible();

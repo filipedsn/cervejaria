@@ -358,7 +358,7 @@ export async function runCardapioTemplateTests(tenant: TenantFixture, test: Test
     {
       id: 'CARD-13',
       category: 'Cardápios template',
-      name: 'usaCardapio desligado → preço do catálogo mesmo com template',
+      name: 'Cardápio salvo permanece padrão mesmo com preferência legada desligada',
       requirement: 'CARD-13',
     },
     async () => {
@@ -372,15 +372,20 @@ export async function runCardapioTemplateTests(tenant: TenantFixture, test: Test
         return { status: 'failed', message: 'Desligar cardápio', expected: '200', actual: String(off.status) };
       }
 
+      const contexto = await api<{ usaCardapio?: boolean }>('GET', '/api/operacao/contexto', { token: tenant.donoToken });
+      if (contexto.status !== 200 || contexto.data?.usaCardapio !== true) {
+        return { status: 'failed', message: 'O catálogo tradicional deve continuar ativo', expected: 'usaCardapio=true', actual: `${contexto.status} ${contexto.data?.usaCardapio}` };
+      }
+
       const aplicar = await api('PUT', `/api/eventos/${tenant.eventoId}/cardapio`, {
         token: tenant.donoToken,
         body: { cardapioId: cardapioPrecoA },
       });
-      if (aplicar.status !== 403) {
+      if (aplicar.status !== 200) {
         return {
           status: 'failed',
-          message: 'PUT cardápio com toggle off',
-          expected: '403',
+          message: 'Aplicar cardápio com preferência legada desligada',
+          expected: '200',
           actual: String(aplicar.status),
         };
       }
@@ -405,21 +410,16 @@ export async function runCardapioTemplateTests(tenant: TenantFixture, test: Test
         token: tenant.donoToken,
       });
       const total = Number(atual.data?.total ?? 0);
-      if (total !== PRECO_CATALOGO) {
+      if (total !== PRECO_TEMPLATE_A) {
         return {
           status: 'failed',
-          message: 'Toggle off deve usar catálogo',
-          expected: String(PRECO_CATALOGO),
+          message: 'A operação deve usar o preço do cardápio salvo',
+          expected: String(PRECO_TEMPLATE_A),
           actual: String(total),
         };
       }
 
-      await api('PATCH', '/api/cervejaria/operacao', {
-        token: tenant.donoToken,
-        body: { usaCardapio: true },
-      });
-
-      return { message: `R$ ${total}`, expected: String(PRECO_CATALOGO), actual: String(total) };
+      return { message: `R$ ${total}`, expected: String(PRECO_TEMPLATE_A), actual: String(total) };
     },
   );
 

@@ -88,13 +88,13 @@ test.describe('Quiosque — fila da cozinha e cancelamento', () => {
 
     const dialog = page.getByRole('dialog', { name: 'Solicitar cancelamento do pedido' });
     await expect(dialog).toContainText(`Mesa ${identificador}`);
-    await expect(dialog).toContainText('atualmente em preparo');
+    await expect(dialog).toContainText('atualmente em fila');
     await dialog.getByRole('button', { name: 'Solicitar cancelamento' }).click();
 
     await expect(page.getByText('Cancelamento solicitado. O pedido permanecerá destacado até a confirmação da cozinha.')).toBeVisible();
     await expect(card).toBeVisible();
-    await expect(card.getByText('Cancelamento solicitado')).toBeVisible();
-    await card.getByRole('button', { name: 'Confirmar cancelamento' }).click();
+    await expect(card.getByText('Cancelamento solicitado').first()).toBeVisible();
+    await card.getByRole('button', { name: 'Confirmar cancelamento' }).last().click();
     await expect(page.getByText('Cancelamento confirmado e pedido removido da fila.')).toBeVisible();
     await expect(card).toHaveCount(0);
 

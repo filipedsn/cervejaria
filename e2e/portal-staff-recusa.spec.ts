@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import path from 'node:path';
 import { loadArenaFixture } from './helpers/fixtures';
 import { abrirComandaPortal, enviarPedidoChopePortal } from './helpers/portal';
+import { gotoAfterLogin } from './helpers/auth';
 
 const arenaAuth = path.join(process.cwd(), 'e2e/.auth/arena.json');
 
@@ -20,7 +21,7 @@ test.describe('Portal + staff recusa', () => {
 
     const staffCtx = await browser.newContext({ storageState: arenaAuth });
     const staffPage = await staffCtx.newPage();
-    await staffPage.goto('/comandas');
+    await gotoAfterLogin(staffPage, '/comandas');
 
     const card = staffPage.locator('article.pedido-card-alert').filter({ hasText: clientName });
     await expect(card).toBeVisible({ timeout: 15_000 });

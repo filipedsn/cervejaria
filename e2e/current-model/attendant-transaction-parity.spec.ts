@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { API_BASE, apiLogin, apiRequest } from '../helpers/api';
-import { CREDENTIALS } from '../helpers/auth';
+import { CREDENTIALS, gotoAfterLogin } from '../helpers/auth';
 
 type Json = Record<string, any>;
 type Mode = 'CAIXA' | 'EVENTO';
@@ -146,7 +146,7 @@ test.describe('Current operating model — attendant sales parity', () => {
           operationMode: mode, tapsEnabled: true, inventoryEnabled: true, kitchenEnabled: true,
         });
         await attachSession(page, tenant.ownerCookie);
-        await page.goto('/operacao/comandas');
+        await gotoAfterLogin(page, '/operacao/comandas');
         await expect(page).not.toHaveURL(/\/login/);
         await expect(page.getByRole('navigation', { name: 'Navegação principal' })).toBeVisible();
 
@@ -157,7 +157,7 @@ test.describe('Current operating model — attendant sales parity', () => {
 
         if (mode === 'EVENTO') {
           await attachSession(page, tenant.adminOwnerCookie);
-          await page.goto('/configuracoes/catalogo');
+          await gotoAfterLogin(page, '/configuracoes/catalogo');
           await expect(page.getByRole('heading', { name: 'Cardápio' })).toBeVisible();
           await expect(page.getByRole('button', { name: 'Catálogo', exact: true })).toBeVisible();
           await expect(page.getByRole('button', { name: 'Cardápios salvos', exact: true })).toBeVisible();
@@ -165,7 +165,7 @@ test.describe('Current operating model — attendant sales parity', () => {
           await page.getByRole('button', { name: 'Cardápios salvos', exact: true }).click();
           await expect(page.getByRole('button', { name: '+ Novo cardápio' })).toBeVisible();
           await attachSession(page, tenant.ownerCookie);
-          await page.goto('/operacao/comandas');
+          await gotoAfterLogin(page, '/operacao/comandas');
         }
 
         let comandaId = '';
@@ -257,7 +257,7 @@ test.describe('Current operating model — attendant sales parity', () => {
           });
           expect(premature.status).toBe(409);
           await advanceKitchenToReady(tenant.ownerCookie, orderId);
-          await page.goto(`/operacao/comandas/${comandaId}`);
+          await gotoAfterLogin(page, `/operacao/comandas/${comandaId}`);
           let interceptedWhatsAppUrl = '';
           await page.route('https://wa.me/**', async (route) => {
             interceptedWhatsAppUrl = route.request().url();
@@ -268,7 +268,7 @@ test.describe('Current operating model — attendant sales parity', () => {
           expect(interceptedWhatsAppUrl).toContain('5511987654324');
           expect(decodeURIComponent(interceptedWhatsAppUrl)).toContain('Cliente E2E com aviso');
           expect(decodeURIComponent(interceptedWhatsAppUrl)).toContain('está pronto para retirada');
-          await page.goto(`/operacao/comandas/${comandaId}`);
+          await gotoAfterLogin(page, `/operacao/comandas/${comandaId}`);
           await page.getByRole('button', { name: 'Marcar como avisado' }).click();
           await expect.poll(async () => {
             const checked = await required<Json>('GET', `/api/operacao/comandas/${comandaId}`, tenant.ownerCookie);
@@ -382,10 +382,10 @@ test.describe('Current operating model — attendant sales parity', () => {
             horaInicio: '18:00', recorrencia: 'NENHUMA', abrirAgora: true,
             trailerId: tenant.trailerId, cardapioId: savedMenu.id,
           });
-          await page.goto('/operacao/comandas');
+          await gotoAfterLogin(page, '/operacao/comandas');
           await expect(page).toHaveURL(/^https?:\/\/[^/]+\/comandas(?:\?.*)?$/);
           await expect(page.getByRole('heading', { name: /comandas/i }).first()).toBeVisible();
-          await page.goto('/operacao/turnos/rota-invalida');
+          await gotoAfterLogin(page, '/operacao/turnos/rota-invalida');
           await expect(page).toHaveURL(/^https?:\/\/[^/]+\/comandas(?:\?.*)?$/);
           const eventMenu = await required<Json>('GET', `/api/eventos/${event.id}/cardapio`, tenant.ownerCookie);
           expect(eventMenu.produtoIds).toEqual([tenant.foodId]);
@@ -448,7 +448,7 @@ test.describe('Current operating model — attendant sales parity', () => {
             eventoId: event.id, clienteNome: 'Cliente E2E', clienteTelefone: '11987654321',
           });
           comandaId = comanda.id;
-          await page.goto(`/comandas/${comandaId}`);
+          await gotoAfterLogin(page, `/comandas/${comandaId}`);
           await page.getByRole('button', { name: '+ Itens' }).click();
           const addItemDialog = page.getByRole('dialog', { name: 'Adicionar item' });
           await expect(addItemDialog.getByRole('checkbox', { name: /Para viagem/ })).toHaveCount(0);
@@ -528,7 +528,7 @@ test.describe('Current operating model — attendant sales parity', () => {
             expect.objectContaining({ sessaoId: postSwitchSession.id, receitaTotal: 15 }),
           ]));
           await attachSession(page, tenant.adminOwnerCookie);
-          await page.goto('/dashboard');
+          await gotoAfterLogin(page, '/dashboard');
           const filtroCaixa = page.getByRole('button', { name: 'Caixa', exact: true });
           await expect(filtroCaixa).toBeVisible();
           const responseCaixa = page.waitForResponse((response) =>

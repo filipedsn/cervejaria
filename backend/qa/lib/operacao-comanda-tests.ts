@@ -863,7 +863,9 @@ export async function runQuiosqueComandaTests(ctx: QaContext, test: TestFn) {
 
       const pagar = await api<{ error?: string }>('POST', `/api/operacao/comandas/${cozinhaComandaId}/pagamentos`, {
         token: cfgCozinha.donoToken,
-        body: { pagamentos: [{ forma: 'PIX', valor: abrir.data.total }] },
+        // Pending kitchen items have not entered the payable total yet. Send a
+        // valid positive amount so this test reaches the kitchen guard.
+        body: { pagamentos: [{ forma: 'PIX', valor: Math.max(1, abrir.data.total) }] },
       });
       if (pagar.status !== 409 || !pagar.data?.error?.includes('cozinha')) {
         return {

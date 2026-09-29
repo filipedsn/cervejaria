@@ -118,7 +118,17 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
           throw Object.assign(new Error('A comanda deste pedido já foi fechada'), { statusCode: 409 });
         }
 
-        const cancelado = await aplicarStatusPedidoCozinha(tx, pedidoAtual, 'CANCELAMENTO_PENDENTE');
+        const solicitacaoEm = new Date();
+        await tx.itemComanda.updateMany({
+          where: {
+            pedidoCozinhaId: pedidoAtual.id,
+            exigePreparo: true,
+            cancelamentoPendenteEm: null,
+            canceladoEm: null,
+          },
+          data: { cancelamentoPendenteEm: solicitacaoEm },
+        });
+        const cancelado = await aplicarStatusPedidoCozinha(tx, pedidoAtual, 'CANCELAMENTO_PENDENTE', solicitacaoEm);
 
         for (const item of pedidoAtual.itensComanda) {
           if (!item.produto || !pedidoAtual.pontoVendaId) continue;

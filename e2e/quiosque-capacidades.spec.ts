@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { API_BASE, apiLogin, apiRequest } from './helpers/api';
-import { CREDENTIALS, login } from './helpers/auth';
+import { CREDENTIALS, gotoAfterLogin, login } from './helpers/auth';
 
 const stamp = Date.now();
 const companyName = `TAP-42 E2E ${stamp}`;
@@ -70,7 +70,7 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
 
   test('DONO alterna cozinha e estoque, com atualização imediata da navegação', async ({ page }) => {
     await login(page, owner.email, owner.password);
-    await page.goto('/operacao/configuracoes/operacao');
+    await gotoAfterLogin(page, '/operacao/configuracoes/operacao');
 
     await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
 
@@ -96,21 +96,34 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
   });
 
   test('mantém CAIXA e EVENTO como escolhas independentes das capabilities', async ({ page }) => {
+    const ownerCookie = await apiLogin(CREDENTIALS.dono.email, CREDENTIALS.dono.password);
+    const concluiuSetup = await apiRequest('PATCH', '/api/cervejaria/configuracao-operacional', {
+      cookie: ownerCookie,
+      body: { operationMode: 'CAIXA', tapsEnabled: true, inventoryEnabled: false, kitchenEnabled: false, completeInitialSetup: true },
+    });
+    expect(concluiuSetup.status).toBe(200);
     await login(page, CREDENTIALS.caixa.email, CREDENTIALS.caixa.password);
-    await page.goto('/operacao/configuracoes/operacao');
+    await gotoAfterLogin(page, '/operacao/configuracoes/operacao');
     await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Por caixa' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('button', { name: 'Por caixa' })).toContainText('Selecionado');
-    await expect(page.getByRole('navigation', { name: 'Navegação principal' }).getByRole('link').first()).toHaveAccessibleName('Caixa');
+    await expect(page.getByRole('navigation', { name: 'Navegação principal' }).getByRole('link').first()).toHaveAccessibleName('Comandas');
 
     await page.context().clearCookies();
     await login(page, CREDENTIALS.dono.email, CREDENTIALS.dono.password);
-    await page.goto('/configuracoes/operacao');
+    await gotoAfterLogin(page, '/configuracoes/operacao');
     await expect(page.getByRole('heading', { name: /Como voc/ })).toBeVisible();
-    await page.getByRole('button', { name: /Por opera/ }).click();
-    await expect(page.getByRole('button', { name: /Por opera/ })).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByRole('button', { name: /Por opera/ })).toContainText('Selecionado');
+    const modoEvento = page.getByRole('button', { name: /^Por operações \/ eventos/ }).first();
+    await modoEvento.click();
+    await expect(modoEvento).toHaveAttribute('aria-pressed', 'true');
+    await expect(modoEvento).toContainText('Selecionado');
     await expect(page.getByRole('navigation', { name: 'Navegação principal' }).getByRole('link').first()).toHaveAccessibleName('Eventos');
+
+    const restaurouCaixa = await apiRequest('PATCH', '/api/cervejaria/configuracao-operacional', {
+      cookie: ownerCookie,
+      body: { operationMode: 'CAIXA', tapsEnabled: true, inventoryEnabled: false, kitchenEnabled: false, completeInitialSetup: true },
+    });
+    expect(restaurouCaixa.status).toBe(200);
   });
 
   test('cria o primeiro ponto de venda pela tela do caixa', async ({ page }) => {
@@ -123,7 +136,7 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
       body.pontosVenda = [];
       await route.fulfill({ response, body: JSON.stringify(body) });
     });
-    await page.goto('/operacao/configuracoes/operacao');
+    await gotoAfterLogin(page, '/operacao/configuracoes/operacao');
     await page.getByRole('button', { name: 'Por caixa' }).click();
     await page.goto('/operacao/caixa');
     await expect(page.getByRole('heading', { name: 'Você ainda não possui um ponto de venda.' })).toBeVisible();
@@ -136,7 +149,7 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
 
   test('exibe de forma compreensível o bloqueio devolvido pelo backend', async ({ page }) => {
     await login(page, owner.email, owner.password);
-    await page.goto('/operacao/configuracoes/operacao');
+    await gotoAfterLogin(page, '/operacao/configuracoes/operacao');
     await page.getByRole('button', { name: 'Ativar Cozinha / preparo' }).click();
     await expect(page.getByRole('button', { name: 'Desativar Cozinha / preparo' })).toBeVisible();
 
@@ -194,6 +207,10 @@ test.describe('TAP-42 — capacidades do Quiosque', () => {
     await dialog.getByRole('button', { name: 'Salvar alterações' }).click();
 
     await expect(dialog).toBeHidden();
+    const savedConfiguration = await apiRequest<{ kitchenEnabled: boolean }>(
+      'GET', `/api/admin/cervejarias/${companyId}/configuracao-operacional`, { cookie: adminCookie },
+    );
+    expect(savedConfiguration.data.kitchenEnabled).toBe(true);
     await row.getByRole('button', { name: 'Editar' }).click();
     await expect(dialog.getByRole('checkbox', { name: /Cozinha \/ preparo/ })).toBeChecked();
   });

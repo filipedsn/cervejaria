@@ -8,7 +8,8 @@ test.use({ storageState: donoAuth });
 
 test.describe('Troca de usuário offline', () => {
   test('logout offline limpa sessão e login de outro perfil fica disponível', async ({ page, context }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), undefined, { timeout: 15_000 });
     await expect(page.getByRole('navigation').first()).toBeVisible();
 
     await logoutViaAccountMenu(page);

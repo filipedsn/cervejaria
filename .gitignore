@@ -58,6 +58,7 @@ deploy/backups/*.sql
 deploy/backups/prod-*-recovery-*/
 deploy/backups-external/
 deploy/backups-development/
+deploy/backups-production/
 deploy/restore-drills/
 
 # Artefatos publicados em producao (somente via prod:deploy)
@@ -70,6 +71,7 @@ deploy/prod-artifacts.previous.swap/
 
 # Candidates de release retidos: fora do artefato ativo e nunca versionados.
 deploy/release-candidates/
+deploy/release-worktrees/
 
 # Scripts de diagnostico/temporarios (nao versionar)
 backend/scripts/diag-*.mjs

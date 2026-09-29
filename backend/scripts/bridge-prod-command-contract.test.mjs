@@ -70,3 +70,14 @@ test('dry-runs and reconciliation remain read-only command contracts', () => {
   const reconciliation = fs.readFileSync(path.join(backendRoot, 'scripts', 'reconcile-operational-materialization.ts'), 'utf8');
   assert.doesNotMatch(reconciliation, /\.(?:create|update|updateMany|delete|deleteMany|\$executeRaw)\s*\(/);
 });
+
+test('bridge backfills query the current Prisma relation for the legacy quiosque table', () => {
+  const operationalBackfill = fs.readFileSync(path.join(backendRoot, 'scripts', 'backfill-operational-enablement.ts'), 'utf8');
+  const cashRegisterBackfill = fs.readFileSync(path.join(backendRoot, 'scripts', 'backfill-cash-register-capability.ts'), 'utf8');
+  const reconciliation = fs.readFileSync(path.join(backendRoot, 'scripts', 'reconcile-operational-materialization.ts'), 'utf8');
+
+  for (const source of [operationalBackfill, cashRegisterBackfill, reconciliation]) {
+    assert.match(source, /configuracaoOperacao/);
+    assert.doesNotMatch(source, /configuracaoQuiosque/);
+  }
+});

@@ -57,7 +57,7 @@ test.describe('PWA offline', () => {
     expect(swInfo.hasRegistration).toBe(true);
     expect(swInfo.controlled).toBe(true);
     expect(swInfo.state).toBe('activated');
-    expect(swInfo.scope).toContain('localhost:5202');
+    expect(swInfo.scope).toContain(new URL(page.url()).origin);
 
     await expect(page.locator('#email')).toBeVisible();
     await expect(page.locator('#password')).toBeVisible();

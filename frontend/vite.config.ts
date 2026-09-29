@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 const isProdServe = process.env.QUIVER_ENV === 'production';
 const frontendPort = isProdServe ? 5201 : 5202;
-const apiPort = isProdServe ? 3001 : 3002;
+const apiPort = Number(process.env.VITE_API_PORT ?? (isProdServe ? 3001 : 3002));
 
 export default defineConfig({  plugins: [
     react(),

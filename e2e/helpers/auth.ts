@@ -31,8 +31,30 @@ export async function login(page: Page, email: string, password: string) {
   await expect(page).not.toHaveURL(/\/login$/);
 }
 
+/** A newly activated PWA worker can abort one navigation while taking control. */
+export async function gotoAfterLogin(page: Page, path: string) {
+  const baseUrl = page.url().startsWith('http') ? page.url() : process.env.E2E_BASE_URL ?? 'http://localhost';
+  const targetPath = new URL(path, baseUrl).pathname;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await page.goto(path, { waitUntil: 'domcontentloaded' });
+    } catch (error) {
+      if (!String(error).includes('ERR_ABORTED')) throw error;
+      await page.waitForURL((url) => url.pathname === targetPath, { timeout: 5_000 }).catch(() => undefined);
+      if (new URL(page.url()).pathname === targetPath) return;
+    }
+    if (new URL(page.url()).pathname === targetPath) return;
+  }
+  await expect(page).toHaveURL(new RegExp(`${targetPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
+}
+
 export async function logoutViaAccountMenu(page: Page) {
   await page.getByRole('button', { name: 'Abrir conta' }).click();
-  await page.getByRole('button', { name: 'Sair da conta' }).click();
+  const menu = page.getByRole('dialog', { name: 'Conta' });
+  await expect(menu).toBeVisible();
+  const logout = menu.getByRole('button', { name: 'Sair da conta' });
+  await logout.scrollIntoViewIfNeeded();
+  await expect(logout).toBeInViewport();
+  await logout.click();
   await expect(page).toHaveURL(/\/login/);
 }

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import path from 'node:path';
 import { loadArenaFixture } from './helpers/fixtures';
 import { abrirComandaPortal, enviarPedidoChopePortal } from './helpers/portal';
+import { gotoAfterLogin } from './helpers/auth';
 
 const arenaAuth = path.join(process.cwd(), 'e2e/.auth/arena.json');
 
@@ -19,7 +20,7 @@ test.describe('Portal + staff', () => {
 
     const staffCtx = await browser.newContext({ storageState: arenaAuth });
     const staffPage = await staffCtx.newPage();
-    await staffPage.goto('/comandas');
+    await gotoAfterLogin(staffPage, '/comandas');
 
     await expect(staffPage.getByRole('heading', { name: 'Pedidos do cliente' })).toBeVisible({
       timeout: 15_000,

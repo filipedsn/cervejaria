@@ -4,7 +4,7 @@ import path from 'node:path';
 const adminAuth = path.join(process.cwd(), 'e2e/.auth/admin.json');
 test.use({ storageState: adminAuth });
 
-test('Admin não exibe modos legados como decisão operacional', async ({ page }) => {
+test('Cadastro administrativo deixa a configuração operacional para o primeiro acesso do proprietário', async ({ page }) => {
   await page.goto('/admin/cervejarias');
   await expect(page.getByRole('heading', { name: 'Empresas' })).toBeVisible();
   await page.getByRole('button', { name: '+ Nova Empresa' }).click();
@@ -12,5 +12,7 @@ test('Admin não exibe modos legados como decisão operacional', async ({ page }
   await expect(modal.getByText('Módulos da empresa')).toHaveCount(0);
   await expect(modal.getByText('Modo da empresa')).toHaveCount(0);
   await expect(modal.getByText('Exclusivo')).toHaveCount(0);
-  await expect(modal.getByText('Capacidades operacionais')).toBeVisible();
+  await expect(modal.getByText('Capacidades operacionais')).toHaveCount(0);
+  await expect(modal.getByRole('button', { name: 'Por caixa' })).toHaveCount(0);
+  await expect(modal.getByRole('button', { name: 'Por operações / eventos' })).toHaveCount(0);
 });

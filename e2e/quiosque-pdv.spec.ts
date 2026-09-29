@@ -19,13 +19,15 @@ async function prepararPdvAberto({ produto = false }: { produto?: boolean } = {}
   expect(ponto.status, 'ponto de venda E2E criado').toBe(201);
 
   let nomeProduto = '';
+  let produtoId = '';
   if (produto) {
     nomeProduto = `Produto PDV E2E ${id}`;
-    const produtoCriado = await apiRequest('POST', '/api/operacao/produtos', {
+    const produtoCriado = await apiRequest<{ id: string }>('POST', '/api/operacao/produtos', {
       cookie,
       body: { nome: nomeProduto, precoUnit: 10, exigePreparo: false, controlaEstoque: false },
     });
     expect(produtoCriado.status, 'produto disponivel para venda avulsa criado').toBe(201);
+    produtoId = produtoCriado.data.id;
   }
 
   const caixa = await apiRequest('POST', '/api/operacao/caixa/abrir', {
@@ -33,6 +35,14 @@ async function prepararPdvAberto({ produto = false }: { produto?: boolean } = {}
     body: { pontoVendaId: ponto.data.id, trocoInicial: 0 },
   });
   expect(caixa.status, 'caixa do ponto E2E aberto').toBe(201);
+
+  if (produtoId) {
+    const cardapio = await apiRequest('PUT', `/api/operacao/caixa/cardapio?pontoVendaId=${ponto.data.id}`, {
+      cookie,
+      body: { produtoIds: [produtoId] },
+    });
+    expect(cardapio.status, 'produto de teste incluído no cardápio do turno').toBe(200);
+  }
 
   return { ...ponto.data, nomeProduto };
 }
@@ -60,9 +70,9 @@ test.describe('Quiosque comandas', () => {
     await selectPorRotulo(page, 'Ponto de venda').selectOption(ponto.id);
     await expect(page.getByRole('navigation', { name: 'Navegação principal' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Comandas' })).toBeVisible();
-    await expect(page.getByRole('link', { name: '+ Comanda', exact: true })).toBeEnabled();
+    await expect(page.getByRole('link', { name: 'Nova comanda', exact: true })).toBeEnabled();
     await expect(page.getByRole('link', { name: 'Venda avulsa', exact: true })).toBeEnabled();
-    await expect(page.getByRole('button', { name: 'QR Code para abrir comanda' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Abrir QR Code para comandas' })).toBeVisible();
   });
 
   test('QR do Caixa permite ao cliente abrir e reutilizar a propria comanda', async ({ page }) => {
@@ -75,10 +85,11 @@ test.describe('Quiosque comandas', () => {
     await page.context().clearCookies();
     await page.goto(`/c/${slug}/p/${ponto.id}`);
     await expect(page.getByRole('heading', { name: 'Abrir comanda' })).toBeVisible();
-    await page.locator('#portal-pdv-nome').fill('Cliente QR E2E');
     await page.locator('#portal-pdv-telefone').fill('11987654321');
+    await expect(page.locator('#portal-pdv-nome')).toHaveAttribute('placeholder', 'Digite seu nome');
+    await page.locator('#portal-pdv-nome').fill('Cliente QR E2E');
     await page.getByRole('button', { name: 'Abrir comanda' }).click();
-    await expect(page.getByRole('heading', { name: 'Comanda aberta!' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cliente QR E2E' })).toBeVisible();
 
     const repetida = await apiRequest<{ reused: boolean }>('POST', `/api/public/cervejarias/${slug}/pontos-venda/${ponto.id}/comandas`, {
       body: { nome: 'Cliente QR E2E', telefone: '11987654321' },
@@ -97,18 +108,30 @@ test.describe('Quiosque comandas', () => {
     const telefone = `119${String(Date.now()).slice(-8)}`;
 
     await page.context().clearCookies();
-    await page.goto(`/c/${slug}/p/${ponto.id}`);
-    await page.locator('#portal-pdv-telefone').fill(telefone);
+    await page.goto(`/c/${slug}/p/${ponto.id}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), undefined, { timeout: 15_000 });
+    const telefonePortal = page.locator('#portal-pdv-telefone');
+    const nomePortal = page.locator('#portal-pdv-nome');
+    await telefonePortal.fill(telefone);
+    await expect(telefonePortal).toHaveValue(/^\(\d{2}\) \d \d{4}-\d{4}$/);
     // A busca pelo telefone pode limpar o nome quando ainda não há cadastro;
     // aguarde a busca terminar e preencha o nome depois para evitar corrida.
-    await expect(page.locator('#portal-pdv-nome')).toHaveAttribute('placeholder', 'Digite seu nome');
-    await page.locator('#portal-pdv-nome').fill(nomeCliente);
+    await expect(nomePortal).toHaveAttribute('placeholder', 'Digite seu nome');
+    await nomePortal.fill(nomeCliente);
+    await expect(nomePortal).toHaveValue(nomeCliente);
+    await expect(telefonePortal).toHaveValue(/^\(\d{2}\) \d \d{4}-\d{4}$/);
     await page.getByRole('button', { name: 'Abrir comanda' }).click();
     await expect(page.getByRole('heading', { name: nomeCliente })).toBeVisible();
 
+    const requestsObserved: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'POST') requestsObserved.push(new URL(request.url()).pathname);
+    });
     await page.getByRole('button', { name: new RegExp(`^${ponto.nomeProduto}`) }).click();
+    await expect(page.getByRole('button', { name: 'Enviar pedido', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Enviar pedido', exact: true }).click();
-    await expect(page.locator('.portal-pdv-account').getByText('R$ 10,00', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'Pedidos (0)', exact: true })).toBeVisible({ timeout: 15_000 });
+    expect(requestsObserved, `POSTs observados: ${requestsObserved.join(', ')}`).toContain(`/api/public/cervejarias/${slug}/pontos-venda/${ponto.id}/comanda/pedidos`);
 
     const comandas = await apiRequest<Array<{
       cliente?: { nome: string } | null;

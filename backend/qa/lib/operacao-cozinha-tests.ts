@@ -19,6 +19,7 @@ type TestFn = (
 interface PedidoCozinha {
   id: string;
   status: string;
+  itens?: Array<{ id: string; cancelamentoPendente?: boolean }>;
   statusDesde?: string;
   entregueEm?: string | null;
   createdAt?: string;
@@ -109,7 +110,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
     async () => {
       if (!pedidoId) return { status: 'failed', message: 'QCZ-01 incompleto' };
       if (!atendenteToken) return { status: 'skipped', message: 'Token de atendente indisponível' };
-      const r = await setStatus(pedidoId, 'CANCELADO', atendenteToken);
+      const r = await setStatus(pedidoId, 'CANCELAMENTO_PENDENTE', atendenteToken);
       if (r.status !== 403) {
         return { status: 'failed', message: 'ATENDENTE cancelou pedido', expected: '403', actual: String(r.status) };
       }
@@ -162,16 +163,29 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
     { id: 'QCZ-06', category: 'Quiosque cozinha', name: 'DONO cancela pedido em preparo', requirement: 'QCZ-06' },
     async () => {
       if (!pedidoId) return { status: 'failed', message: 'QCZ-01 incompleto' };
-      const r = await setStatus(pedidoId, 'CANCELADO');
-      if (r.status !== 200 || r.data?.status !== 'CANCELADO') {
-        return { status: 'failed', message: 'Cancelar em preparo', expected: '200 CANCELADO', actual: `${r.status} ${r.data?.status}` };
+      const r = await setStatus(pedidoId, 'CANCELAMENTO_PENDENTE');
+      if (r.status !== 200 || r.data?.status !== 'CANCELAMENTO_PENDENTE') {
+        return { status: 'failed', message: 'Solicitar cancelamento em preparo', expected: '200 CANCELAMENTO_PENDENTE', actual: `${r.status} ${r.data?.status}` };
+      }
+
+      const itensPendentes = r.data.itens?.filter((item) => item.cancelamentoPendente) ?? [];
+      if (itensPendentes.length === 0) {
+        return { status: 'failed', message: 'Pedido sem itens pendentes de confirmação', expected: 'ao menos 1 item', actual: '0' };
+      }
+      for (const item of itensPendentes) {
+        const confirmacao = await api('PATCH', `/api/operacao/cozinha/${pedidoId}/itens/${item.id}/confirmar-cancelamento`, {
+          token: cfg.donoToken,
+        });
+        if (confirmacao.status !== 200) {
+          return { status: 'failed', message: 'Confirmar cancelamento do item', expected: '200', actual: `${confirmacao.status} ${confirmacao.raw.slice(0, 100)}` };
+        }
       }
 
       const fila = await api<PedidoCozinha[]>('GET', '/api/operacao/cozinha', { token: cfg.donoToken });
       if (fila.data?.some((p) => p.id === pedidoId)) {
-        return { status: 'failed', message: 'Pedido cancelado ainda na fila', expected: 'fora da fila', actual: 'presente' };
+        return { status: 'failed', message: 'Pedido confirmado cancelado ainda na fila', expected: 'fora da fila', actual: 'presente' };
       }
-      return { message: 'Cancelado sai da fila', expected: 'CANCELADO', actual: 'CANCELADO' };
+      return { message: 'Confirmação do item conclui e remove o cancelamento', expected: 'CANCELADO', actual: 'CANCELADO' };
     },
   );
 
@@ -222,7 +236,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
   );
 
   await test(
-    { id: 'QCZ-10', category: 'Quiosque cozinha', name: 'Cozinha pendente bloqueia pagamento; total já inclui itens', requirement: 'QCZ-10' },
+    { id: 'QCZ-10', category: 'Quiosque cozinha', name: 'Item de cozinha só entra no total após entrega e bloqueia pagamento enquanto pendente', requirement: 'QCZ-10' },
     async () => {
       if (!pontoId) return { status: 'failed', message: 'QCZ-01 incompleto' };
       const comanda = await api<{ id: string; total: number; pedidos?: Array<{ id: string }> }>(
@@ -242,18 +256,18 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
       if (comanda.status !== 201 || !novo) {
         return { status: 'failed', message: 'Setup comanda paga', expected: '201', actual: String(comanda.status) };
       }
-      if (!comanda.data.total || comanda.data.total <= 0) {
+      if (comanda.data.total !== 0) {
         return {
           status: 'failed',
-          message: 'Total inclui item de cozinha ao lançar',
-          expected: '> 0',
+          message: 'Item pendente não pode entrar no total cobrável',
+          expected: '0 antes da entrega',
           actual: String(comanda.data.total),
         };
       }
 
       const pagarAntes = await api('POST', `/api/operacao/comandas/${comanda.data.id}/pagamentos`, {
         token: cfg.donoToken,
-        body: { pagamentos: [{ forma: 'PIX', valor: comanda.data.total }] },
+        body: { pagamentos: [{ forma: 'PIX', valor: 1 }] },
       });
       if (pagarAntes.status !== 409 || !pagarAntes.data?.error?.includes('cozinha')) {
         return {
@@ -298,7 +312,7 @@ export async function runQuiosqueCozinhaTests(ctx: QaContext, test: TestFn) {
         return { status: 'failed', message: 'Fechar comanda após entrega', expected: '200', actual: String(pagar.status) };
       }
 
-      const r = await setStatus(novo, 'CANCELADO');
+      const r = await setStatus(novo, 'CANCELAMENTO_PENDENTE');
       if (r.status !== 409 || !r.data?.error?.includes('já foi fechada')) {
         return {
           status: 'failed',

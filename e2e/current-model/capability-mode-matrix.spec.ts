@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { apiLogin, apiRequest } from '../helpers/api';
-import { CREDENTIALS } from '../helpers/auth';
+import { CREDENTIALS, gotoAfterLogin } from '../helpers/auth';
 
 const runId = `current-matrix-${Date.now()}`;
 const ownerEmail = `${runId}@qa.test`;
@@ -73,12 +73,12 @@ test.describe('Current operational profile — mode × capability matrix', () =>
         name: 'token', value: ownerCookie.replace(/^token=/, ''), domain: origin.hostname, path: '/',
         httpOnly: true, secure: origin.protocol === 'https:', sameSite: 'Lax',
       }]);
-      await page.goto(item.mode === 'CAIXA' ? '/operacao/configuracoes/operacao' : '/configuracoes/operacao');
+      await gotoAfterLogin(page, item.mode === 'CAIXA' ? '/operacao/configuracoes/operacao' : '/configuracoes/operacao');
       await expect(page).not.toHaveURL(/\/login/);
       const selected = item.mode === 'CAIXA' ? 'Por caixa' : /Por opera/;
       await expect(page.getByRole('button', { name: selected })).toHaveAttribute('aria-pressed', 'true');
 
-      await page.goto('/operacao/comandas');
+      await gotoAfterLogin(page, '/operacao/comandas');
       await expect(page).not.toHaveURL(/\/login/);
       const navigation = page.getByRole('navigation', { name: 'Navegação principal' });
       await expect(navigation.getByRole('link', { name: 'Estoque', exact: true })).toHaveCount(item.inventory ? 1 : 0);

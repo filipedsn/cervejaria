@@ -8,7 +8,7 @@ test.use({ storageState: donoAuth });
 test.describe('Login dono', () => {
   test('dono autentica e entra na área da cervejaria', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveURL(/\/(comandas|eventos|trailer)/);
+    await expect(page).toHaveURL(/\/(comandas|eventos|trailer|operacao\/caixa)/);
     await expect(page.getByRole('navigation').first()).toBeVisible();
   });
 });

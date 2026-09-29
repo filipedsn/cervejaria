@@ -5,9 +5,11 @@ import { getOnboardingVisualAction } from '../lib/onboarding-visual';
 
 /** Compact residual affordance: it never covers the primary operation controls. */
 export function OnboardingChecklist() {
-  const { isOpen, dismissedLocally, autoStartAllowed, openOnboarding } = useOnboarding();
+  const { isOpen, dismissedLocally, autoStartAllowed, manualEntryVisible, openOnboarding } = useOnboarding();
   const { data: readiness } = useOnboardingReadiness();
-  if (isOpen || dismissedLocally || !autoStartAllowed || !readiness || readiness.firstSaleCompleted) return null;
+  // The settings page already offers an in-flow manual entry. Keep the
+  // floating reminder from covering that page's controls.
+  if (isOpen || dismissedLocally || manualEntryVisible || !autoStartAllowed || !readiness || readiness.firstSaleCompleted) return null;
   const module = initialSelectedModule(readiness);
   const next = getNextOnboardingAction(readiness, module);
   if (!module || !next) return null;

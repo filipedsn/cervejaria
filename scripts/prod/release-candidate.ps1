@@ -110,7 +110,7 @@ function Assert-CandidateSource {
   if (-not (Test-Path -LiteralPath $NodeExe -PathType Leaf)) { throw "NodeExe ausente: $NodeExe" }
   $version = [string](& $NodeExe --version 2>$null | Select-Object -Last 1)
   $version = $version.Trim()
-  if ($LASTEXITCODE -ne 0 -or $version -notmatch '^v20\.') { throw "Node major deve ser 20; observado $version" }
+  if ($LASTEXITCODE -ne 0 -or $version -notmatch '^v24\.') { throw "Node major deve ser 24; observado $version" }
   $head = (& git -C $SourceWorktree rev-parse HEAD).Trim().ToLowerInvariant()
   if ($LASTEXITCODE -ne 0 -or $head -ne $ExpectedReleaseSha) { throw "source HEAD diverge do expected RELEASE_SHA ($head)" }
   $dirty = @(& git -C $SourceWorktree status --porcelain --untracked-files=no)

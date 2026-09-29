@@ -14,6 +14,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
+. "$PSScriptRoot\restore-drill-migration-status.ps1"
 
 $startedAt = (Get-Date).ToUniversalTime()
 $container = 'cervejaria-db'
@@ -124,6 +125,10 @@ try {
   $validation.migrationsRestored = [int](Invoke-PsqlScalar -Database $TargetDatabase -Sql 'SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL;')
   $expectedMigrations = (Get-ChildItem (Join-Path $PSScriptRoot '..\..\backend\prisma\migrations') -Directory).Count
   $validation.migrationsExpected = $expectedMigrations
+  $appliedMigrationText = Invoke-PsqlScalar -Database $TargetDatabase -Sql "SELECT COALESCE(string_agg(migration_name, ',' ORDER BY migration_name), '') FROM _prisma_migrations WHERE finished_at IS NOT NULL;"
+  $appliedMigrationNames = @()
+  if ($appliedMigrationText) { $appliedMigrationNames = @($appliedMigrationText -split ',') }
+  $validation.failedMigrations = [int](Invoke-PsqlScalar -Database $TargetDatabase -Sql 'SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL;')
 
   $tables = [ordered]@{
     Cervejaria = @{ schema = 'public'; table = 'Cervejaria' }
@@ -156,8 +161,29 @@ try {
   $env:DATABASE_URL = $drillDatabaseUrl
   Push-Location $paths.BackendDir
   try {
-    & npx.cmd prisma migrate status
-    if ($LASTEXITCODE -ne 0) { throw 'prisma migrate status falhou no banco restaurado.' }
+    # Windows PowerShell 5 can turn CLI warnings on stderr into terminating
+    # NativeCommandError records when ErrorActionPreference is Stop. Capture
+    # both streams with Continue, then restore the strict preference.
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      $migrationStatusLines = & npx.cmd prisma migrate status 2>&1
+      $migrationStatusExitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
+    $migrationStatusOutput = ($migrationStatusLines | ForEach-Object { "$_" }) -join "`n"
+    $migrationDirectories = @(Get-ChildItem (Join-Path $PSScriptRoot '..\..\backend\prisma\migrations') -Directory | Select-Object -ExpandProperty Name)
+    $migrationState = Get-ValidatedRestoreDrillMigrationStatus `
+      -StatusOutput $migrationStatusOutput `
+      -ExitCode $migrationStatusExitCode `
+      -MigrationsOnDisk $migrationDirectories `
+      -AppliedMigrations $appliedMigrationNames `
+      -FailedMigrations $validation.failedMigrations
+    $validation.migrationsPending = @($migrationState.PendingNames).Count
+    $validation.migrationStatus = $migrationState.State
+    Write-Host "Migration status: $($migrationState.State); aplicadas $($migrationState.AppliedCount), pendentes $($validation.migrationsPending), falhas $($migrationState.FailedCount)."
+
     & npx.cmd prisma validate
     if ($LASTEXITCODE -ne 0) { throw 'prisma validate falhou.' }
   } finally {

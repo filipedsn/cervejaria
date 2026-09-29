@@ -47,16 +47,16 @@ export async function runQuiosqueCardapioTests(ctx: QaContext, test: TestFn) {
   const PRECO = 12;
 
   await test(
-    { id: 'QCD-00', category: 'Quiosque cardápio', name: 'Ativar usaCardapio no quiosque', requirement: 'QCD-00' },
+    { id: 'QCD-00', category: 'Quiosque cardápio', name: 'Toggle legado de cardápio é rejeitado', requirement: 'QCD-00' },
     async () => {
       const r = await api('PATCH', '/api/operacao/config', {
         token: cfg.donoToken,
         body: { usaCardapio: true },
       });
-      if (r.status !== 200) {
-        return { status: 'failed', message: 'Ativar cardápio quiosque', expected: '200', actual: String(r.status) };
+      if (r.status !== 400) {
+        return { status: 'failed', message: 'Toggle legado ainda aceito', expected: '400', actual: `${r.status} ${r.raw.slice(0, 100)}` };
       }
-      return { message: 'usaCardapio=true', expected: '200', actual: '200' };
+      return { message: 'Endpoint legado não altera o cardápio atual', expected: '400', actual: '400' };
     },
   );
 

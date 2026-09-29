@@ -10,7 +10,7 @@ function New-TestCandidate {
   Set-Content (Join-Path $Path 'backend\package.json') '{}' -NoNewline
   Set-Content (Join-Path $Path 'backend\package-lock.json') '{}' -NoNewline
   Set-Content (Join-Path $Path 'backend\prisma\schema.prisma') 'generator client { provider = "prisma-client-js" }' -NoNewline
-  [ordered]@{ format = $script:CandidateFormat; releaseSha = $Sha; createdAt = '2026-01-01T00:00:00.0000000Z'; nodeVersion = 'v20.20.2'; npmVersion = '10.8.2'; artifacts = @(); files = @(Get-CandidateFileHashes $Path) } | ConvertTo-Json -Depth 6 | Set-Content (Get-CandidateManifestPath $Path) -Encoding UTF8
+  [ordered]@{ format = $script:CandidateFormat; releaseSha = $Sha; createdAt = '2026-01-01T00:00:00.0000000Z'; nodeVersion = 'v24.18.0'; npmVersion = '11.16.0'; artifacts = @(); files = @(Get-CandidateFileHashes $Path) } | ConvertTo-Json -Depth 6 | Set-Content (Get-CandidateManifestPath $Path) -Encoding UTF8
 }
 
 Describe 'Retained release candidate contract' {
@@ -42,7 +42,7 @@ Describe 'Retained release candidate contract' {
     try { git init -q; git config user.email test@example.invalid; git config user.name test; Set-Content tracked.txt ok; git add tracked.txt; git commit -qm init; $actual = (git rev-parse HEAD).Trim(); Set-Content tracked.txt dirty } finally { Pop-Location }
     { Assert-CandidateSource -SourceWorktree $source -ExpectedReleaseSha $actual -NodeExe $env:RELEASE_CANDIDATE_TEST_NODE } | Should Throw
   }
-  It 'fails closed for a non-Node-20 executable' {
+  It 'fails closed for a non-Node-24 executable' {
     { Assert-CandidateSource -SourceWorktree $TestDrive -ExpectedReleaseSha $sha -NodeExe $PSHOME\powershell.exe } | Should Throw
   }
 }

@@ -1,11 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { CREDENTIALS, login } from './helpers/auth';
+import { CREDENTIALS, gotoAfterLogin, login } from './helpers/auth';
 
 test.describe('Onboarding non-blocking operation guidance', () => {
   test('does not open automatically and keeps the operation settings usable', async ({ page }) => {
     await login(page, CREDENTIALS.dono.email, CREDENTIALS.dono.password);
-    await page.goto('/configuracoes/operacao');
-
+    await gotoAfterLogin(page, '/configuracoes/operacao');
     const guidance = page.getByRole('region', { name: /Como começar a vender/i });
     await expect(guidance).toBeHidden();
     await expect(page.getByRole('heading', { name: /Como você trabalha/i })).toBeVisible();
@@ -15,7 +14,7 @@ test.describe('Onboarding non-blocking operation guidance', () => {
 
   test('opens contextual guidance manually without module selection or competing CTA', async ({ page }) => {
     await login(page, CREDENTIALS.dono.email, CREDENTIALS.dono.password);
-    await page.goto('/configuracoes/operacao');
+    await gotoAfterLogin(page, '/configuracoes/operacao');
     await page.getByRole('button', { name: 'Abrir', exact: true }).click();
 
     const guidance = page.getByRole('region', { name: /Como começar a vender/i });
@@ -30,7 +29,10 @@ test.describe('Onboarding non-blocking operation guidance', () => {
   test('manual guidance fits the mobile viewport', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await login(page, CREDENTIALS.dono.email, CREDENTIALS.dono.password);
-    await page.goto('/configuracoes/operacao');
+    await gotoAfterLogin(page, '/configuracoes/operacao');
+    await expect(page.getByRole('complementary', { name: /Próxima ação para começar a vender/i })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Abrir', exact: true }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole('button', { name: 'Abrir', exact: true })).toBeInViewport();
     await page.getByRole('button', { name: 'Abrir', exact: true }).click();
     const guidance = page.getByRole('region', { name: /Como começar a vender/i });
     await expect(guidance).toBeVisible();
@@ -45,7 +47,7 @@ test.describe('Onboarding non-blocking operation guidance', () => {
 
   test('does not expose manual guidance to an attendant', async ({ page }) => {
     await login(page, CREDENTIALS.atendente.email, CREDENTIALS.atendente.password);
-    await page.goto('/configuracoes/operacao');
+    await gotoAfterLogin(page, '/configuracoes/operacao');
     await expect(page.getByRole('heading', { name: /Como começar a vender/i })).toHaveCount(0);
   });
 });

@@ -69,6 +69,9 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
       async () => {
         const r = await api<{
           ativo?: boolean;
+          operationMode?: 'CAIXA' | 'EVENTO' | null;
+          tapsEnabled?: boolean;
+          cashRegisterEnabled?: boolean;
           controlaEstoque?: boolean;
           temCozinha?: boolean;
         }>('GET', '/api/operacao/contexto', { token: cfg.donoToken });
@@ -96,9 +99,15 @@ export async function runCfgTests(ctx: QaContext, test: TestFn) {
           return { message: 'Contexto quiosque OK' };
         }
 
-        if ([401, 403, 404].includes(r.status)) return { message: 'Modulo operacao inativo' };
-        if (r.status === 200 && r.data.ativo === false) return { message: 'Modulo operacao inativo' };
-        if (r.status === 200 && r.data.ativo !== true) return { message: 'Sem quiosque ativo' };
+        // The old brewery-vs-kiosk module split is retired. A company with
+        // taps can expose the operational context without a POS or legacy module.
+        if (cfg.code === 'CERVEJARIA') {
+          const valid = r.status === 200 && r.data.ativo === true && r.data.tapsEnabled === true && r.data.cashRegisterEnabled === false;
+          return valid
+            ? { message: 'Contexto operacional segue as capacidades atuais', expected: 'ativo+taps, sem PDV', actual: 'ativo+taps, sem PDV' }
+            : { status: 'failed', message: 'Contexto operacional divergente das capacidades', expected: 'ativo+taps, sem PDV', actual: JSON.stringify(r.data) };
+        }
+        if ([401, 403, 404].includes(r.status)) return { status: 'failed', message: 'Contexto operacional indisponível', expected: '200', actual: String(r.status) };
         return { status: 'failed', message: 'Resposta inesperada do contexto', actual: JSON.stringify(r.data) };
       },
     );

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import type { Usuario, Cervejaria, AuthResponse } from '../types';
 import { api } from '../lib/api';
 import { clearSessionQueryCache } from '../lib/query-client';
@@ -27,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [cervejaria, setCervejaria] = useState<Cervejaria | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const authInitializationStarted = useRef(false);
 
   const applyAuth = useCallback((data: AuthResponse) => {
     clearSessionQueryCache();
@@ -76,6 +77,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout]);
 
   useEffect(() => {
+    // StrictMode replays effects in development. A second /auth/me response
+    // would clear active tenant queries after the authenticated UI mounts.
+    if (authInitializationStarted.current) return;
+    authInitializationStarted.current = true;
+
+    // The customer portal is public and uses its own customer session. An
+    // anonymous /auth/me 401 triggers the staff logout handler, which clears
+    // React Query while the portal's public information query is loading.
+    if (window.location.pathname.startsWith('/c/')) {
+      setIsLoading(false);
+      return;
+    }
+
     api
       .get<{ usuario: Usuario; cervejaria: Cervejaria | null }>('/api/auth/me')
       .then((data) => {
