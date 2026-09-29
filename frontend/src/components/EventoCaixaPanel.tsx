@@ -48,6 +48,12 @@ export function EventoCaixaPanel({ eventoId, comandasAbertas = 0, eventoAberto =
     queryFn: () => api.get<CaixaEventoResponse>(`/api/eventos/${eventoId}/caixa`),
     refetchInterval: 30_000,
   });
+  const comandasAbertasQuery = useQuery({
+    queryKey: ['comandas', eventoId, 'ABERTA'],
+    queryFn: () => api.get<Array<{ id: string }>>(`/api/comandas/evento/${eventoId}?status=ABERTA`),
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+  });
   const contasQuery = useQuery({
     queryKey: ['evento-contas-pendentes', eventoId],
     queryFn: () => api.get<ContaEvento[]>(`/api/eventos/${eventoId}/contas-pendentes`),
@@ -55,6 +61,8 @@ export function EventoCaixaPanel({ eventoId, comandasAbertas = 0, eventoAberto =
   });
   const caixa = caixaQuery.data?.caixa ?? null;
   const aberto = caixaQuery.data?.aberto ?? false;
+  const contagemComandasAbertas = comandasAbertasQuery.data?.length ?? comandasAbertas;
+  const podeConfirmarContagemComandas = comandasAbertasQuery.isSuccess;
   const temPendente = contasQuery.data?.some((conta) => conta.saldo > 0) ?? false;
   const refresh = async () => {
     await Promise.all([
@@ -132,7 +140,7 @@ export function EventoCaixaPanel({ eventoId, comandasAbertas = 0, eventoAberto =
                 <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SANGRIA'); setError(''); setDialog('movimento'); }}>−&nbsp; Sangria</button>
                 <Link to={`/eventos/${eventoId}/contas-pendentes`} className={`touch-btn-secondary touch-btn-sm flex items-center justify-center text-center leading-tight ${temPendente ? 'caixa-contas-pendentes-alerta' : ''}`} aria-label={temPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes{temPendente ? ' •' : ''}</Link>
               </div>
-              <button type="button" className="touch-btn-orange w-full disabled:opacity-50" disabled={fechar.isPending || comandasAbertas > 0} title={comandasAbertas > 0 ? 'Feche ou deixe pendentes as comandas antes de fechar o caixa.' : undefined} onClick={() => { setError(''); setContado(Object.fromEntries(FORMAS.map(({ id }) => [id, formatCurrencyInputFromNumber(caixa.esperado[id] ?? 0)]) as [Forma, string][])); setDialog('fechar'); }}>{fechar.isPending ? 'Fechando…' : comandasAbertas > 0 ? `Feche as ${comandasAbertas} comandas antes de fechar o caixa` : 'Conferir e fechar caixa'}</button>
+              <button type="button" className="touch-btn-orange w-full disabled:opacity-50" disabled={fechar.isPending || !podeConfirmarContagemComandas || contagemComandasAbertas > 0} title={contagemComandasAbertas > 0 ? 'Feche ou deixe pendentes as comandas antes de fechar o caixa.' : undefined} onClick={() => { setError(''); setContado(Object.fromEntries(FORMAS.map(({ id }) => [id, formatCurrencyInputFromNumber(caixa.esperado[id] ?? 0)]) as [Forma, string][]) as Record<Forma, string>); setDialog('fechar'); }}>{fechar.isPending ? 'Fechando…' : !podeConfirmarContagemComandas ? 'Verificando comandas abertas…' : contagemComandasAbertas > 0 ? `Feche as ${contagemComandasAbertas} comandas antes de fechar o caixa` : 'Conferir e fechar caixa'}</button>
             </div>
           </div>
         </>
