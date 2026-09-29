@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   itemConfirmadoNaComanda,
-  ordenarPedidosMaisRecentes,
+  ordenarPedidosPorSenhaDecrescente,
   podeAlterarQuantidadeItemComanda,
   resumirItensComanda,
   totalPendenteComanda,
@@ -100,14 +100,15 @@ test('oculta rodada sem itens ou com todos os itens cancelados, mas preserva can
   assert.equal(pedidoVisivelNaComanda(cancelamentoPendente), true);
 });
 
-test('pedidos da comanda aparecem do lançamento mais recente para o mais antigo sem mutar a lista', () => {
+test('senhas da comanda aparecem em ordem numérica decrescente sem mutar a lista', () => {
   const maisAntigo = { ...pedido, id: 'pedido-antigo', numero: 7, createdAt: '2026-09-28T11:00:00.000Z' };
   const maisRecente = { ...pedido, id: 'pedido-recente', numero: 10, createdAt: '2026-09-28T13:00:00.000Z' };
   const mesmaDataMaiorNumero = { ...pedido, id: 'pedido-empate', numero: 11, createdAt: maisRecente.createdAt };
-  const pedidos = [maisAntigo, maisRecente, mesmaDataMaiorNumero];
+  const maiorNumeroMaisAntigo = { ...pedido, id: 'pedido-numero-maior', numero: 16, createdAt: '2026-09-28T09:00:00.000Z' };
+  const pedidos = [maisAntigo, maisRecente, mesmaDataMaiorNumero, maiorNumeroMaisAntigo];
 
-  assert.deepEqual(ordenarPedidosMaisRecentes(pedidos).map(({ id }) => id), [
-    'pedido-empate', 'pedido-recente', 'pedido-antigo',
+  assert.deepEqual(ordenarPedidosPorSenhaDecrescente(pedidos).map(({ id }) => id), [
+    'pedido-numero-maior', 'pedido-empate', 'pedido-recente', 'pedido-antigo',
   ]);
-  assert.deepEqual(pedidos.map(({ id }) => id), ['pedido-antigo', 'pedido-recente', 'pedido-empate']);
+  assert.deepEqual(pedidos.map(({ id }) => id), ['pedido-antigo', 'pedido-recente', 'pedido-empate', 'pedido-numero-maior']);
 });

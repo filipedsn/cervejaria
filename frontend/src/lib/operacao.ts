@@ -181,13 +181,14 @@ export interface PedidoOperacao {
   itens: ItemPedido[];
 }
 
-/** Ordena os pedidos da comanda do lançamento mais recente para o mais antigo. */
-export function ordenarPedidosMaisRecentes(pedidos: PedidoOperacao[]): PedidoOperacao[] {
+/** Ordena as senhas da comanda pelo número, da maior para a menor. */
+export function ordenarPedidosPorSenhaDecrescente(pedidos: PedidoOperacao[]): PedidoOperacao[] {
   return [...pedidos].sort((a, b) => {
+    if (a.numero !== b.numero) return b.numero - a.numero;
     const dataA = Date.parse(a.createdAt);
     const dataB = Date.parse(b.createdAt);
-    if (Number.isFinite(dataA) && Number.isFinite(dataB) && dataA !== dataB) return dataB - dataA;
-    return b.numero - a.numero;
+    if (Number.isFinite(dataA) && Number.isFinite(dataB)) return dataB - dataA;
+    return 0;
   });
 }
 
