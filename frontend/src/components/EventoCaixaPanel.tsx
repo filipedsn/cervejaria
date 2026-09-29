@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, formatCurrency, ApiError } from '../lib/api';
 import { CurrencyInput } from './CurrencyInput';
 import { Modal } from './Modal';
+import { IconEye, IconEyeOff } from './NavIcons';
 import { parseCurrencyInput, formatCurrencyInputFromNumber } from '../lib/currency';
 
 type Forma = 'DINHEIRO' | 'PIX' | 'CARTAO' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO';
@@ -14,6 +15,7 @@ type CaixaEvento = {
   abertoEm: string;
   fechadoEm: string | null;
   esperado: Record<Forma, number>;
+  recebidos: Record<Forma, number>;
   contado: Record<Forma, number> | null;
   divergencia: Record<Forma, number> | null;
   movimentos: Array<{ id: string; tipo: 'SUPRIMENTO' | 'SANGRIA'; valor: number; observacao: string | null }>;
@@ -39,6 +41,7 @@ export function EventoCaixaPanel({ eventoId, comandasAbertas = 0, eventoAberto =
   const [contado, setContado] = useState<Record<Forma, string>>({ DINHEIRO: '', PIX: '', CARTAO: '', CARTAO_DEBITO: '', CARTAO_CREDITO: '' });
   const [observacaoFechamento, setObservacaoFechamento] = useState('');
   const [error, setError] = useState('');
+  const [painelSuprimido, setPainelSuprimido] = useState(false);
 
   const caixaQuery = useQuery({
     queryKey: ['evento-caixa', eventoId],
@@ -83,10 +86,10 @@ export function EventoCaixaPanel({ eventoId, comandasAbertas = 0, eventoAberto =
 
   return (
     <section className="card space-y-3 border-brand-600/20 bg-gradient-to-br from-surface via-surface to-brand-900/10 p-4 sm:p-5" aria-label="Caixa do evento">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
+      {(!aberto || !caixa) && <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
         <div><h2 className="text-lg font-bold sm:text-xl">Caixa do evento</h2><p className="text-sm text-ink-muted">Abertura, recebimentos e conferência deste evento.</p></div>
         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${aberto ? 'bg-green-500/10 text-green-600' : 'bg-surface-lighter text-ink-muted'}`}>{aberto ? 'Em operação' : 'Fechado'}</span>
-      </header>
+      </header>}
 
       {error && <div className="alert-error" role="alert">{error}</div>}
       {caixaQuery.isLoading ? <p className="text-sm text-ink-muted">Carregando caixa…</p> : null}
@@ -100,17 +103,38 @@ export function EventoCaixaPanel({ eventoId, comandasAbertas = 0, eventoAberto =
 
       {!aberto && !eventoAberto && !caixa && <p className="text-sm text-ink-muted">Este evento ainda não teve caixa registrado.</p>}
 
-      {aberto && caixa && (
+      {aberto && caixa && painelSuprimido && (
+        <div className="flex min-h-14 items-center justify-between gap-3">
+          <span className="text-sm font-semibold text-ink">Caixa do evento <span className="font-normal text-ink-muted">· Em operação</span></span>
+          <button type="button" className="icon-btn-ghost" aria-label="Mostrar painel do caixa" title="Mostrar painel do caixa" onClick={() => setPainelSuprimido(false)}><IconEye className="h-5 w-5" /></button>
+        </div>
+      )}
+
+      {aberto && caixa && !painelSuprimido && (
         <>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {FORMAS.map(({ id, label }) => <div key={id} className="rounded-xl border border-line bg-surface-lighter/70 px-3 py-2"><span className="block text-xs text-ink-muted">{label}</span><strong className="mt-0.5 block tabular-nums">{formatCurrency(caixa.esperado[id] ?? 0)}</strong></div>)}
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,1.2fr)] lg:items-center lg:gap-7">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div><h2 className="text-xl font-bold">Caixa do evento</h2><p className="mt-0.5 text-sm text-ink-muted">Abertura, recebimentos e conferência deste evento.</p></div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1.5 text-xs font-semibold text-green-500"><span className="h-2 w-2 rounded-full bg-green-500" />Em operação</span>
+                  <button type="button" className="icon-btn-ghost" aria-label="Suprimir painel do caixa" title="Suprimir painel do caixa" onClick={() => setPainelSuprimido(true)}><IconEyeOff className="h-5 w-5" /></button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="rounded-xl border border-line bg-surface-lighter/70 px-3 py-2.5"><p className="text-xs text-ink-muted">Gaveta</p><strong className="mt-0.5 block text-lg font-bold tabular-nums">{formatCurrency(caixa.esperado.DINHEIRO)}</strong></div>
+                <div className="rounded-xl border border-line bg-surface-lighter/70 px-3 py-2.5"><p className="text-xs text-ink-muted">Recebido</p><strong className="mt-0.5 block text-lg font-bold tabular-nums">{formatCurrency(Object.values(caixa.recebidos).reduce((total, valor) => total + valor, 0))}</strong></div>
+              </div>
+            </div>
+            <div className="space-y-2.5 lg:border-l lg:border-line lg:pl-6">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SUPRIMENTO'); setError(''); setDialog('movimento'); }}>＋&nbsp; Suprimento</button>
+                <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SANGRIA'); setError(''); setDialog('movimento'); }}>−&nbsp; Sangria</button>
+                <Link to={`/eventos/${eventoId}/contas-pendentes`} className={`touch-btn-secondary touch-btn-sm flex items-center justify-center text-center leading-tight ${temPendente ? 'caixa-contas-pendentes-alerta' : ''}`} aria-label={temPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes{temPendente ? ' •' : ''}</Link>
+              </div>
+              <button type="button" className="touch-btn-orange w-full disabled:opacity-50" disabled={fechar.isPending || comandasAbertas > 0} title={comandasAbertas > 0 ? 'Feche ou deixe pendentes as comandas antes de fechar o caixa.' : undefined} onClick={() => { setError(''); setContado(Object.fromEntries(FORMAS.map(({ id }) => [id, formatCurrencyInputFromNumber(caixa.esperado[id] ?? 0)]) as [Forma, string][])); setDialog('fechar'); }}>{fechar.isPending ? 'Fechando…' : comandasAbertas > 0 ? `Feche as ${comandasAbertas} comandas antes de fechar o caixa` : 'Conferir e fechar caixa'}</button>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <button type="button" className="touch-btn-secondary min-h-11" onClick={() => { setTipoMovimento('SUPRIMENTO'); setError(''); setDialog('movimento'); }}>＋ Suprimento</button>
-            <button type="button" className="touch-btn-secondary min-h-11" onClick={() => { setTipoMovimento('SANGRIA'); setError(''); setDialog('movimento'); }}>− Sangria</button>
-            <Link to={`/eventos/${eventoId}/contas-pendentes`} className={`touch-btn-secondary flex min-h-11 items-center justify-center text-center ${temPendente ? 'caixa-contas-pendentes-alerta' : ''}`} aria-label={temPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes{temPendente ? ' •' : ''}</Link>
-          </div>
-          <button type="button" className="touch-btn-orange min-h-12 w-full" disabled={fechar.isPending || comandasAbertas > 0} title={comandasAbertas > 0 ? 'Feche ou deixe pendentes as comandas antes de fechar o caixa.' : undefined} onClick={() => { setError(''); setContado(Object.fromEntries(FORMAS.map(({ id }) => [id, formatCurrencyInputFromNumber(caixa.esperado[id] ?? 0)]) as [Forma, string][])); setDialog('fechar'); }}>{fechar.isPending ? 'Fechando…' : comandasAbertas > 0 ? `Feche as ${comandasAbertas} comandas antes de fechar o caixa` : 'Conferir e fechar caixa'}</button>
         </>
       )}
 
