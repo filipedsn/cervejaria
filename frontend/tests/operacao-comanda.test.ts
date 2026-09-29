@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   itemConfirmadoNaComanda,
+  classificarGrupoProdutoOperacao,
   ordenarPedidosPorSenhaDecrescente,
   podeAlterarQuantidadeItemComanda,
   resumirItensComanda,
@@ -10,6 +11,13 @@ import {
   pedidoVisivelNaComanda,
   type PedidoOperacao,
 } from '../src/lib/operacao.ts';
+
+test('classifica produtos por categoria, sem confundir formato e chope por tap em qualquer modo', () => {
+  assert.equal(classificarGrupoProdutoOperacao({ tipo: 'BEBIDA', categoria: 'Drinks', formato: 'OUTRO', precos: [{ volumeMl: 1, preco: 13 }] }), 'bebidas');
+  assert.equal(classificarGrupoProdutoOperacao({ tipo: 'BEBIDA', categoria: 'Cervejas', formato: 'LATA', precos: [{ volumeMl: 1, preco: 10 }] }), 'bebidas');
+  assert.equal(classificarGrupoProdutoOperacao({ tipo: 'BEBIDA', categoria: 'Chope', formato: 'CHOPE', precos: [{ volumeMl: 300, preco: 12 }] }), 'chope');
+  assert.equal(classificarGrupoProdutoOperacao({ tipo: 'BEBIDA', categoria: 'Outro', formato: 'OUTRO', precos: [{ volumeMl: 1, preco: 8 }] }), 'outros');
+});
 
 const pedido: PedidoOperacao = {
   id: 'pedido-1',

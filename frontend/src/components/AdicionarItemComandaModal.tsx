@@ -1,16 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { Produto, TapComChope, VolumeMl } from '../types';
-import { FORMATO_BEBIDA_LABELS } from '../types';
 import { formatCurrency } from '../lib/api';
+import { normalizeCategoriaProduto } from '../lib/operacao';
 import { Modal } from './Modal';
 
-type TabId = 'chope' | 'bebidas' | 'comidas';
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'chope', label: 'Chopes' },
-  { id: 'bebidas', label: 'Bebidas' },
-  { id: 'comidas', label: 'Comidas' },
-];
+type TabId = 'chope' | 'comidas' | 'bebidas' | 'outros';
 
 export function AdicionarItemComandaModal({
   open,
@@ -18,6 +12,7 @@ export function AdicionarItemComandaModal({
   tapsComChope,
   bebidas,
   comidas,
+  outros = [],
   eventoAberto,
   comandaTotal,
   onAdd,
@@ -30,6 +25,7 @@ export function AdicionarItemComandaModal({
   tapsComChope: TapComChope[];
   bebidas: Produto[];
   comidas: Produto[];
+  outros?: Produto[];
   eventoAberto: boolean;
   comandaTotal: number;
   onAdd: (data: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] }) => void;
@@ -55,8 +51,8 @@ export function AdicionarItemComandaModal({
     setParaViagem(false);
     setObservacao('');
     setOpcionais({});
-    setTab('comidas');
-  }, [open, tapsComChope, bebidas.length, comidas.length]);
+    setTab(comidas.length ? 'comidas' : bebidas.length ? 'bebidas' : outros.length ? 'outros' : tapsComChope.length ? 'chope' : 'comidas');
+  }, [open, tapsComChope, bebidas.length, comidas.length, outros.length]);
 
   useEffect(() => {
     if (!selectedTap?.chopeAtual) {
@@ -123,9 +119,14 @@ export function AdicionarItemComandaModal({
     .sort((a, b) => a - b);
 
   const nothingAvailable =
-    tapsComChope.length === 0 && bebidas.length === 0 && comidas.length === 0;
-  const visibleTabs = TABS.filter((item) => item.id !== 'chope' || tapsComChope.length > 0);
-
+    tapsComChope.length === 0 && bebidas.length === 0 && comidas.length === 0 && outros.length === 0;
+  const visibleTabs: { id: TabId; label: string }[] = [
+    ...(tapsComChope.length > 0 ? [{ id: 'chope' as const, label: 'Chopes' }] : []),
+    ...(comidas.length > 0 ? [{ id: 'comidas' as const, label: 'Comidas' }] : []),
+    ...(bebidas.length > 0 ? [{ id: 'bebidas' as const, label: 'Bebidas' }] : []),
+    ...(outros.length > 0 ? [{ id: 'outros' as const, label: 'Outros' }] : []),
+  ];
+  const produtosDaAba = tab === 'bebidas' ? bebidas : tab === 'comidas' ? comidas : outros;
   const renderEmpty = (message: string) => (
     <p className="text-sm text-ink-faint text-center py-8">{message}</p>
   );
@@ -168,16 +169,10 @@ export function AdicionarItemComandaModal({
         )}
 
         <div className="segmented-control">
-          {visibleTabs.map(({ id, label }) => {
-            const disabled =
-              (id === 'chope' && tapsComChope.length === 0) ||
-              (id === 'bebidas' && bebidas.length === 0) ||
-              (id === 'comidas' && comidas.length === 0);
-            return (
+          {visibleTabs.map(({ id, label }) => (
               <button
                 key={id}
                 type="button"
-                disabled={disabled}
                 onClick={() => {
                   setTab(id);
                   setSelectedProduto(null);
@@ -186,12 +181,11 @@ export function AdicionarItemComandaModal({
                 }}
                 className={`segmented-control-btn ${
                   tab === id ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'
-                } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                }`}
               >
                 {label}
               </button>
-            );
-          })}
+          ))}
         </div>
 
         {tab === 'chope' && (
@@ -285,7 +279,7 @@ export function AdicionarItemComandaModal({
                 {bebidas.map((produto) => {
                   const preco = produto.precos[0];
                   const selected = selectedProduto?.id === produto.id;
-                  const formato = produto.formato ? FORMATO_BEBIDA_LABELS[produto.formato] : 'Unidade';
+                  const categoria = normalizeCategoriaProduto(produto.categoria);
                   return (
                     <button
                       key={produto.id}
@@ -303,7 +297,7 @@ export function AdicionarItemComandaModal({
                           : 'border-line bg-surface hover:border-brand-300',
                       ].join(' ')}
                     >
-                      <p className="text-xs text-ink-faint">{formato}</p>
+                      <p className="text-xs text-ink-faint">{categoria}</p>
                       <p className="font-bold text-sm leading-snug">{produto.nome}</p>
                       {preco && (
                         <p className="text-brand-700 font-semibold text-sm mt-1">
@@ -318,15 +312,16 @@ export function AdicionarItemComandaModal({
           </div>
         )}
 
-        {tab === 'comidas' && (
+        {(tab === 'comidas' || tab === 'outros') && (
           <div className="space-y-3">
-            {comidas.length === 0 ? (
+            {produtosDaAba.length === 0 ? (
               renderEmpty('Nenhuma comida no cardápio deste evento.')
             ) : (
               <div className="grid grid-cols-2 gap-2 max-h-[40vh] overflow-y-auto pr-1">
-                {comidas.map((produto) => {
+                {produtosDaAba.map((produto) => {
                   const preco = produto.precos[0];
                   const selected = selectedProduto?.id === produto.id;
+                  const categoria = normalizeCategoriaProduto(produto.categoria);
                   return (
                     <button
                       key={produto.id}
@@ -344,6 +339,7 @@ export function AdicionarItemComandaModal({
                           : 'border-line bg-surface hover:border-brand-300',
                       ].join(' ')}
                     >
+                      <p className="text-xs text-ink-faint">{categoria}</p>
                       <p className="font-bold text-sm leading-snug">{produto.nome}</p>
                       {preco && (
                         <p className="text-brand-700 font-semibold text-sm mt-1">

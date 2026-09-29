@@ -14,6 +14,7 @@ import { MobileActionBar } from '../components/MobileActionBar';
 import { StatusBadge, comandaStatusVariant } from '../components/StatusBadge';
 import { IconTrash } from '../components/NavIcons';
 import { AdicionarItemComandaModal } from '../components/AdicionarItemComandaModal';
+import { classificarGrupoProdutoOperacao } from '../lib/operacao';
 import { PaymentDiscountFields } from '../components/checkout/PaymentDiscountFields';
 import {
   PaymentFormModal,
@@ -275,8 +276,10 @@ export function ComandaDetailPage() {
   const isCancelled = comanda.status === 'CANCELADA';
   const eventoAberto = eventoForTaps?.status === 'ABERTO';
   const tapsComChope = taps?.filter((t) => t.ativo && t.chopeAtual && isBebidaChope(t.chopeAtual)) ?? [];
-  const bebidasEmbalagem = cardapio?.produtos.filter((p) => isVendaUnitaria(p) && p.tipo === 'BEBIDA') ?? [];
-  const comidas = cardapio?.produtos.filter((p) => p.tipo === 'COMIDA') ?? [];
+  const produtosUnitarios = cardapio?.produtos.filter(isVendaUnitaria) ?? [];
+  const bebidasEmbalagem = produtosUnitarios.filter((p) => classificarGrupoProdutoOperacao(p) === 'bebidas');
+  const comidas = produtosUnitarios.filter((p) => classificarGrupoProdutoOperacao(p) === 'comidas');
+  const outrosProdutos = produtosUnitarios.filter((p) => classificarGrupoProdutoOperacao(p) === 'outros');
   const hasActionBar = isOpen || !isOpen;
   const podeAplicarDesconto = podeDarDescontoOperacao;
   const subtotal = subtotalComandaCervejaria(comanda);
@@ -483,6 +486,7 @@ export function ComandaDetailPage() {
         tapsComChope={tapsComChope}
         bebidas={bebidasEmbalagem}
         comidas={comidas}
+        outros={outrosProdutos}
         eventoAberto={!!eventoAberto}
         comandaTotal={comandaTotal}
         onAdd={(data) => addItemMutation.mutate(data)}
