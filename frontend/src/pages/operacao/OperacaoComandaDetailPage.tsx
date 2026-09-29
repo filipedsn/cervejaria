@@ -665,15 +665,15 @@ export function OperacaoComandaDetailPage() {
                       Qtd. {item.quantidade}
                     </span>
                   )}
-                  <span className={`ml-auto shrink-0 text-right font-semibold tabular-nums ${itemConfirmado ? '' : 'text-ink-faint'}`}>
-                    {item.canceladoEm
-                      ? 'Cancelado'
-                      : item.cancelamentoPendenteEm
+                  {!item.canceladoEm && (
+                    <span className={`ml-auto shrink-0 text-right font-semibold tabular-nums ${itemConfirmado ? '' : 'text-ink-faint'}`}>
+                      {item.cancelamentoPendenteEm
                         ? `Cancelamento pendente · ${formatCurrency(item.subtotal)}`
                         : itemConfirmado
                           ? formatCurrency(item.subtotal)
                           : `Pendente · ${formatCurrency(item.subtotal)}`}
-                  </span>
+                    </span>
+                  )}
                   {removivel && (
                     <button
                       type="button"
