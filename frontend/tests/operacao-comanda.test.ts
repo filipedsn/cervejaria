@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   itemConfirmadoNaComanda,
+  ordenarPedidosMaisRecentes,
   podeAlterarQuantidadeItemComanda,
   resumirItensComanda,
   totalPendenteComanda,
@@ -44,4 +45,16 @@ test('quantidade de item entregue fica somente para leitura', () => {
 
   assert.equal(podeAlterarQuantidadeItemComanda(comanda, pedidoSemPreparo), true);
   assert.equal(podeAlterarQuantidadeItemComanda(comanda, pedidoEntregue), false);
+});
+
+test('pedidos da comanda aparecem do lançamento mais recente para o mais antigo sem mutar a lista', () => {
+  const maisAntigo = { ...pedido, id: 'pedido-antigo', numero: 7, createdAt: '2026-09-28T11:00:00.000Z' };
+  const maisRecente = { ...pedido, id: 'pedido-recente', numero: 10, createdAt: '2026-09-28T13:00:00.000Z' };
+  const mesmaDataMaiorNumero = { ...pedido, id: 'pedido-empate', numero: 11, createdAt: maisRecente.createdAt };
+  const pedidos = [maisAntigo, maisRecente, mesmaDataMaiorNumero];
+
+  assert.deepEqual(ordenarPedidosMaisRecentes(pedidos).map(({ id }) => id), [
+    'pedido-empate', 'pedido-recente', 'pedido-antigo',
+  ]);
+  assert.deepEqual(pedidos.map(({ id }) => id), ['pedido-antigo', 'pedido-recente', 'pedido-empate']);
 });

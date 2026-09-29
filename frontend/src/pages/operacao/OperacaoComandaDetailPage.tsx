@@ -29,6 +29,7 @@ import {
   mapSaldosEstoque,
   pedidoConfirmadoNaComanda,
   pedidoVaiParaCozinha,
+  ordenarPedidosMaisRecentes,
   podeAlterarQuantidadeItemComanda,
   podeRemoverItemComanda,
   podeIncrementarItemComanda,
@@ -501,7 +502,7 @@ export function OperacaoComandaDetailPage() {
 
         {visaoItens === 'PEDIDOS' ? (
           <>
-        {comanda.pedidos.map((pedido) => {
+        {ordenarPedidosMaisRecentes(comanda.pedidos).map((pedido) => {
           const confirmado = pedidoConfirmadoNaComanda(pedido);
           const naCozinha = pedidoVaiParaCozinha(pedido.itens) && pedido.status !== 'CANCELADO';
           const podeAvisarCliente =

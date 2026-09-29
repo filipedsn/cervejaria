@@ -181,6 +181,16 @@ export interface PedidoOperacao {
   itens: ItemPedido[];
 }
 
+/** Ordena os pedidos da comanda do lançamento mais recente para o mais antigo. */
+export function ordenarPedidosMaisRecentes(pedidos: PedidoOperacao[]): PedidoOperacao[] {
+  return [...pedidos].sort((a, b) => {
+    const dataA = Date.parse(a.createdAt);
+    const dataB = Date.parse(b.createdAt);
+    if (Number.isFinite(dataA) && Number.isFinite(dataB) && dataA !== dataB) return dataB - dataA;
+    return b.numero - a.numero;
+  });
+}
+
 /** O pedido como a cozinha ve: so os itens de preparo e de quem e a conta. */
 export interface PedidoCozinha {
   id: string;
