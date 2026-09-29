@@ -269,9 +269,6 @@ export function ComandasPage() {
           eventoAberto={eventoAberto}
           presentation="modal"
         />
-        <Link to={`/eventos/${evento.id}/contas-pendentes`} className="touch-btn-secondary min-h-11 flex items-center justify-center text-center">
-          Contas pendentes
-        </Link>
       </div>
 
       {false && (resumo?.comandasAbertas ?? comandas?.length ?? 0) >= 2 && (
