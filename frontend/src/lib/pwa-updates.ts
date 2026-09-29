@@ -1,13 +1,19 @@
 import { registerSW } from 'virtual:pwa-register';
-
-function checkForServiceWorkerUpdate(registration: ServiceWorkerRegistration) {
-  registration.update().catch(() => {
-    /* offline ou erro transitório */
-  });
-}
+import {
+  checkForServiceWorkerUpdate,
+  scheduleVisibleServiceWorkerUpdateChecks,
+} from './pwa-update-checks';
 
 function bindUpdateChecks(registration: ServiceWorkerRegistration) {
   checkForServiceWorkerUpdate(registration);
+
+  // Clientes com o PWA aberto podem ficar dias sem navegar ou recuperar foco.
+  // Verifica periodicamente para aplicar releases sem depender de fechar o app.
+  scheduleVisibleServiceWorkerUpdateChecks(
+    registration,
+    () => document.visibilityState === 'visible',
+    (callback, intervalMs) => window.setInterval(callback, intervalMs),
+  );
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
