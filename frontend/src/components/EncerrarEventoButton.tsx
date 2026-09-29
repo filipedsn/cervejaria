@@ -23,6 +23,7 @@ export function EncerrarEventoButton({
   const queryClient = useQueryClient();
   const { setEvento, refreshEvento } = useEvento();
   const [showComandasAbertasModal, setShowComandasAbertasModal] = useState(false);
+  const [showCaixaAbertoModal, setShowCaixaAbertoModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showResumoModal, setShowResumoModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -32,11 +33,20 @@ export function EncerrarEventoButton({
     queryFn: () => api.get<EventoDashboard>(`/api/eventos/${eventoId}/dashboard`),
     refetchOnWindowFocus: true,
   });
+  const { data: caixaEvento, isSuccess: caixaEventoCarregado } = useQuery({
+    queryKey: ['evento-caixa', eventoId],
+    queryFn: () => api.get<{ aberto: boolean }>(`/api/eventos/${eventoId}/caixa`),
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+  });
 
   useEffect(() => {
     const socket = getSocket();
     const invalidate = () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard', eventoId] });
+    };
+    const invalidateCaixa = () => {
+      queryClient.invalidateQueries({ queryKey: ['evento-caixa', eventoId] });
     };
 
     socket.on('comanda:created', invalidate);
@@ -44,6 +54,7 @@ export function EncerrarEventoButton({
     socket.on('comanda:closed', invalidate);
     socket.on('item:added', invalidate);
     socket.on('item:removed', invalidate);
+    socket.on('evento-caixa:updated', invalidateCaixa);
 
     return () => {
       socket.off('comanda:created', invalidate);
@@ -51,6 +62,7 @@ export function EncerrarEventoButton({
       socket.off('comanda:closed', invalidate);
       socket.off('item:added', invalidate);
       socket.off('item:removed', invalidate);
+      socket.off('evento-caixa:updated', invalidateCaixa);
     };
   }, [eventoId, queryClient]);
 
@@ -73,7 +85,12 @@ export function EncerrarEventoButton({
   });
 
   const handleClick = () => {
-    if (!isSuccess || fecharMutation.isPending) return;
+    if (!isSuccess || !caixaEventoCarregado || fecharMutation.isPending) return;
+
+    if (caixaEvento?.aberto) {
+      setShowCaixaAbertoModal(true);
+      return;
+    }
 
     if ((comandasAbertas ?? 0) > 0) {
       setShowComandasAbertasModal(true);
@@ -93,7 +110,7 @@ export function EncerrarEventoButton({
         <button
           type="button"
           className="touch-btn-orange w-full text-lg min-h-14 disabled:cursor-not-allowed"
-          disabled={!isSuccess || fecharMutation.isPending}
+          disabled={!isSuccess || !caixaEventoCarregado || fecharMutation.isPending}
           onClick={handleClick}
         >
           {fecharMutation.isPending ? 'Encerrando...' : 'Encerrar evento'}
@@ -128,6 +145,19 @@ export function EncerrarEventoButton({
         <p className="text-ink-soft leading-relaxed">
           Não será possível abrir novas comandas até iniciar outro evento.
         </p>
+      </Modal>
+
+      <Modal
+        open={showCaixaAbertoModal}
+        onClose={() => setShowCaixaAbertoModal(false)}
+        title="Caixa do evento aberto"
+        footer={
+          <button type="button" className="touch-btn-primary w-full min-h-14" onClick={() => setShowCaixaAbertoModal(false)}>
+            Entendi
+          </button>
+        }
+      >
+        <p className="text-ink-soft leading-relaxed">Feche e confira o caixa do evento antes de encerrar o evento.</p>
       </Modal>
 
       <Modal

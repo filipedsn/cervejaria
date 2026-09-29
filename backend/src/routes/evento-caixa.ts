@@ -73,6 +73,13 @@ export async function eventoCaixaRoutes(app: FastifyInstance) {
     try {
       const session = await prisma.$transaction(async (tx) => {
         await bloquearCaixaEvento(tx, eventoId);
+        const activeEvent = await tx.evento.findFirst({
+          where: { id: eventoId, cervejariaId: user.cervejariaId, status: 'ABERTO', recorrencia: 'NENHUMA' },
+          select: { id: true },
+        });
+        if (!activeEvent) {
+          throw Object.assign(new Error('Abra o caixa somente em uma sessão de evento ativa'), { statusCode: 409 });
+        }
         const exists = await tx.sessaoCaixaEvento.findFirst({ where: { eventoId, status: 'ABERTO' }, select: { id: true } });
         if (exists) throw Object.assign(new Error('Já existe um caixa aberto neste evento'), { statusCode: 409 });
         const created = await tx.sessaoCaixaEvento.create({
