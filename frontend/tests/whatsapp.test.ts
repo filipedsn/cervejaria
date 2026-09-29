@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createWhatsAppIosAppLink, linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../src/lib/whatsapp';
+import { createWhatsAppIosAppLink, linkWhatsAppPedidoPronto, linkWhatsAppResumoConta, navegarParaWhatsApp } from '../src/lib/whatsapp';
 
 test('creates a prepared WhatsApp message using Brazilian national phone format', () => {
   const link = linkWhatsAppPedidoPronto({
@@ -17,6 +17,41 @@ test('creates a prepared WhatsApp message using Brazilian national phone format'
 
 test('does not create a WhatsApp link without a valid phone number', () => {
   assert.equal(linkWhatsAppPedidoPronto({ telefone: '123', clienteNome: 'Poliana', numeroPedido: 4, nomeEmpresa: 'Bar' }), null);
+});
+
+test('sends only confirmed account items and identifies kitchen items excluded from the partial total', () => {
+  const link = linkWhatsAppResumoConta({
+    telefone: '(27) 9965-0060',
+    clienteNome: 'Poliana',
+    nomeEmpresa: 'Cervejaria',
+    identificacaoComanda: 'Mesa 3',
+    itens: [{ nome: 'Latão Amistel', quantidade: 1, total: 'R$ 10,00' }],
+    subtotal: 'R$ 10,00',
+    desconto: null,
+    total: 'R$ 10,00',
+    valorEmPreparo: 'R$ 14,00',
+  });
+
+  assert.ok(link);
+  const mensagem = new URL(link).searchParams.get('text') ?? '';
+  assert.match(mensagem, /Latão Amistel/);
+  assert.match(mensagem, /Itens em preparo \(R\$ 14,00\) ainda não estão incluídos/);
+  assert.match(mensagem, /Total parcial: R\$ 10,00/);
+  assert.doesNotMatch(mensagem, /Churrasquinho/);
+});
+
+test('does not create an account-summary link without a valid client phone', () => {
+  assert.equal(linkWhatsAppResumoConta({
+    telefone: null,
+    clienteNome: 'Poliana',
+    nomeEmpresa: 'Cervejaria',
+    identificacaoComanda: 'Mesa 3',
+    itens: [],
+    subtotal: 'R$ 0,00',
+    desconto: null,
+    total: 'R$ 0,00',
+    valorEmPreparo: null,
+  }), null);
 });
 
 test('creates the native iOS WhatsApp app link from a wa.me link', () => {

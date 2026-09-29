@@ -22,7 +22,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { connectSocket, getSocket } from '../../lib/socket';
-import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
+import { linkWhatsAppPedidoPronto, linkWhatsAppResumoConta, navegarParaWhatsApp } from '../../lib/whatsapp';
 import {
   isChopeOperacao,
   itemConfirmadoNaComanda,
@@ -121,6 +121,26 @@ export function OperacaoComandaDetailPage() {
     () => (comanda ? resumirItensComanda(comanda) : []),
     [comanda],
   );
+
+  const enviarResumoContaWhatsApp = () => {
+    if (!comanda?.cliente?.telefone) return;
+    const url = linkWhatsAppResumoConta({
+      telefone: comanda.cliente.telefone,
+      clienteNome: comanda.cliente.nome,
+      nomeEmpresa: cervejaria?.nome ?? 'nossa empresa',
+      identificacaoComanda: rotuloComanda(comanda),
+      itens: resumoItens.map((item) => ({
+        nome: item.nome,
+        quantidade: item.quantidade,
+        total: formatCurrency(item.total),
+      })),
+      subtotal: formatCurrency(comanda.subtotal),
+      desconto: comanda.desconto > 0 ? formatCurrency(comanda.desconto) : null,
+      total: formatCurrency(comanda.total),
+      valorEmPreparo: comanda.valorEmAberto > 0 ? formatCurrency(comanda.valorEmAberto) : null,
+    });
+    if (url) navegarParaWhatsApp(url);
+  };
 
   const invalidar = () => {
     queryClient.invalidateQueries({ queryKey: ['operacao-comanda', id] });
@@ -498,6 +518,16 @@ export function OperacaoComandaDetailPage() {
             onClick={() => setVisaoItens('RESUMO')}
           >
             Resumo da conta
+          </button>
+          <button
+            type="button"
+            aria-label="Enviar resumo da conta pelo WhatsApp"
+            title={comanda.cliente?.telefone ? 'Enviar resumo da conta pelo WhatsApp' : 'Cadastre um telefone para o cliente'}
+            className="inline-flex min-h-12 min-w-12 shrink-0 items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-600 text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={!comanda.cliente?.telefone}
+            onClick={enviarResumoContaWhatsApp}
+          >
+            <IconWhatsApp className="h-6 w-6" />
           </button>
         </nav>
 

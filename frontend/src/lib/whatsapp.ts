@@ -16,6 +16,41 @@ export function linkWhatsAppPedidoPronto(params: {
   return `https://wa.me/55${telefone}?text=${encodeURIComponent(texto)}`;
 }
 
+export function linkWhatsAppResumoConta(params: {
+  telefone: string | null | undefined;
+  clienteNome: string;
+  nomeEmpresa: string;
+  identificacaoComanda: string;
+  itens: Array<{ nome: string; quantidade: number; total: string }>;
+  subtotal: string;
+  desconto: string | null;
+  total: string;
+  valorEmPreparo: string | null;
+}): string | null {
+  let telefone = digitsOnly(params.telefone ?? '');
+  if (telefone.startsWith('55') && (telefone.length === 12 || telefone.length === 13)) {
+    telefone = telefone.slice(2);
+  }
+  if (telefone.length !== 10 && telefone.length !== 11) return null;
+
+  const itens = params.itens.length
+    ? params.itens.map((item) => `• ${item.quantidade}x ${item.nome} — ${item.total}`)
+    : ['• Nenhum item confirmado até o momento.'];
+  const linhas = [
+    `Olá, ${params.clienteNome}! Segue o resumo parcial da sua conta no ${params.nomeEmpresa}.`,
+    `Comanda: ${params.identificacaoComanda}`,
+    '',
+    ...itens,
+    '',
+    `Subtotal confirmado: ${params.subtotal}`,
+    ...(params.desconto ? [`Desconto: ${params.desconto}`] : []),
+    `Total parcial: ${params.total}`,
+    ...(params.valorEmPreparo ? ['', `Itens em preparo (${params.valorEmPreparo}) ainda não estão incluídos. O total será atualizado após a entrega.`] : []),
+  ];
+
+  return `https://wa.me/55${telefone}?text=${encodeURIComponent(linhas.join('\n'))}`;
+}
+
 export function createWhatsAppIosAppLink(url: string): string | null {
   try {
     const webLink = new URL(url);
