@@ -231,34 +231,19 @@ export function ComandasPage() {
 
       {!selectMode && eventoAberto && (
         <section className="space-y-2.5" aria-label="Ações rápidas">
-        <header><h2 className="text-xl font-bold">Ações rápidas</h2><p className="text-sm text-ink-muted">Acesso rápido às principais funções deste evento.</p></header>
-        <div className="grid grid-cols-2 gap-2">
-          <Link
-            to="/comandas/nova"
-            className={`touch-btn-primary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold ${!vendaLiberada ? 'pointer-events-none opacity-50' : ''}`}
-            aria-disabled={!vendaLiberada}
-            tabIndex={vendaLiberada ? undefined : -1}
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-xl leading-none font-normal">
-              +
-            </span>
-            Comanda
-          </Link>
-          <Link
-            to="/comandas/venda-avulsa"
-            className={`touch-btn-secondary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold ${!vendaLiberada ? 'pointer-events-none opacity-50' : ''}`}
-            aria-disabled={!vendaLiberada}
-            tabIndex={vendaLiberada ? undefined : -1}
-          >
-            <span
-              className="flex h-9 w-9 shrink-0 items-center justify-center text-xl leading-none text-orange"
-              aria-hidden
-            >
-              ⚡
-            </span>
-            Venda avulsa
-          </Link>
-        </div>
+          <header><h2 className="text-xl font-bold">Ações rápidas</h2><p className="text-sm text-ink-muted">Acesso rápido às principais funcionalidades do seu dia a dia.</p></header>
+          <div className="grid grid-cols-2 gap-2">
+            <Link to="/comandas/nova" className={`group flex min-h-16 min-w-0 w-full items-center justify-center gap-1.5 rounded-2xl border border-sky-300/40 bg-gradient-to-br from-sky-500 to-blue-700 px-1.5 py-2 text-left text-white shadow-lg shadow-sky-500/20 transition hover:brightness-110 sm:min-h-20 sm:gap-3 sm:px-4 sm:py-3 ${!vendaLiberada ? 'pointer-events-none opacity-50' : ''}`} aria-disabled={!vendaLiberada} tabIndex={vendaLiberada ? undefined : -1}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/30 bg-white/15 text-xl font-light leading-none sm:h-10 sm:w-10 sm:rounded-xl sm:text-3xl">+</span>
+              <span className="min-w-0"><strong className="block whitespace-nowrap text-[clamp(0.68rem,3.6vw,1rem)] font-bold leading-tight">Nova comanda</strong></span>
+              <span className="shrink-0 text-base text-white/90 transition-transform group-hover:translate-x-1 sm:text-xl" aria-hidden="true">›</span>
+            </Link>
+            <Link to="/comandas/venda-avulsa" className={`group flex min-h-16 min-w-0 w-full items-center justify-center gap-1.5 rounded-2xl border border-orange-300/50 bg-gradient-to-br from-orange-500 to-orange-700 px-1.5 py-2 text-left text-white shadow-lg shadow-orange-500/20 transition hover:brightness-110 sm:min-h-20 sm:gap-3 sm:px-4 sm:py-3 ${!vendaLiberada ? 'pointer-events-none opacity-50' : ''}`} aria-disabled={!vendaLiberada} tabIndex={vendaLiberada ? undefined : -1}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/30 bg-white/15 sm:h-10 sm:w-10 sm:rounded-xl"><svg viewBox="0 0 24 24" className="h-4 w-4 fill-current sm:h-6 sm:w-6" aria-hidden="true"><path d="M13.2 1.8 4.9 13a1 1 0 0 0 .8 1.6h5l-.8 7.6 9.2-12a1 1 0 0 0-.8-1.6h-5.1l1-6a1 1 0 0 0-1.8-.8Z" /></svg></span>
+              <span className="min-w-0"><strong className="block whitespace-nowrap text-[clamp(0.68rem,3.6vw,1rem)] font-bold leading-tight">Venda avulsa</strong></span>
+              <span className="shrink-0 text-base text-white/90 transition-transform group-hover:translate-x-1 sm:text-xl" aria-hidden="true">›</span>
+            </Link>
+          </div>
         </section>
       )}
 
