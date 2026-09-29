@@ -22,7 +22,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { connectSocket, getSocket } from '../../lib/socket';
-import { linkWhatsAppPedidoPronto, linkWhatsAppResumoConta, navegarParaWhatsApp } from '../../lib/whatsapp';
+import { linkWhatsAppNumeroComanda, linkWhatsAppPedidoPronto, linkWhatsAppResumoConta, navegarParaWhatsApp } from '../../lib/whatsapp';
 import {
   isChopeOperacao,
   itemConfirmadoNaComanda,
@@ -138,6 +138,17 @@ export function OperacaoComandaDetailPage() {
       desconto: comanda.desconto > 0 ? formatCurrency(comanda.desconto) : null,
       total: formatCurrency(comanda.total),
       valorEmPreparo: comanda.valorEmAberto > 0 ? formatCurrency(comanda.valorEmAberto) : null,
+    });
+    if (url) navegarParaWhatsApp(url);
+  };
+
+  const enviarNumeroComandaWhatsApp = () => {
+    if (!comanda?.cliente?.telefone) return;
+    const url = linkWhatsAppNumeroComanda({
+      telefone: comanda.cliente.telefone,
+      clienteNome: comanda.cliente.nome,
+      nomeEmpresa: cervejaria?.nome ?? 'nossa empresa',
+      numeroComanda: comanda.numero,
     });
     if (url) navegarParaWhatsApp(url);
   };
@@ -458,9 +469,21 @@ export function OperacaoComandaDetailPage() {
     <div className={`space-y-4 ${hasActionBar ? 'page-with-action-bar' : 'pb-2'}`}>
       <div className="card">
         <div className="flex items-center gap-x-4 gap-y-2">
-          <div className="min-w-0">
-            <h2 className="text-xl font-bold truncate leading-tight">{rotuloComanda(comanda)}</h2>
-            {comanda.cliente?.telefone && <p className="text-sm text-ink-faint mt-1">{formatPhone(comanda.cliente.telefone)}</p>}
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              aria-label="Enviar número sequencial da comanda pelo WhatsApp"
+              title={comanda.cliente?.telefone ? 'Enviar número da comanda pelo WhatsApp' : 'Cadastre um telefone para o cliente'}
+              className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-600 text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!comanda.cliente?.telefone || comanda.numero == null}
+              onClick={enviarNumeroComandaWhatsApp}
+            >
+              <IconWhatsApp className="h-5 w-5" />
+            </button>
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold truncate leading-tight">{rotuloComanda(comanda)}</h2>
+              {comanda.cliente?.telefone && <p className="text-sm text-ink-faint mt-1">{formatPhone(comanda.cliente.telefone)}</p>}
+            </div>
           </div>
           <p className="ml-auto text-2xl sm:text-3xl font-bold text-brand-600 tabular-nums whitespace-nowrap">{formatCurrency(totalParcialComanda)}</p>
         </div>

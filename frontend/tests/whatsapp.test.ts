@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createWhatsAppIosAppLink, linkWhatsAppPedidoPronto, linkWhatsAppResumoConta, navegarParaWhatsApp } from '../src/lib/whatsapp';
+import { createWhatsAppIosAppLink, linkWhatsAppNumeroComanda, linkWhatsAppPedidoPronto, linkWhatsAppResumoConta, navegarParaWhatsApp } from '../src/lib/whatsapp';
 
 test('creates a prepared WhatsApp message using Brazilian national phone format', () => {
   const link = linkWhatsAppPedidoPronto({
@@ -51,6 +51,25 @@ test('does not create an account-summary link without a valid client phone', () 
     desconto: null,
     total: 'R$ 0,00',
     valorEmPreparo: null,
+  }), null);
+});
+
+test('sends the sequential comanda number, not the table or kitchen-ticket number', () => {
+  const link = linkWhatsAppNumeroComanda({
+    telefone: '(27) 9965-0060',
+    clienteNome: 'Poliana',
+    nomeEmpresa: 'Cervejaria',
+    numeroComanda: 318,
+  });
+
+  assert.ok(link);
+  const mensagem = new URL(link).searchParams.get('text');
+  assert.equal(mensagem, 'Olá, Poliana! O número sequencial da sua comanda no Cervejaria é 318.');
+  assert.equal(linkWhatsAppNumeroComanda({
+    telefone: '(27) 9965-0060',
+    clienteNome: 'Poliana',
+    nomeEmpresa: 'Cervejaria',
+    numeroComanda: null,
   }), null);
 });
 

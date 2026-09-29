@@ -51,6 +51,23 @@ export function linkWhatsAppResumoConta(params: {
   return `https://wa.me/55${telefone}?text=${encodeURIComponent(linhas.join('\n'))}`;
 }
 
+export function linkWhatsAppNumeroComanda(params: {
+  telefone: string | null | undefined;
+  clienteNome: string;
+  nomeEmpresa: string;
+  numeroComanda: number | null | undefined;
+}): string | null {
+  if (params.numeroComanda == null || !Number.isInteger(params.numeroComanda) || params.numeroComanda < 1) return null;
+  let telefone = digitsOnly(params.telefone ?? '');
+  if (telefone.startsWith('55') && (telefone.length === 12 || telefone.length === 13)) {
+    telefone = telefone.slice(2);
+  }
+  if (telefone.length !== 10 && telefone.length !== 11) return null;
+
+  const texto = `Olá, ${params.clienteNome}! O número sequencial da sua comanda no ${params.nomeEmpresa} é ${params.numeroComanda}.`;
+  return `https://wa.me/55${telefone}?text=${encodeURIComponent(texto)}`;
+}
+
 export function createWhatsAppIosAppLink(url: string): string | null {
   try {
     const webLink = new URL(url);
