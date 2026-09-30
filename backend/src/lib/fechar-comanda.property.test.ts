@@ -40,6 +40,20 @@ function splitCentsToPagamentos(sumCents: number, lines: number, formas: typeof 
 }
 
 describe('allocatePagamentosToComandas (property-based)', () => {
+  it('rejeita diferença acumulada de centavos entre comandas e pagamentos', () => {
+    const comandas = [
+      { id: 'a', total: 2042.89 },
+      { id: 'b', total: 0.01 },
+    ];
+
+    assert.throws(() =>
+      allocatePagamentosToComandas(comandas, [{ forma: 'PIX', valor: 2042.88 }]),
+    );
+    assert.throws(() =>
+      allocatePagamentosToComandas(comandas, [{ forma: 'PIX', valor: 2042.92 }]),
+    );
+  });
+
   it('preserva totais quando pool = soma das comandas', () => {
     fc.assert(
       fc.property(comandaArb, fc.integer({ min: 1, max: 6 }), (comandas, payLines) => {
