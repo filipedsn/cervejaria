@@ -22,6 +22,10 @@ const updateBrandingSchema = z.object({
   corPrimaria: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida. Use formato #RRGGBB'),
 });
 
+const updateChavePixSchema = z.object({
+  chavePix: z.string().trim().max(200, 'A chave PIX deve ter no máximo 200 caracteres').nullable(),
+});
+
 const updateOperacaoSchema = z
   .object({
     exibirKpisComanda: z.boolean().optional(),
@@ -95,6 +99,16 @@ export async function cervejariaRoutes(app: FastifyInstance) {
     const user = getAuthUser(request);
     const body = updateBrandingSchema.parse(request.body);
     const updated = await updateBrandingColors(user.cervejariaId!, body.corPrimaria);
+    return formatCervejariaAuth(updated);
+  });
+
+  app.patch('/chave-pix', async (request) => {
+    const user = getAuthUser(request);
+    const body = updateChavePixSchema.parse(request.body);
+    const updated = await prisma.cervejaria.update({
+      where: { id: user.cervejariaId! },
+      data: { chavePix: body.chavePix || null },
+    });
     return formatCervejariaAuth(updated);
   });
 

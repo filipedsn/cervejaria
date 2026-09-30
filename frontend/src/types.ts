@@ -34,6 +34,7 @@ export interface Cervejaria {
   id: string;
   nome: string;
   slug: string;
+  chavePix?: string | null;
   logoUrl?: string | null;
   portalBackgroundUrl?: string | null;
   corPrimaria?: string | null;

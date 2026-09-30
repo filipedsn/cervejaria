@@ -70,8 +70,6 @@ import {
 
   buildAgendaDays,
 
-  findOpenSessoesOnDate,
-
   getAgendaDayForDate,
 
   formatAgendaHeading,
@@ -760,9 +758,15 @@ export function EventoPage() {
 
   const isSelectedToday = selectedDateKey === todayKey;
 
-  const openSessoesToday = findOpenSessoesOnDate(sessoesFiltered, todayKey);
+  const sessoesAbertas = sessoesFiltered
+    .filter((sessao) => sessao.status === 'ABERTO')
+    .sort((a, b) => (a.data ?? '').localeCompare(b.data ?? '') || a.horaInicio.localeCompare(b.horaInicio));
 
-  const excludedSessaoIds = isSelectedToday ? openSessoesToday.map((s) => s.id) : [];
+  const sessoesAbertasNaDataSelecionada = sessoesAbertas.filter(
+    (sessao) => sessao.data?.slice(0, 10) === selectedDateKey,
+  );
+
+  const excludedSessaoIds = sessoesAbertas.map((sessao) => sessao.id);
 
   const agendaDays = buildAgendaDays(
     seriesFiltered,
@@ -836,9 +840,9 @@ export function EventoPage() {
 
         <>
 
-          {isSelectedToday && openSessoesToday.length > 0 && (
+          {sessoesAbertas.length > 0 && (
             <div className="space-y-3">
-              {openSessoesToday.map((sessao) => (
+              {sessoesAbertas.map((sessao) => (
                 <ActiveSessionHero
                   key={sessao.id}
                   evento={sessao}
@@ -871,7 +875,7 @@ export function EventoPage() {
 
 
             {(!selectedDay || selectedDay.items.length === 0) &&
-              !(isSelectedToday && openSessoesToday.length > 0) && (
+              sessoesAbertasNaDataSelecionada.length === 0 && (
 
               <p className="text-sm text-ink-faint text-center py-3">Sem compromissos nesta data</p>
 
@@ -879,9 +883,9 @@ export function EventoPage() {
 
 
 
-            {isSelectedToday && openSessoesToday.length > 0 && selectedDay && selectedDay.items.length === 0 && (
+            {sessoesAbertasNaDataSelecionada.length > 0 && selectedDay && selectedDay.items.length === 0 && (
 
-              <p className="text-sm text-ink-faint text-center py-3">Nenhum outro evento agendado para hoje</p>
+              <p className="text-sm text-ink-faint text-center py-3">Nenhum outro compromisso nesta data</p>
 
             )}
 

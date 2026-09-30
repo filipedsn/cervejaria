@@ -40,6 +40,7 @@ export function whereComandaOperacao(
 export async function recalcComandaTotalOperacao(
   tx: Prisma.TransactionClient,
   comandaId: string,
+  options: { kitchenItemsChargeAtLaunch?: boolean } = {},
 ) {
   const comanda = await tx.comanda.findUnique({
     where: { id: comandaId },
@@ -74,7 +75,7 @@ export async function recalcComandaTotalOperacao(
     status: comanda?.status ?? 'ABERTA',
     totalPersistido: comanda?.total,
     desconto: comanda?.desconto,
-    kitchenItemsChargeAtLaunch: configuration?.kitchenItemsChargeAtLaunch ?? false,
+    kitchenItemsChargeAtLaunch: options.kitchenItemsChargeAtLaunch ?? configuration?.kitchenItemsChargeAtLaunch ?? false,
     itensSemPedido,
     pedidos: pedidos.map((pedido) => ({ status: pedido.status, itens: pedido.itensComanda })),
   });
@@ -103,11 +104,14 @@ export async function fecharComandaOperacaoInTx(
     comandaIdsGrupo?: string[];
     sessaoCaixaId?: string;
     deixarPendente?: boolean;
+    kitchenItemsChargeAtLaunch?: boolean;
   },
 ) {
   // O total pode estar desatualizado em comandas cujos pedidos foram entregues
   // antes do recálculo ser executado no fluxo da cozinha.
-  await recalcComandaTotalOperacao(tx, params.comanda.id);
+  await recalcComandaTotalOperacao(tx, params.comanda.id, {
+    kitchenItemsChargeAtLaunch: params.kitchenItemsChargeAtLaunch,
+  });
 
   return fecharComandaComPagamentos(tx, {
     comanda: {

@@ -162,6 +162,7 @@ model Cervejaria {
   id          String   @id @default(cuid())
   nome        String
   slug        String   @unique
+  chavePix    String?
   ativo       Boolean  @default(true)
   logoUrl     String?
   portalBackgroundUrl String?
@@ -211,6 +212,8 @@ model ConfiguracaoOperacional {
   kitchenEnabled            Boolean?
   /// Include kitchen items in a comanda total as soon as they are launched.
   kitchenItemsChargeAtLaunch Boolean @default(false)
+  /// Allow closing and paying a comanda while kitchen orders are still pending.
+  allowCloseComandaWithPendingKitchenOrders Boolean @default(false)
   whatsappPedidoProntoEnabled Boolean @default(false)
   whatsappPedidoProntoNaCozinha Boolean @default(false)
   createdAt                 DateTime @default(now())

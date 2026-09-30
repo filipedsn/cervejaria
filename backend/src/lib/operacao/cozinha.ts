@@ -20,7 +20,6 @@ export function filtroListaPedidosCozinha(
 ): Prisma.PedidoOperacaoWhereInput {
   const pendente = {
     status: { in: STATUS_NA_FILA },
-    comanda: { status: 'ABERTA' as const },
   };
   const cancelamentoPendente = { status: STATUS_CANCELAMENTO_PENDENTE };
   if (!incluirEntregues) return { OR: [pendente, cancelamentoPendente] };

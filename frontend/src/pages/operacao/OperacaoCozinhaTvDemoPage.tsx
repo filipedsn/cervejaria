@@ -1,4 +1,5 @@
 import { CozinhaPedidoCard } from '../../components/operacao/CozinhaPedidoCard';
+import { CozinhaTvGrid } from '../../components/operacao/CozinhaTvGrid';
 import type { PedidoCozinha } from '../../lib/operacao';
 
 const fixedNow = '2026-09-24T21:00:00.000Z';
@@ -21,6 +22,6 @@ export function OperacaoCozinhaTvDemoPage() {
         <span className="cozinha-tv-demo-badge">Dados fictícios</span>
       </div>
     </header>
-    <div className="cozinha-tv-grid">{pedidos.map((pedido, indice) => <CozinhaPedidoCard key={pedido.id} pedido={pedido} indice={indice} variant="tv" disabled onAvancar={() => undefined} onVoltar={() => undefined} />)}</div>
+    <CozinhaTvGrid>{pedidos.map((pedido, indice) => <CozinhaPedidoCard key={pedido.id} pedido={pedido} indice={indice} variant="tv" disabled onAvancar={() => undefined} onVoltar={() => undefined} />)}</CozinhaTvGrid>
   </div>;
 }

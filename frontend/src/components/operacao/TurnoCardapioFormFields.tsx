@@ -66,7 +66,6 @@ export function TurnoCardapioFormFields({
           [
             ['salvo', 'Cardápio salvo'],
             ['montar', 'Montar agora'],
-            ['depois', 'Definir depois'],
           ] as const
         ).map(([modo, label]) => (
           <button
@@ -91,6 +90,18 @@ export function TurnoCardapioFormFields({
         </p>
       )}
 
+      {form.cardapioModo === null && (
+        <p className="text-sm text-ink-muted lg:col-start-2">
+          Escolha um cardápio salvo ou monte a seleção de produtos deste caixa.
+        </p>
+      )}
+
+      {form.cardapioModo === 'salvo' && !form.cardapioId && (
+        <p className="text-sm text-amber-600 lg:col-start-2">
+          Selecione um cardápio salvo para continuar.
+        </p>
+      )}
+
       {form.cardapioModo === 'montar' && catalogo && (
         <CardapioOperacaoProdutosPicker
           catalogo={catalogo}
@@ -99,9 +110,9 @@ export function TurnoCardapioFormFields({
         />
       )}
 
-      {form.cardapioModo === 'depois' && (
-        <p className="text-sm text-ink-muted lg:col-start-2">
-          Você poderá montar o cardápio com o caixa aberto, ou o catálogo completo será usado automaticamente.
+      {form.cardapioModo === 'montar' && form.produtoIds.length === 0 && (
+        <p className="text-sm text-amber-600 lg:col-start-2">
+          Selecione pelo menos um produto para abrir o caixa com esse cardápio.
         </p>
       )}
 

@@ -5,6 +5,7 @@ import { ConfigMesasOperacaoPanel } from '../components/ConfigMesasOperacaoPanel
 import { OperationalCapabilitiesPanel } from '../components/OperationalCapabilitiesPanel';
 import { OnboardingManualEntry } from '../components/OnboardingManualEntry';
 import { CategoriasProdutoOrdemPanel } from '../components/operacao/CategoriasProdutoOrdemPanel';
+import { ConfigChavePixPanel } from '../components/ConfigChavePixPanel';
 
 type OperacaoPageProps = {
   embedded?: boolean;
@@ -19,6 +20,7 @@ export function OperacaoPage({ embedded, modo = 'cervejaria' }: OperacaoPageProp
         <PageHeader title="Operação" subtitle="Preferências do dia a dia na tela de comandas" />
       )}
       <OperationalCapabilitiesPanel />
+      <ConfigChavePixPanel />
       <ConfigKpisComandaPanel />
       <ConfigComandasLayoutPanel />
       {modo === 'operacao' && <ConfigMesasOperacaoPanel />}

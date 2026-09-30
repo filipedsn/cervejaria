@@ -16,6 +16,7 @@ export interface CervejariaAuthPayload {
   id: string;
   nome: string;
   slug: string;
+  chavePix: string | null;
   logoUrl: string | null;
   corPrimaria: string | null;
   corSecundaria: string | null;
@@ -34,6 +35,7 @@ type CervejariaBrandingRow = {
   id: string;
   nome: string;
   slug: string;
+  chavePix?: string | null;
   logoUrl: string | null;
   corPrimaria: string | null;
   corPaleta: unknown;
@@ -63,6 +65,7 @@ export function formatCervejariaAuth(cervejaria: CervejariaBrandingRow): Cerveja
     id: cervejaria.id,
     nome: cervejaria.nome,
     slug: cervejaria.slug,
+    chavePix: cervejaria.chavePix ?? null,
     logoUrl: cervejaria.logoUrl,
     corPrimaria: cervejaria.corPrimaria,
     corSecundaria: theme?.corSecundaria ?? null,

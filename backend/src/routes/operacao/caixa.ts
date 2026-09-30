@@ -41,8 +41,11 @@ const abrirSchema = z
     cardapioId: z.string().optional(),
     produtoIds: z.array(z.string().min(1)).optional(),
   })
-  .refine((data) => !(data.cardapioId && data.produtoIds?.length), {
+  .refine((data) => !(data.cardapioId && data.produtoIds !== undefined), {
     message: 'Escolha um cardápio salvo ou monte na hora, não os dois',
+  })
+  .refine((data) => Boolean(data.cardapioId) || Boolean(data.produtoIds?.length), {
+    message: 'Escolha um cardápio salvo ou monte o cardápio antes de abrir o caixa',
   });
 
 const movimentoSchema = z.object({

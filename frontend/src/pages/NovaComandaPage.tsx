@@ -65,6 +65,13 @@ function ClienteResumo({ cliente, isNew }: { cliente: Cliente | null; isNew: boo
 export function NovaComandaPage() {
   const navigate = useNavigate();
   const { evento } = useEvento();
+  const { data: caixaEvento, isLoading: caixaEventoLoading } = useQuery({
+    queryKey: ['evento-caixa', evento?.id],
+    queryFn: () => api.get<{ aberto: boolean }>(`/api/eventos/${evento!.id}/caixa`),
+    enabled: Boolean(evento?.id),
+    refetchInterval: 30_000,
+  });
+  const caixaAberto = caixaEvento?.aberto === true;
   const [nome, setNome] = useState('');
   const [telefone, setTelefone] = useState('');
   const [nameSearch, setNameSearch] = useState('');
@@ -151,6 +158,7 @@ export function NovaComandaPage() {
   const clienteExistente = phoneValid && !phoneLookupLoading ? phoneLookup ?? null : null;
   const isNewCliente = phoneValid && !phoneLookupLoading && !phoneLookup && !selectedCliente;
   const canSubmit =
+    caixaAberto &&
     nome.trim().length > 0 &&
     !loading &&
     (linkingLegacy ? phoneValid : phoneValid || selectedCliente !== null);
@@ -249,6 +257,12 @@ export function NovaComandaPage() {
   return (
     <div className="space-y-4 pb-2">
       <PageHeader title="Nova comanda" />
+
+      {!caixaAberto && !caixaEventoLoading && (
+        <div className="alert-error" role="status">
+          Abra o caixa do evento para iniciar uma comanda.
+        </div>
+      )}
 
       <p className="text-sm text-ink-muted leading-relaxed">
         Abra uma comanda por apelido, mesa ou ficha. Os itens são lançados na tela seguinte.

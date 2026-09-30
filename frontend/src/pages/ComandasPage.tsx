@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, formatCurrency, ApiError } from '../lib/api';
@@ -55,6 +55,7 @@ export function ComandasPage() {
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([{ forma: 'PIX', valor: '' }]);
   const [groupError, setGroupError] = useState('');
   const [groupSuccess, setGroupSuccess] = useState('');
+  const fecharGrupoEmAndamento = useRef(false);
 
   const { data: dashboard, isLoading: loadingDashboard } = useQuery({
     queryKey: ['dashboard', evento?.id],
@@ -126,11 +127,17 @@ export function ComandasPage() {
   };
 
   const handleGroupClose = () => {
+    if (fecharGrupoEmAndamento.current) return;
+    fecharGrupoEmAndamento.current = true;
     const pagamentos = paymentForm.map((p) => ({
       forma: toPaymentForma(p),
       valor: parseCurrencyInput(p.valor),
     }));
-    fecharGrupoMutation.mutate(pagamentos);
+    fecharGrupoMutation.mutate(pagamentos, {
+      onSettled: () => {
+        fecharGrupoEmAndamento.current = false;
+      },
+    });
   };
 
   useEffect(() => {
@@ -217,6 +224,7 @@ export function ComandasPage() {
 
   const resumo = dashboard?.resumo;
   const showPayBar = selectMode && selectedIds.length >= 2 && totalGrupo > 0;
+  const comandasSelecionaveis = (comandas ?? []).filter((comanda) => comanda.tipo !== 'AVULSA');
 
   return (
     <div className={`space-y-4 ${eventoAberto ? 'page-with-action-bar' : 'pb-2'}`}>
@@ -260,7 +268,7 @@ export function ComandasPage() {
         </div>
       )}
 
-      {false && (resumo?.comandasAbertas ?? comandas?.length ?? 0) >= 2 && (
+      {isAbertas && comandasSelecionaveis.length >= 2 && (
         selectMode ? (
           <button
             type="button"
@@ -334,22 +342,25 @@ export function ComandasPage() {
 
         <div className={`grid gap-3 ${colunaUnica ? '' : 'grid-cols-2'}`}>
           {comandasFiltradas.map((c) => {
-            const isSelected = selectedIds.includes(c.id);
             const isAvulsa = c.tipo === 'AVULSA';
+            const isSelected = selectedIds.includes(c.id);
             return (
               <button
                 key={c.id}
                 type="button"
+                disabled={selectMode && isAvulsa}
                 onClick={() => {
                   if (selectMode) {
-                    toggleSelection(c.id);
+                    if (!isAvulsa) toggleSelection(c.id);
                     return;
                   }
                   navigate(`/comandas/${c.id}`);
                 }}
                 className={`card-touch w-full ${colunaUnica ? 'min-h-[4.5rem]' : 'min-h-[5.5rem]'} ${
                   selectMode
-                    ? isSelected
+                    ? isAvulsa
+                      ? 'cursor-not-allowed opacity-50'
+                      : isSelected
                       ? 'border-brand-500 bg-brand-50/40'
                       : 'hover:border-brand-400/30'
                     : 'hover:border-brand-400/30'

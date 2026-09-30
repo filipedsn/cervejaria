@@ -10,6 +10,8 @@ class ApiError extends Error {
     message: string,
     public status: number,
     public body?: Record<string, unknown>,
+    public correlationId?: string,
+    public requestId?: string,
   ) {
     super(message);
   }
@@ -127,18 +129,22 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       startedAt,
       correlationId,
     });
-    throw new ApiError('Servidor indisponível. Execute npm run restart na raiz do projeto.', 0);
+    throw new ApiError('Servidor indisponível. Execute npm run restart na raiz do projeto.', 0, undefined, correlationId);
   }
 
   const returnedCorrelationId = res.headers.get(CORRELATION_ID_HEADER);
+  const responseCorrelationId = isCorrelationId(returnedCorrelationId)
+    ? returnedCorrelationId
+    : correlationId;
+  const responseRequestId = res.headers.get('x-request-id') ?? undefined;
   reportHttpRequest({
     method,
     path,
     statusCode: res.status,
     outcome: responseOutcome(res.status),
     startedAt,
-    correlationId: isCorrelationId(returnedCorrelationId) ? returnedCorrelationId : correlationId,
-    requestId: res.headers.get('x-request-id') ?? undefined,
+    correlationId: responseCorrelationId,
+    requestId: responseRequestId,
   });
 
   if (!res.ok) {
@@ -158,11 +164,21 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       (res.status === 502 || res.status === 503
         ? 'Backend offline. Execute npm run restart na raiz do projeto.'
         : `Erro na requisição (${res.status})`);
-    throw new ApiError(message, res.status, body);
+    throw new ApiError(message, res.status, body, responseCorrelationId, responseRequestId);
   }
 
   if (res.status === 204) return undefined as T;
-  return res.json();
+  try {
+    return await res.json();
+  } catch {
+    throw new ApiError(
+      'Resposta inválida do servidor.',
+      res.status,
+      undefined,
+      responseCorrelationId,
+      responseRequestId,
+    );
+  }
 }
 
 export const api = {

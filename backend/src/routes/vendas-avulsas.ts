@@ -19,6 +19,9 @@ const itemSchema = z.object({
   volumeMl: z.number().int().positive(),
   quantidade: z.number().int().positive().default(1),
   tapId: z.string().optional(),
+  paraViagem: z.boolean().optional(),
+  observacao: z.string().trim().max(280).optional(),
+  opcionais: z.array(z.object({ opcionalId: z.string().min(1), quantidade: z.number().int().positive().max(99).optional() })).optional(),
 });
 
 const pagamentoSchema = z.object({

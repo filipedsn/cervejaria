@@ -1263,6 +1263,13 @@ button[title="Excluir"].icon-btn-danger {
   line-height: 0.95;
 }
 
+.cozinha-tv-card-position-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  min-height: 1.4rem;
+}
+
 .cozinha-tv-card-comanda {
   max-width: none;
   font-size: clamp(1rem, 1.7vw, 1.5rem);
@@ -1376,14 +1383,14 @@ button[title="Excluir"].icon-btn-danger {
 }
 
 .cozinha-tv-card-timer-wrap {
-  order: 4;
+  order: unset;
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.35rem;
-  padding: 0.2rem 0;
-  margin: auto 0 0;
+  padding: 0;
+  margin: 0;
 }
 
 .cozinha-tv-card-badge--viagem {
@@ -1393,7 +1400,7 @@ button[title="Excluir"].icon-btn-danger {
 }
 
 .cozinha-tv-card-timer-wrap::before {
-  content: 'Tempo';
+  content: none;
   font-size: clamp(0.8rem, 1.2vw, 1rem);
   font-weight: 700;
   text-transform: uppercase;
@@ -1403,7 +1410,7 @@ button[title="Excluir"].icon-btn-danger {
 
 .cozinha-tv-card-timer {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: clamp(1.5rem, 3vw, 2.5rem);
+  font-size: clamp(0.9rem, 1.4vw, 1.25rem);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -1735,12 +1742,13 @@ button[title="Excluir"].icon-btn-danger {
   }
 
   .cozinha-tv-grid {
-    grid-auto-rows: clamp(8.5rem, 21vh, 10.5rem);
+    grid-auto-rows: 1px;
+    grid-auto-flow: row dense;
     gap: 0.4rem;
   }
 
   .cozinha-tv-card:not(.cozinha-tv-card--pronto) {
-    height: 100%;
+    height: auto;
     padding: 0.4rem;
     border-width: 1px;
     border-radius: 0.7rem;
@@ -1791,9 +1799,8 @@ button[title="Excluir"].icon-btn-danger {
   }
 
   .cozinha-tv-card-itens {
-    flex: 1 1 auto;
-    overflow-y: auto;
-    scrollbar-width: thin;
+    flex: 0 0 auto;
+    overflow: visible;
     gap: 0.12rem;
   }
 
@@ -1835,18 +1842,16 @@ button[title="Excluir"].icon-btn-danger {
 
   .cozinha-tv-card-itens li > small {
     display: block;
-    overflow: hidden;
     padding: 0.08rem 0.2rem;
     border-radius: 0.3rem;
     line-height: 1.1;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    white-space: normal;
   }
 
   .cozinha-tv-card-item-details strong,
   .cozinha-tv-card-item-details > span {
     display: inline;
-    font-size: 0.58rem;
+    font-size: clamp(0.64rem, 0.7vw, 0.72rem);
   }
 
   .cozinha-tv-card-item-heading > .cozinha-tv-card-btn {
@@ -1856,7 +1861,7 @@ button[title="Excluir"].icon-btn-danger {
 
   .cozinha-tv-card-timer-wrap {
     padding: 0;
-    margin: 0.1rem 0 0;
+    margin: 0;
   }
 
   .cozinha-tv-card-timer-wrap::before {
@@ -1869,6 +1874,7 @@ button[title="Excluir"].icon-btn-danger {
 
   .cozinha-tv-card-actions {
     gap: 0.25rem;
+    margin-top: 0.2rem;
     padding-top: 0.18rem;
   }
 

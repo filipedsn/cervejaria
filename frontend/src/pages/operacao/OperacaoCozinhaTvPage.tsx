@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
 import { CozinhaPedidoCard } from '../../components/operacao/CozinhaPedidoCard';
+import { CozinhaTvGrid } from '../../components/operacao/CozinhaTvGrid';
 import { CancelarQuantidadeModal } from '../../components/operacao/CancelarQuantidadeModal';
 import { IconBell } from '../../components/NavIcons';
 import { useAuth } from '../../contexts/AuthContext';
@@ -146,7 +147,7 @@ export function OperacaoCozinhaTvPage() {
           <EmptyState icon="👨‍🍳" title="Nenhum pedido na cozinha" />
         </div>
       ) : (
-        <div className="cozinha-tv-grid">
+        <CozinhaTvGrid>
           {naFila.map((pedido, indice) => (
             <CozinhaPedidoCard
               key={pedido.id}
@@ -191,7 +192,7 @@ export function OperacaoCozinhaTvPage() {
               } : undefined}
             />
           ))}
-        </div>
+        </CozinhaTvGrid>
       )}
       <CancelarQuantidadeModal
         open={itemParaCancelar !== null}

@@ -23,6 +23,8 @@ import {
   type PaymentFormRow,
 } from '../components/PaymentFormModal';
 import { parseCurrencyInput, formatCurrencyInputFromNumber } from '../lib/currency';
+import { trackUiError } from '../lib/audit-tracker';
+import { createCorrelationId } from '../lib/correlation-id';
 
 export function ComandaDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -41,6 +43,7 @@ export function ComandaDetailPage() {
   ]);
   const [descontoInput, setDescontoInput] = useState('');
   const [error, setError] = useState('');
+  const [closeErrorDetails, setCloseErrorDetails] = useState<{ referenceId: string; isApiCorrelation: boolean; status?: number; requestId?: string } | null>(null);
   const [itemAddedMessage, setItemAddedMessage] = useState('');
 
   useEffect(() => {
@@ -176,7 +179,24 @@ export function ComandaDetailPage() {
       if (evento) queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
       if (evento) queryClient.invalidateQueries({ queryKey: ['evento-contas-pendentes', evento.id] });
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao fechar comanda'),
+    onError: (err) => {
+      const isApiError = err instanceof ApiError;
+      const correlationId = isApiError ? err.correlationId : undefined;
+      const referenceId = correlationId ?? createCorrelationId();
+      const status = isApiError && err.status > 0 ? err.status : undefined;
+      const requestId = isApiError ? err.requestId : undefined;
+      const message = isApiError ? err.message : 'Erro ao fechar comanda';
+      setCloseErrorDetails({ referenceId, isApiCorrelation: Boolean(correlationId), status, requestId });
+      setError(message);
+      console.error('[comanda.close] Falha ao encerrar comanda', {
+        correlationId,
+        localReference: correlationId ? undefined : referenceId,
+        requestId,
+        status,
+        errorName: err instanceof Error ? err.name : 'UnknownError',
+      });
+      trackUiError('Falha ao encerrar comanda');
+    },
   });
 
   const cancelMutation = useMutation({
@@ -224,9 +244,10 @@ export function ComandaDetailPage() {
     setPaymentForm(createDefaultPaymentForm(Math.max(0, subtotal - desconto)));
     setShowPayment(true);
     setError('');
+    setCloseErrorDetails(null);
   };
 
-  const handleClose = (deixarPendente = false) => {
+  const handleClose = (deixarPendente: boolean) => {
     if (!comanda) return;
     const desconto = parseCurrencyInput(descontoInput);
     const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
@@ -299,7 +320,19 @@ export function ComandaDetailPage() {
 
   const paymentHeaderExtra = (
     <div className="space-y-3">
-      {error && showPayment && <div className="alert-error text-sm">{error}</div>}
+      {error && showPayment && (
+        <div className="alert-error text-sm" role="alert">
+          <div>{error}</div>
+          {closeErrorDetails && (
+            <div className="mt-1 text-xs opacity-80">
+              {closeErrorDetails.isApiCorrelation ? 'Correlação da requisição: ' : 'Referência local (não pesquisável no servidor): '}
+              {closeErrorDetails.referenceId}
+              {closeErrorDetails.status != null && ` · HTTP ${closeErrorDetails.status}`}
+              {closeErrorDetails.requestId && ` · Requisição ${closeErrorDetails.requestId}`}
+            </div>
+          )}
+        </div>
+      )}
       {podeAplicarDesconto && (
         <PaymentDiscountFields
           inputId="desconto-fechar"
@@ -515,7 +548,7 @@ export function ComandaDetailPage() {
         total={podeAplicarDesconto ? totalComDesconto : comandaTotal}
         paymentForm={paymentForm}
         setPaymentForm={setPaymentForm}
-        onConfirm={handleClose}
+        onConfirm={() => handleClose(false)}
         isPending={closeMutation.isPending}
         headerExtra={paymentHeaderExtra}
         deferLabel="Deixar pendente"

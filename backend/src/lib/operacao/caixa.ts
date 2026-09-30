@@ -4,11 +4,7 @@ import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
 import { centavos, diaOperacional, reais } from './venda.js';
 import { pedidoContaNaComanda } from './cozinha.js';
-import {
-  aplicarCardapioCatalogoSeVazio,
-  aplicarCardapioInicialTurno,
-} from './sessao-cardapio.js';
-import { operacaoUsaCardapio } from '../cardapio-toggle.js';
+import { aplicarCardapioInicialTurno } from './sessao-cardapio.js';
 import { verifyPassword } from '../utils.js';
 import { getOperationalProfile } from '../operational-profile.js';
 import { inicializarMontagemSessaoCaixa } from '../tap-montagem.js';
@@ -364,6 +360,12 @@ export async function abrirCaixa(params: {
   cardapioId?: string;
   produtoIds?: string[];
 }) {
+  const escolheuCardapio = Boolean(params.cardapioId);
+  const montouCardapio = Boolean(params.produtoIds?.length);
+  if (escolheuCardapio === montouCardapio || (escolheuCardapio && params.produtoIds !== undefined)) {
+    throw new CaixaInvalidoError('Escolha um cardápio salvo ou monte o cardápio antes de abrir o caixa');
+  }
+
   if (params.trocoInicial < 0) {
     throw new CaixaInvalidoError('O troco inicial não pode ser negativo');
   }
@@ -402,9 +404,8 @@ export async function abrirCaixa(params: {
     throw new CaixaInvalidoError('O caixa deste ponto já está aberto');
   }
 
-  const usaCardapio = await operacaoUsaCardapio(params.cervejariaId);
-  const cardapioId = usaCardapio ? params.cardapioId : undefined;
-  const produtoIds = usaCardapio ? params.produtoIds : undefined;
+  const cardapioId = params.cardapioId;
+  const produtoIds = params.produtoIds;
 
   const sessao = await prisma.$transaction(async (tx) => {
     await lockCaixaEmTx(tx, params.cervejariaId, params.pontoVendaId, dia);
@@ -440,11 +441,6 @@ export async function abrirCaixa(params: {
     cardapioId,
     produtoIds,
   });
-  // Só usa todo o catálogo quando o caixa foi aberto sem uma seleção.
-  // Um cardápio salvo vazio (ou uma seleção manual vazia) deve continuar vazio.
-  if (!cardapioId && !produtoIds?.length) {
-    await aplicarCardapioCatalogoSeVazio(sessao.id, params.cervejariaId);
-  }
   if (trailerId) {
     await inicializarMontagemSessaoCaixa(sessao.id, trailerId);
   }

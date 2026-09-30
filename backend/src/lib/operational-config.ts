@@ -17,6 +17,7 @@ export const updateOperationalConfigSchema = z
     inventoryEnabled: z.boolean().optional(),
     kitchenEnabled: z.boolean().optional(),
     kitchenItemsChargeAtLaunch: z.boolean().optional(),
+    allowCloseComandaWithPendingKitchenOrders: z.boolean().optional(),
     whatsappPedidoProntoEnabled: z.boolean().optional(),
     whatsappPedidoProntoNaCozinha: z.boolean().optional(),
     completeInitialSetup: z.boolean().optional(),
@@ -31,6 +32,7 @@ export const updateOperationalConfigSchema = z
       body.inventoryEnabled !== undefined ||
       body.kitchenEnabled !== undefined ||
       body.kitchenItemsChargeAtLaunch !== undefined ||
+      body.allowCloseComandaWithPendingKitchenOrders !== undefined ||
       body.whatsappPedidoProntoEnabled !== undefined ||
       body.whatsappPedidoProntoNaCozinha !== undefined ||
       body.completeInitialSetup === true,
@@ -65,6 +67,15 @@ export class OperationalModeTransitionBlockedError extends Error {
   }
 }
 
+export class PendingKitchenCloseDependencyError extends Error {
+  statusCode = 400;
+
+  constructor() {
+    super('Ative "Pedidos pendentes na cozinha compõem o valor da comanda" antes de permitir fechar comandas com pedidos pendentes.');
+    this.name = 'PendingKitchenCloseDependencyError';
+  }
+}
+
 /** Persists requested enablements only; it never provisions or deletes resources. */
 export async function updateOperationalConfig(
   db: OperationalConfigClient,
@@ -77,6 +88,15 @@ export async function updateOperationalConfig(
       : input.plannedOperationsEnabled ? 'EVENTO' : 'CAIXA'
   );
   const current = await db.configuracaoOperacional.findUnique({ where: { cervejariaId } });
+  const kitchenItemsChargeAtLaunch = input.kitchenItemsChargeAtLaunch ?? current?.kitchenItemsChargeAtLaunch ?? false;
+  const clearPendingClosePermission = input.kitchenItemsChargeAtLaunch === false || (
+    input.kitchenItemsChargeAtLaunch === true &&
+    current?.kitchenItemsChargeAtLaunch !== true &&
+    current?.allowCloseComandaWithPendingKitchenOrders === true
+  );
+  if (input.allowCloseComandaWithPendingKitchenOrders === true && !kitchenItemsChargeAtLaunch) {
+    throw new PendingKitchenCloseDependencyError();
+  }
   const currentMode = current?.plannedOperationsEnabled === true ? 'EVENTO' : 'CAIXA';
   const modeChanged = operationMode !== undefined && operationMode !== currentMode;
 
@@ -156,6 +176,12 @@ export async function updateOperationalConfig(
     ...(input.inventoryEnabled !== undefined ? { inventoryEnabled: input.inventoryEnabled } : {}),
     ...(input.kitchenEnabled !== undefined ? { kitchenEnabled: input.kitchenEnabled } : {}),
     ...(input.kitchenItemsChargeAtLaunch !== undefined ? { kitchenItemsChargeAtLaunch: input.kitchenItemsChargeAtLaunch } : {}),
+    ...(input.allowCloseComandaWithPendingKitchenOrders !== undefined
+      ? { allowCloseComandaWithPendingKitchenOrders: input.allowCloseComandaWithPendingKitchenOrders }
+      : {}),
+    ...(clearPendingClosePermission
+      ? { allowCloseComandaWithPendingKitchenOrders: false }
+      : {}),
     ...(input.whatsappPedidoProntoEnabled !== undefined
       ? { whatsappPedidoProntoEnabled: input.whatsappPedidoProntoEnabled }
       : {}),

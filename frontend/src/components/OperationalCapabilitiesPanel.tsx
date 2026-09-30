@@ -5,7 +5,7 @@ import { api, ApiError } from '../lib/api';
 import { ToggleAtivo } from './ToggleAtivo';
 
 type CapabilityKey = 'tapsEnabled' | 'inventoryEnabled' | 'kitchenEnabled';
-type OperationalConfiguration = Record<CapabilityKey | 'plannedOperationsEnabled' | 'whatsappPedidoProntoEnabled' | 'whatsappPedidoProntoNaCozinha' | 'kitchenItemsChargeAtLaunch', boolean | null>;
+type OperationalConfiguration = Record<CapabilityKey | 'plannedOperationsEnabled' | 'whatsappPedidoProntoEnabled' | 'whatsappPedidoProntoNaCozinha' | 'kitchenItemsChargeAtLaunch' | 'allowCloseComandaWithPendingKitchenOrders', boolean | null>;
 type Enablements = { plannedOperations: boolean; cashRegister: boolean; cashMode: boolean; taps: boolean; inventory: boolean; kitchen: boolean };
 type OperationalConfigResponse = { enablements: Enablements; configuration: OperationalConfiguration | null };
 const ENABLEMENT_BY_KEY: Record<CapabilityKey, keyof Enablements> = { tapsEnabled: 'taps', inventoryEnabled: 'inventory', kitchenEnabled: 'kitchen' };
@@ -17,7 +17,7 @@ const CAPABILITIES: Array<{ key: CapabilityKey; title: string; description: stri
 
 export function OperationalCapabilitiesPanel() {
   const queryClient = useQueryClient();
-  const [saving, setSaving] = useState<CapabilityKey | 'mode' | 'whatsapp' | 'whatsappLocation' | 'kitchenCharge' | null>(null);
+  const [saving, setSaving] = useState<CapabilityKey | 'mode' | 'whatsapp' | 'whatsappLocation' | 'kitchenCharge' | 'closeWithKitchenPending' | null>(null);
   const [error, setError] = useState('');
   const { data, isLoading } = useQuery({ queryKey: ['operational-configuration'], queryFn: () => api.get<OperationalConfigResponse>('/api/cervejaria/configuracao-operacional') });
   const refresh = () => Promise.all([queryClient.invalidateQueries({ queryKey: ['operational-configuration'] }), queryClient.invalidateQueries({ queryKey: ['operacao-contexto'] })]);
@@ -56,6 +56,16 @@ export function OperationalCapabilitiesPanel() {
     catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Não foi possível salvar a regra de cobrança da cozinha'); }
     finally { setSaving(null); }
   }
+  async function updateCloseWithKitchenPendingSetting() {
+    const enabled = !(data?.configuration?.allowCloseComandaWithPendingKitchenOrders ?? false);
+    setSaving('closeWithKitchenPending'); setError('');
+    try {
+      await api.patch('/api/cervejaria/configuracao-operacional', { allowCloseComandaWithPendingKitchenOrders: enabled });
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'Nao foi possivel salvar a regra de fechamento com pedidos pendentes');
+    } finally { setSaving(null); }
+  }
   const operationMode = data?.enablements.plannedOperations ? 'EVENTO' : 'CAIXA';
   return <section className="space-y-3" aria-labelledby="operational-capabilities-title">
     <div><h2 id="operational-capabilities-title" className="text-base font-bold text-ink">Como você trabalha?</h2><p className="mt-1 text-sm text-ink-muted">Escolha um único modo de operação.</p></div>
@@ -74,7 +84,7 @@ export function OperationalCapabilitiesPanel() {
       {CAPABILITIES.map(({ key, title, description }) => <div key={key} className="flex min-h-20 items-center justify-between gap-3 px-4 py-4"><div className="min-w-0 flex-1"><p className="font-semibold text-ink">{title}</p><p className="mt-1 text-sm leading-relaxed text-ink-muted">{description}</p></div><ToggleAtivo ativo={data?.enablements[ENABLEMENT_BY_KEY[key]] ?? false} loading={isLoading || saving !== null} onToggle={() => toggle(key)} labelAtivo={`Desativar ${title}`} labelInativo={`Ativar ${title}`} /></div>)}
       <div className="flex min-h-20 items-center justify-between gap-3 px-4 py-4">
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-ink">Produtos que vão para cozinha</p>
+          <p className="font-semibold text-ink">Pedidos pendentes na cozinha compõem o valor da comanda</p>
           <p className="mt-1 text-sm leading-relaxed text-ink-muted">Ligado: entram na comanda ao lançar. Desligado: entram quando forem entregues.</p>
         </div>
         <ToggleAtivo
@@ -85,6 +95,19 @@ export function OperationalCapabilitiesPanel() {
           labelInativo="Ativar cobrança ao lançar itens da cozinha"
         />
       </div>
+      {data?.configuration?.kitchenItemsChargeAtLaunch && <div className="flex min-h-20 items-center justify-between gap-3 px-4 py-4">
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-ink">Permitir fechar comanda com pedido pendente na cozinha</p>
+          <p className="mt-1 text-sm leading-relaxed text-ink-muted">Ligado: permite encerrar e receber mesmo antes da entrega. Desligado: exige que os pedidos de cozinha sejam entregues.</p>
+        </div>
+        <ToggleAtivo
+          ativo={data?.configuration?.allowCloseComandaWithPendingKitchenOrders ?? false}
+          loading={isLoading || saving !== null}
+          onToggle={() => void updateCloseWithKitchenPendingSetting()}
+          labelAtivo="Desativar fechamento com pedido pendente na cozinha"
+          labelInativo="Ativar fechamento com pedido pendente na cozinha"
+        />
+      </div>}
     </div>
     <div className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
       <div className="flex min-h-20 items-center justify-between gap-3 px-4 py-4">

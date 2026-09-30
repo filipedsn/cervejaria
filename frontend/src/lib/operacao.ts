@@ -67,7 +67,7 @@ export interface CardapioTurnoOperacao {
   cardapioNome?: string | null;
 }
 
-export type TurnoCardapioModo = 'salvo' | 'montar' | 'depois';
+export type TurnoCardapioModo = 'salvo' | 'montar' | null;
 
 export interface TurnoCardapioFormState {
   cardapioModo: TurnoCardapioModo;
@@ -76,7 +76,7 @@ export interface TurnoCardapioFormState {
 }
 
 export function defaultTurnoCardapioForm(): TurnoCardapioFormState {
-  return { cardapioModo: 'depois', cardapioId: '', produtoIds: [] };
+  return { cardapioModo: null, cardapioId: '', produtoIds: [] };
 }
 
 export function buildTurnoCardapioAbrirPayload(form: TurnoCardapioFormState) {
@@ -86,7 +86,7 @@ export function buildTurnoCardapioAbrirPayload(form: TurnoCardapioFormState) {
   if (form.cardapioModo === 'montar' && form.produtoIds.length > 0) {
     return { produtoIds: form.produtoIds };
   }
-  return {};
+  return null;
 }
 
 /** URL de produtos operacionais do turno (PDV/comanda). */
