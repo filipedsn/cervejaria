@@ -316,7 +316,7 @@ export function parseValor(entrada: string): number {
 export function rotuloComanda(
   comanda: Pick<ComandaOperacao, 'tipo' | 'identificador' | 'numero'>,
 ): string {
-  if (comanda.tipo === 'AVULSA') return 'Venda avulsa';
+  if (comanda.tipo === 'AVULSA') return comanda.identificador?.trim() || 'Venda avulsa';
   const prefixo = comanda.tipo === 'MESA' ? 'Mesa' : comanda.tipo === 'FICHA' ? 'Ficha' : '';
   const base = prefixo ? `${prefixo} ${comanda.identificador}` : (comanda.identificador ?? '');
   return base;

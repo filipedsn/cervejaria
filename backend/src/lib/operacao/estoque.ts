@@ -229,21 +229,23 @@ export async function estornarEstoqueItemPedido(
     opcionais?: Array<{ produtoEstoqueId: string | null; quantidade: number }>;
   },
 ) {
-  if (!params.moduloControlaEstoque || !params.controlaEstoque || params.quantidade <= 0) return;
+  if (!params.moduloControlaEstoque || params.quantidade <= 0) return;
 
-  await entrarQuantidade(tx, {
-    cervejariaId: params.cervejariaId,
-    pontoVendaId: params.pontoVendaId,
-    produtoId: params.produtoId,
-    quantidade: params.tapId ? ((params.volumeMl ?? 0) * params.quantidade) / 1000 : params.quantidade,
-    tipo: 'ESTORNO_VENDA',
-    observacao: 'Estorno item da comanda',
-    registradoPorId: params.registradoPorId,
-    pedidoId: params.pedidoId,
-  });
+  if (params.controlaEstoque) {
+    await entrarQuantidade(tx, {
+      cervejariaId: params.cervejariaId,
+      pontoVendaId: params.pontoVendaId,
+      produtoId: params.produtoId,
+      quantidade: params.tapId ? ((params.volumeMl ?? 0) * params.quantidade) / 1000 : params.quantidade,
+      tipo: 'ESTORNO_VENDA',
+      observacao: 'Estorno item da comanda',
+      registradoPorId: params.registradoPorId,
+      pedidoId: params.pedidoId,
+    });
+  }
   for (const opcional of params.opcionais ?? []) {
     if (!opcional.produtoEstoqueId) continue;
-    const produto = await tx.produto.findFirst({ where: { id: opcional.produtoEstoqueId, cervejariaId: params.cervejariaId, ativo: true }, select: { nome: true, controlaEstoque: true } });
+    const produto = await tx.produto.findFirst({ where: { id: opcional.produtoEstoqueId, cervejariaId: params.cervejariaId }, select: { nome: true, controlaEstoque: true } });
     if (produto?.controlaEstoque) await entrarQuantidade(tx, { cervejariaId: params.cervejariaId, pontoVendaId: params.pontoVendaId, produtoId: opcional.produtoEstoqueId, quantidade: params.quantidade * opcional.quantidade, tipo: 'ESTORNO_VENDA', observacao: 'Estorno opcional da comanda', registradoPorId: params.registradoPorId, pedidoId: params.pedidoId });
   }
 }

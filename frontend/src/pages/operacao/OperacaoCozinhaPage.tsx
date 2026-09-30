@@ -218,6 +218,11 @@ export function OperacaoCozinhaPage() {
             <p className="text-sm text-ink-muted">
               O pedido será retirado do total e o estoque será ajustado. Ele continuará destacado na cozinha até alguém confirmar o cancelamento.
             </p>
+            {pedidoParaCancelar.comanda.tipo === 'AVULSA' && (
+              <p className="text-sm text-orange-500">
+                A venda avulsa já foi paga: o valor cancelado será estornado no caixa. Se o pagamento foi por PIX ou cartão, devolva o valor ao cliente também no meio de pagamento.
+              </p>
+            )}
           </div>
         )}
       </Modal>

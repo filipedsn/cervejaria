@@ -5,14 +5,22 @@ import { EmptyState } from '../../components/EmptyState';
 import { CozinhaPedidoCard } from '../../components/operacao/CozinhaPedidoCard';
 import { CozinhaTvGrid } from '../../components/operacao/CozinhaTvGrid';
 import { CancelarQuantidadeModal } from '../../components/operacao/CancelarQuantidadeModal';
+import { Modal } from '../../components/Modal';
 import { IconBell } from '../../components/NavIcons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOperacaoCozinha } from '../../hooks/useOperacaoCozinha';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
+import type { PedidoCozinha } from '../../lib/operacao';
+
+type ConfirmacaoCancelamento =
+  | { tipo: 'solicitar-pedido'; pedido: PedidoCozinha }
+  | { tipo: 'confirmar-pedido'; pedido: PedidoCozinha }
+  | { tipo: 'cancelar-item'; pedido: PedidoCozinha; itemId: string; nome: string };
 
 export function OperacaoCozinhaTvPage() {
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
+  const [confirmacaoCancelamento, setConfirmacaoCancelamento] = useState<ConfirmacaoCancelamento | null>(null);
   const [itemParaCancelar, setItemParaCancelar] = useState<{
     comandaId: string;
     itemId: string;
@@ -44,6 +52,31 @@ export function OperacaoCozinhaTvPage() {
   const syncFullscreen = useCallback(() => {
     setIsNativeFullscreen(Boolean(document.fullscreenElement));
   }, []);
+
+  const confirmarCancelamento = () => {
+    if (!confirmacaoCancelamento) return;
+    const confirmacao = confirmacaoCancelamento;
+    if (confirmacao.tipo === 'solicitar-pedido') {
+      mudarStatus.mutate(
+        { id: confirmacao.pedido.id, status: 'CANCELAMENTO_PENDENTE' },
+        { onSuccess: () => setConfirmacaoCancelamento(null) },
+      );
+      return;
+    }
+    if (confirmacao.tipo === 'confirmar-pedido') {
+      mudarStatus.mutate(
+        { id: confirmacao.pedido.id, status: 'CANCELADO' },
+        { onSuccess: () => setConfirmacaoCancelamento(null) },
+      );
+      return;
+    }
+    removerItem.mutate(
+      { comandaId: confirmacao.pedido.comanda.id, itemId: confirmacao.itemId },
+      { onSuccess: () => setConfirmacaoCancelamento(null) },
+    );
+  };
+
+  const cancelamentoPendente = mudarStatus.isPending || removerItem.isPending;
 
   useEffect(() => {
     document.addEventListener('fullscreenchange', syncFullscreen);
@@ -159,23 +192,19 @@ export function OperacaoCozinhaTvPage() {
               onVoltar={(status) => mudarStatus.mutate({ id: pedido.id, status })}
               podeCancelar={isDono}
               onCancelar={() => {
-                if (window.confirm(`Cancelar o pedido ${pedido.numero}?`)) {
-                  mudarStatus.mutate({ id: pedido.id, status: 'CANCELAMENTO_PENDENTE' });
-                }
+                setConfirmacaoCancelamento({ tipo: 'solicitar-pedido', pedido });
               }}
               onConfirmarCancelamento={() => {
-                if (window.confirm(`Confirmar o cancelamento do pedido ${pedido.numero}?`)) {
-                  mudarStatus.mutate({ id: pedido.id, status: 'CANCELADO' });
-                }
+                setConfirmacaoCancelamento({ tipo: 'confirmar-pedido', pedido });
               }}
-              onCancelarItem={(itemId) => {
+              onCancelarItem={pedido.comanda.tipo === 'AVULSA' ? undefined : (itemId) => {
                 const item = pedido.itens.find((linha) => linha.id === itemId);
                 if (!item) return;
                 if (item.quantidade > 1) {
                   removerItem.reset();
                   setItemParaCancelar({ comandaId: pedido.comanda.id, itemId, nome: item.nome, quantidade: item.quantidade });
-                } else if (window.confirm(`Cancelar ${item.quantidade}x ${item.nome}?`)) {
-                  removerItem.mutate({ comandaId: pedido.comanda.id, itemId });
+                } else {
+                  setConfirmacaoCancelamento({ tipo: 'cancelar-item', pedido, itemId, nome: item.nome });
                 }
               }}
               onConfirmarCancelamentoItem={(itemId) => confirmarCancelamentoItem.mutate({ pedidoId: pedido.id, itemId })}
@@ -208,6 +237,61 @@ export function OperacaoCozinhaTvPage() {
           });
         }}
       />
+      <Modal
+        open={confirmacaoCancelamento !== null}
+        title={confirmacaoCancelamento?.tipo === 'solicitar-pedido'
+          ? 'Solicitar cancelamento'
+          : confirmacaoCancelamento?.tipo === 'confirmar-pedido'
+            ? 'Confirmar cancelamento'
+            : 'Cancelar item'}
+        onClose={() => {
+          if (!cancelamentoPendente) setConfirmacaoCancelamento(null);
+        }}
+        closeOnBackdrop={!cancelamentoPendente}
+        footer={(
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              className="touch-btn-orange w-full min-h-12"
+              disabled={cancelamentoPendente}
+              onClick={() => setConfirmacaoCancelamento(null)}
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              className="touch-btn-danger w-full min-h-12"
+              disabled={cancelamentoPendente}
+              onClick={confirmarCancelamento}
+            >
+              {cancelamentoPendente ? 'Processando...' : 'Confirmar'}
+            </button>
+          </div>
+        )}
+      >
+        {confirmacaoCancelamento?.tipo === 'solicitar-pedido' && (
+          <div className="space-y-3 text-sm text-ink">
+            <p>Solicitar o cancelamento do pedido {confirmacaoCancelamento.pedido.numero}?</p>
+            <ul className="rounded-xl bg-surface-lighter p-3 space-y-1">
+              {confirmacaoCancelamento.pedido.itens.map((item) => (
+                <li key={item.id}>{item.quantidade}× {item.nome}</li>
+              ))}
+            </ul>
+            <p className="text-ink-muted">O pedido ficará destacado na cozinha até a confirmação do cancelamento.</p>
+            {confirmacaoCancelamento.pedido.comanda.tipo === 'AVULSA' && (
+              <p className="rounded-xl border border-orange-500/30 bg-orange-500/10 p-3 text-orange-700 dark:text-orange-300">
+                O valor dos itens será estornado no caixa. Se o pagamento foi por PIX ou cartão, devolva o valor ao cliente no meio de pagamento.
+              </p>
+            )}
+          </div>
+        )}
+        {confirmacaoCancelamento?.tipo === 'confirmar-pedido' && (
+          <p className="text-sm text-ink">Confirmar o cancelamento do pedido {confirmacaoCancelamento.pedido.numero} e removê-lo da fila da cozinha?</p>
+        )}
+        {confirmacaoCancelamento?.tipo === 'cancelar-item' && (
+          <p className="text-sm text-ink">Cancelar 1× {confirmacaoCancelamento.nome}?</p>
+        )}
+      </Modal>
     </div>
   );
 }

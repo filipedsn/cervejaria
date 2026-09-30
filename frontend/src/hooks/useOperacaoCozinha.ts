@@ -116,7 +116,14 @@ export function useOperacaoCozinha() {
         }),
       );
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: ['operacao-caixa'] });
+      void queryClient.invalidateQueries({ queryKey: ['evento-caixa'] });
+      void queryClient.invalidateQueries({ queryKey: ['operacao-estoque'] });
+      void queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
+      void queryClient.invalidateQueries({ queryKey: ['comandas'] });
+    },
   });
 
   const removerItem = useMutation({

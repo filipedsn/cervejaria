@@ -24,6 +24,9 @@ import { recalcComandaTotalOperacao } from '../../lib/operacao/comanda-adapter.j
 import { lockComandaItemsInTx } from '../../lib/comanda-service.js';
 import { confirmarCancelamentoItemComandaOperacao } from '../../lib/operacao/comanda-itens.js';
 import { emitToEvento } from '../../lib/realtime.js';
+import { assertCaixaAberto, lockCaixaEmTx } from '../../lib/operacao/caixa.js';
+import { bloquearCaixaEvento, obterCaixaAtualEvento } from '../../lib/evento-caixa.js';
+import { estornarVendaAvulsaFechada } from '../../lib/operacao/estorno-venda-avulsa.js';
 
 const alterarStatusSchema = z.object({
   status: z.enum(['RECEBIDO', 'EM_PREPARO', 'PRONTO', 'ENTREGUE', 'CANCELAMENTO_PENDENTE', 'CANCELADO']),
@@ -74,7 +77,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
 
     const pedido = await prisma.pedidoOperacao.findFirst({
       where: { id, cervejariaId },
-      include: { ...INCLUDE_PEDIDO_COZINHA, comanda: { select: { id: true, tipo: true, identificador: true, status: true } } },
+      include: { ...INCLUDE_PEDIDO_COZINHA, comanda: { select: { id: true, tipo: true, identificador: true, status: true, origem: true, eventoId: true, pontoVendaId: true, diaOperacional: true } } },
     });
     if (!pedido) return reply.status(404).send({ error: 'Pedido não encontrado' });
     if (!pedidoVaiParaCozinha(pedido.itensComanda)) {
@@ -85,9 +88,8 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
       if (user.papel !== 'DONO') {
         return reply.status(403).send({ error: 'Só o dono pode cancelar um pedido' });
       }
-      // O pedido só pode ser solicitado para cancelamento enquanto a conta está aberta.
-      if (pedido.comanda.status !== 'ABERTA') {
-        return reply.status(409).send({ error: 'A comanda deste pedido já foi fechada' });
+      if (pedido.comanda.status !== 'ABERTA' && !(pedido.comanda.tipo === 'AVULSA' && pedido.comanda.status === 'FECHADA')) {
+        return reply.status(409).send({ error: 'Esta comanda não pode ser cancelada pela cozinha' });
       }
     }
 
@@ -98,6 +100,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
     }
 
     let atualizado;
+    let valorEstornado = 0;
     try {
       atualizado = await prisma.$transaction(async (tx) => {
         if (status !== 'CANCELAMENTO_PENDENTE') {
@@ -113,16 +116,39 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
           return atualizado;
         }
 
+        let sessaoCaixaId: string | undefined;
+        let sessaoCaixaEventoId: string | undefined;
+        if (pedido.comanda.tipo === 'AVULSA' && pedido.comanda.status === 'FECHADA') {
+          if (pedido.comanda.origem === 'CAIXA') {
+            if (!pedido.comanda.pontoVendaId || !pedido.comanda.diaOperacional) {
+              throw Object.assign(new Error('Venda sem ponto de venda ou dia operacional'), { statusCode: 409 });
+            }
+            const diaAtual = diaOperacional();
+            await lockCaixaEmTx(tx, cervejariaId, pedido.comanda.pontoVendaId, diaAtual);
+            const caixa = await assertCaixaAberto(cervejariaId, pedido.comanda.pontoVendaId, diaAtual, tx);
+            sessaoCaixaId = caixa.id;
+          } else {
+            if (!pedido.comanda.eventoId) throw Object.assign(new Error('Venda sem evento'), { statusCode: 409 });
+            await bloquearCaixaEvento(tx, pedido.comanda.eventoId);
+            const caixa = await obterCaixaAtualEvento(pedido.comanda.eventoId, tx);
+            if (!caixa) throw Object.assign(new Error('Abra o caixa do evento para estornar esta venda'), { statusCode: 409 });
+            sessaoCaixaEventoId = caixa.id;
+          }
+        }
+
         await lockComandaItemsInTx(tx, pedido.comandaId);
         const pedidoAtual = await tx.pedidoOperacao.findUniqueOrThrow({
           where: { id: pedido.id },
           include: {
-            itensComanda: { include: { produto: true } },
-            comanda: { select: { id: true, status: true } },
+            itensComanda: { include: { produto: true, opcionais: { include: { opcional: true } } } },
+            comanda: { select: { id: true, status: true, tipo: true } },
           },
         });
-        if (pedidoAtual.comanda.status !== 'ABERTA') {
-          throw Object.assign(new Error('A comanda deste pedido já foi fechada'), { statusCode: 409 });
+        if (!TRANSICOES[pedidoAtual.status].includes(status)) {
+          throw new StatusPedidoCozinhaDesatualizadoError();
+        }
+        if (pedidoAtual.comanda.status !== 'ABERTA' && !(pedidoAtual.comanda.status === 'FECHADA' && pedidoAtual.comanda.tipo === 'AVULSA')) {
+          throw Object.assign(new Error('Esta comanda não pode ser cancelada pela cozinha'), { statusCode: 409 });
         }
 
         const solicitacaoEm = new Date();
@@ -138,6 +164,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
         const cancelado = await aplicarStatusPedidoCozinha(tx, pedidoAtual, 'CANCELAMENTO_PENDENTE', solicitacaoEm);
 
         for (const item of pedidoAtual.itensComanda) {
+          if (!item.exigePreparo || item.cancelamentoPendenteEm || item.canceladoEm) continue;
           if (!item.produto || !pedidoAtual.pontoVendaId) continue;
           await estornarEstoqueItemPedido(tx, {
             moduloControlaEstoque: request.operacao.controlaEstoque,
@@ -151,10 +178,24 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
             tapId: item.tapId,
             volumeMl: item.volumeMl,
             registradoPorId: user.sub,
+            opcionais: item.opcionais.map((opcional) => ({ produtoEstoqueId: opcional.opcional?.produtoEstoqueId ?? null, quantidade: opcional.quantidade })),
           });
         }
 
-        await recalcComandaTotalOperacao(tx, pedidoAtual.comandaId);
+        if (pedidoAtual.comanda.status === 'FECHADA') {
+          if (!sessaoCaixaId && !sessaoCaixaEventoId) {
+            throw new StatusPedidoCozinhaDesatualizadoError();
+          }
+          const estorno = await estornarVendaAvulsaFechada(tx, {
+            comandaId: pedidoAtual.comandaId,
+            registradoPorId: user.sub,
+            sessaoCaixaId,
+            sessaoCaixaEventoId,
+          });
+          valorEstornado = estorno.valorEstornado;
+        } else {
+          await recalcComandaTotalOperacao(tx, pedidoAtual.comandaId);
+        }
         return cancelado;
       });
     } catch (error) {
@@ -168,6 +209,12 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
 
     if (status === 'ENTREGUE' || status === 'CANCELAMENTO_PENDENTE' || status === 'CANCELADO') {
       notificarComandaOperacaoAtualizada(app, cervejariaId, atualizado.comanda.id);
+      if (pedido.comanda.eventoId) {
+        emitToEvento(app.io, pedido.comanda.eventoId, {
+          type: 'comanda:updated',
+          data: { comandaId: pedido.comandaId },
+        });
+      }
     }
 
     if (status === 'ENTREGUE') {
@@ -181,7 +228,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
       usuarioId: user.sub,
       comandaId: pedido.comandaId,
       entidadeId: pedido.id,
-      metadata: { statusAnterior: pedido.status, status },
+      metadata: { statusAnterior: pedido.status, status, ...(valorEstornado > 0 ? { valorEstornado, estornoNoCaixa: true } : {}) },
       payload: resumo,
     });
 

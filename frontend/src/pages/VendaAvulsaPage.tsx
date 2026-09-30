@@ -68,6 +68,7 @@ export function VendaAvulsaPage() {
   const { podeDarDescontoOperacao } = useAuth();
 
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [nomeCliente, setNomeCliente] = useState('');
   const [showAddItem, setShowAddItem] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -147,6 +148,7 @@ export function VendaAvulsaPage() {
     }) =>
       api.post<Comanda>('/api/vendas-avulsas', {
         eventoId: eventoId!,
+        nomeCliente: nomeCliente.trim(),
         itens: cart.map((line) => ({
           produtoId: line.produtoId,
           volumeMl: line.volumeMl,
@@ -164,6 +166,7 @@ export function VendaAvulsaPage() {
       setShowPayment(false);
       setShowReceipt(true);
       setCart([]);
+      setNomeCliente('');
       if (evento) {
         queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
         queryClient.invalidateQueries({ queryKey: ['dashboard', evento.id] });
@@ -270,6 +273,13 @@ export function VendaAvulsaPage() {
       </p>
 
       {error && !showPayment && <div className="alert-error">{error}</div>}
+
+      <div>
+        <label className="label" htmlFor="nome-cliente-venda-avulsa-evento">Nome do cliente (cozinha)</label>
+        <input id="nome-cliente-venda-avulsa-evento" className="input" type="text" maxLength={120}
+          value={nomeCliente} onChange={(event) => setNomeCliente(event.target.value)}
+          placeholder="Ex.: Filipe" autoComplete="off" />
+      </div>
 
       <CheckoutItemsCard
         empty={cart.length === 0}
