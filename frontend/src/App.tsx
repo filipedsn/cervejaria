@@ -406,13 +406,18 @@ const router = createBrowserRouter([
                       { path: 'clientes/novo', element: <NovoClientePage /> },
                       { path: 'clientes/:id', element: <ClienteDetailPage /> },
                       {
-                        element: <RequireTrailerContext />,
+                        element: <RequireEventoMode />,
                         children: [
-                          { path: 'comandas', element: <ComandasPage /> },
-                          { path: 'comandas/nova', element: <NovaComandaPage /> },
-                          { path: 'comandas/venda-avulsa', element: <VendaAvulsaPage /> },
-                          { path: 'comandas/:id', element: <ComandaDetailPage /> },
-                          { path: 'ranking/:eventoId?', element: <RankingPage /> },
+                          {
+                            element: <RequireTrailerContext />,
+                            children: [
+                              { path: 'comandas', element: <ComandasPage /> },
+                              { path: 'comandas/nova', element: <NovaComandaPage /> },
+                              { path: 'comandas/venda-avulsa', element: <VendaAvulsaPage /> },
+                              { path: 'comandas/:id', element: <ComandaDetailPage /> },
+                              { path: 'ranking/:eventoId?', element: <RankingPage /> },
+                            ],
+                          },
                         ],
                       },
                       {

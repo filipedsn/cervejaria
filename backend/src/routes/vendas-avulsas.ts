@@ -117,7 +117,14 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
           });
         }
 
-        const total = toNumber(comandaComItens.total);
+        // Venda avulsa é paga no ato, inclusive quando os itens ainda estão
+        // sendo preparados. O total normal da comanda omite itens pendentes
+        // da cozinha até serem entregues; isso faria esta venda parecer zerada.
+        const total = Math.max(0, subtotal - desconto);
+        await tx.comanda.update({
+          where: { id: created.id },
+          data: { total },
+        });
         if (total <= 0.001) {
           if (body.pagamentos.length > 0) {
             throw Object.assign(new Error('Conta zerada não exige pagamento'), { statusCode: 400 });
