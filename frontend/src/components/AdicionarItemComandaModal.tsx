@@ -5,6 +5,8 @@ import { CATEGORIAS_PRODUTO_OPERACAO, normalizeCategoriaProduto } from '../lib/o
 import { Modal } from './Modal';
 
 type TabId = 'chope' | 'comidas' | 'bebidas' | 'outros';
+type AddItemData = { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] };
+type PendingItem = { data: AddItemData; nome: string; precoUnit: number };
 
 export function AdicionarItemComandaModal({
   open,
@@ -16,6 +18,8 @@ export function AdicionarItemComandaModal({
   eventoAberto,
   comandaTotal,
   onAdd,
+  launchMode = false,
+  onLaunch,
   isPending,
   error,
   successMessage,
@@ -28,7 +32,9 @@ export function AdicionarItemComandaModal({
   outros?: Produto[];
   eventoAberto: boolean;
   comandaTotal: number;
-  onAdd: (data: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] }) => void;
+  onAdd: (data: AddItemData) => void;
+  launchMode?: boolean;
+  onLaunch?: (items: AddItemData[]) => Promise<void>;
   isPending: boolean;
   error?: string;
   successMessage?: string;
@@ -41,6 +47,7 @@ export function AdicionarItemComandaModal({
   const [paraViagem, setParaViagem] = useState(false);
   const [observacao, setObservacao] = useState('');
   const [opcionais, setOpcionais] = useState<Record<string, number>>({});
+  const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -89,30 +96,58 @@ export function AdicionarItemComandaModal({
     return sum + Number(option?.precoAdicional ?? 0) * qty;
   }, 0);
   const subtotal = (unitPrice + opcionaisTotal) * quantity;
-  const newTotal = comandaTotal + subtotal;
+  const pendingTotal = pendingItems.reduce((sum, item) => sum + item.precoUnit * item.data.quantidade, 0);
+  const newTotal = comandaTotal + subtotal + pendingTotal;
 
   const handleAdd = () => {
     if (tab === 'chope') {
       if (!selectedTap?.chopeAtual || !selectedVolume) return;
-      onAdd({
+      const data: AddItemData = {
         produtoId: selectedTap.chopeAtual.id,
         volumeMl: selectedVolume,
         quantidade: quantity,
         tapId: selectedTap.id,
         paraViagem,
-      });
+      };
+      if (launchMode) stageItem(data, `${selectedTap.chopeAtual.nome} (${selectedVolume} ml)`, unitPrice + opcionaisTotal);
+      else onAdd(data);
       return;
     }
     if (!selectedProduto || !unitProduto) return;
-    onAdd({
+    const data: AddItemData = {
       produtoId: selectedProduto.id,
       volumeMl: unitProduto.volumeMl,
       quantidade: quantity,
       paraViagem,
       observacao: observacao.trim() || undefined,
       opcionais: Object.entries(opcionais).map(([opcionalId, quantidade]) => ({ opcionalId, quantidade })),
-    });
+    };
+    if (launchMode) stageItem(data, selectedProduto.nome, unitPrice + opcionaisTotal);
+    else onAdd(data);
     setSelectedProduto(null);
+  };
+
+  const stageItem = (data: AddItemData, nome: string, precoUnit: number) => {
+    setPendingItems((current) => {
+      const index = current.findIndex((item) => item.data.produtoId === data.produtoId &&
+        item.data.volumeMl === data.volumeMl && item.data.tapId === data.tapId &&
+        item.data.paraViagem === data.paraViagem && item.data.observacao === data.observacao &&
+        JSON.stringify(item.data.opcionais ?? []) === JSON.stringify(data.opcionais ?? []));
+      if (index < 0) return [...current, { data, nome, precoUnit }];
+      return current.map((item, itemIndex) => itemIndex === index
+        ? { ...item, data: { ...item.data, quantidade: item.data.quantidade + data.quantidade } }
+        : item);
+    });
+  };
+
+  const launchPendingItems = async () => {
+    if (!onLaunch || pendingItems.length === 0 || isPending) return;
+    try {
+      await onLaunch(pendingItems.map((item) => item.data));
+      setPendingItems([]);
+    } catch {
+      // The parent shows the request error; retain staged items for retry.
+    }
   };
 
   const availableVolumes = (selectedTap?.chopeAtual?.precos ?? [])
@@ -162,10 +197,31 @@ export function AdicionarItemComandaModal({
 
   const closeModal = () => {
     setSelectedProduto(null);
+    setPendingItems([]);
     onClose();
   };
 
-  const footer = tab === 'chope' ? (
+  const footer = launchMode ? (
+    <>
+      {tab === 'chope' && <button type="button" className="touch-btn-secondary w-full" onClick={handleAdd} disabled={!canAdd}>
+        Adicionar chope à lista
+      </button>}
+      {pendingItems.length > 0 && <div className="max-h-32 space-y-2 overflow-y-auto">
+        {pendingItems.map((item, index) => <div key={`${item.data.produtoId}-${item.data.volumeMl}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface-lighter px-3 py-2 text-sm">
+          <span className="min-w-0 truncate">{item.data.quantidade}× {item.nome}</span>
+          <span className="shrink-0 font-semibold">{formatCurrency(item.precoUnit * item.data.quantidade)}</span>
+          <button type="button" className="text-ink-faint" aria-label={`Remover ${item.nome} da lista`} onClick={() => setPendingItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button>
+        </div>)}
+      </div>}
+      {pendingItems.length > 0 && <div className="flex items-center justify-between px-1 text-sm">
+        <span className="text-ink-faint">Total dos itens</span><strong>{formatCurrency(pendingTotal)}</strong>
+      </div>}
+      <button type="button" className="touch-btn-primary w-full" onClick={() => void launchPendingItems()} disabled={!pendingItems.length || isPending}>
+        {isPending ? 'Lançando...' : 'Lançar na comanda'}
+      </button>
+      <button type="button" className="touch-btn-orange w-full" onClick={closeModal} disabled={isPending}>Voltar</button>
+    </>
+  ) : tab === 'chope' ? (
     <>
       <button
         type="button"
@@ -192,7 +248,7 @@ export function AdicionarItemComandaModal({
   const detailFooter = (
     <>
       <button type="button" className="touch-btn-primary w-full" onClick={handleAdd} disabled={!canAddUnit || isPending}>
-        {isPending ? 'Adicionando...' : 'Adicionar item'}
+        {launchMode ? 'Adicionar à lista' : isPending ? 'Adicionando...' : 'Adicionar item'}
       </button>
       <button type="button" className="touch-btn-orange w-full" onClick={() => setSelectedProduto(null)} disabled={isPending}>
         Voltar

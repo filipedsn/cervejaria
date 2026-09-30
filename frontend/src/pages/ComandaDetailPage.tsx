@@ -116,9 +116,9 @@ export function ComandaDetailPage() {
     });
   }, [descontoInput, showPayment, comanda?.itens]);
 
-  const addItemMutation = useMutation({
-    mutationFn: (data: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] }) =>
-      api.post<Comanda>(`/api/comandas/${id}/itens`, data),
+  const addItemsMutation = useMutation({
+    mutationFn: (itens: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] }[]) =>
+      api.post<Comanda>(`/api/comandas/${id}/itens/lancar`, { itens }),
     onSuccess: (updated) => {
       queryClient.setQueryData(['comanda', id], updated);
       if (evento) queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
@@ -489,8 +489,10 @@ export function ComandaDetailPage() {
         outros={outrosProdutos}
         eventoAberto={!!eventoAberto}
         comandaTotal={comandaTotal}
-        onAdd={(data) => addItemMutation.mutate(data)}
-        isPending={addItemMutation.isPending}
+        onAdd={() => undefined}
+        launchMode
+        onLaunch={(itens) => addItemsMutation.mutateAsync(itens).then(() => undefined)}
+        isPending={addItemsMutation.isPending}
         error={showAddItem ? error : undefined}
         successMessage={showAddItem ? itemAddedMessage : undefined}
       />

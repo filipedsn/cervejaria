@@ -13,9 +13,11 @@ import { registrarTransacao } from '../lib/transacao-log.js';
 import { proximoNumeroComandaEvento } from '../lib/comanda-numero.js';
 import { isUniqueViolation } from '../lib/prisma-errors.js';
 import {
+  addItemToComandaInTx,
   addItemToComanda,
   aplicarDescontoComanda,
   comandaDetailInclude,
+  lockComandaItemsInTx,
   removeItemFromComanda,
 } from '../lib/comanda-service.js';
 import { INCLUDE_PEDIDO_COZINHA, notificarCozinha } from '../lib/operacao/cozinha.js';
@@ -56,6 +58,7 @@ const addItemSchema = z.object({
   observacao: z.string().trim().max(280).optional(),
   opcionais: z.array(z.object({ opcionalId: z.string().min(1), quantidade: z.number().int().positive().max(99).optional() })).optional(),
 });
+const addItemsSchema = z.object({ itens: z.array(addItemSchema).min(1) });
 
 const descontoSchema = z.object({
   desconto: z.number().min(0),
@@ -150,6 +153,69 @@ export async function comandasRoutes(app: FastifyInstance) {
       emitRankingUpdated(app.io, user.cervejariaId!, eventoId);
     }
     return reply.status(201).send(updated);
+  });
+
+  app.post('/:id/itens/lancar', async (request, reply) => {
+    const user = getAuthUser(request);
+    const { id } = request.params as { id: string };
+    const body = addItemsSchema.parse(request.body);
+
+    const resultado = await prisma.$transaction(async (tx) => {
+      await lockComandaItemsInTx(tx, id);
+      const comanda = await tx.comanda.findFirst({
+        where: { id, status: 'ABERTA', evento: { cervejariaId: user.cervejariaId! } },
+      });
+      if (!comanda) throw Object.assign(new Error('Comanda não encontrada ou fechada'), { statusCode: 404 });
+
+      const itensAdicionados: Array<{ produto: { id: string; nome: string }; precoUnit: number; isChope: boolean; pedidoCozinha: { id: string } | null; item: z.infer<typeof addItemSchema> }> = [];
+      for (const item of body.itens) {
+        const result = await addItemToComandaInTx(tx, {
+          comandaId: id,
+          cervejariaId: user.cervejariaId!,
+          eventoId: eventoIdDaComanda(comanda),
+          item,
+          criadoPorId: user.sub,
+        });
+        if ('error' in result) throw Object.assign(new Error(result.error), { statusCode: 400 });
+        itensAdicionados.push({ produto: result.produto, precoUnit: result.precoUnit, isChope: result.isChope, pedidoCozinha: result.pedidoCozinha, item });
+      }
+
+      const atualizada = await tx.comanda.findUniqueOrThrow({ where: { id }, include: comandaDetailInclude });
+      return { eventoId: eventoIdDaComanda(comanda), atualizada, itensAdicionados };
+    }, { maxWait: 15_000, timeout: 20_000 });
+
+    for (const adicionado of resultado.itensAdicionados) {
+      if (adicionado.pedidoCozinha) {
+        const cozinha = await prisma.pedidoOperacao.findUnique({
+          where: { id: adicionado.pedidoCozinha.id },
+          include: INCLUDE_PEDIDO_COZINHA,
+        });
+        if (cozinha) notificarCozinha(app, user.cervejariaId!, cozinha, true);
+      }
+      await registrarTransacao({
+        cervejariaId: user.cervejariaId!,
+        tipo: 'COMANDA_ITEM_ADICIONADO',
+        usuarioId: user.sub,
+        eventoId: resultado.eventoId,
+        comandaId: id,
+        entidadeTipo: 'Produto',
+        entidadeId: adicionado.item.produtoId,
+        metadata: {
+          produtoNome: adicionado.produto.nome,
+          volumeMl: adicionado.item.volumeMl,
+          quantidade: adicionado.item.quantidade,
+          precoUnit: adicionado.precoUnit,
+          tapId: adicionado.item.tapId ?? null,
+        },
+        payload: resultado.atualizada,
+      });
+    }
+    emitToEvento(app.io, resultado.eventoId, { type: 'item:added', data: resultado.atualizada });
+    emitToComanda(app.io, id, { type: 'item:added', data: { comandaId: id } });
+    if (resultado.itensAdicionados.some((item) => item.isChope)) {
+      emitRankingUpdated(app.io, user.cervejariaId!, resultado.eventoId);
+    }
+    return reply.status(201).send(resultado.atualizada);
   });
 
   app.delete('/:id/itens/:itemId', async (request, reply) => {
