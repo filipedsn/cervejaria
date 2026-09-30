@@ -49,6 +49,7 @@ export function OperacaoVendaAvulsaPage() {
 
   const [pontoVendaId, setPontoVendaId] = useState('');
   const [carrinho, setCarrinho] = useState<LinhaCarrinho[]>([]);
+  const [nomeCliente, setNomeCliente] = useState('');
   const [itensModal, setItensModal] = useState<LinhaCarrinho[]>([]);
   const [showAddItem, setShowAddItem] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
@@ -178,6 +179,7 @@ export function OperacaoVendaAvulsaPage() {
     }) =>
       api.post<ComandaOperacao>('/api/operacao/vendas', {
         pontoVendaId: pontoAtivo,
+        nomeCliente: nomeCliente.trim(),
         itens: carrinho.map((linha) => ({ produtoId: linha.produto.id, quantidade: linha.quantidade, tapId: linha.tapId, volumeMl: linha.volumeMl, paraViagem: linha.paraViagem ?? false, observacao: linha.observacao, opcionais: linha.opcionais?.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })) })),
         pagamentos,
         desconto,
@@ -188,6 +190,7 @@ export function OperacaoVendaAvulsaPage() {
       queryClient.invalidateQueries({ queryKey: ['operacao-estoque', pontoAtivo] });
       invalidateOnboardingReadiness(queryClient);
       setCarrinho([]);
+      setNomeCliente('');
       setShowPayment(false);
       setClosedVenda(venda);
       setShowReceipt(true);
@@ -274,6 +277,13 @@ export function OperacaoVendaAvulsaPage() {
       )}
 
       {erro && !showPayment && <div className="alert-error">{erro}</div>}
+
+      <div>
+        <label className="label" htmlFor="nome-cliente-venda-avulsa-caixa">Nome do cliente (cozinha)</label>
+        <input id="nome-cliente-venda-avulsa-caixa" className="input" type="text" maxLength={120}
+          value={nomeCliente} onChange={(event) => setNomeCliente(event.target.value)}
+          placeholder="Ex.: Filipe" autoComplete="off" />
+      </div>
 
       {pontosVenda.length > 1 && (
         <div>

@@ -30,6 +30,7 @@ import { assertPodeDarDescontoOperacao, DescontoInvalidoError } from '../../lib/
 const vendaAvulsaSchema = z.object({
   pontoVendaId: z.string().min(1),
   clienteId: z.string().min(1).optional(),
+  nomeCliente: z.string().trim().max(120).optional(),
   itens: z
     .array(
       z.object({
@@ -104,6 +105,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
             origem: 'CAIXA',
             pontoVendaId: body.pontoVendaId,
             tipo: 'AVULSA',
+            identificador: body.nomeCliente || null,
             ...(cliente ? { clienteId: cliente.id } : {}),
             diaOperacional: dia,
             abertaPorId: user.sub,

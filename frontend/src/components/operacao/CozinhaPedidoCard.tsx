@@ -108,7 +108,7 @@ export function CozinhaPedidoCard({
               <span className="cozinha-tv-card-qtd">{item.quantidade}×</span>
               <span className="cozinha-tv-card-nome">{item.nome}</span>
                 {item.paraViagem && <span className="cozinha-tv-card-item-travel" title="Para viagem" aria-label="Para viagem"><IconShoppingBag className="h-5 w-5" /></span>}
-                {item.cancelamentoPendente && onConfirmarCancelamentoItem ? (
+                {item.cancelamentoPendente && pedido.status !== 'CANCELAMENTO_PENDENTE' && onConfirmarCancelamentoItem ? (
                   <button type="button" className="cozinha-tv-card-btn cozinha-tv-card-btn-danger" disabled={disabled} onClick={() => onConfirmarCancelamentoItem(item.id)}>
                     Confirmar cancelamento
                   </button>
@@ -218,7 +218,7 @@ export function CozinhaPedidoCard({
               {item.paraViagem && <span className="ml-2 inline-flex text-amber-300" title="Para viagem" aria-label="Para viagem"><IconShoppingBag className="h-4 w-4" /></span>}
               {item.cancelamentoPendente && <span className="ml-auto text-xs font-semibold text-orange-400">Cancelamento solicitado</span>}
             </div>
-            {item.cancelamentoPendente && onConfirmarCancelamentoItem && (
+            {item.cancelamentoPendente && pedido.status !== 'CANCELAMENTO_PENDENTE' && onConfirmarCancelamentoItem && (
               <button type="button" className="touch-btn-orange touch-btn-sm mt-2" disabled={disabled} onClick={() => onConfirmarCancelamentoItem(item.id)}>
                 Confirmar cancelamento
               </button>

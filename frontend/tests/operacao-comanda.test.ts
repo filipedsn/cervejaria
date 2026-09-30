@@ -9,8 +9,14 @@ import {
   totalPendenteComanda,
   totalItensComanda,
   pedidoVisivelNaComanda,
+  rotuloComanda,
   type PedidoOperacao,
 } from '../src/lib/operacao.ts';
+
+test('cozinha identifica venda avulsa pelo nome informado sem criar cliente cadastrado', () => {
+  assert.equal(rotuloComanda({ tipo: 'AVULSA', identificador: 'Filipe', numero: null }), 'Filipe');
+  assert.equal(rotuloComanda({ tipo: 'AVULSA', identificador: null, numero: null }), 'Venda avulsa');
+});
 
 test('classifica produtos por categoria, sem confundir formato e chope por tap em qualquer modo', () => {
   assert.equal(classificarGrupoProdutoOperacao({ tipo: 'BEBIDA', categoria: 'Drinks', formato: 'OUTRO', precos: [{ volumeMl: 1, preco: 13 }] }), 'bebidas');

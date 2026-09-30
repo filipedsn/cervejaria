@@ -1732,8 +1732,8 @@ button[title="Excluir"].icon-btn-danger {
 /* Grade compacta da TV: maximiza pedidos visíveis em paisagem sem remover dados. */
 @media (orientation: landscape) and (min-width: 700px) {
   .qt-cozinha-tv {
-    --cozinha-card-min: 11rem;
-    --cozinha-card-max: 14rem;
+    --cozinha-card-min: 15rem;
+    --cozinha-card-max: 18rem;
     padding: 0.45rem 0.6rem;
   }
 
@@ -1760,10 +1760,10 @@ button[title="Excluir"].icon-btn-danger {
   }
 
   .cozinha-tv-card-comanda {
-    max-width: 12rem;
+    max-width: 14rem;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-size: clamp(0.75rem, 1vw, 0.95rem);
+    font-size: clamp(1rem, 1.15vw, 1.2rem);
   }
 
   .cozinha-tv-card-header-badges {
@@ -1809,8 +1809,8 @@ button[title="Excluir"].icon-btn-danger {
     gap: 0.12rem;
     padding: 0.18rem 0.3rem;
     border-radius: 0.45rem;
-    font-size: clamp(0.68rem, 0.85vw, 0.8rem);
-    line-height: 1.05;
+    font-size: clamp(0.85rem, 0.95vw, 1rem);
+    line-height: 1.15;
   }
 
   .cozinha-tv-card-item-heading {
@@ -1818,13 +1818,13 @@ button[title="Excluir"].icon-btn-danger {
   }
 
   .cozinha-tv-card-qtd {
-    font-size: 0.88rem;
+    font-size: 1.05rem;
   }
 
   .cozinha-tv-card-nome {
     display: -webkit-box;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     overflow: hidden;
   }
 
@@ -1851,7 +1851,7 @@ button[title="Excluir"].icon-btn-danger {
   .cozinha-tv-card-item-details strong,
   .cozinha-tv-card-item-details > span {
     display: inline;
-    font-size: clamp(0.64rem, 0.7vw, 0.72rem);
+    font-size: clamp(0.78rem, 0.8vw, 0.9rem);
   }
 
   .cozinha-tv-card-item-heading > .cozinha-tv-card-btn {

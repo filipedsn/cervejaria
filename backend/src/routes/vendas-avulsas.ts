@@ -31,6 +31,7 @@ const pagamentoSchema = z.object({
 
 const vendaAvulsaSchema = z.object({
   eventoId: z.string(),
+  nomeCliente: z.string().trim().max(120).optional(),
   itens: z.array(itemSchema).min(1),
   pagamentos: z.array(pagamentoSchema),
   desconto: z.number().min(0).optional(),
@@ -76,6 +77,7 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
             eventoId: body.eventoId,
             clienteId: cliente.id,
             tipo: 'AVULSA',
+            identificador: body.nomeCliente || null,
           },
         });
 
