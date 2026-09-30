@@ -85,36 +85,42 @@ export function allocatePagamentosToComandas(
   pagamentos: PagamentoInput[],
 ): Map<string, PagamentoInput[]> {
   const sorted = [...comandas].sort((a, b) => a.id.localeCompare(b.id));
-  const pool = pagamentos.map((p) => ({ forma: p.forma, remaining: p.valor }));
+  const toCents = (value: number) => Math.round(toNumber(value) * 100);
+  const totalDueCents = sorted.reduce((sum, comanda) => sum + toCents(comanda.total), 0);
+  const totalPaidCents = pagamentos.reduce((sum, pagamento) => sum + toCents(pagamento.valor), 0);
+  // Compare the pool globally in cents; per-comanda float tolerances can hide
+  // a one-cent shortfall on several separate comandas.
+  if (Math.abs(totalDueCents - totalPaidCents) > 1) {
+    throw new Error(totalPaidCents < totalDueCents
+      ? 'Alocação incompleta: total dos pagamentos insuficiente'
+      : 'Sobra no pool de pagamentos após alocação');
+  }
+
+  const pool = pagamentos.map((p) => ({ forma: p.forma, remainingCents: toCents(p.valor) }));
   const result = new Map<string, PagamentoInput[]>();
 
   for (const comanda of sorted) {
-    let needed = comanda.total;
-    const allocated: PagamentoInput[] = [];
+    let neededCents = toCents(comanda.total);
+    const allocated = new Map<PagamentoInput['forma'], number>();
 
     for (const line of pool) {
-      if (needed <= 0.001) break;
-      if (line.remaining <= 0.001) continue;
+      if (neededCents <= 0) break;
+      if (line.remainingCents <= 0) continue;
 
-      const take = Math.min(needed, line.remaining);
-      const existing = allocated.find((a) => a.forma === line.forma);
-      if (existing) {
-        existing.valor += take;
-      } else {
-        allocated.push({ forma: line.forma, valor: take });
-      }
-      line.remaining -= take;
-      needed -= take;
+      const takeCents = Math.min(neededCents, line.remainingCents);
+      allocated.set(line.forma, (allocated.get(line.forma) ?? 0) + takeCents);
+      line.remainingCents -= takeCents;
+      neededCents -= takeCents;
     }
 
-    if (needed > 0.01) {
+    if (neededCents > 1) {
       throw new Error(`Alocação incompleta para comanda ${comanda.id}`);
     }
-    result.set(comanda.id, allocated);
+    result.set(comanda.id, [...allocated].map(([forma, cents]) => ({ forma, valor: cents / 100 })));
   }
 
   for (const line of pool) {
-    if (line.remaining > 0.01) {
+    if (line.remainingCents > 1) {
       throw new Error('Sobra no pool de pagamentos após alocação');
     }
   }
