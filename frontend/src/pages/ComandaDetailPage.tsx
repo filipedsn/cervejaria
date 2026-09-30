@@ -552,6 +552,16 @@ export function ComandaDetailPage() {
         isPending={closeMutation.isPending}
         headerExtra={paymentHeaderExtra}
         deferLabel="Deixar pendente"
+        secondaryAction={comanda && eventoAberto ? (
+          <button
+            type="button"
+            className="touch-btn-secondary w-full min-h-14"
+            disabled={closeMutation.isPending}
+            onClick={() => navigate(`/comandas?selecionar=${encodeURIComponent(comanda.id)}`)}
+          >
+            Selecionar comandas
+          </button>
+        ) : undefined}
         deferDisabled={!comanda?.cliente.telefone || comanda.cliente.telefone.replace(/\D/g, '').length < 10 || comandaTotal <= 0}
         deferConfirmation={<p className="rounded-xl border border-orange/30 bg-surface-lighter p-4 text-sm">A comanda será encerrada sem recebimento. O saldo ficará vinculado a {comanda?.cliente.nome ?? 'este cliente'} e aparecerá nas contas pendentes do evento.</p>}
         onConfirmDefer={() => handleClose(true)}
