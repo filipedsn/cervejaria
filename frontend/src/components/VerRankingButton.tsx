@@ -22,7 +22,7 @@ export function VerRankingButton({
         to={`/ranking/${eventoId}`}
         title="Ver ranking"
         aria-label="Ver ranking"
-        className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/25 bg-white/10 text-white transition hover:bg-white/20 ${className}`}
+        className={`icon-btn-ghost h-12 w-12 border border-line bg-surface ${className}`}
       >
         <IconTrophy />
       </Link>

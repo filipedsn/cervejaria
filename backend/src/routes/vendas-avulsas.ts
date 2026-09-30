@@ -12,12 +12,16 @@ import {
 } from '../lib/fechar-comanda.js';
 import { registrarTransacao } from '../lib/transacao-log.js';
 import { assertPodeDarDescontoOperacao, DescontoInvalidoError } from '../lib/operacao/desconto.js';
+import { bloquearCaixaEvento, obterCaixaAtualEvento } from '../lib/evento-caixa.js';
 
 const itemSchema = z.object({
   produtoId: z.string(),
   volumeMl: z.number().int().positive(),
   quantidade: z.number().int().positive().default(1),
   tapId: z.string().optional(),
+  paraViagem: z.boolean().optional(),
+  observacao: z.string().trim().max(280).optional(),
+  opcionais: z.array(z.object({ opcionalId: z.string().min(1), quantidade: z.number().int().positive().max(99).optional() })).optional(),
 });
 
 const pagamentoSchema = z.object({
@@ -62,6 +66,9 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
 
     try {
       const comanda = await prisma.$transaction(async (tx) => {
+        await bloquearCaixaEvento(tx, body.eventoId);
+        const caixa = await obterCaixaAtualEvento(body.eventoId, tx);
+        if (!caixa) throw Object.assign(new Error('Abra o caixa do evento antes de registrar vendas'), { statusCode: 409 });
         const cliente = await ensureClienteAvulso(tx, user.cervejariaId!);
 
         const created = await tx.comanda.create({
@@ -113,7 +120,14 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
           });
         }
 
-        const total = toNumber(comandaComItens.total);
+        // Venda avulsa é paga no ato, inclusive quando os itens ainda estão
+        // sendo preparados. O total normal da comanda omite itens pendentes
+        // da cozinha até serem entregues; isso faria esta venda parecer zerada.
+        const total = Math.max(0, subtotal - desconto);
+        await tx.comanda.update({
+          where: { id: created.id },
+          data: { total },
+        });
         if (total <= 0.001) {
           if (body.pagamentos.length > 0) {
             throw Object.assign(new Error('Conta zerada não exige pagamento'), { statusCode: 400 });
@@ -160,6 +174,7 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
           cervejariaId: user.cervejariaId!,
           usuarioId: user.sub,
           fechadaEm,
+          sessaoCaixaEventoId: caixa.id,
         });
       });
 
@@ -173,6 +188,7 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
       if (statusCode === 404) {
         return reply.status(404).send({ error: (err as Error).message });
       }
+      if (statusCode === 409) return reply.status(409).send({ error: (err as Error).message });
       throw err;
     }
   });

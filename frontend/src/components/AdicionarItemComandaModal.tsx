@@ -1,16 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { Produto, TapComChope, VolumeMl } from '../types';
-import { FORMATO_BEBIDA_LABELS } from '../types';
 import { formatCurrency } from '../lib/api';
+import { CATEGORIAS_PRODUTO_OPERACAO, normalizeCategoriaProduto } from '../lib/operacao';
 import { Modal } from './Modal';
 
-type TabId = 'chope' | 'bebidas' | 'comidas';
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'chope', label: 'Chopes' },
-  { id: 'bebidas', label: 'Bebidas' },
-  { id: 'comidas', label: 'Comidas' },
-];
+type TabId = 'chope' | 'comidas' | 'bebidas' | 'outros';
+type AddItemData = { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] };
+type PendingItem = { data: AddItemData; nome: string; precoUnit: number };
 
 export function AdicionarItemComandaModal({
   open,
@@ -18,9 +14,12 @@ export function AdicionarItemComandaModal({
   tapsComChope,
   bebidas,
   comidas,
+  outros = [],
   eventoAberto,
   comandaTotal,
   onAdd,
+  launchMode = false,
+  onLaunch,
   isPending,
   error,
   successMessage,
@@ -30,9 +29,12 @@ export function AdicionarItemComandaModal({
   tapsComChope: TapComChope[];
   bebidas: Produto[];
   comidas: Produto[];
+  outros?: Produto[];
   eventoAberto: boolean;
   comandaTotal: number;
-  onAdd: (data: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] }) => void;
+  onAdd: (data: AddItemData) => void;
+  launchMode?: boolean;
+  onLaunch?: (items: AddItemData[]) => Promise<void>;
   isPending: boolean;
   error?: string;
   successMessage?: string;
@@ -45,6 +47,7 @@ export function AdicionarItemComandaModal({
   const [paraViagem, setParaViagem] = useState(false);
   const [observacao, setObservacao] = useState('');
   const [opcionais, setOpcionais] = useState<Record<string, number>>({});
+  const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -55,8 +58,8 @@ export function AdicionarItemComandaModal({
     setParaViagem(false);
     setObservacao('');
     setOpcionais({});
-    setTab('comidas');
-  }, [open, tapsComChope, bebidas.length, comidas.length]);
+    setTab(comidas.length ? 'comidas' : bebidas.length ? 'bebidas' : outros.length ? 'outros' : tapsComChope.length ? 'chope' : 'comidas');
+  }, [open, tapsComChope, bebidas.length, comidas.length, outros.length]);
 
   useEffect(() => {
     if (!selectedTap?.chopeAtual) {
@@ -93,29 +96,58 @@ export function AdicionarItemComandaModal({
     return sum + Number(option?.precoAdicional ?? 0) * qty;
   }, 0);
   const subtotal = (unitPrice + opcionaisTotal) * quantity;
-  const newTotal = comandaTotal + subtotal;
+  const pendingTotal = pendingItems.reduce((sum, item) => sum + item.precoUnit * item.data.quantidade, 0);
+  const newTotal = comandaTotal + subtotal + pendingTotal;
 
   const handleAdd = () => {
     if (tab === 'chope') {
       if (!selectedTap?.chopeAtual || !selectedVolume) return;
-      onAdd({
+      const data: AddItemData = {
         produtoId: selectedTap.chopeAtual.id,
         volumeMl: selectedVolume,
         quantidade: quantity,
         tapId: selectedTap.id,
         paraViagem,
-      });
+      };
+      if (launchMode) stageItem(data, `${selectedTap.chopeAtual.nome} (${selectedVolume} ml)`, unitPrice + opcionaisTotal);
+      else onAdd(data);
       return;
     }
     if (!selectedProduto || !unitProduto) return;
-    onAdd({
+    const data: AddItemData = {
       produtoId: selectedProduto.id,
       volumeMl: unitProduto.volumeMl,
       quantidade: quantity,
       paraViagem,
       observacao: observacao.trim() || undefined,
       opcionais: Object.entries(opcionais).map(([opcionalId, quantidade]) => ({ opcionalId, quantidade })),
+    };
+    if (launchMode) stageItem(data, selectedProduto.nome, unitPrice + opcionaisTotal);
+    else onAdd(data);
+    setSelectedProduto(null);
+  };
+
+  const stageItem = (data: AddItemData, nome: string, precoUnit: number) => {
+    setPendingItems((current) => {
+      const index = current.findIndex((item) => item.data.produtoId === data.produtoId &&
+        item.data.volumeMl === data.volumeMl && item.data.tapId === data.tapId &&
+        item.data.paraViagem === data.paraViagem && item.data.observacao === data.observacao &&
+        JSON.stringify(item.data.opcionais ?? []) === JSON.stringify(data.opcionais ?? []));
+      if (index < 0) return [...current, { data, nome, precoUnit }];
+      return current.map((item, itemIndex) => itemIndex === index
+        ? { ...item, data: { ...item.data, quantidade: item.data.quantidade + data.quantidade } }
+        : item);
     });
+  };
+
+  const launchPendingItems = async () => {
+    if (!onLaunch || pendingItems.length === 0 || isPending) return;
+    try {
+      await onLaunch(pendingItems.map((item) => item.data));
+      setPendingItems([]);
+    } catch {
+      // The parent shows the request error; retain staged items for retry.
+    }
   };
 
   const availableVolumes = (selectedTap?.chopeAtual?.precos ?? [])
@@ -123,13 +155,73 @@ export function AdicionarItemComandaModal({
     .sort((a, b) => a - b);
 
   const nothingAvailable =
-    tapsComChope.length === 0 && bebidas.length === 0 && comidas.length === 0;
-
+    tapsComChope.length === 0 && bebidas.length === 0 && comidas.length === 0 && outros.length === 0;
+  const visibleTabs: { id: TabId; label: string }[] = [
+    ...(tapsComChope.length > 0 ? [{ id: 'chope' as const, label: 'Chopes' }] : []),
+    ...(comidas.length > 0 ? [{ id: 'comidas' as const, label: 'Comidas' }] : []),
+    ...(bebidas.length > 0 ? [{ id: 'bebidas' as const, label: 'Bebidas' }] : []),
+    ...(outros.length > 0 ? [{ id: 'outros' as const, label: 'Outros' }] : []),
+  ];
+  const produtosDaAba = tab === 'bebidas' ? bebidas : tab === 'comidas' ? comidas : outros;
+  const categoriasDaAba = [...new Set(produtosDaAba.map((produto) => normalizeCategoriaProduto(produto.categoria)))].sort(
+    (a, b) => CATEGORIAS_PRODUTO_OPERACAO.indexOf(a as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]) - CATEGORIAS_PRODUTO_OPERACAO.indexOf(b as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]),
+  );
+  const selecionarProduto = (produto: Produto) => {
+    setSelectedProduto(produto);
+    setQuantity(1);
+    setParaViagem(false);
+    setObservacao('');
+    setOpcionais({});
+  };
+  const renderGradeProdutos = () => (
+    <div className="max-h-[40vh] space-y-3 overflow-y-auto pr-1">
+      {categoriasDaAba.map((categoria) => (
+        <section key={categoria} className="space-y-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{categoria}</h3>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {produtosDaAba.filter((produto) => normalizeCategoriaProduto(produto.categoria) === categoria).map((produto) => {
+              const preco = produto.precos[0];
+              return <button key={produto.id} type="button" onClick={() => selecionarProduto(produto)} className="card-touch flex min-h-20 flex-col justify-between gap-1 py-3 text-left">
+                <span className="font-semibold leading-tight">{produto.nome}</span>
+                <span className="text-sm text-ink-faint">{preco ? formatCurrency(preco.preco) : 'Preço indisponível'}</span>
+              </button>;
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
   const renderEmpty = (message: string) => (
     <p className="text-sm text-ink-faint text-center py-8">{message}</p>
   );
 
-  const footer = (
+  const closeModal = () => {
+    setSelectedProduto(null);
+    setPendingItems([]);
+    onClose();
+  };
+
+  const footer = launchMode ? (
+    <>
+      {tab === 'chope' && <button type="button" className="touch-btn-secondary w-full" onClick={handleAdd} disabled={!canAdd}>
+        Adicionar chope à lista
+      </button>}
+      {pendingItems.length > 0 && <div className="max-h-32 space-y-2 overflow-y-auto">
+        {pendingItems.map((item, index) => <div key={`${item.data.produtoId}-${item.data.volumeMl}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface-lighter px-3 py-2 text-sm">
+          <span className="min-w-0 truncate">{item.data.quantidade}× {item.nome}</span>
+          <span className="shrink-0 font-semibold">{formatCurrency(item.precoUnit * item.data.quantidade)}</span>
+          <button type="button" className="text-ink-faint" aria-label={`Remover ${item.nome} da lista`} onClick={() => setPendingItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button>
+        </div>)}
+      </div>}
+      {pendingItems.length > 0 && <div className="flex items-center justify-between px-1 text-sm">
+        <span className="text-ink-faint">Total dos itens</span><strong>{formatCurrency(pendingTotal)}</strong>
+      </div>}
+      <button type="button" className="touch-btn-primary w-full" onClick={() => void launchPendingItems()} disabled={!pendingItems.length || isPending}>
+        {isPending ? 'Lançando...' : 'Lançar na comanda'}
+      </button>
+      <button type="button" className="touch-btn-orange w-full" onClick={closeModal} disabled={isPending}>Voltar</button>
+    </>
+  ) : tab === 'chope' ? (
     <>
       <button
         type="button"
@@ -143,14 +235,30 @@ export function AdicionarItemComandaModal({
             ? 'Adicionar novamente à comanda'
             : 'Adicionar à comanda'}
       </button>
-      <button type="button" className="touch-btn-orange w-full" onClick={onClose} disabled={isPending}>
+      <button type="button" className="touch-btn-orange w-full" onClick={closeModal} disabled={isPending}>
+        Voltar
+      </button>
+    </>
+  ) : (
+    <button type="button" className="touch-btn-orange w-full" onClick={closeModal} disabled={isPending}>
+      Voltar
+    </button>
+  );
+
+  const detailFooter = (
+    <>
+      <button type="button" className="touch-btn-primary w-full" onClick={handleAdd} disabled={!canAddUnit || isPending}>
+        {launchMode ? 'Adicionar à lista' : isPending ? 'Adicionando...' : 'Adicionar item'}
+      </button>
+      <button type="button" className="touch-btn-orange w-full" onClick={() => setSelectedProduto(null)} disabled={isPending}>
         Voltar
       </button>
     </>
   );
 
   return (
-    <Modal open={open} onClose={onClose} title="Adicionar item" hideHeaderClose footer={footer}>
+    <>
+    <Modal open={open} onClose={closeModal} title="Adicionar item" hideHeaderClose footer={footer}>
       <div className="space-y-4">
         {error && <div className="alert-error text-sm">{error}</div>}
         {successMessage && <div className="alert-success text-sm" role="status">{successMessage}</div>}
@@ -167,16 +275,10 @@ export function AdicionarItemComandaModal({
         )}
 
         <div className="segmented-control">
-          {TABS.map(({ id, label }) => {
-            const disabled =
-              (id === 'chope' && tapsComChope.length === 0) ||
-              (id === 'bebidas' && bebidas.length === 0) ||
-              (id === 'comidas' && comidas.length === 0);
-            return (
+          {visibleTabs.map(({ id, label }) => (
               <button
                 key={id}
                 type="button"
-                disabled={disabled}
                 onClick={() => {
                   setTab(id);
                   setSelectedProduto(null);
@@ -185,12 +287,11 @@ export function AdicionarItemComandaModal({
                 }}
                 className={`segmented-control-btn ${
                   tab === id ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'
-                } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                }`}
               >
                 {label}
               </button>
-            );
-          })}
+          ))}
         </div>
 
         {tab === 'chope' && (
@@ -280,84 +381,22 @@ export function AdicionarItemComandaModal({
             {bebidas.length === 0 ? (
               renderEmpty('Nenhuma bebida no cardápio deste evento.')
             ) : (
-              <div className="grid grid-cols-2 gap-2 max-h-[40vh] overflow-y-auto pr-1">
-                {bebidas.map((produto) => {
-                  const preco = produto.precos[0];
-                  const selected = selectedProduto?.id === produto.id;
-                  const formato = produto.formato ? FORMATO_BEBIDA_LABELS[produto.formato] : 'Unidade';
-                  return (
-                    <button
-                      key={produto.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedProduto(produto);
-                        setQuantity(1);
-                        setParaViagem(false);
-                        setOpcionais({});
-                      }}
-                      className={[
-                        'rounded-xl border-2 p-3 text-left min-h-[4.5rem] transition-colors',
-                        selected
-                          ? 'border-brand-500 bg-brand-50'
-                          : 'border-line bg-surface hover:border-brand-300',
-                      ].join(' ')}
-                    >
-                      <p className="text-xs text-ink-faint">{formato}</p>
-                      <p className="font-bold text-sm leading-snug">{produto.nome}</p>
-                      {preco && (
-                        <p className="text-brand-700 font-semibold text-sm mt-1">
-                          {formatCurrency(preco.preco)}
-                        </p>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              renderGradeProdutos()
             )}
           </div>
         )}
 
-        {tab === 'comidas' && (
+        {(tab === 'comidas' || tab === 'outros') && (
           <div className="space-y-3">
-            {comidas.length === 0 ? (
+            {produtosDaAba.length === 0 ? (
               renderEmpty('Nenhuma comida no cardápio deste evento.')
             ) : (
-              <div className="grid grid-cols-2 gap-2 max-h-[40vh] overflow-y-auto pr-1">
-                {comidas.map((produto) => {
-                  const preco = produto.precos[0];
-                  const selected = selectedProduto?.id === produto.id;
-                  return (
-                    <button
-                      key={produto.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedProduto(produto);
-                        setQuantity(1);
-                        setParaViagem(false);
-                        setOpcionais({});
-                      }}
-                      className={[
-                        'rounded-xl border-2 p-3 text-left min-h-[4.5rem] transition-colors',
-                        selected
-                          ? 'border-brand-500 bg-brand-50'
-                          : 'border-line bg-surface hover:border-brand-300',
-                      ].join(' ')}
-                    >
-                      <p className="font-bold text-sm leading-snug">{produto.nome}</p>
-                      {preco && (
-                        <p className="text-brand-700 font-semibold text-sm mt-1">
-                          {formatCurrency(preco.preco)}
-                        </p>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              renderGradeProdutos()
             )}
           </div>
         )}
 
-        {(canAddChope || canAddUnit) && (
+        {canAddChope && (
           <>
             <div>
               <p className="text-sm font-medium text-ink-muted mb-2">Quantidade</p>
@@ -446,5 +485,47 @@ export function AdicionarItemComandaModal({
         )}
       </div>
     </Modal>
+    <Modal open={Boolean(selectedProduto)} onClose={() => setSelectedProduto(null)} title="" hideHeaderClose footer={detailFooter}>
+      {selectedProduto && <div className="space-y-5 rounded-2xl border border-line bg-surface-lighter p-4 sm:p-6">
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-bold text-ink">{selectedProduto.nome}</h2>
+          <p className="mt-1 text-sm text-ink-muted">{formatCurrency(unitPrice)} cada</p>
+        </div>
+        {selectedProduto.gruposOpcionais?.length ? <section className="space-y-3 border-b border-line pb-5">
+          <div><h3 className="text-lg font-bold">Opcionais</h3><p className="text-sm text-ink-muted">Selecione os opcionais que desejar</p></div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {selectedProduto.gruposOpcionais.flatMap((grupo) => grupo.opcoes.map((opcao) => ({ grupo, opcao }))).map(({ grupo, opcao }) => {
+              const checked = Boolean(opcionais[opcao.id]);
+              return <label key={opcao.id} className="flex min-h-14 cursor-pointer items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3 py-2 transition-colors has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10">
+                <span className="flex items-center gap-2"><input className="h-5 w-5 accent-brand-500" type={grupo.maximo === 1 ? 'radio' : 'checkbox'} name={`grupo-${grupo.id}`} checked={checked} onChange={() => setOpcionais((atual) => {
+                  const next = { ...atual };
+                  if (checked) delete next[opcao.id];
+                  else { if (grupo.maximo === 1) grupo.opcoes.forEach((item) => delete next[item.id]); next[opcao.id] = 1; }
+                  return next;
+                })} /><span className="font-semibold">{opcao.nome}</span></span>
+                <span className="text-xs text-ink-muted">{Number(opcao.precoAdicional) > 0 ? `+${formatCurrency(Number(opcao.precoAdicional))}` : 'Grátis'}</span>
+              </label>;
+            })}
+          </div>
+        </section> : null}
+        <section className="flex items-center justify-between gap-4 border-b border-line pb-5">
+          <div><h3 className="text-lg font-bold">Quantidade</h3><p className="text-sm text-ink-muted">Escolha a quantidade deste item</p></div>
+          <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-2 py-1.5">
+            <button type="button" aria-label="Diminuir quantidade" className="min-h-10 min-w-10 rounded-xl bg-surface-lighter text-xl font-bold disabled:opacity-40" onClick={() => setQuantity((value) => Math.max(1, value - 1))} disabled={quantity <= 1 || isPending}>−</button>
+            <span className="min-w-8 text-center text-2xl font-bold tabular-nums">{quantity}</span>
+            <button type="button" aria-label="Aumentar quantidade" className="min-h-10 min-w-10 rounded-xl bg-brand-600 text-xl font-bold text-white" onClick={() => setQuantity((value) => value + 1)} disabled={isPending}>+</button>
+          </div>
+        </section>
+        <section>
+          <div className="mb-3"><h3 className="text-lg font-bold">Para viagem</h3><p className="text-sm text-ink-muted">A cozinha deve embalar este item</p></div>
+          <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3"><input type="checkbox" className="h-5 w-5 accent-brand-500" checked={paraViagem} onChange={(event) => setParaViagem(event.target.checked)} /><span className="font-semibold">Marcar item para viagem</span></label>
+        </section>
+        <section>
+          <div className="mb-3"><h3 className="text-lg font-bold">Observação do item</h3><p className="text-sm text-ink-muted">Adicione alguma observação, se necessário</p></div>
+          <textarea value={observacao} onChange={(event) => setObservacao(event.target.value)} maxLength={280} rows={2} placeholder="Ex.: sem cebola" className="w-full rounded-2xl border border-line bg-surface px-4 py-3" />
+        </section>
+      </div>}
+    </Modal>
+    </>
   );
 }

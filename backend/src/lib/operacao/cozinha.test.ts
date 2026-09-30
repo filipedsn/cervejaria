@@ -92,7 +92,6 @@ describe('filtroListaPedidosCozinha', () => {
       OR: [
         {
           status: { in: ['RECEBIDO', 'EM_PREPARO', 'PRONTO'] },
-          comanda: { status: 'ABERTA' },
         },
         { status: 'CANCELAMENTO_PENDENTE' },
       ],
@@ -104,7 +103,6 @@ describe('filtroListaPedidosCozinha', () => {
       OR: [
         {
           status: { in: ['RECEBIDO', 'EM_PREPARO', 'PRONTO'] },
-          comanda: { status: 'ABERTA' },
         },
         { status: 'CANCELAMENTO_PENDENTE' },
         { status: 'ENTREGUE', diaOperacional: hoje },

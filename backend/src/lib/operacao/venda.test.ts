@@ -59,9 +59,34 @@ describe('subtotalComandaEmCentavos', () => {
 
     assert.equal(subtotalComandaEmCentavos(comanda), 8000);
   });
+
+  it('includes kitchen items at launch when the preference is enabled', () => {
+    const comanda = {
+      pedidosOperacao: [
+        { id: 'cozinha', status: 'RECEBIDO', itensComanda: [{ precoUnit: 8, quantidade: 1, exigePreparo: true, cancelamentoPendenteEm: null, canceladoEm: null }] },
+      ],
+      itens: [],
+    } as unknown as Parameters<typeof subtotalComandaEmCentavos>[0];
+
+    assert.equal(subtotalComandaEmCentavos(comanda, true), 800);
+    assert.equal(subtotalComandaEmCentavos(comanda, false), 0);
+  });
 });
 
 describe('calcularFinanceiroComanda', () => {
+  it('charges kitchen items at launch when configured and removes them from pending value', () => {
+    const financeiro = calcularFinanceiroComanda({
+      status: 'ABERTA',
+      kitchenItemsChargeAtLaunch: true,
+      itensSemPedido: [],
+      pedidos: [{
+        status: 'RECEBIDO',
+        itens: [{ precoUnit: 8, quantidade: 2, exigePreparo: true }],
+      }],
+    });
+
+    assert.deepEqual(financeiro, { subtotal: 1600, valorEmAberto: 0, desconto: 0, total: 1600 });
+  });
   it('inclui imediatamente item sem preparo de um pedido misto e mantém só o preparo em aberto', () => {
     const financeiro = calcularFinanceiroComanda({
       status: 'ABERTA',

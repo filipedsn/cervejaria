@@ -25,14 +25,32 @@ export const comandaDetailInclude = {
   pagamentos: true,
 } satisfies Prisma.ComandaInclude;
 
+async function cozinhaEntraNoTotalAoLancar(client: typeof prisma | Prisma.TransactionClient, comandaId: string) {
+  const origem = await client.comanda.findUnique({
+    where: { id: comandaId },
+    select: {
+      evento: { select: { cervejariaId: true } },
+      pontoVenda: { select: { cervejariaId: true } },
+    },
+  });
+  const cervejariaId = origem?.evento?.cervejariaId ?? origem?.pontoVenda?.cervejariaId;
+  if (!cervejariaId) return false;
+  const configuracao = await client.configuracaoOperacional.findUnique({
+    where: { cervejariaId },
+    select: { kitchenItemsChargeAtLaunch: true },
+  });
+  return configuracao?.kitchenItemsChargeAtLaunch ?? false;
+}
+
 export async function recalcComandaTotal(comandaId: string) {
   const itens = await prisma.itemComanda.findMany({ where: { comandaId }, include: { pedidoCozinha: { select: { status: true } } } });
   const comanda = await prisma.comanda.findUnique({
     where: { id: comandaId },
     select: { desconto: true },
   });
+  const cozinhaAoLancar = await cozinhaEntraNoTotalAoLancar(prisma, comandaId);
   const subtotal = itens
-    .filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm && (!item.exigePreparo || item.pedidoCozinha?.status === 'ENTREGUE' || !item.pedidoCozinha))
+    .filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm && (!item.exigePreparo || cozinhaAoLancar || item.pedidoCozinha?.status === 'ENTREGUE' || !item.pedidoCozinha))
     .reduce((sum, item) => sum + toNumber(item.precoUnit) * item.quantidade, 0);
   const total = Math.max(0, subtotal - toNumber(comanda?.desconto ?? 0));
   return prisma.comanda.update({
@@ -48,8 +66,9 @@ export async function recalcComandaTotalInTx(tx: Prisma.TransactionClient, coman
     select: { desconto: true },
   });
   const itens = await tx.itemComanda.findMany({ where: { comandaId }, include: { pedidoCozinha: { select: { status: true } } } });
+  const cozinhaAoLancar = await cozinhaEntraNoTotalAoLancar(tx, comandaId);
   const subtotal = itens
-    .filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm && (!item.exigePreparo || item.pedidoCozinha?.status === 'ENTREGUE' || !item.pedidoCozinha))
+    .filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm && (!item.exigePreparo || cozinhaAoLancar || item.pedidoCozinha?.status === 'ENTREGUE' || !item.pedidoCozinha))
     .reduce((sum, item) => sum + toNumber(item.precoUnit) * item.quantidade, 0);
   const total = Math.max(0, subtotal - toNumber(comanda?.desconto ?? 0));
   await tx.comanda.update({

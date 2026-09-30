@@ -28,6 +28,7 @@ import {
 import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../lib/currency';
 import { invalidateOnboardingReadiness } from '../lib/onboarding';
 import { getSocket } from '../lib/socket';
+import { classificarGrupoProdutoOperacao } from '../lib/operacao';
 
 type CartLine = {
   key: string;
@@ -37,6 +38,20 @@ type CartLine = {
   quantidade: number;
   tapId?: string;
   precoUnit: number;
+  adicionaisTotal?: number;
+  paraViagem?: boolean;
+  observacao?: string;
+  opcionais?: { opcionalId: string; quantidade: number }[];
+};
+
+type SaleItemInput = {
+  produtoId: string;
+  volumeMl: number;
+  quantidade: number;
+  tapId?: string;
+  paraViagem?: boolean;
+  observacao?: string;
+  opcionais?: { opcionalId: string; quantidade: number }[];
 };
 
 let cartKeySeq = 0;
@@ -62,6 +77,14 @@ export function VendaAvulsaPage() {
   const [error, setError] = useState('');
 
   const eventoId = evento?.id;
+
+  const { data: caixaEvento, isLoading: caixaEventoLoading } = useQuery({
+    queryKey: ['evento-caixa', eventoId],
+    queryFn: () => api.get<{ aberto: boolean }>(`/api/eventos/${eventoId}/caixa`),
+    enabled: Boolean(eventoId),
+    refetchInterval: 30_000,
+  });
+  const caixaAberto = caixaEvento?.aberto === true;
 
   const { data: taps, isLoading: loadingTaps } = useQuery({
     queryKey: ['evento-taps', eventoId],
@@ -90,7 +113,7 @@ export function VendaAvulsaPage() {
   }, [eventoId, queryClient]);
 
   const total = useMemo(
-    () => cart.reduce((sum, line) => sum + line.precoUnit * line.quantidade, 0),
+    () => cart.reduce((sum, line) => sum + (line.precoUnit + (line.adicionaisTotal ?? 0)) * line.quantidade, 0),
     [cart],
   );
   const descontoValor = podeDarDescontoOperacao ? parseCurrencyInput(descontoInput) : 0;
@@ -109,9 +132,10 @@ export function VendaAvulsaPage() {
   }, [descontoInput, showPayment, totalComDesconto]);
 
   const tapsComChope = taps?.filter((t) => t.ativo && t.chopeAtual && isBebidaChope(t.chopeAtual)) ?? [];
-  const bebidasEmbalagem =
-    cardapio?.produtos.filter((p) => isVendaUnitaria(p) && p.tipo === 'BEBIDA') ?? [];
-  const comidas = cardapio?.produtos.filter((p) => p.tipo === 'COMIDA') ?? [];
+  const produtosUnitarios = cardapio?.produtos.filter(isVendaUnitaria) ?? [];
+  const bebidasEmbalagem = produtosUnitarios.filter((produto) => classificarGrupoProdutoOperacao(produto) === 'bebidas');
+  const comidas = produtosUnitarios.filter((produto) => classificarGrupoProdutoOperacao(produto) === 'comidas');
+  const outrosProdutos = produtosUnitarios.filter((produto) => classificarGrupoProdutoOperacao(produto) === 'outros');
 
   const vendaMutation = useMutation({
     mutationFn: ({
@@ -128,6 +152,9 @@ export function VendaAvulsaPage() {
           volumeMl: line.volumeMl,
           quantidade: line.quantidade,
           ...(line.tapId ? { tapId: line.tapId } : {}),
+          paraViagem: line.paraViagem ?? false,
+          ...(line.observacao ? { observacao: line.observacao } : {}),
+          ...(line.opcionais?.length ? { opcionais: line.opcionais } : {}),
         })),
         pagamentos,
         desconto,
@@ -146,44 +173,31 @@ export function VendaAvulsaPage() {
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao registrar venda avulsa'),
   });
 
-  const handleAddToCart = (data: {
-    produtoId: string;
-    volumeMl: number;
-    quantidade: number;
-    tapId?: string;
-  }) => {
-    let produtoNome = '';
-    let precoUnit = 0;
-
-    if (data.tapId) {
-      const tap = tapsComChope.find((t) => t.id === data.tapId);
-      const chope = tap?.chopeAtual;
-      if (!chope) return;
-      produtoNome = chope.nome;
-      const preco = chope.precos.find((p) => p.volumeMl === data.volumeMl);
-      if (!preco) return;
-      precoUnit = parseFloat(String(preco.preco));
-    } else {
-      const produto = [...bebidasEmbalagem, ...comidas].find((p) => p.id === data.produtoId);
-      if (!produto) return;
-      produtoNome = produto.nome;
-      const preco = produto.precos.find((p) => p.volumeMl === data.volumeMl);
-      if (!preco) return;
-      precoUnit = parseFloat(String(preco.preco));
-    }
-
-    setCart((prev) => [
-      ...prev,
-      {
+  const handleAddToCart = async (items: SaleItemInput[]) => {
+    const nextLines: CartLine[] = [];
+    for (const data of items) {
+      const tap = data.tapId ? tapsComChope.find((item) => item.id === data.tapId) : undefined;
+      const produto = data.tapId ? tap?.chopeAtual : [...bebidasEmbalagem, ...comidas, ...outrosProdutos].find((item) => item.id === data.produtoId);
+      const preco = produto?.precos.find((item) => item.volumeMl === data.volumeMl);
+      if (!produto || !preco) throw new Error('Não foi possível adicionar um dos produtos selecionados.');
+      nextLines.push({
         key: nextCartKey(),
         produtoId: data.produtoId,
-        produtoNome,
+        produtoNome: produto.nome,
         volumeMl: data.volumeMl,
         quantidade: data.quantidade,
         tapId: data.tapId,
-        precoUnit,
-      },
-    ]);
+        precoUnit: Number(preco.preco),
+        adicionaisTotal: data.opcionais?.reduce((sum, opcional) => {
+          const opcao = produto.gruposOpcionais?.flatMap((grupo) => grupo.opcoes).find((item) => item.id === opcional.opcionalId);
+          return sum + Number(opcao?.precoAdicional ?? 0) * opcional.quantidade;
+        }, 0) ?? 0,
+        paraViagem: data.paraViagem,
+        observacao: data.observacao,
+        opcionais: data.opcionais,
+      });
+    }
+    setCart((current) => [...current, ...nextLines]);
     setShowAddItem(false);
     setError('');
   };
@@ -234,7 +248,18 @@ export function VendaAvulsaPage() {
     );
   }
 
-  if (loadingTaps || loadingCardapio) return <Loading />;
+  if (loadingTaps || loadingCardapio || caixaEventoLoading) return <Loading />;
+
+  if (!caixaAberto) {
+    return (
+      <div className="space-y-4 pb-2">
+        <PageHeader title="Venda avulsa" backTo="/comandas" backLabel="Comandas" />
+        <div className="alert-error" role="status">
+          Abra o caixa do evento para registrar uma venda avulsa.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`space-y-4 ${cart.length > 0 ? 'page-with-action-bar' : 'pb-2'}`}>
@@ -264,11 +289,13 @@ export function VendaAvulsaPage() {
                       : line.quantidade > 1
                         ? `${line.quantidade} unidades`
                         : '1 unidade'}
+                    {line.paraViagem ? ' · Para viagem' : ''}
+                    {line.observacao ? ` · ${line.observacao}` : ''}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="font-bold text-brand-600 tabular-nums">
-                    {formatCurrency(line.precoUnit * line.quantidade)}
+                    {formatCurrency((line.precoUnit + (line.adicionaisTotal ?? 0)) * line.quantidade)}
                   </span>
                   <button
                     type="button"
@@ -301,9 +328,12 @@ export function VendaAvulsaPage() {
         tapsComChope={tapsComChope}
         bebidas={bebidasEmbalagem}
         comidas={comidas}
+        outros={outrosProdutos}
         eventoAberto
         comandaTotal={total}
-        onAdd={handleAddToCart}
+        onAdd={(item) => handleAddToCart([item])}
+        launchMode
+        onLaunch={handleAddToCart}
         isPending={false}
       />
 
@@ -338,7 +368,7 @@ export function VendaAvulsaPage() {
               <div className="rounded-xl border border-line bg-surface-lighter p-3 space-y-1 text-sm text-left">
                 <div className="flex justify-between text-ink-muted">
                   <span>Subtotal</span>
-                  <span>{formatCurrency(subtotalComandaCervejaria(closedComanda))}</span>
+                  <span>{formatCurrency(subtotalComandaCervejaria(closedComanda, true))}</span>
                 </div>
                 <div className="flex justify-between text-ink-muted">
                   <span>Desconto</span>

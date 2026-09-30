@@ -14,6 +14,7 @@ import { MobileActionBar } from '../components/MobileActionBar';
 import { StatusBadge, comandaStatusVariant } from '../components/StatusBadge';
 import { IconTrash } from '../components/NavIcons';
 import { AdicionarItemComandaModal } from '../components/AdicionarItemComandaModal';
+import { classificarGrupoProdutoOperacao } from '../lib/operacao';
 import { PaymentDiscountFields } from '../components/checkout/PaymentDiscountFields';
 import {
   PaymentFormModal,
@@ -22,6 +23,8 @@ import {
   type PaymentFormRow,
 } from '../components/PaymentFormModal';
 import { parseCurrencyInput, formatCurrencyInputFromNumber } from '../lib/currency';
+import { trackUiError } from '../lib/audit-tracker';
+import { createCorrelationId } from '../lib/correlation-id';
 
 export function ComandaDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -34,11 +37,13 @@ export function ComandaDetailPage() {
   const [showPayment, setShowPayment] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [closedComanda, setClosedComanda] = useState<Comanda | null>(null);
+  const [closedAsPending, setClosedAsPending] = useState(false);
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([
     { forma: 'PIX', valor: '' },
   ]);
   const [descontoInput, setDescontoInput] = useState('');
   const [error, setError] = useState('');
+  const [closeErrorDetails, setCloseErrorDetails] = useState<{ referenceId: string; isApiCorrelation: boolean; status?: number; requestId?: string } | null>(null);
   const [itemAddedMessage, setItemAddedMessage] = useState('');
 
   useEffect(() => {
@@ -52,6 +57,13 @@ export function ComandaDetailPage() {
     queryFn: () => api.get<Comanda>(`/api/comandas/${id}`),
     enabled: !!id,
   });
+
+  const { data: operationalConfiguration } = useQuery({
+    queryKey: ['operational-configuration'],
+    queryFn: () => api.get<{ configuration: { kitchenItemsChargeAtLaunch?: boolean } | null }>('/api/cervejaria/configuracao-operacional'),
+    enabled: Boolean(comanda),
+  });
+  const kitchenItemsChargeAtLaunch = operationalConfiguration?.configuration?.kitchenItemsChargeAtLaunch ?? false;
 
   const needsEventoFetch = !!comanda && evento?.id !== comanda.eventoId;
   const { data: comandaEvento } = useQuery({
@@ -102,7 +114,7 @@ export function ComandaDetailPage() {
 
   useEffect(() => {
     if (!showPayment || !comanda) return;
-    const subtotal = subtotalComandaCervejaria(comanda);
+    const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
     const total = Math.max(0, subtotal - parseCurrencyInput(descontoInput));
     setPaymentForm((prev) => {
       if (total <= 0.01) return prev.length === 0 ? prev : [];
@@ -112,11 +124,11 @@ export function ComandaDetailPage() {
       if (Math.abs(atual - total) < 0.01) return prev;
       return [{ ...prev[0], valor: formatCurrencyInputFromNumber(total) }];
     });
-  }, [descontoInput, showPayment, comanda?.itens]);
+  }, [descontoInput, showPayment, comanda?.itens, kitchenItemsChargeAtLaunch]);
 
-  const addItemMutation = useMutation({
-    mutationFn: (data: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] }) =>
-      api.post<Comanda>(`/api/comandas/${id}/itens`, data),
+  const addItemsMutation = useMutation({
+    mutationFn: (itens: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] }[]) =>
+      api.post<Comanda>(`/api/comandas/${id}/itens/lancar`, { itens }),
     onSuccess: (updated) => {
       queryClient.setQueryData(['comanda', id], updated);
       if (evento) queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
@@ -145,25 +157,46 @@ export function ComandaDetailPage() {
       desconto,
       descontoAnterior,
       aplicarDesconto,
+      deixarPendente,
     }: {
       pagamentos: { forma: 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO'; valor: number }[];
       desconto: number;
       descontoAnterior: number;
       aplicarDesconto: boolean;
+      deixarPendente: boolean;
     }) => {
       if (aplicarDesconto && desconto !== descontoAnterior) {
         await api.patch<Comanda>(`/api/comandas/${id}/desconto`, { desconto });
       }
-      return api.post<Comanda>(`/api/pagamentos/comandas/${id}/fechar`, { pagamentos });
+      return api.post<Comanda>(`/api/pagamentos/comandas/${id}/fechar`, { pagamentos, deixarPendente });
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       setClosedComanda(data);
+      setClosedAsPending(variables.deixarPendente);
       setShowPayment(false);
       setShowReceipt(true);
       queryClient.setQueryData(['comanda', id], data);
       if (evento) queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
+      if (evento) queryClient.invalidateQueries({ queryKey: ['evento-contas-pendentes', evento.id] });
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao fechar comanda'),
+    onError: (err) => {
+      const isApiError = err instanceof ApiError;
+      const correlationId = isApiError ? err.correlationId : undefined;
+      const referenceId = correlationId ?? createCorrelationId();
+      const status = isApiError && err.status > 0 ? err.status : undefined;
+      const requestId = isApiError ? err.requestId : undefined;
+      const message = isApiError ? err.message : 'Erro ao fechar comanda';
+      setCloseErrorDetails({ referenceId, isApiCorrelation: Boolean(correlationId), status, requestId });
+      setError(message);
+      console.error('[comanda.close] Falha ao encerrar comanda', {
+        correlationId,
+        localReference: correlationId ? undefined : referenceId,
+        requestId,
+        status,
+        errorName: err instanceof Error ? err.name : 'UnknownError',
+      });
+      trackUiError('Falha ao encerrar comanda');
+    },
   });
 
   const cancelMutation = useMutation({
@@ -205,24 +238,25 @@ export function ComandaDetailPage() {
 
   const openPayment = () => {
     if (!comanda) return;
-    const subtotal = subtotalComandaCervejaria(comanda);
+    const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
     const desconto = descontoComandaCervejaria(comanda);
     setDescontoInput(formatCurrencyInputFromNumber(desconto));
     setPaymentForm(createDefaultPaymentForm(Math.max(0, subtotal - desconto)));
     setShowPayment(true);
     setError('');
+    setCloseErrorDetails(null);
   };
 
-  const handleClose = () => {
+  const handleClose = (deixarPendente: boolean) => {
     if (!comanda) return;
     const desconto = parseCurrencyInput(descontoInput);
-    const subtotal = subtotalComandaCervejaria(comanda);
+    const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
     const podeAplicarDesconto = podeDarDescontoOperacao;
     if (podeAplicarDesconto && desconto > subtotal) {
       setError('O desconto não pode ser maior que o subtotal da comanda');
       return;
     }
-    const pagamentos = paymentForm.map((p) => ({
+    const pagamentos = deixarPendente ? [] : paymentForm.map((p) => ({
       forma: toPaymentForma(p),
       valor: parseCurrencyInput(p.valor),
     }));
@@ -231,6 +265,7 @@ export function ComandaDetailPage() {
       desconto,
       descontoAnterior: descontoComandaCervejaria(comanda),
       aplicarDesconto: podeAplicarDesconto,
+      deixarPendente,
     });
   };
 
@@ -269,12 +304,14 @@ export function ComandaDetailPage() {
   const isCancelled = comanda.status === 'CANCELADA';
   const eventoAberto = eventoForTaps?.status === 'ABERTO';
   const tapsComChope = taps?.filter((t) => t.ativo && t.chopeAtual && isBebidaChope(t.chopeAtual)) ?? [];
-  const bebidasEmbalagem = cardapio?.produtos.filter((p) => isVendaUnitaria(p) && p.tipo === 'BEBIDA') ?? [];
-  const comidas = cardapio?.produtos.filter((p) => p.tipo === 'COMIDA') ?? [];
+  const produtosUnitarios = cardapio?.produtos.filter(isVendaUnitaria) ?? [];
+  const bebidasEmbalagem = produtosUnitarios.filter((p) => classificarGrupoProdutoOperacao(p) === 'bebidas');
+  const comidas = produtosUnitarios.filter((p) => classificarGrupoProdutoOperacao(p) === 'comidas');
+  const outrosProdutos = produtosUnitarios.filter((p) => classificarGrupoProdutoOperacao(p) === 'outros');
   const hasActionBar = isOpen || !isOpen;
   const podeAplicarDesconto = podeDarDescontoOperacao;
-  const subtotal = subtotalComandaCervejaria(comanda);
-  const valorPendente = comanda.itens
+  const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
+  const valorPendente = kitchenItemsChargeAtLaunch ? 0 : comanda.itens
     .filter((item) => item.exigePreparo && !item.cancelamentoPendenteEm && !item.canceladoEm && item.pedidoCozinha?.status !== 'ENTREGUE' && item.pedidoCozinha?.status !== 'CANCELADO' && item.pedidoCozinha?.status !== 'CANCELAMENTO_PENDENTE')
     .reduce((total, item) => total + parseFloat(item.precoUnit) * item.quantidade, 0);
   const descontoValor = parseCurrencyInput(descontoInput);
@@ -283,7 +320,19 @@ export function ComandaDetailPage() {
 
   const paymentHeaderExtra = (
     <div className="space-y-3">
-      {error && showPayment && <div className="alert-error text-sm">{error}</div>}
+      {error && showPayment && (
+        <div className="alert-error text-sm" role="alert">
+          <div>{error}</div>
+          {closeErrorDetails && (
+            <div className="mt-1 text-xs opacity-80">
+              {closeErrorDetails.isApiCorrelation ? 'Correlação da requisição: ' : 'Referência local (não pesquisável no servidor): '}
+              {closeErrorDetails.referenceId}
+              {closeErrorDetails.status != null && ` · HTTP ${closeErrorDetails.status}`}
+              {closeErrorDetails.requestId && ` · Requisição ${closeErrorDetails.requestId}`}
+            </div>
+          )}
+        </div>
+      )}
       {podeAplicarDesconto && (
         <PaymentDiscountFields
           inputId="desconto-fechar"
@@ -477,10 +526,13 @@ export function ComandaDetailPage() {
         tapsComChope={tapsComChope}
         bebidas={bebidasEmbalagem}
         comidas={comidas}
+        outros={outrosProdutos}
         eventoAberto={!!eventoAberto}
         comandaTotal={comandaTotal}
-        onAdd={(data) => addItemMutation.mutate(data)}
-        isPending={addItemMutation.isPending}
+        onAdd={() => undefined}
+        launchMode
+        onLaunch={(itens) => addItemsMutation.mutateAsync(itens).then(() => undefined)}
+        isPending={addItemsMutation.isPending}
         error={showAddItem ? error : undefined}
         successMessage={showAddItem ? itemAddedMessage : undefined}
       />
@@ -496,9 +548,13 @@ export function ComandaDetailPage() {
         total={podeAplicarDesconto ? totalComDesconto : comandaTotal}
         paymentForm={paymentForm}
         setPaymentForm={setPaymentForm}
-        onConfirm={handleClose}
+        onConfirm={() => handleClose(false)}
         isPending={closeMutation.isPending}
         headerExtra={paymentHeaderExtra}
+        deferLabel="Deixar pendente"
+        deferDisabled={!comanda?.cliente.telefone || comanda.cliente.telefone.replace(/\D/g, '').length < 10 || comandaTotal <= 0}
+        deferConfirmation={<p className="rounded-xl border border-orange/30 bg-surface-lighter p-4 text-sm">A comanda será encerrada sem recebimento. O saldo ficará vinculado a {comanda?.cliente.nome ?? 'este cliente'} e aparecerá nas contas pendentes do evento.</p>}
+        onConfirmDefer={() => handleClose(true)}
       />
 
       {/* Recibo */}
@@ -509,7 +565,9 @@ export function ComandaDetailPage() {
             <p className="text-xl font-bold">{rotuloComandaCervejaria(closedComanda, closedComanda.cliente)}</p>
             <p className="text-3xl font-bold text-brand-600">{formatCurrency(closedComanda.total)}</p>
             <div className="space-y-1">
-              {closedComanda.pagamentos.length === 0 ? (
+              {closedAsPending ? (
+                <p className="font-semibold text-orange-dark">Conta pendente registrada · receba pelo painel do evento.</p>
+              ) : closedComanda.pagamentos.length === 0 ? (
                 <p className="font-semibold text-success">Cortesia — sem pagamento</p>
               ) : (
                 closedComanda.pagamentos.map((p) => (

@@ -66,6 +66,10 @@ export function assertValorPagamentosParaTotal(
   }
 }
 
+export function podeDeixarContaPendente(origem: string): boolean {
+  return origem === 'CAIXA' || origem === 'EVENTO';
+}
+
 export const comandaFechadaInclude = {
   cliente: true,
   itens: {
@@ -133,6 +137,7 @@ export async function fecharComandaComPagamentos(
     origem?: 'EVENTO' | 'CAIXA' | 'QUIOSQUE';
     pagamentosDetalhados?: PagamentoInput[];
     sessaoCaixaId?: string;
+    sessaoCaixaEventoId?: string;
     deixarPendente?: boolean;
   },
 ) {
@@ -164,7 +169,7 @@ export async function fecharComandaComPagamentos(
           select: { telefone: true },
         })
       : null;
-    if (origem !== 'CAIXA' || linhasPagamento.length > 0 || !cliente || !normalizePhone(cliente.telefone)) {
+    if (!podeDeixarContaPendente(origem) || linhasPagamento.length > 0 || !cliente || !normalizePhone(cliente.telefone)) {
       throw Object.assign(new Error('Conta pendente exige cliente cadastrado com telefone vÃ¡lido e nenhum pagamento no fechamento'), { statusCode: 400 });
     }
   } else {
@@ -190,6 +195,7 @@ export async function fecharComandaComPagamentos(
         troco: p.troco ?? null,
         registradoPorId: params.usuarioId,
         ...(params.sessaoCaixaId ? { sessaoCaixaId: params.sessaoCaixaId } : {}),
+        ...(params.sessaoCaixaEventoId ? { sessaoCaixaEventoId: params.sessaoCaixaEventoId } : {}),
       })),
     });
   }

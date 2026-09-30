@@ -27,6 +27,7 @@ import { AdminConfiguracoesPage } from './pages/AdminConfiguracoesPage';
 import { SelecionarTrailerPage } from './pages/SelecionarTrailerPage';
 import { EventoPage } from './pages/EventoPage';
 import { ComandasPage } from './pages/ComandasPage';
+import { EventoContasPendentesPage } from './pages/EventoContasPendentesPage';
 import { ComandaDetailPage } from './pages/ComandaDetailPage';
 import { NovaComandaPage } from './pages/NovaComandaPage';
 import { VendaAvulsaPage } from './pages/VendaAvulsaPage';
@@ -394,7 +395,10 @@ const router = createBrowserRouter([
                       { path: 'trailer', element: <SelecionarTrailerPage /> },
                       {
                         element: <RequireEventoMode />,
-                        children: [{ path: 'eventos', element: <EventoPage /> }],
+                        children: [
+                          { path: 'eventos', element: <EventoPage /> },
+                          { path: 'eventos/:eventoId/contas-pendentes', element: <EventoContasPendentesPage /> },
+                        ],
                       },
                       { path: 'ranking/serie/:serieId', element: <RankingSeriePage /> },
                       { path: 'ranking/periodo/:eventoId', element: <RankingPeriodoPage /> },
@@ -402,13 +406,18 @@ const router = createBrowserRouter([
                       { path: 'clientes/novo', element: <NovoClientePage /> },
                       { path: 'clientes/:id', element: <ClienteDetailPage /> },
                       {
-                        element: <RequireTrailerContext />,
+                        element: <RequireEventoMode />,
                         children: [
-                          { path: 'comandas', element: <ComandasPage /> },
-                          { path: 'comandas/nova', element: <NovaComandaPage /> },
-                          { path: 'comandas/venda-avulsa', element: <VendaAvulsaPage /> },
-                          { path: 'comandas/:id', element: <ComandaDetailPage /> },
-                          { path: 'ranking/:eventoId?', element: <RankingPage /> },
+                          {
+                            element: <RequireTrailerContext />,
+                            children: [
+                              { path: 'comandas', element: <ComandasPage /> },
+                              { path: 'comandas/nova', element: <NovaComandaPage /> },
+                              { path: 'comandas/venda-avulsa', element: <VendaAvulsaPage /> },
+                              { path: 'comandas/:id', element: <ComandaDetailPage /> },
+                              { path: 'ranking/:eventoId?', element: <RankingPage /> },
+                            ],
+                          },
                         ],
                       },
                       {

@@ -59,10 +59,11 @@ const FORM_VAZIO = {
 
 const CATEGORIAS_COMIDA = new Set(['Porções', 'Lanches', 'Salgados', 'Doces e sobremesas']);
 
-export function OperacaoCatalogoPage({ modo = 'caixa' }: { modo?: 'caixa' | 'evento' } = {}) {
+export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {}) {
   const queryClient = useQueryClient();
   const { isDono } = useAuth();
   const { contexto } = useOperacaoContexto();
+  const modoAtual = modo ?? (contexto.operationMode === 'EVENTO' ? 'evento' : 'caixa');
   const usaCardapio = contexto.ativo ? (contexto.usaCardapio ?? false) : false;
   const tabs = TABS.filter((t) => t.id !== 'cardapios' || usaCardapio);
   const [tab, setTab] = useState<TabId>('catalogo');
@@ -118,15 +119,20 @@ export function OperacaoCatalogoPage({ modo = 'caixa' }: { modo?: 'caixa' | 'eve
 
   const salvar = useMutation({
     mutationFn: () => {
+      // Categorias comuns organizam a exibicao; em produtos existentes nao
+      // reclassificam tipo/formato ao alterar nome, preco ou categoria. A
+      // classificacao so e enviada ao criar ou ao mudar para/de Chope.
+      const classificacaoOriginalChope = editando ? isChopeOperacao(editando) : false;
+      const classificacaoIntencional = !editando || classificacaoOriginalChope !== (form.categoria === 'Chope');
       const corpo = {
         nome: form.nome.trim(),
         categoria: form.categoria,
-        ...((editando && editando.tipo === 'BEBIDA' && editando.formato == null && editando.categoria !== 'Chope' && editando.precos?.length === 1 && editando.precos[0]?.volumeMl === FOOD_UNIT_ML && form.categoria !== 'Chope')
-          ? {}
-          : {
+        ...(classificacaoIntencional
+          ? {
               tipo: form.categoria === 'Chope' ? 'BEBIDA' : CATEGORIAS_COMIDA.has(form.categoria) ? 'COMIDA' : 'BEBIDA',
               formato: form.categoria === 'Chope' ? 'CHOPE' : 'OUTRO',
-            }),
+            }
+          : {}),
         descricao: form.categoria === 'Chope' ? form.descricao.trim() || undefined : undefined,
         estilo: form.categoria === 'Chope' ? form.estilo.trim() || undefined : undefined,
         ...(form.categoria === 'Chope'
@@ -171,7 +177,7 @@ export function OperacaoCatalogoPage({ modo = 'caixa' }: { modo?: 'caixa' | 'eve
       <div className="min-w-0">
         <h2 className="text-xl font-bold">Cardápio</h2>
         <p className="text-sm text-ink-faint">
-          {modo === 'evento'
+          {modoAtual === 'evento'
             ? 'Catálogo de produtos e cardápios reutilizáveis em eventos.'
             : 'Catálogo de produtos e templates para os turnos de caixa.'}
         </p>
@@ -192,7 +198,7 @@ export function OperacaoCatalogoPage({ modo = 'caixa' }: { modo?: 'caixa' | 'eve
         ))}
       </div>
 
-      {tab === 'cardapios' && usaCardapio && isDono && <CardapiosOperacaoPage embedded modo={modo} />}
+      {tab === 'cardapios' && usaCardapio && isDono && <CardapiosOperacaoPage embedded modo={modoAtual} />}
       {tab === 'cardapios' && usaCardapio && !isDono && (
         <p className="text-sm text-ink-faint text-center py-6">Somente o dono pode gerenciar cardápios salvos.</p>
       )}

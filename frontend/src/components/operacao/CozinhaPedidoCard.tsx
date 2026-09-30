@@ -67,9 +67,21 @@ export function CozinhaPedidoCard({
       <article className={`cozinha-tv-card ${badge.tvClasse}`}>
         <div className="cozinha-tv-card-header">
           <div className="min-w-0">
-            {mostrarFila && indice != null && (
-              <p className="cozinha-tv-card-pos">#{indice + 1}</p>
-            )}
+            <div className="cozinha-tv-card-position-row">
+              {mostrarFila && indice != null && (
+                <p className="cozinha-tv-card-pos">#{indice + 1}</p>
+              )}
+              <div className="cozinha-tv-card-timer-wrap">
+                <PedidoElapsedTimer
+                  startedAt={timerStartedAt}
+                  stoppedAt={pedido.entregueEm}
+                  className="cozinha-tv-card-timer"
+                  ariaLabel={
+                    pedido.entregueEm ? 'Tempo total até a entrega' : `Tempo em ${badge.label.toLowerCase()}`
+                  }
+                />
+              </div>
+            </div>
             <p className="cozinha-tv-card-comanda">{rotuloComanda(pedido.comanda)}</p>
           </div>
           <div className="cozinha-tv-card-header-badges">
@@ -87,17 +99,6 @@ export function CozinhaPedidoCard({
             {quantidadeItens} {quantidadeItens === 1 ? 'item' : 'itens'}
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h12M9 12h12M9 18h12" /><circle cx="4" cy="6" r="1" /><circle cx="4" cy="12" r="1" /><circle cx="4" cy="18" r="1" /></svg>
           </span>
-        </div>
-
-        <div className="cozinha-tv-card-timer-wrap">
-          <PedidoElapsedTimer
-            startedAt={timerStartedAt}
-            stoppedAt={pedido.entregueEm}
-            className="cozinha-tv-card-timer"
-            ariaLabel={
-              pedido.entregueEm ? 'Tempo total até a entrega' : `Tempo em ${badge.label.toLowerCase()}`
-            }
-          />
         </div>
 
         <ul className="cozinha-tv-card-itens">
@@ -123,7 +124,7 @@ export function CozinhaPedidoCard({
                   </button>
                 )}
               </div>
-                {item.opcionais?.length ? <small className="cozinha-tv-card-item-details cozinha-tv-card-item-options"><strong>Complementos:</strong><span>{item.opcionais.map((o) => o.nome).join(', ')}</span></small> : null}
+                {item.opcionais?.length ? <small className="cozinha-tv-card-item-details cozinha-tv-card-item-options"><strong>Comp.:</strong><span>{item.opcionais.map((o) => o.nome).join(', ')}</span></small> : null}
                 {item.observacao ? <small className="cozinha-tv-card-item-details cozinha-tv-card-item-observation"><strong>Obs:</strong><span>{item.observacao}</span></small> : null}
             </li>
           ))}
@@ -222,7 +223,7 @@ export function CozinhaPedidoCard({
                 Confirmar cancelamento
               </button>
             )}
-            {item.opcionais?.length ? <small className="block text-xs text-ink-muted">Complementos: {item.opcionais.map((o) => o.nome).join(', ')}</small> : null}
+            {item.opcionais?.length ? <small className="block text-xs text-ink-muted">Comp.: {item.opcionais.map((o) => o.nome).join(', ')}</small> : null}
             {item.observacao ? <small className="block text-xs text-ink-muted">Obs: {item.observacao}</small> : null}
           </li>
         ))}

@@ -67,7 +67,7 @@ export interface CardapioTurnoOperacao {
   cardapioNome?: string | null;
 }
 
-export type TurnoCardapioModo = 'salvo' | 'montar' | 'depois';
+export type TurnoCardapioModo = 'salvo' | 'montar' | null;
 
 export interface TurnoCardapioFormState {
   cardapioModo: TurnoCardapioModo;
@@ -76,7 +76,7 @@ export interface TurnoCardapioFormState {
 }
 
 export function defaultTurnoCardapioForm(): TurnoCardapioFormState {
-  return { cardapioModo: 'depois', cardapioId: '', produtoIds: [] };
+  return { cardapioModo: null, cardapioId: '', produtoIds: [] };
 }
 
 export function buildTurnoCardapioAbrirPayload(form: TurnoCardapioFormState) {
@@ -86,7 +86,7 @@ export function buildTurnoCardapioAbrirPayload(form: TurnoCardapioFormState) {
   if (form.cardapioModo === 'montar' && form.produtoIds.length > 0) {
     return { produtoIds: form.produtoIds };
   }
-  return {};
+  return null;
 }
 
 /** URL de produtos operacionais do turno (PDV/comanda). */
@@ -133,6 +133,24 @@ export function normalizeCategoriaProduto(value: string | null | undefined): Cat
   if (lower.includes('beb')) return 'Bebidas';
 
   return 'Outros';
+}
+
+export type GrupoProdutoOperacao = 'chope' | 'bebidas' | 'comidas' | 'outros';
+
+/** Classificação comum aos seletores de produto, independente do modo de operação. */
+export function classificarGrupoProdutoOperacao(
+  produto: { tipo?: 'BEBIDA' | 'COMIDA'; formato?: ProdutoOperacao['formato']; categoria?: string | null; precos?: ProdutoOperacao['precos'] },
+): GrupoProdutoOperacao {
+  const categoriaOriginal = (produto.categoria ?? '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+  const categoriaNormalizada = normalizeCategoriaProduto(produto.categoria).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+  const categorias = [categoriaOriginal, categoriaNormalizada];
+  if (isChopeOperacao({ tipo: produto.tipo ?? 'COMIDA', formato: produto.formato, categoria: produto.categoria ?? null, precos: produto.precos }) || produto.formato === 'CHOPE' || categorias.includes('chope')) return 'chope';
+  if (categorias.includes('outros')) return 'outros';
+  if (categorias.some((categoria) => ['porcoes', 'lanches', 'salgados', 'doces e sobremesas', 'combos'].includes(categoria))) return 'comidas';
+  if (categorias.some((categoria) => ['bebidas', 'cervejas', 'drinks'].includes(categoria))) return 'bebidas';
+  if (produto.tipo === 'COMIDA') return 'comidas';
+  if (produto.tipo === 'BEBIDA') return 'bebidas';
+  return 'outros';
 }
 
 export type FormaPagamento = 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO';

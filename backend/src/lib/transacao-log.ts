@@ -178,6 +178,12 @@ export function formatTransacaoDescricao(tipo: TransacaoTipo, metadata: unknown)
       return `Evento excluído — ${str(m.nome) ?? 'evento'}`;
     case 'EVENTO_CARDAPIO_ATUALIZADO':
       return `Cardápio do evento atualizado`;
+    case 'EVENTO_CAIXA_ABERTO':
+      return `Caixa do evento aberto — troco R$ ${(num(m.trocoInicial) ?? 0).toFixed(2)}`;
+    case 'EVENTO_CAIXA_MOVIMENTO':
+      return `${str(m.tipo) ?? 'Movimento'} no caixa do evento — R$ ${(num(m.valor) ?? 0).toFixed(2)}`;
+    case 'EVENTO_CAIXA_FECHADO':
+      return `Caixa do evento fechado`;
     case 'TAP_CHOPE_POSICIONADO': {
       const tap = num(m.tapNumero);
       const novo = str(m.chopeNovo) ?? 'chope';

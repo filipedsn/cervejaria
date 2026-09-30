@@ -27,7 +27,7 @@ import { ReverterEventoButton } from '../components/ReverterEventoButton';
 import { reabrirPrazoExpirado } from '../lib/evento-utils';
 
 import { VerRankingButton } from '../components/VerRankingButton';
-import { PortalQrButton } from '../components/PortalQrButton';
+import { PdvPortalQrButton } from '../components/PdvPortalQrButton';
 
 import { VerResumoExecutivoButton } from '../components/VerResumoExecutivoButton';
 
@@ -70,8 +70,6 @@ import {
 
   buildAgendaDays,
 
-  findOpenSessoesOnDate,
-
   getAgendaDayForDate,
 
   formatAgendaHeading,
@@ -93,20 +91,6 @@ import { StatusBadge, eventoStatusVariant } from '../components/StatusBadge';
 const DIAS_RECORRENCIA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'] as const;
 
 const WEEKS_FUTURE = 12;
-
-const EVENTO_PENDENTE_ENCERRAMENTO_MSG =
-  'Existem eventos pendentes de encerramento. Finalize-os para iniciar um novo evento.';
-
-function isEventoPendenteEncerramentoError(err: unknown): boolean {
-  if (!(err instanceof ApiError)) return false;
-  const msg = err.message;
-  return (
-    msg === 'Já existe uma sessão nesta data para esta agenda.' ||
-    msg.startsWith('Este trailer já possui o evento')
-  );
-}
-
-
 
 function formatTimeRange(evento: Pick<Evento, 'horaInicio' | 'horaFim'>) {
 
@@ -198,7 +182,7 @@ function ActiveSessionHero({
 
   return (
 
-    <div className="card-hero space-y-4">
+    <div className="card space-y-4 border-brand-600/20 bg-gradient-to-br from-surface via-surface to-brand-900/10 p-4 sm:p-5">
 
       <div className="flex items-start justify-between gap-3">
 
@@ -208,10 +192,10 @@ function ActiveSessionHero({
 
           <h2 className="text-xl font-bold mt-1.5 leading-tight">{evento.nome}</h2>
 
-          <p className="text-sm text-white/75 mt-1.5">{formatEventoMeta(evento)}</p>
+          <p className="text-sm text-ink-muted mt-1.5">{formatEventoMeta(evento)}</p>
 
           {evento.trailer && (
-            <p className="text-xs text-white/60 mt-1">{formatTrailerLabel(evento.trailer)}</p>
+            <p className="text-xs text-ink-faint mt-1">{formatTrailerLabel(evento.trailer)}</p>
           )}
 
         </div>
@@ -234,11 +218,10 @@ function ActiveSessionHero({
 
         <EditarCardapioEventoButton eventoId={evento.id} eventoAberto iconOnly />
 
-        <PortalQrButton
+        <PdvPortalQrButton
           trailerId={evento.trailerId}
-          trailer={evento.trailer}
           iconOnly
-          variant="hero"
+          className="icon-btn-ghost h-12 w-12 border border-line bg-surface"
         />
 
         <VerRankingButton eventoId={evento.id} iconOnly />
@@ -417,29 +400,26 @@ function AgendaSessaoCard({
       )}
 
       {sessao.status === 'FECHADO' && (
-
         <div className="space-y-2">
-
-          <ReabrirEventoButton eventoId={sessao.id} encerradoEm={sessao.encerradoEm} />
-
-          <VerRankingButton eventoId={sessao.id} primary />
-
           {reabrirPrazoExpirado(sessao.encerradoEm) && (
             <p className="text-xs text-ink-faint">
               Prazo para reabrir expirou (30 min após encerramento).
             </p>
           )}
-
-          {isDono && <VerResumoExecutivoButton eventoId={sessao.id} />}
-
-          <EditEventoButton onClick={onEdit} className="w-full" />
-
-          {canExcluirEvento(sessao) && (
-            <ExcluirEventoButton eventoId={sessao.id} eventoNome={sessao.nome} />
-          )}
-
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <ReabrirEventoButton
+              eventoId={sessao.id}
+              encerradoEm={sessao.encerradoEm}
+              className="sm:col-span-2"
+            />
+            <VerRankingButton eventoId={sessao.id} primary />
+            {isDono && <VerResumoExecutivoButton eventoId={sessao.id} />}
+            <EditEventoButton onClick={onEdit} className="w-full min-h-12 text-base" />
+            {canExcluirEvento(sessao) && (
+              <ExcluirEventoButton eventoId={sessao.id} eventoNome={sessao.nome} />
+            )}
+          </div>
         </div>
-
       )}
 
     </div>
@@ -528,19 +508,12 @@ export function EventoPage() {
 
   const [error, setError] = useState('');
 
-  const [showPendingEventModal, setShowPendingEventModal] = useState(false);
-
   const [cancelAgendamentoTarget, setCancelAgendamentoTarget] = useState<{
     serie: Evento;
     dateKey: string;
   } | null>(null);
 
   const handleAgendaError = (err: unknown, fallback: string) => {
-    if (isEventoPendenteEncerramentoError(err)) {
-      setError('');
-      setShowPendingEventModal(true);
-      return;
-    }
     setError(err instanceof ApiError ? err.message : fallback);
   };
 
@@ -785,9 +758,15 @@ export function EventoPage() {
 
   const isSelectedToday = selectedDateKey === todayKey;
 
-  const openSessoesToday = findOpenSessoesOnDate(sessoesFiltered, todayKey);
+  const sessoesAbertas = sessoesFiltered
+    .filter((sessao) => sessao.status === 'ABERTO')
+    .sort((a, b) => (a.data ?? '').localeCompare(b.data ?? '') || a.horaInicio.localeCompare(b.horaInicio));
 
-  const excludedSessaoIds = isSelectedToday ? openSessoesToday.map((s) => s.id) : [];
+  const sessoesAbertasNaDataSelecionada = sessoesAbertas.filter(
+    (sessao) => sessao.data?.slice(0, 10) === selectedDateKey,
+  );
+
+  const excludedSessaoIds = sessoesAbertas.map((sessao) => sessao.id);
 
   const agendaDays = buildAgendaDays(
     seriesFiltered,
@@ -861,9 +840,9 @@ export function EventoPage() {
 
         <>
 
-          {isSelectedToday && openSessoesToday.length > 0 && (
+          {sessoesAbertas.length > 0 && (
             <div className="space-y-3">
-              {openSessoesToday.map((sessao) => (
+              {sessoesAbertas.map((sessao) => (
                 <ActiveSessionHero
                   key={sessao.id}
                   evento={sessao}
@@ -896,7 +875,7 @@ export function EventoPage() {
 
 
             {(!selectedDay || selectedDay.items.length === 0) &&
-              !(isSelectedToday && openSessoesToday.length > 0) && (
+              sessoesAbertasNaDataSelecionada.length === 0 && (
 
               <p className="text-sm text-ink-faint text-center py-3">Sem compromissos nesta data</p>
 
@@ -904,9 +883,9 @@ export function EventoPage() {
 
 
 
-            {isSelectedToday && openSessoesToday.length > 0 && selectedDay && selectedDay.items.length === 0 && (
+            {sessoesAbertasNaDataSelecionada.length > 0 && selectedDay && selectedDay.items.length === 0 && (
 
-              <p className="text-sm text-ink-faint text-center py-3">Nenhum outro evento agendado para hoje</p>
+              <p className="text-sm text-ink-faint text-center py-3">Nenhum outro compromisso nesta data</p>
 
             )}
 
@@ -1171,23 +1150,6 @@ export function EventoPage() {
             {formatAgendaDateShort(cancelAgendamentoTarget.dateKey)}?
           </p>
         )}
-      </Modal>
-
-      <Modal
-        open={showPendingEventModal}
-        onClose={() => setShowPendingEventModal(false)}
-        title="Não foi possível iniciar"
-        footer={
-          <button
-            type="button"
-            className="touch-btn-primary w-full min-h-14"
-            onClick={() => setShowPendingEventModal(false)}
-          >
-            Fechar
-          </button>
-        }
-      >
-        <p className="text-ink-soft leading-relaxed">{EVENTO_PENDENTE_ENCERRAMENTO_MSG}</p>
       </Modal>
 
     </div>

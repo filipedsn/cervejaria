@@ -87,6 +87,11 @@ export function OperacaoComandaDetailPage() {
     queryFn: () => api.get<ComandaOperacao>(`/api/operacao/comandas/${id}`),
   });
 
+  const { data: operationalConfiguration } = useQuery({
+    queryKey: ['operational-configuration'],
+    queryFn: () => api.get<{ configuration: { allowCloseComandaWithPendingKitchenOrders?: boolean } | null }>('/api/cervejaria/configuracao-operacional'),
+  });
+
   const { data: produtos } = useQuery({
     queryKey: ['operacao-produtos-operacionais', comanda?.pontoVendaId],
     queryFn: () =>
@@ -434,7 +439,8 @@ export function OperacaoComandaDetailPage() {
   const cancelada = comanda.status === 'CANCELADA';
   const temItens = totalItensComanda(comanda) > 0;
   const cozinhaPendente = temPedidoCozinhaPendente(comanda);
-  const podeFechar = aberta && temItens && !cozinhaPendente;
+  const permitirFecharComCozinhaPendente = operationalConfiguration?.configuration?.allowCloseComandaWithPendingKitchenOrders ?? false;
+  const podeFechar = aberta && temItens && (!cozinhaPendente || permitirFecharComCozinhaPendente);
   const hasActionBar = aberta || !aberta;
   const podeAplicarDesconto = podeDarDescontoOperacao;
   const descontoValor = parseCurrencyInput(descontoInput);
@@ -777,9 +783,14 @@ export function OperacaoComandaDetailPage() {
           </section>
         )}
 
-        {aberta && temItens && cozinhaPendente && (
+        {aberta && temItens && cozinhaPendente && !permitirFecharComCozinhaPendente && (
           <p className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
             Aguarde a entrega dos itens da cozinha antes de fechar a comanda.
+          </p>
+        )}
+        {aberta && temItens && cozinhaPendente && permitirFecharComCozinhaPendente && (
+          <p className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
+            Há pedido ainda não entregue na cozinha. O fechamento e o pagamento estão liberados pela configuração.
           </p>
         )}
 
@@ -840,7 +851,7 @@ export function OperacaoComandaDetailPage() {
         </MobileActionBar>
       )}
 
-      {aberta && temItens && cozinhaPendente && (
+      {aberta && temItens && cozinhaPendente && !permitirFecharComCozinhaPendente && (
         <MobileActionBar>
           <button type="button" className="touch-btn-primary w-full" disabled>
             Aguardando entrega da cozinha

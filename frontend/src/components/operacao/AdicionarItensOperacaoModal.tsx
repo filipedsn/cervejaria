@@ -6,9 +6,9 @@ import { ResumoCarrinho } from './ResumoCarrinho';
 import { IconChefHat, IconClipboard, IconPackage, IconPlus } from '../NavIcons';
 import { api, formatCurrency } from '../../lib/api';
 import {
+  classificarGrupoProdutoOperacao,
   isChopeOperacao,
   limiteQuantidadeProdutoNoCarrinho,
-  normalizeCategoriaProduto,
   podeIncrementarQuantidadeProduto,
   totalCarrinho,
   type LinhaCarrinho,
@@ -29,26 +29,6 @@ type Config = {
 
 const IconHash = IconPackage;
 type AbaItens = 'chope' | 'bebidas' | 'comidas' | 'outros';
-const CATEGORIAS_COMIDA = new Set(['porcoes', 'lanches', 'salgados', 'doces e sobremesas']);
-const CATEGORIAS_BEBIDA = new Set(['bebidas', 'cervejas', 'drinks']);
-const produtoEhDoSubmoduloChope = (item: ProdutoOperacao) => isChopeOperacao(item) || item.formato === 'CHOPE';
-
-function chaveCategoriaProduto(value: string | null | undefined): string {
-  return (value ?? '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
-}
-
-function classificarAbaProduto(item: ProdutoOperacao): AbaItens {
-  const categoriaOriginal = chaveCategoriaProduto(item.categoria);
-  const categorias = [categoriaOriginal, chaveCategoriaProduto(normalizeCategoriaProduto(item.categoria))];
-  // Chope é um submódulo vendido pelas Taps, nunca um item da aba "Outros".
-  if (produtoEhDoSubmoduloChope(item) || categorias.includes('chope')) return 'chope';
-  if (categorias.includes('outros')) return 'outros';
-  if (categorias.some((categoria) => CATEGORIAS_COMIDA.has(categoria))) return 'comidas';
-  if (categorias.some((categoria) => CATEGORIAS_BEBIDA.has(categoria))) return 'bebidas';
-  if (item.tipo === 'COMIDA') return 'comidas';
-  if (item.tipo === 'BEBIDA') return 'bebidas';
-  return 'outros';
-}
 
 export function AdicionarItensOperacaoModal({
   open,
@@ -172,9 +152,9 @@ export function AdicionarItensOperacaoModal({
         || (saldoChope !== undefined && litrosNoCarrinhoChope + volumeMl * quantidade / 1000 <= saldoChope.quantidade + 1e-9)),
   );
 
-  const produtosBebidas = produtos.filter((item) => classificarAbaProduto(item) === 'bebidas');
-  const produtosComidas = produtos.filter((item) => classificarAbaProduto(item) === 'comidas');
-  const produtosOutros = produtos.filter((item) => classificarAbaProduto(item) === 'outros');
+  const produtosBebidas = produtos.filter((item) => classificarGrupoProdutoOperacao(item) === 'bebidas');
+  const produtosComidas = produtos.filter((item) => classificarGrupoProdutoOperacao(item) === 'comidas');
+  const produtosOutros = produtos.filter((item) => classificarGrupoProdutoOperacao(item) === 'outros');
   const abasVisiveis: { id: AbaItens; label: string }[] = [
     ...(tapsEnabled && (carregandoTaps || Boolean(erroCarregarTaps) || tapsDisponiveis.length > 0)
       ? [{ id: 'chope' as const, label: 'Chopes' }]

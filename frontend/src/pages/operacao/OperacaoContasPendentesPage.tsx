@@ -15,6 +15,7 @@ import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import { useAuth } from '../../contexts/AuthContext';
 import type { CaixaResposta, ContaPendenteOperacao } from '../../lib/operacao';
+import type { Cervejaria } from '../../types';
 
 type FiltroConta = 'TODAS' | 'HOJE' | 'ATRASADAS' | 'MAIOR_VALOR';
 
@@ -68,6 +69,13 @@ export function OperacaoContasPendentesPage() {
   const [mensagem, setMensagem] = useState('');
   const [erro, setErro] = useState('');
   const pollMs = usePollInterval(30_000);
+  const perfilCobrancaQuery = useQuery({
+    queryKey: ['perfil-cobranca-pix', cervejaria?.id],
+    queryFn: () => api.get<{ cervejaria: Cervejaria | null }>('/api/auth/me'),
+    initialData: cervejaria ? { cervejaria } : undefined,
+    staleTime: 0,
+  });
+  const perfilCobranca = perfilCobrancaQuery.data?.cervejaria ?? cervejaria;
   const pontoAtivo = pontoVendaId || pontosVenda[0]?.id || '';
   const contasQuery = useQuery({
     queryKey: ['operacao-contas-pendentes'],
@@ -146,21 +154,28 @@ export function OperacaoContasPendentesPage() {
     }
     const itens = [...quantidadesPorItem.entries()]
       .sort((a, b) => b[1] - a[1])
-      .map(([nome, quantidade]) => `• ${quantidade}x ${nome}`)
+      .map(([nome, quantidade]) => `- ${quantidade}x ${nome}`)
       .join('\n');
+    const chavePix = perfilCobranca?.chavePix?.trim();
     const texto = [
       `Oi, ${conta.cliente.nome}! Tudo bem?`,
       '',
-      `Passando para lembrar que ficou um *saldo em aberto* referente à sua comanda do dia *${dataConsumo}*.`,
+      `Passando para lembrar que ficou um saldo em aberto referente à sua comanda do dia ${dataConsumo}.`,
       '',
-      '*Resumo do consumo:*',
+      'Resumo do consumo:',
       itens,
+      `Valor pendente: ${formatCurrency(conta.saldo)}`,
+      ...(chavePix
+        ? [
+            `Chave PIX: ${chavePix}`,
+            'Você pode realizar o pagamento via PIX utilizando a chave acima.',
+          ]
+        : []),
+      'Se já tiver feito o pagamento, favor enviar o comprovante.',
       '',
-      `*Valor pendente: ${formatCurrency(conta.saldo)}*`,
-      '',
-      'Quando puder, chama a gente por aqui para combinarmos o pagamento.',
-      '',
-      `Obrigado! *${cervejaria?.nome ?? 'Nossa equipe'}*`,
+      'Qualquer dúvida, é só chamar a gente por aqui.',
+      'Obrigado!',
+      perfilCobranca?.nome ?? 'Nossa equipe',
     ].join('\n');
     window.open('https://wa.me/' + telefoneComPais + '?text=' + encodeURIComponent(texto), '_blank', 'noopener,noreferrer');
   };

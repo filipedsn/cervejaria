@@ -8,6 +8,7 @@ import { isSerie, todayDateString, todayWeekday, reabrirPrazoExpirado, REABRIR_P
 import { buildEventoDashboard } from '../lib/evento-dashboard.js';
 import { buildEventoResumoExecutivo } from '../lib/evento-resumo-executivo.js';
 import { isUniqueViolation } from '../lib/prisma-errors.js';
+import { bloquearCaixaEvento } from '../lib/evento-caixa.js';
 import { findTrailerForTenant, trailerSelect } from '../lib/trailer-utils.js';
 import {
   findSerieTrailerConflict,
@@ -720,17 +721,43 @@ export async function eventosRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Agendas recorrentes não são encerradas — encerre a sessão do dia.' });
     }
 
-    const abertas = await prisma.comanda.count({
-      where: { eventoId: id, status: 'ABERTA' },
-    });
-    if (abertas > 0) {
-      return reply.status(409).send({ error: `Existem ${abertas} comanda(s) aberta(s). Feche-as antes de encerrar o evento.` });
-    }
+    const closeResult = await prisma.$transaction(async (tx) => {
+      await bloquearCaixaEvento(tx, id);
 
-    const updated = await prisma.evento.update({
-      where: { id },
-      data: { status: 'FECHADO', encerradoEm: new Date(), portalGeneration: { increment: 1 } },
+      const eventoAtual = await tx.evento.findFirst({
+        where: { id, cervejariaId: user.cervejariaId },
+      });
+      if (!eventoAtual) return { error: 'Evento não encontrado', statusCode: 404 } as const;
+      if (isSerie(eventoAtual)) {
+        return { error: 'Agendas recorrentes não são encerradas — encerre a sessão do dia.', statusCode: 400 } as const;
+      }
+      if (eventoAtual.status !== 'ABERTO') {
+        return { error: 'Este evento já está encerrado.', statusCode: 409 } as const;
+      }
+
+      const abertas = await tx.comanda.count({ where: { eventoId: id, status: 'ABERTA' } });
+      if (abertas > 0) {
+        return { error: `Existem ${abertas} comanda(s) aberta(s). Feche-as antes de encerrar o evento.`, statusCode: 409 } as const;
+      }
+
+      const caixaAberto = await tx.sessaoCaixaEvento.findFirst({
+        where: { eventoId: id, status: 'ABERTO' },
+        select: { id: true },
+      });
+      if (caixaAberto) {
+        return { error: 'Feche e confira o caixa do evento antes de encerrar o evento.', statusCode: 409 } as const;
+      }
+
+      const evento = await tx.evento.update({
+        where: { id },
+        data: { status: 'FECHADO', encerradoEm: new Date(), portalGeneration: { increment: 1 } },
+      });
+      return { evento } as const;
     });
+    if ('error' in closeResult) {
+      return reply.status(closeResult.statusCode ?? 409).send({ error: closeResult.error });
+    }
+    const updated = closeResult.evento;
 
     emitPortalSessionExpired(app.io, id, 'evento_fechado');
 

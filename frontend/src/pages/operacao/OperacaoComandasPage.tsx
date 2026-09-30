@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../../lib/api';
@@ -59,6 +59,7 @@ export function OperacaoComandasPage() {
   const [showGroupPayment, setShowGroupPayment] = useState(false);
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([{ forma: 'PIX', valor: '' }]);
   const [groupError, setGroupError] = useState('');
+  const fecharGrupoEmAndamento = useRef(false);
   const avisoWhatsAppStorageKey = 'quiver:aviso-whatsapp:comandas';
   const [avisoWhatsAppAbertoId, setAvisoWhatsAppAbertoId] = useState<string | null>(() =>
     window.sessionStorage.getItem(avisoWhatsAppStorageKey),
@@ -243,11 +244,17 @@ export function OperacaoComandasPage() {
   };
 
   const handleGroupClose = () => {
+    if (fecharGrupoEmAndamento.current) return;
+    fecharGrupoEmAndamento.current = true;
     const pagamentos = paymentForm.map((p) => ({
       forma: toPaymentForma(p),
       valor: parseCurrencyInput(p.valor),
     }));
-    fecharGrupoMutation.mutate(pagamentos);
+    fecharGrupoMutation.mutate(pagamentos, {
+      onSettled: () => {
+        fecharGrupoEmAndamento.current = false;
+      },
+    });
   };
 
   useEffect(() => {

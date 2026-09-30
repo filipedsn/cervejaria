@@ -7,6 +7,8 @@ import { calcularFinanceiroComanda } from './venda.js';
 import { toNumber } from '../utils.js';
 
 export const INCLUDE_COMANDA_OPERACAO = {
+  pontoVenda: { select: { cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
+  evento: { select: { cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
   pedidosOperacao: {
     include: { itensComanda: { include: { opcionais: true } } },
     orderBy: { numero: 'asc' as const },
@@ -38,12 +40,20 @@ export function whereComandaOperacao(
 export async function recalcComandaTotalOperacao(
   tx: Prisma.TransactionClient,
   comandaId: string,
+  options: { kitchenItemsChargeAtLaunch?: boolean } = {},
 ) {
   const comanda = await tx.comanda.findUnique({
     where: { id: comandaId },
-    select: { status: true, total: true, desconto: true },
+    select: {
+      status: true,
+      total: true,
+      desconto: true,
+      evento: { select: { cervejariaId: true } },
+      pontoVenda: { select: { cervejariaId: true } },
+    },
   });
-  const [pedidos, itensSemPedido] = await Promise.all([
+  const cervejariaId = comanda?.evento?.cervejariaId ?? comanda?.pontoVenda?.cervejariaId;
+  const [pedidos, itensSemPedido, configuration] = await Promise.all([
     tx.pedidoOperacao.findMany({
       where: { comandaId },
       select: {
@@ -57,11 +67,15 @@ export async function recalcComandaTotalOperacao(
       where: { comandaId, pedidoCozinhaId: null },
       select: { precoUnit: true, quantidade: true, exigePreparo: true, cancelamentoPendenteEm: true, canceladoEm: true },
     }),
+    cervejariaId
+      ? tx.configuracaoOperacional.findUnique({ where: { cervejariaId }, select: { kitchenItemsChargeAtLaunch: true } })
+      : Promise.resolve(null),
   ]);
   const financeiro = calcularFinanceiroComanda({
     status: comanda?.status ?? 'ABERTA',
     totalPersistido: comanda?.total,
     desconto: comanda?.desconto,
+    kitchenItemsChargeAtLaunch: options.kitchenItemsChargeAtLaunch ?? configuration?.kitchenItemsChargeAtLaunch ?? false,
     itensSemPedido,
     pedidos: pedidos.map((pedido) => ({ status: pedido.status, itens: pedido.itensComanda })),
   });
@@ -90,11 +104,14 @@ export async function fecharComandaOperacaoInTx(
     comandaIdsGrupo?: string[];
     sessaoCaixaId?: string;
     deixarPendente?: boolean;
+    kitchenItemsChargeAtLaunch?: boolean;
   },
 ) {
   // O total pode estar desatualizado em comandas cujos pedidos foram entregues
   // antes do recálculo ser executado no fluxo da cozinha.
-  await recalcComandaTotalOperacao(tx, params.comanda.id);
+  await recalcComandaTotalOperacao(tx, params.comanda.id, {
+    kitchenItemsChargeAtLaunch: params.kitchenItemsChargeAtLaunch,
+  });
 
   return fecharComandaComPagamentos(tx, {
     comanda: {

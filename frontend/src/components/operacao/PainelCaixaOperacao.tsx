@@ -117,6 +117,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
 
   const comandasAbertas = comandasAbertasProp ?? data?.comandasAbertas ?? 0;
   const bloqueioFechamento = comandasAbertas > 0;
+  const cardapioAbrirPayload = buildTurnoCardapioAbrirPayload(cardapioForm);
   const diferencaFechamento = sessao ?
     parseCurrencyInput(contado.dinheiro ?? '') - sessao.gaveta.esperadoDinheiro
     + parseCurrencyInput(contado.pix ?? '') - sessao.esperado.pix
@@ -129,13 +130,16 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   };
 
   const abrir = useMutation({
-    mutationFn: () =>
-      api.post<ResumoCaixa>('/api/operacao/caixa/abrir', {
+    mutationFn: () => {
+      const cardapioPayload = buildTurnoCardapioAbrirPayload(cardapioForm);
+      if (!cardapioPayload) throw new Error('Escolha um cardápio antes de abrir o caixa');
+      return api.post<ResumoCaixa>('/api/operacao/caixa/abrir', {
         pontoVendaId,
         trailerId: trailerDoTurno || undefined,
         trocoInicial: parseCurrencyInput(trocoInicial),
-        ...buildTurnoCardapioAbrirPayload(cardapioForm),
-      }),
+        ...cardapioPayload,
+      });
+    },
     onSuccess: () => {
       invalidar();
       invalidateOnboardingReadiness(queryClient);
@@ -249,11 +253,11 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             <CurrencyInput className="input min-h-12 text-base font-semibold sm:min-h-14" value={trocoInicial} onChange={setTrocoInicial} aria-label="Troco inicial em reais" />
           </div>
 
-          {usaCardapio && <TurnoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />}
+          <TurnoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />
           {seletorTrailer}
 
           <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} flex min-h-12 w-full items-center justify-center text-center`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>
-          <button type="button" className="touch-btn-primary flex min-h-14 w-full items-center justify-center gap-3 text-base font-bold sm:min-h-16 sm:text-lg" disabled={abrir.isPending || precisaSelecionarTrailer} data-audit="operacao-caixa-abrir" data-onboarding-target="operacao-open-cash" onClick={() => abrir.mutate()}><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8"/></svg>{abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}</button>
+          <button type="button" className="touch-btn-primary flex min-h-14 w-full items-center justify-center gap-3 text-base font-bold sm:min-h-16 sm:text-lg" disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload} data-audit="operacao-caixa-abrir" data-onboarding-target="operacao-open-cash" onClick={() => abrir.mutate()}><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8"/></svg>{abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}</button>
         </div>
       )}
 
@@ -274,16 +278,14 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             <CurrencyInput value={trocoInicial} onChange={setTrocoInicial} />
           </div>
 
-          {usaCardapio && (
-            <TurnoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />
-          )}
+          <TurnoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />
           {seletorTrailer}
 
           <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} flex w-full items-center justify-center text-center`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>
           <button
             type="button"
             className="touch-btn-primary w-full"
-            disabled={abrir.isPending || precisaSelecionarTrailer}
+            disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload}
             data-audit="operacao-caixa-abrir"
             data-onboarding-target="operacao-open-cash"
             onClick={() => abrir.mutate()}
@@ -634,7 +636,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             <div><h2 id="modal-title" className="text-3xl font-bold sm:text-5xl">Fechar caixa</h2><p className="mt-3 max-w-3xl text-base leading-relaxed text-ink-muted sm:text-2xl">Conte o que há fisicamente e ajuste se necessário.<br className="hidden xl:block" /> A diferença aparece no resumo.</p></div>
             <div className="flex min-h-24 items-center gap-4 rounded-3xl border border-brand-500/30 bg-surface-lighter/40 p-4 sm:min-h-36 sm:gap-5 sm:p-6">
               <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-brand-500/10 text-brand-400 sm:h-20 sm:w-20"><svg viewBox="0 0 24 24" className="h-8 w-8 sm:h-10 sm:w-10" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 12 16 8M12 12v5"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg></span>
-              <span className="min-w-0"><span className="block text-base text-ink-muted sm:text-2xl">Diferença</span><strong className="mt-1 block truncate text-2xl font-bold tabular-nums text-brand-400 sm:text-4xl">{formatCurrency(diferencaFechamento)}</strong></span>
+              <span className="min-w-0"><span className="block text-base text-ink-muted sm:text-2xl">Diferença</span><strong className="mt-1 block whitespace-nowrap text-xl font-bold tabular-nums text-brand-400 sm:text-3xl">{formatCurrency(diferencaFechamento)}</strong></span>
               <span className="ml-auto text-3xl text-brand-400" aria-hidden="true">›</span>
             </div>
           </header>

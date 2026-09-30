@@ -12,12 +12,18 @@ import {
 import { buildCervejariaDashboard } from '../lib/cervejaria-dashboard.js';
 import { getOperationalProfile } from '../lib/operational-profile.js';
 import { updateOperationalConfig, updateOperationalConfigSchema } from '../lib/operational-config.js';
+import { recalcComandaTotalInTx } from '../lib/comanda-service.js';
+import { recalcComandaTotalOperacao } from '../lib/operacao/comanda-adapter.js';
 
 const ALLOWED_LOGO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const ALLOWED_BACKGROUND_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 const updateBrandingSchema = z.object({
   corPrimaria: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida. Use formato #RRGGBB'),
+});
+
+const updateChavePixSchema = z.object({
+  chavePix: z.string().trim().max(200, 'A chave PIX deve ter no máximo 200 caracteres').nullable(),
 });
 
 const updateOperacaoSchema = z
@@ -96,6 +102,16 @@ export async function cervejariaRoutes(app: FastifyInstance) {
     return formatCervejariaAuth(updated);
   });
 
+  app.patch('/chave-pix', async (request) => {
+    const user = getAuthUser(request);
+    const body = updateChavePixSchema.parse(request.body);
+    const updated = await prisma.cervejaria.update({
+      where: { id: user.cervejariaId! },
+      data: { chavePix: body.chavePix || null },
+    });
+    return formatCervejariaAuth(updated);
+  });
+
   app.patch('/operacao', async (request) => {
     const user = getAuthUser(request);
     const body = updateOperacaoSchema.parse(request.body);
@@ -124,7 +140,26 @@ export async function cervejariaRoutes(app: FastifyInstance) {
   app.patch('/configuracao-operacional', async (request) => {
     const user = getAuthUser(request);
     const body = updateOperationalConfigSchema.parse(request.body);
-    return prisma.$transaction((tx) => updateOperationalConfig(tx, user.cervejariaId!, body));
+    return prisma.$transaction(async (tx) => {
+      const updated = await updateOperationalConfig(tx, user.cervejariaId!, body);
+      if (body.kitchenItemsChargeAtLaunch !== undefined) {
+        const openComandas = await tx.comanda.findMany({
+          where: {
+            status: 'ABERTA',
+            OR: [
+              { evento: { cervejariaId: user.cervejariaId! } },
+              { origem: 'CAIXA', pontoVenda: { cervejariaId: user.cervejariaId! } },
+            ],
+          },
+          select: { id: true, origem: true },
+        });
+        for (const comanda of openComandas) {
+          if (comanda.origem === 'CAIXA') await recalcComandaTotalOperacao(tx, comanda.id);
+          else await recalcComandaTotalInTx(tx, comanda.id);
+        }
+      }
+      return updated;
+    });
   });
 
   app.post('/branding/reextract', async (request) => {

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import {
@@ -44,6 +45,22 @@ function respostaProduto(produto: { precos?: Array<{ preco: unknown }>; [key: st
     gruposOpcionais: vinculados.length ? [{ id: 'opcionais', nome: 'Opcionais', obrigatorio: false, maximo: 99, opcoes: vinculados.map(({ opcional }) => ({ id: opcional.id, nome: opcional.nome, precoAdicional: Number(opcional.preco) })) }] : [],
     precoUnit: String(produto.precos?.[0]?.preco ?? 0),
   };
+}
+
+async function removerProdutoDosCardapios(
+  tx: Prisma.TransactionClient,
+  produtoId: string,
+  cervejariaId: string,
+) {
+  await tx.cardapioProduto.deleteMany({
+    where: { produtoId, cardapio: { cervejariaId } },
+  });
+  await tx.eventoProduto.deleteMany({
+    where: { produtoId, evento: { cervejariaId, status: 'ABERTO' } },
+  });
+  await tx.sessaoCaixaProdutoOperacao.deleteMany({
+    where: { produtoId, sessao: { cervejariaId, status: 'ABERTO' } },
+  });
 }
 
 export async function produtosOperacaoRoutes(app: FastifyInstance) {
@@ -194,7 +211,14 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     if (!existing) return reply.status(404).send({ error: 'Produto não encontrado' });
 
     const categoria = body.categoria ?? normalizeCategoriaProduto(existing.categoria);
-    const chope = categoria === 'Chope' || body.formato === 'CHOPE' || (body.categoria === undefined && existing.tipo === 'BEBIDA' && existing.formato === 'CHOPE');
+    const tipoAtualizado = body.tipo ?? (body.formato === 'CHOPE' ? 'BEBIDA' : existing.tipo);
+    const formatoAtualizado = tipoAtualizado === 'BEBIDA'
+      ? body.formato ?? existing.formato ?? 'OUTRO'
+      : null;
+    const chope = tipoAtualizado === 'BEBIDA' && formatoAtualizado === 'CHOPE';
+    if (categoria === 'Chope' && !chope) {
+      return reply.status(400).send({ error: 'A categoria Chope exige tipo Bebida e formato Chope' });
+    }
     if (chope && categoria !== 'Chope') return reply.status(400).send({ error: 'Selecione a categoria Chope para cadastrar preços por volume' });
     if (chope && !tapsEnabled && (body.categoria === 'Chope' || body.formato === 'CHOPE' || body.precos !== undefined || body.precoUnit !== undefined)) {
       return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
@@ -206,13 +230,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     if (chope && body.precoUnit !== undefined && body.precos === undefined) {
       return reply.status(400).send({ error: 'Chope deve ser salvo com preços por volume' });
     }
-    const classificationChanged = body.tipo !== undefined || body.formato !== undefined || body.categoria === 'Chope';
-    const tipoAtualizado = chope ? 'BEBIDA' : body.tipo ?? existing.tipo;
-    const formatoAtualizado = chope
-      ? 'CHOPE'
-      : classificationChanged
-        ? tipoAtualizado === 'BEBIDA' ? body.formato ?? existing.formato ?? 'OUTRO' : null
-        : existing.formato;
+    const classificationChanged = tipoAtualizado !== existing.tipo || formatoAtualizado !== existing.formato;
     if (classificationChanged && (tipoAtualizado !== existing.tipo || formatoAtualizado !== existing.formato)) {
       const vendasHistoricas = await prisma.itemComanda.count({ where: { produtoId: id } });
       if (vendasHistoricas > 0) return reply.status(409).send({ error: 'Tipo/formato não pode ser alterado após vendas para preservar ranking e histórico de consumo' });
@@ -235,6 +253,9 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
           ativo: body.ativo,
         },
       });
+      if (body.ativo === false) {
+        await removerProdutoDosCardapios(tx, id, cervejariaId);
+      }
       const precosNovos = body.precos ?? (!chope && body.precoUnit !== undefined ? [{ volumeMl: 1, preco: body.precoUnit }] : undefined);
       if (precosNovos) {
         await tx.preco.deleteMany({ where: { produtoId: id } });
@@ -258,8 +279,11 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     if (!existing) return reply.status(404).send({ error: 'Produto não encontrado' });
 
     // Desativa em vez de apagar: a partir da Fase 2 o produto aparece em vendas
-    // ja fechadas e apagar quebraria o historico de caixa.
-    await prisma.produto.update({ where: { id }, data: { ativo: false } });
+    // já fechadas. Só os vínculos de cardápio operacional são removidos.
+    await prisma.$transaction(async (tx) => {
+      await tx.produto.update({ where: { id }, data: { ativo: false } });
+      await removerProdutoDosCardapios(tx, id, cervejariaId);
+    });
     return reply.status(204).send();
   });
 }

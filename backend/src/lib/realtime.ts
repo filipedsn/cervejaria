@@ -14,6 +14,7 @@ export type RealtimeEvent =
   | { type: 'item:removed'; data: unknown }
   | { type: 'ranking:updated'; data: unknown }
   | { type: 'evento:updated'; data: unknown }
+  | { type: 'evento-caixa:updated'; data: { eventoId: string } }
   | { type: 'evento:deleted'; data: { id: string } }
   | { type: 'tap-montagem:updated'; data: { eventoId: string } }
   | { type: 'evento-cardapio:updated'; data: { eventoId: string } }

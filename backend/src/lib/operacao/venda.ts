@@ -343,6 +343,24 @@ export async function criarPedido(
 
 type ComandaCompleta = Prisma.ComandaGetPayload<{
   include: {
+    pontoVenda: {
+      select: {
+        cervejaria: {
+          select: {
+            configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } };
+          };
+        };
+      };
+    };
+    evento: {
+      select: {
+        cervejaria: {
+          select: {
+            configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } };
+          };
+        };
+      };
+    };
     pedidosOperacao: { include: { itensComanda: { include: { opcionais: true } } } };
     itens: true;
     pagamentos: true;
@@ -365,6 +383,7 @@ export function calcularFinanceiroComanda(params: {
   status: string;
   totalPersistido?: unknown;
   desconto?: unknown;
+  kitchenItemsChargeAtLaunch?: boolean;
   itensSemPedido: LinhaFinanceiraComanda[];
   pedidos: Array<{ status: string; itens: LinhaFinanceiraComanda[] }>;
 }) {
@@ -385,11 +404,11 @@ export function calcularFinanceiroComanda(params: {
         return cancelouPreparoIndividualmente && aindaHaItemAtivo;
       })
       .flatMap((pedido) => pedido.itens.filter((item) =>
-        ativos(item) && (!item.exigePreparo || pedido.status === 'ENTREGUE'),
+        ativos(item) && (!item.exigePreparo || params.kitchenItemsChargeAtLaunch === true || pedido.status === 'ENTREGUE'),
       )),
   ];
   const subtotal = totalEmCentavos(itensConsumidos);
-  const valorEmAberto = params.status === 'ABERTA'
+  const valorEmAberto = params.status === 'ABERTA' && params.kitchenItemsChargeAtLaunch !== true
     ? params.pedidos
       .filter((pedido) =>
         !['ENTREGUE', 'CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(pedido.status) &&
@@ -405,11 +424,15 @@ export function calcularFinanceiroComanda(params: {
   return { subtotal, valorEmAberto, desconto, total };
 }
 
-export function subtotalComandaEmCentavos(comanda: Pick<ComandaCompleta, 'status' | 'total' | 'desconto' | 'itens' | 'pedidosOperacao'>): number {
+export function subtotalComandaEmCentavos(
+  comanda: Pick<ComandaCompleta, 'status' | 'total' | 'desconto' | 'itens' | 'pedidosOperacao'>,
+  kitchenItemsChargeAtLaunch = false,
+): number {
   return calcularFinanceiroComanda({
     status: comanda.status,
     desconto: comanda.desconto,
     totalPersistido: comanda.total,
+    kitchenItemsChargeAtLaunch,
     itensSemPedido: comanda.itens.filter((item) => !item.pedidoCozinhaId),
     pedidos: comanda.pedidosOperacao.map((pedido) => ({ status: pedido.status, itens: pedido.itensComanda })),
   }).subtotal;
@@ -419,6 +442,9 @@ export function subtotalComandaEmCentavos(comanda: Pick<ComandaCompleta, 'status
  * Monta a conta como o operador ve. Total vem persistido na comanda (padrão cervejaria).
  */
 export function resumoComanda(comanda: ComandaCompleta) {
+  const kitchenItemsChargeAtLaunch = comanda.pontoVenda?.cervejaria.configuracaoOperacional?.kitchenItemsChargeAtLaunch
+    ?? comanda.evento?.cervejaria.configuracaoOperacional?.kitchenItemsChargeAtLaunch
+    ?? false;
   const pedidos = comanda.pedidosOperacao.map((pedido) => ({
     id: pedido.id,
     numero: pedido.numero,
@@ -452,6 +478,7 @@ export function resumoComanda(comanda: ComandaCompleta) {
     status: comanda.status,
     totalPersistido: comanda.total,
     desconto: comanda.desconto,
+    kitchenItemsChargeAtLaunch,
     itensSemPedido: comanda.itens.filter((item) => !item.pedidoCozinhaId),
     pedidos: comanda.pedidosOperacao.map((pedido) => ({ status: pedido.status, itens: pedido.itensComanda })),
   });

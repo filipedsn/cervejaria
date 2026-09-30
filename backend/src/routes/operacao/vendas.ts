@@ -135,7 +135,10 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
           items: itens,
         });
 
-        await recalcComandaTotalOperacao(tx, criada.id);
+        // Venda avulsa é paga e registrada imediatamente. Mesmo quando comandas
+        // normais só cobram itens de cozinha após a entrega, este fluxo precisa
+        // validar o pagamento pelo valor integral vendido.
+        await recalcComandaTotalOperacao(tx, criada.id, { kitchenItemsChargeAtLaunch: true });
 
         const comandaCompleta = await tx.comanda.findUniqueOrThrow({
           where: { id: criada.id },
@@ -149,6 +152,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
           usuarioId: user.sub,
           fechadaEm: agora,
           sessaoCaixaId: sessao.id,
+          kitchenItemsChargeAtLaunch: true,
         });
 
         return {

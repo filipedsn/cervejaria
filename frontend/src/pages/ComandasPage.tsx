@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, formatCurrency, ApiError } from '../lib/api';
@@ -8,11 +8,9 @@ import { useEvento } from '../contexts/EventoContext';
 import { getSocket } from '../lib/socket';
 import { Loading } from '../components/Loading';
 import { EncerrarEventoButton } from '../components/EncerrarEventoButton';
-import { VerRankingButton } from '../components/VerRankingButton';
 import { EmptyState } from '../components/EmptyState';
 import { ComandasBuscaInput } from '../components/ComandasBuscaInput';
 import { StatusBadge } from '../components/StatusBadge';
-import { EventoTapMontagemPanel } from '../components/EventoTapMontagemPanel';
 import { FilaPedidosPanel } from '../components/FilaPedidosPanel';
 import { MobileActionBar } from '../components/MobileActionBar';
 import {
@@ -24,6 +22,9 @@ import {
 import { parseCurrencyInput } from '../lib/currency';
 import { textoCorrespondeBuscaComanda } from '../lib/comandas-busca';
 import { useAuth } from '../contexts/AuthContext';
+import { EventoCaixaPanel } from '../components/EventoCaixaPanel';
+
+type EstadoCaixaEvento = { aberto: boolean };
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent?: 'brand' | 'green' }) {
   return (
@@ -54,6 +55,7 @@ export function ComandasPage() {
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([{ forma: 'PIX', valor: '' }]);
   const [groupError, setGroupError] = useState('');
   const [groupSuccess, setGroupSuccess] = useState('');
+  const fecharGrupoEmAndamento = useRef(false);
 
   const { data: dashboard, isLoading: loadingDashboard } = useQuery({
     queryKey: ['dashboard', evento?.id],
@@ -125,11 +127,17 @@ export function ComandasPage() {
   };
 
   const handleGroupClose = () => {
+    if (fecharGrupoEmAndamento.current) return;
+    fecharGrupoEmAndamento.current = true;
     const pagamentos = paymentForm.map((p) => ({
       forma: toPaymentForma(p),
       valor: parseCurrencyInput(p.valor),
     }));
-    fecharGrupoMutation.mutate(pagamentos);
+    fecharGrupoMutation.mutate(pagamentos, {
+      onSettled: () => {
+        fecharGrupoEmAndamento.current = false;
+      },
+    });
   };
 
   useEffect(() => {
@@ -146,6 +154,8 @@ export function ComandasPage() {
     socket.on('comanda:closed', invalidate);
     socket.on('item:added', invalidate);
     socket.on('item:removed', invalidate);
+    const invalidateCash = () => queryClient.invalidateQueries({ queryKey: ['evento-caixa', evento.id] });
+    socket.on('evento-caixa:updated', invalidateCash);
 
     return () => {
       socket.off('comanda:created', invalidate);
@@ -153,6 +163,7 @@ export function ComandasPage() {
       socket.off('comanda:closed', invalidate);
       socket.off('item:added', invalidate);
       socket.off('item:removed', invalidate);
+      socket.off('evento-caixa:updated', invalidateCash);
     };
   }, [evento?.id, queryClient]);
 
@@ -175,6 +186,14 @@ export function ComandasPage() {
 
   const isAbertas = comandaTab === 'ABERTA';
   const eventoAberto = evento?.status === 'ABERTO';
+  const { data: estadoCaixaEvento } = useQuery({
+    queryKey: ['evento-caixa', evento?.id],
+    queryFn: () => api.get<EstadoCaixaEvento>(`/api/eventos/${evento!.id}/caixa`),
+    enabled: Boolean(evento?.id),
+    refetchInterval: 30_000,
+  });
+  const caixaEventoAberto = estadoCaixaEvento?.aberto === true;
+  const vendaLiberada = eventoAberto && caixaEventoAberto;
 
   useEffect(() => {
     const mandanteId = searchParams.get('selecionar');
@@ -205,44 +224,33 @@ export function ComandasPage() {
 
   const resumo = dashboard?.resumo;
   const showPayBar = selectMode && selectedIds.length >= 2 && totalGrupo > 0;
+  const comandasSelecionaveis = (comandas ?? []).filter((comanda) => comanda.tipo !== 'AVULSA');
 
   return (
     <div className={`space-y-4 ${eventoAberto ? 'page-with-action-bar' : 'pb-2'}`}>
+      <EventoCaixaPanel eventoId={evento.id} eventoAberto={eventoAberto} comandasAbertas={resumo?.comandasAbertas ?? 0} />
       <FilaPedidosPanel />
 
-      {!selectMode && eventoAberto && (
-        <div className="grid grid-cols-2 gap-2">
-          <Link
-            to="/comandas/nova"
-            className="touch-btn-primary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-xl leading-none font-normal">
-              +
-            </span>
-            Comanda
-          </Link>
-          <Link
-            to="/comandas/venda-avulsa"
-            className="touch-btn-secondary min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold"
-          >
-            <span
-              className="flex h-9 w-9 shrink-0 items-center justify-center text-xl leading-none text-orange"
-              aria-hidden
-            >
-              ⚡
-            </span>
-            Venda avulsa
-          </Link>
-        </div>
+      {!selectMode && eventoAberto && !caixaEventoAberto && (
+        <div className="rounded-xl border border-orange/30 bg-orange/10 p-3 text-sm text-orange-dark" role="status">Abra o caixa do evento para iniciar comandas e vendas.</div>
       )}
 
-      {!selectMode && !eventoAberto && (
-        <Link to="/comandas/nova" className="touch-btn-primary w-full min-h-[3.75rem] flex items-center justify-center gap-2 rounded-2xl text-base font-bold">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-2xl leading-none font-normal">
-            +
-          </span>
-          Comanda
-        </Link>
+      {!selectMode && eventoAberto && (
+        <section className="space-y-2.5" aria-label="Ações rápidas">
+          <header><h2 className="text-xl font-bold">Ações rápidas</h2><p className="text-sm text-ink-muted">Acesso rápido às principais funcionalidades do seu dia a dia.</p></header>
+          <div className="grid grid-cols-2 gap-2">
+            <Link to="/comandas/nova" className={`group flex min-h-16 min-w-0 w-full items-center justify-center gap-1.5 rounded-2xl border border-sky-300/40 bg-gradient-to-br from-sky-500 to-blue-700 px-1.5 py-2 text-left text-white shadow-lg shadow-sky-500/20 transition hover:brightness-110 sm:min-h-20 sm:gap-3 sm:px-4 sm:py-3 ${!vendaLiberada ? 'pointer-events-none opacity-50' : ''}`} aria-disabled={!vendaLiberada} tabIndex={vendaLiberada ? undefined : -1}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/30 bg-white/15 text-xl font-light leading-none sm:h-10 sm:w-10 sm:rounded-xl sm:text-3xl">+</span>
+              <span className="min-w-0"><strong className="block whitespace-nowrap text-[clamp(0.68rem,3.6vw,1rem)] font-bold leading-tight">Nova comanda</strong></span>
+              <span className="shrink-0 text-base text-white/90 transition-transform group-hover:translate-x-1 sm:text-xl" aria-hidden="true">›</span>
+            </Link>
+            <Link to="/comandas/venda-avulsa" className={`group flex min-h-16 min-w-0 w-full items-center justify-center gap-1.5 rounded-2xl border border-orange-300/50 bg-gradient-to-br from-orange-500 to-orange-700 px-1.5 py-2 text-left text-white shadow-lg shadow-orange-500/20 transition hover:brightness-110 sm:min-h-20 sm:gap-3 sm:px-4 sm:py-3 ${!vendaLiberada ? 'pointer-events-none opacity-50' : ''}`} aria-disabled={!vendaLiberada} tabIndex={vendaLiberada ? undefined : -1}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/30 bg-white/15 sm:h-10 sm:w-10 sm:rounded-xl"><svg viewBox="0 0 24 24" className="h-4 w-4 fill-current sm:h-6 sm:w-6" aria-hidden="true"><path d="M13.2 1.8 4.9 13a1 1 0 0 0 .8 1.6h5l-.8 7.6 9.2-12a1 1 0 0 0-.8-1.6h-5.1l1-6a1 1 0 0 0-1.8-.8Z" /></svg></span>
+              <span className="min-w-0"><strong className="block whitespace-nowrap text-[clamp(0.68rem,3.6vw,1rem)] font-bold leading-tight">Venda avulsa</strong></span>
+              <span className="shrink-0 text-base text-white/90 transition-transform group-hover:translate-x-1 sm:text-xl" aria-hidden="true">›</span>
+            </Link>
+          </div>
+        </section>
       )}
 
       {groupSuccess && <div className="alert-success">{groupSuccess}</div>}
@@ -256,19 +264,11 @@ export function ComandasPage() {
           <StatCard label="Receita avulsa" value={formatCurrency(resumo.receitaAvulsa)} accent="green" />
           <StatCard label="Valor em aberto" value={formatCurrency(resumo.valorAberto)} />
           <StatCard label="Valor fechado" value={formatCurrency(resumo.valorFechado)} accent="green" />
+          <StatCard label={`Contas pendentes (${resumo.contasPendentes ?? 0})`} value={formatCurrency(resumo.valorPendente ?? 0)} accent={resumo.contasPendentes ? undefined : 'green'} />
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
-        <VerRankingButton eventoId={evento.id} />
-        <EventoTapMontagemPanel
-          eventoId={evento.id}
-          eventoAberto={eventoAberto}
-          presentation="modal"
-        />
-      </div>
-
-      {false && (resumo?.comandasAbertas ?? comandas?.length ?? 0) >= 2 && (
+      {isAbertas && comandasSelecionaveis.length >= 2 && (
         selectMode ? (
           <button
             type="button"
@@ -310,8 +310,8 @@ export function ComandasPage() {
         )
       )}
 
-      <section className="space-y-3">
-        <h2 className="section-label mb-0">Comandas</h2>
+      <section className="space-y-3 rounded-2xl border border-brand-600/20 bg-gradient-to-br from-surface via-surface to-brand-900/10 p-3 shadow-sm sm:p-5">
+        <header><h2 className="text-xl font-bold">Comandas</h2><p className="text-sm text-ink-muted">Gerencie as comandas abertas e fechadas deste evento.</p></header>
 
         <div className="segmented-control w-full">
           <button
@@ -342,22 +342,25 @@ export function ComandasPage() {
 
         <div className={`grid gap-3 ${colunaUnica ? '' : 'grid-cols-2'}`}>
           {comandasFiltradas.map((c) => {
-            const isSelected = selectedIds.includes(c.id);
             const isAvulsa = c.tipo === 'AVULSA';
+            const isSelected = selectedIds.includes(c.id);
             return (
               <button
                 key={c.id}
                 type="button"
+                disabled={selectMode && isAvulsa}
                 onClick={() => {
                   if (selectMode) {
-                    toggleSelection(c.id);
+                    if (!isAvulsa) toggleSelection(c.id);
                     return;
                   }
                   navigate(`/comandas/${c.id}`);
                 }}
                 className={`card-touch w-full ${colunaUnica ? 'min-h-[4.5rem]' : 'min-h-[5.5rem]'} ${
                   selectMode
-                    ? isSelected
+                    ? isAvulsa
+                      ? 'cursor-not-allowed opacity-50'
+                      : isSelected
                       ? 'border-brand-500 bg-brand-50/40'
                       : 'hover:border-brand-400/30'
                     : 'hover:border-brand-400/30'

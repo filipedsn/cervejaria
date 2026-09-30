@@ -56,6 +56,10 @@ export async function buildEventoDashboard(eventoId: string, cervejariaId: strin
       itens: { include: { produto: true } },
     },
   });
+  const contasPendentes = await prisma.contaReceber.findMany({
+    where: { comanda: { eventoId, origem: 'EVENTO' } },
+    select: { valorOriginal: true, pagamentos: { select: { valor: true } } },
+  });
 
   let comandasAbertas = 0;
   let comandasFechadas = 0;
@@ -63,6 +67,7 @@ export async function buildEventoDashboard(eventoId: string, cervejariaId: strin
   let valorAberto = 0;
   let valorFechado = 0;
   let receitaAvulsa = 0;
+  let totalPendente = 0;
   const aberto = new Map<string, ProdutoAgg>();
   const fechado = new Map<string, ProdutoAgg>();
 
@@ -93,6 +98,10 @@ export async function buildEventoDashboard(eventoId: string, cervejariaId: strin
       }
     }
   }
+  for (const conta of contasPendentes) {
+    const recebido = conta.pagamentos.reduce((sum, pagamento) => sum + toNumber(pagamento.valor), 0);
+    totalPendente += Math.max(0, toNumber(conta.valorOriginal) - recebido);
+  }
 
   return {
     evento,
@@ -103,6 +112,8 @@ export async function buildEventoDashboard(eventoId: string, cervejariaId: strin
       valorAberto,
       valorFechado,
       receitaAvulsa,
+      contasPendentes: contasPendentes.filter((conta) => toNumber(conta.valorOriginal) > conta.pagamentos.reduce((sum, pagamento) => sum + toNumber(pagamento.valor), 0)).length,
+      valorPendente: Math.round(totalPendente * 100) / 100,
     },
     porProduto: {
       aberto: mapToSortedArray(aberto),
