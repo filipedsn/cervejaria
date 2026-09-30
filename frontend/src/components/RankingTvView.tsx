@@ -83,7 +83,7 @@ export function RankingTvView({
         badge={badge}
         breweryName={breweryName}
         breweryLogoUrl={breweryLogoUrl}
-        breweryLogoVersion={cervejaria?.updatedAt}
+        breweryLogoVersion={cervejaria?.logoVersion ?? cervejaria?.updatedAt}
         isLive={isLive}
       />
 

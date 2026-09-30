@@ -544,6 +544,8 @@ export interface CervejariaDashboard {
   periodo: { ano: number; mes: number; label: string };
   resumo: {
     receitaTotal: number;
+    totalRecebido: number;
+    totalPendente: number;
     comandasAtendidas: number;
     vendasAvulsas: number;
     receitaAvulsa: number;
@@ -628,6 +630,9 @@ export interface EventoResumoExecutivo {
   evento: Pick<Evento, 'id' | 'nome' | 'local' | 'data' | 'horaInicio' | 'horaFim' | 'status'>;
   resumo: {
     receitaTotal: number;
+    totalRecebido: number;
+    totalPendente: number;
+    totalNaoConciliado: number;
     comandasAtendidas: number;
     comandasRegulares: number;
     vendasAvulsas: number;

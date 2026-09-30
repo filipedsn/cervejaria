@@ -133,6 +133,7 @@ export function OperacaoContasPendentesPage() {
       queryClient.invalidateQueries({ queryKey: ['operacao-contas-pendentes-resumo'] });
       queryClient.invalidateQueries({ queryKey: ['operacao-caixa'] });
       queryClient.invalidateQueries({ queryKey: ['operacao-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['cervejaria-dashboard'] });
     },
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível registrar o recebimento.'),
   });

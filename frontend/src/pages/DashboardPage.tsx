@@ -416,6 +416,8 @@ export function DashboardPage() {
           value={formatCurrency(resumo.receitaTotal)}
           trend={resumo.variacaoReceitaMesAnterior}
         />
+        <KpiCard label="Recebido no período" value={formatCurrency(resumo.totalRecebido)} />
+        <KpiCard label="A receber · saldo atual" value={formatCurrency(resumo.totalPendente)} />
         <KpiCard label="Comandas atendidas" value={String(resumo.comandasAtendidas)} />
         <KpiCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} />
         <KpiCard label="Receita avulsa" value={formatCurrency(resumo.receitaAvulsa)} />
@@ -423,7 +425,7 @@ export function DashboardPage() {
         <KpiCard label="Chope vendido" value={formatLiters(resumo.chopeMl)} />
       </div>
 
-      {resumo.receitaTotal === 0 ? (
+      {resumo.receitaTotal === 0 && resumo.totalRecebido === 0 && resumo.totalPendente === 0 ? (
         <div className="card text-center py-16">
           <p className="text-4xl mb-3">📊</p>
           <p className="text-ink-muted">Nenhuma venda fechada em {MESES[mesSelecionadoIdx]} {ano}</p>
@@ -703,7 +705,7 @@ export function DashboardPage() {
 
           <div className="grid lg:grid-cols-2 gap-5">
             <section className="card p-4 sm:p-5 space-y-4">
-              <h2 className="section-label">Receita × forma de pagamento</h2>
+              <h2 className="section-label">Recebimentos no período por forma</h2>
               {porPagamento.map((p) => (
                 <div key={p.forma} className="space-y-1.5">
                   <div className="flex justify-between text-sm gap-2">

@@ -64,7 +64,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
   const { isDono } = useAuth();
   const { contexto } = useOperacaoContexto();
   const modoAtual = modo ?? (contexto.operationMode === 'EVENTO' ? 'evento' : 'caixa');
-  const usaCardapio = contexto.ativo ? (contexto.usaCardapio ?? false) : false;
+  const usaCardapio = contexto.usaCardapio ?? false;
   const tabs = TABS.filter((t) => t.id !== 'cardapios' || usaCardapio);
   const [tab, setTab] = useState<TabId>('catalogo');
   const [showModal, setShowModal] = useState(false);

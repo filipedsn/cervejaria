@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { assetUrl } from '../../lib/api';
 
 interface BreweryBrandProps {
@@ -19,6 +19,10 @@ export function BreweryBrand({ name, logoUrl, logoVersion }: BreweryBrandProps) 
   const resolvedUrl = assetUrl(logoUrl, logoVersion);
   const displayName = name?.trim() || 'Cervejaria';
   const showImage = resolvedUrl && !imgError;
+
+  useEffect(() => {
+    setImgError(false);
+  }, [resolvedUrl]);
 
   return (
     <div className="brewery-brand" aria-label={`Marca ${displayName}`}>

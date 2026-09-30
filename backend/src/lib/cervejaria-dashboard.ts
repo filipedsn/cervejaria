@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { toNumber } from './utils.js';
 import { isBebidaChope } from './produto-utils.js';
@@ -7,7 +8,7 @@ import {
   type ReportFechadoPorContext,
 } from './fechado-por-report.js';
 import { getScheduledEventWindow } from './evento-vendas-intervalo.js';
-import { accumulatePorPagamento } from './pagamento-report.js';
+
 
 const MS_HOUR = 3_600_000;
 
@@ -47,6 +48,79 @@ function eventoTipoWhere(tipo: EventoTipoFiltro) {
   if (tipo === 'agendado') return { serieId: { not: null } };
   if (tipo === 'avulso') return { serieId: null, recorrencia: 'NENHUMA' as const };
   return {};
+}
+
+async function fetchPosicaoFinanceira(
+  cervejariaId: string,
+  inicio: Date,
+  fim: Date,
+  trailerId: string | undefined,
+  tipo: EventoTipoFiltro,
+) {
+  let comandasCaixaIds: string[] | undefined;
+  if (trailerId && (tipo === 'todos' || tipo === 'caixa')) {
+    const sessoes = await prisma.sessaoCaixaOperacao.findMany({
+      where: { cervejariaId, trailerId },
+      select: { pontoVendaId: true, diaOperacional: true, abertoEm: true, fechadoEm: true },
+    });
+    const comandas = sessoes.length
+      ? await prisma.comanda.findMany({
+          where: {
+            origem: 'CAIXA', status: 'FECHADA', pontoVenda: { cervejariaId },
+            OR: sessoes.map((sessao) => ({
+              pontoVendaId: sessao.pontoVendaId,
+              diaOperacional: sessao.diaOperacional,
+              fechadaEm: { gte: sessao.abertoEm, ...(sessao.fechadoEm ? { lte: sessao.fechadoEm } : {}) },
+            })),
+          },
+          select: { id: true },
+        })
+      : [];
+    comandasCaixaIds = comandas.map((comanda) => comanda.id);
+  }
+
+  const escopos: Prisma.ComandaWhereInput[] = [];
+  if (tipo !== 'caixa') {
+    escopos.push({
+      origem: 'EVENTO', status: 'FECHADA',
+      evento: { cervejariaId, ...(trailerId ? { trailerId } : {}), ...eventoTipoWhere(tipo) },
+    });
+  }
+  if (tipo === 'todos' || tipo === 'caixa') {
+    escopos.push({
+      origem: 'CAIXA', status: 'FECHADA', pontoVenda: { cervejariaId },
+      ...(comandasCaixaIds ? { id: { in: comandasCaixaIds } } : {}),
+    });
+  }
+  const comanda: Prisma.ComandaWhereInput = { OR: escopos };
+  const [pagamentos, contas] = await Promise.all([
+    prisma.pagamento.findMany({
+      where: { pagoEm: { gte: inicio, lte: fim }, comanda },
+      select: { forma: true, valor: true },
+    }),
+    prisma.contaReceber.findMany({
+      where: { comanda },
+      select: { valorOriginal: true, pagamentos: { select: { valor: true } } },
+    }),
+  ]);
+  const porForma = new Map<string, number>();
+  let totalRecebido = 0;
+  for (const pagamento of pagamentos) {
+    const valor = toNumber(pagamento.valor);
+    totalRecebido += valor;
+    porForma.set(pagamento.forma, (porForma.get(pagamento.forma) ?? 0) + valor);
+  }
+  const totalPendente = contas.reduce((soma, conta) => {
+    const recebido = conta.pagamentos.reduce((total, pagamento) => total + toNumber(pagamento.valor), 0);
+    return soma + Math.max(0, toNumber(conta.valorOriginal) - recebido);
+  }, 0);
+  return {
+    totalRecebido,
+    totalPendente,
+    porPagamento: [...porForma.entries()].map(([forma, valor]) => ({
+      forma, valor, percentual: totalRecebido > 0 ? Math.round((valor / totalRecebido) * 100) : 0,
+    })).sort((a, b) => b.valor - a.valor),
+  };
 }
 
 type EventoFechado = Awaited<ReturnType<typeof fetchClosedComandas>>[number];
@@ -224,7 +298,6 @@ function aggregateComandas(comandas: ClosedComanda[], fechadoPorCtx: ReportFecha
   let vendasAvulsas = 0;
   let receitaAvulsa = 0;
   let chopeMl = 0;
-  const porPagamento = new Map<string, number>();
   const porProduto = new Map<string, { produtoId: string; nome: string; quantidade: number; receita: number; chopeMl: number }>();
   const porFuncionario = new Map<string, { usuarioId: string | null; nome: string; comandas: number; receita: number }>();
 
@@ -272,20 +345,10 @@ function aggregateComandas(comandas: ClosedComanda[], fechadoPorCtx: ReportFecha
       porProduto.set(item.produtoId, prod);
     }
 
-    accumulatePorPagamento(porPagamento, comanda);
   }
 
   const comandasAtendidas = comandas.length;
   const ticketMedio = comandasAtendidas > 0 ? receitaTotal / comandasAtendidas : 0;
-
-  const pagamentoTotal = Array.from(porPagamento.values()).reduce((s, v) => s + v, 0);
-  const porPagamentoArr = Array.from(porPagamento.entries())
-    .map(([forma, valor]) => ({
-      forma,
-      valor,
-      percentual: pagamentoTotal > 0 ? Math.round((valor / pagamentoTotal) * 100) : 0,
-    }))
-    .sort((a, b) => b.valor - a.valor);
 
   const porProdutoArr = Array.from(porProduto.values())
     .map((p) => ({
@@ -305,7 +368,6 @@ function aggregateComandas(comandas: ClosedComanda[], fechadoPorCtx: ReportFecha
     chopeMl,
     comandasAtendidas,
     ticketMedio,
-    porPagamento: porPagamentoArr,
     porProduto: porProdutoArr,
     porFuncionario: porFuncionarioArr,
   };
@@ -624,12 +686,13 @@ export async function buildCervejariaDashboard(
 
   const fechadoPorCtx = await getReportFechadoPorContext(cervejariaId);
 
-  const [comandasMes, comandasAno, eventosRecentes, comparativoAgendas, turnosCaixaRecentes] = await Promise.all([
+  const [comandasMes, comandasAno, eventosRecentes, comparativoAgendas, turnosCaixaRecentes, financeiro] = await Promise.all([
     fetchClosedDashboardComandas(cervejariaId, inicio, fim, trailerId, tipo),
     fetchClosedDashboardComandas(cervejariaId, yearBounds(anoVigente).inicio, yearBounds(anoVigente).fim, trailerId, tipo),
     tipo === 'caixa' ? [] : buildEventosRecentes(cervejariaId, inicio, fim, trailerId, tipo),
     tipo === 'todos' || tipo === 'agendado' ? buildComparativoAgendas(cervejariaId, inicio, fim, trailerId) : [],
     tipo === 'todos' || tipo === 'caixa' ? buildTurnosCaixaRecentes(cervejariaId, inicio, fim, trailerId) : [],
+    fetchPosicaoFinanceira(cervejariaId, inicio, fim, trailerId, tipo),
   ]);
 
   const resumo = aggregateComandas(comandasMes, fechadoPorCtx);
@@ -666,6 +729,8 @@ export async function buildCervejariaDashboard(
     },
     resumo: {
       receitaTotal: resumo.receitaTotal,
+      totalRecebido: financeiro.totalRecebido,
+      totalPendente: financeiro.totalPendente,
       comandasAtendidas: resumo.comandasAtendidas,
       vendasAvulsas: resumo.vendasAvulsas,
       receitaAvulsa: resumo.receitaAvulsa,
@@ -674,7 +739,7 @@ export async function buildCervejariaDashboard(
       variacaoReceitaMesAnterior: variacaoReceita,
     },
     evolucaoSemanal,
-    porPagamento: resumo.porPagamento,
+    porPagamento: financeiro.porPagamento,
     porProduto: resumo.porProduto,
     porFuncionario: resumo.porFuncionario,
     eventosRecentes,

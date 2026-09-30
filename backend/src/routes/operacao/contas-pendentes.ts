@@ -59,7 +59,7 @@ export async function contasPendentesOperacaoRoutes(app: FastifyInstance) {
       where: {
         contaReceberId: { not: null },
         pagoEm: { gte: inicio, lt: fim },
-        contaReceber: { cliente: { cervejariaId } },
+        contaReceber: { cliente: { cervejariaId }, comanda: { origem: 'CAIXA' } },
       },
       _sum: { valor: true },
     });
@@ -70,7 +70,7 @@ export async function contasPendentesOperacaoRoutes(app: FastifyInstance) {
   app.get('/', async (request) => {
     const { cervejariaId } = request.operacao;
     const contas = await prisma.contaReceber.findMany({
-      where: { cliente: { cervejariaId } },
+      where: { cliente: { cervejariaId }, comanda: { origem: 'CAIXA' } },
       include: {
         cliente: { select: { id: true, nome: true, telefone: true } },
         comanda: {
@@ -98,7 +98,7 @@ export async function contasPendentesOperacaoRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = recebimentoSchema.parse(request.body);
     const conta = await prisma.contaReceber.findFirst({
-      where: { id, cliente: { cervejariaId } },
+      where: { id, cliente: { cervejariaId }, comanda: { origem: 'CAIXA' } },
       include: { cliente: true, comanda: { select: { id: true, pontoVendaId: true, status: true } }, pagamentos: true },
     });
     if (!conta) return reply.status(404).send({ error: 'Conta pendente nÃ£o encontrada' });

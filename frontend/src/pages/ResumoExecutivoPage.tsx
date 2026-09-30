@@ -169,6 +169,11 @@ export function ResumoExecutivoPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         <KpiCard label="Receita total" value={formatCurrency(resumo.receitaTotal)} />
+        <KpiCard label="Recebido até agora" value={formatCurrency(resumo.totalRecebido)} />
+        <KpiCard label="A receber · saldo atual" value={formatCurrency(resumo.totalPendente)} />
+        {resumo.totalNaoConciliado > 0.009 && (
+          <KpiCard label="Sem conciliação" value={formatCurrency(resumo.totalNaoConciliado)} />
+        )}
         <KpiCard label="Comandas regulares" value={String(resumo.comandasRegulares)} />
         <KpiCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} />
         <KpiCard label="Receita avulsa" value={formatCurrency(resumo.receitaAvulsa)} />
@@ -305,7 +310,7 @@ export function ResumoExecutivoPage() {
 
           <div className="grid lg:grid-cols-2 gap-5">
             <section className="card p-4 sm:p-5 space-y-4">
-              <h2 className="section-label">Formas de pagamento</h2>
+              <h2 className="section-label">Recebimentos até agora por forma</h2>
               {porPagamento.map((p) => (
                 <div key={p.forma} className="space-y-1.5">
                   <div className="flex justify-between text-sm gap-2">

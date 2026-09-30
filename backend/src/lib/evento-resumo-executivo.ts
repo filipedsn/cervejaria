@@ -12,7 +12,7 @@ import { buildFluxoPorIntervalo, sumFluxoFechado, type FluxoRemocaoInput } from 
 
 import { buildTempoComandaStats } from './evento-comanda-tempo.js';
 
-import { accumulatePorPagamento } from './pagamento-report.js';
+import { resumoFinanceiroComandas } from './financeiro-contas.js';
 
 
 
@@ -107,6 +107,7 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
       itens: { include: { produto: true } },
 
       pagamentos: { select: { forma: true, valor: true, pagoEm: true } },
+      contaReceber: { select: { valorOriginal: true } },
 
       fechadoPor: { select: { id: true, nome: true } },
 
@@ -167,8 +168,6 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
   let chopeMl = 0;
 
   const clientes = new Set<string>();
-
-  const porPagamento = new Map<string, number>();
 
   const porProduto = new Map<
 
@@ -338,8 +337,6 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
 
 
-    accumulatePorPagamento(porPagamento, comanda);
-
   }
 
 
@@ -350,21 +347,7 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
 
 
-  const pagamentoTotal = Array.from(porPagamento.values()).reduce((s, v) => s + v, 0);
-
-  const porPagamentoArr = Array.from(porPagamento.entries())
-
-    .map(([forma, valor]) => ({
-
-      forma,
-
-      valor,
-
-      percentual: pagamentoTotal > 0 ? Math.round((valor / pagamentoTotal) * 100) : 0,
-
-    }))
-
-    .sort((a, b) => b.valor - a.valor);
+  const financeiro = resumoFinanceiroComandas(comandasFechadas);
 
 
 
@@ -451,6 +434,9 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
     resumo: {
 
       receitaTotal,
+      totalRecebido: financeiro.recebido,
+      totalPendente: financeiro.aReceber,
+      totalNaoConciliado: financeiro.naoConciliado,
 
       comandasAtendidas,
 
@@ -474,7 +460,7 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
     tempoComanda,
 
-    porPagamento: porPagamentoArr,
+    porPagamento: financeiro.porPagamento,
 
     porProduto: porProdutoArr,
 

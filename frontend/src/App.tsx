@@ -144,8 +144,11 @@ function RequireTenant() {
 
 function RequireModuloOperacao() {
   const { contexto, isLoading } = useOperacaoContexto();
+  const { pathname } = useLocation();
   if (isLoading) return <Loading fullScreen />;
-  if (!contexto.ativo) return <Navigate to="/" replace />;
+  // O catálogo também atende eventos sem ponto de venda operacional ativo.
+  const catalogoEvento = contexto.operationMode === 'EVENTO' && pathname === '/operacao/catalogo';
+  if (!contexto.ativo && !catalogoEvento) return <Navigate to="/" replace />;
   return <Outlet />;
 }
 

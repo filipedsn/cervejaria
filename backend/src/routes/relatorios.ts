@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
-import { csvRow } from '../lib/csv.js';
 import { getTenantUser } from '../types/auth.js';
 import { toNumber } from '../lib/utils.js';
 import { isBebidaChope } from '../lib/produto-utils.js';
+import { resumoFinanceiroComandas } from '../lib/financeiro-contas.js';
+import { buildRelatorioEventoCsv } from '../lib/relatorio-evento-csv.js';
 
 export async function relatoriosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
@@ -23,6 +24,7 @@ export async function relatoriosRoutes(app: FastifyInstance) {
       include: {
         itens: { include: { produto: true } },
         pagamentos: true,
+        contaReceber: { select: { valorOriginal: true } },
       },
     });
 
@@ -30,6 +32,7 @@ export async function relatoriosRoutes(app: FastifyInstance) {
     let totalMl = 0;
     const porBebida = new Map<string, { produtoId: string; nome: string; quantidade: number; totalMl: number; valor: number }>();
     const porPagamento = new Map<string, number>();
+    const financeiro = resumoFinanceiroComandas(comandas);
 
     for (const comanda of comandas) {
       totalVendido += toNumber(comanda.total);
@@ -64,6 +67,9 @@ export async function relatoriosRoutes(app: FastifyInstance) {
       resumo: {
         comandasFechadas: comandas.length,
         totalVendido,
+        totalRecebido: financeiro.recebido,
+        totalPendente: financeiro.aReceber,
+        totalNaoConciliado: financeiro.naoConciliado,
         totalMl,
       },
       porBebida: Array.from(porBebida.values()).sort((a, b) => b.valor - a.valor),
@@ -86,35 +92,13 @@ export async function relatoriosRoutes(app: FastifyInstance) {
         cliente: true,
         itens: { include: { produto: true } },
         pagamentos: true,
+        contaReceber: { select: { valorOriginal: true } },
       },
       orderBy: { updatedAt: 'asc' },
     });
 
-    const lines = ['cliente,telefone,produto,volume_ml,quantidade,preco_unit,subtotal,forma_pagamento,valor_pago,fechado_em'];
-
-    for (const comanda of comandas) {
-      const formas = comanda.pagamentos.map((p) => `${p.forma}:${toNumber(p.valor).toFixed(2)}`).join('|');
-      for (const item of comanda.itens) {
-        const subtotal = toNumber(item.precoUnit) * item.quantidade;
-        lines.push(
-          csvRow([
-            comanda.cliente?.nome ?? '',
-            comanda.cliente?.telefone ?? '',
-            item.produto?.nome ?? item.nome ?? '',
-            item.volumeMl,
-            item.quantidade,
-            toNumber(item.precoUnit).toFixed(2),
-            subtotal.toFixed(2),
-            formas,
-            toNumber(comanda.total).toFixed(2),
-            comanda.updatedAt.toISOString(),
-          ]),
-        );
-      }
-    }
-
     reply.header('Content-Type', 'text/csv; charset=utf-8');
     reply.header('Content-Disposition', `attachment; filename="relatorio-${evento.id}.csv"`);
-    return '\uFEFF' + lines.join('\n');
+    return buildRelatorioEventoCsv(comandas);
   });
 }

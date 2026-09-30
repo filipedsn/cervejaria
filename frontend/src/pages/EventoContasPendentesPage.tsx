@@ -46,6 +46,8 @@ export function EventoContasPendentesPage() {
         queryClient.invalidateQueries({ queryKey: ['evento-contas-pendentes', eventoId] }),
         queryClient.invalidateQueries({ queryKey: ['evento-caixa', eventoId] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard', eventoId] }),
+        queryClient.invalidateQueries({ queryKey: ['resumo-executivo', eventoId] }),
+        queryClient.invalidateQueries({ queryKey: ['cervejaria-dashboard'] }),
       ]);
     },
     onError: (cause) => setError(cause instanceof ApiError ? cause.message : 'Não foi possível registrar o recebimento.'),

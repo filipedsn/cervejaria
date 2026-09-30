@@ -208,7 +208,9 @@ export function Layout() {
               operationMode: operacao.operationMode,
             }),
           ]
-        : navItemsComandasOperacao
+        : operacao.operationMode === 'EVENTO'
+          ? navItemsCervejariaComCatalogo
+          : navItemsComandasOperacao
     : operacao.operationMode === 'CAIXA'
       ? [...navItemsOperacaoModoSemCatalogo, ...navItemsCervejariaComCatalogo]
       : [...navItemsCervejariaComCatalogo, ...navItemsOperacaoModoSemCatalogo];
