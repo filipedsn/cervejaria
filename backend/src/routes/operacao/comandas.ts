@@ -701,7 +701,12 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'Venda avulsa não permite desconto' });
     }
 
-    const subtotalEmCents = subtotalComandaEmCentavos(comanda);
+    const cobrancaCozinha = await prisma.configuracaoOperacional.findUnique({
+      where: { cervejariaId },
+      select: { kitchenItemsChargeAtLaunch: true },
+    });
+    const cozinhaAoLancar = cobrancaCozinha?.kitchenItemsChargeAtLaunch ?? false;
+    const subtotalEmCents = subtotalComandaEmCentavos(comanda, cozinhaAoLancar);
     const descontoEmCents = centavos(body.desconto);
     if (descontoEmCents > subtotalEmCents) {
       throw new DescontoInvalidoError('O desconto não pode ser maior que o subtotal da comanda');
@@ -719,7 +724,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       if (comandaAtual.tipo === 'AVULSA') {
         throw Object.assign(new Error('Venda avulsa não permite desconto'), { statusCode: 409 });
       }
-      const subtotalAtualEmCents = subtotalComandaEmCentavos(comandaAtual);
+      const subtotalAtualEmCents = subtotalComandaEmCentavos(comandaAtual, cozinhaAoLancar);
       if (descontoEmCents > subtotalAtualEmCents) {
         throw new DescontoInvalidoError('O desconto não pode ser maior que o subtotal da comanda');
       }

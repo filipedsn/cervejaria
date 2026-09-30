@@ -16,6 +16,7 @@ export const updateOperationalConfigSchema = z
     tapsEnabled: z.boolean().optional(),
     inventoryEnabled: z.boolean().optional(),
     kitchenEnabled: z.boolean().optional(),
+    kitchenItemsChargeAtLaunch: z.boolean().optional(),
     whatsappPedidoProntoEnabled: z.boolean().optional(),
     whatsappPedidoProntoNaCozinha: z.boolean().optional(),
     completeInitialSetup: z.boolean().optional(),
@@ -29,6 +30,7 @@ export const updateOperationalConfigSchema = z
       body.tapsEnabled !== undefined ||
       body.inventoryEnabled !== undefined ||
       body.kitchenEnabled !== undefined ||
+      body.kitchenItemsChargeAtLaunch !== undefined ||
       body.whatsappPedidoProntoEnabled !== undefined ||
       body.whatsappPedidoProntoNaCozinha !== undefined ||
       body.completeInitialSetup === true,
@@ -153,6 +155,7 @@ export async function updateOperationalConfig(
     ...(input.tapsEnabled !== undefined ? { tapsEnabled: input.tapsEnabled } : {}),
     ...(input.inventoryEnabled !== undefined ? { inventoryEnabled: input.inventoryEnabled } : {}),
     ...(input.kitchenEnabled !== undefined ? { kitchenEnabled: input.kitchenEnabled } : {}),
+    ...(input.kitchenItemsChargeAtLaunch !== undefined ? { kitchenItemsChargeAtLaunch: input.kitchenItemsChargeAtLaunch } : {}),
     ...(input.whatsappPedidoProntoEnabled !== undefined
       ? { whatsappPedidoProntoEnabled: input.whatsappPedidoProntoEnabled }
       : {}),

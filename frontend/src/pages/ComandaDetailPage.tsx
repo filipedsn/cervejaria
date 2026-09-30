@@ -55,6 +55,13 @@ export function ComandaDetailPage() {
     enabled: !!id,
   });
 
+  const { data: operationalConfiguration } = useQuery({
+    queryKey: ['operational-configuration'],
+    queryFn: () => api.get<{ configuration: { kitchenItemsChargeAtLaunch?: boolean } | null }>('/api/cervejaria/configuracao-operacional'),
+    enabled: Boolean(comanda),
+  });
+  const kitchenItemsChargeAtLaunch = operationalConfiguration?.configuration?.kitchenItemsChargeAtLaunch ?? false;
+
   const needsEventoFetch = !!comanda && evento?.id !== comanda.eventoId;
   const { data: comandaEvento } = useQuery({
     queryKey: ['evento', comanda?.eventoId],
@@ -104,7 +111,7 @@ export function ComandaDetailPage() {
 
   useEffect(() => {
     if (!showPayment || !comanda) return;
-    const subtotal = subtotalComandaCervejaria(comanda);
+    const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
     const total = Math.max(0, subtotal - parseCurrencyInput(descontoInput));
     setPaymentForm((prev) => {
       if (total <= 0.01) return prev.length === 0 ? prev : [];
@@ -114,7 +121,7 @@ export function ComandaDetailPage() {
       if (Math.abs(atual - total) < 0.01) return prev;
       return [{ ...prev[0], valor: formatCurrencyInputFromNumber(total) }];
     });
-  }, [descontoInput, showPayment, comanda?.itens]);
+  }, [descontoInput, showPayment, comanda?.itens, kitchenItemsChargeAtLaunch]);
 
   const addItemsMutation = useMutation({
     mutationFn: (itens: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] }[]) =>
@@ -211,7 +218,7 @@ export function ComandaDetailPage() {
 
   const openPayment = () => {
     if (!comanda) return;
-    const subtotal = subtotalComandaCervejaria(comanda);
+    const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
     const desconto = descontoComandaCervejaria(comanda);
     setDescontoInput(formatCurrencyInputFromNumber(desconto));
     setPaymentForm(createDefaultPaymentForm(Math.max(0, subtotal - desconto)));
@@ -222,7 +229,7 @@ export function ComandaDetailPage() {
   const handleClose = (deixarPendente = false) => {
     if (!comanda) return;
     const desconto = parseCurrencyInput(descontoInput);
-    const subtotal = subtotalComandaCervejaria(comanda);
+    const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
     const podeAplicarDesconto = podeDarDescontoOperacao;
     if (podeAplicarDesconto && desconto > subtotal) {
       setError('O desconto não pode ser maior que o subtotal da comanda');
@@ -282,8 +289,8 @@ export function ComandaDetailPage() {
   const outrosProdutos = produtosUnitarios.filter((p) => classificarGrupoProdutoOperacao(p) === 'outros');
   const hasActionBar = isOpen || !isOpen;
   const podeAplicarDesconto = podeDarDescontoOperacao;
-  const subtotal = subtotalComandaCervejaria(comanda);
-  const valorPendente = comanda.itens
+  const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
+  const valorPendente = kitchenItemsChargeAtLaunch ? 0 : comanda.itens
     .filter((item) => item.exigePreparo && !item.cancelamentoPendenteEm && !item.canceladoEm && item.pedidoCozinha?.status !== 'ENTREGUE' && item.pedidoCozinha?.status !== 'CANCELADO' && item.pedidoCozinha?.status !== 'CANCELAMENTO_PENDENTE')
     .reduce((total, item) => total + parseFloat(item.precoUnit) * item.quantidade, 0);
   const descontoValor = parseCurrencyInput(descontoInput);

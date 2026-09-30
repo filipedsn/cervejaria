@@ -436,9 +436,9 @@ export function descontoComandaCervejaria(comanda: Pick<Comanda, 'desconto'>): n
   return typeof comanda.desconto === 'number' ? comanda.desconto : parseFloat(comanda.desconto);
 }
 
-export function subtotalComandaCervejaria(comanda: Pick<Comanda, 'itens'>): number {
+export function subtotalComandaCervejaria(comanda: Pick<Comanda, 'itens'>, kitchenItemsChargeAtLaunch = false): number {
   return comanda.itens
-    .filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm && (!item.exigePreparo || item.pedidoCozinha?.status === 'ENTREGUE' || !item.pedidoCozinha))
+    .filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm && (!item.exigePreparo || kitchenItemsChargeAtLaunch || item.pedidoCozinha?.status === 'ENTREGUE' || !item.pedidoCozinha))
     .reduce((soma, item) => soma + parseFloat(item.precoUnit) * item.quantidade, 0);
 }
 

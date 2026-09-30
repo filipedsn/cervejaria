@@ -209,6 +209,8 @@ model ConfiguracaoOperacional {
   tapsEnabled               Boolean?
   inventoryEnabled          Boolean?
   kitchenEnabled            Boolean?
+  /// Include kitchen items in a comanda total as soon as they are launched.
+  kitchenItemsChargeAtLaunch Boolean @default(false)
   whatsappPedidoProntoEnabled Boolean @default(false)
   whatsappPedidoProntoNaCozinha Boolean @default(false)
   createdAt                 DateTime @default(now())

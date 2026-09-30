@@ -338,7 +338,7 @@ export function VendaAvulsaPage() {
               <div className="rounded-xl border border-line bg-surface-lighter p-3 space-y-1 text-sm text-left">
                 <div className="flex justify-between text-ink-muted">
                   <span>Subtotal</span>
-                  <span>{formatCurrency(subtotalComandaCervejaria(closedComanda))}</span>
+                  <span>{formatCurrency(subtotalComandaCervejaria(closedComanda, true))}</span>
                 </div>
                 <div className="flex justify-between text-ink-muted">
                   <span>Desconto</span>

@@ -27,8 +27,12 @@ export function resolverQuantidadeCancelamento(quantidadeAtual: number, solicita
     : null;
 }
 
-async function ajustarDescontoSeNecessario(tx: Prisma.TransactionClient, comanda: ComandaCompleta) {
-  const subtotalEmCents = subtotalComandaEmCentavos(comanda);
+async function ajustarDescontoSeNecessario(tx: Prisma.TransactionClient, comanda: ComandaCompleta, cervejariaId: string) {
+  const configuracao = await tx.configuracaoOperacional.findUnique({
+    where: { cervejariaId },
+    select: { kitchenItemsChargeAtLaunch: true },
+  });
+  const subtotalEmCents = subtotalComandaEmCentavos(comanda, configuracao?.kitchenItemsChargeAtLaunch ?? false);
   const descontoEmCents = centavos(toNumber(comanda.desconto ?? 0));
   if (descontoEmCents <= subtotalEmCents) return;
 
@@ -219,7 +223,7 @@ export async function removeItemFromComandaOperacao(params: {
       where: { id: params.comandaId },
       include: INCLUDE_COMANDA_OPERACAO,
     });
-    await ajustarDescontoSeNecessario(tx, comandaFresh);
+    await ajustarDescontoSeNecessario(tx, comandaFresh, params.cervejariaId);
     await recalcComandaTotalOperacao(tx, params.comandaId);
 
     return tx.comanda.findUniqueOrThrow({
@@ -403,7 +407,7 @@ export async function updateItemQuantidadeComandaOperacao(params: {
         where: { id: params.comandaId },
         include: INCLUDE_COMANDA_OPERACAO,
       });
-      await ajustarDescontoSeNecessario(tx, comandaFresh);
+      await ajustarDescontoSeNecessario(tx, comandaFresh, params.cervejariaId);
       await recalcComandaTotalOperacao(tx, params.comandaId);
 
       return tx.comanda.findUniqueOrThrow({
