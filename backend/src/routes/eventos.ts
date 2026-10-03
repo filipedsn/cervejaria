@@ -973,54 +973,54 @@ export async function eventosRoutes(app: FastifyInstance) {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
-    const evento = await prisma.evento.findFirst({
+    const result = await prisma.$transaction(async (tx) => {
+      await bloquearCaixaEvento(tx, id);
+      const evento = await tx.evento.findFirst({
       where: { id, cervejariaId: user.cervejariaId },
       include: { _count: { select: eventoListCount } },
     });
 
-    if (!evento) return reply.status(404).send({ error: 'Evento não encontrado' });
+      if (!evento) return { error: 'Evento não encontrado', status: 404 as const };
 
     if (isSerie(evento)) {
       if (evento._count.ocorrencias > 0) {
-        return reply.status(409).send({ error: 'Esta agenda já teve sessões. Não é possível remover.' });
+        return { error: 'Esta agenda já teve sessões. Não é possível remover.', status: 409 as const };
       }
     } else {
       // A sessão de caixa guarda conferências, movimentos e vínculos financeiros.
       // A relação com Evento usa cascade; nunca a descarte ao remover a agenda.
-      const sessoesCaixa = await prisma.sessaoCaixaEvento.count({ where: { eventoId: id } });
+      const sessoesCaixa = await tx.sessaoCaixaEvento.count({ where: { eventoId: id } });
       if (sessoesCaixa > 0) {
-        return reply.status(409).send({
-          error: 'Evento com histórico de caixa não pode ser excluído.',
-        });
+        return { error: 'Evento com histórico de caixa não pode ser excluído.', status: 409 as const };
       }
-      const abertas = await prisma.comanda.count({
+      const abertas = await tx.comanda.count({
         where: { eventoId: id, status: 'ABERTA' },
       });
       if (abertas > 0) {
-        return reply.status(409).send({
-          error: `Existem ${abertas} comanda(s) aberta(s). Feche-as antes de excluir o evento.`,
-        });
+        return { error: `Existem ${abertas} comanda(s) aberta(s). Feche-as antes de excluir o evento.`, status: 409 as const };
       }
-      const comandasComVenda = await prisma.comanda.count({
+      const comandasComVenda = await tx.comanda.count({
         where: { eventoId: id, ...comandaImpedeExclusaoWhere },
       });
       if (comandasComVenda > 0) {
-        return reply.status(409).send({
-          error: 'Evento com vendas registradas não pode ser excluído.',
-        });
+        return { error: 'Evento com vendas registradas não pode ser excluído.', status: 409 as const };
       }
     }
+
+    await tx.evento.delete({ where: { id } });
+    return { evento } as const;
+    });
+    if ('error' in result) return reply.status(result.status ?? 409).send({ error: result.error });
 
     await registrarTransacao({
       cervejariaId: user.cervejariaId!,
       tipo: 'EVENTO_EXCLUIDO',
       usuarioId: user.sub,
       eventoId: id,
-      metadata: { nome: evento.nome, recorrencia: evento.recorrencia },
-      payload: evento,
+      metadata: { nome: result.evento.nome, recorrencia: result.evento.recorrencia },
+      payload: result.evento,
     });
 
-    await prisma.evento.delete({ where: { id } });
     emitToCervejaria(app.io, user.cervejariaId!, { type: 'evento:deleted', data: { id } });
     return reply.status(204).send();
   });

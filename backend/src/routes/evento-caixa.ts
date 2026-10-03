@@ -111,6 +111,10 @@ export async function eventoCaixaRoutes(app: FastifyInstance) {
     const body = movimentoSchema.parse(request.body);
     const session = await prisma.$transaction(async (tx) => {
       await bloquearCaixaEvento(tx, eventoId);
+      const evento = await tx.evento.findFirst({
+        where: { id: eventoId, cervejariaId: user.cervejariaId }, select: { id: true },
+      });
+      if (!evento) throw Object.assign(new Error('Evento não encontrado'), { statusCode: 404 });
       const opened = await tx.sessaoCaixaEvento.findFirst({ where: { eventoId, status: 'ABERTO' }, select: { id: true } });
       if (!opened) throw Object.assign(new Error('Abra o caixa do evento antes de registrar movimentos'), { statusCode: 409 });
       const movement = await tx.movimentoCaixaEvento.create({
@@ -126,10 +130,12 @@ export async function eventoCaixaRoutes(app: FastifyInstance) {
       }, tx);
       return movement;
     }).catch((error: unknown) => {
-      if ((error as { statusCode?: number }).statusCode === 409) return null;
+      if ([404, 409].includes((error as { statusCode?: number }).statusCode ?? 0)) {
+        return { error: (error as Error).message, statusCode: (error as { statusCode: number }).statusCode };
+      }
       throw error;
     });
-    if (!session) return reply.status(409).send({ error: 'Abra o caixa do evento antes de registrar movimentos' });
+    if ('error' in session) return reply.status(session.statusCode).send({ error: session.error });
     emitToEvento(app.io, eventoId, { type: 'evento-caixa:updated', data: { eventoId } });
     return { movimento: session, caixa: resumoCaixaEvento(await obterCaixaAtualEvento(eventoId)) };
   });

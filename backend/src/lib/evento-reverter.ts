@@ -1,9 +1,11 @@
 import type { Server as SocketIOServer } from 'socket.io';
+import type { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { isSerie } from './evento-utils.js';
 import { cancelarComandaVazia } from './comanda-cancelar.js';
 import { emitPortalSessionExpired } from './cliente-session.js';
 import { registrarTransacao } from './transacao-log.js';
+import { bloquearCaixaEvento } from './evento-caixa.js';
 
 export type EventoRevertivel = {
   id: string;
@@ -41,8 +43,8 @@ export function assertPodeReverterEvento(
   return { ok: true };
 }
 
-export async function getEventoMovimentacaoFinanceira(eventoId: string) {
-  const sessoesCaixa = await prisma.sessaoCaixaEvento.count({ where: { eventoId } });
+export async function getEventoMovimentacaoFinanceira(eventoId: string, db: Prisma.TransactionClient | typeof prisma = prisma) {
+  const sessoesCaixa = await db.sessaoCaixaEvento.count({ where: { eventoId } });
   if (sessoesCaixa > 0) {
     return {
       bloqueado: true,
@@ -51,7 +53,7 @@ export async function getEventoMovimentacaoFinanceira(eventoId: string) {
     };
   }
 
-  const fechadas = await prisma.comanda.count({
+  const fechadas = await db.comanda.count({
     where: { eventoId, status: 'FECHADA' },
   });
   if (fechadas > 0) {
@@ -62,7 +64,7 @@ export async function getEventoMovimentacaoFinanceira(eventoId: string) {
     };
   }
 
-  const abertasComItens = await prisma.comanda.count({
+  const abertasComItens = await db.comanda.count({
     where: {
       eventoId,
       status: 'ABERTA',
@@ -77,7 +79,7 @@ export async function getEventoMovimentacaoFinanceira(eventoId: string) {
     };
   }
 
-  const pedidosConfirmados = await prisma.pedidoCliente.count({
+  const pedidosConfirmados = await db.pedidoCliente.count({
     where: { eventoId, status: 'CONFIRMADO' },
   });
   if (pedidosConfirmados > 0) {
@@ -88,7 +90,7 @@ export async function getEventoMovimentacaoFinanceira(eventoId: string) {
     };
   }
 
-  const comandasAbertasVazias = await prisma.comanda.findMany({
+  const comandasAbertasVazias = await db.comanda.findMany({
     where: {
       eventoId,
       status: 'ABERTA',
@@ -110,9 +112,11 @@ export async function reverterEventoParaAgendado(params: {
   usuarioId: string;
   io?: SocketIOServer;
 }) {
-  const evento = await prisma.evento.findFirst({
-    where: { id: params.eventoId, cervejariaId: params.cervejariaId },
-  });
+  const result = await prisma.$transaction(async (tx) => {
+    await bloquearCaixaEvento(tx, params.eventoId);
+    const evento = await tx.evento.findFirst({
+      where: { id: params.eventoId, cervejariaId: params.cervejariaId },
+    });
 
   if (!evento) {
     return { error: 'Evento não encontrado', status: 404 as const };
@@ -123,7 +127,7 @@ export async function reverterEventoParaAgendado(params: {
     return { error: pode.motivo, status: 400 as const };
   }
 
-  const mov = await getEventoMovimentacaoFinanceira(evento.id);
+  const mov = await getEventoMovimentacaoFinanceira(evento.id, tx);
   if (mov.bloqueado) {
     return { error: mov.motivo!, status: 409 as const };
   }
@@ -134,34 +138,16 @@ export async function reverterEventoParaAgendado(params: {
       cervejariaId: params.cervejariaId,
       fechadoPorId: params.usuarioId,
       motivo: 'manual',
-    });
+    }, tx);
     if ('error' in cancel) {
-      return { error: cancel.error, status: 409 as const };
+      throw Object.assign(new Error(cancel.error), { status: 409 as const });
     }
   }
 
   const modo = evento.serieId ? ('serie' as const) : ('avulso' as const);
   const dataKey = evento.data ? dateOnlyToKey(evento.data) : null;
 
-  emitPortalSessionExpired(params.io, evento.id, 'evento_revertido');
-
-  await registrarTransacao({
-    cervejariaId: params.cervejariaId,
-    tipo: 'EVENTO_EXCLUIDO',
-    usuarioId: params.usuarioId,
-    eventoId: evento.id,
-    metadata: {
-      acao: 'reverter_para_agendado',
-      nome: evento.nome,
-      serieId: evento.serieId,
-      data: dataKey,
-      modo,
-    },
-    payload: evento,
-  });
-
-  await prisma.evento.delete({ where: { id: evento.id } });
-
+  await tx.evento.delete({ where: { id: evento.id } });
   return {
     ok: true as const,
     evento,
@@ -173,4 +159,28 @@ export async function reverterEventoParaAgendado(params: {
         ? 'Sessão revertida. O compromisso voltou ao estado agendado.'
         : 'Abertura desfeita. O evento foi removido da agenda.',
   };
+  }).catch((error: unknown) => {
+    if ((error as { status?: number }).status === 409) {
+      return { error: (error as Error).message, status: 409 as const };
+    }
+    throw error;
+  });
+
+  if (!('ok' in result) || !result.ok) return result;
+  emitPortalSessionExpired(params.io, result.evento.id, 'evento_revertido');
+  await registrarTransacao({
+    cervejariaId: params.cervejariaId,
+    tipo: 'EVENTO_EXCLUIDO',
+    usuarioId: params.usuarioId,
+    eventoId: result.evento.id,
+    metadata: {
+      acao: 'reverter_para_agendado',
+      nome: result.evento.nome,
+      serieId: result.serieId,
+      data: result.dataKey,
+      modo: result.modo,
+    },
+    payload: result.evento,
+  });
+  return result;
 }

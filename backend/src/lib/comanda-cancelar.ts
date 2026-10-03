@@ -1,6 +1,7 @@
 import { prisma } from './prisma.js';
 import { registrarTransacao } from './transacao-log.js';
 import { lockComandaItemsInTx } from './comanda-service.js';
+import type { Prisma } from '@prisma/client';
 
 const comandaInclude = {
   cliente: true,
@@ -16,8 +17,8 @@ export async function cancelarComandaVazia(params: {
   cervejariaId: string;
   fechadoPorId: string;
   motivo?: 'manual' | 'empty_on_close';
-}) {
-  return prisma.$transaction(async (tx) => {
+}, existingTx?: Prisma.TransactionClient) {
+  const run = async (tx: Prisma.TransactionClient) => {
     await lockComandaItemsInTx(tx, params.comandaId);
     const comanda = await tx.comanda.findFirst({
       where: {
@@ -57,5 +58,6 @@ export async function cancelarComandaVazia(params: {
     }, tx);
 
     return { ok: true as const, comanda: updated, eventoId: comanda.eventoId };
-  });
+  };
+  return existingTx ? run(existingTx) : prisma.$transaction(run);
 }

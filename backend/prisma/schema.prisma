@@ -826,7 +826,7 @@ model SessaoCaixaEvento {
   contadoCartao       Decimal?          @db.Decimal(10, 2)
   observacaoFechamento String?
 
-  evento     Evento        @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  evento     Evento        @relation(fields: [eventoId], references: [id], onDelete: Restrict)
   abertoPor  Usuario       @relation("CaixaEventoAbertoPor", fields: [abertoPorId], references: [id], onDelete: Restrict)
   fechadoPor Usuario?      @relation("CaixaEventoFechadoPor", fields: [fechadoPorId], references: [id], onDelete: SetNull)
   movimentos MovimentoCaixaEvento[]
