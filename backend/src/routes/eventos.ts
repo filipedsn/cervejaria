@@ -9,6 +9,7 @@ import { buildEventoDashboard } from '../lib/evento-dashboard.js';
 import { buildEventoResumoExecutivo } from '../lib/evento-resumo-executivo.js';
 import { isUniqueViolation } from '../lib/prisma-errors.js';
 import { bloquearCaixaEvento } from '../lib/evento-caixa.js';
+import { emitirAuditoriaAposCommit, registrarEventoRemovido } from '../lib/evento-auditoria.js';
 import { findTrailerForTenant, trailerSelect } from '../lib/trailer-utils.js';
 import {
   findSerieTrailerConflict,
@@ -976,51 +977,52 @@ export async function eventosRoutes(app: FastifyInstance) {
     const result = await prisma.$transaction(async (tx) => {
       await bloquearCaixaEvento(tx, id);
       const evento = await tx.evento.findFirst({
-      where: { id, cervejariaId: user.cervejariaId },
-      include: { _count: { select: eventoListCount } },
-    });
+        where: { id, cervejariaId: user.cervejariaId },
+        include: { _count: { select: eventoListCount } },
+      });
 
       if (!evento) return { error: 'Evento não encontrado', status: 404 as const };
 
-    if (isSerie(evento)) {
-      if (evento._count.ocorrencias > 0) {
-        return { error: 'Esta agenda já teve sessões. Não é possível remover.', status: 409 as const };
+      if (isSerie(evento)) {
+        if (evento._count.ocorrencias > 0) {
+          return { error: 'Esta agenda já teve sessões. Não é possível remover.', status: 409 as const };
+        }
+      } else {
+        // A sessão guarda conferências, movimentos e vínculos financeiros.
+        // A FK restritiva também protege esse histórico quando aplicada.
+        const sessoesCaixa = await tx.sessaoCaixaEvento.count({ where: { eventoId: id } });
+        if (sessoesCaixa > 0) {
+          return { error: 'Evento com histórico de caixa não pode ser excluído.', status: 409 as const };
+        }
+        const abertas = await tx.comanda.count({
+          where: { eventoId: id, status: 'ABERTA' },
+        });
+        if (abertas > 0) {
+          return { error: `Existem ${abertas} comanda(s) aberta(s). Feche-as antes de excluir o evento.`, status: 409 as const };
+        }
+        const comandasComVenda = await tx.comanda.count({
+          where: { eventoId: id, ...comandaImpedeExclusaoWhere },
+        });
+        if (comandasComVenda > 0) {
+          return { error: 'Evento com vendas registradas não pode ser excluído.', status: 409 as const };
+        }
       }
-    } else {
-      // A sessão de caixa guarda conferências, movimentos e vínculos financeiros.
-      // A relação com Evento usa cascade; nunca a descarte ao remover a agenda.
-      const sessoesCaixa = await tx.sessaoCaixaEvento.count({ where: { eventoId: id } });
-      if (sessoesCaixa > 0) {
-        return { error: 'Evento com histórico de caixa não pode ser excluído.', status: 409 as const };
-      }
-      const abertas = await tx.comanda.count({
-        where: { eventoId: id, status: 'ABERTA' },
-      });
-      if (abertas > 0) {
-        return { error: `Existem ${abertas} comanda(s) aberta(s). Feche-as antes de excluir o evento.`, status: 409 as const };
-      }
-      const comandasComVenda = await tx.comanda.count({
-        where: { eventoId: id, ...comandaImpedeExclusaoWhere },
-      });
-      if (comandasComVenda > 0) {
-        return { error: 'Evento com vendas registradas não pode ser excluído.', status: 409 as const };
-      }
-    }
 
-    await tx.evento.delete({ where: { id } });
-    return { evento } as const;
+      await registrarEventoRemovido(tx, {
+        cervejariaId: user.cervejariaId!,
+        usuarioId: user.sub,
+        eventoId: id,
+        metadata: { acao: 'excluir_evento', nome: evento.nome, recorrencia: evento.recorrencia },
+      });
+      await tx.evento.delete({ where: { id } });
+      return { evento } as const;
     });
     if ('error' in result) return reply.status(result.status ?? 409).send({ error: result.error });
 
-    await registrarTransacao({
-      cervejariaId: user.cervejariaId!,
-      tipo: 'EVENTO_EXCLUIDO',
-      usuarioId: user.sub,
-      eventoId: id,
-      metadata: { nome: result.evento.nome, recorrencia: result.evento.recorrencia },
-      payload: result.evento,
+    await emitirAuditoriaAposCommit({
+      cervejariaId: user.cervejariaId!, tipo: 'EVENTO_EXCLUIDO', entidadeTipo: 'Evento', entidadeId: id,
+      metadata: { acao: 'excluir_evento', eventoIdOriginal: id, nome: result.evento.nome, recorrencia: result.evento.recorrencia },
     });
-
     emitToCervejaria(app.io, user.cervejariaId!, { type: 'evento:deleted', data: { id } });
     return reply.status(204).send();
   });

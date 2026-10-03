@@ -4,8 +4,8 @@ import { prisma } from './prisma.js';
 import { isSerie } from './evento-utils.js';
 import { cancelarComandaVazia } from './comanda-cancelar.js';
 import { emitPortalSessionExpired } from './cliente-session.js';
-import { registrarTransacao } from './transacao-log.js';
 import { bloquearCaixaEvento } from './evento-caixa.js';
+import { emitirAuditoriaAposCommit, registrarEventoRemovido } from './evento-auditoria.js';
 
 export type EventoRevertivel = {
   id: string;
@@ -118,47 +118,55 @@ export async function reverterEventoParaAgendado(params: {
       where: { id: params.eventoId, cervejariaId: params.cervejariaId },
     });
 
-  if (!evento) {
-    return { error: 'Evento não encontrado', status: 404 as const };
-  }
-
-  const pode = assertPodeReverterEvento(evento);
-  if (!pode.ok) {
-    return { error: pode.motivo, status: 400 as const };
-  }
-
-  const mov = await getEventoMovimentacaoFinanceira(evento.id, tx);
-  if (mov.bloqueado) {
-    return { error: mov.motivo!, status: 409 as const };
-  }
-
-  for (const comandaId of mov.comandasAbertasVazias) {
-    const cancel = await cancelarComandaVazia({
-      comandaId,
-      cervejariaId: params.cervejariaId,
-      fechadoPorId: params.usuarioId,
-      motivo: 'manual',
-    }, tx);
-    if ('error' in cancel) {
-      throw Object.assign(new Error(cancel.error), { status: 409 as const });
+    if (!evento) {
+      return { error: 'Evento não encontrado', status: 404 as const };
     }
-  }
 
-  const modo = evento.serieId ? ('serie' as const) : ('avulso' as const);
-  const dataKey = evento.data ? dateOnlyToKey(evento.data) : null;
+    const pode = assertPodeReverterEvento(evento);
+    if (!pode.ok) {
+      return { error: pode.motivo, status: 400 as const };
+    }
 
-  await tx.evento.delete({ where: { id: evento.id } });
-  return {
-    ok: true as const,
-    evento,
-    modo,
-    serieId: evento.serieId,
-    dataKey,
-    mensagem:
-      modo === 'serie'
-        ? 'Sessão revertida. O compromisso voltou ao estado agendado.'
-        : 'Abertura desfeita. O evento foi removido da agenda.',
-  };
+    const mov = await getEventoMovimentacaoFinanceira(evento.id, tx);
+    if (mov.bloqueado) {
+      return { error: mov.motivo!, status: 409 as const };
+    }
+
+    for (const comandaId of mov.comandasAbertasVazias) {
+      const cancel = await cancelarComandaVazia({
+        comandaId,
+        cervejariaId: params.cervejariaId,
+        fechadoPorId: params.usuarioId,
+        motivo: 'manual',
+        preservarAuditoriaAposRemocaoEvento: true,
+      }, tx);
+      if ('error' in cancel) {
+        throw Object.assign(new Error(cancel.error), { status: 409 as const });
+      }
+    }
+
+    const modo = evento.serieId ? ('serie' as const) : ('avulso' as const);
+    const dataKey = evento.data ? dateOnlyToKey(evento.data) : null;
+
+    await registrarEventoRemovido(tx, {
+      cervejariaId: params.cervejariaId,
+      usuarioId: params.usuarioId,
+      eventoId: evento.id,
+      metadata: { acao: 'reverter_para_agendado', nome: evento.nome, serieId: evento.serieId, data: dataKey, modo },
+    });
+    await tx.evento.delete({ where: { id: evento.id } });
+    return {
+      ok: true as const,
+      evento,
+      modo,
+      serieId: evento.serieId,
+      dataKey,
+      canceladas: mov.comandasAbertasVazias,
+      mensagem:
+        modo === 'serie'
+          ? 'Sessão revertida. O compromisso voltou ao estado agendado.'
+          : 'Abertura desfeita. O evento foi removido da agenda.',
+    };
   }).catch((error: unknown) => {
     if ((error as { status?: number }).status === 409) {
       return { error: (error as Error).message, status: 409 as const };
@@ -168,19 +176,15 @@ export async function reverterEventoParaAgendado(params: {
 
   if (!('ok' in result) || !result.ok) return result;
   emitPortalSessionExpired(params.io, result.evento.id, 'evento_revertido');
-  await registrarTransacao({
-    cervejariaId: params.cervejariaId,
-    tipo: 'EVENTO_EXCLUIDO',
-    usuarioId: params.usuarioId,
-    eventoId: result.evento.id,
-    metadata: {
-      acao: 'reverter_para_agendado',
-      nome: result.evento.nome,
-      serieId: result.serieId,
-      data: result.dataKey,
-      modo: result.modo,
-    },
-    payload: result.evento,
+  await emitirAuditoriaAposCommit({
+    cervejariaId: params.cervejariaId, tipo: 'EVENTO_EXCLUIDO', entidadeTipo: 'Evento', entidadeId: result.evento.id,
+    metadata: { acao: 'reverter_para_agendado', eventoIdOriginal: result.evento.id, nome: result.evento.nome, serieId: result.serieId, data: result.dataKey, modo: result.modo },
   });
+  for (const comandaId of result.canceladas) {
+    await emitirAuditoriaAposCommit({
+      cervejariaId: params.cervejariaId, tipo: 'COMANDA_CANCELADA', entidadeTipo: 'Comanda', entidadeId: comandaId,
+      metadata: { eventoIdOriginal: result.evento.id, comandaIdOriginal: comandaId, motivo: 'manual' },
+    });
+  }
   return result;
 }

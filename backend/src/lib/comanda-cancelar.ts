@@ -2,6 +2,7 @@ import { prisma } from './prisma.js';
 import { registrarTransacao } from './transacao-log.js';
 import { lockComandaItemsInTx } from './comanda-service.js';
 import type { Prisma } from '@prisma/client';
+import { registrarComandaCanceladaNaReversao } from './evento-auditoria.js';
 
 const comandaInclude = {
   cliente: true,
@@ -17,6 +18,7 @@ export async function cancelarComandaVazia(params: {
   cervejariaId: string;
   fechadoPorId: string;
   motivo?: 'manual' | 'empty_on_close';
+  preservarAuditoriaAposRemocaoEvento?: boolean;
 }, existingTx?: Prisma.TransactionClient) {
   const run = async (tx: Prisma.TransactionClient) => {
     await lockComandaItemsInTx(tx, params.comandaId);
@@ -44,7 +46,7 @@ export async function cancelarComandaVazia(params: {
       include: { ...comandaInclude, cliente: true },
     });
 
-    await registrarTransacao({
+    const auditInput = {
       cervejariaId: params.cervejariaId,
       tipo: 'COMANDA_CANCELADA',
       usuarioId: params.fechadoPorId,
@@ -55,7 +57,18 @@ export async function cancelarComandaVazia(params: {
         motivo: params.motivo ?? 'manual',
       },
       payload: updated,
-    }, tx);
+    } as const;
+    if (params.preservarAuditoriaAposRemocaoEvento) {
+      await registrarComandaCanceladaNaReversao(tx, {
+        cervejariaId: params.cervejariaId,
+        usuarioId: params.fechadoPorId,
+        comandaId: comanda.id,
+        eventoId: comanda.eventoId,
+        metadata: { clienteNome: updated.cliente?.nome ?? '', motivo: params.motivo ?? 'manual' },
+      });
+    } else {
+      await registrarTransacao(auditInput, tx);
+    }
 
     return { ok: true as const, comanda: updated, eventoId: comanda.eventoId };
   };
