@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": [
+    "src/**/*.ts",
+    "scripts/pdv-unico-migration-planner.ts",
+    "scripts/pdv-unico-migration-planner.test.ts",
+    "scripts/pdv-unico-snapshot.ts",
+    "scripts/pdv-unico-snapshot.test.ts",
+    "scripts/inventory-pdv-unico-env.ts",
+    "scripts/inventory-pdv-unico-env.test.ts",
+    "scripts/inventory-pdv-unico-dev.ts",
+    "scripts/pdv-unico-planner.isolated.test.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

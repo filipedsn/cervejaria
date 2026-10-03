@@ -8,6 +8,7 @@ const cwd = new URL('..', import.meta.url);
 for (const args of [
   ['scripts/event-cash-fk.isolated.test.mjs'],
   ['--import', 'tsx', '--test', 'scripts/event-deletion.isolated.test.ts'],
+  ['--import', 'tsx', '--test', 'scripts/pdv-unico-planner.isolated.test.ts'],
 ]) {
   const result = spawnSync(process.execPath, args, { cwd, env, stdio: 'inherit' });
   if (result.status !== 0) process.exit(result.status ?? 1);
