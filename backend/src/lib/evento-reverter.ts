@@ -42,6 +42,15 @@ export function assertPodeReverterEvento(
 }
 
 export async function getEventoMovimentacaoFinanceira(eventoId: string) {
+  const sessoesCaixa = await prisma.sessaoCaixaEvento.count({ where: { eventoId } });
+  if (sessoesCaixa > 0) {
+    return {
+      bloqueado: true,
+      motivo: 'Não é possível reverter: existe histórico de caixa neste evento.',
+      comandasAbertasVazias: [] as string[],
+    };
+  }
+
   const fechadas = await prisma.comanda.count({
     where: { eventoId, status: 'FECHADA' },
   });

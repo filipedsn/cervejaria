@@ -985,6 +985,14 @@ export async function eventosRoutes(app: FastifyInstance) {
         return reply.status(409).send({ error: 'Esta agenda já teve sessões. Não é possível remover.' });
       }
     } else {
+      // A sessão de caixa guarda conferências, movimentos e vínculos financeiros.
+      // A relação com Evento usa cascade; nunca a descarte ao remover a agenda.
+      const sessoesCaixa = await prisma.sessaoCaixaEvento.count({ where: { eventoId: id } });
+      if (sessoesCaixa > 0) {
+        return reply.status(409).send({
+          error: 'Evento com histórico de caixa não pode ser excluído.',
+        });
+      }
       const abertas = await prisma.comanda.count({
         where: { eventoId: id, status: 'ABERTA' },
       });
