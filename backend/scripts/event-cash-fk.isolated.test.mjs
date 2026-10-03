@@ -39,11 +39,7 @@ try {
     if (dir.name === migrationName) {
       await rm(candidate, { recursive: true, force: true });
     } else if (!(await readdir(candidate)).includes('migration.sql')) {
-      if (dir.name !== '20261002130000_comanda_category_order') {
-        throw new Error(`Migration baseline inválida: ${dir.name} não contém migration.sql`);
-      }
-      console.log(`GATE PENDENTE: baseline não pode validar ${dir.name}, diretório local sem migration.sql.`);
-      await rm(candidate, { recursive: true, force: true });
+      throw new Error('Migration baseline missing migration.sql: ' + dir.name);
     }
   }
   await writeFile(path.join(baselineDir, 'migrations', 'migration_lock.toml'), 'provider = "postgresql"\n');
@@ -74,7 +70,7 @@ try {
   assert.equal(fk.length, 1);
   assert.equal(fk[0].confdeltype, 'r', 'FK deve estar ativa com ON DELETE RESTRICT');
   const migrationRecord = await prisma.$queryRaw`SELECT finished_at FROM _prisma_migrations WHERE migration_name=${migrationName} AND finished_at IS NOT NULL`;
-  assert.equal(migrationRecord.length, 1, 'Prisma deve registrar a migration concluída no QA isolado');
+  assert.equal(migrationRecord.length, 1, 'Prisma deve registrar a migration concluida no QA isolado');
   await assert.rejects(() => prisma.evento.delete({ where: { id: eventWithCash.id } }));
   assert.equal(await prisma.evento.count({ where: { id: eventWithCash.id } }), 1);
 
@@ -83,7 +79,7 @@ try {
   await prisma.evento.delete({ where: { id: eventWithoutCash.id } });
   assert.equal(await prisma.evento.count({ where: { id: eventWithoutCash.id } }), 0);
 
-  console.log('PASS migration FK: Prisma aplicou e registrou; sessão/movimento preservados; DELETE com caixa restrito; sem caixa permitido; confdeltype=r.');
+  console.log('PASS migration FK: Prisma aplicou e registrou; sessao/movimento preservados; DELETE com caixa restrito; sem caixa permitido; confdeltype=r.');
 } finally {
   await prisma.$disconnect();
   await rm(migrationTmp, { recursive: true, force: true });
