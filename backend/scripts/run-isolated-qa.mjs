@@ -8,6 +8,7 @@ const cwd = new URL('..', import.meta.url);
 for (const args of [
   ['scripts/event-cash-fk.isolated.test.mjs'],
   ['scripts/pdv-unico-core-schema.isolated.test.mjs'],
+  ['--import', 'tsx', 'scripts/pdv-unico-business-migrator.isolated.test.mjs'],
   ['--import', 'tsx', '--test', 'scripts/event-deletion.isolated.test.ts'],
   ['--import', 'tsx', '--test', 'scripts/pdv-unico-planner.isolated.test.ts'],
 ]) {

@@ -1,0 +1,66 @@
+{
+  "confirmedBaseline": {
+    "commit": "ed5380e67078255efb0bfeb34b832e9d4771a85f",
+    "schema": {
+      "path": "backend/prisma/schema.prisma",
+      "sha256": "53d7ffb037c43da4031b3de64798d32681a492ec3998e5ac9e831bcfc427eba7"
+    },
+    "migration": {
+      "name": "20261003210000_additive_pdv_operational_core",
+      "path": "backend/prisma/migrations/20261003210000_additive_pdv_operational_core/migration.sql",
+      "sha256": "95f1b4535510615d9355f9d018f87849ae71cbf955bdc95ec7b232ce8dacd719"
+    },
+    "historicalManifest": {
+      "path": "docs/testing/pdv-unico-qa-migration-manifest.json",
+      "sha256": "cacc244ff397d53699ad50b0c63ae476ae220bb3d3a7bd935636571e65f8970f"
+    },
+    "previousCoreManifest": {
+      "path": "docs/testing/pdv-unico-core-qa-manifest.json",
+      "sha256": "15788cbc1037faadd6b9b6ef9d5efe6cec98fac239576a91176fcaa01fcd8bc9"
+    }
+  },
+  "deliveryCandidates": {
+    "schema": null,
+    "migrations": [],
+    "code": [
+      {
+        "path": "backend/scripts/pdv-unico-business-migrator.ts",
+        "sha256": "02409eccd3b28db3496984aed1b9f6524aa686e16a4d638cc5c78f114adcd487"
+      },
+      {
+        "path": "backend/scripts/pdv-unico-business-migrate.qa.mjs",
+        "sha256": "680d378960b38219ceddf6d188549680a2371f240deb926f104363a6ae3311ef"
+      },
+      {
+        "path": "backend/scripts/pdv-unico-business-migrator.isolated.test.mjs",
+        "sha256": "a0f35d8fff5eb29418fe4d0ec1ddefa0c5f6f6383b499382480e4b6382bb5a99"
+      },
+      {
+        "path": "backend/scripts/pdv-unico-business-migrate-env.test.mjs",
+        "sha256": "9cac32f40cb0360556863cfa75929dbe9da66789a3e34fbc6518a709426cfaee"
+      },
+      {
+        "path": "backend/scripts/pdv-unico-migrator-qa-manifest.mjs",
+        "sha256": "038177afe0ca08021cc1d7d0bc8829fb49853517680dae85e939ebf36fc0b119"
+      },
+      {
+        "path": "backend/scripts/pdv-unico-core-schema.isolated.test.mjs",
+        "sha256": "b8dcef96e9a2406cb58a6e30cfd4eb3eeb869221005ff3190fa163548f7bb140"
+      },
+      {
+        "path": "backend/scripts/pdv-unico-source-graph.ts",
+        "sha256": "dda07d39b2a3c9aa1b352162cdd3338bd3426d0934aac12315a2d9038069a53b"
+      },
+      {
+        "path": "backend/scripts/run-isolated-qa.mjs",
+        "sha256": "78b6958bde216defd5c8cd5acdb102ef1adcb36e395e6fc0fcac304465041725"
+      },
+      {
+        "path": "backend/scripts/run-pdv-unico-disposable-qa.mjs",
+        "sha256": "08aad8792b567ced2f88ad19ffa8032d73734a624970237ab11f15b4002b2976"
+      }
+    ]
+  },
+  "purpose": "Run only the first PontoVenda/agenda/occurrence business slice against the immutable additive-schema baseline. This delivery has no schema or SQL candidate.",
+  "manifestSha256": "cc8af07b155bfca5a7120d688b4693d5fc32702ba1582672b55099373adc679e"
+}

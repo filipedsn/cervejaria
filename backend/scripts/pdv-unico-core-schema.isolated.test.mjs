@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 import { materializePinnedMigrationBundle, verifyPinnedManifest } from './pdv-unico-qa-migration-manifest.mjs';
-import { verifyCandidateCoreManifest } from './pdv-unico-core-qa-manifest.mjs';
+import { verifyMigratorQaManifest } from './pdv-unico-migrator-qa-manifest.mjs';
 
 const databaseUrl = validateIsolatedQaEnvironment(process.env).toString();
 process.env.DATABASE_URL = databaseUrl;
@@ -29,16 +29,16 @@ function runPrisma(args, env = migrationEnv) {
 function cuidLike(prefix) { return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`; }
 
 const historicalManifest = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-qa-migration-manifest.json'), 'utf8'));
-const candidateManifest = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-core-qa-manifest.json'), 'utf8'));
+const baselineManifest = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-migrator-qa-manifest.json'), 'utf8'));
 await verifyPinnedManifest(historicalManifest);
-const { migrationSql, schema } = await verifyCandidateCoreManifest(candidateManifest, historicalManifest);
-assert.equal(candidateManifest.migrationName, migrationName);
+const { migration, schema } = await verifyMigratorQaManifest(baselineManifest);
+assert.equal(baselineManifest.confirmedBaseline.migration.name, migrationName);
 
 const bundle = await materializePinnedMigrationBundle(historicalManifest, tempRoot);
 await writeFile(bundle.schemaPath, schema);
 const candidateDir = path.join(bundle.migrationsDir, migrationName);
 await mkdir(candidateDir, { recursive: true });
-await writeFile(path.join(candidateDir, 'migration.sql'), migrationSql);
+await writeFile(path.join(candidateDir, 'migration.sql'), migration);
 
 const schemaPath = path.join(tempRoot, 'candidate-schema.prisma');
 await writeFile(schemaPath, schema);
@@ -137,7 +137,7 @@ try {
     assert.equal(constraints.length, 5);
     assert.ok(constraints.every((constraint) => constraint.convalidated));
     assert.ok(constraints.filter((constraint) => constraint.contype === 'f').every((constraint) => constraint.confdeltype === 'r'));
-    console.log(`PASS PDV-CORE-SCHEMA-QA-01: baseline=${candidateManifest.baseCommit}; migration=${candidateManifest.migrationSha256}; schema=${candidateManifest.schemaSha256}; old cash/movement values preserved; one-off/recurring, cross-tenant, duplicate, history RESTRICT, stable source map/batch ownership, and atomic rollback verified.`);
+    console.log(`PASS PDV-CORE-SCHEMA-QA-01: immutable baseline=${baselineManifest.confirmedBaseline.commit}; migration=${baselineManifest.confirmedBaseline.migration.sha256}; schema=${baselineManifest.confirmedBaseline.schema.sha256}; old cash/movement values preserved; one-off/recurring, cross-tenant, duplicate, history RESTRICT, stable source map/batch ownership, and atomic rollback verified.`);
   } finally {
     await db.$disconnect();
   }

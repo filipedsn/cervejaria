@@ -1,6 +1,6 @@
 # PDV único: contrato e preparação da migração
 
-Estado: planejamento e simulação em andamento. Nenhuma escrita de migração de negócio, unicidade global ou remoção de tabelas faz parte desta entrega.
+Estado: primeira fatia do migrador de negocio implementada e ensaiada exclusivamente em PostgreSQL QA descartavel. Nenhuma migration, backfill ou escrita foi aplicada ao DEV compartilhado ou PROD; nao ha corte operacional nem remocao de legado.
 
 ## Origem das regras e fatos
 
@@ -10,7 +10,7 @@ Fatos medidos em DEV em 03/10/2026: contagens, IDs, estados, relações, flags e
 
 ## Linha de base e tarefa
 
-Baseline funcional anterior: 66ec008. A entrega anterior foi commitada em cafec78d55a7ee8af1240092e972816fb921c790, partindo de ccd1f1f96b92843b42f319c4bb07a749fa99e9d2. Esta etapa parte de cafec78 e adiciona o primeiro schema de destino e o controle persistente de execucao, sem migrar dados de negocio, alterar consumidores ou remover legado. A TAP-76 foi relida: ID 20cf2ca0-90e6-428f-af2b-903ce1184f7a, prioridade alta, labels Quality e Product, status In Progress. O status permanece In Progress.
+Baseline funcional anterior: 66ec008. A etapa de schema anterior foi commitada em cafec78d55a7ee8af1240092e972816fb921c790, partindo de ccd1f1f96b92843b42f319c4bb07a749fa99e9d2. Esta entrega parte de ed5380e67078255efb0bfeb34b832e9d4771a85f e implementa a primeira fatia do migrador somente em QA descartavel, sem alterar consumidores ou remover legado. TAP-76: 20cf2ca0-90e6-428f-af2b-903ce1184f7a, prioridade high, labels Quality/Product, status In Progress.
 
 As alteracoes locais preexistentes foram preservadas; no commit do schema foi selecionado somente o delta aditivo, deixando de fora telefone normalizado e demais alteracoes alheias. PROD_ACCESS_USED=NO. A migration candidata foi aplicada somente ao PostgreSQL QA descartavel; nao foi aplicada migration ao DEV compartilhado ou PROD.
 
@@ -38,7 +38,7 @@ No Cliente DEV B, `inventoryEnabled=true` e `kitchenEnabled=true` divergem dos v
 
 ## Contrato do planejador
 
-Cada resultado separa `sourceValidation`, `targetMapping` e `executionEligibility`; a política de ID (`PRESERVE_SOURCE_ID`/`REGENERATE_SOURCE_ID`) não implica que vínculos estejam mapeados. A validação da origem registra PDV canônico, dependências e bloqueio com código, categoria e evidência. O mapeamento alvo tem entidade, vínculos exigidos, transformação e motivo de incompletude. Todo resultado tem `executionEligibility=NOT_AUTHORIZED`; não há função `assertExecutablePlan` nem migrador de negócio.
+O planejador somente leitura separa `sourceValidation`, `targetMapping` e `executionEligibility=NOT_AUTHORIZED`. O executor desta fatia e separado e limitado ao escopo PDV/Trailer/agenda/ocorrencia em QA isolado; importar seus modulos nao cria Prisma nem conecta. Nenhum consumidor operacional ou rota Por Caixa mudou.
 
 O módulo compartilhado `pdv-unico-source-graph.ts` lê as linhas dentro da transação do chamador e constrói o grafo sem instanciar cliente na importação. O inventário e o teste QA chamam `readPdvPlanningSourceSnapshot` e `buildPdvPlanningGraph`. Os índices usam tipo/ID e validam existência, tenant, sessão de pagamento e bloqueios herdados. Pagamento com duas sessões é detectado a partir dos dois FKs observados, sem blocker fornecido pelo teste. ContaReceber de origem EVENTO é válida quando comanda/cliente existem; bloqueios de pagamento não mudam principal/saldo da dívida.
 
@@ -66,13 +66,13 @@ Dia operacional usa primeiro `Comanda.diaOperacional`, depois a data do Evento e
 | `CategoriaGamificada` | categorias/configuração futura + produto atual | Categoria estável, métrica `UNIDADE`/`VOLUME`, flag de participação e regra de pontos aprovada. | FK de item por ID; tenant coerente; nenhuma regra de momento de pontuação assumida. |
 | `Comanda`/`ItemComanda` snapshots | `Comanda`, itens, catálogo/cardápios/preços | Origem histórica, cliente, PDV, ocorrência opcional, total/desconto, produto/volume/quantidade/preço, opcionais, preparo, cancelamento/viagem e timestamps. Snapshot da categoria, métrica e preço no item; campos livres preservados apenas no destino protegido. | FKs restritivas para financeiro; vínculo tenant validado; snapshot não muda quando catálogo ou agenda muda. |
 | `Pagamento`, `ContaReceber`, `MovimentoFinanceiro` | `Pagamento`, `ContaReceber`, sessões e movimentos | Valores originais/recebidos/troco, forma, timestamps, autores, dívida original, cliente, comanda, sessão, origem histórica e encadeamento de correções. Saldo calculado por recebimentos, nunca fabricado. | Decimal(12,2) ou centavos inteiros; referências a sessão/comanda restritivas; movimento corretivo referencia original e não substitui linha original. |
-| `MigrationMap`/`MigrationRun` (proposta anterior) | IDs de todas as tabelas legadas | Chave `{sourceType, sourceId}`, entidade destino, PDV, v?nculos, hash/versionamento de payload, run/lote e checkpoint. | A proposta anterior inclu?a chave por execu??o. A migration candidata implementa `UNIQUE(sourceType,sourceId)` global e checkpoints de run/batch; n?o existe unicidade dependente do run. |
+| `MigrationMap`/`MigrationRun` (proposta anterior) | IDs de todas as tabelas legadas | Chave `{sourceType, sourceId}`, destino, PDV, links, hash/versionamento, run/lote e checkpoint. | A proposta anterior previa tambem unicidade por run. O schema confirmado usa identidade global `UNIQUE(sourceType,sourceId)` e checkpoint por run/batch. |
 
-Sequência aditiva: (1) schema novo e mapa de origem, sem consumidores; (2) índices/FKs sem cascata e constraints inicialmente validadas em QA; (3) backfill idempotente por lotes com checkpoint/hash; (4) reconciliação completa e repetição do migrador; (5) alternância de leitura/escrita e teste de rollback; (6) decisão explícita de corte; (7) só após gates, migration destrutiva removendo estruturas antigas. Nenhuma dessas migrations de negócio foi criada ou aplicada aqui. A unicidade global de PDV segue proposta e não foi aplicada.
+Sequencia: schema e migration aditiva foram validados no QA. A primeira migracao de dados em escopo restrito PDV/agenda/ocorrencia foi ensaiada em QA nesta entrega. Configuracao/catalogo, reconciliacao, migracao dos demais dominios, corte e remocao de legado seguem etapas futuras; unicidade global de PDV nao foi aplicada.
 
 ## Execução reiniciável e gates futuros
 
-Cada lote futuro deve carregar snapshot/hash versionado, usar chave de origem estável, persistir mapa/checkpoint junto com os registros e comparar payload antes de repetir. Interrupção deve retomar do último lote confirmado. Conflito, tenant cruzado, pai ausente, sessão financeira ambígua, diferença de centavos ou payload alterado bloqueia o lote para reconciliação humana. Não se cria pagamento, recebimento, saldo, sessão, vínculo ou dia operacional por aproximação.
+Cada lote confirmado grava destino, mapa estavel e checkpoint atomicamente. O executor desta fatia compara hash/versionamento de payload e hash do conteudo de destino; conflitos bloqueiam sem sobrescrita. As etapas de negocio fora deste escopo ainda precisam dessa garantia na sua implementacao.
 
 Gate rápido: unitários puros, typecheck de scripts, build e guards de ambiente. Gate completo: fixtures isoladas exigidas, todos os cenários P0, comparação financeira/estoque e duas ordens de concorrência. Gate pós-migração QA: duas execuções idempotentes, hashes/contagens iguais, interrupção/retomada, restore/rollback e regressão de API/UI/portal/realtime. Planejado não significa executado ou certificado.
 
@@ -84,9 +84,9 @@ Migration candidata: 20261003210000_additive_pdv_operational_core. O PontoVenda 
 
 SessaoCaixaQuiosque (Por Caixa existente) recebe ocorrenciaId e origemHistorica opcionais. O FK composto valida empresa/PDV da ocorrencia e e RESTRICT. Rotas e motor de caixa nao mudaram; nenhum caixa paralelo foi criado e nenhuma venda/sessao historica recebeu ocorrencia automaticamente. A exclusao de agenda, ocorrencia ou PDV com historico relacionado e restrita; nao ha cascade das novas relacoes.
 
-O controle minimo contem PdvMigrationRun, PdvMigrationBatch e PdvMigrationMap. O mapa tem chave unica global por sourceType+sourceId, destino polimorfico, empresa/PDV, versao de transformacao, payloadHash, run/batch mais recentes. FK composta garante que batch e run associados coincidem. Run e batch guardam checkpoint; cada batch confirma status, cursor e hash. Essa identidade continua igual entre execucoes; payload divergente deve ser comparado pelo futuro migrador e bloqueado para reconciliacao, nunca sobrescrito silenciosamente.
+O controle implementado contem PdvMigrationRun, PdvMigrationBatch e PdvMigrationMap. O mapa tem chave unica global por sourceType+sourceId, destino, empresa/PDV, versao/hash do payload e run/lote mais recentes. Cada recibo de lote fixa tambem o hash do conteudo do destino para validar reuso.
 
-Futuro migrador: numa unica transacao, criar/reutilizar o destino e conferir seu payload; inserir ou atualizar o mapa por sourceType+sourceId; gravar o batch CONFIRMED e atualizar o checkpoint do run. Commit/rollback deve abranger os tres efeitos. Uma retomada rel? o ultimo checkpoint confirmado e faz upsert pelo ID de origem estavel. Esta entrega nao implementa esse gravador.
+O migrador desta primeira fatia grava destino, mapa, lote confirmado e checkpoint em uma unica transacao por lote. A retomada valida o prefixo e reusa destinos verificados. Dominios fora desta fatia ainda nao possuem migrador.
 
 Nao ha unicidade global de PontoVenda por empresa nem novos FKs obrigatorios em comandas, vendas ou sessoes legadas. Agenda representa recorrencia e nao escolhe modo de operacao; ocorrencia representa uma data. Politicas de portal, pontuacao, escolha de ocorrencia, categorias e catalogo seguem fora desta etapa.
 
@@ -104,4 +104,23 @@ Exclusão e reversão de Evento compartilham o advisory transaction lock usado p
 
 A migration `20261003180000_restrict_event_cash_history` troca a FK de `SessaoCaixaEvento.eventoId` para `ON DELETE RESTRICT`. Foi aplicada apenas ao PostgreSQL QA isolado em execução anterior e **não** a DEV compartilhado ou PROD. O teste confirmou preservação de sessão/movimento, DELETE direto bloqueado com histórico, DELETE sem histórico permitido e `confdeltype='r'`. Validar DEV só em entrega futura autorizada, após inspecionar órfãos e aplicar exclusivamente no destino DEV autorizado.
 
-`PROD_ACCESS_USED=NO`. `PROD_DEPLOY_REQUIRED: YES` para implementação futura; esta entrega é preparação/simulação.
+`PROD_ACCESS_USED=NO`. `PROD_DEPLOY_REQUIRED=NO` para esta entrega QA-only; uma ativacao operacional futura exigira release e gates explicitos.
+
+
+## Migrador reiniciavel da primeira fatia (QA descartavel)
+
+O commit de baseline confirmado e `ed5380e67078255efb0bfeb34b832e9d4771a85f`. O novo manifesto `pdv-unico-migrator-qa-manifest.json` fixa os SHA-256 do schema/SQL lidos por `git show`, os hashes dos manifestos anteriores, nove arquivos de codigo ensaiados e seu digest proprio `cc8af07b155bfca5a7120d688b4693d5fc32702ba1582672b55099373adc679e`. Os candidatos de schema e migration desta entrega sao explicitamente vazios. O ensaio nao depende do indice Git ou schema de trabalho. A cadeia tem 86 migrations historicas mais o SQL aditivo imutavel do baseline (87 total).
+
+`runPdvBusinessMigration` usa `readPdvPlanningSourceSnapshot` e `buildPdvPlanningGraph` compartilhados. Seu escopo registrado no run e `PDV_AGENDA_OCORRENCIA_V1` para uma empresa, com tipos PDV, TRAILER e EVENTO e contagens explicitas. PDVs existentes sao mantidos; multiplos PDVs ou mais de um Trailer bloqueiam com motivo tipado. Sem PDV, exatamente um Trailer cria PontoVenda com o ID do Trailer, nome, atividade e timestamps; o mapa Trailer aponta para esse destino estavel. A identificacao por mapa permite reconhecer o PDV derivado na retomada sem conta-lo como um novo PDV legado.
+
+Evento semanal sem pai de serie vira agenda, exigindo dia da semana. Evento de serie vira ocorrencia com vinculo a agenda confirmada. Evento nao recorrente datado vira ocorrencia avulsa. Data ausente bloqueia. Nome, localizacao, horarios, data, status e createdAt/updatedAt sao transformados sem defaults inventados. Estados: Evento ABERTO/FECHADO vira ocorrencia ABERTA/FECHADA; definicao de agenda vira ativa=true/false. Campos de origem sem equivalente nesta fatia: identificador do Trailer, cardapioId, encerradoEm, comandasContadorDesde, portalGeneration, exclusoes de datas da serie e dados comerciais/financeiros. Permanecem na origem e nao sao declarados migrados.
+
+Cada lote usa advisory transaction lock PostgreSQL por empresa/escopo. Criacao/reuso do destino, mapa, recibos de hash do conteudo, confirmacao do lote e avanco do checkpoint pertencem a mesma transacao. O run so fica COMPLETED depois de confirmar todas as origens contadas em seu escopo declarado; isso nao representa migracao completa do produto. Retomada valida o prefixo ja confirmado. Mudanca de versao/payload, dependencia nao confirmada, mapa divergente, destino ausente/adulterado ou origem fora do tenant bloqueia sem sobrescrever e sem avancar aquele checkpoint. Conflito de unicidade nao e tratado como sucesso. Interrupcao apos criar destino dentro do lote provoca rollback de destino, mapa e lote; a retomada reutiliza o ultimo lote confirmado.
+
+O executor de escrita valida a URL QA exata allowlisted antes de carregar/instanciar Prisma. Importacao nao inicia execucao nem conexao. O inventario continua leitura; nao houve mudanca de rota ou comportamento de Por Caixa.
+
+### Evidencia executada
+
+Manifesto e blobs verificados: schema `53d7ffb037c43da4031b3de64798d32681a492ec3998e5ac9e831bcfc427eba7`; SQL `95f1b4535510615d9355f9d018f87849ae71cbf955bdc95ec7b232ce8dacd719`. QA descartavel criou empresa com PDV, empresa sem PDV com Trailer unico, agenda semanal, duas datas recorrentes e ocorrencia avulsa. Reexecucao em novo run preservou contagens; interrupcao apos dois lotes retomou do checkpoint; falha entre criacao do PDV e mapa reverteu tudo. Multiplos PDVs/Trailers, data ausente e tenant incompativel foram bloqueados por codigo. Payload alterado e destinos agenda/PDV adulterados foram bloqueados sem sobrescrita/avanco daquele registro. Duas execucoes concorrentes completaram sob trava sem duplicar destinos nem perder checkpoint. O container e os clients temporarios foram removidos. Contagens da fixture sem PDV: antes 0/0/0 (PDV/agenda/ocorrencia), depois 1/1/3; novo run: novamente 1/1/3, com 5 mapas e lotes acumulados de 3 para 6. Pausa apos 2 lotes confirmou 1 PDV, 1 agenda e 0 ocorrencias; retomada concluiu 5 registros de origem em 3 lotes. Para PDV existente: 1 antes e 1 depois. Falha intralote deixou 0 destino/mapas/lotes e a retomada concluiu.
+
+Nao foram migrados caixa/sessoes, pagamentos, dividas, comandas, catalogo, estoque, configuracoes ou auditoria. Proxima fatia: definir e ensaiar transformacao de configuracao/catalogo, mantendo reconciliacao financeira/estoque, politica de produto, corte e rollback como gates posteriores.

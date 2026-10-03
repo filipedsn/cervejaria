@@ -1,6 +1,6 @@
 # Plano de testes: PDV único
 
-Status: plano de cobertura; cenários marcados **planejado** não são implementados nem certificados. O teste isolado atual de exclusão/reversão cobre apenas os IDs EVT-DEL, EVT-AUD e EVT-CON indicados abaixo. Nenhuma linha deste plano autoriza migrar dados ou remover tabelas.
+Status: cobertura separa planejado, executado e NAO COMPROVADO. Os cenarios QA de escrita ficam limitados ao PostgreSQL descartavel e nao autorizam migracao em DEV/PROD nem remocao de tabelas.
 
 ## Inventário funcional e configuração
 
@@ -60,7 +60,7 @@ Em toda ação autenticada, conferir resposta/API, linhas e vínculos no banco e
 | DEL-01 | Evento e caixa aberto/fechado, sessão com movimento | Tentar excluir/reverter | 409; sessão/movimento (ID, valor, tipo e sessão) intactos; sem log de sucesso | P0 integration | EVT-DEL-01/02 em QA; sem movimento em fixture ainda |
 | CON-01 | Primeira sessão e exclusão/reversão concorrentes | Coordenar as duas ordens com barreiras DB | Criação vence: exclusão 409 e sessão persiste. Exclusão vence: abertura falha e nenhuma sessão órfã | P0 integration | EVT-CON-01..04 com triggers e pg_stat_activity |
 | FK-01 | Dados sessão/movimento anteriores à FK restritiva | Executar migration em DB isolado e consultar constraint | IDs/valores preservados; DELETE direto com caixa bloqueado; DELETE sem caixa permitido; `confdeltype='r'` | P0 integration | `event-cash-fk.isolated.test.mjs` |
-| MIG-01 | Mapa de origem vazio, parcial e completo; interrupção em cada lote | Simular e migrar repetidamente | Sem duplicação; IDs e vínculos estáveis; hashes e contagens repetidos idênticos | P0 integration | Migrador ainda não existe |
+| MIG-01 | Mapa vazio/parcial/completo e retomada | Migrar escopo registrado repetidamente | Identidade estavel, sem destinos duplicados; checkpoint aponta so lotes confirmados | P0 integration | `pdv-unico-business-migrator.isolated.test.mjs`: escopo PDV/agenda/ocorrencia executado em QA; outras entidades planejadas |
 | MIG-02 | Casos órfãos e divergência intencional | Reconciliar valores centavos, pagamentos, dívidas, estornos, movimentos, clientes, ranking | Diferença bloqueia corte e é listada; nenhuma associação ou pagamento inventado | P0 integration | Pendente |
 | MIG-03 | Backup, restore, corte e rollback | Ensaiar recuperação integral em QA | Dados e IDs restaurados; consumidores alternáveis; nenhuma tabela substituída é abandonada vazia | P0 integration/E2E | Pendente |
 | MAP-01 | One/no PDV with single trailer; multiple PDVs/trailers; null and non-null links | Validate source graph and plan target transformation | sourceValidation, targetMapping and executionEligibility are separate. Every record remains NOT_AUTHORIZED; incomplete transformation is never executable. ID preservation does not mean links are transformed. | P0 unit | pdv-unico-migration-planner.test.ts, passed |
@@ -94,7 +94,7 @@ The manifest docs/testing/pdv-unico-qa-migration-manifest.json pins base ccd1f1f
 
 The DEV inventory is read-only and uses a RepeatableRead, READ ONLY transaction. It reads rows using the shared snapshot function and builds the dependency graph with the same builder used in QA. The graph validates source references, tenant ownership, payment session references and blocker propagation. This does not implement business writes.
 
-The planner contract separates sourceValidation (source graph), targetMapping (target entities/links and transformation completeness), and executionEligibility (always NOT_AUTHORIZED in this delivery). ID preservation is distinct from link transformation. Trailer maps to PDV; recurring Evento definition maps to an operational agenda; each dated/series occurrence maps to an operational occurrence linked to its agenda. Event cash maps to the existing single Por Caixa session concept, retaining occurrence and historical Event origin; commands retain historical origin. Undefined transforms remain incomplete. No second cash engine or business writer exists.
+The read-only planner keeps source validation, target mapping, and NOT_AUTHORIZED execution eligibility separate. The first scoped business migrator is separate, QA-only, uses the shared graph, and changes no operational routes. Event cash, commands, payments, debts, catalogue, and stock are outside its scope.
 
 Effective configuration follows proven consumers in operacao/capacidades.ts: plannedOperationsEnabled selects EVENTO versus CAIXA (Por Caixa); explicit inventory/kitchen flags take precedence and legacy values are fallback. Client DEV B measures explicit inventory/kitchen true while legacy flags are false; effective mode is CAIXA, inventory and kitchen enabled. No config rows were synchronized. Behavior without proven precedence remains a decision gate.
 
@@ -112,7 +112,7 @@ Financial, inventory and ranking reconciliation remain future gates: compare com
 - DEV inventory was read-only: 114 blocked rows (29 multi-PDV decisions, 5 multiple-trailer decisions, 80 dependent rows); 0 payment conflicts and 0 cross-tenant command links.
 - QA code was based on ccd1f1f96b92843b42f319c4bb07a749fa99e9d2 plus working-tree delivery changes; final package was rerun after the final planner change. Manifest migration source came from pinned Git blobs. No business migration ran.
 
-NOT PROVEN: real login/RBAC E2E, full DEV source-to-target coverage, financial/stock reconciliation, migration restart/recovery, ranking isolation by occurrence/recurrence, and all 8 capability combinations with/without occurrence. Synthetic route identity is not auth proof. Planning rows are not proof of migration.
+NOT PROVEN: real login/RBAC E2E, full DEV source-to-target coverage, financial/stock reconciliation, restart/recovery for out-of-scope entities, ranking isolation by occurrence/recurrence, and all 8 capability combinations with/without occurrence. QA restart/rollback/concurrency evidence below covers only the first PDV/agenda/occurrence slice.
 ## Gates
 
 **Rápido (PR):** build backend/frontend; unitários de domínio/preço/centavos/estados; lint/typecheck; validação de migrations; testes puros de guards. Sem skips silenciosos.
@@ -128,4 +128,20 @@ NOT PROVEN: real login/RBAC E2E, full DEV source-to-target coverage, financial/s
 - Prior FK suite, all 8 event deletion/audit/concurrency scenarios (0 skips), and PDV-GRAPH-QA-01 passed again. Audit fixture now proves tenant-wide log count and ID in snapshot and graph after the real delete route; detached FKs do not require the deleted Evento.
 - QA disposable container and generated per-run clients were removed. Shared DEV was untouched; no business backfill or migration was run there.
 
-NOT PROVEN: business migrator, real payload-conflict recovery, repeated whole-run reconciliation, financial/stock recovery after interruption, operational cutover and all future product policies. Schema persistence is validated; business-data migration is not implemented.
+NOT PROVEN: migracao de dominios fora do escopo, reconcilicao financeira/estoque do produto, recuperacao de outros dominios, repeticao integral, corte operacional e politicas de produto. Schema e primeira fatia de dados PDV/agenda/ocorrencia foram ensaiados somente em QA.
+
+
+## Primeira fatia do migrador: cenarios executados em QA
+
+| ID | Configuracao e pre-condicao | Acao | Verificacao observada | Camada/prioridade | Estado |
+|---|---|---|---|---|---|
+| MIG-PDV-01 | Empresa com PDV existente e um Trailer; outra empresa sem PDV e um Trailer | Executar o mesmo migrador | PDV existente nao duplica; Trailer unico cria PDV de ID estavel; mapa guarda tenant/PDV | P0 integration | Executado: `pdv-unico-business-migrator.isolated.test.mjs` |
+| MIG-PDV-02 | Definicao semanal, duas ocorrencias em datas distintas e Evento avulso datado | Migrar agenda e ocorrencias | IDs, datas, horas, local, nomes, timestamps, status e agendaId preservados; avulso permanece sem agenda | P0 integration | Executado em QA descartavel |
+| MIG-PDV-03 | Multiplos PDVs, multiplos Trailers, data ausente e Trailer de outro tenant | Planejar/executar escopo | Bloqueio por codigo especifico; sem destino do registro invalido nem avanco de checkpoint correspondente | P0 integration | Executado em QA descartavel |
+| MIG-PDV-04 | Escopo valido; limite de lote e falha injetada apos criacao do destino | Interromper entre lotes e dentro de transacao; retomar | So lotes confirmados persistem; falha intralote reverte destino/mapa/batch; retomada termina sem duplicar | P0 integration | Executado em QA descartavel |
+| MIG-PDV-05 | Mapa existente, payload alterado, destino ausente/adulterado e duas execucoes independentes | Reexecutar/concorrer | Payload/conteudo divergente bloqueia sem sobrescrever; lock por tenant/escopo; IDs unicos e ambos os runs concluidos | P0 integration | Executado em QA descartavel |
+| MIG-PDV-06 | DEV compartilhado, host aleatorio, banco/nome fora da allowlist | Invocar executor antes de carregar Prisma | Rejeicao pela validacao de URL; loader Prisma nao chamado; importar modulo nao executa | P0 unit | Executado sem banco em `pdv-unico-business-migrate-env.test.mjs` |
+
+O ensaio usou schema/SQL imutaveis do commit-base `ed5380e67078255efb0bfeb34b832e9d4771a85f`, 86 migrations historicas mais o SQL aditivo do baseline (87). O manifesto com candidatos de schema/migration vazios e hashes do codigo tem digest `cc8af07b155bfca5a7120d688b4693d5fc32702ba1582672b55099373adc679e`. Nenhuma migration ou dado foi escrito em DEV. Contagens antes/depois/reexecucao, hashes e escopo estao na saida QA e na evidencia da TAP-76.
+
+**Planejado, ainda nao executado:** migrar configuracoes e catalogo; manter caixa/sessoes, comandas, pagamentos, dividas, estoque e auditoria fora do escopo ate transformacao definida; reconciliacao financeira/estoque; recuperacao apos interrupcao nesses dominios; migracao repetida de todo o produto; teste de corte/rollback; isolamento dos rankings por ocorrencia/recorrencia; gates reais de autenticacao e RBAC. Conclusao do run atual significa apenas conclusao do escopo PDV/agenda/ocorrencia registrado.

@@ -63,7 +63,7 @@ try {
     run('docker', ['stop', containerName], { windowsHide: true });
     console.log(`QA_DISPOSABLE_CONTAINER_REMOVED=${containerName}; storage=tmpfs; published=127.0.0.1:55439 only`);
   }
-  for (const prefix of ['pdv-fk-client-', 'pdv-core-client-']) {
+  for (const prefix of ['pdv-fk-client-', 'pdv-core-client-', 'pdv-migrator-client-']) {
     await rm(new URL(`../node_modules/.prisma/${prefix}${runId}`, import.meta.url), { recursive: true, force: true });
   }
 }
