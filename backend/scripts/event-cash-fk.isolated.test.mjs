@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 import { materializePinnedMigrationBundle, verifyPinnedManifest, writePinnedMigration } from './pdv-unico-qa-migration-manifest.mjs';
 
@@ -26,7 +27,21 @@ function runPrisma(args, cwd = root) {
   if (result.status !== 0) throw new Error(`Prisma falhou (${args.join(' ')}): ${result.stderr || result.stdout}`);
 }
 
-const { PrismaClient } = await import('@prisma/client');
+const generatedClientDir = path.join(root, 'node_modules', '.prisma', `pdv-fk-client-${process.env.PDV_QA_RUN_ID ?? process.pid}`);
+await mkdir(generatedClientDir, { recursive: true });
+const generateSchemaPath = path.join(migrationTmp, 'generate.prisma');
+const oldSchema = await readFile(bundle.schemaPath, 'utf8');
+await writeFile(generateSchemaPath, oldSchema.replace('provider = "prisma-client-js"', `provider = "prisma-client-js"\n  output = "${generatedClientDir.replaceAll('\\', '/')}"`));
+let generatedClient;
+try {
+  runPrisma(['generate', '--schema', generateSchemaPath]);
+  generatedClient = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
+} catch (error) {
+  await rm(migrationTmp, { recursive: true, force: true });
+  await rm(generatedClientDir, { recursive: true, force: true });
+  throw error;
+}
+const { PrismaClient } = generatedClient;
 const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
 let companyId;
 try {

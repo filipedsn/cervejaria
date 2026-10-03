@@ -59,7 +59,7 @@ export async function readPdvPlanningSourceSnapshot(tx: Prisma.TransactionClient
       itens: { select: { id: true, pedidoId: true, produtoId: true, tapId: true, volumeMl: true, quantidade: true, precoUnit: true, produto: { select: { cervejariaId: true } } } },
     }, orderBy: { id: 'asc' } }),
     tx.clienteEstatisticas.findMany({ where: { cliente: { cervejariaId: companyId } }, select: { clienteId: true, totalComandasFechadas: true, totalGasto: true, totalMlChope: true, primeiraVisitaEm: true, ultimaVisitaEm: true, updatedAt: true }, orderBy: { clienteId: 'asc' } }),
-    tx.transacaoLog.findMany({ where: { cervejariaId: companyId, OR: [{ eventoId: { in: events.map((event) => event.id) } }, { comandaId: { in: commands.map((command) => command.id) } }] }, select: { id: true, tipo: true, usuarioId: true, eventoId: true, comandaId: true, entidadeTipo: true, entidadeId: true, metadata: true, createdAt: true }, orderBy: { id: 'asc' } }),
+    tx.transacaoLog.findMany({ where: { cervejariaId: companyId }, select: { id: true, tipo: true, usuarioId: true, eventoId: true, comandaId: true, entidadeTipo: true, entidadeId: true, metadata: true, createdAt: true }, orderBy: { id: 'asc' } }),
   ]);
   const payments = await tx.pagamento.findMany({ where: { comanda: commandScope }, select: { id: true, comandaId: true, forma: true, valor: true, valorRecebido: true, troco: true, registradoPorId: true, pagoEm: true, contaReceberId: true, sessaoCaixaId: true, sessaoCaixaEventoId: true, comanda: { select: { origem: true } } }, orderBy: { id: 'asc' } });
   return { companyId, pdvs, trailers, events, commands, operationalConfig, moduleConfig, eventSessions, operationalSessions, receivables, balances, stockMovements, orders, tapSetups, products, menus, taps, optionals, clients, customerCount, eventExclusions, eventProducts, portalOrders, customerStatistics, transactionLogs, payments };
@@ -125,7 +125,7 @@ export function buildPdvPlanningGraph(input: PdvPlanningGraphInput): PdvPlanning
     const sourceLinks = { eventoId: log.eventoId, comandaId: log.comandaId };
     const pdvFrom = log.eventoId ? { type: 'EVENTO' as const, id: log.eventoId, relation: 'eventoId' }
       : log.comandaId ? { type: 'COMANDA' as const, id: log.comandaId, relation: 'comandaId' } : undefined;
-    add('TRANSACAO_LOG', log.id, parents, { sourceLinks, pdvFrom });
+    add('TRANSACAO_LOG', log.id, parents, { sourceLinks, pdvFrom, historicalAudit: { entityType: log.entidadeTipo, entityId: log.entidadeId, metadata: log.metadata } });
   }
   for (const exclusion of eventExclusions) add('AGENDA_EXCECAO', exclusion.id, [{ type: 'EVENTO', id: exclusion.serieId, relation: 'serieId', tenantId: exclusion.cervejariaId }], { sourceLinks: { serieId: exclusion.serieId } });
   for (const item of eventProducts) add('EVENTO_PRODUTO', item.id, [{ type: 'EVENTO', id: item.eventoId, relation: 'eventoId', tenantId: item.evento.cervejariaId }, { type: 'PRODUTO', id: item.produtoId, relation: 'produtoId', tenantId: item.produto.cervejariaId }], { sourceLinks: { eventoId: item.eventoId, produtoId: item.produtoId } });

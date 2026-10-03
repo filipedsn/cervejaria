@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
+import { readPdvPlanningSourceSnapshot, buildPdvPlanningGraph } from './pdv-unico-source-graph.js';
 
 validateIsolatedQaEnvironment(process.env);
 process.env.DATABASE_URL = process.env.QA_DATABASE_URL;
@@ -156,6 +157,18 @@ test('EVT-AUD-01: exclusão bem-sucedida persiste log com ID original sem FK Eve
     const log = await prisma.transacaoLog.findFirstOrThrow({ where: { tipo: 'EVENTO_EXCLUIDO', entidadeTipo: 'Evento', entidadeId: f.eventId } });
     assert.equal(log.eventoId, null);
     assert.equal((log.metadata as { eventoIdOriginal: string }).eventoIdOriginal, f.eventId);
+    assert.equal(log.comandaId, null);
+    const source = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+      return readPdvPlanningSourceSnapshot(tx, f.companyId);
+    }, { isolationLevel: 'RepeatableRead' });
+    const graph = buildPdvPlanningGraph(source);
+    const auditRows = source.transactionLogs.filter((row) => row.id === log.id);
+    const auditGraphRows = graph.records.filter((row) => row.type === 'TRANSACAO_LOG' && row.id === log.id);
+    assert.equal(source.transactionLogs.length, await prisma.transacaoLog.count({ where: { cervejariaId: f.companyId } }));
+    assert.deepEqual(auditRows.map((row) => ({ id: row.id, eventId: row.eventoId, commandId: row.comandaId, entityId: row.entidadeId })), [{ id: log.id, eventId: null, commandId: null, entityId: f.eventId }]);
+    assert.equal(auditGraphRows.length, 1);
+    assert.deepEqual(auditGraphRows[0]?.historicalAudit, { entityType: 'Evento', entityId: f.eventId, metadata: log.metadata });
   } finally { await app.close(); await disposeFixture(f.companyId); }
 });
 

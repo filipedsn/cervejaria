@@ -38,6 +38,8 @@ export interface PlanningRecord {
   /** Event source semantics are distinct: weekly definition, dated occurrence, or unsupported shape. */
   eventRole?: 'AGENDA' | 'OCORRENCIA' | null;
   historicalOrigin?: string | null;
+  /** Kept in the in-memory graph for durable audit preservation; omitted from diagnostics. */
+  historicalAudit?: { entityType: string | null; entityId: string | null; metadata: unknown };
 }
 
 export interface PdvPlanningCompany {

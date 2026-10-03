@@ -1,0 +1,10 @@
+{
+  "baseCommit": "cafec78d55a7ee8af1240092e972816fb921c790",
+  "historicalManifestSha256": "78f4a3857d8fdbdb706843f3c3891b879bc096e8550bb3c89a1e83ed1ea9af60",
+  "migrationName": "20261003210000_additive_pdv_operational_core",
+  "migrationPath": "backend/prisma/migrations/20261003210000_additive_pdv_operational_core/migration.sql",
+  "migrationSha256": "95f1b4535510615d9355f9d018f87849ae71cbf955bdc95ec7b232ce8dacd719",
+  "schemaPath": "backend/prisma/schema.prisma",
+  "schemaSha256": "53d7ffb037c43da4031b3de64798d32681a492ec3998e5ac9e831bcfc427eba7",
+  "manifestSha256": "ed857e86728fc541f01a1441d1c8b65bd3a0ac2f21b51b5dc48150ad35dc3557"
+}

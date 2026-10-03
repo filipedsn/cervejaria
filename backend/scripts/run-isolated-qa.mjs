@@ -7,6 +7,7 @@ const env = { ...process.env, NODE_ENV: 'test', DATABASE_URL: databaseUrl };
 const cwd = new URL('..', import.meta.url);
 for (const args of [
   ['scripts/event-cash-fk.isolated.test.mjs'],
+  ['scripts/pdv-unico-core-schema.isolated.test.mjs'],
   ['--import', 'tsx', '--test', 'scripts/event-deletion.isolated.test.ts'],
   ['--import', 'tsx', '--test', 'scripts/pdv-unico-planner.isolated.test.ts'],
 ]) {

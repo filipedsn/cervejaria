@@ -192,6 +192,9 @@ model Cervejaria {
   configuracaoOperacao ConfiguracaoOperacao?
   configuracaoOperacional ConfiguracaoOperacional?
   pontosVenda          PontoVenda[]
+  agendasOperacionais AgendaOperacional[]
+  ocorrenciasOperacionais OcorrenciaOperacional[]
+  pdvMigrationMaps PdvMigrationMap[]
   pedidosOperacao      PedidoOperacao[]
   sessoesCaixaOperacao SessaoCaixaOperacao[]
    saldosEstoqueOperacao InventoryBalance[]
@@ -945,14 +948,170 @@ model PontoVenda {
   comandas   Comanda[]
   pedidos    PedidoOperacao[]
   sessoesCaixa SessaoCaixaOperacao[]
+  agendasOperacionais AgendaOperacional[]
+  ocorrenciasOperacionais OcorrenciaOperacional[]
+  pdvMigrationMaps PdvMigrationMap[]
    saldosEstoque InventoryBalance[]
    movimentosEstoque InventoryMovement[]
 
+  @@unique([id, cervejariaId])
   @@index([cervejariaId, ativo])
   @@schema("quiosque")
 }
 
-/// Templates reutilizaveis de cardapio do quiosque (espelha Cardapio da cervejaria).
+/// Additive operational schedules and restartable migration control structures.
+
+enum FrequenciaAgendaOperacional {
+  SEMANAL
+
+  @@schema("quiosque")
+}
+
+enum StatusOcorrenciaOperacional {
+  PROGRAMADA
+  ABERTA
+  FECHADA
+  CANCELADA
+
+  @@schema("quiosque")
+}
+
+enum OrigemHistoricaSessaoOperacao {
+  CAIXA
+  EVENTO
+
+  @@schema("quiosque")
+}
+
+/// A recurring schedule; it does not select a different operating mode.
+model AgendaOperacional {
+  id String @id @default(cuid())
+  cervejariaId String
+  pontoVendaId String
+  nome String
+  frequencia FrequenciaAgendaOperacional @default(SEMANAL)
+  diaSemana Int
+  horaInicio String @default("18:00")
+  horaFim String?
+  local String?
+  ativa Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Restrict)
+  pontoVenda PontoVenda @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+  ocorrencias OcorrenciaOperacional[]
+
+  @@unique([id, cervejariaId, pontoVendaId])
+  @@index([pontoVendaId, ativa])
+  @@schema("quiosque")
+}
+
+/// A dated realization. A one-off occurrence may have no agenda.
+model OcorrenciaOperacional {
+  id String @id @default(cuid())
+  cervejariaId String
+  pontoVendaId String
+  agendaId String?
+  nome String
+  data DateTime @db.Date
+  horaInicio String @default("18:00")
+  horaFim String?
+  local String?
+  status StatusOcorrenciaOperacional @default(PROGRAMADA)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Restrict)
+  pontoVenda PontoVenda @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+  agenda AgendaOperacional? @relation(fields: [agendaId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
+  sessoesCaixa SessaoCaixaOperacao[] @relation("SessaoOcorrenciaOperacional")
+
+  @@unique([id, cervejariaId, pontoVendaId])
+  @@unique([agendaId, data])
+  @@index([pontoVendaId, data])
+  @@index([cervejariaId, data])
+  @@schema("quiosque")
+}
+
+enum PdvMigrationRunStatus {
+  RUNNING
+  COMPLETED
+  BLOCKED
+  FAILED
+
+  @@schema("quiosque")
+}
+
+enum PdvMigrationBatchStatus {
+  PROCESSING
+  CONFIRMED
+  BLOCKED
+
+  @@schema("quiosque")
+}
+
+model PdvMigrationRun {
+  id String @id @default(cuid())
+  status PdvMigrationRunStatus @default(RUNNING)
+  transformVersion Int
+  sourceSnapshotHash String
+  checkpoint Json?
+  startedAt DateTime @default(now())
+  finishedAt DateTime?
+
+  batches PdvMigrationBatch[]
+  mappings PdvMigrationMap[] @relation("PdvMigrationMapLastRun")
+
+  @@index([status, startedAt])
+  @@schema("quiosque")
+}
+
+model PdvMigrationBatch {
+  id String @id @default(cuid())
+  runId String
+  sequence Int
+  status PdvMigrationBatchStatus @default(PROCESSING)
+  payloadHash String
+  checkpoint Json
+  createdAt DateTime @default(now())
+  confirmedAt DateTime?
+
+  run PdvMigrationRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  mappings PdvMigrationMap[] @relation("PdvMigrationMapLastBatch")
+
+  @@unique([runId, sequence])
+  @@unique([id, runId])
+  @@index([runId, status])
+  @@schema("quiosque")
+}
+
+/// Stable source identity is unique across runs; hashes detect changed payloads.
+model PdvMigrationMap {
+  id String @id @default(cuid())
+  sourceType String
+  sourceId String
+  destinationType String
+  destinationId String
+  cervejariaId String
+  pontoVendaId String?
+  transformVersion Int
+  payloadHash String
+  lastRunId String
+  lastBatchId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Restrict)
+  pontoVenda PontoVenda? @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+  lastRun PdvMigrationRun @relation("PdvMigrationMapLastRun", fields: [lastRunId], references: [id], onDelete: Restrict)
+  lastBatch PdvMigrationBatch? @relation("PdvMigrationMapLastBatch", fields: [lastBatchId, lastRunId], references: [id, runId], onDelete: Restrict)
+
+  @@unique([sourceType, sourceId])
+  @@index([cervejariaId, pontoVendaId])
+  @@index([lastRunId])
+  @@schema("quiosque")
+}
 enum StatusPedidoOperacao {
   RECEBIDO
   EM_PREPARO
@@ -1061,10 +1220,13 @@ model SessaoCaixaOperacao {
   /// Template usado na abertura do turno (referencia historica).
   cardapioId      String?
 
+  ocorrenciaId String?
+  origemHistorica OrigemHistoricaSessaoOperacao?
   cervejaria  Cervejaria               @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   pontoVenda  PontoVenda               @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
   trailer     Trailer?                 @relation(fields: [trailerId], references: [id], onDelete: SetNull)
   cardapio    Cardapio?                @relation(fields: [cardapioId], references: [id], onDelete: SetNull)
+  ocorrencia OcorrenciaOperacional? @relation("SessaoOcorrenciaOperacional", fields: [ocorrenciaId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
   movimentos  MovimentoCaixaOperacao[]
   produtos    SessaoCaixaProdutoOperacao[]
   montagensTaps TapMontagem[]
@@ -1073,6 +1235,7 @@ model SessaoCaixaOperacao {
   @@index([cervejariaId, diaOperacional])
   @@index([trailerId])
   @@index([cardapioId])
+  @@index([ocorrenciaId])
   @@schema("quiosque")
   @@map("SessaoCaixaQuiosque")
 }

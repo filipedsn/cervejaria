@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { rm } from 'node:fs/promises';
 import net from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
@@ -50,6 +51,7 @@ try {
   }
   env.NODE_ENV = 'test';
   env.PDV_ISOLATED_QA = '1';
+  env.PDV_QA_RUN_ID = runId;
   env.QA_DATABASE_URL = targetUrl;
   env.DATABASE_URL = targetUrl;
   const result = spawnSync(process.execPath, ['scripts/run-isolated-qa.mjs', 'test'], { cwd: new URL('..', import.meta.url), env, stdio: 'inherit', windowsHide: true });
@@ -60,5 +62,8 @@ try {
     if (labels !== `pdv-unico-disposable-qa|${runId}`) throw new Error('Refusing to remove QA container: ownership labels do not match this run');
     run('docker', ['stop', containerName], { windowsHide: true });
     console.log(`QA_DISPOSABLE_CONTAINER_REMOVED=${containerName}; storage=tmpfs; published=127.0.0.1:55439 only`);
+  }
+  for (const prefix of ['pdv-fk-client-', 'pdv-core-client-']) {
+    await rm(new URL(`../node_modules/.prisma/${prefix}${runId}`, import.meta.url), { recursive: true, force: true });
   }
 }
