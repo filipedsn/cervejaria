@@ -1,0 +1,441 @@
+{
+  "baseCommit": "ccd1f1f96b92843b42f319c4bb07a749fa99e9d2",
+  "provider": "postgresql",
+  "schemaPath": "backend/prisma/schema.prisma",
+  "schemaSha256": "a3d719bc8de5898a9313590c4946b37b47d0d8df7cc4efb02d5658a5056ca22d",
+  "lockPath": "backend/prisma/migrations/migration_lock.toml",
+  "lockSha256": "99836963713b4f5b269ad49af0ed3d7b0b2e336115c2f92dc9ac683d139d0900",
+  "migrations": [
+    {
+      "name": "20250704180000_init",
+      "gitPath": "backend/prisma/migrations/20250704180000_init/migration.sql",
+      "sha256": "50f36de4a5559c47f6ac27903a48366503b3a80814d6059742f67fb0514efbcf"
+    },
+    {
+      "name": "20250704190000_auth_admin_reset",
+      "gitPath": "backend/prisma/migrations/20250704190000_auth_admin_reset/migration.sql",
+      "sha256": "b25ca2189c3b1c99d3202e27cf84af7cd35ec99f17b77aaed8bc33ef1fdefe27"
+    },
+    {
+      "name": "20250704200000_cervejaria_ativo",
+      "gitPath": "backend/prisma/migrations/20250704200000_cervejaria_ativo/migration.sql",
+      "sha256": "89c39b1d3dd8890cbc6348eba81bed4b6e62b28ecfa57f3233e675d5e95f7efc"
+    },
+    {
+      "name": "20250704210000_cervejaria_branding",
+      "gitPath": "backend/prisma/migrations/20250704210000_cervejaria_branding/migration.sql",
+      "sha256": "955c9d42b2c5a15ae52a327e6fdd0fb3db5faa6520aaa20eeed820db4586c747"
+    },
+    {
+      "name": "20250704210000_evento_recorrencia",
+      "gitPath": "backend/prisma/migrations/20250704210000_evento_recorrencia/migration.sql",
+      "sha256": "af3855daa89d8bb675b7b9fbb7eb0a296e8035ee474cfad93d45b5e24a95ae67"
+    },
+    {
+      "name": "20250704210100_recorrencia_enum",
+      "gitPath": "backend/prisma/migrations/20250704210100_recorrencia_enum/migration.sql",
+      "sha256": "f913884220d856ddbd7e5bdddbb79f6bc1411d2e940d0d54d07a3275b917fa8b"
+    },
+    {
+      "name": "20250704220000_produto_tipo",
+      "gitPath": "backend/prisma/migrations/20250704220000_produto_tipo/migration.sql",
+      "sha256": "7d48fceba3a944ce8b5609a51e7d968a67ea2874dd82ba218fabe0ac4a39822d"
+    },
+    {
+      "name": "20250704230000_formato_bebida",
+      "gitPath": "backend/prisma/migrations/20250704230000_formato_bebida/migration.sql",
+      "sha256": "87c8858d5cbb9f997fa2d84713718d122631e2b48ec356900a9b9a762d186fab"
+    },
+    {
+      "name": "20250704240000_cartao_debito_credito",
+      "gitPath": "backend/prisma/migrations/20250704240000_cartao_debito_credito/migration.sql",
+      "sha256": "4201b9ff8bae2e04ac83b4f0e8ca75711d583cf396393cb2fb26461a61dbbdd6"
+    },
+    {
+      "name": "20250704250000_comanda_fechado_por",
+      "gitPath": "backend/prisma/migrations/20250704250000_comanda_fechado_por/migration.sql",
+      "sha256": "bd32fd9af710b3f871d89b08f5113345cb69f8f49e2e5ef15c90ef470e4de0bd"
+    },
+    {
+      "name": "20250704260000_tap_ativo",
+      "gitPath": "backend/prisma/migrations/20250704260000_tap_ativo/migration.sql",
+      "sha256": "69587d2cc78a3e2690c67cfa4938a05c2aecb3eb487b97c1269d78ac6d0b08f1"
+    },
+    {
+      "name": "20250704270000_security_hardening",
+      "gitPath": "backend/prisma/migrations/20250704270000_security_hardening/migration.sql",
+      "sha256": "f546ab930c1a76581e2d84d9236a4795b2489bf6df1ddf8cf1fe5e6da08724c2"
+    },
+    {
+      "name": "20250705120000_system_config",
+      "gitPath": "backend/prisma/migrations/20250705120000_system_config/migration.sql",
+      "sha256": "16af081ae8be585e4f31c4bf36cf96d9275deface66143e0638a2b0a28865b05"
+    },
+    {
+      "name": "20250705130000_trailer",
+      "gitPath": "backend/prisma/migrations/20250705130000_trailer/migration.sql",
+      "sha256": "5ce19488ec85566c2f34b613391eee597e91c2da20f431bafcb7daf0a3fd5a26"
+    },
+    {
+      "name": "20250705140000_tap_montagem",
+      "gitPath": "backend/prisma/migrations/20250705140000_tap_montagem/migration.sql",
+      "sha256": "829f96cb79c5a0c1a15ad4beef4366cfc4878f7fe6a2f3e2baa0caf2507bf842"
+    },
+    {
+      "name": "20250705150000_evento_produto",
+      "gitPath": "backend/prisma/migrations/20250705150000_evento_produto/migration.sql",
+      "sha256": "26f59a10e81bf4cd04caa93bbc6d0dac2dc64884aeadbd402ef55d23b97c04b2"
+    },
+    {
+      "name": "20250705160000_cardapio",
+      "gitPath": "backend/prisma/migrations/20250705160000_cardapio/migration.sql",
+      "sha256": "701c26c3d520522e1c96db98974edf96d3f547bab4143bdada520b5b152ba34a"
+    },
+    {
+      "name": "20250705170000_comanda_cancelada",
+      "gitPath": "backend/prisma/migrations/20250705170000_comanda_cancelada/migration.sql",
+      "sha256": "64c86f6751cb9793d4ce780189a8d83ef120e793cb7df2e1144b6d7fa1ee4de1"
+    },
+    {
+      "name": "20250705200000_evento_aberto_por_trailer",
+      "gitPath": "backend/prisma/migrations/20250705200000_evento_aberto_por_trailer/migration.sql",
+      "sha256": "e4e51f5ad0aec2c5e0f776d451e8218e98b63563847486cdc60b9840cea5042d"
+    },
+    {
+      "name": "20250708183000_evento_encerrado_em",
+      "gitPath": "backend/prisma/migrations/20250708183000_evento_encerrado_em/migration.sql",
+      "sha256": "9e7ec7718d7bca511e705964811c6e189ecb35aaf14bf2a1e357b3a7e9155ef4"
+    },
+    {
+      "name": "20250708190000_transacao_log",
+      "gitPath": "backend/prisma/migrations/20250708190000_transacao_log/migration.sql",
+      "sha256": "a509921f96f010b002ccd16da37cd3dd555df47dd87a83b8aa5971ce96135135"
+    },
+    {
+      "name": "20250715180000_cliente_crm_stats",
+      "gitPath": "backend/prisma/migrations/20250715180000_cliente_crm_stats/migration.sql",
+      "sha256": "9af892dc44911e33992b8ed31e7b065674eef11da27ecc3fda36f7fff0bafcdd"
+    },
+    {
+      "name": "20250715190000_pedido_cliente",
+      "gitPath": "backend/prisma/migrations/20250715190000_pedido_cliente/migration.sql",
+      "sha256": "e45fee1d0212181d0dd44b31888d0d6b45e9339408383cd8c89459f22e715456"
+    },
+    {
+      "name": "20250715193000_comanda_aberta_unique",
+      "gitPath": "backend/prisma/migrations/20250715193000_comanda_aberta_unique/migration.sql",
+      "sha256": "9c57aec7db5be24b1e7c3d732f23d87b60b6db1dd0e40fa6a73e141c3d95baea"
+    },
+    {
+      "name": "20250715200000_comanda_fechada_em",
+      "gitPath": "backend/prisma/migrations/20250715200000_comanda_fechada_em/migration.sql",
+      "sha256": "a52791f299a2d9cd93a26200acc0b62c5587dba8cd538a9d1edac5d9c42667f7"
+    },
+    {
+      "name": "20250715210000_comanda_tipo_avulsa",
+      "gitPath": "backend/prisma/migrations/20250715210000_comanda_tipo_avulsa/migration.sql",
+      "sha256": "2bf226ada74563c84dcda2280e15785185c8b293906a3ccabb5380c2e0a431d8"
+    },
+    {
+      "name": "20250715220000_evento_portal_generation",
+      "gitPath": "backend/prisma/migrations/20250715220000_evento_portal_generation/migration.sql",
+      "sha256": "33ef99713a570174894fd21fb1cab1690f6d4d5e21453b1462e6c3155285132f"
+    },
+    {
+      "name": "20250716143000_evento_serie_exclusao",
+      "gitPath": "backend/prisma/migrations/20250716143000_evento_serie_exclusao/migration.sql",
+      "sha256": "208a4891ec7a1ae95136360cfe54eb4d6ed6d6acbbd2981babef8838d15bcb0a"
+    },
+    {
+      "name": "20250721130000_push_subscriptions",
+      "gitPath": "backend/prisma/migrations/20250721130000_push_subscriptions/migration.sql",
+      "sha256": "eea74edd1df0028d207f183e39e60963ad15a918f6dbdc89f865b693127117af"
+    },
+    {
+      "name": "20260731162046_modulo_quiosque_fundacao",
+      "gitPath": "backend/prisma/migrations/20260731162046_modulo_quiosque_fundacao/migration.sql",
+      "sha256": "543431c37fee4847faff6f4f516ce32cbd04d0ceadc19834e339f6f6333bcb61"
+    },
+    {
+      "name": "20260731162815_quiosque_modo_exclusivo",
+      "gitPath": "backend/prisma/migrations/20260731162815_quiosque_modo_exclusivo/migration.sql",
+      "sha256": "f26cf40f30f748eaba1ba24818c7d748304fdb0373e2b33e81ff132c215e586b"
+    },
+    {
+      "name": "20260731180005_pdv_quiosque",
+      "gitPath": "backend/prisma/migrations/20260731180005_pdv_quiosque/migration.sql",
+      "sha256": "38d4df2e1fbb1d36fa8f21480f106b32b692267172bc2542ed8af40bae37c2f6"
+    },
+    {
+      "name": "20260806225944_caixa_quiosque",
+      "gitPath": "backend/prisma/migrations/20260806225944_caixa_quiosque/migration.sql",
+      "sha256": "c2d3e1327fe096a33ec945fc95b8465de4b8122cd3ee5bd045f52b2f9e09656f"
+    },
+    {
+      "name": "20260806235600_estoque_quiosque",
+      "gitPath": "backend/prisma/migrations/20260806235600_estoque_quiosque/migration.sql",
+      "sha256": "3642ce0b1cb04c08f3a59e6e548817d643df88e8cd13373f326c1bde05a88ccb"
+    },
+    {
+      "name": "20260807120000_caixa_multiplos_turnos",
+      "gitPath": "backend/prisma/migrations/20260807120000_caixa_multiplos_turnos/migration.sql",
+      "sha256": "64a96e878c43bd971d85080a32743704ea88debc63a823247d49a74b7fc27ebd"
+    },
+    {
+      "name": "20260807140000_comanda_desconto_quiosque",
+      "gitPath": "backend/prisma/migrations/20260807140000_comanda_desconto_quiosque/migration.sql",
+      "sha256": "ac679b4c53897473ebcccbc134dbdeb1acf7cf96b19993ae9a8a791e436c92ba"
+    },
+    {
+      "name": "20260807150000_pedido_cozinha_cronometro",
+      "gitPath": "backend/prisma/migrations/20260807150000_pedido_cozinha_cronometro/migration.sql",
+      "sha256": "90a8000bb943b86fb25fc03a9e3f9986dd411e26028d186ddb25699afedd1b7b"
+    },
+    {
+      "name": "20260807200000_cervejaria_exibir_kpis_comanda",
+      "gitPath": "backend/prisma/migrations/20260807200000_cervejaria_exibir_kpis_comanda/migration.sql",
+      "sha256": "f5f073acbd06ae24c747e1ddf4b7288723ad30702ac452dd097e1713238e3895"
+    },
+    {
+      "name": "20260807210000_cervejaria_comandas_coluna_unica",
+      "gitPath": "backend/prisma/migrations/20260807210000_cervejaria_comandas_coluna_unica/migration.sql",
+      "sha256": "a3f90fb5d4383b04a90f8fd09ec3843f79dfd8738e0fc2290a00f17e038729dd"
+    },
+    {
+      "name": "20260807220000_comanda_numero_sequencial",
+      "gitPath": "backend/prisma/migrations/20260807220000_comanda_numero_sequencial/migration.sql",
+      "sha256": "7ffbf59163c614edf7ccc7975bed450db7e821493952d8c2eb13d57b1a70960d"
+    },
+    {
+      "name": "20260807230000_evento_comandas_contador_desde",
+      "gitPath": "backend/prisma/migrations/20260807230000_evento_comandas_contador_desde/migration.sql",
+      "sha256": "cbb081c1c9306afa6b25eff7ba5387b5a04c1678eaf08f960c1e9550b5072a87"
+    },
+    {
+      "name": "20260808100000_quiosque_cardapio",
+      "gitPath": "backend/prisma/migrations/20260808100000_quiosque_cardapio/migration.sql",
+      "sha256": "7aff67abe9f43bbff8d6b265f4af5fec2ca6b68806913355e5f354febf9e1581"
+    },
+    {
+      "name": "20260810120000_transacao_quiosque_portal",
+      "gitPath": "backend/prisma/migrations/20260810120000_transacao_quiosque_portal/migration.sql",
+      "sha256": "4269c33f6c81ceb89edb90d5fd94cd2407e850b442cfe9bff50f5243a301cb55"
+    },
+    {
+      "name": "20260810140000_transacao_payload_tipos",
+      "gitPath": "backend/prisma/migrations/20260810140000_transacao_payload_tipos/migration.sql",
+      "sha256": "accb0e72eda15bd3a8297b96f07845036788df9a6473571f072213ce5d8c4cec"
+    },
+    {
+      "name": "20260810180000_cardapio_preco_unit",
+      "gitPath": "backend/prisma/migrations/20260810180000_cardapio_preco_unit/migration.sql",
+      "sha256": "e10509a6d60aa45a263a23df09c5974c56f148b3b63f2307745060ebcd1298fc"
+    },
+    {
+      "name": "20260811120000_usa_cardapio",
+      "gitPath": "backend/prisma/migrations/20260811120000_usa_cardapio/migration.sql",
+      "sha256": "8c257774e15e0a4611e4fc2e2837e4a0251859ea4014eb05064af61feb6f6cb1"
+    },
+    {
+      "name": "20260813193000_comanda_desconto_cervejaria",
+      "gitPath": "backend/prisma/migrations/20260813193000_comanda_desconto_cervejaria/migration.sql",
+      "sha256": "9dab78fdc5f69b52ef8a7a7bcb3b9aa37b76900587cf6def047d090afc5f21f7"
+    },
+    {
+      "name": "20260813194500_comanda_quiosque_enums",
+      "gitPath": "backend/prisma/migrations/20260813194500_comanda_quiosque_enums/migration.sql",
+      "sha256": "4867d533ba8a688256cf5a596cd8cbdb52a9bfdd8420db749a8e87c2c91b9b8f"
+    },
+    {
+      "name": "20260813200000_unificar_comanda_quiosque",
+      "gitPath": "backend/prisma/migrations/20260813200000_unificar_comanda_quiosque/migration.sql",
+      "sha256": "5d5f32123ea418c13149e344cd5e67b58c666cb708290dab9c99f65a9e5246f1"
+    },
+    {
+      "name": "20260813210000_sessao_caixa_produto_preco",
+      "gitPath": "backend/prisma/migrations/20260813210000_sessao_caixa_produto_preco/migration.sql",
+      "sha256": "4f883530e53b03bfb2333ec780723438592637e8653807a615c19f20b055dd2a"
+    },
+    {
+      "name": "20260827120000_quiosque_quantidade_mesas",
+      "gitPath": "backend/prisma/migrations/20260827120000_quiosque_quantidade_mesas/migration.sql",
+      "sha256": "e9e22ee93abcccbe5a3c53ca4741207b3635096d079b3dc7c0380551ab6a3a55"
+    },
+    {
+      "name": "20260827130000_correcao_movimento_caixa",
+      "gitPath": "backend/prisma/migrations/20260827130000_correcao_movimento_caixa/migration.sql",
+      "sha256": "d864c361cb8e7ad41dd9ae18f12d321053e0be8507d69a5dd0542e7bc8a2cb71"
+    },
+    {
+      "name": "20260902120000_estoque_minimo_quiosque",
+      "gitPath": "backend/prisma/migrations/20260902120000_estoque_minimo_quiosque/migration.sql",
+      "sha256": "ed3cfd6c11c804ea34e6b75fecf59195a343498e6c3b9faba4ae07b6e274f061"
+    },
+    {
+      "name": "20260914143000_add_cash_register_capability_to_ponto_venda",
+      "gitPath": "backend/prisma/migrations/20260914143000_add_cash_register_capability_to_ponto_venda/migration.sql",
+      "sha256": "ecc8ba9d091051850f543d91a3bd36f5d01ea2ad1bb53fd3ac30c08cf6b5382a"
+    },
+    {
+      "name": "20260914190000_operational_enablement",
+      "gitPath": "backend/prisma/migrations/20260914190000_operational_enablement/migration.sql",
+      "sha256": "fa5ab347044e194b5ca76680ecb902217c41d50b295e120a308d84e3c5d9995d"
+    },
+    {
+      "name": "20260914200000_operational_inventory_kitchen_enablement",
+      "gitPath": "backend/prisma/migrations/20260914200000_operational_inventory_kitchen_enablement/migration.sql",
+      "sha256": "f5b475fd59551c13b1bff72fdb967c73293bb7068a2f5cd96dfec9afef432ab9"
+    },
+    {
+      "name": "20260924120000_expand_canonical_product",
+      "gitPath": "backend/prisma/migrations/20260924120000_expand_canonical_product/migration.sql",
+      "sha256": "1035b3cbedf838c626c2daf4f0f7e20ec69eddba74370b8b741d86a5301caeaa"
+    },
+    {
+      "name": "20260924183000_canonical_product_runtime",
+      "gitPath": "backend/prisma/migrations/20260924183000_canonical_product_runtime/migration.sql",
+      "sha256": "e1195984dc67059b149498984f784c4f20fbeb97002e71093bf143bf671d93a5"
+    },
+    {
+      "name": "20260924190000_canonical_product_contract",
+      "gitPath": "backend/prisma/migrations/20260924190000_canonical_product_contract/migration.sql",
+      "sha256": "b368e1fd111895b4e9f4656c69af806344ea8d433f2070e233c2fddaee13b0b1"
+    },
+    {
+      "name": "20260924210000_operational_context_caixa",
+      "gitPath": "backend/prisma/migrations/20260924210000_operational_context_caixa/migration.sql",
+      "sha256": "0052572a068ef530b39f352b86ac6800b3b75466b1830159e66145e8413bafb9"
+    },
+    {
+      "name": "20260924211000_canonical_observability_events",
+      "gitPath": "backend/prisma/migrations/20260924211000_canonical_observability_events/migration.sql",
+      "sha256": "4330e24ab25d60bd2966daed416f08e614c420c6fc473e7ffc5a2f12d1ecc1ac"
+    },
+    {
+      "name": "20260924211500_backfill_comanda_caixa",
+      "gitPath": "backend/prisma/migrations/20260924211500_backfill_comanda_caixa/migration.sql",
+      "sha256": "1a54d22bf53cd8bfe160ef859ce522ad8bf96993476ac22f469fb4da305da5aa"
+    },
+    {
+      "name": "20260924212000_rename_operational_discount_permission",
+      "gitPath": "backend/prisma/migrations/20260924212000_rename_operational_discount_permission/migration.sql",
+      "sha256": "a9f4b72591a92441e5e85397cab4f3ea028f486ce79c955f093bb66829d23d28"
+    },
+    {
+      "name": "20260925090000_pedido_para_viagem",
+      "gitPath": "backend/prisma/migrations/20260925090000_pedido_para_viagem/migration.sql",
+      "sha256": "84abab206d6281bb26ca4f5c5815a4cde3ad0a60490711d9c48f7f3977be266c"
+    },
+    {
+      "name": "20260925100000_item_comanda_para_viagem",
+      "gitPath": "backend/prisma/migrations/20260925100000_item_comanda_para_viagem/migration.sql",
+      "sha256": "d936a72b5331086de79b38d3e42d2798d110b80839fcd14b141a98052e82a85b"
+    },
+    {
+      "name": "20260925103000_event_kitchen_orders",
+      "gitPath": "backend/prisma/migrations/20260925103000_event_kitchen_orders/migration.sql",
+      "sha256": "c2cbd9acfe8abc6e62d0c0d805bc40d3abeb1cdf81d5e3bdda87a41597bd6bf3"
+    },
+    {
+      "name": "20260926100000_produto_opcionais_observacao",
+      "gitPath": "backend/prisma/migrations/20260926100000_produto_opcionais_observacao/migration.sql",
+      "sha256": "584fde5be0e3ab55f636699ea4c5dbf96266fa42e861702734087697d44944e3"
+    },
+    {
+      "name": "20260926103000_opcionais_catalogo_global",
+      "gitPath": "backend/prisma/migrations/20260926103000_opcionais_catalogo_global/migration.sql",
+      "sha256": "e0014311b30a3fb4d94b1550d92eea8f553695fa330a1ab3c57712a02ccdd114"
+    },
+    {
+      "name": "20260926120000_contas_receber_operacao",
+      "gitPath": "backend/prisma/migrations/20260926120000_contas_receber_operacao/migration.sql",
+      "sha256": "74022e4a49614fb63076c0836c046c52c8f29700cba7b4910958339fc7469e4d"
+    },
+    {
+      "name": "20260927120000_cancelamento_pendente_cozinha",
+      "gitPath": "backend/prisma/migrations/20260927120000_cancelamento_pendente_cozinha/migration.sql",
+      "sha256": "24077bf22b21faf8d7524887040771087b84c891c19724aa0f01cb8c91828e45"
+    },
+    {
+      "name": "20260927130000_cancelamento_item_comanda",
+      "gitPath": "backend/prisma/migrations/20260927130000_cancelamento_item_comanda/migration.sql",
+      "sha256": "8daa5f324dc1759910e36706491b5ae96bcd651bb94ffee40addd4232fbd1f7f"
+    },
+    {
+      "name": "20260927140000_portal_cliente_background",
+      "gitPath": "backend/prisma/migrations/20260927140000_portal_cliente_background/migration.sql",
+      "sha256": "2696d3030bde2b7946af4b9c6b76d81df3184a1e0633a3c9ab1eec9b181b0f09"
+    },
+    {
+      "name": "20260927150000_operacao_categoria_ordem",
+      "gitPath": "backend/prisma/migrations/20260927150000_operacao_categoria_ordem/migration.sql",
+      "sha256": "614737dc9ee0cf6fb7e3e463b1a4d78549a3284cb3e86a0f2bd751b687b66681"
+    },
+    {
+      "name": "20260927160000_aviso_pedido_pronto_whatsapp",
+      "gitPath": "backend/prisma/migrations/20260927160000_aviso_pedido_pronto_whatsapp/migration.sql",
+      "sha256": "a8d1cc41253a56c858fcca3a53aa76225755edbae27c4fc10724bec0dbc87b33"
+    },
+    {
+      "name": "20260927180000_unificar_cardapio_operacao",
+      "gitPath": "backend/prisma/migrations/20260927180000_unificar_cardapio_operacao/migration.sql",
+      "sha256": "f7dfea537f01955b16e658d13f76547e9525c5f80d45179ad178498696e33e91"
+    },
+    {
+      "name": "20260927193000_tap_agnostico_evento_turno",
+      "gitPath": "backend/prisma/migrations/20260927193000_tap_agnostico_evento_turno/migration.sql",
+      "sha256": "d58c49eac4f95122d9cd6ad48fa94a82d8edceb31b9197c5393be20d774b0b50"
+    },
+    {
+      "name": "20260927210000_estoque_chope_litros",
+      "gitPath": "backend/prisma/migrations/20260927210000_estoque_chope_litros/migration.sql",
+      "sha256": "51a38c2375d09b237d0269c24a0366cf52725d6ac28887479faf55e4f3436ff6"
+    },
+    {
+      "name": "20260927230000_cardapio_chope_volume_variants",
+      "gitPath": "backend/prisma/migrations/20260927230000_cardapio_chope_volume_variants/migration.sql",
+      "sha256": "53927b83831f69175a183982737168fc489ed1f856b64318d429c3725dfff4da"
+    },
+    {
+      "name": "20260928010000_cardapio_chope_volume_scope",
+      "gitPath": "backend/prisma/migrations/20260928010000_cardapio_chope_volume_scope/migration.sql",
+      "sha256": "b324257fe10dc486a158a6d499d32cc2d8a4c6938a3742a0402e1f99ac0b6723"
+    },
+    {
+      "name": "20260928150000_first_access_operational_setup",
+      "gitPath": "backend/prisma/migrations/20260928150000_first_access_operational_setup/migration.sql",
+      "sha256": "1a8a8e28c25ac5ffd114bf4d0ab3e1693eeab36b5caac84663f30063b0acbe43"
+    },
+    {
+      "name": "20260929160000_evento_cash_register",
+      "gitPath": "backend/prisma/migrations/20260929160000_evento_cash_register/migration.sql",
+      "sha256": "28f251ae734ddba7a9a089e668642defeea7f13292caac3d80b779431d29616f"
+    },
+    {
+      "name": "20260929170000_evento_cash_generic_card_count",
+      "gitPath": "backend/prisma/migrations/20260929170000_evento_cash_generic_card_count/migration.sql",
+      "sha256": "aa9071aae743293c9daa79d13c56a5c1e912e67e5ca18b91bb675dd11cb5b5df"
+    },
+    {
+      "name": "20260929180000_kitchen_items_charge_at_launch",
+      "gitPath": "backend/prisma/migrations/20260929180000_kitchen_items_charge_at_launch/migration.sql",
+      "sha256": "85a2cef44fa750027e31584ad9d2e31884b8061208658484d5fdc1e11c8c5dfc"
+    },
+    {
+      "name": "20260930120000_allow_close_comanda_with_pending_kitchen_orders",
+      "gitPath": "backend/prisma/migrations/20260930120000_allow_close_comanda_with_pending_kitchen_orders/migration.sql",
+      "sha256": "1a6eb7104ca4d680d70f3252d73a084969fa451e0607540e65ad5f1baea1349b"
+    },
+    {
+      "name": "20260930150000_company_pix_key",
+      "gitPath": "backend/prisma/migrations/20260930150000_company_pix_key/migration.sql",
+      "sha256": "1b39b85c8e755ca1629b2bd7e6300249a959ab7ab570a38eef06b99d499005a6"
+    },
+    {
+      "name": "20261003180000_restrict_event_cash_history",
+      "gitPath": "backend/prisma/migrations/20261003180000_restrict_event_cash_history/migration.sql",
+      "sha256": "7d8b7ea60ed9481fa982d3ba5a7a7272c64da0cd8136f5c4355854767ba92602"
+    }
+  ],
+  "manifestSha256": "78f4a3857d8fdbdb706843f3c3891b879bc096e8550bb3c89a1e83ed1ea9af60"
+}

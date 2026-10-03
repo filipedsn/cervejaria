@@ -1,23 +1,25 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
+import { materializePinnedMigrationBundle, verifyPinnedManifest, writePinnedMigration } from './pdv-unico-qa-migration-manifest.mjs';
 
 const databaseUrl = validateIsolatedQaEnvironment(process.env).toString();
 process.env.DATABASE_URL = databaseUrl;
 process.env.NODE_ENV = 'test';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const prismaDir = path.join(root, 'prisma');
-const migrationsDir = path.join(prismaDir, 'migrations');
 const migrationName = '20261003180000_restrict_event_cash_history';
 const migrationTmp = await mkdtemp(path.join(os.tmpdir(), 'pdv-fk-baseline-'));
-const baselineDir = path.join(migrationTmp, 'prisma');
 const env = { ...process.env };
 delete env.QA_DATABASE_URL;
 delete env.PDV_ISOLATED_QA;
+const manifestPath = path.resolve(root, '../docs/testing/pdv-unico-qa-migration-manifest.json');
+const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+await verifyPinnedManifest(manifest);
+const bundle = await materializePinnedMigrationBundle(manifest, migrationTmp, { exclude: [migrationName] });
 
 function runPrisma(args, cwd = root) {
   const result = spawnSync(process.execPath, ['node_modules/prisma/build/index.js', ...args], { cwd, env, encoding: 'utf8' });
@@ -31,19 +33,9 @@ try {
   const tables = await prisma.$queryRaw`SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> '_prisma_migrations'`;
   assert.equal(tables.length, 0, 'QA isolado precisa estar vazio antes da migration');
 
-  await cp(prismaDir, baselineDir, { recursive: true });
-  const dirs = await readdir(path.join(baselineDir, 'migrations'), { withFileTypes: true });
-  for (const dir of dirs) {
-    const candidate = path.join(baselineDir, 'migrations', dir.name);
-    if (!dir.isDirectory()) continue;
-    if (dir.name === migrationName) {
-      await rm(candidate, { recursive: true, force: true });
-    } else if (!(await readdir(candidate)).includes('migration.sql')) {
-      throw new Error('Migration baseline missing migration.sql: ' + dir.name);
-    }
-  }
-  await writeFile(path.join(baselineDir, 'migrations', 'migration_lock.toml'), 'provider = "postgresql"\n');
-  runPrisma(['migrate', 'deploy', '--schema', path.join(baselineDir, 'schema.prisma')]);
+  runPrisma(['migrate', 'deploy', '--schema', bundle.schemaPath]);
+  const beforeRestrict = await prisma.$queryRaw`SELECT count(*)::int AS count FROM _prisma_migrations WHERE finished_at IS NOT NULL`;
+  assert.equal(beforeRestrict[0].count, manifest.migrations.length - 1, 'pré-migration deve conter todas as versões menos a FK restritiva que será ensaiada em seguida');
 
   const company = await prisma.cervejaria.create({ data: { nome: 'QA FK migration fixture', slug: `qa-fk-${Date.now()}` } });
   companyId = company.id;
@@ -54,8 +46,8 @@ try {
   const movement = await prisma.movimentoCaixaEvento.create({ data: { sessaoId: cash.id, tipo: 'SUPRIMENTO', valor: '12.34', registradoPorId: user.id } });
   const before = await prisma.movimentoCaixaEvento.findUniqueOrThrow({ where: { id: movement.id } });
 
-  await cp(path.join(migrationsDir, migrationName), path.join(baselineDir, 'migrations', migrationName), { recursive: true });
-  runPrisma(['migrate', 'deploy', '--schema', path.join(baselineDir, 'schema.prisma')]);
+  await writePinnedMigration(manifest, migrationName, path.join(bundle.migrationsDir, migrationName, 'migration.sql'));
+  runPrisma(['migrate', 'deploy', '--schema', bundle.schemaPath]);
 
   const afterSession = await prisma.sessaoCaixaEvento.findUniqueOrThrow({ where: { id: cash.id } });
   const afterMovement = await prisma.movimentoCaixaEvento.findUniqueOrThrow({ where: { id: movement.id } });
@@ -79,7 +71,9 @@ try {
   await prisma.evento.delete({ where: { id: eventWithoutCash.id } });
   assert.equal(await prisma.evento.count({ where: { id: eventWithoutCash.id } }), 0);
 
-  console.log('PASS migration FK: Prisma aplicou e registrou; sessao/movimento preservados; DELETE com caixa restrito; sem caixa permitido; confdeltype=r.');
+  const migrationCount = await prisma.$queryRaw`SELECT count(*)::int AS count FROM _prisma_migrations WHERE finished_at IS NOT NULL`;
+  assert.equal(migrationCount[0].count, manifest.migrations.length, 'manifesto inteiro deve estar aplicado após adicionar a FK restritiva');
+  console.log(`PASS migration FK: base=${manifest.baseCommit} count=${manifest.migrations.length} manifest=${manifest.manifestSha256}; sessao/movimento preservados; DELETE com caixa restrito; sem caixa permitido; confdeltype=r.`);
 } finally {
   await prisma.$disconnect();
   await rm(migrationTmp, { recursive: true, force: true });

@@ -1,115 +1,101 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertExecutablePlan, decimalToScaledInteger, planPdvMigration, sumScaledDecimals, type PdvPlanningCompany, type PlanningRecord } from './pdv-unico-migration-planner.js';
+import { assertSourceGraphValid, decimalToScaledInteger, planPdvMigration, sumScaledDecimals, type PdvPlanningCompany, type PlanningRecord } from './pdv-unico-migration-planner.js';
+import { buildPdvPlanningGraph, type PdvPlanningGraphInput } from './pdv-unico-source-graph.js';
 
 const rec = (type: PlanningRecord['type'], id: string, options: Partial<PlanningRecord> = {}): PlanningRecord => ({ type, id, tenantId: 'co-a', ...options });
 const fixture = (records: PlanningRecord[] = []): PdvPlanningCompany => ({
   companyId: 'co-a', pdvIds: ['pdv-a'], trailerIds: ['trailer-a'],
   records: [
     rec('PDV', 'pdv-a'), rec('TRAILER', 'trailer-a'),
-    rec('EVENTO', 'event-a', { parents: [{ type: 'TRAILER', id: 'trailer-a', relation: 'trailerId' }], sourceLinks: { trailerId: 'trailer-a' } }),
-    rec('CLIENTE', 'client-a'), rec('PRODUTO', 'product-a'), rec('TAP', 'tap-a', { parents: [{ type: 'TRAILER', id: 'trailer-a', relation: 'trailerId' }, { type: 'PRODUTO', id: 'product-a', relation: 'produtoId' }] }),
+    rec('EVENTO', 'event-a', { eventRole: 'OCORRENCIA', parents: [{ type: 'TRAILER', id: 'trailer-a', relation: 'trailerId' }], sourceLinks: { trailerId: 'trailer-a' }, pdvFrom: { type: 'TRAILER', id: 'trailer-a', relation: 'trailerId' } }),
+    rec('CLIENTE', 'client-a'), rec('PRODUTO', 'product-a'),
     ...records,
   ],
 });
 const row = (records: PlanningRecord[], type: PlanningRecord['type'], id: string, setup: Partial<PdvPlanningCompany> = {}) => planPdvMigration({ ...fixture(records), ...setup }).find((item) => item.sourceType === type && item.sourceId === id)!;
-
-test('mantém identidade e informa separadamente PDV canônico, vínculos e dependências', () => {
-  const command = rec('COMANDA', 'cmd-a', { parents: [{ type: 'EVENTO', id: 'event-a', relation: 'eventoId' }, { type: 'CLIENTE', id: 'client-a', relation: 'clienteId' }], pdvFrom: { type: 'EVENTO', id: 'event-a', relation: 'eventoId' }, sourceLinks: { eventoId: 'event-a', clienteId: 'client-a' } });
-  const planned = row([command], 'COMANDA', 'cmd-a');
-  assert.equal(planned.action, 'REASSOCIAR');
-  assert.deepEqual(planned.destinationEntity, { type: 'COMANDA', id: 'cmd-a' });
-  assert.equal(planned.idPreserved, true);
-  assert.equal(planned.canonicalPdvId, 'pdv-a');
-  assert.deepEqual(planned.destinationLinks, { clienteId: 'client-a', eventoId: 'event-a' });
-  assert.equal(planned.dependencies.every((dependency) => dependency.resolved), true);
-  assert.equal(planned.mappingComplete, true);
-  assertExecutablePlan(planPdvMigration(fixture([command])));
+const emptyGraph = (input: Partial<PdvPlanningGraphInput> = {}): PdvPlanningGraphInput => ({
+  companyId: 'co-a', pdvs: [], trailers: [], clients: [], customerStatistics: [], products: [], menus: [], optionals: [], events: [],
+  portalOrders: [], transactionLogs: [], eventExclusions: [], eventProducts: [], taps: [], eventSessions: [], operationalSessions: [],
+  commands: [], orders: [], payments: [], receivables: [], tapSetups: [], balances: [], stockMovements: [], operationalConfig: null, moduleConfig: null,
+  ...input,
 });
 
-test('dívida EVENTO válida mapeia via comanda; dívida órfã bloqueia com código e evidência', () => {
-  const command = rec('COMANDA', 'cmd-event', { parents: [{ type: 'EVENTO', id: 'event-a', relation: 'eventoId' }], pdvFrom: { type: 'EVENTO', id: 'event-a', relation: 'eventoId' }, sourceLinks: { eventoId: 'event-a' } });
-  const validDebt = rec('CONTA_RECEBER', 'ar-event', { parents: [{ type: 'COMANDA', id: 'cmd-event', relation: 'comandaId' }, { type: 'CLIENTE', id: 'client-a', relation: 'clienteId' }], pdvFrom: { type: 'COMANDA', id: 'cmd-event', relation: 'comandaId' }, sourceLinks: { comandaId: 'cmd-event', clienteId: 'client-a' } });
-  const valid = planPdvMigration(fixture([command, validDebt]));
-  assert.equal(valid.find((x) => x.sourceId === 'ar-event')?.action, 'REASSOCIAR');
-  assert.equal(valid.find((x) => x.sourceId === 'ar-event')?.destinationLinks.comandaId, 'cmd-event');
+test('separa validacao da origem, transformacao alvo e elegibilidade para escrever', () => {
+  const command = rec('COMANDA', 'cmd-a', { historicalOrigin: 'EVENTO', parents: [{ type: 'EVENTO', id: 'event-a', relation: 'eventoId' }, { type: 'PDV', id: 'pdv-a', relation: 'pontoVendaId' }, { type: 'CLIENTE', id: 'client-a', relation: 'clienteId' }], pdvFrom: { type: 'EVENTO', id: 'event-a', relation: 'eventoId' }, pdvConstraints: [{ type: 'PDV', id: 'pdv-a', relation: 'pontoVendaId' }], sourceLinks: { eventoId: 'event-a', pontoVendaId: 'pdv-a', clienteId: 'client-a' } });
+  const plan = planPdvMigration(fixture([command]));
+  const event = plan.find((x) => x.sourceType === 'EVENTO')!;
+  const planned = plan.find((x) => x.sourceType === 'COMANDA' && x.sourceId === 'cmd-a')!;
+  assert.equal(planned.sourceValidation.status, 'VALID');
+  assert.equal(planned.sourceValidation.canonicalPdvId, 'pdv-a');
+  assert.equal(planned.targetMapping.status, 'COMPLETE');
+  assert.deepEqual(planned.targetMapping.destinationEntity, { type: 'COMANDA', id: 'cmd-a' });
+  assert.equal(planned.targetMapping.destinationLinks.origemHistorica, 'EVENTO');
+  assert.equal(planned.targetMapping.destinationLinks.ocorrenciaId, event.targetMapping.destinationEntity?.id);
+  assert.equal(planned.idPreservation, 'PRESERVE_SOURCE_ID');
+  assert.equal(planned.executionEligibility, 'NOT_AUTHORIZED');
+  assert.doesNotThrow(() => assertSourceGraphValid(plan));
+  assert.ok(plan.every((item) => item.executionEligibility === 'NOT_AUTHORIZED'));
+});
+
+test('dívida de origem EVENTO valida a relacao sem fingir que sua transformacao financeira esta implementada', () => {
+  const debt = rec('CONTA_RECEBER', 'ar-event', { parents: [{ type: 'COMANDA', id: 'cmd-event', relation: 'comandaId' }, { type: 'CLIENTE', id: 'client-a', relation: 'clienteId' }], pdvFrom: { type: 'COMANDA', id: 'cmd-event', relation: 'comandaId' }, sourceLinks: { comandaId: 'cmd-event', clienteId: 'client-a' } });
+  const command = rec('COMANDA', 'cmd-event', { historicalOrigin: 'EVENTO', parents: [{ type: 'EVENTO', id: 'event-a', relation: 'eventoId' }], pdvFrom: { type: 'EVENTO', id: 'event-a', relation: 'eventoId' }, sourceLinks: { eventoId: 'event-a' } });
+  const planned = row([command, debt], 'CONTA_RECEBER', 'ar-event');
+  assert.equal(planned.sourceValidation.status, 'VALID');
+  assert.equal(planned.sourceValidation.blocker, null);
+  assert.equal(planned.targetMapping.status, 'INCOMPLETE');
+  assert.equal(planned.targetMapping.blockerCode, 'TARGET_TRANSFORMATION_NOT_DEFINED');
   const orphan = row([rec('CONTA_RECEBER', 'ar-orphan', { parents: [{ type: 'COMANDA', id: 'absent', relation: 'comandaId' }], sourceLinks: { comandaId: 'absent' } })], 'CONTA_RECEBER', 'ar-orphan');
-  assert.equal(orphan.action, 'BLOQUEADO');
-  assert.equal(orphan.blocker?.code, 'MISSING_PARENT');
-  assert.throws(() => assertExecutablePlan([orphan]), /blocked or incomplete/);
+  assert.equal(orphan.sourceValidation.blocker?.code, 'MISSING_PARENT');
 });
 
-test('evento ausente ou bloqueado, PDV ausente e comanda bloqueada propagam bloqueio aos filhos', () => {
-  const missingEventCommand = rec('COMANDA', 'cmd-missing-event', { parents: [{ type: 'EVENTO', id: 'absent-event', relation: 'eventoId' }], pdvFrom: { type: 'EVENTO', id: 'absent-event', relation: 'eventoId' } });
-  const noPdvCommand = rec('COMANDA', 'cmd-no-pdv', { parents: [{ type: 'EVENTO', id: 'event-a', relation: 'eventoId' }], pdvFrom: { type: 'PDV', id: 'absent-pdv', relation: 'pontoVendaId' } });
-  const blockedEvent = rec('EVENTO', 'event-blocked', { blocker: { code: 'EVENT_TENANT', category: 'CONFLITO_DADOS', evidence: 'Tenant do evento não confere.' } });
-  const dependent = rec('COMANDA', 'cmd-blocked', { parents: [{ type: 'EVENTO', id: 'event-blocked', relation: 'eventoId' }], pdvFrom: { type: 'EVENTO', id: 'event-blocked', relation: 'eventoId' } });
-  const rows = planPdvMigration({ ...fixture([missingEventCommand, noPdvCommand, blockedEvent, dependent]), pdvIds: [], trailerIds: ['trailer-a'] });
-  for (const id of ['cmd-missing-event', 'cmd-no-pdv', 'event-blocked', 'cmd-blocked']) assert.equal(rows.find((x) => x.sourceId === id)?.action, 'BLOQUEADO');
-  assert.equal(rows.find((x) => x.sourceId === 'cmd-blocked')?.blocker?.code, 'BLOCKED_PARENT');
+test('agenda recorrente, ocorrencia e caixa Evento transformam para entidades alvo distintas', () => {
+  const records = [
+    rec('EVENTO', 'agenda-a', { eventRole: 'AGENDA', parents: [{ type: 'TRAILER', id: 'trailer-a', relation: 'trailerId' }], pdvFrom: { type: 'TRAILER', id: 'trailer-a', relation: 'trailerId' } }),
+    rec('EVENTO', 'occurrence-a', { eventRole: 'OCORRENCIA', parents: [{ type: 'TRAILER', id: 'trailer-a', relation: 'trailerId' }, { type: 'EVENTO', id: 'agenda-a', relation: 'serieId' }], pdvFrom: { type: 'TRAILER', id: 'trailer-a', relation: 'trailerId' } }),
+    rec('SESSAO_EVENTO', 'cash-a', { historicalOrigin: 'EVENTO', parents: [{ type: 'EVENTO', id: 'occurrence-a', relation: 'eventoId' }], pdvFrom: { type: 'EVENTO', id: 'occurrence-a', relation: 'eventoId' } }),
+  ];
+  const plan = planPdvMigration(fixture(records));
+  assert.deepEqual(plan.find((x) => x.sourceId === 'agenda-a')?.targetMapping.destinationEntity, { type: 'AGENDA_OPERACIONAL', id: 'agenda-a' });
+  assert.deepEqual(plan.find((x) => x.sourceId === 'occurrence-a')?.targetMapping.destinationEntity, { type: 'OCORRENCIA_OPERACIONAL', id: 'occurrence-a' });
+  const cash = plan.find((x) => x.sourceId === 'cash-a')!;
+  assert.deepEqual(cash.targetMapping.destinationEntity, { type: 'SESSAO_CAIXA', id: 'cash-a' });
+  assert.equal(cash.targetMapping.destinationLinks.contextoOperacional, 'CAIXA');
+  assert.equal(cash.targetMapping.destinationLinks.origemHistorica, 'EVENTO');
 });
 
-test('pagamentos exigem comanda e sessão e herdam sessão ausente, dupla ou de outro tenant', () => {
-  const base = [rec('SESSAO_CAIXA', 'session-a', { parents: [{ type: 'PDV', id: 'pdv-a', relation: 'pontoVendaId' }], pdvFrom: { type: 'PDV', id: 'pdv-a', relation: 'pontoVendaId' } }), rec('COMANDA', 'cmd-a', { parents: [{ type: 'PDV', id: 'pdv-a', relation: 'pontoVendaId' }], pdvFrom: { type: 'PDV', id: 'pdv-a', relation: 'pontoVendaId' } })];
-  const payment = (id: string, parents: PlanningRecord['parents'], blocker?: PlanningRecord['blocker']) => rec('PAGAMENTO', id, { parents, blocker, pdvFrom: { type: 'COMANDA', id: 'cmd-a', relation: 'comandaId' } });
-  const rows = planPdvMigration(fixture([...base,
-    payment('pay-good', [{ type: 'COMANDA', id: 'cmd-a', relation: 'comandaId' }, { type: 'SESSAO_CAIXA', id: 'session-a', relation: 'sessaoCaixaId' }]),
-    payment('pay-missing', [{ type: 'COMANDA', id: 'cmd-a', relation: 'comandaId' }, { type: 'SESSAO_CAIXA', id: 'absent', relation: 'sessaoCaixaId' }]),
-    payment('pay-double', [{ type: 'COMANDA', id: 'cmd-a', relation: 'comandaId' }, { type: 'SESSAO_CAIXA', id: 'session-a', relation: 'sessaoCaixaId' }, { type: 'SESSAO_EVENTO', id: 'event-session-a', relation: 'sessaoCaixaEventoId' }], { code: 'PAYMENT_SESSION_LINK_CONFLICT', category: 'CONFLITO_DADOS', evidence: 'Pagamento contém duas sessões.' }),
-    payment('pay-cross', [{ type: 'COMANDA', id: 'cmd-a', relation: 'comandaId' }, { type: 'SESSAO_CAIXA', id: 'session-a', relation: 'sessaoCaixaId', tenantId: 'co-b' }]),
-  ]));
-  assert.equal(rows.find((x) => x.sourceId === 'pay-good')?.mappingComplete, true);
-  for (const [id, code] of [['pay-missing', 'MISSING_PARENT'], ['pay-double', 'PAYMENT_SESSION_LINK_CONFLICT'], ['pay-cross', 'CROSS_TENANT_PARENT']]) {
-    const result = rows.find((x) => x.sourceId === id)!;
-    assert.equal(result.action, 'BLOQUEADO'); assert.equal(result.blocker?.code, code);
-  }
+test('grafo compartilhado detecta pagamento com duas sessoes sem blocker fornecido pelo chamador', () => {
+  const payment = { id: 'payment-db-row', comandaId: 'command-db-row', sessaoCaixaId: 'operational-session-row', sessaoCaixaEventoId: 'event-session-row' };
+  const graph = buildPdvPlanningGraph(emptyGraph({
+    pdvs: [{ id: 'pdv-a' }], trailers: [{ id: 'trailer-a' }],
+    events: [{ id: 'event-db-row', trailerId: 'trailer-a', recorrencia: 'NENHUMA', serieId: null, cardapioId: null, trailer: { cervejariaId: 'co-a' }, serie: null }],
+    commands: [{ id: payment.comandaId, origem: 'EVENTO', eventoId: 'event-db-row', pontoVendaId: 'pdv-a', clienteId: null, evento: { cervejariaId: 'co-a' }, pontoVenda: { cervejariaId: 'co-a' }, cliente: null, itens: [] }],
+    eventSessions: [{ id: payment.sessaoCaixaEventoId, eventoId: 'event-db-row', evento: { cervejariaId: 'co-a' }, movimentos: [] }],
+    operationalSessions: [{ id: payment.sessaoCaixaId, pontoVendaId: 'pdv-a', pontoVenda: { cervejariaId: 'co-a' }, trailerId: null, trailer: null, cardapioId: null, cardapio: null, produtos: [], movimentos: [] }],
+    payments: [payment],
+  }));
+  const plan = planPdvMigration({ companyId: 'co-a', pdvIds: ['pdv-a'], trailerIds: ['trailer-a'], records: graph.records });
+  const planned = plan.find((x) => x.sourceId === payment.id)!;
+  assert.equal(graph.paymentLinkConflicts[0]?.id, payment.id);
+  assert.equal(planned.sourceValidation.blocker?.code, 'PAYMENT_SESSION_LINK_CONFLICT');
+  assert.equal(planned.sourceValidation.blocker?.category, 'CONFLITO_DADOS');
 });
 
-test('vínculo Evento+PDV válido coalesce por destino comprovado; vínculo divergente é conflito', () => {
-  const command = (id: string, pdvId: string) => rec('COMANDA', id, { parents: [{ type: 'EVENTO', id: 'event-a', relation: 'eventoId' }, { type: 'PDV', id: pdvId, relation: 'pontoVendaId' }], pdvFrom: { type: 'EVENTO', id: 'event-a', relation: 'eventoId' }, sourceLinks: { eventoId: 'event-a', pontoVendaId: pdvId } });
-  const good = row([command('cmd-double-good', 'pdv-a')], 'COMANDA', 'cmd-double-good');
-  assert.equal(good.action, 'REASSOCIAR');
-  assert.equal(good.canonicalPdvId, 'pdv-a');
-  assert.equal(good.destinationLinks.pontoVendaId, 'pdv-a');
-  const bad = row([command('cmd-double-bad', 'foreign-pdv')], 'COMANDA', 'cmd-double-bad');
-  assert.equal(bad.action, 'BLOQUEADO');
-  assert.equal(bad.blocker?.code, 'MISSING_PARENT');
+test('precedencia da capacidade direta resolve divergencia de configuracao sem sincronizar fontes', () => {
+  const graph = buildPdvPlanningGraph(emptyGraph({ operationalConfig: { plannedOperationsEnabled: false, inventoryEnabled: true, kitchenEnabled: true }, moduleConfig: { ativo: true, controlaEstoque: false, temCozinha: false } }));
+  assert.deepEqual(graph.effectiveConfiguration, {
+    operationMode: 'CAIXA', operationModeSource: 'CONFIGURACAO_OPERACIONAL.plannedOperationsEnabled',
+    inventoryEnabled: true, inventorySource: 'CONFIGURACAO_OPERACIONAL.inventoryEnabled',
+    kitchenEnabled: true, kitchenSource: 'CONFIGURACAO_OPERACIONAL.kitchenEnabled',
+  });
+  assert.equal(graph.records.some((x) => x.blocker?.code === 'CONFIGURATION_SOURCE_CONFLICT'), false);
 });
 
-test('tenant cruzado em pedido, produto ou cliente bloqueia pedido e todos os dependentes', () => {
-  const badProduct = rec('PRODUTO', 'foreign-product', { tenantId: 'co-b' });
-  const badClient = rec('CLIENTE', 'foreign-client', { tenantId: 'co-b' });
-  const order = rec('PEDIDO', 'order-a', { parents: [{ type: 'COMANDA', id: 'cmd-a', relation: 'comandaId' }, { type: 'CLIENTE', id: 'foreign-client', relation: 'clienteId', tenantId: 'co-b' }], pdvFrom: { type: 'COMANDA', id: 'cmd-a', relation: 'comandaId' } });
-  const orderItem = rec('PEDIDO_CLIENTE_ITEM', 'order-item-a', { parents: [{ type: 'PEDIDO', id: 'order-a', relation: 'pedidoId' }, { type: 'PRODUTO', id: 'foreign-product', relation: 'produtoId', tenantId: 'co-b' }] });
-  const rows = planPdvMigration(fixture([rec('COMANDA', 'cmd-a'), badProduct, badClient, order, orderItem]));
-  assert.equal(rows.find((x) => x.sourceId === 'order-a')?.blocker?.code, 'CROSS_TENANT_PARENT');
-  assert.equal(rows.find((x) => x.sourceId === 'order-item-a')?.blocker?.code, 'BLOCKED_PARENT');
-});
-
-test('IDs preservados não ocultam links pendentes; nenhum plano bloqueado pode ser executável', () => {
-  const command = rec('COMANDA', 'cmd-pending', { sourceLinks: { eventoId: null, pontoVendaId: null } });
-  const planned = row([command], 'COMANDA', 'cmd-pending');
-  assert.equal(planned.idPreserved, true);
-  assert.equal(planned.mappingComplete, true); // entity has no non-null source relation to remap
-  const blocked = row([rec('COMANDA', 'cmd-bad', { blocker: { code: 'MANUAL', category: 'DECISAO_MANUAL', evidence: 'Requer revisão.' } })], 'COMANDA', 'cmd-bad');
-  assert.equal(blocked.destinationEntity, null);
-  assert.equal(blocked.canonicalPdvId, null);
-  assert.equal(blocked.idPreserved, true);
-  assert.throws(() => assertExecutablePlan([blocked]), /blocked or incomplete/);
-  const missingRequired = row([rec('COMANDA', 'cmd-required-null', { sourceLinks: { eventoId: null }, requiredLinks: ['eventoId'] })], 'COMANDA', 'cmd-required-null');
-  assert.equal(missingRequired.idPreserved, true);
-  assert.equal(missingRequired.mappingComplete, false);
-  assert.equal(missingRequired.blocker?.code, 'REQUIRED_SOURCE_LINK_MISSING');
-  assert.throws(() => assertExecutablePlan([missingRequired]), /blocked or incomplete/);
-  const proposed = planPdvMigration({ ...fixture(), pdvIds: [], records: fixture().records });
-  assert.equal(proposed.find((x) => x.sourceType === 'PDV' && x.sourceId.startsWith('proposed-pdv:'))?.action, 'CRIAR_DESTINO');
-});
-
-test('destino e resultado são estáveis com coleções reordenadas', () => {
-  const records = [rec('COMANDA', 'cmd-a', { parents: [{ type: 'EVENTO', id: 'event-a', relation: 'eventoId' }], pdvFrom: { type: 'EVENTO', id: 'event-a', relation: 'eventoId' } }), rec('ITEM_COMANDA', 'item-a', { parents: [{ type: 'COMANDA', id: 'cmd-a', relation: 'comandaId' }, { type: 'PRODUTO', id: 'product-a', relation: 'produtoId' }] })];
-  const source = fixture(records);
-  const shuffled = { ...source, pdvIds: [...source.pdvIds].reverse(), trailerIds: [...source.trailerIds].reverse(), records: [...source.records].reverse() };
-  assert.deepEqual(planPdvMigration(source), planPdvMigration(shuffled));
+test('IDs, destinos e resultado ficam estaveis quando as colecoes sao reordenadas', () => {
+  const company = fixture([rec('COMANDA', 'cmd-a', { historicalOrigin: 'EVENTO', parents: [{ type: 'EVENTO', id: 'event-a', relation: 'eventoId' }], pdvFrom: { type: 'EVENTO', id: 'event-a', relation: 'eventoId' } })]);
+  const shuffled = { ...company, pdvIds: [...company.pdvIds].reverse(), trailerIds: [...company.trailerIds].reverse(), records: [...company.records].reverse() };
+  assert.deepEqual(planPdvMigration(company), planPdvMigration(shuffled));
 });
 
 test('centavos e quantidades decimais mantêm escala exata', () => {

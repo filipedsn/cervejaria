@@ -31,6 +31,7 @@
     "db:studio": "node scripts/run-with-env.mjs development npx prisma studio",
     "qa:setup": "node scripts/run-with-env.mjs development npx tsx qa/setup.ts",
     "qa:pdv-isolated": "node scripts/run-isolated-qa.mjs test",
+    "qa:pdv-disposable": "node scripts/run-pdv-unico-disposable-qa.mjs",
     "qa:restore-config-owner": "node scripts/run-with-env.mjs development npx tsx qa/restore-config-owner.ts",
     "qa:suite": "node scripts/run-with-env.mjs development npx tsx qa/suite.ts",
     "qa:worker": "node scripts/run-with-env.mjs development npx tsx qa/worker.ts",
