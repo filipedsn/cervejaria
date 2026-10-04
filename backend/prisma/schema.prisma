@@ -195,6 +195,7 @@ model Cervejaria {
   agendasOperacionais AgendaOperacional[]
   ocorrenciasOperacionais OcorrenciaOperacional[]
   pdvMigrationMaps PdvMigrationMap[]
+  pdvMigrationRuns PdvMigrationRun[]
   pedidosOperacao      PedidoOperacao[]
   sessoesCaixaOperacao SessaoCaixaOperacao[]
    saldosEstoqueOperacao InventoryBalance[]
@@ -1102,15 +1103,21 @@ enum PdvMigrationBatchStatus {
 model PdvMigrationRun {
   id String @id @default(cuid())
   status PdvMigrationRunStatus @default(RUNNING)
+  /// Durable scope identity protects invalidation from runId reuse across tenants/PDVs.
+  scope String?
+  cervejariaId String?
+  pontoVendaId String?
   transformVersion Int
   sourceSnapshotHash String
   checkpoint Json?
   startedAt DateTime @default(now())
   finishedAt DateTime?
 
+  cervejaria Cervejaria? @relation(fields: [cervejariaId], references: [id], onDelete: Restrict)
   batches PdvMigrationBatch[]
   mappings PdvMigrationMap[] @relation("PdvMigrationMapLastRun")
 
+  @@index([scope, cervejariaId, pontoVendaId])
   @@index([status, startedAt])
   @@schema("quiosque")
 }
@@ -1265,6 +1272,8 @@ model SessaoCaixaOperacao {
   contadoPix         Decimal? @db.Decimal(10, 2)
   contadoCartaoDebito  Decimal? @db.Decimal(10, 2)
   contadoCartaoCredito Decimal? @db.Decimal(10, 2)
+  /// Preserves the legacy Evento aggregate card count when debit/credit were not split.
+  contadoCartao Decimal? @db.Decimal(10, 2)
   observacaoFechamento String?
   /// Template usado na abertura do turno (referencia historica).
   cardapioId      String?

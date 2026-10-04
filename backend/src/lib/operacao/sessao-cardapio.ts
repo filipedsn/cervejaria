@@ -12,7 +12,7 @@ import {
   validateProdutosCardapioOperacao,
 } from './cardapio.js';
 
-function enriquecerProdutosOperacao<
+export function enriquecerProdutosOperacao<
   T extends { id: string; volumeMl?: number; precos?: Array<{ volumeMl: number; preco: unknown }> },
 >(
   produtos: T[],

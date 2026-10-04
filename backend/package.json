@@ -33,6 +33,7 @@
     "qa:pdv-isolated": "node scripts/run-isolated-qa.mjs test",
     "qa:pdv-disposable": "node scripts/run-pdv-unico-disposable-qa.mjs",
     "qa:pdv-catalog-disposable": "node scripts/run-pdv-unico-catalog-disposable-qa.mjs",
+    "qa:pdv-sessions-disposable": "node scripts/run-pdv-unico-session-disposable-qa.mjs",
     "qa:restore-config-owner": "node scripts/run-with-env.mjs development npx tsx qa/restore-config-owner.ts",
     "qa:suite": "node scripts/run-with-env.mjs development npx tsx qa/suite.ts",
     "qa:worker": "node scripts/run-with-env.mjs development npx tsx qa/worker.ts",

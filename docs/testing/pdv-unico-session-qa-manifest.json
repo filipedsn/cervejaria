@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "baseline": {
+    "commit": "3428a7f1a53b1bb2f14d609a88b7393535b5b37a",
+    "schemaPath": "backend/prisma/schema.prisma",
+    "schemaSha256": "211a9062506d380d9d18e63089d4e4d2358e6f8978d55a364f5a6413f5899bff"
+  },
+  "immutableManifests": [
+    {
+      "path": "docs/testing/pdv-unico-qa-migration-manifest.json",
+      "sha256": "cacc244ff397d53699ad50b0c63ae476ae220bb3d3a7bd935636571e65f8970f"
+    },
+    {
+      "path": "docs/testing/pdv-unico-migrator-qa-manifest.json",
+      "sha256": "c0b40d002ab349165c761ca4bec415a8d248f42ed6461999ab46e1fcd80073cf"
+    },
+    {
+      "path": "docs/testing/pdv-unico-core-qa-manifest.json",
+      "sha256": "15788cbc1037faadd6b9b6ef9d5efe6cec98fac239576a91176fcaa01fcd8bc9"
+    },
+    {
+      "path": "docs/testing/pdv-unico-catalog-qa-manifest.json",
+      "sha256": "8e2d1ea4ea1b657504675b83aa5ec3bbd29e2b816d9e8eb93913437571b4b035"
+    }
+  ],
+  "delivery": {
+    "schemaSha256": "9518d7cf2fbbaa85a8e4303220bb0748bc15dc574afe95ab2c697f4aea2b02f0",
+    "migrationName": "20261004100000_pdv_session_restartable",
+    "migrationPath": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
+    "migrationSha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
+  },
+  "codeCandidates": [
+    {
+      "path": "backend/scripts/pdv-unico-session-source.ts",
+      "sha256": "3618845eaf47bfe28e75fe71416c5001c2f3b0691abb4eec0204687238e569d1"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-session-transform.ts",
+      "sha256": "7fe1f200cc7f382896304033beeb0e7f120f541e3bfccd0399daba1c64414425"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-catalog-migrator.ts",
+      "sha256": "2bf947282bd05a2cdee4826478f1bf61b6ff95aca7b99bbcac6416d8c0c5e7d4"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-session-migrator.isolated.test.mjs",
+      "sha256": "5d5b7d69663ba9c03fd4f9703af4a3a435f2656ae4d745bfbd1fd4307c69a9e5"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-session-disposable-qa.mjs",
+      "sha256": "f95a51aa1e450954001da042aa71fb98acd9e39adf79876169361ff4b76c5d89"
+    },
+    {
+      "path": "backend/src/lib/operacao/sessao-cardapio.ts",
+      "sha256": "07eb1591359b5686275fe5d8a25113efc219160628d11520c5a9069a496a86b9"
+    },
+    {
+      "path": "backend/package.json",
+      "sha256": "d78a32b997f10fe409f05f6788b728553a2e622f092dc9e2929904601fc840d6"
+    }
+  ],
+  "manifestSha256": "8b7e732673cd1d37a461fcd3e8871112bd68f2a0f7976a8af0273acc5e03cd6f"
+}

@@ -1,20 +1,23 @@
 import { buildPdvCatalogMigrationItems, canonicalPdvPayloadHash, PDV_CATALOG_SCOPE, PDV_CATALOG_TRANSFORM_VERSION, PdvCatalogBlocker } from './pdv-unico-catalog-transform.js';
 import { readPdvPlanningSourceSnapshot } from './pdv-unico-source-graph.js';
 import { readPdvCatalogSourceSnapshot } from './pdv-unico-catalog-source.js';
+import { buildPdvSessionMigrationItems, PDV_SESSION_SCOPE, PDV_SESSION_TRANSFORM_VERSION } from './pdv-unico-session-transform.js';
+import { readPdvSessionSourceSnapshot } from './pdv-unico-session-source.js';
 
 type Db = any;
 const key = (type: string, id: string) => `${type}:${id}`;
-const scopeLock = (companyId: string, pointId: string) => `pdv-catalog-migration:${companyId}:${pointId}`;
+const scopeLock = (scope: string, companyId: string, pointId: string) => `pdv-migration:${scope}:${companyId}:${pointId}`;
 const delegates: Record<string, string> = {
   CONFIGURACAO_PONTO_VENDA: 'configuracaoPontoVenda', PRODUTO: 'produto', PRECO: 'preco',
   PRODUTO_OPCIONAL_GRUPO: 'produtoOpcionalGrupo', PRODUTO_OPCIONAL: 'produtoOpcional',
   CARDAPIO: 'cardapio', CARDAPIO_PRODUTO: 'cardapioProduto', OPCIONAL: 'opcional',
   PRODUTO_OPCIONAL_VINCULO: 'produtoOpcionalVinculo', PONTO_VENDA: 'pontoVenda',
   AGENDA_OPERACIONAL: 'agendaOperacional', OCORRENCIA_OPERACIONAL: 'ocorrenciaOperacional',
+  SESSAO_CAIXA_OPERACAO: 'sessaoCaixaOperacao', SESSAO_CAIXA_OPERACAO_ITEM: 'sessaoCaixaProdutoOperacao',
 };
 
-async function lock(tx: Db, companyId: string, pointId: string) {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${scopeLock(companyId, pointId)}, 0)) IS NULL AS acquired`;
+async function lock(tx: Db, scope: string, companyId: string, pointId: string) {
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${scopeLock(scope, companyId, pointId)}, 0)) IS NULL AS acquired`;
 }
 
 async function transactionWithRetry(db: Db, operation: (tx: Db) => Promise<any>) {
@@ -24,7 +27,8 @@ async function transactionWithRetry(db: Db, operation: (tx: Db) => Promise<any>)
       const databaseError = error as { code?: string; meta?: { target?: string | string[] } };
       const target = databaseError.meta?.target;
       const retryableUnique = databaseError.code === 'P2002' && (target === 'PdvMigrationRun_pkey' || (Array.isArray(target) && target.length === 1 && target[0] === 'id'));
-      if (databaseError.code !== 'P2034' && !retryableUnique) throw error;
+      const retryableBatchSequence = databaseError.code === 'P2002' && Array.isArray(target) && target.length === 2 && target[0] === 'runId' && target[1] === 'sequence';
+      if (databaseError.code !== 'P2034' && !retryableUnique && !retryableBatchSequence) throw error;
     }
   }
   throw new PdvCatalogBlocker('CONCURRENT_RUN_RETRY_EXHAUSTED', null, null, 'Conflito concorrente persistiu após repetir a transação serializada.');
@@ -53,8 +57,8 @@ function itemsFor(companyId: string, pointId: string, snapshot: any, pdvSourceKe
   return buildPdvCatalogMigrationItems({ companyId, pointId, snapshot, confirmedPdvSourceKey: pdvSourceKey });
 }
 
-function snapshotHash(companyId: string, pointId: string, items: any[]) {
-  return canonicalPdvPayloadHash({ scope: PDV_CATALOG_SCOPE, companyId, pointId, transformVersion: PDV_CATALOG_TRANSFORM_VERSION, items: items.map((item) => ({ sourceType: item.type, sourceId: item.id, sourcePayload: item.sourcePayload })) });
+function snapshotHash(scope: string, version: number, companyId: string, pointId: string, items: any[]) {
+  return canonicalPdvPayloadHash({ scope, companyId, pointId, transformVersion: version, items: items.map((item) => ({ sourceType: item.type, sourceId: item.id, sourcePayload: item.sourcePayload })) });
 }
 
 async function readDestination(tx: Db, type: string, id: string) {
@@ -78,15 +82,16 @@ async function verifyDestination(tx: Db, item: any) {
   return canonicalPdvPayloadHash(actual);
 }
 
-async function confirmDependency(tx: Db, companyId: string, pointId: string, sourceKey: string, items: any[] = []) {
+async function confirmDependency(tx: Db, companyId: string, pointId: string, sourceKey: string, items: any[] = [], version = PDV_CATALOG_TRANSFORM_VERSION, confirmExternal?: (tx: Db, sourceType: string, sourceId: string) => Promise<boolean>) {
   const separator = sourceKey.indexOf(':');
   const sourceType = sourceKey.slice(0, separator);
   const sourceId = sourceKey.slice(separator + 1);
+  if (confirmExternal && await confirmExternal(tx, sourceType, sourceId)) return;
   const map = await tx.pdvMigrationMap.findUnique({ where: { sourceType_sourceId: { sourceType, sourceId } } });
   if (sourceType !== 'PDV' && sourceType !== 'TRAILER') {
     const dependencyItem = items.find((item) => item.type === sourceType && item.id === sourceId);
     if (!dependencyItem || !map || map.cervejariaId !== companyId || map.pontoVendaId !== pointId) throw new PdvCatalogBlocker('DEPENDENCY_NOT_CONFIRMED', sourceType, sourceId, 'Dependência do catálogo não tem mapa confirmado no tenant e PDV esperados.');
-    await verifyMap(tx, dependencyItem, companyId, pointId);
+    await verifyMap(tx, dependencyItem, companyId, pointId, version);
     return;
   }
   if (!map || map.cervejariaId !== companyId || map.pontoVendaId !== pointId || map.destinationType !== 'PONTO_VENDA' || map.destinationId !== pointId || !map.lastBatchId) throw new PdvCatalogBlocker('DEPENDENCY_NOT_CONFIRMED', sourceType, sourceId, 'Dependência do PDV não tem mapa confirmado no tenant e PDV esperados.');
@@ -97,11 +102,11 @@ async function confirmDependency(tx: Db, companyId: string, pointId: string, sou
   if (!canonical || canonical.cervejariaId !== companyId) throw new PdvCatalogBlocker('CANONICAL_PDV_MISSING', sourceType, sourceId, 'PDV canônico ausente ou de outro tenant.');
 }
 
-async function verifyMap(tx: Db, item: any, companyId: string, pointId: string) {
+async function verifyMap(tx: Db, item: any, companyId: string, pointId: string, version = PDV_CATALOG_TRANSFORM_VERSION) {
   const map = await tx.pdvMigrationMap.findUnique({ where: { sourceType_sourceId: { sourceType: item.type, sourceId: item.id } } });
   if (!map) return null;
   if (map.cervejariaId !== companyId || map.pontoVendaId !== pointId || map.destinationType !== item.destinationType || map.destinationId !== item.destinationId) throw new PdvCatalogBlocker('MAP_IDENTITY_MISMATCH', item.type, item.id, 'Mapa aponta para tenant, PDV ou destino diferente.');
-  if (map.transformVersion !== PDV_CATALOG_TRANSFORM_VERSION || map.payloadHash !== canonicalPdvPayloadHash(item.sourcePayload) || canonicalPdvPayloadHash(map.sourcePayload) !== canonicalPdvPayloadHash(item.sourcePayload)) throw new PdvCatalogBlocker('SOURCE_PAYLOAD_CHANGED', item.type, item.id, 'Payload original difere do mapa estável.');
+  if (map.transformVersion !== version || map.payloadHash !== canonicalPdvPayloadHash(item.sourcePayload) || canonicalPdvPayloadHash(map.sourcePayload) !== canonicalPdvPayloadHash(item.sourcePayload)) throw new PdvCatalogBlocker('SOURCE_PAYLOAD_CHANGED', item.type, item.id, 'Payload original difere do mapa estável.');
   const batch = map.lastBatchId ? await tx.pdvMigrationBatch.findFirst({ where: { id: map.lastBatchId, runId: map.lastRunId } }) : null;
   const receipt = (batch?.checkpoint as any)?.receipts?.find((row: any) => row.sourceType === item.type && row.sourceId === item.id);
   if (batch?.status !== 'CONFIRMED' || receipt?.destinationId !== item.destinationId || receipt?.payloadHash !== map.payloadHash) throw new PdvCatalogBlocker('MAP_RECEIPT_MISSING', item.type, item.id, 'Mapa não tem recibo de lote confirmado correspondente.');
@@ -110,9 +115,9 @@ async function verifyMap(tx: Db, item: any, companyId: string, pointId: string) 
   return map;
 }
 
-async function validateCheckpoint(tx: Db, run: any, companyId: string, pointId: string, sourceHash: string, items: any[], complete = false) {
+async function validateCheckpoint(tx: Db, run: any, scope: string, version: number, companyId: string, pointId: string, sourceHash: string, items: any[], complete = false, confirmExternal?: (tx: Db, sourceType: string, sourceId: string) => Promise<boolean>) {
   const checkpoint = run.checkpoint as any;
-  if (run.transformVersion !== PDV_CATALOG_TRANSFORM_VERSION || run.sourceSnapshotHash !== sourceHash || checkpoint?.scope !== PDV_CATALOG_SCOPE || checkpoint?.companyId !== companyId || checkpoint?.pointId !== pointId || checkpoint?.sourceSnapshotHash !== sourceHash || checkpoint?.transformVersion !== PDV_CATALOG_TRANSFORM_VERSION || checkpoint?.totalRecords !== items.length) throw new PdvCatalogBlocker('RUN_SCOPE_OR_SNAPSHOT_MISMATCH', null, run.id, 'Run diverge do escopo, PDV, versão ou fotografia atual.');
+  if (run.transformVersion !== version || run.sourceSnapshotHash !== sourceHash || checkpoint?.scope !== scope || checkpoint?.companyId !== companyId || checkpoint?.pointId !== pointId || checkpoint?.sourceSnapshotHash !== sourceHash || checkpoint?.transformVersion !== version || checkpoint?.totalRecords !== items.length) throw new PdvCatalogBlocker('RUN_SCOPE_OR_SNAPSHOT_MISMATCH', null, run.id, 'Run diverge do escopo, PDV, versão ou fotografia atual.');
   const expectedKeys = items.map((item) => key(item.type, item.id));
   const completed: string[] = checkpoint.completedSourceKeys ?? [];
   if (!Array.isArray(checkpoint.completedSourceKeys) || completed.length > expectedKeys.length || completed.some((value, index) => value !== expectedKeys[index]) || (complete && completed.length !== expectedKeys.length) || checkpoint.lastSourceKey !== (completed.at(-1) ?? null)) throw new PdvCatalogBlocker('RUN_CHECKPOINT_DIVERGED', null, run.id, 'Checkpoint não corresponde ao prefixo determinístico esperado.');
@@ -128,8 +133,8 @@ async function validateCheckpoint(tx: Db, run: any, companyId: string, pointId: 
     for (let offset = 0; offset < batchItems.length; offset++) {
       const item = batchItems[offset]; const receipt = receipts[offset];
       if (receipt.sourceType !== item.type || receipt.sourceId !== item.id || receipt.destinationType !== item.destinationType || receipt.destinationId !== item.destinationId || receipt.payloadHash !== canonicalPdvPayloadHash(item.sourcePayload)) throw new PdvCatalogBlocker('RUN_RECEIPT_DIVERGED', item.type, item.id, 'Recibo diverge da identidade ou payload de origem.');
-      for (const dependency of item.dependencies) await confirmDependency(tx, companyId, pointId, dependency, items);
-      const map = await verifyMap(tx, item, companyId, pointId);
+      for (const dependency of item.dependencies) await confirmDependency(tx, companyId, pointId, dependency, items, version, confirmExternal);
+      const map = await verifyMap(tx, item, companyId, pointId, version);
       if (!map) throw new PdvCatalogBlocker('CHECKPOINT_MAP_MISSING', item.type, item.id, 'Origem confirmada não está mapeada.');
       const currentDestinationHash = await verifyDestination(tx, item);
       if (receipt.destinationHash !== currentDestinationHash) throw new PdvCatalogBlocker('RUN_DESTINATION_DIVERGED', item.type, item.id, 'Destino diverge do recibo deste run confirmado.');
@@ -161,37 +166,61 @@ async function writeTarget(tx: Db, item: any) {
   }
 }
 
-function initialCheckpoint(companyId: string, pointId: string, sourceHash: string, items: any[]) {
-  return { scope: PDV_CATALOG_SCOPE, companyId, pointId, transformVersion: PDV_CATALOG_TRANSFORM_VERSION, sourceSnapshotHash: sourceHash, totalRecords: items.length, sourceTypes: [...new Set(items.map((item) => item.type))].sort(), completedSourceKeys: [] as string[], lastConfirmedBatch: 0, lastSourceKey: null as string | null };
+function initialCheckpoint(scope: string, version: number, companyId: string, pointId: string, sourceHash: string, items: any[]) {
+  return { scope, companyId, pointId, transformVersion: version, sourceSnapshotHash: sourceHash, totalRecords: items.length, sourceTypes: [...new Set(items.map((item) => item.type))].sort(), completedSourceKeys: [] as string[], lastConfirmedBatch: 0, lastSourceKey: null as string | null };
 }
 
-export async function runPdvCatalogMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; afterDestinationWrite?: (item: any) => Promise<void> | void }) {
-  const { db, companyId, pointId, runId } = options;
-  if (!companyId || !pointId || !runId) throw new Error('companyId, pointId e runId são obrigatórios.');
+function runtimeSupportsScopeIdentity(tx: Db) {
+  return Boolean(tx?._runtimeDataModel?.models?.PdvMigrationRun?.fields?.some((field: any) => field.name === 'scope'));
+}
+
+function runMatchesScope(run: any, scope: string, companyId: string, pointId: string) {
+  const identity = [run.scope, run.cervejariaId, run.pontoVendaId];
+  if (identity.some((value) => value != null)) return run.scope === scope && run.cervejariaId === companyId && run.pontoVendaId === pointId;
+  const checkpoint = run.checkpoint as any;
+  return checkpoint?.scope === scope && checkpoint?.companyId === companyId && checkpoint?.pointId === pointId;
+}
+
+type ScopedMigrationOptions = {
+  db: Db; companyId: string; pointId: string; runId: string; scope: string; transformVersion: number;
+  buildItems: (tx: Db, pdvSourceKey: string) => Promise<any[]>;
+  confirmExternalDependency?: (tx: Db, sourceType: string, sourceId: string) => Promise<boolean>;
+  writeItem?: (tx: Db, item: any, hasExistingMap: boolean) => Promise<boolean>;
+  maxBatches?: number; afterDestinationWrite?: (item: any) => Promise<void> | void;
+};
+
+/** Shared transactional runner for catalog and session scopes. */
+export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
+  const { db, companyId, pointId, runId, scope, transformVersion } = options;
+  if (!companyId || !pointId || !runId || !scope) throw new Error('companyId, pointId, runId e scope são obrigatórios.');
   let committedBatches = 0;
   try {
     while (true) {
       const result = await transactionWithRetry(db, async (tx: Db) => {
-        await lock(tx, companyId, pointId);
+        await lock(tx, scope, companyId, pointId);
         const dependency = await canonicalDependency(tx, companyId, pointId);
-        const snapshot = await readSnapshot(tx, companyId);
-        const items = itemsFor(companyId, pointId, snapshot, dependency.sourceKey);
-        const sourceHash = snapshotHash(companyId, pointId, items);
+        const items = await options.buildItems(tx, dependency.sourceKey);
+        const sourceHash = snapshotHash(scope, transformVersion, companyId, pointId, items);
         let run = await tx.pdvMigrationRun.findUnique({ where: { id: runId } });
-        const checkpoint = initialCheckpoint(companyId, pointId, sourceHash, items);
-        if (!run) run = await tx.pdvMigrationRun.create({ data: { id: runId, status: 'RUNNING', transformVersion: PDV_CATALOG_TRANSFORM_VERSION, sourceSnapshotHash: sourceHash, checkpoint } });
-        const state = await validateCheckpoint(tx, run, companyId, pointId, sourceHash, items, run.status === 'COMPLETED');
+        const checkpoint = initialCheckpoint(scope, transformVersion, companyId, pointId, sourceHash, items);
+        if (!run) {
+          const identityData = runtimeSupportsScopeIdentity(tx) ? { scope, cervejariaId: companyId, pontoVendaId: pointId } : {};
+          run = await tx.pdvMigrationRun.create({ data: { id: runId, ...identityData, status: 'RUNNING', transformVersion, sourceSnapshotHash: sourceHash, checkpoint } });
+        } else if (!runMatchesScope(run, scope, companyId, pointId)) {
+          throw new PdvCatalogBlocker('RUN_ID_SCOPE_MISMATCH', null, runId, 'runId já pertence a outro tenant, PDV ou escopo; seu estado não será alterado.');
+        }
+        const state = await validateCheckpoint(tx, run, scope, transformVersion, companyId, pointId, sourceHash, items, run.status === 'COMPLETED', options.confirmExternalDependency);
         if (run.status === 'COMPLETED') return { complete: true, checkpoint: run.checkpoint };
         if (state.cursor >= items.length) return { finalize: true, checkpoint: run.checkpoint, items, sourceHash };
         if (options.maxBatches != null && committedBatches >= options.maxBatches) return { paused: true, checkpoint: run.checkpoint };
 
         const item = items[state.cursor];
-        for (const dependencyKey of item.dependencies) await confirmDependency(tx, companyId, pointId, dependencyKey, items);
-        const existingMap = await verifyMap(tx, item, companyId, pointId);
+        for (const dependencyKey of item.dependencies) await confirmDependency(tx, companyId, pointId, dependencyKey, items, transformVersion, options.confirmExternalDependency);
+        const existingMap = await verifyMap(tx, item, companyId, pointId, transformVersion);
         const sequence = state.batches.length + 1;
         const payloadHash = canonicalPdvPayloadHash([{ sourceType: item.type, sourceId: item.id, payloadHash: canonicalPdvPayloadHash(item.sourcePayload) }]);
-        const batch = await tx.pdvMigrationBatch.create({ data: { runId, sequence, status: 'PROCESSING', payloadHash, checkpoint: { scope: PDV_CATALOG_SCOPE, sourceCursorBefore: state.cursor, sourceCursorAfter: state.cursor + 1, receipts: [] } } });
-        const destinationCreated = existingMap ? false : await writeTarget(tx, item);
+        const batch = await tx.pdvMigrationBatch.create({ data: { runId, sequence, status: 'PROCESSING', payloadHash, checkpoint: { scope, sourceCursorBefore: state.cursor, sourceCursorAfter: state.cursor + 1, receipts: [] } } });
+        const destinationCreated = existingMap ? false : await (options.writeItem ? options.writeItem(tx, item, Boolean(existingMap)) : writeTarget(tx, item));
         if (options.afterDestinationWrite) await options.afterDestinationWrite(item);
         const destinationHash = await verifyDestination(tx, item);
         if (existingMap) {
@@ -199,9 +228,9 @@ export async function runPdvCatalogMigration(options: { db: Db; companyId: strin
           const oldReceipt = (oldBatch?.checkpoint as any)?.receipts?.find((receipt: any) => receipt.sourceType === item.type && receipt.sourceId === item.id);
           if (!oldReceipt || oldReceipt.destinationHash !== destinationHash) throw new PdvCatalogBlocker('MAP_RECEIPT_DIVERGED', item.type, item.id, 'Destino ou recibo anterior diverge; migração não sobrescreve.');
         }
-        const receipt = { sourceType: item.type, sourceId: item.id, destinationType: item.destinationType, destinationId: item.destinationId, payloadHash: canonicalPdvPayloadHash(item.sourcePayload), destinationHash, destinationCreated: destinationCreated || (existingMap ? false : false) };
-        await tx.pdvMigrationBatch.update({ where: { id: batch.id }, data: { status: 'CONFIRMED', confirmedAt: new Date(), checkpoint: { scope: PDV_CATALOG_SCOPE, sourceCursorBefore: state.cursor, sourceCursorAfter: state.cursor + 1, receipts: [receipt] } } });
-        const mapData = { destinationType: item.destinationType, destinationId: item.destinationId, cervejariaId: companyId, pontoVendaId: pointId, transformVersion: PDV_CATALOG_TRANSFORM_VERSION, payloadHash: receipt.payloadHash, sourcePayload: item.sourcePayload, lastRunId: runId, lastBatchId: batch.id };
+        const receipt = { sourceType: item.type, sourceId: item.id, destinationType: item.destinationType, destinationId: item.destinationId, payloadHash: canonicalPdvPayloadHash(item.sourcePayload), destinationHash, destinationCreated };
+        await tx.pdvMigrationBatch.update({ where: { id: batch.id }, data: { status: 'CONFIRMED', confirmedAt: new Date(), checkpoint: { scope, sourceCursorBefore: state.cursor, sourceCursorAfter: state.cursor + 1, receipts: [receipt] } } });
+        const mapData = { destinationType: item.destinationType, destinationId: item.destinationId, cervejariaId: companyId, pontoVendaId: pointId, transformVersion, payloadHash: receipt.payloadHash, sourcePayload: item.sourcePayload, lastRunId: runId, lastBatchId: batch.id };
         if (existingMap) await tx.pdvMigrationMap.update({ where: { id: existingMap.id }, data: mapData });
         else await tx.pdvMigrationMap.create({ data: { sourceType: item.type, sourceId: item.id, ...mapData } });
         const completedSourceKeys = [...state.completed, key(item.type, item.id)];
@@ -214,13 +243,13 @@ export async function runPdvCatalogMigration(options: { db: Db; companyId: strin
       if (result.advanced) { committedBatches++; continue; }
       if (result.finalize) {
         const finalRun = await transactionWithRetry(db, async (tx: Db) => {
-          await lock(tx, companyId, pointId);
+          await lock(tx, scope, companyId, pointId);
           const dependency = await canonicalDependency(tx, companyId, pointId);
-          const snapshot = await readSnapshot(tx, companyId);
-          const items = itemsFor(companyId, pointId, snapshot, dependency.sourceKey);
-          const sourceHash = snapshotHash(companyId, pointId, items);
+          const items = await options.buildItems(tx, dependency.sourceKey);
+          const sourceHash = snapshotHash(scope, transformVersion, companyId, pointId, items);
           const row = await tx.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } });
-          await validateCheckpoint(tx, row, companyId, pointId, sourceHash, items, true);
+          if (!runMatchesScope(row, scope, companyId, pointId)) throw new PdvCatalogBlocker('RUN_ID_SCOPE_MISMATCH', null, runId, 'runId já pertence a outro tenant, PDV ou escopo; seu estado não será alterado.');
+          await validateCheckpoint(tx, row, scope, transformVersion, companyId, pointId, sourceHash, items, true, options.confirmExternalDependency);
           return tx.pdvMigrationRun.update({ where: { id: runId }, data: { status: 'COMPLETED', finishedAt: new Date() } });
         });
         return { status: 'COMPLETED', runId, checkpoint: finalRun.checkpoint, committedBatches };
@@ -228,12 +257,112 @@ export async function runPdvCatalogMigration(options: { db: Db; companyId: strin
     }
   } catch (error) {
     if (error instanceof PdvCatalogBlocker) {
-      await db.$transaction(async (tx: Db) => {
-        await lock(tx, companyId, pointId);
-        await tx.pdvMigrationRun.updateMany({ where: { id: runId, status: { not: 'COMPLETED' } }, data: { status: 'BLOCKED', finishedAt: null } });
-      }).catch(() => undefined);
-      return { status: 'BLOCKED', runId, code: error.code, sourceType: error.sourceType, sourceId: error.sourceId, message: error.message, committedBatches };
+      let invalidated = false;
+      let scopeMismatch = false;
+      const existing = await db.$transaction(async (tx: Db) => {
+        await lock(tx, scope, companyId, pointId);
+        const row = await tx.pdvMigrationRun.findUnique({ where: { id: runId } });
+        if (!row) return null;
+        if (!runMatchesScope(row, scope, companyId, pointId)) { scopeMismatch = true; return row; }
+        const data: any = { status: 'BLOCKED' };
+        if (row.status !== 'COMPLETED') data.finishedAt = null;
+        await tx.pdvMigrationRun.update({ where: { id: runId }, data });
+        invalidated = true;
+        return row;
+      });
+      return { status: 'BLOCKED', runId, code: scopeMismatch ? 'RUN_ID_SCOPE_MISMATCH' : error.code, sourceType: error.sourceType, sourceId: error.sourceId, message: scopeMismatch ? 'runId pertence a outro tenant/PDV/escopo; nenhuma evidência foi alterada.' : error.message, committedBatches, invalidatedCompletedRun: invalidated && existing?.status === 'COMPLETED' };
     }
     throw error;
   }
+}
+
+export async function runPdvCatalogMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; afterDestinationWrite?: (item: any) => Promise<void> | void }) {
+  return runPdvScopedMigration({
+    ...options, scope: PDV_CATALOG_SCOPE, transformVersion: PDV_CATALOG_TRANSFORM_VERSION,
+    buildItems: async (tx, pdvSourceKey) => {
+      const snapshot = await readSnapshot(tx, options.companyId);
+      return itemsFor(options.companyId, options.pointId, snapshot, pdvSourceKey);
+    },
+  });
+}
+
+async function findConfirmedEventOccurrence(tx: Db, companyId: string, pointId: string, eventId: string) {
+  const map = await tx.pdvMigrationMap.findUnique({ where: { sourceType_sourceId: { sourceType: 'EVENTO', sourceId: eventId } } });
+  if (!map || map.cervejariaId !== companyId || map.pontoVendaId !== pointId || map.destinationType !== 'OCORRENCIA_OPERACIONAL' || !map.lastBatchId) throw new PdvCatalogBlocker('SESSION_OCCURRENCE_MAPPING_MISSING', 'SESSAO_CAIXA_EVENTO', eventId, 'Evento ainda não tem mapa confirmado para ocorrência neste tenant/PDV.');
+  const batch = await tx.pdvMigrationBatch.findFirst({ where: { id: map.lastBatchId, runId: map.lastRunId } });
+  const run = await tx.pdvMigrationRun.findUnique({ where: { id: map.lastRunId } });
+  const cp = run?.checkpoint as any;
+  const receipt = (batch?.checkpoint as any)?.receipts?.find((entry: any) => entry.sourceType === 'EVENTO' && entry.sourceId === eventId);
+  if (!run || run.status !== 'COMPLETED') throw new PdvCatalogBlocker('SESSION_OCCURRENCE_RUN_INCOMPLETE', 'SESSAO_CAIXA_EVENTO', eventId, 'Run de origem da ocorrencia nao esta COMPLETED.');
+  if (cp?.scope !== 'PDV_AGENDA_OCORRENCIA_V1' || cp?.companyId !== companyId) throw new PdvCatalogBlocker('SESSION_OCCURRENCE_RUN_SCOPE_MISMATCH', 'SESSAO_CAIXA_EVENTO', eventId, 'Run da ocorrencia pertence a outro escopo/tenant.');
+  if (batch?.status !== 'CONFIRMED' || receipt?.destinationType !== map.destinationType || receipt?.destinationId !== map.destinationId || receipt?.payloadHash !== map.payloadHash) throw new PdvCatalogBlocker('SESSION_OCCURRENCE_RECEIPT_DIVERGED', 'SESSAO_CAIXA_EVENTO', eventId, 'Recibo do mapeamento de ocorrência está ausente ou inválido.');
+  const occurrence = await tx.ocorrenciaOperacional.findUnique({ where: { id: map.destinationId } });
+  if (!occurrence || occurrence.cervejariaId !== companyId || occurrence.pontoVendaId !== pointId) throw new PdvCatalogBlocker('SESSION_OCCURRENCE_MAPPING_INCOMPATIBLE', 'SESSAO_CAIXA_EVENTO', eventId, 'Ocorrência mapeada está ausente ou pertence a outro tenant/PDV.');
+  return occurrence;
+}
+
+async function findConfirmedCatalogItem(tx: Db, companyId: string, pointId: string, sourceType: string, sourceId: string) {
+  const dependency = await canonicalDependency(tx, companyId, pointId);
+  const snapshot = await readSnapshot(tx, companyId);
+  const item = itemsFor(companyId, pointId, snapshot, dependency.sourceKey).find((entry: any) => entry.type === sourceType && entry.id === sourceId);
+  if (!item) throw new PdvCatalogBlocker('SESSION_CATALOG_SOURCE_MISSING', sourceType, sourceId, 'Catalog source is absent from the current tenant snapshot.');
+  const map = await verifyMap(tx, item, companyId, pointId, PDV_CATALOG_TRANSFORM_VERSION);
+  if (!map) throw new PdvCatalogBlocker('SESSION_CATALOG_MAP_MISSING', sourceType, sourceId, 'Catalog source has no stable map in this tenant/PDV.');
+  const run = await tx.pdvMigrationRun.findUnique({ where: { id: map.lastRunId } });
+  const checkpoint = run?.checkpoint as any;
+  if (run?.status !== 'COMPLETED' || checkpoint?.scope !== PDV_CATALOG_SCOPE || checkpoint?.companyId !== companyId || checkpoint?.pointId !== pointId) throw new PdvCatalogBlocker('SESSION_CATALOG_RUN_INCOMPLETE', sourceType, sourceId, 'Catalog map was not confirmed by a completed run in this scope.');
+  const batch = await tx.pdvMigrationBatch.findFirst({ where: { id: map.lastBatchId, runId: map.lastRunId } });
+  const receipt = (batch?.checkpoint as any)?.receipts?.find((entry: any) => entry.sourceType === sourceType && entry.sourceId === sourceId);
+  const currentDestinationHash = await verifyDestination(tx, item);
+  if (batch?.status !== 'CONFIRMED' || receipt?.destinationHash !== currentDestinationHash) throw new PdvCatalogBlocker('SESSION_CATALOG_RECEIPT_DIVERGED', sourceType, sourceId, 'Catalog destination content no longer matches its confirmed receipt.');
+  return { item, map };
+}
+
+async function findConfirmedCatalogMenu(tx: Db, companyId: string, pointId: string, sourceId: string) {
+  const { item } = await findConfirmedCatalogItem(tx, companyId, pointId, 'CATALOGO_CARDAPIO', sourceId);
+  if (item.destinationType !== 'CARDAPIO' || item.destinationId !== sourceId) throw new PdvCatalogBlocker('SESSION_MENU_CATALOG_MAP_MISSING', 'CATALOGO_CARDAPIO', sourceId, 'Mapped menu does not preserve its source identity.');
+  return { id: sourceId, companyId, pointId };
+}
+
+async function writeSessionTarget(tx: Db, item: any, hasExistingMap: boolean) {
+  const existing = await readDestination(tx, item.destinationType, item.destinationId);
+  if (item.type === 'SESSAO_CAIXA_EVENTO') {
+    if (existing && !hasExistingMap) throw new PdvCatalogBlocker('SESSION_ID_COLLISION', item.type, item.id, 'Evento session ID already exists in Por Caixa without a stable map.');
+    if (!existing) await tx.sessaoCaixaOperacao.create({ data: item.destinationData });
+    return !existing;
+  }
+  if (item.type === 'EVENTO_PRODUTO_SESSAO') {
+    if (existing && !hasExistingMap) throw new PdvCatalogBlocker('SESSION_ITEM_ID_COLLISION', item.type, item.id, 'Event-selected item ID already exists in another turn without a stable map.');
+    if (!existing) await tx.sessaoCaixaProdutoOperacao.create({ data: item.destinationData });
+    return !existing;
+  }
+  if (!existing) throw new PdvCatalogBlocker('SESSION_DESTINATION_MISSING', item.type, item.id, 'Existing Por Caixa session/override to preserve is missing.');
+  return false;
+}
+
+export async function runPdvSessionMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; afterDestinationWrite?: (item: any) => Promise<void> | void }) {
+  return runPdvScopedMigration({
+    ...options, scope: PDV_SESSION_SCOPE, transformVersion: PDV_SESSION_TRANSFORM_VERSION,
+    buildItems: async (tx, pdvSourceKey) => {
+      const snapshot = await readPdvSessionSourceSnapshot(tx, options.companyId);
+      const confirmedOccurrences: Record<string, { id: string; companyId: string; pointId: string; date: Date }> = {};
+      const confirmedMenus: Record<string, { id: string; companyId: string; pointId: string }> = {};
+      for (const session of snapshot.eventSessions) {
+        if (!session.evento.data) throw new PdvCatalogBlocker('SESSION_OPERATIONAL_DAY_UNPROVEN', 'SESSAO_CAIXA_EVENTO', session.id, 'Evento sem data persistida não comprova o dia operacional.');
+        const occurrence = await findConfirmedEventOccurrence(tx, options.companyId, options.pointId, session.eventoId);
+        confirmedOccurrences[session.eventoId] = { id: occurrence.id, companyId: occurrence.cervejariaId, pointId: occurrence.pontoVendaId, date: occurrence.data };
+        if (session.evento.cardapioId) {
+          confirmedMenus[session.evento.cardapioId] = await findConfirmedCatalogMenu(tx, options.companyId, options.pointId, session.evento.cardapioId);
+        }
+      }
+      return buildPdvSessionMigrationItems({ companyId: options.companyId, pointId: options.pointId, snapshot, confirmedPdvSourceKey: pdvSourceKey, confirmedOccurrences, confirmedMenus });
+    },
+    confirmExternalDependency: async (tx, sourceType, sourceId) => {
+      if (sourceType === 'EVENTO') { await findConfirmedEventOccurrence(tx, options.companyId, options.pointId, sourceId); return true; }
+      if (sourceType === 'CATALOGO_CARDAPIO') { await findConfirmedCatalogMenu(tx, options.companyId, options.pointId, sourceId); return true; }
+      if (sourceType === 'CATALOGO_PRODUTO') { await findConfirmedCatalogItem(tx, options.companyId, options.pointId, sourceType, sourceId); return true; }
+      return false;
+    },
+    writeItem: writeSessionTarget,
+  });
 }
