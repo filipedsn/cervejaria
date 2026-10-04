@@ -1,6 +1,8 @@
 import { validateInventoryEnvironment } from './inventory-pdv-unico-env.js';
+import { createHash } from 'node:crypto';
 import { decimalToScaledInteger, planPdvMigration } from './pdv-unico-migration-planner.js';
 import { buildPdvPlanningGraph, readPdvPlanningSourceSnapshot } from './pdv-unico-source-graph.js';
+import { readPdvCatalogSourceSnapshot } from './pdv-unico-catalog-source.js';
 import { serializeCommandSnapshot } from './pdv-unico-snapshot.js';
 
 // Validate before importing prisma.ts, which instantiates the client at module load.
@@ -20,6 +22,7 @@ try {
     for (const company of companies) {
       const companyId = company.id;
       const sourceRows = await readPdvPlanningSourceSnapshot(tx, companyId);
+      const completeCatalog = await readPdvCatalogSourceSnapshot(tx, companyId);
       const { pdvs, trailers, events, commands, operationalConfig, moduleConfig, eventSessions, operationalSessions, receivables, balances, stockMovements, orders, tapSetups, products, menus, taps, optionals, clients, customerCount, eventExclusions, eventProducts, portalOrders, customerStatistics, transactionLogs, payments } = sourceRows;
       const commandTotals = new Map<string, { count: number; totalCents: bigint; discountCents: bigint }>();
       const commandByOperationDay = new Map<string, { count: number; totalCents: bigint }>();
@@ -103,6 +106,19 @@ try {
       }
       output.push({
         companyId, clientCount: customerCount,
+        catalogSourceSnapshot: {
+          sha256: createHash('sha256').update(JSON.stringify(completeCatalog)).digest('hex'),
+          productCount: completeCatalog.products.length,
+          priceCount: completeCatalog.products.reduce((sum, product) => sum + product.precos.length, 0),
+          optionalGroupCount: completeCatalog.products.reduce((sum, product) => sum + product.gruposOpcionais.length, 0),
+          productOptionCount: completeCatalog.products.reduce((sum, product) => sum + product.gruposOpcionais.reduce((inner, group) => inner + group.opcoes.length, 0), 0),
+          menuCount: completeCatalog.menus.length,
+          menuItemCount: completeCatalog.menus.reduce((sum, menu) => sum + menu.produtos.length, 0),
+          optionalCount: completeCatalog.optionals.length,
+          optionalLinkCount: completeCatalog.optionals.reduce((sum, optional) => sum + optional.produtos.length, 0),
+          hasOperationalConfiguration: completeCatalog.operationalConfig !== null,
+          hasLegacyModuleConfiguration: completeCatalog.moduleConfig !== null,
+        },
         units: { pointOfSaleIds: pdvs.map((x) => x.id), trailerIds: trailers.map((x) => x.id), configurations: { operational: operationalConfig, operation: moduleConfig, effective: graph.effectiveConfiguration } },
         eventSources: {
           agendas: events.filter((x) => x.recorrencia === 'SEMANAL' && !x.serieId).map((x) => ({ id: x.id, trailerId: x.trailerId, startDate: x.data?.toISOString().slice(0, 10) ?? null, startTime: x.horaInicio, endTime: x.horaFim, weekday: x.diaSemana, status: x.status, closedAt: x.encerradoEm?.toISOString() ?? null, sequenceResetAt: x.comandasContadorDesde.toISOString(), createdAt: x.createdAt.toISOString(), updatedAt: x.updatedAt.toISOString() })),

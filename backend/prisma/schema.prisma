@@ -227,6 +227,29 @@ model ConfiguracaoOperacional {
   @@schema("public")
 }
 
+/// Effective operating capabilities at a canonical point of sale. Legacy fields remain untouched until cutover.
+model ConfiguracaoPontoVenda {
+  id String @id @default(cuid())
+  cervejariaId String
+  pontoVendaId String @unique
+  tapsEnabled Boolean
+  inventoryEnabled Boolean
+  kitchenEnabled Boolean
+  kitchenItemsChargeAtLaunch Boolean
+  allowCloseComandaWithPendingKitchenOrders Boolean
+  whatsappPedidoProntoEnabled Boolean
+  whatsappPedidoProntoNaCozinha Boolean
+  quantidadeMesas Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pontoVenda PontoVenda @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+
+  @@unique([id, cervejariaId, pontoVendaId])
+  @@schema("quiosque")
+  @@unique([pontoVendaId, cervejariaId])
+}
+
 model Trailer {
   id            String   @id @default(cuid())
   nome          String
@@ -324,10 +347,12 @@ model Produto {
   ordem            Int     @default(0)
   ativo        Boolean       @default(true)
   cervejariaId String
+  pontoVendaId String?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
   cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda? @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
   precos     Preco[]
   taps       Tap[]
   montagens  TapMontagem[]
@@ -337,12 +362,15 @@ model Produto {
   cardapios  CardapioProduto[]
   gruposOpcionais ProdutoOpcionalGrupo[]
   opcionaisVinculados ProdutoOpcionalVinculo[]
+  opcionalVinculosPdv ProdutoOpcionalVinculo[] @relation("VinculoOpcionalProdutoPdv")
+  cardapioProdutosPdv CardapioProduto[] @relation("CardapioProdutoPdvProduto")
   opcionaisEstoque ProdutoOpcional[] @relation("ProdutoOpcionalEstoque")
    saldosEstoqueOperacao InventoryBalance[]
    movimentosEstoqueOperacao InventoryMovement[]
   sessoesCaixaOperacao SessaoCaixaProdutoOperacao[]
 
   @@index([cervejariaId])
+  @@unique([id, cervejariaId, pontoVendaId])
 
   @@schema("public")
 }
@@ -401,6 +429,7 @@ model ProdutoOpcional {
 model Opcional {
   id          String   @id @default(cuid())
   cervejariaId String
+  pontoVendaId String?
   nome        String
   preco       Decimal  @default(0) @db.Decimal(10, 2)
   ativo       Boolean  @default(true)
@@ -408,10 +437,13 @@ model Opcional {
   updatedAt   DateTime @updatedAt
 
   cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda? @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
   produtos ProdutoOpcionalVinculo[]
+  produtosPdv ProdutoOpcionalVinculo[] @relation("VinculoOpcionalOpcionalPdv")
   itens ItemComandaOpcional[]
 
   @@unique([cervejariaId, nome])
+  @@unique([id, cervejariaId, pontoVendaId])
   @@index([cervejariaId, ativo, nome])
   @@schema("public")
 }
@@ -420,9 +452,13 @@ model ProdutoOpcionalVinculo {
   id String @id @default(cuid())
   produtoId String
   opcionalId String
+  cervejariaId String?
+  pontoVendaId String?
   ordem Int @default(0)
   produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
   opcional Opcional @relation(fields: [opcionalId], references: [id], onDelete: Cascade)
+  produtoPdv Produto? @relation("VinculoOpcionalProdutoPdv", fields: [produtoId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
+  opcionalPdv Opcional? @relation("VinculoOpcionalOpcionalPdv", fields: [opcionalId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
   @@unique([produtoId, opcionalId])
   @@index([produtoId, ordem])
   @@schema("public")
@@ -560,15 +596,19 @@ model Cardapio {
   /// Indica que a composição operacional escolhe os volumes de chope explicitamente.
   chopeVolumesConfigurados Boolean @default(false)
   cervejariaId String
+  pontoVendaId String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   cervejaria Cervejaria       @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda? @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
   produtos   CardapioProduto[]
+  produtosPdv CardapioProduto[] @relation("CardapioProdutoPdvCardapio")
   eventos    Evento[]
   sessoesCaixaOperacao SessaoCaixaOperacao[]
 
   @@index([cervejariaId])
+  @@unique([id, cervejariaId, pontoVendaId])
 
   @@schema("public")
 }
@@ -577,12 +617,16 @@ model CardapioProduto {
   id         String  @id @default(cuid())
   cardapioId String
   produtoId  String
+  cervejariaId String?
+  pontoVendaId String?
   /// 0 para produtos unitários; chopes usam um registro por volume vendido.
   volumeMl   Int     @default(0)
   precoUnit  Decimal @db.Decimal(10, 2)
 
   cardapio Cardapio @relation(fields: [cardapioId], references: [id], onDelete: Cascade)
   produto  Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  cardapioPdv Cardapio? @relation("CardapioProdutoPdvCardapio", fields: [cardapioId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
+  produtoPdv Produto? @relation("CardapioProdutoPdvProduto", fields: [produtoId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
 
   @@unique([cardapioId, produtoId, volumeMl])
   @@index([cardapioId])
@@ -952,6 +996,10 @@ model PontoVenda {
   ocorrenciasOperacionais OcorrenciaOperacional[]
   pdvMigrationMaps PdvMigrationMap[]
    saldosEstoque InventoryBalance[]
+  configuracaoPdv ConfiguracaoPontoVenda?
+  produtos Produto[]
+  cardapios Cardapio[]
+  opcionais Opcional[]
    movimentosEstoque InventoryMovement[]
 
   @@unique([id, cervejariaId])
@@ -1098,6 +1146,7 @@ model PdvMigrationMap {
   transformVersion Int
   payloadHash String
   lastRunId String
+  sourcePayload Json?
   lastBatchId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

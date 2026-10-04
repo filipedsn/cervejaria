@@ -3,6 +3,7 @@ import { cardapioProdutoVolumeKey, mapPrecosCardapioOperacao } from '../cardapio
 import { operacaoUsaCardapio } from '../cardapio-toggle.js';
 import { isBebidaChopeOperacao, isChopeConfiguravelNaTapOperacao } from '../produto-utils.js';
 import { toNumber } from '../utils.js';
+import { resolveEffectivePrice } from './preco-efetivo.js';
 
 type AplicarCardapioTurnoResult = { ok: true; count: number } | { error: string };
 import {
@@ -24,7 +25,7 @@ function enriquecerProdutosOperacao<
     const turnoPreco = precosTurno?.get(chave);
     const templatePreco = precosTemplate?.get(chave);
     const precoCatalogo = toNumber(p.precos?.find((preco) => preco.volumeMl === (volumeMl || 1))?.preco ?? 0);
-    const precoEfetivo = turnoPreco ?? templatePreco ?? precoCatalogo;
+    const precoEfetivo = resolveEffectivePrice(turnoPreco, templatePreco, precoCatalogo).value;
     return {
       ...p,
       gruposOpcionais: ((p as T & { opcionaisVinculados?: Array<{ opcional: { id: string; nome: string; preco: unknown } }> }).opcionaisVinculados ?? []).length ? [{ id: 'opcionais', nome: 'Opcionais', obrigatorio: false, maximo: 99, opcoes: (p as T & { opcionaisVinculados: Array<{ opcional: { id: string; nome: string; preco: unknown } }> }).opcionaisVinculados.map(({ opcional }) => ({ id: opcional.id, nome: opcional.nome, precoAdicional: toNumber(opcional.preco) })) }] : [],

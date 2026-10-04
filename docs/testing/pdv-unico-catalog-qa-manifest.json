@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "baseline": {
+    "commit": "06b23a9c93e3d9e54c106d173f7d6921bf3e7138",
+    "schemaPath": "backend/prisma/schema.prisma",
+    "schemaSha256": "53d7ffb037c43da4031b3de64798d32681a492ec3998e5ac9e831bcfc427eba7",
+    "historicalManifestPath": "docs/testing/pdv-unico-qa-migration-manifest.json",
+    "historicalManifestSha256": "cacc244ff397d53699ad50b0c63ae476ae220bb3d3a7bd935636571e65f8970f",
+    "coreManifestPath": "docs/testing/pdv-unico-migrator-qa-manifest.json",
+    "coreManifestSha256": "c0b40d002ab349165c761ca4bec415a8d248f42ed6461999ab46e1fcd80073cf",
+    "coreMigrationName": "20261003210000_additive_pdv_operational_core",
+    "coreCandidateManifestPath": "docs/testing/pdv-unico-core-qa-manifest.json",
+    "coreCandidateManifestSha256": "15788cbc1037faadd6b9b6ef9d5efe6cec98fac239576a91176fcaa01fcd8bc9"
+  },
+  "delivery": {
+    "schemaSha256": "211a9062506d380d9d18e63089d4e4d2358e6f8978d55a364f5a6413f5899bff",
+    "migrationName": "20261003220000_pdv_catalog_configuration",
+    "migrationPath": "backend/prisma/migrations/20261003220000_pdv_catalog_configuration/migration.sql",
+    "migrationSha256": "66d2b0ac0d37319c0d7292d24bfc0a2d5290a8844616fae5d49b6a9be96908a4"
+  },
+  "codeCandidates": [
+    {
+      "path": "backend/scripts/pdv-unico-catalog-source.ts",
+      "sha256": "ced4501f981c577343c2760eb5129c8b3b222392ec6441837e67cfec3e61917c"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-catalog-transform.ts",
+      "sha256": "2135153e67fa15484a09444d3c9c614927634556d4d416b1732b020ed41fd514"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-catalog-transform.test.ts",
+      "sha256": "04493b7e588c196e6fdd882f6ace15f2f7ce3635731a300e45c3bc320908f247"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-catalog-migrator.ts",
+      "sha256": "4b2fa19b6aa636bfb2d89b485e4f35761866c7170ee1792e8f868b64fa90f7b5"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-catalog-migrator.isolated.test.mjs",
+      "sha256": "362ce6a1474892c5f3fb160142227a64ee4f90191916f6954da1f7fbda7a2c9b"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-catalog-disposable-qa.mjs",
+      "sha256": "1744b034c8138bc2dacb3254013aadd99049a7c0263c6e4fadbe4a5bc690bff7"
+    },
+    {
+      "path": "backend/scripts/inventory-pdv-unico-dev.ts",
+      "sha256": "66cf4a1f8dd1d152c9144a1c8bd98023d74650895c8a736b04f252ea5c614f39"
+    },
+    {
+      "path": "backend/src/lib/operacao/preco-efetivo.ts",
+      "sha256": "0858815e07649db7d1c9c3c05fc00101754ad53ff94b9989ec9f79514f82acc6"
+    },
+    {
+      "path": "backend/src/lib/operacao/sessao-cardapio.ts",
+      "sha256": "eb8d51b358417f266ee8b5e6b9fe6a31bd24b6546288ab883a836bad2ad06203"
+    },
+    {
+      "path": "backend/package.json",
+      "sha256": "970511c5533186b0d752f488181736ae9a8d92980f1509f392b284bfe8ce6b6d"
+    }
+  ],
+  "manifestSha256": "686826dddab96e970ba19cad8c7dceb202c066d1cb4e1163fa6609f97f198b5e"
+}
