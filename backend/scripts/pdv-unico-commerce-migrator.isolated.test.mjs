@@ -111,6 +111,8 @@ async function proveLegacyOrderContextPreflight(args) {
     const eventCommand = await legacyDb.comanda.create({ data: { id: `preflight-event-command-${runId}`, origem: 'EVENTO', eventoId: sourceEvent.id, status: 'ABERTA', total: '0.00', createdAt: new Date('2026-12-04T12:00:00.000Z'), updatedAt: new Date('2026-12-04T12:00:00.000Z') } });
     const eventOrderWithMovement = await legacyDb.pedidoOperacao.create({ data: { id: `preflight-event-order-a-${runId}`, cervejariaId: eventCompany.id, comandaId: eventCommand.id, pontoVendaId: null, numero: 1, diaOperacional: new Date('2026-12-04T00:00:00.000Z'), status: 'RECEBIDO', criadoPorId: eventOperator.id, createdAt: new Date('2026-12-04T12:01:00.000Z'), updatedAt: new Date('2026-12-04T12:02:00.000Z') } });
     const eventOrderWithoutMovement = await legacyDb.pedidoOperacao.create({ data: { id: `preflight-event-order-b-${runId}`, cervejariaId: eventCompany.id, comandaId: eventCommand.id, pontoVendaId: null, numero: 2, diaOperacional: new Date('2026-12-04T00:00:00.000Z'), status: 'EM_PREPARO', criadoPorId: eventOperator.id, createdAt: new Date('2026-12-04T12:03:00.000Z'), updatedAt: new Date('2026-12-04T12:04:00.000Z') } });
+    const eventCommandOrderLinked = await legacyDb.comanda.create({ data: { id: `preflight-event-command-order-linked-${runId}`, origem: 'EVENTO', eventoId: sourceEvent.id, status: 'ABERTA', total: '0.00' } });
+    const eventOrderAlreadyLinked = await legacyDb.pedidoOperacao.create({ data: { id: `preflight-event-order-linked-${runId}`, cervejariaId: eventCompany.id, comandaId: eventCommandOrderLinked.id, pontoVendaId: null, numero: 5, diaOperacional: new Date('2026-12-04T00:00:00.000Z'), status: 'RECEBIDO', criadoPorId: eventOperator.id, createdAt: new Date('2026-12-04T12:05:00.000Z'), updatedAt: new Date('2026-12-04T12:06:00.000Z') } });
     const commerceDir = path.join(bundle.migrationsDir, manifest.delivery.migrationName);
     await mkdir(commerceDir, { recursive: true });
     await writeFile(path.join(commerceDir, 'migration.sql'), commerceSql);
@@ -137,12 +139,15 @@ async function proveLegacyOrderContextPreflight(args) {
     assert.equal((await runPdvBusinessMigration({ db: legacyDb, companyId: eventCompany.id, runId: eventBusinessRunId })).status, 'COMPLETED');
     const eventPoint = await legacyDb.pontoVenda.findFirstOrThrow({ where: { cervejariaId: eventCompany.id } });
     assert.equal(eventPoint.id, eventTrailer.id, 'a sole Trailer creates a stable canonical PDV for Event-only tenant');
+    await legacyDb.pedidoOperacao.update({ where: { id: eventOrderAlreadyLinked.id }, data: { pontoVendaId: eventPoint.id, updatedAt: new Date('2026-12-04T12:06:00.000Z') } });
     const eventCatalogRunId = `preflight-event-catalog-${runId}`;
     assert.equal((await runPdvCatalogMigration({ db: legacyDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: eventCatalogRunId })).status, 'COMPLETED');
     const eventStockMovement = await legacyDb.inventoryMovement.create({ data: { id: `preflight-event-movement-${runId}`, cervejariaId: eventCompany.id, pontoVendaId: eventPoint.id, produtoId: eventProduct.id, pedidoId: eventOrderWithMovement.id, tipo: 'SAIDA_VENDA', quantidade: '0.375', registradoPorId: eventOperator.id, createdAt: new Date('2026-12-04T12:05:00.000Z') } });
     const legacyLinkedEventCommand = await legacyDb.comanda.create({ data: { id: `preflight-event-legacy-command-${runId}`, origem: 'EVENTO', eventoId: sourceEvent.id, pontoVendaId: eventPoint.id, status: 'ABERTA', total: '0.00', createdAt: new Date('2026-12-04T12:06:00.000Z'), updatedAt: new Date('2026-12-04T12:06:00.000Z') } });
     const legacyLinkedEventOrder = await legacyDb.pedidoOperacao.create({ data: { id: `preflight-event-legacy-order-${runId}`, cervejariaId: eventCompany.id, comandaId: legacyLinkedEventCommand.id, pontoVendaId: null, numero: 3, diaOperacional: new Date('2026-12-04T00:00:00.000Z'), status: 'RECEBIDO', criadoPorId: eventOperator.id, createdAt: new Date('2026-12-04T12:07:00.000Z'), updatedAt: new Date('2026-12-04T12:08:00.000Z') } });
     const legacyLinkedEventMovement = await legacyDb.inventoryMovement.create({ data: { id: `preflight-event-legacy-movement-${runId}`, cervejariaId: eventCompany.id, pontoVendaId: eventPoint.id, produtoId: eventProduct.id, pedidoId: legacyLinkedEventOrder.id, tipo: 'SAIDA_VENDA', quantidade: '0.250', registradoPorId: eventOperator.id, createdAt: new Date('2026-12-04T12:09:00.000Z') } });
+    const legacyCommandOrderLinked = await legacyDb.comanda.create({ data: { id: `preflight-event-legacy-command-order-linked-${runId}`, origem: 'EVENTO', eventoId: sourceEvent.id, pontoVendaId: eventPoint.id, status: 'ABERTA', total: '0.00' } });
+    const legacyOrderAlreadyLinked = await legacyDb.pedidoOperacao.create({ data: { id: `preflight-event-legacy-order-linked-${runId}`, cervejariaId: eventCompany.id, comandaId: legacyCommandOrderLinked.id, pontoVendaId: eventPoint.id, numero: 4, diaOperacional: new Date('2026-12-04T00:00:00.000Z'), status: 'EM_PREPARO', criadoPorId: eventOperator.id, createdAt: new Date('2026-12-04T12:10:00.000Z'), updatedAt: new Date('2026-12-04T12:11:00.000Z') } });
     const legacyEventPreparationPayload = (snapshot, orderId) => {
       const order = snapshot.orders.find((row) => row.id === orderId);
       return { order: { ...order, pontoVendaId: null, pontoVenda: null }, command: { id: order.comanda.id, origem: order.comanda.origem, eventoId: order.comanda.eventoId, pontoVendaId: order.comanda.pontoVendaId, evento: order.comanda.evento, pontoVenda: order.comanda.pontoVenda }, movements: snapshot.movements.filter((row) => row.pedidoId === orderId), authoritativePointId: eventPoint.id };
@@ -157,9 +162,52 @@ async function proveLegacyOrderContextPreflight(args) {
     assert.equal((await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: legacyLinkedEventOrder.id } })).pontoVendaId, null, 'foreign-tenant rejection leaves the order unmodified');
     await legacyDb.comanda.update({ where: { id: legacyLinkedEventCommand.id }, data: { pontoVendaId: eventPoint.id } });
     console.log('QA_STAGE=legacy-event-command-pdv-regression-fixture; old-classifier-runtime-block=KITCHEN_ORDER_COMMERCE_MAP_MISSING (reproduced before fix); map=absent');
+    const sourceBeforeEventPreparation = await readPdvKitchenOrderPreparationSnapshot(legacyDb, eventCompany.id);
+    const alreadyLinkedSourceBeforePreparation = plain(sourceBeforeEventPreparation.orders.find((row) => row.id === eventOrderAlreadyLinked.id));
+    const fourPdvStateOrderIds = new Set([eventOrderWithMovement.id, eventOrderAlreadyLinked.id, legacyLinkedEventOrder.id, legacyOrderAlreadyLinked.id]);
+    assert.deepEqual(new Map(sourceBeforeEventPreparation.orders.filter((row) => fourPdvStateOrderIds.has(row.id)).map((row) => [row.id, [row.comanda.pontoVendaId, row.pontoVendaId]])), new Map([
+      [eventOrderWithMovement.id, [null, null]],
+      [eventOrderAlreadyLinked.id, [null, eventPoint.id]],
+      [legacyLinkedEventOrder.id, [eventPoint.id, null]],
+      [legacyOrderAlreadyLinked.id, [eventPoint.id, eventPoint.id]],
+    ]), 'pre-commercial fixtures cover command/order PDV states null/null, null/set, set/null and set/set');
     const eventPreparationRunId = `preflight-event-preparation-${runId}`;
     const eventPreparation = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: eventPreparationRunId });
     assert.equal(eventPreparation.status, 'COMPLETED', JSON.stringify(eventPreparation));
+    const eventOrderIds = [eventOrderWithMovement.id, eventOrderWithoutMovement.id, eventOrderAlreadyLinked.id, legacyLinkedEventOrder.id, legacyOrderAlreadyLinked.id].sort();
+    const eventPreparationMaps = await legacyDb.pdvMigrationMap.findMany({ where: { sourceType: PDV_KITCHEN_ORDER_PREPARATION_SOURCE_TYPE, sourceId: { in: eventOrderIds } }, orderBy: { sourceId: 'asc' } });
+    assert.deepEqual(eventPreparationMaps.map((row) => row.sourceId), eventOrderIds, 'preparation certifies every eligible EVENTO order, including an already-correct PDV that needs no write');
+    const evidenceByOrder = new Map(eventPreparationMaps.map((row) => [row.sourceId, row.sourcePayload.orderLinkEvidence]));
+    assert.deepEqual(evidenceByOrder.get(eventOrderWithMovement.id), { sourcePdvId: null, origin: 'UNLINKED_SOURCE' });
+    assert.deepEqual(evidenceByOrder.get(eventOrderAlreadyLinked.id), { sourcePdvId: eventPoint.id, origin: 'PREEXISTING_SOURCE_LINK' });
+    assert.deepEqual(evidenceByOrder.get(legacyLinkedEventOrder.id), { sourcePdvId: null, origin: 'UNLINKED_SOURCE' });
+    assert.deepEqual(evidenceByOrder.get(legacyOrderAlreadyLinked.id), { sourcePdvId: eventPoint.id, origin: 'PREEXISTING_SOURCE_LINK' });
+    assert.deepEqual(new Map(eventPreparationMaps.map((row) => [row.sourceId, row.sourcePayload.commandLinkEvidence])).get(eventOrderAlreadyLinked.id), { sourcePdvId: null, origin: 'UNLINKED_SOURCE' });
+    assert.deepEqual(new Map(eventPreparationMaps.map((row) => [row.sourceId, row.sourcePayload.commandLinkEvidence])).get(eventOrderWithMovement.id), { sourcePdvId: null, origin: 'UNLINKED_SOURCE' });
+    assert.deepEqual(new Map(eventPreparationMaps.map((row) => [row.sourceId, row.sourcePayload.commandLinkEvidence])).get(legacyOrderAlreadyLinked.id), { sourcePdvId: eventPoint.id, origin: 'LEGACY_SOURCE_LINK' });
+    assert.deepEqual(new Map(eventPreparationMaps.map((row) => [row.sourceId, row.sourcePayload.commandLinkEvidence])).get(legacyLinkedEventOrder.id), { sourcePdvId: eventPoint.id, origin: 'LEGACY_SOURCE_LINK' });
+    const preparedAlreadyLinked = await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: eventOrderAlreadyLinked.id }, select: { id: true, pontoVendaId: true, status: true, createdAt: true, updatedAt: true } });
+    assert.deepEqual([preparedAlreadyLinked.id, preparedAlreadyLinked.pontoVendaId, preparedAlreadyLinked.status, preparedAlreadyLinked.createdAt.toISOString(), preparedAlreadyLinked.updatedAt.toISOString()], [eventOrderAlreadyLinked.id, eventPoint.id, eventOrderAlreadyLinked.status, eventOrderAlreadyLinked.createdAt.toISOString(), eventOrderAlreadyLinked.updatedAt.toISOString()], 'certifying an existing correct order PDV does not rewrite order fields or timestamps');
+    assert.deepEqual(plain((await readPdvKitchenOrderPreparationSnapshot(legacyDb, eventCompany.id)).orders.find((row) => row.id === eventOrderAlreadyLinked.id)), alreadyLinkedSourceBeforePreparation, 'already-linked order fields, relation snapshots and timestamps are byte-equivalent across certification');
+    const eventOrderMapBeforeRecovery = eventPreparationMaps.find((row) => row.sourceId === eventOrderWithMovement.id);
+    assert.equal(eventOrderMapBeforeRecovery.lastRunId, eventPreparationRunId, 'lastRunId points to the exact preparation run used for the recovery test');
+    const eventCheckpointBeforeTamper = plain((await legacyDb.pdvMigrationRun.findUniqueOrThrow({ where: { id: eventPreparationRunId } })).checkpoint);
+    const eventBatchesBeforeTamper = plain(await legacyDb.pdvMigrationBatch.findMany({ where: { runId: eventPreparationRunId }, orderBy: { sequence: 'asc' } }));
+    const originalTamperFixture = await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: eventOrderWithMovement.id }, select: { observacao: true, updatedAt: true } });
+    await legacyDb.pedidoOperacao.update({ where: { id: eventOrderWithMovement.id }, data: { observacao: 'temporary certification tamper' } });
+    const blockedBySourceTamper = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: eventPreparationRunId });
+    assert.equal(blockedBySourceTamper.status, 'BLOCKED', 'changed source content blocks the same certified preparation run');
+    assert.equal((await legacyDb.pdvMigrationRun.findUniqueOrThrow({ where: { id: eventPreparationRunId } })).status, 'BLOCKED');
+    const stillDivergent = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: eventPreparationRunId });
+    assert.equal(stillDivergent.status, 'BLOCKED', 'the run remains blocked while the source divergence exists');
+    assert.equal(stillDivergent.code, 'RUN_SCOPE_OR_SNAPSHOT_MISMATCH', 'the still-divergent source is rejected by full snapshot revalidation');
+    assert.deepEqual(plain((await legacyDb.pdvMigrationRun.findUniqueOrThrow({ where: { id: eventPreparationRunId } })).checkpoint), eventCheckpointBeforeTamper, 'checkpoint remains at its original confirmed prefix while source is divergent');
+    await legacyDb.pedidoOperacao.update({ where: { id: eventOrderWithMovement.id }, data: { observacao: originalTamperFixture.observacao, updatedAt: originalTamperFixture.updatedAt } });
+    const eventPreparationRecovered = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: eventPreparationRunId });
+    assert.equal(eventPreparationRecovered.status, 'COMPLETED', `same BLOCKED run resumes only after original source content is restored and fully revalidated: ${JSON.stringify(eventPreparationRecovered)}`);
+    assert.deepEqual(plain(eventPreparationRecovered.checkpoint), eventCheckpointBeforeTamper, 'recovery reuses the existing confirmed checkpoint and receipts without rewriting them');
+    assert.deepEqual(plain(await legacyDb.pdvMigrationBatch.findMany({ where: { runId: eventPreparationRunId }, orderBy: { sequence: 'asc' } })), eventBatchesBeforeTamper, 'same-run recovery does not rewrite historical confirmed batches or receipts');
+    assert.equal((await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: `preflight-event-preparation-new-run-${runId}` })).status, 'COMPLETED', 'new run revalidates and reuses stable maps after same-run recovery');
     const legacyPreparationMap = await legacyDb.pdvMigrationMap.findUniqueOrThrow({ where: { sourceType_sourceId: { sourceType: PDV_KITCHEN_ORDER_PREPARATION_SOURCE_TYPE, sourceId: legacyLinkedEventOrder.id } } });
     assert.deepEqual(legacyPreparationMap.sourcePayload.commandLinkEvidence, { sourcePdvId: eventPoint.id, origin: 'LEGACY_SOURCE_LINK' }, 'preparation hash preserves the validated legacy source-link identity and provenance');
     const legacyWrongPdvSnapshot = { ...legacySourceSnapshot, orders: legacySourceSnapshot.orders.map((row) => row.id === legacyLinkedEventOrder.id ? { ...row, comanda: { ...row.comanda, pontoVendaId: 'wrong-pdv', pontoVenda: { id: 'wrong-pdv', cervejariaId: eventCompany.id } } } : row) };
@@ -180,7 +228,7 @@ async function proveLegacyOrderContextPreflight(args) {
     assert.equal((await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: order.id } })).pontoVendaId, orderBeforeFailure.pontoVendaId, 'intra-batch write was rolled back');
     const failedOrderAfterRollback = await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: movementlessOrder.id } });
     assert.equal(failedOrderAfterRollback.pontoVendaId, movementlessOrderBeforeFailure.pontoVendaId, 'the exact order whose write threw remains unlinked');
-    assert.equal(await legacyDb.pdvMigrationMap.count({ where: { sourceType: 'PEDIDO_COZINHA_PDV_PREPARATION_V3', sourceId: movementlessOrder.id } }), 0, 'failed order has no map');
+    assert.equal(await legacyDb.pdvMigrationMap.count({ where: { sourceType: PDV_KITCHEN_ORDER_PREPARATION_SOURCE_TYPE, sourceId: movementlessOrder.id } }), 0, 'failed order has no map');
     const rollbackBatches = await legacyDb.pdvMigrationBatch.findMany({ where: { runId: preparationRunId }, orderBy: { sequence: 'asc' } });
     assert.equal(rollbackBatches.length, 1, 'failed second order has no partial batch');
     assert.equal(rollbackBatches[0].status, 'CONFIRMED');
@@ -243,11 +291,11 @@ async function proveLegacyOrderContextPreflight(args) {
     assert.equal(preparationLockObserved, true, 'second preparation call is visibly waiting for PostgreSQL scope advisory lock');
     assert.deepEqual((await Promise.all([preparationFirst, preparationSecond])).map((result) => result.status), ['COMPLETED', 'COMPLETED']);
     assert.equal((await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: pendingRaceOrder.id } })).pontoVendaId, preparationRacePoint.id, 'concurrent preparation assigns the still-pending order once');
-    assert.equal(await legacyDb.pdvMigrationMap.count({ where: { sourceType: 'PEDIDO_COZINHA_PDV_PREPARATION_V3', sourceId: pendingRaceOrder.id } }), 1, 'concurrent callers do not duplicate stable map');
+    assert.equal(await legacyDb.pdvMigrationMap.count({ where: { sourceType: PDV_KITCHEN_ORDER_PREPARATION_SOURCE_TYPE, sourceId: pendingRaceOrder.id } }), 1, 'concurrent callers do not duplicate stable map');
     for (const concurrentRunId of [`preflight-order-concurrent-a-${runId}`, `preflight-order-concurrent-b-${runId}`]) {
       const concurrentRun = await legacyDb.pdvMigrationRun.findUniqueOrThrow({ where: { id: concurrentRunId } });
       assert.equal(await legacyDb.pdvMigrationBatch.count({ where: { runId: concurrentRunId } }), concurrentRun.checkpoint.totalRecords, 'each serialized run has a complete receipt sequence');
-      assert.equal(concurrentRun.checkpoint.completedSourceKeys.filter((key) => key === `PEDIDO_COZINHA_PDV_PREPARATION_V3:${pendingRaceOrder.id}`).length, 1, 'checkpoint includes the pending order once');
+      assert.equal(concurrentRun.checkpoint.completedSourceKeys.filter((key) => key === `${PDV_KITCHEN_ORDER_PREPARATION_SOURCE_TYPE}:${pendingRaceOrder.id}`).length, 1, 'checkpoint includes the pending order once');
     }
 
     // A prior point map cannot resolve a later-created second PDV, even for a
@@ -348,11 +396,13 @@ async function proveLegacyOrderContextPreflight(args) {
       console.log('QA_STAGE=event-preparation-v1-regression-demonstrated; legacy-hash=diverged; confirmed-command-pdv=written');
       const eventCheckpointBeforeRevalidation = plain((await migratedDb.pdvMigrationRun.findUniqueOrThrow({ where: { id: eventPreparationRunId } })).checkpoint);
       const eventPreparationAfterCommerce = await runPdvKitchenOrderContextPreparation({ db: migratedDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: eventPreparationRunId });
-      assert.equal(eventPreparationAfterCommerce.status, 'COMPLETED', `confirmed commercial Comanda link is normalized by preparation V3: ${JSON.stringify(eventPreparationAfterCommerce)}`);
-      assert.deepEqual(plain(eventPreparationAfterCommerce.checkpoint), eventCheckpointBeforeRevalidation, 'post-commerce certification reuses the original V3 receipts without rewriting checkpoint');
-      assert.equal((await runPdvKitchenOrderContextPreparation({ db: migratedDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: `preflight-event-preparation-new-run-${runId}` })).status, 'COMPLETED', 'new V3 run reuses the stable preparation maps after commerce');
-      const eventOrdersAfterCommerce = await migratedDb.pedidoOperacao.findMany({ where: { id: { in: [eventOrderWithMovement.id, eventOrderWithoutMovement.id, legacyLinkedEventOrder.id] } }, orderBy: { id: 'asc' }, select: { id: true, pontoVendaId: true, status: true, createdAt: true, updatedAt: true } });
-      assert.deepEqual(eventOrdersAfterCommerce.map((row) => [row.id, row.pontoVendaId, row.status, row.createdAt.toISOString(), row.updatedAt.toISOString()]), [eventOrderWithMovement, eventOrderWithoutMovement, legacyLinkedEventOrder].sort((a,b) => a.id.localeCompare(b.id)).map((row) => [row.id, eventPoint.id, row.status, row.createdAt.toISOString(), row.updatedAt.toISOString()]), 'Event order identity, status and timestamps survive both scopes');
+      assert.equal(eventPreparationAfterCommerce.status, 'COMPLETED', `confirmed commercial Comanda link is normalized by preparation V4: ${JSON.stringify(eventPreparationAfterCommerce)}`);
+      assert.deepEqual(plain(eventPreparationAfterCommerce.checkpoint), eventCheckpointBeforeRevalidation, 'post-commerce certification reuses the original V4 receipts without rewriting checkpoint');
+      assert.equal((await runPdvKitchenOrderContextPreparation({ db: migratedDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: `preflight-event-preparation-new-run-${runId}` })).status, 'COMPLETED', 'new V4 run reuses the stable preparation maps after commerce');
+      const eventOrdersAfterCommerce = await migratedDb.pedidoOperacao.findMany({ where: { id: { in: eventOrderIds } }, orderBy: { id: 'asc' }, select: { id: true, pontoVendaId: true, status: true, createdAt: true, updatedAt: true } });
+      assert.deepEqual(eventOrdersAfterCommerce.map((row) => [row.id, row.pontoVendaId, row.status, row.createdAt.toISOString(), row.updatedAt.toISOString()]), [eventOrderWithMovement, eventOrderWithoutMovement, eventOrderAlreadyLinked, legacyLinkedEventOrder, legacyOrderAlreadyLinked].sort((a,b) => a.id.localeCompare(b.id)).map((row) => [row.id, eventPoint.id, row.status, row.createdAt.toISOString(), row.updatedAt.toISOString()]), 'all four initial command/order PDV combinations retain IDs, status and timestamps across both migrations');
+      const eventOrdersAfterCommercialSnapshot = await readPdvKitchenOrderPreparationSnapshot(migratedDb, eventCompany.id);
+      assert.deepEqual(new Map(eventOrdersAfterCommercialSnapshot.orders.filter((row) => eventOrderIds.includes(row.id)).map((row) => [row.id, [row.comanda.pontoVendaId, row.pontoVendaId]])), new Map(eventOrderIds.map((orderId) => [orderId, [eventPoint.id, eventPoint.id]])), 'commercial migration and preparation revalidation leave all four source link combinations canonically linked');
       const eventMovementAfterCommerce = await migratedDb.inventoryMovement.findUniqueOrThrow({ where: { id: eventStockMovement.id } });
       assert.deepEqual([eventMovementAfterCommerce.id, eventMovementAfterCommerce.pedidoId, eventMovementAfterCommerce.pontoVendaId, eventMovementAfterCommerce.quantidade.toString(), eventMovementAfterCommerce.createdAt.toISOString()], [eventStockMovement.id, eventOrderWithMovement.id, eventPoint.id, '0.375', eventStockMovement.createdAt.toISOString()]);
       const legacyEventMovementAfterCommerce = await migratedDb.inventoryMovement.findUniqueOrThrow({ where: { id: legacyLinkedEventMovement.id } });
@@ -392,7 +442,7 @@ async function proveLegacyOrderContextPreflight(args) {
       assert.equal((await migratedDb.inventoryMovement.findUniqueOrThrow({ where: { id: movement.id } })).quantidade.toString(), '0.125');
       assert.equal((await runPdvCommerceMigration({ db: migratedDb, companyId: company.id, pointId: point.id, runId: commerceRunId })).status, 'COMPLETED', 'commerce same-run revalidation');
       assert.equal((await runPdvCommerceMigration({ db: migratedDb, companyId: company.id, pointId: point.id, runId: `preflight-commerce-replay-${runId}` })).status, 'COMPLETED', 'commerce new-run replay preserves prepared links');
-      console.log('QA_STAGE=post-preparation-commercial-scope-completed-and-replayed; scopes=business,catalog,preparation,commerce; orders=3; movements=2; legacy-origin=preserved');
+      console.log('QA_STAGE=post-preparation-commercial-scope-completed-and-replayed; scopes=business,catalog,preparation,commerce; orders=5; movements=2; pdv-combinations=4; same/new-run-recovery=verified');
     } finally { await migratedDb.$disconnect(); }
   } finally {
     await legacyDb.$disconnect();

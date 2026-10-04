@@ -307,13 +307,14 @@ export async function runPdvCatalogMigration(options: { db: Db; companyId: strin
 async function writeKitchenPreparationTarget(tx: Db, item: any) {
   const current = await tx.pedidoOperacao.findUnique({ where: { id: item.destinationId }, select: { id: true, pontoVendaId: true, updatedAt: true } });
   if (!current) throw new PdvCatalogBlocker('KITCHEN_ORDER_DESTINATION_MISSING', item.type, item.id, 'Pedido de cozinha de origem ausente.');
+  if (current.pontoVendaId === item.destinationData.pontoVendaId) return false;
   if (current.pontoVendaId != null) throw new PdvCatalogBlocker('KITCHEN_ORDER_EXISTING_PDV_CONFLICT', item.type, item.id, 'Vínculo foi preenchido desde a fotografia; não será sobrescrito.');
   const changed = await tx.pedidoOperacao.updateMany({ where: { id: item.destinationId, pontoVendaId: null }, data: { pontoVendaId: item.destinationData.pontoVendaId, updatedAt: current.updatedAt } });
   if (changed.count !== 1) throw new PdvCatalogBlocker('KITCHEN_ORDER_WRITE_RACE', item.type, item.id, 'Pedido mudou durante a atribuição; lote será revertido.');
   return false;
 }
 
-/** Validate links added later by the commercial scope before V2 normalizes them. */
+/** Validate links added later by the commercial scope before V4 normalizes them. */
 async function confirmedCommercialKitchenCommands(tx: Db, snapshot: any, companyId: string, pointId: string, confirmedOccurrences: Record<string, { id: string; companyId: string; pointId: string }>) {
   const commandIds = [...new Set(snapshot.orders.map((row: any) => row.comandaId))];
   const maps = commandIds.length ? await tx.pdvMigrationMap.findMany({ where: { sourceType: 'COMANDA', sourceId: { in: commandIds } } }) : [];
@@ -332,7 +333,8 @@ async function confirmedCommercialKitchenCommands(tx: Db, snapshot: any, company
     if (!prepMap) continue;
     const payload = prepMap.sourcePayload as any;
     const evidence = payload?.commandLinkEvidence;
-    if (prepMap.cervejariaId !== companyId || prepMap.pontoVendaId !== pointId || prepMap.destinationType !== 'PEDIDO_COZINHA' || prepMap.destinationId !== order.id || prepMap.transformVersion !== PDV_KITCHEN_ORDER_PREPARATION_VERSION || prepMap.payloadHash !== canonicalPdvPayloadHash(payload) || payload?.command?.id !== order.comandaId || !evidence || !['LEGACY_SOURCE_LINK', 'UNLINKED_SOURCE'].includes(evidence.origin) || (evidence.origin === 'LEGACY_SOURCE_LINK' && evidence.sourcePdvId !== pointId) || (evidence.origin === 'UNLINKED_SOURCE' && evidence.sourcePdvId !== null)) throw new PdvCatalogBlocker('KITCHEN_ORDER_PREPARATION_ORIGIN_EVIDENCE_DIVERGED', 'PEDIDO_COZINHA', order.id, 'Mapa de preparação não preserva evidência íntegra da origem do vínculo PDV da comanda.');
+    const orderEvidence = payload?.orderLinkEvidence;
+    if (prepMap.cervejariaId !== companyId || prepMap.pontoVendaId !== pointId || prepMap.destinationType !== 'PEDIDO_COZINHA' || prepMap.destinationId !== order.id || prepMap.transformVersion !== PDV_KITCHEN_ORDER_PREPARATION_VERSION || prepMap.payloadHash !== canonicalPdvPayloadHash(payload) || payload?.command?.id !== order.comandaId || !evidence || !['LEGACY_SOURCE_LINK', 'UNLINKED_SOURCE'].includes(evidence.origin) || (evidence.origin === 'LEGACY_SOURCE_LINK' && evidence.sourcePdvId !== pointId) || (evidence.origin === 'UNLINKED_SOURCE' && evidence.sourcePdvId !== null) || !orderEvidence || !['PREEXISTING_SOURCE_LINK', 'UNLINKED_SOURCE'].includes(orderEvidence.origin) || (orderEvidence.origin === 'PREEXISTING_SOURCE_LINK' && orderEvidence.sourcePdvId !== pointId) || (orderEvidence.origin === 'UNLINKED_SOURCE' && orderEvidence.sourcePdvId !== null)) throw new PdvCatalogBlocker('KITCHEN_ORDER_PREPARATION_ORIGIN_EVIDENCE_DIVERGED', 'PEDIDO_COZINHA', order.id, 'Mapa de preparação não preserva evidência íntegra da origem dos vínculos PDV.');
     const [prepRun, prepBatch] = await Promise.all([
       tx.pdvMigrationRun.findUnique({ where: { id: prepMap.lastRunId } }),
       prepMap.lastBatchId ? tx.pdvMigrationBatch.findFirst({ where: { id: prepMap.lastBatchId, runId: prepMap.lastRunId } }) : null,
@@ -340,7 +342,10 @@ async function confirmedCommercialKitchenCommands(tx: Db, snapshot: any, company
     const prepCheckpoint = prepRun?.checkpoint as any;
     const prepReceipt = (prepBatch?.checkpoint as any)?.receipts?.find((row: any) => row.sourceType === PDV_KITCHEN_ORDER_PREPARATION_SOURCE_TYPE && row.sourceId === order.id);
     const prepDestinationHash = canonicalPdvPayloadHash({ pontoVendaId: pointId });
-    if (!prepRun || !['RUNNING', 'COMPLETED'].includes(prepRun.status) || prepRun.scope !== PDV_KITCHEN_ORDER_PREPARATION_SCOPE || prepRun.cervejariaId !== companyId || prepRun.pontoVendaId !== pointId || prepRun.transformVersion !== PDV_KITCHEN_ORDER_PREPARATION_VERSION || !(prepCheckpoint?.completedSourceKeys ?? []).includes(`${PDV_KITCHEN_ORDER_PREPARATION_SOURCE_TYPE}:${order.id}`) || prepBatch?.status !== 'CONFIRMED' || prepReceipt?.payloadHash !== prepMap.payloadHash || prepReceipt?.destinationHash !== prepDestinationHash || order.pontoVendaId !== pointId) throw new PdvCatalogBlocker('KITCHEN_ORDER_PREPARATION_ORIGIN_EVIDENCE_UNCONFIRMED', 'PEDIDO_COZINHA', order.id, 'Run, lote, recibo ou destino não confirma a evidência histórica da preparação.');
+    // BLOCKED runs may still contain an intact per-item receipt. A preparation replay
+    // can only restore that run after the shared checkpoint validator rechecks every
+    // source, dependency, map, batch, receipt and destination. Do not repair or rewrite it here.
+    if (!prepRun || !['RUNNING', 'COMPLETED', 'BLOCKED'].includes(prepRun.status) || prepRun.scope !== PDV_KITCHEN_ORDER_PREPARATION_SCOPE || prepRun.cervejariaId !== companyId || prepRun.pontoVendaId !== pointId || prepRun.transformVersion !== PDV_KITCHEN_ORDER_PREPARATION_VERSION || prepCheckpoint?.scope !== PDV_KITCHEN_ORDER_PREPARATION_SCOPE || prepCheckpoint?.companyId !== companyId || prepCheckpoint?.pointId !== pointId || prepCheckpoint?.transformVersion !== PDV_KITCHEN_ORDER_PREPARATION_VERSION || !(prepCheckpoint?.completedSourceKeys ?? []).includes(`${PDV_KITCHEN_ORDER_PREPARATION_SOURCE_TYPE}:${order.id}`) || prepBatch?.status !== 'CONFIRMED' || prepReceipt?.payloadHash !== prepMap.payloadHash || prepReceipt?.destinationHash !== prepDestinationHash || order.pontoVendaId !== pointId) throw new PdvCatalogBlocker('KITCHEN_ORDER_PREPARATION_ORIGIN_EVIDENCE_UNCONFIRMED', 'PEDIDO_COZINHA', order.id, 'Run, lote, recibo ou destino não confirma a evidência histórica da preparação.');
     const prior = sourceEvidenceByCommand.get(order.comandaId);
     if (prior && (prior.sourcePdvId !== evidence.sourcePdvId || prior.origin !== evidence.origin)) throw new PdvCatalogBlocker('KITCHEN_ORDER_COMMAND_ORIGIN_EVIDENCE_CONFLICT', 'COMANDA', order.comandaId, 'Pedidos da mesma comanda divergem sobre a origem do vínculo PDV.');
     sourceEvidenceByCommand.set(order.comandaId, evidence);

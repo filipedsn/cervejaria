@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateInventoryEnvironment } from './inventory-pdv-unico-env.ts';
+import { summarizeStockImpact } from './pdv-unico-dev-inventory-summary.mjs';
 import { readPinnedBlob } from './pdv-unico-migrator-qa-manifest.mjs';
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -112,10 +113,7 @@ try {
         cashMovementCentsByType: Object.fromEntries([...cashMovements.reduce((totals, row) => totals.set(row.type, (totals.get(row.type) ?? 0n) + BigInt(row.cents)), new Map())].sort(([a], [b]) => a.localeCompare(b)).map(([type, cents]) => [type, cents.toString()])),
       },
       stockImpact: {
-        balances: stockBalances.length,
-        balanceMilliUnits: stockBalances.reduce((sum, row) => sum + BigInt(row.milliUnits), 0n).toString(),
-        movements: stockMovements.length,
-        movementMilliUnitsByType: Object.fromEntries([...stockMovements.reduce((totals, row) => totals.set(row.type, (totals.get(row.type) ?? 0n) + BigInt(row.milliUnits)), new Map())].sort(([a], [b]) => a.localeCompare(b)).map(([type, value]) => [type, value.toString()])),
+        ...summarizeStockImpact(stockBalances, stockMovements),
       },
     }];
   }).sort((a, b) => a.companyId.localeCompare(b.companyId));

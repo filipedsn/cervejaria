@@ -38,6 +38,7 @@
     "qa:pdv-catalog-disposable": "node scripts/run-pdv-unico-catalog-disposable-qa.mjs",
     "qa:pdv-sessions-disposable": "node scripts/run-pdv-unico-session-disposable-qa.mjs",
     "inventory:pdv-dev:readonly": "node scripts/run-pdv-unico-dev-inventory-readonly.mjs",
+    "test:pdv-inventory-summary": "node --test scripts/pdv-unico-dev-inventory-summary.test.mjs",
     "qa:restore-config-owner": "node scripts/run-with-env.mjs development npx tsx qa/restore-config-owner.ts",
     "qa:suite": "node scripts/run-with-env.mjs development npx tsx qa/suite.ts",
     "qa:worker": "node scripts/run-with-env.mjs development npx tsx qa/worker.ts",

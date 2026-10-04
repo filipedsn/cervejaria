@@ -1,9 +1,9 @@
 import { canonicalPdvPayloadHash, PdvCatalogBlocker } from './pdv-unico-catalog-transform.js';
 
-// V3 binds the original command-PDV link and its provenance into immutable evidence.
-export const PDV_KITCHEN_ORDER_PREPARATION_SCOPE = 'PDV_PEDIDOS_COZINHA_CONTEXT_PREPARATION_V3';
-export const PDV_KITCHEN_ORDER_PREPARATION_VERSION = 3;
-export const PDV_KITCHEN_ORDER_PREPARATION_SOURCE_TYPE = 'PEDIDO_COZINHA_PDV_PREPARATION_V3';
+// V4 binds both original command-PDV and order-PDV links into immutable evidence.
+export const PDV_KITCHEN_ORDER_PREPARATION_SCOPE = 'PDV_PEDIDOS_COZINHA_CONTEXT_PREPARATION_V4';
+export const PDV_KITCHEN_ORDER_PREPARATION_VERSION = 4;
+export const PDV_KITCHEN_ORDER_PREPARATION_SOURCE_TYPE = 'PEDIDO_COZINHA_PDV_PREPARATION_V4';
 
 /** Read with the pre-commercial client: deliberately does not select Comanda.ocorrenciaId. */
 export async function readPdvKitchenOrderPreparationSnapshot(tx: any, companyId: string) {
@@ -79,9 +79,16 @@ export function buildPdvKitchenOrderPreparationItems(input: { companyId: string;
     if (movementPoints.size > 1) block('KITCHEN_ORDER_MULTIPLE_MOVEMENT_PDVS', order.id, 'Movimentos vinculados apontam para mais de um PDV.');
     if (movementPoints.size === 1 && !movementPoints.has(pointId)) block('KITCHEN_ORDER_MOVEMENT_PDV_CONFLICT', order.id, 'PDV do movimento diverge da atribuição autoritativa.');
 
-    if (order.pontoVendaId === pointId && !snapshot.preparedOrderIds.has(order.id)) continue;
+    const priorMap: any = snapshot.preparationMapsByOrderId?.get(order.id);
+    const priorOrderLinkEvidence = (priorMap?.sourcePayload as any)?.orderLinkEvidence;
+    const orderLinkEvidence = priorOrderLinkEvidence ?? {
+      sourcePdvId: order.pontoVendaId ?? null,
+      origin: order.pontoVendaId == null ? 'UNLINKED_SOURCE' : 'PREEXISTING_SOURCE_LINK',
+    };
+    if (!['UNLINKED_SOURCE', 'PREEXISTING_SOURCE_LINK'].includes(orderLinkEvidence.origin) || (orderLinkEvidence.origin === 'UNLINKED_SOURCE' && orderLinkEvidence.sourcePdvId !== null) || (orderLinkEvidence.origin === 'PREEXISTING_SOURCE_LINK' && orderLinkEvidence.sourcePdvId !== pointId)) block('KITCHEN_ORDER_ORIGIN_EVIDENCE_DIVERGED', order.id, 'Evidência da origem do vínculo do pedido é incompatível com o PDV canônico.');
     const sourcePayload = jsonSafe({
       commandLinkEvidence: { sourcePdvId: linkEvidence.sourcePdvId, origin: linkEvidence.origin },
+      orderLinkEvidence,
       order: { ...order, pontoVendaId: null, pontoVenda: null, comanda: { ...order.comanda, pontoVendaId: null, pontoVenda: null } },
       command: { id: command.id, origem: command.origem, eventoId: command.eventoId, pontoVendaId: null, evento: command.evento, pontoVenda: null },
       movements,

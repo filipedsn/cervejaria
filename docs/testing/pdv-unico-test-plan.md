@@ -349,3 +349,22 @@ This section supersedes PREP-11 and PREP-12 above. The EVENTO fixture uses stock
 **DEV inventory, read only:** exact snapshot details and the five-company decision table are recorded in docs/architecture/pdv-unico-migracao-dev.md, section “Continuation: legacy EVENTO command links”. The five ambiguous root companies are distinct from 54 manual-resolution blocked rows and 80 blocked descendants. Decisions remain pending; no candidate PDV/Trailer was selected, and no record was classified as discardable. The additive map schema is absent in the DEV migration ledger, which is target readiness rather than source corruption.
 
 Still pending: real-data decision/reconciliation for ambiguous tenants, API/UI and authenticated operation, multiple-menu integrated path, rankings, cutover/rollback and legacy removal. PROD_ACCESS_USED=NO.
+
+
+## Kitchen preparation review fixes (2026-10-04)
+
+This section supersedes the V3 preparation claims in PREP-11/PREP-12 and the preceding review addendum.
+
+| ID | Preconditions / action | Expected result | Priority / layer | Executor / result |
+|---|---|---|---|---|
+| PREP-17 | Pre-commercial EVENTO orders cover command/order PDV (null,null), (null,canonical), (canonical,null), (canonical,canonical); run preparation | All four have hashed provenance maps; the already-correct order link is certified without an update | P0 QA/integration | Commerce disposable QA, 5 synthetic orders; PASS |
+| PREP-18 | For orders whose PDV was already correct, compare source snapshot before/after preparation and commercial migration | IDs, status, timestamps, snapshots and exact stock movement rows/quantities remain unchanged | P0 QA/integration | Commerce disposable QA; PASS |
+| PREP-19 | Completed preparation run is the map lastRunId; alter source to invalidate run, keep divergence, restore exact original content and retry | BLOCKED while changed; after restoration same run completes only after full checkpoint/evidence validation; checkpoint, batches and receipts are unchanged | P0 QA/integration | Commerce disposable QA; reproduced before fix and PASS after fix |
+| PREP-20 | Prepare, run commercial migration, then revalidate/replay preparation with same and new run | All four PDV link combinations remain canonical; stable maps and source snapshots remain intact | P0 QA/integration | Commerce disposable QA; PASS |
+| INV-02 | Summarize balances and movements with different PDVs, products, units and movement types | No quantity totals cross product/unit or movement type boundaries | P0 pure/unit | pdv-unico-dev-inventory-summary.test.mjs; PASS, 1 test |
+
+**Executed:** qa:pdv-commerce-disposable passed using the pinned 91-migration QA bundle. It ran five synthetic EVENTO orders, two stock movements, all four command/order link combinations, preparation -> commercial migration -> revalidation/replay, same-run recovery after BLOCKED, and the existing rollback/concurrency/tamper and eight Event deletion/audit cases (8 pass, 0 fail, 0 skipped). V4's exact evidence and no-write behavior were asserted. The QA PostgreSQL resource used tmpfs and was removed.
+
+**Typecheck:** focused noEmit for catalog migrator and kitchen preparation passed. The broad scripts typecheck remains a separate known failure from existing TS7006 implicit-any diagnostics in inventory-pdv-unico-dev.ts and pdv-unico-planner.isolated.test.ts; this round does not suppress or change them.
+
+**Inventory and limits:** a pure helper test proves stock is grouped by PDV/product/unit, with movements also split by type. DEV inventory was not rerun. Previous ambiguous-company decisions remain pending. No synthetic result represents real-data migration. No cutover, ranking, cleanup or legacy removal is included. PROD_ACCESS_USED=NO.
