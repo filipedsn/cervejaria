@@ -40,6 +40,7 @@ export async function buildPdvCommerceQaManifest() {
     'backend/scripts/pdv-unico-commerce-source.ts',
     'backend/scripts/pdv-unico-commerce-transform.ts',
     'backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs',
+    'backend/scripts/pdv-unico-kitchen-order-preparation.ts',
     'backend/scripts/pdv-unico-session-transform.ts',
     'backend/scripts/run-pdv-unico-commerce-disposable-qa.mjs',
     'backend/scripts/pdv-unico-commerce-qa-manifest.mjs',

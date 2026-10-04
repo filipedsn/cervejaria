@@ -43,7 +43,7 @@ const id = (name) => `${name}-qa-${runId}`;
 const slug = (name) => `${name}-${runId}`.toLowerCase().replaceAll(/[^a-z0-9-]/g, '-');
 const plain = (value) => JSON.parse(JSON.stringify(value));
 async function proveLegacyOrderContextPreflight(args) {
-  const { history, core, catalog, finance, sessionSql, tempRoot, manifest, commerceSql, runPrisma, sha256, repoRoot, backendRoot, databaseUrl, runId } = args;
+  const { history, core, catalog, finance, sessionSql, tempRoot, manifest, commerceSql, runPrisma, sha256, repoRoot, backendRoot, generatedClientDir, databaseUrl, runId } = args;
   const container = process.env.PDV_QA_CONTAINER;
   assert.match(container ?? '', /^codex-pdv-commerce-qa-[a-f0-9]+$/, 'preflight must run in the owned disposable container');
   const schemaBytes = readPinnedBlob(manifest.preCommerceSchema.commit, manifest.preCommerceSchema.path);
@@ -83,12 +83,16 @@ async function proveLegacyOrderContextPreflight(args) {
   const legacyDb = new module.PrismaClient({ datasources: { db: { url: preflightUrl } }, errorFormat: 'minimal' });
   try {
     const company = await legacyDb.cervejaria.create({ data: { id: `preflight-company-${runId}`, nome: 'Synthetic legacy preflight', slug: `preflight-${runId}` } });
+    await legacyDb.configuracaoOperacao.create({ data: { cervejariaId: company.id, ativo: true, controlaEstoque: true, temCozinha: true, exclusivo: false, quantidadeMesas: 2, createdAt: new Date('2026-12-01T08:00:00.000Z'), updatedAt: new Date('2026-12-01T09:00:00.000Z') } });
     const point = await legacyDb.pontoVenda.create({ data: { id: `preflight-point-${runId}`, cervejariaId: company.id, nome: 'Synthetic point' } });
     const product = await legacyDb.produto.create({ data: { id: `preflight-product-${runId}`, cervejariaId: company.id, nome: 'Synthetic legacy product' } });
     const operator = await legacyDb.usuario.create({ data: { id: `preflight-user-${runId}`, nome: 'Synthetic operator', email: `preflight-${runId}@example.invalid`, senhaHash: 'synthetic', papel: 'DONO', cervejariaId: company.id } });
-    const command = await legacyDb.comanda.create({ data: { id: `preflight-command-${runId}`, origem: 'CAIXA', status: 'ABERTA', total: '1.00' } });
-    const order = await legacyDb.pedidoOperacao.create({ data: { id: `preflight-order-${runId}`, cervejariaId: company.id, comandaId: command.id, pontoVendaId: null, numero: 1, diaOperacional: new Date('2026-12-01T00:00:00.000Z'), status: 'RECEBIDO', criadoPorId: operator.id } });
+    const command = await legacyDb.comanda.create({ data: { id: `preflight-command-${runId}`, origem: 'CAIXA', pontoVendaId: point.id, status: 'ABERTA', total: '1.00' } });
+    const order = await legacyDb.pedidoOperacao.create({ data: { id: `preflight-order-a-${runId}`, cervejariaId: company.id, comandaId: command.id, pontoVendaId: null, numero: 1, diaOperacional: new Date('2026-12-01T00:00:00.000Z'), status: 'RECEBIDO', criadoPorId: operator.id } });
+    const movementlessOrder = await legacyDb.pedidoOperacao.create({ data: { id: `preflight-order-b-${runId}`, cervejariaId: company.id, comandaId: command.id, pontoVendaId: null, numero: 2, diaOperacional: new Date('2026-12-01T00:00:00.000Z'), status: 'RECEBIDO', criadoPorId: operator.id } });
     const movement = await legacyDb.inventoryMovement.create({ data: { id: `preflight-movement-${runId}`, cervejariaId: company.id, pontoVendaId: point.id, produtoId: product.id, pedidoId: order.id, tipo: 'SAIDA_VENDA', quantidade: '0.125', registradoPorId: operator.id } });
+    const secondCompany = await legacyDb.cervejaria.create({ data: { id: `preflight-second-company-${runId}`, nome: 'Synthetic second tenant', slug: `preflight-second-${runId}` } });
+    const secondPoint = await legacyDb.pontoVenda.create({ data: { id: `preflight-second-point-${runId}`, cervejariaId: secondCompany.id, nome: 'Synthetic second PDV' } });
     const commerceDir = path.join(bundle.migrationsDir, manifest.delivery.migrationName);
     await mkdir(commerceDir, { recursive: true });
     await writeFile(path.join(commerceDir, 'migration.sql'), commerceSql);
@@ -100,6 +104,135 @@ async function proveLegacyOrderContextPreflight(args) {
     const ddl = await legacyDb.$queryRaw`SELECT COUNT(*)::int AS count FROM pg_constraint WHERE conname = 'MovimentoEstoqueQuiosque_pedidoId_tenant_point_fkey'`;
     assert.equal(ddl[0].count, 0, 'candidate DDL did not partially add the final constraint');
     console.log('QA_STAGE=legacy-preexisting-order-context-preflight-blocked; code=PDV_COMMERCE_PREFLIGHT_ORDER_CONTEXT_REQUIRED; orderLink=unchanged-null; stockMovement=preserved');
+
+    // The preparation uses the same pre-commercial Prisma Client and the real restartable runner.
+    // Confirm the canonical PDV map first, as required by the operational migration chain.
+    const { runPdvBusinessMigration } = await import('./pdv-unico-business-migrator.ts');
+    const { runPdvCatalogMigration, runPdvKitchenOrderContextPreparation } = await import('./pdv-unico-catalog-migrator.ts');
+    const { readPdvKitchenOrderPreparationSnapshot, buildPdvKitchenOrderPreparationItems } = await import('./pdv-unico-kitchen-order-preparation.ts');
+    const business = await runPdvBusinessMigration({ db: legacyDb, companyId: company.id, runId: `preflight-business-${runId}` });
+    assert.equal(business.status, 'COMPLETED', JSON.stringify(business));
+    const catalogRunId = `preflight-catalog-${runId}`;
+    const catalogResult = await runPdvCatalogMigration({ db: legacyDb, companyId: company.id, pointId: point.id, runId: catalogRunId });
+    assert.equal(catalogResult.status, 'COMPLETED', JSON.stringify(catalogResult));
+    const preparationRunId = `preflight-order-preparation-${runId}`;
+    const paused = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: company.id, pointId: point.id, runId: preparationRunId, maxBatches: 1 });
+    assert.equal(paused.status, 'RUNNING', `one proven order is committed as one checkpointed batch: ${JSON.stringify(paused)}`);
+    const failureCheckpoint = plain(paused.checkpoint);
+    const orderBeforeFailure = await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: order.id } });
+    await assert.rejects(runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: company.id, pointId: point.id, runId: preparationRunId, afterDestinationWrite: (row) => { if (row.id === movementlessOrder.id) throw new Error('QA_KITCHEN_PREPARATION_ROLLBACK'); } }), /QA_KITCHEN_PREPARATION_ROLLBACK/);
+    assert.deepEqual(plain((await legacyDb.pdvMigrationRun.findUniqueOrThrow({ where: { id: preparationRunId } })).checkpoint), failureCheckpoint, 'intra-batch failure retains the prior confirmed checkpoint');
+    assert.equal((await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: order.id } })).pontoVendaId, orderBeforeFailure.pontoVendaId, 'intra-batch write was rolled back');
+    const prepared = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: company.id, pointId: point.id, runId: preparationRunId });
+    assert.equal(prepared.status, 'COMPLETED', JSON.stringify(prepared));
+    const preparedOrder = await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: order.id } });
+    assert.equal(preparedOrder.pontoVendaId, point.id, 'only context proven by the comanda and canonical map is assigned');
+    assert.equal(preparedOrder.id, order.id);
+    assert.equal((await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: movementlessOrder.id } })).pontoVendaId, point.id, 'a same-tenant CAIXA comanda is sufficient authority even without stock movement');
+    assert.equal((await legacyDb.inventoryMovement.findUniqueOrThrow({ where: { id: movement.id } })).quantidade.toString(), '0.125', 'movement identity and exact quantity are unchanged');
+    const preparationReplay = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: company.id, pointId: point.id, runId: preparationRunId });
+    assert.equal(preparationReplay.status, 'COMPLETED', 'same-run preparation replay revalidates');
+    assert.equal((await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: order.id } })).pontoVendaId, point.id, 'replay does not alter the assignment');
+
+    // Same-run and new-run corruption checks verify the certificate without repairing its destination.
+    const newRunReplay = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: company.id, pointId: point.id, runId: `preflight-order-preparation-replay-${runId}` });
+    assert.equal(newRunReplay.status, 'COMPLETED', 'new run reuses stable preparation maps');
+    const originalOrderState = await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: movementlessOrder.id } });
+    const originalStatus = originalOrderState.status;
+    await legacyDb.pedidoOperacao.update({ where: { id: movementlessOrder.id }, data: { status: 'CANCELADO', updatedAt: originalOrderState.updatedAt } });
+    const sourceTamper = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: company.id, pointId: point.id, runId: preparationRunId });
+    assert.equal(sourceTamper.status, 'BLOCKED');
+    assert.equal(sourceTamper.code, 'RUN_SCOPE_OR_SNAPSHOT_MISMATCH', 'the certified source photograph changes and invalidates the run');
+    assert.equal((await legacyDb.pdvMigrationRun.findUniqueOrThrow({ where: { id: preparationRunId } })).status, 'BLOCKED');
+    await legacyDb.pedidoOperacao.update({ where: { id: movementlessOrder.id }, data: { status: originalStatus, updatedAt: originalOrderState.updatedAt } });
+    await legacyDb.pedidoOperacao.update({ where: { id: movementlessOrder.id }, data: { pontoVendaId: secondPoint.id, updatedAt: (await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: movementlessOrder.id } })).updatedAt } });
+    const destinationTamper = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: company.id, pointId: point.id, runId: preparationRunId });
+    assert.equal(destinationTamper.status, 'BLOCKED');
+    assert.equal(destinationTamper.code, 'KITCHEN_ORDER_EXISTING_PDV_CONFLICT');
+    assert.equal((await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: movementlessOrder.id } })).pontoVendaId, secondPoint.id, 'preparation does not overwrite an adulterated cross-tenant target');
+    await legacyDb.pedidoOperacao.update({ where: { id: movementlessOrder.id }, data: { pontoVendaId: point.id, updatedAt: (await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: movementlessOrder.id } })).updatedAt } });
+    assert.equal((await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: company.id, pointId: point.id, runId: preparationRunId })).status, 'COMPLETED', 'restoring the certified values permits revalidation without advancing the checkpoint');
+    const concurrent = await Promise.all([
+      runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: company.id, pointId: point.id, runId: `preflight-order-concurrent-a-${runId}` }),
+      runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: company.id, pointId: point.id, runId: `preflight-order-concurrent-b-${runId}` }),
+    ]);
+    assert(concurrent.every((result) => result.status === 'COMPLETED'), JSON.stringify(concurrent));
+
+    // A second tenant proves a movement-free assignment from its own comanda/PDV authority.
+    const secondBusiness = await runPdvBusinessMigration({ db: legacyDb, companyId: secondCompany.id, runId: `preflight-second-business-${runId}` });
+    assert.equal(secondBusiness.status, 'COMPLETED', JSON.stringify(secondBusiness));
+    const secondOperator = await legacyDb.usuario.create({ data: { id: `preflight-second-user-${runId}`, nome: 'Synthetic second operator', email: `preflight-second-${runId}@example.invalid`, senhaHash: 'synthetic', papel: 'DONO', cervejariaId: secondCompany.id } });
+    const secondCommand = await legacyDb.comanda.create({ data: { id: `preflight-second-command-${runId}`, origem: 'CAIXA', pontoVendaId: secondPoint.id, status: 'ABERTA', total: '2.00' } });
+    const secondOrder = await legacyDb.pedidoOperacao.create({ data: { id: `preflight-second-order-${runId}`, cervejariaId: secondCompany.id, comandaId: secondCommand.id, pontoVendaId: null, numero: 1, diaOperacional: new Date('2026-12-02T00:00:00.000Z'), status: 'RECEBIDO', criadoPorId: secondOperator.id } });
+    assert.equal((await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: secondCompany.id, pointId: secondPoint.id, runId: `preflight-second-prep-${runId}` })).status, 'COMPLETED');
+    assert.equal((await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: secondOrder.id } })).pontoVendaId, secondPoint.id, 'tenant two is independently attributed');
+
+    // Conflicts use real rows from QA and the same transform; no expected blocker is injected.
+    const conflictCompany = await legacyDb.cervejaria.create({ data: { id: `preflight-conflict-company-${runId}`, nome: 'Synthetic conflict tenant', slug: `preflight-conflict-${runId}` } });
+    const conflictPoint = await legacyDb.pontoVenda.create({ data: { id: `preflight-conflict-point-${runId}`, cervejariaId: conflictCompany.id, nome: 'Synthetic conflict canonical PDV' } });
+    const conflictBusiness = await runPdvBusinessMigration({ db: legacyDb, companyId: conflictCompany.id, runId: `preflight-conflict-business-${runId}` });
+    assert.equal(conflictBusiness.status, 'COMPLETED', JSON.stringify(conflictBusiness));
+    const alternatePoint = await legacyDb.pontoVenda.create({ data: { id: `preflight-conflict-alt-point-${runId}`, cervejariaId: conflictCompany.id, nome: 'Synthetic noncanonical PDV' } });
+    const conflictOperator = await legacyDb.usuario.create({ data: { id: `preflight-conflict-user-${runId}`, nome: 'Synthetic conflict operator', email: `preflight-conflict-${runId}@example.invalid`, senhaHash: 'synthetic', papel: 'DONO', cervejariaId: conflictCompany.id } });
+    const conflictProduct = await legacyDb.produto.create({ data: { id: `preflight-conflict-product-${runId}`, cervejariaId: conflictCompany.id, nome: 'Synthetic conflict product' } });
+    const conflictCommand = await legacyDb.comanda.create({ data: { id: `preflight-conflict-command-${runId}`, origem: 'CAIXA', pontoVendaId: conflictPoint.id, status: 'ABERTA', total: '3.00' } });
+    const conflictingOrder = await legacyDb.pedidoOperacao.create({ data: { id: `preflight-conflict-order-${runId}`, cervejariaId: conflictCompany.id, comandaId: conflictCommand.id, pontoVendaId: null, numero: 1, diaOperacional: new Date('2026-12-03T00:00:00.000Z'), status: 'RECEBIDO', criadoPorId: conflictOperator.id } });
+    const conflictMovements = await legacyDb.inventoryMovement.createMany({ data: [
+      { id: `preflight-conflict-movement-a-${runId}`, cervejariaId: conflictCompany.id, pontoVendaId: conflictPoint.id, produtoId: conflictProduct.id, pedidoId: conflictingOrder.id, tipo: 'SAIDA_VENDA', quantidade: '0.125', registradoPorId: conflictOperator.id },
+      { id: `preflight-conflict-movement-b-${runId}`, cervejariaId: conflictCompany.id, pontoVendaId: alternatePoint.id, produtoId: conflictProduct.id, pedidoId: conflictingOrder.id, tipo: 'SAIDA_VENDA', quantidade: '0.250', registradoPorId: conflictOperator.id },
+    ] });
+    assert.equal(conflictMovements.count, 2);
+    const conflictSnapshot = await readPdvKitchenOrderPreparationSnapshot(legacyDb, conflictCompany.id);
+    assert.throws(() => buildPdvKitchenOrderPreparationItems({ companyId: conflictCompany.id, pointId: conflictPoint.id, confirmedPdvSourceKey: `PDV:${conflictPoint.id}`, snapshot: { ...conflictSnapshot, orders: conflictSnapshot.orders.filter((row) => row.id === conflictingOrder.id), movements: conflictSnapshot.movements.filter((row) => row.pedidoId === conflictingOrder.id) }, confirmedOccurrences: {} }), (error) => error.code === 'KITCHEN_ORDER_MULTIPLE_MOVEMENT_PDVS');
+    const unprovenCommand = await legacyDb.comanda.create({ data: { id: `preflight-unproven-command-${runId}`, origem: 'CAIXA', status: 'ABERTA', total: '0.00' } });
+    const unprovenOrder = await legacyDb.pedidoOperacao.create({ data: { id: `preflight-unproven-order-${runId}`, cervejariaId: conflictCompany.id, comandaId: unprovenCommand.id, pontoVendaId: null, numero: 2, diaOperacional: new Date('2026-12-03T00:00:00.000Z'), status: 'RECEBIDO', criadoPorId: conflictOperator.id } });
+    const foreignCommand = await legacyDb.comanda.create({ data: { id: `preflight-foreign-command-${runId}`, origem: 'CAIXA', pontoVendaId: point.id, status: 'ABERTA', total: '0.00' } });
+    const foreignOrder = await legacyDb.pedidoOperacao.create({ data: { id: `preflight-foreign-order-${runId}`, cervejariaId: conflictCompany.id, comandaId: foreignCommand.id, pontoVendaId: null, numero: 3, diaOperacional: new Date('2026-12-03T00:00:00.000Z'), status: 'RECEBIDO', criadoPorId: conflictOperator.id } });
+    const withOtherBlocks = await readPdvKitchenOrderPreparationSnapshot(legacyDb, conflictCompany.id);
+    const runTransformForOrder = (orderId) => buildPdvKitchenOrderPreparationItems({ companyId: conflictCompany.id, pointId: conflictPoint.id, confirmedPdvSourceKey: `PDV:${conflictPoint.id}`, snapshot: { ...withOtherBlocks, orders: withOtherBlocks.orders.filter((row) => row.id === orderId), movements: withOtherBlocks.movements.filter((row) => row.pedidoId === orderId) }, confirmedOccurrences: {} });
+    assert.throws(() => runTransformForOrder(unprovenOrder.id), (error) => error.code === 'KITCHEN_ORDER_COMMAND_PDV_UNPROVEN');
+    assert.throws(() => runTransformForOrder(foreignOrder.id), (error) => error.code === 'KITCHEN_ORDER_COMMAND_PDV_UNPROVEN');
+    const blockedConflict = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: conflictCompany.id, pointId: conflictPoint.id, runId: `preflight-conflict-prep-${runId}` });
+    assert.equal(blockedConflict.status, 'BLOCKED');
+    assert.equal(blockedConflict.code, 'KITCHEN_ORDER_MULTIPLE_MOVEMENT_PDVS');
+    assert.equal((await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: conflictingOrder.id } })).pontoVendaId, null, 'conflicting links remain untouched');
+    await legacyDb.inventoryMovement.deleteMany({ where: { pedidoId: conflictingOrder.id } });
+    await legacyDb.pedidoOperacao.delete({ where: { id: conflictingOrder.id } });
+    await legacyDb.pedidoOperacao.deleteMany({ where: { id: { in: [unprovenOrder.id, foreignOrder.id] } } });
+    await legacyDb.comanda.deleteMany({ where: { id: { in: [unprovenCommand.id, foreignCommand.id] } } });
+    console.log('QA_STAGE=order-context-preparation-two-tenants; movementless=assigned; multiple-pdv-movements=blocked; source-target-tamper=blocked; pause-rollback-replay-concurrency=verified');
+
+    const rolledBack = runPrisma(['migrate', 'resolve', '--rolled-back', manifest.delivery.migrationName], preflightUrl);
+    assert.equal(rolledBack.status, 0, 'QA Prisma failed migration row is explicitly marked rolled back after verifying transactional preflight made no DDL changes');
+    const recovered = runPrisma(['migrate', 'deploy', '--schema', bundle.schemaPath], preflightUrl);
+    assert.equal(recovered.status, 0, 'commerce migration deploy succeeds after safe context preparation and QA migration recovery');
+    const constraint = await legacyDb.$queryRaw`SELECT conname, confdeltype, convalidated FROM pg_constraint WHERE conname = 'MovimentoEstoqueQuiosque_pedidoId_tenant_point_fkey'`;
+    assert.equal(constraint.length, 1);
+    assert.equal(constraint[0].confdeltype, 'r');
+    assert.equal(constraint[0].convalidated, true);
+    assert.equal((await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: order.id } })).pontoVendaId, point.id, 'restrictive migration preserves the prepared order context');
+    console.log('QA_STAGE=legacy-order-context-prepared-recovered-and-commerce-migration-applied; orderId=preserved; movement=0.125; constraint=validated-restrictive');
+    await legacyDb.$disconnect();
+    const { PrismaClient: MigratedPrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
+    const migratedDb = new MigratedPrismaClient({ datasources: { db: { url: preflightUrl } }, errorFormat: 'minimal' });
+    try {
+      const { runPdvBusinessMigration } = await import('./pdv-unico-business-migrator.ts');
+      const { runPdvCatalogMigration, runPdvCommerceMigration, runPdvKitchenOrderContextPreparation } = await import('./pdv-unico-catalog-migrator.ts');
+      for (const [label, result] of [
+        ['business', await runPdvBusinessMigration({ db: migratedDb, companyId: company.id, runId: `preflight-business-${runId}` })],
+        ['catalog', await runPdvCatalogMigration({ db: migratedDb, companyId: company.id, pointId: point.id, runId: catalogRunId })],
+        ['preparation', await runPdvKitchenOrderContextPreparation({ db: migratedDb, companyId: company.id, pointId: point.id, runId: preparationRunId })],
+      ]) assert.equal(result.status, 'COMPLETED', `post-commercial SQL prior-scope revalidation ${label}: ${JSON.stringify(result)}`);
+      const commerceRunId = `preflight-commerce-${runId}`;
+      const commerce = await runPdvCommerceMigration({ db: migratedDb, companyId: company.id, pointId: point.id, runId: commerceRunId });
+      assert.equal(commerce.status, 'COMPLETED', `post-preparation commerce mapping: ${JSON.stringify(commerce)}`);
+      const postMigrationRows = await migratedDb.pedidoOperacao.findMany({ where: { id: { in: [order.id, movementlessOrder.id] } }, orderBy: { id: 'asc' } });
+      assert.deepEqual(postMigrationRows.map((row) => [row.id, row.pontoVendaId]), [[order.id, point.id], [movementlessOrder.id, point.id]]);
+      assert.equal((await migratedDb.inventoryMovement.findUniqueOrThrow({ where: { id: movement.id } })).quantidade.toString(), '0.125');
+      assert.equal((await runPdvCommerceMigration({ db: migratedDb, companyId: company.id, pointId: point.id, runId: commerceRunId })).status, 'COMPLETED', 'commerce same-run revalidation');
+      assert.equal((await runPdvCommerceMigration({ db: migratedDb, companyId: company.id, pointId: point.id, runId: `preflight-commerce-replay-${runId}` })).status, 'COMPLETED', 'commerce new-run replay preserves prepared links');
+      console.log('QA_STAGE=post-preparation-commercial-scope-completed-and-replayed; scopes=business,catalog,preparation,commerce; orders=2; movements=1');
+    } finally { await migratedDb.$disconnect(); }
   } finally {
     await legacyDb.$disconnect();
     const dropped = spawnSync('docker', ['exec', container, 'dropdb', '-U', 'postgres', '--if-exists', databaseName], { encoding: 'utf8', windowsHide: true });
@@ -142,7 +275,7 @@ try {
   await writeFile(generatePath, candidateText.replace('provider = "prisma-client-js"', `provider = "prisma-client-js"\n  output = "${normalizedClientDir}"`));
   runPrisma(['validate', '--schema', validatePath]);
   runPrisma(['generate', '--schema', generatePath]);
-  await proveLegacyOrderContextPreflight({ history, core, catalog, finance, sessionSql, tempRoot, manifest, commerceSql, runPrisma, sha256, repoRoot, backendRoot, databaseUrl, runId });
+  await proveLegacyOrderContextPreflight({ history, core, catalog, finance, sessionSql, tempRoot, manifest, commerceSql, runPrisma, sha256, repoRoot, backendRoot, generatedClientDir, databaseUrl, runId });
   const deploy = spawnSync(process.execPath, ['node_modules/prisma/build/index.js', 'migrate', 'deploy', '--schema', bundle.schemaPath], { cwd: backendRoot, env: { ...process.env, NODE_ENV: 'test', DATABASE_URL: databaseUrl }, encoding: 'utf8', windowsHide: true });
   if (deploy.status !== 0) throw new Error(`QA-only migration deploy failed: ${(deploy.stderr || deploy.stdout).replaceAll(databaseUrl, '[QA URL REDACTED]').slice(0, 1800)}`);
   const regressionEnv = { ...process.env };
@@ -333,13 +466,30 @@ try {
   const raceProduct = await db.produto.create({ data: { id: id('race-product'), cervejariaId: raceCompany.id, nome: 'race product' } });
   const raceCatalogRunId = id('race-catalog');
   assert.equal((await runPdvCatalogMigration({ db, companyId: raceCompany.id, pointId: racePoint.id, runId: raceCatalogRunId })).status, 'COMPLETED');
+  const raceOperator = await db.usuario.create({ data: { id: id('race-operator'), nome: 'Synthetic race operator', email: `${slug('race-operator')}@example.invalid`, senhaHash: 'synthetic', papel: 'DONO', cervejariaId: raceCompany.id } });
+  const raceClient = await db.cliente.create({ data: { id: id('race-client'), cervejariaId: raceCompany.id, nome: 'Synthetic race customer' } });
+  const raceEvent = await db.evento.findUniqueOrThrow({ where: { id: id('race-event') } });
+  const raceSessionSource = await db.sessaoCaixaEvento.create({ data: { id: id('race-event-session'), eventoId: raceEvent.id, status: 'FECHADO', trocoInicial: '1.00', abertoPorId: raceOperator.id, abertoEm: new Date('2026-12-02T17:00:00.000Z'), fechadoPorId: raceOperator.id, fechadoEm: new Date('2026-12-02T22:00:00.000Z'), contadoDinheiro: '0.00', contadoPix: '1.25', contadoDebito: '0.00', contadoCredito: '0.00' } });
+  const raceCommand = await db.comanda.create({ data: { id: id('race-command'), origem: 'EVENTO', eventoId: raceEvent.id, clienteId: raceClient.id, status: 'FECHADA', total: '2.50', fechadaEm: new Date('2026-12-02T21:00:00.000Z'), fechadoPorId: raceOperator.id } });
+  const raceDebt = await db.contaReceber.create({ data: { id: id('race-debt'), comandaId: raceCommand.id, clienteId: raceClient.id, valorOriginal: '2.50', criadoPorId: raceOperator.id, createdAt: new Date('2026-12-02T21:00:00.000Z') } });
+  const racePayment = await db.pagamento.create({ data: { id: id('race-payment'), comandaId: raceCommand.id, contaReceberId: raceDebt.id, sessaoCaixaEventoId: raceSessionSource.id, forma: 'PIX', valor: '1.25', registradoPorId: raceOperator.id, pagoEm: new Date('2026-12-02T21:30:00.000Z') } });
+  const raceFinanceBefore = plain({ session: await db.sessaoCaixaEvento.findUniqueOrThrow({ where: { id: raceSessionSource.id } }), payment: await db.pagamento.findUniqueOrThrow({ where: { id: racePayment.id } }), debt: await db.contaReceber.findUniqueOrThrow({ where: { id: raceDebt.id } }) });
   const raceSessionRunId = id('race-sessions');
   assert.equal((await runPdvSessionMigration({ db, companyId: raceCompany.id, pointId: racePoint.id, runId: raceSessionRunId })).status, 'COMPLETED');
   const raceFinanceRunId = id('race-finance');
-  assert.equal((await runPdvFinanceMigration({ db, companyId: raceCompany.id, pointId: racePoint.id, runId: raceFinanceRunId })).status, 'COMPLETED');
-  const raceEvent = await db.evento.findUniqueOrThrow({ where: { id: id('race-event') } });
-  const raceCommand = await db.comanda.create({ data: { id: id('race-command'), origem: 'EVENTO', eventoId: raceEvent.id, status: 'ABERTA', total: '2.00' } });
-  await db.itemComanda.create({ data: { id: id('race-item'), comandaId: raceCommand.id, produtoId: raceProduct.id, precoUnit: '2.00' } });
+  const raceFinanceResult = await runPdvFinanceMigration({ db, companyId: raceCompany.id, pointId: racePoint.id, runId: raceFinanceRunId });
+  assert.equal(raceFinanceResult.status, 'COMPLETED', JSON.stringify(raceFinanceResult));
+  const racePaymentAfter = await db.pagamento.findUniqueOrThrow({ where: { id: racePayment.id } });
+  const raceDebtAfter = await db.contaReceber.findUniqueOrThrow({ where: { id: raceDebt.id } });
+  assert.deepEqual([racePaymentAfter.id, racePaymentAfter.valor.toFixed(2), racePaymentAfter.sessaoCaixaId, racePaymentAfter.sessaoCaixaEventoId], [racePayment.id, '1.25', raceSessionSource.id, raceSessionSource.id]);
+  const raceDebtPayments = await db.pagamento.findMany({ where: { contaReceberId: raceDebt.id } });
+  const raceReceivedCents = raceDebtPayments.reduce((total, row) => total + Math.round(Number(row.valor) * 100), 0);
+  assert.deepEqual([raceDebtAfter.valorOriginal.toFixed(2), raceReceivedCents, Math.round((Number(raceDebtAfter.valorOriginal) * 100) - raceReceivedCents)], ['2.50', 125, 125], 'second tenant has a nonempty finance scope and exact debt reconciliation');
+  const raceFinanceAfter = plain({ session: await db.sessaoCaixaEvento.findUniqueOrThrow({ where: { id: raceSessionSource.id } }), payment: racePaymentAfter, debt: raceDebtAfter });
+  assert.deepEqual([raceFinanceBefore.session.id, raceFinanceAfter.session.id, raceFinanceBefore.payment.id, raceFinanceAfter.payment.id, raceFinanceBefore.payment.valor, raceFinanceAfter.payment.valor, raceFinanceBefore.payment.forma, raceFinanceAfter.payment.forma, Number(raceFinanceBefore.debt.valorOriginal).toFixed(2), Number(raceFinanceAfter.debt.valorOriginal).toFixed(2)], [raceSessionSource.id, raceSessionSource.id, racePayment.id, racePayment.id, '1.25', '1.25', 'PIX', 'PIX', '2.50', '2.50']);
+  await db.itemComanda.create({ data: { id: id('race-item'), comandaId: raceCommand.id, produtoId: raceProduct.id, precoUnit: '2.50' } });
+  const raceSecondCommand = await db.comanda.create({ data: { id: id('race-second-command'), origem: 'EVENTO', eventoId: raceEvent.id, clienteId: raceClient.id, status: 'ABERTA', total: '1.00' } });
+  const reparentedItem = await db.itemComanda.create({ data: { id: id('race-reparented-item'), comandaId: raceSecondCommand.id, produtoId: raceProduct.id, precoUnit: '1.00', nome: 'No kitchen-order parent-change snapshot' } });
   const raceRunId = id('race-commerce-run');
   let release; let arrive;
   const arrived = new Promise((resolve) => { arrive = resolve; });
@@ -358,6 +508,12 @@ try {
   assert.deepEqual((await Promise.all([first, second])).map((row) => row.status), ['COMPLETED','COMPLETED']);
   assert.equal(await db.pdvMigrationMap.count({ where: { sourceType: 'COMANDA', sourceId: raceCommand.id } }), 1);
   assert.equal(await db.pdvMigrationBatch.count({ where: { runId: raceRunId } }), (await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: raceRunId } })).checkpoint.totalRecords);
+  await db.itemComanda.update({ where: { id: reparentedItem.id }, data: { comandaId: raceCommand.id } });
+  const parentTamper = await runPdvCommerceMigration({ db, companyId: raceCompany.id, pointId: racePoint.id, runId: raceRunId });
+  assert.equal(parentTamper.status, 'BLOCKED');
+  assert.equal(parentTamper.code, 'RUN_SCOPE_OR_SNAPSHOT_MISMATCH', 'item parent change is rejected by the certified source photograph even without a kitchen order link');
+  await db.itemComanda.update({ where: { id: reparentedItem.id }, data: { comandaId: raceSecondCommand.id } });
+  assert.equal((await runPdvCommerceMigration({ db, companyId: raceCompany.id, pointId: racePoint.id, runId: raceRunId })).status, 'COMPLETED', 'restoring original parent permits revalidation');
 
   // All earlier certifications are checked again after the commercial links have been written.
   for (const [label, result] of [
@@ -383,6 +539,7 @@ try {
     ['finance', await runPdvFinanceMigration({ db, companyId: raceCompany.id, pointId: racePoint.id, runId: raceFinanceRunId })],
     ['commerce', await runPdvCommerceMigration({ db, companyId: raceCompany.id, pointId: racePoint.id, runId: raceCommerceRunId })],
   ]) assert.equal(result.status, 'COMPLETED', `Por Caixa/Evento tenant revalidation ${label}: ${JSON.stringify(result)}`);
+  assert.deepEqual(plain({ session: await db.sessaoCaixaEvento.findUniqueOrThrow({ where: { id: raceSessionSource.id } }), payment: await db.pagamento.findUniqueOrThrow({ where: { id: racePayment.id } }), debt: await db.contaReceber.findUniqueOrThrow({ where: { id: raceDebt.id } }) }), raceFinanceAfter, 'second tenant nonempty financial rows remain stable after replay');
 
   // Downstream scopes must reject a previously certified occurrence when its
   // date, agenda, or business content changes, without moving their checkpoints.

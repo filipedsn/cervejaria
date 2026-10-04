@@ -10,6 +10,7 @@ import { reconcilePdvFinance } from './pdv-unico-finance-reconcile.js';
 import { buildPdvCommerceMigrationItems, commercePayloadHash, PDV_COMMERCE_SCOPE, PDV_COMMERCE_TRANSFORM_VERSION } from './pdv-unico-commerce-transform.js';
 import { readPdvCommerceSourceSnapshot } from './pdv-unico-commerce-source.js';
 import { findConfirmedPdvEventOccurrence } from './pdv-unico-business-migrator.js';
+import { buildPdvKitchenOrderPreparationItems, PDV_KITCHEN_ORDER_PREPARATION_SCOPE, PDV_KITCHEN_ORDER_PREPARATION_VERSION, PDV_KITCHEN_ORDER_PREPARATION_SOURCE_TYPE, readPdvKitchenOrderPreparationSnapshot } from './pdv-unico-kitchen-order-preparation.js';
 
 type Db = any;
 const key = (type: string, id: string) => `${type}:${id}`;
@@ -300,6 +301,40 @@ export async function runPdvCatalogMigration(options: { db: Db; companyId: strin
       const snapshot = await readSnapshot(tx, options.companyId);
       return itemsFor(options.companyId, options.pointId, snapshot, pdvSourceKey);
     },
+  });
+}
+
+async function writeKitchenPreparationTarget(tx: Db, item: any) {
+  const current = await tx.pedidoOperacao.findUnique({ where: { id: item.destinationId }, select: { id: true, pontoVendaId: true, updatedAt: true } });
+  if (!current) throw new PdvCatalogBlocker('KITCHEN_ORDER_DESTINATION_MISSING', item.type, item.id, 'Pedido de cozinha de origem ausente.');
+  if (current.pontoVendaId != null) throw new PdvCatalogBlocker('KITCHEN_ORDER_EXISTING_PDV_CONFLICT', item.type, item.id, 'Vínculo foi preenchido desde a fotografia; não será sobrescrito.');
+  const changed = await tx.pedidoOperacao.updateMany({ where: { id: item.destinationId, pontoVendaId: null }, data: { pontoVendaId: item.destinationData.pontoVendaId, updatedAt: current.updatedAt } });
+  if (changed.count !== 1) throw new PdvCatalogBlocker('KITCHEN_ORDER_WRITE_RACE', item.type, item.id, 'Pedido mudou durante a atribuição; lote será revertido.');
+  return false;
+}
+
+/** Prepare only proven legacy kitchen-order PDV links on a pre-commercial schema. */
+export async function runPdvKitchenOrderContextPreparation(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void }) {
+  const confirmedOccurrences: Record<string, { id: string; companyId: string; pointId: string }> = {};
+  return runPdvScopedMigration({
+    ...options,
+    scope: PDV_KITCHEN_ORDER_PREPARATION_SCOPE,
+    transformVersion: PDV_KITCHEN_ORDER_PREPARATION_VERSION,
+    buildItems: async (tx, pdvSourceKey) => {
+      const snapshot = await readPdvKitchenOrderPreparationSnapshot(tx, options.companyId);
+      for (const order of snapshot.orders) {
+        const command = order.comanda;
+        if (command?.origem !== 'EVENTO' || !command.eventoId || confirmedOccurrences[command.eventoId]) continue;
+        const occurrence = await findConfirmedEventOccurrence(tx, options.companyId, options.pointId, command.eventoId);
+        confirmedOccurrences[command.eventoId] = { id: occurrence.id, companyId: occurrence.cervejariaId, pointId: occurrence.pontoVendaId };
+      }
+      return buildPdvKitchenOrderPreparationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedOccurrences });
+    },
+    confirmExternalDependency: async (tx, sourceType, sourceId) => {
+      if (sourceType === 'EVENTO') { await findConfirmedEventOccurrence(tx, options.companyId, options.pointId, sourceId); return true; }
+      return false;
+    },
+    writeItem: writeKitchenPreparationTarget,
   });
 }
 
