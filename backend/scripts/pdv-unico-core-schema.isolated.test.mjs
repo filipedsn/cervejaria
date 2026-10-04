@@ -31,7 +31,7 @@ function cuidLike(prefix) { return `${prefix}_${Date.now().toString(36)}_${Math.
 
 const historicalManifest = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-qa-migration-manifest.json'), 'utf8'));
 const baselineManifest = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-migrator-qa-manifest.json'), 'utf8'));
-const currentManifest = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-commerce-qa-manifest.json'), 'utf8'));
+const currentManifest = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-integrated-qa-manifest.json'), 'utf8'));
 const digest = (value) => createHash('sha256').update(Buffer.from(value.toString('utf8').replaceAll('\r\n', '\n'))).digest('hex');
 const { manifestSha256, ...currentManifestBody } = currentManifest;
 assert.equal(digest(Buffer.from(JSON.stringify(currentManifestBody))), manifestSha256, 'current candidate manifest digest');

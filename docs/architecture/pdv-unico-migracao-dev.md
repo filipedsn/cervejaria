@@ -1,6 +1,19 @@
 # PDV único: contrato e preparação da migração
 
-Estado: primeira fatia do migrador de negocio implementada e ensaiada exclusivamente em PostgreSQL QA descartavel. Nenhuma migration, backfill ou escrita foi aplicada ao DEV compartilhado ou PROD; nao ha corte operacional nem remocao de legado.
+## Estado atual desta entrega — 04/10/2026
+
+- **Implementado no código:** hash canônico Decimal exato (sem `Number`/arredondamento), versão 2 nos escopos catalogal, sessão, financeiro e comercial; ocorrência dependente revalida run/checkpoint/lotes/recibos/mapas/destinos completos; escopo comercial refaz a leitura e compara cobertura, IDs, payloads, links e destinos. O manifesto novo lê o schema imutável do commit-base, sem depender de staging.
+- **Ensaiado nesta entrega em QA descartável:** a regressão `npm run qa:pdv-current-disposable` passou. A bateria integrada usou um mesmo PostgreSQL temporário para dois tenants e atravessou negócio, catálogo, sessões, financeiro e comercial: 19 fontes comerciais mapeadas; reexecução com o mesmo e novo run; revalidação das certificações anteriores; rollback e retomada; divergência de precisão em estoque bloqueada; transferência entre pais de item, opcional e histórico bloqueada; alterações de data, agenda e conteúdo da ocorrência recusadas por escopos dependentes; concorrência sincronizada por lock. O SQL comercial foi ensaiado separadamente sobre pedido legado sem PDV ligado a movimento de estoque com PDV e bloqueou por `PDV_COMMERCE_PREFLIGHT_ORDER_CONTEXT_REQUIRED`, preservando ambos e sem DDL parcial.
+- **Pendente / NÃO COMPROVADO:** nenhum backfill para preencher o contexto dos pedidos legados; nenhuma migração operacional em DEV; nenhum corte, reconciliação real multiempresa, ledger completo de estoque, login/RBAC/API/UI, comportamento operacional ou recuperação de infraestrutura. O preflight exige decisão e evidência para cada vínculo antes de reaplicar a migration.
+- **Limite do aceite:** runs por empresa/PDV certificam somente suas fontes atribuíveis. Comandas sem origem seguem pendentes; o run comercial retorna `globalCoverage=NOT_CERTIFIED` e o ledger de estoque permanece `NOT_PROVEN`. Isso não libera corte.
+
+O manifesto corrente `docs/testing/pdv-unico-integrated-qa-manifest.json` fixa o commit-base `2926b97b02f139107eb050612dd73e07b1bfad77`, schema SHA-256 `0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc`, SQL comercial SHA-256 `3aaf567f8dddfd94250c5efee4bd37af4a8074243de000fb6ef2f8f9890cc3ab` e o código dos testes/helpers/runners; seu digest é `2b6eb0997ef5f16928677b3a314f3d56397894b590cd511a39f08dd7da5860f5`. Os manifests anteriores foram verificados por hash e preservados.
+
+Não foram aplicadas migrations, backfill ou escrita ao DEV compartilhado ou PROD. Os fixtures e a reconciliação são sintéticos; eles não medem cobertura nem conciliam os dados reais. Não há corte operacional nem remoção de legado. `PROD_ACCESS_USED=NO`.
+
+## Registro histórico preservado
+
+As seções e contagens abaixo descrevem etapas anteriores em suas datas próprias; seus manifests continuam preservados. O estado desta entrega acima e a seção final de evidências atuais têm precedência quando um relato histórico indicar uma próxima etapa já feita ou uma validação staged antiga.
 
 ## Origem das regras e fatos
 
@@ -10,7 +23,7 @@ Fatos medidos em DEV em 03/10/2026: contagens, IDs, estados, relações, flags e
 
 ## Linha de base e tarefa
 
-Baseline funcional anterior: 66ec008. A etapa de schema anterior foi commitada em cafec78d55a7ee8af1240092e972816fb921c790, partindo de ccd1f1f96b92843b42f319c4bb07a749fa99e9d2. Esta entrega parte de ed5380e67078255efb0bfeb34b832e9d4771a85f e implementa a primeira fatia do migrador somente em QA descartavel, sem alterar consumidores ou remover legado. TAP-76: 20cf2ca0-90e6-428f-af2b-903ce1184f7a, prioridade high, labels Quality/Product, status In Progress.
+Baseline funcional anterior: 66ec008. Os commits `cafec78d55a7ee8af1240092e972816fb921c790` e `ed5380e67078255efb0bfeb34b832e9d4771a85f` são etapas históricas de schema/migrador descritas abaixo. A entrega anterior, já publicada, é `2926b97b02f139107eb050612dd73e07b1bfad77`; esta entrega parte exatamente desse commit. TAP-76: `20cf2ca0-90e6-428f-af2b-903ce1184f7a`, prioridade high, labels Quality/Product, status In Progress.
 
 As alteracoes locais preexistentes foram preservadas; no commit do schema foi selecionado somente o delta aditivo, deixando de fora telefone normalizado e demais alteracoes alheias. PROD_ACCESS_USED=NO. A migration candidata foi aplicada somente ao PostgreSQL QA descartavel; nao foi aplicada migration ao DEV compartilhado ou PROD.
 
@@ -225,3 +238,16 @@ npm run qa:pdv-current-disposable is the main regression command: historical, fi
 Aggregate result: finance preserved 6 payment IDs and 2 debts; payment value total 97.00 by form was cash 10.00, PIX 35.00, debit 5.00, credit 47.00; debt principal 73.00, receipts 55.00, balance 18.00; 13 maps. Commerce preserved 18 maps and exact fixture values above; all eight event deletion/audit/concurrency tests passed with zero skips. This is synthetic code/constraint evidence only.
 
 Next concrete step: run pure validators, typecheck/build and npm run qa:pdv-current-disposable in QA, then review DEV inventory in read-only mode before proposing any real batch. NOT PROVEN: current DEV commerce snapshot, real multi-company reconciliation, migration/backfill in DEV, authenticated API/UI, operational cancellation/refund, real stock ledger reconciliation, recovery from infrastructure interruption, product cutover/rollback, and pending portal/scoring/ranking policies.
+
+
+## Evid?ncia integrada desta entrega
+
+O comando principal ? npm run qa:pdv-current-disposable. Ele mant?m cada ensaio hist?rico no bundle/client compat?vel com sua baseline; a fase commerce aplica a cadeia atual de 91 migrations no PostgreSQL QA descart?vel. O novo manifesto consolidado fixa o schema/SQL candidato e hashes de helpers, testes e runners, sem ler o Git index. Os seis manifests anteriores permanecem byte a byte com os hashes declarados.
+
+A fixture integrada usa dois tenants no mesmo banco: tenant Por Caixa com PDV existente e tenant Evento com Trailer ?nico. No principal foram confirmadas duas ocorr?ncias recorrentes com datas distintas, menu/sess?o/financeiro, recebimento de d?vida em sess?o posterior, cozinha/portal e estoque decimal. A parte comercial reconciliou 19 mapas: 4 comandas fotografadas (3 atribu?veis e 1 pendente), 2 itens, 1 opcional vendido, 2 pedidos de cozinha, 6 transi??es de status, 1 pedido/linha de portal, 1 saldo e 1 movimento de estoque; o replay com os mesmos e novos runs manteve essas identidades e os mesmos valores. No fixture financeiro integrado, os tr?s pagamentos preservaram PIX 18,25, dinheiro 2,00 (recebido 5,00, troco 3,00) e cr?dito 4,00 recebido em outra sess?o; a d?vida permaneceu principal/recebido/saldo 6,00/6,00/0,00. O movimento de suprimento foi 1,37 e o saldo/movimento de estoque permaneceu 3,125/0,875 antes, depois e ap?s replay. Adultera??o de saldo de estoque de 3,125 para 3,126 bloqueou a certifica??o sem reparo; altera??o entre planejamento e verifica??o reverteu o lote e conservou o checkpoint anterior.
+
+A fotografia/hash passou a incluir os IDs pais ItemComanda.comandaId, ItemComandaOpcional.itemComandaId e PedidoOperacaoStatusHistorico.pedidoId. Mudar cada v?nculo entre pais v?lidos do mesmo tenant bloqueou a recertifica??o. A depend?ncia de ocorr?ncia revalida fonte, run, checkpoint, lotes confirmados, recibos, mapas e conte?do do destino; data, agenda e nome adulterados bloquearam respectivamente sess?es, financeiro e comercial sem avan?ar checkpoint.
+
+O preflight do SQL comercial foi executado num banco adicional dentro do mesmo container descart?vel, com pedido de cozinha sem PDV j? referenciado por movimento de estoque com PDV. O SQL abortou por PDV_COMMERCE_PREFLIGHT_ORDER_CONTEXT_REQUIRED; pedido e movimento continuaram iguais e n?o houve DDL parcial. Este blocker precisa de atribui??o autoritativa e backfill seguro antes de reaplicar a cadeia em dados reais.
+
+Pr?xima etapa concreta: desenhar e ensaiar, ainda em QA descart?vel, a atribui??o comprov?vel de PDV para pedidos de cozinha legados sem contexto e validar de novo as FKs com esse dado preparado. Depois, somente com autoriza??o espec?fica, fazer invent?rio DEV somente leitura e planejar lote reinici?vel/reconcilia??o de dados reais. Migra??o de neg?cio, corte e remo??o de legado n?o foram executados. Login/RBAC, API/UI autenticadas, efeitos operacionais de cancelamento, cobertura global e ledger integral de estoque permanecem N?O COMPROVADOS.

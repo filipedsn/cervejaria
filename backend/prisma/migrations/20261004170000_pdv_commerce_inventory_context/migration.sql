@@ -1,4 +1,21 @@
 -- Contexto historico opcional da ocorrencia para a comanda existente.
+-- Block known legacy order/stock parent disagreement before applying any DDL.
+-- The migration is intentionally gated until a separately evidenced backfill can assign
+-- the kitchen order's PDV; weakening or dropping the final composite FK is not permitted.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM "quiosque"."MovimentoEstoqueQuiosque" movement
+    JOIN "quiosque"."PedidoQuiosque" order_row ON order_row."id" = movement."pedidoId"
+    WHERE movement."pedidoId" IS NOT NULL
+      AND (order_row."cervejariaId" IS DISTINCT FROM movement."cervejariaId"
+        OR order_row."pontoVendaId" IS DISTINCT FROM movement."pontoVendaId")
+  ) THEN
+    RAISE EXCEPTION 'PDV_COMMERCE_PREFLIGHT_ORDER_CONTEXT_REQUIRED: stock movement references a kitchen order with missing or incompatible tenant/PDV context';
+  END IF;
+END $$;
+
 ALTER TABLE "public"."Comanda" ADD COLUMN "ocorrenciaId" TEXT;
 CREATE UNIQUE INDEX "OcorrenciaOperacional_pontoVendaId_id_key"
   ON "quiosque"."OcorrenciaOperacional"("pontoVendaId", "id");

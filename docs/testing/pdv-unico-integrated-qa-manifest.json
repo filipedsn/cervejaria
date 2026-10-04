@@ -1,0 +1,171 @@
+{
+  "version": 1,
+  "baseline": {
+    "commit": "2926b97b02f139107eb050612dd73e07b1bfad77",
+    "schemaPath": "backend/prisma/schema.prisma",
+    "schemaSha256": "0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc"
+  },
+  "immutableManifests": [
+    {
+      "path": "docs/testing/pdv-unico-qa-migration-manifest.json",
+      "sha256": "cacc244ff397d53699ad50b0c63ae476ae220bb3d3a7bd935636571e65f8970f"
+    },
+    {
+      "path": "docs/testing/pdv-unico-core-qa-manifest.json",
+      "sha256": "15788cbc1037faadd6b9b6ef9d5efe6cec98fac239576a91176fcaa01fcd8bc9"
+    },
+    {
+      "path": "docs/testing/pdv-unico-catalog-qa-manifest.json",
+      "sha256": "8e2d1ea4ea1b657504675b83aa5ec3bbd29e2b816d9e8eb93913437571b4b035"
+    },
+    {
+      "path": "docs/testing/pdv-unico-session-qa-manifest.json",
+      "sha256": "06552c5962f424f7e1e019a60870960112bb3113af0dcde770303bb8a2336853"
+    },
+    {
+      "path": "docs/testing/pdv-unico-finance-qa-manifest.json",
+      "sha256": "d6817b0b2180467ef860602dac8d1cafa9e05173e1e8aa4553205d5125fe268f"
+    },
+    {
+      "path": "docs/testing/pdv-unico-commerce-qa-manifest.json",
+      "sha256": "88a36179798e865ac67642748536d0d588a4f999b35bab381d774747512ff43e"
+    }
+  ],
+  "priorManifests": {
+    "historical": {
+      "path": "docs/testing/pdv-unico-qa-migration-manifest.json"
+    },
+    "core": {
+      "path": "docs/testing/pdv-unico-core-qa-manifest.json"
+    },
+    "catalog": {
+      "path": "docs/testing/pdv-unico-catalog-qa-manifest.json"
+    },
+    "session": {
+      "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
+      "name": "20261004100000_pdv_session_restartable",
+      "commit": "2926b97b02f139107eb050612dd73e07b1bfad77",
+      "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
+    },
+    "finance": {
+      "path": "docs/testing/pdv-unico-finance-qa-manifest.json",
+      "migrationName": "20261004150000_pdv_finance_session_link",
+      "migrationPath": "backend/prisma/migrations/20261004150000_pdv_finance_session_link/migration.sql",
+      "migrationSha256": "ea7cd12fa9ea04c4101854b53e65259ec89dad91b88d64064d8cf39e9cd2667a"
+    },
+    "commerce": {
+      "path": "docs/testing/pdv-unico-commerce-qa-manifest.json"
+    }
+  },
+  "delivery": {
+    "schemaCommit": "2926b97b02f139107eb050612dd73e07b1bfad77",
+    "schemaSha256": "0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc",
+    "migrationName": "20261004170000_pdv_commerce_inventory_context",
+    "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
+    "migrationSha256": "3aaf567f8dddfd94250c5efee4bd37af4a8074243de000fb6ef2f8f9890cc3ab"
+  },
+  "preCommerceSchema": {
+    "commit": "128f69fb2fd6904aa823ff17448a6ff13e9d9595",
+    "path": "backend/prisma/schema.prisma",
+    "sha256": "d93bbbff0bae98b116d353c9a62cb5d8bd8d8f87881de8baa6937fa6aa9f8991"
+  },
+  "codeCandidates": [
+    {
+      "path": "backend/scripts/pdv-unico-catalog-migrator.ts",
+      "sha256": "eb48c8e4e6224e33af74e333cbf53bf9358f4af46b10272e5e2a4b5460d8649a"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-business-migrator.ts",
+      "sha256": "a4991389aa2fd6f96787cc433e2e126eb18ae609ddd456f82e860d67e1453f42"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-catalog-transform.ts",
+      "sha256": "6db65bca7270d1d54a9909520b8648eefded93e35ce2479a2e7cc317b5595308"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-catalog-transform.test.ts",
+      "sha256": "62f5a0465ab06602ef23ab4370dc0af0351d361b42bf95afcd21c9993b65e999"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-source-graph.ts",
+      "sha256": "2f6d919bfb520cf338f66db2c86366143152e30ef863f99fc0f1e41366c61348"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-commerce-source.ts",
+      "sha256": "66dd02c9db4ceac492bf7e3ff7b87f9817e1bc3f59fc3dc64766c085ea034299"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-commerce-transform.ts",
+      "sha256": "5e43830444f716242faccd511f9c6007e9767815d7d15727c5b93bb342726e98"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs",
+      "sha256": "cde9334e674d53da35f15940198c3107b8a6be833cf23ed8b95eca3cd5f7a1c2"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-session-transform.ts",
+      "sha256": "2de9d12eaaca659390489afcedbdcc46fdf9bd15957f59e456a5f99bf4423580"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-commerce-disposable-qa.mjs",
+      "sha256": "3f81d4c0e2ee91c67d7e012b06173c4578de8336e5a0a7b605a4f1936ba1148d"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
+      "sha256": "8d0214128950bc837b13eb00587d19577aa2d4256ee4cf7a077514e92f30f33b"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-finance-migrator.isolated.test.mjs",
+      "sha256": "b691cfa0290f741a7ee83378283c110fa317a0b9786b70297279d9a69e13e618"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-finance-source.ts",
+      "sha256": "fb45a47077b2cd41c85b0cbf031d0ff5a84dcf11de650919d01f427530d509e7"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-finance-transform.ts",
+      "sha256": "002f20196e8a149f102a4e1ab03ad94ae8fb632c1da0e38206557c02d101042d"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-finance-reconcile.ts",
+      "sha256": "2c74d80aeea0dca9902730a3e3b19dc0c162ef348315c687689378536bbc998c"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-finance-disposable-qa.mjs",
+      "sha256": "9b1066e6363ae15d78636aff97b1d7ec59d9370ded1078c46dba226110bbdfd0"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-historical-disposable-qa.mjs",
+      "sha256": "136b6b2903ba304e9996ad9a07320210e1f224cc3dd594b3bc06dd97a130a249"
+    },
+    {
+      "path": "backend/scripts/run-isolated-qa-historical.mjs",
+      "sha256": "b8ae17e32cfd8dec8a326976d02afce9f55caeb41e96ab11b005aa6c58d7f157"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-core-schema.isolated.test.mjs",
+      "sha256": "592decb9617c04a3e62963cbebf005da568cc947a687ac6b3e649f611ff2c940"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-migrator-qa-manifest.mjs",
+      "sha256": "478991397c15d50f779bb505387cf06e612b0b5d533907729d13e96b0668908a"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-qa-migration-manifest.mjs",
+      "sha256": "00e3e4d418b8fd8a20b95f9c9a5d33596828b42bab3398fa74dbc34cb760ad9f"
+    },
+    {
+      "path": "backend/scripts/isolated-qa-env.mjs",
+      "sha256": "2f18d9ae6639a4235acf55b09b4f8b5ae359cf131ad3b1f146f9320dc16b86ff"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-planner.isolated.test.ts",
+      "sha256": "6b127413421ed1d9268184cf6494197aabdccfef892f2e4d831c1637a30d2e34"
+    },
+    {
+      "path": "backend/package.json",
+      "sha256": "397148ab5645e248da4b78f7470f61ec3b4fa3137f8be31c5d846e0678c5b016"
+    }
+  ],
+  "manifestSha256": "2b6eb0997ef5f16928677b3a314f3d56397894b590cd511a39f08dd7da5860f5"
+}

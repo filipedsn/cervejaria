@@ -1,5 +1,15 @@
 # Plano de testes: PDV único
 
+## Estado atual da certificação — entrega baseada em 2926b97b
+
+**Implementado:** hash Decimal exato versionado; revalidação completa das ocorrências confirmadas; reconciliação comercial por nova leitura do PostgreSQL; manifesto corrente com schema/SQL/código e runners fixados sem depender do índice Git; preflight explícito para pedido de cozinha legado sem PDV apontado por movimento de estoque com PDV.
+
+**Ensaiado nesta entrega em QA descartável:** `npm run qa:pdv-current-disposable` passou nas etapas histórica, financeira e comercial integrada. A cadeia comercial cobriu dois tenants no mesmo banco, revalidação dos runs anteriores, replay no mesmo/novo run, rollback/retomada, divergência após leitura, pais históricos de item/opcional/status, dependências de ocorrência adulterada e concorrência com lock observado. O preflight da migration sobre pedido legado sem PDV ligado a movimento de estoque bloqueou de forma específica e preservou as linhas antigas.
+
+**Pendente / NÃO COMPROVADO:** não houve migração de negócio em DEV; o caso legado que falha no preflight requer backfill com evidência e validação posterior da FK; cobertura global de comandas não atribuíveis, ledger integral de estoque, reconciliação de dados reais, API/UI autenticadas, realtime/PWA, login/RBAC, operação e recuperação de infraestrutura continuam gates separados. Nenhum cenário planejado deve ser contado como executado.
+
+Os quadros anteriores são **evidência histórica** das entregas indicadas, não resultado automático desta execução. A bateria atual é `npm run qa:pdv-current-disposable`; seu resultado agregado foi PASS apenas após histórico, financeiro e teste integrado concluírem sem falha ou skip obrigatório.
+
 Status: cobertura separa planejado, executado e NAO COMPROVADO. Os cenarios QA de escrita ficam limitados ao PostgreSQL descartavel e nao autorizam migracao em DEV/PROD nem remocao de tabelas.
 
 ## Inventário funcional e configuração
@@ -264,3 +274,22 @@ This section records the earlier finance regression details. Current command com
 | FIN-13 | Dados reais multiempresa, órfãos, pedidos e estoque com saldo | Reconciliar os domínios completos e falhas de infraestrutura antes de qualquer corte | QA/P0 | **NÃO COMPROVADO** |
 
 Manifesto candidato: `pdv-unico-finance-qa-manifest.json`, baseline commit `e7082d4b7ab08f480d82978ac0686d3af4bd8bf0`; fixa schema staged, migration financeira, migrations anteriores e hashes dos scripts. Prisma Client é gerado do schema candidato. O teste de FK/origem não certifica login/RBAC real. Aplicação em DEV compartilhado, dados reais, corte/rollback do produto, ranking por ocorrência/recorrência e reconciliação de estoque permanecem **NÃO COMPROVADOS**.
+
+
+## Certification gap closure - delivery from 2926b97b
+
+These scenarios were added and run by the current integrated runner. Executed means synthetic data on the disposable PostgreSQL bundle; it does not mean real-data migration or operational acceptance.
+
+| ID | Preconditions / action | Expected result | Priority / layer | Executor / result |
+|---|---|---|---|---|
+| HASH-01 | Decimal stock 3.125 and 3.126; hash a persisted target | Distinct exact hashes; change after confirmation invalidates certification without repair | P0 QA/integration | catalog hash unit test plus commerce QA; PASS |
+| COM-LINK-01 | Reparent item, sold optional and order-status history between valid same-tenant parents | Original parent IDs are part of source payload; each altered link blocks recertification | P0 QA/integration | Commerce isolated QA; 3 specific blockers, PASS |
+| OCC-01 | Change mapped occurrence date, agenda, or content while tenant/PDV remain valid; invoke session, finance, or commerce scope | Full business checkpoint/receipts/maps/destinations are revalidated; dependent scope blocks before checkpoint advancement | P0 QA/integration | Commerce isolated QA; three typed occurrence blockers, PASS |
+| COM-REC-01 | Read commercial source independently after target writes; compare IDs, parents, snapshots, status/timestamps, Decimal fields and totals | Missing/additional/changed rows or reparenting invalidate the run; unattributable source stays pending; stock ledger coverage remains NOT PROVEN | P0 QA/integration | reconcilePdvCommerce; integrated QA and target-tamper rollback, PASS |
+| INT-01 | Two tenants share one disposable DB; run business -> catalog -> sessions -> finance -> commerce, then replay same/new run IDs | PDV/occurrences/configuration/catalog/session/payment/debt/command/kitchen/portal/stock identities remain stable; prior scopes revalidate | P0 QA/integration | qa:pdv-current-disposable; 19 commerce maps; PASS |
+| INT-02 | Pause across batches, inject target drift between read and receipt verification, inject write failure, and run concurrent same-scope calls with a barrier | Atomic rollback, prior checkpoint retained, deterministic resume, no duplicate maps, PostgreSQL lock observed | P0 QA/integration | Integrated commerce QA; PASS |
+| FK-LEGACY-01 | Before commerce SQL, create kitchen order without PDV referenced by stock movement with PDV | SQL preflight blocks with PDV_COMMERCE_PREFLIGHT_ORDER_CONTEXT_REQUIRED; rows remain unchanged and no partial DDL/constraint weakening occurs | P0 QA/integration | Preflight DB in disposable container; PASS as explicit blocker |
+
+**Regression actually run:** npm run qa:pdv-current-disposable: historical schema/business tests, financial suite, and integrated commerce suite all completed; no required scenario was skipped. Historical and finance suites use baseline-compatible migration manifests/clients. Commerce applies the explicit current 91-migration bundle and a pinned candidate client. Prisma validate and backend TypeScript build passed. Temporary QA databases and generated clients were removed by their runners.
+
+**Still NOT PROVEN:** real DEV data coverage and reconciliation, global command attribution, full stock ledger, authenticated login/RBAC and API/UI behavior, product cutover/rollback, infrastructure-level recovery, portal/scoring/ranking decisions, and actual migration of business data. The pre-existing-order preflight is a required blocker pending authoritative PDV assignment and safe backfill design.

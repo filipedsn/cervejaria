@@ -423,3 +423,27 @@ export async function runPdvBusinessMigration(options: {
     throw error;
   }
 }
+
+/** Revalidate the complete completed business run before a downstream scope trusts an occurrence. */
+export async function findConfirmedPdvEventOccurrence(tx: AnyDb, companyId: string, pdvId: string, eventId: string) {
+  await acquireScopeLock(tx, companyId);
+  const snapshot = await readScopeSnapshot(tx, companyId);
+  const sourceHash = hash(scopePayload(snapshot));
+  const graph = buildPdvPlanningGraph(snapshot);
+  const plan = recordsForScope(snapshot, graph, companyId);
+  if (plan.canonicalPdvId !== pdvId) throw new PdvMigrationBlocker('DEPENDENCY_PDV_MISMATCH', 'EVENTO', eventId, 'A ocorrência não pertence ao PDV canônico confirmado.');
+  const item = plan.items.find((candidate) => candidate.type === 'EVENTO' && candidate.id === eventId);
+  if (!item || item.role !== 'OCORRENCIA' || item.expected.type !== 'OCORRENCIA_OPERACIONAL') throw new PdvMigrationBlocker('DEPENDENCY_OCCURRENCE_NOT_FOUND', 'EVENTO', eventId, 'O Evento atual não corresponde a uma ocorrência datada.');
+  const map = await tx.pdvMigrationMap.findUnique({ where: { sourceType_sourceId: { sourceType: 'EVENTO', sourceId: eventId } } });
+  if (!map || map.cervejariaId !== companyId || map.pontoVendaId !== pdvId || map.lastRunId == null || map.lastBatchId == null) throw new PdvMigrationBlocker('DEPENDENCY_NOT_CONFIRMED', 'EVENTO', eventId, 'A ocorrência não tem mapa confirmado no tenant e PDV esperados.');
+  const run = await tx.pdvMigrationRun.findUnique({ where: { id: map.lastRunId } });
+  if (!run || run.status !== 'COMPLETED') throw new PdvMigrationBlocker('DEPENDENCY_RUN_INCOMPLETE', 'EVENTO', eventId, 'Run de agenda/ocorrência não está concluído.');
+  const state = await validateConfirmedState(tx, { run, companyId, pdvId, sourceHash, items: plan.items, requireComplete: true });
+  const confirmedKey = key('EVENTO', eventId);
+  if (!state.completedKeys.includes(confirmedKey)) throw new PdvMigrationBlocker('DEPENDENCY_CHECKPOINT_MISSING', 'EVENTO', eventId, 'Checkpoint concluído não inclui a ocorrência.');
+  const confirmedMap = await verifyExistingMap(tx, item, companyId, pdvId);
+  if (!confirmedMap || confirmedMap.destinationType !== item.expected.type || confirmedMap.destinationId !== item.expected.id) throw new PdvMigrationBlocker('DEPENDENCY_DESTINATION_MISMATCH', 'EVENTO', eventId, 'Mapa confirmado da ocorrência diverge do destino esperado.');
+  const occurrence = await tx.ocorrenciaOperacional.findUnique({ where: { id: item.expected.id } });
+  if (!occurrence) throw new PdvMigrationBlocker('DEPENDENCY_DESTINATION_MISSING', 'EVENTO', eventId, 'Destino da ocorrência está ausente.');
+  return occurrence;
+}

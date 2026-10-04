@@ -33,7 +33,7 @@ export async function verifyMigratorQaManifest(manifest, codeCandidateOverrides 
     if (sha256(bytes) !== reference.sha256) throw new Error(`Manifesto histórico alterado: ${reference.path}`);
   }
   if (codeCandidateOverrides.size === 0) {
-    const currentPath = path.resolve(repoRoot, 'docs/testing/pdv-unico-commerce-qa-manifest.json');
+    const currentPath = path.resolve(repoRoot, 'docs/testing/pdv-unico-integrated-qa-manifest.json');
     const current = JSON.parse(await readFile(currentPath, 'utf8'));
     const { manifestSha256: currentDigest, ...currentBody } = current;
     if (normalizedSha256(Buffer.from(JSON.stringify(currentBody))) !== currentDigest) throw new Error('Manifesto atual de candidatos tem digest divergente.');

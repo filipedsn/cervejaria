@@ -27,10 +27,11 @@ assert.equal(sha256(Buffer.from(JSON.stringify(manifestBody))), manifestSha256, 
 const baselineAncestor = spawnSync('git', ['merge-base', '--is-ancestor', manifest.baseline.commit, 'HEAD'], { cwd: repoRoot, encoding: 'utf8' });
 assert.equal(baselineAncestor.status, 0, 'immutable baseline must be an ancestor of the current checkout');
 assert.equal(sha256(readPinnedBlob(manifest.baseline.commit, manifest.baseline.schemaPath)), manifest.baseline.schemaSha256, 'immutable baseline schema');
-const currentManifest = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-commerce-qa-manifest.json'), 'utf8'));
-const stagedSchemaBytes = readPinnedBlob(currentManifest.baseline.commit, currentManifest.baseline.schemaPath);
-assert.equal(sha256(stagedSchemaBytes), manifest.delivery.schemaSha256, 'immutable finance schema from current delivery base');
-const stagedSchema = { status: 0, stdout: stagedSchemaBytes };
+const currentManifest = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-integrated-qa-manifest.json'), 'utf8'));
+const financeSchemaBytes = readPinnedBlob(currentManifest.preCommerceSchema.commit, currentManifest.preCommerceSchema.path);
+assert.equal(sha256(financeSchemaBytes), currentManifest.preCommerceSchema.sha256, 'pinned pre-commerce schema');
+assert.equal(sha256(financeSchemaBytes), manifest.delivery.schemaSha256, 'finance schema from the immutable pre-commerce baseline');
+const stagedSchema = { status: 0, stdout: financeSchemaBytes };
 const financeSql = normalizedText(await readFile(path.join(repoRoot, manifest.delivery.migrationPath)));
 assert.equal(sha256(financeSql), manifest.delivery.migrationSha256, 'candidate SQL');
 for (const entry of manifest.immutableManifests) assert.equal(sha256(await readFile(path.join(repoRoot, entry.path))), entry.sha256, `immutable manifest ${entry.path}`);

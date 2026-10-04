@@ -2,7 +2,9 @@ import { createHash } from 'node:crypto';
 import { deriveOperationalProfile } from '../src/lib/operational-profile.js';
 
 export const PDV_CATALOG_SCOPE = 'PDV_CONFIGURACAO_CATALOGO_V1';
-export const PDV_CATALOG_TRANSFORM_VERSION = 1;
+// v2 changes Decimal canonicalization from rounded two-place output to exact decimal text.
+// Existing v1 receipts are intentionally rejected by transform-version checks, never rewritten.
+export const PDV_CATALOG_TRANSFORM_VERSION = 2;
 const noopFallback = () => undefined;
 
 export class PdvCatalogBlocker extends Error {
@@ -17,7 +19,10 @@ function canonical(value: unknown): string {
   if (typeof value === 'bigint') return JSON.stringify(value.toString());
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (value && typeof value === 'object') {
-    if ('toFixed' in value && typeof (value as { toFixed?: unknown }).toFixed === 'function') return JSON.stringify((value as { toFixed: (digits: number) => string }).toFixed(2));
+    if ('toFixed' in value && typeof (value as { toFixed?: unknown }).toFixed === 'function') {
+      const decimal = value as { toString: () => string };
+      return JSON.stringify(decimal.toString());
+    }
     const object = value as Record<string, unknown>;
     return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${canonical(object[key])}`).join(',')}}`;
   }

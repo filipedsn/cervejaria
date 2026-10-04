@@ -1,7 +1,7 @@
 import { canonicalPdvPayloadHash, PdvCatalogBlocker } from './pdv-unico-catalog-transform.js';
 
 export const PDV_SESSION_SCOPE = 'PDV_SESSOES_CAIXA_V1';
-export const PDV_SESSION_TRANSFORM_VERSION = 1;
+export const PDV_SESSION_TRANSFORM_VERSION = 2;
 const sourceKey = (type: string, id: string) => `${type}:${id}`;
 
 function jsonSafe(value: any): any {

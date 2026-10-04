@@ -1,7 +1,7 @@
 import { PdvCatalogBlocker } from './pdv-unico-catalog-transform.js';
 
 export const PDV_FINANCE_SCOPE = 'PDV_FINANCEIRO_V1';
-export const PDV_FINANCE_TRANSFORM_VERSION = 1;
+export const PDV_FINANCE_TRANSFORM_VERSION = 2;
 const sourceKey = (type: string, id: string) => `${type}:${id}`;
 function jsonSafe(value: any): any {
   if (value instanceof Date) return value.toISOString();

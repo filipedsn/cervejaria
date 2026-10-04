@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPdvCatalogMigrationItems } from './pdv-unico-catalog-transform.js';
-import { PdvCatalogBlocker } from './pdv-unico-catalog-transform.js';
+import { buildPdvCatalogMigrationItems, canonicalPdvPayloadHash, PdvCatalogBlocker } from './pdv-unico-catalog-transform.js';
+import { Prisma } from '@prisma/client';
 import { resolveEffectivePrice } from '../src/lib/operacao/preco-efetivo.js';
 
 const date = new Date('2026-09-01T12:00:00.000Z');
@@ -21,6 +21,12 @@ function snapshot(config: any, legacy: any) {
   };
 }
 const transform = (source: any) => buildPdvCatalogMigrationItems({ companyId: 'qa-company', pointId: 'qa-pdv', snapshot: source, confirmedPdvSourceKey: 'PDV:qa-pdv' });
+
+test('hash version 2 preserves exact Decimal precision without Number conversion', () => {
+  assert.notEqual(canonicalPdvPayloadHash(new Prisma.Decimal('3.125')), canonicalPdvPayloadHash(new Prisma.Decimal('3.126')));
+  assert.notEqual(canonicalPdvPayloadHash(new Prisma.Decimal('3.125')), canonicalPdvPayloadHash(new Prisma.Decimal('3.12')));
+  assert.equal(canonicalPdvPayloadHash(new Prisma.Decimal('18.25')), canonicalPdvPayloadHash('18.25'));
+});
 
 test('configuração efetiva preserva false explícito e usa fallback legado só quando ausente', () => {
   const legacy = { ativo: true, exclusivo: false, controlaEstoque: true, temCozinha: true, quantidadeMesas: 12 };
