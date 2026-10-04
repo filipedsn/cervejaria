@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -30,8 +31,14 @@ function cuidLike(prefix) { return `${prefix}_${Date.now().toString(36)}_${Math.
 
 const historicalManifest = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-qa-migration-manifest.json'), 'utf8'));
 const baselineManifest = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-migrator-qa-manifest.json'), 'utf8'));
+const currentManifest = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-commerce-qa-manifest.json'), 'utf8'));
+const digest = (value) => createHash('sha256').update(Buffer.from(value.toString('utf8').replaceAll('\r\n', '\n'))).digest('hex');
+const { manifestSha256, ...currentManifestBody } = currentManifest;
+assert.equal(digest(Buffer.from(JSON.stringify(currentManifestBody))), manifestSha256, 'current candidate manifest digest');
+const currentCodeHashes = new Map(currentManifest.codeCandidates.map((candidate) => [candidate.path, candidate.sha256]));
+for (const candidate of currentManifest.codeCandidates) assert.equal(digest(await readFile(path.join(repoRoot, candidate.path))), candidate.sha256, `explicit current code candidate ${candidate.path}`);
 await verifyPinnedManifest(historicalManifest);
-const { migration, schema } = await verifyMigratorQaManifest(baselineManifest);
+const { migration, schema } = await verifyMigratorQaManifest(baselineManifest, currentCodeHashes);
 assert.equal(baselineManifest.confirmedBaseline.migration.name, migrationName);
 
 const bundle = await materializePinnedMigrationBundle(historicalManifest, tempRoot);

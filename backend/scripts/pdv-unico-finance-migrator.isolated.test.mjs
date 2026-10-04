@@ -27,13 +27,21 @@ assert.equal(sha256(Buffer.from(JSON.stringify(manifestBody))), manifestSha256, 
 const baselineAncestor = spawnSync('git', ['merge-base', '--is-ancestor', manifest.baseline.commit, 'HEAD'], { cwd: repoRoot, encoding: 'utf8' });
 assert.equal(baselineAncestor.status, 0, 'immutable baseline must be an ancestor of the current checkout');
 assert.equal(sha256(readPinnedBlob(manifest.baseline.commit, manifest.baseline.schemaPath)), manifest.baseline.schemaSha256, 'immutable baseline schema');
-const stagedSchema = spawnSync('git', ['show', ':backend/prisma/schema.prisma'], { cwd: repoRoot, encoding: null });
-assert.equal(stagedSchema.status, 0);
-assert.equal(sha256(stagedSchema.stdout), manifest.delivery.schemaSha256, 'task-only staged schema');
+const currentManifest = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-commerce-qa-manifest.json'), 'utf8'));
+const stagedSchemaBytes = readPinnedBlob(currentManifest.baseline.commit, currentManifest.baseline.schemaPath);
+assert.equal(sha256(stagedSchemaBytes), manifest.delivery.schemaSha256, 'immutable finance schema from current delivery base');
+const stagedSchema = { status: 0, stdout: stagedSchemaBytes };
 const financeSql = normalizedText(await readFile(path.join(repoRoot, manifest.delivery.migrationPath)));
 assert.equal(sha256(financeSql), manifest.delivery.migrationSha256, 'candidate SQL');
 for (const entry of manifest.immutableManifests) assert.equal(sha256(await readFile(path.join(repoRoot, entry.path))), entry.sha256, `immutable manifest ${entry.path}`);
-for (const entry of manifest.codeCandidates) assert.equal(sha256(await readFile(path.join(repoRoot, entry.path))), entry.sha256, `candidate code ${entry.path}`);
+const { manifestSha256: currentManifestSha, ...currentManifestBody } = currentManifest;
+assert.equal(sha256(Buffer.from(JSON.stringify(currentManifestBody))), currentManifestSha, 'current commerce manifest digest');
+const currentCode = new Map(currentManifest.codeCandidates.map((entry) => [entry.path, entry.sha256]));
+for (const entry of manifest.codeCandidates) {
+  if (currentCode.has(entry.path)) continue;
+  assert.equal(sha256(await readFile(path.join(repoRoot, entry.path))), entry.sha256, `historical finance candidate code ${entry.path}`);
+}
+for (const [file, digest] of currentCode) assert.equal(sha256(await readFile(path.join(repoRoot, file))), digest, `current candidate code ${file}`);
 
 function runPrisma(args) {
   const env = { ...process.env, NODE_ENV: 'test', DATABASE_URL: databaseUrl };
@@ -80,12 +88,12 @@ try {
   if (deploy.status !== 0) throw new Error(`QA-only migrate deploy failed: ${(deploy.stderr || deploy.stdout).replaceAll(databaseUrl, '[QA URL REDACTED]').slice(0, 1800)}`);
   const { PrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
   db = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
-  // The historical graph fixture intentionally writes an orphan session reference.
-  // Run it against its 89-migration contract, then apply the restrictive finance FK.
+  // This fixture deliberately writes a missing session reference, so it runs
+  // with the compatible 89-migration client before the restrictive finance FK.
   const graph = spawnSync(process.execPath, ['--import', 'tsx', '--test', 'scripts/pdv-unico-planner.isolated.test.ts'], {
-    cwd: backendRoot, env: { ...process.env, DATABASE_URL: databaseUrl }, encoding: 'utf8', windowsHide: true,
+    cwd: backendRoot, env: { ...process.env, DATABASE_URL: databaseUrl, PDV_QA_PRISMA_CLIENT: generatedClientDir }, encoding: 'utf8', windowsHide: true,
   });
-  if (graph.status !== 0) throw new Error(`Graph regression at its declared baseline failed: ${(graph.stderr || graph.stdout).replaceAll(databaseUrl, '[QA URL REDACTED]').slice(0, 1800)}`);
+  if (graph.status !== 0) throw new Error(`Graph regression at its declared 89-migration baseline failed: ${(graph.stderr || graph.stdout).replaceAll(databaseUrl, '[QA URL REDACTED]').slice(0, 1800)}`);
   assert.match(graph.stdout, /PDV-GRAPH-QA-01/);
   const financeMigrationDir = path.join(bundle.migrationsDir, manifest.delivery.migrationName);
   await mkdir(financeMigrationDir, { recursive: true });

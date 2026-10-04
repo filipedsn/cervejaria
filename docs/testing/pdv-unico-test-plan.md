@@ -217,9 +217,35 @@ O manifesto `pdv-unico-session-qa-manifest.json` fixa baseline, schema staged da
 
 A execucao de `qa:pdv-disposable` aplicou somente as 86 migrations historicas e o nucleo confirmado. FK, schema-core, business-migrator e os oito testes de exclusao/auditoria/concorrencia passaram; o runner encerrou com erro no teste do grafo porque esse teste usa `Produto.pontoVendaId`, coluna introduzida pela migration de catalogo que nao faz parte daquele bundle de nucleo. A mesma fixture `PDV-GRAPH-QA-01` foi executada e passou no runner novo com a cadeia completa de 89 migrations (historico + nucleo + catalogo + sessao). Assim, o resultado do comando legado e parcial/falho, nao PASS agregado.
 
+## Commerce regression: commands, kitchen, portal and inventory
+
+Scope PDV_COMANDAS_PEDIDOS_ESTOQUE_V1 uses the shared source graph. These tests certify migration links and integrity, not authenticated API, UI, realtime or portal policy.
+
+| ID | Preconditions and action | DB/API/UI expected result | Priority/layer | Executor/status |
+|---|---|---|---|---|
+| COM-01 | CAIXA and EVENTO commands, mapped occurrence | Preserve ID, origin, Event, client, state, totals, discount, dates and timestamp; attach only PDV and EVENTO occurrence | P0 QA/integration | Commerce disposable test; synthetic PASS |
+| COM-02 | Sold items, cancelled item and sold optional | Preserve IDs, prices, volume, quantity, snapshots, cancellation, kitchen/takeaway and optional link | P0 QA/integration | Synthetic PASS; API/UI and stock effects NOT PROVEN |
+| KCH-01 | Delivered/cancelled kitchen orders, six transitions and item links | Preserve orders, status, day, authors, timestamps, items and history; fill only missing PDV | P0 QA/integration | Synthetic PASS; kitchen API/UI/realtime NOT PROVEN |
+| PRT-01 | Portal order/lines, client, EVENTO command, product and occurrence map | Preserve IDs/references; create no order, confirmation or score | P0 QA/integration | Synthetic links PASS; portal policy/auth API NOT PROVEN |
+| STK-01 | Balance 3.125, minimum 0.500, movement 0.875 | Preserve exact Decimal values/IDs; invent no stock movement | P0 QA/integration | Synthetic PASS |
+| STK-02 | Cross-tenant product/PDV/order or changed confirmed balance | Composite FK rejects incompatible link; tampered target blocks without overwrite | P0 QA/integration | FK and 3.125 to 3.126 tamper PASS |
+| COM-03 | Command without Event/PDV; command linked to another PDV | Unattributable row remains in coverage; incompatible link gets specific blocker and stays intact | P0 QA/integration | Synthetic PASS; current DEV inventory NOT PROVEN |
+| COM-04 | Pause, error after write, same/new run and concurrent calls | Roll back failed batch to last checkpoint; no duplicate maps; observed scope lock; tamper invalidates | P0 QA/integration | Synthetic PASS; PostgreSQL lock observed |
+| COM-05 | Before/after commerce source rows | Coverage 3/2/1/2/6/1/1, 18 maps; compare exact IDs, contents and decimals | P0 QA/integration | Current 91-migration manifest; PASS |
+
+Fixtures are synthetic and created only inside disposable PostgreSQL. Tests do not inject expected blockers. Missing required fixture fails. Evidence includes content, IDs, checkpoints, maps, receipts and DB constraints, not status text alone.
+
+### Current regression command
+
+npm run qa:pdv-current-disposable runs historical, finance and commerce gates sequentially. Finance runs PDV-GRAPH-QA-01 with the compatible 89-migration Prisma Client before the restrictive finance FK, then applies finance as migration 90. Commerce applies the manifest-pinned 91-migration chain; the eight event deletion/audit/concurrency tests run after Comanda.ocorrenciaId exists. Any subprocess failure fails the aggregate. Historical manifests remain unchanged.
+
+**Executed:** aggregate qa:pdv-current-disposable passed with no omitted stages. Historical gate: FK/core/business migrator. Finance: 90 migrations, 6 payments (97.00), 2 debts (principal 73.00; received 55.00; balance 18.00), 13 maps and deliberate reconciliation drift blocked; graph ran with schema-compatible client at 89 migrations. Commerce: 91 migrations, 18 maps, coverage 3/2/1/2/6/1/1 plus one unattributable row; eight deletion/audit/concurrency tests passed, zero skips. Rollback, resume, same/new run replay, observed lock and stock tamper blocker passed. All temporary QA databases used tmpfs/local port 55439 and were removed.
+
+**NOT PROVEN:** this delivery did not query DEV, so no current real counts or multi-company stock reconciliation are claimed. Authenticated API/UI, portal, kitchen/realtime, cancellation/stock side effects, real ledger reconciliation, infrastructure recovery and product cutover/rollback remain pending.
+
 ## Regressão atual e financeiro
 
-O histórico acima descreve a execução anterior. Nesta entrega, `npm run qa:pdv-disposable` foi corrigido para executar somente fixtures compatíveis com seus baselines imutáveis. `npm run qa:pdv-current-disposable` é o **comando principal reproduzível**: executa primeiro esse ensaio histórico e depois `qa:pdv-finance-disposable`. O segundo aplica 86 migrations históricas + núcleo + catálogo + sessões, executa `PDV-GRAPH-QA-01` nessa fase de 89 migrations, aplica e verifica a migration financeira candidata como etapa 90 e executa os cenários abaixo. A fixture de grafo depende da ausência temporária da nova FK para produzir um vínculo órfão; todas as fixtures de grafo são removidas antes da etapa 90. O comando principal retorna erro se qualquer fase falhar.
+This section records the earlier finance regression details. Current command composition and its complete aggregate result are stated in the commerce section above. The main command is npm run qa:pdv-current-disposable and includes the commerce gate.
 
 | ID | Pré-condição e ação | Resultado exigido | Camada/prioridade | Executor / estado |
 |---|---|---|---|---|

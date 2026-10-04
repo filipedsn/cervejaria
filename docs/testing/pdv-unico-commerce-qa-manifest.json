@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "baseline": {
+    "commit": "128f69fb2fd6904aa823ff17448a6ff13e9d9595",
+    "schemaPath": "backend/prisma/schema.prisma",
+    "schemaSha256": "d93bbbff0bae98b116d353c9a62cb5d8bd8d8f87881de8baa6937fa6aa9f8991"
+  },
+  "immutableManifests": [
+    {
+      "path": "docs/testing/pdv-unico-qa-migration-manifest.json",
+      "sha256": "cacc244ff397d53699ad50b0c63ae476ae220bb3d3a7bd935636571e65f8970f"
+    },
+    {
+      "path": "docs/testing/pdv-unico-core-qa-manifest.json",
+      "sha256": "15788cbc1037faadd6b9b6ef9d5efe6cec98fac239576a91176fcaa01fcd8bc9"
+    },
+    {
+      "path": "docs/testing/pdv-unico-catalog-qa-manifest.json",
+      "sha256": "8e2d1ea4ea1b657504675b83aa5ec3bbd29e2b816d9e8eb93913437571b4b035"
+    },
+    {
+      "path": "docs/testing/pdv-unico-session-qa-manifest.json",
+      "sha256": "06552c5962f424f7e1e019a60870960112bb3113af0dcde770303bb8a2336853"
+    },
+    {
+      "path": "docs/testing/pdv-unico-finance-qa-manifest.json",
+      "sha256": "d6817b0b2180467ef860602dac8d1cafa9e05173e1e8aa4553205d5125fe268f"
+    }
+  ],
+  "priorManifests": {
+    "historical": {
+      "path": "docs/testing/pdv-unico-qa-migration-manifest.json"
+    },
+    "core": {
+      "path": "docs/testing/pdv-unico-core-qa-manifest.json"
+    },
+    "catalog": {
+      "path": "docs/testing/pdv-unico-catalog-qa-manifest.json"
+    },
+    "session": {
+      "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
+      "name": "20261004100000_pdv_session_restartable",
+      "commit": "128f69fb2fd6904aa823ff17448a6ff13e9d9595",
+      "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
+    },
+    "finance": {
+      "path": "docs/testing/pdv-unico-finance-qa-manifest.json",
+      "migrationName": "20261004150000_pdv_finance_session_link",
+      "migrationPath": "backend/prisma/migrations/20261004150000_pdv_finance_session_link/migration.sql",
+      "migrationSha256": "ea7cd12fa9ea04c4101854b53e65259ec89dad91b88d64064d8cf39e9cd2667a"
+    }
+  },
+  "delivery": {
+    "schemaSha256": "0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc",
+    "migrationName": "20261004170000_pdv_commerce_inventory_context",
+    "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
+    "migrationSha256": "cd929ef135eba3fae300063ef357a9058ba2669147f3816a9b124a3c29804bdd"
+  },
+  "codeCandidates": [
+    {
+      "path": "backend/scripts/pdv-unico-catalog-migrator.ts",
+      "sha256": "4303e794e781caceaeb5c4821747a81e3f231cf6a019850663b39e8e177d494c"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-source-graph.ts",
+      "sha256": "ee2037cba5dbd236f82a19e6b039b00985c8dd4c07a75fe74fb30a9358c0aa39"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-commerce-source.ts",
+      "sha256": "66dd02c9db4ceac492bf7e3ff7b87f9817e1bc3f59fc3dc64766c085ea034299"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-commerce-transform.ts",
+      "sha256": "5709cf854c3195e80844d8efbca592bf40e58852478a50795dbcff5769cb3431"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-commerce-disposable-qa.mjs",
+      "sha256": "309c4998573e0ba403735c16fe5678adc5d70edb50fcf348e2329e6d66378870"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-migrator-qa-manifest.mjs",
+      "sha256": "1a49b4c817f78e3123c0f4c5bf52491d4818fa44da99fdd630eeb6b282458c8e"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-core-schema.isolated.test.mjs",
+      "sha256": "63e375d7996e8ec25bdfa7b794f8979213d454e28db2bfb81429c978c481bb51"
+    },
+    {
+      "path": "backend/scripts/run-isolated-qa-historical.mjs",
+      "sha256": "b8ae17e32cfd8dec8a326976d02afce9f55caeb41e96ab11b005aa6c58d7f157"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-finance-migrator.isolated.test.mjs",
+      "sha256": "ca66ba24a14bf380c99eafbbebf7b2d3b3fa6d8ce439f78a3a2e110855f2c1c6"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-planner.isolated.test.ts",
+      "sha256": "6b127413421ed1d9268184cf6494197aabdccfef892f2e4d831c1637a30d2e34"
+    },
+    {
+      "path": "backend/package.json",
+      "sha256": "397148ab5645e248da4b78f7470f61ec3b4fa3137f8be31c5d846e0678c5b016"
+    }
+  ],
+  "manifestSha256": "d970cdca278d3cca0d0f66f29cd207abcc69f00f35833a509735aee9cc9c7d52"
+}

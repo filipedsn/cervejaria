@@ -372,6 +372,7 @@ model Produto {
 
   @@index([cervejariaId])
   @@unique([id, cervejariaId, pontoVendaId])
+  @@unique([id, cervejariaId])
 
   @@schema("public")
 }
@@ -696,6 +697,8 @@ model Comanda {
   /// Operacao: ponto de venda, dia operacional e identificador da mesa/ficha/apelido.
   pontoVendaId   String?
   diaOperacional DateTime?     @db.Date
+  /// Contexto histórico opcional da realização, preenchido pelo migrador após confirmar o mapa.
+  ocorrenciaId   String?
   identificador  String?
   abertaPorId    String?
   createdAt      DateTime      @default(now())
@@ -705,6 +708,7 @@ model Comanda {
   cliente    Cliente?    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   pontoVenda PontoVenda? @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
   fechadoPor Usuario?   @relation("ComandaFechadaPor", fields: [fechadoPorId], references: [id], onDelete: SetNull)
+  ocorrencia OcorrenciaOperacional? @relation(fields: [pontoVendaId, ocorrenciaId], references: [pontoVendaId, id], onDelete: Restrict)
   itens      ItemComanda[]
   pagamentos Pagamento[]
   contaReceber ContaReceber?
@@ -1077,8 +1081,10 @@ model OcorrenciaOperacional {
   agenda AgendaOperacional? @relation(fields: [agendaId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
   sessoesCaixa SessaoCaixaOperacao[] @relation("SessaoOcorrenciaOperacional")
 
+  comandas Comanda[]
   @@unique([id, cervejariaId, pontoVendaId])
   @@unique([agendaId, data])
+  @@unique([pontoVendaId, id])
   @@index([pontoVendaId, data])
   @@index([cervejariaId, data])
   @@schema("quiosque")
@@ -1211,6 +1217,7 @@ model PedidoOperacao {
 
   @@unique([cervejariaId, diaOperacional, numero])
   @@index([cervejariaId, status, createdAt])
+  @@unique([id, cervejariaId, pontoVendaId])
   @@index([comandaId])
   @@schema("quiosque")
   @@map("PedidoQuiosque")
@@ -1373,8 +1380,8 @@ model InventoryBalance {
   updatedAt    DateTime @updatedAt
 
   cervejaria Cervejaria     @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
-  pontoVenda PontoVenda     @relation(fields: [pontoVendaId], references: [id], onDelete: Cascade)
-  produto    Produto        @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda     @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+  produto    Produto        @relation(fields: [produtoId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
 
   @@unique([pontoVendaId, produtoId])
   @@index([cervejariaId, pontoVendaId])
@@ -1396,9 +1403,9 @@ model InventoryMovement {
   createdAt       DateTime                     @default(now())
 
   cervejaria Cervejaria      @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
-  pontoVenda PontoVenda      @relation(fields: [pontoVendaId], references: [id], onDelete: Cascade)
-  produto    Produto         @relation(fields: [produtoId], references: [id], onDelete: Restrict)
-  pedido     PedidoOperacao? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  pontoVenda PontoVenda      @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+  produto    Produto         @relation(fields: [produtoId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+  pedido     PedidoOperacao? @relation(fields: [pedidoId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
 
   @@index([pontoVendaId, produtoId, createdAt])
   @@index([pedidoId])

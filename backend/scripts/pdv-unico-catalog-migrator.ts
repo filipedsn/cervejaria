@@ -7,6 +7,8 @@ import { operationalSessionData } from './pdv-unico-session-transform.js';
 import { buildPdvFinanceMigrationItems, PDV_FINANCE_SCOPE, PDV_FINANCE_TRANSFORM_VERSION } from './pdv-unico-finance-transform.js';
 import { readPdvFinanceSourceSnapshot } from './pdv-unico-finance-source.js';
 import { reconcilePdvFinance } from './pdv-unico-finance-reconcile.js';
+import { buildPdvCommerceMigrationItems, PDV_COMMERCE_SCOPE, PDV_COMMERCE_TRANSFORM_VERSION } from './pdv-unico-commerce-transform.js';
+import { readPdvCommerceSourceSnapshot } from './pdv-unico-commerce-source.js';
 
 type Db = any;
 const key = (type: string, id: string) => `${type}:${id}`;
@@ -19,6 +21,10 @@ const delegates: Record<string, string> = {
   AGENDA_OPERACIONAL: 'agendaOperacional', OCORRENCIA_OPERACIONAL: 'ocorrenciaOperacional',
   SESSAO_CAIXA_OPERACAO: 'sessaoCaixaOperacao', SESSAO_CAIXA_OPERACAO_ITEM: 'sessaoCaixaProdutoOperacao',
   PAGAMENTO: 'pagamento', CONTA_RECEBER: 'contaReceber', MOVIMENTO_CAIXA_OPERACAO: 'movimentoCaixaOperacao',
+  COMANDA: 'comanda', ITEM_COMANDA: 'itemComanda', ITEM_COMANDA_OPCIONAL: 'itemComandaOpcional',
+  PEDIDO_COZINHA: 'pedidoOperacao', PEDIDO_COZINHA_STATUS: 'pedidoOperacaoStatusHistorico',
+  PEDIDO_CLIENTE: 'pedidoCliente', PEDIDO_CLIENTE_ITEM: 'pedidoClienteItem',
+  ESTOQUE_SALDO: 'inventoryBalance', MOVIMENTO_ESTOQUE: 'inventoryMovement',
 };
 
 async function lock(tx: Db, scope: string, companyId: string, pointId: string) {
@@ -451,5 +457,57 @@ export async function runPdvFinanceMigration(options: { db: Db; companyId: strin
     },
     writeItem: writeFinanceTarget,
     validateScope: reconcilePdvFinance,
+  });
+}
+
+async function writeCommerceTarget(tx: Db, item: any) {
+  const existing = await readDestination(tx, item.destinationType, item.destinationId);
+  if (!existing) throw new PdvCatalogBlocker('COMMERCE_SOURCE_DESTINATION_MISSING', item.type, item.id, 'Registro de origem desapareceu; não será recriado.');
+  if (item.type === 'COMANDA') {
+    if (existing.pontoVendaId && existing.pontoVendaId !== item.destinationData.pontoVendaId) throw new PdvCatalogBlocker('COMMERCE_COMMAND_PDV_MISMATCH', item.type, item.id, 'Comanda aponta para outro PDV e não será reassociada.');
+    if (existing.ocorrenciaId && existing.ocorrenciaId !== item.destinationData.ocorrenciaId) throw new PdvCatalogBlocker('COMMERCE_COMMAND_OCCURRENCE_MISMATCH', item.type, item.id, 'Comanda aponta para outra ocorrência e não será reassociada.');
+    if (existing.pontoVendaId !== item.destinationData.pontoVendaId || existing.ocorrenciaId !== item.destinationData.ocorrenciaId) await tx.comanda.update({ where: { id: item.id }, data: { ...item.destinationData, updatedAt: existing.updatedAt } });
+    return false;
+  }
+  if (item.type === 'PEDIDO_COZINHA') {
+    if (existing.pontoVendaId && existing.pontoVendaId !== item.destinationData.pontoVendaId) throw new PdvCatalogBlocker('COMMERCE_ORDER_PDV_MISMATCH', item.type, item.id, 'Pedido de cozinha aponta para outro PDV e não será reassociado.');
+    if (existing.pontoVendaId !== item.destinationData.pontoVendaId) await tx.pedidoOperacao.update({ where: { id: item.id }, data: { ...item.destinationData, updatedAt: existing.updatedAt } });
+    return false;
+  }
+  return false;
+}
+
+/** Reconciles existing command/order/stock rows and writes only confirmed PDV/event links. */
+export async function runPdvCommerceMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; afterDestinationWrite?: (item: any) => Promise<void> | void }) {
+  return runPdvScopedMigration({
+    ...options, scope: PDV_COMMERCE_SCOPE, transformVersion: PDV_COMMERCE_TRANSFORM_VERSION,
+    buildItems: async (tx, pdvSourceKey) => {
+      const snapshot = await readPdvCommerceSourceSnapshot(tx, options.companyId);
+      const eventIds = new Set<string>();
+      for (const command of snapshot.commands) if (command.eventoId) eventIds.add(command.eventoId);
+      for (const order of snapshot.portalOrders) if (order.eventoId) eventIds.add(order.eventoId);
+      const confirmedOccurrences: Record<string, { id: string; companyId: string; pointId: string }> = {};
+      for (const eventId of eventIds) {
+        const row = await findConfirmedEventOccurrence(tx, options.companyId, options.pointId, eventId);
+        confirmedOccurrences[eventId] = { id: row.id, companyId: row.cervejariaId, pointId: row.pontoVendaId };
+      }
+      if (snapshot.coverage.tenantConflictCommandIds.length || snapshot.coverage.tenantConflictItemIds.length || snapshot.coverage.tenantConflictOrderIds.length || snapshot.coverage.tenantConflictInventoryIds.length) throw new PdvCatalogBlocker('COMMERCE_SOURCE_TENANT_CONFLICT', null, null, 'A fotografia contém referências de tenant incompatíveis.');
+      return buildPdvCommerceMigrationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedOccurrences });
+    },
+    confirmExternalDependency: async (tx, sourceType, sourceId) => {
+      if (sourceType === 'EVENTO') { await findConfirmedEventOccurrence(tx, options.companyId, options.pointId, sourceId); return true; }
+      if (sourceType === 'CATALOGO_PRODUTO') { await findConfirmedCatalogItem(tx, options.companyId, options.pointId, sourceType, sourceId); return true; }
+      return false;
+    },
+    writeItem: writeCommerceTarget,
+    validateScope: async (_tx, items) => ({
+      commands: items.filter((item) => item.type === 'COMANDA').length,
+      items: items.filter((item) => item.type === 'ITEM_COMANDA').length,
+      soldOptionals: items.filter((item) => item.type === 'ITEM_COMANDA_OPCIONAL').length,
+      kitchenOrders: items.filter((item) => item.type === 'PEDIDO_COZINHA').length,
+      statusHistory: items.filter((item) => item.type === 'PEDIDO_COZINHA_STATUS').length,
+      inventoryBalances: items.filter((item) => item.type === 'ESTOQUE_SALDO').length,
+      inventoryMovements: items.filter((item) => item.type === 'MOVIMENTO_ESTOQUE').length,
+    }),
   });
 }

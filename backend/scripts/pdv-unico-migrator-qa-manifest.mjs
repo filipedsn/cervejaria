@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const repoRoot = path.resolve(backendRoot, '..');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
+const normalizedSha256 = (value) => sha256(Buffer.from(value.toString('utf8').replaceAll('\r\n', '\n')));
 
 function git(args) {
   const result = spawnSync('git', args, { cwd: repoRoot, encoding: null });
@@ -18,7 +19,7 @@ export function readPinnedBlob(commit, filePath) {
   return git(['show', `${commit}:${filePath}`]);
 }
 
-export async function verifyMigratorQaManifest(manifest) {
+export async function verifyMigratorQaManifest(manifest, codeCandidateOverrides = new Map()) {
   const { manifestSha256, ...manifestBody } = manifest;
   if (sha256(Buffer.from(JSON.stringify(manifestBody))) !== manifestSha256) throw new Error('Digest do manifesto do migrador difere do conteudo registrado.');
   const base = manifest.confirmedBaseline;
@@ -31,11 +32,24 @@ export async function verifyMigratorQaManifest(manifest) {
     const bytes = await readFile(path.resolve(repoRoot, reference.path));
     if (sha256(bytes) !== reference.sha256) throw new Error(`Manifesto histórico alterado: ${reference.path}`);
   }
+  if (codeCandidateOverrides.size === 0) {
+    const currentPath = path.resolve(repoRoot, 'docs/testing/pdv-unico-commerce-qa-manifest.json');
+    const current = JSON.parse(await readFile(currentPath, 'utf8'));
+    const { manifestSha256: currentDigest, ...currentBody } = current;
+    if (normalizedSha256(Buffer.from(JSON.stringify(currentBody))) !== currentDigest) throw new Error('Manifesto atual de candidatos tem digest divergente.');
+    for (const candidate of current.codeCandidates ?? []) {
+      const bytes = await readFile(path.resolve(repoRoot, candidate.path));
+      if (normalizedSha256(bytes) !== candidate.sha256) throw new Error(`Candidato atual difere do hash fixado: ${candidate.path}`);
+      codeCandidateOverrides.set(candidate.path, candidate.sha256);
+    }
+  }
   if (manifest.deliveryCandidates?.schema !== null) throw new Error('Este ensaio exige schema candidato explícito null; use manifesto novo para ensaiar schema candidato.');
   if ((manifest.deliveryCandidates?.migrations ?? []).length !== 0) throw new Error('Esta entrega não registra migrations candidatas de negócio/schema.');
   for (const candidate of manifest.deliveryCandidates?.code ?? []) {
     const bytes = await readFile(path.resolve(repoRoot, candidate.path));
-    if (sha256(bytes) !== candidate.sha256) throw new Error(`Código sob ensaio difere do hash fixado: ${candidate.path}`);
+    const override = codeCandidateOverrides.get(candidate.path);
+    const actual = override ? sha256(Buffer.from(bytes.toString('utf8').replaceAll('\r\n', '\n'))) : sha256(bytes);
+    if (actual !== (override ?? candidate.sha256)) throw new Error(`Código sob ensaio difere do hash fixado: ${candidate.path}`);
   }
   return { schema, migration };
 }

@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 import { buildPdvPlanningGraph, readPdvPlanningSourceSnapshot } from './pdv-unico-source-graph.js';
 import { planPdvMigration } from './pdv-unico-migration-planner.js';
@@ -7,7 +9,10 @@ import { serializeCommandSnapshot } from './pdv-unico-snapshot.js';
 
 const qaDatabaseUrl = validateIsolatedQaEnvironment(process.env).toString();
 process.env.DATABASE_URL = qaDatabaseUrl;
-const { PrismaClient } = await import('@prisma/client');
+const clientModule = process.env.PDV_QA_PRISMA_CLIENT
+  ? pathToFileURL(path.join(process.env.PDV_QA_PRISMA_CLIENT, 'index.js')).href
+  : '@prisma/client';
+const { PrismaClient } = await import(clientModule);
 const prisma = new PrismaClient({ datasources: { db: { url: qaDatabaseUrl } } });
 
 async function createTenant(suffix: string, prefix: string) {
