@@ -3,6 +3,10 @@ import { readPdvPlanningSourceSnapshot } from './pdv-unico-source-graph.js';
 import { readPdvCatalogSourceSnapshot } from './pdv-unico-catalog-source.js';
 import { buildPdvSessionMigrationItems, PDV_SESSION_SCOPE, PDV_SESSION_TRANSFORM_VERSION } from './pdv-unico-session-transform.js';
 import { readPdvSessionSourceSnapshot } from './pdv-unico-session-source.js';
+import { operationalSessionData } from './pdv-unico-session-transform.js';
+import { buildPdvFinanceMigrationItems, PDV_FINANCE_SCOPE, PDV_FINANCE_TRANSFORM_VERSION } from './pdv-unico-finance-transform.js';
+import { readPdvFinanceSourceSnapshot } from './pdv-unico-finance-source.js';
+import { reconcilePdvFinance } from './pdv-unico-finance-reconcile.js';
 
 type Db = any;
 const key = (type: string, id: string) => `${type}:${id}`;
@@ -14,6 +18,7 @@ const delegates: Record<string, string> = {
   PRODUTO_OPCIONAL_VINCULO: 'produtoOpcionalVinculo', PONTO_VENDA: 'pontoVenda',
   AGENDA_OPERACIONAL: 'agendaOperacional', OCORRENCIA_OPERACIONAL: 'ocorrenciaOperacional',
   SESSAO_CAIXA_OPERACAO: 'sessaoCaixaOperacao', SESSAO_CAIXA_OPERACAO_ITEM: 'sessaoCaixaProdutoOperacao',
+  PAGAMENTO: 'pagamento', CONTA_RECEBER: 'contaReceber', MOVIMENTO_CAIXA_OPERACAO: 'movimentoCaixaOperacao',
 };
 
 async function lock(tx: Db, scope: string, companyId: string, pointId: string) {
@@ -186,6 +191,7 @@ type ScopedMigrationOptions = {
   buildItems: (tx: Db, pdvSourceKey: string) => Promise<any[]>;
   confirmExternalDependency?: (tx: Db, sourceType: string, sourceId: string) => Promise<boolean>;
   writeItem?: (tx: Db, item: any, hasExistingMap: boolean) => Promise<boolean>;
+  validateScope?: (tx: Db, items: any[]) => Promise<unknown>;
   maxBatches?: number; afterDestinationWrite?: (item: any) => Promise<void> | void;
 };
 
@@ -210,7 +216,10 @@ export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
           throw new PdvCatalogBlocker('RUN_ID_SCOPE_MISMATCH', null, runId, 'runId já pertence a outro tenant, PDV ou escopo; seu estado não será alterado.');
         }
         const state = await validateCheckpoint(tx, run, scope, transformVersion, companyId, pointId, sourceHash, items, run.status === 'COMPLETED', options.confirmExternalDependency);
-        if (run.status === 'COMPLETED') return { complete: true, checkpoint: run.checkpoint };
+        if (run.status === 'COMPLETED') {
+          if (options.validateScope) await options.validateScope(tx, items);
+          return { complete: true, checkpoint: run.checkpoint };
+        }
         if (state.cursor >= items.length) return { finalize: true, checkpoint: run.checkpoint, items, sourceHash };
         if (options.maxBatches != null && committedBatches >= options.maxBatches) return { paused: true, checkpoint: run.checkpoint };
 
@@ -250,6 +259,7 @@ export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
           const row = await tx.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } });
           if (!runMatchesScope(row, scope, companyId, pointId)) throw new PdvCatalogBlocker('RUN_ID_SCOPE_MISMATCH', null, runId, 'runId já pertence a outro tenant, PDV ou escopo; seu estado não será alterado.');
           await validateCheckpoint(tx, row, scope, transformVersion, companyId, pointId, sourceHash, items, true, options.confirmExternalDependency);
+          if (options.validateScope) await options.validateScope(tx, items);
           return tx.pdvMigrationRun.update({ where: { id: runId }, data: { status: 'COMPLETED', finishedAt: new Date() } });
         });
         return { status: 'COMPLETED', runId, checkpoint: finalRun.checkpoint, committedBatches };
@@ -364,5 +374,82 @@ export async function runPdvSessionMigration(options: { db: Db; companyId: strin
       return false;
     },
     writeItem: writeSessionTarget,
+  });
+}
+
+async function findConfirmedFinanceSession(tx: Db, companyId: string, pointId: string, sourceType: 'SESSAO_CAIXA_EVENTO' | 'SESSAO_CAIXA_OPERACAO', sourceId: string) {
+  const map = await tx.pdvMigrationMap.findUnique({ where: { sourceType_sourceId: { sourceType, sourceId } } });
+  if (!map || map.cervejariaId !== companyId || map.pontoVendaId !== pointId || map.destinationType !== 'SESSAO_CAIXA_OPERACAO' || !map.lastBatchId) throw new PdvCatalogBlocker('FINANCE_SESSION_MAP_MISSING', sourceType, sourceId, 'Sessão financeira não tem mapa confirmado neste tenant/PDV.');
+  const [run, batch, destination] = await Promise.all([
+    tx.pdvMigrationRun.findUnique({ where: { id: map.lastRunId } }),
+    tx.pdvMigrationBatch.findFirst({ where: { id: map.lastBatchId, runId: map.lastRunId } }),
+    tx.sessaoCaixaOperacao.findUnique({ where: { id: map.destinationId } }),
+  ]);
+  const checkpoint = run?.checkpoint as any;
+  const receipt = (batch?.checkpoint as any)?.receipts?.find((entry: any) => entry.sourceType === sourceType && entry.sourceId === sourceId);
+  if (run?.status !== 'COMPLETED' || checkpoint?.scope !== PDV_SESSION_SCOPE || checkpoint?.companyId !== companyId || checkpoint?.pointId !== pointId || !checkpoint?.completedSourceKeys?.includes(key(sourceType, sourceId)) || batch?.status !== 'CONFIRMED' || receipt?.destinationId !== map.destinationId || receipt?.payloadHash !== map.payloadHash) throw new PdvCatalogBlocker('FINANCE_SESSION_NOT_CERTIFIED', sourceType, sourceId, 'Run, checkpoint ou recibo da sessão não está confirmado.');
+  if (!destination || destination.cervejariaId !== companyId || destination.pontoVendaId !== pointId || destination.id !== sourceId || (sourceType === 'SESSAO_CAIXA_EVENTO' && destination.origemHistorica !== 'EVENTO') || receipt.destinationHash !== canonicalPdvPayloadHash(operationalSessionData(destination))) throw new PdvCatalogBlocker('FINANCE_SESSION_DESTINATION_DIVERGED', sourceType, sourceId, 'Destino da sessão ausente, incompatível ou diferente do recibo.');
+  return { id: destination.id, companyId, pointId, sourceType };
+}
+
+async function writeFinanceTarget(tx: Db, item: any, hasExistingMap: boolean) {
+  const existing = await readDestination(tx, item.destinationType, item.destinationId);
+  if (item.type === 'MOVIMENTO_CAIXA_EVENTO') {
+    if (existing && !hasExistingMap) throw new PdvCatalogBlocker('FINANCE_MOVEMENT_ID_COLLISION', item.type, item.id, 'ID do movimento Evento já pertence ao financeiro Por Caixa.');
+    if (!existing) await tx.movimentoCaixaOperacao.create({ data: item.destinationData });
+    return !existing;
+  }
+  if (!existing) throw new PdvCatalogBlocker('FINANCE_SOURCE_MISSING', item.type, item.id, 'Registro financeiro comum ausente; nenhuma linha será fabricada.');
+  if (item.type === 'PAGAMENTO' && existing.sessaoCaixaEventoId && !hasExistingMap) {
+    if (existing.sessaoCaixaId != null) throw new PdvCatalogBlocker('FINANCE_PAYMENT_DOUBLE_SESSION', item.type, item.id, 'Pagamento contém duas sessões antes de ter mapa financeiro.');
+    await tx.pagamento.update({ where: { id: item.id }, data: { sessaoCaixaId: item.destinationData.sessaoCaixaId } });
+  }
+  return false;
+}
+
+export async function runPdvFinanceMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; afterDestinationWrite?: (item: any) => Promise<void> | void }) {
+  return runPdvScopedMigration({
+    ...options, scope: PDV_FINANCE_SCOPE, transformVersion: PDV_FINANCE_TRANSFORM_VERSION,
+    buildItems: async (tx, pdvSourceKey) => {
+      const snapshot = await readPdvFinanceSourceSnapshot(tx, options.companyId);
+      const confirmedSessions: Record<string, any> = {};
+      const eventIds = new Set<string>();
+      for (const payment of snapshot.payments) {
+        if (payment.comanda.eventoId) eventIds.add(payment.comanda.eventoId);
+        if (payment.sessaoCaixaEventoId) {
+          const sourceType = 'SESSAO_CAIXA_EVENTO';
+          const sourceId = payment.sessaoCaixaEventoId;
+          confirmedSessions[key(sourceType, sourceId)] = await findConfirmedFinanceSession(tx, options.companyId, options.pointId, sourceType, sourceId);
+        } else if (payment.sessaoCaixaId) {
+          const sourceType = 'SESSAO_CAIXA_OPERACAO';
+          const sourceId = payment.sessaoCaixaId;
+          confirmedSessions[key(sourceType, sourceId)] = await findConfirmedFinanceSession(tx, options.companyId, options.pointId, sourceType, sourceId);
+        }
+      }
+      for (const debt of snapshot.debts) if (debt.comanda.eventoId) eventIds.add(debt.comanda.eventoId);
+      for (const movement of snapshot.eventMovements) {
+        const sourceType = 'SESSAO_CAIXA_EVENTO'; const sourceId = movement.sessaoId;
+        confirmedSessions[key(sourceType, sourceId)] = await findConfirmedFinanceSession(tx, options.companyId, options.pointId, sourceType, sourceId);
+      }
+      for (const movement of snapshot.operationalMovements) {
+        const sourceType = 'SESSAO_CAIXA_OPERACAO'; const sourceId = movement.sessaoId;
+        confirmedSessions[key(sourceType, sourceId)] = await findConfirmedFinanceSession(tx, options.companyId, options.pointId, sourceType, sourceId);
+      }
+      const confirmedEvents: Record<string, any> = {};
+      for (const eventId of eventIds) {
+        const row = await findConfirmedEventOccurrence(tx, options.companyId, options.pointId, eventId);
+        confirmedEvents[eventId] = { id: row.id, companyId: row.cervejariaId, pointId: row.pontoVendaId };
+      }
+      const paymentIds = snapshot.payments.map((payment: any) => payment.id);
+      const mappedPayments = await tx.pdvMigrationMap.findMany({ where: { sourceType: 'PAGAMENTO', sourceId: { in: paymentIds } }, select: { sourceId: true } });
+      return buildPdvFinanceMigrationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedSessions, confirmedEvents, mappedPaymentIds: new Set(mappedPayments.map((row: any) => row.sourceId)) });
+    },
+    confirmExternalDependency: async (tx, sourceType, sourceId) => {
+      if (sourceType === 'EVENTO') { await findConfirmedEventOccurrence(tx, options.companyId, options.pointId, sourceId); return true; }
+      if (sourceType === 'SESSAO_CAIXA_EVENTO' || sourceType === 'SESSAO_CAIXA_OPERACAO') { await findConfirmedFinanceSession(tx, options.companyId, options.pointId, sourceType, sourceId); return true; }
+      return false;
+    },
+    writeItem: writeFinanceTarget,
+    validateScope: reconcilePdvFinance,
   });
 }

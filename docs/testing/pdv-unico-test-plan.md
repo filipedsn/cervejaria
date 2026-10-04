@@ -216,3 +216,25 @@ O manifesto `pdv-unico-session-qa-manifest.json` fixa baseline, schema staged da
 ### Resultado da regressao legada em bundle de nucleo
 
 A execucao de `qa:pdv-disposable` aplicou somente as 86 migrations historicas e o nucleo confirmado. FK, schema-core, business-migrator e os oito testes de exclusao/auditoria/concorrencia passaram; o runner encerrou com erro no teste do grafo porque esse teste usa `Produto.pontoVendaId`, coluna introduzida pela migration de catalogo que nao faz parte daquele bundle de nucleo. A mesma fixture `PDV-GRAPH-QA-01` foi executada e passou no runner novo com a cadeia completa de 89 migrations (historico + nucleo + catalogo + sessao). Assim, o resultado do comando legado e parcial/falho, nao PASS agregado.
+
+## Regressão atual e financeiro
+
+O histórico acima descreve a execução anterior. Nesta entrega, `npm run qa:pdv-disposable` foi corrigido para executar somente fixtures compatíveis com seus baselines imutáveis. `npm run qa:pdv-current-disposable` é o **comando principal reproduzível**: executa primeiro esse ensaio histórico e depois `qa:pdv-finance-disposable`. O segundo aplica 86 migrations históricas + núcleo + catálogo + sessões, executa `PDV-GRAPH-QA-01` nessa fase de 89 migrations, aplica e verifica a migration financeira candidata como etapa 90 e executa os cenários abaixo. A fixture de grafo depende da ausência temporária da nova FK para produzir um vínculo órfão; todas as fixtures de grafo são removidas antes da etapa 90. O comando principal retorna erro se qualquer fase falhar.
+
+| ID | Pré-condição e ação | Resultado exigido | Camada/prioridade | Executor / estado |
+|---|---|---|---|---|
+| FIN-01 | Venda Evento quitada com DINHEIRO+PIX; dinheiro entregue e troco | Dois pagamentos com IDs, valores, formas, recebido/troco e sessão confirmada; total quitado usa `valor`, não `valorRecebido` | QA/P0 | `pdv-unico-finance-migrator.isolated.test.mjs`; executado |
+| FIN-02 | Dívida parcialmente recebida em Evento e depois quitada em sessão Por Caixa | Principal 50,00, recebimentos 15,00+35,00, saldo 0,00; sessão de cada recebimento preservada | QA/P0 | executado |
+| FIN-03 | Segunda dívida com débito parcial | Principal 23,00, recebido 5,00, saldo 18,00; cliente e comanda iguais | QA/P0 | executado |
+| FIN-04 | DINHEIRO, PIX, DÉBITO, CRÉDITO; nullable e zero explícito | Soma por forma/sessão em centavos; `valorRecebido` 0,00 distinto de NULL; contagens de fechamento fora da soma | QA/P0 | executado |
+| FIN-05 | Suprimento e sangria Evento; correção Por Caixa com estorno/substituição | Movimentos Evento transferidos por ID/tipo/valor; três movimentos Por Caixa e cadeia de correção idênticos; origem preservada | QA/P0 | executado |
+| FIN-06 | Referência dupla, sessão ausente, cliente de outro tenant | Cada caso bloqueia por código específico e não confirma destino | QA/P0 | executado |
+| FIN-07 | Mesmo e novo run, pausa após um lote, falha após escrita de destino | Reexecução reutiliza 13 mapas; último checkpoint confirmado permanece; destino/mapa/lote parcial revertem | QA/P0 | executado |
+| FIN-08 | Duas chamadas do mesmo run com barreira | Segunda chamada observada aguardando advisory lock; um mapa/lote, estado íntegro | QA/P0 | executado |
+| FIN-09 | Run concluído com vínculo destino, payload ou mapa adulterado | BLOCKED tipado e persistido, checkpoint retido, sem reparo automático | QA/P0 | executado |
+| FIN-10 | Pagamento alterado deliberadamente em 0,01 dentro de transação | `FINANCE_RECONCILIATION_DIVERGED`; alteração revertida | QA/P0 | executado |
+| FIN-11 | Snapshot de item e saldo/movimento de estoque não vazios | IDs, preços, quantidades 12,375/1,250 e timestamps permanecem iguais; nenhum ajuste de estoque | QA/P0 | executado |
+| FIN-12 | FK de pagamento e movimento restritivas | Constraints validadas no banco; DELETE de sessão com histórico rejeitado | QA/P0 | executado |
+| FIN-13 | Dados reais multiempresa, órfãos, pedidos e estoque com saldo | Reconciliar os domínios completos e falhas de infraestrutura antes de qualquer corte | QA/P0 | **NÃO COMPROVADO** |
+
+Manifesto candidato: `pdv-unico-finance-qa-manifest.json`, baseline commit `e7082d4b7ab08f480d82978ac0686d3af4bd8bf0`; fixa schema staged, migration financeira, migrations anteriores e hashes dos scripts. Prisma Client é gerado do schema candidato. O teste de FK/origem não certifica login/RBAC real. Aplicação em DEV compartilhado, dados reais, corte/rollback do produto, ranking por ocorrência/recorrência e reconciliação de estoque permanecem **NÃO COMPROVADOS**.

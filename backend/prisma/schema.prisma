@@ -848,6 +848,7 @@ model Pagamento {
   comanda Comanda @relation(fields: [comandaId], references: [id], onDelete: Cascade)
   contaReceber ContaReceber? @relation(fields: [contaReceberId], references: [id], onDelete: SetNull)
   sessaoCaixaEvento SessaoCaixaEvento? @relation(fields: [sessaoCaixaEventoId], references: [id], onDelete: SetNull)
+  sessaoCaixaOperacao SessaoCaixaOperacao? @relation(fields: [sessaoCaixaId], references: [id], onDelete: Restrict)
 
   @@index([comandaId])
   @@index([contaReceberId, pagoEm])
@@ -894,7 +895,7 @@ model MovimentoCaixaEvento {
   registradoPorId String
   createdAt       DateTime                 @default(now())
 
-  sessao        SessaoCaixaEvento @relation(fields: [sessaoId], references: [id], onDelete: Cascade)
+  sessao        SessaoCaixaEvento @relation(fields: [sessaoId], references: [id], onDelete: Restrict)
   registradoPor Usuario           @relation(fields: [registradoPorId], references: [id], onDelete: Restrict)
 
   @@index([sessaoId, createdAt])
@@ -1286,6 +1287,7 @@ model SessaoCaixaOperacao {
   cardapio    Cardapio?                @relation(fields: [cardapioId], references: [id], onDelete: SetNull)
   ocorrencia OcorrenciaOperacional? @relation("SessaoOcorrenciaOperacional", fields: [ocorrenciaId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
   movimentos  MovimentoCaixaOperacao[]
+  pagamentos Pagamento[]
   produtos    SessaoCaixaProdutoOperacao[]
   montagensTaps TapMontagem[]
 
@@ -1335,7 +1337,7 @@ model MovimentoCaixaOperacao {
   corrigidoEm      DateTime?
   createdAt       DateTime                   @default(now())
 
-  sessao       SessaoCaixaOperacao @relation(fields: [sessaoId], references: [id], onDelete: Cascade)
+  sessao       SessaoCaixaOperacao @relation(fields: [sessaoId], references: [id], onDelete: Restrict)
   correcaoDe   MovimentoCaixaOperacao? @relation("CorrecaoMovimentoCaixaOperacao", fields: [correcaoDeId], references: [id], onDelete: Restrict)
   correcoes    MovimentoCaixaOperacao[] @relation("CorrecaoMovimentoCaixaOperacao")
 

@@ -12,7 +12,7 @@ function jsonSafe(value: any): any {
   return value;
 }
 
-const operationalSessionData = (row: any) => ({
+export const operationalSessionData = (row: any) => ({
   id: row.id, cervejariaId: row.cervejariaId, pontoVendaId: row.pontoVendaId, trailerId: row.trailerId,
   diaOperacional: row.diaOperacional, status: row.status, trocoInicial: row.trocoInicial,
   abertoPorId: row.abertoPorId, abertoEm: row.abertoEm, fechadoPorId: row.fechadoPorId,
