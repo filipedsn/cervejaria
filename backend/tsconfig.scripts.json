@@ -10,6 +10,8 @@
     "scripts/pdv-unico-migration-planner.test.ts",
     "scripts/pdv-unico-snapshot.ts",
     "scripts/pdv-unico-snapshot.test.ts",
+    "scripts/pdv-unico-catalog-migrator.ts",
+    "scripts/pdv-unico-kitchen-order-preparation.ts",
     "scripts/inventory-pdv-unico-env.ts",
     "scripts/inventory-pdv-unico-env.test.ts",
     "scripts/inventory-pdv-unico-dev.ts",

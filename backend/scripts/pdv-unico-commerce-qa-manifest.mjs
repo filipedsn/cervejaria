@@ -59,6 +59,8 @@ export async function buildPdvCommerceQaManifest() {
     'backend/scripts/isolated-qa-env.mjs',
     'backend/scripts/pdv-unico-planner.isolated.test.ts',
     'backend/package.json',
+    'backend/tsconfig.scripts.json',
+    'backend/tsconfig.pdv-migration-scripts.json',
     'backend/scripts/pdv-unico-migrator-qa-manifest.mjs',
     'backend/scripts/pdv-unico-core-schema.isolated.test.mjs',
     'backend/scripts/run-isolated-qa-historical.mjs',

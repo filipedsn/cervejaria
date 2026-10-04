@@ -74,6 +74,51 @@ try {
     const [entity, classification] = group.split('|');
     return { entity, classification, count };
   });
+  const ambiguousCompanyDecisions = report.companies.flatMap((company) => {
+    const roots = company.conflicts.mappingBlocked.filter((row) => ['MULTIPLE_CANONICAL_PDVS', 'MULTIPLE_TRAILERS_NO_CANONICAL_PDV'].includes(row.sourceValidation?.blocker?.code));
+    if (!roots.length) return [];
+    const blocked = company.conflicts.mappingBlocked;
+    const blockedIds = (type) => new Set(blocked.filter((row) => row.sourceType === type).map((row) => row.sourceId));
+    const byType = Object.fromEntries([...blocked.reduce((counts, row) => counts.set(row.sourceType, (counts.get(row.sourceType) ?? 0) + 1), new Map())].sort(([a], [b]) => a.localeCompare(b)));
+    const paymentIds = blockedIds('PAGAMENTO');
+    const debtIds = blockedIds('CONTA_RECEBER');
+    const payments = company.finance.paymentEntries.filter((row) => paymentIds.has(row.id));
+    const debts = company.finance.receivables.filter((row) => debtIds.has(row.id));
+    const eventSessionIds = blockedIds('SESSAO_EVENTO');
+    const operationalSessionIds = blockedIds('SESSAO_CAIXA');
+    const movementIds = new Set([...blockedIds('MOVIMENTO_EVENTO'), ...blockedIds('MOVIMENTO_CAIXA')]);
+    const cashMovements = [
+      ...company.finance.eventCashSessions.filter((row) => eventSessionIds.has(row.id)).flatMap((row) => row.movements),
+      ...company.finance.operationalCashSessions.filter((row) => operationalSessionIds.has(row.id)).flatMap((row) => row.movements),
+    ].filter((row) => movementIds.has(row.id));
+    const stockMovementIds = blockedIds('MOVIMENTO_ESTOQUE');
+    const stockBalanceIds = blockedIds('ESTOQUE');
+    const stockMovements = company.inventory.movements.filter((row) => stockMovementIds.has(row.id));
+    const stockBalances = company.inventory.balances.filter((row) => stockBalanceIds.has(row.id));
+    return [{
+      companyId: company.companyId,
+      decisionCodes: [...new Set(roots.map((row) => row.sourceValidation.blocker.code))].sort(),
+      pdvCandidates: company.units.pointOfSaleIds,
+      trailerCandidates: company.units.trailerIds,
+      blockedRecordsByType: byType,
+      financeImpact: {
+        payments: payments.length,
+        paymentCents: payments.reduce((sum, row) => sum + BigInt(row.cents), 0n).toString(),
+        receivables: debts.length,
+        receivableBalanceCents: debts.reduce((sum, row) => sum + BigInt(row.balanceCents), 0n).toString(),
+        eventSessions: eventSessionIds.size,
+        operationalSessions: operationalSessionIds.size,
+        cashMovements: cashMovements.length,
+        cashMovementCentsByType: Object.fromEntries([...cashMovements.reduce((totals, row) => totals.set(row.type, (totals.get(row.type) ?? 0n) + BigInt(row.cents)), new Map())].sort(([a], [b]) => a.localeCompare(b)).map(([type, cents]) => [type, cents.toString()])),
+      },
+      stockImpact: {
+        balances: stockBalances.length,
+        balanceMilliUnits: stockBalances.reduce((sum, row) => sum + BigInt(row.milliUnits), 0n).toString(),
+        movements: stockMovements.length,
+        movementMilliUnitsByType: Object.fromEntries([...stockMovements.reduce((totals, row) => totals.set(row.type, (totals.get(row.type) ?? 0n) + BigInt(row.milliUnits)), new Map())].sort(([a], [b]) => a.localeCompare(b)).map(([type, value]) => [type, value.toString()])),
+      },
+    }];
+  }).sort((a, b) => a.companyId.localeCompare(b.companyId));
   const kitchenOrdersByStatus = report.companies.reduce((all, company) => {
     for (const row of company.commands.orderCountsByStatus) all[row.status] = (all[row.status] ?? 0) + row.count;
     return all;
@@ -83,6 +128,7 @@ try {
     client: { schemaCommit: manifest.devInventorySchema.commit, schemaSha256: manifest.devInventorySchema.sha256, compatibility: 'schema pinned to the latest migration recorded by DEV; no migration applied' },
     sourceCoverage: report.totals,
     sourceClassification,
+    ambiguousCompanyDecisions,
     commandsByOriginAndStatus: report.companies.reduce((all, company) => {
       for (const row of company.commands.byOriginStatus) all[row.originStatus] = (all[row.originStatus] ?? 0) + row.count;
       return all;

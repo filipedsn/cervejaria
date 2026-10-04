@@ -332,3 +332,20 @@ The first preflight failure is an explicit precondition result, not the final st
 Planner classification detail: commands 1,084 source attribution proven / 6 insufficient; Events 79 proven / 2 insufficient; PDVs 7 proven / 12 confirmed conflicts; Trailers 45 proven / 2 conflicts; kitchen orders 431 target transformation pending / 4 insufficient; stock movements 757 target transformation pending / 8 insufficient. Event and operational cash movement rows: 0. `BLOCKED_PARENT` descendants are reported separately (80 rows) and do not imply independent source corruption.
 
 **Still NOT PROVEN:** multiple menus in integrated order flows, rankings, authenticated login/RBAC/API/UI, operational cutover and rollback, migration of real commerce/finance/stock data, cross-period reconciliation, interruption recovery on DEV, and legacy removal. The inventory does not authorize a write; manual review of source ambiguities is the next gate. `PROD_ACCESS_USED=NO`.
+
+## Legacy EVENTO command links and current DEV decisions (2026-10-04)
+
+This section supersedes PREP-11 and PREP-12 above. The EVENTO fixture uses stock quantity **0.375**; **0.125** belongs to the separate CAIXA fixture. Preparation evidence is contract V3, not V2. V3 hashes the command's original PDV link and its classified origin; it does not omit the link from source evidence. A legacy link is accepted only when the sole canonical PDV, tenant, Event/Trailer business maps, confirmed occurrence, and all linked stock movements agree. A commerce-written link additionally requires the confirmed preparation origin marker plus commercial map, batch, receipt, run/checkpoint, and matching target. Removing that evidence cannot downgrade the link to legacy.
+
+| Scenario | Actual result |
+|---|---|
+| Pre-commercial EVENTO command already linked to its sole compatible PDV, with dated Event, confirmed occurrence/Trailer and coherent stock movement; no COMANDA commerce map | Old classifier reproduced KITCHEN_ORDER_COMMERCE_MAP_MISSING; V3 preparation accepted it. |
+| Commercial migration, then preparation revalidation and replay under same/new run | Completed; order, command, movement IDs, timestamps, snapshots and Decimal quantities remained exact. EVENTO movements were 0.375 and 0.25; the separate CAIXA fixture was 0.125. |
+| Wrong PDV, crossed tenant, second PDV ambiguity, missing/divergent commercial map/receipt/origin marker, target tamper | Specific blockers; no repair or checkpoint advance. |
+| Rollback and first-assignment concurrency | Existing tests retained; rollback inspected the pending order and absent partial map/receipt/batch; PostgreSQL advisory-lock wait observed for concurrent calls. |
+
+**Current gates:** npm run qa:pdv-commerce-disposable passed on the 91-migration disposable bundle; the eight Event deletion/audit/concurrency tests passed (8/8, 0 skipped). npx tsc -p backend/tsconfig.pdv-migration-scripts.json --noEmit passed. The two migration scripts appear in tsconfig.scripts.json's program, but broad npx tsc -p backend/tsconfig.scripts.json --noEmit remains nonzero due to existing implicit-any diagnostics in untouched inventory-pdv-unico-dev.ts and pdv-unico-planner.isolated.test.ts. Backend build and Prisma validation passed. No DEV writes or migrations occurred.
+
+**DEV inventory, read only:** exact snapshot details and the five-company decision table are recorded in docs/architecture/pdv-unico-migracao-dev.md, section “Continuation: legacy EVENTO command links”. The five ambiguous root companies are distinct from 54 manual-resolution blocked rows and 80 blocked descendants. Decisions remain pending; no candidate PDV/Trailer was selected, and no record was classified as discardable. The additive map schema is absent in the DEV migration ledger, which is target readiness rather than source corruption.
+
+Still pending: real-data decision/reconciliation for ambiguous tenants, API/UI and authenticated operation, multiple-menu integrated path, rankings, cutover/rollback and legacy removal. PROD_ACCESS_USED=NO.

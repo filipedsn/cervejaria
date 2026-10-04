@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": [
+    "src/**/*.ts",
+    "scripts/pdv-unico-catalog-migrator.ts",
+    "scripts/pdv-unico-kitchen-order-preparation.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}
