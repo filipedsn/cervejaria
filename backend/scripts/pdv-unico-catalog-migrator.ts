@@ -313,6 +313,50 @@ async function writeKitchenPreparationTarget(tx: Db, item: any) {
   return false;
 }
 
+/** Validate links added later by the commercial scope before V2 normalizes them. */
+async function confirmedCommercialKitchenCommands(tx: Db, snapshot: any, companyId: string, pointId: string, confirmedOccurrences: Record<string, { id: string; companyId: string; pointId: string }>) {
+  const commandIds = [...new Set(snapshot.orders.map((row: any) => row.comandaId))];
+  const maps = commandIds.length ? await tx.pdvMigrationMap.findMany({ where: { sourceType: 'COMANDA', sourceId: { in: commandIds } } }) : [];
+  const mapByCommand = new Map(maps.map((row: any) => [row.sourceId, row]));
+  const result = new Set<string>();
+  let occurrenceColumnAvailable: boolean | null = null;
+  for (const order of snapshot.orders) {
+    const command = order.comanda;
+    const map: any = mapByCommand.get(command.id);
+    const hasCommercialLink = command.origem === 'EVENTO' && (command.pontoVendaId != null || map != null);
+    if (!hasCommercialLink) continue;
+    if (!map) throw new PdvCatalogBlocker('KITCHEN_ORDER_COMMERCE_MAP_MISSING', 'COMANDA', command.id, 'Comanda EVENTO tem PDV, mas mapa comercial confirmado está ausente.');
+    if (map.cervejariaId !== companyId || map.pontoVendaId !== pointId || map.destinationType !== 'COMANDA' || map.destinationId !== command.id || map.transformVersion !== PDV_COMMERCE_TRANSFORM_VERSION || map.payloadHash !== canonicalPdvPayloadHash(map.sourcePayload)) throw new PdvCatalogBlocker('KITCHEN_ORDER_COMMERCE_MAP_DIVERGED', 'COMANDA', command.id, 'Mapa comercial da comanda diverge de empresa, PDV, identidade ou hash.');
+    const original = map.sourcePayload as any;
+    if (original?.id !== command.id || original?.origem !== command.origem || original?.eventoId !== command.eventoId) throw new PdvCatalogBlocker('KITCHEN_ORDER_COMMERCE_SOURCE_DIVERGED', 'COMANDA', command.id, 'Payload confirmado da comanda diverge da origem EVENTO atual.');
+    const [run, batch] = await Promise.all([
+      tx.pdvMigrationRun.findUnique({ where: { id: map.lastRunId } }),
+      map.lastBatchId ? tx.pdvMigrationBatch.findFirst({ where: { id: map.lastBatchId, runId: map.lastRunId } }) : null,
+    ]);
+    const checkpoint = run?.checkpoint as any;
+    const receipts = (batch?.checkpoint as any)?.receipts;
+    const receipt = Array.isArray(receipts) ? receipts.find((row: any) => row.sourceType === 'COMANDA' && row.sourceId === command.id) : null;
+    if (run?.status !== 'COMPLETED' || checkpoint?.scope !== PDV_COMMERCE_SCOPE || checkpoint?.companyId !== companyId || checkpoint?.pointId !== pointId || checkpoint?.transformVersion !== PDV_COMMERCE_TRANSFORM_VERSION || !checkpoint.completedSourceKeys?.includes(`COMANDA:${command.id}`) || batch?.status !== 'CONFIRMED' || receipt?.destinationType !== 'COMANDA' || receipt?.destinationId !== command.id || receipt?.payloadHash !== map.payloadHash) throw new PdvCatalogBlocker('KITCHEN_ORDER_COMMERCE_RECEIPT_MISSING', 'COMANDA', command.id, 'Run/checkpoint/lote/recibo comercial não confirma a comanda.');
+    const expectedOccurrenceId = command.origem === 'EVENTO' ? confirmedOccurrences[command.eventoId]?.id : null;
+    if (command.origem === 'EVENTO' && !expectedOccurrenceId) throw new PdvCatalogBlocker('KITCHEN_ORDER_OCCURRENCE_MAP_UNCONFIRMED', order.id, 'Comanda EVENTO não possui ocorrência atual confirmada.');
+    if (occurrenceColumnAvailable == null) {
+      const columns = await tx.$queryRaw`SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Comanda' AND column_name = 'ocorrenciaId') AS present`;
+      occurrenceColumnAvailable = columns[0]?.present === true;
+    }
+    if (!occurrenceColumnAvailable) throw new PdvCatalogBlocker('KITCHEN_ORDER_COMMERCE_DESTINATION_SCHEMA_MISSING', 'COMANDA', command.id, 'Mapa comercial existe, mas o destino ocorrenciaId ainda não está disponível.');
+    const actual = await tx.$queryRaw`SELECT "pontoVendaId", "ocorrenciaId" FROM "public"."Comanda" WHERE "id" = ${command.id}`;
+    const expectedDestination = { pontoVendaId: pointId, ocorrenciaId: expectedOccurrenceId };
+    if (actual.length !== 1 || actual[0].pontoVendaId !== pointId || actual[0].ocorrenciaId !== expectedOccurrenceId || receipt.destinationHash !== canonicalPdvPayloadHash(expectedDestination)) throw new PdvCatalogBlocker('KITCHEN_ORDER_COMMERCE_DESTINATION_DIVERGED', 'COMANDA', command.id, 'Destino comercial atual diverge do recibo e da ocorrência mapeada.');
+    result.add(command.id);
+  }
+  return result;
+}
+
+async function assertKitchenPdvUnambiguous(tx: Db, companyId: string, pointId: string) {
+  const points = await tx.pontoVenda.findMany({ where: { cervejariaId: companyId }, select: { id: true }, orderBy: { id: 'asc' } });
+  if (points.length !== 1 || points[0].id !== pointId) throw new PdvCatalogBlocker('KITCHEN_ORDER_CANONICAL_PDV_AMBIGUOUS', 'PONTO_VENDA', pointId, 'Empresa não possui exatamente o PDV anteriormente confirmado; atribuição de pedidos bloqueada.');
+}
+
 /** Prepare only proven legacy kitchen-order PDV links on a pre-commercial schema. */
 export async function runPdvKitchenOrderContextPreparation(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void }) {
   const confirmedOccurrences: Record<string, { id: string; companyId: string; pointId: string }> = {};
@@ -321,6 +365,7 @@ export async function runPdvKitchenOrderContextPreparation(options: { db: Db; co
     scope: PDV_KITCHEN_ORDER_PREPARATION_SCOPE,
     transformVersion: PDV_KITCHEN_ORDER_PREPARATION_VERSION,
     buildItems: async (tx, pdvSourceKey) => {
+      await assertKitchenPdvUnambiguous(tx, options.companyId, options.pointId);
       const snapshot = await readPdvKitchenOrderPreparationSnapshot(tx, options.companyId);
       for (const order of snapshot.orders) {
         const command = order.comanda;
@@ -328,7 +373,8 @@ export async function runPdvKitchenOrderContextPreparation(options: { db: Db; co
         const occurrence = await findConfirmedEventOccurrence(tx, options.companyId, options.pointId, command.eventoId);
         confirmedOccurrences[command.eventoId] = { id: occurrence.id, companyId: occurrence.cervejariaId, pointId: occurrence.pontoVendaId };
       }
-      return buildPdvKitchenOrderPreparationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedOccurrences });
+      const confirmedCommercialCommands = await confirmedCommercialKitchenCommands(tx, snapshot, options.companyId, options.pointId, confirmedOccurrences);
+      return buildPdvKitchenOrderPreparationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedOccurrences, confirmedCommercialCommands });
     },
     confirmExternalDependency: async (tx, sourceType, sourceId) => {
       if (sourceType === 'EVENTO') { await findConfirmedEventOccurrence(tx, options.companyId, options.pointId, sourceId); return true; }

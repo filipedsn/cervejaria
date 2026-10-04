@@ -1,8 +1,9 @@
 import { canonicalPdvPayloadHash, PdvCatalogBlocker } from './pdv-unico-catalog-transform.js';
 
-export const PDV_KITCHEN_ORDER_PREPARATION_SCOPE = 'PDV_PEDIDOS_COZINHA_CONTEXT_PREPARATION_V1';
-export const PDV_KITCHEN_ORDER_PREPARATION_VERSION = 1;
-export const PDV_KITCHEN_ORDER_PREPARATION_SOURCE_TYPE = 'PEDIDO_COZINHA_PDV_PREPARATION';
+// V2 keeps previous receipts immutable and explicitly validates commercial links.
+export const PDV_KITCHEN_ORDER_PREPARATION_SCOPE = 'PDV_PEDIDOS_COZINHA_CONTEXT_PREPARATION_V2';
+export const PDV_KITCHEN_ORDER_PREPARATION_VERSION = 2;
+export const PDV_KITCHEN_ORDER_PREPARATION_SOURCE_TYPE = 'PEDIDO_COZINHA_PDV_PREPARATION_V2';
 
 /** Read with the pre-commercial client: deliberately does not select Comanda.ocorrenciaId. */
 export async function readPdvKitchenOrderPreparationSnapshot(tx: any, companyId: string) {
@@ -34,7 +35,7 @@ function jsonSafe(value: any): any {
 }
 
 /** Attribution requires agreement among every extant source link; only the order PDV is written. */
-export function buildPdvKitchenOrderPreparationItems(input: { companyId: string; pointId: string; confirmedPdvSourceKey: string; snapshot: any; confirmedOccurrences: Record<string, { id: string; companyId: string; pointId: string }> }) {
+export function buildPdvKitchenOrderPreparationItems(input: { companyId: string; pointId: string; confirmedPdvSourceKey: string; snapshot: any; confirmedOccurrences: Record<string, { id: string; companyId: string; pointId: string }>; confirmedCommercialCommands?: Set<string> }) {
   const { companyId, pointId, snapshot } = input;
   const items: any[] = [];
   const movementsByOrder = new Map<string, any[]>();
@@ -66,6 +67,7 @@ export function buildPdvKitchenOrderPreparationItems(input: { companyId: string;
     if (order.pontoVendaId && (order.pontoVendaId !== pointId || order.pontoVenda?.cervejariaId !== companyId)) block('KITCHEN_ORDER_EXISTING_PDV_CONFLICT', order.id, 'Pedido já aponta para outro PDV ou tenant; não será sobrescrito.');
     if (authoritativePoint !== pointId) block('KITCHEN_ORDER_AUTHORITY_PDV_CONFLICT', order.id, 'Relações autoritativas apontam para outro PDV.');
 
+    if (command.origem === 'EVENTO' && (command.pontoVendaId != null || command.pontoVenda != null) && !input.confirmedCommercialCommands?.has(command.id)) block('KITCHEN_ORDER_COMMERCE_LINK_UNCONFIRMED', order.id, 'Comanda possui vínculo comercial sem mapa/recibo/destino confirmado.');
     const movements = movementsByOrder.get(order.id) ?? [];
     const movementPoints = new Set<string>();
     for (const movement of movements) {
@@ -76,11 +78,9 @@ export function buildPdvKitchenOrderPreparationItems(input: { companyId: string;
     if (movementPoints.size === 1 && !movementPoints.has(pointId)) block('KITCHEN_ORDER_MOVEMENT_PDV_CONFLICT', order.id, 'PDV do movimento diverge da atribuição autoritativa.');
 
     if (order.pontoVendaId === pointId && !snapshot.preparedOrderIds.has(order.id)) continue;
-    // The transformed pointer is intentionally excluded from the source hash. All original order
-    // fields, command authority and every linked movement remain in the canonical evidence.
     const sourcePayload = jsonSafe({
-      order: { ...order, pontoVendaId: null, pontoVenda: null },
-      command: { id: command.id, origem: command.origem, eventoId: command.eventoId, pontoVendaId: command.pontoVendaId, evento: command.evento, pontoVenda: command.pontoVenda },
+      order: { ...order, pontoVendaId: null, pontoVenda: null, comanda: { ...order.comanda, pontoVendaId: null, pontoVenda: null } },
+      command: { id: command.id, origem: command.origem, eventoId: command.eventoId, pontoVendaId: null, evento: command.evento, pontoVenda: null },
       movements,
       authoritativePointId: authoritativePoint,
     });

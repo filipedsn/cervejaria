@@ -1,5 +1,7 @@
 import { validateInventoryEnvironment } from './inventory-pdv-unico-env.js';
 import { createHash } from 'node:crypto';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { decimalToScaledInteger, planPdvMigration } from './pdv-unico-migration-planner.js';
 import { buildPdvPlanningGraph, readPdvPlanningSourceSnapshot } from './pdv-unico-source-graph.js';
 import { readPdvCatalogSourceSnapshot } from './pdv-unico-catalog-source.js';
@@ -8,7 +10,14 @@ import { serializeCommandSnapshot } from './pdv-unico-snapshot.js';
 
 // Validate before importing prisma.ts, which instantiates the client at module load.
 validateInventoryEnvironment(process.env);
-const { prisma } = await import('../src/lib/prisma.js');
+let prisma: any;
+if (process.env.PDV_INVENTORY_PRISMA_CLIENT) {
+  const clientUrl = pathToFileURL(path.join(process.env.PDV_INVENTORY_PRISMA_CLIENT, 'index.js')).href;
+  const { PrismaClient } = await import(clientUrl);
+  prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+} else {
+  ({ prisma } = await import('../src/lib/prisma.js'));
+}
 
 const cents = (value: unknown) => decimalToScaledInteger(String(value), 2).toString();
 const milli = (value: unknown) => decimalToScaledInteger(String(value), 3).toString();
@@ -17,6 +26,15 @@ const focusCompanyIds = new Set(['cmr9yis3c0000hvu00q9fe7y1', 'cmsry9xrn0000hvlg
 try {
   const snapshotData = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+    const migrationTable = await tx.$queryRaw`SELECT to_regclass('public."_prisma_migrations"') IS NOT NULL AS present`;
+    let migrationState: { appliedCount: number; latestApplied: string | null } | null = null;
+    if (migrationTable[0]?.present) {
+      const rows = await tx.$queryRaw`SELECT COUNT(*)::int AS count, (SELECT migration_name FROM public."_prisma_migrations" WHERE finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1) AS latest FROM public."_prisma_migrations" WHERE finished_at IS NOT NULL`;
+      migrationState = { appliedCount: rows[0].count, latestApplied: rows[0].latest };
+    }
+    const mapTable = await tx.$queryRaw`SELECT to_regclass('quiosque."PdvMigrationMap"') IS NOT NULL AS present`;
+    const migrationMaps = mapTable[0]?.present ? await tx.pdvMigrationMap.findMany({ select: { sourceType: true } }) : [];
+    const mapCountsBySourceType = migrationMaps.reduce((counts: Record<string, number>, row: any) => { counts[row.sourceType] = (counts[row.sourceType] ?? 0) + 1; return counts; }, {});
     const companies = await tx.cervejaria.findMany({ select: { id: true }, orderBy: { id: 'asc' } });
     const unattachedCommands = await tx.comanda.findMany({ where: { eventoId: null, pontoVendaId: null }, select: { id: true, origem: true, status: true, total: true, createdAt: true }, orderBy: { id: 'asc' } });
     const output = [];
@@ -139,7 +157,7 @@ try {
         conflicts: { eventAndPdvCommandLinks: eventCommandLinkResults, tenantDivergentCommands: tenantConflicts, mappingBlocked: mapping.filter((x) => x.action === 'BLOQUEADO'), mapping },
       });
     }
-    return { companies: output, unattachedCommands: unattachedCommands.map((command) => ({ id: command.id, origin: command.origem, status: command.status, totalCents: cents(command.total), createdAt: command.createdAt.toISOString() })) };
+    return { migrationState, mapTablePresent: mapTable[0]?.present === true, mapCountsBySourceType, companies: output, unattachedCommands: unattachedCommands.map((command) => ({ id: command.id, origin: command.origem, status: command.status, totalCents: cents(command.total), createdAt: command.createdAt.toISOString() })) };
   }, { isolationLevel: 'RepeatableRead', timeout: 120000 });
   const snapshot = snapshotData.companies;
   const focus = snapshot.filter((item) => focusCompanyIds.has(item.companyId));
@@ -199,6 +217,7 @@ try {
   console.log(JSON.stringify({
     environment: 'DEV local; READ ONLY RepeatableRead snapshot',
     coverage: 'IDs and exact decimal snapshots; diagnostic output excludes customer names, contacts and observations; no credentials',
+    destinationReadiness: { migrationState: snapshotData.migrationState, mapTablePresent: snapshotData.mapTablePresent, mapCountsBySourceType: snapshotData.mapCountsBySourceType, interpretation: 'Missing additive maps are destination readiness gaps, not source corruption.' },
     totals: { companies: snapshot.length, withoutPdv: snapshot.filter((x) => x.units.pointOfSaleIds.length === 0).length, multiplePdv: snapshot.filter((x) => x.units.pointOfSaleIds.length > 1).length, blockedEntityRows: snapshot.reduce((sum, x) => sum + x.conflicts.mappingBlocked.length, 0), unattachedCommands: snapshotData.unattachedCommands.length, blockedRowsByCategory: countBy('category'), blockedRowsByCode: countBy('code'), paymentLinkConflicts: snapshot.reduce((sum, x) => sum + x.finance.paymentLinkConflicts.length, 0), tenantDivergentCommands: snapshot.reduce((sum, x) => sum + x.conflicts.tenantDivergentCommands.length, 0) },
     unattachedCommandBreakdown: [...snapshotData.unattachedCommands.reduce((map, command) => map.set(`${command.origin}:${command.status}`, (map.get(`${command.origin}:${command.status}`) ?? 0) + 1), new Map<string, number>())].sort(([a], [b]) => a.localeCompare(b)).map(([originStatus, count]) => ({ originStatus, count })),
     globalBlocks,

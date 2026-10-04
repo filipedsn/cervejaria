@@ -41,6 +41,8 @@ export async function buildPdvCommerceQaManifest() {
     'backend/scripts/pdv-unico-commerce-transform.ts',
     'backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs',
     'backend/scripts/pdv-unico-kitchen-order-preparation.ts',
+    'backend/scripts/inventory-pdv-unico-dev.ts',
+    'backend/scripts/run-pdv-unico-dev-inventory-readonly.mjs',
     'backend/scripts/pdv-unico-session-transform.ts',
     'backend/scripts/run-pdv-unico-commerce-disposable-qa.mjs',
     'backend/scripts/pdv-unico-commerce-qa-manifest.mjs',
@@ -88,6 +90,12 @@ export async function buildPdvCommerceQaManifest() {
       commit: '128f69fb2fd6904aa823ff17448a6ff13e9d9595',
       path: schemaPath,
       sha256: digest(git(['show', `128f69fb2fd6904aa823ff17448a6ff13e9d9595:${schemaPath}`])),
+    },
+    devInventorySchema: {
+      commit: '66ec00886b65eaea8e437fae4e9a36f7be971b09',
+      path: schemaPath,
+      sha256: digest(git(['show', `66ec00886b65eaea8e437fae4e9a36f7be971b09:${schemaPath}`])),
+      compatibility: 'Matches DEV migration ledger through 20260930150000_company_pix_key; excludes additive PDV migrations not applied in DEV.',
     },
     codeCandidates: await Promise.all(codePaths.map(async (file) => ({ path: file, sha256: digest(await readFile(path.join(repoRoot, file))) }))),
   };
