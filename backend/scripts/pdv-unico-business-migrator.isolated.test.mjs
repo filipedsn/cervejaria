@@ -219,6 +219,125 @@ try {
   const concurrentRuns = await db.pdvMigrationRun.findMany({ where: { id: { in: concurrentRunIds } }, orderBy: { id: 'asc' } });
   assert.ok(concurrentRuns.every((row) => row.status === 'COMPLETED' && row.checkpoint.completedSourceKeys.length === 2), JSON.stringify(concurrentRuns.map((row) => ({ status: row.status, checkpoint: row.checkpoint }))));
 
+  // Completed runs are revalidated; a completed label cannot conceal changes to targets, maps, or checkpoint order.
+  const intact = await companyFixture({ name: unique('completed-intact'), trailers: 1, events: [{ recurrence: 'SEMANAL', weekday: 5, name: 'Completed agenda' }] });
+  const intactRunId = id('completed-intact-run');
+  const intactFirst = await runPdvBusinessMigration({ db, companyId: intact.company.id, runId: intactRunId, batchSize: 10 });
+  const intactCountsBeforeReuse = await counts(intact.company.id);
+  const intactAgain = await runPdvBusinessMigration({ db, companyId: intact.company.id, runId: intactRunId, batchSize: 10 });
+  const intactCountsAfterReuse = await counts(intact.company.id);
+  assert.equal(intactFirst.status, 'COMPLETED');
+  assert.equal(intactAgain.status, 'COMPLETED');
+  assert.equal(intactAgain.reusedCompletedRun, true);
+  assert.deepEqual(intactCountsAfterReuse, intactCountsBeforeReuse);
+
+  const completedAgenda = await companyFixture({ name: unique('completed-agenda-tamper'), trailers: 1, events: [{ recurrence: 'SEMANAL', weekday: 5, name: 'Agenda before tamper' }] });
+  const completedAgendaRun = id('completed-agenda-run');
+  await runPdvBusinessMigration({ db, companyId: completedAgenda.company.id, runId: completedAgendaRun, batchSize: 10 });
+  const completedAgendaCheckpoint = (await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: completedAgendaRun } })).checkpoint;
+  await db.agendaOperacional.update({ where: { id: completedAgenda.events[0].id }, data: { nome: 'Tampered after completion' } });
+  const agendaTamperResult = await runPdvBusinessMigration({ db, companyId: completedAgenda.company.id, runId: completedAgendaRun, batchSize: 10 });
+  assert.equal(agendaTamperResult.status, 'BLOCKED');
+  assert.equal(agendaTamperResult.blocker.code, 'MAPPED_DESTINATION_DIVERGED');
+  assert.deepEqual(agendaTamperResult.checkpoint, completedAgendaCheckpoint);
+  assert.equal((await db.agendaOperacional.findUniqueOrThrow({ where: { id: completedAgenda.events[0].id } })).nome, 'Tampered after completion');
+
+  const completedPoint = await companyFixture({ name: unique('completed-point-tamper'), trailers: 1 });
+  const completedPointRun = id('completed-point-run');
+  await runPdvBusinessMigration({ db, companyId: completedPoint.company.id, runId: completedPointRun, batchSize: 10 });
+  const completedPointMap = await db.pdvMigrationMap.findUniqueOrThrow({ where: { sourceType_sourceId: { sourceType: 'TRAILER', sourceId: completedPoint.trailers[0].id } } });
+  const completedPointCheckpoint = (await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: completedPointRun } })).checkpoint;
+  await db.pontoVenda.update({ where: { id: completedPointMap.destinationId }, data: { nome: 'Tampered completed point' } });
+  const pointTamperResult = await runPdvBusinessMigration({ db, companyId: completedPoint.company.id, runId: completedPointRun, batchSize: 10 });
+  assert.equal(pointTamperResult.status, 'BLOCKED');
+  assert.equal(pointTamperResult.blocker.code, 'MAPPED_DESTINATION_DIVERGED');
+  assert.deepEqual(pointTamperResult.checkpoint, completedPointCheckpoint);
+
+  const removedDestination = await companyFixture({ name: unique('completed-remove-target'), trailers: 1, events: [{ recurrence: 'SEMANAL', weekday: 2, name: 'Removed agenda' }] });
+  const removedDestinationRun = id('completed-remove-target-run');
+  await runPdvBusinessMigration({ db, companyId: removedDestination.company.id, runId: removedDestinationRun, batchSize: 10 });
+  const removedDestinationCheckpoint = (await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: removedDestinationRun } })).checkpoint;
+  await db.agendaOperacional.delete({ where: { id: removedDestination.events[0].id } });
+  const removedDestinationResult = await runPdvBusinessMigration({ db, companyId: removedDestination.company.id, runId: removedDestinationRun, batchSize: 10 });
+  assert.equal(removedDestinationResult.status, 'BLOCKED');
+  assert.equal(removedDestinationResult.blocker.code, 'MAPPED_DESTINATION_MISSING');
+  assert.deepEqual(removedDestinationResult.checkpoint, removedDestinationCheckpoint);
+  assert.equal(await db.agendaOperacional.count({ where: { id: removedDestination.events[0].id } }), 0, 'verification must not repair a missing destination');
+
+  const removedMap = await companyFixture({ name: unique('completed-remove-map'), trailers: 1, events: [{ recurrence: 'SEMANAL', weekday: 2, name: 'Unmapped agenda' }] });
+  const removedMapRun = id('completed-remove-map-run');
+  await runPdvBusinessMigration({ db, companyId: removedMap.company.id, runId: removedMapRun, batchSize: 10 });
+  const removedMapCheckpoint = (await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: removedMapRun } })).checkpoint;
+  await db.pdvMigrationMap.delete({ where: { sourceType_sourceId: { sourceType: 'EVENTO', sourceId: removedMap.events[0].id } } });
+  const removedMapResult = await runPdvBusinessMigration({ db, companyId: removedMap.company.id, runId: removedMapRun, batchSize: 10 });
+  assert.equal(removedMapResult.status, 'BLOCKED');
+  assert.equal(removedMapResult.blocker.code, 'CHECKPOINT_MAP_MISSING');
+  assert.deepEqual(removedMapResult.checkpoint, removedMapCheckpoint);
+
+  const badCheckpoint = await companyFixture({ name: unique('completed-bad-checkpoint'), trailers: 1, events: [{ recurrence: 'SEMANAL', weekday: 2, name: 'Checkpoint agenda' }] });
+  const badCheckpointRun = id('completed-bad-checkpoint-run');
+  await runPdvBusinessMigration({ db, companyId: badCheckpoint.company.id, runId: badCheckpointRun, batchSize: 10 });
+  const persistedCheckpoint = (await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: badCheckpointRun } })).checkpoint;
+  const keysOutOfOrder = [...persistedCheckpoint.completedSourceKeys].reverse();
+  const adulteratedCheckpoint = { ...persistedCheckpoint, completedSourceKeys: keysOutOfOrder };
+  await db.pdvMigrationRun.update({ where: { id: badCheckpointRun }, data: { checkpoint: adulteratedCheckpoint } });
+  const badCheckpointResult = await runPdvBusinessMigration({ db, companyId: badCheckpoint.company.id, runId: badCheckpointRun, batchSize: 10 });
+  assert.equal(badCheckpointResult.status, 'BLOCKED');
+  assert.equal(badCheckpointResult.blocker.code, 'RUN_CHECKPOINT_DIVERGED');
+  assert.deepEqual(badCheckpointResult.checkpoint, adulteratedCheckpoint);
+
+  // A later batch must revalidate earlier receipts, and finalization must revalidate after the last commit.
+  const betweenLots = await companyFixture({ name: unique('between-lots'), trailers: 1, events: [{ recurrence: 'SEMANAL', weekday: 1, name: 'Later agenda' }] });
+  const betweenLotsRun = id('between-lots-run');
+  let tamperedBetweenLots = false;
+  const betweenLotsResult = await runPdvBusinessMigration({ db, companyId: betweenLots.company.id, runId: betweenLotsRun, batchSize: 1, afterBatchCommit: async ({ sequence }) => {
+    if (sequence === 1 && !tamperedBetweenLots) {
+      tamperedBetweenLots = true;
+      const map = await db.pdvMigrationMap.findUniqueOrThrow({ where: { sourceType_sourceId: { sourceType: 'TRAILER', sourceId: betweenLots.trailers[0].id } } });
+      await db.pontoVenda.update({ where: { id: map.destinationId }, data: { nome: 'Tampered between lots' } });
+    }
+  } });
+  assert.equal(betweenLotsResult.status, 'BLOCKED');
+  assert.equal(betweenLotsResult.blocker.code, 'MAPPED_DESTINATION_DIVERGED');
+  assert.deepEqual(betweenLotsResult.checkpoint.completedSourceKeys, [`TRAILER:${betweenLots.trailers[0].id}`]);
+  assert.equal(await db.agendaOperacional.count({ where: { id: betweenLots.events[0].id } }), 0);
+
+  const beforeFinish = await companyFixture({ name: unique('before-finish'), trailers: 1 });
+  const beforeFinishRun = id('before-finish-run');
+  const beforeFinishResult = await runPdvBusinessMigration({ db, companyId: beforeFinish.company.id, runId: beforeFinishRun, batchSize: 10, beforeFinalization: async () => {
+    const map = await db.pdvMigrationMap.findUniqueOrThrow({ where: { sourceType_sourceId: { sourceType: 'TRAILER', sourceId: beforeFinish.trailers[0].id } } });
+    await db.pontoVenda.update({ where: { id: map.destinationId }, data: { nome: 'Tampered before finalization' } });
+  } });
+  assert.equal(beforeFinishResult.status, 'BLOCKED');
+  assert.equal(beforeFinishResult.blocker.code, 'MAPPED_DESTINATION_DIVERGED');
+  assert.equal((await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: beforeFinishRun } })).status, 'BLOCKED');
+  assert.equal((await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: beforeFinishRun } })).checkpoint.completedSourceKeys.length, 1);
+
+  // Barrier: call one holds the PostgreSQL advisory lock in its uncommitted batch; call two is observed waiting for that lock.
+  const sameRun = await companyFixture({ name: unique('same-run-concurrent'), trailers: 1, events: [{ recurrence: 'SEMANAL', weekday: 4, name: 'Same run agenda' }] });
+  const sameRunId = id('same-run-concurrent');
+  let signalEntered;
+  let releaseFirst;
+  const enteredWrite = new Promise((resolve) => { signalEntered = resolve; });
+  const releaseWrite = new Promise((resolve) => { releaseFirst = resolve; });
+  const firstCall = runPdvBusinessMigration({ db, companyId: sameRun.company.id, runId: sameRunId, batchSize: 1, afterDestinationWrite: async () => { signalEntered(); await releaseWrite; } });
+  await enteredWrite;
+  const secondCall = runPdvBusinessMigration({ db, companyId: sameRun.company.id, runId: sameRunId, batchSize: 1 });
+  let advisoryWaitObserved = false;
+  const waitDeadline = Date.now() + 10000;
+  while (!advisoryWaitObserved && Date.now() < waitDeadline) {
+    const waiters = await db.$queryRaw`SELECT count(*)::int AS count FROM pg_locks WHERE locktype = 'advisory' AND NOT granted`;
+    advisoryWaitObserved = waiters[0].count > 0;
+    if (!advisoryWaitObserved) await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.equal(advisoryWaitObserved, true, 'second call must be observed waiting on the PostgreSQL advisory lock');
+  releaseFirst();
+  const sameRunResults = await Promise.all([firstCall, secondCall]);
+  assert.ok(sameRunResults.every((result) => result.status === 'COMPLETED'), JSON.stringify(sameRunResults.map((result) => ({ status: result.status, blocker: result.blocker }))));
+  assert.equal(await db.pdvMigrationBatch.count({ where: { runId: sameRunId } }), 2);
+  assert.equal(await db.pdvMigrationMap.count({ where: { cervejariaId: sameRun.company.id } }), 2);
+  assert.equal((await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: sameRunId } })).status, 'COMPLETED');
+
   const output = {
     baseline: manifest.confirmedBaseline.commit,
     createFixtureCounts: { before, after, afterSecondRun },
@@ -227,6 +346,9 @@ try {
     blockers: ['MULTIPLE_TRAILERS_REQUIRES_MANUAL_COALESCING', 'EVENT_DATE_MISSING', 'MULTIPLE_CANONICAL_PDVS', crossTenantResult.blocker.code, 'SOURCE_PAYLOAD_CHANGED', 'MAPPED_DESTINATION_MISSING', 'MAPPED_DESTINATION_DIVERGED (agenda and PDV)'],
     rollback: { destination: 0, maps: 0, batches: 0, resumed: afterRollbackResume.status },
     concurrentRuns: concurrentResults.map((result) => result.status),
+    completedRunIntegrity: ['same run reuse', 'agenda adulteration', 'PDV adulteration', 'destination removal', 'map removal', 'checkpoint order adulteration'],
+    inFlightIntegrity: ['previous batch destination adulteration', 'pre-finalization destination adulteration', 'same-runId advisory-lock barrier'],
+    sameRunConcurrent: sameRunResults.map((result) => result.status),
   };
   console.log(`PASS PDV-BUSINESS-MIGRATOR-QA-01 ${JSON.stringify(output)}`);
 } finally {

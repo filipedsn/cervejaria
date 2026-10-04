@@ -209,6 +209,65 @@ async function verifyExistingMap(tx: AnyDb, item: any, companyId: string, pdvId:
   return map;
 }
 
+async function validateConfirmedState(tx: AnyDb, input: { run: any; companyId: string; pdvId: string; sourceHash: string; items: any[]; requireComplete?: boolean }) {
+  const { run, companyId, pdvId, sourceHash, items } = input;
+  const checkpoint = run.checkpoint as any;
+  const orderedKeys = items.map((item) => key(item.type, item.id));
+  const expectedCheckpoint = makeRunCheckpoint(companyId, sourceHash, items);
+  if (run.transformVersion !== PDV_TRANSFORM_VERSION || run.sourceSnapshotHash !== sourceHash || checkpoint?.scope !== PDV_MIGRATION_SCOPE || checkpoint?.companyId !== companyId || checkpoint?.sourceSnapshotHash !== sourceHash || checkpoint?.transformVersion !== PDV_TRANSFORM_VERSION || checkpoint?.totalRecords !== items.length || stable(checkpoint?.scopeCounts) !== stable(expectedCheckpoint.scopeCounts) || stable(checkpoint?.sourceTypes) !== stable([...SOURCE_TYPES])) {
+    throw new PdvMigrationBlocker('RUN_SCOPE_OR_SNAPSHOT_MISMATCH', null, companyId, 'Run e checkpoint divergem do escopo, versão ou fotografia atuais.');
+  }
+  const completedKeys: string[] = checkpoint.completedSourceKeys ?? [];
+  if (!Array.isArray(checkpoint.completedSourceKeys) || completedKeys.length > orderedKeys.length || completedKeys.some((sourceKey, index) => sourceKey !== orderedKeys[index])) {
+    throw new PdvMigrationBlocker('RUN_CHECKPOINT_DIVERGED', null, companyId, 'Checkpoint não é prefixo da ordem determinística da fotografia.');
+  }
+  const cursor = completedKeys.length;
+  if (input.requireComplete && cursor !== orderedKeys.length) throw new PdvMigrationBlocker('RUN_SCOPE_INCOMPLETE', null, companyId, 'O run concluído não contém todas as origens do escopo em ordem.');
+  if ((checkpoint.lastSourceKey ?? null) !== (completedKeys.at(-1) ?? null)) throw new PdvMigrationBlocker('RUN_CHECKPOINT_DIVERGED', null, companyId, 'lastSourceKey diverge do prefixo confirmado.');
+
+  const batches = await tx.pdvMigrationBatch.findMany({ where: { runId: run.id }, orderBy: { sequence: 'asc' } });
+  if ((checkpoint.lastConfirmedBatch ?? 0) !== batches.length) throw new PdvMigrationBlocker('RUN_BATCH_ORDER_DIVERGED', null, companyId, 'A quantidade de lotes diverge do checkpoint confirmado.');
+  let covered = 0;
+  const batchForKey = new Map<string, any>();
+  for (let index = 0; index < batches.length; index++) {
+    const batch = batches[index];
+    const batchCheckpoint = batch.checkpoint as any;
+    const receipts: any[] = batchCheckpoint?.receipts ?? [];
+    const before = batchCheckpoint?.sourceCursorBefore;
+    const after = batchCheckpoint?.sourceCursorAfter;
+    if (batch.sequence !== index + 1 || batch.status !== 'CONFIRMED' || before !== covered || !Number.isInteger(after) || after <= before || after > cursor || receipts.length !== after - before) {
+      throw new PdvMigrationBlocker('RUN_BATCH_ORDER_DIVERGED', null, companyId, 'Ordem, estado ou intervalo de um lote confirmado diverge do checkpoint.');
+    }
+    const batchItems = items.slice(before, after);
+    const expectedBatchHash = hash(batchItems.map((item) => ({ sourceType: item.type, sourceId: item.id, payloadHash: item.payloadHash })));
+    if (batch.payloadHash !== expectedBatchHash) throw new PdvMigrationBlocker('RUN_RECEIPT_DIVERGED', null, companyId, 'Hash do lote diverge das origens confirmadas.');
+    for (let receiptIndex = 0; receiptIndex < batchItems.length; receiptIndex++) {
+      const item = batchItems[receiptIndex];
+      const receipt = receipts[receiptIndex];
+      if (receipt.sourceType !== item.type || receipt.sourceId !== item.id || receipt.destinationType !== item.expected.type || receipt.destinationId !== item.expected.id || receipt.payloadHash !== item.payloadHash || typeof receipt.destinationHash !== 'string' || typeof receipt.destinationCreated !== 'boolean') {
+        throw new PdvMigrationBlocker('RUN_RECEIPT_DIVERGED', item.type, item.id, 'Recibo do lote diverge da origem ou do destino esperado.');
+      }
+      const destination = await readDestination(tx, item.expected);
+      if (!destination) throw new PdvMigrationBlocker('MAPPED_DESTINATION_MISSING', item.type, item.id, 'Destino indicado no recibo deste run não existe.');
+      if (hash(normalizeDestination(item.expected.type, destination)) !== receipt.destinationHash) throw new PdvMigrationBlocker('MAPPED_DESTINATION_DIVERGED', item.type, item.id, 'Destino diverge do recibo deste run.');
+      batchForKey.set(key(item.type, item.id), batch);
+    }
+    covered = after;
+  }
+  if (covered !== cursor) throw new PdvMigrationBlocker('RUN_BATCH_ORDER_DIVERGED', null, companyId, 'Lotes confirmados não cobrem exatamente o prefixo do checkpoint.');
+
+  for (const item of items.slice(0, cursor)) {
+    for (const dependencyKey of item.dependencies) {
+      const [dependencyType, dependencyId] = dependencyKey.split(':', 2);
+      if (!completedKeys.includes(dependencyKey)) throw new PdvMigrationBlocker('DEPENDENCY_NOT_CONFIRMED', dependencyType, dependencyId, 'Dependência não aparece antes do registro no prefixo confirmado.');
+      await getConfirmedDependency(tx, companyId, pdvId, dependencyType, dependencyId);
+    }
+    const map = await verifyExistingMap(tx, item, companyId, pdvId);
+    if (!map || !batchForKey.has(key(item.type, item.id))) throw new PdvMigrationBlocker('CHECKPOINT_MAP_MISSING', item.type, item.id, 'Origem confirmada não possui mapa íntegro e recibo neste run.');
+  }
+  return { completedKeys, cursor, batches };
+}
+
 function makeRunCheckpoint(companyId: string, sourceHash: string, items: any[]) {
   const counts = { PDV: 0, TRAILER: 0, AGENDA: 0, OCORRENCIA: 0 };
   for (const item of items) {
@@ -223,6 +282,8 @@ function makeRunCheckpoint(companyId: string, sourceHash: string, items: any[]) 
 export async function runPdvBusinessMigration(options: {
   db: AnyDb; companyId: string; runId: string; batchSize?: number; maxBatches?: number;
   afterDestinationWrite?: (entry: { sourceType: string; sourceId: string; destinationId: string }) => Promise<void> | void;
+  afterBatchCommit?: (entry: { sequence: number; completedSourceKeys: string[] }) => Promise<void> | void;
+  beforeFinalization?: () => Promise<void> | void;
 }) {
   const { db, companyId, runId } = options;
   const batchSize = options.batchSize ?? 10;
@@ -240,49 +301,32 @@ export async function runPdvBusinessMigration(options: {
     plan = { canonicalPdvId: initialSnapshot.pdvs[0]?.id ?? initialSnapshot.trailers[0]?.id ?? '', items: [] };
   }
   const initialCheckpoint = makeRunCheckpoint(companyId, sourceHash, plan.items);
-  let run = await db.pdvMigrationRun.findUnique({ where: { id: runId } });
-  if (!run) run = await db.pdvMigrationRun.create({ data: { id: runId, transformVersion: PDV_TRANSFORM_VERSION, sourceSnapshotHash: sourceHash, checkpoint: initialCheckpoint } });
-  else {
-    const saved = run.checkpoint as any;
-    if (run.transformVersion !== PDV_TRANSFORM_VERSION || run.sourceSnapshotHash !== sourceHash || saved?.scope !== PDV_MIGRATION_SCOPE || saved?.companyId !== companyId || stable(saved?.sourceTypes) !== stable([...SOURCE_TYPES])) {
-      const blocker = new PdvMigrationBlocker('RUN_SCOPE_OR_SNAPSHOT_MISMATCH', null, companyId, 'Run existente pertence a outro escopo, versão ou fotografia de origem.');
-      await db.pdvMigrationRun.update({ where: { id: runId }, data: { status: 'BLOCKED' } });
-      return { status: 'BLOCKED', runId, blocker: { code: blocker.code, sourceType: blocker.sourceType, sourceId: blocker.sourceId, message: blocker.message } };
-    }
-    if (run.status === 'COMPLETED') return { status: 'COMPLETED', runId, checkpoint: saved, reusedCompletedRun: true };
-  }
-  if (preflightBlocker) {
-    await db.pdvMigrationRun.update({ where: { id: runId }, data: { status: 'BLOCKED' } });
-    return { status: 'BLOCKED', runId, blocker: { code: preflightBlocker.code, sourceType: preflightBlocker.sourceType, sourceId: preflightBlocker.sourceId, message: preflightBlocker.message } };
-  }
-
-  const savedCheckpoint = run.checkpoint as any;
-  const completedKeys: string[] = savedCheckpoint.completedSourceKeys ?? [];
-  const orderedKeys = plan.items.map((item) => key(item.type, item.id));
-  if (completedKeys.length > orderedKeys.length || completedKeys.some((sourceKey, index) => sourceKey !== orderedKeys[index])) {
-    await db.pdvMigrationRun.update({ where: { id: runId }, data: { status: 'BLOCKED' } });
-    return { status: 'BLOCKED', runId, blocker: { code: 'RUN_CHECKPOINT_DIVERGED', sourceType: null, sourceId: companyId, message: 'Checkpoint não é prefixo da ordem determinística da fotografia.' } };
-  }
-
-  const receiptsByKey = new Map<string, any>();
+  let run: AnyDb;
   let processedBatches = 0;
-  let cursor = completedKeys.length;
+  let cursor = 0;
   try {
-    if (cursor > 0) {
-      await db.$transaction(async (tx: AnyDb) => {
-        await acquireScopeLock(tx, companyId);
-        const liveSnapshot = await readScopeSnapshot(tx, companyId);
-        if (hash(scopePayload(liveSnapshot)) !== sourceHash) throw new PdvMigrationBlocker('SOURCE_SNAPSHOT_CHANGED', null, companyId, 'A fotografia de origem mudou durante a retomada.');
-        for (const item of plan.items.slice(0, cursor)) {
-          for (const dependencyKey of item.dependencies) {
-            const [dependencyType, dependencyId] = dependencyKey.split(':', 2);
-            await getConfirmedDependency(tx, companyId, plan.canonicalPdvId, dependencyType, dependencyId);
-          }
-          const existing = await verifyExistingMap(tx, item, companyId, plan.canonicalPdvId);
-          if (!existing) throw new PdvMigrationBlocker('CHECKPOINT_MAP_MISSING', item.type, item.id, 'Origem marcada como confirmada no run não possui mapa/destino íntegro.');
-        }
-      });
-    }
+    run = await db.$transaction(async (tx: AnyDb) => {
+      await acquireScopeLock(tx, companyId);
+      const currentSnapshot = await readScopeSnapshot(tx, companyId);
+      if (hash(scopePayload(currentSnapshot)) !== sourceHash) throw new PdvMigrationBlocker('SOURCE_SNAPSHOT_CHANGED', null, companyId, 'A fotografia de origem mudou antes da inicialização/retomada do run.');
+      return await tx.pdvMigrationRun.findUnique({ where: { id: runId } }) ?? await tx.pdvMigrationRun.create({ data: { id: runId, transformVersion: PDV_TRANSFORM_VERSION, sourceSnapshotHash: sourceHash, checkpoint: initialCheckpoint } });
+    });
+    if (preflightBlocker) throw preflightBlocker;
+    const initialState = await db.$transaction(async (tx: AnyDb) => {
+      await acquireScopeLock(tx, companyId);
+      const liveSnapshot = await readScopeSnapshot(tx, companyId);
+      if (hash(scopePayload(liveSnapshot)) !== sourceHash) throw new PdvMigrationBlocker('SOURCE_SNAPSHOT_CHANGED', null, companyId, 'A fotografia de origem mudou durante a retomada.');
+      const liveRun = await tx.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } });
+      const state = await validateConfirmedState(tx, { run: liveRun, companyId, pdvId: plan.canonicalPdvId, sourceHash, items: plan.items, requireComplete: liveRun.status === 'COMPLETED' });
+      if (state.cursor > 0) {
+        const canonical = await tx.pontoVenda.findUnique({ where: { id: plan.canonicalPdvId } });
+        if (!canonical || canonical.cervejariaId !== companyId) throw new PdvMigrationBlocker('CANONICAL_PDV_MISSING', null, plan.canonicalPdvId, 'PDV canônico ausente ou de outra empresa.');
+      }
+      return { run: liveRun, state };
+    });
+    run = initialState.run;
+    cursor = initialState.state.cursor;
+    if (run.status === 'COMPLETED') return { status: 'COMPLETED', runId, checkpoint: run.checkpoint, reusedCompletedRun: true };
     while (cursor < plan.items.length && (options.maxBatches == null || processedBatches < options.maxBatches)) {
       let batchEnd = Math.min(cursor + batchSize, plan.items.length);
       const inBatch = new Set(plan.items.slice(cursor, batchEnd).map((item) => key(item.type, item.id)));
@@ -299,9 +343,16 @@ export async function runPdvBusinessMigration(options: {
         const trailer = liveSnapshot.trailers.find((row: any) => row.id === plan.canonicalPdvId);
         if (!point && !trailer) throw new PdvMigrationBlocker('CANONICAL_PDV_SOURCE_MISSING', null, companyId, 'A origem do PDV canônico não existe mais.');
         const previous = await tx.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } });
+        const currentState = await validateConfirmedState(tx, { run: previous, companyId, pdvId: plan.canonicalPdvId, sourceHash, items: plan.items, requireComplete: previous.status === 'COMPLETED' });
+        if (previous.status === 'COMPLETED') return { alreadyCompleted: true, checkpoint: previous.checkpoint, cursor: currentState.cursor, receipts: [] };
+        if (currentState.cursor > cursor) return { advanced: true, checkpoint: previous.checkpoint, cursor: currentState.cursor, receipts: [] };
+        if (currentState.cursor < cursor) throw new PdvMigrationBlocker('RUN_CHECKPOINT_DIVERGED', null, companyId, 'Checkpoint confirmado regrediu durante esta execução.');
+        if (currentState.cursor > 0) {
+          const canonical = await tx.pontoVenda.findUnique({ where: { id: plan.canonicalPdvId } });
+          if (!canonical || canonical.cervejariaId !== companyId) throw new PdvMigrationBlocker('CANONICAL_PDV_MISSING', null, plan.canonicalPdvId, 'PDV canônico ausente ou de outra empresa.');
+        }
         const currentCheckpoint = previous.checkpoint as any;
-        const currentKeys: string[] = currentCheckpoint.completedSourceKeys ?? [];
-        if (currentKeys.length !== cursor || currentKeys.some((sourceKey, index) => sourceKey !== orderedKeys[index])) throw new PdvMigrationBlocker('RUN_CHECKPOINT_RACE', null, companyId, 'Outro executor avançou o run/checkpoint; esta execução não avança.');
+        const currentKeys: string[] = currentState.completedKeys;
         const batchSequence = (currentCheckpoint.lastConfirmedBatch ?? 0) + 1;
         const plannedReceipts: any[] = [];
         const batch = await tx.pdvMigrationBatch.create({ data: { runId, sequence: batchSequence, status: 'PROCESSING', payloadHash: hash(batchItems.map((item) => ({ sourceType: item.type, sourceId: item.id, payloadHash: item.payloadHash }))), checkpoint: { scope: PDV_MIGRATION_SCOPE, sourceCursorBefore: cursor, sourceCursorAfter: cursor + batchItems.length, receipts: [] } } });
@@ -337,29 +388,38 @@ export async function runPdvBusinessMigration(options: {
         const nextKeys = [...currentKeys, ...batchItems.map((item) => key(item.type, item.id))];
         const nextCheckpoint = { ...currentCheckpoint, completedSourceKeys: nextKeys, lastConfirmedBatch: batchSequence, lastSourceKey: nextKeys.at(-1) ?? null };
         await tx.pdvMigrationRun.update({ where: { id: runId }, data: { checkpoint: nextCheckpoint } });
-        return { checkpoint: nextCheckpoint, receipts: plannedReceipts };
+        return { checkpoint: nextCheckpoint, receipts: plannedReceipts, cursor: nextKeys.length };
       });
-      for (const receipt of result.receipts) receiptsByKey.set(key(receipt.sourceType, receipt.sourceId), receipt);
-      cursor += batchItems.length;
+      if ('alreadyCompleted' in result && result.alreadyCompleted) return { status: 'COMPLETED', runId, processedBatches, checkpoint: result.checkpoint, reusedCompletedRun: true };
+      if ('advanced' in result && result.advanced) { cursor = result.cursor; continue; }
+      cursor = result.cursor;
       processedBatches++;
+      if (options.afterBatchCommit) await options.afterBatchCommit({ sequence: (result.checkpoint as any).lastConfirmedBatch, completedSourceKeys: (result.checkpoint as any).completedSourceKeys });
     }
+    if (cursor < plan.items.length) return { status: 'RUNNING', runId, processedBatches, checkpoint: (await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } })).checkpoint };
+    if (options.beforeFinalization) await options.beforeFinalization();
+    const finalRun = await db.$transaction(async (tx: AnyDb) => {
+      await acquireScopeLock(tx, companyId);
+      const finalSnapshot = await readScopeSnapshot(tx, companyId);
+      if (hash(scopePayload(finalSnapshot)) !== sourceHash) throw new PdvMigrationBlocker('SOURCE_SNAPSHOT_CHANGED', null, companyId, 'Fotografia mudou antes de concluir o escopo.');
+      const point = await tx.pontoVenda.findUnique({ where: { id: plan.canonicalPdvId } });
+      if (!point || point.cervejariaId !== companyId) throw new PdvMigrationBlocker('CANONICAL_PDV_MISSING', null, plan.canonicalPdvId, 'PDV canônico ausente ou de outra empresa antes da finalização.');
+      const row = await tx.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } });
+      await validateConfirmedState(tx, { run: row, companyId, pdvId: plan.canonicalPdvId, sourceHash, items: plan.items, requireComplete: true });
+      return tx.pdvMigrationRun.update({ where: { id: runId }, data: { status: 'COMPLETED', finishedAt: new Date() } });
+    });
+    return { status: 'COMPLETED', runId, processedBatches, checkpoint: finalRun.checkpoint, counts: (finalRun.checkpoint as any).scopeCounts };
   } catch (error) {
     if (error instanceof PdvMigrationBlocker) {
-      await db.pdvMigrationRun.update({ where: { id: runId }, data: { status: 'BLOCKED' } });
-      return { status: 'BLOCKED', runId, checkpoint: (await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } })).checkpoint, blocker: { code: error.code, sourceType: error.sourceType, sourceId: error.sourceId, message: error.message } };
+      const persistedRun = await db.pdvMigrationRun.findUnique({ where: { id: runId } });
+      if (persistedRun?.checkpoint && (persistedRun.checkpoint as any).companyId === companyId) {
+        await db.$transaction(async (tx: AnyDb) => {
+          await acquireScopeLock(tx, companyId);
+          await tx.pdvMigrationRun.updateMany({ where: { id: runId }, data: { status: 'BLOCKED', finishedAt: null } });
+        });
+      }
+      return { status: 'BLOCKED', runId, checkpoint: persistedRun?.checkpoint ?? null, blocker: { code: error.code, sourceType: error.sourceType, sourceId: error.sourceId, message: error.message } };
     }
     throw error;
   }
-
-  if (cursor < plan.items.length) return { status: 'RUNNING', runId, processedBatches, checkpoint: (await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } })).checkpoint };
-  const finalRun = await db.$transaction(async (tx: AnyDb) => {
-    await acquireScopeLock(tx, companyId);
-    const finalSnapshot = await readScopeSnapshot(tx, companyId);
-    if (hash(scopePayload(finalSnapshot)) !== sourceHash) throw new PdvMigrationBlocker('SOURCE_SNAPSHOT_CHANGED', null, companyId, 'Fotografia mudou antes de concluir o escopo.');
-    const row = await tx.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } });
-    const checkpoint = row.checkpoint as any;
-    if ((checkpoint.completedSourceKeys ?? []).length !== plan.items.length) throw new PdvMigrationBlocker('RUN_SCOPE_INCOMPLETE', null, companyId, 'Nem todas as origens registradas no escopo têm lote confirmado.');
-    return tx.pdvMigrationRun.update({ where: { id: runId }, data: { status: 'COMPLETED', finishedAt: new Date() } });
-  });
-  return { status: 'COMPLETED', runId, processedBatches, checkpoint: finalRun.checkpoint, counts: (finalRun.checkpoint as any).scopeCounts };
 }

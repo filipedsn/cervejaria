@@ -25,7 +25,7 @@
     "code": [
       {
         "path": "backend/scripts/pdv-unico-business-migrator.ts",
-        "sha256": "02409eccd3b28db3496984aed1b9f6524aa686e16a4d638cc5c78f114adcd487"
+        "sha256": "fce526317d72d953c8594dd812efe3eb48e5835fe37cd41ba8c695c8f3f2e620"
       },
       {
         "path": "backend/scripts/pdv-unico-business-migrate.qa.mjs",
@@ -33,7 +33,7 @@
       },
       {
         "path": "backend/scripts/pdv-unico-business-migrator.isolated.test.mjs",
-        "sha256": "a0f35d8fff5eb29418fe4d0ec1ddefa0c5f6f6383b499382480e4b6382bb5a99"
+        "sha256": "851b643d4795935583822efbd6b4f7772283919c70645b4cf2d75bea76f9ab29"
       },
       {
         "path": "backend/scripts/pdv-unico-business-migrate-env.test.mjs",
@@ -62,5 +62,5 @@
     ]
   },
   "purpose": "Run only the first PontoVenda/agenda/occurrence business slice against the immutable additive-schema baseline. This delivery has no schema or SQL candidate.",
-  "manifestSha256": "cc8af07b155bfca5a7120d688b4693d5fc32702ba1582672b55099373adc679e"
+  "manifestSha256": "922fd810c36c726107fe25cbcd4f2fe45cf15e10b238a2c0b1b66d768b31e6e2"
 }
