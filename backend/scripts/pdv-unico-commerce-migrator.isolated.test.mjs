@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -17,6 +17,8 @@ const backendRoot = path.resolve(here, '..');
 const repoRoot = path.resolve(backendRoot, '..');
 const runId = process.env.PDV_QA_RUN_ID ?? `manual-${process.pid}`;
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), `pdv-commerce-${runId}-`));
+process.env.JWT_SECRET = randomBytes(32).toString('hex');
+process.env.UPLOADS_DIR = path.join(tempRoot, 'app-uploads');
 const generatedClientDir = path.join(backendRoot, 'node_modules', '.prisma', `pdv-commerce-client-${runId}`);
 const sha256 = (value) => createHash('sha256').update(Buffer.from(value.toString('utf8').replaceAll('\r\n', '\n'))).digest('hex');
 const manifestPath = path.join(repoRoot, 'docs/testing/pdv-unico-integrated-qa-manifest.json');
@@ -57,6 +59,150 @@ const centsExact = (value) => {
   const magnitude = BigInt(match[2]) * 100n + BigInt((match[3] ?? '').padEnd(2, '0'));
   return (match[1] ? -magnitude : magnitude).toString();
 };
+
+async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, menuA, menuB, product, secondCompany, secondPoint, runId }) {
+  assert.equal(process.env.PDV_ISOLATED_QA, '1');
+  const validatedTarget = validateIsolatedQaEnvironment(process.env);
+  assert.equal(process.env.DATABASE_URL, validatedTarget.toString(), 'Fastify and every runtime Prisma module use the validated QA URL');
+  assert.equal(new URL(process.env.DATABASE_URL).pathname, '/cervejaria_qa_pdv_unico');
+  assert.notEqual(primaryCompany.id, secondCompany.id);
+  assert.notEqual(primaryPoint.id, secondPoint.id);
+
+  // Password hashing is the same bcrypt mechanism used by account creation and login.
+  const { hashPassword } = await import('../src/lib/utils.ts');
+  const ownerPassword = `Qa-owner-${runId}-only!`;
+  const attendantPassword = `Qa-attendant-${runId}-only!`;
+  const secondOwnerPassword = `Qa-second-${runId}-only!`;
+  const [ownerHash, attendantHash, secondOwnerHash] = await Promise.all([
+    hashPassword(ownerPassword), hashPassword(attendantPassword), hashPassword(secondOwnerPassword),
+  ]);
+  const authOwner = await db.usuario.create({ data: { id: `auth-owner-${runId}`, nome: 'Synthetic authenticated owner', email: `auth-owner-${runId}@example.invalid`, senhaHash: ownerHash, papel: 'DONO', cervejariaId: primaryCompany.id } });
+  const authAttendant = await db.usuario.create({ data: { id: `auth-attendant-${runId}`, nome: 'Synthetic authenticated attendant', email: `auth-attendant-${runId}@example.invalid`, senhaHash: attendantHash, papel: 'ATENDENTE', cervejariaId: primaryCompany.id } });
+  const secondOwner = await db.usuario.create({ data: { id: `auth-second-owner-${runId}`, nome: 'Synthetic second-tenant owner', email: `auth-second-owner-${runId}@example.invalid`, senhaHash: secondOwnerHash, papel: 'DONO', cervejariaId: secondCompany.id } });
+
+  // app.ts and the Prisma singleton are imported only after the QA destination guard above.
+  const [{ buildApp }, { prisma: runtimePrisma }] = await Promise.all([
+    import('../src/app.ts'),
+    import('../src/lib/prisma.ts'),
+  ]);
+  const runtimeConnection = await runtimePrisma.$queryRaw`SELECT current_database() AS database_name`;
+  assert.equal(runtimeConnection.length, 1);
+  assert.equal(runtimeConnection[0].database_name, 'cervejaria_qa_pdv_unico', 'runtime Prisma connects to the disposable QA database');
+
+  const app = await buildApp();
+  const counts = async () => {
+    const pointIds = [primaryPoint.id, secondPoint.id];
+    const [points, sessions, commands, items, payments] = await Promise.all([
+      db.pontoVenda.count({ where: { id: { in: pointIds } } }),
+      db.sessaoCaixaOperacao.count({ where: { pontoVendaId: { in: pointIds } } }),
+      db.comanda.count({ where: { pontoVendaId: { in: pointIds } } }),
+      db.itemComanda.count({ where: { comanda: { pontoVendaId: { in: pointIds } } } }),
+      db.pagamento.count({ where: { comanda: { pontoVendaId: { in: pointIds } } } }),
+    ]);
+    return { points, sessions, commands, items, payments };
+  };
+  const assertNoApiWrites = async (before, scenario) => assert.deepEqual(await counts(), before, `${scenario} performs no persistent operational writes`);
+  const footprintBeforeAuthorization = await counts();
+
+  async function login(email, password, expectedRole) {
+    const response = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, senha: password } });
+    assert.equal(response.statusCode, 200, `real login succeeds for ${expectedRole}`);
+    assert.equal(JSON.parse(response.body).usuario.papel, expectedRole);
+    const setCookie = response.headers['set-cookie'];
+    const cookieHeader = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+    assert(cookieHeader?.startsWith('token='), 'login returns the real session credential as an HttpOnly token cookie');
+    return cookieHeader.split(';', 1)[0];
+  }
+
+  try {
+    const missing = await app.inject({ method: 'GET', url: '/api/operacao/contexto' });
+    assert.equal(missing.statusCode, 401, 'missing credential is rejected by real authentication');
+    const invalid = await app.inject({ method: 'GET', url: '/api/operacao/contexto', headers: { cookie: 'token=not-a-valid-jwt' } });
+    assert.equal(invalid.statusCode, 401, 'invalid token is rejected by real authentication');
+    await assertNoApiWrites(footprintBeforeAuthorization, 'missing/invalid credential');
+
+    const ownerCookie = await login(authOwner.email, ownerPassword, 'DONO');
+    const attendantCookie = await login(authAttendant.email, attendantPassword, 'ATENDENTE');
+    const secondOwnerCookie = await login(secondOwner.email, secondOwnerPassword, 'DONO');
+
+    const beforeAttendantDenial = await counts();
+    const attendantOwnerOnly = await app.inject({ method: 'POST', url: '/api/operacao/pontos-venda', headers: { cookie: attendantCookie }, payload: { nome: `forbidden-${runId}` } });
+    assert.equal(attendantOwnerOnly.statusCode, 403, 'ATENDENTE is denied by the real requireDono guard');
+    await assertNoApiWrites(beforeAttendantDenial, 'ATENDENTE owner-only request');
+
+    const beforeCrossTenant = await counts();
+    const foreignRead = await app.inject({ method: 'GET', url: `/api/operacao/caixa/cardapio?pontoVendaId=${encodeURIComponent(primaryPoint.id)}`, headers: { cookie: secondOwnerCookie } });
+    assert.equal(foreignRead.statusCode, 404, 'second tenant cannot read the primary tenant cash register by PDV ID');
+    const foreignWrite = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie: secondOwnerCookie }, payload: { pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: `foreign-${runId}` } });
+    assert.equal(foreignWrite.statusCode, 404, 'second tenant cannot create a command against the primary tenant PDV');
+    await assertNoApiWrites(beforeCrossTenant, 'cross-tenant read/write attempts');
+
+    const opened = await app.inject({
+      method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie: ownerCookie },
+      payload: { pontoVendaId: primaryPoint.id, trocoInicial: 5, cardapioId: menuA.id },
+    });
+    assert.equal(opened.statusCode, 201, `authenticated cash register opens: ${opened.body}`);
+    const openedBody = JSON.parse(opened.body);
+    assert.equal(openedBody.pontoVendaId, primaryPoint.id);
+    assert.equal(openedBody.status, 'ABERTO');
+    const session = await db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: openedBody.id } });
+    assert.deepEqual([session.cervejariaId, session.pontoVendaId, session.cardapioId, session.abertoPorId, session.status, centsExact(session.trocoInicial)], [primaryCompany.id, primaryPoint.id, menuA.id, authOwner.id, 'ABERTO', '500']);
+
+    const menuResponse = await app.inject({ method: 'GET', url: `/api/operacao/caixa/cardapio?pontoVendaId=${encodeURIComponent(primaryPoint.id)}`, headers: { cookie: ownerCookie } });
+    assert.equal(menuResponse.statusCode, 200, `authenticated turn menu is returned: ${menuResponse.body}`);
+    const menuView = JSON.parse(menuResponse.body);
+    assert.equal(menuView.cardapioId, menuA.id);
+    const menuProduct = menuView.produtos.find((row) => row.id === product.id && row.volumeMl === 0);
+    assert(menuProduct, 'selected menu exposes the migrated unit product');
+    assert.equal(centsExact(menuProduct.precoUnit), '950');
+
+    const openedCommand = await app.inject({
+      method: 'POST', url: '/api/operacao/comandas', headers: { cookie: ownerCookie },
+      payload: { pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: `auth-sale-${runId}` },
+    });
+    assert.equal(openedCommand.statusCode, 201, `authenticated command opens: ${openedCommand.body}`);
+    const commandId = JSON.parse(openedCommand.body).id;
+    const launched = await app.inject({
+      method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}/pedidos`, headers: { cookie: ownerCookie },
+      payload: { itens: [{ produtoId: product.id, quantidade: 2 }] },
+    });
+    assert.equal(launched.statusCode, 201, `authenticated product is launched: ${launched.body}`);
+    assert.equal(centsExact(JSON.parse(launched.body).total), '1900');
+    const commandAfterLaunch = await db.comanda.findUniqueOrThrow({ where: { id: commandId }, include: { itens: true } });
+    assert.deepEqual([commandAfterLaunch.status, commandAfterLaunch.origem, commandAfterLaunch.pontoVendaId, commandAfterLaunch.diaOperacional.toISOString().slice(0, 10), centsExact(commandAfterLaunch.total), commandAfterLaunch.itens.length], ['ABERTA', 'CAIXA', primaryPoint.id, session.diaOperacional.toISOString().slice(0, 10), '1900', 1]);
+    assert.deepEqual([commandAfterLaunch.itens[0].produtoId, commandAfterLaunch.itens[0].volumeMl, commandAfterLaunch.itens[0].quantidade, centsExact(commandAfterLaunch.itens[0].precoUnit), commandAfterLaunch.itens[0].nome], [product.id, 0, 2, '950', product.nome], 'real API snapshots the selected migrated menu price into the sold item');
+
+    const paid = await app.inject({
+      method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}/pagamentos`, headers: { cookie: ownerCookie },
+      payload: { pagamentos: [{ forma: 'PIX', valor: 19 }] },
+    });
+    assert.equal(paid.statusCode, 200, `authenticated PIX payment closes the command: ${paid.body}`);
+    assert.equal(centsExact(JSON.parse(paid.body).total), '1900');
+    const paidCommand = await db.comanda.findUniqueOrThrow({ where: { id: commandId }, include: { itens: true, pagamentos: true } });
+    assert.equal(paidCommand.status, 'FECHADA');
+    assert.deepEqual(paidCommand.pagamentos.map((payment) => [payment.forma, centsExact(payment.valor), payment.sessaoCaixaId, payment.sessaoCaixaEventoId, payment.registradoPorId]), [['PIX', '1900', session.id, null, authOwner.id]]);
+
+    const closed = await app.inject({
+      method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: ownerCookie },
+      payload: { pontoVendaId: primaryPoint.id, contadoDinheiro: 5, contadoPix: 19, contadoCartaoDebito: 0, contadoCartaoCredito: 0 },
+    });
+    assert.equal(closed.statusCode, 200, `authenticated cash register closes using its current route contract: ${closed.body}`);
+    const persistedSession = await db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: session.id } });
+    assert.deepEqual([persistedSession.status, persistedSession.fechadoPorId, centsExact(persistedSession.trocoInicial), centsExact(persistedSession.contadoDinheiro), centsExact(persistedSession.contadoPix), centsExact(persistedSession.contadoCartaoDebito), centsExact(persistedSession.contadoCartaoCredito)], ['FECHADO', authOwner.id, '500', '500', '1900', '0', '0']);
+    assert.equal(await db.itemComandaOpcional.count({ where: { itemComanda: { comandaId: commandId } } }), 0);
+    const summary = {
+      login: [200, 200, 200], missingCredential: missing.statusCode, invalidToken: invalid.statusCode,
+      attendantOwnerOnly: attendantOwnerOnly.statusCode, crossTenantRead: foreignRead.statusCode, crossTenantWrite: foreignWrite.statusCode,
+      openCash: opened.statusCode, getTurnMenu: menuResponse.statusCode, openCommand: openedCommand.statusCode,
+      launchItem: launched.statusCode, payment: paid.statusCode, closeCash: closed.statusCode,
+      persisted: { sessionId: session.id, commandId, productId: product.id, menuId: menuA.id, itemPriceCents: '950', quantity: 2, totalCents: '1900', payment: 'PIX:1900', sessionStatus: persistedSession.status },
+    };
+    console.log(`QA_AUTHENTICATED_CASH=PASS; ${JSON.stringify(summary)}`);
+  } finally {
+    await app.close();
+    await runtimePrisma.$disconnect();
+  }
+}
 async function proveLegacyOrderContextPreflight(args) {
   const { history, core, catalog, finance, sessionSql, tempRoot, manifest, commerceSql, runPrisma, sha256, repoRoot, backendRoot, generatedClientDir, databaseUrl, runId } = args;
   const container = process.env.PDV_QA_CONTAINER;
@@ -786,16 +932,31 @@ try {
   assert.equal((await runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: midBatchRunId })).status, 'COMPLETED', 'resumes after rollback without altering historic rows');
 
   const raceCompany = await db.cervejaria.create({ data: { nome: `QA commerce race ${runId}`, slug: slug('race') } });
-  await db.configuracaoOperacao.create({ data: { cervejariaId: raceCompany.id, ativo: true, controlaEstoque: true, temCozinha: false, exclusivo: false, quantidadeMesas: 0, createdAt: new Date('2026-10-01T10:00:00.000Z'), updatedAt: new Date('2026-10-02T10:00:00.000Z') } });
+  await db.configuracaoOperacao.create({ data: { cervejariaId: raceCompany.id, ativo: true, controlaEstoque: false, temCozinha: false, exclusivo: false, quantidadeMesas: 0, createdAt: new Date('2026-10-01T10:00:00.000Z'), updatedAt: new Date('2026-10-02T10:00:00.000Z') } });
+  await db.configuracaoOperacional.create({ data: { cervejariaId: raceCompany.id, plannedOperationsEnabled: false, tapsEnabled: false, inventoryEnabled: false, kitchenEnabled: false, createdAt: new Date('2026-10-01T10:00:00.000Z'), updatedAt: new Date('2026-10-02T10:00:00.000Z') } });
   const raceTrailer = await db.trailer.create({ data: { id: id('race-trailer'), cervejariaId: raceCompany.id, nome: 'race trailer', identificador: 'RACE' } });
   await db.evento.create({ data: { id: id('race-event'), cervejariaId: raceCompany.id, trailerId: raceTrailer.id, nome: 'race', local: 'QA', data: new Date('2026-12-02T00:00:00.000Z'), horaInicio: '18:00', status: 'ABERTO', recorrencia: 'NENHUMA' } });
   const raceBusinessRunId = id('race-business');
   assert.equal((await runPdvBusinessMigration({ db, companyId: raceCompany.id, runId: raceBusinessRunId })).status, 'COMPLETED');
   const racePoint = await db.pontoVenda.findFirstOrThrow({ where: { cervejariaId: raceCompany.id } });
   assert.equal(racePoint.id, raceTrailer.id, 'Event-only tenant maps its sole Trailer to a stable PDV identity');
-  const raceProduct = await db.produto.create({ data: { id: id('race-product'), cervejariaId: raceCompany.id, nome: 'race product' } });
+  const raceProduct = await db.produto.create({ data: { id: id('race-product'), cervejariaId: raceCompany.id, nome: 'Authenticated cash product', tipo: 'COMIDA', controlaEstoque: false } });
+  await db.preco.create({ data: { produtoId: raceProduct.id, volumeMl: 1, preco: '12.50' } });
+  const authMenuA = await db.cardapio.create({ data: { id: id('auth-menu-a'), cervejariaId: raceCompany.id, nome: 'Authenticated menu A', ativo: true } });
+  const authMenuB = await db.cardapio.create({ data: { id: id('auth-menu-b'), cervejariaId: raceCompany.id, nome: 'Authenticated menu B', ativo: true } });
+  await db.cardapioProduto.createMany({ data: [
+    { id: id('auth-menu-a-line'), cardapioId: authMenuA.id, produtoId: raceProduct.id, volumeMl: 0, precoUnit: '9.50' },
+    { id: id('auth-menu-b-line'), cardapioId: authMenuB.id, produtoId: raceProduct.id, volumeMl: 0, precoUnit: '8.25' },
+  ] });
   const raceCatalogRunId = id('race-catalog');
-  assert.equal((await runPdvCatalogMigration({ db, companyId: raceCompany.id, pointId: racePoint.id, runId: raceCatalogRunId })).status, 'COMPLETED');
+  const raceCatalogResult = await runPdvCatalogMigration({ db, companyId: raceCompany.id, pointId: racePoint.id, runId: raceCatalogRunId });
+  assert.equal(raceCatalogResult.status, 'COMPLETED', JSON.stringify(raceCatalogResult));
+  assert.deepEqual(await db.cardapioProduto.findMany({ where: { cardapioId: { in: [authMenuA.id, authMenuB.id] } }, orderBy: { cardapioId: 'asc' }, select: { id: true, cardapioId: true, produtoId: true, volumeMl: true, precoUnit: true, cervejariaId: true, pontoVendaId: true } }).then((rows) => rows.map((row) => [row.id, row.cardapioId, row.produtoId, row.volumeMl, centsExact(row.precoUnit), row.cervejariaId, row.pontoVendaId])), [
+    [id('auth-menu-a-line'), authMenuA.id, raceProduct.id, 0, '950', raceCompany.id, racePoint.id],
+    [id('auth-menu-b-line'), authMenuB.id, raceProduct.id, 0, '825', raceCompany.id, racePoint.id],
+  ], 'authenticated API fixture has a migrated canonical PDV, two mapped menus and a positive unit price');
+  const authCatalogPrice = await db.preco.findUniqueOrThrow({ where: { produtoId_volumeMl: { produtoId: raceProduct.id, volumeMl: 1 } } });
+  assert.equal(centsExact(authCatalogPrice.preco), '1250', 'authenticated unit product retains its positive migrated catalog price');
   const raceOperator = await db.usuario.create({ data: { id: id('race-operator'), nome: 'Synthetic race operator', email: `${slug('race-operator')}@example.invalid`, senhaHash: 'synthetic', papel: 'DONO', cervejariaId: raceCompany.id } });
   const raceClient = await db.cliente.create({ data: { id: id('race-client'), cervejariaId: raceCompany.id, nome: 'Synthetic race customer' } });
   const raceEvent = await db.evento.findUniqueOrThrow({ where: { id: id('race-event') } });
@@ -1027,7 +1188,9 @@ try {
   assert.equal(invalidRun.status, 'BLOCKED');
   assert.equal((await db.inventoryBalance.findUniqueOrThrow({ where: { id: balance.id } })).quantidade.toString(), '3.126', 'divergence blocks without automatic repair');
 
-  console.log(`PDV_COMMERCE_QA=PASS; migrations=${applied.length}; coverage=commands:4/items:2/sold-optionals:1/kitchen-orders:2/history:6/balances:1/movements:1/unattached:1; mapped=${completed.checkpoint.totalRecords}; rollback=atomic+mid-batch-divergence; parent-link-tamper=3-specific-blockers; same-db-scopes=business,catalog,sessions,finance,commerce; reexecution=same,new; concurrency=lock-observed; stock-tamper=BLOCKED; PROD_ACCESS_USED=NO`);
+  await proveAuthenticatedCashApi({ db, primaryCompany: raceCompany, primaryPoint: racePoint, menuA: authMenuA, menuB: authMenuB, product: raceProduct, secondCompany: company, secondPoint: point, runId });
+
+  console.log(`PDV_COMMERCE_QA=PASS; migrations=${applied.length}; coverage=commands:4/items:2/sold-optionals:1/kitchen-orders:2/history:6/balances:1/movements:1/unattached:1; mapped=${completed.checkpoint.totalRecords}; rollback=atomic+mid-batch-divergence; parent-link-tamper=3-specific-blockers; same-db-scopes=business,catalog,sessions,finance,commerce; reexecution=same,new; concurrency=lock-observed; authenticated-cash-api=PASS; stock-tamper=BLOCKED; PROD_ACCESS_USED=NO`);
 } finally {
   await consumerPrisma?.$disconnect();
   await db?.$disconnect();
