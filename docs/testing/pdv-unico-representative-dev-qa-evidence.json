@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "captureDate": "2026-10-05",
+  "source": {
+    "environment": "DEV shared; read only",
+    "transaction": "RepeatableRead + SET TRANSACTION READ ONLY",
+    "guard": "backend/scripts/run-pdv-unico-dev-inventory-readonly.mjs; exact local DEV host/port/database validated before Prisma import",
+    "schemaCommit": "66ec00886b65eaea8e437fae4e9a36f7be971b09",
+    "schemaSha256": "19ff5e65829bc6356fa8d06edbff9fd1527b1d1dd0bd5e35c58cda880479ae59",
+    "migrationLedger": {
+      "appliedCount": 85,
+      "latestApplied": "20260930150000_company_pix_key",
+      "additivePdvMapPresent": false
+    },
+    "businessIdentityResolution": [
+      {
+        "requested": "CIA Marítima",
+        "status": "UNIQUE_MATCH",
+        "companyId": "cmr9yis3c0000hvu00q9fe7y1",
+        "sourceName": "CIA Maritima",
+        "sourceSlug": "cia-maritima"
+      },
+      {
+        "requested": "Churrasquinho do Thiago",
+        "status": "UNIQUE_MATCH",
+        "companyId": "cmsry9xrn0000hvlgopjxy0oo",
+        "sourceName": "Churrasquinho do Thiago",
+        "sourceSlug": "churrasquinho-do-thiago"
+      }
+    ]
+  },
+  "photo": {
+    "storedInRepository": false,
+    "temporaryPathPolicy": "%TEMP%/tap76-pdv-photo-*.json; removed after rehearsal",
+    "tableCount": 34,
+    "rowCount": 10738,
+    "crossTenantEdges": 0,
+    "qaRestore": "all rows inserted in FK order in one transaction; cyclic nullable links deferred then restored; IDs, relations and every common scalar value compared before transform",
+    "anonymizedFields": [
+      "Cervejaria.nome/slug",
+      "Cliente.nome/email/telefone/dataNascimento/observacoes",
+      "Usuario.nome/email/senhaHash; passwordChangedAt retained as DateTime",
+      "PushSubscription.endpoint/p256dh/auth and other token/password/secret fields",
+      "Evento.local",
+      "observation/free-text fields",
+      "personal/free-text leaves in TransacaoLog.metadata; nested business snapshot structure and nonpersonal values retained"
+    ],
+    "credentials": "replaced with exclusive QA-only disabled markers; no source credential was copied"
+  },
+  "tenantSourceState": [
+    {
+      "tenant": "CIA Marítima",
+      "companyId": "cmr9yis3c0000hvu00q9fe7y1",
+      "pdvIds": [],
+      "trailerIds": ["cmr9yis3c0001hvu0pr53z3e5"],
+      "effectiveMode": "EVENTO",
+      "inventoryEnabled": false,
+      "kitchenEnabled": false,
+      "planning": { "agendas": 4, "occurrences": 21, "oneOffEvents": 2, "portalOrders": 3 },
+      "catalog": { "products": 11, "prices": 18, "menus": 1, "menuRows": 2, "optionalEntries": 0, "taps": 5, "tapSetups": 123 },
+      "sessions": { "event": 4, "eventOpen": 1, "eventClosed": 3, "porCaixa": 0, "sessionPriceOverrides": 0, "cashMovements": 0 },
+      "commands": { "total": 445, "items": 1098, "optionals": 0, "eventClosed": 433, "eventCancelled": 11, "eventOpen": 1, "closedSalesCents": "2204000" },
+      "finance": {
+        "payments": 432,
+        "paymentsByForm": [
+          { "form": "CARTAO_DEBITO", "count": 85, "cents": "435500" },
+          { "form": "CARTAO_CREDITO", "count": 217, "cents": "1149700" },
+          { "form": "DINHEIRO", "count": 15, "cents": "67300" },
+          { "form": "PIX", "count": 115, "cents": "550000" }
+        ],
+        "receivables": 1,
+        "principalCents": "1500",
+        "receiptsCents": "0",
+        "balanceCents": "1500"
+      },
+      "kitchen": { "orders": 0, "historyRows": 0 },
+      "inventory": { "balanceRows": 0, "movementRows": 0 },
+      "auditRows": 2141,
+      "clientStatisticsRows": 156
+    },
+    {
+      "tenant": "Churrasquinho do Thiago",
+      "companyId": "cmsry9xrn0000hvlgopjxy0oo",
+      "pdvIds": ["cmsry9xry0004hvlge0wgboza"],
+      "trailerIds": ["cmumqsqdp00h6hv18hqkwgc7s"],
+      "effectiveMode": "CAIXA",
+      "inventoryEnabled": true,
+      "kitchenEnabled": true,
+      "planning": { "agendas": 1, "occurrences": 1, "oneOffEvents": 1, "portalOrders": 0 },
+      "catalog": { "products": 34, "prices": 34, "menus": 5, "menuRows": 90, "optionalEntries": 2, "taps": 4, "tapSetups": 0 },
+      "sessions": { "event": 2, "porCaixa": 40, "porCaixaOpen": 4, "porCaixaClosed": 36, "sessionPriceOverrides": 914, "cashMovements": 0 },
+      "commands": { "total": 192, "items": 600, "optionals": 42, "caixaClosed": 166, "caixaCancelled": 22, "caixaOpen": 1, "eventClosed": 3, "caixaClosedSalesCents": "1378700", "caixaDiscountCents": "17600", "eventClosedSalesCents": "10300" },
+      "finance": {
+        "payments": 173,
+        "paymentsByForm": [
+          { "form": "CARTAO_CREDITO", "count": 38, "cents": "346900" },
+          { "form": "CARTAO_DEBITO", "count": 18, "cents": "156600" },
+          { "form": "DINHEIRO", "count": 7, "cents": "45700" },
+          { "form": "PIX", "count": 110, "cents": "839800" }
+        ],
+        "receivables": 5,
+        "principalCents": "19000",
+        "receiptsCents": "19000",
+        "balanceCents": "0"
+      },
+      "kitchen": { "orders": 431, "cancelled": 20, "delivered": 165, "received": 246, "historyRows": 952 },
+      "inventory": {
+        "balanceRows": 31,
+        "balanceUnit": "UNIDADE",
+        "balanceMilliUnits": "1785000",
+        "movementRows": 756,
+        "movementUnit": "UNIDADE",
+        "movementByType": [
+          { "type": "ENTRADA", "rows": 24, "milliUnits": "1743000" },
+          { "type": "AJUSTE", "rows": 26, "milliUnits": "1000000" },
+          { "type": "SAIDA_VENDA", "rows": 670, "milliUnits": "813000" },
+          { "type": "ESTORNO_VENDA", "rows": 35, "milliUnits": "41000" },
+          { "type": "PERDA", "rows": 1, "milliUnits": "10000" }
+        ]
+      },
+      "auditRows": 1623,
+      "clientStatisticsRows": 6
+    }
+  ],
+  "migrationRehearsal": {
+    "target": "temporary PostgreSQL QA, tmpfs, loopback only",
+    "targetMigrationsApplied": 91,
+    "phaseOrder": ["business", "catalog/configuration", "sessions", "finance", "kitchen-preparation", "commerce"],
+    "results": [
+      {
+        "tenant": "CIA Marítima",
+        "business": { "status": "COMPLETED", "pausedAndResumed": true, "sameRunReplay": true, "counts": { "PDV": 0, "TRAILER": 1, "AGENDA": 4, "OCORRENCIA": 23 } },
+        "catalog": { "status": "COMPLETED", "pausedAndResumed": true, "sameRunReplay": true },
+        "sessions": { "status": "BLOCKED", "code": "OCCURRENCE_P2028", "sourceType": "EVENTO", "sourceId": "cmurjbdem000lhv5ckg6urqqr", "committedBatches": 0, "detail": "interactive transaction exceeded Prisma's 5,000 ms default; observed at 5,421 ms, then a later query reported the transaction already closed" },
+        "finance": "NOT_RUN; depends on confirmed migrated sessions",
+        "kitchenPreparation": "NOT_RUN; later required phase",
+        "commerce": "NOT_RUN; depends on preceding scopes"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "business": { "status": "COMPLETED", "pausedAndResumed": true, "sameRunReplay": true, "counts": { "PDV": 1, "TRAILER": 1, "AGENDA": 1, "OCORRENCIA": 2 } },
+        "catalog": { "status": "COMPLETED", "pausedAndResumed": true, "sameRunReplay": true },
+        "sessions": { "status": "BLOCKED", "code": "OCCURRENCE_P2028", "sourceType": "EVENTO", "sourceId": "cmun03dp4000shva8frtvn08h", "committedBatches": 0, "detail": "interactive transaction exceeded the 5,000 ms default; observed at 8,401 ms" },
+        "finance": "NOT_RUN; depends on confirmed migrated sessions",
+        "kitchenPreparation": "NOT_RUN; later required phase",
+        "commerce": "NOT_RUN; depends on preceding scopes"
+      }
+    ],
+    "recovery": "business and catalog scopes were paused after one batch, resumed, and replayed under the same run without duplication. Session scopes blocked before committing any batch. Synthetic suites separately passed rollback, divergence, replay and concurrency assertions.",
+    "firstRequiredDecision": "increase transaction work capacity or reduce repeated full-graph occurrence validation in the session migrator, then rerun this same representative QA photo. Do not change business rows to work around the timeout.",
+    "unimplementedOrUnreached": ["finance and cash reconciliation", "kitchen preparation", "commercial command/order/stock mapping", "audit migration", "client statistics migration", "DEV backfill/cutover"]
+  },
+  "codeCertification": {
+    "selectedCommit": "77e277f520d9806b6f10f4f3bf52f7a79de59cbb",
+    "tree": "c1a0373e67a899d53024d2705c4805fa900c0f7b",
+    "trackedBlobs": 1100,
+    "candidateCount": 58,
+    "manifestSha256": "7bd8f4aeea58c50edced1e83a3a86755d97e3b3189c0a2ed9f03e89e5d4bad41",
+    "qaPdvCurrentGitSnapshot": "PASS",
+    "backendBuild": "PASS",
+    "focusedTests": "PASS",
+    "gitImportAudit": { "status": "PASS", "snapshotModules": 175, "workspaceSourceModules": 0 },
+    "localStatePreserved": true,
+    "representativeRehearsal": "BLOCKED at sessions for both tenants; 0 session batches committed; QA target removed",
+    "syntheticAndRepresentativeEvidenceAreDistinct": true
+  },
+  "scopeDeviation": {
+    "action": "docker ps executed once while checking a QA runner",
+    "exposure": "container names/status/ports were listed, including a PROD container name",
+    "notPerformed": ["PROD docker inspect/exec", "PROD database connection/query", "PROD application/API access"],
+    "assessment": "This exceeded the no-PROD-read instruction at infrastructure metadata level. No PROD database/application records were read or written. Disclosed to the user; no further container listing was performed."
+  },
+  "sharedEnvironmentWrites": { "DEV": 0, "PROD": 0 }
+}
