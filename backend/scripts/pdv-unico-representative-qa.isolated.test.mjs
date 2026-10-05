@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 
 const qaUrl = validateIsolatedQaEnvironment(process.env).toString();
@@ -16,8 +17,29 @@ assert.equal(photo.version, 1);
 assert.deepEqual(photo.crossTenantEdges, [], 'photo must have complete, tenant-safe FK closure');
 assert.deepEqual(photo.targetIdentity.map((row) => row.status), ['UNIQUE_MATCH', 'UNIQUE_MATCH']);
 
-const { PrismaClient } = await import('@prisma/client');
-const db = new PrismaClient({ datasources: { db: { url: qaUrl } } });
+assert.ok(process.env.PDV_QA_PRISMA_CLIENT, 'QA Prisma client must be generated in the executor-owned temp directory');
+const prismaClientPath = path.resolve(process.env.PDV_QA_PRISMA_CLIENT);
+assert.ok(prismaClientPath.startsWith(path.resolve(os.tmpdir()) + path.sep));
+const { PrismaClient } = await import(pathToFileURL(path.join(prismaClientPath, 'index.js')).href);
+const db = new PrismaClient({ datasources: { db: { url: qaUrl } }, log: [{ emit: 'event', level: 'query' }] });
+const metricRows = new Map();
+let activeMetric = null;
+db.$on('query', () => { if (activeMetric) activeMetric.queries++; });
+async function measured(stage, operation) {
+  const row = metricRows.get(stage) ?? { stage, calls: 0, durationMs: 0, maxDurationMs: 0, queries: 0 };
+  metricRows.set(stage, row);
+  const previousMetric = activeMetric;
+  const started = performance.now();
+  activeMetric = row;
+  try { return await operation(); }
+  finally {
+    const durationMs = performance.now() - started;
+    row.calls++;
+    row.durationMs = Math.round((row.durationMs + durationMs) * 100) / 100;
+    row.maxDurationMs = Math.max(row.maxDurationMs, Math.round(durationMs * 100) / 100);
+    activeMetric = previousMetric;
+  }
+}
 const { runPdvBusinessMigration } = await import('./pdv-unico-business-migrator.ts');
 const { runPdvCatalogMigration, runPdvKitchenOrderContextPreparation, runPdvSessionMigration, runPdvFinanceMigration, runPdvCommerceMigration } = await import('./pdv-unico-catalog-migrator.ts');
 const runId = `tap76-representative-${randomBytes(8).toString('hex')}`;
@@ -51,7 +73,7 @@ try {
   });
 
   // Exact row-level FK order. Nullable cyclic links are restored after all endpoints exist.
-  await db.$transaction(async (tx) => {
+  await measured('photoRestoreAndScalarReconciliation', () => db.$transaction(async (tx) => {
     const entries = [];
     for (const table of tables) for (const row of table.rows) {
       const identity = `${table.model}:${photoKey(table, row)}`;
@@ -117,7 +139,7 @@ try {
         for (const [field, value] of Object.entries(source)) assert.deepEqual(canonical(actual[field]), canonical(revive(value)), `${table.model}.${field} primary key ${key}`);
       }
     }
-  }, { timeout: 300000, maxWait: 30000 });
+  }, { timeout: 300000, maxWait: 30000 }));
 
   for (const target of targets) {
     const source = tableByName.get('Cervejaria').rows.find((row) => row.id === target.id);
@@ -141,16 +163,18 @@ try {
     let blocker;
     for (const [phase, execute] of phases) {
       try {
-        let result = await execute({ maxBatches: 1 });
+        const measure = (stage, operation) => measured(`${target.label}:${phase}:${stage}`, operation);
+        let result = await measured(`${target.label}:${phase}:firstBatch`, () => execute({ maxBatches: 1, measure }));
         const interrupted = result.status === 'RUNNING';
-        if (interrupted) result = await execute({});
+        if (interrupted) result = await measured(`${target.label}:${phase}:resume`, () => execute({ measure }));
         if (result.status === 'BLOCKED') { blocker = { phase, ...result }; break; }
         if (result.status !== 'COMPLETED') { blocker = { phase, ...result, code: result.code ?? result.status ?? 'MIGRATOR_NOT_COMPLETED' }; break; }
-        const replay = await execute({});
+        const replay = await measured(`${target.label}:${phase}:replay`, () => execute({ measure }));
         if (replay.status !== 'COMPLETED') { blocker = { phase, ...replay, code: replay.code ?? replay.status ?? 'REPLAY_NOT_COMPLETED' }; break; }
         reports.push({ tenant: target.label, phase, status: 'COMPLETED', interruptedAndResumed: interrupted, sameRunReplay: replay.reusedCompletedRun === true || replay.status === 'COMPLETED', counts: result.counts ?? result.scopeCounts ?? result.checkpoint?.scopeCounts ?? undefined });
       } catch (error) {
-        blocker = { phase, status: 'BLOCKED', code: error.code ?? error.name, sourceType: error.sourceType ?? null, sourceId: error.sourceId ?? null, message: error.message };
+        const timedOut = error.code === 'P2028' || /transaction.*(expired|timeout)|timed out/i.test(error.message ?? '');
+        blocker = { phase, status: 'BLOCKED', code: timedOut ? 'TRANSACTION_TIMEOUT' : (error.code ?? error.name), failureKind: timedOut ? 'TECHNICAL_TRANSACTION_TIMEOUT' : 'MIGRATION_BLOCKER', prismaCode: timedOut ? (error.code ?? null) : undefined, sourceType: error.sourceType ?? null, sourceId: error.sourceId ?? null, message: timedOut ? 'A bounded database transaction expired; this is a technical execution failure, not evidence of source-data divergence.' : error.message };
         break;
       }
     }
@@ -159,7 +183,16 @@ try {
       continue;
     }
   }
-  console.log(JSON.stringify({ qaDatabase: dbName, sourcePhoto: { tables: tables.length, rows: tables.reduce((sum, table) => sum + table.rows.length, 0), crossTenantEdges: photo.crossTenantEdges.length }, anonymizedFields: photo.anonymization, reports }, null, 2));
+  const requiredPhases = ['business', 'catalog', 'sessions', 'finance', 'kitchen-preparation-before-commerce', 'commerce', 'kitchen-preparation-revalidation'];
+  const tenantResults = targets.map((target) => {
+    const rows = reports.filter((row) => row.tenant === target.label);
+    const completed = new Set(rows.filter((row) => row.status === 'COMPLETED').map((row) => row.phase));
+    const missingPhases = requiredPhases.filter((phase) => !completed.has(phase));
+    return { tenant: target.label, status: missingPhases.length === 0 ? 'COMPLETED' : 'BLOCKED', missingPhases };
+  });
+  const aggregateStatus = tenantResults.every((row) => row.status === 'COMPLETED') ? 'COMPLETED' : 'BLOCKED';
+  console.log(JSON.stringify({ aggregateStatus, qaDatabase: dbName, sourcePhoto: { tables: tables.length, rows: tables.reduce((sum, table) => sum + table.rows.length, 0), crossTenantEdges: photo.crossTenantEdges.length, measurements: photo.measurements ?? null }, anonymizedFields: photo.anonymization, metrics: [...metricRows.values()], tenantResults, reports }, null, 2));
+  if (aggregateStatus !== 'COMPLETED') process.exitCode = 1;
 } catch (error) {
   const safe = { status: 'BLOCKED', phase: 'photo-import', code: error.code ?? error.name, model: error.model ?? error.meta?.modelName ?? null, field: error.meta?.target ?? null, message: error.code === 'PHOTO_IMPORT_DB_CONSTRAINT' || String(error.message).startsWith('PHOTO_IMPORT_') ? error.message : `${error.code ?? error.name}: database rejected the sanitized snapshot import.` };
   console.error(JSON.stringify(safe, null, 2));

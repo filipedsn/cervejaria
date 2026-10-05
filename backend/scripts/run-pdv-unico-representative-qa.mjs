@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -38,27 +40,47 @@ async function selectFreePort() {
 }
 
 const prismaCli = new URL('../node_modules/prisma/build/index.js', import.meta.url);
+const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'tap76-representative-qa-'));
+if (!path.resolve(temporaryRoot).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Refusing QA client temp path outside OS temp.');
+const generatedSchema = path.join(temporaryRoot, 'schema.prisma');
+const prismaClientDir = path.join(temporaryRoot, 'prisma-client');
+const schemaText = await readFile(path.resolve(backendRoot, schemaPath), 'utf8');
+const clientSchemaText = schemaText.replace(/provider\s*=\s*"prisma-client-js"/, (provider) => `${provider}\n  output = "${prismaClientDir.replaceAll('\\', '/')}"`);
+if (clientSchemaText === schemaText) throw new Error('Could not redirect the generated QA Prisma client to OS temp.');
+await writeFile(generatedSchema, clientSchemaText, 'utf8');
 let created = false;
+let containerId = null;
 try {
   const docker = spawnSync('docker', ['run', '-d', '--rm', '--name', containerName, '--label', 'codex.purpose=pdv-representative-disposable-qa', '--label', `codex.run=${runId}`, '-p', `127.0.0.1:${port}:5432`, '--tmpfs', '/var/lib/postgresql/data:rw,noexec,nosuid,size=1g', '-e', 'POSTGRES_USER=postgres', '-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_DB=cervejaria_qa_pdv_unico', 'postgres:17-alpine'], { encoding: 'utf8', windowsHide: true });
   if (docker.status !== 0) throw new Error(`Could not start disposable PostgreSQL QA: ${(docker.stderr || docker.stdout).slice(0, 1200)}`);
+  containerId = docker.stdout.trim();
+  if (!/^[a-f0-9]{64}$/i.test(containerId)) throw new Error('Docker did not return the ID of the QA container created by this executor.');
   created = true;
+  const ownership = spawnSync('docker', ['inspect', '-f', '{{.Id}}|{{ index .Config.Labels "codex.purpose" }}|{{ index .Config.Labels "codex.run" }}', containerId], { encoding: 'utf8', windowsHide: true });
+  if (ownership.status !== 0 || ownership.stdout.trim() !== `${containerId}|pdv-representative-disposable-qa|${runId}`) throw new Error('Refusing to operate on a QA container without matching executor ownership labels.');
   let ready = false;
   for (let attempt = 0; attempt < 60; attempt++) {
-    if (spawnSync('docker', ['exec', containerName, 'pg_isready', '-U', 'postgres', '-d', 'cervejaria_qa_pdv_unico'], { encoding: 'utf8', windowsHide: true }).status === 0) { ready = true; break; }
+    if (spawnSync('docker', ['exec', containerId, 'pg_isready', '-U', 'postgres', '-d', 'cervejaria_qa_pdv_unico'], { encoding: 'utf8', windowsHide: true }).status === 0) { ready = true; break; }
     await delay(1000);
   }
   if (!ready) throw new Error('Disposable PostgreSQL QA did not become ready within 60 seconds.');
   const prismaPath = fileURLToPath(prismaCli);
-  run([prismaPath, 'generate', '--schema', schemaPath]);
+  run([prismaPath, 'generate', '--schema', generatedSchema]);
   run([prismaPath, 'migrate', 'deploy', '--schema', schemaPath]);
+  process.env.PDV_QA_PRISMA_CLIENT = prismaClientDir;
   run(['--import', 'tsx', 'scripts/pdv-unico-representative-qa.isolated.test.mjs'], { stdio: 'inherit' });
 } finally {
-  if (created) {
-    const inspected = spawnSync('docker', ['inspect', '-f', '{{ index .Config.Labels "codex.purpose" }}|{{ index .Config.Labels "codex.run" }}', containerName], { encoding: 'utf8', windowsHide: true });
-    if (inspected.status !== 0 || inspected.stdout.trim() !== `pdv-representative-disposable-qa|${runId}`) throw new Error('Refusing to stop QA container with mismatched ownership labels.');
-    const stopped = spawnSync('docker', ['stop', containerName], { encoding: 'utf8', windowsHide: true });
-    if (stopped.status !== 0) throw new Error(`Failed to remove disposable QA container ${containerName}.`);
-    console.log(`QA_REPRESENTATIVE_CONTAINER_REMOVED=${containerName}; storage=tmpfs; target=127.0.0.1:${port}`);
+  try {
+    if (created && containerId) {
+      const inspected = spawnSync('docker', ['inspect', '-f', '{{.Id}}|{{ index .Config.Labels "codex.purpose" }}|{{ index .Config.Labels "codex.run" }}', containerId], { encoding: 'utf8', windowsHide: true });
+      if (inspected.status !== 0 || inspected.stdout.trim() !== `${containerId}|pdv-representative-disposable-qa|${runId}`) throw new Error('Refusing to stop QA container with mismatched executor ownership labels.');
+      const stopped = spawnSync('docker', ['stop', containerId], { encoding: 'utf8', windowsHide: true });
+      if (stopped.status !== 0) throw new Error(`Failed to remove disposable QA container ${containerName}.`);
+      console.log(`QA_REPRESENTATIVE_CONTAINER_REMOVED=${containerName}; storage=tmpfs; target=127.0.0.1:${port}`);
+    }
+  } finally {
+    const resolved = path.resolve(temporaryRoot);
+    if (!resolved.startsWith(path.resolve(os.tmpdir()) + path.sep) || !path.basename(resolved).startsWith('tap76-representative-qa-')) throw new Error('Refusing unsafe QA temp cleanup target.');
+    await rm(resolved, { recursive: true, force: true });
   }
 }

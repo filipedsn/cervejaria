@@ -70,6 +70,14 @@ function sanitizeRow(model: AnyRecord, input: AnyRecord, tenantLabel: string, ru
 
 const delegateName = (modelName: string) => modelName[0].toLowerCase() + modelName.slice(1);
 
+export function parentLookupWhere(fromFields: string[], toFields: string[], childRow: AnyRecord) {
+  if (!fromFields.length || fromFields.length !== toFields.length) return null;
+  const pairs = fromFields.map((field, index) => ({ field: toFields[index], value: childRow[field] }));
+  if (pairs.some((pair) => pair.value == null)) return null;
+  return pairs.length === 1 ? { [pairs[0].field]: pairs[0].value }
+    : { AND: pairs.map((pair) => ({ [pair.field]: pair.value })) };
+}
+
 /** Extracts only the selected tenants and their FK closure inside the caller's READ ONLY snapshot. */
 export async function captureRepresentativeTenantPhoto(tx: AnyRecord, targets: Array<{ id: string; label: string }>, runId: string) {
   const models = Object.entries(tx._runtimeDataModel?.models ?? {}).map(([name, model]) => ({ name, ...(model as AnyRecord) })) as AnyRecord[];
@@ -133,11 +141,17 @@ export async function captureRepresentativeTenantPhoto(tx: AnyRecord, targets: A
       if (values.some((value) => value == null)) continue;
       const existingParents = [...rowsByModel.get(parentModel.name)!.values()].filter((row) => toFields.every((field, index) => row[field] === values[index]));
       if (existingParents.length === 1) continue;
-      const where = fromFields.length === 1 ? { [fromFields[0]]: values[0] }
-        : { AND: fromFields.map((field, index) => ({ [field]: values[index] })) };
+      const where = parentLookupWhere(fromFields, toFields, current.row);
+      if (!where) continue;
       const parentRows = await delegate(parentModel).findMany({ where });
       if (parentRows.length !== 1) {
         if (parentRows.length === 0) crossTenantEdges.push({ kind: 'MISSING_PARENT', model: current.model.name, rowId: current.row[current.model.primaryKey?.fields?.[0] ?? 'id'], relation: relation.name });
+        continue;
+      }
+      const childTenantField = directTenantField.get(current.model.name);
+      const parentTenantField = directTenantField.get(parentModel.name);
+      if (childTenantField && parentTenantField && current.row[childTenantField] !== parentRows[0][parentTenantField]) {
+        crossTenantEdges.push({ kind: 'CROSS_TENANT_PARENT', model: current.model.name, rowId: current.row[current.model.primaryKey?.fields?.[0] ?? 'id'], parentModel: parentModel.name, parentId: parentRows[0][parentModel.primaryKey?.fields?.[0] ?? 'id'], relation: relation.name });
         continue;
       }
       add(parentModel, parentRows[0], 'dependency');

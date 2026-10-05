@@ -425,25 +425,52 @@ export async function runPdvBusinessMigration(options: {
 }
 
 /** Revalidate the complete completed business run before a downstream scope trusts an occurrence. */
-export async function findConfirmedPdvEventOccurrence(tx: AnyDb, companyId: string, pdvId: string, eventId: string) {
+export async function createConfirmedPdvEventOccurrenceResolver(tx: AnyDb, companyId: string, pdvId: string) {
   await acquireScopeLock(tx, companyId);
   const snapshot = await readScopeSnapshot(tx, companyId);
   const sourceHash = hash(scopePayload(snapshot));
   const graph = buildPdvPlanningGraph(snapshot);
   const plan = recordsForScope(snapshot, graph, companyId);
-  if (plan.canonicalPdvId !== pdvId) throw new PdvMigrationBlocker('DEPENDENCY_PDV_MISMATCH', 'EVENTO', eventId, 'A ocorrência não pertence ao PDV canônico confirmado.');
-  const item = plan.items.find((candidate) => candidate.type === 'EVENTO' && candidate.id === eventId);
-  if (!item || item.role !== 'OCORRENCIA' || item.expected.type !== 'OCORRENCIA_OPERACIONAL') throw new PdvMigrationBlocker('DEPENDENCY_OCCURRENCE_NOT_FOUND', 'EVENTO', eventId, 'O Evento atual não corresponde a uma ocorrência datada.');
-  const map = await tx.pdvMigrationMap.findUnique({ where: { sourceType_sourceId: { sourceType: 'EVENTO', sourceId: eventId } } });
-  if (!map || map.cervejariaId !== companyId || map.pontoVendaId !== pdvId || map.lastRunId == null || map.lastBatchId == null) throw new PdvMigrationBlocker('DEPENDENCY_NOT_CONFIRMED', 'EVENTO', eventId, 'A ocorrência não tem mapa confirmado no tenant e PDV esperados.');
-  const run = await tx.pdvMigrationRun.findUnique({ where: { id: map.lastRunId } });
-  if (!run || run.status !== 'COMPLETED') throw new PdvMigrationBlocker('DEPENDENCY_RUN_INCOMPLETE', 'EVENTO', eventId, 'Run de agenda/ocorrência não está concluído.');
-  const state = await validateConfirmedState(tx, { run, companyId, pdvId, sourceHash, items: plan.items, requireComplete: true });
-  const confirmedKey = key('EVENTO', eventId);
-  if (!state.completedKeys.includes(confirmedKey)) throw new PdvMigrationBlocker('DEPENDENCY_CHECKPOINT_MISSING', 'EVENTO', eventId, 'Checkpoint concluído não inclui a ocorrência.');
-  const confirmedMap = await verifyExistingMap(tx, item, companyId, pdvId);
-  if (!confirmedMap || confirmedMap.destinationType !== item.expected.type || confirmedMap.destinationId !== item.expected.id) throw new PdvMigrationBlocker('DEPENDENCY_DESTINATION_MISMATCH', 'EVENTO', eventId, 'Mapa confirmado da ocorrência diverge do destino esperado.');
-  const occurrence = await tx.ocorrenciaOperacional.findUnique({ where: { id: item.expected.id } });
-  if (!occurrence) throw new PdvMigrationBlocker('DEPENDENCY_DESTINATION_MISSING', 'EVENTO', eventId, 'Destino da ocorrência está ausente.');
-  return occurrence;
+  if (plan.canonicalPdvId !== pdvId) throw new PdvMigrationBlocker('DEPENDENCY_PDV_MISMATCH', 'EVENTO', null, 'Occurrences do not belong to the confirmed canonical PDV.');
+  const occurrenceItems = plan.items.filter((candidate) => candidate.type === 'EVENTO' && candidate.role === 'OCORRENCIA' && candidate.expected.type === 'OCORRENCIA_OPERACIONAL');
+  const itemById = new Map(occurrenceItems.map((item) => [item.id, item]));
+  const eventIds = occurrenceItems.map((item) => item.id);
+  const maps = eventIds.length ? await tx.pdvMigrationMap.findMany({ where: { sourceType: 'EVENTO', sourceId: { in: eventIds } } }) : [];
+  const mapById = new Map(maps.map((map: any) => [map.sourceId, map]));
+  for (const eventId of eventIds) {
+    const map: any = mapById.get(eventId);
+    if (!map || map.cervejariaId !== companyId || map.pontoVendaId !== pdvId || !map.lastRunId || !map.lastBatchId) throw new PdvMigrationBlocker('DEPENDENCY_NOT_CONFIRMED', 'EVENTO', eventId, 'Occurrence map is missing or belongs to another tenant/PDV.');
+  }
+  const runIds = [...new Set(maps.map((map: any) => map.lastRunId))];
+  if (!runIds.length) throw new PdvMigrationBlocker('DEPENDENCY_RUN_INCOMPLETE', 'EVENTO', null, 'No completed event/occurrence run exists.');
+  for (const runId of runIds) {
+    const run = await tx.pdvMigrationRun.findUnique({ where: { id: runId } });
+    if (!run || run.status !== 'COMPLETED') throw new PdvMigrationBlocker('DEPENDENCY_RUN_INCOMPLETE', 'EVENTO', null, 'Event/occurrence run is not completed.');
+    const state = await validateConfirmedState(tx, { run, companyId, pdvId, sourceHash, items: plan.items, requireComplete: true });
+    for (const eventId of eventIds) {
+      const map: any = mapById.get(eventId);
+      if (map.lastRunId === runId && !state.completedKeys.includes(key('EVENTO', eventId))) throw new PdvMigrationBlocker('DEPENDENCY_CHECKPOINT_MISSING', 'EVENTO', eventId, 'Completed checkpoint does not include the requested occurrence.');
+    }
+  }
+  const destinationIds = occurrenceItems.map((item) => item.expected.id);
+  const destinations = destinationIds.length ? await tx.ocorrenciaOperacional.findMany({ where: { id: { in: destinationIds } } }) : [];
+  const destinationById = new Map(destinations.map((row: any) => [row.id, row]));
+  const confirmed = new Map<string, any>();
+  for (const [eventId, item] of itemById) {
+    const map: any = mapById.get(eventId);
+    if (map.destinationType !== item.expected.type || map.destinationId !== item.expected.id) throw new PdvMigrationBlocker('DEPENDENCY_DESTINATION_MISMATCH', 'EVENTO', eventId, 'Confirmed occurrence map differs from the expected destination.');
+    const occurrence: any = destinationById.get(item.expected.id);
+    if (!occurrence || occurrence.cervejariaId !== companyId || occurrence.pontoVendaId !== pdvId) throw new PdvMigrationBlocker('DEPENDENCY_DESTINATION_MISSING', 'EVENTO', eventId, 'Occurrence destination is absent or belongs to another tenant/PDV.');
+    confirmed.set(eventId, occurrence);
+  }
+  return async (eventId: string) => {
+    const occurrence = confirmed.get(eventId);
+    if (!occurrence) throw new PdvMigrationBlocker('DEPENDENCY_OCCURRENCE_NOT_FOUND', 'EVENTO', eventId, 'Event is not a confirmed dated occurrence.');
+    return occurrence;
+  };
+}
+
+export async function findConfirmedPdvEventOccurrence(tx: AnyDb, companyId: string, pdvId: string, eventId: string) {
+  const resolve = await createConfirmedPdvEventOccurrenceResolver(tx, companyId, pdvId);
+  return resolve(eventId);
 }

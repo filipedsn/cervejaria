@@ -17,7 +17,7 @@ let prisma: any;
 if (process.env.PDV_INVENTORY_PRISMA_CLIENT) {
   const clientUrl = pathToFileURL(path.join(process.env.PDV_INVENTORY_PRISMA_CLIENT, 'index.js')).href;
   const { PrismaClient } = await import(clientUrl);
-  prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+  prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } }, log: [{ emit: 'event', level: 'query' }] });
 } else {
   ({ prisma } = await import('../src/lib/prisma.js'));
 }
@@ -25,6 +25,9 @@ if (process.env.PDV_INVENTORY_PRISMA_CLIENT) {
 const cents = (value: unknown) => decimalToScaledInteger(String(value), 2).toString();
 const milli = (value: unknown) => decimalToScaledInteger(String(value), 3).toString();
 const focusCompanyIds = new Set(['cmr9yis3c0000hvu00q9fe7y1', 'cmsry9xrn0000hvlgopjxy0oo']);
+let measuringPhoto = false;
+let photoQueryCount = 0;
+prisma.$on?.('query', () => { if (measuringPhoto) photoQueryCount++; });
 
 try {
   const snapshotData = await prisma.$transaction(async (tx) => {
@@ -50,6 +53,8 @@ try {
     const targetOnly = process.env.PDV_REPRESENTATIVE_PHOTO_OUT !== undefined;
     const companies = targetOnly ? targetCompanies : allCompanies;
     let representativePhoto: any = null;
+    let photoReadMs: number | null = null;
+    let photoReadQueries: number | null = null;
     const unattachedCommands = await tx.comanda.findMany({ where: { eventoId: null, pontoVendaId: null }, select: { id: true, origem: true, status: true, total: true, createdAt: true }, orderBy: { id: 'asc' } });
     const output = [];
     for (const company of companies) {
@@ -175,7 +180,17 @@ try {
       const outputPath = path.resolve(process.env.PDV_REPRESENTATIVE_PHOTO_OUT!);
       if (!outputPath.startsWith(path.resolve(os.tmpdir()) + path.sep) || !path.basename(outputPath).startsWith('tap76-pdv-photo-')) throw new Error('Representative photo must use an owned temporary path under the OS temp root.');
       const runId = path.basename(outputPath).replace(/^tap76-pdv-photo-/, '').replace(/\.json$/, '');
-      representativePhoto = await captureRepresentativeTenantPhoto(tx, targetCompanies.map((company) => ({ id: company.id, label: requestedTargets.find((target) => targetIdentity.find((resolution) => resolution.label === target.label)?.matches.some((match) => match.id === company.id))?.label ?? 'QA Tenant' })), runId);
+      const photoStarted = performance.now();
+      photoQueryCount = 0;
+      measuringPhoto = true;
+      try {
+        representativePhoto = await captureRepresentativeTenantPhoto(tx, targetCompanies.map((company) => ({ id: company.id, label: requestedTargets.find((target) => targetIdentity.find((resolution) => resolution.label === target.label)?.matches.some((match) => match.id === company.id))?.label ?? 'QA Tenant' })), runId);
+      } finally {
+        measuringPhoto = false;
+        photoReadMs = Math.round((performance.now() - photoStarted) * 100) / 100;
+        photoReadQueries = photoQueryCount;
+      }
+      representativePhoto.measurements = { readMs: photoReadMs, queryCount: photoReadQueries };
       representativePhoto.targetIdentity = targetIdentity;
       await writeFile(outputPath, JSON.stringify(representativePhoto));
     }
@@ -243,7 +258,7 @@ try {
     coverage: 'IDs and exact decimal snapshots; diagnostic output excludes customer names, contacts and observations; no credentials',
     destinationReadiness: { migrationState: snapshotData.migrationState, mapTablePresent: snapshotData.mapTablePresent, mapCountsBySourceType: snapshotData.mapCountsBySourceType, interpretation: 'Missing additive maps are destination readiness gaps, not source corruption.' },
     targetTenantIdentity: targetIdentity,
-    ...(representativePhoto ? { representativePhoto: { tableCount: representativePhoto.tableRows.length, rowCount: representativePhoto.tableRows.reduce((sum: number, table: any) => sum + table.rowCount, 0), crossTenantEdges: representativePhoto.crossTenantEdges } } : {}),
+    ...(representativePhoto ? { representativePhoto: { tableCount: representativePhoto.tableRows.length, rowCount: representativePhoto.tableRows.reduce((sum: number, table: any) => sum + table.rowCount, 0), crossTenantEdges: representativePhoto.crossTenantEdges, measurements: representativePhoto.measurements } } : {}),
     totals: { companies: snapshot.length, withoutPdv: snapshot.filter((x) => x.units.pointOfSaleIds.length === 0).length, multiplePdv: snapshot.filter((x) => x.units.pointOfSaleIds.length > 1).length, blockedEntityRows: snapshot.reduce((sum, x) => sum + x.conflicts.mappingBlocked.length, 0), unattachedCommands: snapshotData.unattachedCommands.length, blockedRowsByCategory: countBy('category'), blockedRowsByCode: countBy('code'), paymentLinkConflicts: snapshot.reduce((sum, x) => sum + x.finance.paymentLinkConflicts.length, 0), tenantDivergentCommands: snapshot.reduce((sum, x) => sum + x.conflicts.tenantDivergentCommands.length, 0) },
     unattachedCommandBreakdown: [...snapshotData.unattachedCommands.reduce((map, command) => map.set(`${command.origin}:${command.status}`, (map.get(`${command.origin}:${command.status}`) ?? 0) + 1), new Map<string, number>())].sort(([a], [b]) => a.localeCompare(b)).map(([originStatus, count]) => ({ originStatus, count })),
     globalBlocks,
