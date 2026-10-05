@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import net from 'node:net';
+import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
@@ -15,6 +16,7 @@ const url = new URL(`postgresql://127.0.0.1:${port}/cervejaria_qa_pdv_unico`);
 url.username = 'postgres'; url.password = password; url.searchParams.set('connection_limit', '12');
 const databaseUrl = validateIsolatedQaEnvironment({ PDV_ISOLATED_QA: '1', QA_DATABASE_URL: url.toString() }).toString();
 const backendRoot = fileURLToPath(new URL('..', import.meta.url));
+const schemaPath = process.env.PDV_QA_SCHEMA_PATH ? path.resolve(process.env.PDV_QA_SCHEMA_PATH) : 'prisma/schema.prisma';
 function run(args, options = {}) {
   const env = { ...process.env };
   for (const key of Object.keys(env)) if (key === 'DIRECT_URL' || key === 'PDV_CANONICAL_CONFIG_QA' || /_DATABASE_URL$/.test(key) || /^PROD/i.test(key)) delete env[key];
@@ -48,8 +50,8 @@ try {
   }
   if (!ready) throw new Error('Disposable PostgreSQL QA did not become ready within 60 seconds.');
   const prismaPath = fileURLToPath(prismaCli);
-  run([prismaPath, 'generate', '--schema', 'prisma/schema.prisma']);
-  run([prismaPath, 'migrate', 'deploy', '--schema', 'prisma/schema.prisma']);
+  run([prismaPath, 'generate', '--schema', schemaPath]);
+  run([prismaPath, 'migrate', 'deploy', '--schema', schemaPath]);
   run(['--import', 'tsx', 'scripts/pdv-unico-representative-qa.isolated.test.mjs'], { stdio: 'inherit' });
 } finally {
   if (created) {

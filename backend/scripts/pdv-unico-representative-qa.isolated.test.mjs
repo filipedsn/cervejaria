@@ -45,7 +45,7 @@ try {
   const tables = photo.tableRows.map((table) => {
     const target = modelByName.get(table.model);
     assert.ok(target, `target schema missing photo model ${table.model}`);
-    const targetScalars = new Set(target.fields.filter((field) => field.kind === 'scalar').map((field) => field.name));
+    const targetScalars = new Set(target.fields.filter((field) => field.kind === 'scalar' || field.kind === 'enum').map((field) => field.name));
     const rows = table.rows.map((row) => Object.fromEntries(Object.entries(row).filter(([field]) => targetScalars.has(field))));
     return { ...table, rows, targetFields: targetScalars };
   });
@@ -73,7 +73,7 @@ try {
       entry.dependencies.add({ parent, relation });
     }
     const inserted = new Set();
-    const nullableFields = new Map(modelEntries.map(([name, model]) => [name, new Map(model.fields.filter((field) => field.kind === 'scalar').map((field) => [field.name, field.isRequired === false]))]));
+    const nullableFields = new Map(modelEntries.map(([name, model]) => [name, new Map(model.fields.filter((field) => field.kind === 'scalar' || field.kind === 'enum').map((field) => [field.name, field.isRequired === false]))]));
     while (inserted.size < entries.length) {
       const ready = entries.filter((entry) => !inserted.has(entry) && [...entry.dependencies].every(({ parent }) => inserted.has(parent)));
       if (ready.length) {

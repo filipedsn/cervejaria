@@ -47,7 +47,7 @@ function sanitizeRow(model: AnyRecord, input: AnyRecord, tenantLabel: string, ru
   const row = { ...input };
   const rowId = String(row.id ?? row[model.primaryKey?.fields?.[0] ?? 'id'] ?? privateValue(runId, model.name, 'row', 'key'));
   const replaceString = (field: string, prefix: string) => `${prefix}-${privateValue(runId, model.name, rowId, field).slice(0, 24)}`;
-  for (const field of model.fields.filter((item: AnyRecord) => item.kind === 'scalar')) {
+  for (const field of model.fields.filter((item: AnyRecord) => item.kind === 'scalar' || item.kind === 'enum')) {
     const name = field.name;
     if (model.name === 'Cervejaria' && name === 'nome') row[name] = tenantLabel;
     else if (model.name === 'Cervejaria' && name === 'slug') row[name] = `qa-${tenantLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${privateValue(runId, model.name, rowId, name).slice(0, 8)}`;
@@ -178,7 +178,7 @@ export async function captureRepresentativeTenantPhoto(tx: AnyRecord, targets: A
   for (const model of models) {
     const rows = rowsByModel.get(model.name)!;
     if (!rows.size) continue;
-    const fields = model.fields.filter((field: AnyRecord) => field.kind === 'scalar').map((field: AnyRecord) => field.name);
+    const fields = model.fields.filter((field: AnyRecord) => field.kind === 'scalar' || field.kind === 'enum').map((field: AnyRecord) => field.name);
     const companyField = directTenantField.get(model.name);
     const outputRows = [...rows.values()].map((sourceRow) => {
       const label = companyField ? labelById.get(sourceRow[companyField]) ?? 'shared-dependency'
