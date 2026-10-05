@@ -68,6 +68,8 @@ try {
   run([prismaPath, 'generate', '--schema', generatedSchema]);
   run([prismaPath, 'migrate', 'deploy', '--schema', schemaPath]);
   process.env.PDV_QA_PRISMA_CLIENT = prismaClientDir;
+  const importRoots = JSON.parse(process.env.PDV_GIT_QA_ALLOWED_ROOTS ?? '[]');
+  process.env.PDV_GIT_QA_ALLOWED_ROOTS = JSON.stringify([...new Set([...importRoots, prismaClientDir])]);
   run(['--import', 'tsx', 'scripts/pdv-unico-representative-qa.isolated.test.mjs'], { stdio: 'inherit' });
 } finally {
   try {

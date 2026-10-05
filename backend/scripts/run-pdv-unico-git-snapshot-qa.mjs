@@ -84,6 +84,7 @@ import { registerHooks } from 'node:module';
 import { fileURLToPath } from 'node:url';
 const snapshot = path.resolve(process.env.PDV_GIT_QA_SNAPSHOT);
 const allowed = JSON.parse(process.env.PDV_GIT_QA_ALLOWED_ROOTS ?? '[]').map((item) => path.resolve(item));
+const qaPrismaClient = process.env.PDV_QA_PRISMA_CLIENT ? path.resolve(process.env.PDV_QA_PRISMA_CLIENT) : null;
 const auditFile = process.env.PDV_GIT_QA_IMPORT_AUDIT;
 const hookFile = path.resolve(process.env.PDV_GIT_QA_IMPORT_HOOK);
 const inside = (root, candidate) => {
@@ -103,7 +104,7 @@ registerHooks({
       if (!isHook) {
         const inSnapshot = inside(snapshot, actualPath);
         const inSnapshotDependencies = inside(path.join(snapshot, 'backend', 'node_modules'), actualPath);
-        appendFileSync(auditFile, JSON.stringify({ path: actualPath, snapshotProjectSource: inSnapshot && !inSnapshotDependencies }) + '\\n');
+        appendFileSync(auditFile, JSON.stringify({ path: actualPath, snapshotProjectSource: inSnapshot && !inSnapshotDependencies, qaGeneratedPrismaClient: qaPrismaClient ? inside(qaPrismaClient, actualPath) : false }) + '\\n');
       }
     }
     return result;
@@ -234,22 +235,22 @@ try {
 
   const auditLines = (await readFile(auditFile, 'utf8')).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
   const sourceModules = [...new Set(auditLines.filter((entry) => entry.snapshotProjectSource).map((entry) => entry.path))].sort();
-  const externalLocalModules = auditLines.filter((entry) => !entry.snapshotProjectSource
+  const externalLocalModules = auditLines.filter((entry) => !entry.snapshotProjectSource && !entry.qaGeneratedPrismaClient
     && !entry.path.toLowerCase().includes(`${path.sep}node_modules${path.sep}`)
     && !entry.path.toLowerCase().includes(`${path.sep}node_modules`));
   if (externalLocalModules.length) throw new Error(`Unexpected non-snapshot, non-dependency modules were loaded: ${JSON.stringify(externalLocalModules.slice(0, 10))}`);
-  for (const expected of [
+  for (const expected of (syntheticExitCode === 0 && representativeExitCode === 0 ? [
     `${path.sep}backend${path.sep}src${path.sep}app.ts`,
     `${path.sep}backend${path.sep}src${path.sep}lib${path.sep}comanda-service.ts`,
     `${path.sep}backend${path.sep}src${path.sep}routes${path.sep}operacao${path.sep}comandas.ts`,
     `${path.sep}backend${path.sep}src${path.sep}routes${path.sep}public.ts`,
     `${path.sep}backend${path.sep}scripts${path.sep}pdv-unico-commerce-migrator.isolated.test.mjs`,
     ...(env.PDV_REPRESENTATIVE_PHOTO_FILE ? [`${path.sep}backend${path.sep}scripts${path.sep}pdv-unico-representative-qa.isolated.test.mjs`] : []),
-  ]) {
+  ] : [])) {
     if (!sourceModules.some((modulePath) => modulePath.endsWith(expected))) throw new Error(`Import audit did not observe certified snapshot module ${expected}.`);
   }
   const importAuditSha256 = normalizedSha256(Buffer.from(sourceModules.join('\n') + '\n'));
-  const externalDependencyModules = [...new Set(auditLines.filter((entry) => !entry.snapshotProjectSource && !entry.path.toLowerCase().startsWith(snapshotRoot.toLowerCase())).map((entry) => entry.path))].sort();
+  const externalDependencyModules = [...new Set(auditLines.filter((entry) => !entry.snapshotProjectSource && !entry.qaGeneratedPrismaClient && !entry.path.toLowerCase().startsWith(snapshotRoot.toLowerCase())).map((entry) => entry.path))].sort();
   const prismaClientPackage = JSON.parse(await readFile(path.join(userNodeModules, '@prisma/client/package.json'), 'utf8'));
   const lockedPrismaClient = JSON.parse(await readFile(path.join(backendSnapshot, 'package-lock.json'), 'utf8')).packages['node_modules/@prisma/client'];
   if (!lockedPrismaClient || prismaClientPackage.version !== lockedPrismaClient.version) {
@@ -281,7 +282,7 @@ try {
       codeCandidateCount: generatedManifest.codeCandidates.length,
     },
     moduleOriginAudit: {
-      result: 'PASS',
+      result: syntheticExitCode === 0 && representativeExitCode === 0 ? 'PASS' : 'PARTIAL_BLOCKED_RUN',
       snapshotProjectModuleCount: sourceModules.length,
       snapshotProjectModulePathListSha256: importAuditSha256,
       nonSnapshotWorkspaceModuleCount: 0,

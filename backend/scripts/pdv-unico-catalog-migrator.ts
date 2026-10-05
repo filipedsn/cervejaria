@@ -455,7 +455,7 @@ async function assertKitchenPdvUnambiguous(tx: Db, companyId: string, pointId: s
 export async function runPdvKitchenOrderContextPreparation(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void }) {
   return runPdvScopedMigration({
     ...options,
-    batchSize: options.batchSize ?? 100,
+    batchSize: options.batchSize ?? 1,
     transactionTimeoutMs: options.transactionTimeoutMs ?? 30000,
     transactionMaxWaitMs: options.transactionMaxWaitMs ?? 10000,
     scope: PDV_KITCHEN_ORDER_PREPARATION_SCOPE,
