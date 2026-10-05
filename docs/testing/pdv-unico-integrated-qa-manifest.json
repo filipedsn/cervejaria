@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "635d128de6cb16c06f32e4cef90ca1bdeb438d7d",
+    "commit": "04d5e669c68e23a03d2a01fe728d448e85077431",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc"
   },
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "635d128de6cb16c06f32e4cef90ca1bdeb438d7d",
+      "commit": "04d5e669c68e23a03d2a01fe728d448e85077431",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -58,7 +58,7 @@
     }
   },
   "delivery": {
-    "schemaCommit": "635d128de6cb16c06f32e4cef90ca1bdeb438d7d",
+    "schemaCommit": "04d5e669c68e23a03d2a01fe728d448e85077431",
     "schemaSha256": "0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
@@ -78,7 +78,7 @@
   "codeCandidates": [
     {
       "path": "backend/package.json",
-      "sha256": "ee7b11e70ac53d6917df5551a2da96f51554a5752a2ac832f77a7ea04056e10d"
+      "sha256": "fc0cbee11aa8f3db0613e9a5526d7fdf27cd06afb57cf5d42db83b9e365e91e8"
     },
     {
       "path": "backend/scripts/inventory-pdv-unico-dev.ts",
@@ -110,7 +110,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
-      "sha256": "07b760a4271aae7b0a2666f63509a901523b3c2bc549672e81573b2c2094731e"
+      "sha256": "374757c1acbfea2577df7b1aa66086978f6036112456e3c539e0ac6bd0243bea"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-source.ts",
@@ -189,6 +189,10 @@
       "sha256": "9b1066e6363ae15d78636aff97b1d7ec59d9370ded1078c46dba226110bbdfd0"
     },
     {
+      "path": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+      "sha256": "b32500e51cb220d1c392eafadd4ca8fa1c139aac3fb46bef0a7ab7a729cf2784"
+    },
+    {
       "path": "backend/scripts/run-pdv-unico-historical-disposable-qa.mjs",
       "sha256": "136b6b2903ba304e9996ad9a07320210e1f224cc3dd594b3bc06dd97a130a249"
     },
@@ -206,11 +210,7 @@
     },
     {
       "path": "backend/src/lib/comanda-service.ts",
-      "sha256": "e3f6e66907589303c5eddabd23c158a55a57d9d1673731eb4ccd0d37d9214a5a"
-    },
-    {
-      "path": "backend/src/lib/operacao/comanda-adapter.test.ts",
-      "sha256": "27a090f4bc216a30ebe2f883d089caf6705f4bf1d48c775c3697b1cf4bd0aac0"
+      "sha256": "d76557763e0777f852480ad5418aea58f1ffef49979779156da82e2048b6426f"
     },
     {
       "path": "backend/src/lib/operacao/comanda-adapter.ts",
@@ -223,10 +223,6 @@
     {
       "path": "backend/src/lib/operacao/modulo.ts",
       "sha256": "0a0d5eb28a85c66ce0a7bb33d862da030c0acef3c111a8b852e6b51a11a6a4c0"
-    },
-    {
-      "path": "backend/src/lib/operacao/venda.test.ts",
-      "sha256": "add82e41d4d5799ad78e29fdae0e148c2cbe286e0eb47911c45eda49f8e36757"
     },
     {
       "path": "backend/src/lib/operacao/venda.ts",
@@ -242,7 +238,7 @@
     },
     {
       "path": "backend/src/routes/operacao/comandas.ts",
-      "sha256": "496c5f015a8e7919af920ac0b4ac316ccf934caf8b53e84f120946fe63d18189"
+      "sha256": "b5f73c963bc025cb86a18681caf23eb08481a1173e2ec421193983f666997ad4"
     },
     {
       "path": "backend/src/routes/operacao/cozinha.ts",
@@ -253,12 +249,8 @@
       "sha256": "16a6cf917f725559daf81c9e29c1eb388349a8974f61704cbd5d1040d4ed82f8"
     },
     {
-      "path": "backend/src/routes/operacao/vendas.ts",
-      "sha256": "5d064ad29345cb405892674782a5349029f2b4d55f2f06ae05334ef7b61930c6"
-    },
-    {
       "path": "backend/src/routes/public.ts",
-      "sha256": "7e0827bbedf782fb01db2f87fa914c0e32cd1e46bf2089b1adae66bd33817567"
+      "sha256": "53029679b0b16c0d394959cb29f3bcfc765ebba900bc73cf4f85360d31c4196f"
     },
     {
       "path": "backend/tsconfig.pdv-migration-scripts.json",
@@ -269,5 +261,5 @@
       "sha256": "c3783edb5d311e28bcafa946ddc3e4d7aece1bbd2d485f354ba429fa98a1d098"
     }
   ],
-  "manifestSha256": "cabf2ff3e5db363928b5757bc0512736822b9c202016f179cbc09bd88fc20f35"
+  "manifestSha256": "ed33f7d6cb010cb86d00e5d1b9339b91a32ef26933962652acf35d881725071d"
 }
