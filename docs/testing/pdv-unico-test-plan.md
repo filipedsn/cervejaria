@@ -18,6 +18,8 @@ Código sob teste: `9316c9b68e16d9f8195ff63031fb443921432683` (tree `f3955957021
 
 **Lacuna de negócio:** política por status/data da ocorrência continua pendente. Os testes confirmam associação técnica por empresa/PDV, sem aprovar elegibilidade de ocorrência por status/data. **Não coberto por esta entrega:** UI, rankings/pontuação, migração real, cutover, operação em DEV/PROD e políticas de portal além das recusas listadas. Nenhum destes cenários é prova de ranking.
 
+Validações adicionais: `npm run build` passou; testes puros focados de caixa/venda/comanda passaram 28/28. Três tentativas de snapshot anteriores não são PASS: `b491787` expôs incompatibilidade do teste de manifesto com candidato ausente em baseline histórico; `f6dbed9` expôs (1) ordem incorreta da fixture ao fechar sessões enquanto outra comanda da empresa seguia aberta e (2) prefixo `/api/public` ausente nas URLs do portal. Correções foram commitadas e a cadeia completa foi repetida na revisão `9316c9b`; só esta última é a certificação aceita.
+
 ## Evidência executada no commit `40fa92b7fa7c879b8ce23d3823ab0c51ede95bb6`
 
 O gate principal foi `node scripts/run-pdv-unico-git-snapshot-qa.mjs --commit=40fa92b7fa7c879b8ce23d3823ab0c51ede95bb6 --evidence-out=<arquivo temporário>`. Materialização: 1.093 blobs Git verificados; manifesto QA do snapshot com 53 candidatos; import audit: 172 módulos do snapshot, zero módulos do workspace local, 100 dependências externas; sem checkout/worktree. `qa:pdv-current-disposable` completou stages histórico/FK, core/negócio, financeiro e comercial; sem skips. Evidência detalhada em [`pdv-unico-canonical-settings-qa-evidence.json`](pdv-unico-canonical-settings-qa-evidence.json). Esta prova usa fixtures sintéticas; não certifica migração real ou cutover.
