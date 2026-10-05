@@ -67,6 +67,7 @@ export async function buildPdvCommerceQaManifest(options = {}) {
     'backend/src/lib/operacao/capacidades.test.ts',
     'backend/src/lib/operacao/comanda-adapter.ts',
     'backend/src/lib/operacao/comanda-itens.ts',
+    'backend/src/lib/operacao/contexto-ocorrencia.test.ts',
     'backend/src/lib/operacao/contexto-ocorrencia.ts',
     'backend/src/lib/operacao/caixa.ts',
     'backend/src/lib/operacao/venda.ts',

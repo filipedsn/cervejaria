@@ -18,6 +18,8 @@ import {
 } from './comanda-adapter.js';
 import { lockComandaItemsInTx } from '../comanda-service.js';
 import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
+import { assertCaixaAberto, lockCaixaEmTx } from './caixa.js';
+import { assertCommandOccurrenceMatchesSession, cashOccurrenceContextEnabled, CashOccurrenceContextError } from './contexto-ocorrencia.js';
 
 type ComandaCompleta = Prisma.ComandaGetPayload<{ include: typeof INCLUDE_COMANDA_OPERACAO }>;
 
@@ -350,9 +352,19 @@ export async function updateItemQuantidadeComandaOperacao(params: {
   }
 
   const pedidoId = item.pedidoCozinhaId!;
+  const occurrenceScoped = cashOccurrenceContextEnabled();
+  const cashLockScope = occurrenceScoped ? {
+    pontoVendaId: item.pedidoCozinha.comanda.pontoVendaId,
+    diaOperacional: item.pedidoCozinha.comanda.diaOperacional,
+  } : null;
 
   try {
     const atualizada = await prisma.$transaction(async (tx) => {
+      // Match order launch and payment: serialize by cash session before taking
+      // the comanda lock so close-vs-consumption races cannot validate stale context.
+      if (cashLockScope?.diaOperacional && cashLockScope.pontoVendaId) {
+        await lockCaixaEmTx(tx, params.cervejariaId, cashLockScope.pontoVendaId, cashLockScope.diaOperacional);
+      }
       await lockComandaItemsInTx(tx, params.comandaId);
       const itemAtual = await carregarItem(tx, params.comandaId, params.itemId, params.cervejariaId);
       if (!itemAtual || !itemAtual.pedidoCozinha) {
@@ -378,6 +390,31 @@ export async function updateItemQuantidadeComandaOperacao(params: {
       }
 
       const deltaAtual = params.quantidade - itemAtual.quantidade;
+      if (deltaAtual > 0 && occurrenceScoped) {
+        const comandaAtual = itemAtual.pedidoCozinha.comanda;
+        const pontoVendaId = comandaAtual.pontoVendaId;
+        const dia = comandaAtual.diaOperacional;
+        if (!pontoVendaId || !dia) {
+          throw new CashOccurrenceContextError(
+            'CASH_OCCURRENCE_COMMAND_SCOPE_MISSING',
+            'A comanda não possui tenant, PDV e dia operacional para autorizar novo consumo.',
+          );
+        }
+        if (pontoVendaId !== cashLockScope?.pontoVendaId || dia.getTime() !== cashLockScope?.diaOperacional?.getTime()) {
+          throw new CashOccurrenceContextError(
+            'CASH_OCCURRENCE_COMMAND_SCOPE_CHANGED',
+            'A comanda mudou de PDV ou dia operacional enquanto a edição aguardava seu lock.',
+          );
+        }
+        const sessao = await assertCaixaAberto(params.cervejariaId, pontoVendaId, dia, tx);
+        if (sessao.cervejariaId !== params.cervejariaId || sessao.pontoVendaId !== pontoVendaId) {
+          throw new CashOccurrenceContextError(
+            'CASH_OCCURRENCE_SESSION_SCOPE_MISMATCH',
+            'A sessão autorizadora não pertence ao tenant e PDV da comanda.',
+          );
+        }
+        assertCommandOccurrenceMatchesSession(comandaAtual, sessao);
+      }
       if (itemAtual.produto) {
         if (deltaAtual > 0) {
           await baixarEstoqueItemPedido(tx, {

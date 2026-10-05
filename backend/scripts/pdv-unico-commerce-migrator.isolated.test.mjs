@@ -711,15 +711,195 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.equal(legacyCommandResponse.statusCode, 201, `legacy command creation remains available: ${legacyCommandResponse.body}`);
     assert.equal(JSON.parse(legacyCommandResponse.body).ocorrenciaId ?? null, null);
     const legacyCommandId = JSON.parse(legacyCommandResponse.body).id;
+    await db.produto.update({ where: { id: secondProduct.id }, data: { controlaEstoque: false } });
     const legacyLaunch = await withSecondOwnerAt('2026-11-08', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(legacyCommandId)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: secondProduct.id, quantidade: 1 }] } }));
     assert.equal(legacyLaunch.statusCode, 201, `legacy order launch remains available: ${legacyLaunch.body}`);
-    const legacyPaid = await withSecondOwnerAt('2026-11-08', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(legacyCommandId)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 4 }] } }));
+    const legacyItemId = JSON.parse(legacyLaunch.body).pedidos[0].itens[0].id;
+    const legacyIncrease = await withSecondOwnerAt('2026-11-08', (cookie) => app.inject({ method: 'PATCH', url: `/api/operacao/comandas/${encodeURIComponent(legacyCommandId)}/itens/${encodeURIComponent(legacyItemId)}`, headers: { cookie }, payload: { quantidade: 2, ocorrenciaId: oneOffOccurrence.id } }));
+    assert.equal(legacyIncrease.statusCode, 200, `activation off keeps the legacy quantity update contract and ignores occurrence payload: ${legacyIncrease.body}`);
+    assert.deepEqual([JSON.parse(legacyIncrease.body).itens[0].quantidade, centsExact(JSON.parse(legacyIncrease.body).total)], [2, '800']);
+    const legacyPaid = await withSecondOwnerAt('2026-11-08', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(legacyCommandId)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 8 }] } }));
     assert.equal(legacyPaid.statusCode, 200, `legacy payment remains available: ${legacyPaid.body}`);
     const legacyPayment = await db.pagamento.findFirstOrThrow({ where: { comandaId: legacyCommandId } });
     assert.equal(legacyPayment.sessaoCaixaId, JSON.parse(legacySession.body).id);
-    const legacyClose = await withSecondOwnerAt('2026-11-08', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie }, payload: { pontoVendaId: secondPoint.id, contadoDinheiro: 0, contadoPix: 4, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } }));
+    const legacyClose = await withSecondOwnerAt('2026-11-08', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie }, payload: { pontoVendaId: secondPoint.id, contadoDinheiro: 0, contadoPix: 8, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } }));
     assert.equal(legacyClose.statusCode, 200, `legacy cash close remains available: ${legacyClose.body}`);
+    await db.produto.update({ where: { id: secondProduct.id }, data: { controlaEstoque: true } });
     process.env.PDV_CANONICAL_CONFIG_QA = previousOccurrenceActivation;
+
+    // Regression proof: create an item through the API, seed an incompatible
+    // historical command context, then exercise the authenticated quantity API.
+    process.env.PDV_CANONICAL_CONFIG_QA = '1';
+    const productStockTrackingBefore = product.controlaEstoque;
+    await db.configuracaoPontoVenda.update({ where: { pontoVendaId: primaryPoint.id }, data: { inventoryEnabled: true } });
+    await db.produto.update({ where: { id: product.id }, data: { controlaEstoque: true } });
+    await db.inventoryBalance.create({ data: {
+      id: `cash-context-consumption-stock-${runId}`, cervejariaId: primaryCompany.id,
+      pontoVendaId: primaryPoint.id, produtoId: product.id, quantidade: '10.000', estoqueMinimo: '0.000',
+    } });
+    const mismatchDay = '2026-11-09';
+    const mismatchSession = await openOccurrenceCash(mismatchDay, recurringOccurrences[1].id);
+    const mismatchCommandResponse = await withOwnerAt(mismatchDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: {
+      pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: `occurrence-mismatch-${runId}`,
+    } }));
+    assert.equal(mismatchCommandResponse.statusCode, 201, `mismatch command opens through authenticated API: ${mismatchCommandResponse.body}`);
+    const mismatchCommandId = JSON.parse(mismatchCommandResponse.body).id;
+    const mismatchLaunch = await withOwnerAt(mismatchDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(mismatchCommandId)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
+    assert.equal(mismatchLaunch.statusCode, 201, `non-kitchen consumption launches through authenticated API: ${mismatchLaunch.body}`);
+    const mismatchItemId = JSON.parse(mismatchLaunch.body).pedidos[0].itens[0].id;
+    await db.itemComandaOpcional.create({ data: { id: `cash-context-item-optional-${runId}`, itemComandaId: mismatchItemId, nome: 'Synthetic preserved add-on', precoAdicional: '1.25', quantidade: 1 } });
+    await db.comanda.update({ where: { id: mismatchCommandId }, data: { total: '10.75' } });
+    await db.comanda.update({ where: { id: mismatchCommandId }, data: { ocorrenciaId: recurringOccurrences[0].id } });
+    const mismatchBefore = await db.comanda.findUniqueOrThrow({ where: { id: mismatchCommandId }, include: {
+      itens: { include: { opcionais: true } }, pagamentos: true,
+      pedidosOperacao: { include: { itensComanda: true, historicoStatus: true } },
+    } });
+    const stockBeforeMismatchIncrease = await db.inventoryBalance.findUniqueOrThrow({ where: { pontoVendaId_produtoId: { pontoVendaId: primaryPoint.id, produtoId: product.id } } });
+    const movementsBeforeMismatchIncrease = await db.inventoryMovement.findMany({ where: { pedidoId: mismatchBefore.pedidosOperacao[0].id }, orderBy: { createdAt: 'asc' } });
+    const mismatchIncrease = await withOwnerAt(mismatchDay, (cookie) => app.inject({ method: 'PATCH', url: `/api/operacao/comandas/${encodeURIComponent(mismatchCommandId)}/itens/${encodeURIComponent(mismatchItemId)}`, headers: { cookie }, payload: { quantidade: 2, ocorrenciaId: recurringOccurrences[1].id } }));
+    assert.equal(mismatchIncrease.statusCode, 409, `incompatible occurrence increase is rejected despite client-supplied context: ${mismatchIncrease.body}`);
+    const mismatchAfter = await db.comanda.findUniqueOrThrow({ where: { id: mismatchCommandId }, include: {
+      itens: { include: { opcionais: true } }, pagamentos: true,
+      pedidosOperacao: { include: { itensComanda: true, historicoStatus: true } },
+    } });
+    const stockAfterMismatchIncrease = await db.inventoryBalance.findUniqueOrThrow({ where: { pontoVendaId_produtoId: { pontoVendaId: primaryPoint.id, produtoId: product.id } } });
+    const movementsAfterMismatchIncrease = await db.inventoryMovement.findMany({ where: { pedidoId: mismatchBefore.pedidosOperacao[0].id }, orderBy: { createdAt: 'asc' } });
+    assert.deepEqual(plain(mismatchAfter), plain(mismatchBefore), 'rejected mismatch leaves quantity, item/options snapshots, total, payments and order history intact');
+    assert.deepEqual(plain(stockAfterMismatchIncrease), plain(stockBeforeMismatchIncrease), 'rejected mismatch leaves the stock balance intact');
+    assert.deepEqual(movementsAfterMismatchIncrease.map(plain), movementsBeforeMismatchIncrease.map(plain), 'rejected mismatch leaves inventory movement history intact');
+    const foreignIncrease = await withSecondOwnerAt(mismatchDay, (cookie) => app.inject({ method: 'PATCH', url: `/api/operacao/comandas/${encodeURIComponent(mismatchCommandId)}/itens/${encodeURIComponent(mismatchItemId)}`, headers: { cookie }, payload: { quantidade: 2 } }));
+    assert.equal(foreignIncrease.statusCode, 404, 'a different tenant cannot increase an item on the command');
+    const stockBeforeMismatchCancellation = await db.inventoryBalance.findUniqueOrThrow({ where: { pontoVendaId_produtoId: { pontoVendaId: primaryPoint.id, produtoId: product.id } } });
+    const mismatchCancellation = await withOwnerAt(mismatchDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(mismatchCommandId)}/cancelar`, headers: { cookie }, payload: {} }));
+    assert.equal(mismatchCancellation.statusCode, 200, `historical mismatch fixture still cancels through authenticated API: ${mismatchCancellation.body}`);
+    const stockAfterMismatchCancellation = await db.inventoryBalance.findUniqueOrThrow({ where: { pontoVendaId_produtoId: { pontoVendaId: primaryPoint.id, produtoId: product.id } } });
+    assert.deepEqual([centsExact(stockBeforeMismatchCancellation.quantidade), centsExact(stockAfterMismatchCancellation.quantidade)], ['900', '1000'], 'historical cancellation still reverses exactly the launched stock unit after a context mismatch');
+    await closeOccurrenceCash(mismatchDay, 0);
+
+    const correctDay = '2026-11-10';
+    const correctSession = await openOccurrenceCash(correctDay, recurringOccurrences[0].id);
+    const correctCommandResponse = await withOwnerAt(correctDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: {
+      pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: `occurrence-correct-${runId}`,
+    } }));
+    assert.equal(correctCommandResponse.statusCode, 201, `correct-context command opens: ${correctCommandResponse.body}`);
+    const correctCommandId = JSON.parse(correctCommandResponse.body).id;
+    const correctLaunch = await withOwnerAt(correctDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(correctCommandId)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
+    assert.equal(correctLaunch.statusCode, 201, `correct-context item launches: ${correctLaunch.body}`);
+    const correctItemId = JSON.parse(correctLaunch.body).pedidos[0].itens[0].id;
+    const correctOrderId = JSON.parse(correctLaunch.body).pedidos[0].id;
+    const correctBefore = await db.comanda.findUniqueOrThrow({ where: { id: correctCommandId }, include: { itens: { include: { opcionais: true } }, pagamentos: true } });
+    const correctStockBefore = await db.inventoryBalance.findUniqueOrThrow({ where: { pontoVendaId_produtoId: { pontoVendaId: primaryPoint.id, produtoId: product.id } } });
+    const correctMovementsBefore = await db.inventoryMovement.count({ where: { pedidoId: correctOrderId } });
+    const correctIncrease = await withOwnerAt(correctDay, (cookie) => app.inject({ method: 'PATCH', url: `/api/operacao/comandas/${encodeURIComponent(correctCommandId)}/itens/${encodeURIComponent(correctItemId)}`, headers: { cookie }, payload: { quantidade: 2 } }));
+    assert.equal(correctIncrease.statusCode, 200, `correct-context increase succeeds: ${correctIncrease.body}`);
+    const correctAfter = await db.comanda.findUniqueOrThrow({ where: { id: correctCommandId }, include: { itens: { include: { opcionais: true } }, pagamentos: true } });
+    const correctStockAfter = await db.inventoryBalance.findUniqueOrThrow({ where: { pontoVendaId_produtoId: { pontoVendaId: primaryPoint.id, produtoId: product.id } } });
+    assert.deepEqual([correctBefore.itens[0].quantidade, centsExact(correctBefore.total), correctAfter.itens[0].quantidade, centsExact(correctAfter.total)], [1, '950', 2, '1900'], 'correct context changes quantity by one and total by exactly one menu price');
+    assert.deepEqual([centsExact(correctStockBefore.quantidade), centsExact(correctStockAfter.quantidade), await db.inventoryMovement.count({ where: { pedidoId: correctOrderId } }) - correctMovementsBefore], ['900', '800', 1], 'correct context consumes exactly one additional stock unit');
+    assert.deepEqual([correctAfter.pagamentos.length, correctAfter.itens[0].precoUnit.toString(), correctAfter.itens[0].nome], [0, correctBefore.itens[0].precoUnit.toString(), correctBefore.itens[0].nome], 'increase preserves the sold item snapshot and payment ledger');
+    const correctPaid = await withOwnerAt(correctDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(correctCommandId)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 19 }] } }));
+    assert.equal(correctPaid.statusCode, 200, `correct-context command settles: ${correctPaid.body}`);
+    await closeOccurrenceCash(correctDay, 19);
+
+    const noSessionDay = '2026-11-11';
+    const noSession = await openOccurrenceCash(noSessionDay, recurringOccurrences[0].id);
+    const noSessionCommandResponse = await withOwnerAt(noSessionDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: {
+      pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: `occurrence-no-session-${runId}`,
+    } }));
+    assert.equal(noSessionCommandResponse.statusCode, 201);
+    const noSessionCommandId = JSON.parse(noSessionCommandResponse.body).id;
+    const noSessionLaunch = await withOwnerAt(noSessionDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(noSessionCommandId)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
+    assert.equal(noSessionLaunch.statusCode, 201);
+    const noSessionItemId = JSON.parse(noSessionLaunch.body).pedidos[0].itens[0].id;
+    await db.sessaoCaixaOperacao.update({ where: { id: noSession.id }, data: { status: 'FECHADO', fechadoEm: new Date() } });
+    const noSessionBefore = await db.comanda.findUniqueOrThrow({ where: { id: noSessionCommandId }, include: { itens: { include: { opcionais: true } }, pagamentos: true } });
+    const noSessionStockBefore = await db.inventoryBalance.findUniqueOrThrow({ where: { pontoVendaId_produtoId: { pontoVendaId: primaryPoint.id, produtoId: product.id } } });
+    const blockedWithoutSession = await withOwnerAt(noSessionDay, (cookie) => app.inject({ method: 'PATCH', url: `/api/operacao/comandas/${encodeURIComponent(noSessionCommandId)}/itens/${encodeURIComponent(noSessionItemId)}`, headers: { cookie }, payload: { quantidade: 2 } }));
+    assert.equal(blockedWithoutSession.statusCode, 400, `missing authorizing session blocks the increase: ${blockedWithoutSession.body}`);
+    assert.deepEqual(plain(await db.comanda.findUniqueOrThrow({ where: { id: noSessionCommandId }, include: { itens: { include: { opcionais: true } }, pagamentos: true } })), plain(noSessionBefore), 'missing session leaves command, item snapshot and payments unchanged');
+    assert.deepEqual(plain(await db.inventoryBalance.findUniqueOrThrow({ where: { pontoVendaId_produtoId: { pontoVendaId: primaryPoint.id, produtoId: product.id } } })), plain(noSessionStockBefore), 'missing session leaves stock unchanged');
+    const noSessionCancel = await withOwnerAt(noSessionDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(noSessionCommandId)}/cancelar`, headers: { cookie }, payload: {} }));
+    assert.equal(noSessionCancel.statusCode, 200, 'historical cancellation remains allowed when its authorizing session is closed');
+    assert.deepEqual(
+      centsExact((await db.inventoryBalance.findUniqueOrThrow({ where: { pontoVendaId_produtoId: { pontoVendaId: primaryPoint.id, produtoId: product.id } } })).quantidade),
+      (BigInt(centsExact(noSessionStockBefore.quantidade)) + 100n).toString(),
+      'historical cancellation without an open session reverses its launched inventory movement',
+    );
+
+    const closeRaceDay = '2026-11-12';
+    const closeRaceSession = await openOccurrenceCash(closeRaceDay, recurringOccurrences[0].id);
+    const closeRaceCommandResponse = await withOwnerAt(closeRaceDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: {
+      pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: `occurrence-close-race-${runId}`,
+    } }));
+    assert.equal(closeRaceCommandResponse.statusCode, 201);
+    const closeRaceCommandId = JSON.parse(closeRaceCommandResponse.body).id;
+    const closeRaceLaunch = await withOwnerAt(closeRaceDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(closeRaceCommandId)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
+    assert.equal(closeRaceLaunch.statusCode, 201);
+    const closeRaceItemId = JSON.parse(closeRaceLaunch.body).pedidos[0].itens[0].id;
+    const cashLockDigest = createHash('sha256').update(`caixa-operacao:${primaryCompany.id}:${primaryPoint.id}:${closeRaceDay}`).digest();
+    const cashLockKey = BigInt.asIntN(64, cashLockDigest.readBigUInt64BE(0));
+    let signalCashLocked;
+    let releaseCashLocked;
+    const cashLocked = new Promise((resolve) => { signalCashLocked = resolve; });
+    const cashRelease = new Promise((resolve) => { releaseCashLocked = resolve; });
+    const cashHolder = db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${cashLockKey})`;
+      signalCashLocked();
+      await cashRelease;
+      await tx.sessaoCaixaOperacao.update({ where: { id: closeRaceSession.id }, data: { status: 'FECHADO', fechadoEm: new Date() } });
+    }, { maxWait: 15000, timeout: 30000 });
+    await cashLocked;
+    const concurrentIncrease = withOwnerAt(closeRaceDay, (cookie) => app.inject({ method: 'PATCH', url: `/api/operacao/comandas/${encodeURIComponent(closeRaceCommandId)}/itens/${encodeURIComponent(closeRaceItemId)}`, headers: { cookie }, payload: { quantidade: 2 } }));
+    let cashLockWaiters = 0;
+    const cashLockDeadline = process.hrtime.bigint() + 15_000_000_000n;
+    try {
+      while (process.hrtime.bigint() < cashLockDeadline) {
+        const rows = await db.$queryRaw`SELECT count(*)::int AS count FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND wait_event = 'advisory' AND query ILIKE '%pg_advisory_xact_lock%'`;
+        cashLockWaiters = rows[0]?.count ?? 0;
+        if (cashLockWaiters >= 1) break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert(cashLockWaiters >= 1, `increase waits for cash close lock; waiters=${cashLockWaiters}`);
+    } finally {
+      releaseCashLocked();
+      await cashHolder;
+    }
+    const closeRaceIncrease = await concurrentIncrease;
+    assert.equal(closeRaceIncrease.statusCode, 400, `increase sees the closed session after waiting for the cash lock: ${closeRaceIncrease.body}`);
+    const closeRaceAfter = await db.comanda.findUniqueOrThrow({ where: { id: closeRaceCommandId }, include: { itens: true, pagamentos: true } });
+    assert.deepEqual([closeRaceAfter.itens[0].quantidade, centsExact(closeRaceAfter.total), closeRaceAfter.pagamentos.length], [1, '950', 0], 'close-vs-increase race leaves command and payment state unchanged');
+    const closeRaceCancel = await withOwnerAt(closeRaceDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(closeRaceCommandId)}/cancelar`, headers: { cookie }, payload: {} }));
+    assert.equal(closeRaceCancel.statusCode, 200, 'cancellation remains available after a concurrent close blocks an increase');
+
+    const kitchenGuardDay = '2026-11-13';
+    await db.configuracaoPontoVenda.update({ where: { pontoVendaId: secondPoint.id }, data: { kitchenEnabled: true } });
+    await withSecondOwnerAt(kitchenGuardDay, async (cookie) => {
+      const opened = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: secondPoint.id, trocoInicial: 0, cardapioId: secondMenu.id } });
+      assert.equal(opened.statusCode, 201, `kitchen guard session opens: ${opened.body}`);
+      const commandResponse = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: { pontoVendaId: secondPoint.id, tipo: 'APELIDO', identificador: `kitchen-item-guard-${runId}` } });
+      assert.equal(commandResponse.statusCode, 201);
+      const commandId = JSON.parse(commandResponse.body).id;
+      const launched = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: kitchenProduct.id, quantidade: 1 }] } });
+      assert.equal(launched.statusCode, 201, `prepared item launches: ${launched.body}`);
+      const order = JSON.parse(launched.body).pedidos[0];
+      const itemId = order.itens[0].id;
+      const preparedIncrease = await app.inject({ method: 'PATCH', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}/itens/${encodeURIComponent(itemId)}`, headers: { cookie }, payload: { quantidade: 2 } });
+      assert.equal(preparedIncrease.statusCode, 409, `item sent to kitchen keeps its quantity restriction: ${preparedIncrease.body}`);
+      for (const status of ['EM_PREPARO', 'PRONTO', 'ENTREGUE']) {
+        const transition = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(order.id)}/status`, headers: { cookie }, payload: { status } });
+        assert.equal(transition.statusCode, 200, `historical kitchen confirmation to ${status} still works: ${transition.body}`);
+      }
+      const deliveredIncrease = await app.inject({ method: 'PATCH', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}/itens/${encodeURIComponent(itemId)}`, headers: { cookie }, payload: { quantidade: 2 } });
+      assert.equal(deliveredIncrease.statusCode, 409, `delivered item keeps its existing restriction: ${deliveredIncrease.body}`);
+      const paid = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 10 }] } });
+      assert.equal(paid.statusCode, 200, `prepared/delivered item remains payable through historical flow: ${paid.body}`);
+      const closed = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie }, payload: { pontoVendaId: secondPoint.id, contadoDinheiro: 0, contadoPix: 10, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
+      assert.equal(closed.statusCode, 200, `kitchen guard cash closes: ${closed.body}`);
+    });
+    await db.configuracaoPontoVenda.update({ where: { pontoVendaId: secondPoint.id }, data: canonicalSettings });
+    await db.configuracaoPontoVenda.update({ where: { pontoVendaId: primaryPoint.id }, data: { inventoryEnabled: false } });
+    await db.produto.update({ where: { id: product.id }, data: { controlaEstoque: productStockTrackingBefore } });
+    console.log(`QA_OCCURRENCE_ITEM_INCREASE=PASS; incompatible=${mismatchIncrease.statusCode}/no-write; valid=${correctIncrease.statusCode}/quantity:1->2/totalCents:950->1900/stockDelta:-1; missingSession=${blockedWithoutSession.statusCode}; cashCloseRace=${closeRaceIncrease.statusCode}/waiters:${cashLockWaiters}; tenant=${foreignIncrease.statusCode}; cancellation=reversal-verified; prepared=${preparedIncrease.statusCode}; delivered=${deliveredIncrease.statusCode}; legacy=${legacyIncrease.statusCode}`);
 
     const concurrentDay = '2026-11-07';
     const lockDigest = createHash('sha256').update(`caixa-operacao:${primaryCompany.id}:${primaryPoint.id}:${concurrentDay}`).digest();
