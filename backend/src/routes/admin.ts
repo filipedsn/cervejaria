@@ -16,7 +16,7 @@ import {
 } from '../lib/cervejaria-branding.js';
 import { ensureDefaultTaps } from '../lib/trailer-defaults.js';
 import { adaptLegacyProvisioning, provisionEstablishment, provisionEstablishmentRequestSchema } from '../lib/provision-establishment.js';
-import { updateOperationalConfig, updateOperationalConfigSchema } from '../lib/operational-config.js';
+import { readOperationalConfig, updateOperationalConfig, updateOperationalConfigSchema } from '../lib/operational-config.js';
 import { getAuthUser } from '../types/auth.js';
 import {
   encryptSecret,
@@ -278,7 +278,7 @@ export async function adminRoutes(app: FastifyInstance) {
   // never writes the legacy module projection.
   app.get('/cervejarias/:id/configuracao-operacional', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const configuration = await prisma.configuracaoOperacional.findUnique({ where: { cervejariaId: id } });
+    const configuration = await readOperationalConfig(id);
     if (!configuration) return reply.status(404).send({ error: 'ConfiguraÃ§Ã£o operacional nÃ£o encontrada' });
     return configuration;
   });
@@ -288,7 +288,8 @@ export async function adminRoutes(app: FastifyInstance) {
     const existing = await prisma.cervejaria.findUnique({ where: { id }, select: { id: true } });
     if (!existing) return reply.status(404).send({ error: 'Cervejaria nÃ£o encontrada' });
     const body = updateOperationalConfigSchema.parse(request.body);
-    return prisma.$transaction((tx) => updateOperationalConfig(tx, id, body));
+    const user = getAuthUser(request);
+    return prisma.$transaction((tx) => updateOperationalConfig(tx, id, body, { userId: user.sub, role: 'ADMIN' }));
   });
 
   app.post('/cervejarias/provision', async (request, reply) => {
@@ -409,7 +410,7 @@ export async function adminRoutes(app: FastifyInstance) {
                 ...(body.confirmacaoEstoque === true ? { confirmacaoEstoque: true as const } : {}),
               }
             : {}),
-        });
+        }, { userId: admin.sub, role: 'ADMIN' });
       }
     });
 

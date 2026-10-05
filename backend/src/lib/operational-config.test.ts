@@ -4,7 +4,13 @@ import {
   CozinhaComPedidosAtivosError,
   ConfirmacaoEstoqueObrigatoriaError,
 } from './operacao/capacidades.js';
-import { OperationalModeTransitionBlockedError, updateOperationalConfig } from './operational-config.js';
+import {
+  CanonicalPdvModeChangeUnsupportedError,
+  OperationalModeTransitionBlockedError,
+  PendingKitchenCloseDependencyError,
+  readOperationalConfig,
+  updateOperationalConfig,
+} from './operational-config.js';
 
 function database(current: Record<string, boolean | null> | null, activeOrder = false, openCash = false, activeEvent = false) {
   const updates: unknown[] = [];
@@ -196,4 +202,135 @@ test('static configuration matrix covers all 16 mode and capability combinations
     }
   }
   assert.equal(cases, 16);
+});
+
+const canonicalSettings = () => ({
+  tapsEnabled: true,
+  inventoryEnabled: true,
+  kitchenEnabled: true,
+  kitchenItemsChargeAtLaunch: true,
+  allowCloseComandaWithPendingKitchenOrders: true,
+  whatsappPedidoProntoEnabled: true,
+  whatsappPedidoProntoNaCozinha: true,
+  quantidadeMesas: 6,
+});
+
+function withCanonicalActivation(action: () => Promise<void>) {
+  const previous = { ...process.env };
+  Object.assign(process.env, {
+    PDV_CANONICAL_CONFIG_QA: '1', NODE_ENV: 'test', PDV_ISOLATED_QA: '1',
+    DATABASE_URL: 'postgresql://qa:qa@127.0.0.1:55439/cervejaria_qa_pdv_unico',
+    QA_DATABASE_URL: 'postgresql://qa:qa@127.0.0.1:55439/cervejaria_qa_pdv_unico',
+  });
+  return action().finally(() => {
+    for (const key of ['PDV_CANONICAL_CONFIG_QA', 'NODE_ENV', 'PDV_ISOLATED_QA', 'DATABASE_URL', 'QA_DATABASE_URL']) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+  });
+}
+
+function canonicalDatabase(options: { activeOrder?: boolean } = {}) {
+  let settings = canonicalSettings();
+  const legacy = { cervejariaId: 'tenant-a', plannedOperationsEnabled: true, tapsEnabled: false, inventoryEnabled: false, kitchenEnabled: false, kitchenItemsChargeAtLaunch: false };
+  const canonicalWrites: unknown[] = [];
+  const legacyWrites: unknown[] = [];
+  const audits: unknown[] = [];
+  const legacyReadSelects: unknown[] = [];
+  const db = {
+    pontoVenda: {
+      findMany: async () => [{
+        id: 'point-a', cervejariaId: 'tenant-a', ativo: true,
+        configuracaoPdv: { ...settings, cervejariaId: 'tenant-a', pontoVendaId: 'point-a' },
+      }],
+    },
+    configuracaoPontoVenda: {
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        canonicalWrites.push(data);
+        settings = { ...settings, ...data };
+        return { ...settings, cervejariaId: 'tenant-a', pontoVendaId: 'point-a' };
+      },
+    },
+    configuracaoOperacional: {
+      findUnique: async ({ select }: { select?: unknown }) => {
+        legacyReadSelects.push(select ?? null);
+        return select ? { setupCompletedAt: null } : legacy;
+      },
+      upsert: async (args: unknown) => { legacyWrites.push(args); return legacy; },
+      update: async (args: unknown) => { legacyWrites.push(args); return { setupCompletedAt: new Date() }; },
+    },
+    pedidoOperacao: { findFirst: async () => options.activeOrder ? { id: 'active-order' } : null },
+    comanda: { findMany: async () => [] },
+    transacaoLog: { create: async (args: unknown) => { audits.push(args); return args; } },
+  };
+  return { db, canonicalWrites, legacyWrites, audits, legacyReadSelects, settings: () => settings };
+}
+
+test('canonical read and update use the validated PDV record, preserve false and zero, and do not synchronize legacy flags', async () => {
+  await withCanonicalActivation(async () => {
+    const fixture = canonicalDatabase();
+    const effective = await readOperationalConfig('tenant-a', fixture.db as any);
+    assert.deepEqual([
+      (effective as any)?.configurationSource,
+      (effective as any)?.plannedOperationsEnabled,
+      (effective as any)?.inventoryEnabled,
+      (effective as any)?.kitchenEnabled,
+      (effective as any)?.quantidadeMesas,
+    ], ['CANONICAL_PDV', false, true, true, 6]);
+    assert.deepEqual(fixture.legacyReadSelects, [{ setupCompletedAt: true }], 'only out-of-scope setup metadata is read from the legacy row');
+
+    await updateOperationalConfig(fixture.db as any, 'tenant-a', {
+      tapsEnabled: false, inventoryEnabled: false, kitchenEnabled: false, quantidadeMesas: 0, confirmacaoEstoque: true,
+    }, { userId: 'owner-a', role: 'DONO' });
+    assert.deepEqual(fixture.canonicalWrites, [{ tapsEnabled: false, inventoryEnabled: false, kitchenEnabled: false, quantidadeMesas: 0 }]);
+    assert.equal(fixture.legacyWrites.length, 0, 'no legacy operational write is made');
+    assert.deepEqual([
+      fixture.settings().tapsEnabled, fixture.settings().inventoryEnabled,
+      fixture.settings().kitchenEnabled, fixture.settings().quantidadeMesas,
+    ], [false, false, false, 0]);
+    assert.equal(fixture.audits.length, 1, 'persistent audit uses the same transaction client');
+  });
+});
+
+test('canonical mode rejects EVENTO explicitly and refuses unsafe changes before writing', async () => {
+  await withCanonicalActivation(async () => {
+    const fixture = canonicalDatabase();
+    await assert.rejects(
+      updateOperationalConfig(fixture.db as any, 'tenant-a', { operationMode: 'EVENTO' }),
+      CanonicalPdvModeChangeUnsupportedError,
+    );
+    await assert.rejects(
+      updateOperationalConfig(fixture.db as any, 'tenant-a', { inventoryEnabled: false }),
+      ConfirmacaoEstoqueObrigatoriaError,
+    );
+    await assert.rejects(
+      updateOperationalConfig(fixture.db as any, 'tenant-a', { kitchenItemsChargeAtLaunch: false, allowCloseComandaWithPendingKitchenOrders: true }),
+      PendingKitchenCloseDependencyError,
+    );
+    const activeKitchen = canonicalDatabase({ activeOrder: true });
+    await assert.rejects(
+      updateOperationalConfig(activeKitchen.db as any, 'tenant-a', { kitchenEnabled: false }),
+      CozinhaComPedidosAtivosError,
+    );
+    assert.equal(fixture.canonicalWrites.length + fixture.legacyWrites.length + fixture.audits.length, 0);
+    assert.equal(activeKitchen.canonicalWrites.length, 0);
+  });
+});
+
+test('disabled activation reads and writes legacy config without touching the additive PDV delegate', async () => {
+  const previous = process.env.PDV_CANONICAL_CONFIG_QA;
+  delete process.env.PDV_CANONICAL_CONFIG_QA;
+  let canonicalReads = 0;
+  try {
+    const db = database({ plannedOperationsEnabled: true, tapsEnabled: true });
+    Object.assign(db, { pontoVenda: { findMany: async () => { canonicalReads++; throw new Error('additive relation must not be read'); } } });
+    const config = await readOperationalConfig('tenant-a', db as any);
+    assert.equal((config as any).plannedOperationsEnabled, true);
+    await updateOperationalConfig(db as any, 'tenant-a', { tapsEnabled: false });
+    assert.equal(canonicalReads, 0);
+    assert.deepEqual(db.updates.at(-1), { create: { cervejariaId: 'tenant-a', tapsEnabled: false }, update: { tapsEnabled: false } });
+  } finally {
+    if (previous === undefined) delete process.env.PDV_CANONICAL_CONFIG_QA;
+    else process.env.PDV_CANONICAL_CONFIG_QA = previous;
+  }
 });

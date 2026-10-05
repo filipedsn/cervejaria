@@ -10,8 +10,19 @@ const repoRoot = path.resolve(backendRoot, '..');
 const digest = (value) => createHash('sha256').update(Buffer.from(value.toString('utf8').replaceAll('\r\n', '\n'))).digest('hex');
 const git = (args, options = {}) => execFileSync('git', args, { cwd: repoRoot, ...options });
 
-export async function buildPdvCommerceQaManifest() {
-  const baselineCommit = git(['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+export function resolvePdvCommerceQaBaseline(selectedRevision = process.env.PDV_GIT_QA_COMMIT) {
+  if (!selectedRevision) return git(['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const revision = selectedRevision.trim();
+  if (!revision || revision.startsWith('-')) throw new Error('Selected QA baseline must be a Git commit revision.');
+  try {
+    return git(['rev-parse', '--verify', '--end-of-options', `${revision}^{commit}`], { encoding: 'utf8' }).trim();
+  } catch {
+    throw new Error(`Selected QA baseline is not a valid Git commit: ${revision}`);
+  }
+}
+
+export async function buildPdvCommerceQaManifest(options = {}) {
+  const baselineCommit = resolvePdvCommerceQaBaseline(options.baselineCommit ?? process.env.PDV_GIT_QA_COMMIT);
   const schemaPath = 'backend/prisma/schema.prisma';
   const schemaCandidate = git(['show', `${baselineCommit}:${schemaPath}`]);
   const migrationPath = 'backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql';
@@ -45,12 +56,18 @@ export async function buildPdvCommerceQaManifest() {
     'backend/src/lib/canonical-pdv-operational-config.test.ts',
     'backend/src/lib/operational-profile.ts',
     'backend/src/lib/operational-profile.test.ts',
+    'backend/src/lib/operational-config.ts',
+    'backend/src/lib/operational-config.test.ts',
     'backend/src/lib/comanda-service.ts',
     'backend/src/lib/operacao/modulo.ts',
+    'backend/src/lib/operacao/capacidades.ts',
+    'backend/src/lib/operacao/capacidades.test.ts',
     'backend/src/lib/operacao/comanda-adapter.ts',
     'backend/src/lib/operacao/comanda-itens.ts',
     'backend/src/lib/operacao/venda.ts',
     'backend/src/routes/operacao/index.ts',
+    'backend/src/routes/cervejaria.ts',
+    'backend/src/routes/admin.ts',
     'backend/src/routes/operacao/comandas.ts',
     'backend/src/routes/operacao/cozinha.ts',
     'backend/src/routes/public.ts',
@@ -85,6 +102,11 @@ export async function buildPdvCommerceQaManifest() {
     'backend/scripts/pdv-unico-planner.isolated.test.ts',
     'backend/package.json',
   ])];
+  // This self-test was added after the historical revision used by its
+  // selection test. Include it whenever the selected commit contains it.
+  const manifestTestPath = 'backend/scripts/pdv-unico-commerce-qa-manifest.test.mjs';
+  const selectedFiles = git(['ls-tree', '-r', '--name-only', baselineCommit, '--', manifestTestPath], { encoding: 'utf8' }).trim();
+  if (selectedFiles === manifestTestPath) codePaths.push(manifestTestPath);
   const data = {
     version: 1,
     baseline: {
@@ -121,10 +143,12 @@ export async function buildPdvCommerceQaManifest() {
   return { ...data, manifestSha256: digest(Buffer.from(JSON.stringify(data))) };
 }
 
-if (process.argv.includes('--write')) {
-  const file = path.join(repoRoot, 'docs/testing/pdv-unico-integrated-qa-manifest.json');
-  await writeFile(file, `${JSON.stringify(await buildPdvCommerceQaManifest(), null, 2)}\n`);
-  console.log(`Wrote ${path.relative(repoRoot, file)} from immutable HEAD schema bytes; Git index is not an input.`);
-} else {
-  console.log(JSON.stringify(await buildPdvCommerceQaManifest(), null, 2));
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  if (process.argv.includes('--write')) {
+    const file = path.join(repoRoot, 'docs/testing/pdv-unico-integrated-qa-manifest.json');
+    await writeFile(file, `${JSON.stringify(await buildPdvCommerceQaManifest(), null, 2)}\n`);
+    console.log(`Wrote ${path.relative(repoRoot, file)} from immutable selected Git commit bytes; Git index is not an input.`);
+  } else {
+    console.log(JSON.stringify(await buildPdvCommerceQaManifest(), null, 2));
+  }
 }

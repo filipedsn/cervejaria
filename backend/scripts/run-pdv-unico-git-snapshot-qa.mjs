@@ -10,8 +10,15 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..', '..');
 const backendRoot = path.join(repoRoot, 'backend');
 const gitDir = execFileSync('git', ['rev-parse', '--absolute-git-dir'], { cwd: repoRoot, encoding: 'utf8' }).trim();
-const selectedInput = process.argv.find((value) => value.startsWith('--commit='))?.slice('--commit='.length) ?? 'HEAD';
-const selectedCommit = execFileSync('git', ['rev-parse', `${selectedInput}^{commit}`], { cwd: repoRoot, encoding: 'utf8' }).trim();
+const selectedArgIndex = process.argv.findIndex((value) => value === '--commit' || value.startsWith('--commit='));
+const selectedArg = selectedArgIndex < 0 ? undefined : process.argv[selectedArgIndex];
+const selectedInput = selectedArg === undefined
+  ? 'HEAD'
+  : selectedArg === '--commit'
+    ? process.argv[selectedArgIndex + 1] ?? ''
+    : selectedArg.slice('--commit='.length);
+if (!selectedInput.trim() || selectedInput.startsWith('-')) throw new Error('--commit must identify a Git commit.');
+const selectedCommit = execFileSync('git', ['rev-parse', '--verify', '--end-of-options', `${selectedInput}^{commit}`], { cwd: repoRoot, encoding: 'utf8' }).trim();
 const selectedTree = execFileSync('git', ['rev-parse', `${selectedCommit}^{tree}`], { cwd: repoRoot, encoding: 'utf8' }).trim();
 const runId = randomBytes(8).toString('hex');
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), `pdv-git-qa-${runId}-`));
@@ -209,6 +216,8 @@ try {
     if (!candidate) throw new Error(`Required operational source is not covered by codeCandidates: ${relativePath}`);
     console.log(`PDV_GIT_QA_CANDIDATE ${relativePath}=${candidate.sha256}; origin=${selectedCommit}:${relativePath}`);
   }
+
+  run(process.execPath, ['--test', 'scripts/pdv-unico-commerce-qa-manifest.test.mjs'], { cwd: backendSnapshot, env, stdio: 'inherit' });
 
   run(process.execPath, [npmCli, 'run', 'qa:pdv-current-disposable'], { cwd: backendSnapshot, env, stdio: 'inherit' });
 

@@ -99,14 +99,17 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
   const ownerPassword = `Qa-owner-${runId}-only!`;
   const attendantPassword = `Qa-attendant-${runId}-only!`;
   const secondOwnerPassword = `Qa-second-${runId}-only!`;
-  const [ownerHash, attendantHash, secondOwnerHash] = await Promise.all([
+  const adminPassword = `Qa-admin-${runId}-only!`;
+  const [ownerHash, attendantHash, secondOwnerHash, adminHash] = await Promise.all([
     hashPassword(ownerPassword), hashPassword(attendantPassword), hashPassword(secondOwnerPassword),
+    hashPassword(adminPassword),
   ]);
   const blockerPasswords = ['no-point', 'no-config', 'multiple-points'].map((name) => `Qa-${name}-${runId}-only!`);
   const blockerHashes = await Promise.all(blockerPasswords.map(hashPassword));
   const authOwner = await db.usuario.create({ data: { id: `auth-owner-${runId}`, nome: 'Synthetic authenticated owner', email: `auth-owner-${runId}@example.invalid`, senhaHash: ownerHash, papel: 'DONO', cervejariaId: primaryCompany.id } });
   const authAttendant = await db.usuario.create({ data: { id: `auth-attendant-${runId}`, nome: 'Synthetic authenticated attendant', email: `auth-attendant-${runId}@example.invalid`, senhaHash: attendantHash, papel: 'ATENDENTE', cervejariaId: primaryCompany.id } });
   const secondOwner = await db.usuario.create({ data: { id: `auth-second-owner-${runId}`, nome: 'Synthetic second-tenant owner', email: `auth-second-owner-${runId}@example.invalid`, senhaHash: secondOwnerHash, papel: 'DONO', cervejariaId: secondCompany.id } });
+  const authAdmin = await db.usuario.create({ data: { id: `auth-admin-${runId}`, nome: 'Synthetic platform admin', email: `auth-admin-${runId}@example.invalid`, senhaHash: adminHash, papel: 'ADMIN', cervejariaId: null } });
   const blockerFixtures = [];
   for (const [index, name] of ['no-point', 'no-config', 'multiple-points'].entries()) {
     const tenant = await db.cervejaria.create({ data: { nome: `Synthetic canonical blocker ${name}`, slug: `${slug(name)}-${runId}` } });
@@ -178,6 +181,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const ownerCookie = await login(authOwner.email, ownerPassword, 'DONO');
     const attendantCookie = await login(authAttendant.email, attendantPassword, 'ATENDENTE');
     const secondOwnerCookie = await login(secondOwner.email, secondOwnerPassword, 'DONO');
+    const adminCookie = await login(authAdmin.email, adminPassword, 'ADMIN');
 
     // One real RECEBIDO kitchen order exercises the effective setting through
     // create/recalculation, response summary, payment guard and persisted total.
@@ -273,6 +277,12 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       const response = await app.inject({ method: 'GET', url: '/api/operacao/contexto', headers: { cookie } });
       assert.equal(response.statusCode, 409, `${fixture.name} blocks the canonical context: ${response.body}`);
       assert.equal(JSON.parse(response.body).code, fixture.expectedCode, `${fixture.name} returns a specific canonical configuration blocker`);
+      const configRead = await app.inject({ method: 'GET', url: '/api/cervejaria/configuracao-operacional', headers: { cookie } });
+      assert.equal(configRead.statusCode, 409, `${fixture.name} also blocks operational config reads: ${configRead.body}`);
+      assert.equal(JSON.parse(configRead.body).code, fixture.expectedCode);
+      const configWrite = await app.inject({ method: 'PATCH', url: '/api/cervejaria/configuracao-operacional', headers: { cookie }, payload: { tapsEnabled: false } });
+      assert.equal(configWrite.statusCode, 409, `${fixture.name} cannot provision config through PATCH: ${configWrite.body}`);
+      assert.equal(JSON.parse(configWrite.body).code, fixture.expectedCode);
       assert.deepEqual(await blockedFootprint(fixture.tenant.id), before, `${fixture.name} does not create or change a PDV/configuration/session/command/item/payment`);
     }
 
@@ -342,11 +352,151 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       assert.equal(await db.itemComandaOpcional.count({ where: { itemComanda: { comandaId: commandId } } }), 0);
       operationFlows.push({ tenantId: flow.company.id, sessionId: session.id, commandId, productId: flow.product.id, menuId: flow.menu.id, itemPriceCents: flow.priceCents, quantity: 2, totalCents, payment: `PIX:${totalCents}`, sessionStatus: persistedSession.status, endpoints: [opened.statusCode, menuResponse.statusCode, openedCommand.statusCode, launched.statusCode, paid.statusCode, closed.statusCode] });
     }
+
+    const settingState = async (tenantId, pointId) => plain({
+      canonical: await db.configuracaoPontoVenda.findUnique({ where: { pontoVendaId: pointId } }),
+      legacy: await db.configuracaoOperacional.findUnique({ where: { cervejariaId: tenantId } }),
+      module: await db.configuracaoOperacao.findUnique({ where: { cervejariaId: tenantId } }),
+    });
+    const settingsApiProofs = [];
+    const ownerConfigRead = await app.inject({ method: 'GET', url: '/api/cervejaria/configuracao-operacional', headers: { cookie: ownerCookie } });
+    assert.equal(ownerConfigRead.statusCode, 200, `owner reads effective canonical configuration: ${ownerConfigRead.body}`);
+    const ownerConfigResponse = JSON.parse(ownerConfigRead.body);
+    const ownerConfigView = ownerConfigResponse.configuration;
+    assert.deepEqual([ownerConfigView.configurationSource, ownerConfigView.plannedOperationsEnabled, ownerConfigView.tapsEnabled, ownerConfigView.inventoryEnabled, ownerConfigView.quantidadeMesas], ['CANONICAL_PDV', false, false, false, 8]);
+    assert.deepEqual(ownerConfigResponse.enablements, { cashMode: true, cashRegister: true, plannedOperations: false, taps: false, inventory: false, kitchen: false }, 'configuration and enablements derive from the same validated canonical read');
+
+    const beforeStockConfirmation = await settingState(secondCompany.id, secondPoint.id);
+    const stockWithoutConfirmation = await app.inject({ method: 'PATCH', url: '/api/operacao/capacidades', headers: { cookie: secondOwnerCookie }, payload: { controlaEstoque: true } });
+    assert.equal(stockWithoutConfirmation.statusCode, 400, `stock transition requires explicit confirmation: ${stockWithoutConfirmation.body}`);
+    assert.deepEqual(await settingState(secondCompany.id, secondPoint.id), beforeStockConfirmation, 'missing inventory confirmation does not partially write canonical or legacy settings');
+
+    const beforeModeRequest = await settingState(primaryCompany.id, primaryPoint.id);
+    const eventModeRequest = await app.inject({ method: 'PATCH', url: '/api/cervejaria/configuracao-operacional', headers: { cookie: ownerCookie }, payload: { operationMode: 'EVENTO' } });
+    assert.equal(eventModeRequest.statusCode, 409, `canonical configuration rejects switching engines: ${eventModeRequest.body}`);
+    assert.equal(JSON.parse(eventModeRequest.body).code, 'CANONICAL_PDV_MODE_CHANGE_UNSUPPORTED');
+    const invalidCloseDependency = await app.inject({ method: 'PATCH', url: '/api/cervejaria/configuracao-operacional', headers: { cookie: ownerCookie }, payload: { allowCloseComandaWithPendingKitchenOrders: true } });
+    assert.equal(invalidCloseDependency.statusCode, 400, `pending close requires kitchen charge at launch: ${invalidCloseDependency.body}`);
+    assert.deepEqual(await settingState(primaryCompany.id, primaryPoint.id), beforeModeRequest, 'mode/dependency rejection makes no settings or audit write');
+
+    const beforeAttendantSettings = await settingState(primaryCompany.id, primaryPoint.id);
+    const attendantConfigPatch = await app.inject({ method: 'PATCH', url: '/api/cervejaria/configuracao-operacional', headers: { cookie: attendantCookie }, payload: { tapsEnabled: true } });
+    assert.equal(attendantConfigPatch.statusCode, 403, 'ATENDENTE is denied by the real owner guard on operational settings');
+    assert.deepEqual(await settingState(primaryCompany.id, primaryPoint.id), beforeAttendantSettings, 'ATENDENTE denial leaves settings unchanged');
+
+    const primaryLegacyBeforeSettings = await settingState(primaryCompany.id, primaryPoint.id);
+    const ownerConfigPatch = await app.inject({ method: 'PATCH', url: '/api/cervejaria/configuracao-operacional', headers: { cookie: ownerCookie }, payload: { tapsEnabled: true, inventoryEnabled: true, quantidadeMesas: 0, confirmacaoEstoque: true } });
+    assert.equal(ownerConfigPatch.statusCode, 200, `owner persists canonical flags and zero tables: ${ownerConfigPatch.body}`);
+    const ownerConfigSaved = JSON.parse(ownerConfigPatch.body);
+    assert.deepEqual([ownerConfigSaved.configurationSource, ownerConfigSaved.tapsEnabled, ownerConfigSaved.inventoryEnabled, ownerConfigSaved.quantidadeMesas], ['CANONICAL_PDV', true, true, 0]);
+    const primaryAfterOwnerPatch = await settingState(primaryCompany.id, primaryPoint.id);
+    assert.deepEqual(primaryAfterOwnerPatch.legacy, primaryLegacyBeforeSettings.legacy, 'owner setting patch does not synchronize legacy company flags');
+    assert.deepEqual(primaryAfterOwnerPatch.module, primaryLegacyBeforeSettings.module, 'owner setting patch does not rewrite the old Operacao row');
+    assert.deepEqual([primaryAfterOwnerPatch.canonical.tapsEnabled, primaryAfterOwnerPatch.canonical.inventoryEnabled, primaryAfterOwnerPatch.canonical.quantidadeMesas], [true, true, 0]);
+    const primaryContextAfterPatch = await app.inject({ method: 'GET', url: '/api/operacao/contexto', headers: { cookie: ownerCookie } });
+    assert.equal(primaryContextAfterPatch.statusCode, 200);
+    assert.deepEqual([JSON.parse(primaryContextAfterPatch.body).tapsEnabled, JSON.parse(primaryContextAfterPatch.body).inventoryEnabled, JSON.parse(primaryContextAfterPatch.body).quantidadeMesas, JSON.parse(primaryContextAfterPatch.body).operationalSettingsSource], [true, true, 0, 'CANONICAL_PDV'], 'context immediately reflects the persisted canonical values');
+
+    const adminConfigRead = await app.inject({ method: 'GET', url: `/api/admin/cervejarias/${encodeURIComponent(primaryCompany.id)}/configuracao-operacional`, headers: { cookie: adminCookie } });
+    assert.equal(adminConfigRead.statusCode, 200, `admin reads through shared canonical config helper: ${adminConfigRead.body}`);
+    assert.deepEqual([JSON.parse(adminConfigRead.body).configurationSource, JSON.parse(adminConfigRead.body).tapsEnabled, JSON.parse(adminConfigRead.body).quantidadeMesas], ['CANONICAL_PDV', true, 0]);
+    const adminConfigPatch = await app.inject({ method: 'PATCH', url: `/api/admin/cervejarias/${encodeURIComponent(primaryCompany.id)}/configuracao-operacional`, headers: { cookie: adminCookie }, payload: { tapsEnabled: false, inventoryEnabled: false, confirmacaoEstoque: true } });
+    assert.equal(adminConfigPatch.statusCode, 200, `admin writes canonical configuration: ${adminConfigPatch.body}`);
+    const adminSaved = JSON.parse(adminConfigPatch.body);
+    assert.deepEqual([adminSaved.tapsEnabled, adminSaved.inventoryEnabled, adminSaved.quantidadeMesas], [false, false, 0]);
+    const primaryAfterAdminPatch = await settingState(primaryCompany.id, primaryPoint.id);
+    assert.deepEqual(primaryAfterAdminPatch.legacy, primaryLegacyBeforeSettings.legacy, 'admin patch leaves divergent legacy flags intact');
+    assert.deepEqual(primaryAfterAdminPatch.module, primaryLegacyBeforeSettings.module);
+
+    const beforeCrossTenantSettings = {
+      primary: await settingState(primaryCompany.id, primaryPoint.id),
+      second: await settingState(secondCompany.id, secondPoint.id),
+    };
+    const crossTenantSettingsPatch = await app.inject({ method: 'PATCH', url: '/api/cervejaria/configuracao-operacional', headers: { cookie: secondOwnerCookie }, payload: { cervejariaId: primaryCompany.id, tapsEnabled: true } });
+    assert.equal(crossTenantSettingsPatch.statusCode, 400, 'owner cannot select another tenant through the strict config payload');
+    assert.deepEqual({ primary: await settingState(primaryCompany.id, primaryPoint.id), second: await settingState(secondCompany.id, secondPoint.id) }, beforeCrossTenantSettings, 'cross-tenant settings attempt changes neither tenant');
+
+    const secondLegacyModuleBefore = await db.configuracaoOperacao.findUniqueOrThrow({ where: { cervejariaId: secondCompany.id } });
+    await db.configuracaoOperacao.update({ where: { cervejariaId: secondCompany.id }, data: { controlaEstoque: false, temCozinha: false } });
+    const stockEnabled = await app.inject({ method: 'PATCH', url: '/api/operacao/capacidades', headers: { cookie: secondOwnerCookie }, payload: { controlaEstoque: true, confirmacaoEstoque: true } });
+    assert.equal(stockEnabled.statusCode, 200, `confirmed stock capability writes canonical PDV: ${stockEnabled.body}`);
+    assert.deepEqual([JSON.parse(stockEnabled.body).controlaEstoque, (await db.configuracaoPontoVenda.findUniqueOrThrow({ where: { pontoVendaId: secondPoint.id } })).inventoryEnabled], [true, true]);
+    assert.deepEqual([await db.configuracaoOperacao.findUniqueOrThrow({ where: { cervejariaId: secondCompany.id } }).then((row) => row.controlaEstoque), (await db.configuracaoOperacional.findUniqueOrThrow({ where: { cervejariaId: secondCompany.id } })).inventoryEnabled], [false, true], 'capability write does not mirror legacy stock fields');
+    const stockDisabled = await app.inject({ method: 'PATCH', url: '/api/operacao/capacidades', headers: { cookie: secondOwnerCookie }, payload: { controlaEstoque: false, confirmacaoEstoque: true } });
+    assert.equal(stockDisabled.statusCode, 200);
+    assert.equal((await db.configuracaoPontoVenda.findUniqueOrThrow({ where: { pontoVendaId: secondPoint.id } })).inventoryEnabled, false, 'explicit false remains persisted');
+    assert.equal((await db.configuracaoOperacao.findUniqueOrThrow({ where: { cervejariaId: secondCompany.id } })).controlaEstoque, false);
+    assert.equal((await db.configuracaoOperacional.findUniqueOrThrow({ where: { cervejariaId: secondCompany.id } })).inventoryEnabled, true, 'legacy operational flag remains unchanged');
+
+    const secondConfigPatch = await app.inject({ method: 'PATCH', url: '/api/operacao/config', headers: { cookie: secondOwnerCookie }, payload: { quantidadeMesas: 0 } });
+    assert.equal(secondConfigPatch.statusCode, 200, `existing mesas endpoint writes canonical zero: ${secondConfigPatch.body}`);
+    assert.equal(JSON.parse(secondConfigPatch.body).quantidadeMesas, 0);
+    assert.equal((await db.configuracaoPontoVenda.findUniqueOrThrow({ where: { pontoVendaId: secondPoint.id } })).quantidadeMesas, 0);
+    assert.equal((await db.configuracaoOperacao.findUniqueOrThrow({ where: { cervejariaId: secondCompany.id } })).quantidadeMesas, secondLegacyModuleBefore.quantidadeMesas, 'legacy mesas count is not synchronized');
+
+    const kitchenEnabled = await app.inject({ method: 'PATCH', url: '/api/operacao/capacidades', headers: { cookie: secondOwnerCookie }, payload: { temCozinha: true } });
+    assert.equal(kitchenEnabled.statusCode, 200, `capacities endpoint writes canonical kitchen flag: ${kitchenEnabled.body}`);
+    assert.equal((await db.configuracaoPontoVenda.findUniqueOrThrow({ where: { pontoVendaId: secondPoint.id } })).kitchenEnabled, true);
+    assert.equal((await db.configuracaoOperacao.findUniqueOrThrow({ where: { cervejariaId: secondCompany.id } })).temCozinha, false);
+
+    const settingsCash = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie: secondOwnerCookie }, payload: { pontoVendaId: secondPoint.id, trocoInicial: 0, cardapioId: secondMenu.id } });
+    assert.equal(settingsCash.statusCode, 201, `settings-proof cash opens: ${settingsCash.body}`);
+    const settingsSessionId = JSON.parse(settingsCash.body).id;
+    const settingsCommandResponse = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie: secondOwnerCookie }, payload: { pontoVendaId: secondPoint.id, tipo: 'APELIDO', identificador: `settings-kitchen-${runId}` } });
+    assert.equal(settingsCommandResponse.statusCode, 201);
+    const settingsCommandId = JSON.parse(settingsCommandResponse.body).id;
+    const settingsLaunch = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(settingsCommandId)}/pedidos`, headers: { cookie: secondOwnerCookie }, payload: { itens: [{ produtoId: kitchenProduct.id, quantidade: 1 }] } });
+    assert.equal(settingsLaunch.statusCode, 201, `active prep order exists before settings changes: ${settingsLaunch.body}`);
+    const settingsItemBefore = await db.itemComanda.findFirstOrThrow({ where: { comandaId: settingsCommandId } });
+    const totalBeforeKitchenCharge = await db.comanda.findUniqueOrThrow({ where: { id: settingsCommandId }, select: { total: true } });
+    assert.equal(centsExact(totalBeforeKitchenCharge.total), '0');
+
+    const kitchenOffBefore = await db.configuracaoPontoVenda.findUniqueOrThrow({ where: { pontoVendaId: secondPoint.id } });
+    const kitchenOffBlocked = await app.inject({ method: 'PATCH', url: '/api/operacao/capacidades', headers: { cookie: secondOwnerCookie }, payload: { temCozinha: false } });
+    assert.equal(kitchenOffBlocked.statusCode, 409, `cannot disable kitchen with an active order: ${kitchenOffBlocked.body}`);
+    assert.deepEqual(await db.configuracaoPontoVenda.findUniqueOrThrow({ where: { pontoVendaId: secondPoint.id } }), kitchenOffBefore, 'blocked kitchen disable makes no config write');
+
+    const chargeChanged = await app.inject({ method: 'PATCH', url: '/api/cervejaria/configuracao-operacional', headers: { cookie: secondOwnerCookie }, payload: { kitchenItemsChargeAtLaunch: true } });
+    assert.equal(chargeChanged.statusCode, 200, `kitchen charge change recalc succeeds atomically: ${chargeChanged.body}`);
+    assert.deepEqual([JSON.parse(chargeChanged.body).kitchenItemsChargeAtLaunch, JSON.parse(chargeChanged.body).allowCloseComandaWithPendingKitchenOrders], [true, false], 'PATCH response preserves the independent pending-close setting');
+    const contextAfterChargePatch = await app.inject({ method: 'GET', url: '/api/operacao/contexto', headers: { cookie: secondOwnerCookie } });
+    assert.equal(contextAfterChargePatch.statusCode, 200);
+    assert.deepEqual([JSON.parse(contextAfterChargePatch.body).kitchenItemsChargeAtLaunch, JSON.parse(contextAfterChargePatch.body).allowCloseComandaWithPendingKitchenOrders, JSON.parse(contextAfterChargePatch.body).operationalSettingsSource], [true, false, 'CANONICAL_PDV'], 'context reads the canonical value immediately after PATCH');
+    const repricedCommand = await db.comanda.findUniqueOrThrow({ where: { id: settingsCommandId }, include: { itens: true, pagamentos: true } });
+    assert.deepEqual([centsExact(repricedCommand.total), repricedCommand.status, repricedCommand.itens.length, repricedCommand.pagamentos.length], ['1000', 'ABERTA', 1, 0], 'open command total follows new setting while item snapshot/financial rows stay intact');
+    const settingsItemAfter = await db.itemComanda.findUniqueOrThrow({ where: { id: settingsItemBefore.id } });
+    assert.deepEqual(plain(settingsItemAfter), plain(settingsItemBefore), 'setting recalc leaves sold-item snapshot and timestamps unchanged');
+    const rejectedPendingPayment = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(settingsCommandId)}/pagamentos`, headers: { cookie: secondOwnerCookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 10 }] } });
+    assert.equal(rejectedPendingPayment.statusCode, 409, 'charge-at-launch does not implicitly permit closing with pending prep');
+    assert.equal(await db.pagamento.count({ where: { comandaId: settingsCommandId } }), 0);
+    const cancelledSettingsCommand = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(settingsCommandId)}/cancelar`, headers: { cookie: secondOwnerCookie }, payload: {} });
+    assert.equal(cancelledSettingsCommand.statusCode, 200, `settings fixture command is closed through the existing route: ${cancelledSettingsCommand.body}`);
+    const kitchenOffAfterCancel = await app.inject({ method: 'PATCH', url: '/api/operacao/capacidades', headers: { cookie: secondOwnerCookie }, payload: { temCozinha: false } });
+    assert.equal(kitchenOffAfterCancel.statusCode, 200, 'kitchen can be disabled after active preparation is resolved');
+    const settingsCashClose = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: secondOwnerCookie }, payload: { pontoVendaId: secondPoint.id, contadoDinheiro: 0, contadoPix: 0, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
+    assert.equal(settingsCashClose.statusCode, 200, `settings proof cash closes: ${settingsCashClose.body}`);
+    assert.equal((await db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: settingsSessionId } })).status, 'FECHADO');
+
+    const secondCanonicalBeforeLegacyMode = plain(await db.configuracaoPontoVenda.findUniqueOrThrow({ where: { pontoVendaId: secondPoint.id } }));
+    await db.configuracaoPontoVenda.update({ where: { pontoVendaId: secondPoint.id }, data: { tapsEnabled: true } });
+    await db.configuracaoOperacional.update({ where: { cervejariaId: secondCompany.id }, data: { tapsEnabled: false } });
+    delete process.env.PDV_CANONICAL_CONFIG_QA;
+    const legacyConfigRead = await app.inject({ method: 'GET', url: '/api/cervejaria/configuracao-operacional', headers: { cookie: secondOwnerCookie } });
+    assert.equal(legacyConfigRead.statusCode, 200);
+    assert.deepEqual([JSON.parse(legacyConfigRead.body).configuration.configurationSource ?? 'LEGACY', JSON.parse(legacyConfigRead.body).configuration.tapsEnabled], ['LEGACY', false], 'disabled activation reads the existing legacy settings');
+    const legacyConfigWrite = await app.inject({ method: 'PATCH', url: '/api/cervejaria/configuracao-operacional', headers: { cookie: secondOwnerCookie }, payload: { tapsEnabled: true } });
+    assert.equal(legacyConfigWrite.statusCode, 200);
+    assert.equal((await db.configuracaoOperacional.findUniqueOrThrow({ where: { cervejariaId: secondCompany.id } })).tapsEnabled, true);
+    assert.equal((await db.configuracaoPontoVenda.findUniqueOrThrow({ where: { pontoVendaId: secondPoint.id } })).tapsEnabled, true, 'legacy-mode write does not implicitly rewrite the canonical record');
+    assert.equal(secondCanonicalBeforeLegacyMode.tapsEnabled, false, 'fixture made the two authorities diverge before disabling activation');
+    process.env.PDV_CANONICAL_CONFIG_QA = '1';
+    settingsApiProofs.push({ ownerGet: 200, ownerPatch: 200, adminGet: 200, adminPatch: 200, mesasZero: 0, explicitFalse: true, noStockConfirmation: 400, kitchenOffWithActiveOrder: 409, kitchenRecalcCents: [centsExact(totalBeforeKitchenCharge.total), centsExact(repricedCommand.total)], pendingPayment: rejectedPendingPayment.statusCode, modeChange: JSON.parse(eventModeRequest.body).code, legacyActivationOff: [legacyConfigRead.statusCode, legacyConfigWrite.statusCode] });
+
     const summary = {
       login: [200, 200, 200], missingCredential: missing.statusCode, invalidToken: invalid.statusCode,
       attendantOwnerOnly: attendantOwnerOnly.statusCode, crossTenantRead: foreignRead.statusCode, crossTenantWrite: foreignWrite.statusCode,
       canonicalBlockers: blockerFixtures.map(({ name, expectedCode }) => ({ name, code: expectedCode, status: 409 })),
-      operationFlows, kitchenSettingProofs,
+      operationFlows, kitchenSettingProofs, settingsApiProofs,
     };
     console.log(`QA_AUTHENTICATED_CASH=PASS; ${JSON.stringify(summary)}`);
   } finally {

@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { registrarTransacao, type RegistrarTransacaoInput } from '../transacao-log.js';
 import { updateOperationalConfig } from '../operational-config.js';
+import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
 
 type TxClient = Prisma.TransactionClient;
 
@@ -67,6 +68,25 @@ export async function atualizarCapacidadesOperacao(
   input: AtualizarCapacidadesOperacaoInput,
   auditRecorder: AuditRecorder = (audit) => registrarTransacao(audit, tx),
 ) {
+  const canonical = await readCanonicalPdvOperationalSettingsIfEnabled(input.cervejariaId, tx);
+  if (canonical) {
+    const updated = await updateOperationalConfig(tx, input.cervejariaId, {
+      ...(input.temCozinha !== undefined ? { kitchenEnabled: input.temCozinha } : {}),
+      ...(input.controlaEstoque !== undefined ? { inventoryEnabled: input.controlaEstoque } : {}),
+      ...(input.confirmacaoEstoque === true ? { confirmacaoEstoque: true as const } : {}),
+    }, { userId: input.usuarioId, role: input.papel });
+    return {
+      cervejariaId: input.cervejariaId,
+      ativo: true,
+      exclusivo: false,
+      controlaEstoque: updated.inventoryEnabled,
+      temCozinha: updated.kitchenEnabled,
+      quantidadeMesas: (updated as { quantidadeMesas?: number }).quantidadeMesas ?? 0,
+      configurationSource: 'CANONICAL_PDV' as const,
+      pontoVendaId: canonical.pointId,
+    };
+  }
+
   const atual = await tx.configuracaoOperacao.findUnique({
     where: { cervejariaId: input.cervejariaId },
     select: {

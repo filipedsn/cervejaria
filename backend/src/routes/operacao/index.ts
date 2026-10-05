@@ -17,6 +17,8 @@ import {
   atualizarCapacidadesOperacao,
   updateCapacidadesOperacaoSchema,
 } from '../../lib/operacao/capacidades.js';
+import { canonicalPdvQaActivationEnabled } from '../../lib/canonical-pdv-operational-config.js';
+import { updateOperationalConfig } from '../../lib/operational-config.js';
 
 const createPontoVendaSchema = z.object({
   nome: z.string().trim().min(1),
@@ -85,10 +87,17 @@ export async function operacaoRoutes(app: FastifyInstance) {
         .refine((value) => value.quantidadeMesas !== undefined)
         .parse(request.body);
 
-      const updated = await prisma.configuracaoOperacao.update({
-        where: { cervejariaId },
-        data: body,
-      });
+      if (canonicalPdvQaActivationEnabled()) {
+        const updated = await prisma.$transaction((tx) => updateOperationalConfig(
+          tx,
+          cervejariaId,
+          { quantidadeMesas: body.quantidadeMesas },
+          { userId: getAuthUser(request).sub, role: 'DONO' },
+        ));
+        return { quantidadeMesas: (updated as { quantidadeMesas?: number }).quantidadeMesas ?? 0 };
+      }
+
+      const updated = await prisma.configuracaoOperacao.update({ where: { cervejariaId }, data: body });
 
       return { quantidadeMesas: updated.quantidadeMesas };
     });
