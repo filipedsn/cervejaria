@@ -50,41 +50,71 @@ try {
     return { ...table, rows, targetFields: targetScalars };
   });
 
-  // Exact row-level dependency ordering. No fixture substitution and no ID rewriting.
-  const remaining = new Map(tables.map((table) => [table.model, table]));
-  const insertedModels = new Set();
+  // Exact row-level FK order. Nullable cyclic links are restored after all endpoints exist.
   await db.$transaction(async (tx) => {
-    while (remaining.size) {
-      const ready = [...remaining.values()].filter((table) => table.parents.every((relation) => {
-        const parent = remaining.get(relation.model);
-        if (!parent) return true;
-        const values = new Set(parent.rows.map((row) => relation.references.map((key) => canonical(row[key])).join('|')));
-        return table.rows.every((row) => {
-          const from = relation.fields.map((key) => row[key]);
-          return from.some((value) => value == null) || values.has(from.map(canonical).join('|')) && insertedModels.has(relation.model);
-        });
-      }));
-      if (!ready.length) throw new Error(`PHOTO_IMPORT_DEPENDENCY_CYCLE: ${[...remaining.keys()].join(',')}`);
-      for (const table of ready) {
-        const targetDelegate = tx[table.model[0].toLowerCase() + table.model.slice(1)];
-        const data = table.rows.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, revive(value)])));
-        if (data.length) await targetDelegate.createMany({ data, skipDuplicates: false });
-        insertedModels.add(table.model);
-        remaining.delete(table.model);
+    const entries = [];
+    for (const table of tables) for (const row of table.rows) {
+      const identity = `${table.model}:${photoKey(table, row)}`;
+      const entry = { table, row, data: Object.fromEntries(Object.entries(row).map(([key, value]) => [key, revive(value)])), identity, dependencies: new Set(), deferred: [] };
+      entries.push(entry);
+    }
+    const byTargetKey = new Map();
+    for (const entry of entries) {
+      const table = entry.table;
+      const key = table.primaryKey.map((field) => JSON.stringify(canonical(entry.row[field])).replaceAll('|', '\\|')).join('|');
+      byTargetKey.set(`${table.model}:${key}`, entry);
+    }
+    for (const entry of entries) for (const relation of entry.table.parents) {
+      const values = relation.fields.map((field) => entry.row[field]);
+      if (values.some((value) => value == null)) continue;
+      const parentKey = relation.references.map((field, index) => JSON.stringify(canonical(values[index])).replaceAll('|', '\\|')).join('|');
+      const parent = byTargetKey.get(`${relation.model}:${parentKey}`);
+      if (!parent) throw new Error(`PHOTO_IMPORT_MISSING_PARENT: ${entry.table.model}.${relation.fields.join('+')} -> ${relation.model}; row=${photoKey(entry.table, entry.row)}`);
+      entry.dependencies.add({ parent, relation });
+    }
+    const inserted = new Set();
+    const nullableFields = new Map(modelEntries.map(([name, model]) => [name, new Map(model.fields.filter((field) => field.kind === 'scalar').map((field) => [field.name, field.isRequired === false]))]));
+    while (inserted.size < entries.length) {
+      const ready = entries.filter((entry) => !inserted.has(entry) && [...entry.dependencies].every(({ parent }) => inserted.has(parent)));
+      if (ready.length) {
+        for (const [modelName, modelEntriesReady] of Map.groupBy(ready, (entry) => entry.table.model)) {
+          const delegateName = modelName[0].toLowerCase() + modelName.slice(1);
+          try {
+            await tx[delegateName].createMany({ data: modelEntriesReady.map((entry) => entry.data), skipDuplicates: false });
+          } catch (error) {
+            const first = modelEntriesReady[0];
+            const wrapped = new Error(`PHOTO_IMPORT_DB_CONSTRAINT: ${modelName} rows=${modelEntriesReady.length}; first=${photoKey(first.table, first.row)}; code=${error.code ?? error.name}; target=${JSON.stringify(error.meta?.target ?? null)}`);
+            wrapped.code = 'PHOTO_IMPORT_DB_CONSTRAINT'; wrapped.model = modelName; wrapped.cause = error;
+            throw wrapped;
+          }
+          for (const entry of modelEntriesReady) inserted.add(entry);
+        }
+        continue;
       }
+      const cycleEdge = entries.filter((entry) => !inserted.has(entry)).flatMap((entry) => [...entry.dependencies].filter(({ parent }) => !inserted.has(parent)).map((edge) => ({ entry, ...edge })))[0];
+      if (!cycleEdge || !cycleEdge.relation.fields.every((field) => nullableFields.get(cycleEdge.entry.table.model)?.get(field))) {
+        throw new Error(`PHOTO_IMPORT_REQUIRED_FK_CYCLE: ${entries.filter((entry) => !inserted.has(entry)).slice(0, 8).map((entry) => entry.identity).join(',')}`);
+      }
+      for (const field of cycleEdge.relation.fields) cycleEdge.entry.data[field] = null;
+      cycleEdge.entry.deferred.push(...cycleEdge.relation.fields.map((field) => [field, revive(cycleEdge.entry.row[field])]));
+      cycleEdge.entry.dependencies.delete([...cycleEdge.entry.dependencies].find((edge) => edge.parent === cycleEdge.parent && edge.relation === cycleEdge.relation));
+    }
+    for (const entry of entries.filter((candidate) => candidate.deferred.length)) {
+      const where = Object.fromEntries(entry.table.primaryKey.map((field) => [field, entry.data[field]]));
+      await tx[entry.table.model[0].toLowerCase() + entry.table.model.slice(1)].update({ where, data: Object.fromEntries(entry.deferred) });
     }
 
     // The restored destination must equal every captured common scalar value before transforms.
     for (const table of tables) {
       const targetDelegate = tx[table.model[0].toLowerCase() + table.model.slice(1)];
-      const rows = await targetDelegate.findMany({ where: { id: { in: table.rows.map((row) => row.id).filter((id) => id != null) } } });
-      const byId = new Map(rows.map((row) => [row.id, row]));
+      const rows = await targetDelegate.findMany();
+      const byId = new Map(rows.map((row) => [table.primaryKey.map((field) => `${field}=${JSON.stringify(canonical(row[field])).replaceAll('|', '\\|')}`).join('|'), row]));
       assert.equal(rows.length, table.rows.length, `${table.model}: restored row count/IDs`);
       for (const source of table.rows) {
-        const key = source.id;
+        const key = table.primaryKey.map((field) => `${field}=${JSON.stringify(canonical(revive(source[field]))).replaceAll('|', '\\|')}`).join('|');
         const actual = byId.get(key);
-        assert.ok(actual, `${table.model} missing ID ${key}`);
-        for (const [field, value] of Object.entries(source)) assert.deepEqual(canonical(actual[field]), canonical(revive(value)), `${table.model}.${field} ID ${key}`);
+        assert.ok(actual, `${table.model} missing primary key ${key}`);
+        for (const [field, value] of Object.entries(source)) assert.deepEqual(canonical(actual[field]), canonical(revive(value)), `${table.model}.${field} primary key ${key}`);
       }
     }
   }, { timeout: 300000, maxWait: 30000 });
@@ -131,7 +161,7 @@ try {
   }
   console.log(JSON.stringify({ qaDatabase: dbName, sourcePhoto: { tables: tables.length, rows: tables.reduce((sum, table) => sum + table.rows.length, 0), crossTenantEdges: photo.crossTenantEdges.length }, anonymizedFields: photo.anonymization, reports }, null, 2));
 } catch (error) {
-  const safe = { status: 'BLOCKED', phase: 'photo-import', code: error.code ?? error.name, model: error.meta?.modelName ?? null, field: error.meta?.target ?? null, message: error.message };
+  const safe = { status: 'BLOCKED', phase: 'photo-import', code: error.code ?? error.name, model: error.model ?? error.meta?.modelName ?? null, field: error.meta?.target ?? null, message: error.code === 'PHOTO_IMPORT_DB_CONSTRAINT' || String(error.message).startsWith('PHOTO_IMPORT_') ? error.message : `${error.code ?? error.name}: database rejected the sanitized snapshot import.` };
   console.error(JSON.stringify(safe, null, 2));
   process.exitCode = 1;
 } finally {
