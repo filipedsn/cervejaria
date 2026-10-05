@@ -148,7 +148,7 @@ try {
         if (result.status !== 'COMPLETED') { blocker = { phase, ...result, code: result.code ?? result.status ?? 'MIGRATOR_NOT_COMPLETED' }; break; }
         const replay = await execute({});
         if (replay.status !== 'COMPLETED') { blocker = { phase, ...replay, code: replay.code ?? replay.status ?? 'REPLAY_NOT_COMPLETED' }; break; }
-        reports.push({ tenant: target.label, phase, status: 'COMPLETED', interruptedAndResumed: interrupted, sameRunReplay: replay.reusedCompletedRun === true || replay.status === 'COMPLETED', counts: result.counts ?? result.scopeCounts ?? undefined });
+        reports.push({ tenant: target.label, phase, status: 'COMPLETED', interruptedAndResumed: interrupted, sameRunReplay: replay.reusedCompletedRun === true || replay.status === 'COMPLETED', counts: result.counts ?? result.scopeCounts ?? result.checkpoint?.scopeCounts ?? undefined });
       } catch (error) {
         blocker = { phase, status: 'BLOCKED', code: error.code ?? error.name, sourceType: error.sourceType ?? null, sourceId: error.sourceId ?? null, message: error.message };
         break;
@@ -156,7 +156,7 @@ try {
     }
     if (blocker) {
       reports.push({ tenant: target.label, ...blocker });
-      break;
+      continue;
     }
   }
   console.log(JSON.stringify({ qaDatabase: dbName, sourcePhoto: { tables: tables.length, rows: tables.reduce((sum, table) => sum + table.rows.length, 0), crossTenantEdges: photo.crossTenantEdges.length }, anonymizedFields: photo.anonymization, reports }, null, 2));
