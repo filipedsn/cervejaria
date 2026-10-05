@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "certification": "pdv-unico-current-disposable",
+  "selectedCommit": "40fa92b7fa7c879b8ce23d3823ab0c51ede95bb6",
+  "selectedTree": "6f44caa92d0766bccb740b5b3d933f885f32bb6c",
+  "certificationRunnerPath": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+  "certificationRunnerSha256": "964a4c0da6993af69f30c43d53be967f5683133219704b635f845690642b4488",
+  "sourceMaterialization": "git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot",
+  "materializedTrackedBlobCount": 1093,
+  "packageLockSha256": "9330ae831d6ea407a47dbf50a6158c60fd9ffb54fe99ed87e17fd6c6e5ec60d0",
+  "nodeVersion": "v24.18.0",
+  "generatedCandidateManifest": {
+    "baselineCommit": "40fa92b7fa7c879b8ce23d3823ab0c51ede95bb6",
+    "manifestSha256": "b1dd317f8692385c346cd46959d6a04913ac325b4ceaec267c2c1c54b37d273f",
+    "codeCandidateCount": 53
+  },
+  "moduleOriginAudit": {
+    "result": "PASS",
+    "snapshotProjectModuleCount": 172,
+    "snapshotProjectModulePathListSha256": "490ac7cf68333994c6e2cf73dcac7013a54a9beb24df1a58a18f9c0f822cd843",
+    "nonSnapshotWorkspaceModuleCount": 0,
+    "externalDependencyModuleCount": 100,
+    "externalPrismaRuntimeVersion": "6.19.3"
+  },
+  "localState": {
+    "beforeSha256": "38e158d76d13ee6597dc0906c9f69bbd9581610cd4086e31dc91dfa5b3a75720",
+    "afterSha256": "38e158d76d13ee6597dc0906c9f69bbd9581610cd4086e31dc91dfa5b3a75720",
+    "identical": true,
+    "stagedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "unstagedDiffSha256": "d08b6a79d23281bfd5056f77fa76f5265a8cc33d0234c57d7cbf593ff6080b98",
+    "untrackedFileCount": 9
+  },
+  "prodAccessUsed": "NO",
+  "devSharedAccess": "NO"
+}
