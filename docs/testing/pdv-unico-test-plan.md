@@ -513,3 +513,18 @@ This fixture was added to the current 91-migration disposable commerce runner. I
 **Executed:** `npm run qa:pdv-commerce-disposable` applied and exercised the current 91-migration pinned bundle on a temporary PostgreSQL container, passed the existing integrated commerce assertions and eight Event deletion/audit/concurrency tests (8/8, 0 skips), then printed `QA_AUTHENTICATED_CASH=PASS` and `PDV_COMMERCE_QA=PASS`. The same runtime Prisma client used by the app was checked against the QA database. The container was removed by the runner. No source module or operational policy changed in this delivery.
 
 **Limits:** these results certify only synthetic rows and the specific real auth/login/requireDono/tenant guards exercised above. They do not establish global RBAC coverage, UI behavior, real-data migration, shared-DEV readiness or cutover approval. DEV and PROD were not accessed. `PROD_ACCESS_USED=NO`.
+
+## API-CASH-02 — Isolamento de aumento de consumo por ocorrência (2026-10-05)
+
+| Caso | Ação autenticada | Resultado / invariantes | Executor |
+|---|---|---|---|
+| Baseline anterior à correção | Sessão B; comanda historicamente vinculada a A; PATCH do item 1→2 | Reproduzido antes da correção em PostgreSQL QA descartável: HTTP 200, total 950¢→1.900¢, estoque 900→800. Prova autenticada da falha observável; o contador de zero consultas da revisão inicial foi apenas simulado. | API Fastify `inject` + PostgreSQL QA |
+| Contexto incompatível | PATCH 1→2 com `ocorrenciaId` arbitrário no payload | HTTP 409; item/quantidade, opcionais e snapshots, total, pagamentos, pedidos/histórico, saldo e movimentos permanecem iguais | Mesmo runner; PASS |
+| Contexto correto / estoque | PATCH 1→2 na sessão e ocorrência compatíveis | HTTP 200; total 950¢→1.900¢; uma unidade adicional debitada, um movimento adicional; snapshot e pagamentos preservados | Mesmo runner; PASS |
+| Sem sessão aberta / tenant | Aumento sem sessão autorizadora; chamada cruzada por tenant | 400 sem escrita; tenant distinto recebe 404 | Mesmo runner; PASS |
+| Fechamento concorrente | PATCH aguarda advisory lock do caixa; sessão fecha sob o lock | 1 waiter observado; depois do fechamento PATCH retorna 400 sem alterar comanda/pagamento. Cancelamento permanece possível e reverte estoque | Mesmo runner; PASS |
+| Cozinha / histórico / modo legado | Aumento após envio e após entrega; transições de preparo; PATCH com ativação desligada | Aumentos bloqueados com 409; preparo e pagamento histórico seguem; cancelamentos/estornos pertinentes passam; modo legado aceita PATCH 200 sem consulta aditiva e ignora contexto enviado pelo cliente | Mesmo runner; PASS |
+
+Implementação certificada no snapshot Git `5fcfd43d155992d2595d88c5ca5da9f9c3f5fea0` (`4812662919e93a1f2fffb9042ef7974e0ff64395`). `npm run build` passou; testes focados passaram 3/3; `npm run qa:pdv-current-git-snapshot` passou integralmente, com `PROD_ACCESS_USED=NO`, `devSharedAccess=NO`, fotografia imutável de 1.097 blobs e estado local preservado. Evidência estruturada: `pdv-unico-occurrence-context-qa-evidence.json`.
+
+**Limites:** todas as escritas foram em PostgreSQL QA descartável em `tmpfs`; nenhum dado DEV/PROD foi lido ou escrito. A reprodução autenticada é sintética, não valida dados reais nem autoriza migration/cutover. Política de aumento negativo/correção histórica sem caixa aberto ainda requer decisão operacional; a implementação não bloqueia cancelamento, estorno ou confirmação histórica de preparo. UI, migração real e corte continuam pendentes.

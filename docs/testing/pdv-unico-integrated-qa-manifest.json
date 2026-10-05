@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "9316c9b68e16d9f8195ff63031fb443921432683",
+    "commit": "5fcfd43d155992d2595d88c5ca5da9f9c3f5fea0",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc"
   },
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "9316c9b68e16d9f8195ff63031fb443921432683",
+      "commit": "5fcfd43d155992d2595d88c5ca5da9f9c3f5fea0",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -58,7 +58,7 @@
     }
   },
   "delivery": {
-    "schemaCommit": "9316c9b68e16d9f8195ff63031fb443921432683",
+    "schemaCommit": "5fcfd43d155992d2595d88c5ca5da9f9c3f5fea0",
     "schemaSha256": "0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
@@ -106,11 +106,11 @@
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs",
-      "sha256": "dfc82a65fd8395908c3d472e2b79f88c84973f26bb70b2a1edd330ad90a7e13a"
+      "sha256": "a5bcb4b795537977840178d59c94974ec4e690a8009264f4f7a49a993f9624a4"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
-      "sha256": "c825dcf6f16113271fa39becbf8b29ec265f7207bc1cfc272cd6e75da8df7500"
+      "sha256": "da8dd64eb8372bf48fcafbfc03efc44b08ddb06e5d94d43961bae83c61907a89"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.test.mjs",
@@ -234,7 +234,11 @@
     },
     {
       "path": "backend/src/lib/operacao/comanda-itens.ts",
-      "sha256": "bf6917409228c7f21858fc63042e444596ab67aa0149042fdc33192730776b9f"
+      "sha256": "f4b9d0b3c8ec68e6cb88ef5de79dbf153a26862e144e5571c535eef91645e86e"
+    },
+    {
+      "path": "backend/src/lib/operacao/contexto-ocorrencia.test.ts",
+      "sha256": "a427d7c4b120a3a19672e65ca20ddbebaa0b66af8353bb36d8b439f35b4f7f0a"
     },
     {
       "path": "backend/src/lib/operacao/contexto-ocorrencia.ts",
@@ -305,5 +309,5 @@
       "sha256": "c3783edb5d311e28bcafa946ddc3e4d7aece1bbd2d485f354ba429fa98a1d098"
     }
   ],
-  "manifestSha256": "d8fd08b9941e763940864c03b1e82d5c3754e2081d3dfeb887667407fb0a4f13"
+  "manifestSha256": "0db59f21938d4912dcfff990db1205aeef3e339bccc3797c5b4179be1be68100"
 }

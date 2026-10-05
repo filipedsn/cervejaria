@@ -1,35 +1,74 @@
 {
   "version": 1,
   "certification": "pdv-unico-current-disposable",
-  "selectedCommit": "9316c9b68e16d9f8195ff63031fb443921432683",
-  "selectedTree": "f3955957021cbc2cae33983ead4d09f200873804",
+  "selectedCommit": "5fcfd43d155992d2595d88c5ca5da9f9c3f5fea0",
+  "selectedTree": "4812662919e93a1f2fffb9042ef7974e0ff64395",
   "certificationRunnerPath": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
   "certificationRunnerSha256": "964a4c0da6993af69f30c43d53be967f5683133219704b635f845690642b4488",
   "sourceMaterialization": "git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot",
-  "materializedTrackedBlobCount": 1095,
+  "materializedTrackedBlobCount": 1097,
   "packageLockSha256": "9330ae831d6ea407a47dbf50a6158c60fd9ffb54fe99ed87e17fd6c6e5ec60d0",
   "nodeVersion": "v24.18.0",
   "generatedCandidateManifest": {
-    "baselineCommit": "9316c9b68e16d9f8195ff63031fb443921432683",
-    "manifestSha256": "d8fd08b9941e763940864c03b1e82d5c3754e2081d3dfeb887667407fb0a4f13",
-    "codeCandidateCount": 57
+    "baselineCommit": "5fcfd43d155992d2595d88c5ca5da9f9c3f5fea0",
+    "manifestSha256": "0db59f21938d4912dcfff990db1205aeef3e339bccc3797c5b4179be1be68100",
+    "codeCandidateCount": 58
   },
   "moduleOriginAudit": {
     "result": "PASS",
     "snapshotProjectModuleCount": 173,
-    "snapshotProjectModulePathListSha256": "282cf7290db21093bbf9ebe984b7eda9adbe759ca7093c38403553a448cf9cf5",
+    "snapshotProjectModulePathListSha256": "899b9513525669582abd8aeaf52552d68b09a1d94b818dee1e41d7efa3ba609b",
     "nonSnapshotWorkspaceModuleCount": 0,
     "externalDependencyModuleCount": 100,
     "externalPrismaRuntimeVersion": "6.19.3"
   },
   "localState": {
-    "beforeSha256": "5e48cc522b88bfecc5b7e0ece31cbbae15ea8aa0f98b0796b3ba13e25d9ddffe",
-    "afterSha256": "5e48cc522b88bfecc5b7e0ece31cbbae15ea8aa0f98b0796b3ba13e25d9ddffe",
+    "beforeSha256": "85c2ccb69587553cea3df044abde944d527e2c6be5d11a8f507462c2513328da",
+    "afterSha256": "85c2ccb69587553cea3df044abde944d527e2c6be5d11a8f507462c2513328da",
     "identical": true,
     "stagedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "unstagedDiffSha256": "db6ef209460bcea4521cc665e96a21cc9e7fc3bb11744439560c37207586532f",
-    "untrackedFileCount": 10
+    "unstagedDiffSha256": "4d192062d0ab95ef7885a7462ca4124d293d25525d4b4376bf827323f2145074",
+    "untrackedFileCount": 9
   },
   "prodAccessUsed": "NO",
-  "devSharedAccess": "NO"
+  "devSharedAccess": "NO",
+  "qaCommand": "npm run qa:pdv-current-git-snapshot",
+  "qaExitCode": 0,
+  "qaSuiteResults": {
+    "manifestTests": { "passed": 3, "failed": 0 },
+    "historicalDisposable": "PASS",
+    "financeDisposable": "PASS",
+    "commerceDisposable": "PASS",
+    "eventDeletionAuditConcurrency": { "passed": 8, "failed": 0, "skipped": 0 },
+    "authenticatedOccurrenceIncrease": {
+      "result": "PASS",
+      "incompatibleOccurrence": "409; no command/item/optional/snapshot/payment/history/stock write",
+      "matchingOccurrence": "200; quantity 1->2; total 950->1900 cents; stock delta -1 unit",
+      "missingAuthorizingSession": "400; no write",
+      "cashCloseConcurrency": "400 after waiting; PostgreSQL advisory-lock waiter observed",
+      "tenantIsolation": 404,
+      "historicalCancellationReversal": "PASS",
+      "preparedAndDeliveredQuantityRestrictions": "409; historical preparation/payment flows pass",
+      "activationOffLegacyContract": "200; no additive occurrence lookup; arbitrary occurrence payload ignored"
+    }
+  },
+  "preFixAuthenticatedReproduction": {
+    "environment": "disposable PostgreSQL QA; Fastify authenticated API",
+    "sessionOccurrence": "B",
+    "commandOccurrence": "A",
+    "patch": "quantity 1->2",
+    "httpStatus": 200,
+    "totalCents": "950->1900",
+    "stock": "900->800",
+    "scopeLimit": "API/database effect was authenticated; the initial zero-session-query counter came only from simulated dependencies, not this API request"
+  },
+  "focusedBuildAndTests": {
+    "backendBuild": "PASS",
+    "focusedUnitTests": { "passed": 3, "failed": 0, "skipped": 0 }
+  },
+  "qaDisposableEnvironment": {
+    "postgresStorage": "tmpfs",
+    "publishedAddress": "127.0.0.1 only",
+    "temporarySnapshotRemoved": true
+  }
 }
