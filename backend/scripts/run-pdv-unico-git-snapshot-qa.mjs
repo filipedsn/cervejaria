@@ -112,6 +112,7 @@ registerHooks({
 `;
 
 let succeeded = false;
+let syntheticExitCode = null;
 let representativeExitCode = null;
 const runnerPath = path.relative(repoRoot, fileURLToPath(import.meta.url)).split(path.sep).join('/');
 const runnerWorkingTreeSha256 = normalizedSha256(await readFile(fileURLToPath(import.meta.url)));
@@ -220,7 +221,10 @@ try {
 
   run(process.execPath, ['--test', 'scripts/pdv-unico-commerce-qa-manifest.test.mjs'], { cwd: backendSnapshot, env, stdio: 'inherit' });
 
-  run(process.execPath, [npmCli, 'run', 'qa:pdv-current-disposable'], { cwd: backendSnapshot, env, stdio: 'inherit' });
+  const synthetic = spawnSync(process.execPath, [npmCli, 'run', 'qa:pdv-current-disposable'], { cwd: backendSnapshot, env, stdio: 'inherit', windowsHide: true });
+  if (synthetic.error) throw synthetic.error;
+  syntheticExitCode = synthetic.status ?? 1;
+  console.log(`PDV_GIT_QA_SYNTHETIC=${syntheticExitCode === 0 ? 'PASS' : 'BLOCKED'}; exitCode=${syntheticExitCode}`);
   if (env.PDV_REPRESENTATIVE_PHOTO_FILE) {
     const representative = spawnSync(process.execPath, [npmCli, 'run', 'qa:pdv-representative'], { cwd: backendSnapshot, env, stdio: 'inherit', windowsHide: true });
     if (representative.error) throw representative.error;
@@ -260,8 +264,8 @@ try {
   }
   const evidence = {
     version: 1,
-    certification: representativeExitCode === null || representativeExitCode === 0 ? 'pdv-unico-current-disposable' : 'BLOCKED',
-    syntheticRegression: { result: 'PASS', suite: 'pdv-unico-current-disposable' },
+    certification: (syntheticExitCode === 0 && (representativeExitCode === null || representativeExitCode === 0)) ? (representativeExitCode === null ? 'synthetic-only' : 'pdv-unico-current-disposable') : 'BLOCKED',
+    syntheticRegression: { result: syntheticExitCode === 0 ? 'PASS' : 'BLOCKED', suite: 'pdv-unico-current-disposable', exitCode: syntheticExitCode },
     representativeRehearsal: representativeExitCode === null ? { result: 'NOT_RUN', reason: 'No representative photo supplied.' } : { result: representativeExitCode === 0 ? 'PASS' : 'BLOCKED', exitCode: representativeExitCode },
     selectedCommit,
     selectedTree,
@@ -298,7 +302,7 @@ try {
   if (evidencePath) await writeFile(path.resolve(evidencePath), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
   console.log(`PDV_GIT_QA_LOCAL_STATE=UNCHANGED; fingerprint=${localAfter.sha256}; staged=${localAfter.state.stagedDiffSha256}; unstaged=${localAfter.state.unstagedDiffSha256}; untracked=${localAfter.state.untracked.length}`);
   console.log(`PDV_GIT_QA_EVIDENCE=${JSON.stringify(evidence)}`);
-  succeeded = representativeExitCode === null || representativeExitCode === 0;
+  succeeded = syntheticExitCode === 0 && (representativeExitCode === null || representativeExitCode === 0);
 } finally {
   await rm(tempRoot, { recursive: true, force: true });
 }

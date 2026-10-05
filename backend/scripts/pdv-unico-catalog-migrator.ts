@@ -649,7 +649,7 @@ async function writeFinanceTarget(tx: Db, item: any, hasExistingMap: boolean) {
 
 export async function runPdvFinanceMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void }) {
   return runPdvScopedMigration({
-    ...options, batchSize: options.batchSize ?? 100, transactionTimeoutMs: options.transactionTimeoutMs ?? 30000, transactionMaxWaitMs: options.transactionMaxWaitMs ?? 10000,
+    ...options, batchSize: options.batchSize ?? 1, transactionTimeoutMs: options.transactionTimeoutMs ?? 30000, transactionMaxWaitMs: options.transactionMaxWaitMs ?? 10000,
     scope: PDV_FINANCE_SCOPE, transformVersion: PDV_FINANCE_TRANSFORM_VERSION,
     createTransactionContext: async (tx) => {
       let resolver: Promise<(eventId: string) => Promise<any>> | null = null;
@@ -757,7 +757,7 @@ async function reconcilePdvCommerce(tx: Db, companyId: string, pointId: string, 
 /** Reconciles existing command/order/stock rows and writes only confirmed PDV/event links. */
 export async function runPdvCommerceMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void }) {
   return runPdvScopedMigration({
-    ...options, batchSize: options.batchSize ?? 100, transactionTimeoutMs: options.transactionTimeoutMs ?? 30000, transactionMaxWaitMs: options.transactionMaxWaitMs ?? 10000,
+    ...options, batchSize: options.batchSize ?? 1, transactionTimeoutMs: options.transactionTimeoutMs ?? 30000, transactionMaxWaitMs: options.transactionMaxWaitMs ?? 10000,
     scope: PDV_COMMERCE_SCOPE, transformVersion: PDV_COMMERCE_TRANSFORM_VERSION,
     createTransactionContext: async (tx) => {
       let resolver: Promise<(eventId: string) => Promise<any>> | null = null;
