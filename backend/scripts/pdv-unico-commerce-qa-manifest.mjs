@@ -114,6 +114,14 @@ export async function buildPdvCommerceQaManifest(options = {}) {
   const manifestTestPath = 'backend/scripts/pdv-unico-commerce-qa-manifest.test.mjs';
   const selectedFiles = git(['ls-tree', '-r', '--name-only', baselineCommit, '--', manifestTestPath], { encoding: 'utf8' }).trim();
   if (selectedFiles === manifestTestPath) codePaths.push(manifestTestPath);
+  // A manifest can be regenerated for an older code commit while this
+  // generator knows about newer candidates. Only hash candidate paths that
+  // actually exist in the selected immutable tree.
+  const selectedCandidatePaths = new Set(git(
+    ['ls-tree', '-r', '--name-only', baselineCommit],
+    { encoding: 'utf8' },
+  ).split(/\r?\n/).filter(Boolean));
+  const availableCodePaths = [...new Set(codePaths)].filter((file) => selectedCandidatePaths.has(file));
   const data = {
     version: 1,
     baseline: {
@@ -145,7 +153,7 @@ export async function buildPdvCommerceQaManifest(options = {}) {
       sha256: digest(git(['show', `66ec00886b65eaea8e437fae4e9a36f7be971b09:${schemaPath}`])),
       compatibility: 'Matches DEV migration ledger through 20260930150000_company_pix_key; excludes additive PDV migrations not applied in DEV.',
     },
-    codeCandidates: codePaths.map((file) => ({ path: file, sha256: digest(git(['show', `${baselineCommit}:${file}`])) })),
+    codeCandidates: availableCodePaths.map((file) => ({ path: file, sha256: digest(git(['show', `${baselineCommit}:${file}`])) })),
   };
   return { ...data, manifestSha256: digest(Buffer.from(JSON.stringify(data))) };
 }
