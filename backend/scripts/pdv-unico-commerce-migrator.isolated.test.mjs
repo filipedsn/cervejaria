@@ -717,7 +717,8 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const legacyItemId = JSON.parse(legacyLaunch.body).pedidos[0].itens[0].id;
     const legacyIncrease = await withSecondOwnerAt('2026-11-08', (cookie) => app.inject({ method: 'PATCH', url: `/api/operacao/comandas/${encodeURIComponent(legacyCommandId)}/itens/${encodeURIComponent(legacyItemId)}`, headers: { cookie }, payload: { quantidade: 2, ocorrenciaId: oneOffOccurrence.id } }));
     assert.equal(legacyIncrease.statusCode, 200, `activation off keeps the legacy quantity update contract and ignores occurrence payload: ${legacyIncrease.body}`);
-    assert.deepEqual([JSON.parse(legacyIncrease.body).itens[0].quantidade, centsExact(JSON.parse(legacyIncrease.body).total)], [2, '800']);
+    const legacyUpdatedCommand = await db.comanda.findUniqueOrThrow({ where: { id: legacyCommandId }, include: { itens: true } });
+    assert.deepEqual([legacyUpdatedCommand.itens[0].quantidade, centsExact(legacyUpdatedCommand.total), legacyUpdatedCommand.ocorrenciaId], [2, '800', null], 'disabled mode preserves quantity/total and ignores arbitrary occurrence payload');
     const legacyPaid = await withSecondOwnerAt('2026-11-08', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(legacyCommandId)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 8 }] } }));
     assert.equal(legacyPaid.statusCode, 200, `legacy payment remains available: ${legacyPaid.body}`);
     const legacyPayment = await db.pagamento.findFirstOrThrow({ where: { comandaId: legacyCommandId } });
