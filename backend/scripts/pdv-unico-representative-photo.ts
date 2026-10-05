@@ -61,9 +61,9 @@ function sanitizeRow(model: AnyRecord, input: AnyRecord, tenantLabel: string, ru
     else if ((model.name === 'Cliente' && name === 'observacoes') || name === 'observacao' || name === 'observacoes') row[name] = row[name] == null ? null : '[ANONIMIZADO]';
     else if (model.name === 'Evento' && name === 'local') row[name] = row[name] == null ? null : '[LOCAL ANONIMIZADO]';
     else if (model.name === 'TransacaoLog' && name === 'metadata' && row[name] != null) row[name] = redactMetadata(row[name], runId, model.name, rowId);
-    else if (/senha|password|tokenHash|endpoint|p256dh|^auth$/i.test(name) && row[name] != null) row[name] = replaceString(name, 'qa-secret');
-    else if (/^(email)$/i.test(name) && row[name] != null) row[name] = `${privateValue(runId, model.name, rowId, name).slice(0, 20)}@example.invalid`;
-    else if (/(cpf|cnpj|documento|document|address|endereco)/i.test(name) && row[name] != null) row[name] = '[ANONIMIZADO]';
+    else if (field.type === 'String' && /senha|password|tokenHash|endpoint|p256dh|^auth$/i.test(name) && row[name] != null) row[name] = replaceString(name, 'qa-secret');
+    else if (field.type === 'String' && /^(email)$/i.test(name) && row[name] != null) row[name] = `${privateValue(runId, model.name, rowId, name).slice(0, 20)}@example.invalid`;
+    else if (field.type === 'String' && /(cpf|cnpj|documento|document|address|endereco)/i.test(name) && row[name] != null) row[name] = '[ANONIMIZADO]';
   }
   return row;
 }
