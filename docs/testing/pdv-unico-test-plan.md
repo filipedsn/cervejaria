@@ -1,5 +1,23 @@
 # Configuração canônica do PDV — execução versionada — 2026-10-05
 
+## Ocorrência opcional no fluxo Por Caixa — execução autenticada em snapshot Git
+
+Código sob teste: `9316c9b68e16d9f8195ff63031fb443921432683` (tree `f3955957021cbc2cae33983ead4d09f200873804`). A cadeia `qa:pdv-current-disposable` passou sobre a materialização imutável do commit: 1.095 blobs verificados, 173 módulos de projeto importados do snapshot, zero imports do workspace, 100 dependências externas, Prisma `6.19.3`; 0 skips. Manifesto temporário e manifesto corrente: baseline `9316c9b`, 57 candidatos, digest `d8fd08b9941e763940864c03b1e82d5c3754e2081d3dfeb887667407fb0a4f13`. Evidência: [`pdv-unico-occurrence-context-qa-evidence.json`](pdv-unico-occurrence-context-qa-evidence.json). Estado local antes/depois idêntico; nenhuma consulta ou escrita em DEV compartilhado/PROD.
+
+| ID | Pré-condição | Ação | Resultado esperado e observado | Camada/prioridade | Executor / estado |
+|---|---|---|---|---|---|
+| OCC-API-01 | Sessão Por Caixa; seleção omitida | Abrir caixa e consultar contexto | `sessao.ocorrenciaId=null`; API e banco concordam; nenhum evento/agenda é criado | integration/API P0 | `proveAuthenticatedCashApi`; executado no QA do snapshot `9316c9b` |
+| OCC-API-02 | Ocorrência avulsa do mesmo tenant/PDV | Selecionar explicitamente e vender avulso | Sessão, comanda e pagamento herdam a mesma ocorrência; origem `CAIXA`; snapshot/preço e estoque mantêm regras anteriores | integration/API P0 | Executado no QA do snapshot |
+| OCC-API-03 | Duas ocorrências datadas da mesma agenda e mesmo cliente | Abrir sessões em dias operacionais distintos, criar comandas e consumir | IDs de comanda separados; cada comanda/pagamento aponta sua sessão e ocorrência exatas | integration/API P0 | Executado no QA do snapshot |
+| OCC-API-04 | Ocorrência ligada a agenda diferente | Portal abre comanda e lança pedido | Credencial real do portal; comanda herda ocorrência da sessão, sem novo motor; edição forçada de contexto bloqueia sem duplicar pedido/item | integration/API P0 | Executado no QA do snapshot |
+| OCC-API-05 | Payload de operação/portal contém `ocorrenciaId` arbitrário | Tentar substituir o contexto | 400 e contagens de escrita não mudam | integration/API P0 | Executado no QA do snapshot |
+| OCC-API-06 | Ocorrência pertence a outro tenant/PDV | Abrir caixa / validar seleção incompatível | 409 tipado, sem sessão parcial ou mutação de dados | integration/API P0 | Executado no QA do snapshot |
+| OCC-API-07 | Contexto de comanda foi adulterado depois da abertura | Lançar pelo fluxo autenticado/portal | 409; histórico, pedidos e itens permanecem intactos; restauração explícita da fixture permite seguir | integration/API P0 | Executado no QA do snapshot |
+| OCC-API-08 | Duas aberturas para o mesmo PDV/dia, ocorrências diferentes | Segurar lock, iniciar chamadas concorrentes e observar advisory wait no PostgreSQL | No máximo uma sessão é criada; retry não troca ocorrência persistida | integration/API/concurrency P0 | Executado no QA do snapshot |
+| OCC-API-09 | Ativação canônica desligada | Abrir caixa sem ocorrência e tentar enviar ocorrência | Fluxo Por Caixa legado continua; seleção enviada é recusada e relação aditiva não é consultada | integration/API P0 | Executado no QA do snapshot |
+
+**Lacuna de negócio:** política por status/data da ocorrência continua pendente. Os testes confirmam associação técnica por empresa/PDV, sem aprovar elegibilidade de ocorrência por status/data. **Não coberto por esta entrega:** UI, rankings/pontuação, migração real, cutover, operação em DEV/PROD e políticas de portal além das recusas listadas. Nenhum destes cenários é prova de ranking.
+
 ## Evidência executada no commit `40fa92b7fa7c879b8ce23d3823ab0c51ede95bb6`
 
 O gate principal foi `node scripts/run-pdv-unico-git-snapshot-qa.mjs --commit=40fa92b7fa7c879b8ce23d3823ab0c51ede95bb6 --evidence-out=<arquivo temporário>`. Materialização: 1.093 blobs Git verificados; manifesto QA do snapshot com 53 candidatos; import audit: 172 módulos do snapshot, zero módulos do workspace local, 100 dependências externas; sem checkout/worktree. `qa:pdv-current-disposable` completou stages histórico/FK, core/negócio, financeiro e comercial; sem skips. Evidência detalhada em [`pdv-unico-canonical-settings-qa-evidence.json`](pdv-unico-canonical-settings-qa-evidence.json). Esta prova usa fixtures sintéticas; não certifica migração real ou cutover.
