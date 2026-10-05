@@ -25,7 +25,7 @@ function run(args, env) {
   const result = spawnSync(process.execPath, args, { cwd: backendRoot, env, encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 });
   if (result.status !== 0) {
     const output = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.replaceAll(env.DATABASE_URL ?? '', '[DATABASE_URL REDACTED]');
-    const usefulLines = output.split(/\r?\n/).filter((line) => /PrismaClient|KnownRequestError|code: 'P\d+'|column .* does not exist|relation .* does not exist|Error:/i.test(line));
+    const usefulLines = output.split(/\r?\n/).filter((line) => /PrismaClient|KnownRequestError|code: 'P\d+'|column .* does not exist|relation .* does not exist|Error:|\s+at /i.test(line));
     throw new Error(`DEV inventory helper failed (${result.status}): ${usefulLines.slice(-8).join('\n').slice(-1600) || output.slice(-1600)}`);
   }
   return result.stdout ?? '';
@@ -121,9 +121,78 @@ try {
     for (const row of company.commands.orderCountsByStatus) all[row.status] = (all[row.status] ?? 0) + row.count;
     return all;
   }, {});
+  const targetTenantInventory = report.companies.flatMap((company) => {
+    const normalizedName = (value) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').replace(/[^a-z0-9]+/g, ' ').trim();
+    const expected = ['CIA Marítima', 'Churrasquinho do Thiago'].find((name) => normalizedName(company.companyName).includes(normalizedName(name))
+      || normalizedName(company.companySlug).includes(normalizedName(name)));
+    if (!expected) return [];
+    const groups = (rows, keys, scaleKey) => {
+      const grouped = new Map();
+      for (const row of rows) {
+        const key = keys.map((name) => row[name] ?? '').join('|');
+        const current = grouped.get(key) ?? { ...Object.fromEntries(keys.map((name) => [name, row[name] ?? null])), rows: 0, ...(scaleKey ? { scaledValue: 0n } : {}) };
+        current.rows++;
+        if (scaleKey) current.scaledValue += BigInt(row[scaleKey]);
+        grouped.set(key, current);
+      }
+      return [...grouped.values()].map((row) => ({ ...row, ...(scaleKey ? { scaledValue: row.scaledValue.toString() } : {}) }));
+    };
+    return [{
+      requestedName: expected,
+      identity: { companyId: company.companyId, name: company.companyName, slug: company.companySlug },
+      units: company.units,
+      configuration: company.units.configurations,
+      sourceCounts: {
+        agendas: company.eventSources.agendas.length, occurrences: company.eventSources.occurrences.length,
+        oneOffEvents: company.eventSources.oneOffEvents.length, portalOrders: company.eventSources.portalOrders.length,
+        auditHistory: company.eventSources.auditHistory.length, clientStatistics: company.eventSources.clientStatistics.length,
+        products: company.catalog.products.length,
+        prices: company.catalog.products.reduce((sum, product) => sum + product.prices.length, 0),
+        menus: company.catalog.menus.length,
+        menuRows: company.catalog.menus.reduce((sum, menu) => sum + menu.rows.length, 0),
+        optionalCatalogEntries: company.catalog.optionalCatalog.length,
+        taps: company.catalog.taps.length,
+        tapSetups: company.catalog.tapSetups.length,
+        commands: company.commands.commandEntries.length,
+        items: company.commands.itemCount, optionals: company.commands.optionalCount,
+        payments: company.finance.paymentEntries.length, receivables: company.finance.receivables.length,
+        eventSessions: company.finance.eventCashSessions.length, operationalSessions: company.finance.operationalCashSessions.length,
+        kitchenOrders: company.commands.orderEntries.length,
+        kitchenHistory: company.commands.orderEntries.reduce((sum, order) => sum + order.transitions.length, 0),
+        inventoryBalances: company.inventory.balances.length, inventoryMovements: company.inventory.movements.length,
+      },
+      commandsByOriginStatus: company.commands.byOriginStatus,
+      ordersByStatus: company.commands.orderCountsByStatus,
+      commerceCoverage: company.commerceCoverage,
+      paymentLinkConflicts: company.finance.paymentLinkConflicts,
+      cash: {
+        eventSessions: company.finance.eventCashSessions.map(({ id, eventId, status, initialChangeCents, countsCents, movements }) => ({ id, eventId, status, initialChangeCents, countsCents, movementCount: movements.length, movementCentsByType: movements.reduce((totals, movement) => ({ ...totals, [movement.type]: (BigInt(totals[movement.type] ?? '0') + BigInt(movement.cents)).toString() }), {}) })),
+        operationalSessions: company.finance.operationalCashSessions.map(({ id, pointOfSaleId, operationDay, status, initialChangeCents, countsCents, menuId, movements }) => ({ id, pointOfSaleId, operationDay, status, initialChangeCents, countsCents, menuId, movementCount: movements.length, movementCentsByType: movements.reduce((totals, movement) => ({ ...totals, [movement.type]: (BigInt(totals[movement.type] ?? '0') + BigInt(movement.cents)).toString() }), {}) })),
+      },
+      receivables: company.finance.receivables,
+      inventory: {
+        balancesByPointProductUnit: groups(company.inventory.balances, ['pointOfSaleId', 'productId', 'unit'], 'milliUnits'),
+        movementsByPointProductUnitType: groups(company.inventory.movements, ['pointOfSaleId', 'productId', 'unit', 'type'], 'milliUnits'),
+      },
+      mappingActions: company.conflicts.mapping.reduce((counts, row) => ({ ...counts, [row.action]: counts[row.action] + 1 }), { MANTER: 0, CRIAR_DESTINO: 0, REASSOCIAR: 0, BLOQUEADO: 0 }),
+      blockerDetails: company.conflicts.mappingBlocked.map((row) => ({ type: row.sourceType, id: row.sourceId, code: row.sourceValidation.blocker?.code, category: row.sourceValidation.blocker?.category, evidence: row.sourceValidation.evidence })),
+    }];
+  });
   const outputSummary = {
     environment: 'DEV local; PostgreSQL RepeatableRead + READ ONLY',
     client: { schemaCommit: manifest.devInventorySchema.commit, schemaSha256: manifest.devInventorySchema.sha256, compatibility: 'schema pinned to the latest migration recorded by DEV; no migration applied' },
+    targetTenantIdentity: ['CIA Marítima', 'Churrasquinho do Thiago'].map((requestedName) => {
+      const normalize = (value) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').replace(/[^a-z0-9]+/g, ' ').trim();
+      const expected = normalize(requestedName);
+      const matches = report.companies.filter((company) => normalize(company.companyName).includes(expected)
+        || normalize(company.companySlug).includes(expected));
+      return {
+        requestedName,
+        status: matches.length === 0 ? 'NOT_FOUND' : matches.length === 1 ? 'UNIQUE_MATCH' : 'AMBIGUOUS_MATCH',
+        matches: matches.map(({ companyId, companyName, companySlug }) => ({ companyId, companyName, companySlug })),
+      };
+    }),
+    targetTenantInventory,
     sourceCoverage: report.totals,
     sourceClassification,
     ambiguousCompanyDecisions,

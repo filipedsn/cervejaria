@@ -220,6 +220,9 @@ try {
   run(process.execPath, ['--test', 'scripts/pdv-unico-commerce-qa-manifest.test.mjs'], { cwd: backendSnapshot, env, stdio: 'inherit' });
 
   run(process.execPath, [npmCli, 'run', 'qa:pdv-current-disposable'], { cwd: backendSnapshot, env, stdio: 'inherit' });
+  if (env.PDV_REPRESENTATIVE_PHOTO_FILE) {
+    run(process.execPath, [npmCli, 'run', 'qa:pdv-representative'], { cwd: backendSnapshot, env, stdio: 'inherit' });
+  }
 
   const auditLines = (await readFile(auditFile, 'utf8')).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
   const sourceModules = [...new Set(auditLines.filter((entry) => entry.snapshotProjectSource).map((entry) => entry.path))].sort();
@@ -233,6 +236,7 @@ try {
     `${path.sep}backend${path.sep}src${path.sep}routes${path.sep}operacao${path.sep}comandas.ts`,
     `${path.sep}backend${path.sep}src${path.sep}routes${path.sep}public.ts`,
     `${path.sep}backend${path.sep}scripts${path.sep}pdv-unico-commerce-migrator.isolated.test.mjs`,
+    ...(env.PDV_REPRESENTATIVE_PHOTO_FILE ? [`${path.sep}backend${path.sep}scripts${path.sep}pdv-unico-representative-qa.isolated.test.mjs`] : []),
   ]) {
     if (!sourceModules.some((modulePath) => modulePath.endsWith(expected))) throw new Error(`Import audit did not observe certified snapshot module ${expected}.`);
   }

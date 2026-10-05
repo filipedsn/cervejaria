@@ -34,6 +34,7 @@
     "qa:pdv-disposable": "node scripts/run-pdv-unico-historical-disposable-qa.mjs",
     "qa:pdv-current-disposable": "npm run qa:pdv-disposable && npm run qa:pdv-finance-disposable && npm run qa:pdv-commerce-disposable",
     "qa:pdv-current-git-snapshot": "node scripts/run-pdv-unico-git-snapshot-qa.mjs",
+    "qa:pdv-representative": "node scripts/run-pdv-unico-representative-qa.mjs",
     "qa:pdv-finance-disposable": "node scripts/run-pdv-unico-finance-disposable-qa.mjs",
     "qa:pdv-commerce-disposable": "node scripts/run-pdv-unico-commerce-disposable-qa.mjs",
     "qa:pdv-catalog-disposable": "node scripts/run-pdv-unico-catalog-disposable-qa.mjs",

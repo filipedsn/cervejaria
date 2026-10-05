@@ -1,12 +1,15 @@
 import { validateInventoryEnvironment } from './inventory-pdv-unico-env.js';
 import { createHash } from 'node:crypto';
-import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { decimalToScaledInteger, planPdvMigration } from './pdv-unico-migration-planner.js';
 import { buildPdvPlanningGraph, readPdvPlanningSourceSnapshot } from './pdv-unico-source-graph.js';
 import { readPdvCatalogSourceSnapshot } from './pdv-unico-catalog-source.js';
 import { readPdvCommerceSourceSnapshot } from './pdv-unico-commerce-source.js';
 import { serializeCommandSnapshot } from './pdv-unico-snapshot.js';
+import { captureRepresentativeTenantPhoto } from './pdv-unico-representative-photo.js';
+import { writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 // Validate before importing prisma.ts, which instantiates the client at module load.
 validateInventoryEnvironment(process.env);
@@ -35,7 +38,18 @@ try {
     const mapTable = await tx.$queryRaw`SELECT to_regclass('quiosque."PdvMigrationMap"') IS NOT NULL AS present`;
     const migrationMaps = mapTable[0]?.present ? await tx.pdvMigrationMap.findMany({ select: { sourceType: true } }) : [];
     const mapCountsBySourceType = migrationMaps.reduce((counts: Record<string, number>, row: any) => { counts[row.sourceType] = (counts[row.sourceType] ?? 0) + 1; return counts; }, {});
-    const companies = await tx.cervejaria.findMany({ select: { id: true }, orderBy: { id: 'asc' } });
+    const allCompanies = await tx.cervejaria.findMany({ select: { id: true, nome: true, slug: true }, orderBy: { id: 'asc' } });
+    const normalizeIdentity = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').replace(/[^a-z0-9]+/g, ' ').trim();
+    const requestedTargets = [{ label: 'CIA Marítima', name: 'CIA Marítima' }, { label: 'Churrasquinho do Thiago', name: 'Churrasquinho do Thiago' }];
+    const targetIdentity = requestedTargets.map((target) => {
+      const expected = normalizeIdentity(target.name);
+      const matches = allCompanies.filter((company) => normalizeIdentity(company.nome).includes(expected) || normalizeIdentity(company.slug).includes(expected));
+      return { label: target.label, status: matches.length === 0 ? 'NOT_FOUND' : matches.length === 1 ? 'UNIQUE_MATCH' : 'AMBIGUOUS_MATCH', matches: matches.map((company) => ({ id: company.id, nome: company.nome, slug: company.slug })) };
+    });
+    const targetCompanies = targetIdentity.flatMap((target) => target.status === 'UNIQUE_MATCH' ? [{ id: target.matches[0].id, nome: target.matches[0].nome, slug: target.matches[0].slug }] : []);
+    const targetOnly = process.env.PDV_REPRESENTATIVE_PHOTO_OUT !== undefined;
+    const companies = targetOnly ? targetCompanies : allCompanies;
+    let representativePhoto: any = null;
     const unattachedCommands = await tx.comanda.findMany({ where: { eventoId: null, pontoVendaId: null }, select: { id: true, origem: true, status: true, total: true, createdAt: true }, orderBy: { id: 'asc' } });
     const output = [];
     for (const company of companies) {
@@ -124,7 +138,7 @@ try {
         inventoryByProduct.set(key, aggregate);
       }
       output.push({
-        companyId, clientCount: customerCount,
+        companyId, companyName: company.nome, companySlug: company.slug, clientCount: customerCount,
         catalogSourceSnapshot: {
           sha256: createHash('sha256').update(JSON.stringify(completeCatalog)).digest('hex'),
           productCount: completeCatalog.products.length,
@@ -157,9 +171,19 @@ try {
         conflicts: { eventAndPdvCommandLinks: eventCommandLinkResults, tenantDivergentCommands: tenantConflicts, mappingBlocked: mapping.filter((x) => x.action === 'BLOQUEADO'), mapping },
       });
     }
-    return { migrationState, mapTablePresent: mapTable[0]?.present === true, mapCountsBySourceType, companies: output, unattachedCommands: unattachedCommands.map((command) => ({ id: command.id, origin: command.origem, status: command.status, totalCents: cents(command.total), createdAt: command.createdAt.toISOString() })) };
+    if (targetOnly) {
+      const outputPath = path.resolve(process.env.PDV_REPRESENTATIVE_PHOTO_OUT!);
+      if (!outputPath.startsWith(path.resolve(os.tmpdir()) + path.sep) || !path.basename(outputPath).startsWith('tap76-pdv-photo-')) throw new Error('Representative photo must use an owned temporary path under the OS temp root.');
+      const runId = path.basename(outputPath).replace(/^tap76-pdv-photo-/, '').replace(/\.json$/, '');
+      representativePhoto = await captureRepresentativeTenantPhoto(tx, targetCompanies.map((company) => ({ id: company.id, label: requestedTargets.find((target) => targetIdentity.find((resolution) => resolution.label === target.label)?.matches.some((match) => match.id === company.id))?.label ?? 'QA Tenant' })), runId);
+      representativePhoto.targetIdentity = targetIdentity;
+      await writeFile(outputPath, JSON.stringify(representativePhoto));
+    }
+    return { migrationState, mapTablePresent: mapTable[0]?.present === true, mapCountsBySourceType, targetIdentity, representativePhoto, companies: output, unattachedCommands: unattachedCommands.map((command) => ({ id: command.id, origin: command.origem, status: command.status, totalCents: cents(command.total), createdAt: command.createdAt.toISOString() })) };
   }, { isolationLevel: 'RepeatableRead', timeout: 120000 });
   const snapshot = snapshotData.companies;
+  const targetIdentity = snapshotData.targetIdentity;
+  const representativePhoto = snapshotData.representativePhoto;
   const focus = snapshot.filter((item) => focusCompanyIds.has(item.companyId));
   const detailed = process.argv.includes('--detail') || process.argv.includes('--all');
   const summarizeCash = (sessions: Array<{ status: string; movements: Array<{ type: string; cents: string }> }>) => sessions.reduce<{ sessions: number; ABERTO: number; FECHADO: number; movementCount: number; movementCentsByType: Record<string, string> }>((sum, session) => {
@@ -218,6 +242,8 @@ try {
     environment: 'DEV local; READ ONLY RepeatableRead snapshot',
     coverage: 'IDs and exact decimal snapshots; diagnostic output excludes customer names, contacts and observations; no credentials',
     destinationReadiness: { migrationState: snapshotData.migrationState, mapTablePresent: snapshotData.mapTablePresent, mapCountsBySourceType: snapshotData.mapCountsBySourceType, interpretation: 'Missing additive maps are destination readiness gaps, not source corruption.' },
+    targetTenantIdentity: targetIdentity,
+    ...(representativePhoto ? { representativePhoto: { tableCount: representativePhoto.tableRows.length, rowCount: representativePhoto.tableRows.reduce((sum: number, table: any) => sum + table.rowCount, 0), crossTenantEdges: representativePhoto.crossTenantEdges } } : {}),
     totals: { companies: snapshot.length, withoutPdv: snapshot.filter((x) => x.units.pointOfSaleIds.length === 0).length, multiplePdv: snapshot.filter((x) => x.units.pointOfSaleIds.length > 1).length, blockedEntityRows: snapshot.reduce((sum, x) => sum + x.conflicts.mappingBlocked.length, 0), unattachedCommands: snapshotData.unattachedCommands.length, blockedRowsByCategory: countBy('category'), blockedRowsByCode: countBy('code'), paymentLinkConflicts: snapshot.reduce((sum, x) => sum + x.finance.paymentLinkConflicts.length, 0), tenantDivergentCommands: snapshot.reduce((sum, x) => sum + x.conflicts.tenantDivergentCommands.length, 0) },
     unattachedCommandBreakdown: [...snapshotData.unattachedCommands.reduce((map, command) => map.set(`${command.origin}:${command.status}`, (map.get(`${command.origin}:${command.status}`) ?? 0) + 1), new Map<string, number>())].sort(([a], [b]) => a.localeCompare(b)).map(([originStatus, count]) => ({ originStatus, count })),
     globalBlocks,
