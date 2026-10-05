@@ -466,7 +466,7 @@ export async function runPdvKitchenOrderContextPreparation(options: { db: Db; co
       return {
         occurrences,
         resolveOccurrence: async (eventId: string) => {
-          if (!occurrenceResolver) occurrenceResolver = measureStage(options, 'occurrenceConfirmation', () => createConfirmedPdvEventOccurrenceResolver(tx, options.companyId, options.pointId));
+          if (!occurrenceResolver) occurrenceResolver = measureStage(options, 'occurrenceConfirmation', () => createScopedOccurrenceResolver(tx, options.companyId, options.pointId));
           return (await occurrenceResolver)(eventId);
         },
       };
@@ -498,6 +498,21 @@ async function findConfirmedEventOccurrence(tx: Db, companyId: string, pointId: 
     const blocker = error as { code?: string; sourceType?: string | null; sourceId?: string | null; message?: string };
     if (blocker?.code) throw new PdvCatalogBlocker(`OCCURRENCE_${blocker.code}`, 'EVENTO', eventId, blocker.message ?? 'A certificação da ocorrência falhou.');
     throw error;
+  }
+}
+
+async function createScopedOccurrenceResolver(tx: Db, companyId: string, pointId: string) {
+  const convert = (eventId: string, error: any): never => {
+    if (error?.code) throw new PdvCatalogBlocker(`OCCURRENCE_${error.code}`, 'EVENTO', eventId, error.message ?? 'Occurrence integrity confirmation failed.');
+    throw error;
+  };
+  try {
+    const resolve = await createConfirmedPdvEventOccurrenceResolver(tx, companyId, pointId);
+    return async (eventId: string) => {
+      try { return await resolve(eventId); } catch (error) { return convert(eventId, error); }
+    };
+  } catch (error) {
+    return convert((error as any)?.sourceId ?? '', error);
   }
 }
 
@@ -582,7 +597,7 @@ export async function runPdvSessionMigration(options: { db: Db; companyId: strin
       let catalogResolver: ReturnType<typeof createConfirmedCatalogResolver> | null = null;
       return {
         resolveOccurrence: async (eventId: string) => {
-          if (!occurrenceResolver) occurrenceResolver = measureStage(options, 'occurrenceConfirmation', () => createConfirmedPdvEventOccurrenceResolver(tx, options.companyId, options.pointId));
+          if (!occurrenceResolver) occurrenceResolver = measureStage(options, 'occurrenceConfirmation', () => createScopedOccurrenceResolver(tx, options.companyId, options.pointId));
           return (await occurrenceResolver)(eventId);
         },
         resolveCatalog: async (sourceType: string, sourceId: string) => {
@@ -654,7 +669,7 @@ export async function runPdvFinanceMigration(options: { db: Db; companyId: strin
     createTransactionContext: async (tx) => {
       let resolver: Promise<(eventId: string) => Promise<any>> | null = null;
       return { resolveOccurrence: async (eventId: string) => {
-        resolver ??= measureStage(options, 'occurrenceConfirmation', () => createConfirmedPdvEventOccurrenceResolver(tx, options.companyId, options.pointId));
+        resolver ??= measureStage(options, 'occurrenceConfirmation', () => createScopedOccurrenceResolver(tx, options.companyId, options.pointId));
         return (await resolver)(eventId);
       } };
     },
@@ -763,7 +778,7 @@ export async function runPdvCommerceMigration(options: { db: Db; companyId: stri
       let resolver: Promise<(eventId: string) => Promise<any>> | null = null;
       const catalogResolver = createConfirmedCatalogResolver(tx, options.companyId, options.pointId);
       return { resolveOccurrence: async (eventId: string) => {
-        resolver ??= measureStage(options, 'occurrenceConfirmation', () => createConfirmedPdvEventOccurrenceResolver(tx, options.companyId, options.pointId));
+        resolver ??= measureStage(options, 'occurrenceConfirmation', () => createScopedOccurrenceResolver(tx, options.companyId, options.pointId));
         return (await resolver)(eventId);
       }, resolveCatalog: (sourceType: string, sourceId: string) => measureStage(options, 'catalogConfirmation', () => catalogResolver(sourceType, sourceId)) };
     },
