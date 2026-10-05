@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { auditSnapshotModules } from './pdv-unico-git-snapshot-import-audit.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..', '..');
@@ -239,16 +240,12 @@ try {
     && !entry.path.toLowerCase().includes(`${path.sep}node_modules${path.sep}`)
     && !entry.path.toLowerCase().includes(`${path.sep}node_modules`));
   if (externalLocalModules.length) throw new Error(`Unexpected non-snapshot, non-dependency modules were loaded: ${JSON.stringify(externalLocalModules.slice(0, 10))}`);
-  for (const expected of (syntheticExitCode === 0 && representativeExitCode === 0 ? [
-    `${path.sep}backend${path.sep}src${path.sep}app.ts`,
-    `${path.sep}backend${path.sep}src${path.sep}lib${path.sep}comanda-service.ts`,
-    `${path.sep}backend${path.sep}src${path.sep}routes${path.sep}operacao${path.sep}comandas.ts`,
-    `${path.sep}backend${path.sep}src${path.sep}routes${path.sep}public.ts`,
-    `${path.sep}backend${path.sep}scripts${path.sep}pdv-unico-commerce-migrator.isolated.test.mjs`,
-    ...(env.PDV_REPRESENTATIVE_PHOTO_FILE ? [`${path.sep}backend${path.sep}scripts${path.sep}pdv-unico-representative-qa.isolated.test.mjs`] : []),
-  ] : [])) {
-    if (!sourceModules.some((modulePath) => modulePath.endsWith(expected))) throw new Error(`Import audit did not observe certified snapshot module ${expected}.`);
-  }
+  const moduleExpectationAudit = auditSnapshotModules({
+    observedModules: sourceModules,
+    syntheticResult: syntheticExitCode === 0 ? 'PASS' : 'BLOCKED',
+    representativeResult: representativeExitCode === null ? 'NOT_RUN' : representativeExitCode === 0 ? 'PASS' : 'BLOCKED',
+    representativeAttempted: representativeExitCode !== null,
+  });
   const importAuditSha256 = normalizedSha256(Buffer.from(sourceModules.join('\n') + '\n'));
   const externalDependencyModules = [...new Set(auditLines.filter((entry) => !entry.snapshotProjectSource && !entry.qaGeneratedPrismaClient && !entry.path.toLowerCase().startsWith(snapshotRoot.toLowerCase())).map((entry) => entry.path))].sort();
   const prismaClientPackage = JSON.parse(await readFile(path.join(userNodeModules, '@prisma/client/package.json'), 'utf8'));
@@ -282,12 +279,16 @@ try {
       codeCandidateCount: generatedManifest.codeCandidates.length,
     },
     moduleOriginAudit: {
-      result: syntheticExitCode === 0 && representativeExitCode === 0 ? 'PASS' : 'PARTIAL_BLOCKED_RUN',
+      result: syntheticExitCode === 0
+        && (!moduleExpectationAudit.representativeModules.expectedCount || moduleExpectationAudit.representativeModules.result === 'ENTRYPOINT_OBSERVED')
+        ? 'PASS'
+        : 'PARTIAL_BLOCKED_RUN',
       snapshotProjectModuleCount: sourceModules.length,
       snapshotProjectModulePathListSha256: importAuditSha256,
       nonSnapshotWorkspaceModuleCount: 0,
       externalDependencyModuleCount: externalDependencyModules.length,
       externalPrismaRuntimeVersion: prismaClientPackage.version,
+      expectations: moduleExpectationAudit,
     },
     localState: {
       beforeSha256: localBefore.sha256,
