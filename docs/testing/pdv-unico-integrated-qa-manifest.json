@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "c92ed2fdf1f8d44071f5ae046c502287e88706e9",
+    "commit": "f23c43dcb3552afe7c77ef766f673ba37aa4da24",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc"
   },
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "c92ed2fdf1f8d44071f5ae046c502287e88706e9",
+      "commit": "f23c43dcb3552afe7c77ef766f673ba37aa4da24",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -58,7 +58,7 @@
     }
   },
   "delivery": {
-    "schemaCommit": "c92ed2fdf1f8d44071f5ae046c502287e88706e9",
+    "schemaCommit": "f23c43dcb3552afe7c77ef766f673ba37aa4da24",
     "schemaSha256": "0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
@@ -106,7 +106,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs",
-      "sha256": "c673b06af887f7d591264dea7a5a930cf06945f87f0573ce6dbeb5ffba582126"
+      "sha256": "eec25854dfb479bda4e7918eea6438f3bb6e03fe97273f52d7f29b3cc5ed8049"
     },
     {
       "path": "backend/scripts/pdv-unico-kitchen-order-preparation.ts",
@@ -134,7 +134,7 @@
     },
     {
       "path": "backend/scripts/run-pdv-unico-commerce-disposable-qa.mjs",
-      "sha256": "3f81d4c0e2ee91c67d7e012b06173c4578de8336e5a0a7b605a4f1936ba1148d"
+      "sha256": "3e5b11d81102dfdbefa1668c644e5c577e9e67236cdfc6c136ef8f1faed30e28"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
@@ -182,7 +182,7 @@
     },
     {
       "path": "backend/scripts/isolated-qa-env.mjs",
-      "sha256": "2f18d9ae6639a4235acf55b09b4f8b5ae359cf131ad3b1f146f9320dc16b86ff"
+      "sha256": "879df1bdc973f85abfc9a76696a0f9c4e14198572cf294c63fb4c170cd3f64aa"
     },
     {
       "path": "backend/scripts/pdv-unico-planner.isolated.test.ts",
@@ -201,5 +201,5 @@
       "sha256": "5b44047b588a34ce8ee081ea154aff1a8158c580a5bc728b9d1894c4bb5f6250"
     }
   ],
-  "manifestSha256": "ee01bb248ad3471501abaacafd9a50653dc34363376e9157d792cf7fcc6861f5"
+  "manifestSha256": "0442469b50560f87cce69eed19e032b4a422f732dbc646dec150634790defced"
 }

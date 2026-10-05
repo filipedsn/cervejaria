@@ -368,3 +368,47 @@ This section supersedes the V3 preparation claims in PREP-11/PREP-12 and the pre
 **Typecheck:** focused noEmit for catalog migrator and kitchen preparation passed. The broad scripts typecheck remains a separate known failure from existing TS7006 implicit-any diagnostics in inventory-pdv-unico-dev.ts and pdv-unico-planner.isolated.test.ts; this round does not suppress or change them.
 
 **Inventory and limits:** a pure helper test proves stock is grouped by PDV/product/unit, with movements also split by type. DEV inventory was not rerun. Previous ambiguous-company decisions remain pending. No synthetic result represents real-data migration. No cutover, ranking, cleanup or legacy removal is included. PROD_ACCESS_USED=NO.
+
+
+## Integrated menu and session-price certification — 2026-10-04
+
+This section supersedes the earlier “multiple menus in integrated order flows: NOT PROVEN” statement for the **synthetic database/consumer layer only**. It does not certify authenticated API or UI flows and does not represent migration of real business data.
+
+| ID | Scenario / preconditions and action | Expected database / consumer result | Priority / layer | Executor and result |
+|---|---|---|---|---|
+| MENU-01 | One canonical PDV, unit product and chope product; catalog prices at unit, 500 ml and 1000 ml; two independent menus; run business then catalog scope | Existing product/menu/price IDs remain stable; 2 menus, 6 menu lines and exact distinct values survive | P0 QA/integration | `qa:pdv-commerce-disposable`; PASS |
+| MENU-02 | Three Por Caixa sessions select menu A, menu B, or none; two EVENTO sessions have confirmed occurrences, one selects menu B and one has no selection; run session scope | `cardapioId` and occurrence are preserved; null selection stays null; product/volume rows and override values remain unchanged | P0 QA/integration | Commerce disposable PostgreSQL; PASS |
+| MENU-03 | On selected sessions represent omitted override, SQL NULL, zero and positive override | Effective precedence is turno override > selected menu > catalog; zero remains an explicit override; omitted/NULL inherit | P0 QA/integration | Real session rows and consumers; PASS |
+| MENU-04 | Query every selected session through `getCardapioTurno` for unit, 500 ml and 1000 ml as selected | Returned product/volume/price is exact; unselected sessions do not receive an invented menu | P0 consumer integration | Backend module against QA PostgreSQL; PASS |
+| MENU-05 | Resolve unit and volume sales through `resolverItens`, with taps mounted where chope is sold; calculate totals in integer cents | Prices and quantities produce the exact expected cents; Por Caixa behavior is exercised from the real resolver | P0 consumer integration | `resolverItens` + QA transaction; PASS |
+| MENU-06 | Complete same-run and new-run replay across business, catalog, sessions, finance and commercial; then edit catalog/menu source prices | Replays keep IDs and counts stable. Historical `ItemComanda` and `ItemComandaOpcional` snapshots remain field-identical after catalog edits | P0 QA/integration | Commerce disposable QA; PASS |
+| MENU-07 | Link a menu item to a product from a different tenant and rerun the catalog scope | Specific `MENU_PRODUCT_TENANT_MISMATCH`; no map or target-link write is committed | P0 QA/integration | Commerce disposable QA; PASS |
+| MENU-08 | Evaluate Por Caixa and EVENTO sessions without a selected menu | Price lookup falls back to catalog only for selected items; no menu is assigned automatically | P0 consumer integration | `getCardapioTurno` + `resolverItens`; PASS |
+| MENU-09 | Keep taps capability explicit while adding test Tap/TapMontagem for chope consumer calls | Catalog configuration source hash remains identical through integrated replays | P0 QA/integration | Source-plan hash comparison in commerce suite; PASS |
+| API/UI-MENU-01 | Authenticated login/RBAC/API response and browser flow for selecting multiple menus, checking volume prices, selling and viewing old sale snapshots | Must prove tenant scoping, API validation and visible prices/snapshots | P0 authenticated API + E2E | **NOT PROVEN**; no authenticated API or UI harness ran in this slice |
+
+### Expected and observed prices
+
+All figures are exact cents; totals multiply each resolved unit price by its requested quantity.
+
+| Session / source | Product | Turn override | Menu | Catalog | `getCardapioTurno` / `resolverItens` result | Quantity / total |
+|---|---|---:|---:|---:|---:|---:|
+| Por Caixa, menu A | Chope 500 ml | omitted | 600 | 850 | 600 | 2 / 1,200¢ |
+| Por Caixa, menu A | Chope 1000 ml | NULL | 1,000 | 1,300 | 1,000 | 1 / 1,000¢ |
+| Por Caixa, menu A | Unit product | 0 | 400 | 625 | 0 | 1 / 0¢ |
+| Por Caixa, menu B | Chope 500 ml | 875 | 700 | 850 | 875 | 2 / 1,750¢ |
+| Por Caixa, menu B | Chope 1000 ml | NULL | 1,200 | 1,300 | 1,200 | 1 / 1,200¢ |
+| Por Caixa, menu B | Unit product | 550 | 500 | 625 | 550 | 1 / 550¢ |
+| EVENTO occurrence, menu B | Chope 500 ml | none | 700 | 850 | 700 | 1 / 700¢ |
+| EVENTO occurrence, menu B | Chope 1000 ml | none | 1,200 | 1,300 | 1,200 | 1 / 1,200¢ |
+| EVENTO occurrence, menu B | Unit product | none | 500 | 625 | 500 | 1 / 500¢ |
+| EVENTO without menu | Chope 500 ml | none | — | 850 | 850 | 1 / 850¢ |
+| EVENTO without menu | Unit product | none | — | 625 | 625 | 2 / 1,250¢ |
+| Por Caixa without menu | Chope 500 ml | none | — | 850 | 850 | 1 / 850¢ |
+| Por Caixa without menu | Unit product | none | — | 625 | 625 | 2 / 1,250¢ |
+
+Observed case totals: menu A `2,200¢`; menu B with overrides `3,500¢`; EVENTO menu B `2,400¢`; each no-menu catalog case `2,100¢`. `getCardapioTurno` showed the 1000 ml no-menu EVENTO item because its source selected the beer family; the no-menu Por Caixa fixture selected 500 ml only. In both cases the resolver returned the tested selected prices.
+
+**Gates actually run:** `npm run qa:pdv-commerce-disposable` passed on a disposable PostgreSQL container with the pinned 91-migration bundle; the suite includes 8 event delete/audit/concurrency tests (8 pass, 0 fail, 0 skipped). The environment-validator pure test passed (1/1). Focused scripts noEmit typecheck passed. The runner's temporary database lived on `tmpfs` and its container was removed. The integrated manifest is pinned to baseline `f23c43dcb3552afe7c77ef766f673ba37aa4da24`, schema SHA-256 `0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc`, commercial SQL SHA-256 `3aaf567f8dddfd94250c5efee4bd37af4a8074243de000fb6ef2f8f9890cc3ab`, manifest digest `0442469b50560f87cce69eed19e032b4a422f732dbc646dec150634790defced`; previous manifests are unchanged.
+
+**Not run / not proven:** broad scripts typecheck was not rerun in this slice; its prior known failures are TS7006 implicit-any diagnostics in untouched `inventory-pdv-unico-dev.ts` and `pdv-unico-planner.isolated.test.ts`. No backend build was needed because no backend `src` module changed. Authenticated API, UI, real-data migration, free-sale policy for zero-price edits, operational cutover and legacy removal remain pending. Synthetic QA provides no migration authorization. `PROD_ACCESS_USED=NO`.

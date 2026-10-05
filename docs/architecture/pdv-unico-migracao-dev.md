@@ -1,21 +1,24 @@
 # PDV único: contrato e preparação da migração
 
-## Estado desta entrega: preparação de pedidos legados
+## Estado corrente — certificação de cardápios e preços — 04/10/2026
+
+Esta entrega comprova em PostgreSQL QA descartável que a cadeia negócio → catálogo → sessões → financeiro → cozinha/comercial preserva dois cardápios distintos, preços por produto/volume, seleção de sessão e snapshots históricos. A operação Por Caixa continua usando `getCardapioTurno` e `resolverItens` existentes; não foi criado catálogo paralelo nem alterada a política de venda.
+
+- **Fixture e dados reconciliados:** 2 produtos (unitário e chope), 3 preços de catálogo (unitário a 625 centavos; chope 500 ml a 850 e 1000 ml a 1300), 2 cardápios e 6 linhas de cardápio. Para o mesmo produto/volume, menu A tem 600/1000 centavos e menu B 700/1200 centavos; o produto unitário tem 400/500 centavos. IDs, volumes e valores permaneceram iguais após o mapeamento e replays.
+- **Consumidores reais no QA:** `getCardapioTurno` e `resolverItens` foram carregados do backend apontando ao mesmo banco temporário. Foram conferidas sessões Por Caixa e sessões EVENTO com ocorrência; a seleção existente foi mantida e sessões sem seleção permaneceram sem `cardapioId`. Ausência/NULL herdam menu ou catálogo; zero e valor positivo prevalecem como overrides explícitos. Totais foram somados em centavos inteiros.
+- **Snapshots:** após concluir os replays, os preços de catálogo e menu foram alterados na fixture; item de venda e snapshot do opcional antigo permaneceram idênticos campo a campo. A transformação não foi reexecutada após a alteração intencional do payload.
+- **QA e manifesto:** `npm run qa:pdv-commerce-disposable` passou sobre 91 migrations no container PostgreSQL QA com `tmpfs`; 8 testes de exclusão/auditoria/concorrência passaram, sem skips. A fixture também bloqueou um vínculo de cardápio com produto de outro tenant sem mapa/escrita parcial. O comando principal da regressão completa continua `npm run qa:pdv-current-disposable`.
+- **Hash imutável da bateria:** `docs/testing/pdv-unico-integrated-qa-manifest.json` fixa baseline `f23c43dcb3552afe7c77ef766f673ba37aa4da24`, schema SHA-256 `0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc`, SQL comercial SHA-256 `3aaf567f8dddfd94250c5efee4bd37af4a8074243de000fb6ef2f8f9890cc3ab` e digest `0442469b50560f87cce69eed19e032b4a422f732dbc646dec150634790defced`. Os seis manifestos históricos foram verificados sem alteração.
+
+**Próxima decisão / limite:** o cenário sintético de override zero comprova preservação e precedência; não aprova política de edição de preço nem venda gratuita. Autenticação/login/RBAC, API autenticada, UI, múltiplos cardápios no fluxo de pedido do cliente, ranking, corte, reconciliação de dados reais e remoção do legado seguem **NÃO COMPROVADOS**. Nenhuma migration ou escrita ocorreu em DEV compartilhado e PROD não foi acessado. Esta prova não é backfill de dados reais nem autorização de cutover. `PROD_ACCESS_USED=NO`.
+
+## Estado anterior preservado — preparação de pedidos legados
 
 No PostgreSQL QA descartável, o preflight comercial bloqueou um pedido sem PDV; a preparação reiniciável preencheu somente pedidos cuja comanda e mapa de PDV comprovavam a origem, preservando a quantidade do movimento, timestamps e demais campos. A migration comercial foi então aplicada no mesmo banco descartável, e a FK composta ficou `convalidated=true` com `ON DELETE RESTRICT`. Foram exercitados dois tenants, pedido com e sem movimento, múltiplos PDVs conflitantes, ausência de autoridade, pausa/retomada, rollback, mesmo/novo run, concorrência e adulteração de fonte/alvo.
 
 **Limite:** nenhum pedido real foi preparado, nenhuma migration foi aplicada ao DEV compartilhado e PROD não foi acessado. Pedidos reais com evidência ausente ou conflitante permanecem bloqueados. O aceite de QA não autoriza backfill operacional.
 
-## Estado atual desta entrega — 04/10/2026
-
-- **Implementado no código:** hash canônico Decimal exato (sem `Number`/arredondamento), versão 2 nos escopos catalogal, sessão, financeiro e comercial; ocorrência dependente revalida run/checkpoint/lotes/recibos/mapas/destinos completos; escopo comercial refaz a leitura e compara cobertura, IDs, payloads, links e destinos. O manifesto novo lê o schema imutável do commit-base, sem depender de staging.
-- **Ensaiado nesta entrega em QA descartável:** a regressão `npm run qa:pdv-current-disposable` passou. A bateria integrada usou um mesmo PostgreSQL temporário para dois tenants e atravessou negócio, catálogo, sessões, financeiro e comercial: 19 fontes comerciais mapeadas; reexecução com o mesmo e novo run; revalidação das certificações anteriores; rollback e retomada; divergência de precisão em estoque bloqueada; transferência entre pais de item, opcional e histórico bloqueada; alterações de data, agenda e conteúdo da ocorrência recusadas por escopos dependentes; concorrência sincronizada por lock. O SQL comercial foi ensaiado separadamente sobre pedido legado sem PDV ligado a movimento de estoque com PDV e bloqueou por `PDV_COMMERCE_PREFLIGHT_ORDER_CONTEXT_REQUIRED`, preservando ambos e sem DDL parcial.
-- **Pendente / NÃO COMPROVADO:** nenhum backfill executado em DEV compartilhado; nenhum corte, reconciliação real multiempresa, ledger completo de estoque, login/RBAC/API/UI, comportamento operacional ou recuperação de infraestrutura. A preparação só foi executada em fixtures sintéticas no QA descartável; pedidos reais sem autoridade suficiente seguem bloqueados.
-- **Limite do aceite:** runs por empresa/PDV certificam somente suas fontes atribuíveis. Comandas sem origem seguem pendentes; o run comercial retorna `globalCoverage=NOT_CERTIFIED` e o ledger de estoque permanece `NOT_PROVEN`. Isso não libera corte.
-
-O manifesto corrente `docs/testing/pdv-unico-integrated-qa-manifest.json` fixa o commit-base `7c46dc39c14ec2d3c9c7958e06a974f6bc1a7cbf`, schema SHA-256 `0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc`, SQL comercial SHA-256 `3aaf567f8dddfd94250c5efee4bd37af4a8074243de000fb6ef2f8f9890cc3ab`, os hashes dos scripts/fixtures e digest `3c3aad623a5c33faea8aab1bc51a9209ff4682b9287a358b4ee2b5135be7af9a`. Os seis manifestos anteriores foram verificados e preservados.
-
-Não foram aplicadas migrations, backfill ou escrita ao DEV compartilhado ou PROD. Os fixtures e a reconciliação são sintéticos; eles não medem cobertura nem conciliam os dados reais. Não há corte operacional nem remoção de legado. `PROD_ACCESS_USED=NO`.
+## Histórico da certificação integrada
 
 ## Registro histórico preservado
 

@@ -4,11 +4,11 @@ export function validateIsolatedQaEnvironment(env) {
   try { url = new URL(env.QA_DATABASE_URL ?? ''); } catch { throw new Error('QA_DATABASE_URL inválida'); }
   if (!['postgres:', 'postgresql:'].includes(url.protocol)
     || !['127.0.0.1', 'localhost'].includes(url.hostname)
-    || url.port !== '55439'
+    || !/^554(?:3[9]|4[0-9])$/.test(url.port)
     || url.pathname !== '/cervejaria_qa_pdv_unico'
     || url.hash
     || [...url.searchParams.keys()].some((key) => !['schema', 'connection_limit', 'pool_timeout'].includes(key))) {
-    throw new Error('QA exige PostgreSQL isolado local em 127.0.0.1:55439/cervejaria_qa_pdv_unico');
+    throw new Error('QA exige PostgreSQL isolado local em 127.0.0.1:55439-55449/cervejaria_qa_pdv_unico');
   }
   return url;
 }

@@ -7,7 +7,7 @@ import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 
 const runId = randomBytes(8).toString('hex');
 const containerName = `codex-pdv-commerce-qa-${runId}`;
-const port = 55439;
+const port = await selectFreePort();
 const password = randomBytes(32).toString('base64url');
 const url = new URL(`postgresql://127.0.0.1:${port}/cervejaria_qa_pdv_unico`);
 url.username = 'postgres'; url.password = password; url.searchParams.set('connection_limit', '8');
@@ -17,16 +17,20 @@ function run(command, args, options = {}) {
   if (result.status !== 0) throw new Error(`${command} failed (${result.status}): ${(result.stderr || result.stdout || '').replaceAll(databaseUrl, '[QA URL REDACTED]').slice(0, 1400)}`);
   return (result.stdout ?? '').trim();
 }
-async function assertPortFree() {
-  await new Promise((resolve, reject) => {
-    const server = net.createServer(); server.once('error', reject);
-    server.listen(port, '127.0.0.1', () => server.close((error) => error ? reject(error) : resolve()));
-  });
+async function selectFreePort() {
+  for (let port = 55439; port <= 55449; port++) {
+    const available = await new Promise((resolve, reject) => {
+      const server = net.createServer();
+      server.once('error', (error) => error.code === 'EADDRINUSE' ? resolve(false) : reject(error));
+      server.listen(port, '127.0.0.1', () => server.close((error) => error ? reject(error) : resolve(true)));
+    });
+    if (available) return port;
+  }
+  throw new Error('No free port in disposable QA range 55439-55449.');
 }
 
 let created = false;
 try {
-  await assertPortFree();
   run('docker', ['run', '-d', '--rm', '--name', containerName, '--label', 'codex.purpose=pdv-commerce-disposable-qa', '--label', `codex.run=${runId}`,
     '-p', `127.0.0.1:${port}:5432`, '--tmpfs', '/var/lib/postgresql/data:rw,noexec,nosuid,size=1g',
     '-e', 'POSTGRES_USER=postgres', '-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_DB=cervejaria_qa_pdv_unico', 'postgres:17-alpine']);

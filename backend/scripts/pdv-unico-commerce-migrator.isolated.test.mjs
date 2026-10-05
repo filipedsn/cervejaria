@@ -42,6 +42,14 @@ function runPrisma(args, targetUrl = databaseUrl, allowFailure = false) {
 const id = (name) => `${name}-qa-${runId}`;
 const slug = (name) => `${name}-${runId}`.toLowerCase().replaceAll(/[^a-z0-9-]/g, '-');
 const plain = (value) => JSON.parse(JSON.stringify(value));
+function changedJsonPaths(before, after, prefix = '') {
+  if (JSON.stringify(before) === JSON.stringify(after)) return [];
+  if (Array.isArray(before) && Array.isArray(after)) return Array.from({ length: Math.max(before.length, after.length) }, (_, index) => changedJsonPaths(before[index], after[index], `${prefix}[${index}]`)).flat();
+  if (before && after && typeof before === 'object' && typeof after === 'object' && !Array.isArray(before) && !Array.isArray(after)) {
+    return [...new Set([...Object.keys(before), ...Object.keys(after)])].flatMap((key) => changedJsonPaths(before[key], after[key], prefix ? `${prefix}.${key}` : key));
+  }
+  return [prefix || '<root>'];
+}
 const centsExact = (value) => {
   const text = value?.toString?.() ?? String(value);
   const match = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(text);
@@ -451,6 +459,7 @@ async function proveLegacyOrderContextPreflight(args) {
   }
 }
 let db;
+let consumerPrisma;
 let preflightDb;
 let preflightDatabaseName;
 try {
@@ -513,6 +522,7 @@ try {
   const { readPdvCommerceSourceSnapshot } = await import('./pdv-unico-commerce-source.ts');
   const company = await db.cervejaria.create({ data: { nome: `QA commerce ${runId}`, slug: slug('commerce') } });
   await db.configuracaoOperacao.create({ data: { cervejariaId: company.id, ativo: true, controlaEstoque: true, temCozinha: true, exclusivo: false, quantidadeMesas: 4, createdAt: new Date('2026-10-01T10:00:00.000Z'), updatedAt: new Date('2026-10-02T10:00:00.000Z') } });
+  await db.configuracaoOperacional.create({ data: { cervejariaId: company.id, plannedOperationsEnabled: false, tapsEnabled: true, inventoryEnabled: true, kitchenEnabled: true, createdAt: new Date('2026-10-01T10:00:00.000Z'), updatedAt: new Date('2026-10-02T10:00:00.000Z') } });
   console.log('QA_STAGE=synthetic-unit-and-event-fixtures-created');
   const trailer = await db.trailer.create({ data: { id: id('trailer'), cervejariaId: company.id, nome: 'synthetic trailer', identificador: 'QA-COMMERCE' } });
   const existingPoint = await db.pontoVenda.create({ data: { id: id('existing-point'), cervejariaId: company.id, nome: 'canonical synthetic PDV' } });
@@ -522,6 +532,43 @@ try {
   const recurringOccurrences = [];
   for (const [name, date] of [['weekly-occurrence-one', '2026-11-19T00:00:00.000Z'], ['weekly-occurrence-two', '2026-11-26T00:00:00.000Z']]) recurringOccurrences.push(await db.evento.create({ data: { id: id(name), cervejariaId: company.id, trailerId: trailer.id, serieId: weeklyAgenda.id, nome: name, local: 'QA recurring location', data: new Date(date), recorrencia: 'NENHUMA', status: 'FECHADO' } }));
   events.push(weeklyAgenda, ...recurringOccurrences);
+  const product = await db.produto.create({ data: { id: id('product'), cervejariaId: company.id, nome: 'Synthetic unit product', tipo: 'COMIDA', controlaEstoque: true } });
+  const draftProduct = await db.produto.create({ data: { id: id('draft-product'), cervejariaId: company.id, nome: 'Synthetic draft', tipo: 'BEBIDA', formato: 'CHOPE', categoria: 'Chope', controlaEstoque: true } });
+  await db.preco.createMany({ data: [
+    { id: id('price-unit'), produtoId: product.id, volumeMl: 1, preco: '6.25' },
+    { id: id('price-draft-500'), produtoId: draftProduct.id, volumeMl: 500, preco: '8.50' },
+    { id: id('price-draft-1000'), produtoId: draftProduct.id, volumeMl: 1000, preco: '13.00' },
+  ] });
+  const menuA = await db.cardapio.create({ data: { id: id('menu-a'), cervejariaId: company.id, nome: 'Synthetic menu A', ativo: true, chopeVolumesConfigurados: true } });
+  const menuB = await db.cardapio.create({ data: { id: id('menu-b'), cervejariaId: company.id, nome: 'Synthetic menu B', ativo: true, chopeVolumesConfigurados: true } });
+  await db.cardapioProduto.createMany({ data: [
+    { id: id('menu-a-unit'), cardapioId: menuA.id, produtoId: product.id, volumeMl: 0, precoUnit: '4.00' },
+    { id: id('menu-a-500'), cardapioId: menuA.id, produtoId: draftProduct.id, volumeMl: 500, precoUnit: '6.00' },
+    { id: id('menu-a-1000'), cardapioId: menuA.id, produtoId: draftProduct.id, volumeMl: 1000, precoUnit: '10.00' },
+    { id: id('menu-b-unit'), cardapioId: menuB.id, produtoId: product.id, volumeMl: 0, precoUnit: '5.00' },
+    { id: id('menu-b-500'), cardapioId: menuB.id, produtoId: draftProduct.id, volumeMl: 500, precoUnit: '7.00' },
+    { id: id('menu-b-1000'), cardapioId: menuB.id, produtoId: draftProduct.id, volumeMl: 1000, precoUnit: '12.00' },
+  ] });
+  await db.evento.update({ where: { id: events[0].id }, data: { cardapioId: menuB.id } });
+  await db.eventoProduto.createMany({ data: events.slice(0, 2).flatMap((event) => [
+    { id: id(`${event.id}-draft-selection`), eventoId: event.id, produtoId: draftProduct.id },
+    { id: id(`${event.id}-unit-selection`), eventoId: event.id, produtoId: product.id },
+  ]) });
+  const { readPdvCatalogSourceSnapshot } = await import('./pdv-unico-catalog-source.ts');
+  const { buildPdvCatalogMigrationItems, canonicalPdvPayloadHash, PDV_CATALOG_SCOPE, PDV_CATALOG_TRANSFORM_VERSION } = await import('./pdv-unico-catalog-transform.ts');
+  const readCatalogPlan = async () => db.$transaction(async (tx) => {
+    const [planning, catalogSource] = await Promise.all([
+      readPdvPlanningSourceSnapshot(tx, company.id), readPdvCatalogSourceSnapshot(tx, company.id),
+    ]);
+    const snapshot = { ...planning, ...catalogSource };
+    const maps = await tx.pdvMigrationMap.findMany({ where: { destinationType: 'PONTO_VENDA', destinationId: point.id, cervejariaId: company.id }, orderBy: [{ createdAt: 'asc' }, { sourceType: 'asc' }, { sourceId: 'asc' }] });
+    const dependency = maps.find((map) => ['PDV', 'TRAILER'].includes(map.sourceType));
+    assert(dependency, 'catalog plan diagnostic has a business-certified PDV map');
+    const sourceKey = `${dependency.sourceType}:${dependency.sourceId}`;
+    const items = buildPdvCatalogMigrationItems({ companyId: company.id, pointId: point.id, snapshot, confirmedPdvSourceKey: sourceKey });
+    const sourceSnapshotHash = canonicalPdvPayloadHash({ scope: PDV_CATALOG_SCOPE, companyId: company.id, pointId: point.id, transformVersion: PDV_CATALOG_TRANSFORM_VERSION, items: items.map((item) => ({ sourceType: item.type, sourceId: item.id, sourcePayload: item.sourcePayload })) });
+    return { sourceKey, sourceSnapshotHash, items: plain(items) };
+  }, { isolationLevel: 'RepeatableRead' });
   const { readPdvPlanningSourceSnapshot } = await import('./pdv-unico-source-graph.ts');
   await db.$transaction((tx) => readPdvPlanningSourceSnapshot(tx, company.id), { isolationLevel: 'RepeatableRead' });
   console.log('QA_STAGE=shared-source-graph-read');
@@ -533,18 +580,66 @@ try {
   assert.equal(point.id, existingPoint.id, 'existing canonical PDV is preserved');
   const recurringTargets = await db.ocorrenciaOperacional.findMany({ where: { agendaId: weeklyAgenda.id }, orderBy: { data: 'asc' } });
   assert.deepEqual(recurringTargets.map((row) => [row.id, row.data.toISOString().slice(0, 10)]), recurringOccurrences.map((row) => [row.id, row.data.toISOString().slice(0, 10)]), 'recurring occurrences retain distinct dates and the agenda link');
-  const product = await db.produto.create({ data: { id: id('product'), cervejariaId: company.id, nome: 'Synthetic product', controlaEstoque: true } });
   const catalogRunId = id('catalog');
+  const catalogSourceAtStart = plain(await db.$transaction((tx) => readPdvCatalogSourceSnapshot(tx, company.id), { isolationLevel: 'RepeatableRead' }));
+  const catalogPlanAtStart = await readCatalogPlan();
   const catalogRun = await runPdvCatalogMigration({ db, companyId: company.id, pointId: point.id, runId: catalogRunId });
   assert.equal(catalogRun.status, 'COMPLETED', JSON.stringify(catalogRun));
+  assert.equal(catalogPlanAtStart.sourceSnapshotHash, catalogRun.checkpoint.sourceSnapshotHash, 'directly rebuilt catalog contract equals the real runner checkpoint at start');
+  const migratedMenuRows = await db.cardapioProduto.findMany({ where: { cardapioId: { in: [menuA.id, menuB.id] } }, orderBy: [{ cardapioId: 'asc' }, { produtoId: 'asc' }, { volumeMl: 'asc' }] });
+  assert.equal(migratedMenuRows.length, 6, 'both distinct menus and every unit/volume line survive catalog migration');
+  const expectedMigratedMenuRows = [
+    [id('menu-a-unit'), menuA.id, product.id, 0, '400'], [id('menu-a-500'), menuA.id, draftProduct.id, 500, '600'], [id('menu-a-1000'), menuA.id, draftProduct.id, 1000, '1000'],
+    [id('menu-b-unit'), menuB.id, product.id, 0, '500'], [id('menu-b-500'), menuB.id, draftProduct.id, 500, '700'], [id('menu-b-1000'), menuB.id, draftProduct.id, 1000, '1200'],
+  ].sort((a, b) => a[1].localeCompare(b[1]) || a[2].localeCompare(b[2]) || a[3] - b[3]);
+  assert.deepEqual(migratedMenuRows.map((row) => [row.id, row.cardapioId, row.produtoId, row.volumeMl, centsExact(row.precoUnit)]), expectedMigratedMenuRows, 'catalog migration preserves stable IDs, menu links, volume identity, and exact cents');
+  const migratedDraftPrices = await db.preco.findMany({ where: { produtoId: draftProduct.id }, orderBy: { volumeMl: 'asc' } });
+  assert.deepEqual(migratedDraftPrices.map((row) => [row.id, row.volumeMl, centsExact(row.preco)]), [[id('price-draft-500'), 500, '850'], [id('price-draft-1000'), 1000, '1300']]);
+  const businessAfterCatalog = await runPdvBusinessMigration({ db, companyId: company.id, runId: businessRunId });
+  assert.equal(businessAfterCatalog.status, 'COMPLETED', `business occurrence certification remains valid after catalog migration: ${JSON.stringify(businessAfterCatalog)}`);
   console.log('QA_STAGE=catalog-and-session-dependencies-confirmed');
   const owner = await db.usuario.create({ data: { nome: 'Synthetic operator', email: `${slug('owner')}@example.invalid`, senhaHash: 'synthetic', papel: 'DONO', cervejariaId: company.id } });
   const client = await db.cliente.create({ data: { id: id('client'), cervejariaId: company.id, nome: 'Synthetic client' } });
   const eventSession = await db.sessaoCaixaEvento.create({ data: { id: id('event-session-integrated'), eventoId: events[0].id, status: 'FECHADO', trocoInicial: '12.00', abertoPorId: owner.id, abertoEm: new Date('2026-11-05T17:00:00.000Z'), fechadoPorId: owner.id, fechadoEm: new Date('2026-11-05T23:00:00.000Z'), contadoDinheiro: '20.00', contadoPix: '8.25', contadoDebito: '0.00', contadoCredito: '0.00' } });
   const debtEventSession = await db.sessaoCaixaEvento.create({ data: { id: id('event-session-debt-occurrence'), eventoId: events[1].id, status: 'FECHADO', trocoInicial: '3.00', abertoPorId: owner.id, abertoEm: new Date('2026-11-12T17:00:00.000Z'), fechadoPorId: owner.id, fechadoEm: new Date('2026-11-12T23:00:00.000Z'), contadoDinheiro: '2.00', contadoPix: '0.00', contadoDebito: '0.00', contadoCredito: '0.00' } });
-  const cashSession = await db.sessaoCaixaOperacao.create({ data: { id: id('cash-session-integrated'), cervejariaId: company.id, pontoVendaId: point.id, trailerId: trailer.id, diaOperacional: new Date('2026-11-13T00:00:00.000Z'), status: 'FECHADO', trocoInicial: '5.00', abertoPorId: owner.id, abertoEm: new Date('2026-11-13T10:00:00.000Z'), fechadoPorId: owner.id, fechadoEm: new Date('2026-11-13T22:00:00.000Z'), contadoDinheiro: '5.00', contadoPix: '0.00', contadoCartaoDebito: '0.00', contadoCartaoCredito: '4.00' } });
+  const cashSession = await db.sessaoCaixaOperacao.create({ data: { id: id('cash-session-integrated'), cervejariaId: company.id, pontoVendaId: point.id, trailerId: trailer.id, diaOperacional: new Date('2026-11-13T00:00:00.000Z'), status: 'FECHADO', trocoInicial: '5.00', abertoPorId: owner.id, abertoEm: new Date('2026-11-13T10:00:00.000Z'), fechadoPorId: owner.id, fechadoEm: new Date('2026-11-13T22:00:00.000Z'), contadoDinheiro: '5.00', contadoPix: '0.00', contadoCartaoDebito: '0.00', contadoCartaoCredito: '4.00', cardapioId: menuA.id } });
+  const overrideSession = await db.sessaoCaixaOperacao.create({ data: { id: id('cash-session-overrides'), cervejariaId: company.id, pontoVendaId: point.id, trailerId: trailer.id, diaOperacional: new Date('2026-11-14T00:00:00.000Z'), status: 'FECHADO', trocoInicial: '0.00', abertoPorId: owner.id, abertoEm: new Date('2026-11-14T10:00:00.000Z'), fechadoPorId: owner.id, fechadoEm: new Date('2026-11-14T22:00:00.000Z'), contadoDinheiro: '0.00', contadoPix: '0.00', contadoCartaoDebito: '0.00', contadoCartaoCredito: '0.00', cardapioId: menuB.id } });
+  const catalogFallbackSession = await db.sessaoCaixaOperacao.create({ data: { id: id('cash-session-catalog-fallback'), cervejariaId: company.id, pontoVendaId: point.id, trailerId: trailer.id, diaOperacional: new Date('2026-11-15T00:00:00.000Z'), status: 'FECHADO', trocoInicial: '0.00', abertoPorId: owner.id, abertoEm: new Date('2026-11-15T10:00:00.000Z'), fechadoPorId: owner.id, fechadoEm: new Date('2026-11-15T22:00:00.000Z'), contadoDinheiro: '0.00', contadoPix: '0.00', contadoCartaoDebito: '0.00', contadoCartaoCredito: '0.00' } });
+  await db.sessaoCaixaProdutoOperacao.createMany({ data: [
+    { id: id('cash-product-500-no-override'), sessaoCaixaId: cashSession.id, produtoId: draftProduct.id, volumeMl: 500 },
+    { id: id('cash-product-1000-null-override'), sessaoCaixaId: cashSession.id, produtoId: draftProduct.id, volumeMl: 1000, precoUnit: null },
+    { id: id('cash-product-unit-zero'), sessaoCaixaId: cashSession.id, produtoId: product.id, volumeMl: 0, precoUnit: '0.00' },
+    { id: id('override-product-500-positive'), sessaoCaixaId: overrideSession.id, produtoId: draftProduct.id, volumeMl: 500, precoUnit: '8.75' },
+    { id: id('override-product-1000-null'), sessaoCaixaId: overrideSession.id, produtoId: draftProduct.id, volumeMl: 1000, precoUnit: null },
+    { id: id('override-product-unit-positive'), sessaoCaixaId: overrideSession.id, produtoId: product.id, volumeMl: 0, precoUnit: '5.50' },
+    { id: id('fallback-product-500'), sessaoCaixaId: catalogFallbackSession.id, produtoId: draftProduct.id, volumeMl: 500 },
+    { id: id('fallback-product-unit'), sessaoCaixaId: catalogFallbackSession.id, produtoId: product.id, volumeMl: 0 },
+  ] });
   const sessionRunId = id('sessions');
-  assert.equal((await runPdvSessionMigration({ db, companyId: company.id, pointId: point.id, runId: sessionRunId })).status, 'COMPLETED');
+  const sessionResult = await runPdvSessionMigration({ db, companyId: company.id, pointId: point.id, runId: sessionRunId });
+  assert.equal(sessionResult.status, 'COMPLETED', JSON.stringify(sessionResult));
+  const [eventSessionTarget, debtEventSessionTarget, cashSessionTarget, overrideSessionTarget, fallbackSessionTarget] = await Promise.all([
+    db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: eventSession.id } }),
+    db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: debtEventSession.id } }),
+    db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: cashSession.id } }),
+    db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: overrideSession.id } }),
+    db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: catalogFallbackSession.id } }),
+  ]);
+  assert.deepEqual([
+    [eventSessionTarget.id, eventSessionTarget.cardapioId, eventSessionTarget.ocorrenciaId, eventSessionTarget.origemHistorica],
+    [debtEventSessionTarget.id, debtEventSessionTarget.cardapioId, debtEventSessionTarget.ocorrenciaId, debtEventSessionTarget.origemHistorica],
+    [cashSessionTarget.id, cashSessionTarget.cardapioId], [overrideSessionTarget.id, overrideSessionTarget.cardapioId], [fallbackSessionTarget.id, fallbackSessionTarget.cardapioId],
+  ], [
+    [eventSession.id, menuB.id, events[0].id, 'EVENTO'], [debtEventSession.id, null, events[1].id, 'EVENTO'],
+    [cashSession.id, menuA.id], [overrideSession.id, menuB.id], [catalogFallbackSession.id, null],
+  ], 'session transfer retains selected menus and occurrence, while sources without a selection remain unselected');
+  assert.deepEqual((await db.sessaoCaixaProdutoOperacao.findMany({ where: { sessaoCaixaId: cashSession.id }, orderBy: [{ produtoId: 'asc' }, { volumeMl: 'asc' }] })).map((row) => [row.id, row.produtoId, row.volumeMl, row.precoUnit === null ? null : centsExact(row.precoUnit)]), [
+    [id('cash-product-unit-zero'), product.id, 0, '0'],
+    [id('cash-product-500-no-override'), draftProduct.id, 500, null],
+    [id('cash-product-1000-null-override'), draftProduct.id, 1000, null],
+  ].sort((a, b) => a[1].localeCompare(b[1]) || a[2] - b[2]), 'session transfer preserves exact row IDs and zero/null override states');
+  const tap = await db.tap.create({ data: { id: id('price-consumer-tap'), numero: 91, nome: 'QA price consumer', cervejariaId: company.id, trailerId: trailer.id } });
+  await db.tapMontagem.createMany({ data: [eventSession.id, debtEventSession.id, cashSession.id, overrideSession.id, catalogFallbackSession.id].map((sessaoCaixaId, index) => ({ id: id(`price-mount-${index}`), tapId: tap.id, produtoId: draftProduct.id, sessaoCaixaId })) });
   const command = async (name, event, status = 'ABERTA') => db.comanda.create({ data: { id: id(name), origem: event ? 'EVENTO' : 'CAIXA', eventoId: event?.id ?? null, pontoVendaId: event ? null : point.id, clienteId: client.id, status, total: '18.25', desconto: '0.50', numero: name.length } });
   const eventCommand1 = await command('event-command-1', events[0]);
   const eventCommand2 = await command('event-command-2', events[1], 'FECHADA');
@@ -634,6 +729,29 @@ try {
   assert.equal((await db.pdvMigrationMap.count({ where: { cervejariaId: company.id, sourceType: { in: ['COMANDA','ITEM_COMANDA','ITEM_COMANDA_OPCIONAL','PEDIDO_COZINHA','PEDIDO_COZINHA_STATUS','PEDIDO_CLIENTE','PEDIDO_CLIENTE_ITEM','ESTOQUE_SALDO','MOVIMENTO_ESTOQUE'] } } })), completed.checkpoint.totalRecords);
   assert.equal((await runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: commerceRunId })).status, 'COMPLETED', 'same run revalidates');
   assert.equal((await runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: id('commerce-new-run') })).status, 'COMPLETED', 'new run reuses stable maps without duplicate rows');
+
+  // Revalidate and replay every completed integrated scope before later adversarial tests mutate unrelated certification inputs.
+  const catalogSourceAtCommercialFinish = plain(await db.$transaction((tx) => readPdvCatalogSourceSnapshot(tx, company.id), { isolationLevel: 'RepeatableRead' }));
+  const catalogSourceDrift = changedJsonPaths(catalogSourceAtStart, catalogSourceAtCommercialFinish);
+  const catalogPlanAtCommercialFinish = await readCatalogPlan();
+  const catalogPlanDrift = changedJsonPaths(catalogPlanAtStart, catalogPlanAtCommercialFinish);
+  console.log(`QA_STAGE=catalog-source-comparison; changedPaths=${JSON.stringify(catalogSourceDrift)}; planChangedPaths=${JSON.stringify(catalogPlanDrift)}; sourceKeys=${catalogPlanAtStart.sourceKey}->${catalogPlanAtCommercialFinish.sourceKey}; hashesEqual=${catalogPlanAtStart.sourceSnapshotHash === catalogPlanAtCommercialFinish.sourceSnapshotHash}`);
+  assert.deepEqual(catalogSourceDrift, [], 'catalog source payload remains identical across sessions/finance/commercial migration before replay');
+  assert.deepEqual(catalogPlanDrift, [], 'rebuilt catalog items remain identical across the integrated migration before replay');
+  for (const [label, result] of [
+    ['business', await runPdvBusinessMigration({ db, companyId: company.id, runId: businessRunId })],
+    ['catalog', await runPdvCatalogMigration({ db, companyId: company.id, pointId: point.id, runId: catalogRunId })],
+    ['sessions', await runPdvSessionMigration({ db, companyId: company.id, pointId: point.id, runId: sessionRunId })],
+    ['finance', await runPdvFinanceMigration({ db, companyId: company.id, pointId: point.id, runId: financeRunId })],
+    ['commerce', await runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: commerceRunId })],
+  ]) assert.equal(result.status, 'COMPLETED', `same-run integrated revalidation ${label}: ${JSON.stringify(result)}`);
+  for (const [label, result] of [
+    ['business', await runPdvBusinessMigration({ db, companyId: company.id, runId: id('business-replay-new-run') })],
+    ['catalog', await runPdvCatalogMigration({ db, companyId: company.id, pointId: point.id, runId: id('catalog-replay-new-run') })],
+    ['sessions', await runPdvSessionMigration({ db, companyId: company.id, pointId: point.id, runId: id('sessions-replay-new-run') })],
+    ['finance', await runPdvFinanceMigration({ db, companyId: company.id, pointId: point.id, runId: id('finance-replay-new-run') })],
+    ['commerce', await runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: id('commerce-replay-new-run') })],
+  ]) assert.equal(result.status, 'COMPLETED', `new-run integrated replay ${label}: ${JSON.stringify(result)}`);
 
   // Parent identity is historical payload. Reparenting between valid same-tenant parents
   // must invalidate the stable map even when the child's other fields and ID are unchanged.
@@ -728,21 +846,102 @@ try {
   await db.itemComanda.update({ where: { id: reparentedItem.id }, data: { comandaId: raceSecondCommand.id } });
   assert.equal((await runPdvCommerceMigration({ db, companyId: raceCompany.id, pointId: racePoint.id, runId: raceRunId })).status, 'COMPLETED', 'restoring original parent permits revalidation');
 
-  // All earlier certifications are checked again after the commercial links have been written.
-  for (const [label, result] of [
-    ['business', await runPdvBusinessMigration({ db, companyId: company.id, runId: businessRunId })],
-    ['catalog', await runPdvCatalogMigration({ db, companyId: company.id, pointId: point.id, runId: catalogRunId })],
-    ['sessions', await runPdvSessionMigration({ db, companyId: company.id, pointId: point.id, runId: sessionRunId })],
-    ['finance', await runPdvFinanceMigration({ db, companyId: company.id, pointId: point.id, runId: financeRunId })],
-    ['commerce', await runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: commerceRunId })],
-  ]) assert.equal(result.status, 'COMPLETED', `same-run integrated revalidation ${label}: ${JSON.stringify(result)}`);
-  for (const [label, result] of [
-    ['business', await runPdvBusinessMigration({ db, companyId: company.id, runId: id('business-replay-new-run') })],
-    ['catalog', await runPdvCatalogMigration({ db, companyId: company.id, pointId: point.id, runId: id('catalog-replay-new-run') })],
-    ['sessions', await runPdvSessionMigration({ db, companyId: company.id, pointId: point.id, runId: id('sessions-replay-new-run') })],
-    ['finance', await runPdvFinanceMigration({ db, companyId: company.id, pointId: point.id, runId: id('finance-replay-new-run') })],
-    ['commerce', await runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: id('commerce-replay-new-run') })],
-  ]) assert.equal(result.status, 'COMPLETED', `new-run integrated replay ${label}: ${JSON.stringify(result)}`);
+  const menuRowsAfterReplays = await db.cardapioProduto.findMany({ where: { cardapioId: { in: [menuA.id, menuB.id] } }, orderBy: [{ cardapioId: 'asc' }, { produtoId: 'asc' }, { volumeMl: 'asc' }] });
+  assert.deepEqual(menuRowsAfterReplays.map((row) => [row.id, row.cardapioId, row.produtoId, row.volumeMl, centsExact(row.precoUnit)]), expectedMigratedMenuRows, 'same/new-run scope replay creates no duplicate menu or price rows');
+  assert.equal(await db.cardapio.count({ where: { id: { in: [menuA.id, menuB.id] } } }), 2);
+  const foreignTenant = await db.cervejaria.create({ data: { id: id('foreign-menu-tenant'), nome: 'Synthetic foreign menu tenant', slug: slug('foreign-menu-tenant') } });
+  const foreignProduct = await db.produto.create({ data: { id: id('foreign-menu-product'), cervejariaId: foreignTenant.id, nome: 'Synthetic foreign menu product', tipo: 'COMIDA' } });
+  const incompatibleMenuEntry = await db.cardapioProduto.create({ data: { id: id('foreign-menu-entry'), cardapioId: menuA.id, produtoId: foreignProduct.id, volumeMl: 0, precoUnit: '99.99' } });
+  const catalogMapCountBeforeInvalidLink = await db.pdvMigrationMap.count({ where: { cervejariaId: company.id, sourceType: { in: ['CATALOGO_CARDAPIO', 'CATALOGO_CARDAPIO_ITEM'] } } });
+  const incompatibleCatalog = await runPdvCatalogMigration({ db, companyId: company.id, pointId: point.id, runId: id('foreign-menu-link') });
+  assert.deepEqual([incompatibleCatalog.status, incompatibleCatalog.code], ['BLOCKED', 'MENU_PRODUCT_TENANT_MISMATCH'], 'a menu linked to a product from another tenant blocks with a specific diagnostic');
+  assert.equal(await db.pdvMigrationMap.count({ where: { cervejariaId: company.id, sourceType: { in: ['CATALOGO_CARDAPIO', 'CATALOGO_CARDAPIO_ITEM'] } } }), catalogMapCountBeforeInvalidLink, 'tenant mismatch performs no partial menu/map write');
+  const rejectedEntryState = await db.cardapioProduto.findUniqueOrThrow({ where: { id: incompatibleMenuEntry.id }, select: { id: true, cardapioId: true, produtoId: true, cervejariaId: true, pontoVendaId: true, precoUnit: true } });
+  assert.deepEqual([rejectedEntryState.id, rejectedEntryState.cardapioId, rejectedEntryState.produtoId, rejectedEntryState.cervejariaId, rejectedEntryState.pontoVendaId, centsExact(rejectedEntryState.precoUnit)], [incompatibleMenuEntry.id, menuA.id, foreignProduct.id, null, null, '9999'], 'rejected source link is preserved without assigning a tenant/PDV');
+  await db.cardapioProduto.delete({ where: { id: incompatibleMenuEntry.id } });
+
+  const [{ getCardapioTurno }, { resolverItens }, { prisma: appPrisma }] = await Promise.all([
+    import('../src/lib/operacao/sessao-cardapio.ts'),
+    import('../src/lib/operacao/venda.ts'),
+    import('../src/lib/prisma.ts'),
+  ]);
+  consumerPrisma = appPrisma;
+  const cardapioTurnoPrices = async (sessionId, label, expectedMenuId, expected) => {
+    const view = await getCardapioTurno(sessionId, company.id);
+    assert(view, `${label}: real getCardapioTurno returned a session`);
+    assert.equal(view.cardapioId, expectedMenuId, `${label}: selected menu preserved`);
+    const actual = expected.map(([productId, volumeMl]) => {
+      const row = view.produtos.find((item) => item.id === productId && item.volumeMl === volumeMl);
+      assert(row, `${label}: product ${productId} volume ${volumeMl} is present in real session menu consumer`);
+      return [productId, volumeMl, centsExact(row.precoUnit)];
+    });
+    return actual;
+  };
+  const expectedCashTurn = [[draftProduct.id, 500, '600'], [draftProduct.id, 1000, '1000'], [product.id, 0, '0']];
+  const expectedOverrideTurn = [[draftProduct.id, 500, '875'], [draftProduct.id, 1000, '1200'], [product.id, 0, '550']];
+  const expectedEventTurn = [[draftProduct.id, 500, '700'], [draftProduct.id, 1000, '1200'], [product.id, 0, '500']];
+  const expectedCatalogTurn = [[draftProduct.id, 500, '850'], [product.id, 0, '625']];
+  const expectedEventCatalogTurn = [[draftProduct.id, 500, '850'], [draftProduct.id, 1000, '1300'], [product.id, 0, '625']];
+  assert.deepEqual(await cardapioTurnoPrices(cashSession.id, 'Por Caixa menu A', menuA.id, expectedCashTurn), expectedCashTurn);
+  assert.deepEqual(await cardapioTurnoPrices(overrideSession.id, 'Por Caixa menu B with overrides', menuB.id, expectedOverrideTurn), expectedOverrideTurn);
+  assert.deepEqual(await cardapioTurnoPrices(eventSession.id, 'EVENTO menu B', menuB.id, expectedEventTurn), expectedEventTurn);
+  assert.deepEqual(await cardapioTurnoPrices(catalogFallbackSession.id, 'Por Caixa without selected menu', null, expectedCatalogTurn), expectedCatalogTurn);
+  assert.deepEqual(await cardapioTurnoPrices(debtEventSession.id, 'EVENTO without selected menu', null, expectedEventCatalogTurn), expectedEventCatalogTurn);
+
+  const resolvedPriceCases = [
+    { label: 'Por Caixa menu A: missing override, explicit NULL and explicit zero', sessionId: cashSession.id, lines: [
+      { produtoId: draftProduct.id, tapId: tap.id, volumeMl: 500, quantidade: 2 },
+      { produtoId: draftProduct.id, tapId: tap.id, volumeMl: 1000, quantidade: 1 },
+      { produtoId: product.id, quantidade: 1 },
+    ], expected: [['500', '600'], ['1000', '1000'], ['0', '0']], totalCents: '2200' },
+    { label: 'Por Caixa menu B: positive override wins, NULL inherits menu and unit positive override wins', sessionId: overrideSession.id, lines: [
+      { produtoId: draftProduct.id, tapId: tap.id, volumeMl: 500, quantidade: 2 },
+      { produtoId: draftProduct.id, tapId: tap.id, volumeMl: 1000, quantidade: 1 },
+      { produtoId: product.id, quantidade: 1 },
+    ], expected: [['500', '875'], ['1000', '1200'], ['0', '550']], totalCents: '3500' },
+    { label: 'EVENTO occurrence with selected menu', sessionId: eventSession.id, lines: [
+      { produtoId: draftProduct.id, tapId: tap.id, volumeMl: 500, quantidade: 1 },
+      { produtoId: draftProduct.id, tapId: tap.id, volumeMl: 1000, quantidade: 1 },
+      { produtoId: product.id, quantidade: 1 },
+    ], expected: [['500', '700'], ['1000', '1200'], ['0', '500']], totalCents: '2400' },
+    { label: 'EVENTO without a selected menu falls back to catalog', sessionId: debtEventSession.id, lines: [
+      { produtoId: draftProduct.id, tapId: tap.id, volumeMl: 500, quantidade: 1 },
+      { produtoId: product.id, quantidade: 2 },
+    ], expected: [['500', '850'], ['0', '625']], totalCents: '2100' },
+    { label: 'Por Caixa without selected menu falls back to catalog', sessionId: catalogFallbackSession.id, lines: [
+      { produtoId: draftProduct.id, tapId: tap.id, volumeMl: 500, quantidade: 1 },
+      { produtoId: product.id, quantidade: 2 },
+    ], expected: [['500', '850'], ['0', '625']], totalCents: '2100' },
+  ];
+  const observedPriceRows = [];
+  for (const scenario of resolvedPriceCases) {
+    const resolved = await db.$transaction((tx) => resolverItens(tx, company.id, scenario.lines, { sessaoCaixaId: scenario.sessionId, tapsEnabled: true }));
+    const actual = resolved.map((row) => [String(row.volumeMl), centsExact(row.precoUnit)]);
+    assert.deepEqual(actual, scenario.expected, `${scenario.label}: real resolverItens result`);
+    const total = resolved.reduce((sum, row) => sum + BigInt(centsExact(row.precoUnit)) * BigInt(row.quantidade), 0n).toString();
+    assert.equal(total, scenario.totalCents, `${scenario.label}: exact total in cents`);
+    observedPriceRows.push({ scenario: scenario.label, prices: actual, totalCents: total });
+  }
+  console.log(`QA_STAGE=real-menu-consumers-verified; prices=${JSON.stringify(observedPriceRows)}`);
+
+  const historicSaleSnapshotBeforeCatalogEdit = plain({
+    item: await db.itemComanda.findUniqueOrThrow({ where: { id: item1.id } }),
+    optional: await db.itemComandaOpcional.findUniqueOrThrow({ where: { id: soldOptional.id } }),
+  });
+  await db.preco.update({ where: { produtoId_volumeMl: { produtoId: draftProduct.id, volumeMl: 500 } }, data: { preco: '19.99' } });
+  await db.cardapioProduto.update({ where: { id: id('menu-a-500') }, data: { precoUnit: '17.77' } });
+  const historicSaleSnapshotAfterCatalogEdit = plain({
+    item: await db.itemComanda.findUniqueOrThrow({ where: { id: item1.id } }),
+    optional: await db.itemComandaOpcional.findUniqueOrThrow({ where: { id: soldOptional.id } }),
+  });
+  assert.deepEqual(historicSaleSnapshotAfterCatalogEdit, historicSaleSnapshotBeforeCatalogEdit, 'editing catalog and menu after completed scope replays leaves historical sale and optional snapshots byte-for-byte equivalent');
+
+  const alternatePoint = await db.pontoVenda.create({ data: { id: id('alternate-point'), cervejariaId: company.id, nome: 'QA alternate' } });
+  await assert.rejects(db.comanda.create({ data: { id: id('cross-point-occurrence'), origem: 'EVENTO', eventoId: events[0].id, pontoVendaId: alternatePoint.id, ocorrenciaId: events[0].id, total: '1.00' } }), (error) => error?.code === 'P2003', 'occurrence and command PDV mismatch is rejected by the composite FK');
+  const wrongPointCommand = await db.comanda.create({ data: { id: id('wrong-point-command'), origem: 'CAIXA', pontoVendaId: alternatePoint.id, status: 'ABERTA', total: '1.00' } });
+  const blockedWrongPoint = await runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: id('wrong-point-run') });
+  assert.deepEqual([blockedWrongPoint.status, blockedWrongPoint.code], ['BLOCKED', 'OCCURRENCE_MULTIPLE_CANONICAL_PDVS'], 'adding a second canonical PDV invalidates upstream occurrence certification before downstream commerce mapping');
+  assert.equal((await db.comanda.findUniqueOrThrow({ where: { id: wrongPointCommand.id } })).pontoVendaId, alternatePoint.id, 'incompatible historical link is preserved');
 
   const raceCommerceRunId = raceRunId;
   for (const [label, result] of [
@@ -782,15 +981,9 @@ try {
   assert.equal(invalidRun.status, 'BLOCKED');
   assert.equal((await db.inventoryBalance.findUniqueOrThrow({ where: { id: balance.id } })).quantidade.toString(), '3.126', 'divergence blocks without automatic repair');
 
-  const alternatePoint = await db.pontoVenda.create({ data: { id: id('alternate-point'), cervejariaId: company.id, nome: 'QA alternate' } });
-  await assert.rejects(db.comanda.create({ data: { id: id('cross-point-occurrence'), origem: 'EVENTO', eventoId: events[0].id, pontoVendaId: alternatePoint.id, ocorrenciaId: events[0].id, total: '1.00' } }), (error) => error?.code === 'P2003', 'occurrence and command PDV mismatch is rejected by the composite FK');
-  const wrongPointCommand = await db.comanda.create({ data: { id: id('wrong-point-command'), origem: 'CAIXA', pontoVendaId: alternatePoint.id, status: 'ABERTA', total: '1.00' } });
-  const blockedWrongPoint = await runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: id('wrong-point-run') });
-  assert.deepEqual([blockedWrongPoint.status, blockedWrongPoint.code], ['BLOCKED', 'OCCURRENCE_MULTIPLE_CANONICAL_PDVS'], 'adding a second canonical PDV invalidates upstream occurrence certification before downstream commerce mapping');
-  assert.equal((await db.comanda.findUniqueOrThrow({ where: { id: wrongPointCommand.id } })).pontoVendaId, alternatePoint.id, 'incompatible historical link is preserved');
-
   console.log(`PDV_COMMERCE_QA=PASS; migrations=${applied.length}; coverage=commands:4/items:2/sold-optionals:1/kitchen-orders:2/history:6/balances:1/movements:1/unattached:1; mapped=${completed.checkpoint.totalRecords}; rollback=atomic+mid-batch-divergence; parent-link-tamper=3-specific-blockers; same-db-scopes=business,catalog,sessions,finance,commerce; reexecution=same,new; concurrency=lock-observed; stock-tamper=BLOCKED; PROD_ACCESS_USED=NO`);
 } finally {
+  await consumerPrisma?.$disconnect();
   await db?.$disconnect();
   await rm(tempRoot, { recursive: true, force: true });
 }
