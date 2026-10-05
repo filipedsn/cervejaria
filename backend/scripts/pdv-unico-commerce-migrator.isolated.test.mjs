@@ -471,6 +471,10 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.equal(await db.pagamento.count({ where: { comandaId: settingsCommandId } }), 0);
     const cancelledSettingsCommand = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(settingsCommandId)}/cancelar`, headers: { cookie: secondOwnerCookie }, payload: {} });
     assert.equal(cancelledSettingsCommand.statusCode, 200, `settings fixture command is closed through the existing route: ${cancelledSettingsCommand.body}`);
+    const pendingKitchenCancellation = await db.pedidoOperacao.findFirstOrThrow({ where: { comandaId: settingsCommandId, status: 'CANCELAMENTO_PENDENTE' } });
+    const kitchenCancellationConfirmed = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(pendingKitchenCancellation.id)}/status`, headers: { cookie: secondOwnerCookie }, payload: { status: 'CANCELADO' } });
+    assert.equal(kitchenCancellationConfirmed.statusCode, 200, `owner confirms the kitchen cancellation through the real kitchen route: ${kitchenCancellationConfirmed.body}`);
+    assert.equal((await db.pedidoOperacao.findUniqueOrThrow({ where: { id: pendingKitchenCancellation.id } })).status, 'CANCELADO', 'only a resolved order stops blocking kitchen disable');
     const kitchenOffAfterCancel = await app.inject({ method: 'PATCH', url: '/api/operacao/capacidades', headers: { cookie: secondOwnerCookie }, payload: { temCozinha: false } });
     assert.equal(kitchenOffAfterCancel.statusCode, 200, 'kitchen can be disabled after active preparation is resolved');
     const settingsCashClose = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: secondOwnerCookie }, payload: { pontoVendaId: secondPoint.id, contadoDinheiro: 0, contadoPix: 0, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });

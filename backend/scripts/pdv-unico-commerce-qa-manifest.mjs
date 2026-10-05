@@ -15,7 +15,10 @@ export function resolvePdvCommerceQaBaseline(selectedRevision = process.env.PDV_
   const revision = selectedRevision.trim();
   if (!revision || revision.startsWith('-')) throw new Error('Selected QA baseline must be a Git commit revision.');
   try {
-    return git(['rev-parse', '--verify', '--end-of-options', `${revision}^{commit}`], { encoding: 'utf8' }).trim();
+    return git(['rev-parse', '--verify', '--end-of-options', `${revision}^{commit}`], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
   } catch {
     throw new Error(`Selected QA baseline is not a valid Git commit: ${revision}`);
   }
