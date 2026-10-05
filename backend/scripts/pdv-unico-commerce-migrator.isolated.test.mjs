@@ -648,14 +648,14 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     await closeOccurrenceCash('2026-11-02', unitPrice);
 
     const portalSession = await openOccurrenceCash('2026-11-04', otherAgendaOccurrence.id);
-    const portalOpen = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: `/api/cervejarias/${encodeURIComponent(primaryCompany.slug)}/pontos-venda/${encodeURIComponent(primaryPoint.id)}/comandas`, payload: { nome: occurrenceClient.nome, telefone: occurrenceClient.telefone } }));
+    const portalOpen = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: `/api/public/cervejarias/${encodeURIComponent(primaryCompany.slug)}/pontos-venda/${encodeURIComponent(primaryPoint.id)}/comandas`, payload: { nome: occurrenceClient.nome, telefone: occurrenceClient.telefone } }));
     assert.equal(portalOpen.statusCode, 201, `portal opens a command in the active occurrence: ${portalOpen.body}`);
     const portalCookieHeader = portalOpen.headers['set-cookie'];
     const portalCookie = Array.isArray(portalCookieHeader) ? portalCookieHeader[0]?.split(';', 1)[0] : portalCookieHeader?.split(';', 1)[0];
     assert(portalCookie, 'portal returns the real cliente-PDV credential');
     const portalCommandId = JSON.parse(portalOpen.body).comanda.id;
     assert.equal(JSON.parse(portalOpen.body).comanda.ocorrenciaId, otherAgendaOccurrence.id);
-    const portalPath = `/api/cervejarias/${encodeURIComponent(primaryCompany.slug)}/pontos-venda/${encodeURIComponent(primaryPoint.id)}/comanda/pedidos`;
+    const portalPath = `/api/public/cervejarias/${encodeURIComponent(primaryCompany.slug)}/pontos-venda/${encodeURIComponent(primaryPoint.id)}/comanda/pedidos`;
     const portalOverride = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: portalPath, headers: { cookie: portalCookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }], ocorrenciaId: recurringOccurrences[0].id } }));
     assert.equal(portalOverride.statusCode, 400, 'portal cannot provide an occurrence override');
     const portalValidOrder = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: portalPath, headers: { cookie: portalCookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
