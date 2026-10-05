@@ -1,5 +1,6 @@
 import { prisma } from './prisma.js';
 import { recordLegacyFallback, type LegacyFallbackRecorder } from './legacy-fallback.js';
+import { readCanonicalPdvOperationalSettingsIfEnabled, type CanonicalPdvOperationalSettings } from './canonical-pdv-operational-config.js';
 
 export interface OperationalCapabilities {
   cashRegister: boolean;
@@ -19,6 +20,7 @@ export interface OperationalProfileFacts {
     exclusivo: boolean;
     controlaEstoque: boolean;
     temCozinha: boolean;
+    quantidadeMesas?: number;
   } | null;
   activeTrailers: number;
   activePointsOfSale: number;
@@ -28,7 +30,12 @@ export interface OperationalProfileFacts {
     tapsEnabled: boolean | null;
     inventoryEnabled: boolean | null;
     kitchenEnabled: boolean | null;
+    kitchenItemsChargeAtLaunch?: boolean | null;
+    allowCloseComandaWithPendingKitchenOrders?: boolean | null;
+    whatsappPedidoProntoEnabled?: boolean | null;
+    whatsappPedidoProntoNaCozinha?: boolean | null;
   } | null;
+  canonicalPdvSettings?: CanonicalPdvOperationalSettings | null;
   activeTaps: number;
   plannedOperationCount: number;
   openPlannedOperationCount: number;
@@ -58,6 +65,18 @@ export interface OperationalProfile {
     operacaoEnabled: boolean;
     exclusivo: boolean | null;
   };
+  effectiveSettings: {
+    source: 'LEGACY' | 'CANONICAL_PDV';
+    pointId: string | null;
+    tapsEnabled: boolean;
+    inventoryEnabled: boolean;
+    kitchenEnabled: boolean;
+    kitchenItemsChargeAtLaunch: boolean;
+    allowCloseComandaWithPendingKitchenOrders: boolean;
+    whatsappPedidoProntoEnabled: boolean;
+    whatsappPedidoProntoNaCozinha: boolean;
+    quantidadeMesas: number;
+  };
 }
 
 /**
@@ -80,18 +99,20 @@ export function deriveOperationalProfile(
   onLegacyFallback: LegacyFallbackRecorder = recordLegacyFallback,
 ): OperationalProfile {
   const operacaoEnabled = facts.legacyOperacao?.enabled === true;
-  // plannedOperationsEnabled is the sole persisted mode signal.
+  const canonical = facts.canonicalPdvSettings;
+  // The legacy mode flag is only a compatibility selector while the temporary
+  // QA activation is off. Canonical configuration always uses Por Caixa.
   const plannedOperationsEnabled = facts.operationalEnablement?.plannedOperationsEnabled;
-  if (plannedOperationsEnabled === null || plannedOperationsEnabled === undefined) onLegacyFallback('operational_config');
-  const operationMode: OperationMode = plannedOperationsEnabled === true ? 'EVENTO' : 'CAIXA';
-  const tapsEnabled = facts.operationalEnablement?.tapsEnabled ?? facts.activeTaps > 0;
-  const inventoryEnabled = facts.operationalEnablement?.inventoryEnabled
+  if (!canonical && (plannedOperationsEnabled === null || plannedOperationsEnabled === undefined)) onLegacyFallback('operational_config');
+  const operationMode: OperationMode = canonical ? 'CAIXA' : plannedOperationsEnabled === true ? 'EVENTO' : 'CAIXA';
+  const tapsEnabled = canonical?.tapsEnabled ?? facts.operationalEnablement?.tapsEnabled ?? facts.activeTaps > 0;
+  const inventoryEnabled = canonical?.inventoryEnabled ?? facts.operationalEnablement?.inventoryEnabled
     ?? (operacaoEnabled && facts.legacyOperacao!.controlaEstoque);
-  const kitchenEnabled = facts.operationalEnablement?.kitchenEnabled
+  const kitchenEnabled = canonical?.kitchenEnabled ?? facts.operationalEnablement?.kitchenEnabled
     ?? (operacaoEnabled && facts.legacyOperacao!.temCozinha);
   // Every active point of sale is cash-capable in CAIXA. Per-unit legacy
   // toggles are intentionally excluded from this decision.
-  const hasCashRegisterUnit = operationMode === 'CAIXA' && facts.activePointsOfSale > 0;
+  const hasCashRegisterUnit = canonical ? true : operationMode === 'CAIXA' && facts.activePointsOfSale > 0;
 
   return {
     tenantId: facts.tenantId,
@@ -108,7 +129,8 @@ export function deriveOperationalProfile(
       // Today, direct sales are the POS flow and require an active POS unit.
       cashMode: operationMode === 'CAIXA',
       // Today, an active Trailer is the prerequisite unit for Evento creation.
-      plannedOperations: operationMode === 'EVENTO',
+      // Agenda/occurrence remains context; it does not select a second engine.
+      plannedOperations: canonical ? false : operationMode === 'EVENTO',
     },
     operationalUnits: {
       trailers: facts.activeTrailers,
@@ -124,6 +146,22 @@ export function deriveOperationalProfile(
       operacaoEnabled,
       exclusivo: operacaoEnabled ? facts.legacyOperacao!.exclusivo : null,
     },
+    effectiveSettings: {
+      source: canonical ? 'CANONICAL_PDV' : 'LEGACY',
+      pointId: canonical?.pointId ?? null,
+      tapsEnabled,
+      inventoryEnabled,
+      kitchenEnabled,
+      kitchenItemsChargeAtLaunch: canonical?.kitchenItemsChargeAtLaunch ?? facts.operationalEnablement?.kitchenItemsChargeAtLaunch ?? false,
+      allowCloseComandaWithPendingKitchenOrders: canonical?.allowCloseComandaWithPendingKitchenOrders ?? facts.operationalEnablement?.allowCloseComandaWithPendingKitchenOrders ?? false,
+      whatsappPedidoProntoEnabled: canonical?.whatsappPedidoProntoEnabled ?? facts.operationalEnablement?.whatsappPedidoProntoEnabled ?? false,
+      whatsappPedidoProntoNaCozinha: canonical?.whatsappPedidoProntoNaCozinha ?? facts.operationalEnablement?.whatsappPedidoProntoNaCozinha ?? false,
+      quantidadeMesas: canonical
+        ? canonical.quantidadeMesas ?? 0
+        : facts.legacyOperacao?.enabled
+          ? facts.legacyOperacao.quantidadeMesas ?? 0
+          : 0,
+    },
   };
 }
 
@@ -132,6 +170,35 @@ export function deriveOperationalProfile(
  * mutation delegate, transaction, raw SQL, cache or side effect.
  */
 export const readOperationalProfileFacts: OperationalProfileFactsReader = async (tenantId) => {
+  const canonicalPdvSettings = await readCanonicalPdvOperationalSettingsIfEnabled(tenantId);
+  if (canonicalPdvSettings) {
+    const tenant = await prisma.cervejaria.findUnique({
+      where: { id: tenantId },
+      select: {
+        id: true,
+        trailers: { where: { ativo: true }, select: { id: true } },
+        pontosVenda: { where: { ativo: true }, select: { id: true } },
+        taps: { where: { ativo: true }, select: { id: true } },
+        eventos: { select: { status: true } },
+        sessoesCaixaOperacao: { where: { status: 'ABERTO' }, select: { id: true } },
+      },
+    });
+    if (!tenant) return null;
+    return {
+      tenantId: tenant.id,
+      legacyOperacao: null,
+      activeTrailers: tenant.trailers.length,
+      activePointsOfSale: tenant.pontosVenda.length,
+      activePointOfSaleCashRegisterSettings: [null],
+      canonicalPdvSettings,
+      operationalEnablement: null,
+      activeTaps: tenant.taps.length,
+      plannedOperationCount: tenant.eventos.length,
+      openPlannedOperationCount: tenant.eventos.filter((evento) => evento.status === 'ABERTO').length,
+      openCashRegisterCount: tenant.sessoesCaixaOperacao.length,
+    };
+  }
+
   const tenant = await prisma.cervejaria.findUnique({
     where: { id: tenantId },
     select: {
@@ -142,6 +209,7 @@ export const readOperationalProfileFacts: OperationalProfileFactsReader = async 
           exclusivo: true,
           controlaEstoque: true,
           temCozinha: true,
+          quantidadeMesas: true,
         },
       },
       configuracaoOperacional: {
@@ -150,6 +218,10 @@ export const readOperationalProfileFacts: OperationalProfileFactsReader = async 
           tapsEnabled: true,
           inventoryEnabled: true,
           kitchenEnabled: true,
+          kitchenItemsChargeAtLaunch: true,
+          allowCloseComandaWithPendingKitchenOrders: true,
+          whatsappPedidoProntoEnabled: true,
+          whatsappPedidoProntoNaCozinha: true,
         },
       },
       trailers: { where: { ativo: true }, select: { id: true } },
@@ -168,6 +240,7 @@ export const readOperationalProfileFacts: OperationalProfileFactsReader = async 
         exclusivo: tenant.configuracaoOperacao.exclusivo,
         controlaEstoque: tenant.configuracaoOperacao.controlaEstoque,
         temCozinha: tenant.configuracaoOperacao.temCozinha,
+        quantidadeMesas: tenant.configuracaoOperacao.quantidadeMesas,
       }
     : null;
   const plannedOperationCount = tenant.eventos.length;

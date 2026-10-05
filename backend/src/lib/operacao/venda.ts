@@ -345,6 +345,7 @@ type ComandaCompleta = Prisma.ComandaGetPayload<{
   include: {
     pontoVenda: {
       select: {
+        configuracaoPdv: { select: { kitchenItemsChargeAtLaunch: true } };
         cervejaria: {
           select: {
             configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } };
@@ -442,7 +443,8 @@ export function subtotalComandaEmCentavos(
  * Monta a conta como o operador ve. Total vem persistido na comanda (padrão cervejaria).
  */
 export function resumoComanda(comanda: ComandaCompleta) {
-  const kitchenItemsChargeAtLaunch = comanda.pontoVenda?.cervejaria.configuracaoOperacional?.kitchenItemsChargeAtLaunch
+  const kitchenItemsChargeAtLaunch = comanda.pontoVenda?.configuracaoPdv?.kitchenItemsChargeAtLaunch
+    ?? comanda.pontoVenda?.cervejaria.configuracaoOperacional?.kitchenItemsChargeAtLaunch
     ?? comanda.evento?.cervejaria.configuracaoOperacional?.kitchenItemsChargeAtLaunch
     ?? false;
   const pedidos = comanda.pedidosOperacao.map((pedido) => ({

@@ -46,10 +46,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
       .object({ incluirEntregues: z.coerce.boolean().default(false) })
       .parse(request.query);
 
-    const avisoConfig = await prisma.configuracaoOperacional.findUnique({
-      where: { cervejariaId },
-      select: { whatsappPedidoProntoEnabled: true, whatsappPedidoProntoNaCozinha: true },
-    });
+    const avisoConfig = request.operacao.effectiveSettings;
     const incluirCliente = Boolean(
       avisoConfig?.whatsappPedidoProntoEnabled && avisoConfig.whatsappPedidoProntoNaCozinha,
     );

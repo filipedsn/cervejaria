@@ -125,6 +125,65 @@ test('explicit operational enablement wins over legacy resource fallback', () =>
   assert.equal(profile.capabilities.taps, false);
 });
 
+test('canonical PDV parameters win while legacy EVENTO and conflicting capabilities remain stored', () => {
+  const profile = deriveOperationalProfile(facts({
+    legacyOperacao: { enabled: true, exclusivo: true, controlaEstoque: true, temCozinha: true },
+    activePointsOfSale: 1,
+    activeTrailers: 1,
+    plannedOperationCount: 4,
+    openPlannedOperationCount: 1,
+    operationalEnablement: {
+      plannedOperationsEnabled: true,
+      tapsEnabled: true,
+      inventoryEnabled: true,
+      kitchenEnabled: true,
+      kitchenItemsChargeAtLaunch: true,
+      allowCloseComandaWithPendingKitchenOrders: true,
+      whatsappPedidoProntoEnabled: true,
+      whatsappPedidoProntoNaCozinha: true,
+    },
+    canonicalPdvSettings: {
+      source: 'CANONICAL_PDV', pointId: 'point-a', tapsEnabled: false, inventoryEnabled: false,
+      kitchenEnabled: false, kitchenItemsChargeAtLaunch: false,
+      allowCloseComandaWithPendingKitchenOrders: false, whatsappPedidoProntoEnabled: false,
+      whatsappPedidoProntoNaCozinha: false, quantidadeMesas: 6,
+    },
+  }));
+
+  assert.equal(profile.operationMode, 'CAIXA');
+  assert.deepEqual(profile.capabilities, {
+    cashRegister: true, inventory: false, kitchen: false, taps: false, cashMode: true, plannedOperations: false,
+  });
+  assert.deepEqual(profile.effectiveSettings, {
+    source: 'CANONICAL_PDV', pointId: 'point-a', tapsEnabled: false, inventoryEnabled: false,
+    kitchenEnabled: false, kitchenItemsChargeAtLaunch: false,
+    allowCloseComandaWithPendingKitchenOrders: false, whatsappPedidoProntoEnabled: false,
+    whatsappPedidoProntoNaCozinha: false, quantidadeMesas: 6,
+  });
+  assert.equal(profile.operations.planned, 4, 'agenda remains visible as context but does not switch engines');
+});
+
+test('canonical null table count does not fall back to legacy configuration', () => {
+  const profile = deriveOperationalProfile(facts({
+    legacyOperacao: { enabled: true, exclusivo: false, controlaEstoque: true, temCozinha: true, quantidadeMesas: 12 },
+    activePointsOfSale: 1,
+    canonicalPdvSettings: {
+      source: 'CANONICAL_PDV', pointId: 'point-a', tapsEnabled: false, inventoryEnabled: false,
+      kitchenEnabled: false, kitchenItemsChargeAtLaunch: false,
+      allowCloseComandaWithPendingKitchenOrders: false, whatsappPedidoProntoEnabled: false,
+      whatsappPedidoProntoNaCozinha: false, quantidadeMesas: null,
+    },
+  }));
+  assert.equal(profile.effectiveSettings.quantidadeMesas, 0);
+});
+
+test('legacy inactive operation keeps the current zero table-count behavior', () => {
+  const profile = deriveOperationalProfile(facts({
+    legacyOperacao: { enabled: false, exclusivo: false, controlaEstoque: false, temCozinha: false, quantidadeMesas: 12 },
+  }));
+  assert.equal(profile.effectiveSettings.quantidadeMesas, 0);
+});
+
 test('NULL operational enablement preserves legacy fallback independently', () => {
   const profile = deriveOperationalProfile(facts({
     legacyOperacao: { enabled: true, exclusivo: false, controlaEstoque: false, temCozinha: false },

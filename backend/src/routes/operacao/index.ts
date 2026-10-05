@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { getAuthUser } from '../../types/auth.js';
-import { getConfiguracaoOperacao, requireCatalogAccess, requireModuloOperacao } from '../../lib/operacao/modulo.js';
+import { requireCatalogAccess, requireModuloOperacao } from '../../lib/operacao/modulo.js';
 import { getOperationalProfile, shouldExposeEstablishmentSurface } from '../../lib/operational-profile.js';
 import { produtosOperacaoRoutes } from './produtos.js';
 import { comandasOperacaoRoutes } from './comandas.js';
@@ -31,17 +31,11 @@ export async function operacaoRoutes(app: FastifyInstance) {
    */
   app.get('/contexto', async (request) => {
     const user = getAuthUser(request);
-    const configuracao = await getConfiguracaoOperacao(user.cervejariaId);
-
-    const [profile, pontosVenda, avisoPedidoPronto] = await Promise.all([
+    const [profile, pontosVenda] = await Promise.all([
       getOperationalProfile(user.cervejariaId!),
       prisma.pontoVenda.findMany({
       where: { cervejariaId: user.cervejariaId!, ativo: true },
       orderBy: { createdAt: 'asc' },
-      }),
-      prisma.configuracaoOperacional.findUnique({
-        where: { cervejariaId: user.cervejariaId! },
-        select: { whatsappPedidoProntoEnabled: true, whatsappPedidoProntoNaCozinha: true },
       }),
     ]);
 
@@ -59,13 +53,16 @@ export async function operacaoRoutes(app: FastifyInstance) {
       kitchenEnabled: profile?.capabilities.kitchen ?? false,
       // The context powers navigation and page guards, so it must expose the
       // same persisted capability decision as the operational settings panel.
-      controlaEstoque: profile?.capabilities.inventory ?? configuracao?.controlaEstoque ?? false,
-      temCozinha: profile?.capabilities.kitchen ?? configuracao?.temCozinha ?? false,
+      controlaEstoque: profile?.effectiveSettings.inventoryEnabled ?? false,
+      temCozinha: profile?.effectiveSettings.kitchenEnabled ?? false,
       // Cardápios salvos são padrão; o antigo toggle de ativação foi removido.
       usaCardapio: true,
-      quantidadeMesas: configuracao?.quantidadeMesas ?? 0,
-      whatsappPedidoProntoEnabled: avisoPedidoPronto?.whatsappPedidoProntoEnabled ?? false,
-      whatsappPedidoProntoNaCozinha: avisoPedidoPronto?.whatsappPedidoProntoNaCozinha ?? false,
+      kitchenItemsChargeAtLaunch: profile?.effectiveSettings.kitchenItemsChargeAtLaunch ?? false,
+      allowCloseComandaWithPendingKitchenOrders: profile?.effectiveSettings.allowCloseComandaWithPendingKitchenOrders ?? false,
+      quantidadeMesas: profile?.effectiveSettings.quantidadeMesas ?? 0,
+      whatsappPedidoProntoEnabled: profile?.effectiveSettings.whatsappPedidoProntoEnabled ?? false,
+      whatsappPedidoProntoNaCozinha: profile?.effectiveSettings.whatsappPedidoProntoNaCozinha ?? false,
+      operationalSettingsSource: profile?.effectiveSettings.source ?? 'LEGACY',
       pontosVenda,
     };
   });

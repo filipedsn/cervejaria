@@ -42,7 +42,7 @@ try {
   }
   if (!ready) throw new Error('Disposable commerce PostgreSQL QA did not become ready within 60 seconds.');
   const env = { ...process.env };
-  for (const key of Object.keys(env)) if (key === 'DATABASE_URL' || key === 'DIRECT_URL' || /_DATABASE_URL$/.test(key) || /^PROD/i.test(key)) delete env[key];
+  for (const key of Object.keys(env)) if (key === 'DATABASE_URL' || key === 'DIRECT_URL' || key === 'PDV_CANONICAL_CONFIG_QA' || /_DATABASE_URL$/.test(key) || /^PROD/i.test(key)) delete env[key];
   Object.assign(env, { NODE_ENV: 'test', PDV_ISOLATED_QA: '1', PDV_QA_RUN_ID: runId, PDV_QA_CONTAINER: containerName, QA_DATABASE_URL: databaseUrl, DATABASE_URL: databaseUrl });
   const result = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/pdv-unico-commerce-migrator.isolated.test.mjs'], { cwd: new URL('..', import.meta.url), env, encoding: 'utf8', windowsHide: true, stdio: 'inherit' });
   if (result.status !== 0) throw new Error(`Disposable commerce QA failed with exit code ${result.status}.`);

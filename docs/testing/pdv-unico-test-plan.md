@@ -1,5 +1,15 @@
 # Plano de testes: PDV único
 
+## Estado corrente — leitura canônica e API Por Caixa autenticada — 05/10/2026
+
+Em QA descartável, o perfil operacional lê `PontoVenda` + `ConfiguracaoPontoVenda` sob ativação técnica exclusiva do runner. A flag é desligada por padrão; sem ativação, o teste puro comprova que nenhum delegate aditivo é lido. Com ativação, ausência de PDV/configuração e PDV múltiplo são bloqueios, sem fallback para legado. Nesta entrega passaram o build do backend, 28 testes puros focados e `npm run qa:pdv-commerce-disposable` sobre 91 migrations. `npm run qa:pdv-current-disposable` (etapas histórica, financeira e comercial agregadas) não foi reexecutado nesta rodada.
+
+O executor usa `buildApp`/`Fastify.inject` e autenticação real. Exercitou tenants sintéticos originalmente EVENTO e CAIXA pelo mesmo fluxo de abrir caixa, escolher cardápio, abrir comanda, vender, pagar PIX e fechar. Resultado persistido: 950¢ × 2 = 1.900¢/PIX 1.900¢ no tenant EVENTO e 400¢ × 2 = 800¢/PIX 800¢ no tenant CAIXA; sessões FECHADO, troco/contagem dinheiro 500¢, snapshots preservados e estoque sem alteração sob configuração canônica false. Retornos: fluxo 201/200/201/201/200/200; credencial ausente/token inválido 401; atendente em rota `requireDono` 403; IDs cruzados 404; sem PDV, sem configuração e múltiplos PDVs 409 com bloqueadores distintos. Foram comparadas contagens totais de PDVs/configurações e registros operacionais antes/depois das tentativas negadas. Não cobre UI, RBAC além das recusas pontuais indicadas nesta fixture, nem operação fora dessas rotas. Não representa migração de dados reais, corte ou cobertura global.
+
+**Pendente de produto:** (1) flag de produto para criar pedido de cozinha independente sem separar comanda/financeiro; regra de agrupamento de múltiplas unidades ainda indefinida. (2) permissões individuais por ação dos usuários da empresa, dono com acesso completo, enforcement no backend e seletores na UI. Nenhum desses cenários está implementado ou certificado.
+
+### Fatos anteriores mantidos como histórico
+
 ## Estado atual da certificação — entrega baseada em 2926b97b
 
 **Implementado:** hash Decimal exato versionado; revalidação completa das ocorrências confirmadas; reconciliação comercial por nova leitura do PostgreSQL; manifesto corrente com schema/SQL/código e runners fixados sem depender do índice Git; preflight explícito para pedido de cozinha legado sem PDV apontado por movimento de estoque com PDV.
@@ -42,6 +52,7 @@ Em toda ação autenticada, conferir resposta/API, linhas e vínculos no banco e
 | PDV-01 | Empresa nova e empresa existente | Provisionar empresa/PDV/configuração repetidamente e concorrentemente | Exatamente um PDV; operação atômica; retry não duplica | P0 integration | Pendente |
 | PDV-02 | Legacy sem PDV, um PDV e múltiplos PDVs | Ler/atualizar/arquivar PDV e configurações | Uma relação canônica; conflito legado explícito; sem escolher pelo nome | P0 integration | Pendente |
 | CFG-01 | Cada capacidade ausente/null/false/true | Provisionar e alterar configuração | Defaults explícitos e estáveis; NULL legado não vira habilitação silenciosa | P0 unit/integration | Pendente |
+| OPCFG-API-01 | Tenant EVENTO mantém `plannedOperationsEnabled=true`; tenant CAIXA; flags antigas divergentes; origem sintética já migrada para um PDV/configuração | Login real; abrir caixa, selecionar cardápio, abrir comanda, lançar produto, PIX e fechar pelas mesmas rotas para os dois tenants; tentar contexto com zero PDVs, config ausente e PDV múltiplo | Perfil retorna CAIXA e `CANONICAL_PDV`; usa flags/mesas canônicas sem reescrever a flag legada; preços, snapshot, pagamento, sessão e estoque conferidos; erros específicos 409 e nenhum PDV/config/sessão/comanda/item/pagamento escrito nas tentativas negadas | P0 integration/API | `pdv-unico-commerce-migrator.isolated.test.mjs` — executado em QA descartável nesta entrega; UI pendente |
 | CAT-01 | Produtos ativos/inativos, nome duplicado, categoria existente | CRUD, busca, ordenação e desativação | Referências e vendas preservadas; ID e tenant corretos | P1 integration/E2E | Pendente |
 | MENU-01 | 2 cardápios, produto com volume 0 e vários volumes | Associar produtos e preço por volume; abrir caixa escolhendo menu | Uma linha por produto/volume; não permitir associação cross-tenant | P0 integration/E2E | Pendente |
 | MENU-02 | Preço padrão, preço de cardápio e override de turno em centavos | Abrir caixa, vender, editar preço futuro | Precedência turno → cardápio → produto; venda guarda preço/volume histórico; edições futuras não alteram | P0 unit/integration | Pendente |

@@ -12,6 +12,7 @@ export interface ContextoOperacao {
   temCozinha: boolean;
   tapsEnabled: boolean;
   quantidadeMesas: number;
+  effectiveSettings: OperationalProfile['effectiveSettings'];
 }
 
 declare module 'fastify' {
@@ -59,14 +60,14 @@ function attachOperacaoContext(
   request: FastifyRequest,
   cervejariaId: string,
   profile: OperationalProfile,
-  quantidadeMesas: number,
 ) {
   request.operacao = {
     cervejariaId,
     controlaEstoque: hasInventoryAccess(profile),
     temCozinha: hasKitchenAccess(profile),
     tapsEnabled: profile.capabilities.taps,
-    quantidadeMesas,
+    quantidadeMesas: profile.effectiveSettings.quantidadeMesas,
+    effectiveSettings: profile.effectiveSettings,
   };
 }
 
@@ -81,8 +82,7 @@ export function requireCatalogAccess(app: FastifyInstance) {
       throw app.httpErrors.notFound('Catálogo não disponível');
     }
 
-    const configuracao = await getConfiguracaoOperacao(cervejariaId);
-    attachOperacaoContext(request, cervejariaId, profile, configuracao?.quantidadeMesas ?? 0);
+    attachOperacaoContext(request, cervejariaId, profile);
   };
 }
 
@@ -133,16 +133,6 @@ export function requireModuloOperacao(app: FastifyInstance) {
     if (!profile || !hasComplementaryAccess(profile)) {
       throw app.httpErrors.notFound('Modulo Operacao nÃ£o disponÃ­vel');
     }
-
-    // Legacy configuration remains the compatibility source for route context
-    // fields that have not yet been migrated in later F3 slices. It is no
-    // longer the access decision for this module.
-    const configuracao = await getConfiguracaoOperacao(user.cervejariaId);
-
-    if (!configuracao && !hasComplementaryAccess(profile)) {
-      throw app.httpErrors.notFound('Modulo Operacao não disponível');
-    }
-
-    attachOperacaoContext(request, user.cervejariaId!, profile, configuracao?.quantidadeMesas ?? 0);
+attachOperacaoContext(request, user.cervejariaId!, profile);
   };
 }

@@ -5,9 +5,10 @@ import {
 } from '../fechar-comanda.js';
 import { calcularFinanceiroComanda } from './venda.js';
 import { toNumber } from '../utils.js';
+import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
 
 export const INCLUDE_COMANDA_OPERACAO = {
-  pontoVenda: { select: { cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
+  pontoVenda: { select: { configuracaoPdv: { select: { kitchenItemsChargeAtLaunch: true } }, cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
   evento: { select: { cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
   pedidosOperacao: {
     include: { itensComanda: { include: { opcionais: true } } },
@@ -53,6 +54,9 @@ export async function recalcComandaTotalOperacao(
     },
   });
   const cervejariaId = comanda?.evento?.cervejariaId ?? comanda?.pontoVenda?.cervejariaId;
+  const canonicalSettings = cervejariaId
+    ? await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId, tx)
+    : null;
   const [pedidos, itensSemPedido, configuration] = await Promise.all([
     tx.pedidoOperacao.findMany({
       where: { comandaId },
@@ -67,7 +71,9 @@ export async function recalcComandaTotalOperacao(
       where: { comandaId, pedidoCozinhaId: null },
       select: { precoUnit: true, quantidade: true, exigePreparo: true, cancelamentoPendenteEm: true, canceladoEm: true },
     }),
-    cervejariaId
+    canonicalSettings
+      ? Promise.resolve(null)
+      : cervejariaId
       ? tx.configuracaoOperacional.findUnique({ where: { cervejariaId }, select: { kitchenItemsChargeAtLaunch: true } })
       : Promise.resolve(null),
   ]);
@@ -75,7 +81,7 @@ export async function recalcComandaTotalOperacao(
     status: comanda?.status ?? 'ABERTA',
     totalPersistido: comanda?.total,
     desconto: comanda?.desconto,
-    kitchenItemsChargeAtLaunch: options.kitchenItemsChargeAtLaunch ?? configuration?.kitchenItemsChargeAtLaunch ?? false,
+    kitchenItemsChargeAtLaunch: options.kitchenItemsChargeAtLaunch ?? canonicalSettings?.kitchenItemsChargeAtLaunch ?? configuration?.kitchenItemsChargeAtLaunch ?? false,
     itensSemPedido,
     pedidos: pedidos.map((pedido) => ({ status: pedido.status, itens: pedido.itensComanda })),
   });

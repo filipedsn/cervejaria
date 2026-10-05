@@ -17,6 +17,7 @@ import {
   whereComandaOperacao,
 } from './comanda-adapter.js';
 import { lockComandaItemsInTx } from '../comanda-service.js';
+import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
 
 type ComandaCompleta = Prisma.ComandaGetPayload<{ include: typeof INCLUDE_COMANDA_OPERACAO }>;
 
@@ -28,11 +29,12 @@ export function resolverQuantidadeCancelamento(quantidadeAtual: number, solicita
 }
 
 async function ajustarDescontoSeNecessario(tx: Prisma.TransactionClient, comanda: ComandaCompleta, cervejariaId: string) {
-  const configuracao = await tx.configuracaoOperacional.findUnique({
+  const canonical = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId, tx);
+  const configuracao = canonical ? null : await tx.configuracaoOperacional.findUnique({
     where: { cervejariaId },
     select: { kitchenItemsChargeAtLaunch: true },
   });
-  const subtotalEmCents = subtotalComandaEmCentavos(comanda, configuracao?.kitchenItemsChargeAtLaunch ?? false);
+  const subtotalEmCents = subtotalComandaEmCentavos(comanda, canonical?.kitchenItemsChargeAtLaunch ?? configuracao?.kitchenItemsChargeAtLaunch ?? false);
   const descontoEmCents = centavos(toNumber(comanda.desconto ?? 0));
   if (descontoEmCents <= subtotalEmCents) return;
 

@@ -1,4 +1,5 @@
 import Fastify, { type FastifyBaseLogger } from 'fastify';
+import { CanonicalPdvConfigurationError } from './lib/canonical-pdv-operational-config.js';
 
 import { ZodError } from 'zod';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
@@ -281,6 +282,10 @@ export async function buildApp() {
     const code = hasErrorProperty(error, 'code') && typeof error.code === 'string' ? error.code : '';
     const message = getErrorMessage(error);
     const statusCode = getErrorStatusCode(error);
+
+    if (error instanceof CanonicalPdvConfigurationError) {
+      return reply.status(error.statusCode).send({ error: message, code: error.code });
+    }
 
     if (statusCode === 401 && !request.url.startsWith('/api/auth/login')) {
       emitAuthEvent(request, 'auth.session.rejected', { reasonCode: sessionReasonCode(error) });

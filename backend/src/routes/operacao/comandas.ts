@@ -163,10 +163,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     const dia = comandas[0]!.diaOperacional!;
     await assertCaixaAberto(cervejariaId, pontoVendaId, dia);
 
-    const allowCloseWithPendingKitchen = await prisma.configuracaoOperacional.findUnique({
-      where: { cervejariaId },
-      select: { allowCloseComandaWithPendingKitchenOrders: true, kitchenItemsChargeAtLaunch: true },
-    });
+    const allowCloseWithPendingKitchen = request.operacao.effectiveSettings;
     if (
       !(allowCloseWithPendingKitchen?.allowCloseComandaWithPendingKitchenOrders && allowCloseWithPendingKitchen.kitchenItemsChargeAtLaunch) &&
       comandas.some((comanda) => temPedidoCozinhaPendente(comanda.pedidosOperacao))
@@ -264,6 +261,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           usuarioId: user.sub,
           fechadaEm,
           sessaoCaixaId: sessao.id,
+          kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch,
         });
         const fechada = await tx.comanda.findUniqueOrThrow({
           where: { id: resumo.id },
@@ -338,10 +336,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
   app.patch('/:id/pedidos/:pedidoId/cliente-avisado', async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id: comandaId, pedidoId } = request.params as { id: string; pedidoId: string };
-    const configuracao = await prisma.configuracaoOperacional.findUnique({
-      where: { cervejariaId },
-      select: { whatsappPedidoProntoEnabled: true, whatsappPedidoProntoNaCozinha: true },
-    });
+    const configuracao = request.operacao.effectiveSettings;
     if (!configuracao?.whatsappPedidoProntoEnabled || configuracao.whatsappPedidoProntoNaCozinha) {
       return reply.status(409).send({ error: 'O aviso pelo WhatsApp não está configurado para a comanda.' });
     }
@@ -708,11 +703,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'Venda avulsa não permite desconto' });
     }
 
-    const cobrancaCozinha = await prisma.configuracaoOperacional.findUnique({
-      where: { cervejariaId },
-      select: { kitchenItemsChargeAtLaunch: true },
-    });
-    const cozinhaAoLancar = cobrancaCozinha?.kitchenItemsChargeAtLaunch ?? false;
+    const cozinhaAoLancar = request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch;
     const subtotalEmCents = subtotalComandaEmCentavos(comanda, cozinhaAoLancar);
     const descontoEmCents = centavos(body.desconto);
     if (descontoEmCents > subtotalEmCents) {
@@ -779,10 +770,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'Lance ao menos um item antes de cobrar' });
     }
 
-    const allowCloseWithPendingKitchen = await prisma.configuracaoOperacional.findUnique({
-      where: { cervejariaId },
-      select: { allowCloseComandaWithPendingKitchenOrders: true, kitchenItemsChargeAtLaunch: true },
-    });
+    const allowCloseWithPendingKitchen = request.operacao.effectiveSettings;
     if (
       !(allowCloseWithPendingKitchen?.allowCloseComandaWithPendingKitchenOrders && allowCloseWithPendingKitchen.kitchenItemsChargeAtLaunch) &&
       temPedidoCozinhaPendente(comanda.pedidosOperacao)
@@ -828,6 +816,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         fechadaEm: new Date(),
         sessaoCaixaId: sessao.id,
         deixarPendente: body.deixarPendente,
+        kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch,
       });
 
       return tx.comanda.findUniqueOrThrow({

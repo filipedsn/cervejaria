@@ -11,6 +11,7 @@ import { inventoryService } from '../services/inventory-service.js';
 import { resolverOpcionais } from './produto-opcionais.js';
 import { diaOperacional, proximoNumeroPedidoOperacao } from './operacao/venda.js';
 import { estornarEstoqueItemPedido } from './operacao/estoque.js';
+import { readCanonicalPdvOperationalSettingsIfEnabled } from './canonical-pdv-operational-config.js';
 
 export const comandaDetailInclude = {
   cliente: true,
@@ -35,6 +36,8 @@ async function cozinhaEntraNoTotalAoLancar(client: typeof prisma | Prisma.Transa
   });
   const cervejariaId = origem?.evento?.cervejariaId ?? origem?.pontoVenda?.cervejariaId;
   if (!cervejariaId) return false;
+  const canonical = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId, client);
+  if (canonical) return canonical.kitchenItemsChargeAtLaunch;
   const configuracao = await client.configuracaoOperacional.findUnique({
     where: { cervejariaId },
     select: { kitchenItemsChargeAtLaunch: true },
@@ -83,6 +86,8 @@ function comandaItemsLockKey(comandaId: string) {
 }
 
 async function estoqueOperacionalHabilitado(tx: Prisma.TransactionClient, cervejariaId: string) {
+  const canonical = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId, tx);
+  if (canonical) return canonical.inventoryEnabled;
   const empresa = await tx.cervejaria.findUnique({
     where: { id: cervejariaId },
     select: {

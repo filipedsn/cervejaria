@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "81810eab4e4ceba9f2ad9dcd8de37112fe1cd8a1",
+    "commit": "635d128de6cb16c06f32e4cef90ca1bdeb438d7d",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc"
   },
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "81810eab4e4ceba9f2ad9dcd8de37112fe1cd8a1",
+      "commit": "635d128de6cb16c06f32e4cef90ca1bdeb438d7d",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -58,7 +58,7 @@
     }
   },
   "delivery": {
-    "schemaCommit": "81810eab4e4ceba9f2ad9dcd8de37112fe1cd8a1",
+    "schemaCommit": "635d128de6cb16c06f32e4cef90ca1bdeb438d7d",
     "schemaSha256": "0d62f05d4612fa2ba5eece7b96e260b004302a8684aab2b675af59e2cf372fdc",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
@@ -106,7 +106,59 @@
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs",
-      "sha256": "2d1ce6d2bb791fe1cdb0660bbff33626552d4dfaae5d74522040092dba373ca3"
+      "sha256": "554dc6dbb711257dcb3fe3e8cd0c54ed228dc74ab2a5c27105dbda83fa44f6b5"
+    },
+    {
+      "path": "backend/src/app.ts",
+      "sha256": "25b6ea25c8ef980f884723ed77b4a8ddc6c36a0416b136142285d1deb74f844f"
+    },
+    {
+      "path": "backend/src/lib/canonical-pdv-operational-config.ts",
+      "sha256": "315fd9150156f7ddcf18b173e2c177cd9a73ffcec19e3c355cde168d058892f3"
+    },
+    {
+      "path": "backend/src/lib/canonical-pdv-operational-config.test.ts",
+      "sha256": "9235eb55d4bb673ceaa24262181b8d9c95d3a0303ac4d96536740dc56ccfd9b0"
+    },
+    {
+      "path": "backend/src/lib/operational-profile.ts",
+      "sha256": "1f92762efef86a69b4635b4160046742921bd31e2611f618415558f30eb35c03"
+    },
+    {
+      "path": "backend/src/lib/operational-profile.test.ts",
+      "sha256": "01061f13a2be3ce51cd53b6b6f096dd9fca5e3732bd299e2085b588113572de8"
+    },
+    {
+      "path": "backend/src/lib/comanda-service.ts",
+      "sha256": "e3f6e66907589303c5eddabd23c158a55a57d9d1673731eb4ccd0d37d9214a5a"
+    },
+    {
+      "path": "backend/src/lib/operacao/modulo.ts",
+      "sha256": "0a0d5eb28a85c66ce0a7bb33d862da030c0acef3c111a8b852e6b51a11a6a4c0"
+    },
+    {
+      "path": "backend/src/lib/operacao/comanda-adapter.ts",
+      "sha256": "35dd558048ad2a8d6662ba690caaf23cda18b1bed41f7a4073262a1cb3b8d47d"
+    },
+    {
+      "path": "backend/src/lib/operacao/comanda-itens.ts",
+      "sha256": "aa853402aab24248e64aefe8ac7f04e35ee078d82f646650f8542d835dc9e25b"
+    },
+    {
+      "path": "backend/src/lib/operacao/venda.ts",
+      "sha256": "4e377ba6b218f5ff2ed1c99dee8524c483705c24ea7e9c3b8b15e7debca62aef"
+    },
+    {
+      "path": "backend/src/routes/operacao/index.ts",
+      "sha256": "16a6cf917f725559daf81c9e29c1eb388349a8974f61704cbd5d1040d4ed82f8"
+    },
+    {
+      "path": "backend/src/routes/operacao/comandas.ts",
+      "sha256": "3ece5c1f210c9c5567258064840ffe1fed8ab8a8772260d1bf9cdb2fc23b2dcb"
+    },
+    {
+      "path": "backend/src/routes/operacao/cozinha.ts",
+      "sha256": "26f0c2e0f508342a94c220be4f26ded0e62c1e26cfc0bfab83710dfa8d3ec7c2"
     },
     {
       "path": "backend/scripts/pdv-unico-kitchen-order-preparation.ts",
@@ -134,11 +186,11 @@
     },
     {
       "path": "backend/scripts/run-pdv-unico-commerce-disposable-qa.mjs",
-      "sha256": "3e5b11d81102dfdbefa1668c644e5c577e9e67236cdfc6c136ef8f1faed30e28"
+      "sha256": "39c3925c1f45c6a815bfdbcb5ecd540d0ce96b8df4e6ca0d111af3e943989bf7"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
-      "sha256": "3e73a95eb6d339f0dc05852253aca666d1a56b4a8c338e597828e54c85d0d970"
+      "sha256": "07b760a4271aae7b0a2666f63509a901523b3c2bc549672e81573b2c2094731e"
     },
     {
       "path": "backend/scripts/pdv-unico-finance-migrator.isolated.test.mjs",
@@ -201,5 +253,5 @@
       "sha256": "5b44047b588a34ce8ee081ea154aff1a8158c580a5bc728b9d1894c4bb5f6250"
     }
   ],
-  "manifestSha256": "129872e424c9ca8ee519957c14c94e4183f18349afbba3330568dc5c3248397b"
+  "manifestSha256": "6b1c0e2b473759874fb066036f39fe20cf78be26a8c4f29b51bc494e69e07e62"
 }
