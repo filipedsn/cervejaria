@@ -230,8 +230,10 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       const commandAfterPayment = await db.comanda.findUniqueOrThrow({ where: { id: commandId } });
       if (paymentStatus === 200) {
         assert.deepEqual([centsExact(commandAfterPayment.total), commandAfterPayment.status, paymentRows.map((row) => [row.forma, centsExact(row.valor), row.sessaoCaixaId])], ['1000', 'FECHADA', [['PIX', '1000', kitchenSessionId]]], `${name}: one exact PIX payment is persisted against the open cash session`);
-        const delivered = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(kitchenOrderId)}/status`, headers: { cookie: secondOwnerCookie }, payload: { status: 'ENTREGUE' } });
-        assert.equal(delivered.statusCode, 200, `${name}: paid order is delivered through the real kitchen route: ${delivered.body}`);
+        for (const status of ['EM_PREPARO', 'PRONTO', 'ENTREGUE']) {
+          const kitchenTransition = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(kitchenOrderId)}/status`, headers: { cookie: secondOwnerCookie }, payload: { status } });
+          assert.equal(kitchenTransition.statusCode, 200, `${name}: paid order transitions to ${status} through the real kitchen route: ${kitchenTransition.body}`);
+        }
       } else {
         assert.deepEqual([centsExact(commandAfterPayment.total), commandAfterPayment.status, paymentRows.length], [String(BigInt(expectedTotal * 100)), 'ABERTA', 0], `${name}: rejected payment leaves command and ledger unchanged`);
         const cancelled = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}/cancelar`, headers: { cookie: secondOwnerCookie }, payload: {} });
