@@ -1,6 +1,22 @@
 # Plano de testes: PDV único
 
-## Estado corrente — leitura canônica e API Por Caixa autenticada — 05/10/2026
+## Revisão e9b1afb — isolamento da cobrança de cozinha — 05/10/2026
+
+**Reprodução antes da correção:** comanda aberta, pedido `RECEBIDO`, item de preparo de R$ 10,00, configuração legada `true` e canônica `false`, o `resumoComanda` retornava total R$ 0,00 e pendente R$ 10,00 sem ativação. O include operacional também selecionava `configuracaoPdv` em todos os casos.
+
+**Executado após a correção:**
+
+| Cenário | Fonte efetiva | Resposta e total persistido | Pagamento enquanto pedido `RECEBIDO` |
+|---|---|---|---|
+| Ativação ausente; legado `true`, PDV `false` | Legado | Total R$ 10,00; pendente R$ 0,00 | PIX 200; R$ 10,00 persistidos; pedido continua `RECEBIDO` |
+| Ativação QA; PDV `false`, legado `true` | PDV | Total R$ 0,00; pendente R$ 10,00 | 409; nenhum pagamento; comanda permanece aberta |
+| Ativação QA; PDV `true` | PDV | Total R$ 10,00; pendente R$ 0,00 | PIX 200; R$ 10,00 persistidos; pedido continua `RECEBIDO` |
+
+Também foi executada a consulta real do include em PostgreSQL QA isolado com schema pré-aditivo e sem a tabela `ConfiguracaoPontoVenda`; consulta concluiu com ativação desligada. O teste puro exige contexto canônico quando o guard está ligado, e confirma precedência de `false` explícito sobre o legado. Bloqueios por configuração canônica ausente/ambígua e leituras/escritas de tenant cruzado permaneceram cobertos pela cadeia Fastify autenticada existente.
+
+**Gates executados nesta rodada:** `npm run build` PASS; testes focados `venda.test.ts` e `comanda-adapter.test.ts` 17/17 PASS; `npm run qa:pdv-current-disposable` PASS agregado (histórico, financeiro e comercial, nenhum skip). Nenhuma migration candidata foi criada. O runner criou e removeu apenas recursos temporários do PostgreSQL QA. Não houve consulta ou escrita no DEV compartilhado, nem acesso a PROD. Não prova migração de dados reais, UI, RBAC global, cutover ou remoção do legado. `PROD_ACCESS_USED=NO`.
+
+## Registro da entrega anterior — leitura canônica e API Por Caixa autenticada — 05/10/2026
 
 Em QA descartável, o perfil operacional lê `PontoVenda` + `ConfiguracaoPontoVenda` sob ativação técnica exclusiva do runner. A flag é desligada por padrão; sem ativação, o teste puro comprova que nenhum delegate aditivo é lido. Com ativação, ausência de PDV/configuração e PDV múltiplo são bloqueios, sem fallback para legado. Nesta entrega passaram o build do backend, 28 testes puros focados e `npm run qa:pdv-commerce-disposable` sobre 91 migrations. `npm run qa:pdv-current-disposable` (etapas histórica, financeira e comercial agregadas) não foi reexecutado nesta rodada.
 

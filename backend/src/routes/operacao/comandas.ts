@@ -127,7 +127,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       orderBy: { createdAt: 'asc' },
     });
 
-    return comandas.map(resumoComanda);
+    return comandas.map((comanda) => resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch));
   });
 
   app.post('/fechar-grupo', async (request, reply) => {
@@ -173,7 +173,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       });
     }
 
-    const resumos = comandas.map(resumoComanda);
+    const resumos = comandas.map((comanda) => resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch));
     const comandasComItens = resumos.filter((c) => c.total > 0);
     const comandasVazias = resumos.filter((c) => {
       const comanda = comandas.find((item) => item.id === c.id)!;
@@ -244,7 +244,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           data: { status: 'CANCELADA', fechadaEm, fechadoPorId: user.sub },
           include: INCLUDE_COMANDA_OPERACAO,
         });
-        canceladas.push(resumoComanda(cancelada));
+        canceladas.push(resumoComanda(cancelada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch));
       }
 
       for (const resumo of comandasComItens) {
@@ -267,7 +267,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           where: { id: resumo.id },
           include: INCLUDE_COMANDA_OPERACAO,
         });
-        fechadas.push(resumoComanda(fechada));
+        fechadas.push(resumoComanda(fechada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch));
       }
 
       return { fechadas, canceladas };
@@ -330,7 +330,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada' });
 
-    return resumoComanda(comanda);
+    return resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
   });
 
   app.patch('/:id/pedidos/:pedidoId/cliente-avisado', async (request, reply) => {
@@ -405,7 +405,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       data: { clienteId: body.clienteId },
       include: INCLUDE_COMANDA_OPERACAO,
     });
-    return resumoComanda(atualizada);
+    return resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
   });
 
   app.post('/', async (request, reply) => {
@@ -498,7 +498,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           registradoPorId: user.sub,
           items: itens,
         });
-        await recalcComandaTotalOperacao(tx, criada.id);
+        await recalcComandaTotalOperacao(tx, criada.id, { kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch });
       }
 
       return {
@@ -522,7 +522,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
 
     if (temCozinha && pedido) await notificarPedidoNovo(app, cervejariaId, pedido);
 
-    const resumo = resumoComanda(comanda);
+    const resumo = resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
     void registrarTransacao({
       cervejariaId,
       tipo: 'COMANDA_CRIADA',
@@ -600,7 +600,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         items: itens,
       });
 
-      await recalcComandaTotalOperacao(tx, comandaAtual.id);
+      await recalcComandaTotalOperacao(tx, comandaAtual.id, { kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch });
 
       return {
         atualizada: await tx.comanda.findUniqueOrThrow({
@@ -613,7 +613,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
 
     if (temCozinha) await notificarPedidoNovo(app, cervejariaId, pedido);
 
-    const resumo = resumoComanda(atualizada);
+    const resumo = resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
     void registrarTransacao({
       cervejariaId,
       tipo: 'KITCHEN_ORDER_CREATED',
@@ -730,14 +730,14 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         where: { id: comanda.id },
         data: { desconto: body.desconto },
       });
-      await recalcComandaTotalOperacao(tx, comanda.id);
+      await recalcComandaTotalOperacao(tx, comanda.id, { kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch });
       return tx.comanda.findUniqueOrThrow({
         where: { id: comanda.id },
         include: INCLUDE_COMANDA_OPERACAO,
       });
     }, CAIXA_VENDA_TX);
 
-    const resumoAtualizado = resumoComanda(atualizada);
+    const resumoAtualizado = resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
     void registrarTransacao({
       cervejariaId,
       tipo: 'COMANDA_DESCONTO_APLICADO',
@@ -765,7 +765,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'Esta comanda já foi fechada' });
     }
 
-    const resumo = resumoComanda(comanda);
+    const resumo = resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
     if (comanda.itens.length === 0) {
       return reply.status(409).send({ error: 'Lance ao menos um item antes de cobrar' });
     }
@@ -825,7 +825,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       });
     }, CAIXA_VENDA_TX);
 
-    const resumoFechada = resumoComanda(fechada);
+    const resumoFechada = resumoComanda(fechada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
 
     if (!body.deixarPendente) {
       void registrarTransacao({
@@ -891,7 +891,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
 
     if (temCozinha) await notificarPedidosDaComanda(app, cervejariaId, comanda.id);
 
-    const resumoCancelada = resumoComanda(cancelada);
+    const resumoCancelada = resumoComanda(cancelada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
     void registrarTransacao({
       cervejariaId,
       tipo: 'COMANDA_CANCELADA',

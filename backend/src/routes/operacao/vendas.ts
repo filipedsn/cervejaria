@@ -168,7 +168,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
 
       if (temCozinha) await notificarPedidoNovo(app, cervejariaId, pedido);
 
-      const res = resumoComanda(comanda);
+      const res = resumoComanda(comanda, true);
       recordVendaAvulsa(centavos(res.total));
       void registrarTransacao({
         cervejariaId,

@@ -119,6 +119,11 @@ async function getPdvClienteSession(app: FastifyInstance, request: FastifyReques
   return { session: session as PdvClienteSessionPayload, comanda };
 }
 
+async function summarizePdvClientComanda(comanda: Parameters<typeof resumoComanda>[0], cervejariaId: string) {
+  const profile = await getOperationalProfile(cervejariaId);
+  return resumoComanda(comanda, profile?.effectiveSettings.kitchenItemsChargeAtLaunch);
+}
+
 
 
 const pedidoItemSchema = z.object({
@@ -415,7 +420,7 @@ export async function publicRoutes(app: FastifyInstance) {
     if (session.pontoVendaId !== (request.params as { pontoVendaId: string }).pontoVendaId) {
       return reply.status(403).send({ error: 'Sessão inválida para este ponto de venda' });
     }
-    return resumoComanda(comanda);
+    return summarizePdvClientComanda(comanda, session.cervejariaId);
   });
 
   app.post('/cervejarias/:slug/pontos-venda/:pontoVendaId/comanda/pedidos', async (request, reply) => {
@@ -459,7 +464,7 @@ export async function publicRoutes(app: FastifyInstance) {
         registradoPorId: `PORTAL:${session.clienteId}`,
         items: itens,
       });
-      await recalcComandaTotalOperacao(tx, session.comandaId);
+      await recalcComandaTotalOperacao(tx, session.comandaId, { kitchenItemsChargeAtLaunch: profile?.effectiveSettings.kitchenItemsChargeAtLaunch });
       return {
         pedido,
         comanda: await tx.comanda.findUniqueOrThrow({ where: { id: session.comandaId }, include: INCLUDE_COMANDA_OPERACAO }),
@@ -469,7 +474,7 @@ export async function publicRoutes(app: FastifyInstance) {
     // habilitada para o perfil operacional.
     notificarComandaOperacaoAtualizada(app, session.cervejariaId, session.comandaId);
     if (temCozinha) await notificarPedidoNovo(app, session.cervejariaId, resultado.pedido);
-    return reply.status(201).send(resumoComanda(resultado.comanda));
+    return reply.status(201).send(resumoComanda(resultado.comanda, profile?.effectiveSettings.kitchenItemsChargeAtLaunch));
   });
 
   app.post('/cervejarias/:slug/pontos-venda/:pontoVendaId/comandas', {
@@ -519,7 +524,7 @@ export async function publicRoutes(app: FastifyInstance) {
         include: INCLUDE_COMANDA_OPERACAO,
       });
       return reply.status(result.reused ? 200 : 201).send({
-        comanda: resumoComanda(comanda),
+        comanda: await summarizePdvClientComanda(comanda, cervejaria.id),
         reused: result.reused,
         pontoVenda,
         cervejaria,

@@ -44,6 +44,16 @@ async function ajustarDescontoSeNecessario(tx: Prisma.TransactionClient, comanda
   });
 }
 
+async function kitchenItemsChargeAtLaunch(tx: typeof prisma | Prisma.TransactionClient, cervejariaId: string) {
+  const canonical = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId, tx);
+  if (canonical) return canonical.kitchenItemsChargeAtLaunch;
+  const configuracao = await tx.configuracaoOperacional.findUnique({
+    where: { cervejariaId },
+    select: { kitchenItemsChargeAtLaunch: true },
+  });
+  return configuracao?.kitchenItemsChargeAtLaunch ?? false;
+}
+
 async function cancelarPedidoSeVazio(tx: Prisma.TransactionClient, pedidoId: string) {
   const pedido = await tx.pedidoOperacao.findUnique({
     where: { id: pedidoId },
@@ -226,12 +236,13 @@ export async function removeItemFromComandaOperacao(params: {
       include: INCLUDE_COMANDA_OPERACAO,
     });
     await ajustarDescontoSeNecessario(tx, comandaFresh, params.cervejariaId);
-    await recalcComandaTotalOperacao(tx, params.comandaId);
+    const chargeKitchenAtLaunch = await kitchenItemsChargeAtLaunch(tx, params.cervejariaId);
+    await recalcComandaTotalOperacao(tx, params.comandaId, { kitchenItemsChargeAtLaunch: chargeKitchenAtLaunch });
 
-    return tx.comanda.findUniqueOrThrow({
+    return { comanda: await tx.comanda.findUniqueOrThrow({
       where: { id: params.comandaId },
       include: INCLUDE_COMANDA_OPERACAO,
-    });
+    }), chargeKitchenAtLaunch };
   });
 
   notificarComandaOperacaoAtualizada(params.app, params.cervejariaId, params.comandaId);
@@ -240,7 +251,7 @@ export async function removeItemFromComandaOperacao(params: {
   return {
     ok: true as const,
     cancelamentoPendente: Boolean(item.pedidoCozinhaId && item.exigePreparo),
-    comanda: resumoComanda(atualizada),
+    comanda: resumoComanda(atualizada.comanda, atualizada.chargeKitchenAtLaunch),
     item,
   };
 }
@@ -330,7 +341,8 @@ export async function updateItemQuantidadeComandaOperacao(params: {
 
   const delta = params.quantidade - item.quantidade;
   if (delta === 0) {
-    return { ok: true as const, comanda: resumoComanda(comanda), item };
+    const chargeKitchenAtLaunch = await kitchenItemsChargeAtLaunch(prisma, params.cervejariaId);
+    return { ok: true as const, comanda: resumoComanda(comanda, chargeKitchenAtLaunch), item };
   }
 
   if (item.pedidoCozinha.status === 'ENTREGUE') {
@@ -410,18 +422,19 @@ export async function updateItemQuantidadeComandaOperacao(params: {
         include: INCLUDE_COMANDA_OPERACAO,
       });
       await ajustarDescontoSeNecessario(tx, comandaFresh, params.cervejariaId);
-      await recalcComandaTotalOperacao(tx, params.comandaId);
+      const chargeKitchenAtLaunch = await kitchenItemsChargeAtLaunch(tx, params.cervejariaId);
+      await recalcComandaTotalOperacao(tx, params.comandaId, { kitchenItemsChargeAtLaunch: chargeKitchenAtLaunch });
 
-      return tx.comanda.findUniqueOrThrow({
+      return { comanda: await tx.comanda.findUniqueOrThrow({
         where: { id: params.comandaId },
         include: INCLUDE_COMANDA_OPERACAO,
-      });
+      }), chargeKitchenAtLaunch };
     });
 
     notificarComandaOperacaoAtualizada(params.app, params.cervejariaId, params.comandaId);
     await notificarMudancaCozinha(params.app, params.cervejariaId, params.temCozinha, pedidoId);
 
-    return { ok: true as const, comanda: resumoComanda(atualizada), item };
+    return { ok: true as const, comanda: resumoComanda(atualizada.comanda, atualizada.chargeKitchenAtLaunch), item };
   } catch (err) {
     if (err instanceof EstoqueInvalidoError) {
       return { error: err.message };

@@ -55,4 +55,5 @@ try {
   }
   await rm(new URL(`../node_modules/.prisma/pdv-commerce-client-${runId}`, import.meta.url), { recursive: true, force: true });
   await rm(new URL(`../node_modules/.prisma/pdv-preflight-client-${runId}`, import.meta.url), { recursive: true, force: true });
+  await rm(new URL(`../node_modules/.prisma/pdv-no-canonical-client-${runId}`, import.meta.url), { recursive: true, force: true });
 }

@@ -8,7 +8,10 @@ import { toNumber } from '../utils.js';
 import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
 
 export const INCLUDE_COMANDA_OPERACAO = {
-  pontoVenda: { select: { configuracaoPdv: { select: { kitchenItemsChargeAtLaunch: true } }, cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
+  // Keep this shared include compatible with databases from before the
+  // additive canonical-PDV schema. Canonical settings are resolved separately
+  // behind the QA activation guard and passed as the effective request context.
+  pontoVenda: { select: { cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
   evento: { select: { cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
   pedidosOperacao: {
     include: { itensComanda: { include: { opcionais: true } } },

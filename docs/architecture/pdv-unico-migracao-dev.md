@@ -1,6 +1,16 @@
 # PDV único: contrato e preparação da migração
 
-## Estado corrente — configuração canônica e fluxo autenticado Por Caixa — 05/10/2026
+## Revisão e9b1afb — isolamento da configuração canônica em comandas — 05/10/2026
+
+**Falhas reproduzidas antes da correção:** `INCLUDE_COMANDA_OPERACAO` pedia `pontoVenda.configuracaoPdv` mesmo com a ativação desligada. Em um banco pré-aditivo, essa relação não existe. Também reproduzi `resumoComanda` usando `false` canônico sem ativação: com item de preparo de R$ 10,00 em pedido `RECEBIDO`, legado `kitchenItemsChargeAtLaunch=true` e PDV `false`, a resposta incorreta era total R$ 0,00/pendente R$ 10,00, em vez do legado R$ 10,00/R$ 0,00.
+
+**Correção:** o include compartilhado voltou a carregar somente relações legadas e funciona sem a tabela `ConfiguracaoPontoVenda`. O resumo deixou de ler configuração canônica diretamente da comanda: recebe a flag efetiva já validada pelo contexto operacional. Com ativação canônica válida, resumo sem esse contexto falha explicitamente; não há fallback silencioso. Leitura da rota, recálculo, desconto, pagamento e fechamento usam o mesmo valor efetivo no respectivo fluxo; auxiliares de edição de item resolvem a mesma autoridade sob o guard existente. Nenhum motor financeiro novo foi criado.
+
+**Prova QA descartável, sem acesso a DEV/PROD:** no banco pré-aditivo pinado ao schema anterior, a tabela `ConfiguracaoPontoVenda` estava ausente e a consulta Prisma real de comanda usando o include compartilhado concluiu com ativação desligada. No QA atual (91 migrations), com item R$ 10,00 ainda `RECEBIDO`, a configuração legada divergindo do PDV produziu: ativação desligada → resposta/persistência R$ 10,00, pendente R$ 0,00, pagamento PIX 200; PDV `false` → R$ 0,00, pendente R$ 10,00, pagamento 409 sem registro e comanda preservada aberta; PDV `true` → R$ 10,00, pendente R$ 0,00, pagamento PIX 200 e fechamento normal. Casos canônicos inválidos continuaram retornando 409 específico; isolamento entre tenants continuou retornando 404 sem escrita.
+
+`npm run build`, 17 testes focados e `npm run qa:pdv-current-disposable` passaram; a bateria agregada concluiu etapas histórica, financeira e comercial, sem skips. O manifesto corrente foi atualizado; manifestos históricos e migrations não foram alterados. Escritas/migrations de ensaio ocorreram apenas em containers QA descartáveis, removidos ao término. Nenhum resultado representa migração de dados reais ou autoriza cutover. `PROD_ACCESS_USED=NO`.
+
+## Registro da entrega anterior — configuração canônica e fluxo autenticado Por Caixa — 05/10/2026
 
 O código desta fatia resolve, sob uma ativação técnica temporária, exatamente um `PontoVenda` ativo do tenant e sua `ConfiguracaoPontoVenda`. Com a ativação desligada (padrão), o perfil mantém o caminho legado e não consulta a relação/tabela aditiva. A ativação exige o runner QA isolado, `NODE_ENV=test`, `PDV_ISOLATED_QA=1`, URL idêntica entre `DATABASE_URL` e `QA_DATABASE_URL`, host `127.0.0.1`, porta QA dedicada e banco `cervejaria_qa_pdv_unico`. Erro de PDV/configuração não retorna ao legado quando a ativação está ligada.
 

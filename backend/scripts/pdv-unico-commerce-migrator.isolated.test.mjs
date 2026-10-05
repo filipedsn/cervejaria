@@ -179,6 +179,72 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const attendantCookie = await login(authAttendant.email, attendantPassword, 'ATENDENTE');
     const secondOwnerCookie = await login(secondOwner.email, secondOwnerPassword, 'DONO');
 
+    // One real RECEBIDO kitchen order exercises the effective setting through
+    // create/recalculation, response summary, payment guard and persisted total.
+    const kitchenProduct = await db.produto.create({ data: {
+      id: `auth-kitchen-product-${runId}`, cervejariaId: secondCompany.id,
+      nome: 'Synthetic prepared meal', tipo: 'COMIDA', exigePreparo: true,
+      controlaEstoque: false,
+    } });
+    await db.preco.create({ data: { id: `auth-kitchen-price-${runId}`, produtoId: kitchenProduct.id, volumeMl: 1, preco: '10.00' } });
+    await db.cardapioProduto.create({ data: {
+      id: `auth-kitchen-menu-product-${runId}`, cardapioId: secondMenu.id,
+      produtoId: kitchenProduct.id, volumeMl: 0, precoUnit: '10.00',
+    } });
+    delete process.env.PDV_CANONICAL_CONFIG_QA;
+    const kitchenCashOpened = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie: secondOwnerCookie }, payload: { pontoVendaId: secondPoint.id, trocoInicial: 0, cardapioId: secondMenu.id } });
+    assert.equal(kitchenCashOpened.statusCode, 201, `legacy-authority kitchen fixture opens cash: ${kitchenCashOpened.body}`);
+    const kitchenSessionId = JSON.parse(kitchenCashOpened.body).id;
+    const kitchenSettingProofs = [];
+    const runKitchenSettingCase = async ({ name, activated, canonicalCharge, expectedTotal, expectedPending, paymentStatus }) => {
+      if (activated) {
+        process.env.PDV_CANONICAL_CONFIG_QA = '1';
+        await db.configuracaoPontoVenda.update({ where: { pontoVendaId: secondPoint.id }, data: {
+          kitchenEnabled: true,
+          kitchenItemsChargeAtLaunch: canonicalCharge,
+          allowCloseComandaWithPendingKitchenOrders: canonicalCharge,
+        } });
+      } else {
+        delete process.env.PDV_CANONICAL_CONFIG_QA;
+      }
+      const openedCommand = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie: secondOwnerCookie }, payload: { pontoVendaId: secondPoint.id, tipo: 'APELIDO', identificador: `${name}-${runId}` } });
+      assert.equal(openedCommand.statusCode, 201, `${name}: command opens: ${openedCommand.body}`);
+      const commandId = JSON.parse(openedCommand.body).id;
+      const launched = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}/pedidos`, headers: { cookie: secondOwnerCookie }, payload: { itens: [{ produtoId: kitchenProduct.id, quantidade: 1 }] } });
+      assert.equal(launched.statusCode, 201, `${name}: pending kitchen order launches: ${launched.body}`);
+      const launchBody = JSON.parse(launched.body);
+      assert.deepEqual([launchBody.total, launchBody.valorEmAberto, launchBody.pedidos[0].status], [expectedTotal, expectedPending, 'RECEBIDO'], `${name}: API summary follows the selected configuration authority`);
+      const persisted = await db.comanda.findUniqueOrThrow({ where: { id: commandId }, include: { pedidosOperacao: { include: { itensComanda: true } } } });
+      assert.deepEqual([centsExact(persisted.total), persisted.pedidosOperacao[0].status, persisted.pedidosOperacao[0].itensComanda[0].quantidade, centsExact(persisted.pedidosOperacao[0].itensComanda[0].precoUnit)], [String(BigInt(expectedTotal * 100)), 'RECEBIDO', 1, '1000'], `${name}: response amount matches persisted total and exact item snapshot`);
+      const detail = await app.inject({ method: 'GET', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}`, headers: { cookie: secondOwnerCookie } });
+      assert.equal(detail.statusCode, 200, `${name}: detail query succeeds: ${detail.body}`);
+      assert.deepEqual([JSON.parse(detail.body).total, JSON.parse(detail.body).valorEmAberto], [expectedTotal, expectedPending], `${name}: detail summary uses the same authority`);
+      const payment = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}/pagamentos`, headers: { cookie: secondOwnerCookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 10 }] } });
+      assert.equal(payment.statusCode, paymentStatus, `${name}: payment while order is still RECEBIDO: ${payment.body}`);
+      const paymentRows = await db.pagamento.findMany({ where: { comandaId: commandId } });
+      const commandAfterPayment = await db.comanda.findUniqueOrThrow({ where: { id: commandId } });
+      if (paymentStatus === 200) {
+        assert.deepEqual([centsExact(commandAfterPayment.total), commandAfterPayment.status, paymentRows.map((row) => [row.forma, centsExact(row.valor), row.sessaoCaixaId])], ['1000', 'FECHADA', [['PIX', '1000', kitchenSessionId]]], `${name}: one exact PIX payment is persisted against the open cash session`);
+      } else {
+        assert.deepEqual([centsExact(commandAfterPayment.total), commandAfterPayment.status, paymentRows.length], [String(BigInt(expectedTotal * 100)), 'ABERTA', 0], `${name}: rejected payment leaves command and ledger unchanged`);
+        const cancelled = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}/cancelar`, headers: { cookie: secondOwnerCookie }, payload: {} });
+        assert.equal(cancelled.statusCode, 200, `${name}: rejected-payment fixture is cancelled through the real route before cash close: ${cancelled.body}`);
+        assert.equal((await db.comanda.findUniqueOrThrow({ where: { id: commandId } })).status, 'CANCELADA');
+      }
+      kitchenSettingProofs.push({ name, activated, canonicalCharge, total: expectedTotal, pending: expectedPending, paymentStatus, itemStatus: persisted.pedidosOperacao[0].status });
+    };
+
+    // The configured legacy source says true/true while the synthetic PDV says
+    // false/false. With activation absent, legacy remains authoritative.
+    await runKitchenSettingCase({ name: 'legacy-disabled-activation', activated: false, canonicalCharge: false, expectedTotal: 10, expectedPending: 0, paymentStatus: 200 });
+    await runKitchenSettingCase({ name: 'canonical-false', activated: true, canonicalCharge: false, expectedTotal: 0, expectedPending: 10, paymentStatus: 409 });
+    await runKitchenSettingCase({ name: 'canonical-true', activated: true, canonicalCharge: true, expectedTotal: 10, expectedPending: 0, paymentStatus: 200 });
+    process.env.PDV_CANONICAL_CONFIG_QA = '1';
+    const kitchenCashClosed = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: secondOwnerCookie }, payload: { pontoVendaId: secondPoint.id, contadoDinheiro: 0, contadoPix: 20, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
+    assert.equal(kitchenCashClosed.statusCode, 200, `kitchen settings fixture cash closes through the existing route: ${kitchenCashClosed.body}`);
+    assert.equal((await db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: kitchenSessionId } })).status, 'FECHADO');
+    await db.configuracaoPontoVenda.update({ where: { pontoVendaId: secondPoint.id }, data: canonicalSettings });
+
     const canonicalContexts = [];
     for (const [company, expectedQuantity] of [[primaryCompany, 8], [secondCompany, 9]]) {
       const response = await app.inject({ method: 'GET', url: '/api/operacao/contexto', headers: { cookie: company.id === primaryCompany.id ? ownerCookie : secondOwnerCookie } });
@@ -280,7 +346,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       login: [200, 200, 200], missingCredential: missing.statusCode, invalidToken: invalid.statusCode,
       attendantOwnerOnly: attendantOwnerOnly.statusCode, crossTenantRead: foreignRead.statusCode, crossTenantWrite: foreignWrite.statusCode,
       canonicalBlockers: blockerFixtures.map(({ name, expectedCode }) => ({ name, code: expectedCode, status: 409 })),
-      operationFlows,
+      operationFlows, kitchenSettingProofs,
     };
     console.log(`QA_AUTHENTICATED_CASH=PASS; ${JSON.stringify(summary)}`);
   } finally {
@@ -300,6 +366,50 @@ async function proveLegacyOrderContextPreflight(args) {
   const { history, core, catalog, finance, sessionSql, tempRoot, manifest, commerceSql, runPrisma, sha256, repoRoot, backendRoot, generatedClientDir, databaseUrl, runId } = args;
   const container = process.env.PDV_QA_CONTAINER;
   assert.match(container ?? '', /^codex-pdv-commerce-qa-[a-f0-9]+$/, 'preflight must run in the owned disposable container');
+  // Exercise the actual shared include against a pinned pre-additive schema.
+  // This database intentionally has no ConfiguracaoPontoVenda relation/table.
+  const legacySchemaBytes = readPinnedBlob(core.baseCommit, manifest.preCommerceSchema.path);
+  const legacyClientDir = path.join(backendRoot, 'node_modules', '.prisma', `pdv-no-canonical-client-${runId}`);
+  const legacySchemaPath = path.join(tempRoot, 'pre-canonical-schema.prisma');
+  const legacyGeneratePath = path.join(tempRoot, 'generate-pre-canonical-schema.prisma');
+  const legacySchemaText = legacySchemaBytes.toString('utf8');
+  await writeFile(legacySchemaPath, legacySchemaBytes);
+  await writeFile(legacyGeneratePath, legacySchemaText.replace('provider = "prisma-client-js"', `provider = "prisma-client-js"\n  output = "${legacyClientDir.replaceAll('\\', '/')}"`));
+  runPrisma(['validate', '--schema', legacySchemaPath]);
+  runPrisma(['generate', '--schema', legacyGeneratePath]);
+  const noCanonicalDbName = `pdv_no_canonical_${runId.replaceAll(/[^a-zA-Z0-9_]/g, '_')}`;
+  const noCanonicalCreated = spawnSync('docker', ['exec', container, 'createdb', '-U', 'postgres', noCanonicalDbName], { encoding: 'utf8', windowsHide: true });
+  assert.equal(noCanonicalCreated.status, 0, 'temporary no-additive-table database created in owned QA container');
+  const noCanonicalUrl = new URL(databaseUrl); noCanonicalUrl.pathname = `/${noCanonicalDbName}`;
+  const noCanonicalRoot = path.join(tempRoot, 'no-canonical-config');
+  const noCanonicalBundle = await materializePinnedMigrationBundle(history, noCanonicalRoot);
+  const legacyDeploy = runPrisma(['migrate', 'deploy', '--schema', noCanonicalBundle.schemaPath], noCanonicalUrl.toString());
+  assert.equal(legacyDeploy.status, 0, 'pinned legacy schema deploys without canonical configuration migration');
+  const { INCLUDE_COMANDA_OPERACAO } = await import('../src/lib/operacao/comanda-adapter.ts');
+  assert.equal('configuracaoPdv' in INCLUDE_COMANDA_OPERACAO.pontoVenda.select, false, 'shared include omits the additive configuration relation');
+  const { PrismaClient: LegacyPrismaClient } = await import(pathToFileURL(path.join(legacyClientDir, 'index.js')).href);
+  const noCanonicalDb = new LegacyPrismaClient({ datasources: { db: { url: noCanonicalUrl.toString() } }, errorFormat: 'minimal' });
+  try {
+    const oldCompany = await noCanonicalDb.cervejaria.create({ data: { id: `no-canonical-company-${runId}`, nome: 'Synthetic legacy schema', slug: `no-canonical-${runId}` } });
+    const oldPoint = await noCanonicalDb.pontoVenda.create({ data: { id: `no-canonical-point-${runId}`, cervejariaId: oldCompany.id, nome: 'Legacy point' } });
+    const oldCommand = await noCanonicalDb.comanda.create({ data: { id: `no-canonical-command-${runId}`, origem: 'CAIXA', pontoVendaId: oldPoint.id, status: 'ABERTA', total: '10.00' } });
+    const table = await noCanonicalDb.$queryRaw`SELECT to_regclass('"ConfiguracaoPontoVenda"')::text AS relation_name`;
+    assert.equal(table[0].relation_name, null, 'additive canonical configuration table is absent in this database');
+    const previousCanonicalFlag = process.env.PDV_CANONICAL_CONFIG_QA;
+    delete process.env.PDV_CANONICAL_CONFIG_QA;
+    try {
+      const queried = await noCanonicalDb.comanda.findUnique({ where: { id: oldCommand.id }, include: INCLUDE_COMANDA_OPERACAO });
+      assert.equal(queried?.id, oldCommand.id, 'the production-shared comanda include query succeeds without the additive table when activation is off');
+    } finally {
+      if (previousCanonicalFlag === undefined) delete process.env.PDV_CANONICAL_CONFIG_QA;
+      else process.env.PDV_CANONICAL_CONFIG_QA = previousCanonicalFlag;
+    }
+    console.log('QA_STAGE=legacy-comanda-include-without-canonical-table; activation=off; query=PASS; relation=absent');
+  } finally {
+    await noCanonicalDb.$disconnect();
+    const dropped = spawnSync('docker', ['exec', container, 'dropdb', '-U', 'postgres', '--if-exists', noCanonicalDbName], { encoding: 'utf8', windowsHide: true });
+    assert.equal(dropped.status, 0, 'only owned disposable no-canonical QA database is removed');
+  }
   const schemaBytes = readPinnedBlob(manifest.preCommerceSchema.commit, manifest.preCommerceSchema.path);
   assert.equal(sha256(schemaBytes), manifest.preCommerceSchema.sha256, 'pinned pre-commerce Prisma schema');
   const clientDir = path.join(backendRoot, 'node_modules', '.prisma', `pdv-preflight-client-${runId}`);

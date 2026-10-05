@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { calcularFinanceiroComanda, itemVaiParaCozinha, resolverPagamentos, subtotalComandaEmCentavos, VendaInvalidaError } from './venda.js';
+import { calcularFinanceiroComanda, itemVaiParaCozinha, resolverPagamentos, resumoComanda, subtotalComandaEmCentavos, VendaInvalidaError } from './venda.js';
 
 describe('itemVaiParaCozinha', () => {
   it('não cria fila latente enquanto a cozinha está desligada', () => {
@@ -179,5 +179,56 @@ describe('calcularFinanceiroComanda', () => {
     });
 
     assert.deepEqual(financeiro, { subtotal: 2000, valorEmAberto: 0, desconto: 0, total: 1700 });
+  });
+});
+
+describe('resumoComanda e autoridade da cobrança de cozinha', () => {
+  const comanda = {
+    id: 'command-kitchen-authority', tipo: 'APELIDO', identificador: 'QA', numero: 1,
+    cliente: null, status: 'ABERTA', pontoVendaId: 'point-kitchen-authority',
+    createdAt: new Date('2026-10-05T12:00:00.000Z'), fechadaEm: null,
+    total: 0, desconto: 0,
+    pontoVenda: {
+      configuracaoPdv: { kitchenItemsChargeAtLaunch: false },
+      cervejaria: { configuracaoOperacional: { kitchenItemsChargeAtLaunch: true } },
+    },
+    evento: null,
+    itens: [], pagamentos: [], contaReceber: null,
+    pedidosOperacao: [{
+      id: 'order-received', numero: 1, status: 'RECEBIDO', clienteAvisadoEm: null,
+      paraViagem: false, observacao: null, createdAt: new Date('2026-10-05T12:01:00.000Z'),
+      itensComanda: [{ id: 'item-prep', produtoId: 'product', nome: 'Prato', precoUnit: 10,
+        quantidade: 1, exigePreparo: true, paraViagem: false, observacao: null,
+        cancelamentoPendenteEm: null, canceladoEm: null, opcionais: [] }],
+    }],
+  } as unknown as Parameters<typeof resumoComanda>[0];
+
+  it('com ativação desligada mantém o legado apesar de ConfiguracaoPontoVenda divergente', () => {
+    const previous = process.env.PDV_CANONICAL_CONFIG_QA;
+    delete process.env.PDV_CANONICAL_CONFIG_QA;
+    try {
+      // Contrato desligado: a relação aditiva não é autoridade. A chamada antiga
+      // reproduz o bug retornando total=0/pendente=10 em vez do legado 10/0.
+      const summary = resumoComanda(comanda);
+      assert.deepEqual([summary.total, summary.valorEmAberto], [10, 0]);
+    } finally {
+      if (previous === undefined) delete process.env.PDV_CANONICAL_CONFIG_QA;
+      else process.env.PDV_CANONICAL_CONFIG_QA = previous;
+    }
+  });
+
+  it('permite que a configuração validada da requisição controle true e false', () => {
+    const previous = { flag: process.env.PDV_CANONICAL_CONFIG_QA, db: process.env.DATABASE_URL, qa: process.env.QA_DATABASE_URL, isolated: process.env.PDV_ISOLATED_QA, nodeEnv: process.env.NODE_ENV };
+    const target = 'postgresql://127.0.0.1:55439/cervejaria_qa_pdv_unico';
+    Object.assign(process.env, { PDV_CANONICAL_CONFIG_QA: '1', DATABASE_URL: target, QA_DATABASE_URL: target, PDV_ISOLATED_QA: '1', NODE_ENV: 'test' });
+    try {
+      assert.throws(() => resumoComanda(comanda), (error: unknown) => (error as { code?: string }).code === 'CANONICAL_PDV_SETTINGS_CONTEXT_REQUIRED');
+      assert.deepEqual([resumoComanda(comanda, true).total, resumoComanda(comanda, true).valorEmAberto], [10, 0]);
+      assert.deepEqual([resumoComanda(comanda, false).total, resumoComanda(comanda, false).valorEmAberto], [0, 10]);
+    } finally {
+      for (const [key, value] of Object.entries({ PDV_CANONICAL_CONFIG_QA: previous.flag, DATABASE_URL: previous.db, QA_DATABASE_URL: previous.qa, PDV_ISOLATED_QA: previous.isolated, NODE_ENV: previous.nodeEnv })) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
   });
 });

@@ -14,6 +14,7 @@ import { cardapioProdutoVolumeKey, mapPrecosCardapioOperacao } from '../cardapio
 import { operacaoUsaCardapio } from '../cardapio-toggle.js';
 import { assertProdutoNoCardapioTurno } from './sessao-cardapio.js';
 import { resolverOpcionais, type OpcionalSelecionadoInput, type OpcionalResolvido } from '../produto-opcionais.js';
+import { canonicalPdvQaActivationEnabled, CanonicalPdvConfigurationError } from '../canonical-pdv-operational-config.js';
 
 export class VendaInvalidaError extends Error {
   statusCode = 400;
@@ -345,7 +346,6 @@ type ComandaCompleta = Prisma.ComandaGetPayload<{
   include: {
     pontoVenda: {
       select: {
-        configuracaoPdv: { select: { kitchenItemsChargeAtLaunch: true } };
         cervejaria: {
           select: {
             configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } };
@@ -442,8 +442,15 @@ export function subtotalComandaEmCentavos(
 /**
  * Monta a conta como o operador ve. Total vem persistido na comanda (padrão cervejaria).
  */
-export function resumoComanda(comanda: ComandaCompleta) {
-  const kitchenItemsChargeAtLaunch = comanda.pontoVenda?.configuracaoPdv?.kitchenItemsChargeAtLaunch
+export function resumoComanda(comanda: ComandaCompleta, effectiveKitchenItemsChargeAtLaunch?: boolean) {
+  const canonicalEnabled = canonicalPdvQaActivationEnabled();
+  if (canonicalEnabled && effectiveKitchenItemsChargeAtLaunch === undefined) {
+    throw new CanonicalPdvConfigurationError(
+      'CANONICAL_PDV_SETTINGS_CONTEXT_REQUIRED',
+      'A configuração canônica validada deve acompanhar o resumo da comanda.',
+    );
+  }
+  const kitchenItemsChargeAtLaunch = effectiveKitchenItemsChargeAtLaunch
     ?? comanda.pontoVenda?.cervejaria.configuracaoOperacional?.kitchenItemsChargeAtLaunch
     ?? comanda.evento?.cervejaria.configuracaoOperacional?.kitchenItemsChargeAtLaunch
     ?? false;
