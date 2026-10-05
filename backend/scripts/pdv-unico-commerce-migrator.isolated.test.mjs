@@ -874,6 +874,8 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
 
     const kitchenGuardDay = '2026-11-13';
     await db.configuracaoPontoVenda.update({ where: { pontoVendaId: secondPoint.id }, data: { kitchenEnabled: true } });
+    let preparedIncreaseStatus;
+    let deliveredIncreaseStatus;
     await withSecondOwnerAt(kitchenGuardDay, async (cookie) => {
       const opened = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: secondPoint.id, trocoInicial: 0, cardapioId: secondMenu.id } });
       assert.equal(opened.statusCode, 201, `kitchen guard session opens: ${opened.body}`);
@@ -886,12 +888,14 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       const itemId = order.itens[0].id;
       const preparedIncrease = await app.inject({ method: 'PATCH', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}/itens/${encodeURIComponent(itemId)}`, headers: { cookie }, payload: { quantidade: 2 } });
       assert.equal(preparedIncrease.statusCode, 409, `item sent to kitchen keeps its quantity restriction: ${preparedIncrease.body}`);
+      preparedIncreaseStatus = preparedIncrease.statusCode;
       for (const status of ['EM_PREPARO', 'PRONTO', 'ENTREGUE']) {
         const transition = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(order.id)}/status`, headers: { cookie }, payload: { status } });
         assert.equal(transition.statusCode, 200, `historical kitchen confirmation to ${status} still works: ${transition.body}`);
       }
       const deliveredIncrease = await app.inject({ method: 'PATCH', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}/itens/${encodeURIComponent(itemId)}`, headers: { cookie }, payload: { quantidade: 2 } });
       assert.equal(deliveredIncrease.statusCode, 409, `delivered item keeps its existing restriction: ${deliveredIncrease.body}`);
+      deliveredIncreaseStatus = deliveredIncrease.statusCode;
       const paid = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 10 }] } });
       assert.equal(paid.statusCode, 200, `prepared/delivered item remains payable through historical flow: ${paid.body}`);
       const closed = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie }, payload: { pontoVendaId: secondPoint.id, contadoDinheiro: 0, contadoPix: 10, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
@@ -900,7 +904,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     await db.configuracaoPontoVenda.update({ where: { pontoVendaId: secondPoint.id }, data: canonicalSettings });
     await db.configuracaoPontoVenda.update({ where: { pontoVendaId: primaryPoint.id }, data: { inventoryEnabled: false } });
     await db.produto.update({ where: { id: product.id }, data: { controlaEstoque: productStockTrackingBefore } });
-    console.log(`QA_OCCURRENCE_ITEM_INCREASE=PASS; incompatible=${mismatchIncrease.statusCode}/no-write; valid=${correctIncrease.statusCode}/quantity:1->2/totalCents:950->1900/stockDelta:-1; missingSession=${blockedWithoutSession.statusCode}; cashCloseRace=${closeRaceIncrease.statusCode}/waiters:${cashLockWaiters}; tenant=${foreignIncrease.statusCode}; cancellation=reversal-verified; prepared=${preparedIncrease.statusCode}; delivered=${deliveredIncrease.statusCode}; legacy=${legacyIncrease.statusCode}`);
+    console.log(`QA_OCCURRENCE_ITEM_INCREASE=PASS; incompatible=${mismatchIncrease.statusCode}/no-write; valid=${correctIncrease.statusCode}/quantity:1->2/totalCents:950->1900/stockDelta:-1; missingSession=${blockedWithoutSession.statusCode}; cashCloseRace=${closeRaceIncrease.statusCode}/waiters:${cashLockWaiters}; tenant=${foreignIncrease.statusCode}; cancellation=reversal-verified; prepared=${preparedIncreaseStatus}; delivered=${deliveredIncreaseStatus}; legacy=${legacyIncrease.statusCode}`);
 
     const concurrentDay = '2026-11-07';
     const lockDigest = createHash('sha256').update(`caixa-operacao:${primaryCompany.id}:${primaryPoint.id}:${concurrentDay}`).digest();
