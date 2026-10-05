@@ -418,3 +418,25 @@ Não houve cutover. A próxima ação antes de qualquer plano de aplicação rea
 
 
 **Certificação do código/executor desta fotografia:** `qa:pdv-current-git-snapshot` PASS no commit `77e277f520d9806b6f10f4f3bf52f7a79de59cbb`, tree `c1a0373e67a899d53024d2705c4805fa900c0f7b`, 1.100 blobs e manifesto SHA-256 `7bd8f4aeea58c50edced1e83a3a86755d97e3b3189c0a2ed9f03e89e5d4bad41`; build backend e testes focados passaram, e a auditoria importou 175 módulos do snapshot e zero fontes do workspace. A bateria sintética passou; o ensaio representativo segue bloqueado em sessões. A certificação do executor não certifica a reconciliação dos domínios que não migraram.
+
+
+## Custo transacional de sess?es e reensaio representativo (2026-10-05)
+
+A fotografia anterior havia sido removida do tempor?rio. Foi feita uma nova captura somente leitura pelo guard DEV, em RepeatableRead + READ ONLY, com hash SHA-256 `a79450eef6d1b775487d80fafc015f67b59960faa053e470a86d2b7bc4eae2e3` (8.386.723 bytes). Ela tem 34 tabelas, 10.738 linhas e zero arestas entre tenants. O invent?rio anterior tamb?m registrava 34/10.738; a diferen?a observ?vel de volume ? zero, mas isso n?o prova identidade dos dados. A leitura levou 1.767,75 ms e 100 consultas.
+
+A causa do timeout era trabalho repetido dentro da mesma transa??o: confirma??es de ocorr?ncia reconstru?am a fotografia e revalidavam o run de neg?cio; confirma??es de cat?logo relia mapas e revalidava o escopo para cada depend?ncia. Os resolvers agora s?o criados por transa??o, validam o run/checkpoint completo e memoizam ocorr?ncias e cada origem de cat?logo apenas durante essa transa??o. O cache ? descartado ao terminar ou repetir a transa??o. Locks, RepeatableRead, tenant/PDV, mapas, lotes, recibos, conte?do de destino e valida??o integral na retomada, em cada lote e na finaliza??o permanecem ativos. Para sess?es, o lote limitado passou a at? 250 itens. Os limites expl?citos s?o timeout de 30.000 ms e maxWait de 10.000 ms; a maior etapa medida no Churrasquinho foi valida??o checkpoint/maps/recibos: 12.196,54 ms.
+
+| Escopo/tenant | Antes | Depois |
+|---|---|---|
+| Sess?es ? CIA Mar?tima | 5.188,16 ms, 789 consultas; P2028 no limite padr?o de 5 s; nenhum lote | primeiro lote 4.607,31 ms/15 consultas; retomada 7.397,88/23; replay 2.439,30/4; conclu?do |
+| Sess?es ? Churrasquinho | 5.033,99 ms, 145 consultas; P2028 no limite padr?o de 5 s; nenhum lote | primeiro lote 14.454,11 ms/53 consultas; retomada 94.908,62/989; replay 18.943,45/5; conclu?do |
+| Churrasquinho, retomada das sess?es ? itera??o intermedi?ria lote 100 vs. final lote 250 + cache por origem | 166.652,10 ms; 1.023 consultas; 63.219 consultas em valida??o de checkpoint e 34.186 em confirma??o de cat?logo | 94.908,62 ms; 989 consultas na retomada; 37.449 em valida??o de checkpoint e 20.502 em confirma??o de cat?logo |
+| Cat?logo/config do Churrasquinho | 271.222,94 ms/188.215 consultas na retomada bloqueada por custo | 12.765,50 ms/161 consultas na chamada de retomada; checkpoint e confirma??o de depend?ncias: 11.138 consultas |
+
+As etapas de confirma??o registram apenas dura??o/contagem de consultas; nenhum SQL, par?metro ou payload pessoal ? emitido. A retomada das sess?es do Churrasquinho reduziu 43% em dura??o e 41% das consultas de valida??o de checkpoint entre as duas itera??es medidas.
+
+A sequ?ncia representativa passou por neg?cio, cat?logo/configura??o e sess?es para os dois tenants, com pausa ap?s o primeiro lote, retomada e replay no mesmo run. O primeiro bloqueio seguinte ? financeiro: em ambos h? pagamento imediato sem sess?o persistida (CIA: pagamento `cmrcmcnfp000khv2w2uyceipp`; Churrasquinho: `cmsthiwwu007ohvmo2o79k3g1`). O escopo retorna `FINANCE_PAYMENT_SESSION_MISSING` antes do primeiro lote; zero lotes financeiros foram confirmados. N?o foi inferida associa??o nem alterada origem. Prepara??o de cozinha, com?rcio e reconcilia??o de estoque n?o foram executados por dependerem da fase financeira. Auditoria e estat?sticas foram preservadas na restaura??o QA, mas continuam sem transformador e n?o s?o consideradas migradas.
+
+A bateria sint?tica do snapshot Git passou. O resultado agregado do executor ? BLOCKED, sa?da 1, porque o ensaio representativo encontrou o bloqueio financeiro; isso n?o ? timeout t?cnico nem aprova??o integral. C?digo testado: commit `b776f61dec5cd24b20777972079f32e58b5025c7`, tree `4e3791128617613e7fe4a63c73cbf7f8d9b8cda8`, 1.102 blobs, manifesto de candidatos SHA-256 `92a9c1fcd9d8d387c870c3f0c6d817e4cb667249e37ba8e55115a4e062c15ad8`. Build passou; testes da clausura de fotografia passaram 5/5; a bateria sint?tica separada passou. O estado local foi id?ntico antes/depois da certifica??o.
+
+**Pr?xima a??o:** decidir com evid?ncia de neg?cio como representar pagamentos imediatos sem sess?o persistida; ent?o repetir a fase financeira e seus dependentes na mesma fotografia QA. N?o remendar v?nculos para fazer o ensaio passar. Nenhuma escrita, migration, seed, backfill ou configura??o foi aplicada no DEV. N?o houve acesso a PROD, inclusive metadados.

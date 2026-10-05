@@ -553,3 +553,25 @@ Implementação certificada no snapshot Git `5fcfd43d155992d2595d88c5ca5da9f9c3f
 
 
 **Certificação do executor:** `qa:pdv-current-git-snapshot` PASS no commit `77e277f520d9806b6f10f4f3bf52f7a79de59cbb` (tree `c1a0373e67a899d53024d2705c4805fa900c0f7b`; manifesto `7bd8f4aeea58c50edced1e83a3a86755d97e3b3189c0a2ed9f03e89e5d4bad41`), com build backend, testes focados e auditoria do snapshot Git aprovados. Esta bateria sintética é distinta do ensaio representativo: ambos os tenants bloquearam em sessões antes do primeiro lote; financeiro, cozinha, comércio e estoque ainda não têm reconciliação representativa pós-migração.
+
+
+## Reensaio representativo ap?s otimiza??o de sess?es (2026-10-05)
+
+A captura usada nesta repeti??o ? nova: a fotografia tempor?ria anterior havia sido removida. O guard DEV em modo somente leitura capturou em RepeatableRead + READ ONLY; hash SHA-256 `a79450eef6d1b775487d80fafc015f67b59960faa053e470a86d2b7bc4eae2e3`, 8.386.723 bytes, 34 tabelas, 10.738 linhas, zero arestas cross-tenant. A captura anterior documentava o mesmo volume (diferen?a: 0 tabelas e 0 linhas), sem alega??o de identidade entre fotografias. Leitura: 1.767,75 ms/100 consultas. Dados brutos ficaram somente em tempor?rio; credenciais foram substitu?das por marcadores de QA e campos pessoais/textuais constam da lista de anonimiza??o no JSON.
+
+A prova ret?m valida??o completa do run/checkpoint, mapas, batches, recibos e conte?do real dos destinos. Os resolvers de ocorr?ncia e cat?logo reutilizam essa prova somente dentro da transa??o atual. N?o h? cache entre lotes, transa??es ou runs. Isolamento RepeatableRead e advisory locks s?o preservados. Sess?es usam batches limitados a 250, timeout expl?cito 30 s e maxWait 10 s. O maior est?gio ?nico medido no Churrasquinho foi 12,197 s para validar checkpoint/maps/recibos.
+
+| Tenant | Neg?cio | Cat?logo/config | Sess?es | Financeiro | Cozinha/com?rcio/estoque |
+|---|---|---|---|---|---|
+| CIA Mar?tima | COMPLETED; pausa/retomada/replay | COMPLETED; pausa/retomada/replay | COMPLETED; 4,607 ms/15 consultas no primeiro lote; 7,398 ms/23 na retomada; replay 2,439 ms/4 | BLOCKED: `FINANCE_PAYMENT_SESSION_MISSING`, pagamento `cmrcmcnfp000khv2w2uyceipp`, zero lotes | N?O EXECUTADOS por depend?ncia financeira |
+| Churrasquinho do Thiago | COMPLETED; pausa/retomada/replay | COMPLETED; pausa/retomada/replay | COMPLETED; 14,454 ms/53 consultas no primeiro lote; retomada 94,909 ms/989; replay 18,943 ms/5 | BLOCKED: `FINANCE_PAYMENT_SESSION_MISSING`, pagamento `cmsthiwwu007ohvmo2o79k3g1`, zero lotes | N?O EXECUTADOS por depend?ncia financeira |
+
+As fases de neg?cio, cat?logo/configura??o e sess?es confirmaram internamente hashes da fotografia, ordem de checkpoint, mapas, recibos e destinos; os tr?s escopos foram pausados, retomados e repetidos no mesmo run sem duplica??o. Na retomada das sess?es do Churrasquinho, a passagem de lote 100 para 250 e o cache por origem reduziram o tempo observado de 166,7 s para 94,9 s e as consultas de valida??o de checkpoint de 63.219 para 37.449. A confirma??o de cat?logo caiu de 34.186 para 20.502 consultas nesta compara??o.
+
+O pagamento financeiro sem sess?o persistida ? o primeiro bloqueio de dados/pol?tica encontrado, n?o timeout: nenhum lote financeiro foi confirmado. N?o foram executadas compara??es p?s-transforma??o de pagamentos, d?vidas, recebimentos, movimentos de caixa, pedidos/hist?rico de cozinha, comandas/itens/snapshots comerciais, saldos nem movimentos de estoque. A fotografia e restaura??o pr?-transforma??o preservaram IDs, rela??es, centavos, snapshots, os 914 overrides e estoque por unidade, mas isso n?o reconcilia esses dom?nios depois da migra??o. N?o somamos quantidades entre unidades.
+
+Auditoria (CIA 2.141 / Churrasquinho 1.623 linhas) e estat?sticas de clientes (156 / 6) foram restauradas e comparadas antes das migra??es; n?o h? transformador nesta sequ?ncia. Permanecem PENDENTES, n?o migradas.
+
+**Resultados separados:** build backend PASS; testes FK simples/diferentes nomes, compostos, pai ausente e tenant incompat?vel PASS 5/5; regress?o sint?tica `qa:pdv-current-disposable` PASS; ensaio representativo BLOCKED e encerrou com c?digo 1. A fotografia Git certificou o c?digo exato do commit `b776f61dec5cd24b20777972079f32e58b5025c7` (tree `4e3791128617613e7fe4a63c73cbf7f8d9b8cda8`), 1.102 blobs, 58 candidatos; hash do manifesto `92a9c1fcd9d8d387c870c3f0c6d817e4cb667249e37ba8e55115a4e062c15ad8`. O executor classificou corretamente o agregado como BLOCKED, apesar do PASS sint?tico. Evid?ncia do executor: `PDV_GIT_QA_EVIDENCE` escrita no tempor?rio durante a certifica??o; evid?ncia representativa versionada neste arquivo JSON.
+
+**Decis?o pendente antes de prosseguir:** estabelecer, com proveni?ncia comercial, o tratamento de pagamentos imediatos sem sess?o persistida. N?o associar por data/valor nem corrigir dados automaticamente. Ap?s decis?o, repetir financeiro, prepara??o de cozinha antes do com?rcio, com?rcio e reconcilia??o de estoque. Migra??o de auditoria/estat?sticas, backfill DEV e cutover continuam fora da prova atual. DEV teve zero escritas; PROD n?o foi acessado, inclusive metadados.
