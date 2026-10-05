@@ -16,8 +16,9 @@ url.username = 'postgres'; url.password = password; url.searchParams.set('connec
 const databaseUrl = validateIsolatedQaEnvironment({ PDV_ISOLATED_QA: '1', QA_DATABASE_URL: url.toString() }).toString();
 const backendRoot = fileURLToPath(new URL('..', import.meta.url));
 function run(args, options = {}) {
-  const env = { ...process.env, NODE_ENV: 'test', PDV_ISOLATED_QA: '1', PDV_QA_RUN_ID: runId, PDV_QA_CONTAINER: containerName, PDV_REPRESENTATIVE_PHOTO_FILE: photo, QA_DATABASE_URL: databaseUrl, DATABASE_URL: databaseUrl };
+  const env = { ...process.env };
   for (const key of Object.keys(env)) if (key === 'DIRECT_URL' || key === 'PDV_CANONICAL_CONFIG_QA' || /_DATABASE_URL$/.test(key) || /^PROD/i.test(key)) delete env[key];
+  Object.assign(env, { NODE_ENV: 'test', PDV_ISOLATED_QA: '1', PDV_QA_RUN_ID: runId, PDV_QA_CONTAINER: containerName, PDV_REPRESENTATIVE_PHOTO_FILE: photo, QA_DATABASE_URL: databaseUrl, DATABASE_URL: databaseUrl });
   const result = spawnSync(process.execPath, args, { cwd: backendRoot, env, encoding: 'utf8', windowsHide: true, ...options });
   if (result.status !== 0) throw new Error(`Representative QA child exited ${result.status}: ${(result.stderr || result.stdout || '').replaceAll(databaseUrl, '[QA URL REDACTED]').slice(-5000)}`);
   return result.stdout ?? '';
