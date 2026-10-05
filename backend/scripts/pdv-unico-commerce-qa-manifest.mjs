@@ -153,7 +153,9 @@ export async function buildPdvCommerceQaManifest(options = {}) {
       sha256: digest(git(['show', `66ec00886b65eaea8e437fae4e9a36f7be971b09:${schemaPath}`])),
       compatibility: 'Matches DEV migration ledger through 20260930150000_company_pix_key; excludes additive PDV migrations not applied in DEV.',
     },
-    codeCandidates: availableCodePaths.map((file) => ({ path: file, sha256: digest(git(['show', `${baselineCommit}:${file}`])) })),
+    codeCandidates: availableCodePaths
+      .map((file) => ({ path: file, sha256: digest(git(['show', `${baselineCommit}:${file}`])) }))
+      .sort((left, right) => left.path.localeCompare(right.path)),
   };
   return { ...data, manifestSha256: digest(Buffer.from(JSON.stringify(data))) };
 }
