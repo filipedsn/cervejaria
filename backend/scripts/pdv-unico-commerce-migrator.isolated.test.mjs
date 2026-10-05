@@ -639,9 +639,13 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       const persisted = await db.comanda.findUniqueOrThrow({ where: { id: command.id }, include: { itens: true, pagamentos: true } });
       assert.deepEqual([persisted.origem, persisted.ocorrenciaId, persisted.itens.length, persisted.pagamentos[0].sessaoCaixaId], ['CAIXA', command.ocorrenciaId, 1, session.id]);
       assert.deepEqual([persisted.itens[0].produtoId, persisted.itens[0].quantidade, centsExact(persisted.itens[0].precoUnit), centsExact(persisted.pagamentos[0].valor)], [product.id, 1, String(primaryCashFlow.itemPriceCents), String(primaryCashFlow.itemPriceCents)], 'occurrence context does not alter catalog snapshots or amount paid');
-      await closeOccurrenceCash(day, unitPrice);
+      assert.equal(persisted.status, 'FECHADA', `full payment closes recurring command before cash close ${day}`);
       occurrenceProofs.push({ kind: 'recurring-command', sessionId: session.id, commandId: persisted.id, occurrenceId: persisted.ocorrenciaId, paymentSessionId: persisted.pagamentos[0].sessaoCaixaId });
     }
+    // The existing cash close route blocks while any company command remains open,
+    // so settle both occurrence-separated commands before closing either session.
+    await closeOccurrenceCash('2026-11-03', unitPrice);
+    await closeOccurrenceCash('2026-11-02', unitPrice);
 
     const portalSession = await openOccurrenceCash('2026-11-04', otherAgendaOccurrence.id);
     const portalOpen = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: `/api/cervejarias/${encodeURIComponent(primaryCompany.slug)}/pontos-venda/${encodeURIComponent(primaryPoint.id)}/comandas`, payload: { nome: occurrenceClient.nome, telefone: occurrenceClient.telefone } }));
