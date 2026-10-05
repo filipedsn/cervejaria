@@ -928,13 +928,59 @@ try {
     item: await db.itemComanda.findUniqueOrThrow({ where: { id: item1.id } }),
     optional: await db.itemComandaOpcional.findUniqueOrThrow({ where: { id: soldOptional.id } }),
   });
-  await db.preco.update({ where: { produtoId_volumeMl: { produtoId: draftProduct.id, volumeMl: 500 } }, data: { preco: '19.99' } });
-  await db.cardapioProduto.update({ where: { id: id('menu-a-500') }, data: { precoUnit: '17.77' } });
+  const historicProductId = historicSaleSnapshotBeforeCatalogEdit.item.produtoId;
+  const historicVolumeMl = historicSaleSnapshotBeforeCatalogEdit.item.volumeMl;
+  assert.equal(historicProductId, product.id, 'the historical sale snapshot references the synthetic unit product');
+  assert.equal(historicVolumeMl, 0, 'the historical sale snapshot references the unit volume');
+  assert.equal(historicSaleSnapshotBeforeCatalogEdit.item.comandaId, eventCommand1.id);
+  assert.deepEqual([
+    historicSaleSnapshotBeforeCatalogEdit.item.id,
+    historicSaleSnapshotBeforeCatalogEdit.item.produtoId,
+    historicSaleSnapshotBeforeCatalogEdit.item.volumeMl,
+    centsExact(historicSaleSnapshotBeforeCatalogEdit.item.precoUnit),
+    historicSaleSnapshotBeforeCatalogEdit.item.quantidade,
+    historicSaleSnapshotBeforeCatalogEdit.item.nome,
+    historicSaleSnapshotBeforeCatalogEdit.optional.id,
+    historicSaleSnapshotBeforeCatalogEdit.optional.itemComandaId,
+    centsExact(historicSaleSnapshotBeforeCatalogEdit.optional.precoAdicional),
+    historicSaleSnapshotBeforeCatalogEdit.optional.quantidade,
+    historicSaleSnapshotBeforeCatalogEdit.optional.nome,
+  ], [item1.id, product.id, 0, '425', 2, 'Snapshot item', soldOptional.id, item1.id, '75', 1, 'Historical optional snapshot'], 'record the exact historical product/volume, sale and optional snapshot before editing that product prices');
+  const catalogUnitPriceBeforeEdit = await db.preco.findUniqueOrThrow({ where: { produtoId_volumeMl: { produtoId: historicProductId, volumeMl: 1 } } });
+  const menuUnitPriceBeforeEdit = await db.cardapioProduto.findUniqueOrThrow({ where: { id: id('menu-b-unit') } });
+  assert.deepEqual([
+    [catalogUnitPriceBeforeEdit.produtoId, catalogUnitPriceBeforeEdit.volumeMl, centsExact(catalogUnitPriceBeforeEdit.preco)],
+    [menuUnitPriceBeforeEdit.cardapioId, menuUnitPriceBeforeEdit.produtoId, menuUnitPriceBeforeEdit.volumeMl, centsExact(menuUnitPriceBeforeEdit.precoUnit)],
+  ], [[historicProductId, 1, '625'], [menuB.id, historicProductId, historicVolumeMl, '500']], 'catalog unit volume 1 and menu unit volume 0 both identify the historical unit product; capture old prices');
+  assert.equal(await db.sessaoCaixaProdutoOperacao.findUnique({ where: { sessaoCaixaId_produtoId_volumeMl: { sessaoCaixaId: catalogFallbackSession.id, produtoId: historicProductId, volumeMl: historicVolumeMl } } }).then((row) => row?.precoUnit ?? null), null, 'catalog fallback session has no explicit unit override');
+  assert.equal(await db.sessaoCaixaProdutoOperacao.findUnique({ where: { sessaoCaixaId_produtoId_volumeMl: { sessaoCaixaId: eventSession.id, produtoId: historicProductId, volumeMl: historicVolumeMl } } }).then((row) => row?.precoUnit ?? null), null, 'selected menu session has only a null unit override, which cannot hide the menu edit');
+  await db.preco.update({ where: { produtoId_volumeMl: { produtoId: historicProductId, volumeMl: catalogUnitPriceBeforeEdit.volumeMl } }, data: { preco: '7.77' } });
+  await db.cardapioProduto.update({ where: { id: menuUnitPriceBeforeEdit.id }, data: { precoUnit: '8.88' } });
+  const catalogFallbackAfterEdit = await cardapioTurnoPrices(catalogFallbackSession.id, 'Por Caixa without menu after editing the sold unit product', null, [[historicProductId, historicVolumeMl, '777']]);
+  const menuAfterEdit = await cardapioTurnoPrices(eventSession.id, 'EVENTO menu B without unit override after editing the sold unit product', menuB.id, [[historicProductId, historicVolumeMl, '888']]);
+  const resolvedCatalogFallbackAfterEdit = await db.$transaction((tx) => resolverItens(tx, company.id, [{ produtoId: historicProductId, quantidade: 1 }], { sessaoCaixaId: catalogFallbackSession.id, tapsEnabled: true }));
+  const resolvedMenuAfterEdit = await db.$transaction((tx) => resolverItens(tx, company.id, [{ produtoId: historicProductId, quantidade: 1 }], { sessaoCaixaId: eventSession.id, tapsEnabled: true }));
+  assert.deepEqual(resolvedCatalogFallbackAfterEdit.map((row) => [row.produtoId, row.volumeMl, centsExact(row.precoUnit)]), [[historicProductId, historicVolumeMl, '777']], 'real resolver observes the edited catalog price for the sold product/volume without an override');
+  assert.deepEqual(resolvedMenuAfterEdit.map((row) => [row.produtoId, row.volumeMl, centsExact(row.precoUnit)]), [[historicProductId, historicVolumeMl, '888']], 'real resolver observes the edited menu price for the sold product/volume without an override');
   const historicSaleSnapshotAfterCatalogEdit = plain({
     item: await db.itemComanda.findUniqueOrThrow({ where: { id: item1.id } }),
     optional: await db.itemComandaOpcional.findUniqueOrThrow({ where: { id: soldOptional.id } }),
   });
-  assert.deepEqual(historicSaleSnapshotAfterCatalogEdit, historicSaleSnapshotBeforeCatalogEdit, 'editing catalog and menu after completed scope replays leaves historical sale and optional snapshots byte-for-byte equivalent');
+  assert.deepEqual(historicSaleSnapshotAfterCatalogEdit, historicSaleSnapshotBeforeCatalogEdit, 'editing catalog and menu prices for the same sold product/volume after completed scope replays leaves the full historical item/optional snapshots byte-for-byte equivalent');
+  assert.deepEqual([
+    historicSaleSnapshotAfterCatalogEdit.item.id,
+    historicSaleSnapshotAfterCatalogEdit.item.produtoId,
+    historicSaleSnapshotAfterCatalogEdit.item.volumeMl,
+    centsExact(historicSaleSnapshotAfterCatalogEdit.item.precoUnit),
+    historicSaleSnapshotAfterCatalogEdit.item.quantidade,
+    historicSaleSnapshotAfterCatalogEdit.item.nome,
+    historicSaleSnapshotAfterCatalogEdit.optional.id,
+    historicSaleSnapshotAfterCatalogEdit.optional.itemComandaId,
+    centsExact(historicSaleSnapshotAfterCatalogEdit.optional.precoAdicional),
+    historicSaleSnapshotAfterCatalogEdit.optional.quantidade,
+    historicSaleSnapshotAfterCatalogEdit.optional.nome,
+  ], [item1.id, historicProductId, historicVolumeMl, '425', 2, 'Snapshot item', soldOptional.id, item1.id, '75', 1, 'Historical optional snapshot'], 'historical sale remains at 425 cents with its original identity/quantity/name and the same optional snapshot although current prices are 777/888 cents');
+  console.log(`QA_STAGE=sold-product-price-edits-preserve-history; product=${historicProductId}; soldVolume=${historicVolumeMl}; oldCatalogCents=625; newCatalogCents=777; oldMenuCents=500; newMenuCents=888; fallbackConsumer=${JSON.stringify(catalogFallbackAfterEdit)}; menuConsumer=${JSON.stringify(menuAfterEdit)}; historicalSaleCents=${centsExact(historicSaleSnapshotAfterCatalogEdit.item.precoUnit)}; historyUnchanged=true`);
 
   const alternatePoint = await db.pontoVenda.create({ data: { id: id('alternate-point'), cervejariaId: company.id, nome: 'QA alternate' } });
   await assert.rejects(db.comanda.create({ data: { id: id('cross-point-occurrence'), origem: 'EVENTO', eventoId: events[0].id, pontoVendaId: alternatePoint.id, ocorrenciaId: events[0].id, total: '1.00' } }), (error) => error?.code === 'P2003', 'occurrence and command PDV mismatch is rejected by the composite FK');
