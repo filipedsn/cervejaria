@@ -500,6 +500,7 @@ export function resumoComanda(comanda: ComandaCompleta, effectiveKitchenItemsCha
     cliente: comanda.cliente,
     status: comanda.status,
     pontoVendaId: comanda.pontoVendaId,
+    ocorrenciaId: comanda.ocorrenciaId ?? null,
     createdAt: comanda.createdAt,
     fechadaEm: comanda.fechadaEm,
     subtotal: reais(financeiro.subtotal),

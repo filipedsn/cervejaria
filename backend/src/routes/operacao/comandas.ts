@@ -38,6 +38,7 @@ import {
 import { lockComandaItemsInTx, lockComandasInTx } from '../../lib/comanda-service.js';
 import { resolveClienteParaComanda, TelefoneConflitoError } from '../../lib/cliente-resolver.js';
 import { normalizePhone } from '../../lib/phone.js';
+import { assertCommandOccurrenceMatchesSession, cashOccurrenceContextEnabled } from '../../lib/operacao/contexto-ocorrencia.js';
 
 const itemSchema = z.object({
   produtoId: z.string().min(1),
@@ -66,12 +67,14 @@ const abrirComandaSchema = z.object({
   clienteTelefone: z.string().optional(),
   paraViagem: z.boolean().default(false),
   observacao: z.string().trim().max(280).optional(),
+  ocorrenciaId: z.never().optional(),
 });
 
 const adicionarPedidoSchema = z.object({
   itens: z.array(itemSchema).min(1),
   paraViagem: z.boolean().default(false),
   observacao: z.string().trim().max(280).optional(),
+  ocorrenciaId: z.never().optional(),
 });
 
 const pagarSchema = z.object({
@@ -216,6 +219,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           where: { id: resumo.id },
           include: INCLUDE_COMANDA_OPERACAO,
         });
+        assertCommandOccurrenceMatchesSession(comanda, sessao);
         if (comanda.status !== 'ABERTA' || comanda.itens.length > 0) {
           throw Object.assign(new Error('Uma ou mais comandas foram alteradas antes do fechamento'), { statusCode: 409 });
         }
@@ -254,6 +258,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           centavos(resumo.total),
         );
         const comandaCompleta = comandas.find((c) => c.id === resumo.id)!;
+        assertCommandOccurrenceMatchesSession(comandaCompleta, sessao);
         await fecharComandaOperacaoInTx(tx, {
           comanda: comandaCompleta,
           pagamentos,
@@ -443,12 +448,14 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     const resultado = await prisma.$transaction(async (tx) => {
       await lockCaixaEmTx(tx, cervejariaId, body.pontoVendaId, dia);
       const sessao = await assertCaixaAberto(cervejariaId, body.pontoVendaId, dia, tx);
+      const occurrenceScoped = cashOccurrenceContextEnabled();
       const jaAberta = await tx.comanda.findFirst({
         where: whereComandaOperacao(cervejariaId, {
           pontoVendaId: body.pontoVendaId,
           tipo: body.tipo,
           identificador: body.identificador,
           status: 'ABERTA',
+          ...(occurrenceScoped ? { ocorrenciaId: sessao.ocorrenciaId ?? null } : {}),
         }),
       });
       if (jaAberta) return { kind: 'conflito' as const, jaAberta };
@@ -463,6 +470,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         data: {
           origem: 'CAIXA',
           pontoVendaId: body.pontoVendaId,
+          ...(occurrenceScoped ? { ocorrenciaId: sessao.ocorrenciaId ?? null } : {}),
           tipo: body.tipo,
           identificador: body.identificador,
           ...(clienteResolvido ? { clienteId: clienteResolvido.id } : {}),
@@ -576,6 +584,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       if (!comandaAtual) {
         throw Object.assign(new Error('Esta comanda já foi fechada'), { statusCode: 409 });
       }
+      assertCommandOccurrenceMatchesSession(comandaAtual, sessaoAtual);
 
       const itens = await resolverItens(tx, cervejariaId, body.itens, { sessaoCaixaId: sessaoAtual.id, tapsEnabled });
       const pedidoCriado = await criarPedido(tx, {
@@ -808,6 +817,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     const fechada = await prisma.$transaction(async (tx) => {
       await lockCaixaEmTx(tx, cervejariaId, comanda.pontoVendaId!, comanda.diaOperacional!);
       const sessao = await assertCaixaAberto(cervejariaId, comanda.pontoVendaId!, comanda.diaOperacional!, tx);
+      assertCommandOccurrenceMatchesSession(comanda, sessao);
       await fecharComandaOperacaoInTx(tx, {
         comanda,
         pagamentos,

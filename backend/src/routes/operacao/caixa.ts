@@ -40,6 +40,7 @@ const abrirSchema = z
     trocoInicial: z.number().min(0),
     cardapioId: z.string().optional(),
     produtoIds: z.array(z.string().min(1)).optional(),
+    ocorrenciaId: z.string().min(1).optional(),
   })
   .refine((data) => !(data.cardapioId && data.produtoIds !== undefined), {
     message: 'Escolha um cardápio salvo ou monte na hora, não os dois',
@@ -231,13 +232,14 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       abertoPorId: user.sub,
       cardapioId: body.cardapioId,
       produtoIds: body.produtoIds,
+      ocorrenciaId: body.ocorrenciaId,
     });
     void registrarTransacao({
       cervejariaId,
       tipo: 'CASH_REGISTER_OPENED',
       usuarioId: user.sub,
       entidadeId: sessao.id,
-      metadata: { pontoVendaId: body.pontoVendaId, trocoInicial: body.trocoInicial },
+      metadata: { pontoVendaId: body.pontoVendaId, trocoInicial: body.trocoInicial, ocorrenciaId: sessao.ocorrenciaId ?? null },
       payload: sessao,
     });
     return reply.status(201).send(sessao);

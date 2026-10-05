@@ -26,6 +26,7 @@ import {
   recalcComandaTotalOperacao,
 } from '../../lib/operacao/comanda-adapter.js';
 import { assertPodeDarDescontoOperacao, DescontoInvalidoError } from '../../lib/operacao/desconto.js';
+import { cashOccurrenceContextEnabled } from '../../lib/operacao/contexto-ocorrencia.js';
 
 const vendaAvulsaSchema = z.object({
   pontoVendaId: z.string().min(1),
@@ -54,6 +55,7 @@ const vendaAvulsaSchema = z.object({
   observacao: z.string().trim().max(280).optional(),
   paraViagem: z.boolean().default(false),
   desconto: z.number().min(0).optional(),
+  ocorrenciaId: z.never().optional(),
 });
 
 export async function vendasOperacaoRoutes(app: FastifyInstance) {
@@ -104,6 +106,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
           data: {
             origem: 'CAIXA',
             pontoVendaId: body.pontoVendaId,
+            ...(cashOccurrenceContextEnabled() ? { ocorrenciaId: sessao.ocorrenciaId ?? null } : {}),
             tipo: 'AVULSA',
             identificador: body.nomeCliente || null,
             ...(cliente ? { clienteId: cliente.id } : {}),

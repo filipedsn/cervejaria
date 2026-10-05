@@ -23,6 +23,7 @@ import { inventoryService } from '../services/inventory-service.js';
 import { lockComandaItemsInTx } from '../lib/comanda-service.js';
 import { getOperationalProfile } from '../lib/operational-profile.js';
 import { proximoNumeroComandaOperacaoTurno } from '../lib/comanda-numero.js';
+import { assertCommandOccurrenceMatchesSession, cashOccurrenceContextEnabled } from '../lib/operacao/contexto-ocorrencia.js';
 
 import {
 
@@ -82,9 +83,11 @@ const telefoneQuerySchema = z.object({
 const abrirComandaPdvSchema = z.object({
   nome: z.string().trim().min(2).max(120),
   telefone: z.string().min(10),
+  ocorrenciaId: z.never().optional(),
 });
 
 const pedidoPdvSchema = z.object({
+  ocorrenciaId: z.never().optional(),
   itens: z.array(z.object({
     produtoId: z.string().min(1),
     quantidade: z.number().int().positive().max(999),
@@ -440,6 +443,7 @@ export async function publicRoutes(app: FastifyInstance) {
         where: { ...whereComandaOperacao(session.cervejariaId, { id: session.comandaId, status: 'ABERTA' }), clienteId: session.clienteId },
       });
       if (!comanda) throw Object.assign(new Error('Esta comanda já foi fechada'), { statusCode: 409 });
+      assertCommandOccurrenceMatchesSession(comanda, sessao);
       const itens = await resolverItens(tx, session.cervejariaId, body.itens, {
         sessaoCaixaId: sessao.id,
         tapsEnabled: profile?.capabilities.taps ?? false,
@@ -495,13 +499,22 @@ export async function publicRoutes(app: FastifyInstance) {
       const result = await prisma.$transaction(async (tx) => {
         await lockCaixaEmTx(tx, cervejaria.id, pontoVenda.id, dia);
         const sessao = await assertCaixaAberto(cervejaria.id, pontoVenda.id, dia, tx);
-        const existente = await tx.comanda.findFirst({ where: { origem: 'CAIXA', pontoVendaId: pontoVenda.id, clienteId: cliente.id, status: 'ABERTA' } });
+        const occurrenceScoped = cashOccurrenceContextEnabled();
+        const existente = await tx.comanda.findFirst({ where: {
+          origem: 'CAIXA', pontoVendaId: pontoVenda.id, clienteId: cliente.id, status: 'ABERTA',
+          ...(occurrenceScoped ? { ocorrenciaId: sessao.ocorrenciaId ?? null } : {}),
+        } });
         if (existente) return { comanda: existente, reused: true };
         const numero = await proximoNumeroComandaOperacaoTurno(tx, cervejaria.id, pontoVenda.id, sessao.abertoEm);
-        const comanda = await tx.comanda.create({ data: { origem: 'CAIXA', pontoVendaId: pontoVenda.id, clienteId: cliente.id, tipo: 'APELIDO', identificador: cliente.nome, numero, diaOperacional: dia, status: 'ABERTA', total: 0 } });
+        const comanda = await tx.comanda.create({ data: {
+          origem: 'CAIXA', pontoVendaId: pontoVenda.id,
+          ...(occurrenceScoped ? { ocorrenciaId: sessao.ocorrenciaId ?? null } : {}),
+          clienteId: cliente.id, tipo: 'APELIDO', identificador: cliente.nome,
+          numero, diaOperacional: dia, status: 'ABERTA', total: 0,
+        } });
         return { comanda, reused: false };
       });
-      void registrarTransacao({ cervejariaId: cervejaria.id, tipo: 'COMANDA_CRIADA', comandaId: result.comanda.id, metadata: { origem: 'PORTAL_PDV', pontoVendaId, reused: result.reused }, payload: { numero: result.comanda.numero, identificador: result.comanda.identificador } });
+      void registrarTransacao({ cervejariaId: cervejaria.id, tipo: 'COMANDA_CRIADA', comandaId: result.comanda.id, metadata: { origem: 'PORTAL_PDV', pontoVendaId, ocorrenciaId: result.comanda.ocorrenciaId ?? null, reused: result.reused }, payload: { numero: result.comanda.numero, identificador: result.comanda.identificador, ocorrenciaId: result.comanda.ocorrenciaId ?? null } });
       if (!result.reused) {
         emitToCervejaria(app.io, cervejaria.id, { type: 'comanda:created', data: result.comanda });
       }

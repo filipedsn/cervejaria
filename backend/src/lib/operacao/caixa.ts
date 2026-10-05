@@ -8,6 +8,7 @@ import { aplicarCardapioInicialTurno } from './sessao-cardapio.js';
 import { verifyPassword } from '../utils.js';
 import { getOperationalProfile } from '../operational-profile.js';
 import { inicializarMontagemSessaoCaixa } from '../tap-montagem.js';
+import { validateCashOccurrenceSelection } from './contexto-ocorrencia.js';
 
 export class CaixaInvalidoError extends Error {
   statusCode = 400;
@@ -313,6 +314,7 @@ export async function montarResumoCaixa(
   return {
     id: sessao.id,
     pontoVendaId: sessao.pontoVendaId,
+    ocorrenciaId: sessao.ocorrenciaId ?? null,
     trailerId: sessao.trailerId,
     diaOperacional: sessao.diaOperacional,
     status: sessao.status,
@@ -359,6 +361,7 @@ export async function abrirCaixa(params: {
   abertoPorId: string;
   cardapioId?: string;
   produtoIds?: string[];
+  ocorrenciaId?: string;
 }) {
   const escolheuCardapio = Boolean(params.cardapioId);
   const montouCardapio = Boolean(params.produtoIds?.length);
@@ -409,6 +412,11 @@ export async function abrirCaixa(params: {
 
   const sessao = await prisma.$transaction(async (tx) => {
     await lockCaixaEmTx(tx, params.cervejariaId, params.pontoVendaId, dia);
+    const ocorrenciaId = await validateCashOccurrenceSelection(tx, {
+      cervejariaId: params.cervejariaId,
+      pontoVendaId: params.pontoVendaId,
+      ocorrenciaId: params.ocorrenciaId,
+    });
     const abertaAgora = await tx.sessaoCaixaOperacao.findFirst({
       where: {
         cervejariaId: params.cervejariaId,
@@ -430,6 +438,7 @@ export async function abrirCaixa(params: {
         trocoInicial: params.trocoInicial,
         abertoPorId: params.abertoPorId,
         cardapioId: cardapioId ?? null,
+        ...(ocorrenciaId !== undefined ? { ocorrenciaId } : {}),
       },
       include: { movimentos: true },
     });

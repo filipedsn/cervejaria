@@ -60,6 +60,17 @@ const centsExact = (value) => {
   return (match[1] ? -magnitude : magnitude).toString();
 };
 
+async function withQaDate(day, operation) {
+  const RealDate = globalThis.Date;
+  const instant = new RealDate(`${day}T15:00:00.000Z`).getTime();
+  globalThis.Date = class QaDate extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [instant])); }
+    static now() { return instant; }
+  };
+  try { return await operation(); }
+  finally { globalThis.Date = RealDate; }
+}
+
 async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, menuA, menuB, product, secondCompany, secondPoint, secondMenu, secondProduct, runId }) {
   assert.equal(process.env.PDV_ISOLATED_QA, '1');
   const validatedTarget = validateIsolatedQaEnvironment(process.env);
@@ -148,15 +159,20 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       { pontoVenda: { cervejariaId: { in: tenantIds } } },
       { evento: { cervejariaId: { in: tenantIds } } },
     ] };
-    const [points, pointConfigs, sessions, commands, items, payments] = await Promise.all([
+    const [points, pointConfigs, sessions, commands, items, payments, orders, agendas, occurrences, stockBalances, stockMovements] = await Promise.all([
       db.pontoVenda.count({ where: { cervejariaId: { in: tenantIds } } }),
       db.configuracaoPontoVenda.count({ where: { cervejariaId: { in: tenantIds } } }),
       db.sessaoCaixaOperacao.count({ where: { cervejariaId: { in: tenantIds } } }),
       db.comanda.count({ where: commandTenantFilter }),
       db.itemComanda.count({ where: { comanda: commandTenantFilter } }),
       db.pagamento.count({ where: { comanda: commandTenantFilter } }),
+      db.pedidoOperacao.count({ where: { comanda: commandTenantFilter } }),
+      db.agendaOperacional.count({ where: { cervejariaId: { in: tenantIds } } }),
+      db.ocorrenciaOperacional.count({ where: { cervejariaId: { in: tenantIds } } }),
+      db.inventoryBalance.count({ where: { cervejariaId: { in: tenantIds } } }),
+      db.inventoryMovement.count({ where: { cervejariaId: { in: tenantIds } } }),
     ]);
-    return { points, pointConfigs, sessions, commands, items, payments };
+    return { points, pointConfigs, sessions, commands, items, payments, orders, agendas, occurrences, stockBalances, stockMovements };
   };
   const assertNoApiWrites = async (before, scenario) => assert.deepEqual(await counts(), before, `${scenario} performs no persistent operational writes`);
   const footprintBeforeAuthorization = await counts();
@@ -316,6 +332,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       assert.equal(opened.statusCode, 201, `authenticated cash opens for ${flow.company.id}: ${opened.body}`);
       const openedBody = JSON.parse(opened.body);
       assert.deepEqual([openedBody.pontoVendaId, openedBody.status], [flow.point.id, 'ABERTO']);
+      assert.equal(openedBody.ocorrenciaId ?? null, null, 'cash with no explicit occurrence remains unassigned');
       const session = await db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: openedBody.id } });
       assert.deepEqual([session.cervejariaId, session.pontoVendaId, session.cardapioId, session.abertoPorId, session.status, centsExact(session.trocoInicial)], [flow.company.id, flow.point.id, flow.menu.id, flow.owner.id, 'ABERTO', '500']);
 
@@ -333,6 +350,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       });
       const openedCommand = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie: flow.cookie }, payload: { pontoVendaId: flow.point.id, tipo: 'APELIDO', identificador: `auth-sale-${flow.company.id}-${runId}` } });
       assert.equal(openedCommand.statusCode, 201, `command opens for ${flow.company.id}: ${openedCommand.body}`);
+      assert.equal(JSON.parse(openedCommand.body).ocorrenciaId ?? null, null, 'new command inherits the session absence of occurrence');
       const commandId = JSON.parse(openedCommand.body).id;
       const launched = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(commandId)}/pedidos`, headers: { cookie: flow.cookie }, payload: { itens: [{ produtoId: flow.product.id, quantidade: 2 }] } });
       assert.equal(launched.statusCode, 201, `product is launched for ${flow.company.id}: ${launched.body}`);
@@ -501,13 +519,255 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.equal((await db.configuracaoPontoVenda.findUniqueOrThrow({ where: { pontoVendaId: secondPoint.id } })).tapsEnabled, true, 'legacy-mode write does not implicitly rewrite the canonical record');
     assert.equal(secondCanonicalBeforeLegacyMode.tapsEnabled, false, 'fixture made the two authorities diverge before disabling activation');
     process.env.PDV_CANONICAL_CONFIG_QA = '1';
+
+    const occurrenceAgenda = await db.agendaOperacional.create({ data: {
+      id: `cash-context-agenda-${runId}`, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id,
+      nome: 'Synthetic recurring context', frequencia: 'SEMANAL', diaSemana: 0,
+    } });
+    const oneOffOccurrence = await db.ocorrenciaOperacional.create({ data: {
+      id: `cash-context-oneoff-${runId}`, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id,
+      nome: 'Synthetic one-off', data: new Date('2026-11-01T00:00:00.000Z'), status: 'PROGRAMADA',
+    } });
+    const recurringOccurrences = await Promise.all(['2026-11-02', '2026-11-03'].map((day, index) => db.ocorrenciaOperacional.create({ data: {
+      id: `cash-context-recurring-${index}-${runId}`, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id,
+      agendaId: occurrenceAgenda.id, nome: `Synthetic recurring ${index + 1}`, data: new Date(`${day}T00:00:00.000Z`), status: index === 0 ? 'PROGRAMADA' : 'ABERTA',
+    } })));
+    const otherAgenda = await db.agendaOperacional.create({ data: {
+      id: `cash-context-other-agenda-${runId}`, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id,
+      nome: 'Synthetic second agenda', frequencia: 'SEMANAL', diaSemana: 1,
+    } });
+    const otherAgendaOccurrence = await db.ocorrenciaOperacional.create({ data: {
+      id: `cash-context-other-agenda-occurrence-${runId}`, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id,
+      agendaId: otherAgenda.id, nome: 'Synthetic second-agenda occurrence', data: new Date('2026-11-04T00:00:00.000Z'), status: 'PROGRAMADA',
+    } });
+    const foreignAgenda = await db.agendaOperacional.create({ data: {
+      id: `cash-context-foreign-agenda-${runId}`, cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id,
+      nome: 'Synthetic foreign agenda', frequencia: 'SEMANAL', diaSemana: 2,
+    } });
+    const foreignOccurrence = await db.ocorrenciaOperacional.create({ data: {
+      id: `cash-context-foreign-occurrence-${runId}`, cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id,
+      agendaId: foreignAgenda.id, nome: 'Synthetic foreign occurrence', data: new Date('2026-11-05T00:00:00.000Z'), status: 'PROGRAMADA',
+    } });
+    const occurrenceClient = await db.cliente.create({ data: {
+      id: `cash-context-customer-${runId}`, cervejariaId: primaryCompany.id, nome: 'Synthetic occurrence customer',
+      telefone: `119${String(runId).replaceAll(/[^0-9]/g, '').slice(-8).padStart(8, '0')}`,
+    } });
+    const primaryCashFlow = operationFlows.find((flow) => flow.tenantId === primaryCompany.id);
+    assert(primaryCashFlow, 'primary synthetic cash flow exists');
+    const unitPrice = Number(primaryCashFlow.itemPriceCents) / 100;
+    const occurrenceProofs = [];
+    const withOwnerAt = (day, operation) => withQaDate(day, async () => operation(await login(authOwner.email, ownerPassword, 'DONO')));
+    const withSecondOwnerAt = (day, operation) => withQaDate(day, async () => operation(await login(secondOwner.email, secondOwnerPassword, 'DONO')));
+    const openOccurrenceCash = async (day, occurrenceId) => withOwnerAt(day, async (cookie) => {
+      const response = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: {
+        pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ...(occurrenceId ? { ocorrenciaId: occurrenceId } : {}),
+      } });
+      assert.equal(response.statusCode, 201, `occurrence cash opens ${day}: ${response.body}`);
+      const session = JSON.parse(response.body);
+      assert.equal(session.ocorrenciaId ?? null, occurrenceId ?? null);
+      const responseContext = await app.inject({ method: 'GET', url: `/api/operacao/caixa?pontoVendaId=${encodeURIComponent(primaryPoint.id)}`, headers: { cookie } });
+      assert.equal(responseContext.statusCode, 200);
+      assert.equal(JSON.parse(responseContext.body).sessao.ocorrenciaId ?? null, occurrenceId ?? null, 'read API exposes persisted session context');
+      return session;
+    });
+    const closeOccurrenceCash = async (day, pix) => withOwnerAt(day, async (cookie) => {
+      const response = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie }, payload: {
+        pontoVendaId: primaryPoint.id, contadoDinheiro: 0, contadoPix: pix, contadoCartaoDebito: 0, contadoCartaoCredito: 0,
+      } });
+      assert.equal(response.statusCode, 200, `occurrence cash closes ${day}: ${response.body}`);
+      const closed = JSON.parse(response.body);
+      const persisted = await db.sessaoCaixaOperacao.findFirstOrThrow({ where: {
+        cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id,
+        diaOperacional: new Date(`${day}T00:00:00.000Z`),
+      } });
+      assert.equal(closed.ocorrenciaId ?? null, persisted.ocorrenciaId ?? null, 'close response retains persisted occurrence');
+      return closed;
+    });
+
+    const stockBeforeOccurrenceSale = plain({
+      balances: await db.inventoryBalance.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }),
+      movements: await db.inventoryMovement.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }),
+    });
+    const oneOffSession = await openOccurrenceCash('2026-11-01', oneOffOccurrence.id);
+    const beforeClientSaleOverride = await counts();
+    const clientSaleOverride = await withOwnerAt('2026-11-01', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/vendas', headers: { cookie }, payload: {
+      pontoVendaId: primaryPoint.id, clienteId: occurrenceClient.id, ocorrenciaId: recurringOccurrences[0].id,
+      itens: [{ produtoId: product.id, quantidade: 1 }], pagamentos: [{ forma: 'PIX', valor: unitPrice }],
+    } }));
+    assert.equal(clientSaleOverride.statusCode, 400, 'sale API rejects a client-supplied occurrence override');
+    await assertNoApiWrites(beforeClientSaleOverride, 'sale occurrence override');
+    const oneOffSaleResponse = await withOwnerAt('2026-11-01', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/vendas', headers: { cookie }, payload: {
+      pontoVendaId: primaryPoint.id, clienteId: occurrenceClient.id, itens: [{ produtoId: product.id, quantidade: 1 }], pagamentos: [{ forma: 'PIX', valor: unitPrice }],
+    } }));
+    assert.equal(oneOffSaleResponse.statusCode, 201, `one-off sale uses selected context: ${oneOffSaleResponse.body}`);
+    const oneOffSale = JSON.parse(oneOffSaleResponse.body);
+    const oneOffCommand = await db.comanda.findUniqueOrThrow({ where: { id: oneOffSale.id }, include: { itens: true, pagamentos: true } });
+    assert.deepEqual([oneOffCommand.origem, oneOffCommand.tipo, oneOffCommand.ocorrenciaId, oneOffCommand.itens[0].produtoId, oneOffCommand.itens[0].quantidade, centsExact(oneOffCommand.itens[0].precoUnit), oneOffCommand.pagamentos[0].sessaoCaixaId], ['CAIXA', 'AVULSA', oneOffOccurrence.id, product.id, 1, String(primaryCashFlow.itemPriceCents), oneOffSession.id]);
+    assert.deepEqual(plain({ balances: await db.inventoryBalance.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }), movements: await db.inventoryMovement.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }) }), stockBeforeOccurrenceSale, 'stock behavior remains controlled by the existing Por Caixa configuration');
+    await closeOccurrenceCash('2026-11-01', unitPrice);
+    occurrenceProofs.push({ kind: 'one-off-avulsa', sessionId: oneOffSession.id, commandId: oneOffCommand.id, occurrenceId: oneOffCommand.ocorrenciaId, paymentSessionId: oneOffCommand.pagamentos[0].sessaoCaixaId });
+
+    const recurringSession1 = await openOccurrenceCash('2026-11-02', recurringOccurrences[0].id);
+    const beforeCommandOverride = await counts();
+    const commandOverride = await withOwnerAt('2026-11-02', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: {
+      pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: 'Client override forbidden', clienteId: occurrenceClient.id, ocorrenciaId: recurringOccurrences[1].id,
+    } }));
+    assert.equal(commandOverride.statusCode, 400, 'command API rejects a client-supplied occurrence override');
+    await assertNoApiWrites(beforeCommandOverride, 'command occurrence override');
+    const recurringCommand1Response = await withOwnerAt('2026-11-02', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: 'Recurring customer', clienteId: occurrenceClient.id } }));
+    assert.equal(recurringCommand1Response.statusCode, 201, `first recurring comanda: ${recurringCommand1Response.body}`);
+    const recurringCommand1 = JSON.parse(recurringCommand1Response.body);
+    assert.equal(recurringCommand1.ocorrenciaId, recurringOccurrences[0].id);
+    const recurringLaunch1 = await withOwnerAt('2026-11-02', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(recurringCommand1.id)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
+    assert.equal(recurringLaunch1.statusCode, 201, `first recurring consumption: ${recurringLaunch1.body}`);
+    const beforeCommandOrderOverride = await counts();
+    const commandOrderOverride = await withOwnerAt('2026-11-02', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(recurringCommand1.id)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }], ocorrenciaId: recurringOccurrences[1].id } }));
+    assert.equal(commandOrderOverride.statusCode, 400, 'order API rejects a client-supplied occurrence override');
+    await assertNoApiWrites(beforeCommandOrderOverride, 'command order occurrence override');
+
+    const recurringSession2 = await openOccurrenceCash('2026-11-03', recurringOccurrences[1].id);
+    const recurringCommand2Response = await withOwnerAt('2026-11-03', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: 'Recurring customer', clienteId: occurrenceClient.id } }));
+    assert.equal(recurringCommand2Response.statusCode, 201, `same customer gets a separate command for occurrence two: ${recurringCommand2Response.body}`);
+    const recurringCommand2 = JSON.parse(recurringCommand2Response.body);
+    assert.equal(recurringCommand2.ocorrenciaId, recurringOccurrences[1].id);
+    assert.notEqual(recurringCommand1.id, recurringCommand2.id);
+    const recurringLaunch2 = await withOwnerAt('2026-11-03', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(recurringCommand2.id)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
+    assert.equal(recurringLaunch2.statusCode, 201, `second recurring consumption: ${recurringLaunch2.body}`);
+    for (const [day, session, command] of [['2026-11-03', recurringSession2, recurringCommand2], ['2026-11-02', recurringSession1, recurringCommand1]]) {
+      const payment = await withOwnerAt(day, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(command.id)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: unitPrice }] } }));
+      assert.equal(payment.statusCode, 200, `recurring payment ${day}: ${payment.body}`);
+      const persisted = await db.comanda.findUniqueOrThrow({ where: { id: command.id }, include: { itens: true, pagamentos: true } });
+      assert.deepEqual([persisted.origem, persisted.ocorrenciaId, persisted.itens.length, persisted.pagamentos[0].sessaoCaixaId], ['CAIXA', command.ocorrenciaId, 1, session.id]);
+      assert.deepEqual([persisted.itens[0].produtoId, persisted.itens[0].quantidade, centsExact(persisted.itens[0].precoUnit), centsExact(persisted.pagamentos[0].valor)], [product.id, 1, String(primaryCashFlow.itemPriceCents), String(primaryCashFlow.itemPriceCents)], 'occurrence context does not alter catalog snapshots or amount paid');
+      await closeOccurrenceCash(day, unitPrice);
+      occurrenceProofs.push({ kind: 'recurring-command', sessionId: session.id, commandId: persisted.id, occurrenceId: persisted.ocorrenciaId, paymentSessionId: persisted.pagamentos[0].sessaoCaixaId });
+    }
+
+    const portalSession = await openOccurrenceCash('2026-11-04', otherAgendaOccurrence.id);
+    const portalOpen = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: `/api/cervejarias/${encodeURIComponent(primaryCompany.slug)}/pontos-venda/${encodeURIComponent(primaryPoint.id)}/comandas`, payload: { nome: occurrenceClient.nome, telefone: occurrenceClient.telefone } }));
+    assert.equal(portalOpen.statusCode, 201, `portal opens a command in the active occurrence: ${portalOpen.body}`);
+    const portalCookieHeader = portalOpen.headers['set-cookie'];
+    const portalCookie = Array.isArray(portalCookieHeader) ? portalCookieHeader[0]?.split(';', 1)[0] : portalCookieHeader?.split(';', 1)[0];
+    assert(portalCookie, 'portal returns the real cliente-PDV credential');
+    const portalCommandId = JSON.parse(portalOpen.body).comanda.id;
+    assert.equal(JSON.parse(portalOpen.body).comanda.ocorrenciaId, otherAgendaOccurrence.id);
+    const portalPath = `/api/cervejarias/${encodeURIComponent(primaryCompany.slug)}/pontos-venda/${encodeURIComponent(primaryPoint.id)}/comanda/pedidos`;
+    const portalOverride = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: portalPath, headers: { cookie: portalCookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }], ocorrenciaId: recurringOccurrences[0].id } }));
+    assert.equal(portalOverride.statusCode, 400, 'portal cannot provide an occurrence override');
+    const portalValidOrder = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: portalPath, headers: { cookie: portalCookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
+    assert.equal(portalValidOrder.statusCode, 201, `portal order follows the session context: ${portalValidOrder.body}`);
+    assert.equal(JSON.parse(portalValidOrder.body).ocorrenciaId, otherAgendaOccurrence.id);
+    const portalCommand = await db.comanda.findUniqueOrThrow({ where: { id: portalCommandId }, include: { itens: true } });
+    assert.deepEqual([portalCommand.origem, portalCommand.ocorrenciaId, portalCommand.itens.length], ['CAIXA', otherAgendaOccurrence.id, 1]);
+    assert.deepEqual([portalCommand.itens[0].produtoId, portalCommand.itens[0].quantidade, centsExact(portalCommand.itens[0].precoUnit)], [product.id, 1, String(primaryCashFlow.itemPriceCents)]);
+    await db.comanda.update({ where: { id: portalCommandId }, data: { ocorrenciaId: recurringOccurrences[0].id } });
+    const itemsBeforeContextMismatch = await db.itemComanda.count({ where: { comandaId: portalCommandId } });
+    const blockedPortalContext = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: portalPath, headers: { cookie: portalCookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
+    assert.equal(blockedPortalContext.statusCode, 409, `portal refuses a command whose context differs from the session: ${blockedPortalContext.body}`);
+    assert.equal(await db.itemComanda.count({ where: { comandaId: portalCommandId } }), itemsBeforeContextMismatch, 'mismatched portal context creates no order/item');
+    await db.comanda.update({ where: { id: portalCommandId }, data: { ocorrenciaId: otherAgendaOccurrence.id } });
+    const portalPaid = await withOwnerAt('2026-11-04', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(portalCommandId)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: unitPrice }] } }));
+    assert.equal(portalPaid.statusCode, 200, `portal-originated command stays in the existing payment flow: ${portalPaid.body}`);
+    const portalPayment = await db.pagamento.findFirstOrThrow({ where: { comandaId: portalCommandId } });
+    assert.equal(portalPayment.sessaoCaixaId, portalSession.id);
+    await closeOccurrenceCash('2026-11-04', unitPrice);
+    assert.deepEqual(plain({ balances: await db.inventoryBalance.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }), movements: await db.inventoryMovement.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }) }), stockBeforeOccurrenceSale, 'all occurrence-scoped operation leaves existing inventory behavior unchanged');
+    occurrenceProofs.push({ kind: 'different-agenda-portal', sessionId: portalSession.id, commandId: portalCommandId, occurrenceId: portalCommand.ocorrenciaId, paymentSessionId: portalPayment.sessaoCaixaId });
+
+    const beforeForeignOccurrence = await counts();
+    const foreignAttempt = await withOwnerAt('2026-11-05', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: foreignOccurrence.id } }));
+    assert.equal(foreignAttempt.statusCode, 409, `foreign tenant/PDV occurrence is rejected: ${foreignAttempt.body}`);
+    assert.equal(await db.sessaoCaixaOperacao.count({ where: { cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id, diaOperacional: new Date('2026-11-05T00:00:00.000Z') } }), 0);
+    await assertNoApiWrites(beforeForeignOccurrence, 'foreign occurrence opening');
+
+    const scopeCompany = await db.cervejaria.create({ data: { id: `cash-context-scope-company-${runId}`, nome: 'Synthetic context scope', slug: `cash-context-scope-${runId}` } });
+    const scopePointA = await db.pontoVenda.create({ data: { id: `cash-context-scope-a-${runId}`, cervejariaId: scopeCompany.id, nome: 'Synthetic point A' } });
+    const scopePointB = await db.pontoVenda.create({ data: { id: `cash-context-scope-b-${runId}`, cervejariaId: scopeCompany.id, nome: 'Synthetic point B' } });
+    const scopeOccurrence = await db.ocorrenciaOperacional.create({ data: { id: `cash-context-scope-occurrence-${runId}`, cervejariaId: scopeCompany.id, pontoVendaId: scopePointB.id, nome: 'Synthetic wrong point', data: new Date('2026-11-06T00:00:00.000Z') } });
+    const { validateCashOccurrenceSelection } = await import('../src/lib/operacao/contexto-ocorrencia.ts');
+    await assert.rejects(db.$transaction((tx) => validateCashOccurrenceSelection(tx, { cervejariaId: scopeCompany.id, pontoVendaId: scopePointA.id, ocorrenciaId: scopeOccurrence.id })), (error) => error?.code === 'CASH_OCCURRENCE_SCOPE_MISMATCH');
+
+    const previousOccurrenceActivation = process.env.PDV_CANONICAL_CONFIG_QA;
+    delete process.env.PDV_CANONICAL_CONFIG_QA;
+    let legacyOccurrenceTableReads = 0;
+    const legacyOccurrenceDb = { ocorrenciaOperacional: { findFirst: async () => { legacyOccurrenceTableReads++; throw new Error('legacy path queried additive occurrence table'); } } };
+    assert.equal(await validateCashOccurrenceSelection(legacyOccurrenceDb, { cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id }), undefined);
+    await assert.rejects(validateCashOccurrenceSelection(legacyOccurrenceDb, { cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id, ocorrenciaId: oneOffOccurrence.id }), (error) => error?.code === 'CASH_OCCURRENCE_CONTEXT_DISABLED');
+    assert.equal(legacyOccurrenceTableReads, 0, 'disabled selection path does not query the additive occurrence table');
+    const beforeDisabledOccurrence = await counts();
+    const disabledOccurrence = await withSecondOwnerAt('2026-11-06', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: secondPoint.id, trocoInicial: 0, cardapioId: secondMenu.id, ocorrenciaId: foreignOccurrence.id } }));
+    assert.equal(disabledOccurrence.statusCode, 409, `disabled activation refuses a dropped occurrence: ${disabledOccurrence.body}`);
+    assert.match(disabledOccurrence.body, /CASH_OCCURRENCE_CONTEXT_DISABLED|ativa[cç][aã]o da configura[cç][aã]o can[oô]nica/i);
+    await assertNoApiWrites(beforeDisabledOccurrence, 'occurrence request while canonical activation is off');
+
+    const legacySession = await withSecondOwnerAt('2026-11-08', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: secondPoint.id, trocoInicial: 0, cardapioId: secondMenu.id } }));
+    assert.equal(legacySession.statusCode, 201, `legacy activation off still opens the existing Por Caixa flow: ${legacySession.body}`);
+    assert.equal(JSON.parse(legacySession.body).ocorrenciaId ?? null, null);
+    const legacyCommandResponse = await withSecondOwnerAt('2026-11-08', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: { pontoVendaId: secondPoint.id, tipo: 'APELIDO', identificador: `legacy-off-${runId}` } }));
+    assert.equal(legacyCommandResponse.statusCode, 201, `legacy command creation remains available: ${legacyCommandResponse.body}`);
+    assert.equal(JSON.parse(legacyCommandResponse.body).ocorrenciaId ?? null, null);
+    const legacyCommandId = JSON.parse(legacyCommandResponse.body).id;
+    const legacyLaunch = await withSecondOwnerAt('2026-11-08', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(legacyCommandId)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: secondProduct.id, quantidade: 1 }] } }));
+    assert.equal(legacyLaunch.statusCode, 201, `legacy order launch remains available: ${legacyLaunch.body}`);
+    const legacyPaid = await withSecondOwnerAt('2026-11-08', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(legacyCommandId)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 4 }] } }));
+    assert.equal(legacyPaid.statusCode, 200, `legacy payment remains available: ${legacyPaid.body}`);
+    const legacyPayment = await db.pagamento.findFirstOrThrow({ where: { comandaId: legacyCommandId } });
+    assert.equal(legacyPayment.sessaoCaixaId, JSON.parse(legacySession.body).id);
+    const legacyClose = await withSecondOwnerAt('2026-11-08', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie }, payload: { pontoVendaId: secondPoint.id, contadoDinheiro: 0, contadoPix: 4, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } }));
+    assert.equal(legacyClose.statusCode, 200, `legacy cash close remains available: ${legacyClose.body}`);
+    process.env.PDV_CANONICAL_CONFIG_QA = previousOccurrenceActivation;
+
+    const concurrentDay = '2026-11-07';
+    const lockDigest = createHash('sha256').update(`caixa-operacao:${primaryCompany.id}:${primaryPoint.id}:${concurrentDay}`).digest();
+    const lockKey = BigInt.asIntN(64, lockDigest.readBigUInt64BE(0));
+    let signalLocked;
+    let releaseLocked;
+    const locked = new Promise((resolve) => { signalLocked = resolve; });
+    const release = new Promise((resolve) => { releaseLocked = resolve; });
+    const holder = db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
+      signalLocked();
+      await release;
+    }, { maxWait: 15000, timeout: 30000 });
+    await locked;
+    const concurrentCalls = withOwnerAt(concurrentDay, (cookie) => Promise.all([
+      app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: recurringOccurrences[0].id } }),
+      app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: recurringOccurrences[1].id } }),
+    ]));
+    let lockWaiters = 0;
+    const deadline = process.hrtime.bigint() + 15_000_000_000n;
+    try {
+      while (process.hrtime.bigint() < deadline) {
+        const rows = await db.$queryRaw`SELECT count(*)::int AS count FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND wait_event = 'advisory' AND query ILIKE '%pg_advisory_xact_lock%'`;
+        lockWaiters = rows[0]?.count ?? 0;
+        if (lockWaiters >= 2) break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert(lockWaiters >= 2, `both API calls reached the PostgreSQL advisory lock; waiters=${lockWaiters}`);
+    } finally {
+      releaseLocked();
+      await holder;
+    }
+    const concurrentResponses = await concurrentCalls;
+    assert.equal(concurrentResponses.filter((response) => response.statusCode === 201).length, 1, `one concurrent opening wins: ${concurrentResponses.map((response) => response.statusCode)}`);
+    assert.equal(concurrentResponses.filter((response) => response.statusCode >= 400).length, 1);
+    const concurrentSession = await db.sessaoCaixaOperacao.findFirstOrThrow({ where: { cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id, diaOperacional: new Date('2026-11-07T00:00:00.000Z') } });
+    assert([recurringOccurrences[0].id, recurringOccurrences[1].id].includes(concurrentSession.ocorrenciaId));
+    const retryOccurrence = concurrentSession.ocorrenciaId === recurringOccurrences[0].id ? recurringOccurrences[1].id : recurringOccurrences[0].id;
+    const beforeRetry = plain(concurrentSession);
+    const retry = await withOwnerAt(concurrentDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: retryOccurrence } }));
+    assert.equal(retry.statusCode, 400, `retry cannot change occurrence: ${retry.body}`);
+    assert.deepEqual(plain(await db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: concurrentSession.id } })), beforeRetry);
+    await closeOccurrenceCash(concurrentDay, 0);
+    occurrenceProofs.push({ kind: 'concurrent-open', winners: 1, advisoryLockWaiters: lockWaiters, sessionId: concurrentSession.id, occurrenceId: concurrentSession.ocorrenciaId, retryStatus: retry.statusCode });
+
     settingsApiProofs.push({ ownerGet: 200, ownerPatch: 200, adminGet: 200, adminPatch: 200, mesasZero: 0, explicitFalse: true, noStockConfirmation: 400, kitchenOffWithActiveOrder: 409, kitchenRecalcCents: [centsExact(totalBeforeKitchenCharge.total), centsExact(repricedCommand.total)], pendingPayment: rejectedPendingPayment.statusCode, modeChange: JSON.parse(eventModeRequest.body).code, legacyActivationOff: [legacyConfigRead.statusCode, legacyConfigWrite.statusCode] });
 
     const summary = {
       login: [200, 200, 200], missingCredential: missing.statusCode, invalidToken: invalid.statusCode,
       attendantOwnerOnly: attendantOwnerOnly.statusCode, crossTenantRead: foreignRead.statusCode, crossTenantWrite: foreignWrite.statusCode,
       canonicalBlockers: blockerFixtures.map(({ name, expectedCode }) => ({ name, code: expectedCode, status: 409 })),
-      operationFlows, kitchenSettingProofs, settingsApiProofs,
+      operationFlows, kitchenSettingProofs, settingsApiProofs, occurrenceProofs,
     };
     console.log(`QA_AUTHENTICATED_CASH=PASS; ${JSON.stringify(summary)}`);
   } finally {
