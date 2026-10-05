@@ -37,7 +37,7 @@ function privateValue(runId: string, modelName: string, rowId: string, field: st
 function redactMetadata(value: any, runId: string, modelName: string, rowId: string, path = 'metadata'): any {
   if (Array.isArray(value)) return value.map((item, index) => redactMetadata(item, runId, modelName, rowId, `${path}.${index}`));
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => {
-    const sensitive = /(nome|name|email|phone|telefone|cpf|cnpj|document|address|endereco|local|location|observ|message|description|text|payload|token|senha|password|contact|contato|actor|user)/i.test(key);
+    const sensitive = /(nome|name|email|phone|telefone|cpf|cnpj|document|address|endereco|local|location|observ|message|description|text|token|senha|password|contact|contato|actor|user|birth|nascimento|motivo|reason|apelido|nickname|identificador|api.?key|secret|credential|refresh.?token|access.?token)/i.test(key);
     return [key, sensitive ? '[ANONIMIZADO]' : redactMetadata(item, runId, modelName, rowId, `${path}.${key}`)];
   }));
   return value;
@@ -61,7 +61,7 @@ function sanitizeRow(model: AnyRecord, input: AnyRecord, tenantLabel: string, ru
     else if ((model.name === 'Cliente' && name === 'observacoes') || name === 'observacao' || name === 'observacoes') row[name] = row[name] == null ? null : '[ANONIMIZADO]';
     else if (model.name === 'Evento' && name === 'local') row[name] = row[name] == null ? null : '[LOCAL ANONIMIZADO]';
     else if (model.name === 'TransacaoLog' && name === 'metadata' && row[name] != null) row[name] = redactMetadata(row[name], runId, model.name, rowId);
-    else if (field.type === 'String' && /senha|password|tokenHash|endpoint|p256dh|^auth$/i.test(name) && row[name] != null) row[name] = replaceString(name, 'qa-secret');
+    else if (field.type === 'String' && /senha|password|token|secret|credential|api.?key|endpoint|p256dh|^auth$/i.test(name) && row[name] != null) row[name] = replaceString(name, 'qa-secret');
     else if (field.type === 'String' && /^(email)$/i.test(name) && row[name] != null) row[name] = `${privateValue(runId, model.name, rowId, name).slice(0, 20)}@example.invalid`;
     else if (field.type === 'String' && /(cpf|cnpj|documento|document|address|endereco)/i.test(name) && row[name] != null) row[name] = '[ANONIMIZADO]';
   }
