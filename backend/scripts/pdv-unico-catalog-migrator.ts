@@ -536,13 +536,18 @@ async function findConfirmedCatalogItem(tx: Db, companyId: string, pointId: stri
 function createConfirmedCatalogResolver(tx: Db, companyId: string, pointId: string) {
   let snapshotPromise: Promise<{ items: any[]; itemsByKey: Map<string, any>; sourceHash: string }> | null = null;
   const runValidation = new Map<string, Promise<void>>();
+  const sourceConfirmation = new Map<string, Promise<{ item: any; map: any }>>();
   const loadSnapshot = () => snapshotPromise ??= (async () => {
     const dependency = await canonicalDependency(tx, companyId, pointId);
     const snapshot = await readSnapshot(tx, companyId);
     const items = itemsFor(companyId, pointId, snapshot, dependency.sourceKey);
     return { itemsByKey: new Map(items.map((item) => [key(item.type, item.id), item])), items, sourceHash: snapshotHash(PDV_CATALOG_SCOPE, PDV_CATALOG_TRANSFORM_VERSION, companyId, pointId, items) };
   })();
-  return async (sourceType: string, sourceId: string) => {
+  return (sourceType: string, sourceId: string) => {
+    const sourceKey = key(sourceType, sourceId);
+    let confirmation = sourceConfirmation.get(sourceKey);
+    if (!confirmation) {
+      confirmation = (async () => {
     const current = await loadSnapshot();
     const item = current.itemsByKey.get(key(sourceType, sourceId));
     if (!item) throw new PdvCatalogBlocker('SESSION_CATALOG_SOURCE_MISSING', sourceType, sourceId, 'Catalog source is absent from the current tenant snapshot.');
@@ -559,6 +564,10 @@ function createConfirmedCatalogResolver(tx: Db, companyId: string, pointId: stri
     }
     await validation;
     return { item, map };
+      })();
+      sourceConfirmation.set(sourceKey, confirmation);
+    }
+    return confirmation;
   };
 }
 
