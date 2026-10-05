@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -27,10 +27,10 @@ export async function buildPdvCommerceQaManifest() {
   const immutableManifests = [];
   for (const [name, file] of Object.entries(priorFiles)) {
     priorManifests[name] = { path: file };
-    immutableManifests.push({ path: file, sha256: digest(await readFile(path.join(repoRoot, file))) });
+    immutableManifests.push({ path: file, sha256: digest(git(['show', `${baselineCommit}:${file}`])) });
   }
-  const finance = JSON.parse(await readFile(path.join(repoRoot, priorFiles.finance), 'utf8'));
-  const session = JSON.parse(await readFile(path.join(repoRoot, priorFiles.session), 'utf8'));
+  const finance = JSON.parse(git(['show', `${baselineCommit}:${priorFiles.finance}`]).toString('utf8'));
+  const session = JSON.parse(git(['show', `${baselineCommit}:${priorFiles.session}`]).toString('utf8'));
   const codePaths = [...new Set([
     'backend/scripts/pdv-unico-catalog-migrator.ts',
     'backend/scripts/pdv-unico-business-migrator.ts',
@@ -53,6 +53,7 @@ export async function buildPdvCommerceQaManifest() {
     'backend/src/routes/operacao/index.ts',
     'backend/src/routes/operacao/comandas.ts',
     'backend/src/routes/operacao/cozinha.ts',
+    'backend/src/routes/public.ts',
     'backend/scripts/pdv-unico-kitchen-order-preparation.ts',
     'backend/scripts/inventory-pdv-unico-dev.ts',
     'backend/scripts/run-pdv-unico-dev-inventory-readonly.mjs',
@@ -60,6 +61,7 @@ export async function buildPdvCommerceQaManifest() {
     'backend/scripts/pdv-unico-dev-inventory-summary.test.mjs',
     'backend/scripts/pdv-unico-session-transform.ts',
     'backend/scripts/run-pdv-unico-commerce-disposable-qa.mjs',
+    'backend/scripts/run-pdv-unico-git-snapshot-qa.mjs',
     'backend/scripts/pdv-unico-commerce-qa-manifest.mjs',
     'backend/scripts/pdv-unico-finance-migrator.isolated.test.mjs',
     'backend/scripts/pdv-unico-finance-source.ts',
@@ -101,7 +103,7 @@ export async function buildPdvCommerceQaManifest() {
       schemaSha256: digest(schemaCandidate),
       migrationName: path.basename(path.dirname(migrationPath)),
       migrationPath,
-      migrationSha256: digest(await readFile(path.join(repoRoot, migrationPath))),
+      migrationSha256: digest(git(['show', `${baselineCommit}:${migrationPath}`])),
     },
     preCommerceSchema: {
       commit: '128f69fb2fd6904aa823ff17448a6ff13e9d9595',
@@ -114,7 +116,7 @@ export async function buildPdvCommerceQaManifest() {
       sha256: digest(git(['show', `66ec00886b65eaea8e437fae4e9a36f7be971b09:${schemaPath}`])),
       compatibility: 'Matches DEV migration ledger through 20260930150000_company_pix_key; excludes additive PDV migrations not applied in DEV.',
     },
-    codeCandidates: await Promise.all(codePaths.map(async (file) => ({ path: file, sha256: digest(await readFile(path.join(repoRoot, file))) }))),
+    codeCandidates: codePaths.map((file) => ({ path: file, sha256: digest(git(['show', `${baselineCommit}:${file}`])) })),
   };
   return { ...data, manifestSha256: digest(Buffer.from(JSON.stringify(data))) };
 }
