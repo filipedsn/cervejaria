@@ -119,7 +119,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs",
-      "sha256": "92d86841f8320dde362e674d5fd01a2ee6415cb35eeca0f01800811dda39eb76"
+      "sha256": "d8b0e3d83e423e8198f8a1fcbe8da3b76f921238aa08492e0928cf396b66edfd"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
@@ -350,5 +350,5 @@
       "sha256": "e9c675bd9c06b416ef4a5f7bfee47e7ea17b1e1dac01f98c7ef89f3ffdf9e6de"
     }
   ],
-  "manifestSha256": "fb9a23c3ff48d72b74217352b3e65823e919550513b82dcfca32cf76e7edb34c"
+  "manifestSha256": "b0165b934849b9d4063186c204406c6e787c11a3450f867ed824aa4fbc376cf4"
 }

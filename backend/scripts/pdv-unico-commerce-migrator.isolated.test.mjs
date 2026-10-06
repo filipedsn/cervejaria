@@ -395,6 +395,35 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       operationFlows.push({ tenantId: flow.company.id, sessionId: session.id, commandId, productId: flow.product.id, menuId: flow.menu.id, itemPriceCents: flow.priceCents, quantity: 2, totalCents, payment: `PIX:${totalCents}`, sessionStatus: persistedSession.status, endpoints: [opened.statusCode, menuResponse.statusCode, openedCommand.statusCode, launched.statusCode, paid.statusCode, closed.statusCode] });
     }
 
+    // Isolated authenticated-API reproduction for a sale paid through two debt receipts.
+    const debtSessionIds = [];
+    for (let index = 0; index < 2; index++) {
+      const openedDebtSession = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie: ownerCookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id } });
+      assert.equal(openedDebtSession.statusCode, 201, `debt receipt session ${index + 1} opens: ${openedDebtSession.body}`);
+      const debtSessionId = JSON.parse(openedDebtSession.body).id;
+      debtSessionIds.push(debtSessionId);
+      const closedDebtSession = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: ownerCookie }, payload: { pontoVendaId: primaryPoint.id, contadoDinheiro: 0, contadoPix: 0, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
+      assert.equal(closedDebtSession.statusCode, 200, `debt receipt session ${index + 1} closes: ${closedDebtSession.body}`);
+    }
+    const debtClient = await db.cliente.create({ data: { id: `turn-debt-client-${runId}`, cervejariaId: primaryCompany.id, nome: 'QA turn debt client', telefone: `119${String(Date.now()).slice(-8)}` } });
+    const debtCommand = await db.comanda.create({ data: {
+      id: `turn-debt-command-${runId}`, origem: 'CAIXA', pontoVendaId: primaryPoint.id, diaOperacional: new Date(),
+      clienteId: debtClient.id, status: 'FECHADA', tipo: 'COMANDA', total: '100.00', fechadaEm: new Date(), fechadoPorId: authOwner.id,
+    } });
+    const debtAccount = await db.contaReceber.create({ data: { id: `turn-debt-account-${runId}`, comandaId: debtCommand.id, clienteId: debtClient.id, valorOriginal: '100.00', criadoPorId: authOwner.id } });
+    for (const [index, cents] of ['4000', '6000'].entries()) await db.pagamento.create({ data: {
+      id: `turn-debt-receipt-${index}-${runId}`, comandaId: debtCommand.id, contaReceberId: debtAccount.id,
+      sessaoCaixaId: debtSessionIds[index], forma: 'PIX', valor: (Number(cents) / 100).toFixed(2), registradoPorId: authOwner.id,
+    } });
+    const debtDashboardPeriod = new Date();
+    const debtTurnDashboard = await app.inject({ method: 'GET', url: `/api/operacao/dashboard?ano=${debtDashboardPeriod.getFullYear()}&mes=${debtDashboardPeriod.getMonth() + 1}&pontoVendaId=${encodeURIComponent(primaryPoint.id)}`, headers: { cookie: ownerCookie } });
+    assert.equal(debtTurnDashboard.statusCode, 200, `authenticated turn report returns for debt receipts: ${debtTurnDashboard.body}`);
+    const debtTurns = JSON.parse(debtTurnDashboard.body).turnosRecentes.filter((row) => debtSessionIds.includes(row.sessaoId));
+    assert.equal(debtTurns.length, 2);
+    assert.deepEqual(debtTurns.map((row) => centsExact(row.receitaTotal)), ['10000', '10000'], 'reproduction: the same sale principal is currently duplicated into both receipt sessions');
+    assert.deepEqual(debtTurns.map((row) => centsExact(row.totalRecebido)), ['4000', '6000'], 'received totals follow each actual debt receipt');
+    operationFlows.push({ debtReproduction: 'PASS; pre-fix sale principal duplicated in two authenticated turn reports', saleCents: '10000', receiptsBySessionCents: ['4000', '6000'], revenueBySessionCents: debtTurns.map((row) => centsExact(row.receitaTotal)) });
+
     const immediateWithoutSessionCommandId = `authenticated-no-session-command-${runId}`;
     await db.comanda.create({ data: {
       id: immediateWithoutSessionCommandId, origem: 'CAIXA', pontoVendaId: primaryPoint.id,
