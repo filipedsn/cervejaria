@@ -51055,5 +51055,111 @@
         "overall": "BLOCKED"
       }
     }
-  }
+  },
+  "followUpQa": {
+      "status": "PASS",
+      "codeSnapshot": {
+        "commit": "2b611d6a430b1429d8a0fc9d526b1afdd965f29a",
+        "tree": "56ef9893be25fc6b1be1bb51b57d6606b73b91c8",
+        "trackedBlobs": 1110,
+        "synthetic": "PASS",
+        "representative": "PASS",
+        "moduleOriginAudit": {
+          "result": "PASS",
+          "snapshotModules": 177,
+          "workspaceModules": 0,
+          "externalDependencies": 100
+        }
+      },
+      "approvedPhoto": {
+        "sha256": "2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b",
+        "tables": 34,
+        "rows": 10738,
+        "crossTenantEdges": 0
+      },
+      "schemaGate": {
+        "result": "PASS",
+        "migration": "20261005180000_payment_historical_provenance",
+        "column": "Pagamento.provenienciaHistorica",
+        "eventRegressions": "9/9 PASS",
+        "evtAud02": "200; audit preserved after cascades"
+      },
+      "financePolicy": {
+        "inventoryCount": 577,
+        "withExactAuditPaymentReference": 323,
+        "withoutExactAuditPaymentReference": 254,
+        "provenance": "CAIXA_NAO_COMPROVADA",
+        "bothSessionReferencesRemainNull": true,
+        "sessionTimeWindowLinking": false,
+        "otherClassifications": {
+          "A": "26 payments retain exact session links",
+          "B": "2 debt receipts retain receivables and own provenance"
+        },
+        "all605PaymentsReconciledByIdAndCents": true,
+        "noDuplicateOrOmission": true
+      },
+      "representativePhases": [
+        {
+          "tenant": "CIA Marítima",
+          "finance": {
+            "records": 433,
+            "resumeMs": 50496,
+            "replayMs": 3177
+          },
+          "commerce": {
+            "records": 1549,
+            "batches": 62,
+            "resumeMs": 288096,
+            "replayMs": 6634
+          },
+          "businessCatalogSessionsAndKitchenRevalidation": "PASS; pause/resume/replay"
+        },
+        {
+          "tenant": "Churrasquinho do Thiago",
+          "finance": {
+            "records": 178,
+            "resumeMs": 39456,
+            "replayMs": 4446
+          },
+          "kitchenPreparation": {
+            "records": 431,
+            "batches": 44,
+            "resumeMs": 240958,
+            "replayMs": 6596
+          },
+          "commerce": {
+            "records": 3004,
+            "batches": 121,
+            "resumeMs": 1128493,
+            "replayMs": 13628
+          },
+          "businessCatalogSessionsAndKitchenRevalidation": "PASS; pause/resume/replay"
+        }
+      ],
+      "largestObservedCommerceBatchMs": 13275,
+      "transactionTimeoutMs": 30000,
+      "syntheticAuthenticatedApiCoverage": [
+        "legacy and canonical modes",
+        "EVENTO and CAIXA migrated origins",
+        "dashboard, session summary and received totals",
+        "new immediate payment without session rejected without partial write",
+        "new immediate payment with valid session succeeds",
+        "approval scope, altered payload and tenant mismatch blocked",
+        "debt receipt rules",
+        "rollback and replay"
+      ],
+      "builds": {
+        "backend": "PASS (npm run build)",
+        "frontend": "PASS (npm run build; Vite dynamic import/chunk-size advisories)"
+      },
+      "limits": {
+        "devSharedAccess": "NO",
+        "prodAccessIncludingMetadata": "NO",
+        "realBackfill": "NOT_RUN",
+        "cutover": "NOT_RUN",
+        "deploy": "NOT_RUN",
+        "legacyRemoval": "NOT_RUN"
+      }
+    }
+
 }
