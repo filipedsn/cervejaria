@@ -842,9 +842,10 @@ async function reconcilePdvCommerce(tx: Db, companyId: string, pointId: string, 
 }
 
 /** Reconciles existing command/order/stock rows and writes only confirmed PDV/event links. */
-export async function runPdvCommerceMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void }) {
+export async function runPdvCommerceMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void; afterBatchCommit?: (progress: { tenantId: string; phase: string; cursor: number; total: number; batch: number; durationMs: number }) => Promise<void> | void }) {
   return runPdvScopedMigration({
-    ...options, batchSize: options.batchSize ?? 1, transactionTimeoutMs: options.transactionTimeoutMs ?? 30000, transactionMaxWaitMs: options.transactionMaxWaitMs ?? 10000,
+    ...options, batchSize: options.batchSize ?? 10, transactionTimeoutMs: options.transactionTimeoutMs ?? 30000, transactionMaxWaitMs: options.transactionMaxWaitMs ?? 10000,
+    afterBatchCommit: options.afterBatchCommit ?? ((progress) => console.info(JSON.stringify({ event: 'PDV_MIGRATION_BATCH_COMMITTED', ...progress }))),
     scope: PDV_COMMERCE_SCOPE, transformVersion: PDV_COMMERCE_TRANSFORM_VERSION,
     createTransactionContext: async (tx) => {
       let resolver: Promise<(eventId: string) => Promise<any>> | null = null;
