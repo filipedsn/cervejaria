@@ -635,6 +635,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const oneOffCommand = await db.comanda.findUniqueOrThrow({ where: { id: oneOffSale.id }, include: { itens: true, pagamentos: true } });
     assert.deepEqual([oneOffCommand.origem, oneOffCommand.tipo, oneOffCommand.ocorrenciaId, oneOffCommand.itens[0].produtoId, oneOffCommand.itens[0].quantidade, centsExact(oneOffCommand.itens[0].precoUnit), oneOffCommand.pagamentos[0].sessaoCaixaId], ['CAIXA', 'AVULSA', oneOffOccurrence.id, product.id, 1, String(primaryCashFlow.itemPriceCents), oneOffSession.id]);
     assert.deepEqual(plain({ balances: await db.inventoryBalance.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }), movements: await db.inventoryMovement.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }) }), stockBeforeOccurrenceSale, 'stock behavior remains controlled by the existing Por Caixa configuration');
+    console.log(`QA_AUTH_OPEN_COMMANDS_BEFORE_CLOSE=${JSON.stringify(await db.comanda.findMany({ where: { pontoVendaId: primaryPoint.id, diaOperacional: new Date('2026-11-01T00:00:00.000Z'), status: 'ABERTA' }, select: { id: true, tipo: true, origem: true, ocorrenciaId: true } }))}`);
     await closeOccurrenceCash('2026-11-01', unitPrice);
     occurrenceProofs.push({ kind: 'one-off-avulsa', sessionId: oneOffSession.id, commandId: oneOffCommand.id, occurrenceId: oneOffCommand.ocorrenciaId, paymentSessionId: oneOffCommand.pagamentos[0].sessaoCaixaId });
 
