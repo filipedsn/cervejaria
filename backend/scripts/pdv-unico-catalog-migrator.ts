@@ -129,6 +129,15 @@ function invalidateTransactionProofCache(tx: Db, item: any) {
   cache.destinations.delete(key(item.destinationType, item.destinationId));
 }
 
+function invalidateAllTransactionProofCache(tx: Db) {
+  const cache = transactionProofCaches.get(tx);
+  if (!cache) return;
+  cache.maps.clear();
+  cache.mapRows.clear();
+  cache.batches.clear();
+  cache.destinations.clear();
+}
+
 function project(row: any, keys: string[]) {
   return Object.fromEntries(keys.map((field) => [field, row[field]]));
 }
@@ -332,7 +341,11 @@ export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
             const existingMap = existingMaps[index];
             const destinationCreated = existingMap ? false : await (options.writeItem ? options.writeItem(tx, item, Boolean(existingMap)) : writeTarget(tx, item));
             invalidateTransactionProofCache(tx, item);
-            if (options.afterDestinationWrite) await options.afterDestinationWrite(item, tx);
+            if (options.afterDestinationWrite) {
+              await options.afterDestinationWrite(item, tx);
+              // Test hooks may intentionally mutate any source, map, receipt, or destination.
+              invalidateAllTransactionProofCache(tx);
+            }
             const destinationHash = await verifyDestination(tx, item);
             if (existingMap) {
               const oldBatch = await tx.pdvMigrationBatch.findFirst({ where: { id: existingMap.lastBatchId, runId: existingMap.lastRunId } });
