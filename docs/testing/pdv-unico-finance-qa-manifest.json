@@ -49,7 +49,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-finance-migrator.isolated.test.mjs",
-      "sha256": "37b7cc23a4770335bdd164041079f2334d0cbfd2478e315a2ecfefed7663bc7a"
+      "sha256": "064142fe3a1c7d189c60a6f0539a52d91b7e91d28a34fed4da6d4e0893706298"
     },
     {
       "path": "backend/scripts/pdv-unico-finance-reconcile.ts",
@@ -88,7 +88,7 @@
       "sha256": "136b6b2903ba304e9996ad9a07320210e1f224cc3dd594b3bc06dd97a130a249"
     }
   ],
-  "manifestSha256": "dc31d8f874f6f40efb5f33aaa67cfa83ea76fa73e87cb4f92aa0fe3fdee05a62",
+  "manifestSha256": "94dfdab4cc24e0cb385e74eaa02da062df98ba1c6dae1ea1e891e2911d6713b5",
   "historicalProvenanceMigration": {
     "name": "20261005180000_payment_historical_provenance",
     "path": "backend/prisma/migrations/20261005180000_payment_historical_provenance/migration.sql",
