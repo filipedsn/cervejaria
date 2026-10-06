@@ -175,7 +175,6 @@ async function proveCommerceLinkRequiresDurableProof(target, pointId) {
   const originalMap = await db.pdvMigrationMap.findUniqueOrThrow({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } } });
   const originalBatch = await db.pdvMigrationBatch.findUniqueOrThrow({ where: { id: originalMap.lastBatchId } });
   const originalCheckpoint = structuredClone(originalBatch.checkpoint);
-  const alternatePoint = await db.pontoVenda.findFirstOrThrow({ where: { cervejariaId: { not: target.id } }, select: { id: true } });
   const proofResults = [];
   const runProof = async (name, expectedCodes) => {
     const result = await runPdvFinanceMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-finance-proof-${name}`, historicalNoSessionApproval: approval, maxBatches: 1 });
@@ -192,7 +191,7 @@ async function proveCommerceLinkRequiresDurableProof(target, pointId) {
     await runProof('commerce-map-missing', ['FINANCE_HISTORICAL_COMMERCE_PROOF_MISSING']);
     await restoreMap();
 
-    await db.pdvMigrationMap.update({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } }, data: { pontoVendaId: alternatePoint.id } });
+    await db.pdvMigrationMap.update({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } }, data: { pontoVendaId: null } });
     await runProof('commerce-map-manually-altered', ['FINANCE_HISTORICAL_COMMERCE_PROOF_MISSING']);
     await db.pdvMigrationMap.update({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } }, data: { pontoVendaId: pointId } });
 
@@ -205,7 +204,7 @@ async function proveCommerceLinkRequiresDurableProof(target, pointId) {
     await runProof('commerce-receipt-divergent', ['FINANCE_HISTORICAL_COMMERCE_PROOF_DIVERGED', 'FINANCE_HISTORICAL_COMMERCE_DESTINATION_DIVERGED']);
     await db.pdvMigrationBatch.update({ where: { id: originalBatch.id }, data: { checkpoint: originalCheckpoint } });
 
-    await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: alternatePoint.id, ocorrenciaId: null } });
+    await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: null, ocorrenciaId: null } });
     await runProof('command-pdv-manually-altered', ['FINANCE_HISTORICAL_APPROVAL_PAYLOAD_DIVERGED']);
     await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: originalCommand.pontoVendaId, ocorrenciaId: originalCommand.ocorrenciaId } });
   } finally {
