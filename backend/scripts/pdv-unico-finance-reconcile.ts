@@ -19,10 +19,24 @@ export function financeReconciliationDigest(payments: any[], debts: any[], movem
   const byForm = new Map<string, bigint>();
   const bySession = new Map<string, bigint>();
   const byDebt = new Map<string, bigint>();
+  const unassignedHistoricalByForm = new Map<string, bigint>();
+  let unassignedHistoricalCount = 0;
+  let unassignedHistoricalCents = 0n;
+  let receivableWithoutSessionCount = 0;
+  let receivableWithoutSessionCents = 0n;
   const movementBySessionAndType = new Map<string, bigint>();
   for (const row of payments) {
     add(byForm, row.forma, row.valor);
-    add(bySession, row.sessaoCaixaId ?? 'NO_SESSION', row.valor);
+    if (row.sessaoCaixaId != null) add(bySession, row.sessaoCaixaId, row.valor);
+    if (row.provenienciaHistorica === 'CAIXA_NAO_COMPROVADA') {
+      unassignedHistoricalCount++;
+      unassignedHistoricalCents += cents(row.valor);
+      add(unassignedHistoricalByForm, row.forma, row.valor);
+    }
+    if (row.contaReceberId && row.sessaoCaixaId == null) {
+      receivableWithoutSessionCount++;
+      receivableWithoutSessionCents += cents(row.valor);
+    }
     if (row.contaReceberId) add(byDebt, row.contaReceberId, row.valor);
   }
   for (const row of movements) add(movementBySessionAndType, `${row.sessaoId}:${row.tipo}`, row.valor);
@@ -30,6 +44,7 @@ export function financeReconciliationDigest(payments: any[], debts: any[], movem
     paymentIds: payments.map((row) => row.id).sort(), paymentCount: payments.length,
     paymentRows: payments.map((row) => ({ id: row.id, comandaId: row.comandaId, contaReceberId: row.contaReceberId,
       sessaoCaixaId: row.sessaoCaixaId, sessaoCaixaEventoId: row.sessaoCaixaEventoId,
+      provenienciaHistorica: row.provenienciaHistorica ?? null,
       forma: row.forma, valorCentavos: cents(row.valor).toString(),
       recebidoCentavos: row.valorRecebido == null ? null : cents(row.valorRecebido).toString(),
       trocoCentavos: row.troco == null ? null : cents(row.troco).toString(),
@@ -65,5 +80,8 @@ export async function reconcilePdvFinance(tx: Db, items: Item[]) {
   const actual = financeReconciliationDigest(payments, debts, movements);
   if (canonicalPdvPayloadHash(expected) !== canonicalPdvPayloadHash(actual)) throw new PdvCatalogBlocker('FINANCE_RECONCILIATION_DIVERGED', null, null, 'IDs, valores, recebimentos, saldos ou correções divergem da fotografia financeira.');
   return { paymentCount: payments.length, debtCount: debts.length, movementCount: movements.length, byForm: actual.byForm,
-    bySession: actual.bySession, debts: actual.debtRows.map((row) => ({ id: row.id, principalCentavos: row.principalCentavos, recebidoCentavos: row.recebidoCentavos, saldoCentavos: row.saldoCentavos })) };
+    bySession: actual.bySession,
+    historicalWithoutSession: { count: unassignedHistoricalCount, cents: unassignedHistoricalCents.toString(), byForm: sorted(unassignedHistoricalByForm) },
+    receivableWithoutSession: { count: receivableWithoutSessionCount, cents: receivableWithoutSessionCents.toString() },
+    debts: actual.debtRows.map((row) => ({ id: row.id, principalCentavos: row.principalCentavos, recebidoCentavos: row.recebidoCentavos, saldoCentavos: row.saldoCentavos })) };
 }

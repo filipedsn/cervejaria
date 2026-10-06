@@ -3,6 +3,8 @@ import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
 import { totaisPorForma } from './caixa.js';
 import { pedidoContaNaComanda } from './cozinha.js';
+import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
+import { paymentFilterForOperationalSession } from './payment-session-filter.js';
 
 const MS_HOUR = 3_600_000;
 
@@ -90,6 +92,28 @@ async function fetchRecebimentos(
     },
     select: { forma: true, valor: true },
   });
+}
+
+async function fetchHistoricoSemAtribuicao(
+  enabled: boolean,
+  cervejariaId: string,
+  inicio: Date,
+  fim: Date,
+  pontoVendaId?: string,
+) {
+  if (!enabled) return { count: 0, total: 0, byForm: [] as Array<{ forma: PaymentMethod; valor: number }> };
+  const rows = await (prisma.pagamento as any).findMany({
+    where: {
+      provenienciaHistorica: 'CAIXA_NAO_COMPROVADA',
+      sessaoCaixaId: null,
+      sessaoCaixaEventoId: null,
+      pagoEm: { gte: inicio, lte: fim },
+      comanda: { origem: 'CAIXA', status: 'FECHADA', pontoVenda: { cervejariaId }, ...(pontoVendaId ? { pontoVendaId } : {}) },
+    },
+    select: { forma: true, valor: true },
+  });
+  const byForm = agregarFormasPagamento(rows);
+  return { count: rows.length, total: rows.reduce((sum: number, row: { valor: unknown }) => sum + toNumber(row.valor), 0), byForm: byForm.map(({ forma, valor }) => ({ forma, valor })) };
 }
 
 async function saldoContasPendentes(cervejariaId: string, pontoVendaId?: string) {
@@ -225,29 +249,10 @@ function weeklyEvolution(comandas: ClosedComanda[], ano: number, mes: number) {
 async function pagamentosDoTurno(
   sessao: Prisma.SessaoCaixaOperacaoGetPayload<{ include: { movimentos: true } }>,
   cervejariaId: string,
+  canonicalPdvEnabled: boolean,
 ) {
-  const fechadaAte = sessao.fechadoEm ?? undefined;
   return prisma.pagamento.findMany({
-    where: {
-      OR: [
-        { sessaoCaixaId: sessao.id, comanda: { origem: 'CAIXA', pontoVenda: { cervejariaId } } },
-        {
-          sessaoCaixaId: null,
-          contaReceberId: null,
-          comanda: {
-            origem: 'CAIXA',
-            pontoVenda: { cervejariaId },
-            pontoVendaId: sessao.pontoVendaId,
-            diaOperacional: sessao.diaOperacional,
-            status: 'FECHADA',
-            fechadaEm: {
-              gte: sessao.abertoEm,
-              ...(fechadaAte ? { lte: fechadaAte } : {}),
-            },
-          },
-        },
-      ],
-    },
+    where: paymentFilterForOperationalSession(sessao, cervejariaId, canonicalPdvEnabled),
     select: { forma: true, valor: true, comandaId: true, contaReceberId: true },
   });
 }
@@ -257,6 +262,7 @@ async function buildTurnosRecentes(
   inicio: Date,
   fim: Date,
   pontoVendaId?: string,
+  canonicalPdvEnabled = false,
 ) {
   const sessoes = await prisma.sessaoCaixaOperacao.findMany({
     where: {
@@ -294,7 +300,7 @@ async function buildTurnosRecentes(
     const turnoDoDia = (indiceTurnoDia.get(chaveDia) ?? 0) + 1;
     indiceTurnoDia.set(chaveDia, turnoDoDia);
 
-    const pagamentos = await pagamentosDoTurno(sessao, cervejariaId);
+    const pagamentos = await pagamentosDoTurno(sessao, cervejariaId, canonicalPdvEnabled);
     const totais = totaisPorForma(pagamentos);
     const vendasTotal = comandasFechadas.reduce((soma, comanda) => soma + toNumber(comanda.total), 0);
     const comandaIds = new Set(comandasFechadas.map((comanda) => comanda.id));
@@ -396,13 +402,15 @@ export async function buildOperacaoDashboard(
   const now = new Date();
   const anoVigente = now.getFullYear();
   const { inicio, fim } = monthBounds(ano, mes);
+  const canonicalSettings = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId);
 
-  const [comandasMes, comandasAno, turnosRecentes, recebimentosMes, totalPendente] = await Promise.all([
+  const [comandasMes, comandasAno, turnosRecentes, recebimentosMes, totalPendente, historicoSemAtribuicao] = await Promise.all([
     fetchClosedComandas(cervejariaId, inicio, fim, pontoVendaId),
     fetchClosedComandas(cervejariaId, yearBounds(anoVigente).inicio, yearBounds(anoVigente).fim, pontoVendaId),
-    buildTurnosRecentes(cervejariaId, inicio, fim, pontoVendaId),
+    buildTurnosRecentes(cervejariaId, inicio, fim, pontoVendaId, canonicalSettings !== null),
     fetchRecebimentos(cervejariaId, inicio, fim, pontoVendaId),
     saldoContasPendentes(cervejariaId, pontoVendaId),
+    fetchHistoricoSemAtribuicao(canonicalSettings !== null, cervejariaId, inicio, fim, pontoVendaId),
   ]);
   const comparativoPontos = pontoVendaId
     ? []
@@ -463,6 +471,7 @@ export async function buildOperacaoDashboard(
     resumo: {
       receitaTotal: resumo.receitaTotal,
       totalRecebido,
+      historicoSemAtribuicao,
       totalPendente,
       comandasAtendidas: resumo.comandasAtendidas,
       vendasAvulsas: resumo.vendasAvulsas,

@@ -228,6 +228,12 @@ model ConfiguracaoOperacional {
   @@schema("public")
 }
 
+enum PaymentHistoricalProvenance {
+  CAIXA_NAO_COMPROVADA
+
+  @@schema("public")
+}
+
 /// Effective operating capabilities at a canonical point of sale. Legacy fields remain untouched until cutover.
 model ConfiguracaoPontoVenda {
   id String @id @default(cuid())
@@ -841,6 +847,8 @@ model Pagamento {
   contaReceberId  String?
   sessaoCaixaId   String?
   sessaoCaixaEventoId String?
+  /// Disposição histórica sem prova de caixa; não deve ser interpretada como recebimento fora de caixa.
+  provenienciaHistorica PaymentHistoricalProvenance?
   forma           PaymentMethod
   valor           Decimal       @db.Decimal(10, 2)
   /// Só no dinheiro: quanto o cliente entregou e quanto voltou de troco.

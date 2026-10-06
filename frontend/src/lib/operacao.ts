@@ -837,6 +837,7 @@ export interface OperacaoDashboard {
   resumo: {
     receitaTotal: number;
     totalRecebido: number;
+    historicoSemAtribuicao: { count: number; total: number; byForm: Array<{ forma: string; valor: number }> };
     totalPendente: number;
     comandasAtendidas: number;
     vendasAvulsas: number;

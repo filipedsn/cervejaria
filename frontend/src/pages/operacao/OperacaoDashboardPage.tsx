@@ -287,6 +287,14 @@ export function OperacaoDashboardPage() {
         <KpiCard label="Turnos de caixa" value={String(resumo.turnosCaixa)} />
       </div>
 
+      {resumo.historicoSemAtribuicao.count > 0 && (
+        <div className="rounded-xl border border-line bg-surface-lighter/60 px-4 py-3 text-sm text-ink-soft">
+          <strong className="text-ink">Histórico sem atribuição de caixa:</strong>{' '}
+          {formatCurrency(resumo.historicoSemAtribuicao.total)} em {resumo.historicoSemAtribuicao.count} pagamentos.
+          {' '}Esse valor já está incluído uma vez em “Recebido no período” e não compõe os totais dos turnos.
+        </div>
+      )}
+
       {resumo.receitaTotal === 0 && resumo.totalRecebido === 0 && turnosRecentes.length === 0 ? (
         <div className="card text-center py-16">
           <p className="text-4xl mb-3">📊</p>

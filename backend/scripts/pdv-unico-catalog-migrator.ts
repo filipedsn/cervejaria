@@ -4,7 +4,7 @@ import { readPdvCatalogSourceSnapshot } from './pdv-unico-catalog-source.js';
 import { buildPdvSessionMigrationItems, PDV_SESSION_SCOPE, PDV_SESSION_TRANSFORM_VERSION } from './pdv-unico-session-transform.js';
 import { readPdvSessionSourceSnapshot } from './pdv-unico-session-source.js';
 import { operationalSessionData } from './pdv-unico-session-transform.js';
-import { buildPdvFinanceMigrationItems, PDV_FINANCE_SCOPE, PDV_FINANCE_TRANSFORM_VERSION } from './pdv-unico-finance-transform.js';
+import { buildPdvFinanceMigrationItems, PDV_FINANCE_SCOPE, PDV_FINANCE_TRANSFORM_VERSION, type HistoricalNoSessionApproval } from './pdv-unico-finance-transform.js';
 import { readPdvFinanceSourceSnapshot } from './pdv-unico-finance-source.js';
 import { reconcilePdvFinance } from './pdv-unico-finance-reconcile.js';
 import { buildPdvCommerceMigrationItems, commercePayloadHash, PDV_COMMERCE_SCOPE, PDV_COMMERCE_TRANSFORM_VERSION } from './pdv-unico-commerce-transform.js';
@@ -664,14 +664,24 @@ async function writeFinanceTarget(tx: Db, item: any, hasExistingMap: boolean) {
     return !existing;
   }
   if (!existing) throw new PdvCatalogBlocker('FINANCE_SOURCE_MISSING', item.type, item.id, 'Registro financeiro comum ausente; nenhuma linha será fabricada.');
-  if (item.type === 'PAGAMENTO' && existing.sessaoCaixaEventoId && !hasExistingMap) {
-    if (existing.sessaoCaixaId != null) throw new PdvCatalogBlocker('FINANCE_PAYMENT_DOUBLE_SESSION', item.type, item.id, 'Pagamento contém duas sessões antes de ter mapa financeiro.');
-    await tx.pagamento.update({ where: { id: item.id }, data: { sessaoCaixaId: item.destinationData.sessaoCaixaId } });
+  if (item.type === 'PAGAMENTO' && !hasExistingMap && (existing.sessaoCaixaEventoId || item.destinationData.provenienciaHistorica === 'CAIXA_NAO_COMPROVADA')) {
+    if (existing.sessaoCaixaEventoId && existing.sessaoCaixaId != null) throw new PdvCatalogBlocker('FINANCE_PAYMENT_DOUBLE_SESSION', item.type, item.id, 'Pagamento contém duas sessões antes de ter mapa financeiro.');
+    await tx.pagamento.update({ where: { id: item.id }, data: { sessaoCaixaId: item.destinationData.sessaoCaixaId, provenienciaHistorica: item.destinationData.provenienciaHistorica } });
   }
   return false;
 }
 
-export async function runPdvFinanceMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void }) {
+export async function runPdvFinanceMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void; historicalNoSessionApproval?: HistoricalNoSessionApproval }) {
+  if (options.historicalNoSessionApproval) {
+    let target: URL;
+    try { target = new URL(process.env.DATABASE_URL ?? ''); }
+    catch { throw new PdvCatalogBlocker('FINANCE_HISTORICAL_APPROVAL_QA_GUARD_FAILED', 'PAGAMENTO', null, 'A política histórica só pode ser usada no QA isolado.'); }
+    if (process.env.NODE_ENV !== 'test' || process.env.PDV_ISOLATED_QA !== '1' || process.env.QA_DATABASE_URL !== process.env.DATABASE_URL
+      || !['postgres:', 'postgresql:'].includes(target.protocol) || !['127.0.0.1', 'localhost'].includes(target.hostname)
+      || !/^554(?:3[9]|4[0-9])$/.test(target.port) || target.pathname !== '/cervejaria_qa_pdv_unico') {
+      throw new PdvCatalogBlocker('FINANCE_HISTORICAL_APPROVAL_QA_GUARD_FAILED', 'PAGAMENTO', null, 'A política histórica só pode ser usada no PostgreSQL QA isolado.');
+    }
+  }
   return runPdvScopedMigration({
     ...options, batchSize: options.batchSize ?? 1, transactionTimeoutMs: options.transactionTimeoutMs ?? 30000, transactionMaxWaitMs: options.transactionMaxWaitMs ?? 10000,
     scope: PDV_FINANCE_SCOPE, transformVersion: PDV_FINANCE_TRANSFORM_VERSION,
@@ -714,7 +724,7 @@ export async function runPdvFinanceMigration(options: { db: Db; companyId: strin
       }
       const paymentIds = snapshot.payments.map((payment: any) => payment.id);
       const mappedPayments = await tx.pdvMigrationMap.findMany({ where: { sourceType: 'PAGAMENTO', sourceId: { in: paymentIds } }, select: { sourceId: true } });
-      return buildPdvFinanceMigrationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedSessions, confirmedEvents, mappedPaymentIds: new Set(mappedPayments.map((row: any) => row.sourceId)) });
+      return buildPdvFinanceMigrationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedSessions, confirmedEvents, mappedPaymentIds: new Set(mappedPayments.map((row: any) => row.sourceId)), historicalNoSessionApproval: options.historicalNoSessionApproval });
     },
     confirmExternalDependency: async (tx, sourceType, sourceId, transactionContext) => {
       if (sourceType === 'EVENTO') { await transactionContext.resolveOccurrence(sourceId); return true; }

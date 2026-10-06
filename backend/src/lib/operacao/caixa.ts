@@ -7,8 +7,10 @@ import { pedidoContaNaComanda } from './cozinha.js';
 import { aplicarCardapioInicialTurno } from './sessao-cardapio.js';
 import { verifyPassword } from '../utils.js';
 import { getOperationalProfile } from '../operational-profile.js';
+import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
 import { inicializarMontagemSessaoCaixa } from '../tap-montagem.js';
 import { validateCashOccurrenceSelection } from './contexto-ocorrencia.js';
+import { paymentFilterForOperationalSession } from './payment-session-filter.js';
 
 export class CaixaInvalidoError extends Error {
   statusCode = 400;
@@ -160,33 +162,10 @@ export function planoCorrecaoMovimento(params: {
 }
 
 async function pagamentosDaSessao(sessao: SessaoCompleta, cervejariaId: string) {
-  const fechadaAte =
-    sessao.status === 'FECHADO' && sessao.fechadoEm ? sessao.fechadoEm : undefined;
+  const canonical = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId);
 
   return prisma.pagamento.findMany({
-    where: {
-      OR: [
-        {
-          sessaoCaixaId: sessao.id,
-          comanda: { origem: 'CAIXA', pontoVenda: { cervejariaId } },
-        },
-        {
-          sessaoCaixaId: null,
-          contaReceberId: null,
-          comanda: {
-            origem: 'CAIXA',
-            pontoVenda: { cervejariaId },
-            pontoVendaId: sessao.pontoVendaId,
-            diaOperacional: sessao.diaOperacional,
-            status: 'FECHADA',
-            fechadaEm: {
-              gte: sessao.abertoEm,
-              ...(fechadaAte ? { lte: fechadaAte } : {}),
-            },
-          },
-        },
-      ],
-    },
+    where: paymentFilterForOperationalSession(sessao, cervejariaId, canonical !== null),
     select: { forma: true, valor: true },
   });
 }
