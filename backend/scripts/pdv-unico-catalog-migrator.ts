@@ -81,6 +81,14 @@ function snapshotHash(scope: string, version: number, companyId: string, pointId
 async function readDestination(tx: Db, type: string, id: string) {
   const delegate = delegates[type];
   if (!delegate) throw new PdvCatalogBlocker('DESTINATION_TYPE_UNSUPPORTED', null, id, `Tipo de destino não suportado: ${type}`);
+  // Commerce recovery runs before the sale-session migration. Keep this query
+  // compatible with that baseline even when the generated client is newer.
+  if (type === 'COMANDA') return tx[delegate].findUnique({ where: { id }, select: {
+    id: true, origem: true, eventoId: true, clienteId: true, status: true, tipo: true,
+    numero: true, desconto: true, total: true, fechadoPorId: true, fechadaEm: true,
+    pontoVendaId: true, ocorrenciaId: true, diaOperacional: true, identificador: true,
+    abertaPorId: true, createdAt: true, updatedAt: true,
+  } });
   return tx[delegate].findUnique({ where: { id } });
 }
 
