@@ -190,6 +190,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert(cookieHeader?.startsWith('token='), 'login returns the real session credential as an HttpOnly token cookie');
     return cookieHeader.split(';', 1)[0];
   }
+  const withOwnerAt = (day, operation) => withQaDate(day, async () => operation(await login(authOwner.email, ownerPassword, 'DONO')));
 
   try {
     const missing = await app.inject({ method: 'GET', url: '/api/operacao/contexto' });
