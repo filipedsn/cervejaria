@@ -84,11 +84,61 @@ async function readDestination(tx: Db, type: string, id: string) {
   return tx[delegate].findUnique({ where: { id } });
 }
 
+type TransactionProofCache = {
+  maps: Map<string, { expectedHash: string; value: any }>;
+  mapRows: Map<string, any>;
+  batches: Map<string, { value: any }>;
+  destinations: Map<string, { expectedHash: string; value: string }>;
+};
+const transactionProofCaches = new WeakMap<object, TransactionProofCache>();
+
+function transactionProofCache(tx: Db): TransactionProofCache {
+  let cache = transactionProofCaches.get(tx);
+  if (!cache) {
+    cache = { maps: new Map(), mapRows: new Map(), batches: new Map(), destinations: new Map() };
+    transactionProofCaches.set(tx, cache);
+  }
+  return cache;
+}
+
+async function readMigrationMap(tx: Db, sourceType: string, sourceId: string) {
+  const cache = transactionProofCache(tx).mapRows;
+  const cacheKey = key(sourceType, sourceId);
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+  const value = await tx.pdvMigrationMap.findUnique({ where: { sourceType_sourceId: { sourceType, sourceId } } });
+  cache.set(cacheKey, value);
+  return value;
+}
+
+async function readConfirmedBatch(tx: Db, runId: string, batchId: string) {
+  const cache = transactionProofCache(tx).batches;
+  const cacheKey = `${runId}:${batchId}`;
+  let entry = cache.get(cacheKey);
+  if (!entry) {
+    entry = { value: await tx.pdvMigrationBatch.findFirst({ where: { id: batchId, runId } }) };
+    cache.set(cacheKey, entry);
+  }
+  return entry.value;
+}
+
+function invalidateTransactionProofCache(tx: Db, item: any) {
+  const cache = transactionProofCaches.get(tx);
+  if (!cache) return;
+  cache.maps.delete(key(item.type, item.id));
+  cache.mapRows.delete(key(item.type, item.id));
+  cache.destinations.delete(key(item.destinationType, item.destinationId));
+}
+
 function project(row: any, keys: string[]) {
   return Object.fromEntries(keys.map((field) => [field, row[field]]));
 }
 
 async function verifyDestination(tx: Db, item: any) {
+  const cache = transactionProofCache(tx).destinations;
+  const cacheKey = key(item.destinationType, item.destinationId);
+  const expectedHash = canonicalPdvPayloadHash(item.destinationData);
+  const cached = cache.get(cacheKey);
+  if (cached?.expectedHash === expectedHash) return cached.value;
   const row = await readDestination(tx, item.destinationType, item.destinationId);
   if (!row) throw new PdvCatalogBlocker('MAPPED_DESTINATION_MISSING', item.type, item.id, 'Destino ausente para uma origem confirmada.');
   const actual = project(row, Object.keys(item.destinationData));
@@ -96,7 +146,9 @@ async function verifyDestination(tx: Db, item: any) {
     const mismatchedKeys = Object.keys(item.destinationData).filter((field) => canonicalPdvPayloadHash(actual[field]) !== canonicalPdvPayloadHash(item.destinationData[field]));
     throw new PdvCatalogBlocker('MAPPED_DESTINATION_DIVERGED', item.type, item.id, `Destino difere dos valores esperados em: ${mismatchedKeys.join(', ')}; não será sobrescrito.`);
   }
-  return canonicalPdvPayloadHash(actual);
+  const destinationHash = canonicalPdvPayloadHash(actual);
+  cache.set(cacheKey, { expectedHash, value: destinationHash });
+  return destinationHash;
 }
 
 async function confirmDependency(tx: Db, companyId: string, pointId: string, sourceKey: string, items: any[] = [], version = PDV_CATALOG_TRANSFORM_VERSION, confirmExternal?: (tx: Db, sourceType: string, sourceId: string) => Promise<boolean>) {
@@ -104,15 +156,15 @@ async function confirmDependency(tx: Db, companyId: string, pointId: string, sou
   const sourceType = sourceKey.slice(0, separator);
   const sourceId = sourceKey.slice(separator + 1);
   if (confirmExternal && await confirmExternal(tx, sourceType, sourceId)) return;
-  const map = await tx.pdvMigrationMap.findUnique({ where: { sourceType_sourceId: { sourceType, sourceId } } });
+  const map = await readMigrationMap(tx, sourceType, sourceId);
   if (sourceType !== 'PDV' && sourceType !== 'TRAILER') {
     const dependencyItem = items.find((item) => item.type === sourceType && item.id === sourceId);
+    if (dependencyItem) await verifyMap(tx, dependencyItem, companyId, pointId, version);
     if (!dependencyItem || !map || map.cervejariaId !== companyId || map.pontoVendaId !== pointId) throw new PdvCatalogBlocker('DEPENDENCY_NOT_CONFIRMED', sourceType, sourceId, 'Dependência do catálogo não tem mapa confirmado no tenant e PDV esperados.');
-    await verifyMap(tx, dependencyItem, companyId, pointId, version);
     return;
   }
   if (!map || map.cervejariaId !== companyId || map.pontoVendaId !== pointId || map.destinationType !== 'PONTO_VENDA' || map.destinationId !== pointId || !map.lastBatchId) throw new PdvCatalogBlocker('DEPENDENCY_NOT_CONFIRMED', sourceType, sourceId, 'Dependência do PDV não tem mapa confirmado no tenant e PDV esperados.');
-  const batch = await tx.pdvMigrationBatch.findFirst({ where: { id: map.lastBatchId, runId: map.lastRunId } });
+  const batch = await readConfirmedBatch(tx, map.lastRunId, map.lastBatchId);
   const receipt = (batch?.checkpoint as any)?.receipts?.find((entry: any) => entry.sourceType === sourceType && entry.sourceId === sourceId);
   if (batch?.status !== 'CONFIRMED' || receipt?.destinationType !== 'PONTO_VENDA' || receipt?.destinationId !== pointId) throw new PdvCatalogBlocker('DEPENDENCY_RECEIPT_DIVERGED', sourceType, sourceId, 'Recibo do PDV canônico ausente ou divergente.');
   const canonical = await tx.pontoVenda.findUnique({ where: { id: pointId } });
@@ -120,15 +172,21 @@ async function confirmDependency(tx: Db, companyId: string, pointId: string, sou
 }
 
 async function verifyMap(tx: Db, item: any, companyId: string, pointId: string, version = PDV_CATALOG_TRANSFORM_VERSION) {
-  const map = await tx.pdvMigrationMap.findUnique({ where: { sourceType_sourceId: { sourceType: item.type, sourceId: item.id } } });
-  if (!map) return null;
+  const cache = transactionProofCache(tx).maps;
+  const cacheKey = key(item.type, item.id);
+  const expectedHash = canonicalPdvPayloadHash({ companyId, pointId, version, destinationType: item.destinationType, destinationId: item.destinationId, sourcePayload: item.sourcePayload });
+  const cached = cache.get(cacheKey);
+  if (cached?.expectedHash === expectedHash) return cached.value;
+  const map = await readMigrationMap(tx, item.type, item.id);
+  if (!map) { cache.set(cacheKey, { expectedHash, value: null }); return null; }
   if (map.cervejariaId !== companyId || map.pontoVendaId !== pointId || map.destinationType !== item.destinationType || map.destinationId !== item.destinationId) throw new PdvCatalogBlocker('MAP_IDENTITY_MISMATCH', item.type, item.id, 'Mapa aponta para tenant, PDV ou destino diferente.');
   if (map.transformVersion !== version || map.payloadHash !== canonicalPdvPayloadHash(item.sourcePayload) || canonicalPdvPayloadHash(map.sourcePayload) !== canonicalPdvPayloadHash(item.sourcePayload)) throw new PdvCatalogBlocker('SOURCE_PAYLOAD_CHANGED', item.type, item.id, 'Payload original difere do mapa estável.');
-  const batch = map.lastBatchId ? await tx.pdvMigrationBatch.findFirst({ where: { id: map.lastBatchId, runId: map.lastRunId } }) : null;
+  const batch = map.lastBatchId ? await readConfirmedBatch(tx, map.lastRunId, map.lastBatchId) : null;
   const receipt = (batch?.checkpoint as any)?.receipts?.find((row: any) => row.sourceType === item.type && row.sourceId === item.id);
   if (batch?.status !== 'CONFIRMED' || receipt?.destinationId !== item.destinationId || receipt?.payloadHash !== map.payloadHash) throw new PdvCatalogBlocker('MAP_RECEIPT_MISSING', item.type, item.id, 'Mapa não tem recibo de lote confirmado correspondente.');
   const destinationHash = await verifyDestination(tx, item);
   if (destinationHash !== receipt.destinationHash) throw new PdvCatalogBlocker('MAPPED_DESTINATION_DIVERGED', item.type, item.id, 'Destino diverge do recibo imutável confirmado.');
+  cache.set(cacheKey, { expectedHash, value: map });
   return map;
 }
 
@@ -273,6 +331,7 @@ export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
             const item = batchItems[index];
             const existingMap = existingMaps[index];
             const destinationCreated = existingMap ? false : await (options.writeItem ? options.writeItem(tx, item, Boolean(existingMap)) : writeTarget(tx, item));
+            invalidateTransactionProofCache(tx, item);
             if (options.afterDestinationWrite) await options.afterDestinationWrite(item, tx);
             const destinationHash = await verifyDestination(tx, item);
             if (existingMap) {
