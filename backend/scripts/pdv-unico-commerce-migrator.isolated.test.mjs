@@ -207,6 +207,155 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const secondOwnerCookie = await login(secondOwner.email, secondOwnerPassword, 'DONO');
     const adminCookie = await login(authAdmin.email, adminPassword, 'ADMIN');
 
+    const raceCompany = await db.cervejaria.create({ data: { nome: `API lock race ${runId}`, slug: `api-lock-race-${runId}` } });
+    await db.configuracaoOperacional.create({ data: { cervejariaId: raceCompany.id, plannedOperationsEnabled: false } });
+    await db.configuracaoOperacao.create({ data: { cervejariaId: raceCompany.id } });
+    const raceOwner = await db.usuario.create({ data: { id: `api-lock-race-owner-${runId}`, nome: 'API lock race owner', email: `api-lock-race-${runId}@example.invalid`, senhaHash: ownerHash, papel: 'DONO', cervejariaId: raceCompany.id } });
+    const raceOwnerCookie = await login(raceOwner.email, ownerPassword, 'DONO');
+    delete process.env.PDV_CANONICAL_CONFIG_QA;
+    let raceResponses;
+    try {
+      raceResponses = await Promise.all([1, 2].map((index) => app.inject({
+        method: 'POST', url: '/api/operacao/pontos-venda', headers: { cookie: raceOwnerCookie }, payload: { nome: `Race ${index}` },
+      })));
+    } finally {
+      process.env.PDV_CANONICAL_CONFIG_QA = '1';
+    }
+    assert.deepEqual(raceResponses.map((response) => response.statusCode).sort(), [201, 409], 'two concurrent authenticated first-PDV requests are serialized with one creation and one no-write conflict');
+    assert.deepEqual([await db.pontoVenda.count({ where: { cervejariaId: raceCompany.id } }), await db.configuracaoPontoVenda.count({ where: { cervejariaId: raceCompany.id } })], [1, 0], 'legacy-mode API race leaves exactly one point and does not touch the canonical table');
+
+    const provisionPayload = {
+      nome: `Provisioned canonical ${runId}`,
+      dono: { nome: 'Provisioned owner', email: `provisioned-owner-${runId}@example.invalid`, senha: ownerPassword },
+    };
+    const provisionResponses = await Promise.all([1, 2].map(() => app.inject({
+      method: 'POST', url: '/api/admin/cervejarias/provision', headers: { cookie: adminCookie }, payload: provisionPayload,
+    })));
+    assert.deepEqual(provisionResponses.map((response) => response.statusCode).sort(), [201, 409], 'concurrent authenticated provisioning creates one tenant and reports the unique conflict as a retry-safe 409');
+    const provisioned = JSON.parse(provisionResponses.find((response) => response.statusCode === 201).body);
+    const provisionedPoint = await db.pontoVenda.findMany({ where: { cervejariaId: provisioned.cervejaria.id } });
+    const provisionedConfig = await db.configuracaoPontoVenda.findMany({ where: { cervejariaId: provisioned.cervejaria.id } });
+    assert.equal(provisionedPoint.length, 1, 'new canonical company is born with one PDV');
+    assert.equal(provisionedConfig.length, 1, 'new canonical company is born with one PDV configuration');
+    assert.deepEqual([provisionedConfig[0].tapsEnabled, provisionedConfig[0].inventoryEnabled, provisionedConfig[0].kitchenEnabled, provisionedConfig[0].quantidadeMesas], [false, false, false, null], 'omitted enablements use documented disabled/null defaults');
+    const provisionedOwnerCookie = await login(provisionPayload.dono.email, provisionPayload.dono.senha, 'DONO');
+    const retryBefore = plain({
+      company: await db.cervejaria.findUniqueOrThrow({ where: { id: provisioned.cervejaria.id } }),
+      point: provisionedPoint,
+      config: provisionedConfig,
+      owners: await db.usuario.count({ where: { cervejariaId: provisioned.cervejaria.id, papel: 'DONO' } }),
+    });
+    const provisioningRetry = await app.inject({ method: 'POST', url: '/api/admin/cervejarias/provision', headers: { cookie: adminCookie }, payload: provisionPayload });
+    assert.equal(provisioningRetry.statusCode, 409, 'repeating the same authenticated provisioning request does not create another company');
+    assert.deepEqual(plain({
+      company: await db.cervejaria.findUniqueOrThrow({ where: { id: provisioned.cervejaria.id } }),
+      point: await db.pontoVenda.findMany({ where: { cervejariaId: provisioned.cervejaria.id } }),
+      config: await db.configuracaoPontoVenda.findMany({ where: { cervejariaId: provisioned.cervejaria.id } }),
+      owners: await db.usuario.count({ where: { cervejariaId: provisioned.cervejaria.id, papel: 'DONO' } }),
+    }), retryBefore, 'retry leaves company, PDV, config, and owner unchanged');
+
+    const setupResponse = await app.inject({ method: 'PATCH', url: '/api/cervejaria/configuracao-operacional', headers: { cookie: provisionedOwnerCookie }, payload: {
+      operationMode: 'CAIXA', tapsEnabled: false, inventoryEnabled: false, kitchenEnabled: false,
+      quantidadeMesas: 7, completeInitialSetup: true,
+    } });
+    assert.equal(setupResponse.statusCode, 200, `canonical setup persists on the PDV: ${setupResponse.body}`);
+    const canonicalSetup = JSON.parse(setupResponse.body);
+    assert.deepEqual([canonicalSetup.configurationSource, canonicalSetup.pontoVendaId, canonicalSetup.quantidadeMesas, canonicalSetup.setupCompletedAt != null], ['CANONICAL_PDV', provisionedPoint[0].id, 7, true]);
+    const canonicalBeforeEventSelection = plain({
+      pointConfig: await db.configuracaoPontoVenda.findUniqueOrThrow({ where: { pontoVendaId: provisionedPoint[0].id } }),
+      setup: await db.configuracaoOperacional.findUniqueOrThrow({ where: { cervejariaId: provisioned.cervejaria.id } }),
+    });
+    const eventSelection = await app.inject({ method: 'PATCH', url: '/api/cervejaria/configuracao-operacional', headers: { cookie: provisionedOwnerCookie }, payload: { operationMode: 'EVENTO' } });
+    assert.equal(eventSelection.statusCode, 409, 'canonical setup cannot switch the operating motor to EVENTO');
+    assert.deepEqual(plain({
+      pointConfig: await db.configuracaoPontoVenda.findUniqueOrThrow({ where: { pontoVendaId: provisionedPoint[0].id } }),
+      setup: await db.configuracaoOperacional.findUniqueOrThrow({ where: { cervejariaId: provisioned.cervejaria.id } }),
+    }), canonicalBeforeEventSelection, 'rejected motor selection does not change PDV settings or setup metadata');
+    const provisionedContext = await app.inject({ method: 'GET', url: '/api/operacao/contexto', headers: { cookie: provisionedOwnerCookie } });
+    assert.equal(provisionedContext.statusCode, 200);
+    assert.deepEqual([JSON.parse(provisionedContext.body).operationMode, JSON.parse(provisionedContext.body).quantidadeMesas, JSON.parse(provisionedContext.body).pontosVenda.length], ['CAIXA', 7, 1], 'canonical context consumes the PDV parameters and exposes only its single point');
+
+    const productResponse = await app.inject({ method: 'POST', url: '/api/operacao/produtos', headers: { cookie: provisionedOwnerCookie }, payload: {
+      nome: `Provisioned item ${runId}`, categoria: 'Bebidas', precoUnit: 9.5, tipo: 'BEBIDA', formato: 'LATA', controlaEstoque: true,
+    } });
+    assert.equal(productResponse.statusCode, 201, `new owner configures the catalog through the authenticated API: ${productResponse.body}`);
+    const provisionedProduct = JSON.parse(productResponse.body);
+    const menuResponse = await app.inject({ method: 'POST', url: '/api/operacao/cardapios', headers: { cookie: provisionedOwnerCookie }, payload: {
+      nome: `Provisioned menu ${runId}`, itens: [{ produtoId: provisionedProduct.id, volumeMl: 0, precoUnit: 9.5 }],
+    } });
+    assert.equal(menuResponse.statusCode, 201, `new owner configures a saved menu through the authenticated API: ${menuResponse.body}`);
+    const provisionedMenu = JSON.parse(menuResponse.body);
+    const cashOpen = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie: provisionedOwnerCookie }, payload: {
+      pontoVendaId: provisionedPoint[0].id, trocoInicial: 5, cardapioId: provisionedMenu.id,
+    } });
+    assert.equal(cashOpen.statusCode, 201, `new canonical PDV opens the Por Caixa session: ${cashOpen.body}`);
+    const provisionedSession = JSON.parse(cashOpen.body);
+    const commandOpen = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie: provisionedOwnerCookie }, payload: {
+      pontoVendaId: provisionedPoint[0].id, tipo: 'APELIDO', identificador: `new-tenant-sale-${runId}`,
+    } });
+    assert.equal(commandOpen.statusCode, 201, `new canonical PDV opens a sale: ${commandOpen.body}`);
+    const provisionedCommandId = JSON.parse(commandOpen.body).id;
+    const launch = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(provisionedCommandId)}/pedidos`, headers: { cookie: provisionedOwnerCookie }, payload: {
+      itens: [{ produtoId: provisionedProduct.id, quantidade: 2 }],
+    } });
+    assert.equal(launch.statusCode, 201, `new canonical PDV sells from its saved menu: ${launch.body}`);
+    assert.equal(centsExact(JSON.parse(launch.body).total), '1900');
+    const payment = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(provisionedCommandId)}/pagamentos`, headers: { cookie: provisionedOwnerCookie }, payload: {
+      pagamentos: [{ forma: 'PIX', valor: 19 }],
+    } });
+    assert.equal(payment.statusCode, 200, `new canonical PDV records payment: ${payment.body}`);
+    const cashClose = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: provisionedOwnerCookie }, payload: {
+      pontoVendaId: provisionedPoint[0].id, contadoDinheiro: 5, contadoPix: 19, contadoCartaoDebito: 0, contadoCartaoCredito: 0,
+    } });
+    assert.equal(cashClose.statusCode, 200, `new canonical PDV closes the Por Caixa session: ${cashClose.body}`);
+    const provisionedSale = await db.comanda.findUniqueOrThrow({ where: { id: provisionedCommandId } });
+    assert.deepEqual([provisionedSale.status, provisionedSale.origem, provisionedSale.sessaoCaixaRealizacaoId, provisionedSale.pontoVendaId], ['FECHADA', 'CAIXA', provisionedSession.id, provisionedPoint[0].id], 'new company uses Por Caixa and preserves the realization session required by financial turn reports');
+    assert.equal((await db.pagamento.findMany({ where: { comandaId: provisionedCommandId } })).reduce((sum, row) => sum + BigInt(centsExact(row.valor)), 0n), 1900n);
+    assert.equal((await db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: provisionedSession.id } })).status, 'FECHADO');
+
+    const beforeDuplicate = plain({
+      points: await db.pontoVenda.findMany({ where: { cervejariaId: provisioned.cervejaria.id }, orderBy: { id: 'asc' } }),
+      configs: await db.configuracaoPontoVenda.findMany({ where: { cervejariaId: provisioned.cervejaria.id }, orderBy: { id: 'asc' } }),
+    });
+    const duplicateCalls = await Promise.all([1, 2].map(() => app.inject({ method: 'POST', url: '/api/operacao/pontos-venda', headers: { cookie: provisionedOwnerCookie }, payload: { nome: 'Must not replace Principal' } })));
+    assert.deepEqual(duplicateCalls.map((response) => response.statusCode), [409, 409], 'DONO cannot create another PDV, including concurrent retries');
+    assert.deepEqual(plain({
+      points: await db.pontoVenda.findMany({ where: { cervejariaId: provisioned.cervejaria.id }, orderBy: { id: 'asc' } }),
+      configs: await db.configuracaoPontoVenda.findMany({ where: { cervejariaId: provisioned.cervejaria.id }, orderBy: { id: 'asc' } }),
+    }), beforeDuplicate, 'duplicate attempts do not modify the existing PDV or its config');
+    const beforeForeignPdvSelection = plain({
+      primaryPoints: await db.pontoVenda.findMany({ where: { cervejariaId: primaryCompany.id }, orderBy: { id: 'asc' } }),
+      primaryConfigs: await db.configuracaoPontoVenda.findMany({ where: { cervejariaId: primaryCompany.id }, orderBy: { id: 'asc' } }),
+      secondPoints: await db.pontoVenda.findMany({ where: { cervejariaId: secondCompany.id }, orderBy: { id: 'asc' } }),
+      secondConfigs: await db.configuracaoPontoVenda.findMany({ where: { cervejariaId: secondCompany.id }, orderBy: { id: 'asc' } }),
+    });
+    const foreignPdvSelection = await app.inject({ method: 'POST', url: '/api/operacao/pontos-venda', headers: { cookie: secondOwnerCookie }, payload: { nome: 'foreign write', cervejariaId: primaryCompany.id } });
+    assert.equal(foreignPdvSelection.statusCode, 400, 'another tenant cannot select a target tenant in the PDV creation payload');
+    assert.deepEqual(plain({
+      primaryPoints: await db.pontoVenda.findMany({ where: { cervejariaId: primaryCompany.id }, orderBy: { id: 'asc' } }),
+      primaryConfigs: await db.configuracaoPontoVenda.findMany({ where: { cervejariaId: primaryCompany.id }, orderBy: { id: 'asc' } }),
+      secondPoints: await db.pontoVenda.findMany({ where: { cervejariaId: secondCompany.id }, orderBy: { id: 'asc' } }),
+      secondConfigs: await db.configuracaoPontoVenda.findMany({ where: { cervejariaId: secondCompany.id }, orderBy: { id: 'asc' } }),
+    }), beforeForeignPdvSelection, 'foreign-tenant selection leaves both tenants untouched');
+
+    const failedEmail = `rollback-owner-${runId}@example.invalid`;
+    const triggerName = `qa_fail_pdv_config_${runId}`.replaceAll(/[^a-zA-Z0-9_]/g, '_');
+    await db.$executeRawUnsafe(`CREATE OR REPLACE FUNCTION quiosque.${triggerName}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'QA injected canonical config failure'; END $$`);
+    await db.$executeRawUnsafe(`CREATE TRIGGER ${triggerName} BEFORE INSERT ON quiosque."ConfiguracaoPontoVenda" FOR EACH ROW EXECUTE FUNCTION quiosque.${triggerName}()`);
+    let failedProvision;
+    try {
+      failedProvision = await app.inject({ method: 'POST', url: '/api/admin/cervejarias/provision', headers: { cookie: adminCookie }, payload: {
+        nome: `Rollback tenant ${runId}`, dono: { nome: 'Rollback owner', email: failedEmail, senha: ownerPassword },
+      } });
+    } finally {
+      await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS ${triggerName} ON quiosque."ConfiguracaoPontoVenda"`);
+      await db.$executeRawUnsafe(`DROP FUNCTION IF EXISTS quiosque.${triggerName}()`);
+    }
+    assert.equal(failedProvision.statusCode, 500, 'intermediate config failure propagates after the transaction rollback');
+    assert.equal(await db.cervejaria.count({ where: { nome: `Rollback tenant ${runId}` } }), 0);
+    assert.equal(await db.usuario.count({ where: { email: failedEmail } }), 0);
+    assert.equal(await db.pontoVenda.count({ where: { cervejaria: { nome: `Rollback tenant ${runId}` } } }), 0);
+
     // One real RECEBIDO kitchen order exercises the effective setting through
     // create/recalculation, response summary, payment guard and persisted total.
     const kitchenProduct = await db.produto.create({ data: {
@@ -2118,7 +2267,60 @@ try {
   assert.deepEqual([blockedWrongPoint.status, blockedWrongPoint.code], ['BLOCKED', 'OCCURRENCE_MULTIPLE_CANONICAL_PDVS'], 'adding a second canonical PDV invalidates upstream occurrence certification before downstream commerce mapping');
   assert.equal((await db.comanda.findUniqueOrThrow({ where: { id: wrongPointCommand.id } })).pontoVendaId, alternatePoint.id, 'incompatible historical link is preserved');
 
-  console.log(`PDV_COMMERCE_QA=PASS; migrations=${applied.length}; coverage=commands:4/items:2/sold-optionals:1/kitchen-orders:2/history:6/balances:1/movements:1/unattached:1; mapped=${completed.checkpoint.totalRecords}; rollback=atomic+mid-batch-divergence; parent-link-tamper=3-specific-blockers; same-db-scopes=business,catalog,sessions,finance,commerce; reexecution=same,new; concurrent-tenant-auth-cash-flows=2; canonical-blockers=3-specific-codes; stock-tamper=BLOCKED; PROD_ACCESS_USED=NO`);
+  // Prove that the legacy close path works with both the old database column
+  // set and a Prisma Client generated from the pre-column model.
+  const preColumnSchemaPath = path.join(tempRoot, 'pre-session-context-schema.prisma');
+  const preColumnGenerateSchemaPath = path.join(tempRoot, 'generate-pre-session-context-schema.prisma');
+  const preColumnClientDir = path.join(backendRoot, 'node_modules', '.prisma', `pdv-pre-session-context-${runId}`);
+  let preColumnSchemaText = candidateSchema.toString('utf8')
+    .replace(/^\s*sessaoCaixaRealizacaoId\s+String\?\s*\r?\n/m, '')
+    .replace(/^\s*sessaoCaixaRealizacao\s+SessaoCaixaOperacao\?.*\r?\n/m, '')
+    .replace(/^\s*vendasRealizadas\s+Comanda\[\]\s*\r?\n/m, '');
+  assert(!preColumnSchemaText.includes('sessaoCaixaRealizacaoId'), 'old client schema omits the new realization-session column');
+  await writeFile(preColumnSchemaPath, preColumnSchemaText);
+  preColumnSchemaText = preColumnSchemaText.replace('provider = "prisma-client-js"', `provider = "prisma-client-js"\n  output = "${preColumnClientDir.replaceAll('\\', '/')}"`);
+  await writeFile(preColumnGenerateSchemaPath, preColumnSchemaText);
+  runPrisma(['validate', '--schema', preColumnGenerateSchemaPath]);
+  runPrisma(['generate', '--schema', preColumnGenerateSchemaPath]);
+
+  const legacyCloseCompany = await db.cervejaria.create({ data: { nome: `Legacy close schema ${runId}`, slug: `legacy-close-schema-${runId}` } });
+  const legacyCloseOwner = await db.usuario.create({ data: { id: id('legacy-close-owner'), nome: 'Legacy close owner', email: `legacy-close-owner-${runId}@example.invalid`, senhaHash: ownerHash, papel: 'DONO', cervejariaId: legacyCloseCompany.id } });
+  const legacyClosePoint = await db.pontoVenda.create({ data: { cervejariaId: legacyCloseCompany.id, nome: 'Legacy close PDV' } });
+  const legacyCloseSession = await db.sessaoCaixaOperacao.create({ data: {
+    cervejariaId: legacyCloseCompany.id, pontoVendaId: legacyClosePoint.id, diaOperacional: new Date('2026-11-20T00:00:00.000Z'),
+    trocoInicial: '0.00', abertoPorId: legacyCloseOwner.id,
+  } });
+  const legacyCloseCommand = await db.comanda.create({ data: {
+    origem: 'CAIXA', pontoVendaId: legacyClosePoint.id, tipo: 'AVULSA', status: 'ABERTA', total: '10.00', abertaPorId: legacyCloseOwner.id,
+  } });
+  await db.$executeRawUnsafe('ALTER TABLE public."Comanda" DROP CONSTRAINT IF EXISTS "Comanda_pontoVendaId_sessaoCaixaRealizacaoId_fkey"');
+  await db.$executeRawUnsafe('ALTER TABLE public."Comanda" DROP CONSTRAINT IF EXISTS "Comanda_sessaoRealizacao_requer_ponto_check"');
+  await db.$executeRawUnsafe('DROP INDEX IF EXISTS public."Comanda_sessaoCaixaRealizacaoId_idx"');
+  await db.$executeRawUnsafe('ALTER TABLE public."Comanda" DROP COLUMN "sessaoCaixaRealizacaoId"');
+  const { Prisma: PreColumnPrisma, PrismaClient: PreColumnPrismaClient } = await import(pathToFileURL(path.join(preColumnClientDir, 'index.js')).href);
+  const preColumnClient = new PreColumnPrismaClient({ datasources: { db: { url: databaseUrl } } });
+  const oldComandaModel = PreColumnPrisma.dmmf.datamodel.models.find((model) => model.name === 'Comanda');
+  assert(oldComandaModel && !oldComandaModel.fields.some((field) => field.name === 'sessaoCaixaRealizacaoId'), 'generated Prisma Client predates the new realization-session column');
+  const previousPdvFlag = process.env.PDV_CANONICAL_CONFIG_QA;
+  delete process.env.PDV_CANONICAL_CONFIG_QA;
+  try {
+    const { fecharComandaComPagamentos } = await import('../src/lib/fechar-comanda.ts');
+    const closed = await preColumnClient.$transaction((tx) => fecharComandaComPagamentos(tx, {
+      comanda: { id: legacyCloseCommand.id, total: 10, tipo: 'AVULSA', origem: 'CAIXA', itens: [] },
+      pagamentos: [{ forma: 'PIX', valor: 10 }], cervejariaId: legacyCloseCompany.id, usuarioId: legacyCloseOwner.id,
+      fechadaEm: new Date('2026-11-20T15:00:00.000Z'), origem: 'CAIXA', sessaoCaixaId: legacyCloseSession.id,
+    }));
+    assert.equal(closed.status, 'FECHADA', 'legacy close succeeds with database column and generated client both predating the field');
+    assert.equal((await preColumnClient.pagamento.findFirstOrThrow({ where: { comandaId: legacyCloseCommand.id } })).sessaoCaixaId, legacyCloseSession.id, 'legacy payment still records its cash session');
+    assert.equal(await db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Comanda' AND column_name='sessaoCaixaRealizacaoId'`.then((rows) => rows.length), 0, 'legacy database has no realization-session column during close');
+  } finally {
+    if (previousPdvFlag === undefined) delete process.env.PDV_CANONICAL_CONFIG_QA;
+    else process.env.PDV_CANONICAL_CONFIG_QA = previousPdvFlag;
+    await preColumnClient.$disconnect();
+    await rm(preColumnClientDir, { recursive: true, force: true });
+  }
+
+  console.log(`PDV_COMMERCE_QA=PASS; migrations=${applied.length}; coverage=commands:4/items:2/sold-optionals:1/kitchen-orders:2/history:6/balances:1/movements:1/unattached:1; mapped=${completed.checkpoint.totalRecords}; rollback=atomic+mid-batch-divergence; parent-link-tamper=3-specific-blockers; same-db-scopes=business,catalog,sessions,finance,commerce; reexecution=same,new; concurrent-tenant-auth-cash-flows=2; canonical-blockers=3-specific-codes; provision=one-pdv+config/retry+concurrency+rollback; legacy-close=pre-column-schema-and-client; stock-tamper=BLOCKED; PROD_ACCESS_USED=NO`);
 } finally {
   await consumerPrisma?.$disconnect();
   await db?.$disconnect();

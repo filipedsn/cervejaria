@@ -168,7 +168,7 @@ export function AdminCervejariasPage() {
   const { data: editingConfiguration, isLoading: isEditingConfigurationLoading } = useQuery({
     queryKey: ['admin-operational-configuration', editing?.id],
     enabled: Boolean(editing?.id),
-    queryFn: () => api.get<Record<`${keyof Enablements}Enabled`, boolean>>(`/api/admin/cervejarias/${editing!.id}/configuracao-operacional`),
+    queryFn: () => api.get<Record<`${keyof Enablements}Enabled`, boolean> & { configurationSource?: 'LEGACY' | 'CANONICAL_PDV' }>(`/api/admin/cervejarias/${editing!.id}/configuracao-operacional`),
   });
 
   useEffect(() => {
@@ -181,8 +181,8 @@ export function AdminCervejariasPage() {
   useEffect(() => {
     if (!editingConfiguration) return;
     setEnablements({
-      cashMode: editingConfiguration.plannedOperationsEnabled !== true,
-      plannedOperations: editingConfiguration.plannedOperationsEnabled,
+      cashMode: editingConfiguration.configurationSource === 'CANONICAL_PDV' || editingConfiguration.plannedOperationsEnabled !== true,
+      plannedOperations: editingConfiguration.configurationSource === 'CANONICAL_PDV' ? false : editingConfiguration.plannedOperationsEnabled,
       taps: editingConfiguration.tapsEnabled,
       inventory: editingConfiguration.inventoryEnabled,
       kitchen: editingConfiguration.kitchenEnabled,
@@ -590,11 +590,15 @@ export function AdminCervejariasPage() {
             ) : <>
             <label className="label">Capacidades operacionais</label>
             <p className="text-xs text-ink-faint">Defina os recursos que fazem parte desta operaÃ§Ã£o.</p>
+            {editingConfiguration.configurationSource === 'CANONICAL_PDV' ? (
+              <><label className="label">Motor operacional</label><p className="text-sm text-ink-muted">Por Caixa é o motor único; eventos continuam como contexto de agenda.</p></>
+            ) : <>
             <label className="label">Como este estabelecimento trabalha?</label>
             <div className="grid gap-2 sm:grid-cols-2">
               <button type="button" className={`card text-left ${enablements.cashMode ? 'ring-2 ring-brand-400' : ''}`} onClick={() => setEnablements((current) => ({ ...current, cashMode: true, plannedOperations: false }))}>Por caixa</button>
               <button type="button" className={`card text-left ${enablements.plannedOperations ? 'ring-2 ring-brand-400' : ''}`} onClick={() => setEnablements((current) => ({ ...current, cashMode: false, plannedOperations: true }))}>Por operações / eventos</button>
             </div>
+            </>}
             {CAPABILITY_OPTIONS.filter(([key]) => key !== 'cashMode' && key !== 'plannedOperations').map(([key]) => (
               <ModuloOption key={key} titulo={CAPABILITY_COPY[key].title} descricao={CAPABILITY_COPY[key].description} marcado={enablements[key]} onChange={(value) => setEnablements((current) => ({ ...current, [key]: value }))} />
             ))}

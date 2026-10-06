@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 type OperationMode = 'CAIXA' | 'EVENTO';
 type OperationalSetupResponse = {
   configuration: {
+    configurationSource?: 'LEGACY' | 'CANONICAL_PDV';
     setupCompletedAt?: string | null;
     plannedOperationsEnabled?: boolean | null;
     tapsEnabled?: boolean | null;
@@ -34,7 +35,9 @@ export function OperationalSetupWizard() {
   useEffect(() => {
     const config = data?.configuration;
     if (!config || config.setupCompletedAt != null) return;
-    setMode(config.plannedOperationsEnabled == null ? null : config.plannedOperationsEnabled ? 'EVENTO' : 'CAIXA');
+    setMode(config.configurationSource === 'CANONICAL_PDV'
+      ? 'CAIXA'
+      : config.plannedOperationsEnabled == null ? null : config.plannedOperationsEnabled ? 'EVENTO' : 'CAIXA');
     setTaps(config.tapsEnabled ?? false);
     setInventory(config.inventoryEnabled ?? false);
     setKitchen(config.kitchenEnabled ?? false);
@@ -64,6 +67,7 @@ export function OperationalSetupWizard() {
   });
 
   const open = Boolean(data?.configuration && data.configuration.setupCompletedAt == null);
+  const canonicalPdv = data?.configuration?.configurationSource === 'CANONICAL_PDV';
 
   return (
     <Modal
@@ -112,11 +116,11 @@ export function OperationalSetupWizard() {
               <span className="block font-semibold">Por caixa</span>
               <span className="mt-1 block text-sm text-ink-muted">Abra um caixa por turno para registrar comandas e vendas do balcão.</span>
             </button>
-            <button type="button" className={`card w-full border-2 text-left transition-colors ${mode === 'EVENTO' ? 'border-brand-400 bg-brand-500/15 ring-2 ring-brand-400/50' : 'border-line'}`} aria-pressed={mode === 'EVENTO'} data-selected={mode === 'EVENTO'} onClick={() => setMode('EVENTO')}>
+            {!canonicalPdv && <button type="button" className={`card w-full border-2 text-left transition-colors ${mode === 'EVENTO' ? 'border-brand-400 bg-brand-500/15 ring-2 ring-brand-400/50' : 'border-line'}`} aria-pressed={mode === 'EVENTO'} data-selected={mode === 'EVENTO'} onClick={() => setMode('EVENTO')}>
               {mode === 'EVENTO' && <span className="mb-2 inline-flex rounded-full bg-brand-500/20 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-brand-300">✓ Selecionado</span>}
               <span className="block font-semibold">Por operações ou eventos</span>
               <span className="mt-1 block text-sm text-ink-muted">Crie uma operação para cada evento ou atendimento, iniciando agora ou agendando.</span>
-            </button>
+            </button>}
           </section>
         ) : (
           <section className="space-y-3" aria-labelledby="operational-setup-features">

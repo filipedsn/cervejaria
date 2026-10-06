@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { prisma } from '../prisma.js';
 import { getAuthUser } from '../../types/auth.js';
+import { createSinglePdv } from '../single-pdv-provisioning.js';
 import {
   getOperationalProfile,
   type OperationalProfile,
@@ -91,7 +92,7 @@ export function requireCatalogAccess(app: FastifyInstance) {
  * Recebe o client da transacao para nascer junto com o cadastro da empresa.
  */
 export async function ativarModuloOperacao(
-  tx: Pick<typeof prisma, 'configuracaoOperacao' | 'pontoVenda'>,
+  tx: any,
   params: {
     cervejariaId: string;
     controlaEstoque: boolean;
@@ -109,10 +110,18 @@ export async function ativarModuloOperacao(
     },
   });
 
-  const pontoVenda = await tx.pontoVenda.create({
-    data: {
-      cervejariaId: params.cervejariaId,
-      nome: params.nomePontoVenda?.trim() || 'Principal',
+  const { pontoVenda } = await createSinglePdv(tx, {
+    cervejariaId: params.cervejariaId,
+    nome: params.nomePontoVenda?.trim() || 'Principal',
+    operationalSettings: {
+      tapsEnabled: false,
+      inventoryEnabled: params.controlaEstoque,
+      kitchenEnabled: params.temCozinha,
+      kitchenItemsChargeAtLaunch: false,
+      allowCloseComandaWithPendingKitchenOrders: false,
+      whatsappPedidoProntoEnabled: false,
+      whatsappPedidoProntoNaCozinha: false,
+      quantidadeMesas: null,
     },
   });
 

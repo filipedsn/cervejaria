@@ -6,6 +6,7 @@ import { recordComandaFechada } from './business-metrics.js';
 import { toNumber } from './utils.js';
 import { lockComandaItemsInTx } from './comanda-service.js';
 import { normalizePhone } from './phone.js';
+import { canonicalPdvQaActivationEnabled } from './canonical-pdv-operational-config.js';
 
 export type PagamentoInput = {
   forma: 'DINHEIRO' | 'PIX' | 'CARTAO' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO';
@@ -162,6 +163,10 @@ export async function fecharComandaComPagamentos(
   const desconto = toNumber(comandaAtual.desconto ?? 0);
   const origem = params.origem ?? comandaAtual.origem;
   const linhasPagamento = params.pagamentosDetalhados ?? pagamentos;
+  const canonicalPdv = canonicalPdvQaActivationEnabled();
+  if (canonicalPdv && origem === 'CAIXA' && !params.sessaoCaixaId) {
+    throw Object.assign(new Error('O fechamento canônico exige a sessão Por Caixa de realização.'), { statusCode: 409 });
+  }
 
   if (params.deixarPendente) {
     const cliente = comandaAtual.clienteId
@@ -187,7 +192,7 @@ export async function fecharComandaComPagamentos(
     where: { id: comandaAtual.id, status: 'ABERTA' },
     data: {
       status: 'FECHADA', fechadoPorId: usuarioId, fechadaEm,
-      ...(params.sessaoCaixaId ? { sessaoCaixaRealizacaoId: params.sessaoCaixaId } : {}),
+      ...(canonicalPdv && params.sessaoCaixaId ? { sessaoCaixaRealizacaoId: params.sessaoCaixaId } : {}),
     },
   });
   if (fechou.count === 0) {

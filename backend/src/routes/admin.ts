@@ -14,7 +14,6 @@ import {
   saveLogoAndExtractBranding,
   updateBrandingColors,
 } from '../lib/cervejaria-branding.js';
-import { ensureDefaultTaps } from '../lib/trailer-defaults.js';
 import { adaptLegacyProvisioning, provisionEstablishment, provisionEstablishmentRequestSchema } from '../lib/provision-establishment.js';
 import { readOperationalConfig, updateOperationalConfig, updateOperationalConfigSchema } from '../lib/operational-config.js';
 import { getAuthUser } from '../types/auth.js';
@@ -28,6 +27,10 @@ import { resetEmailTransporter, sendTestEmail } from '../lib/email.js';
 import { getBackupFilePath, listBackupFiles, runDatabaseBackup } from '../lib/backup.js';
 
 const ALLOWED_LOGO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
+}
 
 /// Multipart entrega tudo como string, e z.coerce.boolean() trataria "false"
 /// como true por ser string nao vazia.
@@ -299,11 +302,17 @@ export async function adminRoutes(app: FastifyInstance) {
     let slug = slugify(body.nome);
     if (await prisma.cervejaria.findUnique({ where: { slug } })) slug = `${slug}-${Date.now().toString(36)}`;
     const senhaHash = await hashPassword(body.dono.senha);
-    const result = await prisma.$transaction((tx) => provisionEstablishment(tx, {
-      ...body,
-      slug,
-      dono: { ...body.dono, senhaHash },
-    }));
+    let result: Awaited<ReturnType<typeof provisionEstablishment>>;
+    try {
+      result = await prisma.$transaction((tx) => provisionEstablishment(tx, {
+        ...body,
+        slug,
+        dono: { ...body.dono, senhaHash },
+      }));
+    } catch (error) {
+      if (isUniqueConstraintError(error)) return reply.status(409).send({ error: 'Empresa ou proprietário já cadastrado.' });
+      throw error;
+    }
     return reply.status(201).send(result);
   });
 
@@ -336,21 +345,17 @@ export async function adminRoutes(app: FastifyInstance) {
       operacaoControlaEstoque: body.operacaoControlaEstoque === true,
       operacaoTemCozinha: body.operacaoTemCozinha === true,
     }, slug);
-    const result = await prisma.$transaction((tx) => provisionEstablishment(tx, legacy.input, legacy.resources));
+    let result: Awaited<ReturnType<typeof provisionEstablishment>>;
+    try {
+      result = await prisma.$transaction((tx) => provisionEstablishment(tx, legacy.input, legacy.resources));
+    } catch (error) {
+      if (isUniqueConstraintError(error)) return reply.status(409).send({ error: 'Empresa ou proprietário já cadastrado.' });
+      throw error;
+    }
 
     let cervejaria = result.cervejaria;
     if (logoBuffer) {
       cervejaria = await saveLogoAndExtractBranding(cervejaria.id, logoBuffer);
-    }
-
-    if (moduloCervejaria) {
-      const trailer = await prisma.trailer.findFirst({
-        where: { cervejariaId: cervejaria.id },
-        orderBy: { createdAt: 'asc' },
-      });
-      if (trailer) {
-        await ensureDefaultTaps(trailer.id, cervejaria.id);
-      }
     }
 
     return reply.status(201).send({ cervejaria, dono: result.dono });

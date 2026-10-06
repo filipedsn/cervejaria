@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createSinglePdv } from './single-pdv-provisioning.js';
 
 export const establishmentEnablementsSchema = z.object({
   plannedOperations: z.boolean(),
@@ -20,8 +21,6 @@ export type ProvisionEstablishmentInput = {
 };
 
 export type ProvisioningResources = {
-  createTrailer?: boolean;
-  createPointOfSale?: boolean;
   legacyProjection?: boolean;
   legacyExclusivo?: boolean;
 };
@@ -37,7 +36,6 @@ export async function provisionEstablishment(
     data: {
       nome: input.nome,
       slug: input.slug,
-      ...(resources.createTrailer ? { trailers: { create: { nome: 'Principal' } } } : {}),
     },
   });
   const dono = await tx.usuario.create({
@@ -47,13 +45,29 @@ export async function provisionEstablishment(
   const configuracaoOperacional = await tx.configuracaoOperacional.create({
     data: {
       cervejariaId: cervejaria.id,
+      // This record remains the owner of setup metadata and compatibility
+      // fields. Canonical operational decisions live on ConfiguracaoPontoVenda.
       ...(enablements ? {
-        plannedOperationsEnabled: enablements.plannedOperations,
+        plannedOperationsEnabled: false,
         tapsEnabled: enablements.taps,
         inventoryEnabled: enablements.inventory,
         kitchenEnabled: enablements.kitchen,
       } : {}),
       setupCompletedAt: enablements ? new Date() : null,
+    },
+  });
+  const { pontoVenda, configuracaoPdv } = await createSinglePdv(tx, {
+    cervejariaId: cervejaria.id,
+    nome: 'Principal',
+    operationalSettings: {
+      tapsEnabled: enablements?.taps ?? false,
+      inventoryEnabled: enablements?.inventory ?? false,
+      kitchenEnabled: enablements?.kitchen ?? false,
+      kitchenItemsChargeAtLaunch: false,
+      allowCloseComandaWithPendingKitchenOrders: false,
+      whatsappPedidoProntoEnabled: false,
+      whatsappPedidoProntoNaCozinha: false,
+      quantidadeMesas: null,
     },
   });
   // This row is a temporary route-context projection, never the new source of truth.
@@ -67,11 +81,8 @@ export async function provisionEstablishment(
         exclusivo: resources.legacyExclusivo === true,
       },
     });
-    if (resources.createPointOfSale) {
-      await tx.pontoVenda.create({ data: { cervejariaId: cervejaria.id, nome: 'Principal' } });
-    }
   }
-  return { cervejaria, dono, configuracaoOperacional };
+  return { cervejaria, dono, configuracaoOperacional, pontoVenda, configuracaoPdv };
 }
 
 export function adaptLegacyProvisioning(input: {
@@ -91,8 +102,6 @@ export function adaptLegacyProvisioning(input: {
       },
     },
     resources: {
-      createTrailer: input.moduloCervejaria,
-      createPointOfSale: input.moduloOperacao,
       legacyProjection: input.moduloOperacao,
       legacyExclusivo: !input.moduloCervejaria,
     },

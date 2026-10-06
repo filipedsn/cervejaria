@@ -19,10 +19,11 @@ import {
 } from '../../lib/operacao/capacidades.js';
 import { canonicalPdvQaActivationEnabled } from '../../lib/canonical-pdv-operational-config.js';
 import { updateOperationalConfig } from '../../lib/operational-config.js';
+import { createSinglePdv, SinglePdvProvisioningConflictError } from '../../lib/single-pdv-provisioning.js';
 
 const createPontoVendaSchema = z.object({
   nome: z.string().trim().min(1),
-});
+}).strict();
 
 export async function operacaoRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
@@ -128,12 +129,31 @@ export async function operacaoRoutes(app: FastifyInstance) {
     moduloScope.post('/pontos-venda', { preHandler: [app.requireDono] }, async (request, reply) => {
       const { cervejariaId } = request.operacao;
       const body = createPontoVendaSchema.parse(request.body);
-      const pontoVenda = await prisma.pontoVenda.create({
-        // Cash access is derived from the operational mode, never per unit.
-        data: { cervejariaId, nome: body.nome },
-      });
-
-      return reply.status(201).send(pontoVenda);
+      const canonical = canonicalPdvQaActivationEnabled();
+      try {
+        const created = await prisma.$transaction((tx) => createSinglePdv(tx, {
+          cervejariaId,
+          nome: body.nome,
+          ...(canonical ? {
+            operationalSettings: {
+              tapsEnabled: false,
+              inventoryEnabled: request.operacao.controlaEstoque,
+              kitchenEnabled: request.operacao.temCozinha,
+              kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch,
+              allowCloseComandaWithPendingKitchenOrders: request.operacao.effectiveSettings.allowCloseComandaWithPendingKitchenOrders,
+              whatsappPedidoProntoEnabled: request.operacao.effectiveSettings.whatsappPedidoProntoEnabled,
+              whatsappPedidoProntoNaCozinha: request.operacao.effectiveSettings.whatsappPedidoProntoNaCozinha,
+              quantidadeMesas: request.operacao.quantidadeMesas,
+            },
+          } : {}),
+        }));
+        return reply.status(201).send(created.pontoVenda);
+      } catch (error) {
+        if (error instanceof SinglePdvProvisioningConflictError) {
+          return reply.status(409).send({ error: error.message, code: error.code });
+        }
+        throw error;
+      }
     });
 
     await moduloScope.register(comandasOperacaoRoutes, { prefix: '/comandas' });
