@@ -299,18 +299,26 @@ try {
     for (const [phase, execute] of phases) {
       try {
         const measure = (stage, operation) => measured(`${target.label}:${phase}:${stage}`, operation);
-        let result = await measured(`${target.label}:${phase}:firstBatch`, () => execute({ maxBatches: 1, measure }));
+        const runStage = async (stage, operation) => {
+          const started = performance.now();
+          console.log(`PDV_REP_PHASE_START tenant=${target.label} phase=${phase} stage=${stage}`);
+          const result = await measured(`${target.label}:${phase}:${stage}`, operation);
+          console.log(`PDV_REP_PHASE_END tenant=${target.label} phase=${phase} stage=${stage} status=${result.status} durationMs=${Math.round(performance.now() - started)}`);
+          return result;
+        };
+        let result = await runStage('firstBatch', () => execute({ maxBatches: 1, measure }));
         const interrupted = result.status === 'RUNNING';
-        if (interrupted) result = await measured(`${target.label}:${phase}:resume`, () => execute({ measure }));
+        if (interrupted) result = await runStage('resume', () => execute({ measure }));
         if (result.status === 'BLOCKED') { blocker = { phase, ...result }; break; }
         if (result.status !== 'COMPLETED') { blocker = { phase, ...result, code: result.code ?? result.status ?? 'MIGRATOR_NOT_COMPLETED' }; break; }
-        const replay = await measured(`${target.label}:${phase}:replay`, () => execute({ measure }));
+        const replay = await runStage('replay', () => execute({ measure }));
         if (replay.status !== 'COMPLETED') { blocker = { phase, ...replay, code: replay.code ?? replay.status ?? 'REPLAY_NOT_COMPLETED' }; break; }
         if (phase === 'finance') await reconcileRepresentativeFinance(target);
         reports.push({ tenant: target.label, phase, status: 'COMPLETED', interruptedAndResumed: interrupted, sameRunReplay: replay.reusedCompletedRun === true || replay.status === 'COMPLETED', counts: result.counts ?? result.scopeCounts ?? result.checkpoint?.scopeCounts ?? undefined });
       } catch (error) {
         const timedOut = error.code === 'P2028' || /transaction.*(expired|timeout)|timed out/i.test(error.message ?? '');
         blocker = { phase, status: 'BLOCKED', code: timedOut ? 'TRANSACTION_TIMEOUT' : (error.code ?? error.name), failureKind: timedOut ? 'TECHNICAL_TRANSACTION_TIMEOUT' : 'MIGRATION_BLOCKER', prismaCode: timedOut ? (error.code ?? null) : undefined, sourceType: error.sourceType ?? null, sourceId: error.sourceId ?? null, message: timedOut ? 'A bounded database transaction expired; this is a technical execution failure, not evidence of source-data divergence.' : error.message };
+        console.log(`PDV_REP_PHASE_BLOCKED tenant=${target.label} phase=${phase} code=${blocker.code} kind=${blocker.failureKind}`);
         break;
       }
     }
