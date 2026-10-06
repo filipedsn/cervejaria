@@ -168,52 +168,51 @@ async function reconcileRepresentativeFinance(target) {
 
 async function proveCommerceLinkRequiresDurableProof(target, pointId) {
   const approved = evidence.paymentSessionReview.allPaymentCases.find((row) => row.tenantId === target.id
-    && row.classification === 'C_NO_SESSION_PROVENANCE_INSUFFICIENT');
-  assert.ok(approved, `${target.label}: approved historical command is available for commerce proof guards`);
+    && row.classification === 'C_NO_SESSION_PROVENANCE_INSUFFICIENT' && row.origin === 'EVENTO');
+  if (!approved) return { skipped: true, reason: 'approved photo contains no historical C EVENTO payment for this tenant; no other classification was substituted' };
   const commandId = approved.commandId;
   const originalCommand = await db.comanda.findUniqueOrThrow({ where: { id: commandId } });
   const originalMap = await db.pdvMigrationMap.findUniqueOrThrow({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } } });
   const originalBatch = await db.pdvMigrationBatch.findUniqueOrThrow({ where: { id: originalMap.lastBatchId } });
   const originalCheckpoint = structuredClone(originalBatch.checkpoint);
+  const alternatePoint = await db.pontoVenda.findFirstOrThrow({ where: { cervejariaId: { not: target.id } }, select: { id: true } });
   const proofResults = [];
-  const runProof = async (name) => {
+  const runProof = async (name, expectedCodes) => {
     const result = await runPdvFinanceMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-finance-proof-${name}`, historicalNoSessionApproval: approval, maxBatches: 1 });
     assert.equal(result.status, 'BLOCKED', `${target.label}: ${name} commerce proof mutation is blocked`);
-    assert.ok(result.code, `${target.label}: ${name} blocker has an evidence code`);
+    assert.ok(expectedCodes.includes(result.code), `${target.label}: ${name} must be blocked specifically by missing or diverged financial/commerce proof, got ${result.code}`);
     proofResults.push({ case: name, status: result.status, code: result.code });
   };
   const restoreMap = async () => {
     await db.pdvMigrationMap.deleteMany({ where: { sourceType: 'COMANDA', sourceId: commandId } });
     await db.pdvMigrationMap.create({ data: originalMap });
   };
-  const alternatePoint = await db.pontoVenda.create({ data: { id: `finance-proof-alternate-point-${target.id}`, cervejariaId: target.id, nome: 'Temporary QA proof guard' } });
   try {
     await db.pdvMigrationMap.delete({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } } });
-    await runProof('commerce-map-missing');
+    await runProof('commerce-map-missing', ['FINANCE_HISTORICAL_APPROVAL_PAYLOAD_DIVERGED']);
     await restoreMap();
 
     await db.pdvMigrationMap.update({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } }, data: { pontoVendaId: alternatePoint.id } });
-    await runProof('commerce-map-manually-altered');
+    await runProof('commerce-map-manually-altered', ['FINANCE_HISTORICAL_COMMERCE_PROOF_MISSING']);
     await db.pdvMigrationMap.update({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } }, data: { pontoVendaId: pointId } });
 
     const originalReceipts = originalCheckpoint.receipts;
     await db.pdvMigrationBatch.update({ where: { id: originalBatch.id }, data: { checkpoint: { ...originalCheckpoint, receipts: originalReceipts.filter((row) => !(row.sourceType === 'COMANDA' && row.sourceId === commandId)) } } });
-    await runProof('commerce-receipt-missing');
+    await runProof('commerce-receipt-missing', ['FINANCE_HISTORICAL_COMMERCE_PROOF_DIVERGED']);
     await db.pdvMigrationBatch.update({ where: { id: originalBatch.id }, data: { checkpoint: originalCheckpoint } });
 
     await db.pdvMigrationBatch.update({ where: { id: originalBatch.id }, data: { checkpoint: { ...originalCheckpoint, receipts: originalReceipts.map((row) => row.sourceType === 'COMANDA' && row.sourceId === commandId ? { ...row, destinationHash: 'manual-divergence' } : row) } } });
-    await runProof('commerce-receipt-divergent');
+    await runProof('commerce-receipt-divergent', ['FINANCE_HISTORICAL_COMMERCE_PROOF_DIVERGED', 'FINANCE_HISTORICAL_COMMERCE_DESTINATION_DIVERGED']);
     await db.pdvMigrationBatch.update({ where: { id: originalBatch.id }, data: { checkpoint: originalCheckpoint } });
 
     await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: alternatePoint.id, ocorrenciaId: null } });
-    await runProof('command-pdv-manually-altered');
+    await runProof('command-pdv-manually-altered', ['FINANCE_HISTORICAL_APPROVAL_PAYLOAD_DIVERGED']);
     await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: originalCommand.pontoVendaId, ocorrenciaId: originalCommand.ocorrenciaId } });
   } finally {
     await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: originalCommand.pontoVendaId, ocorrenciaId: originalCommand.ocorrenciaId } });
     await db.pdvMigrationMap.deleteMany({ where: { sourceType: 'COMANDA', sourceId: commandId } });
     await db.pdvMigrationMap.create({ data: originalMap });
     await db.pdvMigrationBatch.update({ where: { id: originalBatch.id }, data: { checkpoint: originalCheckpoint } });
-    await db.pontoVenda.delete({ where: { id: alternatePoint.id } });
   }
   return { commandId, proofResults };
 }
