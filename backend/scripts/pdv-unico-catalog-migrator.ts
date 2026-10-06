@@ -875,7 +875,12 @@ async function writeCommerceTarget(tx: Db, item: any) {
   if (item.type === 'COMANDA') {
     if (existing.pontoVendaId && existing.pontoVendaId !== item.destinationData.pontoVendaId) throw new PdvCatalogBlocker('COMMERCE_COMMAND_PDV_MISMATCH', item.type, item.id, 'Comanda aponta para outro PDV e não será reassociada.');
     if (existing.ocorrenciaId && existing.ocorrenciaId !== item.destinationData.ocorrenciaId) throw new PdvCatalogBlocker('COMMERCE_COMMAND_OCCURRENCE_MISMATCH', item.type, item.id, 'Comanda aponta para outra ocorrência e não será reassociada.');
-    if (existing.pontoVendaId !== item.destinationData.pontoVendaId || existing.ocorrenciaId !== item.destinationData.ocorrenciaId) await tx.comanda.update({ where: { id: item.id }, data: { ...item.destinationData, updatedAt: existing.updatedAt } });
+    if (existing.pontoVendaId !== item.destinationData.pontoVendaId || existing.ocorrenciaId !== item.destinationData.ocorrenciaId) await tx.comanda.update({ where: { id: item.id }, data: { ...item.destinationData, updatedAt: existing.updatedAt }, select: {
+      id: true, origem: true, eventoId: true, clienteId: true, status: true, tipo: true,
+      numero: true, desconto: true, total: true, fechadoPorId: true, fechadaEm: true,
+      pontoVendaId: true, ocorrenciaId: true, diaOperacional: true, identificador: true,
+      abertaPorId: true, createdAt: true, updatedAt: true,
+    } });
     return false;
   }
   if (item.type === 'PEDIDO_COZINHA') {
