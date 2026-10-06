@@ -29,6 +29,7 @@ export async function buildPdvCommerceQaManifest(options = {}) {
   const schemaPath = 'backend/prisma/schema.prisma';
   const schemaCandidate = git(['show', `${baselineCommit}:${schemaPath}`]);
   const migrationPath = 'backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql';
+  const saleSessionContextMigrationPath = 'backend/prisma/migrations/20261006120000_comanda_sale_session_context/migration.sql';
   const priorFiles = {
     historical: 'docs/testing/pdv-unico-qa-migration-manifest.json',
     core: 'docs/testing/pdv-unico-core-qa-manifest.json',
@@ -63,6 +64,7 @@ export async function buildPdvCommerceQaManifest(options = {}) {
     'backend/src/lib/operational-config.ts',
     'backend/src/lib/operational-config.test.ts',
     'backend/src/lib/comanda-service.ts',
+    'backend/src/lib/fechar-comanda.ts',
     'backend/src/lib/operacao/modulo.ts',
     'backend/src/lib/operacao/capacidades.ts',
     'backend/src/lib/operacao/capacidades.test.ts',
@@ -100,6 +102,7 @@ export async function buildPdvCommerceQaManifest(options = {}) {
     'backend/scripts/pdv-unico-finance-transform.ts',
     'backend/scripts/pdv-unico-historical-no-session-approval.json',
     'backend/prisma/migrations/20261005180000_payment_historical_provenance/migration.sql',
+    saleSessionContextMigrationPath,
     'backend/scripts/pdv-unico-finance-reconcile.ts',
     'backend/scripts/run-pdv-unico-finance-disposable-qa.mjs',
     'backend/scripts/run-pdv-unico-historical-disposable-qa.mjs',
@@ -157,6 +160,13 @@ export async function buildPdvCommerceQaManifest(options = {}) {
       migrationName: path.basename(path.dirname(migrationPath)),
       migrationPath,
       migrationSha256: digest(git(['show', `${baselineCommit}:${migrationPath}`])),
+      ...(selectedCandidatePaths.has(saleSessionContextMigrationPath) ? {
+        saleSessionContextMigration: {
+          name: path.basename(path.dirname(saleSessionContextMigrationPath)),
+          path: saleSessionContextMigrationPath,
+          sha256: digest(git(['show', `${baselineCommit}:${saleSessionContextMigrationPath}`])),
+        },
+      } : {}),
     },
     preCommerceSchema: {
       commit: '128f69fb2fd6904aa823ff17448a6ff13e9d9595',

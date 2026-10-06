@@ -286,9 +286,18 @@ async function buildTurnosRecentes(
     if (!sessao.fechadoEm) continue;
     const chaveDia = `${sessao.pontoVendaId}:${sessao.diaOperacional.toISOString().slice(0, 10)}`;
     const pagamentos = await pagamentosDoTurno(sessao, cervejariaId, canonicalPdvEnabled);
+    const pagamentosDeVenda = pagamentos.filter((payment) => payment.contaReceberId === null);
     const comandasFechadas = canonicalPdvEnabled
       ? await prisma.comanda.findMany({
-        where: { id: { in: [...new Set(pagamentos.map((payment) => payment.comandaId))] }, pontoVendaId: sessao.pontoVendaId, pontoVenda: { cervejariaId }, status: 'FECHADA' },
+        where: {
+          OR: [
+            { sessaoCaixaRealizacaoId: sessao.id },
+            { id: { in: [...new Set(pagamentosDeVenda.map((payment) => payment.comandaId))] } },
+          ],
+          pontoVendaId: sessao.pontoVendaId,
+          pontoVenda: { cervejariaId },
+          status: 'FECHADA',
+        },
         select: { id: true, tipo: true, total: true },
       })
       : await prisma.comanda.findMany({

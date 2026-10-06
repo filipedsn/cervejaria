@@ -35,6 +35,10 @@ const historicalProvenanceMigration = manifest.priorManifests.finance.historical
 assert(historicalProvenanceMigration?.path && historicalProvenanceMigration?.sha256, 'manifest pins historical payment provenance migration');
 const historicalProvenanceSql = await readFile(path.join(repoRoot, historicalProvenanceMigration.path));
 assert.equal(sha256(historicalProvenanceSql), historicalProvenanceMigration.sha256, 'pinned historical payment provenance SQL');
+const saleSessionContextMigration = manifest.delivery.saleSessionContextMigration;
+assert(saleSessionContextMigration?.path && saleSessionContextMigration?.sha256, 'manifest pins explicit sale realization session migration');
+const saleSessionContextSql = await readFile(path.join(repoRoot, saleSessionContextMigration.path));
+assert.equal(sha256(saleSessionContextSql), saleSessionContextMigration.sha256, 'pinned sale realization session SQL');
 for (const item of manifest.immutableManifests) assert.equal(sha256(await readFile(path.join(repoRoot, item.path))), item.sha256, `immutable prior manifest ${item.path}`);
 for (const item of manifest.codeCandidates) assert.equal(sha256(await readFile(path.join(repoRoot, item.path))), item.sha256, `current code candidate ${item.path}`);
 
@@ -377,6 +381,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       assert.equal(centsExact(JSON.parse(paid.body).total), totalCents);
       const paidCommand = await db.comanda.findUniqueOrThrow({ where: { id: commandId }, include: { itens: true, pagamentos: true } });
       assert.equal(paidCommand.status, 'FECHADA');
+      assert.equal(paidCommand.sessaoCaixaRealizacaoId, session.id, 'immediate sale records its exact realization session once');
       assert.deepEqual(paidCommand.pagamentos.map((payment) => [payment.forma, centsExact(payment.valor), payment.sessaoCaixaId, payment.sessaoCaixaEventoId, payment.registradoPorId]), [['PIX', totalCents, session.id, null, flow.owner.id]]);
 
       const closed = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: flow.cookie }, payload: { pontoVendaId: flow.point.id, contadoDinheiro: 5, contadoPix: total, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
@@ -394,35 +399,70 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       assert.equal(await db.itemComandaOpcional.count({ where: { itemComanda: { comandaId: commandId } } }), 0);
       operationFlows.push({ tenantId: flow.company.id, sessionId: session.id, commandId, productId: flow.product.id, menuId: flow.menu.id, itemPriceCents: flow.priceCents, quantity: 2, totalCents, payment: `PIX:${totalCents}`, sessionStatus: persistedSession.status, endpoints: [opened.statusCode, menuResponse.statusCode, openedCommand.statusCode, launched.statusCode, paid.statusCode, closed.statusCode] });
     }
+    const secondTenantSessionId = operationFlows.find((flow) => flow.tenantId === secondCompany.id).sessionId;
+    await assert.rejects(db.comanda.create({ data: {
+      id: `cross-tenant-sale-session-${runId}`, origem: 'CAIXA', pontoVendaId: primaryPoint.id, sessaoCaixaRealizacaoId: secondTenantSessionId,
+      status: 'FECHADA', tipo: 'COMANDA', total: '1.00', fechadaEm: new Date(),
+    } }), (error) => error.code === 'P2003', 'sale realization session must match the command PDV and tenant');
+
+    // A new debt sale must retain the exact session in which the sale was closed, even when unpaid.
+    const pendingClient = await db.cliente.create({ data: { id: `turn-pending-client-${runId}`, cervejariaId: primaryCompany.id, nome: 'QA pending turn client', telefone: `118${String(Date.now()).slice(-8)}` } });
+    const pendingSessionResponse = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie: ownerCookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id } });
+    assert.equal(pendingSessionResponse.statusCode, 201, `pending sale session opens: ${pendingSessionResponse.body}`);
+    const pendingSessionId = JSON.parse(pendingSessionResponse.body).id;
+    const pendingCommandResponse = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie: ownerCookie }, payload: { pontoVendaId: primaryPoint.id, clienteId: pendingClient.id, tipo: 'APELIDO', identificador: `pending-turn-${runId}` } });
+    assert.equal(pendingCommandResponse.statusCode, 201, `pending sale command opens: ${pendingCommandResponse.body}`);
+    const pendingCommandId = JSON.parse(pendingCommandResponse.body).id;
+    const pendingOrderResponse = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(pendingCommandId)}/pedidos`, headers: { cookie: ownerCookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } });
+    assert.equal(pendingOrderResponse.statusCode, 201, `pending sale item launches: ${pendingOrderResponse.body}`);
+    const pendingSaleResponse = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(pendingCommandId)}/pagamentos`, headers: { cookie: ownerCookie }, payload: { deixarPendente: true, pagamentos: [] } });
+    assert.equal(pendingSaleResponse.statusCode, 200, `sale is left pending through the authenticated close route: ${pendingSaleResponse.body}`);
+    assert.equal((await db.comanda.findUniqueOrThrow({ where: { id: pendingCommandId } })).sessaoCaixaRealizacaoId, pendingSessionId, 'new pending sale captures its realization cash session');
+    const pendingSessionClose = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: ownerCookie }, payload: { pontoVendaId: primaryPoint.id, contadoDinheiro: 0, contadoPix: 0, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
+    assert.equal(pendingSessionClose.statusCode, 200, `pending-sale session closes: ${pendingSessionClose.body}`);
+    const debtDashboardPeriod = new Date();
+    const debtDashboardUrl = `/api/operacao/dashboard?ano=${debtDashboardPeriod.getFullYear()}&mes=${debtDashboardPeriod.getMonth() + 1}&pontoVendaId=${encodeURIComponent(primaryPoint.id)}`;
+    const pendingTurnDashboard = await app.inject({ method: 'GET', url: debtDashboardUrl, headers: { cookie: ownerCookie } });
+    assert.equal(pendingTurnDashboard.statusCode, 200);
+    const pendingTurn = JSON.parse(pendingTurnDashboard.body).turnosRecentes.find((row) => row.sessaoId === pendingSessionId);
+    assert(pendingTurn, 'a turn with a pending sale remains visible as an operational turn');
+    assert.equal(centsExact(pendingTurn.receitaTotal), centsExact(JSON.parse(pendingSaleResponse.body).total), 'pending principal remains reported as sale revenue in its original turn');
+    assert.equal(centsExact(pendingTurn.totalRecebido), '0', 'pending principal is not reported as cash received');
 
     // Isolated authenticated-API reproduction for a sale paid through two debt receipts.
     const debtSessionIds = [];
-    for (let index = 0; index < 2; index++) {
+    const debtClient = await db.cliente.create({ data: { id: `turn-debt-client-${runId}`, cervejariaId: primaryCompany.id, nome: 'QA turn debt client', telefone: `119${String(Date.now()).slice(-8)}` } });
+    const debtCommand = await db.comanda.create({ data: {
+      id: `turn-debt-command-${runId}`, origem: 'CAIXA', pontoVendaId: primaryPoint.id, diaOperacional: new Date(),
+      clienteId: debtClient.id, sessaoCaixaRealizacaoId: null, status: 'FECHADA', tipo: 'COMANDA', total: '100.00', fechadaEm: new Date(), fechadoPorId: authOwner.id,
+    } });
+    const debtAccount = await db.contaReceber.create({ data: { id: `turn-debt-account-${runId}`, comandaId: debtCommand.id, clienteId: debtClient.id, valorOriginal: '100.00', criadoPorId: authOwner.id } });
+    const receiptCentsBySession = [['4000'], ['5000', '1000']];
+    for (let index = 0; index < receiptCentsBySession.length; index++) {
       const openedDebtSession = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie: ownerCookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id } });
       assert.equal(openedDebtSession.statusCode, 201, `debt receipt session ${index + 1} opens: ${openedDebtSession.body}`);
       const debtSessionId = JSON.parse(openedDebtSession.body).id;
       debtSessionIds.push(debtSessionId);
-      const closedDebtSession = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: ownerCookie }, payload: { pontoVendaId: primaryPoint.id, contadoDinheiro: 0, contadoPix: 0, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
+      if (index === 0) await db.comanda.update({ where: { id: debtCommand.id }, data: { sessaoCaixaRealizacaoId: debtSessionId } });
+      for (const cents of receiptCentsBySession[index]) {
+        const receipt = await app.inject({ method: 'POST', url: `/api/operacao/contas-pendentes/${encodeURIComponent(debtAccount.id)}/pagamentos`, headers: { cookie: ownerCookie }, payload: { pontoVendaId: primaryPoint.id, pagamentos: [{ forma: 'PIX', valor: Number(cents) / 100 }] } });
+        assert.equal(receipt.statusCode, 200, `authenticated debt receipt ${cents} is collected in session ${index + 1}: ${receipt.body}`);
+        assert.equal(JSON.parse(receipt.body).classificacao, 'CAIXA');
+        const persistedReceipt = await db.pagamento.findMany({ where: { contaReceberId: debtAccount.id, sessaoCaixaId: debtSessionId }, orderBy: { pagoEm: 'asc' } });
+        assert.equal(persistedReceipt.reduce((sum, row) => sum + Number(centsExact(row.valor)), 0), receiptCentsBySession[index].slice(0, receiptCentsBySession[index].indexOf(cents) + 1).reduce((sum, value) => sum + Number(value), 0), 'database persists only the exact receipts collected in this session');
+      }
+      const sessionTotal = receiptCentsBySession[index].reduce((sum, value) => sum + Number(value), 0);
+      const closedDebtSession = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: ownerCookie }, payload: { pontoVendaId: primaryPoint.id, contadoDinheiro: 0, contadoPix: sessionTotal / 100, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
       assert.equal(closedDebtSession.statusCode, 200, `debt receipt session ${index + 1} closes: ${closedDebtSession.body}`);
     }
-    const debtClient = await db.cliente.create({ data: { id: `turn-debt-client-${runId}`, cervejariaId: primaryCompany.id, nome: 'QA turn debt client', telefone: `119${String(Date.now()).slice(-8)}` } });
-    const debtCommand = await db.comanda.create({ data: {
-      id: `turn-debt-command-${runId}`, origem: 'CAIXA', pontoVendaId: primaryPoint.id, diaOperacional: new Date(),
-      clienteId: debtClient.id, status: 'FECHADA', tipo: 'COMANDA', total: '100.00', fechadaEm: new Date(), fechadoPorId: authOwner.id,
-    } });
-    const debtAccount = await db.contaReceber.create({ data: { id: `turn-debt-account-${runId}`, comandaId: debtCommand.id, clienteId: debtClient.id, valorOriginal: '100.00', criadoPorId: authOwner.id } });
-    for (const [index, cents] of ['4000', '6000'].entries()) await db.pagamento.create({ data: {
-      id: `turn-debt-receipt-${index}-${runId}`, comandaId: debtCommand.id, contaReceberId: debtAccount.id,
-      sessaoCaixaId: debtSessionIds[index], forma: 'PIX', valor: (Number(cents) / 100).toFixed(2), registradoPorId: authOwner.id,
-    } });
-    const debtDashboardPeriod = new Date();
-    const debtTurnDashboard = await app.inject({ method: 'GET', url: `/api/operacao/dashboard?ano=${debtDashboardPeriod.getFullYear()}&mes=${debtDashboardPeriod.getMonth() + 1}&pontoVendaId=${encodeURIComponent(primaryPoint.id)}`, headers: { cookie: ownerCookie } });
+    const debtTurnDashboard = await app.inject({ method: 'GET', url: debtDashboardUrl, headers: { cookie: ownerCookie } });
     assert.equal(debtTurnDashboard.statusCode, 200, `authenticated turn report returns for debt receipts: ${debtTurnDashboard.body}`);
     const debtTurns = JSON.parse(debtTurnDashboard.body).turnosRecentes.filter((row) => debtSessionIds.includes(row.sessaoId));
     assert.equal(debtTurns.length, 2);
-    assert.deepEqual(debtTurns.map((row) => centsExact(row.receitaTotal)), ['10000', '10000'], 'reproduction: the same sale principal is currently duplicated into both receipt sessions');
+    assert.deepEqual(debtTurns.map((row) => centsExact(row.receitaTotal)), ['10000', '0'], 'sale principal appears once in its explicit realization session, never in debt receipt sessions');
     assert.deepEqual(debtTurns.map((row) => centsExact(row.totalRecebido)), ['4000', '6000'], 'received totals follow each actual debt receipt');
-    operationFlows.push({ debtReproduction: 'PASS; pre-fix sale principal duplicated in two authenticated turn reports', saleCents: '10000', receiptsBySessionCents: ['4000', '6000'], revenueBySessionCents: debtTurns.map((row) => centsExact(row.receitaTotal)) });
+    assert.equal((await db.contaReceber.findUniqueOrThrow({ where: { id: debtAccount.id }, include: { pagamentos: true } })).pagamentos.reduce((sum, payment) => sum + Number(centsExact(payment.valor)), 0), 10000, 'partial debt receipts in two sessions fully settle the original principal');
+    operationFlows.push({ debtTurnCertification: 'PASS; authenticated API separates realization revenue from debt receipts', saleCents: '10000', receiptsBySessionCents: ['4000', '5000', '1000'], revenueBySessionCents: debtTurns.map((row) => centsExact(row.receitaTotal)), pendingSaleSessionId: pendingSessionId });
 
     const immediateWithoutSessionCommandId = `authenticated-no-session-command-${runId}`;
     await db.comanda.create({ data: {
@@ -430,12 +470,18 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       diaOperacional: new Date('2026-10-06T00:00:00.000Z'), status: 'ABERTA', tipo: 'COMANDA', total: '1.00',
     } });
     const noSessionItem = await db.itemComanda.create({ data: { id: `authenticated-no-session-item-${runId}`, comandaId: immediateWithoutSessionCommandId, produtoId: product.id, volumeMl: 0, quantidade: 1, precoUnit: '1.00', nome: 'QA session guard item' } });
-    const auditCountBefore = await db.transacaoLog.count({ where: { cervejariaId: primaryCompany.id, tipo: 'SALE_PAYMENT_RECORDED', comandaId: immediateWithoutSessionCommandId } });
+    const noSessionOperationalPhoto = async () => plain({
+      command: await db.comanda.findUniqueOrThrow({ where: { id: immediateWithoutSessionCommandId }, include: { itens: true, pagamentos: true, contaReceber: true } }),
+      audits: await db.transacaoLog.findMany({ where: { cervejariaId: primaryCompany.id, comandaId: immediateWithoutSessionCommandId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }),
+    });
+    const noSessionPhotoBefore = await noSessionOperationalPhoto();
+    const auditCountBefore = noSessionPhotoBefore.audits.filter((row) => row.tipo === 'SALE_PAYMENT_RECORDED').length;
     const rejectedNoSessionPayment = await withQaDate('2026-10-06', () => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(immediateWithoutSessionCommandId)}/pagamentos`, headers: { cookie: ownerCookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 1 }] } }));
     assert.equal(rejectedNoSessionPayment.statusCode, 400, `new immediate payment without a valid open session is refused: ${rejectedNoSessionPayment.body}`);
-    assert.equal(await db.pagamento.count({ where: { comandaId: immediateWithoutSessionCommandId } }), 0, 'no-session refusal creates no payment');
-    assert.deepEqual(plain(await db.comanda.findUniqueOrThrow({ where: { id: immediateWithoutSessionCommandId }, include: { itens: true, pagamentos: true } })), plain({ ...(await db.comanda.findUniqueOrThrow({ where: { id: immediateWithoutSessionCommandId } })), itens: [noSessionItem], pagamentos: [] }), 'no-session refusal leaves command and item unchanged');
-    assert.equal(await db.transacaoLog.count({ where: { cervejariaId: primaryCompany.id, tipo: 'SALE_PAYMENT_RECORDED', comandaId: immediateWithoutSessionCommandId } }), auditCountBefore, 'no-session refusal creates no payment audit');
+    const noSessionPhotoAfter = await noSessionOperationalPhoto();
+    assert.deepEqual(noSessionPhotoAfter, noSessionPhotoBefore, 'no-session refusal leaves command, items, payments, totals, states, timestamps and relevant audit exactly unchanged');
+    assert.equal(noSessionPhotoAfter.command.pagamentos.length, 0, 'no-session refusal creates no payment');
+    assert.equal(noSessionPhotoAfter.audits.filter((row) => row.tipo === 'SALE_PAYMENT_RECORDED').length, auditCountBefore, 'no-session refusal creates no payment audit');
     const cleanupNoSessionCommand = await withQaDate('2026-10-06', () => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(immediateWithoutSessionCommandId)}/cancelar`, headers: { cookie: ownerCookie }, payload: {} }));
     assert.equal(cleanupNoSessionCommand.statusCode, 200, `rejected-payment fixture is cancelled through the real route: ${cleanupNoSessionCommand.body}`);
     assert.equal((await db.comanda.findUniqueOrThrow({ where: { id: immediateWithoutSessionCommandId } })).status, 'CANCELADA');
@@ -1500,6 +1546,7 @@ try {
     [finance.delivery.migrationName, await readFile(path.join(repoRoot, finance.delivery.migrationPath))],
     [manifest.priorManifests.finance.historicalProvenanceMigration.name, historicalProvenanceSql],
     [manifest.delivery.migrationName, commerceSql],
+    [saleSessionContextMigration.name, saleSessionContextSql],
   ];
   assert.equal(sha256(candidates[0][1]), core.migrationSha256, 'pinned core SQL');
   assert.equal(sha256(candidates[1][1]), catalog.delivery.migrationSha256, 'pinned catalog SQL');
@@ -1538,10 +1585,10 @@ try {
   const { PrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
   db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal' });
   const applied = await db.$queryRaw`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL ORDER BY migration_name`;
-  assert.equal(applied.length, history.migrations.length + 6, 'full historical + operational core/catalog/session/finance/provenance + commerce chain');
+  assert.equal(applied.length, history.migrations.length + 7, 'full historical + operational core/catalog/session/finance/provenance/commerce/sale-session chain');
   assert(applied.some((row) => row.migration_name === manifest.priorManifests.finance.historicalProvenanceMigration.name), 'Payment.provenienciaHistorica migration is applied before commerce route regressions');
-  const constraints = await db.$queryRaw`SELECT conname, confdeltype, convalidated FROM pg_constraint WHERE conname IN ('Comanda_pontoVendaId_ocorrenciaId_fkey','EstoqueSaldoQuiosque_pontoVendaId_cervejariaId_fkey','EstoqueSaldoQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pontoVendaId_cervejariaId_fkey','MovimentoEstoqueQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pedidoId_tenant_point_fkey') ORDER BY conname`;
-  assert.equal(constraints.length, 6);
+  const constraints = await db.$queryRaw`SELECT conname, confdeltype, convalidated FROM pg_constraint WHERE conname IN ('Comanda_pontoVendaId_ocorrenciaId_fkey','Comanda_pontoVendaId_sessaoCaixaRealizacaoId_fkey','EstoqueSaldoQuiosque_pontoVendaId_cervejariaId_fkey','EstoqueSaldoQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pontoVendaId_cervejariaId_fkey','MovimentoEstoqueQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pedidoId_tenant_point_fkey') ORDER BY conname`;
+  assert.equal(constraints.length, 7);
   assert(constraints.every((row) => row.confdeltype === 'r' && row.convalidated), 'tenant/context/history constraints are validated and restrictive');
 
   const { runPdvBusinessMigration } = await import('./pdv-unico-business-migrator.ts');

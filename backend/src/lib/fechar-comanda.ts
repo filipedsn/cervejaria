@@ -185,7 +185,10 @@ export async function fecharComandaComPagamentos(
 
   const fechou = await tx.comanda.updateMany({
     where: { id: comandaAtual.id, status: 'ABERTA' },
-    data: { status: 'FECHADA', fechadoPorId: usuarioId, fechadaEm },
+    data: {
+      status: 'FECHADA', fechadoPorId: usuarioId, fechadaEm,
+      ...(params.sessaoCaixaId ? { sessaoCaixaRealizacaoId: params.sessaoCaixaId } : {}),
+    },
   });
   if (fechou.count === 0) {
     throw Object.assign(new Error('Comanda não encontrada ou já fechada'), { statusCode: 404 });

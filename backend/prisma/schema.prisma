@@ -702,6 +702,8 @@ model Comanda {
   fechadaEm      DateTime?
   /// Operacao: ponto de venda, dia operacional e identificador da mesa/ficha/apelido.
   pontoVendaId   String?
+  /// Caixa operacional em que a venda foi realizada; null for historical sales without proof.
+  sessaoCaixaRealizacaoId String?
   diaOperacional DateTime?     @db.Date
   /// Contexto histórico opcional da realização, preenchido pelo migrador após confirmar o mapa.
   ocorrenciaId   String?
@@ -713,6 +715,7 @@ model Comanda {
   evento     Evento?     @relation(fields: [eventoId], references: [id], onDelete: Cascade)
   cliente    Cliente?    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   pontoVenda PontoVenda? @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
+  sessaoCaixaRealizacao SessaoCaixaOperacao? @relation(fields: [pontoVendaId, sessaoCaixaRealizacaoId], references: [pontoVendaId, id], onDelete: Restrict)
   fechadoPor Usuario?   @relation("ComandaFechadaPor", fields: [fechadoPorId], references: [id], onDelete: SetNull)
   ocorrencia OcorrenciaOperacional? @relation(fields: [pontoVendaId, ocorrenciaId], references: [pontoVendaId, id], onDelete: Restrict)
   itens      ItemComanda[]
@@ -1298,6 +1301,7 @@ model SessaoCaixaOperacao {
   origemHistorica OrigemHistoricaSessaoOperacao?
   cervejaria  Cervejaria               @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   pontoVenda  PontoVenda               @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
+  vendasRealizadas Comanda[]
   trailer     Trailer?                 @relation(fields: [trailerId], references: [id], onDelete: SetNull)
   cardapio    Cardapio?                @relation(fields: [cardapioId], references: [id], onDelete: SetNull)
   ocorrencia OcorrenciaOperacional? @relation("SessaoOcorrenciaOperacional", fields: [ocorrenciaId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
@@ -1307,6 +1311,7 @@ model SessaoCaixaOperacao {
   montagensTaps TapMontagem[]
 
   @@index([pontoVendaId, diaOperacional, status])
+  @@unique([pontoVendaId, id], map: "SessaoCaixaQuiosque_pontoVendaId_id_key")
   @@index([cervejariaId, diaOperacional])
   @@index([trailerId])
   @@index([cardapioId])

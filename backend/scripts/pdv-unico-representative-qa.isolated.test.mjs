@@ -166,6 +166,58 @@ async function reconcileRepresentativeFinance(target) {
   assert.equal(await db.sessaoCaixaOperacao.count({ where: { cervejariaId: target.id } }), photoSessions, 'finance phase does not create or infer a cash session');
 }
 
+async function proveCommerceLinkRequiresDurableProof(target, pointId) {
+  const approved = evidence.paymentSessionReview.allPaymentCases.find((row) => row.tenantId === target.id
+    && row.classification === 'C_NO_SESSION_PROVENANCE_INSUFFICIENT' && row.origin === 'EVENTO');
+  assert.ok(approved, `${target.label}: approved historical EVENTO command is available for commerce proof guards`);
+  const commandId = approved.commandId;
+  const originalCommand = await db.comanda.findUniqueOrThrow({ where: { id: commandId } });
+  const originalMap = await db.pdvMigrationMap.findUniqueOrThrow({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } } });
+  const originalBatch = await db.pdvMigrationBatch.findUniqueOrThrow({ where: { id: originalMap.lastBatchId } });
+  const originalCheckpoint = structuredClone(originalBatch.checkpoint);
+  const proofResults = [];
+  const runProof = async (name) => {
+    const result = await runPdvFinanceMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-finance-proof-${name}`, historicalNoSessionApproval: approval, maxBatches: 1 });
+    assert.equal(result.status, 'BLOCKED', `${target.label}: ${name} commerce proof mutation is blocked`);
+    assert.ok(result.code, `${target.label}: ${name} blocker has an evidence code`);
+    proofResults.push({ case: name, status: result.status, code: result.code });
+  };
+  const restoreMap = async () => {
+    await db.pdvMigrationMap.deleteMany({ where: { sourceType: 'COMANDA', sourceId: commandId } });
+    await db.pdvMigrationMap.create({ data: originalMap });
+  };
+  const alternatePoint = await db.pontoVenda.create({ data: { id: `finance-proof-alternate-point-${target.id}`, cervejariaId: target.id, nome: 'Temporary QA proof guard' } });
+  try {
+    await db.pdvMigrationMap.delete({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } } });
+    await runProof('commerce-map-missing');
+    await restoreMap();
+
+    await db.pdvMigrationMap.update({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } }, data: { pontoVendaId: alternatePoint.id } });
+    await runProof('commerce-map-manually-altered');
+    await db.pdvMigrationMap.update({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } }, data: { pontoVendaId: pointId } });
+
+    const originalReceipts = originalCheckpoint.receipts;
+    await db.pdvMigrationBatch.update({ where: { id: originalBatch.id }, data: { checkpoint: { ...originalCheckpoint, receipts: originalReceipts.filter((row) => !(row.sourceType === 'COMANDA' && row.sourceId === commandId)) } } });
+    await runProof('commerce-receipt-missing');
+    await db.pdvMigrationBatch.update({ where: { id: originalBatch.id }, data: { checkpoint: originalCheckpoint } });
+
+    await db.pdvMigrationBatch.update({ where: { id: originalBatch.id }, data: { checkpoint: { ...originalCheckpoint, receipts: originalReceipts.map((row) => row.sourceType === 'COMANDA' && row.sourceId === commandId ? { ...row, destinationHash: 'manual-divergence' } : row) } } });
+    await runProof('commerce-receipt-divergent');
+    await db.pdvMigrationBatch.update({ where: { id: originalBatch.id }, data: { checkpoint: originalCheckpoint } });
+
+    await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: alternatePoint.id, ocorrenciaId: null } });
+    await runProof('command-pdv-manually-altered');
+    await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: originalCommand.pontoVendaId, ocorrenciaId: originalCommand.ocorrenciaId } });
+  } finally {
+    await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: originalCommand.pontoVendaId, ocorrenciaId: originalCommand.ocorrenciaId } });
+    await db.pdvMigrationMap.deleteMany({ where: { sourceType: 'COMANDA', sourceId: commandId } });
+    await db.pdvMigrationMap.create({ data: originalMap });
+    await db.pdvMigrationBatch.update({ where: { id: originalBatch.id }, data: { checkpoint: originalCheckpoint } });
+    await db.pontoVenda.delete({ where: { id: alternatePoint.id } });
+  }
+  return { commandId, proofResults };
+}
+
 try {
   const dbIdentity = await db.$queryRaw`SELECT current_database() AS data`;
   const dbName = dbIdentity[0].data;
@@ -293,6 +345,7 @@ try {
       ['finance', (options) => runPdvFinanceMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-finance`, historicalNoSessionApproval: approval, ...options })],
       ['kitchen-preparation-before-commerce', (options) => runPdvKitchenOrderContextPreparation({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-kitchen-prep`, ...options })],
       ['commerce', (options) => runPdvCommerceMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-commerce`, ...options })],
+      ['finance-revalidation-after-commerce', (options) => runPdvFinanceMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-finance`, historicalNoSessionApproval: approval, ...options })],
       ['kitchen-preparation-revalidation', (options) => runPdvKitchenOrderContextPreparation({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-kitchen-prep`, ...options })],
     ];
     let blocker;
@@ -313,8 +366,15 @@ try {
         if (result.status !== 'COMPLETED') { blocker = { phase, ...result, code: result.code ?? result.status ?? 'MIGRATOR_NOT_COMPLETED' }; break; }
         const replay = await runStage('replay', () => execute({ measure }));
         if (replay.status !== 'COMPLETED') { blocker = { phase, ...replay, code: replay.code ?? replay.status ?? 'REPLAY_NOT_COMPLETED' }; break; }
-        if (phase === 'finance') await reconcileRepresentativeFinance(target);
-        reports.push({ tenant: target.label, phase, status: 'COMPLETED', interruptedAndResumed: interrupted, sameRunReplay: replay.reusedCompletedRun === true || replay.status === 'COMPLETED', counts: result.counts ?? result.scopeCounts ?? result.checkpoint?.scopeCounts ?? undefined });
+        let proofGuards;
+        if (phase === 'finance' || phase === 'finance-revalidation-after-commerce') await reconcileRepresentativeFinance(target);
+        if (phase === 'finance-revalidation-after-commerce') {
+          proofGuards = await proveCommerceLinkRequiresDurableProof(target, pointId);
+          const verifiedReplay = await runPdvFinanceMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-finance`, historicalNoSessionApproval: approval });
+          assert.equal(verifiedReplay.status, 'COMPLETED', `${target.label}: finance replay completes after restoring QA proof guard fixtures`);
+          await reconcileRepresentativeFinance(target);
+        }
+        reports.push({ tenant: target.label, phase, status: 'COMPLETED', interruptedAndResumed: interrupted, sameRunReplay: replay.reusedCompletedRun === true || replay.status === 'COMPLETED', ...(proofGuards ? { commerceLinkProofGuards: proofGuards.proofResults } : {}), counts: result.counts ?? result.scopeCounts ?? result.checkpoint?.scopeCounts ?? undefined });
       } catch (error) {
         const timedOut = error.code === 'P2028' || /transaction.*(expired|timeout)|timed out/i.test(error.message ?? '');
         blocker = { phase, status: 'BLOCKED', code: timedOut ? 'TRANSACTION_TIMEOUT' : (error.code ?? error.name), failureKind: timedOut ? 'TECHNICAL_TRANSACTION_TIMEOUT' : 'MIGRATION_BLOCKER', prismaCode: timedOut ? (error.code ?? null) : undefined, sourceType: error.sourceType ?? null, sourceId: error.sourceId ?? null, message: timedOut ? 'A bounded database transaction expired; this is a technical execution failure, not evidence of source-data divergence.' : error.message };
@@ -327,7 +387,7 @@ try {
       continue;
     }
   }
-  const requiredPhases = ['business', 'catalog', 'sessions', 'finance', 'kitchen-preparation-before-commerce', 'commerce', 'kitchen-preparation-revalidation'];
+  const requiredPhases = ['business', 'catalog', 'sessions', 'finance', 'kitchen-preparation-before-commerce', 'commerce', 'finance-revalidation-after-commerce', 'kitchen-preparation-revalidation'];
   const tenantResults = targets.map((target) => {
     const rows = reports.filter((row) => row.tenant === target.label);
     const completed = new Set(rows.filter((row) => row.status === 'COMPLETED').map((row) => row.phase));
