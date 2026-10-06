@@ -669,3 +669,23 @@ Certified code: `4b7e324c4bbebf0ecca18ffe1a8cc7531df7b6b9`, tree `c28b7a16aef0eb
 | Durable commerce-link proof guards | CIA Marítima blocked missing/altered map, missing/divergent receipt, and manually cleared command link. Churrasquinho had no approved C EVENTO row; that guard was marked not applicable, without substituting or altering inventory. |
 
 The new realization-session field applies to new closed sales and is constrained to the same PDV. Historical sales were not assigned by timestamp. The exact Git snapshot synthetic and representative certifications were separate. Snapshot module audit: 177 project modules from the Git snapshot, zero from the mutable workspace. Manifest SHA-256: `77a4ebd2d5e6e19cef7851a17f70626b177d3ab65cdd3493922c367db29543cf`. Schema verification was not counted as a functional reversal scenario. QA used only the executor-created disposable database/container; DEV remained read-only via its existing guard and received no writes or migrations. PROD, including metadata, was not accessed. No backfill, cutover, deploy, or legacy removal was executed; TAP-76 remains In Progress.
+
+## Canonical single-PDV provisioning and protection (2026-10-06)
+
+Focused authenticated PostgreSQL disposable-QA execution passed against code/manifest commit `cb8776d`. The executor-created container was removed after the run. Assertions covered:
+
+| Scenario | Result |
+|---|---|
+| Admin canonical provisioning and explicit setup | Company, owner, one PDV and its `ConfiguracaoPontoVenda` created atomically; explicit flags and setup metadata retained by their existing owners. |
+| Retry and concurrency | Repeating setup or provisioning did not duplicate resources; two simultaneous admin provisioning requests produced one success and one conflict; concurrent first-PDV creation produced one PDV; concurrent second-PDV requests both returned 409. |
+| Duplicate and authorization refusal | DONO second-PDV attempt returned `PDV_ALREADY_EXISTS` without changing the existing PDV/configuration. ATENDENTE got 403; cross-tenant access/write got 404; foreign-tenant body identifiers and canonical EVENTO engine change were rejected without writes. |
+| Mid-transaction failure | Disposable QA trigger forced configuration insertion to fail; the company, owner and PDV were all rolled back. |
+| New-tenant commerce | New tenant configured catalog and saved menu, opened cash, sold two units, received PIX and closed the session through Por Caixa. Configuration was read from the PDV. |
+| Legacy close compatibility | Dropped `Comanda.sessaoCaixaRealizacaoId` in QA and generated a Prisma Client from a schema predating the column. Disabled-mode close succeeded and the payment retained its cash-session link. |
+| Financial regression | Authenticated turn replay preserved a pending sale on its realization session; staged debt receipts 4,000/5,000/1,000 cents across sessions contributed only received totals, while the 10,000-cent sale principal appeared once. |
+
+Provisioning code is in `355c0a8`; QA harness fixes and manifest refresh are `946246e`, `47eda63`, `1cb4e8c`, `a27110f`, and `cb8776d`. The complete exact-Git certification for the delivery revision is recorded separately in the linked evidence file and will be added here after the Git snapshot runner completes. Build results from the unchanged functional source snapshot: backend and frontend `npm run build` passed; the frontend emitted existing Vite chunk/dynamic-import advisories.
+
+The creator inventory covered admin JSON and multipart routes, setup, the internal first-PDV helper, and `POST /api/operacao/pontos-venda`; no public company-creation route exists. Separate Trailer APIs are business functionality and are not used as a substitute PDV. The canonical setup UI presents Por Caixa as the only engine while preserving PDV editing and multiple saved menus. Canonical API writers share a tenant transaction advisory lock. No global uniqueness index was added because the approved legacy inventory includes companies with multiple PDVs. Do not remove, merge, or automatically choose those rows. The definitive constraint remains blocked until manual tenant/dependency adjudication, preservation plan, disposable-QA rehearsal, and proof that the final candidate set is zero-or-one PDV with valid configuration; then add the constraint in a separately approved migration. Direct database writers and any external scripts that bypass the API remain consumers requiring future audit.
+
+No shared DEV was read or written in this delivery; no PROD access including metadata occurred. No migration or write ran outside executor-created disposable QA. No real backfill, cutover, deploy, or legacy removal occurred. TAP-76 remains In Progress.
