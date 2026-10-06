@@ -201,12 +201,14 @@ try {
       entry.dependencies.add({ parent, relation });
     }
     const inserted = new Set();
+    const nullableFields = new Map(modelEntries.map(([name, model]) => [name, new Map(model.fields.filter((field) => field.kind === 'scalar' || field.kind === 'enum').map((field) => [field.name, field.isRequired === false]))]));
     const remainingDependencies = new Map(entries.map((entry) => [entry, entry.dependencies.size]));
     const dependents = new Map(entries.map((entry) => [entry, []]));
     for (const entry of entries) for (const edge of entry.dependencies) dependents.get(edge.parent).push({ child: entry, edge, active: true });
+    const nullableCycleCandidates = [...dependents.values()].flat().filter((item) => item.edge.relation.fields.every((field) => nullableFields.get(item.child.table.model)?.get(field)));
+    let cycleCandidateIndex = 0;
     const readyQueue = entries.filter((entry) => remainingDependencies.get(entry) === 0);
     let readyIndex = 0;
-    const nullableFields = new Map(modelEntries.map(([name, model]) => [name, new Map(model.fields.filter((field) => field.kind === 'scalar' || field.kind === 'enum').map((field) => [field.name, field.isRequired === false]))]));
     while (inserted.size < entries.length) {
       if (readyIndex < readyQueue.length) {
         const ready = readyQueue.slice(readyIndex);
@@ -231,19 +233,24 @@ try {
               if (remaining === 0) readyQueue.push(dependent.child);
             }
           }
+          console.log(`PDV_PHOTO_IMPORT model=${modelName} rows=${modelEntriesReady.length} inserted=${inserted.size}/${entries.length}`);
         }
         continue;
       }
-      const cycleEdge = entries.filter((entry) => !inserted.has(entry)).flatMap((entry) => [...entry.dependencies].filter(({ parent }) => !inserted.has(parent)).map((edge) => ({ entry, ...edge })))[0];
-      if (!cycleEdge || !cycleEdge.relation.fields.every((field) => nullableFields.get(cycleEdge.entry.table.model)?.get(field))) {
+      let cycleCandidate;
+      while (cycleCandidateIndex < nullableCycleCandidates.length) {
+        const candidate = nullableCycleCandidates[cycleCandidateIndex++];
+        if (candidate.active && !inserted.has(candidate.child) && !inserted.has(candidate.edge.parent)) { cycleCandidate = candidate; break; }
+      }
+      if (!cycleCandidate) {
         throw new Error(`PHOTO_IMPORT_REQUIRED_FK_CYCLE: ${entries.filter((entry) => !inserted.has(entry)).slice(0, 8).map((entry) => entry.identity).join(',')}`);
       }
+      const cycleEdge = { entry: cycleCandidate.child, ...cycleCandidate.edge };
       for (const field of cycleEdge.relation.fields) cycleEdge.entry.data[field] = null;
       cycleEdge.entry.deferred.push(...cycleEdge.relation.fields.map((field) => [field, revive(cycleEdge.entry.row[field])]));
       const removed = [...cycleEdge.entry.dependencies].find((edge) => edge.parent === cycleEdge.parent && edge.relation === cycleEdge.relation);
       cycleEdge.entry.dependencies.delete(removed);
-      const dependent = dependents.get(cycleEdge.parent).find((item) => item.child === cycleEdge.entry && item.edge === removed);
-      dependent.active = false;
+      cycleCandidate.active = false;
       const remaining = remainingDependencies.get(cycleEdge.entry) - 1;
       remainingDependencies.set(cycleEdge.entry, remaining);
       if (remaining === 0) readyQueue.push(cycleEdge.entry);
@@ -266,6 +273,7 @@ try {
         for (const [field, value] of Object.entries(source)) assert.deepEqual(canonical(actual[field]), canonical(revive(value)), `${table.model}.${field} primary key ${key}`);
       }
     }
+    console.log(`PDV_PHOTO_RESTORE=PASS; tables=${tables.length}; rows=${entries.length}; deferredRelations=${entries.reduce((sum, entry) => sum + entry.deferred.length, 0)}`);
   }, { timeout: 300000, maxWait: 30000 }));
 
   for (const target of targets) {

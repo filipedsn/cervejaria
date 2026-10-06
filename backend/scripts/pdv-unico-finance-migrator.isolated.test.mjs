@@ -108,6 +108,9 @@ try {
   const financeMigrationDir = path.join(bundle.migrationsDir, manifest.delivery.migrationName);
   await mkdir(financeMigrationDir, { recursive: true });
   await writeFile(path.join(financeMigrationDir, 'migration.sql'), financeSql);
+  const historicalProvenanceMigrationDir = path.join(bundle.migrationsDir, manifest.historicalProvenanceMigration.name);
+  await mkdir(historicalProvenanceMigrationDir, { recursive: true });
+  await writeFile(path.join(historicalProvenanceMigrationDir, 'migration.sql'), historicalProvenanceSql);
   const financeDeploy = spawnSync(process.execPath, ['node_modules/prisma/build/index.js', 'migrate', 'deploy', '--schema', bundle.schemaPath], {
     cwd: backendRoot, encoding: 'utf8', windowsHide: true, env: { ...process.env, NODE_ENV: 'test', DATABASE_URL: databaseUrl },
   });
