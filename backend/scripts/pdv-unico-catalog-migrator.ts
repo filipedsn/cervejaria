@@ -876,7 +876,7 @@ async function reconstituteConfirmedCommerceCommandSources(tx: Db, companyId: st
       || map.transformVersion !== PDV_COMMERCE_TRANSFORM_VERSION || map.payloadHash !== canonicalPdvPayloadHash(original)
       || original.id !== item.id || original.origem !== item.sourcePayload.origem || original.eventoId !== item.sourcePayload.eventoId
       || !run || !runMatchesScope(run, PDV_COMMERCE_SCOPE, companyId, pointId)
-      || !['RUNNING', 'COMPLETED'].includes(run.status) || run.status === 'RUNNING' && run.id !== runId
+      || !['RUNNING', 'BLOCKED', 'COMPLETED'].includes(run.status) || run.status === 'RUNNING' && run.id !== runId
       || checkpoint?.scope !== PDV_COMMERCE_SCOPE || checkpoint?.companyId !== companyId || checkpoint?.pointId !== pointId
       || checkpoint?.transformVersion !== PDV_COMMERCE_TRANSFORM_VERSION || checkpoint?.sourceSnapshotHash !== run.sourceSnapshotHash
       || !checkpoint?.completedSourceKeys?.includes(`COMANDA:${item.id}`)
