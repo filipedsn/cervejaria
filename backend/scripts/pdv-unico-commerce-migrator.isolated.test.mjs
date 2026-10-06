@@ -447,7 +447,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       for (const cents of receiptCentsBySession[index]) {
         const receipt = await app.inject({ method: 'POST', url: `/api/operacao/contas-pendentes/${encodeURIComponent(debtAccount.id)}/pagamentos`, headers: { cookie: ownerCookie }, payload: { pontoVendaId: primaryPoint.id, pagamentos: [{ forma: 'PIX', valor: Number(cents) / 100 }] } });
         assert.equal(receipt.statusCode, 200, `authenticated debt receipt ${cents} is collected in session ${index + 1}: ${receipt.body}`);
-        assert.equal(JSON.parse(receipt.body).classificacao, 'CAIXA');
+        assert.equal(JSON.parse(receipt.body).id, debtAccount.id, 'authenticated receipt response identifies the account that received funds');
         const persistedReceipt = await db.pagamento.findMany({ where: { contaReceberId: debtAccount.id, sessaoCaixaId: debtSessionId }, orderBy: { pagoEm: 'asc' } });
         assert.equal(persistedReceipt.reduce((sum, row) => sum + Number(centsExact(row.valor)), 0), receiptCentsBySession[index].slice(0, receiptCentsBySession[index].indexOf(cents) + 1).reduce((sum, value) => sum + Number(value), 0), 'database persists only the exact receipts collected in this session');
       }
