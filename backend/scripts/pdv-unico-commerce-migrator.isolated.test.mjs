@@ -190,7 +190,6 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert(cookieHeader?.startsWith('token='), 'login returns the real session credential as an HttpOnly token cookie');
     return cookieHeader.split(';', 1)[0];
   }
-  const withAuthenticatedOwnerAt = (day, operation) => withQaDate(day, async () => operation(await login(authOwner.email, ownerPassword, 'DONO')));
 
   try {
     const missing = await app.inject({ method: 'GET', url: '/api/operacao/contexto' });
@@ -403,12 +402,12 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     } });
     const noSessionItem = await db.itemComanda.create({ data: { id: `authenticated-no-session-item-${runId}`, comandaId: immediateWithoutSessionCommandId, produtoId: product.id, volumeMl: 0, quantidade: 1, precoUnit: '1.00', nome: 'QA session guard item' } });
     const auditCountBefore = await db.transacaoLog.count({ where: { cervejariaId: primaryCompany.id, tipo: 'SALE_PAYMENT_RECORDED', comandaId: immediateWithoutSessionCommandId } });
-    const rejectedNoSessionPayment = await withAuthenticatedOwnerAt('2026-12-20', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(immediateWithoutSessionCommandId)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 1 }] } }));
+    const rejectedNoSessionPayment = await withQaDate('2026-12-20', () => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(immediateWithoutSessionCommandId)}/pagamentos`, headers: { cookie: ownerCookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 1 }] } }));
     assert.equal(rejectedNoSessionPayment.statusCode, 400, `new immediate payment without a valid open session is refused: ${rejectedNoSessionPayment.body}`);
     assert.equal(await db.pagamento.count({ where: { comandaId: immediateWithoutSessionCommandId } }), 0, 'no-session refusal creates no payment');
     assert.deepEqual(plain(await db.comanda.findUniqueOrThrow({ where: { id: immediateWithoutSessionCommandId }, include: { itens: true, pagamentos: true } })), plain({ ...(await db.comanda.findUniqueOrThrow({ where: { id: immediateWithoutSessionCommandId } })), itens: [noSessionItem], pagamentos: [] }), 'no-session refusal leaves command and item unchanged');
     assert.equal(await db.transacaoLog.count({ where: { cervejariaId: primaryCompany.id, tipo: 'SALE_PAYMENT_RECORDED', comandaId: immediateWithoutSessionCommandId } }), auditCountBefore, 'no-session refusal creates no payment audit');
-    const cleanupNoSessionCommand = await withAuthenticatedOwnerAt('2026-12-20', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(immediateWithoutSessionCommandId)}/cancelar`, headers: { cookie }, payload: {} }));
+    const cleanupNoSessionCommand = await withQaDate('2026-12-20', () => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(immediateWithoutSessionCommandId)}/cancelar`, headers: { cookie: ownerCookie }, payload: {} }));
     assert.equal(cleanupNoSessionCommand.statusCode, 200, `rejected-payment fixture is cancelled through the real route: ${cleanupNoSessionCommand.body}`);
     assert.equal((await db.comanda.findUniqueOrThrow({ where: { id: immediateWithoutSessionCommandId } })).status, 'CANCELADA');
 
