@@ -1387,7 +1387,8 @@ async function proveLegacyOrderContextPreflight(args) {
       assert.equal((await runPdvCatalogMigration({ db: migratedDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: eventCatalogRunId })).status, 'COMPLETED');
       assert.equal((await runPdvKitchenOrderContextPreparation({ db: migratedDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: eventPreparationRunId })).status, 'COMPLETED');
       const eventCommerceRunId = `preflight-event-commerce-${runId}`;
-      assert.equal((await runPdvCommerceMigration({ db: migratedDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: eventCommerceRunId })).status, 'COMPLETED');
+      const eventCommerce = await runPdvCommerceMigration({ db: migratedDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: eventCommerceRunId });
+      assert.equal(eventCommerce.status, 'COMPLETED', `prepared Event commerce mapping: ${JSON.stringify(eventCommerce)}`);
       const eventPreparationAfterCommerceWrite = await readPdvKitchenOrderPreparationSnapshot(migratedDb, eventCompany.id);
       const migratedEventCommand = eventPreparationAfterCommerceWrite.orders.find((row) => row.id === eventOrderWithMovement.id).comanda;
       assert.equal(migratedEventCommand.pontoVendaId, eventPoint.id, 'commercial scope writes the confirmed command PDV link');
