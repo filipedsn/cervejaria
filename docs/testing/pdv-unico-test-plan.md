@@ -622,3 +622,14 @@ For this QA rehearsal, the existing Payment rows retain their IDs, financial fie
 On the canonical reporting path, payment totals use exact persisted session references. Unassigned historical payments appear in a separate informational total, included once in overall finance and customer history but excluded from session totals. When canonical mode is disabled, the existing legacy interval behavior remains. New immediate operational payments continue to require an open session; receivable collection rules remain specific to that flow.
 
 The migration is additive and QA-only in this task. Implementation code is committed at `60b3d066c5ac15e2412a7d0b29b370630062da71`. No DEV migration, real backfill, cutover, deploy, or legacy removal is authorized. Representative financial reconciliation and dependent phases are pending the isolated QA run; TAP-76 remains In Progress.
+
+
+## QA execution result (2026-10-06)
+
+The exact Git snapshot was certified from commit `2b607a0de03d792ce782e0ffbbb34d729ac0e3bd` (tree `829d98be05a84533737d15a8f8d1703f97ce093c`), materializing and verifying 1,110 tracked blobs. The generated candidate manifest SHA-256 was `438664b622ca58b5e4cd12a1dd230052838a8bea2fb04c5e752495b446b09cad`. Local workspace state was unchanged by certification.
+
+Synthetic business migration and the exact-session/legacy-fallback tests passed. Synthetic finance passed its restartable migration, approval-scope rejection, altered-payload rejection, tenant mismatch, C/A/B separation, payment/debt reconciliation, rollback, and replay checks. Finance fixture summary: 90 migrations, 6 payments, 2 receivables, 5 movements. The aggregate synthetic suite is BLOCKED by a separate commerce regression: `EVT-AUD-02` expects HTTP 200 but gets 500 from Prisma `P2022` (column absent) during event reversal. Seven of eight event deletion tests passed.
+
+The representative QA copy restored and exactly reconciled all 10,738 rows across 34 photo tables. CIA Maritima business, catalog, and session phases each passed pause/resume/replay. Finance first batch returned RUNNING; the resume process remained CPU-active without a terminal result for 30 minutes. It was stopped, and its executor-owned disposable QA container was removed. No representative financial reconciliation result was produced: the 577 C payments, 26 A payments, and 2 B receipts were not certified in the destination. Churrasquinho and dependent representative kitchen/commerce phases were not reached. The migration runner remains unapproved for representative completion.
+
+No DEV writes or migrations, production access, real backfill, cutover, deploy, or legacy removal occurred. TAP-76 remains In Progress. Next step: profile the representative finance resume and resolve the independent commerce fixture/schema blocker, then repeat the exact snapshot through both tenants and dependent phases.

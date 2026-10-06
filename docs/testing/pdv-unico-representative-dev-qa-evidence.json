@@ -51019,10 +51019,41 @@
         "both session references"
       ],
       "rowsWithNullReceivedAndChange": 577,
-      "transformationOutcome": "PENDING_QA",
+      "transformationOutcome": "BLOCKED_BEFORE_REPRESENTATIVE_FINANCE_RECONCILIATION",
       "prodAccessUsed": false,
       "devWritesOrMigrations": false,
-      "cutoverOrLegacyRemoval": false
+      "cutoverOrLegacyRemoval": false,
+      "gitCertification": {
+        "selectedCommit": "2b607a0de03d792ce782e0ffbbb34d729ac0e3bd",
+        "selectedTree": "829d98be05a84533737d15a8f8d1703f97ce093c",
+        "trackedBlobs": 1110,
+        "generatedCandidateManifestSha256": "438664b622ca58b5e4cd12a1dd230052838a8bea2fb04c5e752495b446b09cad",
+        "workspaceUnchanged": true,
+        "prodAccessUsed": false
+      },
+      "syntheticQa": {
+        "result": "BLOCKED",
+        "business": "PASS",
+        "paymentSessionFilter": "PASS 2/2",
+        "finance": "PASS; migrations=90; payments=6; receivables=2; movements=5; rollback/replay=PASS",
+        "commerce": "BLOCKED; EVT-AUD-02 expected 200, got 500; Prisma P2022 missing column; 7/8 event deletion tests passed"
+      },
+      "representativeQa": {
+        "photoRestore": "PASS; 34 tables; 10738 rows; exact scalar/ID reconciliation",
+        "tenantsReached": [
+          "CIA Maritima"
+        ],
+        "phasesPassed": [
+          "business pause/resume/replay",
+          "catalog pause/resume/replay",
+          "sessions pause/resume/replay"
+        ],
+        "finance": "firstBatch=RUNNING; resume remained active 30 minutes without a terminal result; owned QA process stopped and container removed",
+        "representativeFinanceReconciliation": "NOT_RUN_TO_COMPLETION",
+        "churrasquinho": "NOT_REACHED",
+        "dependentKitchenCommerce": "NOT_REACHED",
+        "overall": "BLOCKED"
+      }
     }
   }
 }
