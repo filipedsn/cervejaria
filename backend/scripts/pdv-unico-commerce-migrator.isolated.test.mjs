@@ -1217,7 +1217,7 @@ async function proveLegacyOrderContextPreflight(args) {
     const legacyPreparationHashBeforeCommercial = pdvKitchenPreparationPayloadHash(legacyEventPreparationPayload(eventPreparationBeforeCommercial, eventOrderWithMovement.id));
     assert.deepEqual((await legacyDb.pedidoOperacao.findMany({ where: { id: { in: [eventOrderWithMovement.id, eventOrderWithoutMovement.id] } }, orderBy: { id: 'asc' }, select: { id: true, pontoVendaId: true, createdAt: true, updatedAt: true } })).map((row) => [row.id, row.pontoVendaId, row.createdAt.toISOString(), row.updatedAt.toISOString()]), [eventOrderWithMovement, eventOrderWithoutMovement].sort((a,b) => a.id.localeCompare(b.id)).map((row) => [row.id, eventPoint.id, row.createdAt.toISOString(), row.updatedAt.toISOString()]), 'pre-commercial Event preparation preserves IDs and timestamps with/without movement');
     const preparationRunId = `preflight-order-preparation-${runId}`;
-    const paused = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: company.id, pointId: point.id, runId: preparationRunId, maxBatches: 1 });
+    const paused = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: company.id, pointId: point.id, runId: preparationRunId, batchSize: 1, maxBatches: 1 });
     assert.equal(paused.status, 'RUNNING', `one proven order is committed as one checkpointed batch: ${JSON.stringify(paused)}`);
     const failureCheckpoint = plain(paused.checkpoint);
     const orderBeforeFailure = await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: order.id } });
@@ -1695,7 +1695,7 @@ try {
   assert.deepEqual([photograph.coverage.commandCount, photograph.coverage.itemCount, photograph.coverage.soldOptionalCount, photograph.coverage.kitchenOrderCount, photograph.coverage.kitchenStatusHistoryCount, photograph.coverage.inventoryBalanceCount, photograph.coverage.inventoryMovementCount], [4, 2, 1, 2, 6, 1, 1]);
 
   const commerceRunId = id('commerce-run');
-  const paused = await runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: commerceRunId, maxBatches: 1 });
+  const paused = await runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: commerceRunId, batchSize: 1, maxBatches: 1 });
   assert.equal(paused.status, 'RUNNING', JSON.stringify(paused));
   const checkpoint = plain(paused.checkpoint);
   await assert.rejects(runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: commerceRunId, afterDestinationWrite: (row) => { if (row.type === 'COMANDA' && row.id === eventCommand1.id) throw new Error('QA_COMMERCE_ROLLBACK'); } }), /QA_COMMERCE_ROLLBACK/);
