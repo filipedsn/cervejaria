@@ -205,7 +205,7 @@ async function proveCommerceLinkRequiresDurableProof(target, pointId) {
     await db.pdvMigrationBatch.update({ where: { id: originalBatch.id }, data: { checkpoint: originalCheckpoint } });
 
     await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: null, ocorrenciaId: null } });
-    await runProof('command-pdv-manually-altered', ['FINANCE_HISTORICAL_APPROVAL_PAYLOAD_DIVERGED']);
+    await runProof('command-pdv-manually-altered', ['FINANCE_HISTORICAL_COMMERCE_PROOF_DIVERGED']);
     await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: originalCommand.pontoVendaId, ocorrenciaId: originalCommand.ocorrenciaId } });
   } finally {
     await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: originalCommand.pontoVendaId, ocorrenciaId: originalCommand.ocorrenciaId } });

@@ -853,9 +853,13 @@ export async function runPdvFinanceMigration(options: { db: Db; companyId: strin
       const mappedPayments = await tx.pdvMigrationMap.findMany({ where: { sourceType: 'PAGAMENTO', sourceId: { in: paymentIds } }, select: { sourceId: true } });
       const confirmedHistoricalCommerceCommands: Record<string, ConfirmedHistoricalCommerceCommand> = {};
       const approvedCommands = new Set((options.historicalNoSessionApproval?.entries ?? []).filter((entry) => entry.tenantId === options.companyId && entry.origin === 'EVENTO' && entry.pointId === null).map((entry) => entry.commandId));
+      const commerceCommandMaps = await tx.pdvMigrationMap.findMany({ where: { sourceType: 'COMANDA', sourceId: { in: [...approvedCommands] } }, select: { sourceId: true } });
+      const commerceCommandMapIds = new Set(commerceCommandMaps.map((row: any) => row.sourceId));
       for (const commandId of approvedCommands) {
         const command = snapshot.payments.find((payment: any) => payment.comandaId === commandId)?.comanda;
-        if (command?.pontoVendaId === options.pointId) confirmedHistoricalCommerceCommands[commandId] = await findConfirmedHistoricalCommerceCommand(tx, options.companyId, options.pointId, command);
+        if (command && (command.pontoVendaId === options.pointId || commerceCommandMapIds.has(commandId))) {
+          confirmedHistoricalCommerceCommands[commandId] = await findConfirmedHistoricalCommerceCommand(tx, options.companyId, options.pointId, command);
+        }
       }
       return buildPdvFinanceMigrationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedSessions, confirmedEvents, mappedPaymentIds: new Set(mappedPayments.map((row: any) => row.sourceId)), confirmedHistoricalCommerceCommands, historicalNoSessionApproval: options.historicalNoSessionApproval });
     },
