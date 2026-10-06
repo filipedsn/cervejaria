@@ -49,7 +49,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-finance-migrator.isolated.test.mjs",
-      "sha256": "324aed5e369ec1417394a4d4d9acc0fc4e1c85201454c3c02de9f52913b5d595"
+      "sha256": "37b7cc23a4770335bdd164041079f2334d0cbfd2478e315a2ecfefed7663bc7a"
     },
     {
       "path": "backend/scripts/pdv-unico-finance-reconcile.ts",
@@ -81,14 +81,14 @@
     },
     {
       "path": "backend/scripts/run-pdv-unico-finance-disposable-qa.mjs",
-      "sha256": "9b1066e6363ae15d78636aff97b1d7ec59d9370ded1078c46dba226110bbdfd0"
+      "sha256": "9a03be90eb6762e7f436cbffc01ff1ff26589c5a8a4e74e91072fa1fd3090953"
     },
     {
       "path": "backend/scripts/run-pdv-unico-historical-disposable-qa.mjs",
       "sha256": "136b6b2903ba304e9996ad9a07320210e1f224cc3dd594b3bc06dd97a130a249"
     }
   ],
-  "manifestSha256": "51474de1943993d1d7ac6ac8227f62b1fde38d22bd6a396f7fda48b50994361d",
+  "manifestSha256": "dc31d8f874f6f40efb5f33aaa67cfa83ea76fa73e87cb4f92aa0fe3fdee05a62",
   "historicalProvenanceMigration": {
     "name": "20261005180000_payment_historical_provenance",
     "path": "backend/prisma/migrations/20261005180000_payment_historical_provenance/migration.sql",
