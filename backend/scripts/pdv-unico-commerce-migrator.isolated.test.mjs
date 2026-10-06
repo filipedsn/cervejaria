@@ -2318,7 +2318,6 @@ try {
     if (previousPdvFlag === undefined) delete process.env.PDV_CANONICAL_CONFIG_QA;
     else process.env.PDV_CANONICAL_CONFIG_QA = previousPdvFlag;
     await preColumnClient.$disconnect();
-    await rm(preColumnClientDir, { recursive: true, force: true });
   }
 
   console.log(`PDV_COMMERCE_QA=PASS; migrations=${applied.length}; coverage=commands:4/items:2/sold-optionals:1/kitchen-orders:2/history:6/balances:1/movements:1/unattached:1; mapped=${completed.checkpoint.totalRecords}; rollback=atomic+mid-batch-divergence; parent-link-tamper=3-specific-blockers; same-db-scopes=business,catalog,sessions,finance,commerce; reexecution=same,new; concurrent-tenant-auth-cash-flows=2; canonical-blockers=3-specific-codes; provision=one-pdv+config/retry+concurrency+rollback; legacy-close=pre-column-schema-and-client; stock-tamper=BLOCKED; PROD_ACCESS_USED=NO`);
