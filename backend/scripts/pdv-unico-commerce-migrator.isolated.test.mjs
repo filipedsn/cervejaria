@@ -385,7 +385,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       assert.deepEqual([persistedSession.status, persistedSession.fechadoPorId, centsExact(persistedSession.trocoInicial), centsExact(persistedSession.contadoDinheiro), centsExact(persistedSession.contadoPix), centsExact(persistedSession.contadoCartaoDebito), centsExact(persistedSession.contadoCartaoCredito)], ['FECHADO', flow.owner.id, '500', '500', totalCents, '0', '0']);
       const sessionReport = await app.inject({ method: 'GET', url: `/api/operacao/caixa/sessoes/${encodeURIComponent(session.id)}`, headers: { cookie: flow.cookie } });
       assert.equal(sessionReport.statusCode, 200, `authenticated session report returns for ${flow.company.id}: ${sessionReport.body}`);
-      assert.equal(centsExact(JSON.parse(sessionReport.body).esperado.totalVendas), totalCents, 'session report totals exact persisted payments');
+      assert.equal(centsExact(JSON.parse(sessionReport.body).caixa.esperado.totalVendas), totalCents, 'session report totals exact persisted payments');
       const dashboardAfter = await app.inject({ method: 'GET', url: dashboardUrl, headers: { cookie: flow.cookie } });
       assert.equal(dashboardAfter.statusCode, 200);
       assert.equal(centsExact(JSON.parse(dashboardAfter.body).resumo.totalRecebido - totalReceivedBefore), totalCents, 'dashboard total received includes this payment exactly once');
