@@ -514,7 +514,69 @@
       "modulePathListSha256": "e21c36c67a08f28d972e27f59761b0f2498a27f64fb0c450a09d8e691bd390e1"
     },
     "localStatePreserved": true,
-    "evidencePath": "docs/testing/pdv-unico-representative-dev-qa-evidence.json"
+    "evidencePath": "docs/testing/pdv-unico-representative-dev-qa-evidence.json",
+    "latestPaymentReview": {
+      "reviewedAt": "2026-10-05",
+      "codeCommit": "cf18678ba3d9145cd8d58a41a1a7b0d145ebf3f1",
+      "tree": "a671be8878a33c53906e28ae3ee184281e05b6fd",
+      "aggregate": "BLOCKED",
+      "syntheticRegression": {
+        "result": "PASS",
+        "suite": "pdv-unico-current-disposable",
+        "exitCode": 0
+      },
+      "representativeRehearsal": {
+        "result": "BLOCKED",
+        "exitCode": 1
+      },
+      "moduleOriginAudit": {
+        "result": "PASS",
+        "snapshotProjectModuleCount": 175,
+        "snapshotProjectModulePathListSha256": "1dc580eeb013bb65efa09857e2c2eab065e88a1f9806a8420c316fc5cd08a0bb",
+        "nonSnapshotWorkspaceModuleCount": 0,
+        "externalDependencyModuleCount": 100,
+        "externalPrismaRuntimeVersion": "6.19.3",
+        "expectations": {
+          "syntheticModules": {
+            "result": "PASS",
+            "expectedCount": 5,
+            "observedCount": 5
+          },
+          "representativeModules": {
+            "result": "ENTRYPOINT_OBSERVED",
+            "expectedCount": 1,
+            "observedCount": 1
+          }
+        }
+      },
+      "sourceMaterialization": "git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot",
+      "trackedBlobs": 1106,
+      "codeCandidateCount": 58,
+      "manifestSha256": "65ebf13eff7c6f0ee767e767733186772c3fb00de68493621a02ad6f947dfdf4",
+      "certificationRunnerSha256": "404f63c9505f018ba72019003617134428f9f6a09223803ce8c7d1df308c6fbd",
+      "packageLockSha256": "9330ae831d6ea407a47dbf50a6158c60fd9ffb54fe99ed87e17fd6c6e5ec60d0",
+      "localStatePreserved": true,
+      "prodAccessUsed": "NO",
+      "devSharedAccess": "NO",
+      "representativeBlockers": [
+        {
+          "tenant": "CIA Marítima",
+          "phase": "finance",
+          "code": "FINANCE_PAYMENT_SESSION_MISSING",
+          "paymentId": "cmrcmcnfp000khv2w2uyceipp",
+          "committedBatches": 0
+        },
+        {
+          "tenant": "Churrasquinho do Thiago",
+          "phase": "finance",
+          "code": "FINANCE_PAYMENT_SESSION_MISSING",
+          "paymentId": "cmsthiwwu007ohvmo2o79k3g1",
+          "committedBatches": 0
+        }
+      ],
+      "downstream": "Kitchen preparation, commerce, stock and their representative reconciliation were not run because finance remains blocked.",
+      "measurementSemantics": "The phase wrapper query counter excludes queries counted by nested measured stages; child-stage counters are exclusive to their own scopes. Do not compare a phase total to an exclusive child counter as if they had the same scope."
+    }
   },
   "scopeDeviation": {
     "action": "none in this delivery",

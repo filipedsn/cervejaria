@@ -602,3 +602,12 @@ The two B payments are fully settled debt receipts: 3,800 and 1,400 cents, each 
 ### Git snapshot import-audit regression
 
 The snapshot runner now verifies the synthetic module expectations whenever the synthetic suite passes, even if the representative suite is BLOCKED or NOT_RUN. It separately records whether the representative entrypoint was observed or not reached; a successful representative run still requires its entrypoint. Aggregate certification remains BLOCKED on any required suite failure. The prior metric output used nested stages: phase-wrapper query counts are exclusive of child measurement scopes, and child counts are exclusive to their respective stages. Cross-scope comparisons do not represent total queries unless all exclusive scopes are accounted for.
+
+
+## Payment classification certification update (2026-10-05)
+
+The review code is certified from Git commit `cf18678ba3d9145cd8d58a41a1a7b0d145ebf3f1` (tree `a671be8878a33c53906e28ae3ee184281e05b6fd`), materializing 1106 tracked blobs from the exact commit. Aggregate snapshot result: **BLOCKED**. The synthetic regression passed (exit 0); the representative rehearsal remained blocked (exit 1). Module-origin audit passed: 5/5 expected synthetic modules and the representative entrypoint was observed. The runner preserved the local workspace fingerprint.
+
+Finance stopped before its first batch for both tenants: CIA Marítima payment `cmrcmcnfp000khv2w2uyceipp` and Churrasquinho payment `cmsthiwwu007ohvmo2o79k3g1`, each `FINANCE_PAYMENT_SESSION_MISSING`. The complete classification remains 26 exact session references (115,400 cents), 2 evidenced no-session debt receipts (5,200 cents), 577 immediate payments without sufficient provenance (3,470,900 cents), and zero invalid/dual references. Kitchen, commerce and stock therefore remain unreconciled.
+
+Metric counters are nested: phase-wrapper query totals exclude query counts attributed to child measurement scopes; each child counter is exclusive to its stage. Compare like-for-like scopes only. No financial readiness or cutover is approved. The remaining business decision is whether/how to preserve immediate no-session history and represent it in cash/PDV reporting; do not associate by date, amount, Event or sole candidate.
