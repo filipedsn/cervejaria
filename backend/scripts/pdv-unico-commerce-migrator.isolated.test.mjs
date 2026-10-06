@@ -2284,7 +2284,8 @@ try {
   runPrisma(['generate', '--schema', preColumnGenerateSchemaPath]);
 
   const legacyCloseCompany = await db.cervejaria.create({ data: { nome: `Legacy close schema ${runId}`, slug: `legacy-close-schema-${runId}` } });
-  const legacyCloseOwner = await db.usuario.create({ data: { id: id('legacy-close-owner'), nome: 'Legacy close owner', email: `legacy-close-owner-${runId}@example.invalid`, senhaHash: ownerHash, papel: 'DONO', cervejariaId: legacyCloseCompany.id } });
+  const { hashPassword: hashLegacyClosePassword } = await import('../src/lib/utils.ts');
+  const legacyCloseOwner = await db.usuario.create({ data: { id: id('legacy-close-owner'), nome: 'Legacy close owner', email: `legacy-close-owner-${runId}@example.invalid`, senhaHash: await hashLegacyClosePassword(`Qa-legacy-close-${runId}-only!`), papel: 'DONO', cervejariaId: legacyCloseCompany.id } });
   const legacyClosePoint = await db.pontoVenda.create({ data: { cervejariaId: legacyCloseCompany.id, nome: 'Legacy close PDV' } });
   const legacyCloseSession = await db.sessaoCaixaOperacao.create({ data: {
     cervejariaId: legacyCloseCompany.id, pontoVendaId: legacyClosePoint.id, diaOperacional: new Date('2026-11-20T00:00:00.000Z'),
