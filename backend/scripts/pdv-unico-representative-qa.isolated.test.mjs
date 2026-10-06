@@ -189,7 +189,7 @@ async function proveCommerceLinkRequiresDurableProof(target, pointId) {
   };
   try {
     await db.pdvMigrationMap.delete({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } } });
-    await runProof('commerce-map-missing', ['FINANCE_HISTORICAL_APPROVAL_PAYLOAD_DIVERGED']);
+    await runProof('commerce-map-missing', ['FINANCE_HISTORICAL_COMMERCE_PROOF_MISSING']);
     await restoreMap();
 
     await db.pdvMigrationMap.update({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } }, data: { pontoVendaId: alternatePoint.id } });
