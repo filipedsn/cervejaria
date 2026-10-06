@@ -806,7 +806,7 @@ async function writeCommerceTarget(tx: Db, item: any) {
   return false;
 }
 
-async function reconcilePdvCommerce(tx: Db, companyId: string, pointId: string, pdvSourceKey: string, confirmedItems: any[], transactionContext?: any) {
+async function reconcilePdvCommerce(tx: Db, companyId: string, pointId: string, pdvSourceKey: string, runId: string, confirmedItems: any[], transactionContext?: any) {
   // Read the source graph again inside the certification transaction. This is intentionally
   // independent of the planned item counters stored in the run checkpoint.
   const snapshot = await readPdvCommerceSourceSnapshot(tx, companyId);
@@ -822,6 +822,7 @@ async function reconcilePdvCommerce(tx: Db, companyId: string, pointId: string, 
     throw new PdvCatalogBlocker('COMMERCE_RECONCILIATION_TENANT_DIVERGED', null, null, 'Reconciliação comercial encontrou vínculos entre tenants.');
   }
   const actualItems = buildPdvCommerceMigrationItems({ companyId, pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedOccurrences });
+  await reconstituteConfirmedCommerceCommandSources(tx, companyId, pointId, runId, actualItems);
   if (actualItems.length !== confirmedItems.length || actualItems.some((item, index) => item.type !== confirmedItems[index]?.type || item.id !== confirmedItems[index]?.id)) {
     throw new PdvCatalogBlocker('COMMERCE_RECONCILIATION_COVERAGE_DIVERGED', null, null, 'IDs, ordem ou cobertura comercial mudaram desde a fotografia confirmada.');
   }
@@ -927,7 +928,7 @@ export async function runPdvCommerceMigration(options: { db: Db; companyId: stri
     writeItem: writeCommerceTarget,
     validateScope: async (tx, items, transactionContext) => {
       const dependency = await canonicalDependency(tx, options.companyId, options.pointId);
-      return reconcilePdvCommerce(tx, options.companyId, options.pointId, dependency.sourceKey, items, transactionContext);
+      return reconcilePdvCommerce(tx, options.companyId, options.pointId, dependency.sourceKey, options.runId, items, transactionContext);
     },
   });
 }
