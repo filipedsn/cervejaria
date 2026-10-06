@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { prisma } from '../prisma.js';
 import { getAuthUser } from '../../types/auth.js';
 import { createSinglePdv } from '../single-pdv-provisioning.js';
+import { canonicalPdvQaActivationEnabled } from '../canonical-pdv-operational-config.js';
 import {
   getOperationalProfile,
   type OperationalProfile,
@@ -110,7 +111,9 @@ export async function ativarModuloOperacao(
     },
   });
 
-  const { pontoVenda } = await createSinglePdv(tx, {
+  const mode = canonicalPdvQaActivationEnabled() ? 'CANONICAL' as const : 'LEGACY' as const;
+  const { pontoVenda } = await createSinglePdv(tx, mode === 'CANONICAL' ? {
+    mode,
     cervejariaId: params.cervejariaId,
     nome: params.nomePontoVenda?.trim() || 'Principal',
     operationalSettings: {
@@ -123,6 +126,10 @@ export async function ativarModuloOperacao(
       whatsappPedidoProntoNaCozinha: false,
       quantidadeMesas: null,
     },
+  } : {
+    mode,
+    cervejariaId: params.cervejariaId,
+    nome: params.nomePontoVenda?.trim() || 'Principal',
   });
 
   return { configuracao, pontoVenda };

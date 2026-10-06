@@ -518,7 +518,7 @@ export function AdminCervejariasPage() {
           </div>
 
           <p className="rounded-xl border border-line bg-surface-lighter px-4 py-3 text-sm text-ink-muted">
-            O responsável escolhe o modo de trabalho e os recursos no primeiro acesso. Essa configuração pode ser ajustada depois.
+            No primeiro acesso, os recursos seguem a política ativa do provisionamento. Na política canônica, Por Caixa é obrigatório e eventos são contexto da agenda; a escolha EVENTO permanece apenas na compatibilidade legada durante a transição.
           </p>
 
           <button type="submit" className="touch-btn-primary w-full" disabled={createMutation.isPending}>

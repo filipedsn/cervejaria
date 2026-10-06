@@ -131,22 +131,21 @@ export async function operacaoRoutes(app: FastifyInstance) {
       const body = createPontoVendaSchema.parse(request.body);
       const canonical = canonicalPdvQaActivationEnabled();
       try {
-        const created = await prisma.$transaction((tx) => createSinglePdv(tx, {
-          cervejariaId,
-          nome: body.nome,
-          ...(canonical ? {
-            operationalSettings: {
-              tapsEnabled: false,
-              inventoryEnabled: request.operacao.controlaEstoque,
-              kitchenEnabled: request.operacao.temCozinha,
-              kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch,
-              allowCloseComandaWithPendingKitchenOrders: request.operacao.effectiveSettings.allowCloseComandaWithPendingKitchenOrders,
-              whatsappPedidoProntoEnabled: request.operacao.effectiveSettings.whatsappPedidoProntoEnabled,
-              whatsappPedidoProntoNaCozinha: request.operacao.effectiveSettings.whatsappPedidoProntoNaCozinha,
-              quantidadeMesas: request.operacao.quantidadeMesas,
-            },
-          } : {}),
-        }));
+        const created = await prisma.$transaction((tx) => canonical
+          ? createSinglePdv(tx, {
+              mode: 'CANONICAL', cervejariaId, nome: body.nome,
+              operationalSettings: {
+                tapsEnabled: false,
+                inventoryEnabled: request.operacao.controlaEstoque,
+                kitchenEnabled: request.operacao.temCozinha,
+                kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch,
+                allowCloseComandaWithPendingKitchenOrders: request.operacao.effectiveSettings.allowCloseComandaWithPendingKitchenOrders,
+                whatsappPedidoProntoEnabled: request.operacao.effectiveSettings.whatsappPedidoProntoEnabled,
+                whatsappPedidoProntoNaCozinha: request.operacao.effectiveSettings.whatsappPedidoProntoNaCozinha,
+                quantidadeMesas: request.operacao.quantidadeMesas,
+              },
+            })
+          : createSinglePdv(tx, { mode: 'LEGACY', cervejariaId, nome: body.nome }));
         return reply.status(201).send(created.pontoVenda);
       } catch (error) {
         if (error instanceof SinglePdvProvisioningConflictError) {

@@ -14,7 +14,9 @@ import {
   saveLogoAndExtractBranding,
   updateBrandingColors,
 } from '../lib/cervejaria-branding.js';
+import { ensureDefaultTaps } from '../lib/trailer-defaults.js';
 import { adaptLegacyProvisioning, provisionEstablishment, provisionEstablishmentRequestSchema } from '../lib/provision-establishment.js';
+import { canonicalPdvQaActivationEnabled } from '../lib/canonical-pdv-operational-config.js';
 import { readOperationalConfig, updateOperationalConfig, updateOperationalConfigSchema } from '../lib/operational-config.js';
 import { getAuthUser } from '../types/auth.js';
 import {
@@ -296,6 +298,7 @@ export async function adminRoutes(app: FastifyInstance) {
   });
 
   app.post('/cervejarias/provision', async (request, reply) => {
+    const canonical = canonicalPdvQaActivationEnabled();
     const body = provisionEstablishmentRequestSchema.parse(request.body);
     const existing = await prisma.usuario.findUnique({ where: { email: body.dono.email } });
     if (existing) return reply.status(409).send({ error: 'E-mail do proprietÃ¡rio jÃ¡ cadastrado' });
@@ -308,15 +311,20 @@ export async function adminRoutes(app: FastifyInstance) {
         ...body,
         slug,
         dono: { ...body.dono, senhaHash },
-      }));
+      }, { mode: canonical ? 'CANONICAL' : 'LEGACY' }));
     } catch (error) {
       if (isUniqueConstraintError(error)) return reply.status(409).send({ error: 'Empresa ou proprietário já cadastrado.' });
       throw error;
     }
-    return reply.status(201).send(result);
+    return reply.status(201).send(canonical ? result : {
+      cervejaria: result.cervejaria,
+      dono: result.dono,
+      configuracaoOperacional: result.configuracaoOperacional,
+    });
   });
 
   app.post('/cervejarias', async (request, reply) => {
+    const canonical = canonicalPdvQaActivationEnabled();
     const { body, logoBuffer } = await parseMultipartCervejaria(request, createCervejariaSchema);
 
     const existing = await prisma.usuario.findUnique({ where: { email: body.donoEmail } });
@@ -347,7 +355,10 @@ export async function adminRoutes(app: FastifyInstance) {
     }, slug);
     let result: Awaited<ReturnType<typeof provisionEstablishment>>;
     try {
-      result = await prisma.$transaction((tx) => provisionEstablishment(tx, legacy.input, legacy.resources));
+      result = await prisma.$transaction((tx) => provisionEstablishment(tx, legacy.input, {
+        ...legacy.resources,
+        mode: canonical ? 'CANONICAL' : 'LEGACY',
+      }));
     } catch (error) {
       if (isUniqueConstraintError(error)) return reply.status(409).send({ error: 'Empresa ou proprietário já cadastrado.' });
       throw error;
@@ -356,6 +367,17 @@ export async function adminRoutes(app: FastifyInstance) {
     let cervejaria = result.cervejaria;
     if (logoBuffer) {
       cervejaria = await saveLogoAndExtractBranding(cervejaria.id, logoBuffer);
+    }
+
+    // Temporary compatibility only: legacy Trailer/tap provisioning remains
+    // active while canonical provisioning is disabled. The canonical path
+    // stores taps capability on its PDV and never substitutes a Trailer.
+    if (!canonical && legacy.resources.createTrailer) {
+      const trailer = await prisma.trailer.findFirst({
+        where: { cervejariaId: cervejaria.id },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (trailer) await ensureDefaultTaps(trailer.id, cervejaria.id);
     }
 
     return reply.status(201).send({ cervejaria, dono: result.dono });

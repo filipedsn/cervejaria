@@ -9,6 +9,16 @@ export type SinglePdvOperationalSettings = {
   quantidadeMesas: number | null;
 };
 
+export type SinglePdvProvisioningMode = 'CANONICAL' | 'LEGACY';
+
+type SinglePdvProvisioningRequest = {
+  cervejariaId: string;
+  nome: string;
+} & (
+  | { mode: 'CANONICAL'; operationalSettings: SinglePdvOperationalSettings }
+  | { mode: 'LEGACY'; operationalSettings?: never }
+);
+
 export class SinglePdvProvisioningConflictError extends Error {
   readonly statusCode = 409;
   readonly code = 'PDV_ALREADY_EXISTS';
@@ -28,11 +38,7 @@ export class SinglePdvProvisioningConflictError extends Error {
  */
 export async function createSinglePdv(
   tx: any,
-  params: {
-    cervejariaId: string;
-    nome: string;
-    operationalSettings?: SinglePdvOperationalSettings;
-  },
+  params: SinglePdvProvisioningRequest,
 ) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${params.cervejariaId}, 0))`;
 
@@ -46,7 +52,7 @@ export async function createSinglePdv(
   const pontoVenda = await tx.pontoVenda.create({
     data: { cervejariaId: params.cervejariaId, nome: params.nome.trim() || 'Principal' },
   });
-  const configuracaoPdv = params.operationalSettings
+  const configuracaoPdv = params.mode === 'CANONICAL'
     ? await tx.configuracaoPontoVenda.create({
         data: {
           cervejariaId: params.cervejariaId,

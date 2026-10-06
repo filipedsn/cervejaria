@@ -224,6 +224,59 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.deepEqual(raceResponses.map((response) => response.statusCode).sort(), [201, 409], 'two concurrent authenticated first-PDV requests are serialized with one creation and one no-write conflict');
     assert.deepEqual([await db.pontoVenda.count({ where: { cervejariaId: raceCompany.id } }), await db.configuracaoPontoVenda.count({ where: { cervejariaId: raceCompany.id } })], [1, 0], 'legacy-mode API race leaves exactly one point and does not touch the canonical table');
 
+    delete process.env.PDV_CANONICAL_CONFIG_QA;
+    try {
+      const legacyJsonPayload = {
+        nome: `Provisioned legacy JSON ${runId}`,
+        dono: { nome: 'Legacy JSON owner', email: `legacy-json-${runId}@example.invalid`, senha: ownerPassword },
+        enablements: { plannedOperations: true, taps: false, inventory: true, kitchen: false },
+      };
+      const legacyJsonResponse = await app.inject({ method: 'POST', url: '/api/admin/cervejarias/provision', headers: { cookie: adminCookie }, payload: legacyJsonPayload });
+      assert.equal(legacyJsonResponse.statusCode, 201, `legacy JSON admin route retains its contract: ${legacyJsonResponse.body}`);
+      const legacyJson = JSON.parse(legacyJsonResponse.body);
+      assert.deepEqual(Object.keys(legacyJson).sort(), ['cervejaria', 'configuracaoOperacional', 'dono']);
+      const legacyJsonConfig = await db.configuracaoOperacional.findUniqueOrThrow({ where: { cervejariaId: legacyJson.cervejaria.id } });
+      assert.deepEqual([legacyJsonConfig.plannedOperationsEnabled, legacyJsonConfig.tapsEnabled, legacyJsonConfig.inventoryEnabled, legacyJsonConfig.kitchenEnabled], [true, false, true, false]);
+      assert.deepEqual([await db.pontoVenda.count({ where: { cervejariaId: legacyJson.cervejaria.id } }), await db.trailer.count({ where: { cervejariaId: legacyJson.cervejaria.id } }), await db.configuracaoPontoVenda.count({ where: { cervejariaId: legacyJson.cervejaria.id } })], [0, 0, 0], 'legacy JSON contract creates no point or additive config by default');
+
+      const legacyBoundary = `----pdv-legacy-${runId}`;
+      const multipartFields = {
+        cervejariaNome: `Provisioned legacy multipart ${runId}`, donoNome: 'Legacy multipart owner',
+        donoEmail: `legacy-multipart-${runId}@example.invalid`, donoSenha: ownerPassword,
+        moduloCervejaria: 'true', moduloOperacao: 'true', operacaoControlaEstoque: 'true', operacaoTemCozinha: 'false',
+      };
+      const legacyMultipartPayload = Object.entries(multipartFields).map(([name, value]) => `--${legacyBoundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`).join('') + `--${legacyBoundary}--\r\n`;
+      const legacyMultipartResponse = await app.inject({ method: 'POST', url: '/api/admin/cervejarias', headers: { cookie: adminCookie, 'content-type': `multipart/form-data; boundary=${legacyBoundary}` }, payload: legacyMultipartPayload });
+      assert.equal(legacyMultipartResponse.statusCode, 201, `legacy multipart admin route retains its contract: ${legacyMultipartResponse.body}`);
+      const legacyMultipart = JSON.parse(legacyMultipartResponse.body);
+      assert.deepEqual(Object.keys(legacyMultipart).sort(), ['cervejaria', 'dono']);
+      const legacyMultipartConfig = await db.configuracaoOperacional.findUniqueOrThrow({ where: { cervejariaId: legacyMultipart.cervejaria.id } });
+      const legacyMultipartProjection = await db.configuracaoOperacao.findUniqueOrThrow({ where: { cervejariaId: legacyMultipart.cervejaria.id } });
+      assert.deepEqual([legacyMultipartConfig.plannedOperationsEnabled, legacyMultipartConfig.tapsEnabled, legacyMultipartConfig.inventoryEnabled, legacyMultipartConfig.kitchenEnabled], [true, true, true, false], 'legacy multipart flags are preserved in setup metadata');
+      assert.deepEqual([legacyMultipartProjection.controlaEstoque, legacyMultipartProjection.temCozinha], [true, false]);
+      assert.deepEqual([await db.pontoVenda.count({ where: { cervejariaId: legacyMultipart.cervejaria.id } }), await db.trailer.count({ where: { cervejariaId: legacyMultipart.cervejaria.id } }), await db.configuracaoPontoVenda.count({ where: { cervejariaId: legacyMultipart.cervejaria.id } })], [1, 1, 0], 'legacy multipart creates its selected Trailer and first PDV without canonical config');
+      const legacyTrailer = await db.trailer.findFirstOrThrow({ where: { cervejariaId: legacyMultipart.cervejaria.id } });
+      assert.equal(await db.tap.count({ where: { trailerId: legacyTrailer.id } }), 4, 'legacy Trailer creation retains its four default taps');
+    } finally {
+      process.env.PDV_CANONICAL_CONFIG_QA = '1';
+    }
+
+    const canonicalBoundary = `----pdv-canonical-${runId}`;
+    const canonicalMultipartFields = {
+      cervejariaNome: `Provisioned canonical multipart ${runId}`, donoNome: 'Canonical multipart owner',
+      donoEmail: `canonical-multipart-${runId}@example.invalid`, donoSenha: ownerPassword,
+      moduloCervejaria: 'true', moduloOperacao: 'true', operacaoControlaEstoque: 'true', operacaoTemCozinha: 'false',
+    };
+    const canonicalMultipartPayload = Object.entries(canonicalMultipartFields).map(([name, value]) => `--${canonicalBoundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`).join('') + `--${canonicalBoundary}--\r\n`;
+    const canonicalMultipartResponse = await app.inject({ method: 'POST', url: '/api/admin/cervejarias', headers: { cookie: adminCookie, 'content-type': `multipart/form-data; boundary=${canonicalBoundary}` }, payload: canonicalMultipartPayload });
+    assert.equal(canonicalMultipartResponse.statusCode, 201, `canonical multipart admin route provisions its PDV: ${canonicalMultipartResponse.body}`);
+    const canonicalMultipart = JSON.parse(canonicalMultipartResponse.body);
+    const canonicalMultipartConfig = await db.configuracaoPontoVenda.findUniqueOrThrow({ where: { pontoVendaId: (await db.pontoVenda.findFirstOrThrow({ where: { cervejariaId: canonicalMultipart.cervejaria.id } })).id } });
+    const canonicalMultipartSetup = await db.configuracaoOperacional.findUniqueOrThrow({ where: { cervejariaId: canonicalMultipart.cervejaria.id } });
+    assert.deepEqual([canonicalMultipartConfig.tapsEnabled, canonicalMultipartConfig.inventoryEnabled, canonicalMultipartConfig.kitchenEnabled], [true, true, false], 'canonical multipart parameters are applied to PDV configuration');
+    assert.deepEqual([canonicalMultipartSetup.plannedOperationsEnabled, canonicalMultipartSetup.inventoryEnabled, canonicalMultipartSetup.kitchenEnabled], [true, true, false], 'explicit legacy module/setup flags remain owned by ConfiguracaoOperacional metadata');
+    assert.deepEqual([await db.pontoVenda.count({ where: { cervejariaId: canonicalMultipart.cervejaria.id } }), await db.trailer.count({ where: { cervejariaId: canonicalMultipart.cervejaria.id } }), await db.configuracaoPontoVenda.count({ where: { cervejariaId: canonicalMultipart.cervejaria.id } })], [1, 0, 1], 'canonical multipart never creates Trailer as a substitute PDV');
+
     const provisionPayload = {
       nome: `Provisioned canonical ${runId}`,
       dono: { nome: 'Provisioned owner', email: `provisioned-owner-${runId}@example.invalid`, senha: ownerPassword },
