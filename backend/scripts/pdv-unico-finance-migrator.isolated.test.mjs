@@ -19,6 +19,7 @@ const runId = process.env.PDV_QA_RUN_ID ?? `manual-${process.pid}`;
 const suffix = `qa-${runId}`;
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), `pdv-finance-${runId}-`));
 const generatedClientDir = path.join(backendRoot, 'node_modules', '.prisma', `pdv-finance-client-${runId}`);
+const graphClientDir = path.join(backendRoot, 'node_modules', '.prisma', `pdv-finance-graph-client-${runId}`);
 const normalizedText = (value) => Buffer.from(value.toString('utf8').replaceAll('\r\n', '\n'));
 const sha256 = (value) => createHash('sha256').update(normalizedText(value)).digest('hex');
 const manifest = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-finance-qa-manifest.json'), 'utf8'));
@@ -95,18 +96,18 @@ try {
   const { PrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
   db = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
   // This fixture deliberately writes a missing session reference, so it runs
-  // with the compatible 89-migration client before the restrictive finance FK.
+  // with the compatible pre-finance client, before either finance migration.
+  const graphSchemaPath = path.join(tempRoot, 'generate-graph-schema.prisma');
+  await writeFile(graphSchemaPath, financeSchemaBytes.toString('utf8').replace('provider = "prisma-client-js"', `provider = "prisma-client-js"\n  output = "${graphClientDir.replaceAll('\\', '/')}"`));
+  runPrisma(['generate', '--schema', graphSchemaPath]);
   const graph = spawnSync(process.execPath, ['--import', 'tsx', '--test', 'scripts/pdv-unico-planner.isolated.test.ts'], {
-    cwd: backendRoot, env: { ...process.env, DATABASE_URL: databaseUrl, PDV_QA_PRISMA_CLIENT: generatedClientDir }, encoding: 'utf8', windowsHide: true,
+    cwd: backendRoot, env: { ...process.env, DATABASE_URL: databaseUrl, PDV_QA_PRISMA_CLIENT: graphClientDir }, encoding: 'utf8', windowsHide: true,
   });
   if (graph.status !== 0) throw new Error(`Graph regression at its declared 89-migration baseline failed: ${(graph.stderr || graph.stdout).replaceAll(databaseUrl, '[QA URL REDACTED]').slice(0, 1800)}`);
   assert.match(graph.stdout, /PDV-GRAPH-QA-01/);
   const financeMigrationDir = path.join(bundle.migrationsDir, manifest.delivery.migrationName);
   await mkdir(financeMigrationDir, { recursive: true });
   await writeFile(path.join(financeMigrationDir, 'migration.sql'), financeSql);
-  const historicalProvenanceMigrationDir = path.join(bundle.migrationsDir, manifest.historicalProvenanceMigration.name);
-  await mkdir(historicalProvenanceMigrationDir, { recursive: true });
-  await writeFile(path.join(historicalProvenanceMigrationDir, 'migration.sql'), historicalProvenanceSql);
   const financeDeploy = spawnSync(process.execPath, ['node_modules/prisma/build/index.js', 'migrate', 'deploy', '--schema', bundle.schemaPath], {
     cwd: backendRoot, encoding: 'utf8', windowsHide: true, env: { ...process.env, NODE_ENV: 'test', DATABASE_URL: databaseUrl },
   });

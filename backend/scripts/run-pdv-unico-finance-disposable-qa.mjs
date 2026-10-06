@@ -50,4 +50,5 @@ try {
     console.log(`QA_FINANCE_CONTAINER_REMOVED=${containerName}; storage=tmpfs; published=127.0.0.1:${port} only`);
   }
   await rm(new URL(`../node_modules/.prisma/pdv-finance-client-${runId}`, import.meta.url), { recursive: true, force: true });
+  await rm(new URL(`../node_modules/.prisma/pdv-finance-graph-client-${runId}`, import.meta.url), { recursive: true, force: true });
 }

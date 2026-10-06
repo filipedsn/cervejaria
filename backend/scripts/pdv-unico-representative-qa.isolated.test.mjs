@@ -201,10 +201,16 @@ try {
       entry.dependencies.add({ parent, relation });
     }
     const inserted = new Set();
+    const remainingDependencies = new Map(entries.map((entry) => [entry, entry.dependencies.size]));
+    const dependents = new Map(entries.map((entry) => [entry, []]));
+    for (const entry of entries) for (const edge of entry.dependencies) dependents.get(edge.parent).push({ child: entry, edge, active: true });
+    const readyQueue = entries.filter((entry) => remainingDependencies.get(entry) === 0);
+    let readyIndex = 0;
     const nullableFields = new Map(modelEntries.map(([name, model]) => [name, new Map(model.fields.filter((field) => field.kind === 'scalar' || field.kind === 'enum').map((field) => [field.name, field.isRequired === false]))]));
     while (inserted.size < entries.length) {
-      const ready = entries.filter((entry) => !inserted.has(entry) && [...entry.dependencies].every(({ parent }) => inserted.has(parent)));
-      if (ready.length) {
+      if (readyIndex < readyQueue.length) {
+        const ready = readyQueue.slice(readyIndex);
+        readyIndex = readyQueue.length;
         for (const [modelName, modelEntriesReady] of Map.groupBy(ready, (entry) => entry.table.model)) {
           const delegateName = modelName[0].toLowerCase() + modelName.slice(1);
           try {
@@ -215,7 +221,16 @@ try {
             wrapped.code = 'PHOTO_IMPORT_DB_CONSTRAINT'; wrapped.model = modelName; wrapped.cause = error;
             throw wrapped;
           }
-          for (const entry of modelEntriesReady) inserted.add(entry);
+          for (const entry of modelEntriesReady) {
+            inserted.add(entry);
+            for (const dependent of dependents.get(entry)) {
+              if (!dependent.active) continue;
+              dependent.active = false;
+              const remaining = remainingDependencies.get(dependent.child) - 1;
+              remainingDependencies.set(dependent.child, remaining);
+              if (remaining === 0) readyQueue.push(dependent.child);
+            }
+          }
         }
         continue;
       }
@@ -225,7 +240,13 @@ try {
       }
       for (const field of cycleEdge.relation.fields) cycleEdge.entry.data[field] = null;
       cycleEdge.entry.deferred.push(...cycleEdge.relation.fields.map((field) => [field, revive(cycleEdge.entry.row[field])]));
-      cycleEdge.entry.dependencies.delete([...cycleEdge.entry.dependencies].find((edge) => edge.parent === cycleEdge.parent && edge.relation === cycleEdge.relation));
+      const removed = [...cycleEdge.entry.dependencies].find((edge) => edge.parent === cycleEdge.parent && edge.relation === cycleEdge.relation);
+      cycleEdge.entry.dependencies.delete(removed);
+      const dependent = dependents.get(cycleEdge.parent).find((item) => item.child === cycleEdge.entry && item.edge === removed);
+      dependent.active = false;
+      const remaining = remainingDependencies.get(cycleEdge.entry) - 1;
+      remainingDependencies.set(cycleEdge.entry, remaining);
+      if (remaining === 0) readyQueue.push(cycleEdge.entry);
     }
     for (const entry of entries.filter((candidate) => candidate.deferred.length)) {
       const where = Object.fromEntries(entry.table.primaryKey.map((field) => [field, entry.data[field]]));
