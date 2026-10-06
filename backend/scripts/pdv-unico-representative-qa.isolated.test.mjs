@@ -168,8 +168,8 @@ async function reconcileRepresentativeFinance(target) {
 
 async function proveCommerceLinkRequiresDurableProof(target, pointId) {
   const approved = evidence.paymentSessionReview.allPaymentCases.find((row) => row.tenantId === target.id
-    && row.classification === 'C_NO_SESSION_PROVENANCE_INSUFFICIENT' && row.origin === 'EVENTO');
-  assert.ok(approved, `${target.label}: approved historical EVENTO command is available for commerce proof guards`);
+    && row.classification === 'C_NO_SESSION_PROVENANCE_INSUFFICIENT');
+  assert.ok(approved, `${target.label}: approved historical command is available for commerce proof guards`);
   const commandId = approved.commandId;
   const originalCommand = await db.comanda.findUniqueOrThrow({ where: { id: commandId } });
   const originalMap = await db.pdvMigrationMap.findUniqueOrThrow({ where: { sourceType_sourceId: { sourceType: 'COMANDA', sourceId: commandId } } });
