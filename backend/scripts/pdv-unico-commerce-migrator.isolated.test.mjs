@@ -1768,7 +1768,7 @@ try {
   // A deterministic in-transaction mutation between source planning and receipt hashing
   // must roll back both the mutation and the pending batch/checkpoint advancement.
   const midBatchRunId = id('commerce-mid-batch-drift');
-  const beforeDrift = await runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: midBatchRunId, maxBatches: completed.checkpoint.totalRecords - 1 });
+  const beforeDrift = await runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: midBatchRunId, batchSize: 1, maxBatches: completed.checkpoint.totalRecords - 1 });
   assert.equal(beforeDrift.status, 'RUNNING');
   const beforeDriftCheckpoint = plain(beforeDrift.checkpoint);
   const driftAttempt = await runPdvCommerceMigration({ db, companyId: company.id, pointId: point.id, runId: midBatchRunId, afterDestinationWrite: async (row, tx) => {
