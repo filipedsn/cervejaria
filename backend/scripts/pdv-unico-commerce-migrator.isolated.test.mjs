@@ -31,6 +31,10 @@ const candidateSchema = readPinnedBlob(manifest.delivery.schemaCommit, manifest.
 assert.equal(sha256(candidateSchema), manifest.delivery.schemaSha256, 'pinned schema candidate hash');
 const commerceSql = await readFile(path.join(repoRoot, manifest.delivery.migrationPath));
 assert.equal(sha256(commerceSql), manifest.delivery.migrationSha256, 'candidate SQL hash');
+const historicalProvenanceMigration = manifest.priorManifests.finance.historicalProvenanceMigration;
+assert(historicalProvenanceMigration?.path && historicalProvenanceMigration?.sha256, 'manifest pins historical payment provenance migration');
+const historicalProvenanceSql = await readFile(path.join(repoRoot, historicalProvenanceMigration.path));
+assert.equal(sha256(historicalProvenanceSql), historicalProvenanceMigration.sha256, 'pinned historical payment provenance SQL');
 for (const item of manifest.immutableManifests) assert.equal(sha256(await readFile(path.join(repoRoot, item.path))), item.sha256, `immutable prior manifest ${item.path}`);
 for (const item of manifest.codeCandidates) assert.equal(sha256(await readFile(path.join(repoRoot, item.path))), item.sha256, `current code candidate ${item.path}`);
 
@@ -328,6 +332,11 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     ]) {
       const totalCents = (BigInt(flow.priceCents) * 2n).toString();
       const total = Number(totalCents) / 100;
+      const dashboardPeriod = new Date();
+      const dashboardUrl = `/api/operacao/dashboard?ano=${dashboardPeriod.getFullYear()}&mes=${dashboardPeriod.getMonth() + 1}&pontoVendaId=${encodeURIComponent(flow.point.id)}`;
+      const dashboardBefore = await app.inject({ method: 'GET', url: dashboardUrl, headers: { cookie: flow.cookie } });
+      assert.equal(dashboardBefore.statusCode, 200, `authenticated dashboard baseline for ${flow.company.id}`);
+      const totalReceivedBefore = JSON.parse(dashboardBefore.body).resumo.totalRecebido;
       const opened = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie: flow.cookie }, payload: { pontoVendaId: flow.point.id, trocoInicial: 5, cardapioId: flow.menu.id } });
       assert.equal(opened.statusCode, 201, `authenticated cash opens for ${flow.company.id}: ${opened.body}`);
       const openedBody = JSON.parse(opened.body);
@@ -374,9 +383,30 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       assert.equal(closed.statusCode, 200, `cash close succeeds for ${flow.company.id}: ${closed.body}`);
       const persistedSession = await db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: session.id } });
       assert.deepEqual([persistedSession.status, persistedSession.fechadoPorId, centsExact(persistedSession.trocoInicial), centsExact(persistedSession.contadoDinheiro), centsExact(persistedSession.contadoPix), centsExact(persistedSession.contadoCartaoDebito), centsExact(persistedSession.contadoCartaoCredito)], ['FECHADO', flow.owner.id, '500', '500', totalCents, '0', '0']);
+      const sessionReport = await app.inject({ method: 'GET', url: `/api/operacao/caixa/sessoes/${encodeURIComponent(session.id)}`, headers: { cookie: flow.cookie } });
+      assert.equal(sessionReport.statusCode, 200, `authenticated session report returns for ${flow.company.id}: ${sessionReport.body}`);
+      assert.equal(centsExact(JSON.parse(sessionReport.body).esperado.totalVendas), totalCents, 'session report totals exact persisted payments');
+      const dashboardAfter = await app.inject({ method: 'GET', url: dashboardUrl, headers: { cookie: flow.cookie } });
+      assert.equal(dashboardAfter.statusCode, 200);
+      assert.equal(centsExact(JSON.parse(dashboardAfter.body).resumo.totalRecebido - totalReceivedBefore), totalCents, 'dashboard total received includes this payment exactly once');
+      const recentTurn = JSON.parse(dashboardAfter.body).turnosRecentes.find((row) => row.sessaoId === session.id);
+      assert.equal(centsExact(recentTurn.totalRecebido), totalCents, 'dashboard session total follows the persisted session link');
       assert.equal(await db.itemComandaOpcional.count({ where: { itemComanda: { comandaId: commandId } } }), 0);
       operationFlows.push({ tenantId: flow.company.id, sessionId: session.id, commandId, productId: flow.product.id, menuId: flow.menu.id, itemPriceCents: flow.priceCents, quantity: 2, totalCents, payment: `PIX:${totalCents}`, sessionStatus: persistedSession.status, endpoints: [opened.statusCode, menuResponse.statusCode, openedCommand.statusCode, launched.statusCode, paid.statusCode, closed.statusCode] });
     }
+
+    const immediateWithoutSessionCommandId = `authenticated-no-session-command-${runId}`;
+    await db.comanda.create({ data: {
+      id: immediateWithoutSessionCommandId, origem: 'CAIXA', pontoVendaId: primaryPoint.id,
+      diaOperacional: new Date('2026-12-20T00:00:00.000Z'), status: 'ABERTA', tipo: 'COMANDA', total: '1.00',
+    } });
+    const noSessionItem = await db.itemComanda.create({ data: { id: `authenticated-no-session-item-${runId}`, comandaId: immediateWithoutSessionCommandId, produtoId: product.id, volumeMl: 0, quantidade: 1, precoUnit: '1.00', nome: 'QA session guard item' } });
+    const auditCountBefore = await db.transacaoLog.count({ where: { cervejariaId: primaryCompany.id, tipo: 'SALE_PAYMENT_RECORDED', comandaId: immediateWithoutSessionCommandId } });
+    const rejectedNoSessionPayment = await withOwnerAt('2026-12-20', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(immediateWithoutSessionCommandId)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 1 }] } }));
+    assert.equal(rejectedNoSessionPayment.statusCode, 400, `new immediate payment without a valid open session is refused: ${rejectedNoSessionPayment.body}`);
+    assert.equal(await db.pagamento.count({ where: { comandaId: immediateWithoutSessionCommandId } }), 0, 'no-session refusal creates no payment');
+    assert.deepEqual(plain(await db.comanda.findUniqueOrThrow({ where: { id: immediateWithoutSessionCommandId }, include: { itens: true, pagamentos: true } })), plain({ ...(await db.comanda.findUniqueOrThrow({ where: { id: immediateWithoutSessionCommandId } })), itens: [noSessionItem], pagamentos: [] }), 'no-session refusal leaves command and item unchanged');
+    assert.equal(await db.transacaoLog.count({ where: { cervejariaId: primaryCompany.id, tipo: 'SALE_PAYMENT_RECORDED', comandaId: immediateWithoutSessionCommandId } }), auditCountBefore, 'no-session refusal creates no payment audit');
 
     const settingState = async (tenantId, pointId) => plain({
       canonical: await db.configuracaoPontoVenda.findUnique({ where: { pontoVendaId: pointId } }),
@@ -1041,11 +1071,13 @@ async function proveLegacyOrderContextPreflight(args) {
   const coreSql = await readFile(path.join(repoRoot, core.migrationPath));
   const catalogSql = await readFile(path.join(repoRoot, catalog.delivery.migrationPath));
   const financeSql = await readFile(path.join(repoRoot, finance.delivery.migrationPath));
+  const historicalProvenanceSql = await readFile(path.join(repoRoot, manifest.priorManifests.finance.historicalProvenanceMigration.path));
   for (const [name, sql] of [
     [core.migrationName, coreSql],
     [catalog.delivery.migrationName, catalogSql],
     [manifest.priorManifests.session.name, sessionSql],
     [finance.delivery.migrationName, financeSql],
+    [manifest.priorManifests.finance.historicalProvenanceMigration.name, historicalProvenanceSql],
   ]) {
     const dir = path.join(bundle.migrationsDir, name);
     await mkdir(dir, { recursive: true });
@@ -1433,12 +1465,14 @@ try {
     [catalog.delivery.migrationName, await readFile(path.join(repoRoot, catalog.delivery.migrationPath))],
     [manifest.priorManifests.session.name, sessionSql],
     [finance.delivery.migrationName, await readFile(path.join(repoRoot, finance.delivery.migrationPath))],
+    [manifest.priorManifests.finance.historicalProvenanceMigration.name, historicalProvenanceSql],
     [manifest.delivery.migrationName, commerceSql],
   ];
   assert.equal(sha256(candidates[0][1]), core.migrationSha256, 'pinned core SQL');
   assert.equal(sha256(candidates[1][1]), catalog.delivery.migrationSha256, 'pinned catalog SQL');
   assert.equal(sha256(candidates[2][1]), manifest.priorManifests.session.sha256, 'pinned session SQL');
   assert.equal(sha256(candidates[3][1]), finance.delivery.migrationSha256, 'pinned finance SQL');
+  assert.equal(sha256(candidates[4][1]), manifest.priorManifests.finance.historicalProvenanceMigration.sha256, 'pinned historical payment provenance SQL');
   const bundle = await materializePinnedMigrationBundle(history, tempRoot);
   for (const [name, sql] of candidates) {
     const dir = path.join(bundle.migrationsDir, name);
@@ -1471,7 +1505,8 @@ try {
   const { PrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
   db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal' });
   const applied = await db.$queryRaw`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL ORDER BY migration_name`;
-  assert.equal(applied.length, history.migrations.length + 5, 'full historical + operational core/catalog/session/finance + commerce chain');
+  assert.equal(applied.length, history.migrations.length + 6, 'full historical + operational core/catalog/session/finance/provenance + commerce chain');
+  assert(applied.some((row) => row.migration_name === manifest.priorManifests.finance.historicalProvenanceMigration.name), 'Payment.provenienciaHistorica migration is applied before commerce route regressions');
   const constraints = await db.$queryRaw`SELECT conname, confdeltype, convalidated FROM pg_constraint WHERE conname IN ('Comanda_pontoVendaId_ocorrenciaId_fkey','EstoqueSaldoQuiosque_pontoVendaId_cervejariaId_fkey','EstoqueSaldoQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pontoVendaId_cervejariaId_fkey','MovimentoEstoqueQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pedidoId_tenant_point_fkey') ORDER BY conname`;
   assert.equal(constraints.length, 6);
   assert(constraints.every((row) => row.confdeltype === 'r' && row.convalidated), 'tenant/context/history constraints are validated and restrictive');

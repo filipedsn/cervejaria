@@ -2,7 +2,7 @@ import { PdvCatalogBlocker } from './pdv-unico-catalog-transform.js';
 import { createHash } from 'node:crypto';
 
 export const PDV_FINANCE_SCOPE = 'PDV_FINANCEIRO_V1';
-export const PDV_FINANCE_TRANSFORM_VERSION = 3;
+export const PDV_FINANCE_TRANSFORM_VERSION = 4;
 export const PDV_HISTORICAL_C_APPROVED_SNAPSHOT_SHA256 = '87e3a8f6aca3e878a027c485ca2e15a120ba9cc0edfc27337e3f39858165ef7a';
 const sourceKey = (type: string, id: string) => `${type}:${id}`;
 function jsonSafe(value: any): any {
@@ -31,6 +31,11 @@ export interface HistoricalNoSessionApproval {
   counts: { payments: number; withExactPaymentAuditReference: number; withoutExactPaymentAuditReference: number };
   entries: ApprovedHistoricalNoSessionPayment[];
 }
+export interface ConfirmedHistoricalCommerceCommand {
+  commandId: string; companyId: string; pointId: string; eventId: string;
+  originalPointId: string | null; originalOccurrenceId: string | null;
+  runId: string; batchId: string; payloadHash: string; destinationHash: string;
+}
 export interface PdvFinanceMigrationInput {
   companyId: string;
   pointId: string;
@@ -39,6 +44,7 @@ export interface PdvFinanceMigrationInput {
   confirmedSessions: Record<string, ConfirmedFinanceSession>;
   confirmedEvents: Record<string, { id: string; companyId: string; pointId: string }>;
   mappedPaymentIds: Set<string>;
+  confirmedHistoricalCommerceCommands?: Record<string, ConfirmedHistoricalCommerceCommand>;
   historicalNoSessionApproval?: HistoricalNoSessionApproval;
 }
 
@@ -88,7 +94,7 @@ function validateHistoricalNoSessionApproval(approval: HistoricalNoSessionApprov
   return { byId, digest };
 }
 
-function assertApprovedHistoricalPayment(payment: any, expected: ApprovedHistoricalNoSessionPayment, companyId: string) {
+function assertApprovedHistoricalPayment(payment: any, expected: ApprovedHistoricalNoSessionPayment, companyId: string, pointId: string, confirmedCommerce?: ConfirmedHistoricalCommerceCommand) {
   const actual = {
     tenantId: companyId,
     id: payment.id,
@@ -108,7 +114,17 @@ function assertApprovedHistoricalPayment(payment: any, expected: ApprovedHistori
     operationalSessionId: payment.sessaoCaixaId ?? null,
     eventSessionId: payment.sessaoCaixaEventoId ?? null,
   };
+  const pointWasAuthorizedByCommerce = Boolean(confirmedCommerce
+    && expected.origin === 'EVENTO'
+    && expected.pointId === confirmedCommerce.originalPointId
+    && expected.pointId === null
+    && expected.eventId === confirmedCommerce.eventId
+    && confirmedCommerce.commandId === payment.comandaId
+    && confirmedCommerce.companyId === companyId
+    && confirmedCommerce.pointId === pointId
+    && actual.pointId === confirmedCommerce.pointId);
   for (const [field, value] of Object.entries(actual)) {
+    if (field === 'pointId' && pointWasAuthorizedByCommerce) continue;
     if (expected[field as keyof ApprovedHistoricalNoSessionPayment] !== value) {
       fail('FINANCE_HISTORICAL_APPROVAL_PAYLOAD_DIVERGED', 'PAGAMENTO', payment.id, `Campo autorizado ${field} difere da fotografia aprovada.`);
     }
@@ -145,7 +161,7 @@ export function buildPdvFinanceMigrationItems(input: PdvFinanceMigrationInput) {
   for (const payment of input.snapshot.payments) {
     commandCompanyAndPoint(payment.comanda, input, 'PAGAMENTO', payment.id);
     const approved = approval.byId.get(payment.id);
-    if (approved && approved.tenantId === input.companyId) assertApprovedHistoricalPayment(payment, approved, input.companyId);
+    if (approved && approved.tenantId === input.companyId) assertApprovedHistoricalPayment(payment, approved, input.companyId, input.pointId, input.confirmedHistoricalCommerceCommands?.[payment.comandaId]);
     if (payment.contaReceberId && (!payment.contaReceber || payment.contaReceber.comandaId !== payment.comandaId || payment.contaReceber.cliente.cervejariaId !== input.companyId)) fail('FINANCE_PAYMENT_DEBT_MISMATCH', 'PAGAMENTO', payment.id, 'Pagamento aponta a dívida ausente ou de outra comanda/empresa.');
     const eventSession = payment.sessaoCaixaEventoId;
     const cashSession = payment.sessaoCaixaId;

@@ -10,6 +10,16 @@ const [{ default: Fastify }, { PrismaClient }, { eventosRoutes }, { eventoCaixaR
 ]);
 const prisma = new PrismaClient({ datasources: { db: { url: process.env.QA_DATABASE_URL } } });
 
+test('EVT-SCHEMA-01: Event routes use the generated historical provenance column present in the applied QA schema', async () => {
+  const runtimeModels = (prisma as any)._runtimeDataModel?.models ?? {};
+  assert(runtimeModels.Pagamento?.fields?.some((field: any) => field.name === 'provenienciaHistorica'), 'route Prisma Client generated from the pinned schema includes Pagamento.provenienciaHistorica');
+  const columns = await prisma.$queryRaw<Array<{ column_name: string }>>`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'Pagamento' AND column_name = 'provenienciaHistorica'
+  `;
+  assert.deepEqual(columns.map((column) => column.column_name), ['provenienciaHistorica'], 'the commerce migration bundle applies the exact P2022 column before the real route regressions');
+});
+
 let fixtureNo = 0;
 async function fixture(options: { recurring?: boolean } = {}) {
   const suffix = `${Date.now()}-${++fixtureNo}`;

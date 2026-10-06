@@ -7,10 +7,17 @@ const session = {
   abertoEm: new Date('2026-10-01T10:00:00.000Z'), fechadoEm: new Date('2026-10-01T18:00:00.000Z'), status: 'FECHADO',
 };
 
-test('canonical PDV includes only payments with the exact persisted session reference', () => {
+test('canonical PDV includes EVENTO and CAIXA payments only with the exact persisted session and canonical tenant/PDV', () => {
   assert.deepEqual(paymentFilterForOperationalSession(session, 'tenant-1', true), {
     sessaoCaixaId: 'session-1',
-    comanda: { origem: 'CAIXA', pontoVenda: { cervejariaId: 'tenant-1' } },
+    comanda: {
+      pontoVendaId: 'point-1',
+      pontoVenda: { cervejariaId: 'tenant-1' },
+      OR: [
+        { origem: 'CAIXA', eventoId: null },
+        { origem: 'EVENTO', evento: { cervejariaId: 'tenant-1' } },
+      ],
+    },
   });
 });
 

@@ -19,7 +19,17 @@ export function paymentFilterForOperationalSession(
     sessaoCaixaId: session.id,
     comanda: { origem: 'CAIXA', pontoVenda: { cervejariaId: tenantId } },
   };
-  if (canonicalPdvEnabled) return exactSession;
+  if (canonicalPdvEnabled) return {
+    sessaoCaixaId: session.id,
+    comanda: {
+      pontoVendaId: session.pontoVendaId,
+      pontoVenda: { cervejariaId: tenantId },
+      OR: [
+        { origem: 'CAIXA', eventoId: null },
+        { origem: 'EVENTO', evento: { cervejariaId: tenantId } },
+      ],
+    },
+  };
   const closedAt = session.status === 'FECHADO' && session.fechadoEm ? session.fechadoEm : undefined;
   const legacyWindow: Prisma.PagamentoWhereInput = {
     sessaoCaixaId: null,

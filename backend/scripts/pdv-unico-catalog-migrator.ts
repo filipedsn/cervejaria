@@ -4,7 +4,7 @@ import { readPdvCatalogSourceSnapshot } from './pdv-unico-catalog-source.js';
 import { buildPdvSessionMigrationItems, PDV_SESSION_SCOPE, PDV_SESSION_TRANSFORM_VERSION } from './pdv-unico-session-transform.js';
 import { readPdvSessionSourceSnapshot } from './pdv-unico-session-source.js';
 import { operationalSessionData } from './pdv-unico-session-transform.js';
-import { buildPdvFinanceMigrationItems, PDV_FINANCE_SCOPE, PDV_FINANCE_TRANSFORM_VERSION, type HistoricalNoSessionApproval } from './pdv-unico-finance-transform.js';
+import { buildPdvFinanceMigrationItems, PDV_FINANCE_SCOPE, PDV_FINANCE_TRANSFORM_VERSION, type HistoricalNoSessionApproval, type ConfirmedHistoricalCommerceCommand } from './pdv-unico-finance-transform.js';
 import { readPdvFinanceSourceSnapshot } from './pdv-unico-finance-source.js';
 import { reconcilePdvFinance } from './pdv-unico-finance-reconcile.js';
 import { buildPdvCommerceMigrationItems, commercePayloadHash, PDV_COMMERCE_SCOPE, PDV_COMMERCE_TRANSFORM_VERSION } from './pdv-unico-commerce-transform.js';
@@ -208,6 +208,7 @@ type ScopedMigrationOptions = {
   maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number;
   measure?: (stage: string, operation: () => Promise<any>) => Promise<any>;
   afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void;
+  afterBatchCommit?: (progress: { tenantId: string; phase: string; cursor: number; total: number; batch: number; durationMs: number }) => Promise<void> | void;
 };
 
 /** Shared transactional runner for catalog and session scopes. */
@@ -222,6 +223,7 @@ export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
   let committedBatches = 0;
   try {
     while (true) {
+      const batchStartedAt = Date.now();
       const result = await transactionWithRetry(db, async (tx: Db) => {
         let dependency: any;
         await measureStage(options, 'locksAndCanonicalPdv', async () => {
@@ -293,11 +295,15 @@ export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
           const nextCheckpoint = { ...checkpoint, completedSourceKeys, lastConfirmedBatch: sequence, lastSourceKey: completedSourceKeys.at(-1) ?? null };
           await tx.pdvMigrationRun.update({ where: { id: runId }, data: { checkpoint: nextCheckpoint, status: 'RUNNING', finishedAt: null } });
         });
-        return { advanced: true };
+        return { advanced: true, cursor: batchEnd, total: items.length, batch: sequence };
       }, txOptions);
       if (result.complete) return { status: 'COMPLETED', runId, checkpoint: result.checkpoint, reusedCompletedRun: true };
       if (result.paused) return { status: 'RUNNING', runId, checkpoint: result.checkpoint };
-      if (result.advanced) { committedBatches++; continue; }
+      if (result.advanced) {
+        committedBatches++;
+        if (options.afterBatchCommit) await options.afterBatchCommit({ tenantId: companyId, phase: scope, cursor: result.cursor, total: result.total, batch: result.batch, durationMs: Date.now() - batchStartedAt });
+        continue;
+      }
       if (result.finalize) {
         const finalRun = await measureStage(options, 'finalization', () => transactionWithRetry(db, async (tx: Db) => {
           await lock(tx, scope, companyId, pointId);
@@ -656,6 +662,36 @@ async function findConfirmedFinanceSession(tx: Db, companyId: string, pointId: s
   return { id: destination.id, companyId, pointId, sourceType };
 }
 
+async function findConfirmedHistoricalCommerceCommand(tx: Db, companyId: string, pointId: string, command: any): Promise<ConfirmedHistoricalCommerceCommand> {
+  const sourceType = 'COMANDA'; const sourceId = command.id;
+  const map = await tx.pdvMigrationMap.findUnique({ where: { sourceType_sourceId: { sourceType, sourceId } } });
+  if (!map || map.cervejariaId !== companyId || map.pontoVendaId !== pointId || map.destinationType !== 'COMANDA' || map.destinationId !== command.id || !map.lastRunId || !map.lastBatchId || map.transformVersion !== PDV_COMMERCE_TRANSFORM_VERSION || map.payloadHash !== canonicalPdvPayloadHash(map.sourcePayload)) {
+    throw new PdvCatalogBlocker('FINANCE_HISTORICAL_COMMERCE_PROOF_MISSING', sourceType, sourceId, 'A alteração do PDV da comanda não tem mapa comercial confirmado neste tenant/PDV.');
+  }
+  const [run, batch] = await Promise.all([
+    tx.pdvMigrationRun.findUnique({ where: { id: map.lastRunId } }),
+    tx.pdvMigrationBatch.findFirst({ where: { id: map.lastBatchId, runId: map.lastRunId } }),
+  ]);
+  const checkpoint = run?.checkpoint as any;
+  const receipt = (batch?.checkpoint as any)?.receipts?.find((row: any) => row.sourceType === sourceType && row.sourceId === sourceId);
+  const original = map.sourcePayload as any;
+  const originalPointId = original?.transformationSourcePointId;
+  const originalOccurrenceId = original?.transformationSourceOccurrenceId;
+  if (run?.status !== 'COMPLETED' || run.scope !== PDV_COMMERCE_SCOPE || run.cervejariaId !== companyId || run.pontoVendaId !== pointId
+    || checkpoint?.scope !== PDV_COMMERCE_SCOPE || checkpoint?.companyId !== companyId || checkpoint?.pointId !== pointId
+    || checkpoint?.transformVersion !== PDV_COMMERCE_TRANSFORM_VERSION || !checkpoint?.completedSourceKeys?.includes(`COMANDA:${command.id}`)
+    || batch?.status !== 'CONFIRMED' || receipt?.destinationType !== 'COMANDA' || receipt?.destinationId !== command.id
+    || receipt?.payloadHash !== map.payloadHash || original?.id !== command.id || original?.origem !== command.origem
+    || original?.eventoId !== command.eventoId || originalPointId !== null || originalOccurrenceId !== null
+    || command.origem !== 'EVENTO' || command.eventoId == null || command.evento?.cervejariaId !== companyId
+    || command.pontoVendaId !== pointId || command.ocorrenciaId == null) {
+    throw new PdvCatalogBlocker('FINANCE_HISTORICAL_COMMERCE_PROOF_DIVERGED', sourceType, sourceId, 'Run, checkpoint, lote, recibo ou destino comercial não confirma exclusivamente o vínculo aprovado.');
+  }
+  const destinationHash = canonicalPdvPayloadHash({ pontoVendaId: command.pontoVendaId, ocorrenciaId: command.ocorrenciaId });
+  if (receipt.destinationHash !== destinationHash) throw new PdvCatalogBlocker('FINANCE_HISTORICAL_COMMERCE_DESTINATION_DIVERGED', sourceType, sourceId, 'Destino comercial atual diverge do recibo confirmado.');
+  return { commandId: command.id, companyId, pointId, eventId: command.eventoId, originalPointId, originalOccurrenceId, runId: run.id, batchId: batch.id, payloadHash: map.payloadHash, destinationHash };
+}
+
 async function writeFinanceTarget(tx: Db, item: any, hasExistingMap: boolean) {
   const existing = await readDestination(tx, item.destinationType, item.destinationId);
   if (item.type === 'MOVIMENTO_CAIXA_EVENTO') {
@@ -671,7 +707,7 @@ async function writeFinanceTarget(tx: Db, item: any, hasExistingMap: boolean) {
   return false;
 }
 
-export async function runPdvFinanceMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void; historicalNoSessionApproval?: HistoricalNoSessionApproval }) {
+export async function runPdvFinanceMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void; afterBatchCommit?: (progress: { tenantId: string; phase: string; cursor: number; total: number; batch: number; durationMs: number }) => Promise<void> | void; historicalNoSessionApproval?: HistoricalNoSessionApproval }) {
   if (options.historicalNoSessionApproval) {
     let target: URL;
     try { target = new URL(process.env.DATABASE_URL ?? ''); }
@@ -683,7 +719,8 @@ export async function runPdvFinanceMigration(options: { db: Db; companyId: strin
     }
   }
   return runPdvScopedMigration({
-    ...options, batchSize: options.batchSize ?? 1, transactionTimeoutMs: options.transactionTimeoutMs ?? 30000, transactionMaxWaitMs: options.transactionMaxWaitMs ?? 10000,
+    ...options, batchSize: options.batchSize ?? 25, transactionTimeoutMs: options.transactionTimeoutMs ?? 30000, transactionMaxWaitMs: options.transactionMaxWaitMs ?? 10000,
+    afterBatchCommit: options.afterBatchCommit ?? ((progress) => console.info(JSON.stringify({ event: 'PDV_MIGRATION_BATCH_COMMITTED', ...progress }))),
     scope: PDV_FINANCE_SCOPE, transformVersion: PDV_FINANCE_TRANSFORM_VERSION,
     createTransactionContext: async (tx) => {
       let resolver: Promise<(eventId: string) => Promise<any>> | null = null;
@@ -695,27 +732,37 @@ export async function runPdvFinanceMigration(options: { db: Db; companyId: strin
     buildItems: async (tx, pdvSourceKey, transactionContext) => {
       const snapshot = await measureStage(options, 'sourceSnapshot', () => readPdvFinanceSourceSnapshot(tx, options.companyId));
       const confirmedSessions: Record<string, any> = {};
+      const sessionConfirmations = new Map<string, Promise<any>>();
+      const confirmSessionOnce = (sourceType: 'SESSAO_CAIXA_EVENTO' | 'SESSAO_CAIXA_OPERACAO', sourceId: string) => {
+        const confirmationKey = key(sourceType, sourceId);
+        let confirmation = sessionConfirmations.get(confirmationKey);
+        if (!confirmation) {
+          confirmation = findConfirmedFinanceSession(tx, options.companyId, options.pointId, sourceType, sourceId);
+          sessionConfirmations.set(confirmationKey, confirmation);
+        }
+        return confirmation;
+      };
       const eventIds = new Set<string>();
       for (const payment of snapshot.payments) {
         if (payment.comanda.eventoId) eventIds.add(payment.comanda.eventoId);
         if (payment.sessaoCaixaEventoId) {
           const sourceType = 'SESSAO_CAIXA_EVENTO';
           const sourceId = payment.sessaoCaixaEventoId;
-          confirmedSessions[key(sourceType, sourceId)] = await findConfirmedFinanceSession(tx, options.companyId, options.pointId, sourceType, sourceId);
+          confirmedSessions[key(sourceType, sourceId)] = await confirmSessionOnce(sourceType, sourceId);
         } else if (payment.sessaoCaixaId) {
           const sourceType = 'SESSAO_CAIXA_OPERACAO';
           const sourceId = payment.sessaoCaixaId;
-          confirmedSessions[key(sourceType, sourceId)] = await findConfirmedFinanceSession(tx, options.companyId, options.pointId, sourceType, sourceId);
+          confirmedSessions[key(sourceType, sourceId)] = await confirmSessionOnce(sourceType, sourceId);
         }
       }
       for (const debt of snapshot.debts) if (debt.comanda.eventoId) eventIds.add(debt.comanda.eventoId);
       for (const movement of snapshot.eventMovements) {
         const sourceType = 'SESSAO_CAIXA_EVENTO'; const sourceId = movement.sessaoId;
-        confirmedSessions[key(sourceType, sourceId)] = await findConfirmedFinanceSession(tx, options.companyId, options.pointId, sourceType, sourceId);
+        confirmedSessions[key(sourceType, sourceId)] = await confirmSessionOnce(sourceType, sourceId);
       }
       for (const movement of snapshot.operationalMovements) {
         const sourceType = 'SESSAO_CAIXA_OPERACAO'; const sourceId = movement.sessaoId;
-        confirmedSessions[key(sourceType, sourceId)] = await findConfirmedFinanceSession(tx, options.companyId, options.pointId, sourceType, sourceId);
+        confirmedSessions[key(sourceType, sourceId)] = await confirmSessionOnce(sourceType, sourceId);
       }
       const confirmedEvents: Record<string, any> = {};
       for (const eventId of eventIds) {
@@ -724,7 +771,13 @@ export async function runPdvFinanceMigration(options: { db: Db; companyId: strin
       }
       const paymentIds = snapshot.payments.map((payment: any) => payment.id);
       const mappedPayments = await tx.pdvMigrationMap.findMany({ where: { sourceType: 'PAGAMENTO', sourceId: { in: paymentIds } }, select: { sourceId: true } });
-      return buildPdvFinanceMigrationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedSessions, confirmedEvents, mappedPaymentIds: new Set(mappedPayments.map((row: any) => row.sourceId)), historicalNoSessionApproval: options.historicalNoSessionApproval });
+      const confirmedHistoricalCommerceCommands: Record<string, ConfirmedHistoricalCommerceCommand> = {};
+      const approvedCommands = new Set((options.historicalNoSessionApproval?.entries ?? []).filter((entry) => entry.tenantId === options.companyId && entry.origin === 'EVENTO' && entry.pointId === null).map((entry) => entry.commandId));
+      for (const commandId of approvedCommands) {
+        const command = snapshot.payments.find((payment: any) => payment.comandaId === commandId)?.comanda;
+        if (command?.pontoVendaId === options.pointId) confirmedHistoricalCommerceCommands[commandId] = await findConfirmedHistoricalCommerceCommand(tx, options.companyId, options.pointId, command);
+      }
+      return buildPdvFinanceMigrationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedSessions, confirmedEvents, mappedPaymentIds: new Set(mappedPayments.map((row: any) => row.sourceId)), confirmedHistoricalCommerceCommands, historicalNoSessionApproval: options.historicalNoSessionApproval });
     },
     confirmExternalDependency: async (tx, sourceType, sourceId, transactionContext) => {
       if (sourceType === 'EVENTO') { await transactionContext.resolveOccurrence(sourceId); return true; }

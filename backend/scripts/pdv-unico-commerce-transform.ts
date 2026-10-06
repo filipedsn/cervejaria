@@ -1,7 +1,7 @@
 import { canonicalPdvPayloadHash, PdvCatalogBlocker } from './pdv-unico-catalog-transform.js';
 
 export const PDV_COMMERCE_SCOPE = 'PDV_COMANDAS_PEDIDOS_ESTOQUE_V1';
-export const PDV_COMMERCE_TRANSFORM_VERSION = 2;
+export const PDV_COMMERCE_TRANSFORM_VERSION = 3;
 const key = (type: string, id: string) => `${type}:${id}`;
 const relationKeys = new Set(['evento', 'pontoVenda', 'cliente', 'produto', 'opcional', 'opcionalCatalogo', 'grupo', 'produtoEstoque', 'comanda', 'pedido', 'sessao', 'cervejaria', 'itens', 'itensComanda', 'historicoStatus', 'opcionais', 'produtos', 'movimentos']);
 
@@ -58,6 +58,8 @@ export function buildPdvCommerceMigrationItems(input: {
       if (command.pontoVendaId && (command.pontoVendaId !== pointId || command.pontoVenda?.cervejariaId !== companyId)) block('COMMERCE_COMMAND_PDV_MISMATCH', 'COMANDA', command.id, 'Comanda CAIXA aponta para outro PDV ou tenant.');
     } else block('COMMERCE_COMMAND_ORIGIN_UNSUPPORTED', 'COMANDA', command.id, 'Origem da comanda não tem transformação definida.');
     const { pontoVendaId: _pontoVendaId, ocorrenciaId: _occurrenceId, ...source } = command;
+    source.transformationSourcePointId = command.pontoVendaId ?? null;
+    source.transformationSourceOccurrenceId = command.ocorrenciaId ?? null;
     add('COMANDA', command.id, 'COMANDA', command.id, source, { pontoVendaId: pointId, ocorrenciaId: occurrenceId }, dependencies);
   }
 

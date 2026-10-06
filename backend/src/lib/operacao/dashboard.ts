@@ -48,10 +48,11 @@ async function fetchClosedComandas(
   inicio: Date,
   fim: Date,
   pontoVendaId?: string,
+  canonicalPdvEnabled = false,
 ) {
   return prisma.comanda.findMany({
     where: {
-      origem: 'CAIXA',
+      ...(canonicalPdvEnabled ? { origem: { in: ['CAIXA', 'EVENTO'] }, pontoVendaId: { not: null } } : { origem: 'CAIXA' }),
       pontoVenda: { cervejariaId },
       status: 'FECHADA',
       fechadaEm: { gte: inicio, lte: fim },
@@ -79,12 +80,13 @@ async function fetchRecebimentos(
   inicio: Date,
   fim: Date,
   pontoVendaId?: string,
+  canonicalPdvEnabled = false,
 ) {
   return prisma.pagamento.findMany({
     where: {
       pagoEm: { gte: inicio, lte: fim },
       comanda: {
-        origem: 'CAIXA',
+        ...(canonicalPdvEnabled ? { origem: { in: ['CAIXA', 'EVENTO'] }, pontoVendaId: { not: null } } : { origem: 'CAIXA' }),
         status: 'FECHADA',
         pontoVenda: { cervejariaId },
         ...(pontoVendaId ? { pontoVendaId } : {}),
@@ -108,7 +110,7 @@ async function fetchHistoricoSemAtribuicao(
       sessaoCaixaId: null,
       sessaoCaixaEventoId: null,
       pagoEm: { gte: inicio, lte: fim },
-      comanda: { origem: 'CAIXA', status: 'FECHADA', pontoVenda: { cervejariaId }, ...(pontoVendaId ? { pontoVendaId } : {}) },
+      comanda: { origem: { in: ['CAIXA', 'EVENTO'] }, pontoVendaId: { not: null }, status: 'FECHADA', pontoVenda: { cervejariaId }, ...(pontoVendaId ? { pontoVendaId } : {}) },
     },
     select: { forma: true, valor: true },
   });
@@ -116,11 +118,11 @@ async function fetchHistoricoSemAtribuicao(
   return { count: rows.length, total: rows.reduce((sum: number, row: { valor: unknown }) => sum + toNumber(row.valor), 0), byForm: byForm.map(({ forma, valor }) => ({ forma, valor })) };
 }
 
-async function saldoContasPendentes(cervejariaId: string, pontoVendaId?: string) {
+async function saldoContasPendentes(cervejariaId: string, pontoVendaId?: string, canonicalPdvEnabled = false) {
   const contas = await prisma.contaReceber.findMany({
     where: {
       cliente: { cervejariaId },
-      comanda: { origem: 'CAIXA', status: 'FECHADA', ...(pontoVendaId ? { pontoVendaId } : {}) },
+      comanda: { ...(canonicalPdvEnabled ? { origem: { in: ['CAIXA', 'EVENTO'] }, pontoVendaId: { not: null }, pontoVenda: { cervejariaId } } : { origem: 'CAIXA' }), status: 'FECHADA', ...(pontoVendaId ? { pontoVendaId } : {}) },
     },
     include: { pagamentos: { select: { valor: true } } },
   });
@@ -283,24 +285,29 @@ async function buildTurnosRecentes(
   for (const sessao of sessoes) {
     if (!sessao.fechadoEm) continue;
     const chaveDia = `${sessao.pontoVendaId}:${sessao.diaOperacional.toISOString().slice(0, 10)}`;
-    const comandasFechadas = await prisma.comanda.findMany({
-      where: {
-        origem: 'CAIXA',
-        pontoVenda: { cervejariaId },
-        pontoVendaId: sessao.pontoVendaId,
-        diaOperacional: sessao.diaOperacional,
-        status: 'FECHADA',
-        fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm },
-      },
-      select: { id: true, tipo: true, total: true },
-    });
+    const pagamentos = await pagamentosDoTurno(sessao, cervejariaId, canonicalPdvEnabled);
+    const comandasFechadas = canonicalPdvEnabled
+      ? await prisma.comanda.findMany({
+        where: { id: { in: [...new Set(pagamentos.map((payment) => payment.comandaId))] }, pontoVendaId: sessao.pontoVendaId, pontoVenda: { cervejariaId }, status: 'FECHADA' },
+        select: { id: true, tipo: true, total: true },
+      })
+      : await prisma.comanda.findMany({
+        where: {
+          origem: 'CAIXA',
+          pontoVenda: { cervejariaId },
+          pontoVendaId: sessao.pontoVendaId,
+          diaOperacional: sessao.diaOperacional,
+          status: 'FECHADA',
+          fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm },
+        },
+        select: { id: true, tipo: true, total: true },
+      });
     // Uma sessao aberta e fechada sem vendas nem movimentos de caixa nao representa um turno operacional.
     if (comandasFechadas.length === 0 && sessao.movimentos.length === 0) continue;
 
     const turnoDoDia = (indiceTurnoDia.get(chaveDia) ?? 0) + 1;
     indiceTurnoDia.set(chaveDia, turnoDoDia);
 
-    const pagamentos = await pagamentosDoTurno(sessao, cervejariaId, canonicalPdvEnabled);
     const totais = totaisPorForma(pagamentos);
     const vendasTotal = comandasFechadas.reduce((soma, comanda) => soma + toNumber(comanda.total), 0);
     const comandaIds = new Set(comandasFechadas.map((comanda) => comanda.id));
@@ -363,6 +370,7 @@ async function buildComparativoPontos(
   inicio: Date,
   fim: Date,
   turnosRecentes: Awaited<ReturnType<typeof buildTurnosRecentes>>,
+  canonicalPdvEnabled: boolean,
 ) {
   const pontos = await prisma.pontoVenda.findMany({
     where: { cervejariaId, ativo: true },
@@ -372,7 +380,7 @@ async function buildComparativoPontos(
 
   const grupos = [];
   for (const ponto of pontos) {
-    const comandas = await fetchClosedComandas(cervejariaId, inicio, fim, ponto.id);
+    const comandas = await fetchClosedComandas(cervejariaId, inicio, fim, ponto.id, canonicalPdvEnabled);
     const ids = [...new Set(comandas.map((comanda) => comanda.fechadoPorId).filter(Boolean) as string[])];
     const nomes = await fetchUsuariosNomes(ids);
     const resumo = aggregateComandas(comandas, nomes);
@@ -405,16 +413,16 @@ export async function buildOperacaoDashboard(
   const canonicalSettings = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId);
 
   const [comandasMes, comandasAno, turnosRecentes, recebimentosMes, totalPendente, historicoSemAtribuicao] = await Promise.all([
-    fetchClosedComandas(cervejariaId, inicio, fim, pontoVendaId),
-    fetchClosedComandas(cervejariaId, yearBounds(anoVigente).inicio, yearBounds(anoVigente).fim, pontoVendaId),
+    fetchClosedComandas(cervejariaId, inicio, fim, pontoVendaId, canonicalSettings !== null),
+    fetchClosedComandas(cervejariaId, yearBounds(anoVigente).inicio, yearBounds(anoVigente).fim, pontoVendaId, canonicalSettings !== null),
     buildTurnosRecentes(cervejariaId, inicio, fim, pontoVendaId, canonicalSettings !== null),
-    fetchRecebimentos(cervejariaId, inicio, fim, pontoVendaId),
-    saldoContasPendentes(cervejariaId, pontoVendaId),
+    fetchRecebimentos(cervejariaId, inicio, fim, pontoVendaId, canonicalSettings !== null),
+    saldoContasPendentes(cervejariaId, pontoVendaId, canonicalSettings !== null),
     fetchHistoricoSemAtribuicao(canonicalSettings !== null, cervejariaId, inicio, fim, pontoVendaId),
   ]);
   const comparativoPontos = pontoVendaId
     ? []
-    : await buildComparativoPontos(cervejariaId, inicio, fim, turnosRecentes);
+    : await buildComparativoPontos(cervejariaId, inicio, fim, turnosRecentes, canonicalSettings !== null);
 
   const fechadoPorIds = [
     ...new Set(comandasMes.map((comanda) => comanda.fechadoPorId).filter(Boolean) as string[]),
@@ -447,6 +455,7 @@ export async function buildOperacaoDashboard(
     boundsAnterior.inicio,
     boundsAnterior.fim,
     pontoVendaId,
+    canonicalSettings !== null,
   );
   const resumoAnterior = aggregateComandas(
     comandasMesAnterior,

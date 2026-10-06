@@ -180,6 +180,20 @@ try {
   const baseRows = syntheticHistoricalRows.filter((payment) => historicalApproval.entries.find((entry) => entry.id === payment.id)?.tenantId === cTenant);
   const changedRow = structuredClone(baseRows); changedRow[0].valor = centsText(BigInt(historicalApproval.entries.find((entry) => entry.id === changedRow[0].id).cents) + 1n);
   assert.throws(() => buildPdvFinanceMigrationItems(syntheticFinanceInput(cTenant, changedRow)), (error) => error.code === 'FINANCE_HISTORICAL_APPROVAL_PAYLOAD_DIVERGED', 'changed approved payload is blocked');
+  const migratedCommandRows = structuredClone(baseRows);
+  const migratedEntry = historicalApproval.entries.find((entry) => entry.id === migratedCommandRows[0].id);
+  const migratedCommand = migratedCommandRows[0].comanda;
+  migratedCommand.pontoVendaId = `target-${cTenant}`;
+  assert.throws(() => buildPdvFinanceMigrationItems(syntheticFinanceInput(cTenant, migratedCommandRows)), (error) => error.code === 'FINANCE_HISTORICAL_APPROVAL_PAYLOAD_DIVERGED', 'a manually linked command without commercial receipt proof stays blocked');
+  const migratedInput = syntheticFinanceInput(cTenant, migratedCommandRows);
+  migratedInput.confirmedHistoricalCommerceCommands = {
+    [migratedEntry.commandId]: { commandId: migratedEntry.commandId, companyId: cTenant, pointId: migratedInput.pointId, eventId: migratedEntry.eventId, originalPointId: null, originalOccurrenceId: null, runId: 'confirmed-commerce-run', batchId: 'confirmed-commerce-batch', payloadHash: 'verified-map-payload', destinationHash: 'verified-destination' },
+  };
+  const replayedAfterCommerce = buildPdvFinanceMigrationItems(migratedInput);
+  assert.equal(replayedAfterCommerce[0].destinationData.sessaoCaixaId, null, 'finance replay after verified commercial migration creates no session');
+  const changedAfterCommerce = structuredClone(migratedCommandRows);
+  changedAfterCommerce[0].troco = '0.01';
+  assert.throws(() => buildPdvFinanceMigrationItems({ ...migratedInput, snapshot: { ...migratedInput.snapshot, payments: changedAfterCommerce } }), (error) => error.code === 'FINANCE_HISTORICAL_APPROVAL_PAYLOAD_DIVERGED', 'commerce proof does not relax the approved financial fields');
   const unauthorizedRow = structuredClone(baseRows[0]); unauthorizedRow.id = 'new-immediate-without-session'; unauthorizedRow.comandaId = 'new-immediate-command'; unauthorizedRow.comanda.id = 'new-immediate-command';
   assert.throws(() => buildPdvFinanceMigrationItems(syntheticFinanceInput(cTenant, [...baseRows, unauthorizedRow])), (error) => error.code === 'FINANCE_PAYMENT_SESSION_MISSING', 'record outside the approved set is blocked');
   const foreignRow = structuredClone(baseRows[0]); foreignRow.comanda.evento.cervejariaId = 'foreign-tenant';

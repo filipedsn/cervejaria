@@ -54,6 +54,7 @@ export async function buildPdvCommerceQaManifest(options = {}) {
     'backend/scripts/pdv-unico-commerce-source.ts',
     'backend/scripts/pdv-unico-commerce-transform.ts',
     'backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs',
+    'backend/scripts/event-deletion.isolated.test.ts',
     'backend/src/app.ts',
     'backend/src/lib/canonical-pdv-operational-config.ts',
     'backend/src/lib/canonical-pdv-operational-config.test.ts',
@@ -142,7 +143,13 @@ export async function buildPdvCommerceQaManifest(options = {}) {
     priorManifests: {
       ...priorManifests,
       session: { ...priorManifests.session, path: session.delivery.migrationPath, name: session.delivery.migrationName, commit: baselineCommit, sha256: session.delivery.migrationSha256 },
-      finance: { ...priorManifests.finance, migrationName: finance.delivery.migrationName, migrationPath: finance.delivery.migrationPath, migrationSha256: finance.delivery.migrationSha256 },
+      finance: {
+        ...priorManifests.finance,
+        migrationName: finance.delivery.migrationName,
+        migrationPath: finance.delivery.migrationPath,
+        migrationSha256: finance.delivery.migrationSha256,
+        historicalProvenanceMigration: finance.historicalProvenanceMigration,
+      },
     },
     delivery: {
       schemaCommit: baselineCommit,
