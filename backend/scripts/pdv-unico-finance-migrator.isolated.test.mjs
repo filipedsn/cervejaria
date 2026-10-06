@@ -358,7 +358,7 @@ try {
   const retryPayment = await db.pagamento.create({ data: { id: id('retry-payment'), comandaId: retryCommand.id, sessaoCaixaEventoId: retry.eventSession.id, forma: 'PIX', valor: '7.00' } });
   const retryMovement = await db.movimentoCaixaEvento.create({ data: { id: id('retry-movement'), sessaoId: retry.eventSession.id, tipo: 'SANGRIA', valor: '2.00', registradoPorId: retry.owner.id } });
   const retryRunId = id('retry-run');
-  const paused = await runPdvFinanceMigration({ db, companyId: retry.company.id, pointId: retry.point.id, runId: retryRunId, maxBatches: 1 });
+  const paused = await runPdvFinanceMigration({ db, companyId: retry.company.id, pointId: retry.point.id, runId: retryRunId, batchSize: 1, maxBatches: 1 });
   assert.equal(paused.status, 'RUNNING');
   assert.equal(paused.checkpoint.completedSourceKeys.length, 1);
   await assert.rejects(runPdvFinanceMigration({ db, companyId: retry.company.id, pointId: retry.point.id, runId: retryRunId, afterDestinationWrite: (item) => {

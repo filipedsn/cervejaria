@@ -458,12 +458,13 @@ async function assertKitchenPdvUnambiguous(tx: Db, companyId: string, pointId: s
 }
 
 /** Prepare only proven legacy kitchen-order PDV links on a pre-commercial schema. */
-export async function runPdvKitchenOrderContextPreparation(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void }) {
+export async function runPdvKitchenOrderContextPreparation(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void; afterBatchCommit?: (progress: { tenantId: string; phase: string; cursor: number; total: number; batch: number; durationMs: number }) => Promise<void> | void }) {
   return runPdvScopedMigration({
     ...options,
-    batchSize: options.batchSize ?? 1,
+    batchSize: options.batchSize ?? 10,
     transactionTimeoutMs: options.transactionTimeoutMs ?? 30000,
     transactionMaxWaitMs: options.transactionMaxWaitMs ?? 10000,
+    afterBatchCommit: options.afterBatchCommit ?? ((progress) => console.info(JSON.stringify({ event: 'PDV_MIGRATION_BATCH_COMMITTED', ...progress }))),
     scope: PDV_KITCHEN_ORDER_PREPARATION_SCOPE,
     transformVersion: PDV_KITCHEN_ORDER_PREPARATION_VERSION,
     createTransactionContext: async (tx) => {
