@@ -281,7 +281,7 @@
     ],
     "results": [
       {
-        "tenant": "CIA Mar?tima",
+        "tenant": "CIA Mar\u00edtima",
         "business": {
           "status": "COMPLETED",
           "pausedAndResumed": true,
@@ -372,7 +372,7 @@
           "queries": 100
         },
         "sessions": {
-          "CIA Mar?tima": {
+          "CIA Mar\u00edtima": {
             "firstAttemptMilliseconds": 5188.16,
             "queries": 789,
             "result": "P2028 timeout at default 5000ms; zero committed batches"
@@ -394,7 +394,7 @@
           "queries": 88
         },
         "sessions": {
-          "CIA Mar?tima": {
+          "CIA Mar\u00edtima": {
             "firstBatch": {
               "milliseconds": 4607.31,
               "queries": 15
@@ -497,86 +497,66 @@
     ]
   },
   "codeCertification": {
-    "selectedCommit": "b776f61dec5cd24b20777972079f32e58b5025c7",
-    "tree": "4e3791128617613e7fe4a63c73cbf7f8d9b8cda8",
-    "trackedBlobs": 1102,
-    "candidateCount": 58,
-    "manifestSha256": "92a9c1fcd9d8d387c870c3f0c6d817e4cb667249e37ba8e55115a4e062c15ad8",
-    "qaPdvCurrentGitSnapshot": "BLOCKED; aggregate exit 1 because representative finance phases were blocked",
-    "syntheticRegression": "PASS; qa:pdv-current-disposable and commerce/authenticated fixtures passed",
-    "representativeRehearsal": "BLOCKED; both session phases completed, both finance phases returned FINANCE_PAYMENT_SESSION_MISSING",
-    "backendBuild": "PASS",
-    "focusedTests": "PASS; representative photo closure tests 5/5",
+    "selectedCommit": "4b7e324c4bbebf0ecca18ffe1a8cc7531df7b6b9",
+    "tree": "c28b7a16aef0ebcbe27afdcb7d48675b2607d8c2",
+    "trackedBlobs": 1111,
+    "candidateCount": 69,
+    "manifestSha256": "77a4ebd2d5e6e19cef7851a17f70626b177d3ab65cdd3493922c367db29543cf",
+    "qaPdvCurrentGitSnapshot": "PASS; exact Git snapshot; synthetic and approved representative QA both passed",
+    "syntheticRegression": "PASS; authenticated API/PostgreSQL commercial and finance regressions, event reversal, exact-session filter, rollback, replay and reconciliation",
+    "representativeRehearsal": "PASS; approved photo restored exactly; both tenants completed all phases including finance-revalidation-after-commerce and final reconciliation",
+    "backendBuild": "PASS; npm run build on exact selected Git snapshot",
+    "focusedTests": "PASS; split debt receipts, pending sale, immediate payment, legacy A/B/C, no-session refusal photo comparison, and durable commerce-proof rejection cases",
     "gitImportAudit": {
-      "status": "PARTIAL_BLOCKED_RUN",
-      "snapshotModules": 175,
+      "status": "PASS",
+      "snapshotModules": 177,
       "workspaceSourceModules": 0,
-      "modulePathListSha256": "e21c36c67a08f28d972e27f59761b0f2498a27f64fb0c450a09d8e691bd390e1"
+      "externalDependencyModules": 100,
+      "modulePathListSha256": "91486cdf2fc9800eba65c80d575a6ff13a04696e3f00847b5721c263aa6f85c5"
     },
     "localStatePreserved": true,
     "evidencePath": "docs/testing/pdv-unico-representative-dev-qa-evidence.json",
     "latestPaymentReview": {
-      "reviewedAt": "2026-10-05",
-      "codeCommit": "cf18678ba3d9145cd8d58a41a1a7b0d145ebf3f1",
-      "tree": "a671be8878a33c53906e28ae3ee184281e05b6fd",
-      "aggregate": "BLOCKED",
+      "reviewedAt": "2026-10-06",
+      "codeCommit": "4b7e324c4bbebf0ecca18ffe1a8cc7531df7b6b9",
+      "tree": "c28b7a16aef0ebcbe27afdcb7d48675b2607d8c2",
+      "aggregate": "PASS",
       "syntheticRegression": {
         "result": "PASS",
         "suite": "pdv-unico-current-disposable",
         "exitCode": 0
       },
       "representativeRehearsal": {
-        "result": "BLOCKED",
-        "exitCode": 1
+        "result": "PASS",
+        "exitCode": 0,
+        "photo": {
+          "sha256": "2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b",
+          "tables": 34,
+          "rows": 10738,
+          "crossTenantEdges": 0
+        }
       },
       "moduleOriginAudit": {
-        "result": "PASS",
-        "snapshotProjectModuleCount": 175,
-        "snapshotProjectModulePathListSha256": "1dc580eeb013bb65efa09857e2c2eab065e88a1f9806a8420c316fc5cd08a0bb",
+        "status": "PASS",
+        "snapshotProjectModuleCount": 177,
         "nonSnapshotWorkspaceModuleCount": 0,
         "externalDependencyModuleCount": 100,
-        "externalPrismaRuntimeVersion": "6.19.3",
-        "expectations": {
-          "syntheticModules": {
-            "result": "PASS",
-            "expectedCount": 5,
-            "observedCount": 5
-          },
-          "representativeModules": {
-            "result": "ENTRYPOINT_OBSERVED",
-            "expectedCount": 1,
-            "observedCount": 1
-          }
-        }
+        "modulePathListSha256": "91486cdf2fc9800eba65c80d575a6ff13a04696e3f00847b5721c263aa6f85c5"
       },
-      "sourceMaterialization": "git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot",
-      "trackedBlobs": 1106,
-      "codeCandidateCount": 58,
-      "manifestSha256": "65ebf13eff7c6f0ee767e767733186772c3fb00de68493621a02ad6f947dfdf4",
-      "certificationRunnerSha256": "404f63c9505f018ba72019003617134428f9f6a09223803ce8c7d1df308c6fbd",
+      "sourceMaterialization": "git cat-file extraction of selected commit; each tracked blob verified; no worktree; npm ci in temporary snapshot",
+      "trackedBlobs": 1111,
+      "codeCandidateCount": 69,
+      "manifestSha256": "77a4ebd2d5e6e19cef7851a17f70626b177d3ab65cdd3493922c367db29543cf",
       "packageLockSha256": "9330ae831d6ea407a47dbf50a6158c60fd9ffb54fe99ed87e17fd6c6e5ec60d0",
+      "prismaRuntime": "6.19.3",
+      "nodeVersion": "v24.18.0",
       "localStatePreserved": true,
-      "prodAccessUsed": "NO",
-      "devSharedAccess": "NO",
-      "representativeBlockers": [
-        {
-          "tenant": "CIA Marítima",
-          "phase": "finance",
-          "code": "FINANCE_PAYMENT_SESSION_MISSING",
-          "paymentId": "cmrcmcnfp000khv2w2uyceipp",
-          "committedBatches": 0
-        },
-        {
-          "tenant": "Churrasquinho do Thiago",
-          "phase": "finance",
-          "code": "FINANCE_PAYMENT_SESSION_MISSING",
-          "paymentId": "cmsthiwwu007ohvmo2o79k3g1",
-          "committedBatches": 0
-        }
-      ],
-      "downstream": "Kitchen preparation, commerce, stock and their representative reconciliation were not run because finance remains blocked.",
-      "measurementSemantics": "The phase wrapper query counter excludes queries counted by nested measured stages; child-stage counters are exclusive to their own scopes. Do not compare a phase total to an exclusive child counter as if they had the same scope."
-    }
+      "backendBuild": "PASS",
+      "frontendBuild": "PASS",
+      "PROD_ACCESS_USED": "NO",
+      "DEV_SHARED_ACCESS": "YES_READ_ONLY_GUARDED"
+    },
+    "frontendBuild": "PASS; npm run build on exact selected Git snapshot"
   },
   "scopeDeviation": {
     "action": "none in this delivery",
@@ -51057,109 +51037,266 @@
     }
   },
   "followUpQa": {
-      "status": "PASS",
-      "codeSnapshot": {
-        "commit": "2b611d6a430b1429d8a0fc9d526b1afdd965f29a",
-        "tree": "56ef9893be25fc6b1be1bb51b57d6606b73b91c8",
-        "trackedBlobs": 1110,
-        "synthetic": "PASS",
-        "representative": "PASS",
-        "moduleOriginAudit": {
-          "result": "PASS",
-          "snapshotModules": 177,
-          "workspaceModules": 0,
-          "externalDependencies": 100
-        }
+    "status": "PASS; finance post-commerce revalidation and reconciliation passed for both tenants",
+    "codeSnapshot": {
+      "commit": "4b7e324c4bbebf0ecca18ffe1a8cc7531df7b6b9",
+      "tree": "c28b7a16aef0ebcbe27afdcb7d48675b2607d8c2"
+    },
+    "approvedPhoto": {
+      "sha256": "2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b",
+      "tables": 34,
+      "rows": 10738,
+      "crossTenantEdges": 0
+    },
+    "schemaGate": {
+      "result": "PASS",
+      "migration": "20261005180000_payment_historical_provenance",
+      "column": "Pagamento.provenienciaHistorica",
+      "eventRegressions": "9/9 PASS",
+      "evtAud02": "200; audit preserved after cascades"
+    },
+    "financePolicy": {
+      "inventoryCount": 577,
+      "withExactAuditPaymentReference": 323,
+      "withoutExactAuditPaymentReference": 254,
+      "provenance": "CAIXA_NAO_COMPROVADA",
+      "bothSessionReferencesRemainNull": true,
+      "sessionTimeWindowLinking": false,
+      "otherClassifications": {
+        "A": "26 payments retain exact session links",
+        "B": "2 debt receipts retain receivables and own provenance"
       },
-      "approvedPhoto": {
+      "all605PaymentsReconciledByIdAndCents": true,
+      "noDuplicateOrOmission": true
+    },
+    "representativePhases": [
+      {
+        "tenant": "CIA Mar\u00edtima",
+        "businessCatalogSessions": "PASS; pause/resume/replay",
+        "finance": {
+          "records": 433,
+          "resumeMs": 53470,
+          "replayMs": 3217
+        },
+        "kitchenPreparationBeforeCommerce": {
+          "records": 0,
+          "result": "COMPLETED; no pending assignment batch"
+        },
+        "commerce": {
+          "records": 1549,
+          "batches": 62,
+          "resumeMs": 302600,
+          "replayMs": 7075
+        },
+        "financeRevalidationAfterCommerce": {
+          "result": "PASS; firstBatch, scope reconciliation and replay; all 605 approved payments rechecked"
+        },
+        "commerceLinkProofGuards": [
+          {
+            "case": "commerce-map-missing",
+            "status": "BLOCKED",
+            "code": "FINANCE_HISTORICAL_COMMERCE_PROOF_MISSING"
+          },
+          {
+            "case": "commerce-map-manually-altered",
+            "status": "BLOCKED",
+            "code": "FINANCE_HISTORICAL_COMMERCE_PROOF_MISSING"
+          },
+          {
+            "case": "commerce-receipt-missing",
+            "status": "BLOCKED",
+            "code": "FINANCE_HISTORICAL_COMMERCE_PROOF_DIVERGED"
+          },
+          {
+            "case": "commerce-receipt-divergent",
+            "status": "BLOCKED",
+            "code": "FINANCE_HISTORICAL_COMMERCE_DESTINATION_DIVERGED"
+          },
+          {
+            "case": "command-pdv-manually-altered",
+            "status": "BLOCKED",
+            "code": "FINANCE_HISTORICAL_COMMERCE_PROOF_DIVERGED"
+          }
+        ],
+        "kitchenPreparationRevalidation": "PASS; firstBatch/replay"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "businessCatalogSessions": "PASS; pause/resume/replay",
+        "finance": {
+          "records": 178,
+          "resumeMs": 41099,
+          "replayMs": 4709
+        },
+        "kitchenPreparationBeforeCommerce": {
+          "records": 431,
+          "batches": 44,
+          "resumeMs": 252020,
+          "replayMs": 6824
+        },
+        "commerce": {
+          "records": 3004,
+          "batches": 121,
+          "resumeMs": 1175780,
+          "replayMs": 14093
+        },
+        "financeRevalidationAfterCommerce": {
+          "result": "PASS; firstBatch, scope reconciliation and replay; all 605 approved payments rechecked"
+        },
+        "commerceLinkProofGuards": {
+          "skipped": true,
+          "reason": "approved photo has no C EVENTO row for this tenant; the approved inventory was unchanged and no substitute case was used"
+        },
+        "kitchenPreparationRevalidation": "PASS; firstBatch/replay"
+      }
+    ],
+    "largestObservedCommerceBatchMs": 13275,
+    "transactionTimeoutMs": 30000,
+    "syntheticAuthenticatedApiCoverage": [
+      "legacy and canonical modes",
+      "EVENTO and CAIXA migrated origins",
+      "dashboard, session summary and received totals",
+      "new immediate payment without session rejected without partial write",
+      "new immediate payment with valid session succeeds",
+      "approval scope, altered payload and tenant mismatch blocked",
+      "debt receipt rules",
+      "rollback and replay"
+    ],
+    "builds": {
+      "backend": "PASS; exact Git snapshot npm run build",
+      "frontend": "PASS; exact Git snapshot npm run build"
+    },
+    "limits": {
+      "devSharedAccess": "YES_READ_ONLY_GUARDED; read-only photo capture whose changed hash was not used",
+      "prodAccessIncludingMetadata": "NO",
+      "realBackfill": "NOT_RUN",
+      "cutover": "NOT_RUN",
+      "deploy": "NOT_RUN",
+      "legacyRemoval": "NOT_RUN"
+    }
+  },
+  "turnReportCorrection": {
+    "scope": "Financial turn reports only; no new user-facing feature and no historical session inference.",
+    "reproduction": {
+      "isolated": true,
+      "api": "Authenticated API with PostgreSQL QA",
+      "saleCents": "10000",
+      "receipts": [
+        {
+          "session": "S1",
+          "cents": "4000"
+        },
+        {
+          "session": "S2",
+          "cents": "6000"
+        }
+      ],
+      "before": {
+        "revenueBySessionCents": [
+          "10000",
+          "10000"
+        ],
+        "receivedBySessionCents": [
+          "4000",
+          "6000"
+        ]
+      },
+      "defect": "Debt principal was reported as a new sale in every receipt session."
+    },
+    "implementation": [
+      "Add nullable Comanda.sessaoCaixaRealizacaoId with same-PDV restrictive foreign key; new closes capture the active session. No historical backfill.",
+      "Canonical turn revenue uses proven realization-session linkage or direct sale payment linkage. Receivable payments remain actual received totals and never add the debt principal as another sale.",
+      "A canonical receipt-only turn remains visible with zero sale revenue and its real receipt total. Legacy reporting when canonical mode is disabled and Por Caixa totals remain unchanged."
+    ],
+    "correctedReplay": {
+      "revenueBySessionCents": [
+        "10000",
+        "0"
+      ],
+      "receivedBySessionCents": [
+        "4000",
+        "6000"
+      ],
+      "partialReceipts": [
+        "4000",
+        "5000",
+        "1000"
+      ],
+      "result": "PASS; debt fully settled, principal counted once"
+    },
+    "operationalCoverage": {
+      "pendingSale": "PASS; remains in original realization turn with full sale revenue and zero received",
+      "immediatePayment": "PASS; active session persisted and report totals match exact payment",
+      "noSessionRefusal": "PASS; pre-request and post-request photo identical for command, items, payments, totals, states, timestamps, and relevant audit",
+      "historicalA": "PASS; 26 exact session links retained",
+      "historicalB": "PASS; 2 receivable links retained",
+      "historicalC": "PASS; 577 IDs/cents/null sessions and CAIXA_NAO_COMPROVADA retained; excluded from session totals and included once in financial history"
+    },
+    "representativeAfterCommerce": {
+      "photo": {
         "sha256": "2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b",
         "tables": 34,
         "rows": 10738,
         "crossTenantEdges": 0
       },
-      "schemaGate": {
-        "result": "PASS",
-        "migration": "20261005180000_payment_historical_provenance",
-        "column": "Pagamento.provenienciaHistorica",
-        "eventRegressions": "9/9 PASS",
-        "evtAud02": "200; audit preserved after cascades"
-      },
-      "financePolicy": {
-        "inventoryCount": 577,
-        "withExactAuditPaymentReference": 323,
-        "withoutExactAuditPaymentReference": 254,
-        "provenance": "CAIXA_NAO_COMPROVADA",
-        "bothSessionReferencesRemainNull": true,
-        "sessionTimeWindowLinking": false,
-        "otherClassifications": {
-          "A": "26 payments retain exact session links",
-          "B": "2 debt receipts retain receivables and own provenance"
-        },
-        "all605PaymentsReconciledByIdAndCents": true,
-        "noDuplicateOrOmission": true
-      },
-      "representativePhases": [
-        {
-          "tenant": "CIA Marítima",
-          "finance": {
-            "records": 433,
-            "resumeMs": 50496,
-            "replayMs": 3177
-          },
-          "commerce": {
-            "records": 1549,
-            "batches": 62,
-            "resumeMs": 288096,
-            "replayMs": 6634
-          },
-          "businessCatalogSessionsAndKitchenRevalidation": "PASS; pause/resume/replay"
-        },
-        {
-          "tenant": "Churrasquinho do Thiago",
-          "finance": {
-            "records": 178,
-            "resumeMs": 39456,
-            "replayMs": 4446
-          },
-          "kitchenPreparation": {
-            "records": 431,
-            "batches": 44,
-            "resumeMs": 240958,
-            "replayMs": 6596
-          },
-          "commerce": {
-            "records": 3004,
-            "batches": 121,
-            "resumeMs": 1128493,
-            "replayMs": 13628
-          },
-          "businessCatalogSessionsAndKitchenRevalidation": "PASS; pause/resume/replay"
-        }
+      "tenants": [
+        "CIA Mar\u00edtima",
+        "Churrasquinho do Thiago"
       ],
-      "largestObservedCommerceBatchMs": 13275,
-      "transactionTimeoutMs": 30000,
-      "syntheticAuthenticatedApiCoverage": [
-        "legacy and canonical modes",
-        "EVENTO and CAIXA migrated origins",
-        "dashboard, session summary and received totals",
-        "new immediate payment without session rejected without partial write",
-        "new immediate payment with valid session succeeds",
-        "approval scope, altered payload and tenant mismatch blocked",
-        "debt receipt rules",
-        "rollback and replay"
-      ],
-      "builds": {
-        "backend": "PASS (npm run build)",
-        "frontend": "PASS (npm run build; Vite dynamic import/chunk-size advisories)"
+      "phase": "commerce -> finance-revalidation-after-commerce (firstBatch/replay/reconciliation) -> kitchen-preparation-revalidation",
+      "paymentReconciliation": {
+        "total": 605,
+        "A": 26,
+        "B": 2,
+        "C": 577,
+        "idsAmountsSessionsClassification": "PASS; exact approved inventory preserved with no omitted or duplicated payment"
       },
-      "limits": {
-        "devSharedAccess": "NO",
-        "prodAccessIncludingMetadata": "NO",
-        "realBackfill": "NOT_RUN",
-        "cutover": "NOT_RUN",
-        "deploy": "NOT_RUN",
-        "legacyRemoval": "NOT_RUN"
-      }
+      "validCommerceLink": "PASS; both tenants accepted only durable confirmed commerce links during financial replay",
+      "invalidCommerceProof": {
+        "testedOn": "CIA Mar\u00edtima; approved C EVENTO command exists in photo",
+        "cases": [
+          {
+            "case": "commerce-map-missing",
+            "status": "BLOCKED",
+            "code": "FINANCE_HISTORICAL_COMMERCE_PROOF_MISSING"
+          },
+          {
+            "case": "commerce-map-manually-altered",
+            "status": "BLOCKED",
+            "code": "FINANCE_HISTORICAL_COMMERCE_PROOF_MISSING"
+          },
+          {
+            "case": "commerce-receipt-missing",
+            "status": "BLOCKED",
+            "code": "FINANCE_HISTORICAL_COMMERCE_PROOF_DIVERGED"
+          },
+          {
+            "case": "commerce-receipt-divergent",
+            "status": "BLOCKED",
+            "code": "FINANCE_HISTORICAL_COMMERCE_DESTINATION_DIVERGED"
+          },
+          {
+            "case": "command-pdv-manually-altered",
+            "status": "BLOCKED",
+            "code": "FINANCE_HISTORICAL_COMMERCE_PROOF_DIVERGED"
+          }
+        ]
+      },
+      "unsupportedTenantCase": "Churrasquinho has no approved C EVENTO case; no different row was substituted to force a guard test"
+    },
+    "builds": {
+      "backend": "PASS",
+      "frontend": "PASS"
+    },
+    "environment": {
+      "syntheticAndRepresentativeQA": "PASS; disposable executor QA containers removed",
+      "DEV": "read-only guard only; fresh changed-hash photo was not used",
+      "PRODIncludingMetadata": "NOT_ACCESSED",
+      "migrationsInDev": "NONE",
+      "realBackfill": "NOT_RUN",
+      "cutover": "NOT_RUN",
+      "deployment": "NOT_RUN",
+      "legacyRemoval": "NOT_RUN"
     }
-
+  }
 }

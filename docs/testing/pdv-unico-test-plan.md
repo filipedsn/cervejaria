@@ -654,3 +654,18 @@ The representative restore exactly reconciled the 10,738 source-photo rows befor
 | Kitchen preparation revalidation/replay | completed | completed |
 
 The largest observed commerce transaction was about 13.3 s, within the unchanged 30 s transaction limit; batch cursors and confirmed commits advanced throughout. Migration work was limited to the executor's isolated QA copy. Backend `npm run build` passed. Frontend `npm run build` passed (Vite reported the existing dynamic-import/chunk-size advisories). No real backfill, DEV migration, cutover, deploy, or legacy removal was performed. TAP-76 remains In Progress; product cutover and any future real-data execution remain separate gates.
+
+## Turn revenue correction and finance revalidation (2026-10-06)
+
+Certified code: `4b7e324c4bbebf0ecca18ffe1a8cc7531df7b6b9`, tree `c28b7a16aef0ebcbe27afdcb7d48675b2607d8c2`. The exact-Git runner verified 1,111 blobs; synthetic and representative QA passed independently; backend and frontend `npm run build` passed from the snapshot. The approved representative photo hash is `2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b`.
+
+| Focused check | Result |
+|---|---|
+| Reproduce 10,000-cent sale and 4,000/6,000-cent debt receipts in two sessions | Before fix, revenue was 10,000 cents in both turns; after fix it was `[10000, 0]`, with receipts `[4000, 6000]` counted once. |
+| Pending sale, debt partials and quitation, immediate payment, receipt-only turn | Passed through authenticated API and PostgreSQL QA; pending principal stays on the original realization turn, while each receipt stays on its receiving session. |
+| No-session command refusal | Passed exact before/after operational photo comparison: command, items, payments, total, states, timestamps, and relevant audit rows unchanged. |
+| Historical A/B/C and common financial totals | Passed exact reconciliation; 26 A session links, two B receivables, and 577 C IDs/values/null sessions with `CAIXA_NAO_COMPROVADA` remained intact. |
+| Finance replay after commerce, both tenants | Passed before subsequent kitchen revalidation; exact approved 605-payment IDs/values/classifications reconciled with no duplicate or omission. |
+| Durable commerce-link proof guards | CIA Marítima blocked missing/altered map, missing/divergent receipt, and manually cleared command link. Churrasquinho had no approved C EVENTO row; that guard was marked not applicable, without substituting or altering inventory. |
+
+The new realization-session field applies to new closed sales and is constrained to the same PDV. Historical sales were not assigned by timestamp. The exact Git snapshot synthetic and representative certifications were separate. Snapshot module audit: 177 project modules from the Git snapshot, zero from the mutable workspace. Manifest SHA-256: `77a4ebd2d5e6e19cef7851a17f70626b177d3ab65cdd3493922c367db29543cf`. Schema verification was not counted as a functional reversal scenario. QA used only the executor-created disposable database/container; DEV remained read-only via its existing guard and received no writes or migrations. PROD, including metadata, was not accessed. No backfill, cutover, deploy, or legacy removal was executed; TAP-76 remains In Progress.
