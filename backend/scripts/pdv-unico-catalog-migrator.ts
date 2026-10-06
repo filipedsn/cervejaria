@@ -841,6 +841,55 @@ async function reconcilePdvCommerce(tx: Db, companyId: string, pointId: string, 
   };
 }
 
+/** Restore only source link fields already written under a valid commerce receipt. */
+async function reconstituteConfirmedCommerceCommandSources(tx: Db, companyId: string, pointId: string, runId: string, items: any[]) {
+  const commands = items.filter((item) => item.type === 'COMANDA');
+  if (!commands.length) return;
+  const maps = await tx.pdvMigrationMap.findMany({ where: { sourceType: 'COMANDA', sourceId: { in: commands.map((item) => item.id) } } });
+  const byCommand = new Map(commands.map((item) => [item.id, item]));
+  const changedMaps = maps.filter((map: any) => {
+    const item: any = byCommand.get(map.sourceId);
+    const original: any = map.sourcePayload;
+    return item && original && (original.transformationSourcePointId !== item.sourcePayload.transformationSourcePointId
+      || original.transformationSourceOccurrenceId !== item.sourcePayload.transformationSourceOccurrenceId);
+  });
+  if (!changedMaps.length) return;
+  const runIds = [...new Set(changedMaps.map((map: any) => map.lastRunId).filter(Boolean))];
+  const batchIds = [...new Set(changedMaps.map((map: any) => map.lastBatchId).filter(Boolean))];
+  const [runs, batches] = await Promise.all([
+    tx.pdvMigrationRun.findMany({ where: { id: { in: runIds } } }),
+    tx.pdvMigrationBatch.findMany({ where: { id: { in: batchIds } } }),
+  ]);
+  const runsById = new Map(runs.map((row: any) => [row.id, row]));
+  const batchesById = new Map(batches.map((row: any) => [row.id, row]));
+
+  for (const map of changedMaps as any[]) {
+    const item: any = byCommand.get(map.sourceId);
+    const original: any = map.sourcePayload;
+    const run: any = runsById.get(map.lastRunId);
+    const batch: any = batchesById.get(map.lastBatchId);
+    const checkpoint: any = run?.checkpoint;
+    const receipt = (batch?.checkpoint as any)?.receipts?.find((row: any) => row.sourceType === 'COMANDA' && row.sourceId === item.id);
+    const destinationHash = canonicalPdvPayloadHash({ pontoVendaId: item.destinationData.pontoVendaId, ocorrenciaId: item.destinationData.ocorrenciaId });
+    if (map.cervejariaId !== companyId || map.pontoVendaId !== pointId || map.destinationType !== 'COMANDA' || map.destinationId !== item.id
+      || map.transformVersion !== PDV_COMMERCE_TRANSFORM_VERSION || map.payloadHash !== canonicalPdvPayloadHash(original)
+      || original.id !== item.id || original.origem !== item.sourcePayload.origem || original.eventoId !== item.sourcePayload.eventoId
+      || !run || !runMatchesScope(run, PDV_COMMERCE_SCOPE, companyId, pointId)
+      || !['RUNNING', 'COMPLETED'].includes(run.status) || run.status === 'RUNNING' && run.id !== runId
+      || checkpoint?.scope !== PDV_COMMERCE_SCOPE || checkpoint?.companyId !== companyId || checkpoint?.pointId !== pointId
+      || checkpoint?.transformVersion !== PDV_COMMERCE_TRANSFORM_VERSION || checkpoint?.sourceSnapshotHash !== run.sourceSnapshotHash
+      || !checkpoint?.completedSourceKeys?.includes(`COMANDA:${item.id}`)
+      || batch?.runId !== run.id || batch?.status !== 'CONFIRMED' || receipt?.destinationType !== 'COMANDA' || receipt?.destinationId !== item.id
+      || receipt?.payloadHash !== map.payloadHash || receipt?.destinationHash !== destinationHash
+      || item.destinationData.pontoVendaId !== pointId || canonicalPdvPayloadHash(item.sourcePayload) === canonicalPdvPayloadHash(original)) {
+      throw new PdvCatalogBlocker('COMMERCE_TRANSFORMATION_PROOF_DIVERGED', 'COMANDA', item.id, 'A fotografia original sÃ³ pode ser restaurada por mapa, run/checkpoint, lote/recibo e destino comercial confirmados.');
+    }
+    item.sourcePayload.transformationSourcePointId = original.transformationSourcePointId;
+    item.sourcePayload.transformationSourceOccurrenceId = original.transformationSourceOccurrenceId;
+    if (canonicalPdvPayloadHash(item.sourcePayload) !== map.payloadHash) throw new PdvCatalogBlocker('SOURCE_PAYLOAD_CHANGED', 'COMANDA', item.id, 'Campos alÃ©m dos vÃ­nculos PDV/ocorrÃªncia diferem da fotografia comercial confirmada.');
+  }
+}
+
 /** Reconciles existing command/order/stock rows and writes only confirmed PDV/event links. */
 export async function runPdvCommerceMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void; afterBatchCommit?: (progress: { tenantId: string; phase: string; cursor: number; total: number; batch: number; durationMs: number }) => Promise<void> | void }) {
   return runPdvScopedMigration({
@@ -866,7 +915,9 @@ export async function runPdvCommerceMigration(options: { db: Db; companyId: stri
         confirmedOccurrences[eventId] = { id: row.id, companyId: row.cervejariaId, pointId: row.pontoVendaId };
       }
       if (snapshot.coverage.tenantConflictCommandIds.length || snapshot.coverage.tenantConflictItemIds.length || snapshot.coverage.tenantConflictOrderIds.length || snapshot.coverage.tenantConflictInventoryIds.length) throw new PdvCatalogBlocker('COMMERCE_SOURCE_TENANT_CONFLICT', null, null, 'A fotografia contém referências de tenant incompatíveis.');
-      return buildPdvCommerceMigrationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedOccurrences });
+      const items = buildPdvCommerceMigrationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedOccurrences });
+      await reconstituteConfirmedCommerceCommandSources(tx, options.companyId, options.pointId, options.runId, items);
+      return items;
     },
     confirmExternalDependency: async (tx, sourceType, sourceId, transactionContext) => {
       if (sourceType === 'EVENTO') { await transactionContext.resolveOccurrence(sourceId); return true; }
