@@ -40,12 +40,20 @@
   },
   "codeCandidates": [
     {
-      "path": "backend/scripts/pdv-unico-planner.isolated.test.ts",
-      "sha256": "2d8e1b259c9ee1c190147ad182482a1af82a91ba6c04bbafe3c252eb71d695e2"
+      "path": "backend/package.json",
+      "sha256": "a94737181961b735162e14b6bde6134bcf4f5473beef1c589964faf59475de0a"
     },
     {
       "path": "backend/scripts/pdv-unico-catalog-migrator.ts",
-      "sha256": "54635e8504539928fb575860dc09482924486d30dc28f649242336b58518a536"
+      "sha256": "a9f6ac26a57f8578e75c26c1c9086c313b76597a5dcf17b6e364dfc7c6e8f8a4"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-finance-migrator.isolated.test.mjs",
+      "sha256": "324aed5e369ec1417394a4d4d9acc0fc4e1c85201454c3c02de9f52913b5d595"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-finance-reconcile.ts",
+      "sha256": "7b2125587b37b5d611067143c68c0cc3ee5e8d0924ea68b73864c3af2cf1c6e2"
     },
     {
       "path": "backend/scripts/pdv-unico-finance-source.ts",
@@ -53,23 +61,15 @@
     },
     {
       "path": "backend/scripts/pdv-unico-finance-transform.ts",
-      "sha256": "33b5ce2ec59b060b16df454dd69bcc26c494881ed277e73e61447bf8d5b2c128"
+      "sha256": "d5c5a63f286f40f9aae5850ce1e90e5c0e3b398dd997a41faa5209dbff632461"
     },
     {
-      "path": "backend/scripts/pdv-unico-finance-reconcile.ts",
-      "sha256": "2c74d80aeea0dca9902730a3e3b19dc0c162ef348315c687689378536bbc998c"
+      "path": "backend/scripts/pdv-unico-planner.isolated.test.ts",
+      "sha256": "2d8e1b259c9ee1c190147ad182482a1af82a91ba6c04bbafe3c252eb71d695e2"
     },
     {
-      "path": "backend/scripts/pdv-unico-finance-migrator.isolated.test.mjs",
-      "sha256": "542ea8c22c5a39b481df5736023c2506c30edd6423a4261791d9eb8dbd72f506"
-    },
-    {
-      "path": "backend/scripts/run-pdv-unico-finance-disposable-qa.mjs",
-      "sha256": "9b1066e6363ae15d78636aff97b1d7ec59d9370ded1078c46dba226110bbdfd0"
-    },
-    {
-      "path": "backend/scripts/run-pdv-unico-historical-disposable-qa.mjs",
-      "sha256": "136b6b2903ba304e9996ad9a07320210e1f224cc3dd594b3bc06dd97a130a249"
+      "path": "backend/scripts/pdv-unico-session-transform.ts",
+      "sha256": "eafd0df6e5a8693b588cc2844ffe47d2b31df2951bb18c9e1e421bd39e88ba78"
     },
     {
       "path": "backend/scripts/run-isolated-qa-historical.mjs",
@@ -80,13 +80,18 @@
       "sha256": "78b6958bde216defd5c8cd5acdb102ef1adcb36e395e6fc0fcac304465041725"
     },
     {
-      "path": "backend/scripts/pdv-unico-session-transform.ts",
-      "sha256": "eafd0df6e5a8693b588cc2844ffe47d2b31df2951bb18c9e1e421bd39e88ba78"
+      "path": "backend/scripts/run-pdv-unico-finance-disposable-qa.mjs",
+      "sha256": "9b1066e6363ae15d78636aff97b1d7ec59d9370ded1078c46dba226110bbdfd0"
     },
     {
-      "path": "backend/package.json",
-      "sha256": "751010b304fb16fb82cfccd979f3bcd2922b99dffaf83a85c37f3b69b0fd91f1"
+      "path": "backend/scripts/run-pdv-unico-historical-disposable-qa.mjs",
+      "sha256": "136b6b2903ba304e9996ad9a07320210e1f224cc3dd594b3bc06dd97a130a249"
     }
   ],
-  "manifestSha256": "7aa69c9bc11214188f5ed79565dadc2c840aa56e1a0e5ff6c7f14d817ca35f87"
+  "manifestSha256": "51474de1943993d1d7ac6ac8227f62b1fde38d22bd6a396f7fda48b50994361d",
+  "historicalProvenanceMigration": {
+    "name": "20261005180000_payment_historical_provenance",
+    "path": "backend/prisma/migrations/20261005180000_payment_historical_provenance/migration.sql",
+    "sha256": "f3612b3965a2aa2a9b54fc9ecfedb80c0a90a9c4ed4beab5660756ad31a62d4b"
+  }
 }

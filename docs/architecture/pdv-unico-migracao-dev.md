@@ -482,3 +482,14 @@ The review code is certified from Git commit `cf18678ba3d9145cd8d58a41a1a7b0d145
 Finance stopped before its first batch for both tenants: CIA Marítima payment `cmrcmcnfp000khv2w2uyceipp` and Churrasquinho payment `cmsthiwwu007ohvmo2o79k3g1`, each `FINANCE_PAYMENT_SESSION_MISSING`. The complete classification remains 26 exact session references (115,400 cents), 2 evidenced no-session debt receipts (5,200 cents), 577 immediate payments without sufficient provenance (3,470,900 cents), and zero invalid/dual references. Kitchen, commerce and stock therefore remain unreconciled.
 
 Metric counters are nested: phase-wrapper query totals exclude query counts attributed to child measurement scopes; each child counter is exclusive to its stage. Compare like-for-like scopes only. No financial readiness or cutover is approved. The remaining business decision is whether/how to preserve immediate no-session history and represent it in cash/PDV reporting; do not associate by date, amount, Event or sole candidate.
+
+
+## Historical C disposition rehearsal (2026-10-05)
+
+The approved C inventory is 577 payments: 323 have an exact payment ID in an audit record without a session reference, and 254 have no exact payment ID in audit. These counts are derived from the 577 row-level C records, excluding the two separately classified B debt receipts. The 26 A records retain their exact session references; B retains its receivable identity and existing provenance.
+
+For this QA rehearsal, the existing Payment rows retain their IDs, financial fields and null session references. A nullable durable provenance enum records `CAIXA_NAO_COMPROVADA`; it does not assert that the receipt occurred outside cash. Authorization is pinned to all 577 row IDs and verified financial/context fields in the sanitized approved photo and inventory digest. New, changed, missing, cross-tenant or contradictory records remain blocked. No time-window match creates a session link.
+
+On the canonical reporting path, payment totals use exact persisted session references. Unassigned historical payments appear in a separate informational total, included once in overall finance and customer history but excluded from session totals. When canonical mode is disabled, the existing legacy interval behavior remains. New immediate operational payments continue to require an open session; receivable collection rules remain specific to that flow.
+
+The migration is additive and QA-only in this task. Implementation code is committed at `60b3d066c5ac15e2412a7d0b29b370630062da71`. No DEV migration, real backfill, cutover, deploy, or legacy removal is authorized. Representative financial reconciliation and dependent phases are pending the isolated QA run; TAP-76 remains In Progress.
