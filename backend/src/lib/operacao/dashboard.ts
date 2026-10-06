@@ -311,8 +311,9 @@ async function buildTurnosRecentes(
         },
         select: { id: true, tipo: true, total: true },
       });
-    // Uma sessao aberta e fechada sem vendas nem movimentos de caixa nao representa um turno operacional.
-    if (comandasFechadas.length === 0 && sessao.movimentos.length === 0) continue;
+    // A canonical turn that only collects debt is still an operational turn.
+    // Keep the legacy filter unchanged while showing those real receipts in Por Caixa.
+    if (comandasFechadas.length === 0 && sessao.movimentos.length === 0 && (!canonicalPdvEnabled || pagamentos.length === 0)) continue;
 
     const turnoDoDia = (indiceTurnoDia.get(chaveDia) ?? 0) + 1;
     indiceTurnoDia.set(chaveDia, turnoDoDia);
