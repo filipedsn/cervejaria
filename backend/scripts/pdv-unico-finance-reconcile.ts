@@ -27,7 +27,8 @@ export function financeReconciliationDigest(payments: any[], debts: any[], movem
   const movementBySessionAndType = new Map<string, bigint>();
   for (const row of payments) {
     add(byForm, row.forma, row.valor);
-    if (row.sessaoCaixaId != null) add(bySession, row.sessaoCaixaId, row.valor);
+    const sessionId = row.sessaoCaixaId ?? row.sessaoCaixaEventoId;
+    if (sessionId != null) add(bySession, sessionId, row.valor);
     if (row.provenienciaHistorica === 'CAIXA_NAO_COMPROVADA') {
       unassignedHistoricalCount++;
       unassignedHistoricalCents += cents(row.valor);
@@ -50,6 +51,8 @@ export function financeReconciliationDigest(payments: any[], debts: any[], movem
       trocoCentavos: row.troco == null ? null : cents(row.troco).toString(),
       registradoPorId: row.registradoPorId, pagoEm: row.pagoEm })).sort((a, b) => a.id.localeCompare(b.id)),
     byForm: sorted(byForm), bySession: sorted(bySession),
+    historicalWithoutSession: { count: unassignedHistoricalCount, cents: unassignedHistoricalCents.toString(), byForm: sorted(unassignedHistoricalByForm) },
+    receivableWithoutSession: { count: receivableWithoutSessionCount, cents: receivableWithoutSessionCents.toString() },
     debtIds: debts.map((row) => row.id).sort(), debtCount: debts.length,
     debtRows: debts.map((row) => ({ id: row.id, comandaId: row.comandaId, clienteId: row.clienteId,
       principalCentavos: cents(row.valorOriginal).toString(),
@@ -81,7 +84,7 @@ export async function reconcilePdvFinance(tx: Db, items: Item[]) {
   if (canonicalPdvPayloadHash(expected) !== canonicalPdvPayloadHash(actual)) throw new PdvCatalogBlocker('FINANCE_RECONCILIATION_DIVERGED', null, null, 'IDs, valores, recebimentos, saldos ou correções divergem da fotografia financeira.');
   return { paymentCount: payments.length, debtCount: debts.length, movementCount: movements.length, byForm: actual.byForm,
     bySession: actual.bySession,
-    historicalWithoutSession: { count: unassignedHistoricalCount, cents: unassignedHistoricalCents.toString(), byForm: sorted(unassignedHistoricalByForm) },
-    receivableWithoutSession: { count: receivableWithoutSessionCount, cents: receivableWithoutSessionCents.toString() },
+    historicalWithoutSession: actual.historicalWithoutSession,
+    receivableWithoutSession: actual.receivableWithoutSession,
     debts: actual.debtRows.map((row) => ({ id: row.id, principalCentavos: row.principalCentavos, recebidoCentavos: row.recebidoCentavos, saldoCentavos: row.saldoCentavos })) };
 }
