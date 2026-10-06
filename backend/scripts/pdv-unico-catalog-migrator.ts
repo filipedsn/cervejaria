@@ -724,16 +724,11 @@ export async function runPdvFinanceMigration(options: { db: Db; companyId: strin
     scope: PDV_FINANCE_SCOPE, transformVersion: PDV_FINANCE_TRANSFORM_VERSION,
     createTransactionContext: async (tx) => {
       let resolver: Promise<(eventId: string) => Promise<any>> | null = null;
+      const sessionConfirmations = new Map<string, Promise<any>>();
       return { resolveOccurrence: async (eventId: string) => {
         resolver ??= measureStage(options, 'occurrenceConfirmation', () => createScopedOccurrenceResolver(tx, options.companyId, options.pointId));
         return (await resolver)(eventId);
-      } };
-    },
-    buildItems: async (tx, pdvSourceKey, transactionContext) => {
-      const snapshot = await measureStage(options, 'sourceSnapshot', () => readPdvFinanceSourceSnapshot(tx, options.companyId));
-      const confirmedSessions: Record<string, any> = {};
-      const sessionConfirmations = new Map<string, Promise<any>>();
-      const confirmSessionOnce = (sourceType: 'SESSAO_CAIXA_EVENTO' | 'SESSAO_CAIXA_OPERACAO', sourceId: string) => {
+      }, resolveFinanceSession: (sourceType: 'SESSAO_CAIXA_EVENTO' | 'SESSAO_CAIXA_OPERACAO', sourceId: string) => {
         const confirmationKey = key(sourceType, sourceId);
         let confirmation = sessionConfirmations.get(confirmationKey);
         if (!confirmation) {
@@ -741,28 +736,32 @@ export async function runPdvFinanceMigration(options: { db: Db; companyId: strin
           sessionConfirmations.set(confirmationKey, confirmation);
         }
         return confirmation;
-      };
+      } };
+    },
+    buildItems: async (tx, pdvSourceKey, transactionContext) => {
+      const snapshot = await measureStage(options, 'sourceSnapshot', () => readPdvFinanceSourceSnapshot(tx, options.companyId));
+      const confirmedSessions: Record<string, any> = {};
       const eventIds = new Set<string>();
       for (const payment of snapshot.payments) {
         if (payment.comanda.eventoId) eventIds.add(payment.comanda.eventoId);
         if (payment.sessaoCaixaEventoId) {
           const sourceType = 'SESSAO_CAIXA_EVENTO';
           const sourceId = payment.sessaoCaixaEventoId;
-          confirmedSessions[key(sourceType, sourceId)] = await confirmSessionOnce(sourceType, sourceId);
+          confirmedSessions[key(sourceType, sourceId)] = await transactionContext.resolveFinanceSession(sourceType, sourceId);
         } else if (payment.sessaoCaixaId) {
           const sourceType = 'SESSAO_CAIXA_OPERACAO';
           const sourceId = payment.sessaoCaixaId;
-          confirmedSessions[key(sourceType, sourceId)] = await confirmSessionOnce(sourceType, sourceId);
+          confirmedSessions[key(sourceType, sourceId)] = await transactionContext.resolveFinanceSession(sourceType, sourceId);
         }
       }
       for (const debt of snapshot.debts) if (debt.comanda.eventoId) eventIds.add(debt.comanda.eventoId);
       for (const movement of snapshot.eventMovements) {
         const sourceType = 'SESSAO_CAIXA_EVENTO'; const sourceId = movement.sessaoId;
-        confirmedSessions[key(sourceType, sourceId)] = await confirmSessionOnce(sourceType, sourceId);
+        confirmedSessions[key(sourceType, sourceId)] = await transactionContext.resolveFinanceSession(sourceType, sourceId);
       }
       for (const movement of snapshot.operationalMovements) {
         const sourceType = 'SESSAO_CAIXA_OPERACAO'; const sourceId = movement.sessaoId;
-        confirmedSessions[key(sourceType, sourceId)] = await confirmSessionOnce(sourceType, sourceId);
+        confirmedSessions[key(sourceType, sourceId)] = await transactionContext.resolveFinanceSession(sourceType, sourceId);
       }
       const confirmedEvents: Record<string, any> = {};
       for (const eventId of eventIds) {
@@ -781,7 +780,7 @@ export async function runPdvFinanceMigration(options: { db: Db; companyId: strin
     },
     confirmExternalDependency: async (tx, sourceType, sourceId, transactionContext) => {
       if (sourceType === 'EVENTO') { await transactionContext.resolveOccurrence(sourceId); return true; }
-      if (sourceType === 'SESSAO_CAIXA_EVENTO' || sourceType === 'SESSAO_CAIXA_OPERACAO') { await findConfirmedFinanceSession(tx, options.companyId, options.pointId, sourceType, sourceId); return true; }
+      if (sourceType === 'SESSAO_CAIXA_EVENTO' || sourceType === 'SESSAO_CAIXA_OPERACAO') { await transactionContext.resolveFinanceSession(sourceType, sourceId); return true; }
       return false;
     },
     writeItem: writeFinanceTarget,
