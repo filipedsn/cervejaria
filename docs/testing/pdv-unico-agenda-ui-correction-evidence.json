@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "scope": "frontend-and-Playwright-only",
+  "reviewedRevision": {
+    "commit": "a00aa5d595184b8bb139e32c530a544f385dc939",
+    "tree": "fc6a2e302aba05a3d4e653d52f3634bbd894ebbf",
+    "codeFiles": [
+      "frontend/src/components/operacao/AgendaOperacionalPanel.tsx",
+      "frontend/src/components/operacao/PainelCaixaOperacao.tsx",
+      "frontend/src/pages/operacao/OperacaoConfiguracoesPage.tsx",
+      "e2e/agenda-operacional.spec.ts"
+    ],
+    "backendChanged": false
+  },
+  "frontendBuild": {
+    "result": "PASS",
+    "command": "npm.cmd run build (frontend)",
+    "notes": [
+      "Existing dynamic-import warning in auth-session.ts",
+      "Existing main bundle size advisory"
+    ]
+  },
+  "playwright": {
+    "result": "PASS",
+    "tests": 5,
+    "command": "npx.cmd playwright test e2e/agenda-operacional.spec.ts --project=chromium --no-deps --workers=1",
+    "browser": "Chromium",
+    "baseUrl": "http://127.0.0.1:5202 (local Vite)",
+    "apiProxyTargetPort": 0,
+    "isolation": "Known API routes were fulfilled with fixtures; all other /api requests aborted; Socket.IO WebSocket was closed by route mock; no shared backend or database was queried.",
+    "scenarios": [
+      "Edit a weekly recurrence returned by the API while it has no generated occurrences.",
+      "A rejected PATCH preserves form values and edit ID; retry PATCHes the same ID and never POSTs a new recurrence.",
+      "Editing an inactive recurrence omits ativa from both PATCH payloads.",
+      "Rejected one-off occurrence creation preserves name and date.",
+      "Agenda query error is visible; retry recovers and preserves form values.",
+      "LEGACY mode mounts no canonical schedule manager and makes no canonical schedule request from settings or cash opening UI.",
+      "Different-date opening stays disabled until explicit confirmation; changing selection clears confirmation.",
+      "Confirmed opening sends ocorrenciaId and confirmarDataDiferente=true; refreshed cash query displays the persisted occurrence context.",
+      "Sem ocorrência opening omits both occurrence fields and displays the empty persisted context."
+    ]
+  },
+  "postgresqlApiCertification": {
+    "result": "NOT_RUN_FOR_THIS_CORRECTION",
+    "reason": "Frontend and Playwright changes only; backend unchanged.",
+    "priorEvidenceCommit": "aebaa538b04057e7f424f846a093b501a24cdcef",
+    "priorEvidenceFile": "docs/testing/pdv-unico-agenda-qa-evidence.json",
+    "attribution": "The previous PostgreSQL synthetic result applies only to aebaa53 and is not evidence for this correction commit."
+  },
+  "accessAndRelease": {
+    "productionOrMetadataAccess": "NO",
+    "sharedDevAccess": "NO",
+    "prodDeployRequired": "NO",
+    "migrationOrBackfill": "NOT_RUN",
+    "cutoverOrLegacyRemoval": "NOT_RUN"
+  },
+  "outstandingPolicy": "Occurrence status transitions/activation policy remains undefined and was not changed; no individual RBAC was added."
+}

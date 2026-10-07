@@ -760,3 +760,9 @@ A gestao usa exclusivamente `AgendaOperacional` e `OcorrenciaOperacional` do PDV
 - Certificacao exata por fotografia Git do commit `aebaa538b04057e7f424f846a093b501a24cdcef`: sintetica PASS; 1.129 blobs verificados, 181 modulos do snapshot e zero modulos do workspace mutavel. QA e snapshot temporarios removidos; fingerprint local inalterado.
 - Ensaio representativo: NAO EXECUTADO, sem fotografia representativa fornecida. Este resultado nao certifica fotografia representativa.
 - Sem PROD/metadados, DEV compartilhado, backfill real, cutover, deploy ou remocao de legado. TAP-76 permanece In Progress. Detalhes: [`pdv-unico-agenda-qa-evidence.json`](./pdv-unico-agenda-qa-evidence.json).
+
+## Correcao UI de agenda no commit a00aa5d (2026-10-07)
+
+Build frontend: PASS. Playwright Chromium isolado: 5/5 PASS no commit `a00aa5d595184b8bb139e32c530a544f385dc939`. Foram comprovados: editar recorrencia mesmo sem ocorrencias geradas; PATCH recusado mantem valores/ID e retry repete PATCH no mesmo ID; PATCH de recorrencia inativa omite `ativa`; avulsa recusada mantem nome/data; erro GET visivel e recuperavel sem limpar formulario; LEGACY sem montagem/consulta canonica; abertura noutra data bloqueada ate confirmacao, reset ao trocar selecao, payload confirmado e contexto persistido; “Sem ocorrencia” sem campos de associacao e contexto persistido vazio.
+
+Os testes usaram somente Vite local com APIs simuladas. Todas as chamadas `/api` sem mock foram abortadas; o proxy Vite apontou para a porta 0, e o WebSocket foi fechado pelo mock. Esta e evidencia de UI, nao de API/PostgreSQL. O backend ficou inalterado; por isso nao se repetiu QA PostgreSQL. A bateria anterior continua associada somente a `aebaa538b04057e7f424f846a093b501a24cdcef` e nao foi atribuida a `a00aa5d`. Detalhes: [`pdv-unico-agenda-ui-correction-evidence.json`](./pdv-unico-agenda-ui-correction-evidence.json).
