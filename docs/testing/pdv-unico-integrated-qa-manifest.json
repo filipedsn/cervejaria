@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "ed466ed722166450ec1a4eb31191ea57110ff699",
+    "commit": "72debdfb78c949e42fa064a8160e03b7cb335371",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "b25ae48f99253fbc259df5cbad42e91c47972ca031ba1c22161ab4e5edf6b1d5"
   },
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "ed466ed722166450ec1a4eb31191ea57110ff699",
+      "commit": "72debdfb78c949e42fa064a8160e03b7cb335371",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -63,7 +63,7 @@
     }
   },
   "delivery": {
-    "schemaCommit": "ed466ed722166450ec1a4eb31191ea57110ff699",
+    "schemaCommit": "72debdfb78c949e42fa064a8160e03b7cb335371",
     "schemaSha256": "b25ae48f99253fbc259df5cbad42e91c47972ca031ba1c22161ab4e5edf6b1d5",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
@@ -137,7 +137,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs",
-      "sha256": "cba16a8d758087d73f6ab3ef331899f4f22891b603f4fd0cf9a2d58ad1a49aa9"
+      "sha256": "6ce1e74c99814dd78827f405dfd1bec29f3abc43f0c278af419c6ed447b3c103"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
@@ -221,7 +221,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-tap-migrator.ts",
-      "sha256": "7dbb5325b397288996d8a138b393d07f9a98a6efa844496d1babe39232e3b168"
+      "sha256": "65e776bcc3d11feed1fd0456a04556f0d11a1ac9309e65f31d7913d42570419e"
     },
     {
       "path": "backend/scripts/run-isolated-qa-historical.mjs",
@@ -440,5 +440,5 @@
       "sha256": "18654d57d175edbedd33943cf345c989c672b238fee455e0796a522b55e8d5fc"
     }
   ],
-  "manifestSha256": "9fb24e34cd95a1d702a76554ab013ea4ccd23f8ddb7fefbdbd8a060e2c4e0f53"
+  "manifestSha256": "6f2bbc009539479dd67d5891f65bec651c343192103623d10d117d1df4425107"
 }
