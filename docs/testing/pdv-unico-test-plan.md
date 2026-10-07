@@ -690,6 +690,24 @@ The creator inventory covered admin JSON and multipart routes, setup, the intern
 
 No shared DEV was read or written in this delivery; no PROD access including metadata occurred. No migration or write ran outside executor-created disposable QA. No real backfill, cutover, deploy, or legacy removal occurred. TAP-76 remains In Progress.
 
+## TAP ownership and Por Caixa draft assembly (2026-10-07)
+
+| Gate | Result |
+|---|---|
+| Canonical provisioning without Trailer; TAPs can be listed, registered and configured by tenant/PDV | Passed in authenticated disposable QA; canonical UI has no Trailer selector. |
+| Session-owned draft mount/swap and chope sale by volume | Passed through the Por Caixa session; tenant/PDV/product checks reject foreign references before writes. |
+| Price snapshots and close | Passed with selected menu, shift and product/volume overrides preserved through sale, payment and session close. |
+| Inventory effect | Passed; verified in the code's persisted inventory unit and movement ledger. |
+| Swap and concurrency | Passed; earlier mounts and sales remain; concurrent requests cannot produce incompatible active mounts for the same context. |
+| Capacity disabled and LEGACY mode | Passed; prior capacity behavior and old API/schema/client compatibility remain. Canonical activation with missing mapping returns an explicit blocker and does not fall back to Trailer. |
+| History, replay, pause, rollback and tamper | Passed; mount history cannot cascade-delete, same-run replay verifies receipts/destinations, and injected failure rolls back all TAP ownership/map/checkpoint writes. |
+| Approved representative TAP photo | Passed against the sanitized 34-table/10,738-row photo: all 9 TAPs and 123 `TapMontagem` records reconciled by ID and full content hash. CIA Marítima: 5/123; Churrasquinho do Thiago: 4/0. |
+| Finance after commerce | Passed; all 605 approved payments remained exact, including 577 historical `CAIXA_NAO_COMPROVADA` payments. |
+
+Exact Git certification used commit `7d40a2899907b9990d5fee7899ee35d2685d4007` and tree `2df20337a7dd6aeaafb01f46aff5f17fb978b534`. Backend TypeScript and frontend/Vite/PWA builds passed on that snapshot. Vite emitted the existing dynamic-import and main-chunk-size advisories. Synthetic and representative outcomes are recorded separately in [`pdv-unico-tap-synthetic-evidence.json`](./pdv-unico-tap-synthetic-evidence.json) and [`pdv-unico-tap-representative-evidence.json`](./pdv-unico-tap-representative-evidence.json). The representative evidence carries per-row source/destination IDs, number/product or mount history fields, and canonical content digests; completed-run replay verified the map and receipt for each source ID. Snapshot module audit observed 181 project modules from the selected Git snapshot and none from the mutable workspace. The executor removed its temporary QA snapshot and container.
+
+`Tap.trailerId` remains only as a LEGACY physical/history bridge; `TapMontagem.eventoId` and existing occurrence/session relationships remain physical/history links. Canonical Por Caixa uses the session's PDV, and Evento never switches engine/catalog. The additive schema and old fields remain in place. This is QA certification only: no DEV read/write, PROD/metadata access, real backfill, cutover, deploy or legacy removal occurred. TAP-76 remains In Progress.
+
 ## Provisioning compatibility boundary during transition (2026-10-06)
 
 The previous provisioning note described only the canonical-enabled behavior. Current execution coverage explicitly distinguishes the effective activation modes:
