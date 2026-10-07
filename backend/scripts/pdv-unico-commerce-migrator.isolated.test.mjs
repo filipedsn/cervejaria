@@ -48,6 +48,8 @@ const independentKitchenMigration = manifest.delivery.independentKitchenOrderMig
 assert(independentKitchenMigration?.path && independentKitchenMigration?.sha256, 'manifest pins the independent kitchen order candidate');
 const independentKitchenSql = await readFile(path.join(repoRoot, independentKitchenMigration.path));
 assert.equal(sha256(independentKitchenSql), independentKitchenMigration.sha256, 'pinned independent kitchen order SQL');
+const individualPermissionsMigrationPath = 'backend/prisma/migrations/20261007220000_individual_operational_permissions/migration.sql';
+const individualPermissionsSql = await readFile(path.join(repoRoot, individualPermissionsMigrationPath));
 for (const item of manifest.immutableManifests) assert.equal(sha256(await readFile(path.join(repoRoot, item.path))), item.sha256, `immutable prior manifest ${item.path}`);
 for (const item of manifest.codeCandidates) assert.equal(sha256(await readFile(path.join(repoRoot, item.path))), item.sha256, `current code candidate ${item.path}`);
 
@@ -2422,13 +2424,14 @@ try {
     [saleSessionContextMigration.name, saleSessionContextSql],
     [tapMountMigration.name, tapMountSql],
     [independentKitchenMigration.name, independentKitchenSql],
+    ['20261007220000_individual_operational_permissions', individualPermissionsSql],
   ];
   assert.equal(sha256(candidates[0][1]), core.migrationSha256, 'pinned core SQL');
   assert.equal(sha256(candidates[1][1]), catalog.delivery.migrationSha256, 'pinned catalog SQL');
   assert.equal(sha256(candidates[2][1]), manifest.priorManifests.session.sha256, 'pinned session SQL');
   assert.equal(sha256(candidates[3][1]), finance.delivery.migrationSha256, 'pinned finance SQL');
   assert.equal(sha256(candidates[4][1]), manifest.priorManifests.finance.historicalProvenanceMigration.sha256, 'pinned historical payment provenance SQL');
-  assert.equal(sha256(candidates.at(-1)[1]), independentKitchenMigration.sha256, 'pinned independent kitchen migration SQL');
+  assert.equal(sha256(candidates[8][1]), independentKitchenMigration.sha256, 'pinned independent kitchen migration SQL');
   const bundle = await materializePinnedMigrationBundle(history, tempRoot);
   for (const [name, sql] of candidates) {
     const dir = path.join(bundle.migrationsDir, name);
@@ -2461,7 +2464,7 @@ try {
   const { PrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
   db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal', omit: { produto: { prepararEmPedidoSeparado: true } } });
   const applied = await db.$queryRaw`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL ORDER BY migration_name`;
-  assert.equal(applied.length, history.migrations.length + 9, 'full historical + operational core/catalog/session/finance/provenance/commerce/sale-session/Tap-mount/independent-kitchen chain');
+  assert.equal(applied.length, history.migrations.length + 10, 'full historical + operational core/catalog/session/finance/provenance/commerce/sale-session/Tap-mount/independent-kitchen/individual-permissions chain');
   assert(applied.some((row) => row.migration_name === manifest.priorManifests.finance.historicalProvenanceMigration.name), 'Payment.provenienciaHistorica migration is applied before commerce route regressions');
   const constraints = await db.$queryRaw`SELECT conname, confdeltype, convalidated FROM pg_constraint WHERE conname IN ('Comanda_pontoVendaId_ocorrenciaId_fkey','Comanda_pontoVendaId_sessaoCaixaRealizacaoId_fkey','EstoqueSaldoQuiosque_pontoVendaId_cervejariaId_fkey','EstoqueSaldoQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pontoVendaId_cervejariaId_fkey','MovimentoEstoqueQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pedidoId_tenant_point_fkey') ORDER BY conname`;
   assert.equal(constraints.length, 7);
