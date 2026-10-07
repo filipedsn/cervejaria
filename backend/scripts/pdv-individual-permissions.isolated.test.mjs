@@ -413,7 +413,7 @@ foreignSocket.disconnect();
 // The API response exposes the persisted list, including an explicit empty list.
 const listed = await app.inject({ method: 'GET', url: '/api/usuarios', headers: authHeaders(ownerCookie) });
 assert.equal(listed.statusCode, 200, listed.body);
-assert.deepEqual(JSON.parse(listed.body).find((user) => user.id === staff.id).permissoesOperacao, ['cash.open']);
+assert.deepEqual(JSON.parse(listed.body).find((user) => user.id === staff.id).permissoesOperacao, []);
 
 await app.close();
 await prisma.$disconnect();
