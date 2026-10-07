@@ -193,7 +193,7 @@ const cashSession = await prisma.sessaoCaixaOperacao.create({
     cervejariaId: company.id, pontoVendaId: point.id, diaOperacional: new Date('2026-10-07T00:00:00.000Z'),
     status: 'ABERTO', trocoInicial: '123.45', abertoPorId: staff.id, ocorrenciaId: occurrence.id,
   },
-  select: { id: true },
+  select: { id: true, diaOperacional: true },
 });
 const restrictedCash = await app.inject({ method: 'GET', url: `/api/operacao/caixa?pontoVendaId=${point.id}`, headers: authHeaders(staffCookie) });
 assert.equal(restrictedCash.statusCode, 200, restrictedCash.body);
