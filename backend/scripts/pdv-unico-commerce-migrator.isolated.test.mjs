@@ -499,13 +499,13 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     // create/recalculation, response summary, payment guard and persisted total.
     const kitchenProduct = await db.produto.create({ data: {
       id: `auth-kitchen-product-${runId}`, cervejariaId: secondCompany.id,
-      nome: 'Synthetic prepared meal', tipo: 'COMIDA', exigePreparo: true,
+      pontoVendaId: secondPoint.id, nome: 'Synthetic prepared meal', tipo: 'COMIDA', exigePreparo: true,
       controlaEstoque: false,
     } });
     await db.preco.create({ data: { id: `auth-kitchen-price-${runId}`, produtoId: kitchenProduct.id, volumeMl: 1, preco: '10.00' } });
     await db.cardapioProduto.create({ data: {
       id: `auth-kitchen-menu-product-${runId}`, cardapioId: secondMenu.id,
-      produtoId: kitchenProduct.id, volumeMl: 0, precoUnit: '10.00',
+      produtoId: kitchenProduct.id, pontoVendaId: secondPoint.id, volumeMl: 0, precoUnit: '10.00',
     } });
     delete process.env.PDV_CANONICAL_CONFIG_QA;
     const kitchenCashOpened = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie: secondOwnerCookie }, payload: { pontoVendaId: secondPoint.id, trocoInicial: 0, cardapioId: secondMenu.id } });
