@@ -8,7 +8,8 @@ import { aplicarCardapioInicialTurno } from './sessao-cardapio.js';
 import { verifyPassword } from '../utils.js';
 import { getOperationalProfile } from '../operational-profile.js';
 import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
-import { inicializarMontagemSessaoCaixa } from '../tap-montagem.js';
+import { hasUnmappedCanonicalTaps, inicializarMontagemSessaoCaixa, inicializarMontagemPdv } from '../tap-montagem.js';
+import { canonicalPdvQaActivationEnabled } from '../canonical-pdv-operational-config.js';
 import { validateCashOccurrenceSelection } from './contexto-ocorrencia.js';
 import { paymentFilterForOperationalSession } from './payment-session-filter.js';
 
@@ -353,26 +354,30 @@ export async function abrirCaixa(params: {
   }
 
   await assertCashRegisterUnitEnabled(params.cervejariaId, params.pontoVendaId);
+  const canonicalPdv = canonicalPdvQaActivationEnabled();
+  if (canonicalPdv && params.tapsEnabled && await hasUnmappedCanonicalTaps(params.cervejariaId)) {
+    throw new CaixaInvalidoError('Existem Taps sem mapeamento confirmado para um PDV');
+  }
 
   if (params.trailerId && !params.tapsEnabled) {
     throw new CaixaInvalidoError('O submódulo de Tap/Chope está desativado nas configurações');
   }
-  const trailersAtivos = params.tapsEnabled
+  const trailersAtivos = params.tapsEnabled && !canonicalPdv
     ? await prisma.trailer.findMany({
         where: { cervejariaId: params.cervejariaId, ativo: true },
         select: { id: true },
         take: 2,
       })
     : [];
-  const trailerId = params.tapsEnabled
+  const trailerId = params.tapsEnabled && !canonicalPdv
     ? params.trailerId ?? (trailersAtivos.length === 1 ? trailersAtivos[0]?.id : undefined)
     : undefined;
 
-  if (params.tapsEnabled && trailersAtivos.length > 1 && !trailerId) {
+  if (!canonicalPdv && params.tapsEnabled && trailersAtivos.length > 1 && !trailerId) {
     throw new CaixaInvalidoError('Selecione o trailer que será usado neste turno');
   }
 
-  if (trailerId) {
+  if (!canonicalPdv && trailerId) {
     const trailer = await prisma.trailer.findFirst({
       where: { id: trailerId, cervejariaId: params.cervejariaId, ativo: true },
       select: { id: true },
@@ -429,7 +434,9 @@ export async function abrirCaixa(params: {
     cardapioId,
     produtoIds,
   });
-  if (trailerId) {
+  if (canonicalPdv && params.tapsEnabled) {
+    await inicializarMontagemPdv(sessao.id, params.pontoVendaId, params.cervejariaId);
+  } else if (trailerId) {
     await inicializarMontagemSessaoCaixa(sessao.id, trailerId);
   }
 

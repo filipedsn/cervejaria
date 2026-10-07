@@ -4,6 +4,8 @@ import { TrailersPage } from '../TrailersPage';
 import { AparenciaPage } from '../AparenciaPage';
 import { OperacaoPage } from '../OperacaoPage';
 import { PageHeader } from '../../components/PageHeader';
+import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
+import { PdvTapsSection } from '../../components/operacao/PdvTapsSection';
 
 const TABS = [
   { id: 'equipe', label: 'Equipe' },
@@ -19,6 +21,7 @@ function isValidTab(tab: string | undefined): tab is TabId {
 
 export function OperacaoConfiguracoesPage() {
   const { tab } = useParams<{ tab: string }>();
+  const { contexto } = useOperacaoContexto();
 
   if (!tab) return <Navigate to="/operacao/configuracoes/equipe" replace />;
   if (!isValidTab(tab)) return <Navigate to="/operacao/configuracoes/equipe" replace />;
@@ -44,6 +47,7 @@ export function OperacaoConfiguracoesPage() {
       {tab === 'equipe' && <FuncionariosPage embedded />}
       {tab === 'trailers' && <TrailersPage embedded />}
       {tab === 'operacao' && <OperacaoPage embedded modo="operacao" />}
+      {tab === 'operacao' && contexto.operationalSettingsSource === 'CANONICAL_PDV' && contexto.pontosVenda.length === 1 && <PdvTapsSection pontoVendaId={contexto.pontosVenda[0]!.id} />}
       {tab === 'aparencia' && <AparenciaPage embedded />}
     </div>
   );

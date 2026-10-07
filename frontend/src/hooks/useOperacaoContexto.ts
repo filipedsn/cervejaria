@@ -14,6 +14,7 @@ export type OperacaoContexto = {
   plannedOperationsEnabled: boolean;
   cashRegisterEnabled: boolean;
   tapsEnabled: boolean;
+  operationalSettingsSource?: 'LEGACY' | 'CANONICAL_PDV';
   inventoryEnabled: boolean;
   kitchenEnabled: boolean;
   controlaEstoque: boolean;
@@ -31,6 +32,7 @@ const CONTEXTO_INATIVO: OperacaoContexto = {
   plannedOperationsEnabled: false,
   cashRegisterEnabled: false,
   tapsEnabled: false,
+  operationalSettingsSource: 'LEGACY',
   inventoryEnabled: false,
   kitchenEnabled: false,
   controlaEstoque: false,

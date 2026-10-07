@@ -19,7 +19,8 @@ function mapTapComChope(
     id: string;
     numero: number;
     nome: string | null;
-    trailerId: string;
+    trailerId: string | null;
+    pontoVendaId?: string | null;
     ativo: boolean;
     produtoId: string | null;
     produto: Awaited<ReturnType<typeof loadTapsDoTrailer>>[number]['produto'];
@@ -38,6 +39,7 @@ function mapTapComChope(
     numero: tap.numero,
     nome: tap.nome,
     trailerId: tap.trailerId,
+    pontoVendaId: tap.pontoVendaId ?? null,
     ativo: tap.ativo,
     produtoId: tap.produtoId,
     chopeAtual,
@@ -57,6 +59,68 @@ async function loadTapsDoTrailer(trailerId: string, opts?: { apenasAtivos?: bool
     orderBy: { numero: 'asc' },
     include: { produto: produtoInclude },
   });
+}
+
+async function loadTapsDoPontoVenda(pontoVendaId: string, cervejariaId: string, opts?: { apenasAtivos?: boolean }) {
+  return prisma.tap.findMany({
+    where: { pontoVendaId, cervejariaId, ...(opts?.apenasAtivos !== false ? { ativo: true } : {}) },
+    orderBy: { numero: 'asc' },
+    include: { produto: produtoInclude },
+  });
+}
+
+export async function hasUnmappedCanonicalTaps(cervejariaId: string) {
+  return (await prisma.tap.count({ where: { cervejariaId, pontoVendaId: null } })) > 0;
+}
+
+/** Canonical Por Caixa mounts are scoped to the session and its PDV, without a Trailer lookup. */
+export async function inicializarMontagemPdv(sessaoCaixaId: string, pontoVendaId: string, cervejariaId: string) {
+  const [taps, montagensAtivas] = await Promise.all([
+    loadTapsDoPontoVenda(pontoVendaId, cervejariaId),
+    prisma.tapMontagem.findMany({ where: { sessaoCaixaId, encerradoEm: null }, select: { tapId: true } }),
+  ]);
+  const montados = new Set(montagensAtivas.map((m) => m.tapId));
+  const toCreate = taps.filter((t) => t.produtoId && !montados.has(t.id));
+  if (!toCreate.length) return { criados: 0 };
+  await prisma.tapMontagem.createMany({ data: toCreate.map((t) => ({ tapId: t.id, produtoId: t.produtoId!, sessaoCaixaId })) });
+  return { criados: toCreate.length };
+}
+
+export async function listTapsComChopeAtualPdv(sessaoCaixaId: string, pontoVendaId: string, cervejariaId: string) {
+  const [taps, montagens] = await Promise.all([
+    loadTapsDoPontoVenda(pontoVendaId, cervejariaId, { apenasAtivos: false }),
+    prisma.tapMontagem.findMany({ where: { sessaoCaixaId, encerradoEm: null }, include: { produto: produtoInclude } }),
+  ]);
+  const byTap = new Map(montagens.map((m) => [m.tapId, m]));
+  return taps.map((tap) => mapTapComChope(tap, byTap.get(tap.id), 'evento'));
+}
+
+export async function posicionarChopeNoPdv(params: { sessaoCaixaId: string; pontoVendaId: string; tapId: string; produtoId: string; cervejariaId: string }) {
+  const { sessaoCaixaId, pontoVendaId, tapId, produtoId, cervejariaId } = params;
+  const sessao = await prisma.sessaoCaixaOperacao.findFirst({ where: { id: sessaoCaixaId, cervejariaId, pontoVendaId, status: 'ABERTO' }, select: { id: true } });
+  if (!sessao) return { error: 'Sessão de caixa inválida' as const };
+  const tap = await prisma.tap.findFirst({ where: { id: tapId, pontoVendaId, cervejariaId, ativo: true }, include: { produto: { select: { nome: true } } } });
+  if (!tap) return { error: 'Tap não encontrado neste PDV' as const };
+  const produto = await prisma.produto.findFirst({ where: { id: produtoId, cervejariaId, pontoVendaId, ativo: true }, include: { precos: { select: { volumeMl: true } } } });
+  if (!produto || !isChopeConfiguravelNaTapOperacao(produto)) return { error: 'Chope inválido para este tenant' as const };
+  const anterior = await prisma.tapMontagem.findFirst({ where: { sessaoCaixaId, tapId, encerradoEm: null }, include: { produto: { select: { nome: true } } } });
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`tap:${sessaoCaixaId}:${tapId}`}))`;
+    await tx.tapMontagem.updateMany({ where: { sessaoCaixaId, tapId, encerradoEm: null }, data: { encerradoEm: new Date() } });
+    await tx.tapMontagem.create({ data: { tapId, produtoId, sessaoCaixaId } });
+  });
+  return { ok: true as const, tapNumero: tap.numero, chopeAnterior: anterior?.produto.nome ?? tap.produto?.nome ?? null, chopeNovo: produto.nome };
+}
+
+export async function removerChopeDoPdv(params: { sessaoCaixaId: string; pontoVendaId: string; tapId: string; cervejariaId: string }) {
+  const { sessaoCaixaId, pontoVendaId, tapId, cervejariaId } = params;
+  const sessao = await prisma.sessaoCaixaOperacao.findFirst({ where: { id: sessaoCaixaId, cervejariaId, pontoVendaId, status: 'ABERTO' }, select: { id: true } });
+  if (!sessao) return { error: 'Sessão de caixa inválida' as const };
+  const tap = await prisma.tap.findFirst({ where: { id: tapId, pontoVendaId, cervejariaId }, select: { numero: true } });
+  if (!tap) return { error: 'Tap não encontrado neste PDV' as const };
+  const updated = await prisma.tapMontagem.updateMany({ where: { sessaoCaixaId, tapId, encerradoEm: null }, data: { encerradoEm: new Date() } });
+  if (!updated.count) return { error: 'Este tap não possui chope montado no turno' as const };
+  return { ok: true as const, tapNumero: tap.numero };
 }
 
 /** Cria montagem inicial a partir do chope cadastrado em cada tap (somente taps sem montagem ativa). */

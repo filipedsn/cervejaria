@@ -39,6 +39,10 @@ const saleSessionContextMigration = manifest.delivery.saleSessionContextMigratio
 assert(saleSessionContextMigration?.path && saleSessionContextMigration?.sha256, 'manifest pins explicit sale realization session migration');
 const saleSessionContextSql = await readFile(path.join(repoRoot, saleSessionContextMigration.path));
 assert.equal(sha256(saleSessionContextSql), saleSessionContextMigration.sha256, 'pinned sale realization session SQL');
+const tapMountMigration = manifest.delivery.tapMountMigration;
+assert(tapMountMigration?.path && tapMountMigration?.sha256, 'manifest pins the canonical PDV Tap migration');
+const tapMountSql = await readFile(path.join(repoRoot, tapMountMigration.path));
+assert.equal(sha256(tapMountSql), tapMountMigration.sha256, 'pinned canonical Tap SQL');
 for (const item of manifest.immutableManifests) assert.equal(sha256(await readFile(path.join(repoRoot, item.path))), item.sha256, `immutable prior manifest ${item.path}`);
 for (const item of manifest.codeCandidates) assert.equal(sha256(await readFile(path.join(repoRoot, item.path))), item.sha256, `current code candidate ${item.path}`);
 
@@ -308,7 +312,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     }), retryBefore, 'retry leaves company, PDV, config, and owner unchanged');
 
     const setupResponse = await app.inject({ method: 'PATCH', url: '/api/cervejaria/configuracao-operacional', headers: { cookie: provisionedOwnerCookie }, payload: {
-      operationMode: 'CAIXA', tapsEnabled: false, inventoryEnabled: false, kitchenEnabled: false,
+      operationMode: 'CAIXA', tapsEnabled: true, inventoryEnabled: false, kitchenEnabled: false,
       quantidadeMesas: 7, completeInitialSetup: true,
     } });
     assert.equal(setupResponse.statusCode, 200, `canonical setup persists on the PDV: ${setupResponse.body}`);
@@ -333,8 +337,29 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     } });
     assert.equal(productResponse.statusCode, 201, `new owner configures the catalog through the authenticated API: ${productResponse.body}`);
     const provisionedProduct = JSON.parse(productResponse.body);
+    const chopeAResponse = await app.inject({ method: 'POST', url: '/api/operacao/produtos', headers: { cookie: provisionedOwnerCookie }, payload: {
+      nome: `Provisioned pale ale ${runId}`, categoria: 'Chope', formato: 'CHOPE', precos: [{ volumeMl: 300, preco: 5 }, { volumeMl: 500, preco: 8 }],
+    } });
+    assert.equal(chopeAResponse.statusCode, 201, `new canonical PDV creates a priced-by-volume beer: ${chopeAResponse.body}`);
+    const chopeA = JSON.parse(chopeAResponse.body);
+    const chopeBResponse = await app.inject({ method: 'POST', url: '/api/operacao/produtos', headers: { cookie: provisionedOwnerCookie }, payload: {
+      nome: `Provisioned IPA ${runId}`, categoria: 'Chope', formato: 'CHOPE', precos: [{ volumeMl: 300, preco: 6 }, { volumeMl: 500, preco: 9 }],
+    } });
+    assert.equal(chopeBResponse.statusCode, 201, `second canonical beer preserves its own volume prices: ${chopeBResponse.body}`);
+    const chopeB = JSON.parse(chopeBResponse.body);
+    assert.deepEqual([chopeA.pontoVendaId, chopeB.pontoVendaId], [provisionedPoint[0].id, provisionedPoint[0].id], 'canonical catalog assigns each new product to its PDV');
+    const tapCreate = await app.inject({ method: 'POST', url: '/api/taps', headers: { cookie: provisionedOwnerCookie }, payload: {
+      pontoVendaId: provisionedPoint[0].id, numero: 1, nome: 'Principal', produtoId: chopeA.id,
+    } });
+    assert.equal(tapCreate.statusCode, 201, `canonical tap is configured without a Trailer: ${tapCreate.body}`);
+    const canonicalTap = JSON.parse(tapCreate.body);
+    assert.deepEqual([canonicalTap.pontoVendaId, canonicalTap.trailerId ?? null], [provisionedPoint[0].id, null]);
     const menuResponse = await app.inject({ method: 'POST', url: '/api/operacao/cardapios', headers: { cookie: provisionedOwnerCookie }, payload: {
-      nome: `Provisioned menu ${runId}`, itens: [{ produtoId: provisionedProduct.id, volumeMl: 0, precoUnit: 9.5 }],
+      nome: `Provisioned menu ${runId}`, itens: [
+        { produtoId: provisionedProduct.id, volumeMl: 0, precoUnit: 9.5 },
+        { produtoId: chopeA.id, volumeMl: 300, precoUnit: 5 }, { produtoId: chopeA.id, volumeMl: 500, precoUnit: 8 },
+        { produtoId: chopeB.id, volumeMl: 300, precoUnit: 6 }, { produtoId: chopeB.id, volumeMl: 500, precoUnit: 9 },
+      ],
     } });
     assert.equal(menuResponse.statusCode, 201, `new owner configures a saved menu through the authenticated API: ${menuResponse.body}`);
     const provisionedMenu = JSON.parse(menuResponse.body);
@@ -343,28 +368,89 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     } });
     assert.equal(cashOpen.statusCode, 201, `new canonical PDV opens the Por Caixa session: ${cashOpen.body}`);
     const provisionedSession = JSON.parse(cashOpen.body);
+    assert.equal(provisionedSession.trailerId ?? null, null, 'canonical cash session opens without a Trailer association');
+    assert.equal(await db.trailer.count({ where: { cervejariaId: provisioned.cervejaria.id } }), 0, 'canonical provisioning and operation did not fabricate a Trailer');
+    const tapList = await app.inject({ method: 'GET', url: `/api/operacao/caixa/taps?pontoVendaId=${encodeURIComponent(provisionedPoint[0].id)}`, headers: { cookie: provisionedOwnerCookie } });
+    assert.equal(tapList.statusCode, 200, `session loads taps by PDV: ${tapList.body}`);
+    assert.deepEqual(JSON.parse(tapList.body).taps.map((tap) => [tap.id, tap.chopeAtual?.id]), [[canonicalTap.id, chopeA.id]], 'opening the cash turn mounts the configured PDV tap');
+    const mountedSwap = await app.inject({ method: 'PUT', url: `/api/operacao/caixa/taps/${encodeURIComponent(canonicalTap.id)}/chope`, headers: { cookie: provisionedOwnerCookie }, payload: { pontoVendaId: provisionedPoint[0].id, produtoId: chopeB.id } });
+    assert.equal(mountedSwap.statusCode, 200, `session swaps the PDV tap: ${mountedSwap.body}`);
+    assert.equal(JSON.parse(mountedSwap.body).taps[0].chopeAtual.id, chopeB.id);
     const commandOpen = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie: provisionedOwnerCookie }, payload: {
       pontoVendaId: provisionedPoint[0].id, tipo: 'APELIDO', identificador: `new-tenant-sale-${runId}`,
     } });
     assert.equal(commandOpen.statusCode, 201, `new canonical PDV opens a sale: ${commandOpen.body}`);
     const provisionedCommandId = JSON.parse(commandOpen.body).id;
     const launch = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(provisionedCommandId)}/pedidos`, headers: { cookie: provisionedOwnerCookie }, payload: {
-      itens: [{ produtoId: provisionedProduct.id, quantidade: 2 }],
+      itens: [{ produtoId: provisionedProduct.id, quantidade: 2 }, { produtoId: chopeB.id, quantidade: 1, tapId: canonicalTap.id, volumeMl: 500 }],
     } });
     assert.equal(launch.statusCode, 201, `new canonical PDV sells from its saved menu: ${launch.body}`);
-    assert.equal(centsExact(JSON.parse(launch.body).total), '1900');
+    assert.equal(centsExact(JSON.parse(launch.body).total), '2700', 'volume price from the saved menu is preserved in the sale total');
     const payment = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(provisionedCommandId)}/pagamentos`, headers: { cookie: provisionedOwnerCookie }, payload: {
-      pagamentos: [{ forma: 'PIX', valor: 19 }],
+      pagamentos: [{ forma: 'PIX', valor: 27 }],
     } });
     assert.equal(payment.statusCode, 200, `new canonical PDV records payment: ${payment.body}`);
     const cashClose = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: provisionedOwnerCookie }, payload: {
-      pontoVendaId: provisionedPoint[0].id, contadoDinheiro: 5, contadoPix: 19, contadoCartaoDebito: 0, contadoCartaoCredito: 0,
+      pontoVendaId: provisionedPoint[0].id, contadoDinheiro: 5, contadoPix: 27, contadoCartaoDebito: 0, contadoCartaoCredito: 0,
     } });
     assert.equal(cashClose.statusCode, 200, `new canonical PDV closes the Por Caixa session: ${cashClose.body}`);
     const provisionedSale = await db.comanda.findUniqueOrThrow({ where: { id: provisionedCommandId } });
     assert.deepEqual([provisionedSale.status, provisionedSale.origem, provisionedSale.sessaoCaixaRealizacaoId, provisionedSale.pontoVendaId], ['FECHADA', 'CAIXA', provisionedSession.id, provisionedPoint[0].id], 'new company uses Por Caixa and preserves the realization session required by financial turn reports');
-    assert.equal((await db.pagamento.findMany({ where: { comandaId: provisionedCommandId } })).reduce((sum, row) => sum + BigInt(centsExact(row.valor)), 0n), 1900n);
+    assert.equal((await db.pagamento.findMany({ where: { comandaId: provisionedCommandId } })).reduce((sum, row) => sum + BigInt(centsExact(row.valor)), 0n), 2700n);
     assert.equal((await db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: provisionedSession.id } })).status, 'FECHADO');
+    const soldVolumeLine = await db.itemComanda.findFirstOrThrow({ where: { comandaId: provisionedCommandId, produtoId: chopeB.id } });
+    assert.deepEqual([soldVolumeLine.tapId, soldVolumeLine.volumeMl, centsExact(soldVolumeLine.precoUnit)], [canonicalTap.id, 500, '800']);
+    assert.equal(await db.inventoryMovement.count({ where: { pontoVendaId: provisionedPoint[0].id, produtoId: { in: [chopeA.id, chopeB.id] } } }), 0, 'tap sales do not create stock movements while the canonical inventory capacity is off');
+    const historicalTapMounts = await db.tapMontagem.findMany({ where: { sessaoCaixaId: provisionedSession.id, tapId: canonicalTap.id }, orderBy: { iniciadoEm: 'asc' } });
+    assert.deepEqual(historicalTapMounts.map((mount) => [mount.produtoId, mount.encerradoEm != null]), [[chopeA.id, true], [chopeB.id, false]], 'swapping beer preserves both mount records');
+    const deleteUsedTap = await app.inject({ method: 'DELETE', url: `/api/taps/${encodeURIComponent(canonicalTap.id)}`, headers: { cookie: provisionedOwnerCookie } });
+    assert.equal(deleteUsedTap.statusCode, 409, 'a Tap with session history cannot be deleted');
+    const secondCashOpen = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie: provisionedOwnerCookie }, payload: {
+      pontoVendaId: provisionedPoint[0].id, trocoInicial: 5, cardapioId: provisionedMenu.id,
+    } });
+    assert.equal(secondCashOpen.statusCode, 201, `same PDV opens a later cash session: ${secondCashOpen.body}`);
+    const secondSession = JSON.parse(secondCashOpen.body);
+    const secondMount = await app.inject({ method: 'GET', url: `/api/operacao/caixa/taps?pontoVendaId=${encodeURIComponent(provisionedPoint[0].id)}`, headers: { cookie: provisionedOwnerCookie } });
+    assert.equal(JSON.parse(secondMount.body).taps[0].chopeAtual.id, chopeA.id, 'new session starts from the saved Tap catalog');
+    const concurrentSwaps = await Promise.all([chopeA.id, chopeB.id].map((produtoId) => app.inject({
+      method: 'PUT', url: `/api/operacao/caixa/taps/${encodeURIComponent(canonicalTap.id)}/chope`, headers: { cookie: provisionedOwnerCookie }, payload: { pontoVendaId: provisionedPoint[0].id, produtoId },
+    })));
+    assert.deepEqual(concurrentSwaps.map((response) => response.statusCode), [200, 200], 'serialized concurrent swaps both complete');
+    assert.equal(await db.tapMontagem.count({ where: { sessaoCaixaId: secondSession.id, tapId: canonicalTap.id, encerradoEm: null } }), 1, 'concurrent swaps cannot create two active incompatible mounts');
+    assert.equal(await db.tapMontagem.count({ where: { sessaoCaixaId: provisionedSession.id, tapId: canonicalTap.id } }), 2, 'later session swaps preserve the earlier session history');
+    assert.deepEqual([soldVolumeLine.tapId, soldVolumeLine.volumeMl, centsExact(soldVolumeLine.precoUnit)], [canonicalTap.id, 500, '800'], 'new session mounting does not rewrite the prior sale snapshot');
+    const secondCashClose = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: provisionedOwnerCookie }, payload: {
+      pontoVendaId: provisionedPoint[0].id, contadoDinheiro: 5, contadoPix: 0, contadoCartaoDebito: 0, contadoCartaoCredito: 0,
+    } });
+    assert.equal(secondCashClose.statusCode, 200, `later cash session closes: ${secondCashClose.body}`);
+    const disabledTaps = await app.inject({ method: 'PATCH', url: '/api/cervejaria/configuracao-operacional', headers: { cookie: provisionedOwnerCookie }, payload: { tapsEnabled: false } });
+    assert.equal(disabledTaps.statusCode, 200);
+    const disabledTapRead = await app.inject({ method: 'GET', url: `/api/operacao/caixa/taps?pontoVendaId=${encodeURIComponent(provisionedPoint[0].id)}`, headers: { cookie: provisionedOwnerCookie } });
+    assert.equal(disabledTapRead.statusCode, 404, 'disabled Tap capability keeps the existing access rule');
+    const foreignTapCount = await db.tap.count({ where: { pontoVendaId: provisionedPoint[0].id } });
+    const foreignTapCreate = await app.inject({ method: 'POST', url: '/api/taps', headers: { cookie: secondOwnerCookie }, payload: {
+      pontoVendaId: provisionedPoint[0].id, numero: 99, produtoId: chopeA.id,
+    } });
+    assert.equal(foreignTapCreate.statusCode, 409, 'another tenant cannot configure a Tap against the foreign PDV');
+    assert.equal(await db.tap.count({ where: { pontoVendaId: provisionedPoint[0].id } }), foreignTapCount, 'cross-tenant Tap attempt makes no write');
+    const mountsBeforeForeignScope = await db.tapMontagem.count({ where: { tapId: canonicalTap.id } });
+    const foreignMount = await app.inject({ method: 'PUT', url: `/api/operacao/caixa/taps/${encodeURIComponent(canonicalTap.id)}/chope`, headers: { cookie: ownerCookie }, payload: { pontoVendaId: secondPoint.id, produtoId: secondProduct.id } });
+    assert.equal(foreignMount.statusCode, 400, 'a session cannot select another tenant/PDV while mounting a Tap');
+    assert.equal(await db.tapMontagem.count({ where: { tapId: canonicalTap.id } }), mountsBeforeForeignScope, 'cross-tenant/PDV mounting rejection makes no write');
+    const legacyTrailer = await db.trailer.create({ data: { nome: `Legacy tap bridge ${runId}`, cervejariaId: provisioned.cervejaria.id } });
+    const unmappedLegacyTap = await db.tap.create({ data: { cervejariaId: provisioned.cervejaria.id, trailerId: legacyTrailer.id, numero: 7, produtoId: chopeA.id } });
+    const unmappedTapRead = await app.inject({ method: 'GET', url: '/api/taps', headers: { cookie: provisionedOwnerCookie } });
+    assert.equal(unmappedTapRead.statusCode, 409, 'canonical mode explicitly blocks a legacy Tap with no confirmed PDV map');
+    assert.equal(JSON.parse(unmappedTapRead.body).code, 'CANONICAL_TAP_MAPPING_REQUIRED');
+    const savedCanonicalFlag = process.env.PDV_CANONICAL_CONFIG_QA;
+    delete process.env.PDV_CANONICAL_CONFIG_QA;
+    try {
+      const legacyTapRead = await app.inject({ method: 'GET', url: `/api/taps?trailerId=${encodeURIComponent(legacyTrailer.id)}`, headers: { cookie: provisionedOwnerCookie } });
+      assert.equal(legacyTapRead.statusCode, 200, 'the disabled activation branch retains the legacy Trailer API');
+      assert.deepEqual(JSON.parse(legacyTapRead.body).map((tap) => tap.id), [unmappedLegacyTap.id]);
+    } finally { process.env.PDV_CANONICAL_CONFIG_QA = savedCanonicalFlag; }
+    await db.tap.delete({ where: { id: unmappedLegacyTap.id } });
+    await db.trailer.delete({ where: { id: legacyTrailer.id } });
 
     const beforeDuplicate = plain({
       points: await db.pontoVenda.findMany({ where: { cervejariaId: provisioned.cervejaria.id }, orderBy: { id: 'asc' } }),
@@ -1749,6 +1835,7 @@ try {
     [manifest.priorManifests.finance.historicalProvenanceMigration.name, historicalProvenanceSql],
     [manifest.delivery.migrationName, commerceSql],
     [saleSessionContextMigration.name, saleSessionContextSql],
+    [tapMountMigration.name, tapMountSql],
   ];
   assert.equal(sha256(candidates[0][1]), core.migrationSha256, 'pinned core SQL');
   assert.equal(sha256(candidates[1][1]), catalog.delivery.migrationSha256, 'pinned catalog SQL');

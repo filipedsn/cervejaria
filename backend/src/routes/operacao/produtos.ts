@@ -185,6 +185,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     const produto = await prisma.produto.create({
       data: {
         cervejariaId,
+        ...(request.operacao.effectiveSettings.pointId ? { pontoVendaId: request.operacao.effectiveSettings.pointId } : {}),
         nome: body.nome.trim(),
         categoria: body.categoria,
         tipo,

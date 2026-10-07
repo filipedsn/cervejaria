@@ -20,10 +20,16 @@ import { recordDivergenciaCaixa } from '../../lib/business-metrics.js';
 import { centavos } from '../../lib/operacao/venda.js';
 import {
   inicializarMontagemSessaoCaixa,
+  inicializarMontagemPdv,
+  hasUnmappedCanonicalTaps,
   listTapsComChopeAtualSessaoCaixa,
+  listTapsComChopeAtualPdv,
   posicionarChopeNoTurno,
+  posicionarChopeNoPdv,
   removerChopeDoTurno,
+  removerChopeDoPdv,
 } from '../../lib/tap-montagem.js';
+import { canonicalPdvQaActivationEnabled } from '../../lib/canonical-pdv-operational-config.js';
 
 const pontoVendaQuery = z.object({
   pontoVendaId: z.string().min(1),
@@ -143,6 +149,11 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       orderBy: { abertoEm: 'desc' },
     });
     if (!sessao) return reply.status(404).send({ error: 'Abra o caixa antes de configurar os Taps' });
+    if (canonicalPdvQaActivationEnabled()) {
+      if (await hasUnmappedCanonicalTaps(cervejariaId)) return reply.status(409).send({ error: 'Existem Taps sem mapeamento confirmado para um PDV', code: 'CANONICAL_TAP_MAPPING_REQUIRED' });
+      await inicializarMontagemPdv(sessao.id, pontoVendaId, cervejariaId);
+      return { pontoVendaId, taps: await listTapsComChopeAtualPdv(sessao.id, pontoVendaId, cervejariaId) };
+    }
     const trailerId = await resolverTrailerSessao(sessao, cervejariaId);
     if (!trailerId) return { trailerId: null, taps: [] };
 
@@ -164,9 +175,14 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       orderBy: { abertoEm: 'desc' },
     });
     if (!sessao) return reply.status(400).send({ error: 'O caixa não possui trailer vinculado' });
+    if (canonicalPdvQaActivationEnabled()) {
+      if (await hasUnmappedCanonicalTaps(cervejariaId)) return reply.status(409).send({ error: 'Existem Taps sem mapeamento confirmado para um PDV', code: 'CANONICAL_TAP_MAPPING_REQUIRED' });
+      const result = await posicionarChopeNoPdv({ sessaoCaixaId: sessao.id, pontoVendaId: body.pontoVendaId, tapId, produtoId: body.produtoId, cervejariaId });
+      if ('error' in result) return reply.status(400).send({ error: result.error });
+      return { pontoVendaId: body.pontoVendaId, taps: await listTapsComChopeAtualPdv(sessao.id, body.pontoVendaId, cervejariaId), message: 'Montagem atualizada'};
+    }
     const trailerId = await resolverTrailerSessao(sessao, cervejariaId);
-    if (!trailerId) return reply.status(400).send({ error: 'O caixa não possui trailer vinculado' });
-
+    if (!trailerId) return reply.status(400).send({ error: 'Trailer required' });
     const result = await posicionarChopeNoTurno({
       sessaoCaixaId: sessao.id,
       trailerId,
@@ -193,9 +209,14 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       orderBy: { abertoEm: 'desc' },
     });
     if (!sessao) return reply.status(400).send({ error: 'O caixa não possui trailer vinculado' });
+    if (canonicalPdvQaActivationEnabled()) {
+      if (await hasUnmappedCanonicalTaps(cervejariaId)) return reply.status(409).send({ error: 'Existem Taps sem mapeamento confirmado para um PDV', code: 'CANONICAL_TAP_MAPPING_REQUIRED' });
+      const result = await removerChopeDoPdv({ sessaoCaixaId: sessao.id, pontoVendaId: body.pontoVendaId, tapId, cervejariaId });
+      if ('error' in result) return reply.status(400).send({ error: result.error });
+      return { pontoVendaId: body.pontoVendaId, taps: await listTapsComChopeAtualPdv(sessao.id, body.pontoVendaId, cervejariaId) };
+    }
     const trailerId = await resolverTrailerSessao(sessao, cervejariaId);
-    if (!trailerId) return reply.status(400).send({ error: 'O caixa não possui trailer vinculado' });
-
+    if (!trailerId) return reply.status(400).send({ error: 'Trailer required' });
     const result = await removerChopeDoTurno({
       sessaoCaixaId: sessao.id,
       trailerId,

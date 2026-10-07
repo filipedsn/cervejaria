@@ -212,7 +212,7 @@ async function collectCervejariaFacts(cervejariaId: string) {
         select: { trailerId: true },
       })
     : [];
-  const tapTrailerIds = new Set(taps.map((tap) => tap.trailerId));
+  const tapTrailerIds = new Set(taps.map((tap) => tap.trailerId).filter((id): id is string => id !== null));
   const openEvents = tapTrailerIds.size > 0
     ? await prisma.evento.findMany({
         where: { cervejariaId, trailerId: { in: [...tapTrailerIds] }, status: 'ABERTO' },

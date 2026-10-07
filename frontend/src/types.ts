@@ -136,7 +136,8 @@ export interface Tap {
   numero: number;
   nome?: string | null;
   produtoId?: string | null;
-  trailerId: string;
+  trailerId: string | null;
+  pontoVendaId?: string | null;
   ativo: boolean;
   produto?: Produto | null;
 }
@@ -146,7 +147,8 @@ export interface TapComChope {
   id: string;
   numero: number;
   nome?: string | null;
-  trailerId: string;
+  trailerId: string | null;
+  pontoVendaId?: string | null;
   ativo: boolean;
   produtoId?: string | null;
   chopeAtual: Produto | null;

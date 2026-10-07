@@ -30,6 +30,7 @@ export async function buildPdvCommerceQaManifest(options = {}) {
   const schemaCandidate = git(['show', `${baselineCommit}:${schemaPath}`]);
   const migrationPath = 'backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql';
   const saleSessionContextMigrationPath = 'backend/prisma/migrations/20261006120000_comanda_sale_session_context/migration.sql';
+  const tapMountMigrationPath = 'backend/prisma/migrations/20261006130000_pdv_tap_montage/migration.sql';
   const priorFiles = {
     historical: 'docs/testing/pdv-unico-qa-migration-manifest.json',
     core: 'docs/testing/pdv-unico-core-qa-manifest.json',
@@ -55,6 +56,17 @@ export async function buildPdvCommerceQaManifest(options = {}) {
     'backend/scripts/pdv-unico-commerce-source.ts',
     'backend/scripts/pdv-unico-commerce-transform.ts',
     'backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs',
+    'backend/src/routes/taps.ts',
+    'backend/src/lib/tap-montagem.ts',
+    'backend/src/routes/operacao/caixa.ts',
+    'backend/src/lib/operacao/caixa.ts',
+    'backend/src/lib/operacao/venda.ts',
+    'backend/src/routes/operacao/produtos.ts',
+    'backend/src/lib/onboarding/readiness.ts',
+    'frontend/src/types.ts',
+    'frontend/src/hooks/useOperacaoContexto.ts',
+    'frontend/src/components/operacao/PdvTapsSection.tsx',
+    'frontend/src/pages/operacao/OperacaoConfiguracoesPage.tsx',
     'backend/scripts/pdv-unico-provisioning-compatibility.isolated.test.mjs',
     'backend/scripts/run-pdv-unico-provisioning-compatibility-qa.mjs',
     'backend/scripts/event-deletion.isolated.test.ts',
@@ -110,6 +122,7 @@ export async function buildPdvCommerceQaManifest(options = {}) {
     'backend/scripts/pdv-unico-historical-no-session-approval.json',
     'backend/prisma/migrations/20261005180000_payment_historical_provenance/migration.sql',
     saleSessionContextMigrationPath,
+    tapMountMigrationPath,
     'backend/scripts/pdv-unico-finance-reconcile.ts',
     'backend/scripts/run-pdv-unico-finance-disposable-qa.mjs',
     'backend/scripts/run-pdv-unico-historical-disposable-qa.mjs',
@@ -172,6 +185,13 @@ export async function buildPdvCommerceQaManifest(options = {}) {
           name: path.basename(path.dirname(saleSessionContextMigrationPath)),
           path: saleSessionContextMigrationPath,
           sha256: digest(git(['show', `${baselineCommit}:${saleSessionContextMigrationPath}`])),
+        },
+      } : {}),
+      ...(selectedCandidatePaths.has(tapMountMigrationPath) ? {
+        tapMountMigration: {
+          name: path.basename(path.dirname(tapMountMigrationPath)),
+          path: tapMountMigrationPath,
+          sha256: digest(git(['show', `${baselineCommit}:${tapMountMigrationPath}`])),
         },
       } : {}),
     },

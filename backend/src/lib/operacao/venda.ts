@@ -75,6 +75,8 @@ async function validarChopeDoTurno(
   tx: TxClient,
   sessaoCaixaId: string,
   trailerId: string | null | undefined,
+  pontoVendaId: string | null | undefined,
+  cervejariaId: string,
   produtos: Array<{ id: string; tipo: Prisma.ProdutoGetPayload<{}>['tipo']; formato: Prisma.ProdutoGetPayload<{}>['formato']; categoria: string | null; precos: Array<{ volumeMl: number }> }>,
   itens: ItemVendaInput[],
   tapsEnabled: boolean,
@@ -90,7 +92,7 @@ async function validarChopeDoTurno(
       continue;
     }
     if (!linha.tapId || !linha.volumeMl) throw new VendaInvalidaError('Selecione o Tap e o volume do chope');
-    if (!trailerId) throw new VendaInvalidaError('Este turno nÃ£o possui trailer vinculado para vender chope');
+    if (!trailerId && !pontoVendaId) throw new VendaInvalidaError('Este turno nÃ£o possui PDV vinculado para vender chope');
 
     const montagem = await tx.tapMontagem.findFirst({
       where: {
@@ -98,7 +100,7 @@ async function validarChopeDoTurno(
         tapId: linha.tapId,
         produtoId: produto.id,
         encerradoEm: null,
-        tap: { trailerId, ativo: true },
+        tap: { ...(pontoVendaId ? { pontoVendaId, cervejariaId } : { trailerId }), ativo: true },
       },
       select: { id: true },
     });
@@ -144,8 +146,11 @@ export async function resolverItens(
     if (usaCardapio) {
       const sessao = await tx.sessaoCaixaOperacao.findUnique({
         where: { id: opts.sessaoCaixaId },
-        select: { cardapioId: true, trailerId: true },
+        select: { cardapioId: true, trailerId: true, pontoVendaId: true },
       });
+      if (canonicalPdvQaActivationEnabled() && (!sessao?.pontoVendaId || produtos.some((p) => p.pontoVendaId !== sessao.pontoVendaId))) {
+        throw new VendaInvalidaError('Produto indisponível neste PDV');
+      }
       const precosTemplate = sessao?.cardapioId
         ? await mapPrecosCardapioOperacao(sessao.cardapioId)
         : null;
@@ -172,7 +177,7 @@ export async function resolverItens(
         }
       }
 
-      await validarChopeDoTurno(tx, opts.sessaoCaixaId, sessao?.trailerId, produtos, itens, opts.tapsEnabled ?? false);
+      await validarChopeDoTurno(tx, opts.sessaoCaixaId, sessao?.trailerId, sessao?.pontoVendaId, cervejariaId, produtos, itens, opts.tapsEnabled ?? false);
 
       return Promise.all(itens.map(async (linha) => {
         const produto = produtoPorId.get(linha.produtoId)!;
@@ -206,9 +211,12 @@ export async function resolverItens(
   if (opts?.sessaoCaixaId) {
     const sessao = await tx.sessaoCaixaOperacao.findUnique({
       where: { id: opts.sessaoCaixaId },
-      select: { trailerId: true },
+      select: { trailerId: true, pontoVendaId: true },
     });
-    await validarChopeDoTurno(tx, opts.sessaoCaixaId, sessao?.trailerId, produtos, itens, opts.tapsEnabled ?? false);
+    if (canonicalPdvQaActivationEnabled() && (!sessao?.pontoVendaId || produtos.some((p) => p.pontoVendaId !== sessao.pontoVendaId))) {
+      throw new VendaInvalidaError('Produto indisponível neste PDV');
+    }
+    await validarChopeDoTurno(tx, opts.sessaoCaixaId, sessao?.trailerId, sessao?.pontoVendaId, cervejariaId, produtos, itens, opts.tapsEnabled ?? false);
   }
 
   const produtoPorId = new Map(produtos.map((produto) => [produto.id, produto]));

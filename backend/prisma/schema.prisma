@@ -491,15 +491,18 @@ model Tap {
   produtoId    String?
   ativo        Boolean @default(true)
   cervejariaId String
-  trailerId    String
+  trailerId    String?
+  pontoVendaId String?
 
-  produto    Produto?      @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+  produto    Produto?      @relation(fields: [produtoId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
   cervejaria Cervejaria    @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
-  trailer    Trailer       @relation(fields: [trailerId], references: [id], onDelete: Cascade)
+  trailer    Trailer?      @relation(fields: [trailerId], references: [id], onDelete: SetNull)
+  pontoVenda PontoVenda?   @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
   montagens  TapMontagem[]
   itens      ItemComanda[]
 
   @@unique([trailerId, numero])
+  @@unique([pontoVendaId, numero])
   @@index([cervejariaId])
   @@index([trailerId])
 
@@ -516,10 +519,10 @@ model TapMontagem {
   iniciadoEm  DateTime  @default(now())
   encerradoEm DateTime?
 
-  tap     Tap     @relation(fields: [tapId], references: [id], onDelete: Cascade)
+  tap     Tap     @relation(fields: [tapId], references: [id], onDelete: Restrict)
   produto Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict)
-  evento  Evento? @relation(fields: [eventoId], references: [id], onDelete: Cascade)
-  sessaoCaixa SessaoCaixaOperacao? @relation(fields: [sessaoCaixaId], references: [id], onDelete: Cascade)
+  evento  Evento? @relation(fields: [eventoId], references: [id], onDelete: Restrict)
+  sessaoCaixa SessaoCaixaOperacao? @relation(fields: [sessaoCaixaId], references: [id], onDelete: Restrict)
 
   @@index([eventoId, encerradoEm])
   @@index([sessaoCaixaId, encerradoEm])
@@ -1014,6 +1017,7 @@ model PontoVenda {
   pdvMigrationMaps PdvMigrationMap[]
    saldosEstoque InventoryBalance[]
   configuracaoPdv ConfiguracaoPontoVenda?
+  taps Tap[]
   produtos Produto[]
   cardapios Cardapio[]
   opcionais Opcional[]
