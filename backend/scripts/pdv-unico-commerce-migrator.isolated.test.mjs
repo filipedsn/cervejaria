@@ -633,6 +633,9 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       id: `grouped-kitchen-two-${runId}`, cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id,
       nome: 'Cebola QA', tipo: 'COMIDA', exigePreparo: true, prepararEmPedidoSeparado: false, controlaEstoque: true,
     } });
+    await db.sessaoCaixaProdutoOperacao.createMany({ data: [churrasquinho, batata, cebola].map((product, index) => ({
+      id: `independent-kitchen-session-${index}-${runId}`, sessaoCaixaId: kitchenSessionId, produtoId: product.id, volumeMl: 0,
+    })) });
     for (const [index, product] of [churrasquinho, batata, cebola].entries()) {
       if (product.id !== churrasquinho.id) await db.preco.create({ data: { id: `independent-kitchen-price-${index}-${runId}`, produtoId: product.id, volumeMl: 1, preco: '10.00' } });
       await db.cardapioProduto.create({ data: { id: `independent-kitchen-menu-${index}-${runId}`, cardapioId: secondMenu.id, produtoId: product.id, pontoVendaId: secondPoint.id, volumeMl: 0, precoUnit: '10.00' } });
