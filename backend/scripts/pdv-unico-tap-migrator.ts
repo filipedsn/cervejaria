@@ -22,7 +22,7 @@ function destinationData(type: string, row: any) {
   return type === 'LEGACY_TAP' ? {
     id: row.id, numero: row.numero, nome: row.nome, produtoId: row.produtoId,
     ativo: row.ativo, cervejariaId: row.cervejariaId, trailerId: row.trailerId,
-    pontoVendaId: row.pontoVendaId, updatedAt: row.updatedAt,
+    pontoVendaId: row.pontoVendaId,
   } : row;
 }
 

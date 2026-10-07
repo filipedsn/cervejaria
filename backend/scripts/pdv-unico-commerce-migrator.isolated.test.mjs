@@ -2021,6 +2021,12 @@ try {
   const rollbackPoint = await db.pontoVenda.create({ data: { id: id('tap-rollback-point'), cervejariaId: rollbackTenant.id, nome: 'Rollback PDV' } });
   const rollbackTrailer = await db.trailer.create({ data: { id: id('tap-rollback-trailer'), cervejariaId: rollbackTenant.id, nome: 'Rollback Trailer' } });
   const rollbackTap = await db.tap.create({ data: { id: id('tap-rollback'), numero: 92, nome: 'Rollback Tap', cervejariaId: rollbackTenant.id, trailerId: rollbackTrailer.id } });
+  const collisionTap = await db.tap.create({ data: { id: id('tap-collision'), numero: 92, nome: 'Colliding Tap', cervejariaId: rollbackTenant.id, trailerId: rollbackTrailer.id } });
+  const collisionRunId = id('tap-collision-run');
+  await assert.rejects(runPdvTapOwnershipMigration({ db, companyId: rollbackTenant.id, pointId: rollbackPoint.id, runId: collisionRunId }), (error) => error instanceof PdvTapBlocker && error.code === 'TAP_NUMBER_COLLISION_WITHIN_PDV', 'duplicate Tap numbers block without choosing a row');
+  assert.deepEqual((await db.tap.findMany({ where: { cervejariaId: rollbackTenant.id }, orderBy: { id: 'asc' }, select: { id: true, pontoVendaId: true } })).map((row) => row.pontoVendaId), [null, null], 'number collision makes no ownership write');
+  assert.equal(await db.pdvMigrationRun.count({ where: { id: collisionRunId } }), 0, 'number collision leaves no run, checkpoint, receipt or map');
+  await db.tap.delete({ where: { id: collisionTap.id } });
   const rollbackTapRunId = id('tap-rollback-run');
   await assert.rejects(runPdvTapOwnershipMigration({ db, companyId: rollbackTenant.id, pointId: rollbackPoint.id, runId: rollbackTapRunId, afterDestinationWrite: async () => { throw new Error('QA_TAP_ATOMIC_ROLLBACK'); } }), /QA_TAP_ATOMIC_ROLLBACK/);
   assert.equal((await db.tap.findUniqueOrThrow({ where: { id: rollbackTap.id } })).pontoVendaId, null, 'injected pre-commit failure rolls back Tap ownership');
