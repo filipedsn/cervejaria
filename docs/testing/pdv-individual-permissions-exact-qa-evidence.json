@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "certification": "synthetic-only",
+  "syntheticRegression": {
+    "result": "PASS",
+    "suite": "pdv-unico-current-disposable",
+    "exitCode": 0
+  },
+  "representativeRehearsal": {
+    "result": "NOT_RUN",
+    "reason": "No representative photo supplied."
+  },
+  "individualPermissionsSuite": {
+    "result": "PASS",
+    "suite": "qa:pdv-individual-permissions",
+    "includedBy": "qa:pdv-current-disposable",
+    "coverage": [
+      "event cash read sanitization, isolated open/movement/close, debt receive, owner, tenant isolation, and no-write denial photos",
+      "legacy and operational item DELETE, locked quantity reduction, full-command cancellation separation, inventory and ledger photos",
+      "legacy employee migration with discount boolean true and false; no automatic whole-command cancellation grant",
+      "real local Socket.IO join, finance grant and revocation on the same socket, company isolation, and operational kitchen delivery",
+      "cash occurrence and operational day retained without values, totals, change, or movements",
+      "authorized sale, payment, debt, close, refund/cancellation, stock movement, plus denied requests with persisted-state comparison"
+    ]
+  },
+  "selectedCommit": "14bda482767592bc284b9cfbd51472166fb18740",
+  "selectedTree": "b66d09be093aa623e29f2ae818d96cb0d41e1878",
+  "certificationRunnerPath": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+  "certificationRunnerSha256": "404f63c9505f018ba72019003617134428f9f6a09223803ce8c7d1df308c6fbd",
+  "sourceMaterialization": "git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot",
+  "materializedTrackedBlobCount": 1143,
+  "packageLockSha256": "9330ae831d6ea407a47dbf50a6158c60fd9ffb54fe99ed87e17fd6c6e5ec60d0",
+  "nodeVersion": "v24.18.0",
+  "generatedCandidateManifest": {
+    "baselineCommit": "14bda482767592bc284b9cfbd51472166fb18740",
+    "manifestSha256": "9aff1f0386ce685ad7545cf8701c80f39ab78e4fa32eeb72bb452f445efb18c1",
+    "codeCandidateCount": 97
+  },
+  "selectedDatabaseInputs": {
+    "schemaPath": "backend/prisma/schema.prisma",
+    "schemaGitBlob": "700157399e9979f0d2948930420f9448a43ee5c9",
+    "migrationPath": "backend/prisma/migrations/20261007220000_individual_operational_permissions/migration.sql",
+    "migrationGitBlob": "2705907d00c9e985e21642e4398be0d532bd2ef1",
+    "workspaceUntrackedMigrationsCopied": false,
+    "incompleteMigrationDirectoriesSilentlyIgnored": false
+  },
+  "moduleOriginAudit": {
+    "result": "PASS",
+    "snapshotProjectModuleCount": 185,
+    "snapshotProjectModulePathListSha256": "82f9c0e8af37a05b326f77677fef2c3d47ba7bfba5ce29c18beb3c8709065ee1",
+    "nonSnapshotWorkspaceModuleCount": 0,
+    "externalDependencyModuleCount": 100,
+    "externalPrismaRuntimeVersion": "6.19.3",
+    "expectations": {
+      "syntheticModules": {
+        "result": "PASS",
+        "expectedCount": 5,
+        "observedCount": 5
+      },
+      "representativeModules": {
+        "result": "NOT_RUN",
+        "expectedCount": 0,
+        "observedCount": 0
+      }
+    }
+  },
+  "localState": {
+    "beforeSha256": "c3711cb5cabc5f052c15b43267696fbc070b3be8b37dc81e06994e59a6f5533e",
+    "afterSha256": "c3711cb5cabc5f052c15b43267696fbc070b3be8b37dc81e06994e59a6f5533e",
+    "identical": true,
+    "stagedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "unstagedDiffSha256": "087da96b5a6638004d35da7b9084038c21e3dc57d14504cf29c61ce392358faf",
+    "untrackedFileCount": 10
+  },
+  "prodAccessUsed": "NO",
+  "devSharedAccess": "NO"
+}

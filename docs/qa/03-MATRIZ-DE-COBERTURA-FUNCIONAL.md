@@ -23,7 +23,7 @@ Referência do que está coberto por testes automatizados vs manual. Atualizar q
 | Área | Status | Automatizado hoje | Lacuna principal | Onda |
 |------|--------|-------------------|------------------|------|
 | Sessão / JWT | Verde | SESS-01..12 + OBS-09 | Invalidação mid-sessão Socket.IO | 3 |
-| RBAC | Verde | RBAC-01..06 (500 onde se espera 403 agora reprova) | — | 4 |
+| RBAC (cobertura geral) | Amarelo | TAP-76: primeira fatia de permissões individuais; evento, caixa, cancelamento, tenant e Socket.IO | Demais módulos e ações ainda não auditados nesta fatia | 4 |
 | Multitenant Cervejaria | Verde | TEN-01..16 (token de plataforma → 403 em rota de tenant) | — | 4 |
 | Comandas + pagamento | Verde | RF-05/06 + PAG-01..07 (CARTAO, DEBITO, CREDITO, split) | — | 4 |
 | Pagamento conjunto | Verde | RF-13 + property `fechar-comanda.property.test.ts` | — | 3 |

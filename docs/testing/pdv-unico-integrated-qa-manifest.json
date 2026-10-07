@@ -1,9 +1,9 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "fe472bb4c63c9b60f50464bf271a7382d7849c99",
+    "commit": "14bda482767592bc284b9cfbd51472166fb18740",
     "schemaPath": "backend/prisma/schema.prisma",
-    "schemaSha256": "e80c5abec83d1e28a578a53e88e29b689c670fe75c35dc15b6a47c6a26433bfa"
+    "schemaSha256": "142502b10ac4dea4bbc16585aec04508bc0ac91bbc8130ad8f5f3f36005f4694"
   },
   "immutableManifests": [
     {
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "fe472bb4c63c9b60f50464bf271a7382d7849c99",
+      "commit": "14bda482767592bc284b9cfbd51472166fb18740",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -63,8 +63,8 @@
     }
   },
   "delivery": {
-    "schemaCommit": "fe472bb4c63c9b60f50464bf271a7382d7849c99",
-    "schemaSha256": "e80c5abec83d1e28a578a53e88e29b689c670fe75c35dc15b6a47c6a26433bfa",
+    "schemaCommit": "14bda482767592bc284b9cfbd51472166fb18740",
+    "schemaSha256": "142502b10ac4dea4bbc16585aec04508bc0ac91bbc8130ad8f5f3f36005f4694",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
     "migrationSha256": "3aaf567f8dddfd94250c5efee4bd37af4a8074243de000fb6ef2f8f9890cc3ab",
@@ -98,7 +98,7 @@
   "codeCandidates": [
     {
       "path": "backend/package.json",
-      "sha256": "eba15f78e8c4f61b5673bbf56e414879099fde7be33391fbcb37065d8f063e8d"
+      "sha256": "3b0970ce7e48450870df1d2b71ff0a12ab429903116b4abebaac44f99d79f5c0"
     },
     {
       "path": "backend/prisma/migrations/20261005180000_payment_historical_provenance/migration.sql",
@@ -146,7 +146,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs",
-      "sha256": "82f0683c1b31e2027023287b8c5f408ace430311a13c18690ad33546df644abd"
+      "sha256": "efe18885ebb9a4e1624362cc3783a1b206afe759493ece638796ce69d5d39521"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
@@ -314,7 +314,7 @@
     },
     {
       "path": "backend/src/lib/operacao/comanda-itens.ts",
-      "sha256": "f4b9d0b3c8ec68e6cb88ef5de79dbf153a26862e144e5571c535eef91645e86e"
+      "sha256": "30a76f9defc8264c062992ab81f809167db84e9da6f85cd41f7db6f9f1aea3aa"
     },
     {
       "path": "backend/src/lib/operacao/contexto-ocorrencia.test.ts",
@@ -386,11 +386,11 @@
     },
     {
       "path": "backend/src/routes/admin.ts",
-      "sha256": "d687e06d5c8a16cdc368801495d536c95fe8237a7e4c866dcdaf1cc2765dfde6"
+      "sha256": "f9bfcae5c77352a4d9e8d9f360627d6bf1981671cb9de51fac67bab482828ad1"
     },
     {
       "path": "backend/src/routes/cervejaria.ts",
-      "sha256": "df55f09cc3957a3429f6245937568e4f71caf04fc558ad4e72322f6f402516ab"
+      "sha256": "9897148cd6cbfd8e89bf382a3afe1e4454a2bc11afddd0bf70d377204bff46c9"
     },
     {
       "path": "backend/src/routes/operacao/agenda-operacional.ts",
@@ -398,15 +398,15 @@
     },
     {
       "path": "backend/src/routes/operacao/caixa.ts",
-      "sha256": "720515a36ff58e69772a828cfe6edd97c1c4218bf5e761bb68fb9cfae9d2c0fb"
+      "sha256": "2fa802667f6d3c831ff689bbaecf0f4d9098d7c53177c5d44b98a8fd7c30ac5b"
     },
     {
       "path": "backend/src/routes/operacao/comandas.ts",
-      "sha256": "d7fd69e3bfa72792b8fecb082319beb6a7cc0f45dcaf87b6f934c1f8b19573ad"
+      "sha256": "fb24a3af20ea0a0cf4d59b4b21237780f1a033c18f4beb62cfb06d3bf2b0ba81"
     },
     {
       "path": "backend/src/routes/operacao/cozinha.ts",
-      "sha256": "26f0c2e0f508342a94c220be4f26ded0e62c1e26cfc0bfab83710dfa8d3ec7c2"
+      "sha256": "32ae25a0d68faef893cfd9aa14f1341cd4e099905938cfc65f77a7bceefd7b5c"
     },
     {
       "path": "backend/src/routes/operacao/index.ts",
@@ -418,7 +418,7 @@
     },
     {
       "path": "backend/src/routes/operacao/vendas.ts",
-      "sha256": "4b0e6f6c1034345def743bdff8b6b219306d46949dd2679ab1e7b309d2e70ed9"
+      "sha256": "a5b8622ebe5da4551104d866d8fc83abace4b783458ceea58f093e9676b3c9d0"
     },
     {
       "path": "backend/src/routes/public.ts",
@@ -450,7 +450,7 @@
     },
     {
       "path": "frontend/src/components/operacao/PainelCaixaOperacao.tsx",
-      "sha256": "29b26596e43c8c3dc1b11fb8fbd2635325020dfba185d7e19e36f0f959dff5d6"
+      "sha256": "12a6d728562f002d8d7ea5363be857d00daf3059fee3e43b0ef025f69be02e1e"
     },
     {
       "path": "frontend/src/components/operacao/PdvTapsSection.tsx",
@@ -478,12 +478,12 @@
     },
     {
       "path": "frontend/src/types.ts",
-      "sha256": "8ead485e1512e33ef6258128e5a524c2fa88ef71bb9eabf17062b93933b1fc94"
+      "sha256": "79d434dc5c5264b70488235ff4340d4cf9cef45c29e567ff8f54d53f47953ac7"
     },
     {
       "path": "playwright.independent-ui.config.ts",
       "sha256": "01567913669a6bb52f70fb140341a5bf22334819b9f155e84b29c6099edae8e2"
     }
   ],
-  "manifestSha256": "196b3fbe7fdd30802a1d9d5a60293ab23b010474aedef0626b1e46f67fd1e8b7"
+  "manifestSha256": "9aff1f0386ce685ad7545cf8701c80f39ab78e4fa32eeb72bb452f445efb18c1"
 }

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "purpose": "Exact Git certification inputs for the individual operational permissions first slice",
+  "baselineCommit": "14bda482767592bc284b9cfbd51472166fb18740",
+  "baselineTree": "b66d09be093aa623e29f2ae818d96cb0d41e1878",
+  "sourceMaterialization": "Git snapshot selected by commit; workspace files are not source inputs",
+  "databaseInputs": {
+    "schemaPath": "backend/prisma/schema.prisma",
+    "schemaGitBlob": "700157399e9979f0d2948930420f9448a43ee5c9",
+    "migrationPath": "backend/prisma/migrations/20261007220000_individual_operational_permissions/migration.sql",
+    "migrationGitBlob": "2705907d00c9e985e21642e4398be0d532bd2ef1"
+  },
+  "suite": {
+    "command": "qa:pdv-current-git-snapshot -- --commit=14bda482767592bc284b9cfbd51472166fb18740",
+    "includedDisposableSuite": "qa:pdv-individual-permissions",
+    "result": "PASS",
+    "representativeRehearsal": "NOT_RUN"
+  },
+  "migrationRules": {
+    "copyUntrackedWorkspaceMigrations": false,
+    "silentlyIgnoreIncompleteMigrationDirectories": false
+  },
+  "codeCandidateManifest": {
+    "sha256": "9aff1f0386ce685ad7545cf8701c80f39ab78e4fa32eeb72bb452f445efb18c1",
+    "candidateCount": 97
+  },
+  "evidencePath": "docs/testing/pdv-individual-permissions-exact-qa-evidence.json"
+}
