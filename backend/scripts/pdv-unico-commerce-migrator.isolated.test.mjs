@@ -358,7 +358,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       nome: `Provisioned menu ${runId}`, itens: [
         { produtoId: provisionedProduct.id, volumeMl: 0, precoUnit: 9.5 },
         { produtoId: chopeA.id, volumeMl: 300, precoUnit: 5 }, { produtoId: chopeA.id, volumeMl: 500, precoUnit: 8 },
-        { produtoId: chopeB.id, volumeMl: 300, precoUnit: 6 }, { produtoId: chopeB.id, volumeMl: 500, precoUnit: 9 },
+        { produtoId: chopeB.id, volumeMl: 300, precoUnit: 6 }, { produtoId: chopeB.id, volumeMl: 500, precoUnit: 8 },
       ],
     } });
     assert.equal(menuResponse.statusCode, 201, `new owner configures a saved menu through the authenticated API: ${menuResponse.body}`);
