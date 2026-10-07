@@ -2880,11 +2880,17 @@ try {
     nome: `Legacy API ${suffix}`, categoria: 'Porções', tipo: 'COMIDA', exigePreparo: true, controlaEstoque: false,
   } })));
   await db.preco.createMany({ data: legacyApiProducts.map((legacyProduct, index) => ({ id: id(`legacy-api-price-${index}`), produtoId: legacyProduct.id, volumeMl: 1, preco: '10.00' })) });
+  const legacyApiMenu = await db.cardapio.create({ data: { cervejariaId: legacyCloseCompany.id, pontoVendaId: legacyApiPoint.id, nome: 'Legacy API menu' } });
+  await db.cardapioProduto.createMany({ data: legacyApiProducts.map((legacyProduct, index) => ({
+    id: id(`legacy-api-menu-entry-${index}`), cardapioId: legacyApiMenu.id, produtoId: legacyProduct.id,
+    cervejariaId: legacyCloseCompany.id, pontoVendaId: legacyApiPoint.id, volumeMl: 1, precoUnit: '10.00',
+  })) });
   await db.configuracaoOperacao.create({ data: { cervejariaId: legacyCloseCompany.id, ativo: true, controlaEstoque: false, temCozinha: true, exclusivo: false, quantidadeMesas: 0 } });
   await db.configuracaoOperacional.create({ data: { cervejariaId: legacyCloseCompany.id, inventoryEnabled: false, kitchenEnabled: true, kitchenItemsChargeAtLaunch: true, allowCloseComandaWithPendingKitchenOrders: false } });
   const { diaOperacional: legacyApiDay } = await import('../src/lib/operacao/venda.ts');
   const legacyApiSession = await db.sessaoCaixaOperacao.create({ data: {
-    cervejariaId: legacyCloseCompany.id, pontoVendaId: legacyApiPoint.id, diaOperacional: legacyApiDay(), trocoInicial: '0.00', abertoPorId: legacyCloseOwner.id,
+    cervejariaId: legacyCloseCompany.id, pontoVendaId: legacyApiPoint.id, cardapioId: legacyApiMenu.id,
+    diaOperacional: legacyApiDay(), trocoInicial: '0.00', abertoPorId: legacyCloseOwner.id,
   } });
   await db.$executeRawUnsafe('ALTER TABLE public."Comanda" DROP CONSTRAINT IF EXISTS "Comanda_pontoVendaId_sessaoCaixaRealizacaoId_fkey"');
   await db.$executeRawUnsafe('ALTER TABLE public."Comanda" DROP CONSTRAINT IF EXISTS "Comanda_sessaoRealizacao_requer_ponto_check"');
