@@ -169,7 +169,7 @@ export function Layout() {
     : operacao.pontosVenda[0]?.id;
 
   const navItemsComandasOperacao = CAIXA_NAV_ITEMS.filter((item) => item.path === '/operacao/comandas');
-  const navItemsCervejaria = getCervejariaNavItems({ isDono, operationMode: operacao.operationMode });
+  const navItemsCervejaria = getCervejariaNavItems({ isDono, permissoesOperacao: usuario?.permissoesOperacao, operationMode: operacao.operationMode });
   const navItemsComplementares = operacao.ativo
     ? getComplementaryNavItems({ temCozinha: operacao.temCozinha, controlaEstoque: operacao.controlaEstoque })
     : [];
@@ -205,6 +205,7 @@ export function Layout() {
               temCozinha: operacao.temCozinha,
               controlaEstoque: operacao.controlaEstoque,
               isDono,
+              permissoesOperacao: usuario?.permissoesOperacao,
               operationMode: operacao.operationMode,
             }),
           ]

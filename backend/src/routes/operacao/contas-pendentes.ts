@@ -9,6 +9,7 @@ import { assertCashRegisterUnitEnabled, lockCaixaEmTx } from '../../lib/operacao
 import { centavos, diaOperacional, reais } from '../../lib/operacao/venda.js';
 import { recalculateClienteStats } from '../../lib/cliente-stats.js';
 import { zonedTimeToUtc } from '../../lib/event-datetime.js';
+import { requirePermissao } from '../../lib/operacao/permissoes.js';
 
 const recebimentoSchema = z.object({
   pontoVendaId: z.string().min(1),
@@ -92,7 +93,7 @@ export async function contasPendentesOperacaoRoutes(app: FastifyInstance) {
     return contas.map(resumoConta).filter((conta) => conta.saldo > 0);
   });
 
-  app.post('/:id/pagamentos', async (request, reply) => {
+  app.post('/:id/pagamentos', { preHandler: [requirePermissao(app, 'debt.receive')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };

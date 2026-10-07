@@ -284,6 +284,8 @@ model Usuario {
   papel              UserRole  @default(ATENDENTE)
   /// Autoriza aplicar desconto manual em comandas do quiosque. Dono sempre pode.
   podeDarDescontoOperacao Boolean @default(false)
+  /// Lista explícita de ações operacionais permitidas para o atendente.
+  permissoesOperacao      String[] @default([])
   cervejariaId       String?
   passwordChangedAt  DateTime  @default(now())
   createdAt          DateTime  @default(now())

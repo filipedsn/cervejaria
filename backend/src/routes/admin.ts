@@ -300,7 +300,7 @@ export async function adminRoutes(app: FastifyInstance) {
   app.post('/cervejarias/provision', async (request, reply) => {
     const canonical = canonicalPdvQaActivationEnabled();
     const body = provisionEstablishmentRequestSchema.parse(request.body);
-    const existing = await prisma.usuario.findUnique({ where: { email: body.dono.email } });
+    const existing = await prisma.usuario.findUnique({ where: { email: body.dono.email }, select: { id: true } });
     if (existing) return reply.status(409).send({ error: 'E-mail do proprietÃ¡rio jÃ¡ cadastrado' });
     let slug = slugify(body.nome);
     if (await prisma.cervejaria.findUnique({ where: { slug } })) slug = `${slug}-${Date.now().toString(36)}`;
@@ -327,7 +327,7 @@ export async function adminRoutes(app: FastifyInstance) {
     const canonical = canonicalPdvQaActivationEnabled();
     const { body, logoBuffer } = await parseMultipartCervejaria(request, createCervejariaSchema);
 
-    const existing = await prisma.usuario.findUnique({ where: { email: body.donoEmail } });
+    const existing = await prisma.usuario.findUnique({ where: { email: body.donoEmail }, select: { id: true } });
     if (existing) {
       return reply.status(409).send({ error: 'E-mail do proprietário já cadastrado' });
     }
@@ -390,7 +390,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const existing = await prisma.cervejaria.findUnique({
       where: { id },
-      include: { usuarios: { where: { papel: 'DONO' }, take: 1 } },
+      include: { usuarios: { where: { papel: 'DONO' }, take: 1, select: { id: true, nome: true, email: true } } },
     });
     if (!existing) return reply.status(404).send({ error: 'Cervejaria não encontrada' });
 
@@ -398,7 +398,7 @@ export async function adminRoutes(app: FastifyInstance) {
     if (!dono) return reply.status(400).send({ error: 'Cervejaria sem proprietário vinculado' });
 
     if (body.donoEmail !== dono.email) {
-      const emailTaken = await prisma.usuario.findUnique({ where: { email: body.donoEmail } });
+      const emailTaken = await prisma.usuario.findUnique({ where: { email: body.donoEmail }, select: { id: true } });
       if (emailTaken) return reply.status(409).send({ error: 'E-mail do proprietário já cadastrado' });
     }
 
@@ -423,7 +423,7 @@ export async function adminRoutes(app: FastifyInstance) {
         donoData.senhaHash = await hashPassword(body.donoSenha);
         donoData.passwordChangedAt = new Date();
       }
-      await tx.usuario.update({ where: { id: dono.id }, data: donoData });
+      await tx.usuario.update({ where: { id: dono.id }, data: donoData, select: { id: true } });
 
       if (
         body.operacaoTemCozinha !== undefined ||

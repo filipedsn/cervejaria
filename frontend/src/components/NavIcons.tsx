@@ -209,6 +209,7 @@ export type NavItem = {
   Icon: (props: IconProps) => ReturnType<typeof IconCalendar>;
   exact?: boolean;
   donoOnly?: boolean;
+  permissionOnly?: string;
   somenteCozinha?: boolean;
   somenteEstoque?: boolean;
 };
@@ -218,7 +219,7 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const },
   { path: '/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
   { path: '/clientes', label: 'Clientes', shortLabel: 'Clientes', Icon: IconUsers },
-  { path: '/dashboard', label: 'Dashboard', shortLabel: 'Dashboard', Icon: IconBarChart, donoOnly: true as const },
+  { path: '/dashboard', label: 'Dashboard', shortLabel: 'Dashboard', Icon: IconBarChart, permissionOnly: 'dashboard.read' as const },
   { path: '/configuracoes', label: 'Configurações', shortLabel: 'Config.', Icon: IconSettings, donoOnly: true as const },
 ];
 
@@ -230,11 +231,13 @@ export const NAV_ITEMS_OPERACAO: NavItem[] = [
 
 export function getCervejariaNavItems(contexto: {
   isDono: boolean;
+  permissoesOperacao?: string[];
   operationMode: 'CAIXA' | 'EVENTO' | null;
 }) {
   return NAV_ITEMS.filter(
     (item) =>
       (!('donoOnly' in item && item.donoOnly) || contexto.isDono) &&
+      (!('permissionOnly' in item && item.permissionOnly) || contexto.isDono || contexto.permissoesOperacao?.includes(item.permissionOnly) === true) &&
       !(contexto.operationMode === 'CAIXA' && (item.path === '/eventos' || item.path === '/comandas')),
   );
 }
@@ -296,7 +299,7 @@ export const CAIXA_NAV_ITEMS: NavItem[] = [
     label: 'Dashboard',
     shortLabel: 'Dashboard',
     Icon: IconBarChart,
-    donoOnly: true as const,
+    permissionOnly: 'dashboard.read' as const,
   },
   { path: '/operacao/catalogo', label: 'Cardápio', shortLabel: 'Cardápio', Icon: IconListMenu },
   {
@@ -308,12 +311,13 @@ export const CAIXA_NAV_ITEMS: NavItem[] = [
   },
 ];
 
-type OperacaoNavFilterContext = OperacaoNavContext & { isDono: boolean; operationMode?: 'CAIXA' | 'EVENTO' | null };
+type OperacaoNavFilterContext = OperacaoNavContext & { isDono: boolean; permissoesOperacao?: string[]; operationMode?: 'CAIXA' | 'EVENTO' | null };
 
 export function getOperacaoNavItems(contexto: OperacaoNavFilterContext) {
   const items = CAIXA_NAV_ITEMS.filter(
     (item) =>
       (!('donoOnly' in item && item.donoOnly) || contexto.isDono) &&
+      (!('permissionOnly' in item && item.permissionOnly) || contexto.isDono || contexto.permissoesOperacao?.includes(item.permissionOnly) === true) &&
       (!('somenteCozinha' in item && item.somenteCozinha) || contexto.temCozinha) &&
       (!('somenteEstoque' in item && item.somenteEstoque) || contexto.controlaEstoque),
   );

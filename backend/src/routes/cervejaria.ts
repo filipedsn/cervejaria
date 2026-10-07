@@ -10,6 +10,7 @@ import {
   updateBrandingColors,
 } from '../lib/cervejaria-branding.js';
 import { buildCervejariaDashboard } from '../lib/cervejaria-dashboard.js';
+import { requirePermissaoOuDono } from '../lib/operacao/permissoes.js';
 import { getOperationalProfile } from '../lib/operational-profile.js';
 import { readOperationalConfig, updateOperationalConfig, updateOperationalConfigSchema } from '../lib/operational-config.js';
 
@@ -66,9 +67,8 @@ async function getDonoCervejaria(request: import('fastify').FastifyRequest) {
 
 export async function cervejariaRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
-  app.addHook('preHandler', app.requireDono);
 
-  app.get('/dashboard', async (request, reply) => {
+  app.get('/dashboard', { preHandler: [requirePermissaoOuDono(app, 'dashboard.read')] }, async (request, reply) => {
     const user = getAuthUser(request);
     const now = new Date();
     const query = request.query as { ano?: string; mes?: string; trailerId?: string; tipo?: string };
@@ -88,19 +88,19 @@ export async function cervejariaRoutes(app: FastifyInstance) {
     return buildCervejariaDashboard(user.cervejariaId!, ano, mes, trailerId, tipo);
   });
 
-  app.get('/branding', async (request) => {
+  app.get('/branding', { preHandler: [app.requireDono] }, async (request) => {
     const cervejaria = await getDonoCervejaria(request);
     return formatCervejariaAuth(cervejaria);
   });
 
-  app.patch('/branding', async (request) => {
+  app.patch('/branding', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
     const body = updateBrandingSchema.parse(request.body);
     const updated = await updateBrandingColors(user.cervejariaId!, body.corPrimaria);
     return formatCervejariaAuth(updated);
   });
 
-  app.patch('/chave-pix', async (request) => {
+  app.patch('/chave-pix', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
     const body = updateChavePixSchema.parse(request.body);
     const updated = await prisma.cervejaria.update({
@@ -110,7 +110,7 @@ export async function cervejariaRoutes(app: FastifyInstance) {
     return formatCervejariaAuth(updated);
   });
 
-  app.patch('/operacao', async (request) => {
+  app.patch('/operacao', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
     const body = updateOperacaoSchema.parse(request.body);
     const updated = await prisma.cervejaria.update({
@@ -123,7 +123,7 @@ export async function cervejariaRoutes(app: FastifyInstance) {
     return formatCervejariaAuth(updated);
   });
 
-  app.get('/configuracao-operacional', async (request) => {
+  app.get('/configuracao-operacional', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
     const configuration = await readOperationalConfig(user.cervejariaId!);
     const canonical = configuration && 'configurationSource' in configuration && configuration.configurationSource === 'CANONICAL_PDV';
@@ -143,19 +143,19 @@ export async function cervejariaRoutes(app: FastifyInstance) {
     };
   });
 
-  app.patch('/configuracao-operacional', async (request) => {
+  app.patch('/configuracao-operacional', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
     const body = updateOperationalConfigSchema.parse(request.body);
     return prisma.$transaction((tx) => updateOperationalConfig(tx, user.cervejariaId!, body, { userId: user.sub, role: 'DONO' }));
   });
 
-  app.post('/branding/reextract', async (request) => {
+  app.post('/branding/reextract', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
     const updated = await reextractBrandingFromLogo(user.cervejariaId!);
     return formatCervejariaAuth(updated);
   });
 
-  app.post('/branding/logo', async (request) => {
+  app.post('/branding/logo', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
     let logoBuffer: Buffer | null = null;
 
@@ -180,7 +180,7 @@ export async function cervejariaRoutes(app: FastifyInstance) {
     return formatCervejariaAuth(updated);
   });
 
-  app.post('/branding/portal-background', async (request) => {
+  app.post('/branding/portal-background', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
     let imageBuffer: Buffer | null = null;
 
@@ -205,7 +205,7 @@ export async function cervejariaRoutes(app: FastifyInstance) {
     }
   });
 
-  app.delete('/branding/portal-background', async (request) => {
+  app.delete('/branding/portal-background', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
     const updated = await prisma.cervejaria.update({
       where: { id: user.cervejariaId! },

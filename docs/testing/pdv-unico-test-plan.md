@@ -800,3 +800,23 @@ O runner comercial fixa migration candidata, schema e arquivos de serviço/rotas
 **Resultado da certificação:** o snapshot Git exato `fe472bb4c63c9b60f50464bf271a7382d7849c99` (árvore `4375bfdbc6a40da5192bcd528d7e4d7763448cc2`) passou `qa:pdv-current-disposable`: 1.136 blobs, 97 candidatos no manifesto temporário, 182 módulos do projeto e zero imports do workspace. A suíte comercial passou com KITCH-IND-02, 06 e 07. O manifesto permanente aponta para a mesma revisão, SHA-256 `196b3fbe7fdd30802a1d9d5a60293ab23b010474aedef0626b1e46f67fd1e8b7`. Evidência completa em [`pdv76-independent-kitchen-qa-evidence.json`](./pdv76-independent-kitchen-qa-evidence.json).
 
 UI: Playwright Chromium 1/1 PASS na revisão `ff7f75ef271cddd9726234529c08d9c322401b2e`, com Vite local na porta 5198, APIs explicitamente mockadas e chamadas não mockadas bloqueadas; essa prova é simulada e separada de API/PostgreSQL. Ensaio representativo: NOT_RUN; nenhum conjunto representativo foi fornecido. Sem acesso a PROD/DEV compartilhado ou metadados, backfill real, cutover, deploy, rankings, RBAC ou remoção de legado; migração completa não foi declarada.
+
+## Permissoes individuais: verificacao da primeira fatia (2026-10-07)
+
+Matriz: [../architecture/pdv-individual-permissions-action-matrix.md](../architecture/pdv-individual-permissions-action-matrix.md).
+
+| Caso | Assertiva | Tipo | Resultado |
+|---|---|---|---|
+| Owner e lista vazia | Owner tem todas as chaves; atendente novo nao recebe permissoes automaticamente | API autenticada + PostgreSQL descartavel | PASS |
+| Conceder/revogar | Mesmo cookie ganha e perde acesso imediatamente | API autenticada + PostgreSQL descartavel | PASS |
+| Escopo/validacao | Chave desconhecida, autoedicao, alteracao do owner e tenant cruzado sao rejeitados | API autenticada + PostgreSQL descartavel | PASS |
+| Sem efeito ao negar | cash.open negado nao cria sessao; cash.open sozinho nao permite fechar valores | API autenticada + PostgreSQL descartavel | PASS |
+| Valores restritos | GET de sessao omite troco, totais e movimentos; fechamento negado mantem fechadoEm nulo | API autenticada + PostgreSQL descartavel | PASS |
+| Migration | Backfill preserva cash.open observado e deriva discount.apply do booleano legado true/false | PostgreSQL descartavel, replay controlado | PASS |
+| Compatibilidade | Login, /me e usuarios funcionam sem coluna quando ativacao esta desligada | API autenticada + PostgreSQL descartavel | PASS |
+| Interface | Carrega, altera, salva e reabre lista; owner ve acesso integral sem controles | Playwright Chromium com API simulada | PASS 1/1 |
+| Acao de backend | Pagina dashboard concede e revoga na mesma sessao; endpoint financeiro negado antes da escrita | API autenticada + PostgreSQL descartavel | PASS |
+| Conservacao geral de venda/estoque | Nao exercitada por um ciclo completo de venda/estorno nesta fatia | QA financeiro adicional | PENDENTE |
+| Ensaio representativo | Sem fotografia representativa fornecida | QA representativo | NAO EXECUTADO |
+
+Comandos executados: backend npm run qa:pdv-individual-permissions (PASS, PostgreSQL tmpfs isolado em 127.0.0.1); npm run build backend (PASS); npm run build frontend (PASS); Playwright Chromium 1/1 em Vite local com API interceptada (PASS). Esta prova nao e deployment nem ensaio representativo. O QA tambem verificou que recusar o fechamento preserva a sessao aberta; nao cobre todos os fluxos de conservacao financeira/estoque.

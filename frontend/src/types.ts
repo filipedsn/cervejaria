@@ -4,6 +4,7 @@ export interface Usuario {
   email: string;
   papel: 'ADMIN' | 'DONO' | 'ATENDENTE';
   podeDarDescontoOperacao?: boolean;
+  permissoesOperacao?: string[];
 }
 
 export interface BrandPalette {

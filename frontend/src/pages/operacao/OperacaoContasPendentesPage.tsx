@@ -56,7 +56,8 @@ function Icon({ nome, className = 'h-5 w-5' }: { nome: 'pessoa' | 'moeda' | 'ten
 
 export function OperacaoContasPendentesPage() {
   const queryClient = useQueryClient();
-  const { cervejaria } = useAuth();
+  const { cervejaria, canPermission } = useAuth();
+  const podeReceberConta = canPermission('debt.receive');
   const { contexto } = useOperacaoContexto();
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
   const [pontoVendaId, setPontoVendaId] = useState('');
@@ -290,7 +291,7 @@ export function OperacaoContasPendentesPage() {
                             </div>
                             <div className="grid grid-cols-2 gap-2 sm:flex">
                               <button type="button" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-500" onClick={() => enviarCobranca(conta)}><Icon nome="whatsapp" className="h-4 w-4" /><span>Enviar cobrança</span></button>
-                              <button type="button" className="touch-btn-primary inline-flex min-h-11 items-center justify-center gap-2 px-3 text-sm" disabled={!pontoAtivo} onClick={() => abrirRecebimento(conta)}><Icon nome="cartao" className="h-4 w-4" /><span>Receber pagamento</span></button>
+                              {podeReceberConta && <button type="button" className="touch-btn-primary inline-flex min-h-11 items-center justify-center gap-2 px-3 text-sm" disabled={!pontoAtivo} onClick={() => abrirRecebimento(conta)}><Icon nome="cartao" className="h-4 w-4" /><span>Receber pagamento</span></button>}
                             </div>
                           </div>
                         </>
@@ -325,7 +326,7 @@ export function OperacaoContasPendentesPage() {
       )}
 
       <PaymentFormModal
-        open={Boolean(contaSelecionada)}
+        open={Boolean(contaSelecionada) && podeReceberConta}
         onClose={() => setContaSelecionada(null)}
         title="Receber conta pendente"
         totalLabel="Saldo pendente"

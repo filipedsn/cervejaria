@@ -32,6 +32,7 @@ import {
 } from '../../lib/tap-montagem.js';
 import { canonicalPdvQaActivationEnabled } from '../../lib/canonical-pdv-operational-config.js';
 import { cashOccurrenceContextEnabled } from '../../lib/operacao/contexto-ocorrencia.js';
+import { requirePermissao, usuarioPode } from '../../lib/operacao/permissoes.js';
 
 const pontoVendaQuery = z.object({
   pontoVendaId: z.string().min(1),
@@ -109,7 +110,7 @@ const corrigirMovimentoSchema = z.object({
 });
 
 export async function caixaOperacaoRoutes(app: FastifyInstance) {
-  app.get('/sessoes/:sessaoId', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.get('/sessoes/:sessaoId', { preHandler: [requirePermissao(app, 'cash.values.read')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { sessaoId } = request.params as { sessaoId: string };
 
@@ -132,9 +133,19 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     });
     if (!pontoVenda) return reply.status(404).send({ error: 'Ponto de venda não encontrado' });
 
+    const podeVerValores = await usuarioPode(getAuthUser(request), 'cash.values.read');
     const comandasAbertas = await contarComandasAbertas(cervejariaId, pontoVendaId);
     const sessao = await buscarSessaoAtual(cervejariaId, pontoVendaId);
     if (!sessao) return { sessao: null, comandasAbertas, diaOperacional: diaOperacional().toISOString().slice(0, 10) };
+
+    if (!podeVerValores) {
+      return {
+        sessao: { id: sessao.id, status: sessao.status, pontoVendaId: sessao.pontoVendaId, abertoEm: sessao.abertoEm },
+        comandasAbertas,
+        diaOperacional: diaOperacional().toISOString().slice(0, 10),
+        valoresRestritos: true,
+      };
+    }
 
     const resumo = await montarResumoCaixa(sessao, cervejariaId);
     if (!sessao.ocorrenciaId || !cashOccurrenceContextEnabled()) return { sessao: resumo, comandasAbertas, diaOperacional: diaOperacional().toISOString().slice(0, 10) };
@@ -240,7 +251,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     };
   });
 
-  app.post('/abrir', async (request, reply) => {
+  app.post('/abrir', { preHandler: [requirePermissao(app, 'cash.open')] }, async (request, reply) => {
     const { cervejariaId, tapsEnabled } = request.operacao;
     const user = getAuthUser(request);
     const body = abrirSchema.parse(request.body);
@@ -274,10 +285,13 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       metadata: { pontoVendaId: body.pontoVendaId, trocoInicial: body.trocoInicial, ocorrenciaId: sessao.ocorrenciaId ?? null },
       payload: sessao,
     });
+    if (!(await usuarioPode(user, 'cash.values.read'))) {
+      return reply.status(201).send({ id: sessao.id, pontoVendaId: body.pontoVendaId, status: sessao.status, abertoEm: sessao.abertoEm, valoresRestritos: true });
+    }
     return reply.status(201).send(sessao);
   });
 
-  app.post('/movimentos', async (request, reply) => {
+  app.post('/movimentos', { preHandler: [requirePermissao(app, 'cash.movement.write')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = movimentoSchema.parse(request.body);
@@ -297,10 +311,13 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       metadata: { tipo: body.tipo, valor: body.valor, pontoVendaId: body.pontoVendaId, observacao: body.observacao },
       payload: sessao,
     });
+    if (!(await usuarioPode(user, 'cash.values.read'))) {
+      return reply.status(201).send({ id: sessao.id, pontoVendaId: body.pontoVendaId, status: sessao.status, abertoEm: sessao.abertoEm, valoresRestritos: true });
+    }
     return reply.status(201).send(sessao);
   });
 
-  app.post('/movimentos/:movimentoId/corrigir', async (request, reply) => {
+  app.post('/movimentos/:movimentoId/corrigir', { preHandler: [requirePermissao(app, ['cash.movement.write', 'cash.values.read'])] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = corrigirMovimentoSchema
@@ -340,7 +357,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     return reply.status(201).send(resumo);
   });
 
-  app.post('/fechar', async (request) => {
+  app.post('/fechar', { preHandler: [requirePermissao(app, ['cash.close', 'cash.values.read'])] }, async (request) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = fecharSchema.parse(request.body);

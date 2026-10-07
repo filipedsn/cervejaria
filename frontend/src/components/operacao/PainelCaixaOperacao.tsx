@@ -24,6 +24,7 @@ import { invalidateOnboardingReadiness } from '../../lib/onboarding';
 import { IconEye, IconEyeOff } from '../NavIcons';
 import { OperacaoTurnoTapsPanel } from './OperacaoTurnoTapsPanel';
 import type { Trailer } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
 
 type Dialogo = 'nenhum' | 'movimento' | 'correcao' | 'fechar' | 'cardapio';
 type OcorrenciaAgenda = {
@@ -83,6 +84,7 @@ interface Props {
 
 export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAbertas: comandasAbertasProp }: Props) {
   const queryClient = useQueryClient();
+  const { canPermission } = useAuth();
   const { contexto } = useOperacaoContexto();
   const agendaCanonica = contexto.operationalSettingsSource === 'CANONICAL_PDV';
   const usaCardapio = contexto.ativo ? (contexto.usaCardapio ?? false) : false;
@@ -323,7 +325,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           {seletorTrailer}
 
           <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} flex min-h-12 w-full items-center justify-center text-center`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>
-          <button type="button" className="touch-btn-primary flex min-h-14 w-full items-center justify-center gap-3 text-base font-bold sm:min-h-16 sm:text-lg" disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload || (outraData && !confirmarDataDiferente)} data-audit="operacao-caixa-abrir" data-onboarding-target="operacao-open-cash" onClick={() => abrir.mutate()}><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8"/></svg>{abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}</button>
+          {canPermission('cash.open') && <button type="button" className="touch-btn-primary flex min-h-14 w-full items-center justify-center gap-3 text-base font-bold sm:min-h-16 sm:text-lg" disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload || (outraData && !confirmarDataDiferente)} data-audit="operacao-caixa-abrir" data-onboarding-target="operacao-open-cash" onClick={() => abrir.mutate()}><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8"/></svg>{abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}</button>}
         </div>
       )}
 
@@ -349,7 +351,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           {seletorTrailer}
 
           <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} flex w-full items-center justify-center text-center`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>
-          <button
+          {canPermission('cash.open') && <button
             type="button"
             className="touch-btn-primary w-full"
             disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload || (outraData && !confirmarDataDiferente)}
@@ -358,7 +360,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             onClick={() => abrir.mutate()}
           >
             {abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}
-          </button>
+          </button>}
         </div>
       )}
 
@@ -369,7 +371,20 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         </div>
       )}
 
-      {sessao?.status === 'ABERTO' && compacto && painelSuprimido && (
+      {sessao?.status === 'ABERTO' && data?.valoresRestritos && (
+        <div className="card flex flex-wrap items-center justify-between gap-3">
+          <div><h2 className="font-semibold">Caixa aberto</h2><p className="text-sm text-ink-muted">Os valores financeiros estão restritos à sua permissão.</p></div>
+          <div className="flex flex-wrap gap-2">
+            {canPermission('cash.movement.write') && <>
+              {canPermission('cash.movement.write') && <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SUPRIMENTO'); setErro(''); setDialogo('movimento'); }}>Suprimento</button>}
+              {canPermission('cash.movement.write') && <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SANGRIA'); setErro(''); setDialogo('movimento'); }}>Sangria</button>}
+            </>}
+            {canPermission('cash.close') && canPermission('cash.values.read') && <button type="button" className="touch-btn-orange" disabled={bloqueioFechamento} onClick={abrirDialogoFechar}>Fechar caixa</button>}
+          </div>
+        </div>
+      )}
+
+      {sessao?.status === 'ABERTO' && !data?.valoresRestritos && compacto && painelSuprimido && (
         <div className="card flex min-h-14 items-center justify-between gap-3 border-brand-600/30 bg-gradient-to-br from-surface via-surface to-brand-900/20 px-4 py-2">
           <span className="text-sm font-semibold text-ink">Caixa aberto <span className="font-normal text-ink-muted">· Em operação</span></span>
           <button
@@ -384,7 +399,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         </div>
       )}
 
-      {sessao?.status === 'ABERTO' && compacto && !painelSuprimido && (
+      {sessao?.status === 'ABERTO' && compacto && !data?.valoresRestritos && !painelSuprimido && (
         <div className="card grid gap-5 border-brand-600/30 bg-gradient-to-br from-surface via-surface to-brand-900/20 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,1.2fr)] lg:items-center lg:gap-7">
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -410,18 +425,18 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
 
           <div className="space-y-2.5 lg:border-l lg:border-line lg:pl-6">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SUPRIMENTO'); setErro(''); setDialogo('movimento'); }}>＋&nbsp; Suprimento</button>
-              <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SANGRIA'); setErro(''); setDialogo('movimento'); }}>−&nbsp; Sangria</button>
+              {canPermission('cash.movement.write') && <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SUPRIMENTO'); setErro(''); setDialogo('movimento'); }}>Suprimento</button>}
+              {canPermission('cash.movement.write') && <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SANGRIA'); setErro(''); setDialogo('movimento'); }}>Sangria</button>}
               {usaCardapio && <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setErro(''); setDialogo('cardapio'); }}>Cardápio do turno</button>}
               <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} touch-btn-sm flex items-center justify-center text-center leading-tight`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>
             </div>
             {erro && !dialogo && <div className="alert-error">{erro}</div>}
-            <button type="button" className="touch-btn-orange w-full disabled:opacity-50" disabled={bloqueioFechamento} onClick={abrirDialogoFechar} data-audit="operacao-caixa-fechar">Fechar caixa</button>
+            {canPermission('cash.close') && canPermission('cash.values.read') && <button type="button" className="touch-btn-orange w-full disabled:opacity-50" disabled={bloqueioFechamento} onClick={abrirDialogoFechar} data-audit="operacao-caixa-fechar">Fechar caixa</button>}
           </div>
         </div>
       )}
 
-      {sessao?.status === 'ABERTO' && !compacto && (
+      {sessao?.status === 'ABERTO' && !compacto && !data?.valoresRestritos && (
         <>
           {sessao.trailerId && <OperacaoTurnoTapsPanel pontoVendaId={pontoVendaId} />}
           {usaCardapio && (
@@ -502,7 +517,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-2">
+          {canPermission('cash.movement.write') && <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               className="touch-btn-secondary"
@@ -525,11 +540,11 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             >
               Sangria
             </button>
-          </div>
+          </div>}
 
           {erro && !dialogo && <div className="alert-error">{erro}</div>}
 
-          <button
+          {canPermission('cash.close') && canPermission('cash.values.read') && <button
             type="button"
             className="touch-btn-orange w-full disabled:opacity-50"
             disabled={bloqueioFechamento}
@@ -537,11 +552,11 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             data-audit="operacao-caixa-fechar"
           >
             Fechar caixa
-          </button>
+          </button>}
         </>
       )}
 
-      {sessao?.status === 'FECHADO' && (
+      {sessao?.status === 'FECHADO' && !data?.valoresRestritos && (
         <div className="card space-y-3">
           <div>
             <h2 className="text-base font-semibold">Turno encerrado</h2>

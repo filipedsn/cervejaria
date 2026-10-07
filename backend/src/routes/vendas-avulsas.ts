@@ -13,6 +13,7 @@ import {
 import { registrarTransacao } from '../lib/transacao-log.js';
 import { assertPodeDarDescontoOperacao, DescontoInvalidoError } from '../lib/operacao/desconto.js';
 import { bloquearCaixaEvento, obterCaixaAtualEvento } from '../lib/evento-caixa.js';
+import { requirePermissao } from '../lib/operacao/permissoes.js';
 
 const itemSchema = z.object({
   produtoId: z.string(),
@@ -40,7 +41,7 @@ const vendaAvulsaSchema = z.object({
 export async function vendasAvulsasRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
-  app.post('/', async (request, reply) => {
+  app.post('/', { preHandler: [requirePermissao(app, 'payment.receive')] }, async (request, reply) => {
     const user = getAuthUser(request);
     const body = vendaAvulsaSchema.parse(request.body);
     const desconto = body.desconto ?? 0;

@@ -35,6 +35,7 @@ import {
 
 } from '../lib/security-config.js';
 import { emitAuthEvent } from '../lib/auth-observability.js';
+import { PERMISSOES_OPERACAO, permissoesIndividuaisAtivas } from '../lib/operacao/permissoes.js';
 
 
 
@@ -75,6 +76,7 @@ function authResponse(
     cervejariaId: string | null;
     passwordChangedAt: Date;
     podeDarDescontoOperacao?: boolean;
+    permissoesOperacao?: string[];
   },
   cervejaria: Parameters<typeof formatCervejariaAuth>[0] | null,
 ) {
@@ -85,6 +87,11 @@ function authResponse(
       email: usuario.email,
       papel: usuario.papel,
       podeDarDescontoOperacao: usuario.podeDarDescontoOperacao ?? false,
+      ...(permissoesIndividuaisAtivas() ? {
+        permissoesOperacao: usuario.papel === 'DONO'
+          ? [...PERMISSOES_OPERACAO]
+          : (usuario.permissoesOperacao ?? []),
+      } : {}),
     },
     cervejaria: cervejaria ? formatCervejariaAuth(cervejaria) : null,
   };
@@ -115,8 +122,12 @@ export async function authRoutes(app: FastifyInstance) {
       const usuario = await prisma.usuario.findUnique({
 
         where: { email: body.email },
-
-        include: { cervejaria: true },
+        select: {
+          id: true, nome: true, email: true, papel: true, cervejariaId: true,
+          senhaHash: true, passwordChangedAt: true, podeDarDescontoOperacao: true,
+          ...(permissoesIndividuaisAtivas() ? { permissoesOperacao: true } : {}),
+          cervejaria: true,
+        },
 
       });
 
@@ -173,7 +184,7 @@ export async function authRoutes(app: FastifyInstance) {
 
       const body = forgotPasswordSchema.parse(request.body);
 
-      const usuario = await prisma.usuario.findUnique({ where: { email: body.email } });
+      const usuario = await prisma.usuario.findUnique({ where: { email: body.email }, select: { id: true, email: true } });
 
 
 
@@ -236,13 +247,11 @@ export async function authRoutes(app: FastifyInstance) {
 
 
 
-    const resetToken = await prisma.passwordResetToken.findUnique({
+      const resetToken = await prisma.passwordResetToken.findUnique({
 
-      where: { tokenHash },
+        where: { tokenHash },
 
-      include: { usuario: true },
-
-    });
+      });
 
 
 
@@ -280,6 +289,7 @@ export async function authRoutes(app: FastifyInstance) {
       await tx.usuario.update({
         where: { id: resetToken.usuarioId },
         data: { senhaHash, passwordChangedAt: now },
+        select: { id: true },
       });
     });
 
@@ -317,8 +327,12 @@ export async function authRoutes(app: FastifyInstance) {
     const usuario = await prisma.usuario.findUnique({
 
       where: { id: user.sub },
-
-      include: { cervejaria: true },
+      select: {
+        id: true, nome: true, email: true, papel: true, cervejariaId: true,
+        podeDarDescontoOperacao: true,
+        ...(permissoesIndividuaisAtivas() ? { permissoesOperacao: true } : {}),
+        cervejaria: true,
+      },
 
     });
 
@@ -351,6 +365,11 @@ export async function authRoutes(app: FastifyInstance) {
         email: usuario.email,
         papel: usuario.papel,
         podeDarDescontoOperacao: usuario.podeDarDescontoOperacao,
+        ...(permissoesIndividuaisAtivas() ? {
+          permissoesOperacao: usuario.papel === 'DONO'
+            ? [...PERMISSOES_OPERACAO]
+            : (usuario.permissoesOperacao ?? []),
+        } : {}),
       },
       cervejaria: usuario.cervejaria ? formatCervejariaAuth(usuario.cervejaria) : null,
     };

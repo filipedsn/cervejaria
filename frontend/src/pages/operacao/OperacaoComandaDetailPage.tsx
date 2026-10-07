@@ -54,7 +54,7 @@ export function OperacaoComandaDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { isDono, cervejaria, podeDarDescontoOperacao } = useAuth();
+  const { cervejaria, podeDarDescontoOperacao, canPermission } = useAuth();
   const { contexto } = useOperacaoContexto();
   const avisoWhatsAppStorageKey = `quiver:aviso-whatsapp:comanda:${id}`;
   const controlaEstoque = contexto.ativo && contexto.controlaEstoque;
@@ -106,6 +106,9 @@ export function OperacaoComandaDetailPage() {
     refetchInterval: poll30,
   });
   const caixaAberto = caixaData?.sessao?.status === 'ABERTO';
+  const podeReceber = canPermission('payment.receive');
+  const podeCancelarComanda = canPermission('command.cancel');
+  const podeFecharComanda = canPermission('command.close');
 
   const { data: estoqueData } = useQuery({
     queryKey: ['operacao-estoque', comanda?.pontoVendaId],
@@ -414,7 +417,7 @@ export function OperacaoComandaDetailPage() {
   const handleClose = (deixarPendente = false) => {
     if (!comanda) return;
     const desconto = parseCurrencyInput(descontoInput);
-    const podeAplicarDesconto = podeDarDescontoOperacao;
+    const podeAplicarDesconto = canPermission('discount.apply') && podeDarDescontoOperacao;
     if (podeAplicarDesconto && desconto > comanda.subtotal) {
       setErro('O desconto não pode ser maior que o subtotal da comanda');
       return;
@@ -442,7 +445,7 @@ export function OperacaoComandaDetailPage() {
   const permitirFecharComCozinhaPendente = operationalConfiguration?.configuration?.allowCloseComandaWithPendingKitchenOrders ?? false;
   const podeFechar = aberta && temItens && (!cozinhaPendente || permitirFecharComCozinhaPendente);
   const hasActionBar = aberta || !aberta;
-  const podeAplicarDesconto = podeDarDescontoOperacao;
+  const podeAplicarDesconto = canPermission('discount.apply') && podeDarDescontoOperacao;
   const descontoValor = parseCurrencyInput(descontoInput);
   const totalComDesconto = Math.max(0, comanda.subtotal - descontoValor);
   const totalAPagar = Math.max(0, totalComDesconto);
@@ -842,7 +845,7 @@ export function OperacaoComandaDetailPage() {
 
       {podeFechar && (
         <MobileActionBar>
-          <button type="button" className="touch-btn-orange w-full" onClick={openPayment} data-audit="operacao-comanda-fechar">
+          <button type="button" className="touch-btn-orange w-full" onClick={openPayment} disabled={!podeFecharComanda || !podeReceber} data-audit="operacao-comanda-fechar">
             Fechar Comanda · {formatCurrency(totalParcialComanda)}
           </button>
           <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/operacao/comandas')}>
@@ -867,7 +870,7 @@ export function OperacaoComandaDetailPage() {
           <p className="text-xs text-center text-ink-faint px-2">
             Sem consumação — use Encerrar comanda para cancelar.
           </p>
-          {isDono && (
+          {podeCancelarComanda && (
             <button
               type="button"
               className="touch-btn-orange w-full"
@@ -923,7 +926,7 @@ export function OperacaoComandaDetailPage() {
       />
 
       <PaymentFormModal
-        open={showPayment}
+        open={showPayment && podeFecharComanda && podeReceber}
         onClose={() => {
           setShowPayment(false);
           setErro('');

@@ -44,7 +44,7 @@ export function OperacaoVendaAvulsaPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { contexto } = useOperacaoContexto();
-  const { podeDarDescontoOperacao } = useAuth();
+  const { podeDarDescontoOperacao, canPermission } = useAuth();
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
 
   const [pontoVendaId, setPontoVendaId] = useState('');
@@ -91,7 +91,9 @@ export function OperacaoVendaAvulsaPage() {
 
   const caixaAberto = caixaData?.sessao?.status === 'ABERTO';
   const total = totalCarrinho(carrinho);
-  const descontoValor = podeDarDescontoOperacao ? parseCurrencyInput(descontoInput) : 0;
+  const podeReceber = canPermission('payment.receive');
+  const podeDescontar = canPermission('discount.apply') && podeDarDescontoOperacao;
+  const descontoValor = podeDescontar ? parseCurrencyInput(descontoInput) : 0;
   const totalComDesconto = Math.max(0, total - descontoValor);
 
   useEffect(() => {
@@ -244,7 +246,7 @@ export function OperacaoVendaAvulsaPage() {
   const paymentHeaderExtra = (
     <div className="space-y-3">
       {erro && showPayment && <div className="alert-error text-sm">{erro}</div>}
-      {podeDarDescontoOperacao && (
+      {podeDescontar && (
         <PaymentDiscountFields
           inputId="desconto-venda-avulsa-operacao"
           subtotal={total}
@@ -350,12 +352,12 @@ export function OperacaoVendaAvulsaPage() {
         Cancelar
       </button>
 
-      {carrinho.length > 0 && (
+      {podeReceber && carrinho.length > 0 && (
         <MobileActionBar>
           <button
             type="button"
             className="touch-btn-primary w-full"
-            disabled={!caixaAberto}
+            disabled={!caixaAberto || !podeReceber}
             onClick={openPayment}
             data-audit="venda-avulsa-pagar"
           >
@@ -384,7 +386,7 @@ export function OperacaoVendaAvulsaPage() {
       />
 
       <PaymentFormModal
-        open={showPayment}
+        open={showPayment && podeReceber}
         onClose={() => setShowPayment(false)}
         title="Venda avulsa"
         totalLabel="Total da venda"

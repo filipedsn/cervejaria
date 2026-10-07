@@ -5,10 +5,11 @@ import { toNumber } from '../lib/utils.js';
 import { isBebidaChope } from '../lib/produto-utils.js';
 import { resumoFinanceiroComandas } from '../lib/financeiro-contas.js';
 import { buildRelatorioEventoCsv } from '../lib/relatorio-evento-csv.js';
+import { requirePermissaoOuDono } from '../lib/operacao/permissoes.js';
 
 export async function relatoriosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
-  app.addHook('preHandler', app.requireDono);
+  app.addHook('preHandler', requirePermissaoOuDono(app, 'reports.read'));
 
   app.get('/evento/:eventoId', async (request, reply) => {
     const user = getTenantUser(app, request);

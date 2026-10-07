@@ -15,6 +15,7 @@ import {
 } from '../lib/fechar-comanda.js';
 import { lockComandasInTx } from '../lib/comanda-service.js';
 import { bloquearCaixaEvento, obterCaixaAtualEvento } from '../lib/evento-caixa.js';
+import { requireFechamentoComanda, requireFechamentoGrupo } from '../lib/operacao/permissoes.js';
 
 const pagamentoSchema = z.object({
   forma: z.enum(['DINHEIRO', 'PIX', 'CARTAO', 'CARTAO_DEBITO', 'CARTAO_CREDITO']),
@@ -34,7 +35,7 @@ const fecharGrupoSchema = z.object({
 export async function pagamentosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
-  app.post('/comandas/:id/fechar', async (request, reply) => {
+  app.post('/comandas/:id/fechar', { preHandler: [requireFechamentoComanda(app)] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = fecharComandaSchema.parse(request.body);
@@ -115,7 +116,7 @@ export async function pagamentosRoutes(app: FastifyInstance) {
     return updated;
   });
 
-  app.post('/fechar-grupo', async (request, reply) => {
+  app.post('/fechar-grupo', { preHandler: [requireFechamentoGrupo(app)] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const body = fecharGrupoSchema.parse(request.body);
     const uniqueIds = [...new Set(body.comandaIds)];

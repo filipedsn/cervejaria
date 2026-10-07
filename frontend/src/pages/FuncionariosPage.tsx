@@ -13,6 +13,23 @@ import { ToggleAtivo } from '../components/ToggleAtivo';
 const TOGGLE_DESCONTO_ATIVO = 'Desativar desconto nas comandas';
 const TOGGLE_DESCONTO_INATIVO = 'Ativar desconto nas comandas';
 
+const PERMISSOES_UI = [
+  ['cash.open', 'Abrir caixa', 'Inicia um turno de caixa.'],
+  ['cash.close', 'Fechar caixa', 'Encerra o turno de caixa.'],
+  ['cash.values.read', 'Visualizar valores do caixa', 'Mostra totais, movimentos e resumo financeiro do turno.'],
+  ['cash.movement.write', 'Registrar suprimento e sangria', 'Lança entradas e retiradas no caixa.'],
+  ['payment.receive', 'Receber pagamentos', 'Registra pagamentos em comandas e vendas.'],
+  ['debt.receive', 'Receber dívidas', 'Registra recebimentos de contas pendentes.'],
+  ['command.close', 'Fechar comandas', 'Encerra comandas e aplica pagamentos autorizados.'],
+  ['discount.apply', 'Aplicar descontos', 'Aplica desconto em comanda e venda avulsa.'],
+  ['command.cancel', 'Cancelar comandas e itens', 'Cancela comandas vazias ou remove itens pelo fluxo de cancelamento.'],
+  ['kitchen.cancel', 'Cancelar pedidos da cozinha', 'Solicita cancelamento de pedido; exige também estorno de venda.'],
+  ['sale.refund', 'Estornar venda', 'Estorna venda paga junto com o cancelamento do pedido.'],
+  ['dashboard.read', 'Visualizar dashboard', 'Acessa os painéis consolidados financeiros.'],
+  ['event.dashboard.read', 'Visualizar painel do evento', 'Acessa indicadores e valores do evento.'],
+  ['reports.read', 'Visualizar relatórios', 'Acessa relatórios financeiros e exportações CSV.'],
+] as const;
+
 function PermissaoDescontoRow({
   ativo,
   loading,
@@ -51,13 +68,14 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
     email: '',
     senha: '',
     senhaConfirm: '',
-    podeDarDescontoOperacao: false,
+    permissoesOperacao: [] as string[],
   });
 
   const { data: funcionarios, isLoading } = useQuery({
     queryKey: ['funcionarios'],
     queryFn: () => api.get<Usuario[]>('/api/usuarios'),
   });
+  const permissionMode = funcionarios?.some((f) => Array.isArray(f.permissoesOperacao)) ?? false;
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -65,25 +83,55 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
         nome: form.nome,
         email: form.email,
         senha: form.senha,
-        podeDarDescontoOperacao: form.podeDarDescontoOperacao,
+        ...(permissionMode
+          ? { permissoesOperacao: form.permissoesOperacao }
+          : { podeDarDescontoOperacao: form.permissoesOperacao.includes('discount.apply') }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['funcionarios'] });
       setShowModal(false);
-      setForm({ nome: '', email: '', senha: '', senhaConfirm: '', podeDarDescontoOperacao: false });
+      setForm({ nome: '', email: '', senha: '', senhaConfirm: '', permissoesOperacao: [] });
       setError('');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao cadastrar'),
   });
 
   const permissoesMutation = useMutation({
-    mutationFn: ({ id, podeDarDescontoOperacao }: { id: string; podeDarDescontoOperacao: boolean }) =>
-      api.patch(`/api/usuarios/${id}/permissoes-operacao`, { podeDarDescontoOperacao }),
+    mutationFn: ({ id, permissoesOperacao }: { id: string; permissoesOperacao: string[] }) =>
+      api.patch(`/api/usuarios/${id}/permissoes-operacao`, permissionMode
+        ? { permissoesOperacao }
+        : { podeDarDescontoOperacao: permissoesOperacao.includes('discount.apply') }),
     onMutate: ({ id }) => setTogglingId(id),
     onSettled: () => setTogglingId(null),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['funcionarios'] }),
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao atualizar permissão'),
   });
+
+  const togglePermission = (permissions: string[], permission: string) =>
+    permissions.includes(permission)
+      ? permissions.filter((item) => item !== permission)
+      : [...permissions, permission];
+
+  const renderPermissionSelectors = (permissions: string[], onChange: (permissions: string[]) => void, disabled = false) => (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {PERMISSOES_UI.map(([key, label, description]) => (
+        <label key={key} className="flex items-start gap-3 rounded-xl border border-line bg-surface-lighter px-3 py-3">
+          <input
+            type="checkbox"
+            checked={permissions.includes(key)}
+            disabled={disabled}
+            onChange={() => onChange(togglePermission(permissions, key))}
+            aria-label={label}
+            className="mt-1"
+          />
+          <span>
+            <span className="block text-sm font-semibold text-ink">{label}</span>
+            <span className="mt-0.5 block text-xs text-ink-muted">{description}</span>
+          </span>
+        </label>
+      ))}
+    </div>
+  );
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -133,13 +181,24 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
                 {f.papel === 'DONO' ? 'Proprietário' : 'Atendente'}
               </span>
             </div>
-            {f.papel === 'ATENDENTE' && (
+            {f.papel === 'DONO' ? (
+              <p className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-3 text-sm font-semibold text-brand-700">
+                Acesso integral às permissões da empresa.
+              </p>
+            ) : permissionMode ? (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-ink">Permissões individuais</p>
+                {renderPermissionSelectors(f.permissoesOperacao ?? [], (permissoesOperacao) =>
+                  permissoesMutation.mutate({ id: f.id, permissoesOperacao }), togglingId === f.id)}
+              </div>
+            ) : (
               <PermissaoDescontoRow
                 ativo={Boolean(f.podeDarDescontoOperacao)}
                 loading={togglingId === f.id}
-                onToggle={(podeDarDescontoOperacao) =>
-                  permissoesMutation.mutate({ id: f.id, podeDarDescontoOperacao })
-                }
+                onToggle={(ativo) => permissoesMutation.mutate({
+                  id: f.id,
+                  permissoesOperacao: ativo ? ['discount.apply'] : [],
+                })}
               />
             )}
           </div>
@@ -167,10 +226,12 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
             required
           />
 
-          <PermissaoDescontoRow
-            ativo={form.podeDarDescontoOperacao}
-            onToggle={(podeDarDescontoOperacao) => setForm({ ...form, podeDarDescontoOperacao })}
-          />
+          {permissionMode ? renderPermissionSelectors(form.permissoesOperacao, (permissoesOperacao) => setForm({ ...form, permissoesOperacao })) : (
+            <PermissaoDescontoRow
+              ativo={form.permissoesOperacao.includes('discount.apply')}
+              onToggle={(ativo) => setForm({ ...form, permissoesOperacao: ativo ? ['discount.apply'] : [] })}
+            />
+          )}
 
           <ModalFormFooter
             onCancel={() => setShowModal(false)}

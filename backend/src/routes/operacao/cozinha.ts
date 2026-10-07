@@ -27,6 +27,7 @@ import { emitToEvento } from '../../lib/realtime.js';
 import { assertCaixaAberto, lockCaixaEmTx } from '../../lib/operacao/caixa.js';
 import { bloquearCaixaEvento, obterCaixaAtualEvento } from '../../lib/evento-caixa.js';
 import { estornarVendaAvulsaFechada } from '../../lib/operacao/estorno-venda-avulsa.js';
+import { permissoesIndividuaisAtivas, requirePermissao } from '../../lib/operacao/permissoes.js';
 
 const alterarStatusSchema = z.object({
   status: z.enum(['RECEBIDO', 'EM_PREPARO', 'PRONTO', 'ENTREGUE', 'CANCELAMENTO_PENDENTE', 'CANCELADO']),
@@ -66,7 +67,12 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
     return pedidos.map((pedido) => resumoPedidoCozinha(pedido, incluirCliente));
   });
 
-  app.patch('/:id/status', async (request, reply) => {
+  app.patch('/:id/status', { preHandler: [requirePermissao(app, (request) => {
+    const body = request.body as { status?: string } | null;
+    return body?.status === 'CANCELAMENTO_PENDENTE'
+      ? ['kitchen.cancel', 'sale.refund']
+      : body?.status === 'CANCELADO' ? 'kitchen.cancel' : [];
+  })] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
@@ -82,7 +88,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
     }
 
     if (status === 'CANCELAMENTO_PENDENTE') {
-      if (user.papel !== 'DONO') {
+      if (!permissoesIndividuaisAtivas() && user.papel !== 'DONO') {
         return reply.status(403).send({ error: 'Só o dono pode cancelar um pedido' });
       }
       if (pedido.comanda.status !== 'ABERTA' && !(pedido.comanda.tipo === 'AVULSA' && pedido.comanda.status === 'FECHADA')) {
@@ -232,7 +238,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
     return resumo;
   });
 
-  app.patch('/:pedidoId/itens/:itemId/confirmar-cancelamento', async (request, reply) => {
+  app.patch('/:pedidoId/itens/:itemId/confirmar-cancelamento', { preHandler: [requirePermissao(app, ['kitchen.cancel', 'sale.refund'])] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { pedidoId, itemId } = request.params as { pedidoId: string; itemId: string };
     const resultado = await confirmarCancelamentoItemComandaOperacao({

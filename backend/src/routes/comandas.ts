@@ -27,6 +27,7 @@ function eventoIdDaComanda(comanda: { eventoId: string | null }): string {
   return comanda.eventoId;
 }
 import { assertPodeDarDescontoOperacao, DescontoInvalidoError } from '../lib/operacao/desconto.js';
+import { requirePermissao } from '../lib/operacao/permissoes.js';
 
 function comandaAbertaResponse(
   reply: { status: (code: number) => { send: (body: unknown) => unknown } },
@@ -273,7 +274,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     return updated;
   });
 
-  app.patch('/:id/desconto', async (request, reply) => {
+  app.patch('/:id/desconto', { preHandler: [requirePermissao(app, 'discount.apply')] }, async (request, reply) => {
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
     const body = descontoSchema.parse(request.body);
@@ -313,7 +314,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     return updated;
   });
 
-  app.post('/:id/cancelar', async (request, reply) => {
+  app.post('/:id/cancelar', { preHandler: [requirePermissao(app, 'command.cancel')] }, async (request, reply) => {
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
 

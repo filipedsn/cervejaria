@@ -19,6 +19,8 @@ interface AuthContextType {
   isDono: boolean;
   isAdmin: boolean;
   podeDarDescontoOperacao: boolean;
+  hasPermission: (permission: string) => boolean;
+  canPermission: (permission: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -135,8 +137,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAdmin: usuario?.papel === 'ADMIN',
         podeDarDescontoOperacao:
           usuario?.papel === 'DONO' ||
-          usuario?.papel === 'ADMIN' ||
-          Boolean(usuario?.podeDarDescontoOperacao),
+          (Array.isArray(usuario?.permissoesOperacao)
+            ? usuario.permissoesOperacao.includes('discount.apply')
+            : usuario?.papel === 'ADMIN' || Boolean(usuario?.podeDarDescontoOperacao)),
+        hasPermission: (permission: string) => usuario?.papel === 'DONO'
+          || usuario?.permissoesOperacao?.includes(permission) === true,
+        canPermission: (permission: string) => usuario?.papel === 'DONO'
+          || (Array.isArray(usuario?.permissoesOperacao)
+            ? usuario.permissoesOperacao.includes(permission)
+            : true),
       }}
     >
       {children}

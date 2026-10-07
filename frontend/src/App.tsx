@@ -180,16 +180,20 @@ function RequireModuloCervejaria() {
 }
 
 function RequireDono() {
-  const { isDono, isLoading } = useAuth();
+  const { isDono, isLoading, hasPermission } = useAuth();
+  const location = useLocation();
   if (isLoading) return <Loading fullScreen />;
-  if (!isDono) return <Navigate to="/comandas" replace />;
+  const allowed = isDono || (location.pathname === '/dashboard' && hasPermission('dashboard.read'))
+    || (/^\/eventos\/[^/]+\/resumo$/.test(location.pathname) && hasPermission('reports.read'));
+  if (!allowed) return <Navigate to="/comandas" replace />;
   return <Outlet />;
 }
 
 function RequireDonoOperacao() {
-  const { isDono, isLoading } = useAuth();
+  const { isDono, isLoading, hasPermission } = useAuth();
+  const location = useLocation();
   if (isLoading) return <Loading fullScreen />;
-  if (!isDono) return <Navigate to="/operacao/comandas" replace />;
+  if (!isDono && !(location.pathname === '/operacao/dashboard' && hasPermission('dashboard.read'))) return <Navigate to="/operacao/comandas" replace />;
   return <Outlet />;
 }
 

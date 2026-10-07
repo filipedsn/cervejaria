@@ -27,6 +27,7 @@ import {
 } from '../../lib/operacao/comanda-adapter.js';
 import { assertPodeDarDescontoOperacao, DescontoInvalidoError } from '../../lib/operacao/desconto.js';
 import { cashOccurrenceContextEnabled } from '../../lib/operacao/contexto-ocorrencia.js';
+import { requirePermissao } from '../../lib/operacao/permissoes.js';
 
 const vendaAvulsaSchema = z.object({
   pontoVendaId: z.string().min(1),
@@ -59,7 +60,12 @@ const vendaAvulsaSchema = z.object({
 });
 
 export async function vendasOperacaoRoutes(app: FastifyInstance) {
-  app.post('/', async (request, reply) => {
+  app.post('/', { preHandler: [requirePermissao(app, (request) => {
+    const body = request.body as { desconto?: number } | null;
+    return body?.desconto && body.desconto > 0
+      ? ['payment.receive', 'discount.apply']
+      : 'payment.receive';
+  })] }, async (request, reply) => {
     try {
       const { cervejariaId, temCozinha, controlaEstoque, tapsEnabled } = request.operacao;
       const user = getAuthUser(request);

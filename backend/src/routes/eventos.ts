@@ -6,6 +6,8 @@ import { emitToCervejaria } from '../lib/realtime.js';
 import { emitPortalSessionExpired } from '../lib/cliente-session.js';
 import { isSerie, todayDateString, todayWeekday, reabrirPrazoExpirado, REABRIR_PRAZO_EXPIRADO_MSG, comandaImpedeExclusaoWhere } from '../lib/evento-utils.js';
 import { buildEventoDashboard } from '../lib/evento-dashboard.js';
+import { requirePermissao } from '../lib/operacao/permissoes.js';
+import { requirePermissaoOuDono } from '../lib/operacao/permissoes.js';
 import { buildEventoResumoExecutivo } from '../lib/evento-resumo-executivo.js';
 import { isUniqueViolation } from '../lib/prisma-errors.js';
 import { bloquearCaixaEvento } from '../lib/evento-caixa.js';
@@ -179,7 +181,7 @@ export async function eventosRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get('/:id/dashboard', async (request, reply) => {
+  app.get('/:id/dashboard', { preHandler: [requirePermissao(app, 'event.dashboard.read')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
@@ -188,7 +190,7 @@ export async function eventosRoutes(app: FastifyInstance) {
     return dashboard;
   });
 
-  app.get('/:id/resumo-executivo', { preHandler: app.requireDono }, async (request, reply) => {
+  app.get('/:id/resumo-executivo', { preHandler: [requirePermissaoOuDono(app, 'reports.read')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
@@ -200,7 +202,7 @@ export async function eventosRoutes(app: FastifyInstance) {
     return result;
   });
 
-  app.get('/:id/transacoes', { preHandler: app.requireDono }, async (request, reply) => {
+  app.get('/:id/transacoes', { preHandler: [requirePermissaoOuDono(app, 'reports.read')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const query = z.object({ limit: z.coerce.number().int().min(1).max(500).optional() }).parse(request.query);
@@ -218,7 +220,7 @@ export async function eventosRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get('/:id/transacoes/csv', { preHandler: app.requireDono }, async (request, reply) => {
+  app.get('/:id/transacoes/csv', { preHandler: [requirePermissaoOuDono(app, 'reports.read')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 

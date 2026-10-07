@@ -37,6 +37,7 @@
     "qa:pdv-representative": "node scripts/run-pdv-unico-representative-qa.mjs",
     "qa:pdv-finance-disposable": "node scripts/run-pdv-unico-finance-disposable-qa.mjs",
     "qa:pdv-commerce-disposable": "node scripts/run-pdv-unico-commerce-disposable-qa.mjs",
+    "qa:pdv-individual-permissions": "node scripts/run-pdv-individual-permissions-disposable-qa.mjs",
     "qa:pdv-provisioning-compatibility": "node scripts/run-pdv-unico-provisioning-compatibility-qa.mjs",
     "qa:pdv-catalog-disposable": "node scripts/run-pdv-unico-catalog-disposable-qa.mjs",
     "qa:pdv-sessions-disposable": "node scripts/run-pdv-unico-session-disposable-qa.mjs",

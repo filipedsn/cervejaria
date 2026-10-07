@@ -39,6 +39,7 @@ import { lockComandaItemsInTx, lockComandasInTx } from '../../lib/comanda-servic
 import { resolveClienteParaComanda, TelefoneConflitoError } from '../../lib/cliente-resolver.js';
 import { normalizePhone } from '../../lib/phone.js';
 import { assertCommandOccurrenceMatchesSession, cashOccurrenceContextEnabled } from '../../lib/operacao/contexto-ocorrencia.js';
+import { requireFechamentoGrupo, requirePermissao, requirePermissaoOuDono } from '../../lib/operacao/permissoes.js';
 
 const itemSchema = z.object({
   produtoId: z.string().min(1),
@@ -133,7 +134,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     return comandas.map((comanda) => resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch));
   });
 
-  app.post('/fechar-grupo', async (request, reply) => {
+  app.post('/fechar-grupo', { preHandler: [requireFechamentoGrupo(app)] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = fecharGrupoSchema.parse(request.body);
@@ -626,7 +627,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     return reply.status(201).send(resumo);
   });
 
-  app.delete('/:comandaId/itens/:itemId', async (request, reply) => {
+  app.delete('/:comandaId/itens/:itemId', { preHandler: [requirePermissao(app, 'command.cancel')] }, async (request, reply) => {
     const { cervejariaId, controlaEstoque } = request.operacao;
     const user = getAuthUser(request);
     const { comandaId, itemId } = request.params as { comandaId: string; itemId: string };
@@ -682,7 +683,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     return result.comanda;
   });
 
-  app.patch('/:id/desconto', async (request, reply) => {
+  app.patch('/:id/desconto', { preHandler: [requirePermissao(app, 'discount.apply')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
@@ -749,7 +750,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     return resumoAtualizado;
   });
 
-  app.post('/:id/pagamentos', async (request, reply) => {
+  app.post('/:id/pagamentos', { preHandler: [requirePermissao(app, ['command.close', 'payment.receive'])] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
@@ -841,7 +842,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     return resumoFechada;
   });
 
-  app.post('/:id/cancelar', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.post('/:id/cancelar', { preHandler: [requirePermissaoOuDono(app, 'command.cancel')] }, async (request, reply) => {
     const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };

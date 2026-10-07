@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { getAuthUser } from '../../types/auth.js';
 import { buildOperacaoDashboard } from '../../lib/operacao/dashboard.js';
+import { requirePermissaoOuDono } from '../../lib/operacao/permissoes.js';
 
 export async function dashboardOperacaoRoutes(app: FastifyInstance) {
-  app.get('/', { preHandler: [app.requireDono] }, async (request) => {
+  app.get('/', { preHandler: [requirePermissaoOuDono(app, 'dashboard.read')] }, async (request) => {
     const { cervejariaId } = request.operacao;
     const now = new Date();
     const query = request.query as { ano?: string; mes?: string; pontoVendaId?: string };

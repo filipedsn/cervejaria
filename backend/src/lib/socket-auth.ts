@@ -15,6 +15,7 @@ import {
   validateClienteSession,
 } from './cliente-session.js';
 import { validCorrelationId } from './correlation-context.js';
+import { permissoesIndividuaisAtivas, usuarioPode } from './operacao/permissoes.js';
 
 function extractStaffToken(socket: Socket): string | null {
   const fromAuth = socket.handshake.auth?.token;
@@ -162,6 +163,14 @@ export function setupSocketAuth(io: SocketIOServer, app: FastifyInstance) {
         return;
       }
       if (user.papel === 'ADMIN') return;
+
+      if (permissoesIndividuaisAtivas() && !(await usuarioPode(user, 'cash.values.read'))) {
+        realtimeEvent(app, socket, 'realtime.room.denied', {
+          actorType: 'staff', userId: user.sub, role: user.papel,
+          reasonCode: 'PERMISSION_DENIED', roomType: 'evento', entityId: eventoId,
+        });
+        return;
+      }
 
       const evento = await prisma.evento.findFirst({
         where: { id: eventoId, cervejariaId: user.cervejariaId ?? undefined },
