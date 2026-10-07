@@ -1064,7 +1064,13 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       return closed;
     });
 
-    const noOccurrenceSession = await openOccurrenceCash('2026-11-09', undefined);
+    const noOccurrenceSession = await withOwnerAt('2026-11-09', async (cookie) => {
+      const response = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id } });
+      assert.equal(response.statusCode, 201, `cash without an occurrence opens: ${response.body}`);
+      const context = await app.inject({ method: 'GET', url: `/api/operacao/caixa?pontoVendaId=${encodeURIComponent(primaryPoint.id)}`, headers: { cookie } });
+      assert.equal(JSON.parse(context.body).sessao.ocorrenciaId ?? null, null, 'persisted session without selection stays unlinked');
+      return JSON.parse(response.body);
+    });
     assert.equal(noOccurrenceSession.ocorrenciaId ?? null, null, 'cash opens without an occurrence');
     await closeOccurrenceCash('2026-11-09', 0);
     const crossDateUnconfirmed = await withOwnerAt('2026-11-10', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: JSON.parse(avulsaCreate.body).id } }));
