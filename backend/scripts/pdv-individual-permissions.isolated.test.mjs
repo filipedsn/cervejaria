@@ -29,6 +29,7 @@ const { io: connectSocket } = await import('socket.io-client');
 const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
 const suffix = randomBytes(6).toString('hex');
 const app = await buildApp();
+setupSocketIO(app, app.server);
 const ownerPassword = `QaOwner-${suffix}-only!`;
 const attendantPassword = `QaStaff-${suffix}-only!`;
 const otherOwnerPassword = `QaOther-${suffix}-only!`;
@@ -352,7 +353,6 @@ assert.equal((await prisma.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: 
 // finance and operational rooms, while operational kitchen messages are redacted.
 const revokeSocketRead = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: [] } });
 assert.equal(revokeSocketRead.statusCode, 200, revokeSocketRead.body);
-setupSocketIO(app, app.server);
 const localAddress = await app.listen({ host: '127.0.0.1', port: 0 });
 const socket = connectSocket(localAddress, { extraHeaders: { cookie: staffCookie }, transports: ['websocket'], reconnection: false });
 const socketEvent = (name, predicate = () => true, timeoutMs = 3000) => new Promise((resolve, reject) => {
