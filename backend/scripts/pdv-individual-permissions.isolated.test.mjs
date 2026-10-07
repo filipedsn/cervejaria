@@ -22,7 +22,7 @@ const run = (args) => {
 process.env.JWT_SECRET = randomBytes(32).toString('hex');
 process.env.UPLOADS_DIR = path.join(os.tmpdir(), `pdv-permissions-uploads-${process.pid}`);
 process.env.PDV_INDIVIDUAL_PERMISSIONS_ENABLED = '1';
-const [{ PrismaClient }, { buildApp }, { hashPassword }] = await Promise.all([
+const [{ PrismaClient }, { buildApp, setupSocketIO }, { hashPassword }] = await Promise.all([
   import('@prisma/client'), import('../src/app.ts'), import('../src/lib/utils.ts'),
 ]);
 const { io: connectSocket } = await import('socket.io-client');
@@ -353,6 +353,7 @@ assert.equal((await prisma.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: 
 const revokeSocketRead = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: [] } });
 assert.equal(revokeSocketRead.statusCode, 200, revokeSocketRead.body);
 const localAddress = await app.listen({ host: '127.0.0.1', port: 0 });
+setupSocketIO(app, app.server);
 const socket = connectSocket(localAddress, { extraHeaders: { cookie: staffCookie }, transports: ['websocket'], reconnection: false });
 const socketEvent = (name, predicate = () => true, timeoutMs = 3000) => new Promise((resolve, reject) => {
   const timer = setTimeout(() => { socket.off(name, listener); reject(new Error(`Timed out waiting for Socket.IO ${name}`)); }, timeoutMs);
