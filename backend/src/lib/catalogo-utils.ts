@@ -36,9 +36,12 @@ export async function assertProdutoPodeExcluir(produtoId: string, cervejariaId: 
   return null;
 }
 
-export async function assertTapPodeExcluir(tap: { produtoId: string | null }, cervejariaId: string) {
+export async function assertTapPodeExcluir(tap: { id: string; produtoId: string | null }, cervejariaId: string) {
   if (tap.produtoId && (await produtoEmComandaAberta(tap.produtoId, cervejariaId))) {
     return 'A bebida deste tap está em uma comanda aberta e o tap não pode ser excluído.';
+  }
+  if (await prisma.tapMontagem.count({ where: { tapId: tap.id } })) {
+    return 'Este Tap possui histÃ³rico de montagens e nÃ£o pode ser excluÃ­do. Desative-o para ocultar das vendas.';
   }
   return null;
 }
