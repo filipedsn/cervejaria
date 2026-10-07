@@ -34,7 +34,9 @@ export async function runPdvTapOwnershipMigration(options: {
   db: Db; companyId: string; pointId: string; runId: string; afterDestinationWrite?: () => Promise<void>;
 }) {
   const { db, companyId, pointId, runId } = options;
-  return db.$transaction(async (tx: Db) => {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await db.$transaction(async (tx: Db) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${SCOPE}:${companyId}:${pointId}`}, 0)) IS NULL AS acquired`;
     const point = await tx.pontoVenda.findFirst({ where: { id: pointId, cervejariaId: companyId }, select: { id: true } });
     if (!point) throw new PdvTapBlocker('PDV_NOT_OWNED_BY_TENANT', 'PONTO_VENDA', pointId, 'O PDV não pertence ao tenant informado.');
@@ -132,5 +134,12 @@ export async function runPdvTapOwnershipMigration(options: {
     await tx.pdvMigrationBatch.update({ where: { id: batch.id }, data: { status: 'CONFIRMED', confirmedAt: new Date(), checkpoint: { scope, sourceCursorBefore: 0, sourceCursorAfter: records.length, receipts } } });
     await tx.pdvMigrationRun.update({ where: { id: runId }, data: { status: 'COMPLETED', finishedAt: new Date(), checkpoint: { scope, companyId, pointId, transformVersion: VERSION, sourceSnapshotHash: sourceHash, totalRecords: records.length, completedSourceKeys, lastConfirmedBatch: 1, lastSourceKey: completedSourceKeys.at(-1) ?? null } } });
     return { status: 'COMPLETED', runId, taps: taps.length, mounts: mounts.length, reusedCompletedRun: false, sourceSnapshotHash: sourceHash, reconciledRecords: receipts.map((receipt) => ({ type: receipt.sourceType, sourceId: receipt.sourceId, destinationId: receipt.destinationId, destinationHash: receipt.destinationHash })) };
-  }, { isolationLevel: 'RepeatableRead', timeout: 60000, maxWait: 30000 });
+      }, { isolationLevel: 'RepeatableRead', timeout: 60000, maxWait: 30000 });
+    } catch (error: any) {
+      const target = error?.meta?.target;
+      const runIdRace = error?.code === 'P2002' && error?.meta?.modelName === 'PdvMigrationRun' && Array.isArray(target) && target.length === 1 && target[0] === 'id';
+      if (!runIdRace || attempt === 2) throw error;
+    }
+  }
+  throw new Error('TAP migration retry exhausted.');
 }
