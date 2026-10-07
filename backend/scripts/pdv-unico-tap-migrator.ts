@@ -35,6 +35,7 @@ export async function runPdvTapOwnershipMigration(options: { db: Db; companyId: 
         tx.tap.findMany({ where: { cervejariaId: companyId }, orderBy: [{ numero: 'asc' }, { id: 'asc' }] }),
         tx.tapMontagem.findMany({ where: { tap: { cervejariaId: companyId } }, orderBy: [{ iniciadoEm: 'asc' }, { id: 'asc' }] }),
       ]);
+      if (trailers.length > 1 && taps.some((tap: any) => !tap.pontoVendaId)) throw new PdvTapBlocker('MULTIPLE_TRAILERS_REQUIRE_MANUAL_MAPPING', 'TAP', null, 'Há vários Trailers para Taps ainda sem PDV confirmado; o mapeamento precisa de confirmação.');
       const trailerIds = new Set(trailers.map((row: any) => row.id));
       const tapsById = new Map(taps.map((row: any) => [row.id, row]));
       const tapNumbers = new Set<number>();
