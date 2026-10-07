@@ -36,6 +36,7 @@ async function joinScopedStaffRoom(socket: StaffRealtimeSocket, kind: 'evento' |
 /** Move already connected staff sockets when the owner's permission list changes. */
 export async function reconcileRealtimePermissionsForUser(app: FastifyInstance, userId: string, cervejariaId: string) {
   if (!permissoesIndividuaisAtivas()) return;
+  if (!app.io?.sockets) return;
   const sockets = [...app.io.sockets.sockets.values()] as StaffRealtimeSocket[];
   for (const socket of sockets) {
     const user = socket.data.user;
