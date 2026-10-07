@@ -1,18 +1,18 @@
 {
   "version": 2,
   "certification": "synthetic-only",
-  "selectedCommit": "ff7f75ef271cddd9726234529c08d9c322401b2e",
-  "selectedTree": "61518f36c19796a0fc8254b62fb341696fde223c",
+  "selectedCommit": "fe472bb4c63c9b60f50464bf271a7382d7849c99",
+  "selectedTree": "4375bfdbc6a40da5192bcd528d7e4d7763448cc2",
   "snapshotRun": {
-    "command": "node backend/scripts/run-pdv-unico-git-snapshot-qa.mjs --commit=ff7f75ef271cddd9726234529c08d9c322401b2e",
+    "command": "node backend/scripts/run-pdv-unico-git-snapshot-qa.mjs --commit=fe472bb4c63c9b60f50464bf271a7382d7849c99",
     "result": "PASS",
     "suite": "pdv-unico-current-disposable",
     "exitCode": 0,
-    "materialization": "Git cat-file exact tree; temporary snapshot; npm ci; no checkout/worktree",
+    "materialization": "git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot",
     "trackedBlobs": 1136,
-    "manifestBaseline": "ff7f75ef271cddd9726234529c08d9c322401b2e",
+    "manifestBaseline": "fe472bb4c63c9b60f50464bf271a7382d7849c99",
     "manifestCandidates": 97,
-    "manifestSha256": "bab2a319e623a64c977fa870ba680fa2e1b8eedcd46abe2dde7d5d354f7c3708",
+    "manifestSha256": "196b3fbe7fdd30802a1d9d5a60293ab23b010474aedef0626b1e46f67fd1e8b7",
     "moduleOriginAudit": {
       "result": "PASS",
       "snapshotProjectModules": 182,
@@ -22,9 +22,10 @@
     },
     "localState": {
       "unchanged": true,
-      "fingerprintSha256": "f04a13211f0cc8242c26fab1e53ba80dc753811dfe8a7612ef5d314b23d3db9b",
+      "fingerprintSha256": "7ac1f07e045d4eb1fc8d1278c54310492f36300b2a7fd2e6ac8321b17b5ff3ea",
       "untrackedFiles": 9
-    }
+    },
+    "representative": "NOT_RUN"
   },
   "disposableApiPostgres": {
     "result": "PASS",
@@ -33,15 +34,37 @@
       "splitSnapshot": "PASS; two marked lines plus one grouped line; distinct optional snapshots and observations; take-away; marked quantity 3; exact item prices/volumes/order links; product flag edit leaves stored order graph identical",
       "concurrency": "PASS; two launches observed waiting on PostgreSQL advisory cash lock; four unique daily order numbers; four exact line movements; balances reduced once per input line",
       "rollback": "PASS; injected mid-launch PostgreSQL failure leaves commands, items, optional snapshots, kitchen orders, status history, inventory balances, and movements deeply equal to pre-failure state",
-      "legacySchemaApi": "PASS; real login and Fastify.inject using the application singleton with canonical activation off, both new columns absent; product read/edit, Por Caixa launch, legacy grouping, payment, and cash close succeed; no P2022 or new-column response field"
+      "legacySchemaApi": "PASS; real login and Fastify.inject using the application singleton with canonical activation off, both new columns absent; product read/edit, Por Caixa launch, legacy grouping, payment, and cash close succeed; no P2022 or new-column response field",
+      "independentKitchenRegression": "PASS; all four authenticated KITCH-IND-02 cases assert response, persisted order/item links, preparation flags, queue visibility, one stock movement and one balance decrement per input line",
+      "notificationContract": "PASS; real application Socket.IO server/operator and real business emitters; four consumers match emitted room/order/item IDs to PostgreSQL rows started at emit time; rollback emits no new order event; no browser-delivery or Socket.IO-auth claim",
+      "crossContext": "PASS; split command and both orders persist under occurrence A; second tenant command/products and PDV attempts rejected; session B and payload override rejected; full operational snapshots unchanged for each rejection"
     },
     "qaStorage": "Disposable container with tmpfs; published only on 127.0.0.1 and removed after run",
     "prodAccessUsed": "NO",
-    "sharedDevAccess": "NO"
+    "sharedDevAccess": "NO",
+    "focusedExecution": {
+      "command": "npm run qa:pdv-commerce-disposable",
+      "result": "PASS",
+      "stage": "QA_AUTHENTICATED_CASH=PASS",
+      "isolation": "own disposable tmpfs PostgreSQL container; bound to 127.0.0.1 only; removed by runner",
+      "assertions": [
+        "KITCH-IND-02 grouped/disabled/non-prep/single-marked-plus-beverage cases",
+        "KITCH-IND-06 opening/inclusion/avulsa/portal emission contract and rollback silence",
+        "KITCH-IND-07 cross-tenant/session/occurrence rejection with full before/after photographs"
+      ]
+    },
+    "exactGitCertification": {
+      "result": "PASS",
+      "commit": "fe472bb4c63c9b60f50464bf271a7382d7849c99",
+      "tree": "4375bfdbc6a40da5192bcd528d7e4d7763448cc2",
+      "suite": "qa:pdv-current-disposable",
+      "focusedCommercial": "PASS; QA_AUTHENTICATED_CASH=PASS",
+      "representative": "NOT_RUN"
+    }
   },
   "uiAutomation": {
     "result": "PASS",
-    "proofType": "simulated UI; separate from API/PostgreSQL",
+    "proofType": "simulated UI; separate from exact API/PostgreSQL certification",
     "test": "e2e/independent-kitchen-orders.spec.ts",
     "command": "npx playwright test --config playwright.independent-ui.config.ts",
     "browser": "Playwright Chromium",
@@ -53,7 +76,8 @@
       "Deliver the marked order while its sibling remains RECEBIDO",
       "Verify the delivered and pending orders and their items remain visible in comanda details"
     ],
-    "networkIsolation": "Explicit API mocks; unmocked /api requests are aborted; Socket.IO is closed; local Vite on 127.0.0.1:5198; no backend/shared DEV connection"
+    "networkIsolation": "Explicit API mocks; unmocked /api requests are aborted; Socket.IO is closed; local Vite on 127.0.0.1:5198; no backend/shared DEV connection",
+    "certifiedCommit": "ff7f75ef271cddd9726234529c08d9c322401b2e"
   },
   "representativeRehearsal": {
     "result": "NOT_RUN",
@@ -68,9 +92,9 @@
     },
     {
       "id": "KITCH-IND-02",
-      "assertion": "No dedicated authenticated case covers all lines unflagged together with kitchen disabled and a product that does not require preparation; the untrusted-payload assertion alone is not equivalent.",
-      "proofType": "NOT PROVEN",
-      "result": "NOT_COMPROVADO"
+      "assertion": "Authenticated launchRegression rows: kitchen enabled + two unmarked prep lines => API/DB one grouped order; kitchen disabled + two marked lines => one grouped order with both effective exigePreparo=false and kitchen endpoint 404; exigePreparo=false + flag=true => one order, no kitchen queue/event; one marked prep + BEBIDA/LATA => one order containing both. Each case matches response/order/item links, queue filtering, exactly one SAIDA_VENDA movement per line, and one-unit balance decrement.",
+      "proofType": "authenticated API + disposable PostgreSQL QA",
+      "result": "PASS"
     },
     {
       "id": "KITCH-IND-03",
@@ -92,15 +116,16 @@
     },
     {
       "id": "KITCH-IND-06",
-      "assertion": "Initial command, walk-up and portal responses/persistence include all kitchen orders; no dedicated assertion proves realtime notification delivery includes every split order.",
-      "proofType": "API/PostgreSQL response and persistence; notification contract NOT PROVEN",
-      "result": "NOT_COMPROVADO"
+      "assertion": "assertEmissionBatch captures the real Socket.IO operacao:pedido-novo emit and immediately starts a PostgreSQL read. Opening with items, later inclusion, avulsa and portal each emit exactly once per persisted preparation order to cervejaria:<tenant>; payload order/comanda/item IDs and item/options snapshots match persisted rows. Injected rollback leaves emission cursor unchanged.",
+      "proofType": "emission contract + authenticated API + disposable PostgreSQL QA",
+      "result": "PASS",
+      "limits": "Real Socket.IO server/operator and emit method exercised without connected browser; proves emission contract only, not browser delivery or Socket.IO authentication."
     },
     {
       "id": "KITCH-IND-07",
-      "assertion": "Flag change after launch deep-equals stored order/item/optional/status-history rows; no dedicated split-order assertion covers cross-tenant or cross-occurrence context.",
-      "proofType": "authenticated API + PostgreSQL snapshots; cross-context portion NOT PROVEN",
-      "result": "NOT_COMPROVADO"
+      "assertion": "Valid split launch returns and persists two orders/items under one command whose occurrence is A. Full operational photographs compare commands, orders, items, options, status history, payments, stock balances and movements before/after each rejection: second tenant using primary command/products (404), primary PDV (404), session B adding to command A (409), occurrence override in payload (400); every photograph is identical.",
+      "proofType": "authenticated API + disposable PostgreSQL operational photographs",
+      "result": "PASS"
     },
     {
       "id": "KITCH-IND-08",
@@ -116,8 +141,8 @@
     }
   ],
   "scopeLimits": [
-    "No production or shared DEV access; no backfill, cutover, deploy, ranking, or RBAC work.",
+    "No PROD/shared DEV/metadata access, real backfill, cutover, deploy, rankings, RBAC or legacy removal; migration completion is not claimed.",
     "Synthetic QA and simulated UI are reported separately; representative rehearsal remains NOT_RUN.",
-    "KITCH-IND-02, notification portion of KITCH-IND-06, and cross-tenant/occurrence portion of KITCH-IND-07 remain NOT_COMPROVADO."
+    "KITCH-IND-06 is an emission-contract proof only; browser delivery and Socket.IO authentication were not exercised."
   ]
 }
