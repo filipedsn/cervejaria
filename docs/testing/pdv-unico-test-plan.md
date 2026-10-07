@@ -820,3 +820,5 @@ Matriz: [../architecture/pdv-individual-permissions-action-matrix.md](../archite
 | Ensaio representativo | Sem fotografia representativa fornecida | QA representativo | NAO EXECUTADO |
 
 Comandos executados: backend npm run qa:pdv-individual-permissions (PASS, PostgreSQL tmpfs isolado em 127.0.0.1); npm run build backend (PASS); npm run build frontend (PASS); Playwright Chromium 1/1 em Vite local com API interceptada (PASS). Esta prova nao e deployment nem ensaio representativo. O QA tambem verificou que recusar o fechamento preserva a sessao aberta; nao cobre todos os fluxos de conservacao financeira/estoque.
+
+Certificacao exata do Git: PASS no commit 968f1655f3696d3fd730189346cc473bac55931f, tree e25936eca09a33ae2d93d1aea962d7492e05c3d5. Resultado sintetico PASS; 1,142 blobs verificados, zero imports do workspace, estado local inalterado. Ensaio representativo NAO EXECUTADO. Evidencia: [pdv-individual-permissions-qa-evidence.json](./pdv-individual-permissions-qa-evidence.json).

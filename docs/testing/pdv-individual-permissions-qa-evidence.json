@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "certification": "synthetic-only",
+  "syntheticRegression": {
+    "result": "PASS",
+    "suite": "pdv-unico-current-disposable",
+    "exitCode": 0
+  },
+  "representativeRehearsal": {
+    "result": "NOT_RUN",
+    "reason": "No representative photo supplied."
+  },
+  "selectedCommit": "968f1655f3696d3fd730189346cc473bac55931f",
+  "selectedTree": "e25936eca09a33ae2d93d1aea962d7492e05c3d5",
+  "certificationRunnerPath": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+  "certificationRunnerSha256": "404f63c9505f018ba72019003617134428f9f6a09223803ce8c7d1df308c6fbd",
+  "sourceMaterialization": "git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot",
+  "materializedTrackedBlobCount": 1142,
+  "packageLockSha256": "9330ae831d6ea407a47dbf50a6158c60fd9ffb54fe99ed87e17fd6c6e5ec60d0",
+  "nodeVersion": "v24.18.0",
+  "generatedCandidateManifest": {
+    "baselineCommit": "968f1655f3696d3fd730189346cc473bac55931f",
+    "manifestSha256": "71a853bd6c25c248e359e45dd4cc2b057c0bf8f5a61b635dfadb56a8774482a7",
+    "codeCandidateCount": 97
+  },
+  "moduleOriginAudit": {
+    "result": "PASS",
+    "snapshotProjectModuleCount": 183,
+    "snapshotProjectModulePathListSha256": "6abf580bc135cb27b8306f3bf672f159cb26a7d4cc458cdbfbc66c2f2c86c865",
+    "nonSnapshotWorkspaceModuleCount": 0,
+    "externalDependencyModuleCount": 100,
+    "externalPrismaRuntimeVersion": "6.19.3",
+    "expectations": {
+      "syntheticModules": {
+        "result": "PASS",
+        "expectedCount": 5,
+        "observedCount": 5
+      },
+      "representativeModules": {
+        "result": "NOT_RUN",
+        "expectedCount": 0,
+        "observedCount": 0
+      }
+    }
+  },
+  "localState": {
+    "beforeSha256": "59c745c3c473e35151e39c6bf709fcd38fa93a3b3e2f49e3564a3551d0119185",
+    "afterSha256": "59c745c3c473e35151e39c6bf709fcd38fa93a3b3e2f49e3564a3551d0119185",
+    "identical": true,
+    "stagedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "unstagedDiffSha256": "b9e5fe7969ef75081b3ad3d1b1ac8d9eb506d1a2d3c2a00b9b834556f4f45c33",
+    "untrackedFileCount": 9
+  },
+  "prodAccessUsed": "NO",
+  "devSharedAccess": "NO"
+}
