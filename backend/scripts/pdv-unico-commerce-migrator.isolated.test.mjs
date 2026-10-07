@@ -712,11 +712,11 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const postAvulsaBalance = await db.inventoryBalance.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id, cebola.id] } }, orderBy: { produtoId: 'asc' } });
     assert.deepEqual(postAvulsaBalance.map((row) => [row.produtoId, row.quantidade.toString()]), [[batata.id, '4'], [cebola.id, '4'], [churrasquinho.id, '3']].sort((left, right) => left[0].localeCompare(right[0])), 'walk-up sale consumes each stock line exactly once');
     const portalPhone = `119${runId.replaceAll(/\D/g, '').padEnd(8, '7').slice(0, 8)}`;
-    const portalOpen = await app.inject({ method: 'POST', url: `/api/cervejarias/${encodeURIComponent(secondCompany.slug)}/pontos-venda/${encodeURIComponent(secondPoint.id)}/comandas`, payload: { nome: 'Portal QA customer', telefone: portalPhone } });
+    const portalOpen = await app.inject({ method: 'POST', url: `/api/public/cervejarias/${encodeURIComponent(secondCompany.slug)}/pontos-venda/${encodeURIComponent(secondPoint.id)}/comandas`, payload: { nome: 'Portal QA customer', telefone: portalPhone } });
     assert.equal(portalOpen.statusCode, 201, `public PDV portal opens an authenticated customer session: ${portalOpen.body}`);
     const portalCookieHeader = String(portalOpen.headers['set-cookie'] ?? '').split(';')[0];
     assert.match(portalCookieHeader, /=.+/, 'portal response returns the customer session cookie');
-    const portalLaunch = await app.inject({ method: 'POST', url: `/api/cervejarias/${encodeURIComponent(secondCompany.slug)}/pontos-venda/${encodeURIComponent(secondPoint.id)}/comanda/pedidos`, headers: { cookie: portalCookieHeader }, payload: {
+    const portalLaunch = await app.inject({ method: 'POST', url: `/api/public/cervejarias/${encodeURIComponent(secondCompany.slug)}/pontos-venda/${encodeURIComponent(secondPoint.id)}/comanda/pedidos`, headers: { cookie: portalCookieHeader }, payload: {
       itens: [{ produtoId: churrasquinho.id, quantidade: 1 }, { produtoId: batata.id, quantidade: 1 }, { produtoId: cebola.id, quantidade: 1 }],
     } });
     assert.equal(portalLaunch.statusCode, 201, `portal launch creates all independent kitchen orders: ${portalLaunch.body}`);
