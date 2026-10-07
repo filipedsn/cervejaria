@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "df4262093124ccb3ff6629aa237660312c94868f",
+    "commit": "b5379e8630cb5a8e51a144d9bd5d01a4ba2a76a8",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "e80c5abec83d1e28a578a53e88e29b689c670fe75c35dc15b6a47c6a26433bfa"
   },
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "df4262093124ccb3ff6629aa237660312c94868f",
+      "commit": "b5379e8630cb5a8e51a144d9bd5d01a4ba2a76a8",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -63,7 +63,7 @@
     }
   },
   "delivery": {
-    "schemaCommit": "df4262093124ccb3ff6629aa237660312c94868f",
+    "schemaCommit": "b5379e8630cb5a8e51a144d9bd5d01a4ba2a76a8",
     "schemaSha256": "e80c5abec83d1e28a578a53e88e29b689c670fe75c35dc15b6a47c6a26433bfa",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
@@ -146,7 +146,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs",
-      "sha256": "3b7bb375e603133654fa8b18b2992997ef92d52ce65b0693485c9f32d8f75c94"
+      "sha256": "32bdf5afd7cd20d462fc9cf276dca04eb38ddba00b2de3437970b08b50cf6f9a"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
@@ -234,7 +234,7 @@
     },
     {
       "path": "backend/scripts/pdv76-precolumn-api.isolated.test.mjs",
-      "sha256": "65eee60598ed3f5518960bcb48a6a6db4b4cc4b502ad6be254e6eb642fe47910"
+      "sha256": "4c64edc56e0553dfc15cf4b8f3608a0058cb28c40ce6e9a75c7623f98cdffcde"
     },
     {
       "path": "backend/scripts/run-isolated-qa-historical.mjs",
@@ -485,5 +485,5 @@
       "sha256": "01567913669a6bb52f70fb140341a5bf22334819b9f155e84b29c6099edae8e2"
     }
   ],
-  "manifestSha256": "0723342e93824a9e66397023ebf7a01bed3f415f2e7dac0610cc5f557f9558a7"
+  "manifestSha256": "092857d41cadf25aa0f76888c5e3eb3e3aa98ee395b53b3d90654883cb0d0e78"
 }
