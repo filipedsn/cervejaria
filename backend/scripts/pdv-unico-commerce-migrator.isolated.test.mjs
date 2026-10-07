@@ -850,6 +850,17 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     await db.comanda.updateMany({ where: { pontoVendaId: secondPoint.id, status: 'ABERTA' }, data: {
       status: 'FECHADA', fechadaEm: new Date(),
     } });
+    const pendingKitchenOrdersForCleanup = await db.pedidoOperacao.findMany({ where: {
+      comanda: { pontoVendaId: secondPoint.id }, status: { in: ['RECEBIDO', 'EM_PREPARO', 'PRONTO'] },
+    }, select: { id: true, status: true } });
+    for (const order of pendingKitchenOrdersForCleanup) {
+      const path = order.status === 'RECEBIDO' ? ['EM_PREPARO', 'PRONTO', 'ENTREGUE']
+        : order.status === 'EM_PREPARO' ? ['PRONTO', 'ENTREGUE'] : ['ENTREGUE'];
+      for (const status of path) {
+        const delivered = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(order.id)}/status`, headers: { cookie: secondOwnerCookie }, payload: { status } });
+        assert.equal(delivered.statusCode, 200, `synthetic pending order cleanup advances ${order.id} to ${status}: ${delivered.body}`);
+      }
+    }
     await db.sessaoCaixaOperacao.update({ where: { id: kitchenSessionId }, data: {
       status: 'FECHADO', fechadoPorId: secondOwner.id, fechadoEm: new Date(),
     } });
