@@ -23,12 +23,15 @@ function databaseUrlWithPool(url: string | undefined): string | undefined {
 const databaseUrl = databaseUrlWithPool(process.env.DATABASE_URL);
 // A coluna da entrega é aditiva. Com o caminho canônico desligado, excluí-la
 // dos SELECTs escalares padrão para manter compatibilidade com bancos antigos.
-const produtoOmit = process.env.PDV_CANONICAL_CONFIG_QA === '1'
+const legacySchemaOmit = process.env.PDV_CANONICAL_CONFIG_QA === '1'
   ? undefined
-  : { produto: { prepararEmPedidoSeparado: true } } as const;
+  : {
+    produto: { prepararEmPedidoSeparado: true },
+    comanda: { sessaoCaixaRealizacaoId: true },
+  } as const;
 const baseClient = new PrismaClient(
   databaseUrl
-    ? { datasources: { db: { url: databaseUrl } }, ...(produtoOmit ? { omit: produtoOmit } : {}) }
+    ? { datasources: { db: { url: databaseUrl } }, ...(legacySchemaOmit ? { omit: legacySchemaOmit } : {}) }
     : undefined,
 );
 function observeDelegate(model: string, delegate: object): object {
