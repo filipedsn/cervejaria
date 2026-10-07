@@ -116,6 +116,8 @@
     "realBackfill": "NOT_RUN",
     "cutover": "NOT_RUN",
     "legacyRemoval": "NOT_RUN",
-    "push": "PENDING documentation/evidence commit"
+    "push": "PENDING documentation/evidence commit",
+    "pushStatus": "PUSHED",
+    "pushedDeliveryThrough": "653ee68"
   }
 }
