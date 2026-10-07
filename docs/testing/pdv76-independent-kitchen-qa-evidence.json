@@ -1,82 +1,123 @@
 {
-  "version": 1,
+  "version": 2,
   "certification": "synthetic-only",
-  "syntheticRegression": {
+  "selectedCommit": "ff7f75ef271cddd9726234529c08d9c322401b2e",
+  "selectedTree": "61518f36c19796a0fc8254b62fb341696fde223c",
+  "snapshotRun": {
+    "command": "node backend/scripts/run-pdv-unico-git-snapshot-qa.mjs --commit=ff7f75ef271cddd9726234529c08d9c322401b2e",
     "result": "PASS",
     "suite": "pdv-unico-current-disposable",
-    "exitCode": 0
+    "exitCode": 0,
+    "materialization": "Git cat-file exact tree; temporary snapshot; npm ci; no checkout/worktree",
+    "trackedBlobs": 1136,
+    "manifestBaseline": "ff7f75ef271cddd9726234529c08d9c322401b2e",
+    "manifestCandidates": 97,
+    "manifestSha256": "bab2a319e623a64c977fa870ba680fa2e1b8eedcd46abe2dde7d5d354f7c3708",
+    "moduleOriginAudit": {
+      "result": "PASS",
+      "snapshotProjectModules": 182,
+      "nonSnapshotWorkspaceModules": 0,
+      "externalDependencies": 100,
+      "prismaRuntime": "6.19.3"
+    },
+    "localState": {
+      "unchanged": true,
+      "fingerprintSha256": "f04a13211f0cc8242c26fab1e53ba80dc753811dfe8a7612ef5d314b23d3db9b",
+      "untrackedFiles": 9
+    }
+  },
+  "disposableApiPostgres": {
+    "result": "PASS",
+    "focusedSuite": "backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs",
+    "details": {
+      "splitSnapshot": "PASS; two marked lines plus one grouped line; distinct optional snapshots and observations; take-away; marked quantity 3; exact item prices/volumes/order links; product flag edit leaves stored order graph identical",
+      "concurrency": "PASS; two launches observed waiting on PostgreSQL advisory cash lock; four unique daily order numbers; four exact line movements; balances reduced once per input line",
+      "rollback": "PASS; injected mid-launch PostgreSQL failure leaves commands, items, optional snapshots, kitchen orders, status history, inventory balances, and movements deeply equal to pre-failure state",
+      "legacySchemaApi": "PASS; real login and Fastify.inject using the application singleton with canonical activation off, both new columns absent; product read/edit, Por Caixa launch, legacy grouping, payment, and cash close succeed; no P2022 or new-column response field"
+    },
+    "qaStorage": "Disposable container with tmpfs; published only on 127.0.0.1 and removed after run",
+    "prodAccessUsed": "NO",
+    "sharedDevAccess": "NO"
+  },
+  "uiAutomation": {
+    "result": "PASS",
+    "proofType": "simulated UI; separate from API/PostgreSQL",
+    "test": "e2e/independent-kitchen-orders.spec.ts",
+    "command": "npx playwright test --config playwright.independent-ui.config.ts",
+    "browser": "Playwright Chromium",
+    "passed": 1,
+    "failed": 0,
+    "assertions": [
+      "Edit checked product and verify prepararEmPedidoSeparado=true remains in save payload",
+      "Show both orders for the same comanda in kitchen TV",
+      "Deliver the marked order while its sibling remains RECEBIDO",
+      "Verify the delivered and pending orders and their items remain visible in comanda details"
+    ],
+    "networkIsolation": "Explicit API mocks; unmocked /api requests are aborted; Socket.IO is closed; local Vite on 127.0.0.1:5198; no backend/shared DEV connection"
   },
   "representativeRehearsal": {
     "result": "NOT_RUN",
-    "reason": "No representative photo supplied."
+    "reason": "No representative photo or representative data supplied; no representative environment was accessed."
   },
-  "selectedCommit": "b2204d396744f3b873cf4d0c8ff9ce2c578ca7c4",
-  "selectedTree": "3548cd075ab76005fcf16627022f9c8ef80408b7",
-  "certificationRunnerPath": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
-  "certificationRunnerSha256": "404f63c9505f018ba72019003617134428f9f6a09223803ce8c7d1df308c6fbd",
-  "sourceMaterialization": "git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot",
-  "materializedTrackedBlobCount": 1132,
-  "packageLockSha256": "9330ae831d6ea407a47dbf50a6158c60fd9ffb54fe99ed87e17fd6c6e5ec60d0",
-  "nodeVersion": "v24.18.0",
-  "generatedCandidateManifest": {
-    "baselineCommit": "b2204d396744f3b873cf4d0c8ff9ce2c578ca7c4",
-    "manifestSha256": "85dc4c7880c826f1036434ab101bffcd764b4a601be35bb50610c774f7236dde",
-    "codeCandidateCount": 94
-  },
-  "moduleOriginAudit": {
-    "result": "PASS",
-    "snapshotProjectModuleCount": 181,
-    "snapshotProjectModulePathListSha256": "d904dc534f8ee09251bea2e696f4dbd089775b0f0faf1527b8c6b657d8f0afdc",
-    "nonSnapshotWorkspaceModuleCount": 0,
-    "externalDependencyModuleCount": 100,
-    "externalPrismaRuntimeVersion": "6.19.3",
-    "expectations": {
-      "syntheticModules": {
-        "result": "PASS",
-        "expectedCount": 5,
-        "observedCount": 5
-      },
-      "representativeModules": {
-        "result": "NOT_RUN",
-        "expectedCount": 0,
-        "observedCount": 0
-      }
-    }
-  },
-  "localState": {
-    "beforeSha256": "f04a13211f0cc8242c26fab1e53ba80dc753811dfe8a7612ef5d314b23d3db9b",
-    "afterSha256": "f04a13211f0cc8242c26fab1e53ba80dc753811dfe8a7612ef5d314b23d3db9b",
-    "identical": true,
-    "stagedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "unstagedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "untrackedFileCount": 9
-  },
-  "prodAccessUsed": "NO",
-  "devSharedAccess": "NO",
-  "uiAutomation": {
-    "result": "PASS",
-    "tool": "Playwright Chromium",
-    "tests": 1,
-    "passed": 1,
-    "failed": 0,
-    "scenario": "Local operation catalog: independent kitchen-order checkbox appears after preparation is enabled, starts unchecked, can be checked, and the save request carries prepararEmPedidoSeparado=true.",
-    "environment": "Vite on 127.0.0.1:5198; every API request was mocked and Socket.IO was closed; no backend or shared DEV connection."
-  },
-  "builds": {
-    "backend": {
-      "result": "PASS",
-      "command": "npm run build"
+  "kitchenCriteria": [
+    {
+      "id": "KITCH-IND-01",
+      "assertion": "independentCommandResponse.statusCode=201; independentStored.pedidosOperacao.length=2; after PATCH ENTREGUE, sibling remains RECEBIDO and total/valorEmAberto=[10,20]",
+      "proofType": "authenticated API + disposable PostgreSQL",
+      "result": "PASS"
     },
-    "frontend": {
-      "result": "PASS",
-      "command": "npm run build"
+    {
+      "id": "KITCH-IND-02",
+      "assertion": "No dedicated authenticated case covers all lines unflagged together with kitchen disabled and a product that does not require preparation; the untrusted-payload assertion alone is not equivalent.",
+      "proofType": "NOT PROVEN",
+      "result": "NOT_COMPROVADO"
+    },
+    {
+      "id": "KITCH-IND-03",
+      "assertion": "snapshotLaunch.statusCode=201; snapshotOrdersBeforeFlagEdit.length=3; two marked source lines have independent orders; common line has its grouped order; marked Churrasquinho quantity=3",
+      "proofType": "authenticated API + disposable PostgreSQL",
+      "result": "PASS"
+    },
+    {
+      "id": "KITCH-IND-04",
+      "assertion": "DB snapshots assert each line's product, price, volume, quantity, note, paraViagem, pedidoCozinhaId and distinct optional name/price/quantity; flag edit deep-equals all saved orders/items/options/history",
+      "proofType": "authenticated API + PostgreSQL row assertions",
+      "result": "PASS"
+    },
+    {
+      "id": "KITCH-IND-05",
+      "assertion": "Rollback deep-equality covers commands/items/options/orders/history/balances/movements; two concurrent launches coordinate on observable pg_stat_activity advisory-lock waiters and assert unique numbers, exact rows/movements, and balance delta; cancellation reverses only grouped lines",
+      "proofType": "PostgreSQL transaction/concurrency + authenticated API",
+      "result": "PASS"
+    },
+    {
+      "id": "KITCH-IND-06",
+      "assertion": "Initial command, walk-up and portal responses/persistence include all kitchen orders; no dedicated assertion proves realtime notification delivery includes every split order.",
+      "proofType": "API/PostgreSQL response and persistence; notification contract NOT PROVEN",
+      "result": "NOT_COMPROVADO"
+    },
+    {
+      "id": "KITCH-IND-07",
+      "assertion": "Flag change after launch deep-equals stored order/item/optional/status-history rows; no dedicated split-order assertion covers cross-tenant or cross-occurrence context.",
+      "proofType": "authenticated API + PostgreSQL snapshots; cross-context portion NOT PROVEN",
+      "result": "NOT_COMPROVADO"
+    },
+    {
+      "id": "KITCH-IND-08",
+      "assertion": "pdv76-precolumn-api.isolated.test.mjs: real auth, product GET/PUT, Por Caixa launch/group, PIX payment, cash close on schema lacking Produto.prepararEmPedidoSeparado and Comanda.sessaoCaixaRealizacaoId; success with activation off, no P2022, and fields absent from responses",
+      "proofType": "isolated process + current application Prisma singleton + disposable PostgreSQL old schema",
+      "result": "PASS"
+    },
+    {
+      "id": "KITCH-IND-09",
+      "assertion": "Playwright verifies editing marked product preserves checkbox payload, both same-comanda orders render, only one moves to ENTREGUE, sibling remains RECEBIDO, and both remain visible in details",
+      "proofType": "simulated UI; isolated Playwright",
+      "result": "PASS"
     }
-  },
-  "focusedUnit": {
-    "result": "PASS",
-    "suite": "backend/src/lib/operacao/venda.test.ts",
-    "passed": 22,
-    "failed": 0,
-    "skipped": 0
-  }
+  ],
+  "scopeLimits": [
+    "No production or shared DEV access; no backfill, cutover, deploy, ranking, or RBAC work.",
+    "Synthetic QA and simulated UI are reported separately; representative rehearsal remains NOT_RUN.",
+    "KITCH-IND-02, notification portion of KITCH-IND-06, and cross-tenant/occurrence portion of KITCH-IND-07 remain NOT_COMPROVADO."
+  ]
 }
