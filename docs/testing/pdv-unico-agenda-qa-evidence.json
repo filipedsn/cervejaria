@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "certification": "synthetic-only",
+  "syntheticRegression": {
+    "result": "PASS",
+    "suite": "pdv-unico-current-disposable",
+    "exitCode": 0
+  },
+  "representativeRehearsal": {
+    "result": "NOT_RUN",
+    "reason": "No representative photo supplied."
+  },
+  "selectedCommit": "aebaa538b04057e7f424f846a093b501a24cdcef",
+  "selectedTree": "adfb534524e0b4c5d930b1e1cd20b0419cb79d45",
+  "certificationRunnerPath": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+  "certificationRunnerSha256": "404f63c9505f018ba72019003617134428f9f6a09223803ce8c7d1df308c6fbd",
+  "sourceMaterialization": "git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot",
+  "materializedTrackedBlobCount": 1129,
+  "packageLockSha256": "9330ae831d6ea407a47dbf50a6158c60fd9ffb54fe99ed87e17fd6c6e5ec60d0",
+  "nodeVersion": "v24.18.0",
+  "generatedCandidateManifest": {
+    "baselineCommit": "aebaa538b04057e7f424f846a093b501a24cdcef",
+    "manifestSha256": "05d37b802b6bf968bd3624a231575720db485d52045fb790354ee9bf25c3af87",
+    "codeCandidateCount": 93
+  },
+  "moduleOriginAudit": {
+    "result": "PASS",
+    "snapshotProjectModuleCount": 181,
+    "snapshotProjectModulePathListSha256": "af4e858729a56d6406a4e4565ad8102e9d88ecbbab241112e22aa74f6d2601d3",
+    "nonSnapshotWorkspaceModuleCount": 0,
+    "externalDependencyModuleCount": 100,
+    "externalPrismaRuntimeVersion": "6.19.3",
+    "expectations": {
+      "syntheticModules": {
+        "result": "PASS",
+        "expectedCount": 5,
+        "observedCount": 5
+      },
+      "representativeModules": {
+        "result": "NOT_RUN",
+        "expectedCount": 0,
+        "observedCount": 0
+      }
+    }
+  },
+  "localState": {
+    "beforeSha256": "04f1200f65dac2a6a461a42ab1ba1c791474e64413a01060ce45e9f168c76f4d",
+    "afterSha256": "04f1200f65dac2a6a461a42ab1ba1c791474e64413a01060ce45e9f168c76f4d",
+    "identical": true,
+    "stagedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "unstagedDiffSha256": "1e1c3e5cf44c33cf689182c82f042e3aa38bf30ea4a63bd7657c808efec7e63c",
+    "untrackedFileCount": 9
+  },
+  "prodAccessUsed": "NO",
+  "devSharedAccess": "NO",
+  "ui": {
+    "result": "PASS",
+    "runner": "Playwright Chromium",
+    "tests": 2,
+    "details": [
+      "Navigation to settings and submission of weekly recurrence and one-off occurrence",
+      "Occurrence selection, different-date confirmation, and confirmation reset when selection changes"
+    ],
+    "isolation": "Local Vite; auth/context/cash/schedule responses mocked; all other API requests aborted; no shared backend"
+  },
+  "focused": {
+    "unit": {
+      "result": "PASS",
+      "tests": 4,
+      "path": "backend/src/lib/operacao/contexto-ocorrencia.test.ts"
+    },
+    "backendBuild": "PASS",
+    "frontendBuild": "PASS",
+    "frontendBuildNotes": [
+      "Existing dynamic-import warning",
+      "Existing bundle-size advisory"
+    ]
+  },
+  "agendaCoverage": {
+    "result": "PASS",
+    "cases": [
+      "Authenticated weekly agenda create/edit",
+      "One-off occurrence create",
+      "Period GET has no writes",
+      "Cash operators can read; attendants cannot manage",
+      "Cross-tenant edit denied",
+      "Explicit repeated and concurrent generation creates unique agendaId/date rows",
+      "Four distinct Saturdays remain distinct occurrences",
+      "Editing recurrence preserves generated occurrence IDs, dates and historical names",
+      "Open without occurrence",
+      "PROGRAMADA/ABERTA same-day opening",
+      "Different day requires affirmative confirmation",
+      "FECHADA/CANCELADA rejected even with confirmation",
+      "Cross-tenant and cross-PDV writes rejected",
+      "Retry and concurrent open retain one persisted context",
+      "Historical sale, payment, stock and snapshots preserved across agenda edit"
+    ],
+    "notes": "Consumer sale attribution is not ranking evidence."
+  },
+  "qaSnapshot": {
+    "suite": "pdv-unico-current-disposable",
+    "result": "PASS",
+    "commit": "aebaa538b04057e7f424f846a093b501a24cdcef",
+    "tree": "adfb534524e0b4c5d930b1e1cd20b0419cb79d45",
+    "trackedBlobs": 1129,
+    "projectModules": 181,
+    "nonSnapshotWorkspaceModules": 0,
+    "localStateUnchanged": true,
+    "temporaryQASnapshotRemoved": true,
+    "prodAccessUsed": "NO",
+    "sharedDevAccess": "NO",
+    "representativePhoto": "NOT_RUN; no representative input supplied"
+  },
+  "release": {
+    "prodDeployRequired": "NO",
+    "realBackfill": "NOT_RUN",
+    "cutover": "NOT_RUN",
+    "legacyRemoval": "NOT_RUN",
+    "push": "PENDING documentation/evidence commit"
+  }
+}
