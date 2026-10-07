@@ -435,7 +435,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.equal(await db.tap.count({ where: { pontoVendaId: provisionedPoint[0].id } }), foreignTapCount, 'cross-tenant Tap attempt makes no write');
     const mountsBeforeForeignScope = await db.tapMontagem.count({ where: { tapId: canonicalTap.id } });
     const foreignMount = await app.inject({ method: 'PUT', url: `/api/operacao/caixa/taps/${encodeURIComponent(canonicalTap.id)}/chope`, headers: { cookie: ownerCookie }, payload: { pontoVendaId: secondPoint.id, produtoId: secondProduct.id } });
-    assert.equal(foreignMount.statusCode, 400, 'a session cannot select another tenant/PDV while mounting a Tap');
+    assert.equal(foreignMount.statusCode, 404, 'a session cannot select another tenant/PDV while mounting a Tap');
     assert.equal(await db.tapMontagem.count({ where: { tapId: canonicalTap.id } }), mountsBeforeForeignScope, 'cross-tenant/PDV mounting rejection makes no write');
     const legacyTrailer = await db.trailer.create({ data: { nome: `Legacy tap bridge ${runId}`, cervejariaId: provisioned.cervejaria.id } });
     const unmappedLegacyTap = await db.tap.create({ data: { cervejariaId: provisioned.cervejaria.id, trailerId: legacyTrailer.id, numero: 7, produtoId: chopeA.id } });
