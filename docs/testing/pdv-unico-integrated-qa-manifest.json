@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "5194a94d838c29dab7d9a079b8383dc45973d2e7",
+    "commit": "941718a87f7df1f277c686395067a28e29739e90",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "b25ae48f99253fbc259df5cbad42e91c47972ca031ba1c22161ab4e5edf6b1d5"
   },
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "5194a94d838c29dab7d9a079b8383dc45973d2e7",
+      "commit": "941718a87f7df1f277c686395067a28e29739e90",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -63,7 +63,7 @@
     }
   },
   "delivery": {
-    "schemaCommit": "5194a94d838c29dab7d9a079b8383dc45973d2e7",
+    "schemaCommit": "941718a87f7df1f277c686395067a28e29739e90",
     "schemaSha256": "b25ae48f99253fbc259df5cbad42e91c47972ca031ba1c22161ab4e5edf6b1d5",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
@@ -125,7 +125,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-catalog-migrator.ts",
-      "sha256": "238c35ff0d014e41317c725908da9213c3aa1923639f6cc564aa7c6bd8c91db4"
+      "sha256": "1c9ae3462e0a041bf9c10c5658ef8ccf4c4ecdbb1b25773c6155c9add53676ed"
     },
     {
       "path": "backend/scripts/pdv-unico-catalog-transform.test.ts",
@@ -137,11 +137,11 @@
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs",
-      "sha256": "7d2952ce0f4161196252eea9170397da30672304c4bd19ff5869746a1d007637"
+      "sha256": "9425860bf63c05070ac29b80d5f0439c322d1b34c641da057cf4d39a58fad7c8"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
-      "sha256": "6864110b9a24c19e31624687af960a63c460f5067ae388915d9140addc38cd70"
+      "sha256": "9c75fae38484cd139f180840464093c08700df6c394ca7970cdee9ba13ec1f35"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.test.mjs",
@@ -221,7 +221,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-tap-migrator.ts",
-      "sha256": "10ceb9b6e51bdfc2070b159a3d261fc18466a7f81b70e3101c794ffacc6036e4"
+      "sha256": "7678a70463d3530d6726b978c6e26f91fa957aaeb2b2030b0002c9e59099acbd"
     },
     {
       "path": "backend/scripts/run-isolated-qa-historical.mjs",
@@ -269,7 +269,7 @@
     },
     {
       "path": "backend/src/lib/comanda-service.ts",
-      "sha256": "e3f6e66907589303c5eddabd23c158a55a57d9d1673731eb4ccd0d37d9214a5a"
+      "sha256": "d76557763e0777f852480ad5418aea58f1ffef49979779156da82e2048b6426f"
     },
     {
       "path": "backend/src/lib/fechar-comanda.ts",
@@ -280,8 +280,12 @@
       "sha256": "2dd9dfd25d571b584c4b1053319c3abf89302f82b3116b6c57c7c9a48f103b8a"
     },
     {
+      "path": "backend/src/lib/operacao/caixa-lock.ts",
+      "sha256": "f5346b52b569cb679a449a74f3e405580fc7fad002dc18518a56af69d23c2b55"
+    },
+    {
       "path": "backend/src/lib/operacao/caixa.ts",
-      "sha256": "92b4404be08615e19a108ef0e1290810e8de0020ede9d7ebfec020a8c4dd0a26"
+      "sha256": "4d91f20688b710207b0f042f190e45f0b65dcf439bab57d2c0979440421f8243"
     },
     {
       "path": "backend/src/lib/operacao/capacidades.test.ts",
@@ -324,8 +328,12 @@
       "sha256": "6c512e5cc8e95146151a3397972418724dd3df9f495da3045d916e3f9dddd2aa"
     },
     {
+      "path": "backend/src/lib/operacao/venda.test.ts",
+      "sha256": "fda0eb005c9143ba1e0e4a5f6e0d5ad9adba1ffcd0e4950e92023c2c7b1a048d"
+    },
+    {
       "path": "backend/src/lib/operacao/venda.ts",
-      "sha256": "9936337442cd6148cb42dd2584e9303389f8a30c0eb09818ecc7cad2f2749c04"
+      "sha256": "656bfa476f7c95a0491ce11e24cd335c589d095c5430a1b46fef44d17d455b64"
     },
     {
       "path": "backend/src/lib/operational-config.test.ts",
@@ -361,7 +369,7 @@
     },
     {
       "path": "backend/src/lib/tap-montagem.ts",
-      "sha256": "7d19d1690050a52d4572160bffc7835c2e13a50a910265c53426cacc309bfd20"
+      "sha256": "f9279fab8ef59a8269aa2fe24ac3be4ed3f42abf90e4ba597e0daf538c229a96"
     },
     {
       "path": "backend/src/routes/admin.ts",
@@ -377,7 +385,7 @@
     },
     {
       "path": "backend/src/routes/operacao/comandas.ts",
-      "sha256": "7b68710cf80011307b9ec3c13163cbcc418fb48c8971ffb35c86e55dea08c4d7"
+      "sha256": "8031c9472873c403fb5cb01112bcb9572e4596e6368a42ea1ce4ea700d4d25d6"
     },
     {
       "path": "backend/src/routes/operacao/cozinha.ts",
@@ -389,7 +397,7 @@
     },
     {
       "path": "backend/src/routes/operacao/produtos.ts",
-      "sha256": "6172bfc9a5c88f9e4b09bb4ec86da4be6a09f52186b2565609622f59f653daf3"
+      "sha256": "eb7a1aae64c37d1533fb0123d77d63f45978af01e035797840c4f58a4dc01362"
     },
     {
       "path": "backend/src/routes/operacao/vendas.ts",
@@ -397,7 +405,7 @@
     },
     {
       "path": "backend/src/routes/public.ts",
-      "sha256": "26f9283caf2e4f860b25d4acb85e8fa33566c10443103cebf5d09a5fc8bae9a5"
+      "sha256": "69d5e80635f9b28334bd881c8e160f4769f5c402dd278ddad89a18f4099165c9"
     },
     {
       "path": "backend/src/routes/taps.ts",
@@ -437,51 +445,8 @@
     },
     {
       "path": "frontend/src/types.ts",
-      "sha256": "89eff56e6b9d433ebd588a5c58f84670e4403d5a06ca5212d559b096bc155720"
+      "sha256": "18654d57d175edbedd33943cf345c989c672b238fee455e0796a522b55e8d5fc"
     }
   ],
-  "manifestSha256": "0dfb3cf4b842b730678aa7b0ddbc8f3598c2dedf1ffa9abdb3c94a6562f5d30a",
-  "tapOwnershipCertification": {
-    "selectedCommit": "7d40a2899907b9990d5fee7899ee35d2685d4007",
-    "selectedTree": "2df20337a7dd6aeaafb01f46aff5f17fb978b534",
-    "syntheticEvidence": {
-      "path": "docs/testing/pdv-unico-tap-synthetic-evidence.json",
-      "sha256": "decdcef3a6bbee9d09e695cb3c639914aa621d592c9277fd66018e329de28642"
-    },
-    "representativeEvidence": {
-      "path": "docs/testing/pdv-unico-tap-representative-evidence.json",
-      "sha256": "9ba09780fe5358ddc8de48fb6930222ab0527c2978f6df78a7c6485c61d7f506"
-    },
-    "sourcePhotoSha256": "2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b",
-    "result": "PASS",
-    "rows": {
-      "taps": 9,
-      "mounts": 123,
-      "records": 132
-    },
-    "tenants": [
-      {
-        "tenant": "CIA Marítima",
-        "tenantId": "cmr9yis3c0000hvu00q9fe7y1",
-        "canonicalPointId": "cmr9yis3c0001hvu0pr53z3e5",
-        "taps": 5,
-        "mounts": 123,
-        "recordSetSha256": "14362a52752901079065adcc591c6664b7a20c2beaebee7378fe8d39a6f84a6e"
-      },
-      {
-        "tenant": "Churrasquinho do Thiago",
-        "tenantId": "cmsry9xrn0000hvlgopjxy0oo",
-        "canonicalPointId": "cmsry9xry0004hvlge0wgboza",
-        "taps": 4,
-        "mounts": 0,
-        "recordSetSha256": "1bcc5528e7d8885fd1dae832515eaa968458256c0d263c9966f8aa23a72ab004"
-      }
-    ],
-    "exactContentCheck": "Per source ID, migration wrote the identical destination ID, compared full canonical payload SHA-256 including preserved fields and PDV ownership, and replay verified map/receipt/destination hashes; any mismatch blocks the run.",
-    "builds": {
-      "commit": "7d40a2899907b9990d5fee7899ee35d2685d4007",
-      "backend": "PASS",
-      "frontend": "PASS"
-    }
-  }
+  "manifestSha256": "0469e116b9d52bd3d2b9d1d4ffd95b9a7095a10bfd928e0f6e25f7a0e7d574e4"
 }
