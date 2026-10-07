@@ -709,6 +709,10 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.deepEqual([avulsaComanda.tipo, centsExact(avulsaComanda.total), avulsaComanda.pedidos.length], ['AVULSA', '3000', 2], 'walk-up response preserves the total and returns both kitchen orders');
     const avulsaOrderRows = await db.pedidoOperacao.findMany({ where: { comandaId: avulsaComanda.id }, include: { itensComanda: true } });
     assert.equal(avulsaOrderRows.length, 2, 'walk-up sale persists the split order collection');
+    for (const walkUpOrder of avulsaOrderRows) for (const status of ['EM_PREPARO', 'PRONTO', 'ENTREGUE']) {
+      const transition = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(walkUpOrder.id)}/status`, headers: { cookie: secondOwnerCookie }, payload: { status } });
+      assert.equal(transition.statusCode, 200, `walk-up kitchen order ${walkUpOrder.id} transitions to ${status}: ${transition.body}`);
+    }
     const postAvulsaBalance = await db.inventoryBalance.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id, cebola.id] } }, orderBy: { produtoId: 'asc' } });
     assert.deepEqual(postAvulsaBalance.map((row) => [row.produtoId, row.quantidade.toString()]), [[batata.id, '4'], [cebola.id, '4'], [churrasquinho.id, '3']].sort((left, right) => left[0].localeCompare(right[0])), 'walk-up sale consumes each stock line exactly once');
     const portalPhone = `119${runId.replaceAll(/\D/g, '').padEnd(8, '7').slice(0, 8)}`;
