@@ -350,6 +350,8 @@ model Produto {
   controlaEstoque Boolean @default(false)
   /// Entra na fila canônica quando kitchenEnabled estiver ativo.
   exigePreparo     Boolean @default(false)
+  /// Quando houver outros itens de preparo no lançamento, recebe pedido de cozinha próprio.
+  prepararEmPedidoSeparado Boolean @default(false)
   /// Ordem de apresentação para produtos unitários.
   ordem            Int     @default(0)
   ativo        Boolean       @default(true)

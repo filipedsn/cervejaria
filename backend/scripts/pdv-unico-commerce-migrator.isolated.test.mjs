@@ -43,6 +43,10 @@ const tapMountMigration = manifest.delivery.tapMountMigration;
 assert(tapMountMigration?.path && tapMountMigration?.sha256, 'manifest pins the canonical PDV Tap migration');
 const tapMountSql = await readFile(path.join(repoRoot, tapMountMigration.path));
 assert.equal(sha256(tapMountSql), tapMountMigration.sha256, 'pinned canonical Tap SQL');
+const independentKitchenMigration = manifest.delivery.independentKitchenOrderMigration;
+assert(independentKitchenMigration?.path && independentKitchenMigration?.sha256, 'manifest pins the independent kitchen order candidate');
+const independentKitchenSql = await readFile(path.join(repoRoot, independentKitchenMigration.path));
+assert.equal(sha256(independentKitchenSql), independentKitchenMigration.sha256, 'pinned independent kitchen order SQL');
 for (const item of manifest.immutableManifests) assert.equal(sha256(await readFile(path.join(repoRoot, item.path))), item.sha256, `immutable prior manifest ${item.path}`);
 for (const item of manifest.codeCandidates) assert.equal(sha256(await readFile(path.join(repoRoot, item.path))), item.sha256, `current code candidate ${item.path}`);
 
@@ -609,7 +613,118 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     await runKitchenSettingCase({ name: 'canonical-false', activated: true, canonicalCharge: false, expectedTotal: 0, expectedPending: 10, paymentStatus: 409 });
     await runKitchenSettingCase({ name: 'canonical-true', activated: true, canonicalCharge: true, expectedTotal: 10, expectedPending: 0, paymentStatus: 200 });
     process.env.PDV_CANONICAL_CONFIG_QA = '1';
-    const kitchenCashClosed = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: secondOwnerCookie }, payload: { pontoVendaId: secondPoint.id, contadoDinheiro: 0, contadoPix: 20, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
+    const independentProductResponse = await app.inject({ method: 'POST', url: '/api/operacao/produtos', headers: { cookie: secondOwnerCookie }, payload: {
+      nome: 'Churrasquinho QA', categoria: 'Porções', tipo: 'COMIDA', formato: 'OUTRO', precoUnit: 10,
+      precos: [{ volumeMl: 1, preco: 10 }], exigePreparo: true, prepararEmPedidoSeparado: true, controlaEstoque: true,
+    } });
+    assert.equal(independentProductResponse.statusCode, 201, `authenticated product create persists the independent-order flag: ${independentProductResponse.body}`);
+    const independentProductId = JSON.parse(independentProductResponse.body).id;
+    assert.equal((await db.produto.findUniqueOrThrow({ where: { id: independentProductId } })).prepararEmPedidoSeparado, true);
+    const disableIndependentResponse = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${encodeURIComponent(independentProductId)}`, headers: { cookie: secondOwnerCookie }, payload: { prepararEmPedidoSeparado: false } });
+    assert.equal(disableIndependentResponse.statusCode, 200, `product edit can clear the independent-order flag: ${disableIndependentResponse.body}`);
+    const enableIndependentResponse = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${encodeURIComponent(independentProductId)}`, headers: { cookie: secondOwnerCookie }, payload: { prepararEmPedidoSeparado: true } });
+    assert.equal(enableIndependentResponse.statusCode, 200, `product edit can enable the independent-order flag: ${enableIndependentResponse.body}`);
+    const churrasquinho = await db.produto.findUniqueOrThrow({ where: { id: independentProductId } });
+    const batata = await db.produto.create({ data: {
+      id: `grouped-kitchen-${runId}`, cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id,
+      nome: 'Batata QA', tipo: 'COMIDA', exigePreparo: true, prepararEmPedidoSeparado: false, controlaEstoque: true,
+    } });
+    const cebola = await db.produto.create({ data: {
+      id: `grouped-kitchen-two-${runId}`, cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id,
+      nome: 'Cebola QA', tipo: 'COMIDA', exigePreparo: true, prepararEmPedidoSeparado: false, controlaEstoque: true,
+    } });
+    for (const [index, product] of [churrasquinho, batata, cebola].entries()) {
+      if (product.id !== churrasquinho.id) await db.preco.create({ data: { id: `independent-kitchen-price-${index}-${runId}`, produtoId: product.id, volumeMl: 1, preco: '10.00' } });
+      await db.cardapioProduto.create({ data: { id: `independent-kitchen-menu-${index}-${runId}`, cardapioId: secondMenu.id, produtoId: product.id, pontoVendaId: secondPoint.id, volumeMl: 0, precoUnit: '10.00' } });
+    }
+    await db.configuracaoPontoVenda.update({ where: { pontoVendaId: secondPoint.id }, data: { inventoryEnabled: true, kitchenEnabled: true, kitchenItemsChargeAtLaunch: false, allowCloseComandaWithPendingKitchenOrders: true } });
+    await db.inventoryBalance.createMany({ data: [churrasquinho, batata, cebola].map((product) => ({ cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id, produtoId: product.id, quantidade: 5 })) });
+    const independentCommandResponse = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie: secondOwnerCookie }, payload: {
+      pontoVendaId: secondPoint.id, tipo: 'APELIDO', identificador: `independent-${runId}`,
+      itens: [
+        { produtoId: churrasquinho.id, quantidade: 1 },
+        { produtoId: batata.id, quantidade: 1, prepararEmPedidoSeparado: true },
+        { produtoId: cebola.id, quantidade: 1 },
+      ],
+    } });
+    assert.equal(independentCommandResponse.statusCode, 201, `authenticated command with initial lines accepts independent preparation: ${independentCommandResponse.body}`);
+    const independentCommand = JSON.parse(independentCommandResponse.body);
+    assert.equal(independentCommand.pedidos.length, 2, 'one independent order plus one grouped order are returned');
+    const independentStored = await db.comanda.findUniqueOrThrow({ where: { id: independentCommand.id }, include: { pedidosOperacao: { include: { itensComanda: true } } } });
+    const independentKitchenOrder = independentStored.pedidosOperacao.find((order) => order.itensComanda.some((item) => item.produtoId === churrasquinho.id));
+    const groupedKitchenOrder = independentStored.pedidosOperacao.find((order) => order.itensComanda.some((item) => item.produtoId === batata.id));
+    assert.equal(independentStored.pedidosOperacao.length, 2, 'untrusted sale payload flag does not split an unmarked product');
+    assert.deepEqual(groupedKitchenOrder.itensComanda.map((item) => item.produtoId).sort(), [batata.id, cebola.id].sort(), 'ordinary kitchen lines remain together');
+    const outgoingMovements = await db.inventoryMovement.findMany({ where: { pedidoId: { in: [independentKitchenOrder?.id, groupedKitchenOrder?.id] }, tipo: 'SAIDA_VENDA' }, orderBy: { produtoId: 'asc' } });
+    assert.deepEqual(outgoingMovements.map((movement) => [movement.produtoId, movement.pedidoId, movement.quantidade.toString()]), [
+      [batata.id, groupedKitchenOrder?.id, '1'], [cebola.id, groupedKitchenOrder?.id, '1'], [churrasquinho.id, independentKitchenOrder?.id, '1'],
+    ].sort((left, right) => left[0].localeCompare(right[0])), 'each line consumes stock once and records its owning kitchen order');
+    const rollbackCounts = async () => [
+      await db.comanda.count({ where: { pontoVendaId: secondPoint.id } }),
+      await db.pedidoOperacao.count({ where: { cervejariaId: secondCompany.id } }),
+      await db.itemComanda.count({ where: { comanda: { pontoVendaId: secondPoint.id } } }),
+    ];
+    const beforeInjectedFailure = await rollbackCounts();
+    const independentFailureTrigger = `qa_fail_independent_order_${runId}`.replaceAll(/[^a-zA-Z0-9_]/g, '_');
+    await db.$executeRawUnsafe(`CREATE OR REPLACE FUNCTION public.${independentFailureTrigger}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."produtoId" = '${churrasquinho.id}' THEN RAISE EXCEPTION 'QA injected independent kitchen item failure'; END IF; RETURN NEW; END $$`);
+    await db.$executeRawUnsafe(`CREATE TRIGGER ${independentFailureTrigger} BEFORE INSERT ON public."ItemComanda" FOR EACH ROW EXECUTE FUNCTION public.${independentFailureTrigger}()`);
+    let failedIndependentLaunch;
+    try {
+      failedIndependentLaunch = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie: secondOwnerCookie }, payload: {
+        pontoVendaId: secondPoint.id, tipo: 'APELIDO', identificador: `independent-rollback-${runId}`,
+        itens: [{ produtoId: churrasquinho.id, quantidade: 1 }, { produtoId: batata.id, quantidade: 1 }, { produtoId: cebola.id, quantidade: 1 }],
+      } });
+    } finally {
+      await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS ${independentFailureTrigger} ON public."ItemComanda"`);
+      await db.$executeRawUnsafe(`DROP FUNCTION IF EXISTS public.${independentFailureTrigger}()`);
+    }
+    assert.equal(failedIndependentLaunch.statusCode, 500, 'failure while building the second kitchen order fails the complete launch');
+    assert.deepEqual(await rollbackCounts(), beforeInjectedFailure, 'the comanda, first order, and lines all roll back together');
+    for (const status of ['EM_PREPARO', 'PRONTO', 'ENTREGUE']) {
+      const transition = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(independentKitchenOrder.id)}/status`, headers: { cookie: secondOwnerCookie }, payload: { status } });
+      assert.equal(transition.statusCode, 200, `independent kitchen order transitions to ${status}: ${transition.body}`);
+    }
+    const groupedBeforeCancel = await db.pedidoOperacao.findUniqueOrThrow({ where: { id: groupedKitchenOrder.id } });
+    assert.equal(groupedBeforeCancel.status, 'RECEBIDO', 'delivering the independent brother does not advance the grouped brother');
+    const independentAfterDelivery = await app.inject({ method: 'GET', url: `/api/operacao/comandas/${encodeURIComponent(independentCommand.id)}`, headers: { cookie: secondOwnerCookie } });
+    assert.deepEqual([JSON.parse(independentAfterDelivery.body).total, JSON.parse(independentAfterDelivery.body).valorEmAberto], [10, 20], 'delivery charges only the independent order while its brother remains pending');
+    for (const status of ['CANCELAMENTO_PENDENTE', 'CANCELADO']) {
+      const transition = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(groupedKitchenOrder.id)}/status`, headers: { cookie: secondOwnerCookie }, payload: { status } });
+      assert.equal(transition.statusCode, 200, `grouped brother cancels without changing the delivered independent order: ${transition.body}`);
+    }
+    assert.equal((await db.pedidoOperacao.findUniqueOrThrow({ where: { id: independentKitchenOrder.id } })).status, 'ENTREGUE');
+    assert.deepEqual(await db.inventoryBalance.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id, cebola.id] } }, orderBy: { produtoId: 'asc' } }).then((rows) => rows.map((row) => [row.produtoId, row.quantidade.toString()])), [[batata.id, '5'], [cebola.id, '5'], [churrasquinho.id, '4']].sort((left, right) => left[0].localeCompare(right[0])), 'cancelling the grouped brother reverses only its two stock lines');
+    const independentCommandPayment = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(independentCommand.id)}/pagamentos`, headers: { cookie: secondOwnerCookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 10 }] } });
+    assert.equal(independentCommandPayment.statusCode, 200, `only the delivered order is charged when the other order was cancelled: ${independentCommandPayment.body}`);
+    const avulsaResponse = await app.inject({ method: 'POST', url: '/api/operacao/vendas', headers: { cookie: secondOwnerCookie }, payload: {
+      pontoVendaId: secondPoint.id, itens: [
+        { produtoId: churrasquinho.id, quantidade: 1 }, { produtoId: batata.id, quantidade: 1 }, { produtoId: cebola.id, quantidade: 1 },
+      ], pagamentos: [{ forma: 'PIX', valor: 30 }],
+    } });
+    assert.equal(avulsaResponse.statusCode, 201, `authenticated walk-up sale creates every kitchen order: ${avulsaResponse.body}`);
+    const avulsaComanda = JSON.parse(avulsaResponse.body);
+    assert.deepEqual([avulsaComanda.tipo, centsExact(avulsaComanda.total), avulsaComanda.pedidos.length], ['AVULSA', '3000', 2], 'walk-up response preserves the total and returns both kitchen orders');
+    const avulsaOrderRows = await db.pedidoOperacao.findMany({ where: { comandaId: avulsaComanda.id }, include: { itensComanda: true } });
+    assert.equal(avulsaOrderRows.length, 2, 'walk-up sale persists the split order collection');
+    const postAvulsaBalance = await db.inventoryBalance.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id, cebola.id] } }, orderBy: { produtoId: 'asc' } });
+    assert.deepEqual(postAvulsaBalance.map((row) => [row.produtoId, row.quantidade.toString()]), [[batata.id, '4'], [cebola.id, '4'], [churrasquinho.id, '3']].sort((left, right) => left[0].localeCompare(right[0])), 'walk-up sale consumes each stock line exactly once');
+    const portalPhone = `119${runId.replaceAll(/\D/g, '').padEnd(8, '7').slice(0, 8)}`;
+    const portalOpen = await app.inject({ method: 'POST', url: `/api/cervejarias/${encodeURIComponent(secondCompany.slug)}/pontos-venda/${encodeURIComponent(secondPoint.id)}/comandas`, payload: { nome: 'Portal QA customer', telefone: portalPhone } });
+    assert.equal(portalOpen.statusCode, 201, `public PDV portal opens an authenticated customer session: ${portalOpen.body}`);
+    const portalCookieHeader = String(portalOpen.headers['set-cookie'] ?? '').split(';')[0];
+    assert.match(portalCookieHeader, /=.+/, 'portal response returns the customer session cookie');
+    const portalLaunch = await app.inject({ method: 'POST', url: `/api/cervejarias/${encodeURIComponent(secondCompany.slug)}/pontos-venda/${encodeURIComponent(secondPoint.id)}/comanda/pedidos`, headers: { cookie: portalCookieHeader }, payload: {
+      itens: [{ produtoId: churrasquinho.id, quantidade: 1 }, { produtoId: batata.id, quantidade: 1 }, { produtoId: cebola.id, quantidade: 1 }],
+    } });
+    assert.equal(portalLaunch.statusCode, 201, `portal launch creates all independent kitchen orders: ${portalLaunch.body}`);
+    const portalComanda = JSON.parse(portalLaunch.body);
+    assert.equal(portalComanda.pedidos.length, 2, 'portal response preserves all split kitchen orders');
+    const portalOrders = await db.pedidoOperacao.findMany({ where: { comandaId: portalComanda.id }, include: { itensComanda: true } });
+    assert.equal(portalOrders.length, 2, 'portal persists the marked line separately and keeps common lines grouped');
+    assert.deepEqual(await db.inventoryBalance.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id, cebola.id] } }, orderBy: { produtoId: 'asc' } }).then((rows) => rows.map((row) => [row.produtoId, row.quantidade.toString()])), [[batata.id, '3'], [cebola.id, '3'], [churrasquinho.id, '2']].sort((left, right) => left[0].localeCompare(right[0])), 'portal consumes each product once under the order that owns its line');
+    const portalPayment = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(portalComanda.id)}/pagamentos`, headers: { cookie: secondOwnerCookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 30 }] } });
+    assert.equal(portalPayment.statusCode, 200, `owner can settle the portal comanda through the existing payment flow: ${portalPayment.body}`);
+    const kitchenCashClosed = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: secondOwnerCookie }, payload: { pontoVendaId: secondPoint.id, contadoDinheiro: 0, contadoPix: 90, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
     assert.equal(kitchenCashClosed.statusCode, 200, `kitchen settings fixture cash closes through the existing route: ${kitchenCashClosed.body}`);
     assert.equal((await db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: kitchenSessionId } })).status, 'FECHADO');
     await db.configuracaoPontoVenda.update({ where: { pontoVendaId: secondPoint.id }, data: canonicalSettings });
@@ -1168,35 +1283,35 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     }), protectedHistoryBeforeAgendaEdit, 'editing agenda leaves sales, payment records, cash sessions and stock history unchanged');
 
     const portalSession = await openOccurrenceCash('2026-11-04', otherAgendaOccurrence.id);
-    const portalOpen = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: `/api/public/cervejarias/${encodeURIComponent(primaryCompany.slug)}/pontos-venda/${encodeURIComponent(primaryPoint.id)}/comandas`, payload: { nome: occurrenceClient.nome, telefone: occurrenceClient.telefone } }));
-    assert.equal(portalOpen.statusCode, 201, `portal opens a command in the active occurrence: ${portalOpen.body}`);
-    const portalCookieHeader = portalOpen.headers['set-cookie'];
-    const portalCookie = Array.isArray(portalCookieHeader) ? portalCookieHeader[0]?.split(';', 1)[0] : portalCookieHeader?.split(';', 1)[0];
-    assert(portalCookie, 'portal returns the real cliente-PDV credential');
-    const portalCommandId = JSON.parse(portalOpen.body).comanda.id;
-    assert.equal(JSON.parse(portalOpen.body).comanda.ocorrenciaId, otherAgendaOccurrence.id);
-    const portalPath = `/api/public/cervejarias/${encodeURIComponent(primaryCompany.slug)}/pontos-venda/${encodeURIComponent(primaryPoint.id)}/comanda/pedidos`;
-    const portalOverride = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: portalPath, headers: { cookie: portalCookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }], ocorrenciaId: recurringOccurrences[0].id } }));
+    const occurrencePortalOpen = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: `/api/public/cervejarias/${encodeURIComponent(primaryCompany.slug)}/pontos-venda/${encodeURIComponent(primaryPoint.id)}/comandas`, payload: { nome: occurrenceClient.nome, telefone: occurrenceClient.telefone } }));
+    assert.equal(occurrencePortalOpen.statusCode, 201, `portal opens a command in the active occurrence: ${occurrencePortalOpen.body}`);
+    const occurrencePortalCookieHeader = occurrencePortalOpen.headers['set-cookie'];
+    const occurrencePortalCookie = Array.isArray(occurrencePortalCookieHeader) ? occurrencePortalCookieHeader[0]?.split(';', 1)[0] : occurrencePortalCookieHeader?.split(';', 1)[0];
+    assert(occurrencePortalCookie, 'portal returns the real cliente-PDV credential');
+    const portalCommandId = JSON.parse(occurrencePortalOpen.body).comanda.id;
+    assert.equal(JSON.parse(occurrencePortalOpen.body).comanda.ocorrenciaId, otherAgendaOccurrence.id);
+    const occurrencePortalPath = `/api/public/cervejarias/${encodeURIComponent(primaryCompany.slug)}/pontos-venda/${encodeURIComponent(primaryPoint.id)}/comanda/pedidos`;
+    const portalOverride = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: occurrencePortalPath, headers: { cookie: occurrencePortalCookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }], ocorrenciaId: recurringOccurrences[0].id } }));
     assert.equal(portalOverride.statusCode, 400, 'portal cannot provide an occurrence override');
-    const portalValidOrder = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: portalPath, headers: { cookie: portalCookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
-    assert.equal(portalValidOrder.statusCode, 201, `portal order follows the session context: ${portalValidOrder.body}`);
-    assert.equal(JSON.parse(portalValidOrder.body).ocorrenciaId, otherAgendaOccurrence.id);
+    const occurrencePortalValidOrder = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: occurrencePortalPath, headers: { cookie: occurrencePortalCookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
+    assert.equal(occurrencePortalValidOrder.statusCode, 201, `portal order follows the session context: ${occurrencePortalValidOrder.body}`);
+    assert.equal(JSON.parse(occurrencePortalValidOrder.body).ocorrenciaId, otherAgendaOccurrence.id);
     const portalCommand = await db.comanda.findUniqueOrThrow({ where: { id: portalCommandId }, include: { itens: true } });
     assert.deepEqual([portalCommand.origem, portalCommand.ocorrenciaId, portalCommand.itens.length], ['CAIXA', otherAgendaOccurrence.id, 1]);
     assert.deepEqual([portalCommand.itens[0].produtoId, portalCommand.itens[0].quantidade, centsExact(portalCommand.itens[0].precoUnit)], [product.id, 1, String(primaryCashFlow.itemPriceCents)]);
     await db.comanda.update({ where: { id: portalCommandId }, data: { ocorrenciaId: recurringOccurrences[0].id } });
     const itemsBeforeContextMismatch = await db.itemComanda.count({ where: { comandaId: portalCommandId } });
-    const blockedPortalContext = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: portalPath, headers: { cookie: portalCookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
+    const blockedPortalContext = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: occurrencePortalPath, headers: { cookie: occurrencePortalCookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
     assert.equal(blockedPortalContext.statusCode, 409, `portal refuses a command whose context differs from the session: ${blockedPortalContext.body}`);
     assert.equal(await db.itemComanda.count({ where: { comandaId: portalCommandId } }), itemsBeforeContextMismatch, 'mismatched portal context creates no order/item');
     await db.comanda.update({ where: { id: portalCommandId }, data: { ocorrenciaId: otherAgendaOccurrence.id } });
     const portalPaid = await withOwnerAt('2026-11-04', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(portalCommandId)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: unitPrice }] } }));
     assert.equal(portalPaid.statusCode, 200, `portal-originated command stays in the existing payment flow: ${portalPaid.body}`);
-    const portalPayment = await db.pagamento.findFirstOrThrow({ where: { comandaId: portalCommandId } });
-    assert.equal(portalPayment.sessaoCaixaId, portalSession.id);
+    const occurrencePortalPayment = await db.pagamento.findFirstOrThrow({ where: { comandaId: portalCommandId } });
+    assert.equal(occurrencePortalPayment.sessaoCaixaId, portalSession.id);
     await closeOccurrenceCash('2026-11-04', unitPrice);
     assert.deepEqual(plain({ balances: await db.inventoryBalance.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }), movements: await db.inventoryMovement.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }) }), stockBeforeOccurrenceSale, 'all occurrence-scoped operation leaves existing inventory behavior unchanged');
-    occurrenceProofs.push({ kind: 'different-agenda-portal', sessionId: portalSession.id, commandId: portalCommandId, occurrenceId: portalCommand.ocorrenciaId, paymentSessionId: portalPayment.sessaoCaixaId });
+    occurrenceProofs.push({ kind: 'different-agenda-portal', sessionId: portalSession.id, commandId: portalCommandId, occurrenceId: portalCommand.ocorrenciaId, paymentSessionId: occurrencePortalPayment.sessaoCaixaId });
 
     const beforeForeignOccurrence = await counts();
     const foreignAttempt = await withOwnerAt('2026-11-05', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: foreignOccurrence.id } }));
@@ -1962,12 +2077,14 @@ try {
     [manifest.delivery.migrationName, commerceSql],
     [saleSessionContextMigration.name, saleSessionContextSql],
     [tapMountMigration.name, tapMountSql],
+    [independentKitchenMigration.name, independentKitchenSql],
   ];
   assert.equal(sha256(candidates[0][1]), core.migrationSha256, 'pinned core SQL');
   assert.equal(sha256(candidates[1][1]), catalog.delivery.migrationSha256, 'pinned catalog SQL');
   assert.equal(sha256(candidates[2][1]), manifest.priorManifests.session.sha256, 'pinned session SQL');
   assert.equal(sha256(candidates[3][1]), finance.delivery.migrationSha256, 'pinned finance SQL');
   assert.equal(sha256(candidates[4][1]), manifest.priorManifests.finance.historicalProvenanceMigration.sha256, 'pinned historical payment provenance SQL');
+  assert.equal(sha256(candidates.at(-1)[1]), independentKitchenMigration.sha256, 'pinned independent kitchen migration SQL');
   const bundle = await materializePinnedMigrationBundle(history, tempRoot);
   for (const [name, sql] of candidates) {
     const dir = path.join(bundle.migrationsDir, name);
@@ -2000,7 +2117,7 @@ try {
   const { PrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
   db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal' });
   const applied = await db.$queryRaw`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL ORDER BY migration_name`;
-  assert.equal(applied.length, history.migrations.length + 8, 'full historical + operational core/catalog/session/finance/provenance/commerce/sale-session/Tap-mount chain');
+  assert.equal(applied.length, history.migrations.length + 9, 'full historical + operational core/catalog/session/finance/provenance/commerce/sale-session/Tap-mount/independent-kitchen chain');
   assert(applied.some((row) => row.migration_name === manifest.priorManifests.finance.historicalProvenanceMigration.name), 'Payment.provenienciaHistorica migration is applied before commerce route regressions');
   const constraints = await db.$queryRaw`SELECT conname, confdeltype, convalidated FROM pg_constraint WHERE conname IN ('Comanda_pontoVendaId_ocorrenciaId_fkey','Comanda_pontoVendaId_sessaoCaixaRealizacaoId_fkey','EstoqueSaldoQuiosque_pontoVendaId_cervejariaId_fkey','EstoqueSaldoQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pontoVendaId_cervejariaId_fkey','MovimentoEstoqueQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pedidoId_tenant_point_fkey') ORDER BY conname`;
   assert.equal(constraints.length, 7);
@@ -2598,8 +2715,9 @@ try {
   let preColumnSchemaText = candidateSchema.toString('utf8')
     .replace(/^\s*sessaoCaixaRealizacaoId\s+String\?\s*\r?\n/m, '')
     .replace(/^\s*sessaoCaixaRealizacao\s+SessaoCaixaOperacao\?.*\r?\n/m, '')
+    .replace(/^\s*prepararEmPedidoSeparado\s+Boolean\s+@default\(false\)\s*\r?\n/m, '')
     .replace(/^\s*vendasRealizadas\s+Comanda\[\]\s*\r?\n/m, '');
-  assert(!preColumnSchemaText.includes('sessaoCaixaRealizacaoId'), 'old client schema omits the new realization-session column');
+  assert(!preColumnSchemaText.includes('sessaoCaixaRealizacaoId') && !preColumnSchemaText.includes('prepararEmPedidoSeparado'), 'old client schema omits new realization-session and independent-kitchen columns');
   await writeFile(preColumnSchemaPath, preColumnSchemaText);
   preColumnSchemaText = preColumnSchemaText.replace('provider = "prisma-client-js"', `provider = "prisma-client-js"\n  output = "${preColumnClientDir.replaceAll('\\', '/')}"`);
   await writeFile(preColumnGenerateSchemaPath, preColumnSchemaText);
@@ -2610,6 +2728,7 @@ try {
   const { hashPassword: hashLegacyClosePassword } = await import('../src/lib/utils.ts');
   const legacyCloseOwner = await db.usuario.create({ data: { id: id('legacy-close-owner'), nome: 'Legacy close owner', email: `legacy-close-owner-${runId}@example.invalid`, senhaHash: await hashLegacyClosePassword(`Qa-legacy-close-${runId}-only!`), papel: 'DONO', cervejariaId: legacyCloseCompany.id } });
   const legacyClosePoint = await db.pontoVenda.create({ data: { cervejariaId: legacyCloseCompany.id, nome: 'Legacy close PDV' } });
+  const legacyCloseProduct = await db.produto.create({ data: { id: id('legacy-close-product'), cervejariaId: legacyCloseCompany.id, nome: 'Legacy close product', tipo: 'COMIDA', controlaEstoque: false } });
   const legacyCloseSession = await db.sessaoCaixaOperacao.create({ data: {
     cervejariaId: legacyCloseCompany.id, pontoVendaId: legacyClosePoint.id, diaOperacional: new Date('2026-11-20T00:00:00.000Z'),
     trocoInicial: '0.00', abertoPorId: legacyCloseOwner.id,
@@ -2621,10 +2740,13 @@ try {
   await db.$executeRawUnsafe('ALTER TABLE public."Comanda" DROP CONSTRAINT IF EXISTS "Comanda_sessaoRealizacao_requer_ponto_check"');
   await db.$executeRawUnsafe('DROP INDEX IF EXISTS public."Comanda_sessaoCaixaRealizacaoId_idx"');
   await db.$executeRawUnsafe('ALTER TABLE public."Comanda" DROP COLUMN "sessaoCaixaRealizacaoId"');
+  await db.$executeRawUnsafe('ALTER TABLE public."Produto" DROP COLUMN "prepararEmPedidoSeparado"');
   const { Prisma: PreColumnPrisma, PrismaClient: PreColumnPrismaClient } = await import(pathToFileURL(path.join(preColumnClientDir, 'index.js')).href);
   const preColumnClient = new PreColumnPrismaClient({ datasources: { db: { url: databaseUrl } } });
   const oldComandaModel = PreColumnPrisma.dmmf.datamodel.models.find((model) => model.name === 'Comanda');
   assert(oldComandaModel && !oldComandaModel.fields.some((field) => field.name === 'sessaoCaixaRealizacaoId'), 'generated Prisma Client predates the new realization-session column');
+  const oldProductModel = PreColumnPrisma.dmmf.datamodel.models.find((model) => model.name === 'Produto');
+  assert(oldProductModel && !oldProductModel.fields.some((field) => field.name === 'prepararEmPedidoSeparado'), 'generated Prisma Client predates the independent-kitchen column');
   const previousPdvFlag = process.env.PDV_CANONICAL_CONFIG_QA;
   delete process.env.PDV_CANONICAL_CONFIG_QA;
   try {
@@ -2635,6 +2757,9 @@ try {
       fechadaEm: new Date('2026-11-20T15:00:00.000Z'), origem: 'CAIXA', sessaoCaixaId: legacyCloseSession.id,
     }));
     assert.equal(closed.status, 'FECHADA', 'legacy close succeeds with database column and generated client both predating the field');
+    const { resolverItens } = await import('../src/lib/operacao/venda.ts');
+    const legacyResolved = await preColumnClient.$transaction((tx) => resolverItens(tx, legacyCloseCompany.id, [{ produtoId: legacyCloseProduct.id, quantidade: 1 }]));
+    assert.equal(legacyResolved[0]?.prepararEmPedidoSeparado, false, 'legacy resolver completes without selecting the absent independent-kitchen column');
     assert.equal((await preColumnClient.pagamento.findFirstOrThrow({ where: { comandaId: legacyCloseCommand.id } })).sessaoCaixaId, legacyCloseSession.id, 'legacy payment still records its cash session');
     assert.equal(await db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Comanda' AND column_name='sessaoCaixaRealizacaoId'`.then((rows) => rows.length), 0, 'legacy database has no realization-session column during close');
   } finally {

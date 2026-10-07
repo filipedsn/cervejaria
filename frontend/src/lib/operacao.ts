@@ -13,6 +13,7 @@ export interface ProdutoOperacao {
   /** True quando há override gravado só neste turno. */
   precoOverrideTurno?: boolean;
   exigePreparo: boolean;
+  prepararEmPedidoSeparado?: boolean;
   controlaEstoque: boolean;
   ativo: boolean;
   ordem: number;

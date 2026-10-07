@@ -39,6 +39,7 @@ interface ProdutoOperacao {
   estilo?: string | null;
   precos?: Array<{ volumeMl: number; preco: number | string }>;
   exigePreparo: boolean;
+  prepararEmPedidoSeparado: boolean;
   controlaEstoque: boolean;
   ativo: boolean;
   ordem: number;
@@ -54,6 +55,7 @@ const FORM_VAZIO = {
   precos: VOLUMES.map((volumeMl) => ({ volumeMl, preco: '' })) as PrecoVolumeForm[],
   formato: 'OUTRO' as FormatoBebida,
   exigePreparo: false,
+  prepararEmPedidoSeparado: false,
   controlaEstoque: true,
 };
 
@@ -111,6 +113,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
       }),
       formato: produtoChope ? 'CHOPE' : produto.formato ?? 'OUTRO',
       exigePreparo: produto.exigePreparo,
+      prepararEmPedidoSeparado: produto.prepararEmPedidoSeparado ?? false,
       controlaEstoque: produto.controlaEstoque,
     });
     setError('');
@@ -139,6 +142,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
           ? { precos: form.precos.filter((preco) => parseCurrencyInput(preco.preco) > 0).map((preco) => ({ volumeMl: preco.volumeMl, preco: parseCurrencyInput(preco.preco) })) }
           : { precoUnit: parseCurrencyInput(form.precoUnit), precos: [{ volumeMl: FOOD_UNIT_ML, preco: parseCurrencyInput(form.precoUnit) }] }),
         exigePreparo: form.categoria === 'Chope' ? false : form.exigePreparo,
+        prepararEmPedidoSeparado: form.categoria === 'Chope' || !form.exigePreparo ? false : form.prepararEmPedidoSeparado,
         controlaEstoque: form.controlaEstoque,
       };
       return editando
@@ -366,6 +370,16 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
                 <span className="block text-xs text-ink-faint">
                   Gera pedido de preparo na fila, por ordem de chegada.
                 </span>
+              </span>
+            </label>
+          )}
+
+          {temCozinha && form.exigePreparo && form.categoria !== 'Chope' && (
+            <label className="card flex cursor-pointer items-start gap-3 py-3">
+              <input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-brand-400" checked={form.prepararEmPedidoSeparado} onChange={(e) => setForm({ ...form, prepararEmPedidoSeparado: e.target.checked })} />
+              <span className="min-w-0">
+                <span className="block font-semibold">Preparar em pedido separado</span>
+                <span className="block text-xs text-ink-faint">Cria um pedido próprio quando outros itens de cozinha forem lançados juntos.</span>
               </span>
             </label>
           )}

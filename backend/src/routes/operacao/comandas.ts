@@ -5,7 +5,7 @@ import { getAuthUser } from '../../types/auth.js';
 import { allocatePagamentosToComandas, type PagamentoInput } from '../../lib/fechar-comanda.js';
 import {
   centavos,
-  criarPedido,
+  criarPedidos,
   diaOperacional,
   CAIXA_VENDA_TX,
   resolverItens,
@@ -482,10 +482,10 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         },
       });
 
-      let pedidoCriado = null;
+      let pedidosCriados: Awaited<ReturnType<typeof criarPedidos>> = [];
       if (body.itens.length > 0) {
         const itens = await resolverItens(tx, cervejariaId, body.itens, { sessaoCaixaId: sessao.id, tapsEnabled });
-        pedidoCriado = await criarPedido(tx, {
+        pedidosCriados = await criarPedidos(tx, {
           cervejariaId,
           comandaId: criada.id,
           pontoVendaId: body.pontoVendaId,
@@ -497,14 +497,9 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           temCozinha,
         });
 
-        await inventoryService.consumeSale(tx, {
-          context: 'CAIXA',
-          moduleEnabled: controlaEstoque,
-          cervejariaId,
-          pontoVendaId: body.pontoVendaId,
-          pedidoId: pedidoCriado.id,
-          registradoPorId: user.sub,
-          items: itens,
+        for (const { pedido, itens: itensPedido } of pedidosCriados) await inventoryService.consumeSale(tx, {
+          context: 'CAIXA', moduleEnabled: controlaEstoque, cervejariaId,
+          pontoVendaId: body.pontoVendaId, pedidoId: pedido.id, registradoPorId: user.sub, items: itensPedido,
         });
         await recalcComandaTotalOperacao(tx, criada.id, { kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch });
       }
@@ -515,7 +510,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           where: { id: criada.id },
           include: INCLUDE_COMANDA_OPERACAO,
         }),
-        pedido: pedidoCriado,
+        pedidos: pedidosCriados.map((item) => item.pedido),
       };
     }, CAIXA_VENDA_TX);
 
@@ -526,9 +521,9 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       });
     }
 
-    const { comanda, pedido } = resultado;
+    const { comanda, pedidos } = resultado;
 
-    if (temCozinha && pedido) await notificarPedidoNovo(app, cervejariaId, pedido);
+    if (temCozinha) for (const pedido of pedidos) await notificarPedidoNovo(app, cervejariaId, pedido);
 
     const resumo = resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
     void registrarTransacao({
@@ -540,7 +535,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       payload: resumo,
     });
 
-    if (pedido) {
+    for (const pedido of pedidos) {
       void registrarTransacao({
         cervejariaId,
         tipo: 'KITCHEN_ORDER_CREATED',
@@ -569,7 +564,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'Esta comanda já foi fechada' });
     }
 
-    const { atualizada, pedido } = await prisma.$transaction(async (tx) => {
+    const { atualizada, pedidos } = await prisma.$transaction(async (tx) => {
       await lockCaixaEmTx(tx, cervejariaId, comanda.pontoVendaId!, comanda.diaOperacional!);
       const sessaoAtual = await assertCaixaAberto(
         cervejariaId,
@@ -587,7 +582,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       assertCommandOccurrenceMatchesSession(comandaAtual, sessaoAtual);
 
       const itens = await resolverItens(tx, cervejariaId, body.itens, { sessaoCaixaId: sessaoAtual.id, tapsEnabled });
-      const pedidoCriado = await criarPedido(tx, {
+      const pedidosCriados = await criarPedidos(tx, {
         cervejariaId,
         comandaId: comandaAtual.id,
         pontoVendaId: comandaAtual.pontoVendaId!,
@@ -599,14 +594,9 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         temCozinha,
       });
 
-      await inventoryService.consumeSale(tx, {
-        context: 'CAIXA',
-        moduleEnabled: controlaEstoque,
-        cervejariaId,
-        pontoVendaId: comandaAtual.pontoVendaId!,
-        pedidoId: pedidoCriado.id,
-        registradoPorId: user.sub,
-        items: itens,
+      for (const { pedido, itens: itensPedido } of pedidosCriados) await inventoryService.consumeSale(tx, {
+        context: 'CAIXA', moduleEnabled: controlaEstoque, cervejariaId,
+        pontoVendaId: comandaAtual.pontoVendaId!, pedidoId: pedido.id, registradoPorId: user.sub, items: itensPedido,
       });
 
       await recalcComandaTotalOperacao(tx, comandaAtual.id, { kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch });
@@ -616,11 +606,11 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           where: { id: comandaAtual.id },
           include: INCLUDE_COMANDA_OPERACAO,
         }),
-        pedido: pedidoCriado,
+        pedidos: pedidosCriados.map((item) => item.pedido),
       };
     }, CAIXA_VENDA_TX);
 
-    if (temCozinha) await notificarPedidoNovo(app, cervejariaId, pedido);
+    if (temCozinha) for (const pedido of pedidos) await notificarPedidoNovo(app, cervejariaId, pedido);
 
     const resumo = resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
     void registrarTransacao({
@@ -628,9 +618,9 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       tipo: 'KITCHEN_ORDER_CREATED',
       usuarioId: user.sub,
       comandaId: comanda.id,
-      entidadeId: pedido.id,
-      metadata: { pedidoNumero: pedido.numero, qtdItens: body.itens.length },
-      payload: { comanda: resumo, pedido, observacao: body.observacao ?? null },
+      entidadeId: pedidos[0]?.id,
+      metadata: { pedidos: pedidos.map((pedido) => ({ id: pedido.id, numero: pedido.numero })), qtdItens: body.itens.length },
+      payload: { comanda: resumo, pedidos, observacao: body.observacao ?? null },
     });
 
     return reply.status(201).send(resumo);

@@ -766,3 +766,19 @@ A gestao usa exclusivamente `AgendaOperacional` e `OcorrenciaOperacional` do PDV
 Build frontend: PASS. Playwright Chromium isolado: 5/5 PASS no commit `a00aa5d595184b8bb139e32c530a544f385dc939`. Foram comprovados: editar recorrencia mesmo sem ocorrencias geradas; PATCH recusado mantem valores/ID e retry repete PATCH no mesmo ID; PATCH de recorrencia inativa omite `ativa`; avulsa recusada mantem nome/data; erro GET visivel e recuperavel sem limpar formulario; LEGACY sem montagem/consulta canonica; abertura noutra data bloqueada ate confirmacao, reset ao trocar selecao, payload confirmado e contexto persistido; “Sem ocorrencia” sem campos de associacao e contexto persistido vazio.
 
 Os testes usaram somente Vite local com APIs simuladas. Todas as chamadas `/api` sem mock foram abortadas; o proxy Vite apontou para a porta 0, e o WebSocket foi fechado pelo mock. Esta e evidencia de UI, nao de API/PostgreSQL. O backend ficou inalterado; por isso nao se repetiu QA PostgreSQL. A bateria anterior continua associada somente a `aebaa538b04057e7f424f846a093b501a24cdcef` e nao foi atribuida a `a00aa5d`. Detalhes: [`pdv-unico-agenda-ui-correction-evidence.json`](./pdv-unico-agenda-ui-correction-evidence.json).
+
+### Pedidos de cozinha independentes
+
+| Caso | Entrada | Resultado obrigatorio | Evidencia |
+|---|---|---|---|
+| KITCH-IND-01 | Churrasquinho marcado + batata comum | Dois pedidos na mesma comanda; entregar o churrasquinho libera somente seu valor | QA autenticado PostgreSQL descartavel |
+| KITCH-IND-02 | Todas as linhas sem flag; cozinha desativada; produto sem preparo | Agrupamento Por Caixa preservado, sem divisao por unidade ou pedidos vazios | Unitario + QA autenticado |
+| KITCH-IND-03 | Duas linhas marcadas, linha comum e quantidade 3 | Um pedido por linha marcada; linha comum agrupada; quantidade da linha permanece 3 | Unitario + QA autenticado |
+| KITCH-IND-04 | Preco, opcional, observacao, volume e paraViagem | Snapshot e opcionais preservados em seu pedido correto | QA autenticado |
+| KITCH-IND-05 | Estoque, falha intermediaria, cancelamento e concorrencia de lancamento | Debito/estorno uma vez e apenas no pedido correto; falha reverte tudo; senhas unicas | QA autenticado PostgreSQL descartavel |
+| KITCH-IND-06 | Comanda inicial e inclusao, venda avulsa, portal | Respostas e notificacoes incluem todos os pedidos apos commit | QA autenticado por consumidor |
+| KITCH-IND-07 | Flag alterada apos venda; tenant e ocorrencia cruzados | Historico imutavel e contexto da sessao/comanda preservado | QA autenticado PostgreSQL descartavel |
+| KITCH-IND-08 | Ativacao canonica desligada em schema pre-coluna | Nenhuma consulta a nova coluna; resposta e agrupamento legados | QA de compatibilidade de schema/client |
+| KITCH-IND-09 | Cadastro/edicao e pedidos divididos | Flag default false; checkbox e pedidos separados visiveis | Playwright/UI isolada |
+
+O runner comercial precisa fixar a migration candidata e os arquivos de servico/rotas pelo SHA do commit certificado. Evidencia sintetica, UI e representativa deve ser registrada em categorias distintas; sem fotografia aprovada, representativo fica NAO EXECUTADO.

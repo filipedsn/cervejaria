@@ -59,6 +59,7 @@ export interface ItemResolvido {
   precoUnit: number;
   quantidade: number;
   exigePreparo: boolean;
+  prepararEmPedidoSeparado: boolean;
   controlaEstoque: boolean;
   paraViagem: boolean;
   observacao: string | null;
@@ -139,7 +140,12 @@ export async function resolverItens(
   const ids = [...quantidadePorProduto.keys()];
   const produtos = await tx.produto.findMany({
     where: { id: { in: ids }, cervejariaId, ativo: true },
-    include: { precos: { orderBy: { volumeMl: 'asc' } } },
+    select: {
+      id: true, nome: true, tipo: true, formato: true, categoria: true, pontoVendaId: true,
+      exigePreparo: true, controlaEstoque: true,
+      ...(canonicalPdvQaActivationEnabled() ? { prepararEmPedidoSeparado: true } : {}),
+      precos: { orderBy: { volumeMl: 'asc' } },
+    },
   });
 
   if (produtos.length !== ids.length) {
@@ -204,6 +210,7 @@ export async function resolverItens(
           precoUnit: precoBase + opcionais.reduce((sum, opcional) => sum + opcional.precoAdicional * opcional.quantidade, 0),
           quantidade: linha.quantidade,
           exigePreparo: chope ? false : produto.exigePreparo,
+          prepararEmPedidoSeparado: !chope && produto.exigePreparo && Boolean((produto as typeof produto & { prepararEmPedidoSeparado?: boolean }).prepararEmPedidoSeparado),
           controlaEstoque: produto.controlaEstoque,
           paraViagem: linha.paraViagem ?? false,
           observacao: linha.observacao?.trim() || null,
@@ -240,6 +247,7 @@ export async function resolverItens(
       precoUnit: precoBase + opcionais.reduce((sum, opcional) => sum + opcional.precoAdicional * opcional.quantidade, 0),
       quantidade: linha.quantidade,
       exigePreparo: chope ? false : produto.exigePreparo,
+      prepararEmPedidoSeparado: !chope && produto.exigePreparo && Boolean((produto as typeof produto & { prepararEmPedidoSeparado?: boolean }).prepararEmPedidoSeparado),
       controlaEstoque: produto.controlaEstoque,
       paraViagem: linha.paraViagem ?? false,
       observacao: linha.observacao?.trim() || null,
@@ -283,7 +291,40 @@ export async function proximoNumeroPedidoOperacao(tx: TxClient, cervejariaId: st
  * a unique — e no Postgres esse erro aborta a transacao inteira, entao nao ha
  * como tentar de novo por dentro dela.
  */
-export async function criarPedido(
+export async function criarPedidos(
+  tx: TxClient,
+  params: {
+    cervejariaId: string;
+    comandaId: string;
+    pontoVendaId: string;
+    dia: Date;
+    criadoPorId: string;
+    paraViagem?: boolean;
+    observacao?: string;
+    itens: ItemResolvido[];
+    temCozinha: boolean;
+  },
+) {
+  const grupos = particionarItensParaPedidos(params.itens, params.temCozinha);
+  const pedidos: Array<{ pedido: Awaited<ReturnType<typeof criarPedidoUnico>>; itens: ItemResolvido[] }> = [];
+  for (const itens of grupos) {
+    pedidos.push({ pedido: await criarPedidoUnico(tx, { ...params, itens }), itens });
+  }
+  return pedidos;
+}
+
+/** Cada linha independente conserva seus opcionais/snapshot e quantidade; as demais linhas de preparo ficam juntas. */
+export function particionarItensParaPedidos(itens: ItemResolvido[], temCozinha: boolean): ItemResolvido[][] {
+  if (!temCozinha || itens.length <= 1) return itens.length ? [itens] : [];
+  const independentes = itens.filter((item) => item.exigePreparo && item.prepararEmPedidoSeparado);
+  if (independentes.length === 0) return [itens];
+  const independentesSet = new Set(independentes);
+  const comuns = itens.filter((item) => !independentesSet.has(item));
+  if (independentes.length === 1 && comuns.filter((item) => item.exigePreparo).length === 0) return [itens];
+  return [...(comuns.length ? [comuns] : []), ...independentes.map((item) => [item])];
+}
+
+async function criarPedidoUnico(
   tx: TxClient,
   params: {
     cervejariaId: string;

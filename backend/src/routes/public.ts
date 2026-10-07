@@ -14,7 +14,7 @@ import {
 import { normalizePhone } from '../lib/phone.js';
 import { registerOrUpdateCliente } from '../lib/cliente-resolver.js';
 import { assertCaixaAberto, lockCaixaEmTx } from '../lib/operacao/caixa.js';
-import { diaOperacional, CAIXA_VENDA_TX, criarPedido, resolverItens, resumoComanda } from '../lib/operacao/venda.js';
+import { diaOperacional, CAIXA_VENDA_TX, criarPedidos, resolverItens, resumoComanda } from '../lib/operacao/venda.js';
 import { INCLUDE_COMANDA_OPERACAO, recalcComandaTotalOperacao, whereComandaOperacao } from '../lib/operacao/comanda-adapter.js';
 import { listProdutosOperacionaisTurno } from '../lib/operacao/sessao-cardapio.js';
 import { CATEGORIAS_PRODUTO_OPERACAO, normalizarOrdemCategoriasProduto } from '../lib/operacao/categorias.js';
@@ -448,7 +448,7 @@ export async function publicRoutes(app: FastifyInstance) {
         sessaoCaixaId: sessao.id,
         tapsEnabled: profile?.capabilities.taps ?? false,
       });
-      const pedido = await criarPedido(tx, {
+      const pedidosCriados = await criarPedidos(tx, {
         cervejariaId: session.cervejariaId,
         comandaId: session.comandaId,
         pontoVendaId: session.pontoVendaId,
@@ -459,25 +459,21 @@ export async function publicRoutes(app: FastifyInstance) {
         itens,
         temCozinha,
       });
-      await inventoryService.consumeSale(tx, {
-        context: 'CAIXA',
-        moduleEnabled: controlaEstoque,
-        cervejariaId: session.cervejariaId,
-        pontoVendaId: session.pontoVendaId,
-        pedidoId: pedido.id,
-        registradoPorId: `PORTAL:${session.clienteId}`,
-        items: itens,
+      for (const { pedido, itens: itensPedido } of pedidosCriados) await inventoryService.consumeSale(tx, {
+        context: 'CAIXA', moduleEnabled: controlaEstoque, cervejariaId: session.cervejariaId,
+        pontoVendaId: session.pontoVendaId, pedidoId: pedido.id,
+        registradoPorId: `PORTAL:${session.clienteId}`, items: itensPedido,
       });
       await recalcComandaTotalOperacao(tx, session.comandaId, { kitchenItemsChargeAtLaunch: profile?.effectiveSettings.kitchenItemsChargeAtLaunch });
       return {
-        pedido,
+        pedidos: pedidosCriados.map((item) => item.pedido),
         comanda: await tx.comanda.findUniqueOrThrow({ where: { id: session.comandaId }, include: INCLUDE_COMANDA_OPERACAO }),
       };
     }, CAIXA_VENDA_TX);
     // A tela geral de comandas precisa atualizar mesmo quando não há cozinha
     // habilitada para o perfil operacional.
     notificarComandaOperacaoAtualizada(app, session.cervejariaId, session.comandaId);
-    if (temCozinha) await notificarPedidoNovo(app, session.cervejariaId, resultado.pedido);
+    if (temCozinha) for (const pedido of resultado.pedidos) await notificarPedidoNovo(app, session.cervejariaId, pedido);
     return reply.status(201).send(resumoComanda(resultado.comanda, profile?.effectiveSettings.kitchenItemsChargeAtLaunch));
   });
 

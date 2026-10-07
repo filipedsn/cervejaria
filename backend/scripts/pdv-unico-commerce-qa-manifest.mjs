@@ -31,6 +31,7 @@ export async function buildPdvCommerceQaManifest(options = {}) {
   const migrationPath = 'backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql';
   const saleSessionContextMigrationPath = 'backend/prisma/migrations/20261006120000_comanda_sale_session_context/migration.sql';
   const tapMountMigrationPath = 'backend/prisma/migrations/20261006130000_pdv_tap_montage/migration.sql';
+  const independentKitchenMigrationPath = 'backend/prisma/migrations/20261007180000_product_independent_kitchen_order/migration.sql';
   const priorFiles = {
     historical: 'docs/testing/pdv-unico-qa-migration-manifest.json',
     core: 'docs/testing/pdv-unico-core-qa-manifest.json',
@@ -131,6 +132,7 @@ export async function buildPdvCommerceQaManifest(options = {}) {
     'backend/prisma/migrations/20261005180000_payment_historical_provenance/migration.sql',
     saleSessionContextMigrationPath,
     tapMountMigrationPath,
+    independentKitchenMigrationPath,
     'backend/scripts/pdv-unico-finance-reconcile.ts',
     'backend/scripts/run-pdv-unico-finance-disposable-qa.mjs',
     'backend/scripts/run-pdv-unico-historical-disposable-qa.mjs',
@@ -200,6 +202,13 @@ export async function buildPdvCommerceQaManifest(options = {}) {
           name: path.basename(path.dirname(tapMountMigrationPath)),
           path: tapMountMigrationPath,
           sha256: digest(git(['show', `${baselineCommit}:${tapMountMigrationPath}`])),
+        },
+      } : {}),
+      ...(selectedCandidatePaths.has(independentKitchenMigrationPath) ? {
+        independentKitchenOrderMigration: {
+          name: path.basename(path.dirname(independentKitchenMigrationPath)),
+          path: independentKitchenMigrationPath,
+          sha256: digest(git(['show', `${baselineCommit}:${independentKitchenMigrationPath}`])),
         },
       } : {}),
     },

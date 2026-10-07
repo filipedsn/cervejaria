@@ -5,6 +5,7 @@ import { getTenantUser } from '../types/auth.js';
 import { assertProdutoPodeExcluir } from '../lib/catalogo-utils.js';
 import { isBebidaChope, isVendaUnitaria, normalizePrecos, produtoFieldsForSave } from '../lib/produto-utils.js';
 import { listarOpcionaisProduto, substituirOpcionaisProduto } from '../lib/produto-opcionais.js';
+import { canonicalPdvQaActivationEnabled } from '../lib/canonical-pdv-operational-config.js';
 
 const opcionaisSchema = z.object({
   opcionalIds: z.array(z.string().min(1)).max(100),
@@ -27,6 +28,7 @@ const createProdutoSchema = z
     categoria: z.string().trim().min(1).max(80).optional(),
     controlaEstoque: z.boolean().optional(),
     exigePreparo: z.boolean().optional(),
+    prepararEmPedidoSeparado: z.boolean().optional(),
     ordem: z.number().int().min(0).optional(),
     tipo: produtoTipoSchema.default('BEBIDA'),
     formato: formatoBebidaSchema.optional(),
@@ -66,6 +68,7 @@ const updateProdutoSchema = z
     categoria: z.string().trim().min(1).max(80).optional(),
     controlaEstoque: z.boolean().optional(),
     exigePreparo: z.boolean().optional(),
+    prepararEmPedidoSeparado: z.boolean().optional(),
     ordem: z.number().int().min(0).optional(),
     tipo: produtoTipoSchema.optional(),
     formato: formatoBebidaSchema.optional(),
@@ -157,6 +160,7 @@ export async function produtosRoutes(app: FastifyInstance) {
         categoria: body.categoria,
         controlaEstoque: body.controlaEstoque,
         exigePreparo: body.exigePreparo,
+        ...(canonicalPdvQaActivationEnabled() ? { prepararEmPedidoSeparado: body.prepararEmPedidoSeparado } : {}),
         ordem: body.ordem,
         cervejariaId: user.cervejariaId,
         precos: {
@@ -214,6 +218,7 @@ export async function produtosRoutes(app: FastifyInstance) {
           categoria: body.categoria,
           controlaEstoque: body.controlaEstoque,
           exigePreparo: body.exigePreparo,
+          ...(canonicalPdvQaActivationEnabled() ? { prepararEmPedidoSeparado: body.prepararEmPedidoSeparado } : {}),
           ordem: body.ordem,
           ativo: body.ativo,
         },

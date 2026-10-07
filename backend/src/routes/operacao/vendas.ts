@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { getAuthUser } from '../../types/auth.js';
 import {
-  criarPedido,
+  criarPedidos,
   diaOperacional,
   CAIXA_VENDA_TX,
   resolverItens,
@@ -71,7 +71,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
         await assertPodeDarDescontoOperacao(user);
       }
 
-      const { comanda, pedido } = await prisma.$transaction(async (tx) => {
+      const { comanda, pedidos } = await prisma.$transaction(async (tx) => {
         const pontoVenda = await tx.pontoVenda.findFirst({
           where: { id: body.pontoVendaId, cervejariaId, ativo: true },
         });
@@ -118,7 +118,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
           },
         });
 
-        const pedidoCriado = await criarPedido(tx, {
+        const pedidosCriados = await criarPedidos(tx, {
           cervejariaId,
           comandaId: criada.id,
           pontoVendaId: body.pontoVendaId,
@@ -130,14 +130,9 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
           temCozinha,
         });
 
-        await inventoryService.consumeSale(tx, {
-          context: 'CAIXA',
-          moduleEnabled: controlaEstoque,
-          cervejariaId,
-          pontoVendaId: body.pontoVendaId,
-          pedidoId: pedidoCriado.id,
-          registradoPorId: user.sub,
-          items: itens,
+        for (const { pedido, itens: itensPedido } of pedidosCriados) await inventoryService.consumeSale(tx, {
+          context: 'CAIXA', moduleEnabled: controlaEstoque, cervejariaId,
+          pontoVendaId: body.pontoVendaId, pedidoId: pedido.id, registradoPorId: user.sub, items: itensPedido,
         });
 
         // Venda avulsa é paga e registrada imediatamente. Mesmo quando comandas
@@ -165,11 +160,11 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
             where: { id: criada.id },
             include: INCLUDE_COMANDA_OPERACAO,
           }),
-          pedido: pedidoCriado,
+          pedidos: pedidosCriados.map((item) => item.pedido),
         };
       }, CAIXA_VENDA_TX);
 
-      if (temCozinha) await notificarPedidoNovo(app, cervejariaId, pedido);
+      if (temCozinha) for (const pedido of pedidos) await notificarPedidoNovo(app, cervejariaId, pedido);
 
       const res = resumoComanda(comanda, true);
       recordVendaAvulsa(centavos(res.total));

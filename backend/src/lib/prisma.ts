@@ -21,9 +21,14 @@ function databaseUrlWithPool(url: string | undefined): string | undefined {
 }
 
 const databaseUrl = databaseUrlWithPool(process.env.DATABASE_URL);
+// A coluna da entrega é aditiva. Com o caminho canônico desligado, excluí-la
+// dos SELECTs escalares padrão para manter compatibilidade com bancos antigos.
+const produtoOmit = process.env.PDV_CANONICAL_CONFIG_QA === '1'
+  ? undefined
+  : { produto: { prepararEmPedidoSeparado: true } } as const;
 const baseClient = new PrismaClient(
   databaseUrl
-    ? { datasources: { db: { url: databaseUrl } } }
+    ? { datasources: { db: { url: databaseUrl } }, ...(produtoOmit ? { omit: produtoOmit } : {}) }
     : undefined,
 );
 function observeDelegate(model: string, delegate: object): object {

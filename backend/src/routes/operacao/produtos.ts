@@ -11,6 +11,7 @@ import {
 import { diaOperacional } from '../../lib/operacao/venda.js';
 import { listProdutosOperacionaisTurno } from '../../lib/operacao/sessao-cardapio.js';
 import { listarOpcionaisProduto, substituirOpcionaisProduto } from '../../lib/produto-opcionais.js';
+import { canonicalPdvQaActivationEnabled } from '../../lib/canonical-pdv-operational-config.js';
 
 const precoProdutoSchema = z.object({ volumeMl: z.number().int().positive(), preco: z.number().positive() });
 const tipoProdutoSchema = z.enum(['BEBIDA', 'COMIDA']);
@@ -26,6 +27,7 @@ const createProdutoSchema = z.object({
   descricao: z.string().optional(),
   estilo: z.string().optional(),
   exigePreparo: z.boolean().default(false),
+  prepararEmPedidoSeparado: z.boolean().default(false),
   controlaEstoque: z.boolean().default(true),
   ordem: z.number().int().min(0).default(0),
 });
@@ -193,6 +195,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
         descricao: chope ? body.descricao : undefined,
         estilo: chope ? body.estilo : undefined,
         exigePreparo: chope ? false : body.exigePreparo,
+        ...(canonicalPdvQaActivationEnabled() ? { prepararEmPedidoSeparado: chope || !body.exigePreparo ? false : body.prepararEmPedidoSeparado } : {}),
         controlaEstoque: body.controlaEstoque,
         ordem: body.ordem,
         precos: { create: precos },
@@ -249,6 +252,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
           descricao: body.descricao,
           estilo: body.estilo,
           exigePreparo: chope ? false : body.exigePreparo,
+          ...(canonicalPdvQaActivationEnabled() ? { prepararEmPedidoSeparado: chope || !(body.exigePreparo ?? existing.exigePreparo) ? false : (body.prepararEmPedidoSeparado ?? existing.prepararEmPedidoSeparado) } : {}),
           controlaEstoque: body.controlaEstoque,
           ordem: body.ordem,
           ativo: body.ativo,

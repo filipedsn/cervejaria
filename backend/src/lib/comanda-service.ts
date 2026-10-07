@@ -271,6 +271,7 @@ export async function addItemToComandaInTx(
         precoUnit,
         quantidade: item.quantidade,
         exigePreparo: participaDaCozinha,
+        prepararEmPedidoSeparado: false,
         controlaEstoque: produto.controlaEstoque,
         paraViagem: item.paraViagem ?? false,
         observacao: item.observacao?.trim() || null,

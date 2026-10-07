@@ -359,6 +359,7 @@ function BebidaModal({ open, onClose, produto, onError }: {
     precos: VOLUMES.map((v) => ({ volumeMl: v, preco: '' })),
     controlaEstoque: true,
     exigePreparo: false,
+    prepararEmPedidoSeparado: false,
   });
 
   const isBebida = form.tipo === 'BEBIDA';
@@ -382,6 +383,7 @@ function BebidaModal({ open, onClose, produto, onError }: {
         }),
         controlaEstoque: produto.controlaEstoque ?? true,
         exigePreparo: produto.exigePreparo ?? false,
+        prepararEmPedidoSeparado: produto.prepararEmPedidoSeparado ?? false,
       });
     } else {
       setForm({
@@ -395,6 +397,7 @@ function BebidaModal({ open, onClose, produto, onError }: {
         precos: VOLUMES.map((v) => ({ volumeMl: v, preco: '' })),
         controlaEstoque: true,
         exigePreparo: false,
+        prepararEmPedidoSeparado: false,
       });
     }
   }, [produto, open]);
@@ -417,6 +420,7 @@ function BebidaModal({ open, onClose, produto, onError }: {
         precos,
         controlaEstoque: form.controlaEstoque,
         exigePreparo: form.exigePreparo,
+        prepararEmPedidoSeparado: form.prepararEmPedidoSeparado,
       };
       return produto
         ? api.put(`/api/produtos/${produto.id}`, data)
@@ -511,6 +515,7 @@ function BebidaModal({ open, onClose, produto, onError }: {
         <ProdutoOperacionalFields
           controlaEstoque={form.controlaEstoque}
           exigePreparo={form.exigePreparo}
+          prepararEmPedidoSeparado={form.prepararEmPedidoSeparado}
           onChange={(fields) => setForm({ ...form, ...fields })}
         />
         <ModalFormFooter onCancel={onClose} pending={save.isPending} />
@@ -529,7 +534,7 @@ function ComidaModal({ open, onClose, produto, onError }: {
 
   const queryClient = useQueryClient();
 
-  const [form, setForm] = useState({ nome: '', descricao: '', preco: '', controlaEstoque: true, exigePreparo: false });
+  const [form, setForm] = useState({ nome: '', descricao: '', preco: '', controlaEstoque: true, exigePreparo: false, prepararEmPedidoSeparado: false });
 
 
 
@@ -548,12 +553,13 @@ function ComidaModal({ open, onClose, produto, onError }: {
           preco: produto.precos[0] ? formatCurrencyInputFromNumber(produto.precos[0].preco) : '',
           controlaEstoque: produto.controlaEstoque ?? true,
           exigePreparo: produto.exigePreparo ?? false,
+          prepararEmPedidoSeparado: produto.prepararEmPedidoSeparado ?? false,
 
       });
 
     } else {
 
-      setForm({ nome: '', descricao: '', preco: '', controlaEstoque: true, exigePreparo: false });
+      setForm({ nome: '', descricao: '', preco: '', controlaEstoque: true, exigePreparo: false, prepararEmPedidoSeparado: false });
 
     }
 
@@ -576,6 +582,7 @@ function ComidaModal({ open, onClose, produto, onError }: {
         precos: [{ volumeMl: FOOD_UNIT_ML, preco: parseCurrencyInput(form.preco) }],
         controlaEstoque: form.controlaEstoque,
         exigePreparo: form.exigePreparo,
+        prepararEmPedidoSeparado: form.prepararEmPedidoSeparado,
 
       };
 
@@ -639,6 +646,7 @@ function ComidaModal({ open, onClose, produto, onError }: {
         <ProdutoOperacionalFields
           controlaEstoque={form.controlaEstoque}
           exigePreparo={form.exigePreparo}
+          prepararEmPedidoSeparado={form.prepararEmPedidoSeparado}
           onChange={(fields) => setForm({ ...form, ...fields })}
         />
 
@@ -655,11 +663,13 @@ function ComidaModal({ open, onClose, produto, onError }: {
 function ProdutoOperacionalFields({
   controlaEstoque,
   exigePreparo,
+  prepararEmPedidoSeparado,
   onChange,
 }: {
   controlaEstoque: boolean;
   exigePreparo: boolean;
-  onChange: (fields: { controlaEstoque: boolean; exigePreparo: boolean }) => void;
+  prepararEmPedidoSeparado: boolean;
+  onChange: (fields: { controlaEstoque: boolean; exigePreparo: boolean; prepararEmPedidoSeparado: boolean }) => void;
 }) {
   return (
     <div className="space-y-2 border-t border-line pt-3">
@@ -669,19 +679,31 @@ function ProdutoOperacionalFields({
           type="checkbox"
           className="mt-1 h-5 w-5 shrink-0 accent-brand-400"
           checked={exigePreparo}
-          onChange={(event) => onChange({ controlaEstoque, exigePreparo: event.target.checked })}
+          onChange={(event) => onChange({ controlaEstoque, exigePreparo: event.target.checked, prepararEmPedidoSeparado: event.target.checked ? prepararEmPedidoSeparado : false })}
         />
         <span className="min-w-0">
           <span className="block font-semibold">Vai para a cozinha</span>
           <span className="block text-xs text-ink-faint">Gera pedido de preparo na fila da cozinha.</span>
         </span>
       </label>
+      {exigePreparo && <label className="card flex cursor-pointer items-start gap-3 py-3">
+        <input
+          type="checkbox"
+          className="mt-1 h-5 w-5 shrink-0 accent-brand-400"
+          checked={prepararEmPedidoSeparado}
+          onChange={(event) => onChange({ controlaEstoque, exigePreparo, prepararEmPedidoSeparado: event.target.checked })}
+        />
+        <span className="min-w-0">
+          <span className="block font-semibold">Preparar em pedido separado</span>
+          <span className="block text-xs text-ink-faint">Cria um pedido próprio quando outros itens de cozinha forem lançados juntos.</span>
+        </span>
+      </label>}
       <label className="card flex cursor-pointer items-start gap-3 py-3">
         <input
           type="checkbox"
           className="mt-1 h-5 w-5 shrink-0 accent-brand-400"
           checked={controlaEstoque}
-          onChange={(event) => onChange({ controlaEstoque: event.target.checked, exigePreparo })}
+          onChange={(event) => onChange({ controlaEstoque: event.target.checked, exigePreparo, prepararEmPedidoSeparado })}
         />
         <span className="min-w-0">
           <span className="block font-semibold">Controlar estoque</span>

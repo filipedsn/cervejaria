@@ -1,6 +1,62 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { calcularFinanceiroComanda, itemVaiParaCozinha, resolverPagamentos, resumoComanda, subtotalComandaEmCentavos, validarChopeDoTurno, VendaInvalidaError } from './venda.js';
+import { calcularFinanceiroComanda, itemVaiParaCozinha, particionarItensParaPedidos, resolverItens, resolverPagamentos, resumoComanda, subtotalComandaEmCentavos, validarChopeDoTurno, VendaInvalidaError, type ItemResolvido } from './venda.js';
+
+const linha = (nome: string, exigePreparo: boolean, prepararEmPedidoSeparado = false, quantidade = 1) => ({
+  produtoId: nome, tapId: null, volumeMl: 0, nome, precoUnit: 10, quantidade, exigePreparo,
+  prepararEmPedidoSeparado, controlaEstoque: true, paraViagem: false, observacao: null, opcionais: [],
+}) satisfies ItemResolvido;
+
+describe('particionarItensParaPedidos', () => {
+  it('mantém o agrupamento antigo quando todas as linhas estão desmarcadas', () => {
+    const itens = [linha('churrasquinho', true), linha('batata', true)];
+    assert.deepEqual(particionarItensParaPedidos(itens, true), [itens]);
+  });
+  it('separa uma linha marcada das linhas comuns e deixa bebidas fora da cozinha', () => {
+    const marcado = linha('churrasquinho', true, true);
+    const comum = linha('batata', true);
+    const bebida = linha('refrigerante', false);
+    assert.deepEqual(particionarItensParaPedidos([marcado, comum, bebida], true), [[comum, bebida], [marcado]]);
+  });
+  it('cria um pedido para cada linha marcada e preserva quantidade na linha', () => {
+    const um = linha('churrasquinho', true, true, 3);
+    const dois = linha('milho', true, true);
+    const comum = linha('batata', true);
+    assert.deepEqual(particionarItensParaPedidos([um, comum, dois], true), [[comum], [um], [dois]]);
+    assert.equal(particionarItensParaPedidos([um], true)[0]?.[0]?.quantidade, 3);
+  });
+  it('não divide um único item de preparo nem cria pedidos de cozinha quando desabilitada', () => {
+    const marcado = linha('churrasquinho', true, true);
+    const semPreparo = linha('refrigerante', false);
+    assert.deepEqual(particionarItensParaPedidos([marcado], true), [[marcado]]);
+    assert.deepEqual(particionarItensParaPedidos([marcado, semPreparo], false), [[marcado, semPreparo]]);
+  });
+});
+
+describe('resolverItens independent-order authority', () => {
+  it('only reads the persisted flag under the guarded activation and ignores a sale payload override', async () => {
+    const previous = {
+      flag: process.env.PDV_CANONICAL_CONFIG_QA, nodeEnv: process.env.NODE_ENV,
+      isolated: process.env.PDV_ISOLATED_QA, db: process.env.DATABASE_URL, qa: process.env.QA_DATABASE_URL,
+    };
+    const qaUrl = 'postgresql://postgres:test@127.0.0.1:55439/cervejaria_qa_pdv_unico';
+    Object.assign(process.env, { PDV_CANONICAL_CONFIG_QA: '1', NODE_ENV: 'test', PDV_ISOLATED_QA: '1', DATABASE_URL: qaUrl, QA_DATABASE_URL: qaUrl });
+    let receivedSelect: Record<string, unknown> | undefined;
+    const tx: any = { produto: { findMany: async ({ select }: { select: Record<string, unknown> }) => {
+      receivedSelect = select;
+      return [{ id: 'persisted-product', nome: 'Persisted', tipo: 'COMIDA', formato: null, categoria: 'Comida', pontoVendaId: 'point', exigePreparo: true, controlaEstoque: false, prepararEmPedidoSeparado: false, precos: [{ volumeMl: 1, preco: 10 }] }];
+    } } };
+    try {
+      const resolved = await resolverItens(tx, 'tenant', [{ produtoId: 'persisted-product', quantidade: 1, prepararEmPedidoSeparado: true } as any]);
+      assert.equal(receivedSelect?.prepararEmPedidoSeparado, true, 'canonical path explicitly requests the persisted scalar');
+      assert.equal(resolved[0]?.prepararEmPedidoSeparado, false, 'payload cannot override the stored false value');
+    } finally {
+      for (const [key, value] of Object.entries({ PDV_CANONICAL_CONFIG_QA: previous.flag, NODE_ENV: previous.nodeEnv, PDV_ISOLATED_QA: previous.isolated, DATABASE_URL: previous.db, QA_DATABASE_URL: previous.qa })) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
+  });
+});
 
 describe('validarChopeDoTurno legacy schema compatibility', () => {
   it('uses the Trailer contract while activation is off and never queries Tap.pontoVendaId', async () => {

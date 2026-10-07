@@ -105,6 +105,7 @@ export interface Produto {
   ativo: boolean;
   controlaEstoque?: boolean;
   exigePreparo?: boolean;
+  prepararEmPedidoSeparado?: boolean;
   precos: Preco[];
   /** Preço do template quando evento/cardápio vinculado; senão igual ao catálogo. */
   precoEfetivo?: number;
