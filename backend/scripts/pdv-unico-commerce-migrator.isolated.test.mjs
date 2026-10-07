@@ -998,40 +998,40 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const occurrenceProofs = [];
     const withOwnerAt = (day, operation) => withQaDate(day, async () => operation(await login(authOwner.email, ownerPassword, 'DONO')));
     const withSecondOwnerAt = (day, operation) => withQaDate(day, async () => operation(await login(secondOwner.email, secondOwnerPassword, 'DONO')));
-    const agendaCreate = await app.inject({ method: 'POST', url: '/api/operacao/agenda/agendas', headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') }, payload: { nome: `Sábado no PDV ${runId}`, diaSemana: 6, horaInicio: '18:00' } });
+    const agendaCreate = await app.inject({ method: 'POST', url: '/api/operacao/agenda/agendas', headers: { cookie: ownerCookie }, payload: { nome: `Sábado no PDV ${runId}`, diaSemana: 6, horaInicio: '18:00' } });
     assert.equal(agendaCreate.statusCode, 201, `authenticated weekly agenda create: ${agendaCreate.body}`);
     const managedAgenda = JSON.parse(agendaCreate.body);
     const generateUrl = `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}/gerar`;
     const generatedRange = { inicio: '2026-11-01', fim: '2026-11-30' };
     const readOnlyBefore = await counts();
-    const attendantScheduleRead = await app.inject({ method: 'GET', url: '/api/operacao/agenda/ocorrencias?inicio=2026-11-01&fim=2026-11-30', headers: { cookie: await login(authAttendant.email, attendantPassword, 'ATENDENTE') } });
+    const attendantScheduleRead = await app.inject({ method: 'GET', url: '/api/operacao/agenda/ocorrencias?inicio=2026-11-01&fim=2026-11-30', headers: { cookie: attendantCookie } });
     assert.equal(attendantScheduleRead.statusCode, 200, 'users who can operate cash can read the operational schedule');
     await assertNoApiWrites(readOnlyBefore, 'agenda GET');
-    const attendeeWrite = await app.inject({ method: 'POST', url: '/api/operacao/agenda/agendas', headers: { cookie: await login(authAttendant.email, attendantPassword, 'ATENDENTE') }, payload: { nome: 'No permission', diaSemana: 6 } });
+    const attendeeWrite = await app.inject({ method: 'POST', url: '/api/operacao/agenda/agendas', headers: { cookie: attendantCookie }, payload: { nome: 'No permission', diaSemana: 6 } });
     assert.equal(attendeeWrite.statusCode, 403, 'agenda management remains protected by the existing owner authorization');
     await assertNoApiWrites(readOnlyBefore, 'attendant agenda write');
     const [generateA, generateB] = await Promise.all([
-      app.inject({ method: 'POST', url: generateUrl, headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') }, payload: generatedRange }),
-      app.inject({ method: 'POST', url: generateUrl, headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') }, payload: generatedRange }),
+      app.inject({ method: 'POST', url: generateUrl, headers: { cookie: ownerCookie }, payload: generatedRange }),
+      app.inject({ method: 'POST', url: generateUrl, headers: { cookie: ownerCookie }, payload: generatedRange }),
     ]);
     assert.deepEqual([generateA.statusCode, generateB.statusCode], [200, 200], 'concurrent explicit recurrence generation completes');
     assert.equal([JSON.parse(generateA.body).criadas, JSON.parse(generateB.body).criadas].reduce((sum, count) => sum + count, 0), 4, 'concurrent generation creates each Saturday once');
-    const generatedListResponse = await app.inject({ method: 'GET', url: '/api/operacao/agenda/ocorrencias?inicio=2026-11-01&fim=2026-11-30', headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') } });
+    const generatedListResponse = await app.inject({ method: 'GET', url: '/api/operacao/agenda/ocorrencias?inicio=2026-11-01&fim=2026-11-30', headers: { cookie: ownerCookie } });
     assert.equal(generatedListResponse.statusCode, 200);
     const generatedList = JSON.parse(generatedListResponse.body);
     const generatedSaturdays = generatedList.ocorrencias.filter((item) => item.agendaId === managedAgenda.id);
     assert.deepEqual(generatedSaturdays.map((item) => item.data), ['2026-11-07', '2026-11-14', '2026-11-21', '2026-11-28'], 'two Saturdays in one recurrence period are distinct date occurrences');
-    const repeatedGeneration = await app.inject({ method: 'POST', url: generateUrl, headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') }, payload: generatedRange });
+    const repeatedGeneration = await app.inject({ method: 'POST', url: generateUrl, headers: { cookie: ownerCookie }, payload: generatedRange });
     assert.equal(JSON.parse(repeatedGeneration.body).criadas, 0, 'repeated generation creates no duplicate agenda/date');
     const generatedIdsBeforeEdit = generatedSaturdays.map((item) => [item.id, item.data, item.nome]);
-    const agendaEdit = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}`, headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') }, payload: { nome: 'Agenda editada depois da geração', diaSemana: 6 } });
+    const agendaEdit = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}`, headers: { cookie: ownerCookie }, payload: { nome: 'Agenda editada depois da geração', diaSemana: 6 } });
     assert.equal(agendaEdit.statusCode, 200, `weekly agenda edit: ${agendaEdit.body}`);
     const afterAgendaEdit = await db.ocorrenciaOperacional.findMany({ where: { agendaId: managedAgenda.id }, orderBy: { data: 'asc' } });
     assert.deepEqual(afterAgendaEdit.map((item) => [item.id, item.data.toISOString().slice(0, 10), item.nome]), generatedIdsBeforeEdit, 'editing recurrence preserves generated occurrence IDs, dates and historical names');
-    const avulsaCreate = await app.inject({ method: 'POST', url: '/api/operacao/agenda/ocorrencias', headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') }, payload: { nome: 'Avulsa da agenda canônica', data: '2026-11-09' } });
+    const avulsaCreate = await app.inject({ method: 'POST', url: '/api/operacao/agenda/ocorrencias', headers: { cookie: ownerCookie }, payload: { nome: 'Avulsa da agenda canônica', data: '2026-11-09' } });
     assert.equal(avulsaCreate.statusCode, 201, `authenticated one-off occurrence create: ${avulsaCreate.body}`);
     const beforeForeignAgendaEdit = await db.agendaOperacional.count({ where: { id: managedAgenda.id, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id } });
-    const foreignAgendaEdit = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}`, headers: { cookie: await login(secondOwner.email, secondOwnerPassword, 'DONO') }, payload: { nome: 'Tenant cruzado' } });
+    const foreignAgendaEdit = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}`, headers: { cookie: secondOwnerCookie }, payload: { nome: 'Tenant cruzado' } });
     assert.equal(foreignAgendaEdit.statusCode, 404, 'another tenant cannot edit the first tenant agenda');
     assert.equal(await db.agendaOperacional.count({ where: { id: managedAgenda.id, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id } }), beforeForeignAgendaEdit, 'cross-tenant agenda edit performs no write');
     const openOccurrenceCash = async (day, occurrenceId) => withOwnerAt(day, async (cookie) => {
@@ -1150,7 +1150,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       balances: await db.inventoryBalance.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }),
       movements: await db.inventoryMovement.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }),
     });
-    const historicalAgendaEdit = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${encodeURIComponent(occurrenceAgenda.id)}`, headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') }, payload: { nome: 'Recorrência renomeada após vendas' } });
+    const historicalAgendaEdit = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${encodeURIComponent(occurrenceAgenda.id)}`, headers: { cookie: ownerCookie }, payload: { nome: 'Recorrência renomeada após vendas' } });
     assert.equal(historicalAgendaEdit.statusCode, 200, `agenda can be edited after occurrences are realized: ${historicalAgendaEdit.body}`);
     assert.deepEqual(plain({
       commands: await db.comanda.findMany({ where: { id: { in: [recurringCommand1.id, recurringCommand2.id] } }, include: { itens: true, pagamentos: true }, orderBy: { id: 'asc' } }),
