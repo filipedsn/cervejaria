@@ -1,0 +1,112 @@
+{
+  "delivery": "canonical/legacy PDV provisioning isolation during transition",
+  "baseline": "5f97ca8",
+  "documentationBaseline": "f5ec7fb",
+  "rootCause": [
+    "Provisioning passed operationalSettings unconditionally, causing createSinglePdv to call ConfiguracaoPontoVenda.create even when activation was disabled and an older transaction client had no such delegate/table.",
+    "Internal ativarModuloOperacao supplied canonical settings without checking the activation boundary.",
+    "The legacy multipart adapter had stopped honoring its prior Trailer, first-PDV, default-tap, planned-operation and legacy response behavior."
+  ],
+  "solution": {
+    "activationBoundary": "Explicit CANONICAL or LEGACY mode is selected once by each canonical provisioning/API boundary and by internal module activation.",
+    "canonical": "Company, owner, one PDV and ConfiguracaoPontoVenda remain in the same transaction; CAIXA remains the sole canonical engine. Explicit capability settings are stored on the PDV; ConfiguracaoOperacional remains the owner of setup and compatibility metadata. No Trailer substitutes for a PDV.",
+    "legacyCompatibility": "Temporary transition bridge. JSON keeps its prior no-PDV creation and response contract. Multipart keeps explicitly selected Trailer/default taps, first PDV, legacy ConfiguracaoOperacao projection, enablement metadata and response contract. The disabled path never accesses the additive PDV configuration delegate.",
+    "retirement": "Remove LEGACY mode and old-client compatibility at the separately approved cutover after callers use the canonical API/schema, legacy consumers are reconciled and the cutover acceptance gates pass. This bridge is not a permanent second operating architecture."
+  },
+  "focusedTests": {
+    "unit": "PASS; 52 tests for provisioning, activation guard, operational configuration/profile and mode authority.",
+    "preModelPostgresQa": {
+      "result": "PASS",
+      "database": "executor-created disposable PostgreSQL container; removed",
+      "schemaCommit": "06b23a9c93e3d9e54c106d173f7d6921bf3e7138",
+      "schemaAndClient": "pre-ConfiguracaoPontoVenda schema and generated Prisma Client; DMMF model absent; PostgreSQL table absent",
+      "paths": [
+        "Legacy JSON provisionEstablishment: company/owner/config metadata committed, no default PDV or Trailer, old response resources retained.",
+        "Legacy multipart adapter: requested Trailer, first PDV, planned/taps/inventory/kitchen metadata, and ConfiguracaoOperacao projection retained.",
+        "ativarModuloOperacao with activation off: legacy config and first PDV created without the additive delegate."
+      ],
+      "additiveDelegateQueries": 0,
+      "baselineReproduction": "Before the correction, the same pre-model client failed at tx.configuracaoPontoVenda.create and rolled back company/owner."
+    },
+    "authenticatedQa": {
+      "result": "PASS",
+      "environment": "executor-created disposable PostgreSQL QA only",
+      "cases": [
+        "Both admin provisioning endpoints under disabled and enabled activation; JSON and multipart response/resources/settings checked.",
+        "Legacy multipart created its selected Trailer, four default taps and first PDV; canonical multipart created one PDV/config and no Trailer substitute.",
+        "Legacy JSON preserved explicit plannedOperations/taps/inventory/kitchen metadata and its no-PDV contract.",
+        "Canonical provisioning retry/concurrency, single-PDV conflict, authorization, no-write refusal and intermediate rollback remained passing.",
+        "Disabled setup/edit reads and writes ConfiguracaoOperacional without implicitly rewriting the PDV; canonical setup/edit reads and writes the PDV and refuses EVENTO motor selection.",
+        "New canonical tenant configured catalog/menu, opened Por Caixa, sold, paid and closed with realization-session context.",
+        "Previously certified financial turns, legacy close before the additive session column, and commerce regressions passed."
+      ]
+    },
+    "testHarnessCorrection": "An initial synthetic run exposed a test-only assertion using a nonexistent Prisma delegate name. The assertion was corrected to query the actual Tap model; the final synthetic and representative snapshot run both passed."
+  },
+  "builds": {
+    "sourceCommit": "1f74478a6fc69d1f06ee5aec478aced5bffb9672",
+    "backend": "PASS; npm run build",
+    "frontend": "PASS; npm run build; existing dynamic-import/chunk-size advisories only"
+  },
+  "gitSnapshotCertification": {
+    "result": "PASS",
+    "selectedCommit": "1f74478a6fc69d1f06ee5aec478aced5bffb9672",
+    "selectedTree": "b5054212c455c3803e5d3662aa5811f73627d253",
+    "trackedBlobsVerified": 1116,
+    "candidateManifestSha256": "e6ba0d0136c756f771d926aaf7e7324f17a7030e4f925de666918009b1b9e304",
+    "synthetic": "PASS; qa:pdv-current-disposable; no skips",
+    "representative": {
+      "result": "PASS",
+      "photoSha256": "2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b",
+      "tables": 34,
+      "rows": 10738,
+      "tenants": [
+        "CIA Marítima",
+        "Churrasquinho do Thiago"
+      ],
+      "commerceRows": {
+        "CIA Marítima": 1549,
+        "Churrasquinho do Thiago": 3004
+      },
+      "financeRows": {
+        "CIA Marítima": 433,
+        "Churrasquinho do Thiago": 178
+      },
+      "phases": "Business/catalog/sessions/finance; kitchen preparation before commerce where applicable; commerce; finance revalidation and kitchen preparation revalidation after commerce; replay and reconciliation.",
+      "approvedPayments": "605 IDs/values/classifications reconciled: A=26 exact sessions; B=2 receivables; C=577 null sessions with CAIXA_NAO_COMPROVADA. No duplicate, omission, timestamp attribution or inventory change."
+    },
+    "moduleOriginAudit": {
+      "result": "PASS",
+      "snapshotProjectModules": 180,
+      "mutableWorkspaceProjectModules": 0,
+      "externalDependencyModules": 100,
+      "prisma": "6.19.3"
+    },
+    "temporarySnapshotRemoved": true,
+    "qaContainersRemoved": true,
+    "localStateBeforeAfterIdentical": true
+  },
+  "compatibilityAndPendingConsumers": {
+    "legacyBridge": "Temporary until approved cutover; no shared legacy engine implementation was added.",
+    "futureCutoverRemoval": "After client migration and cutover approval, remove LEGACY provisioning mode, old JSON/multipart projections/resources and old-client support. Rehearse removal and all consumers before production execution.",
+    "pendingConsumerAudit": [
+      "External scripts and direct database writers that bypass the HTTP/API locks.",
+      "Old JSON/multipart callers and deployed clients that still rely on the legacy creation response or resource projection."
+    ],
+    "globalUniqueConstraint": "BLOCKED until every legacy multiple-PDV tenant and dependent link is manually adjudicated and preserved, the disposition is rehearsed in QA, and the final set is proven zero-or-one PDV with valid canonical configuration; then add the constraint in a separately approved migration."
+  },
+  "limits": {
+    "sharedDevReadOrWrite": "NO",
+    "prodIncludingMetadata": "NO",
+    "nonQaWritesOrMigrations": "NONE",
+    "realBackfill": "NOT_RUN",
+    "cutover": "NOT_RUN",
+    "deploy": "NOT_RUN",
+    "legacyRemoval": "NOT_RUN",
+    "plane": {
+      "ticket": "TAP-76",
+      "status": "In Progress"
+    }
+  },
+  "qaReport": "%TEMP%/tap76-pdv-compat-git-qa-1f74478.json"
+}
