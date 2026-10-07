@@ -102,12 +102,11 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
         const date = new Date(inicio.getTime() + offset * 86400000);
         if (date.getUTCDay() === agenda.diaSemana) dates.push(date);
       }
-      if (dates.length) await tx.ocorrenciaOperacional.createMany({
+      const inserted = dates.length ? await tx.ocorrenciaOperacional.createMany({
         data: dates.map((data) => ({ cervejariaId: agenda.cervejariaId, pontoVendaId: agenda.pontoVendaId, agendaId: agenda.id, nome: agenda.nome, data, horaInicio: agenda.horaInicio, horaFim: agenda.horaFim, local: agenda.local, status: 'PROGRAMADA' as const })),
         skipDuplicates: true,
-      });
-      const existentes = dates.length ? await tx.ocorrenciaOperacional.findMany({ where: { cervejariaId: agenda.cervejariaId, pontoVendaId, agendaId, data: { in: dates } }, select: { data: true } }) : [];
-      return { criadas: dates.length ? Math.max(0, dates.length - existentes.length) : 0, ocorrencias: existentes.map((o) => o.data.toISOString().slice(0, 10)) };
+      }) : { count: 0 };
+      return { criadas: inserted.count, ocorrencias: dates.map((date) => date.toISOString().slice(0, 10)) };
     });
     if (!result) return reply.status(404).send({ error: 'Agenda semanal ativa não encontrada' });
     return result;
