@@ -10,10 +10,10 @@ function orders(statusMarked: 'RECEBIDO' | 'ENTREGUE' = 'RECEBIDO') {
   return [
     { id: 'ui-order-marked', numero: 41, status: statusMarked, paraViagem: true, observacao: null, createdAt: '2026-10-07T18:00:00.000Z', statusDesde: '2026-10-07T18:00:00.000Z', entregueEm: statusMarked === 'ENTREGUE' ? '2026-10-07T18:10:00.000Z' : null,
       comanda: { id: 'ui-command-independent', tipo: 'APELIDO', identificador: 'Mesa UI', numero: 11, cliente: null },
-      itens: [{ id: 'ui-line-marked', nome: product.nome, quantidade: 3, precoUnit: 10, paraViagem: true, observacao: 'Molho separado', opcionais: [{ id: 'ui-extra', nome: 'Molho', precoAdicional: 1, quantidade: 1 }] }] },
+      itens: [{ id: 'ui-line-marked', produtoId: product.id, nome: product.nome, quantidade: 3, precoUnit: 10, subtotal: 30, exigePreparo: true, paraViagem: true, observacao: 'Molho separado', opcionais: [{ id: 'ui-extra', nome: 'Molho', precoAdicional: 1, quantidade: 1 }] }] },
     { id: 'ui-order-common', numero: 42, status: 'RECEBIDO', paraViagem: false, observacao: null, createdAt: '2026-10-07T18:01:00.000Z', statusDesde: '2026-10-07T18:01:00.000Z', entregueEm: null,
       comanda: { id: 'ui-command-independent', tipo: 'APELIDO', identificador: 'Mesa UI', numero: 11, cliente: null },
-      itens: [{ id: 'ui-line-common', nome: 'Batata UI', quantidade: 1, precoUnit: 10, paraViagem: false, observacao: 'Sem sal', opcionais: [] }] },
+      itens: [{ id: 'ui-line-common', produtoId: 'ui-common-product', nome: 'Batata UI', quantidade: 1, precoUnit: 10, subtotal: 10, exigePreparo: true, paraViagem: false, observacao: 'Sem sal', opcionais: [] }] },
   ];
 }
 
@@ -34,7 +34,11 @@ async function mockOwnerAndBlockUnexpectedApis(page: Page) {
     cervejaria: { id: 'ui-tenant', nome: 'Cervejaria UI', slug: 'qa-kitchen-ui' },
   } }));
   register('GET', '/api/onboarding/readiness');
-  await page.route('**/api/onboarding/readiness', (route) => route.fulfill({ json: { ready: true, blockers: [], warnings: [] } }));
+  await page.route('**/api/onboarding/readiness', (route) => route.fulfill({ json: {
+    mode: 'CAIXA', capacities: { controlaEstoque: false, temCozinha: true }, hasHistoricalSale: true,
+    firstSaleCompleted: true, operationReady: true, canConfigure: false,
+    modules: { operacao: { enabled: true, ready: true, missingSteps: [] }, cervejaria: { enabled: false, ready: true, missingSteps: [] } },
+  } }));
   register('GET', '/api/operacao/contexto');
   await page.route('**/api/operacao/contexto', (route) => route.fulfill({ json: {
     ativo: true, operationMode: 'CAIXA', plannedOperationsEnabled: false, cashRegisterEnabled: true,
@@ -43,6 +47,16 @@ async function mockOwnerAndBlockUnexpectedApis(page: Page) {
     whatsappPedidoProntoEnabled: false, whatsappPedidoProntoNaCozinha: false,
     pontosVenda: [{ id: 'ui-pdv-independent', nome: 'Balcão', ativo: true }],
   } }));
+  register('GET', '/api/trailers?ativo=true');
+  await page.route('**/api/trailers?ativo=true', (route) => route.fulfill({ json: [] }));
+  register('GET', '/api/eventos/ativos');
+  await page.route('**/api/eventos/ativos', (route) => route.fulfill({ json: [] }));
+  register('GET', '/api/cervejaria/configuracao-operacional');
+  await page.route('**/api/cervejaria/configuracao-operacional', (route) => route.fulfill({ json: { configuration: { setupCompletedAt: '2026-10-07T12:00:00.000Z', allowCloseComandaWithPendingKitchenOrders: false } } }));
+  register('POST', '/api/audit/events');
+  await page.route('**/api/audit/events', (route) => route.fulfill({ status: 204, body: '' }));
+  register('GET', '/api/operacao/produtos?pontoVendaId=ui-pdv-independent');
+  await page.route('**/api/operacao/produtos?pontoVendaId=ui-pdv-independent', (route) => route.fulfill({ json: [product] }));
   return { register, unexpected };
 }
 
@@ -85,8 +99,6 @@ test('edita produto marcado e mantém pedidos irmãos visíveis após entregar a
   };
   register('GET', '/api/operacao/comandas/ui-command-independent');
   await page.route('**/api/operacao/comandas/ui-command-independent', (route) => route.fulfill({ json: comanda }));
-  register('GET', '/api/cervejaria/configuracao-operacional');
-  await page.route('**/api/cervejaria/configuracao-operacional', (route) => route.fulfill({ json: { configuration: { allowCloseComandaWithPendingKitchenOrders: false } } }));
   register('GET', '/api/operacao/caixa?pontoVendaId=ui-pdv-independent');
   await page.route('**/api/operacao/caixa?pontoVendaId=ui-pdv-independent', (route) => route.fulfill({ json: { sessao: { id: 'ui-session', status: 'ABERTO' }, comandasAbertas: 1, diaOperacional: '2026-10-07' } }));
   register('GET', '/api/operacao/cozinha?incluirEntregues=true');

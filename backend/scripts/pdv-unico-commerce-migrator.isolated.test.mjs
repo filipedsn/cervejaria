@@ -736,6 +736,10 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     }
     const portalPayment = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(portalComanda.id)}/pagamentos`, headers: { cookie: secondOwnerCookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 30 }] } });
     assert.equal(portalPayment.statusCode, 200, `owner can settle the portal comanda through the existing payment flow: ${portalPayment.body}`);
+    const snapshotStockSeed = await db.inventoryBalance.updateMany({
+      where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id] } }, data: { quantidade: 20 },
+    });
+    assert.equal(snapshotStockSeed.count, 2, 'snapshot and concurrency fixtures start with sufficient isolated QA stock');
 
     const markedOptional = await db.opcional.create({ data: {
       id: `independent-snapshot-optional-marked-${runId}`, cervejariaId: secondCompany.id, nome: `Molho marcado ${runId}`, preco: '1.25',
