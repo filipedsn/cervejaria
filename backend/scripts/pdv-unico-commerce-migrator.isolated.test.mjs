@@ -1874,7 +1874,7 @@ try {
   const { PrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
   db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal' });
   const applied = await db.$queryRaw`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL ORDER BY migration_name`;
-  assert.equal(applied.length, history.migrations.length + 7, 'full historical + operational core/catalog/session/finance/provenance/commerce/sale-session chain');
+  assert.equal(applied.length, history.migrations.length + 8, 'full historical + operational core/catalog/session/finance/provenance/commerce/sale-session/Tap-mount chain');
   assert(applied.some((row) => row.migration_name === manifest.priorManifests.finance.historicalProvenanceMigration.name), 'Payment.provenienciaHistorica migration is applied before commerce route regressions');
   const constraints = await db.$queryRaw`SELECT conname, confdeltype, convalidated FROM pg_constraint WHERE conname IN ('Comanda_pontoVendaId_ocorrenciaId_fkey','Comanda_pontoVendaId_sessaoCaixaRealizacaoId_fkey','EstoqueSaldoQuiosque_pontoVendaId_cervejariaId_fkey','EstoqueSaldoQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pontoVendaId_cervejariaId_fkey','MovimentoEstoqueQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pedidoId_tenant_point_fkey') ORDER BY conname`;
   assert.equal(constraints.length, 7);
