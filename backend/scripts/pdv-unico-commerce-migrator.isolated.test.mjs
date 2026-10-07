@@ -1036,9 +1036,9 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const foreignAgendaEdit = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}`, headers: { cookie: secondOwnerCookie }, payload: { nome: 'Tenant cruzado' } });
     assert.equal(foreignAgendaEdit.statusCode, 404, 'another tenant cannot edit the first tenant agenda');
     assert.equal(await db.agendaOperacional.count({ where: { id: managedAgenda.id, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id } }), beforeForeignAgendaEdit, 'cross-tenant agenda edit performs no write');
-    const openOccurrenceCash = async (day, occurrenceId) => withOwnerAt(day, async (cookie) => {
+    const openOccurrenceCash = async (day, occurrenceId, confirmOtherDate = false) => withOwnerAt(day, async (cookie) => {
       const response = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: {
-        pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ...(occurrenceId ? { ocorrenciaId: occurrenceId } : {}),
+        pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ...(occurrenceId ? { ocorrenciaId: occurrenceId } : {}), ...(confirmOtherDate ? { confirmarDataDiferente: true } : {}),
       } });
       assert.equal(response.statusCode, 201, `occurrence cash opens ${day}: ${response.body}`);
       const session = JSON.parse(response.body);
@@ -1259,7 +1259,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       pontoVendaId: primaryPoint.id, produtoId: product.id, quantidade: '10.000', estoqueMinimo: '0.000',
     } });
     const mismatchDay = '2026-11-09';
-    const mismatchSession = await openOccurrenceCash(mismatchDay, recurringOccurrences[1].id);
+    const mismatchSession = await openOccurrenceCash(mismatchDay, recurringOccurrences[1].id, true);
     const mismatchCommandResponse = await withOwnerAt(mismatchDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: {
       pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: `occurrence-mismatch-${runId}`,
     } }));
@@ -1298,7 +1298,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     await closeOccurrenceCash(mismatchDay, 0);
 
     const correctDay = '2026-11-10';
-    const correctSession = await openOccurrenceCash(correctDay, recurringOccurrences[0].id);
+    const correctSession = await openOccurrenceCash(correctDay, recurringOccurrences[0].id, true);
     const correctCommandResponse = await withOwnerAt(correctDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: {
       pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: `occurrence-correct-${runId}`,
     } }));
@@ -1323,7 +1323,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     await closeOccurrenceCash(correctDay, 19);
 
     const noSessionDay = '2026-11-11';
-    const noSession = await openOccurrenceCash(noSessionDay, recurringOccurrences[0].id);
+    const noSession = await openOccurrenceCash(noSessionDay, recurringOccurrences[0].id, true);
     const noSessionCommandResponse = await withOwnerAt(noSessionDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: {
       pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: `occurrence-no-session-${runId}`,
     } }));
@@ -1348,7 +1348,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     );
 
     const closeRaceDay = '2026-11-12';
-    const closeRaceSession = await openOccurrenceCash(closeRaceDay, recurringOccurrences[0].id);
+    const closeRaceSession = await openOccurrenceCash(closeRaceDay, recurringOccurrences[0].id, true);
     const closeRaceCommandResponse = await withOwnerAt(closeRaceDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: {
       pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: `occurrence-close-race-${runId}`,
     } }));
