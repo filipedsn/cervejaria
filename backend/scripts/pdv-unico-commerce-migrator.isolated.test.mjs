@@ -843,10 +843,13 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const balancesAfterConcurrentLaunches = await db.inventoryBalance.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id] } }, orderBy: { produtoId: 'asc' } });
     assert.deepEqual(balancesAfterConcurrentLaunches.map((row, index) => [row.produtoId, row.quantidade.toString(), balancesBeforeConcurrentLaunches[index]?.quantidade.sub(2).toString()]), balancesAfterConcurrentLaunches.map((row) => [row.produtoId, row.quantidade.toString(), row.quantidade.toString()]), 'each concurrent source line reduces its product balance by exactly two units total');
 
-    // Synthetic split launches leave commands open by design. End only this
-    // disposable session directly so the following cash-API fixture can open
-    // its own session; real authenticated close is covered in the isolated
-    // pre-column API process.
+    // Synthetic split launches leave commands open by design. End only those
+    // disposable records directly so the following cash-API fixture can open
+    // and close its own session; authenticated close is also covered in the
+    // isolated pre-column API process.
+    await db.comanda.updateMany({ where: { pontoVendaId: secondPoint.id, status: 'ABERTA' }, data: {
+      status: 'FECHADA', fechadaEm: new Date(),
+    } });
     await db.sessaoCaixaOperacao.update({ where: { id: kitchenSessionId }, data: {
       status: 'FECHADO', fechadoPorId: secondOwner.id, fechadoEm: new Date(),
     } });
