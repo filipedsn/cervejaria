@@ -352,8 +352,8 @@ assert.equal((await prisma.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: 
 // finance and operational rooms, while operational kitchen messages are redacted.
 const revokeSocketRead = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: [] } });
 assert.equal(revokeSocketRead.statusCode, 200, revokeSocketRead.body);
-const localAddress = await app.listen({ host: '127.0.0.1', port: 0 });
 setupSocketIO(app, app.server);
+const localAddress = await app.listen({ host: '127.0.0.1', port: 0 });
 const socket = connectSocket(localAddress, { extraHeaders: { cookie: staffCookie }, transports: ['websocket'], reconnection: false });
 const socketEvent = (name, predicate = () => true, timeoutMs = 3000) => new Promise((resolve, reject) => {
   const timer = setTimeout(() => { socket.off(name, listener); reject(new Error(`Timed out waiting for Socket.IO ${name}`)); }, timeoutMs);
