@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import type { PaymentMethod, Prisma, SessaoCaixaOperacao } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
@@ -12,6 +11,8 @@ import { hasUnmappedCanonicalTaps, inicializarMontagemSessaoCaixa, inicializarMo
 import { canonicalPdvQaActivationEnabled } from '../canonical-pdv-operational-config.js';
 import { validateCashOccurrenceSelection } from './contexto-ocorrencia.js';
 import { paymentFilterForOperationalSession } from './payment-session-filter.js';
+import { lockCaixaEmTx } from './caixa-lock.js';
+export { lockCaixaEmTx } from './caixa-lock.js';
 
 export class CaixaInvalidoError extends Error {
   statusCode = 400;
@@ -63,22 +64,6 @@ export async function assertCashRegisterUnitEnabled(
 }
 
 /** Serializa as mutações de um ponto no mesmo dia operacional. */
-function chaveLockCaixa(cervejariaId: string, pontoVendaId: string, dia: Date): bigint {
-  const digest = createHash('sha256')
-    .update(`caixa-operacao:${cervejariaId}:${pontoVendaId}:${dia.toISOString().slice(0, 10)}`)
-    .digest();
-  return BigInt.asIntN(64, digest.readBigUInt64BE(0));
-}
-
-export async function lockCaixaEmTx(
-  tx: Pick<Prisma.TransactionClient, '$executeRaw'>,
-  cervejariaId: string,
-  pontoVendaId: string,
-  dia: Date,
-) {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${chaveLockCaixa(cervejariaId, pontoVendaId, dia)})`;
-}
-
 function somaCentavos(valores: number[]): number {
   return valores.reduce((soma, valor) => soma + valor, 0);
 }

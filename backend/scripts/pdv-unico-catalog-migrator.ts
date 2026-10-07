@@ -26,7 +26,7 @@ const delegates: Record<string, string> = {
   COMANDA: 'comanda', ITEM_COMANDA: 'itemComanda', ITEM_COMANDA_OPCIONAL: 'itemComandaOpcional',
   PEDIDO_COZINHA: 'pedidoOperacao', PEDIDO_COZINHA_STATUS: 'pedidoOperacaoStatusHistorico',
   PEDIDO_CLIENTE: 'pedidoCliente', PEDIDO_CLIENTE_ITEM: 'pedidoClienteItem',
-  ESTOQUE_SALDO: 'inventoryBalance', MOVIMENTO_ESTOQUE: 'inventoryMovement',
+  ESTOQUE_SALDO: 'inventoryBalance', MOVIMENTO_ESTOQUE: 'inventoryMovement', TAP: 'tap', TAP_MONTAGEM: 'tapMontagem',
 };
 
 async function lock(tx: Db, scope: string, companyId: string, pointId: string) {
@@ -188,7 +188,7 @@ async function confirmDependency(tx: Db, companyId: string, pointId: string, sou
   if (!canonical || canonical.cervejariaId !== companyId) throw new PdvCatalogBlocker('CANONICAL_PDV_MISSING', sourceType, sourceId, 'PDV canônico ausente ou de outro tenant.');
 }
 
-async function verifyMap(tx: Db, item: any, companyId: string, pointId: string, version = PDV_CATALOG_TRANSFORM_VERSION) {
+export async function verifyMap(tx: Db, item: any, companyId: string, pointId: string, version = PDV_CATALOG_TRANSFORM_VERSION) {
   const cache = transactionProofCache(tx).maps;
   const cacheKey = key(item.type, item.id);
   const expectedHash = canonicalPdvPayloadHash({ companyId, pointId, version, destinationType: item.destinationType, destinationId: item.destinationId, sourcePayload: item.sourcePayload });
@@ -207,7 +207,7 @@ async function verifyMap(tx: Db, item: any, companyId: string, pointId: string, 
   return map;
 }
 
-async function validateCheckpoint(tx: Db, run: any, scope: string, version: number, companyId: string, pointId: string, sourceHash: string, items: any[], complete = false, confirmExternal?: (tx: Db, sourceType: string, sourceId: string) => Promise<boolean>) {
+export async function validateCheckpoint(tx: Db, run: any, scope: string, version: number, companyId: string, pointId: string, sourceHash: string, items: any[], complete = false, confirmExternal?: (tx: Db, sourceType: string, sourceId: string) => Promise<boolean>) {
   const checkpoint = run.checkpoint as any;
   if (run.transformVersion !== version || run.sourceSnapshotHash !== sourceHash || checkpoint?.scope !== scope || checkpoint?.companyId !== companyId || checkpoint?.pointId !== pointId || checkpoint?.sourceSnapshotHash !== sourceHash || checkpoint?.transformVersion !== version || checkpoint?.totalRecords !== items.length) throw new PdvCatalogBlocker('RUN_SCOPE_OR_SNAPSHOT_MISMATCH', null, run.id, 'Run diverge do escopo, PDV, versão ou fotografia atual.');
   const expectedKeys = items.map((item) => key(item.type, item.id));

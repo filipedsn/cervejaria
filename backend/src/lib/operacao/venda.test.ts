@@ -1,6 +1,24 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { calcularFinanceiroComanda, itemVaiParaCozinha, resolverPagamentos, resumoComanda, subtotalComandaEmCentavos, VendaInvalidaError } from './venda.js';
+import { calcularFinanceiroComanda, itemVaiParaCozinha, resolverPagamentos, resumoComanda, subtotalComandaEmCentavos, validarChopeDoTurno, VendaInvalidaError } from './venda.js';
+
+describe('validarChopeDoTurno legacy schema compatibility', () => {
+  it('uses the Trailer contract while activation is off and never queries Tap.pontoVendaId', async () => {
+    const previous = process.env.PDV_CANONICAL_CONFIG_QA;
+    delete process.env.PDV_CANONICAL_CONFIG_QA;
+    const queries: any[] = [];
+    const tx: any = { tapMontagem: { findFirst: async (args: any) => { queries.push(args); return { id: 'mount' }; } } };
+    try {
+      await validarChopeDoTurno(tx, 'session', 'legacy-trailer', 'point-present-on-session', 'company', [
+        { id: 'beer', tipo: 'BEBIDA', formato: 'CHOPE', categoria: 'Chope', precos: [{ volumeMl: 500 }] },
+      ], [{ produtoId: 'beer', quantidade: 1, tapId: 'legacy-tap', volumeMl: 500 }], true);
+      assert.deepEqual(queries[0].where.tap, { trailerId: 'legacy-trailer', ativo: true }, 'older generated Prisma clients do not receive the newer pointVendaId field');
+    } finally {
+      if (previous === undefined) delete process.env.PDV_CANONICAL_CONFIG_QA;
+      else process.env.PDV_CANONICAL_CONFIG_QA = previous;
+    }
+  });
+});
 
 describe('itemVaiParaCozinha', () => {
   it('não cria fila latente enquanto a cozinha está desligada', () => {

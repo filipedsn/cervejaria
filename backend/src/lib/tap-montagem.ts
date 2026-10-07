@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { isBebidaChopeOperacao, isChopeConfiguravelNaTapOperacao } from './produto-utils.js';
 import { ensureDefaultTaps } from './trailer-defaults.js';
+import { lockCaixaEmTx } from './operacao/caixa-lock.js';
 
 const produtoInclude = {
   include: { precos: { orderBy: { volumeMl: 'asc' as const } } },
@@ -75,15 +76,21 @@ export async function hasUnmappedCanonicalTaps(cervejariaId: string) {
 
 /** Canonical Por Caixa mounts are scoped to the session and its PDV, without a Trailer lookup. */
 export async function inicializarMontagemPdv(sessaoCaixaId: string, pontoVendaId: string, cervejariaId: string) {
-  const [taps, montagensAtivas] = await Promise.all([
-    loadTapsDoPontoVenda(pontoVendaId, cervejariaId),
-    prisma.tapMontagem.findMany({ where: { sessaoCaixaId, encerradoEm: null }, select: { tapId: true } }),
-  ]);
-  const montados = new Set(montagensAtivas.map((m) => m.tapId));
-  const toCreate = taps.filter((t) => t.produtoId && !montados.has(t.id));
-  if (!toCreate.length) return { criados: 0 };
-  await prisma.tapMontagem.createMany({ data: toCreate.map((t) => ({ tapId: t.id, produtoId: t.produtoId!, sessaoCaixaId })) });
-  return { criados: toCreate.length };
+  return prisma.$transaction(async (tx) => {
+    const lockScope = await tx.sessaoCaixaOperacao.findUnique({ where: { id: sessaoCaixaId }, select: { cervejariaId: true, pontoVendaId: true, diaOperacional: true } });
+    if (!lockScope?.pontoVendaId) return { criados: 0 };
+    await lockCaixaEmTx(tx, lockScope.cervejariaId, lockScope.pontoVendaId, lockScope.diaOperacional);
+    const sessao = await tx.sessaoCaixaOperacao.findFirst({ where: { id: sessaoCaixaId, cervejariaId, pontoVendaId, status: 'ABERTO' }, select: { id: true } });
+    if (!sessao) return { criados: 0 };
+    const taps = await tx.tap.findMany({ where: { pontoVendaId, cervejariaId, ativo: true }, select: { id: true, produtoId: true } });
+    // Historical mounts record operator intent, including an explicitly removed mount.
+    const history = await tx.tapMontagem.findMany({ where: { sessaoCaixaId }, select: { tapId: true } });
+    const mounted = new Set(history.map((mount) => mount.tapId));
+    const toCreate = taps.filter((tap) => tap.produtoId && !mounted.has(tap.id));
+    if (!toCreate.length) return { criados: 0 };
+    await tx.tapMontagem.createMany({ data: toCreate.map((tap) => ({ tapId: tap.id, produtoId: tap.produtoId!, sessaoCaixaId })), skipDuplicates: true });
+    return { criados: toCreate.length };
+  }, { maxWait: 15_000, timeout: 20_000 });
 }
 
 export async function listTapsComChopeAtualPdv(sessaoCaixaId: string, pontoVendaId: string, cervejariaId: string) {
@@ -97,33 +104,40 @@ export async function listTapsComChopeAtualPdv(sessaoCaixaId: string, pontoVenda
 
 export async function posicionarChopeNoPdv(params: { sessaoCaixaId: string; pontoVendaId: string; tapId: string; produtoId: string; cervejariaId: string }) {
   const { sessaoCaixaId, pontoVendaId, tapId, produtoId, cervejariaId } = params;
-  const sessao = await prisma.sessaoCaixaOperacao.findFirst({ where: { id: sessaoCaixaId, cervejariaId, pontoVendaId, status: 'ABERTO' }, select: { id: true } });
-  if (!sessao) return { error: 'Sessão de caixa inválida' as const };
-  const tap = await prisma.tap.findFirst({ where: { id: tapId, pontoVendaId, cervejariaId, ativo: true }, include: { produto: { select: { nome: true } } } });
-  if (!tap) return { error: 'Tap não encontrado neste PDV' as const };
-  const produto = await prisma.produto.findFirst({ where: { id: produtoId, cervejariaId, pontoVendaId, ativo: true }, include: { precos: { select: { volumeMl: true } } } });
-  if (!produto || !isChopeConfiguravelNaTapOperacao(produto)) return { error: 'Chope inválido para este tenant' as const };
-  const anterior = await prisma.tapMontagem.findFirst({ where: { sessaoCaixaId, tapId, encerradoEm: null }, include: { produto: { select: { nome: true } } } });
-  await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`tap:${sessaoCaixaId}:${tapId}`}))`;
+  return prisma.$transaction(async (tx) => {
+    const lockScope = await tx.sessaoCaixaOperacao.findUnique({ where: { id: sessaoCaixaId }, select: { cervejariaId: true, pontoVendaId: true, diaOperacional: true } });
+    if (!lockScope?.pontoVendaId) return { error: 'Sessao de caixa invalida' as const };
+    await lockCaixaEmTx(tx, lockScope.cervejariaId, lockScope.pontoVendaId, lockScope.diaOperacional);
+    const sessao = await tx.sessaoCaixaOperacao.findFirst({ where: { id: sessaoCaixaId, cervejariaId, pontoVendaId, status: 'ABERTO' }, select: { id: true } });
+    if (!sessao) return { error: 'Sessao de caixa invalida' as const };
+    const tap = await tx.tap.findFirst({ where: { id: tapId, pontoVendaId, cervejariaId, ativo: true }, include: { produto: { select: { nome: true } } } });
+    if (!tap) return { error: 'Tap nao encontrado neste PDV' as const };
+    const produto = await tx.produto.findFirst({ where: { id: produtoId, cervejariaId, pontoVendaId, ativo: true }, include: { precos: { select: { volumeMl: true } } } });
+    if (!produto || !isChopeConfiguravelNaTapOperacao(produto)) return { error: 'Chope invalido para este tenant' as const };
+    const anterior = await tx.tapMontagem.findFirst({ where: { sessaoCaixaId, tapId, encerradoEm: null }, include: { produto: { select: { nome: true } } } });
     await tx.tapMontagem.updateMany({ where: { sessaoCaixaId, tapId, encerradoEm: null }, data: { encerradoEm: new Date() } });
     await tx.tapMontagem.create({ data: { tapId, produtoId, sessaoCaixaId } });
-  });
-  return { ok: true as const, tapNumero: tap.numero, chopeAnterior: anterior?.produto.nome ?? tap.produto?.nome ?? null, chopeNovo: produto.nome };
+    return { ok: true as const, tapNumero: tap.numero, chopeAnterior: anterior?.produto.nome ?? tap.produto?.nome ?? null, chopeNovo: produto.nome };
+  }, { maxWait: 15_000, timeout: 20_000 });
 }
 
 export async function removerChopeDoPdv(params: { sessaoCaixaId: string; pontoVendaId: string; tapId: string; cervejariaId: string }) {
   const { sessaoCaixaId, pontoVendaId, tapId, cervejariaId } = params;
-  const sessao = await prisma.sessaoCaixaOperacao.findFirst({ where: { id: sessaoCaixaId, cervejariaId, pontoVendaId, status: 'ABERTO' }, select: { id: true } });
-  if (!sessao) return { error: 'Sessão de caixa inválida' as const };
-  const tap = await prisma.tap.findFirst({ where: { id: tapId, pontoVendaId, cervejariaId }, select: { numero: true } });
-  if (!tap) return { error: 'Tap não encontrado neste PDV' as const };
-  const updated = await prisma.tapMontagem.updateMany({ where: { sessaoCaixaId, tapId, encerradoEm: null }, data: { encerradoEm: new Date() } });
-  if (!updated.count) return { error: 'Este tap não possui chope montado no turno' as const };
-  return { ok: true as const, tapNumero: tap.numero };
+  return prisma.$transaction(async (tx) => {
+    const lockScope = await tx.sessaoCaixaOperacao.findUnique({ where: { id: sessaoCaixaId }, select: { cervejariaId: true, pontoVendaId: true, diaOperacional: true } });
+    if (!lockScope?.pontoVendaId) return { error: 'Sessao de caixa invalida' as const };
+    await lockCaixaEmTx(tx, lockScope.cervejariaId, lockScope.pontoVendaId, lockScope.diaOperacional);
+    const sessao = await tx.sessaoCaixaOperacao.findFirst({ where: { id: sessaoCaixaId, cervejariaId, pontoVendaId, status: 'ABERTO' }, select: { id: true } });
+    if (!sessao) return { error: 'Sessao de caixa invalida' as const };
+    const tap = await tx.tap.findFirst({ where: { id: tapId, pontoVendaId, cervejariaId }, select: { numero: true } });
+    if (!tap) return { error: 'Tap nao encontrado neste PDV' as const };
+    const updated = await tx.tapMontagem.updateMany({ where: { sessaoCaixaId, tapId, encerradoEm: null }, data: { encerradoEm: new Date() } });
+    if (!updated.count) return { error: 'Este tap n?o possui chope montado no turno' as const };
+    return { ok: true as const, tapNumero: tap.numero };
+  }, { maxWait: 15_000, timeout: 20_000 });
 }
 
-/** Cria montagem inicial a partir do chope cadastrado em cada tap (somente taps sem montagem ativa). */
+/** Cria montagem inicial para uma ocorrência/evento usando o Trailer histórico. */
 export async function inicializarMontagemEvento(eventoId: string, trailerId: string) {
   const [taps, montagensAtivas] = await Promise.all([
     loadTapsDoTrailer(trailerId, { apenasAtivos: true }),

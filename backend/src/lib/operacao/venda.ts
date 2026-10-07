@@ -71,7 +71,7 @@ export function itemVaiParaCozinha(temCozinha: boolean, exigePreparo: boolean): 
 
 type TxClient = Prisma.TransactionClient;
 
-async function validarChopeDoTurno(
+export async function validarChopeDoTurno(
   tx: TxClient,
   sessaoCaixaId: string,
   trailerId: string | null | undefined,
@@ -100,7 +100,12 @@ async function validarChopeDoTurno(
         tapId: linha.tapId,
         produtoId: produto.id,
         encerradoEm: null,
-        tap: { ...(pontoVendaId ? { pontoVendaId, cervejariaId } : { trailerId }), ativo: true },
+        tap: {
+          ...(canonicalPdvQaActivationEnabled() && pontoVendaId
+            ? { pontoVendaId, cervejariaId }
+            : { trailerId }),
+          ativo: true,
+        },
       },
       select: { id: true },
     });

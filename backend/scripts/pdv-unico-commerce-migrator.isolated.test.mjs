@@ -412,17 +412,61 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const secondSession = JSON.parse(secondCashOpen.body);
     const secondMount = await app.inject({ method: 'GET', url: `/api/operacao/caixa/taps?pontoVendaId=${encodeURIComponent(provisionedPoint[0].id)}`, headers: { cookie: provisionedOwnerCookie } });
     assert.equal(JSON.parse(secondMount.body).taps[0].chopeAtual.id, chopeA.id, 'new session starts from the saved Tap catalog');
-    const concurrentSwaps = await Promise.all([chopeA.id, chopeB.id].map((produtoId) => app.inject({
-      method: 'PUT', url: `/api/operacao/caixa/taps/${encodeURIComponent(canonicalTap.id)}/chope`, headers: { cookie: provisionedOwnerCookie }, payload: { pontoVendaId: provisionedPoint[0].id, produtoId },
-    })));
-    assert.deepEqual(concurrentSwaps.map((response) => response.statusCode), [200, 200], 'serialized concurrent swaps both complete');
-    assert.equal(await db.tapMontagem.count({ where: { sessaoCaixaId: secondSession.id, tapId: canonicalTap.id, encerradoEm: null } }), 1, 'concurrent swaps cannot create two active incompatible mounts');
+    const removeMount = await app.inject({ method: 'DELETE', url: `/api/operacao/caixa/taps/${encodeURIComponent(canonicalTap.id)}/chope`, headers: { cookie: provisionedOwnerCookie }, payload: { pontoVendaId: provisionedPoint[0].id } });
+    assert.equal(removeMount.statusCode, 200, `authenticated operator removes the mounted beer: ${removeMount.body}`);
+    assert.equal(await db.tapMontagem.count({ where: { sessaoCaixaId: secondSession.id, tapId: canonicalTap.id, encerradoEm: null } }), 0);
+    const repeatedTapReads = await Promise.all([1, 2, 3].map(() => app.inject({ method: 'GET', url: `/api/operacao/caixa/taps?pontoVendaId=${encodeURIComponent(provisionedPoint[0].id)}`, headers: { cookie: provisionedOwnerCookie } })));
+    assert.deepEqual(repeatedTapReads.map((response) => response.statusCode), [200, 200, 200]);
+    assert.ok(repeatedTapReads.every((response) => JSON.parse(response.body).taps[0].chopeAtual === null), 'GET and concurrent initialization preserve an explicit removal');
+    assert.equal(await db.tapMontagem.count({ where: { sessaoCaixaId: secondSession.id, tapId: canonicalTap.id, encerradoEm: null } }), 0);
+    const explicitRemount = await app.inject({ method: 'PUT', url: `/api/operacao/caixa/taps/${encodeURIComponent(canonicalTap.id)}/chope`, headers: { cookie: provisionedOwnerCookie }, payload: { pontoVendaId: provisionedPoint[0].id, produtoId: chopeB.id } });
+    assert.equal(explicitRemount.statusCode, 200, `explicit remount after removal works: ${explicitRemount.body}`);
+    assert.equal(JSON.parse(explicitRemount.body).taps[0].chopeAtual.id, chopeB.id);
+    assert.equal(await db.tapMontagem.count({ where: { sessaoCaixaId: secondSession.id, tapId: canonicalTap.id } }), 2, 'removal and explicit remount preserve history');
+    const concurrentMountChanges = await Promise.all([
+      ...[chopeA.id, chopeB.id].map((produtoId) => app.inject({ method: 'PUT', url: `/api/operacao/caixa/taps/${encodeURIComponent(canonicalTap.id)}/chope`, headers: { cookie: provisionedOwnerCookie }, payload: { pontoVendaId: provisionedPoint[0].id, produtoId } })),
+      app.inject({ method: 'DELETE', url: `/api/operacao/caixa/taps/${encodeURIComponent(canonicalTap.id)}/chope`, headers: { cookie: provisionedOwnerCookie }, payload: { pontoVendaId: provisionedPoint[0].id } }),
+    ]);
+    assert.ok(concurrentMountChanges.every((response) => [200, 400].includes(response.statusCode)), `concurrent swap/removal returns controlled results without P2002/500: ${concurrentMountChanges.map((response) => `${response.statusCode} ${response.body}`).join(' | ')}`);
+    assert.ok((await db.tapMontagem.count({ where: { sessaoCaixaId: secondSession.id, tapId: canonicalTap.id, encerradoEm: null } })) <= 1, 'concurrent swaps/removal cannot create incompatible active mounts');
     assert.equal(await db.tapMontagem.count({ where: { sessaoCaixaId: provisionedSession.id, tapId: canonicalTap.id } }), 2, 'later session swaps preserve the earlier session history');
     assert.deepEqual([soldVolumeLine.tapId, soldVolumeLine.volumeMl, centsExact(soldVolumeLine.precoUnit)], [canonicalTap.id, 500, '800'], 'new session mounting does not rewrite the prior sale snapshot');
-    const secondCashClose = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: provisionedOwnerCookie }, payload: {
-      pontoVendaId: provisionedPoint[0].id, contadoDinheiro: 5, contadoPix: 0, contadoCartaoDebito: 0, contadoCartaoCredito: 0,
-    } });
-    assert.equal(secondCashClose.statusCode, 200, `later cash session closes: ${secondCashClose.body}`);
+    const closeRace = await Promise.all([
+      app.inject({ method: 'PUT', url: `/api/operacao/caixa/taps/${encodeURIComponent(canonicalTap.id)}/chope`, headers: { cookie: provisionedOwnerCookie }, payload: { pontoVendaId: provisionedPoint[0].id, produtoId: chopeA.id } }),
+      app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: provisionedOwnerCookie }, payload: { pontoVendaId: provisionedPoint[0].id, contadoDinheiro: 5, contadoPix: 0, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } }),
+    ]);
+    assert.ok([200, 400].includes(closeRace[0].statusCode), `mount/close race returns a controlled result: ${closeRace[0].statusCode} ${closeRace[0].body}`);
+    assert.equal(closeRace[1].statusCode, 200, `concurrent close succeeds: ${closeRace[1].body}`);
+    const mountsAtClose = await db.tapMontagem.findMany({ where: { sessaoCaixaId: secondSession.id, tapId: canonicalTap.id }, orderBy: { iniciadoEm: 'asc' } });
+    const { inicializarMontagemPdv } = await import('../src/lib/tap-montagem.ts');
+    await inicializarMontagemPdv(secondSession.id, provisionedPoint[0].id, provisioned.cervejaria.id);
+    assert.deepEqual(await db.tapMontagem.findMany({ where: { sessaoCaixaId: secondSession.id, tapId: canonicalTap.id }, orderBy: { iniciadoEm: 'asc' } }), mountsAtClose, 'closed sessions reject initializer writes');
+    const legacyMode = process.env.PDV_CANONICAL_CONFIG_QA;
+    delete process.env.PDV_CANONICAL_CONFIG_QA;
+    let legacyTapForSale;
+    try {
+      const legacySaleTrailer = await db.trailer.create({ data: { nome: `Legacy sale bridge ${runId}`, cervejariaId: provisioned.cervejaria.id } });
+      const legacyTapResponse = await app.inject({ method: 'POST', url: '/api/taps', headers: { cookie: provisionedOwnerCookie }, payload: { trailerId: legacySaleTrailer.id, numero: 71, nome: 'Legacy sale tap', produtoId: chopeA.id } });
+      assert.equal(legacyTapResponse.statusCode, 201, `legacy API creates a Trailer-owned Tap: ${legacyTapResponse.body}`);
+      legacyTapForSale = JSON.parse(legacyTapResponse.body);
+      assert.equal(legacyTapForSale.pontoVendaId ?? null, null);
+      const legacySaleOpen = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie: provisionedOwnerCookie }, payload: { pontoVendaId: provisionedPoint[0].id, trailerId: legacySaleTrailer.id, trocoInicial: 0, cardapioId: provisionedMenu.id } });
+      assert.equal(legacySaleOpen.statusCode, 201, `legacy session has both PDV and Trailer context: ${legacySaleOpen.body}`);
+      const legacySaleSession = JSON.parse(legacySaleOpen.body);
+      assert.deepEqual([legacySaleSession.pontoVendaId, legacySaleSession.trailerId], [provisionedPoint[0].id, legacySaleTrailer.id]);
+      const legacyMount = await db.tapMontagem.findFirst({ where: { sessaoCaixaId: legacySaleSession.id, tapId: legacyTapForSale.id, encerradoEm: null } });
+      assert.ok(legacyMount, 'legacy Trailer session initializes the matching Tap mount');
+      const legacyCommandResponse = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie: provisionedOwnerCookie }, payload: { pontoVendaId: provisionedPoint[0].id, tipo: 'APELIDO', identificador: `legacy-tap-sale-${runId}` } });
+      assert.equal(legacyCommandResponse.statusCode, 201, legacyCommandResponse.body);
+      const legacyCommandId = JSON.parse(legacyCommandResponse.body).id;
+      const legacySale = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(legacyCommandId)}/pedidos`, headers: { cookie: provisionedOwnerCookie }, payload: { itens: [{ produtoId: chopeA.id, quantidade: 1, tapId: legacyTapForSale.id, volumeMl: 500 }] } });
+      assert.equal(legacySale.statusCode, 201, `activation-off sale validates the matching Trailer instead of Tap.pontoVendaId: ${legacySale.body}`);
+      assert.equal(centsExact(JSON.parse(legacySale.body).total), '800');
+      const legacyPayment = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(legacyCommandId)}/pagamentos`, headers: { cookie: provisionedOwnerCookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 8 }] } });
+      assert.equal(legacyPayment.statusCode, 200, legacyPayment.body);
+      const legacySaleClose = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: provisionedOwnerCookie }, payload: { pontoVendaId: provisionedPoint[0].id, contadoDinheiro: 0, contadoPix: 8, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
+      assert.equal(legacySaleClose.statusCode, 200, legacySaleClose.body);
+    } finally { process.env.PDV_CANONICAL_CONFIG_QA = legacyMode; }
     const disabledTaps = await app.inject({ method: 'PATCH', url: '/api/cervejaria/configuracao-operacional', headers: { cookie: provisionedOwnerCookie }, payload: { tapsEnabled: false } });
     assert.equal(disabledTaps.statusCode, 200);
     const disabledTapRead = await app.inject({ method: 'GET', url: `/api/operacao/caixa/taps?pontoVendaId=${encodeURIComponent(provisionedPoint[0].id)}`, headers: { cookie: provisionedOwnerCookie } });
@@ -2010,8 +2054,27 @@ try {
   assert.deepEqual(tapMigrationResults.map((row) => row.status).sort(), ['COMPLETED', 'COMPLETED']);
   assert.equal(tapMigrationResults.filter((row) => row.reusedCompletedRun).length, 1, 'same-run concurrent TAP migration serializes and reuses the confirmed receipt');
   assert.deepEqual(plain({ tap: await db.tap.findUniqueOrThrow({ where: { id: tap.id } }), mounts: await db.tapMontagem.findMany({ where: { tapId: tap.id }, orderBy: { iniciadoEm: 'asc' } }) }), tapAndMountBefore, 'canonical ownership update preserves the Tap and every mount ID/product/session/date/state');
+  assert.deepEqual(tapMigrationResults[0].reconciledRecords.map((row) => [row.type, row.sourceId, row.destinationId]).sort(), [
+    ['LEGACY_TAP', tap.id, tap.id],
+    ...[eventSession.id, debtEventSession.id, cashSession.id, overrideSession.id, catalogFallbackSession.id].map((sessionId) => ['TAP_MONTAGEM', tapAndMountBefore.mounts.find((mount) => mount.sessaoCaixaId === sessionId).id, tapAndMountBefore.mounts.find((mount) => mount.sessaoCaixaId === sessionId).id]),
+  ].sort((a, b) => `${a[0]}:${a[1]}`.localeCompare(`${b[0]}:${b[1]}`)), 'migration receipts reconcile every historical Tap/mount by source and destination ID');
   assert.equal(await db.pdvMigrationMap.count({ where: { lastRunId: tapRunId } }), 6, 'one Tap plus all five mount records have per-row map receipts');
   assert.equal(await db.pdvMigrationBatch.count({ where: { runId: tapRunId, status: 'CONFIRMED' } }), 1, 'destination changes, row maps, receipts and checkpoint commit in one batch');
+  const completedTapRun = await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: tapRunId } });
+  const completedTapMap = await db.pdvMigrationMap.findUniqueOrThrow({ where: { sourceType_sourceId: { sourceType: 'LEGACY_TAP', sourceId: tap.id } } });
+  const tamperedCheckpoint = { ...completedTapRun.checkpoint, completedSourceKeys: [] };
+  await db.pdvMigrationRun.update({ where: { id: tapRunId }, data: { checkpoint: tamperedCheckpoint } });
+  await assert.rejects(runPdvTapOwnershipMigration({ db, companyId: company.id, pointId: point.id, runId: tapRunId }), (error) => error instanceof PdvTapBlocker && error.code === 'RUN_CHECKPOINT_DIVERGED', 'empty completedSourceKeys blocks replay');
+  assert.deepEqual(await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: tapRunId } }).then((row) => row.checkpoint), tamperedCheckpoint, 'checkpoint divergence is not repaired or rewritten');
+  await db.pdvMigrationRun.update({ where: { id: tapRunId }, data: { checkpoint: completedTapRun.checkpoint } });
+  await db.pdvMigrationMap.update({ where: { id: completedTapMap.id }, data: { destinationId: id('tampered-destination') } });
+  await assert.rejects(runPdvTapOwnershipMigration({ db, companyId: company.id, pointId: point.id, runId: tapRunId }), (error) => error instanceof PdvTapBlocker && error.code === 'MAP_IDENTITY_MISMATCH', 'destinationId tampering blocks replay');
+  assert.equal((await db.pdvMigrationMap.findUniqueOrThrow({ where: { id: completedTapMap.id } })).destinationId, id('tampered-destination'), 'destinationId divergence is left untouched');
+  await db.pdvMigrationMap.update({ where: { id: completedTapMap.id }, data: { destinationId: completedTapMap.destinationId } });
+  await db.pdvMigrationMap.update({ where: { id: completedTapMap.id }, data: { sourcePayload: { ...completedTapMap.sourcePayload, nome: 'tampered source payload' } } });
+  await assert.rejects(runPdvTapOwnershipMigration({ db, companyId: company.id, pointId: point.id, runId: tapRunId }), (error) => error instanceof PdvTapBlocker && error.code === 'SOURCE_PAYLOAD_CHANGED', 'sourcePayload tampering blocks replay');
+  assert.equal((await db.pdvMigrationMap.findUniqueOrThrow({ where: { id: completedTapMap.id } })).sourcePayload.nome, 'tampered source payload', 'sourcePayload divergence is left untouched');
+  await db.pdvMigrationMap.update({ where: { id: completedTapMap.id }, data: { sourcePayload: completedTapMap.sourcePayload } });
   await db.tap.update({ where: { id: tap.id }, data: { nome: 'tampered Tap name' } });
   await assert.rejects(runPdvTapOwnershipMigration({ db, companyId: company.id, pointId: point.id, runId: tapRunId }), (error) => error instanceof PdvTapBlocker && error.code === 'TAP_RUN_SCOPE_OR_SNAPSHOT_DIVERGED', 'source tampering blocks a completed run without overwrite');
   await db.tap.update({ where: { id: tap.id }, data: { nome: tapAndMountBefore.tap.nome } });
@@ -2033,6 +2096,13 @@ try {
   await assert.rejects(runPdvTapOwnershipMigration({ db, companyId: rollbackTenant.id, pointId: rollbackPoint.id, runId: rollbackTapRunId, afterDestinationWrite: async () => { throw new Error('QA_TAP_ATOMIC_ROLLBACK'); } }), /QA_TAP_ATOMIC_ROLLBACK/);
   assert.equal((await db.tap.findUniqueOrThrow({ where: { id: rollbackTap.id } })).pontoVendaId, null, 'injected pre-commit failure rolls back Tap ownership');
   assert.equal(await db.pdvMigrationRun.count({ where: { id: rollbackTapRunId } }), 0, 'injected pre-commit failure rolls back run, batch, maps and checkpoint');
+  const finalizeTamperRunId = id('tap-finalize-tamper-run');
+  await assert.rejects(runPdvTapOwnershipMigration({ db, companyId: rollbackTenant.id, pointId: rollbackPoint.id, runId: finalizeTamperRunId, afterDestinationWrite: async (tx) => {
+    const map = await tx.pdvMigrationMap.findUnique({ where: { sourceType_sourceId: { sourceType: 'LEGACY_TAP', sourceId: rollbackTap.id } } });
+    if (map) await tx.pdvMigrationMap.update({ where: { id: map.id }, data: { sourcePayload: { ...map.sourcePayload, nome: 'hook mutation' } } });
+  } }), (error) => error instanceof PdvTapBlocker && error.code === 'SOURCE_PAYLOAD_CHANGED', 'finalization revalidates evidence after writes and test hooks');
+  assert.equal((await db.tap.findUniqueOrThrow({ where: { id: rollbackTap.id } })).pontoVendaId, null, 'hook-time evidence tampering rolls back the ownership write');
+  assert.equal(await db.pdvMigrationRun.count({ where: { id: finalizeTamperRunId } }), 0, 'hook-time evidence tampering rolls back all run evidence');
   await db.tap.delete({ where: { id: rollbackTap.id } });
   const command = async (name, event, status = 'ABERTA') => db.comanda.create({ data: { id: id(name), origem: event ? 'EVENTO' : 'CAIXA', eventoId: event?.id ?? null, pontoVendaId: event ? null : point.id, clienteId: client.id, status, total: '18.25', desconto: '0.50', numero: name.length } });
   const eventCommand1 = await command('event-command-1', events[0]);
