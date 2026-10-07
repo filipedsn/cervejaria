@@ -156,6 +156,8 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
   }
 
   // app.ts and the Prisma singleton are imported only after the QA destination guard above.
+  const previousQaMode = process.env.QA_MODE;
+  process.env.QA_MODE = '1';
   const [{ buildApp }, { prisma: runtimePrisma }] = await Promise.all([
     import('../src/app.ts'),
     import('../src/lib/prisma.ts'),
@@ -1480,6 +1482,8 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       } finally {
         if (previousCanonicalFlag === undefined) delete process.env.PDV_CANONICAL_CONFIG_QA;
         else process.env.PDV_CANONICAL_CONFIG_QA = previousCanonicalFlag;
+        if (previousQaMode === undefined) delete process.env.QA_MODE;
+        else process.env.QA_MODE = previousQaMode;
       }
     }
   }
