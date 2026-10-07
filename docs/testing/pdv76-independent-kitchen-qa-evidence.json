@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "certification": "synthetic-only",
+  "syntheticRegression": {
+    "result": "PASS",
+    "suite": "pdv-unico-current-disposable",
+    "exitCode": 0
+  },
+  "representativeRehearsal": {
+    "result": "NOT_RUN",
+    "reason": "No representative photo supplied."
+  },
+  "selectedCommit": "b2204d396744f3b873cf4d0c8ff9ce2c578ca7c4",
+  "selectedTree": "3548cd075ab76005fcf16627022f9c8ef80408b7",
+  "certificationRunnerPath": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+  "certificationRunnerSha256": "404f63c9505f018ba72019003617134428f9f6a09223803ce8c7d1df308c6fbd",
+  "sourceMaterialization": "git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot",
+  "materializedTrackedBlobCount": 1132,
+  "packageLockSha256": "9330ae831d6ea407a47dbf50a6158c60fd9ffb54fe99ed87e17fd6c6e5ec60d0",
+  "nodeVersion": "v24.18.0",
+  "generatedCandidateManifest": {
+    "baselineCommit": "b2204d396744f3b873cf4d0c8ff9ce2c578ca7c4",
+    "manifestSha256": "85dc4c7880c826f1036434ab101bffcd764b4a601be35bb50610c774f7236dde",
+    "codeCandidateCount": 94
+  },
+  "moduleOriginAudit": {
+    "result": "PASS",
+    "snapshotProjectModuleCount": 181,
+    "snapshotProjectModulePathListSha256": "d904dc534f8ee09251bea2e696f4dbd089775b0f0faf1527b8c6b657d8f0afdc",
+    "nonSnapshotWorkspaceModuleCount": 0,
+    "externalDependencyModuleCount": 100,
+    "externalPrismaRuntimeVersion": "6.19.3",
+    "expectations": {
+      "syntheticModules": {
+        "result": "PASS",
+        "expectedCount": 5,
+        "observedCount": 5
+      },
+      "representativeModules": {
+        "result": "NOT_RUN",
+        "expectedCount": 0,
+        "observedCount": 0
+      }
+    }
+  },
+  "localState": {
+    "beforeSha256": "f04a13211f0cc8242c26fab1e53ba80dc753811dfe8a7612ef5d314b23d3db9b",
+    "afterSha256": "f04a13211f0cc8242c26fab1e53ba80dc753811dfe8a7612ef5d314b23d3db9b",
+    "identical": true,
+    "stagedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "unstagedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "untrackedFileCount": 9
+  },
+  "prodAccessUsed": "NO",
+  "devSharedAccess": "NO",
+  "uiAutomation": {
+    "result": "PASS",
+    "tool": "Playwright Chromium",
+    "tests": 1,
+    "passed": 1,
+    "failed": 0,
+    "scenario": "Local operation catalog: independent kitchen-order checkbox appears after preparation is enabled, starts unchecked, can be checked, and the save request carries prepararEmPedidoSeparado=true.",
+    "environment": "Vite on 127.0.0.1:5198; every API request was mocked and Socket.IO was closed; no backend or shared DEV connection."
+  },
+  "builds": {
+    "backend": {
+      "result": "PASS",
+      "command": "npm run build"
+    },
+    "frontend": {
+      "result": "PASS",
+      "command": "npm run build"
+    }
+  },
+  "focusedUnit": {
+    "result": "PASS",
+    "suite": "backend/src/lib/operacao/venda.test.ts",
+    "passed": 22,
+    "failed": 0,
+    "skipped": 0
+  }
+}
