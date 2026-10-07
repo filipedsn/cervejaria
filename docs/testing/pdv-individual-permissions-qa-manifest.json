@@ -1,8 +1,8 @@
 {
   "version": 1,
   "purpose": "Exact Git certification inputs for the individual operational permissions first slice",
-  "baselineCommit": "14bda482767592bc284b9cfbd51472166fb18740",
-  "baselineTree": "b66d09be093aa623e29f2ae818d96cb0d41e1878",
+  "baselineCommit": "b06e09b2d0972b988863507dbe55dc42bbb1f8a6",
+  "baselineTree": "8d2d523b7bf8af31e17436558a0f380f39d75ec1",
   "sourceMaterialization": "Git snapshot selected by commit; workspace files are not source inputs",
   "databaseInputs": {
     "schemaPath": "backend/prisma/schema.prisma",
@@ -11,9 +11,10 @@
     "migrationGitBlob": "2705907d00c9e985e21642e4398be0d532bd2ef1"
   },
   "suite": {
-    "command": "qa:pdv-current-git-snapshot -- --commit=14bda482767592bc284b9cfbd51472166fb18740",
+    "command": "qa:pdv-current-git-snapshot -- --commit=b06e09b2d0972b988863507dbe55dc42bbb1f8a6",
     "includedDisposableSuite": "qa:pdv-individual-permissions",
     "result": "PASS",
+    "focusedRealtimeCases": "Real local Socket.IO disabled-flag legacy room delivery/leave/ADMIN/isolation (including cross-tenant isolation)/enabled-flag grant-revoke; persisted authenticated kitchen launch, actual notifier status payloads, financial/full vs operational/redacted contracts, optionals, and rollback silence.",
     "representativeRehearsal": "NOT_RUN"
   },
   "migrationRules": {
@@ -21,8 +22,8 @@
     "silentlyIgnoreIncompleteMigrationDirectories": false
   },
   "codeCandidateManifest": {
-    "sha256": "9aff1f0386ce685ad7545cf8701c80f39ab78e4fa32eeb72bb452f445efb18c1",
+    "sha256": "cba419363e2996cf7bf768ff42f589105a5b36608b1876c03de2e2c504713299",
     "candidateCount": 97
   },
-  "evidencePath": "docs/testing/pdv-individual-permissions-exact-qa-evidence.json"
+  "evidencePath": "docs/testing/pdv-individual-realtime-regressions-qa-evidence.json"
 }

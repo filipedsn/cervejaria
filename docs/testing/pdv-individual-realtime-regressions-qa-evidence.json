@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "certification": "synthetic-only",
+  "syntheticRegression": {
+    "result": "PASS",
+    "suite": "pdv-unico-current-disposable",
+    "exitCode": 0
+  },
+  "representativeRehearsal": {
+    "result": "NOT_RUN",
+    "reason": "No representative photo supplied."
+  },
+  "individualPermissionsSuite": {
+    "result": "PASS",
+    "suite": "qa:pdv-individual-permissions",
+    "includedBy": "qa:pdv-current-disposable",
+    "focusedRealtimeCases": {
+      "disabledFlagLegacyRooms": "PASS: company and event memberships observed on the server before emission; real emitters delivered once; leave:evento stopped the event room; cross-company isolation held with activation disabled; ADMIN retained legacy company room and no-op event join.",
+      "enabledFlagGrantAndRevocation": "PASS: connected staff socket moved between finance and operations rooms on grant/revocation without replacing its session; post-revocation financial event was absent and kitchen status remained delivered.",
+      "persistedKitchenOrderProjection": "PASS: authenticated POST /api/operacao/comandas persisted item and optional; real notificarPedidoNovo/resumoPedidoCozinha delivered IDs, names, quantities, notes, paraViagem and optional names/quantities to restricted socket without prices; owner socket received the full financial contract.",
+      "kitchenStatusProjection": "PASS: authenticated status changes used the same real notifier/projection; restricted and authorized payload contracts were preserved.",
+      "rollbackDoesNotNotify": "PASS: insufficient stock rolled back authenticated order launch; persisted order count and inventory were unchanged and no pedido-novo event was emitted."
+    },
+    "otherCoverage": [
+      "event cash read sanitization, isolated open/movement/close, debt receive, owner, tenant isolation, and no-write denial photos",
+      "legacy and operational item DELETE, locked quantity reduction, full-command cancellation separation, inventory and ledger photos",
+      "legacy employee migration with discount boolean true and false; no automatic whole-command cancellation grant",
+      "cash occurrence and operational day retained without values, totals, change, or movements",
+      "authorized sale, payment, debt, close, refund/cancellation, stock movement, plus denied requests with persisted-state comparison"
+    ]
+  },
+  "selectedCommit": "b06e09b2d0972b988863507dbe55dc42bbb1f8a6",
+  "selectedTree": "8d2d523b7bf8af31e17436558a0f380f39d75ec1",
+  "certificationRunnerPath": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+  "certificationRunnerSha256": "404f63c9505f018ba72019003617134428f9f6a09223803ce8c7d1df308c6fbd",
+  "sourceMaterialization": "git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot",
+  "materializedTrackedBlobCount": 1145,
+  "packageLockSha256": "9330ae831d6ea407a47dbf50a6158c60fd9ffb54fe99ed87e17fd6c6e5ec60d0",
+  "nodeVersion": "v24.18.0",
+  "generatedCandidateManifest": {
+    "baselineCommit": "b06e09b2d0972b988863507dbe55dc42bbb1f8a6",
+    "manifestSha256": "cba419363e2996cf7bf768ff42f589105a5b36608b1876c03de2e2c504713299",
+    "codeCandidateCount": 97
+  },
+  "moduleOriginAudit": {
+    "result": "PASS",
+    "snapshotProjectModuleCount": 185,
+    "snapshotProjectModulePathListSha256": "3b48bba83c88ac7c0222fd0ad7525133d5ea03427d2e370abd992251e175f553",
+    "nonSnapshotWorkspaceModuleCount": 0,
+    "externalDependencyModuleCount": 100,
+    "externalPrismaRuntimeVersion": "6.19.3",
+    "expectations": {
+      "syntheticModules": {
+        "result": "PASS",
+        "expectedCount": 5,
+        "observedCount": 5
+      },
+      "representativeModules": {
+        "result": "NOT_RUN",
+        "expectedCount": 0,
+        "observedCount": 0
+      }
+    }
+  },
+  "localState": {
+    "beforeSha256": "473f3a8258462969dd95c5e60254b7511e096401a2ef9690e82ef83dbd941595",
+    "afterSha256": "473f3a8258462969dd95c5e60254b7511e096401a2ef9690e82ef83dbd941595",
+    "identical": true,
+    "stagedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "unstagedDiffSha256": "83eaf7313e6009894938d58519d37ac9e05a8679b1f071cf9ab5d7256bede620",
+    "untrackedFileCount": 10
+  },
+  "prodAccessUsed": "NO",
+  "devSharedAccess": "NO"
+}
