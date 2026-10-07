@@ -517,6 +517,14 @@ export interface ResumoCaixa {
   id: string;
   pontoVendaId: string;
   trailerId?: string | null;
+  ocorrenciaId?: string | null;
+  ocorrencia?: {
+    id: string;
+    nome: string;
+    data: string;
+    status: 'PROGRAMADA' | 'ABERTA' | 'FECHADA' | 'CANCELADA';
+    agenda: { nome: string; frequencia: 'SEMANAL'; diaSemana: number } | null;
+  } | null;
   diaOperacional: string;
   status: StatusCaixa;
   trocoInicial: number;
@@ -633,6 +641,7 @@ export function pluralComandasOperacao(qtd: number): string {
 export interface CaixaResposta {
   sessao: ResumoCaixa | null;
   comandasAbertas?: number;
+  diaOperacional?: string;
 }
 
 export type TipoSaidaEstoque = 'PERDA' | 'CORTESIA' | 'CONSUMO_INTERNO';

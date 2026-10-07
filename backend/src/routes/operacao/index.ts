@@ -11,6 +11,7 @@ import { cozinhaOperacaoRoutes } from './cozinha.js';
 import { caixaOperacaoRoutes } from './caixa.js';
 import { cardapiosOperacaoRoutes } from './cardapios.js';
 import { estoqueOperacaoRoutes } from './estoque.js';
+import { agendaOperacionalRoutes } from './agenda-operacional.js';
 import { dashboardOperacaoRoutes } from './dashboard.js';
 import { contasPendentesOperacaoRoutes } from './contas-pendentes.js';
 import {
@@ -160,6 +161,7 @@ export async function operacaoRoutes(app: FastifyInstance) {
     await moduloScope.register(vendasOperacaoRoutes, { prefix: '/vendas' });
     await moduloScope.register(cozinhaOperacaoRoutes, { prefix: '/cozinha' });
     await moduloScope.register(caixaOperacaoRoutes, { prefix: '/caixa' });
+    await moduloScope.register(agendaOperacionalRoutes, { prefix: '/agenda' });
     await moduloScope.register(estoqueOperacaoRoutes, { prefix: '/estoque' });
     await moduloScope.register(dashboardOperacaoRoutes, { prefix: '/dashboard' });
   });

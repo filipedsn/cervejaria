@@ -327,6 +327,7 @@ export async function abrirCaixa(params: {
   cardapioId?: string;
   produtoIds?: string[];
   ocorrenciaId?: string;
+  confirmarDataDiferente?: boolean;
 }) {
   const escolheuCardapio = Boolean(params.cardapioId);
   const montouCardapio = Boolean(params.produtoIds?.length);
@@ -385,6 +386,8 @@ export async function abrirCaixa(params: {
       cervejariaId: params.cervejariaId,
       pontoVendaId: params.pontoVendaId,
       ocorrenciaId: params.ocorrenciaId,
+      diaOperacional: dia,
+      confirmarDataDiferente: params.confirmarDataDiferente,
     });
     const abertaAgora = await tx.sessaoCaixaOperacao.findFirst({
       where: {

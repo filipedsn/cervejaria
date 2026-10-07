@@ -26,6 +26,24 @@ import { OperacaoTurnoTapsPanel } from './OperacaoTurnoTapsPanel';
 import type { Trailer } from '../../types';
 
 type Dialogo = 'nenhum' | 'movimento' | 'correcao' | 'fechar' | 'cardapio';
+type OcorrenciaAgenda = {
+  id: string; nome: string; data: string; status: 'PROGRAMADA' | 'ABERTA' | 'FECHADA' | 'CANCELADA';
+  agenda: { nome: string; frequencia: 'SEMANAL'; diaSemana: number } | null;
+};
+
+function dataComDeslocamento(data: string, dias: number) {
+  const date = new Date(`${data}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + dias);
+  return date.toISOString().slice(0, 10);
+}
+
+function dataCalendarioPt(data: string) {
+  return new Date(`${data}T00:00:00.000Z`).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+}
+
+function diaSemanaPt(dia: number) {
+  return ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'][dia] ?? '';
+}
 
 function LinhaResumo({ rotulo, valor, destaque = false }: { rotulo: string; valor: number; destaque?: boolean }) {
   return (
@@ -85,6 +103,8 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const [cardapioForm, setCardapioForm] = useState<TurnoCardapioFormState>(defaultTurnoCardapioForm);
   const [painelSuprimido, setPainelSuprimido] = useState(compacto);
   const [trailerId, setTrailerId] = useState('');
+  const [ocorrenciaId, setOcorrenciaId] = useState('');
+  const [confirmarDataDiferente, setConfirmarDataDiferente] = useState(false);
 
   const { data: trailers = [] } = useQuery({
     queryKey: ['operacao-trailers-tap'],
@@ -100,6 +120,17 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     enabled: Boolean(pontoVendaId),
     refetchInterval: pollMs,
   });
+
+  const inicioOcorrencias = data?.diaOperacional ? dataComDeslocamento(data.diaOperacional, -90) : '';
+  const fimOcorrencias = data?.diaOperacional ? dataComDeslocamento(data.diaOperacional, 180) : '';
+  const ocorrenciasQuery = useQuery({
+    queryKey: ['operacao-agenda-ocorrencias', pontoVendaId, inicioOcorrencias, fimOcorrencias],
+    queryFn: () => api.get<{ ocorrencias: OcorrenciaAgenda[] }>(`/api/operacao/agenda/ocorrencias?inicio=${inicioOcorrencias}&fim=${fimOcorrencias}`),
+    enabled: Boolean(pontoVendaId && inicioOcorrencias && fimOcorrencias),
+  });
+  const ocorrenciasElegiveis = (ocorrenciasQuery.data?.ocorrencias ?? []).filter((o) => o.status === 'PROGRAMADA' || o.status === 'ABERTA');
+  const ocorrenciaSelecionada = ocorrenciasElegiveis.find((o) => o.id === ocorrenciaId) ?? null;
+  const outraData = Boolean(ocorrenciaSelecionada && data?.diaOperacional && ocorrenciaSelecionada.data !== data.diaOperacional);
 
   const contasPendentesQuery = useQuery({
     queryKey: ['operacao-contas-pendentes'],
@@ -136,6 +167,8 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
       return api.post<ResumoCaixa>('/api/operacao/caixa/abrir', {
         pontoVendaId,
         trailerId: trailerDoTurno || undefined,
+        ocorrenciaId: ocorrenciaId || undefined,
+        confirmarDataDiferente: outraData ? confirmarDataDiferente : undefined,
         trocoInicial: parseCurrencyInput(trocoInicial),
         ...cardapioPayload,
       });
@@ -147,6 +180,8 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
       queryClient.invalidateQueries({ queryKey: ['operacao-produtos-operacionais', pontoVendaId] });
       queryClient.invalidateQueries({ queryKey: ['operacao-turno-cardapio', pontoVendaId] });
       setCardapioForm(defaultTurnoCardapioForm());
+      setOcorrenciaId('');
+      setConfirmarDataDiferente(false);
       setErro('');
     },
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível abrir o caixa'),
@@ -237,6 +272,28 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     </div>
   ) : null;
 
+  const seletorOcorrencia = ocorrenciasQuery.data ? (
+    <div className="space-y-2 rounded-xl border border-line bg-surface-lighter/40 p-3">
+      <label className="label" htmlFor="operacao-ocorrencia">Ocorrência do caixa (opcional)</label>
+      <select id="operacao-ocorrencia" className="input" value={ocorrenciaId}
+        onChange={(event) => { setOcorrenciaId(event.target.value); setConfirmarDataDiferente(false); }}>
+        <option value="">Sem ocorrência</option>
+        {ocorrenciasElegiveis.map((ocorrencia) => (
+          <option key={ocorrencia.id} value={ocorrencia.id}>
+            {ocorrencia.nome} · {dataCalendarioPt(ocorrencia.data)}{ocorrencia.agenda ? ` · recorrência semanal (${diaSemanaPt(ocorrencia.agenda.diaSemana)})` : ' · avulsa'}
+          </option>
+        ))}
+      </select>
+      {outraData && ocorrenciaSelecionada && data?.diaOperacional && (
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-amber-200">
+          <input type="checkbox" className="mt-1" checked={confirmarDataDiferente}
+            onChange={(event) => setConfirmarDataDiferente(event.target.checked)} />
+          <span>Confirmo que estou associando “{ocorrenciaSelecionada.nome}”, de {dataCalendarioPt(ocorrenciaSelecionada.data)}, a um caixa do dia {dataCalendarioPt(data.diaOperacional)}.</span>
+        </label>
+      )}
+    </div>
+  ) : null;
+
   return (
     <>
       {!sessao && compacto && !caixaLoading && (
@@ -254,10 +311,11 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           </div>
 
           <TurnoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />
+          {seletorOcorrencia}
           {seletorTrailer}
 
           <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} flex min-h-12 w-full items-center justify-center text-center`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>
-          <button type="button" className="touch-btn-primary flex min-h-14 w-full items-center justify-center gap-3 text-base font-bold sm:min-h-16 sm:text-lg" disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload} data-audit="operacao-caixa-abrir" data-onboarding-target="operacao-open-cash" onClick={() => abrir.mutate()}><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8"/></svg>{abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}</button>
+          <button type="button" className="touch-btn-primary flex min-h-14 w-full items-center justify-center gap-3 text-base font-bold sm:min-h-16 sm:text-lg" disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload || (outraData && !confirmarDataDiferente)} data-audit="operacao-caixa-abrir" data-onboarding-target="operacao-open-cash" onClick={() => abrir.mutate()}><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8"/></svg>{abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}</button>
         </div>
       )}
 
@@ -279,19 +337,27 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           </div>
 
           <TurnoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />
+          {seletorOcorrencia}
           {seletorTrailer}
 
           <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} flex w-full items-center justify-center text-center`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>
           <button
             type="button"
             className="touch-btn-primary w-full"
-            disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload}
+            disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload || (outraData && !confirmarDataDiferente)}
             data-audit="operacao-caixa-abrir"
             data-onboarding-target="operacao-open-cash"
             onClick={() => abrir.mutate()}
           >
             {abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}
           </button>
+        </div>
+      )}
+
+      {sessao && (
+        <div className="rounded-xl border border-line bg-surface-lighter/40 px-3 py-2 text-sm" data-testid="caixa-contexto-ocorrencia">
+          <span className="text-ink-faint">Ocorrência persistida: </span>
+          {sessao.ocorrencia ? <strong>{sessao.ocorrencia.nome} · {dataCalendarioPt(sessao.ocorrencia.data)}{sessao.ocorrencia.agenda ? ` · semanal (${diaSemanaPt(sessao.ocorrencia.agenda.diaSemana)})` : ' · avulsa'}</strong> : <strong>Sem ocorrência</strong>}
         </div>
       )}
 

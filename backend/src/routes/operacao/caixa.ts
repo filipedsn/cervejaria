@@ -18,6 +18,7 @@ import { getProdutoIdsFromCardapioOperacao, validateProdutosCardapioOperacao } f
 import { registrarTransacao } from '../../lib/transacao-log.js';
 import { recordDivergenciaCaixa } from '../../lib/business-metrics.js';
 import { centavos } from '../../lib/operacao/venda.js';
+import { diaOperacional } from '../../lib/operacao/venda.js';
 import {
   inicializarMontagemSessaoCaixa,
   inicializarMontagemPdv,
@@ -30,6 +31,7 @@ import {
   removerChopeDoPdv,
 } from '../../lib/tap-montagem.js';
 import { canonicalPdvQaActivationEnabled } from '../../lib/canonical-pdv-operational-config.js';
+import { cashOccurrenceContextEnabled } from '../../lib/operacao/contexto-ocorrencia.js';
 
 const pontoVendaQuery = z.object({
   pontoVendaId: z.string().min(1),
@@ -47,6 +49,7 @@ const abrirSchema = z
     cardapioId: z.string().optional(),
     produtoIds: z.array(z.string().min(1)).optional(),
     ocorrenciaId: z.string().min(1).optional(),
+    confirmarDataDiferente: z.boolean().optional(),
   })
   .refine((data) => !(data.cardapioId && data.produtoIds !== undefined), {
     message: 'Escolha um cardápio salvo ou monte na hora, não os dois',
@@ -131,11 +134,18 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
 
     const comandasAbertas = await contarComandasAbertas(cervejariaId, pontoVendaId);
     const sessao = await buscarSessaoAtual(cervejariaId, pontoVendaId);
-    if (!sessao) return { sessao: null, comandasAbertas };
+    if (!sessao) return { sessao: null, comandasAbertas, diaOperacional: diaOperacional().toISOString().slice(0, 10) };
 
+    const resumo = await montarResumoCaixa(sessao, cervejariaId);
+    if (!sessao.ocorrenciaId || !cashOccurrenceContextEnabled()) return { sessao: resumo, comandasAbertas, diaOperacional: diaOperacional().toISOString().slice(0, 10) };
+    const ocorrencia = await prisma.ocorrenciaOperacional.findFirst({
+      where: { id: sessao.ocorrenciaId, cervejariaId, pontoVendaId },
+      select: { id: true, nome: true, data: true, status: true, agenda: { select: { nome: true, frequencia: true, diaSemana: true } } },
+    });
     return {
-      sessao: await montarResumoCaixa(sessao, cervejariaId),
+      sessao: { ...resumo, ocorrencia: ocorrencia ? { ...ocorrencia, data: ocorrencia.data.toISOString().slice(0, 10) } : null },
       comandasAbertas,
+      diaOperacional: diaOperacional().toISOString().slice(0, 10),
     };
   });
 
@@ -254,6 +264,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       cardapioId: body.cardapioId,
       produtoIds: body.produtoIds,
       ocorrenciaId: body.ocorrenciaId,
+      confirmarDataDiferente: body.confirmarDataDiferente,
     });
     void registrarTransacao({
       cervejariaId,

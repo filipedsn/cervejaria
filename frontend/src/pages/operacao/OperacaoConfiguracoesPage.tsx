@@ -6,6 +6,7 @@ import { OperacaoPage } from '../OperacaoPage';
 import { PageHeader } from '../../components/PageHeader';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { PdvTapsSection } from '../../components/operacao/PdvTapsSection';
+import { AgendaOperacionalPanel } from '../../components/operacao/AgendaOperacionalPanel';
 
 const TABS = [
   { id: 'equipe', label: 'Equipe' },
@@ -47,6 +48,7 @@ export function OperacaoConfiguracoesPage() {
       {tab === 'equipe' && <FuncionariosPage embedded />}
       {tab === 'trailers' && <TrailersPage embedded />}
       {tab === 'operacao' && <OperacaoPage embedded modo="operacao" />}
+      {tab === 'operacao' && <AgendaOperacionalPanel />}
       {tab === 'operacao' && contexto.operationalSettingsSource === 'CANONICAL_PDV' && contexto.pontosVenda.length === 1 && <PdvTapsSection pontoVendaId={contexto.pontosVenda[0]!.id} />}
       {tab === 'aparencia' && <AparenciaPage embedded />}
     </div>

@@ -17,7 +17,7 @@ export function cashOccurrenceContextEnabled(): boolean {
 
 export async function validateCashOccurrenceSelection(
   tx: Pick<Prisma.TransactionClient, 'ocorrenciaOperacional'>,
-  params: { cervejariaId: string; pontoVendaId: string; ocorrenciaId?: string | null },
+  params: { cervejariaId: string; pontoVendaId: string; ocorrenciaId?: string | null; diaOperacional: Date; confirmarDataDiferente?: boolean },
 ): Promise<string | null | undefined> {
   const enabled = cashOccurrenceContextEnabled();
   if (!enabled) {
@@ -37,12 +37,26 @@ export async function validateCashOccurrenceSelection(
       cervejariaId: params.cervejariaId,
       pontoVendaId: params.pontoVendaId,
     },
-    select: { id: true },
+    select: { id: true, data: true, status: true },
   });
   if (!occurrence) {
     throw new CashOccurrenceContextError(
       'CASH_OCCURRENCE_SCOPE_MISMATCH',
       'A ocorrência selecionada não pertence ao tenant e PDV desta sessão.',
+    );
+  }
+  if (occurrence.status !== 'PROGRAMADA' && occurrence.status !== 'ABERTA') {
+    throw new CashOccurrenceContextError(
+      'CASH_OCCURRENCE_STATUS_NOT_SELECTABLE',
+      'Somente ocorrências programadas ou abertas podem ser associadas a um novo caixa.',
+    );
+  }
+  const occurrenceDate = occurrence.data.toISOString().slice(0, 10);
+  const operationalDate = params.diaOperacional.toISOString().slice(0, 10);
+  if (occurrenceDate !== operationalDate && params.confirmarDataDiferente !== true) {
+    throw new CashOccurrenceContextError(
+      'CASH_OCCURRENCE_DATE_CONFIRMATION_REQUIRED',
+      'Confirme explicitamente a abertura do caixa em uma data diferente da ocorrência.',
     );
   }
   return occurrence.id;

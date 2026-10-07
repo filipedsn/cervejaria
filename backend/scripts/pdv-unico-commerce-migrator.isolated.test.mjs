@@ -998,6 +998,42 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const occurrenceProofs = [];
     const withOwnerAt = (day, operation) => withQaDate(day, async () => operation(await login(authOwner.email, ownerPassword, 'DONO')));
     const withSecondOwnerAt = (day, operation) => withQaDate(day, async () => operation(await login(secondOwner.email, secondOwnerPassword, 'DONO')));
+    const agendaCreate = await app.inject({ method: 'POST', url: '/api/operacao/agenda/agendas', headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') }, payload: { nome: `Sábado no PDV ${runId}`, diaSemana: 6, horaInicio: '18:00' } });
+    assert.equal(agendaCreate.statusCode, 201, `authenticated weekly agenda create: ${agendaCreate.body}`);
+    const managedAgenda = JSON.parse(agendaCreate.body);
+    const generateUrl = `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}/gerar`;
+    const generatedRange = { inicio: '2026-11-01', fim: '2026-11-30' };
+    const readOnlyBefore = await counts();
+    const attendantScheduleRead = await app.inject({ method: 'GET', url: '/api/operacao/agenda/ocorrencias?inicio=2026-11-01&fim=2026-11-30', headers: { cookie: await login(authAttendant.email, attendantPassword, 'ATENDENTE') } });
+    assert.equal(attendantScheduleRead.statusCode, 200, 'users who can operate cash can read the operational schedule');
+    await assertNoApiWrites(readOnlyBefore, 'agenda GET');
+    const attendeeWrite = await app.inject({ method: 'POST', url: '/api/operacao/agenda/agendas', headers: { cookie: await login(authAttendant.email, attendantPassword, 'ATENDENTE') }, payload: { nome: 'No permission', diaSemana: 6 } });
+    assert.equal(attendeeWrite.statusCode, 403, 'agenda management remains protected by the existing owner authorization');
+    await assertNoApiWrites(readOnlyBefore, 'attendant agenda write');
+    const [generateA, generateB] = await Promise.all([
+      app.inject({ method: 'POST', url: generateUrl, headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') }, payload: generatedRange }),
+      app.inject({ method: 'POST', url: generateUrl, headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') }, payload: generatedRange }),
+    ]);
+    assert.deepEqual([generateA.statusCode, generateB.statusCode], [200, 200], 'concurrent explicit recurrence generation completes');
+    assert.equal([JSON.parse(generateA.body).criadas, JSON.parse(generateB.body).criadas].reduce((sum, count) => sum + count, 0), 4, 'concurrent generation creates each Saturday once');
+    const generatedListResponse = await app.inject({ method: 'GET', url: '/api/operacao/agenda/ocorrencias?inicio=2026-11-01&fim=2026-11-30', headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') } });
+    assert.equal(generatedListResponse.statusCode, 200);
+    const generatedList = JSON.parse(generatedListResponse.body);
+    const generatedSaturdays = generatedList.ocorrencias.filter((item) => item.agendaId === managedAgenda.id);
+    assert.deepEqual(generatedSaturdays.map((item) => item.data), ['2026-11-07', '2026-11-14', '2026-11-21', '2026-11-28'], 'two Saturdays in one recurrence period are distinct date occurrences');
+    const repeatedGeneration = await app.inject({ method: 'POST', url: generateUrl, headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') }, payload: generatedRange });
+    assert.equal(JSON.parse(repeatedGeneration.body).criadas, 0, 'repeated generation creates no duplicate agenda/date');
+    const generatedIdsBeforeEdit = generatedSaturdays.map((item) => [item.id, item.data, item.nome]);
+    const agendaEdit = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}`, headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') }, payload: { nome: 'Agenda editada depois da geração', diaSemana: 6 } });
+    assert.equal(agendaEdit.statusCode, 200, `weekly agenda edit: ${agendaEdit.body}`);
+    const afterAgendaEdit = await db.ocorrenciaOperacional.findMany({ where: { agendaId: managedAgenda.id }, orderBy: { data: 'asc' } });
+    assert.deepEqual(afterAgendaEdit.map((item) => [item.id, item.data.toISOString().slice(0, 10), item.nome]), generatedIdsBeforeEdit, 'editing recurrence preserves generated occurrence IDs, dates and historical names');
+    const avulsaCreate = await app.inject({ method: 'POST', url: '/api/operacao/agenda/ocorrencias', headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') }, payload: { nome: 'Avulsa da agenda canônica', data: '2026-11-09' } });
+    assert.equal(avulsaCreate.statusCode, 201, `authenticated one-off occurrence create: ${avulsaCreate.body}`);
+    const beforeForeignAgendaEdit = await db.agendaOperacional.count({ where: { id: managedAgenda.id, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id } });
+    const foreignAgendaEdit = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}`, headers: { cookie: await login(secondOwner.email, secondOwnerPassword, 'DONO') }, payload: { nome: 'Tenant cruzado' } });
+    assert.equal(foreignAgendaEdit.statusCode, 404, 'another tenant cannot edit the first tenant agenda');
+    assert.equal(await db.agendaOperacional.count({ where: { id: managedAgenda.id, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id } }), beforeForeignAgendaEdit, 'cross-tenant agenda edit performs no write');
     const openOccurrenceCash = async (day, occurrenceId) => withOwnerAt(day, async (cookie) => {
       const response = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: {
         pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ...(occurrenceId ? { ocorrenciaId: occurrenceId } : {}),
@@ -1007,7 +1043,9 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       assert.equal(session.ocorrenciaId ?? null, occurrenceId ?? null);
       const responseContext = await app.inject({ method: 'GET', url: `/api/operacao/caixa?pontoVendaId=${encodeURIComponent(primaryPoint.id)}`, headers: { cookie } });
       assert.equal(responseContext.statusCode, 200);
-      assert.equal(JSON.parse(responseContext.body).sessao.ocorrenciaId ?? null, occurrenceId ?? null, 'read API exposes persisted session context');
+      const context = JSON.parse(responseContext.body);
+      assert.equal(context.sessao.ocorrenciaId ?? null, occurrenceId ?? null, 'read API exposes persisted session context');
+      if (occurrenceId) assert(context.sessao.ocorrencia?.data, 'read API exposes persisted occurrence name/date context');
       return session;
     });
     const closeOccurrenceCash = async (day, pix) => withOwnerAt(day, async (cookie) => {
@@ -1023,6 +1061,25 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       assert.equal(closed.ocorrenciaId ?? null, persisted.ocorrenciaId ?? null, 'close response retains persisted occurrence');
       return closed;
     });
+
+    const noOccurrenceSession = await openOccurrenceCash('2026-11-09', undefined);
+    assert.equal(noOccurrenceSession.ocorrenciaId ?? null, null, 'cash opens without an occurrence');
+    await closeOccurrenceCash('2026-11-09', 0);
+    const crossDateUnconfirmed = await withOwnerAt('2026-11-10', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: JSON.parse(avulsaCreate.body).id } }));
+    assert.equal(crossDateUnconfirmed.statusCode, 409, 'different occurrence date is rejected without explicit confirmation');
+    const crossDateSession = await withOwnerAt('2026-11-10', async (cookie) => {
+      const opened = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: JSON.parse(avulsaCreate.body).id, confirmarDataDiferente: true } });
+      assert.equal(opened.statusCode, 201, `different occurrence date accepts explicit confirmation: ${opened.body}`);
+      return JSON.parse(opened.body);
+    });
+    assert.equal(crossDateSession.ocorrenciaId, JSON.parse(avulsaCreate.body).id);
+    await closeOccurrenceCash('2026-11-10', 0);
+    for (const [status, day] of [['FECHADA', '2026-11-11'], ['CANCELADA', '2026-11-12']]) {
+      const blockedOccurrence = await db.ocorrenciaOperacional.create({ data: { cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id, nome: `Blocked ${status}`, data: new Date('2026-11-01T00:00:00.000Z'), status } });
+      const blocked = await withOwnerAt(day, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: blockedOccurrence.id, confirmarDataDiferente: true } }));
+      assert.equal(blocked.statusCode, 409, `${status} occurrence remains ineligible even with date confirmation`);
+      assert.equal(await db.sessaoCaixaOperacao.count({ where: { cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id, diaOperacional: new Date(`${day}T00:00:00.000Z`) } }), 0, `${status} rejection performs no session write`);
+    }
 
     const stockBeforeOccurrenceSale = plain({
       balances: await db.inventoryBalance.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }),
@@ -1087,6 +1144,21 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     await closeOccurrenceCash('2026-11-03', unitPrice);
     await closeOccurrenceCash('2026-11-02', unitPrice);
 
+    const protectedHistoryBeforeAgendaEdit = plain({
+      commands: await db.comanda.findMany({ where: { id: { in: [recurringCommand1.id, recurringCommand2.id] } }, include: { itens: true, pagamentos: true }, orderBy: { id: 'asc' } }),
+      sessions: await db.sessaoCaixaOperacao.findMany({ where: { id: { in: [recurringSession1.id, recurringSession2.id] } }, orderBy: { id: 'asc' } }),
+      balances: await db.inventoryBalance.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }),
+      movements: await db.inventoryMovement.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }),
+    });
+    const historicalAgendaEdit = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${encodeURIComponent(occurrenceAgenda.id)}`, headers: { cookie: await login(authOwner.email, ownerPassword, 'DONO') }, payload: { nome: 'Recorrência renomeada após vendas' } });
+    assert.equal(historicalAgendaEdit.statusCode, 200, `agenda can be edited after occurrences are realized: ${historicalAgendaEdit.body}`);
+    assert.deepEqual(plain({
+      commands: await db.comanda.findMany({ where: { id: { in: [recurringCommand1.id, recurringCommand2.id] } }, include: { itens: true, pagamentos: true }, orderBy: { id: 'asc' } }),
+      sessions: await db.sessaoCaixaOperacao.findMany({ where: { id: { in: [recurringSession1.id, recurringSession2.id] } }, orderBy: { id: 'asc' } }),
+      balances: await db.inventoryBalance.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }),
+      movements: await db.inventoryMovement.findMany({ where: { cervejariaId: primaryCompany.id, produtoId: product.id }, orderBy: { id: 'asc' } }),
+    }), protectedHistoryBeforeAgendaEdit, 'editing agenda leaves sales, payment records, cash sessions and stock history unchanged');
+
     const portalSession = await openOccurrenceCash('2026-11-04', otherAgendaOccurrence.id);
     const portalOpen = await withQaDate('2026-11-04', () => app.inject({ method: 'POST', url: `/api/public/cervejarias/${encodeURIComponent(primaryCompany.slug)}/pontos-venda/${encodeURIComponent(primaryPoint.id)}/comandas`, payload: { nome: occurrenceClient.nome, telefone: occurrenceClient.telefone } }));
     assert.equal(portalOpen.statusCode, 201, `portal opens a command in the active occurrence: ${portalOpen.body}`);
@@ -1129,7 +1201,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const scopePointB = await db.pontoVenda.create({ data: { id: `cash-context-scope-b-${runId}`, cervejariaId: scopeCompany.id, nome: 'Synthetic point B' } });
     const scopeOccurrence = await db.ocorrenciaOperacional.create({ data: { id: `cash-context-scope-occurrence-${runId}`, cervejariaId: scopeCompany.id, pontoVendaId: scopePointB.id, nome: 'Synthetic wrong point', data: new Date('2026-11-06T00:00:00.000Z') } });
     const { validateCashOccurrenceSelection } = await import('../src/lib/operacao/contexto-ocorrencia.ts');
-    await assert.rejects(db.$transaction((tx) => validateCashOccurrenceSelection(tx, { cervejariaId: scopeCompany.id, pontoVendaId: scopePointA.id, ocorrenciaId: scopeOccurrence.id })), (error) => error?.code === 'CASH_OCCURRENCE_SCOPE_MISMATCH');
+    await assert.rejects(db.$transaction((tx) => validateCashOccurrenceSelection(tx, { cervejariaId: scopeCompany.id, pontoVendaId: scopePointA.id, ocorrenciaId: scopeOccurrence.id, diaOperacional: new Date('2026-11-06T00:00:00.000Z') })), (error) => error?.code === 'CASH_OCCURRENCE_SCOPE_MISMATCH');
 
     const previousOccurrenceActivation = process.env.PDV_CANONICAL_CONFIG_QA;
     delete process.env.PDV_CANONICAL_CONFIG_QA;
