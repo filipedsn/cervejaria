@@ -1059,7 +1059,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       const persisted = await db.sessaoCaixaOperacao.findFirstOrThrow({ where: {
         cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id,
         diaOperacional: new Date(`${day}T00:00:00.000Z`),
-      } });
+      }, orderBy: { abertoEm: 'desc' } });
       assert.equal(closed.ocorrenciaId ?? null, persisted.ocorrenciaId ?? null, 'close response retains persisted occurrence');
       return closed;
     });
