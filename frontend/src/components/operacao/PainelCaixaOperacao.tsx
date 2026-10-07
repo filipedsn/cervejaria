@@ -84,6 +84,7 @@ interface Props {
 export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAbertas: comandasAbertasProp }: Props) {
   const queryClient = useQueryClient();
   const { contexto } = useOperacaoContexto();
+  const agendaCanonica = contexto.operationalSettingsSource === 'CANONICAL_PDV';
   const usaCardapio = contexto.ativo ? (contexto.usaCardapio ?? false) : false;
   const pollMs = usePollInterval(30_000);
   const [trocoInicial, setTrocoInicial] = useState(() => formatCurrencyInputFromNumber(100));
@@ -106,6 +107,13 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const [ocorrenciaId, setOcorrenciaId] = useState('');
   const [confirmarDataDiferente, setConfirmarDataDiferente] = useState(false);
 
+  useEffect(() => {
+    if (!agendaCanonica) {
+      setOcorrenciaId('');
+      setConfirmarDataDiferente(false);
+    }
+  }, [agendaCanonica]);
+
   const { data: trailers = [] } = useQuery({
     queryKey: ['operacao-trailers-tap'],
     queryFn: () => api.get<Trailer[]>('/api/trailers?ativo=true'),
@@ -126,7 +134,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const ocorrenciasQuery = useQuery({
     queryKey: ['operacao-agenda-ocorrencias', pontoVendaId, inicioOcorrencias, fimOcorrencias],
     queryFn: () => api.get<{ ocorrencias: OcorrenciaAgenda[] }>(`/api/operacao/agenda/ocorrencias?inicio=${inicioOcorrencias}&fim=${fimOcorrencias}`),
-    enabled: Boolean(pontoVendaId && inicioOcorrencias && fimOcorrencias),
+    enabled: Boolean(agendaCanonica && pontoVendaId && inicioOcorrencias && fimOcorrencias),
   });
   const ocorrenciasElegiveis = (ocorrenciasQuery.data?.ocorrencias ?? []).filter((o) => o.status === 'PROGRAMADA' || o.status === 'ABERTA');
   const ocorrenciaSelecionada = ocorrenciasElegiveis.find((o) => o.id === ocorrenciaId) ?? null;
@@ -167,8 +175,8 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
       return api.post<ResumoCaixa>('/api/operacao/caixa/abrir', {
         pontoVendaId,
         trailerId: trailerDoTurno || undefined,
-        ocorrenciaId: ocorrenciaId || undefined,
-        confirmarDataDiferente: outraData ? confirmarDataDiferente : undefined,
+        ...(agendaCanonica && ocorrenciaId ? { ocorrenciaId } : {}),
+        ...(agendaCanonica && outraData ? { confirmarDataDiferente } : {}),
         trocoInicial: parseCurrencyInput(trocoInicial),
         ...cardapioPayload,
       });
@@ -272,7 +280,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     </div>
   ) : null;
 
-  const seletorOcorrencia = ocorrenciasQuery.data ? (
+  const seletorOcorrencia = agendaCanonica && ocorrenciasQuery.data ? (
     <div className="space-y-2 rounded-xl border border-line bg-surface-lighter/40 p-3">
       <label className="label" htmlFor="operacao-ocorrencia">Ocorrência do caixa (opcional)</label>
       <select id="operacao-ocorrencia" className="input" value={ocorrenciaId}
