@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { createServer } from 'node:http';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 import { materializePinnedMigrationBundle, verifyPinnedManifest } from './pdv-unico-qa-migration-manifest.mjs';
@@ -162,7 +163,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
   // app.ts and the Prisma singleton are imported only after the QA destination guard above.
   const previousQaMode = process.env.QA_MODE;
   process.env.QA_MODE = '1';
-  const [{ buildApp }, { prisma: runtimePrisma }] = await Promise.all([
+  const [{ buildApp, setupSocketIO }, { prisma: runtimePrisma }] = await Promise.all([
     import('../src/app.ts'),
     import('../src/lib/prisma.ts'),
   ]);
@@ -171,6 +172,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
   assert.equal(runtimeConnection[0].database_name, 'cervejaria_qa_pdv_unico', 'runtime Prisma connects to the disposable QA database');
 
   const app = await buildApp();
+  const socketIo = setupSocketIO(app, createServer());
   const counts = async () => {
     const tenantIds = [primaryCompany.id, secondCompany.id];
     const commandTenantFilter = { OR: [
@@ -642,6 +644,49 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     }
     await db.configuracaoPontoVenda.update({ where: { pontoVendaId: secondPoint.id }, data: { inventoryEnabled: true, kitchenEnabled: true, kitchenItemsChargeAtLaunch: false, allowCloseComandaWithPendingKitchenOrders: true } });
     await db.inventoryBalance.createMany({ data: [churrasquinho, batata, cebola].map((product) => ({ cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id, produtoId: product.id, quantidade: 5 })) });
+    // Observe the real Socket.IO room operator. The wrapper records the event
+    // and starts a read through the actual QA Prisma client at emit time, then
+    // calls the original Socket.IO emit method unchanged.
+    const kitchenEmissions = [];
+    const realIoTo = app.io.to.bind(app.io);
+    app.io.to = (...rooms) => {
+      const operator = realIoTo(...rooms);
+      const realEmit = operator.emit.bind(operator);
+      operator.emit = (event, data, ...args) => {
+        if (event === 'operacao:pedido-novo') kitchenEmissions.push({
+          room: rooms[0], data: plain(data),
+          persistedAtEmit: data?.id ? db.pedidoOperacao.findUnique({
+            where: { id: data.id }, include: { comanda: true, itensComanda: { include: { opcionais: true } } },
+          }) : Promise.resolve(null),
+        });
+        return realEmit(event, data, ...args);
+      };
+      return operator;
+    };
+    const assertEmissionBatch = async (from, comandaId, expectedCount, label) => {
+      const emissions = kitchenEmissions.slice(from);
+      const persisted = await db.pedidoOperacao.findMany({
+        where: { comandaId }, orderBy: { numero: 'asc' },
+        include: { comanda: true, itensComanda: { orderBy: { id: 'asc' }, include: { opcionais: true } } },
+      });
+      assert.equal(emissions.length, expectedCount, `${label}: exactly one operacao:pedido-novo per preparation order`);
+      const preparedOrders = persisted.filter((order) => order.itensComanda.some((item) => item.exigePreparo && !item.canceladoEm));
+      assert.equal(preparedOrders.length, expectedCount, `${label}: database contains exactly the preparation orders eligible for emission`);
+      const byId = new Map(preparedOrders.map((order) => [order.id, order]));
+      assert.deepEqual(emissions.map((event) => event.data.id).sort(), preparedOrders.map((order) => order.id).sort(), `${label}: emitted IDs equal persisted preparation-order IDs`);
+      for (const event of emissions) {
+        const row = await event.persistedAtEmit;
+        const order = byId.get(event.data.id);
+        assert.equal(event.room, `cervejaria:${secondCompany.id}`, `${label}: event is sent to the owning company's room`);
+        assert.ok(row, `${label}: order already exists in PostgreSQL when the emitter runs`);
+        assert.equal(row.comandaId, comandaId, `${label}: emitted order belongs to the requested comanda`);
+        assert.equal(event.data.comanda.id, comandaId, `${label}: event identifies the same comanda`);
+        assert.deepEqual(event.data.itens.map((item) => item.id).sort(), order.itensComanda.filter((item) => item.exigePreparo && !item.canceladoEm).map((item) => item.id).sort(), `${label}: event items equal prepared items persisted for that order`);
+        assert.deepEqual(plain(row.itensComanda), plain(order.itensComanda), `${label}: emit-time persisted item/options snapshot matches database`);
+      }
+      return persisted;
+    };
+    const initialEmissionCursor = kitchenEmissions.length;
     const independentCommandResponse = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie: secondOwnerCookie }, payload: {
       pontoVendaId: secondPoint.id, tipo: 'APELIDO', identificador: `independent-${runId}`,
       itens: [
@@ -654,6 +699,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const independentCommand = JSON.parse(independentCommandResponse.body);
     assert.equal(independentCommand.pedidos.length, 2, 'one independent order plus one grouped order are returned');
     const independentStored = await db.comanda.findUniqueOrThrow({ where: { id: independentCommand.id }, include: { pedidosOperacao: { include: { itensComanda: true } } } });
+    await assertEmissionBatch(initialEmissionCursor, independentCommand.id, 2, 'comanda aberta com itens');
     const independentKitchenOrder = independentStored.pedidosOperacao.find((order) => order.itensComanda.some((item) => item.produtoId === churrasquinho.id));
     const groupedKitchenOrder = independentStored.pedidosOperacao.find((order) => order.itensComanda.some((item) => item.produtoId === batata.id));
     assert.equal(independentStored.pedidosOperacao.length, 2, 'untrusted sale payload flag does not split an unmarked product');
@@ -669,6 +715,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       movements: await db.inventoryMovement.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id, cebola.id] } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }),
     });
     const beforeInjectedFailure = await rollbackState();
+    const emissionsBeforeInjectedFailure = kitchenEmissions.length;
     const independentFailureTrigger = `qa_fail_independent_order_${runId}`.replaceAll(/[^a-zA-Z0-9_]/g, '_');
     await db.$executeRawUnsafe(`CREATE OR REPLACE FUNCTION public.${independentFailureTrigger}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."produtoId" = '${churrasquinho.id}' THEN RAISE EXCEPTION 'QA injected independent kitchen item failure'; END IF; RETURN NEW; END $$`);
     await db.$executeRawUnsafe(`CREATE TRIGGER ${independentFailureTrigger} BEFORE INSERT ON public."ItemComanda" FOR EACH ROW EXECUTE FUNCTION public.${independentFailureTrigger}()`);
@@ -684,6 +731,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     }
     assert.equal(failedIndependentLaunch.statusCode, 500, 'failure while building the second kitchen order fails the complete launch');
     assert.deepEqual(await rollbackState(), beforeInjectedFailure, 'injected launch failure leaves commands, orders, items, optional snapshots, histories, balances and stock movements identical');
+    assert.equal(kitchenEmissions.length, emissionsBeforeInjectedFailure, 'rolled-back order does not emit operacao:pedido-novo');
     for (const status of ['EM_PREPARO', 'PRONTO', 'ENTREGUE']) {
       const transition = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(independentKitchenOrder.id)}/status`, headers: { cookie: secondOwnerCookie }, payload: { status } });
       assert.equal(transition.statusCode, 200, `independent kitchen order transitions to ${status}: ${transition.body}`);
@@ -700,6 +748,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.deepEqual(await db.inventoryBalance.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id, cebola.id] } }, orderBy: { produtoId: 'asc' } }).then((rows) => rows.map((row) => [row.produtoId, row.quantidade.toString()])), [[batata.id, '5'], [cebola.id, '5'], [churrasquinho.id, '4']].sort((left, right) => left[0].localeCompare(right[0])), 'cancelling the grouped brother reverses only its two stock lines');
     const independentCommandPayment = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(independentCommand.id)}/pagamentos`, headers: { cookie: secondOwnerCookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 10 }] } });
     assert.equal(independentCommandPayment.statusCode, 200, `only the delivered order is charged when the other order was cancelled: ${independentCommandPayment.body}`);
+    const avulsaEmissionCursor = kitchenEmissions.length;
     const avulsaResponse = await app.inject({ method: 'POST', url: '/api/operacao/vendas', headers: { cookie: secondOwnerCookie }, payload: {
       pontoVendaId: secondPoint.id, itens: [
         { produtoId: churrasquinho.id, quantidade: 1 }, { produtoId: batata.id, quantidade: 1 }, { produtoId: cebola.id, quantidade: 1 },
@@ -710,6 +759,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.deepEqual([avulsaComanda.tipo, centsExact(avulsaComanda.total), avulsaComanda.pedidos.length], ['AVULSA', '3000', 2], 'walk-up response preserves the total and returns both kitchen orders');
     const avulsaOrderRows = await db.pedidoOperacao.findMany({ where: { comandaId: avulsaComanda.id }, include: { itensComanda: true } });
     assert.equal(avulsaOrderRows.length, 2, 'walk-up sale persists the split order collection');
+    await assertEmissionBatch(avulsaEmissionCursor, avulsaComanda.id, 2, 'venda avulsa');
     for (const walkUpOrder of avulsaOrderRows) for (const status of ['EM_PREPARO', 'PRONTO', 'ENTREGUE']) {
       const transition = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(walkUpOrder.id)}/status`, headers: { cookie: secondOwnerCookie }, payload: { status } });
       assert.equal(transition.statusCode, 200, `walk-up kitchen order ${walkUpOrder.id} transitions to ${status}: ${transition.body}`);
@@ -721,6 +771,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.equal(portalOpen.statusCode, 201, `public PDV portal opens an authenticated customer session: ${portalOpen.body}`);
     const portalCookieHeader = String(portalOpen.headers['set-cookie'] ?? '').split(';')[0];
     assert.match(portalCookieHeader, /=.+/, 'portal response returns the customer session cookie');
+    const portalEmissionCursor = kitchenEmissions.length;
     const portalLaunch = await app.inject({ method: 'POST', url: `/api/public/cervejarias/${encodeURIComponent(secondCompany.slug)}/pontos-venda/${encodeURIComponent(secondPoint.id)}/comanda/pedidos`, headers: { cookie: portalCookieHeader }, payload: {
       itens: [{ produtoId: churrasquinho.id, quantidade: 1 }, { produtoId: batata.id, quantidade: 1 }, { produtoId: cebola.id, quantidade: 1 }],
     } });
@@ -729,6 +780,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.equal(portalComanda.pedidos.length, 2, 'portal response preserves all split kitchen orders');
     const portalOrders = await db.pedidoOperacao.findMany({ where: { comandaId: portalComanda.id }, include: { itensComanda: true } });
     assert.equal(portalOrders.length, 2, 'portal persists the marked line separately and keeps common lines grouped');
+    await assertEmissionBatch(portalEmissionCursor, portalComanda.id, 2, 'portal');
     assert.deepEqual(await db.inventoryBalance.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id, cebola.id] } }, orderBy: { produtoId: 'asc' } }).then((rows) => rows.map((row) => [row.produtoId, row.quantidade.toString()])), [[batata.id, '3'], [cebola.id, '3'], [churrasquinho.id, '2']].sort((left, right) => left[0].localeCompare(right[0])), 'portal consumes each product once under the order that owns its line');
     for (const portalOrder of portalOrders) for (const status of ['EM_PREPARO', 'PRONTO', 'ENTREGUE']) {
       const transition = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(portalOrder.id)}/status`, headers: { cookie: secondOwnerCookie }, payload: { status } });
@@ -736,6 +788,72 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     }
     const portalPayment = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(portalComanda.id)}/pagamentos`, headers: { cookie: secondOwnerCookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 30 }] } });
     assert.equal(portalPayment.statusCode, 200, `owner can settle the portal comanda through the existing payment flow: ${portalPayment.body}`);
+
+    // KITCH-IND-02 regression matrix: each sale is authenticated and launched
+    // after opening an empty comanda, so the inclusion consumer is also covered.
+    const regressionMarked = await db.produto.create({ data: {
+      id: `independent-regression-marked-${runId}`, cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id,
+      nome: 'QA marked second prep', tipo: 'COMIDA', exigePreparo: true, prepararEmPedidoSeparado: true, controlaEstoque: true,
+    } });
+    const regressionNoPrepMarked = await db.produto.create({ data: {
+      id: `independent-regression-no-prep-${runId}`, cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id,
+      nome: 'QA no-prep with independent flag', tipo: 'COMIDA', exigePreparo: false, prepararEmPedidoSeparado: true, controlaEstoque: true,
+    } });
+    const regressionDrink = await db.produto.create({ data: {
+      id: `independent-regression-drink-${runId}`, cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id,
+      nome: 'QA bottled drink', tipo: 'BEBIDA', formato: 'LATA', exigePreparo: false, prepararEmPedidoSeparado: false, controlaEstoque: true,
+    } });
+    const regressionProducts = [regressionMarked, regressionNoPrepMarked, regressionDrink];
+    for (const [index, product] of regressionProducts.entries()) {
+      await db.preco.create({ data: { id: `independent-regression-price-${index}-${runId}`, produtoId: product.id, volumeMl: 1, preco: '6.00' } });
+      await db.sessaoCaixaProdutoOperacao.create({ data: { id: `independent-regression-session-${index}-${runId}`, sessaoCaixaId: kitchenSessionId, produtoId: product.id, volumeMl: 0 } });
+      await db.cardapioProduto.create({ data: { id: `independent-regression-menu-${index}-${runId}`, cardapioId: secondMenu.id, produtoId: product.id, pontoVendaId: secondPoint.id, volumeMl: 0, precoUnit: '6.00' } });
+      await db.inventoryBalance.create({ data: { cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id, produtoId: product.id, quantidade: 10 } });
+    }
+    const launchRegression = async ({ label, products, kitchenEnabled = true, expectedOrders, expectedPrepared }) => {
+      await db.configuracaoPontoVenda.update({ where: { pontoVendaId: secondPoint.id }, data: { kitchenEnabled } });
+      const open = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie: secondOwnerCookie }, payload: {
+        pontoVendaId: secondPoint.id, tipo: 'APELIDO', identificador: `${label}-${runId}`,
+      } });
+      assert.equal(open.statusCode, 201, `${label}: authenticated empty comanda opens: ${open.body}`);
+      const comandaId = JSON.parse(open.body).id;
+      const balancesBefore = await db.inventoryBalance.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: products.map((product) => product.id) } }, orderBy: { produtoId: 'asc' } });
+      const cursor = kitchenEmissions.length;
+      const launch = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(comandaId)}/pedidos`, headers: { cookie: secondOwnerCookie }, payload: { itens: products.map((product) => ({ produtoId: product.id, quantidade: 1 })) } });
+      assert.equal(launch.statusCode, 201, `${label}: authenticated add-items launch succeeds: ${launch.body}`);
+      const response = JSON.parse(launch.body);
+      assert.equal(response.pedidos.length, expectedOrders, `${label}: API response has exact grouped/independent order count`);
+      const orders = await db.pedidoOperacao.findMany({ where: { comandaId }, orderBy: { numero: 'asc' }, include: { itensComanda: { orderBy: { produtoId: 'asc' } } } });
+      assert.equal(orders.length, expectedOrders, `${label}: database has exact order count`);
+      assert.deepEqual(orders.flatMap((order) => order.itensComanda.map((item) => [item.produtoId, item.exigePreparo])).sort((a, b) => a[0].localeCompare(b[0])), products.map((product) => [product.id, expectedPrepared.includes(product.id)]).sort((a, b) => a[0].localeCompare(b[0])), `${label}: persisted item links and effective preparation flags match the scenario`);
+      const itemOrderLinks = orders.flatMap((order) => order.itensComanda.map((item) => [item.produtoId, item.pedidoCozinhaId]));
+      assert.equal(new Set(itemOrderLinks.map(([, orderId]) => orderId)).size, expectedOrders, `${label}: item links point to the expected distinct order set`);
+      const movements = await db.inventoryMovement.findMany({ where: { pedidoId: { in: orders.map((order) => order.id) }, tipo: 'SAIDA_VENDA' }, orderBy: { produtoId: 'asc' } });
+      assert.deepEqual(movements.map((movement) => [movement.produtoId, movement.pedidoId, movement.quantidade.toString()]), products.map((product) => [product.id, orders.find((order) => order.itensComanda.some((item) => item.produtoId === product.id)).id, '1']).sort((a, b) => a[0].localeCompare(b[0])), `${label}: each sold line consumes stock exactly once under its owning order`);
+      const balancesAfter = await db.inventoryBalance.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: products.map((product) => product.id) } }, orderBy: { produtoId: 'asc' } });
+      assert.deepEqual(balancesAfter.map((row, index) => [row.produtoId, row.quantidade.toString(), balancesBefore[index].quantidade.minus(1).toString()]), balancesBefore.map((row) => [row.produtoId, row.quantidade.minus(1).toString(), row.quantidade.minus(1).toString()]), `${label}: balance drops once per line`);
+      if (kitchenEnabled) {
+        const queue = await app.inject({ method: 'GET', url: '/api/operacao/cozinha', headers: { cookie: secondOwnerCookie } });
+        assert.equal(queue.statusCode, 200, `${label}: enabled kitchen queue responds: ${queue.body}`);
+        const inQueue = JSON.parse(queue.body).filter((order) => order.comanda.id === comandaId);
+        assert.deepEqual(inQueue.map((order) => [order.id, order.itens.map((item) => item.id)]).sort((a, b) => a[0].localeCompare(b[0])), orders.filter((order) => order.itensComanda.some((item) => item.exigePreparo)).map((order) => [order.id, order.itensComanda.filter((item) => item.exigePreparo).map((item) => item.id)]).sort((a, b) => a[0].localeCompare(b[0])), `${label}: kitchen queue contains only effective preparation lines`);
+      } else {
+        const queue = await app.inject({ method: 'GET', url: '/api/operacao/cozinha', headers: { cookie: secondOwnerCookie } });
+        assert.equal(queue.statusCode, 404, `${label}: disabled kitchen exposes no queue`);
+      }
+      await assertEmissionBatch(cursor, comandaId, orders.filter((order) => order.itensComanda.some((item) => item.exigePreparo)).length, label);
+      return { comandaId, orders, response };
+    };
+    const groupedUnmarked = await launchRegression({ label: 'kitchen-on-unmarked-group', products: [batata, cebola], expectedOrders: 1, expectedPrepared: [batata.id, cebola.id] });
+    assert.deepEqual(groupedUnmarked.orders[0].itensComanda.map((item) => item.produtoId).sort(), [batata.id, cebola.id].sort(), 'KITCH-IND-02a: two unmarked prep products stay in one order');
+    const kitchenOffMarked = await launchRegression({ label: 'kitchen-off-marked-legacy-group', products: [churrasquinho, regressionMarked], kitchenEnabled: false, expectedOrders: 1, expectedPrepared: [] });
+    assert.deepEqual(kitchenOffMarked.orders[0].itensComanda.map((item) => item.exigePreparo), [false, false], 'KITCH-IND-02b: kitchen-off grouping persists both items without effective preparation');
+    const noPrepMarked = await launchRegression({ label: 'no-prep-marked-no-independent-order', products: [regressionNoPrepMarked], expectedOrders: 1, expectedPrepared: [] });
+    assert.equal(noPrepMarked.orders[0].itensComanda[0].exigePreparo, false, 'KITCH-IND-02c: flag true cannot create a kitchen order for a non-prep product');
+    const oneMarkedAndDrink = await launchRegression({ label: 'one-marked-plus-drink-no-extra-order', products: [churrasquinho, regressionDrink], expectedOrders: 1, expectedPrepared: [churrasquinho.id] });
+    assert.deepEqual(oneMarkedAndDrink.orders[0].itensComanda.map((item) => item.produtoId).sort(), [churrasquinho.id, regressionDrink.id].sort(), 'KITCH-IND-02d: one marked prep line stays grouped with a beverage in one order');
+    await db.configuracaoPontoVenda.update({ where: { pontoVendaId: secondPoint.id }, data: { kitchenEnabled: true } });
+
     const snapshotStockSeed = await db.inventoryBalance.updateMany({
       where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id] } }, data: { quantidade: 20 },
     });
@@ -852,6 +970,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     } });
     const pendingKitchenOrdersForCleanup = await db.pedidoOperacao.findMany({ where: {
       comanda: { pontoVendaId: secondPoint.id }, status: { in: ['RECEBIDO', 'EM_PREPARO', 'PRONTO'] },
+      itensComanda: { some: { exigePreparo: true, canceladoEm: null } },
     }, select: { id: true, status: true } });
     for (const order of pendingKitchenOrdersForCleanup) {
       const path = order.status === 'RECEBIDO' ? ['EM_PREPARO', 'PRONTO', 'ENTREGUE']
@@ -1317,6 +1436,89 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       return closed;
     });
 
+    // KITCH-IND-07: split-order cross-context matrix with full operational
+    // before/after photographs. Same-day A/B sessions make the B-session
+    // mismatch observable while the command itself belongs to occurrence A.
+    const crossDay = '2026-12-01';
+    const crossOccurrenceA = await db.ocorrenciaOperacional.create({ data: {
+      id: `independent-context-occurrence-a-${runId}`, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id,
+      nome: 'QA occurrence context A', data: new Date(`${crossDay}T00:00:00.000Z`), status: 'PROGRAMADA',
+    } });
+    const crossOccurrenceB = await db.ocorrenciaOperacional.create({ data: {
+      id: `independent-context-occurrence-b-${runId}`, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id,
+      nome: 'QA occurrence context B', data: new Date(`${crossDay}T00:00:00.000Z`), status: 'PROGRAMADA',
+    } });
+    const crossProducts = [
+      await db.produto.create({ data: { id: `independent-context-marked-${runId}`, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id, nome: 'QA context independent prep', tipo: 'COMIDA', exigePreparo: true, prepararEmPedidoSeparado: true, controlaEstoque: true } }),
+      await db.produto.create({ data: { id: `independent-context-common-${runId}`, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id, nome: 'QA context grouped prep', tipo: 'COMIDA', exigePreparo: true, prepararEmPedidoSeparado: false, controlaEstoque: true } }),
+    ];
+    for (const [index, product] of crossProducts.entries()) {
+      await db.preco.create({ data: { id: `independent-context-price-${index}-${runId}`, produtoId: product.id, volumeMl: 1, preco: '9.00' } });
+      await db.cardapioProduto.create({ data: { id: `independent-context-menu-${index}-${runId}`, cardapioId: menuA.id, produtoId: product.id, pontoVendaId: primaryPoint.id, volumeMl: 0, precoUnit: '9.00' } });
+      await db.inventoryBalance.create({ data: { cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id, produtoId: product.id, quantidade: 5 } });
+    }
+    await db.configuracaoPontoVenda.update({ where: { pontoVendaId: primaryPoint.id }, data: { inventoryEnabled: true, kitchenEnabled: true } });
+    const contextSessionA = await openOccurrenceCash(crossDay, crossOccurrenceA.id);
+    await db.sessaoCaixaProdutoOperacao.createMany({ data: crossProducts.map((product, index) => ({ id: `independent-context-session-a-${index}-${runId}`, sessaoCaixaId: contextSessionA.id, produtoId: product.id, volumeMl: 0 })), skipDuplicates: true });
+    const contextCommandResponse = await withOwnerAt(crossDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: `context-valid-${runId}` } }));
+    assert.equal(contextCommandResponse.statusCode, 201, `context A command opens through authenticated API: ${contextCommandResponse.body}`);
+    const contextCommandId = JSON.parse(contextCommandResponse.body).id;
+    const contextLaunch = await withOwnerAt(crossDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(contextCommandId)}/pedidos`, headers: { cookie }, payload: { itens: crossProducts.map((product) => ({ produtoId: product.id, quantidade: 1 })) } }));
+    assert.equal(contextLaunch.statusCode, 201, `valid split launch in occurrence A succeeds: ${contextLaunch.body}`);
+    const contextLaunchBody = JSON.parse(contextLaunch.body);
+    const contextPersisted = await db.comanda.findUniqueOrThrow({ where: { id: contextCommandId }, include: { pedidosOperacao: { orderBy: { numero: 'asc' }, include: { itensComanda: true } } } });
+    assert.deepEqual([contextLaunchBody.pedidos.length, contextPersisted.pedidosOperacao.length, contextPersisted.ocorrenciaId], [2, 2, crossOccurrenceA.id], 'valid split command and both order parents remain in occurrence A');
+    assert.equal((await db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: contextSessionA.id } })).ocorrenciaId, crossOccurrenceA.id, 'source cash session is explicitly linked to occurrence A');
+    assert(contextPersisted.pedidosOperacao.every((order) => order.comandaId === contextCommandId && order.itensComanda.every((item) => item.pedidoCozinhaId === order.id)), 'each returned order and item remains linked to the same command');
+
+    const operationalPhoto = async () => plain({
+      commands: await db.comanda.findMany({ where: { OR: [{ pontoVenda: { cervejariaId: { in: [primaryCompany.id, secondCompany.id] } } }, { evento: { cervejariaId: { in: [primaryCompany.id, secondCompany.id] } } }] }, orderBy: { id: 'asc' }, include: {
+        itens: { orderBy: { id: 'asc' }, include: { opcionais: { orderBy: { id: 'asc' } } } }, pagamentos: { orderBy: { id: 'asc' } },
+        pedidosOperacao: { orderBy: [{ diaOperacional: 'asc' }, { numero: 'asc' }], include: { itensComanda: { orderBy: { id: 'asc' }, include: { opcionais: { orderBy: { id: 'asc' } } } }, historicoStatus: { orderBy: [{ registradoEm: 'asc' }, { id: 'asc' }] } } },
+      } }),
+      orders: await db.pedidoOperacao.findMany({ where: { cervejariaId: { in: [primaryCompany.id, secondCompany.id] } }, orderBy: [{ diaOperacional: 'asc' }, { numero: 'asc' }], include: { itensComanda: { orderBy: { id: 'asc' }, include: { opcionais: { orderBy: { id: 'asc' } } } }, historicoStatus: { orderBy: [{ registradoEm: 'asc' }, { id: 'asc' }] } } }),
+      items: await db.itemComanda.findMany({ where: { comanda: { OR: [{ pontoVenda: { cervejariaId: { in: [primaryCompany.id, secondCompany.id] } } }, { evento: { cervejariaId: { in: [primaryCompany.id, secondCompany.id] } } }] } }, orderBy: { id: 'asc' }, include: { opcionais: { orderBy: { id: 'asc' } } } }),
+      payments: await db.pagamento.findMany({ where: { comanda: { OR: [{ pontoVenda: { cervejariaId: { in: [primaryCompany.id, secondCompany.id] } } }, { evento: { cervejariaId: { in: [primaryCompany.id, secondCompany.id] } } }] } }, orderBy: { id: 'asc' } }),
+      balances: await db.inventoryBalance.findMany({ where: { cervejariaId: { in: [primaryCompany.id, secondCompany.id] } }, orderBy: [{ cervejariaId: 'asc' }, { pontoVendaId: 'asc' }, { produtoId: 'asc' }] }),
+      movements: await db.inventoryMovement.findMany({ where: { cervejariaId: { in: [primaryCompany.id, secondCompany.id] } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }),
+    });
+    const assertRejectedWithoutOperationalWrites = async (request, expectedStatus, label) => {
+      const before = await operationalPhoto();
+      const response = await request();
+      assert.equal(response.statusCode, expectedStatus, `${label}: expected HTTP ${expectedStatus}, received ${response.statusCode}: ${response.body}`);
+      assert.deepEqual(await operationalPhoto(), before, `${label}: commands, orders, items, options, status history, payments, balances and stock movements unchanged`);
+    };
+    await assertRejectedWithoutOperationalWrites(
+      () => withSecondOwnerAt(crossDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(contextCommandId)}/pedidos`, headers: { cookie }, payload: { itens: crossProducts.map((product) => ({ produtoId: product.id, quantidade: 1 })) } })),
+      404, 'other tenant cannot add primary comanda/products',
+    );
+    await assertRejectedWithoutOperationalWrites(
+      () => withSecondOwnerAt(crossDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: `foreign-pdv-${runId}` } })),
+      404, 'other tenant cannot open a comanda on primary PDV',
+    );
+
+    const contextSessionB = await db.sessaoCaixaOperacao.create({ data: {
+      id: `independent-context-session-b-${runId}`, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id,
+      diaOperacional: new Date(`${crossDay}T00:00:00.000Z`), status: 'ABERTO', trocoInicial: 0, abertoPorId: authOwner.id,
+      cardapioId: menuA.id, ocorrenciaId: crossOccurrenceB.id, abertoEm: new Date(Date.now() + 60_000),
+    } });
+    const contextMismatchPayload = { itens: [{ produtoId: crossProducts[0].id, quantidade: 1 }] };
+    await assertRejectedWithoutOperationalWrites(
+      () => withOwnerAt(crossDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(contextCommandId)}/pedidos`, headers: { cookie }, payload: contextMismatchPayload })),
+      409, 'session B cannot append to split command from occurrence A',
+    );
+    await assertRejectedWithoutOperationalWrites(
+      () => withOwnerAt(crossDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(contextCommandId)}/pedidos`, headers: { cookie }, payload: { ...contextMismatchPayload, ocorrenciaId: crossOccurrenceB.id } })),
+      400, 'payload cannot replace occurrence A with occurrence B',
+    );
+    assert.deepEqual([contextSessionB.ocorrenciaId, (await db.comanda.findUniqueOrThrow({ where: { id: contextCommandId } })).ocorrenciaId], [crossOccurrenceB.id, crossOccurrenceA.id], 'cross-context fixture retains distinct session B and command A occurrence IDs');
+    const cleanupContextCommand = await withOwnerAt(crossDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(contextCommandId)}/cancelar`, headers: { cookie }, payload: {} }));
+    assert.equal(cleanupContextCommand.statusCode, 200, `context proof command is cancelled after its before/after photographs: ${cleanupContextCommand.body}`);
+    for (const order of await db.pedidoOperacao.findMany({ where: { comandaId: contextCommandId } })) {
+      const cancelled = await withOwnerAt(crossDay, (cookie) => app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(order.id)}/status`, headers: { cookie }, payload: { status: 'CANCELADO' } }));
+      assert.equal(cancelled.statusCode, 200, `context proof kitchen order is terminalized through the real route: ${cancelled.body}`);
+    }
+
     const noOccurrenceSession = await withOwnerAt('2026-11-09', async (cookie) => {
       const response = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id } });
       assert.equal(response.statusCode, 201, `cash without an occurrence opens: ${response.body}`);
@@ -1734,15 +1936,19 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     console.log(`QA_AUTHENTICATED_CASH=PASS; ${JSON.stringify(summary)}`);
   } finally {
     try {
-      await app.close();
+      await new Promise((resolve) => socketIo.close(resolve));
     } finally {
       try {
-        await runtimePrisma.$disconnect();
+        await app.close();
       } finally {
-        if (previousCanonicalFlag === undefined) delete process.env.PDV_CANONICAL_CONFIG_QA;
-        else process.env.PDV_CANONICAL_CONFIG_QA = previousCanonicalFlag;
-        if (previousQaMode === undefined) delete process.env.QA_MODE;
-        else process.env.QA_MODE = previousQaMode;
+        try {
+          await runtimePrisma.$disconnect();
+        } finally {
+          if (previousCanonicalFlag === undefined) delete process.env.PDV_CANONICAL_CONFIG_QA;
+          else process.env.PDV_CANONICAL_CONFIG_QA = previousCanonicalFlag;
+          if (previousQaMode === undefined) delete process.env.QA_MODE;
+          else process.env.QA_MODE = previousQaMode;
+        }
       }
     }
   }
