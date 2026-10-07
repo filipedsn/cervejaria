@@ -515,6 +515,12 @@ await waitFor(() => {
   return serverSocket?.rooms.has(`evento:${event.id}`) && serverSocket?.rooms.has(`cervejaria:${company.id}`)
     && serverSocket?.data.eventoSubscriptions?.has(event.id) && serverSocket?.data.tenantSubscriptions?.has(company.id);
 }, 'flag-off legacy event and company room joins');
+await waitFor(() => !app.io.sockets.sockets.get(foreignSocket.id)?.rooms.has(`cervejaria:${company.id}`), 'foreign tenant is not in the legacy company room');
+let foreignLegacyEvents = 0;
+foreignSocket.on('comanda:updated', () => foreignLegacyEvents++);
+emitToCervejaria(app.io, company.id, { type: 'comanda:updated', data: { id: 'flag-off-company-isolation' } });
+await new Promise((resolve) => setTimeout(resolve, 80));
+assert.equal(foreignLegacyEvents, 0, 'legacy company room remains isolated across tenants when activation is disabled');
 let legacyDeliveryCount = 0;
 legacySocket.on('evento:updated', () => legacyDeliveryCount++);
 const legacyEventDelivery = socketEventFor(legacySocket, 'evento:updated');
