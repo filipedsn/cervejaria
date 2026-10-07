@@ -1440,8 +1440,8 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     }, { maxWait: 15000, timeout: 30000 });
     await locked;
     const concurrentCalls = withOwnerAt(concurrentDay, (cookie) => Promise.all([
-      app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: recurringOccurrences[0].id } }),
-      app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: recurringOccurrences[1].id } }),
+      app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: recurringOccurrences[0].id, confirmarDataDiferente: true } }),
+      app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: recurringOccurrences[1].id, confirmarDataDiferente: true } }),
     ]));
     let lockWaiters = 0;
     const deadline = process.hrtime.bigint() + 15_000_000_000n;
