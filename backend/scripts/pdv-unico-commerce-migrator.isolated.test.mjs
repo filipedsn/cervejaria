@@ -2892,6 +2892,9 @@ try {
     cervejariaId: legacyCloseCompany.id, pontoVendaId: legacyApiPoint.id, cardapioId: legacyApiMenu.id,
     diaOperacional: legacyApiDay(), trocoInicial: '0.00', abertoPorId: legacyCloseOwner.id,
   } });
+  await db.sessaoCaixaProdutoOperacao.createMany({ data: legacyApiProducts.map((legacyProduct, index) => ({
+    id: id(`legacy-api-session-entry-${index}`), sessaoCaixaId: legacyApiSession.id, produtoId: legacyProduct.id, volumeMl: 0,
+  })) });
   await db.$executeRawUnsafe('ALTER TABLE public."Comanda" DROP CONSTRAINT IF EXISTS "Comanda_pontoVendaId_sessaoCaixaRealizacaoId_fkey"');
   await db.$executeRawUnsafe('ALTER TABLE public."Comanda" DROP CONSTRAINT IF EXISTS "Comanda_sessaoRealizacao_requer_ponto_check"');
   await db.$executeRawUnsafe('DROP INDEX IF EXISTS public."Comanda_sessaoCaixaRealizacaoId_idx"');
