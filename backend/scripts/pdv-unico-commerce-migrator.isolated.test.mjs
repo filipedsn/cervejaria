@@ -725,6 +725,10 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const portalOrders = await db.pedidoOperacao.findMany({ where: { comandaId: portalComanda.id }, include: { itensComanda: true } });
     assert.equal(portalOrders.length, 2, 'portal persists the marked line separately and keeps common lines grouped');
     assert.deepEqual(await db.inventoryBalance.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id, cebola.id] } }, orderBy: { produtoId: 'asc' } }).then((rows) => rows.map((row) => [row.produtoId, row.quantidade.toString()])), [[batata.id, '3'], [cebola.id, '3'], [churrasquinho.id, '2']].sort((left, right) => left[0].localeCompare(right[0])), 'portal consumes each product once under the order that owns its line');
+    for (const portalOrder of portalOrders) for (const status of ['EM_PREPARO', 'PRONTO', 'ENTREGUE']) {
+      const transition = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(portalOrder.id)}/status`, headers: { cookie: secondOwnerCookie }, payload: { status } });
+      assert.equal(transition.statusCode, 200, `portal kitchen order ${portalOrder.id} transitions to ${status}: ${transition.body}`);
+    }
     const portalPayment = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(portalComanda.id)}/pagamentos`, headers: { cookie: secondOwnerCookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 30 }] } });
     assert.equal(portalPayment.statusCode, 200, `owner can settle the portal comanda through the existing payment flow: ${portalPayment.body}`);
     const kitchenCashClosed = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: secondOwnerCookie }, payload: { pontoVendaId: secondPoint.id, contadoDinheiro: 0, contadoPix: 90, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
