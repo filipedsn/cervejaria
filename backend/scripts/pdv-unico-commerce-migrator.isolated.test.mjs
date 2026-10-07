@@ -1978,7 +1978,7 @@ async function proveLegacyOrderContextPreflight(args) {
     console.log('QA_STAGE=legacy-order-context-prepared-recovered-and-commerce-migration-applied; orderId=preserved; movement=0.125; constraint=validated-restrictive');
     await legacyDb.$disconnect();
     const { PrismaClient: MigratedPrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
-    const migratedDb = new MigratedPrismaClient({ datasources: { db: { url: preflightUrl } }, errorFormat: 'minimal' });
+    const migratedDb = new MigratedPrismaClient({ datasources: { db: { url: preflightUrl } }, errorFormat: 'minimal', omit: { produto: { prepararEmPedidoSeparado: true } } });
     try {
       const { runPdvBusinessMigration } = await import('./pdv-unico-business-migrator.ts');
       const { runPdvCatalogMigration, runPdvCommerceMigration, runPdvKitchenOrderContextPreparation } = await import('./pdv-unico-catalog-migrator.ts');
