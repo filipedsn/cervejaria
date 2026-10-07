@@ -1,9 +1,8 @@
 ALTER TABLE public."Usuario"
 ADD COLUMN "permissoesOperacao" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 
--- Preserve the actions that existing attendants could already perform through
--- authenticated Por Caixa and event routes. Owner-only dashboards/reports and
--- owner-only cancellation of non-empty operational commands stay ungranted.
+-- Preserve existing attendant actions. Item removal had a separate legacy
+-- route; full Por Caixa command cancellation was owner-only and is not granted.
 UPDATE public."Usuario"
 SET "permissoesOperacao" = ARRAY[
   'cash.open',
@@ -13,7 +12,7 @@ SET "permissoesOperacao" = ARRAY[
   'payment.receive',
   'debt.receive',
   'command.close',
-  'command.cancel',
+  'command.item.cancel',
   'event.dashboard.read'
 ]::TEXT[] || CASE WHEN "podeDarDescontoOperacao" THEN ARRAY['discount.apply']::TEXT[] ELSE ARRAY[]::TEXT[] END
 WHERE "papel" = 'ATENDENTE';

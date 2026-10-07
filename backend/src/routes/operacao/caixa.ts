@@ -138,23 +138,36 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     const sessao = await buscarSessaoAtual(cervejariaId, pontoVendaId);
     if (!sessao) return { sessao: null, comandasAbertas, diaOperacional: diaOperacional().toISOString().slice(0, 10) };
 
+    const ocorrencia = sessao.ocorrenciaId
+      ? await prisma.ocorrenciaOperacional.findFirst({
+          where: { id: sessao.ocorrenciaId, cervejariaId, pontoVendaId },
+          select: { id: true, nome: true, data: true, status: true, agenda: { select: { nome: true, frequencia: true, diaSemana: true } } },
+        })
+      : null;
+    const ocorrenciaResumo = ocorrencia ? { ...ocorrencia, data: ocorrencia.data.toISOString().slice(0, 10) } : null;
+
     if (!podeVerValores) {
       return {
-        sessao: { id: sessao.id, status: sessao.status, pontoVendaId: sessao.pontoVendaId, abertoEm: sessao.abertoEm },
+        sessao: {
+          id: sessao.id,
+          status: sessao.status,
+          pontoVendaId: sessao.pontoVendaId,
+          abertoEm: sessao.abertoEm,
+          fechadoEm: sessao.fechadoEm,
+          ocorrenciaId: sessao.ocorrenciaId,
+          ocorrencia: ocorrenciaResumo,
+          diaOperacional: sessao.diaOperacional.toISOString().slice(0, 10),
+        },
         comandasAbertas,
-        diaOperacional: diaOperacional().toISOString().slice(0, 10),
+        diaOperacional: sessao.diaOperacional.toISOString().slice(0, 10),
         valoresRestritos: true,
       };
     }
 
     const resumo = await montarResumoCaixa(sessao, cervejariaId);
-    if (!sessao.ocorrenciaId || !cashOccurrenceContextEnabled()) return { sessao: resumo, comandasAbertas, diaOperacional: diaOperacional().toISOString().slice(0, 10) };
-    const ocorrencia = await prisma.ocorrenciaOperacional.findFirst({
-      where: { id: sessao.ocorrenciaId, cervejariaId, pontoVendaId },
-      select: { id: true, nome: true, data: true, status: true, agenda: { select: { nome: true, frequencia: true, diaSemana: true } } },
-    });
+    if (!sessao.ocorrenciaId || !cashOccurrenceContextEnabled()) return { sessao: resumo, comandasAbertas, diaOperacional: sessao.diaOperacional.toISOString().slice(0, 10) };
     return {
-      sessao: { ...resumo, ocorrencia: ocorrencia ? { ...ocorrencia, data: ocorrencia.data.toISOString().slice(0, 10) } : null },
+      sessao: { ...resumo, ocorrencia: ocorrenciaResumo },
       comandasAbertas,
       diaOperacional: diaOperacional().toISOString().slice(0, 10),
     };

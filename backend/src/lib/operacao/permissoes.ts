@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
+import type { Prisma } from '@prisma/client';
 import { getAuthUser, type JwtPayload } from '../../types/auth.js';
 
 export const PERMISSOES_OPERACAO = [
@@ -12,6 +13,7 @@ export const PERMISSOES_OPERACAO = [
   'debt.receive',
   'command.close',
   'discount.apply',
+  'command.item.cancel',
   'command.cancel',
   'kitchen.cancel',
   'sale.refund',
@@ -37,11 +39,12 @@ export async function usuarioPode(
   user: JwtPayload,
   permissao: PermissaoOperacao,
   options: { allowLegacyDiscount?: boolean } = {},
+  db: Pick<Prisma.TransactionClient, 'usuario'> | typeof prisma = prisma,
 ): Promise<boolean> {
   if (!permissoesIndividuaisAtivas()) {
     if (options.allowLegacyDiscount && (user.papel === 'DONO' || user.papel === 'ADMIN')) return true;
     if (options.allowLegacyDiscount) {
-      const legacy = await prisma.usuario.findFirst({
+      const legacy = await db.usuario.findFirst({
         where: { id: user.sub, cervejariaId: user.cervejariaId },
         select: { podeDarDescontoOperacao: true },
       });
@@ -51,7 +54,7 @@ export async function usuarioPode(
   }
 
   if (!user.cervejariaId) return false;
-  const persisted = await prisma.usuario.findUnique({
+  const persisted = await db.usuario.findUnique({
     where: { id: user.sub },
     select: { papel: true, cervejariaId: true, permissoesOperacao: true },
   });

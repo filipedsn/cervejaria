@@ -627,7 +627,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     return reply.status(201).send(resumo);
   });
 
-  app.delete('/:comandaId/itens/:itemId', { preHandler: [requirePermissao(app, 'command.cancel')] }, async (request, reply) => {
+  app.delete('/:comandaId/itens/:itemId', { preHandler: [requirePermissao(app, 'command.item.cancel')] }, async (request, reply) => {
     const { cervejariaId, controlaEstoque } = request.operacao;
     const user = getAuthUser(request);
     const { comandaId, itemId } = request.params as { comandaId: string; itemId: string };
@@ -663,6 +663,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       comandaId,
       itemId,
       quantidade: body.quantidade,
+      user: getAuthUser(request),
       registradoPorId: user.sub,
       moduloControlaEstoque: controlaEstoque,
       temCozinha,

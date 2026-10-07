@@ -16,6 +16,47 @@ import {
 } from './cliente-session.js';
 import { validCorrelationId } from './correlation-context.js';
 import { permissoesIndividuaisAtivas, usuarioPode } from './operacao/permissoes.js';
+import {
+  realtimeRoomEventFinance, realtimeRoomEventOperations,
+  realtimeRoomTenantFinance, realtimeRoomTenantOperations,
+} from './realtime.js';
+
+type StaffRealtimeSocket = Socket & { data: { user?: JwtPayload; authType?: string; eventoSubscriptions?: Set<string>; tenantSubscriptions?: Set<string> } };
+
+async function joinScopedStaffRoom(socket: StaffRealtimeSocket, kind: 'evento' | 'cervejaria', id: string, user: JwtPayload) {
+  const finance = !permissoesIndividuaisAtivas() || await usuarioPode(user, 'cash.values.read');
+  const room = kind === 'evento'
+    ? (finance ? realtimeRoomEventFinance(id) : realtimeRoomEventOperations(id))
+    : (finance ? realtimeRoomTenantFinance(id) : realtimeRoomTenantOperations(id));
+  await socket.join(room);
+  const subscriptions = kind === 'evento' ? socket.data.eventoSubscriptions : socket.data.tenantSubscriptions;
+  if (subscriptions) subscriptions.add(id);
+}
+
+/** Move already connected staff sockets when the owner's permission list changes. */
+export async function reconcileRealtimePermissionsForUser(app: FastifyInstance, userId: string, cervejariaId: string) {
+  if (!permissoesIndividuaisAtivas()) return;
+  const sockets = [...app.io.sockets.sockets.values()] as StaffRealtimeSocket[];
+  for (const socket of sockets) {
+    const user = socket.data.user;
+    if (socket.data.authType !== 'staff' || !user || user.sub !== userId) continue;
+    const canReadFinance = await usuarioPode(user, 'cash.values.read');
+    for (const eventId of socket.data.eventoSubscriptions ?? []) {
+      await socket.leave(realtimeRoomEventFinance(eventId));
+      await socket.leave(realtimeRoomEventOperations(eventId));
+      if (user.cervejariaId === cervejariaId) {
+        await socket.join(canReadFinance ? realtimeRoomEventFinance(eventId) : realtimeRoomEventOperations(eventId));
+      }
+    }
+    for (const tenantId of socket.data.tenantSubscriptions ?? []) {
+      await socket.leave(realtimeRoomTenantFinance(tenantId));
+      await socket.leave(realtimeRoomTenantOperations(tenantId));
+      if (tenantId === cervejariaId && user.cervejariaId === cervejariaId) {
+        await socket.join(canReadFinance ? realtimeRoomTenantFinance(tenantId) : realtimeRoomTenantOperations(tenantId));
+      }
+    }
+  }
+}
 
 function extractStaffToken(socket: Socket): string | null {
   const fromAuth = socket.handshake.auth?.token;
@@ -142,9 +183,12 @@ export function setupSocketAuth(io: SocketIOServer, app: FastifyInstance) {
       return;
     }
 
+    const staffSocket = socket as StaffRealtimeSocket;
     const user = socket.data.user as JwtPayload;
+    staffSocket.data.eventoSubscriptions = new Set();
+    staffSocket.data.tenantSubscriptions = new Set();
 
-    socket.on('join:cervejaria', (cervejariaId: string) => {
+    socket.on('join:cervejaria', async (cervejariaId: string) => {
       if (!cervejariaId || typeof cervejariaId !== 'string') {
         realtimeEvent(app, socket, 'realtime.room.denied', { actorType: 'staff', reasonCode: 'SESSION_INVALID', roomType: 'cervejaria' });
         return;
@@ -153,7 +197,18 @@ export function setupSocketAuth(io: SocketIOServer, app: FastifyInstance) {
         realtimeEvent(app, socket, 'realtime.room.denied', { actorType: 'staff', userId: user.sub, role: user.papel, reasonCode: 'TENANT_MISMATCH', roomType: 'cervejaria', entityId: cervejariaId });
         return;
       }
-      socket.join(`cervejaria:${cervejariaId}`);
+      if (user.papel === 'ADMIN') {
+        await socket.join(realtimeRoomTenantFinance(cervejariaId));
+        staffSocket.data.tenantSubscriptions?.add(cervejariaId);
+        realtimeEvent(app, socket, 'realtime.room.joined', { actorType: 'staff', userId: user.sub, role: user.papel, roomType: 'cervejaria', entityId: cervejariaId });
+        return;
+      }
+      const tenant = await prisma.cervejaria.findUnique({ where: { id: cervejariaId }, select: { id: true } });
+      if (!tenant || !(await prisma.usuario.findFirst({ where: { id: user.sub, cervejariaId }, select: { id: true } }))) {
+        realtimeEvent(app, socket, 'realtime.room.denied', { actorType: 'staff', userId: user.sub, reasonCode: 'TENANT_MISMATCH', roomType: 'cervejaria', entityId: cervejariaId });
+        return;
+      }
+      await joinScopedStaffRoom(staffSocket, 'cervejaria', cervejariaId, user);
       realtimeEvent(app, socket, 'realtime.room.joined', { actorType: 'staff', userId: user.sub, role: user.papel, roomType: 'cervejaria', entityId: cervejariaId });
     });
 
@@ -164,14 +219,6 @@ export function setupSocketAuth(io: SocketIOServer, app: FastifyInstance) {
       }
       if (user.papel === 'ADMIN') return;
 
-      if (permissoesIndividuaisAtivas() && !(await usuarioPode(user, 'cash.values.read'))) {
-        realtimeEvent(app, socket, 'realtime.room.denied', {
-          actorType: 'staff', userId: user.sub, role: user.papel,
-          reasonCode: 'PERMISSION_DENIED', roomType: 'evento', entityId: eventoId,
-        });
-        return;
-      }
-
       const evento = await prisma.evento.findFirst({
         where: { id: eventoId, cervejariaId: user.cervejariaId ?? undefined },
         select: { id: true },
@@ -180,12 +227,16 @@ export function setupSocketAuth(io: SocketIOServer, app: FastifyInstance) {
         realtimeEvent(app, socket, 'realtime.room.denied', { actorType: 'staff', userId: user.sub, role: user.papel, reasonCode: 'TENANT_MISMATCH', roomType: 'evento', entityId: eventoId });
         return;
       }
-      socket.join(`evento:${eventoId}`);
+      await joinScopedStaffRoom(staffSocket, 'evento', eventoId, user);
       realtimeEvent(app, socket, 'realtime.room.joined', { actorType: 'staff', userId: user.sub, role: user.papel, roomType: 'evento', entityId: eventoId });
     });
 
     socket.on('leave:evento', (eventoId: string) => {
-      if (eventoId) socket.leave(`evento:${eventoId}`);
+      if (eventoId) {
+        socket.leave(realtimeRoomEventFinance(eventoId));
+        socket.leave(realtimeRoomEventOperations(eventoId));
+        staffSocket.data.eventoSubscriptions?.delete(eventoId);
+      }
     });
   });
 }

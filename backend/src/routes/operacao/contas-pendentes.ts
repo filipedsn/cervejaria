@@ -50,7 +50,7 @@ function resumoConta(conta: {
 }
 
 export async function contasPendentesOperacaoRoutes(app: FastifyInstance) {
-  app.get('/resumo', async (request) => {
+  app.get('/resumo', { preHandler: [requirePermissao(app, 'debt.receive')] }, async (request) => {
     const { cervejariaId } = request.operacao;
     const dia = diaOperacional();
     const inicio = zonedTimeToUtc(dia.getUTCFullYear(), dia.getUTCMonth() + 1, dia.getUTCDate(), 0, 0);
@@ -68,7 +68,7 @@ export async function contasPendentesOperacaoRoutes(app: FastifyInstance) {
     return { recebimentosHoje: Number(recebimentos._sum.valor ?? 0) };
   });
 
-  app.get('/', async (request) => {
+  app.get('/', { preHandler: [requirePermissao(app, 'debt.receive')] }, async (request) => {
     const { cervejariaId } = request.operacao;
     const contas = await prisma.contaReceber.findMany({
       where: { cliente: { cervejariaId }, comanda: { origem: 'CAIXA' } },

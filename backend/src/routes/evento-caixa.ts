@@ -14,7 +14,8 @@ import { normalizePhone } from '../lib/phone.js';
 import { recalculateClienteStats } from '../lib/cliente-stats.js';
 import { lockComandaItemsInTx } from '../lib/comanda-service.js';
 import { centavos, reais } from '../lib/operacao/venda.js';
-import { emitToEvento } from '../lib/realtime.js';
+import { emitFinancialToEvento, emitToEvento } from '../lib/realtime.js';
+import { requirePermissao, usuarioPode } from '../lib/operacao/permissoes.js';
 
 const abrirSchema = z.object({ trocoInicial: z.number().finite().min(0).max(1_000_000) });
 const movimentoSchema = z.object({
@@ -45,6 +46,18 @@ function resumirConta(conta: {
   return { ...conta, valorOriginal, recebido, saldo: Math.max(0, Math.round((valorOriginal - recebido) * 100) / 100) };
 }
 
+function resumoCaixaEventoRestrito(session: ReturnType<typeof resumoCaixaEvento>) {
+  if (!session) return null;
+  return {
+    id: session.id,
+    eventoId: session.eventoId,
+    status: session.status,
+    abertoEm: session.abertoEm,
+    fechadoEm: session.fechadoEm,
+    valoresRestritos: true,
+  };
+}
+
 export async function eventoCaixaRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
@@ -58,10 +71,12 @@ export async function eventoCaixaRoutes(app: FastifyInstance) {
       include: eventoCaixaInclude,
       orderBy: { abertoEm: 'desc' },
     });
-    return { caixa: resumoCaixaEvento(session), aberto: session?.status === 'ABERTO' };
+    const resumo = resumoCaixaEvento(session);
+    const podeVerValores = await usuarioPode(user, 'cash.values.read');
+    return { caixa: podeVerValores ? resumo : resumoCaixaEventoRestrito(resumo), aberto: session?.status === 'ABERTO' };
   });
 
-  app.post('/:eventoId/caixa/abrir', async (request, reply) => {
+  app.post('/:eventoId/caixa/abrir', { preHandler: [requirePermissao(app, 'cash.open')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { eventoId } = request.params as { eventoId: string };
     const body = abrirSchema.parse(request.body);
@@ -97,7 +112,10 @@ export async function eventoCaixaRoutes(app: FastifyInstance) {
         return created;
       });
       emitToEvento(app.io, eventoId, { type: 'evento-caixa:updated', data: { eventoId } });
-      return reply.status(201).send({ caixa: resumoCaixaEvento(session), aberto: true });
+      const resumo = resumoCaixaEvento(session);
+      const podeVerValores = await usuarioPode(user, 'cash.values.read');
+      emitFinancialToEvento(app.io, eventoId, { type: 'evento-caixa:financial-updated', data: resumo });
+      return reply.status(201).send({ caixa: podeVerValores ? resumo : resumoCaixaEventoRestrito(resumo), aberto: true });
     } catch (error) {
       const statusCode = (error as { statusCode?: number }).statusCode;
       if (statusCode === 409) return reply.status(409).send({ error: (error as Error).message });
@@ -105,7 +123,7 @@ export async function eventoCaixaRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post('/:eventoId/caixa/movimentos', async (request, reply) => {
+  app.post('/:eventoId/caixa/movimentos', { preHandler: [requirePermissao(app, 'cash.movement.write')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { eventoId } = request.params as { eventoId: string };
     const body = movimentoSchema.parse(request.body);
@@ -137,10 +155,19 @@ export async function eventoCaixaRoutes(app: FastifyInstance) {
     });
     if ('error' in session) return reply.status(session.statusCode).send({ error: session.error });
     emitToEvento(app.io, eventoId, { type: 'evento-caixa:updated', data: { eventoId } });
-    return { movimento: session, caixa: resumoCaixaEvento(await obterCaixaAtualEvento(eventoId)) };
+    const podeVerValores = await usuarioPode(user, 'cash.values.read');
+    const resumoFinanceiro = resumoCaixaEvento(await obterCaixaAtualEvento(eventoId));
+    emitFinancialToEvento(app.io, eventoId, { type: 'evento-caixa:financial-updated', data: resumoFinanceiro });
+    if (!podeVerValores) {
+      return {
+        movimento: { id: session.id, tipo: session.tipo, createdAt: session.createdAt, valoresRestritos: true },
+        caixa: resumoCaixaEventoRestrito(resumoFinanceiro),
+      };
+    }
+    return { movimento: session, caixa: resumoFinanceiro };
   });
 
-  app.post('/:eventoId/caixa/fechar', async (request, reply) => {
+  app.post('/:eventoId/caixa/fechar', { preHandler: [requirePermissao(app, ['cash.close', 'cash.values.read'])] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { eventoId } = request.params as { eventoId: string };
     const body = fecharSchema.parse(request.body);
@@ -179,10 +206,11 @@ export async function eventoCaixaRoutes(app: FastifyInstance) {
     });
     if ('error' in result) return reply.status(result.statusCode).send({ error: result.error });
     emitToEvento(app.io, eventoId, { type: 'evento-caixa:updated', data: { eventoId } });
+    emitFinancialToEvento(app.io, eventoId, { type: 'evento-caixa:financial-updated', data: result });
     return { caixa: result, aberto: false, formas: FORMAS_CAIXA_EVENTO };
   });
 
-  app.get('/:eventoId/contas-pendentes', async (request, reply) => {
+  app.get('/:eventoId/contas-pendentes', { preHandler: [requirePermissao(app, 'debt.receive')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { eventoId } = request.params as { eventoId: string };
     const evento = await prisma.evento.findFirst({ where: { id: eventoId, cervejariaId: user.cervejariaId }, select: { id: true } });
@@ -199,7 +227,7 @@ export async function eventoCaixaRoutes(app: FastifyInstance) {
     return contas.map(resumirConta).filter((conta) => conta.saldo > 0);
   });
 
-  app.post('/:eventoId/contas-pendentes/:contaId/pagamentos', async (request, reply) => {
+  app.post('/:eventoId/contas-pendentes/:contaId/pagamentos', { preHandler: [requirePermissao(app, 'debt.receive')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { eventoId, contaId } = request.params as { eventoId: string; contaId: string };
     const body = receberSchema.parse(request.body);

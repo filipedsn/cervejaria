@@ -1,4 +1,5 @@
 import type { Server as SocketIOServer } from 'socket.io';
+import { permissoesIndividuaisAtivas } from './operacao/permissoes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -15,6 +16,7 @@ export type RealtimeEvent =
   | { type: 'ranking:updated'; data: unknown }
   | { type: 'evento:updated'; data: unknown }
   | { type: 'evento-caixa:updated'; data: { eventoId: string } }
+  | { type: 'evento-caixa:financial-updated'; data: unknown }
   | { type: 'evento:deleted'; data: { id: string } }
   | { type: 'tap-montagem:updated'; data: { eventoId: string } }
   | { type: 'evento-cardapio:updated'; data: { eventoId: string } }
@@ -27,12 +29,62 @@ export type RealtimeEvent =
   | { type: 'operacao:comanda-atualizada'; data: { comandaId: string } }
   | { type: 'portal:session-expired'; data: { eventoId: string; reason: string } };
 
+export const realtimeRoomTenant = (id: string) => `cervejaria:${id}`;
+export const realtimeRoomTenantFinance = (id: string) => `cervejaria:${id}:financeiro`;
+export const realtimeRoomTenantOperations = (id: string) => `cervejaria:${id}:operacao`;
+export const realtimeRoomEvent = (id: string) => `evento:${id}`;
+export const realtimeRoomEventFinance = (id: string) => `evento:${id}:financeiro`;
+export const realtimeRoomEventOperations = (id: string) => `evento:${id}:operacao`;
+
+function operationalPayload(event: RealtimeEvent): unknown {
+  const data = event.data as Record<string, unknown> | null;
+  if (!data || typeof data !== 'object') return {};
+  const pick = (...keys: string[]) => Object.fromEntries(keys.filter((key) => data[key] !== undefined).map((key) => [key, data[key]]));
+  if (event.type.startsWith('operacao:pedido-')) {
+    const pedido = (data.pedido && typeof data.pedido === 'object' ? data.pedido : data) as Record<string, unknown>;
+    const items = Array.isArray(pedido.itensComanda) ? pedido.itensComanda : [];
+    return {
+      id: pedido.id,
+      numero: pedido.numero,
+      status: pedido.status,
+      diaOperacional: pedido.diaOperacional,
+      paraViagem: pedido.paraViagem,
+      observacao: pedido.observacao,
+      comanda: pedido.comanda && typeof pedido.comanda === 'object'
+        ? pickRecord(pedido.comanda as Record<string, unknown>, 'id', 'tipo', 'identificador', 'numero')
+        : undefined,
+      itensComanda: items.map((item) => item && typeof item === 'object'
+        ? pickRecord(item as Record<string, unknown>, 'id', 'nome', 'quantidade', 'volumeMl', 'observacao', 'exigePreparo', 'paraViagem', 'cancelamentoPendenteEm', 'canceladoEm')
+        : {}),
+    };
+  }
+  if (event.type === 'evento-caixa:updated' || event.type === 'ranking:updated' || event.type === 'operacao:comanda-atualizada'
+    || event.type === 'tap-montagem:updated' || event.type === 'evento-cardapio:updated' || event.type === 'evento:deleted') {
+    return pick('id', 'eventoId', 'comandaId');
+  }
+  return pick('id', 'eventoId', 'comandaId', 'status', 'numero', 'tipo', 'identificador', 'pontoVendaId', 'ocorrenciaId');
+}
+
+function pickRecord(source: Record<string, unknown>, ...keys: string[]) {
+  return Object.fromEntries(keys.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]));
+}
+
+function emitScoped(io: SocketIOServer | undefined, legacyRoom: string, financeRoom: string, operationsRoom: string, event: RealtimeEvent) {
+  if (!io) return;
+  if (!permissoesIndividuaisAtivas()) {
+    io.to(legacyRoom).emit(event.type, event.data);
+    return;
+  }
+  io.to(financeRoom).emit(event.type, event.data);
+  io.to(operationsRoom).emit(event.type, operationalPayload(event));
+}
+
 export function emitToCervejaria(
   io: SocketIOServer | undefined,
   cervejariaId: string,
   event: RealtimeEvent
 ): void {
-  io?.to(`cervejaria:${cervejariaId}`).emit(event.type, event.data);
+  emitScoped(io, realtimeRoomTenant(cervejariaId), realtimeRoomTenantFinance(cervejariaId), realtimeRoomTenantOperations(cervejariaId), event);
 }
 
 export function emitToEvento(
@@ -40,7 +92,12 @@ export function emitToEvento(
   eventoId: string,
   event: RealtimeEvent
 ): void {
-  io?.to(`evento:${eventoId}`).emit(event.type, event.data);
+  emitScoped(io, realtimeRoomEvent(eventoId), realtimeRoomEventFinance(eventoId), realtimeRoomEventOperations(eventoId), event);
+}
+
+/** Financial-only event feed; restricted staff sockets never join this room. */
+export function emitFinancialToEvento(io: SocketIOServer | undefined, eventoId: string, event: RealtimeEvent): void {
+  io?.to(realtimeRoomEventFinance(eventoId)).emit(event.type, event.data);
 }
 
 export function emitToComanda(

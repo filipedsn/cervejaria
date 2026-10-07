@@ -108,6 +108,7 @@ export function OperacaoComandaDetailPage() {
   const caixaAberto = caixaData?.sessao?.status === 'ABERTO';
   const podeReceber = canPermission('payment.receive');
   const podeCancelarComanda = canPermission('command.cancel');
+  const podeCancelarItem = canPermission('command.item.cancel');
   const podeFecharComanda = canPermission('command.close');
 
   const { data: estoqueData } = useQuery({
@@ -616,7 +617,7 @@ export function OperacaoComandaDetailPage() {
             {pedido.itens.map((item) => {
               const itemEmCancelamento = Boolean(item.cancelamentoPendenteEm || item.canceladoEm);
               const quantidadeEditavel = aberta && !itemEmCancelamento && podeAlterarQuantidadeItemComanda(comanda, pedido, item);
-              const removivel = aberta && !itemEmCancelamento && podeRemoverItemComanda(comanda, pedido, item);
+              const removivel = aberta && podeCancelarItem && !itemEmCancelamento && podeRemoverItemComanda(comanda, pedido, item);
               const itemConfirmado = itemConfirmadoNaComanda(pedido, item);
               const produto = produtoPorId.get(item.produtoId);
               const podeIncrementar = podeIncrementarItemComanda(produto, saldos, controlaEstoque, item.volumeMl);
@@ -640,7 +641,7 @@ export function OperacaoComandaDetailPage() {
                         type="button"
                         aria-label={`Remover um ${item.nome}`}
                         className="flex min-h-9 min-w-9 items-center justify-center rounded-lg text-base font-bold text-ink-muted transition-transform active:scale-95 active:bg-surface-lighter disabled:opacity-40"
-                        disabled={itemEmEdicao}
+                        disabled={itemEmEdicao || !podeCancelarItem}
                         onClick={() => {
                           if (item.quantidade <= 1) {
                             removerItem.mutate({ itemId: item.id });

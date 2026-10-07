@@ -9,6 +9,7 @@ import {
   permissoesOperacaoSchema as permissionListSchema,
   requireDonoAtual,
 } from '../lib/operacao/permissoes.js';
+import { reconcileRealtimePermissionsForUser } from '../lib/socket-auth.js';
 
 const createAtendenteSchema = z.object({
   nome: z.string().min(2),
@@ -142,6 +143,8 @@ export async function usuariosRoutes(app: FastifyInstance) {
         createdAt: true,
       },
     });
+
+    if (permissionMode) await reconcileRealtimePermissionsForUser(app, alvo.id, user.cervejariaId);
 
     return atualizado;
   });

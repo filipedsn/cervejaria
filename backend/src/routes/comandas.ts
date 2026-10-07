@@ -219,7 +219,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     return reply.status(201).send(resultado.atualizada);
   });
 
-  app.delete('/:id/itens/:itemId', async (request, reply) => {
+  app.delete('/:id/itens/:itemId', { preHandler: [requirePermissao(app, 'command.item.cancel')] }, async (request, reply) => {
     const user = getAuthUser(request);
     const { id, itemId } = request.params as { id: string; itemId: string };
 
