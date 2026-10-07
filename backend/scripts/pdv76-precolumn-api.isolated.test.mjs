@@ -29,7 +29,7 @@ try {
 
   const launch = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: {
     pontoVendaId: fixture.pointId, tipo: 'APELIDO', identificador: `pre-column-${fixture.sessionId}`,
-    itens: fixture.productIds.map((produtoId) => ({ produtoId, volumeMl: 1, quantidade: 1 })),
+    itens: fixture.productIds.map((produtoId) => ({ produtoId, quantidade: 1 })),
   } });
   assert.equal(launch.statusCode, 201, `Por Caixa launch and legacy grouping succeed on old schema: ${launch.body}`);
   const command = JSON.parse(launch.body);

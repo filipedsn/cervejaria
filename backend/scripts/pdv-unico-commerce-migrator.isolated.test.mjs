@@ -2883,7 +2883,7 @@ try {
   const legacyApiMenu = await db.cardapio.create({ data: { cervejariaId: legacyCloseCompany.id, pontoVendaId: legacyApiPoint.id, nome: 'Legacy API menu' } });
   await db.cardapioProduto.createMany({ data: legacyApiProducts.map((legacyProduct, index) => ({
     id: id(`legacy-api-menu-entry-${index}`), cardapioId: legacyApiMenu.id, produtoId: legacyProduct.id,
-    cervejariaId: legacyCloseCompany.id, pontoVendaId: legacyApiPoint.id, volumeMl: 1, precoUnit: '10.00',
+    cervejariaId: legacyCloseCompany.id, pontoVendaId: legacyApiPoint.id, volumeMl: 0, precoUnit: '10.00',
   })) });
   await db.configuracaoOperacao.create({ data: { cervejariaId: legacyCloseCompany.id, ativo: true, controlaEstoque: false, temCozinha: true, exclusivo: false, quantidadeMesas: 0 } });
   await db.configuracaoOperacional.create({ data: { cervejariaId: legacyCloseCompany.id, inventoryEnabled: false, kitchenEnabled: true, kitchenItemsChargeAtLaunch: true, allowCloseComandaWithPendingKitchenOrders: false } });
