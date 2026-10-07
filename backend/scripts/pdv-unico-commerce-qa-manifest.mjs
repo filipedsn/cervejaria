@@ -49,6 +49,7 @@ export async function buildPdvCommerceQaManifest(options = {}) {
   const session = JSON.parse(git(['show', `${baselineCommit}:${priorFiles.session}`]).toString('utf8'));
   const codePaths = [...new Set([
     'backend/scripts/pdv-unico-catalog-migrator.ts',
+    'backend/scripts/pdv-unico-tap-migrator.ts',
     'backend/scripts/pdv-unico-business-migrator.ts',
     'backend/scripts/pdv-unico-catalog-transform.ts',
     'backend/scripts/pdv-unico-catalog-transform.test.ts',
@@ -58,6 +59,7 @@ export async function buildPdvCommerceQaManifest(options = {}) {
     'backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs',
     'backend/src/routes/taps.ts',
     'backend/src/lib/tap-montagem.ts',
+    'backend/src/lib/catalogo-utils.ts',
     'backend/src/routes/operacao/caixa.ts',
     'backend/src/lib/operacao/caixa.ts',
     'backend/src/lib/operacao/venda.ts',

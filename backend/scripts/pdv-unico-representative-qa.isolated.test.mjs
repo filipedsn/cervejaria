@@ -47,6 +47,7 @@ async function measured(stage, operation) {
 }
 const { runPdvBusinessMigration } = await import('./pdv-unico-business-migrator.ts');
 const { runPdvCatalogMigration, runPdvKitchenOrderContextPreparation, runPdvSessionMigration, runPdvFinanceMigration, runPdvCommerceMigration } = await import('./pdv-unico-catalog-migrator.ts');
+const { runPdvTapOwnershipMigration } = await import('./pdv-unico-tap-migrator.ts');
 const runId = `tap76-representative-${randomBytes(8).toString('hex')}`;
 const tableByName = new Map(photo.tableRows.map((table) => [table.model, table]));
 const modelEntries = Object.entries(db._runtimeDataModel.models).map(([name, model]) => [name, model]);
@@ -339,6 +340,7 @@ try {
     const phases = [
       ['business', (options) => runPdvBusinessMigration({ db, companyId: target.id, runId: `${runId}-${target.id}-business`, batchSize: 100, ...options })],
       ['catalog', (options) => runPdvCatalogMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-catalog`, ...options })],
+      ['taps', (options) => runPdvTapOwnershipMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-taps`, ...options })],
       ['sessions', (options) => runPdvSessionMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-sessions`, ...options })],
       ['finance', (options) => runPdvFinanceMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-finance`, historicalNoSessionApproval: approval, ...options })],
       ['kitchen-preparation-before-commerce', (options) => runPdvKitchenOrderContextPreparation({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-kitchen-prep`, ...options })],
@@ -385,7 +387,7 @@ try {
       continue;
     }
   }
-  const requiredPhases = ['business', 'catalog', 'sessions', 'finance', 'kitchen-preparation-before-commerce', 'commerce', 'finance-revalidation-after-commerce', 'kitchen-preparation-revalidation'];
+  const requiredPhases = ['business', 'catalog', 'taps', 'sessions', 'finance', 'kitchen-preparation-before-commerce', 'commerce', 'finance-revalidation-after-commerce', 'kitchen-preparation-revalidation'];
   const tenantResults = targets.map((target) => {
     const rows = reports.filter((row) => row.tenant === target.label);
     const completed = new Set(rows.filter((row) => row.status === 'COMPLETED').map((row) => row.phase));

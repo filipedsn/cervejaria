@@ -1882,6 +1882,7 @@ try {
 
   const { runPdvBusinessMigration } = await import('./pdv-unico-business-migrator.ts');
   const { runPdvCatalogMigration, runPdvSessionMigration, runPdvFinanceMigration, runPdvCommerceMigration } = await import('./pdv-unico-catalog-migrator.ts');
+  const { runPdvTapOwnershipMigration, PdvTapBlocker } = await import('./pdv-unico-tap-migrator.ts');
   const { readPdvCommerceSourceSnapshot } = await import('./pdv-unico-commerce-source.ts');
   const company = await db.cervejaria.create({ data: { nome: `QA commerce ${runId}`, slug: slug('commerce') } });
   await db.configuracaoOperacao.create({ data: { cervejariaId: company.id, ativo: true, controlaEstoque: true, temCozinha: true, exclusivo: false, quantidadeMesas: 4, createdAt: new Date('2026-10-01T10:00:00.000Z'), updatedAt: new Date('2026-10-02T10:00:00.000Z') } });
@@ -2003,6 +2004,28 @@ try {
   ].sort((a, b) => a[1].localeCompare(b[1]) || a[2] - b[2]), 'session transfer preserves exact row IDs and zero/null override states');
   const tap = await db.tap.create({ data: { id: id('price-consumer-tap'), numero: 91, nome: 'QA price consumer', cervejariaId: company.id, trailerId: trailer.id, pontoVendaId: point.id } });
   await db.tapMontagem.createMany({ data: [eventSession.id, debtEventSession.id, cashSession.id, overrideSession.id, catalogFallbackSession.id].map((sessaoCaixaId, index) => ({ id: id(`price-mount-${index}`), tapId: tap.id, produtoId: draftProduct.id, sessaoCaixaId })) });
+  const tapAndMountBefore = plain({ tap: await db.tap.findUniqueOrThrow({ where: { id: tap.id } }), mounts: await db.tapMontagem.findMany({ where: { tapId: tap.id }, orderBy: { iniciadoEm: 'asc' } }) });
+  const tapRunId = id('tap-owner-migration');
+  const tapMigrationResults = await Promise.all([1, 2].map(() => runPdvTapOwnershipMigration({ db, companyId: company.id, pointId: point.id, runId: tapRunId })));
+  assert.deepEqual(tapMigrationResults.map((row) => row.status).sort(), ['COMPLETED', 'COMPLETED']);
+  assert.equal(tapMigrationResults.filter((row) => row.reusedCompletedRun).length, 1, 'same-run concurrent TAP migration serializes and reuses the confirmed receipt');
+  assert.deepEqual(plain({ tap: await db.tap.findUniqueOrThrow({ where: { id: tap.id } }), mounts: await db.tapMontagem.findMany({ where: { tapId: tap.id }, orderBy: { iniciadoEm: 'asc' } }) }), tapAndMountBefore, 'canonical ownership update preserves the Tap and every mount ID/product/session/date/state');
+  assert.equal(await db.pdvMigrationMap.count({ where: { lastRunId: tapRunId } }), 6, 'one Tap plus all five mount records have per-row map receipts');
+  assert.equal(await db.pdvMigrationBatch.count({ where: { runId: tapRunId, status: 'CONFIRMED' } }), 1, 'destination changes, row maps, receipts and checkpoint commit in one batch');
+  await db.tap.update({ where: { id: tap.id }, data: { nome: 'tampered Tap name' } });
+  await assert.rejects(runPdvTapOwnershipMigration({ db, companyId: company.id, pointId: point.id, runId: tapRunId }), (error) => error instanceof PdvTapBlocker && error.code === 'TAP_RUN_SCOPE_OR_SNAPSHOT_DIVERGED', 'source tampering blocks a completed run without overwrite');
+  await db.tap.update({ where: { id: tap.id }, data: { nome: tapAndMountBefore.tap.nome } });
+  const tapReplay = await runPdvTapOwnershipMigration({ db, companyId: company.id, pointId: point.id, runId: tapRunId });
+  assert.equal(tapReplay.reusedCompletedRun, true, 'an unchanged completed Tap/mount snapshot replays from its exact receipt');
+  const rollbackTenant = await db.cervejaria.create({ data: { nome: `QA tap rollback ${runId}`, slug: slug('tap-rollback') } });
+  const rollbackPoint = await db.pontoVenda.create({ data: { id: id('tap-rollback-point'), cervejariaId: rollbackTenant.id, nome: 'Rollback PDV' } });
+  const rollbackTrailer = await db.trailer.create({ data: { id: id('tap-rollback-trailer'), cervejariaId: rollbackTenant.id, nome: 'Rollback Trailer' } });
+  const rollbackTap = await db.tap.create({ data: { id: id('tap-rollback'), numero: 92, nome: 'Rollback Tap', cervejariaId: rollbackTenant.id, trailerId: rollbackTrailer.id } });
+  const rollbackTapRunId = id('tap-rollback-run');
+  await assert.rejects(runPdvTapOwnershipMigration({ db, companyId: rollbackTenant.id, pointId: rollbackPoint.id, runId: rollbackTapRunId, afterDestinationWrite: async () => { throw new Error('QA_TAP_ATOMIC_ROLLBACK'); } }), /QA_TAP_ATOMIC_ROLLBACK/);
+  assert.equal((await db.tap.findUniqueOrThrow({ where: { id: rollbackTap.id } })).pontoVendaId, null, 'injected pre-commit failure rolls back Tap ownership');
+  assert.equal(await db.pdvMigrationRun.count({ where: { id: rollbackTapRunId } }), 0, 'injected pre-commit failure rolls back run, batch, maps and checkpoint');
+  await db.tap.delete({ where: { id: rollbackTap.id } });
   const command = async (name, event, status = 'ABERTA') => db.comanda.create({ data: { id: id(name), origem: event ? 'EVENTO' : 'CAIXA', eventoId: event?.id ?? null, pontoVendaId: event ? null : point.id, clienteId: client.id, status, total: '18.25', desconto: '0.50', numero: name.length } });
   const eventCommand1 = await command('event-command-1', events[0]);
   const eventCommand2 = await command('event-command-2', events[1], 'FECHADA');
