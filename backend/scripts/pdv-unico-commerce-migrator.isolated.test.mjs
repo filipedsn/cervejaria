@@ -2001,7 +2001,7 @@ try {
     [id('cash-product-500-no-override'), draftProduct.id, 500, null],
     [id('cash-product-1000-null-override'), draftProduct.id, 1000, null],
   ].sort((a, b) => a[1].localeCompare(b[1]) || a[2] - b[2]), 'session transfer preserves exact row IDs and zero/null override states');
-  const tap = await db.tap.create({ data: { id: id('price-consumer-tap'), numero: 91, nome: 'QA price consumer', cervejariaId: company.id, trailerId: trailer.id } });
+  const tap = await db.tap.create({ data: { id: id('price-consumer-tap'), numero: 91, nome: 'QA price consumer', cervejariaId: company.id, trailerId: trailer.id, pontoVendaId: point.id } });
   await db.tapMontagem.createMany({ data: [eventSession.id, debtEventSession.id, cashSession.id, overrideSession.id, catalogFallbackSession.id].map((sessaoCaixaId, index) => ({ id: id(`price-mount-${index}`), tapId: tap.id, produtoId: draftProduct.id, sessaoCaixaId })) });
   const command = async (name, event, status = 'ABERTA') => db.comanda.create({ data: { id: id(name), origem: event ? 'EVENTO' : 'CAIXA', eventoId: event?.id ?? null, pontoVendaId: event ? null : point.id, clienteId: client.id, status, total: '18.25', desconto: '0.50', numero: name.length } });
   const eventCommand1 = await command('event-command-1', events[0]);
