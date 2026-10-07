@@ -619,12 +619,12 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     } });
     assert.equal(independentProductResponse.statusCode, 201, `authenticated product create persists the independent-order flag: ${independentProductResponse.body}`);
     const independentProductId = JSON.parse(independentProductResponse.body).id;
-    assert.equal((await db.produto.findUniqueOrThrow({ where: { id: independentProductId } })).prepararEmPedidoSeparado, true);
+    assert.equal((await db.produto.findUniqueOrThrow({ where: { id: independentProductId }, select: { prepararEmPedidoSeparado: true } })).prepararEmPedidoSeparado, true);
     const disableIndependentResponse = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${encodeURIComponent(independentProductId)}`, headers: { cookie: secondOwnerCookie }, payload: { prepararEmPedidoSeparado: false } });
     assert.equal(disableIndependentResponse.statusCode, 200, `product edit can clear the independent-order flag: ${disableIndependentResponse.body}`);
     const enableIndependentResponse = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${encodeURIComponent(independentProductId)}`, headers: { cookie: secondOwnerCookie }, payload: { prepararEmPedidoSeparado: true } });
     assert.equal(enableIndependentResponse.statusCode, 200, `product edit can enable the independent-order flag: ${enableIndependentResponse.body}`);
-    const churrasquinho = await db.produto.findUniqueOrThrow({ where: { id: independentProductId } });
+    const churrasquinho = await db.produto.findUniqueOrThrow({ where: { id: independentProductId }, select: { id: true, nome: true, exigePreparo: true, prepararEmPedidoSeparado: true, controlaEstoque: true } });
     const batata = await db.produto.create({ data: {
       id: `grouped-kitchen-${runId}`, cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id,
       nome: 'Batata QA', tipo: 'COMIDA', exigePreparo: true, prepararEmPedidoSeparado: false, controlaEstoque: true,
@@ -2115,7 +2115,7 @@ try {
   const deletionSkipped = Number(deletionOutput.match(/^# skipped (\d+)$/m)?.[1] ?? -1);
   if (deletionTests < 8 || deletionPassed !== deletionTests || deletionSkipped !== 0) throw new Error(`Commercial-chain event deletion gate requires at least 8 executed tests and zero skips (tests=${deletionTests}, pass=${deletionPassed}, skipped=${deletionSkipped}).`);
   const { PrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
-  db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal' });
+  db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal', omit: { produto: { prepararEmPedidoSeparado: true } } });
   const applied = await db.$queryRaw`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL ORDER BY migration_name`;
   assert.equal(applied.length, history.migrations.length + 9, 'full historical + operational core/catalog/session/finance/provenance/commerce/sale-session/Tap-mount/independent-kitchen chain');
   assert(applied.some((row) => row.migration_name === manifest.priorManifests.finance.historicalProvenanceMigration.name), 'Payment.provenienciaHistorica migration is applied before commerce route regressions');
