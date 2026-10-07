@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "72debdfb78c949e42fa064a8160e03b7cb335371",
+    "commit": "5194a94d838c29dab7d9a079b8383dc45973d2e7",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "b25ae48f99253fbc259df5cbad42e91c47972ca031ba1c22161ab4e5edf6b1d5"
   },
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "72debdfb78c949e42fa064a8160e03b7cb335371",
+      "commit": "5194a94d838c29dab7d9a079b8383dc45973d2e7",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -63,7 +63,7 @@
     }
   },
   "delivery": {
-    "schemaCommit": "72debdfb78c949e42fa064a8160e03b7cb335371",
+    "schemaCommit": "5194a94d838c29dab7d9a079b8383dc45973d2e7",
     "schemaSha256": "b25ae48f99253fbc259df5cbad42e91c47972ca031ba1c22161ab4e5edf6b1d5",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
@@ -221,7 +221,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-tap-migrator.ts",
-      "sha256": "65e776bcc3d11feed1fd0456a04556f0d11a1ac9309e65f31d7913d42570419e"
+      "sha256": "10ceb9b6e51bdfc2070b159a3d261fc18466a7f81b70e3101c794ffacc6036e4"
     },
     {
       "path": "backend/scripts/run-isolated-qa-historical.mjs",
@@ -440,5 +440,5 @@
       "sha256": "18654d57d175edbedd33943cf345c989c672b238fee455e0796a522b55e8d5fc"
     }
   ],
-  "manifestSha256": "6f2bbc009539479dd67d5891f65bec651c343192103623d10d117d1df4425107"
+  "manifestSha256": "48fdf65cded0fce975c770e12d14912bae2732f98e67fc1d5bbad454f52aeb01"
 }
