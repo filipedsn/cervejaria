@@ -662,12 +662,13 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.deepEqual(outgoingMovements.map((movement) => [movement.produtoId, movement.pedidoId, movement.quantidade.toString()]), [
       [batata.id, groupedKitchenOrder?.id, '1'], [cebola.id, groupedKitchenOrder?.id, '1'], [churrasquinho.id, independentKitchenOrder?.id, '1'],
     ].sort((left, right) => left[0].localeCompare(right[0])), 'each line consumes stock once and records its owning kitchen order');
-    const rollbackCounts = async () => [
-      await db.comanda.count({ where: { pontoVendaId: secondPoint.id } }),
-      await db.pedidoOperacao.count({ where: { cervejariaId: secondCompany.id } }),
-      await db.itemComanda.count({ where: { comanda: { pontoVendaId: secondPoint.id } } }),
-    ];
-    const beforeInjectedFailure = await rollbackCounts();
+    const rollbackState = async () => plain({
+      commands: await db.comanda.findMany({ where: { pontoVendaId: secondPoint.id }, orderBy: { id: 'asc' }, include: { itens: { orderBy: { id: 'asc' }, include: { opcionais: { orderBy: { id: 'asc' } } } }, pagamentos: { orderBy: { id: 'asc' } } } }),
+      orders: await db.pedidoOperacao.findMany({ where: { pontoVendaId: secondPoint.id }, orderBy: [{ diaOperacional: 'asc' }, { numero: 'asc' }], include: { itensComanda: { orderBy: { id: 'asc' }, include: { opcionais: { orderBy: { id: 'asc' } } } }, historicoStatus: { orderBy: [{ registradoEm: 'asc' }, { id: 'asc' }] } } }),
+      balances: await db.inventoryBalance.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id, cebola.id] } }, orderBy: { produtoId: 'asc' } }),
+      movements: await db.inventoryMovement.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id, cebola.id] } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }),
+    });
+    const beforeInjectedFailure = await rollbackState();
     const independentFailureTrigger = `qa_fail_independent_order_${runId}`.replaceAll(/[^a-zA-Z0-9_]/g, '_');
     await db.$executeRawUnsafe(`CREATE OR REPLACE FUNCTION public.${independentFailureTrigger}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."produtoId" = '${churrasquinho.id}' THEN RAISE EXCEPTION 'QA injected independent kitchen item failure'; END IF; RETURN NEW; END $$`);
     await db.$executeRawUnsafe(`CREATE TRIGGER ${independentFailureTrigger} BEFORE INSERT ON public."ItemComanda" FOR EACH ROW EXECUTE FUNCTION public.${independentFailureTrigger}()`);
@@ -682,7 +683,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       await db.$executeRawUnsafe(`DROP FUNCTION IF EXISTS public.${independentFailureTrigger}()`);
     }
     assert.equal(failedIndependentLaunch.statusCode, 500, 'failure while building the second kitchen order fails the complete launch');
-    assert.deepEqual(await rollbackCounts(), beforeInjectedFailure, 'the comanda, first order, and lines all roll back together');
+    assert.deepEqual(await rollbackState(), beforeInjectedFailure, 'injected launch failure leaves commands, orders, items, optional snapshots, histories, balances and stock movements identical');
     for (const status of ['EM_PREPARO', 'PRONTO', 'ENTREGUE']) {
       const transition = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(independentKitchenOrder.id)}/status`, headers: { cookie: secondOwnerCookie }, payload: { status } });
       assert.equal(transition.statusCode, 200, `independent kitchen order transitions to ${status}: ${transition.body}`);
@@ -735,6 +736,109 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     }
     const portalPayment = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(portalComanda.id)}/pagamentos`, headers: { cookie: secondOwnerCookie }, payload: { pagamentos: [{ forma: 'PIX', valor: 30 }] } });
     assert.equal(portalPayment.statusCode, 200, `owner can settle the portal comanda through the existing payment flow: ${portalPayment.body}`);
+
+    const markedOptional = await db.opcional.create({ data: {
+      id: `independent-snapshot-optional-marked-${runId}`, cervejariaId: secondCompany.id, nome: `Molho marcado ${runId}`, preco: '1.25',
+      produtos: { create: [{ id: `independent-snapshot-link-marked-${runId}`, produtoId: churrasquinho.id, ordem: 1 }] },
+    } });
+    const commonOptional = await db.opcional.create({ data: {
+      id: `independent-snapshot-optional-common-${runId}`, cervejariaId: secondCompany.id, nome: `Queijo comum ${runId}`, preco: '0.75',
+      produtos: { create: [{ id: `independent-snapshot-link-common-${runId}`, produtoId: batata.id, ordem: 1 }] },
+    } });
+    const secondMarkedProduct = await db.produto.create({ data: {
+      id: `independent-snapshot-marked-two-${runId}`, cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id,
+      nome: 'Pastel QA marcado', tipo: 'COMIDA', exigePreparo: true, prepararEmPedidoSeparado: true, controlaEstoque: true,
+    } });
+    await db.preco.create({ data: { id: `independent-snapshot-marked-two-price-${runId}`, produtoId: secondMarkedProduct.id, volumeMl: 1, preco: '8.00' } });
+    await db.sessaoCaixaProdutoOperacao.create({ data: { id: `independent-snapshot-marked-two-session-${runId}`, sessaoCaixaId: kitchenSessionId, produtoId: secondMarkedProduct.id, volumeMl: 0 } });
+    await db.cardapioProduto.create({ data: { id: `independent-snapshot-marked-two-menu-${runId}`, cardapioId: secondMenu.id, produtoId: secondMarkedProduct.id, pontoVendaId: secondPoint.id, volumeMl: 0, precoUnit: '8.00' } });
+    await db.inventoryBalance.create({ data: { cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id, produtoId: secondMarkedProduct.id, quantidade: 5 } });
+    const snapshotLaunch = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie: secondOwnerCookie }, payload: {
+      pontoVendaId: secondPoint.id, tipo: 'APELIDO', identificador: `independent-snapshot-${runId}`,
+      itens: [
+        { produtoId: churrasquinho.id, quantidade: 3, paraViagem: true, observacao: 'marcado: molho separado', opcionais: [{ opcionalId: markedOptional.id, quantidade: 2 }] },
+        { produtoId: secondMarkedProduct.id, quantidade: 1, paraViagem: false, observacao: 'marcado: borda crocante' },
+        { produtoId: batata.id, quantidade: 3, paraViagem: false, observacao: 'comum: sem sal', opcionais: [{ opcionalId: commonOptional.id, quantidade: 1 }] },
+      ],
+    } });
+    assert.equal(snapshotLaunch.statusCode, 201, `authenticated split launch preserves line snapshots: ${snapshotLaunch.body}`);
+    const snapshotCommandId = JSON.parse(snapshotLaunch.body).id;
+    const readSnapshotOrders = () => db.pedidoOperacao.findMany({
+      where: { comandaId: snapshotCommandId }, orderBy: { numero: 'asc' },
+      include: { itensComanda: { orderBy: { produtoId: 'asc' }, include: { opcionais: { orderBy: { nome: 'asc' } } } }, historicoStatus: { orderBy: { registradoEm: 'asc' } } },
+    });
+    const snapshotOrdersBeforeFlagEdit = await readSnapshotOrders();
+    assert.equal(snapshotOrdersBeforeFlagEdit.length, 3, 'two marked lines each have their own order and the common line has one grouped order');
+    const markedSnapshotOrder = snapshotOrdersBeforeFlagEdit.find((row) => row.itensComanda.some((item) => item.produtoId === churrasquinho.id));
+    const secondMarkedSnapshotOrder = snapshotOrdersBeforeFlagEdit.find((row) => row.itensComanda.some((item) => item.produtoId === secondMarkedProduct.id));
+    const commonSnapshotOrder = snapshotOrdersBeforeFlagEdit.find((row) => row.itensComanda.some((item) => item.produtoId === batata.id));
+    assert(markedSnapshotOrder && secondMarkedSnapshotOrder && commonSnapshotOrder && new Set([markedSnapshotOrder.id, secondMarkedSnapshotOrder.id, commonSnapshotOrder.id]).size === 3, 'each marked line is independent and the common line is grouped separately');
+    const markedSnapshotItem = markedSnapshotOrder.itensComanda.find((item) => item.produtoId === churrasquinho.id);
+    const commonSnapshotItem = commonSnapshotOrder.itensComanda.find((item) => item.produtoId === batata.id);
+    assert.deepEqual([markedSnapshotItem?.quantidade, markedSnapshotItem?.nome, markedSnapshotItem?.observacao, markedSnapshotItem?.paraViagem, markedSnapshotItem?.pedidoCozinhaId], [3, 'Churrasquinho QA', 'marcado: molho separado', true, markedSnapshotOrder.id]);
+    assert.deepEqual([commonSnapshotItem?.quantidade, commonSnapshotItem?.nome, commonSnapshotItem?.observacao, commonSnapshotItem?.paraViagem, commonSnapshotItem?.pedidoCozinhaId], [3, 'Batata QA', 'comum: sem sal', false, commonSnapshotOrder.id]);
+    assert.deepEqual(secondMarkedSnapshotOrder.itensComanda.map((item) => [item.produtoId, item.quantidade, item.observacao, item.pedidoCozinhaId]), [[secondMarkedProduct.id, 1, 'marcado: borda crocante', secondMarkedSnapshotOrder.id]], 'second marked line also retains its distinct observation and independent parent link');
+    assert.deepEqual(markedSnapshotItem.opcionais.map((row) => [row.nome, row.precoAdicional.toString(), row.quantidade]), [[markedOptional.nome, '1.25', 2]], 'marked line stores optional name, price and quantity snapshot');
+    assert.deepEqual(commonSnapshotItem.opcionais.map((row) => [row.nome, row.precoAdicional.toString(), row.quantidade]), [[commonOptional.nome, '0.75', 1]], 'common line stores its distinct optional snapshot');
+    assert.equal(markedSnapshotOrder.paraViagem, true, 'marked order derives take-away from its line');
+    assert.equal(secondMarkedSnapshotOrder.paraViagem, false, 'second marked order preserves its own take-away value');
+    assert.equal(commonSnapshotOrder.paraViagem, false, 'common order keeps its own take-away value');
+    const disableFlagAfterLaunch = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${encodeURIComponent(churrasquinho.id)}`, headers: { cookie: secondOwnerCookie }, payload: { prepararEmPedidoSeparado: false } });
+    assert.equal(disableFlagAfterLaunch.statusCode, 200, `product flag can change after the sale: ${disableFlagAfterLaunch.body}`);
+    assert.deepEqual(plain(await readSnapshotOrders()), plain(snapshotOrdersBeforeFlagEdit), 'editing the product flag does not repartition or mutate existing order/item/optional/history snapshots');
+    const restoreFlagAfterLaunch = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${encodeURIComponent(churrasquinho.id)}`, headers: { cookie: secondOwnerCookie }, payload: { prepararEmPedidoSeparado: true } });
+    assert.equal(restoreFlagAfterLaunch.statusCode, 200, `test fixture restores product flag for later sale proofs: ${restoreFlagAfterLaunch.body}`);
+
+    const { diaOperacional } = await import('../src/lib/operacao/venda.ts');
+    const launchDay = diaOperacional();
+    const launchDayText = launchDay.toISOString().slice(0, 10);
+    const concurrentSaleLockDigest = createHash('sha256').update(`caixa-operacao:${secondCompany.id}:${secondPoint.id}:${launchDayText}`).digest();
+    const splitSaleCashLockKey = BigInt.asIntN(64, concurrentSaleLockDigest.readBigUInt64BE(0));
+    let signalSplitSaleCashLock;
+    let releaseSplitSaleCashLock;
+    const splitSaleCashLockHeld = new Promise((resolve) => { signalSplitSaleCashLock = resolve; });
+    const splitSaleCashLockRelease = new Promise((resolve) => { releaseSplitSaleCashLock = resolve; });
+    const balancesBeforeConcurrentLaunches = await db.inventoryBalance.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id] } }, orderBy: { produtoId: 'asc' } });
+    const splitSaleCashLockHolder = db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${splitSaleCashLockKey})`;
+      signalSplitSaleCashLock();
+      await splitSaleCashLockRelease;
+    }, { maxWait: 15000, timeout: 30000 });
+    await splitSaleCashLockHeld;
+    const concurrentLaunches = Promise.all(['a', 'b'].map((suffix) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie: secondOwnerCookie }, payload: {
+      pontoVendaId: secondPoint.id, tipo: 'APELIDO', identificador: `independent-concurrent-${suffix}-${runId}`,
+      itens: [{ produtoId: churrasquinho.id, quantidade: 1 }, { produtoId: batata.id, quantidade: 1 }],
+    } })));
+    let splitSaleCashLockWaiters = 0;
+    const splitSaleCashLockDeadline = process.hrtime.bigint() + 15_000_000_000n;
+    try {
+      while (process.hrtime.bigint() < splitSaleCashLockDeadline) {
+        const rows = await db.$queryRaw`SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND wait_event = 'advisory' AND query ILIKE '%pg_advisory_xact_lock%'`;
+        splitSaleCashLockWaiters = rows[0]?.count ?? 0;
+        if (splitSaleCashLockWaiters >= 2) break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert(splitSaleCashLockWaiters >= 2, `both split-launch API calls are observable waiting on PostgreSQL cash lock; waiters=${splitSaleCashLockWaiters}`);
+    } finally {
+      releaseSplitSaleCashLock();
+      await splitSaleCashLockHolder;
+    }
+    const concurrentLaunchResponses = await concurrentLaunches;
+    assert(concurrentLaunchResponses.every((response) => response.statusCode === 201), `both concurrent split launches succeed: ${concurrentLaunchResponses.map((response) => response.statusCode)}`);
+    const concurrentCommandIds = concurrentLaunchResponses.map((response) => JSON.parse(response.body).id);
+    const concurrentOrders = await db.pedidoOperacao.findMany({ where: { comandaId: { in: concurrentCommandIds } }, include: { itensComanda: true }, orderBy: { numero: 'asc' } });
+    assert.equal(concurrentOrders.length, 4, 'two concurrent launches persist exactly two kitchen orders each');
+    assert.equal(new Set(concurrentOrders.map((order) => `${order.diaOperacional.toISOString().slice(0, 10)}:${order.numero}`)).size, 4, 'all concurrent split orders receive unique daily numbers');
+    for (const commandId of concurrentCommandIds) {
+      const orders = concurrentOrders.filter((order) => order.comandaId === commandId);
+      assert.equal(orders.length, 2, 'each concurrent comanda owns the independent and grouped kitchen order');
+      assert.equal(orders.reduce((count, order) => count + order.itensComanda.length, 0), 2, 'each concurrent comanda persists exactly its two source lines');
+    }
+    const concurrentMovements = await db.inventoryMovement.findMany({ where: { pedidoId: { in: concurrentOrders.map((order) => order.id) }, tipo: 'SAIDA_VENDA' }, orderBy: [{ produtoId: 'asc' }, { pedidoId: 'asc' }] });
+    assert.deepEqual(concurrentMovements.map((movement) => [movement.produtoId, movement.quantidade.toString()]).sort(), [[batata.id, '1'], [batata.id, '1'], [churrasquinho.id, '1'], [churrasquinho.id, '1']].sort(), 'stock is consumed once per source line across both concurrent launches');
+    const balancesAfterConcurrentLaunches = await db.inventoryBalance.findMany({ where: { pontoVendaId: secondPoint.id, produtoId: { in: [churrasquinho.id, batata.id] } }, orderBy: { produtoId: 'asc' } });
+    assert.deepEqual(balancesAfterConcurrentLaunches.map((row, index) => [row.produtoId, row.quantidade.toString(), balancesBeforeConcurrentLaunches[index]?.quantidade.sub(2).toString()]), balancesAfterConcurrentLaunches.map((row) => [row.produtoId, row.quantidade.toString(), row.quantidade.toString()]), 'each concurrent source line reduces its product balance by exactly two units total');
+
     const kitchenCashClosed = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: secondOwnerCookie }, payload: { pontoVendaId: secondPoint.id, contadoDinheiro: 0, contadoPix: 90, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
     assert.equal(kitchenCashClosed.statusCode, 200, `kitchen settings fixture cash closes through the existing route: ${kitchenCashClosed.body}`);
     assert.equal((await db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: kitchenSessionId } })).status, 'FECHADO');
@@ -2747,6 +2851,18 @@ try {
   const legacyCloseCommand = await db.comanda.create({ data: {
     origem: 'CAIXA', pontoVendaId: legacyClosePoint.id, tipo: 'AVULSA', status: 'ABERTA', total: '10.00', abertaPorId: legacyCloseOwner.id,
   } });
+  const legacyApiPoint = await db.pontoVenda.create({ data: { cervejariaId: legacyCloseCompany.id, nome: 'Legacy API compatibility PDV' } });
+  const legacyApiProducts = await Promise.all(['one', 'two'].map((suffix) => db.produto.create({ data: {
+    id: id(`legacy-api-product-${suffix}`), cervejariaId: legacyCloseCompany.id, pontoVendaId: legacyApiPoint.id,
+    nome: `Legacy API ${suffix}`, categoria: 'Porções', tipo: 'COMIDA', exigePreparo: true, controlaEstoque: false,
+  } })));
+  await db.preco.createMany({ data: legacyApiProducts.map((legacyProduct, index) => ({ id: id(`legacy-api-price-${index}`), produtoId: legacyProduct.id, volumeMl: 1, preco: '10.00' })) });
+  await db.configuracaoOperacao.create({ data: { cervejariaId: legacyCloseCompany.id, ativo: true, controlaEstoque: false, temCozinha: true, exclusivo: false, quantidadeMesas: 0 } });
+  await db.configuracaoOperacional.create({ data: { cervejariaId: legacyCloseCompany.id, inventoryEnabled: false, kitchenEnabled: true, kitchenItemsChargeAtLaunch: true, allowCloseComandaWithPendingKitchenOrders: false } });
+  const { diaOperacional: legacyApiDay } = await import('../src/lib/operacao/venda.ts');
+  const legacyApiSession = await db.sessaoCaixaOperacao.create({ data: {
+    cervejariaId: legacyCloseCompany.id, pontoVendaId: legacyApiPoint.id, diaOperacional: legacyApiDay(), trocoInicial: '0.00', abertoPorId: legacyCloseOwner.id,
+  } });
   await db.$executeRawUnsafe('ALTER TABLE public."Comanda" DROP CONSTRAINT IF EXISTS "Comanda_pontoVendaId_sessaoCaixaRealizacaoId_fkey"');
   await db.$executeRawUnsafe('ALTER TABLE public."Comanda" DROP CONSTRAINT IF EXISTS "Comanda_sessaoRealizacao_requer_ponto_check"');
   await db.$executeRawUnsafe('DROP INDEX IF EXISTS public."Comanda_sessaoCaixaRealizacaoId_idx"');
@@ -2773,6 +2889,20 @@ try {
     assert.equal(legacyResolved[0]?.prepararEmPedidoSeparado, false, 'legacy resolver completes without selecting the absent independent-kitchen column');
     assert.equal((await preColumnClient.pagamento.findFirstOrThrow({ where: { comandaId: legacyCloseCommand.id } })).sessaoCaixaId, legacyCloseSession.id, 'legacy payment still records its cash session');
     assert.equal(await db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Comanda' AND column_name='sessaoCaixaRealizacaoId'`.then((rows) => rows.length), 0, 'legacy database has no realization-session column during close');
+    const legacyApiPassword = `Qa-legacy-api-${runId}-only!`;
+    await db.usuario.update({ where: { id: legacyCloseOwner.id }, data: { senhaHash: await hashLegacyClosePassword(legacyApiPassword) } });
+    const apiChildEnv = {
+      ...process.env,
+      PDV_CANONICAL_CONFIG_QA: '',
+      PDV_PRECOLUMN_API_FIXTURE: JSON.stringify({
+        email: legacyCloseOwner.email, password: legacyApiPassword, companyId: legacyCloseCompany.id,
+        pointId: legacyApiPoint.id, sessionId: legacyApiSession.id, productIds: legacyApiProducts.map((row) => row.id),
+      }),
+    };
+    const apiChild = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/pdv76-precolumn-api.isolated.test.mjs'], { cwd: backendRoot, env: apiChildEnv, encoding: 'utf8', windowsHide: true, timeout: 90000 });
+    assert.equal(apiChild.status, 0, `real application singleton/authenticated Fastify.inject legacy-schema API proof passes: ${apiChild.stderr || apiChild.stdout}`);
+    assert.match(apiChild.stdout, /PDV76_PRECOLUMN_API=PASS/);
+    assert.equal(await db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Produto' AND column_name='prepararEmPedidoSeparado'`.then((rows) => rows.length), 0, 'legacy API ran while independent-kitchen column was absent');
   } finally {
     if (previousPdvFlag === undefined) delete process.env.PDV_CANONICAL_CONFIG_QA;
     else process.env.PDV_CANONICAL_CONFIG_QA = previousPdvFlag;
