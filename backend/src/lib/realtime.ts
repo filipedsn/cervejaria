@@ -42,7 +42,11 @@ function operationalPayload(event: RealtimeEvent): unknown {
   const pick = (...keys: string[]) => Object.fromEntries(keys.filter((key) => data[key] !== undefined).map((key) => [key, data[key]]));
   if (event.type.startsWith('operacao:pedido-')) {
     const pedido = (data.pedido && typeof data.pedido === 'object' ? data.pedido : data) as Record<string, unknown>;
-    const items = Array.isArray(pedido.itensComanda) ? pedido.itensComanda : [];
+    // resumoPedidoCozinha publishes `itens`; the UI contract remains
+    // `itensComanda`, so project the real emitter shape into that contract.
+    const items = Array.isArray(pedido.itens) ? pedido.itens
+      : Array.isArray(pedido.itensComanda) ? pedido.itensComanda
+        : [];
     return {
       id: pedido.id,
       numero: pedido.numero,
@@ -53,9 +57,18 @@ function operationalPayload(event: RealtimeEvent): unknown {
       comanda: pedido.comanda && typeof pedido.comanda === 'object'
         ? pickRecord(pedido.comanda as Record<string, unknown>, 'id', 'tipo', 'identificador', 'numero')
         : undefined,
-      itensComanda: items.map((item) => item && typeof item === 'object'
-        ? pickRecord(item as Record<string, unknown>, 'id', 'nome', 'quantidade', 'volumeMl', 'observacao', 'exigePreparo', 'paraViagem', 'cancelamentoPendenteEm', 'canceladoEm')
-        : {}),
+      itensComanda: items.map((item) => {
+        if (!item || typeof item !== 'object') return {};
+        const record = item as Record<string, unknown>;
+        return {
+          ...pickRecord(record, 'id', 'nome', 'quantidade', 'volumeMl', 'observacao', 'exigePreparo', 'paraViagem', 'cancelamentoPendente', 'cancelamentoPendenteEm', 'canceladoEm'),
+          ...(Array.isArray(record.opcionais) ? {
+            opcionais: record.opcionais.map((optional) => optional && typeof optional === 'object'
+              ? pickRecord(optional as Record<string, unknown>, 'id', 'nome', 'quantidade')
+              : {}),
+          } : {}),
+        };
+      }),
     };
   }
   if (event.type === 'evento-caixa:updated' || event.type === 'ranking:updated' || event.type === 'operacao:comanda-atualizada'

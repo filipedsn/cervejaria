@@ -17,17 +17,20 @@ import {
 import { validCorrelationId } from './correlation-context.js';
 import { permissoesIndividuaisAtivas, usuarioPode } from './operacao/permissoes.js';
 import {
-  realtimeRoomEventFinance, realtimeRoomEventOperations,
-  realtimeRoomTenantFinance, realtimeRoomTenantOperations,
+  realtimeRoomEvent, realtimeRoomEventFinance, realtimeRoomEventOperations,
+  realtimeRoomTenant, realtimeRoomTenantFinance, realtimeRoomTenantOperations,
 } from './realtime.js';
 
 type StaffRealtimeSocket = Socket & { data: { user?: JwtPayload; authType?: string; eventoSubscriptions?: Set<string>; tenantSubscriptions?: Set<string> } };
 
 async function joinScopedStaffRoom(socket: StaffRealtimeSocket, kind: 'evento' | 'cervejaria', id: string, user: JwtPayload) {
-  const finance = !permissoesIndividuaisAtivas() || await usuarioPode(user, 'cash.values.read');
-  const room = kind === 'evento'
-    ? (finance ? realtimeRoomEventFinance(id) : realtimeRoomEventOperations(id))
-    : (finance ? realtimeRoomTenantFinance(id) : realtimeRoomTenantOperations(id));
+  const permissionsEnabled = permissoesIndividuaisAtivas();
+  const finance = !permissionsEnabled || await usuarioPode(user, 'cash.values.read');
+  const room = !permissionsEnabled
+    ? (kind === 'evento' ? realtimeRoomEvent(id) : realtimeRoomTenant(id))
+    : kind === 'evento'
+      ? (finance ? realtimeRoomEventFinance(id) : realtimeRoomEventOperations(id))
+      : (finance ? realtimeRoomTenantFinance(id) : realtimeRoomTenantOperations(id));
   await socket.join(room);
   const subscriptions = kind === 'evento' ? socket.data.eventoSubscriptions : socket.data.tenantSubscriptions;
   if (subscriptions) subscriptions.add(id);
@@ -199,7 +202,9 @@ export function setupSocketAuth(io: SocketIOServer, app: FastifyInstance) {
         return;
       }
       if (user.papel === 'ADMIN') {
-        await socket.join(realtimeRoomTenantFinance(cervejariaId));
+        await socket.join(permissoesIndividuaisAtivas()
+          ? realtimeRoomTenantFinance(cervejariaId)
+          : realtimeRoomTenant(cervejariaId));
         staffSocket.data.tenantSubscriptions?.add(cervejariaId);
         realtimeEvent(app, socket, 'realtime.room.joined', { actorType: 'staff', userId: user.sub, role: user.papel, roomType: 'cervejaria', entityId: cervejariaId });
         return;
@@ -234,8 +239,12 @@ export function setupSocketAuth(io: SocketIOServer, app: FastifyInstance) {
 
     socket.on('leave:evento', (eventoId: string) => {
       if (eventoId) {
-        socket.leave(realtimeRoomEventFinance(eventoId));
-        socket.leave(realtimeRoomEventOperations(eventoId));
+        if (permissoesIndividuaisAtivas()) {
+          socket.leave(realtimeRoomEventFinance(eventoId));
+          socket.leave(realtimeRoomEventOperations(eventoId));
+        } else {
+          socket.leave(realtimeRoomEvent(eventoId));
+        }
         staffSocket.data.eventoSubscriptions?.delete(eventoId);
       }
     });

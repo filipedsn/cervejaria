@@ -349,38 +349,128 @@ const allowedOperationalCashClose = await app.inject({ method: 'POST', url: '/ap
 assert.equal(allowedOperationalCashClose.statusCode, 200, allowedOperationalCashClose.body);
 assert.equal((await prisma.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: cashSession.id } })).status, 'FECHADO');
 
-// Real local Socket.IO session: grant/revoke moves an established socket between
-// finance and operational rooms, while operational kitchen messages are redacted.
+// Real local Socket.IO session: assert server-side room membership before each
+// event, then verify the actual authenticated kitchen launch/update emitters.
 const revokeSocketRead = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: [] } });
 assert.equal(revokeSocketRead.statusCode, 200, revokeSocketRead.body);
 const localAddress = await app.listen({ host: '127.0.0.1', port: 0 });
 const socket = connectSocket(localAddress, { extraHeaders: { cookie: staffCookie }, transports: ['websocket'], reconnection: false });
-const socketEvent = (name, predicate = () => true, timeoutMs = 3000) => new Promise((resolve, reject) => {
-  const timer = setTimeout(() => { socket.off(name, listener); reject(new Error(`Timed out waiting for Socket.IO ${name}`)); }, timeoutMs);
+const financeSocket = connectSocket(localAddress, { extraHeaders: { cookie: ownerCookie }, transports: ['websocket'], reconnection: false });
+const socketEventFor = (client, name, predicate = () => true, timeoutMs = 3000) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => { client.off(name, listener); reject(new Error(`Timed out waiting for Socket.IO ${name}`)); }, timeoutMs);
   const listener = (payload) => {
     if (!predicate(payload)) return;
     clearTimeout(timer);
-    socket.off(name, listener);
+    client.off(name, listener);
     resolve(payload);
   };
-  socket.on(name, listener);
+  client.on(name, listener);
 });
-await new Promise((resolve, reject) => {
-  socket.once('connect', resolve);
-  socket.once('connect_error', reject);
+const socketEvent = (name, predicate = () => true, timeoutMs = 3000) => socketEventFor(socket, name, predicate, timeoutMs);
+const waitFor = async (predicate, description) => {
+  const deadline = Date.now() + 5000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error(`Timed out observing server state: ${description}`);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+};
+const connect = (client) => new Promise((resolve, reject) => {
+  client.once('connect', resolve);
+  client.once('connect_error', reject);
 });
+await Promise.all([connect(socket), connect(financeSocket)]);
 const socketIdBeforeRevoke = socket.id;
 socket.emit('join:evento', event.id);
 socket.emit('join:cervejaria', company.id);
-await new Promise((resolve) => setTimeout(resolve, 100));
-const operationEvent = socketEvent('operacao:pedido-novo');
-const { emitFinancialToEvento, emitToCervejaria } = await import('../src/lib/realtime.ts');
-emitToCervejaria(app.io, company.id, { type: 'operacao:pedido-novo', data: { id: 'socket-order', numero: 1, status: 'RECEBIDO', total: 44.12, itensComanda: [{ id: 'socket-item', nome: 'QA soup', quantidade: 2, precoUnit: 22.06, opcionais: [{ precoAdicional: 2 }] }] } });
-const receivedOperationEvent = await operationEvent;
-assert.equal(receivedOperationEvent.total, undefined);
-assert.equal(receivedOperationEvent.itensComanda[0].precoUnit, undefined);
+financeSocket.emit('join:cervejaria', company.id);
+await waitFor(() => {
+  const staffServerSocket = app.io.sockets.sockets.get(socket.id);
+  const financeServerSocket = app.io.sockets.sockets.get(financeSocket.id);
+  return staffServerSocket?.rooms.has(`cervejaria:${company.id}:operacao`)
+    && staffServerSocket?.rooms.has(`evento:${event.id}:operacao`)
+    && staffServerSocket?.data.tenantSubscriptions?.has(company.id)
+    && staffServerSocket?.data.eventoSubscriptions?.has(event.id)
+    && financeServerSocket?.rooms.has(`cervejaria:${company.id}:financeiro`);
+}, 'flag-on staff and owner joins');
+const { emitFinancialToEvento, emitToCervejaria, emitToEvento } = await import('../src/lib/realtime.ts');
+
+// Launch a persisted order over the authenticated API with a linked optional.
+const socketOptional = await prisma.opcional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, nome: `QA topping ${suffix}`, preco: '2.50' } });
+await prisma.produtoOpcionalVinculo.create({ data: { produtoId: stockProduct.id, opcionalId: socketOptional.id, cervejariaId: company.id, pontoVendaId: point.id } });
+const socketSession = await prisma.sessaoCaixaOperacao.create({ data: {
+  cervejariaId: company.id, pontoVendaId: point.id, diaOperacional: cashSession.diaOperacional,
+  status: 'ABERTO', trocoInicial: '20.00', abertoPorId: staff.id, ocorrenciaId: occurrence.id, cardapioId: cardapio.id,
+} });
+await prisma.sessaoCaixaProdutoOperacao.create({ data: { sessaoCaixaId: socketSession.id, produtoId: stockProduct.id, volumeMl: 0, precoUnit: '10.00' } });
+const newRestrictedOrder = socketEvent('operacao:pedido-novo');
+const newFinanceOrder = new Promise((resolve, reject) => {
+  const timer = setTimeout(() => { financeSocket.off('operacao:pedido-novo', listener); reject(new Error('Timed out waiting for finance kitchen order')); }, 3000);
+  const listener = (payload) => { clearTimeout(timer); financeSocket.off('operacao:pedido-novo', listener); resolve(payload); };
+  financeSocket.on('operacao:pedido-novo', listener);
+});
+const launchedSocketCommand = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: authHeaders(staffCookie), payload: {
+  pontoVendaId: point.id, tipo: 'MESA', identificador: `Socket-${suffix}`, paraViagem: true, observacao: 'sem cebola',
+  itens: [{ produtoId: stockProduct.id, quantidade: 2, paraViagem: true, observacao: 'bem passado', opcionais: [{ opcionalId: socketOptional.id, quantidade: 2 }] }],
+} });
+assert.equal(launchedSocketCommand.statusCode, 201, launchedSocketCommand.body);
+const launchedSocketCommandId = JSON.parse(launchedSocketCommand.body).id;
+const persistedSocketOrder = await prisma.pedidoOperacao.findFirstOrThrow({ where: { comandaId: launchedSocketCommandId }, include: { itensComanda: { include: { opcionais: true } } } });
+assert.equal(persistedSocketOrder.criadoPorId, staff.id);
+assert.equal(persistedSocketOrder.itensComanda.length, 1);
+assert.equal(persistedSocketOrder.itensComanda[0].opcionais[0].nome, socketOptional.nome);
+const [restrictedNewOrder, financeNewOrder] = await Promise.all([newRestrictedOrder, newFinanceOrder]);
+assert.equal(restrictedNewOrder.itensComanda[0].id, persistedSocketOrder.itensComanda[0].id);
+assert.equal(restrictedNewOrder.itensComanda[0].nome, stockProduct.nome);
+assert.equal(restrictedNewOrder.itensComanda[0].quantidade, 2);
+assert.equal(restrictedNewOrder.itensComanda[0].observacao, 'bem passado');
+assert.equal(restrictedNewOrder.itensComanda[0].paraViagem, true);
+assert.deepEqual(restrictedNewOrder.itensComanda[0].opcionais.map(({ nome, quantidade }) => ({ nome, quantidade })), [{ nome: socketOptional.nome, quantidade: 2 }]);
+assert.equal(JSON.stringify(restrictedNewOrder).includes('preco'), false, 'restricted order removes all price fields');
+assert.equal(financeNewOrder.itens[0].id, persistedSocketOrder.itensComanda[0].id);
+assert.equal(financeNewOrder.itens[0].precoUnit, 15);
+assert.equal(financeNewOrder.itens[0].opcionais[0].precoAdicional, 2.5);
+
+// A failed authenticated launch rolls back the stock/order transaction and
+// emits nothing because notification runs only after a committed transaction.
+const eventsBeforeRollback = [];
+const onNewOrderForRollback = (payload) => eventsBeforeRollback.push(payload);
+socket.on('operacao:pedido-novo', onNewOrderForRollback);
+const balanceBeforeRollback = await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: stockBalance.id } });
+await prisma.inventoryBalance.update({ where: { id: stockBalance.id }, data: { quantidade: '0.000' } });
+const ordersBeforeRollback = await prisma.pedidoOperacao.count({ where: { cervejariaId: company.id } });
+const rollbackLaunch = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: authHeaders(staffCookie), payload: {
+  pontoVendaId: point.id, tipo: 'MESA', identificador: `Rollback-${suffix}`,
+  itens: [{ produtoId: stockProduct.id, quantidade: 1 }],
+} });
+assert.notEqual(rollbackLaunch.statusCode, 201, rollbackLaunch.body);
+assert.equal(await prisma.pedidoOperacao.count({ where: { cervejariaId: company.id } }), ordersBeforeRollback);
+assert.equal(Number((await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: stockBalance.id } })).quantidade), 0);
+await prisma.inventoryBalance.update({ where: { id: stockBalance.id }, data: { quantidade: balanceBeforeRollback.quantidade } });
+await new Promise((resolve) => setTimeout(resolve, 80));
+socket.off('operacao:pedido-novo', onNewOrderForRollback);
+assert.equal(eventsBeforeRollback.length, 0, 'rolled back kitchen order emits no pedido novo');
+
+const statusUpdateRestricted = socketEvent('operacao:pedido-atualizado', (payload) => payload.id === persistedSocketOrder.id);
+const statusUpdateFinance = new Promise((resolve, reject) => {
+  const timer = setTimeout(() => { financeSocket.off('operacao:pedido-atualizado', listener); reject(new Error('Timed out waiting for finance kitchen status')); }, 3000);
+  const listener = (payload) => { if (payload.id !== persistedSocketOrder.id) return; clearTimeout(timer); financeSocket.off('operacao:pedido-atualizado', listener); resolve(payload); };
+  financeSocket.on('operacao:pedido-atualizado', listener);
+});
+const statusChanged = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${persistedSocketOrder.id}/status`, headers: authHeaders(staffCookie), payload: { status: 'EM_PREPARO' } });
+assert.equal(statusChanged.statusCode, 200, statusChanged.body);
+const [restrictedStatus, financeStatus] = await Promise.all([statusUpdateRestricted, statusUpdateFinance]);
+assert.equal(restrictedStatus.status, 'EM_PREPARO');
+assert.equal(restrictedStatus.itensComanda[0].id, persistedSocketOrder.itensComanda[0].id);
+assert.deepEqual(restrictedStatus.itensComanda[0].opcionais.map(({ nome, quantidade }) => ({ nome, quantidade })), [{ nome: socketOptional.nome, quantidade: 2 }]);
+assert.equal(JSON.stringify(restrictedStatus).includes('preco'), false);
+assert.equal(financeStatus.status, 'EM_PREPARO');
+assert.equal(financeStatus.itens[0].precoUnit, 15);
+assert.equal(financeStatus.itens[0].opcionais[0].precoAdicional, 2.5);
+
 const socketGrant = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['cash.values.read'] } });
 assert.equal(socketGrant.statusCode, 200, socketGrant.body);
+await waitFor(() => app.io.sockets.sockets.get(socket.id)?.rooms.has(`evento:${event.id}:financeiro`)
+  && !app.io.sockets.sockets.get(socket.id)?.rooms.has(`evento:${event.id}:operacao`), 'grant moves existing socket into finance room');
 const financialEvent = socketEvent('evento-caixa:financial-updated');
 emitFinancialToEvento(app.io, event.id, { type: 'evento-caixa:financial-updated', data: { eventoId: event.id, trocoInicial: 734.21, esperado: { DINHEIRO: 752.58 } } });
 assert.equal((await financialEvent).trocoInicial, 734.21, 'grant reaches the financial room on the established socket');
@@ -388,27 +478,81 @@ const socketRevoke = await app.inject({ method: 'PATCH', url: `/api/usuarios/${s
 assert.equal(socketRevoke.statusCode, 200, socketRevoke.body);
 assert.equal(socket.connected, true);
 assert.equal(socket.id, socketIdBeforeRevoke, 'permission revocation does not replace the authenticated session');
+await waitFor(() => app.io.sockets.sockets.get(socket.id)?.rooms.has(`evento:${event.id}:operacao`)
+  && !app.io.sockets.sockets.get(socket.id)?.rooms.has(`evento:${event.id}:financeiro`), 'revoke moves same socket back to operations room');
 let postRevocationFinancialEvents = 0;
 socket.on('evento-caixa:financial-updated', () => postRevocationFinancialEvents++);
 emitFinancialToEvento(app.io, event.id, { type: 'evento-caixa:financial-updated', data: { eventoId: event.id, trocoInicial: 999.99 } });
-const postRevocationKitchenEvent = socketEvent('operacao:pedido-atualizado');
-emitToCervejaria(app.io, company.id, { type: 'operacao:pedido-atualizado', data: { id: 'socket-order', status: 'PRONTO', total: 999.99, itensComanda: [{ id: 'socket-item', nome: 'QA soup', quantidade: 1, precoUnit: 999.99 }] } });
+const postRevocationKitchenEvent = socketEvent('operacao:pedido-atualizado', (payload) => payload.id === persistedSocketOrder.id);
+const postRevocationStatus = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${persistedSocketOrder.id}/status`, headers: authHeaders(staffCookie), payload: { status: 'PRONTO' } });
+assert.equal(postRevocationStatus.statusCode, 200, postRevocationStatus.body);
 const receivedKitchenAfterRevoke = await postRevocationKitchenEvent;
 await new Promise((resolve) => setTimeout(resolve, 120));
 assert.equal(postRevocationFinancialEvents, 0, 'revoked socket receives no new financial-only event');
-assert.equal(receivedKitchenAfterRevoke.itensComanda[0].nome, 'QA soup', 'allowed kitchen update survives revocation');
+assert.equal(receivedKitchenAfterRevoke.itensComanda[0].nome, stockProduct.nome, 'allowed kitchen update survives revocation');
+assert.equal(receivedKitchenAfterRevoke.itensComanda[0].opcionais[0].nome, socketOptional.nome);
 assert.equal(receivedKitchenAfterRevoke.itensComanda[0].precoUnit, undefined);
 const foreignSocket = connectSocket(localAddress, { extraHeaders: { cookie: foreignOwnerCookie }, transports: ['websocket'], reconnection: false });
-await new Promise((resolve, reject) => { foreignSocket.once('connect', resolve); foreignSocket.once('connect_error', reject); });
+await connect(foreignSocket);
 foreignSocket.emit('join:cervejaria', company.id);
-await new Promise((resolve) => setTimeout(resolve, 100));
+await waitFor(() => !app.io.sockets.sockets.get(foreignSocket.id)?.rooms.has(`cervejaria:${company.id}:financeiro`)
+  && !app.io.sockets.sockets.get(foreignSocket.id)?.rooms.has(`cervejaria:${company.id}:operacao`), 'foreign tenant denial');
 let foreignTenantEvents = 0;
-foreignSocket.on('operacao:pedido-atualizado', () => foreignTenantEvents++);
-emitToCervejaria(app.io, company.id, { type: 'operacao:pedido-atualizado', data: { id: 'tenant-private-order', status: 'PRONTO', itensComanda: [] } });
+foreignSocket.on('operacao:comanda-atualizada', () => foreignTenantEvents++);
+emitToCervejaria(app.io, company.id, { type: 'operacao:comanda-atualizada', data: { comandaId: launchedSocketCommandId } });
 await new Promise((resolve) => setTimeout(resolve, 120));
 assert.equal(foreignTenantEvents, 0, 'company room remains isolated across tenants');
+
+// With activation disabled, staff and ADMIN join the legacy rooms used by
+// emitScoped; leave:evento removes that exact legacy event subscription.
+process.env.PDV_INDIVIDUAL_PERMISSIONS_ENABLED = '0';
+const legacySocket = connectSocket(localAddress, { extraHeaders: { cookie: staffCookie }, transports: ['websocket'], reconnection: false });
+await connect(legacySocket);
+legacySocket.emit('join:evento', event.id);
+legacySocket.emit('join:cervejaria', company.id);
+await waitFor(() => {
+  const serverSocket = app.io.sockets.sockets.get(legacySocket.id);
+  return serverSocket?.rooms.has(`evento:${event.id}`) && serverSocket?.rooms.has(`cervejaria:${company.id}`)
+    && serverSocket?.data.eventoSubscriptions?.has(event.id) && serverSocket?.data.tenantSubscriptions?.has(company.id);
+}, 'flag-off legacy event and company room joins');
+let legacyDeliveryCount = 0;
+legacySocket.on('evento:updated', () => legacyDeliveryCount++);
+const legacyEventDelivery = socketEventFor(legacySocket, 'evento:updated');
+emitToEvento(app.io, event.id, { type: 'evento:updated', data: { id: event.id } });
+await legacyEventDelivery;
+legacySocket.emit('leave:evento', event.id);
+await waitFor(() => !app.io.sockets.sockets.get(legacySocket.id)?.rooms.has(`evento:${event.id}`)
+  && !app.io.sockets.sockets.get(legacySocket.id)?.data.eventoSubscriptions?.has(event.id), 'flag-off leave:evento');
+emitToEvento(app.io, event.id, { type: 'evento:updated', data: { id: event.id } });
+const legacyCompanyDelivery = socketEventFor(legacySocket, 'comanda:updated');
+let legacyCompanyDeliveryCount = 0;
+legacySocket.on('comanda:updated', () => legacyCompanyDeliveryCount++);
+emitToCervejaria(app.io, company.id, { type: 'comanda:updated', data: { id: 'legacy-company-event' } });
+await legacyCompanyDelivery;
+await new Promise((resolve) => setTimeout(resolve, 80));
+assert.equal(legacyDeliveryCount, 1, 'leave:evento stops only the event subscription while company subscription remains');
+assert.equal(legacyCompanyDeliveryCount, 1, 'flag-off company emitter delivers exactly once to its legacy room');
+const admin = await prisma.usuario.create({ data: { nome: 'QA Admin', email: `admin-${suffix}@example.invalid`, senhaHash: ownerHash, papel: 'ADMIN' } });
+const adminCookie = await login(admin.email, ownerPassword);
+const adminSocket = connectSocket(localAddress, { extraHeaders: { cookie: adminCookie }, transports: ['websocket'], reconnection: false });
+await connect(adminSocket);
+adminSocket.emit('join:cervejaria', company.id);
+await waitFor(() => app.io.sockets.sockets.get(adminSocket.id)?.rooms.has(`cervejaria:${company.id}`), 'flag-off ADMIN legacy company room');
+adminSocket.emit('join:evento', event.id);
+await new Promise((resolve) => setImmediate(resolve));
+assert.equal(app.io.sockets.sockets.get(adminSocket.id)?.rooms.has(`evento:${event.id}`), false, 'ADMIN keeps legacy no-op join:evento behavior');
+let adminCompanyEvents = 0;
+adminSocket.on('comanda:updated', () => adminCompanyEvents++);
+emitToCervejaria(app.io, company.id, { type: 'comanda:updated', data: { id: 'admin-legacy-company' } });
+await socketEventFor(adminSocket, 'comanda:updated');
+await new Promise((resolve) => setImmediate(resolve));
+assert.equal(adminCompanyEvents, 1);
 socket.disconnect();
+financeSocket.disconnect();
 foreignSocket.disconnect();
+legacySocket.disconnect();
+adminSocket.disconnect();
+process.env.PDV_INDIVIDUAL_PERMISSIONS_ENABLED = '1';
 
 // The API response exposes the persisted list, including an explicit empty list.
 const listed = await app.inject({ method: 'GET', url: '/api/usuarios', headers: authHeaders(ownerCookie) });
