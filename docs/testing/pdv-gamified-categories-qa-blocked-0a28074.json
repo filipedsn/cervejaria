@@ -1,0 +1,11 @@
+﻿{
+  "result": "BLOCKED",
+  "selectedCommit": "0a2807414268621e773a8b7e70f6d1ff9972eb6f",
+  "runner": "qa:pdv-current-git-snapshot",
+  "failingGate": "qa:pdv-commerce-disposable",
+  "diagnosis": "The schema/client compatibility assertions passed, but Fastify.inject still returned 500 for operational product creation. The harness had selected stderr only for diagnostics, masking any preceding stdout error detail.",
+  "nextRun": "Capture both child stdout and stderr to identify the exact Prisma failure before changing runtime code.",
+  "prodAccessUsed": "NO",
+  "sharedDevAccess": "NO",
+  "supersededBy": "bceecd87f5b1241e00c737fe33d190614762a1ee"
+}
