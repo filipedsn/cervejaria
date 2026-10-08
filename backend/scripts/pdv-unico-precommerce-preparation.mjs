@@ -2,13 +2,19 @@ import { randomBytes } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
+import { validateDevCutoverEnvironment } from './pdv-unico-dev-cutover-core.mjs';
 
-const qaUrl = validateIsolatedQaEnvironment(process.env).toString();
-if (process.env.DATABASE_URL !== qaUrl || !process.env.PDV_QA_PRISMA_CLIENT) throw new Error('Pre-commerce preparation requires the exact isolated QA URL and generated QA client.');
-const clientDir = path.resolve(process.env.PDV_QA_PRISMA_CLIENT);
+const profile = process.env.PDV_CUTOVER_PROFILE ?? 'qa';
+if (!['qa', 'dev'].includes(profile)) throw new Error('Pre-commerce preparation accepts only QA or the guarded DEV adapter.');
+const databaseUrl = profile === 'qa'
+  ? validateIsolatedQaEnvironment(process.env).toString()
+  : (validateDevCutoverEnvironment(process.env), process.env.DATABASE_URL);
+const clientPath = profile === 'qa' ? process.env.PDV_QA_PRISMA_CLIENT : process.env.PDV_CUTOVER_PRISMA_CLIENT;
+if (process.env.DATABASE_URL !== databaseUrl || !clientPath || (profile === 'dev' && process.env.PDV_CUTOVER_DEV_ADAPTER !== '1')) throw new Error('Pre-commerce preparation requires a validated target and generated adapter client.');
+const clientDir = path.resolve(clientPath);
 if (!clientDir.startsWith(path.resolve(process.env.TEMP ?? process.env.TMP) + path.sep)) throw new Error('QA Prisma client must live in OS temp.');
 const { PrismaClient } = await import(pathToFileURL(path.join(clientDir, 'index.js')).href);
-const db = new PrismaClient({ datasources: { db: { url: qaUrl } }, errorFormat: 'minimal' });
+const db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal' });
 const { runPdvBusinessMigration } = await import('./pdv-unico-business-migrator.ts');
 const { runPdvCatalogMigration, runPdvKitchenOrderContextPreparation } = await import('./pdv-unico-catalog-migrator.ts');
 const targets = [
@@ -16,7 +22,7 @@ const targets = [
   { label: 'Churrasquinho do Thiago', id: 'cmsry9xrn0000hvlgopjxy0oo' },
 ];
 const report = [];
-const runId = `tap76-precommerce-${randomBytes(8).toString('hex')}`;
+const runId = process.env.PDV_CUTOVER_RUN_ID ?? `tap76-precommerce-${randomBytes(8).toString('hex')}`;
 async function stage(target, phase, action) {
   const start = performance.now();
   process.stdout.write(`PDV_PRECOMMERCE_START tenant=${target.label} phase=${phase}\n`);
@@ -24,7 +30,7 @@ async function stage(target, phase, action) {
   const durationMs = Math.round(performance.now() - start);
   process.stdout.write(`PDV_PRECOMMERCE_END tenant=${target.label} phase=${phase} status=${result.status} durationMs=${durationMs}\n`);
   if (result.status !== 'COMPLETED') throw Object.assign(new Error(`${target.label} ${phase} blocked: ${JSON.stringify(result)}`), { result, target: target.label, phase });
-  report.push({ tenant: target.label, phase, status: result.status, durationMs, counts: result.counts ?? result.scopeCounts ?? result.checkpoint?.scopeCounts ?? null });
+  report.push({ tenant: target.label, phase, status: result.status, runId: result.runId ?? null, durationMs, counts: result.counts ?? result.scopeCounts ?? result.checkpoint?.scopeCounts ?? null });
   return result;
 }
 try {

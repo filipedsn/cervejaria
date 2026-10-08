@@ -11,6 +11,7 @@ import { buildPdvCommerceMigrationItems, commercePayloadHash, PDV_COMMERCE_SCOPE
 import { readPdvCommerceSourceSnapshot } from './pdv-unico-commerce-source.js';
 import { createConfirmedPdvEventOccurrenceResolver, findConfirmedPdvEventOccurrence } from './pdv-unico-business-migrator.js';
 import { buildPdvKitchenOrderPreparationItems, PDV_KITCHEN_ORDER_PREPARATION_SCOPE, PDV_KITCHEN_ORDER_PREPARATION_VERSION, PDV_KITCHEN_ORDER_PREPARATION_SOURCE_TYPE, readPdvKitchenOrderPreparationSnapshot } from './pdv-unico-kitchen-order-preparation.js';
+import { validateDevCutoverEnvironment } from './pdv-unico-dev-cutover-core.mjs';
 
 type Db = any;
 const key = (type: string, id: string) => `${type}:${id}`;
@@ -793,9 +794,15 @@ export async function runPdvFinanceMigration(options: { db: Db; companyId: strin
     let target: URL;
     try { target = new URL(process.env.DATABASE_URL ?? ''); }
     catch { throw new PdvCatalogBlocker('FINANCE_HISTORICAL_APPROVAL_QA_GUARD_FAILED', 'PAGAMENTO', null, 'A política histórica só pode ser usada no QA isolado.'); }
-    if (process.env.NODE_ENV !== 'test' || process.env.PDV_ISOLATED_QA !== '1' || process.env.QA_DATABASE_URL !== process.env.DATABASE_URL
-      || !['postgres:', 'postgresql:'].includes(target.protocol) || !['127.0.0.1', 'localhost'].includes(target.hostname)
-      || !/^554(?:3[9]|4[0-9])$/.test(target.port) || target.pathname !== '/cervejaria_qa_pdv_unico') {
+    const qaTarget = process.env.NODE_ENV === 'test' && process.env.PDV_ISOLATED_QA === '1' && process.env.QA_DATABASE_URL === process.env.DATABASE_URL
+      && ['postgres:', 'postgresql:'].includes(target.protocol) && ['127.0.0.1', 'localhost'].includes(target.hostname)
+      && /^554(?:3[9]|4[0-9])$/.test(target.port) && target.pathname === '/cervejaria_qa_pdv_unico';
+    let explicitlyConfirmedDevTarget = false;
+    if (!qaTarget && process.env.PDV_CUTOVER_DEV_ADAPTER === '1'
+      && process.env.PDV_CUTOVER_FINANCE_APPROVAL_SHA256 === options.historicalNoSessionApproval.approvedSnapshotSha256) {
+      try { validateDevCutoverEnvironment(process.env); explicitlyConfirmedDevTarget = true; } catch { /* fail closed below */ }
+    }
+    if (!qaTarget && !explicitlyConfirmedDevTarget) {
       throw new PdvCatalogBlocker('FINANCE_HISTORICAL_APPROVAL_QA_GUARD_FAILED', 'PAGAMENTO', null, 'A política histórica só pode ser usada no PostgreSQL QA isolado.');
     }
   }

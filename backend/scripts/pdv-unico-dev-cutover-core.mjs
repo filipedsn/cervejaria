@@ -76,14 +76,30 @@ export function validateQaCutoverEnvironment(env, ownership) {
 }
 
 /** Destination validation is deliberately separate from the shared ordered executor. */
-export async function executeCutoverCore({ target, tenantIds, runId, preflight, operations, receipt }) {
+export async function executeCutoverCore({ target, tenantIds, runId, preflight, operations, receipt, completedPhases = [], verifyCompletedPhase }) {
   if (!target || !['DEV', 'QA'].includes(target.environment)) throw new Error('Validated target required.');
   if (!tenantIds?.length || !runId || typeof receipt !== 'function') throw new Error('Explicit tenants, run and durable receipts required.');
   tenantIds.forEach(resolveAllowedTenant);
   if (preflight?.queried !== true || preflight.status !== 'CLEAR' || !preflight.tenantCount || preflight.coveredTenantCount !== preflight.tenantCount) throw new Error('Queried all-tenant preflight must be CLEAR before application.');
   for (const name of DEV_PDV_CUTOVER_SEQUENCE.slice(1)) if (typeof operations?.[name] !== 'function') throw new Error(`Missing executable phase: ${name}`);
+  const orderedPhases = DEV_PDV_CUTOVER_SEQUENCE.slice(1);
+  const resumeNames = completedPhases.map((row) => row?.phase);
+  if (resumeNames.some((name, index) => orderedPhases[index] !== name)
+    || completedPhases.some((row) => row.status !== 'PASS' || row.runId !== runId
+      || JSON.stringify(row.tenantIds) !== JSON.stringify(tenantIds))) {
+    throw new Error('Resume receipts must be confirmed, contiguous, and match this run and tenant allowlist.');
+  }
+  if (completedPhases.length && typeof verifyCompletedPhase !== 'function') throw new Error('Resume requires live database, migration-ledger, and migrator-evidence verification for every completed phase.');
+  const resumeVerification = [];
+  for (const row of completedPhases) {
+    const verification = await verifyCompletedPhase(row.phase, row);
+    if (verification?.status !== 'PASS' && verification?.status !== 'COMPLETED') {
+      throw new Error(`Resume state diverged for completed phase: ${row.phase}`);
+    }
+    resumeVerification.push({ phase: row.phase, status: 'PASS', evidence: verification });
+  }
   const rows = [];
-  for (const name of DEV_PDV_CUTOVER_SEQUENCE.slice(1)) {
+  for (const name of orderedPhases.slice(completedPhases.length)) {
     const start = performance.now();
     const result = await operations[name]();
     if (result?.status !== 'PASS' && result?.status !== 'COMPLETED') throw new Error(`Cutover phase blocked: ${name}`);
@@ -91,7 +107,7 @@ export async function executeCutoverCore({ target, tenantIds, runId, preflight, 
     await receipt(row);
     rows.push(row);
   }
-  return { status: 'COMPLETED', target, runId, tenantIds, phases: rows };
+  return { status: 'COMPLETED', target, runId, tenantIds, resumedPhases: completedPhases.length, resumeVerification, phases: [...completedPhases, ...rows] };
 }
 
 export function scopeCategorySql(sql, tenantIds) {

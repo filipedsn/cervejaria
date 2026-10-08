@@ -9,7 +9,7 @@ const args = process.argv.slice(2);
 const tenantIds = args.filter((arg) => arg.startsWith('--tenant=')).map((arg) => arg.slice('--tenant='.length));
 const profile = args.find(arg => arg.startsWith('--profile='))?.slice(10) ?? 'dev';
 if (!['dev', 'qa'].includes(profile)) throw new Error('Only DEV and owned QA profiles are accepted.');
-for (const arg of args) if (!['--dry-run', '--plan', '--apply'].includes(arg) && !arg.startsWith('--tenant=') && !arg.startsWith('--profile=')) throw new Error(`Unknown argument: ${arg}`);
+for (const arg of args) if (!['--dry-run', '--plan', '--apply'].includes(arg) && !arg.startsWith('--tenant=') && !arg.startsWith('--profile=') && !/^--[a-z-]+=/.test(arg)) throw new Error(`Unknown argument: ${arg}`);
 tenantIds.forEach(resolveAllowedTenant);
 if (profile === 'qa') {
   if (!args.includes('--apply')) console.log(JSON.stringify({ ...buildDevCutoverPlan({ tenantIds }), environment: 'QA', target: 'executor-owned disposable QA', connectsToDatabase: false }));
@@ -27,12 +27,10 @@ let databaseUrl = line.slice(line.indexOf('=') + 1).trim();
 if ((databaseUrl.startsWith('"') && databaseUrl.endsWith('"')) || (databaseUrl.startsWith("'") && databaseUrl.endsWith("'"))) databaseUrl = databaseUrl.slice(1, -1);
 const checked = validateDevCutoverEnvironment({ ...process.env, NODE_ENV: 'development', DATABASE_URL: databaseUrl });
 if (args.includes('--apply')) {
-  // No shared-DEV application is authorized in this round. Still run the real
-  // read-only preflight and expose its concrete blockers, never fabricate CLEAR.
-  const result = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/run-pdv-unico-global-preflight.mjs'], { cwd: backendRoot, stdio: 'inherit', windowsHide: true });
+  const result = spawnSync(process.execPath, ['scripts/run-pdv-unico-dev-cutover.mjs', ...args], { cwd: backendRoot, env: { ...process.env, NODE_ENV: 'development', DATABASE_URL: databaseUrl }, stdio: 'inherit', windowsHide: true });
   if (result.error) throw result.error;
-  throw new Error('DEV application requires a later authorized cutover window; review the queried global preflight. Use --profile=qa --apply for the implemented disposable rehearsal.');
+  process.exit(result.status ?? 1);
 }
 const plan = buildDevCutoverPlan({ tenantIds, mode: 'dry-run' });
-process.stdout.write(`${JSON.stringify({ ...plan, target: checked, connectsToDatabase: false, appliesMigrations: false, selectedTenantNames: plan.tenants.map(({ id }) => resolveAllowedTenant(id).name) }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ ...plan, revision: spawnSync('git', ['rev-parse', 'HEAD'], { cwd: path.resolve(backendRoot, '..'), encoding: 'utf8', windowsHide: true }).stdout.trim(), target: checked, connectsToDatabase: false, appliesMigrations: false, selectedTenantNames: plan.tenants.map(({ id }) => resolveAllowedTenant(id).name), applyRequires: ['--confirm-target=cervejaria_dev', '--confirm-revision=<current HEAD>', '--confirm-migrations-sha256=<reviewed Git migration digest>', '--backup-file=<DEV backup>', '--restore-drill=<matching PASS proof>', '--confirm-photo-sha256=<approved SHA-256>', '--run-id=<stable id>'] }, null, 2)}\n`);
 }

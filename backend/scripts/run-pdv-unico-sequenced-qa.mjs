@@ -2,14 +2,15 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
-import { appendFile, cp, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
-import { executeCutoverCore, validateQaCutoverEnvironment, scopeCategorySql, DEV_PDV_TENANT_ALLOWLIST } from './pdv-unico-dev-cutover-core.mjs';
+import { validateQaCutoverEnvironment, scopeCategorySql, DEV_PDV_TENANT_ALLOWLIST } from './pdv-unico-dev-cutover-core.mjs';
+import { executePdvCutoverAdapter } from './pdv-unico-cutover-adapter.mjs';
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(backendRoot, '..');
@@ -175,8 +176,8 @@ try {
   const target = validateQaCutoverEnvironment(childEnv(), { verified: true, runId, containerName });
   let representative;
   const apiClientEnv = { PDV_QA_PRISMA_CLIENT: precommerceClientDir, TEMP: os.tmpdir(), TMP: os.tmpdir() };
-  const kernel = await executeCutoverCore({ target, tenantIds, runId, preflight: qaPreflight,
-    receipt: row => appendFile(path.join(tempRoot, 'cutover-receipts.jsonl'), JSON.stringify(row) + '\n'),
+  const kernel = await executePdvCutoverAdapter({ target, tenantIds, runId, preflight: qaPreflight,
+    receiptFile: path.join(tempRoot, 'cutover-receipts.jsonl'),
     operations: {
     'minimal-prerequisite-migrations': async () => {
   for (const name of selectedNames.filter((item) => item > sourceBaselineName)) await cp(path.join(migrationRoot, name), path.join(migrationsDir, name), { recursive: true });

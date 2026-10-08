@@ -5,6 +5,10 @@ import {
   assertTenantActivationReady, resolveAllowedTenant, validateDevCutoverEnvironment,
   executeCutoverCore, validateQaCutoverEnvironment, scopeCategorySql, DEV_PDV_CUTOVER_SEQUENCE,
 } from './pdv-unico-dev-cutover-core.mjs';
+import { appendCutoverReceipt, readCutoverReceipts } from './pdv-unico-cutover-receipts.mjs';
+import { mkdtempSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const env = { NODE_ENV: 'development', DATABASE_URL: 'postgresql://qa:secret@127.0.0.1:5434/cervejaria_dev?connection_limit=5' };
 
@@ -57,6 +61,44 @@ test('shared core executes in order and prevents activation after a failed phase
   assert.deepEqual(calls, []);
   await assert.rejects(executeCutoverCore({ ...args, operations: { ...args.operations, [phases[2]]: async () => ({ status: 'BLOCKED' }) } }), /blocked/);
   assert.ok(!calls.includes('per-tenant-activation'));
+});
+
+test('shared core resumes only from contiguous confirmed receipts for the same run and allowlist', async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'pdv-cutover-receipts-test-'));
+  try {
+    const file = path.join(directory, 'receipts.jsonl');
+    const phases = DEV_PDV_CUTOVER_SEQUENCE.slice(1);
+    const tenantIds = ['cmr9yis3c0000hvu00q9fe7y1'];
+    const completedPhases = phases.slice(0, 2).map((phase) => ({ runId: 'run', tenantIds, phase, status: 'PASS', durationMs: 5, result: { status: 'PASS' } }));
+    for (const row of completedPhases) appendCutoverReceipt(file, row);
+    const verified = readCutoverReceipts(file, { runId: 'run', tenantIds });
+    const calls = [];
+    const operations = Object.fromEntries(phases.map((phase) => [phase, async () => { calls.push(phase); return { status: 'PASS' }; }]));
+    const result = await executeCutoverCore({
+      target: { environment: 'QA' }, tenantIds, runId: 'run',
+      preflight: { queried: true, status: 'CLEAR', tenantCount: 3, coveredTenantCount: 3 },
+      operations, completedPhases: verified, receipt: (row) => appendCutoverReceipt(file, row),
+      verifyCompletedPhase: async (phase) => ({ status: 'PASS', databaseState: 'RECONCILED', ledger: 'MATCHED', migratorEvidence: phase }),
+    });
+    assert.equal(result.resumedPhases, 2);
+    assert.equal(result.resumeVerification.length, 2);
+    assert.deepEqual(calls, phases.slice(2));
+    assert.equal(readCutoverReceipts(file, { runId: 'run', tenantIds }).length, phases.length);
+    assert.throws(() => readCutoverReceipts(file, { runId: 'different', tenantIds }), /chain is invalid/);
+    await assert.rejects(executeCutoverCore({
+      target: { environment: 'QA' }, tenantIds, runId: 'run',
+      preflight: { queried: true, status: 'CLEAR', tenantCount: 3, coveredTenantCount: 3 },
+      operations, completedPhases: verified, receipt: async () => {},
+    }), /live database/);
+    await assert.rejects(executeCutoverCore({
+      target: { environment: 'QA' }, tenantIds, runId: 'run',
+      preflight: { queried: true, status: 'CLEAR', tenantCount: 3, coveredTenantCount: 3 },
+      operations, completedPhases: verified, receipt: async () => {},
+      verifyCompletedPhase: async () => ({ status: 'BLOCKED', code: 'DATABASE_DIVERGENCE' }),
+    }), /state diverged/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('category transformation scopes every source and proof read to explicit tenants', () => {

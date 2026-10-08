@@ -81,3 +81,14 @@ As transformações/replays foram certificados em `a27a3f6b6bc3789ca6e20612c115b
 | Autorizações operacionais/comerciais | PENDENTE | Saneamento equivalente em DEV e associação CIA exigem aprovação explícita |
 
 Classificação: não foi encontrado defeito de migração; a comanda vazia era condição operacional preexistente que satisfaz a regra de bloqueio por `ABERTA`/`CAIXA`/PDV e tipo não-AVULSA sem filtro por dia/sessão/valor. Falhas anteriores foram fixtures ou pré-condições de catálogo QA, e não justificam alterar regra de negócio. Nenhum dado de DEV foi escrito. Para liberar DEV, ainda é preciso aprovar o saneamento autenticado dessa comanda, aprovar a associação mínima proposta para CIA e validar em QA o entrypoint guardado antes de agendar a janela. Detalhes: [`pdv-unico-operational-acceptance-2026-10-08.json`](pdv-unico-operational-acceptance-2026-10-08.json).
+
+## Cobertura do executor DEV/QA (2026-10-08)
+
+| Gate | Evidência esperada | Regra de retomada |
+|---|---|---|
+| Preflight global | Transação somente leitura, todos os tenants, ledger sem divergência e comparação exata da foto | Sem cobertura integral ou qualquer finding, nenhuma migration começa |
+| Migrations e preparação | Ledger do banco, sequência mínima, preflight comercial após preparação de cozinha e migration dependente | Recibo isolado nunca substitui a consulta ao ledger e às constraints atuais |
+| Transformações e replay | RunId/tenant/escopo dos migradores, todos os batches confirmados e recibos do migrador | Estado de banco divergente do recibo bloqueia; não repara nem sobrescreve |
+| Reconciliação | IDs/valores/metadados dos 605 pagamentos, 577 autorizações C imutáveis, vínculos de produto/categoria e invariantes financeiras | Reexecutar leitura integral antes de ativar cada tenant |
+| Ativação | Um PDV canônico, configuração completa, categorias reconciliadas e ausência de grants owner-only | Readiness é por tenant e somente depois dos gates anteriores |
+| Comanda autorizada | Em QA, API normal autenticada, trilha `COMANDA_CANCELADA`, invariantes de saldo/caixa/estoque | Nunca compõe o apply DEV desta rodada |
