@@ -15,6 +15,7 @@ assert.equal(process.env.PDV_CANONICAL_TENANTS, DEV_PDV_TENANT_ALLOWLIST.map(t =
 const { PrismaClient } = await import(pathToFileURL(path.join(process.env.PDV_QA_PRISMA_CLIENT, 'index.js')).href);
 const db = new PrismaClient({ datasources: { db: { url } }, errorFormat: 'minimal' });
 const runId = `qa-operation-${randomBytes(8).toString('hex')}`;
+const operationStartedAt = new Date();
 const photo = JSON.parse(await readFile(process.env.PDV_REPRESENTATIVE_PHOTO_FILE, 'utf8'));
 const historicalIds = photo.tableRows.find(t => t.model === 'Pagamento').rows.map(r => r.id).sort();
 assert.equal(historicalIds.length, 605);
@@ -303,8 +304,9 @@ try {
           assert.equal(closeResponse.json().status, 'FECHADO');
         } else {
           assert.ok([400, 409].includes(closeResponse.statusCode), `unexpected cash close result: ${closeResponse.body}`);
-          const sourceCommands = await db.comanda.findMany({ where: { origem: 'CAIXA', pontoVendaId: point.id, status: 'ABERTA', tipo: { not: 'AVULSA' }, abertaPorId: { not: { startsWith: runId } } }, select: { id: true, diaOperacional: true, createdAt: true } });
+          const sourceCommands = await db.comanda.findMany({ where: { origem: 'CAIXA', pontoVendaId: point.id, status: 'ABERTA', tipo: { not: 'AVULSA' } }, select: { id: true, diaOperacional: true, createdAt: true } });
           assert.ok(sourceCommands.length > 0, `cash close blocked without preserved source command: ${closeResponse.body}`);
+          assert.ok(sourceCommands.every(command => command.createdAt < operationStartedAt), 'every blocking open command predates this QA operation');
           assert.match(closeResponse.body, /comanda/i, 'blocked response identifies the open-command rule');
           operationalBlockers.push(...sourceCommands.map(command => ({ tenantId: tenant.id, kind: 'PREEXISTING_OPEN_CASH_COMMAND_BLOCKS_CASH_CLOSE', commandId: command.id, operationalDay: command.diaOperacional?.toISOString().slice(0, 10) ?? null, createdAt: command.createdAt.toISOString() })));
           const qaSession = await db.sessaoCaixaOperacao.findFirstOrThrow({ where: { cervejariaId: tenant.id, pontoVendaId: point.id, diaOperacional: new originalDate(`${day}T00:00:00Z`), status: 'ABERTO', abertoPorId: owner.row.id } });
