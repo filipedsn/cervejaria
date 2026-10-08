@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "result": "BLOCKED",
+  "reviewedImplementationCommit": "3586567a492aeff23ed34dc9bea60662c8b4cbb4",
+  "reviewedTree": "97bbca09dde8016ec16ca4b402ebdf9d738dcc2b",
+  "categoryManifest": "v23",
+  "completedBeforeBlock": {
+    "backendBuild": "PASS",
+    "frontendBuild": "PASS",
+    "mockedCategoryUi": "PASS (2/2)",
+    "legacySchemaNoCategoryQueryCreateEdit": "PASS",
+    "finance": "PASS",
+    "commerce": "PASS",
+    "individualPermissions": "PASS",
+    "categorySql": "PASS",
+    "authenticatedCategoryApi": "BLOCKED during volume sale"
+  },
+  "blocker": {
+    "gate": "authenticated-category-api-volume-sale",
+    "cause": "sale fixture created a Chope volume item without tapId or session TapMontagem; endpoint correctly returned 400",
+    "fixCommit": "c88c704",
+    "fix": "create QA Tap assigned to product/PDV, mount it to the open QA session, and submit its ID with the volume sale"
+  },
+  "representativeRehearsal": "NOT_RUN; no representative photo supplied",
+  "localState": "UNCHANGED",
+  "prodAccess": "NO",
+  "sharedDevAccess": "NO"
+}
