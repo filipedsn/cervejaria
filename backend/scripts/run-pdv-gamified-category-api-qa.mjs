@@ -31,7 +31,7 @@ function run(command, args, options = {}) {
   return (result.stdout ?? '').trim();
 }
 async function selectPort() {
-  for (let candidate = 55439; candidate <= 55459; candidate++) {
+  for (let candidate = 55439; candidate <= 55449; candidate++) {
     const available = await new Promise((resolve, reject) => {
       const server = net.createServer();
       server.once('error', (error) => error.code === 'EADDRINUSE' ? resolve(false) : reject(error));
@@ -39,7 +39,7 @@ async function selectPort() {
     });
     if (available) return candidate;
   }
-  throw new Error('No free disposable category API QA port in 55439-55459.');
+  throw new Error('No free disposable category API QA port in 55439-55449.');
 }
 
 let created = false;
