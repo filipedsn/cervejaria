@@ -58,6 +58,7 @@ try {
   const ownerCategory = await call('POST', '/api/operacao/produtos/categorias', ownerCookie, { nome: 'Bebidas da casa', gamificada: false });
   assert.equal(ownerCategory.statusCode, 201, ownerCategory.body);
   assert.equal(body(ownerCategory).gamificada, false, 'explicit false is persisted');
+  const ownerCategoryId = body(ownerCategory).id;
   const freelyNamed = await call('POST', '/api/operacao/produtos/categorias', managerCookie, { nome: 'Lanches especiais', gamificada: true });
   assert.equal(freelyNamed.statusCode, 201, freelyNamed.body);
   const chopeCategoryResponse = await call('POST', '/api/operacao/produtos/categorias', ownerCookie, { nome: 'Chope', gamificada: false });
@@ -80,12 +81,12 @@ try {
   assert.deepEqual(chope.precos.map((row) => [row.volumeMl, Number(row.preco)]), [[300, 5], [500, 8]]);
 
   const genericProductResponse = await call('POST', '/api/produtos', ownerCookie, {
-    nome: 'Produto API geral', categoria: 'texto divergente', categoriaPdvId: ownerCategory.id,
+    nome: 'Produto API geral', categoria: 'texto divergente', categoriaPdvId: ownerCategoryId,
     tipo: 'COMIDA', precos: [{ volumeMl: 1, preco: 11 }], controlaEstoque: false, exigePreparo: false,
   });
   assert.equal(genericProductResponse.statusCode, 201, genericProductResponse.body);
   const genericProduct = body(genericProductResponse);
-  assert.deepEqual([genericProduct.categoria, genericProduct.categoriaPdvId], ['Bebidas da casa', ownerCategory.id], 'generic create derives label from category ID');
+  assert.deepEqual([genericProduct.categoria, genericProduct.categoriaPdvId], ['Bebidas da casa', ownerCategoryId], 'generic create derives label from category ID');
 
   const beforeForeign = await prisma.produto.count({ where: { cervejariaId: company.id } });
   const foreignOperationCreate = await call('POST', '/api/operacao/produtos', ownerCookie, { nome: 'foreign', categoriaPdvId: foreignCategoryId, tipo: 'COMIDA', precoUnit: 1 });
@@ -108,12 +109,12 @@ try {
   const genericTextOnlyChange = await call('PUT', `/api/produtos/${encodeURIComponent(genericProduct.id)}`, ownerCookie, { categoria: 'tentativa divergente' });
   assert.equal(genericTextOnlyChange.statusCode, 400, genericTextOnlyChange.body);
   chope = body(await call('PUT', `/api/operacao/produtos/${encodeURIComponent(chope.id)}`, managerCookie, {
-    categoria: 'rótulo conflitante', categoriaPdvId: ownerCategory.id,
+    categoria: 'rótulo conflitante', categoriaPdvId: ownerCategoryId,
   }));
-  assert.deepEqual([chope.categoria, chope.categoriaPdvId, chope.tipo, chope.formato], ['Bebidas da casa', ownerCategory.id, 'BEBIDA', 'CHOPE'], 'valid ID wins over conflicting client text and classification is preserved');
+  assert.deepEqual([chope.categoria, chope.categoriaPdvId, chope.tipo, chope.formato], ['Bebidas da casa', ownerCategoryId, 'BEBIDA', 'CHOPE'], 'valid ID wins over conflicting client text and classification is preserved');
   const genericPartial = await call('PUT', `/api/produtos/${encodeURIComponent(genericProduct.id)}`, ownerCookie, { nome: 'Produto API geral editado' });
   assert.equal(genericPartial.statusCode, 200, genericPartial.body);
-  assert.deepEqual([body(genericPartial).categoria, body(genericPartial).categoriaPdvId], ['Bebidas da casa', ownerCategory.id], 'generic partial edit preserves canonical identity/name');
+  assert.deepEqual([body(genericPartial).categoria, body(genericPartial).categoriaPdvId], ['Bebidas da casa', ownerCategoryId], 'generic partial edit preserves canonical identity/name');
   const restoreChopeCategory = await call('PUT', `/api/operacao/produtos/${encodeURIComponent(chope.id)}`, managerCookie, { categoriaPdvId: chopeCategory.id, categoria: 'conflicting label' });
   assert.equal(restoreChopeCategory.statusCode, 200, restoreChopeCategory.body);
   chope = body(restoreChopeCategory);
