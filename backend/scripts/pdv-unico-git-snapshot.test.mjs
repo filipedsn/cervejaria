@@ -36,7 +36,7 @@ test('snapshot materialization uses immutable Git blobs and rejects workspace so
     ...process.env,
     PDV_CUTOVER_SNAPSHOT_ROOT: snapshot,
     PDV_CUTOVER_DEPENDENCY_ROOTS: '[]',
-    PDV_CUTOVER_GENERATED_ROOTS: '[]',
+    PDV_CUTOVER_GENERATED_ROOTS: JSON.stringify([root]),
     PDV_CUTOVER_IMPORT_AUDIT: audit,
     PDV_CUTOVER_IMPORT_GUARD: guard,
   };
@@ -46,4 +46,7 @@ test('snapshot materialization uses immutable Git blobs and rejects workspace so
   const rejected = spawnSync(process.execPath, ['--import', pathToFileURL(guard).href, '--input-type=module', '-e', `await import(${JSON.stringify(pathToFileURL(source).href)})`], { encoding: 'utf8', env, windowsHide: true });
   assert.notEqual(rejected.status, 0);
   assert.match(rejected.stderr, /PDV_CUTOVER_IMPORT_ORIGIN_REJECTED/);
+  const auditRows = (await readFile(audit, 'utf8')).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+  assert.ok(auditRows.length > 0);
+  assert.ok(auditRows.every((row) => row.snapshotProjectSource && !row.generatedClient));
 });

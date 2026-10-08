@@ -86,7 +86,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   const isGuard = actual.toLowerCase() === guard.toLowerCase();
   const isSnapshot = inside(snapshot, actual);
   const isDependency = dependencyRoots.some((root) => inside(root, actual));
-  const isGenerated = generatedRoots.some((root) => inside(root, actual));
+  const isGenerated = !isSnapshot && generatedRoots.some((root) => inside(root, actual));
   if (!isGuard && !isSnapshot && !isDependency && !isGenerated) throw new Error('PDV_CUTOVER_IMPORT_ORIGIN_REJECTED: ' + actual);
   if (!isGuard) appendFileSync(audit, JSON.stringify({ path: actual, snapshotProjectSource: isSnapshot && !actual.toLowerCase().includes(path.sep + 'node_modules' + path.sep), dependency: isDependency, generatedClient: isGenerated }) + '\\n');
   return resolved;
