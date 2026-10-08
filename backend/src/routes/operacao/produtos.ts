@@ -264,6 +264,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
         precos: { create: precos },
       },
       include: { precos: { orderBy: { volumeMl: 'asc' } }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
+      ...(!catalogoCategoriasCanonicoAtivo() ? { omit: { categoriaPdvId: true } } : {}),
     });
 
     return reply.status(201).send(respostaProduto(produto));

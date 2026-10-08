@@ -208,6 +208,7 @@ export async function produtosRoutes(app: FastifyInstance) {
         },
       },
       include: { precos: { orderBy: { volumeMl: 'asc' } } },
+      ...(!catalogoCategoriasCanonicoAtivo() ? { omit: { categoriaPdvId: true } } : {}),
     });
 
     return reply.status(201).send(produto);
