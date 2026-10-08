@@ -1,0 +1,91 @@
+{
+    "version":  1,
+    "objective":  "Guarded DEV cutover executor implementation and identical ordered adapter rehearsal in disposable QA",
+    "status":  "PASS",
+    "codeRevision":  "888a4a8e8f4f347ded6138da218f4b3f01f5f9ea",
+    "gitTree":  "d6214493a19eb05b7b9bb9d6c8856bb3f413b67d",
+    "certificationRunnerSha256":  "4bce55c62ae8ebe880ec1ce0f4d5670f2ac6d0399fea37c1c7cedcfba23e9426",
+    "certifiedAtUtc":  "2026-10-08T22:21:04.437Z",
+    "nodeVersion":  "v24.18.0",
+    "photo":  {
+                  "path":  "C:\\Users\\Papai\\AppData\\Local\\Temp\\tap76-pdv-photo-6e0465525d164feaa656fb4fa66e075a.json",
+                  "sha256":  "2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b",
+                  "bytes":  8386723,
+                  "authorizationClassCPayments":  577,
+                  "authorizationRegenerated":  false
+              },
+    "migrations":  {
+                       "trackedFolders":  99,
+                       "gitBlobSha256":  "d4180760bd3af0ffc1c4ba93c92a54731eb0da1721b52ab987a34fce2c27b3b1",
+                       "phaseOrder":  [
+                                          "minimum prerequisites through 20261004150000_pdv_finance_session_link",
+                                          "business/catalog preparation",
+                                          "kitchen context preparation",
+                                          "commercial preflight",
+                                          "dependent migrations",
+                                          "tenant migrators and replay",
+                                          "reconciliation",
+                                          "per-tenant readiness"
+                                      ]
+                   },
+    "localGates":  {
+                       "backendBuild":  "PASS",
+                       "coreAndReceiptsTests":  "PASS 11/11",
+                       "qaSnapshotGuardTests":  "PASS 13/13",
+                       "uiMocked":  "PASS 2/2",
+                       "manifestTests":  "PASS 3/3",
+                       "syntheticRegression":  "PASS",
+                       "manifestCandidates":  112,
+                       "manifestSha256":  "a03e1913859d20a0b6d0b75384c20272948e4189be13993ac8e24874e0331078"
+                   },
+    "qa":  {
+               "runner":  "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+               "command":  "node backend/scripts/run-pdv-unico-git-snapshot-qa.mjs --commit=888a4a8e8f4f347ded6138da218f4b3f01f5f9ea --cutover --evidence-out=\u003cTEMP\u003e\\tap76-pdv-cutover-qa-888a4a8.json",
+               "result":  "PASS",
+               "elapsedMs":  2275105,
+               "migrationAndPreparationPhases":  "PASS",
+               "tenantTransformsReplaysReconciliationActivation":  "PASS",
+               "historicalRankingBeforeAfter":  "PASS",
+               "representativePhotoRestoreAndRecovery":  "PASS",
+               "originalPayments":  605,
+               "classCPayments":  577,
+               "authenticatedOperation":  {
+                                              "result":  "PASS",
+                                              "scope":  "disposable QA only",
+                                              "comandaId":  "cmuqaoyta0007hvdg3q4v7hkj",
+                                              "api":  "POST /api/operacao/comandas/:id/cancelar",
+                                              "statusBefore":  "ABERTA",
+                                              "statusAfter":  "CANCELADA",
+                                              "audit":  "COMANDA_CANCELADA",
+                                              "createdAtPreserved":  true,
+                                              "noPaymentsItemsOrReceivable":  true,
+                                              "financialCashOrStockEffects":  false
+                                          },
+               "temporarySnapshotRemoved":  true,
+               "moduleOriginAudit":  "PASS",
+               "exactRevisionMaterialization":  "PASS",
+               "localStateUnchanged":  true
+           },
+    "devPreflight":  {
+                         "result":  "CLEAR",
+                         "tenantCoverage":  "55/55",
+                         "transaction":  "RepeatableRead READ ONLY",
+                         "writes":  0
+                     },
+    "durableEvidence":  {
+                            "file":  "docs/testing/pdv-unico-dev-cutover-qa-evidence-888a4a8.json",
+                            "sha256":  "8d27d5e25787e8eed406e1987b60b0c65225022e5213dd69a186541332f51c5d"
+                        },
+    "environment":  {
+                        "sharedDevWrites":  "NO",
+                        "prodAccess":  "NO",
+                        "prodMetadata":  "NO",
+                        "prodDeployRequired":  false,
+                        "tap76":  "In Progress"
+                    },
+    "pending":  [
+                    "NÃ£o aplicar migrations, saneamento ou ativaÃ§Ã£o em DEV compartilhado nesta rodada.",
+                    "Uma janela DEV futura requer backup DEV e prova PASS de restore drill vinculada ao SHA desse backup; o executor bloquearÃ¡ se estiverem ausentes."
+                ],
+    "sourceSchemaCommit":  "66ec00886b65eaea8e437fae4e9a36f7be971b09"
+}

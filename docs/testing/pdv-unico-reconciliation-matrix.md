@@ -92,3 +92,9 @@ Classificação: não foi encontrado defeito de migração; a comanda vazia era 
 | Reconciliação | IDs/valores/metadados dos 605 pagamentos, 577 autorizações C imutáveis, vínculos de produto/categoria e invariantes financeiras | Reexecutar leitura integral antes de ativar cada tenant |
 | Ativação | Um PDV canônico, configuração completa, categorias reconciliadas e ausência de grants owner-only | Readiness é por tenant e somente depois dos gates anteriores |
 | Comanda autorizada | Em QA, API normal autenticada, trilha `COMANDA_CANCELADA`, invariantes de saldo/caixa/estoque | Nunca compõe o apply DEV desta rodada |
+
+## Resultado integrado observado
+
+No commit de runtime `888a4a8e8f4f347ded6138da218f4b3f01f5f9ea`, o runner completo terminou PASS em QA temporário: sequência, migradores, reconciliação e readiness dos dois tenants, mais operação autenticada. A restauração manteve a identidade da foto; os 605 pagamentos e os 577 IDs C autorizados foram reconciliados sem recriar a autorização. A comanda histórica autorizada passou por cancelamento normal em QA, com auditoria e sem efeitos em pagamento, saldo de caixa ou estoque. Rankings antes/depois permaneceram iguais.
+
+O preflight no DEV foi RepeatableRead READ ONLY, CLEAR em 55/55 tenants, zero arestas cross-tenant e zero escritas. Relatório e hashes estão em [`pdv-unico-dev-cutover-qa-evidence-888a4a8.json`](./pdv-unico-dev-cutover-qa-evidence-888a4a8.json); manifesto detalhado do executor em [`pdv-unico-dev-cutover-manifest.json`](./pdv-unico-dev-cutover-manifest.json). Nenhuma migration ou saneamento foi aplicado em DEV.

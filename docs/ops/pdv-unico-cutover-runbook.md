@@ -1,4 +1,4 @@
-﻿# Runbook de cutover do PDV único
+# Runbook de cutover do PDV único
 
 Este runbook descreve o executor local DEV e o ensaio isolado. A entrega desta rodada implementa o comando, mas deliberadamente não aplica migration, saneamento ou ativação no banco DEV compartilhado.
 
@@ -59,4 +59,12 @@ O ensaio aplica migrations, migradores e replays apenas no banco descartável QA
 
 ## Resultado desta entrega
 
-Preencher após o ensaio: SHA de runtime certificado, SHA final de documentação/evidência, digest das migrations, resultado e caminho dos relatórios QA, estado do push, e bloqueios DEV que exigem backup/restore drill e janela operacional. TAP-76 permanece In Progress. `PROD_DEPLOY_REQUIRED=NO`.
+O resultado do ensaio e os hashes certificados estão na seção “Certificação concluída” ao final deste runbook e no manifesto JSON. Este status substitui as instruções de preenchimento anteriores. TAP-76 permanece In Progress. `PROD_DEPLOY_REQUIRED=NO`.
+
+### Certificação concluída — 2026-10-08
+
+O runtime certificado é `888a4a8e8f4f347ded6138da218f4b3f01f5f9ea`, árvore `d6214493a19eb05b7b9bb9d6c8856bb3f413b67d`. O ensaio Git-snapshot terminou PASS em 2.275.105 ms: builds backend/frontend; regressão descartável; UI simulada 2/2; guardas QA 13/13; manifesto integrado 112 candidatos; preflight DEV somente leitura 55/55 CLEAR; sequência e operação autenticada em PostgreSQL descartável. O snapshot temporário foi removido e o fingerprint do estado local permaneceu idêntico.
+
+A comanda autorizada `cmuqaoyta0007hvdg3q4v7hkj` foi cancelada só em QA pela API autenticada, com audit `COMANDA_CANCELADA`, data de criação preservada e sem efeitos financeiros/caixa/estoque. Os 605 pagamentos e a lista imutável dos 577 C foram preservados. Todos os gates da sequência, reconciliação, rankings e readiness passaram. Evidência: `docs/testing/pdv-unico-dev-cutover-qa-evidence-888a4a8.json`; SHA-256 `8d27d5e25787e8eed406e1987b60b0c65225022e5213dd69a186541332f51c5d`. Manifestos: `docs/testing/pdv-unico-dev-cutover-manifest.json` e `docs/testing/pdv-unico-integrated-qa-manifest.json`.
+
+**Limite operacional:** nenhum DDL, transformação, saneamento ou ativação foi executado no DEV compartilhado. Para uma janela DEV futura, faltam o backup DEV e prova PASS de restore drill vinculada ao SHA desse backup; o executor bloqueia sem esses artefatos. PROD e metadados de PROD não foram acessados. TAP-76 segue In Progress; `PROD_DEPLOY_REQUIRED=NO`.

@@ -1,0 +1,1890 @@
+{
+  "version": 1,
+  "certification": "pdv-unico-current-disposable",
+  "syntheticRegression": {
+    "result": "PASS",
+    "suite": "pdv-unico-current-disposable",
+    "exitCode": 0
+  },
+  "representativeRehearsal": {
+    "result": "PASS",
+    "exitCode": 0
+  },
+  "selectedCommit": "888a4a8e8f4f347ded6138da218f4b3f01f5f9ea",
+  "selectedTree": "d6214493a19eb05b7b9bb9d6c8856bb3f413b67d",
+  "certificationRunnerPath": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+  "certificationRunnerSha256": "4bce55c62ae8ebe880ec1ce0f4d5670f2ac6d0399fea37c1c7cedcfba23e9426",
+  "sourceMaterialization": "git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot",
+  "materializedTrackedBlobCount": 1256,
+  "packageLockSha256": "9330ae831d6ea407a47dbf50a6158c60fd9ffb54fe99ed87e17fd6c6e5ec60d0",
+  "nodeVersion": "v24.18.0",
+  "measuredCommands": [
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "backend",
+      "durationMs": 20445,
+      "exitCode": 0
+    },
+    {
+      "command": "run build",
+      "cwd": "backend",
+      "durationMs": 8633,
+      "exitCode": 0
+    },
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "frontend",
+      "durationMs": 15455,
+      "exitCode": 0
+    },
+    {
+      "command": "run build",
+      "cwd": "frontend",
+      "durationMs": 29341,
+      "exitCode": 0
+    },
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "",
+      "durationMs": 4829,
+      "exitCode": 0
+    },
+    {
+      "command": "test --config=playwright.config.ts e2e/pdv-gamified-categories.spec.ts --project=chromium --no-deps --reporter=line --output=C:\\Users\\Papai\\AppData\\Local\\Temp\\pdv-category-ui-playwright-40fc2725246f8f47",
+      "cwd": "",
+      "durationMs": 8638,
+      "exitCode": 0
+    },
+    {
+      "command": "scripts/pdv-unico-commerce-qa-manifest.mjs --write",
+      "cwd": "backend",
+      "durationMs": 5211,
+      "exitCode": 0
+    },
+    {
+      "command": "--test scripts/pdv-unico-commerce-qa-manifest.test.mjs",
+      "cwd": "backend",
+      "durationMs": 8560,
+      "exitCode": 0
+    },
+    {
+      "command": "--import tsx --test scripts/pdv-unico-dev-cutover-core.test.mjs scripts/pdv-unico-cutover-receipts.test.mjs src/lib/pdv-tenant-activation.test.ts",
+      "cwd": "backend",
+      "durationMs": 3324,
+      "exitCode": 0
+    },
+    {
+      "command": "--import tsx scripts/run-pdv-unico-global-preflight.mjs",
+      "cwd": "backend",
+      "durationMs": 5649,
+      "exitCode": 0
+    },
+    {
+      "command": "qa:pdv-current-disposable",
+      "durationMs": 298471,
+      "exitCode": 0
+    },
+    {
+      "command": "guarded-cutover-sequence",
+      "durationMs": 2275899,
+      "exitCode": 0
+    }
+  ],
+  "globalDevPreflight": {
+    "status": "CLEAR",
+    "transaction": "RepeatableRead READ ONLY",
+    "queried": true,
+    "tenantCount": 55,
+    "coveredTenantCount": 55,
+    "ledger": [
+      {
+        "migration_name": "20250704180000_init",
+        "checksum": "044018ebe94e86e4fd5781e2fac4c5a7fbfba47584c1b5bb914006757c1e5643",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250704190000_auth_admin_reset",
+        "checksum": "f7198b679754a51fd2fbd4246ccc282aad6d6252dccf18939acac79affe21d33",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250704200000_cervejaria_ativo",
+        "checksum": "8a24f96b772ea87283a4582412ea3c534d0130bd53cc4a89773b2edd202bc6f9",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250704210000_cervejaria_branding",
+        "checksum": "ee0505658d5286847b2b39e709cd86c9984ade1f10f0469fa983b5ea194b8e4c",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250704210000_evento_recorrencia",
+        "checksum": "1a268072a1c2e03d7bd3f9f49e21958e6670da25aabf79efed9b97601bae6231",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250704210100_recorrencia_enum",
+        "checksum": "de3e05c51d4fc2867a9af45261d3889d4d87b84e70eed9dcaf34a7407cb47d4d",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250704220000_produto_tipo",
+        "checksum": "9c377ab2da73bc016703eebf8f6127ffc34a47084b792bff0f2b031877777471",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250704230000_formato_bebida",
+        "checksum": "2e6b11c0b21e8a4b23e23ab3c0e4f51ea173ed406e2efcc0bf93676c44b2c6b4",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250704240000_cartao_debito_credito",
+        "checksum": "e8bad59c91edbf4ccfec560d45dc945d0a3ae8aee42adfd7fd2f18707682ebf7",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250704250000_comanda_fechado_por",
+        "checksum": "0065023cf7cd302075f231eb8a4af24f0f00fe81ac380d1793ef197fda3e1b51",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250704260000_tap_ativo",
+        "checksum": "d6af001ecab8d1647a825f83859bd1ed766d210b0fb55d2eb204fe11d7d81b54",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250704270000_security_hardening",
+        "checksum": "1a13286e559e20011f22261143c1753f58cfa05aa01de312ae5be39c8d36bead",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250705120000_system_config",
+        "checksum": "13f4bb5f900fce03a4a0ad75d7596157f39cbcf6ab1ea9f1f7427bbfb7c0ad02",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250705130000_trailer",
+        "checksum": "3674f8238baaec7989daeb07f5ee5a9af2e328316b093ae4e2c6c6dc96b4c7b3",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250705140000_tap_montagem",
+        "checksum": "087ad105d7f189c73ab68bf3ad52019c8aebd301d60880b4d177b9ac719ef5b1",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250705150000_evento_produto",
+        "checksum": "0377d794acabbc311a3af09d3f304705d456993a7e4709c102596911cb196e82",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250705160000_cardapio",
+        "checksum": "b0008e66fe3dc60a17ae9ad1c239b277bba806dc853ee9a6abef3068fd8103eb",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250705170000_comanda_cancelada",
+        "checksum": "f1722f28ab347411790d26c4a9fada5a65c7efcc6e8e7fd4c1761508ea9e74de",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250705200000_evento_aberto_por_trailer",
+        "checksum": "bea654f035d9f3f9892493ac580d94a64aa061354f5ee84b02f0acce0be66558",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250708183000_evento_encerrado_em",
+        "checksum": "48b70f70d081ee5c78cd96d35ef1e09d882bb24dbe8d5a1049c4940f24fb8e2e",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250708190000_transacao_log",
+        "checksum": "d5d79e4ca9fd3372617f4c969357b0a071c8695a8bf0af96a342fdbd0fe2df17",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250715180000_cliente_crm_stats",
+        "checksum": "26f3d844b3187c0bca017bff8cb66de6cfaba8ec2e74d59a8316ea206b24ce06",
+        "finished": false,
+        "rolled_back": true
+      },
+      {
+        "migration_name": "20250715180000_cliente_crm_stats",
+        "checksum": "26f3d844b3187c0bca017bff8cb66de6cfaba8ec2e74d59a8316ea206b24ce06",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250715180000_cliente_crm_stats",
+        "checksum": "26f3d844b3187c0bca017bff8cb66de6cfaba8ec2e74d59a8316ea206b24ce06",
+        "finished": false,
+        "rolled_back": true
+      },
+      {
+        "migration_name": "20250715190000_pedido_cliente",
+        "checksum": "f6dad314b475069ca23a76cbe103da58cbd20c17cc9f8f815c2983c259440bbe",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250715193000_comanda_aberta_unique",
+        "checksum": "b19a8555b2947a85cc093d8b91589f1f6635ddd5fa995c166d0f198dfeeabde9",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250715200000_comanda_fechada_em",
+        "checksum": "3d700d381b6e816c3de9a9ed629cca91a3d6947028e5696b1a535a0eec6c3696",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250715210000_comanda_tipo_avulsa",
+        "checksum": "5636c20f3a305afc871711c9cd0bdb699737ad7021fcc3d9ccaccb8e5ea8645d",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250715220000_evento_portal_generation",
+        "checksum": "e276e678763f679dc3721dbbc45a7af9359f4cce6de71d01c60ca92989dba948",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250716143000_evento_serie_exclusao",
+        "checksum": "b2f7598f93e481348e9b427f980432f8ead9b90dbaeec1eaa8b1c38999b8525c",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20250721130000_push_subscriptions",
+        "checksum": "0497d23595a131c858f073ccefa3dfaff34f339597fa97ab5b0d6e4e3a82a18a",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260731162046_modulo_quiosque_fundacao",
+        "checksum": "543431c37fee4847faff6f4f516ce32cbd04d0ceadc19834e339f6f6333bcb61",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260731162815_quiosque_modo_exclusivo",
+        "checksum": "f26cf40f30f748eaba1ba24818c7d748304fdb0373e2b33e81ff132c215e586b",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260731180005_pdv_quiosque",
+        "checksum": "38d4df2e1fbb1d36fa8f21480f106b32b692267172bc2542ed8af40bae37c2f6",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260806225944_caixa_quiosque",
+        "checksum": "c2d3e1327fe096a33ec945fc95b8465de4b8122cd3ee5bd045f52b2f9e09656f",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260806235600_estoque_quiosque",
+        "checksum": "3642ce0b1cb04c08f3a59e6e548817d643df88e8cd13373f326c1bde05a88ccb",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260807120000_caixa_multiplos_turnos",
+        "checksum": "f592dfd8ecbce39644e5bfe912a25b963357a4af7ea1b44a23ade42c1043bdc5",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260807140000_comanda_desconto_quiosque",
+        "checksum": "7c416d6c77284874fb14ce951cb918e97064d041ab9102047e7e7122b6a1988a",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260807150000_pedido_cozinha_cronometro",
+        "checksum": "5fb0d645b67013adcb208acaf6373aebc0ed0db23aba28635acc0d29326cdb08",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260807200000_cervejaria_exibir_kpis_comanda",
+        "checksum": "bedcb35601386af1c4fa3258f88c92700f74481130c47af457820f3631868256",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260807210000_cervejaria_comandas_coluna_unica",
+        "checksum": "6885334b09ae2d81370a47d32bd05551bfec0d47f733078a997420d61c54cba1",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260807220000_comanda_numero_sequencial",
+        "checksum": "48925cd510b9de75034b94d6a841b174ad32f727b6e2a5a14fcdd12d090bceed",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260807230000_evento_comandas_contador_desde",
+        "checksum": "3001fcdda40ab41870e576baf97be78bdf49348480aa3cc546aace99e44eb48e",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260808100000_quiosque_cardapio",
+        "checksum": "fe5487758046dbfbf89500e3dacbc093c95ba50a79820d6bbbb6894115015043",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260810120000_transacao_quiosque_portal",
+        "checksum": "4eb97d25f2ce41f4e9c28524c3429364ee78dcbf08d3a111e2d535af33dcf10c",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260810140000_transacao_payload_tipos",
+        "checksum": "fa952faf7ec1deb487e38ce81d01f2b41da95055b1a4554c4c078d33194e6832",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260810180000_cardapio_preco_unit",
+        "checksum": "2c8d9f630a4a7e74dfcc6fbbcfacfe05cfc528cc53896bff194a02d701db4f16",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260811120000_usa_cardapio",
+        "checksum": "cf4df8f27f08409f9ef105e1e032cb7af6a37f235ea8b3a196f8cc1b3436d2e7",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260813193000_comanda_desconto_cervejaria",
+        "checksum": "32972fa1b10b85afed5661616d6c027986906df1357e8c66d157b9668c25eaa0",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260813194500_comanda_quiosque_enums",
+        "checksum": "769bf506b95f3bba274a7a561b94afb4b0eb4301c909506fc7877a85a70d13ac",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260813200000_unificar_comanda_quiosque",
+        "checksum": "c28295284bb1816e272c0b0aa5491194cf371a3bfcc56cb138db08d65c65e5cd",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260813210000_sessao_caixa_produto_preco",
+        "checksum": "8ad7cb5f2cb78736f839fbb5c2c54c1d46c0f67ce817ff075b232c81d9ebba4e",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260827120000_quiosque_quantidade_mesas",
+        "checksum": "5fc686c57c45cd59d00f743043c26287b0bb79d362676457739f514243ae4883",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260827130000_correcao_movimento_caixa",
+        "checksum": "6deece9ae1b655516c5b9f3d942ad0b9c511e192ab05b56322b6657f3c034890",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260902120000_estoque_minimo_quiosque",
+        "checksum": "ed3cfd6c11c804ea34e6b75fecf59195a343498e6c3b9faba4ae07b6e274f061",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260914143000_add_cash_register_capability_to_ponto_venda",
+        "checksum": "afe180276acdae373069c83c9b0822bcfcea7c919df4e487e721aa8674547b67",
+        "finished": false,
+        "rolled_back": true
+      },
+      {
+        "migration_name": "20260914143000_add_cash_register_capability_to_ponto_venda",
+        "checksum": "afe180276acdae373069c83c9b0822bcfcea7c919df4e487e721aa8674547b67",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260914190000_operational_enablement",
+        "checksum": "dd0a24621e4a36b801f57be68d9f9663de77922e80b1bf51d3247c8a0f9a1271",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260914200000_operational_inventory_kitchen_enablement",
+        "checksum": "eafd8b9556f0bc0dd04844961650bc2280b0cad97e5d4c88efdfc619d3c95571",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260924120000_expand_canonical_product",
+        "checksum": "bf0f4b8a36506b8c0e536103f679549aab214915e1e8144f7d940b0cc7082117",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260924183000_canonical_product_runtime",
+        "checksum": "df7e3ef27fd9b54fc1556f997bd2531489b3d558ffd54d7b1bf7bd4d33d93691",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260924190000_canonical_product_contract",
+        "checksum": "57bcf1ed2182d0f5550eaea5294a889a4c82c432adb188c8f62d56a5662390ae",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260924210000_operational_context_caixa",
+        "checksum": "0052572a068ef530b39f352b86ac6800b3b75466b1830159e66145e8413bafb9",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260924211000_canonical_observability_events",
+        "checksum": "4330e24ab25d60bd2966daed416f08e614c420c6fc473e7ffc5a2f12d1ecc1ac",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260924211500_backfill_comanda_caixa",
+        "checksum": "1a54d22bf53cd8bfe160ef859ce522ad8bf96993476ac22f469fb4da305da5aa",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260924212000_rename_operational_discount_permission",
+        "checksum": "a9f4b72591a92441e5e85397cab4f3ea028f486ce79c955f093bb66829d23d28",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260925090000_pedido_para_viagem",
+        "checksum": "84abab206d6281bb26ca4f5c5815a4cde3ad0a60490711d9c48f7f3977be266c",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260925100000_item_comanda_para_viagem",
+        "checksum": "d936a72b5331086de79b38d3e42d2798d110b80839fcd14b141a98052e82a85b",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260925103000_event_kitchen_orders",
+        "checksum": "c2cbd9acfe8abc6e62d0c0d805bc40d3abeb1cdf81d5e3bdda87a41597bd6bf3",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260926100000_produto_opcionais_observacao",
+        "checksum": "584fde5be0e3ab55f636699ea4c5dbf96266fa42e861702734087697d44944e3",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260926103000_opcionais_catalogo_global",
+        "checksum": "e0014311b30a3fb4d94b1550d92eea8f553695fa330a1ab3c57712a02ccdd114",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260926120000_contas_receber_operacao",
+        "checksum": "74022e4a49614fb63076c0836c046c52c8f29700cba7b4910958339fc7469e4d",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260927120000_cancelamento_pendente_cozinha",
+        "checksum": "24077bf22b21faf8d7524887040771087b84c891c19724aa0f01cb8c91828e45",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260927130000_cancelamento_item_comanda",
+        "checksum": "8daa5f324dc1759910e36706491b5ae96bcd651bb94ffee40addd4232fbd1f7f",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260927140000_portal_cliente_background",
+        "checksum": "2696d3030bde2b7946af4b9c6b76d81df3184a1e0633a3c9ab1eec9b181b0f09",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260927150000_operacao_categoria_ordem",
+        "checksum": "614737dc9ee0cf6fb7e3e463b1a4d78549a3284cb3e86a0f2bd751b687b66681",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260927160000_aviso_pedido_pronto_whatsapp",
+        "checksum": "a8d1cc41253a56c858fcca3a53aa76225755edbae27c4fc10724bec0dbc87b33",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260927180000_unificar_cardapio_operacao",
+        "checksum": "f7dfea537f01955b16e658d13f76547e9525c5f80d45179ad178498696e33e91",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260927193000_tap_agnostico_evento_turno",
+        "checksum": "d58c49eac4f95122d9cd6ad48fa94a82d8edceb31b9197c5393be20d774b0b50",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260927210000_estoque_chope_litros",
+        "checksum": "51a38c2375d09b237d0269c24a0366cf52725d6ac28887479faf55e4f3436ff6",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260927230000_cardapio_chope_volume_variants",
+        "checksum": "53927b83831f69175a183982737168fc489ed1f856b64318d429c3725dfff4da",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260928010000_cardapio_chope_volume_scope",
+        "checksum": "b324257fe10dc486a158a6d499d32cc2d8a4c6938a3742a0402e1f99ac0b6723",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260928150000_first_access_operational_setup",
+        "checksum": "1a8a8e28c25ac5ffd114bf4d0ab3e1693eeab36b5caac84663f30063b0acbe43",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260929160000_evento_cash_register",
+        "checksum": "28f251ae734ddba7a9a089e668642defeea7f13292caac3d80b779431d29616f",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260929170000_evento_cash_generic_card_count",
+        "checksum": "aa9071aae743293c9daa79d13c56a5c1e912e67e5ca18b91bb675dd11cb5b5df",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260929180000_kitchen_items_charge_at_launch",
+        "checksum": "85a2cef44fa750027e31584ad9d2e31884b8061208658484d5fdc1e11c8c5dfc",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260930120000_allow_close_comanda_with_pending_kitchen_orders",
+        "checksum": "1a6eb7104ca4d680d70f3252d73a084969fa451e0607540e65ad5f1baea1349b",
+        "finished": true,
+        "rolled_back": false
+      },
+      {
+        "migration_name": "20260930150000_company_pix_key",
+        "checksum": "1b39b85c8e755ca1629b2bd7e6300249a959ab7ab570a38eef06b99d499005a6",
+        "finished": true,
+        "rolled_back": false
+      }
+    ],
+    "ledgerDivergence": [],
+    "ledgerEncodingMatches": [
+      {
+        "migration": "20250704180000_init",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250704190000_auth_admin_reset",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250704200000_cervejaria_ativo",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250704210000_cervejaria_branding",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250704210000_evento_recorrencia",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250704210100_recorrencia_enum",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250704220000_produto_tipo",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250704230000_formato_bebida",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250704240000_cartao_debito_credito",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250704250000_comanda_fechado_por",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250704260000_tap_ativo",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250704270000_security_hardening",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250705120000_system_config",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250705130000_trailer",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250705140000_tap_montagem",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250705150000_evento_produto",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250705160000_cardapio",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250705170000_comanda_cancelada",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250705200000_evento_aberto_por_trailer",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250708183000_evento_encerrado_em",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250708190000_transacao_log",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250715180000_cliente_crm_stats",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250715190000_pedido_cliente",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250715193000_comanda_aberta_unique",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250715200000_comanda_fechada_em",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250715210000_comanda_tipo_avulsa",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250715220000_evento_portal_generation",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250716143000_evento_serie_exclusao",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20250721130000_push_subscriptions",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260731162046_modulo_quiosque_fundacao",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260731162815_quiosque_modo_exclusivo",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260731180005_pdv_quiosque",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260806225944_caixa_quiosque",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260806235600_estoque_quiosque",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260807120000_caixa_multiplos_turnos",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260807140000_comanda_desconto_quiosque",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260807150000_pedido_cozinha_cronometro",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260807200000_cervejaria_exibir_kpis_comanda",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260807210000_cervejaria_comandas_coluna_unica",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260807220000_comanda_numero_sequencial",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260807230000_evento_comandas_contador_desde",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260808100000_quiosque_cardapio",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260810120000_transacao_quiosque_portal",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260810140000_transacao_payload_tipos",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260810180000_cardapio_preco_unit",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260811120000_usa_cardapio",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260813193000_comanda_desconto_cervejaria",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260813194500_comanda_quiosque_enums",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260813200000_unificar_comanda_quiosque",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260813210000_sessao_caixa_produto_preco",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260827120000_quiosque_quantidade_mesas",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260827130000_correcao_movimento_caixa",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260902120000_estoque_minimo_quiosque",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260914143000_add_cash_register_capability_to_ponto_venda",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260914190000_operational_enablement",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260914200000_operational_inventory_kitchen_enablement",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260924120000_expand_canonical_product",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260924183000_canonical_product_runtime",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260924190000_canonical_product_contract",
+        "encoding": "CRLF"
+      },
+      {
+        "migration": "20260924210000_operational_context_caixa",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260924211000_canonical_observability_events",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260924211500_backfill_comanda_caixa",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260924212000_rename_operational_discount_permission",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260925090000_pedido_para_viagem",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260925100000_item_comanda_para_viagem",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260925103000_event_kitchen_orders",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260926100000_produto_opcionais_observacao",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260926103000_opcionais_catalogo_global",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260926120000_contas_receber_operacao",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260927120000_cancelamento_pendente_cozinha",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260927130000_cancelamento_item_comanda",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260927140000_portal_cliente_background",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260927150000_operacao_categoria_ordem",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260927160000_aviso_pedido_pronto_whatsapp",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260927180000_unificar_cardapio_operacao",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260927193000_tap_agnostico_evento_turno",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260927210000_estoque_chope_litros",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260927230000_cardapio_chope_volume_variants",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260928010000_cardapio_chope_volume_scope",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260928150000_first_access_operational_setup",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260929160000_evento_cash_register",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260929170000_evento_cash_generic_card_count",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260929180000_kitchen_items_charge_at_launch",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260930120000_allow_close_comanda_with_pending_kitchen_orders",
+        "encoding": "LF"
+      },
+      {
+        "migration": "20260930150000_company_pix_key",
+        "encoding": "LF"
+      }
+    ],
+    "constraints": [],
+    "disagreement": [],
+    "mountEventDuplicates": [],
+    "mountSessionDuplicates": [],
+    "tapProductDivergence": [],
+    "stockParentDivergence": [
+      {
+        "table": "EstoqueSaldoQuiosque",
+        "rows": []
+      },
+      {
+        "table": "MovimentoEstoqueQuiosque",
+        "rows": []
+      }
+    ],
+    "coverage": [
+      {
+        "tenantId": "cmr9yfsdd0001hvtku98n4cjd",
+        "selected": false,
+        "points": [
+          "cmub1y1ez0003hv4sa768bgbp"
+        ],
+        "trailers": [
+          "trailer_cmr9yfsdd0001hvtku98n4cjd"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmu78vehi009hhv80bfwo5d6v",
+        "selected": false,
+        "points": [
+          "cmu78veht009lhv80fdksq6da"
+        ],
+        "trailers": [],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cspz00pihvdg4l5p9n6e",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cspz00pqhvdgt1ik2umo"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cstr00r0hvdgcs0z3dyp",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cstr00r8hvdgkgwikfqe"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8csx200sihvdguyvuqc9g",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8csx300sqhvdgu3dh6gwn"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8ct0c00u0hvdgmg5zu1ie",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8ct0c00u8hvdgc9ge7vdq"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmsry9xrn0000hvlgopjxy0oo",
+        "selected": true,
+        "points": [
+          "cmsry9xry0004hvlge0wgboza"
+        ],
+        "trailers": [
+          "cmumqsqdp00h6hv18hqkwgc7s"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cr0z0000hvdgw064ly20",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cr0z0008hvdgrmxez8xl"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cr5q001ihvdgdrez13b2",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cr5q001qhvdgxtnp36f8"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cr9n0030hvdghtge3kds",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cr9n0038hvdgoy5lqvck"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8ct3l00vihvdgr0yb3e09",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8ct3l00vqhvdgj9s8zbee"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8crd4004ihvdgm33b50hy",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8crd4004qhvdgqhxzfa0y"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8crgn0060hvdgkwjj2fg7",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8crgn0068hvdgwpdsxj4g"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8crk6007ihvdgvvgnyw3c",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8crk6007qhvdgutmaa93j"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8crnp0090hvdg4l8a9r3c",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8crnq0098hvdgaw2ezf2q"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8crr700aihvdg16qgli2s",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8crr700aqhvdglsdhwyfy"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cruv00c0hvdglrtl7xai",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cruv00c8hvdgqfp9ylk9"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8crya00dihvdgp4kw715o",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cryb00dqhvdg5q6hpx8e"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cs1n00f0hvdg2muvyu3p",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cs1o00f8hvdgh6a5lc2y"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cs5500gihvdg1vheclnx",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cs5500gqhvdg5voan05y"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cs8j00i0hvdgobbl72p9",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cs8j00i8hvdght8db1dz"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8csc400jihvdgpu8r7m01",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8csc500jqhvdg2cpfrf2j"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8csfl00l0hvdg3fzrt2h2",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8csfl00l8hvdgdjbz6g29"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8csja00mihvdg5jj8ct1a",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8csjb00mqhvdgp54q1zav"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8csml00o0hvdg3unmds3y",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8csml00o8hvdgvsyy8cbk"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8ct7100x0hvdg68uoo299",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8ct7200x8hvdg4lkmvhm4"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8ctap00yihvdg74qk8yjd",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8ctap00yqhvdg4hnwpfar"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cte30100hvdgew0vd3zj",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cte30108hvdgsmn3gfdy"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cthe011ihvdgpsgj6z8g",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cthe011qhvdg1xcbktee"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8ctkp0130hvdgm8718nao",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8ctkq0138hvdgiyi4dw9h"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cto2014ihvdglnzitms1",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cto2014qhvdg993qkjv1"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8ctrn0160hvdgxh8o8422",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8ctrn0168hvdguk83r4fb"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8ctux017ihvdgw55okgul",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8ctux017qhvdgjzorrydj"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cty80190hvdg1mhee6vd",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cty90198hvdgn9g3nh8p"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cu1p01aihvdgfains6vu",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cu1p01aqhvdgov9f3s9k"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cu4z01c0hvdgwlw5o8yc",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cu5001c8hvdgeyokbaza"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cu8c01dihvdgeoo09hh0",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cu8c01dqhvdg4rluuz6j"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cubp01f0hvdg7ul1l443",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cubp01f8hvdgbgdtgkhm"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cuf301gihvdgyb5j1qfi",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cuf301gqhvdgax7a9olq"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cuim01i0hvdgpaazn0og",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cuin01i8hvdga4mr9fi8"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cum101jihvdgi9d24hu2",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cum201jqhvdglxwz9emz"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cupb01l0hvdgpfcyh2ce",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cupb01l8hvdgyck56ed7"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cusl01mihvdgdvkfov1z",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cusl01mqhvdgckec34cl"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cuvv01o0hvdgujlckeac",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cuvv01o9hvdgzk9sn52p"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cuy701ojhvdgevv18mqq",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cuy801ophvdgxpon5lip",
+          "cmuo8cuy801oqhvdg5fl2h3e1"
+        ],
+        "status": "CLEAR",
+        "code": "UNSELECTED_MULTI_UNIT_REMAINS_LEGACY"
+      },
+      {
+        "tenantId": "cmuo8cv1101p7hvdgwkwzpqoj",
+        "selected": false,
+        "points": [],
+        "trailers": [
+          "cmuo8cv1101p8hvdgee32f9hn"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cv1s01plhvdg4mjls3mm",
+        "selected": false,
+        "points": [
+          "cmuo8cv2501prhvdgfjw4bcqc",
+          "cmuo8dsq103zlhvpkb2j390av",
+          "cmuo8dtc903zzhvpknjey4bg2",
+          "cmuo8du7f042ghvpkofr7522r",
+          "cmuo8dudt042phvpkk5j94eff"
+        ],
+        "trailers": [],
+        "status": "CLEAR",
+        "code": "UNSELECTED_MULTI_UNIT_REMAINS_LEGACY"
+      },
+      {
+        "tenantId": "cmuo8cv2j01pyhvdgb7qfaubj",
+        "selected": false,
+        "points": [
+          "cmuo8cv2t01q4hvdgca9d01ex",
+          "cmuo8duqo042rhvpkjpujetvy",
+          "cmuo8e6gv04klhvpk52nt579e"
+        ],
+        "trailers": [],
+        "status": "CLEAR",
+        "code": "UNSELECTED_MULTI_UNIT_REMAINS_LEGACY"
+      },
+      {
+        "tenantId": "cmuo8cv3801qdhvdgc2xnzm7q",
+        "selected": false,
+        "points": [
+          "cmuo8cv3i01qjhvdg5q8zbb0u",
+          "cmuo8dvbp0448hvpkw0rikg04"
+        ],
+        "trailers": [],
+        "status": "CLEAR",
+        "code": "UNSELECTED_MULTI_UNIT_REMAINS_LEGACY"
+      },
+      {
+        "tenantId": "cmuo8cv3s01qqhvdgwi88q16t",
+        "selected": false,
+        "points": [
+          "cmuo8cv4201qwhvdg1ibgr0om",
+          "cmuo8e6i104knhvpkyk88i22a"
+        ],
+        "trailers": [],
+        "status": "CLEAR",
+        "code": "UNSELECTED_MULTI_UNIT_REMAINS_LEGACY"
+      },
+      {
+        "tenantId": "cmuo8cv4e01r5hvdg2zpww0tq",
+        "selected": false,
+        "points": [
+          "cmuo8cv4o01rbhvdgro83bir6"
+        ],
+        "trailers": [],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cv4z01rihvdgt2g2eiik",
+        "selected": false,
+        "points": [
+          "cmuo8cv5901rohvdg89gnz400"
+        ],
+        "trailers": [],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cv5m01rxhvdgfqa20lfd",
+        "selected": false,
+        "points": [
+          "cmuo8cv5v01s3hvdgjc6rv08o"
+        ],
+        "trailers": [],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmuo8cv6501sahvdgizlbijt5",
+        "selected": false,
+        "points": [
+          "cmuo8cv6e01sghvdgk0d8ijfi"
+        ],
+        "trailers": [],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      },
+      {
+        "tenantId": "cmr9yis3c0000hvu00q9fe7y1",
+        "selected": true,
+        "points": [],
+        "trailers": [
+          "cmr9yis3c0001hvu0pr53z3e5"
+        ],
+        "status": "CLEAR",
+        "code": "UNIT_SCOPE_CHECKED"
+      }
+    ],
+    "sourceIdentityComparisons": [
+      {
+        "tenantId": "cmr9yis3c0000hvu00q9fe7y1",
+        "status": "CLEAR",
+        "comparedFields": [
+          "id",
+          "nome",
+          "slug"
+        ],
+        "code": "APPROVED_IDENTITY_UNCHANGED"
+      },
+      {
+        "tenantId": "cmsry9xrn0000hvlgopjxy0oo",
+        "status": "CLEAR",
+        "comparedFields": [
+          "id",
+          "nome",
+          "slug"
+        ],
+        "code": "APPROVED_IDENTITY_UNCHANGED"
+      }
+    ],
+    "sourceComparisons": [
+      {
+        "model": "Cervejaria",
+        "original": 2,
+        "current": 2,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "ConfiguracaoOperacional",
+        "original": 2,
+        "current": 2,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "Trailer",
+        "original": 2,
+        "current": 2,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "Usuario",
+        "original": 7,
+        "current": 7,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "PushSubscription",
+        "original": 3,
+        "current": 3,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "Produto",
+        "original": 45,
+        "current": 45,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "Preco",
+        "original": 52,
+        "current": 52,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "Opcional",
+        "original": 2,
+        "current": 2,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "ProdutoOpcionalVinculo",
+        "original": 10,
+        "current": 10,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "Tap",
+        "original": 9,
+        "current": 9,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "TapMontagem",
+        "original": 123,
+        "current": 123,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "Evento",
+        "original": 30,
+        "current": 30,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "Cardapio",
+        "original": 6,
+        "current": 6,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "CardapioProduto",
+        "original": 92,
+        "current": 92,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "Cliente",
+        "original": 163,
+        "current": 163,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "ClienteEstatisticas",
+        "original": 162,
+        "current": 162,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "Comanda",
+        "original": 637,
+        "current": 637,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "ItemComanda",
+        "original": 1698,
+        "current": 1698,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "ItemComandaOpcional",
+        "original": 42,
+        "current": 42,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "PedidoCliente",
+        "original": 3,
+        "current": 3,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "PedidoClienteItem",
+        "original": 3,
+        "current": 3,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "EventoProduto",
+        "original": 138,
+        "current": 138,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "Pagamento",
+        "original": 605,
+        "current": 605,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "SessaoCaixaEvento",
+        "original": 6,
+        "current": 6,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "ContaReceber",
+        "original": 6,
+        "current": 6,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "TransacaoLog",
+        "original": 3764,
+        "current": 3764,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "ConfiguracaoOperacao",
+        "original": 1,
+        "current": 1,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "PontoVenda",
+        "original": 1,
+        "current": 1,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "PedidoOperacao",
+        "original": 431,
+        "current": 431,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "PedidoOperacaoStatusHistorico",
+        "original": 952,
+        "current": 952,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "SessaoCaixaOperacao",
+        "original": 40,
+        "current": 40,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "SessaoCaixaProdutoOperacao",
+        "original": 914,
+        "current": 914,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "InventoryBalance",
+        "original": 31,
+        "current": 31,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      },
+      {
+        "model": "InventoryMovement",
+        "original": 756,
+        "current": 756,
+        "changedOrMissing": 0,
+        "added": 0,
+        "status": "CLEAR"
+      }
+    ],
+    "crossTenantEdges": 0,
+    "globalDdlImpact": [
+      "Additive tables/columns/indexes and restrictive inventory and TAP tenant/PDV FKs affect every tenant.",
+      "Tracked permission migrations initialize the newly added permission array for existing attendants globally; unselected tenants keep the legacy permission gate and roles/legacy grants unchanged.",
+      "Multiple units outside the allowlist remain legacy; they are not a single-PDV DDL violation and are neither chosen nor merged."
+    ]
+  },
+  "generatedCandidateManifest": {
+    "baselineCommit": "888a4a8e8f4f347ded6138da218f4b3f01f5f9ea",
+    "manifestSha256": "a03e1913859d20a0b6d0b75384c20272948e4189be13993ac8e24874e0331078",
+    "codeCandidateCount": 112
+  },
+  "moduleOriginAudit": {
+    "result": "PASS",
+    "snapshotProjectModuleCount": 214,
+    "snapshotProjectModulePathListSha256": "c1e10790b786eb83935de0e86349eac9b8cc42e663fac472b32907133e1b66d5",
+    "nonSnapshotWorkspaceModuleCount": 0,
+    "externalDependencyModuleCount": 100,
+    "externalPrismaRuntimeVersion": "6.19.3",
+    "expectations": {
+      "syntheticModules": {
+        "result": "PASS",
+        "expectedCount": 5,
+        "observedCount": 5
+      },
+      "representativeModules": {
+        "result": "ENTRYPOINT_OBSERVED",
+        "expectedCount": 1,
+        "observedCount": 1
+      }
+    }
+  },
+  "localState": {
+    "beforeSha256": "6f627750388afd196ce966dda230c3ffd2c6c5ae1e9cda396cf608035e5ea4ed",
+    "afterSha256": "6f627750388afd196ce966dda230c3ffd2c6c5ae1e9cda396cf608035e5ea4ed",
+    "identical": true,
+    "stagedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "unstagedDiffSha256": "07112414c2355d5c5b3c83b422495363c45ac03231b7325b98400c724da58626",
+    "untrackedFileCount": 9
+  },
+  "prodAccessUsed": "NO",
+  "devSharedAccess": "READ_ONLY"
+}

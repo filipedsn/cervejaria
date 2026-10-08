@@ -725,3 +725,13 @@ Os recibos DEV usam JSONL encadeado e `fsync`. Ao retomar, cada fase PASS precis
 A foto usada continua a aprovada: `C:\\Users\\Papai\\AppData\\Local\\Temp\\tap76-pdv-photo-6e0465525d164feaa656fb4fa66e075a.json`, SHA-256 `2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b`, 8.386.723 bytes. O conjunto C continua limitado aos mesmos 577 pagamentos autorizados; nenhum fixture de produto foi acrescentado ao menu DEV. Nesta rodada houve somente leitura no DEV compartilhado; nenhuma migration, transformação, saneamento ou ativação foi aplicada nele.
 
 O ensaio completo do adaptador compartilhado foi realizado em PostgreSQL descartável QA. O gate final, revisão, relatório, manifesto e bloqueios concretos são registrados abaixo após a conclusão desse ensaio.
+
+## Resultado certificado da retomada — 2026-10-08
+
+A revisão executável certificada é `888a4a8e8f4f347ded6138da218f4b3f01f5f9ea` (árvore `d6214493a19eb05b7b9bb9d6c8856bb3f413b67d`). O runner de snapshot confirmou 1.256 blobs exatos, zero imports de código do workspace e estado local idêntico antes/depois. Build backend/frontend, UI simulada 2/2, regressão descartável, manifesto 112 candidatos, manifest tests 3/3 e guardas QA 13/13 passaram. O preflight DEV repetido na revisão certificada permaneceu CLEAR em RepeatableRead READ ONLY, 55/55 tenants e zero escritas.
+
+O ensaio sequenciado no banco descartável QA terminou COMPLETED em 2.275.105 ms. Foto e restore/recovery passaram; migrations mínimas e dependentes, negócio/catálogo, preparação de cozinha, categorias, rankings históricos, transformações/replays, reconciliação e readiness tenant-scoped passaram. Os 605 pagamentos originais e os mesmos 577 IDs C foram preservados. A fase autenticada cancelou em QA a comanda `cmuqaoyta0007hvdg3q4v7hkj` pela API normal, conservou `createdAt`, registrou `COMANDA_CANCELADA` e confirmou ausência de efeitos financeiros, de caixa e de estoque.
+
+Evidência durável: [`pdv-unico-dev-cutover-qa-evidence-888a4a8.json`](../testing/pdv-unico-dev-cutover-qa-evidence-888a4a8.json), SHA-256 `8d27d5e25787e8eed406e1987b60b0c65225022e5213dd69a186541332f51c5d`. Manifestos: [`pdv-unico-dev-cutover-manifest.json`](../testing/pdv-unico-dev-cutover-manifest.json) e [`pdv-unico-integrated-qa-manifest.json`](../testing/pdv-unico-integrated-qa-manifest.json). DEV compartilhado teve apenas preflight de leitura; PROD e metadados PROD não foram acessados. `PROD_DEPLOY_REQUIRED=NO`.
+
+Bloqueio concreto para uma janela futura: o apply DEV requer um backup exclusivo de DEV e prova PASS de restore drill vinculada ao mesmo SHA; esses artefatos não foram produzidos nesta rodada e são obrigatórios no executor. A migration e o saneamento da comanda permanecem QA-only nesta entrega.
