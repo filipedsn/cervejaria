@@ -77,6 +77,7 @@ function qaEnvironment() {
   }
   env.GIT_DIR = gitDir;
   env.PDV_GIT_QA_COMMIT = selectedCommit;
+  env.PDV_GAMIFIED_CATEGORY_CATALOG = '';
   return env;
 }
 

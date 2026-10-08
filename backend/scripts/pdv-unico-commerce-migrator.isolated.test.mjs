@@ -2324,7 +2324,7 @@ async function proveLegacyOrderContextPreflight(args) {
     console.log('QA_STAGE=legacy-order-context-prepared-recovered-and-commerce-migration-applied; orderId=preserved; movement=0.125; constraint=validated-restrictive');
     await legacyDb.$disconnect();
     const { PrismaClient: MigratedPrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
-    const migratedDb = new MigratedPrismaClient({ datasources: { db: { url: preflightUrl } }, errorFormat: 'minimal', omit: { produto: { prepararEmPedidoSeparado: true } } });
+    const migratedDb = new MigratedPrismaClient({ datasources: { db: { url: preflightUrl } }, errorFormat: 'minimal', omit: { produto: { prepararEmPedidoSeparado: true, categoriaPdvId: process.env.PDV_GAMIFIED_CATEGORY_CATALOG !== '1' } } });
     try {
       const { runPdvBusinessMigration } = await import('./pdv-unico-business-migrator.ts');
       const { runPdvCatalogMigration, runPdvCommerceMigration, runPdvKitchenOrderContextPreparation } = await import('./pdv-unico-catalog-migrator.ts');
@@ -2462,7 +2462,7 @@ try {
   const deletionSkipped = Number(deletionOutput.match(/^# skipped (\d+)$/m)?.[1] ?? -1);
   if (deletionTests < 8 || deletionPassed !== deletionTests || deletionSkipped !== 0) throw new Error(`Commercial-chain event deletion gate requires at least 8 executed tests and zero skips (tests=${deletionTests}, pass=${deletionPassed}, skipped=${deletionSkipped}).`);
   const { PrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
-  db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal', omit: { produto: { prepararEmPedidoSeparado: true } } });
+  db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal', omit: { produto: { prepararEmPedidoSeparado: true, categoriaPdvId: process.env.PDV_GAMIFIED_CATEGORY_CATALOG !== '1' } } });
   const applied = await db.$queryRaw`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL ORDER BY migration_name`;
   assert.equal(applied.length, history.migrations.length + 10, 'full historical + operational core/catalog/session/finance/provenance/commerce/sale-session/Tap-mount/independent-kitchen/individual-permissions chain');
   assert(applied.some((row) => row.migration_name === manifest.priorManifests.finance.historicalProvenanceMigration.name), 'Payment.provenienciaHistorica migration is applied before commerce route regressions');
