@@ -978,3 +978,8 @@ Builds passaram. O screenshot da UI confirmou uma corrida no proprio teste: a li
 ### Execucao bloqueada intermediaria (b0c5b3f)
 
 Builds passaram. A variacao combinada criacao/edicao seguiu sujeita a corrida no modal. A evidencia bloqueada esta em `pdv-gamified-categories-qa-evidence-blocked-b0c5b3f.json`. A UI foi separada em casos isolados: criacao valida `gamificada=false`; edicao inicia com categoria existente e valida flag e selecao de produto. SQL e API/PostgreSQL nao iniciaram.
+
+
+### Execucao bloqueada intermediaria (3741efe)
+
+Builds passaram e o caso de criacao com flag false passou. O caso de edicao/selecionamento chegou ao formulario de produto, mas o teste procurava um rotulo corrompido (`Pre??o`) em vez do ID estavel do campo. A correcao usa `#produto-pdv-preco`. Evidencia: `pdv-gamified-categories-qa-evidence-blocked-3741efe.json`. SQL e API/PostgreSQL nao iniciaram.

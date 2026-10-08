@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "reviewedCommit": "3741efe516c6c2ca55e4f64cebaa79032454c2de",
+  "result": "BLOCKED",
+  "scope": "Exact Git snapshot; disposable build workspace; UI API mocks explicit.",
+  "gates": [
+    {
+      "name": "backend-build",
+      "result": "PASS"
+    },
+    {
+      "name": "frontend-build",
+      "result": "PASS"
+    },
+    {
+      "name": "category-ui-create-mocked",
+      "result": "PASS"
+    },
+    {
+      "name": "category-ui-edit-and-product-select-mocked",
+      "result": "FAIL",
+      "details": "The UI flow reached the new product form, but its price label selector was corrupted to Pre??o by terminal text encoding; product form was not submitted."
+    },
+    {
+      "name": "category-sql",
+      "result": "NOT_RUN"
+    },
+    {
+      "name": "category-api-postgresql",
+      "result": "NOT_RUN"
+    }
+  ],
+  "publication": {
+    "commit": "3741efe516c6c2ca55e4f64cebaa79032454c2de",
+    "pushed": false,
+    "PROD_DEPLOY_REQUIRED": "No"
+  },
+  "remediation": "Select the price input by stable DOM id produto-pdv-preco, avoiding localized label encoding in the test.",
+  "pending": [
+    "Repeat all category gates.",
+    "Three product decisions remain pending."
+  ]
+}

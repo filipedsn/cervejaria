@@ -77,7 +77,7 @@ test('edita flag e seleciona categoria no produto com APIs simuladas', async ({ 
   await page.getByRole('button', { name: '+ Produto' }).click();
   await page.getByRole('button', { name: 'Doces artesanais', exact: true }).click();
   await page.getByLabel('Nome').fill('Brigadeiro QA');
-  await page.getByLabel('Pre??o').fill('12,00');
+  await page.locator('#produto-pdv-preco').fill('12,00');
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await expect.poll(() => writes.filter((write) => write.method === 'POST' && write.path === '/api/operacao/produtos').length).toBe(1);
   const productWrite = writes.find((write) => write.method === 'POST' && write.path === '/api/operacao/produtos');
