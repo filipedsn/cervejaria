@@ -82,8 +82,8 @@ async function closePriorQaAttemptSessions() {
         const header = login.headers['set-cookie'];
         const cookie = (Array.isArray(header) ? header[0] : header).split(';')[0];
         const abandonedCommands = await db.comanda.findMany({
-          where: { origem: 'CAIXA', pontoVendaId: session.pontoVendaId, diaOperacional: session.diaOperacional, status: 'ABERTA', identificador: { startsWith: 'qa-operation-' } },
-          select: { id: true },
+          where: { origem: 'CAIXA', pontoVendaId: session.pontoVendaId, diaOperacional: session.diaOperacional, status: 'ABERTA' },
+          select: { id: true, identificador: true },
         });
         for (const command of abandonedCommands) {
           await request(cookie, 'POST', `/api/operacao/comandas/${command.id}/cancelar`, {});
