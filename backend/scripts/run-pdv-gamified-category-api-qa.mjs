@@ -13,7 +13,7 @@ const runId = randomBytes(8).toString('hex');
 const container = `codex-pdv-gamified-api-qa-${runId}`;
 const port = await selectPort();
 const password = randomBytes(24).toString('base64url');
-const url = new URL(`postgresql://127.0.0.1:${port}/pdv_gamified_api_qa`);
+const url = new URL(`postgresql://127.0.0.1:${port}/cervejaria_qa_pdv_unico`);
 url.username = 'postgres';
 url.password = password;
 url.searchParams.set('connection_limit', '12');
@@ -46,11 +46,11 @@ let created = false;
 try {
   run('docker', ['run', '-d', '--rm', '--name', container, '--label', 'codex.purpose=pdv-gamified-category-api-qa', '--label', `codex.run=${runId}`,
     '-p', `127.0.0.1:${port}:5432`, '--tmpfs', '/var/lib/postgresql/data:rw,noexec,nosuid,size=1g',
-    '-e', 'POSTGRES_USER=postgres', '-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_DB=pdv_gamified_api_qa', 'postgres:17-alpine']);
+    '-e', 'POSTGRES_USER=postgres', '-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_DB=cervejaria_qa_pdv_unico', 'postgres:17-alpine']);
   created = true;
   let ready = false;
   for (let attempt = 0; attempt < 60; attempt++) {
-    if (spawnSync('docker', ['exec', container, 'pg_isready', '-U', 'postgres', '-d', 'pdv_gamified_api_qa'], { encoding: 'utf8', windowsHide: true }).status === 0) { ready = true; break; }
+    if (spawnSync('docker', ['exec', container, 'pg_isready', '-U', 'postgres', '-d', 'cervejaria_qa_pdv_unico'], { encoding: 'utf8', windowsHide: true }).status === 0) { ready = true; break; }
     await delay(1000);
   }
   if (!ready) throw new Error('Disposable PostgreSQL for category API QA did not become ready.');
