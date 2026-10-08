@@ -147,11 +147,12 @@ try {
         assert.deepEqual(plain(await db.inventoryBalance.findMany({ where: { cervejariaId: tenant.id }, orderBy: { id: 'asc' } })), stockBeforeCancel, 'cancellation conserves stock');
         if (!config.inventoryEnabled) assert.deepEqual(plain(await db.inventoryBalance.findMany({ where: { cervejariaId: tenant.id }, orderBy: { id: 'asc' } })), stockBefore, 'disabled inventory remains untouched');
         const portalBase = `/api/public/cervejarias/${company.slug}/pontos-venda/${point.id}`;
-        await request(null, 'GET', `${portalBase}/cardapio`);
+        await request(null, 'GET', `${portalBase}/cardapio`, undefined, 401);
         const openedPortal = await app.inject({ method: 'POST', url: `${portalBase}/comandas`, payload: { nome: 'QA representative portal', telefone: `119${randomBytes(4).readUInt32BE().toString().padStart(8, '0').slice(0, 8)}` } });
         assert.equal(openedPortal.statusCode, 201, `portal open: ${openedPortal.body}`);
         const portalHeader = openedPortal.headers['set-cookie'];
         const portalCookie = (Array.isArray(portalHeader) ? portalHeader[0] : portalHeader).split(';')[0];
+        await request(portalCookie, 'GET', `${portalBase}/cardapio`);
         const portalCommand = openedPortal.json().comanda;
         createdIds.push(portalCommand.id);
         await request(portalCookie, 'POST', `${portalBase}/comanda/pedidos`, { itens: [{ produtoId: product.id, quantidade: 1 }] }, 201);

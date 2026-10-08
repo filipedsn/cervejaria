@@ -46,6 +46,13 @@ try {
       } catch { ledgerDivergence.push({ migration: row.migration_name, code: 'LEDGER_MIGRATION_NOT_IN_CANDIDATE' }); }
     }
     const coverage = [];
+    const sourceIdentityComparisons = [];
+    for (const tenant of DEV_PDV_TENANT_ALLOWLIST) {
+      const expected = approved.targetIdentity.find(row => row.matches.some(match => match.id === tenant.id))?.matches.find(match => match.id === tenant.id);
+      const actual = await tx.cervejaria.findUnique({ where: { id: tenant.id }, select: { id: true, nome: true, slug: true } });
+      const status = expected && actual && ['id', 'nome', 'slug'].every(field => expected[field] === actual[field]) ? 'CLEAR' : 'BLOCKED';
+      sourceIdentityComparisons.push({ tenantId: tenant.id, status, comparedFields: ['id', 'nome', 'slug'], code: status === 'CLEAR' ? 'APPROVED_IDENTITY_UNCHANGED' : 'SOURCE_IDENTITY_DIVERGENCE' });
+    }
     for (const tenant of tenants) {
       const points = await tx.pontoVenda.findMany({ where: { cervejariaId: tenant.id }, select: { id: true } });
       const trailers = await tx.trailer.findMany({ where: { cervejariaId: tenant.id }, select: { id: true } });
@@ -66,8 +73,8 @@ try {
       comparisons.push({ model: table.model, original: prior.size, current: next.size, changedOrMissing: changed, added, status: changed || added ? 'BLOCKED' : 'CLEAR' });
     }
     for (const table of current.tableRows.filter(t => !approved.tableRows.some(p => p.model === t.model))) comparisons.push({ model: table.model, added: table.rows.length, status: 'BLOCKED' });
-    const blocked = coverage.some(t => t.status !== 'CLEAR') || disagreement.length || constraints.length || ledgerDivergence.length || mountEventDuplicates.length || mountSessionDuplicates.length || tapProductDivergence.length || stockParentDivergence.some(t => t.rows.length) || ledger.some(m => !m.finished && !m.rolled_back) || comparisons.some(t => t.status !== 'CLEAR') || current.crossTenantEdges.length;
-    return { status: blocked ? 'BLOCKED' : 'CLEAR', transaction: 'RepeatableRead READ ONLY', queried: true, tenantCount: tenants.length, coveredTenantCount: coverage.length, ledger, ledgerDivergence, ledgerEncodingMatches, constraints, disagreement, mountEventDuplicates, mountSessionDuplicates, tapProductDivergence, stockParentDivergence, coverage, sourceComparisons: comparisons, crossTenantEdges: current.crossTenantEdges.length, globalDdlImpact: ['Additive tables/columns/indexes and restrictive inventory and TAP tenant/PDV FKs affect every tenant.', 'Tracked permission migrations initialize the newly added permission array for existing attendants globally; unselected tenants keep the legacy permission gate and roles/legacy grants unchanged.', 'Multiple units outside the allowlist remain legacy; they are not a single-PDV DDL violation and are neither chosen nor merged.'] };
+    const blocked = coverage.some(t => t.status !== 'CLEAR') || sourceIdentityComparisons.some(t => t.status !== 'CLEAR') || disagreement.length || constraints.length || ledgerDivergence.length || mountEventDuplicates.length || mountSessionDuplicates.length || tapProductDivergence.length || stockParentDivergence.some(t => t.rows.length) || ledger.some(m => !m.finished && !m.rolled_back) || comparisons.some(t => t.status !== 'CLEAR') || current.crossTenantEdges.length;
+    return { status: blocked ? 'BLOCKED' : 'CLEAR', transaction: 'RepeatableRead READ ONLY', queried: true, tenantCount: tenants.length, coveredTenantCount: coverage.length, ledger, ledgerDivergence, ledgerEncodingMatches, constraints, disagreement, mountEventDuplicates, mountSessionDuplicates, tapProductDivergence, stockParentDivergence, coverage, sourceIdentityComparisons, sourceComparisons: comparisons, crossTenantEdges: current.crossTenantEdges.length, globalDdlImpact: ['Additive tables/columns/indexes and restrictive inventory and TAP tenant/PDV FKs affect every tenant.', 'Tracked permission migrations initialize the newly added permission array for existing attendants globally; unselected tenants keep the legacy permission gate and roles/legacy grants unchanged.', 'Multiple units outside the allowlist remain legacy; they are not a single-PDV DDL violation and are neither chosen nor merged.'] };
   }, { isolationLevel: 'RepeatableRead', timeout: 180000 });
   console.log(JSON.stringify(report));
 } finally { await db.$disconnect(); }
