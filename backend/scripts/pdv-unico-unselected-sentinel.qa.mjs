@@ -18,7 +18,7 @@ try {
   await db.configuracaoOperacional.create({ data: { ...settings, cervejariaId: id } });
   await db.produto.create({ data: { id: `${id}-product`, cervejariaId: id, nome: 'QA unselected product', categoria: 'Unselected historical category', ativo: true } });
   for (const index of [1, 2]) {
-    await db.pontoVenda.create({ data: { id: `${id}-point-${index}`, cervejariaId: id, nome: `QA legacy point ${index}`, cashRegisterEnabled: false } });
+    await db.pontoVenda.create({ data: { id: `${id}-point-${index}`, cervejariaId: id, nome: `QA legacy point ${index}` } });
     await db.trailer.create({ data: { id: `${id}-trailer-${index}`, cervejariaId: id, nome: `QA legacy trailer ${index}` } });
   }
   const password = randomBytes(24).toString('base64url');
