@@ -1,0 +1,12 @@
+﻿{
+  "result": "BLOCKED",
+  "selectedCommit": "e36cb275789ce332d097e38440401428f44950c3",
+  "runner": "qa:pdv-current-git-snapshot",
+  "failingGate": "qa:pdv-commerce-disposable",
+  "diagnosis": "The pre-category migration fixture failed while dropping PdvCategoriaTransformacaoProduto because the table does not exist at this earlier migration point.",
+  "error": "42P01: table PdvCategoriaTransformacaoProduto does not exist",
+  "correction": "Use DROP TABLE IF EXISTS for the category catalog/provenance tables, while retaining assertions that the pre-column API schema has no category table or ID column.",
+  "prodAccessUsed": "NO",
+  "sharedDevAccess": "NO",
+  "supersededBy": "f27b47f70bede3f56e07d968d63c1d9e62875606"
+}
