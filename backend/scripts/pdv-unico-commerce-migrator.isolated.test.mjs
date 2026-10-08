@@ -3109,7 +3109,7 @@ try {
   await db.$executeRawUnsafe('DROP INDEX IF EXISTS public."Comanda_sessaoCaixaRealizacaoId_idx"');
   await db.$executeRawUnsafe('ALTER TABLE public."Comanda" DROP COLUMN "sessaoCaixaRealizacaoId"');
   await db.$executeRawUnsafe('ALTER TABLE public."Produto" DROP COLUMN "prepararEmPedidoSeparado"');
-  await db.$executeRawUnsafe('ALTER TABLE public."Produto" DROP COLUMN "categoriaPdvId"');
+  await db.$executeRawUnsafe('ALTER TABLE public."Produto" DROP COLUMN IF EXISTS "categoriaPdvId"');
   await db.$executeRawUnsafe('DROP TABLE public."PdvCategoriaTransformacaoProduto" CASCADE');
   await db.$executeRawUnsafe('DROP TABLE public."PdvCategoriaTransformacaoCategoria" CASCADE');
   await db.$executeRawUnsafe('DROP TABLE public."CategoriaProdutoPdv" CASCADE');
@@ -3119,6 +3119,7 @@ try {
   assert(oldComandaModel && !oldComandaModel.fields.some((field) => field.name === 'sessaoCaixaRealizacaoId'), 'generated Prisma Client predates the new realization-session column');
   const oldProductModel = PreColumnPrisma.dmmf.datamodel.models.find((model) => model.name === 'Produto');
   assert(oldProductModel && !oldProductModel.fields.some((field) => field.name === 'prepararEmPedidoSeparado'), 'generated Prisma Client predates the independent-kitchen column');
+  assert(oldProductModel && !oldProductModel.fields.some((field) => field.name === 'categoriaPdvId'), 'generated Prisma Client predates the category ID column');
   const previousPdvFlag = process.env.PDV_CANONICAL_CONFIG_QA;
   delete process.env.PDV_CANONICAL_CONFIG_QA;
   try {
