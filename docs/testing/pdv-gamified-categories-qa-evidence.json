@@ -1,35 +1,58 @@
 ﻿{
-  "schemaVersion": 1,
-  "reviewedImplementationCommit": "9aeb499ed2b9d69b5a08426350c88b4eb533acd5",
-  "result": "PASS",
-  "scope": "Disposable QA only; no PROD or shared DEV access.",
-  "checks": [
-    { "name": "backend-build", "result": "PASS" },
-    { "name": "frontend-build", "result": "PASS", "note": "Existing bundle-size warnings only." },
-    { "name": "focused-backend-tests", "result": "PASS", "passed": 5 },
-    { "name": "mocked-category-ui-e2e", "result": "PASS", "passed": 1 },
-    { "name": "disposable-postgres-migration-transform-rollback", "result": "PASS" },
-    { "name": "git-snapshot-exact-commit", "result": "PASS", "commit": "9aeb499ed2b9d69b5a08426350c88b4eb533acd5" }
-  ],
-  "qaAssertions": [
-    "Migration aditiva aplicada em PostgreSQL temporário.",
-    "Transformação histórica repetida sem duplicar IDs/vínculos.",
-    "Colisão de normalização bloqueada atomicamente, sem merge automático.",
-    "Chave composta recusou associação cruzada entre tenants.",
-    "Rollback removeu apenas dados da transformação; IDs/textos de produtos e categoria manual foram preservados.",
-    "Cardápio manteve o vínculo ao ID de produto.",
-    "APIs do E2E de UI foram simuladas explicitamente."
-  ],
-  "limitations": [
-    "Não houve execução dos fluxos contra DEV nem aceitação dos cenários de TAP-76.",
-    "Não houve backfill real, cutover ou validação de ranking novo.",
-    "A revisão exata usou o snapshot Git e o runner de QA PostgreSQL; builds e testes focados foram executados no workspace antes do commit, que preservava mudanças locais não relacionadas."
-  ],
-  "PROD_DEPLOY_REQUIRED": "No",
-  "pendingWork": [
-    "Decidir métrica de pontuação.",
-    "Decidir o momento em que consumo entra no ranking.",
-    "Decidir se consumo anterior participa.",
-    "Executar eventual backfill/cutover em QA aprovado em rodada futura e certificar ranking novo após contrato completo."
-  ]
+    "schemaVersion":  1,
+    "reviewedImplementationCommit":  "9aeb499ed2b9d69b5a08426350c88b4eb533acd5",
+    "result":  "PASS",
+    "scope":  "Disposable QA only; no PROD or shared DEV access.",
+    "checks":  [
+                   {
+                       "name":  "backend-build",
+                       "result":  "PASS"
+                   },
+                   {
+                       "name":  "frontend-build",
+                       "result":  "PASS",
+                       "note":  "Existing bundle-size warnings only."
+                   },
+                   {
+                       "name":  "focused-backend-tests",
+                       "result":  "PASS",
+                       "passed":  5
+                   },
+                   {
+                       "name":  "mocked-category-ui-e2e",
+                       "result":  "PASS",
+                       "passed":  1
+                   },
+                   {
+                       "name":  "disposable-postgres-migration-transform-rollback",
+                       "result":  "PASS"
+                   },
+                   {
+                       "name":  "git-snapshot-exact-commit",
+                       "result":  "PASS",
+                       "commit":  "9aeb499ed2b9d69b5a08426350c88b4eb533acd5"
+                   }
+               ],
+    "qaAssertions":  [
+                         "Migration aditiva aplicada em PostgreSQL temporário.",
+                         "Transformação histórica repetida sem duplicar IDs/vínculos.",
+                         "Colisão de normalização bloqueada atomicamente, sem merge automático.",
+                         "Chave composta recusou associação cruzada entre tenants.",
+                         "Rollback removeu apenas dados da transformação; IDs/textos de produtos e categoria manual foram preservados.",
+                         "Cardápio manteve o vínculo ao ID de produto.",
+                         "APIs do E2E de UI foram simuladas explicitamente."
+                     ],
+    "limitations":  [
+                        "Não houve execução dos fluxos contra DEV nem aceitação dos cenários de TAP-76.",
+                        "Não houve backfill real, cutover ou validação de ranking novo.",
+                        "A revisão exata usou o snapshot Git e o runner de QA PostgreSQL; builds e testes focados foram executados no workspace antes do commit, que preservava mudanças locais não relacionadas."
+                    ],
+    "PROD_DEPLOY_REQUIRED":  "No",
+    "pendingWork":  [
+                        "Decidir métrica de pontuação.",
+                        "Decidir o momento em que consumo entra no ranking.",
+                        "Decidir se consumo anterior participa.",
+                        "Executar eventual backfill/cutover em QA aprovado em rodada futura e certificar ranking novo após contrato completo."
+                    ],
+    "gitSnapshotVerificationCommit":  "b11b224adf1d4fb7493b128071bc6b74c14e8755"
 }
