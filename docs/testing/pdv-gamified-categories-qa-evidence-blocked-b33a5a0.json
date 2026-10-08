@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "result": "BLOCKED",
+  "reviewedImplementationCommit": "b33a5a0dd0e9450a36728c25256c23a8a259ed0b",
+  "reviewedTree": "b227528190860fca6588b46e81bad1b87cadc269",
+  "categoryManifest": "v24",
+  "completedBeforeBlock": {
+    "backendBuild": "PASS",
+    "frontendBuild": "PASS",
+    "mockedCategoryUi": "PASS (2/2)",
+    "legacySchemaCompatibility": "PASS",
+    "finance": "PASS",
+    "commerce": "PASS",
+    "individualPermissions": "PASS",
+    "categorySql": "PASS",
+    "categoryApiCreateEditRenameSaleRanking": "PASS",
+    "invariants": "BLOCKED by QA query"
+  },
+  "blocker": {
+    "gate": "authenticated-category-api-invariants",
+    "cause": "QA tried to filter Pagamento by nonexistent direct cervejariaId field; tenant ownership is reached through Comanda",
+    "fixCommit": "5c24d5f",
+    "fix": "count payments with relation filter comanda.cervejariaId"
+  },
+  "representativeRehearsal": "NOT_RUN; no representative photo supplied",
+  "localState": "UNCHANGED",
+  "prodAccess": "NO",
+  "sharedDevAccess": "NO"
+}
