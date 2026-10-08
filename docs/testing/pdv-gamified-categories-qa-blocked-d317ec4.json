@@ -1,0 +1,12 @@
+﻿{
+  "result": "BLOCKED",
+  "selectedCommit": "d317ec46c0b868d3240188326cf12093047c0adc",
+  "runner": "qa:pdv-current-git-snapshot",
+  "failingGate": "qa:pdv-commerce-disposable",
+  "diagnosis": "The category test combined absence of the new category schema with absence of the independent-kitchen column. Product creation failed because the Prisma model attempted to write prepararEmPedidoSeparado, an unrelated absent column.",
+  "error": "P2022: Produto.prepararEmPedidoSeparado does not exist during operational product create",
+  "correction": "The earlier-schema cash-close proof remains before the kitchen column is restored. The category-specific legacy API proof now restores only the unrelated kitchen column, while categoryPdvId and all category tables remain absent.",
+  "prodAccessUsed": "NO",
+  "sharedDevAccess": "NO",
+  "supersededBy": "e2b5e26643a63287d9d33fe0c1ee7f98564e1cf1"
+}
