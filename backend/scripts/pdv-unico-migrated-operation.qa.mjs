@@ -293,6 +293,7 @@ try {
           const walkUp = await request(owner.cookie, 'POST', '/api/operacao/vendas', { pontoVendaId: point.id, itens: [{ produtoId: fixture.id, quantidade: 1 }], pagamentos: [{ forma: 'PIX', valor: 1 }] }, 201);
           createdIds.push(walkUp.id);
           const refundOrder = await db.pedidoOperacao.findFirstOrThrow({ where: { comandaId: walkUp.id } });
+          await request(owner.cookie, 'PATCH', `/api/operacao/cozinha/${refundOrder.id}/status`, { status: 'CANCELAMENTO_PENDENTE' });
           await request(owner.cookie, 'PATCH', `/api/operacao/cozinha/${refundOrder.id}/status`, { status: 'CANCELADO' });
           assert.equal(Number((await db.inventoryBalance.findFirstOrThrow({ where: { produtoId: fixture.id } })).quantidade), Number(beforeRefund.quantidade));
           const refundPayments = await db.pagamento.findMany({ where: { comandaId: walkUp.id, sessaoCaixaId: session.id } });
