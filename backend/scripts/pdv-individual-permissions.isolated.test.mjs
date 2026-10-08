@@ -392,7 +392,7 @@ const saleBeforeDenial = await commercePhoto();
 const deniedSale = await app.inject({ method: 'POST', url: '/api/operacao/vendas', headers: authHeaders(staffCookie), payload: salePayload });
 assert.equal(deniedSale.statusCode, 403, deniedSale.body);
 assert.deepEqual(await commercePhoto(), saleBeforeDenial, 'payment.receive denial causes no sale, payment or stock write');
-const grantPayment = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['command.operate', 'payment.receive'] } });
+const grantPayment = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['command.operate', 'payment.receive', 'catalog.shift.manage'] } });
 assert.equal(grantPayment.statusCode, 200, grantPayment.body);
 const completedSale = await app.inject({ method: 'POST', url: '/api/operacao/vendas', headers: authHeaders(staffCookie), payload: salePayload });
 assert.equal(completedSale.statusCode, 201, completedSale.body);
@@ -404,6 +404,14 @@ assert.equal(saleCommand.pagamentos.length, 1);
 assert.equal(Number(saleCommand.pagamentos[0].valor), 10);
 assert.equal(Number((await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: stockBalance.id } })).quantidade), 9);
 assert.equal((await prisma.usuario.findUniqueOrThrow({ where: { id: staff.id }, select: { permissoesOperacao: true } })).permissoesOperacao.includes('inventory.adjust'), false, 'authorized sale does not need manual inventory authority');
+const turnoPrecoBefore = await prisma.sessaoCaixaProdutoOperacao.findFirstOrThrow({ where: { sessaoCaixaId: cashSession.id, produtoId: stockProduct.id, volumeMl: 0 } });
+const globalPriceBeforeTurnoEdit = await prisma.preco.findMany({ where: { produtoId: stockProduct.id }, orderBy: { volumeMl: 'asc' } });
+const delegatedTurnoPrice = await app.inject({ method: 'PATCH', url: `/api/operacao/caixa/cardapio/preco?pontoVendaId=${point.id}`, headers: authHeaders(staffCookie), payload: { produtoId: stockProduct.id, volumeMl: 0, precoUnit: 13, escopo: 'TURNO' } });
+assert.equal(delegatedTurnoPrice.statusCode, 200, delegatedTurnoPrice.body);
+assert.equal(Number((await prisma.sessaoCaixaProdutoOperacao.findUniqueOrThrow({ where: { id: turnoPrecoBefore.id } })).precoUnit), 13, 'catalog.shift.manage updates the operational turn price');
+assert.deepEqual(await prisma.preco.findMany({ where: { produtoId: stockProduct.id }, orderBy: { volumeMl: 'asc' } }), globalPriceBeforeTurnoEdit, 'turn price edit leaves the global template untouched');
+const deniedGlobalTemplatePrice = await app.inject({ method: 'PATCH', url: `/api/operacao/caixa/cardapio/preco?pontoVendaId=${point.id}`, headers: authHeaders(staffCookie), payload: { produtoId: stockProduct.id, volumeMl: 0, precoUnit: 14, escopo: 'TEMPLATE' } });
+assert.equal(deniedGlobalTemplatePrice.statusCode, 403, deniedGlobalTemplatePrice.body);
 const soldItem = await prisma.itemComanda.findFirstOrThrow({ where: { comandaId: saleCommand.id } });
 const pricesBeforeEditDenial = await prisma.preco.findMany({ where: { produtoId: stockProduct.id }, orderBy: { volumeMl: 'asc' } });
 const priceEditDenied = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${stockProduct.id}`, headers: authHeaders(staffCookie), payload: { precos: [{ volumeMl: 1, preco: 12 }] } });
@@ -411,6 +419,41 @@ assert.equal(priceEditDenied.statusCode, 403, priceEditDenied.body);
 assert.deepEqual(await prisma.preco.findMany({ where: { produtoId: stockProduct.id }, orderBy: { volumeMl: 'asc' } }), pricesBeforeEditDenial);
 const grantCatalogManage = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['catalog.manage'] } });
 assert.equal(grantCatalogManage.statusCode, 200, grantCatalogManage.body);
+const foreignOptional = await prisma.opcional.create({ data: { cervejariaId: otherCompany.id, pontoVendaId: foreignPoint.id, nome: `Foreign optional ${suffix}`, preco: '7.25' } });
+const foreignOptionalBefore = await prisma.opcional.findUniqueOrThrow({ where: { id: foreignOptional.id } });
+const foreignLinksBefore = await prisma.produtoOpcionalVinculo.findMany({ where: { opcionalId: foreignOptional.id }, orderBy: { produtoId: 'asc' } });
+for (const [actor, headers] of [['catalog manager', authHeaders(staffCookie)], ['owner', authHeaders(ownerCookie)]]) {
+  for (const [method, route, payload] of [
+    ['PUT', `/api/produtos/opcionais/${foreignOptional.id}`, { nome: `stolen ${suffix}` }],
+    ['DELETE', `/api/produtos/opcionais/${foreignOptional.id}`, undefined],
+    ['PUT', `/api/operacao/produtos/opcionais/${foreignOptional.id}`, { nome: `stolen ${suffix}` }],
+    ['DELETE', `/api/operacao/produtos/opcionais/${foreignOptional.id}`, undefined],
+  ]) {
+    const response = await app.inject({ method, url: route, headers, ...(payload ? { payload } : {}) });
+    assert.equal(response.statusCode, 404, `${actor} cannot ${method} another tenant's optional through ${route}: ${response.body}`);
+    assert.deepEqual(await prisma.opcional.findUniqueOrThrow({ where: { id: foreignOptional.id } }), foreignOptionalBefore, `${actor} denial preserves foreign optional`);
+    assert.deepEqual(await prisma.produtoOpcionalVinculo.findMany({ where: { opcionalId: foreignOptional.id }, orderBy: { produtoId: 'asc' } }), foreignLinksBefore, `${actor} denial preserves foreign links`);
+  }
+}
+const optionalLinkPhoto = async () => prisma.produtoOpcionalVinculo.findMany({ where: { produtoId: stockProduct.id }, orderBy: [{ ordem: 'asc' }, { opcionalId: 'asc' }] });
+const ownLinksBeforeForeignLinkAttempts = await optionalLinkPhoto();
+for (const route of [`/api/produtos/${stockProduct.id}/opcionais`, `/api/operacao/produtos/${stockProduct.id}/opcionais`]) {
+  const rejectedForeignLink = await app.inject({ method: 'PUT', url: route, headers: authHeaders(staffCookie), payload: { opcionalIds: [foreignOptional.id] } });
+  assert.equal(rejectedForeignLink.statusCode, 404, `cross-tenant optional link is rejected through ${route}: ${rejectedForeignLink.body}`);
+  assert.deepEqual(await optionalLinkPhoto(), ownLinksBeforeForeignLinkAttempts, `foreign optional link attempt preserves existing links through ${route}`);
+}
+const ownOptional = await prisma.opcional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, nome: `Owned optional ${suffix}`, preco: '1.25' } });
+const ownOptionalEditedGeneric = await app.inject({ method: 'PUT', url: `/api/produtos/opcionais/${ownOptional.id}`, headers: authHeaders(staffCookie), payload: { preco: 1.75 } });
+assert.equal(ownOptionalEditedGeneric.statusCode, 200, ownOptionalEditedGeneric.body);
+const ownOptionalEditedOperational = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/opcionais/${ownOptional.id}`, headers: authHeaders(staffCookie), payload: { nome: `Owned optional edited ${suffix}` } });
+assert.equal(ownOptionalEditedOperational.statusCode, 200, ownOptionalEditedOperational.body);
+assert.equal((await prisma.opcional.findUniqueOrThrow({ where: { id: ownOptional.id } })).nome, `Owned optional edited ${suffix}`);
+for (const route of [`/api/produtos/opcionais/${ownOptional.id}`, `/api/operacao/produtos/opcionais/${ownOptional.id}`]) {
+  const ownOptionalForDelete = route.startsWith('/api/produtos/') ? await prisma.opcional.create({ data: { cervejariaId: company.id, nome: `Delete own ${suffix}`, preco: '0.50' } }) : ownOptional;
+  const deletedOwnOptional = await app.inject({ method: 'DELETE', url: route.replace(ownOptional.id, ownOptionalForDelete.id), headers: authHeaders(staffCookie) });
+  assert.equal(deletedOwnOptional.statusCode, 200, deletedOwnOptional.body);
+  assert.equal(await prisma.opcional.findFirst({ where: { id: ownOptionalForDelete.id, cervejariaId: company.id } }), null);
+}
 const priceEditAllowed = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${stockProduct.id}`, headers: authHeaders(staffCookie), payload: { precos: [{ volumeMl: 1, preco: 12 }] } });
 assert.equal(priceEditAllowed.statusCode, 200, priceEditAllowed.body);
 assert.equal(Number((await prisma.preco.findFirstOrThrow({ where: { produtoId: stockProduct.id, volumeMl: 1 } })).preco), 12);
@@ -445,6 +488,17 @@ const salePaymentsAfterRefund = await prisma.pagamento.findMany({ where: { coman
 assert.equal(salePaymentsAfterRefund.length, 2);
 assert.equal(Number(salePaymentsAfterRefund[1].valor), -10);
 assert.equal(await prisma.inventoryMovement.count({ where: { pedidoId: saleOrder.id, tipo: 'ESTORNO_VENDA' } }), 1);
+const commandKeysOnly = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['kitchen.cancel'] } });
+assert.equal(commandKeysOnly.statusCode, 200, commandKeysOnly.body);
+const pendingCancelPhoto = await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: saleOrder.id }, select: { status: true, updatedAt: true } });
+const deniedCancelConfirmation = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${saleOrder.id}/status`, headers: authHeaders(staffCookie), payload: { status: 'CANCELADO' } });
+assert.equal(deniedCancelConfirmation.statusCode, 403, deniedCancelConfirmation.body, 'final cancellation confirmation requires kitchen.cancel and sale.refund like the request step');
+assert.deepEqual(await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: saleOrder.id }, select: { status: true, updatedAt: true } }), pendingCancelPhoto, 'denied final cancellation confirmation preserves the queue state');
+const restoreCancelConfirmation = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['kitchen.cancel', 'sale.refund'] } });
+assert.equal(restoreCancelConfirmation.statusCode, 200, restoreCancelConfirmation.body);
+const confirmedSaleCancellation = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${saleOrder.id}/status`, headers: authHeaders(staffCookie), payload: { status: 'CANCELADO' } });
+assert.equal(confirmedSaleCancellation.statusCode, 200, confirmedSaleCancellation.body);
+assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: saleOrder.id } })).status, 'CANCELADO');
 const commandForClose = await prisma.comanda.create({
   data: { origem: 'CAIXA', pontoVendaId: point.id, sessaoCaixaRealizacaoId: cashSession.id, diaOperacional: cashSession.diaOperacional, tipo: 'MESA', identificador: `Close-${suffix}`, status: 'ABERTA', abertaPorId: owner.id, total: '10.00' },
 });
@@ -521,15 +575,49 @@ await waitFor(() => {
   const staffServerSocket = app.io.sockets.sockets.get(socket.id);
   const financeServerSocket = app.io.sockets.sockets.get(financeSocket.id);
   return staffServerSocket?.rooms.has(`cervejaria:${company.id}:operacao`)
+    && !staffServerSocket?.rooms.has(`cervejaria:${company.id}:comandas`)
+    && !staffServerSocket?.rooms.has(`cervejaria:${company.id}:cozinha`)
+    && !staffServerSocket?.rooms.has(`cervejaria:${company.id}:financeiro`)
     && staffServerSocket?.rooms.has(`evento:${event.id}:operacao`)
     && staffServerSocket?.data.tenantSubscriptions?.has(company.id)
     && staffServerSocket?.data.eventoSubscriptions?.has(event.id)
-    && financeServerSocket?.rooms.has(`cervejaria:${company.id}:financeiro`);
+    && financeServerSocket?.rooms.has(`cervejaria:${company.id}:financeiro`)
+    && financeServerSocket?.rooms.has(`cervejaria:${company.id}:comandas`)
+    && financeServerSocket?.rooms.has(`cervejaria:${company.id}:cozinha`);
 }, 'flag-on staff and owner joins');
 const { emitFinancialToEvento, emitToCervejaria, emitToEvento } = await import('../src/lib/realtime.ts');
 
+let emptyCommandPayloads = 0;
+let emptyKitchenPayloads = 0;
+let emptyFinancePayloads = 0;
+socket.on('comanda:created', () => emptyCommandPayloads++);
+socket.on('operacao:pedido-novo', () => emptyKitchenPayloads++);
+socket.on('evento-caixa:financial-updated', () => emptyFinancePayloads++);
+const emptyProfileInvalidation = socketEvent('ranking:updated', (payload) => payload.eventoId === event.id);
+emitToCervejaria(app.io, company.id, { type: 'comanda:created', data: { id: 'empty-hidden-command', total: 99 } });
+emitToCervejaria(app.io, company.id, { type: 'operacao:pedido-novo', data: { id: 'empty-hidden-kitchen', itens: [{ nome: 'hidden' }] } });
+emitFinancialToEvento(app.io, event.id, { type: 'evento-caixa:financial-updated', data: { eventoId: event.id, valor: 99 } });
+emitToEvento(app.io, event.id, { type: 'ranking:updated', data: { eventoId: event.id, total: 0 } });
+assert.equal((await emptyProfileInvalidation).eventoId, event.id, 'empty permission profile still receives minimum non-sensitive invalidation');
+await new Promise((resolve) => setTimeout(resolve, 100));
+assert.deepEqual([emptyCommandPayloads, emptyKitchenPayloads, emptyFinancePayloads], [0, 0, 0], 'empty permission profile receives no command, kitchen or cash payload');
+
+const commandReadOnlyGrant = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['command.read'] } });
+assert.equal(commandReadOnlyGrant.statusCode, 200, commandReadOnlyGrant.body);
+await waitFor(() => app.io.sockets.sockets.get(socket.id)?.rooms.has(`cervejaria:${company.id}:comandas`)
+  && !app.io.sockets.sockets.get(socket.id)?.rooms.has(`cervejaria:${company.id}:cozinha`)
+  && !app.io.sockets.sockets.get(socket.id)?.rooms.has(`cervejaria:${company.id}:financeiro`), 'command.read joins only the command content room');
+const commandReadPayload = socketEvent('comanda:created', (payload) => payload.id === 'command-read-only');
+let commandReaderKitchenPayloads = 0;
+socket.on('operacao:pedido-novo', () => commandReaderKitchenPayloads++);
+emitToCervejaria(app.io, company.id, { type: 'comanda:created', data: { id: 'command-read-only', total: 21 } });
+emitToCervejaria(app.io, company.id, { type: 'operacao:pedido-novo', data: { id: 'command-reader-hidden-queue', itens: [{ nome: 'hidden' }] } });
+assert.equal((await commandReadPayload).total, 21);
+await new Promise((resolve) => setTimeout(resolve, 100));
+assert.equal(commandReaderKitchenPayloads, 0, 'command.read does not grant kitchen queue contents');
+
 // Launch a persisted order over the authenticated API with a linked optional.
-const grantLaunchAndKitchen = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['command.operate', 'kitchen.operate'] } });
+const grantLaunchAndKitchen = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['command.read', 'command.operate', 'kitchen.read', 'kitchen.operate'] } });
 assert.equal(grantLaunchAndKitchen.statusCode, 200, grantLaunchAndKitchen.body);
 const foreignOrderBeforeTransition = await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: foreignOrder.id }, select: { status: true, updatedAt: true } });
 const crossTenantKitchenTransition = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${foreignOrder.id}/status`, headers: authHeaders(staffCookie), payload: { status: 'EM_PREPARO' } });
@@ -566,9 +654,9 @@ assert.equal(restrictedNewOrder.itensComanda[0].observacao, 'bem passado');
 assert.equal(restrictedNewOrder.itensComanda[0].paraViagem, true);
 assert.deepEqual(restrictedNewOrder.itensComanda[0].opcionais.map(({ nome, quantidade }) => ({ nome, quantidade })), [{ nome: socketOptional.nome, quantidade: 2 }]);
 assert.equal(JSON.stringify(restrictedNewOrder).includes('preco'), false, 'restricted order removes all price fields');
-assert.equal(financeNewOrder.itens[0].id, persistedSocketOrder.itensComanda[0].id);
-assert.equal(financeNewOrder.itens[0].precoUnit, 15);
-assert.equal(financeNewOrder.itens[0].opcionais[0].precoAdicional, 2.5);
+const ownerKitchenPayload = await newFinanceOrder;
+assert.equal(ownerKitchenPayload.itensComanda[0].id, persistedSocketOrder.itensComanda[0].id);
+assert.equal(JSON.stringify(ownerKitchenPayload).includes('preco'), false, 'even a cash reader receives only the kitchen projection for queue events');
 
 // A failed authenticated launch rolls back the stock/order transaction and
 // emits nothing because notification runs only after a committed transaction.
@@ -607,19 +695,38 @@ assert.equal(financeStatus.status, 'EM_PREPARO');
 assert.equal(financeStatus.itens[0].precoUnit, 15);
 assert.equal(financeStatus.itens[0].opcionais[0].precoAdicional, 2.5);
 
-const socketGrant = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['cash.values.read', 'kitchen.operate'] } });
+const socketGrant = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['cash.values.read'] } });
 assert.equal(socketGrant.statusCode, 200, socketGrant.body);
 await waitFor(() => app.io.sockets.sockets.get(socket.id)?.rooms.has(`evento:${event.id}:financeiro`)
-  && !app.io.sockets.sockets.get(socket.id)?.rooms.has(`evento:${event.id}:operacao`), 'grant moves existing socket into finance room');
+  && !app.io.sockets.sockets.get(socket.id)?.rooms.has(`evento:${event.id}:comandas`)
+  && !app.io.sockets.sockets.get(socket.id)?.rooms.has(`evento:${event.id}:cozinha`), 'cash.values.read grants finance only on the established socket');
 const financialEvent = socketEvent('evento-caixa:financial-updated');
 emitFinancialToEvento(app.io, event.id, { type: 'evento-caixa:financial-updated', data: { eventoId: event.id, trocoInicial: 734.21, esperado: { DINHEIRO: 752.58 } } });
 assert.equal((await financialEvent).trocoInicial, 734.21, 'grant reaches the financial room on the established socket');
-const socketRevoke = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['kitchen.operate'] } });
+let cashOnlyCommandPayloads = 0;
+let cashOnlyKitchenPayloads = 0;
+socket.on('comanda:created', () => cashOnlyCommandPayloads++);
+socket.on('operacao:pedido-novo', () => cashOnlyKitchenPayloads++);
+emitToCervejaria(app.io, company.id, { type: 'comanda:created', data: { id: 'cash-only-command', total: 999 } });
+emitToCervejaria(app.io, company.id, { type: 'operacao:pedido-novo', data: { id: 'cash-only-kitchen', itens: [{ nome: 'restricted' }] } });
+await new Promise((resolve) => setTimeout(resolve, 100));
+assert.equal(cashOnlyCommandPayloads, 0, 'cash.values.read does not grant command payloads');
+assert.equal(cashOnlyKitchenPayloads, 0, 'cash.values.read does not grant kitchen payloads');
+const kitchenReadOnlyGrant = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['kitchen.read'] } });
+assert.equal(kitchenReadOnlyGrant.statusCode, 200, kitchenReadOnlyGrant.body);
+await waitFor(() => app.io.sockets.sockets.get(socket.id)?.rooms.has(`cervejaria:${company.id}:cozinha`)
+  && !app.io.sockets.sockets.get(socket.id)?.rooms.has(`cervejaria:${company.id}:financeiro`)
+  && !app.io.sockets.sockets.get(socket.id)?.rooms.has(`cervejaria:${company.id}:comandas`), 'kitchen.read joins the queue room only');
+const kitchenReadPayload = socketEvent('operacao:pedido-atualizado', (payload) => payload.id === 'kitchen-read-only');
+emitToCervejaria(app.io, company.id, { type: 'operacao:pedido-atualizado', data: { id: 'kitchen-read-only', itens: [{ id: 'line', nome: 'queue item' }] } });
+assert.equal((await kitchenReadPayload).itensComanda[0].nome, 'queue item', 'kitchen.read receives the queue projection');
+const socketRevoke = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['kitchen.read', 'kitchen.operate'] } });
 assert.equal(socketRevoke.statusCode, 200, socketRevoke.body);
 assert.equal(socket.connected, true);
 assert.equal(socket.id, socketIdBeforeRevoke, 'permission revocation does not replace the authenticated session');
-await waitFor(() => app.io.sockets.sockets.get(socket.id)?.rooms.has(`evento:${event.id}:operacao`)
-  && !app.io.sockets.sockets.get(socket.id)?.rooms.has(`evento:${event.id}:financeiro`), 'revoke moves same socket back to operations room');
+await waitFor(() => app.io.sockets.sockets.get(socket.id)?.rooms.has(`evento:${event.id}:cozinha`)
+  && !app.io.sockets.sockets.get(socket.id)?.rooms.has(`evento:${event.id}:financeiro`)
+  && !app.io.sockets.sockets.get(socket.id)?.rooms.has(`evento:${event.id}:comandas`), 'revoking cash and granting kitchen moves the same socket into kitchen only');
 let postRevocationFinancialEvents = 0;
 socket.on('evento-caixa:financial-updated', () => postRevocationFinancialEvents++);
 emitFinancialToEvento(app.io, event.id, { type: 'evento-caixa:financial-updated', data: { eventoId: event.id, trocoInicial: 999.99 } });
@@ -632,6 +739,14 @@ assert.equal(postRevocationFinancialEvents, 0, 'revoked socket receives no new f
 assert.equal(receivedKitchenAfterRevoke.itensComanda[0].nome, stockProduct.nome, 'allowed kitchen update survives revocation');
 assert.equal(receivedKitchenAfterRevoke.itensComanda[0].opcionais[0].nome, socketOptional.nome);
 assert.equal(receivedKitchenAfterRevoke.itensComanda[0].precoUnit, undefined);
+const revokeKitchenRead = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['kitchen.operate'] } });
+assert.equal(revokeKitchenRead.statusCode, 200, revokeKitchenRead.body);
+await waitFor(() => !app.io.sockets.sockets.get(socket.id)?.rooms.has(`evento:${event.id}:cozinha`), 'revoking kitchen.read removes queue room from the connected socket');
+let queuePayloadsAfterReadRevoke = 0;
+socket.on('operacao:pedido-atualizado', () => queuePayloadsAfterReadRevoke++);
+emitToEvento(app.io, event.id, { type: 'operacao:pedido-atualizado', data: { id: persistedSocketOrder.id, itens: [{ nome: 'revoked content' }] } });
+await new Promise((resolve) => setTimeout(resolve, 100));
+assert.equal(queuePayloadsAfterReadRevoke, 0, 'revoking kitchen.read stops queue contents on the same socket');
 const revokeKitchen = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: [] } });
 assert.equal(revokeKitchen.statusCode, 200, revokeKitchen.body);
 const kitchenPhotoBeforeRevokedTransition = await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: persistedSocketOrder.id }, select: { status: true, updatedAt: true } });
@@ -642,7 +757,9 @@ const foreignSocket = connectSocket(localAddress, { extraHeaders: { cookie: fore
 await connect(foreignSocket);
 foreignSocket.emit('join:cervejaria', company.id);
 await waitFor(() => !app.io.sockets.sockets.get(foreignSocket.id)?.rooms.has(`cervejaria:${company.id}:financeiro`)
-  && !app.io.sockets.sockets.get(foreignSocket.id)?.rooms.has(`cervejaria:${company.id}:operacao`), 'foreign tenant denial');
+  && !app.io.sockets.sockets.get(foreignSocket.id)?.rooms.has(`cervejaria:${company.id}:operacao`)
+  && !app.io.sockets.sockets.get(foreignSocket.id)?.rooms.has(`cervejaria:${company.id}:comandas`)
+  && !app.io.sockets.sockets.get(foreignSocket.id)?.rooms.has(`cervejaria:${company.id}:cozinha`), 'foreign tenant denial');
 let foreignTenantEvents = 0;
 foreignSocket.on('operacao:comanda-atualizada', () => foreignTenantEvents++);
 emitToCervejaria(app.io, company.id, { type: 'operacao:comanda-atualizada', data: { comandaId: launchedSocketCommandId } });
@@ -720,7 +837,7 @@ const { prisma: sharedPrisma } = await import('../src/lib/prisma.ts');
 await sharedPrisma.$disconnect();
 const dbBeforeMigration = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
 await dbBeforeMigration.$executeRawUnsafe('ALTER TABLE public."Usuario" DROP COLUMN IF EXISTS "permissoesOperacao"');
-await dbBeforeMigration.$executeRawUnsafe('DELETE FROM public."_prisma_migrations" WHERE migration_name IN ($1, $2)', '20261007220000_individual_operational_permissions', '20261007230000_individual_module_permissions');
+await dbBeforeMigration.$executeRawUnsafe('DELETE FROM public."_prisma_migrations" WHERE migration_name IN ($1, $2, $3)', '20261007220000_individual_operational_permissions', '20261007230000_individual_module_permissions', '20261008090000_shift_catalog_permission');
 const legacyGrantedId = `legacy-granted-${suffix}`;
 const legacyDeniedId = `legacy-denied-${suffix}`;
 for (const [id, email, canDiscount] of [
@@ -745,7 +862,7 @@ assert.equal(legacyDeniedPermissions.includes('command.item.cancel'), true, 'dis
 assert.equal(legacyDeniedPermissions.includes('command.cancel'), false, 'migration does not grant full command cancellation');
 assert.equal(legacyGrantedPermissions.includes('command.cancel'), false, 'discount true does not grant full command cancellation');
 assert.equal(legacyDeniedPermissions.includes('cash.open'), true);
-for (const permission of ['command.read', 'command.operate', 'kitchen.read', 'kitchen.operate', 'inventory.read', 'inventory.adjust', 'clients.manage', 'taps.operate', 'event.menu.manage']) {
+for (const permission of ['command.read', 'command.operate', 'kitchen.read', 'kitchen.operate', 'inventory.read', 'inventory.adjust', 'clients.manage', 'taps.operate', 'event.menu.manage', 'catalog.shift.manage']) {
   assert.equal(legacyGrantedPermissions.includes(permission), true, `migration preserves prior attendant access to ${permission}`);
   assert.equal(legacyDeniedPermissions.includes(permission), true, `migration preserves prior attendant access to ${permission} without depending on discount`);
 }

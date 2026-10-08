@@ -30,7 +30,7 @@ export function OperacaoCozinhaTvPage() {
   const { cervejaria, canPermission } = useAuth();
   const podeAvancarPreparo = canPermission('kitchen.operate');
   const podeCancelarPedido = canPermission('kitchen.cancel') && canPermission('sale.refund');
-  const podeConfirmarCancelamento = canPermission('kitchen.cancel');
+  const podeConfirmarCancelamento = canPermission('kitchen.cancel') && canPermission('sale.refund');
   const podeCancelarItem = canPermission('command.item.cancel');
   const { contexto } = useOperacaoContexto();
   const avisoNaCozinha = contexto.whatsappPedidoProntoEnabled && contexto.whatsappPedidoProntoNaCozinha;

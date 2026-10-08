@@ -63,7 +63,8 @@ const CATEGORIAS_COMIDA = new Set(['Porções', 'Lanches', 'Salgados', 'Doces e 
 
 export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {}) {
   const queryClient = useQueryClient();
-  const { isDono } = useAuth();
+  const { hasPermission } = useAuth();
+  const podeManterCatalogo = hasPermission('catalog.manage');
   const { contexto } = useOperacaoContexto();
   const modoAtual = modo ?? (contexto.operationMode === 'EVENTO' ? 'evento' : 'caixa');
   const usaCardapio = contexto.usaCardapio ?? false;
@@ -177,7 +178,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
   if (isLoading && tab === 'catalogo') return <Loading />;
 
   return (
-    <div className={`space-y-4 ${isDono && tab === 'catalogo' ? 'page-with-action-bar' : 'pb-2'}`}>
+    <div className={`space-y-4 ${podeManterCatalogo && tab === 'catalogo' ? 'page-with-action-bar' : 'pb-2'}`}>
       <div className="min-w-0">
         <h2 className="text-xl font-bold">Cardápio</h2>
         <p className="text-sm text-ink-faint">
@@ -202,8 +203,8 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
         ))}
       </div>
 
-      {tab === 'cardapios' && usaCardapio && isDono && <CardapiosOperacaoPage embedded modo={modoAtual} />}
-      {tab === 'cardapios' && usaCardapio && !isDono && (
+      {tab === 'cardapios' && usaCardapio && podeManterCatalogo && <CardapiosOperacaoPage embedded modo={modoAtual} />}
+      {tab === 'cardapios' && usaCardapio && !podeManterCatalogo && (
         <p className="text-sm text-ink-faint text-center py-6">Somente o dono pode gerenciar cardápios salvos.</p>
       )}
 
@@ -231,8 +232,8 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
               <button
                 type="button"
                 className="min-w-0 flex-1 text-left"
-                disabled={!isDono}
-                onClick={() => isDono && abrirEdicao(produto)}
+                disabled={!podeManterCatalogo}
+                onClick={() => podeManterCatalogo && abrirEdicao(produto)}
               >
                 <p className={`font-semibold truncate ${produto.ativo ? '' : 'text-ink-faint line-through'}`}>
                   {produto.nome}
@@ -256,7 +257,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
                   )}
                 </p>
               </button>
-              {isDono && (
+              {podeManterCatalogo && (
                 <div className="flex shrink-0 items-center gap-2">
                   <button
                     type="button"
@@ -280,7 +281,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
         ))}
       </div>
 
-      {isDono && (
+      {podeManterCatalogo && (
         <MobileActionBar>
           <button type="button" className="touch-btn-primary w-full" onClick={abrirNovo} data-onboarding-target="operacao-add-product">
             + Produto

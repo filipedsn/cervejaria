@@ -32,7 +32,7 @@ import {
 } from '../../lib/tap-montagem.js';
 import { canonicalPdvQaActivationEnabled } from '../../lib/canonical-pdv-operational-config.js';
 import { cashOccurrenceContextEnabled } from '../../lib/operacao/contexto-ocorrencia.js';
-import { requirePermissao, usuarioPode } from '../../lib/operacao/permissoes.js';
+import { requirePermissao, requirePermissaoPrecoCardapioTurno, usuarioPode } from '../../lib/operacao/permissoes.js';
 
 const pontoVendaQuery = z.object({
   pontoVendaId: z.string().min(1),
@@ -415,7 +415,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     return cardapio;
   });
 
-  app.put('/cardapio', { preHandler: [requirePermissao(app, 'catalog.manage')] }, async (request, reply) => {
+  app.put('/cardapio', { preHandler: [requirePermissao(app, 'catalog.shift.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { pontoVendaId } = pontoVendaQuery.parse(request.query);
     const body = z
@@ -443,7 +443,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     return cardapio;
   });
 
-  app.patch('/cardapio/preco', { preHandler: [requirePermissao(app, 'catalog.manage')] }, async (request, reply) => {
+  app.patch('/cardapio/preco', { preHandler: [requirePermissaoPrecoCardapioTurno(app)] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { pontoVendaId } = pontoVendaQuery.parse(request.query);
     const body = z

@@ -307,6 +307,7 @@ export const CAIXA_NAV_ITEMS: NavItem[] = [
     permissionOnly: 'dashboard.read' as const,
   },
   { path: '/operacao/catalogo', label: 'Cardápio', shortLabel: 'Cardápio', Icon: IconListMenu, permissionOnly: 'catalog.manage' as const },
+  { path: '/operacao/agenda', label: 'Agenda', shortLabel: 'Agenda', Icon: IconCalendar, permissionOnly: 'agenda.manage' as const },
   {
     path: '/operacao/configuracoes',
     label: 'Configurações',

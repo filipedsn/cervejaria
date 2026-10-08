@@ -101,8 +101,21 @@ export async function produtosRoutes(app: FastifyInstance) {
   const opcionalCadastroSchema = z.object({ nome: z.string().trim().min(1).max(80), preco: z.number().min(0).max(9999), ativo: z.boolean().optional() });
   app.get('/opcionais', async (request) => { const user = getTenantUser(app, request); return prisma.opcional.findMany({ where: { cervejariaId: user.cervejariaId }, orderBy: { nome: 'asc' } }); });
   app.post('/opcionais', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => { const user = getTenantUser(app, request); const body = opcionalCadastroSchema.parse(request.body); return reply.status(201).send(await prisma.opcional.create({ data: { cervejariaId: user.cervejariaId, nome: body.nome, preco: body.preco, ativo: body.ativo ?? true } })); });
-  app.put('/opcionais/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request) => { const body = opcionalCadastroSchema.partial().parse(request.body); return prisma.opcional.update({ where: { id: (request.params as { id: string }).id }, data: body }); });
-  app.delete('/opcionais/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request) => prisma.opcional.delete({ where: { id: (request.params as { id: string }).id } }));
+  app.put('/opcionais/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
+    const { cervejariaId } = getTenantUser(app, request);
+    const { id } = request.params as { id: string };
+    const body = opcionalCadastroSchema.partial().parse(request.body);
+    const changed = await prisma.opcional.updateMany({ where: { id, cervejariaId }, data: body });
+    if (!changed.count) return reply.status(404).send({ error: 'Opcional não encontrado' });
+    return prisma.opcional.findFirstOrThrow({ where: { id, cervejariaId } });
+  });
+  app.delete('/opcionais/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
+    const { cervejariaId } = getTenantUser(app, request);
+    const { id } = request.params as { id: string };
+    const deleted = await prisma.opcional.deleteMany({ where: { id, cervejariaId } });
+    if (!deleted.count) return reply.status(404).send({ error: 'Opcional não encontrado' });
+    return { ok: true };
+  });
 
   app.get('/', async (request) => {
     const user = getTenantUser(app, request);
@@ -140,7 +153,7 @@ export async function produtosRoutes(app: FastifyInstance) {
     const body = opcionaisSchema.parse(request.body);
     const produto = await prisma.produto.findFirst({ where: { id, cervejariaId: user.cervejariaId } });
     if (!produto) return reply.status(404).send({ error: 'Produto nÃ£o encontrado' });
-    return prisma.$transaction((tx) => substituirOpcionaisProduto(tx, id, body.opcionalIds));
+    return prisma.$transaction((tx) => substituirOpcionaisProduto(tx, id, user.cervejariaId, body.opcionalIds));
   });
 
   app.post('/', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {

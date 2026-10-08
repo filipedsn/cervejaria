@@ -23,8 +23,17 @@ export async function listarOpcionaisProduto(prisma: Prisma.TransactionClient | 
 }
 
 export type GrupoOpcionalInput = { nome: string; obrigatorio?: boolean; maximo?: number; ordem?: number; opcoes: Array<{ nome: string; precoAdicional?: number; produtoEstoqueId?: string | null; ordem?: number }> };
-export async function substituirOpcionaisProduto(tx: Prisma.TransactionClient, produtoId: string, opcionalIds: string[]) {
+export async function substituirOpcionaisProduto(tx: Prisma.TransactionClient, produtoId: string, cervejariaId: string, opcionalIds: string[]) {
+  const produto = await tx.produto.findFirst({ where: { id: produtoId, cervejariaId }, select: { id: true, pontoVendaId: true } });
+  if (!produto) throw Object.assign(new Error('Produto não encontrado'), { statusCode: 404 });
+  const ids = [...new Set(opcionalIds)];
+  if (ids.length) {
+    const optionals = await tx.opcional.findMany({ where: { id: { in: ids }, cervejariaId }, select: { id: true, pontoVendaId: true } });
+    if (optionals.length !== ids.length || optionals.some((opcional) => produto.pontoVendaId !== opcional.pontoVendaId)) {
+      throw Object.assign(new Error('Opcional não pertence à empresa ou ao ponto de venda'), { statusCode: 404 });
+    }
+  }
   await tx.produtoOpcionalVinculo.deleteMany({ where: { produtoId } });
-  if (opcionalIds.length) await tx.produtoOpcionalVinculo.createMany({ data: [...new Set(opcionalIds)].map((opcionalId, ordem) => ({ produtoId, opcionalId, ordem })) });
+  if (ids.length) await tx.produtoOpcionalVinculo.createMany({ data: ids.map((opcionalId, ordem) => ({ produtoId, opcionalId, cervejariaId, pontoVendaId: produto.pontoVendaId, ordem })) });
   return listarOpcionaisProduto(tx, produtoId);
 }

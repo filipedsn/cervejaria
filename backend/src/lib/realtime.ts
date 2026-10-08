@@ -32,9 +32,13 @@ export type RealtimeEvent =
 export const realtimeRoomTenant = (id: string) => `cervejaria:${id}`;
 export const realtimeRoomTenantFinance = (id: string) => `cervejaria:${id}:financeiro`;
 export const realtimeRoomTenantOperations = (id: string) => `cervejaria:${id}:operacao`;
+export const realtimeRoomTenantCommands = (id: string) => `cervejaria:${id}:comandas`;
+export const realtimeRoomTenantKitchen = (id: string) => `cervejaria:${id}:cozinha`;
 export const realtimeRoomEvent = (id: string) => `evento:${id}`;
 export const realtimeRoomEventFinance = (id: string) => `evento:${id}:financeiro`;
 export const realtimeRoomEventOperations = (id: string) => `evento:${id}:operacao`;
+export const realtimeRoomEventCommands = (id: string) => `evento:${id}:comandas`;
+export const realtimeRoomEventKitchen = (id: string) => `evento:${id}:cozinha`;
 
 function operationalPayload(event: RealtimeEvent): unknown {
   const data = event.data as Record<string, unknown> | null;
@@ -82,14 +86,41 @@ function pickRecord(source: Record<string, unknown>, ...keys: string[]) {
   return Object.fromEntries(keys.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]));
 }
 
-function emitScoped(io: SocketIOServer | undefined, legacyRoom: string, financeRoom: string, operationsRoom: string, event: RealtimeEvent) {
+function invalidationPayload(event: RealtimeEvent): unknown {
+  const data = event.data as Record<string, unknown> | null;
+  if (!data || typeof data !== 'object') return {};
+  return Object.fromEntries(['id', 'eventoId', 'comandaId'].filter((key) => data[key] !== undefined).map((key) => [key, data[key]]));
+}
+
+function emitScoped(
+  io: SocketIOServer | undefined,
+  legacyRoom: string,
+  financeRoom: string,
+  operationsRoom: string,
+  commandsRoom: string,
+  kitchenRoom: string,
+  event: RealtimeEvent,
+) {
   if (!io) return;
   if (!permissoesIndividuaisAtivas()) {
     io.to(legacyRoom).emit(event.type, event.data);
     return;
   }
-  io.to(financeRoom).emit(event.type, event.data);
-  io.to(operationsRoom).emit(event.type, operationalPayload(event));
+  if (event.type === 'evento-caixa:financial-updated' || event.type === 'evento-caixa:updated') {
+    io.to(financeRoom).emit(event.type, event.type === 'evento-caixa:updated' ? invalidationPayload(event) : event.data);
+    return;
+  }
+  if (event.type === 'operacao:pedido-novo' || event.type === 'operacao:pedido-atualizado') {
+    io.to(kitchenRoom).emit(event.type, operationalPayload(event));
+    return;
+  }
+  if (event.type.startsWith('comanda:') || event.type.startsWith('item:') || event.type.startsWith('pedido:') || event.type === 'operacao:comanda-atualizada') {
+    io.to(commandsRoom).emit(event.type, event.type === 'operacao:comanda-atualizada' ? invalidationPayload(event) : event.data);
+    return;
+  }
+  if (['ranking:updated', 'evento:updated', 'evento:deleted', 'tap-montagem:updated', 'evento-cardapio:updated'].includes(event.type)) {
+    io.to(operationsRoom).emit(event.type, invalidationPayload(event));
+  }
 }
 
 export function emitToCervejaria(
@@ -97,7 +128,7 @@ export function emitToCervejaria(
   cervejariaId: string,
   event: RealtimeEvent
 ): void {
-  emitScoped(io, realtimeRoomTenant(cervejariaId), realtimeRoomTenantFinance(cervejariaId), realtimeRoomTenantOperations(cervejariaId), event);
+  emitScoped(io, realtimeRoomTenant(cervejariaId), realtimeRoomTenantFinance(cervejariaId), realtimeRoomTenantOperations(cervejariaId), realtimeRoomTenantCommands(cervejariaId), realtimeRoomTenantKitchen(cervejariaId), event);
 }
 
 export function emitToEvento(
@@ -105,7 +136,7 @@ export function emitToEvento(
   eventoId: string,
   event: RealtimeEvent
 ): void {
-  emitScoped(io, realtimeRoomEvent(eventoId), realtimeRoomEventFinance(eventoId), realtimeRoomEventOperations(eventoId), event);
+  emitScoped(io, realtimeRoomEvent(eventoId), realtimeRoomEventFinance(eventoId), realtimeRoomEventOperations(eventoId), realtimeRoomEventCommands(eventoId), realtimeRoomEventKitchen(eventoId), event);
 }
 
 /** Financial-only event feed; restricted staff sockets never join this room. */

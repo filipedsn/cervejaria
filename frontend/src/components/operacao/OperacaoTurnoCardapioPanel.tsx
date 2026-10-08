@@ -11,6 +11,7 @@ import { CardapioSalvoModal, cardapioSalvoLabel } from '../CardapioSalvoModal';
 import { Modal } from '../Modal';
 import { CurrencyInput } from '../CurrencyInput';
 import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../../lib/currency';
+import { useAuth } from '../../contexts/AuthContext';
 
 type CardapioModo = 'salvo' | 'montar';
 type EscopoPreco = 'TURNO' | 'TEMPLATE';
@@ -31,6 +32,8 @@ export function OperacaoTurnoCardapioPanel({
   embedded?: boolean;
   onClose?: () => void;
 }) {
+  const { hasPermission } = useAuth();
+  const podeManterCardapioGlobal = hasPermission('catalog.manage');
   const queryClient = useQueryClient();
   const [modo, setModo] = useState<CardapioModo>('salvo');
   const [cardapioId, setCardapioId] = useState('');
@@ -372,7 +375,7 @@ export function OperacaoTurnoCardapioPanel({
             >
               Só neste turno
             </button>
-            {cardapioVinculadoId ? (
+            {cardapioVinculadoId && podeManterCardapioGlobal ? (
               <button
                 type="button"
                 className="touch-btn-secondary w-full"
@@ -397,7 +400,7 @@ export function OperacaoTurnoCardapioPanel({
           <p className="text-sm text-ink-muted">
             Alterar <span className="font-semibold text-ink">{pendingPreco.produto.nome}</span> para{' '}
             <span className="font-semibold text-ink">{formatCurrency(pendingPreco.precoUnit)}</span>.
-            {cardapioVinculadoId
+            {cardapioVinculadoId && podeManterCardapioGlobal
               ? ' Escolha se a mudança vale só neste turno ou fica definitiva no cardápio salvo.'
               : ' Sem cardápio salvo vinculado, a mudança vale apenas neste turno.'}
           </p>

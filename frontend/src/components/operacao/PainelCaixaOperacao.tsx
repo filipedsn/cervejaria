@@ -427,7 +427,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {canPermission('cash.movement.write') && <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SUPRIMENTO'); setErro(''); setDialogo('movimento'); }}>Suprimento</button>}
               {canPermission('cash.movement.write') && <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SANGRIA'); setErro(''); setDialogo('movimento'); }}>Sangria</button>}
-              {usaCardapio && canPermission('catalog.manage') && <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setErro(''); setDialogo('cardapio'); }}>Editar cardápio do turno</button>}
+              {usaCardapio && canPermission('catalog.shift.manage') && <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setErro(''); setDialogo('cardapio'); }}>Editar cardápio do turno</button>}
               <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} touch-btn-sm flex items-center justify-center text-center leading-tight`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>
             </div>
             {erro && !dialogo && <div className="alert-error">{erro}</div>}

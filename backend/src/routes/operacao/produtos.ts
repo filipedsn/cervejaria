@@ -74,16 +74,16 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
     const body = opcionalCadastroSchema.partial().parse(request.body);
-    const existing = await prisma.opcional.findFirst({ where: { id, cervejariaId } });
-    if (!existing) return reply.status(404).send({ error: 'Opcional não encontrado' });
-    return prisma.opcional.update({ where: { id }, data: body });
+    const changed = await prisma.opcional.updateMany({ where: { id, cervejariaId }, data: body });
+    if (!changed.count) return reply.status(404).send({ error: 'Opcional não encontrado' });
+    return prisma.opcional.findFirstOrThrow({ where: { id, cervejariaId } });
   });
   app.delete('/opcionais/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
-    const existing = await prisma.opcional.findFirst({ where: { id, cervejariaId } });
-    if (!existing) return reply.status(404).send({ error: 'Opcional não encontrado' });
-    return prisma.opcional.delete({ where: { id } });
+    const deleted = await prisma.opcional.deleteMany({ where: { id, cervejariaId } });
+    if (!deleted.count) return reply.status(404).send({ error: 'Opcional não encontrado' });
+    return { ok: true };
   });
   app.get('/categorias', async (request) => {
     const { cervejariaId } = request.operacao;
@@ -167,7 +167,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     const body = opcionaisSchema.parse(request.body);
     const produto = await prisma.produto.findFirst({ where: { id, cervejariaId } });
     if (!produto) return reply.status(404).send({ error: 'Produto nÃ£o encontrado' });
-    return prisma.$transaction((tx) => substituirOpcionaisProduto(tx, id, body.opcionalIds));
+    return prisma.$transaction((tx) => substituirOpcionaisProduto(tx, id, cervejariaId, body.opcionalIds));
   });
 
   app.post('/', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {

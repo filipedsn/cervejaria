@@ -15,6 +15,7 @@ import { OperacaoNovaComandaPage } from './pages/operacao/OperacaoNovaComandaPag
 import { OperacaoVendaAvulsaPage } from './pages/operacao/OperacaoVendaAvulsaPage';
 import { OperacaoComandaDetailPage } from './pages/operacao/OperacaoComandaDetailPage';
 import { OperacaoCatalogoPage } from './pages/operacao/OperacaoCatalogoPage';
+import { OperacaoAgendaPage } from './pages/operacao/OperacaoAgendaPage';
 import { OperacaoCozinhaPage } from './pages/operacao/OperacaoCozinhaPage';
 import { OperacaoCozinhaTvPage } from './pages/operacao/OperacaoCozinhaTvPage';
 import { OperacaoCozinhaTvDemoPage } from './pages/operacao/OperacaoCozinhaTvDemoPage';
@@ -387,6 +388,7 @@ const router = createBrowserRouter([
                             children: [{ path: 'cozinha', element: <RequirePermissionRoute permission="kitchen.read" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoCozinhaPage /> }] }],
                           },
                           { path: 'catalogo', element: <RequirePermissionRoute permission="catalog.manage" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoCatalogoPage /> }] },
+                          { path: 'agenda', element: <RequirePermissionRoute permission="agenda.manage" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoAgendaPage /> }] },
                           {
                             element: <RequireDonoOperacao />,
                             children: [

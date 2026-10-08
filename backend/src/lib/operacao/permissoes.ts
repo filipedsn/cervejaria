@@ -27,6 +27,7 @@ export const PERMISSOES_OPERACAO = [
   'inventory.read',
   'inventory.adjust',
   'catalog.manage',
+  'catalog.shift.manage',
   'clients.manage',
   'taps.operate',
   'agenda.manage',
@@ -152,5 +153,13 @@ export function requireFechamentoGrupo(app: FastifyInstance) {
     return (body?.pagamentos?.length ?? 0) > 0
       ? ['command.close', 'payment.receive']
       : ['command.close'];
+  });
+}
+
+/** The turno price is an operational concession; editing the global template remains catalogue administration. */
+export function requirePermissaoPrecoCardapioTurno(app: FastifyInstance) {
+  return requirePermissao(app, (request) => {
+    const body = request.body as { escopo?: 'TURNO' | 'TEMPLATE' } | null;
+    return body?.escopo === 'TEMPLATE' ? 'catalog.manage' : 'catalog.shift.manage';
   });
 }

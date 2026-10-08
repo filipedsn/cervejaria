@@ -19,7 +19,7 @@ export function OperacaoCozinhaPage() {
   const { cervejaria, canPermission } = useAuth();
   const podeAvancarPreparo = canPermission('kitchen.operate');
   const podeCancelarPedido = canPermission('kitchen.cancel') && canPermission('sale.refund');
-  const podeConfirmarCancelamento = canPermission('kitchen.cancel');
+  const podeConfirmarCancelamento = canPermission('kitchen.cancel') && canPermission('sale.refund');
   const { contexto } = useOperacaoContexto();
   const avisoNaCozinha = contexto.whatsappPedidoProntoEnabled && contexto.whatsappPedidoProntoNaCozinha;
 
@@ -144,7 +144,7 @@ export function OperacaoCozinhaPage() {
             setSucessoLocal('');
             setPedidoParaCancelar(pedido);
           }}
-          onConfirmarCancelamento={() => {
+          onConfirmarCancelamento={podeCancelarPedido ? () => {
             setErroLocal('');
             setSucessoLocal('');
             mudarStatus.mutate(
@@ -154,7 +154,7 @@ export function OperacaoCozinhaPage() {
                 onError: () => setErroLocal('Não foi possível confirmar o cancelamento.'),
               },
             );
-          }}
+          } : undefined}
           onConfirmarCancelamentoItem={podeConfirmarCancelamento ? (itemId) => {
             setErroLocal('');
             confirmarCancelamentoItem.mutate(

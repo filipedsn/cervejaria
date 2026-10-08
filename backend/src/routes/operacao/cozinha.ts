@@ -69,9 +69,9 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
 
   app.patch('/:id/status', { preHandler: [requirePermissao(app, (request) => {
     const body = request.body as { status?: string } | null;
-    return body?.status === 'CANCELAMENTO_PENDENTE'
+    return body?.status === 'CANCELAMENTO_PENDENTE' || body?.status === 'CANCELADO'
       ? ['kitchen.cancel', 'sale.refund']
-      : body?.status === 'CANCELADO' ? 'kitchen.cancel' : 'kitchen.operate';
+      : 'kitchen.operate';
   })] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);

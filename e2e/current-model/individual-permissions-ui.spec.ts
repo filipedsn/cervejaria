@@ -5,7 +5,7 @@ const ownerPermissions = [
   'cash.open', 'cash.close', 'cash.values.read', 'cash.movement.write', 'payment.receive',
   'debt.receive', 'command.close', 'discount.apply', 'command.item.cancel', 'command.cancel', 'kitchen.cancel',
   'sale.refund', 'dashboard.read', 'event.dashboard.read', 'reports.read', 'command.read', 'command.operate',
-  'kitchen.read', 'kitchen.operate', 'inventory.read', 'inventory.adjust', 'catalog.manage', 'clients.manage',
+  'kitchen.read', 'kitchen.operate', 'inventory.read', 'inventory.adjust', 'catalog.manage', 'catalog.shift.manage', 'clients.manage',
   'taps.operate', 'agenda.manage', 'event.menu.manage',
 ];
 
@@ -79,7 +79,11 @@ test('carrega, altera, salva e reabre permissoes individuais da equipe', async (
   await readCommands.click();
   await expect.poll(() => writes.at(-1)).toEqual(['cash.open', 'command.read']);
   await expect(operateCommands).not.toBeChecked();
-  expect(writes).toEqual([['cash.open'], ['cash.open', 'command.read']]);
+  const shiftCatalog = page.getByRole('checkbox', { name: /Manter cardápio e preços do turno/ }).last();
+  await expect(shiftCatalog).not.toBeChecked();
+  await shiftCatalog.click();
+  await expect.poll(() => writes.at(-1)).toEqual(['cash.open', 'command.read', 'catalog.shift.manage']);
+  expect(writes).toEqual([['cash.open'], ['cash.open', 'command.read'], ['cash.open', 'command.read', 'catalog.shift.manage']]);
   expect(unexpected).toEqual([]);
   expect(errors).toEqual([]);
 });
