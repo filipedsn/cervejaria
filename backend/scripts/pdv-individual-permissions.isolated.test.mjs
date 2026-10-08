@@ -25,6 +25,7 @@ process.env.PDV_INDIVIDUAL_PERMISSIONS_ENABLED = '1';
 const [{ PrismaClient }, { buildApp, setupSocketIO }, { hashPassword }] = await Promise.all([
   import('@prisma/client'), import('../src/app.ts'), import('../src/lib/utils.ts'),
 ]);
+const { diaOperacional } = await import('../src/lib/operacao/venda.ts');
 const { io: connectSocket } = await import('socket.io-client');
 const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
 const suffix = randomBytes(6).toString('hex');
@@ -280,12 +281,13 @@ const grantOpen = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staf
 assert.equal(grantOpen.statusCode, 200, grantOpen.body);
 const allowedOpen = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: authHeaders(staffCookie), payload: openPayload });
 assert.equal(allowedOpen.statusCode, 400, allowedOpen.body);
+const permissionOperationalDay = diaOperacional();
 const occurrence = await prisma.ocorrenciaOperacional.create({
-  data: { cervejariaId: company.id, pontoVendaId: point.id, nome: `Occurrence QA ${suffix}`, data: new Date('2026-10-07T00:00:00.000Z') },
+  data: { cervejariaId: company.id, pontoVendaId: point.id, nome: `Occurrence QA ${suffix}`, data: permissionOperationalDay },
 });
 const cashSession = await prisma.sessaoCaixaOperacao.create({
   data: {
-    cervejariaId: company.id, pontoVendaId: point.id, diaOperacional: new Date('2026-10-07T00:00:00.000Z'),
+    cervejariaId: company.id, pontoVendaId: point.id, diaOperacional: permissionOperationalDay,
     status: 'ABERTO', trocoInicial: '123.45', abertoPorId: staff.id, ocorrenciaId: occurrence.id,
   },
   select: { id: true, diaOperacional: true },
@@ -297,7 +299,7 @@ assert.equal(restrictedCashBody.sessao.id, cashSession.id);
 assert.equal(restrictedCashBody.sessao.ocorrenciaId, occurrence.id);
 assert.equal(restrictedCashBody.sessao.ocorrencia.id, occurrence.id);
 assert.equal(restrictedCashBody.sessao.ocorrencia.nome, occurrence.nome);
-assert.equal(restrictedCashBody.sessao.diaOperacional, '2026-10-07');
+assert.equal(restrictedCashBody.sessao.diaOperacional, permissionOperationalDay.toISOString().slice(0, 10));
 assert.notEqual(restrictedCashBody.sessao.ocorrencia.nome, 'Sem ocorrência');
 assert.equal(restrictedCashBody.valoresRestritos, true);
 for (const restrictedField of ['trocoInicial', 'totalVendas', 'movimentos', '123.45']) {
