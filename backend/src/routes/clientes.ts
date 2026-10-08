@@ -8,6 +8,7 @@ import { normalizePhone, formatPhoneBr } from '../lib/phone.js';
 import { toNumber } from '../lib/utils.js';
 import { assertClientePodeExcluir, buildExclusaoMeta, getComandaCountsByClienteIds, getClienteComandaCounts } from '../lib/cliente-delete.js';
 import { ClienteMergeError, mergeClientes } from '../lib/cliente-merge.js';
+import { requireDonoAtual, requirePermissao } from '../lib/operacao/permissoes.js';
 
 const createClienteSchema = z.object({
   nome: z.string().min(1),
@@ -112,7 +113,7 @@ function orderByFromSort(ordenar: string): Prisma.ClienteOrderByWithRelationInpu
 export async function clientesRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
-  app.get('/', async (request) => {
+  app.get('/', { preHandler: [requirePermissao(app, 'clients.manage')] }, async (request) => {
     const user = getTenantUser(app, request);
     const { q, ordenar, page, limit } = listQuerySchema.parse(request.query);
     const skip = (page - 1) * limit;
@@ -161,7 +162,7 @@ export async function clientesRoutes(app: FastifyInstance) {
     };
   });
 
-  app.get('/:id/historico', async (request, reply) => {
+  app.get('/:id/historico', { preHandler: [requirePermissao(app, 'clients.manage')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const { page, limit } = historicoQuerySchema.parse(request.query);
@@ -232,7 +233,7 @@ export async function clientesRoutes(app: FastifyInstance) {
     };
   });
 
-  app.get('/:id', async (request, reply) => {
+  app.get('/:id', { preHandler: [requirePermissao(app, 'clients.manage')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 
@@ -245,7 +246,7 @@ export async function clientesRoutes(app: FastifyInstance) {
     return serializeClienteWithExclusao(cliente);
   });
 
-  app.post('/', async (request, reply) => {
+  app.post('/', { preHandler: [requirePermissao(app, 'clients.manage')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const body = createClienteSchema.parse(request.body);
     const telefone = normalizePhone(body.telefone);
@@ -280,11 +281,15 @@ export async function clientesRoutes(app: FastifyInstance) {
     return reply.status(201).send(serializeCliente(cliente));
   });
 
-  app.patch('/:id', async (request, reply) => {
+  app.patch('/:id', { preHandler: [requirePermissao(app, 'clients.manage')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = patchClienteSchema.parse(request.body);
-    const isDono = user.papel === 'DONO';
+    const persistedUser = await prisma.usuario.findFirst({
+      where: { id: user.sub, cervejariaId: user.cervejariaId! },
+      select: { papel: true },
+    });
+    const isDono = persistedUser?.papel === 'DONO';
 
     const existing = await prisma.cliente.findFirst({
       where: { id, cervejariaId: user.cervejariaId },
@@ -335,7 +340,7 @@ export async function clientesRoutes(app: FastifyInstance) {
     return serializeClienteWithExclusao(cliente);
   });
 
-  app.post('/:id/unir', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.post('/:id/unir', { preHandler: [requireDonoAtual(app)] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = z.object({ fonteId: z.string().min(1) }).parse(request.body);
@@ -365,7 +370,7 @@ export async function clientesRoutes(app: FastifyInstance) {
     }
   });
 
-  app.delete('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.delete('/:id', { preHandler: [requireDonoAtual(app)] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 

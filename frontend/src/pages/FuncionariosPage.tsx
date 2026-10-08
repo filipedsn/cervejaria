@@ -29,6 +29,17 @@ const PERMISSOES_UI = [
   ['dashboard.read', 'Visualizar dashboard', 'Acessa os painéis consolidados financeiros.'],
   ['event.dashboard.read', 'Visualizar painel do evento', 'Acessa indicadores e valores do evento.'],
   ['reports.read', 'Visualizar relatórios', 'Acessa relatórios financeiros e exportações CSV.'],
+  ['command.operate', 'Abrir comandas e lançar itens', 'Abre comandas, inclui itens e aumenta quantidades; não concede consulta, fechamento, pagamento ou cancelamento.'],
+  ['command.read', 'Consultar comandas', 'Lê listas e detalhes operacionais sem permitir abertura ou lançamento.'],
+  ['kitchen.read', 'Consultar fila da cozinha', 'Lê a fila e os itens sem permitir transições de preparo/entrega.'],
+  ['kitchen.operate', 'Avançar preparo e entrega', 'Transiciona pedidos; cancelamento e estorno continuam separados.'],
+  ['inventory.read', 'Consultar estoque', 'Lê saldos do ponto de venda sem registrar movimentações.'],
+  ['inventory.adjust', 'Movimentar estoque manualmente', 'Registra entradas, saídas, ajustes e inventário. Vendas autorizadas podem baixar estoque automaticamente.'],
+  ['catalog.manage', 'Manter catálogo e cardápios', 'Edita produtos, preços, disponibilidade, opcionais, cardápios e preços do turno.'],
+  ['clients.manage', 'Administrar clientes', 'Consulta a lista administrativa e cria/edita clientes; merge e exclusão seguem exclusivos do dono.'],
+  ['taps.operate', 'Montar e operar Taps', 'Monta, troca, remove ou ativa Taps no turno e em evento; configuração do cadastro segue exclusiva do dono.'],
+  ['agenda.manage', 'Administrar agendas', 'Cria e edita agendas e ocorrências e gera ocorrências futuras.'],
+  ['event.menu.manage', 'Configurar cardápio do evento', 'Seleciona produtos ou cardápio de um evento; não concede manutenção do catálogo geral.'],
 ] as const;
 
 function PermissaoDescontoRow({

@@ -258,7 +258,7 @@ export async function eventosRoutes(app: FastifyInstance) {
     return listTapsMontagemPrevista(evento.trailerId);
   });
 
-  app.put('/:id/taps/:tapId/chope', async (request, reply) => {
+  app.put('/:id/taps/:tapId/chope', { preHandler: [requirePermissao(app, 'taps.operate')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id, tapId } = request.params as { id: string; tapId: string };
     const body = z.object({ produtoId: z.string().min(1) }).parse(request.body);
@@ -302,7 +302,7 @@ export async function eventosRoutes(app: FastifyInstance) {
     };
   });
 
-  app.delete('/:id/taps/:tapId/chope', async (request, reply) => {
+  app.delete('/:id/taps/:tapId/chope', { preHandler: [requirePermissao(app, 'taps.operate')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id, tapId } = request.params as { id: string; tapId: string };
 
@@ -335,7 +335,7 @@ export async function eventosRoutes(app: FastifyInstance) {
     return listTapsComChopeAtual(evento.id, evento.trailerId);
   });
 
-  app.patch('/:id/taps/:tapId/ativo', async (request, reply) => {
+  app.patch('/:id/taps/:tapId/ativo', { preHandler: [requirePermissao(app, 'taps.operate')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id, tapId } = request.params as { id: string; tapId: string };
     const body = z.object({ ativo: z.boolean() }).parse(request.body);
@@ -383,7 +383,7 @@ export async function eventosRoutes(app: FastifyInstance) {
     return cardapio;
   });
 
-  app.put('/:id/cardapio', async (request, reply) => {
+  app.put('/:id/cardapio', { preHandler: [requirePermissao(app, 'event.menu.manage')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = z
@@ -441,7 +441,10 @@ export async function eventosRoutes(app: FastifyInstance) {
     return evento;
   });
 
-  app.post('/', async (request, reply) => {
+  app.post('/', { preHandler: [requirePermissao(app, (request) => {
+    const body = request.body as { cardapioId?: string; produtoIds?: string[] } | null;
+    return body?.cardapioId || (body?.produtoIds?.length ?? 0) > 0 ? 'event.menu.manage' : [];
+  })] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const body = createEventoSchema.parse(request.body);
 

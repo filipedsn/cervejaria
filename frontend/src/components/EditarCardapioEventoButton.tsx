@@ -20,8 +20,9 @@ export function EditarCardapioEventoButton({
   className = '',
   iconOnly = false,
 }: EditarCardapioEventoButtonProps) {
-  const { cervejaria } = useAuth();
+  const { cervejaria, canPermission } = useAuth();
   const usaCardapio = cervejaria?.usaCardapio ?? false;
+  const podeEditarCardapio = canPermission('event.menu.manage');
   const [open, setOpen] = useState(false);
 
   const { data: cardapio } = useQuery({
@@ -30,7 +31,7 @@ export function EditarCardapioEventoButton({
     enabled: usaCardapio && !!eventoId,
   });
 
-  if (!usaCardapio) return null;
+  if (!usaCardapio || !podeEditarCardapio) return null;
 
   const cardapioVazio = (cardapio?.produtos.length ?? 0) === 0;
   const label = eventoAberto && cardapioVazio ? 'Configurar cardápio do evento' : 'Editar cardápio do evento';

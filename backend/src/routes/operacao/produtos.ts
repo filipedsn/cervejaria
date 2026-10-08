@@ -12,6 +12,7 @@ import { diaOperacional } from '../../lib/operacao/venda.js';
 import { listProdutosOperacionaisTurno } from '../../lib/operacao/sessao-cardapio.js';
 import { listarOpcionaisProduto, substituirOpcionaisProduto } from '../../lib/produto-opcionais.js';
 import { canonicalPdvQaActivationEnabled } from '../../lib/canonical-pdv-operational-config.js';
+import { requirePermissaoOuDono } from '../../lib/operacao/permissoes.js';
 
 const precoProdutoSchema = z.object({ volumeMl: z.number().int().positive(), preco: z.number().positive() });
 const tipoProdutoSchema = z.enum(['BEBIDA', 'COMIDA']);
@@ -68,8 +69,8 @@ async function removerProdutoDosCardapios(
 export async function produtosOperacaoRoutes(app: FastifyInstance) {
   const opcionalCadastroSchema = z.object({ nome: z.string().trim().min(1).max(80), preco: z.number().min(0).max(9999), ativo: z.boolean().optional() });
   app.get('/opcionais', async (request) => prisma.opcional.findMany({ where: { cervejariaId: request.operacao.cervejariaId }, orderBy: { nome: 'asc' } }));
-  app.post('/opcionais', { preHandler: [app.requireDono] }, async (request, reply) => { const body = opcionalCadastroSchema.parse(request.body); return reply.status(201).send(await prisma.opcional.create({ data: { cervejariaId: request.operacao.cervejariaId, nome: body.nome, preco: body.preco, ativo: body.ativo ?? true } })); });
-  app.put('/opcionais/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.post('/opcionais', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => { const body = opcionalCadastroSchema.parse(request.body); return reply.status(201).send(await prisma.opcional.create({ data: { cervejariaId: request.operacao.cervejariaId, nome: body.nome, preco: body.preco, ativo: body.ativo ?? true } })); });
+  app.put('/opcionais/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
     const body = opcionalCadastroSchema.partial().parse(request.body);
@@ -77,7 +78,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     if (!existing) return reply.status(404).send({ error: 'Opcional não encontrado' });
     return prisma.opcional.update({ where: { id }, data: body });
   });
-  app.delete('/opcionais/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.delete('/opcionais/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
     const existing = await prisma.opcional.findFirst({ where: { id, cervejariaId } });
@@ -99,7 +100,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     };
   });
 
-  app.put('/categorias/ordem', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.put('/categorias/ordem', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const categorias = request.operacao.tapsEnabled
       ? [...CATEGORIAS_PRODUTO_OPERACAO, 'Chope']
@@ -160,7 +161,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     return listarOpcionaisProduto(prisma, id);
   });
 
-  app.put('/:id/opcionais', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.put('/:id/opcionais', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
     const body = opcionaisSchema.parse(request.body);
@@ -169,7 +170,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     return prisma.$transaction((tx) => substituirOpcionaisProduto(tx, id, body.opcionalIds));
   });
 
-  app.post('/', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.post('/', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId, tapsEnabled } = request.operacao;
     const body = createProdutoSchema.parse(request.body);
     const chope = body.categoria === 'Chope' || body.formato === 'CHOPE';
@@ -206,7 +207,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     return reply.status(201).send(respostaProduto(produto));
   });
 
-  app.put('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.put('/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId, tapsEnabled } = request.operacao;
     const { id } = request.params as { id: string };
     const body = updateProdutoSchema.parse(request.body);
@@ -276,7 +277,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     return respostaProduto(atualizado);
   });
 
-  app.delete('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.delete('/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
 

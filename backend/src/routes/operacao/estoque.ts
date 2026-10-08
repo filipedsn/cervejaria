@@ -10,6 +10,7 @@ import {
   registrarSaidaManual,
 } from '../../lib/operacao/estoque.js';
 import { registrarTransacao } from '../../lib/transacao-log.js';
+import { requirePermissao } from '../../lib/operacao/permissoes.js';
 
 const pontoVendaQuery = z.object({
   pontoVendaId: z.string().min(1),
@@ -50,7 +51,7 @@ export async function estoqueOperacaoRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get('/', async (request, reply) => {
+  app.get('/', { preHandler: [requirePermissao(app, 'inventory.read')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { pontoVendaId } = pontoVendaQuery.parse(request.query);
 
@@ -62,7 +63,7 @@ export async function estoqueOperacaoRoutes(app: FastifyInstance) {
     return listarSaldos(cervejariaId, pontoVendaId);
   });
 
-  app.post('/entrada', async (request, reply) => {
+  app.post('/entrada', { preHandler: [requirePermissao(app, 'inventory.adjust')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = entradaSchema.parse(request.body);
@@ -87,7 +88,7 @@ export async function estoqueOperacaoRoutes(app: FastifyInstance) {
     return reply.status(201).send(saldos);
   });
 
-  app.post('/saida', async (request, reply) => {
+  app.post('/saida', { preHandler: [requirePermissao(app, 'inventory.adjust')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = saidaSchema.parse(request.body);
@@ -113,7 +114,7 @@ export async function estoqueOperacaoRoutes(app: FastifyInstance) {
     return reply.status(201).send(saldos);
   });
 
-  app.post('/ajuste', async (request, reply) => {
+  app.post('/ajuste', { preHandler: [requirePermissao(app, 'inventory.adjust')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const body = ajusteSchema.parse(request.body);

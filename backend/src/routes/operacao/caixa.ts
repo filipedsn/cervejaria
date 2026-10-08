@@ -198,7 +198,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     };
   });
 
-  app.put('/taps/:tapId/chope', async (request, reply) => {
+  app.put('/taps/:tapId/chope', { preHandler: [requirePermissao(app, 'taps.operate')] }, async (request, reply) => {
     const { cervejariaId, tapsEnabled } = request.operacao;
     if (!tapsEnabled) return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
     const { tapId } = request.params as { tapId: string };
@@ -232,7 +232,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     };
   });
 
-  app.delete('/taps/:tapId/chope', async (request, reply) => {
+  app.delete('/taps/:tapId/chope', { preHandler: [requirePermissao(app, 'taps.operate')] }, async (request, reply) => {
     const { cervejariaId, tapsEnabled } = request.operacao;
     if (!tapsEnabled) return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
     const { tapId } = request.params as { tapId: string };
@@ -415,7 +415,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     return cardapio;
   });
 
-  app.put('/cardapio', async (request, reply) => {
+  app.put('/cardapio', { preHandler: [requirePermissao(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { pontoVendaId } = pontoVendaQuery.parse(request.query);
     const body = z
@@ -443,7 +443,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     return cardapio;
   });
 
-  app.patch('/cardapio/preco', async (request, reply) => {
+  app.patch('/cardapio/preco', { preHandler: [requirePermissao(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { pontoVendaId } = pontoVendaQuery.parse(request.query);
     const body = z

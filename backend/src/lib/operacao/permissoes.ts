@@ -20,6 +20,17 @@ export const PERMISSOES_OPERACAO = [
   'dashboard.read',
   'event.dashboard.read',
   'reports.read',
+  'command.operate',
+  'command.read',
+  'kitchen.read',
+  'kitchen.operate',
+  'inventory.read',
+  'inventory.adjust',
+  'catalog.manage',
+  'clients.manage',
+  'taps.operate',
+  'agenda.manage',
+  'event.menu.manage',
 ] as const;
 
 export type PermissaoOperacao = (typeof PERMISSOES_OPERACAO)[number];
@@ -86,6 +97,13 @@ export function requirePermissaoOuDono(app: FastifyInstance, permissao: Permissa
   };
 }
 
+/** Keep legacy owner-only catalogue reads while allowing operational menu selection in permission mode. */
+export function requireDonoComPermissoesDesligadas(app: FastifyInstance) {
+  return async (request: FastifyRequest) => {
+    if (!permissoesIndividuaisAtivas()) return app.requireDono(request);
+  };
+}
+
 export function requireDonoAtual(app: FastifyInstance) {
   return async (request: FastifyRequest) => {
     const user = getAuthUser(request);
@@ -107,6 +125,25 @@ export function requireFechamentoComanda(app: FastifyInstance) {
     if (!body?.deixarPendente && (body?.pagamentos?.length ?? 0) > 0) permissions.push('payment.receive');
     return permissions;
   });
+}
+
+/** Reductions use the cancellation authority; increases and no-op edits use the launch authority. */
+export function requirePermissaoQuantidadeItem(app: FastifyInstance) {
+  return async (request: FastifyRequest) => {
+    if (!permissoesIndividuaisAtivas()) return;
+    const user = getAuthUser(request);
+    if (!user.cervejariaId) negar(app);
+    const { comandaId, itemId } = request.params as { comandaId: string; itemId: string };
+    const body = request.body as { quantidade?: number } | null;
+    const item = await prisma.itemComanda.findFirst({
+      where: { id: itemId, comandaId },
+      select: { quantidade: true },
+    });
+    const required: PermissaoOperacao = item && typeof body?.quantidade === 'number' && body.quantidade < item.quantidade
+      ? 'command.item.cancel'
+      : 'command.operate';
+    if (!(await usuarioPode(user, required))) negar(app);
+  };
 }
 
 export function requireFechamentoGrupo(app: FastifyInstance) {

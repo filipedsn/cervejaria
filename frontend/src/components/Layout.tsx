@@ -168,10 +168,11 @@ export function Layout() {
     ? pontoVendaQrParam!
     : operacao.pontosVenda[0]?.id;
 
-  const navItemsComandasOperacao = CAIXA_NAV_ITEMS.filter((item) => item.path === '/operacao/comandas');
+  const navItemsComandasOperacao = CAIXA_NAV_ITEMS.filter((item) => item.path === '/operacao/comandas'
+    && (isDono || usuario?.permissoesOperacao === undefined || usuario.permissoesOperacao.includes('command.read')));
   const navItemsCervejaria = getCervejariaNavItems({ isDono, permissoesOperacao: usuario?.permissoesOperacao, operationMode: operacao.operationMode });
   const navItemsComplementares = operacao.ativo
-    ? getComplementaryNavItems({ temCozinha: operacao.temCozinha, controlaEstoque: operacao.controlaEstoque })
+    ? getComplementaryNavItems({ temCozinha: operacao.temCozinha, controlaEstoque: operacao.controlaEstoque, isDono, permissoesOperacao: usuario?.permissoesOperacao })
     : [];
   const clientesIndex = navItemsCervejaria.findIndex((item) => item.path === '/clientes');
   const navItemsCervejariaOrdenados =
@@ -183,7 +184,7 @@ export function Layout() {
         ]
       : [...navItemsCervejaria, ...navItemsComplementares];
 
-  const navItemsOperacaoModo = getOperationalModeNavItems(operacao);
+  const navItemsOperacaoModo = getOperationalModeNavItems({ ...operacao, isDono, permissoesOperacao: usuario?.permissoesOperacao });
   const catalogoNavItem = navItemsOperacaoModo.find((item) => item.path === '/operacao/catalogo');
   const navItemsCervejariaComCatalogo = catalogoNavItem
     ? [

@@ -39,7 +39,7 @@ import { lockComandaItemsInTx, lockComandasInTx } from '../../lib/comanda-servic
 import { resolveClienteParaComanda, TelefoneConflitoError } from '../../lib/cliente-resolver.js';
 import { normalizePhone } from '../../lib/phone.js';
 import { assertCommandOccurrenceMatchesSession, cashOccurrenceContextEnabled } from '../../lib/operacao/contexto-ocorrencia.js';
-import { requireFechamentoGrupo, requirePermissao, requirePermissaoOuDono } from '../../lib/operacao/permissoes.js';
+import { requireFechamentoGrupo, requirePermissao, requirePermissaoOuDono, requirePermissaoQuantidadeItem } from '../../lib/operacao/permissoes.js';
 
 const itemSchema = z.object({
   produtoId: z.string().min(1),
@@ -103,7 +103,7 @@ const fecharGrupoSchema = z.object({
 });
 
 export async function comandasOperacaoRoutes(app: FastifyInstance) {
-  app.get('/', async (request) => {
+  app.get('/', { preHandler: [requirePermissao(app, 'command.read')] }, async (request) => {
     const { cervejariaId } = request.operacao;
     const { status, pontoVendaId, dia } = z
       .object({
@@ -326,7 +326,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     };
   });
 
-  app.get('/:id', async (request, reply) => {
+  app.get('/:id', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
 
@@ -339,7 +339,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     return resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
   });
 
-  app.patch('/:id/pedidos/:pedidoId/cliente-avisado', async (request, reply) => {
+  app.patch('/:id/pedidos/:pedidoId/cliente-avisado', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id: comandaId, pedidoId } = request.params as { id: string; pedidoId: string };
     const configuracao = request.operacao.effectiveSettings;
@@ -388,7 +388,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     return { clienteAvisadoEm: agora };
   });
 
-  app.patch('/:id/cliente', async (request, reply) => {
+  app.patch('/:id/cliente', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
     const body = clienteSchema.parse(request.body);
@@ -414,7 +414,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     return resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
   });
 
-  app.post('/', async (request, reply) => {
+  app.post('/', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
     const { cervejariaId, temCozinha, controlaEstoque, tapsEnabled } = request.operacao;
     const user = getAuthUser(request);
     const body = abrirComandaSchema.parse(request.body);
@@ -551,7 +551,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     return reply.status(201).send(resumo);
   });
 
-  app.post('/:id/pedidos', async (request, reply) => {
+  app.post('/:id/pedidos', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
     const { cervejariaId, temCozinha, controlaEstoque, tapsEnabled } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
@@ -651,7 +651,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     return result.comanda;
   });
 
-  app.patch('/:comandaId/itens/:itemId', async (request, reply) => {
+  app.patch('/:comandaId/itens/:itemId', { preHandler: [requirePermissaoQuantidadeItem(app)] }, async (request, reply) => {
     const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
     const user = getAuthUser(request);
     const { comandaId, itemId } = request.params as { comandaId: string; itemId: string };

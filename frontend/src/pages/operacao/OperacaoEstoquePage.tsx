@@ -24,7 +24,8 @@ function parseQuantidadeEstoque(value: string) {
 export function OperacaoEstoquePage() {
   const queryClient = useQueryClient();
   const { contexto, isLoading: isContextoLoading } = useOperacaoContexto();
-  const { isDono } = useAuth();
+  const { isDono, canPermission } = useAuth();
+  const podeMovimentar = canPermission('inventory.adjust');
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
 
   const [pontoVendaId, setPontoVendaId] = useState('');
@@ -244,7 +245,7 @@ export function OperacaoEstoquePage() {
                 <p className="text-sm font-semibold text-orange-700">Estoque baixo · restam {item.quantidade.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} {item.unidadeEstoque}</p>
               ) : null}
 
-              <div className="grid grid-cols-3 gap-2">
+              {podeMovimentar && <div className="grid grid-cols-3 gap-2">
                 <button type="button" className="touch-btn-primary touch-btn-sm" onClick={() => abrirEntrada(item)} data-audit="operacao-estoque-repor">
                   Repor
                 </button>
@@ -254,7 +255,7 @@ export function OperacaoEstoquePage() {
                 <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => abrirAjuste(item)} data-audit="operacao-estoque-ajustar" data-onboarding-target="operacao-adjust-stock">
                   Ajustar
                 </button>
-              </div>
+              </div>}
               {isDono && (
                 <button type="button" className="touch-btn-secondary touch-btn-sm w-full" onClick={() => abrirMinimo(item)} data-audit="operacao-estoque-minimo">
                   {item.estoqueMinimo === null ? 'Definir aviso de estoque baixo' : `Avisar quando chegar a ${item.estoqueMinimo} ${item.unidadeEstoque}`}

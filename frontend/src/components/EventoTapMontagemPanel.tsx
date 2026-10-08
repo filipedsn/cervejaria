@@ -6,6 +6,7 @@ import type { Produto, TapComChope, TapMontagemResponse } from '../types';
 import { isChopeConfiguravelNaTap } from '../types';
 import { Modal } from './Modal';
 import { Loading } from './Loading';
+import { useAuth } from '../contexts/AuthContext';
 
 type TapModalMode = 'menu' | 'trocar' | 'confirm-trocar';
 
@@ -121,6 +122,8 @@ export function EventoTapMontagemPanel({
   presentation?: 'inline' | 'modal';
   triggerClassName?: string;
 }) {
+  const { canPermission } = useAuth();
+  const canOperateTaps = canPermission('taps.operate');
   const queryClient = useQueryClient();
   const [selectedTap, setSelectedTap] = useState<TapComChope | null>(null);
   const [modalMode, setModalMode] = useState<TapModalMode>('menu');
@@ -250,9 +253,10 @@ export function EventoTapMontagemPanel({
       <TapEventoGrid
         taps={taps}
         variant={variant}
-        interactive={eventoAberto}
+        interactive={eventoAberto && canOperateTaps}
         onTapClick={openTap}
       />
+      {eventoAberto && !canOperateTaps && <p className="text-xs text-ink-muted">Você precisa da permissão “Montar e operar Taps” para alterar esta montagem.</p>}
     </>
   );
 

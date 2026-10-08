@@ -107,6 +107,7 @@ export function OperacaoComandaDetailPage() {
   });
   const caixaAberto = caixaData?.sessao?.status === 'ABERTO';
   const podeReceber = canPermission('payment.receive');
+  const podeOperarComanda = canPermission('command.operate');
   const podeCancelarComanda = canPermission('command.cancel');
   const podeCancelarItem = canPermission('command.item.cancel');
   const podeFecharComanda = canPermission('command.close');
@@ -527,7 +528,7 @@ export function OperacaoComandaDetailPage() {
 
       <div className="space-y-2">
         <h3 className="section-label">Consumo da comanda</h3>
-        {aberta && (
+        {aberta && podeOperarComanda && (
           <button
             type="button"
             className="touch-btn-primary w-full"

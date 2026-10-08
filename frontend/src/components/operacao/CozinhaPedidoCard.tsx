@@ -31,7 +31,7 @@ interface Props {
   mostrarFila?: boolean;
   variant?: 'operacional' | 'tv';
   disabled?: boolean;
-  onAvancar: (status: StatusPedido) => void;
+  onAvancar?: (status: StatusPedido) => void;
   onVoltar?: (status: StatusPedido) => void;
   podeCancelar?: boolean;
   onCancelar?: () => void;
@@ -143,7 +143,7 @@ export function CozinhaPedidoCard({
               Confirmar cancelamento
             </button>
           )}
-          {avanco && (
+          {avanco && onAvancar && (
             <button
               type="button"
               className="cozinha-tv-card-btn cozinha-tv-card-btn-primary"
@@ -242,7 +242,7 @@ export function CozinhaPedidoCard({
             Confirmar cancelamento
           </button>
         )}
-        {avanco && (
+        {avanco && onAvancar && (
           <button
             type="button"
             className="touch-btn-primary flex-1 touch-btn-sm"

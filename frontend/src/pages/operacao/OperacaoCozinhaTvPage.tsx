@@ -27,7 +27,11 @@ export function OperacaoCozinhaTvPage() {
     nome: string;
     quantidade: number;
   } | null>(null);
-  const { cervejaria, isDono } = useAuth();
+  const { cervejaria, canPermission } = useAuth();
+  const podeAvancarPreparo = canPermission('kitchen.operate');
+  const podeCancelarPedido = canPermission('kitchen.cancel') && canPermission('sale.refund');
+  const podeConfirmarCancelamento = canPermission('kitchen.cancel');
+  const podeCancelarItem = canPermission('command.item.cancel');
   const { contexto } = useOperacaoContexto();
   const avisoNaCozinha = contexto.whatsappPedidoProntoEnabled && contexto.whatsappPedidoProntoNaCozinha;
   const {
@@ -188,16 +192,16 @@ export function OperacaoCozinhaTvPage() {
               indice={indice}
               variant="tv"
               disabled={mudarStatus.isPending || removerItem.isPending || confirmarCancelamentoItem.isPending}
-              onAvancar={(status) => mudarStatus.mutate({ id: pedido.id, status })}
-              onVoltar={(status) => mudarStatus.mutate({ id: pedido.id, status })}
-              podeCancelar={isDono}
+              onAvancar={podeAvancarPreparo ? (status) => mudarStatus.mutate({ id: pedido.id, status }) : undefined}
+              onVoltar={podeAvancarPreparo ? (status) => mudarStatus.mutate({ id: pedido.id, status }) : undefined}
+              podeCancelar={podeCancelarPedido}
               onCancelar={() => {
                 setConfirmacaoCancelamento({ tipo: 'solicitar-pedido', pedido });
               }}
-              onConfirmarCancelamento={() => {
+              onConfirmarCancelamento={podeConfirmarCancelamento ? () => {
                 setConfirmacaoCancelamento({ tipo: 'confirmar-pedido', pedido });
-              }}
-              onCancelarItem={pedido.comanda.tipo === 'AVULSA' ? undefined : (itemId) => {
+              } : undefined}
+              onCancelarItem={pedido.comanda.tipo === 'AVULSA' || !podeCancelarItem ? undefined : (itemId) => {
                 const item = pedido.itens.find((linha) => linha.id === itemId);
                 if (!item) return;
                 if (item.quantidade > 1) {
@@ -207,7 +211,7 @@ export function OperacaoCozinhaTvPage() {
                   setConfirmacaoCancelamento({ tipo: 'cancelar-item', pedido, itemId, nome: item.nome });
                 }
               }}
-              onConfirmarCancelamentoItem={(itemId) => confirmarCancelamentoItem.mutate({ pedidoId: pedido.id, itemId })}
+              onConfirmarCancelamentoItem={podeConfirmarCancelamento ? (itemId) => confirmarCancelamentoItem.mutate({ pedidoId: pedido.id, itemId }) : undefined}
               onAvisarCliente={avisoNaCozinha ? () => {
                 const cliente = pedido.comanda.cliente;
                 if (!cliente?.telefone) return;

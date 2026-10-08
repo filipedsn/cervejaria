@@ -63,8 +63,8 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
   app.post('/', { preHandler: [requirePermissao(app, (request) => {
     const body = request.body as { desconto?: number } | null;
     return body?.desconto && body.desconto > 0
-      ? ['payment.receive', 'discount.apply']
-      : 'payment.receive';
+      ? ['command.operate', 'payment.receive', 'discount.apply']
+      : ['command.operate', 'payment.receive'];
   })] }, async (request, reply) => {
     try {
       const { cervejariaId, temCozinha, controlaEstoque, tapsEnabled } = request.operacao;

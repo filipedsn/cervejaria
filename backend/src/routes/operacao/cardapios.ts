@@ -12,6 +12,7 @@ import {
 import { operacaoUsaCardapio } from '../../lib/cardapio-toggle.js';
 import { emitToCervejaria } from '../../lib/realtime.js';
 import { listOpenEventsUsingCardapio } from '../../lib/cardapio-event-sync.js';
+import { requireDonoComPermissoesDesligadas, requirePermissaoOuDono } from '../../lib/operacao/permissoes.js';
 
 const itemCardapioSchema = z.object({
   produtoId: z.string().min(1),
@@ -26,7 +27,7 @@ const saveCardapioSchema = z.object({
 });
 
 export async function cardapiosOperacaoRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', app.requireDono);
+  app.addHook('preHandler', requireDonoComPermissoesDesligadas(app));
 
   app.addHook('preHandler', async (request, reply) => {
     const usa = await operacaoUsaCardapio(request.operacao.cervejariaId);
@@ -60,7 +61,7 @@ export async function cardapiosOperacaoRoutes(app: FastifyInstance) {
     return cardapio;
   });
 
-  app.post('/', async (request, reply) => {
+  app.post('/', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const body = saveCardapioSchema.parse(request.body);
 
@@ -79,7 +80,7 @@ export async function cardapiosOperacaoRoutes(app: FastifyInstance) {
     return reply.status(201).send(result);
   });
 
-  app.put('/:id', async (request, reply) => {
+  app.put('/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
     const body = saveCardapioSchema.parse(request.body);
@@ -104,7 +105,7 @@ export async function cardapiosOperacaoRoutes(app: FastifyInstance) {
     return result;
   });
 
-  app.patch('/:id/ativo', async (request, reply) => {
+  app.patch('/:id/ativo', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
     const { ativo } = z.object({ ativo: z.boolean() }).parse(request.body);
@@ -119,7 +120,7 @@ export async function cardapiosOperacaoRoutes(app: FastifyInstance) {
     return updated;
   });
 
-  app.delete('/:id', async (request, reply) => {
+  app.delete('/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
 

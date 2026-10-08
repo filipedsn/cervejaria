@@ -6,6 +6,7 @@ import { assertProdutoPodeExcluir } from '../lib/catalogo-utils.js';
 import { isBebidaChope, isVendaUnitaria, normalizePrecos, produtoFieldsForSave } from '../lib/produto-utils.js';
 import { listarOpcionaisProduto, substituirOpcionaisProduto } from '../lib/produto-opcionais.js';
 import { canonicalPdvQaActivationEnabled } from '../lib/canonical-pdv-operational-config.js';
+import { requirePermissaoOuDono } from '../lib/operacao/permissoes.js';
 
 const opcionaisSchema = z.object({
   opcionalIds: z.array(z.string().min(1)).max(100),
@@ -99,9 +100,9 @@ export async function produtosRoutes(app: FastifyInstance) {
 
   const opcionalCadastroSchema = z.object({ nome: z.string().trim().min(1).max(80), preco: z.number().min(0).max(9999), ativo: z.boolean().optional() });
   app.get('/opcionais', async (request) => { const user = getTenantUser(app, request); return prisma.opcional.findMany({ where: { cervejariaId: user.cervejariaId }, orderBy: { nome: 'asc' } }); });
-  app.post('/opcionais', { preHandler: [app.requireDono] }, async (request, reply) => { const user = getTenantUser(app, request); const body = opcionalCadastroSchema.parse(request.body); return reply.status(201).send(await prisma.opcional.create({ data: { cervejariaId: user.cervejariaId, nome: body.nome, preco: body.preco, ativo: body.ativo ?? true } })); });
-  app.put('/opcionais/:id', { preHandler: [app.requireDono] }, async (request) => { const body = opcionalCadastroSchema.partial().parse(request.body); return prisma.opcional.update({ where: { id: (request.params as { id: string }).id }, data: body }); });
-  app.delete('/opcionais/:id', { preHandler: [app.requireDono] }, async (request) => prisma.opcional.delete({ where: { id: (request.params as { id: string }).id } }));
+  app.post('/opcionais', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => { const user = getTenantUser(app, request); const body = opcionalCadastroSchema.parse(request.body); return reply.status(201).send(await prisma.opcional.create({ data: { cervejariaId: user.cervejariaId, nome: body.nome, preco: body.preco, ativo: body.ativo ?? true } })); });
+  app.put('/opcionais/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request) => { const body = opcionalCadastroSchema.partial().parse(request.body); return prisma.opcional.update({ where: { id: (request.params as { id: string }).id }, data: body }); });
+  app.delete('/opcionais/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request) => prisma.opcional.delete({ where: { id: (request.params as { id: string }).id } }));
 
   app.get('/', async (request) => {
     const user = getTenantUser(app, request);
@@ -133,7 +134,7 @@ export async function produtosRoutes(app: FastifyInstance) {
     return listarOpcionaisProduto(prisma, id);
   });
 
-  app.put('/:id/opcionais', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.put('/:id/opcionais', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = opcionaisSchema.parse(request.body);
@@ -142,7 +143,7 @@ export async function produtosRoutes(app: FastifyInstance) {
     return prisma.$transaction((tx) => substituirOpcionaisProduto(tx, id, body.opcionalIds));
   });
 
-  app.post('/', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.post('/', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const body = createProdutoSchema.parse(request.body);
     const formato = body.tipo === 'BEBIDA' ? (body.formato ?? 'CHOPE') : null;
@@ -173,7 +174,7 @@ export async function produtosRoutes(app: FastifyInstance) {
     return reply.status(201).send(produto);
   });
 
-  app.put('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.put('/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = updateProdutoSchema.parse(request.body);
@@ -229,7 +230,7 @@ export async function produtosRoutes(app: FastifyInstance) {
     return produto;
   });
 
-  app.patch('/:id/ativo', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.patch('/:id/ativo', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const { ativo } = z.object({ ativo: z.boolean() }).parse(request.body);
@@ -248,7 +249,7 @@ export async function produtosRoutes(app: FastifyInstance) {
     return produto;
   });
 
-  app.delete('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.delete('/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 

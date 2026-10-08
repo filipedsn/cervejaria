@@ -16,7 +16,10 @@ export function OperacaoCozinhaPage() {
   const [erroLocal, setErroLocal] = useState('');
   const [sucessoLocal, setSucessoLocal] = useState('');
   const [pedidoParaCancelar, setPedidoParaCancelar] = useState<PedidoCozinha | null>(null);
-  const { isDono, cervejaria } = useAuth();
+  const { cervejaria, canPermission } = useAuth();
+  const podeAvancarPreparo = canPermission('kitchen.operate');
+  const podeCancelarPedido = canPermission('kitchen.cancel') && canPermission('sale.refund');
+  const podeConfirmarCancelamento = canPermission('kitchen.cancel');
   const { contexto } = useOperacaoContexto();
   const avisoNaCozinha = contexto.whatsappPedidoProntoEnabled && contexto.whatsappPedidoProntoNaCozinha;
 
@@ -103,6 +106,7 @@ export function OperacaoCozinhaPage() {
 
       {erro && <div className="alert-error">{erro}</div>}
       {sucessoLocal && <div className="alert-success">{sucessoLocal}</div>}
+      {!podeAvancarPreparo && <p className="rounded-lg border border-line bg-surface-lighter px-3 py-2 text-sm text-ink-muted">Você pode consultar a fila, mas precisa da permissão “Avançar preparo e entrega” para alterar pedidos.</p>}
 
       {lista.length === 0 && (
         <EmptyState
@@ -118,23 +122,23 @@ export function OperacaoCozinhaPage() {
           indice={indice}
           mostrarFila={!verEntregues}
           disabled={mudarStatus.isPending || confirmarCancelamentoItem.isPending}
-          onAvancar={(status) => {
+          onAvancar={podeAvancarPreparo ? (status) => {
             setErroLocal('');
             setSucessoLocal('');
             mudarStatus.mutate(
               { id: pedido.id, status },
               { onError: () => setErroLocal('Não foi possível atualizar o pedido') },
             );
-          }}
-          onVoltar={(status) => {
+          } : undefined}
+          onVoltar={podeAvancarPreparo ? (status) => {
             setErroLocal('');
             setSucessoLocal('');
             mudarStatus.mutate(
               { id: pedido.id, status },
               { onError: () => setErroLocal('Não foi possível atualizar o pedido') },
             );
-          }}
-          podeCancelar={isDono}
+          } : undefined}
+          podeCancelar={podeCancelarPedido}
           onCancelar={() => {
             setErroLocal('');
             setSucessoLocal('');
@@ -151,13 +155,13 @@ export function OperacaoCozinhaPage() {
               },
             );
           }}
-          onConfirmarCancelamentoItem={(itemId) => {
+          onConfirmarCancelamentoItem={podeConfirmarCancelamento ? (itemId) => {
             setErroLocal('');
             confirmarCancelamentoItem.mutate(
               { pedidoId: pedido.id, itemId },
               { onError: () => setErroLocal('Não foi possível confirmar o cancelamento do item.') },
             );
-          }}
+          } : undefined}
           onAvisarCliente={avisoNaCozinha ? () => {
             const cliente = pedido.comanda.cliente;
             if (!cliente?.telefone) return;

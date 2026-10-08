@@ -32,6 +32,9 @@ export function ComandaDetailPage() {
   const queryClient = useQueryClient();
   const { evento } = useEvento();
   const { podeDarDescontoOperacao } = useAuth();
+  const canPermission = useAuth().canPermission;
+  const podeOperarComanda = canPermission('command.operate');
+  const podeCancelarItem = canPermission('command.item.cancel');
 
   const [showAddItem, setShowAddItem] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
@@ -383,7 +386,7 @@ export function ComandaDetailPage() {
       {/* Itens */}
       <div className="space-y-2">
         <h3 className="section-label">Itens</h3>
-        {isOpen && (
+        {isOpen && podeOperarComanda && (
           <button
             type="button"
             className="touch-btn-primary w-full"
@@ -413,7 +416,7 @@ export function ComandaDetailPage() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <span className="font-bold tabular-nums">{item.cancelamentoPendenteEm || item.canceladoEm ? '—' : formatCurrency(parseFloat(item.precoUnit) * item.quantidade)}</span>
-              {isOpen && !item.cancelamentoPendenteEm && !item.canceladoEm && (
+              {isOpen && podeCancelarItem && !item.cancelamentoPendenteEm && !item.canceladoEm && (
                 <button
                   type="button"
                   aria-label={`Remover ${item.produto.nome}`}

@@ -41,7 +41,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get('/', async (request) => {
+  app.get('/', { preHandler: [requirePermissao(app, 'kitchen.read')] }, async (request) => {
     const { cervejariaId } = request.operacao;
     const { incluirEntregues } = z
       .object({ incluirEntregues: z.coerce.boolean().default(false) })
@@ -71,7 +71,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
     const body = request.body as { status?: string } | null;
     return body?.status === 'CANCELAMENTO_PENDENTE'
       ? ['kitchen.cancel', 'sale.refund']
-      : body?.status === 'CANCELADO' ? 'kitchen.cancel' : [];
+      : body?.status === 'CANCELADO' ? 'kitchen.cancel' : 'kitchen.operate';
   })] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);

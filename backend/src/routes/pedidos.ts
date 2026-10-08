@@ -12,6 +12,7 @@ import {
 } from '../lib/comanda-service.js';
 import { registrarTransacao } from '../lib/transacao-log.js';
 import { isBebidaChope } from '../lib/produto-utils.js';
+import { requirePermissao } from '../lib/operacao/permissoes.js';
 
 const recusarSchema = z.object({
   motivo: z.string().min(1).max(300),
@@ -34,7 +35,7 @@ class PedidoConfirmacaoError extends Error {
 export async function pedidosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
-  app.get('/eventos/:eventoId/pedidos', async (request, reply) => {
+  app.get('/eventos/:eventoId/pedidos', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { eventoId } = request.params as { eventoId: string };
     const { status } = z
@@ -58,7 +59,7 @@ export async function pedidosRoutes(app: FastifyInstance) {
     return pedidos.map(serializePedido);
   });
 
-  app.post('/:id/confirmar', async (request, reply) => {
+  app.post('/:id/confirmar', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = confirmarSchema.parse(request.body ?? {});
@@ -182,7 +183,7 @@ export async function pedidosRoutes(app: FastifyInstance) {
     };
   });
 
-  app.post('/:id/recusar', async (request, reply) => {
+  app.post('/:id/recusar', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = recusarSchema.parse(request.body);

@@ -3,8 +3,10 @@ import { expect, test } from '@playwright/test';
 const permissions: string[] = [];
 const ownerPermissions = [
   'cash.open', 'cash.close', 'cash.values.read', 'cash.movement.write', 'payment.receive',
-  'debt.receive', 'command.close', 'discount.apply', 'command.cancel', 'kitchen.cancel',
-  'sale.refund', 'dashboard.read', 'event.dashboard.read', 'reports.read',
+  'debt.receive', 'command.close', 'discount.apply', 'command.item.cancel', 'command.cancel', 'kitchen.cancel',
+  'sale.refund', 'dashboard.read', 'event.dashboard.read', 'reports.read', 'command.read', 'command.operate',
+  'kitchen.read', 'kitchen.operate', 'inventory.read', 'inventory.adjust', 'catalog.manage', 'clients.manage',
+  'taps.operate', 'agenda.manage', 'event.menu.manage',
 ];
 
 test('carrega, altera, salva e reabre permissoes individuais da equipe', async ({ page }) => {
@@ -70,7 +72,14 @@ test('carrega, altera, salva e reabre permissoes individuais da equipe', async (
   await expect(page.getByText('Atendente QA')).toBeVisible();
   await expect(page.getByRole('checkbox', { name: 'Abrir caixa' }).last()).toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'Visualizar valores do caixa' }).last()).not.toBeChecked();
-  expect(writes).toEqual([['cash.open']]);
+  const readCommands = page.getByRole('checkbox', { name: 'Consultar comandas' }).last();
+  const operateCommands = page.getByRole('checkbox', { name: 'Abrir comandas e lançar itens' }).last();
+  await expect(readCommands).not.toBeChecked();
+  await expect(operateCommands).not.toBeChecked();
+  await readCommands.click();
+  await expect.poll(() => writes.at(-1)).toEqual(['cash.open', 'command.read']);
+  await expect(operateCommands).not.toBeChecked();
+  expect(writes).toEqual([['cash.open'], ['cash.open', 'command.read']]);
   expect(unexpected).toEqual([]);
   expect(errors).toEqual([]);
 });

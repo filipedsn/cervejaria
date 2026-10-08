@@ -217,15 +217,15 @@ export type NavItem = {
 /** Navegacao do modulo cervejaria. */
 export const NAV_ITEMS: NavItem[] = [
   { path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const },
-  { path: '/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
-  { path: '/clientes', label: 'Clientes', shortLabel: 'Clientes', Icon: IconUsers },
+  { path: '/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard, permissionOnly: 'command.read' as const },
+  { path: '/clientes', label: 'Clientes', shortLabel: 'Clientes', Icon: IconUsers, permissionOnly: 'clients.manage' as const },
   { path: '/dashboard', label: 'Dashboard', shortLabel: 'Dashboard', Icon: IconBarChart, permissionOnly: 'dashboard.read' as const },
   { path: '/configuracoes', label: 'Configurações', shortLabel: 'Config.', Icon: IconSettings, donoOnly: true as const },
 ];
 
 /** Navegacao operacional do estabelecimento, adicionada por capacidade atual. */
 export const NAV_ITEMS_OPERACAO: NavItem[] = [
-  { path: '/operacao/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard },
+  { path: '/operacao/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard, permissionOnly: 'command.read' as const },
   { path: '/operacao/catalogo', label: 'Cardápio', shortLabel: 'Cardápio', Icon: IconListMenu },
 ];
 
@@ -237,7 +237,7 @@ export function getCervejariaNavItems(contexto: {
   return NAV_ITEMS.filter(
     (item) =>
       (!('donoOnly' in item && item.donoOnly) || contexto.isDono) &&
-      (!('permissionOnly' in item && item.permissionOnly) || contexto.isDono || contexto.permissoesOperacao?.includes(item.permissionOnly) === true) &&
+      (!('permissionOnly' in item && item.permissionOnly) || contexto.isDono || contexto.permissoesOperacao === undefined || contexto.permissoesOperacao.includes(item.permissionOnly)) &&
       !(contexto.operationMode === 'CAIXA' && (item.path === '/eventos' || item.path === '/comandas')),
   );
 }
@@ -265,10 +265,13 @@ export function IconShoppingBag({ className = 'w-5 h-5', strokeWidth = 1.75 }: I
 export function getOperationalModeNavItems(contexto: {
   operationMode: 'CAIXA' | 'EVENTO' | null;
   cashRegisterEnabled: boolean;
+  isDono?: boolean;
+  permissoesOperacao?: string[];
 }) {
-  if (contexto.operationMode === 'CAIXA') return NAV_ITEMS_OPERACAO;
-  if (contexto.operationMode === 'EVENTO') return [NAV_ITEMS_OPERACAO[1]];
-  return [];
+  const items = contexto.operationMode === 'CAIXA'
+    ? NAV_ITEMS_OPERACAO
+    : contexto.operationMode === 'EVENTO' ? [NAV_ITEMS_OPERACAO[1]] : [];
+  return items.filter((item) => !item.permissionOnly || contexto.isDono || contexto.permissoesOperacao === undefined || contexto.permissoesOperacao.includes(item.permissionOnly));
 }
 
 type OperacaoNavContext = {
@@ -285,6 +288,7 @@ export const CAIXA_NAV_ITEMS: NavItem[] = [
     label: 'Cozinha',
     shortLabel: 'Cozinha',
     Icon: IconChefHat,
+    permissionOnly: 'kitchen.read' as const,
     somenteCozinha: true as const,
   },
   {
@@ -292,6 +296,7 @@ export const CAIXA_NAV_ITEMS: NavItem[] = [
     label: 'Estoque',
     shortLabel: 'Estoque',
     Icon: IconPackage,
+    permissionOnly: 'inventory.read' as const,
     somenteEstoque: true as const,
   },
   {
@@ -301,7 +306,7 @@ export const CAIXA_NAV_ITEMS: NavItem[] = [
     Icon: IconBarChart,
     permissionOnly: 'dashboard.read' as const,
   },
-  { path: '/operacao/catalogo', label: 'Cardápio', shortLabel: 'Cardápio', Icon: IconListMenu },
+  { path: '/operacao/catalogo', label: 'Cardápio', shortLabel: 'Cardápio', Icon: IconListMenu, permissionOnly: 'catalog.manage' as const },
   {
     path: '/operacao/configuracoes',
     label: 'Configurações',
@@ -317,7 +322,7 @@ export function getOperacaoNavItems(contexto: OperacaoNavFilterContext) {
   const items = CAIXA_NAV_ITEMS.filter(
     (item) =>
       (!('donoOnly' in item && item.donoOnly) || contexto.isDono) &&
-      (!('permissionOnly' in item && item.permissionOnly) || contexto.isDono || contexto.permissoesOperacao?.includes(item.permissionOnly) === true) &&
+      (!('permissionOnly' in item && item.permissionOnly) || contexto.isDono || contexto.permissoesOperacao === undefined || contexto.permissoesOperacao.includes(item.permissionOnly)) &&
       (!('somenteCozinha' in item && item.somenteCozinha) || contexto.temCozinha) &&
       (!('somenteEstoque' in item && item.somenteEstoque) || contexto.controlaEstoque),
   );
@@ -329,9 +334,10 @@ export function getOperacaoNavItems(contexto: OperacaoNavFilterContext) {
   );
 }
 
-export function getComplementaryNavItems(contexto: Pick<OperacaoNavContext, 'temCozinha' | 'controlaEstoque'>) {
+export function getComplementaryNavItems(contexto: OperacaoNavContext & { isDono: boolean; permissoesOperacao?: string[] }) {
   return CAIXA_NAV_ITEMS.filter((item) =>
-    (item.somenteCozinha && contexto.temCozinha) || (item.somenteEstoque && contexto.controlaEstoque),
+    ((!item.permissionOnly || contexto.isDono || contexto.permissoesOperacao === undefined || contexto.permissoesOperacao.includes(item.permissionOnly)) &&
+      ((item.somenteCozinha && contexto.temCozinha) || (item.somenteEstoque && contexto.controlaEstoque))),
   );
 }
 

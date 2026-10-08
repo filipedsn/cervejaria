@@ -396,6 +396,9 @@ export async function updateItemQuantidadeComandaOperacao(params: {
       if (deltaAtual < 0 && !(await usuarioPode(params.user, 'command.item.cancel', {}, tx))) {
         throw Object.assign(new Error('VocÃª nÃ£o tem permissÃ£o para cancelar itens'), { statusCode: 403 });
       }
+      if (deltaAtual > 0 && !(await usuarioPode(params.user, 'command.operate', {}, tx))) {
+        throw Object.assign(new Error('VocÃª nÃ£o tem permissÃ£o para aumentar itens'), { statusCode: 403 });
+      }
       if (deltaAtual > 0 && occurrenceScoped) {
         const comandaAtual = itemAtual.pedidoCozinha.comanda;
         const pontoVendaId = comandaAtual.pontoVendaId;

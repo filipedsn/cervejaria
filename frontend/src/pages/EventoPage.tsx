@@ -493,7 +493,8 @@ export function EventoPage() {
 
   const { evento, setEvento, setTrailer, trailerId } = useEvento();
 
-  const { isDono, cervejaria } = useAuth();
+  const { isDono, cervejaria, canPermission } = useAuth();
+  const podeConfigurarCardapioEvento = canPermission('event.menu.manage');
   const usaCardapio = cervejaria?.usaCardapio ?? false;
 
   const [showNew, setShowNew] = useState(false);
@@ -1026,7 +1027,9 @@ export function EventoPage() {
 
           <EventoFormFields form={form} setForm={setForm} trailers={trailers ?? []} />
 
-          {usaCardapio && <EventoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />}
+          {usaCardapio && podeConfigurarCardapioEvento
+            ? <EventoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />
+            : usaCardapio && <p className="rounded-lg border border-line bg-surface-lighter px-3 py-2 text-sm text-ink-muted">Este evento usará o cardápio padrão. A permissão “Configurar cardápio do evento” libera a seleção de produtos ou cardápio próprio.</p>}
 
           <button
             type="submit"

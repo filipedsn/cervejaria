@@ -189,6 +189,13 @@ function RequireDono() {
   return <Outlet />;
 }
 
+function RequirePermissionRoute({ permission, fallback }: { permission: string; fallback: string }) {
+  const { isLoading, canPermission } = useAuth();
+  if (isLoading) return <Loading fullScreen />;
+  if (!canPermission(permission)) return <Navigate to={fallback} replace />;
+  return <Outlet />;
+}
+
 function RequireDonoOperacao() {
   const { isDono, isLoading, hasPermission } = useAuth();
   const location = useLocation();
@@ -270,13 +277,14 @@ function RankingPeriodoTvEntry() {
 }
 
 function CozinhaTvShell({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading, isAdmin } = useAuth();
+  const { isAuthenticated, isLoading, isAdmin, canPermission } = useAuth();
   const { contexto, isLoading: qLoading } = useOperacaoContexto();
 
   if (isLoading || qLoading) return <Loading fullScreen />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (isAdmin) return <Navigate to="/admin/cervejarias" replace />;
   if (!contexto.ativo || !contexto.temCozinha) return <Navigate to="/operacao/comandas" replace />;
+  if (!canPermission('kitchen.read')) return <Navigate to="/operacao/caixa" replace />;
 
   return <div className="qt-tv qt-cozinha-tv">{children}</div>;
 }
@@ -362,23 +370,23 @@ const router = createBrowserRouter([
                           {
                             element: <RequireCaixaMode />,
                             children: [
-                              { path: 'comandas', element: <OperacaoComandasPage /> },
+                              { path: 'comandas', element: <RequirePermissionRoute permission="command.read" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoComandasPage /> }] },
                               { path: 'contas-pendentes', element: <OperacaoContasPendentesPage /> },
-                              { path: 'comandas/nova', element: <OperacaoNovaComandaPage /> },
-                              { path: 'comandas/venda-avulsa', element: <OperacaoVendaAvulsaPage /> },
-                              { path: 'comandas/:id', element: <OperacaoComandaDetailPage /> },
+                              { path: 'comandas/nova', element: <RequirePermissionRoute permission="command.operate" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoNovaComandaPage /> }] },
+                              { path: 'comandas/venda-avulsa', element: <RequirePermissionRoute permission="command.operate" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoVendaAvulsaPage /> }] },
+                              { path: 'comandas/:id', element: <RequirePermissionRoute permission="command.read" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoComandaDetailPage /> }] },
                               { path: 'caixa', element: <OperacaoCaixaPage /> },
                             ],
                           },
                           {
                             element: <RequireEstoqueOperacao />,
-                            children: [{ path: 'estoque', element: <OperacaoEstoquePage /> }],
+                            children: [{ path: 'estoque', element: <RequirePermissionRoute permission="inventory.read" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoEstoquePage /> }] }],
                           },
                           {
                             element: <RequireCozinhaOperacao />,
-                            children: [{ path: 'cozinha', element: <OperacaoCozinhaPage /> }],
+                            children: [{ path: 'cozinha', element: <RequirePermissionRoute permission="kitchen.read" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoCozinhaPage /> }] }],
                           },
-                          { path: 'catalogo', element: <OperacaoCatalogoPage /> },
+                          { path: 'catalogo', element: <RequirePermissionRoute permission="catalog.manage" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoCatalogoPage /> }] },
                           {
                             element: <RequireDonoOperacao />,
                             children: [
@@ -409,19 +417,19 @@ const router = createBrowserRouter([
                       },
                       { path: 'ranking/serie/:serieId', element: <RankingSeriePage /> },
                       { path: 'ranking/periodo/:eventoId', element: <RankingPeriodoPage /> },
-                      { path: 'clientes', element: <ClientesPage /> },
-                      { path: 'clientes/novo', element: <NovoClientePage /> },
-                      { path: 'clientes/:id', element: <ClienteDetailPage /> },
+                      { path: 'clientes', element: <RequirePermissionRoute permission="clients.manage" fallback="/eventos" />, children: [{ index: true, element: <ClientesPage /> }] },
+                      { path: 'clientes/novo', element: <RequirePermissionRoute permission="clients.manage" fallback="/eventos" />, children: [{ index: true, element: <NovoClientePage /> }] },
+                      { path: 'clientes/:id', element: <RequirePermissionRoute permission="clients.manage" fallback="/eventos" />, children: [{ index: true, element: <ClienteDetailPage /> }] },
                       {
                         element: <RequireEventoMode />,
                         children: [
                           {
                             element: <RequireTrailerContext />,
                             children: [
-                              { path: 'comandas', element: <ComandasPage /> },
-                              { path: 'comandas/nova', element: <NovaComandaPage /> },
-                              { path: 'comandas/venda-avulsa', element: <VendaAvulsaPage /> },
-                              { path: 'comandas/:id', element: <ComandaDetailPage /> },
+                      { path: 'comandas', element: <RequirePermissionRoute permission="command.read" fallback="/eventos" />, children: [{ index: true, element: <ComandasPage /> }] },
+                              { path: 'comandas/nova', element: <RequirePermissionRoute permission="command.operate" fallback="/eventos" />, children: [{ index: true, element: <NovaComandaPage /> }] },
+                              { path: 'comandas/venda-avulsa', element: <RequirePermissionRoute permission="command.operate" fallback="/eventos" />, children: [{ index: true, element: <VendaAvulsaPage /> }] },
+                              { path: 'comandas/:id', element: <RequirePermissionRoute permission="command.read" fallback="/eventos" />, children: [{ index: true, element: <ComandaDetailPage /> }] },
                               { path: 'ranking/:eventoId?', element: <RankingPage /> },
                             ],
                           },

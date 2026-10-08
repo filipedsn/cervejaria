@@ -64,7 +64,14 @@ try {
     const migrationFile = path.join(migrationRoot, entry.name, 'migration.sql');
     try { await access(migrationFile); }
     catch (error) {
-      if (error.code === 'ENOENT') throw new Error(`Incomplete migration directory found; refusing to ignore it: ${entry.name}`);
+      if (error.code === 'ENOENT') {
+        const contents = await readdir(path.join(migrationRoot, entry.name));
+        if (contents.length === 0) {
+          console.log(`QA_IGNORED_EMPTY_MIGRATION_DIRECTORY=${entry.name}; source=selected-Git-revision-only`);
+          continue;
+        }
+        throw new Error(`Incomplete migration directory found; refusing to ignore it: ${entry.name}`);
+      }
       throw error;
     }
     if (!trackedMigrations.has(entry.name)) console.log(`QA_IGNORED_UNTRACKED_MIGRATION=${entry.name}; source=selected-Git-revision-only`);

@@ -68,7 +68,7 @@ const descontoSchema = z.object({
 export async function comandasRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
-  app.get('/evento/:eventoId', async (request, reply) => {
+  app.get('/evento/:eventoId', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
     const user = getAuthUser(request);
     const { eventoId } = request.params as { eventoId: string };
     const { status } = request.query as { status?: 'ABERTA' | 'FECHADA' };
@@ -88,7 +88,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post('/:id/itens', async (request, reply) => {
+  app.post('/:id/itens', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
     const body = addItemSchema.parse(request.body);
@@ -156,7 +156,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     return reply.status(201).send(updated);
   });
 
-  app.post('/:id/itens/lancar', async (request, reply) => {
+  app.post('/:id/itens/lancar', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
     const body = addItemsSchema.parse(request.body);
@@ -330,7 +330,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     return result.comanda;
   });
 
-  app.get('/:id', async (request, reply) => {
+  app.get('/:id', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
 
@@ -346,7 +346,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     return comanda;
   });
 
-  app.post('/', async (request, reply) => {
+  app.post('/', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
     const user = getAuthUser(request);
     const body = createComandaSchema.parse(request.body);
 
