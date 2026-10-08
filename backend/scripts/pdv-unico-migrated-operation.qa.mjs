@@ -56,6 +56,9 @@ async function settle(cookie, commandId) {
   assert.equal((await db.comanda.findUniqueOrThrow({ where: { id: commandId } })).status, 'FECHADA');
   return Number(row.total);
 }
+async function stockBalances(tenantId) {
+  return plain(await db.inventoryBalance.findMany({ where: { cervejariaId: tenantId }, select: { produtoId: true, quantidade: true }, orderBy: { produtoId: 'asc' } }));
+}
 async function closePriorQaAttemptSessions() {
   for (const tenant of DEV_PDV_TENANT_ALLOWLIST) {
     const sessions = await db.sessaoCaixaOperacao.findMany({
@@ -203,7 +206,7 @@ try {
         assert.equal(session.ocorrenciaId ?? null, withOccurrence ? occurrence.id : null);
         const menuView = await request(owner.cookie, 'GET', `/api/operacao/caixa/cardapio?pontoVendaId=${point.id}`);
         assert.equal(Number(menuView.produtos.find(p => p.id === product.id && p.volumeMl === 0).precoUnit), price);
-        const stockBefore = plain(await db.inventoryBalance.findMany({ where: { cervejariaId: tenant.id }, orderBy: { id: 'asc' } }));
+        const stockBefore = await stockBalances(tenant.id);
         const command = await request(owner.cookie, 'POST', '/api/operacao/comandas', { pontoVendaId: point.id, tipo: 'APELIDO', identificador: `${runId}-${withOccurrence}` }, 201);
         createdIds.push(command.id);
         await request(owner.cookie, 'POST', `/api/operacao/comandas/${command.id}/pedidos`, { itens: [{ produtoId: product.id, quantidade: 1 }] }, 201);
@@ -214,11 +217,11 @@ try {
         let paid = price;
         const cancel = await request(owner.cookie, 'POST', '/api/operacao/comandas', { pontoVendaId: point.id, tipo: 'APELIDO', identificador: `${runId}-cancel-${withOccurrence}` }, 201);
         createdIds.push(cancel.id);
-        const stockBeforeCancel = plain(await db.inventoryBalance.findMany({ where: { cervejariaId: tenant.id }, orderBy: { id: 'asc' } }));
+        const stockBeforeCancel = await stockBalances(tenant.id);
         await request(owner.cookie, 'POST', `/api/operacao/comandas/${cancel.id}/pedidos`, { itens: [{ produtoId: product.id, quantidade: 1 }] }, 201);
         await request(owner.cookie, 'POST', `/api/operacao/comandas/${cancel.id}/cancelar`, {});
-        assert.deepEqual(plain(await db.inventoryBalance.findMany({ where: { cervejariaId: tenant.id }, orderBy: { id: 'asc' } })), stockBeforeCancel, 'cancellation conserves stock');
-        if (!config.inventoryEnabled) assert.deepEqual(plain(await db.inventoryBalance.findMany({ where: { cervejariaId: tenant.id }, orderBy: { id: 'asc' } })), stockBefore, 'disabled inventory remains untouched');
+        assert.deepEqual(await stockBalances(tenant.id), stockBeforeCancel, 'cancellation conserves stock quantities');
+        if (!config.inventoryEnabled) assert.deepEqual(await stockBalances(tenant.id), stockBefore, 'disabled inventory remains untouched');
         const portalBase = `/api/public/cervejarias/${company.slug}/pontos-venda/${point.id}`;
         await request(null, 'GET', `${portalBase}/cardapio`, undefined, 401);
         const openedPortal = await app.inject({ method: 'POST', url: `${portalBase}/comandas`, payload: { nome: 'QA representative portal', telefone: `119${randomBytes(4).readUInt32BE().toString().padStart(8, '0').slice(0, 8)}` } });
