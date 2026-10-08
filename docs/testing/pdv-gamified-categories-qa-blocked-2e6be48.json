@@ -1,0 +1,12 @@
+﻿{
+  "result": "BLOCKED",
+  "selectedCommit": "2e6be486cf86f6d06df5481db82a66759d3b213b",
+  "runner": "qa:pdv-current-git-snapshot",
+  "failingGate": "qa:pdv-commerce-disposable",
+  "diagnosis": "Query and edit succeeded on the true pre-category schema/client, but authenticated operational product creation returned 500. The write query returned default scalar columns including the absent additive category ID.",
+  "error": "legacy operation product creation expected HTTP 201, received 500",
+  "correction": "Generic and operational product create calls now apply a per-query omit for categoriaPdvId whenever the catalog feature flag is off. The legacy API proof checks both create and edit routes.",
+  "prodAccessUsed": "NO",
+  "sharedDevAccess": "NO",
+  "supersededBy": "c3df5bf383fe75705c0a891e97e457064112856b"
+}

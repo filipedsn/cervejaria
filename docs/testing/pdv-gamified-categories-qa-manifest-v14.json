@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 14,
+  "categoryCorrectionCommit": "2b00dbf15933ac81b8a97b7771ef66173b7f65d9",
+  "typePrerequisiteCommit": "730d5077e5398f30e294a073c24704f0926e9533",
+  "uiTestStabilization": "isolated-create-edit-and-stable-price-selector",
+  "purpose": "Exact Git snapshot certification; disposable PostgreSQL only; no PROD/shared DEV access. Legacy category-off query, create, and edit paths are tested against a pre-category schema and client.",
+  "layers": [
+    "SQL limited",
+    "API/PostgreSQL real migrations and authenticated Fastify.inject",
+    "UI with APIs explicitly mocked",
+    "representative not run"
+  ],
+  "candidates": [
+    {
+      "path": "backend/package.json",
+      "sha256": "9583f0e3b85c4d051fd7e138736c229c2782f742cc0d8e272c8841709c9cbbdf"
+    },
+    {
+      "path": "backend/prisma/schema.prisma",
+      "sha256": "fdfecaca2e8d42d1e745b3bea634f2e2e90690f47b57ceb5742dfefcc8b22e57"
+    },
+    {
+      "path": "backend/prisma/migrations/20261008120000_pdv_gamified_categories/migration.sql",
+      "sha256": "8ac02358e9b2823b40fca791d8b06bcb30933291bbdcdacd157d36c53cf4ac43"
+    },
+    {
+      "path": "backend/prisma/transformations/pdv-gamified-categories-v1.sql",
+      "sha256": "f0d5e777a66fea5692bb2d5bd6254c0bbe99f2613d9a2e90fd4a066ba4962f2d"
+    },
+    {
+      "path": "backend/prisma/transformations/rollback-pdv-gamified-categories-v1.sql",
+      "sha256": "0df4e90ad0edc1b7614a7fa493a3eccde16116eb1ae72b24a384886615ff2708"
+    },
+    {
+      "path": "backend/src/lib/prisma.ts",
+      "sha256": "309fb4d4bb8538accbaf527e7f5da63311a6fa26728753fcec3d66cf8276747c"
+    },
+    {
+      "path": "backend/src/routes/operacao/produtos.ts",
+      "sha256": "191975ca5ea2f38beb3b5693e9c4a9931b230a52abf711fb7cbb996da9d5758f"
+    },
+    {
+      "path": "backend/src/routes/produtos.ts",
+      "sha256": "2fb28ed4a830a41749afbfd6271945daa70bd3dd0c79a6f73c7641971609caba"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs",
+      "sha256": "01b93da8513e74ab55a72fa90f8fb872fc7119bde29b19404b2a56403c509e45"
+    },
+    {
+      "path": "backend/scripts/pdv76-precolumn-api.isolated.test.mjs",
+      "sha256": "032daba147faf209ee327e40a71a6aa035d94add169cb891de24cd4724c64f90"
+    },
+    {
+      "path": "backend/scripts/pdv-gamified-category-api.isolated.test.mjs",
+      "sha256": "09e0a8462dd30221d4672ac62bb4d23d8b6d598bba0c768c7192ab2fd7b0c8c1"
+    },
+    {
+      "path": "backend/scripts/run-pdv-gamified-category-api-qa.mjs",
+      "sha256": "8b3617fcd7aad573c1a9485898f2d8760a5b479ee16dd5ebff94132b4d9ad12d"
+    },
+    {
+      "path": "backend/scripts/run-pdv-gamified-category-qa.mjs",
+      "sha256": "0f5944c07d341e8b8b09098c28ff55349ddb253517cd137235bdd52118fbec79"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+      "sha256": "0c26abb8b401c28bff4eca502bf59e51dcdea655eca19ea3e8fc51debe977fae"
+    },
+    {
+      "path": "frontend/src/lib/operacao.ts",
+      "sha256": "b193d8b2a61c06e8e78472521734d4e675dec53fcd1dfc3ce1210efe3280c54d"
+    },
+    {
+      "path": "e2e/pdv-gamified-categories.spec.ts",
+      "sha256": "bd99a4af2da4a4b608432aa64c3e405ee81632cc0da02689e3ccc89818c33de1"
+    }
+  ],
+  "legacySchemaCompatibilityCorrection": "c3df5bf383fe75705c0a891e97e457064112856b",
+  "manifestSha256": "0787f28f0123a0b4c4dc3958faaf81ad4dddce37c5c4c01ee80376f79ff6747b"
+}
