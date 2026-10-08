@@ -51,6 +51,7 @@ test('cadastra/edita categoria gamificada e seleciona essa categoria no produto 
   await page.getByLabel('Nome').fill('Doces artesanais');
   await page.getByRole('button', { name: 'Salvar categoria' }).click();
   await expect(page.getByRole('button', { name: 'Editar Doces artesanais' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: 'Editar Doces artesanais' }).click();
   const editCategoryDialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Editar categoria' }) });
   const gamifiedFlag = editCategoryDialog.getByRole('checkbox', { name: /Categoria gamificada/ });

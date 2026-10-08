@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "reviewedCommit": "0f8c23b663d85950bf546e7cdbdb3e652d3f36db",
+  "result": "BLOCKED",
+  "scope": "Exact Git snapshot; disposable QA; UI APIs explicitly mocked.",
+  "gates": [
+    {
+      "name": "backend-build",
+      "result": "PASS"
+    },
+    {
+      "name": "frontend-build",
+      "result": "PASS"
+    },
+    {
+      "name": "category-ui-mocked",
+      "result": "FAIL",
+      "details": "The first create onSuccess invalidation callback could still close the edit modal; the row appeared before the async callback completed. Screenshot showed the edit dialog closed, while both categories remained."
+    },
+    {
+      "name": "category-sql",
+      "result": "NOT_RUN"
+    },
+    {
+      "name": "category-api-postgresql",
+      "result": "NOT_RUN"
+    }
+  ],
+  "publication": {
+    "commit": "0f8c23b663d85950bf546e7cdbdb3e652d3f36db",
+    "pushed": false,
+    "PROD_DEPLOY_REQUIRED": "No"
+  },
+  "remediation": "Wait until the creation dialog closes before reopening it for edit; preserve the failing screenshot outside the snapshot cleanup.",
+  "pending": [
+    "Repeat all category gates.",
+    "Three product decisions remain pending."
+  ]
+}

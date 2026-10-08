@@ -968,3 +968,8 @@ Os builds backend/frontend passaram no snapshot exato. A UI mockada falhou antes
 ### Execucao bloqueada intermediaria (3a265d6)
 
 Builds backend/frontend passaram; a UI simulada ainda falhou ao editar categoria, com desmontagem do checkbox antes da acao. A tentativa foi registrada separadamente em `pdv-gamified-categories-qa-evidence-blocked-3a265d6.json`. O proximo ensaio delimita o checkbox ao dialogo de edicao, espera visibilidade e preserva os artefatos Playwright no diretorio temporario para diagnostico. SQL e API/PostgreSQL nao iniciaram.
+
+
+### Execucao bloqueada intermediaria (0f8c23b)
+
+Builds passaram. O screenshot da UI confirmou uma corrida no proprio teste: a linha da categoria aparecia antes de o callback ass?ncrono de criacao terminar de fechar o dialogo; o callback antigo fechava a janela aberta para edicao. O teste agora aguarda o dialogo inicial fechar antes de clicar em Editar. Evidencia: `pdv-gamified-categories-qa-evidence-blocked-0f8c23b.json`. SQL e API/PostgreSQL ainda nao iniciaram.
