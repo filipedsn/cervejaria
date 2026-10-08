@@ -1,0 +1,12 @@
+﻿{
+  "result": "BLOCKED",
+  "selectedCommit": "78ff04d918f127c1bf053fb6200d6109550c8b7d",
+  "runner": "qa:pdv-current-git-snapshot",
+  "failingGate": "qa:pdv-commerce-disposable",
+  "diagnosis": "Applying a per-query category omit replaced the old-schema omit for prepararEmPedidoSeparado, so Prisma still returned the absent kitchen field during product creation.",
+  "error": "legacy operation product creation expected HTTP 201, received 500",
+  "correction": "Both generic and operational product creates now combine category ID and independent-kitchen field omissions according to their independent feature flags.",
+  "prodAccessUsed": "NO",
+  "sharedDevAccess": "NO",
+  "supersededBy": "998906aff40035e3dc29e7f3ae2574f71cbb7739"
+}
