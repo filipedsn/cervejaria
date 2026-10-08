@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "reviewedCommit": "3a265d6d02d2c1bd52a2c3d5fa8723b5ba48ca9b",
+  "result": "BLOCKED",
+  "scope": "Exact Git snapshot; disposable workspace and explicitly mocked UI APIs only.",
+  "gates": [
+    {
+      "name": "git-snapshot-materialization",
+      "result": "PASS",
+      "trackedBlobs": 1175
+    },
+    {
+      "name": "backend-build",
+      "result": "PASS"
+    },
+    {
+      "name": "frontend-build",
+      "result": "PASS",
+      "note": "Existing bundle-size warning."
+    },
+    {
+      "name": "category-ui-mocked",
+      "result": "FAIL",
+      "details": "The edit dialog checkbox detached during interaction despite prefers-reduced-motion; UI gate timed out at checkbox.check."
+    },
+    {
+      "name": "category-sql",
+      "result": "NOT_RUN"
+    },
+    {
+      "name": "category-api-postgresql",
+      "result": "NOT_RUN"
+    }
+  ],
+  "publication": {
+    "commit": "3a265d6d02d2c1bd52a2c3d5fa8723b5ba48ca9b",
+    "pushed": false,
+    "PROD_DEPLOY_REQUIRED": "No"
+  },
+  "remediation": "Scope checkbox to the edit-category dialog and wait for it to be visible/checked; preserve Playwright artifacts under the system temp directory for diagnosis.",
+  "pending": [
+    "Complete all category gates.",
+    "Three product decisions remain pending."
+  ]
+}

@@ -963,3 +963,8 @@ O snapshot exato passou no build backend e bloqueou no build frontend por cinco 
 ### Execucao bloqueada intermediaria (72067e3)
 
 Os builds backend/frontend passaram no snapshot exato. A UI mockada falhou antes da gravacao: a animacao slide-up tornava o botao de salvar instavel e o elemento era desmontado durante o clique. O ensaio agora usa prefers-reduced-motion para remover a animacao desta interacao automatizada. SQL e API/PostgreSQL nao iniciaram porque o runner parou no gate de UI. Evidencia: `pdv-gamified-categories-qa-evidence-blocked-72067e3.json`.
+
+
+### Execucao bloqueada intermediaria (3a265d6)
+
+Builds backend/frontend passaram; a UI simulada ainda falhou ao editar categoria, com desmontagem do checkbox antes da acao. A tentativa foi registrada separadamente em `pdv-gamified-categories-qa-evidence-blocked-3a265d6.json`. O proximo ensaio delimita o checkbox ao dialogo de edicao, espera visibilidade e preserva os artefatos Playwright no diretorio temporario para diagnostico. SQL e API/PostgreSQL nao iniciaram.

@@ -207,7 +207,7 @@ try {
     }
     if (!uiReady) throw new Error('Snapshot Vite did not become ready for mocked category UI E2E.');
     const uiEnv = { ...env, E2E_SKIP_SERVER: '1', E2E_BASE_URL: uiUrl };
-    run(process.execPath, [path.join(snapshotRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.config.ts', 'e2e/pdv-gamified-categories.spec.ts', '--project=chromium', '--no-deps', '--reporter=line', `--output=${path.join(tempRoot, 'category-ui-playwright')}`], { cwd: snapshotRoot, env: uiEnv, stdio: 'inherit' });
+    run(process.execPath, [path.join(snapshotRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.config.ts', 'e2e/pdv-gamified-categories.spec.ts', '--project=chromium', '--no-deps', '--reporter=line', `--output=${path.join(os.tmpdir(), `pdv-category-ui-playwright-${runId}`)}`], { cwd: snapshotRoot, env: uiEnv, stdio: 'inherit' });
     console.log(`PDV_GIT_QA_UI_MOCKED=PASS; commit=${selectedCommit}; baseURL=${uiUrl}`);
   } finally {
     vite.kill();
