@@ -1,4 +1,5 @@
 import { prisma } from './prisma.js';
+import { bindResolvedPdvTenant, tenantPdvActivation } from './pdv-tenant-activation.js';
 
 export type CanonicalPdvOperationalSettings = {
   source: 'CANONICAL_PDV';
@@ -35,7 +36,9 @@ export class CanonicalPdvConfigurationError extends Error {
  * Temporary opt-in used only by the owned disposable QA runner. Invalid QA
  * activation fails closed; with the flag absent, no additive table is read.
  */
-export function canonicalPdvQaActivationEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function canonicalPdvQaActivationEnabled(env: NodeJS.ProcessEnv = process.env, tenantId?: string): boolean {
+  const selected = tenantPdvActivation(tenantId, env);
+  if (selected !== undefined) return selected;
   if (env.PDV_CANONICAL_CONFIG_QA !== '1') return false;
 
   let target: URL;
@@ -93,7 +96,8 @@ export async function readCanonicalPdvOperationalSettingsIfEnabled(
   tenantId: string,
   db: CanonicalPdvClient = prisma,
 ): Promise<CanonicalPdvOperationalSettings | null> {
-  if (!canonicalPdvQaActivationEnabled()) return null;
+  bindResolvedPdvTenant(tenantId);
+  if (!canonicalPdvQaActivationEnabled(process.env, tenantId)) return null;
   const points = await db.pontoVenda.findMany({
     where: { cervejariaId: tenantId },
     orderBy: { createdAt: 'asc' },

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../prisma.js';
 import type { Prisma } from '@prisma/client';
 import { getAuthUser, type JwtPayload } from '../../types/auth.js';
+import { tenantPdvActivation } from '../pdv-tenant-activation.js';
 
 export const PERMISSOES_OPERACAO = [
   'cash.open',
@@ -40,7 +41,7 @@ export const permissoesOperacaoSchema = z.array(z.enum(PERMISSOES_OPERACAO)).max
 
 /** Enables the canonical permission list only after the additive migration is installed. */
 export function permissoesIndividuaisAtivas(): boolean {
-  return process.env.PDV_INDIVIDUAL_PERMISSIONS_ENABLED === '1';
+  return tenantPdvActivation() ?? process.env.PDV_INDIVIDUAL_PERMISSIONS_ENABLED === '1';
 }
 
 function negar(app: FastifyInstance, message = 'Você não tem permissão para esta ação'): never {

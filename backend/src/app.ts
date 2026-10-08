@@ -1,4 +1,5 @@
 import Fastify, { type FastifyBaseLogger } from 'fastify';
+import { registerPdvTenantContext } from './lib/pdv-tenant-activation.js';
 import { CanonicalPdvConfigurationError } from './lib/canonical-pdv-operational-config.js';
 
 import { ZodError } from 'zod';
@@ -145,6 +146,7 @@ export async function buildApp() {
   const app = Fastify<HttpServer, IncomingMessage, ServerResponse<IncomingMessage>, FastifyBaseLogger>({
     loggerInstance: createLogger(),
   });
+  registerPdvTenantContext(app);
 
   await app.register(helmet, {
 

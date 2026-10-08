@@ -32,11 +32,11 @@ try {
     const points = await db.pontoVenda.findMany({ where: { cervejariaId: target.id }, select: { id: true } });
     const trailers = await db.trailer.findMany({ where: { cervejariaId: target.id }, select: { id: true } });
     if (points.length > 1 || (points.length === 0 && trailers.length !== 1) || trailers.length > 1) throw new Error(`${target.label}: canonical PDV decision required; refusing to merge or choose automatically.`);
-    await stage(target, 'business', () => runPdvBusinessMigration({ db, companyId: target.id, runId: `${runId}-${target.id}-business` }));
+    if (!process.argv.includes('--kitchen')) await stage(target, 'business', () => runPdvBusinessMigration({ db, companyId: target.id, runId: `${runId}-${target.id}-business` }));
     const pointRows = await db.pontoVenda.findMany({ where: { cervejariaId: target.id }, select: { id: true } });
     const pointId = pointRows[0]?.id ?? trailers[0].id;
-    await stage(target, 'catalog', () => runPdvCatalogMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-catalog` }));
-    await stage(target, 'kitchen-preparation', () => runPdvKitchenOrderContextPreparation({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-kitchen-preparation` }));
+    if (!process.argv.includes('--kitchen')) await stage(target, 'catalog', () => runPdvCatalogMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-catalog` }));
+    if (!process.argv.includes('--business-catalog')) await stage(target, 'kitchen-preparation', () => runPdvKitchenOrderContextPreparation({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-kitchen-preparation` }));
   }
   process.stdout.write(`${JSON.stringify({ status: 'COMPLETED', qaDatabase: 'cervejaria_qa_pdv_unico', order: ['source-schema-migrations', 'restore-source-photo', 'minimum-migrations-through-20261004150000', 'business', 'catalog', 'kitchen-preparation', 'dependent-and-remaining-migrations', 'taps', 'sessions', 'finance', 'commerce', 'canonical-category-transform', 'replays-and-reconciliation'], report })}\n`);
 } finally { await db.$disconnect(); }

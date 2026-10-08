@@ -1,17 +1,20 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { appendFile, cp, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
+import { executeCutoverCore, validateQaCutoverEnvironment, scopeCategorySql, DEV_PDV_TENANT_ALLOWLIST } from './pdv-unico-dev-cutover-core.mjs';
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(backendRoot, '..');
 const photoPath = process.env.PDV_REPRESENTATIVE_PHOTO_FILE;
+const tenantIds = (process.env.PDV_CUTOVER_TENANTS ?? '').split(',').filter(Boolean);
+assert.deepEqual([...tenantIds].sort(), DEV_PDV_TENANT_ALLOWLIST.map(t => t.id).sort(), 'representative certification requires the explicit two-tenant allowlist');
 if (!photoPath) throw new Error('PDV_REPRESENTATIVE_PHOTO_FILE is required.');
 const photoBytes = await readFile(photoPath);
 const photoHash = createHash('sha256').update(photoBytes).digest('hex');
@@ -61,12 +64,14 @@ await writeFile(targetSchemaPath, withClientOutput(currentSchemaText, targetClie
 
 let containerId;
 let created = false;
+let completed = false;
 const phaseRows = [];
 const generatedClientRoots = [];
 const childEnv = () => {
   const env = { ...process.env };
   for (const key of Object.keys(env)) if (key === 'DIRECT_URL' || key === 'PDV_CANONICAL_CONFIG_QA' || /_DATABASE_URL$/.test(key) || /^PROD/i.test(key)) delete env[key];
   Object.assign(env, { NODE_ENV: 'test', PDV_ISOLATED_QA: '1', PDV_QA_RUN_ID: runId, PDV_QA_CONTAINER: containerName, QA_DATABASE_URL: databaseUrl, DATABASE_URL: databaseUrl });
+  env.PDV_SENTINEL_BASELINE = path.join(tempRoot, 'unselected-baseline.json');
   const inheritedRoots = JSON.parse(env.PDV_GIT_QA_ALLOWED_ROOTS ?? '[]');
   env.PDV_GIT_QA_ALLOWED_ROOTS = JSON.stringify([...new Set([...inheritedRoots, ...generatedClientRoots])]);
   return env;
@@ -107,8 +112,12 @@ try {
   generatedClientRoots.push(sourceClientDir, precommerceClientDir, targetClientDir);
   await mkdir(migrationsDir, { recursive: true });
   const migrationRoot = path.join(backendRoot, 'prisma/migrations');
-  const migrationNames = (await readdir(migrationRoot, { withFileTypes: true }))
-    .filter((entry) => entry.isDirectory() && existsSync(path.join(migrationRoot, entry.name, 'migration.sql'))).map((entry) => entry.name).sort();
+  const migrationEntries = (await readdir(migrationRoot, { withFileTypes: true })).filter(entry => entry.isDirectory());
+  for (const entry of migrationEntries) if (!existsSync(path.join(migrationRoot, entry.name, 'migration.sql'))) throw new Error(`Incomplete migration directory: ${entry.name}`);
+  const migrationNames = migrationEntries.map(entry => entry.name).sort();
+  const tracked = spawnSync('git', ['ls-tree', '-r', '--name-only', process.env.PDV_GIT_QA_COMMIT ?? 'HEAD', '--', 'backend/prisma/migrations'], { cwd: repoRoot, encoding: 'utf8', windowsHide: true });
+  if (tracked.status !== 0) throw new Error('Cannot verify tracked migrations.');
+  for (const name of migrationNames) if (!tracked.stdout.split(/\r?\n/).includes(`backend/prisma/migrations/${name}/migration.sql`)) throw new Error(`Untracked migration rejected: ${name}`);
   const sourceBaselineName = '20260930150000_company_pix_key';
   const selectedNames = migrationNames.filter((name) => name <= '20261004150000_pdv_finance_session_link');
   for (const name of migrationNames.filter((item) => item <= sourceBaselineName)) await cp(path.join(migrationRoot, name), path.join(migrationsDir, name), { recursive: true });
@@ -148,6 +157,16 @@ try {
     return { tenants: rankingBefore.snapshots.map(({ tenant, eventCount }) => ({ tenant, eventCount })) };
   });
 
+  // Add an outside-allowlist tenant only after recovery comparison of the original photo.
+  run(['--import', 'tsx', 'scripts/pdv-unico-unselected-sentinel.qa.mjs', 'seed'], { PDV_QA_PRISMA_CLIENT: sourceClientDir });
+  const qaPreflight = JSON.parse(run(['--import', 'tsx', 'scripts/pdv-unico-sequence-inspect.qa.mjs', 'preflight'], { PDV_QA_PRISMA_CLIENT: sourceClientDir }).trim().split(/\r?\n/).at(-1));
+  const target = validateQaCutoverEnvironment(childEnv(), { verified: true, runId, containerName });
+  let representative;
+  const apiClientEnv = { PDV_QA_PRISMA_CLIENT: precommerceClientDir, TEMP: os.tmpdir(), TMP: os.tmpdir() };
+  const kernel = await executeCutoverCore({ target, tenantIds, runId, preflight: qaPreflight,
+    receipt: row => appendFile(path.join(tempRoot, 'cutover-receipts.jsonl'), JSON.stringify(row) + '\n'),
+    operations: {
+    'minimal-prerequisite-migrations': async () => {
   for (const name of selectedNames.filter((item) => item > sourceBaselineName)) await cp(path.join(migrationRoot, name), path.join(migrationsDir, name), { recursive: true });
   const deploymentSchema = currentSchemaText.replace('provider = "prisma-client-js"', 'provider = "prisma-client-js"');
   await writeFile(targetSchemaPath, deploymentSchema);
@@ -156,21 +175,38 @@ try {
     const output = run(['--import', 'tsx', 'scripts/pdv-unico-sequence-inspect.qa.mjs', 'minimum'], { PDV_QA_PRISMA_CLIENT: targetClientDir });
     return { ...JSON.parse(output.trim().split(/\r?\n/).at(-1)), includedMigrationFolders: selectedNames.length };
   });
-  const apiClientEnv = { PDV_QA_PRISMA_CLIENT: precommerceClientDir, TEMP: os.tmpdir(), TMP: os.tmpdir() };
+  return { status: 'PASS' };
+    },
+    'business-catalog-transformations': async () => {
   await phase('business-catalog-and-kitchen-preparation-on-precommerce-client', async () => {
-    const output = run(['--import', 'tsx', 'scripts/pdv-unico-precommerce-preparation.mjs'], apiClientEnv);
+    const output = run(['--import', 'tsx', 'scripts/pdv-unico-precommerce-preparation.mjs', '--business-catalog'], apiClientEnv);
     const record = JSON.parse(output.trim().split(/\r?\n/).at(-1));
     assert.equal(record.status, 'COMPLETED');
     return { tenantPhases: record.report };
   });
+  return { status: 'PASS' };
+    },
+    'kitchen-context-preparation': async () => {
+      await phase('kitchen-context-preparation', async () => {
+        const output = run(['--import', 'tsx', 'scripts/pdv-unico-precommerce-preparation.mjs', '--kitchen'], apiClientEnv);
+        const result = JSON.parse(output.trim().split(/\r?\n/).at(-1));
+        assert.equal(result.status, 'COMPLETED');
+        return { tenantPhases: result.report };
+      });
+      return { status: 'PASS' };
+    },
+    'dependent-migrations-with-original-preflight': async () => {
   for (const name of migrationNames.filter((item) => item > '20261004150000_pdv_finance_session_link')) await cp(path.join(migrationRoot, name), path.join(migrationsDir, name), { recursive: true });
   await phase('dependent-and-remaining-migrations-with-original-preflight', async () => {
     run([cli, 'migrate', 'deploy', '--schema', targetSchemaPath], { DATABASE_URL: databaseUrl });
     const output = run(['--import', 'tsx', 'scripts/pdv-unico-sequence-inspect.qa.mjs', 'dependent'], { PDV_QA_PRISMA_CLIENT: targetClientDir });
     return JSON.parse(output.trim().split(/\r?\n/).at(-1));
   });
+  return { status: 'PASS' };
+    },
+    'remaining-tenant-transformations-and-replays': async () => {
   await phase('canonical-category-transformation', async () => {
-    const sql = await readFile(path.join(backendRoot, 'prisma/transformations/pdv-gamified-categories-v1.sql'));
+    const sql = scopeCategorySql(await readFile(path.join(backendRoot, 'prisma/transformations/pdv-gamified-categories-v1.sql'), 'utf8'), tenantIds);
     const result = spawnSync('docker', ['exec', '-i', containerId, 'psql', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'cervejaria_qa_pdv_unico'], { input: sql, encoding: 'utf8', windowsHide: true, maxBuffer: 8 * 1024 * 1024 });
     if (result.status !== 0) throw new Error(`Canonical category transformation failed in isolated QA: ${(result.stderr || result.stdout).slice(-3000)}`);
     return { transform: 'categoria-historica-v2', stdout: result.stdout.trim().split(/\r?\n/).slice(-6) };
@@ -186,7 +222,7 @@ try {
   const tenantTransformationsStarted = performance.now();
   const representativeOutput = run(['--import', 'tsx', 'scripts/pdv-unico-representative-qa.isolated.test.mjs'], representativeEnv);
   const representativeJson = representativeOutput.slice(representativeOutput.lastIndexOf('{\n  "aggregateStatus"'));
-  const representative = JSON.parse(representativeJson);
+  representative = JSON.parse(representativeJson);
   assert.equal(representative.aggregateStatus, 'COMPLETED');
   const tenantTransformationsDurationMs = Math.round(performance.now() - tenantTransformationsStarted);
   phaseRows.push({
@@ -197,13 +233,26 @@ try {
     immutableComparisons: representative.immutableComparisons,
     activationReadiness: representative.activationReadiness,
   });
+  return { status: 'PASS' };
+    },
+    'diagnostics-and-integrated-reconciliation': async () => {
   await phase('post-replay-historical-ranking-verification', async () => {
     const output = run(['--import', 'tsx', 'scripts/pdv-unico-ranking-snapshot.qa.mjs'], { PDV_QA_PRISMA_CLIENT: targetClientDir });
     const postCommerceRanking = JSON.parse(output.trim().split(/\r?\n/).at(-1));
     assert.deepEqual(postCommerceRanking.snapshots, rankingBefore.snapshots, 'historical Chope rankings remain identical after all transformations and replays');
     return { identicalToSource: true, tenants: postCommerceRanking.snapshots.map(({ tenant, eventCount }) => ({ tenant, eventCount })) };
   });
-  const report = { status: 'COMPLETED', startedAt: runnerStartedAt, elapsedMs: Math.round(performance.now() - runnerStarted), photoSha256: photoHash, sourceSchemaCommit, phases: phaseRows };
+  return { status: 'PASS', tenantResults: representative.tenantResults };
+    },
+    'per-tenant-activation': async () => {
+      const result = await phase('tenant-activation-and-authenticated-operation', async () => {
+        const output = run(['--import', 'tsx', 'scripts/pdv-unico-migrated-operation.qa.mjs'], { PDV_QA_PRISMA_CLIENT: targetClientDir, PDV_CANONICAL_TENANTS: tenantIds.join(','), PDV_REPRESENTATIVE_PHOTO_FILE: photoPath, NODE_ENV: 'development', PDV_UNLISTED_QA_TENANT: `qa-unselected-${runId}`, PDV_SENTINEL_BASELINE: path.join(tempRoot, 'unselected-baseline.json') });
+        return JSON.parse(output.trim().split(/\r?\n/).at(-1));
+      });
+      return { status: 'PASS', ...result };
+    },
+  }});
+  const report = { status: 'COMPLETED', startedAt: runnerStartedAt, elapsedMs: Math.round(performance.now() - runnerStarted), photoSha256: photoHash, sourceSchemaCommit, kernel, phases: phaseRows };
   const reportPath = process.env.PDV_SEQUENCE_REPORT_FILE;
   if (reportPath) {
     const resolvedReport = path.resolve(reportPath);
@@ -211,8 +260,15 @@ try {
     await writeFile(resolvedReport, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
   }
   process.stdout.write(`${JSON.stringify(report)}\n`);
+  completed = true;
 } finally {
-  if (created && containerId) {
+  const retain = !completed && process.env.PDV_QA_KEEP_BLOCKED === '1';
+  if (retain && created) {
+    const resumePath = path.join(tempRoot, 'qa-operation-resume.json');
+    await writeFile(resumePath, JSON.stringify({ containerId, containerName, runId, tempRoot, environment: { ...childEnv(), PDV_QA_PRISMA_CLIENT: targetClientDir, PDV_CANONICAL_TENANTS: tenantIds.join(','), PDV_REPRESENTATIVE_PHOTO_FILE: photoPath, PDV_UNLISTED_QA_TENANT: `qa-unselected-${runId}`, NODE_ENV: 'development' } }), { flag: 'wx' });
+    process.stdout.write(`PDV_QA_BLOCKED_RESUME_FILE=${resumePath}\n`);
+  }
+  if (!retain && created && containerId) {
     const ownership = spawnSync('docker', ['inspect', '-f', '{{.Id}}|{{ index .Config.Labels "codex.purpose" }}|{{ index .Config.Labels "codex.run" }}', containerId], { encoding: 'utf8', windowsHide: true });
     if (ownership.status !== 0 || ownership.stdout.trim() !== `${containerId}|pdv-unico-sequenced-disposable-qa|${runId}`) throw new Error('Refusing to stop a QA container with mismatched ownership.');
     const stopped = spawnSync('docker', ['stop', containerId], { encoding: 'utf8', windowsHide: true });
@@ -220,7 +276,7 @@ try {
   }
   const resolved = path.resolve(tempRoot);
   if (!resolved.startsWith(path.resolve(os.tmpdir()) + path.sep) || !path.basename(resolved).startsWith(`tap76-sequenced-${runId}-`)) throw new Error('Unsafe QA temp cleanup path.');
-  await rm(resolved, { recursive: true, force: true });
+  if (!retain) await rm(resolved, { recursive: true, force: true });
 }
 
 async function selectPort() {

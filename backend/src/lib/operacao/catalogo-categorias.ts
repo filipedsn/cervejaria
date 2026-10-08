@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { tenantPdvActivation } from '../pdv-tenant-activation.js';
 
 /** Normalization only enforces identity; the display name is never rewritten. */
 export function normalizarNomeCategoria(value: string): string {
@@ -13,5 +14,5 @@ export const categoriaPdvInputSchema = z.object({
 
 /** Disabled by default so legacy requests never query the additive catalog. */
 export function catalogoCategoriasCanonicoAtivo(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.PDV_GAMIFIED_CATEGORY_CATALOG === '1';
+  return tenantPdvActivation(undefined, env) ?? env.PDV_GAMIFIED_CATEGORY_CATALOG === '1';
 }

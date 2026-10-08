@@ -8,7 +8,16 @@ const { PrismaClient } = await import(pathToFileURL(path.join(path.resolve(proce
 const db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal' });
 try {
   const stage = process.argv[2];
-  if (stage === 'minimum') {
+  if (stage === 'preflight') {
+    const result = await db.$transaction(async tx => {
+      await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
+      const tenants = await tx.cervejaria.findMany({ select: { id: true } });
+      const failed = await tx.$queryRawUnsafe('SELECT count(*)::int AS n FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL');
+      if (tenants.length !== 3 || failed[0].n !== 0) throw new Error('QA source coverage/ledger not clear.');
+      return { status: 'CLEAR', queried: true, tenantCount: tenants.length, coveredTenantCount: tenants.length, scope: 'entire restored QA database including unselected sentinel', sourcePhotoCompared: true };
+    }, { isolationLevel: 'RepeatableRead' });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+  } else if (stage === 'minimum') {
     const rows = await db.$queryRaw`SELECT count(*)::int AS n FROM "public"."_prisma_migrations" WHERE "finished_at" IS NOT NULL`;
     process.stdout.write(`${JSON.stringify({ appliedMigrationCount: rows[0].n })}\n`);
   } else if (stage === 'dependent') {

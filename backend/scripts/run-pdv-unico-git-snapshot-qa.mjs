@@ -30,11 +30,15 @@ const backendSnapshot = path.join(snapshotRoot, 'backend');
 const auditFile = path.join(tempRoot, 'module-origins.jsonl');
 const auditHook = path.join(tempRoot, 'pdv-import-origin-guard.mjs');
 const evidencePath = process.argv.find((value) => value.startsWith('--evidence-out='))?.slice('--evidence-out='.length);
+const cutover = process.argv.includes('--cutover');
 const normalizedSha256 = (value) => createHash('sha256').update(Buffer.from(value.toString('utf8').replaceAll('\r\n', '\n'))).digest('hex');
 const byteSha256 = (value) => createHash('sha256').update(value).digest('hex');
 const git = (args, options = {}) => execFileSync('git', args, { cwd: repoRoot, ...options });
+const measuredCommands = [];
 const run = (command, args, options = {}) => {
+  const started = performance.now();
   const result = spawnSync(command, args, { windowsHide: true, ...options });
+  measuredCommands.push({ command: args.filter(arg => !arg.includes('node_modules')).join(' '), cwd: path.relative(snapshotRoot, options.cwd ?? snapshotRoot), durationMs: Math.round(performance.now() - started), exitCode: result.status });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${command} ${args.join(' ')} exited ${result.status ?? 'unknown'}`);
   return result;
@@ -263,7 +267,10 @@ try {
   syntheticExitCode = synthetic.status ?? 1;
   console.log(`PDV_GIT_QA_SYNTHETIC=${syntheticExitCode === 0 ? 'PASS' : 'BLOCKED'}; exitCode=${syntheticExitCode}`);
   if (env.PDV_REPRESENTATIVE_PHOTO_FILE) {
-    const representative = spawnSync(process.execPath, [npmCli, 'run', 'qa:pdv-representative'], { cwd: backendSnapshot, env, stdio: 'inherit', windowsHide: true });
+    const representativeArgs = cutover
+      ? ['scripts/run-pdv-unico-dev-cutover-plan.mjs', '--profile=qa', '--apply', '--tenant=cmr9yis3c0000hvu00q9fe7y1', '--tenant=cmsry9xrn0000hvlgopjxy0oo']
+      : [npmCli, 'run', 'qa:pdv-representative'];
+    const representative = spawnSync(process.execPath, representativeArgs, { cwd: backendSnapshot, env, stdio: 'inherit', windowsHide: true });
     if (representative.error) throw representative.error;
     representativeExitCode = representative.status ?? 1;
     console.log(`PDV_GIT_QA_REPRESENTATIVE=${representativeExitCode === 0 ? 'PASS' : 'BLOCKED'}; exitCode=${representativeExitCode}`);
@@ -308,6 +315,7 @@ try {
     materializedTrackedBlobCount: materializedBlobCount,
     packageLockSha256: lockHash,
     nodeVersion: process.version,
+    measuredCommands,
     generatedCandidateManifest: {
       baselineCommit: generatedManifest.baseline.commit,
       manifestSha256: generatedManifest.manifestSha256,
