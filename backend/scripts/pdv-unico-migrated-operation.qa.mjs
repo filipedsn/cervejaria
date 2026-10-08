@@ -31,6 +31,7 @@ const io = setupSocketIO(app, createServer());
 const results = [];
 const credentials = [];
 const createdIds = [];
+let finalEvidence;
 async function user(tenantId, role) {
   const password = randomBytes(24).toString('base64url');
   const row = await db.usuario.create({ data: { id: `${runId}-${role}-${tenantId}`, cervejariaId: tenantId, nome: `QA ${role}`, email: `${runId}-${role}-${tenantId}@example.invalid`, senhaHash: await bcrypt.hash(password, 10), papel: role, permissoesOperacao: [] } });
@@ -67,7 +68,22 @@ try {
   assert.equal(legacy.configuration.plannedOperationsEnabled, true, 'unselected tenant retains EVENTO mode');
   assert.equal(legacy.enablements.cashMode, false);
   assert.ok(!JSON.stringify(legacy).includes('CANONICAL_PDV'), 'unselected tenant retains legacy source');
-  await request(unlistedOwner.cookie, 'GET', '/api/operacao/contexto', undefined, 404);
+  const legacyContext = await request(unlistedOwner.cookie, 'GET', '/api/operacao/contexto');
+  assert.ok(JSON.stringify(legacyContext).includes('LEGACY'));
+  assert.ok(!JSON.stringify(legacyContext).includes('CANONICAL_PDV'));
+  await request(unlistedOwner.cookie, 'GET', '/api/operacao/produtos');
+  if (process.env.PDV_SENTINEL_CREDENTIAL_FILE) {
+    const account = JSON.parse(await readFile(process.env.PDV_SENTINEL_CREDENTIAL_FILE, 'utf8'));
+    const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: account.email, senha: account.password } });
+    assert.equal(login.statusCode, 200, 'existing unselected attendant login');
+    const header = login.headers['set-cookie'];
+    const cookie = (Array.isArray(header) ? header[0] : header).split(';')[0];
+    const staffContext = await request(cookie, 'GET', '/api/operacao/contexto');
+    assert.ok(JSON.stringify(staffContext).includes('LEGACY'));
+    await request(cookie, 'GET', '/api/operacao/produtos', undefined, 403);
+    assert.equal(await db.pontoVenda.count({ where: { cervejariaId: unlisted } }), 2);
+    assert.equal(await db.trailer.count({ where: { cervejariaId: unlisted } }), 2);
+  }
   for (const tenant of DEV_PDV_TENANT_ALLOWLIST) {
     process.env.PDV_CANONICAL_TENANTS = tenant.id;
     const { readCanonicalPdvOperationalSettingsIfEnabled } = await import('../src/lib/canonical-pdv-operational-config.ts');
@@ -84,7 +100,7 @@ try {
     const profile = await request(owner.cookie, 'GET', '/api/operacao/contexto');
     assert.ok(JSON.stringify(profile).includes('CANONICAL_PDV'), 'selected tenant uses its canonical contract');
     // Historical open sessions and commands are preserved: use a future operational date.
-    const date = new Date(); date.setUTCDate(date.getUTCDate() + 30);
+    const date = new Date(); date.setUTCDate(date.getUTCDate() + Number(process.env.PDV_OPERATION_DAY_OFFSET ?? 30));
     const day = date.toISOString().slice(0, 10);
     const originalDate = Date;
     globalThis.Date = class extends originalDate { constructor(...args) { super(...(args.length ? args : [`${day}T18:00:00.000Z`])); } static now() { return new originalDate(`${day}T18:00:00.000Z`).getTime(); } };
@@ -107,6 +123,7 @@ try {
       let independent = 'DISABLED_EXPECTED_REFUSAL';
       let refund = 'DISABLED_EXPECTED_REFUSAL';
       let volume = 'DISABLED_EXPECTED_REFUSAL';
+      let originalKitchen = 'DISABLED_EXPECTED_REFUSAL';
       for (const withOccurrence of [false, true]) {
         const session = await request(owner.cookie, 'POST', '/api/operacao/caixa/abrir', { pontoVendaId: point.id, trocoInicial: 0, cardapioId: menu.id, ...(withOccurrence ? { ocorrenciaId: occurrence.id } : {}) }, 201);
         sessionIds.push(session.id);
@@ -162,12 +179,20 @@ try {
         } else await request(owner.cookie, 'GET', `/api/operacao/caixa/taps?pontoVendaId=${point.id}`, undefined, 404);
         if (!config.kitchenEnabled) await request(owner.cookie, 'GET', `/api/operacao/cozinha?pontoVendaId=${point.id}`, undefined, 404);
         if (config.kitchenEnabled && withOccurrence) {
+          const prepared = menu.produtos.find(row => row.produto.ativo && row.produto.exigePreparo && row.volumeMl === 0);
+          assert.ok(prepared, 'enabled kitchen has an original migrated menu preparation product');
+          const originalCommand = await request(owner.cookie, 'POST', '/api/operacao/comandas', { pontoVendaId: point.id, tipo: 'APELIDO', identificador: `${runId}-original-kitchen`, itens: [{ produtoId: prepared.produtoId, quantidade: 1 }] }, 201);
+          createdIds.push(originalCommand.id);
+          const originalItem = await db.itemComanda.findFirstOrThrow({ where: { comandaId: originalCommand.id } });
+          assert.equal(Number(originalItem.precoUnit), Number(prepared.precoUnit));
+          paid += await settle(owner.cookie, originalCommand.id);
+          originalKitchen = 'PASS';
           // Additional marked QA lines prove independent preparation/refund without altering historical products.
           const fixture = await db.produto.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, nome: `${runId} independent preparation`, categoria: product.categoria, categoriaPdvId: product.categoriaPdvId, formato: 'OUTRO', exigePreparo: true, prepararEmPedidoSeparado: true, controlaEstoque: true } });
           createdIds.push(fixture.id);
           await db.cardapioProduto.create({ data: { cardapioId: menu.id, produtoId: fixture.id, cervejariaId: tenant.id, pontoVendaId: point.id, volumeMl: 0, precoUnit: 1 } });
           await db.sessaoCaixaProdutoOperacao.create({ data: { sessaoCaixaId: session.id, produtoId: fixture.id, volumeMl: 0, precoUnit: 1 } });
-          await db.inventoryBalance.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, produtoId: fixture.id, quantidade: 20 } });
+          await request(owner.cookie, 'POST', '/api/operacao/estoque/entrada', { pontoVendaId: point.id, produtoId: fixture.id, quantidade: 20, observacao: runId }, 201);
           const independentCommand = await request(owner.cookie, 'POST', '/api/operacao/comandas', { pontoVendaId: point.id, tipo: 'APELIDO', identificador: `${runId}-independent`, itens: [{ produtoId: fixture.id, quantidade: 1 }, { produtoId: fixture.id, quantidade: 1 }] }, 201);
           createdIds.push(independentCommand.id);
           const orders = await db.pedidoOperacao.findMany({ where: { comandaId: independentCommand.id }, include: { itensComanda: true } });
@@ -186,9 +211,10 @@ try {
         }
         await request(owner.cookie, 'POST', '/api/operacao/caixa/fechar', { pontoVendaId: point.id, contadoDinheiro: 0, contadoPix: paid, contadoCartaoDebito: 0, contadoCartaoCredito: 0 });
       }
-      results.push({ tenant: tenant.name, status: 'PASS', durationMs: Math.round(performance.now() - started), flags: plain(config), openingWithAndWithoutOccurrence: 'PASS', menuAndOriginalPrice: 'PASS', commandPaymentAndCashClose: 'PASS', cancellationStock: 'PASS', portal: 'PASS', permissionsSameSession: 'PASS', independentKitchen: independent, refund, tapsAndVolume: volume, sessions: sessionIds });
+      results.push({ tenant: tenant.name, status: 'PASS', durationMs: Math.round(performance.now() - started), flags: plain(config), openingWithAndWithoutOccurrence: 'PASS', menuAndOriginalPrice: 'PASS', commandPaymentAndCashClose: 'PASS', cancellationStock: 'PASS', portal: 'PASS', permissionsSameSession: 'PASS', originalKitchen, independentKitchen: independent, refund, tapsAndVolume: volume, sessions: sessionIds });
     } finally { globalThis.Date = originalDate; }
   }
   assert.deepEqual(await historical(), historyBefore, 'exact 605 original payments remain untouched by QA operation');
-  console.log(JSON.stringify({ status: 'PASS', runId, results, unlistedIsolation: { status: 'PASS', tenantId: unlisted, dataCompared: baseline.map(t => t.model), legacyMode: 'EVENTO', canonicalCategories: 0, canonicalConfigurations: 0 }, originalPayments: { count: historicalIds.length, beforeSha256: digest(historyBefore), afterSha256: digest(await historical()), status: 'PASS' }, qaOnlyUserIds: credentials, qaOnlyCreatedIds: createdIds }));
+  finalEvidence = { status: 'PASS', runId, results, unlistedIsolation: { status: 'PASS', tenantId: unlisted, dataCompared: baseline.map(t => t.model), legacyMode: 'EVENTO', canonicalCategories: 0, canonicalConfigurations: 0 }, originalPayments: { count: historicalIds.length, beforeSha256: digest(historyBefore), afterSha256: digest(await historical()), status: 'PASS' }, qaOnlyUserIds: credentials, qaOnlyCreatedIds: createdIds };
 } finally { await new Promise(resolve => io.close(resolve)); await app.close(); await prisma.$disconnect(); await db.$disconnect(); }
+console.log(JSON.stringify(finalEvidence));

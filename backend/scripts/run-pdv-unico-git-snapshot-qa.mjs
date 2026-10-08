@@ -31,6 +31,9 @@ const auditFile = path.join(tempRoot, 'module-origins.jsonl');
 const auditHook = path.join(tempRoot, 'pdv-import-origin-guard.mjs');
 const evidencePath = process.argv.find((value) => value.startsWith('--evidence-out='))?.slice('--evidence-out='.length);
 const cutover = process.argv.includes('--cutover');
+const focus = process.argv.find(value => value.startsWith('--focus='))?.slice(8);
+const resumeFile = process.argv.find(value => value.startsWith('--resume-operation='))?.slice(19);
+if (focus && focus !== 'categories') throw new Error('Unknown focused QA gate.');
 const normalizedSha256 = (value) => createHash('sha256').update(Buffer.from(value.toString('utf8').replaceAll('\r\n', '\n'))).digest('hex');
 const byteSha256 = (value) => createHash('sha256').update(value).digest('hex');
 const git = (args, options = {}) => execFileSync('git', args, { cwd: repoRoot, ...options });
@@ -92,7 +95,7 @@ import { registerHooks } from 'node:module';
 import { fileURLToPath } from 'node:url';
 const snapshot = path.resolve(process.env.PDV_GIT_QA_SNAPSHOT);
 const allowed = JSON.parse(process.env.PDV_GIT_QA_ALLOWED_ROOTS ?? '[]').map((item) => path.resolve(item));
-const qaPrismaClient = process.env.PDV_QA_PRISMA_CLIENT ? path.resolve(process.env.PDV_QA_PRISMA_CLIENT) : null;
+const qaPrismaClients = [...JSON.parse(process.env.PDV_QA_GENERATED_CLIENT_ROOTS ?? '[]'), process.env.PDV_QA_PRISMA_CLIENT, process.env.PDV_SOURCE_PRISMA_CLIENT, process.env.PDV_INVENTORY_PRISMA_CLIENT].filter(Boolean).map(item => path.resolve(item));
 const auditFile = process.env.PDV_GIT_QA_IMPORT_AUDIT;
 const hookFile = path.resolve(process.env.PDV_GIT_QA_IMPORT_HOOK);
 const inside = (root, candidate) => {
@@ -112,7 +115,7 @@ registerHooks({
       if (!isHook) {
         const inSnapshot = inside(snapshot, actualPath);
         const inSnapshotDependencies = inside(path.join(snapshot, 'backend', 'node_modules'), actualPath);
-        appendFileSync(auditFile, JSON.stringify({ path: actualPath, snapshotProjectSource: inSnapshot && !inSnapshotDependencies, qaGeneratedPrismaClient: qaPrismaClient ? inside(qaPrismaClient, actualPath) : false }) + '\\n');
+        appendFileSync(auditFile, JSON.stringify({ path: actualPath, snapshotProjectSource: inSnapshot && !inSnapshotDependencies, qaGeneratedPrismaClient: qaPrismaClients.some(root => inside(root, actualPath)) }) + '\\n');
       }
     }
     return result;
@@ -123,6 +126,7 @@ registerHooks({
 let succeeded = false;
 let syntheticExitCode = null;
 let representativeExitCode = null;
+let globalDevPreflight = null;
 const runnerPath = path.relative(repoRoot, fileURLToPath(import.meta.url)).split(path.sep).join('/');
 const runnerWorkingTreeSha256 = normalizedSha256(await readFile(fileURLToPath(import.meta.url)));
 const runnerSelectedCommitSha256 = normalizedSha256(git(['show', `${selectedCommit}:${runnerPath}`]));
@@ -133,6 +137,7 @@ console.log(`PDV_GIT_QA_RUNNER commit=${selectedCommit}:${runnerPath}; sha256=${
 const localBefore = await localStateFingerprint();
 const startTree = git(['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim();
 try {
+  certificationWork: {
   await mkdir(snapshotRoot, { recursive: true });
   const objectTree = git(['rev-parse', `${selectedCommit}^{tree}`], { encoding: 'utf8' }).trim();
   if (objectTree !== selectedTree) throw new Error('Selected Git tree changed during materialization.');
@@ -262,7 +267,44 @@ try {
 
   run(process.execPath, ['--test', 'scripts/pdv-unico-commerce-qa-manifest.test.mjs'], { cwd: backendSnapshot, env, stdio: 'inherit' });
 
+  if (focus || resumeFile) {
+    let gate = 'categories';
+    if (resumeFile) {
+      gate = 'migrated-authenticated-operation';
+      const resolved = path.resolve(resumeFile);
+      if (!resolved.startsWith(path.resolve(os.tmpdir()) + path.sep) || path.basename(resolved) !== 'qa-operation-resume.json') throw new Error('QA resume must use its private owned temporary file.');
+      const saved = JSON.parse(await readFile(resolved, 'utf8'));
+      if (!path.resolve(saved.tempRoot).startsWith(path.resolve(os.tmpdir()) + path.sep) || !path.basename(saved.tempRoot).startsWith(`tap76-sequenced-${saved.runId}-`)) throw new Error('Invalid owned QA resume root.');
+      const ownership = spawnSync('docker', ['inspect', '-f', '{{.Id}}|{{ index .Config.Labels "codex.purpose" }}|{{ index .Config.Labels "codex.run" }}', saved.containerId], { encoding: 'utf8', windowsHide: true });
+      if (ownership.status !== 0 || ownership.stdout.trim() !== `${saved.containerId}|pdv-unico-sequenced-disposable-qa|${saved.runId}`) throw new Error('QA resume ownership mismatch.');
+      if (normalizedSha256(await readFile(path.join(saved.tempRoot, 'schema.prisma'))) !== normalizedSha256(await readFile(path.join(backendSnapshot, 'prisma/schema.prisma')))) throw new Error('Retained generated QA client schema differs from the candidate Git schema.');
+      for (const key of ['NODE_ENV', 'PDV_ISOLATED_QA', 'PDV_QA_RUN_ID', 'PDV_QA_CONTAINER', 'DATABASE_URL', 'QA_DATABASE_URL', 'PDV_QA_PRISMA_CLIENT', 'PDV_CANONICAL_TENANTS', 'PDV_REPRESENTATIVE_PHOTO_FILE', 'PDV_UNLISTED_QA_TENANT', 'PDV_SENTINEL_BASELINE', 'PDV_SENTINEL_CREDENTIAL_FILE']) if (saved.environment[key] !== undefined) env[key] = saved.environment[key];
+      env.PDV_OPERATION_DAY_OFFSET = process.env.PDV_OPERATION_DAY_OFFSET ?? '31';
+      env.PDV_QA_GENERATED_CLIENT_ROOTS = JSON.stringify([env.PDV_QA_PRISMA_CLIENT]);
+      env.PDV_GIT_QA_ALLOWED_ROOTS = JSON.stringify([snapshotRoot, nodeGlobalModules, userNodeModules, env.PDV_QA_PRISMA_CLIENT]);
+      run(process.execPath, ['--import', 'tsx', 'scripts/pdv-unico-migrated-operation.qa.mjs'], { cwd: backendSnapshot, env, stdio: 'inherit' });
+    } else run(process.execPath, ['scripts/run-pdv-gamified-category-qa.mjs'], { cwd: backendSnapshot, env, stdio: 'inherit' });
+    const lines = (await readFile(auditFile, 'utf8')).split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
+    const unexpected = lines.filter(row => !row.snapshotProjectSource && !row.qaGeneratedPrismaClient && !row.path.toLowerCase().includes(`${path.sep}node_modules${path.sep}`));
+    if (unexpected.length) throw new Error('Focused QA imported non-snapshot project code.');
+    const localAfter = await localStateFingerprint();
+    if (localAfter.sha256 !== localBefore.sha256 || git(['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim() !== startTree) throw new Error('Local state changed during focused certification.');
+    const evidence = { result: 'PASS', scope: 'focused-gate-only', gate, selectedCommit, selectedTree, materializedTrackedBlobCount: materializedBlobCount, measuredCommands, importedWorkspaceModules: 0, localStateUnchanged: true, prodAccessUsed: 'NO', devSharedWrites: 'NO' };
+    if (evidencePath) await writeFile(path.resolve(evidencePath), JSON.stringify(evidence, null, 2) + '\n');
+    console.log(`PDV_GIT_FOCUSED_EVIDENCE=${JSON.stringify(evidence)}`);
+    succeeded = true;
+    break certificationWork;
+  }
+
+  if (cutover) {
+    const result = run(process.execPath, ['--import', 'tsx', 'scripts/run-pdv-unico-global-preflight.mjs'], { cwd: backendSnapshot, env: { ...env, PDV_DEV_CONFIG_FILE: path.join(backendRoot, '.env.development') }, encoding: 'utf8', stdio: 'pipe' });
+    globalDevPreflight = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+    if (!globalDevPreflight.queried || !globalDevPreflight.tenantCount || globalDevPreflight.coveredTenantCount !== globalDevPreflight.tenantCount) throw new Error('Global DEV preflight did not cover all tenants.');
+    console.log(`PDV_GIT_GLOBAL_DEV_PREFLIGHT=${globalDevPreflight.status}; tenants=${globalDevPreflight.tenantCount}; transaction=RepeatableRead-READ-ONLY; writes=0`);
+  }
+  const syntheticStarted = performance.now();
   const synthetic = spawnSync(process.execPath, [npmCli, 'run', 'qa:pdv-current-disposable'], { cwd: backendSnapshot, env, stdio: 'inherit', windowsHide: true });
+  measuredCommands.push({ command: 'qa:pdv-current-disposable', durationMs: Math.round(performance.now() - syntheticStarted), exitCode: synthetic.status });
   if (synthetic.error) throw synthetic.error;
   syntheticExitCode = synthetic.status ?? 1;
   console.log(`PDV_GIT_QA_SYNTHETIC=${syntheticExitCode === 0 ? 'PASS' : 'BLOCKED'}; exitCode=${syntheticExitCode}`);
@@ -270,7 +312,9 @@ try {
     const representativeArgs = cutover
       ? ['scripts/run-pdv-unico-dev-cutover-plan.mjs', '--profile=qa', '--apply', '--tenant=cmr9yis3c0000hvu00q9fe7y1', '--tenant=cmsry9xrn0000hvlgopjxy0oo']
       : [npmCli, 'run', 'qa:pdv-representative'];
+    const representativeStarted = performance.now();
     const representative = spawnSync(process.execPath, representativeArgs, { cwd: backendSnapshot, env, stdio: 'inherit', windowsHide: true });
+    measuredCommands.push({ command: cutover ? 'guarded-cutover-sequence' : 'representative', durationMs: Math.round(performance.now() - representativeStarted), exitCode: representative.status });
     if (representative.error) throw representative.error;
     representativeExitCode = representative.status ?? 1;
     console.log(`PDV_GIT_QA_REPRESENTATIVE=${representativeExitCode === 0 ? 'PASS' : 'BLOCKED'}; exitCode=${representativeExitCode}`);
@@ -316,6 +360,7 @@ try {
     packageLockSha256: lockHash,
     nodeVersion: process.version,
     measuredCommands,
+    globalDevPreflight,
     generatedCandidateManifest: {
       baselineCommit: generatedManifest.baseline.commit,
       manifestSha256: generatedManifest.manifestSha256,
@@ -342,13 +387,15 @@ try {
       untrackedFileCount: localBefore.state.untracked.length,
     },
     prodAccessUsed: 'NO',
-    devSharedAccess: 'NO',
+    devSharedAccess: globalDevPreflight ? 'READ_ONLY' : 'NO',
   };
   if (evidencePath) await writeFile(path.resolve(evidencePath), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
   console.log(`PDV_GIT_QA_LOCAL_STATE=UNCHANGED; fingerprint=${localAfter.sha256}; staged=${localAfter.state.stagedDiffSha256}; unstaged=${localAfter.state.unstagedDiffSha256}; untracked=${localAfter.state.untracked.length}`);
   console.log(`PDV_GIT_QA_EVIDENCE=${JSON.stringify(evidence)}`);
   succeeded = syntheticExitCode === 0 && (representativeExitCode === null || representativeExitCode === 0);
+  }
 } finally {
+  if (!path.resolve(tempRoot).startsWith(path.resolve(os.tmpdir()) + path.sep) || !path.basename(tempRoot).startsWith(`pdv-git-qa-${runId}-`)) throw new Error('Unsafe Git QA temporary cleanup path.');
   await rm(tempRoot, { recursive: true, force: true });
 }
 

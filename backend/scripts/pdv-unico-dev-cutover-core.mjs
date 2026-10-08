@@ -66,7 +66,7 @@ export function assertGlobalPreflightClear(findings) {
 
 export function validateQaCutoverEnvironment(env, ownership) {
   const url = new URL(env.DATABASE_URL ?? '');
-  if (env.PDV_ISOLATED_QA !== '1' || env.QA_DATABASE_URL !== env.DATABASE_URL
+  if (!['development', 'test'].includes(env.NODE_ENV ?? '') || env.PDV_ISOLATED_QA !== '1' || env.QA_DATABASE_URL !== env.DATABASE_URL
     || !['postgres:', 'postgresql:'].includes(url.protocol) || url.hostname !== '127.0.0.1'
     || Number(url.port) < 55439 || Number(url.port) > 55449 || url.pathname !== '/cervejaria_qa_pdv_unico'
     || Object.keys(env).some(key => /^PROD(?:_|$)/i.test(key))

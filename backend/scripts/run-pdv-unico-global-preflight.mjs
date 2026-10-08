@@ -32,7 +32,9 @@ function run(args, env) {
 }
 
 // Read only the DEV file, validate exact host/port/database before any Prisma import or client generation.
-const databaseUrl = envFileValue(await readFile(path.join(backendRoot, '.env.development'), 'utf8'), 'DATABASE_URL');
+const devConfigFile = process.env.PDV_DEV_CONFIG_FILE ? path.resolve(process.env.PDV_DEV_CONFIG_FILE) : path.join(backendRoot, '.env.development');
+if (path.basename(devConfigFile) !== '.env.development') throw new Error('Only the explicit DEV configuration file may be read.');
+const databaseUrl = envFileValue(await readFile(devConfigFile, 'utf8'), 'DATABASE_URL');
 const devEnvironment = { ...process.env, NODE_ENV: 'development', DATABASE_URL: databaseUrl };
 validateInventoryEnvironment(devEnvironment);
 for (const name of Object.keys(devEnvironment)) if (/^PROD/i.test(name) || name === 'DIRECT_URL' || /_DATABASE_URL$/.test(name)) delete devEnvironment[name];
@@ -58,6 +60,8 @@ try {
   if (generated.status !== 0) throw new Error(`Compatible DEV Prisma client generation failed: ${`${generated.stderr ?? ''}\n${generated.stdout ?? ''}`.slice(0, 1200)}`);
 
   const inventoryEnv = { ...devEnvironment, PDV_INVENTORY_PRISMA_CLIENT: clientDir };
+  inventoryEnv.PDV_GIT_QA_ALLOWED_ROOTS = JSON.stringify([...JSON.parse(inventoryEnv.PDV_GIT_QA_ALLOWED_ROOTS ?? '[]'), clientDir]);
+  inventoryEnv.PDV_QA_GENERATED_CLIENT_ROOTS = JSON.stringify([clientDir]);
   const output = run(['--import', 'tsx', 'scripts/pdv-unico-global-preflight.mjs'], inventoryEnv);
   console.log(output.trim());
 } finally {

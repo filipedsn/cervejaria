@@ -72,6 +72,8 @@ const childEnv = () => {
   for (const key of Object.keys(env)) if (key === 'DIRECT_URL' || key === 'PDV_CANONICAL_CONFIG_QA' || /_DATABASE_URL$/.test(key) || /^PROD/i.test(key)) delete env[key];
   Object.assign(env, { NODE_ENV: 'test', PDV_ISOLATED_QA: '1', PDV_QA_RUN_ID: runId, PDV_QA_CONTAINER: containerName, QA_DATABASE_URL: databaseUrl, DATABASE_URL: databaseUrl });
   env.PDV_SENTINEL_BASELINE = path.join(tempRoot, 'unselected-baseline.json');
+  env.PDV_SENTINEL_CREDENTIAL_FILE = path.join(tempRoot, 'unlisted-qa-credential.json');
+  env.PDV_QA_GENERATED_CLIENT_ROOTS = JSON.stringify(generatedClientRoots);
   const inheritedRoots = JSON.parse(env.PDV_GIT_QA_ALLOWED_ROOTS ?? '[]');
   env.PDV_GIT_QA_ALLOWED_ROOTS = JSON.stringify([...new Set([...inheritedRoots, ...generatedClientRoots])]);
   return env;
@@ -178,7 +180,7 @@ try {
   return { status: 'PASS' };
     },
     'business-catalog-transformations': async () => {
-  await phase('business-catalog-and-kitchen-preparation-on-precommerce-client', async () => {
+  await phase('business-and-catalog-on-precommerce-client', async () => {
     const output = run(['--import', 'tsx', 'scripts/pdv-unico-precommerce-preparation.mjs', '--business-catalog'], apiClientEnv);
     const record = JSON.parse(output.trim().split(/\r?\n/).at(-1));
     assert.equal(record.status, 'COMPLETED');

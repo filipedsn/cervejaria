@@ -40,8 +40,8 @@ export type PermissaoOperacao = (typeof PERMISSOES_OPERACAO)[number];
 export const permissoesOperacaoSchema = z.array(z.enum(PERMISSOES_OPERACAO)).max(PERMISSOES_OPERACAO.length);
 
 /** Enables the canonical permission list only after the additive migration is installed. */
-export function permissoesIndividuaisAtivas(): boolean {
-  return tenantPdvActivation() ?? process.env.PDV_INDIVIDUAL_PERMISSIONS_ENABLED === '1';
+export function permissoesIndividuaisAtivas(tenantId?: string): boolean {
+  return tenantPdvActivation(tenantId) ?? process.env.PDV_INDIVIDUAL_PERMISSIONS_ENABLED === '1';
 }
 
 function negar(app: FastifyInstance, message = 'Você não tem permissão para esta ação'): never {
@@ -54,7 +54,7 @@ export async function usuarioPode(
   options: { allowLegacyDiscount?: boolean } = {},
   db: Pick<Prisma.TransactionClient, 'usuario'> | typeof prisma = prisma,
 ): Promise<boolean> {
-  if (!permissoesIndividuaisAtivas()) {
+  if (!permissoesIndividuaisAtivas(user.cervejariaId ?? undefined)) {
     if (options.allowLegacyDiscount && (user.papel === 'DONO' || user.papel === 'ADMIN')) return true;
     if (options.allowLegacyDiscount) {
       const legacy = await db.usuario.findFirst({

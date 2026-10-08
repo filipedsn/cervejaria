@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import net from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -23,8 +23,12 @@ const { manifestSha256, ...manifestBody } = manifest;
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 if (sha256(Buffer.from(JSON.stringify(manifestBody))) !== manifestSha256) throw new Error('Gamified category QA manifest digest mismatch');
 for (const candidate of manifest.candidates) {
-  if (sha256(await readFile(new URL(candidate.path, repoRoot))) !== candidate.sha256) throw new Error(`Gamified category QA candidate hash mismatch: ${candidate.path}`);
+  const commit = process.env.PDV_GIT_QA_COMMIT;
+  if (commit && !/^[a-f0-9]{40}$/.test(commit)) throw new Error('Category QA requires a full immutable Git commit.');
+  const expected = commit ? sha256(execFileSync('git', ['show', `${commit}:${candidate.path}`], { cwd: repoRoot, windowsHide: true })) : candidate.sha256;
+  if (sha256(await readFile(new URL(candidate.path, repoRoot))) !== expected) throw new Error(`Gamified category QA candidate hash mismatch: ${candidate.path}`);
 }
+console.log(`PDV_CATEGORY_SOURCE=${process.env.PDV_GIT_QA_COMMIT ?? manifest.candidateBaseCode}; historical-manifest=unchanged; candidates=${manifest.candidates.length}`);
 const migration = await readFile(new URL('../prisma/migrations/20261008120000_pdv_gamified_categories/migration.sql', import.meta.url), 'utf8');
 const transform = await readFile(new URL('../prisma/transformations/pdv-gamified-categories-v1.sql', import.meta.url), 'utf8');
 const rollback = await readFile(new URL('../prisma/transformations/rollback-pdv-gamified-categories-v1.sql', import.meta.url), 'utf8');
