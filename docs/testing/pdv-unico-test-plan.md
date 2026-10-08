@@ -989,3 +989,23 @@ Builds passaram e o caso de criacao com flag false passou. O caso de edicao/sele
 A certificacao aprovada e a do snapshot Git `9e86dc9daf6162fa8d5f92b10dd7911457157d13` (tree `b0dbb0042246472a7eb7b87ee7d20b297e4164a6`). As linhas anteriores que diziam faltar API autenticada ou snapshot integral sao historicas e estao supersedidas por este resultado: build backend/frontend PASS; UI simulada PASS (2/2); schema antigo sem tabela/coluna e Prisma client legado PASS; SQL limitado PASS; API/PostgreSQL com migrations reais, login e Fastify.inject PASS; permissoes, menu, opcionais, venda por volume e ranking legado preservado PASS; invariantes financeiro/estoque/cozinha PASS. Sem PROD/DEV compartilhado.
 
 Manifesto integrado do snapshot exato: `pdv-unico-integrated-qa-manifest-9e86dc9.json` (101 candidatos; digest `c6608671630a9926b2f236456dc7a05c52b8ce1a43af8bc3763638eda70bb1eb`). Evidencia: `pdv-gamified-categories-qa-evidence-v28.json`; matriz por camada e execucoes bloqueadas anteriores: `pdv-gamified-categories-qa-matrix-v28.md`. As tentativas bloqueadas estao separadas e nao contam como PASS. O ensaio representativo nao foi executado. Nao houve backfill real, cutover, deploy, ranking novo ou reclassificacao de Chope. Permanecem pendentes a metrica, o momento de reconhecimento e a politica de consumos anteriores.
+# Ensaio final CIA Marítima + Churrasquinho — 2026-10-08
+
+Código certificado: `9e86dc9daf6162fa8d5f92b10dd7911457157d13`; documentação previamente publicada: `60c2acf`. Foi usado o runner Git-snapshot e o executor representativo já existente. O runner completou a regressão sintética e restaurou a fotografia aprovada de SHA-256 `2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b` (34 tabelas/10.738 linhas/zero arestas cross-tenant) em PostgreSQL descartável, depois executou todas as transformações, pausas, retomadas, replays e reconciliações finais.
+
+| Gate | Resultado | Evidência/limite |
+|---|---|---|
+| Fotografia aprovada, identidade e fechamento de FKs | PASS | Hash exato; ambos tenants UNIQUE_MATCH; captura diferente rejeitada |
+| Negócio, catálogo/configuração e sessões | PASS em ambos | Pausa, retomada, replay; ID de PDV CIA derivado do único Trailer; PDV existente de Churrasquinho preservado |
+| Pagamentos, recebíveis, movimentos e dívidas | PASS em ambos | Todos os 605 pagamentos por ID/centavos; 26 A, 2 B e os 577 C aprovados; nenhum vínculo por janela de tempo |
+| Cozinha, comandas, portal/estoque e-commerce migrado | PASS nas transformações | 431 preparações de Churrasquinho; 1.549 registros CIA e 3.004 Churrasquinho; hashes/recibos/replay; revalidações financeira e de cozinha depois do comércio |
+| TAPs e montagens | PASS | 9 TAPs e 123 montagens comparados por ID e conteúdo |
+| Permissões anteriores vs. concessões novas | NOT_RUN na fotografia | A regressão sintética de permissões passou, mas não compara grants da fotografia depois de migrá-la |
+| Operação Por Caixa autenticada depois da migração | NOT_RUN na fotografia | Fluxos autenticados cobertos na suíte sintética separada; não atribuir esse resultado aos registros restaurados |
+| Rankings históricos de Chope | NOT_RUN na fotografia | Regressão sintética de Chope/ranking legado passou; leitura dos rankings históricos dos tenants não foi feita |
+| Auditoria e estatísticas de cliente sem migrador | REVISÃO DE ESCOPO | Sem escritor nesses modelos e igualdade escalar no restore; não houve comparação rowwise final |
+| DEV compartilhado / PROD | NÃO ACESSADOS | Nenhuma migration, backup, backfill, configuração ou cutover real |
+
+Os tempos e as etapas stdout por fase estão em [`pdv-unico-integrated-representative-evidence.json`](pdv-unico-integrated-representative-evidence.json). Os avisos de stderr foram de toolchain (Prisma, Vite e line endings); nenhuma fase de migração emitiu erro. A matriz de reconciliação detalhada está em [`pdv-unico-reconciliation-matrix.md`](pdv-unico-reconciliation-matrix.md).
+
+O aceite para corte em DEV permanece bloqueado pelos gates pós-migração autenticados, leitura dos rankings históricos, igualdade rowwise final de auditoria/estatísticas, comparação de permissões e ausência de um entrypoint de migrador DEV guardado. A matriz registra a ação para cada um. Não ampliar autorização C, não ativar flag global, não transformar essa certificação em prontidão para PROD.

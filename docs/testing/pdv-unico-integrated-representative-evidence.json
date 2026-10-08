@@ -1,0 +1,639 @@
+{
+  "version": 1,
+  "capturedOn": "2026-10-08",
+  "objective": "Integrated PDV migration rehearsal and DEV cutover preparation; no shared DEV/PROD writes",
+  "base": {
+    "codeCommit": "9e86dc9daf6162fa8d5f92b10dd7911457157d13",
+    "codeTree": "b0dbb0042246472a7eb7b87ee7d20b297e4164a6",
+    "documentationHead": "60c2acf",
+    "runner": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+    "runnerSha256": "0c26abb8b401c28bff4eca502bf59e51dcdea655eca19ea3e8fc51debe977fae",
+    "materializedTrackedBlobs": 1223,
+    "candidateManifest": {
+      "path": "docs/testing/pdv-unico-integrated-qa-manifest.json",
+      "baseline": "9e86dc9daf6162fa8d5f92b10dd7911457157d13",
+      "candidateCount": 101,
+      "sha256": "c6608671630a9926b2f236456dc7a05c52b8ce1a43af8bc3763638eda70bb1eb"
+    }
+  },
+  "approvedPhoto": {
+    "temporaryPathPolicy": "%TEMP%/tap76-pdv-photo-*.json; not copied into repository",
+    "sha256": "2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b",
+    "bytes": 8386723,
+    "tables": 34,
+    "rows": 10738,
+    "crossTenantEdges": 0,
+    "identity": "hash equals the previously approved photo and the existing 577-payment authorization; capture with another hash was excluded",
+    "targets": [
+      {
+        "tenant": "CIA Marítima",
+        "id": "cmr9yis3c0000hvu00q9fe7y1",
+        "identity": "UNIQUE_MATCH"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "id": "cmsry9xrn0000hvlgopjxy0oo",
+        "identity": "UNIQUE_MATCH"
+      }
+    ],
+    "historicalC": {
+      "approvedCount": 577,
+      "withExactAuditPaymentReference": 323,
+      "withoutExactAuditPaymentReference": 254,
+      "authorizationEntries": 577,
+      "approvalSnapshotSha256": "87e3a8f6aca3e878a027c485ca2e15a120ba9cc0edfc27337e3f39858165ef7a",
+      "provenance": "CAIXA_NAO_COMPROVADA",
+      "sessionLinksRemainNull": true,
+      "authorizedIdsExpanded": false
+    }
+  },
+  "qa": {
+    "result": "COMPLETED",
+    "totalDurationMs": 2613616,
+    "database": "cervejaria_qa_pdv_unico",
+    "target": "executor-owned PostgreSQL container; tmpfs; loopback only",
+    "targetMigrationCount": 99,
+    "photoCapture": {
+      "durationMs": 1664.14,
+      "queries": 100
+    },
+    "restoreAndSourceReconciliation": {
+      "durationMs": 3487.43,
+      "queries": 88
+    },
+    "syntheticRegression": "PASS",
+    "representativeRehearsal": "PASS",
+    "phaseRuns": [
+      {
+        "tenant": "CIA Marítima",
+        "phase": "business",
+        "stage": "firstBatch",
+        "status": "RUNNING",
+        "durationMs": 2173,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "business",
+        "stage": "resume",
+        "status": "COMPLETED",
+        "durationMs": 3233,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "business",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 2315,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "catalog",
+        "stage": "firstBatch",
+        "status": "RUNNING",
+        "durationMs": 604,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "catalog",
+        "stage": "resume",
+        "status": "COMPLETED",
+        "durationMs": 1439,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "catalog",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 332,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "taps",
+        "stage": "firstBatch",
+        "status": "COMPLETED",
+        "durationMs": 928,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "taps",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 579,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "sessions",
+        "stage": "firstBatch",
+        "status": "RUNNING",
+        "durationMs": 4113,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "sessions",
+        "stage": "resume",
+        "status": "COMPLETED",
+        "durationMs": 6298,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "sessions",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 2195,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "finance",
+        "stage": "firstBatch",
+        "status": "RUNNING",
+        "durationMs": 3938,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "finance",
+        "stage": "resume",
+        "status": "COMPLETED",
+        "durationMs": 53633,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "finance",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 3251,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "kitchen-preparation-before-commerce",
+        "stage": "firstBatch",
+        "status": "COMPLETED",
+        "durationMs": 31,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "kitchen-preparation-before-commerce",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 12,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "commerce",
+        "stage": "firstBatch",
+        "status": "RUNNING",
+        "durationMs": 4149,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "commerce",
+        "stage": "resume",
+        "status": "COMPLETED",
+        "durationMs": 312871,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "commerce",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 7385,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "finance-revalidation-after-commerce",
+        "stage": "firstBatch",
+        "status": "COMPLETED",
+        "durationMs": 5580,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "finance-revalidation-after-commerce",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 6188,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "kitchen-preparation-revalidation",
+        "stage": "firstBatch",
+        "status": "COMPLETED",
+        "durationMs": 32,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "CIA Marítima",
+        "phase": "kitchen-preparation-revalidation",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 28,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "business",
+        "stage": "firstBatch",
+        "status": "RUNNING",
+        "durationMs": 5056,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "business",
+        "stage": "resume",
+        "status": "COMPLETED",
+        "durationMs": 5856,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "business",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 5072,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "catalog",
+        "stage": "firstBatch",
+        "status": "RUNNING",
+        "durationMs": 1119,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "catalog",
+        "stage": "resume",
+        "status": "COMPLETED",
+        "durationMs": 5140,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "catalog",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 1021,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "taps",
+        "stage": "firstBatch",
+        "status": "COMPLETED",
+        "durationMs": 54,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "taps",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 23,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "sessions",
+        "stage": "firstBatch",
+        "status": "RUNNING",
+        "durationMs": 12016,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "sessions",
+        "stage": "resume",
+        "status": "COMPLETED",
+        "durationMs": 44999,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "sessions",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 7753,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "finance",
+        "stage": "firstBatch",
+        "status": "RUNNING",
+        "durationMs": 8872,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "finance",
+        "stage": "resume",
+        "status": "COMPLETED",
+        "durationMs": 43997,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "finance",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 5120,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "kitchen-preparation-before-commerce",
+        "stage": "firstBatch",
+        "status": "RUNNING",
+        "durationMs": 8577,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "kitchen-preparation-before-commerce",
+        "stage": "resume",
+        "status": "COMPLETED",
+        "durationMs": 266294,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "kitchen-preparation-before-commerce",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 7035,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "commerce",
+        "stage": "firstBatch",
+        "status": "RUNNING",
+        "durationMs": 9190,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "commerce",
+        "stage": "resume",
+        "status": "COMPLETED",
+        "durationMs": 1219487,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "commerce",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 15061,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "finance-revalidation-after-commerce",
+        "stage": "firstBatch",
+        "status": "COMPLETED",
+        "durationMs": 5003,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "finance-revalidation-after-commerce",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 5296,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "kitchen-preparation-revalidation",
+        "stage": "firstBatch",
+        "status": "COMPLETED",
+        "durationMs": 7354,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      },
+      {
+        "tenant": "Churrasquinho do Thiago",
+        "phase": "kitchen-preparation-revalidation",
+        "stage": "replay",
+        "status": "COMPLETED",
+        "durationMs": 7673,
+        "stdout": "PDV_REP_PHASE_END",
+        "stderrPhaseErrors": 0,
+        "stderr": "diagnostic output only; not a failure signal"
+      }
+    ],
+    "containerRemoved": true,
+    "temporaryGitSnapshotRemoved": true,
+    "localWorkspaceState": "UNCHANGED",
+    "prodAccess": "NO",
+    "sharedDevAccess": "NO",
+    "stderrSummary": "No phase errors; stderr contains existing npm/Prisma deprecation notices, Vite dynamic-import/chunk-size advisories, and Git line-ending warnings.",
+    "stderrAttribution": "stderr phase streams belong to runner/CLI diagnostics; phase status and outputs are the authoritative result"
+  },
+  "tenantResults": [
+    {
+      "tenant": "CIA Marítima",
+      "status": "COMPLETED",
+      "missingPhases": []
+    },
+    {
+      "tenant": "Churrasquinho do Thiago",
+      "status": "COMPLETED",
+      "missingPhases": []
+    }
+  ],
+  "reconciliation": {
+    "all605Payments": "PASS by exact ID and integer-cent amount",
+    "paymentClasses": {
+      "A": "26 exact session links preserved",
+      "B": "2 debt receipts preserved with receivable identity",
+      "C": "577 authorized rows preserved with null session refs and CAIXA_NAO_COMPROVADA"
+    },
+    "allReceivablePrincipalReceiptBalance": "PASS",
+    "noDuplicateOrOmittedPayment": true,
+    "noSessionTimeWindowAttribution": true,
+    "tapAndMount": {
+      "status": "PASS",
+      "tapCount": 9,
+      "mountCount": 123,
+      "ciaMaritima": "5 TAPs / 123 mounts",
+      "churrasquinho": "4 TAPs / 0 mounts"
+    },
+    "businessCatalogSessionsFinanceKitchenCommerceReplay": "PASS for both tenants",
+    "commerce": {
+      "ciaMaritima": {
+        "records": 1549,
+        "batches": 62,
+        "resumeMs": 312871,
+        "replayMs": 7385
+      },
+      "churrasquinho": {
+        "records": 3004,
+        "batches": 121,
+        "resumeMs": 1219487,
+        "replayMs": 15061
+      }
+    },
+    "auditAndCustomerStats": {
+      "migratorWriteScope": "no migrator writes these source models",
+      "sourceRestoreScalarEquality": "PASS before transforms",
+      "postTransformRowwiseRecheck": "NOT_RUN",
+      "status": "scope-preservation reviewed, but no post-transform equality assertion"
+    },
+    "historicalChopeRankings": "NOT_READ against restored tenant photo",
+    "permissions": {
+      "oldVsNewTenantGrantComparison": "NOT_RUN against restored photo",
+      "syntheticPermissionAndRevocationSuite": "PASS on isolated synthetic tenants"
+    },
+    "authAfterMigration": {
+      "samePhotoTenantFlows": "NOT_RUN",
+      "syntheticAuthenticatedCashCommerceAndPortalChecks": "PASS in separate synthetic regression suite",
+      "items": [
+        "open cash with and without occurrence",
+        "menu/price/sale/payment/close",
+        "kitchen flow",
+        "cancel/reversal",
+        "stock",
+        "portal",
+        "taps",
+        "permission denial/revocation"
+      ]
+    }
+  },
+  "cutover": {
+    "sharedDevCutover": "NOT_RUN",
+    "devBackupOrRestore": "NOT_RUN",
+    "realBackfill": "NOT_RUN",
+    "activation": "NOT_RUN",
+    "rollback": "NOT_RUN",
+    "prodDeployRequired": "NO for this QA/doc-only delivery",
+    "pending": [
+      "post-migration authenticated representative flows for both tenants",
+      "read historical Chope rankings on restored photo",
+      "post-transform exact row assertion for TransacaoLog and ClienteEstatisticas",
+      "tenant permission before/after comparison",
+      "guarded DEV migrator invocation/activation interface",
+      "refresh read-only DEV multi-PDV/trailer inventory before any cut"
+    ]
+  },
+  "evidence": {
+    "snapshotRunnerEvidence": "%TEMP% output generated by existing runner; summarized here",
+    "stdout": "structured phase markers and terminal results are retained in phaseRuns; raw stdout is temporary",
+    "stderrSummary": "No phase errors; stderr contains existing npm/Prisma deprecation notices, Vite dynamic-import/chunk-size advisories, and Git line-ending warnings.",
+    "resultJson": "Full raw runner output is temporary; this file retains the reviewable structured summary.",
+    "rawLogs": "full runner stdout/stderr and raw evidence are temporary; this file retains the reviewable structured summary"
+  }
+}
