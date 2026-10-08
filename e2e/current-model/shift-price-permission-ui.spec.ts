@@ -42,9 +42,7 @@ async function setup(page: Page, permissions: string[]) {
         gaveta: { trocoInicial: 100, entradasDinheiro: 0, suprimentos: 0, sangrias: 0, esperadoDinheiro: 100 },
         esperado: { totalVendas: 0 }, movimentos: [], pagamentosPorForma: [] },
     } });
-    if (method === 'GET' && pathname === '/api/operacao/caixa/cardapio') return route.fulfill({ json: {
-      ...cardapioTurno, editavel: permissions.includes('catalog.shift.manage'),
-    } });
+    if (method === 'GET' && pathname === '/api/operacao/caixa/cardapio') return route.fulfill({ json: cardapioTurno });
     if (method === 'GET' && pathname === '/api/operacao/cardapios') return route.fulfill({ json: [{ id: cardapioId, nome: 'Template atual', ativo: true, produtoIds: [product.id], produtos: [product] }] });
     if (method === 'PATCH' && pathname === '/api/operacao/caixa/cardapio/preco' && searchParams.get('pontoVendaId') === point.id) {
       writes.push(req.postDataJSON() as Record<string, unknown>);
@@ -84,10 +82,10 @@ test('catalog.shift.manage edita somente TURNO e envia o escopo escolhido', asyn
   expect(unexpected).toEqual([]);
 });
 
-test('catalog.manage junto à permissão de turno oferece TEMPLATE e envia esse escopo', async ({ page }) => {
-  const { writes, unexpected } = await setup(page, ['cash.values.read', 'catalog.shift.manage', 'catalog.manage']);
+test('catalog.manage sozinho oferece somente TEMPLATE e envia esse escopo', async ({ page }) => {
+  const { writes, unexpected } = await setup(page, ['cash.values.read', 'catalog.manage']);
   await openPriceChoice(page, 'Onde aplicar o novo preço?');
-  await expect(page.getByRole('button', { name: 'Só neste turno' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Só neste turno' })).toHaveCount(0);
   const template = page.getByRole('button', { name: /Salvar no cardápio/ });
   await expect(template).toBeVisible();
   await template.click();

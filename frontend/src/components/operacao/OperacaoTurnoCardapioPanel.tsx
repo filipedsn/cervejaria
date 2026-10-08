@@ -59,6 +59,13 @@ export function OperacaoTurnoCardapioPanel({
     enabled: Boolean(pontoVendaId),
   });
 
+  const permissoesEdicao = (cardapio as (CardapioTurnoOperacao & {
+    permissoesEdicao?: { cardapioTurno: boolean; precoTurno: boolean; precoTemplate: boolean };
+  }) | undefined)?.permissoesEdicao;
+  const podeManterCardapioTurno = permissoesEdicao?.cardapioTurno ?? hasPermission('catalog.shift.manage');
+  const podeAlterarPrecoTurno = permissoesEdicao?.precoTurno ?? hasPermission('catalog.shift.manage');
+  const podeAlterarPrecoTemplate = permissoesEdicao?.precoTemplate ?? hasPermission('catalog.manage');
+
   useEffect(() => {
     if (!cardapio) return;
     setSelectedIds(cardapio.produtoIds);
@@ -112,7 +119,9 @@ export function OperacaoTurnoCardapioPanel({
 
   if (isLoading) return <p className="text-sm text-ink-faint py-2">Carregando cardápio...</p>;
 
-  const podeEditar = cardapio?.editavel ?? true;
+  const turnoAberto = cardapio?.editavel ?? true;
+  const podeEditarCardapio = turnoAberto && podeManterCardapioTurno;
+  const podeEditarPreco = turnoAberto && (podeAlterarPrecoTurno || podeAlterarPrecoTemplate);
   const catalogo = cardapio?.catalogo ?? [];
   const hasCatalogo = catalogo.length > 0;
   const temItens = (cardapio?.produtos.length ?? 0) > 0;
@@ -195,11 +204,13 @@ export function OperacaoTurnoCardapioPanel({
     </button>
   ) : null;
 
-  const descricao = podeEditar
+  const descricao = podeEditarCardapio
     ? temItens
       ? 'Ajuste itens ou preços. Ao mudar um preço, escolha se vale só neste turno ou no cardápio salvo.'
       : 'Escolha um cardápio salvo ou selecione os itens manualmente.'
-    : 'Itens disponíveis para venda neste turno.';
+    : podeEditarPreco
+      ? 'Altere os preços permitidos neste turno.'
+      : 'Itens disponíveis para venda neste turno.';
 
   return (
     <section className={embedded ? 'space-y-3' : 'space-y-2'}>
@@ -223,9 +234,9 @@ export function OperacaoTurnoCardapioPanel({
           </p>
           {closeButton}
         </div>
-      ) : podeEditar ? (
+      ) : podeEditarCardapio || podeEditarPreco ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2">
+          {podeEditarCardapio && <div className="grid grid-cols-2 gap-2">
             {(
               [
                 ['salvo', 'Cardápio salvo'],
@@ -252,20 +263,20 @@ export function OperacaoTurnoCardapioPanel({
                 {label}
               </button>
             ))}
-          </div>
+          </div>}
 
-          {modo === 'salvo' ? (
+          {podeEditarCardapio && modo === 'salvo' ? (
             cardapioSalvoLabel(cardapiosSalvos, cardapioId) ? (
               <p className="text-sm text-ink-muted">
                 Selecionado:{' '}
                 <span className="font-semibold text-ink">{cardapioSalvoLabel(cardapiosSalvos, cardapioId)}</span>
               </p>
             ) : null
-          ) : (
+          ) : podeEditarCardapio ? (
             <CardapioOperacaoProdutosPicker catalogo={catalogo} selectedIds={selectedIds} onToggle={toggle} />
-          )}
+          ) : null}
 
-          <CardapioSalvoModal
+          {podeEditarCardapio && <CardapioSalvoModal
             open={modalSalvoAberto}
             onClose={() => setModalSalvoAberto(false)}
             value={cardapioId}
@@ -275,9 +286,9 @@ export function OperacaoTurnoCardapioPanel({
             }}
             cardapios={cardapiosSalvos}
             emptyMessage="Nenhum cardápio cadastrado. Crie em Cardápio → Cardápios salvos."
-          />
+          />}
 
-          {alteracaoPendente && (
+          {podeEditarCardapio && alteracaoPendente && (
             <div className="space-y-2">
               {cardapioSelecionado ? (
                 <>
@@ -296,7 +307,7 @@ export function OperacaoTurnoCardapioPanel({
             </div>
           )}
 
-          {temItens && !alteracaoPendente && (
+          {temItens && (!podeEditarCardapio || !alteracaoPendente) && (
             <div className="space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-wide text-ink-muted">
                 Preços neste turno
@@ -319,7 +330,7 @@ export function OperacaoTurnoCardapioPanel({
                           {p.precoOverrideTurno ? ' · preço só deste turno' : ''}
                         </p>
                       </div>
-                      {false ? (
+                      {!podeEditarPreco ? (
                         <p className="text-xs text-ink-muted sm:max-w-56">
                           Preços por volume no cadastro:{' '}
                           {(p.precos ?? []).map((preco) => `${preco.volumeMl} ml ${formatCurrency(Number(preco.preco))}`).join(' · ')}
@@ -341,7 +352,7 @@ export function OperacaoTurnoCardapioPanel({
             </div>
           )}
 
-          <div className="space-y-2">
+          {podeEditarCardapio && <div className="space-y-2">
             <button
               type="button"
               className="touch-btn-primary w-full"
@@ -351,7 +362,7 @@ export function OperacaoTurnoCardapioPanel({
               {saveMutation.isPending ? 'Salvando...' : 'Salvar cardápio'}
             </button>
             {closeButton}
-          </div>
+          </div>}
         </div>
       ) : (
         <div className="space-y-3">
@@ -367,15 +378,15 @@ export function OperacaoTurnoCardapioPanel({
         hideHeaderClose
         footer={
           <div className="space-y-2 w-full">
-            <button
+            {podeAlterarPrecoTurno && <button
               type="button"
               className="touch-btn-primary w-full"
               disabled={precoMutation.isPending}
               onClick={() => confirmarPreco('TURNO')}
             >
               Só neste turno
-            </button>
-            {cardapioVinculadoId && podeManterCardapioGlobal ? (
+            </button>}
+            {cardapioVinculadoId && podeAlterarPrecoTemplate ? (
               <button
                 type="button"
                 className="touch-btn-secondary w-full"
@@ -400,7 +411,7 @@ export function OperacaoTurnoCardapioPanel({
           <p className="text-sm text-ink-muted">
             Alterar <span className="font-semibold text-ink">{pendingPreco.produto.nome}</span> para{' '}
             <span className="font-semibold text-ink">{formatCurrency(pendingPreco.precoUnit)}</span>.
-            {cardapioVinculadoId && podeManterCardapioGlobal
+            {cardapioVinculadoId && podeAlterarPrecoTemplate
               ? ' Escolha se a mudança vale só neste turno ou fica definitiva no cardápio salvo.'
               : ' Sem cardápio salvo vinculado, a mudança vale apenas neste turno.'}
           </p>

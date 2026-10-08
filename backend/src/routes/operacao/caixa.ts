@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { getAuthUser } from '../../types/auth.js';
@@ -110,6 +110,20 @@ const corrigirMovimentoSchema = z.object({
 });
 
 export async function caixaOperacaoRoutes(app: FastifyInstance) {
+  const incluirPermissoesEdicaoCardapio = async (
+    request: FastifyRequest,
+    cardapio: NonNullable<Awaited<ReturnType<typeof getCardapioTurno>>>,
+  ) => {
+    const user = getAuthUser(request);
+    const [cardapioTurno, precoTemplate] = await Promise.all([
+      usuarioPode(user, 'catalog.shift.manage'),
+      usuarioPode(user, 'catalog.manage'),
+    ]);
+    return {
+      ...cardapio,
+      permissoesEdicao: { cardapioTurno, precoTurno: cardapioTurno, precoTemplate },
+    };
+  };
   app.get('/sessoes/:sessaoId', { preHandler: [requirePermissao(app, 'cash.values.read')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { sessaoId } = request.params as { sessaoId: string };
@@ -412,7 +426,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
 
     const cardapio = await getCardapioTurno(sessao.id, cervejariaId);
     if (!cardapio) return reply.status(404).send({ error: 'Turno não encontrado' });
-    return cardapio;
+    return incluirPermissoesEdicaoCardapio(request, cardapio);
   });
 
   app.put('/cardapio', { preHandler: [requirePermissao(app, 'catalog.shift.manage')] }, async (request, reply) => {
@@ -440,7 +454,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     if ('error' in result) return reply.status(400).send({ error: result.error });
 
     const cardapio = await getCardapioTurno(sessao.id, cervejariaId);
-    return cardapio;
+    return incluirPermissoesEdicaoCardapio(request, cardapio);
   });
 
   app.patch('/cardapio/preco', { preHandler: [requirePermissaoPrecoCardapioTurno(app)] }, async (request, reply) => {
@@ -471,6 +485,6 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     }
 
     const cardapio = await getCardapioTurno(sessao.id, cervejariaId);
-    return cardapio;
+    return incluirPermissoesEdicaoCardapio(request, cardapio);
   });
 }
