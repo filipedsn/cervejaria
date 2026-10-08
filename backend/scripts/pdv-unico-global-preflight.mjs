@@ -32,6 +32,10 @@ try {
     const ledgerDivergence = [];
     const ledgerEncodingMatches = [];
     for (const row of ledger.filter(row => row.finished && !row.rolled_back)) {
+      if (!/^\d{14}_[a-z0-9_]+$/.test(row.migration_name)) {
+        ledgerDivergence.push({ code: 'LEDGER_INVALID_MIGRATION_IDENTIFIER' });
+        continue;
+      }
       try {
         const sql = await readFile(new URL(`../prisma/migrations/${row.migration_name}/migration.sql`, import.meta.url), 'utf8');
         const lf = sql.replaceAll('\r\n', '\n');

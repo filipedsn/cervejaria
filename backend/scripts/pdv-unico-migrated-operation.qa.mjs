@@ -47,8 +47,8 @@ async function request(cookie, method, route, payload, expected = 200) {
   return response.json();
 }
 async function settle(cookie, commandId) {
-  const orders = await db.pedidoOperacao.findMany({ where: { comandaId: commandId } });
-  for (const order of orders.filter(r => r.status === 'RECEBIDO')) for (const status of ['EM_PREPARO', 'PRONTO', 'ENTREGUE']) await request(cookie, 'PATCH', `/api/operacao/cozinha/${order.id}/status`, { status });
+  const orders = await db.pedidoOperacao.findMany({ where: { comandaId: commandId }, include: { itensComanda: true } });
+  for (const order of orders.filter(r => r.status === 'RECEBIDO' && r.itensComanda.some(item => item.exigePreparo))) for (const status of ['EM_PREPARO', 'PRONTO', 'ENTREGUE']) await request(cookie, 'PATCH', `/api/operacao/cozinha/${order.id}/status`, { status });
   const row = await request(cookie, 'GET', `/api/operacao/comandas/${commandId}`);
   if (Number(row.total) > 0) await request(cookie, 'POST', `/api/operacao/comandas/${commandId}/pagamentos`, { pagamentos: [{ forma: 'PIX', valor: Number(row.total) }] });
   assert.equal((await db.comanda.findUniqueOrThrow({ where: { id: commandId } })).status, 'FECHADA');

@@ -79,7 +79,7 @@ function npmCliPath() {
 function qaEnvironment() {
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
-    if (key === 'DATABASE_URL' || key === 'DIRECT_URL' || key === 'QA_DATABASE_URL' || key === 'PDV_CANONICAL_CONFIG_QA'
+    if (key === 'DATABASE_URL' || key === 'DIRECT_URL' || key === 'QA_DATABASE_URL' || key === 'PDV_CANONICAL_CONFIG_QA' || key === 'PDV_CANONICAL_TENANTS' || key === 'PDV_ISOLATED_QA' || key === 'PDV_INDIVIDUAL_PERMISSIONS_ENABLED'
       || /_DATABASE_URL$/.test(key) || /^PROD/i.test(key) || key === 'GIT_WORK_TREE') delete env[key];
   }
   env.GIT_DIR = gitDir;
