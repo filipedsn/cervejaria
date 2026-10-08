@@ -1,0 +1,12 @@
+﻿{
+  "result": "BLOCKED",
+  "selectedCommit": "ef20a6504c50f050c4b796ca1e4f8a1b0b806b3c",
+  "runner": "qa:pdv-current-git-snapshot",
+  "failingGate": "qa:pdv-commerce-disposable",
+  "diagnosis": "Prisma default scalar selection attempted Produto.categoriaPdvId in the pre-canonical schema when PDV_GAMIFIED_CATEGORY_CATALOG was off and PDV_CANONICAL_CONFIG_QA was absent.",
+  "error": "P2022: column Produto.categoriaPdvId does not exist",
+  "disposableQaOnly": true,
+  "prodAccessUsed": "NO",
+  "sharedDevAccess": "NO",
+  "supersededBy": "legacy Prisma omit now applies whenever the category catalog is disabled, independently of PDV_CANONICAL_CONFIG_QA"
+}
