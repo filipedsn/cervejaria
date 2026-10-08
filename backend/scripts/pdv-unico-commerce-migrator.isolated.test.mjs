@@ -3154,7 +3154,7 @@ try {
       }),
     };
     const apiChild = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/pdv76-precolumn-api.isolated.test.mjs'], { cwd: backendRoot, env: apiChildEnv, encoding: 'utf8', windowsHide: true, timeout: 90000 });
-    assert.equal(apiChild.status, 0, `real application singleton/authenticated Fastify.inject legacy-schema API proof passes: ${apiChild.stderr || apiChild.stdout}`);
+    assert.equal(apiChild.status, 0, `real application singleton/authenticated Fastify.inject legacy-schema API proof passes; stdout=${apiChild.stdout}; stderr=${apiChild.stderr}`);
     assert.match(apiChild.stdout, /PDV76_PRECATEGORY_API=PASS/);
     assert.equal(await db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Produto' AND column_name='prepararEmPedidoSeparado'`.then((rows) => rows.length), 0, 'legacy API ran while independent-kitchen column was absent');
     assert.equal(await db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Produto' AND column_name='categoriaPdvId'`.then((rows) => rows.length), 0, 'legacy API ran while category ID column was absent');
