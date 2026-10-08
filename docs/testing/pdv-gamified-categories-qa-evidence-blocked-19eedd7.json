@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "result": "BLOCKED",
+  "reviewedImplementationCommit": "19eedd77ce87a5e7bc0ea22a8772cc16ab38de29",
+  "reviewedTree": "1c8626023f5512a90b408cb30c570e64429abc01",
+  "categoryManifest": "v22",
+  "completedBeforeBlock": {
+    "backendBuild": "PASS",
+    "frontendBuild": "PASS",
+    "mockedCategoryUi": "PASS (2/2)",
+    "legacySchemaNoCategoryQueryCreateEdit": "PASS",
+    "finance": "PASS",
+    "commerce": "PASS",
+    "individualPermissions": "PASS",
+    "categorySql": "PASS",
+    "authenticatedCategoryApi": "BLOCKED after migration and auth setup"
+  },
+  "blocker": {
+    "gate": "authenticated-category-api-product-create",
+    "cause": "QA fixture used ownerCategory.id where ownerCategory is a Fastify response; body omitted categoriaPdvId and generic product create returned 400",
+    "fixCommit": "70a724e",
+    "fix": "Parse response body once and reuse ownerCategoryId in create, edit, and assertions"
+  },
+  "representativeRehearsal": "NOT_RUN; no representative photo supplied",
+  "localState": "UNCHANGED",
+  "prodAccess": "NO",
+  "sharedDevAccess": "NO"
+}
