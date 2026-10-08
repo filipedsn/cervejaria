@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 import { appendFile, cp, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import net from 'node:net';
@@ -81,7 +82,16 @@ const childEnv = () => {
 function run(args, extraEnv = {}, cwd = backendRoot) {
   const env = { ...childEnv(), ...extraEnv };
   const result = spawnSync(process.execPath, args, { cwd, env, encoding: 'utf8', windowsHide: true, maxBuffer: 24 * 1024 * 1024 });
-  if (result.status !== 0) throw new Error(`QA child exited ${result.status}: ${`${result.stderr ?? ''}\n${result.stdout ?? ''}`.replaceAll(databaseUrl, '[QA URL REDACTED]').slice(-5000)}`);
+  if (result.status !== 0) {
+    const safeOutput = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.replaceAll(databaseUrl, '[QA URL REDACTED]');
+    const failureFile = process.env.PDV_SEQUENCE_FAILURE_FILE;
+    if (failureFile) {
+      const resolved = path.resolve(failureFile);
+      if (!resolved.startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Sequence child failure logs may only be written under the OS temporary directory.');
+      appendFileSync(resolved, `COMMAND: ${args.join(' ')}\n${safeOutput}\n`, 'utf8');
+    }
+    throw new Error(`QA child exited ${result.status}: ${safeOutput.slice(-5000)}`);
+  }
   return result.stdout ?? '';
 }
 async function phase(name, operation) {

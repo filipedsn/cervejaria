@@ -37,6 +37,7 @@ const qaAttemptCancelledCommands = [];
 const qaSessionCleanupAfterBusinessBlock = [];
 const operationalBlockers = [];
 const cashCloseBlockerConfirmed = new Set();
+const historicalCommandSanitation = [];
 let finalEvidence;
 async function user(tenantId, role) {
   const password = randomBytes(24).toString('base64url');
@@ -62,6 +63,12 @@ async function settle(cookie, commandId) {
 }
 async function stockBalances(tenantId) {
   return plain(await db.inventoryBalance.findMany({ where: { cervejariaId: tenantId }, select: { produtoId: true, quantidade: true }, orderBy: { produtoId: 'asc' } }));
+}
+async function stockMovementPhoto(tenantId) {
+  return plain(await db.inventoryMovement.findMany({ where: { cervejariaId: tenantId }, select: { id: true, pontoVendaId: true, produtoId: true, tipo: true, quantidade: true, registradoPorId: true, pedidoId: true, createdAt: true }, orderBy: { id: 'asc' } }));
+}
+async function cashMovementPhoto(tenantId) {
+  return plain(await db.movimentoCaixaOperacao.findMany({ where: { sessao: { cervejariaId: tenantId } }, select: { id: true, sessaoId: true, tipo: true, valor: true, registradoPorId: true, createdAt: true }, orderBy: { id: 'asc' } }));
 }
 async function closePriorQaAttemptSessions() {
   for (const tenant of DEV_PDV_TENANT_ALLOWLIST) {
@@ -191,10 +198,46 @@ try {
         const cookie = login.headers['set-cookie'];
         account.cookie = (Array.isArray(cookie) ? cookie[0] : cookie).split(';')[0];
       }
+      if (tenant.id === 'cmsry9xrn0000hvlgopjxy0oo') {
+        const historicalId = 'cmuqaoyta0007hvdg3q4v7hkj';
+        const before = await db.comanda.findUniqueOrThrow({ where: { id: historicalId }, include: { itens: true, pagamentos: true, contaReceber: true } });
+        assert.equal(before.origem, 'CAIXA');
+        assert.equal(before.pontoVendaId, point.id);
+        assert.equal(before.status, 'ABERTA');
+        assert.equal(Number(before.total), 0);
+        assert.equal(before.itens.length, 0);
+        assert.equal(before.pagamentos.length, 0);
+        assert.equal(before.contaReceber, null);
+        const paymentsBefore = await historical();
+        const balancesBefore = await stockBalances(tenant.id);
+        const inventoryBefore = await stockMovementPhoto(tenant.id);
+        const cashBefore = await cashMovementPhoto(tenant.id);
+        const auditBefore = await db.transacaoLog.findMany({ where: { comandaId: historicalId }, select: { id: true } });
+        await request(owner.cookie, 'POST', `/api/operacao/comandas/${historicalId}/cancelar`, {});
+        const after = await db.comanda.findUniqueOrThrow({ where: { id: historicalId }, include: { itens: true, pagamentos: true, contaReceber: true } });
+        assert.equal(after.id, before.id);
+        assert.equal(after.createdAt.toISOString(), before.createdAt.toISOString());
+        assert.equal(after.status, 'CANCELADA');
+        assert.equal(Number(after.total), 0);
+        assert.equal(after.itens.length, 0);
+        assert.equal(after.pagamentos.length, 0);
+        assert.equal(after.contaReceber, null);
+        const cancelAudit = await db.transacaoLog.findFirstOrThrow({ where: { comandaId: historicalId, tipo: 'COMANDA_CANCELADA', usuarioId: owner.row.id }, orderBy: { createdAt: 'desc' } });
+        assert.ok(!auditBefore.some(row => row.id === cancelAudit.id));
+        assert.deepEqual(await historical(), paymentsBefore, 'historical payment rows stay unchanged after operational sanitation');
+        assert.deepEqual(await stockBalances(tenant.id), balancesBefore, 'cancelling the empty historical command does not change stock balances');
+        assert.deepEqual(await stockMovementPhoto(tenant.id), inventoryBefore, 'cancelling the empty historical command does not write inventory movements');
+        assert.deepEqual(await cashMovementPhoto(tenant.id), cashBefore, 'cancelling the empty historical command does not write cash movements');
+        historicalCommandSanitation.push({ commandId: historicalId, tenantId: tenant.id, pointId: point.id, beforeStatus: before.status, afterStatus: after.status, createdAtPreserved: true, total: 0, itemCount: 0, paymentCount: 0, receivable: null, auditType: cancelAudit.tipo, auditActorId: cancelAudit.usuarioId, noFinancialOrStockEffects: true, authenticatedApi: 'POST /api/operacao/comandas/:id/cancelar' });
+      }
       const menus = await db.cardapio.findMany({ where: { cervejariaId: tenant.id, pontoVendaId: point.id, ativo: true }, include: { produtos: { include: { produto: true } } } });
       const menu = menus.find(m => m.produtos.some(p => p.volumeMl === 0 && p.produto.ativo && !p.produto.exigePreparo && Number(p.precoUnit) > 0));
       assert.ok(menu, 'original migrated menu has an active unit product');
-      const selected = menu.produtos.find(p => p.volumeMl === 0 && p.produto.ativo && !p.produto.exigePreparo && Number(p.precoUnit) > 0 && !p.produto.controlaEstoque) ?? menu.produtos.find(p => p.volumeMl === 0 && p.produto.ativo && !p.produto.exigePreparo && Number(p.precoUnit) > 0);
+      const eligibleProducts = menu.produtos.filter(p => p.volumeMl === 0 && p.produto.ativo && !p.produto.exigePreparo && Number(p.precoUnit) > 0);
+      const enoughQaStock = new Set((await db.inventoryBalance.findMany({ where: { pontoVendaId: point.id, cervejariaId: tenant.id, quantidade: { gte: 4 } }, select: { produtoId: true } })).map(row => row.produtoId));
+      const selected = eligibleProducts.find(p => !p.produto.controlaEstoque)
+        ?? eligibleProducts.find(p => !config.inventoryEnabled || enoughQaStock.has(p.produtoId));
+      assert.ok(selected, `${tenant.name}: migrated menu needs an original unit product with enough existing QA stock for two authenticated command/portal repetitions`);
       const product = selected.produto;
       const price = Number(selected.precoUnit);
       const tapVolumeFixture = await ensureQaTapVolumePrice(menu, point, tenant, config.tapsEnabled);
@@ -323,6 +366,8 @@ try {
     } finally { globalThis.Date = originalDate; }
   }
   assert.deepEqual(await historical(), historyBefore, 'exact 605 original payments remain untouched by QA operation');
-  finalEvidence = { status: results.every(result => result.status === 'PASS') ? 'PASS' : 'BLOCKED', runId, results, blockers: operationalBlockers, qaCleanupAfterBlockedCashClose: { directQaSessionCleanupCount: qaSessionCleanupAfterBusinessBlock.length, sessions: qaSessionCleanupAfterBusinessBlock, classification: 'QA_DATA_CLEANUP_ONLY_NOT_AUTHENTICATED_OPERATIONAL_CLOSE' }, priorQaAttempts: { cancelledOpenCommands: qaAttemptCancelledCommands.length, directlyCleanedOpenCashSessions: qaAttemptCleanedSessions.length, cancellationPath: 'AUTHENTICATED_OPERATIONAL_COMMAND_CANCEL', sessions: qaAttemptCleanedSessions, classification: 'QA_DATA_CLEANUP_ONLY_NOT_AUTHENTICATED_OPERATIONAL_CLOSE' }, unlistedIsolation: { status: 'PASS', tenantId: unlisted, dataCompared: baseline.map(t => t.model), legacyMode: 'EVENTO', canonicalCategories: 0, canonicalConfigurations: 0 }, originalPayments: { count: historicalIds.length, beforeSha256: digest(historyBefore), afterSha256: digest(await historical()), status: 'PASS' }, qaOnlyUserIds: credentials, qaOnlyCreatedIds: createdIds };
+  assert.deepEqual(historicalCommandSanitation.map(row => row.commandId), ['cmuqaoyta0007hvdg3q4v7hkj'], 'the approved empty historical command was sanitized exactly once through the authenticated route');
+  finalEvidence = { status: results.every(result => result.status === 'PASS') ? 'PASS' : 'BLOCKED', runId, results, blockers: operationalBlockers, historicalCommandSanitation, qaCleanupAfterBlockedCashClose: { directQaSessionCleanupCount: qaSessionCleanupAfterBusinessBlock.length, sessions: qaSessionCleanupAfterBusinessBlock, classification: 'QA_DATA_CLEANUP_ONLY_NOT_AUTHENTICATED_OPERATIONAL_CLOSE' }, priorQaAttempts: { cancelledOpenCommands: qaAttemptCancelledCommands.length, directlyCleanedOpenCashSessions: qaAttemptCleanedSessions.length, cancellationPath: 'AUTHENTICATED_OPERATIONAL_COMMAND_CANCEL', sessions: qaAttemptCleanedSessions, classification: 'QA_DATA_CLEANUP_ONLY_NOT_AUTHENTICATED_OPERATIONAL_CLOSE' }, unlistedIsolation: { status: 'PASS', tenantId: unlisted, dataCompared: baseline.map(t => t.model), legacyMode: 'EVENTO', canonicalCategories: 0, canonicalConfigurations: 0 }, originalPayments: { count: historicalIds.length, beforeSha256: digest(historyBefore), afterSha256: digest(await historical()), status: 'PASS' }, qaOnlyUserIds: credentials, qaOnlyCreatedIds: createdIds };
+  if (finalEvidence.status !== 'PASS') process.exitCode = 1;
 } finally { await new Promise(resolve => io.close(resolve)); await app.close(); await prisma.$disconnect(); await db.$disconnect(); }
 console.log(JSON.stringify(finalEvidence));
