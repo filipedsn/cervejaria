@@ -167,7 +167,8 @@ try {
     const cookie = (Array.isArray(header) ? header[0] : header).split(';')[0];
     const staffContext = await request(cookie, 'GET', '/api/operacao/contexto');
     assert.ok(JSON.stringify(staffContext).includes('LEGACY'));
-    await request(cookie, 'GET', '/api/operacao/produtos', undefined, 403);
+    const legacyProducts = await request(cookie, 'GET', '/api/operacao/produtos');
+    assert.ok(Array.isArray(legacyProducts), 'unselected tenant preserves the legacy attendant product-read contract');
     assert.equal(await db.pontoVenda.count({ where: { cervejariaId: unlisted } }), 2);
     assert.equal(await db.trailer.count({ where: { cervejariaId: unlisted } }), 2);
   }
@@ -367,7 +368,7 @@ try {
   }
   assert.deepEqual(await historical(), historyBefore, 'exact 605 original payments remain untouched by QA operation');
   assert.deepEqual(historicalCommandSanitation.map(row => row.commandId), ['cmuqaoyta0007hvdg3q4v7hkj'], 'the approved empty historical command was sanitized exactly once through the authenticated route');
-  finalEvidence = { status: results.every(result => result.status === 'PASS') ? 'PASS' : 'BLOCKED', runId, results, blockers: operationalBlockers, historicalCommandSanitation, qaCleanupAfterBlockedCashClose: { directQaSessionCleanupCount: qaSessionCleanupAfterBusinessBlock.length, sessions: qaSessionCleanupAfterBusinessBlock, classification: 'QA_DATA_CLEANUP_ONLY_NOT_AUTHENTICATED_OPERATIONAL_CLOSE' }, priorQaAttempts: { cancelledOpenCommands: qaAttemptCancelledCommands.length, directlyCleanedOpenCashSessions: qaAttemptCleanedSessions.length, cancellationPath: 'AUTHENTICATED_OPERATIONAL_COMMAND_CANCEL', sessions: qaAttemptCleanedSessions, classification: 'QA_DATA_CLEANUP_ONLY_NOT_AUTHENTICATED_OPERATIONAL_CLOSE' }, unlistedIsolation: { status: 'PASS', tenantId: unlisted, dataCompared: baseline.map(t => t.model), legacyMode: 'EVENTO', canonicalCategories: 0, canonicalConfigurations: 0 }, originalPayments: { count: historicalIds.length, beforeSha256: digest(historyBefore), afterSha256: digest(await historical()), status: 'PASS' }, qaOnlyUserIds: credentials, qaOnlyCreatedIds: createdIds };
+  finalEvidence = { status: results.every(result => result.status === 'PASS') ? 'PASS' : 'BLOCKED', runId, results, blockers: operationalBlockers, historicalCommandSanitation, qaCleanupAfterBlockedCashClose: { directQaSessionCleanupCount: qaSessionCleanupAfterBusinessBlock.length, sessions: qaSessionCleanupAfterBusinessBlock, classification: 'QA_DATA_CLEANUP_ONLY_NOT_AUTHENTICATED_OPERATIONAL_CLOSE' }, priorQaAttempts: { cancelledOpenCommands: qaAttemptCancelledCommands.length, directlyCleanedOpenCashSessions: qaAttemptCleanedSessions.length, cancellationPath: 'AUTHENTICATED_OPERATIONAL_COMMAND_CANCEL', sessions: qaAttemptCleanedSessions, classification: 'QA_DATA_CLEANUP_ONLY_NOT_AUTHENTICATED_OPERATIONAL_CLOSE' }, unlistedIsolation: { status: 'PASS', tenantId: unlisted, dataCompared: baseline.map(t => t.model), legacyMode: 'EVENTO', legacyAttendantProductRead: 'PASS', canonicalCategories: 0, canonicalConfigurations: 0 }, originalPayments: { count: historicalIds.length, beforeSha256: digest(historyBefore), afterSha256: digest(await historical()), status: 'PASS' }, qaOnlyUserIds: credentials, qaOnlyCreatedIds: createdIds };
   if (finalEvidence.status !== 'PASS') process.exitCode = 1;
 } finally { await new Promise(resolve => io.close(resolve)); await app.close(); await prisma.$disconnect(); await db.$disconnect(); }
 console.log(JSON.stringify(finalEvidence));
