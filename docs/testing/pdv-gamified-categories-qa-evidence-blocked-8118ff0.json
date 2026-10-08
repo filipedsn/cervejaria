@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "result": "BLOCKED",
+  "reviewedImplementationCommit": "8118ff0d9eedeeefc2c86c34429d0cf9787a80bf",
+  "reviewedTree": "c89743f37c9a36e2f36ae476b3471141a6e4657a",
+  "categoryManifest": "v25",
+  "completedBeforeBlock": {
+    "backendBuild": "PASS",
+    "frontendBuild": "PASS",
+    "mockedCategoryUi": "PASS (2/2)",
+    "legacySchemaCompatibility": "PASS",
+    "finance": "PASS",
+    "commerce": "PASS",
+    "individualPermissions": "PASS",
+    "categorySql": "PASS",
+    "authenticatedCategoryApi": "PASS until invariant snapshot"
+  },
+  "blocker": {
+    "gate": "authenticated-category-api-invariants",
+    "cause": "Prisma singular relation filter requires `is` wrapper; direct nested comanda.cervejariaId was rejected",
+    "fixCommit": "8d653c1",
+    "fix": "filter payments with comanda.is.cervejariaId"
+  },
+  "representativeRehearsal": "NOT_RUN; no representative photo supplied",
+  "localState": "UNCHANGED",
+  "prodAccess": "NO",
+  "sharedDevAccess": "NO"
+}
