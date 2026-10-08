@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "certification": "synthetic-only",
+  "syntheticRegression": {
+    "result": "PASS",
+    "suite": "pdv-unico-current-disposable",
+    "exitCode": 0
+  },
+  "representativeRehearsal": {
+    "result": "NOT_RUN",
+    "reason": "No representative photo supplied."
+  },
+  "selectedCommit": "8eca66cf376043228a76e754a0214b18f09ea07e",
+  "selectedTree": "cdedc8e4207a44872c244e83be4846454d1f8319",
+  "certificationRunnerPath": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+  "certificationRunnerSha256": "404f63c9505f018ba72019003617134428f9f6a09223803ce8c7d1df308c6fbd",
+  "sourceMaterialization": "git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot",
+  "materializedTrackedBlobCount": 1147,
+  "packageLockSha256": "9330ae831d6ea407a47dbf50a6158c60fd9ffb54fe99ed87e17fd6c6e5ec60d0",
+  "nodeVersion": "v24.18.0",
+  "generatedCandidateManifest": {
+    "baselineCommit": "8eca66cf376043228a76e754a0214b18f09ea07e",
+    "manifestSha256": "b463870509e3f3406b9f543f8a425255f290d00b403a6ff378a015d7e848f5c2",
+    "codeCandidateCount": 97
+  },
+  "moduleOriginAudit": {
+    "result": "PASS",
+    "snapshotProjectModuleCount": 185,
+    "snapshotProjectModulePathListSha256": "46c28c8ff1b1d760e910de40ff483d7cf947f75d56578ee634e6e08318954091",
+    "nonSnapshotWorkspaceModuleCount": 0,
+    "externalDependencyModuleCount": 100,
+    "externalPrismaRuntimeVersion": "6.19.3",
+    "expectations": {
+      "syntheticModules": {
+        "result": "PASS",
+        "expectedCount": 5,
+        "observedCount": 5
+      },
+      "representativeModules": {
+        "result": "NOT_RUN",
+        "expectedCount": 0,
+        "observedCount": 0
+      }
+    }
+  },
+  "modulePermissionExtension": {
+    "deliveryCommit": "8eca66cf376043228a76e754a0214b18f09ea07e",
+    "focusedApiPostgres": {
+      "result": "PASS",
+      "suite": "qa:pdv-individual-permissions",
+      "database": "Disposable PostgreSQL on loopback with tmpfs storage; container removed after run.",
+      "cases": [
+        "command.read vs command.operate, old command paths, and same-session grant/revoke",
+        "kitchen.read vs kitchen.operate, independent payment/refund permissions, and revoked transition photo",
+        "manual inventory denial preserves balance and ledger; authorized sale changes stock without inventory.adjust",
+        "catalog price denial/authorization preserves sold price snapshot",
+        "checkout customer identification remains available; administrative client list, merge, and delete boundaries",
+        "TAP denial and authorized persisted mounting; cross-tenant event denial",
+        "agenda denial, authorized persistence, revoked occurrence creation, and cross-tenant agenda denial",
+        "cash-session, cash-movement, and payment totals unchanged across TAP and agenda actions",
+        "cross-tenant command, kitchen order, inventory point, catalog product, and client checks",
+        "migration rehearsal, empty permissions for new staff, owner-only catalog/agenda grants, unknown key and self/tenant edits"
+      ]
+    },
+    "uiSimulation": {
+      "result": "PASS",
+      "tool": "Playwright Chromium",
+      "casesPassed": 1,
+      "api": "All API endpoints intercepted; frontend-only local server; no backend or shared DEV connection.",
+      "assertions": "Permission selector changes save and survive reload; command.read and command.operate remain independent.",
+      "limit": "All module-specific operational buttons and portal screens were not individually walked in UI."
+    },
+    "builds": {
+      "backend": "PASS",
+      "frontend": "PASS"
+    },
+    "migrationPolicy": {
+      "existingAttendantGetsPriorTenantAccessibleActions": [
+        "command.read",
+        "command.operate",
+        "kitchen.read",
+        "kitchen.operate",
+        "inventory.read",
+        "inventory.adjust",
+        "clients.manage",
+        "taps.operate",
+        "event.menu.manage"
+      ],
+      "catalog.manageAutomaticallyGranted": false,
+      "agenda.manageAutomaticallyGranted": false,
+      "newAttendantDefault": []
+    }
+  },
+  "localState": {
+    "beforeSha256": "954635120606badaee0522eaf8d16d94abf45500a7c3af0fa9c5761dfbc6bd43",
+    "afterSha256": "954635120606badaee0522eaf8d16d94abf45500a7c3af0fa9c5761dfbc6bd43",
+    "identical": true,
+    "stagedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "unstagedDiffSha256": "54a350360589b8ac82a041f404ea5cdd546eb801237db17471f5be3e31e58d68",
+    "untrackedFileCount": 10
+  },
+  "prodAccessUsed": "NO",
+  "devSharedAccess": "NO"
+}

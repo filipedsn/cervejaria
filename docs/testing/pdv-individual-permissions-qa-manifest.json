@@ -1,29 +1,71 @@
 {
-  "version": 1,
-  "purpose": "Exact Git certification inputs for the individual operational permissions first slice",
-  "baselineCommit": "b06e09b2d0972b988863507dbe55dc42bbb1f8a6",
-  "baselineTree": "8d2d523b7bf8af31e17436558a0f380f39d75ec1",
+  "version": 2,
+  "purpose": "Exact Git certification inputs for individual permissions across existing PDV operational modules",
+  "baselineCommit": "8eca66cf376043228a76e754a0214b18f09ea07e",
+  "baselineTree": "cdedc8e4207a44872c244e83be4846454d1f8319",
   "sourceMaterialization": "Git snapshot selected by commit; workspace files are not source inputs",
   "databaseInputs": {
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaGitBlob": "700157399e9979f0d2948930420f9448a43ee5c9",
-    "migrationPath": "backend/prisma/migrations/20261007220000_individual_operational_permissions/migration.sql",
-    "migrationGitBlob": "2705907d00c9e985e21642e4398be0d532bd2ef1"
+    "migrationPath": "backend/prisma/migrations/20261007230000_individual_module_permissions/migration.sql",
+    "migrationGitBlob": "53b5efca049da660c1ec559a7a76fce4c30c3f26"
   },
   "suite": {
-    "command": "qa:pdv-current-git-snapshot -- --commit=b06e09b2d0972b988863507dbe55dc42bbb1f8a6",
+    "command": "qa:pdv-current-git-snapshot -- --commit=8eca66cf376043228a76e754a0214b18f09ea07e --evidence-out=../docs/testing/pdv-unico-module-permissions-qa-evidence.json",
     "includedDisposableSuite": "qa:pdv-individual-permissions",
     "result": "PASS",
-    "focusedRealtimeCases": "Real local Socket.IO disabled-flag legacy room delivery/leave/ADMIN/isolation (including cross-tenant isolation)/enabled-flag grant-revoke; persisted authenticated kitchen launch, actual notifier status payloads, financial/full vs operational/redacted contracts, optionals, and rollback silence.",
+    "candidateManifest": {
+      "sha256": "b463870509e3f3406b9f543f8a425255f290d00b403a6ff378a015d7e848f5c2",
+      "candidateCount": 97
+    },
+    "sourceAudit": {
+      "trackedBlobs": 1147,
+      "snapshotProjectModules": 185,
+      "workspaceImports": 0,
+      "externalModules": 100,
+      "prismaVersion": "6.19.3"
+    },
+    "moduleCases": "PASS: read/write separation for commands, sales, kitchen, inventory, catalog, clients, taps, and agenda; grant/revoke in the same session; mutation photos for denials; authorized persistence; snapshot price preservation; cross-tenant 404 checks for each group; TAP/agenda cash and payment totals unchanged; migration rehearsal for existing and new attendants.",
+    "focusedRealtimeCases": "PASS: legacy Socket.IO rooms when disabled, cross-tenant isolation, enabled-flag grant/revoke, persisted kitchen launch, actual notifier payloads, financial/full vs operational/redacted contracts, optionals, and rollback silence.",
+    "uiSimulation": {
+      "result": "PASS",
+      "command": "npx playwright test --config=playwright.current.config.ts --grep \"carrega, altera, salva e reabre permissoes individuais da equipe\"",
+      "cases": 1,
+      "scope": "Frontend local only; all API routes intercepted; no backend or shared DEV connection; command.read and command.operate selectors independently saved and reopened."
+    },
+    "builds": {
+      "backend": "PASS",
+      "frontend": "PASS"
+    },
     "representativeRehearsal": "NOT_RUN"
   },
   "migrationRules": {
     "copyUntrackedWorkspaceMigrations": false,
-    "silentlyIgnoreIncompleteMigrationDirectories": false
+    "silentlyIgnoreIncompleteMigrationDirectories": false,
+    "existingAttendantGrants": [
+      "command.read",
+      "command.operate",
+      "kitchen.read",
+      "kitchen.operate",
+      "inventory.read",
+      "inventory.adjust",
+      "clients.manage",
+      "taps.operate",
+      "event.menu.manage"
+    ],
+    "ownerOnlyPriorActionsGrantedAutomatically": [],
+    "newAttendantPermissions": []
   },
-  "codeCandidateManifest": {
-    "sha256": "cba419363e2996cf7bf768ff42f589105a5b36608b1876c03de2e2c504713299",
-    "candidateCount": 97
-  },
-  "evidencePath": "docs/testing/pdv-individual-realtime-regressions-qa-evidence.json"
+  "coverageLimits": [
+    "UI controls for each operational page were not all exercised; API authorization passed.",
+    "No representative data, real migration, shared DEV, PROD, cutover, or deploy was used.",
+    "No new agenda status or lifecycle policy was introduced."
+  ],
+  "evidencePath": "docs/testing/pdv-unico-module-permissions-qa-evidence.json",
+  "planeTicket": {
+    "identifier": "TAP-76",
+    "title": "[DEV/OPERAÇÃO] Certificar fluxos CAIXA/EVENTO após convergência de setembro",
+    "state": "In Progress",
+    "updated": false
+  }
 }
