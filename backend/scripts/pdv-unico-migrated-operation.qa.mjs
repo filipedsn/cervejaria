@@ -31,6 +31,7 @@ const io = setupSocketIO(app, createServer());
 const results = [];
 const credentials = [];
 const createdIds = [];
+const qaAttemptClosedSessions = [];
 let finalEvidence;
 async function user(tenantId, role) {
   const password = randomBytes(24).toString('base64url');
@@ -54,7 +55,69 @@ async function settle(cookie, commandId) {
   assert.equal((await db.comanda.findUniqueOrThrow({ where: { id: commandId } })).status, 'FECHADA');
   return Number(row.total);
 }
+async function closePriorQaAttemptSessions() {
+  for (const tenant of DEV_PDV_TENANT_ALLOWLIST) {
+    const sessions = await db.sessaoCaixaOperacao.findMany({
+      where: { cervejariaId: tenant.id, status: 'ABERTO', abertoPorId: { startsWith: 'qa-operation-' } },
+      select: { id: true, pontoVendaId: true, diaOperacional: true },
+      orderBy: [{ diaOperacional: 'asc' }, { abertoEm: 'asc' }],
+    });
+    if (!sessions.length) continue;
+    const password = randomBytes(24).toString('base64url');
+    const row = await db.usuario.create({
+      data: { id: `${runId}-cleanup-${tenant.id}`, cervejariaId: tenant.id, nome: 'QA attempt cleanup', email: `${runId}-cleanup-${tenant.id}@example.invalid`, senhaHash: await bcrypt.hash(password, 10), papel: 'DONO', permissoesOperacao: [] },
+    });
+    credentials.push(row.id);
+    for (const session of sessions) {
+      const day = session.diaOperacional.toISOString().slice(0, 10);
+      const originalDate = Date;
+      globalThis.Date = class extends originalDate { constructor(...args) { super(...(args.length ? args : [`${day}T18:00:00.000Z`])); } static now() { return new originalDate(`${day}T18:00:00.000Z`).getTime(); } };
+      try {
+        const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: row.email, senha: password } });
+        assert.equal(login.statusCode, 200, 'QA cleanup owner login');
+        const header = login.headers['set-cookie'];
+        const cookie = (Array.isArray(header) ? header[0] : header).split(';')[0];
+        const status = await request(cookie, 'GET', `/api/operacao/caixa?pontoVendaId=${session.pontoVendaId}`);
+        assert.equal(status.sessao?.id, session.id, 'only the tagged prior QA session is selected');
+        assert.equal(status.comandasAbertas, 0, 'prior QA session has no open command before cleanup');
+        const closed = await request(cookie, 'POST', '/api/operacao/caixa/fechar', {
+          pontoVendaId: session.pontoVendaId,
+          contadoDinheiro: status.sessao.gaveta.esperadoDinheiro,
+          contadoPix: status.sessao.esperado.pix,
+          contadoCartaoDebito: status.sessao.esperado.cartaoDebito,
+          contadoCartaoCredito: status.sessao.esperado.cartaoCredito,
+          observacaoFechamento: 'Encerramento de sessão de tentativa QA incompleta; valores conferidos pelo resumo do caixa.',
+        });
+        assert.equal(closed.status, 'FECHADO');
+        qaAttemptClosedSessions.push(session.id);
+      } finally { globalThis.Date = originalDate; }
+    }
+  }
+}
+async function ensureQaTapVolumePrice(menu, point, tenant, tapsEnabled) {
+  if (!tapsEnabled) return null;
+  for (const tap of await db.tap.findMany({
+    where: { cervejariaId: tenant.id, pontoVendaId: point.id, ativo: true, produtoId: { not: null } },
+    include: { produto: { include: { precos: { orderBy: { volumeMl: 'asc' } } } } },
+    orderBy: { numero: 'asc' },
+  })) {
+    if (!tap.produto?.ativo || !menu.produtos.some(row => row.produtoId === tap.produtoId)) continue;
+    const price = tap.produto.precos.find(row => row.volumeMl > 1 && Number(row.preco) > 0);
+    if (!price) continue;
+    let menuPrice = await db.cardapioProduto.findUnique({ where: { cardapioId_produtoId_volumeMl: { cardapioId: menu.id, produtoId: tap.produtoId, volumeMl: price.volumeMl } } });
+    if (!menuPrice) {
+      menuPrice = await db.cardapioProduto.create({ data: { cardapioId: menu.id, produtoId: tap.produtoId, cervejariaId: tenant.id, pontoVendaId: point.id, volumeMl: price.volumeMl, precoUnit: price.preco } });
+      createdIds.push(menuPrice.id);
+    }
+    if (!menu.produtos.some(row => row.produtoId === tap.produtoId && row.volumeMl === price.volumeMl)) {
+      menu.produtos.push({ produtoId: tap.produtoId, volumeMl: price.volumeMl, precoUnit: menuPrice.precoUnit, produto: tap.produto });
+    }
+    return { tapId: tap.id, productId: tap.produtoId, volumeMl: price.volumeMl, price: Number(menuPrice.precoUnit), fixture: 'QA_ONLY_MENU_VOLUME_PRICE_FOR_EXISTING_TAP_PRODUCT' };
+  }
+  throw new Error('TAP is enabled but no original menu product has an operational volume price; no QA-only TAP fixture can be formed.');
+}
 try {
+  await closePriorQaAttemptSessions();
   const baseline = JSON.parse(await readFile(process.env.PDV_SENTINEL_BASELINE, 'utf8'));
   for (const table of baseline) {
     const delegate = table.model[0].toLowerCase() + table.model.slice(1);
@@ -117,6 +180,7 @@ try {
       const selected = menu.produtos.find(p => p.volumeMl === 0 && p.produto.ativo && !p.produto.exigePreparo && Number(p.precoUnit) > 0 && !p.produto.controlaEstoque) ?? menu.produtos.find(p => p.volumeMl === 0 && p.produto.ativo && !p.produto.exigePreparo && Number(p.precoUnit) > 0);
       const product = selected.produto;
       const price = Number(selected.precoUnit);
+      const tapVolumeFixture = await ensureQaTapVolumePrice(menu, point, tenant, config.tapsEnabled);
       const occurrence = await db.ocorrenciaOperacional.create({ data: { id: `${runId}-${tenant.id}-occurrence`, cervejariaId: tenant.id, pontoVendaId: point.id, nome: 'QA operational occurrence', data: new originalDate(`${day}T00:00:00Z`), status: 'PROGRAMADA' } });
       createdIds.push(occurrence.id);
       const sessionIds = [];
@@ -167,12 +231,13 @@ try {
         await request(staff.cookie, 'GET', `/api/operacao/comandas/${command.id}`, undefined, 403);
         if (config.tapsEnabled) {
           const taps = await request(owner.cookie, 'GET', `/api/operacao/caixa/taps?pontoVendaId=${point.id}`);
-          const mounted = taps.taps.find(t => t.chopeAtual && menu.produtos.some(p => p.produtoId === t.chopeAtual.id && p.volumeMl > 0));
-          assert.ok(mounted, 'migrated TAP/catalog has a volume sale');
-          const tapPrice = menu.produtos.find(p => p.produtoId === mounted.chopeAtual.id && p.volumeMl > 0);
+          const mounted = taps.taps.find(t => t.id === tapVolumeFixture.tapId && t.chopeAtual?.id === tapVolumeFixture.productId);
+          assert.ok(mounted, 'existing migrated TAP product is mounted in the opened QA session');
+          const tapPrice = menu.produtos.find(p => p.produtoId === tapVolumeFixture.productId && p.volumeMl === tapVolumeFixture.volumeMl);
+          assert.ok(tapPrice, 'QA volume price is present in the opened session menu');
           const volumeCommand = await request(owner.cookie, 'POST', '/api/operacao/comandas', { pontoVendaId: point.id, tipo: 'APELIDO', identificador: `${runId}-volume-${withOccurrence}` }, 201);
           createdIds.push(volumeCommand.id);
-          await request(owner.cookie, 'POST', `/api/operacao/comandas/${volumeCommand.id}/pedidos`, { itens: [{ produtoId: mounted.chopeAtual.id, quantidade: 1, tapId: mounted.id, volumeMl: tapPrice.volumeMl }] }, 201);
+          await request(owner.cookie, 'POST', `/api/operacao/comandas/${volumeCommand.id}/pedidos`, { itens: [{ produtoId: tapVolumeFixture.productId, quantidade: 1, tapId: mounted.id, volumeMl: tapPrice.volumeMl }] }, 201);
           const item = await db.itemComanda.findFirstOrThrow({ where: { comandaId: volumeCommand.id } });
           assert.equal(item.volumeMl, tapPrice.volumeMl); assert.equal(Number(item.precoUnit), Number(tapPrice.precoUnit));
           paid += await settle(owner.cookie, volumeCommand.id);
@@ -212,10 +277,10 @@ try {
         }
         await request(owner.cookie, 'POST', '/api/operacao/caixa/fechar', { pontoVendaId: point.id, contadoDinheiro: 0, contadoPix: paid, contadoCartaoDebito: 0, contadoCartaoCredito: 0 });
       }
-      results.push({ tenant: tenant.name, status: 'PASS', durationMs: Math.round(performance.now() - started), flags: plain(config), openingWithAndWithoutOccurrence: 'PASS', menuAndOriginalPrice: 'PASS', commandPaymentAndCashClose: 'PASS', cancellationStock: 'PASS', portal: 'PASS', permissionsSameSession: 'PASS', originalKitchen, independentKitchen: independent, refund, tapsAndVolume: volume, sessions: sessionIds });
+      results.push({ tenant: tenant.name, status: 'PASS', durationMs: Math.round(performance.now() - started), flags: plain(config), openingWithAndWithoutOccurrence: 'PASS', menuAndOriginalPrice: 'PASS', commandPaymentAndCashClose: 'PASS', cancellationStock: 'PASS', portal: 'PASS', permissionsSameSession: 'PASS', originalKitchen, independentKitchen: independent, refund, tapsAndVolume: volume, tapVolumeFixture: tapVolumeFixture ?? null, sessions: sessionIds });
     } finally { globalThis.Date = originalDate; }
   }
   assert.deepEqual(await historical(), historyBefore, 'exact 605 original payments remain untouched by QA operation');
-  finalEvidence = { status: 'PASS', runId, results, unlistedIsolation: { status: 'PASS', tenantId: unlisted, dataCompared: baseline.map(t => t.model), legacyMode: 'EVENTO', canonicalCategories: 0, canonicalConfigurations: 0 }, originalPayments: { count: historicalIds.length, beforeSha256: digest(historyBefore), afterSha256: digest(await historical()), status: 'PASS' }, qaOnlyUserIds: credentials, qaOnlyCreatedIds: createdIds };
+  finalEvidence = { status: 'PASS', runId, results, priorQaAttempts: { closedOpenCashSessions: qaAttemptClosedSessions.length, closePath: 'AUTHENTICATED_OPERATIONAL_CASH_CLOSE', sessions: qaAttemptClosedSessions }, unlistedIsolation: { status: 'PASS', tenantId: unlisted, dataCompared: baseline.map(t => t.model), legacyMode: 'EVENTO', canonicalCategories: 0, canonicalConfigurations: 0 }, originalPayments: { count: historicalIds.length, beforeSha256: digest(historyBefore), afterSha256: digest(await historical()), status: 'PASS' }, qaOnlyUserIds: credentials, qaOnlyCreatedIds: createdIds };
 } finally { await new Promise(resolve => io.close(resolve)); await app.close(); await prisma.$disconnect(); await db.$disconnect(); }
 console.log(JSON.stringify(finalEvidence));
