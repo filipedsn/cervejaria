@@ -465,6 +465,9 @@ assert.equal(deniedSale.statusCode, 403, deniedSale.body);
 assert.deepEqual(await commercePhoto(), saleBeforeDenial, 'payment.receive denial causes no sale, payment or stock write');
 const grantPayment = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['command.operate', 'payment.receive', 'catalog.shift.manage'] } });
 assert.equal(grantPayment.statusCode, 200, grantPayment.body);
+const delegatedCardapioSave = await app.inject({ method: 'PUT', url: `/api/operacao/caixa/cardapio?pontoVendaId=${point.id}`, headers: authHeaders(staffCookie), payload: { cardapioId: cardapio.id } });
+assert.equal(delegatedCardapioSave.statusCode, 200, delegatedCardapioSave.body);
+assert.deepEqual(delegatedCardapioSave.json().permissoesEdicao, { cardapioTurno: true, precoTurno: true, precoTemplate: false }, 'PUT response projects only shift maintenance for catalog.shift.manage');
 const completedSale = await app.inject({ method: 'POST', url: '/api/operacao/vendas', headers: authHeaders(staffCookie), payload: salePayload });
 assert.equal(completedSale.statusCode, 201, completedSale.body);
 const completedSaleBody = JSON.parse(completedSale.body);
@@ -505,6 +508,7 @@ assert.deepEqual(templatePricePanel.json().permissoesEdicao, { cardapioTurno: fa
 const templateItemBeforeCatalogEdit = await prisma.cardapioProduto.findFirstOrThrow({ where: { cardapioId: cardapio.id, produtoId: stockProduct.id, volumeMl: 0 } });
 const templatePriceUpdate = await app.inject({ method: 'PATCH', url: `/api/operacao/caixa/cardapio/preco?pontoVendaId=${point.id}`, headers: authHeaders(staffCookie), payload: { produtoId: stockProduct.id, volumeMl: 0, precoUnit: 14, escopo: 'TEMPLATE' } });
 assert.equal(templatePriceUpdate.statusCode, 200, templatePriceUpdate.body);
+assert.deepEqual(templatePriceUpdate.json().permissoesEdicao, { cardapioTurno: false, precoTurno: false, precoTemplate: true }, 'PATCH response projects only template price editing for catalog.manage');
 assert.equal(Number((await prisma.cardapioProduto.findUniqueOrThrow({ where: { id: templateItemBeforeCatalogEdit.id } })).precoUnit), 14, 'catalog.manage updates template prices through the authenticated API');
 await prisma.cardapioProduto.update({ where: { id: templateItemBeforeCatalogEdit.id }, data: { precoUnit: templateItemBeforeCatalogEdit.precoUnit } });
 const foreignOptional = await prisma.opcional.create({ data: { cervejariaId: otherCompany.id, pontoVendaId: foreignPoint.id, nome: `Foreign optional ${suffix}`, preco: '7.25' } });
