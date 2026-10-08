@@ -35,7 +35,7 @@ const legacySchemaOmit = {
     ...('produto' in canonicalSchemaOmit ? canonicalSchemaOmit.produto : {}),
     // The category column is additive. Keep old-schema SELECTs compatible
     // whenever the canonical category catalog is switched off.
-    categoriaPdvId: process.env.PDV_GAMIFIED_CATEGORY_CATALOG !== '1' ? true : undefined,
+    ...(process.env.PDV_GAMIFIED_CATEGORY_CATALOG !== '1' ? { categoriaPdvId: true } : {}),
   },
 };
 const baseClient = new PrismaClient(
