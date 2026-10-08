@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "result": "BLOCKED",
+  "reviewedImplementationCommit": "521b3ff011dec783eed4f790d73ea769217b7e67",
+  "reviewedTree": "1fb02d170b4a9f79c21b34ca49a58fa6cd4e2f1c",
+  "categoryManifest": "v20",
+  "categoryManifestSha256": "54bfe7ff145fe09f9cbd1460a37b1b008e9a572e510eb437d61e2ad32ca68e78",
+  "completedBeforeBlock": {
+    "backendBuild": "PASS",
+    "frontendBuild": "PASS",
+    "mockedCategoryUi": "PASS (2/2)",
+    "migrationCompatibility": "PASS",
+    "finance": "PASS",
+    "commerce": "PASS",
+    "individualPermissions": "PASS",
+    "categorySql": "PASS"
+  },
+  "blocker": {
+    "gate": "authenticated-category-api-postgresql",
+    "cause": "runner used database pdv_gamified_api_qa, rejected by isolated validator requiring /cervejaria_qa_pdv_unico; no API container was started",
+    "fixCommit": "7f95b7f"
+  },
+  "representativeRehearsal": "NOT_RUN; no representative photo supplied",
+  "localState": "UNCHANGED",
+  "prodAccess": "NO",
+  "sharedDevAccess": "NO"
+}
