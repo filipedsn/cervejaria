@@ -1,37 +1,39 @@
 {
   "version": 2,
   "purpose": "Exact Git certification inputs for individual permissions across existing PDV operational modules",
-  "baselineCommit": "8eca66cf376043228a76e754a0214b18f09ea07e",
-  "baselineTree": "cdedc8e4207a44872c244e83be4846454d1f8319",
+  "baselineCommit": "5b7062f308edcb25f029850e451c7f452a142aed",
+  "baselineTree": "d81b42616b374b25612b87b8c00fffd4415ec04d",
   "sourceMaterialization": "Git snapshot selected by commit; workspace files are not source inputs",
   "databaseInputs": {
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaGitBlob": "700157399e9979f0d2948930420f9448a43ee5c9",
     "migrationPath": "backend/prisma/migrations/20261007230000_individual_module_permissions/migration.sql",
-    "migrationGitBlob": "53b5efca049da660c1ec559a7a76fce4c30c3f26"
+    "migrationGitBlob": "53b5efca049da660c1ec559a7a76fce4c30c3f26",
+    "shiftCatalogMigrationPath": "backend/prisma/migrations/20261008090000_shift_catalog_permission/migration.sql",
+    "shiftCatalogMigrationGitBlob": "6129dfa0cda655729556050951ebe190f1698929"
   },
   "suite": {
-    "command": "qa:pdv-current-git-snapshot -- --commit=8eca66cf376043228a76e754a0214b18f09ea07e --evidence-out=../docs/testing/pdv-unico-module-permissions-qa-evidence.json",
+    "command": "qa:pdv-current-git-snapshot -- --commit=5b7062f308edcb25f029850e451c7f452a142aed --evidence-out=<diretorio-temporario>/pdv-permissions-certification-5b7062f.json",
     "includedDisposableSuite": "qa:pdv-individual-permissions",
     "result": "PASS",
     "candidateManifest": {
-      "sha256": "b463870509e3f3406b9f543f8a425255f290d00b403a6ff378a015d7e848f5c2",
+      "sha256": "9f9b6890677410efaf24a73da1a1ea159aadff284047a28bcd8584e7d60042fe",
       "candidateCount": 97
     },
     "sourceAudit": {
-      "trackedBlobs": 1147,
+      "trackedBlobs": 1151,
       "snapshotProjectModules": 185,
       "workspaceImports": 0,
       "externalModules": 100,
       "prismaVersion": "6.19.3"
     },
-    "moduleCases": "PASS: read/write separation for commands, sales, kitchen, inventory, catalog, clients, taps, and agenda; grant/revoke in the same session; mutation photos for denials; authorized persistence; snapshot price preservation; cross-tenant 404 checks for each group; TAP/agenda cash and payment totals unchanged; migration rehearsal for existing and new attendants.",
-    "focusedRealtimeCases": "PASS: legacy Socket.IO rooms when disabled, cross-tenant isolation, enabled-flag grant/revoke, persisted kitchen launch, actual notifier payloads, financial/full vs operational/redacted contracts, optionals, and rollback silence.",
+    "moduleCases": "PASS on disposable PostgreSQL: employee with catalog.manage and owner A cannot update/delete tenant B optional through both generic and operational APIs (404); before/after optional rows and links identical; own optional edit/delete succeeds; both product-option link APIs reject foreign-tenant optional before changing links. catalog.shift.manage persists the TURNO price; TEMPLATE is denied without catalog.manage and leaves global price unchanged. The suite also verifies existing permission grant/revoke, tenant boundaries, and persistence for enumerated actions only.",
+    "focusedRealtimeCases": "PASS on real local Socket.IO sockets and real API emitters: empty, command.read-only, kitchen.read-only, cash.values.read-only, owner, foreign tenant, and legacy flag-off; room membership observed before emitting; payload separation; grant/revoke reconciled on the same socket; cash.values.read does not grant command/kitchen; kitchen projection contains no prices; owner gets the safe kitchen projection.",
     "uiSimulation": {
       "result": "PASS",
-      "command": "npx playwright test --config=playwright.current.config.ts --grep \"carrega, altera, salva e reabre permissoes individuais da equipe\"",
-      "cases": 1,
-      "scope": "Frontend local only; all API routes intercepted; no backend or shared DEV connection; command.read and command.operate selectors independently saved and reopened."
+      "command": "npx playwright test --config=playwright.current.config.ts --reporter=list --output=<diretorio-temporario> e2e/current-model/individual-permissions-ui.spec.ts e2e/current-model/module-permissions-operational-ui.spec.ts",
+      "cases": 6,
+      "scope": "PASS; local frontend only, all API routes intercepted, no backend/PostgreSQL/shared DEV connection. Selectors saved/reopened; agenda.manage saves agenda and cannot open team; kitchen.read has no prep/cancel actions; inventory.read has no manual adjustment; seller completes sale without price editor; catalog.manage edits product. Reports/output kept in temporary directory."
     },
     "builds": {
       "backend": "PASS",
@@ -49,6 +51,7 @@
       "kitchen.operate",
       "inventory.read",
       "inventory.adjust",
+      "catalog.shift.manage",
       "clients.manage",
       "taps.operate",
       "event.menu.manage"
@@ -57,11 +60,15 @@
     "newAttendantPermissions": []
   },
   "coverageLimits": [
-    "UI controls for each operational page were not all exercised; API authorization passed.",
+    "Do not infer all API routes are protected from the enumerated cross-tenant cases; only named endpoints/actions have evidence. Unlisted routes and alternate consumers remain NAO COMPROVADA until separately enumerated and exercised.",
+    "Operational UI Playwright tests are intercepted simulations, not backend/PostgreSQL proofs. API/PostgreSQL and Socket.IO evidence is recorded separately above.",
+    "The shift-only API/TURNO-vs-TEMPLATE distinction is covered in PostgreSQL QA and the permission selector saves/reopens catalog.shift.manage; the full price modal is not a dedicated Playwright scenario.",
+    "Global catalog/template editing remains catalog.manage; the preserved shift menu concession is catalog.shift.manage. No global catalog permission is backfilled.",
     "No representative data, real migration, shared DEV, PROD, cutover, or deploy was used.",
     "No new agenda status or lifecycle policy was introduced."
   ],
-  "evidencePath": "docs/testing/pdv-unico-module-permissions-qa-evidence.json",
+  "evidencePath": "Case results are embedded in this manifest; temporary certification evidence is in the executor temp directory.",
+  "historicalEvidencePath": "docs/testing/pdv-unico-module-permissions-qa-evidence.json",
   "planeTicket": {
     "identifier": "TAP-76",
     "title": "[DEV/OPERAÇÃO] Certificar fluxos CAIXA/EVENTO após convergência de setembro",

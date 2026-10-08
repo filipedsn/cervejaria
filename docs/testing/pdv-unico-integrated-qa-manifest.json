@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "b06e09b2d0972b988863507dbe55dc42bbb1f8a6",
+    "commit": "5b7062f308edcb25f029850e451c7f452a142aed",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "142502b10ac4dea4bbc16585aec04508bc0ac91bbc8130ad8f5f3f36005f4694"
   },
@@ -63,7 +63,7 @@
     }
   },
   "delivery": {
-    "schemaCommit": "b06e09b2d0972b988863507dbe55dc42bbb1f8a6",
+    "schemaCommit": "5b7062f308edcb25f029850e451c7f452a142aed",
     "schemaSha256": "142502b10ac4dea4bbc16585aec04508bc0ac91bbc8130ad8f5f3f36005f4694",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
@@ -94,6 +94,20 @@
     "path": "backend/prisma/schema.prisma",
     "sha256": "19ff5e65829bc6356fa8d06edbff9fd1527b1d1dd0bd5e35c58cda880479ae59",
     "compatibility": "Matches DEV migration ledger through 20260930150000_company_pix_key; excludes additive PDV migrations not applied in DEV."
+  },
+  "currentCertification": {
+    "commit": "5b7062f308edcb25f029850e451c7f452a142aed",
+    "tree": "d81b42616b374b25612b87b8c00fffd4415ec04d",
+    "suite": "qa:pdv-current-git-snapshot",
+    "syntheticRegression": "PASS",
+    "individualPermissionsPostgreSQL": "PASS",
+    "playwrightOperationalUi": "PASS 6/6; all APIs intercepted; temporary output directory",
+    "candidateManifestSha256": "9f9b6890677410efaf24a73da1a1ea159aadff284047a28bcd8584e7d60042fe",
+    "representativeRehearsal": "NOT_RUN",
+    "prodAccess": "NO",
+    "sharedDevAccess": "NO",
+    "realBackfillCutoverDeploy": "NOT_RUN",
+    "evidence": "See current results in pdv-individual-permissions-qa-manifest.json; immutable prior manifests below retain historical hashes."
   },
   "codeCandidates": [
     {
