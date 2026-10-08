@@ -1,0 +1,126 @@
+{
+  "capturedOn": "2026-10-08",
+  "selectedCodeCommit": "0a237d39d248a064a572a40173087bdc5db1793d",
+  "selectedCodeTree": "7396c0a9cf6aa025b80b9b1876181764d5a73714",
+  "approvedPhotoSha256": "2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b",
+  "scope": "Focused authenticated operation on the already-migrated representative QA database; no migration was rerun",
+  "environment": {
+    "isolatedQaOwnershipValidated": true,
+    "sharedDevAccess": "NO",
+    "sharedDevWrites": 0,
+    "prodAccess": "NO",
+    "prodMetadataAccess": "NO",
+    "workspaceImports": 0,
+    "localWorkspaceStateUnchanged": true,
+    "qaOwnedOpenCashSessionsAfterCleanup": 0,
+    "original605PaymentRows": {
+      "status": "PASS",
+      "beforeSha256": "6ad2aa0ea7546e879c9849ef98d4528cfcc928effe161f5c5445d11ba77ee83e",
+      "afterSha256": "6ad2aa0ea7546e879c9849ef98d4528cfcc928effe161f5c5445d11ba77ee83e",
+      "authorizedClassCPaymentIds": 577,
+      "authorizationChanged": false
+    }
+  },
+  "focusedSnapshotGates": {
+    "result": "PASS",
+    "backendBuild": { "durationMs": 6986, "exitCode": 0 },
+    "frontendBuild": { "durationMs": 27782, "exitCode": 0 },
+    "mockedUiTests": { "passed": 2, "failed": 0 },
+    "guardAndActivationTests": { "passed": 10, "failed": 0 },
+    "operationRunnerExitCode": 0,
+    "businessAcceptance": "BLOCKED_FOR_CHURRASQUINHO_CASH_CLOSE"
+  },
+  "portalAuthentication": {
+    "anonymousCatalogRead": 401,
+    "portalOpen": 201,
+    "cookieFromPortalOpenResponse": true,
+    "subsequentCatalogReadWithCookie": 200,
+    "simulatedOperationalDate": "2026-11-15",
+    "tokenLifetimeOrAuthenticationRulesChanged": false
+  },
+  "tenantFlows": [
+    {
+      "tenant": "CIA Marítima",
+      "tenantId": "cmr9yis3c0000hvu00q9fe7y1",
+      "result": "PASS",
+      "cashOpenWithoutOccurrence": "PASS",
+      "cashOpenWithOccurrence": "PASS",
+      "originalMenuAndPrice": "PASS",
+      "commandPayment": "PASS",
+      "authenticatedCashClose": "PASS",
+      "cancellationAndStock": "PASS",
+      "portal": "PASS",
+      "sameSessionPermissionGrantAndRevoke": "PASS",
+      "kitchen": "EXPECTED_DISABLED_REFUSAL",
+      "inventory": "EXPECTED_DISABLED_NO_MUTATION",
+      "taps": {
+        "result": "PASS",
+        "existingTapProduct": "cmrck6u36000mhvu0axp3ucnn",
+        "existingSourcePrice": { "volumeMl": 300, "amount": 15 },
+        "qaOnlyMenuLink": true,
+        "originalMigratedMenuHadVolumeAssociation": false
+      }
+    },
+    {
+      "tenant": "Churrasquinho do Thiago",
+      "tenantId": "cmsry9xrn0000hvlgopjxy0oo",
+      "result": "BLOCKED",
+      "cashOpenWithoutOccurrence": "PASS",
+      "cashOpenWithOccurrence": "PASS",
+      "originalMenuAndPrice": "PASS",
+      "commandPayment": "PASS",
+      "authenticatedCashClose": "BLOCKED_BY_PRESERVED_HISTORICAL_COMMAND",
+      "blockedCloseCalls": 1,
+      "cancellationAndStock": "PASS",
+      "portal": "PASS",
+      "sameSessionPermissionGrantAndRevoke": "PASS",
+      "originalKitchenOrder": "PASS",
+      "independentKitchenOrders": "PASS_USING_MARKED_QA_ONLY_PRODUCT_IN_MIGRATED_TENANT",
+      "refundAndStockConservation": "PASS",
+      "taps": "EXPECTED_DISABLED_REFUSAL"
+    }
+  ],
+  "preservedHistoricalCommand": {
+    "id": "cmuqaoyta0007hvdg3q4v7hkj",
+    "presentInApprovedSourcePhoto": true,
+    "tenantId": "cmsry9xrn0000hvlgopjxy0oo",
+    "status": "ABERTA",
+    "type": "APELIDO",
+    "origin": "CAIXA",
+    "operationalDay": "2026-10-01",
+    "createdAt": "2026-10-02T01:39:21.790Z",
+    "total": 0,
+    "payments": [],
+    "paymentTotal": 0,
+    "items": [],
+    "itemTotal": 0,
+    "balance": 0,
+    "receivable": null,
+    "pointOfSaleId": "cmsry9xry0004hvlge0wgboza",
+    "openedByUserId": null,
+    "customerId": "cmumnla0z0014hv18nth4smgx",
+    "eventId": null,
+    "occurrenceId": null,
+    "operationalCashSessionId": null,
+    "closedAt": null,
+    "reconciledAgainstApprovedPhoto": true
+  },
+  "cashCloseRule": {
+    "source": "backend/src/lib/operacao/caixa.ts:contarComandasAbertas",
+    "predicate": "origin=CAIXA AND pointOfSaleId=target AND pointOfSale.cervejariaId=tenant AND status=ABERTA AND type!=AVULSA",
+    "filtersOperationalDay": false,
+    "filtersCashSessionId": false,
+    "effect": "Any matching open command at the point blocks cash close, regardless of its date or zero balance."
+  },
+  "diagnosticClassification": {
+    "migrationDefect": "NOT_FOUND; the historical command is present in the approved photo and remains equal after migration.",
+    "preexistingOperationalCondition": "A customer-linked empty CAIXA command from 2026-10-01 is still ABERTA and the existing close rule blocks Churrasquinho cash sessions.",
+    "fixtureFailures": [
+      "The previous portal check treated a protected anonymous catalog request as success; the corrected test expects anonymous 401, opens the portal, and verifies the cookie-authenticated read at the simulated date.",
+      "The approved CIA menu has no volume row although the existing TAP product has source volume prices; the QA-only menu link enabled an isolated volume test without changing the source photo.",
+      "The refund fixture now follows RECEBIDO to CANCELAMENTO_PENDENTE to CANCELADO, the supported transition.",
+      "Cash close was invoked only once for the preserved Churrasquinho blocker. Direct session updates were used solely to clean QA test sessions and are explicitly not counted as authenticated cash-close success."
+    ]
+  },
+  "decisionToReleaseDevSmoke": "The business owner must resolve this specific empty historical command through an approved, audited operational process, or explicitly approve a separate business-rule decision for handling zero-value historical open commands. Preserve this command until that decision is made. The CIA TAP volume smoke also requires an approved point-menu association for the existing product and source price."
+}

@@ -1017,3 +1017,11 @@ The corrected executor starts with the photo's source schema, not the target sch
 The final executor adds rowwise ID/content assertions for `TransacaoLog` and `ClienteEstatisticas`; exact grants for users already in the photo; checks against owner-exclusive explicit grants; category-link/configuration activation readiness; and independent reconciliation of original payment IDs. The 577 class-C authorization stays pinned to its existing list. A QA report is written only to an OS temporary path.
 
 Commands added: `npm run qa:pdv-sequenced-disposable`, `npm run test:pdv-dev-cutover-guards`, and `npm run plan:pdv-dev-cutover`. The plan command validates the exact local DEV URL and prints a dry-run without connecting. `--apply` remains intentionally blocked because operational API flows on both migrated tenants, all-tenant DDL preflight, and apply-core QA are still open gates; do not describe the cut as ready.
+
+## Resultado focado após correção das fixtures (2026-10-08)
+
+Na revisão `0a237d39d248a064a572a40173087bdc5db1793d`, sem repetir migração, CIA Marítima passou em abertura de caixa com/sem ocorrência, cardápio e preço original, pagamento, fechamento autenticado, cancelamento e estoque, portal e concessão/revogação de permissão na mesma sessão. Cozinha e TAP desativados foram recusados sem mutação; a prova de volume TAP usou somente vínculo criado na QA para produto/preço de origem existente.
+
+No Churrasquinho do Thiago passaram os mesmos fluxos de abertura, cardápio/preço, pagamento, cancelamento/estoque, portal e permissão, além da cozinha original/independente e estorno com conservação. O fechamento autenticado foi chamado uma vez e bloqueado pela comanda histórica `cmuqaoyta0007hvdg3q4v7hkj`; não repetir até decisão operacional. Atualizações diretas de sessão foram apenas limpeza QA e não são sucesso de fechamento autenticado. Detalhes, valores e classificação estão em `pdv-unico-operation-blocker-2026-10-08.json`.
+
+A regressão do portal foi de fixture: GET anônimo protegido recebe 401; o teste agora abre o portal, captura o cookie da resposta e confirma GET 200 no relógio simulado `2026-11-15`. Nenhuma regra de autenticação ou validade foi relaxada. Não executar bateria integrada enquanto o bloqueio histórico não tiver decisão aprovada.
