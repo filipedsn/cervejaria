@@ -63,11 +63,23 @@ const foreignOwnerCookie = await login(otherOwner.email, otherOwnerPassword);
 const authHeaders = (cookie) => ({ cookie });
 const trailer = await prisma.trailer.create({ data: { nome: `QA trailer ${suffix}`, cervejariaId: company.id } });
 const foreignTrailer = await prisma.trailer.create({ data: { nome: `Foreign QA trailer ${suffix}`, cervejariaId: otherCompany.id } });
+const foreignPoint = await prisma.pontoVenda.create({ data: { cervejariaId: otherCompany.id, nome: 'Foreign point' } });
 const event = await prisma.evento.create({ data: { nome: `Event cash QA ${suffix}`, local: 'QA', cervejariaId: company.id, trailerId: trailer.id } });
 const eventForPermissionGrants = await prisma.evento.create({ data: { nome: `Event permission QA ${suffix}`, local: 'QA', cervejariaId: company.id, trailerId: trailer.id } });
 const foreignEvent = await prisma.evento.create({ data: { nome: `Foreign event QA ${suffix}`, local: 'QA', cervejariaId: otherCompany.id, trailerId: foreignTrailer.id } });
+const foreignClient = await prisma.cliente.create({ data: { nome: 'Foreign permission QA', telefone: `119876${Date.now().toString().slice(-5)}`, cervejariaId: otherCompany.id } });
+const foreignProduct = await prisma.produto.create({ data: { nome: `Foreign product QA ${suffix}`, tipo: 'COMIDA', cervejariaId: otherCompany.id } });
+const foreignCommand = await prisma.comanda.create({ data: { eventoId: foreignEvent.id, clienteId: foreignClient.id, status: 'ABERTA', tipo: 'COMANDA', total: 0 } });
+const foreignOrder = await prisma.pedidoOperacao.create({ data: { cervejariaId: otherCompany.id, comandaId: foreignCommand.id, pontoVendaId: foreignPoint.id, numero: 880001, diaOperacional: new Date('2026-10-07T00:00:00.000Z'), criadoPorId: otherOwner.id } });
 const tapChope = await prisma.produto.create({ data: { nome: `Tap permission QA ${suffix}`, tipo: 'BEBIDA', formato: 'CHOPE', cervejariaId: company.id } });
 const permissionTap = await prisma.tap.create({ data: { numero: 9001, nome: 'Permission QA tap', cervejariaId: company.id, trailerId: trailer.id } });
+const moduleFinancePhoto = async () => ({
+  eventSessions: await prisma.sessaoCaixaEvento.count({ where: { evento: { cervejariaId: company.id } } }),
+  eventMovements: await prisma.movimentoCaixaEvento.count({ where: { sessao: { evento: { cervejariaId: company.id } } } }),
+  operationalSessions: await prisma.sessaoCaixaOperacao.count({ where: { cervejariaId: company.id } }),
+  payments: await prisma.pagamento.count({ where: { comanda: { cervejariaId: company.id } } }),
+});
+const moduleFinanceBeforeTapAndAgenda = await moduleFinancePhoto();
 const tapMountCountBeforeDenial = await prisma.tapMontagem.count({ where: { eventoId: eventForPermissionGrants.id, tapId: permissionTap.id } });
 const tapMountDenied = await app.inject({ method: 'PUT', url: `/api/eventos/${eventForPermissionGrants.id}/taps/${permissionTap.id}/chope`, headers: authHeaders(staffCookie), payload: { produtoId: tapChope.id } });
 assert.equal(tapMountDenied.statusCode, 403, tapMountDenied.body);
@@ -77,6 +89,8 @@ assert.equal(grantTapOperation.statusCode, 200, grantTapOperation.body);
 const tapMountAllowed = await app.inject({ method: 'PUT', url: `/api/eventos/${eventForPermissionGrants.id}/taps/${permissionTap.id}/chope`, headers: authHeaders(staffCookie), payload: { produtoId: tapChope.id } });
 assert.equal(tapMountAllowed.statusCode, 200, tapMountAllowed.body);
 assert.equal(await prisma.tapMontagem.count({ where: { eventoId: eventForPermissionGrants.id, tapId: permissionTap.id, encerradoEm: null, produtoId: tapChope.id } }), 1, 'taps.operate persists the active event mounting');
+const crossTenantTapMount = await app.inject({ method: 'PUT', url: `/api/eventos/${foreignEvent.id}/taps/${permissionTap.id}/chope`, headers: authHeaders(staffCookie), payload: { produtoId: tapChope.id } });
+assert.equal(crossTenantTapMount.statusCode, 404, crossTenantTapMount.body);
 const clearTapPermission = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: [] } });
 assert.equal(clearTapPermission.statusCode, 200, clearTapPermission.body);
 await prisma.configuracaoPontoVenda.create({ data: {
@@ -96,10 +110,14 @@ const agendaCreateAllowed = await app.inject({ method: 'POST', url: '/api/operac
 assert.equal(agendaCreateAllowed.statusCode, 201, agendaCreateAllowed.body);
 const savedAgenda = await prisma.agendaOperacional.findFirstOrThrow({ where: { cervejariaId: company.id, pontoVendaId: point.id, nome: agendaPayload.nome } });
 assert.equal(savedAgenda.diaSemana, agendaPayload.diaSemana, 'agenda.manage persists the authorized schedule');
+const foreignAgenda = await prisma.agendaOperacional.create({ data: { cervejariaId: otherCompany.id, pontoVendaId: foreignPoint.id, nome: `Foreign agenda ${suffix}`, diaSemana: 3 } });
+const crossTenantAgenda = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${foreignAgenda.id}`, headers: authHeaders(staffCookie), payload: { ativa: false } });
+assert.equal(crossTenantAgenda.statusCode, 404, crossTenantAgenda.body);
 const revokeAgendaManage = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: [] } });
 assert.equal(revokeAgendaManage.statusCode, 200, revokeAgendaManage.body);
 const agendaOccurrencesDeniedAfterRevoke = await app.inject({ method: 'POST', url: '/api/operacao/agenda/ocorrencias', headers: authHeaders(staffCookie), payload: { nome: 'Denied occurrence', data: '2026-10-08' } });
 assert.equal(agendaOccurrencesDeniedAfterRevoke.statusCode, 403, agendaOccurrencesDeniedAfterRevoke.body);
+assert.deepEqual(await moduleFinancePhoto(), moduleFinanceBeforeTapAndAgenda, 'TAP and agenda operations do not mutate cash sessions, movements, or payments');
 process.env.PDV_CANONICAL_CONFIG_QA = '0';
 const eventCash = await prisma.sessaoCaixaEvento.create({
   data: { eventoId: event.id, abertoPorId: owner.id, trocoInicial: '734.21' },
@@ -265,6 +283,8 @@ assert.equal(manualInventoryReadDenied.statusCode, 403, manualInventoryReadDenie
 const grantInventoryRead = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['inventory.read'] } });
 assert.equal(grantInventoryRead.statusCode, 200, grantInventoryRead.body);
 assert.equal((await app.inject({ method: 'GET', url: `/api/operacao/estoque?pontoVendaId=${point.id}`, headers: authHeaders(staffCookie) })).statusCode, 200);
+const crossTenantInventoryRead = await app.inject({ method: 'GET', url: `/api/operacao/estoque?pontoVendaId=${foreignPoint.id}`, headers: authHeaders(staffCookie) });
+assert.equal(crossTenantInventoryRead.statusCode, 404, crossTenantInventoryRead.body);
 const manualInventoryWriteDenied = await app.inject({ method: 'POST', url: '/api/operacao/estoque/entrada', headers: authHeaders(staffCookie), payload: { pontoVendaId: point.id, produtoId: stockProduct.id, quantidade: 1 } });
 assert.equal(manualInventoryWriteDenied.statusCode, 403, manualInventoryWriteDenied.body);
 assert.deepEqual(await manualInventoryPhoto(), manualInventoryBeforeDenial, 'manual inventory denials preserve stock balance and movement ledger');
@@ -279,6 +299,8 @@ const grantCommandOperateRead = await app.inject({ method: 'PATCH', url: `/api/u
 assert.equal(grantCommandOperateRead.statusCode, 200, grantCommandOperateRead.body);
 assert.equal((await app.inject({ method: 'GET', url: '/api/operacao/comandas', headers: authHeaders(staffCookie) })).statusCode, 200);
 assert.equal((await app.inject({ method: 'GET', url: `/api/operacao/comandas/${operationalCommand.id}`, headers: authHeaders(staffCookie) })).statusCode, 200);
+const crossTenantCommandRead = await app.inject({ method: 'GET', url: `/api/operacao/comandas/${foreignCommand.id}`, headers: authHeaders(staffCookie) });
+assert.equal(crossTenantCommandRead.statusCode, 404, crossTenantCommandRead.body);
 const readOnlyOpenPhoto = await prisma.comanda.count({ where: { pontoVendaId: point.id } });
 const readOnlyOpenDenied = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: authHeaders(staffCookie), payload: { pontoVendaId: point.id, tipo: 'MESA', identificador: `ReadOnly-${suffix}`, itens: [] } });
 assert.equal(readOnlyOpenDenied.statusCode, 403, readOnlyOpenDenied.body);
@@ -393,6 +415,8 @@ const priceEditAllowed = await app.inject({ method: 'PUT', url: `/api/operacao/p
 assert.equal(priceEditAllowed.statusCode, 200, priceEditAllowed.body);
 assert.equal(Number((await prisma.preco.findFirstOrThrow({ where: { produtoId: stockProduct.id, volumeMl: 1 } })).preco), 12);
 assert.equal(Number((await prisma.itemComanda.findUniqueOrThrow({ where: { id: soldItem.id } })).precoUnit), 10, 'catalog price change preserves the sold item price snapshot');
+const crossTenantCatalogEdit = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${foreignProduct.id}`, headers: authHeaders(staffCookie), payload: { precoUnit: 5 } });
+assert.equal(crossTenantCatalogEdit.statusCode, 404, crossTenantCatalogEdit.body);
 const checkoutCustomer = await app.inject({ method: 'POST', url: '/api/clientes/find-or-create', headers: authHeaders(staffCookie), payload: { nome: `Checkout ${suffix}`, telefone: `1199${Date.now().toString().slice(-7)}` } });
 assert.equal(checkoutCustomer.statusCode, 200, checkoutCustomer.body);
 const adminCustomerReadDenied = await app.inject({ method: 'GET', url: '/api/clientes', headers: authHeaders(staffCookie) });
@@ -400,6 +424,8 @@ assert.equal(adminCustomerReadDenied.statusCode, 403, adminCustomerReadDenied.bo
 const grantClientsManage = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['clients.manage'] } });
 assert.equal(grantClientsManage.statusCode, 200, grantClientsManage.body);
 assert.equal((await app.inject({ method: 'GET', url: '/api/clientes', headers: authHeaders(staffCookie) })).statusCode, 200);
+const crossTenantClientRead = await app.inject({ method: 'GET', url: `/api/clientes/${foreignClient.id}`, headers: authHeaders(staffCookie) });
+assert.equal(crossTenantClientRead.statusCode, 404, crossTenantClientRead.body);
 const clientMergeDenied = await app.inject({ method: 'POST', url: `/api/clientes/${debtClient.id}/unir`, headers: authHeaders(staffCookie), payload: { fonteId: JSON.parse(checkoutCustomer.body).id } });
 assert.equal(clientMergeDenied.statusCode, 403, clientMergeDenied.body);
 const clientDeleteDenied = await app.inject({ method: 'DELETE', url: `/api/clientes/${JSON.parse(checkoutCustomer.body).id}`, headers: authHeaders(staffCookie) });
@@ -505,6 +531,10 @@ const { emitFinancialToEvento, emitToCervejaria, emitToEvento } = await import('
 // Launch a persisted order over the authenticated API with a linked optional.
 const grantLaunchAndKitchen = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['command.operate', 'kitchen.operate'] } });
 assert.equal(grantLaunchAndKitchen.statusCode, 200, grantLaunchAndKitchen.body);
+const foreignOrderBeforeTransition = await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: foreignOrder.id }, select: { status: true, updatedAt: true } });
+const crossTenantKitchenTransition = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${foreignOrder.id}/status`, headers: authHeaders(staffCookie), payload: { status: 'EM_PREPARO' } });
+assert.equal(crossTenantKitchenTransition.statusCode, 404, crossTenantKitchenTransition.body);
+assert.deepEqual(await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: foreignOrder.id }, select: { status: true, updatedAt: true } }), foreignOrderBeforeTransition, 'cross-tenant kitchen denial preserves the foreign order');
 const socketOptional = await prisma.opcional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, nome: `QA topping ${suffix}`, preco: '2.50' } });
 await prisma.produtoOpcionalVinculo.create({ data: { produtoId: stockProduct.id, opcionalId: socketOptional.id, cervejariaId: company.id, pontoVendaId: point.id } });
 const socketSession = await prisma.sessaoCaixaOperacao.create({ data: {
