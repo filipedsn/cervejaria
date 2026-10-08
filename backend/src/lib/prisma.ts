@@ -23,17 +23,21 @@ function databaseUrlWithPool(url: string | undefined): string | undefined {
 const databaseUrl = databaseUrlWithPool(process.env.DATABASE_URL);
 // A coluna da entrega é aditiva. Com o caminho canônico desligado, excluí-la
 // dos SELECTs escalares padrão para manter compatibilidade com bancos antigos.
-const legacySchemaOmit = process.env.PDV_CANONICAL_CONFIG_QA === '1'
-  ? {
-    produto: { categoriaPdvId: process.env.PDV_GAMIFIED_CATEGORY_CATALOG !== '1' ? true : undefined },
-  }
+const canonicalSchemaOmit = process.env.PDV_CANONICAL_CONFIG_QA === '1'
+  ? {}
   : {
-    produto: {
-      prepararEmPedidoSeparado: true,
-      categoriaPdvId: process.env.PDV_GAMIFIED_CATEGORY_CATALOG !== '1' ? true : undefined,
-    },
+    produto: { prepararEmPedidoSeparado: true },
     comanda: { sessaoCaixaRealizacaoId: true },
   } as const;
+const legacySchemaOmit = {
+  ...canonicalSchemaOmit,
+  produto: {
+    ...('produto' in canonicalSchemaOmit ? canonicalSchemaOmit.produto : {}),
+    // The category column is additive. Keep old-schema SELECTs compatible
+    // whenever the canonical category catalog is switched off.
+    categoriaPdvId: process.env.PDV_GAMIFIED_CATEGORY_CATALOG !== '1' ? true : undefined,
+  },
+};
 const baseClient = new PrismaClient(
   databaseUrl
     ? { datasources: { db: { url: databaseUrl } }, ...(legacySchemaOmit ? { omit: legacySchemaOmit } : {}) }
