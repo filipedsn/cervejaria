@@ -21,6 +21,7 @@ test('persistent activation writes the startup config and rollback restores exac
   const rolledBack = await rollbackPersistentTenantActivation({ configPath, backupPath });
   assert.equal(rolledBack.status, 'PASS');
   assert.equal(await readFile(configPath, 'utf8'), original);
+  assert.equal((await rollbackPersistentTenantActivation({ configPath, backupPath })).alreadyRestored, true);
 });
 
 test('activation refuses foreign tenant selectors and rollback refuses concurrent config changes', async () => {

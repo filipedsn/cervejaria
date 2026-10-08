@@ -92,6 +92,7 @@ export async function rollbackPersistentTenantActivation({ configPath, backupPat
   if (sha256 !== hash(JSON.stringify(body)) || body.version !== 1 || body.configPath !== path.resolve(configPath)
     || JSON.stringify([...body.tenants].sort()) !== JSON.stringify([...DEV_CANONICAL_TENANTS].sort())) throw new Error('Activation rollback evidence is invalid or belongs to another DEV config.');
   const current = await readFile(configPath, 'utf8');
+  if (hash(current) === body.beforeSha256) return { status: 'PASS', configPath: body.configPath, tenants: body.tenants, restoredSha256: body.beforeSha256, alreadyRestored: true, changed: false };
   if (hash(current) !== body.afterSha256) throw new Error('DEV environment changed after activation; rollback blocked to preserve newer configuration.');
   const restored = replaceActivationLine(current, { ...body, desired: null });
   if (hash(restored) !== body.beforeSha256) throw new Error('Activation rollback reconstruction does not match the original DEV config hash.');

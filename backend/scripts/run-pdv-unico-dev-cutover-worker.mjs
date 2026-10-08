@@ -205,7 +205,6 @@ try {
   const targetSchemaPath = await createGeneratedSchema({ root: targetSchemaRoot, source: snapshotSchema, clientDir: targetClientDir, label: 'target' });
 
   let commercialPreflight = null;
-  let activationAppliedHere = false;
   let activationBackupForRollback;
   const operations = {
     'minimal-prerequisite-migrations': async () => {
@@ -274,7 +273,6 @@ try {
       if (readiness.status !== 'READY' || readiness.tenants.length !== selectedTenants.length) throw new Error('Tenant activation readiness failed.');
       activationBackupForRollback = path.join(receiptsRoot, `${confirmedRunId}.activation-rollback-${randomBytes(6).toString('hex')}.json`);
       const activation = await applyPersistentTenantActivation({ configPath: devConfigPath, tenants: selectedTenants, backupPath: activationBackupForRollback });
-      activationAppliedHere = activation.changed;
       return { status: 'PASS', readiness, activation, activationScope: selectedTenants };
     },
   };
@@ -316,7 +314,7 @@ try {
   try {
     adapter = await executePdvCutoverAdapter({ target, tenantIds: selectedTenants, runId: confirmedRunId, preflight, operations, receiptFile: receiptPath, verifyCompletedPhase });
   } catch (error) {
-    if (activationAppliedHere && activationBackupForRollback && existsSync(activationBackupForRollback)) {
+    if (activationBackupForRollback && existsSync(activationBackupForRollback)) {
       try { await rollbackPersistentTenantActivation({ configPath: devConfigPath, backupPath: activationBackupForRollback }); }
       catch (rollbackError) { throw new AggregateError([error, rollbackError], 'Cutover failed and persistent backend activation rollback was blocked; preserve both errors and inspect the recorded activation diff.'); }
     }
