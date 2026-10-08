@@ -983,3 +983,9 @@ Builds passaram. A variacao combinada criacao/edicao seguiu sujeita a corrida no
 ### Execucao bloqueada intermediaria (3741efe)
 
 Builds passaram e o caso de criacao com flag false passou. O caso de edicao/selecionamento chegou ao formulario de produto, mas o teste procurava um rotulo corrompido (`Pre??o`) em vez do ID estavel do campo. A correcao usa `#produto-pdv-preco`. Evidencia: `pdv-gamified-categories-qa-evidence-blocked-3741efe.json`. SQL e API/PostgreSQL nao iniciaram.
+
+## Certificacao corrigida das categorias canonicas - 2026-10-08
+
+A certificacao aprovada e a do snapshot Git `9e86dc9daf6162fa8d5f92b10dd7911457157d13` (tree `b0dbb0042246472a7eb7b87ee7d20b297e4164a6`). As linhas anteriores que diziam faltar API autenticada ou snapshot integral sao historicas e estao supersedidas por este resultado: build backend/frontend PASS; UI simulada PASS (2/2); schema antigo sem tabela/coluna e Prisma client legado PASS; SQL limitado PASS; API/PostgreSQL com migrations reais, login e Fastify.inject PASS; permissoes, menu, opcionais, venda por volume e ranking legado preservado PASS; invariantes financeiro/estoque/cozinha PASS. Sem PROD/DEV compartilhado.
+
+Manifesto integrado do snapshot exato: `pdv-unico-integrated-qa-manifest-9e86dc9.json` (101 candidatos; digest `c6608671630a9926b2f236456dc7a05c52b8ce1a43af8bc3763638eda70bb1eb`). Evidencia: `pdv-gamified-categories-qa-evidence-v28.json`; matriz por camada e execucoes bloqueadas anteriores: `pdv-gamified-categories-qa-matrix-v28.md`. As tentativas bloqueadas estao separadas e nao contam como PASS. O ensaio representativo nao foi executado. Nao houve backfill real, cutover, deploy, ranking novo ou reclassificacao de Chope. Permanecem pendentes a metrica, o momento de reconhecimento e a politica de consumos anteriores.

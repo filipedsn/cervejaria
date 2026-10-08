@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 2,
+  "result": "PASS",
+  "certificationScope": "synthetic QA snapshot; disposable PostgreSQL only; no PROD/shared DEV access",
+  "reviewedImplementationCommit": "9e86dc9daf6162fa8d5f92b10dd7911457157d13",
+  "reviewedTree": "b0dbb0042246472a7eb7b87ee7d20b297e4164a6",
+  "exactSnapshot": {
+    "trackedBlobs": 1223,
+    "node": "v24.18.0",
+    "prisma": "6.19.3",
+    "moduleAudit": "PASS; 191 snapshot modules; 0 external workspace modules; 100 external dependency modules"
+  },
+  "manifests": {
+    "category": {
+      "path": "pdv-gamified-categories-qa-manifest-v27.json",
+      "sha256": "9b1cffa4bd8038484afcf11f4652302a6916fff0f1d9b7ee3b7c61cab2087c2e"
+    },
+    "integrated": {
+      "path": "pdv-unico-integrated-qa-manifest-9e86dc9.json",
+      "baselineCommit": "9e86dc9daf6162fa8d5f92b10dd7911457157d13",
+      "candidateCount": 101,
+      "sha256": "c6608671630a9926b2f236456dc7a05c52b8ce1a43af8bc3763638eda70bb1eb"
+    }
+  },
+  "gates": [
+    {
+      "name": "backend-build",
+      "result": "PASS",
+      "command": "npm run build",
+      "snapshot": "9e86dc9daf6162fa8d5f92b10dd7911457157d13"
+    },
+    {
+      "name": "frontend-build",
+      "result": "PASS",
+      "command": "npm run build",
+      "note": "bundle size and dynamic/static import warnings only"
+    },
+    {
+      "name": "mocked-category-ui",
+      "result": "PASS",
+      "passed": 2,
+      "scope": "Chromium; category create, flag edit, product selection; APIs explicitly mocked"
+    },
+    {
+      "name": "pre-category-schema-compatibility",
+      "result": "PASS",
+      "scope": "new category table and ID column absent; legacy query, product create and edit; generated Prisma client omits new scalar/model; default scalar selection exercised"
+    },
+    {
+      "name": "sql-transformation",
+      "result": "PASS",
+      "scope": "SQL-only minimal fixture; manual equivalent reused; prelinked link preserved; created category/link provenance; replay; interruption/atomic rollback/resume; post-edit and late-link rollback blocked; tenant FK; normalization collision atomic"
+    },
+    {
+      "name": "api-postgresql-authenticated",
+      "result": "PASS",
+      "migrations": 99,
+      "scope": "real migration chain, disposable PostgreSQL tmpfs, buildApp/Fastify.inject/login; owner, employee with catalog.manage, denied employee, cross-tenant; create/edit/swap/partial edit; free names/collisions; explicit false; canonical label derives from ID"
+    },
+    {
+      "name": "product-menu-optionals-sale-ranking-legacy",
+      "result": "PASS",
+      "scope": "renamed Chope keeps BEBIDA/CHOPE classification and volume prices; menu volume rows and optional preserved; real volume sale via Tap; legacy Chope event ranking unchanged"
+    },
+    {
+      "name": "category-edit-invariants",
+      "result": "PASS",
+      "scope": "editing category alone leaves test sale payment, cash session, kitchen orders, inventory balances/movements, menu rows and optional links unchanged"
+    },
+    {
+      "name": "finance-commerce-permissions-regression",
+      "result": "PASS",
+      "scope": "finance migrations 90; commerce migrations 96; individual permission checks; existing transactional behavior"
+    },
+    {
+      "name": "local-state-preservation",
+      "result": "PASS",
+      "fingerprint": "6f627750388afd196ce966dda230c3ffd2c6c5ae1e9cda396cf608035e5ea4ed",
+      "stagedChanges": 0,
+      "preexistingUnstagedDiffSha256": "07112414c2355d5c5b3c83b422495363c45ac03231b7325b98400c724da58626",
+      "untrackedFilesPreserved": 9,
+      "stashes": "not modified"
+    },
+    {
+      "name": "prod-and-shared-dev-isolation",
+      "result": "PASS",
+      "prodAccess": "NO",
+      "sharedDevAccess": "NO"
+    },
+    {
+      "name": "representative-rehearsal",
+      "result": "NOT_RUN",
+      "reason": "No representative photo supplied"
+    }
+  ],
+  "blockedAttempts": [
+    {
+      "commit": "521b3ff011dec783eed4f790d73ea769217b7e67",
+      "result": "BLOCKED",
+      "evidence": "pdv-gamified-categories-qa-evidence-blocked-521b3ff.json",
+      "cause": "API runner database name did not satisfy isolated validator"
+    },
+    {
+      "commit": "696f0ea84e383a6595fba3989887f554f40b75f7",
+      "result": "BLOCKED",
+      "evidence": "pdv-gamified-categories-qa-evidence-blocked-696f0ea.json",
+      "cause": "Prisma omit contained undefined while category feature was enabled"
+    },
+    {
+      "commit": "19eedd77ce87a5e7bc0ea22a8772cc16ab38de29",
+      "result": "BLOCKED",
+      "evidence": "pdv-gamified-categories-qa-evidence-blocked-19eedd7.json",
+      "cause": "API test used Fastify response object rather than parsed category ID"
+    },
+    {
+      "commit": "3586567a492aeff23ed34dc9bea60662c8b4cbb4",
+      "result": "BLOCKED",
+      "evidence": "pdv-gamified-categories-qa-evidence-blocked-3586567.json",
+      "cause": "volume sale fixture omitted its Tap and session mounting"
+    },
+    {
+      "commit": "b33a5a0dd0e9450a36728c25256c23a8a259ed0b",
+      "result": "BLOCKED",
+      "evidence": "pdv-gamified-categories-qa-evidence-blocked-b33a5a0.json",
+      "cause": "payment invariant fixture used nonexistent direct tenant field"
+    },
+    {
+      "commit": "8118ff0d9eedeeefc2c86c34429d0cf9787a80bf",
+      "result": "BLOCKED",
+      "evidence": "pdv-gamified-categories-qa-evidence-blocked-8118ff0.json",
+      "cause": "Prisma singular relation filter required is wrapper"
+    },
+    {
+      "commit": "9883d6fbf6588034902a0fb3264f8a2cd75da124",
+      "result": "BLOCKED",
+      "evidence": "pdv-gamified-categories-qa-evidence-blocked-9883d6f.json",
+      "cause": "Comanda lacks direct tenant column; invariant corrected to use the test-owned sale command ID"
+    }
+  ],
+  "limits": {
+    "representative": "not run",
+    "realHistoricalBackfill": "not run",
+    "cutover": "not run",
+    "deploy": "not run",
+    "newRanking": "not implemented",
+    "historicalChopeRanking": "not recalculated or reclassified"
+  },
+  "pendingProductDecisions": [
+    "scoring metric",
+    "when consumption enters the ranking",
+    "whether earlier consumption participates"
+  ],
+  "PROD_DEPLOY_REQUIRED": "No"
+}
