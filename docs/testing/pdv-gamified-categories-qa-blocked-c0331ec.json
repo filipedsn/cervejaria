@@ -1,0 +1,12 @@
+﻿{
+  "result": "BLOCKED",
+  "selectedCommit": "c0331ece14ed608fe2153c011421f395ad20e660",
+  "runner": "qa:pdv-current-git-snapshot",
+  "failingGate": "qa:pdv-gamified-category-api",
+  "diagnosis": "The category API runner selected from ports 55439-55459, while isolated-qa-env accepts 55439-55449. This attempt chose an out-of-range port and failed before starting a container.",
+  "error": "QA exige PostgreSQL isolado local em 127.0.0.1:55439-55449/cervejaria_qa_pdv_unico",
+  "correction": "Restrict the category API runner port selector to 55439-55449 and update its no-port diagnostic.",
+  "prodAccessUsed": "NO",
+  "sharedDevAccess": "NO",
+  "supersededBy": "5978d437478cdddd99304dcaf4a030ea0c89939e"
+}
