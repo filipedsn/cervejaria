@@ -3063,8 +3063,14 @@ try {
     .replace(/^\s*sessaoCaixaRealizacaoId\s+String\?\s*\r?\n/m, '')
     .replace(/^\s*sessaoCaixaRealizacao\s+SessaoCaixaOperacao\?.*\r?\n/m, '')
     .replace(/^\s*prepararEmPedidoSeparado\s+Boolean\s+@default\(false\)\s*\r?\n/m, '')
+    .replace(/^\s*categoriaPdvId\s+String\?\s*\r?\n/m, '')
+    .replace(/^\s*categoriaPdv\s+CategoriaProdutoPdv\?.*\r?\n/m, '')
+    .replace(/^\s*categoriasPdv\s+CategoriaProdutoPdv\[\]\s*\r?\n/m, '')
+    .replace(/\/\/\/ Autoridade única das categorias de produtos do PDV por empresa\.\r?\nmodel CategoriaProdutoPdv \{[\s\S]*?^\}\r?\n/m, '')
+    .replace(/\/\/\/ Per-product before\/after evidence owned by the historical category transformation\.\r?\nmodel PdvCategoriaTransformacaoProduto \{[\s\S]*?^\}\r?\n/m, '')
+    .replace(/\/\/\/ Snapshot of category provenance and fields used to prove replay and rollback safety\.\r?\nmodel PdvCategoriaTransformacaoCategoria \{[\s\S]*?^\}\r?\n/m, '')
     .replace(/^\s*vendasRealizadas\s+Comanda\[\]\s*\r?\n/m, '');
-  assert(!preColumnSchemaText.includes('sessaoCaixaRealizacaoId') && !preColumnSchemaText.includes('prepararEmPedidoSeparado'), 'old client schema omits new realization-session and independent-kitchen columns');
+  assert(!preColumnSchemaText.includes('sessaoCaixaRealizacaoId') && !preColumnSchemaText.includes('prepararEmPedidoSeparado') && !preColumnSchemaText.includes('categoriaPdvId') && !preColumnSchemaText.includes('CategoriaProdutoPdv') && !preColumnSchemaText.includes('PdvCategoriaTransformacao'), 'old client schema omits new realization-session, independent-kitchen, and category schema');
   await writeFile(preColumnSchemaPath, preColumnSchemaText);
   preColumnSchemaText = preColumnSchemaText.replace('provider = "prisma-client-js"', `provider = "prisma-client-js"\n  output = "${preColumnClientDir.replaceAll('\\', '/')}"`);
   await writeFile(preColumnGenerateSchemaPath, preColumnSchemaText);
@@ -3120,6 +3126,7 @@ try {
   const oldProductModel = PreColumnPrisma.dmmf.datamodel.models.find((model) => model.name === 'Produto');
   assert(oldProductModel && !oldProductModel.fields.some((field) => field.name === 'prepararEmPedidoSeparado'), 'generated Prisma Client predates the independent-kitchen column');
   assert(oldProductModel && !oldProductModel.fields.some((field) => field.name === 'categoriaPdvId'), 'generated Prisma Client predates the category ID column');
+  assert(!PreColumnPrisma.dmmf.datamodel.models.some((model) => ['CategoriaProdutoPdv', 'PdvCategoriaTransformacaoProduto', 'PdvCategoriaTransformacaoCategoria'].includes(model.name)), 'generated Prisma Client predates the category tables');
   const previousPdvFlag = process.env.PDV_CANONICAL_CONFIG_QA;
   delete process.env.PDV_CANONICAL_CONFIG_QA;
   try {
