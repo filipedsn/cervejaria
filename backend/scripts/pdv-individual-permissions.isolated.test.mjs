@@ -74,10 +74,10 @@ const foreignOrder = await prisma.pedidoOperacao.create({ data: { cervejariaId: 
 const tapChope = await prisma.produto.create({ data: { nome: `Tap permission QA ${suffix}`, tipo: 'BEBIDA', formato: 'CHOPE', cervejariaId: company.id } });
 const permissionTap = await prisma.tap.create({ data: { numero: 9001, nome: 'Permission QA tap', cervejariaId: company.id, trailerId: trailer.id } });
 const moduleFinancePhoto = async () => ({
-  eventSessions: await prisma.sessaoCaixaEvento.count({ where: { evento: { cervejariaId: company.id } } }),
-  eventMovements: await prisma.movimentoCaixaEvento.count({ where: { sessao: { evento: { cervejariaId: company.id } } } }),
-  operationalSessions: await prisma.sessaoCaixaOperacao.count({ where: { cervejariaId: company.id } }),
-  payments: await prisma.pagamento.count({ where: { comanda: { cervejariaId: company.id } } }),
+  eventSessions: await prisma.sessaoCaixaEvento.count(),
+  eventMovements: await prisma.movimentoCaixaEvento.count(),
+  operationalSessions: await prisma.sessaoCaixaOperacao.count(),
+  payments: await prisma.pagamento.count(),
 });
 const moduleFinanceBeforeTapAndAgenda = await moduleFinancePhoto();
 const tapMountCountBeforeDenial = await prisma.tapMontagem.count({ where: { eventoId: eventForPermissionGrants.id, tapId: permissionTap.id } });
