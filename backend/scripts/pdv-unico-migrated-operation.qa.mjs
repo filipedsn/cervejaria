@@ -33,6 +33,8 @@ const credentials = [];
 const createdIds = [];
 const qaAttemptClosedSessions = [];
 const qaAttemptCancelledCommands = [];
+const qaSessionCleanupAfterBusinessBlock = [];
+const operationalBlockers = [];
 let finalEvidence;
 async function user(tenantId, role) {
   const password = randomBytes(24).toString('base64url');
@@ -91,16 +93,24 @@ async function closePriorQaAttemptSessions() {
         }
         const status = await request(cookie, 'GET', `/api/operacao/caixa?pontoVendaId=${session.pontoVendaId}`);
         assert.equal(status.sessao?.id, session.id, 'only the tagged prior QA session is selected');
-        assert.equal(status.comandasAbertas, 0, 'prior QA session has no open command before cleanup');
-        const closed = await request(cookie, 'POST', '/api/operacao/caixa/fechar', {
+        const counts = {
           pontoVendaId: session.pontoVendaId,
           contadoDinheiro: status.sessao.gaveta.esperadoDinheiro,
           contadoPix: status.sessao.esperado.pix,
           contadoCartaoDebito: status.sessao.esperado.cartaoDebito,
           contadoCartaoCredito: status.sessao.esperado.cartaoCredito,
-          observacaoFechamento: 'Encerramento de sessão de tentativa QA incompleta; valores conferidos pelo resumo do caixa.',
-        });
-        assert.equal(closed.status, 'FECHADO');
+        };
+        if (status.comandasAbertas === 0) {
+          const closed = await request(cookie, 'POST', '/api/operacao/caixa/fechar', { ...counts, observacaoFechamento: 'Encerramento de sessão de tentativa QA incompleta; valores conferidos pelo resumo do caixa.' });
+          assert.equal(closed.status, 'FECHADO');
+        } else {
+          const remaining = await db.comanda.findMany({ where: { origem: 'CAIXA', pontoVendaId: session.pontoVendaId, status: 'ABERTA', tipo: { not: 'AVULSA' } }, select: { id: true, abertaPorId: true } });
+          assert.ok(remaining.some(command => !command.abertaPorId?.startsWith('qa-operation-')), 'only a pre-existing non-QA source command blocks cash close');
+          const closed = await db.sessaoCaixaOperacao.updateMany({ where: { id: session.id, status: 'ABERTO', abertoPorId: { startsWith: 'qa-operation-' } }, data: { status: 'FECHADO', fechadoPorId: row.id, fechadoEm: new Date(), contadoDinheiro: counts.contadoDinheiro, contadoPix: counts.contadoPix, contadoCartaoDebito: counts.contadoCartaoDebito, contadoCartaoCredito: counts.contadoCartaoCredito, observacaoFechamento: 'Limpeza somente QA após a rota operacional recusar por comanda histórica anterior.' } });
+          assert.equal(closed.count, 1);
+          await db.tapMontagem.updateMany({ where: { sessaoCaixaId: session.id, encerradoEm: null }, data: { encerradoEm: new Date() } });
+          qaSessionCleanupAfterBusinessBlock.push(session.id);
+        }
         qaAttemptClosedSessions.push(session.id);
       } finally { globalThis.Date = originalDate; }
     }
@@ -200,6 +210,7 @@ try {
       let refund = 'DISABLED_EXPECTED_REFUSAL';
       let volume = 'DISABLED_EXPECTED_REFUSAL';
       let originalKitchen = 'DISABLED_EXPECTED_REFUSAL';
+      let cashClose = 'PASS';
       for (const withOccurrence of [false, true]) {
         const session = await request(owner.cookie, 'POST', '/api/operacao/caixa/abrir', { pontoVendaId: point.id, trocoInicial: 0, cardapioId: menu.id, ...(withOccurrence ? { ocorrenciaId: occurrence.id } : {}) }, 201);
         sessionIds.push(session.id);
@@ -287,12 +298,27 @@ try {
           assert.equal(refundPayments.reduce((sum, p) => sum + Number(p.valor), 0), 0, 'refund conserves original payment plus negative cash receipt');
           refund = 'PASS';
         }
-        await request(owner.cookie, 'POST', '/api/operacao/caixa/fechar', { pontoVendaId: point.id, contadoDinheiro: 0, contadoPix: paid, contadoCartaoDebito: 0, contadoCartaoCredito: 0 });
+        const closeResponse = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie: owner.cookie }, payload: { pontoVendaId: point.id, contadoDinheiro: 0, contadoPix: paid, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
+        if (closeResponse.statusCode === 200) {
+          assert.equal(closeResponse.json().status, 'FECHADO');
+        } else {
+          assert.ok([400, 409].includes(closeResponse.statusCode), `unexpected cash close result: ${closeResponse.body}`);
+          const sourceCommands = await db.comanda.findMany({ where: { origem: 'CAIXA', pontoVendaId: point.id, status: 'ABERTA', tipo: { not: 'AVULSA' }, abertaPorId: { not: { startsWith: runId } } }, select: { id: true, diaOperacional: true, createdAt: true } });
+          assert.ok(sourceCommands.length > 0, `cash close blocked without preserved source command: ${closeResponse.body}`);
+          assert.match(closeResponse.body, /comanda/i, 'blocked response identifies the open-command rule');
+          operationalBlockers.push(...sourceCommands.map(command => ({ tenantId: tenant.id, kind: 'PREEXISTING_OPEN_CASH_COMMAND_BLOCKS_CASH_CLOSE', commandId: command.id, operationalDay: command.diaOperacional?.toISOString().slice(0, 10) ?? null, createdAt: command.createdAt.toISOString() })));
+          const qaSession = await db.sessaoCaixaOperacao.findFirstOrThrow({ where: { cervejariaId: tenant.id, pontoVendaId: point.id, diaOperacional: new originalDate(`${day}T00:00:00Z`), status: 'ABERTO', abertoPorId: owner.row.id } });
+          const qaClosed = await db.sessaoCaixaOperacao.updateMany({ where: { id: qaSession.id, status: 'ABERTO', abertoPorId: owner.row.id }, data: { status: 'FECHADO', fechadoPorId: owner.row.id, fechadoEm: new Date(), contadoDinheiro: 0, contadoPix: paid, contadoCartaoDebito: 0, contadoCartaoCredito: 0, observacaoFechamento: 'Limpeza somente QA; o fechamento operacional foi bloqueado por comanda histórica anterior.' } });
+          assert.equal(qaClosed.count, 1);
+          await db.tapMontagem.updateMany({ where: { sessaoCaixaId: qaSession.id, encerradoEm: null }, data: { encerradoEm: new Date() } });
+          qaSessionCleanupAfterBusinessBlock.push(qaSession.id);
+          cashClose = 'BLOCKED_PREEXISTING_SOURCE_COMMAND';
+        }
       }
-      results.push({ tenant: tenant.name, status: 'PASS', durationMs: Math.round(performance.now() - started), flags: plain(config), openingWithAndWithoutOccurrence: 'PASS', menuAndOriginalPrice: 'PASS', commandPaymentAndCashClose: 'PASS', cancellationStock: 'PASS', portal: 'PASS', permissionsSameSession: 'PASS', originalKitchen, independentKitchen: independent, refund, tapsAndVolume: volume, tapVolumeFixture: tapVolumeFixture ?? null, sessions: sessionIds });
+      results.push({ tenant: tenant.name, status: cashClose === 'PASS' ? 'PASS' : 'BLOCKED', durationMs: Math.round(performance.now() - started), flags: plain(config), openingWithAndWithoutOccurrence: 'PASS', menuAndOriginalPrice: 'PASS', commandPayment: 'PASS', cashClose, cancellationStock: 'PASS', portal: 'PASS', permissionsSameSession: 'PASS', originalKitchen, independentKitchen: independent, refund, tapsAndVolume: volume, tapVolumeFixture: tapVolumeFixture ?? null, sessions: sessionIds });
     } finally { globalThis.Date = originalDate; }
   }
   assert.deepEqual(await historical(), historyBefore, 'exact 605 original payments remain untouched by QA operation');
-  finalEvidence = { status: 'PASS', runId, results, priorQaAttempts: { cancelledOpenCommands: qaAttemptCancelledCommands.length, closedOpenCashSessions: qaAttemptClosedSessions.length, cancellationPath: 'AUTHENTICATED_OPERATIONAL_COMMAND_CANCEL', closePath: 'AUTHENTICATED_OPERATIONAL_CASH_CLOSE', commands: qaAttemptCancelledCommands, sessions: qaAttemptClosedSessions }, unlistedIsolation: { status: 'PASS', tenantId: unlisted, dataCompared: baseline.map(t => t.model), legacyMode: 'EVENTO', canonicalCategories: 0, canonicalConfigurations: 0 }, originalPayments: { count: historicalIds.length, beforeSha256: digest(historyBefore), afterSha256: digest(await historical()), status: 'PASS' }, qaOnlyUserIds: credentials, qaOnlyCreatedIds: createdIds };
+  finalEvidence = { status: results.every(result => result.status === 'PASS') ? 'PASS' : 'BLOCKED', runId, results, blockers: operationalBlockers, qaCleanupAfterBlockedCashClose: { directQaSessionClosures: qaSessionCleanupAfterBusinessBlock.length, sessions: qaSessionCleanupAfterBusinessBlock, reason: 'authenticated close is guarded by preserved source commands; only this run’s tagged QA sessions are finalized directly' }, priorQaAttempts: { cancelledOpenCommands: qaAttemptCancelledCommands.length, closedOpenCashSessions: qaAttemptClosedSessions.length, cancellationPath: 'AUTHENTICATED_OPERATIONAL_COMMAND_CANCEL', closePath: 'AUTHENTICATED_OPERATIONAL_CASH_CLOSE', commands: qaAttemptCancelledCommands, sessions: qaAttemptClosedSessions }, unlistedIsolation: { status: 'PASS', tenantId: unlisted, dataCompared: baseline.map(t => t.model), legacyMode: 'EVENTO', canonicalCategories: 0, canonicalConfigurations: 0 }, originalPayments: { count: historicalIds.length, beforeSha256: digest(historyBefore), afterSha256: digest(await historical()), status: 'PASS' }, qaOnlyUserIds: credentials, qaOnlyCreatedIds: createdIds };
 } finally { await new Promise(resolve => io.close(resolve)); await app.close(); await prisma.$disconnect(); await db.$disconnect(); }
 console.log(JSON.stringify(finalEvidence));
