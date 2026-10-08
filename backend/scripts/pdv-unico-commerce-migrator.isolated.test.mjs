@@ -3110,9 +3110,9 @@ try {
   await db.$executeRawUnsafe('ALTER TABLE public."Comanda" DROP COLUMN "sessaoCaixaRealizacaoId"');
   await db.$executeRawUnsafe('ALTER TABLE public."Produto" DROP COLUMN "prepararEmPedidoSeparado"');
   await db.$executeRawUnsafe('ALTER TABLE public."Produto" DROP COLUMN IF EXISTS "categoriaPdvId"');
-  await db.$executeRawUnsafe('DROP TABLE public."PdvCategoriaTransformacaoProduto" CASCADE');
-  await db.$executeRawUnsafe('DROP TABLE public."PdvCategoriaTransformacaoCategoria" CASCADE');
-  await db.$executeRawUnsafe('DROP TABLE public."CategoriaProdutoPdv" CASCADE');
+  await db.$executeRawUnsafe('DROP TABLE IF EXISTS public."PdvCategoriaTransformacaoProduto" CASCADE');
+  await db.$executeRawUnsafe('DROP TABLE IF EXISTS public."PdvCategoriaTransformacaoCategoria" CASCADE');
+  await db.$executeRawUnsafe('DROP TABLE IF EXISTS public."CategoriaProdutoPdv" CASCADE');
   const { Prisma: PreColumnPrisma, PrismaClient: PreColumnPrismaClient } = await import(pathToFileURL(path.join(preColumnClientDir, 'index.js')).href);
   const preColumnClient = new PreColumnPrismaClient({ datasources: { db: { url: databaseUrl } } });
   const oldComandaModel = PreColumnPrisma.dmmf.datamodel.models.find((model) => model.name === 'Comanda');
