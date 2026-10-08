@@ -953,3 +953,8 @@ A reproducao em revisao 3145a75 mostrou que a rota operacional aceitava texto de
 | Feature desligada sem tabela/coluna, incluindo selecao Prisma padrao | API autenticada + PostgreSQL no schema anterior | Consulta, cadastro e edicao funcionam sem consultar o catalogo novo |
 
 A certificacao separa SQL limitado, API/PostgreSQL, UI mockada e representativo. O representativo permanece NAO EXECUTADO. Builds e testes sao certificados apenas para o SHA exato registrado na evidencia v2.
+
+
+### Execucao bloqueada anterior (2b00dbf)
+
+O snapshot exato passou no build backend e bloqueou no build frontend por cinco erros TS2339: a revisao nao declarava `CaixaResposta.valoresRestritos`, embora o consumidor operacional ja consultasse esse campo. SQL, API/PostgreSQL e UI nao foram executados nessa tentativa. Evidencia preservada em `pdv-gamified-categories-qa-evidence-blocked-2b00dbf.json`; esta tentativa nao conta como certificacao.

@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "reviewedCommit": "2b00dbf15933ac81b8a97b7771ef66173b7f65d9",
+  "result": "BLOCKED",
+  "scope": "Exact Git snapshot; disposable build workspace only; no PROD/shared DEV.",
+  "gates": [
+    {
+      "name": "git-snapshot-materialization",
+      "result": "PASS",
+      "trackedBlobs": 1173
+    },
+    {
+      "name": "backend-build",
+      "result": "PASS"
+    },
+    {
+      "name": "frontend-build",
+      "result": "BLOCKED",
+      "details": "Five TS2339 errors: CaixaResposta.valoresRestritos missing in frontend/src/lib/operacao.ts at this commit."
+    },
+    {
+      "name": "category-sql",
+      "result": "NOT_RUN",
+      "details": "Snapshot runner stops on frontend build failure."
+    },
+    {
+      "name": "category-api-postgresql",
+      "result": "NOT_RUN",
+      "details": "Snapshot runner stops on frontend build failure."
+    },
+    {
+      "name": "category-ui-mocked",
+      "result": "NOT_RUN",
+      "details": "Snapshot runner stops on frontend build failure."
+    }
+  ],
+  "publication": {
+    "commit": "2b00dbf15933ac81b8a97b7771ef66173b7f65d9",
+    "pushed": false,
+    "PROD_DEPLOY_REQUIRED": "No"
+  },
+  "pending": [
+    "Add only authorized CaixaResposta.valoresRestritos?: boolean declaration, then rerun all gates.",
+    "Three product decisions remain pending: scoring metric, recognition moment, prior consumption policy."
+  ]
+}
