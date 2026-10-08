@@ -110,7 +110,7 @@ async function ensureQaTapVolumePrice(menu, point, tenant, tapsEnabled) {
     include: { produto: { include: { precos: { orderBy: { volumeMl: 'asc' } } } } },
     orderBy: { numero: 'asc' },
   })) {
-    if (!tap.produto?.ativo || !menu.produtos.some(row => row.produtoId === tap.produtoId)) continue;
+    if (!tap.produto?.ativo) continue;
     const price = tap.produto.precos.find(row => row.volumeMl > 1 && Number(row.preco) > 0);
     if (!price) continue;
     let menuPrice = await db.cardapioProduto.findUnique({ where: { cardapioId_produtoId_volumeMl: { cardapioId: menu.id, produtoId: tap.produtoId, volumeMl: price.volumeMl } } });
@@ -121,7 +121,7 @@ async function ensureQaTapVolumePrice(menu, point, tenant, tapsEnabled) {
     if (!menu.produtos.some(row => row.produtoId === tap.produtoId && row.volumeMl === price.volumeMl)) {
       menu.produtos.push({ produtoId: tap.produtoId, volumeMl: price.volumeMl, precoUnit: menuPrice.precoUnit, produto: tap.produto });
     }
-    return { tapId: tap.id, productId: tap.produtoId, volumeMl: price.volumeMl, price: Number(menuPrice.precoUnit), fixture: 'QA_ONLY_MENU_VOLUME_PRICE_FOR_EXISTING_TAP_PRODUCT' };
+    return { tapId: tap.id, productId: tap.produtoId, volumeMl: price.volumeMl, price: Number(menuPrice.precoUnit), fixture: 'QA_ONLY_MENU_LINK_FOR_EXISTING_MIGRATED_TAP_PRODUCT_AND_SOURCE_PRICE' };
   }
   throw new Error('TAP is enabled but no original menu product has an operational volume price; no QA-only TAP fixture can be formed.');
 }
