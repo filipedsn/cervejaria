@@ -33,7 +33,6 @@ export function OperacaoTurnoCardapioPanel({
   onClose?: () => void;
 }) {
   const { hasPermission } = useAuth();
-  const podeManterCardapioGlobal = hasPermission('catalog.manage');
   const queryClient = useQueryClient();
   const [modo, setModo] = useState<CardapioModo>('salvo');
   const [cardapioId, setCardapioId] = useState('');

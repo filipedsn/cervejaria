@@ -454,6 +454,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     if ('error' in result) return reply.status(400).send({ error: result.error });
 
     const cardapio = await getCardapioTurno(sessao.id, cervejariaId);
+    if (!cardapio) return reply.status(404).send({ error: 'Turno não encontrado' });
     return incluirPermissoesEdicaoCardapio(request, cardapio);
   });
 
@@ -485,6 +486,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     }
 
     const cardapio = await getCardapioTurno(sessao.id, cervejariaId);
+    if (!cardapio) return reply.status(404).send({ error: 'Turno não encontrado' });
     return incluirPermissoesEdicaoCardapio(request, cardapio);
   });
 }
