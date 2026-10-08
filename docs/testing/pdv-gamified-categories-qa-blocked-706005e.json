@@ -1,0 +1,13 @@
+﻿{
+  "result": "BLOCKED",
+  "selectedCommit": "706005e0b36a5f483a8a1d3d567ba9e12591c525",
+  "runner": "qa:pdv-current-git-snapshot",
+  "failingGate": "qa:pdv-commerce-disposable",
+  "diagnosis": "The commerce disposable harness built direct Prisma clients with only the independent-kitchen omit, so their default scalar selection still included the additive category ID on the earlier commerce schema. This bypassed the runtime Prisma singleton configuration.",
+  "error": "P2022: column Produto.categoriaPdvId does not exist",
+  "codeChangesMade": ["Shared runtime Prisma omit is independent of PDV_CANONICAL_CONFIG_QA and follows PDV_GAMIFIED_CATEGORY_CATALOG.", "Commerce QA direct clients now model the flag-off legacy omission, and the snapshot runner clears the feature flag for legacy regression gates."],
+  "disposableQaOnly": true,
+  "prodAccessUsed": "NO",
+  "sharedDevAccess": "NO",
+  "supersededBy": "becdaa059c04a347b02ac5d38bfd4eec6f5b0270"
+}
