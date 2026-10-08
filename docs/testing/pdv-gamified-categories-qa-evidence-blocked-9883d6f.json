@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "result": "BLOCKED",
+  "reviewedImplementationCommit": "9883d6fbf6588034902a0fb3264f8a2cd75da124",
+  "reviewedTree": "5e51864f6cae98248991d8d3d24c838c956acf01",
+  "categoryManifest": "v26",
+  "completedBeforeBlock": {
+    "backendBuild": "PASS",
+    "frontendBuild": "PASS",
+    "mockedCategoryUi": "PASS (2/2)",
+    "legacySchemaCompatibility": "PASS",
+    "finance": "PASS",
+    "commerce": "PASS",
+    "individualPermissions": "PASS",
+    "categorySql": "PASS",
+    "authenticatedCategoryApi": "PASS until payment invariants"
+  },
+  "blocker": {
+    "gate": "authenticated-category-api-payment-invariant",
+    "cause": "schema has no direct tenant field on Comanda; relation filter did not match Prisma ComandaWhereInput fields",
+    "fixCommit": "e408832",
+    "fix": "count payments by the test-owned sale command ID"
+  },
+  "representativeRehearsal": "NOT_RUN; no representative photo supplied",
+  "localState": "UNCHANGED",
+  "prodAccess": "NO",
+  "sharedDevAccess": "NO"
+}
