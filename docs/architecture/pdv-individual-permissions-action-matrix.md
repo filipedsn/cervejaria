@@ -104,3 +104,6 @@ Em `97281d3e`, `catalog.manage` sozinho libera apenas TEMPLATE. `catalog.shift.m
 
 
 API/PostgreSQL adicional: `catalog.manage` isolada projeta somente TEMPLATE e grava `CardapioProduto.precoUnit` via PATCH autenticado; `catalog.shift.manage` isolada segue com TURNO. PASS na su?te focada e no snapshot certificado `5c68c5a`.
+## Correção de build após 5c68c5a - revisão 99274ff
+
+Build backend PASS e build frontend PASS em `99274ffcc178fecca7a7c6386686b8c89cf49ba7`; a ausência de cardápio retorna o 404 contratual antes de projetar permissões e o mapeamento TURNO/TEMPLATE permanece inalterado. A suíte API/PostgreSQL focada e o Playwright 3/3 também passaram. Estes resultados focados não equivalem à certificação Git completa: `qa:pdv-current-git-snapshot` ficou NOT_RUN nesta revisão. Não inferir proteção de APIs além das ações enumeradas nesta matriz. Evidência: [pdv-build-fix-99274ff-qa-evidence.json](../testing/pdv-build-fix-99274ff-qa-evidence.json).

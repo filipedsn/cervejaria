@@ -1,0 +1,505 @@
+{
+  "version": 1,
+  "baseline": {
+    "commit": "aecde84ac3c89c4e675c241893d0daece2062cbf",
+    "schemaPath": "backend/prisma/schema.prisma",
+    "schemaSha256": "142502b10ac4dea4bbc16585aec04508bc0ac91bbc8130ad8f5f3f36005f4694"
+  },
+  "immutableManifests": [
+    {
+      "path": "docs/testing/pdv-unico-qa-migration-manifest.json",
+      "sha256": "cacc244ff397d53699ad50b0c63ae476ae220bb3d3a7bd935636571e65f8970f"
+    },
+    {
+      "path": "docs/testing/pdv-unico-core-qa-manifest.json",
+      "sha256": "15788cbc1037faadd6b9b6ef9d5efe6cec98fac239576a91176fcaa01fcd8bc9"
+    },
+    {
+      "path": "docs/testing/pdv-unico-catalog-qa-manifest.json",
+      "sha256": "8e2d1ea4ea1b657504675b83aa5ec3bbd29e2b816d9e8eb93913437571b4b035"
+    },
+    {
+      "path": "docs/testing/pdv-unico-session-qa-manifest.json",
+      "sha256": "06552c5962f424f7e1e019a60870960112bb3113af0dcde770303bb8a2336853"
+    },
+    {
+      "path": "docs/testing/pdv-unico-finance-qa-manifest.json",
+      "sha256": "b60c8be4775025f6965944db366c21a6857cb5dbf273f8ef25b5cc310cf17105"
+    },
+    {
+      "path": "docs/testing/pdv-unico-commerce-qa-manifest.json",
+      "sha256": "88a36179798e865ac67642748536d0d588a4f999b35bab381d774747512ff43e"
+    }
+  ],
+  "priorManifests": {
+    "historical": {
+      "path": "docs/testing/pdv-unico-qa-migration-manifest.json"
+    },
+    "core": {
+      "path": "docs/testing/pdv-unico-core-qa-manifest.json"
+    },
+    "catalog": {
+      "path": "docs/testing/pdv-unico-catalog-qa-manifest.json"
+    },
+    "session": {
+      "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
+      "name": "20261004100000_pdv_session_restartable",
+      "commit": "aecde84ac3c89c4e675c241893d0daece2062cbf",
+      "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
+    },
+    "finance": {
+      "path": "docs/testing/pdv-unico-finance-qa-manifest.json",
+      "migrationName": "20261004150000_pdv_finance_session_link",
+      "migrationPath": "backend/prisma/migrations/20261004150000_pdv_finance_session_link/migration.sql",
+      "migrationSha256": "ea7cd12fa9ea04c4101854b53e65259ec89dad91b88d64064d8cf39e9cd2667a",
+      "historicalProvenanceMigration": {
+        "name": "20261005180000_payment_historical_provenance",
+        "path": "backend/prisma/migrations/20261005180000_payment_historical_provenance/migration.sql",
+        "sha256": "f3612b3965a2aa2a9b54fc9ecfedb80c0a90a9c4ed4beab5660756ad31a62d4b"
+      }
+    },
+    "commerce": {
+      "path": "docs/testing/pdv-unico-commerce-qa-manifest.json"
+    }
+  },
+  "delivery": {
+    "schemaCommit": "aecde84ac3c89c4e675c241893d0daece2062cbf",
+    "schemaSha256": "142502b10ac4dea4bbc16585aec04508bc0ac91bbc8130ad8f5f3f36005f4694",
+    "migrationName": "20261004170000_pdv_commerce_inventory_context",
+    "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
+    "migrationSha256": "3aaf567f8dddfd94250c5efee4bd37af4a8074243de000fb6ef2f8f9890cc3ab",
+    "saleSessionContextMigration": {
+      "name": "20261006120000_comanda_sale_session_context",
+      "path": "backend/prisma/migrations/20261006120000_comanda_sale_session_context/migration.sql",
+      "sha256": "42044596a55040e23ace01e4f781b193e9910ae095793636d4aa333c1adebfe1"
+    },
+    "tapMountMigration": {
+      "name": "20261006130000_pdv_tap_montage",
+      "path": "backend/prisma/migrations/20261006130000_pdv_tap_montage/migration.sql",
+      "sha256": "d29078cef0b903c656292155f3739bb09c9749160ea3c8a2d22e10d08afe8f63"
+    },
+    "independentKitchenOrderMigration": {
+      "name": "20261007180000_product_independent_kitchen_order",
+      "path": "backend/prisma/migrations/20261007180000_product_independent_kitchen_order/migration.sql",
+      "sha256": "6fa83e259bcd4fcbc04ae8628268547c8a7e9fdb657124f795f04bbd54e24271"
+    }
+  },
+  "preCommerceSchema": {
+    "commit": "128f69fb2fd6904aa823ff17448a6ff13e9d9595",
+    "path": "backend/prisma/schema.prisma",
+    "sha256": "d93bbbff0bae98b116d353c9a62cb5d8bd8d8f87881de8baa6937fa6aa9f8991"
+  },
+  "devInventorySchema": {
+    "commit": "66ec00886b65eaea8e437fae4e9a36f7be971b09",
+    "path": "backend/prisma/schema.prisma",
+    "sha256": "19ff5e65829bc6356fa8d06edbff9fd1527b1d1dd0bd5e35c58cda880479ae59",
+    "compatibility": "Matches DEV migration ledger through 20260930150000_company_pix_key; excludes additive PDV migrations not applied in DEV."
+  },
+  "codeCandidates": [
+    {
+      "path": "backend/package.json",
+      "sha256": "3b0970ce7e48450870df1d2b71ff0a12ab429903116b4abebaac44f99d79f5c0"
+    },
+    {
+      "path": "backend/prisma/migrations/20261005180000_payment_historical_provenance/migration.sql",
+      "sha256": "f3612b3965a2aa2a9b54fc9ecfedb80c0a90a9c4ed4beab5660756ad31a62d4b"
+    },
+    {
+      "path": "backend/prisma/migrations/20261006120000_comanda_sale_session_context/migration.sql",
+      "sha256": "42044596a55040e23ace01e4f781b193e9910ae095793636d4aa333c1adebfe1"
+    },
+    {
+      "path": "backend/prisma/migrations/20261006130000_pdv_tap_montage/migration.sql",
+      "sha256": "d29078cef0b903c656292155f3739bb09c9749160ea3c8a2d22e10d08afe8f63"
+    },
+    {
+      "path": "backend/prisma/migrations/20261007180000_product_independent_kitchen_order/migration.sql",
+      "sha256": "6fa83e259bcd4fcbc04ae8628268547c8a7e9fdb657124f795f04bbd54e24271"
+    },
+    {
+      "path": "backend/scripts/event-deletion.isolated.test.ts",
+      "sha256": "1e51a6b67049aa5ecef63b43fa35a9f1067d2c88a18cf98960852478abd341d2"
+    },
+    {
+      "path": "backend/scripts/inventory-pdv-unico-dev.ts",
+      "sha256": "c7ba41631035219d0636e436261678d6e5b2f0c325fcdbf0d0caac390aef7a18"
+    },
+    {
+      "path": "backend/scripts/isolated-qa-env.mjs",
+      "sha256": "879df1bdc973f85abfc9a76696a0f9c4e14198572cf294c63fb4c170cd3f64aa"
+    },
+    {
+      "path": "backend/scripts/pdv-individual-permissions.isolated.test.mjs",
+      "sha256": "c947c5b0389aaa3ca6aee11a0ce544b32d4bc0b8e8e0fee3ecc4b909a782ae05"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-business-migrator.ts",
+      "sha256": "1e2374fea86836405b38abf53477b1d58b34e606f0be7de8d055b28143198560"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-catalog-migrator.ts",
+      "sha256": "1c9ae3462e0a041bf9c10c5658ef8ccf4c4ecdbb1b25773c6155c9add53676ed"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-catalog-transform.test.ts",
+      "sha256": "62f5a0465ab06602ef23ab4370dc0af0351d361b42bf95afcd21c9993b65e999"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-catalog-transform.ts",
+      "sha256": "6db65bca7270d1d54a9909520b8648eefded93e35ce2479a2e7cc317b5595308"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs",
+      "sha256": "efe18885ebb9a4e1624362cc3783a1b206afe759493ece638796ce69d5d39521"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
+      "sha256": "dbcb8c06aa440ee748f023de5e005a429d98bbc337d405feba6b87fbdfb1fe25"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-commerce-qa-manifest.test.mjs",
+      "sha256": "5fffc4ef7c89115e7f92cd79e1966c8a8b9be105a2edf095900d48ae486faf14"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-commerce-source.ts",
+      "sha256": "66dd02c9db4ceac492bf7e3ff7b87f9817e1bc3f59fc3dc64766c085ea034299"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-commerce-transform.ts",
+      "sha256": "5d88862ec44f623928dcf5a07153cffecbe9bb09b4fb6594a81c1907143b15b5"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-core-schema.isolated.test.mjs",
+      "sha256": "592decb9617c04a3e62963cbebf005da568cc947a687ac6b3e649f611ff2c940"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-dev-inventory-summary.mjs",
+      "sha256": "c5a3bb896a87c9ee72a131005dd9ca8cd63ecb41c37e1f433783aab0a777db55"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-dev-inventory-summary.test.mjs",
+      "sha256": "230a2cdb6593092e6709c296b4697ced0125425603f80306b0c2b3a895eecf10"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-finance-migrator.isolated.test.mjs",
+      "sha256": "eedc348ea2b41573bf4d34211245f26aa1abbeb9e9c71e086202d01404a02f96"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-finance-reconcile.ts",
+      "sha256": "5ad50fc6116575049c17c8a4c2bce16d998cbab8dd819100ebd058e9fce0bec6"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-finance-source.ts",
+      "sha256": "fb45a47077b2cd41c85b0cbf031d0ff5a84dcf11de650919d01f427530d509e7"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-finance-transform.ts",
+      "sha256": "bc359db60b34584d24fd8b4a77dd44ef53d55b004f90dfed2a4fa126bb5d6cb4"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-historical-no-session-approval.json",
+      "sha256": "adab0178d1ef0c01c2cd091fad4762cb04c3d0b17aaa6329b80a423932431dfc"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-kitchen-order-preparation.ts",
+      "sha256": "b6957a95a33a9ea88ce3618966f966dcdc99013f2332cb2629f9b43b3ad085ad"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-migrator-qa-manifest.mjs",
+      "sha256": "478991397c15d50f779bb505387cf06e612b0b5d533907729d13e96b0668908a"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-planner.isolated.test.ts",
+      "sha256": "6b127413421ed1d9268184cf6494197aabdccfef892f2e4d831c1637a30d2e34"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-provisioning-compatibility.isolated.test.mjs",
+      "sha256": "c0b35e4099c36a45586eb1ff1e0f82c7a7513dfa3de484ec383bf8a01a781cc2"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-qa-migration-manifest.mjs",
+      "sha256": "00e3e4d418b8fd8a20b95f9c9a5d33596828b42bab3398fa74dbc34cb760ad9f"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-representative-qa.isolated.test.mjs",
+      "sha256": "aa42ddf48e9c702d8b552747e5d107ef89271bd7f8abde865d9c00a83981a17f"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-session-transform.ts",
+      "sha256": "2de9d12eaaca659390489afcedbdcc46fdf9bd15957f59e456a5f99bf4423580"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-source-graph.ts",
+      "sha256": "2f6d919bfb520cf338f66db2c86366143152e30ef863f99fc0f1e41366c61348"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-tap-migrator.ts",
+      "sha256": "7678a70463d3530d6726b978c6e26f91fa957aaeb2b2030b0002c9e59099acbd"
+    },
+    {
+      "path": "backend/scripts/pdv76-precolumn-api.isolated.test.mjs",
+      "sha256": "4c64edc56e0553dfc15cf4b8f3608a0058cb28c40ce6e9a75c7623f98cdffcde"
+    },
+    {
+      "path": "backend/scripts/run-isolated-qa-historical.mjs",
+      "sha256": "b8ae17e32cfd8dec8a326976d02afce9f55caeb41e96ab11b005aa6c58d7f157"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-commerce-disposable-qa.mjs",
+      "sha256": "4b1c81278a92940316afb9386334267dfb72e7148fe797152447ee1f7df86e14"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-dev-inventory-readonly.mjs",
+      "sha256": "cacc86c19be9e8d9aaf5c5ddfae67ab4c779cd282dbd7e5b5a366af815421e73"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-finance-disposable-qa.mjs",
+      "sha256": "9a03be90eb6762e7f436cbffc01ff1ff26589c5a8a4e74e91072fa1fd3090953"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+      "sha256": "404f63c9505f018ba72019003617134428f9f6a09223803ce8c7d1df308c6fbd"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-historical-disposable-qa.mjs",
+      "sha256": "136b6b2903ba304e9996ad9a07320210e1f224cc3dd594b3bc06dd97a130a249"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-provisioning-compatibility-qa.mjs",
+      "sha256": "59305ddf203183fc66ea6218f7c9289a12747618313968016b4b8ba39e81f0fa"
+    },
+    {
+      "path": "backend/src/app.ts",
+      "sha256": "25b6ea25c8ef980f884723ed77b4a8ddc6c36a0416b136142285d1deb74f844f"
+    },
+    {
+      "path": "backend/src/lib/canonical-pdv-operational-config.test.ts",
+      "sha256": "9235eb55d4bb673ceaa24262181b8d9c95d3a0303ac4d96536740dc56ccfd9b0"
+    },
+    {
+      "path": "backend/src/lib/canonical-pdv-operational-config.ts",
+      "sha256": "315fd9150156f7ddcf18b173e2c177cd9a73ffcec19e3c355cde168d058892f3"
+    },
+    {
+      "path": "backend/src/lib/catalogo-utils.ts",
+      "sha256": "cff79693b0bf2bf39a04a2cf49d6eb125a146c194efe8b4367d24ae5c9a4590f"
+    },
+    {
+      "path": "backend/src/lib/comanda-service.ts",
+      "sha256": "5624b8975e4fdab534e62e970ab74a6ca6b1904bcb55af49dd048f06cf0cdbd4"
+    },
+    {
+      "path": "backend/src/lib/fechar-comanda.ts",
+      "sha256": "93d043bb7d028b2a4a8e8aa754e32a90572f21fbad9999643829f626f38a77f6"
+    },
+    {
+      "path": "backend/src/lib/onboarding/readiness.ts",
+      "sha256": "2dd9dfd25d571b584c4b1053319c3abf89302f82b3116b6c57c7c9a48f103b8a"
+    },
+    {
+      "path": "backend/src/lib/operacao/caixa-lock.ts",
+      "sha256": "f5346b52b569cb679a449a74f3e405580fc7fad002dc18518a56af69d23c2b55"
+    },
+    {
+      "path": "backend/src/lib/operacao/caixa.ts",
+      "sha256": "c43d44865386b8cc828f0f20573a00df51f0b1f4e3e21ce08b0cff6446d3f955"
+    },
+    {
+      "path": "backend/src/lib/operacao/capacidades.test.ts",
+      "sha256": "17e841d00254d55d4812bcef10e21be04c5750f6175cbece55b22ee6ce70cd89"
+    },
+    {
+      "path": "backend/src/lib/operacao/capacidades.ts",
+      "sha256": "e6111e78254708d3ab9c5c6c2d3f8808f5ea82477398275ca605348b4ca40299"
+    },
+    {
+      "path": "backend/src/lib/operacao/comanda-adapter.ts",
+      "sha256": "0457524ff6b3189517243c7d0ce62add390d1f227667beee0b97aadc5599362f"
+    },
+    {
+      "path": "backend/src/lib/operacao/comanda-itens.ts",
+      "sha256": "3697f14e90bccead2be0709ff3763992e289870604f2df9c06dfbb453968e110"
+    },
+    {
+      "path": "backend/src/lib/operacao/contexto-ocorrencia.test.ts",
+      "sha256": "36aa896d4a61f4252fd2aa27c3f2d844df672c59d7842da03dc6f60168065c6f"
+    },
+    {
+      "path": "backend/src/lib/operacao/contexto-ocorrencia.ts",
+      "sha256": "245fd6b449d74785210db1d54c4a70515740400a14e5f2c6a47f0788c11b4bac"
+    },
+    {
+      "path": "backend/src/lib/operacao/dashboard.ts",
+      "sha256": "e42eb45256aa71aced76b881231b1fbb7f7c76624f16c90ffb95fd7d6489361f"
+    },
+    {
+      "path": "backend/src/lib/operacao/modulo.ts",
+      "sha256": "fa5c58651cca58e5a459ba9cdf7884ef9fef1341ed92111c87dde15e52473ba9"
+    },
+    {
+      "path": "backend/src/lib/operacao/payment-session-filter.test.ts",
+      "sha256": "56f86330efced3d5f1aeff2c19f8ff94d9d5e75b7261b809ca126ef8706ce93f"
+    },
+    {
+      "path": "backend/src/lib/operacao/payment-session-filter.ts",
+      "sha256": "6c512e5cc8e95146151a3397972418724dd3df9f495da3045d916e3f9dddd2aa"
+    },
+    {
+      "path": "backend/src/lib/operacao/venda.test.ts",
+      "sha256": "f27ce972b5344188fecbaec8bdca559bbfb6a6ed66f08dddfe2bb5d3f0116abc"
+    },
+    {
+      "path": "backend/src/lib/operacao/venda.ts",
+      "sha256": "19e907e2fd4db52216bb0a4b26607ef51b59385e4f0db6bb0a07145ead054356"
+    },
+    {
+      "path": "backend/src/lib/operational-config.test.ts",
+      "sha256": "951c0deb47a97340e4b6298ba131dd236616e1789da5408548e5240d9242f430"
+    },
+    {
+      "path": "backend/src/lib/operational-config.ts",
+      "sha256": "c61a59d50854aece18cc57bff65f98bbb4223196cc2ac8f6600585f62392713f"
+    },
+    {
+      "path": "backend/src/lib/operational-profile.test.ts",
+      "sha256": "01061f13a2be3ce51cd53b6b6f096dd9fca5e3732bd299e2085b588113572de8"
+    },
+    {
+      "path": "backend/src/lib/operational-profile.ts",
+      "sha256": "1f92762efef86a69b4635b4160046742921bd31e2611f618415558f30eb35c03"
+    },
+    {
+      "path": "backend/src/lib/provision-establishment.test.ts",
+      "sha256": "8406b9c4541b40fbe499beb01c9581222cb1ae50822d010f7269c3376efc8f1e"
+    },
+    {
+      "path": "backend/src/lib/provision-establishment.ts",
+      "sha256": "429e8fbdc918dfc88719b83bcafc765b6cb5f1b606f6081eeb550c755e8668cf"
+    },
+    {
+      "path": "backend/src/lib/single-pdv-provisioning.test.ts",
+      "sha256": "f79c6f55ae59bcfde96c65bea268ebc65c48c6562cb1b26dd33250d1f8ee1e91"
+    },
+    {
+      "path": "backend/src/lib/single-pdv-provisioning.ts",
+      "sha256": "dda5fdaf6ef8001d9d5472ef0056151080f25fbf2ff34a3ef08acd50502bacc2"
+    },
+    {
+      "path": "backend/src/lib/tap-montagem.ts",
+      "sha256": "f9279fab8ef59a8269aa2fe24ac3be4ed3f42abf90e4ba597e0daf538c229a96"
+    },
+    {
+      "path": "backend/src/routes/admin.ts",
+      "sha256": "f9bfcae5c77352a4d9e8d9f360627d6bf1981671cb9de51fac67bab482828ad1"
+    },
+    {
+      "path": "backend/src/routes/cervejaria.ts",
+      "sha256": "9897148cd6cbfd8e89bf382a3afe1e4454a2bc11afddd0bf70d377204bff46c9"
+    },
+    {
+      "path": "backend/src/routes/operacao/agenda-operacional.ts",
+      "sha256": "ab342ffa54cb5c7aff4e284fabfc7ebed801320c6edc0498894ccdab75d914a1"
+    },
+    {
+      "path": "backend/src/routes/operacao/caixa.ts",
+      "sha256": "88d02bdb26a76dfb47bb9dbfd896ee9a836491c2bf0251276f65675af0fde451"
+    },
+    {
+      "path": "backend/src/routes/operacao/comandas.ts",
+      "sha256": "c1ba36037298089ca1d58f12ea12ac349cd6c30b6461bb06e9ee5e2e1a511e7d"
+    },
+    {
+      "path": "backend/src/routes/operacao/cozinha.ts",
+      "sha256": "d9558f75b707b1f1720f29b98a7cec661bbe4c34363c179bcb7099d3044a7bc2"
+    },
+    {
+      "path": "backend/src/routes/operacao/index.ts",
+      "sha256": "300fc3f20d9d4bf6697f6e37ef38f5f82fb590a7d6c7bf69b5f8020bec12ac14"
+    },
+    {
+      "path": "backend/src/routes/operacao/produtos.ts",
+      "sha256": "1b79cb9a06cc6f6415b556cd5ac59d4e84e0f011ae775692a4f2215b35a30517"
+    },
+    {
+      "path": "backend/src/routes/operacao/vendas.ts",
+      "sha256": "2a167e8717ace117671a23a4f0e832e1e3e57d4458b04986bb64ef2db277f74f"
+    },
+    {
+      "path": "backend/src/routes/produtos.ts",
+      "sha256": "f175a71d88dfe789c818967111f95588488d755b5325b907081af64c70d47fd9"
+    },
+    {
+      "path": "backend/src/routes/public.ts",
+      "sha256": "ee6077f87bb6f19b08d0271023f9b736bf659011068f696d14b2c2cea1bd7059"
+    },
+    {
+      "path": "backend/src/routes/taps.ts",
+      "sha256": "2fdbdee9c04cf5a1651c589b80cba95eb4bba5d7c78279c8a5715a5827eb992e"
+    },
+    {
+      "path": "backend/tsconfig.pdv-migration-scripts.json",
+      "sha256": "5b44047b588a34ce8ee081ea154aff1a8158c580a5bc728b9d1894c4bb5f6250"
+    },
+    {
+      "path": "backend/tsconfig.scripts.json",
+      "sha256": "c3783edb5d311e28bcafa946ddc3e4d7aece1bbd2d485f354ba429fa98a1d098"
+    },
+    {
+      "path": "e2e/agenda-operacional.spec.ts",
+      "sha256": "42c1079b828f612b8c9f44108b6c24688926059f3b78323bd8c49b4bb839314a"
+    },
+    {
+      "path": "e2e/current-model/shift-price-permission-ui.spec.ts",
+      "sha256": "e8d2cd65e2a1d1355acd440ef8efe8f8d536955f8fadbb656033bb7753c6bfbe"
+    },
+    {
+      "path": "e2e/independent-kitchen-orders.spec.ts",
+      "sha256": "a85e9b50132fd2d8cb167e67ee2bc25fbb927ffcebe62de632a560336e9bb96d"
+    },
+    {
+      "path": "frontend/src/components/operacao/AgendaOperacionalPanel.tsx",
+      "sha256": "8a41a80266e9ae4b00243a276a4529ac3bd2233b33cd443a7fdd0565970db058"
+    },
+    {
+      "path": "frontend/src/components/operacao/OperacaoTurnoCardapioPanel.tsx",
+      "sha256": "ac0793f5f9b927ed5f678d44ea9068b042543da08cf4f30ef2680b9f1794d2e4"
+    },
+    {
+      "path": "frontend/src/components/operacao/PainelCaixaOperacao.tsx",
+      "sha256": "997f8e7651ad219c7b7ac33ab76f3f9f4334ef404d71ee4c7127840db0adaa72"
+    },
+    {
+      "path": "frontend/src/components/operacao/PdvTapsSection.tsx",
+      "sha256": "0edb914dbdf9ab56bdb39597b670185d589f499e1dd01f851c2277467259a59c"
+    },
+    {
+      "path": "frontend/src/hooks/useOperacaoContexto.ts",
+      "sha256": "e9001ac59da5b214681ee147d5e0a6c3538efd1d8fa0a300e5da9e5fb64982b7"
+    },
+    {
+      "path": "frontend/src/lib/operacao.ts",
+      "sha256": "a6ce379cd45a31564ab8ceced428b1208b55001f461cc7e50017d6c34d2982f9"
+    },
+    {
+      "path": "frontend/src/pages/AdminCervejariasPage.tsx",
+      "sha256": "66820c07b9a1b2670ee60a07c496f6d67d65cedda7b7401dadbf229b35e45cd8"
+    },
+    {
+      "path": "frontend/src/pages/operacao/OperacaoConfiguracoesPage.tsx",
+      "sha256": "35d9a84a3eea8679a7ab4a5fb54ef1d12a64e3916e96cdaaea08e8dcdbcf6d8e"
+    },
+    {
+      "path": "frontend/src/pages/operacao/OperacaoDashboardPage.tsx",
+      "sha256": "e9c675bd9c06b416ef4a5f7bfee47e7ea17b1e1dac01f98c7ef89f3ffdf9e6de"
+    },
+    {
+      "path": "frontend/src/types.ts",
+      "sha256": "79d434dc5c5264b70488235ff4340d4cf9cef45c29e567ff8f54d53f47953ac7"
+    },
+    {
+      "path": "playwright.independent-ui.config.ts",
+      "sha256": "01567913669a6bb52f70fb140341a5bf22334819b9f155e84b29c6099edae8e2"
+    }
+  ],
+  "manifestSha256": "4be2e6d867f5a69d51650a620aafec733830e31a709038b9a432b3b02de425e6"
+}

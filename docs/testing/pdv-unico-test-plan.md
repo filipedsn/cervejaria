@@ -911,3 +911,12 @@ A certificacao Git final de `97281d3e` passou com a suite de permissoes incluida
 
 
 Prova adicional API do escopo global: no snapshot `5c68c5a`, login de atendente com apenas `catalog.manage` recebeu `permissoesEdicao` com `cardapioTurno=false`, `precoTurno=false`, `precoTemplate=true`; PATCH `escopo=TEMPLATE` respondeu 200 e `CardapioProduto.precoUnit` persistiu o valor. A su?te focada e a certifica??o Git final repetiram esse caso em PostgreSQL descart?vel.
+## Correção de compilação da entrega 5c68c5a - revisão 99274ff (2026-10-07)
+
+Na revisão 5c68c5a, `npm run build` do backend reproduziu TS2345 em `caixa.ts:457` e `:488`: `getCardapioTurno` é anulável e era passado ao helper de projeção. As rotas PUT e PATCH agora devolvem o 404 contratual `Turno não encontrado` antes do helper quando o cardápio está ausente. Não houve cast, non-null assertion nem alteração de permissões TURNO/TEMPLATE. O TS6133 em `OperacaoTurnoCardapioPanel.tsx:36` foi resolvido removendo a variável sem uso.
+
+Gates focados na revisão `99274ffcc178fecca7a7c6386686b8c89cf49ba7`: build backend `npm run build` PASS; build frontend `npm run build` PASS (tsc, Vite e PWA); `npm run qa:pdv-individual-permissions` PASS em PostgreSQL descartável, incluindo projeção GET/PUT/PATCH, TURNO/TEMPLATE e regressão de cadastro/vínculo/venda de opcionais; Playwright do preço do turno PASS 3/3, com APIs mockadas e saída em diretório temporário. Avisos do build frontend: import estático/dinâmico de `auth-session.ts` e chunk principal maior que 500 kB.
+
+O manifesto integrado foi gerado integralmente dos blobs de `99274ff`: 101 candidatos, árvore `1ddec8207bd11c75f09f3359909805a63dfa8e36`, digest `a1f7ff7f827100b231f8614c504708832f8fc138d9b9e8c50ee588c24845358f`; comparação independente dos 101 blobs e digest PASS. O manifesto anterior de `aecde84` e o histórico `5b7062f` foram preservados. A certificação completa `qa:pdv-current-git-snapshot` NÃO foi executada nesta revisão; a certificação completa de `5c68c5a` continua somente como evidência histórica. Evidência desta correção: [pdv-build-fix-99274ff-qa-evidence.json](./pdv-build-fix-99274ff-qa-evidence.json). Ensaio representativo, backfill real, cutover e deploy NOT_RUN; PROD/metadados e DEV compartilhado não acessados.
+
+Prevenção: toda entrega que alterar runtime backend/frontend deve executar como gate obrigatório o build correspondente (`backend: npm run build`; `frontend: npm run build`). Fastify.inject, tsx, Playwright ou Vite sem compilação TypeScript não substituem esses gates.

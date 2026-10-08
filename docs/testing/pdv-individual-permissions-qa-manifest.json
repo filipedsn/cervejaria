@@ -1,8 +1,8 @@
 {
   "version": 2,
   "purpose": "Exact Git certification inputs for individual permissions across existing PDV operational modules",
-  "baselineCommit": "5c68c5a62ed8d05482e1a36d9a72c8851230b7c9",
-  "baselineTree": "ccc078fa6c1c61ad5211097ad50490792a86bc6a",
+  "baselineCommit": "99274ffcc178fecca7a7c6386686b8c89cf49ba7",
+  "baselineTree": "1ddec8207bd11c75f09f3359909805a63dfa8e36",
   "sourceMaterialization": "Git snapshot selected by commit; workspace files are not source inputs",
   "databaseInputs": {
     "schemaPath": "backend/prisma/schema.prisma",
@@ -13,26 +13,23 @@
     "shiftCatalogMigrationGitBlob": "6129dfa0cda655729556050951ebe190f1698929"
   },
   "suite": {
-    "command": "qa:pdv-current-git-snapshot -- --commit=5c68c5a62ed8d05482e1a36d9a72c8851230b7c9 --evidence-out=<diretorio-temporario>/pdv-canonical-optionals-certification-5c68c5a.json",
+    "command": "Focused gates on exact runtime/test revision 99274ff: backend npm run build; frontend npm run build; backend npm run qa:pdv-individual-permissions; Playwright shift-price-permission-ui.spec.ts (report/output in OS temp). Full qa:pdv-current-git-snapshot NOT_RUN for this correction.",
     "includedDisposableSuite": "qa:pdv-individual-permissions",
-    "result": "PASS",
+    "result": "FOCUSED_GATES_PASS; FULL_GIT_CERTIFICATION_NOT_RUN for this revision",
     "candidateManifest": {
-      "sha256": "34ab75e6f912cbfec9910ec7899d8d1ef850314651577e63c727a1bb69a81813",
-      "candidateCount": 101
+      "sha256": "a1f7ff7f827100b231f8614c504708832f8fc138d9b9e8c50ee588c24845358f",
+      "candidateCount": 101,
+      "allCandidateBlobsMatchSelectedGitRevision": true
     },
     "sourceAudit": {
-      "trackedBlobs": 1152,
-      "snapshotProjectModules": 185,
-      "workspaceImports": 0,
-      "externalModules": 100,
-      "prismaVersion": "6.19.3"
+      "result": "NOT_RUN for this correction revision; prior exact source audit remains historical evidence only"
     },
-    "moduleCases": "PASS on disposable PostgreSQL: authenticated APIs create canonically scoped optionals via generic and operational routes, link them to new canonical and preexisting migrated products, and return tenant/PDV IDs. A sale persists optional name, catalog ID, additional price 1.25, quantity 2 and item total 12.50; later catalog edits preserve sold snapshots. Both link routes reject foreign tenant, another PDV and mixed valid/invalid IDs without changing prior links. The suite retains catalog.manage employee/owner cross-tenant edit/delete denials and successful own edits. Canonical-off registrations remain global NULL.",
-    "focusedRealtimeCases": "PASS on real local Socket.IO sockets and real API emitters: empty, command.read-only, kitchen.read-only, cash.values.read-only, owner, foreign tenant, and legacy flag-off; room membership observed before emitting; payload separation; grant/revoke reconciled on the same socket; cash.values.read does not grant command/kitchen; kitchen projection contains no prices; owner gets the safe kitchen projection.",
-    "uiSimulation": "PASS 3/3: catalog.shift.manage only TURNO; catalog.manage alone TEMPLATE only; query-only no editor.",
+    "moduleCases": "PASS on disposable PostgreSQL for focused rerun: authenticated canonical optional create/link/new and migrated product, authenticated sale with quantity/price/snapshot then edit without snapshot mutation, negative foreign tenant/other PDV/mixed IDs preserving existing links, cross-tenant optional edit/delete checks, and GET/PUT/PATCH cardapio response permission projections including TURNO/TEMPLATE. This focused suite is not the complete Git snapshot certification.",
+    "focusedRealtimeCases": "Historical PASS is retained in earlier evidence; not rerun for this compile correction.",
+    "uiSimulation": "PASS 3/3 on exact runtime blobs: catalog.shift.manage TURNO only; catalog.manage TEMPLATE only; query-only no editor. APIs explicitly mocked; unexpected API calls blocked. Output in OS temp.",
     "builds": {
-      "backend": "NOT_RUN in this correction; backend API suite and exact Git certification passed.",
-      "frontend": "NOT_RUN in this correction; dedicated Playwright simulation passed against the UI."
+      "backend": "PASS: npm run build (tsc) on 99274ff",
+      "frontend": "PASS: npm run build (tsc -b, Vite production bundle, PWA injectManifest) on 99274ff; warnings only for mixed static/dynamic auth-session import and >500 KB bundle"
     },
     "representativeRehearsal": "NOT_RUN"
   },
@@ -62,9 +59,12 @@
     "No new agenda status or lifecycle policy was introduced.",
     "Canonical optional tests prove only named generic/operational create, link, sale and edit flows. No historic incompatible rows are repaired; unlisted API routes remain NAO COMPROVADA.",
     "The full price modal is now covered by a dedicated 3-case mocked Playwright scenario; this simulation does not substitute for API/PostgreSQL assertions.",
-    "The exact Git certification records syntheticRegression PASS; representative rehearsal NOT_RUN."
+    "The exact Git certification records syntheticRegression PASS; representative rehearsal NOT_RUN.",
+    "The full exact Git certification runner qa:pdv-current-git-snapshot was NOT_RUN on 99274ff; PASS claims in this current correction manifest are limited to named focused gates.",
+    "Missing cardapio is explicitly guarded with the route 404 contract and type-checked by backend build; no forced null race was injected through the API.",
+    "Frontend Playwright is a mocked UI simulation and is separate from the authenticated API/PostgreSQL suite."
   ],
-  "evidencePath": "docs/testing/pdv-individual-permissions-canonical-optionals-qa-evidence.json",
+  "evidencePath": "docs/testing/pdv-build-fix-99274ff-qa-evidence.json",
   "historicalEvidencePath": "docs/testing/pdv-individual-permissions-qa-evidence.json",
   "planeTicket": {
     "identifier": "TAP-76",
@@ -72,5 +72,5 @@
     "state": "In Progress",
     "updated": false
   },
-  "historicalManifestPath": "docs/testing/pdv-individual-permissions-qa-manifest-5b7062f-history.json"
+  "historicalManifestPath": "docs/testing/pdv-individual-permissions-qa-manifest-5c68c5a-history.json"
 }

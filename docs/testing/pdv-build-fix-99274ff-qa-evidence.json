@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "certification": "focused-gates-only",
+  "selectedCommit": "99274ffcc178fecca7a7c6386686b8c89cf49ba7",
+  "selectedTree": "1ddec8207bd11c75f09f3359909805a63dfa8e36",
+  "objective": "Correct TypeScript compilation errors introduced by delivery 5c68c5a without new functionality.",
+  "reproduction": {
+    "backend": {
+      "command": "npm run build",
+      "result": "FAIL before correction",
+      "errors": [
+        "TS2345 backend/src/routes/operacao/caixa.ts:457: nullable getCardapioTurno passed to NonNullable helper",
+        "TS2345 backend/src/routes/operacao/caixa.ts:488: nullable getCardapioTurno passed to NonNullable helper"
+      ]
+    },
+    "frontend": {
+      "diagnostic": "TS6133 at OperacaoTurnoCardapioPanel.tsx:36: podeManterCardapioGlobal unused after permission projection."
+    }
+  },
+  "corrections": [
+    {
+      "file": "backend/src/routes/operacao/caixa.ts",
+      "change": "Both PUT /cardapio and PATCH /cardapio/preco now explicitly return the existing 404 contract (Turno não encontrado) when getCardapioTurno yields null before invoking the projection helper. No cast, non-null assertion, or strictness relaxation; TURNO/TEMPLATE permission mapping unchanged."
+    },
+    {
+      "file": "frontend/src/components/operacao/OperacaoTurnoCardapioPanel.tsx",
+      "change": "Removed obsolete podeManterCardapioGlobal declaration; reviewed the nearby permission projection with frontend TypeScript build."
+    }
+  ],
+  "gates": {
+    "backendBuild": {
+      "command": "npm run build",
+      "result": "PASS",
+      "details": "TypeScript tsc completed on selected revision."
+    },
+    "frontendBuild": {
+      "command": "npm run build",
+      "result": "PASS",
+      "details": "tsc -b, Vite production bundle and PWA service worker build completed. Warnings: auth-session mixed static/dynamic import; main chunk above 500 kB."
+    },
+    "focusedApiPostgres": {
+      "command": "npm run qa:pdv-individual-permissions",
+      "result": "PASS",
+      "environment": "Own disposable PostgreSQL container with tmpfs storage bound only to 127.0.0.1:55439; container removed after run.",
+      "assertions": [
+        "GET, PUT, PATCH cardapio responses project permissions correctly",
+        "catalog.shift.manage enables TURNO only; catalog.manage enables TEMPLATE only",
+        "Canonical optional creation and link through authenticated APIs for new and pre-migrated products",
+        "Sale persists optional ID/name/price/quantity/total snapshot; later optional edit leaves sale snapshot unchanged",
+        "Foreign tenant, other PDV, and mixed optional IDs are refused without deleting prior links",
+        "Focused cross-tenant optional edit/delete denials and own optional operations remain passing"
+      ]
+    },
+    "playwright": {
+      "command": "npx playwright test --config=playwright.current.config.ts e2e/current-model/shift-price-permission-ui.spec.ts --reporter=list --output=<OS_TEMP>/pdv-build-fix-99274",
+      "result": "PASS 3/3",
+      "cases": [
+        "catalog.shift.manage: TURNO only and submitted payload scope",
+        "catalog.manage only: TEMPLATE and submitted payload scope",
+        "query-only: no price editor"
+      ],
+      "environment": "Local Vite on 127.0.0.1:5202; explicit API mocks and unexpected API calls blocked; no backend/PostgreSQL used; output kept in OS temp."
+    }
+  },
+  "manifestReconciliation": {
+    "generator": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs --write",
+    "selectedCommit": "99274ffcc178fecca7a7c6386686b8c89cf49ba7",
+    "selectedTree": "1ddec8207bd11c75f09f3359909805a63dfa8e36",
+    "candidateCount": 101,
+    "storedDigest": "a1f7ff7f827100b231f8614c504708832f8fc138d9b9e8c50ee588c24845358f",
+    "independentBlobComparison": "PASS: 101 of 101 candidate SHA-256 values match git show blobs; zero mismatches.",
+    "independentAggregateDigest": "PASS: recomputed aggregate digest equals stored digest.",
+    "priorAecManifestHistory": "docs/testing/pdv-unico-integrated-qa-manifest-aecde84-history.json",
+    "previous5bHistory": "docs/testing/pdv-unico-integrated-qa-manifest-5b7062f-history.json"
+  },
+  "fullGitCertification": {
+    "result": "NOT_RUN on this correction revision; prior 5c68c5a certification remains historical and is not attributed to 99274ff."
+  },
+  "representativeRehearsal": "NOT_RUN",
+  "limits": {
+    "prodOrMetadata": "NOT_ACCESSED",
+    "sharedDev": "NOT_ACCESSED",
+    "realBackfill": "NOT_RUN",
+    "cutover": "NOT_RUN",
+    "deploy": "NOT_RUN",
+    "globalApiProtection": "NOT_CLAIMED",
+    "dirtyWorkspaceAndStashes": "Preserved; only task-specific files staged for correction commits."
+  }
+}

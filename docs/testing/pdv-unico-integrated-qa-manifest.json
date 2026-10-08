@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "5c68c5a62ed8d05482e1a36d9a72c8851230b7c9",
+    "commit": "99274ffcc178fecca7a7c6386686b8c89cf49ba7",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "142502b10ac4dea4bbc16585aec04508bc0ac91bbc8130ad8f5f3f36005f4694"
   },
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "5c68c5a62ed8d05482e1a36d9a72c8851230b7c9",
+      "commit": "99274ffcc178fecca7a7c6386686b8c89cf49ba7",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -63,7 +63,7 @@
     }
   },
   "delivery": {
-    "schemaCommit": "5c68c5a62ed8d05482e1a36d9a72c8851230b7c9",
+    "schemaCommit": "99274ffcc178fecca7a7c6386686b8c89cf49ba7",
     "schemaSha256": "142502b10ac4dea4bbc16585aec04508bc0ac91bbc8130ad8f5f3f36005f4694",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
@@ -130,7 +130,7 @@
     },
     {
       "path": "backend/scripts/pdv-individual-permissions.isolated.test.mjs",
-      "sha256": "c947c5b0389aaa3ca6aee11a0ce544b32d4bc0b8e8e0fee3ecc4b909a782ae05"
+      "sha256": "5a11f62e6a1a58de37ce21c7346a05b587574babcd08d5386e6ac7f3d52b2715"
     },
     {
       "path": "backend/scripts/pdv-unico-business-migrator.ts",
@@ -402,7 +402,7 @@
     },
     {
       "path": "backend/src/routes/operacao/caixa.ts",
-      "sha256": "84a4e3df8c5635c0cd7af386c991bc48f09d170e732c6d5770552881b9217777"
+      "sha256": "88d02bdb26a76dfb47bb9dbfd896ee9a836491c2bf0251276f65675af0fde451"
     },
     {
       "path": "backend/src/routes/operacao/comandas.ts",
@@ -462,7 +462,7 @@
     },
     {
       "path": "frontend/src/components/operacao/OperacaoTurnoCardapioPanel.tsx",
-      "sha256": "8ef43d11bb91f79ba007e5165682e2b6ecbd4b26cb1101a6d6425bfbe61e2350"
+      "sha256": "ac0793f5f9b927ed5f678d44ea9068b042543da08cf4f30ef2680b9f1794d2e4"
     },
     {
       "path": "frontend/src/components/operacao/PainelCaixaOperacao.tsx",
@@ -501,5 +501,5 @@
       "sha256": "01567913669a6bb52f70fb140341a5bf22334819b9f155e84b29c6099edae8e2"
     }
   ],
-  "manifestSha256": "34ab75e6f912cbfec9910ec7899d8d1ef850314651577e63c727a1bb69a81813"
+  "manifestSha256": "a1f7ff7f827100b231f8614c504708832f8fc138d9b9e8c50ee588c24845358f"
 }
