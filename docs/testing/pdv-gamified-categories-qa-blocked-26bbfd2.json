@@ -1,0 +1,12 @@
+﻿{
+  "result": "BLOCKED",
+  "selectedCommit": "26bbfd2da715cf0129a23202813f30b23532f95e",
+  "runner": "qa:pdv-current-git-snapshot",
+  "failingGate": "qa:pdv-commerce-disposable",
+  "diagnosis": "The earlier-schema compatibility run had reached its explicit schema preparation, where the fixture attempted DROP COLUMN categoriaPdvId although this migration point did not yet contain that additive category column.",
+  "error": "42703: column categoriaPdvId of relation Produto does not exist",
+  "correction": "Make category column removal IF EXISTS and assert the generated pre-column Prisma Client has no categoriaPdvId field.",
+  "prodAccessUsed": "NO",
+  "sharedDevAccess": "NO",
+  "supersededBy": "baae999caf5103a74d626ce5ac591d46f6a5361a"
+}
