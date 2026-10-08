@@ -679,21 +679,18 @@ socket.off('operacao:pedido-novo', onNewOrderForRollback);
 assert.equal(eventsBeforeRollback.length, 0, 'rolled back kitchen order emits no pedido novo');
 
 const statusUpdateRestricted = socketEvent('operacao:pedido-atualizado', (payload) => payload.id === persistedSocketOrder.id);
-const statusUpdateFinance = new Promise((resolve, reject) => {
-  const timer = setTimeout(() => { financeSocket.off('operacao:pedido-atualizado', listener); reject(new Error('Timed out waiting for finance kitchen status')); }, 3000);
-  const listener = (payload) => { if (payload.id !== persistedSocketOrder.id) return; clearTimeout(timer); financeSocket.off('operacao:pedido-atualizado', listener); resolve(payload); };
-  financeSocket.on('operacao:pedido-atualizado', listener);
-});
+const ownerKitchenStatus = socketEventFor(financeSocket, 'operacao:pedido-atualizado', (payload) => payload.id === persistedSocketOrder.id);
 const statusChanged = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${persistedSocketOrder.id}/status`, headers: authHeaders(staffCookie), payload: { status: 'EM_PREPARO' } });
 assert.equal(statusChanged.statusCode, 200, statusChanged.body);
-const [restrictedStatus, financeStatus] = await Promise.all([statusUpdateRestricted, statusUpdateFinance]);
+const [restrictedStatus, ownerStatus] = await Promise.all([statusUpdateRestricted, ownerKitchenStatus]);
 assert.equal(restrictedStatus.status, 'EM_PREPARO');
 assert.equal(restrictedStatus.itensComanda[0].id, persistedSocketOrder.itensComanda[0].id);
 assert.deepEqual(restrictedStatus.itensComanda[0].opcionais.map(({ nome, quantidade }) => ({ nome, quantidade })), [{ nome: socketOptional.nome, quantidade: 2 }]);
 assert.equal(JSON.stringify(restrictedStatus).includes('preco'), false);
-assert.equal(financeStatus.status, 'EM_PREPARO');
-assert.equal(financeStatus.itens[0].precoUnit, 15);
-assert.equal(financeStatus.itens[0].opcionais[0].precoAdicional, 2.5);
+assert.equal(ownerStatus.status, 'EM_PREPARO');
+assert.equal(ownerStatus.itensComanda[0].id, persistedSocketOrder.itensComanda[0].id);
+assert.deepEqual(ownerStatus.itensComanda[0].opcionais.map(({ nome, quantidade }) => ({ nome, quantidade })), [{ nome: socketOptional.nome, quantidade: 2 }]);
+assert.equal(JSON.stringify(ownerStatus).includes('preco'), false, 'owner gets kitchen projection without financial prices');
 
 const socketGrant = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['cash.values.read'] } });
 assert.equal(socketGrant.statusCode, 200, socketGrant.body);
