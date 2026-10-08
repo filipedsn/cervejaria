@@ -1,0 +1,133 @@
+{
+  "date": "2026-10-08",
+  "result": "PASS_WITH_RESUMED_OPERATION_GATE",
+  "scope": "QA próprio descartável; nenhuma escrita em DEV compartilhado; nenhum acesso PROD/metadados",
+  "certification": {
+    "migrationAndReplayCommit": "a27a3f6b6bc3789ca6e20612c115b6469dece79a",
+    "resumedAuthenticatedOperationCommit": "caf6daa61ed83cb287b605e9252705cc640ad1ff",
+    "note": "A execução de transformação/replay no commit a27 concluiu antes de falhar em fixture. O gate operacional foi retomado no mesmo banco QA preservado após corrigir a expectativa da fixture. O código de produção, schema e migrations não diferem entre a27 e caf6. Não é uma única invocação contínua nem deve ser confundida com o PASS focado anterior."
+  },
+  "historicalCommand": {
+    "id": "cmuqaoyta0007hvdg3q4v7hkj",
+    "tenantId": "cmsry9xrn0000hvlgopjxy0oo",
+    "tenant": "Churrasquinho do Thiago",
+    "pointOfSaleId": "cmsry9xry0004hvlge0wgboza",
+    "statusBeforeOperationalSanitation": "ABERTA",
+    "statusAfterMigrationBeforeSanitation": "ABERTA",
+    "statusAfterAuthenticatedSanitation": "CANCELADA",
+    "total": 0,
+    "items": 0,
+    "payments": 0,
+    "receivableId": null,
+    "balance": 0,
+    "origin": "CAIXA",
+    "type": "APELIDO",
+    "number": 3,
+    "operationalDay": "2026-10-01",
+    "createdAt": "2026-10-02T01:39:21.790Z",
+    "eventId": null,
+    "occurrenceId": null,
+    "cashSessionId": null,
+    "openerUserId": null,
+    "customerId": "cmumnla0z0014hv18nth4smgx",
+    "authenticatedCancellation": {
+      "route": "POST /api/operacao/comandas/:id/cancelar",
+      "preservedIdAndCreatedAt": true,
+      "auditEvent": "COMANDA_CANCELADA",
+      "auditCount": 1,
+      "actorRole": "DONO",
+      "noPaymentReceivableCashOrInventoryEffects": true
+    },
+    "closeRule": "contarComandasAbertas bloqueia quando origem=CAIXA, pointOfSaleId corresponde ao PDV alvo, pointOfSale.cervejariaId corresponde ao tenant, status=ABERTA e type!=AVULSA. A regra não restringe dia operacional nem sessão e não ignora total zero ou ausência de itens/pagamentos.",
+    "classification": {
+      "migrationDefect": false,
+      "preexistingOperationalCondition": true,
+      "fixtureFailure": false
+    }
+  },
+  "cashCloseAfterSanitation": {
+    "result": "PASS",
+    "method": "API autenticada normal; sem UPDATE direto de sessão",
+    "sessions": [
+      {"id": "cmv0288ar004jhvegsbh5yj15", "tenant": "Churrasquinho do Thiago", "status": "FECHADO", "closedAt": "2026-11-08T18:00:00.000Z", "cash": 0, "pix": 16, "debit": 0, "credit": 0},
+      {"id": "cmv0288yn006shveglvtqb7nb", "tenant": "Churrasquinho do Thiago", "status": "FECHADO", "closedAt": "2026-11-08T18:00:00.000Z", "cash": 0, "pix": 43, "debit": 0, "credit": 0}
+    ],
+    "qaCleanupDirectSessionUpdates": 0,
+    "openQaAttemptSessionsAfterRun": 0,
+    "openQaAttemptCommandsAfterRun": 0
+  },
+  "payments": {
+    "originalCount": 605,
+    "originalRowsSha256BeforeAndAfter": "6ad2aa0ea7546e879c9849ef98d4528cfcc928effe161f5c5445d11ba77ee83e",
+    "classCAuthorizedIds": 577,
+    "classCAuthorizationChanged": false
+  },
+  "tenantOperations": [
+    {
+      "tenant": "CIA Marítima",
+      "tenantId": "cmr9yis3c0000hvu00q9fe7y1",
+      "result": "PASS",
+      "authenticatedCashOpenAndClose": "PASS",
+      "flows": ["abertura com e sem ocorrência", "menu/preços", "comanda/pagamento", "cancelamento/estoque", "portal autenticado", "permissão na mesma sessão", "TAP/volume por vínculo QA"],
+      "expectedDisabledRefusals": ["cozinha", "estoque"],
+      "qaOnlyMenuLink": {"productId": "cmrck6u36000mhvu0axp3ucnn", "volumeMl": 300, "price": 15, "sourcePriceId": "cmrck6u36000nhvu0lwr3u3wi"}
+    },
+    {
+      "tenant": "Churrasquinho do Thiago",
+      "tenantId": "cmsry9xrn0000hvlgopjxy0oo",
+      "result": "PASS",
+      "authenticatedCashOpenAndClose": "PASS_AFTER_HISTORICAL_EMPTY_COMMAND_CANCELLATION",
+      "flows": ["abertura com e sem ocorrência", "menu/preços", "comanda/pagamento", "cancelamento/estoque", "portal autenticado", "permissão na mesma sessão", "cozinha original/independente", "estorno"],
+      "expectedDisabledRefusals": ["TAP"]
+    }
+  ],
+  "ciaMigratedMenu": {
+    "tenantId": "cmr9yis3c0000hvu00q9fe7y1",
+    "pointId": "cmr9yis3c0001hvu0pr53z3e5",
+    "menuId": "cmrckpipx001khvu0r82tpft2",
+    "activeMigratedMenusSearched": 1,
+    "chopeProductVolumeAssociationsFound": 0,
+    "qaOnlyAssociationAlreadyExercised": true,
+    "minimumDevProposalNotApplied": {
+      "productId": "cmrck6u36000mhvu0axp3ucnn",
+      "volumeMl": 300,
+      "price": 15,
+      "originPriceId": "cmrck6u36000nhvu0lwr3u3wi"
+    },
+    "otherSourceChopeOptions": [
+      {"productId": "cmrck6u36000mhvu0axp3ucnn", "volumeMl": 500, "price": 20, "originPriceId": "cmrck6u36000ohvu0s6wv82v7"},
+      {"productId": "cmrck8n74000uhvu0lakhr6bn", "volumeMl": 300, "price": 15, "originPriceId": "cmrck8n74000vhvu0dsderi43"},
+      {"productId": "cmrck8n74000uhvu0lakhr6bn", "volumeMl": 500, "price": 20, "originPriceId": "cmrck8n74000whvu0i0zbg1tj"},
+      {"productId": "cmrck7y7q000qhvu03mf6ehmt", "volumeMl": 300, "price": 12, "originPriceId": "cmrck7y7q000rhvu05m252gvo"},
+      {"productId": "cmrck7y7q000qhvu03mf6ehmt", "volumeMl": 500, "price": 17, "originPriceId": "cmrck7y7q000shvu0ay44j6ro"},
+      {"productId": "cmrckbf5b0016hvu0hgvua22f", "volumeMl": 300, "price": 14, "originPriceId": "cmrckbf5b0017hvu0ijr8popb"},
+      {"productId": "cmrckbf5b0016hvu0hgvua22f", "volumeMl": 500, "price": 18, "originPriceId": "cmrckbf5b0018hvu008fic52c"},
+      {"productId": "cmrck9drh000yhvu00qqckend", "volumeMl": 300, "price": 14, "originPriceId": "cmrck9drh000zhvu0npikgsyl"},
+      {"productId": "cmrck9drh000yhvu00qqckend", "volumeMl": 500, "price": 18, "originPriceId": "cmrck9drh0010hvu0f0lxjigd"}
+    ]
+  },
+  "coreAndPreflight": {
+    "backendBuild": "PASS",
+    "frontendBuild": "PASS",
+    "uiMockedPlaywright": "PASS 2/2",
+    "commerceManifest": "PASS 3/3",
+    "coreAndTenantActivationTests": "PASS 10/10",
+    "syntheticRegression": "PASS on migration/replay run",
+    "allTenantDevPreflight": {"status": "CLEAR", "isolation": "RepeatableRead READ ONLY", "tenants": "55/55", "sourceWrites": 0, "crossTenantEdges": 0},
+    "applyCapableGuardedDevEntrypointQa": "NOT_RUN; real release blocker"
+  },
+  "devGates": {
+    "explicitAuthorizationForAuthenticatedSanitationOfTheSameCommandInDev": "PENDING",
+    "businessApprovalForTheMinimumCiaMenuAssociation": "PENDING",
+    "freshReadOnlyDevMigrationLedgerAndPhoto": "REQUIRED_AT_RELEASE_WINDOW",
+    "integratedCertificationAtExactFinalReleaseSha": "PASS_WITH_RESUMED_OPERATION_GATE; evidence on this certification set only",
+    "sharedDevWritesThisRound": false,
+    "prodOrMetadataAccess": false
+  },
+  "evidence": {
+    "focusedGateCommit": "caf6daa61ed83cb287b605e9252705cc640ad1ff",
+    "focusedGateReport": "%TEMP%\\tap76-resumed-operation-caf6daa.json",
+    "migrationReplayReport": "%TEMP%\\tap76-final-integrated-a27a3f6-final.json",
+    "planeWorkItem": "TAP-76"
+  }
+}

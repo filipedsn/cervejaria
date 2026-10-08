@@ -64,3 +64,20 @@ This was a working-tree QA run based on repository HEAD `ad2d979` plus existing 
 A reconciliação da foto aprovada confirma a comanda `cmuqaoyta0007hvdg3q4v7hkj` já existente no Churrasquinho: total 0, pagamentos 0, itens 0, saldo 0; `ABERTA`, `APELIDO`, origem `CAIXA`, dia 2026-10-01, criada em 2026-10-02T01:39:21.790Z. Está vinculada ao PDV `cmsry9xry0004hvlge0wgboza` e ao cliente `cmumnla0z0014hv18nth4smgx`, sem evento, ocorrência, sessão ou usuário de abertura; sem recebível. Não houve alteração do registro. A regra `contarComandasAbertas` bloqueia por origem CAIXA + PDV alvo do tenant + estado ABERTA + tipo diferente de AVULSA, sem restringir dia ou sessão.
 
 Defeito de migração: não encontrado. Condição operacional preexistente: confirmada. Falhas de fixture: portal anônimo incorretamente esperado como sucesso, vínculo de volume ausente no menu aprovado de CIA, transição de estorno incompleta e limpeza direta de sessões que não representa fechamento autenticado; corrigidas/classificadas como descrito no JSON de evidência. Resultado cliente a cliente está no plano de teste e no JSON. Bloqueio exige decisão operacional aprovada antes do teste de fechamento em DEV.
+
+## Aceite operacional final composto (2026-10-08)
+
+As transformações/replays foram certificados em `a27a3f6b6bc3789ca6e20612c115b6469dece79a`. Após uma falha estritamente de fixture no gate seguinte, o gate operacional foi retomado em `caf6daa61ed83cb287b605e9252705cc640ad1ff`, no mesmo QA migrado e preservado. Não houve reexecução da migração; não houve diferença em código de produção, schema ou migrations entre os commits. Resultado: `PASS_WITH_RESUMED_OPERATION_GATE`, sem alegar uma única invocação integrada contínua.
+
+| Verificação | Resultado | Evidência |
+|---|---|---|
+| Preservação da comanda original pela migração | PASS; permaneceu `ABERTA`, total zero, 0 itens/pagamentos, sem recebível | `cmuqaoyta0007hvdg3q4v7hkj` |
+| Saneamento posterior em QA | PASS; cancelamento via API autenticada, mesmo ID/histórico, 1 auditoria `COMANDA_CANCELADA`, nenhum efeito financeiro ou de estoque | Mesmo ID; hash de pagamentos antes/depois idêntico |
+| Fechamento autenticado após saneamento | PASS nos dois tenants; sessões de operação terminaram `FECHADO`; zero limpeza direta de sessão | Evidência JSON |
+| Reconciliação financeira | PASS; 605 pagamentos preservados e autorização dos 577 C intacta | Hash SHA-256 `6ad2aa0ea7546e879c9849ef98d4528cfcc928effe161f5c5445d11ba77ee83e` |
+| Preflight global em DEV | CLEAR, transação RepeatableRead READ ONLY, 55/55 tenants, zero escrita e zero arestas cross-tenant | Relatório integrado da revisão `a27a3f6` |
+| CIA: cardápio ativo migrado | Nenhuma associação de Chope em todo o único cardápio ativo. Smoke usou link QA de Vinho 300 ml/R$ 15. | Proposta DEV mínima com IDs/preço de origem no JSON; não aplicada |
+| Entry point DEV com aplicação guardada, validado em QA | PENDENTE; bloqueio técnico real | Não há prova de dry-run/allowlist/recibos/rollback desse aplicador |
+| Autorizações operacionais/comerciais | PENDENTE | Saneamento equivalente em DEV e associação CIA exigem aprovação explícita |
+
+Classificação: não foi encontrado defeito de migração; a comanda vazia era condição operacional preexistente que satisfaz a regra de bloqueio por `ABERTA`/`CAIXA`/PDV e tipo não-AVULSA sem filtro por dia/sessão/valor. Falhas anteriores foram fixtures ou pré-condições de catálogo QA, e não justificam alterar regra de negócio. Nenhum dado de DEV foi escrito. Para liberar DEV, ainda é preciso aprovar o saneamento autenticado dessa comanda, aprovar a associação mínima proposta para CIA e validar em QA o entrypoint guardado antes de agendar a janela. Detalhes: [`pdv-unico-operational-acceptance-2026-10-08.json`](pdv-unico-operational-acceptance-2026-10-08.json).
