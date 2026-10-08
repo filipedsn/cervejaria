@@ -146,10 +146,13 @@ try {
 
   const cashOpen = await call('POST', '/api/operacao/caixa/abrir', ownerCookie, { pontoVendaId: point.id, trocoInicial: 0, cardapioId: menu.id });
   assert.equal(cashOpen.statusCode, 201, cashOpen.body);
+  const cashSession = body(cashOpen);
+  const tap = await prisma.tap.create({ data: { numero: 1, nome: 'Tap QA', produtoId: chope.id, cervejariaId: company.id, pontoVendaId: point.id } });
+  await prisma.tapMontagem.create({ data: { tapId: tap.id, produtoId: chope.id, sessaoCaixaId: cashSession.id } });
   const openedCommand = await call('POST', '/api/operacao/comandas', ownerCookie, { pontoVendaId: point.id, tipo: 'APELIDO', identificador: `volume-${suffix}`, clienteNome: `Cliente ${suffix}` });
   assert.equal(openedCommand.statusCode, 201, openedCommand.body);
   const command = body(openedCommand);
-  const launch = await call('POST', `/api/operacao/comandas/${encodeURIComponent(command.id)}/pedidos`, ownerCookie, { itens: [{ produtoId: chope.id, quantidade: 1, volumeMl: 500 }] });
+  const launch = await call('POST', `/api/operacao/comandas/${encodeURIComponent(command.id)}/pedidos`, ownerCookie, { itens: [{ produtoId: chope.id, quantidade: 1, tapId: tap.id, volumeMl: 500 }] });
   assert.equal(launch.statusCode, 201, launch.body);
   const launchedItem = await prisma.itemComanda.findFirstOrThrow({ where: { comandaId: command.id } });
   assert.deepEqual([launchedItem.volumeMl, Number(launchedItem.precoUnit)], [500, 8], 'real Por Caixa sale snapshots the selected volume price');
