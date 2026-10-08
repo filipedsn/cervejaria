@@ -5,7 +5,7 @@ import { getTenantUser } from '../types/auth.js';
 import { assertProdutoPodeExcluir } from '../lib/catalogo-utils.js';
 import { isBebidaChope, isVendaUnitaria, normalizePrecos, produtoFieldsForSave } from '../lib/produto-utils.js';
 import { listarOpcionaisProduto, substituirOpcionaisProduto } from '../lib/produto-opcionais.js';
-import { canonicalPdvQaActivationEnabled } from '../lib/canonical-pdv-operational-config.js';
+import { canonicalPdvQaActivationEnabled, readCanonicalPdvOperationalSettingsIfEnabled } from '../lib/canonical-pdv-operational-config.js';
 import { requirePermissaoOuDono } from '../lib/operacao/permissoes.js';
 
 const opcionaisSchema = z.object({
@@ -100,7 +100,20 @@ export async function produtosRoutes(app: FastifyInstance) {
 
   const opcionalCadastroSchema = z.object({ nome: z.string().trim().min(1).max(80), preco: z.number().min(0).max(9999), ativo: z.boolean().optional() });
   app.get('/opcionais', async (request) => { const user = getTenantUser(app, request); return prisma.opcional.findMany({ where: { cervejariaId: user.cervejariaId }, orderBy: { nome: 'asc' } }); });
-  app.post('/opcionais', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => { const user = getTenantUser(app, request); const body = opcionalCadastroSchema.parse(request.body); return reply.status(201).send(await prisma.opcional.create({ data: { cervejariaId: user.cervejariaId, nome: body.nome, preco: body.preco, ativo: body.ativo ?? true } })); });
+  app.post('/opcionais', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
+    const user = getTenantUser(app, request);
+    const body = opcionalCadastroSchema.parse(request.body);
+    // When canonical PDV mode is active, derive the scope from the validated
+    // tenant configuration. Legacy mode keeps global optionals (NULL PDV).
+    const settings = await readCanonicalPdvOperationalSettingsIfEnabled(user.cervejariaId);
+    return reply.status(201).send(await prisma.opcional.create({ data: {
+      cervejariaId: user.cervejariaId,
+      pontoVendaId: settings?.pointId ?? null,
+      nome: body.nome,
+      preco: body.preco,
+      ativo: body.ativo ?? true,
+    } }));
+  });
   app.put('/opcionais/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = getTenantUser(app, request);
     const { id } = request.params as { id: string };

@@ -99,6 +99,37 @@ await prisma.configuracaoPontoVenda.create({ data: {
   whatsappPedidoProntoEnabled: false, whatsappPedidoProntoNaCozinha: false,
 }});
 process.env.PDV_CANONICAL_CONFIG_QA = '1';
+const canonicalProductResponse = await app.inject({ method: 'POST', url: '/api/operacao/produtos', headers: authHeaders(ownerCookie), payload: {
+  nome: `Canonical product ${suffix}`, categoria: 'Comidas', tipo: 'COMIDA', precoUnit: 9.5, exigePreparo: false, controlaEstoque: false,
+} });
+assert.equal(canonicalProductResponse.statusCode, 201, canonicalProductResponse.body);
+const canonicalProduct = JSON.parse(canonicalProductResponse.body);
+assert.equal(canonicalProduct.pontoVendaId, point.id, 'operational product derives the validated canonical PDV');
+assert.equal(canonicalProduct.cervejariaId, company.id);
+const canonicalOptionalGenericResponse = await app.inject({ method: 'POST', url: '/api/produtos/opcionais', headers: authHeaders(ownerCookie), payload: {
+  nome: `Canonical generic optional ${suffix}`, preco: 1.2, pontoVendaId: foreignPoint.id,
+} });
+assert.equal(canonicalOptionalGenericResponse.statusCode, 201, canonicalOptionalGenericResponse.body);
+const canonicalOptionalGeneric = JSON.parse(canonicalOptionalGenericResponse.body);
+assert.equal(canonicalOptionalGeneric.cervejariaId, company.id);
+assert.equal(canonicalOptionalGeneric.pontoVendaId, point.id, 'generic optional ignores PDV payload and derives canonical scope');
+const canonicalOptionalOperationalResponse = await app.inject({ method: 'POST', url: '/api/operacao/produtos/opcionais', headers: authHeaders(ownerCookie), payload: {
+  nome: `Canonical operational optional ${suffix}`, preco: 0.8,
+} });
+assert.equal(canonicalOptionalOperationalResponse.statusCode, 201, canonicalOptionalOperationalResponse.body);
+const canonicalOptionalOperational = JSON.parse(canonicalOptionalOperationalResponse.body);
+assert.equal(canonicalOptionalOperational.pontoVendaId, point.id, 'operational optional uses the validated effective PDV');
+assert.equal(canonicalOptionalOperational.cervejariaId, company.id);
+const canonicalLink = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${canonicalProduct.id}/opcionais`, headers: authHeaders(ownerCookie), payload: {
+  opcionalIds: [canonicalOptionalGeneric.id, canonicalOptionalOperational.id],
+} });
+assert.equal(canonicalLink.statusCode, 200, canonicalLink.body);
+const canonicalLinkRead = await app.inject({ method: 'GET', url: `/api/operacao/produtos/${canonicalProduct.id}/opcionais`, headers: authHeaders(ownerCookie) });
+assert.equal(canonicalLinkRead.statusCode, 200, canonicalLinkRead.body);
+const canonicalLinks = JSON.parse(canonicalLinkRead.body);
+assert.deepEqual(canonicalLinks.map(({ opcional }) => ({ companyId: opcional.cervejariaId, pointId: opcional.pontoVendaId })), [
+  { companyId: company.id, pointId: point.id }, { companyId: company.id, pointId: point.id },
+]);
 const agendaPayload = { nome: `Agenda permission QA ${suffix}`, diaSemana: 3, horaInicio: '18:00' };
 const agendaDeniedBefore = await prisma.agendaOperacional.count({ where: { cervejariaId: company.id, pontoVendaId: point.id } });
 const agendaCreateDenied = await app.inject({ method: 'POST', url: '/api/operacao/agenda/agendas', headers: authHeaders(staffCookie), payload: agendaPayload });
@@ -119,6 +150,16 @@ const agendaOccurrencesDeniedAfterRevoke = await app.inject({ method: 'POST', ur
 assert.equal(agendaOccurrencesDeniedAfterRevoke.statusCode, 403, agendaOccurrencesDeniedAfterRevoke.body);
 assert.deepEqual(await moduleFinancePhoto(), moduleFinanceBeforeTapAndAgenda, 'TAP and agenda operations do not mutate cash sessions, movements, or payments');
 process.env.PDV_CANONICAL_CONFIG_QA = '0';
+const legacyOptionalGenericResponse = await app.inject({ method: 'POST', url: '/api/produtos/opcionais', headers: authHeaders(ownerCookie), payload: {
+  nome: `Legacy generic optional ${suffix}`, preco: 0.5,
+} });
+assert.equal(legacyOptionalGenericResponse.statusCode, 201, legacyOptionalGenericResponse.body);
+assert.equal(JSON.parse(legacyOptionalGenericResponse.body).pontoVendaId, null, 'legacy generic optional remains global when canonical activation is off');
+const legacyOptionalOperationalResponse = await app.inject({ method: 'POST', url: '/api/operacao/produtos/opcionais', headers: authHeaders(ownerCookie), payload: {
+  nome: `Legacy operational optional ${suffix}`, preco: 0.6,
+} });
+assert.equal(legacyOptionalOperationalResponse.statusCode, 201, legacyOptionalOperationalResponse.body);
+assert.equal(JSON.parse(legacyOptionalOperationalResponse.body).pontoVendaId, null, 'legacy operational optional remains global when canonical activation is off');
 const eventCash = await prisma.sessaoCaixaEvento.create({
   data: { eventoId: event.id, abertoPorId: owner.id, trocoInicial: '734.21' },
 });
@@ -379,7 +420,37 @@ const cardapio = await prisma.cardapio.create({ data: { nome: `QA menu ${suffix}
 await prisma.cardapioProduto.create({ data: { cardapioId: cardapio.id, produtoId: stockProduct.id, cervejariaId: company.id, pontoVendaId: point.id, volumeMl: 0, precoUnit: '10.00' } });
 await prisma.sessaoCaixaOperacao.update({ where: { id: cashSession.id }, data: { cardapioId: cardapio.id } });
 await prisma.sessaoCaixaProdutoOperacao.create({ data: { sessaoCaixaId: cashSession.id, produtoId: stockProduct.id, volumeMl: 0, precoUnit: '10.00' } });
-const salePayload = { pontoVendaId: point.id, itens: [{ produtoId: stockProduct.id, quantidade: 1 }], pagamentos: [{ forma: 'PIX', valor: 10 }] };
+// This fixture represents a product already migrated into the canonical PDV.
+// New optionals from both public catalog entry points must fit that scope.
+process.env.PDV_CANONICAL_CONFIG_QA = '1';
+const migratedGenericOptionalResponse = await app.inject({ method: 'POST', url: '/api/produtos/opcionais', headers: authHeaders(ownerCookie), payload: {
+  nome: `Migrated product optional ${suffix}`, preco: 1.25,
+} });
+assert.equal(migratedGenericOptionalResponse.statusCode, 201, migratedGenericOptionalResponse.body);
+const migratedGenericOptional = JSON.parse(migratedGenericOptionalResponse.body);
+const migratedOperationalOptionalResponse = await app.inject({ method: 'POST', url: '/api/operacao/produtos/opcionais', headers: authHeaders(ownerCookie), payload: {
+  nome: `Migrated product operational optional ${suffix}`, preco: 0.75,
+} });
+assert.equal(migratedOperationalOptionalResponse.statusCode, 201, migratedOperationalOptionalResponse.body);
+const migratedOperationalOptional = JSON.parse(migratedOperationalOptionalResponse.body);
+assert.equal(migratedGenericOptional.pontoVendaId, point.id);
+assert.equal(migratedOperationalOptional.pontoVendaId, point.id);
+const migratedProductLink = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${stockProduct.id}/opcionais`, headers: authHeaders(ownerCookie), payload: {
+  opcionalIds: [migratedGenericOptional.id, migratedOperationalOptional.id],
+} });
+assert.equal(migratedProductLink.statusCode, 200, migratedProductLink.body);
+const migratedProductLinksRead = await app.inject({ method: 'GET', url: `/api/operacao/produtos/${stockProduct.id}/opcionais`, headers: authHeaders(ownerCookie) });
+assert.equal(migratedProductLinksRead.statusCode, 200, migratedProductLinksRead.body);
+const migratedProductRead = await app.inject({ method: 'GET', url: `/api/produtos/${stockProduct.id}`, headers: authHeaders(ownerCookie) });
+assert.equal(migratedProductRead.statusCode, 200, migratedProductRead.body);
+const migratedProductFromApi = JSON.parse(migratedProductRead.body);
+assert.equal(migratedProductFromApi.cervejariaId, company.id);
+assert.equal(migratedProductFromApi.pontoVendaId, point.id);
+assert.deepEqual(JSON.parse(migratedProductLinksRead.body).map(({ opcional }) => ({ companyId: opcional.cervejariaId, pointId: opcional.pontoVendaId })), [
+  { companyId: company.id, pointId: point.id }, { companyId: company.id, pointId: point.id },
+]);
+process.env.PDV_CANONICAL_CONFIG_QA = '0';
+const salePayload = { pontoVendaId: point.id, itens: [{ produtoId: stockProduct.id, quantidade: 1, opcionais: [{ opcionalId: migratedGenericOptional.id, quantidade: 2 }] }], pagamentos: [{ forma: 'PIX', valor: 12.5 }] };
 async function commercePhoto() {
   return {
     balance: await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: stockBalance.id } }),
@@ -401,7 +472,16 @@ assert.equal(completedSaleBody.status, 'FECHADA');
 const saleCommand = await prisma.comanda.findUniqueOrThrow({ where: { id: completedSaleBody.id }, include: { pagamentos: true } });
 assert.equal(saleCommand.status, 'FECHADA');
 assert.equal(saleCommand.pagamentos.length, 1);
-assert.equal(Number(saleCommand.pagamentos[0].valor), 10);
+assert.equal(Number(saleCommand.pagamentos[0].valor), 12.5);
+const soldOptionalSnapshot = await prisma.itemComandaOpcional.findFirstOrThrow({ where: { itemComanda: { comandaId: saleCommand.id } } });
+assert.equal(soldOptionalSnapshot.opcionalCatalogoId, migratedGenericOptional.id);
+assert.equal(soldOptionalSnapshot.nome, migratedGenericOptional.nome);
+assert.equal(Number(soldOptionalSnapshot.precoAdicional), 1.25);
+assert.equal(soldOptionalSnapshot.quantidade, 2);
+const savedOptionalBeforeCatalogEdit = { ...soldOptionalSnapshot };
+const editSoldOptional = await app.inject({ method: 'PUT', url: `/api/produtos/opcionais/${migratedGenericOptional.id}`, headers: authHeaders(ownerCookie), payload: { nome: `Edited after sale ${suffix}`, preco: 3.5 } });
+assert.equal(editSoldOptional.statusCode, 200, editSoldOptional.body);
+assert.deepEqual(await prisma.itemComandaOpcional.findUniqueOrThrow({ where: { id: soldOptionalSnapshot.id } }), savedOptionalBeforeCatalogEdit, 'catalog optional edit does not rewrite sold snapshot');
 assert.equal(Number((await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: stockBalance.id } })).quantidade), 9);
 assert.equal((await prisma.usuario.findUniqueOrThrow({ where: { id: staff.id }, select: { permissoesOperacao: true } })).permissoesOperacao.includes('inventory.adjust'), false, 'authorized sale does not need manual inventory authority');
 const turnoPrecoBefore = await prisma.sessaoCaixaProdutoOperacao.findFirstOrThrow({ where: { sessaoCaixaId: cashSession.id, produtoId: stockProduct.id, volumeMl: 0 } });
@@ -422,6 +502,8 @@ assert.equal(grantCatalogManage.statusCode, 200, grantCatalogManage.body);
 const foreignOptional = await prisma.opcional.create({ data: { cervejariaId: otherCompany.id, pontoVendaId: foreignPoint.id, nome: `Foreign optional ${suffix}`, preco: '7.25' } });
 const foreignOptionalBefore = await prisma.opcional.findUniqueOrThrow({ where: { id: foreignOptional.id } });
 const foreignLinksBefore = await prisma.produtoOpcionalVinculo.findMany({ where: { opcionalId: foreignOptional.id }, orderBy: { produtoId: 'asc' } });
+const inactiveOtherPoint = await prisma.pontoVenda.create({ data: { cervejariaId: company.id, nome: `Other inactive point ${suffix}`, ativo: false } });
+const otherPdvOptional = await prisma.opcional.create({ data: { cervejariaId: company.id, pontoVendaId: inactiveOtherPoint.id, nome: `Other PDV optional ${suffix}`, preco: '2.00' } });
 for (const [actor, headers] of [['catalog manager', authHeaders(staffCookie)], ['owner', authHeaders(ownerCookie)]]) {
   for (const [method, route, payload] of [
     ['PUT', `/api/produtos/opcionais/${foreignOptional.id}`, { nome: `stolen ${suffix}` }],
@@ -441,6 +523,11 @@ for (const route of [`/api/produtos/${stockProduct.id}/opcionais`, `/api/operaca
   const rejectedForeignLink = await app.inject({ method: 'PUT', url: route, headers: authHeaders(staffCookie), payload: { opcionalIds: [foreignOptional.id] } });
   assert.equal(rejectedForeignLink.statusCode, 404, `cross-tenant optional link is rejected through ${route}: ${rejectedForeignLink.body}`);
   assert.deepEqual(await optionalLinkPhoto(), ownLinksBeforeForeignLinkAttempts, `foreign optional link attempt preserves existing links through ${route}`);
+  for (const invalidIds of [[migratedGenericOptional.id, foreignOptional.id], [migratedGenericOptional.id, otherPdvOptional.id]]) {
+    const rejectedMixedLink = await app.inject({ method: 'PUT', url: route, headers: authHeaders(staffCookie), payload: { opcionalIds: invalidIds } });
+    assert.equal(rejectedMixedLink.statusCode, 404, `mixed valid and invalid optional IDs are rejected through ${route}: ${rejectedMixedLink.body}`);
+    assert.deepEqual(await optionalLinkPhoto(), ownLinksBeforeForeignLinkAttempts, `mixed invalid link preserves prior links through ${route}`);
+  }
 }
 const ownOptional = await prisma.opcional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, nome: `Owned optional ${suffix}`, preco: '1.25' } });
 const ownOptionalEditedGeneric = await app.inject({ method: 'PUT', url: `/api/produtos/opcionais/${ownOptional.id}`, headers: authHeaders(staffCookie), payload: { preco: 1.75 } });
@@ -457,7 +544,7 @@ for (const route of [`/api/produtos/opcionais/${ownOptional.id}`, `/api/operacao
 const priceEditAllowed = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${stockProduct.id}`, headers: authHeaders(staffCookie), payload: { precos: [{ volumeMl: 1, preco: 12 }] } });
 assert.equal(priceEditAllowed.statusCode, 200, priceEditAllowed.body);
 assert.equal(Number((await prisma.preco.findFirstOrThrow({ where: { produtoId: stockProduct.id, volumeMl: 1 } })).preco), 12);
-assert.equal(Number((await prisma.itemComanda.findUniqueOrThrow({ where: { id: soldItem.id } })).precoUnit), 10, 'catalog price change preserves the sold item price snapshot');
+assert.equal(Number((await prisma.itemComanda.findUniqueOrThrow({ where: { id: soldItem.id } })).precoUnit), 12.5, 'catalog price change preserves the sold item price and optional snapshot');
 const crossTenantCatalogEdit = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${foreignProduct.id}`, headers: authHeaders(staffCookie), payload: { precoUnit: 5 } });
 assert.equal(crossTenantCatalogEdit.statusCode, 404, crossTenantCatalogEdit.body);
 const checkoutCustomer = await app.inject({ method: 'POST', url: '/api/clientes/find-or-create', headers: authHeaders(staffCookie), payload: { nome: `Checkout ${suffix}`, telefone: `1199${Date.now().toString().slice(-7)}` } });
@@ -486,7 +573,7 @@ assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: saleO
 assert.equal(Number((await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: stockBalance.id } })).quantidade), 10);
 const salePaymentsAfterRefund = await prisma.pagamento.findMany({ where: { comandaId: saleCommand.id }, orderBy: { pagoEm: 'asc' } });
 assert.equal(salePaymentsAfterRefund.length, 2);
-assert.equal(Number(salePaymentsAfterRefund[1].valor), -10);
+assert.equal(Number(salePaymentsAfterRefund[1].valor), -12.5);
 assert.equal(await prisma.inventoryMovement.count({ where: { pedidoId: saleOrder.id, tipo: 'ESTORNO_VENDA' } }), 1);
 const commandKeysOnly = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['kitchen.cancel'] } });
 assert.equal(commandKeysOnly.statusCode, 200, commandKeysOnly.body);
