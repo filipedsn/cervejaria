@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "result": "BLOCKED",
+  "reviewedImplementationCommit": "696f0ea84e383a6595fba3989887f554f40b75f7",
+  "reviewedTree": "bd2d14df2cd28d0a90cd577264f6f8f6378540a1",
+  "categoryManifest": "v21",
+  "completedBeforeBlock": {
+    "backendBuild": "PASS",
+    "frontendBuild": "PASS",
+    "mockedCategoryUi": "PASS (2/2)",
+    "preMigrationCompatibility": "PASS",
+    "finance": "PASS",
+    "commerce": "PASS",
+    "individualPermissions": "PASS",
+    "categorySql": "PASS"
+  },
+  "blocker": {
+    "gate": "authenticated-category-api-postgresql",
+    "cause": "PrismaClientConstructorValidationError: omit.produto.categoriaPdvId was undefined while API enabled category flag; API database migrations applied but no authenticated request started",
+    "fixCommit": "2b06263",
+    "fix": "Build omit config with categoryPdvId:true only when category feature is disabled; omit key otherwise"
+  },
+  "representativeRehearsal": "NOT_RUN; no representative photo supplied",
+  "localState": "UNCHANGED",
+  "prodAccess": "NO",
+  "sharedDevAccess": "NO"
+}
