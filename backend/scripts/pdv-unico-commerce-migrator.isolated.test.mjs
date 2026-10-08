@@ -3144,6 +3144,9 @@ try {
     assert.equal(await db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Comanda' AND column_name='sessaoCaixaRealizacaoId'`.then((rows) => rows.length), 0, 'legacy database has no realization-session column during close');
     const legacyApiPassword = `Qa-legacy-api-${runId}-only!`;
     await db.usuario.update({ where: { id: legacyCloseOwner.id }, data: { senhaHash: await hashLegacyClosePassword(legacyApiPassword) } });
+    // Keep the independently tested kitchen column present so this category
+    // compatibility proof isolates only the category table and category ID.
+    await db.$executeRawUnsafe('ALTER TABLE public."Produto" ADD COLUMN "prepararEmPedidoSeparado" BOOLEAN NOT NULL DEFAULT FALSE');
     const apiChildEnv = {
       ...process.env,
       PDV_CANONICAL_CONFIG_QA: '',
@@ -3156,7 +3159,7 @@ try {
     const apiChild = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/pdv76-precolumn-api.isolated.test.mjs'], { cwd: backendRoot, env: apiChildEnv, encoding: 'utf8', windowsHide: true, timeout: 90000 });
     assert.equal(apiChild.status, 0, `real application singleton/authenticated Fastify.inject legacy-schema API proof passes; stdout=${apiChild.stdout}; stderr=${apiChild.stderr}`);
     assert.match(apiChild.stdout, /PDV76_PRECATEGORY_API=PASS/);
-    assert.equal(await db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Produto' AND column_name='prepararEmPedidoSeparado'`.then((rows) => rows.length), 0, 'legacy API ran while independent-kitchen column was absent');
+    assert.equal(await db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Produto' AND column_name='prepararEmPedidoSeparado'`.then((rows) => rows.length), 1, 'category compatibility proof keeps the separate kitchen migration column present');
     assert.equal(await db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Produto' AND column_name='categoriaPdvId'`.then((rows) => rows.length), 0, 'legacy API ran while category ID column was absent');
     assert.equal(await db.$queryRaw`SELECT to_regclass('public."CategoriaProdutoPdv"')`.then((rows) => rows[0].to_regclass), null, 'legacy API ran while category table was absent');
   } finally {
