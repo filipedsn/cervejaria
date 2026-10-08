@@ -643,6 +643,7 @@ export interface CaixaResposta {
   sessao: ResumoCaixa | null;
   comandasAbertas?: number;
   diaOperacional?: string;
+  valoresRestritos?: boolean;
 }
 
 export type TipoSaidaEstoque = 'PERDA' | 'CORTESIA' | 'CONSUMO_INTERNO';
