@@ -958,3 +958,8 @@ A certificacao separa SQL limitado, API/PostgreSQL, UI mockada e representativo.
 ### Execucao bloqueada anterior (2b00dbf)
 
 O snapshot exato passou no build backend e bloqueou no build frontend por cinco erros TS2339: a revisao nao declarava `CaixaResposta.valoresRestritos`, embora o consumidor operacional ja consultasse esse campo. SQL, API/PostgreSQL e UI nao foram executados nessa tentativa. Evidencia preservada em `pdv-gamified-categories-qa-evidence-blocked-2b00dbf.json`; esta tentativa nao conta como certificacao.
+
+
+### Execucao bloqueada intermediaria (72067e3)
+
+Os builds backend/frontend passaram no snapshot exato. A UI mockada falhou antes da gravacao: a animacao slide-up tornava o botao de salvar instavel e o elemento era desmontado durante o clique. O ensaio agora usa prefers-reduced-motion para remover a animacao desta interacao automatizada. SQL e API/PostgreSQL nao iniciaram porque o runner parou no gate de UI. Evidencia: `pdv-gamified-categories-qa-evidence-blocked-72067e3.json`.

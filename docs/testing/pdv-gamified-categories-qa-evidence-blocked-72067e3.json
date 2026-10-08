@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "reviewedCommit": "72067e3a6cb70c902a6785372a54e2f29040df38",
+  "result": "BLOCKED",
+  "scope": "Exact Git snapshot; disposable build workspace and explicit mocked APIs only; no PROD/shared DEV.",
+  "gates": [
+    {
+      "name": "git-snapshot-materialization",
+      "result": "PASS",
+      "trackedBlobs": 1175
+    },
+    {
+      "name": "backend-build",
+      "result": "PASS"
+    },
+    {
+      "name": "frontend-build",
+      "result": "PASS",
+      "note": "Existing bundle-size warning."
+    },
+    {
+      "name": "category-ui-mocked",
+      "result": "FAIL",
+      "details": "The save-category submit button detached while the modal slide-up animation was active; click timed out before API write."
+    },
+    {
+      "name": "category-sql",
+      "result": "NOT_RUN",
+      "details": "Snapshot runner stops after mocked UI gate."
+    },
+    {
+      "name": "category-api-postgresql",
+      "result": "NOT_RUN",
+      "details": "Snapshot runner stops after mocked UI gate."
+    }
+  ],
+  "publication": {
+    "commit": "72067e3a6cb70c902a6785372a54e2f29040df38",
+    "pushed": false,
+    "PROD_DEPLOY_REQUIRED": "No"
+  },
+  "remediation": "UI test now requests reduced motion so the existing modal animation cannot make the submit control unstable; rerun all gates on next exact snapshot.",
+  "pending": [
+    "SQL/API/PostgreSQL gates.",
+    "Three product decisions: scoring metric, recognition moment, prior consumption policy."
+  ]
+}

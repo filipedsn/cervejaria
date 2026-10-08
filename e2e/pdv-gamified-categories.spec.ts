@@ -43,6 +43,7 @@ async function mockCatalog(page: Page) {
 
 test('cadastra/edita categoria gamificada e seleciona essa categoria no produto com APIs simuladas', async ({ page }) => {
   test.setTimeout(45_000);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const { writes, unexpected } = await mockCatalog(page);
   await page.goto('/operacao/catalogo');
 
