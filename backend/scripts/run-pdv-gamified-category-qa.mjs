@@ -18,7 +18,7 @@ const password = randomBytes(24).toString('base64url');
 const labelPurpose = 'codex.purpose=pdv-gamified-category-qa';
 const labelRun = `codex.run=${runId}`;
 const repoRoot = new URL('../../', import.meta.url);
-const manifest = JSON.parse(await readFile(new URL('docs/testing/pdv-gamified-categories-qa-manifest-v17.json', repoRoot), 'utf8'));
+const manifest = JSON.parse(await readFile(new URL('docs/testing/pdv-gamified-categories-qa-manifest-v18.json', repoRoot), 'utf8'));
 const { manifestSha256, ...manifestBody } = manifest;
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 if (sha256(Buffer.from(JSON.stringify(manifestBody))) !== manifestSha256) throw new Error('Gamified category QA manifest digest mismatch');

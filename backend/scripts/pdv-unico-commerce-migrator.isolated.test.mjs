@@ -3161,7 +3161,7 @@ try {
     assert.match(apiChild.stdout, /PDV76_PRECATEGORY_API=PASS/);
     assert.equal(await db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Produto' AND column_name='prepararEmPedidoSeparado'`.then((rows) => rows.length), 1, 'category compatibility proof keeps the separate kitchen migration column present');
     assert.equal(await db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Produto' AND column_name='categoriaPdvId'`.then((rows) => rows.length), 0, 'legacy API ran while category ID column was absent');
-    assert.equal(await db.$queryRaw`SELECT to_regclass('public."CategoriaProdutoPdv"')`.then((rows) => rows[0].to_regclass), null, 'legacy API ran while category table was absent');
+    assert.equal(await db.$queryRaw`SELECT to_regclass('public."CategoriaProdutoPdv"')::text AS relation_name`.then((rows) => rows[0].relation_name), null, 'legacy API ran while category table was absent');
   } finally {
     if (previousPdvFlag === undefined) delete process.env.PDV_CANONICAL_CONFIG_QA;
     else process.env.PDV_CANONICAL_CONFIG_QA = previousPdvFlag;
