@@ -37,7 +37,7 @@
     "qa:pdv-representative": "node scripts/run-pdv-unico-sequenced-qa.mjs",
     "qa:pdv-sequenced-disposable": "node scripts/run-pdv-unico-sequenced-qa.mjs",
     "plan:pdv-dev-cutover": "node scripts/run-pdv-unico-dev-cutover.mjs --dry-run",
-    "test:pdv-dev-cutover-guards": "node --test scripts/pdv-unico-dev-cutover-core.test.mjs scripts/pdv-unico-cutover-receipts.test.mjs",
+    "test:pdv-dev-cutover-guards": "node --test scripts/pdv-unico-dev-cutover-core.test.mjs scripts/pdv-unico-cutover-receipts.test.mjs scripts/pdv-unico-dev-cutover-ledger.test.mjs scripts/pdv-unico-dev-activation-config.test.mjs scripts/pdv-unico-git-snapshot.test.mjs scripts/pdv-unico-dev-cutover-entrypoint.test.mjs",
     "qa:pdv-finance-disposable": "node scripts/run-pdv-unico-finance-disposable-qa.mjs",
     "qa:pdv-commerce-disposable": "node scripts/run-pdv-unico-commerce-disposable-qa.mjs",
     "qa:pdv-individual-permissions": "node scripts/run-pdv-individual-permissions-disposable-qa.mjs",

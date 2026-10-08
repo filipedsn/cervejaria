@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,6 +8,7 @@ import net from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { auditSnapshotModules } from './pdv-unico-git-snapshot-import-audit.mjs';
+import { materializeGitSnapshot } from './pdv-unico-git-snapshot.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..', '..');
@@ -139,49 +140,8 @@ const startTree = git(['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim()
 try {
   certificationWork: {
   await mkdir(snapshotRoot, { recursive: true });
-  const objectTree = git(['rev-parse', `${selectedCommit}^{tree}`], { encoding: 'utf8' }).trim();
+  const { tree: objectTree, materializedBlobCount } = await materializeGitSnapshot({ repoRoot, commit: selectedCommit, destination: snapshotRoot, gitDir });
   if (objectTree !== selectedTree) throw new Error('Selected Git tree changed during materialization.');
-  const trackedEntries = git(['ls-tree', '-r', '-z', '--full-tree', selectedCommit]).toString('utf8').split('\0').filter(Boolean);
-  const objectIds = trackedEntries.map((entry) => entry.slice(0, entry.indexOf('\t')).split(' ')[2]);
-  const batchObjects = git(['cat-file', '--batch'], {
-    input: Buffer.from(`${objectIds.join('\n')}\n`),
-    maxBuffer: 512 * 1024 * 1024,
-  });
-  const blobById = new Map();
-  let batchOffset = 0;
-  for (const expectedId of objectIds) {
-    const headerEnd = batchObjects.indexOf(0x0a, batchOffset);
-    if (headerEnd < 0) throw new Error('git cat-file --batch returned a truncated header.');
-    const [actualId, objectType, sizeText] = batchObjects.subarray(batchOffset, headerEnd).toString('ascii').split(' ');
-    const size = Number(sizeText);
-    const bodyStart = headerEnd + 1;
-    const bodyEnd = bodyStart + size;
-    if (actualId !== expectedId || objectType !== 'blob' || !Number.isSafeInteger(size) || bodyEnd >= batchObjects.length || batchObjects[bodyEnd] !== 0x0a) {
-      throw new Error(`Unexpected git cat-file --batch result for ${expectedId}.`);
-    }
-    blobById.set(actualId, batchObjects.subarray(bodyStart, bodyEnd));
-    batchOffset = bodyEnd + 1;
-  }
-  let materializedBlobCount = 0;
-  for (const entry of trackedEntries) {
-    const tab = entry.indexOf('\t');
-    const [mode, objectType, objectId] = entry.slice(0, tab).split(' ');
-    const relativePath = entry.slice(tab + 1);
-    if (objectType !== 'blob' || !['100644', '100755'].includes(mode)) {
-      throw new Error(`Unsupported tracked entry in certified tree: ${entry.slice(0, tab)} ${relativePath}`);
-    }
-    const gitBlobBytes = blobById.get(objectId);
-    if (!gitBlobBytes) throw new Error(`Git blob was not returned for ${relativePath}`);
-    const filePath = path.resolve(snapshotRoot, relativePath);
-    if (!filePath.startsWith(`${snapshotRoot}${path.sep}`)) throw new Error(`Tracked path escapes the QA snapshot: ${relativePath}`);
-    await mkdir(path.dirname(filePath), { recursive: true });
-    await writeFile(filePath, gitBlobBytes);
-    if (mode === '100755') await chmod(filePath, 0o755);
-    const materializedBytes = await readFile(filePath);
-    const materializedBlobId = createHash('sha1').update(`blob ${materializedBytes.length}\0`).update(materializedBytes).digest('hex');
-    if (materializedBlobId !== objectId) throw new Error(`Materialized tracked blob differs from Git object: ${relativePath}`);
-    materializedBlobCount++;
-  }
   if (!existsSync(path.join(backendSnapshot, 'package-lock.json'))) throw new Error('Pinned snapshot is missing backend/package-lock.json.');
 
   const lockHash = byteSha256(await readFile(path.join(backendSnapshot, 'package-lock.json')));

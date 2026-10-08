@@ -17,6 +17,18 @@ test('scoped activation rejects PROD and QA impersonation while keeping unlisted
   assert.throws(() => tenantPdvActivation(cia, { ...env, PDV_CANONICAL_TENANTS: 'unlisted' }));
 });
 
+test('DEV startup selector activates exactly both reviewed tenants and leaves every other tenant on legacy behavior', () => {
+  const dev = {
+    NODE_ENV: 'development',
+    DATABASE_URL: 'postgresql://dev:fixture@localhost:5434/cervejaria_dev',
+    PDV_CANONICAL_TENANTS: `${cia},${other}`,
+  };
+  assert.equal(tenantPdvActivation(cia, dev), true);
+  assert.equal(tenantPdvActivation(other, dev), true);
+  assert.equal(tenantPdvActivation('tenant-not-selected', dev), false);
+  assert.equal(tenantPdvActivation(cia, { ...dev, PDV_CANONICAL_TENANTS: other }), false);
+});
+
 test('overlapping requests retain independent tenant identity and explicit tenant resolution wins', async () => {
   const keys = Object.keys(env);
   const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));

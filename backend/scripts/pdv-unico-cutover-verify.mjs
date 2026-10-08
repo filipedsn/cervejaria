@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { DEV_PDV_TENANT_ALLOWLIST, validateDevCutoverEnvironment } from './pdv-unico-dev-cutover-core.mjs';
+import { validateDevMigrationLedger } from './pdv-unico-dev-cutover-ledger.mjs';
 
 if (process.env.PDV_CUTOVER_PROFILE !== 'dev' || process.env.PDV_CUTOVER_DEV_ADAPTER !== '1') throw new Error('Receipt verification is restricted to the guarded DEV adapter.');
 validateDevCutoverEnvironment(process.env);
@@ -31,13 +32,18 @@ try {
     await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
     if (command === 'minimal-prerequisite-migrations' || command === 'dependent-migrations-with-original-preflight') {
       const rows = await tx.$queryRawUnsafe('SELECT migration_name, checksum, finished_at IS NOT NULL AS finished, rolled_back_at IS NOT NULL AS rolled_back FROM public._prisma_migrations ORDER BY migration_name');
-      const successful = new Map(rows.filter((row) => row.finished && !row.rolled_back).map((row) => [row.migration_name, row.checksum]));
+      const migrations = migrationFiles.map((name) => ({
+        name: name.split('/').at(-2),
+        checksum: createHash('sha256').update(execFileSync('git', ['show', `${revision}:${name}`], { cwd: repoRoot, windowsHide: true, maxBuffer: 64 * 1024 * 1024 })).digest('hex'),
+      }));
+      let ledger;
+      try { ledger = validateDevMigrationLedger({ migrations, ledgerRows: rows, boundary: '20261004150000_pdv_finance_session_link' }); }
+      catch (error) { return { status: 'BLOCKED', code: 'MIGRATION_LEDGER_DIVERGENCE', message: error.message, revision, migrationsSha256 }; }
+      const successful = new Set(ledger.appliedNames);
       const through = command === 'minimal-prerequisite-migrations' ? '20261004150000_pdv_finance_session_link' : migrationNames.at(-1);
       const expectedNames = migrationNames.filter((name) => name <= through);
       const missing = expectedNames.filter((name) => !successful.has(name));
-      const unknown = rows.filter((row) => row.finished && !row.rolled_back && !migrationNames.includes(row.migration_name)).map((row) => row.migration_name);
-      const pending = rows.filter((row) => !row.finished && !row.rolled_back).map((row) => row.migration_name);
-      if (missing.length || unknown.length || pending.length) return { status: 'BLOCKED', missing, unknown, pending, revision, migrationsSha256 };
+      if (missing.length) return { status: 'BLOCKED', missing, revision, migrationsSha256 };
       return { status: 'PASS', migrationCount: expectedNames.length, expectedThrough: through, revision, migrationsSha256 };
     }
     if (command === 'migrator-runs') {
