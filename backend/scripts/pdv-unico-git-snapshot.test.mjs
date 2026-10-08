@@ -36,7 +36,7 @@ test('snapshot materialization uses immutable Git blobs and rejects workspace so
     ...process.env,
     PDV_CUTOVER_SNAPSHOT_ROOT: snapshot,
     PDV_CUTOVER_DEPENDENCY_ROOTS: '[]',
-    PDV_CUTOVER_GENERATED_ROOTS: JSON.stringify([root]),
+    PDV_CUTOVER_GENERATED_ROOTS: JSON.stringify([snapshot]),
     PDV_CUTOVER_IMPORT_AUDIT: audit,
     PDV_CUTOVER_IMPORT_GUARD: guard,
   };
