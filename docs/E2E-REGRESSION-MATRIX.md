@@ -1,5 +1,17 @@
 # E2E regression matrix
 
+## Gamified category catalog
+
+| ID | Scope | Gate | Spec / runner |
+| --- | --- | --- | --- |
+| GC01 | Category normalization and fallback | Unknown labels retain their name; feature is off unless explicitly enabled | `backend/src/lib/operacao/categorias.test.ts`, `catalogo-categorias.test.ts` |
+| GC02 | Category permissions | `catalog.manage` authorizes; absence denies; POST and PUT use the shared guard | `backend/src/lib/operacao/catalog-permissions.test.ts` |
+| GC03 | Additive migration | Preserves product IDs, text, and menu-product ID | `backend/scripts/run-pdv-gamified-category-qa.mjs` |
+| GC04 | Historical transformation | Atomic replay, normalized collision blocks with no fusion, rollback removes only migration-owned rows | Same disposable PostgreSQL runner; transform/rollback SQL |
+| GC05 | Tenant isolation | Composite FK rejects a product/category reference across tenants | Same disposable PostgreSQL runner |
+| GC06 | UI | Create/edit category, save gamification flag, select category in product with explicit mocked APIs | `e2e/pdv-gamified-categories.spec.ts` |
+| GC07 | Chope/rank invariance | No ranking route/aggregator change; no historical recalculation | Review gate plus unchanged `aggregateChopeRanking`; full review-SHA certification pending |
+
 ## Operational configuration truth table
 
 The current product axes are `plannedOperationsEnabled` (CAIXA=false, EVENTO=true),

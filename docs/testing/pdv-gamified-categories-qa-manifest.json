@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "candidateBaseCode": "99274ffcc178fecca7a7c6386686b8c89cf49ba7",
+  "candidateBaseDocs": "64a62f0",
+  "environment": "Disposable local PostgreSQL QA only; no PROD or shared DEV access.",
+  "candidates": [
+    {
+      "path": "backend/package.json",
+      "sha256": "50054df2c88aca49eacc35e20176c26ec4e047d138d3c5c25c1078d77610f892"
+    },
+    {
+      "path": "backend/prisma/schema.prisma",
+      "sha256": "37484958b4668c6c6c48036389fb6712f1851302750a82e6017db7f598155ac1"
+    },
+    {
+      "path": "backend/prisma/migrations/20261008120000_pdv_gamified_categories/migration.sql",
+      "sha256": "e7858756d7ccc4071a75a5439329794b62c1b2732c9af4b0e36a0e36cabe728a"
+    },
+    {
+      "path": "backend/prisma/transformations/pdv-gamified-categories-v1.sql",
+      "sha256": "efe519c8b4ce8c55af2e593fef15518f830744eda7c4271050cdea97e26f6f58"
+    },
+    {
+      "path": "backend/prisma/transformations/rollback-pdv-gamified-categories-v1.sql",
+      "sha256": "28ee6281d8ec7e26f17b838941fdc899c177075fec97ca9cce29c7277bebbdee"
+    },
+    {
+      "path": "backend/src/lib/operacao/catalogo-categorias.ts",
+      "sha256": "403bb213f1705fad344d50703e84bce25bb845c5ec4a05335bb7b13ec6549e26"
+    },
+    {
+      "path": "backend/src/lib/operacao/catalog-permissions.test.ts",
+      "sha256": "e8faccd41bf1b97c382571f5795d9a752e1fa0c0175d72b464ef8ea5b2b0d161"
+    },
+    {
+      "path": "backend/src/lib/operacao/catalogo-categorias.test.ts",
+      "sha256": "c367b81efb7da6506b4bbca2af82f917c5c58a9ff3c61d3792af9392e7cc6469"
+    },
+    {
+      "path": "backend/src/lib/operacao/categorias.ts",
+      "sha256": "5a24a36bb416cc886473367760e2fd0b0b6064299f9fa11282e38f671f7b412c"
+    },
+    {
+      "path": "backend/src/lib/operacao/categorias.test.ts",
+      "sha256": "f75087d6792d42d847414317dc16405b0688f8925a0dfbee5390373de5c902ae"
+    },
+    {
+      "path": "backend/src/routes/operacao/produtos.ts",
+      "sha256": "40903d1fbcc73c9bd0b45d67a6c2e766d0df9dc7133432877f21c8ccbed651fd"
+    },
+    {
+      "path": "backend/src/routes/produtos.ts",
+      "sha256": "7bf604510835d6e44476ac1f90eb219254ddf02c08a7cfbc9b047b7fe6f342f4"
+    },
+    {
+      "path": "backend/scripts/run-pdv-gamified-category-qa.mjs",
+      "sha256": "b33669b23cf950e418b763a7c3a40b4b46beb3f8abdce34a42f844d115fb160e"
+    },
+    {
+      "path": "backend/scripts/run-pdv-gamified-category-git-snapshot-qa.mjs",
+      "sha256": "d2fc51daeba3f7f42f11e279369fdc5fe6796207102a510ae035cbf707dcc226"
+    },
+    {
+      "path": "frontend/src/components/operacao/CategoriasProdutoOrdemPanel.tsx",
+      "sha256": "100554f961e7c64667e48fd66daff37b2ff62b69ec9e593c1b7802b3b274b3ec"
+    },
+    {
+      "path": "frontend/src/lib/operacao.ts",
+      "sha256": "2476a43e30c9e40099f24aba08095db81ad61b179ad71ccedc50a405eee8c047"
+    },
+    {
+      "path": "frontend/src/pages/operacao/OperacaoCatalogoPage.tsx",
+      "sha256": "859780d9c32045ccf8103460e2f45ce766c9cc3dfa93e8594e6f7e5dcc21a5b0"
+    },
+    {
+      "path": "e2e/pdv-gamified-categories.spec.ts",
+      "sha256": "551f752e7d60ff37cf4279c945f75116119e3fd9af668236180e3c964ea4d1a6"
+    }
+  ],
+  "manifestSha256": "dec3b8e5bdc1d6dd415534ce5445475e87fb33d7333e2856f380e7158db2eff2"
+}

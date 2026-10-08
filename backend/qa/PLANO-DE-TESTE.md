@@ -1,5 +1,13 @@
 # Plano de Teste — Cervejaria Móvel (QA aprofundado)
 
+## Adendo — categorias gamificadas do PDV — 2026-10-08
+
+Este adendo foi executado somente em QA descartável próprio, sem consultar PROD nem DEV compartilhado. A fixture PostgreSQL sintética aplicou `20261008120000_pdv_gamified_categories`, vinculou categorias por empresa, reexecutou a transformação, tentou nomes que colidem após normalização, testou a FK cross-tenant e executou rollback limitado às linhas marcadas pela transformação. Resultado: `PDV_GAMIFIED_CATEGORY_QA=PASS`; o texto e IDs do produto e a linha de cardápio permaneceram.
+
+Também passaram build backend/frontend, testes focados de normalização/flag/permissão e um cenário Chromium com APIs de cadastro, edição e produto simuladas. O cenário de UI prova a seleção e a persistência visual do checkbox; não prova autenticação real contra o banco. A função `usuarioPode` prova `catalog.manage` concedido/negado e o teste confere esse guard em POST/PUT; o tenant da relação é reforçado pela FK composta.
+
+Não há backfill real, ranking gamificado, novo agregador, mudança na contagem atual de Chope, cutover, acesso a ambiente compartilhado ou remoção de `Produto.categoria`. As decisões de métrica, instante de reconhecimento e política de consumo anterior continuam pendentes. Evidência e sequência proposta: [`pdv-gamified-categories-contract.md`](../../docs/architecture/pdv-gamified-categories-contract.md) e `docs/testing/pdv-gamified-categories-qa-evidence.json`.
+
 > Suíte automatizada executada contra a API real (`http://localhost:3002`) + PostgreSQL.
 > Foco: **requisitos funcionais**, **não-funcionais**, **controle de sessão** e **isolamento multi-tenant**.
 > Concorrência real gerada por **múltiplos processos (subagents)** atacando uma *arena* compartilhada.

@@ -180,6 +180,7 @@ model Cervejaria {
 
   usuarios Usuario[]
   produtos Produto[]
+  categoriasPdv CategoriaProdutoPdv[]
   opcionais Opcional[]
   trailers Trailer[]
   taps     Tap[]
@@ -343,6 +344,8 @@ model Produto {
   nome         String
   /// Categoria operacional livre (ex.: Bebidas, Comidas), preservada na convergência do catálogo legado.
   categoria    String?
+  /// Referência canônica aditiva; `categoria` permanece como projeção legada durante a migração.
+  categoriaPdvId String?
   descricao    String?
   cor          String?
   estilo       String?
@@ -363,6 +366,7 @@ model Produto {
   updatedAt    DateTime    @updatedAt
 
   cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  categoriaPdv CategoriaProdutoPdv? @relation(fields: [categoriaPdvId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
   pontoVenda PontoVenda? @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
   precos     Preco[]
   taps       Tap[]
@@ -384,6 +388,26 @@ model Produto {
   @@unique([id, cervejariaId, pontoVendaId])
   @@unique([id, cervejariaId])
 
+  @@schema("public")
+}
+
+/// Autoridade única das categorias de produtos do PDV por empresa.
+model CategoriaProdutoPdv {
+  id             String   @id @default(cuid())
+  cervejariaId   String
+  nome           String   @db.VarChar(80)
+  nomeNormalizado String  @db.VarChar(100)
+  gamificada     Boolean  @default(false)
+  origemMigracao String?  @db.VarChar(80)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  produtos   Produto[]
+
+  @@unique([id, cervejariaId])
+  @@unique([cervejariaId, nomeNormalizado])
+  @@index([cervejariaId, nome])
   @@schema("public")
 }
 

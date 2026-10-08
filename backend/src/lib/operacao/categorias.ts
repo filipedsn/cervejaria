@@ -32,7 +32,7 @@ export function isCategoriaProdutoOperacao(value: string): value is CategoriaPro
 }
 
 /** Normaliza texto livre legado para a categoria canonica mais proxima. */
-export function normalizeCategoriaProduto(value: string | null | undefined): CategoriaProdutoOperacao {
+export function normalizeCategoriaProduto(value: string | null | undefined): string {
   if (!value?.trim()) return 'Outros';
   const trimmed = value.trim();
   if (trimmed.toLowerCase() === 'chope') return 'Chope';
@@ -49,7 +49,7 @@ export function normalizeCategoriaProduto(value: string | null | undefined): Cat
   if (lower.includes('combo') || lower.includes('promo')) return 'Combos';
   if (lower.includes('beb')) return 'Bebidas';
 
-  return 'Outros';
+  return trimmed;
 }
 
 export const categoriaProdutoOperacaoSchema = z

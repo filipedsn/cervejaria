@@ -1,5 +1,22 @@
 # Configuração canônica do PDV — execução versionada — 2026-10-05
 
+## Revisão de base para categorias gamificadas — 2026-10-08
+
+Base local informada: código `99274ff`, documentação `64a62f0`. Modelo candidato implementado: `CategoriaProdutoPdv` por empresa, `gamificada=false` por padrão, vínculo aditivo `Produto.categoriaPdvId` composto pelo tenant e manutenção do texto `Produto.categoria`. A chave normalizada é única por empresa; colisões bloqueiam, sem fusão. A feature começa desligada e sem consulta ao catálogo novo.
+
+O cadastro, a edição e a seleção em produto usam `catalog.manage`. Cardápios continuam referenciando o mesmo ID de produto; seleção de Chope, preços por volume, adicionais, cozinha, estoque e ranking existente não recebem regra nova. Alterar `gamificada` não chama nem muda o agregador de Chope. Não houve backfill real, cutover ou deploy.
+
+| ID | Cenário | Resultado nesta revisão | Executor / estado |
+|---|---|---|---|
+| CAT-UNIT-01 | Normalização preserva rótulo; flag canônica desligada por padrão | PASS — 5 testes focados de categoria/permissão e normalização | `node --import tsx --test ...`; 2026-10-08 |
+| CAT-DB-01 | Migration aditiva, transformação, reexecução, colisão, rollback, FK de tenant e vínculo de cardápio | PASS — PostgreSQL 17 descartável, tmpfs; IDs/textos de produto preservados | `npm run qa:pdv-gamified-category`; 2026-10-08 |
+| CAT-UI-01 | Criar categoria, editar flag, selecionar categoria no produto com API mockada | PASS — Chromium, 1 cenário; mocks explícitos e nenhum endpoint inesperado | `e2e/pdv-gamified-categories.spec.ts`; 2026-10-08 |
+| CAT-BUILD-01 | Build backend e frontend | PASS — `npm run build` em ambos | 2026-10-08 |
+
+**Limites de certificação:** o QA de migration é fixture sintética mínima no banco descartável; autorização é verificada na função de permissão e nos guards de rota, não por API autenticada com banco completo. Tenant cruzado foi validado na FK. Não houve teste contra PROD ou DEV compartilhado. A revisão Git exata e o snapshot completo do PDV ainda precisam ser registrados após o commit desta entrega; esta linha não certifica SHA anterior.
+
+**Decisões ainda pendentes:** métrica de pontuação; momento de reconhecimento do consumo; aplicação a consumo anterior. Não implementar ranking novo nem reclassificar Chope até a aprovação do contrato completo.
+
 ## Ocorrência opcional no fluxo Por Caixa — execução autenticada em snapshot Git
 
 Código sob teste: `9316c9b68e16d9f8195ff63031fb443921432683` (tree `f3955957021cbc2cae33983ead4d09f200873804`). A cadeia `qa:pdv-current-disposable` passou sobre a materialização imutável do commit: 1.095 blobs verificados, 173 módulos de projeto importados do snapshot, zero imports do workspace, 100 dependências externas, Prisma `6.19.3`; 0 skips. Manifesto temporário e manifesto corrente: baseline `9316c9b`, 57 candidatos, digest `d8fd08b9941e763940864c03b1e82d5c3754e2081d3dfeb887667407fb0a4f13`. Evidência: [`pdv-unico-occurrence-context-qa-evidence.json`](pdv-unico-occurrence-context-qa-evidence.json). Estado local antes/depois idêntico; nenhuma consulta ou escrita em DEV compartilhado/PROD.

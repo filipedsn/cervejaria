@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import {
   CATEGORIAS_PRODUTO_OPERACAO,
-  categoriaProdutoOperacaoSchema,
   normalizarOrdemCategoriasProduto,
   normalizeCategoriaProduto,
 } from '../../lib/operacao/categorias.js';
@@ -13,6 +12,7 @@ import { listProdutosOperacionaisTurno } from '../../lib/operacao/sessao-cardapi
 import { listarOpcionaisProduto, substituirOpcionaisProduto } from '../../lib/produto-opcionais.js';
 import { canonicalPdvQaActivationEnabled } from '../../lib/canonical-pdv-operational-config.js';
 import { requirePermissaoOuDono } from '../../lib/operacao/permissoes.js';
+import { catalogoCategoriasCanonicoAtivo, categoriaPdvInputSchema, normalizarNomeCategoria } from '../../lib/operacao/catalogo-categorias.js';
 
 const precoProdutoSchema = z.object({ volumeMl: z.number().int().positive(), preco: z.number().positive() });
 const tipoProdutoSchema = z.enum(['BEBIDA', 'COMIDA']);
@@ -20,7 +20,8 @@ const formatoProdutoSchema = z.enum(['CHOPE', 'LATA', 'LONGNECK', 'GARRAFA', 'OU
 
 const createProdutoSchema = z.object({
   nome: z.string().min(1),
-  categoria: categoriaProdutoOperacaoSchema.default('Bebidas'),
+  categoria: z.string().trim().min(1).max(80).default('Bebidas'),
+  categoriaPdvId: z.string().min(1).optional(),
   precoUnit: z.number().positive().optional(),
   precos: z.array(precoProdutoSchema).min(1).optional(),
   tipo: tipoProdutoSchema.optional(),
@@ -35,7 +36,7 @@ const createProdutoSchema = z.object({
 
 const updateProdutoSchema = createProdutoSchema.partial().extend({
   ativo: z.boolean().optional(),
-  categoria: categoriaProdutoOperacaoSchema.optional(),
+  categoria: z.string().trim().min(1).max(80).optional(),
 });
 
 const opcionaisSchema = z.object({
@@ -98,6 +99,16 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
   });
   app.get('/categorias', async (request) => {
     const { cervejariaId } = request.operacao;
+    if (catalogoCategoriasCanonicoAtivo()) {
+      const categorias = await prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId }, orderBy: [{ nomeNormalizado: 'asc' }, { nome: 'asc' }] });
+      const cervejaria = await prisma.cervejaria.findUnique({ where: { id: cervejariaId }, select: { operacaoCategoriasOrdem: true } });
+      const config = cervejaria?.operacaoCategoriasOrdem;
+      const rawOrder = Array.isArray(config) ? config : config && typeof config === 'object' && !Array.isArray(config) ? (config as Record<string, unknown>).catalogo : [];
+      const names = categorias.map((categoria) => categoria.nome);
+      const saved = Array.isArray(rawOrder) ? rawOrder.filter((name): name is string => typeof name === 'string' && names.includes(name)) : [];
+      const ordem = [...new Set(saved), ...names.filter((name) => !saved.includes(name))];
+      return { categorias: ordem, categoriasPdv: categorias, ordem, catalogoCanonico: true };
+    }
     const categorias = request.operacao.tapsEnabled
       ? [...CATEGORIAS_PRODUTO_OPERACAO, 'Chope']
       : [...CATEGORIAS_PRODUTO_OPERACAO];
@@ -108,14 +119,44 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     return {
       categorias,
       ordem: normalizarOrdemCategoriasProduto(cervejaria?.operacaoCategoriasOrdem, request.operacao.tapsEnabled),
+      catalogoCanonico: false,
     };
+  });
+
+
+  app.post('/categorias', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
+    if (!catalogoCategoriasCanonicoAtivo()) return reply.status(404).send({ error: 'Catálogo canônico desativado' });
+    const { cervejariaId } = request.operacao;
+    const body = categoriaPdvInputSchema.parse(request.body);
+    const nomeNormalizado = normalizarNomeCategoria(body.nome);
+    const existente = await prisma.categoriaProdutoPdv.findFirst({ where: { cervejariaId, nomeNormalizado } });
+    if (existente) return reply.status(409).send({ error: 'Já existe categoria com nome equivalente', categoria: existente });
+    return reply.status(201).send(await prisma.categoriaProdutoPdv.create({ data: { cervejariaId, nome: body.nome, nomeNormalizado, gamificada: body.gamificada } }));
+  });
+
+  app.put('/categorias/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
+    if (!catalogoCategoriasCanonicoAtivo()) return reply.status(404).send({ error: 'Catálogo canônico desativado' });
+    const { cervejariaId } = request.operacao;
+    const { id } = request.params as { id: string };
+    const body = categoriaPdvInputSchema.parse(request.body);
+    const existente = await prisma.categoriaProdutoPdv.findFirst({ where: { id, cervejariaId } });
+    if (!existente) return reply.status(404).send({ error: 'Categoria não encontrada' });
+    const nomeNormalizado = normalizarNomeCategoria(body.nome);
+    const colisao = await prisma.categoriaProdutoPdv.findFirst({ where: { cervejariaId, nomeNormalizado, id: { not: id } } });
+    if (colisao) return reply.status(409).send({ error: 'Já existe categoria com nome equivalente', categoria: colisao });
+    const updated = await prisma.$transaction(async (tx) => {
+      const category = await tx.categoriaProdutoPdv.update({ where: { id }, data: { nome: body.nome, nomeNormalizado, gamificada: body.gamificada } });
+      await tx.produto.updateMany({ where: { categoriaPdvId: id, cervejariaId }, data: { categoria: body.nome } });
+      return category;
+    });
+    return reply.send(updated);
   });
 
   app.put('/categorias/ordem', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
-    const categorias = request.operacao.tapsEnabled
-      ? [...CATEGORIAS_PRODUTO_OPERACAO, 'Chope']
-      : [...CATEGORIAS_PRODUTO_OPERACAO];
+    const categorias = catalogoCategoriasCanonicoAtivo()
+      ? (await prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId }, select: { nome: true }, orderBy: { nomeNormalizado: 'asc' } })).map((categoria) => categoria.nome)
+      : request.operacao.tapsEnabled ? [...CATEGORIAS_PRODUTO_OPERACAO, 'Chope'] : [...CATEGORIAS_PRODUTO_OPERACAO];
     const categoriasDisponiveis = new Set<string>(categorias);
     const body = z.object({
       ordem: z.array(z.string()).length(categorias.length).refine(
@@ -184,8 +225,17 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
   app.post('/', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId, tapsEnabled } = request.operacao;
     const body = createProdutoSchema.parse(request.body);
-    const chope = body.categoria === 'Chope' || body.formato === 'CHOPE';
-    if (chope && body.categoria !== 'Chope') return reply.status(400).send({ error: 'Selecione a categoria Chope para cadastrar preços por volume' });
+    let categoria = body.categoria;
+    let categoriaPdvId: string | null = null;
+    if (catalogoCategoriasCanonicoAtivo()) {
+      if (!body.categoriaPdvId) return reply.status(400).send({ error: 'Selecione uma categoria cadastrada' });
+      const categoriaPdv = await prisma.categoriaProdutoPdv.findFirst({ where: { id: body.categoriaPdvId, cervejariaId } });
+      if (!categoriaPdv) return reply.status(404).send({ error: 'Categoria não encontrada neste PDV' });
+      categoria = categoriaPdv.nome;
+      categoriaPdvId = categoriaPdv.id;
+    }
+    const chope = categoria === 'Chope' || body.formato === 'CHOPE';
+    if (chope && categoria !== 'Chope') return reply.status(400).send({ error: 'Selecione a categoria Chope para cadastrar preços por volume' });
     if (chope && !tapsEnabled) return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
     if (chope && !(body.precos ?? []).some((preco) => preco.volumeMl > 1 && preco.preco > 0)) {
       return reply.status(400).send({ error: 'Informe pelo menos um preço por volume para o chope' });
@@ -201,7 +251,8 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
         cervejariaId,
         ...(request.operacao.effectiveSettings.pointId ? { pontoVendaId: request.operacao.effectiveSettings.pointId } : {}),
         nome: body.nome.trim(),
-        categoria: body.categoria,
+        categoria,
+        ...(catalogoCategoriasCanonicoAtivo() ? { categoriaPdvId } : {}),
         tipo,
         formato,
         descricao: chope ? body.descricao : undefined,
@@ -226,7 +277,14 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     const existing = await prisma.produto.findFirst({ where: { id, cervejariaId }, include: { precos: { orderBy: { volumeMl: 'asc' } } } });
     if (!existing) return reply.status(404).send({ error: 'Produto não encontrado' });
 
-    const categoria = body.categoria ?? normalizeCategoriaProduto(existing.categoria);
+    let categoria = body.categoria ?? (catalogoCategoriasCanonicoAtivo() ? existing.categoria : normalizeCategoriaProduto(existing.categoria)) ?? 'Outros';
+    let categoriaPdvId: string | null | undefined;
+    if (catalogoCategoriasCanonicoAtivo() && body.categoriaPdvId) {
+      const categoriaPdv = await prisma.categoriaProdutoPdv.findFirst({ where: { id: body.categoriaPdvId, cervejariaId } });
+      if (!categoriaPdv) return reply.status(404).send({ error: 'Categoria não encontrada neste PDV' });
+      categoria = categoriaPdv.nome;
+      categoriaPdvId = categoriaPdv.id;
+    }
     const tipoAtualizado = body.tipo ?? (body.formato === 'CHOPE' ? 'BEBIDA' : existing.tipo);
     const formatoAtualizado = tipoAtualizado === 'BEBIDA'
       ? body.formato ?? existing.formato ?? 'OUTRO'
@@ -259,7 +317,8 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
         where: { id },
         data: {
           nome: body.nome?.trim(),
-          categoria: body.categoria,
+          categoria: body.categoria !== undefined || categoriaPdvId !== undefined ? categoria : undefined,
+          ...(catalogoCategoriasCanonicoAtivo() && categoriaPdvId !== undefined ? { categoriaPdvId } : {}),
           ...(classificationChanged ? { tipo, formato } : {}),
           descricao: body.descricao,
           estilo: body.estilo,

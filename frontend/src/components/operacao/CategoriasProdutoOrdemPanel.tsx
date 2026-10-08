@@ -11,16 +11,17 @@ export function CategoriasProdutoOrdemPanel() {
   const { contexto } = useOperacaoContexto();
   const queryClient = useQueryClient();
   const [aberto, setAberto] = useState(false);
-  const categoriasDisponiveis = contexto.tapsEnabled
+  const categoriasPadrao = contexto.tapsEnabled
     ? [...CATEGORIAS_PRODUTO_OPERACAO, 'Chope']
     : [...CATEGORIAS_PRODUTO_OPERACAO];
-  const [ordem, setOrdem] = useState<string[]>(categoriasDisponiveis);
+  const [ordem, setOrdem] = useState<string[]>(categoriasPadrao);
 
   const { data } = useQuery({
     queryKey: ['operacao-categorias'],
-    queryFn: () => api.get<{ categorias: string[]; ordem: string[] }>('/api/operacao/produtos/categorias'),
+    queryFn: () => api.get<{ categorias: string[]; ordem: string[]; catalogoCanonico?: boolean }>('/api/operacao/produtos/categorias'),
     enabled: isDono,
   });
+  const categoriasDisponiveis = data?.catalogoCanonico ? data.categorias : categoriasPadrao;
 
   const salvar = useMutation({
     mutationFn: () => api.put<{ ordem: string[] }>('/api/operacao/produtos/categorias/ordem', { ordem }),
@@ -28,6 +29,7 @@ export function CategoriasProdutoOrdemPanel() {
       queryClient.setQueryData(['operacao-categorias'], {
         categorias: categoriasDisponiveis,
         ordem: result.ordem,
+        catalogoCanonico: data?.catalogoCanonico,
       });
       setAberto(false);
     },
