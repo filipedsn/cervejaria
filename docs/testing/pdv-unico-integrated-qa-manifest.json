@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "9e86dc9daf6162fa8d5f92b10dd7911457157d13",
+    "commit": "db486bb3e4da85cd5595a17301561ddfd7e48cff",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "fdfecaca2e8d42d1e745b3bea634f2e2e90690f47b57ceb5742dfefcc8b22e57"
   },
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "9e86dc9daf6162fa8d5f92b10dd7911457157d13",
+      "commit": "db486bb3e4da85cd5595a17301561ddfd7e48cff",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -63,7 +63,7 @@
     }
   },
   "delivery": {
-    "schemaCommit": "9e86dc9daf6162fa8d5f92b10dd7911457157d13",
+    "schemaCommit": "db486bb3e4da85cd5595a17301561ddfd7e48cff",
     "schemaSha256": "fdfecaca2e8d42d1e745b3bea634f2e2e90690f47b57ceb5742dfefcc8b22e57",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
@@ -98,7 +98,7 @@
   "codeCandidates": [
     {
       "path": "backend/package.json",
-      "sha256": "9583f0e3b85c4d051fd7e138736c229c2782f742cc0d8e272c8841709c9cbbdf"
+      "sha256": "e2807e3df2d0809bb22768a667d1865de1bc6b4f9bfdab8a1659268b1b4e3018"
     },
     {
       "path": "backend/prisma/migrations/20261005180000_payment_historical_provenance/migration.sql",
@@ -115,6 +115,10 @@
     {
       "path": "backend/prisma/migrations/20261007180000_product_independent_kitchen_order/migration.sql",
       "sha256": "6fa83e259bcd4fcbc04ae8628268547c8a7e9fdb657124f795f04bbd54e24271"
+    },
+    {
+      "path": "backend/prisma/transformations/pdv-gamified-categories-v1.sql",
+      "sha256": "f0d5e777a66fea5692bb2d5bd6254c0bbe99f2613d9a2e90fd4a066ba4962f2d"
     },
     {
       "path": "backend/scripts/event-deletion.isolated.test.ts",
@@ -154,7 +158,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
-      "sha256": "dbcb8c06aa440ee748f023de5e005a429d98bbc337d405feba6b87fbdfb1fe25"
+      "sha256": "820406b752c9119bff1d8eaf316660bb4c51cd6f6de3b934b2b54f41bbb679b3"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.test.mjs",
@@ -171,6 +175,14 @@
     {
       "path": "backend/scripts/pdv-unico-core-schema.isolated.test.mjs",
       "sha256": "592decb9617c04a3e62963cbebf005da568cc947a687ac6b3e649f611ff2c940"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-dev-cutover-core.mjs",
+      "sha256": "06c89f1372536979e1662a8cf755c351c03719c5a021dceaabbe1fb26a4ff59d"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-dev-cutover-core.test.mjs",
+      "sha256": "879bb8e23ab881cb77dce1617f893128e4520a79c03c4116fdbffb194c910307"
     },
     {
       "path": "backend/scripts/pdv-unico-dev-inventory-summary.mjs",
@@ -213,6 +225,10 @@
       "sha256": "6b127413421ed1d9268184cf6494197aabdccfef892f2e4d831c1637a30d2e34"
     },
     {
+      "path": "backend/scripts/pdv-unico-precommerce-preparation.mjs",
+      "sha256": "d1d514b0e68681cdeec5005a2d612d2f0d1f415fca2ec5d4b0ff199921f9f76b"
+    },
+    {
       "path": "backend/scripts/pdv-unico-provisioning-compatibility.isolated.test.mjs",
       "sha256": "c0b35e4099c36a45586eb1ff1e0f82c7a7513dfa3de484ec383bf8a01a781cc2"
     },
@@ -221,8 +237,24 @@
       "sha256": "00e3e4d418b8fd8a20b95f9c9a5d33596828b42bab3398fa74dbc34cb760ad9f"
     },
     {
+      "path": "backend/scripts/pdv-unico-ranking-snapshot.qa.mjs",
+      "sha256": "50770c14b1050ce8740cd17aa8321e794f98bba01b99724898a01e1eb2834cf1"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-recovery-verify.qa.mjs",
+      "sha256": "036d955556aa376c350e071febe187c0001a5c3c0ad82f71587feb2746399731"
+    },
+    {
       "path": "backend/scripts/pdv-unico-representative-qa.isolated.test.mjs",
-      "sha256": "aa42ddf48e9c702d8b552747e5d107ef89271bd7f8abde865d9c00a83981a17f"
+      "sha256": "74db99c201adbfa98d5f9e6ee2f12b478c1a17365dd83fc510ee9324b136f20e"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-restore-source-photo.qa.mjs",
+      "sha256": "1d1ff0ae1a56d0c1113e332d70e690861fefda3ad6050b6b975faade6ac8060f"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-sequence-inspect.qa.mjs",
+      "sha256": "4fffd2a6d9fe0211c1ff85bf5a796a087a0cd5f2a37c6fb39f2338d61de1339c"
     },
     {
       "path": "backend/scripts/pdv-unico-session-transform.ts",
@@ -231,6 +263,10 @@
     {
       "path": "backend/scripts/pdv-unico-source-graph.ts",
       "sha256": "2f6d919bfb520cf338f66db2c86366143152e30ef863f99fc0f1e41366c61348"
+    },
+    {
+      "path": "backend/scripts/pdv-unico-source-photo-restore.mjs",
+      "sha256": "6e629b008485d2f1ed7c15690396ac5959f487f523b9c25022598cc2e204e4c1"
     },
     {
       "path": "backend/scripts/pdv-unico-tap-migrator.ts",
@@ -247,6 +283,10 @@
     {
       "path": "backend/scripts/run-pdv-unico-commerce-disposable-qa.mjs",
       "sha256": "4b1c81278a92940316afb9386334267dfb72e7148fe797152447ee1f7df86e14"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-dev-cutover-plan.mjs",
+      "sha256": "608e93885220c0abf3c99056348bca1f9c8ef6b4f672b2f52c66cff6aa510814"
     },
     {
       "path": "backend/scripts/run-pdv-unico-dev-inventory-readonly.mjs",
@@ -267,6 +307,10 @@
     {
       "path": "backend/scripts/run-pdv-unico-provisioning-compatibility-qa.mjs",
       "sha256": "59305ddf203183fc66ea6218f7c9289a12747618313968016b4b8ba39e81f0fa"
+    },
+    {
+      "path": "backend/scripts/run-pdv-unico-sequenced-qa.mjs",
+      "sha256": "c30978c3ce9045615589af25dd52fce3a664d7bf785e8acfccb654530f793b41"
     },
     {
       "path": "backend/src/app.ts",
@@ -501,5 +545,5 @@
       "sha256": "01567913669a6bb52f70fb140341a5bf22334819b9f155e84b29c6099edae8e2"
     }
   ],
-  "manifestSha256": "c6608671630a9926b2f236456dc7a05c52b8ce1a43af8bc3763638eda70bb1eb"
+  "manifestSha256": "52d28773752c75291965242bf801faef9d8cdeb9d514782e11f7e93e4a842acc"
 }
