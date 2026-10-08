@@ -32,3 +32,32 @@ ALTER TABLE "Produto"
     FOREIGN KEY ("categoriaPdvId", "cervejariaId")
     REFERENCES "CategoriaProdutoPdv"("id", "cervejariaId")
     ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- Transformation evidence, not a second migration control framework. Rows
+-- are scoped to this transformation key and retained until a verified rollback.
+CREATE TABLE "PdvCategoriaTransformacaoCategoria" (
+    "transformacao" VARCHAR(80) NOT NULL,
+    "cervejariaId" TEXT NOT NULL,
+    "categoriaPdvId" TEXT NOT NULL,
+    "acao" VARCHAR(16) NOT NULL,
+    "nome" VARCHAR(80) NOT NULL,
+    "nomeNormalizado" VARCHAR(100) NOT NULL,
+    "gamificada" BOOLEAN NOT NULL,
+    "origemMigracao" VARCHAR(80),
+    CONSTRAINT "PdvCategoriaTransformacaoCategoria_pkey" PRIMARY KEY ("transformacao", "cervejariaId", "categoriaPdvId"),
+    CONSTRAINT "PdvCategoriaTransformacaoCategoria_acao_check" CHECK ("acao" IN ('CRIADA', 'REAPROVEITADA'))
+);
+
+CREATE TABLE "PdvCategoriaTransformacaoProduto" (
+    "transformacao" VARCHAR(80) NOT NULL,
+    "cervejariaId" TEXT NOT NULL,
+    "produtoId" TEXT NOT NULL,
+    "categoriaAntes" TEXT,
+    "categoriaPdvIdAntes" TEXT,
+    "categoriaDepois" TEXT,
+    "categoriaPdvIdDepois" TEXT NOT NULL,
+    CONSTRAINT "PdvCategoriaTransformacaoProduto_pkey" PRIMARY KEY ("transformacao", "cervejariaId", "produtoId")
+);
+
+CREATE INDEX "PdvCategoriaTransformacaoProduto_categoria_idx"
+    ON "PdvCategoriaTransformacaoProduto"("transformacao", "cervejariaId", "categoriaPdvIdDepois");

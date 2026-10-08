@@ -937,3 +937,19 @@ Gates focados na revisão `99274ffcc178fecca7a7c6386686b8c89cf49ba7`: build back
 O manifesto integrado foi gerado integralmente dos blobs de `99274ff`: 101 candidatos, árvore `1ddec8207bd11c75f09f3359909805a63dfa8e36`, digest `a1f7ff7f827100b231f8614c504708832f8fc138d9b9e8c50ee588c24845358f`; comparação independente dos 101 blobs e digest PASS. O manifesto anterior de `aecde84` e o histórico `5b7062f` foram preservados. A certificação completa `qa:pdv-current-git-snapshot` NÃO foi executada nesta revisão; a certificação completa de `5c68c5a` continua somente como evidência histórica. Evidência desta correção: [pdv-build-fix-99274ff-qa-evidence.json](./pdv-build-fix-99274ff-qa-evidence.json). Ensaio representativo, backfill real, cutover e deploy NOT_RUN; PROD/metadados e DEV compartilhado não acessados.
 
 Prevenção: toda entrega que alterar runtime backend/frontend deve executar como gate obrigatório o build correspondente (`backend: npm run build`; `frontend: npm run build`). Fastify.inject, tsx, Playwright ou Vite sem compilação TypeScript não substituem esses gates.
+
+## Adendo de correcao certificada
+
+A reproducao em revisao 3145a75 mostrou que a rota operacional aceitava texto de categoria sem ID e podia atualizar o texto mantendo um ID anterior; a regra de Chope tambem comparava o nome literal. O ensaio reduzido anterior nao cobria a API real, e selecoes escalares padrao do Prisma ainda podiam pedir a coluna nova em schema antigo.
+
+| Caso | Camada | Criterio |
+|---|---|---|
+| Criacao/edicao/troca/parcial, ID do proprio tenant, texto divergente, categoria estrangeira e permissoes | API autenticada + PostgreSQL descartavel | Texto deriva do ID, parcial preserva canonicos; recusas sem escrita |
+| Produto CHOPE renomeado, produto novo, menu com volumes, venda e ranking legado | API real + PostgreSQL descartavel | Tipo/formato, precos, menu, venda e ranking legado preservados |
+| Flag isolada | API real + PostgreSQL descartavel | Nenhuma alteracao em financeiro, estoque, cozinha ou agregador atual |
+| Nomes livres e colisao; false explicito; cardapios e opcionais | API real + PostgreSQL descartavel | Cadastro tenant-scoped, colisao recusada e vinculos preservados |
+| Proveniencia, replay, interrupcao/retomada, edicoes posteriores e rollback | SQL limitado em PostgreSQL descartavel | Sem fusao; rollback bloqueia divergencias e restaura apenas mudancas rastreadas |
+| Criar/editar/selecionar/flag | UI com APIs simuladas explicitamente | Checkbox e selecao persistem no fluxo visual; nao prova API |
+| Feature desligada sem tabela/coluna, incluindo selecao Prisma padrao | API autenticada + PostgreSQL no schema anterior | Consulta, cadastro e edicao funcionam sem consultar o catalogo novo |
+
+A certificacao separa SQL limitado, API/PostgreSQL, UI mockada e representativo. O representativo permanece NAO EXECUTADO. Builds e testes sao certificados apenas para o SHA exato registrado na evidencia v2.

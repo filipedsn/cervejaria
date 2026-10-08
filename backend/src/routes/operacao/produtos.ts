@@ -235,7 +235,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
       categoriaPdvId = categoriaPdv.id;
     }
     const chope = categoria === 'Chope' || body.formato === 'CHOPE';
-    if (chope && categoria !== 'Chope') return reply.status(400).send({ error: 'Selecione a categoria Chope para cadastrar preços por volume' });
+    if (chope && categoria !== 'Chope' && !catalogoCategoriasCanonicoAtivo()) return reply.status(400).send({ error: 'Selecione a categoria Chope para cadastrar preços por volume' });
     if (chope && !tapsEnabled) return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
     if (chope && !(body.precos ?? []).some((preco) => preco.volumeMl > 1 && preco.preco > 0)) {
       return reply.status(400).send({ error: 'Informe pelo menos um preço por volume para o chope' });
@@ -274,17 +274,23 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = updateProdutoSchema.parse(request.body);
 
-    const existing = await prisma.produto.findFirst({ where: { id, cervejariaId }, include: { precos: { orderBy: { volumeMl: 'asc' } } } });
-    if (!existing) return reply.status(404).send({ error: 'Produto não encontrado' });
+    const canonicalCategoriesEnabled = catalogoCategoriasCanonicoAtivo();
+    const existing = await prisma.produto.findFirst({ where: { id, cervejariaId }, include: { precos: { orderBy: { volumeMl: 'asc' } }, ...(canonicalCategoriesEnabled ? { categoriaPdv: true } : {}) } });
+    if (!existing) return reply.status(404).send({ error: 'Produto nao encontrado' });
 
-    let categoria = body.categoria ?? (catalogoCategoriasCanonicoAtivo() ? existing.categoria : normalizeCategoriaProduto(existing.categoria)) ?? 'Outros';
+    let categoria = body.categoria ?? (canonicalCategoriesEnabled ? existing.categoriaPdv?.nome ?? existing.categoria : normalizeCategoriaProduto(existing.categoria)) ?? 'Outros';
     let categoriaPdvId: string | null | undefined;
-    if (catalogoCategoriasCanonicoAtivo() && body.categoriaPdvId) {
+    if (canonicalCategoriesEnabled && body.categoriaPdvId) {
       const categoriaPdv = await prisma.categoriaProdutoPdv.findFirst({ where: { id: body.categoriaPdvId, cervejariaId } });
-      if (!categoriaPdv) return reply.status(404).send({ error: 'Categoria não encontrada neste PDV' });
+      if (!categoriaPdv) return reply.status(404).send({ error: 'Categoria nao encontrada neste PDV' });
       categoria = categoriaPdv.nome;
       categoriaPdvId = categoriaPdv.id;
+    } else if (canonicalCategoriesEnabled) {
+      const categoriaCanonicaAtual = existing.categoriaPdv?.nome ?? existing.categoria;
+      if (body.categoria !== undefined && body.categoria !== categoriaCanonicaAtual) return reply.status(400).send({ error: 'Para trocar a categoria, selecione uma categoria cadastrada' });
+      categoria = categoriaCanonicaAtual ?? 'Outros';
     }
+
     const tipoAtualizado = body.tipo ?? (body.formato === 'CHOPE' ? 'BEBIDA' : existing.tipo);
     const formatoAtualizado = tipoAtualizado === 'BEBIDA'
       ? body.formato ?? existing.formato ?? 'OUTRO'
@@ -293,12 +299,12 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     if (categoria === 'Chope' && !chope) {
       return reply.status(400).send({ error: 'A categoria Chope exige tipo Bebida e formato Chope' });
     }
-    if (chope && categoria !== 'Chope') return reply.status(400).send({ error: 'Selecione a categoria Chope para cadastrar preços por volume' });
+    if (chope && categoria !== 'Chope' && !canonicalCategoriesEnabled) return reply.status(400).send({ error: 'Selecione a categoria Chope para cadastrar preços por volume' });
     if (chope && !tapsEnabled && (body.categoria === 'Chope' || body.formato === 'CHOPE' || body.precos !== undefined || body.precoUnit !== undefined)) {
       return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
     }
     const precosExistentesChope = body.precos ?? existing.precos;
-    if (body.categoria === 'Chope' && !precosExistentesChope.some((preco) => preco.volumeMl > 1 && Number(preco.preco) > 0)) {
+    if (chope && !precosExistentesChope.some((preco) => preco.volumeMl > 1 && Number(preco.preco) > 0)) {
       return reply.status(400).send({ error: 'Informe pelo menos um preço por volume para o chope' });
     }
     if (chope && body.precoUnit !== undefined && body.precos === undefined) {
@@ -317,7 +323,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
         where: { id },
         data: {
           nome: body.nome?.trim(),
-          categoria: body.categoria !== undefined || categoriaPdvId !== undefined ? categoria : undefined,
+          categoria: body.categoria !== undefined || categoriaPdvId !== undefined || (canonicalCategoriesEnabled && existing.categoriaPdvId) ? categoria : undefined,
           ...(catalogoCategoriasCanonicoAtivo() && categoriaPdvId !== undefined ? { categoriaPdvId } : {}),
           ...(classificationChanged ? { tipo, formato } : {}),
           descricao: body.descricao,

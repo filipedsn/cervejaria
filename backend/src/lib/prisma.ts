@@ -24,9 +24,14 @@ const databaseUrl = databaseUrlWithPool(process.env.DATABASE_URL);
 // A coluna da entrega é aditiva. Com o caminho canônico desligado, excluí-la
 // dos SELECTs escalares padrão para manter compatibilidade com bancos antigos.
 const legacySchemaOmit = process.env.PDV_CANONICAL_CONFIG_QA === '1'
-  ? undefined
+  ? {
+    produto: { categoriaPdvId: process.env.PDV_GAMIFIED_CATEGORY_CATALOG !== '1' ? true : undefined },
+  }
   : {
-    produto: { prepararEmPedidoSeparado: true },
+    produto: {
+      prepararEmPedidoSeparado: true,
+      categoriaPdvId: process.env.PDV_GAMIFIED_CATEGORY_CATALOG !== '1' ? true : undefined,
+    },
     comanda: { sessaoCaixaRealizacaoId: true },
   } as const;
 const baseClient = new PrismaClient(

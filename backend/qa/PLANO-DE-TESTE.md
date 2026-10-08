@@ -157,3 +157,9 @@ Fluxo PORTAL-07: abrir sessão via QR → `GET /cliente/comanda` **200** → fec
 - 0 falhas em CONC de integridade (CONC-01, CONC-03).
 - RNF dentro das metas ou com plano de mitigação.
 - Findings conhecidos documentados com recomendação.
+
+## Adendo: correcao certificada de categorias canonicas
+
+A certificacao desta rodada distingue: (a) SQL limitado para proveniencia, replay, colisao e rollback; (b) API autenticada com a aplicacao real, migrations reais e PostgreSQL descartavel; (c) UI Chromium com APIs explicitamente simuladas; (d) ensaio representativo, nao executado. O schema antigo tambem e exercitado sem tabela/coluna novas, incluindo selecoes escalares padrao do Prisma.
+
+Matriz detalhada, manifestos e resultados ficam nos arquivos pdv-gamified-categories-qa-manifest-v2.json e pdv-gamified-categories-qa-evidence-v2.json, em docs/testing. Resultado e limite por camada devem refletir somente a revisao Git exata certificada. Nao houve PROD/DEV compartilhado, backfill real, cutover ou deploy.

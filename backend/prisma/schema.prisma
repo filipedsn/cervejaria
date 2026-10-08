@@ -411,6 +411,32 @@ model CategoriaProdutoPdv {
   @@schema("public")
 }
 
+/// Per-product before/after evidence owned by the historical category transformation.
+model PdvCategoriaTransformacaoProduto {
+  transformacao        String  @db.VarChar(80)
+  cervejariaId         String
+  produtoId            String
+  categoriaAntes       String?
+  categoriaPdvIdAntes  String?
+  categoriaDepois      String?
+  categoriaPdvIdDepois String
+  @@id([transformacao, cervejariaId, produtoId])
+  @@index([transformacao, cervejariaId, categoriaPdvIdDepois])
+  @@schema("public")
+}
+/// Snapshot of category provenance and fields used to prove replay and rollback safety.
+model PdvCategoriaTransformacaoCategoria {
+  transformacao   String  @db.VarChar(80)
+  cervejariaId    String
+  categoriaPdvId  String
+  acao            String  @db.VarChar(16)
+  nome            String  @db.VarChar(80)
+  nomeNormalizado String  @db.VarChar(100)
+  gamificada      Boolean
+  origemMigracao  String? @db.VarChar(80)
+  @@id([transformacao, cervejariaId, categoriaPdvId])
+  @@schema("public")
+}
 model Preco {
   id        String  @id @default(cuid())
   produtoId String

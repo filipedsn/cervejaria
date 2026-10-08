@@ -3109,6 +3109,10 @@ try {
   await db.$executeRawUnsafe('DROP INDEX IF EXISTS public."Comanda_sessaoCaixaRealizacaoId_idx"');
   await db.$executeRawUnsafe('ALTER TABLE public."Comanda" DROP COLUMN "sessaoCaixaRealizacaoId"');
   await db.$executeRawUnsafe('ALTER TABLE public."Produto" DROP COLUMN "prepararEmPedidoSeparado"');
+  await db.$executeRawUnsafe('ALTER TABLE public."Produto" DROP COLUMN "categoriaPdvId"');
+  await db.$executeRawUnsafe('DROP TABLE public."PdvCategoriaTransformacaoProduto" CASCADE');
+  await db.$executeRawUnsafe('DROP TABLE public."PdvCategoriaTransformacaoCategoria" CASCADE');
+  await db.$executeRawUnsafe('DROP TABLE public."CategoriaProdutoPdv" CASCADE');
   const { Prisma: PreColumnPrisma, PrismaClient: PreColumnPrismaClient } = await import(pathToFileURL(path.join(preColumnClientDir, 'index.js')).href);
   const preColumnClient = new PreColumnPrismaClient({ datasources: { db: { url: databaseUrl } } });
   const oldComandaModel = PreColumnPrisma.dmmf.datamodel.models.find((model) => model.name === 'Comanda');
@@ -3135,6 +3139,7 @@ try {
     const apiChildEnv = {
       ...process.env,
       PDV_CANONICAL_CONFIG_QA: '',
+      PDV_GAMIFIED_CATEGORY_CATALOG: '',
       PDV_PRECOLUMN_API_FIXTURE: JSON.stringify({
         email: legacyCloseOwner.email, password: legacyApiPassword, companyId: legacyCloseCompany.id,
         pointId: legacyApiPoint.id, sessionId: legacyApiSession.id, productIds: legacyApiProducts.map((row) => row.id),
@@ -3142,8 +3147,10 @@ try {
     };
     const apiChild = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/pdv76-precolumn-api.isolated.test.mjs'], { cwd: backendRoot, env: apiChildEnv, encoding: 'utf8', windowsHide: true, timeout: 90000 });
     assert.equal(apiChild.status, 0, `real application singleton/authenticated Fastify.inject legacy-schema API proof passes: ${apiChild.stderr || apiChild.stdout}`);
-    assert.match(apiChild.stdout, /PDV76_PRECOLUMN_API=PASS/);
+    assert.match(apiChild.stdout, /PDV76_PRECATEGORY_API=PASS/);
     assert.equal(await db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Produto' AND column_name='prepararEmPedidoSeparado'`.then((rows) => rows.length), 0, 'legacy API ran while independent-kitchen column was absent');
+    assert.equal(await db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Produto' AND column_name='categoriaPdvId'`.then((rows) => rows.length), 0, 'legacy API ran while category ID column was absent');
+    assert.equal(await db.$queryRaw`SELECT to_regclass('public."CategoriaProdutoPdv"')`.then((rows) => rows[0].to_regclass), null, 'legacy API ran while category table was absent');
   } finally {
     if (previousPdvFlag === undefined) delete process.env.PDV_CANONICAL_CONFIG_QA;
     else process.env.PDV_CANONICAL_CONFIG_QA = previousPdvFlag;

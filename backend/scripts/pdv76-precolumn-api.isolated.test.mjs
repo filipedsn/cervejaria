@@ -6,6 +6,7 @@ import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 const databaseUrl = validateIsolatedQaEnvironment(process.env).toString();
 assert.equal(process.env.DATABASE_URL, databaseUrl, 'real application singleton uses the validated disposable QA database');
 assert.notEqual(process.env.PDV_CANONICAL_CONFIG_QA, '1', 'canonical activation is disabled before importing the real application singleton');
+assert.notEqual(process.env.PDV_GAMIFIED_CATEGORY_CATALOG, '1', 'category catalog is disabled before importing the real application singleton');
 const fixture = JSON.parse(process.env.PDV_PRECOLUMN_API_FIXTURE ?? 'null');
 assert(fixture?.email && fixture.password && fixture.productIds?.length === 2, 'isolated pre-column API fixture is present');
 
@@ -22,10 +23,33 @@ try {
   assert.equal(catalogRead.statusCode, 200, `product query succeeds against schema without the new column: ${catalogRead.body}`);
   const catalog = JSON.parse(catalogRead.body);
   assert.equal(catalog.filter((product) => fixture.productIds.includes(product.id)).length, 2, 'both old-schema products are returned');
+  assert(catalog.every((product) => !Object.hasOwn(product, 'categoriaPdvId')), 'default scalar selections omit the absent new column');
 
   const edit = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${encodeURIComponent(fixture.productIds[0])}`, headers: { cookie }, payload: { nome: 'Legacy API edited product' } });
   assert.equal(edit.statusCode, 200, `product edit succeeds without reading/writing the absent column: ${edit.body}`);
   assert.equal((await prisma.produto.findUniqueOrThrow({ where: { id: fixture.productIds[0] }, select: { nome: true } })).nome, 'Legacy API edited product');
+
+  const operationCreate = await app.inject({ method: 'POST', url: '/api/operacao/produtos', headers: { cookie }, payload: {
+    nome: 'Old schema operation product', categoria: 'Snack livre', tipo: 'COMIDA', precoUnit: 7, controlaEstoque: false,
+  } });
+  assert.equal(operationCreate.statusCode, 201, `legacy operation product creation succeeds without category table/column: ${operationCreate.body}`);
+  const operationProduct = JSON.parse(operationCreate.body);
+  const operationEdit = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${encodeURIComponent(operationProduct.id)}`, headers: { cookie }, payload: { categoria: 'Snack editado' } });
+  assert.equal(operationEdit.statusCode, 200, `legacy operation category edit succeeds against pre-category schema: ${operationEdit.body}`);
+  assert.equal(JSON.parse(operationEdit.body).categoria, 'Snack editado');
+
+  const genericCreate = await app.inject({ method: 'POST', url: '/api/produtos', headers: { cookie }, payload: {
+    nome: 'Old schema generic product', categoria: 'Livre genérica', tipo: 'COMIDA', precos: [{ volumeMl: 1, preco: 8 }], controlaEstoque: false,
+  } });
+  assert.equal(genericCreate.statusCode, 201, `legacy generic product creation succeeds against pre-category schema: ${genericCreate.body}`);
+  const genericProduct = JSON.parse(genericCreate.body);
+  const genericEdit = await app.inject({ method: 'PUT', url: `/api/produtos/${encodeURIComponent(genericProduct.id)}`, headers: { cookie }, payload: { categoria: 'Livre genérica editada' } });
+  assert.equal(genericEdit.statusCode, 200, `legacy generic category edit succeeds against pre-category schema: ${genericEdit.body}`);
+  assert.equal(JSON.parse(genericEdit.body).categoria, 'Livre genérica editada');
+  const scalarDefault = await prisma.produto.findMany({ where: { cervejariaId: fixture.companyId } });
+  assert(scalarDefault.length >= 4 && scalarDefault.every((product) => !Object.hasOwn(product, 'categoriaPdvId')), 'Prisma default scalar selection omits categoriaPdvId at the singleton boundary');
+  assert.equal(await prisma.$queryRaw`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema='public' AND table_name='Produto' AND column_name='categoriaPdvId'`.then((rows) => rows[0].n), 0, 'old schema has no category id column');
+  assert.equal(await prisma.$queryRaw`SELECT to_regclass('public."CategoriaProdutoPdv"')::text AS relation_name`.then((rows) => rows[0].relation_name), null, 'old schema has no category table');
 
   const launch = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: {
     pontoVendaId: fixture.pointId, tipo: 'APELIDO', identificador: `pre-column-${fixture.sessionId}`,
@@ -48,11 +72,11 @@ try {
   } });
   assert.equal(close.statusCode, 200, `cash close succeeds on old schema: ${close.body}`);
 
-  for (const response of [catalogRead, edit, launch, payment, close]) {
-    assert.doesNotMatch(response.body, /P2022|prepararEmPedidoSeparado/, 'API responses contain no missing-column error or new-column field');
+  for (const response of [catalogRead, edit, operationCreate, operationEdit, genericCreate, genericEdit, launch, payment, close]) {
+    assert.doesNotMatch(response.body, /P2022|categoriaPdvId|prepararEmPedidoSeparado/, 'API responses contain no missing-column error or new-column field');
     failures.push(response.statusCode);
   }
-  console.log(`PDV76_PRECOLUMN_API=PASS; canonical=OFF; singleton=application; authenticatedLogin=200; productReadEdit=200/200; cashSale=201; legacyGroupedOrders=${command.pedidos.length}; paymentClose=200/200; responses=${failures.join(',')}; P2022=NONE`);
+  console.log(`PDV76_PRECATEGORY_API=PASS; categories=OFF; tables/columns=ABSENT; singleton=application-client-with-omit; defaultScalarSelections=PASS; operationCreateEdit=201/200; genericCreateEdit=201/200; cashSale=201; paymentClose=200/200; P2022=NONE`);
 } finally {
   await app.close();
   await prisma.$disconnect();

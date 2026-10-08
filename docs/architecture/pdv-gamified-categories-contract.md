@@ -52,3 +52,11 @@ Essas decisões também determinam como tratar item cancelado, estorno parcial, 
 5. Em uma revisão própria, remover a coluna textual, fallback/normalizações históricas e seus testes; então atualizar schema/migration e provar rollback operacional aprovado.
 
 Esta entrega não executa backfill real, cutover, deploy nem remoção de legado.
+
+## Adendo de correcao certificada
+
+A correcao operacional resolve dois desvios: as rotas generica e operacional agora derivam o texto do ID canonico quando a categoria muda; edicoes parciais preservam ID e nome canonicos, e texto livre divergente sem ID e recusado. Um ID e validado dentro da empresa antes de gravar. Com o catalogo ativo, o nome apresentado de Chope nao define formato: classificacao CHOPE, precos por volume e validacoes TAP permanecem vinculados ao tipo/formato e a configuracao existente. O agregador legado continua baseado nos itens de Chope e nao consulta a flag.
+
+A migration aditiva guarda evidencias em duas tabelas vinculadas a chave de transformacao: fotografia de categoria (criada ou reaproveitada) e fotografia antes/depois por produto. Replay e rollback comparam o estado atual com essas fotografias. O rollback restaura apenas produtos registrados e exclui somente categorias criadas pela transformacao. Edicao posterior de categoria, texto ou vinculo, ou produto novo associado a categoria criada, bloqueia a operacao com diagnostico. A prova SQL sintetica nao e prova de API, UI nem compatibilidade de banco legado.
+
+Sequencia futura para remover legado: (1) auditar consumidores de Produto.categoria e dependencias externas; (2) aplicar migration aditiva em QA descartavel; (3) gerar relatorio de colisoes sem fusao e revisar nomes/vinculos; (4) executar transformacao reiniciavel e conferir fotografias/contagens; (5) certificar APIs, cardapios, vendas, estoque, cozinha, ranking legado e esquema anterior; (6) aprovar explicitamente cutover e periodo de observacao; (7) somente depois, em outra entrega autorizada, migrar todos os leitores/escritores e remover campos legados por migration separada. Nenhum passo de backfill real, cutover ou remocao ocorreu nesta correcao.
