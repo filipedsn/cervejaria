@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "certification": "synthetic-only",
+  "syntheticRegression": {
+    "result": "PASS",
+    "suite": "pdv-unico-current-disposable",
+    "exitCode": 0
+  },
+  "representativeRehearsal": {
+    "result": "NOT_RUN",
+    "reason": "No representative photo supplied."
+  },
+  "selectedCommit": "5c68c5a62ed8d05482e1a36d9a72c8851230b7c9",
+  "selectedTree": "ccc078fa6c1c61ad5211097ad50490792a86bc6a",
+  "certificationRunnerPath": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+  "certificationRunnerSha256": "404f63c9505f018ba72019003617134428f9f6a09223803ce8c7d1df308c6fbd",
+  "sourceMaterialization": "git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot",
+  "materializedTrackedBlobCount": 1152,
+  "packageLockSha256": "9330ae831d6ea407a47dbf50a6158c60fd9ffb54fe99ed87e17fd6c6e5ec60d0",
+  "nodeVersion": "v24.18.0",
+  "generatedCandidateManifest": {
+    "baselineCommit": "5c68c5a62ed8d05482e1a36d9a72c8851230b7c9",
+    "manifestSha256": "34ab75e6f912cbfec9910ec7899d8d1ef850314651577e63c727a1bb69a81813",
+    "codeCandidateCount": 101
+  },
+  "moduleOriginAudit": {
+    "result": "PASS",
+    "snapshotProjectModuleCount": 185,
+    "snapshotProjectModulePathListSha256": "4269ea950b66482e01d312c4ca6615b9c0a094cf8a5c3958e7bb085f80bcaa24",
+    "nonSnapshotWorkspaceModuleCount": 0,
+    "externalDependencyModuleCount": 100,
+    "externalPrismaRuntimeVersion": "6.19.3",
+    "expectations": {
+      "syntheticModules": {
+        "result": "PASS",
+        "expectedCount": 5,
+        "observedCount": 5
+      },
+      "representativeModules": {
+        "result": "NOT_RUN",
+        "expectedCount": 0,
+        "observedCount": 0
+      }
+    }
+  },
+  "localState": {
+    "beforeSha256": "9b0c0d03c542fae1d3419f061b4b4441396767c2e66a0de2420c415842f19cd9",
+    "afterSha256": "9b0c0d03c542fae1d3419f061b4b4441396767c2e66a0de2420c415842f19cd9",
+    "identical": true,
+    "stagedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "unstagedDiffSha256": "146374b73cebcf6861bf948fa8c254b070def9b2fcc4f0b89e9bea98e4d32bd6",
+    "untrackedFileCount": 12
+  },
+  "prodAccessUsed": "NO",
+  "devSharedAccess": "NO",
+  "focusedOptionalApi": {
+    "command": "npm run qa:pdv-individual-permissions",
+    "result": "PASS",
+    "environment": "Disposable PostgreSQL tmpfs on 127.0.0.1; authenticated logins through the API; never PROD or shared DEV.",
+    "assertions": [
+      "POST /api/operacao/produtos creates a canonical product with the validated point and company IDs.",
+      "POST /api/produtos/opcionais ignores a supplied PDV and derives the canonical point; POST /api/operacao/produtos/opcionais uses request.operacao.effectiveSettings.",
+      "Both link APIs and GET responses persist and expose matching company/point IDs for a new canonical product and a preexisting migrated product.",
+      "Authenticated sale persists optional ID, price 1.25, quantity 2, option name and total item price 12.50; catalog edit leaves sold item and optional snapshots byte-for-byte unchanged.",
+      "Foreign tenant, another PDV, and mixed valid/invalid IDs are rejected by both link APIs; deep before/after link photos are identical.",
+      "With canonical activation off, both create APIs preserve NULL/global optional scope; provisioning compatibility certification separately confirms zero additive-table queries when additive tables are absent.",
+      "Funcion?rio com catalog.manage sozinho consulta permissoesEdicao={cardapioTurno:false,precoTurno:false,precoTemplate:true} e altera TEMPLATE via PATCH; valor persistido em CardapioProduto."
+    ],
+    "lastRun": "PASS no commit certificado 5c68c5a; PostgreSQL descart?vel pr?prio."
+  },
+  "uiSimulation": {
+    "result": "PASS 3/3",
+    "command": "npx playwright test e2e/current-model/shift-price-permission-ui.spec.ts --config=playwright.current.config.ts --reporter=list --output=<diretorio-temporario>",
+    "outputDirectory": "C:\\Users\\Papai\\AppData\\Local\\Temp\\pdv-shift-price-ui-catalog-only2",
+    "scope": "Frontend-only simulation. Explicit API mocks; unexpected API calls are aborted and recorded. No API server or PostgreSQL connection.",
+    "cases": [
+      "catalog.shift.manage allows TURNO only; request posts escopo=TURNO.",
+      "catalog.manage alone allows TEMPLATE only; request posts escopo=TEMPLATE and hides TURNO.",
+      "cash.values.read only has no price editor even when the API reports an open, editable session."
+    ]
+  },
+  "manifestReconciliation": {
+    "historicalBaselineCommit": "5b7062f308edcb25f029850e451c7f452a142aed",
+    "historicalTree": "d81b42616b374b25612b87b8c00fffd4415ec04d",
+    "historicalStoredManifestDigest": "cba419363e2996cf7bf768ff42f589105a5b36608b1876c03de2e2c504713299",
+    "historicalGeneratorDigestFromExactCertification": "9f9b6890677410efaf24a73da1a1ea159aadff284047a28bcd8584e7d60042fe",
+    "historicalCandidateCount": 97,
+    "originalEightHashMismatches": [
+      {
+        "file": "backend/src/lib/operacao/comanda-itens.ts",
+        "storedSha256": "30a76f9defc8264c062992ab81f809167db84e9da6f85cd41f7db6f9f1aea3aa",
+        "generatedAt5bSha256": "3697f14e90bccead2be0709ff3763992e289870604f2df9c06dfbb453968e110"
+      },
+      {
+        "file": "backend/src/routes/operacao/agenda-operacional.ts",
+        "storedSha256": "7d1df8e17d8dc4016ace9ba3123d904cfce6028f719d6784c6b7c8f0aee71ec2",
+        "generatedAt5bSha256": "ab342ffa54cb5c7aff4e284fabfc7ebed801320c6edc0498894ccdab75d914a1"
+      },
+      {
+        "file": "backend/src/routes/operacao/caixa.ts",
+        "storedSha256": "2fa802667f6d3c831ff689bbaecf0f4d9098d7c53177c5d44b98a8fd7c30ac5b",
+        "generatedAt5bSha256": "d9ba92b7cc6244baefb877b65f3e6a8e4f845ff8641a58ce2ed1b36ab34a51f4"
+      },
+      {
+        "file": "backend/src/routes/operacao/comandas.ts",
+        "storedSha256": "fb24a3af20ea0a0cf4d59b4b21237780f1a033c18f4beb62cfb06d3bf2b0ba81",
+        "generatedAt5bSha256": "c1ba36037298089ca1d58f12ea12ac349cd6c30b6461bb06e9ee5e2e1a511e7d"
+      },
+      {
+        "file": "backend/src/routes/operacao/cozinha.ts",
+        "storedSha256": "32ae25a0d68faef893cfd9aa14f1341cd4e099905938cfc65f77a7bceefd7b5c",
+        "generatedAt5bSha256": "d9558f75b707b1f1720f29b98a7cec661bbe4c34363c179bcb7099d3044a7bc2"
+      },
+      {
+        "file": "backend/src/routes/operacao/produtos.ts",
+        "storedSha256": "3245da55c5fdada60abaab2bf76e3ca257d038963778b004e5f66cd22df07b70",
+        "generatedAt5bSha256": "e51ff2441c9a920f0c63eda98c847a470370ff2040d90fd94f0ced6d627cb63d"
+      },
+      {
+        "file": "backend/src/routes/operacao/vendas.ts",
+        "storedSha256": "a5b8622ebe5da4551104d866d8fc83abace4b783458ceea58f093e9676b3c9d0",
+        "generatedAt5bSha256": "2a167e8717ace117671a23a4f0e832e1e3e57d4458b04986bb64ef2db277f74f"
+      },
+      {
+        "file": "frontend/src/components/operacao/PainelCaixaOperacao.tsx",
+        "storedSha256": "12a6d728562f002d8d7ea5363be857d00daf3059fee3e43b0ef025f69be02e1e",
+        "generatedAt5bSha256": "997f8e7651ad219c7b7ac33ab76f3f9f4334ef404d71ee4c7127840db0adaa72"
+      }
+    ],
+    "correctedBaselineCommit": "5c68c5a62ed8d05482e1a36d9a72c8851230b7c9",
+    "correctedTree": "ccc078fa6c1c61ad5211097ad50490792a86bc6a",
+    "correctedCandidateCount": 101,
+    "correctedManifestDigest": "34ab75e6f912cbfec9910ec7899d8d1ef850314651577e63c727a1bb69a81813",
+    "result": "PASS: permanent integrated manifest generated from exact selected Git blobs; all 101 candidate SHA-256 values and aggregate digest independently recomputed and matched.",
+    "historicalManifestPath": "docs/testing/pdv-unico-integrated-qa-manifest-5b7062f-history.json",
+    "priorCorrectionCommit": "97281d3e08e6ffdfc137a61525922fadeb03426a",
+    "priorCorrectionDigest": "afa14385f77195777067b09e7c25a65d72b1e9929a3a7675f30314ca7bea29f1",
+    "allCandidatesMatchedExactGitBlobs": true
+  },
+  "limits": {
+    "representativeRehearsal": "NOT_RUN; no representative photo supplied.",
+    "allApiProtection": "Not claimed. Only enumerated endpoints/actions and listed permission cases are proven.",
+    "realBackfillCutoverDeploy": "NOT_RUN",
+    "prodAccessUsed": "NO",
+    "sharedDevAccess": "NO",
+    "builds": "NOT_RUN"
+  }
+}

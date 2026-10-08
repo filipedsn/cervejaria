@@ -81,3 +81,26 @@ Playwright operacional PASS 6/6 com APIs interceptadas: agenda.manage salva agen
 Preservacao de autoridade: o acesso de manutencao do cardapio/preco do turno foi separado como `catalog.shift.manage`, concedido por migration aditiva aos atendentes existentes porque a acao operacional ja era acessivel. A alteracao `TEMPLATE` exige `catalog.manage`; a migration nao concede catalogo global. Agenda ganha rota/painel proprio; equipe e configuracoes gerais ficam owner-only. Solicitar e confirmar cancelamento requerem `kitchen.cancel` + `sale.refund` tanto na API quanto na UI.
 
 A prova vale somente para rotas, perfis e acoes descritos nesta matriz e no manifesto. Rotas alternativas nao enumeradas ficam `NAO COMPROVADA`; nao inferir protecao global por haver alguns casos cross-tenant. Ensaio representativo `NOT_RUN`. Sem PROD/metadados, DEV compartilhado, backfill real, cutover ou deploy; TAP-76 permanece In Progress.
+
+
+## Correcao de cadastro canonico de opcionais e prova visual do preco (2026-10-07)
+
+Codigo certificado: `5c68c5a62ed8d05482e1a36d9a72c8851230b7c9`; manifesto integrado aponta para essa revisao e tree `ccc078fa6c1c61ad5211097ad50490792a86bc6a`. Evidencia detalhada: [pdv-individual-permissions-canonical-optionals-qa-evidence.json](../testing/pdv-individual-permissions-canonical-optionals-qa-evidence.json). Historico 5b preservado nos dois arquivos `*-5b7062f-history.json`.
+
+| Acao | Reproducao e regra corrigida | Prova e resultado |
+|---|---|---|
+| Criar opcional generico canonico | `POST /api/produtos/opcionais` antes gravava empresa sem PDV. Com a ativacao ligada, resolve o contexto canonico validado do tenant e persiste o PDV; payload nao e autoridade. Com flag desligada segue global/null. | API autenticada: criou, consultou e vinculou ao produto canonico; payload com PDV estrangeiro foi ignorado. Flag off retornou null sem consulta aditiva. PASS. |
+| Criar opcional operacional canonico | `POST /api/operacao/produtos/opcionais` tambem omitia PDV. Agora usa `request.operacao.effectiveSettings.pointId`; produto operacional ja deriva PDV da configuracao validada. | API autenticada salvou opcional e vinculo com IDs da empresa/PDV esperados. Cadastro legado segue null. PASS. |
+| Vincular novo e migrado | Validacao compara empresa e PDV e valida todos os IDs antes de apagar relacoes antigas; nenhuma correcao automatica de historico. | APIs generica e operacional: produto novo e produto previamente migrado aceitam opcionais novos. Estrangeiro, outro PDV e lista mista sao recusados; fotografias dos vinculos permanecem iguais. PASS. |
+| Vender e editar depois | Alterar opcional nao deve reescrever venda historica. | Venda autenticada persistiu ID catalogo, nome, adicional 1,25, quantidade 2 e preco do item 12,50; edicao posterior comparada por igualdade profunda e snapshot inalterado. PASS. |
+| Escopo de preco na UI | TURNO nao deve conceder TEMPLATE; catalogo global fica em `catalog.manage`. | Playwright dedicado PASS 3/3: `catalog.shift.manage` posta TURNO e esconde TEMPLATE; somente `catalog.manage`: TEMPLATE aparece, TURNO fica oculto e payload reflete escopo; perfil de consulta nao edita. APIs mockadas, outras chamadas abortadas. |
+
+Certificacao integral do snapshot Git executou suite individual de permissoes e passou. Manifesto: 101 candidatos exatos e digest `34ab75e6f912cbfec9910ec7899d8d1ef850314651577e63c727a1bb69a81813`. A suite comprova somente APIs/acoes enumeradas; caminhos nao exercitados continuam NAO COMPROVADOS. Representativo NOT_RUN; builds, backfill real, cutover e deploy NAO EXECUTADOS. Sem PROD/metadados ou DEV compartilhado.
+
+
+### Certificacao final da UI de preco
+
+Em `97281d3e`, `catalog.manage` sozinho libera apenas TEMPLATE. `catalog.shift.manage` sozinho libera apenas TURNO e manutencao da composicao do turno. A API inclui permissoes efetivas na resposta do cardapio, preservando o modo legado com flag desligada e alinhando os controles aos guards da API quando ligada. Playwright simulado PASS 3/3; suite autenticada de API/PostgreSQL e certificacao Git final PASS. O manifesto integral corresponde aos 101 blobs da revisao e ao digest `34ab75e6f912cbfec9910ec7899d8d1ef850314651577e63c727a1bb69a81813`.
+
+
+API/PostgreSQL adicional: `catalog.manage` isolada projeta somente TEMPLATE e grava `CardapioProduto.precoUnit` via PATCH autenticado; `catalog.shift.manage` isolada segue com TURNO. PASS na su?te focada e no snapshot certificado `5c68c5a`.

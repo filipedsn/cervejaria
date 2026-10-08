@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "5b7062f308edcb25f029850e451c7f452a142aed",
+    "commit": "5c68c5a62ed8d05482e1a36d9a72c8851230b7c9",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "142502b10ac4dea4bbc16585aec04508bc0ac91bbc8130ad8f5f3f36005f4694"
   },
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "b06e09b2d0972b988863507dbe55dc42bbb1f8a6",
+      "commit": "5c68c5a62ed8d05482e1a36d9a72c8851230b7c9",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -63,7 +63,7 @@
     }
   },
   "delivery": {
-    "schemaCommit": "5b7062f308edcb25f029850e451c7f452a142aed",
+    "schemaCommit": "5c68c5a62ed8d05482e1a36d9a72c8851230b7c9",
     "schemaSha256": "142502b10ac4dea4bbc16585aec04508bc0ac91bbc8130ad8f5f3f36005f4694",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
@@ -94,20 +94,6 @@
     "path": "backend/prisma/schema.prisma",
     "sha256": "19ff5e65829bc6356fa8d06edbff9fd1527b1d1dd0bd5e35c58cda880479ae59",
     "compatibility": "Matches DEV migration ledger through 20260930150000_company_pix_key; excludes additive PDV migrations not applied in DEV."
-  },
-  "currentCertification": {
-    "commit": "5b7062f308edcb25f029850e451c7f452a142aed",
-    "tree": "d81b42616b374b25612b87b8c00fffd4415ec04d",
-    "suite": "qa:pdv-current-git-snapshot",
-    "syntheticRegression": "PASS",
-    "individualPermissionsPostgreSQL": "PASS",
-    "playwrightOperationalUi": "PASS 6/6; all APIs intercepted; temporary output directory",
-    "candidateManifestSha256": "9f9b6890677410efaf24a73da1a1ea159aadff284047a28bcd8584e7d60042fe",
-    "representativeRehearsal": "NOT_RUN",
-    "prodAccess": "NO",
-    "sharedDevAccess": "NO",
-    "realBackfillCutoverDeploy": "NOT_RUN",
-    "evidence": "See current results in pdv-individual-permissions-qa-manifest.json; immutable prior manifests below retain historical hashes."
   },
   "codeCandidates": [
     {
@@ -143,6 +129,10 @@
       "sha256": "879df1bdc973f85abfc9a76696a0f9c4e14198572cf294c63fb4c170cd3f64aa"
     },
     {
+      "path": "backend/scripts/pdv-individual-permissions.isolated.test.mjs",
+      "sha256": "c947c5b0389aaa3ca6aee11a0ce544b32d4bc0b8e8e0fee3ecc4b909a782ae05"
+    },
+    {
       "path": "backend/scripts/pdv-unico-business-migrator.ts",
       "sha256": "1e2374fea86836405b38abf53477b1d58b34e606f0be7de8d055b28143198560"
     },
@@ -164,7 +154,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
-      "sha256": "de4065cf046ede7e41ee2df715549137165779c1707b316c8b718e594a38771a"
+      "sha256": "dbcb8c06aa440ee748f023de5e005a429d98bbc337d405feba6b87fbdfb1fe25"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.test.mjs",
@@ -328,7 +318,7 @@
     },
     {
       "path": "backend/src/lib/operacao/comanda-itens.ts",
-      "sha256": "30a76f9defc8264c062992ab81f809167db84e9da6f85cd41f7db6f9f1aea3aa"
+      "sha256": "3697f14e90bccead2be0709ff3763992e289870604f2df9c06dfbb453968e110"
     },
     {
       "path": "backend/src/lib/operacao/contexto-ocorrencia.test.ts",
@@ -408,19 +398,19 @@
     },
     {
       "path": "backend/src/routes/operacao/agenda-operacional.ts",
-      "sha256": "7d1df8e17d8dc4016ace9ba3123d904cfce6028f719d6784c6b7c8f0aee71ec2"
+      "sha256": "ab342ffa54cb5c7aff4e284fabfc7ebed801320c6edc0498894ccdab75d914a1"
     },
     {
       "path": "backend/src/routes/operacao/caixa.ts",
-      "sha256": "2fa802667f6d3c831ff689bbaecf0f4d9098d7c53177c5d44b98a8fd7c30ac5b"
+      "sha256": "84a4e3df8c5635c0cd7af386c991bc48f09d170e732c6d5770552881b9217777"
     },
     {
       "path": "backend/src/routes/operacao/comandas.ts",
-      "sha256": "fb24a3af20ea0a0cf4d59b4b21237780f1a033c18f4beb62cfb06d3bf2b0ba81"
+      "sha256": "c1ba36037298089ca1d58f12ea12ac349cd6c30b6461bb06e9ee5e2e1a511e7d"
     },
     {
       "path": "backend/src/routes/operacao/cozinha.ts",
-      "sha256": "32ae25a0d68faef893cfd9aa14f1341cd4e099905938cfc65f77a7bceefd7b5c"
+      "sha256": "d9558f75b707b1f1720f29b98a7cec661bbe4c34363c179bcb7099d3044a7bc2"
     },
     {
       "path": "backend/src/routes/operacao/index.ts",
@@ -428,11 +418,15 @@
     },
     {
       "path": "backend/src/routes/operacao/produtos.ts",
-      "sha256": "3245da55c5fdada60abaab2bf76e3ca257d038963778b004e5f66cd22df07b70"
+      "sha256": "1b79cb9a06cc6f6415b556cd5ac59d4e84e0f011ae775692a4f2215b35a30517"
     },
     {
       "path": "backend/src/routes/operacao/vendas.ts",
-      "sha256": "a5b8622ebe5da4551104d866d8fc83abace4b783458ceea58f093e9676b3c9d0"
+      "sha256": "2a167e8717ace117671a23a4f0e832e1e3e57d4458b04986bb64ef2db277f74f"
+    },
+    {
+      "path": "backend/src/routes/produtos.ts",
+      "sha256": "f175a71d88dfe789c818967111f95588488d755b5325b907081af64c70d47fd9"
     },
     {
       "path": "backend/src/routes/public.ts",
@@ -455,6 +449,10 @@
       "sha256": "42c1079b828f612b8c9f44108b6c24688926059f3b78323bd8c49b4bb839314a"
     },
     {
+      "path": "e2e/current-model/shift-price-permission-ui.spec.ts",
+      "sha256": "e8d2cd65e2a1d1355acd440ef8efe8f8d536955f8fadbb656033bb7753c6bfbe"
+    },
+    {
       "path": "e2e/independent-kitchen-orders.spec.ts",
       "sha256": "a85e9b50132fd2d8cb167e67ee2bc25fbb927ffcebe62de632a560336e9bb96d"
     },
@@ -463,8 +461,12 @@
       "sha256": "8a41a80266e9ae4b00243a276a4529ac3bd2233b33cd443a7fdd0565970db058"
     },
     {
+      "path": "frontend/src/components/operacao/OperacaoTurnoCardapioPanel.tsx",
+      "sha256": "8ef43d11bb91f79ba007e5165682e2b6ecbd4b26cb1101a6d6425bfbe61e2350"
+    },
+    {
       "path": "frontend/src/components/operacao/PainelCaixaOperacao.tsx",
-      "sha256": "12a6d728562f002d8d7ea5363be857d00daf3059fee3e43b0ef025f69be02e1e"
+      "sha256": "997f8e7651ad219c7b7ac33ab76f3f9f4334ef404d71ee4c7127840db0adaa72"
     },
     {
       "path": "frontend/src/components/operacao/PdvTapsSection.tsx",
@@ -499,5 +501,5 @@
       "sha256": "01567913669a6bb52f70fb140341a5bf22334819b9f155e84b29c6099edae8e2"
     }
   ],
-  "manifestSha256": "cba419363e2996cf7bf768ff42f589105a5b36608b1876c03de2e2c504713299"
+  "manifestSha256": "34ab75e6f912cbfec9910ec7899d8d1ef850314651577e63c727a1bb69a81813"
 }
