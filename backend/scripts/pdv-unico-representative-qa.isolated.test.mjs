@@ -230,7 +230,7 @@ try {
   });
 
   // Exact row-level FK order. Nullable cyclic links are restored after all endpoints exist.
-  await measured('photoRestoreAndScalarReconciliation', () => db.$transaction(async (tx) => {
+  if (process.env.PDV_REPRESENTATIVE_SKIP_RESTORE !== '1') await measured('photoRestoreAndScalarReconciliation', () => db.$transaction(async (tx) => {
     const entries = [];
     for (const table of tables) for (const row of table.rows) {
       const identity = `${table.model}:${photoKey(table, row)}`;
@@ -326,6 +326,36 @@ try {
     }
     console.log(`PDV_PHOTO_RESTORE=PASS; tables=${tables.length}; rows=${entries.length}; deferredRelations=${entries.reduce((sum, entry) => sum + entry.deferred.length, 0)}`);
   }, { timeout: 300000, maxWait: 30000 }));
+  else {
+    const restoredIds = await db.cervejaria.findMany({ where: { id: { in: targets.map((target) => target.id) } }, select: { id: true } });
+    assert.deepEqual(restoredIds.map((row) => row.id).sort(), targets.map((target) => target.id).sort(), 'the ordered migration executor has already restored and verified the approved source photo');
+    console.log('PDV_PHOTO_RESTORE=VERIFIED_BY_SOURCE_SCHEMA_SEQUENCE');
+  }
+
+  const baselineUsers = tableByName.get('Usuario').rows;
+  const expectedAttendantPermissions = [
+    'cash.open', 'cash.close', 'cash.values.read', 'cash.movement.write', 'payment.receive', 'debt.receive',
+    'command.close', 'command.item.cancel', 'event.dashboard.read', 'command.operate', 'command.read',
+    'kitchen.read', 'kitchen.operate', 'inventory.read', 'inventory.adjust', 'clients.manage', 'taps.operate',
+    'event.menu.manage', 'catalog.shift.manage',
+  ];
+  const ownerOnlyPermissions = ['command.cancel', 'kitchen.cancel', 'sale.refund', 'catalog.manage', 'agenda.manage'];
+  const permissionComparisons = [];
+  for (const target of targets) {
+    const baseline = baselineUsers.filter((row) => row.cervejariaId === target.id);
+    const actual = await db.usuario.findMany({ where: { cervejariaId: target.id }, select: { id: true, papel: true, podeDarDescontoOperacao: true, permissoesOperacao: true } });
+    assert.deepEqual(actual.map((row) => row.id).sort(), baseline.map((row) => row.id).sort(), `${target.label}: existing users preserved`);
+    for (const user of actual) {
+      const prior = baseline.find((row) => row.id === user.id);
+      const expected = prior.papel === 'ATENDENTE'
+        ? [...expectedAttendantPermissions, ...(prior.podeDarDescontoOperacao ? ['discount.apply'] : [])].sort()
+        : [];
+      assert.deepEqual([...user.permissoesOperacao].sort(), expected, `${target.label}: exact effective grants after migration for ${user.id}`);
+      if (prior.papel === 'DONO') assert.deepEqual(user.permissoesOperacao, [], `${target.label}: owner has no newly exclusive explicit grant`);
+      if (prior.papel === 'ATENDENTE') assert.equal(user.permissoesOperacao.some((permission) => ownerOnlyPermissions.includes(permission)), false, `${target.label}: migration grants no owner-only powers to attendant ${user.id}`);
+    }
+    permissionComparisons.push({ tenant: target.label, status: 'PASS', existingUsers: actual.length, attendants: actual.filter((user) => user.papel === 'ATENDENTE').length, ownersWithExplicitGrants: actual.filter((user) => user.papel === 'DONO' && user.permissoesOperacao.length).length });
+  }
 
   for (const target of targets) {
     const source = tableByName.get('Cervejaria').rows.find((row) => row.id === target.id);
@@ -394,8 +424,42 @@ try {
     const missingPhases = requiredPhases.filter((phase) => !completed.has(phase));
     return { tenant: target.label, status: missingPhases.length === 0 ? 'COMPLETED' : 'BLOCKED', missingPhases };
   });
+  const immutableComparisons = [];
+  for (const modelName of ['TransacaoLog', 'ClienteEstatisticas']) {
+    const sourceTable = tableByName.get(modelName);
+    assert.ok(sourceTable, `approved photo must include ${modelName}`);
+    const actualRows = await db[modelName[0].toLowerCase() + modelName.slice(1)].findMany();
+    assert.equal(actualRows.length, sourceTable.rows.length, `${modelName}: row count unchanged after migration and replay`);
+    const actualByKey = new Map(actualRows.map((row) => [photoKey(sourceTable, row), row]));
+    for (const source of sourceTable.rows) {
+      const key = photoKey(sourceTable, revive(source));
+      const actual = actualByKey.get(key);
+      assert.ok(actual, `${modelName}: historical primary key preserved`);
+      for (const field of sourceTable.scalarFields) assert.deepEqual(canonical(actual[field]), canonical(revive(source[field])), `${modelName}.${field} preserved rowwise for ${key}`);
+    }
+    immutableComparisons.push({ model: modelName, status: 'PASS', rows: actualRows.length, primaryKeyFields: sourceTable.primaryKey, contentFields: sourceTable.scalarFields });
+  }
+  const activationReadiness = [];
+  for (const target of targets) {
+    const points = await db.pontoVenda.findMany({ where: { cervejariaId: target.id }, select: { id: true } });
+    assert.equal(points.length, 1, `${target.label}: exactly one canonical PDV after migration`);
+    const configurations = await db.configuracaoPontoVenda.findMany({ where: { cervejariaId: target.id } });
+    assert.equal(configurations.length, 1, `${target.label}: exactly one canonical PDV configuration`);
+    const configuration = configurations[0];
+    assert.equal(configuration.pontoVendaId, points[0].id);
+    for (const field of ['tapsEnabled', 'inventoryEnabled', 'kitchenEnabled', 'kitchenItemsChargeAtLaunch', 'allowCloseComandaWithPendingKitchenOrders']) assert.equal(typeof configuration[field], 'boolean', `${target.label}: explicit ${field}`);
+    const products = await db.produto.findMany({ where: { cervejariaId: target.id }, select: { id: true, categoria: true, categoriaPdvId: true, categoriaPdv: { select: { id: true, cervejariaId: true, gamificada: true } } } });
+    const unlinkedCategories = products.filter((product) => product.categoria?.trim() && !product.categoriaPdvId);
+    assert.equal(unlinkedCategories.length, 0, `${target.label}: canonical category transform linked all non-empty historical category labels`);
+    for (const product of products.filter((row) => row.categoriaPdvId)) {
+      assert.equal(product.categoriaPdv?.id, product.categoriaPdvId);
+      assert.equal(product.categoriaPdv.cervejariaId, target.id);
+      assert.equal(product.categoriaPdv.gamificada, false, `${target.label}: historical categories remain non-gamified`);
+    }
+    activationReadiness.push({ tenant: target.label, pdvId: points[0].id, flags: { tapsEnabled: configuration.tapsEnabled, inventoryEnabled: configuration.inventoryEnabled, kitchenEnabled: configuration.kitchenEnabled, kitchenItemsChargeAtLaunch: configuration.kitchenItemsChargeAtLaunch, allowCloseComandaWithPendingKitchenOrders: configuration.allowCloseComandaWithPendingKitchenOrders }, status: 'PASS', products: products.length, unlinkedCategories: unlinkedCategories.length });
+  }
   const aggregateStatus = tenantResults.every((row) => row.status === 'COMPLETED') ? 'COMPLETED' : 'BLOCKED';
-  console.log(JSON.stringify({ aggregateStatus, qaDatabase: dbName, sourcePhoto: { tables: tables.length, rows: tables.reduce((sum, table) => sum + table.rows.length, 0), crossTenantEdges: photo.crossTenantEdges.length, measurements: photo.measurements ?? null }, anonymizedFields: photo.anonymization, metrics: [...metricRows.values()], tenantResults, reports }, null, 2));
+  console.log(JSON.stringify({ aggregateStatus, qaDatabase: dbName, sourcePhoto: { tables: tables.length, rows: tables.reduce((sum, table) => sum + table.rows.length, 0), crossTenantEdges: photo.crossTenantEdges.length, measurements: photo.measurements ?? null }, anonymizedFields: photo.anonymization, metrics: [...metricRows.values()], permissionComparisons, immutableComparisons, activationReadiness, tenantResults, reports }, null, 2));
   if (aggregateStatus !== 'COMPLETED') process.exitCode = 1;
 } catch (error) {
   const safe = { status: 'BLOCKED', phase: 'photo-import', code: error.code ?? error.name, model: error.model ?? error.meta?.modelName ?? null, field: error.meta?.target ?? null, message: error.code === 'PHOTO_IMPORT_DB_CONSTRAINT' || String(error.message).startsWith('PHOTO_IMPORT_') ? error.message : `${error.code ?? error.name}: database rejected the sanitized snapshot import.` };

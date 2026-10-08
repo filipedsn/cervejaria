@@ -17,10 +17,10 @@ Fotografia de origem aprovada: SHA-256 `2071d444df091fe85438278ca1e6d2329d4e2106
 | Estoque e ledger | Produto/PDV/unidade, saldo, movimentos e hash | PASS no escopo de migração/replay | Teste de operação de estoque autenticado na fotografia pendente |
 | TAPs e montagens | ID, produto, número, data/estado, referências e conteúdo | PASS; 9 TAPs e 123 montagens; CIA 5/123, Churrasquinho 4/0 | Operação autenticada de montagem pendente |
 | Clientes | ID e relações de histórico | PASS na transformação/replay comercial | API/portal autenticados sobre dados migrados pendentes |
-| Auditoria (`TransacaoLog`) | IDs, relações e conteúdo preservados; confirmar dependências | Restore igual por valor escalar antes das transformações; nenhum migrador tem escritor desse modelo | Comparação rowwise pós-transformação não executada; acrescentar assert exata antes do corte |
-| Estatísticas (`ClienteEstatisticas`) | IDs, chaves de cliente e contadores | Restore igual por valor escalar antes das transformações; nenhum migrador tem escritor desse modelo | Comparação rowwise pós-transformação não executada; acrescentar assert exata antes do corte |
-| Permissões anteriores e novas concessões | Usuários/tenant, grants antes/depois, tentativas e revogação | Suíte sintética de permissões passou | Não houve comparação dos grants da fotografia nem revogação pós-migração; validar em ambos os tenants |
-| Ranking histórico de Chope | Leitura por tenant, período e produto; comparar ordenação/valores ao legado | Não lido na fotografia restaurada | Fazer somente leitura dos rankings legados nos dois tenants; não definir métrica/reconhecimento retroativo |
+| Auditoria (`TransacaoLog`) | IDs, relações e conteúdo preservados; confirmar dependências | PASS rowwise após transformações/replays, por ID e conteúdo escalar | — |
+| Estatísticas (`ClienteEstatisticas`) | IDs, chaves de cliente e contadores | PASS rowwise após transformações/replays, por ID e conteúdo escalar | — |
+| Permissões anteriores e novas concessões | Usuários/tenant, grants antes/depois, tentativas e revogação | PASS: todos os usuários preexistentes comparados; dono sem grants explícitos novos; sem grants exclusivos do dono para atendentes | Fluxo autenticado de concessão/revogação no tenant migrado continua pendente |
+| Ranking histórico de Chope | Leitura por tenant, período e produto; comparar ordenação/valores ao legado | PASS; snapshot antes/depois das migrations, categorias e replays idêntico | Não definir métrica nem reconhecimento retroativo |
 
 ## Resumo por tenant
 
@@ -30,3 +30,31 @@ Fotografia de origem aprovada: SHA-256 `2071d444df091fe85438278ca1e6d2329d4e2106
 | Churrasquinho do Thiago | mesmas fases; preserva PDV existente | 3.004 em 121 lotes; 431 preparações de cozinha | 4 / 0 | PASS nas transformações |
 
 O resultado completo com tempos, status de retomada/replay e hash do snapshot está em [`pdv-unico-integrated-representative-evidence.json`](pdv-unico-integrated-representative-evidence.json). `PROD_ACCESS_USED=NO`; `DEV_SHARED_ACCESS=NO`. A aprovação das transformações não é aprovação do corte ou de PROD.
+
+## Addendum: closing reconciliation gates (2026-10-08)
+
+The sequenced disposable QA order is: restore the approved photo with its source schema (`66ec008`, baseline `20260930150000_company_pix_key`); prove a QA backup/restore; snapshot legacy Chope rankings; deploy minimum migrations through `20261004150000`; run business/catalog/kitchen preparation with the pre-commerce client (`128f69f`); deploy dependent migrations with the original `20261004170000` preflight; run the existing canonical category SQL; compare rankings; run tenant transformations, final replays, and integrated reconciliation.
+
+| Gate | Result | Executor |
+|---|---|---|
+| Source restore + QA recovery | PASS, 34 tables / 10,738 rows | `run-pdv-unico-sequenced-qa.mjs` |
+| `TransacaoLog` and `ClienteEstatisticas` rowwise by key and content after transformations/replays | PASS | `pdv-unico-representative-qa.isolated.test.mjs` |
+| Existing-user grants compared before/after migrations; no explicit new owner grants or owner-only grants to attendants | PASS | Same representative QA run |
+| Canonical categories; original product labels/IDs, same-tenant links, `gamificada=false` | PASS | Existing canonical category SQL + representative assertions |
+| Historical Chope ranking snapshot before/after migrations, category transform, and replays | PASS, identical | `pdv-unico-ranking-snapshot.qa.mjs`; no new scoring rule |
+| Historical 605 payments | PASS only for exact original IDs; class C remains pinned to the approved 577 IDs | Representative reconciliation |
+
+Authenticated operational flows **on the two migrated photo tenants** remain pending. The existing authenticated suite uses synthetic tenants and does not meet this gate. A global preflight on all shared DEV tenants and an apply-capable guarded DEV entrypoint exercised against disposable QA also remain pending. No cutover is authorized by these results.
+
+## Final sequenced execution record
+
+Temporary report: `%TEMP%\pdv-sequenced-final-81422d1b515d4247a0fbc7e68ea12644.json` (started 2026-10-08 15:12:24 UTC; total 2,296,748 ms / 38 min 16.748 s). All ten runner phases passed. Direct phase timings: source migrations 2.118 s; source restore/compare 3.963 s; QA backup/recovery 2.312 s; pre-transform ranking 0.410 s; minimum migrations 1.714 s; pre-commerce transforms and kitchen prep 275.193 s; dependent migrations/preflight 1.706 s; categories 0.162 s; ranking comparison 0.378 s. Tenant migrations/replays/integrated reconciliation occupied approximately 2,008.8 s by residual from total; the earlier runner version did not time this child execution separately. The runner now records that phase explicitly for future certifications.
+
+| Tenant | Result | Replayed phases | Representative records |
+|---|---|---|---|
+| CIA Marítima | PASS, no missing phases | business, catalog, TAP, sessions, finance, kitchen preparation, commerce, finance revalidation, kitchen revalidation | 1,549 commercial records / 62 batches; 5 TAPs / 123 montages; 0 source PDVs + 1 Trailer -> one canonical PDV |
+| Churrasquinho do Thiago | PASS, no missing phases | same phases | 3,004 commercial records / 121 batches; 431 kitchen preparations; 4 TAPs / 0 montages; existing PDV retained |
+
+The original 605 payments remained reconciled by exact ID/value set; the existing 577 class-C authorization was not changed. Recovery dump SHA-256: `66ab0cabb83afd73d6ef9c56a7fbb87743cab75d00af1697948a430d49a050b6`; restored 34 tables / 10,738 rows in the QA-only recovery database. The dependent DDL validated `MovimentoEstoqueQuiosque_pedidoId_tenant_point_fkey` with the original preflight enabled.
+
+This was a working-tree QA run based on repository HEAD `ad2d979` plus existing local changes and this delivery's uncommitted changes. It is not an immutable release-SHA certification. Authenticated operation against these migrated tenants, all-tenant DEV preflight, and apply-capable entrypoint QA remain open. Shared DEV/PROD were not accessed.

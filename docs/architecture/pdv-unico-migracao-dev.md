@@ -656,3 +656,42 @@ Este runbook prepara uma mudança futura; nenhum passo de corte foi executado ne
 7. **Rollback.** Parar a ativação tenant-scoped, restaurar o dump de DEV no destino validado conforme o drill e reconciliar antes de religar o serviço. Não apagar linhas de migration, mapas ou dados para simular rollback. A reversão das transformações exige o rollback guardado de cada escopo e só deve ocorrer se os hashes e recibos ainda conferirem; divergência bloqueia a reversão.
 
 **Estado desta rodada:** somente QA descartável foi escrito. PROD, metadados de PROD, DEV compartilhado, backup/restauração de DEV, backfill real, ativação, cutover e deploy não foram acessados/executados. TAP-76 continua In Progress. Evidência: [`pdv-unico-integrated-representative-evidence.json`](../testing/pdv-unico-integrated-representative-evidence.json).
+
+## Runbook addendum: sequenced QA and current cut status (2026-10-08)
+
+### Disposable QA certification command
+
+From the repository root, use the approved photo file and a fresh report path under `%TEMP%`:
+
+```powershell
+$env:PDV_REPRESENTATIVE_PHOTO_FILE = '<approved-photo.json>'
+$env:PDV_SEQUENCE_REPORT_FILE = (Join-Path $env:TEMP ('pdv-sequenced-' + [guid]::NewGuid().ToString('N') + '.json'))
+npm.cmd --prefix backend run qa:pdv-sequenced-disposable
+```
+
+The runner accepts only SHA-256 `2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b`, creates its own labeled PostgreSQL 17 QA container on loopback with tmpfs storage, restores with the pinned source Prisma schema, proves recovery into a second QA database, applies the ordered migrations and transformations, then removes only its own container and temporary directory. Do not set `PDV_SEQUENCE_REPORT_FILE` outside `%TEMP%`. The accepted old 577-ID class-C list is loaded read-only; the runner does not expand it.
+
+The tested phase order is: source migrations to captured baseline; source-photo restore and scalar comparison; QA backup/restore proof; legacy Chope ranking snapshot; minimal migrations through `20261004150000`; business and catalog transformations; kitchen-context preparation; dependent migrations with original preflight; canonical category transformation; ranking comparison; tenant migration/replay and final reconciliation. Stop on any failed phase; resume by rerunning from a fresh disposable database, never by editing migration SQL or removing constraints/triggers.
+
+### Plan and guards
+
+```powershell
+npm.cmd --prefix backend run test:pdv-dev-cutover-guards
+npm.cmd --prefix backend run plan:pdv-dev-cutover
+```
+
+The guard suite is pure and uses no DB. The plan reads the local `.env.development` URL, requires exactly `development` + local `:5434/cervejaria_dev`, rejects PROD variables and QA impersonation, and makes no connection. Only CIA (`cmr9yis3c0000hvu00q9fe7y1`) and Churrasquinho (`cmsry9xrn0000hvlgopjxy0oo`) are listed. **Apply is blocked in this revision.** There is no command to apply migrations/backfills/activation to DEV until the migrated-tenant authenticated flows, all-tenant global-DDL preflight, and apply orchestration are implemented and exercised in disposable QA.
+
+### Future DEV window prerequisites and recovery
+
+Before a later window, pin the release SHA; read the current migration ledger and all-tenant inventory read-only; verify no unresolved duplicate/missing PDV/Trailer or kitchen-context blockers; take a DEV-only backup using `scripts/backup/backup-db.ps1 -Environment development -DestinationDir <secure-dir>`; record its hash; restore it to a QA-only recovery target and compare ledger, tables, and row counts. This round proved recovery of the approved representative photo in disposable QA only; it did not run either backup script against shared DEV.
+
+For a future approved application, use the enumerated sequence above and require global preflight before the first global DDL. Activate only each selected tenant after its own PDV flags, permissions, canonical categories, and reconciliation pass. Do not select, merge, or delete any tenant's PDV/Trailer automatically. Tenants outside the allowlist must retain the previous operating contract. Run the authenticated user smoke in both clients and tag every new QA/smoke record by run ID; reconcile original 605 payment IDs independently from any new payments. Historical class-C authorization covers the exact 577 original IDs only.
+
+Rollback means stop activation, restore the verified DEV backup to the validated recovery destination, then reconcile before service resumes. Do not delete migration-ledger rows, mappings, or data as a rollback shortcut. Transformation rollback is allowed only through the matching guarded receipts with unchanged hashes.
+
+### Customer validation script
+
+For CIA Marítima and Churrasquinho separately, sign in with a QA-created credential and verify: open a session with no occurrence and with an eligible occurrence; inspect menu prices and volumes; launch a comanda, add an item, pay and close; create/advance an independent kitchen order; cancel/refund and confirm stock ledger/balance; enter the portal; verify TAP/montage only if enabled; grant then revoke a permission while keeping the same session cookie and confirm the next protected action is denied. Record tenant, run ID, created record IDs, payment IDs, and before/after stock. This script has not yet been run on the migrated photo tenants, so the cut remains not ready.
+
+**Current status:** no shared DEV or PROD connection/write, no metadata access, no real cutover, and no legacy removal. Authenticated migrated-tenant flows, all-tenant global preflight, and apply-core QA are blockers. TAP-76 stays In Progress.
