@@ -1,0 +1,12 @@
+﻿{
+  "result": "BLOCKED",
+  "selectedCommit": "e48842f3675e9728429c193592cbda76bb8fccc5",
+  "runner": "qa:pdv-current-git-snapshot",
+  "failingGate": "qa:pdv-commerce-disposable",
+  "diagnosis": "The generated pre-column Prisma schema still contained the new categoriaPdvId field and category models, so the assertion correctly rejected it as not representing the prior schema.",
+  "error": "generated Prisma Client predates the category ID column assertion failed",
+  "correction": "The pre-column schema generation now removes the category scalar/relation, tenant/category models, and both provenance models; assertions confirm those models and fields are absent before the real legacy API checks.",
+  "prodAccessUsed": "NO",
+  "sharedDevAccess": "NO",
+  "supersededBy": "cc9b769d8e16d07986e00dcf8a14d0d75328e65c"
+}
