@@ -1,0 +1,12 @@
+﻿{
+  "result": "BLOCKED",
+  "selectedCommit": "302655e119e6783882603bb6c08878c7c748e7ef",
+  "runner": "qa:pdv-current-git-snapshot",
+  "failingGate": "qa:pdv-individual-permissions",
+  "diagnosis": "The integrated permission test created its operational session for 2026-10-07, while the QA environment's current operational day was 2026-10-08. GET /api/operacao/caixa correctly returned no current session, and the fixture then dereferenced null.",
+  "error": "Cannot read properties of null (reading 'id') at restrictedCashBody.sessao.id",
+  "correction": "The permission fixture now obtains the current date from diaOperacional() and uses it for the occurrence, session, and expected API response.",
+  "prodAccessUsed": "NO",
+  "sharedDevAccess": "NO",
+  "supersededBy": "5b689cd37496ab7eee805a83b558884c5a425956"
+}
