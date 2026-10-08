@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "reviewedCommit": "b0c5b3f5cc4f5b50ecebce1bea454da93f99e8bb",
+  "result": "BLOCKED",
+  "scope": "Exact Git snapshot; disposable build workspace and explicitly mocked UI APIs.",
+  "gates": [
+    {
+      "name": "backend-build",
+      "result": "PASS"
+    },
+    {
+      "name": "frontend-build",
+      "result": "PASS"
+    },
+    {
+      "name": "category-ui-mocked",
+      "result": "FAIL",
+      "details": "The combined create-then-edit scenario remained race-prone: the edit control click returned, but the dialog was closed before the checkbox became visible."
+    },
+    {
+      "name": "category-sql",
+      "result": "NOT_RUN"
+    },
+    {
+      "name": "category-api-postgresql",
+      "result": "NOT_RUN"
+    }
+  ],
+  "publication": {
+    "commit": "b0c5b3f5cc4f5b50ecebce1bea454da93f99e8bb",
+    "pushed": false,
+    "PROD_DEPLOY_REQUIRED": "No"
+  },
+  "remediation": "Split UI creation and edit into isolated tests; seed the edit test with a preexisting category so async create invalidation cannot close the edit dialog.",
+  "pending": [
+    "Repeat all category gates.",
+    "Three product decisions remain pending."
+  ]
+}

@@ -973,3 +973,8 @@ Builds backend/frontend passaram; a UI simulada ainda falhou ao editar categoria
 ### Execucao bloqueada intermediaria (0f8c23b)
 
 Builds passaram. O screenshot da UI confirmou uma corrida no proprio teste: a linha da categoria aparecia antes de o callback ass?ncrono de criacao terminar de fechar o dialogo; o callback antigo fechava a janela aberta para edicao. O teste agora aguarda o dialogo inicial fechar antes de clicar em Editar. Evidencia: `pdv-gamified-categories-qa-evidence-blocked-0f8c23b.json`. SQL e API/PostgreSQL ainda nao iniciaram.
+
+
+### Execucao bloqueada intermediaria (b0c5b3f)
+
+Builds passaram. A variacao combinada criacao/edicao seguiu sujeita a corrida no modal. A evidencia bloqueada esta em `pdv-gamified-categories-qa-evidence-blocked-b0c5b3f.json`. A UI foi separada em casos isolados: criacao valida `gamificada=false`; edicao inicia com categoria existente e valida flag e selecao de produto. SQL e API/PostgreSQL nao iniciaram.
