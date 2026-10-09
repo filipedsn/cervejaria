@@ -4,13 +4,13 @@ QA focado executado em PostgreSQL descartável com armazenamento tmpfs, app Fast
 
 ## Amostra observada
 
-12 transições alternadas entre `RECEBIDO` e `EM_PREPARO`; cada uma confirmou uma emissão e um recebimento pela sala `cervejaria:<tenant-qa>:cozinha`.
+12 transições alternadas entre `RECEBIDO` e `EM_PREPARO`; cada uma confirmou uma emissão e um recebimento pela sala `cervejaria:<tenant-qa>:cozinha`. Em repetição no candidato de gate de 09/10/2026, os valores foram 38,99 ms / 112,3 ms, 1,75 ms / 18,12 ms e -0,63 ms para p50/p95, p50/p95 e p50 relativos à resposta, respectivamente.
 
 | Trecho | Mediana | p95 | Interpretação |
 | --- | ---: | ---: | --- |
-| Request HTTP até resposta após commit e emissão | 46,9 ms | 107,12 ms | Inclui autorização, transação e resposta da rota; não separa o tempo interno do commit. |
-| Emissão Socket.IO até recebimento pela sessão da cozinha | 2,05 ms | 17,44 ms | Socket.IO local, sem espera pelo polling. |
-| Recebimento pelo cliente relativo à resposta HTTP | -0,87 ms | -0,57 ms | Negativo significa que o evento chegou antes da resposta HTTP. |
+| Request HTTP até resposta após commit e emissão | 38,99 ms | 112,3 ms | Inclui autorização, transação e resposta da rota; não separa o tempo interno do commit. |
+| Emissão Socket.IO até recebimento pela sessão da cozinha | 1,75 ms | 18,12 ms | Socket.IO local, sem espera pelo polling. |
+| Recebimento pelo cliente relativo à resposta HTTP | -0,63 ms | -0,50 ms | Negativo significa que o evento chegou antes da resposta HTTP. |
 
 Resultado: 12/12 eventos entregues, nenhuma espera pelo polling de 20 s e estado persistido correto ao final. O listener real do cliente invalida a query `['operacao-cozinha']` ao receber `operacao:pedido-novo`, `operacao:pedido-atualizado` e ao reconectar. O refetch resultante chama `GET /api/operacao/cozinha?incluirEntregues=true`.
 
