@@ -1,13 +1,23 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { TrailerOperacional } from '../types';
 import { formatTrailerLabel } from '../types';
 import { useEvento } from '../contexts/EventoContext';
 import { Loading } from '../components/Loading';
+import { useOperacaoContexto } from '../hooks/useOperacaoContexto';
 
 export function SelecionarTrailerPage() {
+  const { contexto, isLoading, isResolved } = useOperacaoContexto();
+  if (isLoading) return <Loading fullScreen />;
+  if (!isResolved) return <div className="alert-error" role="alert">Não foi possível validar o contexto do PDV.</div>;
+  if (contexto.operationalSettingsSource === 'CANONICAL_PDV') return <Navigate to="/operacao/comandas" replace />;
+  if (contexto.operationalSettingsSource !== 'LEGACY') return <div className="alert-error" role="alert">Contexto operacional inválido.</div>;
+  return <LegacySelecionarTrailerPage />;
+}
+
+function LegacySelecionarTrailerPage() {
   const navigate = useNavigate();
   const { setTrailer, isLoading: loadingContext } = useEvento();
   const [pendingId, setPendingId] = useState<string | null>(null);

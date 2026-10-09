@@ -52,7 +52,7 @@ export function useOperacaoContexto() {
   const { cervejaria, isAdmin, isAuthenticated } = useAuth();
   const cervejariaId = cervejaria?.id ?? null;
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError } = useQuery({
     queryKey: ['operacao-contexto', cervejariaId],
     queryFn: () => api.get<OperacaoContexto>('/api/operacao/contexto'),
     enabled: isAuthenticated && !isAdmin && Boolean(cervejariaId),
@@ -62,5 +62,5 @@ export function useOperacaoContexto() {
   const aguardando =
     isAuthenticated && !isAdmin && Boolean(cervejariaId) && (isLoading || (isFetching && !data));
 
-  return { contexto: data ?? CONTEXTO_INATIVO, isLoading: aguardando };
+  return { contexto: data ?? CONTEXTO_INATIVO, isLoading: aguardando, isResolved: Boolean(data) && !isError, isError };
 }

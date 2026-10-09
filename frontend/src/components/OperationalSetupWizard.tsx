@@ -130,7 +130,7 @@ export function OperationalSetupWizard() {
             </div>
             <label className="card flex cursor-pointer items-start gap-3">
               <input type="checkbox" className="mt-1 h-5 w-5 accent-brand-400" checked={taps} onChange={(event) => setTaps(event.target.checked)} />
-              <span><span className="block font-semibold">Chope nas torneiras</span><span className="mt-1 block text-xs text-ink-faint">Ativa o uso de chope em taps; trailer e torneiras são cadastrados separadamente.</span></span>
+              <span><span className="block font-semibold">Chope nas torneiras</span><span className="mt-1 block text-xs text-ink-faint">{canonicalPdv ? 'Ativa o uso de chope em TAPs. Cadastre as torneiras na aba PDV das configurações.' : 'Ativa o uso de chope em taps; trailer e torneiras são cadastrados separadamente.'}</span></span>
             </label>
             <label className="card flex cursor-pointer items-start gap-3">
               <input type="checkbox" className="mt-1 h-5 w-5 accent-brand-400" checked={inventory} onChange={(event) => setInventory(event.target.checked)} />
@@ -140,7 +140,7 @@ export function OperationalSetupWizard() {
               <input type="checkbox" className="mt-1 h-5 w-5 accent-brand-400" checked={kitchen} onChange={(event) => setKitchen(event.target.checked)} />
               <span><span className="block font-semibold">Cozinha e preparo</span><span className="mt-1 block text-xs text-ink-faint">Envia à fila da cozinha os itens marcados para preparo.</span></span>
             </label>
-            <p className="text-xs text-ink-faint">Esta escolha ativa recursos no sistema, mas não cria produtos, pontos de venda, trailers ou torneiras.</p>
+            <p className="text-xs text-ink-faint">{canonicalPdv ? 'Esta escolha ativa recursos no PDV existente. Produtos e torneiras são cadastrados separadamente.' : 'Esta escolha ativa recursos no sistema, mas não cria produtos, pontos de venda, trailers ou torneiras.'}</p>
           </section>
         )}
 

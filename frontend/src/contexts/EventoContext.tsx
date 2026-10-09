@@ -11,6 +11,7 @@ import type { Evento, Trailer } from '../types';
 import { api } from '../lib/api';
 import { joinEvento, leaveEvento, getSocket } from '../lib/socket';
 import { useAuth } from './AuthContext';
+import { useOperacaoContexto } from '../hooks/useOperacaoContexto';
 
 const TRAILER_STORAGE_KEY = 'trailerAtivo';
 const EVENTO_STORAGE_KEY = 'eventoAtivo';
@@ -50,6 +51,8 @@ const EventoContext = createContext<EventoContextType | null>(null);
 
 export function EventoProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isDono } = useAuth();
+  const { contexto, isResolved } = useOperacaoContexto();
+  const legacyEnabled = isResolved && contexto.operationalSettingsSource === 'LEGACY';
   const [trailers, setTrailers] = useState<Trailer[]>([]);
   const [eventosAbertos, setEventosAbertos] = useState<Evento[]>([]);
   const [trailerId, setTrailerIdState] = useState<string | null>(() => {
@@ -120,7 +123,7 @@ export function EventoProvider({ children }: { children: ReactNode }) {
   );
 
   const refreshOperacional = useCallback(async () => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !legacyEnabled) return;
     setIsLoading(true);
     try {
       const [trailersData, abertos] = await Promise.all([
@@ -140,7 +143,7 @@ export function EventoProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, applyTrailerSelection]);
+  }, [isAuthenticated, legacyEnabled, applyTrailerSelection]);
 
   useEffect(() => {
     if (isAuthenticated) {

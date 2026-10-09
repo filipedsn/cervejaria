@@ -9,6 +9,8 @@ import { Loading } from '../components/Loading';
 import { TrailerTapsSection } from '../components/TrailerTapsSection';
 import { TrailerPortalQr } from '../components/TrailerPortalQr';
 import { invalidateOnboardingReadiness } from '../lib/onboarding';
+import { Navigate } from 'react-router-dom';
+import { useOperacaoContexto } from '../hooks/useOperacaoContexto';
 
 function sortByActiveThenName(items: Trailer[]) {
   return [...items].sort((a, b) => {
@@ -18,6 +20,15 @@ function sortByActiveThenName(items: Trailer[]) {
 }
 
 export function TrailersPage({ embedded }: { embedded?: boolean } = {}) {
+  const { contexto, isLoading, isResolved } = useOperacaoContexto();
+  if (isLoading) return <Loading />;
+  if (!isResolved) return <div className="alert-error" role="alert">Não foi possível validar o contexto do PDV.</div>;
+  if (contexto.operationalSettingsSource === 'CANONICAL_PDV') return <Navigate to="/operacao/configuracoes/pdv" replace />;
+  if (contexto.operationalSettingsSource !== 'LEGACY') return <div className="alert-error" role="alert">Contexto operacional inválido.</div>;
+  return <LegacyTrailersPage embedded={embedded} />;
+}
+
+function LegacyTrailersPage({ embedded }: { embedded?: boolean }) {
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Trailer | null>(null);

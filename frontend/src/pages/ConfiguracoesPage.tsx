@@ -4,6 +4,8 @@ import { TrailersPage } from './TrailersPage';
 import { AparenciaPage } from './AparenciaPage';
 import { OperacaoPage } from './OperacaoPage';
 import { PageHeader } from '../components/PageHeader';
+import { useOperacaoContexto } from '../hooks/useOperacaoContexto';
+import { Loading } from '../components/Loading';
 
 const BASE_TABS = [
   { id: 'equipe', label: 'Equipe' },
@@ -20,6 +22,14 @@ function isValidTab(tab: string | undefined): tab is TabId {
 
 export function ConfiguracoesPage() {
   const { tab } = useParams<{ tab: string }>();
+  const { contexto, isLoading, isResolved } = useOperacaoContexto();
+  if (isLoading) return <Loading />;
+  if (!isResolved) return <div className="alert-error" role="alert">Não foi possível validar o contexto do PDV.</div>;
+  if (contexto.operationalSettingsSource === 'CANONICAL_PDV') {
+    const canonicalTab = ['trailers', 'carretos', 'clientes', 'pdv'].includes(tab ?? '') ? 'pdv' : tab ?? 'equipe';
+    return <Navigate to={`/operacao/configuracoes/${canonicalTab}`} replace />;
+  }
+  if (contexto.operationalSettingsSource !== 'LEGACY') return <div className="alert-error" role="alert">Contexto operacional inválido.</div>;
   const tabs = BASE_TABS;
 
   if (!tab) return <Navigate to="/configuracoes/equipe" replace />;

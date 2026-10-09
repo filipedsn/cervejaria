@@ -1,8 +1,9 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { getTenantUser } from '../types/auth.js';
 import { trailerSelect } from '../lib/trailer-utils.js';
+import { canonicalPdvQaActivationEnabled } from '../lib/canonical-pdv-operational-config.js';
 
 const createTrailerSchema = z.object({
   nome: z.string().min(1),
@@ -13,6 +14,15 @@ const updateTrailerSchema = createTrailerSchema.partial();
 
 export async function trailersRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+  // Use the same persisted tenant activation selector as the canonical routes.
+  // Do not infer activation from physical records or a client-supplied PDV.
+  const requireLegacyTenant = async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = getTenantUser(app, request);
+    if (canonicalPdvQaActivationEnabled(process.env, user.cervejariaId)) {
+      return reply.status(409).send({ code: 'CANONICAL_PDV_TRAILER_MUTATION_BLOCKED', error: 'A gestão de Trailer não está disponível para o PDV canônico.' });
+    }
+  };
+  const mutationGuards = [app.requireDono, requireLegacyTenant];
 
   app.get('/operacional', async (request) => {
     const user = getTenantUser(app, request);
@@ -59,7 +69,7 @@ export async function trailersRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post('/', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.post('/', { preHandler: mutationGuards }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const body = createTrailerSchema.parse(request.body);
 
@@ -74,7 +84,7 @@ export async function trailersRoutes(app: FastifyInstance) {
     return reply.status(201).send(trailer);
   });
 
-  app.put('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.put('/:id', { preHandler: mutationGuards }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const body = updateTrailerSchema.parse(request.body);
@@ -95,7 +105,7 @@ export async function trailersRoutes(app: FastifyInstance) {
     return trailer;
   });
 
-  app.patch('/:id/ativo', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.patch('/:id/ativo', { preHandler: mutationGuards }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const { ativo } = z.object({ ativo: z.boolean() }).parse(request.body);
@@ -124,7 +134,7 @@ export async function trailersRoutes(app: FastifyInstance) {
     return trailer;
   });
 
-  app.delete('/:id', { preHandler: [app.requireDono] }, async (request, reply) => {
+  app.delete('/:id', { preHandler: mutationGuards }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
 

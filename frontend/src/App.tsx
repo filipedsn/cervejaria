@@ -144,9 +144,10 @@ function RequireTenant() {
 }
 
 function RequireModuloOperacao() {
-  const { contexto, isLoading } = useOperacaoContexto();
+  const { contexto, isLoading, isResolved } = useOperacaoContexto();
   const { pathname } = useLocation();
   if (isLoading) return <Loading fullScreen />;
+  if (!isResolved) return <div className="alert-error" role="alert">Não foi possível validar o contexto do PDV.</div>;
   // O catálogo também atende eventos sem ponto de venda operacional ativo.
   const catalogoEvento = contexto.operationMode === 'EVENTO' && pathname === '/operacao/catalogo';
   if (!contexto.ativo && !catalogoEvento) return <Navigate to="/" replace />;

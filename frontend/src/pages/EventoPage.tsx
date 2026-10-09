@@ -1,3 +1,4 @@
+import { useOperacaoContexto } from '../hooks/useOperacaoContexto';
 import { useState, useEffect } from 'react';
 
 import { useNavigate, Link } from 'react-router-dom';
@@ -486,6 +487,7 @@ function AgendaItemRow({
 
 
 export function EventoPage() {
+  const { contexto, isResolved } = useOperacaoContexto();
 
   const navigate = useNavigate();
 
@@ -531,6 +533,7 @@ export function EventoPage() {
     queryKey: ['trailers'],
 
     queryFn: () => api.get<Trailer[]>('/api/trailers?ativo=true'),
+    enabled: isResolved && contexto.operationalSettingsSource === 'LEGACY',
 
   });
 

@@ -119,10 +119,10 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const { data: trailers = [] } = useQuery({
     queryKey: ['operacao-trailers-tap'],
     queryFn: () => api.get<Trailer[]>('/api/trailers?ativo=true'),
-    enabled: contexto.tapsEnabled,
+    enabled: contexto.operationalSettingsSource === 'LEGACY' && contexto.tapsEnabled,
   });
-  const trailerDoTurno = trailerId || (trailers.length === 1 ? trailers[0]?.id ?? '' : '');
-  const precisaSelecionarTrailer = contexto.tapsEnabled && trailers.length > 1 && !trailerDoTurno;
+  const trailerDoTurno = agendaCanonica ? '' : trailerId || (trailers.length === 1 ? trailers[0]?.id ?? '' : '');
+  const precisaSelecionarTrailer = !agendaCanonica && contexto.tapsEnabled && trailers.length > 1 && !trailerDoTurno;
 
   const { data, isLoading: caixaLoading } = useQuery({
     queryKey: ['operacao-caixa', pontoVendaId],
@@ -270,7 +270,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
 
   if (!pontoVendaId) return null;
 
-  const seletorTrailer = contexto.tapsEnabled && trailers.length > 0 ? (
+  const seletorTrailer = !agendaCanonica && contexto.tapsEnabled && trailers.length > 0 ? (
     <div className="rounded-xl border border-line bg-surface-lighter/60 p-3">
       <label className="label">Trailer dos Taps neste turno</label>
       <select className="input" value={trailerDoTurno} onChange={(event) => setTrailerId(event.target.value)}>
@@ -438,7 +438,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
 
       {sessao?.status === 'ABERTO' && !compacto && !data?.valoresRestritos && (
         <>
-          {sessao.trailerId && <OperacaoTurnoTapsPanel pontoVendaId={pontoVendaId} />}
+          {(agendaCanonica ? contexto.tapsEnabled : sessao.trailerId) && <OperacaoTurnoTapsPanel pontoVendaId={pontoVendaId} />}
           {usaCardapio && (
             <div className="card space-y-3">
               <OperacaoTurnoCardapioPanel pontoVendaId={pontoVendaId} embedded />

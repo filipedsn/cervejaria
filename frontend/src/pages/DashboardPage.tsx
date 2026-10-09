@@ -1,3 +1,4 @@
+import { useOperacaoContexto } from '../hooks/useOperacaoContexto';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -181,6 +182,7 @@ function KpiCard({
 }
 
 export function DashboardPage() {
+  const { contexto, isResolved } = useOperacaoContexto();
   const queryClient = useQueryClient();
   const { cervejaria } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -191,6 +193,7 @@ export function DashboardPage() {
   const { data: trailers = [] } = useQuery({
     queryKey: ['trailers', 'ativo'],
     queryFn: () => api.get<Trailer[]>('/api/trailers?ativo=true'),
+    enabled: isResolved && contexto.operationalSettingsSource === 'LEGACY',
   });
 
   const showTrailerFilter = trailers.length > 1;
