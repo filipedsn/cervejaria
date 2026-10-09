@@ -7,8 +7,13 @@ grupos e começa vazio.
 
 As seleções alteram um rascunho local. Salvar faz um único PATCH no endpoint
 existente; a resposta confirmada atualiza o cache e a lista é reconsultada.
-Cancelar descarta o rascunho. Fechar, clicar fora ou Escape solicita confirmação
-quando houver alterações. Erros aparecem junto às ações, mantendo o rascunho
+No editor de acessos, **Voltar** usa a confirmação de descarte existente quando
+há alterações e retorna imediatamente quando o rascunho está limpo. Recusar
+mantém o rascunho aberto; confirmar descarta. O botão tem estilo `touch-btn-orange`
+e fica ao lado de **Salvar** no rodapé fixo. O X não aparece neste editor; a ação
+acessível de fechar permanece disponível no cadastro de atendente, que compartilha
+o diálogo. Clicar fora ou Escape solicita confirmação quando houver alterações.
+Erros aparecem junto às ações, mantendo o rascunho
 para retry. O envio bloqueia submissões duplicadas e o fechamento do editor.
 Chaves recebidas da API que não aparecem na UI permanecem no payload.
 Dependências são explicadas, sem concessão automática.
@@ -32,6 +37,9 @@ o contrato booleano de desconto, com os mesmos endpoints e payloads legados.
 - Geometria: ações integralmente visíveis, alvos de toque de pelo menos 44px,
   ausência de overflow horizontal, viewport curto e simulação de redução
   exclusiva de `visualViewport` com deslocamento pelo teclado.
+- O teste do editor verifica X ausente, botão Voltar laranja, retorno sem request
+  com rascunho limpo, confirmação recusada mantendo o rascunho, confirmação aceita
+  descartando e bloqueio do Voltar durante salvamento.
 - Capturas de lista/editor em ambos os tamanhos são anexadas aos resultados.
   O config cria relatórios e resultados em diretórios exclusivos
   `%TEMP%/tap-access-ui-*`, sem substituir relatórios locais preexistentes.

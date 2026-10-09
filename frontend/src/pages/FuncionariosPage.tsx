@@ -205,11 +205,11 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
         ))}
       </div>
 
-      {editor && <AcessosDialog title="Gerenciar acessos" onClose={closeEditor} footer={
+      {editor && <AcessosDialog title="Gerenciar acessos" onClose={closeEditor} hideCloseButton footer={
         <>
         {editorError && <div role="alert" className="alert-error mb-3">{editorError}</div>}
         <div className="grid grid-cols-2 gap-3">
-          <button type="button" className="touch-btn-secondary min-h-12" disabled={permissoesMutation.isPending} onClick={discardEditor}>Cancelar</button>
+          <button type="button" className="touch-btn-orange min-h-12" disabled={permissoesMutation.isPending} onClick={closeEditor}>Voltar</button>
           <button type="button" className="touch-btn-primary min-h-12" disabled={permissoesMutation.isPending} onClick={savePermissions}>{permissoesMutation.isPending ? 'Salvando...' : 'Salvar'}</button>
         </div>
         </>}>

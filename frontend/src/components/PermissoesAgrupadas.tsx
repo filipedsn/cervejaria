@@ -69,8 +69,8 @@ export function PermissoesAgrupadas({ permissions, onChange, disabled = false }:
 }
 
 // Kept local to access management: native focus containment and keyboard viewport.
-export function AcessosDialog({ title, onClose, children, footer }: {
-  title: string; onClose: () => void; children: ReactNode; footer: ReactNode;
+export function AcessosDialog({ title, onClose, children, footer, hideCloseButton = false }: {
+  title: string; onClose: () => void; children: ReactNode; footer: ReactNode; hideCloseButton?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -105,7 +105,7 @@ export function AcessosDialog({ title, onClose, children, footer }: {
     <div className="flex h-full min-w-0 flex-col">
       <header className="flex shrink-0 items-center justify-between gap-2 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(0.5rem,env(safe-area-inset-top))]">
         <h2 id={titleId} className="text-lg font-bold">{title}</h2>
-        <button type="button" aria-label="Fechar" onClick={onClose} className="min-h-12 min-w-12 rounded-xl text-2xl">×</button>
+        {!hideCloseButton && <button type="button" aria-label="Fechar" onClick={onClose} className="min-h-12 min-w-12 rounded-xl text-2xl">×</button>}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-4 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">{children}</div>
       <footer className="shrink-0 border-t border-line pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">{footer}</footer>

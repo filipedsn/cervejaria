@@ -106,6 +106,10 @@ for (const width of [390, 768]) {
       await page.screenshot({ path: testInfo.outputPath('compact-list.png'), fullPage: true });
       const editor = await openEditor(page);
       await expect(editor.getByText('staff@example.invalid', { exact: false })).toBeVisible();
+      await expect(editor.getByRole('button', { name: 'Fechar', exact: true })).toHaveCount(0);
+      const backButton = editor.getByRole('button', { name: 'Voltar', exact: true });
+      await expect(backButton).toHaveClass(/touch-btn-orange/);
+      await expect(editor.getByRole('button', { name: 'Cancelar', exact: true })).toHaveCount(0);
       await expect(editor.locator('summary')).toHaveCount(8);
       for (const [index, group] of groups.entries()) {
         const summary = editor.locator('summary').nth(index);
@@ -125,7 +129,12 @@ for (const width of [390, 768]) {
       expect(api.writes).toEqual([]);
       await checkLayout(page);
       await editor.screenshot({ path: testInfo.outputPath('grouped-editor.png') });
-      await editor.getByRole('button', { name: 'Cancelar', exact: true }).click();
+      page.once('dialog', dialog => dialog.dismiss());
+      await backButton.click();
+      await expect(editor).toBeVisible();
+      await expect(editor.getByRole('checkbox', { name: 'Fechar caixa', exact: true })).toBeChecked();
+      page.once('dialog', dialog => dialog.accept());
+      await backButton.click();
       await expect(editor).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Gerenciar acessos de Atendente QA', exact: true })).toBeFocused();
       const reopened = await openEditor(page);
@@ -133,6 +142,8 @@ for (const width of [390, 768]) {
       await expect(reopened.getByRole('checkbox', { name: 'Fechar caixa', exact: true })).not.toBeChecked();
       await reopened.locator('summary').nth(0).click();
       await expect(reopened.getByRole('checkbox', { name: 'Consultar comandas' })).toBeChecked();
+      await reopened.getByRole('button', { name: 'Voltar', exact: true }).click();
+      await expect(reopened).toHaveCount(0);
       expect(api.writes).toEqual([]);
       expect(api.unexpected).toEqual([]); expect(api.errors).toEqual([]);
     });
@@ -148,7 +159,7 @@ for (const width of [390, 768]) {
       await editor.getByRole('button', { name: 'Salvar', exact: true }).click();
       await expect.poll(() => api.writes.length).toBe(1);
       await expect(editor.getByRole('button', { name: 'Salvando...' })).toBeDisabled();
-      await expect(editor.getByRole('button', { name: 'Cancelar' })).toBeDisabled();
+      await expect(editor.getByRole('button', { name: 'Voltar' })).toBeDisabled();
       await editor.getByRole('button', { name: 'Salvando...' }).evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
       await page.keyboard.press('Escape');
       await expect(editor).toBeVisible();
@@ -175,11 +186,9 @@ for (const width of [390, 768]) {
       await expect(editor.getByRole('alert')).toContainText('Falha simulada');
       await expect(editor.getByRole('checkbox', { name: 'Consultar comandas' })).not.toBeChecked();
       page.once('dialog', dialog => dialog.dismiss());
-      await editor.getByRole('button', { name: 'Fechar', exact: true }).click();
+      await editor.getByRole('button', { name: 'Voltar', exact: true }).click();
       await expect(editor).toBeVisible();
-      page.once('dialog', dialog => dialog.dismiss());
-      await page.keyboard.press('Escape');
-      await expect(editor).toBeVisible();
+      await expect(editor.getByRole('checkbox', { name: 'Consultar comandas' })).not.toBeChecked();
       await editor.getByRole('button', { name: 'Salvar', exact: true }).click();
       await expect(editor).toHaveCount(0);
       expect(api.writes.map(write => write.body)).toEqual([{ permissoesOperacao: ['future.preserved'] }, { permissoesOperacao: ['future.preserved'] }]);
