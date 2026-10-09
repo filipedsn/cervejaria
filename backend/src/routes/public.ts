@@ -427,7 +427,7 @@ export async function publicRoutes(app: FastifyInstance) {
       const raw = config && typeof config === 'object' && !Array.isArray(config) ? (config as Record<string, unknown>).catalogo : config;
       const names = categories.map((category) => category.nome);
       const saved = Array.isArray(raw) ? raw.filter((name): name is string => typeof name === 'string' && names.includes(name)) : [];
-      return { ordemCategorias: [...new Set(saved), ...names.filter((name) => !saved.includes(name))] };
+      return { ordemCategorias: [...new Set(saved), ...names.filter((name) => !saved.includes(name))], catalogoCanonico: true };
     }
     const cervejaria = await prisma.cervejaria.findUnique({
       where: { id: session.cervejariaId },
@@ -438,6 +438,7 @@ export async function publicRoutes(app: FastifyInstance) {
         cervejaria?.operacaoCategoriasOrdem ?? CATEGORIAS_PRODUTO_OPERACAO,
         true,
       ),
+      catalogoCanonico: false,
     };
   });
 

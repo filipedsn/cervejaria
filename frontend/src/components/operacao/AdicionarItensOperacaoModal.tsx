@@ -165,8 +165,12 @@ export function AdicionarItensOperacaoModal({
   );
 
   const produtosPorCategoria = new Map<string, ProdutoOperacao[]>();
-  for (const item of produtos.filter((product) => !isChopeOperacao(product))) {
-    const category = normalizeCategoriaProduto(item.categoria);
+  for (const item of produtos.filter((product) => categoriasComanda?.catalogoCanonico
+    ? product.formato !== 'CHOPE'
+    : !isChopeOperacao(product))) {
+    const category = categoriasComanda?.catalogoCanonico
+      ? item.categoria?.trim() || 'Outros'
+      : normalizeCategoriaProduto(item.categoria);
     produtosPorCategoria.set(category, [...(produtosPorCategoria.get(category) ?? []), item]);
   }
   const produtosBebidas = produtos.filter((item) => classificarGrupoProdutoOperacao(item) === 'bebidas');
@@ -183,7 +187,9 @@ export function AdicionarItensOperacaoModal({
     ...(tapsEnabled && (carregandoTaps || Boolean(erroCarregarTaps) || tapsDisponiveis.length > 0) ? [{ id: ABA_TAP_CHOPE, label: 'Chopes (Tap)' }] : []),
     ...[...produtosPorCategoria.keys()].map((category) => ({ id: category, label: category })),
   ].sort((a, b) => {
-    const priority = (tab: { id: string }) => ordemInicial.indexOf(tab.id === ABA_TAP_CHOPE ? normalizeCategoriaProduto(tapCategoryName) : tab.id);
+    const priority = (tab: { id: string }) => ordemInicial.indexOf(tab.id === ABA_TAP_CHOPE
+      ? (categoriasComanda?.catalogoCanonico ? tapCategoryName?.trim() : normalizeCategoriaProduto(tapCategoryName)) ?? ''
+      : tab.id);
     const aIndex = priority(a) < 0 ? Number.MAX_SAFE_INTEGER : priority(a);
     const bIndex = priority(b) < 0 ? Number.MAX_SAFE_INTEGER : priority(b);
     return aIndex - bIndex || a.label.localeCompare(b.label, 'pt-BR');

@@ -27,3 +27,7 @@ Capturas de 390px e 768px são geradas em `artifacts/pdv-category-management/`.
 ## Validação anterior da gestão de categorias
 
 Na entrega inicial da aba Categorias, a API foi exercitada no PostgreSQL descartável; nenhuma categoria real de cliente, banco compartilhado de DEV ou PROD foi usada naquele ensaio.
+
+No modo canônico, os seletores preservam literalmente o nome de cada categoria cadastrada, sem convertê-lo para um grupo LEGACY. O endpoint público de categorias retorna `catalogoCanonico` para manter esse contrato nos consumidores. Chope continua identificado pelo campo estável `formato` após renomear a categoria.
+
+As capturas em 390px e 768px cobrem a aba Categorias, o seletor operacional da comanda e o portal do cliente no PDV.

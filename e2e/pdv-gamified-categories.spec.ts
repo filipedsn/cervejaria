@@ -241,3 +241,82 @@ test('capturas celular 390px e tablet 768px da aba Categorias', async ({ page })
   }
   expect(unexpected).toEqual([]);
 });
+
+test('seletor da comanda usa a mesma ordem canônica e mantém Chope por Tap na posição da categoria', async ({ page }) => {
+  test.setTimeout(60_000);
+  const order = ['Petiscos', 'Chope da casa', 'Bebidas especiais'];
+  const products = [
+    { id: 'tap-beer', nome: 'Pilsen QA', categoria: 'Chope da casa', tipo: 'BEBIDA', formato: 'CHOPE', categoriaPdvId: 'cat-tap', precos: [{ volumeMl: 300, preco: 5 }, { volumeMl: 500, preco: 8 }], ativo: true, ordem: 0, controlaEstoque: false, exigePreparo: false, prepararEmPedidoSeparado: false },
+    { id: 'snack', nome: 'Pastel QA', categoria: 'Petiscos', tipo: 'COMIDA', formato: null, categoriaPdvId: 'cat-food', precos: [{ volumeMl: 1, preco: 12 }], ativo: true, ordem: 1, controlaEstoque: false, exigePreparo: false, prepararEmPedidoSeparado: false },
+    { id: 'drink', nome: 'Soda QA', categoria: 'Bebidas especiais', tipo: 'BEBIDA', formato: 'OUTRO', categoriaPdvId: 'cat-drink', precos: [{ volumeMl: 1, preco: 6 }], ativo: true, ordem: 2, controlaEstoque: false, exigePreparo: false, prepararEmPedidoSeparado: false },
+  ];
+  await page.routeWebSocket('**/socket.io/**', (socket) => socket.close());
+  await page.route('**/api/**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const reply = (json: unknown) => route.fulfill({ json });
+    if (path === '/api/auth/me') return reply({ usuario: { id: 'category-owner', nome: 'QA Owner', email: 'owner@example.invalid', papel: 'DONO' }, cervejaria: { id: 'tenant-category-qa', nome: 'QA', slug: 'category-qa' } });
+    if (path === '/api/onboarding/readiness') return reply({ mode: 'CAIXA', capacities: { controlaEstoque: false, temCozinha: false }, hasHistoricalSale: true, firstSaleCompleted: true, operationReady: true, canConfigure: false, modules: { operacao: { enabled: true, ready: true, missingSteps: [] }, cervejaria: { enabled: false, ready: true, missingSteps: [] } } });
+    if (path === '/api/operacao/contexto') return reply({ ativo: true, operationMode: 'CAIXA', plannedOperationsEnabled: false, cashRegisterEnabled: true, tapsEnabled: true, operationalSettingsSource: 'CANONICAL_PDV', inventoryEnabled: false, kitchenEnabled: false, controlaEstoque: false, temCozinha: false, usaCardapio: true, quantidadeMesas: 0, whatsappPedidoProntoEnabled: false, whatsappPedidoProntoNaCozinha: false, pontosVenda: [{ id: 'point-order-qa', nome: 'PDV QA', ativo: true }] });
+    if (path === '/api/cervejaria/configuracao-operacional') return reply({ configuration: { setupCompletedAt: '2026-10-09T12:00:00.000Z' } });
+    if (path === '/api/operacao/comandas/order-qa') return reply({ id: 'order-qa', tipo: 'APELIDO', status: 'ABERTA', identificador: 'Mesa QA', numero: 21, pontoVendaId: 'point-order-qa', cliente: null, subtotal: 0, total: 0, desconto: 0, valorEmAberto: 0, pedidos: [], itens: [] });
+    if (path === '/api/operacao/produtos') return reply(products);
+    if (path === '/api/operacao/caixa') return reply({ sessao: { id: 'shift-qa', status: 'ABERTO', abertoEm: '2026-10-09T12:00:00.000Z' } });
+    if (path === '/api/operacao/caixa/taps') return reply({ trailerId: 'trailer-qa', taps: [{ id: 'tap-qa', numero: 1, nome: 'Tap 1', trailerId: 'trailer-qa', ativo: true, chopeAtual: { id: 'tap-beer', nome: 'Pilsen QA', tipo: 'BEBIDA', formato: 'CHOPE', precos: [{ volumeMl: 300, preco: 5 }, { volumeMl: 500, preco: 8 }] }, chopeCadastro: null, temMontagemAtiva: true }] });
+    if (path === '/api/produtos/categorias-comanda/ordem') return reply({ ordem: order, catalogoCanonico: true });
+    if (path === '/api/trailers' || path === '/api/eventos/ativos') return reply([]);
+    if (path === '/api/audit/events') return route.fulfill({ status: 204, body: '' });
+    return route.fulfill({ status: 404, json: { error: `Mock sem rota para ${path} (${request.method()})` } });
+  });
+
+  for (const width of [390, 768]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 1024 });
+    await page.goto('/operacao/comandas/order-qa');
+    await page.getByRole('button', { name: '+ Itens' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Adicionar item' });
+    const tabs = dialog.locator('.segmented-control button');
+    await expect(tabs).toHaveText(['Petiscos', 'Chopes (Tap)', 'Bebidas especiais']);
+    await expect(dialog.getByRole('button', { name: 'Pastel QA' })).toBeVisible();
+    await page.screenshot({ path: resolve('artifacts/pdv-category-management', `comanda-${width}px.png`), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  }
+});
+
+test('portal do cliente mantém a ordem e os nomes das categorias canônicas em celular e tablet', async ({ page }) => {
+  const base = '/api/public/cervejarias/qa/pontos-venda/pdv-qa';
+  const products = [
+    { id: 'drink-special', nome: 'Soda especial', categoria: 'Bebidas especiais', tipo: 'BEBIDA', precoEfetivo: 6 },
+    { id: 'drink-basic', nome: 'Água', categoria: 'Bebidas', tipo: 'BEBIDA', precoEfetivo: 3 },
+    { id: 'food', nome: 'Pastel', categoria: 'Petiscos', tipo: 'COMIDA', precoEfetivo: 12 },
+  ];
+  await page.route('**/api/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const reply = (json: unknown, status = 200) => route.fulfill({ status, json });
+    if (path === `${base}/info`) return reply({ cervejaria: { nome: 'Cervejaria QA' }, pontoVenda: { nome: 'PDV QA' }, disponivel: true });
+    if (path === `${base}/comanda` && request.method() === 'GET') return reply({ error: 'Sem comanda' }, 401);
+    if (path === `${base}/cliente-por-telefone`) return reply({ encontrado: false });
+    if (path === `${base}/comandas` && request.method() === 'POST') return reply({ reused: false, pontoVenda: { nome: 'PDV QA' }, comanda: { id: 'comanda-qa', numero: 42, cliente: { nome: 'Cliente QA', telefone: '11999999999' }, subtotal: 0, total: 0, desconto: 0, valorEmAberto: 0, pedidos: [] } }, 201);
+    if (path === `${base}/cardapio`) return reply({ produtos: products, ordemCategorias: ['Petiscos', 'Bebidas especiais', 'Bebidas'] });
+    if (path === `${base}/cardapio/categorias`) return reply({ ordemCategorias: ['Petiscos', 'Bebidas especiais', 'Bebidas'], catalogoCanonico: true });
+    if (path === '/api/audit/events') return route.fulfill({ status: 204, body: '' });
+    return route.fulfill({ status: 404, json: { error: `Mock sem rota para ${path}` } });
+  });
+
+  const output = resolve('artifacts/pdv-category-management');
+  await mkdir(output, { recursive: true });
+  for (const width of [390, 768]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 1024 });
+    await page.goto('/c/qa/p/pdv-qa');
+    await page.getByLabel('Telefone').fill('11999999999');
+    await page.getByLabel('Nome').fill('Cliente QA');
+    await page.getByRole('button', { name: 'Abrir comanda' }).click();
+    await page.getByRole('button', { name: 'Bebidas', exact: true }).click();
+    const categoryHeadings = page.locator('.portal-pdv-category h4');
+    await expect(categoryHeadings).toHaveText(['Bebidas especiais', 'Bebidas']);
+    await expect(page.getByRole('button', { name: /Soda especial/ })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await page.screenshot({ path: resolve(output, `portal-${width}px.png`), fullPage: true });
+  }
+});

@@ -74,7 +74,13 @@ export function AdicionarItemComandaModal({
     if (comidas.length) disponiveis.add('comidas');
     if (bebidas.length) disponiveis.add('bebidas');
     if (outros.length) disponiveis.add('outros');
-    const categorias = [...bebidas, ...comidas, ...outros].filter((produto) => !isChopeOperacao({ ...produto, categoria: produto.categoria ?? null })).map((produto) => normalizeCategoriaProduto(produto.categoria));
+    const categorias = [...bebidas, ...comidas, ...outros]
+      .filter((produto) => categoriasComanda?.catalogoCanonico
+        ? produto.formato !== 'CHOPE'
+        : !isChopeOperacao({ ...produto, categoria: produto.categoria ?? null }))
+      .map((produto) => categoriasComanda?.catalogoCanonico
+        ? produto.categoria?.trim() || 'Outros'
+        : normalizeCategoriaProduto(produto.categoria));
     const disponiveisCanonicas = new Set(categorias);
     if (tapsComChope.length) disponiveisCanonicas.add(ABA_TAP_CHOPE);
     const selecionada = categoriasComanda?.catalogoCanonico
@@ -185,22 +191,27 @@ export function AdicionarItemComandaModal({
     ...(outros.length > 0 ? [{ id: 'outros', label: 'Outros' }] : []),
   ].sort((a, b) => ordemInicial.indexOf(a.id) - ordemInicial.indexOf(b.id));
   const allProducts = [...bebidas, ...comidas, ...outros];
-  const canonicalCategories = [...new Set(allProducts.filter((product) => !isChopeOperacao({ ...product, categoria: product.categoria ?? null })).map((product) => normalizeCategoriaProduto(product.categoria)))];
+  const canonicalCategories = [...new Set(allProducts
+    .filter((product) => product.formato !== 'CHOPE')
+    .map((product) => product.categoria?.trim() || 'Outros'))];
   const tapCategoryName = allProducts.find((product) => product.id === tapsComChope[0]?.chopeAtual?.id)?.categoria;
   const canonicalTabs = [
     ...(tapsComChope.length > 0 ? [{ id: ABA_TAP_CHOPE, label: 'Chopes (Tap)' }] : []),
     ...canonicalCategories.map((category) => ({ id: category, label: category })),
   ].sort((a, b) => {
-    const priority = (tabId: string) => ordemInicial.indexOf(tabId === ABA_TAP_CHOPE ? normalizeCategoriaProduto(tapCategoryName) : tabId);
+    const priority = (tabId: string) => ordemInicial.indexOf(tabId === ABA_TAP_CHOPE ? tapCategoryName?.trim() ?? '' : tabId);
     const aIndex = priority(a.id) < 0 ? Number.MAX_SAFE_INTEGER : priority(a.id);
     const bIndex = priority(b.id) < 0 ? Number.MAX_SAFE_INTEGER : priority(b.id);
     return aIndex - bIndex || a.label.localeCompare(b.label, 'pt-BR');
   });
   const visibleTabs = categoriasComanda?.catalogoCanonico ? canonicalTabs : legacyTabs;
   const produtosDaAba = categoriasComanda?.catalogoCanonico
-    ? allProducts.filter((product) => !isChopeOperacao({ ...product, categoria: product.categoria ?? null }) && normalizeCategoriaProduto(product.categoria) === tab)
+    ? allProducts.filter((product) => product.formato !== 'CHOPE' && (product.categoria?.trim() || 'Outros') === tab)
     : tab === 'bebidas' ? bebidas : tab === 'comidas' ? comidas : outros;
-  const categoriasDaAba = [...new Set(produtosDaAba.map((produto) => normalizeCategoriaProduto(produto.categoria)))].sort(
+  const categoriaDoProduto = (produto: Produto) => categoriasComanda?.catalogoCanonico
+    ? produto.categoria?.trim() || 'Outros'
+    : normalizeCategoriaProduto(produto.categoria);
+  const categoriasDaAba = [...new Set(produtosDaAba.map(categoriaDoProduto))].sort(
     (a, b) => (ordemInicial.indexOf(a) < 0 ? CATEGORIAS_PRODUTO_OPERACAO.indexOf(a as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]) : ordemInicial.indexOf(a)) - (ordemInicial.indexOf(b) < 0 ? CATEGORIAS_PRODUTO_OPERACAO.indexOf(b as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]) : ordemInicial.indexOf(b)),
   );
   const selecionarProduto = (produto: Produto) => {
@@ -216,7 +227,7 @@ export function AdicionarItemComandaModal({
         <section key={categoria} className="space-y-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{categoria}</h3>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {produtosDaAba.filter((produto) => normalizeCategoriaProduto(produto.categoria) === categoria).map((produto) => {
+            {produtosDaAba.filter((produto) => categoriaDoProduto(produto) === categoria).map((produto) => {
               const preco = produto.precos[0];
               return <button key={produto.id} type="button" onClick={() => selecionarProduto(produto)} className="card-touch flex min-h-20 flex-col justify-between gap-1 py-3 text-left">
                 <span className="font-semibold leading-tight">{produto.nome}</span>

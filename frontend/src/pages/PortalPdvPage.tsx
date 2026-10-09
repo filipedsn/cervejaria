@@ -106,7 +106,7 @@ export function PortalPdvPage() {
 
   const categoriasCardapio = useQuery({
     queryKey: ['portal-pdv-cardapio-categorias', result?.comanda.id],
-    queryFn: () => api.get<{ ordemCategorias: string[] }>(`/api/public/cervejarias/${slug}/pontos-venda/${pontoVendaId}/cardapio/categorias`),
+    queryFn: () => api.get<{ ordemCategorias: string[]; catalogoCanonico?: boolean }>(`/api/public/cervejarias/${slug}/pontos-venda/${pontoVendaId}/cardapio/categorias`),
     enabled: Boolean(result),
     retry: false,
   });
@@ -157,7 +157,9 @@ export function PortalPdvPage() {
   const produtosPorCategoria = (() => {
     const grupos = new Map<string, PdvProduct[]>();
     for (const product of produtosCardapio) {
-      const categoria = normalizeCategoriaProduto(product.categoria);
+      const categoria = categoriasCardapio.data?.catalogoCanonico
+        ? product.categoria?.trim() || 'Outros'
+        : normalizeCategoriaProduto(product.categoria);
       grupos.set(categoria, [...(grupos.get(categoria) ?? []), product]);
     }
     const prioridade = new Map<string, number>(ordemCategorias.map((categoria, index) => [categoria, index]));
