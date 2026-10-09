@@ -23,10 +23,13 @@ const ownerToken = signUserToken(app, owner); const staffToken = signUserToken(a
 function inject(options: any) { const headers = { ...options.headers }; const token = headers['x-qa-user'] === staff.id ? staffToken : ownerToken; delete headers['x-qa-user']; return app.inject({ ...options, headers: { authorization: `Bearer ${token}`, ...headers } }); }
 let passed = 0;
 async function check(name: string, run: () => Promise<void>) { console.log(`RUN ${name}`); await run(); passed++; console.log(`PASS ${name}`); }
-function input(extra = {}) { return { requestId: randomUUID(), nome: 'Sábado QA', data: '2026-10-10', horaInicio: '18:00', repetirSemanalmente: true, fim: '2026-10-31', ...extra }; }
+let inputSequence = 0;
+function input(extra = {}) { const date = new Date('2026-10-10T00:00:00.000Z'); date.setUTCDate(date.getUTCDate() + inputSequence++ * 35); const end = new Date(date); end.setUTCDate(end.getUTCDate() + 21); return { requestId: randomUUID(), nome: 'Sábado QA', data: date.toISOString().slice(0, 10), horaInicio: '18:00', horaFim: '20:00', repetirSemanalmente: true, fim: end.toISOString().slice(0, 10), ...extra }; }
+function plusDays(value: string, days: number) { const date = new Date(`${value}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); }
 const txOptions = { timeout: 15000, maxWait: 15000 };
 async function schedule(extra = {}) { return prisma.$transaction((tx) => saveAgendamento(tx, scope, input(extra)), txOptions); }
-async function occurrence(nome = 'Avulsa QA') { return prisma.ocorrenciaOperacional.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, nome, data: new Date('2026-10-10T00:00:00Z'), horaInicio: '12:00' } }); }
+async function occurrence(nome = 'Avulsa QA', extra = {}) { return prisma.ocorrenciaOperacional.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, nome, data: new Date('2026-10-10T00:00:00Z'), horaInicio: '12:00', horaFim: '13:00', ...extra } }); }
+async function postSchedule(body: any) { return inject({ method: 'POST', url: '/api/operacao/agenda/agendamentos', payload: body }); }
 try {
   await check('real buildApp registers the full frontend contract with authentication', async () => {
     for (const [method, url] of [['POST', '/api/operacao/agenda/agendamentos'], ['POST', '/api/operacao/agenda/ocorrencias/:id/cancelar'], ['POST', '/api/operacao/agenda/agendas/:id/interromper'], ['POST', '/api/operacao/agenda/agendas/:id/arquivar'], ['GET', '/api/operacao/agenda/agendas/arquivadas']] as const) assert.equal(app.hasRoute({ method, url }), true, `${method} ${url}`);
@@ -65,6 +68,70 @@ try {
     const id = a.json().ocorrenciaId;
     const edited = await inject({ method: 'POST', url: '/api/operacao/agenda/agendamentos', payload: input({ repetirSemanalmente: false, ocorrenciaId: id, nome: 'Editada', data: '2026-10-11', fim: undefined }) }); assert.equal(edited.statusCode, 200, edited.body); assert.equal(edited.json().ocorrenciaId, id);
     assert.equal((await prisma.ocorrenciaOperacional.findUniqueOrThrow({ where: { id } })).nome, 'Editada');
+  });
+  await check('same start, partial overlap and contained intervals return a scoped 409; adjacent intervals are allowed', async () => {
+    const date = '2027-01-08';
+    await occurrence('Igarapé', { data: new Date(`${date}T00:00:00Z`), horaInicio: '18:00', horaFim: '20:00' });
+    for (const [start, end] of [['18:00', '19:00'], ['19:00', '21:00'], ['18:30', '19:00']] as const) {
+      const response = await postSchedule(input({ repetirSemanalmente: false, data: date, horaInicio: start, horaFim: end, fim: undefined }));
+      assert.equal(response.statusCode, 409, response.body); assert.equal(response.json().code, 'AGENDA_HORARIO_CONFLITO');
+      assert.deepEqual(response.json().details.conflito, { nome: 'Igarapé', data: date, horaInicio: '18:00', horaFim: '20:00' });
+    }
+    for (const [start, end] of [['16:00', '18:00'], ['20:00', '22:00']] as const) {
+      const response = await postSchedule(input({ repetirSemanalmente: false, data: date, horaInicio: start, horaFim: end, fim: undefined })); assert.equal(response.statusCode, 200, response.body);
+    }
+  });
+  await check('alternate occurrence and date-generation routes enforce required valid intervals and conflicts', async () => {
+    const date = '2027-04-02'; const blocker = await occurrence('Alternate route blocker', { data: new Date(`${date}T00:00:00Z`), horaInicio: '18:00', horaFim: '20:00' });
+    const missingEnd = await postSchedule(input({ repetirSemanalmente: false, data: '2027-04-09', horaFim: null, fim: undefined })); assert.equal(missingEnd.statusCode, 400, missingEnd.body); assert.equal(missingEnd.json().code, 'AGENDA_HORARIO_OBRIGATORIO');
+    const overnight = await postSchedule(input({ repetirSemanalmente: false, data: '2027-04-09', horaInicio: '23:00', horaFim: '01:00', fim: undefined })); assert.equal(overnight.statusCode, 400, overnight.body); assert.equal(overnight.json().code, 'AGENDA_INTERVALO_INVALIDO');
+    const alternative = await inject({ method: 'POST', url: '/api/operacao/agenda/ocorrencias', payload: { nome: 'Alt route', data: date, horaInicio: '19:00', horaFim: '21:00' } }); assert.equal(alternative.statusCode, 409, alternative.body); assert.equal(alternative.json().code, 'AGENDA_HORARIO_CONFLITO');
+    const day = new Date(`${date}T00:00:00Z`).getUTCDay();
+    const rule = await prisma.agendaOperacional.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, nome: 'Generator blocker', diaSemana: day, horaInicio: '19:00', horaFim: '21:00' } });
+    const before = await prisma.ocorrenciaOperacional.count({ where: { agendaId: rule.id } });
+    const generated = await inject({ method: 'POST', url: `/api/operacao/agenda/agendas/${rule.id}/gerar`, payload: { inicio: date, fim: date } }); assert.equal(generated.statusCode, 409, generated.body); assert.equal(generated.json().code, 'AGENDA_HORARIO_CONFLITO');
+    assert.equal(await prisma.ocorrenciaOperacional.count({ where: { agendaId: rule.id } }), before);
+    assert.equal((await prisma.ocorrenciaOperacional.findUniqueOrThrow({ where: { id: blocker.id } })).status, 'PROGRAMADA');
+  });
+  await check('edit excludes its own reservation, rejects a new overlap, and cancellation frees its interval', async () => {
+    const date = '2027-01-15';
+    const blocker = await occurrence('Bloqueio', { data: new Date(`${date}T00:00:00Z`), horaInicio: '18:00', horaFim: '20:00' });
+    const target = await occurrence('Editar', { data: new Date(`${date}T00:00:00Z`), horaInicio: '12:00', horaFim: '13:00' });
+    const unchanged = await postSchedule(input({ repetirSemanalmente: false, ocorrenciaId: target.id, data: date, horaInicio: '12:00', horaFim: '13:00', fim: undefined })); assert.equal(unchanged.statusCode, 200, unchanged.body);
+    const conflicted = await postSchedule(input({ repetirSemanalmente: false, ocorrenciaId: target.id, data: date, horaInicio: '19:00', horaFim: '21:00', fim: undefined })); assert.equal(conflicted.statusCode, 409, conflicted.body); assert.equal(conflicted.json().code, 'AGENDA_HORARIO_CONFLITO');
+    const canceled = await inject({ method: 'POST', url: `/api/operacao/agenda/ocorrencias/${blocker.id}/cancelar`, payload: {} }); assert.equal(canceled.statusCode, 200, canceled.body);
+    const free = await postSchedule(input({ repetirSemanalmente: false, data: date, horaInicio: '18:00', horaFim: '20:00', fim: undefined })); assert.equal(free.statusCode, 200, free.body);
+  });
+  await check('archived recurring dates remain reserved and a weekly collision rolls back the entire rule', async () => {
+    const recurring = input({ nome: 'Regra arquivada QA', data: '2026-11-07', fim: '2026-11-28' });
+    const saved = await postSchedule(recurring); assert.equal(saved.statusCode, 200, saved.body);
+    const archived = await inject({ method: 'POST', url: `/api/operacao/agenda/agendas/${saved.json().agendaId}/arquivar`, payload: {} }); assert.equal(archived.statusCode, 200, archived.body);
+    const afterArchive = await postSchedule(input({ repetirSemanalmente: false, data: recurring.data, horaInicio: '19:00', horaFim: '21:00', fim: undefined })); assert.equal(afterArchive.statusCode, 409, afterArchive.body);
+    const rollbackBase = new Date('2027-02-06T00:00:00Z'); const conflictDate = new Date(rollbackBase); conflictDate.setUTCDate(conflictDate.getUTCDate() + 7);
+    await occurrence('Weekly blocker', { data: conflictDate, horaInicio: '19:00', horaFim: '21:00' });
+    const beforeRules = await prisma.agendaOperacional.count(); const beforeRows = await prisma.ocorrenciaOperacional.count();
+    const weekly = await postSchedule(input({ nome: 'Rollback semanal QA', data: rollbackBase.toISOString().slice(0, 10), fim: '2027-02-20', horaInicio: '18:00', horaFim: '20:00' }));
+    assert.equal(weekly.statusCode, 409, weekly.body); assert.equal(weekly.json().code, 'AGENDA_HORARIO_CONFLITO');
+    assert.equal(await prisma.agendaOperacional.count(), beforeRules); assert.equal(await prisma.ocorrenciaOperacional.count(), beforeRows);
+  });
+  await check('same retry remains idempotent and concurrent conflicting creates serialize by PDV', async () => {
+    const body = input({ repetirSemanalmente: false, data: '2027-03-05', horaInicio: '10:00', horaFim: '11:00', fim: undefined });
+    const first = await postSchedule(body); assert.equal(first.statusCode, 200, first.body);
+    const retry = await postSchedule(body); assert.equal(retry.statusCode, 200, retry.body); assert.deepEqual(retry.json(), first.json());
+    const concurrentDate = '2027-03-12';
+    const [left, right] = await Promise.all([
+      postSchedule(input({ nome: 'Concorrente A', repetirSemanalmente: false, data: concurrentDate, horaInicio: '18:00', horaFim: '20:00', fim: undefined })),
+      postSchedule(input({ nome: 'Concorrente B', repetirSemanalmente: false, data: concurrentDate, horaInicio: '19:00', horaFim: '21:00', fim: undefined })),
+    ]);
+    assert.deepEqual([left.statusCode, right.statusCode].sort(), [200, 409]); assert.equal(await prisma.ocorrenciaOperacional.count({ where: { data: new Date(`${concurrentDate}T00:00:00Z`) } }), 1);
+  });
+  await check('incomplete legacy interval blocks same start and unknown comparisons; name edit and completion remain possible', async () => {
+    const date = '2027-03-19'; const legacy = await occurrence('Teste antigo', { data: new Date(`${date}T00:00:00Z`), horaInicio: '17:00', horaFim: null });
+    const sameStart = await postSchedule(input({ repetirSemanalmente: false, data: date, horaInicio: '17:00', horaFim: '18:00', fim: undefined })); assert.equal(sameStart.statusCode, 409, sameStart.body); assert.equal(sameStart.json().code, 'AGENDA_HORARIO_CONFLITO');
+    const uncertain = await postSchedule(input({ repetirSemanalmente: false, data: date, horaInicio: '18:00', horaFim: '19:00', fim: undefined })); assert.equal(uncertain.statusCode, 409, uncertain.body); assert.equal(uncertain.json().code, 'AGENDA_HORARIO_INCOMPLETO');
+    const nameEdit = await postSchedule({ requestId: randomUUID(), nome: 'Teste antigo editado', data: date, repetirSemanalmente: false, ocorrenciaId: legacy.id, local: 'Salão' }); assert.equal(nameEdit.statusCode, 200, nameEdit.body);
+    const completed = await postSchedule(input({ repetirSemanalmente: false, data: date, ocorrenciaId: legacy.id, horaInicio: '17:00', horaFim: '18:00', fim: undefined })); assert.equal(completed.statusCode, 200, completed.body);
+    const afterCompletion = await postSchedule(input({ repetirSemanalmente: false, data: date, horaInicio: '18:00', horaFim: '19:00', fim: undefined })); assert.equal(afterCompletion.statusCode, 200, afterCompletion.body);
   });
   await check('cancel preserves record and atomic audit; retry emits no duplicate audit', async () => {
     const row = await occurrence(); const before = await prisma.transacaoLog.count();
@@ -125,7 +192,8 @@ try {
     assert.ok(response.json().ocorrencias.some((row: any) => row.bloqueio && !row.podeCancelar)); assert.equal(await prisma.transacaoLog.count(), before);
   });
   await check('archive active/inactive rules persists without changing dates, cash, migration maps or past audit', async () => {
-    const created = await inject({ method: 'POST', url: '/api/operacao/agenda/agendamentos', payload: input({ nome: 'Regra para arquivar', fim: '2026-11-14' }) }); assert.equal(created.statusCode, 200, created.body);
+    const archiveInput = input({ nome: 'Regra para arquivar' }); archiveInput.fim = plusDays(archiveInput.data, 35);
+    const created = await inject({ method: 'POST', url: '/api/operacao/agenda/agendamentos', payload: archiveInput }); assert.equal(created.statusCode, 200, created.body);
     const id = created.json().agendaId;
     const dates = await prisma.ocorrenciaOperacional.findMany({ where: { agendaId: id }, orderBy: { data: 'asc' } }); assert.equal(dates.length, 6);
     const cash = await prisma.sessaoCaixaOperacao.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, ocorrenciaId: dates[0].id, diaOperacional: dates[0].data, trocoInicial: 0, abertoPorId: owner.id, status: 'FECHADO' } });
@@ -139,7 +207,7 @@ try {
     assert.deepEqual(await prisma.sessaoCaixaOperacao.findUnique({ where: { id: cash.id } }), cash); assert.deepEqual(await prisma.pdvMigrationMap.findUnique({ where: { id: map.id } }), map);
     assert.deepEqual(await prisma.transacaoLog.findMany({ where: { id: { in: logsBefore.map((row) => row.id) } }, orderBy: { id: 'asc' } }), logsBefore);
     assert.equal(await prisma.transacaoLog.count({ where: { entidadeId: id } }), logsBefore.length + 1);
-    const listed = await inject({ method: 'GET', url: '/api/operacao/agenda/ocorrencias?inicio=2026-10-01&fim=2026-10-31' }); assert.equal(listed.statusCode, 200, listed.body); assert.ok(!listed.json().agendas.some((rule: any) => rule.id === id)); assert.equal(listed.json().ocorrencias.filter((row: any) => row.agendaId === id).length, 4);
+    const listed = await inject({ method: 'GET', url: `/api/operacao/agenda/ocorrencias?inicio=${archiveInput.data}&fim=${archiveInput.fim}` }); assert.equal(listed.statusCode, 200, listed.body); assert.ok(!listed.json().agendas.some((rule: any) => rule.id === id)); assert.equal(listed.json().ocorrencias.filter((row: any) => row.agendaId === id).length, 6);
     const archivedList = await inject({ method: 'GET', url: '/api/operacao/agenda/agendas/arquivadas' }); assert.equal(archivedList.statusCode, 200, archivedList.body); assert.equal(archivedList.json().agendas.find((rule: any) => rule.id === id)._count.ocorrencias, 6);
     const generate = await inject({ method: 'POST', url: `/api/operacao/agenda/agendas/${id}/gerar`, payload: { inicio: '2026-11-15', fim: '2026-12-31' } }); assert.equal(generate.statusCode, 409, generate.body);
     const save = await inject({ method: 'POST', url: '/api/operacao/agenda/agendamentos', payload: input({ agendaId: id }) }); assert.equal(save.statusCode, 409, save.body);

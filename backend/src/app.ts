@@ -315,7 +315,7 @@ export async function buildApp() {
 
     if (statusCode) {
 
-      return reply.status(statusCode).send({ error: message });
+      return reply.status(statusCode).send({ error: message, ...(code ? { code } : {}), ...(hasErrorProperty(error, 'details') ? { details: error.details } : {}) });
 
     }
 

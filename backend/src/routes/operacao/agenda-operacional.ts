@@ -4,15 +4,15 @@ import { prisma } from '../../lib/prisma.js';
 import { canonicalPdvQaActivationEnabled, readCanonicalPdvOperationalSettingsIfEnabled } from '../../lib/canonical-pdv-operational-config.js';
 import { requirePermissaoOuDono } from '../../lib/operacao/permissoes.js';
 import { getAuthUser } from '../../types/auth.js';
-import { archiveAgenda, cancelOccurrence, generateAgendaDates, lockAgendaResource, occurrenceBlock, saveAgendamento, stopAgenda } from '../../lib/operacao/agenda.js';
+import { archiveAgenda, assertNoAgendaConflict, cancelOccurrence, generateAgendaDates, lockAgendaPdv, lockAgendaResource, occurrenceBlock, saveAgendamento, stopAgenda, validateAgendaInterval } from '../../lib/operacao/agenda.js';
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use uma data no formato AAAA-MM-DD');
 const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 const agendaCreateSchema = z.object({
   nome: z.string().trim().min(1).max(120),
   diaSemana: z.number().int().min(0).max(6),
-  horaInicio: timeSchema.default('18:00'),
-  horaFim: timeSchema.nullable().optional(),
+  horaInicio: timeSchema,
+  horaFim: timeSchema,
   local: z.string().trim().max(160).nullable().optional(),
   ativa: z.boolean().default(true),
 }).strict();
@@ -20,12 +20,13 @@ const agendaUpdateSchema = agendaCreateSchema.partial().strict();
 const occurrenceCreateSchema = z.object({
   nome: z.string().trim().min(1).max(120),
   data: dateSchema,
-  horaInicio: timeSchema.default('18:00'),
-  horaFim: timeSchema.nullable().optional(),
+  horaInicio: timeSchema,
+  horaFim: timeSchema,
   local: z.string().trim().max(160).nullable().optional(),
 }).strict();
 const generationSchema = z.object({ inicio: dateSchema, fim: dateSchema }).strict();
 const schedulingSchema = occurrenceCreateSchema.extend({
+  horaInicio: timeSchema.optional(), horaFim: timeSchema.nullable().optional(),
   requestId: z.string().uuid(), repetirSemanalmente: z.boolean(),
   agendaId: z.string().min(1).optional(), ocorrenciaId: z.string().min(1).optional(),
   fim: dateSchema.optional(), gerarDatas: z.boolean().optional(),
@@ -110,6 +111,7 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
     const body = agendaCreateSchema.parse(request.body);
     const pontoVendaId = await canonicalPointId(request.operacao.cervejariaId);
     if (!pontoVendaId) return reply.status(409).send({ code: 'CANONICAL_PDV_UNAVAILABLE', error: 'A empresa precisa ter exatamente um PDV ativo' });
+    validateAgendaInterval(body.horaInicio, body.horaFim);
     const agenda = await prisma.agendaOperacional.create({ data: { ...body, frequencia: 'SEMANAL', cervejariaId: request.operacao.cervejariaId, pontoVendaId } });
     return reply.status(201).send(agenda);
   });
@@ -122,7 +124,13 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
     const pontoVendaId = await canonicalPointId(request.operacao.cervejariaId);
     if (!pontoVendaId) return reply.status(409).send({ code: 'CANONICAL_PDV_UNAVAILABLE', error: 'A empresa precisa ter exatamente um PDV ativo' });
     const result = await prisma.$transaction(async (tx) => {
+      await lockAgendaPdv(tx, { cervejariaId: request.operacao.cervejariaId, pontoVendaId });
       await lockAgendaResource(tx, { cervejariaId: request.operacao.cervejariaId, pontoVendaId }, 'regra', agendaId);
+      if (body.horaInicio !== undefined || body.horaFim !== undefined) {
+        const current = await tx.agendaOperacional.findFirst({ where: { id: agendaId, cervejariaId: request.operacao.cervejariaId, pontoVendaId, archivedAt: null } });
+        if (!current) return { count: 0 };
+        validateAgendaInterval(body.horaInicio ?? current.horaInicio, body.horaFim ?? current.horaFim);
+      }
       return tx.agendaOperacional.updateMany({ where: { id: agendaId, cervejariaId: request.operacao.cervejariaId, pontoVendaId, archivedAt: null }, data: body });
     });
     if (result.count !== 1) return reply.status(404).send({ error: 'Agenda não encontrada' });
@@ -132,9 +140,17 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
   app.post('/ocorrencias', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
     if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ code: 'OPERATIONAL_SCHEDULE_DISABLED', error: 'Agenda operacional indisponível nesta instalação' });
     const body = occurrenceCreateSchema.parse(request.body);
-    const pontoVendaId = await canonicalPointId(request.operacao.cervejariaId);
+    validateAgendaInterval(body.horaInicio, body.horaFim);
+    const cervejariaId = request.operacao.cervejariaId;
+    const pontoVendaId = await canonicalPointId(cervejariaId);
     if (!pontoVendaId) return reply.status(409).send({ code: 'CANONICAL_PDV_UNAVAILABLE', error: 'A empresa precisa ter exatamente um PDV ativo' });
-    const ocorrencia = await prisma.ocorrenciaOperacional.create({ data: { ...body, data: parseDateOnly(body.data), cervejariaId: request.operacao.cervejariaId, pontoVendaId } });
+    const data = parseDateOnly(body.data);
+    const ocorrencia = await prisma.$transaction(async (tx) => {
+      const scope = { cervejariaId, pontoVendaId };
+      await lockAgendaPdv(tx, scope);
+      await assertNoAgendaConflict(tx, scope, { data, horaInicio: body.horaInicio, horaFim: body.horaFim });
+      return tx.ocorrenciaOperacional.create({ data: { ...body, data, cervejariaId, pontoVendaId } });
+    }, { timeout: 15000 });
     return reply.status(201).send({ ...ocorrencia, data: ocorrencia.data.toISOString().slice(0, 10) });
   });
 

@@ -4,12 +4,22 @@
 
 - `AgendaOperacional` é uma regra semanal. `OcorrenciaOperacional` é um agendamento datado, avulso ou associado à regra. Uma regra sem ocorrências não ocupa dias fictícios no calendário.
 - Mês, Lista, marcações e contadores usam a mesma consulta do primeiro ao último dia do mês exibido. Tocar em um dia seleciona sua lista; Hoje volta ao mês e dia atuais. Consultar, navegar ou abrir painéis não escreve registros.
-- O cadastro usa um formulário único, com nome, data, horário e opção semanal. Término e local são opcionais em Mais detalhes. A repetição exige primeira e última data, com janela máxima de 366 dias; somente a frequência semanal é suportada.
-- O horário é suportado pelas APIs e obrigatório no schema atual. O formulário inicia com o padrão existente de 18:00 e permite alterá-lo. A consulta não inventa horários ausentes.
+- O cadastro usa um formulário único, com nome, data, início, término e opção semanal. Início e término ficam visíveis e são obrigatórios para novas datas; somente local é opcional. A repetição exige primeira e última data, com janela máxima de 366 dias; somente a frequência semanal é suportada.
+- O formulário inicia o início com o padrão existente de 18:00, permite alterá-lo e exige término posterior. A consulta não inventa horários ausentes; intervalos antigos incompletos podem ser completados por edição validada.
+
+## Intervalos reservados por PDV
+
+- Novos agendamentos e mudanças de data/horário exigem `horaInicio` e `horaFim`, no mesmo dia, com o término posterior ao início. Agenda operacional não oferece duração atravessando meia-noite.
+- As ocorrências reservam intervalos semiabertos `[início, término)`: `inícioNovo < términoExistente && términoNovo > inícioExistente`. Horários adjacentes são aceitos; início igual, sobreposição parcial e contenção são recusados.
+- A API valida somente ocorrências do tenant e PDV canônicos autorizados; `CANCELADA` não reserva. Arquivar ou interromper uma regra não libera ocorrências existentes, e ocorrências de regras arquivadas continuam na comparação.
+- Toda mutação que reserva ou libera uma ocorrência obtém primeiro um advisory transaction lock comum do tenant/PDV. A leitura de conflitos e a gravação ocorrem na mesma transação. A geração semanal pré-valida todas as datas e aborta regra, ocorrências e recibo integralmente se uma conflitar. O lock por ocorrência/requisição permanece depois desse lock geral.
+- Conflitos retornam HTTP 409 com `code: AGENDA_HORARIO_CONFLITO` e somente os dados seguros da ocorrência conflitante no escopo autorizado. Datas incompletas antigas bloqueiam o mesmo início; em qualquer outra comparação incerta na data, a API retorna `AGENDA_HORARIO_INCOMPLETO` até que o intervalo antigo seja completado.
+- Edição de ocorrência mantém a própria linha fora da comparação. Mudanças apenas de nome/local em registro legado incompleto preservam seus horários ausentes; nova reserva, mudança de data/horário ou geração exige intervalo completo. O completar de uma ocorrência antiga passa pela mesma validação.
+- Datas seguem o contrato local existente `AAAA-MM-DD`, persistido/consultado como data UTC sem hora. O QA cobre criação e geração pelas rotas novas e legadas, adjacência, conflitos, retry, rollback semanal, simultaneidade, legado incompleto, cancelamento e arquivo lógico.
 
 ## Salvamento e retry
 
-`POST /api/operacao/agenda/agendamentos` recebe `requestId` UUID, `nome`, `data`, `horaInicio`, `horaFim`/`local` opcionais, `repetirSemanalmente`, e, para repetição, `fim`. IDs existentes podem ser informados em `agendaId` ou `ocorrenciaId`, conforme o objeto editado.
+`POST /api/operacao/agenda/agendamentos` recebe `requestId` UUID, `nome`, `data`, `horaInicio`, `horaFim` obrigatório em novo agendamento ou mudança de data/horário, `local` opcional, `repetirSemanalmente`, e, para repetição, `fim`. IDs existentes podem ser informados em `agendaId` ou `ocorrenciaId`, conforme o objeto editado.
 
 - Nova repetição e suas datas são salvas na mesma transação, reutilizando `generateAgendaDates`. Uma falha em qualquer inserção ou na auditoria desfaz tudo.
 - O gerador usa a unicidade existente por agenda/data e `skipDuplicates`. Preserva ocorrências existentes, inclusive canceladas; gerar o mesmo período não restaura agendamentos cancelados.

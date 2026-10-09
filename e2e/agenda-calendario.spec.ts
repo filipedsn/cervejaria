@@ -17,7 +17,7 @@ async function fixture(page: Page) {
     { id: 'three', agendaId: null as string | null, nome: 'Domingo no jardim', data: '2026-10-11', horaInicio: '11:00', horaFim: null, local: null, status: 'ABERTA', podeEditar: false, podeCancelar: false, bloqueio: 'Somente agendamentos programados e sem histórico operacional podem ser editados ou cancelados.' },
   ];
   const writes: { url: string; body: any }[] = []; const reads: string[] = []; const receipts = new Set<string>();
-  let failures = 0; let hold: Promise<void> | null = null;
+  let failures = 0; let conflicts = 0; let hold: Promise<void> | null = null;
   await page.route('**/api/operacao/agenda/**', async (route) => {
     const request = route.request(); const url = new URL(request.url());
     if (request.method() === 'GET') { reads.push(url.search); if (url.pathname.endsWith('/agendas/arquivadas')) return route.fulfill({ json: { agendas: rules.filter((rule) => rule.archivedAt) } }); const start = url.searchParams.get('inicio')!; const end = url.searchParams.get('fim')!; return route.fulfill({ json: { agendas: rules.filter((rule) => !rule.archivedAt), ocorrencias: rows.filter((row) => row.data >= start && row.data <= end) } }); }
@@ -25,14 +25,15 @@ async function fixture(page: Page) {
     if (hold) await hold;
     if (failures > 0) { failures--; return route.fulfill({ status: 503, json: { error: 'Falha temporária. Tente salvar novamente.' } }); }
     if (url.pathname.endsWith('/agendamentos')) {
+      if (conflicts > 0) { conflicts--; return route.fulfill({ status: 409, json: { error: 'Conflito com Igarapé em 10/10/2026, das 18:00 às 20:00.', code: 'AGENDA_HORARIO_CONFLITO', details: { conflito: { nome: 'Igarapé', data: '2026-10-10', horaInicio: '18:00', horaFim: '20:00' } } } }); }
       if (receipts.has(body.requestId)) return route.fulfill({ json: { criadas: 0 } });
       receipts.add(body.requestId);
       if (body.repetirSemanalmente) {
         let rule = rules.find((item) => item.id === body.agendaId);
         if (!rule) { rule = { id: `new-rule-${writes.length}`, nome: body.nome, diaSemana: new Date(`${body.data}T12:00:00`).getDay(), horaInicio: body.horaInicio, horaFim: null, local: null, ativa: true, archivedAt: null, _count: { ocorrencias: 0 } }; rules.push(rule); }
-        rule.nome = body.nome;
+        rule.nome = body.nome; if (body.horaInicio) rule.horaInicio = body.horaInicio; if (body.horaFim) rule.horaFim = body.horaFim;
         if (body.gerarDatas !== false) { const date = new Date(`${body.data}T12:00:00Z`); while (date.toISOString().slice(0, 10) <= body.fim) { const key = date.toISOString().slice(0, 10); if (!rows.some((row) => row.agendaId === rule!.id && row.data === key)) { rows.push({ ...rows[0], id: `weekly-${rule.id}-${key}`, nome: body.nome, data: key, agendaId: rule.id, horaInicio: body.horaInicio }); rule._count.ocorrencias++; } date.setUTCDate(date.getUTCDate() + 7); } }
-      } else if (body.ocorrenciaId) { Object.assign(rows.find((row) => row.id === body.ocorrenciaId)!, { nome: body.nome, data: body.data, horaInicio: body.horaInicio }); }
+      } else if (body.ocorrenciaId) { Object.assign(rows.find((row) => row.id === body.ocorrenciaId)!, { nome: body.nome, data: body.data, ...(body.horaInicio ? { horaInicio: body.horaInicio } : {}), ...(body.horaFim ? { horaFim: body.horaFim } : {}) }); }
       else rows.push({ ...rows[0], id: `new-one-${writes.length}`, nome: body.nome, data: body.data, horaInicio: body.horaInicio, agendaId: null });
       return route.fulfill({ json: { criadas: 1 } });
     }
@@ -41,7 +42,7 @@ async function fixture(page: Page) {
     if (url.pathname.endsWith('/arquivar')) { const id = url.pathname.split('/').at(-2)!; rules.find((rule) => rule.id === id)!.archivedAt = '2026-10-09T15:00:00Z'; return route.fulfill({ json: { arquivada: true } }); }
     return route.fulfill({ status: 404, json: { error: 'Unexpected write endpoint' } });
   });
-  return { writes, reads, rows, rules, nativeDialogs: () => nativeDialogs, failNext: () => { failures++; }, hold: (promise: Promise<void> | null) => { hold = promise; } };
+  return { writes, reads, rows, rules, nativeDialogs: () => nativeDialogs, failNext: () => { failures++; }, conflictNext: () => { conflicts++; }, hold: (promise: Promise<void> | null) => { hold = promise; } };
 }
 async function open(page: Page) { await page.goto('/operacao/agenda'); await expect(page.getByRole('heading', { name: 'Agenda', exact: true })).toBeVisible(); }
 async function noOverflow(page: Page) { expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); }
@@ -73,6 +74,8 @@ for (const width of [390, 768]) {
     test('formulário único: erro, rascunho, retry com mesma chave, envio único e repetição com período', async ({ page }) => {
       const state = await fixture(page); await open(page); await page.getByRole('button', { name: '+ Novo agendamento' }).click();
       const dialog = page.getByRole('dialog'); await dialog.getByLabel('Nome', { exact: true }).fill('Novo encontro'); await dialog.getByLabel('Data', { exact: true }).fill('2026-10-10');
+      await expect(dialog.getByLabel('Horário de início', { exact: true })).toBeVisible(); await expect(dialog.getByLabel('Horário de término', { exact: true })).toBeVisible();
+      await dialog.getByLabel('Horário de início', { exact: true }).fill('18:00'); await dialog.getByLabel('Horário de término', { exact: true }).fill('20:00');
       state.failNext(); let release!: () => void; state.hold(new Promise<void>((resolve) => { release = resolve; }));
       await dialog.getByRole('button', { name: 'Salvar', exact: true }).click(); await expect(dialog.getByRole('button', { name: 'Salvando…' })).toBeDisabled();
       await dialog.locator('form').dispatchEvent('submit'); expect(state.writes).toHaveLength(1); release();
@@ -80,7 +83,7 @@ for (const width of [390, 768]) {
       await dialog.getByRole('button', { name: 'Salvar', exact: true }).click(); await expect(dialog).toHaveCount(0);
       expect(state.writes[0].body.requestId).toBe(state.writes[1].body.requestId); await expect(page.getByRole('button', { name: /Novo encontro/ })).toBeVisible();
       await page.getByRole('button', { name: '+ Novo agendamento' }).click(); await dialog.getByLabel('Nome', { exact: true }).fill('Sábados de outubro'); await dialog.getByLabel('Repetir semanalmente').check();
-      await dialog.getByLabel('Primeira data').fill('2026-10-10'); await dialog.getByLabel('Última data da repetição').fill('2026-10-31');
+      await dialog.getByLabel('Primeira data').fill('2026-10-10'); await dialog.getByLabel('Horário de início', { exact: true }).fill('18:00'); await dialog.getByLabel('Horário de término', { exact: true }).fill('20:00'); await dialog.getByLabel('Última data da repetição').fill('2026-10-31');
       await noOverflow(page); await screenshot(page, width === 390 ? 'artifacts/agenda-mobile-calendar-form.png' : 'artifacts/agenda-tablet-calendar-form.png');
       const keyboardHeight = width === 390 ? 500 : 650;
       await page.setViewportSize({ width, height: keyboardHeight });
@@ -92,15 +95,23 @@ for (const width of [390, 768]) {
       expect(state.writes.at(-1)!.body).toMatchObject({ repetirSemanalmente: true, data: '2026-10-10', fim: '2026-10-31' }); expect(state.writes.every((write) => write.url.endsWith('/agendamentos'))).toBe(true);
       await page.getByRole('button', { name: 'Lista', exact: true }).click(); await expect(page.getByRole('button', { name: /Sábados de outubro/ })).toHaveCount(4);
     });
+    test('conflito aparece no formulário, mantém os horários e permite nova tentativa livre', async ({ page }) => {
+      const state = await fixture(page); await open(page); await page.getByRole('button', { name: '+ Novo agendamento' }).click(); const dialog = page.getByRole('dialog');
+      await dialog.getByLabel('Nome', { exact: true }).fill('Teste conflito'); await dialog.getByLabel('Data', { exact: true }).fill('2026-10-10'); await dialog.getByLabel('Horário de início', { exact: true }).fill('19:00'); await dialog.getByLabel('Horário de término', { exact: true }).fill('21:00');
+      state.conflictNext(); await dialog.getByRole('button', { name: 'Salvar', exact: true }).click();
+      await expect(dialog.getByRole('alert')).toHaveText('Conflito com Igarapé em 10/10/2026, das 18:00 às 20:00.'); await expect(dialog.getByLabel('Horário de início', { exact: true })).toHaveValue('19:00'); await expect(dialog.getByLabel('Horário de término', { exact: true })).toHaveValue('21:00');
+      await screenshot(page, width === 390 ? 'artifacts/agenda-conflict-mobile.png' : 'artifacts/agenda-conflict-tablet.png');
+      await dialog.getByLabel('Horário de início', { exact: true }).fill('20:00'); await dialog.getByLabel('Horário de término', { exact: true }).fill('22:00'); await dialog.getByRole('button', { name: 'Salvar', exact: true }).click(); await expect(dialog).toHaveCount(0); expect(state.writes).toHaveLength(2); await noOverflow(page);
+    });
     test('regras existentes/inativas, edição, descarte, cancelamento e interrupção preservam datas', async ({ page }) => {
       const state = await fixture(page); await open(page); await page.getByRole('button', { name: 'Repetições (2)' }).click();
       await expect(page.getByRole('dialog').getByText('Ainda sem datas agendadas')).toHaveCount(2);
       await page.getByRole('button', { name: 'Editar repetição Repetição inativa' }).click(); let dialog = page.getByRole('dialog');
-      await expect(dialog.getByText(/Repetição inativa:/)).toBeVisible(); await dialog.getByLabel('Nome', { exact: true }).fill('Inativa revisada');
+      await expect(dialog.getByText(/Repetição inativa:/)).toBeVisible(); await dialog.getByLabel('Nome', { exact: true }).fill('Inativa revisada'); await dialog.getByLabel('Horário de término', { exact: true }).fill('19:00');
       await dialog.getByRole('button', { name: 'Voltar' }).click(); await expect(page.getByRole('heading', { name: 'Descartar alterações?' })).toBeVisible(); await dialog.getByRole('button', { name: 'Continuar editando' }).click(); await expect(dialog.getByLabel('Nome', { exact: true })).toHaveValue('Inativa revisada');
       await dialog.getByRole('button', { name: 'Salvar', exact: true }).click(); await expect(dialog).toHaveCount(0); expect(state.writes.at(-1)!.body).toMatchObject({ agendaId: 'old-inactive', gerarDatas: false }); expect(state.rules[1].ativa).toBe(false);
       await page.getByRole('button', { name: 'Repetições (2)' }).click(); await page.getByRole('button', { name: 'Editar repetição Sábado sem datas' }).click();
-      dialog = page.getByRole('dialog'); await dialog.getByLabel('Primeira data').fill('2026-10-10'); await dialog.getByLabel('Última data da repetição').fill('2026-10-24'); await dialog.getByRole('button', { name: 'Salvar', exact: true }).click(); await expect(dialog).toHaveCount(0);
+      dialog = page.getByRole('dialog'); await dialog.getByLabel('Primeira data').fill('2026-10-10'); await dialog.getByLabel('Horário de término', { exact: true }).fill('19:00'); await dialog.getByLabel('Última data da repetição').fill('2026-10-24'); await dialog.getByRole('button', { name: 'Salvar', exact: true }).click(); await expect(dialog).toHaveCount(0);
       await page.getByRole('button', { name: 'Lista', exact: true }).click(); await expect(page.getByRole('button', { name: /Sábado sem datas/ })).toHaveCount(3);
       await page.getByRole('button', { name: /Encontro da tarde/ }).click(); dialog = page.getByRole('dialog'); await dialog.getByRole('button', { name: 'Editar', exact: true }).click();
       await dialog.getByLabel('Nome', { exact: true }).fill('Encontro editado'); await dialog.getByRole('button', { name: 'Salvar', exact: true }).click(); await expect(dialog).toHaveCount(0);
@@ -113,11 +124,11 @@ for (const width of [390, 768]) {
     test('descarte visual preserva todos os campos, foco e teclado; descartar não envia request', async ({ page }) => {
       const state = await fixture(page); await open(page); await page.getByRole('button', { name: '+ Novo agendamento' }).click(); const dialog = page.getByRole('dialog');
       await dialog.getByLabel('Nome', { exact: true }).fill('Rascunho completo'); await dialog.getByLabel('Data', { exact: true }).fill('2026-10-10'); await dialog.getByLabel('Horário de início', { exact: true }).fill('16:15');
-      await dialog.getByText('Mais detalhes').click(); await dialog.getByLabel('Horário de término (opcional)').fill('22:30'); await dialog.getByLabel('Local (opcional)').fill('Jardim'); await dialog.getByLabel('Repetir semanalmente').check(); await dialog.getByLabel('Última data da repetição').fill('2026-10-31');
+      await dialog.getByLabel('Horário de término', { exact: true }).fill('22:30'); await dialog.getByLabel('Local (opcional)').fill('Jardim'); await dialog.getByLabel('Repetir semanalmente').check(); await dialog.getByLabel('Última data da repetição').fill('2026-10-31');
       await dialog.getByRole('button', { name: 'Voltar' }).click(); await expect(page.getByRole('heading', { name: 'Descartar alterações?', exact: true })).toBeVisible();
       await expect(dialog.getByRole('button', { name: 'Continuar editando' })).toBeFocused(); await page.keyboard.press('Tab'); await expect(dialog.getByRole('button', { name: 'Descartar', exact: true })).toBeFocused(); await noOverflow(page);
       await screenshot(page, width === 390 ? 'artifacts/agenda-discard-mobile.png' : 'artifacts/agenda-discard-tablet.png');
-      await page.keyboard.press('Escape'); await expect(dialog.getByLabel('Nome', { exact: true })).toHaveValue('Rascunho completo'); await expect(dialog.getByLabel('Primeira data')).toHaveValue('2026-10-10'); await expect(dialog.getByLabel('Horário de início', { exact: true })).toHaveValue('16:15'); await expect(dialog.getByLabel('Horário de término (opcional)')).toHaveValue('22:30'); await expect(dialog.getByLabel('Local (opcional)')).toHaveValue('Jardim'); await expect(dialog.getByLabel('Última data da repetição')).toHaveValue('2026-10-31'); await expect(dialog.getByLabel('Repetir semanalmente')).toBeChecked();
+      await page.keyboard.press('Escape'); await expect(dialog.getByLabel('Nome', { exact: true })).toHaveValue('Rascunho completo'); await expect(dialog.getByLabel('Primeira data')).toHaveValue('2026-10-10'); await expect(dialog.getByLabel('Horário de início', { exact: true })).toHaveValue('16:15'); await expect(dialog.getByLabel('Horário de término', { exact: true })).toHaveValue('22:30'); await expect(dialog.getByLabel('Local (opcional)')).toHaveValue('Jardim'); await expect(dialog.getByLabel('Última data da repetição')).toHaveValue('2026-10-31'); await expect(dialog.getByLabel('Repetir semanalmente')).toBeChecked();
       await expect(dialog.getByRole('button', { name: 'Voltar' })).toBeFocused();
       await dialog.getByRole('button', { name: 'Voltar' }).click(); await dialog.getByRole('button', { name: 'Continuar editando' }).click(); await expect(dialog.getByLabel('Nome', { exact: true })).toHaveValue('Rascunho completo');
       await dialog.getByRole('button', { name: 'Voltar' }).click(); await dialog.getByRole('button', { name: 'Descartar', exact: true }).click(); await expect(dialog).toHaveCount(0); expect(state.writes).toHaveLength(0); expect(state.nativeDialogs()).toBe(0);

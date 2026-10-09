@@ -28,7 +28,6 @@ export function AgendaOperacionalPanel() {
   const [detail, setDetail] = useState<Ocorrencia | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [baseline, setBaseline] = useState('');
-  const [moreOpen, setMoreOpen] = useState(false);
   const [error, setError] = useState('');
   const submitLock = useRef(false);
   const resumeFocusIndex = useRef<number | null>(null);
@@ -49,7 +48,17 @@ export function AgendaOperacionalPanel() {
   const mutation = useMutation({
     mutationFn: (operation: { path: string; body: unknown }) => api.post(operation.path, operation.body),
     onSuccess: (_result, operation) => { const saved = operation.body as Partial<Draft>; if (saved.requestId && saved.data) { setMonth(saved.data); setSelected(saved.data); } if (operation.path.endsWith('/arquivar')) setNotice('Repetição removida da lista. As datas existentes foram preservadas.'); setError(''); setDraft(null); setDetail(null); void queryClient.invalidateQueries({ queryKey: ['operacao-agenda-ocorrencias'] }); void queryClient.invalidateQueries({ queryKey: ['operacao-agenda-arquivadas'] }); },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Não foi possível salvar. Tente novamente.'),
+    onError: (err) => {
+      if (err instanceof ApiError && err.body?.code === 'AGENDA_HORARIO_CONFLITO' && err.body.details && typeof err.body.details === 'object') {
+        const conflict = (err.body.details as { conflito?: { nome?: string; data?: string; horaInicio?: string | null; horaFim?: string | null } }).conflito;
+        if (conflict?.nome && conflict.data && conflict.horaInicio && conflict.horaFim) {
+          const date = conflict.data.split('-').reverse().join('/');
+          setError(`Conflito com ${conflict.nome} em ${date}, das ${conflict.horaInicio.slice(0, 5)} às ${conflict.horaFim.slice(0, 5)}.`);
+          return;
+        }
+      }
+      setError(err instanceof ApiError ? err.message : 'Não foi possível salvar. Tente novamente.');
+    },
     onSettled: () => { submitLock.current = false; },
   });
   function write(path: string, body: unknown) { if (submitLock.current) return; submitLock.current = true; setError(''); mutation.mutate({ path, body }); }
@@ -65,7 +74,7 @@ export function AgendaOperacionalPanel() {
   }
   function openDraft(values: Partial<Draft> = {}) {
     const next = { requestId: crypto.randomUUID(), nome: '', data: selected, horaInicio: '18:00', horaFim: '', local: '', repetirSemanalmente: false, fim, gerarDatas: true, ...values };
-    setDetail(null); setRulesOpen(false); setError(''); setMoreOpen(Boolean(next.horaFim || next.local)); setDraft(next); setBaseline(JSON.stringify(next));
+    setDetail(null); setRulesOpen(false); setError(''); setDraft(next); setBaseline(JSON.stringify(next));
   }
   function openRule(agenda: Agenda) {
     const date = localDate(selected); date.setDate(date.getDate() + (agenda.diaSemana - date.getDay() + 7) % 7);
@@ -83,6 +92,8 @@ export function AgendaOperacionalPanel() {
     ask({ kind: 'stop', agendaId });
   }
   const rule = agendas.find((agenda) => agenda.id === draft?.agendaId);
+  const originalDraft = useMemo(() => { try { return baseline ? JSON.parse(baseline) as Draft : null; } catch { return null; } }, [baseline]);
+  const preserveIncompleteLegacyTime = Boolean(draft && originalDraft && (!originalDraft.horaInicio || !originalDraft.horaFim) && draft.horaInicio === originalDraft.horaInicio && draft.horaFim === originalDraft.horaFim && ((draft.ocorrenciaId && draft.data === originalDraft.data) || (draft.agendaId && !draft.gerarDatas && localDate(draft.data).getDay() === localDate(originalDraft.data).getDay())));
   const detailRule = agendas.find((agenda) => agenda.id === detail?.agendaId);
   const first = localDate(inicio); const length = localDate(fim).getDate();
   const cells = Array.from({ length: Math.ceil((first.getDay() + length) / 7) * 7 }, (_, index) => index - first.getDay() + 1);
@@ -166,11 +177,10 @@ export function AgendaOperacionalPanel() {
       </div>}
     </Modal>
     <Modal open={Boolean(draft) && !confirmation} title={draft?.agendaId ? 'Editar repetição' : draft?.ocorrenciaId ? 'Editar agendamento' : 'Novo agendamento'} onClose={closeDraft} hideHeaderClose={mutation.isPending} closeOnBackdrop={!mutation.isPending} footer={<div className="grid grid-cols-2 gap-2"><button type="button" className="touch-btn-orange" disabled={mutation.isPending} onClick={closeDraft}>Voltar</button><button type="submit" form="agendamento-form" className="touch-btn-primary" disabled={mutation.isPending}>{mutation.isPending ? 'Salvando…' : 'Salvar'}</button></div>}>
-      {draft && <form id="agendamento-form" className="space-y-4 pb-2" onSubmit={(event) => { event.preventDefault(); write('/api/operacao/agenda/agendamentos', { ...draft, horaFim: draft.horaFim || null, local: draft.local || null, ...(draft.repetirSemanalmente ? {} : { fim: undefined }) }); }}>
+      {draft && <form id="agendamento-form" className="space-y-4 pb-2" onSubmit={(event) => { event.preventDefault(); const body: Record<string, unknown> = { ...draft, horaFim: draft.horaFim || null, local: draft.local || null, ...(draft.repetirSemanalmente ? {} : { fim: undefined }) }; if (preserveIncompleteLegacyTime) { delete body.horaInicio; delete body.horaFim; } write('/api/operacao/agenda/agendamentos', body); }}>
         {error && <div role="alert" className="alert-error">{error}</div>}
         <label className="block text-sm">Nome<input className="input mt-1 min-h-11 w-full" value={draft.nome} maxLength={120} required disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, nome: event.target.value })} /></label>
-        <div className="grid gap-4 sm:grid-cols-2"><label className="block min-w-0 text-sm">{draft.repetirSemanalmente ? 'Primeira data' : 'Data'}<input type="date" className="input mt-1 min-h-11 w-full" value={draft.data} required disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, data: event.target.value })} /></label><label className="block min-w-0 text-sm">Horário de início<input type="time" className="input mt-1 min-h-11 w-full" value={draft.horaInicio} required disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, horaInicio: event.target.value })} /></label></div>
-        <details open={moreOpen} onToggle={(event) => setMoreOpen(event.currentTarget.open)}><summary className="min-h-11 cursor-pointer py-3 text-sm text-ink-muted">Mais detalhes</summary><div className="grid gap-4 sm:grid-cols-2"><label className="block min-w-0 text-sm">Horário de término (opcional)<input type="time" className="input mt-1 min-h-11 w-full" value={draft.horaFim} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, horaFim: event.target.value })} /></label><label className="block text-sm">Local (opcional)<input className="input mt-1 min-h-11 w-full" value={draft.local} maxLength={160} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, local: event.target.value })} /></label></div></details>
+        <div className="grid gap-4 sm:grid-cols-2"><label className="block min-w-0 text-sm">{draft.repetirSemanalmente ? 'Primeira data' : 'Data'}<input type="date" className="input mt-1 min-h-11 w-full" value={draft.data} required disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, data: event.target.value })} /></label><label className="block min-w-0 text-sm">Horário de início<input type="time" className="input mt-1 min-h-11 w-full" value={draft.horaInicio} required={!preserveIncompleteLegacyTime} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, horaInicio: event.target.value })} /></label><label className="block min-w-0 text-sm">Horário de término<input type="time" className="input mt-1 min-h-11 w-full" value={draft.horaFim} required={!preserveIncompleteLegacyTime} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, horaFim: event.target.value })} /></label><label className="block text-sm">Local (opcional)<input className="input mt-1 min-h-11 w-full" value={draft.local} maxLength={160} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, local: event.target.value })} /></label></div>
         {!draft.ocorrenciaId && <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" className="h-5 w-5" checked={draft.repetirSemanalmente} disabled={Boolean(draft.agendaId) || mutation.isPending} onChange={(event) => setDraft({ ...draft, repetirSemanalmente: event.target.checked })} />Repetir semanalmente</label>}
         {draft.repetirSemanalmente && <div className="space-y-3 rounded-xl border border-line p-3"><p className="text-sm text-ink-muted">Repetição semanal: {dias[localDate(draft.data).getDay()]} · {draft.horaInicio}.</p><label className="block text-sm">Última data da repetição<input type="date" className="input mt-1 min-h-11 w-full" value={draft.fim} min={draft.data} required disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, fim: event.target.value })} /></label>{rule && <><p className="text-sm text-ink-muted">Alterações na regra serão usadas somente em novas datas. Os agendamentos existentes serão preservados.</p>{rule.ativa ? <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" className="h-5 w-5" checked={draft.gerarDatas} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, gerarDatas: event.target.checked })} />Agendar datas neste período</label> : <p className="text-sm text-ink-muted">Repetição inativa: serão salvos somente os dados da regra. Nenhuma nova data será agendada.</p>}</>}</div>}
       </form>}
