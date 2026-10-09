@@ -61,7 +61,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
       },
       include: incluirCliente ? INCLUDE_PEDIDO_COZINHA_COM_CLIENTE : INCLUDE_PEDIDO_COZINHA,
       // Ordem de chegada: e a regra da fila, nao a senha, que pode ser reemitida.
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
 
     return pedidos.map((pedido) => resumoPedidoCozinha(pedido, incluirCliente));

@@ -10,6 +10,7 @@ import { IconBell } from '../../components/NavIcons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOperacaoCozinha } from '../../hooks/useOperacaoCozinha';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
+import { useCozinhaDisplaySettings } from '../../hooks/useCozinhaDisplaySettings';
 import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
 import type { PedidoCozinha } from '../../lib/operacao';
 
@@ -33,6 +34,7 @@ export function OperacaoCozinhaTvPage() {
   const podeConfirmarCancelamento = canPermission('kitchen.cancel') && canPermission('sale.refund');
   const podeCancelarItem = canPermission('command.item.cancel');
   const { contexto } = useOperacaoContexto();
+  const { settings: displaySettings } = useCozinhaDisplaySettings();
   const avisoNaCozinha = contexto.whatsappPedidoProntoEnabled && contexto.whatsappPedidoProntoNaCozinha;
   const {
     naFila,
@@ -81,6 +83,7 @@ export function OperacaoCozinhaTvPage() {
   };
 
   const cancelamentoPendente = mudarStatus.isPending || removerItem.isPending;
+  const interacaoPendente = cancelamentoPendente || confirmarCancelamentoItem.isPending || Boolean(confirmacaoCancelamento) || Boolean(itemParaCancelar);
 
   useEffect(() => {
     document.addEventListener('fullscreenchange', syncFullscreen);
@@ -184,7 +187,12 @@ export function OperacaoCozinhaTvPage() {
           <EmptyState icon="👨‍🍳" title="Nenhum pedido na cozinha" />
         </div>
       ) : (
-        <CozinhaTvGrid>
+        <CozinhaTvGrid
+          autoAdvance
+          intervalMs={displaySettings.intervalMs}
+          paused={interacaoPendente}
+          profile={displaySettings.profile}
+        >
           {naFila.map((pedido, indice) => (
             <CozinhaPedidoCard
               key={pedido.id}

@@ -18,6 +18,7 @@ import { CategoriasComandaOrdemPanel } from '../../components/CategoriasComandaO
 import { CategoriasProdutoOrdemPanel } from '../../components/operacao/CategoriasProdutoOrdemPanel';
 import { ConfigChavePixPanel } from '../../components/ConfigChavePixPanel';
 import { OnboardingManualEntry } from '../../components/OnboardingManualEntry';
+import { CozinhaVisualSettingsPanel } from '../../components/operacao/CozinhaVisualSettingsPanel';
 
 const TABS = [
   { id: 'equipe', label: 'Equipe' },
@@ -94,6 +95,9 @@ export function OperacaoConfiguracoesPage() {
           <ConfigKpisComandaPanel />
           <ConfigComandasLayoutPanel />
           <CategoriasComandaOrdemPanel />
+        </ConfigurationGroup>
+        <ConfigurationGroup title="Cozinha">
+          <CozinhaVisualSettingsPanel />
         </ConfigurationGroup>
         <ConfigurationGroup title="Catálogo">
           <CategoriasProdutoOrdemPanel />

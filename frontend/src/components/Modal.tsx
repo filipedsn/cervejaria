@@ -12,6 +12,7 @@ interface ModalProps {
   wide?: boolean;
   extraWide?: boolean;
   hideHeader?: boolean;
+  noBodyScroll?: boolean;
 }
 
 export function Modal({
@@ -26,6 +27,7 @@ export function Modal({
   wide = false,
   extraWide = false,
   hideHeader = false,
+  noBodyScroll = false,
 }: ModalProps) {
   if (!open) return null;
 
@@ -65,7 +67,7 @@ export function Modal({
           </div>
         </div>}
         <div
-          className={`flex-1 min-h-0 overflow-y-auto ${extraWide ? 'px-5 sm:px-10' : compact ? 'px-4 sm:px-5' : 'px-4 sm:px-6'} ${
+          className={`flex-1 min-h-0 ${noBodyScroll ? 'overflow-hidden' : 'overflow-y-auto'} ${extraWide ? 'px-5 sm:px-10' : compact ? 'px-4 sm:px-5' : 'px-4 sm:px-6'} ${
             footer ? 'pb-4' : 'pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-6'
           }`}
         >

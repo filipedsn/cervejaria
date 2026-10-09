@@ -4,6 +4,7 @@ import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
 import { Modal } from '../../components/Modal';
 import { CozinhaPedidoCard } from '../../components/operacao/CozinhaPedidoCard';
+import { CozinhaTvGrid } from '../../components/operacao/CozinhaTvGrid';
 import { IconBell, IconTv } from '../../components/NavIcons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOperacaoCozinha } from '../../hooks/useOperacaoCozinha';
@@ -115,6 +116,7 @@ export function OperacaoCozinhaPage() {
         />
       )}
 
+      {lista.length > 0 && <CozinhaTvGrid autoAdvance={false} operational countLabel={verEntregues ? 'no filtro: entregues hoje' : 'no filtro: na fila'} paused={mudarStatus.isPending || confirmarCancelamentoItem.isPending || Boolean(pedidoParaCancelar)}>
       {lista.map((pedido, indice) => (
         <CozinhaPedidoCard
           key={pedido.id}
@@ -175,6 +177,7 @@ export function OperacaoCozinhaPage() {
           } : undefined}
         />
       ))}
+      </CozinhaTvGrid>}
 
       <Modal
         open={pedidoParaCancelar !== null}

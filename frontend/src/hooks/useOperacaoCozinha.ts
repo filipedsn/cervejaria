@@ -25,7 +25,7 @@ export function useOperacaoCozinha() {
     () =>
       (query.data ?? []).filter(
         (pedido) => pedido.status !== 'ENTREGUE' && pedido.status !== 'CANCELADO',
-      ),
+      ).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)),
     [query.data],
   );
   const entregues = useMemo(
@@ -84,13 +84,18 @@ export function useOperacaoCozinha() {
     const onAtualizado = () => {
       void queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY });
     };
+    const onReconnect = () => {
+      void queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY });
+    };
 
     socket.on('operacao:pedido-novo', onNovo);
     socket.on('operacao:pedido-atualizado', onAtualizado);
+    socket.on('connect', onReconnect);
 
     return () => {
       socket.off('operacao:pedido-novo', onNovo);
       socket.off('operacao:pedido-atualizado', onAtualizado);
+      socket.off('connect', onReconnect);
     };
   }, [cervejaria?.id, queryClient, alerta.avisar]);
 
