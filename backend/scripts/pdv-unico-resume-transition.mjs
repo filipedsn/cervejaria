@@ -35,7 +35,7 @@ export async function createResumeTransition({ repoRoot, receiptsRoot, runId, fr
   }));
   const body = {
     format: 'tap76-dev-cutover-revision-transition-v1', runId, fromRevision, toRevision,
-    tenantIds: preflightBody.preflight.ledger?.selectedTenantIds ?? preflightBody.tenantIds,
+    tenantIds,
     migrationsSha256: preflightBody.migrationsSha256, photoSha256: preflightBody.photoSha256, backupSha256: preflightBody.backupSha256,
     preflightSha256, receiptCount: receiptRows.length, previousReceiptSha256: receiptRows.at(-1).sha256,
     qaEvidenceFile: path.basename(qaEvidenceFile), qaEvidenceSha256: await fileSha(qaEvidenceFile), changedFiles: files,
