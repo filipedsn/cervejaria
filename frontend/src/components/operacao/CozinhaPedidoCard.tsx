@@ -1,8 +1,7 @@
-import { useState } from 'react';
 import { PedidoElapsedTimer } from '../PedidoElapsedTimer';
-import { Modal } from '../Modal';
 import { IconShoppingBag, IconTrash, IconWhatsApp } from '../NavIcons';
 import { rotuloComanda, type PedidoCozinha, type StatusPedido } from '../../lib/operacao';
+import type { CozinhaPedidoFragmento } from './CozinhaTvGrid';
 
 export const AVANCO_COZINHA: Partial<Record<StatusPedido, { status: StatusPedido; label: string }>> = {
   RECEBIDO: { status: 'EM_PREPARO', label: 'Iniciar' },
@@ -29,6 +28,11 @@ const BADGE: Record<string, { classe: string; label: string; tvClasse: string }>
 
 interface Props {
   pedido: PedidoCozinha;
+  fragment?: CozinhaPedidoFragmento;
+  measurement?: boolean;
+  measurementKind?: 'full' | 'item';
+  measurementId?: string;
+  measurementItemIndex?: number;
   indice?: number;
   mostrarFila?: boolean;
   variant?: 'operacional' | 'tv';
@@ -45,6 +49,11 @@ interface Props {
 
 export function CozinhaPedidoCard({
   pedido,
+  fragment,
+  measurement = false,
+  measurementKind,
+  measurementId,
+  measurementItemIndex,
   indice,
   mostrarFila = true,
   variant = 'operacional',
@@ -62,27 +71,40 @@ export function CozinhaPedidoCard({
   const volta = VOLTA_COZINHA[pedido.status];
   const badge = BADGE[pedido.status];
   const timerStartedAt = pedido.entregueEm ? pedido.createdAt : (pedido.statusDesde ?? pedido.createdAt);
-  const quantidadeItens = pedido.itens.reduce((total, item) => total + item.quantidade, 0);
-  const [detalheItem, setDetalheItem] = useState(-1);
+  const itemIndexes = fragment?.itemIndexes ?? pedido.itens.map((_, index) => index);
+  const itensVisiveis = itemIndexes.map((index) => pedido.itens[index]).filter((item): item is PedidoCozinha['itens'][number] => Boolean(item));
+  const quantidadeItens = itensVisiveis.reduce((total, item) => total + item.quantidade, 0);
+  const fragmento: CozinhaPedidoFragmento = fragment ?? { itemIndexes, part: 1, total: 1, isFirst: true, isLast: true };
+  const rotuloFragmento = fragmento.total > 1
+    ? fragmento.isFirst
+      ? `Pedido ${pedido.numero} — parte ${fragmento.part}/${fragmento.total}`
+      : `Pedido ${pedido.numero} — continuação ${fragmento.part}/${fragmento.total}`
+    : null;
+  const measurementAttrs = measurement ? {
+    'data-kitchen-measure-kind': measurementKind,
+    'data-kitchen-order-id': measurementId,
+    ...(measurementKind === 'item' ? { 'data-kitchen-item-index': measurementItemIndex } : {}),
+  } : {};
 
   if (variant === 'tv') {
     return (
-      <article className={`cozinha-tv-card ${badge.tvClasse}`}>
+      <article {...measurementAttrs} className={'cozinha-tv-card ' + badge.tvClasse}>
+        {rotuloFragmento && <p className="cozinha-tv-card-continuation">{rotuloFragmento}</p>}
         <div className="cozinha-tv-card-header">
           <div className="min-w-0">
             <div className="cozinha-tv-card-position-row">
-              {mostrarFila && indice != null && (
+              {mostrarFila && indice != null && fragmento.isFirst && (
                 <p className="cozinha-tv-card-pos">#{indice + 1}</p>
               )}
               <div className="cozinha-tv-card-timer-wrap">
-                <PedidoElapsedTimer
+                {measurement ? <span className="cozinha-tv-card-timer">00:00</span> : <PedidoElapsedTimer
                   startedAt={timerStartedAt}
                   stoppedAt={pedido.entregueEm}
                   className="cozinha-tv-card-timer"
                   ariaLabel={
-                    pedido.entregueEm ? 'Tempo total até a entrega' : `Tempo em ${badge.label.toLowerCase()}`
+                    pedido.entregueEm ? 'Tempo total até a entrega' : 'Tempo em ' + badge.label.toLowerCase()
                   }
-                />
+                />}
               </div>
             </div>
             <p className="cozinha-tv-card-comanda">{rotuloComanda(pedido.comanda)}</p>
@@ -105,21 +127,21 @@ export function CozinhaPedidoCard({
         </div>
 
         <ul className="cozinha-tv-card-itens">
-          {pedido.itens.slice(0, 1).map((item) => (
-            <li key={item.id} className={item.cancelamentoPendente ? 'cozinha-tv-card-item--cancelamento' : ''}>
+          {itensVisiveis.map((item) => (
+            <li key={item.id} data-kitchen-item-id={item.id} className={item.cancelamentoPendente ? 'cozinha-tv-card-item--cancelamento' : ''}>
               <div className="cozinha-tv-card-item-heading">
               <span className="cozinha-tv-card-qtd">{item.quantidade}×</span>
               <span className="cozinha-tv-card-nome">{item.nome}</span>
                 {item.paraViagem && <span className="cozinha-tv-card-item-travel" title="Para viagem" aria-label="Para viagem"><IconShoppingBag className="h-5 w-5" /></span>}
                 {item.cancelamentoPendente && pedido.status !== 'CANCELAMENTO_PENDENTE' && onConfirmarCancelamentoItem ? (
-                  <button type="button" className="cozinha-tv-card-btn cozinha-tv-card-btn-danger" disabled={disabled} onClick={() => onConfirmarCancelamentoItem(item.id)}>
+                  <button type="button" className="cozinha-tv-card-btn cozinha-tv-card-btn-danger" disabled={disabled || measurement} onClick={() => onConfirmarCancelamentoItem(item.id)}>
                     Confirmar cancelamento
                   </button>
                 ) : onCancelarItem && (
                   <button
                     type="button"
                     className="cozinha-tv-card-item-cancel"
-                    disabled={disabled}
+                    disabled={disabled || measurement}
                     aria-label={`Cancelar ${item.nome}`}
                     onClick={() => onCancelarItem(item.id)}
                   >
@@ -127,25 +149,22 @@ export function CozinhaPedidoCard({
                   </button>
                 )}
               </div>
-                {item.opcionais?.length ? <small className="cozinha-tv-card-item-details cozinha-tv-card-item-options"><strong>Comp.:</strong><span>{item.opcionais.map((o) => o.nome).join(', ')}</span></small> : null}
+                {item.opcionais?.length ? <small className="cozinha-tv-card-item-details cozinha-tv-card-item-options"><strong>Opcionais:</strong><span>{item.opcionais.map((o) => (o.quantidade > 1 ? o.quantidade + '× ' : '') + o.nome).join(', ')}</span></small> : null}
+                {item.observacao ? <small className="cozinha-tv-card-item-details cozinha-tv-card-item-observation"><strong>Observação:</strong><span>{item.observacao}</span></small> : null}
             </li>
           ))}
         </ul>
 
-        {(pedido.itens.length > 1 || pedido.observacao) && (
-          <button type="button" className="cozinha-tv-details-button" onClick={() => setDetalheItem(0)}>
-            Ver detalhes · {pedido.itens.length} {pedido.itens.length === 1 ? 'item' : 'itens'}
-          </button>
-        )}
+        {fragmento.isFirst && pedido.observacao && <p className="cozinha-tv-card-obs"><strong>Observação do pedido:</strong> {pedido.observacao}</p>}
 
-        <div className="cozinha-tv-card-actions">
+        {fragmento.isLast && <div className="cozinha-tv-card-actions">
           {pedido.status === 'PRONTO' && onAvisarCliente && pedido.comanda.cliente?.telefone && (
-            <button type="button" className="cozinha-tv-card-btn cozinha-tv-card-btn-whatsapp" disabled={disabled} onClick={onAvisarCliente}>
+            <button type="button" className="cozinha-tv-card-btn cozinha-tv-card-btn-whatsapp" disabled={disabled || measurement} onClick={onAvisarCliente}>
               <IconWhatsApp className="h-7 w-7" /> Avisar
             </button>
           )}
           {pedido.status === 'CANCELAMENTO_PENDENTE' && onConfirmarCancelamento && (
-            <button type="button" className="cozinha-tv-card-btn cozinha-tv-card-btn-danger" disabled={disabled} onClick={onConfirmarCancelamento}>
+            <button type="button" className="cozinha-tv-card-btn cozinha-tv-card-btn-danger" disabled={disabled || measurement} onClick={onConfirmarCancelamento}>
               Confirmar cancelamento
             </button>
           )}
@@ -153,7 +172,7 @@ export function CozinhaPedidoCard({
             <button
               type="button"
               className="cozinha-tv-card-btn cozinha-tv-card-btn-primary"
-              disabled={disabled}
+              disabled={disabled || measurement}
               data-audit="operacao-cozinha-avancar"
               onClick={() => onAvancar(avanco.status)}
             >
@@ -164,7 +183,7 @@ export function CozinhaPedidoCard({
             <button
               type="button"
               className="cozinha-tv-card-btn cozinha-tv-card-btn-ghost"
-              disabled={disabled}
+              disabled={disabled || measurement}
               onClick={() => onVoltar(volta)}
             >
               Voltar
@@ -174,7 +193,7 @@ export function CozinhaPedidoCard({
             <button
               type="button"
               className="cozinha-tv-card-btn cozinha-tv-card-btn-danger cozinha-tv-card-btn-icon"
-              disabled={disabled}
+              disabled={disabled || measurement}
               data-audit="operacao-cozinha-cancelar"
               aria-label="Cancelar pedido"
               title="Cancelar pedido"
@@ -183,43 +202,20 @@ export function CozinhaPedidoCard({
               <IconTrash className="w-5 h-5" />
             </button>
           )}
-        </div>
-        <Modal
-          open={detalheItem >= 0}
-          title={`Pedido ${pedido.numero} · parte ${detalheItem + 1} de ${pedido.itens.length}`}
-          onClose={() => setDetalheItem(-1)}
-          noBodyScroll
-          footer={(
-            <div className="flex gap-3">
-              <button type="button" className="cozinha-tv-page-button flex-1" disabled={detalheItem <= 0} onClick={() => setDetalheItem((p) => Math.max(0, p - 1))}>Anterior</button>
-              <button type="button" className="cozinha-tv-page-button flex-1" disabled={detalheItem >= pedido.itens.length - 1} onClick={() => setDetalheItem((p) => Math.min(pedido.itens.length - 1, p + 1))}>Próxima</button>
-            </div>
-          )}
-        >
-          <div className="cozinha-tv-detail-page">
-            <p className="text-sm text-ink-muted">Ação de preparo continua valendo para o pedido inteiro.</p>
-            {pedido.itens[detalheItem] && <div className="cozinha-tv-detail-item">
-              <strong>{pedido.itens[detalheItem]!.quantidade}× {pedido.itens[detalheItem]!.nome}</strong>
-              {pedido.itens[detalheItem]!.opcionais?.length ? <p><b>Complementos:</b> {pedido.itens[detalheItem]!.opcionais!.map((o) => o.nome).join(', ')}</p> : null}
-              {pedido.itens[detalheItem]!.observacao ? <p><b>Observação:</b> {pedido.itens[detalheItem]!.observacao}</p> : null}
-              {pedido.itens[detalheItem]!.paraViagem && <p>Para viagem</p>}
-              {pedido.itens[detalheItem]!.cancelamentoPendente && pedido.status !== 'CANCELAMENTO_PENDENTE' && onConfirmarCancelamentoItem && <button type="button" className="cozinha-tv-page-button mt-3" disabled={disabled} onClick={() => onConfirmarCancelamentoItem(pedido.itens[detalheItem]!.id)}>Confirmar cancelamento do item</button>}
-              {!pedido.itens[detalheItem]!.cancelamentoPendente && onCancelarItem && <button type="button" className="cozinha-tv-page-button mt-3" disabled={disabled} onClick={() => onCancelarItem(pedido.itens[detalheItem]!.id)}>Cancelar item</button>}
-            </div>}
-            {detalheItem === 0 && pedido.observacao && <p className="cozinha-tv-detail-item"><b>Observação do pedido:</b> {pedido.observacao}</p>}
-          </div>
-        </Modal>
+        </div>}
       </article>
     );
   }
 
   return (
     <article
+      {...measurementAttrs}
       className={`card-touch !p-3 space-y-2 ${pedido.status === 'RECEBIDO' ? 'pedido-card-alert' : ''} ${pedido.status === 'CANCELAMENTO_PENDENTE' ? 'border-2 !border-orange-500 bg-orange-950/20' : ''}`}
     >
+      {rotuloFragmento && <p className="cozinha-tv-card-continuation">{rotuloFragmento}</p>}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
-          {mostrarFila && indice != null && (
+          {mostrarFila && indice != null && fragmento.isFirst && (
             <span className="text-xs font-bold uppercase tracking-wide text-brand-600 shrink-0">
               #{indice + 1}
             </span>
@@ -230,48 +226,47 @@ export function CozinhaPedidoCard({
       </div>
 
       <div className="flex items-baseline gap-2">
-        <PedidoElapsedTimer
+        {measurement ? <span className="text-2xl font-mono font-bold tabular-nums text-orange leading-none">00:00</span> : <PedidoElapsedTimer
           startedAt={timerStartedAt}
           stoppedAt={pedido.entregueEm}
           className="text-2xl font-mono font-bold tabular-nums text-orange leading-none"
           ariaLabel={
-            pedido.entregueEm ? 'Tempo total até a entrega' : `Tempo em ${badge.label.toLowerCase()}`
+            pedido.entregueEm ? 'Tempo total até a entrega' : 'Tempo em ' + badge.label.toLowerCase()
           }
-        />
+        />}
         <span className="text-xs text-ink-muted">senha {pedido.numero}</span>
       </div>
 
       <ul className="text-base space-y-0.5">
-        {pedido.itens.slice(0, 1).map((item) => (
-          <li key={item.id} className={item.cancelamentoPendente ? 'rounded-lg border border-orange-500/70 bg-orange-950/20 p-2' : ''}>
+        {itensVisiveis.map((item) => (
+          <li key={item.id} data-kitchen-item-id={item.id} className={item.cancelamentoPendente ? 'rounded-lg border border-orange-500/70 bg-orange-950/20 p-2' : ''}>
             <div className="flex items-center gap-2">
               {item.quantidade}× {item.nome}
               {item.paraViagem && <span className="ml-2 inline-flex text-amber-300" title="Para viagem" aria-label="Para viagem"><IconShoppingBag className="h-4 w-4" /></span>}
               {item.cancelamentoPendente && <span className="ml-auto text-xs font-semibold text-orange-400">Cancelamento solicitado</span>}
             </div>
             {item.cancelamentoPendente && pedido.status !== 'CANCELAMENTO_PENDENTE' && onConfirmarCancelamentoItem && (
-              <button type="button" className="touch-btn-orange touch-btn-sm mt-2" disabled={disabled} onClick={() => onConfirmarCancelamentoItem(item.id)}>
+              <button type="button" className="touch-btn-orange touch-btn-sm mt-2" disabled={disabled || measurement} onClick={() => onConfirmarCancelamentoItem(item.id)}>
                 Confirmar cancelamento
               </button>
             )}
-            {item.opcionais?.length ? <small className="block text-xs text-ink-muted">Comp.: {item.opcionais.map((o) => o.nome).join(', ')}</small> : null}
+            {item.opcionais?.length ? <small className="block text-xs text-ink-muted">Opcionais: {item.opcionais.map((o) => (o.quantidade > 1 ? o.quantidade + '× ' : '') + o.nome).join(', ')}</small> : null}
             {item.observacao ? <small className="block text-xs text-ink-muted">Obs: {item.observacao}</small> : null}
+            {item.paraViagem && <small className="block text-amber-300">Para viagem</small>}
           </li>
         ))}
       </ul>
 
-      {(pedido.itens.length > 1 || pedido.observacao) && <button type="button" className="cozinha-operacional-details-button" onClick={() => setDetalheItem(0)}>
-        Ver pedido completo · {pedido.itens.length} {pedido.itens.length === 1 ? 'item' : 'itens'}
-      </button>}
+      {fragmento.isFirst && pedido.observacao && <p className="cozinha-tv-card-obs"><strong>Observação do pedido:</strong> {pedido.observacao}</p>}
 
-      <div className="flex flex-wrap gap-2">
+      {fragmento.isLast && <div className="flex flex-wrap gap-2">
         {pedido.status === 'PRONTO' && onAvisarCliente && pedido.comanda.cliente?.telefone && (
-          <button type="button" className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-50" disabled={disabled} onClick={onAvisarCliente}>
+          <button type="button" className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-50" disabled={disabled || measurement} onClick={onAvisarCliente}>
             <IconWhatsApp className="h-7 w-7" /> Avisar
           </button>
         )}
         {pedido.status === 'CANCELAMENTO_PENDENTE' && onConfirmarCancelamento && (
-          <button type="button" className="touch-btn-danger flex-1 touch-btn-sm" disabled={disabled} onClick={onConfirmarCancelamento}>
+          <button type="button" className="touch-btn-danger flex-1 touch-btn-sm" disabled={disabled || measurement} onClick={onConfirmarCancelamento}>
             Confirmar cancelamento
           </button>
         )}
@@ -279,7 +274,7 @@ export function CozinhaPedidoCard({
           <button
             type="button"
             className="touch-btn-primary flex-1 touch-btn-sm"
-            disabled={disabled}
+            disabled={disabled || measurement}
             onClick={() => onAvancar(avanco.status)}
           >
             {avanco.status === 'EM_PREPARO' ? 'Iniciar preparo' : avanco.label}
@@ -289,7 +284,7 @@ export function CozinhaPedidoCard({
           <button
             type="button"
             className="touch-btn-ghost"
-            disabled={disabled}
+            disabled={disabled || measurement}
             onClick={() => onVoltar(volta)}
           >
             Voltar
@@ -299,32 +294,14 @@ export function CozinhaPedidoCard({
           <button
             type="button"
             className="touch-btn-danger touch-btn-sm"
-            disabled={disabled}
+            disabled={disabled || measurement}
             data-audit="operacao-cozinha-cancelar"
             onClick={onCancelar}
           >
             Cancelar pedido
           </button>
         )}
-      </div>
-      <Modal open={detalheItem >= 0} title={`Pedido ${pedido.numero} · parte ${detalheItem + 1} de ${pedido.itens.length}`} onClose={() => setDetalheItem(-1)} noBodyScroll footer={(
-        <div className="flex gap-3">
-          <button type="button" className="cozinha-tv-page-button flex-1" disabled={detalheItem <= 0} onClick={() => setDetalheItem((p) => Math.max(0, p - 1))}>Anterior</button>
-          <button type="button" className="cozinha-tv-page-button flex-1" disabled={detalheItem >= pedido.itens.length - 1} onClick={() => setDetalheItem((p) => Math.min(pedido.itens.length - 1, p + 1))}>Próxima</button>
-        </div>
-      )}>
-        <div className="cozinha-tv-detail-page">
-          <p className="text-sm text-ink-muted">A ação de preparo vale para o pedido inteiro.</p>
-          {pedido.itens[detalheItem] && <div className="cozinha-tv-detail-item">
-            <strong>{pedido.itens[detalheItem]!.quantidade}× {pedido.itens[detalheItem]!.nome}</strong>
-            {pedido.itens[detalheItem]!.opcionais?.length ? <p><b>Complementos:</b> {pedido.itens[detalheItem]!.opcionais!.map((o) => o.nome).join(', ')}</p> : null}
-            {pedido.itens[detalheItem]!.observacao ? <p><b>Observação:</b> {pedido.itens[detalheItem]!.observacao}</p> : null}
-            {pedido.itens[detalheItem]!.cancelamentoPendente && onConfirmarCancelamentoItem && <button type="button" className="cozinha-tv-page-button mt-3" disabled={disabled} onClick={() => onConfirmarCancelamentoItem(pedido.itens[detalheItem]!.id)}>Confirmar cancelamento do item</button>}
-            {!pedido.itens[detalheItem]!.cancelamentoPendente && onCancelarItem && <button type="button" className="cozinha-tv-page-button mt-3" disabled={disabled} onClick={() => onCancelarItem(pedido.itens[detalheItem]!.id)}>Cancelar item</button>}
-          </div>}
-          {detalheItem === 0 && pedido.observacao && <p className="cozinha-tv-detail-item"><b>Observação do pedido:</b> {pedido.observacao}</p>}
-        </div>
-      </Modal>
+      </div>}
     </article>
   );
 }

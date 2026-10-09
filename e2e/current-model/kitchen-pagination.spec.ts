@@ -90,14 +90,17 @@ test('TV e tablets paginam por espaço medido, mostram 3 páginas e deixam todos
     await page.screenshot({ path: resolve(evidenceDir, `kitchen-${scenario.name}-page-3.png`), fullPage: true });
     await page.getByRole('button', { name: 'Anterior' }).click();
     await page.getByRole('button', { name: 'Anterior' }).click();
-    await page.getByRole('button', { name: /Ver detalhes/ }).last().click();
-    await expect(page.getByRole('dialog')).toContainText('Sem cebola. Molho à parte.');
-    await expect(page.getByRole('dialog')).toContainText('Observação do pedido');
-    await expect(page.getByRole('dialog').getByText(/parte 1 de/)).toBeVisible();
-    const detailDimensions = await page.getByRole('dialog').locator('div.flex-1.min-h-0').evaluate((element) => ({ client: element.clientHeight, content: element.scrollHeight }));
-    expect(detailDimensions.content).toBeLessThanOrEqual(detailDimensions.client);
-    await page.getByRole('button', { name: 'Próxima', exact: true }).last().click();
-    await expect(page.getByRole('dialog')).toContainText('parte 2 de');
+    const seenItems = new Set<string>();
+    for (let detailPage = 0; detailPage < 12; detailPage += 1) {
+      for (const text of await page.locator('.cozinha-tv-grid > article').allTextContents()) seenItems.add(text);
+      if (await page.getByRole('button', { name: 'Próxima' }).isDisabled()) break;
+      await page.getByRole('button', { name: 'Próxima' }).click();
+    }
+    expect([...seenItems].join(' ')).toContain(`Hambúrguer da casa 1 · item 1`);
+    expect([...seenItems].join(' ')).toContain(`Hambúrguer da casa 1 · item 2`);
+    expect([...seenItems].join(' ')).toContain(`Hambúrguer da casa 1 · item 3`);
+    expect([...seenItems].join(' ')).toContain('Sem cebola. Molho à parte.');
+    expect([...seenItems].join(' ')).toContain('Pedido de teste com observação completa.');
     await page.goto('about:blank');
   }
 });
@@ -121,11 +124,10 @@ test('TV percorre páginas com intervalo estável e modo operacional permanece m
   await expect(page.getByText(new RegExp(`Página 1 de 3 · ${capacity * 3} pedidos`))).toBeVisible();
   await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: false }); document.dispatchEvent(new Event('visibilitychange')); });
   await expect(page.getByText(new RegExp(`Página 2 de 3 · ${capacity * 3} pedidos`))).toBeVisible({ timeout: 8_000 });
-  await page.getByRole('button', { name: /Ver detalhes/ }).first().click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.locator('.cozinha-tv-pager').dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'touch' });
   await page.waitForTimeout(5_500);
   await expect(page.getByText(new RegExp(`Página 2 de 3 · ${capacity * 3} pedidos`))).toBeVisible();
-  await page.getByRole('dialog').getByRole('button', { name: 'Fechar' }).click();
+  await page.locator('.cozinha-tv-pager').dispatchEvent('pointerup', { pointerId: 1, pointerType: 'touch' });
   await expect(page.getByText(new RegExp(`Página 3 de 3 · ${capacity * 3} pedidos`))).toBeVisible({ timeout: 8_000 });
   await page.goto('/operacao/cozinha');
   await expect(page.getByText(/Página 1 de \d+ · \d+ pedidos/)).toBeVisible();
@@ -149,8 +151,7 @@ test('ao entregar um pedido, os pedidos seguintes preenchem a página sem duplic
   await firstCard.getByRole('button', { name: 'Entregue' }).click();
   await expect(page.getByText(new RegExp(`Página 1 de 3 · ${capacity * 3 - 1} pedidos`))).toBeVisible();
   await expect(page.locator('.cozinha-tv-grid > article')).toHaveCount(visibleCapacity, { timeout: 2_000 });
-  const remainingOrders = await page.locator('.cozinha-tv-grid .cozinha-tv-card-senha').allTextContents();
-  expect(remainingOrders).toEqual(Array.from({ length: visibleCapacity }, (_, index) => `Senha ${index + 2}`));
+  await expect.poll(() => page.locator('.cozinha-tv-grid .cozinha-tv-card-senha').allTextContents()).toEqual(Array.from({ length: visibleCapacity }, (_, index) => `Senha ${index + 2}`));
 });
 
 test('pedido recebido durante uma ação fica no fim e não desloca o cartão em uso', async ({ page }) => {
