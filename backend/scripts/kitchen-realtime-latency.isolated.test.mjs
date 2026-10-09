@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { io as clientIo } from 'socket.io-client';
+import { runKitchenVisibleBrowserQa } from './kitchen-visible-sync.browser.qa.mjs';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 
 validateIsolatedQaEnvironment(process.env);
@@ -114,6 +115,8 @@ test('Socket.IO real: commit, emit e recebimento pela cozinha em duas sessões',
   assert.equal(await prisma.pedidoOperacao.count({ where: { id: orderId, status: 'RECEBIDO' } }), 1);
 
   console.log(JSON.stringify({ scenario: 'real-socket-two-sessions-status-update', measurements: { requestIncludingCommitAndEmitMs: summary(requestMs), serverEmitToKitchenReceiveMs: summary(emitReceiveMs), kitchenReceiveRelativeToHttpResponseMs: summary(receiveAfterResponseMs) }, eventCount: received.length, noPollUsed: true, tenantRoom: `cervejaria:${tenantId}:cozinha` }, null, 2));
+
+  await runKitchenVisibleBrowserQa({ app, prisma, baseUrl, token, tenantId, ownerId, productId, orderId, runId });
 });
 
 test.after(async () => { await new Promise((resolve) => ioServer?.close(() => resolve())); await app.close(); await prisma.$disconnect(); });

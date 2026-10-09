@@ -63,7 +63,7 @@ try {
 
   const env = { ...process.env };
   for (const key of Object.keys(env)) if (key === 'DATABASE_URL' || key === 'DIRECT_URL' || /_DATABASE_URL$/.test(key) || /^PROD/i.test(key)) delete env[key];
-  Object.assign(env, { NODE_ENV: 'test', PDV_ISOLATED_QA: '1', PDV_QA_RUN_ID: runId, PDV_INDIVIDUAL_PERMISSIONS_ENABLED: '1', QA_DATABASE_URL: databaseUrl, DATABASE_URL: databaseUrl });
+  Object.assign(env, { NODE_ENV: 'test', LOG_LEVEL: 'fatal', PDV_ISOLATED_QA: '1', PDV_QA_RUN_ID: runId, PDV_QA_SOURCE_SHA: run('git', ['rev-parse', 'HEAD'], { cwd: path.dirname(backendDir) }), PDV_INDIVIDUAL_PERMISSIONS_ENABLED: '1', QA_DATABASE_URL: databaseUrl, DATABASE_URL: databaseUrl });
 
   run(process.execPath, ['node_modules/prisma/build/index.js', 'db', 'push', '--skip-generate', '--schema', schemaPath], { cwd: backendDir, env });
   run(process.execPath, ['--import', 'tsx', '--test', 'scripts/kitchen-realtime-latency.isolated.test.mjs'], { cwd: backendDir, env, stdio: 'inherit' });
