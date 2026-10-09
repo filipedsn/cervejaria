@@ -20,8 +20,10 @@ Conflito ou intervalo incompleto devolve erro sem escrita e abre formulario com 
 
 ## Publicacao DEV
 
-- SHA do commit/push e revisao servida: registrados abaixo apos o health check de DEV.
-
+- Commit/push: `ce88cc878aa16a960de617d36900a4a4a38462ba` em `main`.
+- Revisao servida pela API DEV: `ce88cc878aa16a960de617d36900a4a4a38462ba` (`/api/health`).
+- Agenda publica: HTTP 200; modulo `AgendaOperacionalPanel.tsx`: HTTP 200, contem acao e endpoint de restauracao.
+- Smoke check da nova rota sem autenticacao: HTTP 401 no servidor publico DEV.
 
 - URL verificada: `https://tapdev.quivercloud.com.br`.
 - PROD: nao acessada; nao requer deploy de PROD por esta entrega (`PROD_DEPLOY_REQUIRED: no`).
