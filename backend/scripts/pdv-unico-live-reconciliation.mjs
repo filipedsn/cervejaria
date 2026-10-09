@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { DEV_PDV_TENANT_ALLOWLIST, validateDevCutoverEnvironment } from './pdv-unico-dev-cutover-core.mjs';
+import { expectedMigratedPaymentSessionReferences } from './pdv-unico-payment-session-evidence.mjs';
 
 if (process.env.PDV_CUTOVER_PROFILE !== 'dev' || process.env.PDV_CUTOVER_DEV_ADAPTER !== '1') throw new Error('Live reconciliation is restricted to the guarded DEV adapter.');
 validateDevCutoverEnvironment(process.env);
@@ -141,7 +142,8 @@ try {
     } else if (review.classification === 'B_HISTORICAL_NO_SESSION_PROVENANCE') {
       collectMismatch(errors, actual.sessaoCaixaId == null && actual.sessaoCaixaEventoId == null && actual.provenienciaHistorica == null, `class-B payment ${id} retains null session and provenance.`);
     } else {
-      collectMismatch(errors, actual.sessaoCaixaId === (review.sessionRefs?.operationalId ?? null) && actual.sessaoCaixaEventoId === (review.sessionRefs?.eventId ?? null) && actual.provenienciaHistorica == null, `class-A payment ${id} retains its exact pinned session references.`);
+      const expectedSessions = expectedMigratedPaymentSessionReferences(review);
+      collectMismatch(errors, actual.sessaoCaixaId === expectedSessions.operationalId && actual.sessaoCaixaEventoId === expectedSessions.eventId && actual.provenienciaHistorica == null, `class-A payment ${id} retains its exact mapped session references.`);
     }
   }
   const approvedIds = approval.entries.map(({ id }) => id).sort();
