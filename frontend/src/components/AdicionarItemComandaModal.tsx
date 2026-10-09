@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { Produto, TapComChope, VolumeMl } from '../types';
-import { formatCurrency } from '../lib/api';
-import { CATEGORIAS_PRODUTO_OPERACAO, normalizeCategoriaProduto } from '../lib/operacao';
+import { api, formatCurrency } from '../lib/api';
+import { CATEGORIAS_PRODUTO_OPERACAO, isChopeOperacao, normalizeCategoriaProduto } from '../lib/operacao';
 import { Modal } from './Modal';
 
-type TabId = 'chope' | 'comidas' | 'bebidas' | 'outros';
+type TabId = string;
+const ABA_TAP_CHOPE = '__tap_chope__';
 type AddItemData = { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] };
 type PendingItem = { data: AddItemData; nome: string; precoUnit: number };
 
@@ -48,6 +50,15 @@ export function AdicionarItemComandaModal({
   const [observacao, setObservacao] = useState('');
   const [opcionais, setOpcionais] = useState<Record<string, number>>({});
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
+  const { data: categoriasComanda } = useQuery({
+    queryKey: ['comanda-categorias-ordem'],
+    queryFn: () => api.get<{ ordem: string[]; catalogoCanonico?: boolean }>('/api/produtos/categorias-comanda/ordem'),
+    enabled: open,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const ordemInicial = categoriasComanda?.ordem ?? ['chope', 'comidas', 'bebidas', 'outros'];
+  const isChopeTab = categoriasComanda?.catalogoCanonico ? tab === ABA_TAP_CHOPE : tab === 'chope';
 
   useEffect(() => {
     if (!open) return;
@@ -58,8 +69,19 @@ export function AdicionarItemComandaModal({
     setParaViagem(false);
     setObservacao('');
     setOpcionais({});
-    setTab(comidas.length ? 'comidas' : bebidas.length ? 'bebidas' : outros.length ? 'outros' : tapsComChope.length ? 'chope' : 'comidas');
-  }, [open, tapsComChope, bebidas.length, comidas.length, outros.length]);
+    const disponiveis = new Set<string>();
+    if (tapsComChope.length) disponiveis.add('chope');
+    if (comidas.length) disponiveis.add('comidas');
+    if (bebidas.length) disponiveis.add('bebidas');
+    if (outros.length) disponiveis.add('outros');
+    const categorias = [...bebidas, ...comidas, ...outros].filter((produto) => !isChopeOperacao({ ...produto, categoria: produto.categoria ?? null })).map((produto) => normalizeCategoriaProduto(produto.categoria));
+    const disponiveisCanonicas = new Set(categorias);
+    if (tapsComChope.length) disponiveisCanonicas.add(ABA_TAP_CHOPE);
+    const selecionada = categoriasComanda?.catalogoCanonico
+      ? ordemInicial.find((category) => disponiveisCanonicas.has(category)) ?? (tapsComChope.length ? ABA_TAP_CHOPE : categorias[0])
+      : ordemInicial.find((category) => disponiveis.has(category)) ?? 'comidas';
+    setTab(selecionada ?? 'comidas');
+  }, [open, tapsComChope, bebidas, comidas, outros, categoriasComanda?.ordem, categoriasComanda?.catalogoCanonico]);
 
   useEffect(() => {
     if (!selectedTap?.chopeAtual) {
@@ -76,10 +98,10 @@ export function AdicionarItemComandaModal({
       : undefined;
 
   const unitProduto =
-    tab !== 'chope' && selectedProduto ? selectedProduto.precos[0] : undefined;
+    !isChopeTab && selectedProduto ? selectedProduto.precos[0] : undefined;
 
   const unitPrice =
-    tab === 'chope'
+    isChopeTab
       ? chopePreco
         ? parseFloat(String(chopePreco.preco))
         : 0
@@ -87,8 +109,8 @@ export function AdicionarItemComandaModal({
         ? parseFloat(String(unitProduto.preco))
         : 0;
 
-  const canAddChope = tab === 'chope' && !!selectedTap && !!selectedVolume && !!chopePreco;
-  const canAddUnit = tab !== 'chope' && !!selectedProduto && !!unitProduto;
+  const canAddChope = isChopeTab && !!selectedTap && !!selectedVolume && !!chopePreco;
+  const canAddUnit = !isChopeTab && !!selectedProduto && !!unitProduto;
   const canAdd = (canAddChope || canAddUnit) && quantity > 0 && !isPending;
 
   const opcionaisTotal = Object.entries(opcionais).reduce((sum, [id, qty]) => {
@@ -100,7 +122,7 @@ export function AdicionarItemComandaModal({
   const newTotal = comandaTotal + subtotal + pendingTotal;
 
   const handleAdd = () => {
-    if (tab === 'chope') {
+    if (isChopeTab) {
       if (!selectedTap?.chopeAtual || !selectedVolume) return;
       const data: AddItemData = {
         produtoId: selectedTap.chopeAtual.id,
@@ -156,15 +178,30 @@ export function AdicionarItemComandaModal({
 
   const nothingAvailable =
     tapsComChope.length === 0 && bebidas.length === 0 && comidas.length === 0 && outros.length === 0;
-  const visibleTabs: { id: TabId; label: string }[] = [
-    ...(tapsComChope.length > 0 ? [{ id: 'chope' as const, label: 'Chopes' }] : []),
-    ...(comidas.length > 0 ? [{ id: 'comidas' as const, label: 'Comidas' }] : []),
-    ...(bebidas.length > 0 ? [{ id: 'bebidas' as const, label: 'Bebidas' }] : []),
-    ...(outros.length > 0 ? [{ id: 'outros' as const, label: 'Outros' }] : []),
-  ];
-  const produtosDaAba = tab === 'bebidas' ? bebidas : tab === 'comidas' ? comidas : outros;
+  const legacyTabs: { id: TabId; label: string }[] = [
+    ...(tapsComChope.length > 0 ? [{ id: 'chope', label: 'Chopes' }] : []),
+    ...(comidas.length > 0 ? [{ id: 'comidas', label: 'Comidas' }] : []),
+    ...(bebidas.length > 0 ? [{ id: 'bebidas', label: 'Bebidas' }] : []),
+    ...(outros.length > 0 ? [{ id: 'outros', label: 'Outros' }] : []),
+  ].sort((a, b) => ordemInicial.indexOf(a.id) - ordemInicial.indexOf(b.id));
+  const allProducts = [...bebidas, ...comidas, ...outros];
+  const canonicalCategories = [...new Set(allProducts.filter((product) => !isChopeOperacao({ ...product, categoria: product.categoria ?? null })).map((product) => normalizeCategoriaProduto(product.categoria)))];
+  const tapCategoryName = allProducts.find((product) => product.id === tapsComChope[0]?.chopeAtual?.id)?.categoria;
+  const canonicalTabs = [
+    ...(tapsComChope.length > 0 ? [{ id: ABA_TAP_CHOPE, label: 'Chopes (Tap)' }] : []),
+    ...canonicalCategories.map((category) => ({ id: category, label: category })),
+  ].sort((a, b) => {
+    const priority = (tabId: string) => ordemInicial.indexOf(tabId === ABA_TAP_CHOPE ? normalizeCategoriaProduto(tapCategoryName) : tabId);
+    const aIndex = priority(a.id) < 0 ? Number.MAX_SAFE_INTEGER : priority(a.id);
+    const bIndex = priority(b.id) < 0 ? Number.MAX_SAFE_INTEGER : priority(b.id);
+    return aIndex - bIndex || a.label.localeCompare(b.label, 'pt-BR');
+  });
+  const visibleTabs = categoriasComanda?.catalogoCanonico ? canonicalTabs : legacyTabs;
+  const produtosDaAba = categoriasComanda?.catalogoCanonico
+    ? allProducts.filter((product) => !isChopeOperacao({ ...product, categoria: product.categoria ?? null }) && normalizeCategoriaProduto(product.categoria) === tab)
+    : tab === 'bebidas' ? bebidas : tab === 'comidas' ? comidas : outros;
   const categoriasDaAba = [...new Set(produtosDaAba.map((produto) => normalizeCategoriaProduto(produto.categoria)))].sort(
-    (a, b) => CATEGORIAS_PRODUTO_OPERACAO.indexOf(a as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]) - CATEGORIAS_PRODUTO_OPERACAO.indexOf(b as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]),
+    (a, b) => (ordemInicial.indexOf(a) < 0 ? CATEGORIAS_PRODUTO_OPERACAO.indexOf(a as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]) : ordemInicial.indexOf(a)) - (ordemInicial.indexOf(b) < 0 ? CATEGORIAS_PRODUTO_OPERACAO.indexOf(b as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]) : ordemInicial.indexOf(b)),
   );
   const selecionarProduto = (produto: Produto) => {
     setSelectedProduto(produto);
@@ -203,7 +240,7 @@ export function AdicionarItemComandaModal({
 
   const footer = launchMode ? (
     <>
-      {tab === 'chope' && <button type="button" className="touch-btn-secondary w-full" onClick={handleAdd} disabled={!canAdd}>
+      {isChopeTab && <button type="button" className="touch-btn-secondary w-full" onClick={handleAdd} disabled={!canAdd}>
         Adicionar chope à lista
       </button>}
       {pendingItems.length > 0 && <div className="max-h-32 space-y-2 overflow-y-auto">
@@ -221,7 +258,7 @@ export function AdicionarItemComandaModal({
       </button>
       <button type="button" className="touch-btn-orange w-full" onClick={closeModal} disabled={isPending}>Voltar</button>
     </>
-  ) : tab === 'chope' ? (
+  ) : isChopeTab ? (
     <>
       <button
         type="button"
@@ -294,7 +331,7 @@ export function AdicionarItemComandaModal({
           ))}
         </div>
 
-        {tab === 'chope' && (
+        {isChopeTab && (
           <div className="space-y-4">
             {tapsComChope.length === 0 ? (
               renderEmpty(
@@ -376,7 +413,10 @@ export function AdicionarItemComandaModal({
           </div>
         )}
 
-        {tab === 'bebidas' && (
+        {!isChopeTab && categoriasComanda?.catalogoCanonico && (
+          <div className="space-y-3">{produtosDaAba.length ? renderGradeProdutos() : renderEmpty('Nenhum produto nesta categoria.')}</div>
+        )}
+        {!categoriasComanda?.catalogoCanonico && tab === 'bebidas' && (
           <div className="space-y-3">
             {bebidas.length === 0 ? (
               renderEmpty('Nenhuma bebida no cardápio deste evento.')
@@ -386,7 +426,7 @@ export function AdicionarItemComandaModal({
           </div>
         )}
 
-        {(tab === 'comidas' || tab === 'outros') && (
+        {!categoriasComanda?.catalogoCanonico && (tab === 'comidas' || tab === 'outros') && (
           <div className="space-y-3">
             {produtosDaAba.length === 0 ? (
               renderEmpty('Nenhuma comida no cardápio deste evento.')
@@ -427,11 +467,11 @@ export function AdicionarItemComandaModal({
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-semibold text-ink leading-snug">
-                    {tab === 'chope'
+                    {isChopeTab
                       ? `${selectedTap?.chopeAtual?.nome} ${selectedVolume}ml`
                       : selectedProduto?.nome}
                   </p>
-                  {tab === 'chope' && selectedTap && (
+                  {isChopeTab && selectedTap && (
                     <p className="text-sm text-ink-muted">Tap {selectedTap.numero}</p>
                   )}
                   <p className="text-sm text-ink-faint mt-0.5">
@@ -449,7 +489,7 @@ export function AdicionarItemComandaModal({
                 Novo total da comanda: {formatCurrency(newTotal)}
               </p>
             </div>
-            {tab !== 'chope' && selectedProduto?.gruposOpcionais?.map((grupo) => (
+            {!isChopeTab && selectedProduto?.gruposOpcionais?.map((grupo) => (
               <div key={grupo.id} className="rounded-xl border border-line p-3">
                 <p className="text-sm font-semibold">{grupo.nome}{grupo.obrigatorio ? ' *' : ''}</p>
                 <div className="mt-2 space-y-2">

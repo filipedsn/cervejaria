@@ -147,6 +147,15 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     const updated = await prisma.$transaction(async (tx) => {
       const category = await tx.categoriaProdutoPdv.update({ where: { id }, data: { nome: body.nome, nomeNormalizado, gamificada: body.gamificada } });
       await tx.produto.updateMany({ where: { categoriaPdvId: id, cervejariaId }, data: { categoria: body.nome } });
+      const brewery = await tx.cervejaria.findUnique({ where: { id: cervejariaId }, select: { operacaoCategoriasOrdem: true } });
+      const preferences = Array.isArray(brewery?.operacaoCategoriasOrdem)
+        ? { catalogo: brewery.operacaoCategoriasOrdem }
+        : brewery?.operacaoCategoriasOrdem && typeof brewery.operacaoCategoriasOrdem === 'object'
+          ? brewery.operacaoCategoriasOrdem as Record<string, unknown>
+          : {};
+      if (Array.isArray(preferences.catalogo)) {
+        await tx.cervejaria.update({ where: { id: cervejariaId }, data: { operacaoCategoriasOrdem: { ...preferences, catalogo: preferences.catalogo.map((name) => name === existente.nome ? body.nome : name) } } });
+      }
       return category;
     });
     return reply.send(updated);
@@ -164,6 +173,15 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
         if (linkedProducts > 0) throw new Error(`Categoria usada por ${linkedProducts} produto(s); remova os vínculos antes de excluir.`);
         const deleted = await tx.categoriaProdutoPdv.deleteMany({ where: { id, cervejariaId } });
         if (!deleted.count) throw new Error('Categoria não encontrada neste PDV');
+        const brewery = await tx.cervejaria.findUnique({ where: { id: cervejariaId }, select: { operacaoCategoriasOrdem: true } });
+        const preferences = Array.isArray(brewery?.operacaoCategoriasOrdem)
+          ? { catalogo: brewery.operacaoCategoriasOrdem }
+          : brewery?.operacaoCategoriasOrdem && typeof brewery.operacaoCategoriasOrdem === 'object'
+            ? brewery.operacaoCategoriasOrdem as Record<string, unknown>
+            : {};
+        if (Array.isArray(preferences.catalogo)) {
+          await tx.cervejaria.update({ where: { id: cervejariaId }, data: { operacaoCategoriasOrdem: { ...preferences, catalogo: preferences.catalogo.filter((name) => name !== category.nome) } } });
+        }
       });
     } catch (error) {
       if (error instanceof Error && error.message.startsWith('Categoria usada por ')) return reply.status(409).send({ error: error.message });
@@ -194,14 +212,22 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
       where: { id: cervejariaId },
       select: { operacaoCategoriasOrdem: true },
     });
-    const preferencias = atual?.operacaoCategoriasOrdem && typeof atual.operacaoCategoriasOrdem === 'object' && !Array.isArray(atual.operacaoCategoriasOrdem)
-      ? atual.operacaoCategoriasOrdem as Record<string, unknown>
-      : {};
+    const preferencias = Array.isArray(atual?.operacaoCategoriasOrdem)
+      ? { catalogo: atual.operacaoCategoriasOrdem }
+      : atual?.operacaoCategoriasOrdem && typeof atual.operacaoCategoriasOrdem === 'object'
+        ? atual.operacaoCategoriasOrdem as Record<string, unknown>
+        : {};
     const updated = await prisma.cervejaria.update({
       where: { id: cervejariaId },
       data: { operacaoCategoriasOrdem: { ...preferencias, catalogo: body.ordem } },
       select: { operacaoCategoriasOrdem: true },
     });
+    if (catalogoCategoriasCanonicoAtivo()) {
+      const config = updated.operacaoCategoriasOrdem;
+      const raw = config && typeof config === 'object' && !Array.isArray(config) ? (config as Record<string, unknown>).catalogo : [];
+      const saved = Array.isArray(raw) ? raw.filter((name): name is string => typeof name === 'string' && categoriasDisponiveis.has(name)) : [];
+      return { ordem: [...new Set(saved), ...categorias.filter((name) => !saved.includes(name))] };
+    }
     return { ordem: normalizarOrdemCategoriasProduto(updated.operacaoCategoriasOrdem, request.operacao.tapsEnabled) };
   });
 

@@ -15,7 +15,7 @@ async function mockCatalog(page: Page, options: { permission?: boolean; canonica
   const comandaOrder = ['chope', 'comidas', 'bebidas', 'outros'];
   const catalogOrder = categories.map((item) => item.nome);
   let failCreateOnce = true;
-  let failCatalogOrderOnce = true;
+  let failUnifiedOrderOnce = true;
   await page.routeWebSocket('**/socket.io/**', (socket) => socket.close());
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -62,11 +62,12 @@ async function mockCatalog(page: Page, options: { permission?: boolean; canonica
       if (failCatalogOrderOnce) { failCatalogOrderOnce = false; return reply({ error: 'Falha simulada na ordem' }, 500); }
       return reply({ ordem: body?.ordem });
     }
-    if (path === '/api/produtos/categorias-comanda/ordem' && request.method() === 'GET') return reply({ ordem: comandaOrder });
+    if (path === '/api/produtos/categorias-comanda/ordem' && request.method() === 'GET') return reply({ ordem: catalogOrder, catalogoCanonico: canonical });
     if (path === '/api/produtos/categorias-comanda/ordem' && request.method() === 'PUT') {
       writes.push({ method: 'PUT', path, body: body ?? {} });
-      comandaOrder.splice(0, comandaOrder.length, ...((body?.ordem as string[]) ?? []));
-      return reply({ ordem: comandaOrder });
+      if (failUnifiedOrderOnce) { failUnifiedOrderOnce = false; return reply({ error: 'Falha simulada na ordem' }, 500); }
+      catalogOrder.splice(0, catalogOrder.length, ...((body?.ordem as string[]) ?? []));
+      return reply({ ordem: catalogOrder, catalogoCanonico: canonical });
     }
     if (path === '/api/operacao/produtos' && request.method() === 'GET') return reply(products);
     if (path === '/api/operacao/produtos' && request.method() === 'POST') {
@@ -126,26 +127,21 @@ test('três abas e manutenção centralizada com rascunho, erro/retry, flag fals
   expect(unexpected).toEqual([]);
 });
 
-test('ordena comanda e catálogo separadamente e mantém a seleção de categoria no produto', async ({ page }) => {
+test('usa uma ordem única no catálogo, comanda e seleção de categoria no produto', async ({ page }) => {
   test.setTimeout(45_000);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const { writes, products, unexpected, comandaOrder } = await mockCatalog(page);
   await page.goto('/operacao/catalogo');
   await page.getByRole('button', { name: 'Categorias' }).click();
-  await expect(page.getByRole('heading', { name: 'Organizar na comanda' })).toBeVisible();
-  await page.getByRole('button', { name: 'Mover Comidas para cima' }).click();
+  await expect(page.getByRole('heading', { name: 'Organizar categorias' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ordem no catálogo' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Mover Doces artesanais para cima' }).click();
   await page.getByRole('button', { name: 'Salvar ordem' }).first().click();
-  await expect.poll(() => comandaOrder[0]).toBe('comidas');
-  expect(writes.find((write) => write.path === '/api/produtos/categorias-comanda/ordem')?.body.ordem).toEqual(['comidas', 'chope', 'bebidas', 'outros']);
-
-  const catalogOrderPanel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Ordem no catálogo' }) });
-  const catalogRows = catalogOrderPanel.locator('ol > li');
-  await catalogRows.nth(1).dragTo(catalogRows.nth(0));
-  await catalogOrderPanel.getByRole('button', { name: 'Salvar ordem' }).click();
-  await expect(catalogOrderPanel.getByRole('alert')).toContainText('Falha simulada na ordem');
-  await expect(catalogRows.first()).toContainText('Doces artesanais');
-  await catalogOrderPanel.getByRole('button', { name: 'Salvar ordem' }).click();
-  expect(writes.filter((write) => write.path === '/api/operacao/produtos/categorias/ordem').at(-1)?.body.ordem).toEqual(['Doces artesanais', 'Bebidas']);
+  const orderPanel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Organizar categorias' }) });
+  await expect(orderPanel.getByRole('alert')).toContainText('Falha simulada na ordem');
+  await expect(orderPanel.locator('ol > li').first()).toContainText('Doces artesanais');
+  await orderPanel.getByRole('button', { name: 'Salvar ordem' }).click();
+  expect(writes.filter((write) => write.path === '/api/produtos/categorias-comanda/ordem').at(-1)?.body.ordem).toEqual(['Doces artesanais', 'Bebidas']);
 
   await page.getByRole('button', { name: 'Catálogo' }).click();
   await page.getByRole('button', { name: '+ Produto' }).click();

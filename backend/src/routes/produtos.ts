@@ -104,15 +104,42 @@ export async function produtosRoutes(app: FastifyInstance) {
 
   app.get('/categorias-comanda/ordem', async (request) => {
     const user = getTenantUser(app, request);
+    if (catalogoCategoriasCanonicoAtivo()) {
+      const categorias = await prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId: user.cervejariaId }, select: { nome: true }, orderBy: [{ nomeNormalizado: 'asc' }, { nome: 'asc' }] });
+      const cervejaria = await prisma.cervejaria.findUnique({ where: { id: user.cervejariaId }, select: { operacaoCategoriasOrdem: true } });
+      const config = cervejaria?.operacaoCategoriasOrdem;
+      const raw = config && typeof config === 'object' && !Array.isArray(config) ? (config as Record<string, unknown>).catalogo : config;
+      const names = categorias.map((category) => category.nome);
+      const saved = Array.isArray(raw) ? raw.filter((name): name is string => typeof name === 'string' && names.includes(name)) : [];
+      return { ordem: [...new Set(saved), ...names.filter((name) => !saved.includes(name))], catalogoCanonico: true };
+    }
     const cervejaria = await prisma.cervejaria.findUnique({
       where: { id: user.cervejariaId },
       select: { operacaoCategoriasOrdem: true },
     });
-    return { ordem: normalizarOrdemCategoriasComanda(cervejaria?.operacaoCategoriasOrdem) };
+    return { ordem: normalizarOrdemCategoriasComanda(cervejaria?.operacaoCategoriasOrdem), catalogoCanonico: false };
   });
 
   app.put('/categorias-comanda/ordem', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request) => {
     const user = getTenantUser(app, request);
+    if (catalogoCategoriasCanonicoAtivo()) {
+      const categorias = await prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId: user.cervejariaId }, select: { nome: true } });
+      const nomes = categorias.map((category) => category.nome);
+      const ordem = z.array(z.string()).length(nomes.length).refine(
+        (items) => new Set(items).size === nomes.length && items.every((name) => nomes.includes(name)),
+        'A ordem deve conter cada categoria disponível uma única vez',
+      ).parse((request.body as { ordem?: unknown })?.ordem);
+      const atual = await prisma.cervejaria.findUnique({ where: { id: user.cervejariaId }, select: { operacaoCategoriasOrdem: true } });
+      const preferences = Array.isArray(atual?.operacaoCategoriasOrdem)
+        ? { catalogo: atual.operacaoCategoriasOrdem }
+        : atual?.operacaoCategoriasOrdem && typeof atual.operacaoCategoriasOrdem === 'object'
+          ? atual.operacaoCategoriasOrdem as Record<string, unknown>
+          : {};
+      const updated = await prisma.cervejaria.update({ where: { id: user.cervejariaId }, data: { operacaoCategoriasOrdem: { ...preferences, catalogo: ordem } }, select: { operacaoCategoriasOrdem: true } });
+      const config = updated.operacaoCategoriasOrdem as Record<string, unknown>;
+      const raw = Array.isArray(config?.catalogo) ? config.catalogo as string[] : [];
+      return { ordem: [...new Set(raw.filter((name) => nomes.includes(name))), ...nomes.filter((name) => !raw.includes(name))], catalogoCanonico: true };
+    }
     const ordem = z.array(z.enum(CATEGORIAS_ABA_COMANDA)).length(CATEGORIAS_ABA_COMANDA.length).refine(
       (items) => new Set(items).size === CATEGORIAS_ABA_COMANDA.length,
       'A ordem deve conter cada categoria uma única vez',
@@ -129,7 +156,7 @@ export async function produtosRoutes(app: FastifyInstance) {
       data: { operacaoCategoriasOrdem: { ...preferencias, comanda: ordem } },
       select: { operacaoCategoriasOrdem: true },
     });
-    return { ordem: normalizarOrdemCategoriasComanda(cervejaria.operacaoCategoriasOrdem) };
+    return { ordem: normalizarOrdemCategoriasComanda(cervejaria.operacaoCategoriasOrdem), catalogoCanonico: false };
   });
 
   const opcionalCadastroSchema = z.object({ nome: z.string().trim().min(1).max(80), preco: z.number().min(0).max(9999), ativo: z.boolean().optional() });

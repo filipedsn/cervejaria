@@ -340,6 +340,7 @@ export interface PortalCardapio {
   chopes: PortalCardapioChope[];
   bebidas: PortalCardapioProduto[];
   comidas: PortalCardapioProduto[];
+  ordemCategorias?: string[];
 }
 
 export interface PortalComandaItem {

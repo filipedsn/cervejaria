@@ -22,10 +22,11 @@ function OrderEditor({
   const [draft, setDraft] = useState<string[] | null>(null);
   const order = draft ?? initialOrder;
   const save = useMutation({
-    mutationFn: () => api.put<{ ordem: string[] }>(endpoint, { ordem: order }),
+    mutationFn: () => api.put<{ ordem: string[]; catalogoCanonico?: boolean }>(endpoint, { ordem: order }),
     onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey });
+      await Promise.all([queryClient.invalidateQueries({ queryKey }), queryClient.invalidateQueries({ queryKey: ['operacao-categorias'] })]);
       setDraft(null);
+      queryClient.setQueryData(['operacao-categorias'], (current: CategoriaResponse | undefined) => current ? { ...current, categorias: result.ordem, ordem: result.ordem } : current);
       queryClient.setQueryData(queryKey, (current: CategoriaResponse | { ordem: string[] } | undefined) => current && 'categorias' in current
         ? { ...current, ordem: result.ordem }
         : result);
@@ -164,9 +165,14 @@ export function CategoriasGestaoPanel() {
           <div className="flex shrink-0 gap-2"><button type="button" className="touch-btn-secondary min-h-11" onClick={() => openForm(category)}>Editar</button><button type="button" className="touch-btn-ghost min-h-11" disabled={productsLoading || productsError} onClick={() => { setDeleting(category); setDeleteError(''); deleteCategory.reset(); }}>Excluir</button></div>
         </li>)}
       </ul>}
-      <OrderEditor title="Organizar na comanda" description="Esta é a ordem efetiva das abas usadas na seleção de produtos da comanda." queryKey={['comanda-categorias-ordem']} endpoint="/api/produtos/categorias-comanda/ordem" initialOrder={comandaOrder.data?.ordem ?? []} enabled={!comandaOrder.isLoading && !comandaOrder.isError} />
-      {comandaOrder.isError && <div className="alert-error text-sm" role="alert">Não foi possível carregar a ordem da comanda. <button type="button" className="underline" onClick={() => void comandaOrder.refetch()}>Tentar novamente</button></div>}
-      <OrderEditor title="Ordem no catálogo" description="Preferência separada da comanda. Ela afeta a ordem exibida no catálogo de produtos." queryKey={['operacao-categorias']} endpoint="/api/operacao/produtos/categorias/ordem" initialOrder={categoryData?.ordem ?? []} />
+      {catalogoCanonico ? <>
+        <OrderEditor title="Organizar categorias" description="Esta ordem única é usada no catálogo, na seleção de produtos da comanda e nos portais. Categorias sem produtos não aparecem nos consumidores." queryKey={['comanda-categorias-ordem']} endpoint="/api/produtos/categorias-comanda/ordem" initialOrder={categoryData?.ordem ?? []} enabled={!comandaOrder.isLoading && !comandaOrder.isError} />
+        {comandaOrder.isError && <div className="alert-error text-sm" role="alert">Não foi possível carregar a ordem compartilhada. <button type="button" className="underline" onClick={() => void comandaOrder.refetch()}>Tentar novamente</button></div>}
+      </> : <>
+        <OrderEditor title="Organizar na comanda (LEGACY)" description="Ordem efetiva dos grupos na seleção de produtos LEGACY." queryKey={['comanda-categorias-ordem']} endpoint="/api/produtos/categorias-comanda/ordem" initialOrder={comandaOrder.data?.ordem ?? []} enabled={!comandaOrder.isLoading && !comandaOrder.isError} />
+        {comandaOrder.isError && <div className="alert-error text-sm" role="alert">Não foi possível carregar a ordem da comanda. <button type="button" className="underline" onClick={() => void comandaOrder.refetch()}>Tentar novamente</button></div>}
+        <OrderEditor title="Ordem no catálogo (LEGACY)" description="Ordem legada do catálogo, mantida separada durante a compatibilidade." queryKey={['operacao-categorias']} endpoint="/api/operacao/produtos/categorias/ordem" initialOrder={categoryData?.ordem ?? []} />
+      </>}
       {catalogoCanonico && <p className="text-xs text-ink-faint">A categoria gamificada fica registrada e identificada. Atualmente ela não altera pontos nem rankings.</p>}
       <Modal open={formOpen} onClose={() => hasDraft ? setConfirmDiscard(true) : closeForm()} title={editing ? 'Editar categoria' : 'Nova categoria'} hideHeaderClose closeOnBackdrop={false} footer={<><button type="button" className="touch-btn-orange w-full" disabled={saveCategory.isPending} onClick={() => hasDraft ? setConfirmDiscard(true) : closeForm()}>Voltar</button><button type="submit" form="categoria-pdv-form" className="touch-btn-primary w-full" disabled={saveCategory.isPending || !form.nome.trim()}>{saveCategory.isPending ? 'Salvando…' : 'Salvar'}</button></>}>
         <form id="categoria-pdv-form" onSubmit={(event) => { event.preventDefault(); if (!saveCategory.isPending) { setFormError(''); saveCategory.mutate(); } }} className="space-y-4">

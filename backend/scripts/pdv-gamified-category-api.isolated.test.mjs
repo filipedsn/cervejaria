@@ -221,24 +221,32 @@ try {
   assert.equal(afterCategoryEdit.optionLinks, beforeCategoryEdit.optionLinks, 'category edit leaves optionals unchanged');
   for (const key of ['payments', 'cashSessions', 'orders', 'inventoryBalances', 'inventoryMovements']) assert.equal(afterCategoryEdit[key], beforeCategoryEdit[key], `category edit leaves ${key} unchanged`);
 
-  const deniedComandaOrder = await call('PUT', '/api/produtos/categorias-comanda/ordem', deniedCookie, { ordem: ['comidas', 'chope', 'bebidas', 'outros'] });
+  await prisma.cervejaria.update({ where: { id: company.id }, data: { operacaoCategoriasOrdem: { comanda: ['comidas', 'chope', 'bebidas', 'outros'] } } });
+  const initialUnifiedOrder = body(await call('GET', '/api/produtos/categorias-comanda/ordem', managerCookie));
+  assert.equal(initialUnifiedOrder.catalogoCanonico, true);
+  assert.deepEqual(initialUnifiedOrder.ordem, body(await call('GET', '/api/operacao/produtos/categorias', managerCookie)).ordem, 'canonical comanda reads the real catalog order');
+  const reorderedUnified = [...initialUnifiedOrder.ordem].reverse();
+  const deniedComandaOrder = await call('PUT', '/api/produtos/categorias-comanda/ordem', deniedCookie, { ordem: reorderedUnified });
   assert.equal(deniedComandaOrder.statusCode, 403, deniedComandaOrder.body);
-  const savedComandaOrder = await call('PUT', '/api/produtos/categorias-comanda/ordem', managerCookie, { ordem: ['comidas', 'chope', 'bebidas', 'outros'] });
+  const savedComandaOrder = await call('PUT', '/api/produtos/categorias-comanda/ordem', managerCookie, { ordem: reorderedUnified });
   assert.equal(savedComandaOrder.statusCode, 200, savedComandaOrder.body);
-  assert.deepEqual(body(savedComandaOrder).ordem, ['comidas', 'chope', 'bebidas', 'outros']);
+  assert.deepEqual(body(savedComandaOrder).ordem, reorderedUnified);
   const catalogOrderBefore = body(await call('GET', '/api/operacao/produtos/categorias', managerCookie)).ordem;
-  const reorderedCatalog = [...catalogOrderBefore].reverse();
+  const reorderedCatalog = [...reorderedUnified];
   const deniedCatalogOrder = await call('PUT', '/api/operacao/produtos/categorias/ordem', deniedCookie, { ordem: reorderedCatalog });
   assert.equal(deniedCatalogOrder.statusCode, 403, deniedCatalogOrder.body);
   const savedCatalogOrder = await call('PUT', '/api/operacao/produtos/categorias/ordem', managerCookie, { ordem: reorderedCatalog });
   assert.equal(savedCatalogOrder.statusCode, 200, savedCatalogOrder.body);
   const preferences = (await prisma.cervejaria.findUniqueOrThrow({ where: { id: company.id }, select: { operacaoCategoriasOrdem: true } })).operacaoCategoriasOrdem;
-  assert.deepEqual(preferences.comanda, ['comidas', 'chope', 'bebidas', 'outros'], 'catalog reordering preserves the independent comanda order');
-  assert.deepEqual(preferences.catalogo, reorderedCatalog, 'catalog order persists in its own preference');
-  assert.deepEqual(body(await call('GET', '/api/produtos/categorias-comanda/ordem', managerCookie)).ordem, preferences.comanda);
+  assert.deepEqual(preferences.comanda, ['comidas', 'chope', 'bebidas', 'outros'], 'legacy comanda preference is retained without being rewritten');
+  assert.deepEqual(preferences.catalogo, reorderedCatalog, 'one canonical catalog order persists in the existing preference');
+  assert.deepEqual(body(await call('GET', '/api/produtos/categorias-comanda/ordem', managerCookie)).ordem, preferences.catalogo);
   assert.deepEqual(body(await call('GET', '/api/operacao/produtos/categorias', managerCookie)).ordem, reorderedCatalog);
+  const renamedAfterOrdering = await call('PUT', `/api/operacao/produtos/categorias/${encodeURIComponent(snackCategory.id)}`, managerCookie, { nome: 'Petiscos revisados', gamificada: false });
+  assert.equal(renamedAfterOrdering.statusCode, 200, renamedAfterOrdering.body);
+  assert.deepEqual(body(await call('GET', '/api/produtos/categorias-comanda/ordem', managerCookie)).ordem, reorderedCatalog.map((name) => name === 'Petiscos QA' ? 'Petiscos revisados' : name), 'category rename keeps its unified-order position');
 
-  console.log('PDV_GAMIFIED_CATEGORY_AUTH_API=PASS; owner/catalog.manage/denied; tenant isolation; create/edit/explicit-false/safe-delete; separate comanda/catalog order; Chope rename/volume/menu/sale/ranking; optionals/snapshots/history invariants');
+  console.log('PDV_GAMIFIED_CATEGORY_AUTH_API=PASS; owner/catalog.manage/denied; tenant isolation; create/edit/explicit-false/safe-delete; unified category order; preserved LEGACY order; rename position; Chope rename/volume/menu/sale/ranking; optionals/snapshots/history invariants');
 } finally {
   await app.close();
   await prisma.$disconnect();

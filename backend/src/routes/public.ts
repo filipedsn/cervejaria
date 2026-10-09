@@ -5,6 +5,7 @@ import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma.js';
+import { resolveLogoVersion } from '../lib/cervejaria-branding.js';
 
 import {
   lookupClientePortalPorTelefone,
@@ -18,6 +19,7 @@ import { diaOperacional, CAIXA_VENDA_TX, criarPedidos, resolverItens, resumoComa
 import { INCLUDE_COMANDA_OPERACAO, recalcComandaTotalOperacao, whereComandaOperacao } from '../lib/operacao/comanda-adapter.js';
 import { listProdutosOperacionaisTurno } from '../lib/operacao/sessao-cardapio.js';
 import { CATEGORIAS_PRODUTO_OPERACAO, normalizarOrdemCategoriasProduto } from '../lib/operacao/categorias.js';
+import { catalogoCategoriasCanonicoAtivo } from '../lib/operacao/catalogo-categorias.js';
 import { notificarComandaOperacaoAtualizada, notificarPedidoNovo } from '../lib/operacao/cozinha.js';
 import { inventoryService } from '../services/inventory-service.js';
 import { lockComandaItemsInTx } from '../lib/comanda-service.js';
@@ -299,6 +301,8 @@ export async function publicRoutes(app: FastifyInstance) {
 
         logoUrl: true,
 
+        updatedAt: true,
+
         corPrimaria: true,
 
         corPaleta: true,
@@ -317,7 +321,7 @@ export async function publicRoutes(app: FastifyInstance) {
 
 
 
-    return cervejaria;
+    return { ...cervejaria, logoVersion: resolveLogoVersion(cervejaria) };
 
   });
 
@@ -335,7 +339,7 @@ export async function publicRoutes(app: FastifyInstance) {
 
     return {
 
-      cervejaria: ctx.cervejaria,
+      cervejaria: { ...ctx.cervejaria, logoVersion: resolveLogoVersion(ctx.cervejaria) },
 
       trailer: ctx.trailer,
 
@@ -351,7 +355,7 @@ export async function publicRoutes(app: FastifyInstance) {
     const { slug, pontoVendaId } = request.params as { slug: string; pontoVendaId: string };
     const cervejaria = await prisma.cervejaria.findFirst({
       where: { slug, ativo: true },
-      select: { id: true, nome: true, slug: true, logoUrl: true, portalBackgroundUrl: true },
+      select: { id: true, nome: true, slug: true, logoUrl: true, updatedAt: true, portalBackgroundUrl: true },
     });
     if (!cervejaria) return reply.status(404).send({ error: 'Link inválido' });
 
@@ -367,7 +371,11 @@ export async function publicRoutes(app: FastifyInstance) {
       select: { id: true },
     });
     return {
-      cervejaria: { ...cervejaria, portalBackgroundUrl: cervejaria.portalBackgroundUrl ?? null },
+      cervejaria: {
+        ...cervejaria,
+        logoVersion: resolveLogoVersion(cervejaria),
+        portalBackgroundUrl: cervejaria.portalBackgroundUrl ?? null,
+      },
       pontoVenda,
       disponivel: Boolean(sessao),
     };
@@ -394,17 +402,32 @@ export async function publicRoutes(app: FastifyInstance) {
   });
 
   app.get('/cervejarias/:slug/pontos-venda/:pontoVendaId/cardapio', async (request, reply) => {
-    const { session } = await getPdvClienteSession(app, request);
+    const { session, comanda } = await getPdvClienteSession(app, request);
     if (session.pontoVendaId !== (request.params as { pontoVendaId: string }).pontoVendaId) {
       return reply.status(403).send({ error: 'Sessão inválida para este ponto de venda' });
     }
-    return listProdutosOperacionaisTurno(session.cervejariaId, session.pontoVendaId, diaOperacional());
+    const profile = await getOperationalProfile(session.cervejariaId);
+    return listProdutosOperacionaisTurno(
+      session.cervejariaId,
+      session.pontoVendaId,
+      comanda.diaOperacional ?? diaOperacional(),
+      profile?.capabilities.taps ?? false,
+    );
   });
 
   app.get('/cervejarias/:slug/pontos-venda/:pontoVendaId/cardapio/categorias', async (request, reply) => {
     const { session } = await getPdvClienteSession(app, request);
     if (session.pontoVendaId !== (request.params as { pontoVendaId: string }).pontoVendaId) {
       return reply.status(403).send({ error: 'Sessão inválida para este ponto de venda' });
+    }
+    if (catalogoCategoriasCanonicoAtivo()) {
+      const categories = await prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId: session.cervejariaId }, select: { nome: true }, orderBy: [{ nomeNormalizado: 'asc' }, { nome: 'asc' }] });
+      const cervejaria = await prisma.cervejaria.findUnique({ where: { id: session.cervejariaId }, select: { operacaoCategoriasOrdem: true } });
+      const config = cervejaria?.operacaoCategoriasOrdem;
+      const raw = config && typeof config === 'object' && !Array.isArray(config) ? (config as Record<string, unknown>).catalogo : config;
+      const names = categories.map((category) => category.nome);
+      const saved = Array.isArray(raw) ? raw.filter((name): name is string => typeof name === 'string' && names.includes(name)) : [];
+      return { ordemCategorias: [...new Set(saved), ...names.filter((name) => !saved.includes(name))] };
     }
     const cervejaria = await prisma.cervejaria.findUnique({
       where: { id: session.cervejariaId },
@@ -687,7 +710,20 @@ export async function publicRoutes(app: FastifyInstance) {
 
       const session = getClienteSession(request);
 
-      return buildPublicEventCardapio(session.eventoId, session.trailerId, session.cervejariaId);
+      const cardapio = await buildPublicEventCardapio(session.eventoId, session.trailerId, session.cervejariaId);
+      if (!catalogoCategoriasCanonicoAtivo()) return cardapio;
+      const categories = await prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId: session.cervejariaId }, select: { nome: true }, orderBy: [{ nomeNormalizado: 'asc' }, { nome: 'asc' }] });
+      const brewery = await prisma.cervejaria.findUnique({ where: { id: session.cervejariaId }, select: { operacaoCategoriasOrdem: true } });
+      const config = brewery?.operacaoCategoriasOrdem;
+      const raw = config && typeof config === 'object' && !Array.isArray(config) ? (config as Record<string, unknown>).catalogo : config;
+      const names = categories.map((category) => category.nome);
+      const saved = Array.isArray(raw) ? raw.filter((name): name is string => typeof name === 'string' && names.includes(name)) : [];
+      const order = [...new Set(saved), ...names.filter((name) => !saved.includes(name))];
+      const priority = new Map(order.map((name, index) => [name, index]));
+      const byCategory = <T extends { categoria?: string | null }>(items: T[]) => [...items].sort(
+        (a, b) => (priority.get(a.categoria ?? '') ?? Number.MAX_SAFE_INTEGER) - (priority.get(b.categoria ?? '') ?? Number.MAX_SAFE_INTEGER),
+      );
+      return { ...cardapio, bebidas: byCategory(cardapio.bebidas), comidas: byCategory(cardapio.comidas), ordemCategorias: order };
 
     });
 

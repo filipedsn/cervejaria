@@ -8,6 +8,7 @@ import { api, formatCurrency } from '../../lib/api';
 import {
   classificarGrupoProdutoOperacao,
   isChopeOperacao,
+  normalizeCategoriaProduto,
   limiteQuantidadeProdutoNoCarrinho,
   podeIncrementarQuantidadeProduto,
   totalCarrinho,
@@ -28,7 +29,8 @@ type Config = {
 };
 
 const IconHash = IconPackage;
-type AbaItens = 'chope' | 'bebidas' | 'comidas' | 'outros';
+type AbaItens = string;
+const ABA_TAP_CHOPE = '__tap_chope__';
 
 export function AdicionarItensOperacaoModal({
   open,
@@ -91,15 +93,25 @@ export function AdicionarItensOperacaoModal({
   const [observacao, setObservacao] = useState('');
   const [opcionais, setOpcionais] = useState<Record<string, number>>({});
 
-  useEffect(() => {
-    if (open) setAba('comidas');
-  }, [open]);
-
   const { data: tapsData, isLoading: carregandoTaps, error: erroCarregarTaps } = useQuery({
     queryKey: ['operacao-caixa-taps', pontoVendaId],
     queryFn: () => api.get<TapsTurnoResposta>(`/api/operacao/caixa/taps?pontoVendaId=${encodeURIComponent(pontoVendaId)}`),
     enabled: open && tapsEnabled && Boolean(pontoVendaId),
   });
+  const { data: categoriasComanda } = useQuery({
+    queryKey: ['comanda-categorias-ordem'],
+    queryFn: () => api.get<{ ordem: string[]; catalogoCanonico?: boolean }>('/api/produtos/categorias-comanda/ordem'),
+    enabled: open,
+    staleTime: 5 * 60 * 1000,
+  });
+  const ordemInicial = categoriasComanda?.ordem ?? ['chope', 'comidas', 'bebidas', 'outros'];
+
+  useEffect(() => {
+    if (!open) return;
+    const disponiveis = new Set<string>(['comidas', 'bebidas', 'outros']);
+    if (tapsEnabled) disponiveis.add('chope');
+    setAba((ordemInicial.find((categoria) => disponiveis.has(categoria)) ?? 'comidas') as AbaItens);
+  }, [open, tapsEnabled, categoriasComanda?.ordem]);
 
   const produtoEhChope = produto ? isChopeOperacao(produto) : false;
   const tapsDoProduto = produtoEhChope
@@ -152,18 +164,35 @@ export function AdicionarItensOperacaoModal({
         || (saldoChope !== undefined && litrosNoCarrinhoChope + volumeMl * quantidade / 1000 <= saldoChope.quantidade + 1e-9)),
   );
 
+  const produtosPorCategoria = new Map<string, ProdutoOperacao[]>();
+  for (const item of produtos.filter((product) => !isChopeOperacao(product))) {
+    const category = normalizeCategoriaProduto(item.categoria);
+    produtosPorCategoria.set(category, [...(produtosPorCategoria.get(category) ?? []), item]);
+  }
   const produtosBebidas = produtos.filter((item) => classificarGrupoProdutoOperacao(item) === 'bebidas');
   const produtosComidas = produtos.filter((item) => classificarGrupoProdutoOperacao(item) === 'comidas');
   const produtosOutros = produtos.filter((item) => classificarGrupoProdutoOperacao(item) === 'outros');
-  const abasVisiveis: { id: AbaItens; label: string }[] = [
-    ...(tapsEnabled && (carregandoTaps || Boolean(erroCarregarTaps) || tapsDisponiveis.length > 0)
-      ? [{ id: 'chope' as const, label: 'Chopes' }]
-      : []),
-    ...(produtosComidas.length > 0 ? [{ id: 'comidas' as const, label: 'Comidas' }] : []),
-    ...(produtosBebidas.length > 0 ? [{ id: 'bebidas' as const, label: 'Bebidas' }] : []),
-    ...(produtosOutros.length > 0 ? [{ id: 'outros' as const, label: 'Outros' }] : []),
-  ];
+  const tabsLegacy = [
+    ...(tapsEnabled && (carregandoTaps || Boolean(erroCarregarTaps) || tapsDisponiveis.length > 0) ? [{ id: ABA_TAP_CHOPE, label: 'Chopes' }] : []),
+    ...(produtosComidas.length > 0 ? [{ id: 'comidas', label: 'Comidas' }] : []),
+    ...(produtosBebidas.length > 0 ? [{ id: 'bebidas', label: 'Bebidas' }] : []),
+    ...(produtosOutros.length > 0 ? [{ id: 'outros', label: 'Outros' }] : []),
+  ].sort((a, b) => ordemInicial.indexOf(a.id === ABA_TAP_CHOPE ? 'chope' : a.id) - ordemInicial.indexOf(b.id === ABA_TAP_CHOPE ? 'chope' : b.id));
+  const tapCategoryName = produtos.find((item) => item.id === tapsDisponiveis[0]?.chopeAtual?.id)?.categoria;
+  const canonicalTabs = [
+    ...(tapsEnabled && (carregandoTaps || Boolean(erroCarregarTaps) || tapsDisponiveis.length > 0) ? [{ id: ABA_TAP_CHOPE, label: 'Chopes (Tap)' }] : []),
+    ...[...produtosPorCategoria.keys()].map((category) => ({ id: category, label: category })),
+  ].sort((a, b) => {
+    const priority = (tab: { id: string }) => ordemInicial.indexOf(tab.id === ABA_TAP_CHOPE ? normalizeCategoriaProduto(tapCategoryName) : tab.id);
+    const aIndex = priority(a) < 0 ? Number.MAX_SAFE_INTEGER : priority(a);
+    const bIndex = priority(b) < 0 ? Number.MAX_SAFE_INTEGER : priority(b);
+    return aIndex - bIndex || a.label.localeCompare(b.label, 'pt-BR');
+  });
+  const abasVisiveis: { id: AbaItens; label: string }[] = categoriasComanda?.catalogoCanonico ? canonicalTabs : tabsLegacy;
   const abaSelecionada = abasVisiveis.some((item) => item.id === aba) ? aba : abasVisiveis[0]?.id;
+  const produtosDaAba = categoriasComanda?.catalogoCanonico
+    ? produtosPorCategoria.get(abaSelecionada ?? '') ?? []
+    : abaSelecionada === 'bebidas' ? produtosBebidas : abaSelecionada === 'comidas' ? produtosComidas : produtosOutros;
 
   const selecionar = (item: ProdutoOperacao) => {
     setProduto(item);
@@ -239,7 +268,7 @@ export function AdicionarItensOperacaoModal({
             </button>
           ))}
         </div> : <p className="rounded-xl border border-line bg-surface-lighter p-3 text-sm text-ink-muted">Nenhum item disponível para adicionar.</p>}
-        {abaSelecionada === 'chope' && tapsEnabled ? (
+        {abaSelecionada === ABA_TAP_CHOPE && tapsEnabled ? (
           <div className="space-y-5">
             <section className="space-y-2">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Escolha a Tap</h3>
@@ -297,7 +326,7 @@ export function AdicionarItensOperacaoModal({
           </div>
         ) : (
           <GradeProdutos
-            produtos={abaSelecionada === 'bebidas' ? produtosBebidas : abaSelecionada === 'comidas' ? produtosComidas : produtosOutros}
+            produtos={produtosDaAba}
             onSelecionar={selecionar}
             saldos={saldos}
             controlaEstoque={controlaEstoque}
