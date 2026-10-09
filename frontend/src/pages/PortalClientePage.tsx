@@ -12,6 +12,7 @@ import type {
   PortalClienteLookupResponse,
 } from '../types';
 import { Loading } from '../components/Loading';
+import { PortalBackground } from '../components/PortalBackground';
 import { connectClientePortalSocket } from '../lib/socket';
 import { applyAppTheme, getAppTheme, setAppTheme, type AppTheme } from '../lib/app-theme';
 
@@ -351,18 +352,11 @@ export function PortalClientePage() {
 
   const logo = assetUrl(info.cervejaria.logoUrl);
   const portalBackground = assetUrl(info.cervejaria.portalBackgroundUrl);
-  const portalBackgroundStyle = portalBackground
-    ? {
-        backgroundImage: `linear-gradient(rgba(6, 20, 38, 0.76), rgba(6, 20, 38, 0.88)), url("${portalBackground}")`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundAttachment: 'fixed' as const,
-      }
-    : undefined;
 
   if (!info.disponivel || !info.evento) {
     return (
-      <div className="min-h-screen bg-canvas px-4 py-8 safe-area-pt" style={portalBackgroundStyle}>
+      <div className="portal-background-host min-h-screen bg-canvas px-4 py-8 safe-area-pt">
+        <PortalBackground src={portalBackground} />
         <div className="max-w-md mx-auto text-center space-y-4">
           {logo && <img src={logo} alt="" className="h-14 mx-auto rounded-xl" />}
           <h1 className="text-xl font-bold">{info.cervejaria.nome}</h1>
@@ -380,7 +374,8 @@ export function PortalClientePage() {
 
   if (!authenticated) {
     return (
-      <div className="min-h-screen bg-canvas px-4 py-8 safe-area-pt safe-area-pb" style={portalBackgroundStyle}>
+      <div className="portal-background-host min-h-screen bg-canvas px-4 py-8 safe-area-pt safe-area-pb">
+        <PortalBackground src={portalBackground} />
         <div className="portal-login-content">
           <div className="portal-login-brand">
             {logo ? (
@@ -527,7 +522,8 @@ export function PortalClientePage() {
     !comanda?.itens.length && pedidosPendentes.length === 0 && pedidosRecusados.length === 0;
 
   return (
-    <div className="min-h-screen bg-canvas pb-24 safe-area-pt" style={portalBackgroundStyle}>
+    <div className="portal-background-host min-h-screen bg-canvas pb-24 safe-area-pt">
+      <PortalBackground src={portalBackground} />
       <header className="app-shell-header px-4 py-3">
         <div className="max-w-lg mx-auto flex items-center gap-3">
           {logo && <img src={logo} alt="" className="h-9 w-9 rounded-lg object-contain" />}

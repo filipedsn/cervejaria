@@ -4,6 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, ApiError, assetUrl } from '../lib/api';
 import { formatPhone } from '../lib/phone';
 import { Loading } from '../components/Loading';
+import { PortalBackground } from '../components/PortalBackground';
 import { CATEGORIAS_PRODUTO_OPERACAO, normalizeCategoriaProduto } from '../lib/operacao';
 
 type Info = {
@@ -174,14 +175,6 @@ export function PortalPdvPage() {
   });
 
   const background = assetUrl(info.data?.cervejaria.portalBackgroundUrl);
-  const backgroundStyle = background
-    ? {
-        backgroundImage: `linear-gradient(rgba(6, 20, 38, 0.76), rgba(6, 20, 38, 0.88)), url("${background}")`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundAttachment: 'fixed' as const,
-      }
-    : undefined;
 
   if (info.isLoading) return <Loading fullScreen />;
   if (!info.data) {
@@ -193,7 +186,8 @@ export function PortalPdvPage() {
   }
 
   return (
-    <main className="min-h-screen bg-canvas px-4 py-8 safe-area-pt" style={backgroundStyle}>
+    <main className="portal-background-host min-h-screen bg-canvas px-4 py-8 safe-area-pt">
+      <PortalBackground src={background} />
       <div className="portal-login-content">
         <div className="portal-login-brand">
           {info.data.cervejaria.logoUrl ? (

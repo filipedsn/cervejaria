@@ -3,11 +3,14 @@ import { useMutation } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { api, ApiError, assetUrl, logoAssetUrl } from '../lib/api';
 import type { Cervejaria } from '../types';
+import { PortalBackground } from '../components/PortalBackground';
 
 export function AparenciaPage({ embedded }: { embedded?: boolean } = {}) {
   const { cervejaria, updateCervejaria } = useAuth();
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [backgroundPreview, setBackgroundPreview] = useState<string | null>(null);
+  const [previewDevice, setPreviewDevice] = useState<'celular' | 'tablet'>('celular');
+  const [previewLandscape, setPreviewLandscape] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -148,19 +151,38 @@ export function AparenciaPage({ embedded }: { embedded?: boolean } = {}) {
             Esta imagem será exibida atrás das telas do portal do cliente desta empresa. Uma camada escura é aplicada para manter os textos legíveis.
           </p>
         </div>
+        <p className="text-sm text-ink-muted">
+          A imagem será exibida inteira. Espaços restantes usarão a cor de fundo do portal.
+        </p>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Dispositivo da prévia">
+          {(['celular', 'tablet'] as const).map((device) => (
+            <button key={device} type="button" className="touch-btn-secondary touch-btn-sm"
+              aria-pressed={previewDevice === device} onClick={() => setPreviewDevice(device)}>
+              {device === 'celular' ? 'Celular' : 'Tablet'}
+            </button>
+          ))}
+          <button type="button" className="touch-btn-secondary touch-btn-sm"
+            aria-pressed={previewLandscape} onClick={() => setPreviewLandscape((value) => !value)}>
+            {previewLandscape ? 'Orientação horizontal' : 'Orientação vertical'}
+          </button>
+        </div>
         <div
-          className="h-40 sm:h-52 rounded-xl border border-line bg-canvas bg-cover bg-center"
-          style={
-            (backgroundPreview || savedBackground)
-              ? { backgroundImage: `linear-gradient(#06142666, #06142699), url("${backgroundPreview ?? savedBackground}")` }
-              : undefined
-          }
+          className="portal-background-host overflow-hidden rounded-xl border border-line bg-canvas mx-auto w-full max-w-sm"
+          aria-label={`Prévia do portal em ${previewDevice}`}
+          style={{ aspectRatio: previewDevice === 'celular'
+            ? (previewLandscape ? '844 / 390' : '390 / 844')
+            : (previewLandscape ? '1024 / 768' : '768 / 1024') }}
         >
-          {!backgroundPreview && !savedBackground && (
-            <div className="h-full flex items-center justify-center text-sm text-ink-faint">
-              Fundo padrão do portal
+          <PortalBackground src={backgroundPreview ?? savedBackground} preview />
+          <div className="relative p-3">
+            <div className="portal-login-card text-center">
+              <p className="font-semibold">{cervejaria?.nome}</p>
+              <p className="text-sm text-ink-muted">Abrir comanda</p>
+              {!backgroundPreview && !savedBackground && (
+                <p className="text-xs text-ink-faint mt-2">Fundo padrão do portal</p>
+              )}
             </div>
-          )}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <label className="touch-btn-secondary touch-btn-sm inline-block cursor-pointer">
