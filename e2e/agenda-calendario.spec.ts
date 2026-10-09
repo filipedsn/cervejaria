@@ -72,6 +72,23 @@ for (const width of [390, 768]) {
       await page.getByRole('button', { name: 'Lista', exact: true }).click();
       await screenshot(page, width === 390 ? 'artifacts/agenda-mobile-calendar-list.png' : 'artifacts/agenda-tablet-calendar-list.png');
     });
+    test('selected day agenda precedes the month calendar and updates with selection', async ({ page }) => {
+      await fixture(page); await open(page);
+      const initiallySelected = page.locator('section[aria-label="sexta-feira, 9 de outubro"]');
+      await expect(initiallySelected).toContainText('Nenhum agendamento neste dia.');
+      await page.getByRole('button', { name: 'sábado, 10 de outubro, 2 agendamentos' }).click();
+      const selectedDay = page.locator('section[aria-label="sábado, 10 de outubro"]');
+      await expect(selectedDay.getByText('Encontro da tarde')).toBeVisible();
+      const followsSelectedBeforeCalendar = await selectedDay.evaluate((section) => Boolean(section.compareDocumentPosition(document.querySelector('[aria-label="Dias do mês"]')!) & Node.DOCUMENT_POSITION_FOLLOWING));
+      expect(followsSelectedBeforeCalendar).toBe(true);
+      await selectedDay.getByRole('button', { name: /Encontro da tarde/ }).click();
+      const detail = page.getByRole('dialog', { name: 'Agendamento' }); await expect(detail.getByText('Encontro da tarde')).toBeVisible();
+      await detail.getByRole('button', { name: 'Voltar' }).click();
+      await page.getByRole('button', { name: 'segunda-feira, 12 de outubro, 0 agendamentos' }).click();
+      const emptyDay = page.locator('section[aria-label="segunda-feira, 12 de outubro"]'); await expect(emptyDay).toContainText('Nenhum agendamento neste dia.');
+      const emptyBeforeCalendar = await emptyDay.evaluate((section) => Boolean(section.compareDocumentPosition(document.querySelector('[aria-label="Dias do mês"]')!) & Node.DOCUMENT_POSITION_FOLLOWING));
+      expect(emptyBeforeCalendar).toBe(true); await noOverflow(page);
+    });
     test('recurring schedules button is beside the primary action and opens the counted panel', async ({ page }) => {
       const state = await fixture(page); await open(page);
       const recurring = page.getByRole('button', { name: 'Agendamentos recorrentes (2)', exact: true });
