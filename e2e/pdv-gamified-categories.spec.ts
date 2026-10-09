@@ -2,14 +2,15 @@ import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
-async function mockCatalog(page: Page, options: { permission?: boolean; canonical?: boolean; chope?: boolean; contextFailure?: boolean } = {}) {
-  const { permission = true, canonical = true, chope = false, contextFailure = false } = options;
+async function mockCatalog(page: Page, options: { permission?: boolean; canonical?: boolean; chope?: boolean; contextFailure?: boolean; initialCategoryNames?: string[] } = {}) {
+  const { permission = true, canonical = true, chope = false, contextFailure = false, initialCategoryNames } = options;
   const unexpected: string[] = [];
-  const categories = [
-    { id: 'category-beverages', nome: 'Bebidas', gamificada: false },
-    { id: 'category-sweets', nome: 'Doces artesanais', gamificada: false },
-    ...(chope ? [{ id: 'category-chope', nome: 'Chope', gamificada: false }] : []),
-  ];
+  const names = initialCategoryNames ?? ['Bebidas', 'Doces artesanais', ...(chope ? ['Chope'] : [])];
+  const categories = names.map((nome) => ({
+    id: nome === 'Bebidas' ? 'category-beverages' : nome === 'Doces artesanais' ? 'category-sweets' : nome === 'Chope' ? 'category-chope' : `category-${nome.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    nome,
+    gamificada: false,
+  }));
   const products: Array<Record<string, unknown>> = chope ? [{ id: 'product-chope', nome: 'Pilsen QA', categoria: 'Chope', categoriaPdvId: 'category-chope', tipo: 'BEBIDA', formato: 'CHOPE', precoUnit: '5', precos: [{ volumeMl: 300, preco: '5' }], ativo: true, ordem: 0, exigePreparo: false, prepararEmPedidoSeparado: false, controlaEstoque: false }] : [];
   const writes: Array<{ method: string; path: string; body: Record<string, unknown> }> = [];
   const comandaOrder = ['chope', 'comidas', 'bebidas', 'outros'];
@@ -54,7 +55,11 @@ async function mockCatalog(page: Page, options: { permission?: boolean; canonica
       writes.push({ method: 'DELETE', path, body: {} });
       const category = categories.find((item) => path.endsWith(item.id));
       if (products.some((product) => product.categoriaPdvId === category?.id)) return reply({ error: 'Categoria usada por 1 produto(s); remova os vínculos antes de excluir.' }, 409);
-      if (category) categories.splice(categories.indexOf(category), 1);
+      if (category) {
+        categories.splice(categories.indexOf(category), 1);
+        const orderIndex = catalogOrder.indexOf(category.nome);
+        if (orderIndex >= 0) catalogOrder.splice(orderIndex, 1);
+      }
       return reply({ ok: true });
     }
     if (path === '/api/operacao/produtos/categorias/ordem' && request.method() === 'PUT') {
@@ -66,6 +71,7 @@ async function mockCatalog(page: Page, options: { permission?: boolean; canonica
     if (path === '/api/produtos/categorias-comanda/ordem' && request.method() === 'PUT') {
       writes.push({ method: 'PUT', path, body: body ?? {} });
       if (failUnifiedOrderOnce) { failUnifiedOrderOnce = false; return reply({ error: 'Falha simulada na ordem' }, 500); }
+      if ((body?.ordem as string[] | undefined)?.length !== catalogOrder.length) return reply({ error: `Array must contain exactly ${catalogOrder.length} element(s)` }, 400);
       catalogOrder.splice(0, catalogOrder.length, ...((body?.ordem as string[]) ?? []));
       return reply({ ordem: catalogOrder, catalogoCanonico: canonical });
     }
@@ -161,6 +167,36 @@ test('usa uma ordem única no catálogo, comanda e seleção de categoria no pro
   await sweetsRow.getByRole('button', { name: 'Excluir' }).click();
   await page.getByRole('button', { name: 'Confirmar exclusão' }).click();
   await expect(page.getByRole('alert')).toContainText('produto(s)');
+  expect(unexpected).toEqual([]);
+});
+
+test('excluir categoria remove a categoria do rascunho de ordem sem perder a ordem restante', async ({ page }) => {
+  test.setTimeout(45_000);
+  const { writes, unexpected } = await mockCatalog(page, {
+    initialCategoryNames: ['Bebidas', 'Cervejas', 'Drinks', 'Outros', 'Porções', 'Teste'],
+  });
+  await page.goto('/operacao/catalogo');
+  await page.getByRole('button', { name: 'Categorias' }).click();
+
+  const orderPanel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Organizar categorias' }) });
+  await expect(orderPanel.locator('ol > li')).toHaveCount(6);
+  for (let i = 0; i < 4; i++) await orderPanel.getByRole('button', { name: 'Mover Porções para cima' }).click();
+  await expect(orderPanel.locator('ol > li').first()).toContainText('Porções');
+
+  const testCategory = page.locator('ul').getByRole('listitem').filter({ hasText: 'Teste' });
+  await testCategory.getByRole('button', { name: 'Excluir' }).click();
+  await page.getByRole('button', { name: 'Confirmar exclusão' }).click();
+
+  await expect(page.locator('ul').getByText('Teste', { exact: true })).toHaveCount(0);
+  await expect(orderPanel.locator('ol > li')).toHaveCount(5);
+  await expect(orderPanel.getByText('Teste', { exact: true })).toHaveCount(0);
+  await expect(orderPanel.getByRole('alert')).toHaveCount(0);
+  await expect(orderPanel.locator('ol > li').first()).toContainText('Porções');
+  await expect(orderPanel.getByRole('button', { name: 'Salvar ordem' })).toBeEnabled();
+  await orderPanel.getByRole('button', { name: 'Salvar ordem' }).click();
+
+  expect(writes.filter((write) => write.path === '/api/produtos/categorias-comanda/ordem').at(-1)?.body.ordem)
+    .toEqual(['Porções', 'Bebidas', 'Cervejas', 'Drinks', 'Outros']);
   expect(unexpected).toEqual([]);
 });
 

@@ -1,4 +1,4 @@
-import { useMemo, useState, type DragEvent } from 'react';
+import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -21,6 +21,7 @@ function OrderEditor({
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<string[] | null>(null);
   const order = draft ?? initialOrder;
+  const initialOrderKey = JSON.stringify(initialOrder);
   const save = useMutation({
     mutationFn: () => api.put<{ ordem: string[]; catalogoCanonico?: boolean }>(endpoint, { ordem: order }),
     onSuccess: async (result) => {
@@ -32,6 +33,24 @@ function OrderEditor({
         : result);
     },
   });
+  useEffect(() => {
+    setDraft((current) => {
+      if (current === null) return null;
+      const available = new Set(initialOrder);
+      const seen = new Set<string>();
+      const retained = current.filter((name) => {
+        if (!available.has(name) || seen.has(name)) return false;
+        seen.add(name);
+        return true;
+      });
+      const retainedSet = new Set(retained);
+      const reconciled = [...retained, ...initialOrder.filter((name) => !retainedSet.has(name))];
+      return reconciled.length === current.length && reconciled.every((name, index) => name === current[index])
+        ? current
+        : reconciled;
+    });
+    save.reset();
+  }, [initialOrderKey]);
   const move = (from: number, to: number) => {
     if (to < 0 || to >= order.length || from === to) return;
     setDraft((current) => {
@@ -123,8 +142,14 @@ export function CategoriasGestaoPanel() {
   });
   const deleteCategory = useMutation({
     mutationFn: (category: CategoriaPdv) => api.delete(`/api/operacao/produtos/categorias/${category.id}`),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['operacao-categorias'] });
+    onSuccess: async (_result, category) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['operacao-categorias'] }),
+        queryClient.invalidateQueries({ queryKey: ['comanda-categorias-ordem'] }),
+      ]);
+      queryClient.setQueryData<{ ordem: string[]; catalogoCanonico?: boolean }>(['comanda-categorias-ordem'], (current) =>
+        current ? { ...current, ordem: current.ordem.filter((name) => name !== category.nome) } : current,
+      );
       setDeleting(null);
       setDeleteError('');
     },
