@@ -9,8 +9,9 @@ const context = {
   pontosVenda: [point],
 };
 
-async function mock(page: Page, options: { source?: string; points?: typeof point[]; fail?: boolean; gate?: Promise<void>; employee?: boolean } = {}) {
+async function mock(page: Page, options: { source?: string; points?: typeof point[]; fail?: boolean; gate?: Promise<void>; employee?: boolean; initialTapsEnabled?: boolean; patchGate?: Promise<void> } = {}) {
   const requests: Array<{ method: string; path: string }> = [];
+  let tapsEnabled = options.initialTapsEnabled ?? true;
   page.on('request', r => { if (new URL(r.url()).pathname.startsWith('/api/')) requests.push({ method: r.method(), path: new URL(r.url()).pathname + new URL(r.url()).search }); });
   await page.routeWebSocket('**/socket.io/**', s => s.close());
   await page.route('**/api/**', async route => {
@@ -20,12 +21,18 @@ async function mock(page: Page, options: { source?: string; points?: typeof poin
     if (path === '/api/operacao/contexto') {
       await options.gate;
       if (options.fail) return route.fulfill({ status: 409, json: { error: 'PDV canônico ausente' } });
-      return reply({ ...context, operationalSettingsSource: options.source ?? 'CANONICAL_PDV', pontosVenda: options.points ?? [point] });
+      return reply({ ...context, tapsEnabled, operationalSettingsSource: options.source ?? 'CANONICAL_PDV', pontosVenda: options.points ?? [point] });
     }
     if (path === '/api/taps') return reply([{ id: 'settings-tap', numero: 1, nome: 'Torneira principal', ativo: true, pontoVendaId: point.id, produtoId: 'beer', produto: { nome: 'Chope QA' } }]);
     if (path === '/api/produtos') return reply([]);
     if (path === '/api/trailers' || path === '/api/eventos/ativos') return reply([]);
-    if (path === '/api/cervejaria/configuracao-operacional') return reply({ enablements: { plannedOperations: false, cashRegister: true, cashMode: true, taps: true, inventory: false, kitchen: false }, configuration: null });
+    if (path === '/api/cervejaria/configuracao-operacional' && route.request().method() === 'PATCH') {
+      const body = route.request().postDataJSON() as { tapsEnabled?: boolean };
+      await options.patchGate;
+      if (body.tapsEnabled !== undefined) tapsEnabled = body.tapsEnabled;
+      return reply({ saved: true });
+    }
+    if (path === '/api/cervejaria/configuracao-operacional') return reply({ enablements: { plannedOperations: false, cashRegister: true, cashMode: true, taps: tapsEnabled, inventory: false, kitchen: false }, configuration: { configurationSource: 'CANONICAL_PDV', setupCompletedAt: '2026-10-09T00:00:00.000Z', tapsEnabled, inventoryEnabled: false, kitchenEnabled: false } });
     if (path === '/api/operacao/agenda/ocorrencias') return reply({ agendas: [], ocorrencias: [] });
     return route.abort();
   });
@@ -122,4 +129,78 @@ test('seleção direta de Trailer redireciona tenant canônico sem consultar leg
   await page.goto('/trailer');
   await expect(page).toHaveURL(/\/operacao\/comandas$/);
   expect(requests.some(r => r.path.startsWith('/api/trailers'))).toBe(false);
+});
+
+test('parâmetro TAP desligado oculta manutenção, não consulta TAP/produto e preserva PDV/QR', async ({ page }) => {
+  const requests = await mock(page, { initialTapsEnabled: false });
+  await page.goto('/operacao/configuracoes/pdv');
+  await expect(page.getByRole('heading', { name: point.nome })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'QR Code para abrir comanda' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Torneiras deste PDV' })).toHaveCount(0);
+  expect(requests.some(r => r.path.startsWith('/api/taps') || r.path === '/api/produtos'), JSON.stringify(requests)).toBe(false);
+});
+
+test('alterar TAPs atualiza a seção somente após salvar e recarregar o contexto', async ({ page }) => {
+  let release!: () => void;
+  let patchStarted!: () => void;
+  let holdNextPatch = false;
+  let patchGate: Promise<void> | undefined;
+  const requests = await mock(page, {
+    initialTapsEnabled: true,
+    get patchGate() { return patchGate; },
+  });
+  // Install a narrow route before the broad API mock so the test controls the
+  // backend confirmation boundary without changing client state optimistically.
+  await page.route('**/api/cervejaria/configuracao-operacional', async route => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    if (holdNextPatch) {
+      patchStarted();
+      await patchGate;
+    }
+    return route.fallback();
+  });
+
+  const holdPatch = () => {
+    holdNextPatch = true;
+    patchGate = new Promise<void>(resolve => { release = resolve; });
+    return new Promise<void>(resolve => { patchStarted = resolve; });
+  };
+  const releasePatch = () => { holdNextPatch = false; release(); };
+
+  await page.goto('/operacao/configuracoes/operacao');
+  const toggle = page.getByRole('button', { name: 'Desativar Torneiras de chope' });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  const disabling = holdPatch();
+  await toggle.click();
+  await disabling;
+  await expect(toggle).toBeDisabled();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  expect(requests.filter(r => r.path === '/api/operacao/contexto').length).toBe(1);
+  releasePatch();
+  await expect(page.getByRole('button', { name: 'Ativar Torneiras de chope' })).toHaveAttribute('aria-pressed', 'false');
+  await expect.poll(() => requests.filter(r => r.path === '/api/operacao/contexto').length).toBeGreaterThan(1);
+  await page.goto('/operacao/configuracoes/pdv');
+  await expect(page.getByRole('heading', { name: point.nome })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'QR Code para abrir comanda' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Torneiras deste PDV' })).toHaveCount(0);
+  expect(requests.some(r => r.path.startsWith('/api/taps') || r.path === '/api/produtos'), JSON.stringify(requests)).toBe(false);
+
+  const enabling = holdPatch();
+  await page.goto('/operacao/configuracoes/operacao');
+  const enableToggle = page.getByRole('button', { name: 'Ativar Torneiras de chope' });
+  await expect(enableToggle).toHaveAttribute('aria-pressed', 'false');
+  await enableToggle.click();
+  await enabling;
+  await expect(enableToggle).toBeDisabled();
+  await expect(enableToggle).toHaveAttribute('aria-pressed', 'false');
+  expect(requests.filter(r => r.path === '/api/operacao/contexto').length).toBeGreaterThan(1);
+  releasePatch();
+  await expect(page.getByRole('button', { name: 'Desativar Torneiras de chope' })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => requests.filter(r => r.path === '/api/operacao/contexto').length).toBeGreaterThan(2);
+  await page.goto('/operacao/configuracoes/pdv');
+  await expect(page.getByRole('heading', { name: point.nome })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'QR Code para abrir comanda' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Torneiras deste PDV' })).toBeVisible();
+  await expect(page.getByText('Chope QA', { exact: true })).toBeVisible();
+  expect(requests.filter(r => r.path.startsWith('/api/taps')).every(r => r.path.includes(`pontoVendaId=${point.id}`))).toBe(true);
 });

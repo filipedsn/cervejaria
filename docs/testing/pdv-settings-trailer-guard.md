@@ -12,8 +12,15 @@ backend. Ela não cria, exclui nem desativa unidades. Contexto indisponível,
 sem fonte explícita, vazio, ambíguo ou inativo não autoriza montar gestão legada
 ou provisionar uma unidade.
 
-`PdvTapsSection` fica somente na aba PDV; a montagem do turno continua no fluxo
-da sessão. `PdvPortalQrButton` recebe `pontoVendaId`, formando `/c/:slug/p/:id`.
+`PdvTapsSection` fica somente na aba PDV quando fonte canônica e PDV único
+ativo estão validados, o usuário é proprietário e o parâmetro efetivo
+`contexto.tapsEnabled` retornado pelo backend está ligado. Desligar o parâmetro
+oculta a seção e impede suas consultas de TAPs/produtos; dados e histórico não
+são alterados. Salvar o parâmetro invalida configuração e contexto somente
+após a confirmação do servidor, permitindo refletir a mudança na aplicação.
+A montagem do turno continua no fluxo da sessão. `PdvPortalQrButton` recebe
+`pontoVendaId`, formando `/c/:slug/p/:id` e permanecendo disponível com TAPs
+ligados ou desligados.
 Evento é contexto opcional da sessão Por Caixa; TAPs e portal pertencem ao PDV.
 As configurações e o cadastro de TAP continuam restritos ao proprietário.
 
@@ -68,11 +75,17 @@ node --import ../scripts/node24-tsx-host.mjs scripts/run-pdv-settings-disposable
 Pop-Location
 ```
 
-Resultado: builds backend/frontend aprovados; 10 cenários de UI aprovados; 6 testes de configuração e
+Resultado do ajuste focado de parâmetro: build frontend aprovado; 12 cenários
+de UI aprovados. Os 10 cenários abaixo vieram da correção anterior; o ajuste
+acrescenta estados ligados/desligados e atualização após salvar. Resultado da
+correção anterior: builds backend/frontend aprovados; 6 testes de configuração e
 seletor aprovados; QA de API com 26 verificações aprovadas. A UI cobre 390px e
 768px, redirecionamentos, PDV/TAP/QR corretos, ausência de chamadas a
 `/api/trailers`, ausência de manutenção duplicada, carregamento, contexto
-inválido/erro, LEGACY e restrição de funcionário. Screenshots ficam em
+inválido/erro, LEGACY e restrição de funcionário. O teste de parâmetro confere
+ausência de consultas de TAP/produto desligado, carregamento pelo ID do PDV
+quando ligado, QR visível nos dois estados e persistência visual apenas após
+resposta do PATCH e revalidação do contexto. Screenshots ficam em
 `test-results/pdv-settings/` e foram inspecionados visualmente.
 
 O QA de API usa Fastify.inject com as rotas reais e Prisma real. Identidades
@@ -101,7 +114,10 @@ continua recebendo 403. Catálogo e permissões reais não são modificados.
 4. Abrir QR e conferir `/c/:slug/p/:pontoVendaId`; não enviar mensagens nem
    criar comandas para essa inspeção. Conferir que Operação não repete cadastro
    de TAPs. Funcionário não acessa as configurações.
-5. Simular contexto ausente/ambíguo apenas no teste de UI acima; não adulterar
+5. Na aba Operação, alterar “Torneiras de chope” e aguardar o salvamento. Voltar
+   à aba PDV: a manutenção de TAPs deve aparecer/desaparecer sem reiniciar a
+   aplicação. Identificação do PDV e QR devem permanecer nos dois estados.
+6. Simular contexto ausente/ambíguo apenas no teste de UI acima; não adulterar
    DEV nem provisionar uma unidade. Testar mutações recusadas apenas no QA
    descartável acima, evitando editar catálogo, permissões e estruturas reais.
 

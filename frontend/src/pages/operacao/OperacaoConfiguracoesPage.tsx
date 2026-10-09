@@ -68,7 +68,7 @@ export function OperacaoConfiguracoesPage() {
           <p className="text-sm text-ink-muted">PDV único desta assinatura. O portal e as torneiras pertencem a esta unidade. Evento é um contexto opcional da sessão Por Caixa.</p>
           <PdvPortalQrButton pontoVendaId={pdv.id} />
         </section>
-        {isDono && <PdvTapsSection key={pdv.id} pontoVendaId={pdv.id} />}
+        {canonical && pdv && isDono && contexto.tapsEnabled === true && <PdvTapsSection key={pdv.id} pontoVendaId={pdv.id} />}
       </div> : <div className="alert-error" role="alert">O contexto deve conter exatamente um PDV ativo. Procure o suporte para validar a unidade.</div>)}
       {tab === 'operacao' && <OperacaoPage embedded modo="operacao" />}
       {tab === 'operacao' && contexto.operationalSettingsSource === 'CANONICAL_PDV' && <AgendaOperacionalPanel />}
