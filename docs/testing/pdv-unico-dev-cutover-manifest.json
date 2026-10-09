@@ -87,5 +87,22 @@
                     "NÃ£o aplicar migrations, saneamento ou ativaÃ§Ã£o em DEV compartilhado nesta rodada.",
                     "Uma janela DEV futura requer backup DEV e prova PASS de restore drill vinculada ao SHA desse backup; o executor bloquearÃ¡ se estiverem ausentes."
                 ],
-    "sourceSchemaCommit":  "66ec00886b65eaea8e437fae4e9a36f7be971b09"
+    "sourceSchemaCommit":  "66ec00886b65eaea8e437fae4e9a36f7be971b09",
+    "followUpCertification":  {
+        "runtimeRevision":  "780772179d39173660c378a867898438f0aec765",
+        "runtimeTree":  "e5ffe0dd400a9441907cd61cb5cb8d113d47bc9f",
+        "result":  "PASS",
+        "evidence":  "docs/testing/pdv-unico-dev-cutover-followup-evidence-7807721.json",
+        "evidenceSha256":  "3648ddd16fc06925a2ac7f9e4b6cd036aeff5d88c6188ce9345ce913901478e1",
+        "qaEvidence":  "docs/testing/pdv-unico-dev-cutover-followup-qa-full-7807721.json",
+        "qaEvidenceSha256":  "85cd75fb41fa71d492817392bdb1bc058eb0dc84521402e455df5514d37d04b2",
+        "ledgerStates":  "PASS: 85/14 initial; minimum boundary resumed; 99/99 complete; invalid ledgers rejected",
+        "immutableEntrypoint":  "PASS: Git snapshot; 9 project imports from snapshot; 0 mutable workspace imports",
+        "activation":  "PASS: startup config apply and exact rollback; unselected tenant remains legacy",
+        "newFocusedQa":  "PASS: selected 7021097 categories gate; snapshot builds, manifest, guard and startup tests, mocked UI, SQL gate",
+        "fullCutoverQaOnRuntimeRevision":  "PASS: full disposable QA sequence selected 7807721; migrations, preparation, tenant transforms/replays, reconciliation, readiness/activation and audited QA cancellation passed; 605 payments preserved; zero workspace imports",
+        "sharedDevWrites":  "NO",
+        "prodAccess":  "NO",
+        "tap76":  "In Progress"
+    }
 }

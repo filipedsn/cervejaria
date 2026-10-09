@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "objective": "Repair and directly verify the certified DEV executor ledger, immutable source, and persistent backend activation paths",
+  "runtimeRevision": "780772179d39173660c378a867898438f0aec765",
+  "runtimeTree": "e5ffe0dd400a9441907cd61cb5cb8d113d47bc9f",
+  "previousFullCertification": {
+    "revision": "888a4a8e8f4f347ded6138da218f4b3f01f5f9ea",
+    "result": "PASS",
+    "scope": "full disposable cutover QA, including migration and tenant transformation sequence",
+    "evidence": "docs/testing/pdv-unico-dev-cutover-qa-evidence-888a4a8.json"
+  },
+  "newRevisionChecks": {
+    "photo": {
+      "path": "C:\\Users\\Papai\\AppData\\Local\\Temp\\tap76-pdv-photo-6e0465525d164feaa656fb4fa66e075a.json",
+      "sha256": "2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b",
+      "bytes": 8386723,
+      "userEnvironmentMatches": true,
+      "authorizationRegenerated": false
+    },
+    "ledgerGuard": {
+      "tests": "PASS 4/4",
+      "initial": "PASS: 85 applied through 20260930150000_company_pix_key; 14 pending; boundary not yet applied",
+      "resumedMinimum": "PASS: applied through 20261004150000_pdv_finance_session_link; later migrations pending",
+      "complete": "PASS: all 99 reviewed migrations applied",
+      "invalid": "PASS: unknown migration, checksum mismatch, failed/incomplete row, and application gap/order rejected",
+      "databaseConnectionUsed": false
+    },
+    "immutableEntrypoint": {
+      "command": "node backend/scripts/run-pdv-unico-dev-cutover.mjs --dry-run",
+      "result": "PASS",
+      "selectedRevision": "780772179d39173660c378a867898438f0aec765",
+      "gitTree": "e5ffe0dd400a9441907cd61cb5cb8d113d47bc9f",
+      "materializedTrackedBlobs": 1266,
+      "projectImportsFromSnapshot": 9,
+      "mutableWorkspaceProjectImports": 0,
+      "originAudit": "all nine project imports resolve below the Git snapshot; none are marked as generated clients",
+      "connectsToDatabase": false,
+      "appliesMigrations": false
+    },
+    "activation": {
+      "configApplyAndExactRollback": "PASS",
+      "concurrentConfigChangeBlocksRollback": "PASS",
+      "startupTenantSelectorTests": "PASS 3/3",
+      "bothAllowlistedTenantsActivated": true,
+      "unselectedTenantsRemainLegacy": true,
+      "sharedDevConfigChanged": false,
+      "sharedDevServicesStarted": false
+    },
+    "backendBuild": "PASS",
+    "focusedExecutorTests": "PASS 20/20"
+  },
+  "focusedQa": {
+    "runner": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+    "command": "node backend/scripts/run-pdv-unico-git-snapshot-qa.mjs --commit=7021097f16bd17e638db707fc23de7416509074d --focus=categories --evidence-out=<TEMP>\\tap76-pdv-cutover-focused-qa.json",
+    "result": "PASS",
+    "scope": "focused-gate-only; no full migration replay",
+    "qaTree": "c4ad2c1ec31a29052b07b433698e86343b84c105",
+    "materializedTrackedBlobs": 1266,
+    "backendBuild": "PASS",
+    "frontendBuild": "PASS",
+    "manifestTests": "PASS 3/3",
+    "startupAndCutoverGuardTests": "PASS 14/14",
+    "mockedUi": "PASS 2/2",
+    "categorySqlQa": "PASS",
+    "snapshotImportAudit": "PASS; zero workspace imports",
+    "localStateUnchanged": true,
+    "prodAccess": "NO",
+    "sharedDevWrites": "NO",
+    "capturedEvidence": "docs/testing/pdv-unico-dev-cutover-followup-qa-gate.json"
+  },
+  "fullQaRehearsal": {
+    "selectedRevision": "780772179d39173660c378a867898438f0aec765",
+    "runner": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs --cutover",
+    "result": "PASS",
+    "elapsedMs": 2409138,
+    "evidenceSha256": "85cd75fb41fa71d492817392bdb1bc058eb0dc84521402e455df5514d37d04b2",
+    "scope": "full migration and tenant adapter sequence in disposable QA, followed by authenticated QA operation; shared DEV executor also separately passed direct snapshot entrypoint dry-run and phase guard tests",
+    "selectedTree": "e5ffe0dd400a9441907cd61cb5cb8d113d47bc9f",
+    "materializedTrackedBlobs": 1266,
+    "phaseResults": [
+      "PASS: source schema restored to 85-migration baseline and approved photo compared",
+      "PASS: isolated QA backup/restore recovery proof",
+      "PASS: minimum migrations through 20261004150000_pdv_finance_session_link (90 applied)",
+      "PASS: business/catalog transformations and kitchen context preparation",
+      "PASS: dependent migrations and canonical category transformation",
+      "PASS: tenant transformations, payment replays, and integrated reconciliation",
+      "PASS: historical ranking preserved before and after transforms",
+      "PASS: two tenant readiness/activation and authenticated operation"
+    ],
+    "devPreflight": "CLEAR 55/55, RepeatableRead read-only",
+    "authenticatedCancellation": {
+      "result": "PASS",
+      "comandaId": "cmuqaoyta0007hvdg3q4v7hkj",
+      "api": "POST /api/operacao/comandas/:id/cancelar",
+      "audit": "COMANDA_CANCELADA",
+      "noFinancialOrStockEffects": true
+    },
+    "payments": "605 preserved; original before/after SHA matched",
+    "unselectedTenant": "PASS; legacy behavior and source rows preserved",
+    "sourceModuleAudit": "PASS: 214 snapshot project modules; 0 mutable workspace modules",
+    "localStateUnchanged": true,
+    "qaSnapshotRemoved": true,
+    "prodAccess": "NO",
+    "sharedDevWrites": "NO",
+    "capturedEvidence": "docs/testing/pdv-unico-dev-cutover-followup-qa-full-7807721.json"
+  },
+  "operationalBoundary": {
+    "fullCutoverOnNewRevision": "PASS in disposable QA at 7807721; not applied to shared DEV",
+    "sharedDevMigrationsOrSanitation": "NOT_RUN",
+    "sharedDevActivationOrRestart": "NOT_RUN",
+    "backupAndRestorePrerequisites": "REQUIRED before future apply",
+    "authorizedQaCancellation": "Not repeated in this focused gate; remains QA-only through the normal audited API",
+    "tap76": "In Progress",
+    "prodDeployRequired": false
+  }
+}

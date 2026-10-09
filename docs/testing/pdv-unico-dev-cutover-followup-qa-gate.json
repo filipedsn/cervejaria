@@ -1,0 +1,74 @@
+{
+  "result": "PASS",
+  "scope": "focused-gate-only",
+  "gate": "categories",
+  "selectedCommit": "7021097f16bd17e638db707fc23de7416509074d",
+  "selectedTree": "c4ad2c1ec31a29052b07b433698e86343b84c105",
+  "materializedTrackedBlobCount": 1266,
+  "measuredCommands": [
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "backend",
+      "durationMs": 25251,
+      "exitCode": 0
+    },
+    {
+      "command": "run build",
+      "cwd": "backend",
+      "durationMs": 6744,
+      "exitCode": 0
+    },
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "frontend",
+      "durationMs": 11953,
+      "exitCode": 0
+    },
+    {
+      "command": "run build",
+      "cwd": "frontend",
+      "durationMs": 33568,
+      "exitCode": 0
+    },
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "",
+      "durationMs": 4643,
+      "exitCode": 0
+    },
+    {
+      "command": "test --config=playwright.config.ts e2e/pdv-gamified-categories.spec.ts --project=chromium --no-deps --reporter=line --output=C:\\Users\\Papai\\AppData\\Local\\Temp\\pdv-category-ui-playwright-ded31fe3e39b7ed3",
+      "cwd": "",
+      "durationMs": 9400,
+      "exitCode": 0
+    },
+    {
+      "command": "scripts/pdv-unico-commerce-qa-manifest.mjs --write",
+      "cwd": "backend",
+      "durationMs": 5318,
+      "exitCode": 0
+    },
+    {
+      "command": "--test scripts/pdv-unico-commerce-qa-manifest.test.mjs",
+      "cwd": "backend",
+      "durationMs": 8422,
+      "exitCode": 0
+    },
+    {
+      "command": "--import tsx --test scripts/pdv-unico-dev-cutover-core.test.mjs scripts/pdv-unico-cutover-receipts.test.mjs src/lib/pdv-tenant-activation.test.ts",
+      "cwd": "backend",
+      "durationMs": 3073,
+      "exitCode": 0
+    },
+    {
+      "command": "scripts/run-pdv-gamified-category-qa.mjs",
+      "cwd": "backend",
+      "durationMs": 10770,
+      "exitCode": 0
+    }
+  ],
+  "importedWorkspaceModules": 0,
+  "localStateUnchanged": true,
+  "prodAccessUsed": "NO",
+  "devSharedWrites": "NO"
+}
