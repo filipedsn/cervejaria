@@ -17,6 +17,8 @@ export type OperacaoContexto = {
   operationalSettingsSource?: 'LEGACY' | 'CANONICAL_PDV';
   inventoryEnabled: boolean;
   kitchenEnabled: boolean;
+  kitchenItemsChargeAtLaunch: boolean;
+  allowCloseComandaWithPendingKitchenOrders: boolean;
   controlaEstoque: boolean;
   temCozinha: boolean;
   usaCardapio: boolean;
@@ -35,6 +37,8 @@ const CONTEXTO_INATIVO: OperacaoContexto = {
   operationalSettingsSource: 'LEGACY',
   inventoryEnabled: false,
   kitchenEnabled: false,
+  kitchenItemsChargeAtLaunch: false,
+  allowCloseComandaWithPendingKitchenOrders: false,
   controlaEstoque: false,
   temCozinha: false,
   usaCardapio: false,

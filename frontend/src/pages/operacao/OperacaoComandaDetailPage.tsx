@@ -55,7 +55,7 @@ export function OperacaoComandaDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { cervejaria, podeDarDescontoOperacao, canPermission } = useAuth();
-  const { contexto } = useOperacaoContexto();
+  const { contexto, isResolved: contextoResolvido, isError: contextoErro } = useOperacaoContexto();
   const avisoWhatsAppStorageKey = `quiver:aviso-whatsapp:comanda:${id}`;
   const controlaEstoque = contexto.ativo && contexto.controlaEstoque;
   const [showAddItem, setShowAddItem] = useState(false);
@@ -85,11 +85,6 @@ export function OperacaoComandaDetailPage() {
   const { data: comanda, isLoading } = useQuery({
     queryKey: ['operacao-comanda', id],
     queryFn: () => api.get<ComandaOperacao>(`/api/operacao/comandas/${id}`),
-  });
-
-  const { data: operationalConfiguration } = useQuery({
-    queryKey: ['operational-configuration'],
-    queryFn: () => api.get<{ configuration: { allowCloseComandaWithPendingKitchenOrders?: boolean } | null }>('/api/cervejaria/configuracao-operacional'),
   });
 
   const { data: produtos } = useQuery({
@@ -452,7 +447,11 @@ export function OperacaoComandaDetailPage() {
   const cancelada = comanda.status === 'CANCELADA';
   const temItens = totalItensComanda(comanda) > 0;
   const cozinhaPendente = temPedidoCozinhaPendente(comanda);
-  const permitirFecharComCozinhaPendente = operationalConfiguration?.configuration?.allowCloseComandaWithPendingKitchenOrders ?? false;
+  const configuracaoFechamentoCarregada = contextoResolvido && !contextoErro;
+  const permitirFecharComCozinhaPendente =
+    configuracaoFechamentoCarregada &&
+    contexto.allowCloseComandaWithPendingKitchenOrders &&
+    contexto.kitchenItemsChargeAtLaunch;
   const podeFechar = aberta && temItens && (!cozinhaPendente || permitirFecharComCozinhaPendente);
   const hasActionBar = aberta || !aberta;
   const podeAplicarDesconto = canPermission('discount.apply') && podeDarDescontoOperacao;
@@ -600,12 +599,12 @@ export function OperacaoComandaDetailPage() {
             navegarParaWhatsApp(url);
           };
           return (
-          <section key={pedido.id} className="card space-y-2 py-3">
+          <section key={pedido.id} className="card divide-y divide-line px-3 py-1">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
                 Senha {pedido.numero}
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 {naCozinha && (
                   <span
                     className={`text-xs font-semibold ${
@@ -615,9 +614,9 @@ export function OperacaoComandaDetailPage() {
                     {rotuloStatusPedido(pedido.status)}
                   </span>
                 )}
-                {pedido.observacao && <span className="text-xs text-ink-faint">{pedido.observacao}</span>}
               </div>
             </div>
+            {pedido.observacao && <p className="border-t border-line py-1.5 text-xs text-ink-muted">Obs: {pedido.observacao}</p>}
             {pedido.itens.map((item) => {
               const itemEmCancelamento = Boolean(item.cancelamentoPendenteEm || item.canceladoEm);
               const quantidadeEditavel = aberta && !itemEmCancelamento && podeAlterarQuantidadeItemComanda(comanda, pedido, item);
@@ -630,87 +629,72 @@ export function OperacaoComandaDetailPage() {
                 (alterarQuantidadeItem.isPending && alterarQuantidadeItem.variables?.itemId === item.id);
 
               return (
-              <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 text-sm">
-                <div className={`col-span-2 min-w-0 text-base font-semibold ${itemConfirmado ? '' : 'text-ink-faint'}`}>
-                  <div className="whitespace-normal break-words">{item.nome}</div>
-                  {item.cancelamentoPendenteEm && <small className="ml-2 rounded-full border border-orange-500/50 bg-orange-500/10 px-2 py-0.5 text-[10px] font-bold text-orange-400">Cancelamento solicitado</small>}
-                  {item.canceladoEm && <small className="ml-2 rounded-full bg-surface-lighter px-2 py-0.5 text-[10px] font-bold text-ink-faint">Cancelado</small>}
-                  {item.paraViagem && <small className="ml-2 rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-bold text-violet-300">Para viagem</small>}
-                  {(item.observacao || (item.opcionais?.length ?? 0) > 0) && <small className="block text-xs text-ink-muted">{item.observacao ? `Obs: ${item.observacao}` : ''}{item.opcionais?.length ? ` · ${item.opcionais.map((o) => o.nome).join(', ')}` : ''}</small>}
-                </div>
-                <div className="col-span-2 flex min-w-0 items-center gap-2">
+              <div key={item.id} className="py-2 first:pt-2 last:pb-2">
+                <div className="flex min-w-0 items-center gap-2">
                   {quantidadeEditavel ? (
-                    <div className="flex items-center rounded-xl border border-line bg-surface p-0.5 shadow-sm">
+                    <div className="flex shrink-0 items-center rounded-lg border border-line bg-surface shadow-sm">
                       <button
                         type="button"
                         aria-label={`Remover um ${item.nome}`}
-                        className="flex min-h-9 min-w-9 items-center justify-center rounded-lg text-base font-bold text-ink-muted transition-transform active:scale-95 active:bg-surface-lighter disabled:opacity-40"
+                        className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-base font-bold text-ink-muted active:bg-surface-lighter disabled:opacity-40"
                         disabled={itemEmEdicao || !podeCancelarItem}
                         onClick={() => {
-                          if (item.quantidade <= 1) {
-                            enviarRemocaoItem({ itemId: item.id });
-                            return;
-                          }
-                          alterarQuantidadeItem.mutate({
-                            itemId: item.id,
-                            quantidade: item.quantidade - 1,
-                          });
+                          if (item.quantidade <= 1) enviarRemocaoItem({ itemId: item.id });
+                          else alterarQuantidadeItem.mutate({ itemId: item.id, quantidade: item.quantidade - 1 });
                         }}
-                      >
-                        −
-                      </button>
-                      <span className="min-w-[1.75rem] text-center text-sm font-bold tabular-nums">
-                        {item.quantidade}
-                      </span>
+                      >−</button>
+                      <span className="min-w-6 text-center text-sm font-bold tabular-nums">{item.quantidade}</span>
                       <button
                         type="button"
                         aria-label={`Adicionar um ${item.nome}`}
-                        className="flex min-h-9 min-w-9 items-center justify-center rounded-lg text-base font-bold text-ink transition-transform active:scale-95 active:bg-surface-lighter disabled:opacity-40"
+                        className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-base font-bold text-ink active:bg-surface-lighter disabled:opacity-40"
                         disabled={itemEmEdicao || !podeIncrementar}
-                        onClick={() =>
-                          alterarQuantidadeItem.mutate({
-                            itemId: item.id,
-                            quantidade: item.quantidade + 1,
-                          })
-                        }
-                      >
-                        +
-                      </button>
+                        onClick={() => alterarQuantidadeItem.mutate({ itemId: item.id, quantidade: item.quantidade + 1 })}
+                      >+</button>
                     </div>
                   ) : (
-                    <span className="shrink-0 rounded-lg bg-surface-lighter px-2.5 py-2 text-xs font-semibold text-ink-muted">
-                      Qtd. {item.quantidade}
-                    </span>
+                    <span className="shrink-0 text-xs font-semibold text-ink-muted">{item.quantidade} ×</span>
                   )}
-                  {!item.canceladoEm && (
-                    <span className={`ml-auto shrink-0 text-right font-semibold tabular-nums ${itemConfirmado ? '' : 'text-ink-faint'}`}>
-                      {item.cancelamentoPendenteEm
-                        ? `Cancelamento pendente · ${formatCurrency(item.subtotal)}`
-                        : itemConfirmado
-                          ? formatCurrency(item.subtotal)
-                          : `Pendente · ${formatCurrency(item.subtotal)}`}
-                    </span>
-                  )}
-                  {removivel && (
-                    <button
-                      type="button"
-                      aria-label={`Remover ${item.nome}`}
-                      onClick={() => {
-                        if (item.quantidade > 1) {
-                          removerItem.reset();
-                          setErro('');
-                          setItemParaCancelar({ id: item.id, nome: item.nome, quantidade: item.quantidade });
-                        } else {
-                          enviarRemocaoItem({ itemId: item.id });
-                        }
-                      }}
-                      disabled={itemEmEdicao}
-                      className="icon-btn-danger"
-                    >
-                      <IconTrash />
-                    </button>
-                  )}
+                  <div className={`min-w-0 flex-1 text-sm font-semibold ${itemConfirmado ? '' : 'text-ink-faint'}`}>
+                    <span className="break-words">{item.nome}</span>
+                    {item.cancelamentoPendenteEm && <small className="ml-2 rounded-full border border-orange-500/50 bg-orange-500/10 px-2 py-0.5 text-[10px] font-bold text-orange-400">Cancelamento solicitado</small>}
+                    {item.canceladoEm && <small className="ml-2 rounded-full bg-surface-lighter px-2 py-0.5 text-[10px] font-bold text-ink-faint">Cancelado</small>}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {!item.canceladoEm && (
+                      <span className={`max-w-[7.5rem] text-right text-xs font-semibold tabular-nums sm:max-w-none sm:text-sm ${itemConfirmado ? '' : 'text-ink-faint'}`}>
+                        {item.cancelamentoPendenteEm
+                          ? `Cancelamento pendente · ${formatCurrency(item.subtotal)}`
+                          : itemConfirmado
+                            ? formatCurrency(item.subtotal)
+                            : `Pendente · ${formatCurrency(item.subtotal)}`}
+                      </span>
+                    )}
+                    {removivel && (
+                      <button
+                        type="button"
+                        aria-label={`Remover ${item.nome}`}
+                        onClick={() => {
+                          if (item.quantidade > 1) {
+                            removerItem.reset();
+                            setErro('');
+                            setItemParaCancelar({ id: item.id, nome: item.nome, quantidade: item.quantidade });
+                          } else enviarRemocaoItem({ itemId: item.id });
+                        }}
+                        disabled={itemEmEdicao}
+                        className="icon-btn-danger"
+                      ><IconTrash /></button>
+                    )}
+                  </div>
                 </div>
+                {(item.opcionais?.length || item.observacao || item.paraViagem) ? (
+                  <div className="pl-12 pt-1 text-xs leading-snug text-ink-muted">
+                    {item.opcionais?.length ? <div>Opcionais: {item.opcionais.map((o) => o.nome).join(', ')}</div> : null}
+                    {item.observacao ? <div>Obs: {item.observacao}</div> : null}
+                    {item.paraViagem ? <div>Para viagem</div> : null}
+                  </div>
+                ) : null}
+
                 {alterandoEsteItem && (
                   <span className="sr-only">Atualizando item</span>
                 )}
@@ -791,7 +775,12 @@ export function OperacaoComandaDetailPage() {
           </section>
         )}
 
-        {aberta && temItens && cozinhaPendente && !permitirFecharComCozinhaPendente && (
+        {aberta && temItens && cozinhaPendente && !configuracaoFechamentoCarregada && (
+          <p role="status" className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
+            {contextoErro ? 'Não foi possível confirmar a configuração de fechamento. Atualize a tela para tentar novamente.' : 'Carregando a regra de fechamento da cozinha…'}
+          </p>
+        )}
+        {aberta && temItens && cozinhaPendente && configuracaoFechamentoCarregada && !permitirFecharComCozinhaPendente && (
           <p className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
             Aguarde a entrega dos itens da cozinha antes de fechar a comanda.
           </p>
@@ -849,11 +838,11 @@ export function OperacaoComandaDetailPage() {
       )}
 
       {podeFechar && (
-        <MobileActionBar>
-          <button type="button" className="touch-btn-orange w-full" onClick={openPayment} disabled={!podeFecharComanda || !podeReceber} data-audit="operacao-comanda-fechar">
+        <MobileActionBar className="sm:grid sm:grid-cols-2 sm:items-stretch sm:gap-2 sm:space-y-0">
+          <button type="button" className="touch-btn-orange w-full sm:h-12" onClick={openPayment} disabled={!podeFecharComanda || !podeReceber || (cozinhaPendente && !configuracaoFechamentoCarregada)} data-audit="operacao-comanda-fechar">
             Fechar Comanda · {formatCurrency(totalParcialComanda)}
           </button>
-          <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/operacao/comandas')}>
+          <button type="button" className="touch-btn-orange w-full sm:h-12" onClick={() => navigate('/operacao/comandas')}>
             Voltar às comandas
           </button>
         </MobileActionBar>

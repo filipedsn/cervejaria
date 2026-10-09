@@ -41,6 +41,7 @@ const company = await prisma.cervejaria.create({ data: { nome: `Permission QA ${
 const otherCompany = await prisma.cervejaria.create({ data: { nome: `Other permission QA ${suffix}`, slug: `other-permission-qa-${suffix}` } });
 const owner = await prisma.usuario.create({ data: { nome: 'QA Owner', email: `owner-${suffix}@example.invalid`, senhaHash: ownerHash, papel: 'DONO', cervejariaId: company.id } });
 const staff = await prisma.usuario.create({ data: { nome: 'QA Attendant', email: `staff-${suffix}@example.invalid`, senhaHash: attendantHash, papel: 'ATENDENTE', cervejariaId: company.id } });
+const staffTwo = await prisma.usuario.create({ data: { nome: 'QA Attendant Two', email: `staff-two-${suffix}@example.invalid`, senhaHash: attendantHash, papel: 'ATENDENTE', cervejariaId: company.id } });
 const otherOwner = await prisma.usuario.create({ data: { nome: 'Other Owner', email: `other-${suffix}@example.invalid`, senhaHash: otherOwnerHash, papel: 'DONO', cervejariaId: otherCompany.id } });
 await prisma.configuracaoOperacao.create({ data: { cervejariaId: company.id, exclusivo: true } });
 await prisma.configuracaoOperacional.create({ data: { cervejariaId: company.id, plannedOperationsEnabled: false, tapsEnabled: false, inventoryEnabled: false, kitchenEnabled: false } });
@@ -60,6 +61,7 @@ async function login(email, password) {
 
 const ownerCookie = await login(owner.email, ownerPassword);
 const staffCookie = await login(staff.email, attendantPassword);
+const staffTwoCookie = await login(staffTwo.email, attendantPassword);
 const foreignOwnerCookie = await login(otherOwner.email, otherOwnerPassword);
 const authHeaders = (cookie) => ({ cookie });
 const trailer = await prisma.trailer.create({ data: { nome: `QA trailer ${suffix}`, cervejariaId: company.id } });
@@ -131,7 +133,7 @@ const canonicalLinks = JSON.parse(canonicalLinkRead.body);
 assert.deepEqual(canonicalLinks.map(({ opcional }) => ({ companyId: opcional.cervejariaId, pointId: opcional.pontoVendaId })), [
   { companyId: company.id, pointId: point.id }, { companyId: company.id, pointId: point.id },
 ]);
-const agendaPayload = { nome: `Agenda permission QA ${suffix}`, diaSemana: 3, horaInicio: '18:00' };
+const agendaPayload = { nome: `Agenda permission QA ${suffix}`, diaSemana: 3, horaInicio: '18:00', horaFim: '22:00' };
 const agendaDeniedBefore = await prisma.agendaOperacional.count({ where: { cervejariaId: company.id, pontoVendaId: point.id } });
 const agendaCreateDenied = await app.inject({ method: 'POST', url: '/api/operacao/agenda/agendas', headers: authHeaders(staffCookie), payload: agendaPayload });
 assert.equal(agendaCreateDenied.statusCode, 403, agendaCreateDenied.body);
@@ -616,6 +618,69 @@ assert.equal(JSON.parse(allowedCommandClose.body).status, 'FECHADA');
 assert.equal((await prisma.comanda.findUniqueOrThrow({ where: { id: commandForClose.id } })).status, 'FECHADA');
 assert.equal(await prisma.pagamento.count({ where: { comandaId: commandForClose.id, registradoPorId: staff.id } }), 1);
 assert.equal((await prisma.itemComanda.findUniqueOrThrow({ where: { id: closeItem.id } })).quantidade, 1);
+// Pending kitchen close uses authenticated operational context while admin config remains owner-only.
+const administrativeConfigDenied = await app.inject({ method: 'GET', url: '/api/cervejaria/configuracao-operacional', headers: authHeaders(staffCookie) });
+assert.equal(administrativeConfigDenied.statusCode, 403, administrativeConfigDenied.body);
+await prisma.configuracaoOperacional.update({ where: { cervejariaId: company.id }, data: { kitchenItemsChargeAtLaunch: true, allowCloseComandaWithPendingKitchenOrders: true } });
+const staffOperationalContext = await app.inject({ method: 'GET', url: '/api/operacao/contexto', headers: authHeaders(staffCookie) });
+assert.equal(staffOperationalContext.statusCode, 200, staffOperationalContext.body);
+const staffSettings = JSON.parse(staffOperationalContext.body);
+assert.equal(staffSettings.kitchenItemsChargeAtLaunch, true);
+assert.equal(staffSettings.allowCloseComandaWithPendingKitchenOrders, true);
+const foreignOperationalContext = await app.inject({ method: 'GET', url: '/api/operacao/contexto', headers: authHeaders(foreignOwnerCookie) });
+assert.equal(foreignOperationalContext.statusCode, 200, foreignOperationalContext.body);
+assert.equal(JSON.parse(foreignOperationalContext.body).allowCloseComandaWithPendingKitchenOrders, false, 'operational settings are tenant scoped');
+
+const pendingKitchenProduct = await prisma.produto.create({ data: { nome: `Pending kitchen QA ${suffix}`, tipo: 'COMIDA', exigePreparo: true, cervejariaId: company.id } });
+let pendingOrderNumber = 910000;
+const createPendingKitchenCommand = async (label) => {
+  const command = await prisma.comanda.create({
+    data: { origem: 'CAIXA', pontoVendaId: point.id, sessaoCaixaRealizacaoId: cashSession.id, diaOperacional: cashSession.diaOperacional, tipo: 'MESA', identificador: `${label}-${suffix}`, status: 'ABERTA', abertaPorId: owner.id, total: '14.50' },
+  });
+  const order = await prisma.pedidoOperacao.create({
+    data: { cervejariaId: company.id, comandaId: command.id, pontoVendaId: point.id, numero: pendingOrderNumber++, diaOperacional: cashSession.diaOperacional, criadoPorId: owner.id },
+  });
+  const item = await prisma.itemComanda.create({
+    data: { comandaId: command.id, produtoId: pendingKitchenProduct.id, nome: pendingKitchenProduct.nome, quantidade: 1, precoUnit: '14.50', exigePreparo: true, pedidoCozinhaId: order.id },
+  });
+  return { command, order, item };
+};
+const disabledRuleCase = await createPendingKitchenCommand('RuleDisabled');
+await prisma.configuracaoOperacional.update({ where: { cervejariaId: company.id }, data: { allowCloseComandaWithPendingKitchenOrders: false } });
+const disabledRuleBefore = await commercePhoto();
+const disabledRuleClose = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${disabledRuleCase.command.id}/pagamentos`, headers: authHeaders(staffCookie), payload: { pagamentos: [{ forma: 'PIX', valor: 14.5 }], deixarPendente: false } });
+assert.equal(disabledRuleClose.statusCode, 409, disabledRuleClose.body);
+assert.deepEqual(await commercePhoto(), disabledRuleBefore, 'disabled pending-kitchen rule leaves financial and stock records unchanged');
+assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: disabledRuleCase.order.id } })).status, 'RECEBIDO');
+
+await prisma.configuracaoOperacional.update({ where: { cervejariaId: company.id }, data: { allowCloseComandaWithPendingKitchenOrders: true } });
+const missingPaymentPermission = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['command.close'] } });
+assert.equal(missingPaymentPermission.statusCode, 200, missingPaymentPermission.body);
+const permissionBefore = await commercePhoto();
+const missingPermissionClose = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${disabledRuleCase.command.id}/pagamentos`, headers: authHeaders(staffCookie), payload: { pagamentos: [{ forma: 'PIX', valor: 14.5 }], deixarPendente: false } });
+assert.equal(missingPermissionClose.statusCode, 403, missingPermissionClose.body);
+assert.deepEqual(await commercePhoto(), permissionBefore, 'missing payment.receive leaves financial and stock records unchanged');
+
+const grantPendingClosePermissions = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['command.close', 'payment.receive'] } });
+assert.equal(grantPendingClosePermissions.statusCode, 200, grantPendingClosePermissions.body);
+const secondStaffPermissions = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staffTwo.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['command.close', 'payment.receive'] } });
+assert.equal(secondStaffPermissions.statusCode, 200, secondStaffPermissions.body);
+const allowedPendingCases = [disabledRuleCase, await createPendingKitchenCommand('StaffTwo')];
+const pendingCloseStockBefore = await prisma.inventoryMovement.count({ where: { cervejariaId: company.id } });
+for (const [index, fixture] of allowedPendingCases.entries()) {
+  const cookie = index === 0 ? staffCookie : staffTwoCookie;
+  const employee = index === 0 ? staff : staffTwo;
+  const closedResponse = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${fixture.command.id}/pagamentos`, headers: authHeaders(cookie), payload: { pagamentos: [{ forma: 'PIX', valor: 14.5 }], deixarPendente: false } });
+  assert.equal(closedResponse.statusCode, 200, closedResponse.body);
+  const closedBody = JSON.parse(closedResponse.body);
+  assert.equal(closedBody.status, 'FECHADA');
+  assert.equal(Number(closedBody.total), 14.5);
+  const payment = await prisma.pagamento.findFirstOrThrow({ where: { comandaId: fixture.command.id, registradoPorId: employee.id } });
+  assert.equal(Number(payment.valor), 14.5);
+  assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: fixture.order.id } })).status, 'RECEBIDO', 'closing does not advance kitchen status');
+  assert.equal((await prisma.itemComanda.findUniqueOrThrow({ where: { id: fixture.item.id } })).quantidade, 1);
+}
+assert.equal(await prisma.inventoryMovement.count({ where: { cervejariaId: company.id } }), pendingCloseStockBefore, 'closing pending kitchen commands does not repeat stock movements');
 const emptyCommand = await prisma.comanda.create({ data: { origem: 'CAIXA', pontoVendaId: point.id, sessaoCaixaRealizacaoId: cashSession.id, diaOperacional: cashSession.diaOperacional, tipo: 'FICHA', identificador: `Cancel-${suffix}`, status: 'ABERTA', abertaPorId: owner.id, total: 0 } });
 const deniedFullCancel = await app.inject({ method: 'POST', url: `/api/operacao/comandas/${emptyCommand.id}/cancelar`, headers: authHeaders(staffCookie), payload: {} });
 assert.equal(deniedFullCancel.statusCode, 403, deniedFullCancel.body);
