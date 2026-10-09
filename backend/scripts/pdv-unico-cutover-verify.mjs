@@ -5,6 +5,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { DEV_PDV_TENANT_ALLOWLIST, validateDevCutoverEnvironment } from './pdv-unico-dev-cutover-core.mjs';
 import { readReviewedDevMigrations, validateDevMigrationLedger } from './pdv-unico-dev-cutover-ledger.mjs';
+import { verifyMigratorRunIdentity } from './pdv-unico-migrator-evidence.mjs';
 
 if (process.env.PDV_CUTOVER_PROFILE !== 'dev' || process.env.PDV_CUTOVER_DEV_ADAPTER !== '1') throw new Error('Receipt verification is restricted to the guarded DEV adapter.');
 validateDevCutoverEnvironment(process.env);
@@ -47,10 +48,11 @@ try {
       const request = JSON.parse(process.argv[3] ?? '{}');
       if (!Array.isArray(request.runs) || !request.runs.length) return { status: 'BLOCKED', code: 'RECEIPT_HAS_NO_MIGRATOR_RUN_IDS' };
       const runs = await tx.pdvMigrationRun.findMany({ where: { id: { in: request.runs } }, select: { id: true, scope: true, cervejariaId: true, pontoVendaId: true, status: true, checkpoint: true } });
-      if (runs.length !== request.runs.length || runs.some((row) => row.status !== 'COMPLETED' || !tenantIds.includes(row.cervejariaId))) return { status: 'BLOCKED', code: 'MIGRATOR_RUN_OR_TENANT_DIVERGENCE' };
+      if (runs.length !== request.runs.length || runs.some((row) => row.status !== 'COMPLETED')) return { status: 'BLOCKED', code: 'MIGRATOR_RUN_OR_TENANT_DIVERGENCE' };
       for (const expected of request.expectedRuns ?? []) {
         const actual = runs.find((row) => row.id === expected.runId);
-        if (!actual || actual.scope !== expected.scope || actual.cervejariaId !== expected.tenantId) return { status: 'BLOCKED', code: 'MIGRATOR_SCOPE_DIVERGENCE', runId: expected.runId };
+        const identity = verifyMigratorRunIdentity(actual, expected, tenantIds);
+        if (identity.status !== 'PASS') return { status: 'BLOCKED', ...identity, runId: expected.runId };
       }
       const batches = await tx.pdvMigrationBatch.findMany({ where: { runId: { in: request.runs } }, select: { runId: true, status: true, checkpoint: true }, orderBy: [{ runId: 'asc' }, { sequence: 'asc' }] });
       if (batches.some((row) => row.status !== 'CONFIRMED' || !Array.isArray(row.checkpoint?.receipts) || row.checkpoint.receipts.length === 0)) return { status: 'BLOCKED', code: 'MIGRATOR_BATCH_RECEIPT_DIVERGENCE' };

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
+import { verifyMigratorRunIdentity } from './pdv-unico-migrator-evidence.mjs';
 
 validateIsolatedQaEnvironment(process.env);
 const clientDir = path.resolve(process.env.PDV_QA_PRISMA_CLIENT ?? '');
@@ -38,7 +39,11 @@ try {
   assert.equal(eventResult.comanda.pontoVenda, null, 'EVENTO case has no original PDV');
   assert.equal(cashResult.comanda.pontoVenda.cervejariaId, selected.id);
   assert.equal(result.some(({ id }) => id === paymentRows[2].id), false, 'foreign tenant payment is excluded');
-  process.stdout.write(`${JSON.stringify({ status: 'PASS', schemaClient: clientDir, cases: ['EVENTO sem PDV original', 'CAIXA por PontoVenda', 'isolamento de tenant'], rowsSelected: result.length, rowsForeign: 1 })}\n`);
+  const checkpointBackedBusinessRun = { id: 'run-business', scope: null, cervejariaId: null, pontoVendaId: null, status: 'COMPLETED', checkpoint: { scope: 'PDV_AGENDA_OCORRENCIA_V1', companyId: selected.id } };
+  assert.equal(verifyMigratorRunIdentity(checkpointBackedBusinessRun, { runId: 'run-business', scope: 'PDV_AGENDA_OCORRENCIA_V1', tenantId: selected.id }, [selected.id, other.id]).status, 'PASS');
+  const contradictoryRun = { ...checkpointBackedBusinessRun, cervejariaId: other.id };
+  assert.equal(verifyMigratorRunIdentity(contradictoryRun, { runId: 'run-business', scope: 'PDV_AGENDA_OCORRENCIA_V1', tenantId: selected.id }, [selected.id, other.id]).code, 'MIGRATOR_EVIDENCE_CONTRADICTORY');
+  process.stdout.write(`${JSON.stringify({ status: 'PASS', schemaClient: clientDir, cases: ['EVENTO sem PDV original', 'CAIXA por PontoVenda', 'isolamento de tenant', 'business run tenant/scope from checkpoint', 'contradictory direct and checkpoint ownership blocked'], rowsSelected: result.length, rowsForeign: 1 })}\n`);
 } finally {
   await db.$disconnect();
   // The enclosing database is disposable tmpfs; no cross-run fixture survives.

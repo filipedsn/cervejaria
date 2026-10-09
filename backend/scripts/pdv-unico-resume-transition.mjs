@@ -9,6 +9,8 @@ export const RESUME_DELTA_ALLOWLIST = Object.freeze([
   'backend/scripts/run-pdv-unico-reconciliation-query-qa.mjs',
   'backend/scripts/pdv-unico-resume-transition.mjs',
   'backend/scripts/pdv-unico-create-resume-transition.mjs',
+  'backend/scripts/pdv-unico-migrator-evidence.mjs',
+  'backend/scripts/pdv-unico-cutover-verify.mjs',
   'backend/scripts/run-pdv-unico-dev-cutover-worker.mjs',
 ]);
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -28,7 +30,8 @@ export async function createResumeTransition({ repoRoot, receiptsRoot, runId, fr
   const receiptRows = receiptBytes.toString('utf8').trimEnd().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
   if (receiptRows.length !== 5 || receiptRows.some(({ status }) => status !== 'PASS')) throw new Error('Resume transition requires the five existing PASS phase receipts.');
   const qa = JSON.parse(await readFile(qaEvidenceFile, 'utf8'));
-  if (qa.status !== 'PASS' || qa.cases?.length !== 3 || qa.schemaRevision !== fromRevision || qa.cutoverRunId !== runId) throw new Error('Focused generated-client QA evidence is absent or was not run against the source-final schema and same cutover run.');
+  const reviewedSchemaBlob = git(['rev-parse', `${fromRevision}:backend/prisma/schema.prisma`]);
+  if (qa.status !== 'PASS' || qa.cases?.length !== 5 || qa.schemaBlobSha1 !== reviewedSchemaBlob || qa.cutoverRunId !== runId) throw new Error('Focused generated-client QA evidence is absent or did not use the exact final schema blob for this run.');
   const files = changedFiles.map((file) => ({ path: file,
     fromBlob: spawnGitExists(repoRoot, fromRevision, file) ? git(['rev-parse', `${fromRevision}:${file}`]) : null,
     toBlob: git(['rev-parse', `${toRevision}:${file}`]),
