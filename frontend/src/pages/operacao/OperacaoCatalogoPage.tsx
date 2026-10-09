@@ -18,10 +18,12 @@ import {
 import { FOOD_UNIT_ML, VOLUMES, type FormatoBebida } from '../../types';
 import { CardapiosOperacaoPage } from './CardapiosOperacaoPage';
 import { ProdutoOpcionaisModal } from '../../components/ProdutoOpcionaisModal';
+import { CategoriasGestaoPanel } from '../../components/operacao/CategoriasGestaoPanel';
 
 const TABS = [
   { id: 'catalogo', label: 'Catálogo' },
   { id: 'cardapios', label: 'Cardápios salvos' },
+  { id: 'categorias', label: 'Categorias' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -73,19 +75,16 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
   const queryClient = useQueryClient();
   const { hasPermission } = useAuth();
   const podeManterCatalogo = hasPermission('catalog.manage');
-  const { contexto } = useOperacaoContexto();
+  const { contexto, isLoading: contextoLoading, isResolved: contextoResolved } = useOperacaoContexto();
   const modoAtual = modo ?? (contexto.operationMode === 'EVENTO' ? 'evento' : 'caixa');
   const usaCardapio = contexto.usaCardapio ?? false;
-  const tabs = TABS.filter((t) => t.id !== 'cardapios' || usaCardapio);
+  const tabs = TABS.filter((t) => (t.id !== 'cardapios' || usaCardapio) && (t.id !== 'categorias' || podeManterCatalogo));
   const [tab, setTab] = useState<TabId>('catalogo');
   const [showModal, setShowModal] = useState(false);
   const [editando, setEditando] = useState<ProdutoOperacao | null>(null);
   const [form, setForm] = useState({ ...FORM_VAZIO });
   const [error, setError] = useState('');
   const [opcionaisProduto, setOpcionaisProduto] = useState<ProdutoOperacao | null>(null);
-  const [showCategoriaModal, setShowCategoriaModal] = useState(false);
-  const [categoriaEditando, setCategoriaEditando] = useState<CategoriaPdv | null>(null);
-  const [categoriaForm, setCategoriaForm] = useState({ nome: '', gamificada: false });
 
   const controlaEstoque = contexto.ativo && contexto.controlaEstoque;
   const temCozinha = contexto.ativo && contexto.temCozinha;
@@ -94,6 +93,16 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
     queryKey: ['operacao-produtos'],
     queryFn: () => api.get<ProdutoOperacao[]>('/api/operacao/produtos?incluirInativos=true'),
   });
+
+  const categoriaTemChope = (categoriaPdvId: string) => Boolean(categoriaPdvId && produtos?.some(
+    (produto) => produto.categoriaPdvId === categoriaPdvId && isChopeOperacao(produto),
+  ));
+  const mesmaCategoriaDoProduto = Boolean(editando && (editando.categoriaPdvId
+    ? form.categoriaPdvId === editando.categoriaPdvId
+    : form.categoria === (isChopeOperacao(editando) ? 'Chope' : normalizeCategoriaProduto(editando.categoria))));
+  const categoriaSelecionadaEhChope = editando && mesmaCategoriaDoProduto
+    ? isChopeOperacao(editando)
+    : form.categoria === 'Chope' || categoriaTemChope(form.categoriaPdvId);
 
   const { data: categoriasResposta } = useQuery({
     queryKey: ['operacao-categorias'],
@@ -150,24 +159,30 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
       // reclassificam tipo/formato ao alterar nome, preco ou categoria. A
       // classificacao so e enviada ao criar ou ao mudar para/de Chope.
       const classificacaoOriginalChope = editando ? isChopeOperacao(editando) : false;
-      const classificacaoIntencional = !editando || classificacaoOriginalChope !== (form.categoria === 'Chope');
+      const mesmaCategoria = Boolean(editando && (editando.categoriaPdvId
+        ? form.categoriaPdvId === editando.categoriaPdvId
+        : form.categoria === (classificacaoOriginalChope ? 'Chope' : normalizeCategoriaProduto(editando.categoria))));
+      const categoriaEhChope = editando && mesmaCategoria
+        ? classificacaoOriginalChope
+        : form.categoria === 'Chope' || categoriaTemChope(form.categoriaPdvId);
+      const classificacaoIntencional = !editando || classificacaoOriginalChope !== categoriaEhChope;
       const corpo = {
         nome: form.nome.trim(),
         categoria: form.categoria,
         ...(form.categoriaPdvId ? { categoriaPdvId: form.categoriaPdvId } : {}),
         ...(classificacaoIntencional
           ? {
-              tipo: form.categoria === 'Chope' ? 'BEBIDA' : CATEGORIAS_COMIDA.has(form.categoria) ? 'COMIDA' : form.tipo,
-              formato: form.categoria === 'Chope' ? 'CHOPE' : 'OUTRO',
+              tipo: categoriaEhChope ? 'BEBIDA' : CATEGORIAS_COMIDA.has(form.categoria) ? 'COMIDA' : form.tipo,
+              formato: categoriaEhChope ? 'CHOPE' : 'OUTRO',
             }
           : {}),
-        descricao: form.categoria === 'Chope' ? form.descricao.trim() || undefined : undefined,
-        estilo: form.categoria === 'Chope' ? form.estilo.trim() || undefined : undefined,
-        ...(form.categoria === 'Chope'
+        descricao: categoriaEhChope ? form.descricao.trim() || undefined : undefined,
+        estilo: categoriaEhChope ? form.estilo.trim() || undefined : undefined,
+        ...(categoriaEhChope
           ? { precos: form.precos.filter((preco) => parseCurrencyInput(preco.preco) > 0).map((preco) => ({ volumeMl: preco.volumeMl, preco: parseCurrencyInput(preco.preco) })) }
           : { precoUnit: parseCurrencyInput(form.precoUnit), precos: [{ volumeMl: FOOD_UNIT_ML, preco: parseCurrencyInput(form.precoUnit) }] }),
-        exigePreparo: form.categoria === 'Chope' ? false : form.exigePreparo,
-        prepararEmPedidoSeparado: form.categoria === 'Chope' || !form.exigePreparo ? false : form.prepararEmPedidoSeparado,
+        exigePreparo: categoriaEhChope ? false : form.exigePreparo,
+        prepararEmPedidoSeparado: categoriaEhChope || !form.exigePreparo ? false : form.prepararEmPedidoSeparado,
         controlaEstoque: form.controlaEstoque,
       };
       return editando
@@ -182,24 +197,6 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao salvar produto'),
   });
 
-  const salvarCategoria = useMutation({
-    mutationFn: () => categoriaEditando
-      ? api.put(`/api/operacao/produtos/categorias/${categoriaEditando.id}`, categoriaForm)
-      : api.post('/api/operacao/produtos/categorias', categoriaForm),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['operacao-categorias'] });
-      setShowCategoriaModal(false);
-      setCategoriaEditando(null);
-      setCategoriaForm({ nome: '', gamificada: false });
-    },
-  });
-
-  const abrirCategoria = (categoria?: CategoriaPdv) => {
-    setCategoriaEditando(categoria ?? null);
-    setCategoriaForm(categoria ? { nome: categoria.nome, gamificada: categoria.gamificada } : { nome: '', gamificada: false });
-    setShowCategoriaModal(true);
-  };
-
   const alternarAtivo = useMutation({
     mutationFn: (produto: ProdutoOperacao) =>
       api.put(`/api/operacao/produtos/${produto.id}`, { ativo: !produto.ativo }),
@@ -210,13 +207,15 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
     e.preventDefault();
     const preco = parseCurrencyInput(form.precoUnit);
     if (!form.nome.trim()) return setError('Informe o nome do produto');
-    if (form.categoria === 'Chope') {
+    if (categoriaSelecionadaEhChope) {
       if (!form.precos.some((item) => parseCurrencyInput(item.preco) > 0)) return setError('Informe pelo menos um preço por volume');
     } else if (!preco || preco <= 0) return setError('Informe um preço maior que zero');
     setError('');
     salvar.mutate();
   };
 
+  if (contextoLoading) return <Loading />;
+  if (!contextoResolved) return <div className="alert-error" role="alert">Não foi possível validar o contexto do PDV. Recarregue a página para evitar abrir uma manutenção no contexto errado.</div>;
   if (isLoading && tab === 'catalogo') return <Loading />;
 
   return (
@@ -246,6 +245,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
       </div>
 
       {tab === 'cardapios' && usaCardapio && podeManterCatalogo && <CardapiosOperacaoPage embedded modo={modoAtual} />}
+      {tab === 'categorias' && podeManterCatalogo && <CategoriasGestaoPanel />}
       {tab === 'cardapios' && usaCardapio && !podeManterCatalogo && (
         <p className="text-sm text-ink-faint text-center py-6">Somente o dono pode gerenciar cardápios salvos.</p>
       )}
@@ -258,13 +258,6 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
           Produtos vendidos por unidade, separados do catálogo de chope.
         </p>
       </div>
-
-      {podeManterCatalogo && categoriasResposta?.catalogoCanonico && <div className="flex flex-wrap gap-2">
-        <button type="button" className="touch-btn-secondary" onClick={() => abrirCategoria()}>+ Categoria</button>
-        {categoriasCanonicas.map((categoria) => <button key={categoria.id} type="button" className="touch-btn-ghost touch-btn-sm" onClick={() => abrirCategoria(categoria)}>
-          Editar {categoria.nome}{categoria.gamificada ? ' · gamificada' : ''}
-        </button>)}
-      </div>}
 
       {produtos?.length === 0 && (
         <EmptyState
@@ -355,7 +348,14 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
                   key={categoria}
                   type="button"
                   aria-pressed={form.categoria === categoria}
-                  onClick={() => setForm({ ...form, categoria, categoriaPdvId: categoriasCanonicas.find((item) => item.nome === categoria)?.id ?? '', tipo: categoria === 'Chope' ? 'BEBIDA' : CATEGORIAS_COMIDA.has(categoria) ? 'COMIDA' : CATEGORIAS_PRODUTO_OPERACAO.includes(categoria as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]) ? 'BEBIDA' : form.tipo, formato: categoria === 'Chope' ? 'CHOPE' : 'OUTRO', exigePreparo: categoria === 'Chope' ? false : form.exigePreparo })}
+                  onClick={() => {
+                    const categoriaPdvId = categoriasCanonicas.find((item) => item.nome === categoria)?.id ?? '';
+                    const mesmaCategoria = Boolean(editando && (editando.categoriaPdvId
+                      ? categoriaPdvId === editando.categoriaPdvId
+                      : categoria === (isChopeOperacao(editando) ? 'Chope' : normalizeCategoriaProduto(editando.categoria))));
+                    const ehChope = editando && mesmaCategoria ? isChopeOperacao(editando) : categoria === 'Chope' || categoriaTemChope(categoriaPdvId);
+                    setForm({ ...form, categoria, categoriaPdvId, tipo: ehChope ? 'BEBIDA' : CATEGORIAS_COMIDA.has(categoria) ? 'COMIDA' : CATEGORIAS_PRODUTO_OPERACAO.includes(categoria as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]) ? 'BEBIDA' : form.tipo, formato: ehChope ? 'CHOPE' : 'OUTRO', exigePreparo: ehChope ? false : form.exigePreparo });
+                  }}
                   className={`chip-picker-btn ${
                     form.categoria === categoria
                       ? 'segmented-control-btn-active'
@@ -368,7 +368,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
             </div>
           </div>
 
-          {!CATEGORIAS_PRODUTO_OPERACAO.includes(form.categoria as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]) && form.categoria !== 'Chope' && (
+          {!CATEGORIAS_PRODUTO_OPERACAO.includes(form.categoria as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]) && !categoriaSelecionadaEhChope && (
             <div>
               <label className="label" htmlFor="produto-pdv-tipo">Tipo do produto</label>
               <select id="produto-pdv-tipo" className="input" value={form.tipo} onChange={(event) => setForm({ ...form, tipo: event.target.value as 'BEBIDA' | 'COMIDA' })}>
@@ -389,9 +389,9 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
             />
           </div>
 
-          {form.categoria === 'Chope' && !contexto.tapsEnabled ? (
+          {categoriaSelecionadaEhChope && !contexto.tapsEnabled ? (
             <p className="rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-800">Ative “Torneiras de chope” nas configurações para editar este produto.</p>
-          ) : form.categoria === 'Chope' ? (
+          ) : categoriaSelecionadaEhChope ? (
             <>
               <div>
                 <label className="label">Descrição (opcional)</label>
@@ -418,7 +418,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
             </div>
           )}
 
-          {temCozinha && form.categoria !== 'Chope' && (
+          {temCozinha && !categoriaSelecionadaEhChope && (
             <label className="card flex cursor-pointer items-start gap-3 py-3">
               <input
                 type="checkbox"
@@ -435,7 +435,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
             </label>
           )}
 
-          {temCozinha && form.exigePreparo && form.categoria !== 'Chope' && (
+          {temCozinha && form.exigePreparo && !categoriaSelecionadaEhChope && (
             <label className="card flex cursor-pointer items-start gap-3 py-3">
               <input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-brand-400" checked={form.prepararEmPedidoSeparado} onChange={(e) => setForm({ ...form, prepararEmPedidoSeparado: e.target.checked })} />
               <span className="min-w-0">
@@ -462,27 +462,12 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
             </label>
           )}
 
-          <button type="submit" className="touch-btn-primary w-full" disabled={salvar.isPending || (form.categoria === 'Chope' && !contexto.tapsEnabled)}>
+          <button type="submit" className="touch-btn-primary w-full" disabled={salvar.isPending || (categoriaSelecionadaEhChope && !contexto.tapsEnabled)}>
             {salvar.isPending ? 'Salvando...' : 'Salvar'}
           </button>
           <button type="button" className="touch-btn-orange w-full" onClick={fechar}>
             Fechar
           </button>
-        </form>
-      </Modal>
-      <Modal open={showCategoriaModal} onClose={() => setShowCategoriaModal(false)} title={categoriaEditando ? 'Editar categoria' : 'Nova categoria'} hideHeaderClose>
-        <form onSubmit={(event) => { event.preventDefault(); salvarCategoria.mutate(); }} className="space-y-4">
-          <div>
-            <label className="label" htmlFor="categoria-pdv-nome">Nome</label>
-            <input id="categoria-pdv-nome" className="input" value={categoriaForm.nome} maxLength={80} onChange={(event) => setCategoriaForm({ ...categoriaForm, nome: event.target.value })} required />
-          </div>
-
-          <label className="card flex cursor-pointer items-start gap-3 py-3">
-            <input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-brand-400" checked={categoriaForm.gamificada} onChange={(event) => setCategoriaForm({ ...categoriaForm, gamificada: event.target.checked })} />
-            <span><span className="block font-semibold">Categoria gamificada</span><span className="block text-xs text-ink-faint">A flag fica cadastrada e ainda não altera rankings.</span></span>
-          </label>
-          <button type="submit" className="touch-btn-primary w-full" disabled={salvarCategoria.isPending}>{salvarCategoria.isPending ? 'Salvando...' : 'Salvar categoria'}</button>
-          <button type="button" className="touch-btn-orange w-full" onClick={() => setShowCategoriaModal(false)}>Fechar</button>
         </form>
       </Modal>
       {opcionaisProduto && <ProdutoOpcionaisModal open={!!opcionaisProduto} onClose={() => setOpcionaisProduto(null)} produtoId={opcionaisProduto.id} produtoNome={opcionaisProduto.nome} baseUrl="/api/operacao/produtos" />}

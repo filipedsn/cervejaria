@@ -152,6 +152,30 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     return reply.send(updated);
   });
 
+  app.delete('/categorias/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
+    if (!catalogoCategoriasCanonicoAtivo()) return reply.status(404).send({ error: 'Catálogo canônico desativado' });
+    const { cervejariaId } = request.operacao;
+    const { id } = request.params as { id: string };
+    const category = await prisma.categoriaProdutoPdv.findFirst({ where: { id, cervejariaId }, select: { id: true, nome: true } });
+    if (!category) return reply.status(404).send({ error: 'Categoria não encontrada neste PDV' });
+    try {
+      await prisma.$transaction(async (tx) => {
+        const linkedProducts = await tx.produto.count({ where: { categoriaPdvId: id, cervejariaId } });
+        if (linkedProducts > 0) throw new Error(`Categoria usada por ${linkedProducts} produto(s); remova os vínculos antes de excluir.`);
+        const deleted = await tx.categoriaProdutoPdv.deleteMany({ where: { id, cervejariaId } });
+        if (!deleted.count) throw new Error('Categoria não encontrada neste PDV');
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Categoria usada por ')) return reply.status(409).send({ error: error.message });
+      if (error instanceof Error && error.message === 'Categoria não encontrada neste PDV') return reply.status(404).send({ error: error.message });
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2003') {
+        return reply.status(409).send({ error: 'Categoria ainda possui produtos vinculados e não pode ser excluída.' });
+      }
+      throw error;
+    }
+    return { ok: true };
+  });
+
   app.put('/categorias/ordem', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const categorias = catalogoCategoriasCanonicoAtivo()
@@ -166,9 +190,16 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
         'A ordem deve conter cada categoria disponível uma única vez',
       ),
     }).parse(request.body);
+    const atual = await prisma.cervejaria.findUnique({
+      where: { id: cervejariaId },
+      select: { operacaoCategoriasOrdem: true },
+    });
+    const preferencias = atual?.operacaoCategoriasOrdem && typeof atual.operacaoCategoriasOrdem === 'object' && !Array.isArray(atual.operacaoCategoriasOrdem)
+      ? atual.operacaoCategoriasOrdem as Record<string, unknown>
+      : {};
     const updated = await prisma.cervejaria.update({
       where: { id: cervejariaId },
-      data: { operacaoCategoriasOrdem: body.ordem },
+      data: { operacaoCategoriasOrdem: { ...preferencias, catalogo: body.ordem } },
       select: { operacaoCategoriasOrdem: true },
     });
     return { ordem: normalizarOrdemCategoriasProduto(updated.operacaoCategoriasOrdem, request.operacao.tapsEnabled) };

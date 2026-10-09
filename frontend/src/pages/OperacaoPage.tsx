@@ -4,7 +4,6 @@ import { ConfigComandasLayoutPanel } from '../components/ConfigComandasLayoutPan
 import { ConfigMesasOperacaoPanel } from '../components/ConfigMesasOperacaoPanel';
 import { OperationalCapabilitiesPanel } from '../components/OperationalCapabilitiesPanel';
 import { OnboardingManualEntry } from '../components/OnboardingManualEntry';
-import { CategoriasProdutoOrdemPanel } from '../components/operacao/CategoriasProdutoOrdemPanel';
 import { ConfigChavePixPanel } from '../components/ConfigChavePixPanel';
 
 type OperacaoPageProps = {
@@ -24,7 +23,6 @@ export function OperacaoPage({ embedded, modo = 'cervejaria' }: OperacaoPageProp
       <ConfigKpisComandaPanel />
       <ConfigComandasLayoutPanel />
       {modo === 'operacao' && <ConfigMesasOperacaoPanel />}
-      {modo === 'operacao' && <CategoriasProdutoOrdemPanel />}
       <OnboardingManualEntry />
     </div>
   );

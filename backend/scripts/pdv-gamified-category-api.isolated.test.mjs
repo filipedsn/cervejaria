@@ -59,6 +59,9 @@ try {
   assert.equal(ownerCategory.statusCode, 201, ownerCategory.body);
   assert.equal(body(ownerCategory).gamificada, false, 'explicit false is persisted');
   const ownerCategoryId = body(ownerCategory).id;
+  const deniedDelete = await call('DELETE', `/api/operacao/produtos/categorias/${encodeURIComponent(ownerCategoryId)}`, deniedCookie);
+  assert.equal(deniedDelete.statusCode, 403, deniedDelete.body);
+  assert.equal(await prisma.categoriaProdutoPdv.findFirst({ where: { id: ownerCategoryId, cervejariaId: company.id } }).then(Boolean), true, 'permission denial preserves category');
   const freelyNamed = await call('POST', '/api/operacao/produtos/categorias', managerCookie, { nome: 'Lanches especiais', gamificada: true });
   assert.equal(freelyNamed.statusCode, 201, freelyNamed.body);
   const chopeCategoryResponse = await call('POST', '/api/operacao/produtos/categorias', ownerCookie, { nome: 'Chope', gamificada: false });
@@ -101,6 +104,11 @@ try {
   const foreignCategoryEdit = await call('PUT', `/api/operacao/produtos/categorias/${encodeURIComponent(foreignCategoryId)}`, ownerCookie, { nome: 'takeover', gamificada: true });
   assert.equal(foreignCategoryEdit.statusCode, 404, foreignCategoryEdit.body);
   assert.equal((await prisma.categoriaProdutoPdv.findUniqueOrThrow({ where: { id: foreignCategoryId } })).nome, 'Foreign', 'foreign category remains unchanged');
+  const foreignDelete = await call('DELETE', `/api/operacao/produtos/categorias/${encodeURIComponent(foreignCategoryId)}`, ownerCookie);
+  assert.equal(foreignDelete.statusCode, 404, 'tenant-scoped category delete hides foreign categories');
+  const safeDelete = await call('DELETE', `/api/operacao/produtos/categorias/${encodeURIComponent(body(freelyNamed).id)}`, managerCookie);
+  assert.equal(safeDelete.statusCode, 200, safeDelete.body);
+  assert.equal(await prisma.categoriaProdutoPdv.findFirst({ where: { id: body(freelyNamed).id, cervejariaId: company.id } }), null, 'unused category can be deleted');
   assert.equal((await prisma.produto.findUniqueOrThrow({ where: { id: chope.id } })).nome, 'Lúpulo QA');
   assert.equal((await prisma.produto.findUniqueOrThrow({ where: { id: genericProduct.id } })).nome, 'Produto API geral');
 
@@ -193,6 +201,10 @@ try {
 
   const snackRename = await call('PUT', `/api/operacao/produtos/categorias/${encodeURIComponent(snackCategory.id)}`, ownerCookie, { nome: 'Petiscos QA', gamificada: false });
   assert.equal(snackRename.statusCode, 200, snackRename.body);
+  const blockedDelete = await call('DELETE', `/api/operacao/produtos/categorias/${encodeURIComponent(snackCategory.id)}`, managerCookie);
+  assert.equal(blockedDelete.statusCode, 409, 'category with linked products is protected');
+  assert.match(body(blockedDelete).error, /Categoria usada.*produto|produto.*vinculad/i);
+  assert.equal((await prisma.produto.findUniqueOrThrow({ where: { id: snack.id } })).categoriaPdvId, snackCategory.id, 'blocked delete preserves product category link');
   const afterCategoryEdit = {
     product: await prisma.produto.findUniqueOrThrow({ where: { id: snack.id }, include: { precos: true } }),
     menu: await prisma.cardapioProduto.findMany({ where: { cardapioId: menu.id }, orderBy: { volumeMl: 'asc' } }),
@@ -209,7 +221,24 @@ try {
   assert.equal(afterCategoryEdit.optionLinks, beforeCategoryEdit.optionLinks, 'category edit leaves optionals unchanged');
   for (const key of ['payments', 'cashSessions', 'orders', 'inventoryBalances', 'inventoryMovements']) assert.equal(afterCategoryEdit[key], beforeCategoryEdit[key], `category edit leaves ${key} unchanged`);
 
-  console.log('PDV_GAMIFIED_CATEGORY_AUTH_API=PASS; owner/category.manage/denied; tenant isolation; canonical text; create/partial/edit/swap; Chope rename/volume/menu/sale/ranking; optionals; category-only financial/inventory/kitchen invariants');
+  const deniedComandaOrder = await call('PUT', '/api/produtos/categorias-comanda/ordem', deniedCookie, { ordem: ['comidas', 'chope', 'bebidas', 'outros'] });
+  assert.equal(deniedComandaOrder.statusCode, 403, deniedComandaOrder.body);
+  const savedComandaOrder = await call('PUT', '/api/produtos/categorias-comanda/ordem', managerCookie, { ordem: ['comidas', 'chope', 'bebidas', 'outros'] });
+  assert.equal(savedComandaOrder.statusCode, 200, savedComandaOrder.body);
+  assert.deepEqual(body(savedComandaOrder).ordem, ['comidas', 'chope', 'bebidas', 'outros']);
+  const catalogOrderBefore = body(await call('GET', '/api/operacao/produtos/categorias', managerCookie)).ordem;
+  const reorderedCatalog = [...catalogOrderBefore].reverse();
+  const deniedCatalogOrder = await call('PUT', '/api/operacao/produtos/categorias/ordem', deniedCookie, { ordem: reorderedCatalog });
+  assert.equal(deniedCatalogOrder.statusCode, 403, deniedCatalogOrder.body);
+  const savedCatalogOrder = await call('PUT', '/api/operacao/produtos/categorias/ordem', managerCookie, { ordem: reorderedCatalog });
+  assert.equal(savedCatalogOrder.statusCode, 200, savedCatalogOrder.body);
+  const preferences = (await prisma.cervejaria.findUniqueOrThrow({ where: { id: company.id }, select: { operacaoCategoriasOrdem: true } })).operacaoCategoriasOrdem;
+  assert.deepEqual(preferences.comanda, ['comidas', 'chope', 'bebidas', 'outros'], 'catalog reordering preserves the independent comanda order');
+  assert.deepEqual(preferences.catalogo, reorderedCatalog, 'catalog order persists in its own preference');
+  assert.deepEqual(body(await call('GET', '/api/produtos/categorias-comanda/ordem', managerCookie)).ordem, preferences.comanda);
+  assert.deepEqual(body(await call('GET', '/api/operacao/produtos/categorias', managerCookie)).ordem, reorderedCatalog);
+
+  console.log('PDV_GAMIFIED_CATEGORY_AUTH_API=PASS; owner/catalog.manage/denied; tenant isolation; create/edit/explicit-false/safe-delete; separate comanda/catalog order; Chope rename/volume/menu/sale/ranking; optionals/snapshots/history invariants');
 } finally {
   await app.close();
   await prisma.$disconnect();

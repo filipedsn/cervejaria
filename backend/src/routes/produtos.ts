@@ -5,6 +5,7 @@ import { getTenantUser } from '../types/auth.js';
 import { assertProdutoPodeExcluir } from '../lib/catalogo-utils.js';
 import { isBebidaChope, isVendaUnitaria, normalizePrecos, produtoFieldsForSave } from '../lib/produto-utils.js';
 import { listarOpcionaisProduto, substituirOpcionaisProduto } from '../lib/produto-opcionais.js';
+import { CATEGORIAS_ABA_COMANDA, normalizarOrdemCategoriasComanda, normalizarOrdemCategoriasProduto } from '../lib/operacao/categorias.js';
 import { canonicalPdvQaActivationEnabled, readCanonicalPdvOperationalSettingsIfEnabled } from '../lib/canonical-pdv-operational-config.js';
 import { requirePermissaoOuDono } from '../lib/operacao/permissoes.js';
 import { catalogoCategoriasCanonicoAtivo } from '../lib/operacao/catalogo-categorias.js';
@@ -100,6 +101,36 @@ const updateProdutoSchema = z
 
 export async function produtosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+
+  app.get('/categorias-comanda/ordem', async (request) => {
+    const user = getTenantUser(app, request);
+    const cervejaria = await prisma.cervejaria.findUnique({
+      where: { id: user.cervejariaId },
+      select: { operacaoCategoriasOrdem: true },
+    });
+    return { ordem: normalizarOrdemCategoriasComanda(cervejaria?.operacaoCategoriasOrdem) };
+  });
+
+  app.put('/categorias-comanda/ordem', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request) => {
+    const user = getTenantUser(app, request);
+    const ordem = z.array(z.enum(CATEGORIAS_ABA_COMANDA)).length(CATEGORIAS_ABA_COMANDA.length).refine(
+      (items) => new Set(items).size === CATEGORIAS_ABA_COMANDA.length,
+      'A ordem deve conter cada categoria uma única vez',
+    ).parse((request.body as { ordem?: unknown })?.ordem);
+    const atual = await prisma.cervejaria.findUnique({
+      where: { id: user.cervejariaId },
+      select: { operacaoCategoriasOrdem: true },
+    });
+    const preferencias = atual?.operacaoCategoriasOrdem && typeof atual.operacaoCategoriasOrdem === 'object' && !Array.isArray(atual.operacaoCategoriasOrdem)
+      ? atual.operacaoCategoriasOrdem as Record<string, unknown>
+      : { catalogo: normalizarOrdemCategoriasProduto(atual?.operacaoCategoriasOrdem, true) };
+    const cervejaria = await prisma.cervejaria.update({
+      where: { id: user.cervejariaId },
+      data: { operacaoCategoriasOrdem: { ...preferencias, comanda: ordem } },
+      select: { operacaoCategoriasOrdem: true },
+    });
+    return { ordem: normalizarOrdemCategoriasComanda(cervejaria.operacaoCategoriasOrdem) };
+  });
 
   const opcionalCadastroSchema = z.object({ nome: z.string().trim().min(1).max(80), preco: z.number().min(0).max(9999), ativo: z.boolean().optional() });
   app.get('/opcionais', async (request) => { const user = getTenantUser(app, request); return prisma.opcional.findMany({ where: { cervejariaId: user.cervejariaId }, orderBy: { nome: 'asc' } }); });

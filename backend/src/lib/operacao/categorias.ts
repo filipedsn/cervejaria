@@ -13,11 +13,27 @@ export const CATEGORIAS_PRODUTO_OPERACAO = [
   'Outros',
 ] as const;
 
+export const CATEGORIAS_ABA_COMANDA = ['chope', 'comidas', 'bebidas', 'outros'] as const;
+
+export function normalizarOrdemCategoriasComanda(value: unknown): string[] {
+  const config = value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as { comanda?: unknown }).comanda
+    : undefined;
+  const custom = Array.isArray(config)
+    ? config.filter((item): item is string => typeof item === 'string' && CATEGORIAS_ABA_COMANDA.includes(item as typeof CATEGORIAS_ABA_COMANDA[number]))
+    : [];
+  const unique = [...new Set(custom)];
+  return [...unique, ...CATEGORIAS_ABA_COMANDA.filter((categoria) => !unique.includes(categoria))];
+}
+
 export function normalizarOrdemCategoriasProduto(value: unknown, incluirChope = false): string[] {
   const categorias = incluirChope ? [...CATEGORIAS_PRODUTO_OPERACAO, 'Chope'] : [...CATEGORIAS_PRODUTO_OPERACAO];
   const disponiveis = new Set<string>(categorias);
-  const custom = Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string' && disponiveis.has(item))
+  const ordemCatalogo = value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as { catalogo?: unknown }).catalogo
+    : value;
+  const custom = Array.isArray(ordemCatalogo)
+    ? ordemCatalogo.filter((item): item is string => typeof item === 'string' && disponiveis.has(item))
     : [];
   const unique = [...new Set(custom)];
   return [...unique, ...categorias.filter((categoria) => !unique.includes(categoria))];
