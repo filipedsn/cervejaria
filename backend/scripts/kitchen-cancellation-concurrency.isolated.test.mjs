@@ -1,0 +1,185 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
+import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
+
+validateIsolatedQaEnvironment(process.env);
+assert.equal(process.env.NODE_ENV, 'test');
+assert.equal(process.env.PDV_INDIVIDUAL_PERMISSIONS_ENABLED, '1');
+
+const { PrismaClient } = await import('@prisma/client');
+const { buildApp } = await import('../src/app.ts');
+const prisma = new PrismaClient();
+const app = await buildApp();
+const runId = process.env.PDV_QA_RUN_ID;
+const day = new Date('2026-10-09T00:00:00.000Z');
+
+function asText(value) { return value == null ? null : String(value); }
+
+async function tenantFixture(suffix) {
+  const tenantId = `qa_${runId}_${suffix}`;
+  const ownerId = `${tenantId}_owner`;
+  const noPermissionId = `${tenantId}_restricted`;
+  const pointId = `${tenantId}_point`;
+  const productId = `${tenantId}_product`;
+  const commandId = `${tenantId}_command`;
+  const orderId = `${tenantId}_order`;
+  const itemId = `${tenantId}_item`;
+  await prisma.cervejaria.create({ data: { id: tenantId, nome: `QA ${suffix}`, slug: `${tenantId}-slug` } });
+  await prisma.usuario.createMany({ data: [
+    { id: ownerId, nome: 'QA owner', email: `${tenantId}-owner@example.test`, senhaHash: 'qa-not-used', papel: 'DONO', cervejariaId: tenantId },
+    { id: noPermissionId, nome: 'QA restricted', email: `${tenantId}-restricted@example.test`, senhaHash: 'qa-not-used', papel: 'ATENDENTE', cervejariaId: tenantId, permissoesOperacao: ['kitchen.read'] },
+  ] });
+  await prisma.configuracaoOperacional.create({ data: { cervejariaId: tenantId, inventoryEnabled: true, kitchenEnabled: true, plannedOperationsEnabled: false } });
+  await prisma.configuracaoOperacao.create({ data: { cervejariaId: tenantId, ativo: true, controlaEstoque: true, temCozinha: true } });
+  await prisma.pontoVenda.create({ data: { id: pointId, cervejariaId: tenantId, nome: 'QA POS' } });
+  await prisma.produto.create({ data: { id: productId, nome: 'QA item', tipo: 'COMIDA', exigePreparo: true, controlaEstoque: true, cervejariaId: tenantId, pontoVendaId: pointId } });
+  await prisma.inventoryBalance.create({ data: { cervejariaId: tenantId, pontoVendaId: pointId, produtoId: productId, quantidade: 4 } });
+  await prisma.comanda.create({ data: { id: commandId, origem: 'CAIXA', status: 'ABERTA', tipo: 'MESA', pontoVendaId: pointId, identificador: 'QA-1', total: 25, abertaPorId: ownerId } });
+  await prisma.pedidoOperacao.create({ data: { id: orderId, cervejariaId: tenantId, comandaId: commandId, pontoVendaId: pointId, numero: 1, diaOperacional: day, criadoPorId: ownerId } });
+  await prisma.itemComanda.create({ data: { id: itemId, comandaId: commandId, pedidoCozinhaId: orderId, produtoId: productId, nome: 'QA item', quantidade: 1, precoUnit: 25, exigePreparo: true } });
+  await prisma.inventoryMovement.create({ data: { cervejariaId: tenantId, pontoVendaId: pointId, produtoId: productId, pedidoId: orderId, tipo: 'SAIDA_VENDA', quantidade: 1, registradoPorId: ownerId } });
+  const [owner, restricted] = await Promise.all([
+    prisma.usuario.findUniqueOrThrow({ where: { id: ownerId } }),
+    prisma.usuario.findUniqueOrThrow({ where: { id: noPermissionId } }),
+  ]);
+  return { tenantId, ownerId, noPermissionId, pointId, productId, commandId, orderId, itemId, ownerPasswordChangedAt: owner.passwordChangedAt, restrictedPasswordChangedAt: restricted.passwordChangedAt };
+}
+
+function auth(f, userId = f.ownerId, tenantId = f.tenantId) {
+  const passwordChangedAt = userId === f.noPermissionId ? f.restrictedPasswordChangedAt : f.ownerPasswordChangedAt;
+  const token = app.jwt.sign({ sub: userId, email: `${userId}@example.test`, nome: 'QA', papel: userId === f.noPermissionId ? 'ATENDENTE' : 'DONO', cervejariaId: tenantId, pwdAt: passwordChangedAt.getTime() });
+  return { authorization: `Bearer ${token}` };
+}
+
+async function inject(f, method, url, userId = f.ownerId, tenantId = f.tenantId, body) {
+  return app.inject({ method, url: `/api${url}`, headers: auth(f, userId, tenantId), ...(body === undefined ? {} : { payload: body }) });
+}
+
+async function readState(f) {
+  const [item, order, command, payments, balance, stockMovements, cashMovements, transacoes] = await Promise.all([
+    prisma.itemComanda.findUnique({ where: { id: f.itemId } }),
+    prisma.pedidoOperacao.findUnique({ where: { id: f.orderId } }),
+    prisma.comanda.findUnique({ where: { id: f.commandId } }),
+    prisma.pagamento.count({ where: { comandaId: f.commandId } }),
+    prisma.inventoryBalance.findUnique({ where: { pontoVendaId_produtoId: { pontoVendaId: f.pointId, produtoId: f.productId } } }),
+    prisma.inventoryMovement.findMany({ where: { pedidoId: f.orderId }, orderBy: { createdAt: 'asc' } }),
+    prisma.movimentoCaixaOperacao.count({ where: { sessao: { cervejariaId: f.tenantId } } }),
+    prisma.transacaoLog.count({ where: { cervejariaId: f.tenantId, comandaId: f.commandId } }),
+  ]);
+  return {
+    item: item && { id: item.id, pending: Boolean(item.cancelamentoPendenteEm), canceled: Boolean(item.canceladoEm), quantity: item.quantidade },
+    order: order && { id: order.id, status: order.status },
+    command: command && { id: command.id, status: command.status, total: asText(command.total) },
+    payments,
+    balance: asText(balance?.quantidade),
+    stockMovements: stockMovements.map((row) => ({ type: row.tipo, quantity: asText(row.quantidade) })),
+    cashMovements,
+    transactionAuditRows: transacoes,
+  };
+}
+
+async function waitUntilTwoAdvisoryLockWaiters() {
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    const rows = await prisma.$queryRaw`SELECT count(*)::int AS count FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE '%pg_advisory_xact_lock%'`;
+    if (rows[0]?.count >= 2) return rows[0].count;
+    await delay(40);
+  }
+  const rows = await prisma.$queryRaw`SELECT pid, state, wait_event_type, wait_event, left(query, 180) AS query FROM pg_stat_activity WHERE query ILIKE '%pg_advisory_xact_lock%'`;
+  throw new Error(`two confirmation requests did not reach the observable advisory lock: ${JSON.stringify(rows)}`);
+}
+
+test('cancelamento concorrente mantém exatamente um estorno e não duplica efeitos', async (t) => {
+  const f = await tenantFixture('primary');
+
+  const initial = await readState(f);
+  assert.deepEqual(initial, {
+    item: { id: f.itemId, pending: false, canceled: false, quantity: 1 },
+    order: { id: f.orderId, status: 'RECEBIDO' },
+    command: { id: f.commandId, status: 'ABERTA', total: '25' },
+    payments: 0,
+    balance: '4',
+    stockMovements: [{ type: 'SAIDA_VENDA', quantity: '1' }],
+    cashMovements: 0,
+    transactionAuditRows: 0,
+  });
+
+  const requestCancellation = await inject(f, 'DELETE', `/operacao/comandas/${f.commandId}/itens/${f.itemId}`, f.ownerId, f.tenantId, {});
+  assert.equal(requestCancellation.statusCode, 200, requestCancellation.body);
+  const pending = await readState(f);
+  assert.equal(pending.item.pending, true);
+  assert.equal(pending.item.canceled, false);
+  assert.equal(pending.balance, '5');
+  assert.equal(pending.stockMovements.filter((row) => row.type === 'ESTORNO_VENDA').length, 1);
+  assert.equal(pending.payments, 0);
+  assert.equal(pending.cashMovements, 0);
+
+  const lockKey = `comanda-items:${f.commandId}`;
+  let releaseBlocker;
+  let acquired;
+  const holdAcquired = new Promise((resolve) => { acquired = resolve; });
+  const blockerGate = new Promise((resolve) => { releaseBlocker = resolve; });
+  const blocker = prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(abs(hashtext(${lockKey})))`;
+    acquired();
+    await blockerGate;
+  }, { timeout: 30000 });
+  await holdAcquired;
+  const endpoint = `/operacao/cozinha/${f.orderId}/itens/${f.itemId}/confirmar-cancelamento`;
+  const first = inject(f, 'PATCH', endpoint);
+  const second = inject(f, 'PATCH', endpoint);
+  const waiterCount = await waitUntilTwoAdvisoryLockWaiters();
+  assert.equal(waiterCount, 2);
+  releaseBlocker();
+  await blocker;
+  const results = await Promise.all([first, second]);
+  assert.deepEqual(results.map((result) => result.statusCode).sort(), [200, 409]);
+  assert.match(results.find((result) => result.statusCode === 409).body, /Este item n.o possui cancelamento pendente/);
+
+  const afterConcurrent = await readState(f);
+  assert.equal(afterConcurrent.item.pending, false);
+  assert.equal(afterConcurrent.item.canceled, true);
+  assert.equal(afterConcurrent.order.status, 'CANCELADO');
+  assert.equal(afterConcurrent.command.status, 'ABERTA');
+  assert.equal(afterConcurrent.command.total, '0');
+  assert.equal(afterConcurrent.balance, '5');
+  assert.deepEqual(afterConcurrent.stockMovements, pending.stockMovements);
+  assert.equal(afterConcurrent.payments, pending.payments);
+  assert.equal(afterConcurrent.cashMovements, pending.cashMovements);
+  assert.equal(afterConcurrent.transactionAuditRows, pending.transactionAuditRows);
+
+  const retry = await inject(f, 'PATCH', endpoint);
+  assert.equal(retry.statusCode, 409);
+  assert.match(retry.body, /Este item n.o possui cancelamento pendente/);
+  assert.deepEqual(await readState(f), afterConcurrent);
+  assert.ok(afterConcurrent.stockMovements.filter((row) => row.type === 'ESTORNO_VENDA').length === 1, 'one operational stock refund only');
+  console.log(JSON.stringify({ scenario: 'simultaneous-confirmation', lockWaiters: waiterCount, statusCodes: results.map((result) => result.statusCode), initial, afterCancellationRequest: pending, afterConcurrentConfirmation: afterConcurrent, retryStatus: retry.statusCode }, null, 2));
+});
+
+test('permissão, tenant e conflitos sem cancelamento pendente não geram efeitos', async (t) => {
+  const f = await tenantFixture('denials');
+  const other = await tenantFixture('other-tenant');
+  await prisma.itemComanda.update({ where: { id: f.itemId }, data: { cancelamentoPendenteEm: new Date() } });
+  const before = await readState(f);
+  const endpoint = `/operacao/cozinha/${f.orderId}/itens/${f.itemId}/confirmar-cancelamento`;
+  const forbidden = await inject(f, 'PATCH', endpoint, f.noPermissionId);
+  assert.equal(forbidden.statusCode, 403);
+  assert.deepEqual(await readState(f), before);
+  const wrongTenant = await inject(other, 'PATCH', endpoint, other.ownerId, other.tenantId);
+  assert.equal(wrongTenant.statusCode, 404);
+  assert.deepEqual(await readState(f), before);
+
+  await prisma.itemComanda.update({ where: { id: f.itemId }, data: { cancelamentoPendenteEm: null } });
+  const noPendingBefore = await readState(f);
+  const noPending = await inject(f, 'PATCH', endpoint);
+  assert.equal(noPending.statusCode, 409);
+  assert.match(noPending.body, /Este item n.o possui cancelamento pendente/);
+  assert.deepEqual(await readState(f), noPendingBefore);
+  console.log(JSON.stringify({ scenario: 'denials-and-specific-409', permissionStatus: forbidden.statusCode, otherTenantStatus: wrongTenant.statusCode, noPendingStatus: noPending.statusCode, unchanged: true, state: noPendingBefore }, null, 2));
+});
+
+test.after(async () => {
+  await app.close();
+  await prisma.$disconnect();
+});

@@ -20,7 +20,7 @@ const order = {
   }],
 };
 
-async function stubApplication(page: Page, onConfirm: () => 'already-confirmed' | 'server-error' | 'success') {
+async function stubApplication(page: Page, onConfirm: () => 'already-confirmed' | 'server-error' | 'other-conflict' | 'success') {
   let orders = [order];
   let confirmationCalls = 0;
   let confirmationWrites = 0;
@@ -46,6 +46,8 @@ async function stubApplication(page: Page, onConfirm: () => 'already-confirmed' 
         await route.fulfill({ status: 409, json: { error: 'Este item não possui cancelamento pendente' } });
       } else if (scenario === 'server-error') {
         await route.fulfill({ status: 500, json: { error: 'Falha temporária ao confirmar cancelamento' } });
+      } else if (scenario === 'other-conflict') {
+        await route.fulfill({ status: 409, json: { error: 'A comanda foi fechada e não aceita alterações' } });
       } else if (backendPending) {
         confirmationWrites += 1;
         backendPending = false;
@@ -93,6 +95,18 @@ test('falha real fica junto ao item e preserva o pedido pendente', async ({ page
   await expect(page.locator('.cozinha-tv-erro')).toHaveCount(0);
   await expect(card).toContainText('Cancelamento solicitado');
   expect(await card.boundingBox()).toEqual(before);
+});
+
+test('outro HTTP 409 continua erro do item e não vira confirmação concorrente', async ({ page }) => {
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await stubApplication(page, () => 'other-conflict');
+  await page.goto('/operacao/cozinha/tv');
+  const card = page.locator('.cozinha-tv-grid > article').filter({ hasText: 'Hambúrguer sem cebola' });
+  await card.getByRole('button', { name: 'Confirmar cancelamento' }).click();
+  await expect(page.getByRole('alert')).toContainText('A comanda foi fechada e não aceita alterações');
+  await expect(page.getByText('O cancelamento já foi confirmado em outra sessão. A fila foi sincronizada.')).toHaveCount(0);
+  await expect(card).toContainText('Cancelamento solicitado');
+  await expect(card.getByRole('button', { name: 'Confirmar cancelamento' })).toBeEnabled();
 });
 
 test('duplo toque confirma uma vez e não duplica a alteração persistida', async ({ page }) => {
