@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync, openSync, closeSync, writeFileSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -89,6 +89,10 @@ if (Object.keys(devEnv).some((key) => /^PROD(?:_|$)/i.test(key))) throw new Erro
 
 const tempRoot = await mkdtemp(path.join(process.env.PDV_CUTOVER_TEMP_ROOT ?? os.tmpdir(), `tap76-dev-cutover-${confirmedRunId}-`));
 if (!path.resolve(tempRoot).startsWith(`${path.resolve(os.tmpdir())}${path.sep}`)) throw new Error('Cutover reports and clients must live under the OS temporary directory.');
+// Generated clients live below this temp root. Make Node resolve their packages from
+// the same reviewed backend installation used by the immutable Git snapshot, rather
+// than falling through to a user-level node_modules directory.
+await symlink(path.join(backendRoot, 'node_modules'), path.join(tempRoot, 'node_modules'), 'junction');
 const reportPath = path.join(tempRoot, 'cutover-report.json');
 const startedAt = new Date().toISOString();
 const clockStart = performance.now();

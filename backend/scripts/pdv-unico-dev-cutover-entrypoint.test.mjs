@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
+import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,4 +27,17 @@ test('real DEV command accepts the reviewed migrations SHA confirmation flag', (
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /"migrationsSha256": "[0-9a-f]{64}"/);
   assert.doesNotMatch(result.stderr, /Unknown argument/);
+});
+
+test('temporary generated clients resolve Prisma from the reviewed backend dependencies', async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'pdv-dev-client-resolution-'));
+  try {
+    await symlink(path.join(backendRoot, 'node_modules'), path.join(temporaryRoot, 'node_modules'), 'junction');
+    const requireFromGeneratedClient = createRequire(path.join(temporaryRoot, 'generated', 'client.cjs'));
+    const resolved = await realpath(requireFromGeneratedClient.resolve('@prisma/client/runtime/library.js'));
+    const reviewedDependencyRoot = await realpath(path.join(backendRoot, 'node_modules'));
+    assert.ok(resolved.toLowerCase().startsWith(`${reviewedDependencyRoot.toLowerCase()}${path.sep.toLowerCase()}`), resolved);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
 });
