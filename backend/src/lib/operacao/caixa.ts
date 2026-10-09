@@ -10,6 +10,7 @@ import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-o
 import { hasUnmappedCanonicalTaps, inicializarMontagemSessaoCaixa, inicializarMontagemPdv } from '../tap-montagem.js';
 import { canonicalPdvQaActivationEnabled } from '../canonical-pdv-operational-config.js';
 import { validateCashOccurrenceSelection } from './contexto-ocorrencia.js';
+import { lockAgendaResource } from './agenda.js';
 import { paymentFilterForOperationalSession } from './payment-session-filter.js';
 import { lockCaixaEmTx } from './caixa-lock.js';
 export { lockCaixaEmTx } from './caixa-lock.js';
@@ -382,6 +383,7 @@ export async function abrirCaixa(params: {
 
   const sessao = await prisma.$transaction(async (tx) => {
     await lockCaixaEmTx(tx, params.cervejariaId, params.pontoVendaId, dia);
+    if (canonicalPdv && params.ocorrenciaId) await lockAgendaResource(tx, params, 'ocorrencia', params.ocorrenciaId);
     const ocorrenciaId = await validateCashOccurrenceSelection(tx, {
       cervejariaId: params.cervejariaId,
       pontoVendaId: params.pontoVendaId,

@@ -6,7 +6,7 @@ assertTestProdWriteGuard({ apiBase: baseURL, context: 'agenda layout mocked API 
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: 'agenda-operacional.spec.ts',
+  testMatch: ['agenda-operacional.spec.ts', 'agenda-calendario.spec.ts'],
   workers: 1,
   retries: 0,
   reporter: 'list',
