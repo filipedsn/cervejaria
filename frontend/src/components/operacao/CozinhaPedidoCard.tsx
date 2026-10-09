@@ -91,7 +91,7 @@ export function CozinhaPedidoCard({
 
   if (variant === 'tv') {
     return (
-      <article {...measurementAttrs} style={layoutStyle} className={'cozinha-tv-card ' + badge.tvClasse}>
+      <article {...measurementAttrs} data-kitchen-order-id={pedido.id} data-kitchen-order-part={`${fragmento.part}/${fragmento.total}`} style={layoutStyle} className={'cozinha-tv-card ' + badge.tvClasse}>
         {rotuloFragmento && <p className="cozinha-tv-card-continuation">{rotuloFragmento}</p>}
         <div className="cozinha-tv-card-header">
           <div className="min-w-0">
@@ -214,6 +214,8 @@ export function CozinhaPedidoCard({
   return (
     <article
       {...measurementAttrs}
+      data-kitchen-order-id={pedido.id}
+      data-kitchen-order-part={`${fragmento.part}/${fragmento.total}`}
       style={layoutStyle}
       className={`card-touch !p-3 space-y-2 ${pedido.status === 'RECEBIDO' ? 'pedido-card-alert' : ''} ${pedido.status === 'CANCELAMENTO_PENDENTE' ? 'border-2 !border-orange-500 bg-orange-950/20' : ''}`}
     >

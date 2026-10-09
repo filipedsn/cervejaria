@@ -28,7 +28,7 @@ async function tenantFixture(suffix) {
   await prisma.cervejaria.create({ data: { id: tenantId, nome: `QA ${suffix}`, slug: `${tenantId}-slug` } });
   await prisma.usuario.createMany({ data: [
     { id: ownerId, nome: 'QA owner', email: `${tenantId}-owner@example.test`, senhaHash: 'qa-not-used', papel: 'DONO', cervejariaId: tenantId },
-    { id: noPermissionId, nome: 'QA restricted', email: `${tenantId}-restricted@example.test`, senhaHash: 'qa-not-used', papel: 'ATENDENTE', cervejariaId: tenantId, permissoesOperacao: ['kitchen.read'] },
+    { id: noPermissionId, nome: 'QA restricted', email: `${tenantId}-restricted@example.test`, senhaHash: 'qa-not-used', papel: 'ATENDENTE', cervejariaId: tenantId, permissoesOperacao: ['kitchen.read', 'kitchen.operate'] },
   ] });
   await prisma.configuracaoOperacional.create({ data: { cervejariaId: tenantId, inventoryEnabled: true, kitchenEnabled: true, plannedOperationsEnabled: false } });
   await prisma.configuracaoOperacao.create({ data: { cervejariaId: tenantId, ativo: true, controlaEstoque: true, temCozinha: true } });
@@ -177,6 +177,71 @@ test('permissão, tenant e conflitos sem cancelamento pendente não geram efeito
   assert.match(noPending.body, /Este item n.o possui cancelamento pendente/);
   assert.deepEqual(await readState(f), noPendingBefore);
   console.log(JSON.stringify({ scenario: 'denials-and-specific-409', permissionStatus: forbidden.statusCode, otherTenantStatus: wrongTenant.statusCode, noPendingStatus: noPending.statusCode, unchanged: true, state: noPendingBefore }, null, 2));
+});
+
+test('status concorrente Ã© idempotente, comando atrasado nÃ£o desfaz estado e Voltar segue explÃ­cito', async () => {
+  const f = await tenantFixture('status-concurrency');
+  // Keep the synthetic fixture at its calculated open-command total before
+  // comparing status-only actions, which recalculate the operational command.
+  await prisma.comanda.update({ where: { id: f.commandId }, data: { total: 0 } });
+  const endpoint = `/operacao/cozinha/${f.orderId}/status`;
+  const initialHistory = await prisma.pedidoOperacaoStatusHistorico.count({ where: { pedidoId: f.orderId } });
+  const lockKey = `comanda-items:${f.commandId}`;
+  let releaseBlocker;
+  let acquired;
+  const holdAcquired = new Promise((resolve) => { acquired = resolve; });
+  const blockerGate = new Promise((resolve) => { releaseBlocker = resolve; });
+  const blocker = prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(abs(hashtext(${lockKey})))`;
+    acquired();
+    await blockerGate;
+  }, { timeout: 30000 });
+  await holdAcquired;
+  const first = inject(f, 'PATCH', endpoint, f.ownerId, f.tenantId, { status: 'EM_PREPARO', expectedStatus: 'RECEBIDO' });
+  const second = inject(f, 'PATCH', endpoint, f.noPermissionId, f.tenantId, { status: 'EM_PREPARO', expectedStatus: 'RECEBIDO' });
+  const waiterCount = await waitUntilTwoAdvisoryLockWaiters();
+  assert.equal(waiterCount, 2);
+  releaseBlocker();
+  await blocker;
+  const results = await Promise.all([first, second]);
+  assert.deepEqual(results.map((result) => result.statusCode), [200, 200]);
+  assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: f.orderId } })).status, 'EM_PREPARO');
+  assert.equal(await prisma.pedidoOperacaoStatusHistorico.count({ where: { pedidoId: f.orderId, status: 'EM_PREPARO' } }), 1);
+
+  const retryAlreadyApplied = await inject(f, 'PATCH', endpoint, f.ownerId, f.tenantId, { status: 'EM_PREPARO', expectedStatus: 'RECEBIDO' });
+  assert.equal(retryAlreadyApplied.statusCode, 200);
+  assert.equal(await prisma.pedidoOperacaoStatusHistorico.count({ where: { pedidoId: f.orderId } }), initialHistory + 1);
+
+  const ready = await inject(f, 'PATCH', endpoint, f.ownerId, f.tenantId, { status: 'PRONTO', expectedStatus: 'EM_PREPARO' });
+  assert.equal(ready.statusCode, 200, ready.body);
+  const delayedStart = await inject(f, 'PATCH', endpoint, f.noPermissionId, f.tenantId, { status: 'EM_PREPARO', expectedStatus: 'RECEBIDO' });
+  assert.equal(delayedStart.statusCode, 409);
+  assert.equal(JSON.parse(delayedStart.body).code, 'KITCHEN_ORDER_STATUS_CONFLICT');
+  assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: f.orderId } })).status, 'PRONTO');
+  const invalid = await inject(f, 'PATCH', endpoint, f.ownerId, f.tenantId, { status: 'RECEBIDO', expectedStatus: 'PRONTO' });
+  assert.equal(invalid.statusCode, 409);
+  assert.equal(JSON.parse(invalid.body).code, 'KITCHEN_ORDER_TRANSITION_INVALID');
+  assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: f.orderId } })).status, 'PRONTO');
+
+  const voltar = await inject(f, 'PATCH', endpoint, f.ownerId, f.tenantId, { status: 'EM_PREPARO', expectedStatus: 'PRONTO' });
+  assert.equal(voltar.statusCode, 200, voltar.body);
+  const pronto = await inject(f, 'PATCH', endpoint, f.ownerId, f.tenantId, { status: 'PRONTO', expectedStatus: 'EM_PREPARO' });
+  assert.equal(pronto.statusCode, 200, pronto.body);
+  const entregue = await inject(f, 'PATCH', endpoint, f.ownerId, f.tenantId, { status: 'ENTREGUE', expectedStatus: 'PRONTO' });
+  assert.equal(entregue.statusCode, 200, entregue.body);
+  const voltarDeEntregue = await inject(f, 'PATCH', endpoint, f.ownerId, f.tenantId, { status: 'PRONTO', expectedStatus: 'ENTREGUE' });
+  assert.equal(voltarDeEntregue.statusCode, 200, voltarDeEntregue.body);
+
+  const finalOrder = await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: f.orderId } });
+  const finalHistory = await prisma.pedidoOperacaoStatusHistorico.findMany({ where: { pedidoId: f.orderId }, orderBy: { registradoEm: 'asc' } });
+  assert.equal(finalOrder.status, 'PRONTO');
+  assert.deepEqual(finalHistory.map((row) => row.status), ['EM_PREPARO', 'PRONTO', 'EM_PREPARO', 'PRONTO', 'ENTREGUE', 'PRONTO']);
+  const finalState = await readState(f);
+  assert.equal(finalState.item.canceled, false);
+  assert.equal(finalState.command.total, '0');
+  assert.equal(finalState.balance, '4');
+  assert.deepEqual(finalState.stockMovements, [{ type: 'SAIDA_VENDA', quantity: '1' }]);
+  console.log(JSON.stringify({ scenario: 'status-concurrency-and-stale-command', lockWaiters: waiterCount, concurrentStatuses: results.map((result) => result.statusCode), retryStatus: retryAlreadyApplied.statusCode, delayedStartStatus: delayedStart.statusCode, incompatibleStatus: invalid.statusCode, finalStatus: finalOrder.status, history: finalHistory.map((row) => row.status), noFinancialOrStockEffects: true }, null, 2));
 });
 
 test.after(async () => {

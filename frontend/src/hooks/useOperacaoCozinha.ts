@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,6 +13,8 @@ export function useOperacaoCozinha() {
   const { cervejaria } = useAuth();
   const queryClient = useQueryClient();
   const pedidosConhecidos = useRef<Set<string> | null>(null);
+  const statusRequestsRef = useRef(new Set<string>());
+  const [pedidosComStatusPendente, setPedidosComStatusPendente] = useState<Set<string>>(new Set());
   const pollMs = usePollInterval(20_000);
 
   const query = useQuery({
@@ -100,25 +102,21 @@ export function useOperacaoCozinha() {
   }, [cervejaria?.id, queryClient, alerta.avisar]);
 
   const mudarStatus = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: StatusPedido }) =>
-      api.patch<PedidoCozinha>(`/api/operacao/cozinha/${id}/status`, { status }),
-    onMutate: ({ id, status }) => {
-      const agora = new Date().toISOString();
+    mutationFn: ({ id, status, expectedStatus }: { id: string; status: StatusPedido; expectedStatus: StatusPedido }) =>
+      api.patch<PedidoCozinha>(`/api/operacao/cozinha/${id}/status`, { status, expectedStatus }),
+    onSuccess: (pedidoConfirmado) => {
       queryClient.setQueryData<PedidoCozinha[]>(CAIXA_COZINHA_QUERY_KEY, (atual) =>
-        (atual ?? []).map((pedido) => {
-          if (pedido.id !== id) return pedido;
-          return {
-            ...pedido,
-            status,
-            statusDesde: agora,
-            entregueEm:
-              status === 'ENTREGUE'
-                ? agora
-                : pedido.status === 'ENTREGUE'
-                  ? null
-                  : pedido.entregueEm,
-          };
-        }),
+        (atual ?? []).map((pedido) => pedido.id === pedidoConfirmado.id
+          ? {
+              ...pedido,
+              ...pedidoConfirmado,
+              comanda: {
+                ...pedido.comanda,
+                ...pedidoConfirmado.comanda,
+                cliente: pedidoConfirmado.comanda.cliente ?? pedido.comanda.cliente,
+              },
+            }
+          : pedido),
       );
     },
     onSettled: () => {
@@ -130,6 +128,21 @@ export function useOperacaoCozinha() {
       void queryClient.invalidateQueries({ queryKey: ['comandas'] });
     },
   });
+
+  const mudarStatusDoPedido = useCallback(async (input: { id: string; status: StatusPedido; expectedStatus: StatusPedido }) => {
+    if (statusRequestsRef.current.has(input.id)) return false;
+    statusRequestsRef.current.add(input.id);
+    setPedidosComStatusPendente(new Set(statusRequestsRef.current));
+    try {
+      await mudarStatus.mutateAsync(input);
+      return true;
+    } finally {
+      statusRequestsRef.current.delete(input.id);
+      setPedidosComStatusPendente(new Set(statusRequestsRef.current));
+    }
+  }, [mudarStatus.mutateAsync]);
+
+  const pedidoComStatusPendente = useCallback((pedidoId: string) => statusRequestsRef.current.has(pedidoId), []);
 
   const removerItem = useMutation({
     mutationFn: ({ comandaId, itemId, quantidade }: { comandaId: string; itemId: string; quantidade?: number }) =>
@@ -156,6 +169,9 @@ export function useOperacaoCozinha() {
     prontos,
     alerta,
     mudarStatus,
+    mudarStatusDoPedido,
+    pedidosComStatusPendente,
+    pedidoComStatusPendente,
     removerItem,
     confirmarCancelamentoItem,
     erroMutation: mudarStatus.error instanceof ApiError ? mudarStatus.error.message : null,

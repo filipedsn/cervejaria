@@ -25,3 +25,14 @@ npm run qa:kitchen-cancellation-disposable
 - `npm run build --prefix backend`: passou.
 - O teste transacional usou PostgreSQL 17 em tmpfs, porta local `55439`; contêiner destruído ao final. Não houve acesso a DEV ou PROD.
 - SHA testado: `e3a3fce5379ee417cbf2e653bbea131db94db33e`. O commit contém somente o runner/teste descartável, sua entrada npm, a regressão de interface e a documentação inicial; nenhum código operacional foi alterado. Push para `origin/main` confirmado. Esta atualização registra o push.
+
+## Comando de preparo concorrente
+
+A causa reproduzida foi a combinacao de duplo toque antes de a UI desabilitar o cartao e um comando atrasado sem estado de origem, que podia aproveitar uma transicao de retorno valida. A grade mantinha a posicao antiga durante a interacao, mas tambem mantinha os controles antigos habilitados.
+
+- A tela agora trava os controles do pedido de forma sincrona pelo ID estavel. Enquanto a geometria permanece congelada, a grade aplica imediatamente o disabled e os handlers atuais aos cartoes/continuacoes daquele ID.
+- A API revalida status e tenant sob o lock existente. Repetir exatamente o status confirmado retorna o estado atual sem novo historico, notificacao ou efeitos; expectedStatus rejeita comando obsoleto. Conflito incompativel preserva 409 e a tela sincroniza a fila antes de exibir erro associado ao numero do pedido.
+- PostgreSQL descartavel: 3/3 cenarios passaram. Duas sessoes autenticadas foram observadas esperando no advisory lock; ambas retornaram 200 para o mesmo EM_PREPARO, com exatamente uma linha de historico. Retry do mesmo alvo retornou 200 sem nova linha. Iniciar atrasado depois de PRONTO e transicao incompativel retornaram 409, sem alterar o estado. Voltar, PRONTO, ENTREGUE e retorno explicito de ENTREGUE para PRONTO produziram somente o historico esperado. Pagamentos, saldo, movimentos de estoque e caixa permaneceram iguais.
+- Playwright de cozinha: 8/8 regressions passaram com frontend isolado em 127.0.0.1:5204 e Socket.IO/API simulados. Incluiu duplo toque durante request, chegada durante a acao, paginacao, reconexao, retomada apos aba oculta, pedido longo e medicoes sem corte/overflow.
+- Builds de frontend e backend passaram. Avisos existentes do Vite: chunk principal acima de 500 kB e import misto de auth-session.ts.
+- Nenhum pedido real, PROD ou banco de DEV foi usado no QA. O PostgreSQL de teste foi removido ao final. O DEV sera verificado apos publicar este commit; TAP-76 permanece In Progress.

@@ -15,7 +15,7 @@ import { ApiError } from '../../lib/api';
 
 export function OperacaoCozinhaPage() {
   const [verEntregues, setVerEntregues] = useState(false);
-  const [erroLocal, setErroLocal] = useState('');
+  const [erroStatus, setErroStatus] = useState<{ pedidoId: string; numero: number; mensagem: string } | null>(null);
   const [erroPedidoCancelamento, setErroPedidoCancelamento] = useState<{ pedidoId: string; mensagem: string } | null>(null);
   const [erroItemCancelamento, setErroItemCancelamento] = useState<{ itemId: string; mensagem: string } | null>(null);
   const [avisoSincronizacao, setAvisoSincronizacao] = useState('');
@@ -28,26 +28,34 @@ export function OperacaoCozinhaPage() {
   const { contexto } = useOperacaoContexto();
   const avisoNaCozinha = contexto.whatsappPedidoProntoEnabled && contexto.whatsappPedidoProntoNaCozinha;
 
-  const { naFila, entregues, alerta, mudarStatus, confirmarCancelamentoItem, isLoading, erroMutation, refetch } = useOperacaoCozinha();
+  const { naFila, entregues, alerta, mudarStatusDoPedido, pedidosComStatusPendente, pedidoComStatusPendente, confirmarCancelamentoItem, isLoading, refetch } = useOperacaoCozinha();
 
   if (isLoading) return <Loading />;
 
   const lista = verEntregues ? entregues : naFila;
-  const cancelamentoStatus = mudarStatus.variables?.status === 'CANCELAMENTO_PENDENTE' || mudarStatus.variables?.status === 'CANCELADO';
-  const erro = erroLocal || (!cancelamentoStatus ? erroMutation : null);
+  const cancelamentoPedidoEmAndamento = Boolean(pedidoParaCancelar && pedidosComStatusPendente.has(pedidoParaCancelar.id));
   const itemComErro = naFila.flatMap((pedido) => pedido.itens).find((item) => item.id === erroItemCancelamento?.itemId);
   const pedidoComErro = naFila.find((pedido) => pedido.id === erroPedidoCancelamento?.pedidoId);
 
+  const solicitarMudancaStatus = async (pedido: PedidoCozinha, status: PedidoCozinha['status'], onSuccess?: () => void) => {
+    if (pedidoComStatusPendente(pedido.id)) return false;
+    setErroStatus(null);
+    try {
+      const aplicada = await mudarStatusDoPedido({ id: pedido.id, status, expectedStatus: pedido.status });
+      if (!aplicada) return false;
+      onSuccess?.();
+      return true;
+    } catch (error) {
+      await refetch();
+      setErroStatus({ pedidoId: pedido.id, numero: pedido.numero, mensagem: error instanceof Error ? error.message : 'Falha ao atualizar este pedido.' });
+      return false;
+    }
+  };
+
   const confirmarCancelamento = () => {
-    if (!pedidoParaCancelar || mudarStatus.isPending) return;
+    if (!pedidoParaCancelar || pedidoComStatusPendente(pedidoParaCancelar.id)) return;
     setErroPedidoCancelamento(null);
-    mudarStatus.mutate(
-      { id: pedidoParaCancelar.id, status: 'CANCELAMENTO_PENDENTE' },
-      {
-        onSuccess: () => setPedidoParaCancelar(null),
-        onError: (error) => setErroPedidoCancelamento({ pedidoId: pedidoParaCancelar.id, mensagem: error instanceof Error ? error.message : 'Não foi possível solicitar o cancelamento.' }),
-      },
-    );
+    void solicitarMudancaStatus(pedidoParaCancelar, 'CANCELAMENTO_PENDENTE', () => setPedidoParaCancelar(null));
   };
 
   const confirmarCancelamentoDoItem = async (pedidoId: string, itemId: string) => {
@@ -128,7 +136,7 @@ export function OperacaoCozinhaPage() {
         </p>
       )}
 
-      {erro && <div className="alert-error">{erro}</div>}
+      {erroStatus && <div role="alert" aria-live="assertive" className="fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-red-500/40 bg-surface px-4 py-3 text-sm font-semibold text-red-600 shadow-xl">Falha no pedido {erroStatus.numero}: {erroStatus.mensagem}</div>}
       {erroPedidoCancelamento && pedidoParaCancelar?.id !== erroPedidoCancelamento.pedidoId && <div role="alert" aria-live="assertive" className="fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-red-500/40 bg-surface px-4 py-3 text-sm font-semibold text-red-600 shadow-xl">Falha ao cancelar o pedido {pedidoComErro?.numero ?? ''}: {erroPedidoCancelamento.mensagem}</div>}
       {erroItemCancelamento && <div role="alert" aria-live="assertive" className="fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-red-500/40 bg-surface px-4 py-3 text-sm font-semibold text-red-600 shadow-xl">Falha ao confirmar cancelamento de {itemComErro?.nome ?? 'item'}: {erroItemCancelamento.mensagem}</div>}
       {avisoSincronizacao && <div role="status" aria-live="polite" className="fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-emerald-500/40 bg-surface px-4 py-3 text-sm font-semibold text-emerald-600 shadow-xl">{avisoSincronizacao}</div>}
@@ -141,51 +149,39 @@ export function OperacaoCozinhaPage() {
         />
       )}
 
-      {lista.length > 0 && <CozinhaTvGrid operational countLabel={verEntregues ? 'no filtro: entregues hoje' : 'no filtro: na fila'} paused={mudarStatus.isPending || confirmarCancelamentoItem.isPending || Boolean(pedidoParaCancelar)}>
+      {lista.length > 0 && <CozinhaTvGrid operational countLabel={verEntregues ? 'no filtro: entregues hoje' : 'no filtro: na fila'} paused={pedidosComStatusPendente.size > 0 || confirmarCancelamentoItem.isPending || Boolean(pedidoParaCancelar)}>
       {lista.map((pedido, indice) => (
         <CozinhaPedidoCard
           key={pedido.id}
           pedido={pedido}
           indice={indice}
           mostrarFila={!verEntregues}
-          disabled={mudarStatus.isPending || confirmarCancelamentoItem.isPending}
+          disabled={pedidosComStatusPendente.has(pedido.id) || confirmarCancelamentoItem.isPending}
           onAvancar={podeAvancarPreparo ? (status) => {
-            setErroLocal('');
             setErroPedidoCancelamento(null);
-            mudarStatus.mutate(
-              { id: pedido.id, status },
-              { onError: () => setErroLocal('Não foi possível atualizar o pedido') },
-            );
+            void solicitarMudancaStatus(pedido, status);
           } : undefined}
           onVoltar={podeAvancarPreparo ? (status) => {
-            setErroLocal('');
             setErroPedidoCancelamento(null);
-            mudarStatus.mutate(
-              { id: pedido.id, status },
-              { onError: () => setErroLocal('Não foi possível atualizar o pedido') },
-            );
+            void solicitarMudancaStatus(pedido, status);
           } : undefined}
           podeCancelar={podeCancelarPedido}
           onCancelar={() => {
-            setErroLocal('');
+            if (pedidoComStatusPendente(pedido.id)) return;
             setErroPedidoCancelamento(null);
             setPedidoParaCancelar(pedido);
           }}
           onConfirmarCancelamento={podeCancelarPedido ? () => {
-            setErroLocal('');
+            if (pedidoComStatusPendente(pedido.id)) return;
             setErroPedidoCancelamento(null);
-            mudarStatus.mutate(
-              { id: pedido.id, status: 'CANCELADO' },
-              {
-                onError: (error) => setErroPedidoCancelamento({ pedidoId: pedido.id, mensagem: error instanceof Error ? error.message : 'Não foi possível confirmar o cancelamento.' }),
-              },
-            );
+            void solicitarMudancaStatus(pedido, 'CANCELADO', () => setErroPedidoCancelamento(null));
           } : undefined}
           onConfirmarCancelamentoItem={podeConfirmarCancelamento ? (itemId) => {
-            setErroLocal('');
+            if (pedidoComStatusPendente(pedido.id)) return;
             void confirmarCancelamentoDoItem(pedido.id, itemId);
           } : undefined}
           onAvisarCliente={avisoNaCozinha ? () => {
+            if (pedidoComStatusPendente(pedido.id)) return;
             const cliente = pedido.comanda.cliente;
             if (!cliente?.telefone) return;
             const url = linkWhatsAppPedidoPronto({
@@ -203,16 +199,16 @@ export function OperacaoCozinhaPage() {
       <Modal
         open={pedidoParaCancelar !== null}
         onClose={() => {
-          if (!mudarStatus.isPending) setPedidoParaCancelar(null);
+          if (!cancelamentoPedidoEmAndamento) setPedidoParaCancelar(null);
         }}
-        closeOnBackdrop={!mudarStatus.isPending}
+        closeOnBackdrop={!cancelamentoPedidoEmAndamento}
         title="Solicitar cancelamento do pedido"
         footer={
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
               className="touch-btn-orange w-full min-h-14"
-              disabled={mudarStatus.isPending}
+              disabled={cancelamentoPedidoEmAndamento}
               onClick={() => setPedidoParaCancelar(null)}
             >
               Voltar
@@ -220,11 +216,11 @@ export function OperacaoCozinhaPage() {
             <button
               type="button"
               className="touch-btn-danger w-full min-h-14"
-              disabled={mudarStatus.isPending}
+              disabled={cancelamentoPedidoEmAndamento}
               data-audit="operacao-cozinha-confirmar-cancelamento"
               onClick={confirmarCancelamento}
             >
-              {mudarStatus.isPending ? 'Solicitando...' : 'Solicitar cancelamento'}
+              {cancelamentoPedidoEmAndamento ? 'Solicitando...' : 'Solicitar cancelamento'}
             </button>
           </div>
         }

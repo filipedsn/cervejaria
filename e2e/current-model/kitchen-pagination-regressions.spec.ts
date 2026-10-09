@@ -90,6 +90,10 @@ function fixtures(count: number, itemCounts: number[] = []): KitchenOrder[] {
 
 async function stubKitchen(page: Page, count: number, itemCounts: number[] = []) {
   let orders = fixtures(count, itemCounts);
+  const statusRequests: Array<{ id: string; status: string; expectedStatus?: string }> = [];
+  let holdStatusRequest = false;
+  let releaseStatusRequest: (() => void) | null = null;
+  let statusFailure: { status: number; error: string; code: string } | null = null;
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/api/auth/me')) {
@@ -104,7 +108,16 @@ async function stubKitchen(page: Page, count: number, itemCounts: number[] = [])
       await route.fulfill({ json: orders });
     } else if (url.pathname.includes('/api/operacao/cozinha/') && url.pathname.endsWith('/status')) {
       const id = url.pathname.split('/').at(-2)!;
-      const status = (route.request().postDataJSON() as { status: string }).status;
+      const request = route.request().postDataJSON() as { status: string; expectedStatus?: string };
+      const status = request.status;
+      statusRequests.push({ id, status, expectedStatus: request.expectedStatus });
+      if (holdStatusRequest) await new Promise<void>((resolveRelease) => { releaseStatusRequest = resolveRelease; });
+      if (statusFailure) {
+        const failure = statusFailure;
+        statusFailure = null;
+        await route.fulfill({ status: failure.status, json: { error: failure.error, code: failure.code } });
+        return;
+      }
       orders = orders.map((order) => order.id === id ? { ...order, status, entregueEm: status === 'ENTREGUE' ? new Date().toISOString() : order.entregueEm } : order);
       await route.fulfill({ json: orders.find((order) => order.id === id) ?? { id, status } });
     } else if (url.pathname.endsWith('/api/audit/events')) {
@@ -117,6 +130,16 @@ async function stubKitchen(page: Page, count: number, itemCounts: number[] = [])
     setCount: (count: number) => { orders = fixtures(count); },
     addOrder: () => { orders = [...orders, fixtures(orders.length + 1).at(-1)!]; },
     orders: () => orders,
+    statusRequests: () => statusRequests,
+    failNextStatusRequest: (failure: { status: number; error: string; code: string }) => { statusFailure = failure; },
+    holdNextStatusRequest: () => {
+      holdStatusRequest = true;
+      return () => {
+        holdStatusRequest = false;
+        releaseStatusRequest?.();
+        releaseStatusRequest = null;
+      };
+    },
   };
 }
 
@@ -331,4 +354,44 @@ test('libera interação interrompida ao ocultar e retoma quando a aba volta', a
   const visibleOrders = await page.locator('.cozinha-tv-grid .cozinha-tv-card-senha').allTextContents();
   expect(visibleOrders).toEqual(['Senha 1', 'Senha 2', 'Senha 3']);
   await page.screenshot({ path: resolve(process.cwd(), 'artifacts/kitchen-pagination/regression-after/interaction-resumed.png') });
+});
+
+test('duplo toque mantÃ©m a aÃ§Ã£o presa ao ID do pedido e envia um Ãºnico comando', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 720 });
+  const kitchen = await stubKitchen(page, 4);
+  await page.goto('/operacao/cozinha/tv');
+  await expect(page.locator('.cozinha-tv-pager-bar')).toContainText('4 pedidos');
+  const release = kitchen.holdNextStatusRequest();
+  const target = page.locator('[data-kitchen-order-id="reg-order-001"][data-kitchen-order-part="1/1"]');
+  const startButton = target.getByRole('button', { name: 'Iniciar' });
+  await expect(startButton).toBeVisible();
+  await startButton.dispatchEvent('click');
+  await startButton.dispatchEvent('click');
+  await expect.poll(() => kitchen.statusRequests().length).toBe(1);
+  expect(kitchen.statusRequests()[0]).toEqual({ id: 'reg-order-001', status: 'EM_PREPARO', expectedStatus: 'RECEBIDO' });
+  await expect(startButton).toBeDisabled();
+  kitchen.addOrder();
+  socketServer.to(socketRoom).emit('operacao:pedido-novo', { source: 'qa-during-status-request' });
+  await expect(page.locator('.cozinha-tv-pager-bar')).toContainText('4 pedidos');
+  expect(kitchen.statusRequests()).toHaveLength(1);
+  expect(await page.locator('[data-kitchen-order-id="reg-order-001"]').count()).toBeGreaterThan(0);
+  release();
+  await expect.poll(() => kitchen.orders()[0]?.status).toBe('EM_PREPARO');
+  await expect(page.locator('.cozinha-tv-grid > article[data-kitchen-order-id="reg-order-001"] .cozinha-tv-card-badge')).toHaveText('Preparando');
+  await expect(page.locator('.cozinha-tv-pager-bar')).toContainText('5 pedidos', { timeout: 5_000 });
+});
+
+test('conflito real sincroniza o pedido, libera os controles e permanece associado ao cartÃ£o', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 720 });
+  const kitchen = await stubKitchen(page, 2);
+  await page.goto('/operacao/cozinha/tv');
+  const target = page.locator('.cozinha-tv-grid > article[data-kitchen-order-id="reg-order-001"]');
+  const startButton = target.getByRole('button', { name: 'Iniciar' });
+  kitchen.failNextStatusRequest({ status: 409, error: 'Pedido atualizado de PRONTO para EM_PREPARO; a fila foi sincronizada.', code: 'KITCHEN_ORDER_TRANSITION_INVALID' });
+  await startButton.click();
+  await expect(page.getByRole('alert')).toContainText('Falha no pedido 1');
+  await expect(startButton).toBeEnabled();
+  expect(kitchen.statusRequests()).toHaveLength(1);
+  expect(kitchen.orders()[0]?.status).toBe('RECEBIDO');
+  await expect(target.locator('.cozinha-tv-card-badge')).toHaveText('Na fila');
 });

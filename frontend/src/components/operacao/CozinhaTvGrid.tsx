@@ -1,5 +1,5 @@
 import { Children, cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
-import type { PedidoCozinha } from '../../lib/operacao';
+import type { PedidoCozinha, StatusPedido } from '../../lib/operacao';
 
 export interface CozinhaPedidoFragmento {
   itemIndexes: number[];
@@ -17,6 +17,14 @@ interface CozinhaCardLayoutProps {
   measurementId?: string;
   measurementItemIndex?: number;
   layoutStyle?: CSSProperties;
+  disabled?: boolean;
+  onAvancar?: (status: StatusPedido) => void;
+  onVoltar?: (status: StatusPedido) => void;
+  onCancelar?: () => void;
+  onConfirmarCancelamento?: () => void;
+  onCancelarItem?: (itemId: string) => void;
+  onConfirmarCancelamentoItem?: (itemId: string) => void;
+  onAvisarCliente?: () => void;
 }
 
 interface Props {
@@ -74,7 +82,24 @@ export function CozinhaTvGrid({ children, paused = false, profile = 'automatico'
   if (frozen && frozenIdsRef.current === null) frozenIdsRef.current = ids;
   if (!frozen) frozenIdsRef.current = null;
   const stableCards = frozen && frozenIdsRef.current
-    ? cardSnapshotRef.current.filter((card) => frozenIdsRef.current?.includes(card.props.pedido.id))
+    ? cardSnapshotRef.current
+        .filter((card) => frozenIdsRef.current?.includes(card.props.pedido.id))
+        .map((card) => {
+          const liveCard = cards.find((candidate) => candidate.props.pedido.id === card.props.pedido.id);
+          if (!liveCard) return card;
+          // Keep the frozen card position/content, while applying synchronous locks and
+          // current ID-bound handlers from the live card during an in-flight request.
+          return cloneElement(card, {
+            disabled: liveCard.props.disabled,
+            onAvancar: liveCard.props.onAvancar,
+            onVoltar: liveCard.props.onVoltar,
+            onCancelar: liveCard.props.onCancelar,
+            onConfirmarCancelamento: liveCard.props.onConfirmarCancelamento,
+            onCancelarItem: liveCard.props.onCancelarItem,
+            onConfirmarCancelamentoItem: liveCard.props.onConfirmarCancelamentoItem,
+            onAvisarCliente: liveCard.props.onAvisarCliente,
+          });
+        })
     : cards;
 
   const measure = useCallback(() => {

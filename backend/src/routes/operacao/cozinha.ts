@@ -14,6 +14,7 @@ import {
   pedidoVaiParaCozinha,
   resumoPedidoCozinha,
   StatusPedidoCozinhaDesatualizadoError,
+  StatusPedidoCozinhaTransicaoInvalidaError,
   temPedidoCozinhaPendente,
 } from '../../lib/operacao/cozinha.js';
 import { kitchenService } from '../../services/kitchen-service.js';
@@ -31,6 +32,7 @@ import { permissoesIndividuaisAtivas, requirePermissao } from '../../lib/operaca
 
 const alterarStatusSchema = z.object({
   status: z.enum(['RECEBIDO', 'EM_PREPARO', 'PRONTO', 'ENTREGUE', 'CANCELAMENTO_PENDENTE', 'CANCELADO']),
+  expectedStatus: z.enum(['RECEBIDO', 'EM_PREPARO', 'PRONTO', 'ENTREGUE', 'CANCELAMENTO_PENDENTE', 'CANCELADO']).optional(),
 });
 
 export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
@@ -76,7 +78,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
-    const { status } = alterarStatusSchema.parse(request.body);
+    const { status, expectedStatus } = alterarStatusSchema.parse(request.body);
 
     const pedido = await prisma.pedidoOperacao.findFirst({
       where: { id, cervejariaId },
@@ -96,26 +98,58 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
       }
     }
 
+    if (pedido.status === status) {
+      const pedidoSemMudanca = await prisma.pedidoOperacao.findFirstOrThrow({
+        where: { id: pedido.id, cervejariaId },
+        include: INCLUDE_PEDIDO_COZINHA,
+      });
+      return resumoPedidoCozinha(pedidoSemMudanca);
+    }
+
     if (!TRANSICOES[pedido.status].includes(status)) {
-      return reply
-        .status(409)
-        .send({ error: `Não é possível ir de ${pedido.status} para ${status}` });
+      const error = new StatusPedidoCozinhaTransicaoInvalidaError(pedido.status, status);
+      return reply.status(409).send({ error: error.message, code: error.code });
     }
 
     let atualizado;
     let valorEstornado = 0;
+    let noop = false;
     try {
       atualizado = await prisma.$transaction(async (tx) => {
         if (status !== 'CANCELAMENTO_PENDENTE') {
-          if (status === 'CANCELADO' && pedido.status === 'CANCELAMENTO_PENDENTE') {
-            await lockComandaItemsInTx(tx, pedido.comandaId);
+          await lockComandaItemsInTx(tx, pedido.comandaId);
+          const pedidoAtual = await tx.pedidoOperacao.findFirst({
+            where: { id: pedido.id, cervejariaId },
+            include: {
+              ...INCLUDE_PEDIDO_COZINHA,
+              comanda: { select: { id: true, tipo: true, identificador: true, numero: true, status: true } },
+            },
+          });
+          if (!pedidoAtual || !pedidoVaiParaCozinha(pedidoAtual.itensComanda)) {
+            throw Object.assign(new Error('Pedido n\u00e3o encontrado'), { statusCode: 404 });
+          }
+          if (pedidoAtual.status === status) {
+            const pedidoSemMudanca = await tx.pedidoOperacao.findUniqueOrThrow({
+              where: { id: pedidoAtual.id },
+              include: INCLUDE_PEDIDO_COZINHA,
+            });
+            noop = true;
+            return pedidoSemMudanca;
+          }
+          if (expectedStatus && pedidoAtual.status !== expectedStatus) {
+            throw new StatusPedidoCozinhaDesatualizadoError();
+          }
+          if (!TRANSICOES[pedidoAtual.status].includes(status)) {
+            throw new StatusPedidoCozinhaTransicaoInvalidaError(pedidoAtual.status, status);
+          }
+          if (status === 'CANCELADO' && pedidoAtual.status === 'CANCELAMENTO_PENDENTE') {
             await tx.itemComanda.updateMany({
-              where: { pedidoCozinhaId: pedido.id, canceladoEm: null },
+              where: { pedidoCozinhaId: pedidoAtual.id, canceladoEm: null },
               data: { cancelamentoPendenteEm: null, canceladoEm: new Date() },
             });
           }
-          const atualizado = await kitchenService.applyStatus(tx, pedido, status);
-          await recalcComandaTotalOperacao(tx, pedido.comandaId);
+          const atualizado = await kitchenService.applyStatus(tx, pedidoAtual, status);
+          await recalcComandaTotalOperacao(tx, pedidoAtual.comandaId);
           return atualizado;
         }
 
@@ -147,8 +181,19 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
             comanda: { select: { id: true, status: true, tipo: true } },
           },
         });
-        if (!TRANSICOES[pedidoAtual.status].includes(status)) {
+        if (pedidoAtual.status === status) {
+          const pedidoSemMudanca = await tx.pedidoOperacao.findUniqueOrThrow({
+            where: { id: pedidoAtual.id },
+            include: INCLUDE_PEDIDO_COZINHA,
+          });
+          noop = true;
+          return pedidoSemMudanca;
+        }
+        if (expectedStatus && pedidoAtual.status !== expectedStatus) {
           throw new StatusPedidoCozinhaDesatualizadoError();
+        }
+        if (!TRANSICOES[pedidoAtual.status].includes(status)) {
+          throw new StatusPedidoCozinhaTransicaoInvalidaError(pedidoAtual.status, status);
         }
         if (pedidoAtual.comanda.status !== 'ABERTA' && !(pedidoAtual.comanda.status === 'FECHADA' && pedidoAtual.comanda.tipo === 'AVULSA')) {
           throw Object.assign(new Error('Esta comanda não pode ser cancelada pela cozinha'), { statusCode: 409 });
@@ -203,10 +248,15 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
       });
     } catch (error) {
       if (error instanceof StatusPedidoCozinhaDesatualizadoError) {
-        return reply.status(409).send({ error: error.message });
+        return reply.status(409).send({ error: error.message, code: 'KITCHEN_ORDER_STATUS_CONFLICT' });
+      }
+      if (error instanceof StatusPedidoCozinhaTransicaoInvalidaError) {
+        return reply.status(409).send({ error: error.message, code: error.code });
       }
       throw error;
     }
+
+    if (noop) return resumoPedidoCozinha(atualizado);
 
     notificarCozinha(app, cervejariaId, atualizado, false);
 

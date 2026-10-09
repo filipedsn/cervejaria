@@ -23,6 +23,7 @@ type ConfirmacaoCancelamento =
 export function OperacaoCozinhaTvPage() {
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [erroCancelamentoAcao, setErroCancelamentoAcao] = useState('');
+  const [erroStatus, setErroStatus] = useState<{ pedidoId: string; numero: number; mensagem: string } | null>(null);
   const [erroItemCancelamento, setErroItemCancelamento] = useState<{ itemId: string; mensagem: string } | null>(null);
   const [avisoSincronizacao, setAvisoSincronizacao] = useState('');
   const confirmingItems = useRef(new Set<string>());
@@ -51,17 +52,32 @@ export function OperacaoCozinhaTvPage() {
     pedidosProntos,
     prontos,
     alerta,
-    mudarStatus,
+    mudarStatusDoPedido,
+    pedidosComStatusPendente,
+    pedidoComStatusPendente,
     removerItem,
     confirmarCancelamentoItem,
     isLoading,
-    erroMutation,
     erroItemMutation,
     refetch,
   } = useOperacaoCozinha();
 
-  const erroStatusNormal = mudarStatus.variables?.status !== 'CANCELAMENTO_PENDENTE' && mudarStatus.variables?.status !== 'CANCELADO' ? erroMutation : null;
   const itemComErro = naFila.flatMap((pedido) => pedido.itens).find((item) => item.id === erroItemCancelamento?.itemId);
+
+  const solicitarMudancaStatus = async (pedido: PedidoCozinha, status: PedidoCozinha['status'], onSuccess?: () => void) => {
+    if (pedidoComStatusPendente(pedido.id)) return false;
+    setErroStatus(null);
+    try {
+      const aplicada = await mudarStatusDoPedido({ id: pedido.id, status, expectedStatus: pedido.status });
+      if (!aplicada) return false;
+      onSuccess?.();
+      return true;
+    } catch (error) {
+      await refetch();
+      setErroStatus({ pedidoId: pedido.id, numero: pedido.numero, mensagem: error instanceof Error ? error.message : 'Falha ao atualizar este pedido.' });
+      return false;
+    }
+  };
 
   const confirmarCancelamentoDoItem = async (pedidoId: string, itemId: string) => {
     if (confirmingItems.current.has(itemId)) return;
@@ -93,28 +109,24 @@ export function OperacaoCozinhaTvPage() {
     if (!confirmacaoCancelamento) return;
     setErroCancelamentoAcao('');
     const confirmacao = confirmacaoCancelamento;
-    if (confirmacao.tipo === 'solicitar-pedido') {
-      mudarStatus.mutate(
-        { id: confirmacao.pedido.id, status: 'CANCELAMENTO_PENDENTE' },
-        { onSuccess: () => setConfirmacaoCancelamento(null), onError: (error) => setErroCancelamentoAcao(error instanceof Error ? error.message : 'Não foi possível solicitar o cancelamento.') },
+    if (confirmacao.tipo === 'cancelar-item') {
+      if (pedidoComStatusPendente(confirmacao.pedido.id)) return;
+      removerItem.mutate(
+        { comandaId: confirmacao.pedido.comanda.id, itemId: confirmacao.itemId },
+        {
+          onSuccess: () => setConfirmacaoCancelamento(null),
+          onError: (error) => setErroCancelamentoAcao(error instanceof Error ? error.message : 'Não foi possível cancelar o item.'),
+        },
       );
       return;
     }
-    if (confirmacao.tipo === 'confirmar-pedido') {
-      mudarStatus.mutate(
-        { id: confirmacao.pedido.id, status: 'CANCELADO' },
-        { onSuccess: () => setConfirmacaoCancelamento(null), onError: (error) => setErroCancelamentoAcao(error instanceof Error ? error.message : 'Não foi possível confirmar o cancelamento.') },
-      );
-      return;
-    }
-    removerItem.mutate(
-      { comandaId: confirmacao.pedido.comanda.id, itemId: confirmacao.itemId },
-      { onSuccess: () => setConfirmacaoCancelamento(null), onError: (error) => setErroCancelamentoAcao(error instanceof Error ? error.message : 'Não foi possível cancelar o item.') },
-    );
+    const status = confirmacao.tipo === 'solicitar-pedido' ? 'CANCELAMENTO_PENDENTE' : 'CANCELADO';
+    void solicitarMudancaStatus(confirmacao.pedido, status, () => setConfirmacaoCancelamento(null));
   };
 
-  const cancelamentoPendente = mudarStatus.isPending || removerItem.isPending;
-  const interacaoPendente = cancelamentoPendente || confirmarCancelamentoItem.isPending || Boolean(confirmacaoCancelamento) || Boolean(itemParaCancelar);
+  const pedidoDaConfirmacao = confirmacaoCancelamento?.tipo === 'cancelar-item' ? null : confirmacaoCancelamento?.pedido;
+  const cancelamentoPendente = Boolean(pedidoDaConfirmacao && pedidosComStatusPendente.has(pedidoDaConfirmacao.id)) || removerItem.isPending;
+  const interacaoPendente = pedidosComStatusPendente.size > 0 || removerItem.isPending || confirmarCancelamentoItem.isPending || Boolean(confirmacaoCancelamento) || Boolean(itemParaCancelar);
 
   useEffect(() => {
     document.addEventListener('fullscreenchange', syncFullscreen);
@@ -209,7 +221,7 @@ export function OperacaoCozinhaTvPage() {
         <p className="cozinha-tv-hint">Toque na campainha para liberar o som.</p>
       )}
 
-      {erroStatusNormal && <div className="cozinha-tv-erro">{erroStatusNormal}</div>}
+      {erroStatus && <div role="alert" aria-live="assertive" className="fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-red-500/40 bg-surface px-4 py-3 text-sm font-semibold text-red-600 shadow-xl">Falha no pedido {erroStatus.numero}: {erroStatus.mensagem}</div>}
       {erroItemCancelamento && <div role="alert" aria-live="assertive" className="fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-red-500/40 bg-surface px-4 py-3 text-sm font-semibold text-red-600 shadow-xl">Falha ao confirmar cancelamento de {itemComErro?.nome ?? 'item'}: {erroItemCancelamento.mensagem}</div>}
       {avisoSincronizacao && <div role="status" aria-live="polite" className="fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-emerald-500/40 bg-surface px-4 py-3 text-sm font-semibold text-emerald-600 shadow-xl">{avisoSincronizacao}</div>}
 
@@ -228,17 +240,20 @@ export function OperacaoCozinhaTvPage() {
               pedido={pedido}
               indice={indice}
               variant="tv"
-              disabled={mudarStatus.isPending || removerItem.isPending || confirmarCancelamentoItem.isPending}
-              onAvancar={podeAvancarPreparo ? (status) => mudarStatus.mutate({ id: pedido.id, status }) : undefined}
-              onVoltar={podeAvancarPreparo ? (status) => mudarStatus.mutate({ id: pedido.id, status }) : undefined}
+              disabled={pedidosComStatusPendente.has(pedido.id) || removerItem.isPending || confirmarCancelamentoItem.isPending}
+              onAvancar={podeAvancarPreparo ? (status) => void solicitarMudancaStatus(pedido, status) : undefined}
+              onVoltar={podeAvancarPreparo ? (status) => void solicitarMudancaStatus(pedido, status) : undefined}
               podeCancelar={podeCancelarPedido}
               onCancelar={() => {
+                if (pedidoComStatusPendente(pedido.id)) return;
                 setConfirmacaoCancelamento({ tipo: 'solicitar-pedido', pedido });
               }}
               onConfirmarCancelamento={podeConfirmarCancelamento ? () => {
+                if (pedidoComStatusPendente(pedido.id)) return;
                 setConfirmacaoCancelamento({ tipo: 'confirmar-pedido', pedido });
               } : undefined}
               onCancelarItem={pedido.comanda.tipo === 'AVULSA' || !podeCancelarItem ? undefined : (itemId) => {
+                if (pedidoComStatusPendente(pedido.id)) return;
                 const item = pedido.itens.find((linha) => linha.id === itemId);
                 if (!item) return;
                 if (item.quantidade > 1) {
@@ -248,8 +263,12 @@ export function OperacaoCozinhaTvPage() {
                   setConfirmacaoCancelamento({ tipo: 'cancelar-item', pedido, itemId, nome: item.nome });
                 }
               }}
-              onConfirmarCancelamentoItem={podeConfirmarCancelamento ? (itemId) => void confirmarCancelamentoDoItem(pedido.id, itemId) : undefined}
+              onConfirmarCancelamentoItem={podeConfirmarCancelamento ? (itemId) => {
+                if (pedidoComStatusPendente(pedido.id)) return;
+                void confirmarCancelamentoDoItem(pedido.id, itemId);
+              } : undefined}
               onAvisarCliente={avisoNaCozinha ? () => {
+                if (pedidoComStatusPendente(pedido.id)) return;
                 const cliente = pedido.comanda.cliente;
                 if (!cliente?.telefone) return;
                 const url = linkWhatsAppPedidoPronto({

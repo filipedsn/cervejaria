@@ -137,6 +137,15 @@ export class StatusPedidoCozinhaDesatualizadoError extends Error {
   }
 }
 
+export class StatusPedidoCozinhaTransicaoInvalidaError extends Error {
+  code = 'KITCHEN_ORDER_TRANSITION_INVALID';
+
+  constructor(statusAtual: StatusPedidoOperacao, statusSolicitado: StatusPedidoOperacao) {
+    super(`Pedido atualizado de ${statusAtual} para ${statusSolicitado}; a fila foi sincronizada.`);
+    this.name = 'StatusPedidoCozinhaTransicaoInvalidaError';
+  }
+}
+
 export async function aplicarStatusPedidoCozinha(
   tx: TxClient,
   pedido: { id: string; status: StatusPedidoOperacao },
