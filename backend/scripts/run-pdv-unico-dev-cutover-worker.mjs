@@ -107,7 +107,7 @@ catch { throw new Error('A cutover with this run ID is already active or has a s
 function childEnv(extra = {}) {
   const env = { ...devEnv };
   for (const name of Object.keys(env)) if (name === 'DIRECT_URL' || /^PROD(?:_|$)/i.test(name) || /_DATABASE_URL$/.test(name) || name === 'PDV_ISOLATED_QA' || name === 'QA_DATABASE_URL') delete env[name];
-  Object.assign(env, { PDV_CUTOVER_DEV_ADAPTER: '1', PDV_CUTOVER_PROFILE: 'dev', PDV_CUTOVER_TENANTS: selectedTenants.join(','), PDV_CUTOVER_RUN_ID: confirmedRunId, PDV_CUTOVER_FINANCE_APPROVAL_SHA256: '87e3a8f6aca3e878a027c485ca2e15a120ba9cc0edfc27337e3f39858165ef7a', PDV_REPRESENTATIVE_PHOTO_FILE: photoPath, TEMP: tempRoot, TMP: tempRoot }, extra);
+  Object.assign(env, { PDV_CUTOVER_DEV_ADAPTER: '1', PDV_CUTOVER_PROFILE: 'dev', PDV_CUTOVER_TENANTS: selectedTenants.join(','), PDV_CUTOVER_RUN_ID: confirmedRunId, PDV_CUTOVER_FINANCE_APPROVAL_SHA256: '87e3a8f6aca3e878a027c485ca2e15a120ba9cc0edfc27337e3f39858165ef7a', PDV_REPRESENTATIVE_PHOTO_FILE: photoPath, PDV_DEV_CONFIG_FILE: devConfigPath, TEMP: tempRoot, TMP: tempRoot }, extra);
   return env;
 }
 function runNode(args, label, extra = {}, cwd = backendRoot) {
