@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { api, ApiError, assetUrl, logoAssetUrl } from '../lib/api';
@@ -77,6 +77,9 @@ export function AparenciaPage({ embedded }: { embedded?: boolean } = {}) {
     cervejaria?.portalBackgroundUrl,
     cervejaria?.portalBackgroundVersion ?? cervejaria?.updatedAt,
   );
+  const previewRatio = previewDevice === 'celular'
+    ? (previewLandscape ? 844 / 390 : 390 / 844)
+    : (previewLandscape ? 1024 / 768 : 768 / 1024);
 
   return (
     <div className={`space-y-6 ${embedded ? '' : 'max-w-lg mx-auto'}`}>
@@ -154,7 +157,7 @@ export function AparenciaPage({ embedded }: { embedded?: boolean } = {}) {
         <p className="text-sm text-ink-muted">
           A imagem será exibida inteira. Espaços restantes usarão a cor de fundo do portal.
         </p>
-        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Dispositivo da prévia">
+        <div className="portal-preview-controls flex flex-wrap items-center gap-2" role="group" aria-label="Dispositivo da prévia">
           {(['celular', 'tablet'] as const).map((device) => (
             <button key={device} type="button" className="touch-btn-secondary touch-btn-sm"
               aria-pressed={previewDevice === device} onClick={() => setPreviewDevice(device)}>
@@ -167,11 +170,9 @@ export function AparenciaPage({ embedded }: { embedded?: boolean } = {}) {
           </button>
         </div>
         <div
-          className="portal-background-host overflow-hidden rounded-xl border border-line bg-canvas mx-auto w-full max-w-sm"
+          className="portal-preview-frame portal-background-host overflow-hidden rounded-xl border border-line bg-canvas mx-auto"
           aria-label={`Prévia do portal em ${previewDevice}`}
-          style={{ aspectRatio: previewDevice === 'celular'
-            ? (previewLandscape ? '844 / 390' : '390 / 844')
-            : (previewLandscape ? '1024 / 768' : '768 / 1024') }}
+          style={{ '--portal-preview-ratio': previewRatio } as CSSProperties}
         >
           <PortalBackground src={backgroundPreview ?? savedBackground} preview />
           <div className="relative p-3">

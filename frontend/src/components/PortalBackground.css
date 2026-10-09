@@ -42,3 +42,17 @@
   inset: 0;
   background: linear-gradient(rgba(6, 20, 38, 0.76), rgba(6, 20, 38, 0.88));
 }
+
+/* Preview-only sizing: limit width using the height budget and device ratio,
+   rather than clamping height independently and deforming the frame. */
+.portal-preview-frame {
+  width: min(100%, 24rem, calc(min(50vh, 32rem) * var(--portal-preview-ratio)));
+  width: min(100%, 24rem, calc(min(50dvh, 32rem) * var(--portal-preview-ratio)));
+  aspect-ratio: var(--portal-preview-ratio);
+}
+
+.portal-preview-controls .touch-btn-secondary[aria-pressed="true"] {
+  background-color: var(--color-brand-50);
+  border-color: var(--color-brand-600);
+  color: var(--color-brand-600);
+}

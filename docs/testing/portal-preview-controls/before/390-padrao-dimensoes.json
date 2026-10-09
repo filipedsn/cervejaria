@@ -1,0 +1,174 @@
+[
+  {
+    "device": "Celular",
+    "landscape": false,
+    "ratio": 0.4620938628158845,
+    "expectedRatio": 0.46208530805687204,
+    "width": 324,
+    "height": 701.15625,
+    "cssAspectRatio": "390 / 844",
+    "minHeight": "0px",
+    "maxHeight": "none",
+    "flexShrink": "1",
+    "parentWidth": 358,
+    "scrollWidth": 322,
+    "clientWidth": 322,
+    "scrollHeight": 699,
+    "clientHeight": 699,
+    "styles": [
+      {
+        "text": "Celular",
+        "pressed": "true",
+        "type": "button",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(229, 231, 235)",
+        "color": "rgb(17, 24, 39)"
+      },
+      {
+        "text": "Tablet",
+        "pressed": "false",
+        "type": "button",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(229, 231, 235)",
+        "color": "rgb(17, 24, 39)"
+      },
+      {
+        "text": "Orientação vertical",
+        "pressed": "false",
+        "type": "button",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(229, 231, 235)",
+        "color": "rgb(17, 24, 39)"
+      }
+    ]
+  },
+  {
+    "device": "Celular",
+    "landscape": true,
+    "ratio": 2.1642834777163134,
+    "expectedRatio": 2.164102564102564,
+    "width": 324,
+    "height": 149.703125,
+    "cssAspectRatio": "844 / 390",
+    "minHeight": "0px",
+    "maxHeight": "none",
+    "flexShrink": "1",
+    "parentWidth": 358,
+    "scrollWidth": 322,
+    "clientWidth": 322,
+    "scrollHeight": 148,
+    "clientHeight": 148,
+    "styles": [
+      {
+        "text": "Celular",
+        "pressed": "true",
+        "type": "button",
+        "background": "rgb(243, 244, 246)",
+        "border": "rgb(229, 231, 235)",
+        "color": "rgb(17, 24, 39)"
+      },
+      {
+        "text": "Tablet",
+        "pressed": "false",
+        "type": "button",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(229, 231, 235)",
+        "color": "rgb(17, 24, 39)"
+      },
+      {
+        "text": "Orientação horizontal",
+        "pressed": "true",
+        "type": "button",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(229, 231, 235)",
+        "color": "rgb(17, 24, 39)"
+      }
+    ]
+  },
+  {
+    "device": "Tablet",
+    "landscape": true,
+    "ratio": 1.3333333333333333,
+    "expectedRatio": 1.3333333333333333,
+    "width": 324,
+    "height": 243,
+    "cssAspectRatio": "1024 / 768",
+    "minHeight": "0px",
+    "maxHeight": "none",
+    "flexShrink": "1",
+    "parentWidth": 358,
+    "scrollWidth": 322,
+    "clientWidth": 322,
+    "scrollHeight": 241,
+    "clientHeight": 241,
+    "styles": [
+      {
+        "text": "Celular",
+        "pressed": "false",
+        "type": "button",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(229, 231, 235)",
+        "color": "rgb(17, 24, 39)"
+      },
+      {
+        "text": "Tablet",
+        "pressed": "true",
+        "type": "button",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(229, 231, 235)",
+        "color": "rgb(17, 24, 39)"
+      },
+      {
+        "text": "Orientação horizontal",
+        "pressed": "true",
+        "type": "button",
+        "background": "rgb(243, 244, 246)",
+        "border": "rgb(229, 231, 235)",
+        "color": "rgb(17, 24, 39)"
+      }
+    ]
+  },
+  {
+    "device": "Tablet",
+    "landscape": false,
+    "ratio": 0.75,
+    "expectedRatio": 0.75,
+    "width": 324,
+    "height": 432,
+    "cssAspectRatio": "768 / 1024",
+    "minHeight": "0px",
+    "maxHeight": "none",
+    "flexShrink": "1",
+    "parentWidth": 358,
+    "scrollWidth": 322,
+    "clientWidth": 322,
+    "scrollHeight": 430,
+    "clientHeight": 430,
+    "styles": [
+      {
+        "text": "Celular",
+        "pressed": "false",
+        "type": "button",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(229, 231, 235)",
+        "color": "rgb(17, 24, 39)"
+      },
+      {
+        "text": "Tablet",
+        "pressed": "true",
+        "type": "button",
+        "background": "rgb(243, 244, 246)",
+        "border": "rgb(229, 231, 235)",
+        "color": "rgb(17, 24, 39)"
+      },
+      {
+        "text": "Orientação vertical",
+        "pressed": "false",
+        "type": "button",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(229, 231, 235)",
+        "color": "rgb(17, 24, 39)"
+      }
+    ]
+  }
+]

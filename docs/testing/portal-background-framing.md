@@ -83,3 +83,5 @@ Registrar o SHA e o resultado do push no comentário de evidência da TAP-76.
 Manter o título e **In Progress**: o aceite geral do ticket continua fora do
 escopo deste ajuste. `PROD_DEPLOY_REQUIRED: Yes`; release em produção pendente,
 sem execução neste trabalho.
+
+Revisão posterior: [controles da prévia, medidas e capturas antes/depois](portal-preview-controls/README.md).
