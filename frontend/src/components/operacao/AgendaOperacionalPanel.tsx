@@ -138,12 +138,15 @@ export function AgendaOperacionalPanel() {
       <div className="flex items-center gap-1"><button type="button" className="min-h-11 min-w-11 rounded-lg border border-line" aria-label="Mês anterior" onClick={() => navigate(-1)}>‹</button><button type="button" className="min-h-11 min-w-11 rounded-lg border border-line" aria-label="Próximo mês" onClick={() => navigate(1)}>›</button></div>
       <span className="min-w-0 flex-1 text-base font-semibold" aria-live="polite">{first.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</span>
       </div>
-      <div className="flex w-full items-center justify-between gap-2 sm:w-auto">
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
       <div className="flex rounded-xl border border-line p-1" role="group" aria-label="Visualização">{(['Mês', 'Lista'] as const).map((option) => <button key={option} type="button" aria-pressed={view === option} className={`min-h-11 rounded-lg px-4 text-sm font-medium ${view === option ? 'bg-brand-600 text-white' : 'text-ink-muted'}`} onClick={() => setView(option)}>{option}</button>)}</div>
-      <button type="button" className="touch-btn-primary flex-1 !px-3 text-sm sm:flex-none sm:text-base" onClick={() => openDraft()}>+ Novo agendamento</button>
+      <div className="flex min-w-0 flex-1 gap-2 sm:flex-none">
+        <button type="button" className="touch-btn-secondary min-h-11 min-w-0 flex-1 whitespace-normal !px-2 text-center text-xs leading-tight sm:flex-none sm:px-4 sm:text-sm" onClick={() => { setError(''); setShowArchived(false); setRulesOpen(true); }}>Agendamentos recorrentes ({agendas.length})</button>
+        <button type="button" className="touch-btn-primary min-h-11 min-w-0 flex-1 whitespace-normal !px-2 text-center text-sm leading-tight sm:flex-none sm:px-3 sm:text-base" onClick={() => openDraft()}>+ Novo agendamento</button>
+      </div>
       </div>
     </div>
-    <div className="flex items-center justify-between gap-3 text-sm text-ink-muted"><span>{ocorrencias.length} agendamento{ocorrencias.length === 1 ? '' : 's'} no mês</span><button type="button" className="min-h-11 rounded-lg px-3 underline underline-offset-4" onClick={() => { setError(''); setShowArchived(false); setRulesOpen(true); }}>Repetições ({agendas.length})</button></div>
+    <div className="flex items-center justify-between gap-3 text-sm text-ink-muted"><span>{ocorrencias.length} agendamento{ocorrencias.length === 1 ? '' : 's'} no mês</span></div>
     {notice && !rulesOpen && <p role="status" className="rounded-xl bg-success-soft p-3 text-sm text-ink">{notice}</p>}
     {query.isError && <div role="alert" className="alert-error flex flex-wrap items-center gap-3"><span>Não foi possível carregar a agenda.</span><button type="button" className="touch-btn-secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>Tentar novamente</button></div>}
     {query.isFetching && <p role="status" className="text-sm text-ink-faint">Carregando agendamentos…</p>}

@@ -72,6 +72,19 @@ for (const width of [390, 768]) {
       await page.getByRole('button', { name: 'Lista', exact: true }).click();
       await screenshot(page, width === 390 ? 'artifacts/agenda-mobile-calendar-list.png' : 'artifacts/agenda-tablet-calendar-list.png');
     });
+    test('recurring schedules button is beside the primary action and opens the counted panel', async ({ page }) => {
+      const state = await fixture(page); await open(page);
+      const recurring = page.getByRole('button', { name: 'Agendamentos recorrentes (2)', exact: true });
+      const primary = page.getByRole('button', { name: '+ Novo agendamento', exact: true });
+      await expect(recurring).toBeVisible(); await expect(primary).toBeVisible();
+      await expect(recurring).toHaveClass(/touch-btn-secondary/); await expect(primary).toHaveClass(/touch-btn-primary/);
+      await expect(page.getByRole('button', { name: 'Repetições (2)', exact: true })).toHaveCount(0);
+      const recurringBox = await recurring.boundingBox(); const primaryBox = await primary.boundingBox();
+      expect(Math.abs(recurringBox!.y - primaryBox!.y)).toBeLessThanOrEqual(1); expect(primaryBox!.x).toBeGreaterThanOrEqual(recurringBox!.x + recurringBox!.width - 1);
+      await noOverflow(page); await recurring.click(); const dialog = page.getByRole('dialog');
+      await expect(dialog.getByRole('heading', { name: 'Repetições', exact: true })).toBeVisible(); await expect(dialog.getByText('Sábado sem datas')).toBeVisible(); await expect(dialog.getByText('Repetição inativa')).toBeVisible();
+      expect(state.writes).toHaveLength(0);
+    });
     test('formulário único: erro, rascunho, retry com mesma chave, envio único e repetição com período', async ({ page }) => {
       const state = await fixture(page); await open(page); await page.getByRole('button', { name: '+ Novo agendamento' }).click();
       const dialog = page.getByRole('dialog'); await dialog.getByLabel('Nome', { exact: true }).fill('Novo encontro'); await dialog.getByLabel('Data', { exact: true }).fill('2026-10-10');
@@ -122,13 +135,13 @@ for (const width of [390, 768]) {
       const restores = state.writes.filter((write) => write.url.endsWith('/restaurar')); expect(restores).toHaveLength(2); expect(restores[0].body.requestId).toBe(restores[1].body.requestId); expect(state.nativeDialogs()).toBe(0); await noOverflow(page);
     });
     test('regras existentes/inativas, edição, descarte, cancelamento e interrupção preservam datas', async ({ page }) => {
-      const state = await fixture(page); await open(page); await page.getByRole('button', { name: 'Repetições (2)' }).click();
+      const state = await fixture(page); await open(page); await page.getByRole('button', { name: 'Agendamentos recorrentes (2)' }).click();
       await expect(page.getByRole('dialog').getByText('Ainda sem datas agendadas')).toHaveCount(2);
       await page.getByRole('button', { name: 'Editar repetição Repetição inativa' }).click(); let dialog = page.getByRole('dialog');
       await expect(dialog.getByText(/Repetição inativa:/)).toBeVisible(); await dialog.getByLabel('Nome', { exact: true }).fill('Inativa revisada'); await dialog.getByLabel('Horário de término', { exact: true }).fill('19:00');
       await dialog.getByRole('button', { name: 'Voltar' }).click(); await expect(page.getByRole('heading', { name: 'Descartar alterações?' })).toBeVisible(); await dialog.getByRole('button', { name: 'Continuar editando' }).click(); await expect(dialog.getByLabel('Nome', { exact: true })).toHaveValue('Inativa revisada');
       await dialog.getByRole('button', { name: 'Salvar', exact: true }).click(); await expect(dialog).toHaveCount(0); expect(state.writes.at(-1)!.body).toMatchObject({ agendaId: 'old-inactive', gerarDatas: false }); expect(state.rules[1].ativa).toBe(false);
-      await page.getByRole('button', { name: 'Repetições (2)' }).click(); await page.getByRole('button', { name: 'Editar repetição Sábado sem datas' }).click();
+      await page.getByRole('button', { name: 'Agendamentos recorrentes (2)' }).click(); await page.getByRole('button', { name: 'Editar repetição Sábado sem datas' }).click();
       dialog = page.getByRole('dialog'); await dialog.getByLabel('Primeira data').fill('2026-10-10'); await dialog.getByLabel('Horário de término', { exact: true }).fill('19:00'); await dialog.getByLabel('Última data da repetição').fill('2026-10-24'); await dialog.getByRole('button', { name: 'Salvar', exact: true }).click(); await expect(dialog).toHaveCount(0);
       await page.getByRole('button', { name: 'Lista', exact: true }).click(); await expect(page.getByRole('button', { name: /Sábado sem datas/ })).toHaveCount(3);
       await page.getByRole('button', { name: /Encontro da tarde/ }).click(); dialog = page.getByRole('dialog'); await dialog.getByRole('button', { name: 'Editar', exact: true }).click();
@@ -152,13 +165,13 @@ for (const width of [390, 768]) {
       await dialog.getByRole('button', { name: 'Voltar' }).click(); await dialog.getByRole('button', { name: 'Descartar', exact: true }).click(); await expect(dialog).toHaveCount(0); expect(state.writes).toHaveLength(0); expect(state.nativeDialogs()).toBe(0);
     });
     test('repetições ativas/inativas têm ações claras e arquivamento persistente com consulta secundária', async ({ page }) => {
-      const state = await fixture(page); await open(page); await page.getByRole('button', { name: 'Repetições (2)' }).click(); const dialog = page.getByRole('dialog');
+      const state = await fixture(page); await open(page); await page.getByRole('button', { name: 'Agendamentos recorrentes (2)' }).click(); const dialog = page.getByRole('dialog');
       const active = dialog.locator('li').filter({ hasText: 'Sábado sem datas' }); const inactive = dialog.locator('li').filter({ hasText: 'Repetição inativa' });
       await expect(active.getByRole('button', { name: 'Editar repetição Sábado sem datas' })).toBeVisible(); await expect(active.getByRole('button', { name: 'Interromper repetição', exact: true })).toBeVisible(); await expect(active.getByRole('button', { name: 'Remover da lista' })).toBeVisible();
       await expect(inactive.getByRole('button', { name: 'Editar repetição Repetição inativa' })).toBeVisible(); await expect(inactive.getByRole('button', { name: 'Interromper repetição' })).toHaveCount(0); await expect(inactive.getByText(/total em todos os períodos/)).toBeVisible();
       await inactive.getByRole('button', { name: 'Remover da lista' }).click(); await expect(page.getByRole('heading', { name: 'Remover repetição da lista?' })).toBeVisible(); await expect(dialog.getByText(/datas existentes, comandas, caixa, estoque e auditoria serão mantidos/)).toBeVisible(); await dialog.getByRole('button', { name: 'Voltar' }).click(); expect(state.writes).toHaveLength(0);
       await inactive.getByRole('button', { name: 'Remover da lista' }).click(); await screenshot(page, width === 390 ? 'artifacts/agenda-archive-confirm-mobile.png' : 'artifacts/agenda-archive-confirm-tablet.png'); await dialog.getByRole('button', { name: 'Remover da lista', exact: true }).click(); await expect(inactive).toHaveCount(0); await expect(dialog.getByRole('status')).toContainText('Repetição removida da lista'); expect(state.rules[1].ativa).toBe(false); expect(state.rules[1].archivedAt).toBeTruthy();
-      await dialog.getByRole('button', { name: 'Voltar' }).click(); await page.reload(); await page.getByRole('button', { name: 'Repetições (1)' }).click(); await expect(inactive).toHaveCount(0); await dialog.getByRole('button', { name: 'Ver arquivadas' }).click(); await expect(page.getByRole('heading', { name: 'Repetições arquivadas' })).toBeVisible(); await expect(inactive).toBeVisible(); await expect(inactive.getByText(/Inativa · Arquivada/)).toBeVisible(); await expect(inactive.getByRole('button')).toHaveCount(0);
+      await dialog.getByRole('button', { name: 'Voltar' }).click(); await page.reload(); await page.getByRole('button', { name: 'Agendamentos recorrentes (1)' }).click(); await expect(inactive).toHaveCount(0); await dialog.getByRole('button', { name: 'Ver arquivadas' }).click(); await expect(page.getByRole('heading', { name: 'Repetições arquivadas' })).toBeVisible(); await expect(inactive).toBeVisible(); await expect(inactive.getByText(/Inativa · Arquivada/)).toBeVisible(); await expect(inactive.getByRole('button')).toHaveCount(0);
       await screenshot(page, width === 390 ? 'artifacts/agenda-archived-mobile.png' : 'artifacts/agenda-archived-tablet.png'); await dialog.getByRole('button', { name: 'Voltar à lista' }).click();
       await active.getByRole('button', { name: 'Remover da lista' }).click(); await dialog.getByRole('button', { name: 'Remover da lista', exact: true }).click(); await expect(active).toHaveCount(0); expect(state.rules[0].ativa).toBe(true); expect(state.rows).toHaveLength(3);
       await dialog.getByRole('button', { name: 'Voltar' }).click(); await page.getByRole('button', { name: 'Lista', exact: true }).click(); await expect(page.getByRole('button', { name: /Encontro da tarde/ })).toBeVisible(); expect(state.nativeDialogs()).toBe(0); await noOverflow(page);
