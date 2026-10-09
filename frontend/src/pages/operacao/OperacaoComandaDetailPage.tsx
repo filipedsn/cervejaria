@@ -68,7 +68,6 @@ export function OperacaoComandaDetailPage() {
   const [descontoInput, setDescontoInput] = useState('');
   const [erro, setErro] = useState('');
   const [itensAdicionadosMessage, setItensAdicionadosMessage] = useState('');
-  const [cancelamentoItemMessage, setCancelamentoItemMessage] = useState('');
   const [itemParaCancelar, setItemParaCancelar] = useState<{ id: string; nome: string; quantidade: number } | null>(null);
   const [pedidoWhatsAppAbertoId, setPedidoWhatsAppAbertoId] = useState<string | null>(() =>
     window.sessionStorage.getItem(avisoWhatsAppStorageKey),
@@ -311,18 +310,12 @@ export function OperacaoComandaDetailPage() {
   const removerItem = useMutation({
     mutationFn: ({ itemId, quantidade }: { itemId: string; quantidade?: number }) =>
       api.delete<ComandaOperacao>(`/api/operacao/comandas/${id}/itens/${itemId}`, quantidade ? { quantidade } : undefined),
-    onSuccess: (atualizada, { itemId }) => {
+    onSuccess: (atualizada) => {
       queryClient.setQueryData(['operacao-comanda', id], atualizada);
       queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
       invalidarEstoque();
       setItemParaCancelar(null);
       setErro('');
-      const itemExigeCozinha = comanda?.pedidos.some((pedido) =>
-        pedido.itens.some((item) => item.id === itemId && item.exigePreparo),
-      );
-      setCancelamentoItemMessage(itemExigeCozinha
-        ? 'Cancelamento solicitado. O item ficará destacado na cozinha até a confirmação.'
-        : 'Item removido da comanda.');
     },
     onError: (err) => {
       invalidarEstoque();
@@ -521,11 +514,6 @@ export function OperacaoComandaDetailPage() {
       </div>
 
       {erro && !showAddItem && !showPayment && <div className="alert-error">{erro}</div>}
-      {cancelamentoItemMessage && (!cancelamentoItemMessage.startsWith('Cancelamento solicitado') ||
-        comanda?.pedidos.some((pedido) => pedido.itens.some((item) => item.cancelamentoPendenteEm))) && (
-        <div className="alert-success">{cancelamentoItemMessage}</div>
-      )}
-
       <div className="space-y-2">
         <h3 className="section-label">Consumo da comanda</h3>
         {aberta && podeOperarComanda && (

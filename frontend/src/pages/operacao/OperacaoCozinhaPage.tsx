@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
@@ -11,12 +11,16 @@ import { useOperacaoCozinha } from '../../hooks/useOperacaoCozinha';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
 import { rotuloComanda, type PedidoCozinha } from '../../lib/operacao';
+import { ApiError } from '../../lib/api';
 
 export function OperacaoCozinhaPage() {
   const [verEntregues, setVerEntregues] = useState(false);
   const [erroLocal, setErroLocal] = useState('');
-  const [sucessoLocal, setSucessoLocal] = useState('');
+  const [erroPedidoCancelamento, setErroPedidoCancelamento] = useState<{ pedidoId: string; mensagem: string } | null>(null);
+  const [erroItemCancelamento, setErroItemCancelamento] = useState<{ itemId: string; mensagem: string } | null>(null);
+  const [avisoSincronizacao, setAvisoSincronizacao] = useState('');
   const [pedidoParaCancelar, setPedidoParaCancelar] = useState<PedidoCozinha | null>(null);
+  const confirmingItems = useRef(new Set<string>());
   const { cervejaria, canPermission } = useAuth();
   const podeAvancarPreparo = canPermission('kitchen.operate');
   const podeCancelarPedido = canPermission('kitchen.cancel') && canPermission('sale.refund');
@@ -24,29 +28,48 @@ export function OperacaoCozinhaPage() {
   const { contexto } = useOperacaoContexto();
   const avisoNaCozinha = contexto.whatsappPedidoProntoEnabled && contexto.whatsappPedidoProntoNaCozinha;
 
-  const { naFila, entregues, alerta, mudarStatus, confirmarCancelamentoItem, isLoading, erroMutation, erroConfirmarCancelamentoItem } = useOperacaoCozinha();
+  const { naFila, entregues, alerta, mudarStatus, confirmarCancelamentoItem, isLoading, erroMutation, refetch } = useOperacaoCozinha();
 
   if (isLoading) return <Loading />;
 
   const lista = verEntregues ? entregues : naFila;
-  const erro = erroLocal || erroMutation || erroConfirmarCancelamentoItem;
+  const cancelamentoStatus = mudarStatus.variables?.status === 'CANCELAMENTO_PENDENTE' || mudarStatus.variables?.status === 'CANCELADO';
+  const erro = erroLocal || (!cancelamentoStatus ? erroMutation : null);
+  const itemComErro = naFila.flatMap((pedido) => pedido.itens).find((item) => item.id === erroItemCancelamento?.itemId);
+  const pedidoComErro = naFila.find((pedido) => pedido.id === erroPedidoCancelamento?.pedidoId);
 
   const confirmarCancelamento = () => {
     if (!pedidoParaCancelar || mudarStatus.isPending) return;
-    setErroLocal('');
-    setSucessoLocal('');
+    setErroPedidoCancelamento(null);
     mudarStatus.mutate(
       { id: pedidoParaCancelar.id, status: 'CANCELAMENTO_PENDENTE' },
       {
-        onSuccess: () => {
-          setPedidoParaCancelar(null);
-          setSucessoLocal('Cancelamento solicitado. O pedido permanecerá destacado até a confirmação da cozinha.');
-        },
-        onError: (error) => {
-          setErroLocal(error instanceof Error ? error.message : 'Não foi possível cancelar o pedido');
-        },
+        onSuccess: () => setPedidoParaCancelar(null),
+        onError: (error) => setErroPedidoCancelamento({ pedidoId: pedidoParaCancelar.id, mensagem: error instanceof Error ? error.message : 'Não foi possível solicitar o cancelamento.' }),
       },
     );
+  };
+
+  const confirmarCancelamentoDoItem = async (pedidoId: string, itemId: string) => {
+    if (confirmingItems.current.has(itemId)) return;
+    confirmingItems.current.add(itemId);
+    setErroItemCancelamento(null);
+    setAvisoSincronizacao('');
+    try {
+      await confirmarCancelamentoItem.mutateAsync({ pedidoId, itemId });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409 && error.message === 'Este item não possui cancelamento pendente') {
+        const atualizado = await refetch();
+        const item = atualizado.data?.find((pedido) => pedido.id === pedidoId)?.itens.find((linha) => linha.id === itemId);
+        if (!item?.cancelamentoPendente) {
+          setAvisoSincronizacao('O cancelamento já foi confirmado em outra sessão. A fila foi sincronizada.');
+          return;
+        }
+      }
+      setErroItemCancelamento({ itemId, mensagem: error instanceof Error ? error.message : 'Não foi possível confirmar o cancelamento.' });
+    } finally {
+      confirmingItems.current.delete(itemId);
+    }
   };
 
   return (
@@ -106,7 +129,9 @@ export function OperacaoCozinhaPage() {
       )}
 
       {erro && <div className="alert-error">{erro}</div>}
-      {sucessoLocal && <div className="alert-success">{sucessoLocal}</div>}
+      {erroPedidoCancelamento && pedidoParaCancelar?.id !== erroPedidoCancelamento.pedidoId && <div role="alert" aria-live="assertive" className="fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-red-500/40 bg-surface px-4 py-3 text-sm font-semibold text-red-600 shadow-xl">Falha ao cancelar o pedido {pedidoComErro?.numero ?? ''}: {erroPedidoCancelamento.mensagem}</div>}
+      {erroItemCancelamento && <div role="alert" aria-live="assertive" className="fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-red-500/40 bg-surface px-4 py-3 text-sm font-semibold text-red-600 shadow-xl">Falha ao confirmar cancelamento de {itemComErro?.nome ?? 'item'}: {erroItemCancelamento.mensagem}</div>}
+      {avisoSincronizacao && <div role="status" aria-live="polite" className="fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-emerald-500/40 bg-surface px-4 py-3 text-sm font-semibold text-emerald-600 shadow-xl">{avisoSincronizacao}</div>}
       {!podeAvancarPreparo && <p className="rounded-lg border border-line bg-surface-lighter px-3 py-2 text-sm text-ink-muted">Você pode consultar a fila, mas precisa da permissão “Avançar preparo e entrega” para alterar pedidos.</p>}
 
       {lista.length === 0 && (
@@ -126,7 +151,7 @@ export function OperacaoCozinhaPage() {
           disabled={mudarStatus.isPending || confirmarCancelamentoItem.isPending}
           onAvancar={podeAvancarPreparo ? (status) => {
             setErroLocal('');
-            setSucessoLocal('');
+            setErroPedidoCancelamento(null);
             mudarStatus.mutate(
               { id: pedido.id, status },
               { onError: () => setErroLocal('Não foi possível atualizar o pedido') },
@@ -134,7 +159,7 @@ export function OperacaoCozinhaPage() {
           } : undefined}
           onVoltar={podeAvancarPreparo ? (status) => {
             setErroLocal('');
-            setSucessoLocal('');
+            setErroPedidoCancelamento(null);
             mudarStatus.mutate(
               { id: pedido.id, status },
               { onError: () => setErroLocal('Não foi possível atualizar o pedido') },
@@ -143,26 +168,22 @@ export function OperacaoCozinhaPage() {
           podeCancelar={podeCancelarPedido}
           onCancelar={() => {
             setErroLocal('');
-            setSucessoLocal('');
+            setErroPedidoCancelamento(null);
             setPedidoParaCancelar(pedido);
           }}
           onConfirmarCancelamento={podeCancelarPedido ? () => {
             setErroLocal('');
-            setSucessoLocal('');
+            setErroPedidoCancelamento(null);
             mudarStatus.mutate(
               { id: pedido.id, status: 'CANCELADO' },
               {
-                onSuccess: () => setSucessoLocal('Cancelamento confirmado e pedido removido da fila.'),
-                onError: () => setErroLocal('Não foi possível confirmar o cancelamento.'),
+                onError: (error) => setErroPedidoCancelamento({ pedidoId: pedido.id, mensagem: error instanceof Error ? error.message : 'Não foi possível confirmar o cancelamento.' }),
               },
             );
           } : undefined}
           onConfirmarCancelamentoItem={podeConfirmarCancelamento ? (itemId) => {
             setErroLocal('');
-            confirmarCancelamentoItem.mutate(
-              { pedidoId: pedido.id, itemId },
-              { onError: () => setErroLocal('Não foi possível confirmar o cancelamento do item.') },
-            );
+            void confirmarCancelamentoDoItem(pedido.id, itemId);
           } : undefined}
           onAvisarCliente={avisoNaCozinha ? () => {
             const cliente = pedido.comanda.cliente;
@@ -210,6 +231,7 @@ export function OperacaoCozinhaPage() {
       >
         {pedidoParaCancelar && (
           <div className="space-y-3">
+            {erroPedidoCancelamento?.pedidoId === pedidoParaCancelar.id && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm font-semibold text-red-500">{erroPedidoCancelamento.mensagem}</p>}
             <p>
               Você está cancelando o pedido da {rotuloComanda(pedidoParaCancelar.comanda)} (senha{' '}
               {pedidoParaCancelar.numero}), atualmente em{' '}

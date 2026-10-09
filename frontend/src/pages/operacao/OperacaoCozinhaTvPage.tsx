@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
@@ -13,6 +13,7 @@ import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { useCozinhaDisplaySettings } from '../../hooks/useCozinhaDisplaySettings';
 import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
 import type { PedidoCozinha } from '../../lib/operacao';
+import { ApiError } from '../../lib/api';
 
 type ConfirmacaoCancelamento =
   | { tipo: 'solicitar-pedido'; pedido: PedidoCozinha }
@@ -21,6 +22,10 @@ type ConfirmacaoCancelamento =
 
 export function OperacaoCozinhaTvPage() {
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
+  const [erroCancelamentoAcao, setErroCancelamentoAcao] = useState('');
+  const [erroItemCancelamento, setErroItemCancelamento] = useState<{ itemId: string; mensagem: string } | null>(null);
+  const [avisoSincronizacao, setAvisoSincronizacao] = useState('');
+  const confirmingItems = useRef(new Set<string>());
   const [confirmacaoCancelamento, setConfirmacaoCancelamento] = useState<ConfirmacaoCancelamento | null>(null);
   const [itemParaCancelar, setItemParaCancelar] = useState<{
     comandaId: string;
@@ -52,8 +57,33 @@ export function OperacaoCozinhaTvPage() {
     isLoading,
     erroMutation,
     erroItemMutation,
-    erroConfirmarCancelamentoItem,
+    refetch,
   } = useOperacaoCozinha();
+
+  const erroStatusNormal = mudarStatus.variables?.status !== 'CANCELAMENTO_PENDENTE' && mudarStatus.variables?.status !== 'CANCELADO' ? erroMutation : null;
+  const itemComErro = naFila.flatMap((pedido) => pedido.itens).find((item) => item.id === erroItemCancelamento?.itemId);
+
+  const confirmarCancelamentoDoItem = async (pedidoId: string, itemId: string) => {
+    if (confirmingItems.current.has(itemId)) return;
+    confirmingItems.current.add(itemId);
+    setErroItemCancelamento(null);
+    setAvisoSincronizacao('');
+    try {
+      await confirmarCancelamentoItem.mutateAsync({ pedidoId, itemId });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409 && error.message === 'Este item não possui cancelamento pendente') {
+        const atualizado = await refetch();
+        const item = atualizado.data?.find((pedido) => pedido.id === pedidoId)?.itens.find((linha) => linha.id === itemId);
+        if (!item?.cancelamentoPendente) {
+          setAvisoSincronizacao('O cancelamento já foi confirmado em outra sessão. A fila foi sincronizada.');
+          return;
+        }
+      }
+      setErroItemCancelamento({ itemId, mensagem: error instanceof Error ? error.message : 'Não foi possível confirmar o cancelamento.' });
+    } finally {
+      confirmingItems.current.delete(itemId);
+    }
+  };
 
   const syncFullscreen = useCallback(() => {
     setIsNativeFullscreen(Boolean(document.fullscreenElement));
@@ -61,24 +91,25 @@ export function OperacaoCozinhaTvPage() {
 
   const confirmarCancelamento = () => {
     if (!confirmacaoCancelamento) return;
+    setErroCancelamentoAcao('');
     const confirmacao = confirmacaoCancelamento;
     if (confirmacao.tipo === 'solicitar-pedido') {
       mudarStatus.mutate(
         { id: confirmacao.pedido.id, status: 'CANCELAMENTO_PENDENTE' },
-        { onSuccess: () => setConfirmacaoCancelamento(null) },
+        { onSuccess: () => setConfirmacaoCancelamento(null), onError: (error) => setErroCancelamentoAcao(error instanceof Error ? error.message : 'Não foi possível solicitar o cancelamento.') },
       );
       return;
     }
     if (confirmacao.tipo === 'confirmar-pedido') {
       mudarStatus.mutate(
         { id: confirmacao.pedido.id, status: 'CANCELADO' },
-        { onSuccess: () => setConfirmacaoCancelamento(null) },
+        { onSuccess: () => setConfirmacaoCancelamento(null), onError: (error) => setErroCancelamentoAcao(error instanceof Error ? error.message : 'Não foi possível confirmar o cancelamento.') },
       );
       return;
     }
     removerItem.mutate(
       { comandaId: confirmacao.pedido.comanda.id, itemId: confirmacao.itemId },
-      { onSuccess: () => setConfirmacaoCancelamento(null) },
+      { onSuccess: () => setConfirmacaoCancelamento(null), onError: (error) => setErroCancelamentoAcao(error instanceof Error ? error.message : 'Não foi possível cancelar o item.') },
     );
   };
 
@@ -178,9 +209,9 @@ export function OperacaoCozinhaTvPage() {
         <p className="cozinha-tv-hint">Toque na campainha para liberar o som.</p>
       )}
 
-      {(erroMutation || erroItemMutation || erroConfirmarCancelamentoItem) && (
-        <div className="cozinha-tv-erro">{erroMutation || erroItemMutation || erroConfirmarCancelamentoItem}</div>
-      )}
+      {erroStatusNormal && <div className="cozinha-tv-erro">{erroStatusNormal}</div>}
+      {erroItemCancelamento && <div role="alert" aria-live="assertive" className="fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-red-500/40 bg-surface px-4 py-3 text-sm font-semibold text-red-600 shadow-xl">Falha ao confirmar cancelamento de {itemComErro?.nome ?? 'item'}: {erroItemCancelamento.mensagem}</div>}
+      {avisoSincronizacao && <div role="status" aria-live="polite" className="fixed right-4 top-4 z-[100] max-w-sm rounded-xl border border-emerald-500/40 bg-surface px-4 py-3 text-sm font-semibold text-emerald-600 shadow-xl">{avisoSincronizacao}</div>}
 
       {naFila.length === 0 ? (
         <div className="cozinha-tv-empty">
@@ -217,7 +248,7 @@ export function OperacaoCozinhaTvPage() {
                   setConfirmacaoCancelamento({ tipo: 'cancelar-item', pedido, itemId, nome: item.nome });
                 }
               }}
-              onConfirmarCancelamentoItem={podeConfirmarCancelamento ? (itemId) => confirmarCancelamentoItem.mutate({ pedidoId: pedido.id, itemId }) : undefined}
+              onConfirmarCancelamentoItem={podeConfirmarCancelamento ? (itemId) => void confirmarCancelamentoDoItem(pedido.id, itemId) : undefined}
               onAvisarCliente={avisoNaCozinha ? () => {
                 const cliente = pedido.comanda.cliente;
                 if (!cliente?.telefone) return;
@@ -301,6 +332,7 @@ export function OperacaoCozinhaTvPage() {
         {confirmacaoCancelamento?.tipo === 'cancelar-item' && (
           <p className="text-sm text-ink">Cancelar 1× {confirmacaoCancelamento.nome}?</p>
         )}
+        {erroCancelamentoAcao && <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm font-semibold text-red-500">{erroCancelamentoAcao}</p>}
       </Modal>
     </div>
   );
