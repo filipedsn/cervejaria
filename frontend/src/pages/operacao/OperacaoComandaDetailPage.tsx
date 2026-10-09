@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../../lib/api';
@@ -72,6 +72,7 @@ export function OperacaoComandaDetailPage() {
   const [pedidoWhatsAppAbertoId, setPedidoWhatsAppAbertoId] = useState<string | null>(() =>
     window.sessionStorage.getItem(avisoWhatsAppStorageKey),
   );
+  const removalRequests = useRef(new Set<string>());
   const poll30 = usePollInterval(30_000);
   const poll15 = usePollInterval(15_000);
 
@@ -322,6 +323,20 @@ export function OperacaoComandaDetailPage() {
       setErro(err instanceof ApiError ? err.message : 'Não foi possível remover o item');
     },
   });
+
+  const enviarRemocaoItem = (params: { itemId: string; quantidade?: number }) => {
+    if (removalRequests.current.has(params.itemId)) return;
+    removalRequests.current.add(params.itemId);
+    removerItem.mutate(params, {
+      onSettled: (_data, error) => {
+        if (error) {
+          removalRequests.current.delete(params.itemId);
+          return;
+        }
+        window.setTimeout(() => removalRequests.current.delete(params.itemId), 400);
+      },
+    });
+  };
 
   const alterarQuantidadeItem = useMutation({
     mutationFn: ({ itemId, quantidade }: { itemId: string; quantidade: number }) =>
@@ -633,7 +648,7 @@ export function OperacaoComandaDetailPage() {
                         disabled={itemEmEdicao || !podeCancelarItem}
                         onClick={() => {
                           if (item.quantidade <= 1) {
-                            removerItem.mutate({ itemId: item.id });
+                            enviarRemocaoItem({ itemId: item.id });
                             return;
                           }
                           alterarQuantidadeItem.mutate({
@@ -686,7 +701,7 @@ export function OperacaoComandaDetailPage() {
                           setErro('');
                           setItemParaCancelar({ id: item.id, nome: item.nome, quantidade: item.quantidade });
                         } else {
-                          removerItem.mutate({ itemId: item.id });
+                          enviarRemocaoItem({ itemId: item.id });
                         }
                       }}
                       disabled={itemEmEdicao}
@@ -1000,7 +1015,7 @@ export function OperacaoComandaDetailPage() {
         onClose={() => setItemParaCancelar(null)}
         onConfirmar={(quantidade) => {
           if (!itemParaCancelar) return;
-          removerItem.mutate({ itemId: itemParaCancelar.id, quantidade });
+          enviarRemocaoItem({ itemId: itemParaCancelar.id, quantidade });
         }}
       />
     </div>

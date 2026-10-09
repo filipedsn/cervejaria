@@ -2,7 +2,7 @@
 
 ## Comportamento
 
-A comanda mostra o estado do cancelamento no próprio item. Ao solicitar o cancelamento de item que já foi enviado à cozinha, o selo `Cancelamento solicitado` continua visível até a confirmação da cozinha; a tela não mantém uma faixa de sucesso separada.
+A comanda mostra o estado do cancelamento no próprio item. Ao solicitar o cancelamento de item que já foi enviado à cozinha, o selo `Cancelamento solicitado` continua visível até a confirmação da cozinha; a tela não mantém uma faixa de sucesso separada. Solicitações e confirmações têm uma guarda síncrona contra duplo toque.
 
 Na cozinha, erros de confirmação de item e avisos de sincronização aparecem como notificações compactas sobre a tela, identificando o item ou a sessão concorrente. Essas notificações não ocupam espaço no fluxo da grade. Erros de preparo continuam no aviso geral existente. Erros das ações de cancelar pedido ficam na confirmação ou na notificação associada ao pedido.
 
@@ -14,4 +14,4 @@ O backend segue responsável pelas permissões e pela validação. A solicitaç�
 
 ## Verificação focada
 
-`e2e/current-model/kitchen-cancellation-feedback.spec.ts` cobre a retirada da faixa na comanda, a confirmação em outra sessão, erro real sem deslocamento da grade e duplo toque com uma única gravação simulada. Esses testes usam respostas de API simuladas e não criam pedidos nem executam efeitos operacionais reais.
+`e2e/current-model/kitchen-cancellation-feedback.spec.ts` cobre a retirada da faixa na comanda, a confirmação em outra sessão, erro real sem deslocamento da grade e duplo toque com uma única gravação/estorno simulados. Esses testes usam respostas de API simuladas e não criam pedidos nem executam efeitos operacionais reais.

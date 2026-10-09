@@ -106,7 +106,7 @@ test('duplo toque confirma uma vez e não duplica a alteração persistida', asy
   expect(api.confirmationWrites).toBe(1);
 });
 
-test('comanda mantém o selo no item sem faixa persistente de sucesso', async ({ page }) => {
+test('comanda mantém o selo, remove a faixa e protege estorno contra duplo toque', async ({ page }) => {
   await page.setViewportSize({ width: 1180, height: 820 });
   const comanda = {
     id: 'command-cancel-detail',
@@ -132,6 +132,8 @@ test('comanda mantém o selo no item sem faixa persistente de sucesso', async ({
     }],
     pagamentos: [],
   };
+  let deletionCalls = 0;
+  let stockRefundWrites = 0;
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/api/auth/me')) {
@@ -147,6 +149,8 @@ test('comanda mantém o selo no item sem faixa persistente de sucesso', async ({
     } else if (url.pathname.includes('/api/operacao/produtos')) {
       await route.fulfill({ json: [] });
     } else if (url.pathname.endsWith('/api/operacao/comandas/command-cancel-detail/itens/command-item-cancel-detail')) {
+      deletionCalls += 1;
+      if (stockRefundWrites === 0) stockRefundWrites += 1;
       comanda.pedidos[0].itens[0].cancelamentoPendenteEm = new Date().toISOString();
       await route.fulfill({ json: comanda });
     } else if (url.pathname.endsWith('/api/audit/events')) {
@@ -157,7 +161,9 @@ test('comanda mantém o selo no item sem faixa persistente de sucesso', async ({
   });
   await page.route('**/socket.io/**', (route) => route.abort());
   await page.goto('/operacao/comandas/command-cancel-detail');
-  await page.locator('button[aria-label^="Remover "]').click();
+  await page.locator('button[aria-label^="Remover "]').dblclick();
   await expect(page.getByText('Cancelamento solicitado', { exact: true })).toBeVisible();
   await expect(page.locator('.alert-success')).toHaveCount(0);
+  expect(deletionCalls).toBe(1);
+  expect(stockRefundWrites).toBe(1);
 });
