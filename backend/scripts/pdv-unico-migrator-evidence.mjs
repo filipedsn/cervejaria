@@ -9,6 +9,8 @@ export function verifyMigratorRunIdentity(actual, expected, tenantIds) {
   const tenantId = tenantRefs[0] ?? null;
   const scope = scopeRefs[0] ?? null;
   if (!tenantId || !tenantIds.includes(tenantId)) return { status: 'BLOCKED', code: 'MIGRATOR_RUN_OR_TENANT_DIVERGENCE', detail: { tenantId } };
-  if (tenantId !== expected.tenantId || scope !== expected.scope) return { status: 'BLOCKED', code: 'MIGRATOR_SCOPE_OR_TENANT_DIVERGENCE', detail: { tenantId, scope, expected } };
+  const scopeMatches = scope === expected.scope || expected.scope === 'PDV_TAP_OWNERSHIP_V2'
+    && pointRefs.length > 0 && new Set(pointRefs).size === 1 && scope === `${expected.scope}:${expected.tenantId}:${pointRefs[0]}`;
+  if (tenantId !== expected.tenantId || !scopeMatches) return { status: 'BLOCKED', code: 'MIGRATOR_SCOPE_OR_TENANT_DIVERGENCE', detail: { tenantId, scope, expected } };
   return { status: 'PASS', runId: actual.id, tenantId, scope, pointId: pointRefs[0] ?? null };
 }
