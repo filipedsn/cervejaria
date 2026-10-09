@@ -24,4 +24,4 @@ npm run qa:kitchen-cancellation-disposable
 - `npm run build --prefix frontend`: passou. O Vite mostrou somente os avisos já existentes de chunk grande e import misto de `auth-session.ts`.
 - `npm run build --prefix backend`: passou.
 - O teste transacional usou PostgreSQL 17 em tmpfs, porta local `55439`; contêiner destruído ao final. Não houve acesso a DEV ou PROD.
-- SHA testado e push serão registrados ao finalizar o commit da prova.
+- SHA testado: `e3a3fce5379ee417cbf2e653bbea131db94db33e`. O commit contém somente o runner/teste descartável, sua entrada npm, a regressão de interface e a documentação inicial; nenhum código operacional foi alterado. Push para `origin/main` confirmado. Esta atualização registra o push.
