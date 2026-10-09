@@ -4,7 +4,7 @@ import { prisma } from '../../lib/prisma.js';
 import { canonicalPdvQaActivationEnabled, readCanonicalPdvOperationalSettingsIfEnabled } from '../../lib/canonical-pdv-operational-config.js';
 import { requirePermissaoOuDono } from '../../lib/operacao/permissoes.js';
 import { getAuthUser } from '../../types/auth.js';
-import { archiveAgenda, assertNoAgendaConflict, cancelOccurrence, generateAgendaDates, lockAgendaPdv, lockAgendaResource, occurrenceBlock, saveAgendamento, stopAgenda, validateAgendaInterval } from '../../lib/operacao/agenda.js';
+import { archiveAgenda, assertNoAgendaConflict, cancelOccurrence, generateAgendaDates, lockAgendaPdv, lockAgendaResource, occurrenceBlock, occurrenceRestoreBlock, restoreOccurrence, saveAgendamento, stopAgenda, validateAgendaInterval } from '../../lib/operacao/agenda.js';
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use uma data no formato AAAA-MM-DD');
 const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -25,6 +25,7 @@ const occurrenceCreateSchema = z.object({
   local: z.string().trim().max(160).nullable().optional(),
 }).strict();
 const generationSchema = z.object({ inicio: dateSchema, fim: dateSchema }).strict();
+const restorationSchema = z.object({ requestId: z.string().uuid(), data: dateSchema.optional(), horaInicio: timeSchema.nullable().optional(), horaFim: timeSchema.nullable().optional() }).strict();
 const schedulingSchema = occurrenceCreateSchema.extend({
   horaInicio: timeSchema.optional(), horaFim: timeSchema.nullable().optional(),
   requestId: z.string().uuid(), repetirSemanalmente: z.boolean(),
@@ -60,7 +61,7 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
       orderBy: [{ data: 'asc' }, { horaInicio: 'asc' }, { nome: 'asc' }],
     });
     const agendas = await prisma.agendaOperacional.findMany({ where: { cervejariaId: request.operacao.cervejariaId, pontoVendaId, archivedAt: null }, include: { _count: { select: { ocorrencias: true } } }, orderBy: [{ diaSemana: 'asc' }, { nome: 'asc' }] });
-    return { agendas, ocorrencias: ocorrencias.map((o) => ({ ...o, data: o.data.toISOString().slice(0, 10), bloqueio: occurrenceBlock(o), podeEditar: !occurrenceBlock(o), podeCancelar: !occurrenceBlock(o) })) };
+    return { agendas, ocorrencias: ocorrencias.map((o) => ({ ...o, data: o.data.toISOString().slice(0, 10), bloqueio: occurrenceBlock(o), podeEditar: !occurrenceBlock(o), podeCancelar: !occurrenceBlock(o), podeRestaurar: !occurrenceRestoreBlock(o), bloqueioRestauracao: occurrenceRestoreBlock(o) })) };
   });
 
   app.get('/agendas/arquivadas', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
@@ -97,6 +98,14 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
     const cervejariaId = request.operacao.cervejariaId; const pontoVendaId = await canonicalPointId(cervejariaId);
     if (!pontoVendaId) return reply.status(409).send({ error: 'PDV canônico indisponível' });
     return prisma.$transaction((tx) => cancelOccurrence(tx, { cervejariaId, pontoVendaId, usuarioId: getAuthUser(request).sub }, id), { timeout: 15000 });
+  });
+  app.post('/ocorrencias/:id/restaurar', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
+    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ error: 'Agenda operacional indisponível nesta instalação' });
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+    const body = restorationSchema.parse(request.body);
+    const cervejariaId = request.operacao.cervejariaId; const pontoVendaId = await canonicalPointId(cervejariaId);
+    if (!pontoVendaId) return reply.status(409).send({ error: 'PDV canônico indisponível' });
+    return prisma.$transaction((tx) => restoreOccurrence(tx, { cervejariaId, pontoVendaId, usuarioId: getAuthUser(request).sub }, id, body), { timeout: 15000 });
   });
   app.post('/agendas/:id/interromper', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
     if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ error: 'Agenda operacional indisponível nesta instalação' });

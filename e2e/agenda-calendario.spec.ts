@@ -12,12 +12,12 @@ async function fixture(page: Page) {
     { id: 'old-inactive', nome: 'Repetição inativa', diaSemana: 6, horaInicio: '17:00', horaFim: null, local: null, ativa: false, archivedAt: null as string | null, _count: { ocorrencias: 0 } },
   ];
   const rows = [
-    { id: 'one', agendaId: null as string | null, nome: 'Encontro da tarde', data: '2026-10-10', horaInicio: '15:00', horaFim: null, local: 'Salão', status: 'PROGRAMADA', podeEditar: true, podeCancelar: true, bloqueio: null as string | null },
+    { id: 'one', agendaId: null as string | null, nome: 'Encontro da tarde', data: '2026-10-10', horaInicio: '15:00', horaFim: '16:00', local: 'Salão', status: 'PROGRAMADA', podeEditar: true, podeCancelar: true, bloqueio: null as string | null },
     { id: 'two', agendaId: null as string | null, nome: 'Operação encerrada', data: '2026-10-10', horaInicio: '18:00', horaFim: null, local: null, status: 'FECHADA', podeEditar: false, podeCancelar: false, bloqueio: 'Este agendamento possui histórico operacional ou de caixa. Seus dados e status são preservados.' },
     { id: 'three', agendaId: null as string | null, nome: 'Domingo no jardim', data: '2026-10-11', horaInicio: '11:00', horaFim: null, local: null, status: 'ABERTA', podeEditar: false, podeCancelar: false, bloqueio: 'Somente agendamentos programados e sem histórico operacional podem ser editados ou cancelados.' },
   ];
   const writes: { url: string; body: any }[] = []; const reads: string[] = []; const receipts = new Set<string>();
-  let failures = 0; let conflicts = 0; let hold: Promise<void> | null = null;
+  let failures = 0; let conflicts = 0; let restoreConflicts = 0; let hold: Promise<void> | null = null;
   await page.route('**/api/operacao/agenda/**', async (route) => {
     const request = route.request(); const url = new URL(request.url());
     if (request.method() === 'GET') { reads.push(url.search); if (url.pathname.endsWith('/agendas/arquivadas')) return route.fulfill({ json: { agendas: rules.filter((rule) => rule.archivedAt) } }); const start = url.searchParams.get('inicio')!; const end = url.searchParams.get('fim')!; return route.fulfill({ json: { agendas: rules.filter((rule) => !rule.archivedAt), ocorrencias: rows.filter((row) => row.data >= start && row.data <= end) } }); }
@@ -37,12 +37,13 @@ async function fixture(page: Page) {
       else rows.push({ ...rows[0], id: `new-one-${writes.length}`, nome: body.nome, data: body.data, horaInicio: body.horaInicio, agendaId: null });
       return route.fulfill({ json: { criadas: 1 } });
     }
-    if (url.pathname.endsWith('/cancelar')) { const id = url.pathname.split('/').at(-2)!; Object.assign(rows.find((row) => row.id === id)!, { status: 'CANCELADA', podeCancelar: false, podeEditar: false }); return route.fulfill({ json: { status: 'CANCELADA' } }); }
+    if (url.pathname.endsWith('/cancelar')) { const id = url.pathname.split('/').at(-2)!; Object.assign(rows.find((row) => row.id === id)!, { status: 'CANCELADA', podeCancelar: false, podeEditar: false, podeRestaurar: true }); return route.fulfill({ json: { status: 'CANCELADA' } }); }
+    if (url.pathname.endsWith('/restaurar')) { const id = url.pathname.split('/').at(-2)!; if (restoreConflicts > 0) { restoreConflicts--; return route.fulfill({ status: 409, json: { error: 'Conflito com Igarapé em 10/10/2026, das 18:00 Ã s 20:00.', code: 'AGENDA_HORARIO_CONFLITO', details: { conflito: { nome: 'Igarapé', data: '2026-10-10', horaInicio: '18:00', horaFim: '20:00' } } } }); } const row = rows.find((item) => item.id === id)!; Object.assign(row, { status: 'PROGRAMADA', data: body.data, horaInicio: body.horaInicio, horaFim: body.horaFim, podeEditar: true, podeCancelar: true, podeRestaurar: false }); return route.fulfill({ json: { id, status: 'PROGRAMADA', data: body.data, horaInicio: body.horaInicio, horaFim: body.horaFim } }); }
     if (url.pathname.endsWith('/interromper')) { const id = url.pathname.split('/').at(-2)!; rules.find((rule) => rule.id === id)!.ativa = false; return route.fulfill({ json: { ativa: false } }); }
     if (url.pathname.endsWith('/arquivar')) { const id = url.pathname.split('/').at(-2)!; rules.find((rule) => rule.id === id)!.archivedAt = '2026-10-09T15:00:00Z'; return route.fulfill({ json: { arquivada: true } }); }
     return route.fulfill({ status: 404, json: { error: 'Unexpected write endpoint' } });
   });
-  return { writes, reads, rows, rules, nativeDialogs: () => nativeDialogs, failNext: () => { failures++; }, conflictNext: () => { conflicts++; }, hold: (promise: Promise<void> | null) => { hold = promise; } };
+  return { writes, reads, rows, rules, nativeDialogs: () => nativeDialogs, failNext: () => { failures++; }, conflictNext: () => { conflicts++; }, restoreConflictNext: () => { restoreConflicts++; }, hold: (promise: Promise<void> | null) => { hold = promise; } };
 }
 async function open(page: Page) { await page.goto('/operacao/agenda'); await expect(page.getByRole('heading', { name: 'Agenda', exact: true })).toBeVisible(); }
 async function noOverflow(page: Page) { expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); }
@@ -102,6 +103,23 @@ for (const width of [390, 768]) {
       await expect(dialog.getByRole('alert')).toHaveText('Conflito com Igarapé em 10/10/2026, das 18:00 às 20:00.'); await expect(dialog.getByLabel('Horário de início', { exact: true })).toHaveValue('19:00'); await expect(dialog.getByLabel('Horário de término', { exact: true })).toHaveValue('21:00');
       await screenshot(page, width === 390 ? 'artifacts/agenda-conflict-mobile.png' : 'artifacts/agenda-conflict-tablet.png');
       await dialog.getByLabel('Horário de início', { exact: true }).fill('20:00'); await dialog.getByLabel('Horário de término', { exact: true }).fill('22:00'); await dialog.getByRole('button', { name: 'Salvar', exact: true }).click(); await expect(dialog).toHaveCount(0); expect(state.writes).toHaveLength(2); await noOverflow(page);
+    });
+    test('restore same occurrence after visual confirmation and preserve fields after conflict', async ({ page }) => {
+      const state = await fixture(page); await open(page); await page.getByRole('button', { name: 'Lista', exact: true }).click();
+      await page.getByRole('button', { name: /Encontro da tarde/ }).click(); let dialog = page.getByRole('dialog');
+      await dialog.getByRole('button', { name: 'Cancelar agendamento', exact: true }).click(); await dialog.getByRole('button', { name: 'Cancelar agendamento', exact: true }).click();
+      await expect(dialog).toHaveCount(0); await page.getByRole('button', { name: /Encontro da tarde/ }).click(); dialog = page.getByRole('dialog');
+      await expect(dialog.getByRole('button', { name: 'Restaurar agendamento' })).toBeEnabled(); await dialog.getByRole('button', { name: 'Restaurar agendamento' }).click();
+      await expect(page.getByRole('heading', { name: 'Restaurar agendamento?' })).toBeVisible(); await expect(dialog.getByText(/mesmo registro voltar/)).toBeVisible();
+      await dialog.getByRole('button', { name: 'Voltar', exact: true }).click(); await expect(dialog.getByText('Cancelada')).toBeVisible();
+      state.restoreConflictNext(); await dialog.getByRole('button', { name: 'Restaurar agendamento' }).click(); await dialog.getByRole('button', { name: 'Restaurar agendamento', exact: true }).click();
+      dialog = page.getByRole('dialog'); await expect(dialog.getByRole('heading', { name: 'Restaurar agendamento' })).toBeVisible();
+      await expect(dialog.getByRole('alert')).toContainText('Conflito com Igarapé em 10/10/2026, das 18:00 às 20:00.');
+      await expect(dialog.getByLabel('Horário de início')).toHaveValue('15:00'); await expect(dialog.getByLabel('Horário de término')).toHaveValue('16:00');
+      await screenshot(page, width === 390 ? 'artifacts/agenda-restore-conflict-mobile.png' : 'artifacts/agenda-restore-conflict-tablet.png');
+      await dialog.getByLabel('Horário de início').fill('20:00'); await dialog.getByLabel('Horário de término').fill('22:00'); await dialog.getByRole('button', { name: 'Restaurar agendamento', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Agendamento' })).toBeVisible(); await expect(page.getByRole('dialog').getByText('Programada')).toBeVisible(); expect(state.rows.filter((row) => row.id === 'one')).toHaveLength(1); expect(state.rows.find((row) => row.id === 'one')).toMatchObject({ id: 'one', status: 'PROGRAMADA', horaInicio: '20:00', horaFim: '22:00' });
+      const restores = state.writes.filter((write) => write.url.endsWith('/restaurar')); expect(restores).toHaveLength(2); expect(restores[0].body.requestId).toBe(restores[1].body.requestId); expect(state.nativeDialogs()).toBe(0); await noOverflow(page);
     });
     test('regras existentes/inativas, edição, descarte, cancelamento e interrupção preservam datas', async ({ page }) => {
       const state = await fixture(page); await open(page); await page.getByRole('button', { name: 'Repetições (2)' }).click();

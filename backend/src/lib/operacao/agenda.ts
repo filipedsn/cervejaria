@@ -51,6 +51,11 @@ export function occurrenceBlock(occurrence: { status: string; _count: { sessoesC
   if (occurrence.status !== 'PROGRAMADA') return 'Somente agendamentos programados e sem histórico operacional podem ser editados ou cancelados.';
   return null;
 }
+export function occurrenceRestoreBlock(occurrence: { status: string; _count: { sessoesCaixa: number; comandas: number } }) {
+  if (occurrence.status !== 'CANCELADA') return 'Somente agendamentos cancelados podem ser restaurados.';
+  if (occurrence._count.sessoesCaixa || occurrence._count.comandas) return 'Este agendamento possui histórico operacional ou vínculos de caixa e não pode ser restaurado.';
+  return null;
+}
 export async function generateAgendaDates(tx: Prisma.TransactionClient, scope: Pick<Scope, 'cervejariaId' | 'pontoVendaId'>, agendaId: string, inicio: string, fim: string) {
   await lockAgendaPdv(tx, scope);
   const start = parseAgendaDate(inicio); const end = parseAgendaDate(fim);
@@ -153,6 +158,38 @@ export async function cancelOccurrence(tx: Prisma.TransactionClient, scope: Scop
   await tx.ocorrenciaOperacional.update({ where: { id }, data: { status: 'CANCELADA' } });
   await tx.transacaoLog.create({ data: { cervejariaId: scope.cervejariaId, usuarioId, tipo: 'EVENTO_ATUALIZADO', entidadeTipo: 'OcorrenciaOperacional', entidadeId: id, metadata: { acao: 'AGENDAMENTO_CANCELADO', pontoVendaId: scope.pontoVendaId, statusAnterior: occurrence.status, status: 'CANCELADA' } } });
   return { id, status: 'CANCELADA' };
+}
+
+export type RestoreOccurrenceInput = { requestId: string; data?: string; horaInicio?: string | null; horaFim?: string | null };
+export async function restoreOccurrence(tx: Prisma.TransactionClient, scope: Scope, id: string, input: RestoreOccurrenceInput) {
+  const { usuarioId, ...whereScope } = scope;
+  await lockAgendaPdv(tx, scope);
+  const receiptId = `agenda-restore-${createHash('sha256').update(`${scope.cervejariaId}:${scope.pontoVendaId}:${input.requestId}`).digest('hex')}`;
+  await lockAgendaResource(tx, scope, 'request', receiptId);
+  const fingerprint = createHash('sha256').update(JSON.stringify({ id, data: input.data, horaInicio: input.horaInicio, horaFim: input.horaFim })).digest('hex');
+  const receipt = await tx.transacaoLog.findUnique({ where: { id: receiptId } });
+  if (receipt) {
+    const metadata = receipt.metadata as { fingerprint?: string; resultado?: { id: string; status: string; data: string; horaInicio: string; horaFim: string } };
+    if (metadata.fingerprint !== fingerprint || !metadata.resultado) throw agendaError('Esta tentativa de restauração já foi concluída com outros dados. Reabra os detalhes para iniciar outra tentativa.');
+    return metadata.resultado;
+  }
+  await lockAgendaResource(tx, scope, 'ocorrencia', id);
+  const occurrence = await tx.ocorrenciaOperacional.findFirst({ where: { id, ...whereScope }, include: { _count: { select: { sessoesCaixa: true, comandas: true } } } });
+  if (!occurrence) throw agendaError('Agendamento não encontrado', 404);
+  if (occurrence.status !== 'CANCELADA') throw agendaError('Somente agendamentos cancelados podem ser restaurados.');
+  if (occurrenceRestoreBlock(occurrence)) throw agendaError(occurrenceRestoreBlock(occurrence)!);
+
+  const dataString = input.data ?? occurrence.data.toISOString().slice(0, 10);
+  const horaInicio = input.horaInicio !== undefined ? input.horaInicio : occurrence.horaInicio;
+  const horaFim = input.horaFim !== undefined ? input.horaFim : occurrence.horaFim;
+  if (!horaInicio || !horaFim) throw agendaError('Preencha a data, o início e o término para restaurar este agendamento.', 409, 'AGENDA_HORARIO_INCOMPLETO', { ocorrenciaId: id });
+  const data = parseAgendaDate(dataString);
+  validateAgendaInterval(horaInicio, horaFim);
+  await assertNoAgendaConflict(tx, whereScope, { data, horaInicio, horaFim }, { ocorrenciaId: id });
+  const updated = await tx.ocorrenciaOperacional.update({ where: { id }, data: { data, horaInicio, horaFim, status: 'PROGRAMADA' } });
+  const resultado = { id, status: 'PROGRAMADA', data: updated.data.toISOString().slice(0, 10), horaInicio: updated.horaInicio!, horaFim: updated.horaFim! };
+  await tx.transacaoLog.create({ data: { id: receiptId, cervejariaId: scope.cervejariaId, usuarioId, tipo: 'EVENTO_ATUALIZADO', entidadeTipo: 'OcorrenciaOperacional', entidadeId: id, metadata: { acao: 'AGENDAMENTO_RESTAURADO', pontoVendaId: scope.pontoVendaId, atorId: usuarioId, instante: new Date().toISOString(), fingerprint, statusAnterior: 'CANCELADA', status: 'PROGRAMADA', antes: { data: occurrence.data.toISOString().slice(0, 10), horaInicio: occurrence.horaInicio, horaFim: occurrence.horaFim }, depois: resultado, resultado } } });
+  return resultado;
 }
 export async function stopAgenda(tx: Prisma.TransactionClient, scope: Scope, id: string) {
   const { usuarioId, ...whereScope } = scope;

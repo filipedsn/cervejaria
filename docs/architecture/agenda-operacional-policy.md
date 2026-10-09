@@ -15,7 +15,7 @@
 - Toda mutação que reserva ou libera uma ocorrência obtém primeiro um advisory transaction lock comum do tenant/PDV. A leitura de conflitos e a gravação ocorrem na mesma transação. A geração semanal pré-valida todas as datas e aborta regra, ocorrências e recibo integralmente se uma conflitar. O lock por ocorrência/requisição permanece depois desse lock geral.
 - Conflitos retornam HTTP 409 com `code: AGENDA_HORARIO_CONFLITO` e somente os dados seguros da ocorrência conflitante no escopo autorizado. Datas incompletas antigas bloqueiam o mesmo início; em qualquer outra comparação incerta na data, a API retorna `AGENDA_HORARIO_INCOMPLETO` até que o intervalo antigo seja completado.
 - Edição de ocorrência mantém a própria linha fora da comparação. Mudanças apenas de nome/local em registro legado incompleto preservam seus horários ausentes; nova reserva, mudança de data/horário ou geração exige intervalo completo. O completar de uma ocorrência antiga passa pela mesma validação.
-- Datas seguem o contrato local existente `AAAA-MM-DD`, persistido/consultado como data UTC sem hora. O QA cobre criação e geração pelas rotas novas e legadas, adjacência, conflitos, retry, rollback semanal, simultaneidade, legado incompleto, cancelamento e arquivo lógico.
+- Datas seguem o contrato local existente `AAAA-MM-DD`, persistido/consultado como data UTC sem hora. O QA cobre criação e geração pelas rotas novas e legadas, adjacência, conflitos, retry, rollback semanal, simultaneidade, legado incompleto, cancelamento, restauração e arquivo lógico.
 
 ## Salvamento e retry
 
@@ -57,6 +57,13 @@ A Agenda reutiliza `Modal`, conforme os componentes de confirmação de eventos 
 - Em agendamento semanal, Cancelar este agendamento e Interromper a repetição são ações distintas. As confirmações explicam que interrupção preserva as datas já existentes.
 - Todas as escritas validam `agenda.manage` (ou a restrição de proprietário quando as permissões individuais estão desligadas), tenant e PDV canônico. Referências a IDs estrangeiros são recusadas.
 
+## Restauracao de agendamento cancelado
+
+- `POST /ocorrencias/:id/restaurar`, com `agenda.manage`, restaura somente uma ocorrencia `CANCELADA` do tenant e PDV canonicos autenticados. A linha e o ID permanecem os mesmos; ABERTA, FECHADA, ocorrencias com comandas/sessoes de caixa e IDs de outro escopo sao recusados.
+- O mesmo advisory lock transacional tenant/PDV usado nas reservas serializa restauracao contra novas reservas. A transacao bloqueia a ocorrencia, valida o intervalo local, consulta conflitos excluindo o proprio ID e grava data/horarios/status junto com a auditoria/recibo. Intervalos usam `[inicio, termino)`; horario incompleto retorna `AGENDA_HORARIO_INCOMPLETO`, e conflito retorna `AGENDA_HORARIO_CONFLITO` com detalhes seguros.
+- Um `requestId` identifica o retry. A auditoria duravel guarda ator, instante, status anterior/novo e valores antes/depois, e e escrita na mesma transacao. Retry identico devolve o resultado sem atualizar novamente ou acrescentar auditoria; reutilizar a chave com outro conteudo e recusado.
+- A interface confirma visualmente antes da tentativa. Se o horario estiver incompleto ou conflitar, o formulario mantem data/inicio/termino para ajuste e tenta novamente com a mesma chave. Depois do sucesso atualiza o mesmo detalhe e invalida as consultas do calendario.
+- Restaurar uma ocorrencia semanal nao reativa nem desarquiva a regra e nao restaura outras datas. Nenhuma comanda, pagamento, sessao de caixa, estoque ou auditoria anterior e alterada; a restauracao acrescenta somente sua propria auditoria.
 ## Concorrência com caixa
 
 A abertura mantém o advisory lock existente por tenant/PDV/dia operacional e, quando escolhe uma ocorrência canônica, adquire também o lock por tenant/PDV/ocorrência antes da revalidação transacional. Edição/cancelamento adquirem esse mesmo lock de ocorrência antes de consultar status e vínculos. O lock por ocorrência protege também quando o caixa é aberto em outro dia operacional.
