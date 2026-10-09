@@ -5,6 +5,8 @@ import path from 'node:path';
 
 export const RESUME_DELTA_ALLOWLIST = Object.freeze([
   'backend/scripts/pdv-unico-live-reconciliation.mjs',
+  'backend/scripts/pdv-unico-transacao-log-comparison.mjs',
+  'backend/scripts/pdv-unico-transacao-log-comparison.test.mjs',
   'backend/scripts/pdv-unico-live-reconciliation.query.qa.mjs',
   'backend/scripts/run-pdv-unico-reconciliation-query-qa.mjs',
   'backend/scripts/pdv-unico-resume-transition.mjs',
@@ -17,7 +19,7 @@ export const RESUME_DELTA_ALLOWLIST = Object.freeze([
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fileSha = async (file) => createHash('sha256').update(await readFile(file)).digest('hex');
 
-export async function createResumeTransition({ repoRoot, receiptsRoot, runId, fromRevision, toRevision, tenantIds, qaEvidenceFile }) {
+export async function createResumeTransition({ repoRoot, receiptsRoot, runId, fromRevision, toRevision, tenantIds, qaEvidenceFile, auditEvidenceFile }) {
   const git = (args) => execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }).trim();
   if (git(['rev-parse', 'HEAD']) !== toRevision) throw new Error('Transition target must be exact current HEAD.');
   const changedFiles = git(['diff', '--name-only', fromRevision, toRevision]).split(/\r?\n/).filter(Boolean).sort();
@@ -33,6 +35,14 @@ export async function createResumeTransition({ repoRoot, receiptsRoot, runId, fr
   const qa = JSON.parse(await readFile(qaEvidenceFile, 'utf8'));
   const reviewedSchemaBlob = git(['rev-parse', `${fromRevision}:backend/prisma/schema.prisma`]);
   if (qa.status !== 'PASS' || qa.cases?.length !== 9 || qa.schemaBlobSha1 !== reviewedSchemaBlob || qa.cutoverRunId !== runId) throw new Error('Focused generated-client QA evidence is absent or did not use the exact final schema blob for this run.');
+  const auditPath = path.resolve(auditEvidenceFile ?? '');
+  if (path.dirname(auditPath) !== path.resolve(receiptsRoot)) throw new Error('TransacaoLog backup audit evidence must be inside the run receipts folder.');
+  const audit = JSON.parse(await readFile(auditPath, 'utf8'));
+  if (audit.status !== 'PASS' || audit.runId !== runId || audit.backupSha256 !== preflightBody.backupSha256
+    || audit.differenceCount !== 0 || !/^cervejaria_restore_drill_audit_[a-z0-9_]+$/i.test(audit.recoveryDatabase ?? '')
+    || JSON.stringify([...audit.tenants.map(({ tenantId }) => tenantId)].sort()) !== JSON.stringify([...tenantIds].sort())) {
+    throw new Error('Full-content TransacaoLog backup audit is not PASS for this run, backup, and exact tenant set.');
+  }
   const files = changedFiles.map((file) => ({ path: file,
     fromBlob: spawnGitExists(repoRoot, fromRevision, file) ? git(['rev-parse', `${fromRevision}:${file}`]) : null,
     toBlob: git(['rev-parse', `${toRevision}:${file}`]),
@@ -42,7 +52,8 @@ export async function createResumeTransition({ repoRoot, receiptsRoot, runId, fr
     tenantIds,
     migrationsSha256: preflightBody.migrationsSha256, photoSha256: preflightBody.photoSha256, backupSha256: preflightBody.backupSha256,
     preflightSha256, receiptCount: receiptRows.length, previousReceiptSha256: receiptRows.at(-1).sha256,
-    qaEvidenceFile: path.basename(qaEvidenceFile), qaEvidenceSha256: await fileSha(qaEvidenceFile), changedFiles: files,
+    qaEvidenceFile: path.basename(qaEvidenceFile), qaEvidenceSha256: await fileSha(qaEvidenceFile),
+    auditEvidenceFile: path.basename(auditPath), auditEvidenceSha256: await fileSha(auditPath), auditRecoveryDatabase: audit.recoveryDatabase, changedFiles: files,
   };
   const transition = { ...body, sha256: digest(body) };
   const target = path.join(receiptsRoot, `${runId}.revision-transition-${toRevision.slice(0, 12)}.json`);
@@ -71,7 +82,11 @@ export async function validateResumeTransition({ transitionFile, repoRoot, recei
   }
   const qaEvidenceFile = path.join(receiptsRoot, body.qaEvidenceFile ?? '');
   if (path.dirname(path.resolve(qaEvidenceFile)) !== path.resolve(receiptsRoot) || await fileSha(qaEvidenceFile) !== body.qaEvidenceSha256) throw new Error('Focused QA evidence linked by the transition is missing or changed.');
-  return { status: 'PASS', transitionFile: resolved, transitionSha256: sha256, fromRevision: body.fromRevision, toRevision: body.toRevision, changedFiles, qaEvidenceSha256: body.qaEvidenceSha256 };
+  const auditEvidenceFile = path.join(receiptsRoot, body.auditEvidenceFile ?? '');
+  if (path.dirname(path.resolve(auditEvidenceFile)) !== path.resolve(receiptsRoot) || await fileSha(auditEvidenceFile) !== body.auditEvidenceSha256) throw new Error('Full-content TransacaoLog backup audit evidence linked by the transition is missing or changed.');
+  const audit = JSON.parse(await readFile(auditEvidenceFile, 'utf8'));
+  if (audit.status !== 'PASS' || audit.runId !== runId || audit.backupSha256 !== backupSha256 || audit.differenceCount !== 0 || audit.recoveryDatabase !== body.auditRecoveryDatabase) throw new Error('TransacaoLog backup audit evidence no longer matches the approved run and backup.');
+  return { status: 'PASS', transitionFile: resolved, transitionSha256: sha256, fromRevision: body.fromRevision, toRevision: body.toRevision, changedFiles, qaEvidenceSha256: body.qaEvidenceSha256, auditEvidenceSha256: body.auditEvidenceSha256, auditRecoveryDatabase: body.auditRecoveryDatabase };
 }
 
 function spawnGitExists(repoRoot, revision, file) {

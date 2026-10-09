@@ -19,7 +19,7 @@ const args = process.argv.slice(2);
 const value = (name) => args.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
 const tenantIds = args.filter((arg) => arg.startsWith('--tenant=')).map((arg) => arg.slice('--tenant='.length));
 const apply = args.includes('--apply');
-const valueFlags = new Set(['profile', 'tenant', 'run-id', 'confirm-target', 'confirm-revision', 'confirm-migrations-sha256', 'confirm-photo-sha256', 'backup-file', 'restore-drill', 'resume-transition-file']);
+const valueFlags = new Set(['profile', 'tenant', 'run-id', 'confirm-target', 'confirm-revision', 'confirm-migrations-sha256', 'confirm-photo-sha256', 'backup-file', 'restore-drill', 'resume-transition-file', 'translog-audit-evidence']);
 for (const arg of args) {
   if (['--apply', '--dry-run', '--plan'].includes(arg)) continue;
   const match = /^--([a-z0-9-]+)=/.exec(arg);
@@ -100,6 +100,19 @@ const clockStart = performance.now();
 const receiptsRoot = path.join(process.env.LOCALAPPDATA ?? os.homedir(), 'TAP Quiver', 'pdv-cutover-receipts');
 await mkdir(receiptsRoot, { recursive: true });
 const receiptPath = path.join(receiptsRoot, `${confirmedRunId}.jsonl`);
+const auditEvidenceFile = path.resolve(value('translog-audit-evidence') ?? '');
+if (!auditEvidenceFile || path.dirname(auditEvidenceFile) !== path.resolve(receiptsRoot)) throw new Error('Apply requires the immutable full-content TransacaoLog audit evidence beside the run receipts.');
+const auditEvidenceBytes = await readFile(auditEvidenceFile);
+const auditEvidence = JSON.parse(auditEvidenceBytes.toString('utf8'));
+const auditEvidenceSha256 = createHash('sha256').update(auditEvidenceBytes).digest('hex');
+if (auditEvidence.status !== 'PASS' || auditEvidence.runId !== confirmedRunId || auditEvidence.backupSha256 !== backupSha256
+  || auditEvidence.differenceCount !== 0 || !/^cervejaria_restore_drill_audit_[a-z0-9_]+$/i.test(auditEvidence.recoveryDatabase ?? '')
+  || JSON.stringify([...(auditEvidence.tenants ?? []).map(({ tenantId }) => tenantId)].sort()) !== JSON.stringify([...selectedTenants].sort())) {
+  throw new Error('Full-content TransacaoLog audit evidence must PASS for this exact backup, run, and tenant set.');
+}
+const auditDatabaseUrl = new URL(databaseUrl);
+auditDatabaseUrl.pathname = `/${auditEvidence.recoveryDatabase}`;
+const auditEnvironment = { PDV_CUTOVER_AUDIT_EVIDENCE_FILE: auditEvidenceFile, PDV_CUTOVER_AUDIT_DATABASE_URL: auditDatabaseUrl.toString(), PDV_CUTOVER_BACKUP_SHA256: backupSha256 };
 let lockFd;
 try { lockFd = openSync(path.join(receiptsRoot, `${confirmedRunId}.lock`), 'wx'); }
 catch { throw new Error('A cutover with this run ID is already active or has a stale lock; inspect it before continuing.'); }
@@ -191,6 +204,7 @@ try {
       transitionEvidence = await validateResumeTransition({ transitionFile, repoRoot, receiptsRoot, runId: confirmedRunId, revision,
         preflightSaved: saved, receipts: receiptRows, migrationSha256: migrationsSha256, photoSha256,
         backupSha256: backupEvidence.backupSha256, tenantIds: selectedTenants });
+      if (transitionEvidence.auditEvidenceSha256 !== auditEvidenceSha256 || transitionEvidence.auditRecoveryDatabase !== auditEvidence.recoveryDatabase) throw new Error('Resume transition is not bound to the exact full-content TransacaoLog audit evidence supplied for this run.');
     } else if (value('resume-transition-file')) throw new Error('A revision transition file is only accepted when resuming from older immutable evidence.');
     priorPreflight = body.preflight;
   }
@@ -310,9 +324,14 @@ try {
         PDV_CUTOVER_PROFILE: 'dev', PDV_CUTOVER_DEV_ADAPTER: '1', PDV_CUTOVER_PRISMA_CLIENT: targetClientDir,
         PDV_CUTOVER_TENANTS: selectedTenants.join(','), PDV_REPRESENTATIVE_PHOTO_FILE: photoPath,
         PDV_CUTOVER_RECONCILIATION_EVIDENCE_FILE: reconciliationEvidenceFile,
+        ...auditEnvironment,
       });
       const result = parseJsonLine(output, 'integrated reconciliation');
       if (result.status !== 'PASS' || result.payments?.rows !== 605 || result.payments?.approvedClassCPayments !== 577) throw new Error('Integrated reconciliation detected a financial or source drift.');
+      const audit = result.immutable?.find(({ model }) => model === 'TransacaoLog');
+      if (audit?.status !== 'PASS' || audit.source !== 'pre-cutover DEV backup including metadata'
+        || audit.rows !== audit.backupRows || audit.auditEvidenceSha256 !== auditEvidenceSha256
+        || audit.backupContentSha256 !== audit.devContentSha256) throw new Error('Integrated reconciliation did not prove complete TransacaoLog content against the restored backup.');
       return { status: 'PASS', ...result };
     },
     'per-tenant-activation': async () => {
@@ -354,7 +373,7 @@ try {
     }
     if (phaseName === 'diagnostics-and-integrated-reconciliation') {
       const reconciliationEvidenceFile = path.join(receiptsRoot, `${confirmedRunId}.reconciliation-${revision.slice(0, 12)}-${Date.now()}.json`);
-      return parseJsonLine(runNode(['--import', 'tsx', 'scripts/pdv-unico-live-reconciliation.mjs'], 'resume-verify-reconciliation', { ...verificationEnv, PDV_CUTOVER_RECONCILIATION_EVIDENCE_FILE: reconciliationEvidenceFile }), 'resume reconciliation');
+      return parseJsonLine(runNode(['--import', 'tsx', 'scripts/pdv-unico-live-reconciliation.mjs'], 'resume-verify-reconciliation', { ...verificationEnv, ...auditEnvironment, PDV_CUTOVER_RECONCILIATION_EVIDENCE_FILE: reconciliationEvidenceFile }), 'resume reconciliation');
     }
     if (phaseName === 'per-tenant-activation') {
       const readiness = parseJsonLine(runNode(['--import', 'tsx', 'scripts/pdv-unico-live-readiness.mjs'], 'resume-verify-activation', verificationEnv), 'resume activation');

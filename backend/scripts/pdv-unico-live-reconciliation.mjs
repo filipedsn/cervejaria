@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { DEV_PDV_TENANT_ALLOWLIST, validateDevCutoverEnvironment } from './pdv-unico-dev-cutover-core.mjs';
 import { expectedMigratedPaymentSessionReferences } from './pdv-unico-payment-session-evidence.mjs';
+import { canonicalTransacaoLogRows, compareTransacaoLogRows } from './pdv-unico-transacao-log-comparison.mjs';
 
 if (process.env.PDV_CUTOVER_PROFILE !== 'dev' || process.env.PDV_CUTOVER_DEV_ADAPTER !== '1') throw new Error('Live reconciliation is restricted to the guarded DEV adapter.');
 validateDevCutoverEnvironment(process.env);
@@ -25,6 +26,23 @@ const tempRoot = path.resolve(process.env.TEMP ?? process.env.TMP ?? '');
 if (!clientDir.startsWith(`${tempRoot}${path.sep}`)) throw new Error('Reconciliation Prisma client must be inside this run temp directory.');
 const { PrismaClient } = await import(pathToFileURL(path.join(clientDir, 'index.js')).href);
 const db = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } }, errorFormat: 'minimal' });
+const auditEvidenceFile = path.resolve(process.env.PDV_CUTOVER_AUDIT_EVIDENCE_FILE ?? '');
+const receiptsRoot = path.join(process.env.LOCALAPPDATA ?? process.env.USERPROFILE ?? '', 'TAP Quiver', 'pdv-cutover-receipts');
+if (!auditEvidenceFile || path.dirname(auditEvidenceFile) !== path.resolve(receiptsRoot)) throw new Error('Pre-cutover audit evidence must be stored beside this run’s durable receipts.');
+const auditEvidenceBytes = await readFile(auditEvidenceFile);
+const auditEvidence = JSON.parse(auditEvidenceBytes.toString('utf8'));
+const auditEvidenceSha256 = createHash('sha256').update(auditEvidenceBytes).digest('hex');
+const auditRunId = process.env.PDV_CUTOVER_RUN_ID;
+const approvedBackupSha256 = process.env.PDV_CUTOVER_BACKUP_SHA256;
+const auditDatabaseUrl = new URL(process.env.PDV_CUTOVER_AUDIT_DATABASE_URL ?? '');
+const destinationDatabaseUrl = new URL(process.env.DATABASE_URL);
+if (auditEvidence.status !== 'PASS' || auditEvidence.runId !== auditRunId || auditEvidence.backupSha256 !== approvedBackupSha256
+  || auditEvidence.differenceCount !== 0 || !/^cervejaria_restore_drill_audit_[a-z0-9_]+$/i.test(auditEvidence.recoveryDatabase ?? '')
+  || auditDatabaseUrl.pathname.slice(1) !== auditEvidence.recoveryDatabase
+  || auditDatabaseUrl.protocol !== destinationDatabaseUrl.protocol || auditDatabaseUrl.hostname !== destinationDatabaseUrl.hostname
+  || auditDatabaseUrl.port !== destinationDatabaseUrl.port || auditDatabaseUrl.username !== destinationDatabaseUrl.username
+  || auditDatabaseUrl.password !== destinationDatabaseUrl.password) throw new Error('Pre-cutover TransacaoLog audit evidence does not match this run, backup, or isolated DEV recovery database.');
+const auditDb = new PrismaClient({ datasources: { db: { url: auditDatabaseUrl.toString() } }, errorFormat: 'minimal' });
 const sourceRows = (model) => photo.tableRows.find((table) => table.model === model)?.rows ?? [];
 const dateValue = (value) => value instanceof Date ? value.toISOString() : value?.$photoType === 'date' ? new Date(value.value).toISOString() : value;
 const canonicalValue = (value) => {
@@ -176,12 +194,31 @@ try {
     products.push({ tenantId, rows: current.length });
   }
   const immutable = [];
-  const sourceLogs = sourceRows('TransacaoLog').filter(({ cervejariaId }) => tenantIds.includes(cervejariaId));
-  const actualLogs = await db.transacaoLog.findMany({ where: { cervejariaId: { in: tenantIds } }, orderBy: { id: 'asc' } });
+  const photoLogs = sourceRows('TransacaoLog').filter(({ cervejariaId }) => tenantIds.includes(cervejariaId));
+  const [backupLogs, actualLogs] = await Promise.all([
+    auditDb.transacaoLog.findMany({ where: { cervejariaId: { in: tenantIds } }, orderBy: { id: 'asc' } }),
+    db.transacaoLog.findMany({ where: { cervejariaId: { in: tenantIds } }, orderBy: { id: 'asc' } }),
+  ]);
+  const photoLogIds = photoLogs.map(({ id, cervejariaId }) => `${cervejariaId}\0${id}`).sort();
+  const backupLogIds = backupLogs.map(({ id, cervejariaId }) => `${cervejariaId}\0${id}`).sort();
+  collectMismatch(errors, JSON.stringify(photoLogIds) === JSON.stringify(backupLogIds), 'pre-cutover backup TransacaoLog IDs and tenants match the approved photo identity set.', { photoRows: photoLogIds.length, backupRows: backupLogIds.length });
+  const logComparison = compareTransacaoLogRows(backupLogs, actualLogs);
+  collectMismatch(errors, logComparison.differences.length === 0, 'complete pre-cutover TransacaoLog content, including metadata, is preserved.', { differenceCount: logComparison.differences.length, differences: logComparison.differences });
+  const backupTenantEvidence = auditEvidence.tenants?.filter(({ tenantId }) => tenantIds.includes(tenantId)) ?? [];
+  collectMismatch(errors, backupTenantEvidence.length === tenantIds.length
+    && tenantIds.every((tenantId) => backupTenantEvidence.find(({ tenantId: id }) => id === tenantId)?.backupRows === backupLogs.filter((row) => row.cervejariaId === tenantId).length),
+  'restored audit evidence covers both selected tenants and all their original logs.');
+  const logContentHashes = {
+    backupSha256: createHash('sha256').update(JSON.stringify(canonicalTransacaoLogRows(backupLogs))).digest('hex'),
+    devSha256: createHash('sha256').update(JSON.stringify(canonicalTransacaoLogRows(actualLogs))).digest('hex'),
+  };
+  immutable.push({ model: 'TransacaoLog', key: 'id', rows: actualLogs.length, backupRows: backupLogs.length,
+    comparedFields: Object.keys(backupLogs[0] ?? {}).length, source: 'pre-cutover DEV backup including metadata',
+    backupContentSha256: logContentHashes.backupSha256, devContentSha256: logContentHashes.devSha256,
+    auditEvidenceSha256, status: logComparison.differences.length ? 'BLOCKED' : 'CHECKED' });
   const sourceStats = sourceRows('ClienteEstatisticas').filter(({ clienteId }) => tenantIds.includes(maps.clientes.get(clienteId)?.cervejariaId));
   const actualStats = await db.clienteEstatisticas.findMany({ where: { cliente: { is: { cervejariaId: { in: tenantIds } } } }, orderBy: { clienteId: 'asc' }, include: { cliente: { select: { cervejariaId: true } } } });
   for (const [model, baseline, actual, key, decimals] of [
-    ['TransacaoLog', sourceLogs, actualLogs, 'id', []],
     ['ClienteEstatisticas', sourceStats, actualStats.map(({ cliente, ...row }) => row), 'clienteId', ['totalGasto']],
   ]) {
     const before = new Map(baseline.map((row) => [row[key], row]));
@@ -201,9 +238,9 @@ try {
     status: errors.length ? 'BLOCKED' : 'PASS',
   };
   if (errors.length) {
-    await emitEvidence({ status: 'BLOCKED', photoSha256, tenants: tenantIds, payments, products, immutable, divergenceCount: errors.length, divergences: errors, checkedAt: new Date().toISOString() });
+    await emitEvidence({ status: 'BLOCKED', photoSha256, backupSha256: approvedBackupSha256, auditEvidenceSha256, tenants: tenantIds, payments, products, immutable, divergenceCount: errors.length, divergences: errors, checkedAt: new Date().toISOString() });
     process.exitCode = 2;
   } else {
-    await emitEvidence({ status: 'PASS', photoSha256, tenants: tenantIds, payments, products: products.map((row) => ({ ...row, status: 'PASS' })), immutable: immutable.map((row) => ({ ...row, status: 'PASS' })), checkedAt: new Date().toISOString() });
+    await emitEvidence({ status: 'PASS', photoSha256, backupSha256: approvedBackupSha256, auditEvidenceSha256, tenants: tenantIds, payments, products: products.map((row) => ({ ...row, status: 'PASS' })), immutable: immutable.map((row) => ({ ...row, status: 'PASS' })), checkedAt: new Date().toISOString() });
   }
-} finally { await db.$disconnect(); }
+} finally { await Promise.all([db.$disconnect(), auditDb.$disconnect()]); }
