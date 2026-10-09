@@ -5,6 +5,7 @@ $name='cervejaria_restore_drill_dev_{0}' -f (Get-Date -Format 'yyyyMMdd_HHmmss')
 $resolved=(Resolve-Path -LiteralPath $BackupFile).Path
 $backupSha256=(Get-FileHash -LiteralPath $resolved -Algorithm SHA256).Hash.ToLowerInvariant()
 $repoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+. (Join-Path $PSScriptRoot 'restore-drill-dev.helpers.ps1')
 $remote="/tmp/$([IO.Path]::GetFileName($resolved))"
 try {
   if ((Get-Item $resolved).Length -le 0) { throw 'Backup vazio.' }
@@ -18,17 +19,20 @@ try {
   $known = @{}
   $migrationRoot = Join-Path $repoRoot 'backend\prisma\migrations'
   $migrationNames = @(Get-ChildItem -LiteralPath $migrationRoot -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'migration.sql') } | Sort-Object Name | ForEach-Object { $_.Name })
+  $trackedGitPaths = @(git -C $repoRoot ls-tree -r --name-only HEAD -- backend/prisma/migrations)
+  if ($LASTEXITCODE -ne 0) { throw 'Falha ao consultar migrations versionadas no Git HEAD.' }
+  $trackedMigrationPathSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  foreach ($trackedGitPath in $trackedGitPaths) { [void]$trackedMigrationPathSet.Add($trackedGitPath) }
   $trackedMigrationNames = @()
   foreach ($migration in $migrationNames) {
     $migrationFile = Join-Path $migrationRoot "$migration\migration.sql"
     $gitPath = "backend/prisma/migrations/$migration/migration.sql"
-    git -C $repoRoot ls-files --error-unmatch -- $gitPath *> $null
-    if ($LASTEXITCODE -ne 0) { continue }
+    if (-not $trackedMigrationPathSet.Contains($gitPath)) { continue }
     $reviewedBlob = git -C $repoRoot rev-parse "HEAD:$gitPath"
     if ($LASTEXITCODE -ne 0) { throw "Git revision has no reviewed migration blob: $gitPath" }
-    $workingBlob = git -C $repoRoot hash-object $migrationFile
+    $workingBlob = git -C $repoRoot hash-object "--path=$gitPath" -- $migrationFile
     if ($LASTEXITCODE -ne 0 -or $workingBlob -ne $reviewedBlob) { throw "Migration file differs from current Git HEAD; restore drill stopped: $gitPath" }
-    $known[$migration] = (Get-FileHash -LiteralPath $migrationFile -Algorithm SHA256).Hash.ToLowerInvariant()
+    $known[$migration] = Get-GitBlobSha256 -RepositoryPath $repoRoot -BlobObjectId $reviewedBlob
     $trackedMigrationNames += $migration
   }
   $ledgerText = docker exec $container psql -X -q -t -A -F '|' -v ON_ERROR_STOP=1 -U cervejaria -d $name -c "SELECT migration_name, checksum, (finished_at IS NOT NULL), (rolled_back_at IS NOT NULL) FROM public._prisma_migrations ORDER BY migration_name;"
