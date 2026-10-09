@@ -470,6 +470,7 @@ function serializeProduto(
     nome: p.nome,
     descricao: p.descricao,
     tipo: p.tipo,
+    categoria: p.categoria ?? null,
     formato: p.formato,
     gruposOpcionais: (p.opcionaisVinculados ?? []).length ? [{ id: 'opcionais', nome: 'Opcionais', obrigatorio: false, maximo: 99, opcoes: p.opcionaisVinculados.map(({ opcional }) => ({ id: opcional.id, nome: opcional.nome, precoAdicional: toNumber(opcional.preco) })) }] : [],
     precos,

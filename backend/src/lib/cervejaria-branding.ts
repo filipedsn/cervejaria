@@ -25,7 +25,7 @@ export interface CervejariaAuthPayload {
   comandasColunaUnica: boolean;
   usaCardapio: boolean;
   updatedAt: string;
-  /** Mtime do arquivo de logo — invalida cache do navegador quando o arquivo muda sem update no banco. */
+  /** Versão do arquivo/registro da logo para invalidar o cache do navegador. */
   logoVersion: string | null;
   portalBackgroundUrl: string | null;
   portalBackgroundVersion: string | null;
@@ -46,14 +46,16 @@ type CervejariaBrandingRow = {
   portalBackgroundUrl?: string | null;
 };
 
-function resolveLogoVersion(cervejaria: CervejariaBrandingRow): string | null {
+export function resolveLogoVersion(
+  cervejaria: Pick<CervejariaBrandingRow, 'logoUrl' | 'updatedAt'>,
+): string | null {
   if (!cervejaria.logoUrl) return null;
 
   const filename = path.basename(cervejaria.logoUrl);
   const logoPath = path.join(getLogosDir(), filename);
   try {
     const stat = fs.statSync(logoPath);
-    return new Date(stat.mtimeMs).toISOString();
+    return new Date(Math.max(stat.mtimeMs, cervejaria.updatedAt.getTime())).toISOString();
   } catch {
     return cervejaria.updatedAt.toISOString();
   }
