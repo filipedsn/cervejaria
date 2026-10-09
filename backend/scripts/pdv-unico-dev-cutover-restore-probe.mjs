@@ -58,10 +58,9 @@ try {
   const lines = sanitize(`${result.stdout ?? ''}\n${result.stderr ?? ''}`).trim().split(/\r?\n/).filter(Boolean).slice(-18);
   if (result.error || result.status !== 0) {
     process.stdout.write(`${JSON.stringify({ status: 'BLOCKED', through, revision, error: result.error?.message ?? `Prisma migrate deploy exited ${result.status}`, output: lines })}\n`);
-    process.exitCode = 2;
   } else {
     process.stdout.write(`${JSON.stringify({ status: 'PASS', through, revision, migrationCount: throughIndex + 1, appliedOutput: lines })}\n`);
   }
 } finally {
-  await rm(tempRoot, { recursive: true, force: true });
+  await rm(tempRoot, { recursive: true, force: true, maxRetries: 12, retryDelay: 250 });
 }

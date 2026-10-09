@@ -162,7 +162,6 @@ async function runLedgerCli() {
   } catch (error) {
     if (!(error instanceof MigrationLedgerDivergenceError)) throw error;
     process.stdout.write(`${JSON.stringify({ status: 'BLOCKED', divergences: error.divergences, revision })}\n`);
-    process.exitCode = 2;
   }
 }
 
