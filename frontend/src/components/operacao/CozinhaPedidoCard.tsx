@@ -2,6 +2,7 @@ import { PedidoElapsedTimer } from '../PedidoElapsedTimer';
 import { IconShoppingBag, IconTrash, IconWhatsApp } from '../NavIcons';
 import { rotuloComanda, type PedidoCozinha, type StatusPedido } from '../../lib/operacao';
 import type { CozinhaPedidoFragmento } from './CozinhaTvGrid';
+import type { CSSProperties } from 'react';
 
 export const AVANCO_COZINHA: Partial<Record<StatusPedido, { status: StatusPedido; label: string }>> = {
   RECEBIDO: { status: 'EM_PREPARO', label: 'Iniciar' },
@@ -33,6 +34,7 @@ interface Props {
   measurementKind?: 'full' | 'item';
   measurementId?: string;
   measurementItemIndex?: number;
+  layoutStyle?: CSSProperties;
   indice?: number;
   mostrarFila?: boolean;
   variant?: 'operacional' | 'tv';
@@ -54,6 +56,7 @@ export function CozinhaPedidoCard({
   measurementKind,
   measurementId,
   measurementItemIndex,
+  layoutStyle,
   indice,
   mostrarFila = true,
   variant = 'operacional',
@@ -88,7 +91,7 @@ export function CozinhaPedidoCard({
 
   if (variant === 'tv') {
     return (
-      <article {...measurementAttrs} className={'cozinha-tv-card ' + badge.tvClasse}>
+      <article {...measurementAttrs} style={layoutStyle} className={'cozinha-tv-card ' + badge.tvClasse}>
         {rotuloFragmento && <p className="cozinha-tv-card-continuation">{rotuloFragmento}</p>}
         <div className="cozinha-tv-card-header">
           <div className="min-w-0">
@@ -210,6 +213,7 @@ export function CozinhaPedidoCard({
   return (
     <article
       {...measurementAttrs}
+      style={layoutStyle}
       className={`card-touch !p-3 space-y-2 ${pedido.status === 'RECEBIDO' ? 'pedido-card-alert' : ''} ${pedido.status === 'CANCELAMENTO_PENDENTE' ? 'border-2 !border-orange-500 bg-orange-950/20' : ''}`}
     >
       {rotuloFragmento && <p className="cozinha-tv-card-continuation">{rotuloFragmento}</p>}

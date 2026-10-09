@@ -138,7 +138,7 @@ test('mantém cartões na mesma largura nas páginas e captura as três páginas
   for (let pageIndex = 0; pageIndex < 3; pageIndex += 1) {
     dimensions.push(await page.locator('.cozinha-tv-grid').evaluate((grid) => ({
       width: Math.round((grid.querySelector('article') as HTMLElement).getBoundingClientRect().width),
-      tracks: getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length,
+      tracks: getComputedStyle(document.querySelector('.cozinha-tv-measure')!).gridTemplateColumns.trim().split(/\s+/).length,
     })));
     if (pageIndex < 2) {
       await page.getByRole('button', { name: 'Próxima' }).click();
@@ -179,6 +179,57 @@ test('mantém cartões na mesma largura nas páginas e captura as três páginas
     if (pageIndex < 2) {
       await page.getByRole('button', { name: 'Próxima' }).click();
       await expect(page.getByText(new RegExp(`Página ${pageIndex + 2} de 3 · ${portraitCapacity * 2 + 1} pedidos`))).toBeVisible();
+    }
+  }
+});
+
+test('distribui um cartão alto e cinco curtos na primeira página quando as dimensões permitem', async ({ page }) => {
+  const evidenceDir = resolve(process.cwd(), 'artifacts/kitchen-pagination');
+  await mkdir(resolve(evidenceDir, 'masonry-after'), { recursive: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await stubKitchen(page, 6, [3, 1, 1, 1, 1, 1]);
+  await page.goto('/operacao/cozinha/tv');
+  await expect(page.getByText(/Página 1 de \d+ · 6 pedidos/)).toBeVisible();
+  await page.screenshot({ path: resolve(evidenceDir, 'masonry-after/page-1.png') });
+  const firstPageGeometry = await page.locator('.cozinha-tv-grid').evaluate((grid) => {
+    const cards = Array.from(grid.querySelectorAll<HTMLElement>(':scope > article'));
+    return {
+      page: grid.parentElement?.querySelector('.cozinha-tv-pager-bar')?.textContent,
+      columns: getComputedStyle(document.querySelector('.cozinha-tv-measure')!).gridTemplateColumns,
+      availableWidth: grid.clientWidth,
+      availableHeight: grid.clientHeight,
+      gridTop: Math.round(grid.getBoundingClientRect().top),
+      cards: cards.map((card) => ({
+        senha: card.querySelector('.cozinha-tv-card-senha')?.textContent,
+        left: Math.round(card.getBoundingClientRect().left - grid.getBoundingClientRect().left),
+        top: Math.round(card.getBoundingClientRect().top),
+        bottom: Math.round(card.getBoundingClientRect().bottom),
+        height: Math.round(card.getBoundingClientRect().height),
+        width: Math.round(card.getBoundingClientRect().width),
+        style: card.getAttribute('style'),
+      })),
+      display: getComputedStyle(grid).display,
+    };
+  });
+  console.log('after masonry dimensions', firstPageGeometry);
+  expect(firstPageGeometry.cards).toHaveLength(6);
+  expect(firstPageGeometry.page).toContain('Página 1 de 1');
+  expect(await page.getByRole('button', { name: 'Anterior' }).count()).toBe(0);
+  expect(await page.getByRole('button', { name: 'Próxima' }).count()).toBe(0);
+  const orderedCards = firstPageGeometry.cards;
+  expect(orderedCards.map((card) => card.senha)).toEqual(['Senha 1', 'Senha 2', 'Senha 3', 'Senha 4', 'Senha 5', 'Senha 6']);
+  expect(orderedCards[5]!.top).toBeGreaterThan(orderedCards[1]!.top);
+  expect(Math.min(...orderedCards.map((card) => card.top))).toBeGreaterThanOrEqual(firstPageGeometry.gridTop);
+  expect(Math.max(...orderedCards.map((card) => card.left + card.width))).toBeLessThanOrEqual(firstPageGeometry.availableWidth);
+  expect(Math.max(...orderedCards.map((card) => card.bottom)) - firstPageGeometry.gridTop).toBeLessThanOrEqual(firstPageGeometry.availableHeight);
+  expect(await page.locator('.cozinha-tv-grid > article').evaluateAll((nodes) => nodes.every((card) => card.scrollWidth <= card.clientWidth + 1 && card.scrollHeight <= card.clientHeight + 1))).toBe(true);
+  for (let index = 0; index < orderedCards.length; index += 1) {
+    for (let otherIndex = index + 1; otherIndex < orderedCards.length; otherIndex += 1) {
+      const first = orderedCards[index]!;
+      const second = orderedCards[otherIndex]!;
+      const overlapY = first.top < second.bottom && second.top < first.bottom;
+      const overlapX = first.left < second.left + second.width && second.left < first.left + first.width;
+      expect(overlapX && overlapY).toBe(false);
     }
   }
 });
@@ -235,27 +286,27 @@ test('pedido extenso oferece continuações paginadas e mantém Pronto no pedido
   await expect.poll(() => kitchen.orders()[0]?.status).toBe('EM_PREPARO');
 });
 
-test('pedido novo chega por cliente Socket.IO real sem alterar status', async ({ page }) => {
+test('realtime e reconexão atualizam a fila sem deslocar a página escolhida nem duplicar pedidos', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 720 });
-  const kitchen = await stubKitchen(page, 2);
+  const kitchen = await stubKitchen(page, 4);
   await page.goto('/operacao/cozinha/tv');
-  await expect(page.getByText('Página 1 de 1 · 2 pedidos')).toBeVisible();
+  await expect(page.getByText('Página 1 de 2 · 4 pedidos')).toBeVisible();
+  await page.getByRole('button', { name: 'Próxima' }).click();
+  await expect(page.getByText('Página 2 de 2 · 4 pedidos')).toBeVisible();
   await expect.poll(() => joinedTenants.has(tenantId)).toBe(true);
   const before = kitchen.orders().map((order) => order.status);
   kitchen.addOrder();
   socketServer.to(socketRoom).emit('operacao:pedido-novo', { source: 'qa-real-socket-emitter' });
-  await expect(page.getByText('Página 1 de 1 · 3 pedidos')).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText('Página 2 de 2 · 5 pedidos')).toBeVisible({ timeout: 5_000 });
   expect(kitchen.orders().map((order) => order.status)).toEqual(before.concat('RECEBIDO'));
-  expect(await page.locator('.cozinha-tv-grid .cozinha-tv-card-senha').allTextContents()).toEqual(['Senha 1', 'Senha 2', 'Senha 3']);
+  await expect.poll(() => page.locator('.cozinha-tv-grid .cozinha-tv-card-senha').allTextContents()).toEqual(['Senha 4', 'Senha 5']);
   const joinsBeforeReconnect = roomJoinCount;
   for (const client of socketServer.sockets.sockets.values()) client.conn.close();
   await expect.poll(() => roomJoinCount).toBeGreaterThan(joinsBeforeReconnect);
   kitchen.addOrder();
   socketServer.to(socketRoom).emit('operacao:pedido-novo', { source: 'qa-real-socket-after-reconnect' });
-  await expect(page.getByText('Página 1 de 2 · 4 pedidos')).toBeVisible({ timeout: 5_000 });
-  expect(await page.locator('.cozinha-tv-grid .cozinha-tv-card-senha').allTextContents()).toEqual(['Senha 1', 'Senha 2', 'Senha 3']);
-  await page.getByRole('button', { name: 'Próxima' }).click();
-  expect(await page.locator('.cozinha-tv-grid .cozinha-tv-card-senha').allTextContents()).toEqual(['Senha 4']);
+  await expect(page.getByText('Página 2 de 2 · 6 pedidos')).toBeVisible({ timeout: 5_000 });
+  await expect.poll(() => page.locator('.cozinha-tv-grid .cozinha-tv-card-senha').allTextContents()).toEqual(['Senha 4', 'Senha 5', 'Senha 6']);
   expect(kitchen.orders().map((order) => order.status)).toEqual(before.concat('RECEBIDO', 'RECEBIDO'));
 });
 

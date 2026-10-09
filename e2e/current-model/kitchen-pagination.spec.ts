@@ -105,8 +105,7 @@ test('TV e tablets paginam por espaço medido, mostram 3 páginas e deixam todos
   }
 });
 
-test('TV percorre páginas com intervalo estável e modo operacional permanece manual', async ({ page }) => {
-  test.setTimeout(60_000);
+test('TV e modo operacional permanecem manuais mesmo com intervalo antigo salvo', async ({ page }) => {
   await page.setViewportSize({ width: 1180, height: 820 });
   const kitchen = await stubKitchen(page, 72);
   await page.goto('/operacao/cozinha/tv');
@@ -119,16 +118,12 @@ test('TV percorre páginas com intervalo estável e modo operacional permanece m
   await page.evaluate(({ deviceId, tenantId, userId }) => localStorage.setItem(`qt:cozinha:visual:${tenantId}:${userId}:${deviceId}`, JSON.stringify({ profile: 'automatico', intervalMs: 5_000 })), { deviceId, tenantId: 'tenant-test', userId: 'user-test' });
   await page.reload();
   await expect(page.getByText(new RegExp(`Página 1 de 3 · ${capacity * 3} pedidos`))).toBeVisible();
-  await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')); });
+  const migratedPreference = await page.evaluate(({ deviceId, tenantId, userId }) => localStorage.getItem(`qt:cozinha:visual:${tenantId}:${userId}:${deviceId}`), { deviceId, tenantId: 'tenant-test', userId: 'user-test' });
+  expect(JSON.parse(migratedPreference ?? '{}')).toEqual({ profile: 'automatico' });
   await page.waitForTimeout(5_500);
   await expect(page.getByText(new RegExp(`Página 1 de 3 · ${capacity * 3} pedidos`))).toBeVisible();
-  await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: false }); document.dispatchEvent(new Event('visibilitychange')); });
-  await expect(page.getByText(new RegExp(`Página 2 de 3 · ${capacity * 3} pedidos`))).toBeVisible({ timeout: 8_000 });
-  await page.locator('.cozinha-tv-pager').dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'touch' });
-  await page.waitForTimeout(5_500);
+  await page.getByRole('button', { name: 'Próxima' }).click();
   await expect(page.getByText(new RegExp(`Página 2 de 3 · ${capacity * 3} pedidos`))).toBeVisible();
-  await page.locator('.cozinha-tv-pager').dispatchEvent('pointerup', { pointerId: 1, pointerType: 'touch' });
-  await expect(page.getByText(new RegExp(`Página 3 de 3 · ${capacity * 3} pedidos`))).toBeVisible({ timeout: 8_000 });
   await page.goto('/operacao/cozinha');
   await expect(page.getByText(/Página 1 de \d+ · \d+ pedidos/)).toBeVisible();
   await page.waitForTimeout(5_500);
@@ -221,20 +216,19 @@ test('reconexão realtime atualiza a lista sem duplicar pedidos', async ({ page 
   expect(orderNumbers).toEqual(['Senha 1', 'Senha 2', 'Senha 3']);
 });
 
-test('o painel de configurações salva perfil e intervalo por tenant, usuário e dispositivo', async ({ page }) => {
+test('o painel salva apenas o perfil visual por tenant, usuário e dispositivo', async ({ page }) => {
   await stubKitchen(page, 1);
   await page.goto('/operacao/configuracoes/pdv');
   await page.locator('details').filter({ has: page.getByText('Cozinha', { exact: true }) }).locator('summary').click();
   const profile = page.getByLabel('Perfil padrão neste dispositivo');
-  const interval = page.getByLabel('Troca automática no modo TV');
   await expect(profile).toBeVisible();
+  await expect(page.getByText('Troca automática no modo TV')).toHaveCount(0);
   await profile.selectOption('ampliada');
-  await interval.selectOption('10000');
   const saved = await page.evaluate(() => {
     const device = localStorage.getItem('qt:cozinha:device-id');
     return { device, value: device ? localStorage.getItem(`qt:cozinha:visual:tenant-test:user-test:${device}`) : null };
   });
   expect(saved.device).toBeTruthy();
-  expect(JSON.parse(saved.value ?? '{}')).toEqual({ profile: 'ampliada', intervalMs: 10_000 });
+  expect(JSON.parse(saved.value ?? '{}')).toEqual({ profile: 'ampliada' });
   expect(await page.evaluate(() => localStorage.getItem(`qt:cozinha:visual:tenant-test:user-other:${localStorage.getItem('qt:cozinha:device-id')}`))).toBeNull();
 });

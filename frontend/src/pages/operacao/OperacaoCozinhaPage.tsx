@@ -116,7 +116,7 @@ export function OperacaoCozinhaPage() {
         />
       )}
 
-      {lista.length > 0 && <CozinhaTvGrid autoAdvance={false} operational countLabel={verEntregues ? 'no filtro: entregues hoje' : 'no filtro: na fila'} paused={mudarStatus.isPending || confirmarCancelamentoItem.isPending || Boolean(pedidoParaCancelar)}>
+      {lista.length > 0 && <CozinhaTvGrid operational countLabel={verEntregues ? 'no filtro: entregues hoje' : 'no filtro: na fila'} paused={mudarStatus.isPending || confirmarCancelamentoItem.isPending || Boolean(pedidoParaCancelar)}>
       {lista.map((pedido, indice) => (
         <CozinhaPedidoCard
           key={pedido.id}

@@ -3107,10 +3107,11 @@ button.touch-btn-orange.w-full.flex.items-center.justify-center.gap-2::after {
 
 /* Paginação da cozinha: o conteúdo é medido no tamanho real do dispositivo. */
 .cozinha-tv-pager { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 0.45rem; }
-.cozinha-tv-grid, .cozinha-tv-measure { grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--cozinha-card-min)), 1fr)); grid-auto-rows: max-content; align-content: start; }
-.cozinha-tv-grid { overflow: hidden; padding: 0; }
+.cozinha-tv-measure { grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--cozinha-card-min)), 1fr)); grid-auto-rows: max-content; align-content: start; }
+.cozinha-tv-grid { position: relative; display: block; overflow: hidden; padding: 0; }
 .cozinha-tv-card { overflow: visible; }
 .cozinha-tv-measure { position: fixed; left: -200vw; top: 0; display: grid; gap: clamp(0.65rem, 1.2vw, 1rem); align-content: start; visibility: hidden; pointer-events: none; }
+.cozinha-tv-measure > article { align-self: start; }
 .cozinha-tv-card-continuation { order: 0; margin: 0 0 0.25rem; color: var(--ranking-text-primary); font-size: 0.9rem; font-weight: 800; overflow-wrap: anywhere; }
 .cozinha-tv-card-comanda { max-width: none; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 .cozinha-tv-card-nome { display: inline; overflow: visible; -webkit-line-clamp: unset; overflow-wrap: anywhere; }
@@ -3128,7 +3129,7 @@ button.touch-btn-orange.w-full.flex.items-center.justify-center.gap-2::after {
 .cozinha-tv-detail-item p { margin-top: 0.7rem; }
 .cozinha-tv-detail-item strong { font-size: 1.25rem; }
 .cozinha-tv-pager-operacional { height: min(68dvh, 46rem); min-height: 18rem; flex: 0 0 auto; }
-.cozinha-tv-pager-operacional .cozinha-tv-grid { --cozinha-card-min: 22rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--cozinha-card-min)), 1fr)); gap: 0.75rem; }
+.cozinha-tv-pager-operacional .cozinha-tv-grid { --cozinha-card-min: 22rem; }
 .cozinha-tv-pager-operacional .cozinha-tv-grid > article { min-width: 0; }
 .cozinha-tv-pager-operacional .cozinha-tv-pager-bar p { color: var(--ink); }
 .cozinha-tv-pager-operacional .cozinha-tv-page-button { color: var(--ink); border-color: var(--line); background: var(--surface); }

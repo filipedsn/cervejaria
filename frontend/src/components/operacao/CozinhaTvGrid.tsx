@@ -1,4 +1,4 @@
-import { Children, cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { Children, cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import type { PedidoCozinha } from '../../lib/operacao';
 
 export interface CozinhaPedidoFragmento {
@@ -16,12 +16,11 @@ interface CozinhaCardLayoutProps {
   measurementKind?: 'full' | 'item';
   measurementId?: string;
   measurementItemIndex?: number;
+  layoutStyle?: CSSProperties;
 }
 
 interface Props {
   children: ReactNode;
-  autoAdvance?: boolean;
-  intervalMs?: number;
   paused?: boolean;
   profile?: 'automatico' | 'ampliada' | 'mais-pedidos';
   operational?: boolean;
@@ -29,11 +28,17 @@ interface Props {
 }
 
 type CardElement = ReactElement<CozinhaCardLayoutProps>;
-interface FragmentoMedido {
+interface UnidadeMedida {
   orderId: string;
   key: string;
   fragment: CozinhaPedidoFragmento;
   height: number;
+}
+interface FragmentoMedido extends UnidadeMedida {
+  column: number;
+  left: number;
+  top: number;
+  width: number;
 }
 
 function fragmentoCompleto(pedido: PedidoCozinha): CozinhaPedidoFragmento {
@@ -47,7 +52,7 @@ function fragmentoCompleto(pedido: PedidoCozinha): CozinhaPedidoFragmento {
 }
 
 /** Pagina pedidos e continuacoes usando a geometria fixa do viewport do dispositivo. */
-export function CozinhaTvGrid({ children, autoAdvance = true, intervalMs = 15_000, paused = false, profile = 'automatico', operational = false, countLabel = 'na fila atual' }: Props) {
+export function CozinhaTvGrid({ children, paused = false, profile = 'automatico', operational = false, countLabel = 'na fila atual' }: Props) {
   const cards = useMemo(() => Children.toArray(children).filter(isValidElement) as CardElement[], [children]);
   const ids = useMemo(() => cards.map((card) => card.props.pedido.id), [cards]);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -85,7 +90,10 @@ export function CozinhaTvGrid({ children, autoAdvance = true, intervalMs = 15_00
     // auto-fill reserves the same tracks on every page, including a final row with one card.
     const tracks = getComputedStyle(hidden).gridTemplateColumns.trim();
     const columns = Math.max(1, tracks === 'none' ? 1 : tracks.split(/\s+/).length);
-    const rowGap = Number.parseFloat(getComputedStyle(hidden).rowGap) || 0;
+    const measurementStyle = getComputedStyle(hidden);
+    const rowGap = Number.parseFloat(measurementStyle.rowGap) || 0;
+    const columnGap = Number.parseFloat(measurementStyle.columnGap) || 0;
+    const columnWidth = (width - columnGap * (columns - 1)) / columns;
     const byId = new Map(cards.map((card) => [card.props.pedido.id, card]));
     const measured = new Map<string, { full: HTMLElement; items: HTMLElement[] }>();
     const needsItemMeasurements: string[] = [];
@@ -107,7 +115,7 @@ export function CozinhaTvGrid({ children, autoAdvance = true, intervalMs = 15_00
       return;
     }
 
-    const units: FragmentoMedido[] = [];
+    const units: UnidadeMedida[] = [];
     for (const [orderId, measurement] of measured) {
       const card = byId.get(orderId);
       if (!card) continue;
@@ -132,18 +140,29 @@ export function CozinhaTvGrid({ children, autoAdvance = true, intervalMs = 15_00
 
     const nextPages: FragmentoMedido[][] = [];
     let pageUnits: FragmentoMedido[] = [];
-    let usedHeight = 0;
-    for (let index = 0; index < units.length; index += columns) {
-      const row = units.slice(index, index + columns);
-      const rowHeight = Math.max(...row.map((unit) => unit.height));
-      const nextHeight = rowHeight + (pageUnits.length > 0 ? rowGap : 0);
-      if (pageUnits.length > 0 && usedHeight + nextHeight > height) {
+    let columnHeights = Array<number>(columns).fill(0);
+    let columnHasCards = Array<boolean>(columns).fill(false);
+    const placeInColumn = (unit: UnidadeMedida, column: number) => {
+      const top = columnHeights[column]! + (columnHasCards[column] ? rowGap : 0);
+      pageUnits.push({ ...unit, column, left: column * (columnWidth + columnGap), top, width: columnWidth });
+      columnHeights[column] = top + unit.height;
+      columnHasCards[column] = true;
+    };
+    for (const unit of units) {
+      const fittingColumns = columnHeights
+        .map((usedHeight, column) => ({ column, usedHeight, top: usedHeight + (columnHasCards[column] ? rowGap : 0) }))
+        .filter((candidate) => candidate.top + unit.height <= height)
+        .sort((a, b) => a.usedHeight - b.usedHeight || a.column - b.column);
+      if (fittingColumns.length === 0 && pageUnits.length > 0) {
         nextPages.push(pageUnits);
         pageUnits = [];
-        usedHeight = 0;
+        columnHeights = Array<number>(columns).fill(0);
+        columnHasCards = Array<boolean>(columns).fill(false);
       }
-      pageUnits.push(...row);
-      usedHeight += rowHeight + (pageUnits.length > row.length ? rowGap : 0);
+      const availableColumn = columnHeights
+        .map((usedHeight, column) => ({ column, usedHeight }))
+        .sort((a, b) => a.usedHeight - b.usedHeight || a.column - b.column)[0]?.column ?? 0;
+      placeInColumn(unit, availableColumn);
     }
     if (pageUnits.length > 0) nextPages.push(pageUnits);
     setPages((current) => JSON.stringify(current) === JSON.stringify(nextPages) ? current : nextPages);
@@ -183,6 +202,7 @@ export function CozinhaTvGrid({ children, autoAdvance = true, intervalMs = 15_00
       measurement: false,
       measurementKind: undefined,
       measurementId: undefined,
+      layoutStyle: { position: 'absolute', left: unit.left, top: unit.top, width: unit.width },
     });
   });
 
@@ -240,18 +260,6 @@ export function CozinhaTvGrid({ children, autoAdvance = true, intervalMs = 15_00
     if (!paused && !interaction && !dialogOpen && visibleTab) measure();
   }, [paused, interaction, dialogOpen, visibleTab, measure]);
 
-  const pageCountRef = useRef(pages.length);
-  pageCountRef.current = pages.length;
-  useEffect(() => {
-    if (!autoAdvance || paused || interaction || dialogOpen || !visibleTab) return;
-    // Page-count changes do not restart this clock; frequent realtime invalidations cannot starve later pages.
-    const timer = window.setInterval(() => {
-      const count = pageCountRef.current;
-      if (count > 1) setPage((current) => (current + 1) % count);
-    }, intervalMs);
-    return () => window.clearInterval(timer);
-  }, [autoAdvance, intervalMs, paused, interaction, dialogOpen, visibleTab]);
-
   const fullMeasurementCards = cards.flatMap((card) => {
     const pedido = card.props.pedido;
     const complete = fragmentoCompleto(pedido);
@@ -287,9 +295,9 @@ export function CozinhaTvGrid({ children, autoAdvance = true, intervalMs = 15_00
       <div ref={measureRef} className="cozinha-tv-measure" aria-hidden="true" inert>{fullMeasurementCards}</div>
       <div ref={gridRef} className="cozinha-tv-grid">{visible}</div>
       <nav className="cozinha-tv-pager-bar" aria-label="Paginação dos pedidos">
-        <button type="button" className="cozinha-tv-page-button" disabled={activePage <= 0} onClick={() => setPage((n) => Math.max(0, n - 1))}>Anterior</button>
+        {pages.length > 1 && <button type="button" className="cozinha-tv-page-button" disabled={activePage <= 0} onClick={() => setPage((n) => Math.max(0, n - 1))}>Anterior</button>}
         <p aria-live="polite">Página {activePage + 1} de {Math.max(1, pages.length)} · {cards.length} pedidos <span>{countLabel}</span></p>
-        <button type="button" className="cozinha-tv-page-button" disabled={activePage >= pages.length - 1} onClick={() => setPage((n) => Math.min(pages.length - 1, n + 1))}>Próxima</button>
+        {pages.length > 1 && <button type="button" className="cozinha-tv-page-button" disabled={activePage >= pages.length - 1} onClick={() => setPage((n) => Math.min(pages.length - 1, n + 1))}>Próxima</button>}
       </nav>
     </div>
   );

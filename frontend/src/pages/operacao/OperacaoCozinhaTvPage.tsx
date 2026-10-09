@@ -188,8 +188,6 @@ export function OperacaoCozinhaTvPage() {
         </div>
       ) : (
         <CozinhaTvGrid
-          autoAdvance
-          intervalMs={displaySettings.intervalMs}
           paused={interacaoPendente}
           profile={displaySettings.profile}
         >

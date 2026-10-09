@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 export type CozinhaPerfilVisual = 'automatico' | 'ampliada' | 'mais-pedidos';
-export interface CozinhaDisplaySettings { profile: CozinhaPerfilVisual; intervalMs: number }
-const DEFAULT: CozinhaDisplaySettings = { profile: 'automatico', intervalMs: 15_000 };
-const INTERVALS = [5_000, 10_000, 15_000, 20_000, 30_000] as const;
+export interface CozinhaDisplaySettings { profile: CozinhaPerfilVisual }
+const DEFAULT: CozinhaDisplaySettings = { profile: 'automatico' };
 
 function deviceId() {
   const key = 'qt:cozinha:device-id';
@@ -22,16 +21,18 @@ export function useCozinhaDisplaySettings() {
     try {
       const value = JSON.parse(localStorage.getItem(key) ?? 'null') as Partial<CozinhaDisplaySettings> | null;
       if (!value) { setSettings(DEFAULT); return; }
-      setSettings({
+      const next = {
         profile: ['automatico', 'ampliada', 'mais-pedidos'].includes(value.profile ?? '') ? value.profile as CozinhaPerfilVisual : DEFAULT.profile,
-        intervalMs: INTERVALS.includes(value.intervalMs as (typeof INTERVALS)[number]) ? value.intervalMs! : DEFAULT.intervalMs,
-      });
+      };
+      setSettings(next);
+      // Canonicalize old device preferences so removed timers cannot be restored later.
+      localStorage.setItem(key, JSON.stringify(next));
     } catch { setSettings(DEFAULT); }
   }, [key]);
   const update = (patch: Partial<CozinhaDisplaySettings>) => {
     const next = { ...settings, ...patch };
     setSettings(next);
-    if (key) localStorage.setItem(key, JSON.stringify(next));
+    if (key) localStorage.setItem(key, JSON.stringify({ profile: next.profile }));
   };
-  return { settings, update, intervals: INTERVALS };
+  return { settings, update };
 }
