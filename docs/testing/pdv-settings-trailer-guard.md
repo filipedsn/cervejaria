@@ -165,3 +165,53 @@ que os recursos persistem. Em tenant LEGACY, confirmar que o seletor permanece
 visível e que setup envia `operationMode`. Repetir no carregamento/erro
 simulado apenas pela suíte Playwright. Nenhuma alteração em banco ou PROD foi
 feita.
+
+## Reorganização das configurações canônicas do PDV (09/10/2026)
+
+No CANONICAL_PDV, Configurações agora apresenta Equipe | PDV | Aparência. A aba
+Operação e o endereço `/operacao/configuracoes/operacao` redirecionam para PDV;
+os aliases de Trailer e operações nas configurações da cervejaria também levam
+à aba canônica. LEGACY mantém as abas Trailers e Operação e os controles de modo.
+
+A aba PDV mantém a identificação da unidade e organiza os componentes atuais
+em grupos nativos recolhíveis: Recursos do PDV; Atendimento e comandas; Tela de
+comandas; Catálogo; Pagamentos e notificações; Portal do cliente; e Torneiras.
+Os campos permanecem montados ao recolher os grupos, então rascunhos não são
+perdidos. TAPs só monta com o parâmetro ativo e proprietário autorizado. PIX,
+KPIs, layout, mesas, regras de cozinha, categorias, WhatsApp, portal e agenda
+continuam usando seus componentes e contratos existentes. A Agenda permanece
+no menu `/operacao/agenda`, sem cópia nas configurações. “Como começar a vender”
+continua como ajuda secundária e seu fluxo não mostra seleção de modo.
+
+Nenhuma API, schema, valor persistido, permissão ou regra de negócio foi
+alterada. Os testes usam APIs simuladas e um diretório temporário próprio, sem
+alterar dados reais: `test-results/pdv-settings-reorganization-20261009/`.
+
+Validação executada: `npm.cmd run build --prefix frontend` aprovado e
+`npx.cmd playwright test --config playwright.pdv-settings-reorg.config.ts`
+aprovado (6 testes), em larguras 390px e 768px. Cobertura: abas e grupos,
+parâmetros únicos e posicionados, orientação por caixa, aliases/redirecionamento,
+rascunho ao recolher, endpoints de mesas/KPIs/layout/categorias/PIX/WhatsApp,
+erros de salvamento, TAPs ligados/desligados, QR e URL do PDV, acesso à Agenda
+pelo menu, ajuda sem modo e navegação LEGACY.
+
+## Conferência em DEV
+
+1. Usar o ambiente DEV já existente e autenticar como proprietário de tenant
+   CANONICAL_PDV. Não alterar a ativação ou os parâmetros persistidos para testar.
+2. Abrir `/operacao/configuracoes/pdv` em celular (390px) e tablet (768px).
+   Conferir Equipe | PDV | Aparência, unidade única, grupos recolhíveis, ausência
+   da aba Operação/Trailers e ausência de rolagem horizontal.
+3. Abrir `/operacao/configuracoes/operacao` e `/configuracoes/operacao`;
+   ambos devem terminar em `/operacao/configuracoes/pdv`. Conferir também
+   `/configuracoes/trailers`, `/configuracoes/carretos` e
+   `/configuracoes/clientes` redirecionando para PDV.
+4. Recolher e reabrir Pagamentos e notificações com texto digitado no PIX;
+   o rascunho deve permanecer. Para validar salvamento em DEV, usar tenant de QA
+   expressamente reservado a testes; não alterar parâmetros de clientes reais.
+   A suíte Playwright cobre PATCH e erro sem tocar em dados reais.
+5. Conferir o grupo Torneiras conforme estado efetivo do parâmetro e usar o QR
+   para confirmar que o link termina em `/p/<id-do-PDV>`. Agenda continua acessível
+   no item próprio do menu `/operacao/agenda`.
+6. Em tenant LEGACY, confirmar que Trailers e Operação continuam disponíveis.
+   Não executar migrations, cutover, QA integral ou qualquer ação em PROD.

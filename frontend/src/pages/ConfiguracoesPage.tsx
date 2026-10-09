@@ -25,8 +25,9 @@ export function ConfiguracoesPage() {
   const { contexto, isLoading, isResolved } = useOperacaoContexto();
   if (isLoading) return <Loading />;
   if (!isResolved) return <div className="alert-error" role="alert">Não foi possível validar o contexto do PDV.</div>;
+  if (tab === 'catalogo' || tab === 'cardapios') return <Navigate to="/operacao/catalogo" replace />;
   if (contexto.operationalSettingsSource === 'CANONICAL_PDV') {
-    const canonicalTab = ['trailers', 'carretos', 'clientes', 'pdv'].includes(tab ?? '') ? 'pdv' : tab ?? 'equipe';
+    const canonicalTab = ['trailers', 'carretos', 'clientes', 'pdv', 'operacao'].includes(tab ?? '') ? 'pdv' : tab ?? 'equipe';
     return <Navigate to={`/operacao/configuracoes/${canonicalTab}`} replace />;
   }
   if (contexto.operationalSettingsSource !== 'LEGACY') return <div className="alert-error" role="alert">Contexto operacional inválido.</div>;
