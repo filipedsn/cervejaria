@@ -312,9 +312,8 @@ test('portal do cliente mantém a ordem e os nomes das categorias canônicas em 
     await page.getByLabel('Telefone').fill('11999999999');
     await page.getByLabel('Nome').fill('Cliente QA');
     await page.getByRole('button', { name: 'Abrir comanda' }).click();
-    await page.getByRole('button', { name: 'Bebidas', exact: true }).click();
     const categoryHeadings = page.locator('.portal-pdv-category h4');
-    await expect(categoryHeadings).toHaveText(['Bebidas especiais', 'Bebidas']);
+    await expect(categoryHeadings).toHaveText(['Petiscos', 'Bebidas especiais', 'Bebidas']);
     await expect(page.getByRole('button', { name: /Soda especial/ })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     await page.screenshot({ path: resolve(output, `portal-${width}px.png`), fullPage: true });

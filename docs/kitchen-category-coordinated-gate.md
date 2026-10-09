@@ -1,24 +1,24 @@
-# Gate coordenado: cozinha e categorias
+﻿# Gate coordenado: cozinha e categorias
 
-## Revisões e builds
+## Identificação e builds
 
-- HEAD publicado testado: `4edeec64e79586527052d1352d39b8c50dbaf68b` (contém `f8ba04d` e `5a33472`).
-- Build backend do HEAD, em cópia temporária limpa: **falhou** em `backend/src/lib/cervejaria-branding.ts` (a rota `public.ts` importa `resolveLogoVersion`, que não é exportado no HEAD) e em `backend/src/routes/public.ts` (o seletor por categoria recebe produtos sem a propriedade `categoria`).
-- Build frontend do HEAD: **passou** (`tsc -b`, Vite e PWA; avisos existentes de chunk grande e import dinâmico).
-- Builds do workspace local: **backend e frontend passaram**. O workspace tem alterações locais não publicadas que explicam a diferença: `backend/src/lib/cervejaria-branding.ts` exporta o resolvedor e `backend/src/lib/comanda-service.ts` inclui o nome da categoria na serialização pública. Esses arquivos não foram alterados nesta entrega. Não há arquivos de cozinha modificados localmente.
-
-Assim, os erros estão no HEAD publicado; as alterações locais os corrigem no build combinado. Não foram encontrados erros de build de cozinha para corrigir. O frontend/backend DEV não foram reiniciados porque o HEAD publicado ainda não passa o build backend e as correções locais não estão em um SHA publicado.
+- Base publicada antes desta entrega: `4edeec64e79586527052d1352d39b8c50dbaf68b`, contendo `f8ba04d` e `5a33472`.
+- Build backend limpo dessa base falhou em dois pontos de integração de catálogo público: `resolveLogoVersion` não exportado por `cervejaria-branding.ts` e serializador público sem `categoria` para o filtro de `public.ts`. O build frontend passou. Não foram encontrados erros de build em arquivos de cozinha no HEAD.
+- Os dois ajustes locais autorizados foram incorporados em `84ca9cd`: exportação de `resolveLogoVersion` e inclusão de `categoria` na serialização do cardápio público. O primeiro build limpo desse commit identificou uma dependência da mesma correção de logo: o contexto de trailer público precisava selecionar `updatedAt`. Essa linha local foi incluída em `8a89aed`.
+- Builds limpos de backend e frontend em `8a89aeddaebb1d5fa047e27310e8930b189b434c` passaram. O backend concluiu `tsc`; o frontend concluiu `tsc -b`, Vite e PWA. Permanecem avisos existentes de tamanho de chunks e import dinâmico.
+- Origem claramente separada: o erro estava no HEAD publicado, não em alterações incompletas de cozinha. Os ajustes de integração do cardápio/logo eram alterações locais autorizadas. Demais alterações locais alheias foram preservadas e não entraram nos commits.
 
 ## Testes focados
 
-- `backend/scripts/run-kitchen-cancellation-disposable-qa.mjs`: 3/3 passaram; duas sessões simultâneas, retry, comando atrasado, conflito incompatível, histórico e efeitos estoque/financeiro.
-- `backend/scripts/run-kitchen-realtime-latency-disposable-qa.mjs`: 12/12 eventos recebidos em duas sessões via Socket.IO real, sem polling; nenhum banco real usado.
-- `e2e/current-model/kitchen-pagination-regressions.spec.ts`: 8/8 passaram usando Vite local e Socket.IO simulado isolado (`VITE_SOCKET_URL=http://127.0.0.1:3003`). Inclui três páginas, cartões altos/curtos, pedido longo, reconexão, interação e duplo toque.
-- `backend/scripts/run-pdv-gamified-category-api-qa.mjs`: passou em banco PostgreSQL descartável tmpfs; API autenticada cobre permissão/tenant, ordem canônica, LEGACY e classificação Chope. Usou baseline de 100 migrations para criar o banco descartável; não houve acesso a DEV/PROD.
-- `e2e/pdv-gamified-categories.spec.ts`: 9/9 passaram com APIs interceptadas e Vite local; inclui mesma ordem/nomes no catálogo, comanda e portal, Chope por Tap, nome/volume e classificação.
+- Playwright de cozinha: 8/8 passaram contra o frontend compilado de `8a89aed`, com API e Socket.IO simulados. Cobertura: três páginas, cartão alto e cinco curtos, pedidos longos, dimensões reais sem overflow/rolagem, realtime/reconexão, proteção durante interação, duplo toque e conflito.
+- Playwright de categorias: 9/9 passaram. A asserção de portal foi alinhada ao contrato presente no código publicado: o portal exibe os nomes canônicos como seções, sem filtro de tipo. O teste valida `Petiscos`, `Bebidas especiais`, `Bebidas` nessa ordem e os produtos correspondentes. A expectativa anterior procurava um botão `Bebidas` de uma mudança visual local ainda não publicada e falhava contra o HEAD. Os outros casos cobrem manutenção, permissões, ordem da comanda, Chope por Tap, volume e classificação.
+- API autenticada de categorias: passada em PostgreSQL descartável tmpfs, com commit de migrações fixado em `8a89aed`; cobre owner/permissão/isolamento de tenant, ordem canônica e LEGACY, renomeação e preservação de classificação/volume de Chope, opcionais e snapshots. O runner aplicou 100 migrações apenas para inicializar o banco efêmero; não foi executado QA de migração.
+- QA de concorrência da cozinha: 3/3 passaram em PostgreSQL descartável. Inclui cancelamento idempotente, status concorrente, retry, comando atrasado e recusa incompatível. Um primeiro lançamento simultâneo foi recusado porque outro container já usava a porta local; a repetição sequencial passou.
+- Socket.IO real, duas sessões: 12/12 eventos recebidos sem polling. Amostra mais recente: request/commit/emissão até resposta p50 58,88 ms e p95 242,45 ms; emissão do servidor até recebimento p50 2,63 ms e p95 57,11 ms; evento recebido antes da resposta HTTP em todas as amostras (p50 -0,98 ms). Refetch/renderização visível no navegador continuam sem medição válida; ver `kitchen-realtime-latency.md`.
 
-## Medição mais recente
+## DEV e evidência
 
-Em 12 mudanças de status: request/resposta p50 38,99 ms, p95 112,3 ms; emissão→recebimento Socket.IO p50 1,75 ms, p95 18,12 ms; evento chegou antes da resposta HTTP em todas as amostras (diferença p50 -0,63 ms). Refetch/render visível segue pendente de captura válida no navegador, como registrado em `kitchen-realtime-latency.md`.
-
-Não há correção de produção nesta entrega. O SHA testado publicado permanece `4edeec64e79586527052d1352d39b8c50dbaf68b`; esta evidência documenta a distinção entre HEAD e workspace local. As duas correções locais que fazem o build combinado passar permanecem sem commit até resolver a restrição de não alterar a implementação de categorias. TAP-76 permanece In Progress.
+- Atualização conjunta de backend/frontend DEV: pendente até os testes finais e builds do SHA final passarem.
+- SHA servido: pendente de atualização e verificação pós-deploy.
+- Capturas Playwright com dados simulados: `artifacts/kitchen-pagination/regression-after/tablet-horizontal-page-1.png` a `tablet-horizontal-page-3.png`, `tv-page-1.png` a `tv-page-3.png`, e `artifacts/kitchen-pagination/masonry-after/page-1.png` (seis pedidos, um cartão alto e cinco curtos, mesma página). As dimensões são verificadas por assertivas Playwright; não há scroll interno nem clipping nos casos cobertos.
+- PROD não acessada. Nenhum pedido real foi alterado. TAP-76 permanece In Progress.
