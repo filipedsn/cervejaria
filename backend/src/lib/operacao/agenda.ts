@@ -27,6 +27,7 @@ export async function generateAgendaDates(tx: Prisma.TransactionClient, scope: P
   await lockAgendaResource(tx, scope, 'regra', agendaId);
   const agenda = await tx.agendaOperacional.findFirst({ where: { id: agendaId, ...scope } });
   if (!agenda) throw agendaError('Repetição não encontrada', 404);
+  if (agenda.archivedAt) throw agendaError('Esta repetição foi removida da lista e está arquivada. Nenhuma nova data pode ser agendada.');
   if (!agenda.ativa) throw agendaError('Esta repetição está inativa. Nenhuma nova data pode ser agendada.');
   const dates: Date[] = [];
   for (let offset = 0; offset <= days; offset++) {
@@ -63,6 +64,7 @@ export async function saveAgendamento(tx: Prisma.TransactionClient, scope: Scope
       await lockAgendaResource(tx, scope, 'regra', agendaId);
       const agenda = await tx.agendaOperacional.findFirst({ where: { id: agendaId, ...whereScope } });
       if (!agenda) throw agendaError('Repetição não encontrada', 404);
+      if (agenda.archivedAt) throw agendaError('Esta repetição está arquivada e disponível apenas para consulta.');
       if (!agenda.ativa && input.gerarDatas !== false) throw agendaError('Esta repetição está inativa. Salve somente sua definição, sem agendar novas datas.');
       await tx.agendaOperacional.update({ where: { id: agendaId }, data: { ...fields, diaSemana: data.getUTCDay() } });
     } else {
@@ -107,9 +109,22 @@ export async function stopAgenda(tx: Prisma.TransactionClient, scope: Scope, id:
   await lockAgendaResource(tx, scope, 'regra', id);
   const agenda = await tx.agendaOperacional.findFirst({ where: { id, ...whereScope } });
   if (!agenda) throw agendaError('Repetição não encontrada', 404);
+  if (agenda.archivedAt) throw agendaError('Esta repetição está arquivada e disponível apenas para consulta.');
   if (agenda.ativa) {
     await tx.agendaOperacional.update({ where: { id }, data: { ativa: false } });
     await tx.transacaoLog.create({ data: { cervejariaId: scope.cervejariaId, usuarioId, tipo: 'EVENTO_ATUALIZADO', entidadeTipo: 'AgendaOperacional', entidadeId: id, metadata: { acao: 'REPETICAO_INTERROMPIDA', pontoVendaId: scope.pontoVendaId, datasExistentesPreservadas: true } } });
   }
   return { id, ativa: false };
+}
+
+export async function archiveAgenda(tx: Prisma.TransactionClient, scope: Scope, id: string) {
+  const { usuarioId, ...whereScope } = scope;
+  await lockAgendaResource(tx, scope, 'regra', id);
+  const agenda = await tx.agendaOperacional.findFirst({ where: { id, ...whereScope } });
+  if (!agenda) throw agendaError('Repetição não encontrada', 404);
+  if (!agenda.archivedAt) {
+    await tx.agendaOperacional.update({ where: { id }, data: { archivedAt: new Date() } });
+    await tx.transacaoLog.create({ data: { cervejariaId: scope.cervejariaId, usuarioId, tipo: 'EVENTO_ATUALIZADO', entidadeTipo: 'AgendaOperacional', entidadeId: id, metadata: { acao: 'REPETICAO_ARQUIVADA', pontoVendaId: scope.pontoVendaId, ativaPreservada: agenda.ativa, datasExistentesPreservadas: true } } });
+  }
+  return { id, arquivada: true };
 }

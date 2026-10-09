@@ -4,7 +4,7 @@ import { prisma } from '../../lib/prisma.js';
 import { canonicalPdvQaActivationEnabled, readCanonicalPdvOperationalSettingsIfEnabled } from '../../lib/canonical-pdv-operational-config.js';
 import { requirePermissaoOuDono } from '../../lib/operacao/permissoes.js';
 import { getAuthUser } from '../../types/auth.js';
-import { cancelOccurrence, generateAgendaDates, lockAgendaResource, occurrenceBlock, saveAgendamento, stopAgenda } from '../../lib/operacao/agenda.js';
+import { archiveAgenda, cancelOccurrence, generateAgendaDates, lockAgendaResource, occurrenceBlock, saveAgendamento, stopAgenda } from '../../lib/operacao/agenda.js';
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use uma data no formato AAAA-MM-DD');
 const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -58,8 +58,22 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
       include: { agenda: { select: { id: true, nome: true, frequencia: true, diaSemana: true } }, _count: { select: { sessoesCaixa: true, comandas: true } } },
       orderBy: [{ data: 'asc' }, { horaInicio: 'asc' }, { nome: 'asc' }],
     });
-    const agendas = await prisma.agendaOperacional.findMany({ where: { cervejariaId: request.operacao.cervejariaId, pontoVendaId }, include: { _count: { select: { ocorrencias: true } } }, orderBy: [{ diaSemana: 'asc' }, { nome: 'asc' }] });
+    const agendas = await prisma.agendaOperacional.findMany({ where: { cervejariaId: request.operacao.cervejariaId, pontoVendaId, archivedAt: null }, include: { _count: { select: { ocorrencias: true } } }, orderBy: [{ diaSemana: 'asc' }, { nome: 'asc' }] });
     return { agendas, ocorrencias: ocorrencias.map((o) => ({ ...o, data: o.data.toISOString().slice(0, 10), bloqueio: occurrenceBlock(o), podeEditar: !occurrenceBlock(o), podeCancelar: !occurrenceBlock(o) })) };
+  });
+
+  app.get('/agendas/arquivadas', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
+    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ error: 'Agenda operacional indisponível nesta instalação' });
+    const cervejariaId = request.operacao.cervejariaId; const pontoVendaId = await canonicalPointId(cervejariaId);
+    if (!pontoVendaId) return reply.status(409).send({ error: 'PDV canônico indisponível' });
+    return { agendas: await prisma.agendaOperacional.findMany({ where: { cervejariaId, pontoVendaId, archivedAt: { not: null } }, include: { _count: { select: { ocorrencias: true } } }, orderBy: [{ archivedAt: 'desc' }, { nome: 'asc' }] }) };
+  });
+  app.post('/agendas/:id/arquivar', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
+    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ error: 'Agenda operacional indisponível nesta instalação' });
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+    const cervejariaId = request.operacao.cervejariaId; const pontoVendaId = await canonicalPointId(cervejariaId);
+    if (!pontoVendaId) return reply.status(409).send({ error: 'PDV canônico indisponível' });
+    return prisma.$transaction((tx) => archiveAgenda(tx, { cervejariaId, pontoVendaId, usuarioId: getAuthUser(request).sub }, id), { timeout: 15000 });
   });
 
   app.post('/agendamentos', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
@@ -109,7 +123,7 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
     if (!pontoVendaId) return reply.status(409).send({ code: 'CANONICAL_PDV_UNAVAILABLE', error: 'A empresa precisa ter exatamente um PDV ativo' });
     const result = await prisma.$transaction(async (tx) => {
       await lockAgendaResource(tx, { cervejariaId: request.operacao.cervejariaId, pontoVendaId }, 'regra', agendaId);
-      return tx.agendaOperacional.updateMany({ where: { id: agendaId, cervejariaId: request.operacao.cervejariaId, pontoVendaId }, data: body });
+      return tx.agendaOperacional.updateMany({ where: { id: agendaId, cervejariaId: request.operacao.cervejariaId, pontoVendaId, archivedAt: null }, data: body });
     });
     if (result.count !== 1) return reply.status(404).send({ error: 'Agenda não encontrada' });
     return prisma.agendaOperacional.findFirst({ where: { id: agendaId, cervejariaId: request.operacao.cervejariaId, pontoVendaId } });

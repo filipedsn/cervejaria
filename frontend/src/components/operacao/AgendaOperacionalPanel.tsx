@@ -4,7 +4,8 @@ import { useBlocker } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { Modal } from '../Modal';
 
-type Agenda = { id: string; nome: string; diaSemana: number; horaInicio: string; horaFim: string | null; local: string | null; ativa: boolean; _count: { ocorrencias: number } };
+type Agenda = { id: string; nome: string; diaSemana: number; horaInicio: string; horaFim: string | null; local: string | null; ativa: boolean; archivedAt?: string | null; _count: { ocorrencias: number } };
+type Confirmation = { kind: 'discard'; navigation?: boolean } | { kind: 'cancel'; item: Ocorrencia } | { kind: 'stop' | 'archive'; agendaId: string };
 type Ocorrencia = { id: string; agendaId: string | null; nome: string; data: string; horaInicio?: string | null; horaFim?: string | null; local?: string | null; status: 'PROGRAMADA' | 'ABERTA' | 'FECHADA' | 'CANCELADA'; podeEditar: boolean; podeCancelar: boolean; bloqueio: string | null };
 type Draft = { requestId: string; nome: string; data: string; horaInicio: string; horaFim: string; local: string; repetirSemanalmente: boolean; agendaId?: string; ocorrenciaId?: string; fim: string; gerarDatas: boolean };
 const dias = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
@@ -21,16 +22,23 @@ export function AgendaOperacionalPanel() {
   const [month, setMonth] = useState(today);
   const [view, setView] = useState<'Mês' | 'Lista'>('Mês');
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  const [notice, setNotice] = useState('');
   const [detail, setDetail] = useState<Ocorrencia | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [baseline, setBaseline] = useState('');
   const [moreOpen, setMoreOpen] = useState(false);
   const [error, setError] = useState('');
   const submitLock = useRef(false);
+  const resumeFocusIndex = useRef<number | null>(null);
+  const navigationPrompted = useRef(false);
   const queryClient = useQueryClient();
   const { inicio, fim } = monthRange(month);
   const query = useQuery({ queryKey: ['operacao-agenda-ocorrencias', 'gestao', inicio, fim], queryFn: () => api.get<{ agendas: Agenda[]; ocorrencias: Ocorrencia[] }>(`/api/operacao/agenda/ocorrencias?inicio=${inicio}&fim=${fim}`) });
   const agendas = query.data?.agendas ?? [];
+  const archivedQuery = useQuery({ queryKey: ['operacao-agenda-arquivadas'], queryFn: () => api.get<{ agendas: Agenda[] }>('/api/operacao/agenda/agendas/arquivadas'), enabled: rulesOpen && showArchived });
+  const displayedRules = showArchived ? archivedQuery.data?.agendas ?? [] : agendas;
   const ocorrencias = query.data?.ocorrencias ?? [];
   const byDay = useMemo(() => {
     const result = new Map<string, Ocorrencia[]>();
@@ -40,12 +48,21 @@ export function AgendaOperacionalPanel() {
   const visibleDays = view === 'Mês' ? [[selected, byDay.get(selected) ?? []] as const] : [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b));
   const mutation = useMutation({
     mutationFn: (operation: { path: string; body: unknown }) => api.post(operation.path, operation.body),
-    onSuccess: (_result, operation) => { const saved = operation.body as Partial<Draft>; if (saved.requestId && saved.data) { setMonth(saved.data); setSelected(saved.data); } setError(''); setDraft(null); setDetail(null); void queryClient.invalidateQueries({ queryKey: ['operacao-agenda-ocorrencias'] }); },
+    onSuccess: (_result, operation) => { const saved = operation.body as Partial<Draft>; if (saved.requestId && saved.data) { setMonth(saved.data); setSelected(saved.data); } if (operation.path.endsWith('/arquivar')) setNotice('Repetição removida da lista. As datas existentes foram preservadas.'); setError(''); setDraft(null); setDetail(null); void queryClient.invalidateQueries({ queryKey: ['operacao-agenda-ocorrencias'] }); void queryClient.invalidateQueries({ queryKey: ['operacao-agenda-arquivadas'] }); },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Não foi possível salvar. Tente novamente.'),
     onSettled: () => { submitLock.current = false; },
   });
   function write(path: string, body: unknown) { if (submitLock.current) return; submitLock.current = true; setError(''); mutation.mutate({ path, body }); }
-  function closeDraft() { if (mutation.isPending) return; if (draft && JSON.stringify(draft) !== baseline && !window.confirm('Descartar as alterações deste agendamento?')) return; setDraft(null); setError(''); }
+  function ask(value: Confirmation) { const nodes = [...document.querySelectorAll<HTMLElement>('[role="dialog"] button:not(:disabled), [role="dialog"] input:not(:disabled), [role="dialog"] select:not(:disabled), [role="dialog"] summary')]; resumeFocusIndex.current = nodes.indexOf(document.activeElement as HTMLElement); setConfirmation(value); }
+  function closeDraft() { if (mutation.isPending) return; if (draft && JSON.stringify(draft) !== baseline) { ask({ kind: 'discard' }); return; } setDraft(null); setError(''); }
+  function refuseConfirmation() { if (confirmation?.kind === 'discard' && confirmation.navigation && blocker.state === 'blocked') blocker.reset(); setConfirmation(null); }
+  function acceptConfirmation() {
+    if (!confirmation || mutation.isPending) return;
+    const selectedConfirmation = confirmation; setConfirmation(null);
+    if (selectedConfirmation.kind === 'discard') { setDraft(null); setError(''); if (selectedConfirmation.navigation && blocker.state === 'blocked') blocker.proceed(); }
+    else if (selectedConfirmation.kind === 'cancel') write(`/api/operacao/agenda/ocorrencias/${encodeURIComponent(selectedConfirmation.item.id)}/cancelar`, {});
+    else write(`/api/operacao/agenda/agendas/${encodeURIComponent(selectedConfirmation.agendaId)}/${selectedConfirmation.kind === 'archive' ? 'arquivar' : 'interromper'}`, {});
+  }
   function openDraft(values: Partial<Draft> = {}) {
     const next = { requestId: crypto.randomUUID(), nome: '', data: selected, horaInicio: '18:00', horaFim: '', local: '', repetirSemanalmente: false, fim, gerarDatas: true, ...values };
     setDetail(null); setRulesOpen(false); setError(''); setMoreOpen(Boolean(next.horaFim || next.local)); setDraft(next); setBaseline(JSON.stringify(next));
@@ -60,43 +77,36 @@ export function AgendaOperacionalPanel() {
     setMonth(next); setSelected(next);
   }
   function cancel(item: Ocorrencia) {
-    if (!window.confirm('Cancelar somente este agendamento? O registro será preservado.')) return;
-    write(`/api/operacao/agenda/ocorrencias/${encodeURIComponent(item.id)}/cancelar`, {});
+    ask({ kind: 'cancel', item });
   }
   function stop(agendaId: string) {
-    if (!window.confirm('Interromper a repetição? Isso impede novas datas. Os agendamentos já existentes serão mantidos.')) return;
-    write(`/api/operacao/agenda/agendas/${encodeURIComponent(agendaId)}/interromper`, {});
+    ask({ kind: 'stop', agendaId });
   }
   const rule = agendas.find((agenda) => agenda.id === draft?.agendaId);
   const detailRule = agendas.find((agenda) => agenda.id === detail?.agendaId);
   const first = localDate(inicio); const length = localDate(fim).getDate();
   const cells = Array.from({ length: Math.ceil((first.getDay() + length) / 7) * 7 }, (_, index) => index - first.getDay() + 1);
-  const modalOpen = Boolean(draft || detail || rulesOpen);
+  const modalOpen = Boolean(draft || detail || rulesOpen || confirmation);
   const dirty = Boolean(draft && JSON.stringify(draft) !== baseline);
   const blocker = useBlocker(dirty);
   useEffect(() => {
-    if (blocker.state !== 'blocked') return;
+    if (blocker.state !== 'blocked') { navigationPrompted.current = false; return; }
     if (mutation.isPending) { blocker.reset(); return; }
-    if (window.confirm('Descartar as alterações deste agendamento?')) { setDraft(null); blocker.proceed(); } else blocker.reset();
+    if (!navigationPrompted.current) { navigationPrompted.current = true; ask({ kind: 'discard', navigation: true }); }
   }, [blocker, mutation.isPending]);
-  useEffect(() => {
-    if (!dirty) return;
-    const protect = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
-    window.addEventListener('beforeunload', protect); return () => window.removeEventListener('beforeunload', protect);
-  }, [dirty]);
   useEffect(() => {
     if (!modalOpen) return;
     const previous = document.activeElement as HTMLElement | null;
     const overflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
-    const timer = window.setTimeout(() => (document.querySelector('[role="dialog"] input, [role="dialog"] button') as HTMLElement | null)?.focus(), 0);
+    const timer = window.setTimeout(() => { const nodes = [...document.querySelectorAll<HTMLElement>('[role="dialog"] button:not(:disabled), [role="dialog"] input:not(:disabled), [role="dialog"] select:not(:disabled), [role="dialog"] summary')]; const index = confirmation ? 0 : resumeFocusIndex.current; (index !== null && index >= 0 ? nodes[index] ?? nodes[0] : document.querySelector<HTMLElement>('[role="dialog"] input, [role="dialog"] button'))?.focus(); if (!confirmation) resumeFocusIndex.current = null; }, 0);
     return () => { clearTimeout(timer); document.body.style.overflow = overflow; previous?.focus(); };
-  }, [modalOpen]);
+  }, [modalOpen, confirmation, draft?.requestId, detail?.id, rulesOpen]);
   useEffect(() => {
     if (!modalOpen) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !mutation.isPending) { if (draft) closeDraft(); else { setDetail(null); setRulesOpen(false); setError(''); } }
+      if (event.key === 'Escape' && !mutation.isPending) { if (confirmation) refuseConfirmation(); else if (draft) closeDraft(); else { setDetail(null); setRulesOpen(false); setError(''); } }
       if (event.key === 'Tab') {
-        const nodes = [...document.querySelectorAll<HTMLElement>('[role="dialog"] button:not(:disabled), [role="dialog"] input:not(:disabled), [role="dialog"] select:not(:disabled)')];
+        const nodes = [...document.querySelectorAll<HTMLElement>('[role="dialog"] button:not(:disabled), [role="dialog"] input:not(:disabled), [role="dialog"] select:not(:disabled), [role="dialog"] summary')];
         if (!document.activeElement?.closest('[role="dialog"]')) { event.preventDefault(); nodes[0]?.focus(); }
         else if (event.shiftKey && document.activeElement === nodes[0]) { event.preventDefault(); nodes.at(-1)?.focus(); }
         else if (!event.shiftKey && document.activeElement === nodes.at(-1)) { event.preventDefault(); nodes[0]?.focus(); }
@@ -116,7 +126,8 @@ export function AgendaOperacionalPanel() {
       <button type="button" className="touch-btn-primary flex-1 !px-3 text-sm sm:flex-none sm:text-base" onClick={() => openDraft()}>+ Novo agendamento</button>
       </div>
     </div>
-    <div className="flex items-center justify-between gap-3 text-sm text-ink-muted"><span>{ocorrencias.length} agendamento{ocorrencias.length === 1 ? '' : 's'} no mês</span><button type="button" className="min-h-11 rounded-lg px-3 underline underline-offset-4" onClick={() => { setError(''); setRulesOpen(true); }}>Repetições ({agendas.length})</button></div>
+    <div className="flex items-center justify-between gap-3 text-sm text-ink-muted"><span>{ocorrencias.length} agendamento{ocorrencias.length === 1 ? '' : 's'} no mês</span><button type="button" className="min-h-11 rounded-lg px-3 underline underline-offset-4" onClick={() => { setError(''); setShowArchived(false); setRulesOpen(true); }}>Repetições ({agendas.length})</button></div>
+    {notice && !rulesOpen && <p role="status" className="rounded-xl bg-success-soft p-3 text-sm text-ink">{notice}</p>}
     {query.isError && <div role="alert" className="alert-error flex flex-wrap items-center gap-3"><span>Não foi possível carregar a agenda.</span><button type="button" className="touch-btn-secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>Tentar novamente</button></div>}
     {query.isFetching && <p role="status" className="text-sm text-ink-faint">Carregando agendamentos…</p>}
     {view === 'Mês' && <div className="rounded-2xl border border-line bg-surface p-2 sm:p-4">
@@ -131,22 +142,30 @@ export function AgendaOperacionalPanel() {
       {view === 'Lista' && visibleDays.length === 0 && <p className="py-8 text-center text-sm text-ink-muted">Nenhum agendamento neste mês.</p>}
       {visibleDays.map(([day, items]) => <section key={day} aria-label={labelDate(day)} className="space-y-2"><h3 className="text-sm font-semibold text-ink-muted">{labelDate(day)}</h3>{items.length === 0 ? <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-ink-muted">Nenhum agendamento neste dia.</p> : <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">{items.map((item) => <li key={item.id}><button type="button" className="flex min-h-16 w-full items-center gap-3 p-3 text-left hover:bg-surface-lighter" onClick={() => { setError(''); setDetail(item); }}><span className="w-12 shrink-0 text-sm text-ink-muted">{item.horaInicio || '—'}</span><span className="min-w-0 flex-1"><strong className="block break-words">{item.nome}</strong><span className={`text-sm ${statusColor[item.status]}`}>{estados[item.status]}{item.agendaId ? ' · Semanal' : ''}</span></span><span className="text-ink-faint" aria-hidden="true">›</span></button></li>)}</ul>}</section>)}
     </div>}
-    <Modal open={rulesOpen} title="Repetições" onClose={() => { if (!mutation.isPending) setRulesOpen(false); }} footer={<button type="button" className="touch-btn-orange w-full" disabled={mutation.isPending} onClick={() => setRulesOpen(false)}>Voltar</button>}>
+    <Modal open={rulesOpen && !confirmation} title={showArchived ? 'Repetições arquivadas' : 'Repetições'} onClose={() => { if (!mutation.isPending) setRulesOpen(false); }} footer={<button type="button" className="touch-btn-orange w-full" disabled={mutation.isPending} onClick={() => { setRulesOpen(false); setShowArchived(false); }}>Voltar</button>}>
       <p className="mb-4 text-sm text-ink-muted">Regras semanais. Somente as datas já agendadas aparecem no calendário.</p>
+      <button type="button" className="touch-btn-secondary mb-3" onClick={() => setShowArchived(!showArchived)}>{showArchived ? 'Voltar à lista' : 'Ver arquivadas'}</button>
       {error && <div role="alert" className="alert-error mb-3">{error}</div>}
+      {notice && <p role="status" className="mb-3 text-sm text-success">{notice}</p>}
       {query.isError && <p className="text-sm text-danger">Não foi possível carregar as repetições.</p>}
-      {!query.isError && agendas.length === 0 && <p className="py-4 text-sm text-ink-muted">Nenhuma repetição cadastrada.</p>}
-      <ul className="divide-y divide-line">{agendas.map((agenda) => <li key={agenda.id} className="py-3"><button type="button" className="min-h-14 w-full rounded-xl text-left" aria-label={`Editar repetição ${agenda.nome}`} disabled={mutation.isPending} onClick={() => openRule(agenda)}><strong className="block break-words">{agenda.nome}</strong><span className="text-sm text-ink-muted">{dias[agenda.diaSemana]} · {agenda.horaInicio} · {agenda.ativa ? 'Ativa' : 'Inativa'}</span><span className="block text-sm text-ink-faint">{agenda._count?.ocorrencias === 0 ? 'Ainda sem datas agendadas' : `${agenda._count?.ocorrencias ?? 0} datas agendadas`}</span></button>{agenda.ativa && <button type="button" className="min-h-11 text-sm text-danger underline" disabled={mutation.isPending} onClick={() => stop(agenda.id)}>Interromper a repetição</button>}</li>)}</ul>
+      {showArchived && archivedQuery.isLoading && <p role="status">Carregando arquivadas…</p>}
+      {showArchived && archivedQuery.isError && <div role="alert" className="alert-error">Não foi possível carregar as arquivadas.<button type="button" className="touch-btn-secondary" onClick={() => void archivedQuery.refetch()}>Tentar novamente</button></div>}
+      {!query.isError && displayedRules.length === 0 && !archivedQuery.isFetching && <p className="py-4 text-sm text-ink-muted">{showArchived ? 'Nenhuma repetição arquivada.' : 'Nenhuma repetição cadastrada.'}</p>}
+      <ul className="divide-y divide-line">{displayedRules.map((agenda) => <li key={agenda.id} className="space-y-2 py-3">
+        <strong className="block break-words">{agenda.nome}</strong><span className="block text-sm text-ink-muted">{dias[agenda.diaSemana]} · {agenda.horaInicio} · {agenda.ativa ? 'Ativa' : 'Inativa'}{agenda.archivedAt ? ' · Arquivada' : ''}</span>
+        <span className="block text-sm text-ink-faint">{agenda._count?.ocorrencias === 0 ? 'Ainda sem datas agendadas · total em todos os períodos' : agenda._count ? `${agenda._count.ocorrencias} datas no total · todos os períodos (inclui canceladas)` : 'Contagem de datas indisponível'}</span>
+        {!showArchived && <div className="flex flex-wrap gap-2"><button type="button" className="touch-btn-secondary" aria-label={`Editar repetição ${agenda.nome}`} disabled={mutation.isPending} onClick={() => openRule(agenda)}>Editar</button>{agenda.ativa && <button type="button" className="touch-btn-secondary" disabled={mutation.isPending} onClick={() => stop(agenda.id)}>Interromper repetição</button>}<button type="button" className="touch-btn-secondary" disabled={mutation.isPending} onClick={() => ask({ kind: 'archive', agendaId: agenda.id })}>Remover da lista</button></div>}
+      </li>)}</ul>
     </Modal>
-    <Modal open={Boolean(detail)} title="Agendamento" onClose={() => { if (!mutation.isPending) setDetail(null); }} footer={<button type="button" className="touch-btn-orange w-full" disabled={mutation.isPending} onClick={() => setDetail(null)}>Voltar</button>}>
+    <Modal open={Boolean(detail) && !confirmation} title="Agendamento" onClose={() => { if (!mutation.isPending) setDetail(null); }} footer={<button type="button" className="touch-btn-orange w-full" disabled={mutation.isPending} onClick={() => setDetail(null)}>Voltar</button>}>
       {detail && <div className="space-y-4 pb-3"><div><h3 className="text-lg font-semibold break-words">{detail.nome}</h3><p className="text-sm text-ink-muted">{labelDate(detail.data)}{detail.horaInicio ? ` · ${detail.horaInicio}${detail.horaFim ? `–${detail.horaFim}` : ''}` : ''}</p><p className={`mt-2 text-sm ${statusColor[detail.status]}`}>{estados[detail.status]}</p>{detail.local && <p className="text-sm">{detail.local}</p>}</div>
         {error && <div role="alert" className="alert-error">{error}</div>}
         {detail.bloqueio && <p className="text-sm text-ink-muted">{detail.bloqueio}</p>}
         <div className="grid gap-2"><button type="button" className="touch-btn-primary" disabled={!detail.podeEditar || mutation.isPending} onClick={() => openDraft({ nome: detail.nome, data: detail.data, horaInicio: detail.horaInicio ?? '', horaFim: detail.horaFim ?? '', local: detail.local ?? '', ocorrenciaId: detail.id })}>Editar</button><button type="button" className="touch-btn-secondary text-danger" disabled={!detail.podeCancelar || mutation.isPending} onClick={() => cancel(detail)}>{detail.agendaId ? 'Cancelar este agendamento' : 'Cancelar agendamento'}</button></div>
-        {detailRule && <div className="space-y-2 border-t border-line pt-3"><p className="text-sm text-ink-muted">Repetição: {detailRule.nome} · {detailRule.ativa ? 'Ativa' : 'Inativa'}. Interromper impede novas datas e mantém os agendamentos existentes.</p><button type="button" className="touch-btn-secondary w-full" onClick={() => openRule(detailRule)}>Editar repetição</button>{detailRule.ativa && <button type="button" className="touch-btn-secondary w-full text-danger" disabled={mutation.isPending} onClick={() => stop(detailRule.id)}>Interromper a repetição</button>}</div>}
+        {detailRule && <div className="space-y-2 border-t border-line pt-3"><p className="text-sm text-ink-muted">Repetição: {detailRule.nome} · {detailRule.ativa ? 'Ativa' : 'Inativa'}. Interromper impede novas datas e mantém os agendamentos existentes.</p><button type="button" className="touch-btn-secondary w-full" disabled={mutation.isPending} onClick={() => openRule(detailRule)}>Editar repetição</button>{detailRule.ativa && <button type="button" className="touch-btn-secondary w-full text-danger" disabled={mutation.isPending} onClick={() => stop(detailRule.id)}>Interromper a repetição</button>}</div>}
       </div>}
     </Modal>
-    <Modal open={Boolean(draft)} title={draft?.agendaId ? 'Editar repetição' : draft?.ocorrenciaId ? 'Editar agendamento' : 'Novo agendamento'} onClose={closeDraft} hideHeaderClose={mutation.isPending} closeOnBackdrop={!mutation.isPending} footer={<div className="grid grid-cols-2 gap-2"><button type="button" className="touch-btn-orange" disabled={mutation.isPending} onClick={closeDraft}>Voltar</button><button type="submit" form="agendamento-form" className="touch-btn-primary" disabled={mutation.isPending}>{mutation.isPending ? 'Salvando…' : 'Salvar'}</button></div>}>
+    <Modal open={Boolean(draft) && !confirmation} title={draft?.agendaId ? 'Editar repetição' : draft?.ocorrenciaId ? 'Editar agendamento' : 'Novo agendamento'} onClose={closeDraft} hideHeaderClose={mutation.isPending} closeOnBackdrop={!mutation.isPending} footer={<div className="grid grid-cols-2 gap-2"><button type="button" className="touch-btn-orange" disabled={mutation.isPending} onClick={closeDraft}>Voltar</button><button type="submit" form="agendamento-form" className="touch-btn-primary" disabled={mutation.isPending}>{mutation.isPending ? 'Salvando…' : 'Salvar'}</button></div>}>
       {draft && <form id="agendamento-form" className="space-y-4 pb-2" onSubmit={(event) => { event.preventDefault(); write('/api/operacao/agenda/agendamentos', { ...draft, horaFim: draft.horaFim || null, local: draft.local || null, ...(draft.repetirSemanalmente ? {} : { fim: undefined }) }); }}>
         {error && <div role="alert" className="alert-error">{error}</div>}
         <label className="block text-sm">Nome<input className="input mt-1 min-h-11 w-full" value={draft.nome} maxLength={120} required disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, nome: event.target.value })} /></label>
@@ -155,6 +174,9 @@ export function AgendaOperacionalPanel() {
         {!draft.ocorrenciaId && <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" className="h-5 w-5" checked={draft.repetirSemanalmente} disabled={Boolean(draft.agendaId) || mutation.isPending} onChange={(event) => setDraft({ ...draft, repetirSemanalmente: event.target.checked })} />Repetir semanalmente</label>}
         {draft.repetirSemanalmente && <div className="space-y-3 rounded-xl border border-line p-3"><p className="text-sm text-ink-muted">Repetição semanal: {dias[localDate(draft.data).getDay()]} · {draft.horaInicio}.</p><label className="block text-sm">Última data da repetição<input type="date" className="input mt-1 min-h-11 w-full" value={draft.fim} min={draft.data} required disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, fim: event.target.value })} /></label>{rule && <><p className="text-sm text-ink-muted">Alterações na regra serão usadas somente em novas datas. Os agendamentos existentes serão preservados.</p>{rule.ativa ? <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" className="h-5 w-5" checked={draft.gerarDatas} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, gerarDatas: event.target.checked })} />Agendar datas neste período</label> : <p className="text-sm text-ink-muted">Repetição inativa: serão salvos somente os dados da regra. Nenhuma nova data será agendada.</p>}</>}</div>}
       </form>}
+    </Modal>
+    <Modal open={Boolean(confirmation)} title={confirmation?.kind === 'discard' ? 'Descartar alterações?' : confirmation?.kind === 'cancel' ? 'Cancelar agendamento?' : confirmation?.kind === 'stop' ? 'Interromper repetição?' : 'Remover repetição da lista?'} onClose={refuseConfirmation} hideHeaderClose footer={<div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><button type="button" className="touch-btn-orange min-h-12" onClick={refuseConfirmation}>{confirmation?.kind === 'discard' ? 'Continuar editando' : 'Voltar'}</button><button type="button" className={confirmation?.kind === 'archive' ? 'touch-btn-primary min-h-12' : 'touch-btn-danger min-h-12'} onClick={acceptConfirmation}>{confirmation?.kind === 'discard' ? 'Descartar' : confirmation?.kind === 'cancel' ? 'Cancelar agendamento' : confirmation?.kind === 'stop' ? 'Interromper repetição' : 'Remover da lista'}</button></div>}>
+      <p className="pb-3 text-sm leading-relaxed text-ink-muted">{confirmation?.kind === 'discard' ? 'As alterações ainda não salvas serão descartadas. Nenhum agendamento será enviado.' : confirmation?.kind === 'cancel' ? 'Somente este agendamento será cancelado. O registro e a auditoria serão preservados; a repetição não será interrompida.' : confirmation?.kind === 'stop' ? 'Novas datas não poderão ser geradas. As datas já existentes, comandas e caixa serão mantidos.' : 'A regra será arquivada e poderá ser consultada em Ver arquivadas. Seu estado ativo/inativo será preservado. Nenhuma nova data será gerada; datas existentes, comandas, caixa, estoque e auditoria serão mantidos.'}</p>
     </Modal>
   </section>;
 }

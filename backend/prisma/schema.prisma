@@ -1118,6 +1118,7 @@ model AgendaOperacional {
   horaFim String?
   local String?
   ativa Boolean @default(true)
+  archivedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

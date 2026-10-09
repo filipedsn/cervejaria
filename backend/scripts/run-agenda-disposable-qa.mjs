@@ -20,7 +20,7 @@ const databaseUrl = validateIsolatedQaEnvironment({ PDV_ISOLATED_QA: '1', QA_DAT
 const temporary = await mkdtemp(path.join(tmpdir(), 'agenda-qa-'));
 const env = { ...process.env };
 for (const key of Object.keys(env)) if (key === 'DATABASE_URL' || key === 'DIRECT_URL' || /_DATABASE_URL$/.test(key) || /^PROD/i.test(key) || key === 'PDV_CANONICAL_TENANTS') delete env[key];
-Object.assign(env, { NODE_ENV: 'test', PDV_ISOLATED_QA: '1', DATABASE_URL: databaseUrl, QA_DATABASE_URL: databaseUrl, PDV_CANONICAL_CONFIG_QA: '1', PDV_INDIVIDUAL_PERMISSIONS_ENABLED: '1' });
+Object.assign(env, { NODE_ENV: 'test', PDV_ISOLATED_QA: '1', DATABASE_URL: databaseUrl, QA_DATABASE_URL: databaseUrl, PDV_CANONICAL_CONFIG_QA: '1', PDV_INDIVIDUAL_PERMISSIONS_ENABLED: '1', JWT_SECRET: password, UPLOADS_DIR: path.join(temporary, 'qa-uploads') });
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { encoding: 'utf8', windowsHide: true, ...options });
   if (result.status !== 0) throw new Error(`${command} failed: ${`${result.stdout ?? ''}\n${result.stderr ?? ''}`.replaceAll(databaseUrl, '[QA DATABASE]').replaceAll(password, '[REDACTED]').slice(-5000)}`);
@@ -37,7 +37,7 @@ try {
   await writeFile(schemaPath, await readFile(new URL('../prisma/schema.prisma', import.meta.url)));
   run(process.execPath, ['node_modules/prisma/build/index.js', 'db', 'push', '--skip-generate', '--schema', schemaPath], { env });
   const output = run(process.execPath, ['--import', 'tsx', 'scripts/agenda.isolated.test.ts'], { env });
-  console.log(output);
+  console.log(output.split(/\r?\n/).filter((line) => /^(RUN |PASS |QA_)/.test(line)).join('\n'));
 } finally {
   if (created) { const labels = run('docker', ['inspect', '-f', '{{ index .Config.Labels "codex.purpose" }}|{{ index .Config.Labels "codex.run" }}', container]); if (labels !== `agenda-disposable-qa|${runId}`) throw new Error('QA ownership mismatch.'); run('docker', ['stop', container]); console.log('QA_AGENDA_DATABASE_REMOVED=tmpfs'); }
   const resolved = path.resolve(temporary);

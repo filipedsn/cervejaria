@@ -81,6 +81,7 @@ import {
 } from './lib/security-config.js';
 
 import { getReadinessStatus } from './lib/health.js';
+import { getReleaseContext } from './lib/release-context.js';
 import { createLogger } from './lib/logger.js';
 import { logUnhandledRequestError } from './lib/technical-log.js';
 import { registerAuditHooks } from './lib/audit-hooks.js';
@@ -143,6 +144,7 @@ function resolveFrontendDist(): string | null {
 }
 
 export async function buildApp() {
+  const startedAt = new Date().toISOString();
   const app = Fastify<HttpServer, IncomingMessage, ServerResponse<IncomingMessage>, FastifyBaseLogger>({
     loggerInstance: createLogger(),
   });
@@ -334,7 +336,7 @@ export async function buildApp() {
 
 
 
-  app.get('/api/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
+  app.get('/api/health', async () => ({ status: 'ok', timestamp: new Date().toISOString(), startedAt, releaseSha: getReleaseContext().releaseSha }));
 
   app.get('/api/ready', async (_request, reply) => {
     const readiness = await getReadinessStatus();

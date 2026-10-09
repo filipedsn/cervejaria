@@ -13,11 +13,13 @@ if (-not $paths.NpmCmd -or -not (Test-Path $paths.NpmCmd)) {
 $nodeDir = Split-Path $paths.NpmCmd -Parent
 $env:Path = "$nodeDir;$env:Path"
 $env:NODE_ENV = 'development'
-$env:RELEASE_SHA = 'dev'
-$env:VITE_RELEASE_SHA = 'dev'
 
 . (Join-Path $PSScriptRoot '..\prod\_config.ps1')
 Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment development
+$devRevision = (& git -C $paths.ProjectRoot rev-parse HEAD 2>$null).Trim()
+if ($devRevision -notmatch '^[a-f0-9]{40}$') { throw 'Nao foi possivel identificar a revisao DEV.' }
+$env:RELEASE_SHA = $devRevision
+$env:VITE_RELEASE_SHA = $devRevision
 
 # OTel só no backend — frontend (Vite) não tem @elastic/opentelemetry-node.
 $otelImport = '--import @elastic/opentelemetry-node'
