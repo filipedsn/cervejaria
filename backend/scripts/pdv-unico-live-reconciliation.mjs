@@ -1,6 +1,5 @@
-import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { DEV_PDV_TENANT_ALLOWLIST, validateDevCutoverEnvironment } from './pdv-unico-dev-cutover-core.mjs';
@@ -10,99 +9,199 @@ validateDevCutoverEnvironment(process.env);
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(backendRoot, '..');
 const tenantIds = (process.env.PDV_CUTOVER_TENANTS ?? '').split(',').filter(Boolean);
-assert.deepEqual([...tenantIds].sort(), DEV_PDV_TENANT_ALLOWLIST.map(({ id }) => id).sort());
+if (JSON.stringify([...tenantIds].sort()) !== JSON.stringify(DEV_PDV_TENANT_ALLOWLIST.map(({ id }) => id).sort())) throw new Error('Reconciliation requires the complete approved tenant allowlist.');
 const photoPath = path.resolve(process.env.PDV_REPRESENTATIVE_PHOTO_FILE ?? '');
 const photoBytes = await readFile(photoPath);
 const photoSha256 = createHash('sha256').update(photoBytes).digest('hex');
-assert.equal(photoSha256, '2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b');
+if (photoSha256 !== '2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b') throw new Error('Approved source photo hash mismatch.');
 const photo = JSON.parse(photoBytes.toString('utf8'));
 const approval = JSON.parse(await readFile(path.join(backendRoot, 'scripts/pdv-unico-historical-no-session-approval.json'), 'utf8'));
 const evidence = JSON.parse(await readFile(path.join(repoRoot, 'docs/testing/pdv-unico-representative-dev-qa-evidence.json'), 'utf8'));
 const approvalDigest = createHash('sha256').update(JSON.stringify(approval.entries)).digest('hex');
-assert.equal(approvalDigest, '87e3a8f6aca3e878a027c485ca2e15a120ba9cc0edfc27337e3f39858165ef7a');
-assert.equal(approval.entries.length, 577);
+if (approvalDigest !== '87e3a8f6aca3e878a027c485ca2e15a120ba9cc0edfc27337e3f39858165ef7a' || approval.entries.length !== 577) throw new Error('Historical payment authorization evidence changed.');
 const clientDir = path.resolve(process.env.PDV_CUTOVER_PRISMA_CLIENT ?? '');
 const tempRoot = path.resolve(process.env.TEMP ?? process.env.TMP ?? '');
 if (!clientDir.startsWith(`${tempRoot}${path.sep}`)) throw new Error('Reconciliation Prisma client must be inside this run temp directory.');
 const { PrismaClient } = await import(pathToFileURL(path.join(clientDir, 'index.js')).href);
 const db = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } }, errorFormat: 'minimal' });
-const cents = (value) => {
-  const [whole, fraction = ''] = String(value).split('.');
-  return (BigInt(whole) * 100n + BigInt((fraction + '00').slice(0, 2))).toString();
+const sourceRows = (model) => photo.tableRows.find((table) => table.model === model)?.rows ?? [];
+const dateValue = (value) => value instanceof Date ? value.toISOString() : value?.$photoType === 'date' ? new Date(value.value).toISOString() : value;
+const canonicalValue = (value) => {
+  const normalized = dateValue(value);
+  if (normalized !== value) return normalized;
+  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => [key, canonicalValue(child)]));
+  return value;
 };
+const cents = (value) => {
+  const text = String(value);
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!match) throw new Error(`Invalid decimal representation: ${text}`);
+  if ((match[3] ?? '').length > 2 && /[^0]/.test(match[3].slice(2))) throw new Error(`Unexpected fractional precision: ${text}`);
+  const amount = BigInt(match[2]) * 100n + BigInt(((match[3] ?? '') + '00').slice(0, 2));
+  return (match[1] ? -amount : amount).toString();
+};
+const normalizeRow = (row, decimalFields = []) => Object.fromEntries(Object.entries(row).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => [
+  key,
+  decimalFields.includes(key) && value != null ? { decimalCents: cents(value) } : canonicalValue(value),
+]));
+const ownerFromReferences = ({ origem, eventoId, pontoVendaId, clienteId }, maps, context) => {
+  const refs = [];
+  for (const [kind, id, map] of [['Evento', eventoId, maps.eventos], ['PontoVenda', pontoVendaId, maps.pontos], ['Cliente', clienteId, maps.clientes]]) {
+    if (id == null) continue;
+    const row = map.get(id);
+    if (!row) return { tenantId: null, error: `${context}: ${kind} ${id} is referenced but absent from the approved source photo.` };
+    refs.push({ kind, id, tenantId: row.cervejariaId });
+  }
+  const requiredKind = origem === 'EVENTO' ? 'Evento' : origem === 'CAIXA' ? 'PontoVenda' : null;
+  if (!requiredKind) return { tenantId: null, refs, error: `${context}: unsupported comanda origin ${origem}.` };
+  if (!refs.some(({ kind }) => kind === requiredKind)) return { tenantId: null, refs, error: `${context}: ${origem} comanda has no ${requiredKind} ownership reference.` };
+  const owners = [...new Set(refs.map(({ tenantId }) => tenantId))];
+  if (owners.length !== 1) return { tenantId: null, refs, error: `${context}: contradictory ownership references ${JSON.stringify(refs)}.` };
+  return { tenantId: owners[0], refs };
+};
+const collectMismatch = (list, check, message, details) => { if (!check) list.push({ message, ...(details === undefined ? {} : { details }) }); };
+async function emitEvidence(report) {
+  const evidenceFile = process.env.PDV_CUTOVER_RECONCILIATION_EVIDENCE_FILE;
+  if (evidenceFile) {
+    const receiptsRoot = path.join(process.env.LOCALAPPDATA ?? process.env.USERPROFILE ?? '', 'TAP Quiver', 'pdv-cutover-receipts');
+    if (path.dirname(path.resolve(evidenceFile)) !== path.resolve(receiptsRoot)) throw new Error('Reconciliation evidence must be written beside the durable DEV cutover receipts.');
+    report.evidenceFile = evidenceFile;
+    await writeFile(evidenceFile, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
+  }
+  process.stdout.write(`${JSON.stringify(report)}\n`);
+}
+
 try {
-  const sourceRows = (model) => photo.tableRows.find((table) => table.model === model)?.rows ?? [];
+  const errors = [];
+  const maps = {
+    eventos: new Map(sourceRows('Evento').map((row) => [row.id, row])),
+    pontos: new Map(sourceRows('PontoVenda').map((row) => [row.id, row])),
+    clientes: new Map(sourceRows('Cliente').map((row) => [row.id, row])),
+  };
   const sourceCommands = new Map(sourceRows('Comanda').map((row) => [row.id, row]));
-  const sourcePayments = sourceRows('Pagamento').filter((row) => tenantIds.includes(sourceCommands.get(row.comandaId)?.cervejariaId));
-  const actualPayments = await db.pagamento.findMany({ where: { comanda: { cervejariaId: { in: tenantIds } } }, orderBy: { id: 'asc' }, include: { comanda: { select: { cervejariaId: true } } } });
-  const expectedIds = sourcePayments.map((row) => row.id).sort();
-  const actualIds = actualPayments.map((row) => row.id).sort();
-  assert.deepEqual(actualIds, expectedIds, 'all selected-tenant payment IDs remain unchanged');
-  assert.equal(actualPayments.length, 605, 'the original 605 payments remain present');
+  const sourceOwners = new Map();
+  for (const row of sourceCommands.values()) {
+    const owner = ownerFromReferences(row, maps, `source comanda ${row.id}`);
+    sourceOwners.set(row.id, owner);
+    if (owner.error && (row.eventoId || row.pontoVendaId || row.clienteId)) errors.push({ message: owner.error });
+  }
+  const sourcePayments = [];
+  for (const payment of sourceRows('Pagamento')) {
+    const command = sourceCommands.get(payment.comandaId);
+    if (!command) { errors.push({ message: `source payment ${payment.id} references absent comanda ${payment.comandaId}.` }); continue; }
+    const owner = sourceOwners.get(command.id);
+    if (owner?.error && (command.eventoId || command.pontoVendaId || command.clienteId)) continue;
+    if (tenantIds.includes(owner?.tenantId)) sourcePayments.push(payment);
+  }
+  const actualPayments = await db.pagamento.findMany({
+    where: { OR: [
+      { comanda: { evento: { is: { cervejariaId: { in: tenantIds } } } } },
+      { comanda: { pontoVenda: { is: { cervejariaId: { in: tenantIds } } } } },
+      { comanda: { cliente: { is: { cervejariaId: { in: tenantIds } } } } },
+    ] },
+    orderBy: { id: 'asc' },
+    include: { comanda: { select: { id: true, origem: true, eventoId: true, pontoVendaId: true, clienteId: true,
+      evento: { select: { cervejariaId: true } }, pontoVenda: { select: { cervejariaId: true } }, cliente: { select: { cervejariaId: true } } } } },
+  });
+  const destinationOwner = (command, id) => {
+    const refs = [['Evento', command.eventoId, command.evento?.cervejariaId], ['PontoVenda', command.pontoVendaId, command.pontoVenda?.cervejariaId], ['Cliente', command.clienteId, command.cliente?.cervejariaId]]
+      .filter(([, referenceId]) => referenceId != null).map(([kind, referenceId, tenantId]) => ({ kind, id: referenceId, tenantId }));
+    const required = command.origem === 'EVENTO' ? 'Evento' : command.origem === 'CAIXA' ? 'PontoVenda' : null;
+    const owners = [...new Set(refs.map(({ tenantId }) => tenantId).filter(Boolean))];
+    if (!required || !refs.some(({ kind }) => kind === required) || owners.length !== 1 || refs.some(({ tenantId }) => !tenantId)) {
+      errors.push({ message: `destination comanda ${id} has missing/contradictory tenant ownership.`, details: { origem: command.origem, refs } });
+      return null;
+    }
+    return owners[0];
+  };
+  const expectedIds = sourcePayments.map(({ id }) => id).sort();
+  const actualIds = actualPayments.map(({ id }) => id).sort();
+  collectMismatch(errors, JSON.stringify(actualIds) === JSON.stringify(expectedIds), 'selected-tenant payment ID set differs from approved source photo.', { expected: expectedIds.length, actual: actualIds.length });
+  collectMismatch(errors, actualPayments.length === 605, 'the original 605 payments are not all present.', { actual: actualPayments.length });
   const actualById = new Map(actualPayments.map((row) => [row.id, row]));
   const sourceById = new Map(sourcePayments.map((row) => [row.id, row]));
-  const allCases = evidence.paymentSessionReview.allPaymentCases.filter((row) => tenantIds.includes(row.tenantId));
-  assert.equal(allCases.length, 605, 'the pinned payment-session evidence must cover the exact original payment set');
-  for (const review of allCases) {
-    const id = review.paymentId;
+  const expectedCases = evidence.paymentSessionReview.allPaymentCases.filter((row) => tenantIds.includes(row.tenantId));
+  collectMismatch(errors, expectedCases.length === 605, 'pinned payment-session evidence does not cover exactly the original 605 selected-tenant payments.', { actual: expectedCases.length });
+  for (const payment of actualPayments) {
+    const owner = destinationOwner(payment.comanda, payment.id);
+    collectMismatch(errors, tenantIds.includes(owner), `payment ${payment.id} comanda resolves outside selected tenant set.`, { owner });
+  }
+  for (const review of expectedCases) {
+    const { paymentId: id } = review;
     const source = sourceById.get(id);
     const actual = actualById.get(id);
-    assert.ok(source && actual, `payment ${id} exists in both the approved source photo and destination`);
-    for (const field of ['comandaId', 'contaReceberId', 'forma', 'registradoPorId']) assert.equal(actual[field] ?? null, source[field] ?? null, `payment ${id} ${field} preserved`);
-    for (const field of ['valor', 'valorRecebido', 'troco']) assert.equal(actual[field] == null ? null : cents(actual[field]), source[field] == null ? null : cents(source[field]), `payment ${id} ${field} preserved in cents`);
-    assert.equal(actual.pagoEm.toISOString(), new Date(source.pagoEm).toISOString(), `payment ${id} paidAt preserved`);
+    collectMismatch(errors, Boolean(source && actual), `payment ${id} exists in both source photo and destination.`);
+    if (!source || !actual) continue;
+    for (const field of ['comandaId', 'contaReceberId', 'forma', 'registradoPorId']) collectMismatch(errors, (actual[field] ?? null) === (source[field] ?? null), `payment ${id} ${field} preserved.`, { expected: source[field] ?? null, actual: actual[field] ?? null });
+    for (const field of ['valor', 'valorRecebido', 'troco']) collectMismatch(errors, actual[field] == null ? source[field] == null : source[field] != null && cents(actual[field]) === cents(source[field]), `payment ${id} ${field} preserved in cents.`);
+    collectMismatch(errors, dateValue(actual.pagoEm) === dateValue(source.pagoEm), `payment ${id} pagoEm preserved.`);
     if (review.classification === 'C_NO_SESSION_PROVENANCE_INSUFFICIENT') {
-      assert.equal(actual.sessaoCaixaId, null); assert.equal(actual.sessaoCaixaEventoId, null); assert.equal(actual.provenienciaHistorica, 'CAIXA_NAO_COMPROVADA');
+      collectMismatch(errors, actual.sessaoCaixaId == null && actual.sessaoCaixaEventoId == null && actual.provenienciaHistorica === 'CAIXA_NAO_COMPROVADA', `approved class-C payment ${id} remains unassigned with the exact historical marker.`);
     } else if (review.classification === 'B_HISTORICAL_NO_SESSION_PROVENANCE') {
-      assert.equal(actual.sessaoCaixaId, null); assert.equal(actual.provenienciaHistorica, null);
+      collectMismatch(errors, actual.sessaoCaixaId == null && actual.sessaoCaixaEventoId == null && actual.provenienciaHistorica == null, `class-B payment ${id} retains null session and provenance.`);
     } else {
-      assert.equal(actual.sessaoCaixaId, source.sessaoCaixaId ?? source.sessaoCaixaEventoId);
-      assert.equal(actual.sessaoCaixaEventoId, source.sessaoCaixaEventoId);
-      assert.equal(actual.provenienciaHistorica, null);
+      collectMismatch(errors, actual.sessaoCaixaId === (review.sessionRefs?.operationalId ?? null) && actual.sessaoCaixaEventoId === (review.sessionRefs?.eventId ?? null) && actual.provenienciaHistorica == null, `class-A payment ${id} retains its exact pinned session references.`);
     }
   }
-  const cIds = approval.entries.map((row) => row.id).sort();
-  const actualCIds = actualPayments.filter((row) => row.provenienciaHistorica === 'CAIXA_NAO_COMPROVADA').map((row) => row.id).sort();
-  assert.deepEqual(actualCIds, cIds, 'only the same 577 approved class-C payment IDs carry unknown-session provenance');
-  for (const id of cIds) {
+  const approvedIds = approval.entries.map(({ id }) => id).sort();
+  const actualApprovedIds = actualPayments.filter(({ provenienciaHistorica }) => provenienciaHistorica === 'CAIXA_NAO_COMPROVADA').map(({ id }) => id).sort();
+  collectMismatch(errors, JSON.stringify(actualApprovedIds) === JSON.stringify(approvedIds), 'only the same 577 authorized class-C payment IDs carry unknown-session provenance.', { expected: approvedIds.length, actual: actualApprovedIds.length });
+  for (const id of approvedIds) {
     const row = actualById.get(id);
-    assert.equal(row.sessaoCaixaId, null, `approved class-C payment ${id} has no inferred operational session`);
-    assert.equal(row.sessaoCaixaEventoId, null, `approved class-C payment ${id} has no inferred event session`);
+    collectMismatch(errors, Boolean(row && row.sessaoCaixaId == null && row.sessaoCaixaEventoId == null), `approved class-C payment ${id} has no inferred operational session.`);
   }
-  const expectedC = allCases.filter((row) => row.classification === 'C_NO_SESSION_PROVENANCE_INSUFFICIENT');
-  const expectedA = allCases.filter((row) => row.classification === 'A_EXACT_SESSION_REFERENCE');
-  const expectedB = allCases.filter((row) => row.classification === 'B_HISTORICAL_NO_SESSION_PROVENANCE');
-  const unassigned = actualPayments.filter((row) => row.provenienciaHistorica === 'CAIXA_NAO_COMPROVADA');
+  const expectedC = expectedCases.filter((row) => row.classification === 'C_NO_SESSION_PROVENANCE_INSUFFICIENT');
+  const expectedA = expectedCases.filter((row) => row.classification === 'A_EXACT_SESSION_REFERENCE');
+  const expectedB = expectedCases.filter((row) => row.classification === 'B_HISTORICAL_NO_SESSION_PROVENANCE');
+  const actualC = actualPayments.filter((row) => row.provenienciaHistorica === 'CAIXA_NAO_COMPROVADA');
   const sessionLinked = actualPayments.filter((row) => row.sessaoCaixaId !== null);
   const debtWithoutSession = actualPayments.filter((row) => row.contaReceberId !== null && row.sessaoCaixaId === null);
-  assert.equal(unassigned.length, expectedC.length);
-  assert.equal(sessionLinked.length, expectedA.length);
-  assert.equal(debtWithoutSession.length, expectedB.length);
-  assert.equal(unassigned.reduce((sum, row) => sum + BigInt(cents(row.valor)), 0n), expectedC.reduce((sum, row) => sum + BigInt(row.cents), 0n));
-  assert.equal(sessionLinked.reduce((sum, row) => sum + BigInt(cents(row.valor)), 0n), expectedA.reduce((sum, row) => sum + BigInt(row.cents), 0n));
-  assert.equal(debtWithoutSession.reduce((sum, row) => sum + BigInt(cents(row.valor)), 0n), expectedB.reduce((sum, row) => sum + BigInt(row.cents), 0n));
-  const payments = {
-    rows: actualPayments.length, sourceRows: sourcePayments.length, byFormCents: [...actualPayments.reduce((totals, row) => totals.set(row.forma, (totals.get(row.forma) ?? 0n) + BigInt(cents(row.valor))), new Map())].sort(([a], [b]) => a.localeCompare(b)).map(([form, total]) => [form, total.toString()]),
-    approvedClassCPayments: actualCIds.length, approvedSetSha256: approvalDigest, status: 'PASS',
-  };
+  collectMismatch(errors, actualC.length === expectedC.length && sessionLinked.length === expectedA.length && debtWithoutSession.length === expectedB.length,
+    'payment session classification counts changed.', { actual: { classC: actualC.length, sessionLinked: sessionLinked.length, debtWithoutSession: debtWithoutSession.length }, expected: { classC: expectedC.length, sessionLinked: expectedA.length, debtWithoutSession: expectedB.length } });
+  for (const [label, actual, expected] of [['class-C', actualC, expectedC], ['class-A', sessionLinked, expectedA], ['class-B', debtWithoutSession, expectedB]]) {
+    const expectedCents = expected.reduce((sum, row) => sum + BigInt(row.cents), 0n);
+    const actualCents = actual.reduce((sum, row) => sum + BigInt(cents(row.valor)), 0n);
+    collectMismatch(errors, actualCents === expectedCents, `${label} payment value total preserved in cents.`, { expected: expectedCents.toString(), actual: actualCents.toString() });
+  }
+
   const products = [];
   for (const tenantId of tenantIds) {
     const baseline = sourceRows('Produto').filter((row) => row.cervejariaId === tenantId);
     const current = await db.produto.findMany({ where: { cervejariaId: tenantId }, select: { id: true, nome: true, categoria: true, categoriaPdvId: true } });
-    assert.deepEqual(current.map((row) => row.id).sort(), baseline.map((row) => row.id).sort(), `tenant ${tenantId} product IDs/catalog preserved`);
-    assert.equal(current.filter((row) => row.categoria?.trim() && !row.categoriaPdvId).length, 0, `tenant ${tenantId} historical category labels linked`);
-    products.push({ tenantId, rows: current.length, status: 'PASS' });
+    collectMismatch(errors, JSON.stringify(current.map(({ id }) => id).sort()) === JSON.stringify(baseline.map(({ id }) => id).sort()), `tenant ${tenantId} product IDs/catalog preserved.`);
+    collectMismatch(errors, current.filter(({ categoria, categoriaPdvId }) => categoria?.trim() && !categoriaPdvId).length === 0, `tenant ${tenantId} historical category labels linked.`);
+    products.push({ tenantId, rows: current.length });
   }
   const immutable = [];
-  for (const model of ['TransacaoLog', 'ClienteEstatisticas']) {
-    const baseline = sourceRows(model);
-    const delegate = model[0].toLowerCase() + model.slice(1);
-    const actual = await db[delegate].findMany({ where: { cervejariaId: { in: tenantIds } }, orderBy: { id: 'asc' } });
-    assert.equal(actual.length, baseline.length, `${model} row count preserved`);
-    const ids = new Set(actual.map((row) => row.id));
-    assert.ok(baseline.every((row) => ids.has(row.id)), `${model} historical IDs preserved`);
-    immutable.push({ model, rows: actual.length, status: 'PASS' });
+  const sourceLogs = sourceRows('TransacaoLog').filter(({ cervejariaId }) => tenantIds.includes(cervejariaId));
+  const actualLogs = await db.transacaoLog.findMany({ where: { cervejariaId: { in: tenantIds } }, orderBy: { id: 'asc' } });
+  const sourceStats = sourceRows('ClienteEstatisticas').filter(({ clienteId }) => tenantIds.includes(maps.clientes.get(clienteId)?.cervejariaId));
+  const actualStats = await db.clienteEstatisticas.findMany({ where: { cliente: { is: { cervejariaId: { in: tenantIds } } } }, orderBy: { clienteId: 'asc' }, include: { cliente: { select: { cervejariaId: true } } } });
+  for (const [model, baseline, actual, key, decimals] of [
+    ['TransacaoLog', sourceLogs, actualLogs, 'id', []],
+    ['ClienteEstatisticas', sourceStats, actualStats.map(({ cliente, ...row }) => row), 'clienteId', ['totalGasto']],
+  ]) {
+    const before = new Map(baseline.map((row) => [row[key], row]));
+    const after = new Map(actual.map((row) => [row[key], row]));
+    collectMismatch(errors, before.size === baseline.length && after.size === actual.length, `${model} key uniqueness preserved.`);
+    collectMismatch(errors, JSON.stringify([...after.keys()].sort()) === JSON.stringify([...before.keys()].sort()), `${model} ${key} key set preserved.`, { expected: before.size, actual: after.size });
+    for (const [id, source] of before) {
+      const current = after.get(id);
+      if (!current) continue;
+      collectMismatch(errors, JSON.stringify(normalizeRow(source, decimals)) === JSON.stringify(normalizeRow(current, decimals)), `${model} ${key} ${id} complete historical content preserved.`, { expected: normalizeRow(source, decimals), actual: normalizeRow(current, decimals) });
+    }
+    immutable.push({ model, key, rows: actual.length, comparedFields: Object.keys(baseline[0] ?? {}).length, status: 'CHECKED' });
   }
-  const output = { status: 'PASS', photoSha256, tenants: tenantIds, payments, products, immutable, checkedAt: new Date().toISOString() };
-  process.stdout.write(`${JSON.stringify(output)}\n`);
+  const payments = {
+    rows: actualPayments.length, sourceRows: sourcePayments.length, approvedClassCPayments: actualApprovedIds.length,
+    approvedSetSha256: approvalDigest, expectedPaymentIdsSha256: createHash('sha256').update(expectedIds.join('\n')).digest('hex'),
+    status: errors.length ? 'BLOCKED' : 'PASS',
+  };
+  if (errors.length) {
+    await emitEvidence({ status: 'BLOCKED', photoSha256, tenants: tenantIds, payments, products, immutable, divergenceCount: errors.length, divergences: errors, checkedAt: new Date().toISOString() });
+    process.exitCode = 2;
+  } else {
+    await emitEvidence({ status: 'PASS', photoSha256, tenants: tenantIds, payments, products: products.map((row) => ({ ...row, status: 'PASS' })), immutable: immutable.map((row) => ({ ...row, status: 'PASS' })), checkedAt: new Date().toISOString() });
+  }
 } finally { await db.$disconnect(); }

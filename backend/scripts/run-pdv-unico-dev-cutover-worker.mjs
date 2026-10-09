@@ -11,6 +11,7 @@ import { executePdvCutoverAdapter } from './pdv-unico-cutover-adapter.mjs';
 import { readCutoverReceipts } from './pdv-unico-cutover-receipts.mjs';
 import { readReviewedDevMigrations, validateDevMigrationLedger } from './pdv-unico-dev-cutover-ledger.mjs';
 import { applyPersistentTenantActivation, assertPersistentTenantActivation, rollbackPersistentTenantActivation } from './pdv-unico-dev-activation-config.mjs';
+import { validateResumeTransition } from './pdv-unico-resume-transition.mjs';
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(backendRoot, '..');
@@ -18,7 +19,7 @@ const args = process.argv.slice(2);
 const value = (name) => args.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
 const tenantIds = args.filter((arg) => arg.startsWith('--tenant=')).map((arg) => arg.slice('--tenant='.length));
 const apply = args.includes('--apply');
-const valueFlags = new Set(['profile', 'tenant', 'run-id', 'confirm-target', 'confirm-revision', 'confirm-migrations-sha256', 'confirm-photo-sha256', 'backup-file', 'restore-drill']);
+const valueFlags = new Set(['profile', 'tenant', 'run-id', 'confirm-target', 'confirm-revision', 'confirm-migrations-sha256', 'confirm-photo-sha256', 'backup-file', 'restore-drill', 'resume-transition-file']);
 for (const arg of args) {
   if (['--apply', '--dry-run', '--plan'].includes(arg)) continue;
   const match = /^--([a-z0-9-]+)=/.exec(arg);
@@ -175,13 +176,22 @@ try {
   const preflightEvidencePath = path.join(receiptsRoot, `${confirmedRunId}.preflight.json`);
   const priorReceipts = readCutoverReceipts(receiptPath, { runId: confirmedRunId, tenantIds: selectedTenants });
   let priorPreflight = null;
+  let transitionEvidence = null;
   if (priorReceipts.length > 0) {
     if (!existsSync(preflightEvidencePath)) throw new Error('Cutover receipts exist without their durable initial all-tenant preflight evidence.');
     const saved = JSON.parse(await readFile(preflightEvidencePath, 'utf8'));
     const { sha256, ...body } = saved;
     if (sha256 !== createHash('sha256').update(JSON.stringify(body)).digest('hex') || body.runId !== confirmedRunId
-      || body.revision !== revision || body.migrationsSha256 !== migrationsSha256 || body.photoSha256 !== photoSha256
-      || body.backupSha256 !== backupEvidence.backupSha256 || body.preflight?.status !== 'CLEAR') throw new Error('Durable preflight evidence is invalid or belongs to a different run, revision, backup, or photo.');
+      || body.migrationsSha256 !== migrationsSha256 || body.photoSha256 !== photoSha256
+      || body.backupSha256 !== backupEvidence.backupSha256 || body.preflight?.status !== 'CLEAR') throw new Error('Durable preflight evidence is invalid or belongs to a different run, migration digest, backup, or photo.');
+    if (body.revision !== revision) {
+      const transitionFile = value('resume-transition-file');
+      if (!transitionFile) throw new Error('A revision change requires an explicit durable --resume-transition-file; previous evidence remains immutable.');
+      const receiptRows = (await readFile(receiptPath, 'utf8')).trimEnd().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+      transitionEvidence = await validateResumeTransition({ transitionFile, repoRoot, receiptsRoot, runId: confirmedRunId, revision,
+        preflightSaved: saved, receipts: receiptRows, migrationSha256: migrationsSha256, photoSha256,
+        backupSha256: backupEvidence.backupSha256, tenantIds: selectedTenants });
+    } else if (value('resume-transition-file')) throw new Error('A revision transition file is only accepted when resuming from older immutable evidence.');
     priorPreflight = body.preflight;
   }
   const preflightText = runNode(['scripts/run-pdv-unico-global-preflight.mjs'], 'global-preflight-current', { PDV_REPRESENTATIVE_PHOTO_FILE: photoPath });
@@ -259,9 +269,11 @@ try {
       return { status: 'PASS', transformations: transformed, categoryTransform: result.trim().split(/\r?\n/).slice(-8) };
     },
     'diagnostics-and-integrated-reconciliation': async () => {
+      const reconciliationEvidenceFile = path.join(receiptsRoot, `${confirmedRunId}.reconciliation-${revision.slice(0, 12)}-${Date.now()}.json`);
       const output = runNode(['--import', 'tsx', 'scripts/pdv-unico-live-reconciliation.mjs'], 'integrated-reconciliation', {
         PDV_CUTOVER_PROFILE: 'dev', PDV_CUTOVER_DEV_ADAPTER: '1', PDV_CUTOVER_PRISMA_CLIENT: targetClientDir,
         PDV_CUTOVER_TENANTS: selectedTenants.join(','), PDV_REPRESENTATIVE_PHOTO_FILE: photoPath,
+        PDV_CUTOVER_RECONCILIATION_EVIDENCE_FILE: reconciliationEvidenceFile,
       });
       const result = parseJsonLine(output, 'integrated reconciliation');
       if (result.status !== 'PASS' || result.payments?.rows !== 605 || result.payments?.approvedClassCPayments !== 577) throw new Error('Integrated reconciliation detected a financial or source drift.');
@@ -304,7 +316,10 @@ try {
       const output = runNode(['--import', 'tsx', 'scripts/pdv-unico-cutover-verify.mjs', 'migrator-runs', JSON.stringify({ runs: expectedRuns.map((row) => row.runId), expectedRuns, tenants: selectedTenants, categories: true })], 'resume-verify-remaining-transformations', verificationEnv);
       return parseJsonLine(output, 'resume verification remaining transformations');
     }
-    if (phaseName === 'diagnostics-and-integrated-reconciliation') return parseJsonLine(runNode(['--import', 'tsx', 'scripts/pdv-unico-live-reconciliation.mjs'], 'resume-verify-reconciliation', verificationEnv), 'resume reconciliation');
+    if (phaseName === 'diagnostics-and-integrated-reconciliation') {
+      const reconciliationEvidenceFile = path.join(receiptsRoot, `${confirmedRunId}.reconciliation-${revision.slice(0, 12)}-${Date.now()}.json`);
+      return parseJsonLine(runNode(['--import', 'tsx', 'scripts/pdv-unico-live-reconciliation.mjs'], 'resume-verify-reconciliation', { ...verificationEnv, PDV_CUTOVER_RECONCILIATION_EVIDENCE_FILE: reconciliationEvidenceFile }), 'resume reconciliation');
+    }
     if (phaseName === 'per-tenant-activation') {
       const readiness = parseJsonLine(runNode(['--import', 'tsx', 'scripts/pdv-unico-live-readiness.mjs'], 'resume-verify-activation', verificationEnv), 'resume activation');
       if (readiness.status !== 'READY' || readiness.tenants.length !== selectedTenants.length) return { status: 'BLOCKED', code: 'TENANT_READINESS_DIVERGENCE' };
@@ -323,7 +338,7 @@ try {
     }
     throw error;
   }
-  const report = { status: adapter.status, startedAt, elapsedMs: Math.round(performance.now() - clockStart), revision, target, tenants: selectedTenants, photoSha256, migrationsSha256, ledgerValidation, pendingMigrations, backupEvidence, preflight: { status: preflight.status, tenantCount: preflight.tenantCount, coveredTenantCount: preflight.coveredTenantCount, crossTenantEdges: preflight.crossTenantEdges, ledgerValidation: preflight.ledgerValidation, ledgerEncodingMatches: preflight.ledgerEncodingMatches }, commercialPreflight, adapter, receiptsFile: receiptPath, evidenceDirectory: tempRoot };
+  const report = { status: adapter.status, startedAt, elapsedMs: Math.round(performance.now() - clockStart), revision, target, tenants: selectedTenants, photoSha256, migrationsSha256, ledgerValidation, pendingMigrations, backupEvidence, resumeTransition: transitionEvidence, preflight: { status: preflight.status, tenantCount: preflight.tenantCount, coveredTenantCount: preflight.coveredTenantCount, crossTenantEdges: preflight.crossTenantEdges, ledgerValidation: preflight.ledgerValidation, ledgerEncodingMatches: preflight.ledgerEncodingMatches }, commercialPreflight, adapter, receiptsFile: receiptPath, evidenceDirectory: tempRoot };
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
   process.stdout.write(`${JSON.stringify(report)}\n`);
 } finally {
