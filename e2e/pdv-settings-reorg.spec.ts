@@ -93,8 +93,10 @@ for (const width of [390, 768]) {
     await expect(page.getByRole('link', { name: 'Operação', exact: true })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Trailers', exact: true })).toHaveCount(0);
     await expect(page.getByText('Equipe, PDV e aparência')).toBeVisible();
-    await expect(page.getByRole('heading', { name: point.nome })).toBeVisible();
+    await expect(page.getByRole('heading', { name: point.nome })).toHaveCount(0);
+    await expect(page.getByText('PDV único desta assinatura. Evento pode ser associado como contexto ao abrir o caixa.', { exact: true })).toHaveCount(0);
     await expect(page.getByText('O PDV opera por caixa. Você pode associar uma ocorrência ao abrir o caixa.', { exact: true })).toHaveCount(1);
+    await expect(page.getByTestId('canonical-pdv-settings').locator(':scope > details').first().locator('summary')).toContainText('Recursos do PDV');
 
     for (const title of ['Recursos do PDV', 'Atendimento e comandas', 'Tela de comandas', 'Catálogo', 'Pagamentos e notificações', 'Portal do cliente', 'Torneiras']) {
       await expect(page.locator('summary').getByText(title, { exact: true })).toHaveCount(1);

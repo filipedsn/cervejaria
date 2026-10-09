@@ -82,11 +82,7 @@ export function OperacaoConfiguracoesPage() {
 
       {tab === 'equipe' && <FuncionariosPage embedded />}
       {tab === 'trailers' && !canonical && <TrailersPage embedded />}
-      {tab === 'pdv' && canonical && (pdv ? <div className="space-y-4">
-        <section className="card space-y-3">
-          <h2 className="text-lg font-bold">{pdv.nome}</h2>
-          <p className="text-sm text-ink-muted">PDV único desta assinatura. Evento pode ser associado como contexto ao abrir o caixa.</p>
-        </section>
+      {tab === 'pdv' && canonical && (pdv ? <div className="space-y-4" data-testid="canonical-pdv-settings">
         <ConfigurationGroup title="Recursos do PDV">
           <OperationalCapabilitiesPanel section="resources" />
         </ConfigurationGroup>
