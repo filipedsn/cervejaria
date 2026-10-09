@@ -14,7 +14,7 @@ export const RESUME_DELTA_ALLOWLIST = Object.freeze([
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fileSha = async (file) => createHash('sha256').update(await readFile(file)).digest('hex');
 
-export async function createResumeTransition({ repoRoot, receiptsRoot, runId, fromRevision, toRevision, qaEvidenceFile }) {
+export async function createResumeTransition({ repoRoot, receiptsRoot, runId, fromRevision, toRevision, tenantIds, qaEvidenceFile }) {
   const git = (args) => execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }).trim();
   if (git(['rev-parse', 'HEAD']) !== toRevision) throw new Error('Transition target must be exact current HEAD.');
   const changedFiles = git(['diff', '--name-only', fromRevision, toRevision]).split(/\r?\n/).filter(Boolean).sort();
