@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 type OperationMode = 'CAIXA' | 'EVENTO';
 type OperationalSetupResponse = {
+  configurationSource: 'LEGACY' | 'CANONICAL_PDV';
   configuration: {
     configurationSource?: 'LEGACY' | 'CANONICAL_PDV';
     setupCompletedAt?: string | null;
@@ -26,7 +27,7 @@ export function OperationalSetupWizard() {
   const [kitchen, setKitchen] = useState(false);
   const [error, setError] = useState('');
 
-  const { data } = useQuery({
+  const { data, isError } = useQuery({
     queryKey: ['operational-configuration'],
     queryFn: () => api.get<OperationalSetupResponse>('/api/cervejaria/configuracao-operacional'),
     enabled: isDono && !isAdmin,
@@ -35,9 +36,10 @@ export function OperationalSetupWizard() {
   useEffect(() => {
     const config = data?.configuration;
     if (!config || config.setupCompletedAt != null) return;
-    setMode(config.configurationSource === 'CANONICAL_PDV'
+    setMode(data.configurationSource === 'CANONICAL_PDV'
       ? 'CAIXA'
       : config.plannedOperationsEnabled == null ? null : config.plannedOperationsEnabled ? 'EVENTO' : 'CAIXA');
+    setStep(data.configurationSource === 'CANONICAL_PDV' ? 2 : 1);
     setTaps(config.tapsEnabled ?? false);
     setInventory(config.inventoryEnabled ?? false);
     setKitchen(config.kitchenEnabled ?? false);
@@ -45,9 +47,10 @@ export function OperationalSetupWizard() {
 
   const setup = useMutation({
     mutationFn: () => {
-      if (!mode) throw new Error('Escolha como o estabelecimento vai operar.');
+      const canonicalPdv = data?.configurationSource === 'CANONICAL_PDV';
+      if (!canonicalPdv && !mode) throw new Error('Escolha como o estabelecimento vai operar.');
       return api.patch('/api/cervejaria/configuracao-operacional', {
-        operationMode: mode,
+        ...(!canonicalPdv ? { operationMode: mode } : {}),
         tapsEnabled: taps,
         inventoryEnabled: inventory,
         kitchenEnabled: kitchen,
@@ -66,8 +69,10 @@ export function OperationalSetupWizard() {
     onError: (cause) => setError(cause instanceof ApiError ? cause.message : cause instanceof Error ? cause.message : 'Não foi possível salvar a configuração.'),
   });
 
-  const open = Boolean(data?.configuration && data.configuration.setupCompletedAt == null);
-  const canonicalPdv = data?.configuration?.configurationSource === 'CANONICAL_PDV';
+  const canonicalPdv = !isError && data?.configurationSource === 'CANONICAL_PDV';
+  const confirmedLegacy = !isError && data?.configurationSource === 'LEGACY';
+  const open = Boolean((canonicalPdv || confirmedLegacy) && data?.configuration && data.configuration.setupCompletedAt == null);
+  const showModeStep = confirmedLegacy && step === 1;
 
   return (
     <Modal
@@ -76,7 +81,7 @@ export function OperationalSetupWizard() {
       closeOnBackdrop={false}
       hideHeaderClose
       title="Configuração inicial"
-      footer={step === 1 ? (
+      footer={showModeStep ? (
         <button
           type="button"
           className="touch-btn-primary w-full"
@@ -87,10 +92,10 @@ export function OperationalSetupWizard() {
         </button>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          <button type="button" className="touch-btn-secondary w-full" disabled={setup.isPending} onClick={() => { setError(''); setStep(1); }}>
+          {confirmedLegacy && <button type="button" className="touch-btn-secondary w-full" disabled={setup.isPending} onClick={() => { setError(''); setStep(1); }}>
             Voltar
-          </button>
-          <button type="button" className="touch-btn-primary w-full" disabled={setup.isPending || !mode} onClick={() => setup.mutate()}>
+          </button>}
+          <button type="button" className={`touch-btn-primary w-full ${canonicalPdv ? 'col-span-2' : ''}`} disabled={setup.isPending || (!canonicalPdv && !mode)} onClick={() => setup.mutate()}>
             {setup.isPending ? 'Salvando...' : 'Concluir'}
           </button>
         </div>
@@ -98,14 +103,14 @@ export function OperationalSetupWizard() {
     >
       <div className="space-y-4 pb-2">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold text-brand-700">Etapa {step} de 2</p>
+          <p className="text-sm font-semibold text-brand-700">{canonicalPdv ? 'Configuração do PDV' : `Etapa ${step} de 2`}</p>
           <div className="flex gap-1" aria-hidden="true">
-            <span className={`h-1.5 w-8 rounded-full ${step === 1 ? 'bg-brand-500' : 'bg-line'}`} />
+            {(!canonicalPdv || step === 1) && <span className={`h-1.5 w-8 rounded-full ${step === 1 ? 'bg-brand-500' : 'bg-line'}`} />}
             <span className={`h-1.5 w-8 rounded-full ${step === 2 ? 'bg-brand-500' : 'bg-line'}`} />
           </div>
         </div>
 
-        {step === 1 ? (
+        {showModeStep ? (
           <section className="space-y-3" aria-labelledby="operational-setup-mode">
             <div>
               <h3 id="operational-setup-mode" className="text-lg font-bold">Como você vai operar?</h3>

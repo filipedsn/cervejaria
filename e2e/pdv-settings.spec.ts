@@ -9,10 +9,13 @@ const context = {
   pontosVenda: [point],
 };
 
-async function mock(page: Page, options: { source?: string; points?: typeof point[]; fail?: boolean; gate?: Promise<void>; employee?: boolean; initialTapsEnabled?: boolean; patchGate?: Promise<void> } = {}) {
-  const requests: Array<{ method: string; path: string }> = [];
+async function mock(page: Page, options: { source?: string; points?: typeof point[]; fail?: boolean; gate?: Promise<void>; employee?: boolean; initialTapsEnabled?: boolean; patchGate?: Promise<void>; configurationGate?: Promise<void>; configurationError?: boolean; setupIncomplete?: boolean; legacyPlannedOperations?: boolean } = {}) {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   let tapsEnabled = options.initialTapsEnabled ?? true;
-  page.on('request', r => { if (new URL(r.url()).pathname.startsWith('/api/')) requests.push({ method: r.method(), path: new URL(r.url()).pathname + new URL(r.url()).search }); });
+  let setupCompletedAt = options.setupIncomplete ? null : '2026-10-09T00:00:00.000Z';
+  let plannedOperations = options.legacyPlannedOperations ?? false;
+  const source = options.source ?? 'CANONICAL_PDV';
+  page.on('request', r => { if (new URL(r.url()).pathname.startsWith('/api/')) requests.push({ method: r.method(), path: new URL(r.url()).pathname + new URL(r.url()).search, ...(r.method() === 'PATCH' ? { body: r.postDataJSON() } : {}) }); });
   await page.routeWebSocket('**/socket.io/**', s => s.close());
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
@@ -27,12 +30,18 @@ async function mock(page: Page, options: { source?: string; points?: typeof poin
     if (path === '/api/produtos') return reply([]);
     if (path === '/api/trailers' || path === '/api/eventos/ativos') return reply([]);
     if (path === '/api/cervejaria/configuracao-operacional' && route.request().method() === 'PATCH') {
-      const body = route.request().postDataJSON() as { tapsEnabled?: boolean };
+      const body = route.request().postDataJSON() as { tapsEnabled?: boolean; operationMode?: 'CAIXA' | 'EVENTO'; completeInitialSetup?: boolean };
       await options.patchGate;
       if (body.tapsEnabled !== undefined) tapsEnabled = body.tapsEnabled;
+      if (body.operationMode !== undefined) plannedOperations = body.operationMode === 'EVENTO';
+      if (body.completeInitialSetup) setupCompletedAt = '2026-10-09T12:00:00.000Z';
       return reply({ saved: true });
     }
-    if (path === '/api/cervejaria/configuracao-operacional') return reply({ enablements: { plannedOperations: false, cashRegister: true, cashMode: true, taps: tapsEnabled, inventory: false, kitchen: false }, configuration: { configurationSource: 'CANONICAL_PDV', setupCompletedAt: '2026-10-09T00:00:00.000Z', tapsEnabled, inventoryEnabled: false, kitchenEnabled: false } });
+    if (path === '/api/cervejaria/configuracao-operacional') {
+      await options.configurationGate;
+      if (options.configurationError) return route.fulfill({ status: 409, json: { error: 'Configuração operacional indisponível' } });
+      return reply({ configurationSource: source, enablements: { plannedOperations, cashRegister: !plannedOperations, cashMode: !plannedOperations, taps: tapsEnabled, inventory: false, kitchen: false }, configuration: { ...(source === 'CANONICAL_PDV' ? { configurationSource: source } : {}), setupCompletedAt, plannedOperationsEnabled: plannedOperations, tapsEnabled, inventoryEnabled: false, kitchenEnabled: false } });
+    }
     if (path === '/api/operacao/agenda/ocorrencias') return reply({ agendas: [], ocorrencias: [] });
     return route.abort();
   });
@@ -203,4 +212,76 @@ test('alterar TAPs atualiza a seção somente após salvar e recarregar o contex
   await expect(page.getByRole('heading', { name: 'Torneiras deste PDV' })).toBeVisible();
   await expect(page.getByText('Chope QA', { exact: true })).toBeVisible();
   expect(requests.filter(r => r.path.startsWith('/api/taps')).every(r => r.path.includes(`pontoVendaId=${point.id}`))).toBe(true);
+  expect(requests.filter(r => r.method === 'PATCH' && r.path === '/api/cervejaria/configuracao-operacional').every(r => !Object.hasOwn(r.body as object, 'operationMode') && !Object.hasOwn(r.body as object, 'plannedOperationsEnabled'))).toBe(true);
+});
+
+test('configuração canônica remove modo e criação de PDV, preservando a orientação por caixa', async ({ page }) => {
+  await mock(page);
+  await page.goto('/operacao/configuracoes/operacao');
+  await expect(page.getByText('O PDV opera por caixa. Você pode associar uma ocorrência ao abrir o caixa.')).toBeVisible();
+  await expect(page.getByText('Como você trabalha?')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Por caixa', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Por operações \/ eventos/ })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Criar ponto de venda' })).toHaveCount(0);
+});
+
+test('LEGACY mantém a escolha de modo e envia operationMode', async ({ page }) => {
+  const requests = await mock(page, { source: 'LEGACY', legacyPlannedOperations: true });
+  await page.goto('/operacao/configuracoes/operacao');
+  await expect(page.getByText('Como você trabalha?')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Por caixa/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Por operações \/ eventos/ })).toBeVisible();
+  await page.getByRole('button', { name: /^Por caixa/ }).click();
+  await expect.poll(() => requests.some(r => r.method === 'PATCH' && (r.body as { operationMode?: string })?.operationMode === 'CAIXA')).toBe(true);
+});
+
+test('carregamento e erro da configuração não exibem controles LEGACY', async ({ page }) => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await mock(page, { configurationGate: gate });
+  await page.goto('/operacao/configuracoes/operacao');
+  await expect(page.getByText('Carregando configuração operacional…')).toBeVisible();
+  await expect(page.getByText('Como você trabalha?')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Por caixa', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Criar ponto de venda' })).toHaveCount(0);
+  release();
+  await expect(page.getByText('O PDV opera por caixa. Você pode associar uma ocorrência ao abrir o caixa.')).toBeVisible();
+
+  const errorPage = await page.context().newPage();
+  await mock(errorPage, { configurationError: true });
+  await errorPage.goto('/operacao/configuracoes/operacao');
+  await expect(errorPage.getByRole('alert')).toContainText('validar a configuração operacional');
+  await expect(errorPage.getByText('Como você trabalha?')).toHaveCount(0);
+  await expect(errorPage.getByRole('link', { name: 'Criar ponto de venda' })).toHaveCount(0);
+  await errorPage.close();
+});
+
+test('setup canônico pula escolha de modo, envia recursos sem seletor e conclui', async ({ page }) => {
+  const requests = await mock(page, { setupIncomplete: true, initialTapsEnabled: true });
+  await page.goto('/operacao/configuracoes/operacao');
+  await expect(page.getByRole('heading', { name: 'Quais recursos quer ativar?' })).toBeVisible();
+  await expect(page.getByText('Como você vai operar?')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Por caixa', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Por operações ou eventos/ })).toHaveCount(0);
+  await page.getByRole('dialog').getByRole('checkbox', { name: /Controle de estoque/ }).check();
+  await page.getByRole('button', { name: 'Concluir' }).click();
+  await expect(page.getByRole('heading', { name: 'Quais recursos quer ativar?' })).toHaveCount(0);
+  const setupWrite = requests.find(r => r.method === 'PATCH' && (r.body as { completeInitialSetup?: boolean })?.completeInitialSetup);
+  expect(setupWrite?.body).toMatchObject({ tapsEnabled: true, inventoryEnabled: true, kitchenEnabled: false, completeInitialSetup: true });
+  expect(Object.hasOwn(setupWrite?.body as object, 'operationMode')).toBe(false);
+  expect(Object.hasOwn(setupWrite?.body as object, 'plannedOperationsEnabled')).toBe(false);
+});
+
+test('setup LEGACY continua pedindo modo e envia operationMode', async ({ page }) => {
+  const requests = await mock(page, { source: 'LEGACY', setupIncomplete: true, legacyPlannedOperations: true });
+  await page.goto('/operacao/configuracoes/operacao');
+  await expect(page.getByRole('heading', { name: 'Como você vai operar?' })).toBeVisible();
+  const setupDialog = page.getByRole('dialog');
+  await setupDialog.getByRole('button', { name: /^Por caixa/ }).click();
+  await setupDialog.getByRole('button', { name: 'Continuar' }).click();
+  await expect(page.getByRole('heading', { name: 'Quais recursos quer ativar?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Concluir' }).click();
+  await expect.poll(() => requests.some(r => r.method === 'PATCH' && (r.body as { completeInitialSetup?: boolean })?.completeInitialSetup)).toBe(true);
+  const setupWrite = requests.find(r => r.method === 'PATCH' && (r.body as { completeInitialSetup?: boolean })?.completeInitialSetup);
+  expect(setupWrite?.body).toMatchObject({ operationMode: 'CAIXA', tapsEnabled: true, completeInitialSetup: true });
 });

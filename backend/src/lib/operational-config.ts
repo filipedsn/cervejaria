@@ -50,7 +50,6 @@ export const updateOperationalConfigSchema = z
   )
   .refine(
     (body) => body.completeInitialSetup !== true || (
-      body.operationMode !== undefined &&
       body.tapsEnabled !== undefined &&
       body.inventoryEnabled !== undefined &&
       body.kitchenEnabled !== undefined
@@ -116,6 +115,15 @@ export class PendingKitchenCloseDependencyError extends Error {
   }
 }
 
+export class OperationalSetupModeRequiredError extends Error {
+  statusCode = 400;
+
+  constructor() {
+    super('A configuração inicial LEGACY precisa informar o modo de operação.');
+    this.name = 'OperationalSetupModeRequiredError';
+  }
+}
+
 /** Reads the effective settings; legacy operation parameters are not read in canonical mode. */
 export async function readOperationalConfig(cervejariaId: string, db: OperationalConfigClient = prisma) {
   const canonical = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId, db);
@@ -174,6 +182,9 @@ export async function updateOperationalConfig(
 ) {
   const canonical = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId, db);
   if (canonical) return updateCanonicalOperationalConfig(db, cervejariaId, input, canonical, actor);
+  if (input.completeInitialSetup === true && input.operationMode === undefined) {
+    throw new OperationalSetupModeRequiredError();
+  }
   if (input.quantidadeMesas !== undefined) throw new OperationalTableCountRequiresCanonicalPdvError();
 
   const operationMode = input.operationMode ?? (

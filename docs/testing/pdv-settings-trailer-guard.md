@@ -125,3 +125,43 @@ Alterações locais e stashes preservados. Sem worktrees, sem acesso a PROD,
 sem bateria integral de migração. Aceite manual DEV permanece pendente deste
 roteiro; TAP-76 continua In Progress. `PROD_DEPLOY_REQUIRED: Yes` para uma
 eventual entrega desta correção em PROD; nenhum deploy foi executado.
+
+## Ajuste de modo no CANONICAL_PDV (09/10/2026)
+
+O endpoint `GET /api/cervejaria/configuracao-operacional` agora retorna
+`configurationSource` no nível superior, derivado do seletor persistido de
+ativação: `CANONICAL_PDV` ou `LEGACY`. A interface só apresenta controles do
+modo quando recebe `LEGACY` explicitamente; carregamento, erro e resposta sem
+fonte confirmada não exibem controles legados. Em canônico, o painel mostra
+somente “O PDV opera por caixa. Você pode associar uma ocorrência ao abrir o
+caixa.” e não oferece criação de PDV.
+
+O setup canônico pula a escolha de modo e envia apenas os recursos e a
+conclusão do setup. O backend aceita essa conclusão sem `operationMode` no
+caminho canônico, preservando a exigência de modo para setup LEGACY. Os
+parâmetros de TAPs, estoque, cozinha e WhatsApp continuam salvando e
+revalidando configuração/contexto. Nenhuma flag histórica foi limpa e APIs de
+agenda não foram alteradas.
+
+Arquivos adicionais deste ajuste: `backend/src/routes/cervejaria.ts`,
+`backend/src/lib/operational-config.ts`,
+`backend/src/lib/operational-config.test.ts`,
+`frontend/src/components/OperationalCapabilitiesPanel.tsx`,
+`frontend/src/components/OperationalSetupWizard.tsx` e
+`e2e/pdv-settings.spec.ts`.
+
+Validação executada: builds backend e frontend aprovados; 18 testes de
+`operational-config.test.ts` aprovados; 17 testes Playwright focados aprovados
+com `npx.cmd playwright test --config playwright.pdv-settings.config.ts`.
+Os casos novos verificam seletor canônico ausente, LEGACY preservado, estados
+de carregamento/erro, payload de setup sem campos legados e conclusão do setup.
+
+Para conferir em DEV, publicar o commit no fluxo DEV existente e autenticar
+como proprietário. Em `/operacao/configuracoes/operacao`, confirmar a
+orientação por caixa e a ausência de seletor/criação de PDV; inspecionar o
+PATCH de recursos/setup e confirmar que não contém `operationMode` nem
+`plannedOperationsEnabled`. No setup inicial canônico, concluir e confirmar
+que os recursos persistem. Em tenant LEGACY, confirmar que o seletor permanece
+visível e que setup envia `operationMode`. Repetir no carregamento/erro
+simulado apenas pela suíte Playwright. Nenhuma alteração em banco ou PROD foi
+feita.

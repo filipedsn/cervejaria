@@ -7,8 +7,10 @@ import {
 import {
   CanonicalPdvModeChangeUnsupportedError,
   OperationalModeTransitionBlockedError,
+  OperationalSetupModeRequiredError,
   PendingKitchenCloseDependencyError,
   readOperationalConfig,
+  updateOperationalConfigSchema,
   updateOperationalConfig,
 } from './operational-config.js';
 
@@ -115,6 +117,31 @@ test('completes first access setup while saving mode and optional capabilities',
     kitchenEnabled: false,
   });
   assert.ok(update.setupCompletedAt instanceof Date);
+});
+
+test('accepts canonical setup without mode while LEGACY setup still requires a mode', async () => {
+  const input = {
+    tapsEnabled: true,
+    inventoryEnabled: false,
+    kitchenEnabled: false,
+    confirmacaoEstoque: true as const,
+    completeInitialSetup: true,
+  };
+  assert.deepEqual(updateOperationalConfigSchema.parse(input), input);
+
+  await withCanonicalActivation(async () => {
+    const fixture = canonicalDatabase();
+    await updateOperationalConfig(fixture.db as any, 'tenant-a', input);
+    assert.equal(fixture.legacyWrites.length, 1, 'only setup completion metadata is written to the company setup row');
+    assert.equal(fixture.canonicalWrites.length, 1, 'canonical capabilities are saved against the validated PDV');
+  });
+
+  const legacy = database(null);
+  await assert.rejects(
+    updateOperationalConfig(legacy as any, 'tenant-a', input),
+    OperationalSetupModeRequiredError,
+  );
+  assert.equal(legacy.updates.length, 0, 'LEGACY cannot complete setup without the selected mode');
 });
 
 test('persists WhatsApp ready-order settings independently per tenant', async () => {

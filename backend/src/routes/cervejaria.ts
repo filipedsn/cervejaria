@@ -129,6 +129,9 @@ export async function cervejariaRoutes(app: FastifyInstance) {
     const canonical = configuration && 'configurationSource' in configuration && configuration.configurationSource === 'CANONICAL_PDV';
     const profile = canonical ? null : await getOperationalProfile(user.cervejariaId!);
     return {
+      // The client must distinguish confirmed LEGACY from a missing or failed
+      // configuration read before showing mode-specific controls.
+      configurationSource: canonical ? 'CANONICAL_PDV' as const : 'LEGACY' as const,
       configuration,
       enablements: canonical
         ? {
