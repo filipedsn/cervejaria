@@ -9,6 +9,7 @@ $repoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $remote="/tmp/$([IO.Path]::GetFileName($resolved))"
 try {
   if ((Get-Item $resolved).Length -le 0) { throw 'Backup vazio.' }
+  if ($ProofFile -and (Test-Path -LiteralPath $ProofFile)) { throw 'A prova de restore já existe; inspecione-a antes de substituí-la.' }
   docker exec $container psql -X -v ON_ERROR_STOP=1 -U cervejaria -d postgres -c "CREATE DATABASE $name OWNER cervejaria;"
   if ($LASTEXITCODE -ne 0) { throw 'Falha ao criar banco temporario.' }
   docker cp $resolved "${container}:$remote"
@@ -16,47 +17,28 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Restore falhou.' }
   $check = docker exec $container psql -X -q -t -A -v ON_ERROR_STOP=1 -U cervejaria -d $name -c "SELECT (SELECT count(*) FROM information_schema.tables WHERE table_schema='public') > 0 AND (SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL) >= 0;"
   if ($LASTEXITCODE -ne 0 -or (($check | Out-String).Trim() -ne 't')) { throw 'Validacao de schema falhou.' }
-  $known = @{}
-  $migrationRoot = Join-Path $repoRoot 'backend\prisma\migrations'
-  $migrationNames = @(Get-ChildItem -LiteralPath $migrationRoot -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'migration.sql') } | Sort-Object Name | ForEach-Object { $_.Name })
-  $trackedGitPaths = @(git -C $repoRoot ls-tree -r --name-only HEAD -- backend/prisma/migrations)
-  if ($LASTEXITCODE -ne 0) { throw 'Falha ao consultar migrations versionadas no Git HEAD.' }
-  $trackedMigrationPathSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-  foreach ($trackedGitPath in $trackedGitPaths) { [void]$trackedMigrationPathSet.Add($trackedGitPath) }
-  $trackedMigrationNames = @()
-  foreach ($migration in $migrationNames) {
-    $migrationFile = Join-Path $migrationRoot "$migration\migration.sql"
-    $gitPath = "backend/prisma/migrations/$migration/migration.sql"
-    if (-not $trackedMigrationPathSet.Contains($gitPath)) { continue }
-    $reviewedBlob = git -C $repoRoot rev-parse "HEAD:$gitPath"
-    if ($LASTEXITCODE -ne 0) { throw "Git revision has no reviewed migration blob: $gitPath" }
-    $workingBlob = git -C $repoRoot hash-object "--path=$gitPath" -- $migrationFile
-    if ($LASTEXITCODE -ne 0 -or $workingBlob -ne $reviewedBlob) { throw "Migration file differs from current Git HEAD; restore drill stopped: $gitPath" }
-    $known[$migration] = Get-GitBlobSha256 -RepositoryPath $repoRoot -BlobObjectId $reviewedBlob
-    $trackedMigrationNames += $migration
-  }
   $ledgerText = docker exec $container psql -X -q -t -A -F '|' -v ON_ERROR_STOP=1 -U cervejaria -d $name -c "SELECT migration_name, checksum, (finished_at IS NOT NULL), (rolled_back_at IS NOT NULL) FROM public._prisma_migrations ORDER BY migration_name;"
   if ($LASTEXITCODE -ne 0) { throw 'Consulta do ledger de migrations falhou.' }
-  $applied = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
   $ledgerRows = @($ledgerText | ForEach-Object { ($_ | Out-String).Trim() } | Where-Object { $_ } | ForEach-Object {
     $parts = $_ -split '\|', 4
     if ($parts.Count -ne 4) { throw 'Formato inesperado no ledger de migrations restaurado.' }
-    $migration = $parts[0]
-    if (-not $known.ContainsKey($migration)) { throw "Migration desconhecida no backup restaurado: $migration" }
-    if ($parts[1].ToLowerInvariant() -ne $known[$migration]) { throw "Checksum divergente no backup restaurado: $migration" }
-    if ($parts[2] -ne 't' -and $parts[3] -ne 't') { throw "Migration falhada ou incompleta no backup restaurado: $migration" }
-    if ($parts[2] -eq 't' -and $parts[3] -ne 't') { [void]$applied.Add($migration) }
-    [pscustomobject]@{ name=$migration; finished=($parts[2] -eq 't'); rolledBack=($parts[3] -eq 't') }
+    [pscustomobject]@{ migration_name=$parts[0]; checksum=$parts[1]; finished=($parts[2] -eq 't'); rolled_back=($parts[3] -eq 't') }
   })
-  $gap=$false
-  foreach ($migration in $trackedMigrationNames) {
-    if (-not $applied.Contains($migration)) { $gap=$true }
-    elseif ($gap) { throw "Ledger de migrations fora de ordem antes de $migration." }
-  }
+  $revision=(git -C $repoRoot rev-parse HEAD).Trim()
+  if ($LASTEXITCODE -ne 0) { throw 'Git revision lookup failed.' }
+  $ledgerValidation=Invoke-DevMigrationLedgerValidation -RepositoryPath $repoRoot -Revision $revision -LedgerRows $ledgerRows
+  $probeOutput = & node (Join-Path $repoRoot 'backend\scripts\pdv-unico-dev-cutover-restore-probe.mjs') "--database=$name" "--revision=$revision" --through=20261004150000_pdv_finance_session_link
+  $probeExit=$LASTEXITCODE
+  $probeLine=@($probeOutput | ForEach-Object { $_.ToString() } | Where-Object { $_.Trim() } | Select-Object -Last 1)
+  if (-not $probeLine) { throw "Prisma migration application probe produced no JSON result (exit $probeExit)." }
+  $applicationProbe=$probeLine[0] | ConvertFrom-Json
+  if ($probeExit -ne 0 -or $applicationProbe.status -ne 'PASS') { throw "Prisma migration application probe blocked: $($applicationProbe | ConvertTo-Json -Depth 8 -Compress)" }
   $proof = [ordered]@{
     status='PASS'; sourceEnvironment='development'; sourceDatabase='cervejaria_dev'; backupSha256=$backupSha256
-    recoveryDatabase=$name; schemaValidation='PASS'; migrationLedgerValidation='PASS'
-    migrationAppliedCount=$applied.Count; migrationLedgerRowCount=$ledgerRows.Count; completedAtUtc=[DateTime]::UtcNow.ToString('o')
+    recoveryDatabase=$name; schemaValidation='PASS'; migrationLedgerValidation='PASS'; migrationApplicationValidation='PASS'
+    migrationAppliedCount=$ledgerValidation.appliedCount; migrationLedgerRowCount=$ledgerValidation.ledgerRowCount
+    checksumMatches=$ledgerValidation.checksumMatches; applicationProbe=$applicationProbe; reviewedRevision=$revision
+    completedAtUtc=[DateTime]::UtcNow.ToString('o')
   }
   if ($ProofFile) {
     $proofPath=[IO.Path]::GetFullPath($ProofFile)

@@ -1,13 +1,18 @@
 import { readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { validateDevCutoverEnvironment, DEV_PDV_TENANT_ALLOWLIST } from './pdv-unico-dev-cutover-core.mjs';
+import { readReviewedDevMigrations, validateDevMigrationLedger } from './pdv-unico-dev-cutover-ledger.mjs';
 
 // This helper is launched only after URL validation and compatible client generation.
 validateDevCutoverEnvironment(process.env);
 const { PrismaClient } = await import(pathToFileURL(path.join(process.env.PDV_INVENTORY_PRISMA_CLIENT, 'index.js')).href);
 const { captureRepresentativeTenantPhoto } = await import('./pdv-unico-representative-photo.ts');
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8', windowsHide: true }).trim();
+const reviewedMigrations = readReviewedDevMigrations({ repoRoot, revision, verifyWorkingTree: process.env.PDV_CUTOVER_IMMUTABLE_EXECUTION !== '1' });
 const bytes = await readFile(process.env.PDV_REPRESENTATIVE_PHOTO_FILE);
 if (createHash('sha256').update(bytes).digest('hex') !== '2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b') throw new Error('Unapproved source photo.');
 const approved = JSON.parse(bytes);
@@ -30,21 +35,10 @@ try {
       stockParentDivergence.push({ table, rows });
     }
     const ledgerDivergence = [];
-    const ledgerEncodingMatches = [];
-    for (const row of ledger.filter(row => row.finished && !row.rolled_back)) {
-      if (!/^\d{14}_[a-z0-9_]+$/.test(row.migration_name)) {
-        ledgerDivergence.push({ code: 'LEDGER_INVALID_MIGRATION_IDENTIFIER' });
-        continue;
-      }
-      try {
-        const sql = await readFile(new URL(`../prisma/migrations/${row.migration_name}/migration.sql`, import.meta.url), 'utf8');
-        const lf = sql.replaceAll('\r\n', '\n');
-        const hash = text => createHash('sha256').update(text).digest('hex');
-        const encoding = hash(lf) === row.checksum ? 'LF' : hash(lf.replaceAll('\n', '\r\n')) === row.checksum ? 'CRLF' : null;
-        if (!encoding) ledgerDivergence.push({ migration: row.migration_name, code: 'LEDGER_CHECKSUM_DIVERGENCE' });
-        else ledgerEncodingMatches.push({ migration: row.migration_name, encoding });
-      } catch { ledgerDivergence.push({ migration: row.migration_name, code: 'LEDGER_MIGRATION_NOT_IN_CANDIDATE' }); }
-    }
+    let ledgerValidation;
+    try { ledgerValidation = validateDevMigrationLedger({ migrations: reviewedMigrations, ledgerRows: ledger, boundary: '20261004150000_pdv_finance_session_link' }); }
+    catch (error) { ledgerDivergence.push(...(error.divergences ?? [{ code: 'LEDGER_VALIDATION_ERROR', message: error.message }])); }
+    const ledgerEncodingMatches = ledgerValidation?.checksumMatches ?? [];
     const coverage = [];
     const sourceIdentityComparisons = [];
     for (const tenant of DEV_PDV_TENANT_ALLOWLIST) {
@@ -74,7 +68,7 @@ try {
     }
     for (const table of current.tableRows.filter(t => !approved.tableRows.some(p => p.model === t.model))) comparisons.push({ model: table.model, added: table.rows.length, status: 'BLOCKED' });
     const blocked = coverage.some(t => t.status !== 'CLEAR') || sourceIdentityComparisons.some(t => t.status !== 'CLEAR') || disagreement.length || constraints.length || ledgerDivergence.length || mountEventDuplicates.length || mountSessionDuplicates.length || tapProductDivergence.length || stockParentDivergence.some(t => t.rows.length) || ledger.some(m => !m.finished && !m.rolled_back) || comparisons.some(t => t.status !== 'CLEAR') || current.crossTenantEdges.length;
-    return { status: blocked ? 'BLOCKED' : 'CLEAR', transaction: 'RepeatableRead READ ONLY', queried: true, tenantCount: tenants.length, coveredTenantCount: coverage.length, ledger, ledgerDivergence, ledgerEncodingMatches, constraints, disagreement, mountEventDuplicates, mountSessionDuplicates, tapProductDivergence, stockParentDivergence, coverage, sourceIdentityComparisons, sourceComparisons: comparisons, crossTenantEdges: current.crossTenantEdges.length, globalDdlImpact: ['Additive tables/columns/indexes and restrictive inventory and TAP tenant/PDV FKs affect every tenant.', 'Tracked permission migrations initialize the newly added permission array for existing attendants globally; unselected tenants keep the legacy permission gate and roles/legacy grants unchanged.', 'Multiple units outside the allowlist remain legacy; they are not a single-PDV DDL violation and are neither chosen nor merged.'] };
+    return { status: blocked ? 'BLOCKED' : 'CLEAR', transaction: 'RepeatableRead READ ONLY', queried: true, tenantCount: tenants.length, coveredTenantCount: coverage.length, ledger, ledgerValidation: ledgerValidation ?? { status: 'BLOCKED', divergences: ledgerDivergence }, ledgerDivergence, ledgerEncodingMatches, constraints, disagreement, mountEventDuplicates, mountSessionDuplicates, tapProductDivergence, stockParentDivergence, coverage, sourceIdentityComparisons, sourceComparisons: comparisons, crossTenantEdges: current.crossTenantEdges.length, globalDdlImpact: ['Additive tables/columns/indexes and restrictive inventory and TAP tenant/PDV FKs affect every tenant.', 'Tracked permission migrations initialize the newly added permission array for existing attendants globally; unselected tenants keep the legacy permission gate and roles/legacy grants unchanged.', 'Multiple units outside the allowlist remain legacy; they are not a single-PDV DDL violation and are neither chosen nor merged.'] };
   }, { isolationLevel: 'RepeatableRead', timeout: 180000 });
   console.log(JSON.stringify(report));
 } finally { await db.$disconnect(); }

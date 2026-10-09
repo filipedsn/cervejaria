@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { DEV_PDV_TENANT_ALLOWLIST, validateDevCutoverEnvironment } from './pdv-unico-dev-cutover-core.mjs';
-import { validateDevMigrationLedger } from './pdv-unico-dev-cutover-ledger.mjs';
+import { readReviewedDevMigrations, validateDevMigrationLedger } from './pdv-unico-dev-cutover-ledger.mjs';
 
 if (process.env.PDV_CUTOVER_PROFILE !== 'dev' || process.env.PDV_CUTOVER_DEV_ADAPTER !== '1') throw new Error('Receipt verification is restricted to the guarded DEV adapter.');
 validateDevCutoverEnvironment(process.env);
@@ -32,13 +32,10 @@ try {
     await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
     if (command === 'minimal-prerequisite-migrations' || command === 'dependent-migrations-with-original-preflight') {
       const rows = await tx.$queryRawUnsafe('SELECT migration_name, checksum, finished_at IS NOT NULL AS finished, rolled_back_at IS NOT NULL AS rolled_back FROM public._prisma_migrations ORDER BY migration_name');
-      const migrations = migrationFiles.map((name) => ({
-        name: name.split('/').at(-2),
-        checksum: createHash('sha256').update(execFileSync('git', ['show', `${revision}:${name}`], { cwd: repoRoot, windowsHide: true, maxBuffer: 64 * 1024 * 1024 })).digest('hex'),
-      }));
+      const migrations = readReviewedDevMigrations({ repoRoot, revision, verifyWorkingTree: process.env.PDV_CUTOVER_IMMUTABLE_EXECUTION !== '1' });
       let ledger;
       try { ledger = validateDevMigrationLedger({ migrations, ledgerRows: rows, boundary: '20261004150000_pdv_finance_session_link' }); }
-      catch (error) { return { status: 'BLOCKED', code: 'MIGRATION_LEDGER_DIVERGENCE', message: error.message, revision, migrationsSha256 }; }
+      catch (error) { return { status: 'BLOCKED', code: 'MIGRATION_LEDGER_DIVERGENCE', message: error.message, divergences: error.divergences ?? [], revision, migrationsSha256 }; }
       const successful = new Set(ledger.appliedNames);
       const through = command === 'minimal-prerequisite-migrations' ? '20261004150000_pdv_finance_session_link' : migrationNames.at(-1);
       const expectedNames = migrationNames.filter((name) => name <= through);

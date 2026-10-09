@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildDevCutoverPlan, DEV_PDV_CUTOVER_SEQUENCE, DEV_PDV_TENANT_ALLOWLIST, validateDevCutoverEnvironment } from './pdv-unico-dev-cutover-core.mjs';
 import { executePdvCutoverAdapter } from './pdv-unico-cutover-adapter.mjs';
 import { readCutoverReceipts } from './pdv-unico-cutover-receipts.mjs';
-import { validateDevMigrationLedger } from './pdv-unico-dev-cutover-ledger.mjs';
+import { readReviewedDevMigrations, validateDevMigrationLedger } from './pdv-unico-dev-cutover-ledger.mjs';
 import { applyPersistentTenantActivation, assertPersistentTenantActivation, rollbackPersistentTenantActivation } from './pdv-unico-dev-activation-config.mjs';
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,11 +40,8 @@ function runGit(args, encoding = 'utf8') {
 const revision = runGit(['rev-parse', 'HEAD']).trim();
 const snapshotSchema = runGit(['show', `${revision}:backend/prisma/schema.prisma`]);
 const migrationFiles = runGit(['ls-tree', '-r', '--name-only', revision, '--', 'backend/prisma/migrations']).split(/\r?\n/).filter((name) => name.endsWith('/migration.sql'));
-const migrationNames = [...new Set(migrationFiles.map((name) => name.split('/').at(-2)))].sort();
-const reviewedMigrations = migrationNames.map((name) => {
-  const file = `backend/prisma/migrations/${name}/migration.sql`;
-  return { name, checksum: createHash('sha256').update(runGit(['show', `${revision}:${file}`], null)).digest('hex') };
-});
+const reviewedMigrations = readReviewedDevMigrations({ repoRoot, revision, verifyWorkingTree: process.env.PDV_CUTOVER_IMMUTABLE_EXECUTION !== '1' });
+const migrationNames = reviewedMigrations.map(({ name }) => name);
 const migrationBlobHashes = migrationFiles.map((name) => `${name}\0${runGit(['rev-parse', `${revision}:${name}`]).trim()}`);
 const migrationsSha256 = createHash('sha256').update(migrationBlobHashes.join('\n')).digest('hex');
 const plan = buildDevCutoverPlan({ tenantIds: selectedTenants, mode: apply ? 'apply' : 'dry-run' });
@@ -75,7 +72,8 @@ const backupSha256 = createHash('sha256').update(backupBytes).digest('hex');
 const restoreProof = JSON.parse(await readFile(restoreProofPath, 'utf8'));
 if (restoreProof.status !== 'PASS' || restoreProof.sourceEnvironment !== 'development' || restoreProof.sourceDatabase !== 'cervejaria_dev'
   || restoreProof.backupSha256 !== backupSha256 || !/^cervejaria_restore_drill_[a-z0-9_]+$/i.test(restoreProof.recoveryDatabase ?? '')
-  || restoreProof.schemaValidation !== 'PASS' || restoreProof.migrationLedgerValidation !== 'PASS') {
+  || restoreProof.schemaValidation !== 'PASS' || restoreProof.migrationLedgerValidation !== 'PASS'
+  || restoreProof.migrationApplicationValidation !== 'PASS') {
   throw new Error('Restore-drill proof must be PASS for this exact DEV backup and a disposable recovery database.');
 }
 
@@ -162,8 +160,9 @@ async function verifyBackupProof() {
   if (sha256 !== backupSha256 || proof.status !== 'PASS' || proof.sourceEnvironment !== 'development'
     || proof.sourceDatabase !== 'cervejaria_dev' || proof.backupSha256 !== sha256
     || !/^cervejaria_restore_drill_[a-z0-9_]+$/i.test(proof.recoveryDatabase ?? '')
-    || proof.schemaValidation !== 'PASS' || proof.migrationLedgerValidation !== 'PASS') throw new Error('DEV backup/restore proof changed between preflight and apply.');
-  return { backupSha256: sha256, backupBytes: bytes.length, recoveryDatabase: proof.recoveryDatabase, restoreStatus: proof.status };
+    || proof.schemaValidation !== 'PASS' || proof.migrationLedgerValidation !== 'PASS'
+    || proof.migrationApplicationValidation !== 'PASS') throw new Error('DEV backup/restore proof changed between preflight and apply.');
+  return { backupSha256: sha256, backupBytes: bytes.length, recoveryDatabase: proof.recoveryDatabase, restoreStatus: proof.status, migrationLedgerValidation: proof.migrationLedgerValidation, migrationApplicationValidation: proof.applicationProbe, checksumVariantMatches: proof.checksumMatches };
 }
 
 try {
@@ -187,7 +186,7 @@ try {
   if (!currentPreflight.sourceComparisons?.length || currentPreflight.sourceComparisons.some((row) => row.status !== 'CLEAR')) throw new Error('The approved representative source photo no longer matches the current DEV tenants.');
   const preflight = currentPreflight;
   if (!priorPreflight) {
-    const metadata = { runId: confirmedRunId, revision, migrationsSha256, photoSha256, backupSha256: backupEvidence.backupSha256, preflight: { status: preflight.status, queried: preflight.queried, transaction: preflight.transaction, tenantCount: preflight.tenantCount, coveredTenantCount: preflight.coveredTenantCount, crossTenantEdges: preflight.crossTenantEdges, ledger: preflight.ledger, ledgerDivergence: preflight.ledgerDivergence, sourceComparisonCount: preflight.sourceComparisons.length, sourceComparisonsClear: true } };
+    const metadata = { runId: confirmedRunId, revision, migrationsSha256, photoSha256, backupSha256: backupEvidence.backupSha256, preflight: { status: preflight.status, queried: preflight.queried, transaction: preflight.transaction, tenantCount: preflight.tenantCount, coveredTenantCount: preflight.coveredTenantCount, crossTenantEdges: preflight.crossTenantEdges, ledger: preflight.ledger, ledgerValidation: preflight.ledgerValidation, ledgerEncodingMatches: preflight.ledgerEncodingMatches, ledgerDivergence: preflight.ledgerDivergence, sourceComparisonCount: preflight.sourceComparisons.length, sourceComparisonsClear: true } };
     metadata.sha256 = createHash('sha256').update(JSON.stringify(metadata)).digest('hex');
     await writeFile(preflightEvidencePath, `${JSON.stringify(metadata, null, 2)}\n`, { flag: 'wx' });
   }
@@ -320,7 +319,7 @@ try {
     }
     throw error;
   }
-  const report = { status: adapter.status, startedAt, elapsedMs: Math.round(performance.now() - clockStart), revision, target, tenants: selectedTenants, photoSha256, migrationsSha256, ledgerValidation, pendingMigrations, backupEvidence, preflight: { status: preflight.status, tenantCount: preflight.tenantCount, coveredTenantCount: preflight.coveredTenantCount, crossTenantEdges: preflight.crossTenantEdges }, commercialPreflight, adapter, receiptsFile: receiptPath, evidenceDirectory: tempRoot };
+  const report = { status: adapter.status, startedAt, elapsedMs: Math.round(performance.now() - clockStart), revision, target, tenants: selectedTenants, photoSha256, migrationsSha256, ledgerValidation, pendingMigrations, backupEvidence, preflight: { status: preflight.status, tenantCount: preflight.tenantCount, coveredTenantCount: preflight.coveredTenantCount, crossTenantEdges: preflight.crossTenantEdges, ledgerValidation: preflight.ledgerValidation, ledgerEncodingMatches: preflight.ledgerEncodingMatches }, commercialPreflight, adapter, receiptsFile: receiptPath, evidenceDirectory: tempRoot };
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
   process.stdout.write(`${JSON.stringify(report)}\n`);
 } finally {
