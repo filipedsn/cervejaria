@@ -12,21 +12,21 @@ A sessão B manteve pedidos na página atual. O cenário cobriu criação de ped
 
 ## Amostras observadas
 
-SHA da aplicação executada no ensaio registrado: `debc20f0e0c531ce467678560c9edd192c4768cc`; base integrada da entrega: `472f828d08c869668904991a4d43dcec09f39b98`. Um ensaio por ação no Chromium local; os números não são percentis de produção.
+SHA da aplicação executada no ensaio registrado: `3cc3da2b8e44d2fe6d4f30d6dd0875a46155f989`; base integrada da entrega: `472f828d08c869668904991a4d43dcec09f39b98`. Um ensaio por ação no Chromium local; os números não são percentis de produção.
 
 | Ação | Ação→evento (ms) | Evento→GET (ms) | GET→resposta (ms) | Resposta→dados (ms) | Dados→DOM/remoção (ms) | Total (ms) | GETs | Evidência visível |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Criação de pedido | 99,7 | 0,7 | 28,2 | 0,4 | 21,5 | 150,5 | 1 | Cartão e observação; caixa 303×220 px intersectando a grade. |
-| Inclusão de item | 50,6 | 0,4 | 26,0 | 0,5 | 23,1 | 100,6 | 1 | Novo cartão da comanda, observação visível; caixa 303×220 px. |
-| Início de preparo | 51,1 | 0,5 | 30,1 | 1,2 | 15,2 | 98,1 | 1 | Selo `PREPARANDO` no cartão alvo. |
-| Conclusão do preparo | 41,9 | 0,2 | 24,2 | 0,4 | 21,8 | 88,5 | 1 | Selo `PRONTO` e ação `Entregue`. |
-| Entrega | 43,7 | 0,5 | 24,1 | 1,6 | 16,0 | 85,9 | 1 | Cartão removido da grade visível. |
-| Solicitação de cancelamento | 49,5 | 0,4 | 24,9 | 0,6 | 11,9 | 87,3 | 1 | Selo `CANCELAMENTO SOLICITADO` no cartão. |
-| Confirmação de cancelamento | 43,9 | 0,4 | 24,6 | 0,2 | 11,9 | 81,0 | 1 | Cartão removido da grade visível. |
+| Criação de pedido | 75,1 | 0,7 | 26,2 | 0,3 | 23,3 | 125,6 | 1 | Cartão e observação; caixa 303×220 px intersectando a grade. |
+| Inclusão de item | 47,0 | 0,2 | 23,4 | 0,3 | 21,3 | 92,2 | 1 | Novo cartão da comanda, observação visível; caixa 303×220 px. |
+| Início de preparo | 44,9 | 0,3 | 25,4 | 0,3 | 12,1 | 83,0 | 1 | Selo `PREPARANDO` no cartão alvo. |
+| Conclusão do preparo | 39,1 | 0,3 | 21,2 | 0,2 | 18,3 | 79,1 | 1 | Selo `PRONTO` e ação `Entregue`. |
+| Entrega | 39,6 | 0,2 | 21,7 | 0,3 | 14,1 | 75,9 | 1 | Cartão removido da grade visível. |
+| Solicitação de cancelamento | 56,4 | 0,2 | 22,7 | 0,3 | 16,5 | 96,1 | 1 | Selo `CANCELAMENTO SOLICITADO` no cartão. |
+| Confirmação de cancelamento | 42,4 | 0,2 | 21,5 | 0,3 | 11,5 | 75,9 | 1 | Cartão removido da grade visível. |
 
-Reconexão: o navegador voltou à sala `cervejaria:<tenant-qa>:cozinha`, recebeu o evento de conexão, executou exatamente 1 refetch e manteve a página 1 válida. Na amostra: conexão→refetch parseado `30,1 ms`, dados→dois frames de pintura `34,6 ms`; recuperação total desde a interrupção medida no cliente `1.261,5 ms`, incluindo `1.196,8 ms` de retomada do transporte Socket.IO.
+Reconexão: o navegador voltou à sala `cervejaria:<tenant-qa>:cozinha`, recebeu o evento de conexão, executou exatamente 1 refetch e manteve a página 1 válida. Na amostra: conexão→refetch parseado `32,9 ms`, dados→dois frames de pintura `42,0 ms`; recuperação total desde a interrupção medida no cliente `861,4 ms`, incluindo `786,5 ms` de retomada do transporte Socket.IO.
 
-O ensaio separado do transporte repetiu 12 transições no socket real: 12/12 eventos entregues sem esperar o polling de 20 s. Request até resposta depois do commit/emissão: p50 `45,05 ms`, p95 `123,57 ms`. Emissão do servidor até recebimento no socket da cozinha: p50 `1,35 ms`, p95 `17,03 ms`. O evento chegou antes da resposta HTTP nas 12 amostras (p50 relativo `-0,79 ms`).
+O ensaio separado do transporte repetiu 12 transições no socket real: 12/12 eventos entregues sem esperar o polling de 20 s. Request até resposta depois do commit/emissão: p50 `43,92 ms`, p95 `110,86 ms`. Emissão do servidor até recebimento no socket da cozinha: p50 `1,22 ms`, p95 `18,06 ms`. O evento chegou antes da resposta HTTP nas 12 amostras (p50 relativo `-0,68 ms`).
 
 ## Diagnóstico
 
@@ -81,5 +81,6 @@ Para observar uma sessão real sem tocar em pedidos e sem registrar conteúdo, e
 Esse diagnóstico não intercepta o frame Socket.IO; para correlação detalhada em DEV, use o painel Network/WS do DevTools e compare o horário do frame com os registros do console. Não use o ensaio com pedidos reais para forçar alterações de status.
 
 Reprodução automatizada: `node backend/scripts/run-kitchen-realtime-latency-disposable-qa.mjs`. O runner cria o PostgreSQL temporário em tmpfs e o remove ao terminar.
+
 
 
