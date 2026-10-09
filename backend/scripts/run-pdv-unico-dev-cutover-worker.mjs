@@ -196,9 +196,45 @@ try {
   }
   const preflightText = runNode(['scripts/run-pdv-unico-global-preflight.mjs'], 'global-preflight-current', { PDV_REPRESENTATIVE_PHOTO_FILE: photoPath });
   const currentPreflight = parseJsonLine(preflightText, 'current DEV global preflight');
-  if (currentPreflight.status !== 'CLEAR' || currentPreflight.queried !== true || !currentPreflight.tenantCount || currentPreflight.coveredTenantCount !== currentPreflight.tenantCount) throw new Error('Current all-tenant DEV preflight is not CLEAR with complete coverage.');
-  if (!currentPreflight.sourceComparisons?.length || currentPreflight.sourceComparisons.some((row) => row.status !== 'CLEAR')) throw new Error('The approved representative source photo no longer matches the current DEV tenants.');
-  const preflight = currentPreflight;
+  if (currentPreflight.queried !== true || !currentPreflight.tenantCount || currentPreflight.coveredTenantCount !== currentPreflight.tenantCount) throw new Error('Current all-tenant DEV preflight is missing read-only coverage.');
+  let preflight = currentPreflight;
+  let resumePreflightEvidence = null;
+  if (priorReceipts.length) {
+    const expectedTransformedModels = new Set(['Comanda', 'Pagamento', 'PontoVenda', 'SessaoCaixaOperacao', 'SessaoCaixaProdutoOperacao']);
+    const sourceDifferences = currentPreflight.sourceComparisons?.filter((row) => row.status !== 'CLEAR') ?? [];
+    const globalBlockers = [];
+    const require = (ok, name, detail) => { if (!ok) globalBlockers.push({ name, detail }); };
+    require(currentPreflight.ledgerValidation?.status === 'VALID' && currentPreflight.ledgerDivergence?.length === 0, 'migration-ledger', currentPreflight.ledgerValidation);
+    require(currentPreflight.constraints?.length === 0, 'constraints', currentPreflight.constraints);
+    require(currentPreflight.disagreement?.length === 0, 'tenant-disagreement', currentPreflight.disagreement);
+    require(currentPreflight.mountEventDuplicates?.length === 0 && currentPreflight.mountSessionDuplicates?.length === 0, 'duplicate-session-edges', { event: currentPreflight.mountEventDuplicates, operational: currentPreflight.mountSessionDuplicates });
+    require(currentPreflight.tapProductDivergence?.length === 0, 'tap-product-ownership', currentPreflight.tapProductDivergence);
+    require(currentPreflight.stockParentDivergence?.every((row) => row.rows?.length === 0), 'stock-parent-ownership', currentPreflight.stockParentDivergence);
+    require(currentPreflight.coverage?.length === currentPreflight.tenantCount && currentPreflight.coverage.every((row) => row.status === 'CLEAR'), 'tenant-coverage', currentPreflight.coverage?.filter((row) => row.status !== 'CLEAR'));
+    require(currentPreflight.sourceIdentityComparisons?.length > 0 && currentPreflight.sourceIdentityComparisons.every((row) => row.status === 'CLEAR'), 'approved-tenant-identity', currentPreflight.sourceIdentityComparisons?.filter((row) => row.status !== 'CLEAR'));
+    require(currentPreflight.crossTenantEdges === 0, 'cross-tenant-edges', currentPreflight.crossTenantEdges);
+    require(currentPreflight.sourceComparisons?.length > 0 && sourceDifferences.every((row) => expectedTransformedModels.has(row.model)
+      && (row.changedOrMissing > 0 || row.added > 0)), 'source-photo-delta-scope', sourceDifferences);
+    require(currentPreflight.status === 'CLEAR' || currentPreflight.status === 'BLOCKED' && sourceDifferences.length > 0, 'preflight-status', { status: currentPreflight.status, sourceDifferences });
+    if (globalBlockers.length) throw new Error(`Resume preflight found unexpected DEV divergence: ${JSON.stringify(globalBlockers)}`);
+    const rawReceiptRows = (await readFile(receiptPath, 'utf8')).trimEnd().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+    const resumeBody = { runId: confirmedRunId, revision, fromRevision: JSON.parse(await readFile(preflightEvidencePath, 'utf8')).revision,
+      tenantIds: selectedTenants, previousReceiptSha256: rawReceiptRows.at(-1)?.sha256, originalStatus: currentPreflight.status,
+      allowedTransformedModels: [...expectedTransformedModels], sourceDifferences, verifiedGlobalInvariants: { ledger: 'VALID', allTenantCoverage: currentPreflight.coveredTenantCount,
+        crossTenantEdges: currentPreflight.crossTenantEdges, constraints: 0, disagreement: 0, duplicateEdges: 0, tapProductDivergence: 0, stockParentDivergence: 0,
+        selectedTenantIdentity: 'CLEAR' }, checkedAt: new Date().toISOString(), currentPreflight };
+    resumeBody.sha256 = createHash('sha256').update(JSON.stringify(resumeBody)).digest('hex');
+    const resumeFile = path.join(receiptsRoot, `${confirmedRunId}.resume-preflight-${revision.slice(0, 12)}-${Date.now()}.json`);
+    await writeFile(resumeFile, `${JSON.stringify(resumeBody, null, 2)}\n`, { flag: 'wx' });
+    resumePreflightEvidence = { status: 'PASS', file: resumeFile, sha256: resumeBody.sha256, originalPreflightStatus: currentPreflight.status,
+      expectedTransformedModels: [...expectedTransformedModels], sourceDifferences };
+    // Only the exact five model deltas caused by the already receipted transform phases are reclassified here.
+    // The adapter then revalidates all completed phase receipts against live ledger and migrator evidence before any next operation.
+    preflight = { ...currentPreflight, status: 'CLEAR' };
+  } else {
+    if (currentPreflight.status !== 'CLEAR') throw new Error('Initial all-tenant DEV preflight is not CLEAR.');
+    if (!currentPreflight.sourceComparisons?.length || currentPreflight.sourceComparisons.some((row) => row.status !== 'CLEAR')) throw new Error('The approved representative source photo no longer matches the current DEV tenants.');
+  }
   if (!priorPreflight) {
     const metadata = { runId: confirmedRunId, revision, migrationsSha256, photoSha256, backupSha256: backupEvidence.backupSha256, preflight: { status: preflight.status, queried: preflight.queried, transaction: preflight.transaction, tenantCount: preflight.tenantCount, coveredTenantCount: preflight.coveredTenantCount, crossTenantEdges: preflight.crossTenantEdges, ledger: preflight.ledger, ledgerValidation: preflight.ledgerValidation, ledgerEncodingMatches: preflight.ledgerEncodingMatches, ledgerDivergence: preflight.ledgerDivergence, sourceComparisonCount: preflight.sourceComparisons.length, sourceComparisonsClear: true } };
     metadata.sha256 = createHash('sha256').update(JSON.stringify(metadata)).digest('hex');
@@ -338,7 +374,7 @@ try {
     }
     throw error;
   }
-  const report = { status: adapter.status, startedAt, elapsedMs: Math.round(performance.now() - clockStart), revision, target, tenants: selectedTenants, photoSha256, migrationsSha256, ledgerValidation, pendingMigrations, backupEvidence, resumeTransition: transitionEvidence, preflight: { status: preflight.status, tenantCount: preflight.tenantCount, coveredTenantCount: preflight.coveredTenantCount, crossTenantEdges: preflight.crossTenantEdges, ledgerValidation: preflight.ledgerValidation, ledgerEncodingMatches: preflight.ledgerEncodingMatches }, commercialPreflight, adapter, receiptsFile: receiptPath, evidenceDirectory: tempRoot };
+  const report = { status: adapter.status, startedAt, elapsedMs: Math.round(performance.now() - clockStart), revision, target, tenants: selectedTenants, photoSha256, migrationsSha256, ledgerValidation, pendingMigrations, backupEvidence, resumeTransition: transitionEvidence, resumePreflightEvidence, preflight: { status: preflight.status, originalStatus: currentPreflight.status, tenantCount: preflight.tenantCount, coveredTenantCount: preflight.coveredTenantCount, crossTenantEdges: preflight.crossTenantEdges, ledgerValidation: preflight.ledgerValidation, ledgerEncodingMatches: preflight.ledgerEncodingMatches }, commercialPreflight, adapter, receiptsFile: receiptPath, evidenceDirectory: tempRoot };
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
   process.stdout.write(`${JSON.stringify(report)}\n`);
 } finally {
