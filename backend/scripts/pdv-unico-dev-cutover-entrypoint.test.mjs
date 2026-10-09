@@ -16,3 +16,12 @@ test('real DEV command executes a Git snapshot and emits import-origin proof wit
   assert.match(result.stdout, /"appliesMigrations": false/);
   assert.match(result.stdout, /PDV_DEV_EXECUTOR_IMPORT_PROOF revision=[0-9a-f]{40}; projectImports=\d+; externalProjectImports=0/);
 });
+
+test('real DEV command accepts the reviewed migrations SHA confirmation flag', () => {
+  const result = spawnSync(process.execPath, ['scripts/run-pdv-unico-dev-cutover.mjs', '--dry-run', `--confirm-migrations-sha256=${'a'.repeat(64)}`], {
+    cwd: backendRoot, encoding: 'utf8', windowsHide: true, timeout: 120_000, maxBuffer: 16 * 1024 * 1024,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /"migrationsSha256": "[0-9a-f]{64}"/);
+  assert.doesNotMatch(result.stderr, /Unknown argument/);
+});

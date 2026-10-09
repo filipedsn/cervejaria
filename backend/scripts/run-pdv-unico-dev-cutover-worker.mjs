@@ -21,7 +21,7 @@ const apply = args.includes('--apply');
 const valueFlags = new Set(['profile', 'tenant', 'run-id', 'confirm-target', 'confirm-revision', 'confirm-migrations-sha256', 'confirm-photo-sha256', 'backup-file', 'restore-drill']);
 for (const arg of args) {
   if (['--apply', '--dry-run', '--plan'].includes(arg)) continue;
-  const match = /^--([a-z-]+)=/.exec(arg);
+  const match = /^--([a-z0-9-]+)=/.exec(arg);
   if (!match || !valueFlags.has(match[1])) throw new Error(`Unknown argument: ${arg}`);
 }
 if ((value('profile') ?? 'dev') !== 'dev') throw new Error('This entrypoint accepts only --profile=dev.');
