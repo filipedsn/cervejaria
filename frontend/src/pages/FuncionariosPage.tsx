@@ -166,40 +166,35 @@ export function FuncionariosPage({ embedded }: { embedded?: boolean } = {}) {
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-2" data-testid="employee-list">
         {error && !showModal && <div className="alert-error">{error}</div>}
         {funcionarios?.map((f) => (
-          <div key={f.id} className="card space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-bold truncate">{f.nome}</p>
-                <p className="text-sm text-ink-muted truncate">{f.email}</p>
-              </div>
-              <span className={`text-xs px-2 py-1 rounded-full shrink-0 ${
-                f.papel === 'DONO' ? 'bg-brand-50 text-brand-600' : 'badge-inactive'
-              }`}>
-                {f.papel === 'DONO' ? 'Proprietário' : 'Atendente'}
-              </span>
+          <div key={f.id} className="card flex items-center justify-between gap-2 px-3 py-2 sm:px-4">
+            <div className="min-w-0 flex-1">
+              <p className={`font-bold ${f.papel === 'DONO' ? 'break-words' : 'truncate'}`} title={f.nome}>{f.nome}</p>
+              <p className={`text-sm text-ink-muted ${f.papel === 'DONO' ? 'break-words' : 'truncate'}`} title={f.email}>{f.email}</p>
             </div>
             {f.papel === 'DONO' ? (
-              <p className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-3 text-sm font-semibold text-brand-700">
-                Acesso integral às permissões da empresa.
-              </p>
+              <span className="shrink-0 rounded-full bg-brand-50 px-2 py-1 text-xs text-brand-600">{'Propriet\u00e1rio'}</span>
             ) : permissionMode ? (
-              <button type="button" className="touch-btn-secondary min-h-12 w-full sm:w-auto"
+              <button type="button" className="touch-btn-secondary flex min-h-11 min-w-11 shrink-0 items-center justify-center whitespace-nowrap px-3"
                 aria-label={`Gerenciar acessos de ${f.nome}`}
                 onClick={() => { const permissions = [...(f.permissoesOperacao ?? [])]; setEditorError(''); setEditor({ usuario: f, original: permissions, draft: [...permissions] }); }}>
-                Gerenciar acessos
+                Acessos
               </button>
             ) : (
-              <PermissaoDescontoRow
-                ativo={Boolean(f.podeDarDescontoOperacao)}
-                loading={togglingId === f.id}
-                onToggle={(ativo) => permissoesMutation.mutate({
-                  id: f.id,
-                  permissoesOperacao: ativo ? ['discount.apply'] : [],
-                })}
-              />
+              <div className="shrink-0 [&_button]:min-h-11">
+                <ToggleAtivo
+                  ativo={Boolean(f.podeDarDescontoOperacao)}
+                  loading={togglingId === f.id}
+                  labelAtivo={TOGGLE_DESCONTO_ATIVO}
+                  labelInativo={TOGGLE_DESCONTO_INATIVO}
+                  onToggle={() => permissoesMutation.mutate({
+                    id: f.id,
+                    permissoesOperacao: f.podeDarDescontoOperacao ? [] : ['discount.apply'],
+                  })}
+                />
+              </div>
             )}
           </div>
         ))}

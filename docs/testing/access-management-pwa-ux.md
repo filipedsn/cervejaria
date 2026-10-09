@@ -75,3 +75,10 @@ Validação em aparelhos físicos e aceite manual da PWA DEV ficam pendentes.
 TAP-76 mantém título, prioridade, labels e estado **In Progress**.
 `PROD_DEPLOY_REQUIRED: Yes` para disponibilizar esta correção futuramente em PROD;
 deploy não realizado nesta tarefa.
+
+
+## Ajuste complementar: linha compacta da equipe
+
+Cada registro da equipe usa uma linha horizontal compacta: nome e e-mail ficam ? esquerda, com a a??o ? direita. Funcion?rios n?o repetem o selo Atendente; o propriet?rio exibe somente o selo Propriet?rio, sem a??o de edi??o ou bloco explicativo. O bot?o Acessos preserva o nome acess?vel Gerenciar acessos de [nome] e alvo de toque m?nimo de 44 x 44px. Nomes/e-mails de funcion?rios podem ser truncados na lista; o editor exibe os valores completos. Dados do propriet?rio permanecem sem truncamento. O modo LEGACY mant?m o toggle e o payload booleano atuais.
+
+Valida??o adicional em 09/10/2026: build frontend aprovado; Playwright de permiss?es aprovado 12/12 com APIs simuladas em 390px e 768px. Os fixtures usam nome/e-mail longos, confirmam aus?ncia de overflow, abertura do editor do usu?rio correto e exibi??o dos valores completos; salvamento, descarte e contrato LEGACY permanecem cobertos. As capturas compact-list e grouped-editor foram revisadas visualmente nos dois tamanhos: a a??o permanece alinhada ? direita, sem sobreposi??o ou rolagem horizontal. Os artefatos seguem em diret?rio tempor?rio exclusivo tap-access-ui-*.

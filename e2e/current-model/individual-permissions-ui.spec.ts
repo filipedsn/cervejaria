@@ -31,7 +31,7 @@ async function setup(page: Page, legacy = false) {
       usuario: owner, cervejaria: { id: 'ui-company', nome: 'Cervejaria UI', slug: 'permissions-ui' },
     } });
     if (method === 'GET' && url.pathname === '/api/usuarios') return route.fulfill({ json: [owner, staff(),
-      { ...staff(), id: 'ui-other', nome: 'Outro atendente', email: 'other@example.invalid' },
+      { ...staff(), id: 'ui-other', nome: 'Atendente com nome extremamente longo para validar o layout responsivo', email: 'email.de.usuario.muito.extenso.para.validar.ausencia.de.overflow@example.invalid' },
     ] });
     if (method === 'PATCH' && url.pathname === '/api/usuarios/ui-staff/permissoes-operacao') {
       const body = request.postDataJSON();
@@ -47,7 +47,7 @@ async function setup(page: Page, legacy = false) {
       return route.fulfill({ json: { id: 'ui-created' } });
     }
     if (method === 'GET' && url.pathname === '/api/operacao/contexto') {
-      return route.fulfill({ json: { ativo: false, operationMode: 'LEGACY', pontosVenda: [], temCozinha: false, controlaEstoque: false } });
+      return route.fulfill({ json: { ativo: false, operationalSettingsSource: 'LEGACY', operationMode: 'LEGACY', pontosVenda: [], temCozinha: false, controlaEstoque: false } });
     }
     if (method === 'GET' && url.pathname === '/api/onboarding/readiness') {
       return route.fulfill({ json: {
@@ -101,9 +101,30 @@ for (const width of [390, 768]) {
       await expect(page.getByRole('checkbox')).toHaveCount(0);
       await expect(page.getByRole('button', { name: /Gerenciar acessos de/ })).toHaveCount(2);
       await expect(page.getByRole('button', { name: /Gerenciar acessos de Owner/ })).toHaveCount(0);
-      await expect(page.getByText(/Acesso integral/)).toBeVisible();
+      await expect(page.getByText(/Acesso integral/)).toHaveCount(0);
+      await expect(page.getByText('Proprietário', { exact: true })).toBeVisible();
+      await expect(page.getByText('Atendente', { exact: true })).toHaveCount(0);
+      await expect(page.getByText('Gerenciar acessos', { exact: true })).toHaveCount(0);
+      const longName = 'Atendente com nome extremamente longo para validar o layout responsivo';
+      const longEmail = 'email.de.usuario.muito.extenso.para.validar.ausencia.de.overflow@example.invalid';
+      const longNameButton = page.getByRole('button', { name: `Gerenciar acessos de ${longName}`, exact: true });
+      await expect(longNameButton).toHaveText('Acessos');
+      expect((await longNameButton.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      expect((await longNameButton.boundingBox())!.width).toBeGreaterThanOrEqual(44);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      const longNameRow = page.getByTestId('employee-list').locator('> div').filter({ has: longNameButton });
+      const nameIsTruncated = await longNameRow.locator('p').first().evaluate(element => element.scrollWidth > element.clientWidth);
+      if (width === 390) expect(nameIsTruncated).toBe(true);
+      await longNameButton.click();
+      const longNameEditor = page.getByRole('dialog', { name: 'Gerenciar acessos', exact: true });
+      await expect(longNameEditor.getByText(longName, { exact: true })).toBeVisible();
+      await expect(longNameEditor.locator('p').nth(1)).toContainText(longEmail);
+      await longNameEditor.getByRole('button', { name: 'Voltar', exact: true }).click();
+      await expect(longNameEditor).toHaveCount(0);
       expect((await page.getByRole('button', { name: '+ Novo Atendente' }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
-      await page.screenshot({ path: testInfo.outputPath('compact-list.png'), fullPage: true });
+      const listScreenshot = testInfo.outputPath('compact-list.png');
+      await page.screenshot({ path: listScreenshot, fullPage: true });
+      await testInfo.attach('compact-list', { path: listScreenshot, contentType: 'image/png' });
       const editor = await openEditor(page);
       await expect(editor.getByText('staff@example.invalid', { exact: false })).toBeVisible();
       await expect(editor.getByRole('button', { name: 'Fechar', exact: true })).toHaveCount(0);
@@ -128,7 +149,9 @@ for (const width of [390, 768]) {
       await expect(editor.getByText(/Exige também Visualizar valores do caixa/)).toBeVisible();
       expect(api.writes).toEqual([]);
       await checkLayout(page);
-      await editor.screenshot({ path: testInfo.outputPath('grouped-editor.png') });
+      const editorScreenshot = testInfo.outputPath('grouped-editor.png');
+      await editor.screenshot({ path: editorScreenshot });
+      await testInfo.attach('grouped-editor', { path: editorScreenshot, contentType: 'image/png' });
       page.once('dialog', dialog => dialog.dismiss());
       await backButton.click();
       await expect(editor).toBeVisible();
