@@ -1170,10 +1170,13 @@ const browserEnv = {
   RBAC_QA_OUTPUT_DIR: path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results'),
   RBAC_QA_OWNER_EMAIL: owner.email,
   RBAC_QA_OWNER_PASSWORD: ownerPassword,
+    RBAC_QA_OWNER_COOKIE: ownerCookie,
   RBAC_QA_STAFF_EMAIL: staff.email,
   RBAC_QA_STAFF_PASSWORD: attendantPassword,
+    RBAC_QA_STAFF_COOKIE: staffCookie,
   RBAC_QA_FOREIGN_OWNER_EMAIL: otherOwner.email,
   RBAC_QA_FOREIGN_OWNER_PASSWORD: otherOwnerPassword,
+    RBAC_QA_FOREIGN_OWNER_COOKIE: foreignOwnerCookie,
   RBAC_QA_STAFF_ID: staff.id,
 };
 const browserRun = spawnSync(process.execPath, [path.join(repoRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.rbac-live.config.ts'], {
