@@ -33,7 +33,12 @@ async function logoutInBrowser(page: Page) {
 }
 
 async function loginForm(page: Page, email: string, password: string) {
-  await page.goto('/login');
+  if (new URL(page.url()).pathname !== '/login') {
+    await page.goto('/login').catch(async (error) => {
+      if (new URL(page.url()).pathname !== '/login') throw error;
+    });
+  }
+  await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByLabel('E-mail')).toBeVisible({ timeout: 15_000 });
   await page.getByLabel('E-mail').fill(email);
   await page.locator('#password').fill(password);
