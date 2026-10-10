@@ -1,0 +1,79 @@
+import { randomBytes } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
+
+const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const runId = randomBytes(8).toString('hex');
+const containerName = `codex-cash-overnight-${runId}`;
+const containerLabel = 'cash-overnight-disposable-qa';
+const password = randomBytes(32).toString('base64url');
+const schemaDir = await mkdtemp(path.join(os.tmpdir(), `cash-overnight-schema-${runId}-`));
+const schemaPath = path.join(schemaDir, 'schema.prisma');
+let port;
+let databaseUrl;
+let created = false;
+
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, { encoding: 'utf8', windowsHide: true, ...options });
+  if (result.status !== 0) throw new Error(`${command} failed (${result.status}): ${(result.stderr || result.stdout || '').replaceAll(databaseUrl ?? '', '[QA URL REDACTED]').slice(0, 1800)}`);
+  return (result.stdout ?? '').trim();
+}
+
+async function findFreePort() {
+  for (let candidate = 55439; candidate <= 55449; candidate++) {
+    const free = await new Promise((resolve) => {
+      const server = net.createServer();
+      server.once('error', () => resolve(false));
+      server.listen(candidate, '127.0.0.1', () => server.close((error) => resolve(!error)));
+    });
+    if (free) return candidate;
+  }
+  throw new Error('No free isolated QA port in 55439-55449.');
+}
+
+try {
+  port = await findFreePort();
+  const url = new URL(`postgresql://127.0.0.1:${port}/cervejaria_qa_pdv_unico`);
+  url.username = 'postgres';
+  url.password = password;
+  url.searchParams.set('connection_limit', '8');
+  databaseUrl = validateIsolatedQaEnvironment({ PDV_ISOLATED_QA: '1', QA_DATABASE_URL: url.toString() }).toString();
+  const schema = await readFile(path.join(backendDir, 'prisma/schema.prisma'), 'utf8');
+  await writeFile(schemaPath, schema, 'utf8');
+
+  run('docker', ['run', '-d', '--rm', '--name', containerName, '--label', `codex.purpose=${containerLabel}`, '--label', `codex.run=${runId}`,
+    '-p', `127.0.0.1:${port}:5432`, '--tmpfs', '/var/lib/postgresql/data:rw,noexec,nosuid,size=1g',
+    '-e', 'POSTGRES_USER=postgres', '-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_DB=cervejaria_qa_pdv_unico', 'postgres:17-alpine']);
+  created = true;
+  let ready = false;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    if (spawnSync('docker', ['exec', containerName, 'pg_isready', '-U', 'postgres', '-d', 'cervejaria_qa_pdv_unico'], { encoding: 'utf8', windowsHide: true }).status === 0) { ready = true; break; }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  if (!ready) throw new Error('Disposable PostgreSQL did not become ready within 60 seconds.');
+
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) if (key === 'DATABASE_URL' || key === 'DIRECT_URL' || /_DATABASE_URL$/.test(key) || /^PROD/i.test(key) || key === 'PDV_CANONICAL_CONFIG_QA') delete env[key];
+  Object.assign(env, {
+    NODE_ENV: 'test', PDV_ISOLATED_QA: '1', PDV_QA_RUN_ID: runId,
+    PDV_INDIVIDUAL_PERMISSIONS_ENABLED: '1',
+    PDV_CANONICAL_TENANTS: 'cmr9yis3c0000hvu00q9fe7y1,cmsry9xrn0000hvlgopjxy0oo',
+    QA_DATABASE_URL: databaseUrl, DATABASE_URL: databaseUrl,
+  });
+  run(process.execPath, ['node_modules/prisma/build/index.js', 'db', 'push', '--skip-generate', '--schema', schemaPath], { cwd: backendDir, env });
+  run(process.execPath, ['--import', 'tsx', '--test', 'scripts/cash-overnight.isolated.test.mjs'], { cwd: backendDir, env, stdio: 'inherit' });
+  console.log('CASH_OVERNIGHT_API_QA=PASS; database=disposable-tmpfs; profiles=LEGACY,CANONICAL_PDV; shared_DEV=NO; PROD=NO');
+} finally {
+  if (created) {
+    const labels = run('docker', ['inspect', '-f', '{{ index .Config.Labels "codex.purpose" }}|{{ index .Config.Labels "codex.run" }}', containerName]);
+    if (labels !== `${containerLabel}|${runId}`) throw new Error('Refusing to remove a disposable QA container with mismatched ownership labels.');
+    run('docker', ['stop', containerName]);
+    console.log(`QA_CASH_OVERNIGHT_CONTAINER_REMOVED=${containerName}; storage=tmpfs; bind=127.0.0.1:${port}`);
+  }
+  await rm(schemaDir, { recursive: true, force: true });
+}

@@ -94,12 +94,13 @@ export function OperacaoComandaDetailPage() {
     enabled: Boolean(comanda?.pontoVendaId),
   });
 
-  const { data: caixaData } = useQuery({
+  const caixaQuery = useQuery({
     queryKey: ['operacao-caixa', comanda?.pontoVendaId],
     queryFn: () => api.get<CaixaResposta>(`/api/operacao/caixa?pontoVendaId=${comanda!.pontoVendaId}`),
     enabled: Boolean(comanda?.pontoVendaId),
     refetchInterval: poll30,
   });
+  const caixaData = caixaQuery.data;
   const caixaAberto = caixaData?.sessao?.status === 'ABERTO';
   const podeReceber = canPermission('payment.receive');
   const podeOperarComanda = canPermission('command.operate');
@@ -497,6 +498,7 @@ export function OperacaoComandaDetailPage() {
 
   return (
     <div className={`space-y-4 ${hasActionBar ? 'page-with-action-bar' : 'pb-2'}`}>
+      {caixaQuery.isError && <div role="alert" className="alert-error">Nao foi possivel consultar o caixa. A tela nao pode confirmar se ha um turno ativo.</div>}
       <div className="card">
         <div className="flex items-center gap-x-4 gap-y-2">
           <div className="flex min-w-0 items-center gap-3">
@@ -922,11 +924,13 @@ export function OperacaoComandaDetailPage() {
             type="button"
             className="touch-btn-primary w-full"
             onClick={() => abrirNova.mutate()}
-            disabled={abrirNova.isPending || !caixaAberto}
+            disabled={abrirNova.isPending || !caixaAberto || caixaQuery.isError}
           >
             {abrirNova.isPending
               ? 'Abrindo...'
-              : !caixaAberto
+              : caixaQuery.isError
+                ? 'Nao foi possivel consultar o caixa'
+                : !caixaAberto
                 ? 'Caixa fechado — abra para nova comanda'
                 : `Nova comanda · ${rotuloComanda(comanda)}`}
           </button>

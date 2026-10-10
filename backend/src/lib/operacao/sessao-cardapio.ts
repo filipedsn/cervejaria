@@ -4,6 +4,7 @@ import { operacaoUsaCardapio } from '../cardapio-toggle.js';
 import { isBebidaChopeOperacao, isChopeConfiguravelNaTapOperacao } from '../produto-utils.js';
 import { toNumber } from '../utils.js';
 import { resolveEffectivePrice } from './preco-efetivo.js';
+import { resolveUniqueOpenCashSession } from './cash-session-resolution.js';
 
 type AplicarCardapioTurnoResult = { ok: true; count: number } | { error: string };
 import {
@@ -352,11 +353,13 @@ export async function listProdutosOperacionaisTurno(
     return enriquecerProdutosOperacao(produtos, null);
   }
 
-  const sessao = await prisma.sessaoCaixaOperacao.findFirst({
-    where: { cervejariaId, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
+  const sessoes = await prisma.sessaoCaixaOperacao.findMany({
+    where: { cervejariaId, pontoVendaId, status: 'ABERTO' },
     orderBy: { abertoEm: 'desc' },
     select: { id: true, cardapioId: true },
+    take: 2,
   });
+  const sessao = resolveUniqueOpenCashSession(sessoes);
 
   if (!sessao) {
     const produtos = await prisma.produto.findMany({

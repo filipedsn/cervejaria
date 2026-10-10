@@ -10,6 +10,7 @@ import { centavos, diaOperacional, reais } from '../../lib/operacao/venda.js';
 import { recalculateClienteStats } from '../../lib/cliente-stats.js';
 import { zonedTimeToUtc } from '../../lib/event-datetime.js';
 import { requirePermissao } from '../../lib/operacao/permissoes.js';
+import { resolveUniqueOpenCashSession } from '../../lib/operacao/cash-session-resolution.js';
 
 const recebimentoSchema = z.object({
   pontoVendaId: z.string().min(1),
@@ -121,11 +122,13 @@ export async function contasPendentesOperacaoRoutes(app: FastifyInstance) {
       const dia = diaOperacional();
       await assertCashRegisterUnitEnabled(cervejariaId, body.pontoVendaId, tx);
       await lockCaixaEmTx(tx, cervejariaId, body.pontoVendaId, dia);
-      const sessao = await tx.sessaoCaixaOperacao.findFirst({
-        where: { cervejariaId, pontoVendaId: body.pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
+      const sessoes = await tx.sessaoCaixaOperacao.findMany({
+        where: { cervejariaId, pontoVendaId: body.pontoVendaId, status: 'ABERTO' },
         select: { id: true },
-        orderBy: { abertoEm: 'desc' },
+        orderBy: { abertoEm: 'asc' },
+        take: 2,
       });
+      const sessao = resolveUniqueOpenCashSession(sessoes);
       await lockComandaItemsInTx(tx, conta.comandaId);
       const atual = await tx.contaReceber.findUniqueOrThrow({
         where: { id },

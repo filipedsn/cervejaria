@@ -12,6 +12,7 @@ import {
   type ResumoCaixa,
   defaultTurnoCardapioForm,
   buildTurnoCardapioAbrirPayload,
+  diaOperacionalQuery,
 } from '../../lib/operacao';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
@@ -124,7 +125,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const trailerDoTurno = agendaCanonica ? '' : trailerId || (trailers.length === 1 ? trailers[0]?.id ?? '' : '');
   const precisaSelecionarTrailer = !agendaCanonica && contexto.tapsEnabled && trailers.length > 1 && !trailerDoTurno;
 
-  const { data, isLoading: caixaLoading } = useQuery({
+  const { data, isLoading: caixaLoading, isError: caixaErro, refetch: consultarCaixa } = useQuery({
     queryKey: ['operacao-caixa', pontoVendaId],
     queryFn: () => api.get<CaixaResposta>(`/api/operacao/caixa?pontoVendaId=${pontoVendaId}`),
     enabled: Boolean(pontoVendaId),
@@ -152,6 +153,8 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const classesContasPendentes = `touch-btn-secondary caixa-contas-pendentes-link${temContaPendente ? ' caixa-contas-pendentes-alerta' : ''}`;
 
   const sessao = data?.sessao ?? null;
+  const diaTurnoSessao = sessao?.diaOperacional.slice(0, 10);
+  const turnoDeOutroDia = sessao?.status === 'ABERTO' && Boolean(diaTurnoSessao && diaTurnoSessao < diaOperacionalQuery());
   useEffect(() => {
     if (compacto) setPainelSuprimido(sessao?.status === 'ABERTO');
   }, [compacto, sessao?.status, sessao?.abertoEm]);
@@ -306,7 +309,13 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
 
   return (
     <>
-      {!sessao && compacto && !caixaLoading && (
+      {caixaErro && (
+        <div role="alert" className="alert-error flex flex-wrap items-center justify-between gap-3">
+          <span>Nao foi possivel consultar o caixa. Verifique a conexao e tente novamente; a ausencia de resposta nao confirma que o caixa esta fechado.</span>
+          <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => void consultarCaixa()}>Tentar novamente</button>
+        </div>
+      )}
+      {!sessao && !caixaErro && compacto && !caixaLoading && (
         <div className="card space-y-4 border-brand-600/30 bg-gradient-to-br from-surface via-surface to-brand-900/20 p-4 sm:space-y-5 sm:p-5">
           <header className="flex items-center gap-3 border-b border-line pb-4 sm:gap-4">
             <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-brand-500/30 bg-brand-500/10 text-brand-400 sm:h-16 sm:w-16"><svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8M10 17h4"/></svg></span>
@@ -329,7 +338,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         </div>
       )}
 
-      {!sessao && !compacto && (
+      {!sessao && !caixaErro && !compacto && !caixaLoading && (
         <div className="card space-y-3">
           <div>
             <h2 className="text-base font-semibold">Caixa do dia</h2>
@@ -368,6 +377,12 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         <div className="rounded-xl border border-line bg-surface-lighter/40 px-3 py-2 text-sm" data-testid="caixa-contexto-ocorrencia">
           <span className="text-ink-faint">Ocorrência persistida: </span>
           {sessao.ocorrencia ? <strong>{sessao.ocorrencia.nome} · {dataCalendarioPt(sessao.ocorrencia.data)}{sessao.ocorrencia.agenda ? ` · semanal (${diaSemanaPt(sessao.ocorrencia.agenda.diaSemana)})` : ' · avulsa'}</strong> : <strong>Sem ocorrência</strong>}
+        </div>
+      )}
+
+      {turnoDeOutroDia && sessao && (
+        <div className="rounded-xl border border-brand-500/30 bg-brand-500/10 px-3 py-2 text-sm font-medium text-ink" data-testid="caixa-turno-anterior">
+          Caixa aberto em {dataCalendarioPt(sessao.diaOperacional.slice(0, 10))} — turno ainda em andamento
         </div>
       )}
 

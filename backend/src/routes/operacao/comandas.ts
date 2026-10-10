@@ -453,6 +453,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     const resultado = await prisma.$transaction(async (tx) => {
       await lockCaixaEmTx(tx, cervejariaId, body.pontoVendaId, dia);
       const sessao = await assertCaixaAberto(cervejariaId, body.pontoVendaId, dia, tx);
+      const diaTurno = sessao.diaOperacional;
       const occurrenceScoped = cashOccurrenceContextEnabled();
       const jaAberta = await tx.comanda.findFirst({
         where: whereComandaOperacao(cervejariaId, {
@@ -480,7 +481,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           identificador: body.identificador,
           ...(clienteResolvido ? { clienteId: clienteResolvido.id } : {}),
           numero,
-          diaOperacional: dia,
+          diaOperacional: diaTurno,
           abertaPorId: user.sub,
           status: 'ABERTA',
           total: 0,
@@ -494,7 +495,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           cervejariaId,
           comandaId: criada.id,
           pontoVendaId: body.pontoVendaId,
-          dia,
+          dia: diaTurno,
           criadoPorId: user.sub,
           paraViagem: body.paraViagem,
           observacao: body.observacao,

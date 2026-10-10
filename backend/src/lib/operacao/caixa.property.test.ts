@@ -55,11 +55,11 @@ describe('caixa operacao (property-based)', () => {
           cervejaria: { configuracaoOperacao: { ativo: false } },
         }),
       },
-      sessaoCaixaOperacao: { findFirst: async () => null },
+      sessaoCaixaOperacao: { findMany: async () => [] },
     };
     await assert.rejects(
       assertCaixaAberto('tenant-a', 'unidade-a', new Date('2026-09-14'), semSessao as never, async () => ({ operationMode: 'CAIXA' }) as never),
-      /Abra o caixa do dia antes de registrar vendas/,
+      /Abra o caixa antes de registrar vendas/,
     );
 
     const explicitamenteDesabilitada = {
@@ -70,7 +70,7 @@ describe('caixa operacao (property-based)', () => {
           cervejaria: { configuracaoOperacao: { ativo: true } },
         }),
       },
-      sessaoCaixaOperacao: { findFirst: async () => ({ status: 'ABERTO' }) },
+      sessaoCaixaOperacao: { findMany: async () => [{ status: 'ABERTO' }] },
     };
     await assert.rejects(
       assertCaixaAberto(

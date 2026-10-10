@@ -87,6 +87,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
 
         await lockCaixaEmTx(tx, cervejariaId, body.pontoVendaId, dia);
         const sessao = await assertCaixaAberto(cervejariaId, body.pontoVendaId, dia, tx);
+        const diaTurno = sessao.diaOperacional;
         const cliente = body.clienteId
           ? await tx.cliente.findFirst({
               where: { id: body.clienteId, cervejariaId, ativo: true, isSistema: false },
@@ -116,7 +117,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
             tipo: 'AVULSA',
             identificador: body.nomeCliente || null,
             ...(cliente ? { clienteId: cliente.id } : {}),
-            diaOperacional: dia,
+            diaOperacional: diaTurno,
             abertaPorId: user.sub,
             status: 'ABERTA',
             total: 0,
@@ -128,7 +129,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
           cervejariaId,
           comandaId: criada.id,
           pontoVendaId: body.pontoVendaId,
-          dia,
+          dia: diaTurno,
           criadoPorId: user.sub,
           paraViagem: body.paraViagem,
           observacao: body.observacao,

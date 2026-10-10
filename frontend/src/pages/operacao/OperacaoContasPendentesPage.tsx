@@ -198,7 +198,8 @@ export function OperacaoContasPendentesPage() {
           </select>
         </label>
       )}
-      {caixaQuery.isFetched && !caixaAberto && (
+      {caixaQuery.isError && <div role="alert" className="alert-error">Nao foi possivel consultar o caixa. O recebimento pode estar vinculado a um turno ativo; tente novamente antes de concluir.</div>}
+      {caixaQuery.isFetched && !caixaQuery.isError && !caixaAberto && (
         <div className="flex items-center gap-3 rounded-xl border border-orange/40 bg-orange/10 px-4 py-3 text-sm font-medium text-orange-dark">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange/10 text-lg" aria-hidden="true">!</span>
           <span>Caixa fechado: o recebimento será registrado como <strong>Pendurado</strong> e não entrará no fechamento do turno.</span>

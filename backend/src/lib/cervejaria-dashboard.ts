@@ -185,7 +185,7 @@ async function buildTurnosCaixaRecentes(
       ...(trailerId ? { trailerId } : {}),
       OR: [
         { status: 'FECHADO', fechadoEm: { gte: inicio, lte: fim } },
-        { status: 'ABERTO', abertoEm: { gte: inicio, lte: fim } },
+        { status: 'ABERTO' },
       ],
     },
     include: {

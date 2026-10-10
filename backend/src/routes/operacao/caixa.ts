@@ -19,6 +19,7 @@ import { registrarTransacao } from '../../lib/transacao-log.js';
 import { recordDivergenciaCaixa } from '../../lib/business-metrics.js';
 import { centavos } from '../../lib/operacao/venda.js';
 import { diaOperacional } from '../../lib/operacao/venda.js';
+import { resolveUniqueOpenCashSession } from '../../lib/operacao/cash-session-resolution.js';
 import {
   inicializarMontagemSessaoCaixa,
   inicializarMontagemPdv,
@@ -183,7 +184,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     return {
       sessao: { ...resumo, ocorrencia: ocorrenciaResumo },
       comandasAbertas,
-      diaOperacional: diaOperacional().toISOString().slice(0, 10),
+      diaOperacional: sessao.diaOperacional.toISOString().slice(0, 10),
     };
   });
 
@@ -191,11 +192,13 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     const { cervejariaId, tapsEnabled } = request.operacao;
     if (!tapsEnabled) return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
     const { pontoVendaId } = tapTurnoQuery.parse(request.query);
-    const sessao = await prisma.sessaoCaixaOperacao.findFirst({
+    const sessoes = await prisma.sessaoCaixaOperacao.findMany({
       where: { cervejariaId, pontoVendaId, status: 'ABERTO' },
       select: { id: true, trailerId: true },
-      orderBy: { abertoEm: 'desc' },
+      orderBy: { abertoEm: 'asc' },
+      take: 2,
     });
+    const sessao = resolveUniqueOpenCashSession(sessoes);
     if (!sessao) return reply.status(404).send({ error: 'Abra o caixa antes de configurar os Taps' });
     if (canonicalPdvQaActivationEnabled()) {
       if (await hasUnmappedCanonicalTaps(cervejariaId)) return reply.status(409).send({ error: 'Existem Taps sem mapeamento confirmado para um PDV', code: 'CANONICAL_TAP_MAPPING_REQUIRED' });
@@ -217,11 +220,13 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     if (!tapsEnabled) return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
     const { tapId } = request.params as { tapId: string };
     const body = z.object({ pontoVendaId: z.string().min(1), produtoId: z.string().min(1) }).parse(request.body);
-    const sessao = await prisma.sessaoCaixaOperacao.findFirst({
+    const sessoes = await prisma.sessaoCaixaOperacao.findMany({
       where: { cervejariaId, pontoVendaId: body.pontoVendaId, status: 'ABERTO' },
       select: { id: true, trailerId: true },
-      orderBy: { abertoEm: 'desc' },
+      orderBy: { abertoEm: 'asc' },
+      take: 2,
     });
+    const sessao = resolveUniqueOpenCashSession(sessoes);
     if (!sessao) return reply.status(400).send({ error: 'O caixa não possui trailer vinculado' });
     if (canonicalPdvQaActivationEnabled()) {
       if (await hasUnmappedCanonicalTaps(cervejariaId)) return reply.status(409).send({ error: 'Existem Taps sem mapeamento confirmado para um PDV', code: 'CANONICAL_TAP_MAPPING_REQUIRED' });
@@ -251,11 +256,13 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     if (!tapsEnabled) return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
     const { tapId } = request.params as { tapId: string };
     const body = z.object({ pontoVendaId: z.string().min(1) }).parse(request.body);
-    const sessao = await prisma.sessaoCaixaOperacao.findFirst({
+    const sessoes = await prisma.sessaoCaixaOperacao.findMany({
       where: { cervejariaId, pontoVendaId: body.pontoVendaId, status: 'ABERTO' },
       select: { id: true, trailerId: true },
-      orderBy: { abertoEm: 'desc' },
+      orderBy: { abertoEm: 'asc' },
+      take: 2,
     });
+    const sessao = resolveUniqueOpenCashSession(sessoes);
     if (!sessao) return reply.status(400).send({ error: 'O caixa não possui trailer vinculado' });
     if (canonicalPdvQaActivationEnabled()) {
       if (await hasUnmappedCanonicalTaps(cervejariaId)) return reply.status(409).send({ error: 'Existem Taps sem mapeamento confirmado para um PDV', code: 'CANONICAL_TAP_MAPPING_REQUIRED' });

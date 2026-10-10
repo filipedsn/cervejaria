@@ -13,10 +13,16 @@ import { validateCashOccurrenceSelection } from './contexto-ocorrencia.js';
 import { lockAgendaResource } from './agenda.js';
 import { paymentFilterForOperationalSession } from './payment-session-filter.js';
 import { lockCaixaEmTx } from './caixa-lock.js';
+import { resolveUniqueOpenCashSession } from './cash-session-resolution.js';
 export { lockCaixaEmTx } from './caixa-lock.js';
 
 export class CaixaInvalidoError extends Error {
-  statusCode = 400;
+  statusCode: number;
+
+  constructor(message: string, statusCode = 400) {
+    super(message);
+    this.statusCode = statusCode;
+  }
 }
 
 type SessaoCompleta = Prisma.SessaoCaixaOperacaoGetPayload<{ include: { movimentos: true } }>;
@@ -64,7 +70,7 @@ export async function assertCashRegisterUnitEnabled(
   if (!enabled) throw new CaixaInvalidoError('Caixa não habilitado para este ponto de venda');
 }
 
-/** Serializa as mutações de um ponto no mesmo dia operacional. */
+/** Serializes cash-session mutations for a tenant and point across civil days. */
 function somaCentavos(valores: number[]): number {
   return valores.reduce((soma, valor) => soma + valor, 0);
 }
@@ -190,31 +196,35 @@ export async function assertSemComandasAbertas(
 export async function buscarSessaoAtual(
   cervejariaId: string,
   pontoVendaId: string,
-  dia = diaOperacional(),
+  _dia = diaOperacional(),
 ) {
-  return prisma.sessaoCaixaOperacao.findFirst({
-    where: { cervejariaId, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
+  const sessoes = await prisma.sessaoCaixaOperacao.findMany({
+    where: { cervejariaId, pontoVendaId, status: 'ABERTO' },
     include: { movimentos: { orderBy: { createdAt: 'asc' } } },
-    orderBy: { abertoEm: 'desc' },
+    orderBy: { abertoEm: 'asc' },
+    take: 2,
   });
+  return resolveUniqueOpenCashSession(sessoes);
 }
 
-/** Venda so entra no caixa do dia com sessao aberta no mesmo ponto. */
+/** Resolves the active session for this tenant and point, regardless of its opening day. */
 export async function assertCaixaAberto(
   cervejariaId: string,
   pontoVendaId: string,
-  dia = diaOperacional(),
+  _dia = diaOperacional(),
   db: Pick<Prisma.TransactionClient, 'sessaoCaixaOperacao' | 'pontoVenda'> = prisma,
   profileReader: OperationalProfileReader = getOperationalProfile,
 ) {
   await assertCashRegisterUnitEnabled(cervejariaId, pontoVendaId, db, profileReader);
-  const sessao = await db.sessaoCaixaOperacao.findFirst({
-    where: { cervejariaId, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
+  const sessoes = await db.sessaoCaixaOperacao.findMany({
+    where: { cervejariaId, pontoVendaId, status: 'ABERTO' },
     include: { movimentos: { orderBy: { createdAt: 'asc' } } },
-    orderBy: { abertoEm: 'desc' },
+    orderBy: { abertoEm: 'asc' },
+    take: 2,
   });
+  const sessao = resolveUniqueOpenCashSession(sessoes);
   if (!sessao || sessao.status !== 'ABERTO') {
-    throw new CaixaInvalidoError('Abra o caixa do dia antes de registrar vendas');
+    throw new CaixaInvalidoError('Abra o caixa antes de registrar vendas');
   }
   return sessao;
 }
@@ -373,7 +383,7 @@ export async function abrirCaixa(params: {
   }
 
   const dia = diaOperacional();
-  const aberta = await buscarSessaoAtual(params.cervejariaId, params.pontoVendaId, dia);
+  const aberta = await buscarSessaoAtual(params.cervejariaId, params.pontoVendaId);
   if (aberta) {
     throw new CaixaInvalidoError('O caixa deste ponto já está aberto');
   }
@@ -391,17 +401,17 @@ export async function abrirCaixa(params: {
       diaOperacional: dia,
       confirmarDataDiferente: params.confirmarDataDiferente,
     });
-    const abertaAgora = await tx.sessaoCaixaOperacao.findFirst({
+    const abertasAgora = await tx.sessaoCaixaOperacao.findMany({
       where: {
         cervejariaId: params.cervejariaId,
         pontoVendaId: params.pontoVendaId,
-        trailerId: trailerId ?? null,
-        diaOperacional: dia,
         status: 'ABERTO',
       },
       select: { id: true },
+      take: 2,
     });
-    if (abertaAgora) throw new CaixaInvalidoError('O caixa deste ponto já está aberto');
+    const abertaAgora = resolveUniqueOpenCashSession(abertasAgora);
+    if (abertaAgora) throw new CaixaInvalidoError('O caixa deste ponto ja esta aberto');
 
     return tx.sessaoCaixaOperacao.create({
       data: {

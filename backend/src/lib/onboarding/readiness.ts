@@ -1,6 +1,5 @@
 import { isBebidaChope } from '../produto-utils.js';
 import { prisma } from '../prisma.js';
-import { diaOperacional } from '../operacao/venda.js';
 import { getOperationalProfile } from '../operational-profile.js';
 
 export type OnboardingMode = 'CAIXA' | 'EVENTO';
@@ -164,7 +163,6 @@ async function collectOperacaoFacts(cervejariaId: string, controlaEstoque: boole
           where: {
             cervejariaId,
             pontoVendaId: { in: pointIds },
-            diaOperacional: diaOperacional(),
             status: 'ABERTO',
           },
           select: { pontoVendaId: true },

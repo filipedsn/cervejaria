@@ -75,12 +75,13 @@ export function OperacaoComandasPage() {
   const pontoQuery = pontoAtivo ? `&pontoVendaId=${pontoAtivo}` : '';
   const pollMs = usePollInterval(30_000);
 
-  const { data: caixaData } = useQuery({
+  const caixaQuery = useQuery({
     queryKey: ['operacao-caixa', pontoAtivo],
     queryFn: () => api.get<CaixaResposta>(`/api/operacao/caixa?pontoVendaId=${pontoAtivo}`),
     enabled: Boolean(pontoAtivo),
     refetchInterval: pollMs,
   });
+  const caixaData = caixaQuery.data;
   const caixaAberto = caixaData?.sessao?.status === 'ABERTO';
   const turnoAbertoEm = caixaAberto ? caixaData!.sessao!.abertoEm : null;
 
@@ -545,7 +546,8 @@ export function OperacaoComandasPage() {
           })}
         </div>
 
-        {comandasFiltradas.length === 0 && (
+        {caixaQuery.isError && <div role="alert" className="alert-error">Nao foi possivel consultar o caixa. Tente novamente; isso nao confirma que o turno foi fechado.</div>}
+        {comandasFiltradas.length === 0 && !caixaQuery.isError && (
           <EmptyState
             icon={buscaComanda.trim() ? '🔍' : isAbertas ? '📋' : '✅'}
             title={

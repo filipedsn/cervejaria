@@ -214,7 +214,7 @@ export async function updateOperationalConfig(
 
   if (modeChanged && operationMode === 'EVENTO' && db.sessaoCaixaOperacao?.findFirst) {
     const openCash = await db.sessaoCaixaOperacao.findFirst({
-      where: { cervejariaId, status: 'ABERTO', diaOperacional: diaOperacional() },
+      where: { cervejariaId, status: 'ABERTO' },
       select: { id: true },
     });
     if (openCash) {

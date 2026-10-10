@@ -26,6 +26,7 @@ import { lockComandaItemsInTx } from '../lib/comanda-service.js';
 import { getOperationalProfile } from '../lib/operational-profile.js';
 import { proximoNumeroComandaOperacaoTurno } from '../lib/comanda-numero.js';
 import { assertCommandOccurrenceMatchesSession, cashOccurrenceContextEnabled } from '../lib/operacao/contexto-ocorrencia.js';
+import { resolveUniqueOpenCashSession } from '../lib/operacao/cash-session-resolution.js';
 
 import {
 
@@ -366,10 +367,12 @@ export async function publicRoutes(app: FastifyInstance) {
     if (!pontoVenda) return reply.status(404).send({ error: 'Link inválido' });
 
     const dia = diaOperacional();
-    const sessao = await prisma.sessaoCaixaOperacao.findFirst({
-      where: { cervejariaId: cervejaria.id, pontoVendaId, diaOperacional: dia, status: 'ABERTO' },
+    const sessoes = await prisma.sessaoCaixaOperacao.findMany({
+      where: { cervejariaId: cervejaria.id, pontoVendaId, status: 'ABERTO' },
       select: { id: true },
+      take: 2,
     });
+    const sessao = resolveUniqueOpenCashSession(sessoes);
     return {
       cervejaria: {
         ...cervejaria,
@@ -530,7 +533,7 @@ export async function publicRoutes(app: FastifyInstance) {
           origem: 'CAIXA', pontoVendaId: pontoVenda.id,
           ...(occurrenceScoped ? { ocorrenciaId: sessao.ocorrenciaId ?? null } : {}),
           clienteId: cliente.id, tipo: 'APELIDO', identificador: cliente.nome,
-          numero, diaOperacional: dia, status: 'ABERTA', total: 0,
+          numero, diaOperacional: sessao.diaOperacional, status: 'ABERTA', total: 0,
         } });
         return { comanda, reused: false };
       });

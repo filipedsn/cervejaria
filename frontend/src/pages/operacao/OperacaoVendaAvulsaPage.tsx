@@ -70,12 +70,13 @@ export function OperacaoVendaAvulsaPage() {
     enabled: Boolean(pontoAtivo),
   });
 
-  const { data: caixaData } = useQuery({
+  const caixaQuery = useQuery({
     queryKey: ['operacao-caixa', pontoAtivo],
     queryFn: () => api.get<CaixaResposta>(`/api/operacao/caixa?pontoVendaId=${pontoAtivo}`),
     enabled: Boolean(pontoAtivo),
     refetchInterval: pollMs,
   });
+  const caixaData = caixaQuery.data;
 
   const { data: estoqueData } = useQuery({
     queryKey: ['operacao-estoque', pontoAtivo],
@@ -268,7 +269,8 @@ export function OperacaoVendaAvulsaPage() {
         Venda rápida sem abrir comanda. Não entra no ranking nem na fidelização.
       </p>
 
-      {!caixaAberto && pontoAtivo && (
+      {caixaQuery.isError && <div role="alert" className="alert-error">Nao foi possivel consultar o caixa. Volte a tela de comandas e tente novamente.</div>}
+      {!caixaAberto && !caixaQuery.isError && pontoAtivo && (
         <div className="alert-error">
           Caixa fechado.{' '}
           <Link to="/operacao/comandas" className="underline font-semibold">
@@ -357,7 +359,7 @@ export function OperacaoVendaAvulsaPage() {
           <button
             type="button"
             className="touch-btn-primary w-full"
-            disabled={!caixaAberto || !podeReceber}
+            disabled={!caixaAberto || caixaQuery.isError || !podeReceber}
             onClick={openPayment}
             data-audit="venda-avulsa-pagar"
           >
