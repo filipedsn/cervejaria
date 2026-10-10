@@ -22,8 +22,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
 import { connectSocket, getSocket } from '../../lib/socket';
 import {
-  comandasFechadasNoTurno,
-  diaOperacionalQuery,
   mesasOperacionais,
   ordenarComandasParaOperacao,
   RESUMO_TURNO_VAZIO,
@@ -71,8 +69,6 @@ export function OperacaoComandasPage() {
   const pontoAtivo = pontosVenda.some((ponto) => ponto.id === pontoVendaSelecionadoId)
     ? pontoVendaSelecionadoId
     : pontosVenda[0]?.id || '';
-  const dia = diaOperacionalQuery();
-  const pontoQuery = pontoAtivo ? `&pontoVendaId=${pontoAtivo}` : '';
   const pollMs = usePollInterval(30_000);
 
   const caixaQuery = useQuery({
@@ -83,21 +79,28 @@ export function OperacaoComandasPage() {
   });
   const caixaData = caixaQuery.data;
   const caixaAberto = caixaData?.sessao?.status === 'ABERTO';
-  const turnoAbertoEm = caixaAberto ? caixaData!.sessao!.abertoEm : null;
+  const sessaoCaixaId = caixaQuery.isSuccess && caixaAberto ? caixaData!.sessao!.id : null;
+  const queryComandasTurno = (status: 'ABERTA' | 'FECHADA') => {
+    const params = new URLSearchParams({
+      status,
+      pontoVendaId: pontoAtivo,
+      sessaoCaixaId: sessaoCaixaId ?? '',
+    });
+    return `/api/operacao/comandas?${params.toString()}`;
+  };
 
-  const { data: abertas, isLoading: loadingAbertas } = useQuery({
-    queryKey: ['operacao-comandas', 'ABERTA', pontoAtivo],
-    queryFn: () => api.get<ComandaOperacao[]>(`/api/operacao/comandas?status=ABERTA${pontoQuery}`),
+  const abertasQuery = useQuery({
+    queryKey: ['operacao-comandas', 'ABERTA', pontoAtivo, sessaoCaixaId],
+    queryFn: () => api.get<ComandaOperacao[]>(queryComandasTurno('ABERTA')),
     refetchInterval: pollMs,
-    enabled: Boolean(pontoAtivo) && caixaAberto,
+    enabled: Boolean(pontoAtivo && sessaoCaixaId),
   });
 
-  const { data: fechadasHoje, isLoading: loadingFechadas } = useQuery({
-    queryKey: ['operacao-comandas', 'FECHADA', pontoAtivo, dia],
-    queryFn: () =>
-      api.get<ComandaOperacao[]>(`/api/operacao/comandas?status=FECHADA&dia=${dia}${pontoQuery}`),
+  const fechadasQuery = useQuery({
+    queryKey: ['operacao-comandas', 'FECHADA', pontoAtivo, sessaoCaixaId],
+    queryFn: () => api.get<ComandaOperacao[]>(queryComandasTurno('FECHADA')),
     refetchInterval: pollMs,
-    enabled: Boolean(pontoAtivo) && caixaAberto,
+    enabled: Boolean(pontoAtivo && sessaoCaixaId),
   });
 
   useEffect(() => {
@@ -115,8 +118,9 @@ export function OperacaoComandasPage() {
     };
   }, [cervejaria?.id, queryClient]);
 
-  const abertasTurno = caixaAberto ? (abertas ?? []) : [];
-  const fechadasTurno = turnoAbertoEm ? comandasFechadasNoTurno(fechadasHoje ?? [], turnoAbertoEm) : [];
+  const abertasTurno = sessaoCaixaId && !abertasQuery.isError ? (abertasQuery.data ?? []) : [];
+  const fechadasTurno = sessaoCaixaId && !fechadasQuery.isError ? (fechadasQuery.data ?? []) : [];
+  const erroConsultaComandas = abertasQuery.isError || fechadasQuery.isError;
 
   const comandas = ordenarComandasParaOperacao(
     comandaTab === 'ABERTA' ? abertasTurno : fechadasTurno.filter((c) => c.tipo !== 'AVULSA'),
@@ -273,8 +277,9 @@ export function OperacaoComandasPage() {
     setSearchParams(nextParams, { replace: true });
   }, [abertasTurno, isAbertas, searchParams, setSearchParams]);
 
-  if (loadingAbertas && caixaAberto) return <Loading />;
-  if (loadingFechadas && caixaAberto) return <Loading />;
+  if (caixaQuery.isLoading) return <Loading />;
+  if (abertasQuery.isLoading && sessaoCaixaId) return <Loading />;
+  if (fechadasQuery.isLoading && sessaoCaixaId) return <Loading />;
 
   const showPayBar = selectMode && selectedIds.length >= 2 && totalGrupo > 0;
 
@@ -305,7 +310,7 @@ export function OperacaoComandasPage() {
         <PainelCaixaOperacao
           pontoVendaId={pontoAtivo}
           compacto
-          comandasAbertas={abertasTurno.length}
+          comandasAbertas={abertasQuery.isError ? null : abertasTurno.length}
         />
       )}
 
@@ -332,12 +337,12 @@ export function OperacaoComandasPage() {
 
       {caixaAberto && exibirKpis && (
         <div className="grid grid-cols-2 gap-3">
-          <StatCard label="Comandas abertas" value={String(resumo.comandasAbertas)} />
-          <StatCard label="Comandas fechadas" value={String(resumo.comandasFechadas)} accent="green" />
-          <StatCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} />
-          <StatCard label="Receita avulsa" value={formatCurrency(resumo.receitaAvulsa)} accent="green" />
-          <StatCard label="Valor em aberto" value={formatCurrency(resumo.valorAberto)} />
-          <StatCard label="Vendas encerradas" value={formatCurrency(resumo.valorFechado)} accent="green" />
+          <StatCard label="Comandas abertas" value={abertasQuery.isError ? '—' : String(resumo.comandasAbertas)} />
+          <StatCard label="Comandas fechadas" value={fechadasQuery.isError ? '—' : String(resumo.comandasFechadas)} accent="green" />
+          <StatCard label="Vendas avulsas" value={fechadasQuery.isError ? '—' : String(resumo.vendasAvulsas)} />
+          <StatCard label="Receita avulsa" value={fechadasQuery.isError ? '—' : formatCurrency(resumo.receitaAvulsa)} accent="green" />
+          <StatCard label="Valor em aberto" value={abertasQuery.isError ? '—' : formatCurrency(resumo.valorAberto)} />
+          <StatCard label="Vendas encerradas" value={fechadasQuery.isError ? '—' : formatCurrency(resumo.valorFechado)} accent="green" />
         </div>
       )}
 
@@ -391,21 +396,23 @@ export function OperacaoComandasPage() {
         <div className="segmented-control w-full">
           <button
             type="button"
+            data-testid="comandas-abertas-tab"
             onClick={() => setComandaTab('ABERTA')}
             className={`segmented-control-btn ${
               isAbertas ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'
             }`}
           >
-            Abertas ({resumo.comandasAbertas})
+            Abertas ({abertasQuery.isError ? '—' : resumo.comandasAbertas})
           </button>
           <button
             type="button"
+            data-testid="comandas-fechadas-tab"
             onClick={() => setComandaTab('FECHADA')}
             className={`segmented-control-btn ${
               !isAbertas ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'
             }`}
           >
-            Fechadas ({resumo.comandasFechadas})
+            Fechadas ({fechadasQuery.isError ? '—' : resumo.comandasFechadas})
           </button>
         </div>
 
@@ -547,7 +554,8 @@ export function OperacaoComandasPage() {
         </div>
 
         {caixaQuery.isError && <div role="alert" className="alert-error">Nao foi possivel consultar o caixa. Tente novamente; isso nao confirma que o turno foi fechado.</div>}
-        {comandasFiltradas.length === 0 && !caixaQuery.isError && (
+        {erroConsultaComandas && <div role="alert" className="alert-error">Nao foi possivel consultar as comandas deste turno. Tente novamente; a lista e os contadores estao indisponiveis.</div>}
+        {comandasFiltradas.length === 0 && !caixaQuery.isError && !erroConsultaComandas && (
           <EmptyState
             icon={buscaComanda.trim() ? '🔍' : isAbertas ? '📋' : '✅'}
             title={

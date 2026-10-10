@@ -113,6 +113,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
           data: {
             origem: 'CAIXA',
             pontoVendaId: body.pontoVendaId,
+            sessaoCaixaRealizacaoId: sessao.id,
             ...(cashOccurrenceContextEnabled() ? { ocorrenciaId: sessao.ocorrenciaId ?? null } : {}),
             tipo: 'AVULSA',
             identificador: body.nomeCliente || null,

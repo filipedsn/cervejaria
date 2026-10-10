@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { getAuthUser } from '../../types/auth.js';
@@ -107,9 +108,9 @@ const fecharGrupoSchema = z.object({
 });
 
 export async function comandasOperacaoRoutes(app: FastifyInstance) {
-  app.get('/', { preHandler: [requirePermissao(app, 'command.read')] }, async (request) => {
+  app.get('/', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
-    const { status, pontoVendaId, dia } = z
+    const { status, pontoVendaId, dia, sessaoCaixaId } = z
       .object({
         status: z.enum(['ABERTA', 'FECHADA', 'CANCELADA']).default('ABERTA'),
         pontoVendaId: z.string().optional(),
@@ -117,8 +118,42 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/)
           .optional(),
+        sessaoCaixaId: z.string().min(1).optional(),
+      })
+      .superRefine((query, context) => {
+        if (query.sessaoCaixaId && !query.pontoVendaId) {
+          context.addIssue({ code: z.ZodIssueCode.custom, message: 'pontoVendaId é obrigatório com sessaoCaixaId', path: ['pontoVendaId'] });
+        }
       })
       .parse(request.query);
+
+    let filtroSessao: Prisma.ComandaWhereInput | undefined;
+    if (sessaoCaixaId) {
+      const sessao = await prisma.sessaoCaixaOperacao.findFirst({
+        where: { id: sessaoCaixaId, cervejariaId, pontoVendaId },
+        select: { id: true, diaOperacional: true, abertoEm: true },
+      });
+      if (!sessao) return reply.status(404).send({ error: 'Sessão de caixa não encontrada neste ponto de venda' });
+
+      const associacoes: Prisma.ComandaWhereInput[] = [
+        { sessaoCaixaRealizacaoId: sessao.id },
+      ];
+      if (request.operacao.effectiveSettings.source === 'LEGACY') {
+        // Compatibility only: older LEGACY rows may lack both explicit links.
+        // This mirrors the pre-existing day/turn-time view; it cannot prove which
+        // shift owns an unlinked row when multiple shifts share an operational day.
+        associacoes.push({
+          AND: [
+            { sessaoCaixaRealizacaoId: null },
+            { diaOperacional: sessao.diaOperacional },
+            status === 'ABERTA'
+              ? { createdAt: { gte: sessao.abertoEm } }
+              : { fechadaEm: { gte: sessao.abertoEm } },
+          ],
+        });
+      }
+      filtroSessao = { OR: associacoes };
+    }
 
     const diaOperacionalFiltro = dia
       ? diaOperacional(new Date(`${dia}T12:00:00.000Z`))
@@ -129,6 +164,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         status,
         ...(pontoVendaId ? { pontoVendaId } : {}),
         ...(diaOperacionalFiltro ? { diaOperacional: diaOperacionalFiltro } : {}),
+        ...(filtroSessao ? { AND: [filtroSessao] } : {}),
         ...(status === 'ABERTA' ? { tipo: { not: 'AVULSA' } } : {}),
       }),
       include: INCLUDE_COMANDA_OPERACAO,
@@ -476,6 +512,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         data: {
           origem: 'CAIXA',
           pontoVendaId: body.pontoVendaId,
+          sessaoCaixaRealizacaoId: sessao.id,
           ...(occurrenceScoped ? { ocorrenciaId: sessao.ocorrenciaId ?? null } : {}),
           tipo: body.tipo,
           identificador: body.identificador,

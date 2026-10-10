@@ -80,7 +80,7 @@ interface Props {
   /** Na lista de comandas: painel compacto quando aberto. */
   compacto?: boolean;
   /** Contagem ao vivo da página de comandas; senão usa a API. */
-  comandasAbertas?: number;
+  comandasAbertas?: number | null;
 }
 
 export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAbertas: comandasAbertasProp }: Props) {
@@ -159,8 +159,8 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     if (compacto) setPainelSuprimido(sessao?.status === 'ABERTO');
   }, [compacto, sessao?.status, sessao?.abertoEm]);
 
-  const comandasAbertas = comandasAbertasProp ?? data?.comandasAbertas ?? 0;
-  const bloqueioFechamento = comandasAbertas > 0;
+  const comandasAbertas = comandasAbertasProp === undefined ? data?.comandasAbertas ?? 0 : comandasAbertasProp;
+  const bloqueioFechamento = comandasAbertas === null || comandasAbertas > 0;
   const cardapioAbrirPayload = buildTurnoCardapioAbrirPayload(cardapioForm);
   const diferencaFechamento = sessao ?
     parseCurrencyInput(contado.dinheiro ?? '') - sessao.gaveta.esperadoDinheiro

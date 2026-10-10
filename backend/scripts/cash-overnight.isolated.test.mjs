@@ -58,6 +58,19 @@ test('API preserves an overnight open session, turn date, command and payment li
       pontoVendaId: f.point.id, tipo: 'APELIDO', identificador: 'overnight-before', itens: [],
     });
     assert.equal(before.statusCode, 201, before.body);
+    const beforeCommandId = before.json().id;
+    const addBeforeItems = await request(f, 'POST', `/operacao/comandas/${beforeCommandId}/pedidos`, {
+      itens: [{ produtoId: f.product.id, quantidade: 1 }],
+    });
+    assert.equal(addBeforeItems.statusCode, 201, addBeforeItems.body);
+    const payBefore = await request(f, 'POST', `/operacao/comandas/${beforeCommandId}/pagamentos`, {
+      pagamentos: [{ forma: 'DINHEIRO', valor: 15 }],
+    });
+    assert.equal(payBefore.statusCode, 200, payBefore.body);
+    const beforeStored = await prisma.comanda.findUniqueOrThrow({ where: { id: beforeCommandId } });
+    assert.equal(beforeStored.status, 'FECHADA');
+    assert.equal(beforeStored.sessaoCaixaRealizacaoId, openedData.id);
+    assert.equal(new Date(beforeStored.fechadaEm).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }), '2026-10-09');
     mock.timers.tick(10 * 60 * 1000);
 
     const current = await request(f, 'GET', `/operacao/caixa?pontoVendaId=${f.point.id}`);
@@ -69,22 +82,40 @@ test('API preserves an overnight open session, turn date, command and payment li
       pontoVendaId: f.point.id, tipo: 'APELIDO', identificador: 'overnight-after', itens: [],
     });
     assert.equal(after.statusCode, 201, after.body);
-    const afterCommand = await prisma.comanda.findUniqueOrThrow({ where: { id: after.json().id } });
+    const afterCommandId = after.json().id;
+    const afterCommand = await prisma.comanda.findUniqueOrThrow({ where: { id: afterCommandId } });
     assert.equal(afterCommand.diaOperacional.toISOString().slice(0, 10), '2026-10-09');
-
-    const addItems = await request(f, 'POST', `/operacao/comandas/${before.json().id}/pedidos`, {
+    assert.equal(afterCommand.sessaoCaixaRealizacaoId, openedData.id);
+    const addAfterItems = await request(f, 'POST', `/operacao/comandas/${afterCommandId}/pedidos`, {
       itens: [{ produtoId: f.product.id, quantidade: 1 }],
     });
-    assert.equal(addItems.statusCode, 201, addItems.body);
-    const commandPayment = await request(f, 'POST', `/operacao/comandas/${before.json().id}/pagamentos`, {
-      pagamentos: [{ forma: 'DINHEIRO', valor: 15 }],
+    assert.equal(addAfterItems.statusCode, 201, addAfterItems.body);
+    const payAfter = await request(f, 'POST', `/operacao/comandas/${afterCommandId}/pagamentos`, {
+      pagamentos: [{ forma: 'PIX', valor: 15 }],
     });
-    assert.equal(commandPayment.statusCode, 200, commandPayment.body);
-    const linkedCommandPayment = await prisma.pagamento.findFirstOrThrow({ where: { comandaId: before.json().id } });
-    assert.equal(linkedCommandPayment.sessaoCaixaId, openedData.id);
-    const cancelEmpty = await request(f, 'POST', `/operacao/comandas/${after.json().id}/cancelar`, {});
-    assert.equal(cancelEmpty.statusCode, 200, cancelEmpty.body);
+    assert.equal(payAfter.statusCode, 200, payAfter.body);
+    const linkedPayments = await prisma.pagamento.findMany({ where: { comandaId: { in: [beforeCommandId, afterCommandId] } } });
+    assert.equal(linkedPayments.length, 2);
+    assert.ok(linkedPayments.every((payment) => payment.sessaoCaixaId === openedData.id));
+    const afterStored = await prisma.comanda.findUniqueOrThrow({ where: { id: afterCommandId } });
+    assert.equal(afterStored.status, 'FECHADA');
+    assert.equal(new Date(afterStored.fechadaEm).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }), '2026-10-10');
 
+    const closedBySession = await request(f, 'GET', `/operacao/comandas?status=FECHADA&pontoVendaId=${f.point.id}&sessaoCaixaId=${openedData.id}`);
+    assert.equal(closedBySession.statusCode, 200, closedBySession.body);
+    assert.ok(closedBySession.json().some((command) => command.id === beforeCommandId));
+    assert.ok(closedBySession.json().some((command) => command.id === afterCommandId));
+    assert.equal(beforeStored.diaOperacional.toISOString().slice(0, 10), '2026-10-09');
+    assert.equal(afterStored.diaOperacional.toISOString().slice(0, 10), '2026-10-09');
+    const historicalDay = await request(f, 'GET', `/operacao/comandas?status=FECHADA&dia=2026-10-09&pontoVendaId=${f.point.id}`);
+    assert.equal(historicalDay.statusCode, 200, historicalDay.body);
+    assert.ok(historicalDay.json().some((command) => command.id === beforeCommandId));
+    assert.ok(historicalDay.json().some((command) => command.id === afterCommandId));
+
+    const noPoint = await request(f, 'GET', `/operacao/comandas?status=FECHADA&sessaoCaixaId=${openedData.id}`);
+    assert.equal(noPoint.statusCode, 400, noPoint.body);
+    const wrongPoint = await request(f, 'GET', `/operacao/comandas?status=FECHADA&pontoVendaId=${f.point.id}_other&sessaoCaixaId=${openedData.id}`);
+    assert.equal(wrongPoint.statusCode, 404, wrongPoint.body);
     const sale = await request(f, 'POST', '/operacao/vendas', {
       pontoVendaId: f.point.id, itens: [{ produtoId: f.product.id, quantidade: 1 }],
       pagamentos: [{ forma: 'PIX', valor: 15 }],
@@ -93,6 +124,7 @@ test('API preserves an overnight open session, turn date, command and payment li
     const saleCommandId = sale.json().id;
     const saleCommand = await prisma.comanda.findUniqueOrThrow({ where: { id: saleCommandId } });
     assert.equal(saleCommand.diaOperacional.toISOString().slice(0, 10), '2026-10-09');
+    assert.equal(saleCommand.sessaoCaixaRealizacaoId, openedData.id);
     const salePayment = await prisma.pagamento.findFirstOrThrow({ where: { comandaId: saleCommandId } });
     assert.equal(salePayment.sessaoCaixaId, openedData.id);
 
@@ -101,13 +133,21 @@ test('API preserves an overnight open session, turn date, command and payment li
     });
     assert.equal(movement.statusCode, 201, movement.body);
     assert.equal(await prisma.movimentoCaixaOperacao.count({ where: { sessaoId: openedData.id, tipo: 'SUPRIMENTO' } }), 1);
+    const cashSummary = await request(f, 'GET', `/operacao/caixa?pontoVendaId=${f.point.id}`);
+    assert.equal(cashSummary.statusCode, 200, cashSummary.body);
+    assert.equal(cashSummary.json().sessao.gaveta.esperadoDinheiro, 60);
+    assert.equal(cashSummary.json().sessao.esperado.pix, 30);
+    assert.equal(cashSummary.json().sessao.esperado.totalVendas, 45);
+    const closedAfterSale = await request(f, 'GET', `/operacao/comandas?status=FECHADA&pontoVendaId=${f.point.id}&sessaoCaixaId=${openedData.id}`);
+    assert.equal(closedAfterSale.statusCode, 200, closedAfterSale.body);
+    assert.equal(closedAfterSale.json().find((command) => command.id === saleCommandId)?.tipo, 'AVULSA');
 
     const duplicate = await request(f, 'POST', '/operacao/caixa/abrir', openBody(f));
     assert.equal(duplicate.statusCode, 400, duplicate.body);
     assert.equal(await prisma.sessaoCaixaOperacao.count({ where: { cervejariaId: f.tenant.id, pontoVendaId: f.point.id, status: 'ABERTO' } }), 1);
 
     const close = await request(f, 'POST', '/operacao/caixa/fechar', {
-      pontoVendaId: f.point.id, contadoDinheiro: 15, contadoPix: 15, contadoCartaoDebito: 0, contadoCartaoCredito: 0,
+      pontoVendaId: f.point.id, contadoDinheiro: 60, contadoPix: 30, contadoCartaoDebito: 0, contadoCartaoCredito: 0,
     });
     assert.equal(close.statusCode, 200, close.body);
     const noSessionMovement = await request(f, 'POST', '/operacao/caixa/movimentos', {
@@ -123,6 +163,18 @@ test('API preserves an overnight open session, turn date, command and payment li
     assert.equal(activeAfterRace[0].diaOperacional.toISOString().slice(0, 10), '2026-10-10');
     const oldMenu = await prisma.sessaoCaixaProdutoOperacao.count({ where: { sessaoCaixaId: openedData.id } });
     assert.equal(oldMenu, 1);
+    const newTurnCommand = await request(f, 'POST', '/operacao/comandas', {
+      pontoVendaId: f.point.id, tipo: 'APELIDO', identificador: 'new-session', itens: [],
+    });
+    assert.equal(newTurnCommand.statusCode, 201, newTurnCommand.body);
+    const newTurnStored = await prisma.comanda.findUniqueOrThrow({ where: { id: newTurnCommand.json().id } });
+    assert.equal(newTurnStored.sessaoCaixaRealizacaoId, activeAfterRace[0].id);
+    const newTurnOpenList = await request(f, 'GET', `/operacao/comandas?status=ABERTA&pontoVendaId=${f.point.id}&sessaoCaixaId=${activeAfterRace[0].id}`);
+    assert.equal(newTurnOpenList.statusCode, 200, newTurnOpenList.body);
+    assert.deepEqual(newTurnOpenList.json().map((command) => command.id), [newTurnCommand.json().id]);
+    const newTurnClosedList = await request(f, 'GET', `/operacao/comandas?status=FECHADA&pontoVendaId=${f.point.id}&sessaoCaixaId=${activeAfterRace[0].id}`);
+    assert.equal(newTurnClosedList.statusCode, 200, newTurnClosedList.body);
+    assert.ok(!newTurnClosedList.json().some((command) => [beforeCommandId, afterCommandId].includes(command.id)));
   }
 });
 
@@ -152,6 +204,15 @@ test('opening and cash operations retain tenant, point and permission boundaries
   assert.equal(deniedClose.statusCode, 403);
   const deniedMovement = await request(f, 'POST', '/operacao/caixa/movimentos', { pontoVendaId: f.point.id, tipo: 'SANGRIA', valor: 1 }, f.restricted);
   assert.equal(deniedMovement.statusCode, 403);
+  const activeSession = await prisma.sessaoCaixaOperacao.findFirstOrThrow({ where: { cervejariaId: f.tenant.id, pontoVendaId: f.point.id, status: 'ABERTO' } });
+  const deniedCommandRead = await request(f, 'GET', `/operacao/comandas?status=ABERTA&pontoVendaId=${f.point.id}&sessaoCaixaId=${activeSession.id}`, undefined, f.restricted);
+  assert.equal(deniedCommandRead.statusCode, 403, deniedCommandRead.body);
+  const crossPdv = await fixture('cross-pdv');
+  await request(crossPdv, 'POST', '/operacao/caixa/abrir', openBody(crossPdv));
+  const crossPdvSession = await prisma.sessaoCaixaOperacao.findFirstOrThrow({ where: { cervejariaId: crossPdv.tenant.id, pontoVendaId: crossPdv.point.id, status: 'ABERTO' } });
+  const otherPointSameTenant = await prisma.pontoVenda.create({ data: { cervejariaId: crossPdv.tenant.id, nome: 'Second QA point', ativo: true, usaCaixa: true } });
+  const crossPdvSessionList = await request(crossPdv, 'GET', `/operacao/comandas?status=FECHADA&pontoVendaId=${otherPointSameTenant.id}&sessaoCaixaId=${crossPdvSession.id}`);
+  assert.equal(crossPdvSessionList.statusCode, 404, crossPdvSessionList.body);
   const separateLegacy = await fixture('separate-point');
   const otherPoint = await prisma.pontoVenda.create({ data: { cervejariaId: separateLegacy.tenant.id, nome: 'Other point', ativo: true, usaCaixa: true } });
   const otherPointRead = await request(separateLegacy, 'GET', `/operacao/caixa?pontoVendaId=${otherPoint.id}`);
@@ -160,6 +221,8 @@ test('opening and cash operations retain tenant, point and permission boundaries
   const otherTenant = await fixture('other-tenant');
   const crossTenant = await request(otherTenant, 'GET', `/operacao/caixa?pontoVendaId=${f.point.id}`);
   assert.equal(crossTenant.statusCode, 404);
+  const crossTenantSessionList = await request(otherTenant, 'GET', `/operacao/comandas?status=FECHADA&pontoVendaId=${otherTenant.point.id}&sessaoCaixaId=${crossPdvSession.id}`);
+  assert.equal(crossTenantSessionList.statusCode, 404, crossTenantSessionList.body);
 });
 
 test.after(async () => {
