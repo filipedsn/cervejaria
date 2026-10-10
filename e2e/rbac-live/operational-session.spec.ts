@@ -74,10 +74,12 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
 
   const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const staff = await staffContext.newPage();
-  await login(staff, staffEmail, staffPassword, staffCookie);
+  await loginForm(staff, staffEmail, staffPassword);
   const staffTabContext = await browser.newContext({ viewport: { width: 768, height: 1024 } });
   const staffTab = await staffTabContext.newPage();
-  await login(staffTab, staffEmail, staffPassword, staffCookie);
+  await loginForm(staffTab, staffEmail, staffPassword);
+  expect((await staffContext.cookies()).some((cookie) => cookie.name === 'token')).toBe(true);
+  expect((await staffTabContext.cookies()).some((cookie) => cookie.name === 'token')).toBe(true);
   const initialMe = await staffContext.request.get('/api/auth/me');
   expect((await initialMe.json()).usuario.permissoesOperacao).toContain(permission);
   await staff.reload();
