@@ -15,6 +15,7 @@ Atualizado em 2026-10-07. Inventario das operacoes atuais de Cervejaria, Evento 
 | command.close | Fechar comanda; pagamento exige payment.receive | Backend + UI |
 | discount.apply | Aplicar desconto; continua condicionado ao booleano legado durante a transicao | Backend + UI |
 | command.item.cancel | Remover item ou reduzir quantidade, incluindo caminhos legados e Por Caixa | Backend + UI |
+| command.item.cancel.delivered | Cancelar item entregue em comanda aberta; exige tambem `command.item.cancel`, motivo e quantidade esperada; nao se aplica a comanda fechada/paga | Backend + UI; requer concessao explicita tambem em LEGACY; sem backfill para atendente |
 | command.cancel | Cancelar comanda inteira vazia no fluxo Por Caixa; concessão explícita, sem backfill para atendente | Backend + UI |
 | kitchen.cancel + sale.refund | Cancelar pedido pago e confirmar estorno; as duas chaves sao exigidas juntas | Backend |
 | dashboard.read | Painel consolidado da cervejaria e painel operacional | Backend + rota/navegacao |
@@ -33,7 +34,7 @@ Atualizado em 2026-10-07. Inventario das operacoes atuais de Cervejaria, Evento 
 | agenda.manage | Criar/editar agenda e ocorrencia e gerar ocorrencias | Backend + rota/painel proprio; equipe e configuracoes gerais continuam owner-only |
 | event.menu.manage | Selecionar/editar cardapio de evento | Backend + UI; separado de catalog.manage |
 
-O papel persistido DONO recebe todas as chaves. Somente owner da propria empresa edita funcionarios; autoedicao, edicao de owner, tenant cruzado e chaves desconhecidas sao rejeitados. Lista vazia significa nenhuma permissao. Novos funcionarios iniciam vazios. Migration preenche para ATENDENTE as chaves cujo acesso anterior estava disponivel por tenant/PDV: operacao e consulta de comanda, cozinha, estoque manual, manutencao comum de cliente, montagem de Tap, cardapio de evento e `catalog.shift.manage` para cardapio/preco apenas no turno. `discount.apply` deriva de `podeDarDescontoOperacao`. Produto/preco global, template de catalogo e agenda, antes owner-only, nao recebem concessao automatica. Cancelar item, cancelar comanda, cancelamento/estorno e recebimento/fechamento permanecem em chaves separadas.
+O papel persistido DONO recebe todas as chaves em tenants com RBAC individual ativo. Somente owner da propria empresa edita funcionarios; autoedicao, edicao de owner, tenant cruzado e chaves desconhecidas sao rejeitados. Lista vazia significa nenhuma permissao. Novos funcionarios iniciam vazios. Migration preenche para ATENDENTE as chaves cujo acesso anterior estava disponivel por tenant/PDV: operacao e consulta de comanda, cozinha, estoque manual, manutencao comum de cliente, montagem de Tap, cardapio de evento e `catalog.shift.manage` para cardapio/preco apenas no turno. `discount.apply` deriva de `podeDarDescontoOperacao`. Produto/preco global, template de catalogo e agenda, antes owner-only, nao recebem concessao automatica. Cancelar item, cancelar item entregue, cancelar comanda, cancelamento/estorno e recebimento/fechamento permanecem em chaves separadas. `command.item.cancel.delivered` e uma excecao tambem em LEGACY: somente DONO pode cancelar item entregue; atendente continua negado mesmo com a flag individual desligada.
 
 ## Inventario de acoes e caminhos alternativos
 

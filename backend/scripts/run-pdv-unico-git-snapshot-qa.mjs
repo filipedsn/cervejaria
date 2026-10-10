@@ -34,7 +34,7 @@ const evidencePath = process.argv.find((value) => value.startsWith('--evidence-o
 const cutover = process.argv.includes('--cutover');
 const focus = process.argv.find(value => value.startsWith('--focus='))?.slice(8);
 const resumeFile = process.argv.find(value => value.startsWith('--resume-operation='))?.slice(19);
-if (focus && focus !== 'categories') throw new Error('Unknown focused QA gate.');
+if (focus && !['categories', 'permissions'].includes(focus)) throw new Error('Unknown focused QA gate.');
 const normalizedSha256 = (value) => createHash('sha256').update(Buffer.from(value.toString('utf8').replaceAll('\r\n', '\n'))).digest('hex');
 const byteSha256 = (value) => createHash('sha256').update(value).digest('hex');
 const git = (args, options = {}) => execFileSync('git', args, { cwd: repoRoot, ...options });
@@ -229,7 +229,7 @@ try {
   run(process.execPath, ['--import', 'tsx', '--test', 'scripts/pdv-unico-dev-cutover-core.test.mjs', 'scripts/pdv-unico-cutover-receipts.test.mjs', 'src/lib/pdv-tenant-activation.test.ts'], { cwd: backendSnapshot, env, stdio: 'inherit' });
 
   if (focus || resumeFile) {
-    let gate = 'categories';
+    let gate = focus ?? 'categories';
     if (resumeFile) {
       gate = 'migrated-authenticated-operation';
       const resolved = path.resolve(resumeFile);
@@ -244,6 +244,8 @@ try {
       env.PDV_QA_GENERATED_CLIENT_ROOTS = JSON.stringify([env.PDV_QA_PRISMA_CLIENT]);
       env.PDV_GIT_QA_ALLOWED_ROOTS = JSON.stringify([snapshotRoot, nodeGlobalModules, userNodeModules, env.PDV_QA_PRISMA_CLIENT]);
       run(process.execPath, ['--import', 'tsx', 'scripts/pdv-unico-migrated-operation.qa.mjs'], { cwd: backendSnapshot, env, stdio: 'inherit' });
+    } else if (gate === 'permissions') {
+      run(process.execPath, ['scripts/run-pdv-individual-permissions-disposable-qa.mjs'], { cwd: backendSnapshot, env, stdio: 'inherit' });
     } else run(process.execPath, ['scripts/run-pdv-gamified-category-qa.mjs'], { cwd: backendSnapshot, env, stdio: 'inherit' });
     const lines = (await readFile(auditFile, 'utf8')).split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
     const unexpected = lines.filter(row => !row.snapshotProjectSource && !row.qaGeneratedPrismaClient && !row.path.toLowerCase().includes(`${path.sep}node_modules${path.sep}`));
