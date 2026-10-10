@@ -10,6 +10,8 @@ const permissionApi = `/api/usuarios/${process.env.RBAC_QA_STAFF_ID}/permissoes-
 const permission = 'command.read';
 
 async function login(page: Page, email: string, password: string) {
+  page.on('console', (message) => { if (message.type() === 'error') console.error(`RBAC_BROWSER_CONSOLE ${message.text()}`); });
+  page.on('pageerror', (error) => console.error(`RBAC_BROWSER_PAGE_ERROR ${error.message}`));
   page.on('requestfailed', (request) => console.error(`RBAC_BROWSER_REQUEST_FAILED ${request.method()} ${new URL(request.url()).pathname}: ${request.failure()?.errorText}`));
   page.on('response', (response) => {
     if (new URL(response.url()).pathname.startsWith('/api/')) console.log(`RBAC_BROWSER_API ${response.status()} ${new URL(response.url()).pathname}`);
@@ -17,7 +19,11 @@ async function login(page: Page, email: string, password: string) {
   await page.goto('/login');
   await expect(page.getByLabel('E-mail')).toBeVisible({ timeout: 15_000 }).catch(async (error) => {
     const body = await page.locator('body').innerText().catch(() => 'unavailable');
-    throw new Error(`Login page did not render at ${page.url()}: ${body.slice(0, 500)}; ${error.message}`);
+    const probe = await page.evaluate(async () => Promise.race([
+      fetch('/api/auth/me').then(async (response) => `${response.status} ${await response.text()}`),
+      new Promise<string>((resolve) => setTimeout(() => resolve('fetch timed out'), 5_000)),
+    ])).catch((probeError) => `fetch failed: ${probeError}`);
+    throw new Error(`Login page did not render at ${page.url()}: ${body.slice(0, 500)}; browser fetch=${probe}; ${error.message}`);
   });
   await page.getByLabel('E-mail').fill(email);
   await page.getByLabel('Senha').fill(password);
