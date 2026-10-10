@@ -117,7 +117,6 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
   const uiErrors: string[] = [];
   staff.on('pageerror', (error) => uiErrors.push(error.message));
   staff.on('console', (message) => { if (message.type() === 'error') uiErrors.push(message.text()); });
-  await staffContext.tracing.start({ screenshots: true, snapshots: true, sources: true });
   await setPermissions(ownerContext, []);
   const revokedApi = await staffContext.request.get('/api/operacao/comandas');
   expect([401, 403]).toContain(revokedApi.status());
