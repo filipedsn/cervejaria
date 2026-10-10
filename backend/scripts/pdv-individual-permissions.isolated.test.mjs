@@ -1205,6 +1205,8 @@ const browserEnv = {
   RBAC_QA_FOREIGN_OWNER_PASSWORD: otherOwnerPassword,
   RBAC_QA_STAFF_ID: staff.id,
   RBAC_QA_REPORT_EVENT_ID: event.id,
+  RBAC_QA_INVENTORY_PRODUCT_ID: stockProduct.id,
+  RBAC_QA_INVENTORY_PRODUCT_NAME: stockProduct.nome,
 };
 const browserRun = spawn(process.execPath, [path.join(repoRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.rbac-live.config.ts'], {
   cwd: repoRoot, env: browserEnv, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],

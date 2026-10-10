@@ -12,6 +12,8 @@ const permissionApi = `/api/usuarios/${process.env.RBAC_QA_STAFF_ID}/permissoes-
 const permission = 'command.read';
 const cashValuesPermission = 'cash.values.read';
 const reportEventId = process.env.RBAC_QA_REPORT_EVENT_ID!;
+const inventoryProductId = process.env.RBAC_QA_INVENTORY_PRODUCT_ID!;
+const inventoryProductName = process.env.RBAC_QA_INVENTORY_PRODUCT_NAME!;
 
 async function primeAndLogout(page: Page, cookie: string) {
   await page.context().addCookies([{ name: 'token', value: cookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
@@ -512,5 +514,62 @@ test('clients.manage blocks, creates a client through the UI, then denies after 
   const finalMatches = (await afterRevoke.json()).items.filter((item: { nome: string }) => item.nome === key);
   expect(finalMatches).toHaveLength(1);
   console.log('RBAC_LIVE_REGRESSION key=clients.manage; disabled=route-and-api-denied-no-write; enabled=real-ui-create-persisted; revoked=same-session-route-and-api-denied-no-write; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('inventory.read blocks, exposes stock read-only, and revokes in the live session', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const operationalContext = await staffContext.request.get('/api/operacao/contexto');
+  expect(operationalContext.status()).toBe(200);
+  const pointOfSaleId = (await operationalContext.json()).pontosVenda[0]?.id;
+  expect(pointOfSaleId).toBeTruthy();
+  const inventoryUrl = `/api/operacao/estoque?pontoVendaId=${pointOfSaleId}`;
+  const entryUrl = '/api/operacao/estoque/entrada';
+  const before = await ownerContext.request.get(inventoryUrl);
+  expect(before.status(), await before.text()).toBe(200);
+  const beforeBalances = await before.json();
+  expect(beforeBalances.some((item: { produtoId: string }) => item.produtoId === inventoryProductId)).toBe(true);
+  const deniedEntry = await staffContext.request.post(entryUrl, { data: { pontoVendaId: pointOfSaleId, produtoId: inventoryProductId, quantidade: 1, observacao: 'disabled read-only QA probe' } });
+  expect([401, 403]).toContain(deniedEntry.status());
+  await staff.goto('/operacao/estoque');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/operacao/estoque');
+  await expect(staff.getByRole('heading', { name: 'Estoque' })).toHaveCount(0);
+  const afterDenied = await ownerContext.request.get(inventoryUrl);
+  expect(await afterDenied.json()).toEqual(beforeBalances);
+
+  await setPermissions(ownerContext, ['inventory.read']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['inventory.read']);
+  const allowedRead = await staffContext.request.get(inventoryUrl);
+  expect(allowedRead.status(), await allowedRead.text()).toBe(200);
+  const readableBalances = await allowedRead.json();
+  expect(readableBalances.some((item: { produtoId: string }) => item.produtoId === inventoryProductId)).toBe(true);
+  const readOnlyEntry = await staffContext.request.post(entryUrl, { data: { pontoVendaId: pointOfSaleId, produtoId: inventoryProductId, quantidade: 1, observacao: 'read-only QA probe' } });
+  expect([401, 403]).toContain(readOnlyEntry.status());
+  await staff.goto('/operacao/estoque');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/estoque');
+  await expect(staff.getByText(inventoryProductName, { exact: true })).toBeVisible();
+  await expect(staff.getByRole('button', { name: 'Repor' })).toHaveCount(0);
+
+  await setPermissions(ownerContext, []);
+  await staff.reload();
+  await staff.goto('/operacao/estoque');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/operacao/estoque');
+  expect([401, 403]).toContain((await staffContext.request.get(inventoryUrl)).status());
+  const revokedEntry = await staffContext.request.post(entryUrl, { data: { pontoVendaId: pointOfSaleId, produtoId: inventoryProductId, quantidade: 1, observacao: 'revoked read QA probe' } });
+  expect([401, 403]).toContain(revokedEntry.status());
+  const afterRevoke = await ownerContext.request.get(inventoryUrl);
+  expect(await afterRevoke.json()).toEqual(beforeBalances);
+  console.log('RBAC_LIVE_REGRESSION key=inventory.read; disabled=route-and-api-denied-no-write; enabled=real-ui-stock-read-only; inventory.adjust=absent-and-entry-denied; revoked=same-session-route-and-api-denied-no-write; result=PASS');
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });
