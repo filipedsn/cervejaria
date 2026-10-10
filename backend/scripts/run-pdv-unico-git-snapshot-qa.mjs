@@ -157,31 +157,33 @@ try {
   run(process.execPath, [npmCli, 'run', 'build'], { cwd: frontendSnapshot, env, stdio: 'inherit' });
   run(process.execPath, [npmCli, 'ci', '--no-audit', '--no-fund'], { cwd: snapshotRoot, env, stdio: 'inherit' });
 
-  const uiPortServer = net.createServer();
-  const uiPort = await new Promise((resolve, reject) => {
-    uiPortServer.once('error', reject);
-    uiPortServer.listen(0, '127.0.0.1', () => {
-      const value = uiPortServer.address().port;
-      uiPortServer.close((error) => error ? reject(error) : resolve(value));
+  if (focus !== 'permissions' && !resumeFile) {
+    const uiPortServer = net.createServer();
+    const uiPort = await new Promise((resolve, reject) => {
+      uiPortServer.once('error', reject);
+      uiPortServer.listen(0, '127.0.0.1', () => {
+        const value = uiPortServer.address().port;
+        uiPortServer.close((error) => error ? reject(error) : resolve(value));
+      });
     });
-  });
-  const uiUrl = `http://127.0.0.1:${uiPort}`;
-  const vite = spawn(process.execPath, [path.join(frontendSnapshot, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(uiPort), '--strictPort'], {
-    cwd: frontendSnapshot, env, windowsHide: true, stdio: 'ignore',
-  });
-  try {
-    let uiReady = false;
-    for (let attempt = 0; attempt < 60; attempt++) {
-      if (vite.exitCode !== null) throw new Error(`Snapshot Vite exited early (${vite.exitCode}).`);
-      try { const response = await fetch(uiUrl); if (response.ok) { uiReady = true; break; } } catch {}
-      await delay(500);
+    const uiUrl = `http://127.0.0.1:${uiPort}`;
+    const vite = spawn(process.execPath, [path.join(frontendSnapshot, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(uiPort), '--strictPort'], {
+      cwd: frontendSnapshot, env, windowsHide: true, stdio: 'ignore',
+    });
+    try {
+      let uiReady = false;
+      for (let attempt = 0; attempt < 60; attempt++) {
+        if (vite.exitCode !== null) throw new Error(`Snapshot Vite exited early (${vite.exitCode}).`);
+        try { const response = await fetch(uiUrl); if (response.ok) { uiReady = true; break; } } catch {}
+        await delay(500);
+      }
+      if (!uiReady) throw new Error('Snapshot Vite did not become ready for mocked category UI E2E.');
+      const uiEnv = { ...env, E2E_SKIP_SERVER: '1', E2E_BASE_URL: uiUrl };
+      run(process.execPath, [path.join(snapshotRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.config.ts', 'e2e/pdv-gamified-categories.spec.ts', '--project=chromium', '--no-deps', '--reporter=line', `--output=${path.join(os.tmpdir(), `pdv-category-ui-playwright-${runId}`)}`], { cwd: snapshotRoot, env: uiEnv, stdio: 'inherit' });
+      console.log(`PDV_GIT_QA_UI_MOCKED=PASS; commit=${selectedCommit}; baseURL=${uiUrl}`);
+    } finally {
+      vite.kill();
     }
-    if (!uiReady) throw new Error('Snapshot Vite did not become ready for mocked category UI E2E.');
-    const uiEnv = { ...env, E2E_SKIP_SERVER: '1', E2E_BASE_URL: uiUrl };
-    run(process.execPath, [path.join(snapshotRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.config.ts', 'e2e/pdv-gamified-categories.spec.ts', '--project=chromium', '--no-deps', '--reporter=line', `--output=${path.join(os.tmpdir(), `pdv-category-ui-playwright-${runId}`)}`], { cwd: snapshotRoot, env: uiEnv, stdio: 'inherit' });
-    console.log(`PDV_GIT_QA_UI_MOCKED=PASS; commit=${selectedCommit}; baseURL=${uiUrl}`);
-  } finally {
-    vite.kill();
   }
 
   await writeFile(auditHook, auditHookSource, 'utf8');
