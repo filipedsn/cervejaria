@@ -65,6 +65,8 @@ async function contexts(browser: Browser, permissions: string[] = [], width = 39
   const staff = await staffContext.newPage();
   await staff.goto('/operacao/caixa');
   expect((await staffContext.request.get('/api/auth/me')).status()).toBe(200);
+  await expect.poll(async () => (await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao)
+    .toEqual(permissions);
   return { ownerContext, staffContext, owner, staff };
 }
 
@@ -165,6 +167,7 @@ test('debt.receive disabled, partial receipt, and same-session revoke', async ({
   await account.getByRole('button', { name: 'Receber pagamento' }).click();
   const dialog = staff.getByRole('dialog');
   await expect(dialog).toBeVisible();
+  await dialog.getByPlaceholder('R$ 0,00').fill('5,00');
   await dialog.getByRole('button', { name: /Revisar recebimento/ }).click();
   const receive = dialog.getByRole('button', { name: /Registrar recebimento/ });
   await receive.click();
@@ -403,7 +406,9 @@ test('kitchen.cancel requires sale.refund and revokes while the session stays lo
   await stage(key, 'disabled', 'sale.refund retained; queue is readable but cancel control and status transition are denied', testInfo);
   await setPermissions(ownerContext, [...deps, key]);
   await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual([...deps, key]);
   await staff.goto('/operacao/cozinha');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/cozinha');
   const allowedCard = staff.locator('article:visible').filter({ hasText: itemName }).first();
   await allowedCard.getByRole('button', { name: 'Cancelar pedido' }).click();
   const dialog = staff.getByRole('dialog');
@@ -445,7 +450,9 @@ test('sale.refund requires kitchen.cancel and revokes same-session confirmation'
   await stage(key, 'disabled', 'kitchen.cancel retained; sale/refund confirmation denied and pending order preserved', testInfo);
   await setPermissions(ownerContext, [...deps, key]);
   await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual([...deps, key]);
   await staff.goto('/operacao/cozinha');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/cozinha');
   const allowedCard = staff.locator('article:visible').filter({ hasText: itemName }).first();
   await allowedCard.getByRole('button', { name: 'Confirmar cancelamento' }).click();
   await expect.poll(async () => (await (await staffContext.request.get(queueUrl)).json()).find((order: { id: string }) => order.id === orderId).status).toBe('CANCELADO');
