@@ -18,8 +18,8 @@ const day = new Date('2026-10-09T00:00:00.000Z');
 
 function asText(value) { return value == null ? null : String(value); }
 
-async function tenantFixture(suffix) {
-  const tenantId = `qa_${runId}_${suffix}`;
+async function tenantFixture(suffix, { canonical = false, kitchenItemsChargeAtLaunch = false, allowCloseComandaWithPendingKitchenOrders = false } = {}) {
+  const tenantId = canonical ? 'cmr9yis3c0000hvu00q9fe7y1' : `qa_${runId}_${suffix}`;
   const ownerId = `${tenantId}_owner`;
   const noPermissionId = `${tenantId}_restricted`;
   const pointId = `${tenantId}_point`;
@@ -32,12 +32,13 @@ async function tenantFixture(suffix) {
     { id: ownerId, nome: 'QA owner', email: `${tenantId}-owner@example.test`, senhaHash: 'qa-not-used', papel: 'DONO', cervejariaId: tenantId },
     { id: noPermissionId, nome: 'QA restricted', email: `${tenantId}-restricted@example.test`, senhaHash: 'qa-not-used', papel: 'ATENDENTE', cervejariaId: tenantId, permissoesOperacao: ['kitchen.read', 'kitchen.operate'] },
   ] });
-  await prisma.configuracaoOperacional.create({ data: { cervejariaId: tenantId, inventoryEnabled: true, kitchenEnabled: true, plannedOperationsEnabled: false } });
+  await prisma.configuracaoOperacional.create({ data: { cervejariaId: tenantId, inventoryEnabled: true, kitchenEnabled: true, plannedOperationsEnabled: false, kitchenItemsChargeAtLaunch, allowCloseComandaWithPendingKitchenOrders } });
   await prisma.configuracaoOperacao.create({ data: { cervejariaId: tenantId, ativo: true, controlaEstoque: true, temCozinha: true } });
   await prisma.pontoVenda.create({ data: { id: pointId, cervejariaId: tenantId, nome: 'QA POS' } });
+  if (canonical) await prisma.configuracaoPontoVenda.create({ data: { cervejariaId: tenantId, pontoVendaId: pointId, tapsEnabled: false, inventoryEnabled: true, kitchenEnabled: true, kitchenItemsChargeAtLaunch, allowCloseComandaWithPendingKitchenOrders, whatsappPedidoProntoEnabled: false, whatsappPedidoProntoNaCozinha: false } });
   await prisma.produto.create({ data: { id: productId, nome: 'QA item', tipo: 'COMIDA', exigePreparo: true, controlaEstoque: true, cervejariaId: tenantId, pontoVendaId: pointId } });
   await prisma.inventoryBalance.create({ data: { cervejariaId: tenantId, pontoVendaId: pointId, produtoId: productId, quantidade: 4 } });
-  await prisma.comanda.create({ data: { id: commandId, origem: 'CAIXA', status: 'ABERTA', tipo: 'MESA', pontoVendaId: pointId, identificador: 'QA-1', total: 25, abertaPorId: ownerId } });
+  await prisma.comanda.create({ data: { id: commandId, origem: 'CAIXA', status: 'ABERTA', tipo: 'MESA', pontoVendaId: pointId, diaOperacional: day, identificador: 'QA-1', total: 25, abertaPorId: ownerId } });
   await prisma.pedidoOperacao.create({ data: { id: orderId, cervejariaId: tenantId, comandaId: commandId, pontoVendaId: pointId, numero: 1, diaOperacional: day, criadoPorId: ownerId } });
   await prisma.itemComanda.create({ data: { id: itemId, comandaId: commandId, pedidoCozinhaId: orderId, produtoId: productId, nome: 'QA item', quantidade: 1, precoUnit: 25, exigePreparo: true } });
   await prisma.inventoryMovement.create({ data: { cervejariaId: tenantId, pontoVendaId: pointId, produtoId: productId, pedidoId: orderId, tipo: 'SAIDA_VENDA', quantidade: 1, registradoPorId: ownerId } });
@@ -252,6 +253,76 @@ test('confirmação em segunda sessão atualiza a comanda via socket e recupera 
   const address = app.server.address();
   const token = auth(f).authorization.slice('Bearer '.length);
   await runKitchenCommandVisibleSyncQa({ app, prisma, baseUrl: `http://127.0.0.1:${address.port}`, fixture: f, token, runId });
+});
+
+test('API só fecha comanda pendente quando cobrar ao lançar e permitir fechamento (LEGACY/CANONICAL)', async () => {
+  const modes = [
+    { name: 'LEGACY', canonical: false },
+    { name: 'CANONICAL_PDV', canonical: true },
+  ];
+  const combos = [
+    { charge: false, allow: false, expected: 409 },
+    { charge: false, allow: true, expected: 409 },
+    { charge: true, allow: false, expected: 409 },
+    { charge: true, allow: true, expected: 200 },
+  ];
+  const evidence = [];
+
+  for (const mode of modes) {
+    if (mode.canonical) process.env.PDV_CANONICAL_TENANTS = 'cmr9yis3c0000hvu00q9fe7y1';
+    else delete process.env.PDV_CANONICAL_TENANTS;
+    const f = await tenantFixture(`close-${mode.name}`, { canonical: mode.canonical });
+    const session = await prisma.sessaoCaixaOperacao.create({ data: {
+      cervejariaId: f.tenantId, pontoVendaId: f.pointId, diaOperacional: day, trocoInicial: 0, abertoPorId: f.ownerId,
+    } });
+    const stockBefore = await prisma.inventoryMovement.findMany({ where: { pedidoId: f.orderId }, orderBy: { createdAt: 'asc' } });
+
+    for (const combo of combos) {
+      if (mode.canonical) {
+        await prisma.configuracaoPontoVenda.update({ where: { pontoVendaId: f.pointId }, data: {
+          kitchenItemsChargeAtLaunch: combo.charge,
+          allowCloseComandaWithPendingKitchenOrders: combo.allow,
+        } });
+      } else {
+        await prisma.configuracaoOperacional.update({ where: { cervejariaId: f.tenantId }, data: {
+          kitchenItemsChargeAtLaunch: combo.charge,
+          allowCloseComandaWithPendingKitchenOrders: combo.allow,
+        } });
+      }
+
+      if (combo.expected === 200 && mode.canonical) {
+        const noPermission = await inject(f, 'POST', `/operacao/comandas/${f.commandId}/pagamentos`, f.noPermissionId, f.tenantId, {
+          pagamentos: [{ forma: 'PIX', valor: 25 }],
+        });
+        assert.equal(noPermission.statusCode, 403);
+        assert.equal(await prisma.pagamento.count({ where: { comandaId: f.commandId } }), 0);
+        assert.equal((await prisma.comanda.findUniqueOrThrow({ where: { id: f.commandId } })).status, 'ABERTA');
+      }
+
+      const response = await inject(f, 'POST', `/operacao/comandas/${f.commandId}/pagamentos`, f.ownerId, f.tenantId, {
+        pagamentos: [{ forma: 'PIX', valor: 25 }],
+      });
+      assert.equal(response.statusCode, combo.expected, `${mode.name} charge=${combo.charge} allow=${combo.allow}: ${response.body}`);
+
+      if (combo.expected === 409) {
+        assert.match(response.body, /Aguarde a entrega dos itens da cozinha antes de fechar a comanda/);
+        assert.equal(await prisma.pagamento.count({ where: { comandaId: f.commandId } }), 0);
+        assert.equal((await prisma.comanda.findUniqueOrThrow({ where: { id: f.commandId } })).status, 'ABERTA');
+        assert.deepEqual(await prisma.inventoryMovement.findMany({ where: { pedidoId: f.orderId }, orderBy: { createdAt: 'asc' } }), stockBefore);
+      } else {
+        const closed = await prisma.comanda.findUniqueOrThrow({ where: { id: f.commandId } });
+        assert.equal(closed.status, 'FECHADA');
+        assert.equal(await prisma.pagamento.count({ where: { comandaId: f.commandId } }), 1);
+        assert.equal(await prisma.movimentoCaixaOperacao.count({ where: { sessaoId: session.id } }), 0);
+        assert.deepEqual(await prisma.inventoryMovement.findMany({ where: { pedidoId: f.orderId }, orderBy: { createdAt: 'asc' } }), stockBefore);
+      }
+
+      evidence.push({ mode: mode.name, charge: combo.charge, allow: combo.allow, status: response.statusCode, sessionId: session.id });
+    }
+    delete process.env.PDV_CANONICAL_TENANTS;
+  }
+
+  console.log(JSON.stringify({ scenario: 'pending-kitchen-api-close-gate', cases: evidence, authorizedCloseOnlyWhenBothFlagsTrue: true, unauthorizedUserDenied: true, noDuplicateStockEffects: true }, null, 2));
 });
 
 test.after(async () => {

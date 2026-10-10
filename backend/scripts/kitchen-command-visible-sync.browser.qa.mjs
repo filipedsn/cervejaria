@@ -94,8 +94,10 @@ export async function runKitchenCommandVisibleSyncQa({ app, prisma, baseUrl, fix
       if (commandSockets.length >= 1 && kitchenSockets.length >= 1) break;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    assert.ok((await app.io.in(commandRoom).fetchSockets()).some((socket) => socket.handshake.headers.origin === origin), 'command session joined the tenant commands room');
-    assert.ok((await app.io.in(kitchenRoom).fetchSockets()).some((socket) => socket.handshake.headers.origin === origin), 'kitchen session joined the tenant kitchen room');
+    const commandRoomSockets = await app.io.in(commandRoom).fetchSockets();
+    const kitchenRoomSockets = await app.io.in(kitchenRoom).fetchSockets();
+    assert.ok(commandRoomSockets.some((socket) => socket.handshake.headers.origin === origin), `command session joined the tenant commands room: ${JSON.stringify(commandRoomSockets.map((socket) => ({ id: socket.id, origin: socket.handshake.headers.origin, userId: socket.data.user?.sub })))}`);
+    assert.ok(kitchenRoomSockets.some((socket) => socket.handshake.headers.origin === origin), `kitchen session joined the tenant kitchen room: ${JSON.stringify(kitchenRoomSockets.map((socket) => ({ id: socket.id, origin: socket.handshake.headers.origin, userId: socket.data.user?.sub })))}`);
 
     const requestResponse = await apiPage.evaluate(async ({ commandId, itemId, token }) => {
       const response = await fetch(`/api/operacao/comandas/${commandId}/itens/${itemId}`, { method: 'DELETE', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: '{}' });
@@ -137,8 +139,21 @@ export async function runKitchenCommandVisibleSyncQa({ app, prisma, baseUrl, fix
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     assert.equal((await app.io.in(commandRoom).fetchSockets()).filter((socket) => socket.handshake.headers.origin === origin).length, 0, 'all browser sockets left the commands room before the missed update');
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    const offlineState = await commandPage.evaluate(() => ({ requests: window.__commandSyncTrace.requests.filter((entry) => entry.phase === 'response').length, connects: window.__commandSyncTrace.connects }));
+    let offlineState;
+    let stableSince = Date.now();
+    let previousRequestCount = -1;
+    const settleDeadline = Date.now() + 3_000;
+    while (Date.now() < settleDeadline) {
+      offlineState = await commandPage.evaluate((commandId) => ({ requests: window.__commandSyncTrace.requests.filter((entry) => entry.phase === 'response' && entry.path === `/api/operacao/comandas/${commandId}`).length, connects: window.__commandSyncTrace.connects }), fixture.commandId);
+      if (offlineState.requests !== previousRequestCount) {
+        previousRequestCount = offlineState.requests;
+        stableSince = Date.now();
+      } else if (Date.now() - stableSince >= 500) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.ok(Date.now() - stableSince >= 500, 'command requests settled after disconnect before taking the no-polling baseline');
     const missedEventResponse = await apiPage.evaluate(async ({ commandId, itemId, token }) => {
       const response = await fetch(`/api/operacao/comandas/${commandId}/itens/${itemId}`, { method: 'DELETE', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: '{}' });
       return { status: response.status, body: await response.text() };
@@ -146,7 +161,7 @@ export async function runKitchenCommandVisibleSyncQa({ app, prisma, baseUrl, fix
     assert.equal(missedEventResponse.status, 200, missedEventResponse.body);
     assert.ok((await prisma.itemComanda.findUniqueOrThrow({ where: { id: secondItemId } })).cancelamentoPendenteEm);
     await new Promise((resolve) => setTimeout(resolve, 300));
-    const whileOffline = await commandPage.evaluate(() => ({ requests: window.__commandSyncTrace.requests.filter((entry) => entry.phase === 'response').length, connects: window.__commandSyncTrace.connects }));
+    const whileOffline = await commandPage.evaluate((commandId) => ({ requests: window.__commandSyncTrace.requests.filter((entry) => entry.phase === 'response' && entry.path === `/api/operacao/comandas/${commandId}`).length, connects: window.__commandSyncTrace.connects }), fixture.commandId);
     assert.equal(whileOffline.requests, offlineState.requests, 'no command polling or missed-event refetch while disconnected');
     const reconnectDeadline = Date.now() + 12_000;
     while (Date.now() < reconnectDeadline) {
