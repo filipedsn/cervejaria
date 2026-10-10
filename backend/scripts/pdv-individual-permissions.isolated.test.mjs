@@ -1181,6 +1181,9 @@ try {
     await delay(500);
   }
   assert(ready, 'Vite did not become ready for live RBAC browser test.');
+  const proxyProbe = await fetch(`http://127.0.0.1:${frontendPort}/api/auth/me`, { signal: AbortSignal.timeout(5_000) });
+  console.log(`RBAC_LIVE_VITE_API_PROBE status=${proxyProbe.status}; frontend=127.0.0.1:${frontendPort}`);
+  assert.equal(proxyProbe.status, 401, 'The Vite API proxy must reach the disposable Fastify app.');
   const browserEnv = {
     ...process.env,
     RBAC_QA_BASE_URL: `http://127.0.0.1:${frontendPort}`,
