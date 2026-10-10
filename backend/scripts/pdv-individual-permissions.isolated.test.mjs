@@ -1168,7 +1168,7 @@ const frontendPort = 53000 + (process.pid % 1000);
 const frontendRoot = path.join(repoRoot, 'frontend');
 const frontend = spawn(process.execPath, [path.join(frontendRoot, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(frontendPort), '--strictPort'], {
   cwd: frontendRoot,
-  env: { ...process.env, VITE_API_URL: `http://127.0.0.1:${apiPort}`, VITE_API_PORT: String(apiPort) },
+  env: { ...process.env, VITE_API_URL: '', VITE_API_PORT: String(apiPort) },
   stdio: 'inherit',
   windowsHide: true,
 });
