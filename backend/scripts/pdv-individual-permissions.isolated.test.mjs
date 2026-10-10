@@ -39,9 +39,12 @@ const [ownerHash, attendantHash, otherOwnerHash] = await Promise.all([
 ]);
 const company = await prisma.cervejaria.create({ data: { nome: `Permission QA ${suffix}`, slug: `permission-qa-${suffix}` } });
 const otherCompany = await prisma.cervejaria.create({ data: { nome: `Other permission QA ${suffix}`, slug: `other-permission-qa-${suffix}` } });
+await prisma.cervejaria.update({ where: { id: otherCompany.id }, data: { usaCardapio: true } });
+await prisma.configuracaoOperacional.create({ data: { cervejariaId: otherCompany.id, plannedOperationsEnabled: true, tapsEnabled: false, inventoryEnabled: false, kitchenEnabled: false, setupCompletedAt: new Date() } });
 const owner = await prisma.usuario.create({ data: { nome: 'QA Owner', email: `owner-${suffix}@example.invalid`, senhaHash: ownerHash, papel: 'DONO', cervejariaId: company.id } });
 const staff = await prisma.usuario.create({ data: { nome: 'QA Attendant', email: `staff-${suffix}@example.invalid`, senhaHash: attendantHash, papel: 'ATENDENTE', cervejariaId: company.id } });
 const staffTwo = await prisma.usuario.create({ data: { nome: 'QA Attendant Two', email: `staff-two-${suffix}@example.invalid`, senhaHash: attendantHash, papel: 'ATENDENTE', cervejariaId: company.id } });
+const eventMenuStaff = await prisma.usuario.create({ data: { nome: 'QA Event Menu Attendant', email: `event-menu-staff-${suffix}@example.invalid`, senhaHash: attendantHash, papel: 'ATENDENTE', cervejariaId: otherCompany.id } });
 const otherOwner = await prisma.usuario.create({ data: { nome: 'Other Owner', email: `other-${suffix}@example.invalid`, senhaHash: otherOwnerHash, papel: 'DONO', cervejariaId: otherCompany.id } });
 await prisma.configuracaoOperacao.create({ data: { cervejariaId: company.id, exclusivo: true } });
 await prisma.configuracaoOperacional.create({ data: { cervejariaId: company.id, plannedOperationsEnabled: false, tapsEnabled: false, inventoryEnabled: false, kitchenEnabled: false, setupCompletedAt: new Date() } });
@@ -62,6 +65,7 @@ async function login(email, password) {
 const ownerCookie = await login(owner.email, ownerPassword);
 const staffCookie = await login(staff.email, attendantPassword);
 const staffTwoCookie = await login(staffTwo.email, attendantPassword);
+const eventMenuStaffCookie = await login(eventMenuStaff.email, attendantPassword);
 const foreignOwnerCookie = await login(otherOwner.email, otherOwnerPassword);
 const authHeaders = (cookie) => ({ cookie });
 const trailer = await prisma.trailer.create({ data: { nome: `QA trailer ${suffix}`, cervejariaId: company.id } });
@@ -69,7 +73,7 @@ const foreignTrailer = await prisma.trailer.create({ data: { nome: `Foreign QA t
 const foreignPoint = await prisma.pontoVenda.create({ data: { cervejariaId: otherCompany.id, nome: 'Foreign point' } });
 const event = await prisma.evento.create({ data: { nome: `Event cash QA ${suffix}`, local: 'QA', cervejariaId: company.id, trailerId: trailer.id } });
 const eventForPermissionGrants = await prisma.evento.create({ data: { nome: `Event permission QA ${suffix}`, local: 'QA', cervejariaId: company.id, trailerId: trailer.id } });
-const foreignEvent = await prisma.evento.create({ data: { nome: `Foreign event QA ${suffix}`, local: 'QA', cervejariaId: otherCompany.id, trailerId: foreignTrailer.id } });
+const foreignEvent = await prisma.evento.create({ data: { nome: `Foreign event QA ${suffix}`, local: 'QA', data: new Date(), cervejariaId: otherCompany.id, trailerId: foreignTrailer.id } });
 const foreignClient = await prisma.cliente.create({ data: { nome: 'Foreign permission QA', telefone: `119876${Date.now().toString().slice(-5)}`, cervejariaId: otherCompany.id } });
 const foreignProduct = await prisma.produto.create({ data: { nome: `Foreign product QA ${suffix}`, tipo: 'COMIDA', cervejariaId: otherCompany.id } });
 const foreignCommand = await prisma.comanda.create({ data: { eventoId: foreignEvent.id, clienteId: foreignClient.id, status: 'ABERTA', tipo: 'COMANDA', total: 0 } });
@@ -1205,26 +1209,46 @@ const browserEnv = {
   RBAC_QA_FOREIGN_OWNER_PASSWORD: otherOwnerPassword,
   RBAC_QA_STAFF_ID: staff.id,
   RBAC_QA_REPORT_EVENT_ID: event.id,
+  RBAC_QA_EVENT_MENU_OWNER_COOKIE: foreignOwnerCookie,
+  RBAC_QA_EVENT_MENU_STAFF_COOKIE: eventMenuStaffCookie,
+  RBAC_QA_EVENT_MENU_STAFF_ID: eventMenuStaff.id,
+  RBAC_QA_EVENT_MENU_EVENT_ID: foreignEvent.id,
+  RBAC_QA_EVENT_MENU_EVENT_NAME: foreignEvent.nome,
+  RBAC_QA_EVENT_MENU_PRODUCT_FOREIGN_ID: foreignProduct.id,
+  RBAC_QA_EVENT_MENU_PRODUCT_FOREIGN_NAME: foreignProduct.nome,
   RBAC_QA_INVENTORY_PRODUCT_ID: stockProduct.id,
   RBAC_QA_INVENTORY_PRODUCT_NAME: stockProduct.nome,
   RBAC_QA_KITCHEN_ORDER_ID: disabledRuleCase.order.id,
   RBAC_QA_KITCHEN_COMMAND_IDENTIFIER: disabledRuleCase.command.identificador,
 };
-const browserRun = spawn(process.execPath, [path.join(repoRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.rbac-live.config.ts'], {
-  cwd: repoRoot, env: browserEnv, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
-});
-let browserStdout = '';
-let browserStderr = '';
-browserRun.stdout.setEncoding('utf8').on('data', (chunk) => { browserStdout += chunk; });
-browserRun.stderr.setEncoding('utf8').on('data', (chunk) => { browserStderr += chunk; });
-const browserExitCode = await new Promise((resolve, reject) => {
-  browserRun.once('error', reject);
-  browserRun.once('exit', resolve);
-});
-await writeFile(path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results', 'browser-run.log'), `${browserStdout}\n${browserStderr}`);
-process.stdout.write(browserStdout);
-process.stderr.write(browserStderr);
-assert.equal(browserExitCode, 0, 'Live operational RBAC browser test failed.');
+const browserLogs = [];
+const runBrowser = async (args, env) => {
+  const browserRun = spawn(process.execPath, [path.join(repoRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.rbac-live.config.ts', ...args], {
+    cwd: repoRoot, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stdout = '';
+  let stderr = '';
+  browserRun.stdout.setEncoding('utf8').on('data', (chunk) => { stdout += chunk; });
+  browserRun.stderr.setEncoding('utf8').on('data', (chunk) => { stderr += chunk; });
+  const exitCode = await new Promise((resolve, reject) => {
+    browserRun.once('error', reject);
+    browserRun.once('exit', resolve);
+  });
+  browserLogs.push(`${stdout}\n${stderr}`);
+  process.stdout.write(stdout);
+  process.stderr.write(stderr);
+  return exitCode;
+};
+const canonicalBrowserExitCode = await runBrowser(['--grep-invert', 'event.menu.manage'], browserEnv);
+assert.equal(canonicalBrowserExitCode, 0, 'Live CANONICAL_PDV operational RBAC browser tests failed.');
+// Event menu is an event-mode feature. Run its real UI flow against the same
+// disposable API/database with canonical activation off, so the second tenant
+// resolves LEGACY settings while the other browser cases retain CANONICAL_PDV.
+process.env.PDV_CANONICAL_CONFIG_QA = '0';
+const legacyBrowserExitCode = await runBrowser(['--grep', 'event.menu.manage'], { ...browserEnv, PDV_CANONICAL_CONFIG_QA: '0' });
+process.env.PDV_CANONICAL_CONFIG_QA = '1';
+await writeFile(path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results', 'browser-run.log'), browserLogs.join('\n'));
+assert.equal(legacyBrowserExitCode, 0, 'Live LEGACY event.menu.manage browser test failed.');
 const browserInventoryMovements = await prisma.inventoryMovement.findMany({
   where: { pontoVendaId: point.id, produtoId: stockProduct.id, registradoPorId: staff.id, tipo: 'ENTRADA', observacao: 'authorized live RBAC adjustment' },
   select: { quantidade: true, registradoPorId: true, produtoId: true },

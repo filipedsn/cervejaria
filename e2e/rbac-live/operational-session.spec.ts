@@ -16,6 +16,13 @@ const inventoryProductId = process.env.RBAC_QA_INVENTORY_PRODUCT_ID!;
 const inventoryProductName = process.env.RBAC_QA_INVENTORY_PRODUCT_NAME!;
 const kitchenOrderId = process.env.RBAC_QA_KITCHEN_ORDER_ID!;
 const kitchenCommandIdentifier = process.env.RBAC_QA_KITCHEN_COMMAND_IDENTIFIER!;
+const eventMenuOwnerCookie = process.env.RBAC_QA_EVENT_MENU_OWNER_COOKIE!;
+const eventMenuStaffCookie = process.env.RBAC_QA_EVENT_MENU_STAFF_COOKIE!;
+const eventMenuStaffId = process.env.RBAC_QA_EVENT_MENU_STAFF_ID!;
+const eventMenuEventId = process.env.RBAC_QA_EVENT_MENU_EVENT_ID!;
+const eventMenuEventName = process.env.RBAC_QA_EVENT_MENU_EVENT_NAME!;
+const eventMenuForeignProductId = process.env.RBAC_QA_EVENT_MENU_PRODUCT_FOREIGN_ID!;
+const eventMenuForeignProductName = process.env.RBAC_QA_EVENT_MENU_PRODUCT_FOREIGN_NAME!;
 
 async function primeAndLogout(page: Page, cookie: string) {
   await page.context().addCookies([{ name: 'token', value: cookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
@@ -946,5 +953,75 @@ test('catalog.shift.manage permits only the live shift price and preserves the g
   const catalogFinal = await (await ownerContext.request.get(productCatalogApi)).json();
   expect(Number(catalogFinal.find((product: { id: string }) => product.id === inventoryProductId).precoUnit)).toBe(templateBefore);
   console.log('RBAC_LIVE_REGRESSION key=catalog.shift.manage; cash.values.read=retained-as-screen-read-dependency; disabled=price-write-denied-no-mutation; enabled=UI-turn-price-only-change; catalog.manage=absent-template-option-hidden-and-global-price-unchanged; revoked=same-session-price-edit-hidden-and-api-denied; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('event.menu.manage controls the event menu editor and persists changes only while granted', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: eventMenuOwnerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/eventos');
+  const ownerMe = await ownerContext.request.get('/api/auth/me');
+  expect(ownerMe.status()).toBe(200);
+  const ownerTenantId = (await ownerMe.json()).cervejaria.id;
+  const menuUrl = `/api/eventos/${eventMenuEventId}/cardapio`;
+  const beforeResponse = await ownerContext.request.get(menuUrl);
+  expect(beforeResponse.status(), await beforeResponse.text()).toBe(200);
+  const before = await beforeResponse.json();
+  expect(before.produtoIds).toEqual([]);
+  const adminUrl = `/api/usuarios/${eventMenuStaffId}/permissoes-operacao`;
+  const setMenuPermissions = async (permissoesOperacao: string[]) => {
+    const response = await ownerContext.request.patch(adminUrl, { data: { permissoesOperacao } });
+    expect(response.status(), await response.text()).toBe(200);
+  };
+  await setMenuPermissions([]);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: eventMenuStaffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  const modeContext = await staffContext.request.get('/api/operacao/contexto');
+  expect(modeContext.status(), await modeContext.text()).toBe(200);
+  const mode = await modeContext.json();
+  expect(mode.operationMode).toBe('EVENTO');
+  expect(mode.operationalSettingsSource).toBe('LEGACY');
+  await staff.goto('/eventos');
+  const disabledStaffMe = await (await staffContext.request.get('/api/auth/me')).json();
+  expect(disabledStaffMe.usuario.permissoesOperacao).toEqual([]);
+  expect(disabledStaffMe.cervejaria.id).toBe(ownerTenantId);
+  const eventCard = staff.locator('.card').filter({ hasText: eventMenuEventName }).first();
+  await expect(eventCard).toBeVisible();
+  await expect(eventCard.locator('button[aria-label*="card"]')).toHaveCount(0);
+  const denied = await staffContext.request.put(menuUrl, { data: { produtoIds: [eventMenuForeignProductId] } });
+  expect([401, 403]).toContain(denied.status());
+  expect(await (await ownerContext.request.get(menuUrl)).json()).toEqual(before);
+
+  await setMenuPermissions(['event.menu.manage']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['event.menu.manage']);
+  const grantedCard = staff.locator('.card').filter({ hasText: eventMenuEventName }).first();
+  const editorButton = grantedCard.locator('button[aria-label*="card"]');
+  await expect(editorButton).toHaveCount(1);
+  await editorButton.click();
+  const dialog = staff.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: /Montar manual/ }).click();
+  await expect(dialog.getByText(eventMenuForeignProductName, { exact: true })).toBeVisible();
+  await dialog.locator('label').filter({ hasText: eventMenuForeignProductName }).locator('input[type="checkbox"]').check();
+  const savePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === menuUrl && response.request().method() === 'PUT');
+  await dialog.getByRole('button', { name: /Salvar card/ }).click();
+  const saved = await savePromise;
+  expect(saved.status(), await saved.text()).toBe(200);
+  const afterGrant = await (await ownerContext.request.get(menuUrl)).json();
+  expect(afterGrant.produtoIds).toEqual([eventMenuForeignProductId]);
+  expect(afterGrant.produtos.map((produto: { id: string }) => produto.id)).toEqual([eventMenuForeignProductId]);
+
+  await setMenuPermissions([]);
+  await staff.reload();
+  const revokedCard = staff.locator('.card').filter({ hasText: eventMenuEventName }).first();
+  await expect(revokedCard.locator('button[aria-label*="card"]')).toHaveCount(0);
+  const revoked = await staffContext.request.put(menuUrl, { data: { produtoIds: [] } });
+  expect([401, 403]).toContain(revoked.status());
+  expect(await (await ownerContext.request.get(menuUrl)).json()).toEqual(afterGrant);
+  console.log('RBAC_LIVE_REGRESSION key=event.menu.manage; dependency=none; disabled=editor-hidden-and-direct-write-denied-no-mutation; enabled=real-ui-menu-change-persisted; revoked=same-session-editor-hidden-and-direct-write-denied; event-mode=LEGACY; result=PASS');
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });
