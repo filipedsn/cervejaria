@@ -63,8 +63,8 @@
   "backendBuild": "PASS",
   "frontendBuild": "PASS",
   "canonicalAndLegacy": "PARTIAL; representative compatibility and PDV cases, not all permissions in both modes",
-  "operationalScreensWithLiveApi": "PARTIAL: fifteen keys with all three real-browser stages PASS; 45/84 UI stages total",
-  "productDefectsConfirmed": 1,
+  "operationalScreensWithLiveApi": "PARTIAL: sixteen keys with all three real-browser stages PASS; 48/84 UI stages total",
+  "productDefectsConfirmed": 3,
   "reportedTickets": [
     "TAP-76",
     "TAP-78",
@@ -399,27 +399,27 @@
     }
   },
   "latestContinuation": {
-    "testedCommit": "b1ef7ca1fcdf432823bc28bab4f68cdbd6728acb",
-    "testedTree": "ebb55a24c8c2d9e435e3449607ab391097609d4a",
+    "testedCommit": "adaa6baf2d09adb335069e443913b1d1c558d388",
+    "testedTree": "24379774aa0ecab129a414e9e2b9f85fed9e6ad5",
     "focusedRunner": "PASS",
-    "snapshotIntegrity": "PASS; 1464 blobs; exact tree materialized",
-    "moduleAudit": "198 snapshot modules; 0 mutable workspace imports",
+    "snapshotIntegrity": "PASS; 1468 blobs; exact tree materialized",
+    "moduleAudit": "198 snapshot modules; 0 mutable workspace imports; 1531 external dependency modules",
     "testedFileBlobs": {
-      "backend/scripts/pdv-individual-permissions.isolated.test.mjs": "bbe9c2fc04f61b59a00aebf611ff68b75f47f38e",
-      "e2e/rbac-live/operational-session.spec.ts": "46d20b77a5f4d4bc1c9652c8b9c35ccb99aa6e3b",
-      "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs": "76534dc85318542313f1f788a173c2f3b0af9e1b"
+      "frontend/src/components/EventoResumoKpis.tsx": "ad9041281964217a76f1d3735b910a12529227a6",
+      "frontend/src/pages/ComandasPage.tsx": "b932854c1b12f1feeb43a91bb9699def8738f9ef",
+      "e2e/rbac-live/operational-session.spec.ts": "db774c94b0f313b20ad1cbe59bbda0edf4044d10"
     },
     "backendBuild": "PASS",
     "frontendBuild": "PASS",
     "activationPreflight": "14/14 PASS",
     "authenticatedDisposableApiSuite": "PASS; representative enabled/denied checks for 28 keys",
-    "playwright": "PASS 12/12 CANONICAL_PDV plus 1/1 LEGACY event.menu.manage against real Fastify API and frontend with disposable PostgreSQL",
+    "playwright": "PASS 12/12 existing CANONICAL_PDV checks plus 2/2 LEGACY event permission checks, covering event and command screens, real Fastify API/frontend and disposable PostgreSQL",
     "uiStageCounts": {
       "required": 84,
-      "pass": 45,
+      "pass": 48,
       "fail": 0,
       "blocked": 0,
-      "notRun": 39
+      "notRun": 36
     },
     "uiKeys": {
       "command.read": {
@@ -506,6 +506,12 @@
         "enabled": "PASS",
         "revoked": "PASS",
         "dependency": "none; separate synthetic EVENTO/LEGACY tenant; real editor, session and PostgreSQL"
+      },
+      "event.dashboard.read": {
+        "disabled": "PASS",
+        "enabled": "PASS",
+        "revoked": "PASS",
+        "dependency": "command.read retained; event and command screens gated; command-list API remains available"
       }
     },
     "sameUserSessions": "PASS; two contexts in prior command.read/cash.values.read flow",
@@ -514,16 +520,16 @@
       390,
       768
     ],
-    "productDefect": "Cash sanitized fallback fix previously validated; no new product defect identified in the event.menu.manage run",
-    "harnessCorrection": "Earlier flows as recorded; event.menu.manage requires EVENTO/LEGACY and runs as a separate Playwright process with canonical activation disabled against the second synthetic tenant; first attempt confirmed the fixture constraint and is retained as a failed harness receipt",
-    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-menu-ui-final-evidence.json",
-    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/run-0bc87f58d3fb495c/live-results/playwright-results.json",
-    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/run-0bc87f58d3fb495c/live-results/browser-run.log",
+    "productDefect": "Two event-dashboard UI defects were confirmed: Event page KPI values remained visible when the API returned 403, and ComandasPage remained on Loading when its dashboard query was disabled. Both were fixed and verified on event and command screens through disabled/granted/same-session revoked states.",
+    "harnessCorrection": "Two initial selector mistakes and the pre-fix ComandasPage loading assertion are retained as separate evidence; final corrected snapshot passed all browser checks.",
+    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-ui-final-evidence.json",
+    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-playwright-results.json",
+    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-browser-run.log",
     "prodAccess": "NO",
     "sharedDevWrites": "NO",
     "certification": "INCOMPLETE",
     "pending": [
-      "13 remaining live-browser permission keys",
+      "12 remaining live-browser permission keys",
       "full LEGACY and CANONICAL_PDV matrix",
       "global admin contract",
       "alternate UI endpoints and setting combinations"

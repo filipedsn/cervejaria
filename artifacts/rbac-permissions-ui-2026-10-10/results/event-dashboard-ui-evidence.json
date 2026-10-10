@@ -1,0 +1,83 @@
+{
+  "result": "FAIL",
+  "scope": "focused-permissions",
+  "selectedCommit": "99b6f374cd1a2ab6034c8ecf9aa7ce21f423b14a",
+  "selectedTree": "aec5a8c6f76576900b27c3b572cfa777c5264618",
+  "materializedTree": "aec5a8c6f76576900b27c3b572cfa777c5264618",
+  "snapshotIntegrity": "PASS",
+  "materializedTrackedBlobCount": 1468,
+  "runnerPath": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+  "runnerSha256": "95092c8240767874deba85e0a73372a876a4c74fcd6485013be790bc75ddec70",
+  "harnessResult": "FAIL",
+  "productResult": "UNCLASSIFIED; consult component results below",
+  "componentExitCodes": [
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "backend",
+      "durationMs": 27250,
+      "exitCode": 0
+    },
+    {
+      "command": "run build",
+      "cwd": "backend",
+      "durationMs": 8085,
+      "exitCode": 0
+    },
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "frontend",
+      "durationMs": 13329,
+      "exitCode": 0
+    },
+    {
+      "command": "run build",
+      "cwd": "frontend",
+      "durationMs": 30505,
+      "exitCode": 0
+    },
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "",
+      "durationMs": 6013,
+      "exitCode": 0
+    },
+    {
+      "command": "--import tsx --test scripts/pdv-unico-dev-cutover-core.test.mjs scripts/pdv-unico-cutover-receipts.test.mjs src/lib/pdv-tenant-activation.test.ts",
+      "cwd": "backend",
+      "durationMs": 3347,
+      "exitCode": 0
+    },
+    {
+      "command": "scripts/run-pdv-individual-permissions-disposable-qa.mjs",
+      "cwd": "backend",
+      "durationMs": 72940,
+      "exitCode": 1
+    }
+  ],
+  "moduleOriginAudit": {
+    "result": "PARTIAL",
+    "snapshotProjectModuleCount": 198,
+    "snapshotProjectModulePathListSha256": "1936bb8811a45935947a1d21b0ce6d9dae0b14ae0f51cd2207149d04f03599dd",
+    "nonSnapshotWorkspaceModuleCount": 0,
+    "importedNonSnapshotWorkspacePaths": []
+  },
+  "workspaceIntegrity": {
+    "checkoutTreeBefore": "df366be66a5fc7dec4afa7fde1b9d5306c8a5bba",
+    "checkoutTreeAfter": "df366be66a5fc7dec4afa7fde1b9d5306c8a5bba",
+    "unchangedFromRunStart": true,
+    "externalChangesObserved": false,
+    "externalChanges": {
+      "changedPaths": [],
+      "stagedDiffChanged": false,
+      "unstagedDiffChanged": false
+    },
+    "runnerOwnedOutputPathsExcluded": [
+      "artifacts/rbac-permissions-ui-2026-10-10/git-snapshot-15dec292c7c9aee5-1GxgCG",
+      "artifacts/rbac-permissions-ui-2026-10-10/run-15dec292c7c9aee5",
+      "artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-ui-evidence.json"
+    ]
+  },
+  "failure": "C:\\Program Files\\nodejs\\node.exe scripts/run-pdv-individual-permissions-disposable-qa.mjs exited 1",
+  "prodAccessUsed": "NO",
+  "devSharedWrites": "NO"
+}

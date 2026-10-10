@@ -1,0 +1,125 @@
+{
+  "result": "PASS",
+  "scope": "focused-gate-only",
+  "gate": "permissions",
+  "selectedCommit": "adaa6baf2d09adb335069e443913b1d1c558d388",
+  "selectedTree": "24379774aa0ecab129a414e9e2b9f85fed9e6ad5",
+  "materializedTree": "24379774aa0ecab129a414e9e2b9f85fed9e6ad5",
+  "snapshotIntegrity": "PASS",
+  "materializedTrackedBlobCount": 1468,
+  "measuredCommands": [
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "backend",
+      "durationMs": 24558,
+      "exitCode": 0
+    },
+    {
+      "command": "run build",
+      "cwd": "backend",
+      "durationMs": 9744,
+      "exitCode": 0
+    },
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "frontend",
+      "durationMs": 14061,
+      "exitCode": 0
+    },
+    {
+      "command": "run build",
+      "cwd": "frontend",
+      "durationMs": 29017,
+      "exitCode": 0
+    },
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "",
+      "durationMs": 5689,
+      "exitCode": 0
+    },
+    {
+      "command": "--import tsx --test scripts/pdv-unico-dev-cutover-core.test.mjs scripts/pdv-unico-cutover-receipts.test.mjs src/lib/pdv-tenant-activation.test.ts",
+      "cwd": "backend",
+      "durationMs": 3372,
+      "exitCode": 0
+    },
+    {
+      "command": "scripts/run-pdv-individual-permissions-disposable-qa.mjs",
+      "cwd": "backend",
+      "durationMs": 70790,
+      "exitCode": 0
+    }
+  ],
+  "moduleOriginAudit": {
+    "result": "PASS",
+    "snapshotProjectModuleCount": 198,
+    "snapshotProjectModulePathListSha256": "cb256213b9cdff8a23573974cc2af9b4299fd31a46c530c16586c93712c3474d",
+    "nonSnapshotWorkspaceModuleCount": 0,
+    "externalDependencyModuleCount": 1531
+  },
+  "workspaceIntegrity": {
+    "checkoutTreeBefore": "df366be66a5fc7dec4afa7fde1b9d5306c8a5bba",
+    "checkoutTreeAfter": "df366be66a5fc7dec4afa7fde1b9d5306c8a5bba",
+    "unchangedFromRunStart": true,
+    "externalChangesObserved": false,
+    "externalChanges": {
+      "changedPaths": [],
+      "stagedDiffChanged": false,
+      "unstagedDiffChanged": false
+    },
+    "runnerOwnedOutputPathsExcluded": [
+      "artifacts/rbac-permissions-ui-2026-10-10/git-snapshot-6e573e2398e455b3-VZsmWh",
+      "artifacts/rbac-permissions-ui-2026-10-10/run-6e573e2398e455b3",
+      "artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-command-screen-final-evidence.json"
+    ]
+  },
+  "prodAccessUsed": "NO",
+  "devSharedWrites": "NO",
+  "productFinding": "Two event-dashboard UI defects: event KPI values remained rendered while the dashboard API was denied, and /comandas stayed on Loading after the permission-gated dashboard query was disabled.",
+  "productFix": {
+    "commits": [
+      "dc0e5260c3f8196b63acd12ed576f2fdc61d107c",
+      "adaa6baf2d09adb335069e443913b1d1c558d388"
+    ],
+    "paths": [
+      "frontend/src/components/EventoResumoKpis.tsx",
+      "frontend/src/pages/ComandasPage.tsx"
+    ],
+    "behavior": "Hide event indicators and skip the dashboard query without event.dashboard.read; do not block the command screen on the disabled query."
+  },
+  "browser": {
+    "canonicalPdv": "12/12 existing operational checks passed",
+    "legacy": "2/2; event.menu.manage and event.dashboard.read passed",
+    "permissionStages": {
+      "disabled": "PASS; dashboard denied, both screens usable and event KPI panels hidden",
+      "enabled": "PASS; KPI projection matches owner on event screen",
+      "revoked": "PASS; KPIs hidden on event and command screens; command.read remains available"
+    },
+    "mockedAuthOrPermissionEndpoints": "NO"
+  },
+  "cumulativeUiStages": {
+    "required": 84,
+    "pass": 48,
+    "fail": 0,
+    "blocked": 0,
+    "notRun": 36
+  },
+  "failedAttempts": [
+    "event-dashboard-ui-evidence.json: invalid Comandas heading selector; harness failure",
+    "event-dashboard-fixed-evidence.json: invalid KPI CSS selector; harness failure",
+    "event-dashboard-command-screen-evidence.json: reproduced ComandasPage stuck on Loading while permission-gated dashboard query was disabled; product regression fixed in final commit"
+  ],
+  "productionAccess": "NO",
+  "sharedDevWrites": "NO during QA run",
+  "evidenceArtifacts": {
+    "beforeFixScreenshots": [
+      "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-unauthorized-kpis-before-fix.png",
+      "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-command-screen-loading-before-fix.png"
+    ],
+    "beforeFixDomCaptures": [
+      "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-unauthorized-kpis-before-fix.md",
+      "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-command-screen-loading-before-fix.md"
+    ]
+  }
+}
