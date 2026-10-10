@@ -1181,6 +1181,7 @@ try {
   const browserEnv = {
     ...process.env,
     RBAC_QA_BASE_URL: `http://127.0.0.1:${frontendPort}`,
+    RBAC_QA_OUTPUT_DIR: path.join(repoRoot, 'artifacts/rbac-permissions-ui-2026-10-10/live-results'),
     RBAC_QA_OWNER_EMAIL: owner.email,
     RBAC_QA_OWNER_PASSWORD: ownerPassword,
     RBAC_QA_STAFF_EMAIL: staff.email,

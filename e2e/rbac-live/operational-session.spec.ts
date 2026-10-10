@@ -11,6 +11,10 @@ const permission = 'command.read';
 
 async function login(page: Page, email: string, password: string) {
   await page.goto('/login');
+  await expect(page.getByLabel('E-mail')).toBeVisible({ timeout: 15_000 }).catch(async (error) => {
+    const body = await page.locator('body').innerText().catch(() => 'unavailable');
+    throw new Error(`Login page did not render at ${page.url()}: ${body.slice(0, 500)}; ${error.message}`);
+  });
   await page.getByLabel('E-mail').fill(email);
   await page.getByLabel('Senha').fill(password);
   await page.getByRole('button', { name: 'Entrar' }).click();
