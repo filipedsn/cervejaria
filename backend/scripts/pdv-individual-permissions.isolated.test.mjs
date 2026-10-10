@@ -1165,7 +1165,7 @@ const frontendPort = 53000 + (process.pid % 1000);
 const frontendRoot = path.join(repoRoot, 'frontend');
 const frontend = spawn(process.execPath, [path.join(frontendRoot, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(frontendPort), '--strictPort'], {
   cwd: frontendRoot,
-  env: { ...process.env, VITE_API_PORT: String(apiPort) },
+  env: { ...process.env, VITE_API_URL: '', VITE_API_PORT: String(apiPort) },
   stdio: 'inherit',
   windowsHide: true,
 });
@@ -1181,7 +1181,7 @@ try {
   const browserEnv = {
     ...process.env,
     RBAC_QA_BASE_URL: `http://127.0.0.1:${frontendPort}`,
-    RBAC_QA_OUTPUT_DIR: path.join(repoRoot, 'artifacts/rbac-permissions-ui-2026-10-10/live-results'),
+    RBAC_QA_OUTPUT_DIR: path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results'),
     RBAC_QA_OWNER_EMAIL: owner.email,
     RBAC_QA_OWNER_PASSWORD: ownerPassword,
     RBAC_QA_STAFF_EMAIL: staff.email,

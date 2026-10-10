@@ -10,6 +10,10 @@ const permissionApi = `/api/usuarios/${process.env.RBAC_QA_STAFF_ID}/permissoes-
 const permission = 'command.read';
 
 async function login(page: Page, email: string, password: string) {
+  page.on('requestfailed', (request) => console.error(`RBAC_BROWSER_REQUEST_FAILED ${request.method()} ${new URL(request.url()).pathname}: ${request.failure()?.errorText}`));
+  page.on('response', (response) => {
+    if (new URL(response.url()).pathname.startsWith('/api/')) console.log(`RBAC_BROWSER_API ${response.status()} ${new URL(response.url()).pathname}`);
+  });
   await page.goto('/login');
   await expect(page.getByLabel('E-mail')).toBeVisible({ timeout: 15_000 }).catch(async (error) => {
     const body = await page.locator('body').innerText().catch(() => 'unavailable');
