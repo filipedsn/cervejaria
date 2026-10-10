@@ -29,7 +29,9 @@ async function logoutFromUi(page: Page) {
   const logout = page.getByRole('button', { name: 'Sair da conta' });
   await expect(logout).toBeVisible();
   await logout.evaluate((button) => (button as HTMLButtonElement).click());
-  await expect.poll(async () => (await page.request.get('/api/auth/me')).status()).toBe(401);
+  await expect.poll(async () => (await page.context().cookies()).some((cookie) => cookie.name === 'token')).toBe(false);
+  const anonymousStatus = await page.evaluate(async () => (await fetch('/api/auth/me')).status);
+  expect(anonymousStatus).toBe(401);
 }
 
 async function loginForm(page: Page, email: string, password: string) {
