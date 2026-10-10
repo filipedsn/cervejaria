@@ -72,7 +72,7 @@ async function setPermissions(context: BrowserContext, permissions: string[]) {
   expect(response.status(), await response.text()).toBe(200);
 }
 
-test('real login, live grant and revoke, same-user sessions, tenant switch, and mobile layouts', async ({ browser, baseURL }) => {
+test('real login, live grant and revoke, same-user sessions, tenant switch, and mobile layouts', async ({ browser, baseURL }, testInfo) => {
   const ownerContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const owner = await ownerContext.newPage();
   await login(owner, ownerEmail, ownerPassword, ownerCookie);
@@ -117,6 +117,7 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
   const uiErrors: string[] = [];
   staff.on('pageerror', (error) => uiErrors.push(error.message));
   staff.on('console', (message) => { if (message.type() === 'error') uiErrors.push(message.text()); });
+  await staffContext.tracing.start({ screenshots: true, snapshots: true, sources: true });
   await setPermissions(ownerContext, []);
   const revokedApi = await staffContext.request.get('/api/operacao/comandas');
   expect([401, 403]).toContain(revokedApi.status());
@@ -125,6 +126,10 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
   await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/caixa');
   await expect.poll(() => uiErrors.some((message) => message.includes('esperadoDinheiro'))).toBe(true);
   console.log('RBAC_LIVE_PRODUCT_DEFECT key=command.read; fallback=/operacao/caixa; error=esperadoDinheiro; result=FAIL reproduced');
+  await testInfo.attach('command-read-revocation-cash-fallback.png', { body: await staff.screenshot({ fullPage: true }), contentType: 'image/png' });
+  const defectTrace = testInfo.outputPath('command-read-revocation-trace.zip');
+  await staffContext.tracing.stop({ path: defectTrace });
+  await testInfo.attach('command-read-revocation-trace.zip', { path: defectTrace, contentType: 'application/zip' });
   expect((await staffContext.cookies()).some((cookie) => cookie.httpOnly)).toBe(true);
 
   await setPermissions(ownerContext, [permission]);
