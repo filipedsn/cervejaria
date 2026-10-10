@@ -453,3 +453,64 @@ test('reports.read blocks, opens the executive report, and revokes in the live s
   console.log('RBAC_LIVE_REGRESSION key=reports.read; disabled=route-and-api-denied; enabled=executive-report-and-csv-readable; revoked=same-session-route-report-and-csv-denied; result=PASS');
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });
+
+test('clients.manage blocks, creates a client through the UI, then denies after same-session revoke', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const key = `RBAC clients ${crypto.randomUUID()}`;
+  const phone = `119${Math.floor(10000000 + Math.random() * 89999999)}`;
+  const payload = { nome: key, telefone: phone };
+  const query = encodeURIComponent(key);
+  const listUrl = `/api/clientes?q=${query}`;
+
+  await staff.goto('/clientes/novo');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/clientes/novo');
+  await expect(staff.getByRole('heading', { name: 'Novo cliente' })).toHaveCount(0);
+  const deniedCreate = await staffContext.request.post('/api/clientes', { data: payload });
+  expect([401, 403]).toContain(deniedCreate.status());
+  const afterDenied = await ownerContext.request.get(listUrl);
+  expect(afterDenied.status()).toBe(200);
+  expect((await afterDenied.json()).items).toHaveLength(0);
+
+  await setPermissions(ownerContext, ['clients.manage']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['clients.manage']);
+  await staff.goto('/clientes/novo');
+  await expect(staff.getByRole('heading', { name: 'Novo cliente' })).toBeVisible();
+  await staff.locator('input').nth(0).fill(key);
+  await staff.getByPlaceholder('(11) 9 9999-9999').fill(phone);
+  const createResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === '/api/clientes' && response.request().method() === 'POST');
+  await staff.getByRole('button', { name: 'Cadastrar cliente' }).click();
+  const createResponse = await createResponsePromise;
+  const created = await createResponse.json();
+  expect(createResponse.status(), JSON.stringify(created)).toBe(201);
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/clientes');
+  const persisted = await ownerContext.request.get(listUrl);
+  expect(persisted.status(), await persisted.text()).toBe(200);
+  const matches = (await persisted.json()).items.filter((item: { nome: string; telefone: string }) => item.nome === key);
+  expect(matches).toHaveLength(1);
+  expect(created.id).toBe(matches[0].id);
+  expect(matches[0].telefone.replace(/\D/g, '')).toBe(phone);
+
+  await setPermissions(ownerContext, []);
+  await staff.reload();
+  await staff.goto('/clientes/novo');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/clientes/novo');
+  await expect(staff.getByRole('heading', { name: 'Novo cliente' })).toHaveCount(0);
+  const revokedCreate = await staffContext.request.post('/api/clientes', { data: { ...payload, nome: `${key} revoked`, telefone: `119${Math.floor(10000000 + Math.random() * 89999999)}` } });
+  expect([401, 403]).toContain(revokedCreate.status());
+  const afterRevoke = await ownerContext.request.get(listUrl);
+  const finalMatches = (await afterRevoke.json()).items.filter((item: { nome: string }) => item.nome === key);
+  expect(finalMatches).toHaveLength(1);
+  console.log('RBAC_LIVE_REGRESSION key=clients.manage; disabled=route-and-api-denied-no-write; enabled=real-ui-create-persisted; revoked=same-session-route-and-api-denied-no-write; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
