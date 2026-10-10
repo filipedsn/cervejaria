@@ -1241,6 +1241,10 @@ test('event.taps.operate mounts a chope only while the permission is granted', a
   await eventCard.getByRole('button', { name: 'Comandas', exact: true }).click();
   await expect.poll(() => new URL(staff.url()).pathname).toBe('/comandas');
   await expect(staff.getByRole('heading', { name: 'Comandas', exact: true })).toBeVisible();
+  const eventCashPanel = staff.getByRole('region', { name: 'Caixa do evento' });
+  await expect(eventCashPanel.getByText('Gaveta', { exact: true })).toHaveCount(0);
+  await expect(eventCashPanel.getByText('Recebido', { exact: true })).toHaveCount(0);
+  await expect(eventCashPanel.getByRole('button', { name: 'Conferir e fechar caixa' })).toHaveCount(0);
   const tapsTrigger = staff.getByRole('button', { name: /Taps do evento/ });
   await expect(tapsTrigger).toBeVisible();
   expect(staffPageErrors).toEqual([]);
