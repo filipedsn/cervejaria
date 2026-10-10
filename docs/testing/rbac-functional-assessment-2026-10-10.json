@@ -154,5 +154,247 @@
     "disposableResourcesRemoved": true,
     "productionAccess": "NO",
     "sharedDevAccess": "NO"
+  },
+  "finalContinuation": {
+    "testCandidateCommit": "e9c59938b0721b8d07a795eb4927951dfe7fbfa6",
+    "testedTree": "71e7024b19c2c444d9f5d45f585a1e6da438ca20",
+    "fixCommit": "4017a9ddc7d934b81c411f3808121fb681a520fa",
+    "runnerResult": "PASS",
+    "productResult": "PASS for corrected cash fallback and live-tested flows; full 28-key UI certification INCOMPLETE",
+    "snapshotIntegrity": {
+      "result": "PASS",
+      "commit": "e9c59938b0721b8d07a795eb4927951dfe7fbfa6",
+      "tree": "71e7024b19c2c444d9f5d45f585a1e6da438ca20",
+      "materializedTree": "71e7024b19c2c444d9f5d45f585a1e6da438ca20",
+      "trackedBlobs": 1448
+    },
+    "moduleAudit": {
+      "projectModules": 198,
+      "nonSnapshotWorkspaceImports": 0,
+      "externalDependencyModules": 1531,
+      "pathListSha256": "28951682ce8e5330791d773dbc324b477186f3720420e1729383e4a13bd6b89d"
+    },
+    "builds": {
+      "backend": "PASS",
+      "frontend": "PASS"
+    },
+    "authenticatedDisposableApiSuite": "PASS; representative enabled/denied API behavior for 28 keys, not 84 UI stages",
+    "playwright": {
+      "result": "PASS 1/1",
+      "grantRevokeUiKeys": [
+        "command.read",
+        "cash.values.read",
+        "dashboard.read"
+      ],
+      "viewportWidths": [
+        390,
+        768
+      ],
+      "simultaneousStaffSessions": "PASS",
+      "sameBrowserTenantSwitch": "PASS",
+      "syntheticQueryError": "PASS; only 503 response intercepted"
+    },
+    "browserPermissionStages": {
+      "cash.open": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "cash.close": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "cash.values.read": {
+        "disabled": "PASS",
+        "enabled": "PASS",
+        "revoked": "PASS"
+      },
+      "cash.movement.write": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "payment.receive": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "debt.receive": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "command.close": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "discount.apply": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "command.item.cancel": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "command.item.cancel.delivered": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "command.cancel": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "kitchen.cancel": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "sale.refund": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "dashboard.read": {
+        "disabled": "PASS",
+        "enabled": "PASS",
+        "revoked": "PASS"
+      },
+      "event.dashboard.read": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "reports.read": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "command.operate": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "command.read": {
+        "disabled": "PASS",
+        "enabled": "PASS",
+        "revoked": "PASS"
+      },
+      "kitchen.read": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "kitchen.operate": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "inventory.read": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "inventory.adjust": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "catalog.manage": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "catalog.shift.manage": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "clients.manage": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "taps.operate": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "agenda.manage": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      },
+      "event.menu.manage": {
+        "disabled": "NOT RUN",
+        "enabled": "NOT RUN",
+        "revoked": "NOT RUN"
+      }
+    },
+    "unrunBrowserPermissions": [
+      "cash.open",
+      "cash.close",
+      "cash.movement.write",
+      "payment.receive",
+      "debt.receive",
+      "command.close",
+      "discount.apply",
+      "command.item.cancel",
+      "command.item.cancel.delivered",
+      "command.cancel",
+      "kitchen.cancel",
+      "sale.refund",
+      "event.dashboard.read",
+      "reports.read",
+      "command.operate",
+      "kitchen.read",
+      "kitchen.operate",
+      "inventory.read",
+      "inventory.adjust",
+      "catalog.manage",
+      "catalog.shift.manage",
+      "clients.manage",
+      "taps.operate",
+      "agenda.manage",
+      "event.menu.manage"
+    ],
+    "workspace": {
+      "checkoutUnchanged": true,
+      "externalChangesObservedDuringFinalRun": false,
+      "prodAccess": "NO",
+      "sharedDevWrites": "NO",
+      "disposablePostgresRemoved": true
+    },
+    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/rbac-final-evidence.json",
+    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/rbac-final-console.log",
+    "modifiedFiles": [
+      "frontend/src/components/operacao/PainelCaixaOperacao.tsx",
+      "backend/scripts/pdv-individual-permissions.isolated.test.mjs",
+      "e2e/rbac-live/operational-session.spec.ts",
+      "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+      "docs/testing/rbac-functional-assessment-2026-10-10.md",
+      "docs/testing/rbac-functional-assessment-2026-10-10.json",
+      "docs/architecture/pdv-individual-permissions-action-matrix.md",
+      "artifacts/rbac-permissions-ui-2026-10-10/rbac-final-evidence.json",
+      "artifacts/rbac-permissions-ui-2026-10-10/rbac-final-console.log"
+    ],
+    "pending": [
+      "25 remaining live-browser permission keys",
+      "full LEGACY and CANONICAL_PDV matrix",
+      "global admin contract",
+      "alternate UI endpoints and setting combinations"
+    ],
+    "harnessResult": "PASS",
+    "executedFileBlobs": {
+      "frontend/src/components/operacao/PainelCaixaOperacao.tsx": "1d1fc6530e8588a8ecb2aba77d3c78ed40240f12",
+      "backend/scripts/pdv-individual-permissions.isolated.test.mjs": "a6c4bc4f84cf4ac1e48d320df9fd8f40ee992b50",
+      "e2e/rbac-live/operational-session.spec.ts": "13cb35c3d356d8d8f67b79a2ebff1b43e11d4bf8",
+      "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs": "76534dc85318542313f1f788a173c2f3b0af9e1b"
+    }
   }
 }

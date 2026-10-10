@@ -323,9 +323,24 @@ assert.equal(restrictedCashBody.sessao.ocorrencia.nome, occurrence.nome);
 assert.equal(restrictedCashBody.sessao.diaOperacional, permissionOperationalDay.toISOString().slice(0, 10));
 assert.notEqual(restrictedCashBody.sessao.ocorrencia.nome, 'Sem ocorrência');
 assert.equal(restrictedCashBody.valoresRestritos, true);
+assert.equal(Object.hasOwn(restrictedCashBody.sessao, 'gaveta'), false, 'sanitized cash contract omits the drawer object rather than zeroing its values');
+assert.equal(Object.hasOwn(restrictedCashBody.sessao, 'esperado'), false, 'sanitized cash contract omits expected payment totals');
+assert.equal(Object.hasOwn(restrictedCashBody.sessao, 'movimentos'), false, 'sanitized cash contract omits movement details');
 for (const restrictedField of ['trocoInicial', 'totalVendas', 'movimentos', '123.45']) {
 assert.equal(restrictedCash.body.includes(restrictedField), false, `restricted cash response leaked ${restrictedField}`);
 }
+const grantCashValueRead = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['cash.open', 'cash.values.read'] } });
+assert.equal(grantCashValueRead.statusCode, 200, grantCashValueRead.body);
+const fullCashRead = await app.inject({ method: 'GET', url: `/api/operacao/caixa?pontoVendaId=${point.id}`, headers: authHeaders(staffCookie) });
+assert.equal(fullCashRead.statusCode, 200, fullCashRead.body);
+const fullCashReadBody = JSON.parse(fullCashRead.body);
+assert.equal(fullCashReadBody.valoresRestritos, undefined);
+assert.equal(Number(fullCashReadBody.sessao.gaveta.esperadoDinheiro), 123.45, 'cash.values.read returns the actual drawer value');
+const revokeCashValueRead = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['cash.open'] } });
+assert.equal(revokeCashValueRead.statusCode, 200, revokeCashValueRead.body);
+const revokedCashRead = await app.inject({ method: 'GET', url: `/api/operacao/caixa?pontoVendaId=${point.id}`, headers: authHeaders(staffCookie) });
+assert.equal(revokedCashRead.statusCode, 200, revokedCashRead.body);
+assert.equal(JSON.parse(revokedCashRead.body).valoresRestritos, true, 'same authenticated session receives sanitized cash data after revocation');
 const deniedClose = await app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: authHeaders(staffCookie), payload: { pontoVendaId: point.id, contadoDinheiro: 0, contadoPix: 0, contadoCartaoDebito: 0, contadoCartaoCredito: 0 } });
 assert.equal(deniedClose.statusCode, 403, deniedClose.body);
 assert.equal((await prisma.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: cashSession.id }, select: { status: true, fechadoEm: true } })).fechadoEm, null, 'denied close leaves session open');

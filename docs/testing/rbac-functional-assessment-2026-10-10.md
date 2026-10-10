@@ -124,3 +124,52 @@ The Playwright harness test passed 1/1 while explicitly logging the product FAIL
 Expected behavior is a usable fallback cash page with sensitive totals omitted. Observed behavior is a frontend crash while reading `esperadoDinheiro` from the sanitized response. Impact: staff without `command.read` cannot use the fallback cash screen; the revoked route flow is interrupted. The issue was attached to TAP-76 as internal comment `f7bc162e-2364-4b2b-92c5-f1ecbccf62ee`; TAP-76 stays In Progress. TAP-78 and TAP-82 stay open and unchanged. No duplicate Plane item was created.
 
 The browser log, Playwright result JSON and revocation screenshot are under `artifacts/rbac-permissions-ui-2026-10-10/live-results/`. No valid trace was produced. The API runner removed its disposable container. PROD and shared DEV were not accessed. `CANONICAL_PDV`/`LEGACY`, all 28 UI actions, global-admin behavior, alternative routes and full business-setting combinations remain unverified live; do not describe this result as 100% certification.
+
+## Final continuation after cash fallback correction (10 Oct 2026)
+
+The product correction is in candidate commit `4017a9ddc7d934b81c411f3808121fb681a520fa` (parent `4e5a8eb6e05b30cd017d83fbe63fc0a3a50dd176`). The defect was the sanitized `/api/operacao/caixa` projection omitting `sessao.gaveta` (and other financial objects), while `PainelCaixaOperacao` dereferenced `esperadoDinheiro`. The consumer now renders a restricted state without financial values, distinguishes loading and request error, and does not substitute zero for hidden values. Cash close is unavailable unless both values and close authorization are present.
+
+The exact test candidate was `e9c59938b0721b8d07a795eb4927951dfe7fbfa6`, tree `71e7024b19c2c444d9f5d45f585a1e6da438ca20`, parented on the fix commit. The focused immutable snapshot runner passed with exit code 0. It materialized 1,448 tracked blobs; selected and materialized trees matched. The module audit found 198 snapshot project modules, zero mutable-workspace imports, and 1,531 external dependency modules. Backend/frontend builds, activation preflight, authenticated Fastify/PostgreSQL suite, and Playwright (1/1) passed. The disposable PostgreSQL container was removed. Checkout tree was unchanged before/after; no external workspace changes were observed during this run. Full receipt: [`rbac-final-evidence.json`](../../artifacts/rbac-permissions-ui-2026-10-10/rbac-final-evidence.json); console: [`rbac-final-console.log`](../../artifacts/rbac-permissions-ui-2026-10-10/rbac-final-console.log).
+
+### Functional matrix status by permission
+
+`API representative` means the authenticated disposable API suite exercised representative allowed and denied behavior for that key; it does not imply every alternative endpoint or all three stages through the UI. `UI D/E/R` are the disabled, enabled, and revoked stages in the live browser. API evidence and UI evidence are reported separately.
+
+| Permission | API representative A/D | UI D | UI E | UI R | Live browser evidence |
+|---|---|---|---|---|---|
+| `cash.open` | PASS | NOT RUN | NOT RUN | NOT RUN | Open session API only; no UI action stage |
+| `cash.close` | PASS | NOT RUN | NOT RUN | NOT RUN | Close permission dependency covered by API suite; no UI action stage |
+| `cash.values.read` | PASS | PASS | PASS | PASS | Real login; sanitized projection without values; grant reveals `gaveta.esperadoDinheiro`; revoke restores sanitized usable UI |
+| `cash.movement.write` | PASS | NOT RUN | NOT RUN | NOT RUN | No live UI movement action |
+| `payment.receive` | PASS | NOT RUN | NOT RUN | NOT RUN | Payment dependencies covered by API suite; no live UI payment |
+| `debt.receive` | PASS | NOT RUN | NOT RUN | NOT RUN | No live UI receipt action |
+| `command.close` | PASS | NOT RUN | NOT RUN | NOT RUN | Close/payment dependency covered by API suite; no live UI close |
+| `discount.apply` | PASS | NOT RUN | NOT RUN | NOT RUN | No live UI discount action |
+| `command.item.cancel` | PASS | NOT RUN | NOT RUN | NOT RUN | No live UI cancel action |
+| `command.item.cancel.delivered` | PASS | NOT RUN | NOT RUN | NOT RUN | TAP-82 API fixture only; no live UI action |
+| `command.cancel` | PASS | NOT RUN | NOT RUN | NOT RUN | No live UI full cancel action |
+| `kitchen.cancel` | PASS | NOT RUN | NOT RUN | NOT RUN | Kitchen/refund dependency covered by API suite; no live UI cancel |
+| `sale.refund` | PASS | NOT RUN | NOT RUN | NOT RUN | Refund dependency covered by API suite; no live UI refund |
+| `dashboard.read` | PASS | PASS | PASS | PASS | Real dashboard route/API with this key alone; command API remains denied; revoke removes route access |
+| `event.dashboard.read` | PASS | NOT RUN | NOT RUN | NOT RUN | Event-specific live fixture/action not run |
+| `reports.read` | PASS | NOT RUN | NOT RUN | NOT RUN | Report screen and alternate exports not run live |
+| `command.operate` | PASS | NOT RUN | NOT RUN | NOT RUN | No live command creation/edit action |
+| `command.read` | PASS | PASS | PASS | PASS | Real command API denial/grant/revocation in two sessions; cash fallback remains usable with financial values sanitized |
+| `kitchen.read` | PASS | NOT RUN | NOT RUN | NOT RUN | Live kitchen module fixture was not enabled |
+| `kitchen.operate` | PASS | NOT RUN | NOT RUN | NOT RUN | Live kitchen module fixture was not enabled |
+| `inventory.read` | PASS | NOT RUN | NOT RUN | NOT RUN | Live inventory module fixture was not enabled |
+| `inventory.adjust` | PASS | NOT RUN | NOT RUN | NOT RUN | Live inventory module fixture was not enabled |
+| `catalog.manage` | PASS | NOT RUN | NOT RUN | NOT RUN | No live catalog UI action |
+| `catalog.shift.manage` | PASS | NOT RUN | NOT RUN | NOT RUN | No live shift-menu UI action |
+| `clients.manage` | PASS | NOT RUN | NOT RUN | NOT RUN | No live client CRUD UI action |
+| `taps.operate` | PASS | NOT RUN | NOT RUN | NOT RUN | Tap module live fixture was not enabled |
+| `agenda.manage` | PASS | NOT RUN | NOT RUN | NOT RUN | No live agenda UI action |
+| `event.menu.manage` | PASS | NOT RUN | NOT RUN | NOT RUN | No live event-menu UI action |
+
+The Playwright flow also checked two simultaneous staff sessions, viewport widths 390 and 768, same-browser tenant switch after real logout/login, command/cash permission independence, and a synthetic 503 query-error state. Only the query-error response was intercepted; authentication, grants, revokes and successful operational reads used the real API. No production or shared DEV access occurred. No evidence supports matching the synthetic tenant's flags to a real customer configuration. The backend API matrix is representative; 25 of 28 keys still lack live browser action stages, and the requested full permission/configuration matrix is therefore **incomplete**.
+
+### Receipt and changed files
+
+Product result: **PASS for the corrected cash fallback and the three browser-tested keys; not a full 28-key certification**. Harness result: **PASS**. Snapshot integrity: **PASS**. External changes observed: **none during the final run**; earlier dirty/staged work in the shared checkout was preserved. PROD access: **NO**. Shared DEV writes: **NO**. Disposable service cleanup: **PASS**.
+
+Files changed by this task: `frontend/src/components/operacao/PainelCaixaOperacao.tsx`; `backend/scripts/pdv-individual-permissions.isolated.test.mjs`; `e2e/rbac-live/operational-session.spec.ts`; `backend/scripts/run-pdv-unico-git-snapshot-qa.mjs`; `docs/testing/rbac-functional-assessment-2026-10-10.md`; `docs/testing/rbac-functional-assessment-2026-10-10.json`; `docs/architecture/pdv-individual-permissions-action-matrix.md`; and `artifacts/rbac-permissions-ui-2026-10-10/rbac-final-evidence.json` plus its console log. Runner-owned temporary snapshots and disposable services were removed. The remaining 25 browser cases, full `CANONICAL_PDV`/`LEGACY` permutations, global-admin contract, and alternate UI endpoints are pending; they are not treated as passed or product failures.
