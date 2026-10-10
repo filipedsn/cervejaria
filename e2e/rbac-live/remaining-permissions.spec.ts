@@ -160,13 +160,18 @@ test('debt.receive disabled, partial receipt, and same-session revoke', async ({
   await expect(staff.getByRole('heading', { name: 'Contas pendentes' })).toBeVisible();
   const account = staff.locator('article').filter({ hasText: name }).first();
   await expect(account).toBeVisible();
-  await account.getByRole('button', { name: /Ver detalhes de/ }).click();
+  const receiveButton = account.getByRole('button', { name: 'Receber pagamento' });
+  if (await receiveButton.count() === 0) await account.getByRole('button', { name: /Ver detalhes de/ }).click();
   await account.getByRole('button', { name: 'Receber pagamento' }).click();
   const dialog = staff.getByRole('dialog');
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: /Revisar recebimento/ }).click();
   const receive = dialog.getByRole('button', { name: /Registrar recebimento/ });
   await receive.click();
+  await expect.poll(async () => {
+    const response = await ownerContext.request.get('/api/operacao/contas-pendentes');
+    return (await response.json()).find((entry: { id: string }) => entry.id === debtId)?.recebido;
+  }).toBe(5);
   const afterGrantList = await ownerContext.request.get('/api/operacao/contas-pendentes');
   const afterGrant = (await afterGrantList.json()).find((entry: { id: string }) => entry.id === debtId);
   expect(afterGrant.recebido).toBe(5);
@@ -247,9 +252,10 @@ test('discount.apply disabled, enabled and revoked while close and payment remai
   await expect(dialogTotalWithDiscount(staff)).toContainText(/7,50/);
   await dialog.getByRole('button', { name: /Revisar pagamento/ }).click();
   await dialog.getByRole('button', { name: /Efetuar pagamento/ }).click();
-  const afterGrant = await command(ownerContext, allowedId);
-  expect(Number(afterGrant.desconto)).toBe(2.5);
-  expect(afterGrant.status).toBe('FECHADA');
+  await expect.poll(async () => (await command(ownerContext, allowedId)).status).toBe('FECHADA');
+  const persisted = await command(ownerContext, allowedId);
+  expect(Number(persisted.desconto)).toBe(2.5);
+  expect(persisted.status).toBe('FECHADA');
   await stage(key, 'enabled', 'real UI applied R$2.50 discount and closed with exact discounted payment', testInfo);
   await setPermissions(ownerContext, deps);
   await staff.reload();
@@ -326,6 +332,7 @@ test('command.item.cancel.delivered requires common permission and revokes durin
   const dialog = staff.getByRole('dialog');
   await expect(dialog.getByRole('heading', { name: 'Cancelar item já entregue' })).toBeVisible();
   await dialog.getByLabel('Motivo obrigatório').fill(payload.motivo);
+  await dialog.getByLabel('Quantidade a cancelar').fill('1');
   await dialog.getByRole('button', { name: 'Confirmar cancelamento' }).click();
   await expect.poll(async () => (await command(ownerContext, allowedId)).pedidos[0].itens[0].quantidade).toBe(1);
   const afterGrant = await command(ownerContext, allowedId);
@@ -379,7 +386,7 @@ test('command.cancel disabled, enabled and revoked for eligible empty commands',
 test('kitchen.cancel requires sale.refund and revokes while the session stays logged in', async ({ browser }, testInfo) => {
   const key = 'kitchen.cancel';
   const orderId = process.env.RBAC_QA_KITCHEN_CANCEL_ORDER_ID!;
-  const commandLabel = process.env.RBAC_QA_KITCHEN_CANCEL_COMMAND_LABEL!;
+  const itemName = process.env.RBAC_QA_KITCHEN_CANCEL_ITEM_NAME!;
   const deps = ['kitchen.read', 'sale.refund'];
   const { ownerContext, staffContext, staff } = await contexts(browser, deps);
   const queueUrl = '/api/operacao/cozinha';
@@ -390,14 +397,14 @@ test('kitchen.cancel requires sale.refund and revokes while the session stays lo
   expect(deniedQueue.status()).toBe(200);
   expect((await deniedQueue.json()).find((order: { id: string }) => order.id === orderId).status).toBe('RECEBIDO');
   await staff.goto('/operacao/cozinha');
-  const card = staff.locator('article:visible').filter({ hasText: commandLabel }).first();
+  const card = staff.locator('article:visible').filter({ hasText: itemName }).first();
   await expect(card).toBeVisible();
   await expect(card.getByRole('button', { name: 'Cancelar pedido' })).toHaveCount(0);
   await stage(key, 'disabled', 'sale.refund retained; queue is readable but cancel control and status transition are denied', testInfo);
   await setPermissions(ownerContext, [...deps, key]);
   await staff.reload();
   await staff.goto('/operacao/cozinha');
-  const allowedCard = staff.locator('article:visible').filter({ hasText: commandLabel }).first();
+  const allowedCard = staff.locator('article:visible').filter({ hasText: itemName }).first();
   await allowedCard.getByRole('button', { name: 'Cancelar pedido' }).click();
   const dialog = staff.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Solicitar cancelamento' }).click();
@@ -406,9 +413,9 @@ test('kitchen.cancel requires sale.refund and revokes while the session stays lo
   await setPermissions(ownerContext, deps);
   await staff.reload();
   const revokedOrderId = process.env.RBAC_QA_KITCHEN_CANCEL_REVOKE_ORDER_ID!;
-  const revokedLabel = process.env.RBAC_QA_KITCHEN_CANCEL_REVOKE_COMMAND_LABEL!;
+  const revokedItemName = process.env.RBAC_QA_KITCHEN_CANCEL_REVOKE_ITEM_NAME!;
   await staff.goto('/operacao/cozinha');
-  const revokedCard = staff.locator('article:visible').filter({ hasText: revokedLabel }).first();
+  const revokedCard = staff.locator('article:visible').filter({ hasText: revokedItemName }).first();
   await expect(revokedCard).toBeVisible();
   await expect(revokedCard.getByRole('button', { name: 'Cancelar pedido' })).toHaveCount(0);
   const revoked = await staffContext.request.patch(`/api/operacao/cozinha/${revokedOrderId}/status`, { data: { status: 'CANCELAMENTO_PENDENTE' } });
@@ -421,7 +428,7 @@ test('kitchen.cancel requires sale.refund and revokes while the session stays lo
 test('sale.refund requires kitchen.cancel and revokes same-session confirmation', async ({ browser }, testInfo) => {
   const key = 'sale.refund';
   const orderId = process.env.RBAC_QA_REFUND_ORDER_ID!;
-  const commandLabel = process.env.RBAC_QA_REFUND_COMMAND_LABEL!;
+  const itemName = process.env.RBAC_QA_REFUND_ITEM_NAME!;
   const deps = ['kitchen.read', 'kitchen.cancel'];
   const { ownerContext, staffContext, staff } = await contexts(browser, deps);
   const queueUrl = '/api/operacao/cozinha';
@@ -432,14 +439,14 @@ test('sale.refund requires kitchen.cancel and revokes same-session confirmation'
   const denied = await staffContext.request.patch(statusUrl, { data: { status: 'CANCELADO' } });
   await assertDenied(denied);
   await staff.goto('/operacao/cozinha');
-  const card = staff.locator('article:visible').filter({ hasText: commandLabel }).first();
+  const card = staff.locator('article:visible').filter({ hasText: itemName }).first();
   await expect(card).toBeVisible();
   await expect(card.getByRole('button', { name: 'Confirmar cancelamento' })).toHaveCount(0);
   await stage(key, 'disabled', 'kitchen.cancel retained; sale/refund confirmation denied and pending order preserved', testInfo);
   await setPermissions(ownerContext, [...deps, key]);
   await staff.reload();
   await staff.goto('/operacao/cozinha');
-  const allowedCard = staff.locator('article:visible').filter({ hasText: commandLabel }).first();
+  const allowedCard = staff.locator('article:visible').filter({ hasText: itemName }).first();
   await allowedCard.getByRole('button', { name: 'Confirmar cancelamento' }).click();
   await expect.poll(async () => (await (await staffContext.request.get(queueUrl)).json()).find((order: { id: string }) => order.id === orderId).status).toBe('CANCELADO');
   const commandId = process.env.RBAC_QA_REFUND_COMMAND_ID!;
@@ -450,7 +457,7 @@ test('sale.refund requires kitchen.cancel and revokes same-session confirmation'
   await staff.reload();
   const revokedOrderId = process.env.RBAC_QA_REFUND_REVOKE_ORDER_ID!;
   await staff.goto('/operacao/cozinha');
-  const revokedCard = staff.locator('article:visible').filter({ hasText: process.env.RBAC_QA_REFUND_REVOKE_COMMAND_LABEL! }).first();
+  const revokedCard = staff.locator('article:visible').filter({ hasText: process.env.RBAC_QA_REFUND_REVOKE_ITEM_NAME! }).first();
   await expect(revokedCard.getByRole('button', { name: 'Confirmar cancelamento' })).toHaveCount(0);
   const revoked = await staffContext.request.patch(`/api/operacao/cozinha/${revokedOrderId}/status`, { data: { status: 'CANCELADO' } });
   await assertDenied(revoked);
