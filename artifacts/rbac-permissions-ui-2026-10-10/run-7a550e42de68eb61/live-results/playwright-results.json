@@ -1,0 +1,601 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Users\\Papai\\Documents\\Desenvolvimento\\Cervejaria\\artifacts\\rbac-permissions-ui-2026-10-10\\git-snapshot-7a550e42de68eb61-odYaZd\\git-source-snapshot\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config=playwright.rbac-live.config.ts"
+    ],
+    "configFile": "C:\\Users\\Papai\\Documents\\Desenvolvimento\\Cervejaria\\artifacts\\rbac-permissions-ui-2026-10-10\\git-snapshot-7a550e42de68eb61-odYaZd\\git-source-snapshot\\playwright.rbac-live.config.ts",
+    "rootDir": "C:/Users/Papai/Documents/Desenvolvimento/Cervejaria/artifacts/rbac-permissions-ui-2026-10-10/git-snapshot-7a550e42de68eb61-odYaZd/git-source-snapshot/e2e/rbac-live",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/Papai/Documents/Desenvolvimento/Cervejaria/artifacts/rbac-permissions-ui-2026-10-10/run-7a550e42de68eb61/live-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "C:/Users/Papai/Documents/Desenvolvimento/Cervejaria/artifacts/rbac-permissions-ui-2026-10-10/git-snapshot-7a550e42de68eb61-odYaZd/git-source-snapshot/e2e/rbac-live",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "C:\\Users\\Papai\\Documents\\Desenvolvimento\\Cervejaria\\artifacts\\rbac-permissions-ui-2026-10-10\\run-7a550e42de68eb61\\live-results\\playwright-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "operational-session.spec.ts",
+      "file": "operational-session.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "real login, live grant and revoke, same-user sessions, tenant switch, and mobile layouts",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 9852,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/auth/me\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/cervejaria/configuracao-operacional\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/onboarding/readiness\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/operacao/contexto\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/public/dev/app-origin\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/auth/me\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/cervejaria/configuracao-operacional\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/operacao/contexto\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/public/dev/app-origin\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/onboarding/readiness\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/operacao/caixa\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/operacao/comandas\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/auth/logout\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/operacao/contexto\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/operacao/comandas\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/auth/login\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/auth/me\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/cervejaria/configuracao-operacional\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/operacao/contexto\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/public/dev/app-origin\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/onboarding/readiness\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/operacao/caixa\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/operacao/comandas\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/operacao/comandas\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/operacao/contas-pendentes\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 200 /api/operacao/agenda/ocorrencias\n"
+                    },
+                    {
+                      "text": "RBAC_BROWSER_API 204 /api/audit/events\n"
+                    },
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=command.read; cash.values.read=absent; fallback=/operacao/caixa; sanitized-state=usable; result=PASS\n"
+                    },
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=dashboard.read; disabled=route-and-api-denied; result=PASS\n"
+                    },
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=dashboard.read; grant-and-revoke-same-session; command.read=absent; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [
+                    {
+                      "text": "RBAC_BROWSER_REQUEST_FAILED POST /api/audit/events: net::ERR_ABORTED\n"
+                    }
+                  ],
+                  "retry": 0,
+                  "startTime": "2026-10-10T15:53:55.986Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "command-read-revocation-cash-fallback.png",
+                      "contentType": "image/png",
+                      "body": "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4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiCSAIAjiCSAIAjiCQA4AgiCQA4gkgCAI4gkgCAI4gkAOAIIgkAOIJIAgCOIJIAgCOIJADgCCIJADiC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"
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-b3286206b5f772961c4d",
+          "file": "operational-session.spec.ts",
+          "line": 88,
+          "column": 5
+        },
+        {
+          "title": "agenda.manage blocks, grants and revokes real agenda writes in the live session",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2053,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=agenda.manage; disabled=route-and-api-denied-no-write; granted=real-ui-write-persisted; revoked=same-session-route-and-api-denied-no-write; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-10T15:54:05.967Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-4d3db8d54eea3e1cb34c",
+          "file": "operational-session.spec.ts",
+          "line": 274,
+          "column": 5
+        },
+        {
+          "title": "command.operate denies, creates through the UI, then denies after same-session revoke",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 5173,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=command.operate; disabled=route-and-api-denied-no-write; granted=real-ui-create-persisted; revoked=same-session-route-and-api-denied-no-write; dependency=command.read; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-10T15:54:08.031Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-c09040ec90fbe661176d",
+          "file": "operational-session.spec.ts",
+          "line": 348,
+          "column": 5
+        },
+        {
+          "title": "reports.read blocks, opens the executive report, and revokes in the live session",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1626,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=reports.read; disabled=route-and-api-denied; enabled=executive-report-and-csv-readable; revoked=same-session-route-report-and-csv-denied; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-10T15:54:13.214Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-96b0de4937f6d6286a10",
+          "file": "operational-session.spec.ts",
+          "line": 418,
+          "column": 5
+        },
+        {
+          "title": "clients.manage blocks, creates a client through the UI, then denies after same-session revoke",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3222,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=clients.manage; disabled=route-and-api-denied-no-write; enabled=real-ui-create-persisted; revoked=same-session-route-and-api-denied-no-write; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-10T15:54:14.849Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-9eaf77ad65d950ee9bda",
+          "file": "operational-session.spec.ts",
+          "line": 461,
+          "column": 5
+        },
+        {
+          "title": "inventory.read blocks, exposes stock read-only, and revokes in the live session",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1600,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=inventory.read; disabled=route-and-api-denied-no-write; enabled=real-ui-stock-read-only; inventory.adjust=absent-and-entry-denied; revoked=same-session-route-and-api-denied-no-write; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-10T15:54:18.081Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-7b75e230c95ec358c589",
+          "file": "operational-session.spec.ts",
+          "line": 522,
+          "column": 5
+        },
+        {
+          "title": "inventory.adjust denies, changes stock through the UI, and denies after same-session revoke",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1969,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=inventory.adjust; dependency=inventory.read retained; disabled=button-hidden-and-api-denied-no-write; enabled=real-ui-entry-persisted; revoked=button-hidden-and-api-denied-with-read-retained; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-10T15:54:19.692Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-d2f3a2b984212f4b129c",
+          "file": "operational-session.spec.ts",
+          "line": 579,
+          "column": 5
+        },
+        {
+          "title": "kitchen.read blocks, shows the real queue read-only, and revokes in the live session",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1470,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=kitchen.read; disabled=route-and-queue-denied; enabled=real-queue-visible; kitchen.operate=absent-button-and-status-denied; revoked=same-session-route-queue-and-status-denied; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-10T15:54:21.670Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-cfa7b6804cb5de3a090d",
+          "file": "operational-session.spec.ts",
+          "line": 648,
+          "column": 5
+        },
+        {
+          "title": "kitchen.operate denies, advances the queue through the UI, and denies after same-session revoke",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1987,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=kitchen.operate; dependency=kitchen.read retained; disabled=button-and-status-api-denied; enabled=real-ui-advance-persisted; revoked=same-session-button-and-status-api-denied-with-read-retained; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-10T15:54:23.150Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-dd84e2e66d833be9ec0b",
+          "file": "operational-session.spec.ts",
+          "line": 695,
+          "column": 5
+        },
+        {
+          "title": "cash.movement.write denies, records exact cash movements through the UI, and denies after revoke",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2110,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=cash.movement.write; disabled=buttons-hidden-and-api-denied-no-write; enabled=real-ui-supply-and-withdrawal-redacted-response-and-exact-persisted-effects; revoked=same-session-buttons-hidden-and-api-denied-no-write; cash.values.read=absent; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-10T15:54:25.149Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-391a5343b49786acf55c",
+          "file": "operational-session.spec.ts",
+          "line": 746,
+          "column": 5
+        },
+        {
+          "title": "catalog.manage blocks, creates an operational product through the UI, and denies after revoke",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1955,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=catalog.manage; disabled=route-and-create-api-denied-no-write; enabled=real-ui-product-create-persisted; revoked=same-session-route-and-create-api-denied-no-write; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-10T15:54:27.270Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-ae8a6c92f2af4a1cce45",
+          "file": "operational-session.spec.ts",
+          "line": 815,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-10T15:53:55.233Z",
+    "duration": 34422.289000000004,
+    "expected": 11,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
