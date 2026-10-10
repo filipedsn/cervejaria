@@ -29,7 +29,7 @@ async function logoutFromUi(page: Page) {
   const logout = page.getByRole('button', { name: 'Sair da conta' });
   await expect(logout).toBeVisible();
   await logout.evaluate((button) => (button as HTMLButtonElement).click());
-  await expect(page).toHaveURL(/\/login$/);
+  await expect.poll(async () => (await page.request.get('/api/auth/me')).status()).toBe(401);
 }
 
 async function loginForm(page: Page, email: string, password: string) {
