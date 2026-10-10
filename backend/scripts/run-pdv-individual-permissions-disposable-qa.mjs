@@ -35,7 +35,7 @@ async function selectPort() {
   for (let candidate = 55439; candidate <= 55449; candidate++) {
     const free = await new Promise((resolve, reject) => {
       const server = net.createServer();
-      server.once('error', (error) => error.code === 'EADDRINUSE' ? resolve(false) : reject(error));
+      server.once('error', (error) => error.code === 'EADDRINUSE' || error.code === 'EACCES' ? resolve(false) : reject(error));
       server.listen(candidate, '127.0.0.1', () => server.close((error) => error ? reject(error) : resolve(true)));
     });
     if (free) return candidate;
