@@ -6,7 +6,7 @@ Atualizado em 2026-10-07. Inventario das operacoes atuais de Cervejaria, Evento 
 
 | Chave | Acao agrupada e dependencias | Aplicacao |
 |---|---|---|
-| cash.open | Abrir sessao; nao concede leitura de valores | Backend + UI |
+| cash.open | Abrir sessao; UI de evento testada com `command.read` como depend?ncia; nao concede leitura de valores | Backend + UI real (EVENTO/LEGACY), concessao/revogacao PASS em `3704167` |
 | cash.values.read | Ler valores, movimentos e fechamento | Backend + UI; sem ela a sessao e sanitizada |
 | cash.movement.write | Suprimento/sangria; corrigir tambem exige cash.values.read | Backend + UI |
 | cash.close | Fechar caixa; tambem exige cash.values.read | Backend + UI |
@@ -167,3 +167,6 @@ A API negava o endpoint sem a chave, mas a tela de eventos continuava renderizan
 
 
 A correcao do painel do evento e da tela de comandas foi publicada em DEV no SHA `adaa6baf2d09adb335069e443913b1d1c558d388`; o SHA servido foi confirmado local e publicamente, com banco pronto e smoke autenticado de owner/atendente QA. Ver recibo `docs/testing/rbac-functional-assessment-2026-10-10.md`.
+
+
+A abertura de caixa de evento foi validada pela interface real em disabled/granted/revoked. O controle respeita `cash.open`; valores permanecem restritos sem `cash.values.read`. Snapshot `370416704b59af56ecc9f88c17560a303583fa69`; recibo detalhado no relat?rio funcional.

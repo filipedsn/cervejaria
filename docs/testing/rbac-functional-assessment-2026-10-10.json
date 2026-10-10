@@ -63,8 +63,8 @@
   "backendBuild": "PASS",
   "frontendBuild": "PASS",
   "canonicalAndLegacy": "PARTIAL; representative compatibility and PDV cases, not all permissions in both modes",
-  "operationalScreensWithLiveApi": "PARTIAL: sixteen keys with all three real-browser stages PASS; 48/84 UI stages total",
-  "productDefectsConfirmed": 3,
+  "operationalScreensWithLiveApi": "PARTIAL: seventeen keys with all three real-browser stages PASS; 51/84 UI stages total",
+  "productDefectsConfirmed": 4,
   "reportedTickets": [
     "TAP-76",
     "TAP-78",
@@ -399,27 +399,27 @@
     }
   },
   "latestContinuation": {
-    "testedCommit": "adaa6baf2d09adb335069e443913b1d1c558d388",
-    "testedTree": "24379774aa0ecab129a414e9e2b9f85fed9e6ad5",
+    "testedCommit": "370416704b59af56ecc9f88c17560a303583fa69",
+    "testedTree": "f26b01511b22b6028382baee1924849194678a47",
     "focusedRunner": "PASS",
-    "snapshotIntegrity": "PASS; 1468 blobs; exact tree materialized",
+    "snapshotIntegrity": "PASS; 1479 blobs; exact tree materialized",
     "moduleAudit": "198 snapshot modules; 0 mutable workspace imports; 1531 external dependency modules",
     "testedFileBlobs": {
-      "frontend/src/components/EventoResumoKpis.tsx": "ad9041281964217a76f1d3735b910a12529227a6",
-      "frontend/src/pages/ComandasPage.tsx": "b932854c1b12f1feeb43a91bb9699def8738f9ef",
-      "e2e/rbac-live/operational-session.spec.ts": "db774c94b0f313b20ad1cbe59bbda0edf4044d10"
+      "frontend/src/components/EventoCaixaPanel.tsx": "6b7ad664d425dd7ab51d3f97482c7844818180c5",
+      "e2e/rbac-live/operational-session.spec.ts": "3fb3961f85a6e76d2328e7afdb30972247a95f3e",
+      "backend/scripts/pdv-individual-permissions.isolated.test.mjs": "053592da7fc14fa9c770b8b5e5de4b0c189d345a"
     },
     "backendBuild": "PASS",
     "frontendBuild": "PASS",
     "activationPreflight": "14/14 PASS",
     "authenticatedDisposableApiSuite": "PASS; representative enabled/denied checks for 28 keys",
-    "playwright": "PASS 12/12 existing CANONICAL_PDV checks plus 2/2 LEGACY event permission checks, covering event and command screens, real Fastify API/frontend and disposable PostgreSQL",
+    "playwright": "PASS 12/12 CANONICAL_PDV checks plus 3/3 LEGACY event.cash.open, event.menu.manage and event.dashboard.read; real Fastify API/frontend and disposable PostgreSQL",
     "uiStageCounts": {
       "required": 84,
-      "pass": 48,
+      "pass": 51,
       "fail": 0,
       "blocked": 0,
-      "notRun": 36
+      "notRun": 33
     },
     "uiKeys": {
       "command.read": {
@@ -512,6 +512,12 @@
         "enabled": "PASS",
         "revoked": "PASS",
         "dependency": "command.read retained; event and command screens gated; command-list API remains available"
+      },
+      "cash.open": {
+        "disabled": "PASS",
+        "enabled": "PASS",
+        "revoked": "PASS",
+        "dependency": "command.read retained for the event command screen; cash.values.read absent throughout"
       }
     },
     "sameUserSessions": "PASS; two contexts in prior command.read/cash.values.read flow",
@@ -520,16 +526,16 @@
       390,
       768
     ],
-    "productDefect": "Two event-dashboard UI defects were confirmed: Event page KPI values remained visible when the API returned 403, and ComandasPage remained on Loading when its dashboard query was disabled. Both were fixed and verified on event and command screens through disabled/granted/same-session revoked states. Both fixes are included in the immutable DEV release and its served SHA matches.",
-    "harnessCorrection": "Two initial selector mistakes and the pre-fix ComandasPage loading assertion are retained as separate evidence; final corrected snapshot passed all browser checks.",
-    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-ui-final-evidence.json",
-    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-playwright-results.json",
-    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-browser-run.log",
+    "productDefect": "Four confirmed UI defects across cash/event authorization: restricted cash fallback crash; event KPI leak; command screen loading while dashboard access disabled; event cash controls/read-only money rendering were not consistently permission-gated. Current round fixed and verified cash.open; event movement/close UI actions now have permission gates but remain without dedicated UI permission scenarios.",
+    "harnessCorrection": "None in the final cash.open run; initial event dashboard selector failures are documented in prior addenda.",
+    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-open-ui-final-evidence.json",
+    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-open-playwright-results.json",
+    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-open-browser-run.log",
     "prodAccess": "NO",
     "sharedDevWrites": "YES after QA; immutable DEV release activated and synthetic owner/staff records created for authenticated smoke then deleted",
     "certification": "INCOMPLETE",
     "pending": [
-      "12 remaining live-browser permission keys",
+      "11 remaining live-browser permission keys",
       "full LEGACY and CANONICAL_PDV matrix",
       "global admin contract",
       "alternate UI endpoints and setting combinations"
