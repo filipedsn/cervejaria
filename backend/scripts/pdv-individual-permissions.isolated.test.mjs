@@ -1176,7 +1176,6 @@ const browserEnv = {
     RBAC_QA_STAFF_COOKIE: staffCookie,
   RBAC_QA_FOREIGN_OWNER_EMAIL: otherOwner.email,
   RBAC_QA_FOREIGN_OWNER_PASSWORD: otherOwnerPassword,
-    RBAC_QA_FOREIGN_OWNER_COOKIE: foreignOwnerCookie,
   RBAC_QA_STAFF_ID: staff.id,
 };
 const browserRun = spawn(process.execPath, [path.join(repoRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.rbac-live.config.ts'], {

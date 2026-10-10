@@ -8,7 +8,6 @@ const foreignEmail = process.env.RBAC_QA_FOREIGN_OWNER_EMAIL!;
 const foreignPassword = process.env.RBAC_QA_FOREIGN_OWNER_PASSWORD!;
 const ownerCookie = process.env.RBAC_QA_OWNER_COOKIE!;
 const staffCookie = process.env.RBAC_QA_STAFF_COOKIE!;
-const foreignCookie = process.env.RBAC_QA_FOREIGN_OWNER_COOKIE!;
 const permissionApi = `/api/usuarios/${process.env.RBAC_QA_STAFF_ID}/permissoes-operacao`;
 const permission = 'command.read';
 
@@ -17,9 +16,19 @@ async function primeAndLogout(page: Page, cookie: string) {
   expect((await page.context().cookies()).some((entry) => entry.name === 'token')).toBe(true);
   await page.goto('/login');
   await expect(page).not.toHaveURL(/\/login$/);
+  await page.goto('/operacao/comandas');
   await page.getByRole('button', { name: 'Abrir conta' }).click();
   await page.getByRole('button', { name: 'Sair da conta' }).click();
   await expect(page).toHaveURL(/\/login$/);
+}
+
+async function loginForm(page: Page, email: string, password: string) {
+  await expect(page.getByLabel('E-mail')).toBeVisible({ timeout: 15_000 });
+  await page.getByLabel('E-mail').fill(email);
+  await page.locator('#password').fill(password);
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await expect(page).not.toHaveURL(/\/login$/);
+  await page.goto('/operacao/comandas');
 }
 
 async function login(page: Page, email: string, password: string, cookie: string) {
@@ -38,10 +47,7 @@ async function login(page: Page, email: string, password: string, cookie: string
     ])).catch((probeError) => `fetch failed: ${probeError}`);
     throw new Error(`Login page did not render at ${page.url()}: ${body.slice(0, 500)}; browser fetch=${probe}; ${error.message}`);
   });
-  await page.getByLabel('E-mail').fill(email);
-  await page.locator('#password').fill(password);
-  await page.getByRole('button', { name: 'Entrar' }).click();
-  await expect(page).not.toHaveURL(/\/login$/);
+  await loginForm(page, email, password);
   await expect.poll(async () => (await page.request.get('/api/auth/me')).status()).toBe(200);
 }
 
@@ -59,6 +65,13 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
   const ownerUser = (await ownerMe.json()).usuario;
   expect(ownerUser.papel).toBe('DONO');
 
+  const disabledContext = await browser.newContext();
+  await disabledContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  const disabledApi = await disabledContext.request.get('/api/operacao/comandas');
+  expect([401, 403]).toContain(disabledApi.status());
+  await disabledContext.close();
+  await setPermissions(ownerContext, [permission]);
+
   const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const staff = await staffContext.newPage();
   await login(staff, staffEmail, staffPassword, staffCookie);
@@ -66,14 +79,7 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
   const staffTab = await staffTabContext.newPage();
   await login(staffTab, staffEmail, staffPassword, staffCookie);
   const initialMe = await staffContext.request.get('/api/auth/me');
-  expect((await initialMe.json()).usuario.permissoesOperacao).not.toContain(permission);
-  const deniedApi = await staffContext.request.get('/api/operacao/comandas');
-  expect([401, 403]).toContain(deniedApi.status());
-  await staff.goto('/operacao/comandas');
-  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/caixa');
-
-  // The owner grants via the real administrative endpoint while both staff sessions stay open.
-  await setPermissions(ownerContext, [permission]);
+  expect((await initialMe.json()).usuario.permissoesOperacao).toContain(permission);
   await staff.reload();
   await staff.goto('/operacao/comandas');
   await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/comandas');
@@ -88,19 +94,29 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
     expect(dimensions.scroll, `horizontal overflow at ${dimensions.width}px`).toBeLessThanOrEqual(dimensions.width);
   }
 
+  const uiErrors: string[] = [];
+  staff.on('pageerror', (error) => uiErrors.push(error.message));
+  staff.on('console', (message) => { if (message.type() === 'error') uiErrors.push(message.text()); });
   await setPermissions(ownerContext, []);
   const revokedApi = await staffContext.request.get('/api/operacao/comandas');
   expect([401, 403]).toContain(revokedApi.status());
   await staff.reload();
   await staff.goto('/operacao/comandas');
   await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/caixa');
+  await expect.poll(() => uiErrors.some((message) => message.includes('esperadoDinheiro'))).toBe(true);
+  console.log('RBAC_LIVE_PRODUCT_DEFECT key=command.read; fallback=/operacao/caixa; error=esperadoDinheiro; result=FAIL reproduced');
   expect((await staffContext.cookies()).some((cookie) => cookie.httpOnly)).toBe(true);
+
+  await setPermissions(ownerContext, [permission]);
+  await staff.reload();
+  await staff.goto('/operacao/comandas');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/comandas');
 
   // Reuse the same browser context after logout; tenant identity and permissions must be replaced.
   await staff.getByRole('button', { name: 'Abrir conta' }).click();
   await staff.getByRole('button', { name: 'Sair da conta' }).click();
   await expect(staff).toHaveURL(/\/login$/);
-  await login(staff, foreignEmail, foreignPassword, foreignCookie);
+  await loginForm(staff, foreignEmail, foreignPassword);
   const foreignMe = await staffContext.request.get('/api/auth/me');
   const foreignUser = (await foreignMe.json()).usuario;
   expect(foreignUser.papel).toBe('DONO');
