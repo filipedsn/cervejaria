@@ -13,7 +13,8 @@ const permissionApi = `/api/usuarios/${process.env.RBAC_QA_STAFF_ID}/permissoes-
 const permission = 'command.read';
 
 async function primeAndLogout(page: Page, cookie: string) {
-  await page.context().addCookies([{ name: 'token', value: cookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await page.context().addCookies([{ name: 'token', value: cookie.replace(/^token=/, ''), domain: '127.0.0.1', path: '/', httpOnly: true, sameSite: 'Lax' }]);
+  expect((await page.context().cookies()).some((entry) => entry.name === 'token')).toBe(true);
   await page.goto('/login');
   await expect(page).not.toHaveURL(/\/login$/);
   await page.getByRole('button', { name: 'Abrir conta' }).click();
