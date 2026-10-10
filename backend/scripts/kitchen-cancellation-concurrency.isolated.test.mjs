@@ -312,6 +312,7 @@ test('API só fecha comanda pendente quando cobrar ao lançar e permitir fechame
       } else {
         const closed = await prisma.comanda.findUniqueOrThrow({ where: { id: f.commandId } });
         assert.equal(closed.status, 'FECHADA');
+        assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: f.orderId } })).status, 'RECEBIDO');
         assert.equal(await prisma.pagamento.count({ where: { comandaId: f.commandId } }), 1);
         assert.equal(await prisma.movimentoCaixaOperacao.count({ where: { sessaoId: session.id } }), 0);
         assert.deepEqual(await prisma.inventoryMovement.findMany({ where: { pedidoId: f.orderId }, orderBy: { createdAt: 'asc' } }), stockBefore);

@@ -77,11 +77,13 @@ export async function runKitchenCommandVisibleSyncQa({ app, prisma, baseUrl, fix
     }
 
     const [commandPage, kitchenPage] = await Promise.all(contextsAB.map((context) => context.newPage()));
+    const apiContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    contexts.push(apiContext);
+    const apiPage = await apiContext.newPage();
     await Promise.all([
       commandPage.goto(`${origin}/operacao/comandas/${fixture.commandId}`, { waitUntil: 'domcontentloaded' }),
       kitchenPage.goto(`${origin}/operacao/cozinha/tv`, { waitUntil: 'domcontentloaded' }),
     ]);
-    const apiPage = await contextsAB[1].newPage();
     await apiPage.goto(origin, { waitUntil: 'domcontentloaded' });
     await apiPage.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
     await commandPage.getByText('QA item', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
@@ -132,7 +134,8 @@ export async function runKitchenCommandVisibleSyncQa({ app, prisma, baseUrl, fix
 
     const previousSockets = (await app.io.in(commandRoom).fetchSockets()).filter((socket) => socket.handshake.headers.origin === origin);
     assert.ok(previousSockets.length >= 1, 'command browser socket is connected before forced reconnect');
-    for (const browserSocket of previousSockets) app.io.sockets.sockets.get(browserSocket.id).conn.close();
+    await Promise.all(contextsAB.map((context) => context.setOffline(true)));
+    for (const browserSocket of previousSockets) app.io.sockets.sockets.get(browserSocket.id)?.conn.close();
     const disconnectDeadline = Date.now() + 3_000;
     while (Date.now() < disconnectDeadline) {
       if (!(await app.io.in(commandRoom).fetchSockets()).some((socket) => socket.handshake.headers.origin === origin)) break;
@@ -141,19 +144,23 @@ export async function runKitchenCommandVisibleSyncQa({ app, prisma, baseUrl, fix
     assert.equal((await app.io.in(commandRoom).fetchSockets()).filter((socket) => socket.handshake.headers.origin === origin).length, 0, 'all browser sockets left the commands room before the missed update');
     let offlineState;
     let stableSince = Date.now();
-    let previousRequestCount = -1;
+    let previousRequestState = '';
     const settleDeadline = Date.now() + 3_000;
     while (Date.now() < settleDeadline) {
-      offlineState = await commandPage.evaluate((commandId) => ({ requests: window.__commandSyncTrace.requests.filter((entry) => entry.phase === 'response' && entry.path === `/api/operacao/comandas/${commandId}`).length, connects: window.__commandSyncTrace.connects }), fixture.commandId);
-      if (offlineState.requests !== previousRequestCount) {
-        previousRequestCount = offlineState.requests;
+      offlineState = await commandPage.evaluate((commandId) => {
+        const requests = window.__commandSyncTrace.requests.filter((entry) => entry.path === `/api/operacao/comandas/${commandId}`);
+        return { starts: requests.filter((entry) => entry.phase === 'start').length, responses: requests.filter((entry) => entry.phase === 'response').length, connects: window.__commandSyncTrace.connects };
+      }, fixture.commandId);
+      const requestState = JSON.stringify(offlineState);
+      if (requestState !== previousRequestState || offlineState.starts !== offlineState.responses) {
+        previousRequestState = requestState;
         stableSince = Date.now();
       } else if (Date.now() - stableSince >= 500) {
         break;
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    assert.ok(Date.now() - stableSince >= 500, 'command requests settled after disconnect before taking the no-polling baseline');
+    assert.ok(Date.now() - stableSince >= 500 && offlineState?.starts === offlineState?.responses, 'command requests settled after disconnect before taking the no-polling baseline');
     const missedEventResponse = await apiPage.evaluate(async ({ commandId, itemId, token }) => {
       const response = await fetch(`/api/operacao/comandas/${commandId}/itens/${itemId}`, { method: 'DELETE', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: '{}' });
       return { status: response.status, body: await response.text() };
@@ -161,12 +168,18 @@ export async function runKitchenCommandVisibleSyncQa({ app, prisma, baseUrl, fix
     assert.equal(missedEventResponse.status, 200, missedEventResponse.body);
     assert.ok((await prisma.itemComanda.findUniqueOrThrow({ where: { id: secondItemId } })).cancelamentoPendenteEm);
     await new Promise((resolve) => setTimeout(resolve, 300));
-    const whileOffline = await commandPage.evaluate((commandId) => ({ requests: window.__commandSyncTrace.requests.filter((entry) => entry.phase === 'response' && entry.path === `/api/operacao/comandas/${commandId}`).length, connects: window.__commandSyncTrace.connects }), fixture.commandId);
-    assert.equal(whileOffline.requests, offlineState.requests, 'no command polling or missed-event refetch while disconnected');
+    const whileOffline = await commandPage.evaluate((commandId) => {
+      const requests = window.__commandSyncTrace.requests.filter((entry) => entry.path === `/api/operacao/comandas/${commandId}`);
+      return { starts: requests.filter((entry) => entry.phase === 'start').length, responses: requests.filter((entry) => entry.phase === 'response').length, connects: window.__commandSyncTrace.connects };
+    }, fixture.commandId);
+    assert.deepEqual(whileOffline, offlineState, 'no command polling or missed-event refetch while disconnected');
+    await commandPage.evaluate((connects) => { window.__qaOfflineConnects = connects; }, offlineState.connects);
+    await contextsAB[0].setOffline(false);
     const reconnectDeadline = Date.now() + 12_000;
     while (Date.now() < reconnectDeadline) {
       const sockets = await app.io.in(commandRoom).fetchSockets();
-      if (sockets.some((socket) => socket.handshake.headers.origin === origin)) break;
+      const commandPageConnected = await commandPage.evaluate(() => window.__commandSyncTrace.connects > window.__qaOfflineConnects);
+      if (commandPageConnected && sockets.some((socket) => socket.handshake.headers.origin === origin)) break;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     await commandPage.getByText('Cancelamento solicitado', { exact: true }).waitFor({ state: 'visible', timeout: 12_000 });
@@ -176,7 +189,7 @@ export async function runKitchenCommandVisibleSyncQa({ app, prisma, baseUrl, fix
       eventCount: window.__commandSyncTrace.events.filter((entry) => entry.comandaId === commandId).length,
     }), fixture.commandId);
     assert.ok((await app.io.in(commandRoom).fetchSockets()).some((socket) => socket.handshake.headers.origin === origin), 'the Socket.IO browser session rejoined the commands room');
-    assert.ok(reconnected.requests > whileOffline.requests, 'connect invalidated and refetched the command after the missed event');
+    assert.ok(reconnected.requests > whileOffline.responses, `connect invalidated and refetched the command after the missed event: ${JSON.stringify({ reconnected, whileOffline, offlineState })}`);
     results.push({ phase: 'reconnect', refetchAfterReconnect: true, noPollingWhileDisconnected: true, visible: 'Cancelamento solicitado', socketConnects: reconnected.connects, runId });
     console.log(JSON.stringify({ scenario: 'real-api-command-visible-sync-two-browser-sessions', steps: results, eventToVisibleUpdate: true, tenantCommandAndKitchenRooms: true }, null, 2));
   } finally {
