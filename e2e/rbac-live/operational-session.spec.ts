@@ -1153,3 +1153,65 @@ test('event.cash.open controls event cash opening without granting financial val
   console.log('RBAC_LIVE_REGRESSION key=cash.open; dependency=command.read retained; disabled=button-hidden-api-denied-no-session; enabled=real-ui-opens-session-with-exact-float-and-redacted-response; revoked=same-session-button-hidden-api-denied-session-unchanged; event-mode=LEGACY; result=PASS');
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });
+
+test('event.cash.close requires both close and value access and denies after revoke', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: eventMenuOwnerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/eventos');
+  const eventId = process.env.RBAC_QA_EVENT_CASH_CLOSE_ID!;
+  const cashUrl = `/api/eventos/${eventId}/caixa`;
+  const closeUrl = `${cashUrl}/fechar`;
+  const permissionApiForEventStaff = `/api/usuarios/${eventMenuStaffId}/permissoes-operacao`;
+  const setEventStaffPermissions = async (permissoesOperacao: string[]) => {
+    const response = await ownerContext.request.patch(permissionApiForEventStaff, { data: { permissoesOperacao } });
+    expect(response.status(), await response.text()).toBe(200);
+  };
+  const closingBody = { contadoDinheiro: 45.67, contadoPix: 0, contadoDebito: 0, contadoCredito: 0, contadoCartao: 0 };
+  const initialCashResponse = await ownerContext.request.get(cashUrl);
+  expect(initialCashResponse.status(), await initialCashResponse.text()).toBe(200);
+  const initialCash = await initialCashResponse.json();
+  expect(initialCash).toMatchObject({ aberto: true, caixa: { status: 'ABERTO' } });
+  const firstSessionId = initialCash.caixa.id;
+  await setEventStaffPermissions(['command.read', 'cash.values.read']);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: eventMenuStaffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/comandas');
+  const cashPanel = staff.getByRole('region', { name: 'Caixa do evento' });
+  await expect(cashPanel).toBeVisible();
+  await expect(cashPanel.getByRole('button', { name: 'Conferir e fechar caixa' })).toHaveCount(0);
+  const denied = await staffContext.request.post(closeUrl, { data: closingBody });
+  expect([401, 403]).toContain(denied.status());
+  expect(await (await ownerContext.request.get(cashUrl)).json()).toEqual(initialCash);
+
+  await setEventStaffPermissions(['command.read', 'cash.values.read', 'cash.close']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao)
+    .toEqual(['command.read', 'cash.values.read', 'cash.close']);
+  const closeButton = cashPanel.getByRole('button', { name: 'Conferir e fechar caixa' });
+  await expect(closeButton).toBeVisible();
+  await expect(closeButton).toBeEnabled();
+  await closeButton.click();
+  await expect(staff.getByRole('heading', { name: 'Conferir caixa do evento' })).toBeVisible();
+  const closeResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === closeUrl && response.request().method() === 'POST');
+  await staff.getByRole('button', { name: 'Confirmar fechamento' }).click();
+  const closed = await closeResponsePromise;
+  expect(closed.status(), await closed.text()).toBe(200);
+  expect(await (await ownerContext.request.get(cashUrl)).json()).toMatchObject({ aberto: false, caixa: { id: firstSessionId, status: 'FECHADO' } });
+
+  const reopened = await ownerContext.request.post(`${cashUrl}/abrir`, { data: { trocoInicial: 12.34 } });
+  expect(reopened.status(), await reopened.text()).toBe(201);
+  const secondSession = await (await ownerContext.request.get(cashUrl)).json();
+  expect(secondSession).toMatchObject({ aberto: true, caixa: { status: 'ABERTO' } });
+  expect(secondSession.caixa.id).not.toBe(firstSessionId);
+  await setEventStaffPermissions(['command.read', 'cash.values.read']);
+  await staff.reload();
+  await expect(cashPanel.getByRole('button', { name: 'Conferir e fechar caixa' })).toHaveCount(0);
+  const revoked = await staffContext.request.post(closeUrl, { data: closingBody });
+  expect([401, 403]).toContain(revoked.status());
+  expect(await (await ownerContext.request.get(cashUrl)).json()).toEqual(secondSession);
+  console.log('RBAC_LIVE_REGRESSION key=cash.close; dependencies=cash.values.read+command.read retained; disabled=close-hidden-api-denied-session-unchanged; enabled=real-ui-close-persisted; revoked=same-session-close-hidden-api-denied-session-unchanged; event-mode=LEGACY; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});

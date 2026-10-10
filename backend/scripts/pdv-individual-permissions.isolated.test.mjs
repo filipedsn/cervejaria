@@ -74,6 +74,8 @@ const foreignPoint = await prisma.pontoVenda.create({ data: { cervejariaId: othe
 const event = await prisma.evento.create({ data: { nome: `Event cash QA ${suffix}`, local: 'QA', cervejariaId: company.id, trailerId: trailer.id } });
 const eventForPermissionGrants = await prisma.evento.create({ data: { nome: `Event permission QA ${suffix}`, local: 'QA', cervejariaId: company.id, trailerId: trailer.id } });
 const foreignEvent = await prisma.evento.create({ data: { nome: `Foreign event QA ${suffix}`, local: 'QA', data: new Date(), cervejariaId: otherCompany.id, trailerId: foreignTrailer.id } });
+const eventCashClose = await prisma.evento.create({ data: { nome: `Event cash close QA ${suffix}`, local: 'QA', data: new Date(), cervejariaId: otherCompany.id, trailerId: foreignTrailer.id } });
+const eventCashCloseInitialSession = await prisma.sessaoCaixaEvento.create({ data: { eventoId: eventCashClose.id, trocoInicial: '45.67', abertoPorId: otherOwner.id } });
 const foreignClient = await prisma.cliente.create({ data: { nome: 'Foreign permission QA', telefone: `119876${Date.now().toString().slice(-5)}`, cervejariaId: otherCompany.id } });
 const foreignProduct = await prisma.produto.create({ data: { nome: `Foreign product QA ${suffix}`, tipo: 'COMIDA', cervejariaId: otherCompany.id } });
 const foreignCommand = await prisma.comanda.create({ data: { eventoId: foreignEvent.id, clienteId: foreignClient.id, status: 'ABERTA', tipo: 'COMANDA', total: 0 } });
@@ -1213,6 +1215,7 @@ const browserEnv = {
   RBAC_QA_EVENT_MENU_STAFF_COOKIE: eventMenuStaffCookie,
   RBAC_QA_EVENT_MENU_STAFF_ID: eventMenuStaff.id,
   RBAC_QA_EVENT_MENU_EVENT_ID: foreignEvent.id,
+    RBAC_QA_EVENT_CASH_CLOSE_ID: eventCashClose.id,
   RBAC_QA_EVENT_MENU_EVENT_NAME: foreignEvent.nome,
   RBAC_QA_EVENT_MENU_PRODUCT_FOREIGN_ID: foreignProduct.id,
   RBAC_QA_EVENT_MENU_PRODUCT_FOREIGN_NAME: foreignProduct.nome,
@@ -1239,7 +1242,7 @@ const runBrowser = async (args, env) => {
   process.stderr.write(stderr);
   return exitCode;
 };
-const legacyEventDashboardTests = 'event\\.(menu\\.manage|dashboard\\.read|cash\\.open)';
+const legacyEventDashboardTests = 'event\\.(menu\\.manage|dashboard\\.read|cash\\.open|cash\\.close)';
 const canonicalBrowserExitCode = await runBrowser(['--grep-invert', legacyEventDashboardTests], browserEnv);
 assert.equal(canonicalBrowserExitCode, 0, 'Live CANONICAL_PDV operational RBAC browser tests failed.');
 // Event cash/menu/dashboard flows run in EVENTO/LEGACY mode. Run those real UI flows against the same
@@ -1267,6 +1270,20 @@ const browserCreatedCommands = await prisma.comanda.findMany({
 assert.equal(browserCreatedCommands.length, 1, 'live command.operate UI creates exactly one QA comanda');
 assert.equal(browserCreatedCommands[0].abertaPorId, staff.id, 'live UI comanda records the authorized staff member');
 assert.equal(browserCreatedCommands[0].status, 'ABERTA');
+const browserEventCashCloseSessions = await prisma.sessaoCaixaEvento.findMany({
+  where: { eventoId: eventCashClose.id },
+  orderBy: { abertoEm: 'asc' },
+  select: { id: true, status: true, abertoPorId: true, fechadoPorId: true, trocoInicial: true, contadoDinheiro: true, fechadoEm: true },
+});
+assert.equal(browserEventCashCloseSessions.length, 2, 'event cash close UI closes one session and the revoked attempt leaves one new session open');
+assert.equal(browserEventCashCloseSessions[0].id, eventCashCloseInitialSession.id);
+assert.equal(browserEventCashCloseSessions[0].status, 'FECHADO');
+assert.equal(browserEventCashCloseSessions[0].fechadoPorId, eventMenuStaff.id, 'event cash close records the authorized staff actor');
+assert.equal(Number(browserEventCashCloseSessions[0].contadoDinheiro), 45.67, 'event cash close persists exact counted cash');
+assert.ok(browserEventCashCloseSessions[0].fechadoEm instanceof Date);
+assert.equal(browserEventCashCloseSessions[1].status, 'ABERTO', 'revoked close leaves the newer session open');
+assert.equal(browserEventCashCloseSessions[1].abertoPorId, otherOwner.id);
+assert.equal(Number(browserEventCashCloseSessions[1].trocoInicial), 12.34);
 await app.close();
 await prisma.$disconnect();
 
