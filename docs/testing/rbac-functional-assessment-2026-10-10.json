@@ -63,7 +63,7 @@
   "backendBuild": "PASS",
   "frontendBuild": "PASS",
   "canonicalAndLegacy": "PARTIAL; representative compatibility and PDV cases, not all permissions in both modes",
-  "operationalScreensWithLiveApi": "PARTIAL: eleven keys with all three real-browser stages PASS; 33/84 UI stages total",
+  "operationalScreensWithLiveApi": "PARTIAL: twelve keys with all three real-browser stages PASS; 36/84 UI stages total",
   "productDefectsConfirmed": 1,
   "reportedTickets": [
     "TAP-76",
@@ -399,22 +399,22 @@
     }
   },
   "latestContinuation": {
-    "testedCommit": "33eb5321233a1802a0e7d3e52e74be4460a6ae6c",
-    "testedTree": "64228631f201ab02087b5eff05ded2547f2f89d7",
+    "testedCommit": "25b06d76d5755abc4e4c7b2f4bb75ab803686fb8",
+    "testedTree": "d4ce7fcbc7d8ff8e4f91cd0b902093977c9533b0",
     "focusedRunner": "PASS",
-    "snapshotIntegrity": "PASS; 1454 blobs; exact tree materialized",
+    "snapshotIntegrity": "PASS; 1455 blobs; exact tree materialized",
     "moduleAudit": "198 snapshot modules; 0 mutable workspace imports",
     "backendBuild": "PASS",
     "frontendBuild": "PASS",
     "activationPreflight": "14/14 PASS",
     "authenticatedDisposableApiSuite": "PASS; representative enabled/denied checks for 28 keys",
-    "playwright": "PASS 9/9 against real Fastify API and frontend with disposable PostgreSQL",
+    "playwright": "PASS 10/10 against real Fastify API and frontend with disposable PostgreSQL",
     "uiStageCounts": {
       "required": 84,
-      "pass": 33,
+      "pass": 36,
       "fail": 0,
       "blocked": 0,
-      "notRun": 51
+      "notRun": 48
     },
     "uiKeys": {
       "command.read": {
@@ -477,6 +477,12 @@
         "enabled": "PASS",
         "revoked": "PASS",
         "dependency": "kitchen.read retained; only operate varied"
+      },
+      "cash.movement.write": {
+        "disabled": "PASS",
+        "enabled": "PASS",
+        "revoked": "PASS",
+        "dependency": "cash.values.read absent; movement response remains sanitized"
       }
     },
     "sameUserSessions": "PASS; two contexts in prior command.read/cash.values.read flow",
@@ -486,15 +492,15 @@
       768
     ],
     "productDefect": "Cash sanitized fallback fix previously validated; no new defect in kitchen run",
-    "harnessCorrection": "Canonical agenda fixture, dashboard disabled, command.operate read dependency retained, reports.read closed synthetic event fixture and executive CSV route, clients.manage route fallback and phone serialization comparisons; inventory.read stock card selector and inventory.adjust exact product/author verification; kitchen target card selected by visible article and command identifier to exclude hidden measurement duplicates",
-    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/kitchen-combined.json",
-    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/run-0b6c6f05f35f1b15/live-results/playwright-results.json",
-    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/run-0b6c6f05f35f1b15/live-results/browser-run.log",
+    "harnessCorrection": "Canonical agenda fixture, dashboard disabled, command.operate read dependency retained, reports.read closed synthetic event fixture and executive CSV route, clients.manage route fallback and phone serialization comparisons; inventory.read stock card selector and inventory.adjust exact product/author verification; kitchen target card selected by visible article and command identifier to exclude hidden measurement duplicates; cash.movement.write response contract is HTTP 201 (first assertion expected 200); Windows reserved port EACCES is skipped by runner",
+    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-movement-final.json",
+    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/run-54a1f75cc9398737/live-results/playwright-results.json",
+    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-movement-final.log",
     "prodAccess": "NO",
     "sharedDevWrites": "NO",
     "certification": "INCOMPLETE",
     "pending": [
-      "17 remaining live-browser permission keys",
+      "16 remaining live-browser permission keys",
       "full LEGACY and CANONICAL_PDV matrix",
       "global admin contract",
       "alternate UI endpoints and setting combinations"
