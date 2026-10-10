@@ -125,7 +125,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const trailerDoTurno = agendaCanonica ? '' : trailerId || (trailers.length === 1 ? trailers[0]?.id ?? '' : '');
   const precisaSelecionarTrailer = !agendaCanonica && contexto.tapsEnabled && trailers.length > 1 && !trailerDoTurno;
 
-  const { data, isLoading: caixaLoading, isError: caixaErro, refetch: consultarCaixa } = useQuery({
+  const { data, isLoading: caixaLoading, isFetching: caixaFetching, isError: caixaErro, refetch: consultarCaixa } = useQuery({
     queryKey: ['operacao-caixa', pontoVendaId],
     queryFn: () => api.get<CaixaResposta>(`/api/operacao/caixa?pontoVendaId=${pontoVendaId}`),
     enabled: Boolean(pontoVendaId),
@@ -153,6 +153,9 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const classesContasPendentes = `touch-btn-secondary caixa-contas-pendentes-link${temContaPendente ? ' caixa-contas-pendentes-alerta' : ''}`;
 
   const sessao = data?.sessao ?? null;
+  // Sanitized responses keep session metadata but omit financial aggregates.
+  // Do not inspect stale cached values after a query error either.
+  const exibeValoresCaixa = Boolean(sessao && !data?.valoresRestritos && !caixaErro && !caixaFetching);
   const diaTurnoSessao = sessao?.diaOperacional.slice(0, 10);
   const turnoDeOutroDia = sessao?.status === 'ABERTO' && Boolean(diaTurnoSessao && diaTurnoSessao < diaOperacionalQuery());
   useEffect(() => {
@@ -162,12 +165,12 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const comandasAbertas = comandasAbertasProp === undefined ? data?.comandasAbertas ?? 0 : comandasAbertasProp;
   const bloqueioFechamento = comandasAbertas === null || comandasAbertas > 0;
   const cardapioAbrirPayload = buildTurnoCardapioAbrirPayload(cardapioForm);
-  const diferencaFechamento = sessao ?
+  const diferencaFechamento = exibeValoresCaixa && sessao ?
     parseCurrencyInput(contado.dinheiro ?? '') - sessao.gaveta.esperadoDinheiro
     + parseCurrencyInput(contado.pix ?? '') - sessao.esperado.pix
     + parseCurrencyInput(contado.debito ?? '') - sessao.esperado.cartaoDebito
     + parseCurrencyInput(contado.credito ?? '') - sessao.esperado.cartaoCredito
-    : 0;
+    : undefined;
 
   const invalidar = () => {
     queryClient.invalidateQueries({ queryKey: ['operacao-caixa', pontoVendaId] });
@@ -315,6 +318,11 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => void consultarCaixa()}>Tentar novamente</button>
         </div>
       )}
+      {sessao && caixaFetching && !caixaErro && (
+        <div role="status" className="rounded-xl border border-line bg-surface-lighter/40 px-3 py-2 text-sm text-ink-muted">
+          Atualizando dados do caixa. Os valores financeiros ficam ocultos durante a consulta.
+        </div>
+      )}
       {!sessao && !caixaErro && compacto && !caixaLoading && (
         <div className="card space-y-4 border-brand-600/30 bg-gradient-to-br from-surface via-surface to-brand-900/20 p-4 sm:space-y-5 sm:p-5">
           <header className="flex items-center gap-3 border-b border-line pb-4 sm:gap-4">
@@ -399,7 +407,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         </div>
       )}
 
-      {sessao?.status === 'ABERTO' && !data?.valoresRestritos && compacto && painelSuprimido && (
+      {sessao?.status === 'ABERTO' && exibeValoresCaixa && compacto && painelSuprimido && (
         <div className="card flex min-h-14 items-center justify-between gap-3 border-brand-600/30 bg-gradient-to-br from-surface via-surface to-brand-900/20 px-4 py-2">
           <span className="text-sm font-semibold text-ink">Caixa aberto <span className="font-normal text-ink-muted">· Em operação</span></span>
           <button
@@ -414,7 +422,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         </div>
       )}
 
-      {sessao?.status === 'ABERTO' && compacto && !data?.valoresRestritos && !painelSuprimido && (
+      {sessao?.status === 'ABERTO' && compacto && exibeValoresCaixa && !painelSuprimido && (
         <div className="card grid gap-5 border-brand-600/30 bg-gradient-to-br from-surface via-surface to-brand-900/20 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,1.2fr)] lg:items-center lg:gap-7">
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -451,7 +459,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         </div>
       )}
 
-      {sessao?.status === 'ABERTO' && !compacto && !data?.valoresRestritos && (
+      {sessao?.status === 'ABERTO' && !compacto && exibeValoresCaixa && (
         <>
           {(agendaCanonica ? contexto.tapsEnabled : sessao.trailerId) && <OperacaoTurnoTapsPanel pontoVendaId={pontoVendaId} />}
           {usaCardapio && (
@@ -571,7 +579,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         </>
       )}
 
-      {sessao?.status === 'FECHADO' && !data?.valoresRestritos && (
+      {sessao?.status === 'FECHADO' && exibeValoresCaixa && (
         <div className="card space-y-3">
           <div>
             <h2 className="text-base font-semibold">Turno encerrado</h2>
@@ -693,7 +701,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
       </Modal>
 
       <Modal
-        open={dialogo === 'fechar'}
+        open={dialogo === 'fechar' && exibeValoresCaixa && canPermission('cash.close') && canPermission('cash.values.read')}
         extraWide
         hideHeader
         onClose={() => {
@@ -740,7 +748,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             <div><h2 id="modal-title" className="text-3xl font-bold sm:text-5xl">Fechar caixa</h2><p className="mt-3 max-w-3xl text-base leading-relaxed text-ink-muted sm:text-2xl">Conte o que há fisicamente e ajuste se necessário.<br className="hidden xl:block" /> A diferença aparece no resumo.</p></div>
             <div className="flex min-h-24 items-center gap-4 rounded-3xl border border-brand-500/30 bg-surface-lighter/40 p-4 sm:min-h-36 sm:gap-5 sm:p-6">
               <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-brand-500/10 text-brand-400 sm:h-20 sm:w-20"><svg viewBox="0 0 24 24" className="h-8 w-8 sm:h-10 sm:w-10" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 12 16 8M12 12v5"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg></span>
-              <span className="min-w-0"><span className="block text-base text-ink-muted sm:text-2xl">Diferença</span><strong className="mt-1 block whitespace-nowrap text-xl font-bold tabular-nums text-brand-400 sm:text-3xl">{formatCurrency(diferencaFechamento)}</strong></span>
+              <span className="min-w-0"><span className="block text-base text-ink-muted sm:text-2xl">Diferença</span><strong className="mt-1 block whitespace-nowrap text-xl font-bold tabular-nums text-brand-400 sm:text-3xl">{diferencaFechamento === undefined ? '—' : formatCurrency(diferencaFechamento)}</strong></span>
               <span className="ml-auto text-3xl text-brand-400" aria-hidden="true">›</span>
             </div>
           </header>
@@ -748,13 +756,14 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           <div className="grid gap-5 sm:grid-cols-2 sm:gap-x-8 sm:gap-y-7">
             {FORMAS_PAGAMENTO.map((forma) => {
               const chave = forma.valor === 'DINHEIRO' ? 'dinheiro' : forma.valor === 'PIX' ? 'pix' : forma.valor === 'CARTAO_DEBITO' ? 'debito' : 'credito';
-              const esperado = forma.valor === 'DINHEIRO'
-                ? sessao?.gaveta.esperadoDinheiro ?? 0
+              const esperado = !exibeValoresCaixa ? undefined : forma.valor === 'DINHEIRO'
+                ? sessao?.gaveta.esperadoDinheiro
                 : forma.valor === 'PIX'
-                  ? sessao?.esperado.pix ?? 0
+                  ? sessao?.esperado.pix
                   : forma.valor === 'CARTAO_DEBITO'
-                    ? sessao?.esperado.cartaoDebito ?? 0
-                    : sessao?.esperado.cartaoCredito ?? 0;
+                    ? sessao?.esperado.cartaoDebito
+                    : sessao?.esperado.cartaoCredito;
+              if (esperado === undefined) return null;
               const valorConferido = parseCurrencyInput(contado[chave] ?? '');
               const diferenca = valorConferido - esperado;
               const rotulo = forma.valor === 'DINHEIRO' ? 'Contado' : 'Conferido';
