@@ -339,3 +339,73 @@ test('agenda.manage blocks, grants and revokes real agenda writes in the live se
   console.log('RBAC_LIVE_REGRESSION key=agenda.manage; disabled=route-and-api-denied-no-write; granted=real-ui-write-persisted; revoked=same-session-route-and-api-denied-no-write; result=PASS');
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });
+
+test('command.operate denies, creates through the UI, then denies after same-session revoke', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, ['command.read']);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const staffMe = await staffContext.request.get('/api/auth/me');
+  expect(staffMe.status()).toBe(200);
+  expect((await staffMe.json()).usuario.permissoesOperacao).toEqual(['command.read']);
+  const operationalContext = await staffContext.request.get('/api/operacao/contexto');
+  expect(operationalContext.status()).toBe(200);
+  const pointOfSaleId = (await operationalContext.json()).pontosVenda[0]?.id;
+  expect(pointOfSaleId).toBeTruthy();
+
+  const beforeResponse = await ownerContext.request.get(`/api/operacao/comandas?pontoVendaId=${pointOfSaleId}`);
+  expect(beforeResponse.status()).toBe(200);
+  const beforeCount = (await beforeResponse.json()).length;
+  const firstPhone = `119${Math.floor(10000000 + Math.random() * 89999999)}`;
+  const firstName = `RBAC command ${crypto.randomUUID()}`;
+  const createPayload = { pontoVendaId: pointOfSaleId, tipo: 'APELIDO', identificador: firstName, clienteNome: firstName, clienteTelefone: firstPhone, itens: [] };
+
+  await staff.goto('/operacao/comandas/nova');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/caixa');
+  const deniedCreate = await staffContext.request.post('/api/operacao/comandas', { data: createPayload });
+  expect([401, 403]).toContain(deniedCreate.status());
+  const afterDenied = await ownerContext.request.get(`/api/operacao/comandas?pontoVendaId=${pointOfSaleId}`);
+  expect((await afterDenied.json()).length).toBe(beforeCount);
+
+  await setPermissions(ownerContext, ['command.operate', 'command.read']);
+  await staff.reload();
+  const grantedStaff = await staffContext.request.get('/api/auth/me');
+  expect((await grantedStaff.json()).usuario.permissoesOperacao).toEqual(['command.operate', 'command.read']);
+  await staff.goto('/operacao/comandas/nova');
+  await expect(staff.getByRole('heading', { name: 'Nova comanda' })).toBeVisible();
+  await staff.getByPlaceholder('(11) 9 9999-9999').fill(firstPhone);
+  await staff.getByPlaceholder('Digite o nome...').fill(firstName);
+  const createResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === '/api/operacao/comandas' && response.request().method() === 'POST');
+  await staff.getByRole('button', { name: 'Abrir comanda' }).click();
+  const createResponse = await createResponsePromise;
+  const created = await createResponse.json();
+  expect(createResponse.status(), JSON.stringify(created)).toBe(201);
+  const commandId = created.id as string;
+  await expect.poll(() => new URL(staff.url()).pathname).toBe(`/operacao/comandas/${commandId}`);
+  const persistedList = await ownerContext.request.get(`/api/operacao/comandas?pontoVendaId=${pointOfSaleId}`);
+  expect(persistedList.status(), await persistedList.text()).toBe(200);
+  const persistedCommands = (await persistedList.json()).filter((item: { identificador: string }) => item.identificador === firstName);
+  expect(persistedCommands).toHaveLength(1);
+  expect(persistedCommands[0]).toMatchObject({ id: commandId, identificador: firstName, status: 'ABERTA' });
+
+  await setPermissions(ownerContext, ['command.read']);
+  await staff.reload();
+  await staff.goto('/operacao/comandas/nova');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/caixa');
+  const secondPayload = { ...createPayload, identificador: `${firstName} denied`, clienteNome: `${firstName} denied`, clienteTelefone: `119${Math.floor(10000000 + Math.random() * 89999999)}` };
+  const revokedCreate = await staffContext.request.post('/api/operacao/comandas', { data: secondPayload });
+  expect([401, 403]).toContain(revokedCreate.status());
+  const afterRevoke = await ownerContext.request.get(`/api/operacao/comandas?pontoVendaId=${pointOfSaleId}`);
+  const finalCommands = await afterRevoke.json();
+  expect(finalCommands).toHaveLength(beforeCount + 1);
+  expect(finalCommands.filter((item: { id: string }) => item.id === commandId)).toHaveLength(1);
+  console.log('RBAC_LIVE_REGRESSION key=command.operate; disabled=route-and-api-denied-no-write; granted=real-ui-create-persisted; revoked=same-session-route-and-api-denied-no-write; dependency=command.read; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});

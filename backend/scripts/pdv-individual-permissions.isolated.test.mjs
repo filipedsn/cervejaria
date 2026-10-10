@@ -1219,6 +1219,13 @@ await writeFile(path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results', 'brows
 process.stdout.write(browserStdout);
 process.stderr.write(browserStderr);
 assert.equal(browserExitCode, 0, 'Live operational RBAC browser test failed.');
+const browserCreatedCommands = await prisma.comanda.findMany({
+  where: { pontoVendaId: point.id, origem: 'CAIXA', identificador: { startsWith: 'RBAC command ' } },
+  select: { id: true, abertaPorId: true, status: true },
+});
+assert.equal(browserCreatedCommands.length, 1, 'live command.operate UI creates exactly one QA comanda');
+assert.equal(browserCreatedCommands[0].abertaPorId, staff.id, 'live UI comanda records the authorized staff member');
+assert.equal(browserCreatedCommands[0].status, 'ABERTA');
 await app.close();
 await prisma.$disconnect();
 
