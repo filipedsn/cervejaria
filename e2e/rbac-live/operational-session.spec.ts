@@ -39,7 +39,7 @@ async function login(page: Page, email: string, password: string, cookie: string
     throw new Error(`Login page did not render at ${page.url()}: ${body.slice(0, 500)}; browser fetch=${probe}; ${error.message}`);
   });
   await page.getByLabel('E-mail').fill(email);
-  await page.getByLabel('Senha').fill(password);
+  await page.locator('#password').fill(password);
   await page.getByRole('button', { name: 'Entrar' }).click();
   await expect(page).not.toHaveURL(/\/login$/);
   await expect.poll(async () => (await page.request.get('/api/auth/me')).status()).toBe(200);
