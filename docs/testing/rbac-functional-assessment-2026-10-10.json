@@ -72,7 +72,7 @@
   ],
   "newTicketCreated": false,
   "productionAccess": "NO",
-  "sharedDevAccess": "NO",
+  "sharedDevAccess": "YES; authorized immutable DEV release deployment and temporary synthetic owner/staff login smoke; smoke records deleted",
   "permissionKeys": [
     "cash.open",
     "cash.close",
@@ -520,19 +520,34 @@
       390,
       768
     ],
-    "productDefect": "Two event-dashboard UI defects were confirmed: Event page KPI values remained visible when the API returned 403, and ComandasPage remained on Loading when its dashboard query was disabled. Both were fixed and verified on event and command screens through disabled/granted/same-session revoked states.",
+    "productDefect": "Two event-dashboard UI defects were confirmed: Event page KPI values remained visible when the API returned 403, and ComandasPage remained on Loading when its dashboard query was disabled. Both were fixed and verified on event and command screens through disabled/granted/same-session revoked states. Both fixes are included in the immutable DEV release and its served SHA matches.",
     "harnessCorrection": "Two initial selector mistakes and the pre-fix ComandasPage loading assertion are retained as separate evidence; final corrected snapshot passed all browser checks.",
     "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-ui-final-evidence.json",
     "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-playwright-results.json",
     "console": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-browser-run.log",
     "prodAccess": "NO",
-    "sharedDevWrites": "NO",
+    "sharedDevWrites": "YES after QA; immutable DEV release activated and synthetic owner/staff records created for authenticated smoke then deleted",
     "certification": "INCOMPLETE",
     "pending": [
       "12 remaining live-browser permission keys",
       "full LEGACY and CANONICAL_PDV matrix",
       "global admin contract",
       "alternate UI endpoints and setting combinations"
-    ]
+    ],
+    "devDeployment": {
+      "releaseSha": "adaa6baf2d09adb335069e443913b1d1c558d388",
+      "sourceTree": "24379774aa0ecab129a414e9e2b9f85fed9e6ad5",
+      "pushedCommit": "9792fbc8460c111e100d8cc83c4fc05fe588b7d3",
+      "push": "origin/main advanced to 9792fbc8460c111e100d8cc83c4fc05fe588b7d3",
+      "published": true,
+      "priorDevSha": "0eb7017925568cbf3b370627564d271374fbe36d",
+      "apiHealth": "PASS local and public; release SHA matches",
+      "databaseReadiness": "PASS local and public",
+      "frontend": "PASS local/public; exact bundle hash matches candidate manifest",
+      "authenticatedSmoke": "PASS synthetic owner and staff logins plus auth/me tenant identity; records removed",
+      "migrations": "none in release diff",
+      "PROD_DEPLOY_REQUIRED": "NO",
+      "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-dev-release.json"
+    }
   }
 }

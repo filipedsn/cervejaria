@@ -164,3 +164,6 @@ The permission controls the event-specific menu editor in EVENTO/LEGACY mode. A 
 ## Validacao funcional ao vivo: `event.dashboard.read` (10 Oct 2026)
 
 A API negava o endpoint sem a chave, mas a tela de eventos continuava renderizando indicadores. A correcao restringe a consulta e a renderizacao de `EventoResumoKpis` e impede a consulta/renderizacao equivalente em `ComandasPage`. No navegador real, sem a chave os indicadores ficam ausentes; com `command.read` e `event.dashboard.read`, os valores coincidem com a projecao do owner; depois da revogacao no mesmo usuario, os indicadores desaparecem e a listagem/API de comandas segue permitida. Commit final testado: `adaa6baf2d09adb335069e443913b1d1c558d388`. O fluxo confirma ambas as telas em disabled e revoked, concessao na tela de evento, e preservacao independente de command.read.
+
+
+A correcao do painel do evento e da tela de comandas foi publicada em DEV no SHA `adaa6baf2d09adb335069e443913b1d1c558d388`; o SHA servido foi confirmado local e publicamente, com banco pronto e smoke autenticado de owner/atendente QA. Ver recibo `docs/testing/rbac-functional-assessment-2026-10-10.md`.

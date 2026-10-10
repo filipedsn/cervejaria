@@ -1,0 +1,54 @@
+{
+  "releaseSha": "adaa6baf2d09adb335069e443913b1d1c558d388",
+  "sourceTree": "24379774aa0ecab129a414e9e2b9f85fed9e6ad5",
+  "pushedCommit": "9792fbc8460c111e100d8cc83c4fc05fe588b7d3",
+  "originMain": "9792fbc8460c111e100d8cc83c4fc05fe588b7d3",
+  "priorDevSha": "0eb7017925568cbf3b370627564d271374fbe36d",
+  "publishMechanism": "scripts/dev/prepare-dev-release.ps1 + scripts/dev/publish-dev-release.ps1 + scripts/dev/start-dev-artifacts.ps1",
+  "candidateManifestSha256": "b8ff6ec5a360490557eafb7031b5a342b03dc70a4755abc181201b14bce83660",
+  "changedMigrations": [],
+  "runtime": {
+    "localApiHealth": {
+      "status": 200,
+      "releaseSha": "adaa6baf2d09adb335069e443913b1d1c558d388"
+    },
+    "localReadiness": {
+      "status": 200,
+      "statusText": "ready",
+      "databaseReady": true
+    },
+    "publicApiHealth": {
+      "status": 200,
+      "releaseSha": "adaa6baf2d09adb335069e443913b1d1c558d388"
+    },
+    "publicReadiness": {
+      "status": 200,
+      "statusText": "ready",
+      "databaseReady": true
+    }
+  },
+  "frontend": {
+    "localIndexStatus": 200,
+    "publicIndexStatus": 200,
+    "asset": "/assets/index-B7HhWlg_.js",
+    "sha256": "d927c9efee9546e330551ad9f8888afc23076f69c3b690c64e7483bc4e930097",
+    "matchesCandidateManifest": true,
+    "containsReleaseSha": true
+  },
+  "authenticatedSmoke": {
+    "ownerLogin": "PASS",
+    "staffLogin": "PASS",
+    "authMeTenantIsolation": "PASS",
+    "database": "cervejaria_dev on localhost:5434",
+    "temporarySyntheticRecords": "created then deleted in finally",
+    "credentialsPrinted": false
+  },
+  "priorCashFix": {
+    "fixCommit": "4017a9ddc7d934b81c411f3808121fb681a520fa",
+    "previousDevCommit": "0eb7017925568cbf3b370627564d271374fbe36d",
+    "fixIsAncestorOfPreviousDevRelease": true,
+    "servedBundleMatchedPreviousManifest": true
+  },
+  "productionAccess": "NO",
+  "prodDeployRequired": "NO"
+}
