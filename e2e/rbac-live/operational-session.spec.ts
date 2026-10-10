@@ -1061,6 +1061,11 @@ test('event.dashboard.read reveals and revokes event KPIs without changing comma
   const eventCard = staff.locator('.card').filter({ hasText: eventMenuEventName }).first();
   await expect(eventCard.getByText('Comandas abertas', { exact: true })).toHaveCount(0);
   const openCommandsValue = () => eventCard.getByText('Comandas abertas', { exact: true }).locator('..').locator('p').nth(1);
+  await staff.goto('/comandas');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/comandas');
+  await expect(staff.getByRole('heading', { name: 'Comandas', exact: true })).toBeVisible();
+  await expect(staff.locator('.metric-card').filter({ hasText: 'Comandas abertas' })).toHaveCount(0);
+  await staff.goto('/eventos');
 
   await setEventStaffPermissions(['command.read', 'event.dashboard.read']);
   await staff.reload();
@@ -1079,6 +1084,10 @@ test('event.dashboard.read reveals and revokes event KPIs without changing comma
   const commandAccessAfterRevoke = await staffContext.request.get(`/api/comandas/evento/${eventMenuEventId}?status=ABERTA`);
   expect(commandAccessAfterRevoke.status(), await commandAccessAfterRevoke.text()).toBe(200);
   await expect(eventCard.getByText('Comandas abertas', { exact: true })).toHaveCount(0);
+  await staff.goto('/comandas');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/comandas');
+  await expect(staff.getByRole('heading', { name: 'Comandas', exact: true })).toBeVisible();
+  await expect(staff.locator('.metric-card').filter({ hasText: 'Comandas abertas' })).toHaveCount(0);
   console.log('RBAC_LIVE_REGRESSION key=event.dashboard.read; dependency=command.read retained; disabled=event-dashboard-api-denied-kpis-hidden-command-read-works; enabled=event-kpis-visible-and-api-projection-matches-owner; revoked=same-session-kpis-hidden-dashboard-denied-command-read-remains; event-mode=LEGACY; result=PASS');
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });
