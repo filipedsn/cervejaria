@@ -1,0 +1,32 @@
+﻿{
+  "releaseSha": "370416704b59af56ecc9f88c17560a303583fa69",
+  "sourceTree": "f26b01511b22b6028382baee1924849194678a47",
+  "originMain": "90c652262f212d07543d68c813f9224f5b2ad7ea",
+  "publishMechanism": "scripts/dev/prepare-dev-release.ps1 + scripts/dev/publish-dev-release.ps1 + scripts/dev/start-dev-artifacts.ps1",
+  "candidateManifestSha256": "4b4ac17f6c131d98c39387471562d91b71946c39296f861c1f84fce21688f396",
+  "changedMigrations": [],
+  "runtime": {
+    "localApiHealth": { "status": 200, "releaseSha": "370416704b59af56ecc9f88c17560a303583fa69" },
+    "localReadiness": { "status": 200, "databaseReady": true },
+    "publicApiHealth": { "status": 200, "releaseSha": "370416704b59af56ecc9f88c17560a303583fa69" },
+    "publicReadiness": { "status": 200, "databaseReady": true }
+  },
+  "frontend": {
+    "localIndexStatus": 200,
+    "publicIndexStatus": 200,
+    "asset": "/assets/index-C69olzgo.js",
+    "sha256": "af8948ec0c7f215d4deb02a5b89000306d5f1b1fb09ca918b04584398823e05e",
+    "matchesCandidateManifest": true
+  },
+  "authenticatedSmoke": {
+    "ownerLogin": "PASS",
+    "staffLogin": "PASS",
+    "authMeTenantIdentity": "PASS",
+    "databaseTarget": "local DEV localhost:5434/cervejaria_dev",
+    "syntheticRecords": "created and deleted in finally",
+    "permissionListAssertion": "not made; API omits field when individual permission feature is disabled",
+    "credentialsPrinted": false
+  },
+  "productionAccess": "NO",
+  "prodDeployRequired": "NO"
+}

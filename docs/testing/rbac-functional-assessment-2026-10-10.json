@@ -541,19 +541,18 @@
       "alternate UI endpoints and setting combinations"
     ],
     "devDeployment": {
-      "releaseSha": "adaa6baf2d09adb335069e443913b1d1c558d388",
-      "sourceTree": "24379774aa0ecab129a414e9e2b9f85fed9e6ad5",
-      "pushedCommit": "9792fbc8460c111e100d8cc83c4fc05fe588b7d3",
-      "push": "origin/main advanced to 9792fbc8460c111e100d8cc83c4fc05fe588b7d3",
-      "published": true,
-      "priorDevSha": "0eb7017925568cbf3b370627564d271374fbe36d",
-      "apiHealth": "PASS local and public; release SHA matches",
+      "releaseSha": "370416704b59af56ecc9f88c17560a303583fa69",
+      "sourceTree": "f26b01511b22b6028382baee1924849194678a47",
+      "pushedCommit": "90c652262f212d07543d68c813f9224f5b2ad7ea",
+      "publishStatus": "PASS; immutable DEV candidate published and restarted",
+      "priorDevSha": "adaa6baf2d09adb335069e443913b1d1c558d388",
+      "apiHealth": "PASS local and public; exact release SHA",
       "databaseReadiness": "PASS local and public",
-      "frontend": "PASS local/public; exact bundle hash matches candidate manifest",
-      "authenticatedSmoke": "PASS synthetic owner and staff logins plus auth/me tenant identity; records removed",
+      "frontend": "PASS local/public; served JS SHA-256 matches candidate manifest",
+      "authenticatedSmoke": "PASS synthetic owner/staff login and auth/me tenant identity; records removed; individual permission list not asserted because feature is disabled in this runtime",
       "migrations": "none in release diff",
       "PROD_DEPLOY_REQUIRED": "NO",
-      "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-dashboard-dev-release.json"
+      "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-open-dev-release.json"
     }
   }
 }
