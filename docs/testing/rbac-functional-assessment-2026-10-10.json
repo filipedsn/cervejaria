@@ -63,7 +63,7 @@
   "backendBuild": "PASS",
   "frontendBuild": "PASS",
   "canonicalAndLegacy": "PARTIAL; representative compatibility and PDV cases, not all permissions in both modes",
-  "operationalScreensWithLiveApi": "PARTIAL: fourteen keys with all three real-browser stages PASS; 42/84 UI stages total",
+  "operationalScreensWithLiveApi": "PARTIAL: fifteen keys with all three real-browser stages PASS; 45/84 UI stages total",
   "productDefectsConfirmed": 1,
   "reportedTickets": [
     "TAP-76",
@@ -399,22 +399,27 @@
     }
   },
   "latestContinuation": {
-    "testedCommit": "dbea03100a660dd6ea722489efe097c161ed4dd0",
-    "testedTree": "f9dfde2dd1b927a89e913b4fd053c0d0ee031c33",
+    "testedCommit": "b1ef7ca1fcdf432823bc28bab4f68cdbd6728acb",
+    "testedTree": "ebb55a24c8c2d9e435e3449607ab391097609d4a",
     "focusedRunner": "PASS",
-    "snapshotIntegrity": "PASS; 1461 blobs; exact tree materialized",
+    "snapshotIntegrity": "PASS; 1464 blobs; exact tree materialized",
     "moduleAudit": "198 snapshot modules; 0 mutable workspace imports",
+    "testedFileBlobs": {
+      "backend/scripts/pdv-individual-permissions.isolated.test.mjs": "bbe9c2fc04f61b59a00aebf611ff68b75f47f38e",
+      "e2e/rbac-live/operational-session.spec.ts": "46d20b77a5f4d4bc1c9652c8b9c35ccb99aa6e3b",
+      "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs": "76534dc85318542313f1f788a173c2f3b0af9e1b"
+    },
     "backendBuild": "PASS",
     "frontendBuild": "PASS",
     "activationPreflight": "14/14 PASS",
     "authenticatedDisposableApiSuite": "PASS; representative enabled/denied checks for 28 keys",
-    "playwright": "PASS 12/12 against real Fastify API and frontend with disposable PostgreSQL",
+    "playwright": "PASS 12/12 CANONICAL_PDV plus 1/1 LEGACY event.menu.manage against real Fastify API and frontend with disposable PostgreSQL",
     "uiStageCounts": {
       "required": 84,
-      "pass": 42,
+      "pass": 45,
       "fail": 0,
       "blocked": 0,
-      "notRun": 42
+      "notRun": 39
     },
     "uiKeys": {
       "command.read": {
@@ -495,6 +500,12 @@
         "enabled": "PASS",
         "revoked": "PASS",
         "dependency": "cash.values.read retained as screen dependency; catalog.manage absent; global price checked through separate catalog API"
+      },
+      "event.menu.manage": {
+        "disabled": "PASS",
+        "enabled": "PASS",
+        "revoked": "PASS",
+        "dependency": "none; separate synthetic EVENTO/LEGACY tenant; real editor, session and PostgreSQL"
       }
     },
     "sameUserSessions": "PASS; two contexts in prior command.read/cash.values.read flow",
@@ -503,16 +514,16 @@
       390,
       768
     ],
-    "productDefect": "Cash sanitized fallback fix previously validated; no new defect in kitchen run",
-    "harnessCorrection": "Canonical agenda fixture, dashboard disabled, command.operate read dependency retained, reports.read closed synthetic event fixture and executive CSV route, clients.manage route fallback and phone serialization comparisons; inventory.read stock card selector and inventory.adjust exact product/author verification; kitchen target card selected by visible article and command identifier to exclude hidden measurement duplicates; cash.movement.write response contract is HTTP 201 (first assertion expected 200); Windows reserved port EACCES is skipped by runner; shift-menu screen uses cash.values.read as screen dependency; effective turn price and global catalog price read from separate API projections; prior API test turn override retained as baseline",
-    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/shift-catalog-final.json",
-    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/run-c1e7a08e91f5028b/live-results/playwright-results.json",
-    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/run-c1e7a08e91f5028b/live-results/browser-run.log",
+    "productDefect": "Cash sanitized fallback fix previously validated; no new product defect identified in the event.menu.manage run",
+    "harnessCorrection": "Earlier flows as recorded; event.menu.manage requires EVENTO/LEGACY and runs as a separate Playwright process with canonical activation disabled against the second synthetic tenant; first attempt confirmed the fixture constraint and is retained as a failed harness receipt",
+    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-menu-ui-final-evidence.json",
+    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/run-0bc87f58d3fb495c/live-results/playwright-results.json",
+    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/run-0bc87f58d3fb495c/live-results/browser-run.log",
     "prodAccess": "NO",
     "sharedDevWrites": "NO",
     "certification": "INCOMPLETE",
     "pending": [
-      "14 remaining live-browser permission keys",
+      "13 remaining live-browser permission keys",
       "full LEGACY and CANONICAL_PDV matrix",
       "global admin contract",
       "alternate UI endpoints and setting combinations"
