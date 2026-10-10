@@ -873,3 +873,78 @@ test('catalog.manage blocks, creates an operational product through the UI, and 
   console.log('RBAC_LIVE_REGRESSION key=catalog.manage; disabled=route-and-create-api-denied-no-write; enabled=real-ui-product-create-persisted; revoked=same-session-route-and-create-api-denied-no-write; result=PASS');
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });
+
+test('catalog.shift.manage permits only the live shift price and preserves the global template price', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, ['cash.values.read']);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const operationalContext = await staffContext.request.get('/api/operacao/contexto');
+  expect(operationalContext.status()).toBe(200);
+  const pointOfSaleId = (await operationalContext.json()).pontosVenda[0]?.id;
+  expect(pointOfSaleId).toBeTruthy();
+  const cardApi = `/api/operacao/caixa/cardapio?pontoVendaId=${pointOfSaleId}`;
+  const priceApi = `/api/operacao/caixa/cardapio/preco?pontoVendaId=${pointOfSaleId}`;
+  const productCatalogApi = '/api/operacao/produtos?incluirInativos=true';
+  const catalogBeforeResponse = await ownerContext.request.get(productCatalogApi);
+  expect(catalogBeforeResponse.status(), await catalogBeforeResponse.text()).toBe(200);
+  const catalogBefore = await catalogBeforeResponse.json();
+  const catalogProductBefore = catalogBefore.find((product: { id: string }) => product.id === inventoryProductId);
+  expect(catalogProductBefore).toBeTruthy();
+  const templateBefore = Number(catalogProductBefore.precoUnit);
+  const cardBeforeResponse = await ownerContext.request.get(cardApi);
+  expect(cardBeforeResponse.status(), await cardBeforeResponse.text()).toBe(200);
+  const cardBefore = await cardBeforeResponse.json();
+  const targetBefore = cardBefore.produtos.find((product: { id: string }) => product.id === inventoryProductId);
+  expect(targetBefore).toBeTruthy();
+  const turnBefore = Number(targetBefore.precoEfetivo ?? targetBefore.precoUnit);
+  expect(turnBefore).toBeGreaterThan(0);
+  const deniedPayload = { produtoId: inventoryProductId, volumeMl: 0, precoUnit: turnBefore + 2, escopo: 'TURNO' };
+
+  expect([401, 403]).toContain((await staffContext.request.patch(priceApi, { data: deniedPayload })).status());
+  await expect(staff.getByRole('button', { name: 'Editar cardápio do turno' })).toHaveCount(0);
+  const unchangedDenied = await (await ownerContext.request.get(cardApi)).json();
+  expect(unchangedDenied).toEqual(cardBefore);
+
+  await setPermissions(ownerContext, ['cash.values.read', 'catalog.shift.manage']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['cash.values.read', 'catalog.shift.manage']);
+  const targetRow = staff.getByText(inventoryProductName, { exact: true }).locator('..').locator('..');
+  const priceInput = targetRow.locator('input').first();
+  await expect(priceInput).toBeVisible();
+  await priceInput.fill((turnBefore + 2).toFixed(2).replace('.', ','));
+  await priceInput.blur();
+  const confirmModal = staff.getByRole('dialog').filter({ hasText: inventoryProductName });
+  await expect(confirmModal).toBeVisible();
+  await expect(confirmModal.getByRole('button', { name: 'Só neste turno' })).toBeVisible();
+  await expect(confirmModal.getByRole('button', { name: /Salvar no cardápio/ })).toHaveCount(0);
+  const updatePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === '/api/operacao/caixa/cardapio/preco' && response.request().method() === 'PATCH');
+  await confirmModal.getByRole('button', { name: 'Só neste turno' }).click();
+  const update = await updatePromise;
+  expect(update.status(), await update.text()).toBe(200);
+  const afterGrant = await (await ownerContext.request.get(cardApi)).json();
+  const targetAfter = afterGrant.produtos.find((product: { id: string }) => product.id === inventoryProductId);
+  expect(Number(targetAfter.precoEfetivo)).toBe(turnBefore + 2);
+  const catalogAfter = await (await ownerContext.request.get(productCatalogApi)).json();
+  expect(Number(catalogAfter.find((product: { id: string }) => product.id === inventoryProductId).precoUnit)).toBe(templateBefore);
+
+  await setPermissions(ownerContext, ['cash.values.read']);
+  await staff.reload();
+  const readOnlyTarget = staff.getByText(inventoryProductName, { exact: true }).locator('..').locator('..');
+  await expect(readOnlyTarget.locator('input')).toHaveCount(0);
+  expect([401, 403]).toContain((await staffContext.request.patch(priceApi, { data: { ...deniedPayload, precoUnit: turnBefore + 3 } })).status());
+  const afterRevoke = await (await ownerContext.request.get(cardApi)).json();
+  const targetFinal = afterRevoke.produtos.find((product: { id: string }) => product.id === inventoryProductId);
+  expect(Number(targetFinal.precoEfetivo)).toBe(turnBefore + 2);
+  const catalogFinal = await (await ownerContext.request.get(productCatalogApi)).json();
+  expect(Number(catalogFinal.find((product: { id: string }) => product.id === inventoryProductId).precoUnit)).toBe(templateBefore);
+  console.log('RBAC_LIVE_REGRESSION key=catalog.shift.manage; cash.values.read=retained-as-screen-read-dependency; disabled=price-write-denied-no-mutation; enabled=UI-turn-price-only-change; catalog.manage=absent-template-option-hidden-and-global-price-unchanged; revoked=same-session-price-edit-hidden-and-api-denied; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});

@@ -146,3 +146,6 @@ Snapshot `25b06d76d5755abc4e4c7b2f4bb75ab803686fb8` adds live `cash.movement.wri
 
 
 Snapshot `88f7487ce8524e82bdee5a0398be08886052d1f5` adds live `catalog.manage`: without it, the operational catalog route and create POST are denied with no product; granting only the key permits creation through the real UI; revocation in-session blocks the route and a second POST while preserving exactly one created product. The owner confirms persisted ID, name, price, and active state. The snapshot suite passed 11/11 Playwright checks. Accumulated UI evidence is **39/84 PASS**, 0 FAIL, 0 BLOCKED, 45 NOT RUN; thirteen keys complete and 15 have no UI stages. Receipt: [`catalog-manage-final.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/catalog-manage-final.json). Full certification remains incomplete.
+
+
+Candidate follow-up tests `catalog.shift.manage` live: preserve `cash.values.read` only as the screen dependency and leave `catalog.manage` absent. Compare the turn override against global catalog pricing; verify disabled, grant, and same-session revoke before marking stages PASS.
