@@ -22,7 +22,7 @@ const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), `pdv-gamified-api-${runId}-`));
 const commit = process.env.PDV_GIT_QA_COMMIT;
 if (!commit || !/^[0-9a-f]{40}$/i.test(commit)) throw new Error('API QA requires the full selected Git commit from the snapshot runner.');
-const manifest = createPinnedManifest(commit);
+const manifest = await createPinnedManifest(commit);
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { cwd: backendRoot, encoding: 'utf8', windowsHide: true, ...options });

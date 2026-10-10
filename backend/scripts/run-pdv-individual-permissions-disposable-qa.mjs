@@ -20,7 +20,8 @@ url.searchParams.set('connection_limit', '12');
 const databaseUrl = validateIsolatedQaEnvironment({ PDV_ISOLATED_QA: '1', QA_DATABASE_URL: url.toString() }).toString();
 const backendRoot = new URL('..', import.meta.url);
 const backendPath = fileURLToPath(backendRoot);
-const tempRoot = await mkdtemp(path.join(os.tmpdir(), `pdv-permissions-${runId}-`));
+const qaTempParent = path.resolve(process.env.PDV_QA_TEMP_PARENT ?? os.tmpdir());
+const tempRoot = await mkdtemp(path.join(qaTempParent, `permissions-db-${runId}-`));
 const qaSchemaPath = path.join(tempRoot, 'prisma', 'schema.prisma');
 const migrationRoot = path.join(backendPath, 'prisma', 'migrations');
 const selectedCommit = process.env.PDV_GIT_QA_COMMIT ?? String(spawnSync('git', ['rev-parse', 'HEAD'], { cwd: backendRoot, encoding: 'utf8', windowsHide: true }).stdout ?? '').trim();
@@ -57,7 +58,7 @@ try {
   const env = { ...process.env };
   for (const key of Object.keys(env)) if (key === 'DATABASE_URL' || key === 'DIRECT_URL' || key === 'PDV_INDIVIDUAL_PERMISSIONS_ENABLED' || /_DATABASE_URL$/.test(key) || /^PROD/i.test(key)) delete env[key];
   Object.assign(env, { NODE_ENV: 'test', PDV_ISOLATED_QA: '1', PDV_QA_RUN_ID: runId, PDV_QA_CONTAINER: container, QA_DATABASE_URL: databaseUrl, DATABASE_URL: databaseUrl, PDV_INDIVIDUAL_PERMISSIONS_ENABLED: '0' });
-  const manifest = createPinnedManifest(selectedCommit);
+  const manifest = await createPinnedManifest(selectedCommit);
   const trackedMigrations = new Set(manifest.migrations.map((migration) => migration.name));
   for (const entry of await readdir(migrationRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
@@ -88,5 +89,6 @@ try {
     run('docker', ['stop', '--timeout', '5', container]);
     console.log(`QA_PERMISSIONS_CONTAINER_REMOVED=${container}; storage=tmpfs; published=127.0.0.1:${port} only`);
   }
+  if (!path.resolve(tempRoot).startsWith(`${qaTempParent}${path.sep}`) || !path.basename(tempRoot).startsWith(`permissions-db-${runId}-`)) throw new Error('Unsafe individual-permissions QA cleanup path.');
   await rm(tempRoot, { recursive: true, force: true });
 }

@@ -86,6 +86,7 @@ function qaEnvironment() {
   }
   env.GIT_DIR = gitDir;
   env.PDV_GIT_QA_COMMIT = selectedCommit;
+  env.PDV_QA_TEMP_PARENT = path.join(repoRoot, 'artifacts', 'rbac-permissions-ui-2026-10-10');
   env.PDV_GAMIFIED_CATEGORY_CATALOG = '';
   return env;
 }
