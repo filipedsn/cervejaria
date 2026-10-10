@@ -85,7 +85,7 @@ O teste de API usa o app Fastify real, login que emite cookie, PostgreSQL descar
 | Chave — rótulo exibido | Função, tela e endpoint exercitado | Pré-condições / dependências | API A/D | Revogação no mesmo login | UI operação | Efeito e observação |
 |---|---|---|---|---|---|---|
 | `cash.open` | Abrir caixa de evento e sessao operacional; `POST /api/eventos/:id/caixa/abrir`, `POST /api/operacao/caixa/abrir` | Tela de comandas requer `command.read`; abertura nao concede leitura de valores | PASS / PASS | PASS (mesma sessao) | PASS (navegador real; EVENTO/LEGACY) | Com `command.read` mantida e sem `cash.values.read`, UI abre caixa com troco exato e resposta permanece redigida; revogacao nega nova abertura sem alterar a sessao. |
-| `cash.close` — Fechar caixa | Fechar caixa de evento/operação | Exige separadamente `cash.values.read` | PASS / PASS | NOT RUN específico | NOT RUN | Fechamento sem leitura negado; com ambas as chaves, fechamento persistido. |
+| `cash.close` — Fechar caixa | Caixa de evento; `POST /api/eventos/:id/caixa/fechar` | Exige `cash.values.read`; `command.read` mantém acesso à tela | PASS / PASS | PASS (mesma sessão) | PASS (navegador real; EVENTO/LEGACY) | Sem `cash.close`, controle oculto e API negada; com ambas as chaves, UI fecha e persiste contagem exata/ator; após revogar, nova sessão permanece aberta. |
 | `cash.values.read` — Visualizar valores do caixa | Caixa de evento/operação e salas Socket.IO financeiras | Leitura não concede movimento nem fechamento | PASS / PASS | PASS (realtime) | NOT RUN | Respostas sem a chave são sanitizadas; valores, totais e movimentos ocultos. |
 | `cash.movement.write` — Registrar suprimento e sangria | `POST /api/eventos/:id/caixa/movimentos` e rota operacional | Resposta redigida sem `cash.values.read` | PASS / PASS | NOT RUN específico | NOT RUN | Movimento persistido uma vez; resposta não revela valor. |
 | `payment.receive` — Receber pagamentos | Venda/comanda e pagamentos pendentes | Venda também exige `command.operate`; fechamento pago exige `command.close` | PASS / PASS | NOT RUN específico | NOT RUN | Pagamento, baixa e estoque verificados; recusa deixa fotos financeiras/estoque iguais. |
@@ -188,7 +188,7 @@ The exact test candidate was `e9c59938b0721b8d07a795eb4927951dfe7fbfa6`, tree `7
 | Permission | API representative A/D | UI D | UI E | UI R | Live browser evidence |
 |---|---|---|---|---|---|
 | `cash.open` | PASS | PASS | PASS | PASS | Real EVENTO/LEGACY event cash panel; command.read retained, cash.values.read absent, exact persisted float and redacted response; snapshot `3704167` |
-| `cash.close` | PASS | NOT RUN | NOT RUN | NOT RUN | Close permission dependency covered by API suite; no UI action stage |
+| `cash.close` | PASS | PASS | PASS | PASS | Real EVENTO/LEGACY UI; `command.read` + `cash.values.read` retained; exact count/actor persisted; revoke denies and preserves a second open session; snapshot `5428bdf` |
 | `cash.values.read` | PASS | PASS | PASS | PASS | Real login; sanitized projection without values; grant reveals `gaveta.esperadoDinheiro`; revoke restores sanitized usable UI |
 | `cash.movement.write` | PASS | PASS | PASS | PASS | Live supply/withdrawal UI; redacted response without `cash.values.read`; revoke denies; snapshot `25b06d7` |
 | `payment.receive` | PASS | NOT RUN | NOT RUN | NOT RUN | Payment dependencies covered by API suite; no live UI payment |
@@ -257,3 +257,12 @@ Snapshot `370416704b59af56ecc9f88c17560a303583fa69` (`f26b01511b22b6028382baee19
 ## Publicação DEV de `cash.open`
 
 A revisão `370416704b59af56ecc9f88c17560a303583fa69` foi publicada pelo release imutável e está servida em DEV local e público. `/api/health` informa o SHA esperado, `/api/ready` confirma o banco e o bundle `index-C69olzgo.js` servido nas duas URLs corresponde ao SHA-256 do manifesto candidato. O smoke autenticado com owner e atendente sintéticos confirmou login e identidade do tenant por `/api/auth/me`; registros foram removidos em `finally`. A API não expôs `permissoesOperacao` porque a flag individual estava desabilitada no runtime, então o smoke não a usou como evidência de permissões. Nenhuma migration pertence ao release. `PROD_DEPLOY_REQUIRED=NO`. Recibo: [`cash-open-dev-release.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-open-dev-release.json).
+
+
+## Latest live UI continuation: `cash.close`
+
+Snapshot `5428bdff6cef7239fded6dce13b865713035e7c1` (tree `e322c03f10508d3c70725455fe29316f761b62d9`) passed the disposable focused gate with exact Git blob materialization, 198 snapshot modules and zero mutable-workspace imports. Backend/frontend builds, activation preflight 14/14, authenticated disposable API suite, 12/12 CANONICAL_PDV browser checks and 4/4 EVENTO/LEGACY checks passed. `cash.close` was isolated while `command.read` and `cash.values.read` remained granted: disabled hid the close control and denied the direct API without changing the open session; enabled closed it through the UI, with PostgreSQL confirming the staff actor and exact R$ 987.65 count; revocation hid the control and denied another close while a newly opened session remained unchanged.
+
+The first two attempts found fixture issues only: a duplicate trailer relation, then an extra trailer that exposed the legitimate trailer-selection screen. The final harness reuses the existing legacy event and cleans the foreign open command after its tenant-isolation assertions. The failures and screenshot are retained in the evidence artifacts. No product defect was found in this round.
+
+**Cumulative live UI coverage:** **54/84 PASS**, 0 FAIL, 0 BLOCKED, 30 NOT RUN; eighteen keys have all three UI stages and ten have none. Certification remains incomplete. Receipt: [`cash-close-ui-final-evidence.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-ui-final-evidence.json); Playwright: [`cash-close-playwright-results.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-playwright-results.json); browser log: [`cash-close-browser-run.log`](../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-browser-run.log).

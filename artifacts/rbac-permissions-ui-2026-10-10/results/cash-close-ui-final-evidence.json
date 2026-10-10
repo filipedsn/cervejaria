@@ -1,0 +1,31 @@
+﻿{
+  "result": "PASS",
+  "key": "cash.close",
+  "testedCommit": "5428bdff6cef7239fded6dce13b865713035e7c1",
+  "testedTree": "e322c03f10508d3c70725455fe29316f761b62d9",
+  "mode": "EVENTO/LEGACY",
+  "stages": {
+    "disabled": "PASS; cash.close absent, command.read and cash.values.read retained; UI close control hidden; direct POST denied; first session unchanged",
+    "enabled": "PASS; cash.close granted without changing other permissions; UI closed first session; owner read and PostgreSQL confirmed exact R$ 987.65 cash count and eventMenuStaff as closer",
+    "revoked": "PASS; same staff session lost the close control; direct POST denied; a second session opened by the owner remained unchanged"
+  },
+  "dependencies": ["command.read", "cash.values.read"],
+  "databaseAssertions": "PASS; two distinct session rows; first FECHADO with staff closer/count, second ABERTO with owner opener and R$ 12.34 opening float",
+  "suite": {
+    "canonicalPdv": "12/12 PASS",
+    "legacy": "4/4 PASS (event.menu.manage, event.dashboard.read, event.cash.open, event.cash.close)",
+    "apiAndBuilds": "PASS",
+    "snapshotIntegrity": "PASS; 1,484 tracked blobs; 198 source modules; zero mutable workspace imports"
+  },
+  "cumulativeUiStages": {"required":84,"pass":54,"fail":0,"blocked":0,"notRun":30},
+  "harnessRetries": [
+    {"result":"FIXED; no product test ran","cause":"duplicate Evento.trailerId in initial fixture","evidence":"cash-close-ui-runner.log"},
+    {"result":"FIXED; product cases did not run to completion","cause":"second trailer rendered the expected trailer chooser, so pre-existing event UI assertions were waiting on the wrong page","evidence":"cash-close-ui-runner-retry1.log","screenshot":"cash-close-harness-selection-screen.png","trace":"run-1413a76bccc9bf05/live-results/operational-session-event--0bebe-out-changing-command-access/trace.zip"}
+  ],
+  "finalRunEvidence": "cash-close-retry2-ui-evidence.json",
+  "playwrightResults": "cash-close-playwright-results.json",
+  "browserLog": "cash-close-browser-run.log",
+  "prodAccess": "NO",
+  "devWrites": "NO",
+  "productDefect": "none found in this round"
+}

@@ -9,7 +9,7 @@ Atualizado em 2026-10-07. Inventario das operacoes atuais de Cervejaria, Evento 
 | cash.open | Abrir sessao; UI de evento testada com `command.read` como depend?ncia; nao concede leitura de valores | Backend + UI real (EVENTO/LEGACY), concessao/revogacao PASS em `3704167` |
 | cash.values.read | Ler valores, movimentos e fechamento | Backend + UI; sem ela a sessao e sanitizada |
 | cash.movement.write | Suprimento/sangria; corrigir tambem exige cash.values.read | Backend + UI |
-| cash.close | Fechar caixa; tambem exige cash.values.read | Backend + UI |
+| cash.close | Fechar caixa; requer cash.values.read | Backend + UI real EVENTO/LEGACY; disabled/granted/revoked PASS em `5428bdf` |
 | payment.receive | Receber pagamentos em comandas e vendas | Backend + UI operacional |
 | debt.receive | Receber conta pendente | Backend + UI operacional |
 | command.close | Fechar comanda; pagamento exige payment.receive | Backend + UI |
@@ -170,3 +170,6 @@ A correcao do painel do evento e da tela de comandas foi publicada em DEV no SHA
 
 
 A abertura de caixa de evento foi validada pela interface real em disabled/granted/revoked. O controle respeita `cash.open`; valores permanecem restritos sem `cash.values.read`. Snapshot `370416704b59af56ecc9f88c17560a303583fa69`; recibo detalhado no relat?rio funcional.
+
+
+O fechamento do caixa de evento foi validado na UI real: sem `cash.close`, o controle e a escrita são negados; `cash.close` com `cash.values.read` permite fechar com ator e contagem exatos; revogar na mesma sessão impede fechar uma nova sessão. Fixture em EVENTO/LEGACY. Recibo e regressões de harness estão no relatório funcional.

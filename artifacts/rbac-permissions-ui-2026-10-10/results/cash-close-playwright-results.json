@@ -1,0 +1,240 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Users\\Papai\\Documents\\Desenvolvimento\\Cervejaria\\artifacts\\rbac-permissions-ui-2026-10-10\\git-snapshot-6d0817f3201a495c-joWgF8\\git-source-snapshot\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config=playwright.rbac-live.config.ts",
+      "--grep",
+      "event\\.(menu\\.manage|dashboard\\.read|cash\\.open|cash\\.close)"
+    ],
+    "configFile": "C:\\Users\\Papai\\Documents\\Desenvolvimento\\Cervejaria\\artifacts\\rbac-permissions-ui-2026-10-10\\git-snapshot-6d0817f3201a495c-joWgF8\\git-source-snapshot\\playwright.rbac-live.config.ts",
+    "rootDir": "C:/Users/Papai/Documents/Desenvolvimento/Cervejaria/artifacts/rbac-permissions-ui-2026-10-10/git-snapshot-6d0817f3201a495c-joWgF8/git-source-snapshot/e2e/rbac-live",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/Papai/Documents/Desenvolvimento/Cervejaria/artifacts/rbac-permissions-ui-2026-10-10/run-6d0817f3201a495c/live-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "C:/Users/Papai/Documents/Desenvolvimento/Cervejaria/artifacts/rbac-permissions-ui-2026-10-10/git-snapshot-6d0817f3201a495c-joWgF8/git-source-snapshot/e2e/rbac-live",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "C:\\Users\\Papai\\Documents\\Desenvolvimento\\Cervejaria\\artifacts\\rbac-permissions-ui-2026-10-10\\run-6d0817f3201a495c\\live-results\\playwright-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "operational-session.spec.ts",
+      "file": "operational-session.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "event.menu.manage controls the event menu editor and persists changes only while granted",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1877,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=event.menu.manage; dependency=none; disabled=editor-hidden-and-direct-write-denied-no-mutation; enabled=real-ui-menu-change-persisted; revoked=same-session-editor-hidden-and-direct-write-denied; event-mode=LEGACY; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-10T17:56:26.406Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-e80f6e46c19861d095fd",
+          "file": "operational-session.spec.ts",
+          "line": 959,
+          "column": 5
+        },
+        {
+          "title": "event.dashboard.read reveals and revokes event KPIs without changing command access",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1745,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=event.dashboard.read; dependency=command.read retained; disabled=event-dashboard-api-denied-kpis-hidden-command-read-works; enabled=event-kpis-visible-and-api-projection-matches-owner; revoked=same-session-kpis-hidden-dashboard-denied-command-read-remains; event-mode=LEGACY; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-10T17:56:28.399Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-ec147f3e576025656d41",
+          "file": "operational-session.spec.ts",
+          "line": 1029,
+          "column": 5
+        },
+        {
+          "title": "event.cash.open controls event cash opening without granting financial values",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1527,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=cash.open; dependency=command.read retained; disabled=button-hidden-api-denied-no-session; enabled=real-ui-opens-session-with-exact-float-and-redacted-response; revoked=same-session-button-hidden-api-denied-session-unchanged; event-mode=LEGACY; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-10T17:56:30.155Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-6e7e0f2b62b007531eb9",
+          "file": "operational-session.spec.ts",
+          "line": 1095,
+          "column": 5
+        },
+        {
+          "title": "event.cash.close requires both close and value access and denies after revoke",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1734,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "RBAC_LIVE_REGRESSION key=cash.close; dependencies=cash.values.read+command.read retained; disabled=close-hidden-api-denied-session-unchanged; enabled=real-ui-close-persisted; revoked=same-session-close-hidden-api-denied-session-unchanged; event-mode=LEGACY; result=PASS\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-10T17:56:31.692Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "aeb4c2fb4a62259be729-09785d679d3717b00cbf",
+          "file": "operational-session.spec.ts",
+          "line": 1157,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-10T17:56:25.796Z",
+    "duration": 7831.954999999999,
+    "expected": 4,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

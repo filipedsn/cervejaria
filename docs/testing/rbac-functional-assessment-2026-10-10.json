@@ -63,7 +63,7 @@
   "backendBuild": "PASS",
   "frontendBuild": "PASS",
   "canonicalAndLegacy": "PARTIAL; representative compatibility and PDV cases, not all permissions in both modes",
-  "operationalScreensWithLiveApi": "PARTIAL: seventeen keys with all three real-browser stages PASS; 51/84 UI stages total",
+  "operationalScreensWithLiveApi": "PARTIAL: eighteen keys with all three real-browser stages PASS; 54/84 UI stages total",
   "productDefectsConfirmed": 4,
   "reportedTickets": [
     "TAP-76",
@@ -399,27 +399,27 @@
     }
   },
   "latestContinuation": {
-    "testedCommit": "370416704b59af56ecc9f88c17560a303583fa69",
-    "testedTree": "f26b01511b22b6028382baee1924849194678a47",
+    "testedCommit": "5428bdff6cef7239fded6dce13b865713035e7c1",
+    "testedTree": "e322c03f10508d3c70725455fe29316f761b62d9",
     "focusedRunner": "PASS",
     "snapshotIntegrity": "PASS; 1479 blobs; exact tree materialized",
-    "moduleAudit": "198 snapshot modules; 0 mutable workspace imports; 1531 external dependency modules",
+    "moduleAudit": "198 snapshot modules; 0 mutable workspace imports; module path-list SHA-256 9c534e8826ddec3ae6a92764bda749dfe71e54be9fcabc13feb05ab83d5d6dd1",
     "testedFileBlobs": {
       "frontend/src/components/EventoCaixaPanel.tsx": "6b7ad664d425dd7ab51d3f97482c7844818180c5",
-      "e2e/rbac-live/operational-session.spec.ts": "3fb3961f85a6e76d2328e7afdb30972247a95f3e",
-      "backend/scripts/pdv-individual-permissions.isolated.test.mjs": "053592da7fc14fa9c770b8b5e5de4b0c189d345a"
+      "e2e/rbac-live/operational-session.spec.ts": "36c3abc7ad491b9ebc924b030ba5a98364db9859",
+      "backend/scripts/pdv-individual-permissions.isolated.test.mjs": "0e35b6274295cefdd26fb8b7a30fbc14e22f8a48"
     },
     "backendBuild": "PASS",
     "frontendBuild": "PASS",
     "activationPreflight": "14/14 PASS",
     "authenticatedDisposableApiSuite": "PASS; representative enabled/denied checks for 28 keys",
-    "playwright": "PASS 12/12 CANONICAL_PDV checks plus 3/3 LEGACY event.cash.open, event.menu.manage and event.dashboard.read; real Fastify API/frontend and disposable PostgreSQL",
+    "playwright": "PASS 12/12 CANONICAL_PDV checks plus 4/4 LEGACY event cash/menu/dashboard checks; real Fastify API/frontend and disposable PostgreSQL",
     "uiStageCounts": {
       "required": 84,
-      "pass": 51,
+      "pass": 54,
       "fail": 0,
       "blocked": 0,
-      "notRun": 33
+      "notRun": 30
     },
     "uiKeys": {
       "command.read": {
@@ -518,6 +518,12 @@
         "enabled": "PASS",
         "revoked": "PASS",
         "dependency": "command.read retained for the event command screen; cash.values.read absent throughout"
+      },
+      "cash.close": {
+        "disabled": "PASS",
+        "enabled": "PASS",
+        "revoked": "PASS",
+        "dependency": "command.read and cash.values.read retained; cash.close varied alone"
       }
     },
     "sameUserSessions": "PASS; two contexts in prior command.read/cash.values.read flow",
@@ -527,18 +533,19 @@
       768
     ],
     "productDefect": "Four confirmed UI defects across cash/event authorization: restricted cash fallback crash; event KPI leak; command screen loading while dashboard access disabled; event cash controls/read-only money rendering were not consistently permission-gated. Current round fixed and verified cash.open; event movement/close UI actions now have permission gates but remain without dedicated UI permission scenarios.",
-    "harnessCorrection": "None in the final cash.open run; initial event dashboard selector failures are documented in prior addenda.",
-    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-open-ui-final-evidence.json",
+    "harnessCorrection": "Two harness-only setup failures were corrected: duplicate event trailer unique constraint; then an extra trailer changed the legacy landing screen to trailer selection. Final fixture reuses the existing legacy event after API tenant-isolation assertions and removes its open foreign command before browser tests. The final 12+4 browser suite and DB assertions pass; neither failure was a product defect.",
+    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-ui-final-evidence.json",
     "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-open-playwright-results.json",
     "console": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-open-browser-run.log",
     "prodAccess": "NO",
     "sharedDevWrites": "YES after QA; immutable DEV release activated and synthetic owner/staff records created for authenticated smoke then deleted",
     "certification": "INCOMPLETE",
     "pending": [
-      "11 remaining live-browser permission keys",
+      "10 remaining live-browser permission keys",
       "full LEGACY and CANONICAL_PDV matrix",
       "global admin contract",
-      "alternate UI endpoints and setting combinations"
+      "alternative UI endpoints and setting combinations",
+      "remaining transverse isolation and usability cases"
     ],
     "devDeployment": {
       "releaseSha": "370416704b59af56ecc9f88c17560a303583fa69",
@@ -553,6 +560,26 @@
       "migrations": "none in release diff",
       "PROD_DEPLOY_REQUIRED": "NO",
       "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-open-dev-release.json"
+    },
+    "sourceMaterialization": "Git blobs only; 1,484 tracked blobs; no mutable workspace imports",
+    "cashCloseRun": {
+      "result": "PASS",
+      "permission": "cash.close",
+      "mode": "EVENTO/LEGACY",
+      "disabled": "close control hidden; direct API denied; session remained unchanged",
+      "enabled": "cash.close plus cash.values.read; UI closed session; exact R$ 987.65 counted cash and authorized staff actor persisted",
+      "revoked": "same authenticated session lost close control; direct API denied; a second open session remained unchanged",
+      "apiAndDatabase": "real Fastify API; owner reopened session for revoke stage; database asserted both session states and actors",
+      "focusedRunReceipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-ui-final-evidence.json",
+      "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-playwright-results.json",
+      "browserLog": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-browser-run.log"
+    },
+    "harnessRetryEvidence": {
+      "firstAttempt": "results/cash-close-ui-runner.log; fixture failed before browser on unique Evento.trailerId",
+      "secondAttempt": "results/cash-close-ui-runner-retry1.log; 12 canonical passed, event menu passed, other legacy cases exposed trailer-selection fixture mismatch",
+      "screenshot": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-harness-selection-screen.png",
+      "errorContext": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-harness-selection-error-context.md",
+      "fixedRun": "results/cash-close-ui-runner-retry2.log"
     }
   }
 }
