@@ -49,11 +49,19 @@ const run = (command, args, options = {}) => {
   return result;
 };
 
-async function localStateFingerprint() {
-  const status = git(['status', '--porcelain=v1', '--untracked-files=all', '-z']);
+async function localStateFingerprint(ownedTempPath) {
+  const ownedRelativePath = ownedTempPath ? path.relative(repoRoot, ownedTempPath).split(path.sep).join('/') : null;
+  const statusRecords = git(['status', '--porcelain=v1', '--untracked-files=all', '-z']).toString('utf8').split('\0').filter(Boolean);
+  const visibleStatusRecords = statusRecords.filter((record) => {
+    if (!ownedRelativePath || !record.startsWith('?? ')) return true;
+    const filePath = record.slice(3).replaceAll('\\', '/');
+    return filePath !== ownedRelativePath && !filePath.startsWith(`${ownedRelativePath}/`);
+  });
+  const status = Buffer.from(visibleStatusRecords.join('\0') + (visibleStatusRecords.length ? '\0' : ''));
   const unstaged = git(['diff', '--binary']);
   const staged = git(['diff', '--cached', '--binary']);
-  const untrackedPaths = git(['ls-files', '--others', '--exclude-standard', '-z']).toString('utf8').split('\0').filter(Boolean).sort();
+  const untrackedPaths = git(['ls-files', '--others', '--exclude-standard', '-z']).toString('utf8').split('\0').filter(Boolean)
+    .filter((relativePath) => !ownedRelativePath || (relativePath !== ownedRelativePath && !relativePath.startsWith(`${ownedRelativePath}/`))).sort();
   const untracked = [];
   for (const relativePath of untrackedPaths) {
     const bytes = await readFile(path.join(repoRoot, relativePath));
@@ -137,7 +145,7 @@ if (runnerWorkingTreeSha256 !== runnerSelectedCommitSha256) {
   throw new Error(`Certification runner differs from selected Git revision: ${runnerPath}`);
 }
 console.log(`PDV_GIT_QA_RUNNER commit=${selectedCommit}:${runnerPath}; sha256=${runnerSelectedCommitSha256}; origin=selected-Git-blob`);
-const localBefore = await localStateFingerprint();
+  const localBefore = await localStateFingerprint(tempRoot);
 const startTree = git(['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim();
 try {
   certificationWork: {
@@ -259,7 +267,7 @@ try {
     const lines = (await readFile(auditFile, 'utf8')).split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
     const unexpected = lines.filter(row => !row.snapshotProjectSource && !row.qaGeneratedPrismaClient && !row.path.toLowerCase().includes(`${path.sep}node_modules${path.sep}`));
     if (unexpected.length) throw new Error('Focused QA imported non-snapshot project code.');
-    const localAfter = await localStateFingerprint();
+    const localAfter = await localStateFingerprint(tempRoot);
     if (localAfter.sha256 !== localBefore.sha256 || git(['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim() !== startTree) throw new Error('Local state changed during focused certification.');
     const evidence = { result: 'PASS', scope: 'focused-gate-only', gate, selectedCommit, selectedTree, materializedTrackedBlobCount: materializedBlobCount, measuredCommands, importedWorkspaceModules: 0, localStateUnchanged: true, prodAccessUsed: 'NO', devSharedWrites: 'NO' };
     if (evidencePath) await writeFile(path.resolve(evidencePath), JSON.stringify(evidence, null, 2) + '\n');
