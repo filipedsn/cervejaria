@@ -1,0 +1,25 @@
+﻿{
+    "permission":  "command.item.cancel.delivered",
+    "mode":  "LEGACY",
+    "result":  "PASS",
+    "stages":  {
+                   "disabled":  "PASS",
+                   "enabled":  "PASS",
+                   "revoked":  "PASS"
+               },
+    "evidence":  [
+                     "disabled: common cancel permission retained; delivered-specific API denied and no removal control shown",
+                     "enabled: real UI cancelled one delivered unit; reason/audit persisted and remaining quantity stayed 1",
+                     "revoked: same session retained common cancel but lost delivered-specific control; API denial preserved 2 units"
+                 ],
+    "nextPending":  [
+                        "command.cancel",
+                        "kitchen.cancel",
+                        "sale.refund"
+                    ],
+    "testTitle":  "command.item.cancel.delivered requires common permission and revokes during the session",
+    "updatedAt":  "2026-10-10T19:37:01.158Z",
+    "checkpointId":  "remaining-permissions/legacy/command-item-cancel-delivered.json",
+    "sourceRun":  "run-c86ad3f",
+    "recordedAt":  "2026-10-10"
+}

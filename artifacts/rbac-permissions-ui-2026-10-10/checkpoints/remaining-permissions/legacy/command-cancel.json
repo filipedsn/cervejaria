@@ -1,0 +1,24 @@
+﻿{
+    "permission":  "command.cancel",
+    "mode":  "LEGACY",
+    "result":  "PASS",
+    "stages":  {
+                   "disabled":  "PASS",
+                   "enabled":  "PASS",
+                   "revoked":  "PASS"
+               },
+    "evidence":  [
+                     "disabled: empty command eligible; API denied and full-command cancellation action absent",
+                     "enabled: real UI cancelled only the empty eligible command; no items or payments were created",
+                     "revoked: same session lost full cancellation; second eligible command remained open"
+                 ],
+    "nextPending":  [
+                        "kitchen.cancel",
+                        "sale.refund"
+                    ],
+    "testTitle":  "command.cancel disabled, enabled and revoked for eligible empty commands",
+    "updatedAt":  "2026-10-10T19:37:02.815Z",
+    "checkpointId":  "remaining-permissions/legacy/command-cancel.json",
+    "sourceRun":  "run-c86ad3f",
+    "recordedAt":  "2026-10-10"
+}

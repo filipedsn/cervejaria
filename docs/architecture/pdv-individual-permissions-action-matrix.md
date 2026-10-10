@@ -179,3 +179,7 @@ A abertura de caixa de evento foi validada pela interface real em disabled/grant
 
 
 O fechamento do caixa de evento foi validado na UI real: sem `cash.close`, o controle e a escrita são negados; `cash.close` com `cash.values.read` permite fechar com ator e contagem exatos; revogar na mesma sessão impede fechar uma nova sessão. Fixture em EVENTO/LEGACY. Recibo e regressões de harness estão no relatório funcional.
+
+## Validação funcional concluída — continuação 10 out 2026
+
+As 28 permissões têm disabled/enabled/revoked executados em navegador autenticado com API e PostgreSQL reais: **84/84 PASS**, sem FAIL/BLOCKED/NOT RUN. Os cenários de dependências, duas sessões, troca de usuário/tenant, ADMIN global, rotas alternativas e contratos CANONICAL_PDV/LEGACY também passaram. Checkpoints detalhados por permissão e contrato: `artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/`; consolidação e recibos: `docs/testing/rbac-functional-assessment-2026-10-10.json` e `.md`.

@@ -1,0 +1,29 @@
+﻿{
+    "permission":  "debt.receive",
+    "mode":  "CANONICAL_PDV",
+    "result":  "PASS",
+    "stages":  {
+                   "disabled":  "PASS",
+                   "enabled":  "PASS",
+                   "revoked":  "PASS"
+               },
+    "evidence":  [
+                     "disabled: operational debt list/payment API denied; no payment persisted; route inaccessible",
+                     "enabled: partial R$5 receipt via real UI persisted with staff actor; saldo R$5",
+                     "revoked: same session lost debt page and API permission; balance and payment count unchanged"
+                 ],
+    "nextPending":  [
+                        "command.close",
+                        "discount.apply",
+                        "command.item.cancel",
+                        "command.item.cancel.delivered",
+                        "command.cancel",
+                        "kitchen.cancel",
+                        "sale.refund"
+                    ],
+    "testTitle":  "debt.receive disabled, partial receipt, and same-session revoke",
+    "updatedAt":  "2026-10-10T19:36:22.022Z",
+    "checkpointId":  "remaining-permissions/canonical_pdv/debt-receive.json",
+    "sourceRun":  "run-c86ad3f",
+    "recordedAt":  "2026-10-10"
+}

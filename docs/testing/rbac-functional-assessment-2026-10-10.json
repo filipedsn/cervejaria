@@ -62,8 +62,8 @@
   },
   "backendBuild": "PASS",
   "frontendBuild": "PASS",
-  "canonicalAndLegacy": "PARTIAL; representative compatibility and PDV cases, not all permissions in both modes",
-  "operationalScreensWithLiveApi": "PARTIAL: nineteen keys with all three real-browser stages PASS; 57/84 UI stages total",
+  "canonicalAndLegacy": "PASS for all 84 core live UI permission stages across CANONICAL_PDV and LEGACY; supplemental routes/admin/tenant scenarios PASS",
+  "operationalScreensWithLiveApi": "PASS: 28 permissions x disabled/enabled/revoked = 84/84 live browser stages across CANONICAL_PDV and LEGACY; see completionContinuation",
   "productDefectsConfirmed": 5,
   "reportedTickets": [
     "TAP-76",
@@ -606,5 +606,20 @@
       "redactedCashContext": "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-redacted-cash-crash-context.md",
       "nullCashDialogTrace": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-cash-null-modal-crash-trace.zip"
     }
+  },
+  "completionContinuation": {
+    "baseline": {"pass": 57, "notRun": 27, "fail": 0, "blocked": 0},
+    "currentCoreStages": {"required": 84, "pass": 84, "notRun": 0, "fail": 0, "blocked": 0},
+    "addedPermissions": ["payment.receive", "debt.receive", "command.close", "discount.apply", "command.item.cancel", "command.item.cancel.delivered", "command.cancel", "kitchen.cancel", "sale.refund"],
+    "modes": ["CANONICAL_PDV", "LEGACY"],
+    "perPermissionStages": "disabled, enabled, revoked in the same authenticated session; all nine PASS in both modes",
+    "authentication": "Real login cookies/browser, Fastify API and disposable PostgreSQL; no authorization mocks",
+    "persistence": "Owner API and database assertions verify successful persistence and unchanged state after denied/revoked writes",
+    "transverse": {"dependencies": "PASS", "simultaneousSessions": "PASS", "userTenantSwitch": "PASS", "globalAdmin": "PASS", "alternativeRoutes": "PASS: nine denied routes with state unchanged", "canonicalLegacy": "PASS"},
+    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/rbac-completion-receipt.json",
+    "checkpoints": "../../artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/",
+    "release": {"commitSha": "PENDING", "pushStatus": "PENDING", "devServedSha": "PENDING", "PROD_DEPLOY_REQUIRED": "NO"},
+    "plane": {"ticket": "TAP-76", "status": "In Progress", "evidenceComment": "PENDING", "pendingWork": "Broader CAIXA/EVENTO acceptance"},
+    "oldTapsOperateReportReissued": false
   }
 }

@@ -278,6 +278,137 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
   expect(baseURL).toBeTruthy();
 });
 
+test('global ADMIN session does not inherit a tenant operational permission set', async ({ browser }) => {
+  const context = await browser.newContext();
+  await context.addCookies([{ name: 'token', value: process.env.RBAC_QA_ADMIN_COOKIE!.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  const page = await context.newPage();
+  await page.goto('/operacao/caixa');
+  const identity = await context.request.get('/api/auth/me');
+  expect(identity.status()).toBe(200);
+  const payload = await identity.json();
+  expect(payload.usuario.papel).toBe('ADMIN');
+  expect(payload.usuario.permissoesOperacao ?? []).toEqual([]);
+
+  for (const route of ['/api/operacao/comandas', '/api/operacao/contexto']) {
+    const response = await context.request.get(route);
+    expect([401, 403, 404], `${route} must deny tenantless ADMIN access, received ${response.status()}`).toContain(response.status());
+  }
+  await page.goto('/operacao/comandas');
+  await expect.poll(() => new URL(page.url()).pathname).not.toBe('/operacao/comandas');
+  await context.close();
+});
+
+test('transverse permission refresh reaches two live sessions and survives a user and tenant switch', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  const ownerPage = await ownerContext.newPage();
+  await ownerPage.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const sessions = await Promise.all([390, 768].map(async (width) => {
+    const context = await browser.newContext({ viewport: { width, height: 844 } });
+    const page = await context.newPage();
+    await loginForm(page, staffEmail, staffPassword);
+    const identity = await context.request.get('/api/auth/me');
+    expect(identity.status()).toBe(200);
+    expect((await identity.json()).usuario.permissoesOperacao).toEqual([]);
+    expect([401, 403]).toContain((await context.request.get('/api/operacao/comandas')).status());
+    return { context, page };
+  }));
+
+  await setPermissions(ownerContext, [permission]);
+  for (const { context, page } of sessions) {
+    await expect.poll(async () => (await (await context.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual([permission]);
+    expect((await context.request.get('/api/operacao/comandas')).status()).toBe(200);
+    await page.goto('/operacao/comandas');
+    await expect.poll(() => new URL(page.url()).pathname).toBe('/operacao/comandas');
+    const width = await page.evaluate(() => document.documentElement.clientWidth);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  }
+
+  await setPermissions(ownerContext, []);
+  for (const { context, page } of sessions) {
+    await expect.poll(async () => (await (await context.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual([]);
+    expect([401, 403]).toContain((await context.request.get('/api/operacao/comandas')).status());
+    await page.reload();
+    await expect.poll(() => new URL(page.url()).pathname).toBe('/operacao/caixa');
+  }
+
+  const switched = sessions[0];
+  const beforeSwitch = await switched.context.request.get('/api/auth/me');
+  const beforeTenant = (await beforeSwitch.json()).cervejaria.id;
+  await logoutInBrowser(switched.page);
+  await loginForm(switched.page, foreignEmail, foreignPassword);
+  const foreignIdentity = await switched.context.request.get('/api/auth/me');
+  expect(foreignIdentity.status()).toBe(200);
+  const foreign = await foreignIdentity.json();
+  expect(foreign.usuario.papel).toBe('DONO');
+  expect(foreign.cervejaria.id).not.toBe(beforeTenant);
+  const users = await switched.context.request.get('/api/usuarios');
+  expect(users.status()).toBe(200);
+  expect((await users.json()).some((user: { id: string }) => user.id === process.env.RBAC_QA_STAFF_ID)).toBe(false);
+  await Promise.all([ownerContext.close(), ...sessions.map(({ context }) => context.close())]);
+});
+
+test('transverse legacy API routes enforce RBAC and leave each fixture unchanged', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  const ownerPage = await ownerContext.newPage();
+  await ownerPage.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+  const staffContext = await browser.newContext();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  const staffPage = await staffContext.newPage();
+  await staffPage.goto('/operacao/caixa');
+  expect((await staffContext.request.get('/api/auth/me')).status()).toBe(200);
+  const readCommand = async (id: string) => {
+    const response = await ownerContext.request.get(`/api/operacao/comandas/${id}`);
+    expect(response.status(), await response.text()).toBe(200);
+    return response.json();
+  };
+  const paymentCommandId = process.env.RBAC_QA_PAYMENT_COMMAND_ID!;
+  const closeCommandId = process.env.RBAC_QA_CLOSE_COMMAND_ID!;
+  const discountCommandId = process.env.RBAC_QA_DISCOUNT_COMMAND_ID!;
+  const itemCommandId = process.env.RBAC_QA_ITEM_CANCEL_COMMAND_ID!;
+  const cancelCommandId = process.env.RBAC_QA_COMMAND_CANCEL_COMMAND_ID!;
+  const debtCommandId = process.env.RBAC_QA_DEBT_COMMAND_ID!;
+  const refundCommandId = process.env.RBAC_QA_REFUND_COMMAND_ID!;
+  const snapshots = new Map<string, unknown>();
+  for (const [name, id] of Object.entries({ paymentCommandId, closeCommandId, discountCommandId, itemCommandId, cancelCommandId, debtCommandId, refundCommandId })) {
+    snapshots.set(name, await readCommand(id));
+  }
+
+  const deniedRoutes: Array<{ method: 'get' | 'post' | 'patch' | 'delete'; url: string; data?: unknown }> = [
+    { method: 'get', url: `/api/comandas/${paymentCommandId}` },
+    { method: 'post', url: `/api/comandas/${paymentCommandId}/itens`, data: { produtoId: process.env.RBAC_QA_INVENTORY_PRODUCT_ID, quantidade: 1 } },
+    { method: 'post', url: '/api/vendas-avulsas', data: { pontoVendaId: 'unauthorized-probe', itens: [], pagamentos: [] } },
+    { method: 'post', url: `/api/pagamentos/comandas/${closeCommandId}/fechar`, data: { pagamentos: [{ forma: 'PIX', valor: 10 }] } },
+    { method: 'patch', url: `/api/comandas/${discountCommandId}/desconto`, data: { desconto: 1 } },
+    { method: 'delete', url: `/api/comandas/${itemCommandId}/itens/${process.env.RBAC_QA_ITEM_CANCEL_ITEM_ID}` },
+    { method: 'post', url: `/api/comandas/${cancelCommandId}/cancelar`, data: {} },
+    { method: 'post', url: `/api/eventos/${reportEventId}/contas-pendentes/${process.env.RBAC_QA_DEBT_ID}/pagamentos`, data: { pagamentos: [{ forma: 'PIX', valor: 1 }] } },
+    { method: 'patch', url: `/api/operacao/cozinha/${process.env.RBAC_QA_REFUND_ORDER_ID}/itens/${process.env.RBAC_QA_REFUND_ITEM_ID}/confirmar-cancelamento`, data: {} },
+  ];
+  for (const route of deniedRoutes) {
+    const options = route.data === undefined ? undefined : { data: route.data };
+    const response = route.method === 'get' ? await staffContext.request.get(route.url)
+      : route.method === 'post' ? await staffContext.request.post(route.url, options)
+        : route.method === 'patch' ? await staffContext.request.patch(route.url, options)
+          : await staffContext.request.delete(route.url);
+    expect([401, 403]).toContain(response.status());
+  }
+
+  for (const [name, id] of Object.entries({ paymentCommandId, closeCommandId, discountCommandId, itemCommandId, cancelCommandId, debtCommandId, refundCommandId })) {
+    expect(await readCommand(id), `${name} changed after an unauthorized alternative route`).toEqual(snapshots.get(name));
+  }
+  const refundCommand = await readCommand(refundCommandId);
+  expect(refundCommand.pedidos.find((order: { id: string }) => order.id === process.env.RBAC_QA_REFUND_ORDER_ID).status).toBe('CANCELAMENTO_PENDENTE');
+  expect(refundCommand.pagamentos.filter((payment: { valor: number }) => payment.valor < 0)).toHaveLength(1);
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
 test('agenda.manage blocks, grants and revokes real agenda writes in the live session', async ({ browser }) => {
   const ownerContext = await browser.newContext();
   const owner = await ownerContext.newPage();

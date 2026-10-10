@@ -1,0 +1,23 @@
+﻿{
+    "permission":  "sale.refund",
+    "mode":  "CANONICAL_PDV",
+    "result":  "PASS",
+    "stages":  {
+                   "disabled":  "PASS",
+                   "enabled":  "PASS",
+                   "revoked":  "PASS"
+               },
+    "evidence":  [
+                     "disabled: kitchen.cancel retained; sale/refund confirmation denied and pending order preserved",
+                     "enabled: real UI confirmed a previously requested paid-sale cancellation; API and PostgreSQL retained exactly one refund payment without duplicating it",
+                     "revoked: same session retained kitchen.cancel but lost sale.refund; second paid cancellation stayed pending"
+                 ],
+    "nextPending":  [
+
+                    ],
+    "testTitle":  "sale.refund requires kitchen.cancel and revokes same-session confirmation",
+    "updatedAt":  "2026-10-10T19:45:17.680Z",
+    "checkpointId":  "remaining-permissions/canonical_pdv/sale-refund.json",
+    "sourceRun":  "run-sale-refund-real-fixture",
+    "recordedAt":  "2026-10-10"
+}

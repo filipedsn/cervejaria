@@ -35,11 +35,12 @@ export async function operacaoRoutes(app: FastifyInstance) {
    */
   app.get('/contexto', async (request) => {
     const user = getAuthUser(request);
+    if (!user.cervejariaId) throw app.httpErrors.notFound('OperaÃƒÂ§ÃƒÂ£o nÃƒÂ£o disponÃƒÂ­vel');
     const [profile, pontosVenda] = await Promise.all([
-      getOperationalProfile(user.cervejariaId!),
+      getOperationalProfile(user.cervejariaId),
       prisma.pontoVenda.findMany({
-      where: { cervejariaId: user.cervejariaId!, ativo: true },
-      orderBy: { createdAt: 'asc' },
+        where: { cervejariaId: user.cervejariaId, ativo: true },
+        orderBy: { createdAt: 'asc' },
       }),
     ]);
 
@@ -59,7 +60,7 @@ export async function operacaoRoutes(app: FastifyInstance) {
       // same persisted capability decision as the operational settings panel.
       controlaEstoque: profile?.effectiveSettings.inventoryEnabled ?? false,
       temCozinha: profile?.effectiveSettings.kitchenEnabled ?? false,
-      // Cardápios salvos são padrão; o antigo toggle de ativação foi removido.
+      // CardÃ¡pios salvos sÃ£o padrÃ£o; o antigo toggle de ativaÃ§Ã£o foi removido.
       usaCardapio: true,
       kitchenItemsChargeAtLaunch: profile?.effectiveSettings.kitchenItemsChargeAtLaunch ?? false,
       allowCloseComandaWithPendingKitchenOrders: profile?.effectiveSettings.allowCloseComandaWithPendingKitchenOrders ?? false,

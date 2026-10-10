@@ -1,0 +1,460 @@
+﻿{
+    "assessmentDate":  "2026-10-10",
+    "baseline":  {
+                     "pass":  57,
+                     "notRun":  27,
+                     "fail":  0,
+                     "blocked":  0
+                 },
+    "finalCoreStages":  {
+                            "required":  84,
+                            "pass":  84,
+                            "notRun":  0,
+                            "fail":  0,
+                            "blocked":  0
+                        },
+    "addedPermissions":  [
+                             "payment.receive",
+                             "debt.receive",
+                             "command.close",
+                             "discount.apply",
+                             "command.item.cancel",
+                             "command.item.cancel.delivered",
+                             "command.cancel",
+                             "kitchen.cancel",
+                             "sale.refund"
+                         ],
+    "modeRuns":  [
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "payment.receive",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: command.close retained; payment API denied and command/payment state unchanged; UI close action disabled",
+                                          "enabled: real UI payment persisted once; command=FECHADA; actor=staff",
+                                          "revoked: same staff session lost close action and API payment; separate command remained unchanged"
+                                      ],
+                         "nextPending":  [
+                                             "debt.receive",
+                                             "command.close",
+                                             "discount.apply",
+                                             "command.item.cancel",
+                                             "command.item.cancel.delivered",
+                                             "command.cancel",
+                                             "kitchen.cancel",
+                                             "sale.refund"
+                                         ],
+                         "mode":  "canonical_pdv",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/canonical_pdv/payment-receive.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "debt.receive",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: operational debt list/payment API denied; no payment persisted; route inaccessible",
+                                          "enabled: partial R$5 receipt via real UI persisted with staff actor; saldo R$5",
+                                          "revoked: same session lost debt page and API permission; balance and payment count unchanged"
+                                      ],
+                         "nextPending":  [
+                                             "command.close",
+                                             "discount.apply",
+                                             "command.item.cancel",
+                                             "command.item.cancel.delivered",
+                                             "command.cancel",
+                                             "kitchen.cancel",
+                                             "sale.refund"
+                                         ],
+                         "mode":  "canonical_pdv",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/canonical_pdv/debt-receive.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "command.close",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: payment.receive retained; command close API denied and UI control disabled",
+                                          "enabled: real UI closed the command and persisted its payment; database actor is checked by the isolated runner",
+                                          "revoked: same session lost close control while payment.receive remained; denial made no writes"
+                                      ],
+                         "nextPending":  [
+                                             "discount.apply",
+                                             "command.item.cancel",
+                                             "command.item.cancel.delivered",
+                                             "command.cancel",
+                                             "kitchen.cancel",
+                                             "sale.refund"
+                                         ],
+                         "mode":  "canonical_pdv",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/canonical_pdv/command-close.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "discount.apply",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: financial dependencies retained; direct discount API denied and discount control absent",
+                                          "enabled: real UI applied R$2.50 discount and closed with exact discounted payment",
+                                          "revoked: same authenticated session lost discount field and PATCH; stored discount unchanged"
+                                      ],
+                         "nextPending":  [
+                                             "command.item.cancel",
+                                             "command.item.cancel.delivered",
+                                             "command.cancel",
+                                             "kitchen.cancel",
+                                             "sale.refund"
+                                         ],
+                         "mode":  "canonical_pdv",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/canonical_pdv/discount-apply.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "command.item.cancel",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: quantity reduction API denied and remove-one control disabled; quantity stayed 2",
+                                          "enabled: real UI reduced one of two units; command total and item quantity persisted",
+                                          "revoked: same session lost remove control and quantity PATCH; item remained quantity 2"
+                                      ],
+                         "nextPending":  [
+                                             "command.item.cancel.delivered",
+                                             "command.cancel",
+                                             "kitchen.cancel",
+                                             "sale.refund"
+                                         ],
+                         "mode":  "canonical_pdv",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/canonical_pdv/command-item-cancel.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "command.item.cancel.delivered",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: common cancel permission retained; delivered-specific API denied and no removal control shown",
+                                          "enabled: real UI cancelled one delivered unit; reason/audit persisted and remaining quantity stayed 1",
+                                          "revoked: same session retained common cancel but lost delivered-specific control; API denial preserved 2 units"
+                                      ],
+                         "nextPending":  [
+                                             "command.cancel",
+                                             "kitchen.cancel",
+                                             "sale.refund"
+                                         ],
+                         "mode":  "canonical_pdv",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/canonical_pdv/command-item-cancel-delivered.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "command.cancel",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: empty command eligible; API denied and full-command cancellation action absent",
+                                          "enabled: real UI cancelled only the empty eligible command; no items or payments were created",
+                                          "revoked: same session lost full cancellation; second eligible command remained open"
+                                      ],
+                         "nextPending":  [
+                                             "kitchen.cancel",
+                                             "sale.refund"
+                                         ],
+                         "mode":  "canonical_pdv",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/canonical_pdv/command-cancel.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "kitchen.cancel",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: sale.refund retained; queue is readable but cancel control and status transition are denied",
+                                          "enabled: real kitchen UI requested cancellation; order status persisted as CANCELAMENTO_PENDENTE",
+                                          "revoked: same session kept kitchen.read/sale.refund but lost kitchen.cancel; second order remained RECEBIDO"
+                                      ],
+                         "nextPending":  [
+                                             "sale.refund"
+                                         ],
+                         "mode":  "canonical_pdv",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/canonical_pdv/kitchen-cancel.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "sale.refund",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: kitchen.cancel retained; sale/refund confirmation denied and pending order preserved",
+                                          "enabled: real UI confirmed a previously requested paid-sale cancellation; API and PostgreSQL retained exactly one refund payment without duplicating it",
+                                          "revoked: same session retained kitchen.cancel but lost sale.refund; second paid cancellation stayed pending"
+                                      ],
+                         "nextPending":  [
+
+                                         ],
+                         "mode":  "canonical_pdv",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/canonical_pdv/sale-refund.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "payment.receive",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: command.close retained; payment API denied and command/payment state unchanged; UI close action disabled",
+                                          "enabled: real UI payment persisted once; command=FECHADA; actor=staff",
+                                          "revoked: same staff session lost close action and API payment; separate command remained unchanged"
+                                      ],
+                         "nextPending":  [
+                                             "debt.receive",
+                                             "command.close",
+                                             "discount.apply",
+                                             "command.item.cancel",
+                                             "command.item.cancel.delivered",
+                                             "command.cancel",
+                                             "kitchen.cancel",
+                                             "sale.refund"
+                                         ],
+                         "mode":  "legacy",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/legacy/payment-receive.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "debt.receive",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: operational debt list/payment API denied; no payment persisted; route inaccessible",
+                                          "enabled: partial R$5 receipt via real UI persisted with staff actor; saldo R$5",
+                                          "revoked: same session lost debt page and API permission; balance and payment count unchanged"
+                                      ],
+                         "nextPending":  [
+                                             "command.close",
+                                             "discount.apply",
+                                             "command.item.cancel",
+                                             "command.item.cancel.delivered",
+                                             "command.cancel",
+                                             "kitchen.cancel",
+                                             "sale.refund"
+                                         ],
+                         "mode":  "legacy",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/legacy/debt-receive.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "command.close",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: payment.receive retained; command close API denied and UI control disabled",
+                                          "enabled: real UI closed the command and persisted its payment; database actor is checked by the isolated runner",
+                                          "revoked: same session lost close control while payment.receive remained; denial made no writes"
+                                      ],
+                         "nextPending":  [
+                                             "discount.apply",
+                                             "command.item.cancel",
+                                             "command.item.cancel.delivered",
+                                             "command.cancel",
+                                             "kitchen.cancel",
+                                             "sale.refund"
+                                         ],
+                         "mode":  "legacy",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/legacy/command-close.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "discount.apply",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: financial dependencies retained; direct discount API denied and discount control absent",
+                                          "enabled: real UI applied R$2.50 discount and closed with exact discounted payment",
+                                          "revoked: same authenticated session lost discount field and PATCH; stored discount unchanged"
+                                      ],
+                         "nextPending":  [
+                                             "command.item.cancel",
+                                             "command.item.cancel.delivered",
+                                             "command.cancel",
+                                             "kitchen.cancel",
+                                             "sale.refund"
+                                         ],
+                         "mode":  "legacy",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/legacy/discount-apply.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "command.item.cancel",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: quantity reduction API denied and remove-one control disabled; quantity stayed 2",
+                                          "enabled: real UI reduced one of two units; command total and item quantity persisted",
+                                          "revoked: same session lost remove control and quantity PATCH; item remained quantity 2"
+                                      ],
+                         "nextPending":  [
+                                             "command.item.cancel.delivered",
+                                             "command.cancel",
+                                             "kitchen.cancel",
+                                             "sale.refund"
+                                         ],
+                         "mode":  "legacy",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/legacy/command-item-cancel.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "command.item.cancel.delivered",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: common cancel permission retained; delivered-specific API denied and no removal control shown",
+                                          "enabled: real UI cancelled one delivered unit; reason/audit persisted and remaining quantity stayed 1",
+                                          "revoked: same session retained common cancel but lost delivered-specific control; API denial preserved 2 units"
+                                      ],
+                         "nextPending":  [
+                                             "command.cancel",
+                                             "kitchen.cancel",
+                                             "sale.refund"
+                                         ],
+                         "mode":  "legacy",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/legacy/command-item-cancel-delivered.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "command.cancel",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: empty command eligible; API denied and full-command cancellation action absent",
+                                          "enabled: real UI cancelled only the empty eligible command; no items or payments were created",
+                                          "revoked: same session lost full cancellation; second eligible command remained open"
+                                      ],
+                         "nextPending":  [
+                                             "kitchen.cancel",
+                                             "sale.refund"
+                                         ],
+                         "mode":  "legacy",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/legacy/command-cancel.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "kitchen.cancel",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: sale.refund retained; queue is readable but cancel control and status transition are denied",
+                                          "enabled: real kitchen UI requested cancellation; order status persisted as CANCELAMENTO_PENDENTE",
+                                          "revoked: same session kept kitchen.read/sale.refund but lost kitchen.cancel; second order remained RECEBIDO"
+                                      ],
+                         "nextPending":  [
+                                             "sale.refund"
+                                         ],
+                         "mode":  "legacy",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/legacy/kitchen-cancel.json"
+                     },
+                     {
+                         "stages":  {
+                                        "disabled":  "PASS",
+                                        "enabled":  "PASS",
+                                        "revoked":  "PASS"
+                                    },
+                         "permission":  "sale.refund",
+                         "result":  "PASS",
+                         "evidence":  [
+                                          "disabled: kitchen.cancel retained; sale/refund confirmation denied and pending order preserved",
+                                          "enabled: real UI confirmed a previously requested paid-sale cancellation; API and PostgreSQL retained exactly one refund payment without duplicating it",
+                                          "revoked: same session retained kitchen.cancel but lost sale.refund; second paid cancellation stayed pending"
+                                      ],
+                         "nextPending":  [
+
+                                         ],
+                         "mode":  "legacy",
+                         "checkpoint":  "artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/legacy/sale-refund.json"
+                     }
+                 ],
+    "transverse":  {
+                       "dependencies":  "PASS",
+                       "simultaneousSessions":  "PASS",
+                       "userTenantSwitch":  "PASS",
+                       "globalAdmin":  "PASS",
+                       "alternativeRoutes":  {
+                                                 "status":  "PASS",
+                                                 "deniedRoutes":  9,
+                                                 "state":  "unchanged"
+                                             },
+                       "canonicalPdv":  "PASS",
+                       "legacy":  "PASS"
+                   },
+    "authentication":  "Real browser login cookies, Fastify API and disposable PostgreSQL; authorization not mocked",
+    "persistence":  "Owner API/database verified authorized persistence and no-write denial/revocation",
+    "evidence":  {
+                     "sessionAdmin":  "../../artifacts/rbac-permissions-ui-2026-10-10/run-transversal-dedicated-final/live-results/playwright-results.json",
+                     "alternativeRoutes":  "../../artifacts/rbac-permissions-ui-2026-10-10/run-transversal-alternate-routes/live-results/playwright-results.json",
+                     "saleRefund":  "../../artifacts/rbac-permissions-ui-2026-10-10/run-sale-refund-real-fixture/live-results/playwright-results.json"
+                 },
+    "release":  {
+                    "commitSha":  "PENDING",
+                    "pushStatus":  "PENDING",
+                    "devServedSha":  "PENDING",
+                    "PROD_DEPLOY_REQUIRED":  "NO"
+                },
+    "plane":  {
+                  "ticket":  "TAP-76",
+                  "evidenceComment":  "PENDING",
+                  "status":  "In Progress",
+                  "pendingWork":  "Broader CAIXA/EVENTO acceptance"
+              },
+    "oldTapsOperateReportReissued":  false
+}

@@ -1,0 +1,28 @@
+﻿{
+    "permission":  "command.close",
+    "mode":  "CANONICAL_PDV",
+    "result":  "PASS",
+    "stages":  {
+                   "disabled":  "PASS",
+                   "enabled":  "PASS",
+                   "revoked":  "PASS"
+               },
+    "evidence":  [
+                     "disabled: payment.receive retained; command close API denied and UI control disabled",
+                     "enabled: real UI closed the command and persisted its payment; database actor is checked by the isolated runner",
+                     "revoked: same session lost close control while payment.receive remained; denial made no writes"
+                 ],
+    "nextPending":  [
+                        "discount.apply",
+                        "command.item.cancel",
+                        "command.item.cancel.delivered",
+                        "command.cancel",
+                        "kitchen.cancel",
+                        "sale.refund"
+                    ],
+    "testTitle":  "command.close disabled, enabled and revoked with payment.receive retained",
+    "updatedAt":  "2026-10-10T19:36:24.139Z",
+    "checkpointId":  "remaining-permissions/canonical_pdv/command-close.json",
+    "sourceRun":  "run-c86ad3f",
+    "recordedAt":  "2026-10-10"
+}

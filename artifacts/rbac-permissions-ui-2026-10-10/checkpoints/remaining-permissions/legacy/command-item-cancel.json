@@ -1,0 +1,26 @@
+﻿{
+    "permission":  "command.item.cancel",
+    "mode":  "LEGACY",
+    "result":  "PASS",
+    "stages":  {
+                   "disabled":  "PASS",
+                   "enabled":  "PASS",
+                   "revoked":  "PASS"
+               },
+    "evidence":  [
+                     "disabled: quantity reduction API denied and remove-one control disabled; quantity stayed 2",
+                     "enabled: real UI reduced one of two units; command total and item quantity persisted",
+                     "revoked: same session lost remove control and quantity PATCH; item remained quantity 2"
+                 ],
+    "nextPending":  [
+                        "command.item.cancel.delivered",
+                        "command.cancel",
+                        "kitchen.cancel",
+                        "sale.refund"
+                    ],
+    "testTitle":  "command.item.cancel disabled, enabled and revoked with command.read retained",
+    "updatedAt":  "2026-10-10T19:36:59.149Z",
+    "checkpointId":  "remaining-permissions/legacy/command-item-cancel.json",
+    "sourceRun":  "run-c86ad3f",
+    "recordedAt":  "2026-10-10"
+}

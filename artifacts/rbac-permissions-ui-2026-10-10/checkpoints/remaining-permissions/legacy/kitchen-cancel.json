@@ -1,0 +1,23 @@
+﻿{
+    "permission":  "kitchen.cancel",
+    "mode":  "LEGACY",
+    "result":  "PASS",
+    "stages":  {
+                   "disabled":  "PASS",
+                   "enabled":  "PASS",
+                   "revoked":  "PASS"
+               },
+    "evidence":  [
+                     "disabled: sale.refund retained; queue is readable but cancel control and status transition are denied",
+                     "enabled: real kitchen UI requested cancellation; order status persisted as CANCELAMENTO_PENDENTE",
+                     "revoked: same session kept kitchen.read/sale.refund but lost kitchen.cancel; second order remained RECEBIDO"
+                 ],
+    "nextPending":  [
+                        "sale.refund"
+                    ],
+    "testTitle":  "kitchen.cancel requires sale.refund and revokes while the session stays logged in",
+    "updatedAt":  "2026-10-10T19:45:22.006Z",
+    "checkpointId":  "remaining-permissions/legacy/kitchen-cancel.json",
+    "sourceRun":  "run-sale-refund-real-fixture",
+    "recordedAt":  "2026-10-10"
+}

@@ -1,0 +1,27 @@
+﻿{
+    "permission":  "discount.apply",
+    "mode":  "LEGACY",
+    "result":  "PASS",
+    "stages":  {
+                   "disabled":  "PASS",
+                   "enabled":  "PASS",
+                   "revoked":  "PASS"
+               },
+    "evidence":  [
+                     "disabled: financial dependencies retained; direct discount API denied and discount control absent",
+                     "enabled: real UI applied R$2.50 discount and closed with exact discounted payment",
+                     "revoked: same authenticated session lost discount field and PATCH; stored discount unchanged"
+                 ],
+    "nextPending":  [
+                        "command.item.cancel",
+                        "command.item.cancel.delivered",
+                        "command.cancel",
+                        "kitchen.cancel",
+                        "sale.refund"
+                    ],
+    "testTitle":  "discount.apply disabled, enabled and revoked while close and payment remain granted",
+    "updatedAt":  "2026-10-10T19:36:55.709Z",
+    "checkpointId":  "remaining-permissions/legacy/discount-apply.json",
+    "sourceRun":  "run-c86ad3f",
+    "recordedAt":  "2026-10-10"
+}

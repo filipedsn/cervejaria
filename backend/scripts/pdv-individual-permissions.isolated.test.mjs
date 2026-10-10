@@ -318,7 +318,7 @@ const cashSession = await prisma.sessaoCaixaOperacao.create({
     cervejariaId: company.id, pontoVendaId: point.id, diaOperacional: permissionOperationalDay,
     status: 'ABERTO', trocoInicial: '123.45', abertoPorId: staff.id, ocorrenciaId: occurrence.id,
   },
-  select: { id: true, diaOperacional: true },
+  select: { id: true, diaOperacional: true, ocorrenciaId: true },
 });
 const restrictedCash = await app.inject({ method: 'GET', url: `/api/operacao/caixa?pontoVendaId=${point.id}`, headers: authHeaders(staffCookie) });
 assert.equal(restrictedCash.statusCode, 200, restrictedCash.body);
@@ -1197,6 +1197,91 @@ assert.equal(apiProbe.status, 401, 'The live app must answer unauthenticated aut
 await prisma.pedidoOperacao.delete({ where: { id: foreignOrder.id } });
 await prisma.comanda.delete({ where: { id: foreignCommand.id } });
 
+// Dedicated disposable fixtures for the remaining live-browser permission
+// keys. Each destructive operation has its own command/order so denial and
+// same-session revocation can be checked without reusing mutated state.
+const createLiveCommandFixture = async ({ label, itemCount = 1, itemStatus = 'RECEBIDO', itemName = `RBAC item ${suffix}`, requiresKitchen = false, type = 'MESA', customerId = null } = {}) => {
+  const command = await prisma.comanda.create({ data: {
+    origem: 'CAIXA', pontoVendaId: point.id, sessaoCaixaRealizacaoId: cashSession.id,
+    ocorrenciaId: cashSession.ocorrenciaId,
+    diaOperacional: cashSession.diaOperacional, tipo: type, identificador: `${label}-${suffix}`,
+    status: 'ABERTA', abertaPorId: owner.id, clienteId: customerId, total: (itemCount * 10).toFixed(2),
+  } });
+  if (!itemCount) return { command };
+  const order = await prisma.pedidoOperacao.create({ data: {
+    cervejariaId: company.id, comandaId: command.id, pontoVendaId: point.id,
+    numero: 930000 + Math.floor(Math.random() * 60000), diaOperacional: cashSession.diaOperacional,
+    criadoPorId: owner.id, status: itemStatus,
+  } });
+  const item = await prisma.itemComanda.create({ data: {
+    comandaId: command.id, produtoId: stockProduct.id, pedidoCozinhaId: order.id,
+    nome: itemName, quantidade: itemCount, precoUnit: '10.00', exigePreparo: requiresKitchen,
+  } });
+  return { command, order, item };
+};
+const livePaymentFixture = await createLiveCommandFixture({ label: 'Pay permission' });
+const livePaymentRevokeFixture = await createLiveCommandFixture({ label: 'Pay revoke permission' });
+const liveCloseFixture = await createLiveCommandFixture({ label: 'Close permission' });
+const liveCloseRevokeFixture = await createLiveCommandFixture({ label: 'Close revoke permission' });
+const liveDiscountFixture = await createLiveCommandFixture({ label: 'Discount permission' });
+const liveDiscountRevokeFixture = await createLiveCommandFixture({ label: 'Discount revoke permission' });
+const liveItemCancelFixture = await createLiveCommandFixture({ label: 'Item cancel permission', itemCount: 2 });
+const liveItemCancelRevokeFixture = await createLiveCommandFixture({ label: 'Item cancel revoke permission', itemCount: 2 });
+const liveCommandCancelFixture = await createLiveCommandFixture({ label: 'Command cancel permission', itemCount: 0 });
+const liveCommandCancelRevokeFixture = await createLiveCommandFixture({ label: 'Command cancel revoke permission', itemCount: 0 });
+const liveDeliveredCancelFixture = await createDeliveredFixture({ quantity: 2 });
+const liveDeliveredCancelRevokeFixture = await createDeliveredFixture({ quantity: 2 });
+const liveKitchenCancelFixture = await createLiveCommandFixture({ label: 'Kitchen cancel permission', itemName: `RBAC kitchen cancel ${suffix}`, requiresKitchen: true });
+const liveKitchenCancelRevokeFixture = await createLiveCommandFixture({ label: 'Kitchen cancel revoke permission', itemName: `RBAC kitchen revoke ${suffix}`, requiresKitchen: true });
+const liveRefundFixture = await createLiveCommandFixture({ label: 'Sale refund permission', itemName: `RBAC sale refund ${suffix}`, requiresKitchen: true, type: 'AVULSA' });
+await prisma.comanda.update({ where: { id: liveRefundFixture.command.id }, data: { status: 'FECHADA', fechadaEm: new Date() } });
+await prisma.pagamento.create({ data: { comandaId: liveRefundFixture.command.id, forma: 'PIX', valor: '10.00', registradoPorId: owner.id } });
+const liveRefundRevokeFixture = await createLiveCommandFixture({ label: 'Sale refund revoke permission', itemName: `RBAC sale refund revoke ${suffix}`, requiresKitchen: true, type: 'AVULSA' });
+await prisma.comanda.update({ where: { id: liveRefundRevokeFixture.command.id }, data: { status: 'FECHADA', fechadaEm: new Date() } });
+await prisma.pagamento.create({ data: { comandaId: liveRefundRevokeFixture.command.id, forma: 'PIX', valor: '10.00', registradoPorId: owner.id } });
+const seedRefundRequest = async (fixture) => {
+  const response = await app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${fixture.order.id}/status`, headers: authHeaders(ownerCookie), payload: { status: 'CANCELAMENTO_PENDENTE' } });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: fixture.order.id } })).status, 'CANCELAMENTO_PENDENTE');
+  const refunds = await prisma.pagamento.findMany({ where: { comandaId: fixture.command.id, valor: { lt: 0 } } });
+  assert.equal(refunds.length, 1, 'owner API request seeds the real closed-sale refund before attendant confirmation');
+};
+await seedRefundRequest(liveRefundFixture);
+await seedRefundRequest(liveRefundRevokeFixture);
+const liveDebtCustomer = await prisma.cliente.create({ data: { nome: `RBAC debt ${suffix}`, telefone: `119876${Date.now().toString().slice(-5)}`, cervejariaId: company.id } });
+const liveDebtFixture = await createLiveCommandFixture({ label: 'Debt permission', itemName: `RBAC debt item ${suffix}`, type: 'MESA', customerId: liveDebtCustomer.id });
+await prisma.comanda.update({ where: { id: liveDebtFixture.command.id }, data: { status: 'FECHADA', fechadaEm: new Date() } });
+const liveDebt = await prisma.contaReceber.create({ data: { comandaId: liveDebtFixture.command.id, clienteId: liveDebtCustomer.id, valorOriginal: '10.00', criadoPorId: owner.id } });
+
+// Matched duplicate fixture set for the Legacy contract run. It is isolated
+// from the CANONICAL_PDV cases because successful actions consume their rows.
+const legacyPaymentFixture = await createLiveCommandFixture({ label: 'Legacy pay permission' });
+const legacyPaymentRevokeFixture = await createLiveCommandFixture({ label: 'Legacy pay revoke permission' });
+const legacyCloseFixture = await createLiveCommandFixture({ label: 'Legacy close permission' });
+const legacyCloseRevokeFixture = await createLiveCommandFixture({ label: 'Legacy close revoke permission' });
+const legacyDiscountFixture = await createLiveCommandFixture({ label: 'Legacy discount permission' });
+const legacyDiscountRevokeFixture = await createLiveCommandFixture({ label: 'Legacy discount revoke permission' });
+const legacyItemCancelFixture = await createLiveCommandFixture({ label: 'Legacy item cancel permission', itemCount: 2 });
+const legacyItemCancelRevokeFixture = await createLiveCommandFixture({ label: 'Legacy item cancel revoke permission', itemCount: 2 });
+const legacyCommandCancelFixture = await createLiveCommandFixture({ label: 'Legacy command cancel permission', itemCount: 0 });
+const legacyCommandCancelRevokeFixture = await createLiveCommandFixture({ label: 'Legacy command cancel revoke permission', itemCount: 0 });
+const legacyDeliveredCancelFixture = await createDeliveredFixture({ quantity: 2 });
+const legacyDeliveredCancelRevokeFixture = await createDeliveredFixture({ quantity: 2 });
+const legacyKitchenCancelFixture = await createLiveCommandFixture({ label: 'Legacy kitchen cancel permission', itemName: `RBAC legacy kitchen ${suffix}`, requiresKitchen: true });
+const legacyKitchenCancelRevokeFixture = await createLiveCommandFixture({ label: 'Legacy kitchen revoke permission', itemName: `RBAC legacy kitchen revoke ${suffix}`, requiresKitchen: true });
+const legacyRefundFixture = await createLiveCommandFixture({ label: 'Legacy sale refund permission', itemName: `RBAC legacy sale refund ${suffix}`, requiresKitchen: true, type: 'AVULSA' });
+await prisma.comanda.update({ where: { id: legacyRefundFixture.command.id }, data: { status: 'FECHADA', fechadaEm: new Date() } });
+await prisma.pagamento.create({ data: { comandaId: legacyRefundFixture.command.id, forma: 'PIX', valor: '10.00', registradoPorId: owner.id } });
+const legacyRefundRevokeFixture = await createLiveCommandFixture({ label: 'Legacy sale refund revoke permission', itemName: `RBAC legacy refund revoke ${suffix}`, requiresKitchen: true, type: 'AVULSA' });
+await prisma.comanda.update({ where: { id: legacyRefundRevokeFixture.command.id }, data: { status: 'FECHADA', fechadaEm: new Date() } });
+await prisma.pagamento.create({ data: { comandaId: legacyRefundRevokeFixture.command.id, forma: 'PIX', valor: '10.00', registradoPorId: owner.id } });
+await seedRefundRequest(legacyRefundFixture);
+await seedRefundRequest(legacyRefundRevokeFixture);
+const legacyDebtCustomer = await prisma.cliente.create({ data: { nome: `RBAC legacy debt ${suffix}`, telefone: `118765${Date.now().toString().slice(-5)}`, cervejariaId: company.id } });
+const legacyDebtFixture = await createLiveCommandFixture({ label: 'Legacy debt permission', itemName: `RBAC legacy debt item ${suffix}`, type: 'MESA', customerId: legacyDebtCustomer.id });
+await prisma.comanda.update({ where: { id: legacyDebtFixture.command.id }, data: { status: 'FECHADA', fechadaEm: new Date() } });
+const legacyDebt = await prisma.contaReceber.create({ data: { comandaId: legacyDebtFixture.command.id, clienteId: legacyDebtCustomer.id, valorOriginal: '10.00', criadoPorId: owner.id } });
+
 // The live browser additionally exercises agenda.manage, whose route is
 // available only when this disposable tenant has canonical PDV settings.
 process.env.PDV_CANONICAL_CONFIG_QA = '1';
@@ -1213,6 +1298,8 @@ const browserEnv = {
   RBAC_QA_STAFF_EMAIL: staff.email,
   RBAC_QA_STAFF_PASSWORD: attendantPassword,
     RBAC_QA_STAFF_COOKIE: staffCookie,
+  RBAC_QA_ADMIN_COOKIE: adminCookie,
+  RBAC_QA_ADMIN_EMAIL: admin.email,
   RBAC_QA_FOREIGN_OWNER_EMAIL: otherOwner.email,
   RBAC_QA_FOREIGN_OWNER_PASSWORD: otherOwnerPassword,
   RBAC_QA_STAFF_ID: staff.id,
@@ -1230,6 +1317,82 @@ const browserEnv = {
   RBAC_QA_INVENTORY_PRODUCT_NAME: stockProduct.nome,
   RBAC_QA_KITCHEN_ORDER_ID: disabledRuleCase.order.id,
   RBAC_QA_KITCHEN_COMMAND_IDENTIFIER: disabledRuleCase.command.identificador,
+  // Keep per-permission progress outside the immutable source snapshot so it
+  // survives cleanup or interruption of this disposable database run.
+  RBAC_QA_CHECKPOINT_DIR: path.join(process.env.PDV_QA_TEMP_PARENT, 'checkpoints'),
+  RBAC_QA_PAYMENT_COMMAND_ID: livePaymentFixture.command.id,
+  RBAC_QA_PAYMENT_REVOKE_COMMAND_ID: livePaymentRevokeFixture.command.id,
+  RBAC_QA_CLOSE_COMMAND_ID: liveCloseFixture.command.id,
+  RBAC_QA_CLOSE_REVOKE_COMMAND_ID: liveCloseRevokeFixture.command.id,
+  RBAC_QA_DISCOUNT_COMMAND_ID: liveDiscountFixture.command.id,
+  RBAC_QA_DISCOUNT_REVOKE_COMMAND_ID: liveDiscountRevokeFixture.command.id,
+  RBAC_QA_ITEM_CANCEL_COMMAND_ID: liveItemCancelFixture.command.id,
+  RBAC_QA_ITEM_CANCEL_ITEM_ID: liveItemCancelFixture.item.id,
+  RBAC_QA_ITEM_CANCEL_REVOKE_COMMAND_ID: liveItemCancelRevokeFixture.command.id,
+  RBAC_QA_COMMAND_CANCEL_COMMAND_ID: liveCommandCancelFixture.command.id,
+  RBAC_QA_COMMAND_CANCEL_REVOKE_COMMAND_ID: liveCommandCancelRevokeFixture.command.id,
+  RBAC_QA_DELIVERED_CANCEL_COMMAND_ID: liveDeliveredCancelFixture.command.id,
+  RBAC_QA_DELIVERED_CANCEL_ITEM_ID: liveDeliveredCancelFixture.item.id,
+  RBAC_QA_DELIVERED_CANCEL_REVOKE_COMMAND_ID: liveDeliveredCancelRevokeFixture.command.id,
+  RBAC_QA_DELIVERED_CANCEL_REVOKE_ITEM_ID: liveDeliveredCancelRevokeFixture.item.id,
+  RBAC_QA_KITCHEN_CANCEL_COMMAND_ID: liveKitchenCancelFixture.command.id,
+  RBAC_QA_KITCHEN_CANCEL_ORDER_ID: liveKitchenCancelFixture.order.id,
+  RBAC_QA_KITCHEN_CANCEL_COMMAND_LABEL: liveKitchenCancelFixture.command.identificador,
+  RBAC_QA_KITCHEN_CANCEL_ITEM_NAME: liveKitchenCancelFixture.item.nome,
+  RBAC_QA_KITCHEN_CANCEL_REVOKE_COMMAND_ID: liveKitchenCancelRevokeFixture.command.id,
+  RBAC_QA_KITCHEN_CANCEL_REVOKE_ORDER_ID: liveKitchenCancelRevokeFixture.order.id,
+  RBAC_QA_KITCHEN_CANCEL_REVOKE_COMMAND_LABEL: liveKitchenCancelRevokeFixture.command.identificador,
+  RBAC_QA_KITCHEN_CANCEL_REVOKE_ITEM_NAME: liveKitchenCancelRevokeFixture.item.nome,
+  RBAC_QA_REFUND_COMMAND_ID: liveRefundFixture.command.id,
+  RBAC_QA_REFUND_ORDER_ID: liveRefundFixture.order.id,
+  RBAC_QA_REFUND_ITEM_ID: liveRefundFixture.item.id,
+  RBAC_QA_REFUND_COMMAND_LABEL: liveRefundFixture.command.identificador,
+  RBAC_QA_REFUND_ITEM_NAME: liveRefundFixture.item.nome,
+  RBAC_QA_REFUND_REVOKE_COMMAND_ID: liveRefundRevokeFixture.command.id,
+  RBAC_QA_REFUND_REVOKE_ORDER_ID: liveRefundRevokeFixture.order.id,
+  RBAC_QA_REFUND_REVOKE_COMMAND_LABEL: liveRefundRevokeFixture.command.identificador,
+  RBAC_QA_REFUND_REVOKE_ITEM_NAME: liveRefundRevokeFixture.item.nome,
+  RBAC_QA_DEBT_ID: liveDebt.id,
+  RBAC_QA_DEBT_COMMAND_ID: liveDebtFixture.command.id,
+  RBAC_QA_DEBT_CUSTOMER_NAME: liveDebtCustomer.nome,
+};
+const legacyBrowserEnv = {
+  ...browserEnv,
+  PDV_CANONICAL_CONFIG_QA: '0',
+  RBAC_QA_PAYMENT_COMMAND_ID: legacyPaymentFixture.command.id,
+  RBAC_QA_PAYMENT_REVOKE_COMMAND_ID: legacyPaymentRevokeFixture.command.id,
+  RBAC_QA_CLOSE_COMMAND_ID: legacyCloseFixture.command.id,
+  RBAC_QA_CLOSE_REVOKE_COMMAND_ID: legacyCloseRevokeFixture.command.id,
+  RBAC_QA_DISCOUNT_COMMAND_ID: legacyDiscountFixture.command.id,
+  RBAC_QA_DISCOUNT_REVOKE_COMMAND_ID: legacyDiscountRevokeFixture.command.id,
+  RBAC_QA_ITEM_CANCEL_COMMAND_ID: legacyItemCancelFixture.command.id,
+  RBAC_QA_ITEM_CANCEL_ITEM_ID: legacyItemCancelFixture.item.id,
+  RBAC_QA_ITEM_CANCEL_REVOKE_COMMAND_ID: legacyItemCancelRevokeFixture.command.id,
+  RBAC_QA_COMMAND_CANCEL_COMMAND_ID: legacyCommandCancelFixture.command.id,
+  RBAC_QA_COMMAND_CANCEL_REVOKE_COMMAND_ID: legacyCommandCancelRevokeFixture.command.id,
+  RBAC_QA_DELIVERED_CANCEL_COMMAND_ID: legacyDeliveredCancelFixture.command.id,
+  RBAC_QA_DELIVERED_CANCEL_ITEM_ID: legacyDeliveredCancelFixture.item.id,
+  RBAC_QA_DELIVERED_CANCEL_REVOKE_COMMAND_ID: legacyDeliveredCancelRevokeFixture.command.id,
+  RBAC_QA_DELIVERED_CANCEL_REVOKE_ITEM_ID: legacyDeliveredCancelRevokeFixture.item.id,
+  RBAC_QA_KITCHEN_CANCEL_COMMAND_ID: legacyKitchenCancelFixture.command.id,
+  RBAC_QA_KITCHEN_CANCEL_ORDER_ID: legacyKitchenCancelFixture.order.id,
+  RBAC_QA_KITCHEN_CANCEL_COMMAND_LABEL: legacyKitchenCancelFixture.command.identificador,
+  RBAC_QA_KITCHEN_CANCEL_ITEM_NAME: legacyKitchenCancelFixture.item.nome,
+  RBAC_QA_KITCHEN_CANCEL_REVOKE_ORDER_ID: legacyKitchenCancelRevokeFixture.order.id,
+  RBAC_QA_KITCHEN_CANCEL_REVOKE_COMMAND_LABEL: legacyKitchenCancelRevokeFixture.command.identificador,
+  RBAC_QA_KITCHEN_CANCEL_REVOKE_ITEM_NAME: legacyKitchenCancelRevokeFixture.item.nome,
+  RBAC_QA_REFUND_COMMAND_ID: legacyRefundFixture.command.id,
+  RBAC_QA_REFUND_ORDER_ID: legacyRefundFixture.order.id,
+  RBAC_QA_REFUND_ITEM_ID: legacyRefundFixture.item.id,
+  RBAC_QA_REFUND_COMMAND_LABEL: legacyRefundFixture.command.identificador,
+  RBAC_QA_REFUND_ITEM_NAME: legacyRefundFixture.item.nome,
+  RBAC_QA_REFUND_REVOKE_COMMAND_ID: legacyRefundRevokeFixture.command.id,
+  RBAC_QA_REFUND_REVOKE_ORDER_ID: legacyRefundRevokeFixture.order.id,
+  RBAC_QA_REFUND_REVOKE_COMMAND_LABEL: legacyRefundRevokeFixture.command.identificador,
+  RBAC_QA_REFUND_REVOKE_ITEM_NAME: legacyRefundRevokeFixture.item.nome,
+  RBAC_QA_DEBT_ID: legacyDebt.id,
+  RBAC_QA_DEBT_COMMAND_ID: legacyDebtFixture.command.id,
+  RBAC_QA_DEBT_CUSTOMER_NAME: legacyDebtCustomer.nome,
 };
 const browserLogs = [];
 const runBrowser = async (args, env) => {
@@ -1249,52 +1412,62 @@ const runBrowser = async (args, env) => {
   process.stderr.write(stderr);
   return exitCode;
 };
-const legacyEventDashboardTests = 'event\\.(menu\\.manage|dashboard\\.read|cash\\.open|cash\\.close|taps\\.operate)';
-const canonicalBrowserExitCode = await runBrowser(['--grep-invert', legacyEventDashboardTests], browserEnv);
-assert.equal(canonicalBrowserExitCode, 0, 'Live CANONICAL_PDV operational RBAC browser tests failed.');
-// Event cash/menu/dashboard flows run in EVENTO/LEGACY mode. Run those real UI flows against the same
-// disposable API/database with canonical activation off, so the second tenant
-// resolves LEGACY settings while the other browser cases retain CANONICAL_PDV.
+const remainingPermissionGrep = 'payment\\.receive|debt\\.receive|command\\.close|discount\\.apply|command\\.item\\.cancel|command\\.cancel|kitchen\\.cancel|sale\\.refund';
+// Previously approved operational and taps cases are intentionally not replayed.
+const browserGrep = process.env.PDV_RBAC_TEST_GREP ?? remainingPermissionGrep;
+const canonicalBrowserExitCode = await runBrowser(['--grep', browserGrep], browserEnv);
 process.env.PDV_CANONICAL_CONFIG_QA = '0';
-const legacyBrowserExitCode = await runBrowser(['--grep', legacyEventDashboardTests], { ...browserEnv, PDV_CANONICAL_CONFIG_QA: '0' });
+const remainingLegacyBrowserExitCode = await runBrowser(['--grep', browserGrep], legacyBrowserEnv);
 process.env.PDV_CANONICAL_CONFIG_QA = '1';
 await writeFile(path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results', 'browser-run.log'), browserLogs.join('\n'));
-assert.equal(legacyBrowserExitCode, 0, 'Live LEGACY event permission browser tests failed.');
-const browserInventoryMovements = await prisma.inventoryMovement.findMany({
-  where: { pontoVendaId: point.id, produtoId: stockProduct.id, registradoPorId: staff.id, tipo: 'ENTRADA', observacao: 'authorized live RBAC adjustment' },
-  select: { quantidade: true, registradoPorId: true, produtoId: true },
-});
-assert.equal(browserInventoryMovements.length, 1, 'live inventory.adjust UI creates exactly one authorized stock movement');
-assert.equal(Number(browserInventoryMovements[0].quantidade), 1);
-assert.equal(browserInventoryMovements[0].registradoPorId, staff.id, 'live stock movement records the authorized staff member');
-assert.equal(browserInventoryMovements[0].produtoId, stockProduct.id);
-const browserKitchenReadOrder = await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: disabledRuleCase.order.id }, select: { status: true } });
-assert.equal(browserKitchenReadOrder.status, 'EM_PREPARO', 'only the later authorized kitchen.operate UI flow advances the kitchen status');
-const browserCreatedCommands = await prisma.comanda.findMany({
-  where: { pontoVendaId: point.id, origem: 'CAIXA', identificador: { startsWith: 'RBAC command ' } },
-  select: { id: true, abertaPorId: true, status: true },
-});
-assert.equal(browserCreatedCommands.length, 1, 'live command.operate UI creates exactly one QA comanda');
-assert.equal(browserCreatedCommands[0].abertaPorId, staff.id, 'live UI comanda records the authorized staff member');
-assert.equal(browserCreatedCommands[0].status, 'ABERTA');
-const browserEventCashCloseSessions = await prisma.sessaoCaixaEvento.findMany({
-  where: { eventoId: foreignEvent.id },
-  orderBy: { abertoEm: 'asc' },
-  select: { id: true, status: true, abertoPorId: true, fechadoPorId: true, trocoInicial: true, contadoDinheiro: true, fechadoEm: true },
-});
-assert.equal(browserEventCashCloseSessions.length, 2, 'event cash close UI closes one session and the revoked attempt leaves one new session open');
-assert.equal(browserEventCashCloseSessions[0].status, 'FECHADO');
-assert.equal(browserEventCashCloseSessions[0].fechadoPorId, eventMenuStaff.id, 'event cash close records the authorized staff actor');
-assert.equal(Number(browserEventCashCloseSessions[0].contadoDinheiro), 987.65, 'event cash close persists the exact opening float count');
-assert.ok(browserEventCashCloseSessions[0].fechadoEm instanceof Date);
-assert.equal(browserEventCashCloseSessions[1].status, 'ABERTO', 'revoked close leaves the newer session open');
-assert.equal(browserEventCashCloseSessions[1].abertoPorId, otherOwner.id);
-assert.equal(Number(browserEventCashCloseSessions[1].trocoInicial), 12.34);
-assert.notEqual(browserEventCashCloseSessions[0].id, browserEventCashCloseSessions[1].id);
-const browserEventTapMounts = await prisma.tapMontagem.findMany({ where: { eventoId: foreignEvent.id, tapId: eventPermissionTap.id }, select: { produtoId: true, encerradoEm: true } });
-assert.equal(browserEventTapMounts.length, 1, 'authorized UI tap operation leaves exactly one mounting history row');
-assert.equal(browserEventTapMounts[0].produtoId, foreignTapChope.id);
-assert.equal(browserEventTapMounts[0].encerradoEm, null, 'revoked tap attempt leaves the granted mounting active and unchanged');
+assert.equal(canonicalBrowserExitCode, 0, 'Live CANONICAL_PDV operational RBAC browser tests failed.');
+assert.equal(remainingLegacyBrowserExitCode, 0, 'Live LEGACY remaining-permission browser tests failed.');
+if (!process.env.PDV_RBAC_TEST_GREP) {
+const canonicalPaidCommand = await prisma.comanda.findUniqueOrThrow({ where: { id: livePaymentFixture.command.id }, include: { pagamentos: true } });
+assert.equal(canonicalPaidCommand.status, 'FECHADA');
+assert.equal(canonicalPaidCommand.pagamentos.length, 1);
+assert.equal(canonicalPaidCommand.pagamentos[0].registradoPorId, staff.id);
+const canonicalPaymentRevoked = await prisma.comanda.findUniqueOrThrow({ where: { id: livePaymentRevokeFixture.command.id }, include: { pagamentos: true } });
+assert.equal(canonicalPaymentRevoked.status, 'ABERTA');
+assert.equal(canonicalPaymentRevoked.pagamentos.length, 0);
+const canonicalDebt = await prisma.contaReceber.findUniqueOrThrow({ where: { id: liveDebt.id }, include: { pagamentos: true } });
+assert.equal(canonicalDebt.pagamentos.length, 1);
+assert.equal(canonicalDebt.pagamentos[0].registradoPorId, staff.id);
+assert.equal(Number(canonicalDebt.pagamentos[0].valor), 5);
+const canonicalClosed = await prisma.comanda.findUniqueOrThrow({ where: { id: liveCloseFixture.command.id }, include: { pagamentos: true } });
+assert.equal(canonicalClosed.status, 'FECHADA');
+assert.equal(canonicalClosed.fechadoPorId, staff.id);
+assert.equal(canonicalClosed.pagamentos.length, 1);
+assert.equal((await prisma.comanda.findUniqueOrThrow({ where: { id: liveDiscountFixture.command.id } })).desconto.toString(), '2.5');
+assert.equal((await prisma.comanda.findUniqueOrThrow({ where: { id: liveDiscountFixture.command.id } })).status, 'FECHADA');
+assert.equal((await prisma.itemComanda.findUniqueOrThrow({ where: { id: liveItemCancelFixture.item.id } })).quantidade, 1);
+const deliveredCancellation = await prisma.itemComandaCancelamentoEntregue.findMany({ where: { itemComandaId: liveDeliveredCancelFixture.item.id } });
+assert.equal(deliveredCancellation.length, 1);
+assert.equal(deliveredCancellation[0].quantidade, 1);
+assert.equal(deliveredCancellation[0].usuarioId, staff.id);
+assert.equal((await prisma.comanda.findUniqueOrThrow({ where: { id: liveCommandCancelFixture.command.id } })).status, 'CANCELADA');
+assert.equal((await prisma.comanda.findUniqueOrThrow({ where: { id: liveCommandCancelRevokeFixture.command.id } })).status, 'ABERTA');
+assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: liveKitchenCancelFixture.order.id } })).status, 'CANCELAMENTO_PENDENTE');
+assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: liveKitchenCancelRevokeFixture.order.id } })).status, 'RECEBIDO');
+assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: liveRefundFixture.order.id } })).status, 'CANCELADO');
+assert.ok((await prisma.pagamento.findMany({ where: { comandaId: liveRefundFixture.command.id } })).some((payment) => Number(payment.valor) < 0));
+assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: liveRefundRevokeFixture.order.id } })).status, 'CANCELAMENTO_PENDENTE');
+assert.equal((await prisma.comanda.findUniqueOrThrow({ where: { id: liveDiscountRevokeFixture.command.id } })).status, 'ABERTA');
+assert.equal((await prisma.itemComanda.findUniqueOrThrow({ where: { id: liveItemCancelRevokeFixture.item.id } })).quantidade, 2);
+assert.equal((await prisma.itemComanda.findUniqueOrThrow({ where: { id: liveDeliveredCancelRevokeFixture.item.id } })).quantidade, 2);
+} else {
+  const focusedBrowserGrep = process.env.PDV_RBAC_TEST_GREP ?? '';
+  if (focusedBrowserGrep.includes('kitchen.cancel')) {
+    assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: liveKitchenCancelFixture.order.id } })).status, 'CANCELAMENTO_PENDENTE');
+    assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: liveKitchenCancelRevokeFixture.order.id } })).status, 'RECEBIDO');
+  }
+  if (focusedBrowserGrep.includes('sale.refund')) {
+    assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: liveRefundFixture.order.id } })).status, 'CANCELADO');
+    assert.ok((await prisma.pagamento.findMany({ where: { comandaId: liveRefundFixture.command.id } })).some((payment) => Number(payment.valor) < 0));
+    assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: liveRefundRevokeFixture.order.id } })).status, 'CANCELAMENTO_PENDENTE');
+    assert.equal((await prisma.pagamento.count({ where: { comandaId: liveRefundRevokeFixture.command.id, valor: { lt: 0 } } })), 1);
+  }
+}
 await app.close();
 await prisma.$disconnect();
 
