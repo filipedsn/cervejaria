@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -454,6 +454,114 @@ assert.deepEqual(JSON.parse(migratedProductLinksRead.body).map(({ opcional }) =>
   { companyId: company.id, pointId: point.id }, { companyId: company.id, pointId: point.id },
 ]);
 process.env.PDV_CANONICAL_CONFIG_QA = '0';
+const deliveredStockProduct = await prisma.produto.create({ data: { nome: `Delivered stock QA ${suffix}`, tipo: 'COMIDA', controlaEstoque: true, cervejariaId: company.id, pontoVendaId: point.id } });
+const deliveredStockBalance = await prisma.inventoryBalance.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, produtoId: deliveredStockProduct.id, quantidade: '50.000' } });
+const deliveredTestFixtures = [];
+const createDeliveredFixture = async ({ quantity = 2, payment = false, stockDebit = false, status = 'ENTREGUE', controlsStock = true } = {}) => {
+  const command = await prisma.comanda.create({ data: {
+    origem: 'CAIXA', pontoVendaId: point.id, sessaoCaixaRealizacaoId: cashSession.id,
+    diaOperacional: cashSession.diaOperacional, tipo: 'MESA', identificador: `Delivered-${randomBytes(3).toString('hex')}`,
+    status: status === 'FECHADA' ? 'FECHADA' : 'ABERTA', abertaPorId: owner.id,
+    total: (quantity * 10).toFixed(2), ...(status === 'FECHADA' ? { fechadaEm: new Date() } : {}),
+  } });
+  const order = await prisma.pedidoOperacao.create({ data: {
+    cervejariaId: company.id, comandaId: command.id, pontoVendaId: point.id,
+    numero: 850000 + Math.floor(Math.random() * 10000), diaOperacional: cashSession.diaOperacional,
+    criadoPorId: owner.id, status: 'ENTREGUE',
+  } });
+  const product = controlsStock ? deliveredStockProduct : await prisma.produto.create({ data: {
+    nome: `No-stock product ${randomBytes(3).toString('hex')}`, tipo: 'COMIDA', controlaEstoque: false, cervejariaId: company.id,
+  } });
+  const item = await prisma.itemComanda.create({ data: {
+    comandaId: command.id, produtoId: product.id, pedidoCozinhaId: order.id,
+    nome: product.nome, quantidade: quantity, precoUnit: '10.00', exigePreparo: true,
+  } });
+  if (stockDebit) {
+    await prisma.inventoryBalance.update({ where: { id: deliveredStockBalance.id }, data: { quantidade: { decrement: quantity } } });
+    await prisma.inventoryMovement.create({ data: {
+      cervejariaId: company.id, pontoVendaId: point.id, produtoId: deliveredStockProduct.id,
+      tipo: 'SAIDA_VENDA', quantidade: quantity, registradoPorId: owner.id, pedidoId: order.id,
+    } });
+  }
+  if (payment) await prisma.pagamento.create({ data: { comandaId: command.id, forma: 'PIX', valor: '1.00', registradoPorId: owner.id } });
+  const fixture = { command, order, item, product };
+  deliveredTestFixtures.push(fixture);
+  return fixture;
+};
+const deliveredBody = ({ fixture, quantity = 1, reason = 'Erro de lançamento confirmado', treatment = 'PREPARADO_ENTREGUE_OU_PERDIDO', idempotencyKey = randomUUID(), expected = fixture.item.quantidade } = {}) => ({
+  quantidade: quantity, quantidadeEsperada: expected, motivo: reason, tratamentoEstoque: treatment, idempotencyKey,
+});
+const deliveredCommonOnly = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['command.item.cancel'] } });
+assert.equal(deliveredCommonOnly.statusCode, 200, deliveredCommonOnly.body);
+const deniedDeliveredFixture = await createDeliveredFixture();
+const deniedDeliveredPhoto = async () => ({
+  item: await prisma.itemComanda.findUniqueOrThrow({ where: { id: deniedDeliveredFixture.item.id } }),
+  command: await prisma.comanda.findUniqueOrThrow({ where: { id: deniedDeliveredFixture.command.id }, select: { total: true, status: true } }),
+  audit: await prisma.itemComandaCancelamentoEntregue.count({ where: { itemComandaId: deniedDeliveredFixture.item.id } }),
+});
+const deniedDeliveredBefore = await deniedDeliveredPhoto();
+const commonOnlyDelivered = await app.inject({ method: 'DELETE', url: `/api/operacao/comandas/${deniedDeliveredFixture.command.id}/itens/${deniedDeliveredFixture.item.id}`, headers: authHeaders(staffCookie), payload: deliveredBody({ fixture: deniedDeliveredFixture }) });
+assert.equal(commonOnlyDelivered.statusCode, 403, commonOnlyDelivered.body);
+assert.deepEqual(await deniedDeliveredPhoto(), deniedDeliveredBefore, 'common cancellation permission alone cannot change a delivered item');
+const foreignDelivered = await app.inject({ method: 'DELETE', url: `/api/operacao/comandas/${foreignCommand.id}/itens/not-an-item`, headers: authHeaders(staffCookie), payload: deliveredBody({ fixture: deniedDeliveredFixture }) });
+assert.equal(foreignDelivered.statusCode, 404, foreignDelivered.body, 'tenant scoping hides foreign commands');
+const ownerDeliveredFixture = await createDeliveredFixture();
+const ownerDelivered = await app.inject({ method: 'DELETE', url: `/api/operacao/comandas/${ownerDeliveredFixture.command.id}/itens/${ownerDeliveredFixture.item.id}`, headers: authHeaders(ownerCookie), payload: deliveredBody({ fixture: ownerDeliveredFixture, quantity: 2 }) });
+assert.equal(ownerDelivered.statusCode, 200, ownerDelivered.body);
+assert.equal(ownerDelivered.json().total, 0, 'owner can cancel the full delivered item');
+assert.equal((await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: ownerDeliveredFixture.order.id } })).status, 'ENTREGUE', 'cancellation never returns the kitchen order to its queue');
+const authorized = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['command.item.cancel', 'command.item.cancel.delivered'] } });
+assert.equal(authorized.statusCode, 200, authorized.body);
+const preparedFixture = await createDeliveredFixture();
+const preparedKey = randomUUID();
+const preparedBefore = Number((await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: deliveredStockBalance.id } })).quantidade);
+const preparedBody = deliveredBody({ fixture: preparedFixture, quantity: 1, treatment: 'PREPARADO_ENTREGUE_OU_PERDIDO', idempotencyKey: preparedKey });
+const preparedCancel = await app.inject({ method: 'DELETE', url: `/api/operacao/comandas/${preparedFixture.command.id}/itens/${preparedFixture.item.id}`, headers: authHeaders(staffCookie), payload: preparedBody });
+assert.equal(preparedCancel.statusCode, 200, preparedCancel.body);
+assert.equal(preparedCancel.json().total, 10);
+assert.equal(Number((await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: deliveredStockBalance.id } })).quantidade), preparedBefore, 'prepared/delivered product never returns to stock');
+assert.equal(preparedCancel.json().pedidos[0].itens[0].quantidade, 1, 'partial cancellation preserves the remaining item row and its snapshot');
+assert.equal(preparedCancel.json().pedidos[0].itens[0].cancelamentosEntregue[0].motivo, preparedBody.motivo, 'API includes the item-level cancellation result');
+const preparedRetry = await app.inject({ method: 'DELETE', url: `/api/operacao/comandas/${preparedFixture.command.id}/itens/${preparedFixture.item.id}`, headers: authHeaders(staffCookie), payload: preparedBody });
+assert.equal(preparedRetry.statusCode, 200, preparedRetry.body);
+assert.equal(preparedRetry.json().total, 10, 'same idempotency key does not apply the financial change twice');
+const staleSecondSession = await app.inject({ method: 'DELETE', url: `/api/operacao/comandas/${preparedFixture.command.id}/itens/${preparedFixture.item.id}`, headers: authHeaders(staffCookie), payload: deliveredBody({ fixture: preparedFixture, expected: 2 }) });
+assert.equal(staleSecondSession.statusCode, 409, staleSecondSession.body, 'stale quantity from another session cannot cancel the same units twice');
+const errorLaunchFixture = await createDeliveredFixture({ stockDebit: true });
+const balanceBeforeErrorReverse = Number((await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: deliveredStockBalance.id } })).quantidade);
+const movementCountBeforeErrorReverse = await prisma.inventoryMovement.count({ where: { pedidoId: errorLaunchFixture.order.id } });
+const errorLaunchCancel = await app.inject({ method: 'DELETE', url: `/api/operacao/comandas/${errorLaunchFixture.command.id}/itens/${errorLaunchFixture.item.id}`, headers: authHeaders(staffCookie), payload: deliveredBody({ fixture: errorLaunchFixture, treatment: 'ERRO_LANCAMENTO' }) });
+assert.equal(errorLaunchCancel.statusCode, 200, errorLaunchCancel.body);
+assert.equal(Number((await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: deliveredStockBalance.id } })).quantidade), balanceBeforeErrorReverse + 1, 'launch error reverses only the matching one-unit debit');
+assert.equal(await prisma.inventoryMovement.count({ where: { pedidoId: errorLaunchFixture.order.id } }), movementCountBeforeErrorReverse + 1, 'launch error writes one stock reversal');
+const missingReasonFixture = await createDeliveredFixture();
+const missingReason = await app.inject({ method: 'DELETE', url: `/api/operacao/comandas/${missingReasonFixture.command.id}/itens/${missingReasonFixture.item.id}`, headers: authHeaders(staffCookie), payload: deliveredBody({ fixture: missingReasonFixture, reason: 'x' }) });
+assert.equal(missingReason.statusCode, 400, missingReason.body);
+const invalidQuantity = await app.inject({ method: 'DELETE', url: `/api/operacao/comandas/${missingReasonFixture.command.id}/itens/${missingReasonFixture.item.id}`, headers: authHeaders(staffCookie), payload: deliveredBody({ fixture: missingReasonFixture, quantity: 3 }) });
+assert.equal(invalidQuantity.statusCode, 400, invalidQuantity.body);
+const paymentFixture = await createDeliveredFixture({ payment: true });
+const paymentPhoto = { item: await prisma.itemComanda.findUniqueOrThrow({ where: { id: paymentFixture.item.id } }), balance: await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: deliveredStockBalance.id } }), auditCount: await prisma.itemComandaCancelamentoEntregue.count({ where: { itemComandaId: paymentFixture.item.id } }) };
+const paymentRefused = await app.inject({ method: 'DELETE', url: `/api/operacao/comandas/${paymentFixture.command.id}/itens/${paymentFixture.item.id}`, headers: authHeaders(staffCookie), payload: deliveredBody({ fixture: paymentFixture }) });
+assert.equal(paymentRefused.statusCode, 409, paymentRefused.body);
+assert.deepEqual({ item: await prisma.itemComanda.findUniqueOrThrow({ where: { id: paymentFixture.item.id } }), balance: await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: deliveredStockBalance.id } }), auditCount: await prisma.itemComandaCancelamentoEntregue.count({ where: { itemComandaId: paymentFixture.item.id } }) }, paymentPhoto, 'payment refusal has no partial stock or audit effects');
+const closedFixture = await createDeliveredFixture({ status: 'FECHADA' });
+const closedRefused = await app.inject({ method: 'DELETE', url: `/api/operacao/comandas/${closedFixture.command.id}/itens/${closedFixture.item.id}`, headers: authHeaders(staffCookie), payload: deliveredBody({ fixture: closedFixture }) });
+assert.equal(closedRefused.statusCode, 409, closedRefused.body);
+const noInventoryFixture = await createDeliveredFixture({ controlsStock: false });
+const noInventoryCancel = await app.inject({ method: 'DELETE', url: `/api/operacao/comandas/${noInventoryFixture.command.id}/itens/${noInventoryFixture.item.id}`, headers: authHeaders(staffCookie), payload: deliveredBody({ fixture: noInventoryFixture }) });
+assert.equal(noInventoryCancel.statusCode, 200, noInventoryCancel.body);
+assert.equal(await prisma.inventoryMovement.count({ where: { pedidoId: noInventoryFixture.order.id } }), 0, 'uncontrolled product creates no inventory movement');
+process.env.PDV_INDIVIDUAL_PERMISSIONS_ENABLED = '0';
+const legacyFixture = await createDeliveredFixture();
+const legacyStaffDenied = await app.inject({ method: 'DELETE', url: `/api/operacao/comandas/${legacyFixture.command.id}/itens/${legacyFixture.item.id}`, headers: authHeaders(staffCookie), payload: deliveredBody({ fixture: legacyFixture }) });
+assert.equal(legacyStaffDenied.statusCode, 403, legacyStaffDenied.body, 'legacy permission fallback never grants delivered cancellation to staff');
+const legacyOwnerAllowed = await app.inject({ method: 'DELETE', url: `/api/operacao/comandas/${legacyFixture.command.id}/itens/${legacyFixture.item.id}`, headers: authHeaders(ownerCookie), payload: deliveredBody({ fixture: legacyFixture, quantity: 2 }) });
+assert.equal(legacyOwnerAllowed.statusCode, 200, legacyOwnerAllowed.body, 'owner authorization is preserved in legacy mode');
+process.env.PDV_INDIVIDUAL_PERMISSIONS_ENABLED = '1';
+await prisma.comanda.updateMany({
+  where: { id: { in: deliveredTestFixtures.map((fixture) => fixture.command.id) }, status: 'ABERTA' },
+  data: { status: 'FECHADA', fechadaEm: new Date() },
+});
 const salePayload = { pontoVendaId: point.id, itens: [{ produtoId: stockProduct.id, quantidade: 1, opcionais: [{ opcionalId: migratedGenericOptional.id, quantidade: 2 }] }], pagamentos: [{ forma: 'PIX', valor: 12.5 }] };
 async function commercePhoto() {
   return {

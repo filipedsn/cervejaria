@@ -10,6 +10,7 @@ const PERMISSOES_UI = [
   ['command.close', 'Fechar comandas', 'Encerra comandas. Para receber, exige também Receber pagamentos.'],
   ['discount.apply', 'Aplicar descontos', 'Aplica desconto em comanda e venda avulsa.'],
   ['command.item.cancel', 'Cancelar itens', 'Remove itens e reduz quantidades, inclusive pelo fluxo de cancelamento da cozinha.'],
+  ['command.item.cancel.delivered', 'Cancelar item já entregue', 'Retira da cobrança em comanda aberta. Exige também Cancelar itens; o tratamento de estoque é escolhido no cancelamento.'],
   ['command.cancel', 'Cancelar comanda inteira', 'Cancela a comanda inteira; concessao individual exige autorizacao explicita.'],
   ['kitchen.cancel', 'Cancelar pedidos da cozinha', 'Solicita cancelamento de pedido; exige também estorno de venda.'],
   ['sale.refund', 'Estornar venda', 'Estorna venda paga no cancelamento do pedido. Exige também Cancelar pedidos da cozinha.'],
@@ -32,7 +33,7 @@ const PERMISSOES_UI = [
 
 
 const GRUPOS = [
-  ['Atendimento', ['command.read', 'command.operate', 'command.close', 'command.item.cancel', 'command.cancel', 'discount.apply']],
+  ['Atendimento', ['command.read', 'command.operate', 'command.close', 'command.item.cancel', 'command.item.cancel.delivered', 'command.cancel', 'discount.apply']],
   ['Caixa e pagamentos', ['cash.open', 'cash.close', 'cash.values.read', 'cash.movement.write', 'payment.receive', 'debt.receive', 'sale.refund']],
   ['Cozinha', ['kitchen.read', 'kitchen.operate', 'kitchen.cancel']],
   ['Estoque', ['inventory.read', 'inventory.adjust']],

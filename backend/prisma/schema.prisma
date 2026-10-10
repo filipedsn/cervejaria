@@ -815,6 +815,7 @@ model ItemComanda {
   tap             Tap?             @relation(fields: [tapId], references: [id], onDelete: SetNull)
   pedidoCozinha   PedidoOperacao?  @relation(fields: [pedidoCozinhaId], references: [id], onDelete: SetNull)
   opcionais       ItemComandaOpcional[]
+  cancelamentosEntregue ItemComandaCancelamentoEntregue[]
 
   @@index([comandaId])
   @@index([tapId])
@@ -839,6 +840,27 @@ model ItemComandaOpcional {
   @@index([itemComandaId])
   @@index([opcionalId])
   @@index([opcionalCatalogoId])
+  @@schema("public")
+}
+
+/// Registro imutável de cada cancelamento autorizado após a entrega.
+model ItemComandaCancelamentoEntregue {
+  id                String   @id @default(cuid())
+  itemComandaId     String
+  idempotencyKey    String   @unique
+  cervejariaId      String
+  usuarioId         String
+  quantidade        Int
+  valorRetirado     Decimal  @db.Decimal(10, 2)
+  motivo            String
+  tratamentoEstoque String
+  resultado         String   @default("SUCESSO")
+  createdAt         DateTime @default(now())
+
+  itemComanda ItemComanda @relation(fields: [itemComandaId], references: [id], onDelete: Restrict)
+
+  @@index([itemComandaId, createdAt])
+  @@index([cervejariaId, createdAt])
   @@schema("public")
 }
 

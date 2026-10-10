@@ -182,6 +182,14 @@ export interface ItemPedido {
   exigePreparo: boolean;
   cancelamentoPendenteEm?: string | null;
   canceladoEm?: string | null;
+  cancelamentosEntregue?: Array<{
+    id: string;
+    quantidade: number;
+    valorRetirado: number;
+    motivo: string;
+    tratamentoEstoque: string;
+    createdAt: string;
+  }>;
   paraViagem?: boolean;
   observacao?: string | null;
   opcionais?: Array<{ id: string; nome: string; precoAdicional: number; quantidade: number }>;

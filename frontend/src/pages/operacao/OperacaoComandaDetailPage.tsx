@@ -68,7 +68,7 @@ export function OperacaoComandaDetailPage() {
   const [descontoInput, setDescontoInput] = useState('');
   const [erro, setErro] = useState('');
   const [itensAdicionadosMessage, setItensAdicionadosMessage] = useState('');
-  const [itemParaCancelar, setItemParaCancelar] = useState<{ id: string; nome: string; quantidade: number } | null>(null);
+  const [itemParaCancelar, setItemParaCancelar] = useState<{ id: string; nome: string; quantidade: number; precoUnit: number; entregue: boolean; controlaEstoque: boolean; idempotencyKey: string } | null>(null);
   const [pedidoWhatsAppAbertoId, setPedidoWhatsAppAbertoId] = useState<string | null>(() =>
     window.sessionStorage.getItem(avisoWhatsAppStorageKey),
   );
@@ -105,6 +105,7 @@ export function OperacaoComandaDetailPage() {
   const podeOperarComanda = canPermission('command.operate');
   const podeCancelarComanda = canPermission('command.cancel');
   const podeCancelarItem = canPermission('command.item.cancel');
+  const podeCancelarItemEntregue = podeCancelarItem && canPermission('command.item.cancel.delivered');
   const podeFecharComanda = canPermission('command.close');
 
   const { data: estoqueData } = useQuery({
@@ -304,8 +305,10 @@ export function OperacaoComandaDetailPage() {
   });
 
   const removerItem = useMutation({
-    mutationFn: ({ itemId, quantidade }: { itemId: string; quantidade?: number }) =>
-      api.delete<ComandaOperacao>(`/api/operacao/comandas/${id}/itens/${itemId}`, quantidade ? { quantidade } : undefined),
+    mutationFn: (params: { itemId: string; quantidade?: number; delivered?: { motivo: string; tratamentoEstoque: 'ERRO_LANCAMENTO' | 'PREPARADO_ENTREGUE_OU_PERDIDO'; quantidadeEsperada: number; idempotencyKey: string } }) =>
+      api.delete<ComandaOperacao>(`/api/operacao/comandas/${id}/itens/${params.itemId}`, params.delivered
+        ? { quantidade: params.quantidade, ...params.delivered }
+        : params.quantidade ? { quantidade: params.quantidade } : undefined),
     onSuccess: (atualizada) => {
       queryClient.setQueryData(['operacao-comanda', id], atualizada);
       queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
@@ -319,7 +322,7 @@ export function OperacaoComandaDetailPage() {
     },
   });
 
-  const enviarRemocaoItem = (params: { itemId: string; quantidade?: number }) => {
+  const enviarRemocaoItem = (params: { itemId: string; quantidade?: number; delivered?: { motivo: string; tratamentoEstoque: 'ERRO_LANCAMENTO' | 'PREPARADO_ENTREGUE_OU_PERDIDO'; quantidadeEsperada: number; idempotencyKey: string } }) => {
     if (removalRequests.current.has(params.itemId)) return;
     removalRequests.current.add(params.itemId);
     removerItem.mutate(params, {
@@ -620,7 +623,10 @@ export function OperacaoComandaDetailPage() {
             {pedido.itens.map((item) => {
               const itemEmCancelamento = Boolean(item.cancelamentoPendenteEm || item.canceladoEm);
               const quantidadeEditavel = aberta && !itemEmCancelamento && podeAlterarQuantidadeItemComanda(comanda, pedido, item);
-              const removivel = aberta && podeCancelarItem && !itemEmCancelamento && podeRemoverItemComanda(comanda, pedido, item);
+              const entregue = pedido.status === 'ENTREGUE';
+              const removivel = aberta && !itemEmCancelamento && (entregue
+                ? podeCancelarItemEntregue
+                : podeCancelarItem && podeRemoverItemComanda(comanda, pedido, item));
               const itemConfirmado = itemConfirmadoNaComanda(pedido, item);
               const produto = produtoPorId.get(item.produtoId);
               const podeIncrementar = podeIncrementarItemComanda(produto, saldos, controlaEstoque, item.volumeMl);
@@ -675,10 +681,22 @@ export function OperacaoComandaDetailPage() {
                         type="button"
                         aria-label={`Remover ${item.nome}`}
                         onClick={() => {
-                          if (item.quantidade > 1) {
+                          if (entregue) {
                             removerItem.reset();
                             setErro('');
-                            setItemParaCancelar({ id: item.id, nome: item.nome, quantidade: item.quantidade });
+                            setItemParaCancelar({
+                              id: item.id,
+                              nome: item.nome,
+                              quantidade: item.quantidade,
+                              precoUnit: item.precoUnit,
+                              entregue: true,
+                              controlaEstoque: Boolean(controlaEstoque && produto?.controlaEstoque),
+                              idempotencyKey: crypto.randomUUID(),
+                            });
+                          } else if (item.quantidade > 1) {
+                            removerItem.reset();
+                            setErro('');
+                            setItemParaCancelar({ id: item.id, nome: item.nome, quantidade: item.quantidade, precoUnit: item.precoUnit, entregue: false, controlaEstoque: false, idempotencyKey: '' });
                           } else enviarRemocaoItem({ itemId: item.id });
                         }}
                         disabled={itemEmEdicao}
@@ -694,6 +712,11 @@ export function OperacaoComandaDetailPage() {
                     {item.paraViagem ? <div>Para viagem</div> : null}
                   </div>
                 ) : null}
+                {item.cancelamentosEntregue?.map((cancelamento) => (
+                  <div key={cancelamento.id} className="mt-1 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1 text-xs text-ink-muted">
+                    Cancelamento de {cancelamento.quantidade} un. · {formatCurrency(cancelamento.valorRetirado)} retirados · {cancelamento.motivo}
+                  </div>
+                ))}
 
                 {alterandoEsteItem && (
                   <span className="sr-only">Atualizando item</span>
@@ -995,7 +1018,19 @@ export function OperacaoComandaDetailPage() {
           </div>
         )}
       </Modal>
-      <CancelarQuantidadeModal
+      {itemParaCancelar?.entregue ? <CancelarItemEntregueModal
+        item={itemParaCancelar}
+        disabled={removerItem.isPending}
+        erro={removerItem.error instanceof ApiError ? removerItem.error.message : null}
+        onClose={() => setItemParaCancelar(null)}
+        onConfirmar={({ quantidade, motivo, tratamentoEstoque }) => {
+          if (!itemParaCancelar) return;
+          enviarRemocaoItem({ itemId: itemParaCancelar.id, quantidade, delivered: {
+            motivo, tratamentoEstoque, quantidadeEsperada: itemParaCancelar.quantidade,
+            idempotencyKey: itemParaCancelar.idempotencyKey,
+          } });
+        }}
+      /> : <CancelarQuantidadeModal
         open={itemParaCancelar !== null}
         nomeItem={itemParaCancelar?.nome ?? ''}
         quantidadeDisponivel={itemParaCancelar?.quantidade ?? 0}
@@ -1006,7 +1041,59 @@ export function OperacaoComandaDetailPage() {
           if (!itemParaCancelar) return;
           enviarRemocaoItem({ itemId: itemParaCancelar.id, quantidade });
         }}
-      />
+      />}
     </div>
   );
+}
+
+function CancelarItemEntregueModal({ item, disabled, erro, onClose, onConfirmar }: {
+  item: { id: string; nome: string; quantidade: number; precoUnit: number; controlaEstoque: boolean };
+  disabled: boolean;
+  erro: string | null;
+  onClose: () => void;
+  onConfirmar: (input: { quantidade: number; motivo: string; tratamentoEstoque: 'ERRO_LANCAMENTO' | 'PREPARADO_ENTREGUE_OU_PERDIDO' }) => void;
+}) {
+  const [quantidade, setQuantidade] = useState(String(item.quantidade));
+  const [motivo, setMotivo] = useState('');
+  const [tratamentoEstoque, setTratamentoEstoque] = useState<'ERRO_LANCAMENTO' | 'PREPARADO_ENTREGUE_OU_PERDIDO'>('PREPARADO_ENTREGUE_OU_PERDIDO');
+  const quantidadeValida = /^\d+$/.test(quantidade) && Number(quantidade) >= 1 && Number(quantidade) <= item.quantidade;
+  const valorRetirado = quantidadeValida ? Number(quantidade) * item.precoUnit : 0;
+
+  return <Modal open onClose={disabled ? () => {} : onClose} title="Cancelar item já entregue" compact>
+    <div className="space-y-4">
+      <div className="rounded-xl border border-line bg-surface-lighter p-3">
+        <p className="text-sm font-semibold">{item.nome}</p>
+        <label className="mt-3 block text-sm font-medium" htmlFor="cancel-delivered-quantity">Quantidade a cancelar</label>
+        <input id="cancel-delivered-quantity" type="number" min={1} max={item.quantidade} step={1} value={quantidade}
+          onChange={(event) => setQuantidade(event.target.value)} className="field mt-1 min-h-12 w-full" />
+        <p className="mt-2 text-sm">Valor que sai da cobrança: <strong>{formatCurrency(valorRetirado)}</strong></p>
+      </div>
+      <fieldset className="space-y-2">
+        <legend className="mb-1 text-sm font-semibold">Tratamento do estoque</legend>
+        <label className="flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border border-line p-3">
+          <input type="radio" name="tratamento-estoque-entregue" checked={tratamentoEstoque === 'ERRO_LANCAMENTO'} disabled={disabled}
+            onChange={() => setTratamentoEstoque('ERRO_LANCAMENTO')} className="mt-1 h-5 w-5 shrink-0" />
+          <span className="text-sm"><strong>Erro de lançamento.</strong> A quantidade não foi consumida. O sistema reverte somente uma baixa de estoque existente e compatível com este pedido.</span>
+        </label>
+        <label className="flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border border-line p-3">
+          <input type="radio" name="tratamento-estoque-entregue" checked={tratamentoEstoque === 'PREPARADO_ENTREGUE_OU_PERDIDO'} disabled={disabled}
+            onChange={() => setTratamentoEstoque('PREPARADO_ENTREGUE_OU_PERDIDO')} className="mt-1 h-5 w-5 shrink-0" />
+          <span className="text-sm"><strong>Preparado, entregue ou perdido.</strong> O item sai da cobrança e o estoque não retorna.</span>
+        </label>
+        {!item.controlaEstoque && <p className="text-xs text-ink-muted">Este produto não tem controle de estoque ativo; nenhum movimento será criado.</p>}
+      </fieldset>
+      <label className="block text-sm font-semibold" htmlFor="cancel-delivered-reason">Motivo obrigatório</label>
+      <textarea id="cancel-delivered-reason" value={motivo} maxLength={500} rows={3} disabled={disabled}
+        onChange={(event) => setMotivo(event.target.value)} placeholder="Descreva por que o item deve sair da cobrança"
+        className="field min-h-24 w-full resize-y" />
+      {erro && <p role="alert" className="text-sm text-danger">{erro}</p>}
+    </div>
+    <div className="mt-4 flex gap-2">
+      <button type="button" className="touch-btn-orange min-h-12 flex-1" disabled={disabled} onClick={onClose}>Voltar</button>
+      <button type="button" className="touch-btn-primary min-h-12 flex-1" disabled={disabled || !quantidadeValida || motivo.trim().length < 3}
+        onClick={() => onConfirmar({ quantidade: Number(quantidade), motivo: motivo.trim(), tratamentoEstoque })}>
+        {disabled ? 'Cancelando...' : 'Confirmar cancelamento'}
+      </button>
+    </div>
+  </Modal>;
 }

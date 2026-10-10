@@ -15,6 +15,7 @@ export const PERMISSOES_OPERACAO = [
   'command.close',
   'discount.apply',
   'command.item.cancel',
+  'command.item.cancel.delivered',
   'command.cancel',
   'kitchen.cancel',
   'sale.refund',
@@ -55,6 +56,9 @@ export async function usuarioPode(
   db: Pick<Prisma.TransactionClient, 'usuario'> | typeof prisma = prisma,
 ): Promise<boolean> {
   if (!permissoesIndividuaisAtivas(user.cervejariaId ?? undefined)) {
+    // Delivered-item cancellation is an explicit exception even for legacy
+    // tenants, where ordinary operational permissions intentionally default open.
+    if (permissao === 'command.item.cancel.delivered') return user.papel === 'DONO';
     if (options.allowLegacyDiscount && (user.papel === 'DONO' || user.papel === 'ADMIN')) return true;
     if (options.allowLegacyDiscount) {
       const legacy = await db.usuario.findFirst({
@@ -74,6 +78,12 @@ export async function usuarioPode(
   if (!persisted || persisted.cervejariaId !== user.cervejariaId) return false;
   if (persisted.papel === 'DONO') return true;
   return persisted.permissoesOperacao.includes(permissao);
+}
+
+/** Delivered-item removal requires both the ordinary cancellation permission and its explicit grant. */
+export async function usuarioPodeCancelarItemEntregue(user: JwtPayload, db: Pick<Prisma.TransactionClient, 'usuario'> | typeof prisma = prisma) {
+  return (await usuarioPode(user, 'command.item.cancel', {}, db))
+    && (await usuarioPode(user, 'command.item.cancel.delivered', {}, db));
 }
 
 export function requirePermissao(

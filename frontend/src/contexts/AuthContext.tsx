@@ -143,9 +143,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hasPermission: (permission: string) => usuario?.papel === 'DONO'
           || usuario?.permissoesOperacao?.includes(permission) === true,
         canPermission: (permission: string) => usuario?.papel === 'DONO'
-          || (Array.isArray(usuario?.permissoesOperacao)
-            ? usuario.permissoesOperacao.includes(permission)
-            : true),
+          || (permission === 'command.item.cancel.delivered'
+            ? usuario?.permissoesOperacao?.includes(permission) === true
+            : (Array.isArray(usuario?.permissoesOperacao)
+              ? usuario.permissoesOperacao.includes(permission)
+              : true)),
       }}
     >
       {children}

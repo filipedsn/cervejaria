@@ -416,7 +416,7 @@ type ComandaCompleta = Prisma.ComandaGetPayload<{
         };
       };
     };
-    pedidosOperacao: { include: { itensComanda: { include: { opcionais: true } } } };
+    pedidosOperacao: { include: { itensComanda: { include: { opcionais: true; cancelamentosEntregue: true } } } };
     itens: true;
     pagamentos: true;
     contaReceber: { include: { pagamentos: true } };
@@ -525,6 +525,14 @@ export function resumoComanda(comanda: ComandaCompleta, effectiveKitchenItemsCha
       paraViagem: item.paraViagem,
       cancelamentoPendenteEm: item.cancelamentoPendenteEm,
       canceladoEm: item.canceladoEm,
+      cancelamentosEntregue: item.cancelamentosEntregue?.map((cancelamento) => ({
+        id: cancelamento.id,
+        quantidade: cancelamento.quantidade,
+        valorRetirado: toNumber(cancelamento.valorRetirado),
+        motivo: cancelamento.motivo,
+        tratamentoEstoque: cancelamento.tratamentoEstoque,
+        createdAt: cancelamento.createdAt,
+      })),
       observacao: item.observacao,
       opcionais: item.opcionais.map((opcional) => ({
         id: opcional.id,

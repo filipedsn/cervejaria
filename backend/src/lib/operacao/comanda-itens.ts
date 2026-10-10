@@ -18,7 +18,7 @@ import {
 } from './comanda-adapter.js';
 import { lockComandaItemsInTx } from '../comanda-service.js';
 import type { JwtPayload } from '../../types/auth.js';
-import { usuarioPode } from './permissoes.js';
+import { usuarioPode, usuarioPodeCancelarItemEntregue } from './permissoes.js';
 import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
 import { assertCaixaAberto, lockCaixaEmTx } from './caixa.js';
 import { assertCommandOccurrenceMatchesSession, cashOccurrenceContextEnabled, CashOccurrenceContextError } from './contexto-ocorrencia.js';
@@ -121,6 +121,11 @@ export async function removeItemFromComandaOperacao(params: {
   quantidade?: number;
   registradoPorId: string;
   moduloControlaEstoque: boolean;
+  user?: JwtPayload;
+  motivo?: string;
+  tratamentoEstoque?: 'ERRO_LANCAMENTO' | 'PREPARADO_ENTREGUE_OU_PERDIDO';
+  idempotencyKey?: string;
+  quantidadeEsperada?: number;
 }) {
   const item = await carregarItem(prisma, params.comandaId, params.itemId, params.cervejariaId);
   if (!item || !item.pedidoCozinha) return { error: 'Item não encontrado' as const };
@@ -136,6 +141,16 @@ export async function removeItemFromComandaOperacao(params: {
     return { error: 'Este item já está em cancelamento' as const };
   }
   if (item.pedidoCozinha.status === 'ENTREGUE') {
+    if (!params.user || !params.motivo || !params.tratamentoEstoque || !params.idempotencyKey || !params.quantidadeEsperada) {
+      throw Object.assign(new Error('Informe motivo, tratamento de estoque e confirme a quantidade atual'), { statusCode: 400 });
+    }
+    if (params.user && params.motivo && params.tratamentoEstoque && params.idempotencyKey && params.quantidadeEsperada) {
+      return cancelarItemEntregueOperacao({
+        ...params, user: params.user, motivo: params.motivo,
+        tratamentoEstoque: params.tratamentoEstoque, idempotencyKey: params.idempotencyKey,
+        quantidadeEsperada: params.quantidadeEsperada,
+      }, item);
+    }
     return { error: 'Este item já foi entregue' as const };
   }
 
@@ -257,6 +272,120 @@ export async function removeItemFromComandaOperacao(params: {
     cancelamentoPendente: Boolean(item.pedidoCozinhaId && item.exigePreparo),
     comanda: resumoComanda(atualizada.comanda, atualizada.chargeKitchenAtLaunch),
     item,
+  };
+}
+
+async function cancelarItemEntregueOperacao(
+  params: {
+    app: FastifyInstance; cervejariaId: string; comandaId: string; itemId: string;
+    quantidade?: number; registradoPorId: string; moduloControlaEstoque: boolean;
+    user: JwtPayload; motivo: string;
+    tratamentoEstoque: 'ERRO_LANCAMENTO' | 'PREPARADO_ENTREGUE_OU_PERDIDO';
+    idempotencyKey: string; quantidadeEsperada: number;
+  },
+  itemInicial: NonNullable<Awaited<ReturnType<typeof carregarItem>>>,
+) {
+  if (!/^[0-9a-f-]{36}$/i.test(params.idempotencyKey)) return { error: 'Identificador invalido para confirmar cancelamento' as const };
+  if (params.motivo.trim().length < 3 || params.motivo.trim().length > 500) return { error: 'Informe um motivo entre 3 e 500 caracteres' as const };
+
+  const resultado = await prisma.$transaction(async (tx) => {
+    await lockComandaItemsInTx(tx, params.comandaId);
+    const item = await carregarItem(tx, params.comandaId, params.itemId, params.cervejariaId);
+    if (!item || !item.pedidoCozinha) throw Object.assign(new Error('Item nao encontrado'), { statusCode: 404 });
+    if (!(await usuarioPodeCancelarItemEntregue(params.user, tx))) {
+      throw Object.assign(new Error('Voce precisa das permissoes Cancelar itens e Cancelar item ja entregue.'), { statusCode: 403 });
+    }
+    const anterior = await tx.itemComandaCancelamentoEntregue.findUnique({ where: { idempotencyKey: params.idempotencyKey } });
+    if (anterior) {
+      if (anterior.itemComandaId !== params.itemId || anterior.cervejariaId !== params.cervejariaId || anterior.usuarioId !== params.user.sub) {
+        throw Object.assign(new Error('Identificador ja utilizado em outra operacao'), { statusCode: 409 });
+      }
+      const comanda = await tx.comanda.findUniqueOrThrow({ where: { id: params.comandaId }, include: INCLUDE_COMANDA_OPERACAO });
+      return { comanda, quantidade: anterior.quantidade, valor: toNumber(anterior.valorRetirado), repetido: true };
+    }
+    if (item.pedidoCozinha.comanda.status !== 'ABERTA') throw Object.assign(new Error('Comanda nao encontrada ou fechada'), { statusCode: 409 });
+    if (item.pedidoCozinha.status !== 'ENTREGUE') throw Object.assign(new Error('O pedido nao esta mais marcado como entregue'), { statusCode: 409 });
+    if (itemBloqueadoPorCancelamentoIntegral(item.pedidoCozinha, item) || item.cancelamentoPendenteEm || item.canceladoEm) {
+      throw Object.assign(new Error('Este item ja foi cancelado ou esta em cancelamento'), { statusCode: 409 });
+    }
+    if (item.pedidoCozinha.comanda.pagamentos.length > 0 || await tx.pagamento.count({ where: { comandaId: params.comandaId } }) > 0) {
+      throw Object.assign(new Error('Esta comanda possui pagamentos. Use o fluxo proprio de correcao ou estorno.'), { statusCode: 409 });
+    }
+    if (item.quantidade !== params.quantidadeEsperada) {
+      throw Object.assign(new Error('A quantidade disponivel mudou em outra sessao. Atualize a comanda e tente novamente.'), { statusCode: 409 });
+    }
+    const quantidade = resolverQuantidadeCancelamento(item.quantidade, params.quantidade);
+    if (quantidade == null) throw Object.assign(new Error('Quantidade invalida para cancelamento'), { statusCode: 400 });
+
+    const pedidoId = item.pedidoCozinhaId!;
+    let estoqueEstornado = false;
+    if (params.tratamentoEstoque === 'ERRO_LANCAMENTO' && params.moduloControlaEstoque && item.produto) {
+      let produtoPrincipalComBaixa = false;
+      if (item.produto.controlaEstoque) {
+        const quantidadeEstoque = item.tapId ? (item.volumeMl * quantidade) / 1000 : quantidade;
+        const saidas = await tx.inventoryMovement.aggregate({ where: { pedidoId, produtoId: item.produto.id, tipo: 'SAIDA_VENDA' }, _sum: { quantidade: true } });
+        const estornos = await tx.inventoryMovement.aggregate({ where: { pedidoId, produtoId: item.produto.id, tipo: 'ESTORNO_VENDA' }, _sum: { quantidade: true } });
+        const baixaLiquida = Number(saidas._sum.quantidade ?? 0) - Number(estornos._sum.quantidade ?? 0);
+        if (baixaLiquida > 0 && baixaLiquida + 1e-9 < quantidadeEstoque) {
+          throw Object.assign(new Error('A baixa registrada para este produto e pedido nao cobre a quantidade. O estoque nao foi alterado.'), { statusCode: 409 });
+        }
+        produtoPrincipalComBaixa = baixaLiquida + 1e-9 >= quantidadeEstoque;
+      }
+      const opcionaisComBaixa: typeof item.opcionais = [];
+      for (const opcional of item.opcionais) {
+        const produtoEstoqueId = opcional.opcional?.produtoEstoqueId;
+        if (!produtoEstoqueId) continue;
+        const produtoOpcional = await tx.produto.findFirst({ where: { id: produtoEstoqueId, cervejariaId: params.cervejariaId }, select: { controlaEstoque: true } });
+        if (!produtoOpcional?.controlaEstoque) continue;
+        const quantidadeOpcional = quantidade * opcional.quantidade;
+        const saidasOpcional = await tx.inventoryMovement.aggregate({ where: { pedidoId, produtoId: produtoEstoqueId, tipo: 'SAIDA_VENDA' }, _sum: { quantidade: true } });
+        const estornosOpcional = await tx.inventoryMovement.aggregate({ where: { pedidoId, produtoId: produtoEstoqueId, tipo: 'ESTORNO_VENDA' }, _sum: { quantidade: true } });
+        const baixaLiquidaOpcional = Number(saidasOpcional._sum.quantidade ?? 0) - Number(estornosOpcional._sum.quantidade ?? 0);
+        if (baixaLiquidaOpcional > 0 && baixaLiquidaOpcional + 1e-9 < quantidadeOpcional) {
+          throw Object.assign(new Error('A baixa registrada para um opcional nao cobre a quantidade. O estoque nao foi alterado.'), { statusCode: 409 });
+        }
+        if (baixaLiquidaOpcional + 1e-9 >= quantidadeOpcional) opcionaisComBaixa.push(opcional);
+      }
+      estoqueEstornado = produtoPrincipalComBaixa || opcionaisComBaixa.length > 0;
+      if (estoqueEstornado) {
+        await estornarEstoqueItemPedido(tx, {
+          moduloControlaEstoque: true, cervejariaId: params.cervejariaId,
+          pontoVendaId: item.pedidoCozinha.pontoVendaId!, pedidoId,
+          produtoId: item.produto.id, nome: item.nome ?? item.produto.nome,
+          quantidade, controlaEstoque: produtoPrincipalComBaixa, tapId: item.tapId, volumeMl: item.volumeMl,
+          registradoPorId: params.registradoPorId,
+          opcionais: opcionaisComBaixa.map((o) => ({ produtoEstoqueId: o.opcional?.produtoEstoqueId ?? null, quantidade: o.quantidade })),
+        });
+      }
+    }
+
+    const valorRetirado = reais(centavos(item.precoUnit) * quantidade);
+    const canceladoEm = new Date();
+    await tx.itemComandaCancelamentoEntregue.create({ data: {
+      itemComandaId: item.id, idempotencyKey: params.idempotencyKey,
+      cervejariaId: params.cervejariaId, usuarioId: params.user.sub,
+      quantidade, valorRetirado, motivo: params.motivo.trim(),
+      tratamentoEstoque: params.tratamentoEstoque === 'ERRO_LANCAMENTO'
+        ? (estoqueEstornado ? 'REVERSAO_BAIXA_EXISTENTE' : 'SEM_BAIXA_ESTOQUE')
+        : 'SEM_RETORNO_PRODUTO_PREPARADO_ENTREGUE_OU_PERDIDO',
+    } });
+    await tx.itemComanda.update({ where: { id: item.id }, data: quantidade === item.quantidade
+      ? { canceladoEm } : { quantidade: item.quantidade - quantidade } });
+    const comandaAtual = await tx.comanda.findUniqueOrThrow({ where: { id: params.comandaId }, include: INCLUDE_COMANDA_OPERACAO });
+    await ajustarDescontoSeNecessario(tx, comandaAtual, params.cervejariaId);
+    const chargeKitchenAtLaunch = await kitchenItemsChargeAtLaunch(tx, params.cervejariaId);
+    await recalcComandaTotalOperacao(tx, params.comandaId, { kitchenItemsChargeAtLaunch: chargeKitchenAtLaunch });
+    const comanda = await tx.comanda.findUniqueOrThrow({ where: { id: params.comandaId }, include: INCLUDE_COMANDA_OPERACAO });
+    return { comanda, quantidade, valor: toNumber(valorRetirado), repetido: false };
+  });
+
+  if (!resultado.repetido) notificarComandaOperacaoAtualizada(params.app, params.cervejariaId, params.comandaId);
+  const chargeKitchenAtLaunch = await kitchenItemsChargeAtLaunch(prisma, params.cervejariaId);
+  return {
+    ok: true as const,
+    comanda: resumoComanda(resultado.comanda, chargeKitchenAtLaunch),
+    cancelamentoEntregue: { quantidade: resultado.quantidade, valorRetirado: resultado.valor, repetido: resultado.repetido },
+    item: itemInicial,
   };
 }
 

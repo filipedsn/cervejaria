@@ -93,6 +93,10 @@ const itemQuantidadeSchema = z.object({
 
 const cancelarItemSchema = z.object({
   quantidade: z.number().int().positive().max(999).optional(),
+  quantidadeEsperada: z.number().int().positive().max(999).optional(),
+  motivo: z.string().trim().min(3).max(500).optional(),
+  tratamentoEstoque: z.enum(['ERRO_LANCAMENTO', 'PREPARADO_ENTREGUE_OU_PERDIDO']).optional(),
+  idempotencyKey: z.string().uuid().optional(),
 }).default({});
 
 const clienteSchema = z.object({ clienteId: z.string().min(1).nullable() });
@@ -641,6 +645,11 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       quantidade: body.quantidade,
       registradoPorId: user.sub,
       moduloControlaEstoque: controlaEstoque,
+      user,
+      motivo: body.motivo,
+      tratamentoEstoque: body.tratamentoEstoque,
+      idempotencyKey: body.idempotencyKey,
+      quantidadeEsperada: body.quantidadeEsperada,
     });
 
     if ('error' in result) {

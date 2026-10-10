@@ -14,7 +14,7 @@ export const INCLUDE_COMANDA_OPERACAO = {
   pontoVenda: { select: { cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
   evento: { select: { cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
   pedidosOperacao: {
-    include: { itensComanda: { include: { opcionais: true } } },
+    include: { itensComanda: { include: { opcionais: true, cancelamentosEntregue: { orderBy: { createdAt: 'asc' } } } } },
     orderBy: { numero: 'asc' as const },
   },
   itens: {
