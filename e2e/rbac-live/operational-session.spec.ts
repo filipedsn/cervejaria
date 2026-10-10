@@ -14,6 +14,8 @@ const cashValuesPermission = 'cash.values.read';
 const reportEventId = process.env.RBAC_QA_REPORT_EVENT_ID!;
 const inventoryProductId = process.env.RBAC_QA_INVENTORY_PRODUCT_ID!;
 const inventoryProductName = process.env.RBAC_QA_INVENTORY_PRODUCT_NAME!;
+const kitchenOrderId = process.env.RBAC_QA_KITCHEN_ORDER_ID!;
+const kitchenCommandIdentifier = process.env.RBAC_QA_KITCHEN_COMMAND_IDENTIFIER!;
 
 async function primeAndLogout(page: Page, cookie: string) {
   await page.context().addCookies([{ name: 'token', value: cookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
@@ -640,5 +642,103 @@ test('inventory.adjust denies, changes stock through the UI, and denies after sa
   expect([401, 403]).toContain(revokedEntry.status());
   expect(await (await ownerContext.request.get(inventoryUrl)).json()).toEqual(grantedBalances);
   console.log('RBAC_LIVE_REGRESSION key=inventory.adjust; dependency=inventory.read retained; disabled=button-hidden-and-api-denied-no-write; enabled=real-ui-entry-persisted; revoked=button-hidden-and-api-denied-with-read-retained; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('kitchen.read blocks, shows the real queue read-only, and revokes in the live session', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const queueUrl = '/api/operacao/cozinha';
+  const statusUrl = `/api/operacao/cozinha/${kitchenOrderId}/status`;
+  const deniedQueue = await staffContext.request.get(queueUrl);
+  expect([401, 403]).toContain(deniedQueue.status());
+  await staff.goto('/operacao/cozinha');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/operacao/cozinha');
+  const deniedStatus = await staffContext.request.patch(statusUrl, { data: { status: 'EM_PREPARO' } });
+  expect([401, 403]).toContain(deniedStatus.status());
+
+  await setPermissions(ownerContext, ['kitchen.read']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['kitchen.read']);
+  const allowedQueue = await staffContext.request.get(queueUrl);
+  expect(allowedQueue.status(), await allowedQueue.text()).toBe(200);
+  const queue = await allowedQueue.json();
+  expect(queue.some((order: { id: string }) => order.id === kitchenOrderId)).toBe(true);
+  await staff.goto('/operacao/cozinha');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/cozinha');
+  const visibleKitchenOrder = staff.locator('article:visible').filter({ hasText: kitchenCommandIdentifier }).first();
+  await expect(visibleKitchenOrder).toBeVisible();
+  await expect(staff.getByRole('button', { name: 'Iniciar' })).toHaveCount(0);
+  const readOnlyStatus = await staffContext.request.patch(statusUrl, { data: { status: 'EM_PREPARO' } });
+  expect([401, 403]).toContain(readOnlyStatus.status());
+
+  await setPermissions(ownerContext, []);
+  await staff.reload();
+  await staff.goto('/operacao/cozinha');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/operacao/cozinha');
+  expect([401, 403]).toContain((await staffContext.request.get(queueUrl)).status());
+  const revokedStatus = await staffContext.request.patch(statusUrl, { data: { status: 'EM_PREPARO' } });
+  expect([401, 403]).toContain(revokedStatus.status());
+  console.log('RBAC_LIVE_REGRESSION key=kitchen.read; disabled=route-and-queue-denied; enabled=real-queue-visible; kitchen.operate=absent-button-and-status-denied; revoked=same-session-route-queue-and-status-denied; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('kitchen.operate denies, advances the queue through the UI, and denies after same-session revoke', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, ['kitchen.read']);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const queueUrl = '/api/operacao/cozinha';
+  const statusUrl = `/api/operacao/cozinha/${kitchenOrderId}/status`;
+  const deniedStatus = await staffContext.request.patch(statusUrl, { data: { status: 'EM_PREPARO' } });
+  expect([401, 403]).toContain(deniedStatus.status());
+  await staff.goto('/operacao/cozinha');
+  const visibleKitchenOrder = staff.locator('article:visible').filter({ hasText: kitchenCommandIdentifier }).first();
+  await expect(visibleKitchenOrder).toBeVisible();
+  await expect(visibleKitchenOrder.getByRole('button', { name: 'Iniciar' })).toHaveCount(0);
+
+  await setPermissions(ownerContext, ['kitchen.read', 'kitchen.operate']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['kitchen.read', 'kitchen.operate']);
+  await staff.goto('/operacao/cozinha');
+  const allowedCard = staff.locator('article:visible').filter({ hasText: kitchenCommandIdentifier }).first();
+  await expect(allowedCard.getByRole('button', { name: 'Iniciar' })).toBeVisible();
+  const advanceResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === statusUrl && response.request().method() === 'PATCH');
+  await allowedCard.getByRole('button', { name: 'Iniciar' }).click();
+  const advanceResponse = await advanceResponsePromise;
+  expect(advanceResponse.status(), await advanceResponse.text()).toBe(200);
+  const allowedQueue = await staffContext.request.get(queueUrl);
+  const advanced = (await allowedQueue.json()).find((order: { id: string }) => order.id === kitchenOrderId);
+  expect(advanced.status).toBe('EM_PREPARO');
+  await expect(allowedCard.getByRole('button', { name: 'Pronto' })).toBeVisible();
+
+  await setPermissions(ownerContext, ['kitchen.read']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['kitchen.read']);
+  await staff.goto('/operacao/cozinha');
+  const revokedCard = staff.locator('article:visible').filter({ hasText: kitchenCommandIdentifier }).first();
+  await expect(revokedCard).toBeVisible();
+  await expect(revokedCard.getByRole('button', { name: 'Pronto' })).toHaveCount(0);
+  const revokedAdvance = await staffContext.request.patch(statusUrl, { data: { status: 'PRONTO', expectedStatus: 'EM_PREPARO' } });
+  expect([401, 403]).toContain(revokedAdvance.status());
+  const finalQueue = await staffContext.request.get(queueUrl);
+  expect((await finalQueue.json()).find((order: { id: string }) => order.id === kitchenOrderId).status).toBe('EM_PREPARO');
+  console.log('RBAC_LIVE_REGRESSION key=kitchen.operate; dependency=kitchen.read retained; disabled=button-and-status-api-denied; enabled=real-ui-advance-persisted; revoked=same-session-button-and-status-api-denied-with-read-retained; result=PASS');
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });

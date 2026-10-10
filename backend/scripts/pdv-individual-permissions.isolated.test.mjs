@@ -1207,6 +1207,8 @@ const browserEnv = {
   RBAC_QA_REPORT_EVENT_ID: event.id,
   RBAC_QA_INVENTORY_PRODUCT_ID: stockProduct.id,
   RBAC_QA_INVENTORY_PRODUCT_NAME: stockProduct.nome,
+  RBAC_QA_KITCHEN_ORDER_ID: disabledRuleCase.order.id,
+  RBAC_QA_KITCHEN_COMMAND_IDENTIFIER: disabledRuleCase.command.identificador,
 };
 const browserRun = spawn(process.execPath, [path.join(repoRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.rbac-live.config.ts'], {
   cwd: repoRoot, env: browserEnv, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
@@ -1231,6 +1233,8 @@ assert.equal(browserInventoryMovements.length, 1, 'live inventory.adjust UI crea
 assert.equal(Number(browserInventoryMovements[0].quantidade), 1);
 assert.equal(browserInventoryMovements[0].registradoPorId, staff.id, 'live stock movement records the authorized staff member');
 assert.equal(browserInventoryMovements[0].produtoId, stockProduct.id);
+const browserKitchenReadOrder = await prisma.pedidoOperacao.findUniqueOrThrow({ where: { id: disabledRuleCase.order.id }, select: { status: true } });
+assert.equal(browserKitchenReadOrder.status, 'EM_PREPARO', 'only the later authorized kitchen.operate UI flow advances the kitchen status');
 const browserCreatedCommands = await prisma.comanda.findMany({
   where: { pontoVendaId: point.id, origem: 'CAIXA', identificador: { startsWith: 'RBAC command ' } },
   select: { id: true, abertaPorId: true, status: true },
