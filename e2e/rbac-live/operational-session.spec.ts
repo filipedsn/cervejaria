@@ -73,7 +73,9 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
   await login(owner, ownerEmail, ownerPassword, ownerCookie);
   const ownerMe = await ownerContext.request.get('/api/auth/me');
   expect(ownerMe.status()).toBe(200);
-  const ownerUser = (await ownerMe.json()).usuario;
+  const ownerPayload = await ownerMe.json();
+  const ownerUser = ownerPayload.usuario;
+  const ownerTenantId = ownerPayload.cervejaria.id;
   expect(ownerUser.papel).toBe('DONO');
 
   const disabledContext = await browser.newContext();
@@ -129,9 +131,10 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
   await logoutFromUi(staff);
   await loginForm(staff, foreignEmail, foreignPassword);
   const foreignMe = await staffContext.request.get('/api/auth/me');
-  const foreignUser = (await foreignMe.json()).usuario;
+  const foreignPayload = await foreignMe.json();
+  const foreignUser = foreignPayload.usuario;
   expect(foreignUser.papel).toBe('DONO');
-  expect(foreignUser.cervejariaId).not.toBe(ownerUser.cervejariaId);
+  expect(foreignPayload.cervejaria.id).not.toBe(ownerTenantId);
   expect((await staffContext.cookies()).some((cookie) => cookie.httpOnly)).toBe(true);
   const foreignList = await staffContext.request.get('/api/usuarios');
   expect(foreignList.status()).toBe(200);
