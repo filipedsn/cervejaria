@@ -1,0 +1,79 @@
+{
+  "result": "PASS",
+  "scope": "focused-gate-only",
+  "gate": "permissions",
+  "selectedCommit": "4c5c1bc6c2b022330614188120a0ebd8a2bd17dd",
+  "selectedTree": "25e662e503c677c3c67c54f697d6a5027a82947d",
+  "materializedTree": "25e662e503c677c3c67c54f697d6a5027a82947d",
+  "snapshotIntegrity": "PASS",
+  "materializedTrackedBlobCount": 1451,
+  "measuredCommands": [
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "backend",
+      "durationMs": 24568,
+      "exitCode": 0
+    },
+    {
+      "command": "run build",
+      "cwd": "backend",
+      "durationMs": 9124,
+      "exitCode": 0
+    },
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "frontend",
+      "durationMs": 12468,
+      "exitCode": 0
+    },
+    {
+      "command": "run build",
+      "cwd": "frontend",
+      "durationMs": 28924,
+      "exitCode": 0
+    },
+    {
+      "command": "ci --no-audit --no-fund",
+      "cwd": "",
+      "durationMs": 7677,
+      "exitCode": 0
+    },
+    {
+      "command": "--import tsx --test scripts/pdv-unico-dev-cutover-core.test.mjs scripts/pdv-unico-cutover-receipts.test.mjs src/lib/pdv-tenant-activation.test.ts",
+      "cwd": "backend",
+      "durationMs": 3684,
+      "exitCode": 0
+    },
+    {
+      "command": "scripts/run-pdv-individual-permissions-disposable-qa.mjs",
+      "cwd": "backend",
+      "durationMs": 43321,
+      "exitCode": 0
+    }
+  ],
+  "moduleOriginAudit": {
+    "result": "PASS",
+    "snapshotProjectModuleCount": 198,
+    "snapshotProjectModulePathListSha256": "3818463bfeb86a0ec47590b4e08c41cdda1ae3e4974af5429768cb079430ed30",
+    "nonSnapshotWorkspaceModuleCount": 0,
+    "externalDependencyModuleCount": 1531
+  },
+  "workspaceIntegrity": {
+    "checkoutTreeBefore": "df366be66a5fc7dec4afa7fde1b9d5306c8a5bba",
+    "checkoutTreeAfter": "df366be66a5fc7dec4afa7fde1b9d5306c8a5bba",
+    "unchangedFromRunStart": true,
+    "externalChangesObserved": false,
+    "externalChanges": {
+      "changedPaths": [],
+      "stagedDiffChanged": false,
+      "unstagedDiffChanged": false
+    },
+    "runnerOwnedOutputPathsExcluded": [
+      "artifacts/rbac-permissions-ui-2026-10-10/git-snapshot-d623d9d66c5b4575-8QjOiL",
+      "artifacts/rbac-permissions-ui-2026-10-10/run-d623d9d66c5b4575",
+      "artifacts/rbac-permissions-ui-2026-10-10/results/reports-read-4c5c1bc.json"
+    ]
+  },
+  "prodAccessUsed": "NO",
+  "devSharedWrites": "NO"
+}

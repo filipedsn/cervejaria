@@ -20,6 +20,12 @@ Snapshot `e503a9c01958cecf006c69d429f4f83b08473c38` passou com 1.450 blobs Git m
 
 **Cobertura UI real acumulada:** 15/84 PASS, 0 FAIL, 0 BLOCKED, **69 NOT RUN**. Cinco chaves têm os três estágios aprovados: `command.read`, `cash.values.read`, `agenda.manage`, `dashboard.read` e `command.operate`. Restam 23 chaves sem estágios UI; certificação integral permanece **incompleta**.
 
+## Continuação mais recente: reports.read no navegador real
+
+Snapshot `4c5c1bc6c2b022330614188120a0ebd8a2bd17dd` passou com 1.451 blobs materializados, auditoria PASS sem imports do workspace mutável, builds backend/frontend, preflight 14/14, API/PostgreSQL descartável e Playwright 4/4. A fixture fechou apenas um evento sintético descartável. Sem `reports.read`, a rota do resumo executivo e os endpoints de resumo/CSV foram negados; concedida somente a chave, a página real carregou o evento e a API retornou o resumo e CSV; após revogação, mesma sessão perdeu a rota e ambas as APIs. Nenhum dado externo foi enviado. Recibo: [`reports-read-4c5c1bc.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/reports-read-4c5c1bc.json).
+
+**Cobertura UI real acumulada:** 18/84 PASS, 0 FAIL, 0 BLOCKED, **66 NOT RUN**. Seis chaves têm os três estágios UI PASS: `command.read`, `cash.values.read`, `agenda.manage`, `dashboard.read`, `command.operate` e `reports.read`. Restam 22 chaves sem estágios UI; a certificação integral continua **incompleta**.
+
 ## Continuação: execução com código Git fixado
 
 **Revisão exata testada:** `d139a94c8fb89147e06fd9356fbe94cefff0c3d2`, tree `2942ddafd556d75a13979e457fa9ce93ae7975ae`, descendente de `origin/main` observado no início da execução. O snapshot materializou 1.441 blobs rastreados via `git cat-file` em `artifacts/rbac-permissions-ui-2026-10-10/`; imports de módulos operacionais do workspace mutável: zero. O teste não incorporou alterações locais não commitadas. Runner: `backend/scripts/run-pdv-unico-git-snapshot-qa.mjs`, SHA-256 `25500816cc1519109e9af7a2e5cdffe04bc3b37cca7df0ac8d1036beb6739d7f`. Node `v24.18.0`; Prisma Client `6.19.3`; PostgreSQL `17-alpine`. Recibo da execução: [`pinned-api-evidence.json`](../../artifacts/rbac-permissions-ui-2026-10-10/pinned-api-evidence.json).
@@ -172,7 +178,7 @@ The exact test candidate was `e9c59938b0721b8d07a795eb4927951dfe7fbfa6`, tree `7
 | `sale.refund` | PASS | NOT RUN | NOT RUN | NOT RUN | Refund dependency covered by API suite; no live UI refund |
 | `dashboard.read` | PASS | PASS | PASS | PASS | Real dashboard route/API denied while disabled; same-session grant/revoke; snapshot `203b6e1` |
 | `event.dashboard.read` | PASS | NOT RUN | NOT RUN | NOT RUN | Event-specific live fixture/action not run |
-| `reports.read` | PASS | NOT RUN | NOT RUN | NOT RUN | Report screen and alternate exports not run live |
+| `reports.read` | PASS | PASS | PASS | PASS | Real executive report route and API plus CSV endpoint; same-session grant/revoke; snapshot `4c5c1bc` |
 | `command.operate` | PASS | PASS | PASS | PASS | Real UI comanda create; `command.read` kept as read dependency; grant/revoke affects only `command.operate`; DB confirms creator |
 | `command.read` | PASS | PASS | PASS | PASS | Real command API denial/grant/revocation in two sessions; cash fallback remains usable with financial values sanitized |
 | `kitchen.read` | PASS | NOT RUN | NOT RUN | NOT RUN | Live kitchen module fixture was not enabled |
@@ -198,7 +204,7 @@ Files changed by this task: `frontend/src/components/operacao/PainelCaixaOperaca
 
 The final focused snapshot is `e534a777df434cb96d65c98d98e080ccc746faaf` (tree `c63d578183b7bf9e03306e0dabf0ff98b32257ea`). It materialized 1,448 tracked Git blobs, audited 198 project modules with zero mutable-workspace imports, passed backend/frontend builds and 14/14 activation preflight tests, and passed the authenticated Fastify/PostgreSQL API suite. Playwright passed 1/1 against that exact API and frontend build; two simultaneous staff sessions remained authenticated across grants/revokes, same-browser logout/login changed to a second synthetic tenant, and 390px/768px layouts had no horizontal overflow. Checkout/index status and the exact source tree remained unchanged. The disposable PostgreSQL container and the snapshot were removed.
 
-The latest browser evidence proves all three stages for `command.read`, `cash.values.read`, `agenda.manage`, `dashboard.read`, and `command.operate`. That leaves **15/84 UI stages PASS** and **69/84 NOT RUN** across the other 23 keys. The representative API suite still passed enabled/denied cases for all 28 catalog keys; API evidence does not substitute for those missing UI stages or the alternate route, business-setting, LEGACY/CANONICAL_PDV, and global-admin cases. Full certification remains **incomplete**.
+The latest browser evidence proves all three stages for `command.read`, `cash.values.read`, `agenda.manage`, `dashboard.read`, `command.operate`, and `reports.read`. That leaves **18/84 UI stages PASS** and **66/84 NOT RUN** across the other 22 keys. The representative API suite still passed enabled/denied cases for all 28 catalog keys; API evidence does not substitute for those missing UI stages or the alternate route, business-setting, LEGACY/CANONICAL_PDV, and global-admin cases. Full certification remains **incomplete**.
 
 The first rerun on `509e56a` reproduced a UI crash on the sanitized cash fallback. `PainelCaixaOperacao` calculated close differences by dereferencing the intentionally absent `sessao.gaveta`; commit `3df315c84bdf8a14e624568ba9651da5fd810a5e` guards financial rendering/calculation while restricted, loading, or errored and does not replace omitted values with zero. The exact final snapshot `e534a77` passed the cash regression after the correction. An intermediate run then exposed a Playwright logout/login navigation race; the harness retry was committed as `e534a777df434cb96d65c98d98e080ccc746faaf` and the same-browser tenant-switch scenario passed.
 
