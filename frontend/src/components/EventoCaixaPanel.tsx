@@ -67,7 +67,9 @@ export function EventoCaixaPanel({ eventoId, comandasAbertas = 0, eventoAberto =
   });
   const caixa = caixaQuery.data?.caixa ?? null;
   const aberto = caixaQuery.data?.aberto ?? false;
-  const valoresCaixaDisponiveis = !!caixa?.esperado && !!caixa.recebidos;
+  const valoresEsperados = caixa?.esperado;
+  const valoresRecebidos = caixa?.recebidos;
+  const valoresCaixaDisponiveis = !!valoresEsperados && !!valoresRecebidos;
   const contagemComandasAbertas = comandasAbertasQuery.data?.length ?? comandasAbertas;
   const podeConfirmarContagemComandas = comandasAbertasQuery.isSuccess;
   const temPendente = contasQuery.data?.some((conta) => conta.saldo > 0) ?? false;
@@ -138,8 +140,8 @@ export function EventoCaixaPanel({ eventoId, comandasAbertas = 0, eventoAberto =
               </div>
               {podeVerValores && valoresCaixaDisponiveis && (
                 <div className="grid grid-cols-2 gap-2.5">
-                  <div className="rounded-xl border border-line bg-surface-lighter/70 px-3 py-2.5"><p className="text-xs text-ink-muted">Gaveta</p><strong className="mt-0.5 block text-lg font-bold tabular-nums">{formatCurrency(caixa.esperado!.DINHEIRO)}</strong></div>
-                  <div className="rounded-xl border border-line bg-surface-lighter/70 px-3 py-2.5"><p className="text-xs text-ink-muted">Recebido</p><strong className="mt-0.5 block text-lg font-bold tabular-nums">{formatCurrency(Object.values(caixa.recebidos!).reduce((total, valor) => total + valor, 0))}</strong></div>
+                  <div className="rounded-xl border border-line bg-surface-lighter/70 px-3 py-2.5"><p className="text-xs text-ink-muted">Gaveta</p><strong className="mt-0.5 block text-lg font-bold tabular-nums">{formatCurrency(valoresEsperados!.DINHEIRO)}</strong></div>
+                  <div className="rounded-xl border border-line bg-surface-lighter/70 px-3 py-2.5"><p className="text-xs text-ink-muted">Recebido</p><strong className="mt-0.5 block text-lg font-bold tabular-nums">{formatCurrency(Object.values(valoresRecebidos!).reduce((total, valor) => total + valor, 0))}</strong></div>
                 </div>
               )}
             </div>
@@ -162,7 +164,7 @@ export function EventoCaixaPanel({ eventoId, comandasAbertas = 0, eventoAberto =
       </Modal>
 
       <Modal open={dialog === 'fechar' && podeFecharCaixa && valoresCaixaDisponiveis} onClose={() => !fechar.isPending && setDialog(null)} title="Conferir caixa do evento">
-        <div className="space-y-3"><p className="text-sm text-ink-muted">Informe os valores contados/confirmados em cada forma de pagamento.</p>{FORMAS.map(({ id, label }) => <div key={id}><label className="label">{label} · esperado {formatCurrency(caixa!.esperado![id])}</label><CurrencyInput value={contado[id]} onChange={(value) => setContado((current) => ({ ...current, [id]: value }))} /></div>)}<div><label className="label">Observação (opcional)</label><textarea className="input min-h-20" value={observacaoFechamento} onChange={(event) => setObservacaoFechamento(event.target.value)} maxLength={1000} /></div><button className="touch-btn-orange w-full" disabled={fechar.isPending} onClick={() => fechar.mutate()}>Confirmar fechamento</button></div>
+        {valoresEsperados && <div className="space-y-3"><p className="text-sm text-ink-muted">Informe os valores contados/confirmados em cada forma de pagamento.</p>{FORMAS.map(({ id, label }) => <div key={id}><label className="label">{label} · esperado {formatCurrency(valoresEsperados[id])}</label><CurrencyInput value={contado[id]} onChange={(value) => setContado((current) => ({ ...current, [id]: value }))} /></div>)}<div><label className="label">Observação (opcional)</label><textarea className="input min-h-20" value={observacaoFechamento} onChange={(event) => setObservacaoFechamento(event.target.value)} maxLength={1000} /></div><button className="touch-btn-orange w-full" disabled={fechar.isPending} onClick={() => fechar.mutate()}>Confirmar fechamento</button></div>}
       </Modal>
     </section>
   );
