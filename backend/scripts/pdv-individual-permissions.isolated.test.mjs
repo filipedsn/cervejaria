@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
-import { rm, writeFile } from 'node:fs/promises';
-import { setTimeout as delay } from 'node:timers/promises';
+import { access, rm, writeFile } from 'node:fs/promises';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 
 const databaseUrl = validateIsolatedQaEnvironment(process.env).toString();
@@ -1157,56 +1156,34 @@ const listed = await app.inject({ method: 'GET', url: '/api/usuarios', headers: 
 assert.equal(listed.statusCode, 200, listed.body);
 assert.deepEqual(JSON.parse(listed.body).find((user) => user.id === staff.id).permissoesOperacao, []);
 
-// Run a real browser against this exact Fastify instance and a Vite proxy. No API
-// interception is enabled; the browser logs in through the UI and uses real cookies.
+// Run a real browser against this exact Fastify instance, which serves the exact
+// frontend build from this Git snapshot. No API interception or proxy is enabled.
 const repoRoot = path.resolve(backendRoot, '..');
 const apiPort = app.server.address().port;
+await access(path.join(repoRoot, 'frontend/dist/index.html'));
 const apiProbe = await fetch(`http://127.0.0.1:${apiPort}/api/auth/me`);
 console.log(`RBAC_LIVE_API_PROBE status=${apiProbe.status}; target=127.0.0.1:${apiPort}`);
 assert.equal(apiProbe.status, 401, 'The live app must answer unauthenticated auth/me before browser startup.');
-const frontendPort = 53000 + (process.pid % 1000);
-const frontendRoot = path.join(repoRoot, 'frontend');
-const frontend = spawn(process.execPath, [path.join(frontendRoot, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(frontendPort), '--strictPort'], {
-  cwd: frontendRoot,
-  env: { ...process.env, VITE_API_URL: '', VITE_API_PORT: String(apiPort) },
-  stdio: 'inherit',
-  windowsHide: true,
+const browserEnv = {
+  ...process.env,
+  RBAC_QA_BASE_URL: `http://127.0.0.1:${apiPort}`,
+  RBAC_QA_OUTPUT_DIR: path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results'),
+  RBAC_QA_OWNER_EMAIL: owner.email,
+  RBAC_QA_OWNER_PASSWORD: ownerPassword,
+  RBAC_QA_STAFF_EMAIL: staff.email,
+  RBAC_QA_STAFF_PASSWORD: attendantPassword,
+  RBAC_QA_FOREIGN_OWNER_EMAIL: otherOwner.email,
+  RBAC_QA_FOREIGN_OWNER_PASSWORD: otherOwnerPassword,
+  RBAC_QA_STAFF_ID: staff.id,
+};
+const browserRun = spawnSync(process.execPath, [path.join(repoRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.rbac-live.config.ts'], {
+  cwd: repoRoot, env: browserEnv, encoding: 'utf8', windowsHide: true, timeout: 180_000,
 });
-try {
-  let ready = false;
-  for (let attempt = 0; attempt < 60; attempt++) {
-    if (frontend.exitCode !== null) throw new Error(`Vite exited before becoming ready: ${frontend.exitCode}`);
-    try { ready = (await fetch(`http://127.0.0.1:${frontendPort}`)).ok; } catch {}
-    if (ready) break;
-    await delay(500);
-  }
-  assert(ready, 'Vite did not become ready for live RBAC browser test.');
-  const proxyProbe = await fetch(`http://127.0.0.1:${frontendPort}/api/auth/me`, { signal: AbortSignal.timeout(5_000) });
-  console.log(`RBAC_LIVE_VITE_API_PROBE status=${proxyProbe.status}; frontend=127.0.0.1:${frontendPort}`);
-  assert.equal(proxyProbe.status, 401, 'The Vite API proxy must reach the disposable Fastify app.');
-  const browserEnv = {
-    ...process.env,
-    RBAC_QA_BASE_URL: `http://127.0.0.1:${frontendPort}`,
-    RBAC_QA_OUTPUT_DIR: path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results'),
-    RBAC_QA_OWNER_EMAIL: owner.email,
-    RBAC_QA_OWNER_PASSWORD: ownerPassword,
-    RBAC_QA_STAFF_EMAIL: staff.email,
-    RBAC_QA_STAFF_PASSWORD: attendantPassword,
-    RBAC_QA_FOREIGN_OWNER_EMAIL: otherOwner.email,
-    RBAC_QA_FOREIGN_OWNER_PASSWORD: otherOwnerPassword,
-    RBAC_QA_STAFF_ID: staff.id,
-  };
-  const browserRun = spawnSync(process.execPath, [path.join(repoRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.rbac-live.config.ts'], {
-    cwd: repoRoot, env: browserEnv, encoding: 'utf8', windowsHide: true, timeout: 180_000,
-  });
-  await writeFile(path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results', 'browser-run.log'), `${browserRun.stdout ?? ''}\n${browserRun.stderr ?? ''}`);
-  process.stdout.write(browserRun.stdout ?? '');
-  process.stderr.write(browserRun.stderr ?? '');
-  assert.equal(browserRun.status, 0, 'Live operational RBAC browser test failed.');
-} finally {
-  frontend.kill();
-  await app.close();
-}
+await writeFile(path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results', 'browser-run.log'), `${browserRun.stdout ?? ''}\n${browserRun.stderr ?? ''}`);
+process.stdout.write(browserRun.stdout ?? '');
+process.stderr.write(browserRun.stderr ?? '');
+assert.equal(browserRun.status, 0, 'Live operational RBAC browser test failed.');
+await app.close();
 await prisma.$disconnect();
 
 // Rehearse data preservation by removing only this candidate from the disposable
