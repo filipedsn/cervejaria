@@ -25,7 +25,8 @@ if (!selectedInput.trim() || selectedInput.startsWith('-')) throw new Error('--c
 const selectedCommit = execFileSync('git', ['rev-parse', '--verify', '--end-of-options', `${selectedInput}^{commit}`], { cwd: repoRoot, encoding: 'utf8' }).trim();
 const selectedTree = execFileSync('git', ['rev-parse', `${selectedCommit}^{tree}`], { cwd: repoRoot, encoding: 'utf8' }).trim();
 const runId = randomBytes(8).toString('hex');
-const tempRoot = await mkdtemp(path.join(os.tmpdir(), `pdv-git-qa-${runId}-`));
+const qaTempParent = path.join(repoRoot, 'artifacts', 'rbac-permissions-ui-2026-10-10');
+const tempRoot = await mkdtemp(path.join(qaTempParent, `git-snapshot-${runId}-`));
 const snapshotRoot = path.join(tempRoot, 'git-source-snapshot');
 const backendSnapshot = path.join(snapshotRoot, 'backend');
 const auditFile = path.join(tempRoot, 'module-origins.jsonl');
@@ -358,7 +359,7 @@ try {
   succeeded = syntheticExitCode === 0 && (representativeExitCode === null || representativeExitCode === 0);
   }
 } finally {
-  if (!path.resolve(tempRoot).startsWith(path.resolve(os.tmpdir()) + path.sep) || !path.basename(tempRoot).startsWith(`pdv-git-qa-${runId}-`)) throw new Error('Unsafe Git QA temporary cleanup path.');
+  if (!path.resolve(tempRoot).startsWith(`${path.resolve(qaTempParent)}${path.sep}`) || !path.basename(tempRoot).startsWith(`git-snapshot-${runId}-`)) throw new Error('Unsafe Git QA temporary cleanup path.');
   await rm(tempRoot, { recursive: true, force: true });
 }
 
