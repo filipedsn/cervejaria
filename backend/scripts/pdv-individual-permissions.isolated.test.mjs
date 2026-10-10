@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
@@ -1179,13 +1179,21 @@ const browserEnv = {
     RBAC_QA_FOREIGN_OWNER_COOKIE: foreignOwnerCookie,
   RBAC_QA_STAFF_ID: staff.id,
 };
-const browserRun = spawnSync(process.execPath, [path.join(repoRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.rbac-live.config.ts'], {
-  cwd: repoRoot, env: browserEnv, encoding: 'utf8', windowsHide: true, timeout: 180_000,
+const browserRun = spawn(process.execPath, [path.join(repoRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.rbac-live.config.ts'], {
+  cwd: repoRoot, env: browserEnv, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
 });
-await writeFile(path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results', 'browser-run.log'), `${browserRun.stdout ?? ''}\n${browserRun.stderr ?? ''}`);
-process.stdout.write(browserRun.stdout ?? '');
-process.stderr.write(browserRun.stderr ?? '');
-assert.equal(browserRun.status, 0, 'Live operational RBAC browser test failed.');
+let browserStdout = '';
+let browserStderr = '';
+browserRun.stdout.setEncoding('utf8').on('data', (chunk) => { browserStdout += chunk; });
+browserRun.stderr.setEncoding('utf8').on('data', (chunk) => { browserStderr += chunk; });
+const browserExitCode = await new Promise((resolve, reject) => {
+  browserRun.once('error', reject);
+  browserRun.once('exit', resolve);
+});
+await writeFile(path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results', 'browser-run.log'), `${browserStdout}\n${browserStderr}`);
+process.stdout.write(browserStdout);
+process.stderr.write(browserStderr);
+assert.equal(browserExitCode, 0, 'Live operational RBAC browser test failed.');
 await app.close();
 await prisma.$disconnect();
 
