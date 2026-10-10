@@ -1239,10 +1239,10 @@ const runBrowser = async (args, env) => {
   process.stderr.write(stderr);
   return exitCode;
 };
-const legacyEventDashboardTests = 'event\\.(menu\\.manage|dashboard\\.read)';
+const legacyEventDashboardTests = 'event\\.(menu\\.manage|dashboard\\.read|cash\\.open)';
 const canonicalBrowserExitCode = await runBrowser(['--grep-invert', legacyEventDashboardTests], browserEnv);
 assert.equal(canonicalBrowserExitCode, 0, 'Live CANONICAL_PDV operational RBAC browser tests failed.');
-// Event menu is an event-mode feature. Run its real UI flow against the same
+// Event cash/menu/dashboard flows run in EVENTO/LEGACY mode. Run those real UI flows against the same
 // disposable API/database with canonical activation off, so the second tenant
 // resolves LEGACY settings while the other browser cases retain CANONICAL_PDV.
 process.env.PDV_CANONICAL_CONFIG_QA = '0';

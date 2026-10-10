@@ -1091,3 +1091,65 @@ test('event.dashboard.read reveals and revokes event KPIs without changing comma
   console.log('RBAC_LIVE_REGRESSION key=event.dashboard.read; dependency=command.read retained; disabled=event-dashboard-api-denied-kpis-hidden-command-read-works; enabled=event-kpis-visible-and-api-projection-matches-owner; revoked=same-session-kpis-hidden-dashboard-denied-command-read-remains; event-mode=LEGACY; result=PASS');
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });
+
+test('event.cash.open controls event cash opening without granting financial values', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: eventMenuOwnerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/eventos');
+  const cashUrl = `/api/eventos/${eventMenuEventId}/caixa`;
+  const openingUrl = `${cashUrl}/abrir`;
+  const permissionApiForEventStaff = `/api/usuarios/${eventMenuStaffId}/permissoes-operacao`;
+  const setEventStaffPermissions = async (permissoesOperacao: string[]) => {
+    const response = await ownerContext.request.patch(permissionApiForEventStaff, { data: { permissoesOperacao } });
+    expect(response.status(), await response.text()).toBe(200);
+  };
+  const initialCash = await ownerContext.request.get(cashUrl);
+  expect(initialCash.status(), await initialCash.text()).toBe(200);
+  expect(await initialCash.json()).toMatchObject({ caixa: null, aberto: false });
+  await setEventStaffPermissions(['command.read']);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: eventMenuStaffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  expect((await (await staffContext.request.get('/api/operacao/contexto')).json()).operationMode).toBe('EVENTO');
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['command.read']);
+  await staff.goto('/comandas');
+  await expect(staff.getByRole('heading', { name: 'Comandas', exact: true })).toBeVisible();
+  const cashPanel = staff.getByRole('region', { name: 'Caixa do evento' });
+  await expect(cashPanel).toBeVisible();
+  await expect(cashPanel.getByRole('button', { name: 'Abrir caixa', exact: true })).toHaveCount(0);
+  await expect(cashPanel.getByLabel('Troco inicial do evento')).toHaveCount(0);
+  const denied = await staffContext.request.post(openingUrl, { data: { trocoInicial: 83.17 } });
+  expect([401, 403]).toContain(denied.status());
+  expect(await (await ownerContext.request.get(cashUrl)).json()).toMatchObject({ caixa: null, aberto: false });
+
+  await setEventStaffPermissions(['command.read', 'cash.open']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['command.read', 'cash.open']);
+  await expect(cashPanel.getByLabel('Troco inicial do evento')).toBeVisible();
+  await cashPanel.getByLabel('Troco inicial do evento').fill('987,65');
+  const openResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === openingUrl && response.request().method() === 'POST');
+  await cashPanel.getByRole('button', { name: 'Abrir caixa', exact: true }).click();
+  const opened = await openResponsePromise;
+  expect(opened.status(), await opened.text()).toBe(201);
+  const staffCash = await (await staffContext.request.get(cashUrl)).json();
+  expect(staffCash).toMatchObject({ aberto: true, caixa: { valoresRestritos: true } });
+  expect(JSON.stringify(staffCash)).not.toContain('987.65');
+  expect(JSON.stringify(staffCash)).not.toContain('trocoInicial');
+  const ownerCashAfterGrant = await (await ownerContext.request.get(cashUrl)).json();
+  expect(ownerCashAfterGrant.aberto).toBe(true);
+  expect(Number(ownerCashAfterGrant.caixa.trocoInicial)).toBe(987.65);
+
+  await setEventStaffPermissions(['command.read']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['command.read']);
+  await expect(cashPanel.getByRole('button', { name: 'Abrir caixa', exact: true })).toHaveCount(0);
+  const revoked = await staffContext.request.post(openingUrl, { data: { trocoInicial: 12.34 } });
+  expect([401, 403]).toContain(revoked.status());
+  expect(await (await ownerContext.request.get(cashUrl)).json()).toEqual(ownerCashAfterGrant);
+  const commandAccessAfterRevoke = await staffContext.request.get(`/api/comandas/evento/${eventMenuEventId}?status=ABERTA`);
+  expect(commandAccessAfterRevoke.status(), await commandAccessAfterRevoke.text()).toBe(200);
+  console.log('RBAC_LIVE_REGRESSION key=cash.open; dependency=command.read retained; disabled=button-hidden-api-denied-no-session; enabled=real-ui-opens-session-with-exact-float-and-redacted-response; revoked=same-session-button-hidden-api-denied-session-unchanged; event-mode=LEGACY; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
