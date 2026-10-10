@@ -126,12 +126,15 @@ export function OperacaoComandaDetailPage() {
   );
 
   const resumoItens = useMemo(
-    () => (comanda ? resumirItensComanda(comanda) : []),
-    [comanda],
+    () => (comanda && contextoResolvido && !contextoErro
+      ? resumirItensComanda(comanda, contexto.kitchenItemsChargeAtLaunch)
+      : []),
+    [comanda, contexto.kitchenItemsChargeAtLaunch, contextoResolvido, contextoErro],
   );
+  const resumoConfiguracaoCarregada = contextoResolvido && !contextoErro;
 
   const enviarResumoContaWhatsApp = () => {
-    if (!comanda?.cliente?.telefone) return;
+    if (!comanda?.cliente?.telefone || !resumoConfiguracaoCarregada) return;
     const url = linkWhatsAppResumoConta({
       telefone: comanda.cliente.telefone,
       clienteNome: comanda.cliente.nome,
@@ -178,13 +181,16 @@ export function OperacaoComandaDetailPage() {
     const onPedidoAtualizado = (payload: { comanda?: { id?: string } }) => {
       if (payload?.comanda?.id === id) invalidar();
     };
+    const onSocketConnected = () => invalidar();
 
     socket.on('operacao:comanda-atualizada', onComandaAtualizada);
     socket.on('operacao:pedido-atualizado', onPedidoAtualizado);
+    socket.on('connect', onSocketConnected);
 
     return () => {
       socket.off('operacao:comanda-atualizada', onComandaAtualizada);
       socket.off('operacao:pedido-atualizado', onPedidoAtualizado);
+      socket.off('connect', onSocketConnected);
     };
   }, [cervejaria?.id, id, queryClient]);
 
@@ -462,7 +468,7 @@ export function OperacaoComandaDetailPage() {
   const totalComDesconto = Math.max(0, comanda.subtotal - descontoValor);
   const totalAPagar = Math.max(0, totalComDesconto);
   const totalParcialComanda = comanda.total;
-  const totalPendente = totalPendenteComanda(comanda);
+  const totalPendente = totalPendenteComanda(comanda, contexto.kitchenItemsChargeAtLaunch);
   const clienteElegivelParaPendente = Boolean(
     comanda.cliente?.id && comanda.cliente.telefone && digitsOnly(comanda.cliente.telefone).length >= 10,
   );
@@ -569,14 +575,20 @@ export function OperacaoComandaDetailPage() {
             aria-label="Enviar resumo da conta pelo WhatsApp"
             title={comanda.cliente?.telefone ? 'Enviar resumo da conta pelo WhatsApp' : 'Cadastre um telefone para o cliente'}
             className="inline-flex min-h-12 min-w-12 shrink-0 items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-600 text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={!comanda.cliente?.telefone}
+            disabled={!comanda.cliente?.telefone || !resumoConfiguracaoCarregada}
             onClick={enviarResumoContaWhatsApp}
           >
             <IconWhatsApp className="h-6 w-6" />
           </button>
         </nav>
 
-        {visaoItens === 'PEDIDOS' ? (
+        {!resumoConfiguracaoCarregada && visaoItens === 'RESUMO' ? (
+          <p role="status" className="rounded-xl border border-line bg-surface p-4 text-center text-sm text-ink-muted">
+            {contextoErro
+              ? 'Não foi possível carregar a regra de cobrança da cozinha. O resumo está oculto até a configuração ser validada.'
+              : 'Carregando a regra de cobrança da cozinha…'}
+          </p>
+        ) : visaoItens === 'PEDIDOS' ? (
           <>
         {ordenarPedidosPorSenhaDecrescente(comanda.pedidos).filter(pedidoVisivelNaComanda).map((pedido) => {
           const confirmado = pedidoConfirmadoNaComanda(pedido);
@@ -794,7 +806,7 @@ export function OperacaoComandaDetailPage() {
                 </div>
               </>
             )}
-            <p className="text-xs text-ink-faint">Itens cancelados ou com cancelamento pendente não entram neste resumo. Alterações nos pedidos aparecerão ao atualizar a comanda.</p>
+            <p className="text-xs text-ink-faint">Itens cancelados ou com cancelamento pendente não entram neste resumo.</p>
           </section>
         )}
 

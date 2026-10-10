@@ -36,3 +36,11 @@ A causa reproduzida foi a combinacao de duplo toque antes de a UI desabilitar o 
 - Playwright de cozinha: 8/8 regressions passaram com frontend isolado em 127.0.0.1:5204 e Socket.IO/API simulados. Incluiu duplo toque durante request, chegada durante a acao, paginacao, reconexao, retomada apos aba oculta, pedido longo e medicoes sem corte/overflow.
 - Builds de frontend e backend passaram. Avisos existentes do Vite: chunk principal acima de 500 kB e import misto de auth-session.ts.
 - Nenhum pedido real, PROD ou banco de DEV foi usado no QA. O PostgreSQL de teste foi removido ao final. O DEV sera verificado apos publicar este commit; TAP-76 permanece In Progress.
+
+## Atualização visível da comanda e resumo financeiro
+
+- A comanda agora invalida seus dados ao receber `operacao:comanda-atualizada` e ao reconectar o Socket.IO. Não usa polling periódico.
+- PostgreSQL 17 descartável + `buildApp` + Socket.IO real + duas sessões de navegador: 4/4 cenários passaram. A sessão da cozinha solicita e confirma pelo HTTP real; a sessão da comanda recebe os eventos na sala do tenant, refaz a consulta e remove o selo “Cancelamento solicitado”. Uma segunda solicitação ocorre enquanto as sessões estão desconectadas; a comanda refaz a consulta ao reconectar e mostra o selo correto. A confirmação não duplicou estorno de estoque, pagamento ou movimento de caixa.
+- Playwright: 30/30 passaram nos projetos 390px e 768px. Matriz cobre fonte de configuração LEGACY/CANONICAL_PDV, cobrança da cozinha ao lançar ligada/desligada, itens recebidos/prontos/entregues, opcionais, itens cancelados e com cancelamento pendente, desconto, saldo em aberto, fechamento/pagamento e mensagem WhatsApp.
+- `npm run build --prefix frontend` e `npm run build` em `backend` passaram. Permanecem os avisos do Vite sobre chunk principal e import misto de `auth-session.ts`.
+- O PostgreSQL era temporário em tmpfs, vinculado somente a `127.0.0.1` e removido ao fim do ensaio. Nenhum pedido real ou PROD foi usado. O banco DEV tinha somente a migration `20261009140000_cancel_delivered_comanda_item` pendente no momento da verificação; ela será aplicada antes de reiniciar o DEV publicado. TAP-76, TAP-78 e TAP-82 permanecem In Progress.

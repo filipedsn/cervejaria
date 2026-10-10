@@ -783,7 +783,11 @@ export interface TapsTurnoResposta {
   taps: TapTurno[];
 }
 
-export function totalPendenteComanda(comanda: Pick<ComandaOperacao, 'pedidos'>): number {
+export function totalPendenteComanda(
+  comanda: Pick<ComandaOperacao, 'pedidos'>,
+  kitchenItemsChargeAtLaunch = false,
+): number {
+  if (kitchenItemsChargeAtLaunch) return 0;
   return comanda.pedidos
     .filter((pedido) => pedido.status !== 'ENTREGUE' && pedido.status !== 'CANCELADO' && pedido.status !== 'CANCELAMENTO_PENDENTE')
     .reduce((total, pedido) => total + pedido.itens
@@ -800,7 +804,10 @@ export interface LinhaResumoConta {
 }
 
 /** Consolida preços históricos lançados, sem incluir pedidos cancelados. */
-export function resumirItensComanda(comanda: ComandaOperacao): LinhaResumoConta[] {
+export function resumirItensComanda(
+  comanda: ComandaOperacao,
+  kitchenItemsChargeAtLaunch = false,
+): LinhaResumoConta[] {
   const agrupados = new Map<string, { nome: string; quantidade: number; totalCentavos: number }>();
 
   for (const pedido of comanda.pedidos) {
@@ -808,7 +815,7 @@ export function resumirItensComanda(comanda: ComandaOperacao): LinhaResumoConta[
 
     for (const item of pedido.itens) {
       if (item.cancelamentoPendenteEm || item.canceladoEm) continue;
-      if (item.exigePreparo && pedido.status !== 'ENTREGUE') continue;
+      if (item.exigePreparo && !kitchenItemsChargeAtLaunch && pedido.status !== 'ENTREGUE') continue;
       const chave = item.produtoId || item.nome.trim().toLocaleLowerCase('pt-BR');
       const existente = agrupados.get(chave) ?? {
         nome: item.nome,

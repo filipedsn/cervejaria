@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
+import { runKitchenCommandVisibleSyncQa } from './kitchen-command-visible-sync.browser.qa.mjs';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 
 validateIsolatedQaEnvironment(process.env);
@@ -8,9 +9,10 @@ assert.equal(process.env.NODE_ENV, 'test');
 assert.equal(process.env.PDV_INDIVIDUAL_PERMISSIONS_ENABLED, '1');
 
 const { PrismaClient } = await import('@prisma/client');
-const { buildApp } = await import('../src/app.ts');
+const { buildApp, setupSocketIO } = await import('../src/app.ts');
 const prisma = new PrismaClient();
 const app = await buildApp();
+const ioServer = setupSocketIO(app, app.server);
 const runId = process.env.PDV_QA_RUN_ID;
 const day = new Date('2026-10-09T00:00:00.000Z');
 
@@ -244,7 +246,16 @@ test('status concorrente Ã© idempotente, comando atrasado nÃ£o desfaz estado
   console.log(JSON.stringify({ scenario: 'status-concurrency-and-stale-command', lockWaiters: waiterCount, concurrentStatuses: results.map((result) => result.statusCode), retryStatus: retryAlreadyApplied.statusCode, delayedStartStatus: delayedStart.statusCode, incompatibleStatus: invalid.statusCode, finalStatus: finalOrder.status, history: finalHistory.map((row) => row.status), noFinancialOrStockEffects: true }, null, 2));
 });
 
+test('confirmação em segunda sessão atualiza a comanda via socket e recupera após reconexão', async () => {
+  const f = await tenantFixture('visible-sync');
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address();
+  const token = auth(f).authorization.slice('Bearer '.length);
+  await runKitchenCommandVisibleSyncQa({ app, prisma, baseUrl: `http://127.0.0.1:${address.port}`, fixture: f, token, runId });
+});
+
 test.after(async () => {
+  await new Promise((resolve) => ioServer.close(() => resolve()));
   await app.close();
   await prisma.$disconnect();
 });
