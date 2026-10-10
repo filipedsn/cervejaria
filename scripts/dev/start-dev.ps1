@@ -5,6 +5,12 @@ $ErrorActionPreference = 'Stop'
 
 $paths = Get-DevPaths
 
+$releaseManifest = Join-Path $paths.ProjectRoot 'deploy\dev-artifacts\manifest.json'
+if (Test-Path -LiteralPath $releaseManifest -PathType Leaf) {
+  & (Join-Path $PSScriptRoot 'start-dev-artifacts.ps1')
+  exit $LASTEXITCODE
+}
+
 if (-not $paths.NpmCmd -or -not (Test-Path $paths.NpmCmd)) {
   Write-Host 'npm.cmd nao encontrado. Instale Node.js 24.' -ForegroundColor Red
   exit 1
