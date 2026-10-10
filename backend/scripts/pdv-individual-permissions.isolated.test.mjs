@@ -74,9 +74,6 @@ const foreignPoint = await prisma.pontoVenda.create({ data: { cervejariaId: othe
 const event = await prisma.evento.create({ data: { nome: `Event cash QA ${suffix}`, local: 'QA', cervejariaId: company.id, trailerId: trailer.id } });
 const eventForPermissionGrants = await prisma.evento.create({ data: { nome: `Event permission QA ${suffix}`, local: 'QA', cervejariaId: company.id, trailerId: trailer.id } });
 const foreignEvent = await prisma.evento.create({ data: { nome: `Foreign event QA ${suffix}`, local: 'QA', data: new Date(), cervejariaId: otherCompany.id, trailerId: foreignTrailer.id } });
-const eventCashCloseTrailer = await prisma.trailer.create({ data: { nome: `Cash close QA trailer ${suffix}`, cervejariaId: otherCompany.id } });
-const eventCashClose = await prisma.evento.create({ data: { nome: `Event cash close QA ${suffix}`, local: 'QA', data: new Date(), cervejariaId: otherCompany.id, trailerId: eventCashCloseTrailer.id } });
-const eventCashCloseInitialSession = await prisma.sessaoCaixaEvento.create({ data: { eventoId: eventCashClose.id, trocoInicial: '45.67', abertoPorId: otherOwner.id } });
 const foreignClient = await prisma.cliente.create({ data: { nome: 'Foreign permission QA', telefone: `119876${Date.now().toString().slice(-5)}`, cervejariaId: otherCompany.id } });
 const foreignProduct = await prisma.produto.create({ data: { nome: `Foreign product QA ${suffix}`, tipo: 'COMIDA', cervejariaId: otherCompany.id } });
 const foreignCommand = await prisma.comanda.create({ data: { eventoId: foreignEvent.id, clienteId: foreignClient.id, status: 'ABERTA', tipo: 'COMANDA', total: 0 } });
@@ -1192,6 +1189,11 @@ await prisma.evento.update({ where: { id: event.id }, data: { status: 'FECHADO',
 const apiProbe = await fetch(`http://127.0.0.1:${apiPort}/api/auth/me`);
 console.log(`RBAC_LIVE_API_PROBE status=${apiProbe.status}; target=127.0.0.1:${apiPort}`);
 assert.equal(apiProbe.status, 401, 'The live app must answer unauthenticated auth/me before browser startup.');
+// The API tenant-isolation checks have finished using this fixture. Remove its
+// open command so event.cash.close can verify the no-open-command path.
+await prisma.pedidoOperacao.delete({ where: { id: foreignOrder.id } });
+await prisma.comanda.delete({ where: { id: foreignCommand.id } });
+
 // The live browser additionally exercises agenda.manage, whose route is
 // available only when this disposable tenant has canonical PDV settings.
 process.env.PDV_CANONICAL_CONFIG_QA = '1';
@@ -1216,7 +1218,6 @@ const browserEnv = {
   RBAC_QA_EVENT_MENU_STAFF_COOKIE: eventMenuStaffCookie,
   RBAC_QA_EVENT_MENU_STAFF_ID: eventMenuStaff.id,
   RBAC_QA_EVENT_MENU_EVENT_ID: foreignEvent.id,
-    RBAC_QA_EVENT_CASH_CLOSE_ID: eventCashClose.id,
   RBAC_QA_EVENT_MENU_EVENT_NAME: foreignEvent.nome,
   RBAC_QA_EVENT_MENU_PRODUCT_FOREIGN_ID: foreignProduct.id,
   RBAC_QA_EVENT_MENU_PRODUCT_FOREIGN_NAME: foreignProduct.nome,
@@ -1272,19 +1273,19 @@ assert.equal(browserCreatedCommands.length, 1, 'live command.operate UI creates 
 assert.equal(browserCreatedCommands[0].abertaPorId, staff.id, 'live UI comanda records the authorized staff member');
 assert.equal(browserCreatedCommands[0].status, 'ABERTA');
 const browserEventCashCloseSessions = await prisma.sessaoCaixaEvento.findMany({
-  where: { eventoId: eventCashClose.id },
+  where: { eventoId: foreignEvent.id },
   orderBy: { abertoEm: 'asc' },
   select: { id: true, status: true, abertoPorId: true, fechadoPorId: true, trocoInicial: true, contadoDinheiro: true, fechadoEm: true },
 });
 assert.equal(browserEventCashCloseSessions.length, 2, 'event cash close UI closes one session and the revoked attempt leaves one new session open');
-assert.equal(browserEventCashCloseSessions[0].id, eventCashCloseInitialSession.id);
 assert.equal(browserEventCashCloseSessions[0].status, 'FECHADO');
 assert.equal(browserEventCashCloseSessions[0].fechadoPorId, eventMenuStaff.id, 'event cash close records the authorized staff actor');
-assert.equal(Number(browserEventCashCloseSessions[0].contadoDinheiro), 45.67, 'event cash close persists exact counted cash');
+assert.equal(Number(browserEventCashCloseSessions[0].contadoDinheiro), 987.65, 'event cash close persists the exact opening float count');
 assert.ok(browserEventCashCloseSessions[0].fechadoEm instanceof Date);
 assert.equal(browserEventCashCloseSessions[1].status, 'ABERTO', 'revoked close leaves the newer session open');
 assert.equal(browserEventCashCloseSessions[1].abertoPorId, otherOwner.id);
 assert.equal(Number(browserEventCashCloseSessions[1].trocoInicial), 12.34);
+assert.notEqual(browserEventCashCloseSessions[0].id, browserEventCashCloseSessions[1].id);
 await app.close();
 await prisma.$disconnect();
 

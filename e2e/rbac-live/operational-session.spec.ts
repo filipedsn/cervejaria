@@ -1159,7 +1159,7 @@ test('event.cash.close requires both close and value access and denies after rev
   const owner = await ownerContext.newPage();
   await ownerContext.addCookies([{ name: 'token', value: eventMenuOwnerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
   await owner.goto('/eventos');
-  const eventId = process.env.RBAC_QA_EVENT_CASH_CLOSE_ID!;
+  const eventId = eventMenuEventId;
   const cashUrl = `/api/eventos/${eventId}/caixa`;
   const closeUrl = `${cashUrl}/fechar`;
   const permissionApiForEventStaff = `/api/usuarios/${eventMenuStaffId}/permissoes-operacao`;
