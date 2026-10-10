@@ -85,6 +85,17 @@ async function assertDenied(response: { status(): number }) {
   expect([401, 403]).toContain(response.status());
 }
 
+async function findKitchenCard(staff: Page, itemName: string) {
+  const card = staff.locator('article:visible').filter({ hasText: itemName }).first();
+  for (let page = 0; page < 8 && !(await card.isVisible().catch(() => false)); page++) {
+    const next = staff.getByRole('button', { name: 'Próxima' });
+    if (!(await next.isVisible().catch(() => false)) || !(await next.isEnabled())) break;
+    await next.click();
+  }
+  await expect(card).toBeVisible();
+  return card;
+}
+
 async function payThroughUi(staff: Page, commandId: string) {
   await staff.goto(`/operacao/comandas/${commandId}`);
   const close = staff.getByRole('button', { name: /Fechar Comanda/ });
@@ -400,8 +411,7 @@ test('kitchen.cancel requires sale.refund and revokes while the session stays lo
   expect(deniedQueue.status()).toBe(200);
   expect((await deniedQueue.json()).find((order: { id: string }) => order.id === orderId).status).toBe('RECEBIDO');
   await staff.goto('/operacao/cozinha');
-  const card = staff.locator('article:visible').filter({ hasText: itemName }).first();
-  await expect(card).toBeVisible();
+  const card = await findKitchenCard(staff, itemName);
   await expect(card.getByRole('button', { name: 'Cancelar pedido' })).toHaveCount(0);
   await stage(key, 'disabled', 'sale.refund retained; queue is readable but cancel control and status transition are denied', testInfo);
   await setPermissions(ownerContext, [...deps, key]);
@@ -409,7 +419,7 @@ test('kitchen.cancel requires sale.refund and revokes while the session stays lo
   expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual([...deps, key]);
   await staff.goto('/operacao/cozinha');
   await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/cozinha');
-  const allowedCard = staff.locator('article:visible').filter({ hasText: itemName }).first();
+  const allowedCard = await findKitchenCard(staff, itemName);
   await allowedCard.getByRole('button', { name: 'Cancelar pedido' }).click();
   const dialog = staff.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Solicitar cancelamento' }).click();
@@ -420,8 +430,7 @@ test('kitchen.cancel requires sale.refund and revokes while the session stays lo
   const revokedOrderId = process.env.RBAC_QA_KITCHEN_CANCEL_REVOKE_ORDER_ID!;
   const revokedItemName = process.env.RBAC_QA_KITCHEN_CANCEL_REVOKE_ITEM_NAME!;
   await staff.goto('/operacao/cozinha');
-  const revokedCard = staff.locator('article:visible').filter({ hasText: revokedItemName }).first();
-  await expect(revokedCard).toBeVisible();
+  const revokedCard = await findKitchenCard(staff, revokedItemName);
   await expect(revokedCard.getByRole('button', { name: 'Cancelar pedido' })).toHaveCount(0);
   const revoked = await staffContext.request.patch(`/api/operacao/cozinha/${revokedOrderId}/status`, { data: { status: 'CANCELAMENTO_PENDENTE' } });
   await assertDenied(revoked);
@@ -444,8 +453,7 @@ test('sale.refund requires kitchen.cancel and revokes same-session confirmation'
   const denied = await staffContext.request.patch(statusUrl, { data: { status: 'CANCELADO' } });
   await assertDenied(denied);
   await staff.goto('/operacao/cozinha');
-  const card = staff.locator('article:visible').filter({ hasText: itemName }).first();
-  await expect(card).toBeVisible();
+  const card = await findKitchenCard(staff, itemName);
   await expect(card.getByRole('button', { name: 'Confirmar cancelamento' })).toHaveCount(0);
   await stage(key, 'disabled', 'kitchen.cancel retained; sale/refund confirmation denied and pending order preserved', testInfo);
   await setPermissions(ownerContext, [...deps, key]);
@@ -453,7 +461,7 @@ test('sale.refund requires kitchen.cancel and revokes same-session confirmation'
   expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual([...deps, key]);
   await staff.goto('/operacao/cozinha');
   await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/cozinha');
-  const allowedCard = staff.locator('article:visible').filter({ hasText: itemName }).first();
+  const allowedCard = await findKitchenCard(staff, itemName);
   await allowedCard.getByRole('button', { name: 'Confirmar cancelamento' }).click();
   await expect.poll(async () => (await (await staffContext.request.get(queueUrl)).json()).find((order: { id: string }) => order.id === orderId).status).toBe('CANCELADO');
   const commandId = process.env.RBAC_QA_REFUND_COMMAND_ID!;
@@ -464,7 +472,7 @@ test('sale.refund requires kitchen.cancel and revokes same-session confirmation'
   await staff.reload();
   const revokedOrderId = process.env.RBAC_QA_REFUND_REVOKE_ORDER_ID!;
   await staff.goto('/operacao/cozinha');
-  const revokedCard = staff.locator('article:visible').filter({ hasText: process.env.RBAC_QA_REFUND_REVOKE_ITEM_NAME! }).first();
+  const revokedCard = await findKitchenCard(staff, process.env.RBAC_QA_REFUND_REVOKE_ITEM_NAME!);
   await expect(revokedCard.getByRole('button', { name: 'Confirmar cancelamento' })).toHaveCount(0);
   const revoked = await staffContext.request.patch(`/api/operacao/cozinha/${revokedOrderId}/status`, { data: { status: 'CANCELADO' } });
   await assertDenied(revoked);
