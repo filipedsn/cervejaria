@@ -204,7 +204,7 @@ The exact test candidate was `e9c59938b0721b8d07a795eb4927951dfe7fbfa6`, tree `7
 | `inventory.read` | PASS | PASS | PASS | PASS | Real stock screen/API read-only; `inventory.adjust` absent, entry refused; snapshot `d2b2a0d` |
 | `inventory.adjust` | PASS | PASS | PASS | PASS | `inventory.read` retained; UI entry adds exactly 1 unit with staff actor; revoke hides controls/refuses another write; snapshot `d2b2a0d` |
 | `catalog.manage` | PASS | PASS | PASS | PASS | Real catalog page and product create; exact DB product verified; revoke prevents another create; snapshot `88f7487` |
-| `catalog.shift.manage` | PASS | PASS candidato | PASS candidato | PASS candidato | `cash.values.read` retained as screen dependency; only shift key varied; `catalog.manage` absent; compare turn price and global catalog |
+| `catalog.shift.manage` | PASS | PASS | PASS | PASS | `cash.values.read` retained; only shift key varied; `catalog.manage` absent; UI changes turn price while global catalog stays R$ 10; revoke denies; snapshot `dbea031` |
 | `clients.manage` | PASS | PASS | PASS | PASS | Live client create via UI, owner confirms same persisted ID/name/normalized phone; route and POST denied after revoke; snapshot `4f4d63c` |
 | `taps.operate` | PASS | NOT RUN | NOT RUN | NOT RUN | Tap module live fixture was not enabled |
 | `agenda.manage` | PASS | PASS | PASS | PASS | Live CANONICAL_PDV agenda UI create; disabled/revoked route and writes denied without mutation; exact snapshot `fe3dba9` |
