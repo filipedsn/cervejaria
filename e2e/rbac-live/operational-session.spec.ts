@@ -742,3 +742,72 @@ test('kitchen.operate denies, advances the queue through the UI, and denies afte
   console.log('RBAC_LIVE_REGRESSION key=kitchen.operate; dependency=kitchen.read retained; disabled=button-and-status-api-denied; enabled=real-ui-advance-persisted; revoked=same-session-button-and-status-api-denied-with-read-retained; result=PASS');
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });
+
+test('cash.movement.write denies, records exact cash movements through the UI, and denies after revoke', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const operationalContext = await staffContext.request.get('/api/operacao/contexto');
+  expect(operationalContext.status()).toBe(200);
+  const pointOfSaleId = (await operationalContext.json()).pontosVenda[0]?.id;
+  expect(pointOfSaleId).toBeTruthy();
+  const cashUrl = `/api/operacao/caixa?pontoVendaId=${pointOfSaleId}`;
+  const beforeResponse = await ownerContext.request.get(cashUrl);
+  expect(beforeResponse.status(), await beforeResponse.text()).toBe(200);
+  const before = await beforeResponse.json();
+  expect(before.sessao?.status).toBe('ABERTO');
+  const movementsBefore = before.sessao.movimentos.length;
+  const movementUrl = '/api/operacao/caixa/movimentos';
+  const probe = { pontoVendaId: pointOfSaleId, tipo: 'SUPRIMENTO', valor: 12.34, observacao: 'disabled movement QA' };
+
+  await expect(staff.getByRole('button', { name: 'Suprimento' })).toHaveCount(0);
+  await expect(staff.getByRole('button', { name: 'Sangria' })).toHaveCount(0);
+  const deniedMovement = await staffContext.request.post(movementUrl, { data: probe });
+  expect([401, 403]).toContain(deniedMovement.status());
+  expect(await (await ownerContext.request.get(cashUrl)).json()).toEqual(before);
+
+  await setPermissions(ownerContext, ['cash.movement.write']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['cash.movement.write']);
+  for (const [label, value, observation] of [['Suprimento', '12,34', 'authorized supply QA'], ['Sangria', '3,21', 'authorized withdrawal QA']]) {
+    await staff.getByRole('button', { name: label, exact: true }).click();
+    const dialog = staff.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.locator('input').nth(0).fill(value);
+    await dialog.locator('input').nth(1).fill(observation);
+    const responsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === movementUrl && response.request().method() === 'POST');
+    await dialog.getByRole('button', { name: 'Confirmar' }).click();
+    const response = await responsePromise;
+    expect(response.status(), await response.text()).toBe(200);
+    const safeResponse = await response.json();
+    expect(safeResponse.valoresRestritos).toBe(true);
+    expect(JSON.stringify(safeResponse)).not.toContain(value.replace(',', '.'));
+  }
+  const afterGrantResponse = await ownerContext.request.get(cashUrl);
+  const afterGrant = await afterGrantResponse.json();
+  expect(afterGrant.sessao.movimentos).toHaveLength(movementsBefore + 2);
+  expect(afterGrant.sessao.movimentos.filter((item: { observacao: string }) => ['authorized supply QA', 'authorized withdrawal QA'].includes(item.observacao))).toMatchObject([
+    expect.objectContaining({ observacao: 'authorized supply QA' }),
+    expect.objectContaining({ observacao: 'authorized withdrawal QA' }),
+  ]);
+  expect(afterGrant.sessao.gaveta.suprimentos).toBeCloseTo(Number(before.sessao.gaveta.suprimentos) + 12.34, 2);
+  expect(afterGrant.sessao.gaveta.sangrias).toBeCloseTo(Number(before.sessao.gaveta.sangrias) + 3.21, 2);
+
+  await setPermissions(ownerContext, []);
+  await staff.reload();
+  await expect(staff.getByRole('button', { name: 'Suprimento' })).toHaveCount(0);
+  await expect(staff.getByRole('button', { name: 'Sangria' })).toHaveCount(0);
+  const revokedMovement = await staffContext.request.post(movementUrl, { data: { ...probe, observacao: 'revoked movement QA' } });
+  expect([401, 403]).toContain(revokedMovement.status());
+  expect(await (await ownerContext.request.get(cashUrl)).json()).toEqual(afterGrant);
+  console.log('RBAC_LIVE_REGRESSION key=cash.movement.write; disabled=buttons-hidden-and-api-denied-no-write; enabled=real-ui-supply-and-withdrawal-redacted-response-and-exact-persisted-effects; revoked=same-session-buttons-hidden-and-api-denied-no-write; cash.values.read=absent; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
