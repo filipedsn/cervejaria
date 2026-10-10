@@ -1263,7 +1263,7 @@ test('event.taps.operate mounts a chope only while the permission is granted', a
   await expect(tapButton).toBeVisible();
   await tapButton.click();
   await dialog.getByRole('button', { name: 'Posicionar chope' }).click();
-  await dialog.getByLabel('Chope').selectOption(chopeId);
+  await dialog.getByRole('combobox').selectOption(chopeId);
   const mountResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === tapUrl && response.request().method() === 'PUT');
   await dialog.getByRole('button', { name: 'Posicionar', exact: true }).click();
   const mounted = await mountResponsePromise;
