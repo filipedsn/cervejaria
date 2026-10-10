@@ -221,7 +221,7 @@ export function ComandasPage() {
     );
   }
 
-  if (loadingDashboard || loadingComandas) return <Loading />;
+  if ((podeVerIndicadoresEvento && loadingDashboard) || loadingComandas) return <Loading />;
 
   const resumo = dashboard?.resumo;
   const showPayBar = selectMode && selectedIds.length >= 2 && totalGrupo > 0;
