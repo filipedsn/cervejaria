@@ -399,8 +399,8 @@
     }
   },
   "latestContinuation": {
-    "testedCommit": "e534a777df434cb96d65c98d98e080ccc746faaf",
-    "testedTree": "c63d578183b7bf9e03306e0dabf0ff98b32257ea",
+    "testedCommit": "956ac7cc5f0b5124db4f46215034305d528fbf47",
+    "testedTree": "df366be66a5fc7dec4afa7fde1b9d5306c8a5bba",
     "focusedRunner": "PASS",
     "snapshotIntegrity": "PASS; 1448 blobs; exact tree materialized",
     "moduleAudit": "198 snapshot modules; 0 mutable workspace imports",
@@ -441,9 +441,9 @@
     ],
     "productDefect": "Fixed at 3df315c84bdf8a14e624568ba9651da5fd810a5e: sanitized cash fallback dereferenced absent sessao.gaveta",
     "harnessCorrection": "e534a777df434cb96d65c98d98e080ccc746faaf: login navigation retry",
-    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/final-live-e534a77.json",
-    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/run-0895b4cfd740d8a8/live-results/playwright-results.json",
-    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/run-0895b4cfd740d8a8/live-results/browser-run.log",
+    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/final-live-956ac7c.json",
+    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/run-ef0fa5538d99a378/live-results/playwright-results.json",
+    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/run-ef0fa5538d99a378/live-results/browser-run.log",
     "prodAccess": "NO",
     "sharedDevWrites": "NO",
     "certification": "INCOMPLETE"
