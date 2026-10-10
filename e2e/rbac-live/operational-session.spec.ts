@@ -35,9 +35,16 @@ async function logoutInBrowser(page: Page) {
 
 async function loginForm(page: Page, email: string, password: string) {
   if (new URL(page.url()).pathname !== '/login') {
-    await page.goto('/login').catch(async (error) => {
-      if (new URL(page.url()).pathname !== '/login') throw error;
-    });
+    let navigationError: unknown;
+    for (let attempt = 0; attempt < 2 && new URL(page.url()).pathname !== '/login'; attempt++) {
+      try {
+        await page.goto('/login', { waitUntil: 'commit' });
+      } catch (error) {
+        navigationError = error;
+        await page.waitForURL(/\/login$/, { timeout: 1_000 }).catch(() => undefined);
+      }
+    }
+    if (new URL(page.url()).pathname !== '/login' && navigationError) throw navigationError;
   }
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByLabel('E-mail')).toBeVisible({ timeout: 15_000 });
