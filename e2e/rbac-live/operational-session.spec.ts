@@ -11,6 +11,7 @@ const staffCookie = process.env.RBAC_QA_STAFF_COOKIE!;
 const permissionApi = `/api/usuarios/${process.env.RBAC_QA_STAFF_ID}/permissoes-operacao`;
 const permission = 'command.read';
 const cashValuesPermission = 'cash.values.read';
+const reportEventId = process.env.RBAC_QA_REPORT_EVENT_ID!;
 
 async function primeAndLogout(page: Page, cookie: string) {
   await page.context().addCookies([{ name: 'token', value: cookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
@@ -407,5 +408,48 @@ test('command.operate denies, creates through the UI, then denies after same-ses
   expect(finalCommands).toHaveLength(beforeCount + 1);
   expect(finalCommands.filter((item: { id: string }) => item.id === commandId)).toHaveLength(1);
   console.log('RBAC_LIVE_REGRESSION key=command.operate; disabled=route-and-api-denied-no-write; granted=real-ui-create-persisted; revoked=same-session-route-and-api-denied-no-write; dependency=command.read; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('reports.read blocks, opens the executive report, and revokes in the live session', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const reportPath = `/eventos/${reportEventId}/resumo`;
+  const reportApi = `/api/eventos/${reportEventId}/resumo-executivo`;
+
+  const deniedReport = await staffContext.request.get(reportApi);
+  expect([401, 403]).toContain(deniedReport.status());
+  await staff.goto(reportPath);
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe(reportPath);
+
+  await setPermissions(ownerContext, ['reports.read']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['reports.read']);
+  await staff.goto(reportPath);
+  await expect(staff.getByText('Resumo executivo')).toBeVisible();
+  const allowedReport = await staffContext.request.get(reportApi);
+  expect(allowedReport.status(), await allowedReport.text()).toBe(200);
+  const report = await allowedReport.json();
+  expect(report.evento.id).toBe(reportEventId);
+  const csv = await staffContext.request.get(`/api/relatorios/evento/${reportEventId}/csv`);
+  expect(csv.status(), await csv.text()).toBe(200);
+  expect(csv.headers()['content-type']).toContain('text/csv');
+
+  await setPermissions(ownerContext, []);
+  await staff.reload();
+  await staff.goto(reportPath);
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe(reportPath);
+  expect([401, 403]).toContain((await staffContext.request.get(reportApi)).status());
+  expect([401, 403]).toContain((await staffContext.request.get(`/api/relatorios/evento/${reportEventId}/csv`)).status());
+  console.log('RBAC_LIVE_REGRESSION key=reports.read; disabled=route-and-api-denied; enabled=executive-report-and-csv-readable; revoked=same-session-route-report-and-csv-denied; result=PASS');
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });

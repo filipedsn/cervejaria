@@ -1181,6 +1181,7 @@ await access(path.join(repoRoot, 'frontend/dist/index.html'));
 // browser fixture satisfies the exactly-one-PDV product contract.
 await prisma.opcional.delete({ where: { id: otherPdvOptional.id } });
 await prisma.pontoVenda.delete({ where: { id: inactiveOtherPoint.id } });
+await prisma.evento.update({ where: { id: event.id }, data: { status: 'FECHADO', data: new Date(), encerradoEm: new Date() } });
 const apiProbe = await fetch(`http://127.0.0.1:${apiPort}/api/auth/me`);
 console.log(`RBAC_LIVE_API_PROBE status=${apiProbe.status}; target=127.0.0.1:${apiPort}`);
 assert.equal(apiProbe.status, 401, 'The live app must answer unauthenticated auth/me before browser startup.');
@@ -1203,6 +1204,7 @@ const browserEnv = {
   RBAC_QA_FOREIGN_OWNER_EMAIL: otherOwner.email,
   RBAC_QA_FOREIGN_OWNER_PASSWORD: otherOwnerPassword,
   RBAC_QA_STAFF_ID: staff.id,
+  RBAC_QA_REPORT_EVENT_ID: event.id,
 };
 const browserRun = spawn(process.execPath, [path.join(repoRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.rbac-live.config.ts'], {
   cwd: repoRoot, env: browserEnv, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
