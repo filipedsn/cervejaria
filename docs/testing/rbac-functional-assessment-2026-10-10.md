@@ -293,3 +293,6 @@ Commit `4555adf8bcf36a6b0055c67bf1cb97b951a52bb9` foi enviado a `origin/main`. O
 
 
 Plane evidence comment for TAP-76 returned HTTP 403: Forbidden: You do not have permission to perform this action. The comment was not created; TAP-76 remains In Progress. No other work item field was changed.
+
+
+Service-impact note: the same stop attempt stopped the DEV frontend before the API stop guard refused the API PID. Local API 3002 still reports SHA 327f546cad95b595e6ab4517cfac01c6c0044992 and readiness is ready; localhost:5202 is unreachable and the public DEV URL returned HTTP 502. The managed hidden-start attempt to restore the existing frontend was rejected by automatic approval review; no process was started. This is recorded in the completion receipt.

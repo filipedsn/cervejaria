@@ -655,13 +655,14 @@
                                                    "devServedSha":  "327f546cad95b595e6ab4517cfac01c6c0044992",
                                                    "PROD_DEPLOY_REQUIRED":  "NO",
                                                    "status":  "NOT_PUBLISHED",
-                                                   "blocker":  "DEV activation not completed: scripts/dev/stop-dev.ps1 reported \"API dev: PID 37376 pertence a outro processo; nao sera encerrado.\" Listener confirmed as node.exe for deploy/dev-artifacts/backend/dist/index.js; health returned release 327f546cad95b595e6ab4517cfac01c6c0044992. The exact dist/index.js managed stop attempt was rejected by automatic approval review; candidate 4555adf8bcf36a6b0055c67bf1cb97b951a52bb9 was built but remains inactive."
+                                                   "blocker":  "DEV activation not completed: scripts/dev/stop-dev.ps1 reported \"API dev: PID 37376 pertence a outro processo; nao sera encerrado.\" Listener confirmed as node.exe for deploy/dev-artifacts/backend/dist/index.js; health returned release 327f546cad95b595e6ab4517cfac01c6c0044992. The exact dist/index.js managed stop attempt was rejected by automatic approval review; candidate 4555adf8bcf36a6b0055c67bf1cb97b951a52bb9 was built but remains inactive.",
+                                                   "serviceImpact":  "After stop-dev.ps1 stopped the DEV frontend, API stop was refused. Local API 3002 still reports 327f546cad95b595e6ab4517cfac01c6c0044992 and readiness is ready; frontend localhost:5202 is unreachable and public https://tapdev.quivercloud.com.br/ returned HTTP 502. The managed hidden-start attempt to restore the existing frontend was rejected by automatic approval review; no process was started."
                                                },
                                    "plane":  {
                                                  "ticket":  "TAP-76",
                                                  "status":  "In Progress",
                                                  "evidenceComment":  "NOT_CREATED",
-                                                 "pendingWork":  "Evidence comment on TAP-76 blocked by Plane 403; broader CAIXA/EVENTO acceptance remains; DEV candidate not activated",
+                                                 "pendingWork":  "DEV candidate not activated; prior DEV frontend returned 502 after stop attempt and managed restore was blocked; Plane evidence comment blocked by 403",
                                                  "commentAttemptError":  "HTTP 403: Forbidden: You do not have permission to perform this action."
                                              },
                                    "oldTapsOperateReportReissued":  false

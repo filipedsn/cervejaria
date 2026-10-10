@@ -473,6 +473,8 @@
                                                 "status":  "ready",
                                                 "database":  "healthy"
                                             },
-                              "automaticReview":  "blocked managed stop using exact matcher dist/index.js"
+                              "automaticReview":  "blocked managed stop using exact matcher dist/index.js",
+                              "restoreOldFrontend":  "BLOCKED by automatic approval review; localhost:5202 unreachable; public DEV returned 502",
+                              "serviceImpact":  "After stop-dev.ps1 stopped the DEV frontend, API stop was refused. Local API 3002 still reports 327f546cad95b595e6ab4517cfac01c6c0044992 and readiness is ready; frontend localhost:5202 is unreachable and public https://tapdev.quivercloud.com.br/ returned HTTP 502. The managed hidden-start attempt to restore the existing frontend was rejected by automatic approval review; no process was started."
                           }
 }
