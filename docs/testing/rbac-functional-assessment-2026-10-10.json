@@ -63,8 +63,8 @@
   "backendBuild": "PASS",
   "frontendBuild": "PASS",
   "canonicalAndLegacy": "PARTIAL; representative compatibility and PDV cases, not all permissions in both modes",
-  "operationalScreensWithLiveApi": "PARTIAL: eighteen keys with all three real-browser stages PASS; 54/84 UI stages total",
-  "productDefectsConfirmed": 4,
+  "operationalScreensWithLiveApi": "PARTIAL: nineteen keys with all three real-browser stages PASS; 57/84 UI stages total",
+  "productDefectsConfirmed": 5,
   "reportedTickets": [
     "TAP-76",
     "TAP-78",
@@ -399,27 +399,27 @@
     }
   },
   "latestContinuation": {
-    "testedCommit": "5428bdff6cef7239fded6dce13b865713035e7c1",
-    "testedTree": "e322c03f10508d3c70725455fe29316f761b62d9",
+    "testedCommit": "327f546cad95b595e6ab4517cfac01c6c0044992",
+    "testedTree": "cf788cd506d898d68043c70e2d9e2eb2e8d099b1",
     "focusedRunner": "PASS",
-    "snapshotIntegrity": "PASS; 1479 blobs; exact tree materialized",
-    "moduleAudit": "198 snapshot modules; 0 mutable workspace imports; module path-list SHA-256 9c534e8826ddec3ae6a92764bda749dfe71e54be9fcabc13feb05ab83d5d6dd1",
+    "snapshotIntegrity": "PASS; 1490 tracked blobs; exact tree materialized",
+    "moduleAudit": "198 snapshot modules; 0 mutable workspace imports; module path-list SHA-256 c7ee0c710a575d77b40c1bad3b39362a6eb2eafba8d70599a43dd630a1b2e601",
     "testedFileBlobs": {
-      "frontend/src/components/EventoCaixaPanel.tsx": "6b7ad664d425dd7ab51d3f97482c7844818180c5",
-      "e2e/rbac-live/operational-session.spec.ts": "36c3abc7ad491b9ebc924b030ba5a98364db9859",
-      "backend/scripts/pdv-individual-permissions.isolated.test.mjs": "0e35b6274295cefdd26fb8b7a30fbc14e22f8a48"
+      "frontend/src/components/EventoCaixaPanel.tsx": "2c337db6e1461d644fdd88bdecc6be27e8f86794",
+      "e2e/rbac-live/operational-session.spec.ts": "98184794e6e47eb37e6324c3913e114543189c34",
+      "backend/scripts/pdv-individual-permissions.isolated.test.mjs": "df02135303decd73bb637771c2d27836dcd0834f"
     },
     "backendBuild": "PASS",
     "frontendBuild": "PASS",
     "activationPreflight": "14/14 PASS",
-    "authenticatedDisposableApiSuite": "PASS; representative enabled/denied checks for 28 keys",
-    "playwright": "PASS 12/12 CANONICAL_PDV checks plus 4/4 LEGACY event cash/menu/dashboard checks; real Fastify API/frontend and disposable PostgreSQL",
+    "authenticatedDisposableApiSuite": "PASS; representative enabled/denied checks for 28 keys plus tenant, session, ownership, legacy/canonical, and persistence cases",
+    "playwright": "PASS 12/12 CANONICAL_PDV checks plus 5/5 EVENTO/LEGACY checks; real Fastify API/frontend and disposable PostgreSQL",
     "uiStageCounts": {
       "required": 84,
-      "pass": 54,
+      "pass": 57,
       "fail": 0,
       "blocked": 0,
-      "notRun": 30
+      "notRun": 27
     },
     "uiKeys": {
       "command.read": {
@@ -524,6 +524,12 @@
         "enabled": "PASS",
         "revoked": "PASS",
         "dependency": "command.read and cash.values.read retained; cash.close varied alone"
+      },
+      "taps.operate": {
+        "disabled": "PASS",
+        "enabled": "PASS",
+        "revoked": "PASS",
+        "dependency": "command.read retained; tapsEnabled=true on synthetic EVENTO/LEGACY tenant; only taps.operate varied"
       }
     },
     "sameUserSessions": "PASS; two contexts in prior command.read/cash.values.read flow",
@@ -532,34 +538,32 @@
       390,
       768
     ],
-    "productDefect": "Four confirmed UI defects across cash/event authorization: restricted cash fallback crash; event KPI leak; command screen loading while dashboard access disabled; event cash controls/read-only money rendering were not consistently permission-gated. Current round fixed and verified cash.open; event movement/close UI actions now have permission gates but remain without dedicated UI permission scenarios.",
-    "harnessCorrection": "Two harness-only setup failures were corrected: duplicate event trailer unique constraint; then an extra trailer changed the legacy landing screen to trailer selection. Final fixture reuses the existing legacy event after API tenant-isolation assertions and removes its open foreign command before browser tests. The final 12+4 browser suite and DB assertions pass; neither failure was a product defect.",
-    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-ui-final-evidence.json",
-    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-open-playwright-results.json",
-    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-open-browser-run.log",
+    "productDefect": "Five confirmed UI defects across cash/event authorization. This continuation fixed the event cash panel crash when the API omits expected/received values: JSX evaluated close-modal children even while the modal was closed, dereferencing null caixa.esperado. Values are now optional, render only when supplied, and the close dialog content is constructed only when expected values exist. No hidden value is displayed as zero. The same run verifies event cash values remain redacted without cash.values.read.",
+    "harnessCorrection": "Prior cash.close fixture corrections remain documented. This continuation fixed event navigation by selecting the synthetic event card; the initial run exposed the real redacted-cash UI crash. The close-dialog crash was fixed next. A later timeout was a harness-only selector using an unassociated visible label; getByRole(combobox) now selects the native control. Final snapshot passes all 12 canonical and 5 legacy browser checks.",
+    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-final-evidence.json",
+    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-playwright-results.json",
+    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-browser-run.log",
     "prodAccess": "NO",
     "sharedDevWrites": "YES after QA; immutable DEV release activated and synthetic owner/staff records created for authenticated smoke then deleted",
     "certification": "INCOMPLETE",
     "pending": [
-      "10 remaining live-browser permission keys",
-      "full LEGACY and CANONICAL_PDV matrix",
-      "global admin contract",
-      "alternative UI endpoints and setting combinations",
-      "remaining transverse isolation and usability cases"
+      "9 live-browser permission keys: payment.receive, debt.receive, command.close, discount.apply, command.item.cancel, command.item.cancel.delivered, command.cancel, kitchen.cancel, sale.refund",
+      "full LEGACY and CANONICAL_PDV matrix, global-admin contract, alternate endpoints and remaining operational setting combinations",
+      "cross-tenant, user/tenant switch, editor usability, and remaining transverse scenarios"
     ],
     "devDeployment": {
-      "releaseSha": "370416704b59af56ecc9f88c17560a303583fa69",
-      "sourceTree": "f26b01511b22b6028382baee1924849194678a47",
-      "pushedCommit": "90c652262f212d07543d68c813f9224f5b2ad7ea",
+      "releaseSha": "327f546cad95b595e6ab4517cfac01c6c0044992",
+      "sourceTree": "cf788cd506d898d68043c70e2d9e2eb2e8d099b1",
+      "pushedCommit": "327f546cad95b595e6ab4517cfac01c6c0044992",
       "publishStatus": "PASS; immutable DEV candidate published and restarted",
-      "priorDevSha": "adaa6baf2d09adb335069e443913b1d1c558d388",
-      "apiHealth": "PASS local and public; exact release SHA",
+      "priorDevSha": "370416704b59af56ecc9f88c17560a303583fa69",
+      "apiHealth": "PASS local and public; exact release SHA 327f546cad95b595e6ab4517cfac01c6c0044992",
       "databaseReadiness": "PASS local and public",
-      "frontend": "PASS local/public; served JS SHA-256 matches candidate manifest",
-      "authenticatedSmoke": "PASS synthetic owner/staff login and auth/me tenant identity; records removed; individual permission list not asserted because feature is disabled in this runtime",
-      "migrations": "none in release diff",
+      "frontend": "PASS local/public; /assets/index-DTLwfaLt.js SHA-256 4b7bce56a335c5babd021f2cde1df1d0ad88f79d0d8ab180f7a738cc3294b33c matches candidate manifest",
+      "authenticatedSmoke": "PASS synthetic owner/staff login and auth/me tenant identity; synthetic records deleted in finally",
+      "migrations": "none in release diff from prior DEV release",
       "PROD_DEPLOY_REQUIRED": "NO",
-      "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-open-dev-release.json"
+      "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-final-evidence.json"
     },
     "sourceMaterialization": "Git blobs only; 1,484 tracked blobs; no mutable workspace imports",
     "cashCloseRun": {
@@ -580,6 +584,27 @@
       "screenshot": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-harness-selection-screen.png",
       "errorContext": "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-harness-selection-error-context.md",
       "fixedRun": "results/cash-close-ui-runner-retry2.log"
+    },
+    "productFix": {
+      "cause": "EventoCaixaPanel eagerly evaluated the close dialog child map while caixa was null or its financial fields were sanitized away.",
+      "solution": "Represent expected/received amounts as optional, gate value display by actual returned fields, and conditionally construct the close dialog body only when expected values exist.",
+      "regression": "Live real-authenticated page assertion verifies no browser page errors, no Gaveta/Recebido values, and no close action when staff has command.read only.",
+      "productionAccess": "NO"
+    },
+    "tapsOperateRun": {
+      "result": "PASS",
+      "mode": "EVENTO/LEGACY",
+      "disabled": "grid read-only; direct PUT denied; no mount persisted",
+      "enabled": "real UI mounted Chope on TAP 9902; owner API confirmed exact product id",
+      "revoked": "same staff session lost operation controls; direct PUT denied; mounted product unchanged",
+      "browser": "390px viewport; no mocks; real login, Fastify API, PostgreSQL, and Socket.IO",
+      "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-final-evidence.json"
+    },
+    "runnerReceipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-ui-final-evidence.json",
+    "failureArtifacts": {
+      "redactedCashScreenshot": "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-redacted-cash-crash.png",
+      "redactedCashContext": "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-redacted-cash-crash-context.md",
+      "nullCashDialogTrace": "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-cash-null-modal-crash-trace.zip"
     }
   }
 }

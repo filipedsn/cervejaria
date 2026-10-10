@@ -1,0 +1,98 @@
+{
+  "result": "PASS",
+  "permission": "taps.operate",
+  "label": "Montar e operar Taps",
+  "mode": "EVENTO/LEGACY",
+  "testedCommit": "327f546cad95b595e6ab4517cfac01c6c0044992",
+  "testedTree": "cf788cd506d898d68043c70e2d9e2eb2e8d099b1",
+  "publishedDevRelease": "327f546cad95b595e6ab4517cfac01c6c0044992",
+  "preconditions": {
+    "tenant": "synthetic other tenant in disposable PostgreSQL",
+    "event": "open synthetic event attached to its own trailer",
+    "businessSetting": "tapsEnabled=true; representative fixture, not copied from customer settings",
+    "staffDependency": "command.read retained for the event command screen",
+    "financialDependency": "cash.values.read absent throughout; event cash values remain hidden",
+    "tap": "active TAP 9902",
+    "product": "active synthetic chope product"
+  },
+  "stages": {
+    "disabled": {
+      "permissions": ["command.read"],
+      "ui": "Taps grid is read-only and explains that tap operation permission is required",
+      "api": "PUT /api/eventos/:eventId/taps/:tapId/chope denied with 401/403",
+      "persistence": "no active mount created; owner read confirms chopeAtual=null",
+      "result": "PASS"
+    },
+    "enabled": {
+      "permissions": ["command.read", "taps.operate"],
+      "grant": "owner admin API while staff browser session remains authenticated",
+      "ui": "staff selects TAP 9902, chooses the synthetic chope, and submits the mount",
+      "api": "real PUT succeeds",
+      "persistence": "owner event Taps read confirms the exact selected product id and active mount",
+      "result": "PASS"
+    },
+    "revoked": {
+      "permissions": ["command.read"],
+      "revoke": "same staff session; page authorization recovered after reload",
+      "ui": "Taps grid becomes read-only again",
+      "api": "direct PUT denied with 401/403",
+      "persistence": "mounted product id remains unchanged",
+      "result": "PASS"
+    }
+  },
+  "cashRedactionRegression": {
+    "permissions": ["command.read"],
+    "apiContract": "event cash response omits financial fields without cash.values.read",
+    "beforeFix": "event command screen crashed while rendering the redacted cash panel; the close modal evaluated children while closed and dereferenced null caixa.esperado",
+    "fix": "cash amounts are optional; display and close-dialog content require actual financial fields; hidden values are not represented as zero",
+    "browserAssertions": "no page errors; no Gaveta/Recebido values; no close control; Taps panel remains usable",
+    "result": "PASS",
+    "failureScreenshot": "taps-operate-redacted-cash-crash.png",
+    "failureContext": "taps-operate-redacted-cash-crash-context.md",
+    "secondCrashTrace": "event-cash-null-modal-crash-trace.zip"
+  },
+  "focusedSnapshotRun": {
+    "runner": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+    "scope": "permissions focused gate",
+    "result": "PASS",
+    "snapshotIntegrity": "PASS; exact Git tree materialized from 1490 tracked blobs",
+    "moduleOriginAudit": "PASS; 198 snapshot project modules, zero mutable workspace imports",
+    "backendBuild": "PASS",
+    "frontendBuild": "PASS",
+    "activationPreflight": "14/14 PASS",
+    "authenticatedDisposableApiSuite": "PASS",
+    "canonicalBrowser": "12/12 PASS",
+    "legacyBrowser": "5/5 PASS: event.menu.manage, event.dashboard.read, cash.open, cash.close, taps.operate",
+    "overallBrowserStageCounts": {"required": 84, "pass": 57, "fail": 0, "blocked": 0, "notRun": 27},
+    "receipt": "taps-operate-ui-final-evidence.json",
+    "playwrightResults": "taps-operate-playwright-results.json",
+    "browserLog": "taps-operate-browser-run.log"
+  },
+  "harnessRetries": [
+    "Initial navigation landed back on the event list; the test now selects the synthetic event card before entering Comandas.",
+    "First product run reproduced the real cash-redaction screen crash; the two-step UI fix is covered in the final snapshot.",
+    "A label-based selector timed out because Chope text was not associated with its native select; the harness now uses getByRole(combobox)."
+  ],
+  "devRelease": {
+    "previousSha": "370416704b59af56ecc9f88c17560a303583fa69",
+    "releaseSha": "327f546cad95b595e6ab4517cfac01c6c0044992",
+    "pushStatus": "PASS; origin/main",
+    "immutableCandidate": "PASS",
+    "localHealth": "200; exact release SHA",
+    "publicHealth": "200; exact release SHA",
+    "localReadiness": "200; database ready",
+    "publicReadiness": "200; database ready",
+    "frontendAsset": "/assets/index-DTLwfaLt.js",
+    "frontendAssetSha256": "4b7bce56a335c5babd021f2cde1df1d0ad88f79d0d8ab180f7a738cc3294b33c",
+    "candidateManifestHashMatch": true,
+    "authenticatedSmoke": "synthetic owner/staff login and auth/me tenant identity PASS; records deleted in finally",
+    "migrations": "none in diff from previous DEV release",
+    "PROD_DEPLOY_REQUIRED": "NO"
+  },
+  "scopeLimits": {
+    "productionAccess": "NO",
+    "externalPaymentsMessagesAndPrinting": "NOT USED",
+    "devSharedWrites": "YES; immutable release published and temporary synthetic smoke records created then deleted",
+    "fullRbacCertification": "INCOMPLETE; 9 keys and transverse mode/configuration scenarios remain unrun"
+  }
+}

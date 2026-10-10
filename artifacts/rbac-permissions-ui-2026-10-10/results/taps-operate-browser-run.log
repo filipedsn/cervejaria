@@ -1,0 +1,79 @@
+
+Running 12 tests using 1 worker
+
+RBAC_BROWSER_API 200 /api/auth/me
+RBAC_BROWSER_API 200 /api/auth/me
+RBAC_BROWSER_API 200 /api/cervejaria/configuracao-operacional
+RBAC_BROWSER_API 200 /api/onboarding/readiness
+RBAC_BROWSER_API 200 /api/operacao/contexto
+RBAC_BROWSER_API 200 /api/public/dev/app-origin
+RBAC_BROWSER_API 200 /api/operacao/caixa
+RBAC_BROWSER_API 200 /api/auth/logout
+RBAC_BROWSER_API 200 /api/operacao/comandas
+RBAC_BROWSER_API 200 /api/operacao/contexto
+RBAC_BROWSER_API 200 /api/operacao/comandas
+RBAC_BROWSER_API 200 /api/auth/login
+RBAC_BROWSER_API 200 /api/cervejaria/configuracao-operacional
+RBAC_BROWSER_API 200 /api/operacao/contexto
+RBAC_BROWSER_API 200 /api/auth/me
+RBAC_BROWSER_API 200 /api/cervejaria/configuracao-operacional
+RBAC_BROWSER_API 200 /api/operacao/contexto
+RBAC_BROWSER_API 200 /api/public/dev/app-origin
+RBAC_BROWSER_API 200 /api/onboarding/readiness
+RBAC_BROWSER_API 200 /api/operacao/caixa
+RBAC_BROWSER_API 200 /api/operacao/comandas
+RBAC_BROWSER_API 200 /api/operacao/comandas
+RBAC_BROWSER_API 200 /api/operacao/contas-pendentes
+RBAC_BROWSER_API 200 /api/operacao/agenda/ocorrencias
+RBAC_BROWSER_API 204 /api/audit/events
+RBAC_LIVE_REGRESSION key=command.read; cash.values.read=absent; fallback=/operacao/caixa; sanitized-state=usable; result=PASS
+RBAC_LIVE_REGRESSION key=dashboard.read; disabled=route-and-api-denied; result=PASS
+RBAC_LIVE_REGRESSION key=dashboard.read; grant-and-revoke-same-session; command.read=absent; result=PASS
+  ok  1 e2e\rbac-live\operational-session.spec.ts:95:5 › real login, live grant and revoke, same-user sessions, tenant switch, and mobile layouts (9.4s)
+RBAC_LIVE_REGRESSION key=agenda.manage; disabled=route-and-api-denied-no-write; granted=real-ui-write-persisted; revoked=same-session-route-and-api-denied-no-write; result=PASS
+  ok  2 e2e\rbac-live\operational-session.spec.ts:281:5 › agenda.manage blocks, grants and revokes real agenda writes in the live session (2.0s)
+RBAC_LIVE_REGRESSION key=command.operate; disabled=route-and-api-denied-no-write; granted=real-ui-create-persisted; revoked=same-session-route-and-api-denied-no-write; dependency=command.read; result=PASS
+  ok  3 e2e\rbac-live\operational-session.spec.ts:355:5 › command.operate denies, creates through the UI, then denies after same-session revoke (5.1s)
+RBAC_LIVE_REGRESSION key=reports.read; disabled=route-and-api-denied; enabled=executive-report-and-csv-readable; revoked=same-session-route-report-and-csv-denied; result=PASS
+  ok  4 e2e\rbac-live\operational-session.spec.ts:425:5 › reports.read blocks, opens the executive report, and revokes in the live session (1.5s)
+RBAC_LIVE_REGRESSION key=clients.manage; disabled=route-and-api-denied-no-write; enabled=real-ui-create-persisted; revoked=same-session-route-and-api-denied-no-write; result=PASS
+  ok  5 e2e\rbac-live\operational-session.spec.ts:468:5 › clients.manage blocks, creates a client through the UI, then denies after same-session revoke (1.4s)
+RBAC_LIVE_REGRESSION key=inventory.read; disabled=route-and-api-denied-no-write; enabled=real-ui-stock-read-only; inventory.adjust=absent-and-entry-denied; revoked=same-session-route-and-api-denied-no-write; result=PASS
+  ok  6 e2e\rbac-live\operational-session.spec.ts:529:5 › inventory.read blocks, exposes stock read-only, and revokes in the live session (1.4s)
+RBAC_LIVE_REGRESSION key=inventory.adjust; dependency=inventory.read retained; disabled=button-hidden-and-api-denied-no-write; enabled=real-ui-entry-persisted; revoked=button-hidden-and-api-denied-with-read-retained; result=PASS
+  ok  7 e2e\rbac-live\operational-session.spec.ts:586:5 › inventory.adjust denies, changes stock through the UI, and denies after same-session revoke (1.8s)
+RBAC_LIVE_REGRESSION key=kitchen.read; disabled=route-and-queue-denied; enabled=real-queue-visible; kitchen.operate=absent-button-and-status-denied; revoked=same-session-route-queue-and-status-denied; result=PASS
+  ok  8 e2e\rbac-live\operational-session.spec.ts:655:5 › kitchen.read blocks, shows the real queue read-only, and revokes in the live session (1.5s)
+RBAC_LIVE_REGRESSION key=kitchen.operate; dependency=kitchen.read retained; disabled=button-and-status-api-denied; enabled=real-ui-advance-persisted; revoked=same-session-button-and-status-api-denied-with-read-retained; result=PASS
+  ok  9 e2e\rbac-live\operational-session.spec.ts:702:5 › kitchen.operate denies, advances the queue through the UI, and denies after same-session revoke (1.9s)
+RBAC_LIVE_REGRESSION key=cash.movement.write; disabled=buttons-hidden-and-api-denied-no-write; enabled=real-ui-supply-and-withdrawal-redacted-response-and-exact-persisted-effects; revoked=same-session-buttons-hidden-and-api-denied-no-write; cash.values.read=absent; result=PASS
+  ok 10 e2e\rbac-live\operational-session.spec.ts:753:5 › cash.movement.write denies, records exact cash movements through the UI, and denies after revoke (2.0s)
+RBAC_LIVE_REGRESSION key=catalog.manage; disabled=route-and-create-api-denied-no-write; enabled=real-ui-product-create-persisted; revoked=same-session-route-and-create-api-denied-no-write; result=PASS
+  ok 11 e2e\rbac-live\operational-session.spec.ts:822:5 › catalog.manage blocks, creates an operational product through the UI, and denies after revoke (1.9s)
+RBAC_LIVE_REGRESSION key=catalog.shift.manage; cash.values.read=retained-as-screen-read-dependency; disabled=price-write-denied-no-mutation; enabled=UI-turn-price-only-change; catalog.manage=absent-template-option-hidden-and-global-price-unchanged; revoked=same-session-price-edit-hidden-and-api-denied; result=PASS
+  ok 12 e2e\rbac-live\operational-session.spec.ts:884:5 › catalog.shift.manage permits only the live shift price and preserves the global template price (1.7s)
+
+  12 passed (33.1s)
+
+(node:88792) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+RBAC_BROWSER_REQUEST_FAILED POST /api/audit/events: net::ERR_ABORTED
+
+
+Running 5 tests using 1 worker
+
+RBAC_LIVE_REGRESSION key=event.menu.manage; dependency=none; disabled=editor-hidden-and-direct-write-denied-no-mutation; enabled=real-ui-menu-change-persisted; revoked=same-session-editor-hidden-and-direct-write-denied; event-mode=LEGACY; result=PASS
+  ok 1 e2e\rbac-live\operational-session.spec.ts:959:5 › event.menu.manage controls the event menu editor and persists changes only while granted (1.9s)
+RBAC_LIVE_REGRESSION key=event.dashboard.read; dependency=command.read retained; disabled=event-dashboard-api-denied-kpis-hidden-command-read-works; enabled=event-kpis-visible-and-api-projection-matches-owner; revoked=same-session-kpis-hidden-dashboard-denied-command-read-remains; event-mode=LEGACY; result=PASS
+  ok 2 e2e\rbac-live\operational-session.spec.ts:1029:5 › event.dashboard.read reveals and revokes event KPIs without changing command access (1.7s)
+RBAC_LIVE_REGRESSION key=cash.open; dependency=command.read retained; disabled=button-hidden-api-denied-no-session; enabled=real-ui-opens-session-with-exact-float-and-redacted-response; revoked=same-session-button-hidden-api-denied-session-unchanged; event-mode=LEGACY; result=PASS
+  ok 3 e2e\rbac-live\operational-session.spec.ts:1095:5 › event.cash.open controls event cash opening without granting financial values (1.6s)
+RBAC_LIVE_REGRESSION key=cash.close; dependencies=cash.values.read+command.read retained; disabled=close-hidden-api-denied-session-unchanged; enabled=real-ui-close-persisted; revoked=same-session-close-hidden-api-denied-session-unchanged; event-mode=LEGACY; result=PASS
+  ok 4 e2e\rbac-live\operational-session.spec.ts:1157:5 › event.cash.close requires both close and value access and denies after revoke (1.7s)
+RBAC_LIVE_REGRESSION key=taps.operate; dependency=command.read and tapsEnabled legacy setting; disabled=grid-read-only-api-denied-no-mount; enabled=real-ui-mount-persisted; revoked=same-session-grid-read-only-api-denied-mount-unchanged; event-mode=LEGACY; result=PASS
+  ok 5 e2e\rbac-live\operational-session.spec.ts:1219:5 › event.taps.operate mounts a chope only while the permission is granted (2.3s)
+
+  5 passed (10.2s)
+
+(node:84128) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

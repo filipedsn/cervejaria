@@ -30,11 +30,17 @@ Atualizado em 2026-10-07. Inventario das operacoes atuais de Cervejaria, Evento 
 | catalog.shift.manage | Selecionar cardapio do turno e manter precos apenas no turno | Backend + botoes do caixa; nao concede alteracao do catalogo/modelo global |
 | catalog.manage | Manter produtos, precos globais, disponibilidade, opcionais e modelos de cardapio | Backend + rota/navegacao; nao concede manutencao global automaticamente a atendentes |
 | clients.manage | Lista e manutencao de clientes administrativos | Backend + rota/navegacao; busca de checkout continua separada |
-| taps.operate | Montar, trocar, remover e ativar Tap em evento ou turno | Backend + UI; cadastro/configuracao de Tap continua owner-only |
+| taps.operate | Montar, trocar, remover e ativar Tap em evento ou turno | Backend + UI real EVENTO/LEGACY; disabled/granted/revoked PASS em `327f546`; cadastro/configuracao de Tap continua owner-only |
 | agenda.manage | Criar/editar agenda e ocorrencia e gerar ocorrencias | Backend + rota/painel proprio; equipe e configuracoes gerais continuam owner-only |
 | event.menu.manage | Selecionar/editar cardapio de evento | Backend + UI; separado de catalog.manage |
 
 O papel persistido DONO recebe todas as chaves em tenants com RBAC individual ativo. Somente owner da propria empresa edita funcionarios; autoedicao, edicao de owner, tenant cruzado e chaves desconhecidas sao rejeitados. Lista vazia significa nenhuma permissao. Novos funcionarios iniciam vazios. Migration preenche para ATENDENTE as chaves cujo acesso anterior estava disponivel por tenant/PDV: operacao e consulta de comanda, cozinha, estoque manual, manutencao comum de cliente, montagem de Tap, cardapio de evento e `catalog.shift.manage` para cardapio/preco apenas no turno. `discount.apply` deriva de `podeDarDescontoOperacao`. Produto/preco global, template de catalogo e agenda, antes owner-only, nao recebem concessao automatica. Cancelar item, cancelar item entregue, cancelar comanda, cancelamento/estorno e recebimento/fechamento permanecem em chaves separadas. `command.item.cancel.delivered` e uma excecao tambem em LEGACY: somente DONO pode cancelar item entregue; atendente continua negado mesmo com a flag individual desligada.
+
+## Evidencia de UI ao vivo
+
+`taps.operate` foi exercitada em EVENTO/LEGACY com `command.read` mantida como dependencia e `tapsEnabled=true` em tenant sintetico: sem a chave, UI read-only/API negada/sem montagem; habilitada, a montagem foi persistida pelo staff via UI; revogada na mesma sessao, UI voltou a read-only, a API negou e a montagem permaneceu. Evidencia completa: `artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-final-evidence.json`.
+
+`EventoCaixaPanel` tambem foi corrigido para tratar `esperado` e `recebidos` ausentes como valores restritos. Sem `cash.values.read`, nenhum valor e renderizado como zero; o conteudo do modal de fechamento so e construido quando a API fornece os valores esperados. A tela de comandas e Taps continua utilizavel sem erro.
 
 ## Inventario de acoes e caminhos alternativos
 
