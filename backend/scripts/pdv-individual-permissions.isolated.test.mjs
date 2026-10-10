@@ -1176,11 +1176,22 @@ assert.deepEqual(JSON.parse(listed.body).find((user) => user.id === staff.id).pe
 const repoRoot = path.resolve(backendRoot, '..');
 const apiPort = app.server.address().port;
 await access(path.join(repoRoot, 'frontend/dist/index.html'));
+// Earlier API isolation cases used an inactive second PDV to test scope. Those
+// assertions are complete; remove only their disposable rows so the canonical
+// browser fixture satisfies the exactly-one-PDV product contract.
+await prisma.opcional.delete({ where: { id: otherPdvOptional.id } });
+await prisma.pontoVenda.delete({ where: { id: inactiveOtherPoint.id } });
 const apiProbe = await fetch(`http://127.0.0.1:${apiPort}/api/auth/me`);
 console.log(`RBAC_LIVE_API_PROBE status=${apiProbe.status}; target=127.0.0.1:${apiPort}`);
 assert.equal(apiProbe.status, 401, 'The live app must answer unauthenticated auth/me before browser startup.');
+// The live browser additionally exercises agenda.manage, whose route is
+// available only when this disposable tenant has canonical PDV settings.
+process.env.PDV_CANONICAL_CONFIG_QA = '1';
 const browserEnv = {
   ...process.env,
+  // The browser suite includes the canonical agenda.manage flow. Keep the
+  // activation limited by the disposable QA DATABASE_URL guard in the API.
+  PDV_CANONICAL_CONFIG_QA: '1',
   RBAC_QA_BASE_URL: `http://127.0.0.1:${apiPort}`,
   RBAC_QA_OUTPUT_DIR: path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results'),
   RBAC_QA_OWNER_EMAIL: owner.email,

@@ -260,3 +260,77 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
   await Promise.all([ownerContext.close(), staffContext.close(), staffTabContext.close()]);
   expect(baseURL).toBeTruthy();
 });
+
+test('agenda.manage blocks, grants and revokes real agenda writes in the live session', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/comandas');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const staffMe = await staffContext.request.get('/api/auth/me');
+  expect(staffMe.status()).toBe(200);
+  expect((await staffMe.json()).usuario.email).toBe(staffEmail);
+  const today = new Date().toISOString().slice(0, 10);
+  const horizon = new Date(Date.now() + 330 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const existingSchedules = await staffContext.request.get(`/api/operacao/agenda/ocorrencias?inicio=${today}&fim=${horizon}`);
+  expect(existingSchedules.status(), await existingSchedules.text()).toBe(200);
+  const occupiedDates = new Set((await existingSchedules.json()).ocorrencias.map((item: { data: string }) => item.data));
+  let scheduleDate = '';
+  for (let offset = 2; offset < 330; offset++) {
+    const candidate = new Date(Date.now() + offset * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    if (!occupiedDates.has(candidate)) { scheduleDate = candidate; break; }
+  }
+  expect(scheduleDate, 'disposable QA tenant must have an unoccupied date for the agenda write').toBeTruthy();
+  const range = `inicio=${scheduleDate}&fim=${scheduleDate}`;
+  const scheduleUrl = '/api/operacao/agenda/agendamentos';
+  const payload = {
+    requestId: crypto.randomUUID(), nome: `RBAC QA ${crypto.randomUUID()}`, data: scheduleDate,
+    horaInicio: '18:00', horaFim: '19:00', local: null, repetirSemanalmente: false,
+  };
+
+  const disabledList = await staffContext.request.get(`/api/operacao/agenda/ocorrencias?${range}`);
+  expect(disabledList.status(), await disabledList.text()).toBe(200);
+  const before = (await disabledList.json()).ocorrencias.length;
+  await staff.goto('/operacao/agenda');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/caixa');
+  const deniedWrite = await staffContext.request.post(scheduleUrl, { data: payload });
+  expect([401, 403]).toContain(deniedWrite.status());
+  const afterDenied = await staffContext.request.get(`/api/operacao/agenda/ocorrencias?${range}`);
+  expect((await afterDenied.json()).ocorrencias).toHaveLength(before);
+
+  await setPermissions(ownerContext, ['agenda.manage']);
+  await staff.reload();
+  await staff.goto('/operacao/agenda');
+  await expect(staff.getByRole('heading', { name: 'Agenda' })).toBeVisible();
+  await staff.getByRole('button', { name: '+ Novo agendamento' }).click();
+  await staff.getByLabel('Nome').fill(payload.nome);
+  await staff.getByLabel('Data', { exact: true }).fill(scheduleDate);
+  await staff.getByLabel('Horário de início').fill(payload.horaInicio);
+  await staff.getByLabel('Horário de término').fill(payload.horaFim);
+  await staff.getByRole('button', { name: 'Salvar' }).click();
+  await expect(staff.getByText(payload.nome, { exact: true })).toBeVisible();
+  const saved = await staffContext.request.get(`/api/operacao/agenda/ocorrencias?${range}`);
+  expect(saved.status(), await saved.text()).toBe(200);
+  const matching = (await saved.json()).ocorrencias.filter((item: { nome: string }) => item.nome === payload.nome);
+  expect(matching).toHaveLength(1);
+  const savedId = matching[0].id;
+
+  await setPermissions(ownerContext, []);
+  await staff.reload();
+  await staff.goto('/operacao/agenda');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/caixa');
+  const revokedWrite = await staffContext.request.post(scheduleUrl, { data: { ...payload, requestId: crypto.randomUUID(), nome: `${payload.nome} revoked` } });
+  expect([401, 403]).toContain(revokedWrite.status());
+  const afterRevoke = await staffContext.request.get(`/api/operacao/agenda/ocorrencias?${range}`);
+  const finalOccurrences = (await afterRevoke.json()).ocorrencias;
+  expect(finalOccurrences.filter((item: { id: string }) => item.id === savedId)).toHaveLength(1);
+  expect(finalOccurrences).toHaveLength(before + 1);
+  console.log('RBAC_LIVE_REGRESSION key=agenda.manage; disabled=route-and-api-denied-no-write; granted=real-ui-write-persisted; revoked=same-session-route-and-api-denied-no-write; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
