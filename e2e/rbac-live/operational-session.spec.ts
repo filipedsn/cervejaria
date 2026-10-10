@@ -811,3 +811,65 @@ test('cash.movement.write denies, records exact cash movements through the UI, a
   console.log('RBAC_LIVE_REGRESSION key=cash.movement.write; disabled=buttons-hidden-and-api-denied-no-write; enabled=real-ui-supply-and-withdrawal-redacted-response-and-exact-persisted-effects; revoked=same-session-buttons-hidden-and-api-denied-no-write; cash.values.read=absent; result=PASS');
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });
+
+test('catalog.manage blocks, creates an operational product through the UI, and denies after revoke', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const operationalContext = await staffContext.request.get('/api/operacao/contexto');
+  expect(operationalContext.status()).toBe(200);
+  const pointOfSaleId = (await operationalContext.json()).pontosVenda[0]?.id;
+  expect(pointOfSaleId).toBeTruthy();
+  const key = `RBAC catalog ${crypto.randomUUID()}`;
+  const productApi = '/api/operacao/produtos';
+  const payload = { nome: key, categoria: 'Bebidas', tipo: 'BEBIDA', precoUnit: 7.25, exigePreparo: false, controlaEstoque: false };
+  const before = await ownerContext.request.get(`${productApi}?incluirInativos=true`);
+  expect(before.status(), await before.text()).toBe(200);
+  const beforeProducts = await before.json();
+
+  await staff.goto('/operacao/catalogo');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/operacao/catalogo');
+  const deniedCreate = await staffContext.request.post(productApi, { data: payload });
+  expect([401, 403]).toContain(deniedCreate.status());
+  expect(await (await ownerContext.request.get(`${productApi}?incluirInativos=true`)).json()).toEqual(beforeProducts);
+
+  await setPermissions(ownerContext, ['catalog.manage']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['catalog.manage']);
+  await staff.goto('/operacao/catalogo');
+  await expect(staff.getByRole('heading', { name: 'Cardápio' })).toBeVisible();
+  await staff.getByRole('button', { name: '+ Produto' }).click();
+  await expect(staff.getByRole('dialog')).toBeVisible();
+  await staff.locator('#produto-pdv-nome').fill(key);
+  await staff.locator('#produto-pdv-preco').fill('7,25');
+  const createResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === productApi && response.request().method() === 'POST');
+  await staff.getByRole('button', { name: 'Salvar' }).click();
+  const createResponse = await createResponsePromise;
+  expect(createResponse.status(), await createResponse.text()).toBe(201);
+  const created = await createResponse.json();
+  const persistedResponse = await ownerContext.request.get(`${productApi}?incluirInativos=true`);
+  const persisted = (await persistedResponse.json()).filter((product: { id: string; nome: string; precoUnit: string }) => product.id === created.id && product.nome === key);
+  expect(persisted).toHaveLength(1);
+  expect(Number(persisted[0].precoUnit)).toBe(7.25);
+  expect(persisted[0].ativo).toBe(true);
+
+  await setPermissions(ownerContext, []);
+  await staff.reload();
+  await staff.goto('/operacao/catalogo');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/operacao/catalogo');
+  const revokedCreate = await staffContext.request.post(productApi, { data: { ...payload, nome: `${key} revoked` } });
+  expect([401, 403]).toContain(revokedCreate.status());
+  const finalProducts = await (await ownerContext.request.get(`${productApi}?incluirInativos=true`)).json();
+  expect(finalProducts).toHaveLength(beforeProducts.length + 1);
+  expect(finalProducts.filter((product: { id: string }) => product.id === created.id)).toHaveLength(1);
+  console.log('RBAC_LIVE_REGRESSION key=catalog.manage; disabled=route-and-create-api-denied-no-write; enabled=real-ui-product-create-persisted; revoked=same-session-route-and-create-api-denied-no-write; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
