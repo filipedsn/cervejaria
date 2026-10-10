@@ -31,14 +31,20 @@ async function logoutInBrowser(page: Page) {
   await expect.poll(async () => (await page.context().cookies()).some((cookie) => cookie.name === 'token')).toBe(false);
   const anonymousStatus = (await page.context().request.get(`${process.env.RBAC_QA_BASE_URL}/api/auth/me`)).status();
   expect(anonymousStatus).toBe(401);
-  await page.goto('/login');
 }
 
 async function loginForm(page: Page, email: string, password: string) {
   if (new URL(page.url()).pathname !== '/login') {
-    await page.goto('/login').catch(async (error) => {
-      if (new URL(page.url()).pathname !== '/login') throw error;
-    });
+    let navigationError: unknown;
+    for (let attempt = 0; attempt < 2 && new URL(page.url()).pathname !== '/login'; attempt++) {
+      try {
+        await page.goto('/login', { waitUntil: 'commit' });
+      } catch (error) {
+        navigationError = error;
+        await page.waitForURL(/\/login$/, { timeout: 1_000 }).catch(() => undefined);
+      }
+    }
+    if (new URL(page.url()).pathname !== '/login' && navigationError) throw navigationError;
   }
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByLabel('E-mail')).toBeVisible({ timeout: 15_000 });

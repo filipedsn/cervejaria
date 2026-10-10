@@ -261,7 +261,7 @@
         "revoked": "NOT RUN"
       },
       "dashboard.read": {
-        "disabled": "PASS",
+        "disabled": "NOT RUN",
         "enabled": "PASS",
         "revoked": "PASS"
       },
@@ -361,7 +361,8 @@
       "clients.manage",
       "taps.operate",
       "agenda.manage",
-      "event.menu.manage"
+      "event.menu.manage",
+      "dashboard.read"
     ],
     "workspace": {
       "checkoutUnchanged": true,
@@ -396,5 +397,55 @@
       "e2e/rbac-live/operational-session.spec.ts": "13cb35c3d356d8d8f67b79a2ebff1b43e11d4bf8",
       "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs": "76534dc85318542313f1f788a173c2f3b0af9e1b"
     }
+  },
+  "latestContinuation": {
+    "testedCommit": "e534a777df434cb96d65c98d98e080ccc746faaf",
+    "testedTree": "c63d578183b7bf9e03306e0dabf0ff98b32257ea",
+    "focusedRunner": "PASS",
+    "snapshotIntegrity": "PASS; 1448 blobs; exact tree materialized",
+    "moduleAudit": "198 snapshot modules; 0 mutable workspace imports",
+    "backendBuild": "PASS",
+    "frontendBuild": "PASS",
+    "activationPreflight": "14/14 PASS",
+    "authenticatedDisposableApiSuite": "PASS; representative enabled/denied checks for 28 keys",
+    "playwright": "PASS 1/1",
+    "uiStageCounts": {
+      "required": 84,
+      "pass": 8,
+      "fail": 0,
+      "blocked": 0,
+      "notRun": 76
+    },
+    "uiKeys": {
+      "command.read": {
+        "disabled": "PASS",
+        "enabled": "PASS",
+        "revoked": "PASS"
+      },
+      "cash.values.read": {
+        "disabled": "PASS",
+        "enabled": "PASS",
+        "revoked": "PASS"
+      },
+      "dashboard.read": {
+        "disabled": "NOT RUN",
+        "enabled": "PASS",
+        "revoked": "PASS"
+      }
+    },
+    "sameUserSessions": "PASS; two contexts",
+    "sameBrowserTenantSwitch": "PASS; real logout/login into second synthetic tenant",
+    "viewportWidths": [
+      390,
+      768
+    ],
+    "productDefect": "Fixed at 3df315c84bdf8a14e624568ba9651da5fd810a5e: sanitized cash fallback dereferenced absent sessao.gaveta",
+    "harnessCorrection": "e534a777df434cb96d65c98d98e080ccc746faaf: login navigation retry",
+    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/final-live-e534a77.json",
+    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/run-0895b4cfd740d8a8/live-results/playwright-results.json",
+    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/run-0895b4cfd740d8a8/live-results/browser-run.log",
+    "prodAccess": "NO",
+    "sharedDevWrites": "NO",
+    "certification": "INCOMPLETE"
   }
 }
