@@ -195,37 +195,40 @@ try {
   env.PDV_GIT_QA_IMPORT_HOOK = auditHook;
   env.NODE_OPTIONS = `--import=${pathToFileURL(auditHook).href}`;
 
-  run(process.execPath, ['scripts/pdv-unico-commerce-qa-manifest.mjs', '--write'], { cwd: backendSnapshot, env, stdio: 'inherit' });
-  const generatedManifestPath = path.join(snapshotRoot, 'docs/testing/pdv-unico-integrated-qa-manifest.json');
-  const generatedManifest = JSON.parse(await readFile(generatedManifestPath, 'utf8'));
-  if (generatedManifest.baseline.commit !== selectedCommit) throw new Error('Generated candidate manifest is not pinned to the selected code commit.');
-  for (const relativePath of [
-    'backend/src/lib/comanda-service.ts',
-    'backend/src/routes/operacao/comandas.ts',
-    'backend/src/routes/public.ts',
-  ]) {
-    if (!generatedManifest.codeCandidates.some((item) => item.path === relativePath)) {
-      generatedManifest.codeCandidates.push({ path: relativePath, sha256: normalizedSha256(git(['show', `${selectedCommit}:${relativePath}`])) });
+  let generatedManifest = null;
+  if (focus !== 'permissions' && !resumeFile) {
+    run(process.execPath, ['scripts/pdv-unico-commerce-qa-manifest.mjs', '--write'], { cwd: backendSnapshot, env, stdio: 'inherit' });
+    const generatedManifestPath = path.join(snapshotRoot, 'docs/testing/pdv-unico-integrated-qa-manifest.json');
+    generatedManifest = JSON.parse(await readFile(generatedManifestPath, 'utf8'));
+    if (generatedManifest.baseline.commit !== selectedCommit) throw new Error('Generated candidate manifest is not pinned to the selected code commit.');
+    for (const relativePath of [
+      'backend/src/lib/comanda-service.ts',
+      'backend/src/routes/operacao/comandas.ts',
+      'backend/src/routes/public.ts',
+    ]) {
+      if (!generatedManifest.codeCandidates.some((item) => item.path === relativePath)) {
+        generatedManifest.codeCandidates.push({ path: relativePath, sha256: normalizedSha256(git(['show', `${selectedCommit}:${relativePath}`])) });
+      }
     }
-  }
-  generatedManifest.codeCandidates.sort((left, right) => left.path.localeCompare(right.path));
-  const { manifestSha256: _oldManifestHash, ...generatedManifestBody } = generatedManifest;
-  generatedManifest.manifestSha256 = normalizedSha256(Buffer.from(JSON.stringify(generatedManifestBody)));
-  await writeFile(generatedManifestPath, `${JSON.stringify(generatedManifest, null, 2)}\n`, 'utf8');
-  for (const candidate of generatedManifest.codeCandidates) {
-    const materialized = normalizedSha256(await readFile(path.join(snapshotRoot, candidate.path)));
-    const committed = normalizedSha256(git(['show', `${selectedCommit}:${candidate.path}`]));
-    if (materialized !== committed || materialized !== candidate.sha256) throw new Error(`Snapshot candidate is not the selected Git blob: ${candidate.path}`);
-  }
-  console.log(`PDV_GIT_QA_MANIFEST baseline=${generatedManifest.baseline.commit}; candidates=${generatedManifest.codeCandidates.length}; manifest.sha256=${generatedManifest.manifestSha256}; tracked-tree-verification=PASS`);
-  for (const relativePath of [
-    'backend/src/lib/comanda-service.ts',
-    'backend/src/routes/operacao/comandas.ts',
-    'backend/src/routes/public.ts',
-  ]) {
-    const candidate = generatedManifest.codeCandidates.find((item) => item.path === relativePath);
-    if (!candidate) throw new Error(`Required operational source is not covered by codeCandidates: ${relativePath}`);
-    console.log(`PDV_GIT_QA_CANDIDATE ${relativePath}=${candidate.sha256}; origin=${selectedCommit}:${relativePath}`);
+    generatedManifest.codeCandidates.sort((left, right) => left.path.localeCompare(right.path));
+    const { manifestSha256: _oldManifestHash, ...generatedManifestBody } = generatedManifest;
+    generatedManifest.manifestSha256 = normalizedSha256(Buffer.from(JSON.stringify(generatedManifestBody)));
+    await writeFile(generatedManifestPath, `${JSON.stringify(generatedManifest, null, 2)}\n`, 'utf8');
+    for (const candidate of generatedManifest.codeCandidates) {
+      const materialized = normalizedSha256(await readFile(path.join(snapshotRoot, candidate.path)));
+      const committed = normalizedSha256(git(['show', `${selectedCommit}:${candidate.path}`]));
+      if (materialized !== committed || materialized !== candidate.sha256) throw new Error(`Snapshot candidate is not the selected Git blob: ${candidate.path}`);
+    }
+    console.log(`PDV_GIT_QA_MANIFEST baseline=${generatedManifest.baseline.commit}; candidates=${generatedManifest.codeCandidates.length}; manifest.sha256=${generatedManifest.manifestSha256}; tracked-tree-verification=PASS`);
+    for (const relativePath of [
+      'backend/src/lib/comanda-service.ts',
+      'backend/src/routes/operacao/comandas.ts',
+      'backend/src/routes/public.ts',
+    ]) {
+      const candidate = generatedManifest.codeCandidates.find((item) => item.path === relativePath);
+      if (!candidate) throw new Error(`Required operational source is not covered by codeCandidates: ${relativePath}`);
+      console.log(`PDV_GIT_QA_CANDIDATE ${relativePath}=${candidate.sha256}; origin=${selectedCommit}:${relativePath}`);
+    }
   }
 
   run(process.execPath, ['--test', 'scripts/pdv-unico-commerce-qa-manifest.test.mjs'], { cwd: backendSnapshot, env, stdio: 'inherit' });
@@ -327,11 +330,11 @@ try {
     nodeVersion: process.version,
     measuredCommands,
     globalDevPreflight,
-    generatedCandidateManifest: {
+    generatedCandidateManifest: generatedManifest ? {
       baselineCommit: generatedManifest.baseline.commit,
       manifestSha256: generatedManifest.manifestSha256,
       codeCandidateCount: generatedManifest.codeCandidates.length,
-    },
+    } : { result: 'NOT_RUN', reason: 'Focused RBAC gate does not require the PDV commerce candidate manifest.' },
     moduleOriginAudit: {
       result: syntheticExitCode === 0
         && (!moduleExpectationAudit.representativeModules.expectedCount || moduleExpectationAudit.representativeModules.result === 'ENTRYPOINT_OBSERVED')
