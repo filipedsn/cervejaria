@@ -231,7 +231,9 @@ try {
     }
   }
 
-  run(process.execPath, ['--test', 'scripts/pdv-unico-commerce-qa-manifest.test.mjs'], { cwd: backendSnapshot, env, stdio: 'inherit' });
+  if (focus !== 'permissions' && !resumeFile) {
+    run(process.execPath, ['--test', 'scripts/pdv-unico-commerce-qa-manifest.test.mjs'], { cwd: backendSnapshot, env, stdio: 'inherit' });
+  }
   run(process.execPath, ['--import', 'tsx', '--test', 'scripts/pdv-unico-dev-cutover-core.test.mjs', 'scripts/pdv-unico-cutover-receipts.test.mjs', 'src/lib/pdv-tenant-activation.test.ts'], { cwd: backendSnapshot, env, stdio: 'inherit' });
 
   if (focus || resumeFile) {
