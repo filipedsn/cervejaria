@@ -1239,16 +1239,17 @@ const runBrowser = async (args, env) => {
   process.stderr.write(stderr);
   return exitCode;
 };
-const canonicalBrowserExitCode = await runBrowser(['--grep-invert', 'event.menu.manage'], browserEnv);
+const legacyEventDashboardTests = 'event\\.(menu\\.manage|dashboard\\.read)';
+const canonicalBrowserExitCode = await runBrowser(['--grep-invert', legacyEventDashboardTests], browserEnv);
 assert.equal(canonicalBrowserExitCode, 0, 'Live CANONICAL_PDV operational RBAC browser tests failed.');
 // Event menu is an event-mode feature. Run its real UI flow against the same
 // disposable API/database with canonical activation off, so the second tenant
 // resolves LEGACY settings while the other browser cases retain CANONICAL_PDV.
 process.env.PDV_CANONICAL_CONFIG_QA = '0';
-const legacyBrowserExitCode = await runBrowser(['--grep', 'event.menu.manage'], { ...browserEnv, PDV_CANONICAL_CONFIG_QA: '0' });
+const legacyBrowserExitCode = await runBrowser(['--grep', legacyEventDashboardTests], { ...browserEnv, PDV_CANONICAL_CONFIG_QA: '0' });
 process.env.PDV_CANONICAL_CONFIG_QA = '1';
 await writeFile(path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results', 'browser-run.log'), browserLogs.join('\n'));
-assert.equal(legacyBrowserExitCode, 0, 'Live LEGACY event.menu.manage browser test failed.');
+assert.equal(legacyBrowserExitCode, 0, 'Live LEGACY event permission browser tests failed.');
 const browserInventoryMovements = await prisma.inventoryMovement.findMany({
   where: { pontoVendaId: point.id, produtoId: stockProduct.id, registradoPorId: staff.id, tipo: 'ENTRADA', observacao: 'authorized live RBAC adjustment' },
   select: { quantidade: true, registradoPorId: true, produtoId: true },

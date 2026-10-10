@@ -1025,3 +1025,58 @@ test('event.menu.manage controls the event menu editor and persists changes only
   console.log('RBAC_LIVE_REGRESSION key=event.menu.manage; dependency=none; disabled=editor-hidden-and-direct-write-denied-no-mutation; enabled=real-ui-menu-change-persisted; revoked=same-session-editor-hidden-and-direct-write-denied; event-mode=LEGACY; result=PASS');
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });
+
+test('event.dashboard.read reveals and revokes event KPIs without changing command access', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: eventMenuOwnerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/eventos');
+  const permissionApiForEventStaff = `/api/usuarios/${eventMenuStaffId}/permissoes-operacao`;
+  const setEventStaffPermissions = async (permissoesOperacao: string[]) => {
+    const response = await ownerContext.request.patch(permissionApiForEventStaff, { data: { permissoesOperacao } });
+    expect(response.status(), await response.text()).toBe(200);
+  };
+  const dashboardUrl = `/api/eventos/${eventMenuEventId}/dashboard`;
+  const baselineResponse = await ownerContext.request.get(dashboardUrl);
+  expect(baselineResponse.status(), await baselineResponse.text()).toBe(200);
+  const baseline = await baselineResponse.json();
+  await setEventStaffPermissions(['command.read']);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: eventMenuStaffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  const modeResponse = await staffContext.request.get('/api/operacao/contexto');
+  expect(modeResponse.status(), await modeResponse.text()).toBe(200);
+  const mode = await modeResponse.json();
+  expect(mode.operationMode).toBe('EVENTO');
+  expect(mode.operationalSettingsSource).toBe('LEGACY');
+  const disabledMe = await (await staffContext.request.get('/api/auth/me')).json();
+  expect(disabledMe.usuario.permissoesOperacao).toEqual(['command.read']);
+  const deniedDashboard = await staffContext.request.get(dashboardUrl);
+  expect([401, 403]).toContain(deniedDashboard.status());
+  const disabledCommands = await staffContext.request.get(`/api/comandas/evento/${eventMenuEventId}?status=ABERTA`);
+  expect(disabledCommands.status(), await disabledCommands.text()).toBe(200);
+  await staff.goto('/comandas');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/comandas');
+  await expect(staff.getByRole('heading', { name: 'Comandas', exact: true })).toBeVisible();
+  await expect(staff.locator('.metric-card').filter({ hasText: 'Comandas abertas' })).toHaveCount(0);
+
+  await setEventStaffPermissions(['command.read', 'event.dashboard.read']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['command.read', 'event.dashboard.read']);
+  const grantedDashboard = await staffContext.request.get(dashboardUrl);
+  expect(grantedDashboard.status(), await grantedDashboard.text()).toBe(200);
+  expect(await grantedDashboard.json()).toEqual(baseline);
+  await expect(staff.locator('.metric-card').filter({ hasText: 'Comandas abertas' })).toBeVisible();
+  await expect(staff.locator('.metric-card').filter({ hasText: 'Valor em aberto' })).toBeVisible();
+
+  await setEventStaffPermissions(['command.read']);
+  await staff.reload();
+  const revokedDashboard = await staffContext.request.get(dashboardUrl);
+  expect([401, 403]).toContain(revokedDashboard.status());
+  const commandAccessAfterRevoke = await staffContext.request.get(`/api/comandas/evento/${eventMenuEventId}?status=ABERTA`);
+  expect(commandAccessAfterRevoke.status(), await commandAccessAfterRevoke.text()).toBe(200);
+  await expect(staff.locator('.metric-card').filter({ hasText: 'Comandas abertas' })).toHaveCount(0);
+  console.log('RBAC_LIVE_REGRESSION key=event.dashboard.read; dependency=command.read retained; disabled=event-dashboard-api-denied-kpis-hidden-command-read-works; enabled=event-kpis-visible-and-api-projection-matches-owner; revoked=same-session-kpis-hidden-dashboard-denied-command-read-remains; event-mode=LEGACY; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
