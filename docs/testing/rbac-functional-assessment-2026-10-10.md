@@ -289,4 +289,7 @@ Os cenários transversais obrigatórios também passaram: dependências mantidas
 
 A tentativa inicial de localizar a fila de cozinha não avançava o paginador; o harness foi ajustado para esperar mudança da página. A fixture de `sale.refund` foi corrigida para criar o pedido de cancelamento pela API de owner, em vez de semear diretamente o estado pendente. Isso corrigiu a preparação do teste, sem confirmar novo defeito de produto. `taps.operate` não foi reexecutado.
 
-Status de entrega de código e Plane será atualizado no recibo após a verificação de commit/push e DEV. `PROD_DEPLOY_REQUIRED=NO`; nenhum acesso ou deploy de produção ocorreu.
+Commit `4555adf8bcf36a6b0055c67bf1cb97b951a52bb9` foi enviado a `origin/main`. O candidato imutável foi compilado, mas não ativado: `scripts/dev/stop-dev.ps1` recusou parar o PID 37376 com a mensagem `API dev: PID 37376 pertence a outro processo; nao sera encerrado.` A API ainda servia o SHA anterior `327f546cad95b595e6ab4517cfac01c6c0044992` e `/api/ready` estava pronto. A tentativa de parada pelo matcher exato `dist/index.js` foi bloqueada pela revisão automática. Recibo: [`rbac-completion-receipt.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/rbac-completion-receipt.json). `PROD_DEPLOY_REQUIRED=NO`; nenhum acesso ou deploy de produção ocorreu.
+
+
+Plane evidence comment for TAP-76 returned HTTP 403: Forbidden: You do not have permission to perform this action. The comment was not created; TAP-76 remains In Progress. No other work item field was changed.

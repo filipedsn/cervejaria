@@ -1,4 +1,4 @@
-﻿{
+{
     "assessmentDate":  "2026-10-10",
     "baseline":  {
                      "pass":  57,
@@ -445,16 +445,34 @@
                      "saleRefund":  "../../artifacts/rbac-permissions-ui-2026-10-10/run-sale-refund-real-fixture/live-results/playwright-results.json"
                  },
     "release":  {
-                    "commitSha":  "PENDING",
-                    "pushStatus":  "PENDING",
-                    "devServedSha":  "PENDING",
-                    "PROD_DEPLOY_REQUIRED":  "NO"
+                    "commitSha":  "4555adf8bcf36a6b0055c67bf1cb97b951a52bb9",
+                    "pushStatus":  "PUSHED",
+                    "devServedSha":  "327f546cad95b595e6ab4517cfac01c6c0044992",
+                    "PROD_DEPLOY_REQUIRED":  "NO",
+                    "status":  "NOT_PUBLISHED",
+                    "blocker":  "DEV activation not completed: scripts/dev/stop-dev.ps1 reported \"API dev: PID 37376 pertence a outro processo; nao sera encerrado.\" The active listener was verified as node.exe for deploy/dev-artifacts/backend/dist/index.js and health reported release 327f546cad95b595e6ab4517cfac01c6c0044992. A follow-up managed stop using exact matcher dist/index.js was rejected by automatic approval review; candidate 4555adf8bcf36a6b0055c67bf1cb97b951a52bb9 remains built but inactive."
                 },
     "plane":  {
                   "ticket":  "TAP-76",
-                  "evidenceComment":  "PENDING",
+                  "evidenceComment":  "NOT_CREATED",
                   "status":  "In Progress",
-                  "pendingWork":  "Broader CAIXA/EVENTO acceptance"
+                  "pendingWork":  "Evidence comment on TAP-76 blocked by Plane 403; broader CAIXA/EVENTO acceptance remains; DEV candidate not activated",
+                  "commentAttemptError":  "HTTP 403: Forbidden: You do not have permission to perform this action."
               },
-    "oldTapsOperateReportReissued":  false
+    "oldTapsOperateReportReissued":  false,
+    "devPublishAttempt":  {
+                              "candidate":  "4555adf8bcf36a6b0055c67bf1cb97b951a52bb9",
+                              "prepare":  "PASS; immutable candidate backend/frontend builds completed",
+                              "activate":  "NOT RUN; stop guard rejected API PID",
+                              "lastObservedHealth":  {
+                                                         "http":  200,
+                                                         "releaseSha":  "327f546cad95b595e6ab4517cfac01c6c0044992"
+                                                     },
+                              "readiness":  {
+                                                "http":  200,
+                                                "status":  "ready",
+                                                "database":  "healthy"
+                                            },
+                              "automaticReview":  "blocked managed stop using exact matcher dist/index.js"
+                          }
 }
