@@ -4,7 +4,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
-import { rm } from 'node:fs/promises';
+import { rm, writeFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 
@@ -1161,6 +1161,9 @@ assert.deepEqual(JSON.parse(listed.body).find((user) => user.id === staff.id).pe
 // interception is enabled; the browser logs in through the UI and uses real cookies.
 const repoRoot = path.resolve(backendRoot, '..');
 const apiPort = app.server.address().port;
+const apiProbe = await fetch(`http://127.0.0.1:${apiPort}/api/auth/me`);
+console.log(`RBAC_LIVE_API_PROBE status=${apiProbe.status}; target=127.0.0.1:${apiPort}`);
+assert.equal(apiProbe.status, 401, 'The live app must answer unauthenticated auth/me before browser startup.');
 const frontendPort = 53000 + (process.pid % 1000);
 const frontendRoot = path.join(repoRoot, 'frontend');
 const frontend = spawn(process.execPath, [path.join(frontendRoot, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(frontendPort), '--strictPort'], {
@@ -1193,6 +1196,7 @@ try {
   const browserRun = spawnSync(process.execPath, [path.join(repoRoot, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.rbac-live.config.ts'], {
     cwd: repoRoot, env: browserEnv, encoding: 'utf8', windowsHide: true, timeout: 180_000,
   });
+  await writeFile(path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results', 'browser-run.log'), `${browserRun.stdout ?? ''}\n${browserRun.stderr ?? ''}`);
   process.stdout.write(browserRun.stdout ?? '');
   process.stderr.write(browserRun.stderr ?? '');
   assert.equal(browserRun.status, 0, 'Live operational RBAC browser test failed.');
