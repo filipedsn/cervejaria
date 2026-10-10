@@ -44,7 +44,7 @@ const staff = await prisma.usuario.create({ data: { nome: 'QA Attendant', email:
 const staffTwo = await prisma.usuario.create({ data: { nome: 'QA Attendant Two', email: `staff-two-${suffix}@example.invalid`, senhaHash: attendantHash, papel: 'ATENDENTE', cervejariaId: company.id } });
 const otherOwner = await prisma.usuario.create({ data: { nome: 'Other Owner', email: `other-${suffix}@example.invalid`, senhaHash: otherOwnerHash, papel: 'DONO', cervejariaId: otherCompany.id } });
 await prisma.configuracaoOperacao.create({ data: { cervejariaId: company.id, exclusivo: true } });
-await prisma.configuracaoOperacional.create({ data: { cervejariaId: company.id, plannedOperationsEnabled: false, tapsEnabled: false, inventoryEnabled: false, kitchenEnabled: false } });
+await prisma.configuracaoOperacional.create({ data: { cervejariaId: company.id, plannedOperationsEnabled: false, tapsEnabled: false, inventoryEnabled: false, kitchenEnabled: false, setupCompletedAt: new Date() } });
 const point = await prisma.pontoVenda.create({ data: { cervejariaId: company.id, nome: 'Principal' } });
 
 function cookieFor(response) {
