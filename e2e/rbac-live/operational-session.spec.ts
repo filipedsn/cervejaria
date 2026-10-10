@@ -31,7 +31,6 @@ async function logoutInBrowser(page: Page) {
   await expect.poll(async () => (await page.context().cookies()).some((cookie) => cookie.name === 'token')).toBe(false);
   const anonymousStatus = (await page.context().request.get(`${process.env.RBAC_QA_BASE_URL}/api/auth/me`)).status();
   expect(anonymousStatus).toBe(401);
-  await page.goto('/login');
 }
 
 async function loginForm(page: Page, email: string, password: string) {
