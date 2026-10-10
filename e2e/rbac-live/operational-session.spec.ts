@@ -1215,3 +1215,63 @@ test('event.cash.close requires both close and value access and denies after rev
   console.log('RBAC_LIVE_REGRESSION key=cash.close; dependencies=cash.values.read+command.read retained; disabled=close-hidden-api-denied-session-unchanged; enabled=real-ui-close-persisted; revoked=same-session-close-hidden-api-denied-session-unchanged; event-mode=LEGACY; result=PASS');
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });
+
+test('event.taps.operate mounts a chope only while the permission is granted', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: eventMenuOwnerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/eventos');
+  const tapId = process.env.RBAC_QA_EVENT_TAP_ID!;
+  const chopeId = process.env.RBAC_QA_EVENT_TAP_CHOPE_ID!;
+  const tapUrl = `/api/eventos/${eventMenuEventId}/taps/${tapId}/chope`;
+  const permissionApiForEventStaff = `/api/usuarios/${eventMenuStaffId}/permissoes-operacao`;
+  const setEventStaffPermissions = async (permissoesOperacao: string[]) => {
+    const response = await ownerContext.request.patch(permissionApiForEventStaff, { data: { permissoesOperacao } });
+    expect(response.status(), await response.text()).toBe(200);
+  };
+  await setEventStaffPermissions(['command.read']);
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: eventMenuStaffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/comandas');
+  const tapsTrigger = staff.getByRole('button', { name: /Taps do evento/ });
+  await expect(tapsTrigger).toBeVisible();
+  await tapsTrigger.click();
+  let dialog = staff.getByRole('dialog');
+  await expect(dialog.getByText('Você precisa da permissão “Montar e operar Taps” para alterar esta montagem.')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /TAP 9902/ })).toHaveCount(0);
+  const denied = await staffContext.request.put(tapUrl, { data: { produtoId: chopeId } });
+  expect([401, 403]).toContain(denied.status());
+  const before = await ownerContext.request.get(`/api/eventos/${eventMenuEventId}/taps`);
+  expect(before.status()).toBe(200);
+  expect((await before.json()).find((tap: { id: string }) => tap.id === tapId).chopeAtual).toBeNull();
+  await dialog.getByRole('button', { name: /Fechar|Cancelar/ }).first().click();
+
+  await setEventStaffPermissions(['command.read', 'taps.operate']);
+  await staff.reload();
+  await tapsTrigger.click();
+  dialog = staff.getByRole('dialog');
+  const tapButton = dialog.getByRole('button', { name: /TAP 9902/ });
+  await expect(tapButton).toBeVisible();
+  await tapButton.click();
+  await dialog.getByRole('button', { name: 'Posicionar chope' }).click();
+  await dialog.getByLabel('Chope').selectOption(chopeId);
+  const mountResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === tapUrl && response.request().method() === 'PUT');
+  await dialog.getByRole('button', { name: 'Posicionar', exact: true }).click();
+  const mounted = await mountResponsePromise;
+  expect(mounted.status(), await mounted.text()).toBe(200);
+  expect((await (await ownerContext.request.get(`/api/eventos/${eventMenuEventId}/taps`)).json()).find((tap: { id: string }) => tap.id === tapId).chopeAtual.id).toBe(chopeId);
+
+  await setEventStaffPermissions(['command.read']);
+  await staff.reload();
+  await tapsTrigger.click();
+  dialog = staff.getByRole('dialog');
+  await expect(dialog.getByText('Você precisa da permissão “Montar e operar Taps” para alterar esta montagem.')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /TAP 9902/ })).toHaveCount(0);
+  const revoked = await staffContext.request.put(tapUrl, { data: { produtoId: chopeId } });
+  expect([401, 403]).toContain(revoked.status());
+  const afterRevoke = await ownerContext.request.get(`/api/eventos/${eventMenuEventId}/taps`);
+  expect((await afterRevoke.json()).find((tap: { id: string }) => tap.id === tapId).chopeAtual.id).toBe(chopeId);
+  console.log('RBAC_LIVE_REGRESSION key=taps.operate; dependency=command.read and tapsEnabled legacy setting; disabled=grid-read-only-api-denied-no-mount; enabled=real-ui-mount-persisted; revoked=same-session-grid-read-only-api-denied-mount-unchanged; event-mode=LEGACY; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
