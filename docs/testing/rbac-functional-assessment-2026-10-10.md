@@ -97,3 +97,30 @@ Busca no projeto por RBAC/permissões não encontrou ticket dedicado. Itens rela
 2. Completar Playwright autenticado contra frontend/backend/DB de QA e comprovar concessão/revogação e troca de usuário no mesmo browser.
 3. Expandir por endpoint alternativo e por matrizes completas LEGACY/CANONICAL_PDV e de parâmetros operacionais; adicionar evidência de tela por fluxo.
 4. Depois disso, confrontar critérios restantes de TAP-76/78/82 e atualizar Plane com evidência final sem mudar escopo.
+
+## Live browser continuation (10 Oct 2026; supersedes earlier NOT RUN wording above)
+
+The exact Git source snapshot used for this continuation is `8d7ea1c98a0b2b12c4856737bba5976aede98cce` (tree `3cf7e0ef27c5f5b997a1088be17256e7b0ff7146`), parented on published `origin/main` code `4b2649e47335f92ca9201258c04f514f185a6694`. It materialized 1,448 tracked blobs with `git cat-file`; no mutable workspace source modules were imported. The backend/frontend builds and activation preflight passed (14/14). The authenticated Fastify/PostgreSQL suite passed, and its disposable PostgreSQL container was removed. The outer runner withheld its final receipt because its workspace fingerprint changed during execution; unrelated concurrent files were preserved. The exact source snapshot remained fixed.
+
+### Synthetic reference and configuration
+
+The browser fixture is a synthetic `Permission QA` establishment with a synthetic owner, two synthetic attendants, one open synthetic comanda, and a disposable PostgreSQL database. Initial settings are `plannedOperationsEnabled=false`, `tapsEnabled=false`, `inventoryEnabled=false`, `kitchenEnabled=false`, and first-access setup marked complete. API fixtures toggle representative inventory, kitchen, Tap and pending-kitchen settings. These settings are representative only; no DEV read or real customer configuration was used, so they are not asserted to match Churrasquinho do Thiago.
+
+### Live browser results and denominator
+
+There are 28 current permission keys. The requested three core states per key form 84 permission-stage cases, before alternate routes, settings, global admin and screen-specific actions. The API suite contains representative enabled/disabled and persistence/revocation cases for the catalog, plus tenant and TAP-82 coverage; this is not proof of 84 UI action stages.
+
+The live browser covered `command.read` only (1/28):
+
+- Disabled: direct `GET /api/operacao/comandas` is denied (401/403). The fallback `GET /api/operacao/caixa` returns 200 with financial values sanitized.
+- Enabled: owner grants the key through the real admin API while two staff sessions stay open. The staff session observes the grant, reaches the command list and reads the live endpoint successfully.
+- Revoked: the existing staff session is denied by the API after owner revocation. Navigation falls back to `/operacao/caixa`, where the UI throws `TypeError: Cannot read properties of undefined (reading 'esperadoDinheiro')`. The API did not expose the hidden financial values. The backend records `ui.error`.
+- Two simultaneous staff sessions, viewport widths 390 and 768, and a same-browser tenant switch via real logout API plus real login form passed. `/api/auth/me` changed company ID and the second tenant's user list excluded the first tenant's staff ID.
+
+The Playwright harness test passed 1/1 while explicitly logging the product FAIL above. Its failure-only trace capture was removed after Playwright reported that the fixture had not started tracing. The passing run produced `live-results/command-read-revocation-cash-fallback.png`; the screenshot is embedded in the Playwright result JSON and extracted beside it. The other 27 keys have no live browser certification in this run. The existing mocked editor tests remain editor-only evidence.
+
+### Product defect and trace
+
+Expected behavior is a usable fallback cash page with sensitive totals omitted. Observed behavior is a frontend crash while reading `esperadoDinheiro` from the sanitized response. Impact: staff without `command.read` cannot use the fallback cash screen; the revoked route flow is interrupted. The issue was attached to TAP-76 as internal comment `f7bc162e-2364-4b2b-92c5-f1ecbccf62ee`; TAP-76 stays In Progress. TAP-78 and TAP-82 stay open and unchanged. No duplicate Plane item was created.
+
+The browser log, Playwright result JSON and revocation screenshot are under `artifacts/rbac-permissions-ui-2026-10-10/live-results/`. No valid trace was produced. The API runner removed its disposable container. PROD and shared DEV were not accessed. `CANONICAL_PDV`/`LEGACY`, all 28 UI actions, global-admin behavior, alternative routes and full business-setting combinations remain unverified live; do not describe this result as 100% certification.

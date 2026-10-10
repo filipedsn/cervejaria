@@ -9,10 +9,17 @@
     "sourceMaterialization": "1441 tracked Git blobs extracted with git cat-file into an owned temporary QA snapshot; zero mutable workspace modules imported",
     "runner": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
     "runnerSha256": "25500816cc1519109e9af7a2e5cdffe04bc3b37cca7df0ac8d1036beb6739d7f",
-    "runtime": { "node": "v24.18.0", "prismaClient": "6.19.3", "postgres": "17-alpine" },
+    "runtime": {
+      "node": "v24.18.0",
+      "prismaClient": "6.19.3",
+      "postgres": "17-alpine"
+    },
     "backendBuild": "PASS",
     "frontendBuild": "PASS",
-    "activationPreflightTests": { "pass": 14, "fail": 0 },
+    "activationPreflightTests": {
+      "pass": 14,
+      "fail": 0
+    },
     "authenticatedDisposableApiSuite": "PASS",
     "tap82DeliveredItemApi": "PASS: minimal two-key grant, denial without second key, persisted partial/full effects, audit, stock handling, idempotent retry, stale quantity, paid/closed comanda, foreign tenant, and LEGACY staff denial/owner allowance",
     "liveOperationalUi": "NOT RUN",
@@ -27,25 +34,125 @@
     "evidence": "../../artifacts/rbac-permissions-ui-2026-10-10/pinned-api-evidence.json"
   },
   "permissionCount": 28,
-  "apiRepresentativeEnabledScenarios": { "pass": 28, "fail": 0, "notRun": 0 },
-  "apiRepresentativeDisabledScenarios": { "pass": 28, "fail": 0, "notRun": 0 },
+  "apiRepresentativeEnabledScenarios": {
+    "pass": 28,
+    "fail": 0,
+    "notRun": 0
+  },
+  "apiRepresentativeDisabledScenarios": {
+    "pass": 28,
+    "fail": 0,
+    "notRun": 0
+  },
   "sameAuthenticatedSessionGrant": "PASS across representative API cases using a staff cookie created before the grant",
   "sameSessionRevocation": "PARTIAL; exercised on representative endpoints, not every permission",
   "isolatedApiSuite": "PASS",
-  "focusedPermissionUnitTests": { "pass": 1, "fail": 0 },
-  "permissionEditorPlaywright": { "pass": 12, "fail": 0, "viewports": [390, 768], "apiMode": "mocked; editor evidence only" },
+  "focusedPermissionUnitTests": {
+    "pass": 1,
+    "fail": 0
+  },
+  "permissionEditorPlaywright": {
+    "pass": 12,
+    "fail": 0,
+    "viewports": [
+      390,
+      768
+    ],
+    "apiMode": "mocked; editor evidence only"
+  },
   "backendBuild": "PASS",
   "frontendBuild": "PASS",
   "canonicalAndLegacy": "PARTIAL; representative compatibility and PDV cases, not all permissions in both modes",
-  "operationalScreensWithLiveApi": "NOT RUN",
-  "productDefectsConfirmed": 0,
-  "reportedTickets": ["TAP-76", "TAP-78", "TAP-82"],
+  "operationalScreensWithLiveApi": "PARTIAL: one real-browser permission flow (command.read), including reproducible UI failure",
+  "productDefectsConfirmed": 1,
+  "reportedTickets": [
+    "TAP-76",
+    "TAP-78",
+    "TAP-82"
+  ],
   "newTicketCreated": false,
   "productionAccess": "NO",
   "sharedDevAccess": "NO",
   "permissionKeys": [
-    "cash.open", "cash.close", "cash.values.read", "cash.movement.write", "payment.receive", "debt.receive", "command.close", "discount.apply", "command.item.cancel", "command.item.cancel.delivered", "command.cancel", "kitchen.cancel", "sale.refund", "dashboard.read", "event.dashboard.read", "reports.read", "command.operate", "command.read", "kitchen.read", "kitchen.operate", "inventory.read", "inventory.adjust", "catalog.manage", "catalog.shift.manage", "clients.manage", "taps.operate", "agenda.manage", "event.menu.manage"
+    "cash.open",
+    "cash.close",
+    "cash.values.read",
+    "cash.movement.write",
+    "payment.receive",
+    "debt.receive",
+    "command.close",
+    "discount.apply",
+    "command.item.cancel",
+    "command.item.cancel.delivered",
+    "command.cancel",
+    "kitchen.cancel",
+    "sale.refund",
+    "dashboard.read",
+    "event.dashboard.read",
+    "reports.read",
+    "command.operate",
+    "command.read",
+    "kitchen.read",
+    "kitchen.operate",
+    "inventory.read",
+    "inventory.adjust",
+    "catalog.manage",
+    "catalog.shift.manage",
+    "clients.manage",
+    "taps.operate",
+    "agenda.manage",
+    "event.menu.manage"
   ],
   "report": "rbac-functional-assessment-2026-10-10.md",
-  "uiArtifacts": "../../artifacts/rbac-permissions-ui-2026-10-10"
+  "uiArtifacts": "../../artifacts/rbac-permissions-ui-2026-10-10",
+  "liveBrowserContinuation": {
+    "codeSnapshotCommit": "4b2649e47335f92ca9201258c04f514f185a6694",
+    "certificationCommit": "8d7ea1c98a0b2b12c4856737bba5976aede98cce",
+    "sourceTree": "3cf7e0ef27c5f5b997a1088be17256e7b0ff7146",
+    "sourceMaterialization": "Git blobs only; 1,448 tracked blobs; no mutable workspace imports",
+    "fixture": "Synthetic Permission QA tenant, synthetic owner and staff, one open synthetic comanda, disposable PostgreSQL. Initial setup flags plannedOperationsEnabled/tapsEnabled/inventoryEnabled/kitchenEnabled=false and setupCompletedAt set. Individual API scenarios toggle representative kitchen, inventory, tap and pending-kitchen parameters. This is representative configuration, not a copy of Churrasquinho do Thiago settings.",
+    "backendBuild": "PASS",
+    "frontendBuild": "PASS",
+    "activationPreflightTests": {
+      "pass": 14,
+      "fail": 0
+    },
+    "authenticatedDisposableApiSuite": "PASS; representative allow/deny checks for the 28-key catalog and the previously documented tenant, persistence, revoke, legacy/canonical and TAP-82 cases; this does not certify every alternative endpoint or the full configuration matrix",
+    "browser": {
+      "testFile": "e2e/rbac-live/operational-session.spec.ts",
+      "playwrightResult": "PASS 1/1 harness test; product behavior recorded separately as FAIL; final runner integrity gate failed because local workspace fingerprint changed",
+      "realAuthentication": "PASS; owner and staff login forms against real Fastify API",
+      "permission": "command.read only",
+      "disabled": "PASS direct API denial (401/403); cash fallback API returns sanitized 200",
+      "enabled": "PASS real owner grant while two staff sessions remain open; command list route and endpoint return 200",
+      "revoked": "API denial PASS in existing session; UI fallback FAIL due TypeError reading esperadoDinheiro",
+      "sameUserSessions": "PASS two simultaneously authenticated staff contexts",
+      "tenantSwitch": "PASS same browser context after real POST /api/auth/logout and login form; auth/me company id changes and foreign user list excludes original staff id",
+      "viewportWidths": [
+        390,
+        768
+      ],
+      "coverage": "1/28 permissions exercised through live browser grant/revoke; 27/28 operational UI permission flows remain unverified live",
+      "screenshotArtifact": "../../artifacts/rbac-permissions-ui-2026-10-10/live-results/command-read-revocation-cash-fallback.png"
+    },
+    "reproducedProductDefect": {
+      "key": "command.read",
+      "route": "/operacao/caixa",
+      "apiContract": "GET /api/operacao/comandas denied; GET /api/operacao/caixa returns sanitized data without financial values",
+      "observation": "PainelCaixaOperacao throws TypeError: Cannot read properties of undefined (reading 'esperadoDinheiro'); backend records ui.error",
+      "impact": "Staff without command.read cannot use the fallback cash screen; post-revocation controls/navigation are interrupted",
+      "plane": "TAP-76 internal evidence comment f7bc162e-2364-4b2b-92c5-f1ecbccf62ee",
+      "evidenceDirectory": "../../artifacts/rbac-permissions-ui-2026-10-10/live-results/"
+    },
+    "scenarioDenominator": {
+      "permissions": 28,
+      "corePermissionStages": 84,
+      "meaning": "28 permissions x disabled/enabled/revoked; live browser currently covers 1/28; API evidence is representative and is not equivalent to 84 UI action stages",
+      "additionalRequiredDimensions": "alternate endpoints, cross-tenant IDs, global admin contract, complete LEGACY/CANONICAL_PDV matrices, settings combinations and screen actions remain separately unverified"
+    },
+    "certificationIntegrityGate": "FAIL: focused runner detected a local workspace fingerprint change after all component tests passed and withheld its final receipt; the exact Git snapshot was immutable during its tests",
+    "disposableResourcesRemoved": true,
+    "productionAccess": "NO",
+    "sharedDevAccess": "NO"
+  }
 }
