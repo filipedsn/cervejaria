@@ -63,7 +63,7 @@
   "backendBuild": "PASS",
   "frontendBuild": "PASS",
   "canonicalAndLegacy": "PARTIAL; representative compatibility and PDV cases, not all permissions in both modes",
-  "operationalScreensWithLiveApi": "PARTIAL: four keys with real-browser evidence; command.read, cash.values.read, and agenda.manage each have disabled/enabled/revoked PASS; dashboard.read has enabled/revoked PASS and disabled NOT RUN",
+  "operationalScreensWithLiveApi": "PARTIAL: four keys with all three real-browser stages PASS (command.read, cash.values.read, agenda.manage, dashboard.read); 12/84 UI stages total",
   "productDefectsConfirmed": 1,
   "reportedTickets": [
     "TAP-76",
@@ -399,22 +399,22 @@
     }
   },
   "latestContinuation": {
-    "testedCommit": "fe3dba972a1e8bc503ca0c6457a8b8885590a0d9",
-    "testedTree": "7d53672ee0d83ac14c57536f1f55f37a4a6dd4a5",
+    "testedCommit": "203b6e176b1f5e21427d4e45f31e30ae8bdef5dc",
+    "testedTree": "b789a9e15c044843c4e803c3b99f1a8b1ac0de5e",
     "focusedRunner": "PASS",
-    "snapshotIntegrity": "PASS; 1448 blobs; exact tree materialized",
+    "snapshotIntegrity": "PASS; 1449 blobs; exact tree materialized",
     "moduleAudit": "198 snapshot modules; 0 mutable workspace imports",
     "backendBuild": "PASS",
     "frontendBuild": "PASS",
     "activationPreflight": "14/14 PASS",
-    "authenticatedDisposableApiSuite": "PASS; representative enabled/denied checks for 28 keys, including agenda.manage",
+    "authenticatedDisposableApiSuite": "PASS; representative enabled/denied checks for 28 keys",
     "playwright": "PASS 2/2 against real Fastify API and frontend with disposable PostgreSQL",
     "uiStageCounts": {
       "required": 84,
-      "pass": 11,
+      "pass": 12,
       "fail": 0,
       "blocked": 0,
-      "notRun": 73
+      "notRun": 72
     },
     "uiKeys": {
       "command.read": {
@@ -428,7 +428,7 @@
         "revoked": "PASS"
       },
       "dashboard.read": {
-        "disabled": "NOT RUN",
+        "disabled": "PASS",
         "enabled": "PASS",
         "revoked": "PASS"
       },
@@ -445,10 +445,10 @@
       768
     ],
     "productDefect": "Fixed at 3df315c84bdf8a14e624568ba9651da5fd810a5e: sanitized cash fallback dereferenced absent sessao.gaveta",
-    "harnessCorrection": "Canonical PDV QA activation and conflict-free schedule-date selection; same-session grant/revoke; disabled/granted/revoked stages verified",
-    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/agenda-live-fe3dba9.json",
-    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/run-dbde9149ec4dca9d/live-results/playwright-results.json",
-    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/run-dbde9149ec4dca9d/live-results/browser-run.log",
+    "harnessCorrection": "Canonical agenda fixture, conflict-free write date, dashboard.read denied route coverage",
+    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/dashboard-live-203b6e1.json",
+    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/run-0836f201985631a0/live-results/playwright-results.json",
+    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/run-0836f201985631a0/live-results/browser-run.log",
     "prodAccess": "NO",
     "sharedDevWrites": "NO",
     "certification": "INCOMPLETE"
