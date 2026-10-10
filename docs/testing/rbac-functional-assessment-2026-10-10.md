@@ -1,5 +1,23 @@
 # Validação funcional RBAC — 2026-10-10
 
+## Continuação: execução com código Git fixado
+
+**Revisão exata testada:** `d139a94c8fb89147e06fd9356fbe94cefff0c3d2`, tree `2942ddafd556d75a13979e457fa9ce93ae7975ae`, descendente de `origin/main` observado no início da execução. O snapshot materializou 1.441 blobs rastreados via `git cat-file` em `artifacts/rbac-permissions-ui-2026-10-10/`; imports de módulos operacionais do workspace mutável: zero. O teste não incorporou alterações locais não commitadas. Runner: `backend/scripts/run-pdv-unico-git-snapshot-qa.mjs`, SHA-256 `25500816cc1519109e9af7a2e5cdffe04bc3b37cca7df0ac8d1036beb6739d7f`. Node `v24.18.0`; Prisma Client `6.19.3`; PostgreSQL `17-alpine`. Recibo da execução: [`pinned-api-evidence.json`](../../artifacts/rbac-permissions-ui-2026-10-10/pinned-api-evidence.json).
+
+**Resultado da execução fixada:** backend build PASS; frontend build PASS; preflight focado de ativação PASS 14/14; suíte API autenticada com Fastify e PostgreSQL descartável PASS; auditoria de import PASS; checkout, index e alterações locais idênticos antes/depois. O contêiner PostgreSQL foi removido ao final; portas publicadas apenas em loopback. PROD e DEV compartilhado: sem acesso e sem escrita.
+
+| Evidência da continuação | Resultado | Limite |
+|---|---|---|
+| API RBAC no SHA fixado | PASS | A suíte integrada passou; não equivale a 28 ações por UI nem a todas as rotas alternativas. |
+| TAP-82: item entregue | PASS | `command.item.cancel` sozinho retorna 403 sem mutação; as duas chaves autorizam cancelamento parcial/total em comanda aberta com motivo, tratamento de estoque, quantidade esperada e idempotência. Quantidade obsoleta, comanda paga/fechada, tenant estrangeiro e funcionário LEGACY são recusados. A comanda permanece entregue; produto preparado/perdido não retorna ao estoque; erro de lançamento reverte somente a baixa correspondente. |
+| UI operacional com login, API e persistência reais | NOT RUN | Os 12 testes Playwright anteriores continuam sendo somente evidência simulada do editor. Nenhuma ação operacional foi certificada por browser contra API real nesta continuação. |
+| Concessão e revogação em sessão para todas as 28 chaves | NOT RUN | A suíte integrada confirma casos de sessão pré-existente em endpoints específicos, mas não percorre grant/revoke e refresco visual de cada chave, incluindo duas sessões simultâneas. |
+| Troca de usuário no mesmo navegador, inclusive entre tenants | NOT RUN | Cookies, query cache, sockets e armazenamento entre logins não foram verificados em browser real. |
+| Contrato operacional do admin global e tentativas de autoelevação | PARTIAL | Há evidência histórica de Socket.IO LEGACY; o contrato completo de ações operacionais e edição de permissões continua sem prova. |
+| Rotas alternativas, efeitos e combinações LEGACY/CANONICAL_PDV | PARTIAL | A suíte fixada cobre os caminhos e fixtures descritos acima e parte dos guards de módulos. Não executa a matriz de 28 permissões em cada modo/parâmetro nem todas as rotas equivalentes. |
+
+Os 28 casos API permitidos/negados, builds e 12 cenários do editor relatados na rodada inicial continuam registrados como **evidência histórica da árvore de trabalho suja**, conforme a ressalva original; não os reclassificar como execução limpa do SHA fixado. A execução atual comprova a suíte integrada de API nesse SHA, mas não certifica as lacunas marcadas `NOT RUN`/`PARTIAL`. Nenhum defeito RBAC de produto foi confirmado. Uma execução preliminar do gate completo acionou teste de categoria fora do escopo e falhou 1/10; o gate focado agora o omite, sem alterar ou atribuir essa falha ao RBAC.
+
 ## Escopo e resultado
 
 Inventário efetivo em `backend/src/lib/operacao/permissoes.ts`: **28 chaves**. Revisados também o editor em `PermissoesAgrupadas.tsx`, os guardas das rotas, o contexto de autenticação, os contratos de TAP-76/78/82 e a matriz de ações existente. A matriz abaixo registra evidência observada, sem elevar o comportamento atual à especificação quando ele diverge dos tickets.
