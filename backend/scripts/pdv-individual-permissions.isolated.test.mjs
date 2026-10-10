@@ -1160,7 +1160,6 @@ assert.deepEqual(JSON.parse(listed.body).find((user) => user.id === staff.id).pe
 // Run a real browser against this exact Fastify instance and a Vite proxy. No API
 // interception is enabled; the browser logs in through the UI and uses real cookies.
 const repoRoot = path.resolve(backendRoot, '..');
-await app.listen({ host: '127.0.0.1', port: 0 });
 const apiPort = app.server.address().port;
 const frontendPort = 53000 + (process.pid % 1000);
 const frontendRoot = path.join(repoRoot, 'frontend');
