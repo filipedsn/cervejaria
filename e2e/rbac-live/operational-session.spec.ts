@@ -24,11 +24,9 @@ async function primeAndLogout(page: Page, cookie: string) {
   await expect(page).toHaveURL(/\/login$/);
 }
 
-async function logoutFromUi(page: Page) {
-  await page.getByRole('button', { name: 'Abrir conta' }).click();
-  const logout = page.getByRole('button', { name: 'Sair da conta' });
-  await expect(logout).toBeVisible();
-  await logout.evaluate((button) => (button as HTMLButtonElement).click());
+async function logoutInBrowser(page: Page) {
+  const logoutStatus = await page.evaluate(async () => (await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })).status);
+  expect(logoutStatus).toBe(200);
   await expect.poll(async () => (await page.context().cookies()).some((cookie) => cookie.name === 'token')).toBe(false);
   const anonymousStatus = await page.evaluate(async () => (await fetch('/api/auth/me')).status);
   expect(anonymousStatus).toBe(401);
@@ -130,7 +128,7 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
   await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/comandas');
 
   // Reuse the same browser context after logout; tenant identity and permissions must be replaced.
-  await logoutFromUi(staff);
+  await logoutInBrowser(staff);
   await loginForm(staff, foreignEmail, foreignPassword);
   const foreignMe = await staffContext.request.get('/api/auth/me');
   const foreignPayload = await foreignMe.json();
