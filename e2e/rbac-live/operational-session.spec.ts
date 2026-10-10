@@ -6,14 +6,12 @@ const staffEmail = process.env.RBAC_QA_STAFF_EMAIL!;
 const staffPassword = process.env.RBAC_QA_STAFF_PASSWORD!;
 const foreignEmail = process.env.RBAC_QA_FOREIGN_OWNER_EMAIL!;
 const foreignPassword = process.env.RBAC_QA_FOREIGN_OWNER_PASSWORD!;
-const ownerCookie = process.env.RBAC_QA_OWNER_COOKIE!;
-const staffCookie = process.env.RBAC_QA_STAFF_COOKIE!;
-const foreignCookie = process.env.RBAC_QA_FOREIGN_OWNER_COOKIE!;
 const permissionApi = `/api/usuarios/${process.env.RBAC_QA_STAFF_ID}/permissoes-operacao`;
 const permission = 'command.read';
 
-async function primeAndLogout(page: Page, cookie: string) {
-  await page.context().addCookies([{ name: 'token', value: cookie.replace(/^token=/, ''), domain: '127.0.0.1', path: '/', httpOnly: true, sameSite: 'Lax' }]);
+async function primeAndLogout(page: Page, email: string, password: string) {
+  const response = await page.context().request.post(`${process.env.RBAC_QA_BASE_URL}/api/auth/login`, { data: { email, senha: password } });
+  expect(response.status(), await response.text()).toBe(200);
   expect((await page.context().cookies()).some((entry) => entry.name === 'token')).toBe(true);
   await page.goto('/login');
   await expect(page).not.toHaveURL(/\/login$/);
@@ -22,14 +20,14 @@ async function primeAndLogout(page: Page, cookie: string) {
   await expect(page).toHaveURL(/\/login$/);
 }
 
-async function login(page: Page, email: string, password: string, cookie: string) {
+async function login(page: Page, email: string, password: string) {
   page.on('console', (message) => { if (message.type() === 'error') console.error(`RBAC_BROWSER_CONSOLE ${message.text()}`); });
   page.on('pageerror', (error) => console.error(`RBAC_BROWSER_PAGE_ERROR ${error.message}`));
   page.on('requestfailed', (request) => console.error(`RBAC_BROWSER_REQUEST_FAILED ${request.method()} ${new URL(request.url()).pathname}: ${request.failure()?.errorText}`));
   page.on('response', (response) => {
     if (new URL(response.url()).pathname.startsWith('/api/')) console.log(`RBAC_BROWSER_API ${response.status()} ${new URL(response.url()).pathname}`);
   });
-  await primeAndLogout(page, cookie);
+  await primeAndLogout(page, email, password);
   await expect(page.getByLabel('E-mail')).toBeVisible({ timeout: 15_000 }).catch(async (error) => {
     const body = await page.locator('body').innerText().catch(() => 'unavailable');
     const probe = await page.evaluate(async () => Promise.race([
@@ -53,7 +51,7 @@ async function setPermissions(context: BrowserContext, permissions: string[]) {
 test('real login, live grant and revoke, same-user sessions, tenant switch, and mobile layouts', async ({ browser, baseURL }) => {
   const ownerContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const owner = await ownerContext.newPage();
-  await login(owner, ownerEmail, ownerPassword, ownerCookie);
+  await login(owner, ownerEmail, ownerPassword);
   const ownerMe = await ownerContext.request.get('/api/auth/me');
   expect(ownerMe.status()).toBe(200);
   const ownerUser = (await ownerMe.json()).usuario;
@@ -61,10 +59,10 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
 
   const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const staff = await staffContext.newPage();
-  await login(staff, staffEmail, staffPassword, staffCookie);
+  await login(staff, staffEmail, staffPassword);
   const staffTabContext = await browser.newContext({ viewport: { width: 768, height: 1024 } });
   const staffTab = await staffTabContext.newPage();
-  await login(staffTab, staffEmail, staffPassword, staffCookie);
+  await login(staffTab, staffEmail, staffPassword);
   const initialMe = await staffContext.request.get('/api/auth/me');
   expect((await initialMe.json()).usuario.permissoesOperacao).not.toContain(permission);
   const deniedApi = await staffContext.request.get('/api/operacao/comandas');
@@ -100,7 +98,7 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
   await staff.getByRole('button', { name: 'Abrir conta' }).click();
   await staff.getByRole('button', { name: 'Sair da conta' }).click();
   await expect(staff).toHaveURL(/\/login$/);
-  await login(staff, foreignEmail, foreignPassword, foreignCookie);
+  await login(staff, foreignEmail, foreignPassword);
   const foreignMe = await staffContext.request.get('/api/auth/me');
   const foreignUser = (await foreignMe.json()).usuario;
   expect(foreignUser.papel).toBe('DONO');
