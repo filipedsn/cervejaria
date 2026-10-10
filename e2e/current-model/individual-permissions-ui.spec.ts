@@ -3,6 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 const ownerPermissions = [
   'cash.open', 'cash.close', 'cash.values.read', 'cash.movement.write', 'payment.receive',
   'debt.receive', 'command.close', 'discount.apply', 'command.item.cancel', 'command.cancel', 'kitchen.cancel',
+  'command.item.cancel.delivered',
   'sale.refund', 'dashboard.read', 'event.dashboard.read', 'reports.read', 'command.read', 'command.operate',
   'kitchen.read', 'kitchen.operate', 'inventory.read', 'inventory.adjust', 'catalog.manage', 'catalog.shift.manage', 'clients.manage',
   'taps.operate', 'agenda.manage', 'event.menu.manage',
@@ -138,8 +139,8 @@ for (const width of [390, 768]) {
         expect((await summary.boundingBox())!.height).toBeGreaterThanOrEqual(44);
         await summary.click();
       }
-      await expect(editor.getByRole('checkbox')).toHaveCount(27);
-      expect(new Set(await editor.getByRole('checkbox').evaluateAll(elements => elements.map(element => element.getAttribute('aria-label')))).size).toBe(27);
+      await expect(editor.getByRole('checkbox')).toHaveCount(28);
+      expect(new Set(await editor.getByRole('checkbox').evaluateAll(elements => elements.map(element => element.getAttribute('aria-label')))).size).toBe(28);
       for (const checkbox of await editor.getByRole('checkbox').all()) {
         expect((await checkbox.locator('..').boundingBox())!.height).toBeGreaterThanOrEqual(44);
       }
@@ -235,7 +236,7 @@ for (const width of [390, 768]) {
       await editor.getByLabel('Senha inicial', { exact: true }).fill('Teste123!');
       await editor.getByLabel('Confirmar senha', { exact: true }).fill('Teste123!');
       for (const summary of await editor.locator('summary').all()) await summary.click();
-      await expect(editor.getByRole('checkbox')).toHaveCount(27);
+      await expect(editor.getByRole('checkbox')).toHaveCount(28);
       await expect(editor.locator('input[type=checkbox]:checked')).toHaveCount(0);
       await checkLayout(page);
       // A short viewport approximates the space remaining above a mobile keyboard.

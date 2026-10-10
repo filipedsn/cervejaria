@@ -1,10 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Frontend only; every API is intercepted, with unknown requests aborted.
-const artifacts = mkdtempSync(join(tmpdir(), 'tap-access-ui-'));
+const artifacts = join(process.cwd(), 'artifacts', 'rbac-permissions-ui-2026-10-10');
+mkdirSync(artifacts, { recursive: true });
 const baseURL = 'http://127.0.0.1:5197';
 
 export default defineConfig({

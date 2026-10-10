@@ -1,0 +1,28 @@
+{
+  "assessmentDate": "2026-10-10",
+  "operationalHeadAtStart": "d1fb75740834bf78abbee486598a5b558ff551fc",
+  "workspaceWasDirtyAtStart": true,
+  "apiSourceQualification": "Disposable runner pinned schema/migrations to HEAD but imported source from the dirty workspace; this is not a clean Git snapshot certification.",
+  "permissionCount": 28,
+  "apiRepresentativeEnabledScenarios": { "pass": 28, "fail": 0, "notRun": 0 },
+  "apiRepresentativeDisabledScenarios": { "pass": 28, "fail": 0, "notRun": 0 },
+  "sameAuthenticatedSessionGrant": "PASS across representative API cases using a staff cookie created before the grant",
+  "sameSessionRevocation": "PARTIAL; exercised on representative endpoints, not every permission",
+  "isolatedApiSuite": "PASS",
+  "focusedPermissionUnitTests": { "pass": 1, "fail": 0 },
+  "permissionEditorPlaywright": { "pass": 12, "fail": 0, "viewports": [390, 768], "apiMode": "mocked; editor evidence only" },
+  "backendBuild": "PASS",
+  "frontendBuild": "PASS",
+  "canonicalAndLegacy": "PARTIAL; representative compatibility and PDV cases, not all permissions in both modes",
+  "operationalScreensWithLiveApi": "NOT RUN",
+  "productDefectsConfirmed": 0,
+  "reportedTickets": ["TAP-76", "TAP-78", "TAP-82"],
+  "newTicketCreated": false,
+  "productionAccess": "NO",
+  "sharedDevAccess": "NO",
+  "permissionKeys": [
+    "cash.open", "cash.close", "cash.values.read", "cash.movement.write", "payment.receive", "debt.receive", "command.close", "discount.apply", "command.item.cancel", "command.item.cancel.delivered", "command.cancel", "kitchen.cancel", "sale.refund", "dashboard.read", "event.dashboard.read", "reports.read", "command.operate", "command.read", "kitchen.read", "kitchen.operate", "inventory.read", "inventory.adjust", "catalog.manage", "catalog.shift.manage", "clients.manage", "taps.operate", "agenda.manage", "event.menu.manage"
+  ],
+  "report": "rbac-functional-assessment-2026-10-10.md",
+  "uiArtifacts": "../../artifacts/rbac-permissions-ui-2026-10-10"
+}

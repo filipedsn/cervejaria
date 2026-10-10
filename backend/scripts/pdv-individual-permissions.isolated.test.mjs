@@ -262,6 +262,25 @@ assert.equal(revokeDashboard.statusCode, 200, revokeDashboard.body);
 const revokedDashboard = await app.inject({ method: 'GET', url: '/api/cervejaria/dashboard', headers: authHeaders(staffCookie) });
 assert.equal(revokedDashboard.statusCode, 403, revokedDashboard.body);
 
+const eventDashboardDenied = await app.inject({ method: 'GET', url: `/api/eventos/${event.id}/dashboard`, headers: authHeaders(staffCookie) });
+assert.equal(eventDashboardDenied.statusCode, 403, eventDashboardDenied.body);
+const grantEventDashboard = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['event.dashboard.read'] } });
+assert.equal(grantEventDashboard.statusCode, 200, grantEventDashboard.body);
+const eventDashboardAllowed = await app.inject({ method: 'GET', url: `/api/eventos/${event.id}/dashboard`, headers: authHeaders(staffCookie) });
+assert.equal(eventDashboardAllowed.statusCode, 200, eventDashboardAllowed.body);
+const revokeEventDashboard = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: [] } });
+assert.equal(revokeEventDashboard.statusCode, 200, revokeEventDashboard.body);
+assert.equal((await app.inject({ method: 'GET', url: `/api/eventos/${event.id}/dashboard`, headers: authHeaders(staffCookie) })).statusCode, 403);
+
+const reportsDenied = await app.inject({ method: 'GET', url: `/api/eventos/${event.id}/transacoes`, headers: authHeaders(staffCookie) });
+assert.equal(reportsDenied.statusCode, 403, reportsDenied.body);
+const grantReports = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['reports.read'] } });
+assert.equal(grantReports.statusCode, 200, grantReports.body);
+assert.equal((await app.inject({ method: 'GET', url: `/api/eventos/${event.id}/transacoes`, headers: authHeaders(staffCookie) })).statusCode, 200);
+const revokeReports = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: [] } });
+assert.equal(revokeReports.statusCode, 200, revokeReports.body);
+assert.equal((await app.inject({ method: 'GET', url: `/api/eventos/${event.id}/transacoes`, headers: authHeaders(staffCookie) })).statusCode, 403);
+
 // Unknown permission, self-edit, and cross-tenant attempts are rejected.
 const unknown = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['cash.superuser'] } });
 assert.equal(unknown.statusCode, 400, unknown.body);
@@ -318,9 +337,11 @@ await prisma.configuracaoOperacao.update({ where: { cervejariaId: company.id }, 
 await prisma.configuracaoOperacional.update({ where: { cervejariaId: company.id }, data: { inventoryEnabled: true, kitchenEnabled: true } });
 const stockProduct = await prisma.produto.create({ data: { nome: `Stock QA ${suffix}`, tipo: 'COMIDA', controlaEstoque: true, cervejariaId: company.id } });
 const stockBalance = await prisma.inventoryBalance.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, produtoId: stockProduct.id, quantidade: '10.000' } });
+const manuallyAdjustedProduct = await prisma.produto.create({ data: { nome: `Manual adjustment QA ${suffix}`, tipo: 'COMIDA', controlaEstoque: true, cervejariaId: company.id, pontoVendaId: point.id } });
+const manuallyAdjustedBalance = await prisma.inventoryBalance.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, produtoId: manuallyAdjustedProduct.id, quantidade: '4.000' } });
 const manualInventoryPhoto = async () => ({
-  balance: await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: stockBalance.id } }),
-  movements: await prisma.inventoryMovement.findMany({ where: { cervejariaId: company.id, produtoId: stockProduct.id }, orderBy: { createdAt: 'asc' } }),
+  balance: await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: manuallyAdjustedBalance.id } }),
+  movements: await prisma.inventoryMovement.findMany({ where: { cervejariaId: company.id, produtoId: manuallyAdjustedProduct.id }, orderBy: { createdAt: 'asc' } }),
 });
 const manualInventoryBeforeDenial = await manualInventoryPhoto();
 const manualInventoryReadDenied = await app.inject({ method: 'GET', url: `/api/operacao/estoque?pontoVendaId=${point.id}`, headers: authHeaders(staffCookie) });
@@ -330,9 +351,15 @@ assert.equal(grantInventoryRead.statusCode, 200, grantInventoryRead.body);
 assert.equal((await app.inject({ method: 'GET', url: `/api/operacao/estoque?pontoVendaId=${point.id}`, headers: authHeaders(staffCookie) })).statusCode, 200);
 const crossTenantInventoryRead = await app.inject({ method: 'GET', url: `/api/operacao/estoque?pontoVendaId=${foreignPoint.id}`, headers: authHeaders(staffCookie) });
 assert.equal(crossTenantInventoryRead.statusCode, 404, crossTenantInventoryRead.body);
-const manualInventoryWriteDenied = await app.inject({ method: 'POST', url: '/api/operacao/estoque/entrada', headers: authHeaders(staffCookie), payload: { pontoVendaId: point.id, produtoId: stockProduct.id, quantidade: 1 } });
+const manualInventoryWriteDenied = await app.inject({ method: 'POST', url: '/api/operacao/estoque/entrada', headers: authHeaders(staffCookie), payload: { pontoVendaId: point.id, produtoId: manuallyAdjustedProduct.id, quantidade: 1 } });
 assert.equal(manualInventoryWriteDenied.statusCode, 403, manualInventoryWriteDenied.body);
 assert.deepEqual(await manualInventoryPhoto(), manualInventoryBeforeDenial, 'manual inventory denials preserve stock balance and movement ledger');
+const grantInventoryAdjust = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['inventory.adjust'] } });
+assert.equal(grantInventoryAdjust.statusCode, 200, grantInventoryAdjust.body);
+const manualInventoryWriteAllowed = await app.inject({ method: 'POST', url: '/api/operacao/estoque/entrada', headers: authHeaders(staffCookie), payload: { pontoVendaId: point.id, produtoId: manuallyAdjustedProduct.id, quantidade: 1, observacao: 'QA permission grant' } });
+assert.equal(manualInventoryWriteAllowed.statusCode, 201, manualInventoryWriteAllowed.body);
+assert.equal(Number((await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: manuallyAdjustedBalance.id } })).quantidade), 5);
+assert.equal(await prisma.inventoryMovement.count({ where: { cervejariaId: company.id, produtoId: manuallyAdjustedProduct.id, tipo: 'ENTRADA' } }), 1);
 const operationalCommand = await prisma.comanda.create({
   data: { origem: 'CAIXA', pontoVendaId: point.id, sessaoCaixaRealizacaoId: cashSession.id, diaOperacional: cashSession.diaOperacional, tipo: 'MESA', identificador: `QA-${suffix}`, status: 'ABERTA', abertaPorId: owner.id, total: '30.00' },
 });
@@ -371,6 +398,22 @@ const operationalOrder = await prisma.pedidoOperacao.create({
 const operationalItem = await prisma.itemComanda.create({
   data: { comandaId: operationalCommand.id, produtoId: stockProduct.id, pedidoCozinhaId: operationalOrder.id, nome: stockProduct.nome, quantidade: 3, precoUnit: '10.00', exigePreparo: false },
 });
+const discountPhoto = async () => prisma.comanda.findUniqueOrThrow({ where: { id: operationalCommand.id }, select: { desconto: true, total: true } });
+const discountBeforeDenial = await discountPhoto();
+const discountDenied = await app.inject({ method: 'PATCH', url: `/api/operacao/comandas/${operationalCommand.id}/desconto`, headers: authHeaders(staffCookie), payload: { desconto: 5 } });
+assert.equal(discountDenied.statusCode, 403, discountDenied.body);
+assert.deepEqual(await discountPhoto(), discountBeforeDenial, 'missing discount.apply preserves the command financial fields');
+const grantDiscount = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['discount.apply'] } });
+assert.equal(grantDiscount.statusCode, 200, grantDiscount.body);
+const discountAllowed = await app.inject({ method: 'PATCH', url: `/api/operacao/comandas/${operationalCommand.id}/desconto`, headers: authHeaders(staffCookie), payload: { desconto: 5 } });
+assert.equal(discountAllowed.statusCode, 200, discountAllowed.body);
+assert.equal(Number((await discountPhoto()).desconto), 5, 'discount.apply persists the requested business discount');
+const discountAfterGrant = await discountPhoto();
+const revokeDiscount = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: [] } });
+assert.equal(revokeDiscount.statusCode, 200, revokeDiscount.body);
+assert.equal((await app.inject({ method: 'PATCH', url: `/api/operacao/comandas/${operationalCommand.id}/desconto`, headers: authHeaders(staffCookie), payload: { desconto: 2 } })).statusCode, 403);
+assert.deepEqual(await discountPhoto(), discountAfterGrant, 'revoked discount.apply blocks another update in the same session');
+await prisma.comanda.update({ where: { id: operationalCommand.id }, data: { desconto: 0, total: '30.00' } });
 const optionalSnapshot = await prisma.itemComandaOpcional.create({ data: { itemComandaId: operationalItem.id, nome: 'QA optional', precoAdicional: '1.25', quantidade: 2 } });
 const kitchenReadDenied = await app.inject({ method: 'GET', url: '/api/operacao/cozinha', headers: authHeaders(staffCookie) });
 assert.equal(kitchenReadDenied.statusCode, 403, kitchenReadDenied.body);
@@ -421,6 +464,20 @@ assert.equal((await prisma.itemComanda.findUniqueOrThrow({ where: { id: operatio
 await prisma.produto.update({ where: { id: stockProduct.id }, data: { pontoVendaId: point.id, exigePreparo: true } });
 await prisma.preco.create({ data: { produtoId: stockProduct.id, volumeMl: 0, preco: '10.00' } });
 const cardapio = await prisma.cardapio.create({ data: { nome: `QA menu ${suffix}`, cervejariaId: company.id, pontoVendaId: point.id } });
+const eventMenuBefore = await prisma.eventoProduto.findMany({ where: { eventoId: eventForPermissionGrants.id }, orderBy: { produtoId: 'asc' } });
+const eventMenuDenied = await app.inject({ method: 'PUT', url: `/api/eventos/${eventForPermissionGrants.id}/cardapio`, headers: authHeaders(staffCookie), payload: { produtoIds: [stockProduct.id] } });
+assert.equal(eventMenuDenied.statusCode, 403, eventMenuDenied.body);
+assert.deepEqual(await prisma.eventoProduto.findMany({ where: { eventoId: eventForPermissionGrants.id }, orderBy: { produtoId: 'asc' } }), eventMenuBefore, 'denied event-menu change preserves the selected products');
+const grantEventMenu = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: ['event.menu.manage'] } });
+assert.equal(grantEventMenu.statusCode, 200, grantEventMenu.body);
+const eventMenuAllowed = await app.inject({ method: 'PUT', url: `/api/eventos/${eventForPermissionGrants.id}/cardapio`, headers: authHeaders(staffCookie), payload: { produtoIds: [stockProduct.id] } });
+assert.equal(eventMenuAllowed.statusCode, 200, eventMenuAllowed.body);
+assert.deepEqual((await prisma.eventoProduto.findMany({ where: { eventoId: eventForPermissionGrants.id }, select: { produtoId: true } })).map((row) => row.produtoId), [stockProduct.id], 'event.menu.manage persists the event-specific menu');
+const eventMenuAfterGrant = await prisma.eventoProduto.findMany({ where: { eventoId: eventForPermissionGrants.id }, orderBy: { produtoId: 'asc' } });
+const revokeEventMenu = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: [] } });
+assert.equal(revokeEventMenu.statusCode, 200, revokeEventMenu.body);
+assert.equal((await app.inject({ method: 'PUT', url: `/api/eventos/${eventForPermissionGrants.id}/cardapio`, headers: authHeaders(staffCookie), payload: { produtoIds: [] } })).statusCode, 403);
+assert.deepEqual(await prisma.eventoProduto.findMany({ where: { eventoId: eventForPermissionGrants.id }, orderBy: { produtoId: 'asc' } }), eventMenuAfterGrant, 'revoked event.menu.manage leaves the selected products unchanged');
 await prisma.cardapioProduto.create({ data: { cardapioId: cardapio.id, produtoId: stockProduct.id, cervejariaId: company.id, pontoVendaId: point.id, volumeMl: 0, precoUnit: '10.00' } });
 await prisma.sessaoCaixaOperacao.update({ where: { id: cashSession.id }, data: { cardapioId: cardapio.id } });
 await prisma.sessaoCaixaProdutoOperacao.create({ data: { sessaoCaixaId: cashSession.id, produtoId: stockProduct.id, volumeMl: 0, precoUnit: '10.00' } });
