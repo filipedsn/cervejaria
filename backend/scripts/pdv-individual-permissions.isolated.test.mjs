@@ -1223,6 +1223,14 @@ await writeFile(path.join(process.env.PDV_QA_TEMP_PARENT, 'live-results', 'brows
 process.stdout.write(browserStdout);
 process.stderr.write(browserStderr);
 assert.equal(browserExitCode, 0, 'Live operational RBAC browser test failed.');
+const browserInventoryMovements = await prisma.inventoryMovement.findMany({
+  where: { pontoVendaId: point.id, produtoId: stockProduct.id, registradoPorId: staff.id, tipo: 'ENTRADA', observacao: 'authorized live RBAC adjustment' },
+  select: { quantidade: true, registradoPorId: true, produtoId: true },
+});
+assert.equal(browserInventoryMovements.length, 1, 'live inventory.adjust UI creates exactly one authorized stock movement');
+assert.equal(Number(browserInventoryMovements[0].quantidade), 1);
+assert.equal(browserInventoryMovements[0].registradoPorId, staff.id, 'live stock movement records the authorized staff member');
+assert.equal(browserInventoryMovements[0].produtoId, stockProduct.id);
 const browserCreatedCommands = await prisma.comanda.findMany({
   where: { pontoVendaId: point.id, origem: 'CAIXA', identificador: { startsWith: 'RBAC command ' } },
   select: { id: true, abertaPorId: true, status: true },
