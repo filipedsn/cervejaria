@@ -27,15 +27,23 @@ const selectedTree = execFileSync('git', ['rev-parse', `${selectedCommit}^{tree}
 const runId = randomBytes(8).toString('hex');
 const qaTempParent = path.join(repoRoot, 'artifacts', 'rbac-permissions-ui-2026-10-10');
 const tempRoot = await mkdtemp(path.join(qaTempParent, `git-snapshot-${runId}-`));
+const runOutputRoot = path.join(qaTempParent, `run-${runId}`);
 const snapshotRoot = path.join(tempRoot, 'git-source-snapshot');
 const backendSnapshot = path.join(snapshotRoot, 'backend');
 const auditFile = path.join(tempRoot, 'module-origins.jsonl');
 const auditHook = path.join(tempRoot, 'pdv-import-origin-guard.mjs');
 const evidencePath = process.argv.find((value) => value.startsWith('--evidence-out='))?.slice('--evidence-out='.length);
+const consoleOutputPath = process.argv.find((value) => value.startsWith('--console-out='))?.slice('--console-out='.length);
 const cutover = process.argv.includes('--cutover');
 const focus = process.argv.find(value => value.startsWith('--focus='))?.slice(8);
 const resumeFile = process.argv.find(value => value.startsWith('--resume-operation='))?.slice(19);
 if (focus && !['categories', 'permissions'].includes(focus)) throw new Error('Unknown focused QA gate.');
+const runnerOwnedPaths = [
+  tempRoot,
+  runOutputRoot,
+  ...(evidencePath ? [path.resolve(repoRoot, evidencePath)] : []),
+  ...(consoleOutputPath ? [path.resolve(repoRoot, consoleOutputPath)] : []),
+];
 const normalizedSha256 = (value) => createHash('sha256').update(Buffer.from(value.toString('utf8').replaceAll('\r\n', '\n'))).digest('hex');
 const byteSha256 = (value) => createHash('sha256').update(value).digest('hex');
 const git = (args, options = {}) => execFileSync('git', args, { cwd: repoRoot, ...options });
@@ -49,31 +57,79 @@ const run = (command, args, options = {}) => {
   return result;
 };
 
-async function localStateFingerprint(ownedTempPath) {
-  const ownedRelativePath = ownedTempPath ? path.relative(repoRoot, ownedTempPath).split(path.sep).join('/') : null;
+async function localStateFingerprint(ownedTempPaths = []) {
+  const ownedRelativePaths = ownedTempPaths.map((ownedPath) => path.relative(repoRoot, ownedPath).split(path.sep).join('/'));
+  const isRunnerOwned = (candidate) => {
+    const filePath = candidate.replaceAll('\\', '/');
+    return ownedRelativePaths.some((ownedPath) => filePath === ownedPath || filePath.startsWith(`${ownedPath}/`));
+  };
   const statusRecords = git(['status', '--porcelain=v1', '--untracked-files=all', '-z']).toString('utf8').split('\0').filter(Boolean);
   const visibleStatusRecords = statusRecords.filter((record) => {
-    if (!ownedRelativePath || !record.startsWith('?? ')) return true;
-    const filePath = record.slice(3).replaceAll('\\', '/');
-    return filePath !== ownedRelativePath && !filePath.startsWith(`${ownedRelativePath}/`);
+    const filePath = record.slice(3);
+    return !isRunnerOwned(filePath);
   });
   const status = Buffer.from(visibleStatusRecords.join('\0') + (visibleStatusRecords.length ? '\0' : ''));
   const unstaged = git(['diff', '--binary']);
   const staged = git(['diff', '--cached', '--binary']);
   const untrackedPaths = git(['ls-files', '--others', '--exclude-standard', '-z']).toString('utf8').split('\0').filter(Boolean)
-    .filter((relativePath) => !ownedRelativePath || (relativePath !== ownedRelativePath && !relativePath.startsWith(`${ownedRelativePath}/`))).sort();
+    .filter((relativePath) => !isRunnerOwned(relativePath)).sort();
   const untracked = [];
   for (const relativePath of untrackedPaths) {
     const bytes = await readFile(path.join(repoRoot, relativePath));
     untracked.push({ path: relativePath, sha256: byteSha256(bytes) });
   }
+  const trackedPaths = [...new Set([
+    ...git(['ls-files', '-m', '-d', '-z']).toString('utf8').split('\0').filter(Boolean),
+    ...git(['diff', '--cached', '--name-only', '-z']).toString('utf8').split('\0').filter(Boolean),
+  ])].filter((relativePath) => !isRunnerOwned(relativePath)).sort();
+  const tracked = [];
+  for (const relativePath of trackedPaths) {
+    let sha256 = 'MISSING';
+    try { sha256 = byteSha256(await readFile(path.join(repoRoot, relativePath))); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    tracked.push({ path: relativePath, sha256 });
+  }
   const state = {
     statusSha256: byteSha256(status),
     unstagedDiffSha256: byteSha256(unstaged),
     stagedDiffSha256: byteSha256(staged),
+    statusRecords: visibleStatusRecords,
+    unstagedPaths: git(['diff', '--name-only']).toString('utf8').trim().split(/\r?\n/).filter(Boolean).sort(),
+    stagedPaths: git(['diff', '--cached', '--name-only']).toString('utf8').trim().split(/\r?\n/).filter(Boolean).sort(),
+    tracked,
     untracked,
   };
   return { state, sha256: byteSha256(Buffer.from(JSON.stringify(state))) };
+}
+
+function localChangeDelta(before, after) {
+  const beforeUntracked = new Map(before.state.untracked.map((item) => [item.path, item.sha256]));
+  const afterUntracked = new Map(after.state.untracked.map((item) => [item.path, item.sha256]));
+  const beforeTracked = new Map(before.state.tracked.map((item) => [item.path, item.sha256]));
+  const afterTracked = new Map(after.state.tracked.map((item) => [item.path, item.sha256]));
+  const beforeStatus = new Map(before.state.statusRecords.map((record) => [record.slice(3), record.slice(0, 2)]));
+  const afterStatus = new Map(after.state.statusRecords.map((record) => [record.slice(3), record.slice(0, 2)]));
+  const allPaths = new Set([
+    ...beforeStatus.keys(),
+    ...afterStatus.keys(),
+    ...before.state.stagedPaths,
+    ...after.state.stagedPaths,
+    ...before.state.unstagedPaths,
+    ...after.state.unstagedPaths,
+    ...beforeUntracked.keys(),
+    ...afterUntracked.keys(),
+    ...beforeTracked.keys(),
+    ...afterTracked.keys(),
+  ]);
+  const changedPaths = [...allPaths].filter((filePath) => {
+    return beforeStatus.get(filePath) !== afterStatus.get(filePath)
+      || beforeUntracked.get(filePath) !== afterUntracked.get(filePath)
+      || beforeTracked.get(filePath) !== afterTracked.get(filePath);
+  }).sort();
+  return {
+    changedPaths,
+    stagedDiffChanged: before.state.stagedDiffSha256 !== after.state.stagedDiffSha256,
+    unstagedDiffChanged: before.state.unstagedDiffSha256 !== after.state.unstagedDiffSha256,
+  };
 }
 
 function npmCliPath() {
@@ -94,7 +150,7 @@ function qaEnvironment() {
   }
   env.GIT_DIR = gitDir;
   env.PDV_GIT_QA_COMMIT = selectedCommit;
-  env.PDV_QA_TEMP_PARENT = path.join(repoRoot, 'artifacts', 'rbac-permissions-ui-2026-10-10');
+  env.PDV_QA_TEMP_PARENT = runOutputRoot;
   env.PDV_GAMIFIED_CATEGORY_CATALOG = '';
   return env;
 }
@@ -138,6 +194,8 @@ let succeeded = false;
 let syntheticExitCode = null;
 let representativeExitCode = null;
 let globalDevPreflight = null;
+let materializedTree = null;
+let materializedTrackedBlobCount = null;
 const runnerPath = path.relative(repoRoot, fileURLToPath(import.meta.url)).split(path.sep).join('/');
 const runnerWorkingTreeSha256 = normalizedSha256(await readFile(fileURLToPath(import.meta.url)));
 const runnerSelectedCommitSha256 = normalizedSha256(git(['show', `${selectedCommit}:${runnerPath}`]));
@@ -145,19 +203,22 @@ if (runnerWorkingTreeSha256 !== runnerSelectedCommitSha256) {
   throw new Error(`Certification runner differs from selected Git revision: ${runnerPath}`);
 }
 console.log(`PDV_GIT_QA_RUNNER commit=${selectedCommit}:${runnerPath}; sha256=${runnerSelectedCommitSha256}; origin=selected-Git-blob`);
-  const localBefore = await localStateFingerprint(tempRoot);
+  const localBefore = await localStateFingerprint(runnerOwnedPaths);
 const startTree = git(['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim();
 try {
   certificationWork: {
+  await mkdir(runOutputRoot, { recursive: true });
   await mkdir(snapshotRoot, { recursive: true });
-  const { tree: objectTree, materializedBlobCount } = await materializeGitSnapshot({ repoRoot, commit: selectedCommit, destination: snapshotRoot, gitDir });
-  if (objectTree !== selectedTree) throw new Error('Selected Git tree changed during materialization.');
+  const materialized = await materializeGitSnapshot({ repoRoot, commit: selectedCommit, destination: snapshotRoot, gitDir });
+  materializedTree = materialized.tree;
+  materializedTrackedBlobCount = materialized.materializedBlobCount;
+  if (materializedTree !== selectedTree) throw new Error('Selected Git tree changed during materialization.');
   if (!existsSync(path.join(backendSnapshot, 'package-lock.json'))) throw new Error('Pinned snapshot is missing backend/package-lock.json.');
 
   const lockHash = byteSha256(await readFile(path.join(backendSnapshot, 'package-lock.json')));
   const npmCli = npmCliPath();
   const env = qaEnvironment();
-  console.log(`PDV_GIT_QA_SOURCE commit=${selectedCommit}; tree=${selectedTree}; materialization=git-cat-file; trackedBlobs=${materializedBlobCount}; code=tracked-tree-only`);
+  console.log(`PDV_GIT_QA_SOURCE commit=${selectedCommit}; tree=${selectedTree}; materialization=git-cat-file; trackedBlobs=${materializedTrackedBlobCount}; code=tracked-tree-only`);
   console.log(`PDV_GIT_QA_DEPENDENCIES package-lock.sha256=${lockHash}; install=npm-ci-in-snapshot; node=${process.version}`);
   run(process.execPath, [npmCli, 'ci', '--no-audit', '--no-fund'], { cwd: backendSnapshot, env, stdio: 'inherit' });
   run(process.execPath, [npmCli, 'run', 'build'], { cwd: backendSnapshot, env, stdio: 'inherit' });
@@ -267,9 +328,42 @@ try {
     const lines = (await readFile(auditFile, 'utf8')).split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
     const unexpected = lines.filter(row => !row.snapshotProjectSource && !row.qaGeneratedPrismaClient && !row.path.toLowerCase().includes(`${path.sep}node_modules${path.sep}`));
     if (unexpected.length) throw new Error('Focused QA imported non-snapshot project code.');
-    const localAfter = await localStateFingerprint(tempRoot);
-    if (localAfter.sha256 !== localBefore.sha256 || git(['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim() !== startTree) throw new Error('Local state changed during focused certification.');
-    const evidence = { result: 'PASS', scope: 'focused-gate-only', gate, selectedCommit, selectedTree, materializedTrackedBlobCount: materializedBlobCount, measuredCommands, importedWorkspaceModules: 0, localStateUnchanged: true, prodAccessUsed: 'NO', devSharedWrites: 'NO' };
+    const snapshotProjectPaths = [...new Set(lines.filter((row) => row.snapshotProjectSource).map((row) => row.path))].sort();
+    const externalDependencyPaths = [...new Set(lines.filter((row) => !row.snapshotProjectSource && !row.qaGeneratedPrismaClient
+      && row.path.toLowerCase().includes(`${path.sep}node_modules${path.sep}`)).map((row) => row.path))].sort();
+    const importAuditSha256 = normalizedSha256(Buffer.from(snapshotProjectPaths.join('\n') + '\n'));
+    const localAfter = await localStateFingerprint(runnerOwnedPaths);
+    const endTree = git(['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim();
+    const workspaceDelta = localChangeDelta(localBefore, localAfter);
+    const snapshotIntegrity = materializedTree === selectedTree ? 'PASS' : 'FAIL';
+    const evidence = {
+      result: 'PASS',
+      scope: 'focused-gate-only',
+      gate,
+      selectedCommit,
+      selectedTree,
+      materializedTree,
+      snapshotIntegrity,
+      materializedTrackedBlobCount,
+      measuredCommands,
+      moduleOriginAudit: {
+        result: 'PASS',
+        snapshotProjectModuleCount: snapshotProjectPaths.length,
+        snapshotProjectModulePathListSha256: importAuditSha256,
+        nonSnapshotWorkspaceModuleCount: unexpected.length,
+        externalDependencyModuleCount: externalDependencyPaths.length,
+      },
+      workspaceIntegrity: {
+        checkoutTreeBefore: startTree,
+        checkoutTreeAfter: endTree,
+        unchangedFromRunStart: localAfter.sha256 === localBefore.sha256 && endTree === startTree,
+        externalChangesObserved: workspaceDelta.changedPaths.length > 0 || workspaceDelta.stagedDiffChanged || workspaceDelta.unstagedDiffChanged || endTree !== startTree,
+        externalChanges: workspaceDelta,
+        runnerOwnedOutputPathsExcluded: runnerOwnedPaths.map((ownedPath) => path.relative(repoRoot, ownedPath).split(path.sep).join('/')),
+      },
+      prodAccessUsed: 'NO',
+      devSharedWrites: 'NO',
+    };
     if (evidencePath) await writeFile(path.resolve(evidencePath), JSON.stringify(evidence, null, 2) + '\n');
     console.log(`PDV_GIT_FOCUSED_EVIDENCE=${JSON.stringify(evidence)}`);
     succeeded = true;
@@ -321,11 +415,9 @@ try {
   }
   console.log(`PDV_GIT_IMPORT_AUDIT=PASS; commit=${selectedCommit}; snapshotProjectModules=${sourceModules.length}; pathList.sha256=${importAuditSha256}; externalWorkspaceModules=0; externalDependencyModules=${externalDependencyModules.length}; prismaRuntime=${prismaClientPackage.version}`);
 
-  const localAfter = await localStateFingerprint();
+  const localAfter = await localStateFingerprint(runnerOwnedPaths);
   const endTree = git(['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim();
-  if (localAfter.sha256 !== localBefore.sha256 || endTree !== startTree) {
-    throw new Error(`Working tree/index changed during certification. before=${localBefore.sha256}/${startTree}; after=${localAfter.sha256}/${endTree}`);
-  }
+  const workspaceDelta = localChangeDelta(localBefore, localAfter);
   const evidence = {
     version: 1,
     certification: (syntheticExitCode === 0 && (representativeExitCode === null || representativeExitCode === 0)) ? (representativeExitCode === null ? 'synthetic-only' : 'pdv-unico-current-disposable') : 'BLOCKED',
@@ -336,7 +428,7 @@ try {
     certificationRunnerPath: runnerPath,
     certificationRunnerSha256: runnerSelectedCommitSha256,
     sourceMaterialization: 'git cat-file extraction of selectedCommit; every tracked file verified against exact Git blob SHA-1; no checkout/worktree; npm ci in temporary snapshot',
-    materializedTrackedBlobCount: materializedBlobCount,
+    materializedTrackedBlobCount,
     packageLockSha256: lockHash,
     nodeVersion: process.version,
     measuredCommands,
@@ -361,7 +453,12 @@ try {
     localState: {
       beforeSha256: localBefore.sha256,
       afterSha256: localAfter.sha256,
-      identical: true,
+      identical: localAfter.sha256 === localBefore.sha256 && endTree === startTree,
+      checkoutTreeBefore: startTree,
+      checkoutTreeAfter: endTree,
+      externalChangesObserved: workspaceDelta.changedPaths.length > 0 || workspaceDelta.stagedDiffChanged || workspaceDelta.unstagedDiffChanged || endTree !== startTree,
+      externalChanges: workspaceDelta,
+      runnerOwnedOutputPathsExcluded: runnerOwnedPaths.map((ownedPath) => path.relative(repoRoot, ownedPath).split(path.sep).join('/')),
       stagedDiffSha256: localBefore.state.stagedDiffSha256,
       unstagedDiffSha256: localBefore.state.unstagedDiffSha256,
       untrackedFileCount: localBefore.state.untracked.length,
@@ -370,17 +467,69 @@ try {
     devSharedAccess: globalDevPreflight ? 'READ_ONLY' : 'NO',
   };
   if (evidencePath) await writeFile(path.resolve(evidencePath), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
-  console.log(`PDV_GIT_QA_LOCAL_STATE=UNCHANGED; fingerprint=${localAfter.sha256}; staged=${localAfter.state.stagedDiffSha256}; unstaged=${localAfter.state.unstagedDiffSha256}; untracked=${localAfter.state.untracked.length}`);
+  const localStateUnchanged = localAfter.sha256 === localBefore.sha256 && endTree === startTree;
+  console.log(`PDV_GIT_QA_LOCAL_STATE=${localStateUnchanged ? 'UNCHANGED' : 'EXTERNAL_CHANGES_OBSERVED'}; fingerprint=${localAfter.sha256}; changedPaths=${workspaceDelta.changedPaths.length}; staged=${localAfter.state.stagedDiffSha256}; unstaged=${localAfter.state.unstagedDiffSha256}; untracked=${localAfter.state.untracked.length}`);
   console.log(`PDV_GIT_QA_EVIDENCE=${JSON.stringify(evidence)}`);
   succeeded = syntheticExitCode === 0 && (representativeExitCode === null || representativeExitCode === 0);
   }
+} catch (error) {
+  const failureMessage = (error instanceof Error ? error.message : String(error)).replace(/postgres(?:ql)?:\/\/\S+/gi, '[DATABASE URL REDACTED]');
+  const localAfter = await localStateFingerprint(runnerOwnedPaths).catch(() => null);
+  const endTree = git(['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim();
+  const workspaceDelta = localAfter ? localChangeDelta(localBefore, localAfter) : null;
+  let moduleOriginAudit = { result: 'NOT_RUN' };
+  if (existsSync(auditFile)) {
+    const lines = (await readFile(auditFile, 'utf8')).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+    const snapshotProjectPaths = [...new Set(lines.filter((row) => row.snapshotProjectSource).map((row) => row.path))].sort();
+    const nonSnapshotPaths = lines.filter((row) => !row.snapshotProjectSource && !row.qaGeneratedPrismaClient && !row.path.toLowerCase().includes(`${path.sep}node_modules${path.sep}`));
+    moduleOriginAudit = {
+      result: nonSnapshotPaths.length ? 'FAIL' : 'PARTIAL',
+      snapshotProjectModuleCount: snapshotProjectPaths.length,
+      snapshotProjectModulePathListSha256: normalizedSha256(Buffer.from(snapshotProjectPaths.join('\n') + '\n')),
+      nonSnapshotWorkspaceModuleCount: nonSnapshotPaths.length,
+      importedNonSnapshotWorkspacePaths: nonSnapshotPaths.map((row) => row.path),
+    };
+  }
+  const receipt = {
+    result: 'FAIL',
+    scope: focus ? `focused-${focus}` : 'full-run',
+    selectedCommit,
+    selectedTree,
+    materializedTree,
+    snapshotIntegrity: materializedTree === null ? 'NOT_CONFIRMED' : materializedTree === selectedTree ? 'PASS' : 'FAIL',
+    materializedTrackedBlobCount,
+    runnerPath,
+    runnerSha256: runnerSelectedCommitSha256,
+    harnessResult: 'FAIL',
+    productResult: 'UNCLASSIFIED; consult component results below',
+    componentExitCodes: measuredCommands,
+    moduleOriginAudit,
+    workspaceIntegrity: {
+      checkoutTreeBefore: startTree,
+      checkoutTreeAfter: endTree,
+      unchangedFromRunStart: localAfter ? localAfter.sha256 === localBefore.sha256 && endTree === startTree : false,
+      externalChangesObserved: localAfter ? Boolean(workspaceDelta.changedPaths.length || workspaceDelta.stagedDiffChanged || workspaceDelta.unstagedDiffChanged || endTree !== startTree) : 'UNKNOWN',
+      externalChanges: workspaceDelta,
+      runnerOwnedOutputPathsExcluded: runnerOwnedPaths.map((ownedPath) => path.relative(repoRoot, ownedPath).split(path.sep).join('/')),
+    },
+    failure: failureMessage,
+    prodAccessUsed: 'NO',
+    devSharedWrites: 'NO',
+  };
+  if (evidencePath) await writeFile(path.resolve(evidencePath), `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
+  console.error(`PDV_GIT_QA_FAILURE_RECEIPT=${JSON.stringify(receipt)}`);
+  process.exitCode = 1;
 } finally {
   if (!path.resolve(tempRoot).startsWith(`${path.resolve(qaTempParent)}${path.sep}`) || !path.basename(tempRoot).startsWith(`git-snapshot-${runId}-`)) throw new Error('Unsafe Git QA temporary cleanup path.');
   await rm(tempRoot, { recursive: true, force: true });
 }
 
-if (succeeded) console.log(`PDV_GIT_QA_TEMPORARY_SNAPSHOT_REMOVED=PASS; runId=${runId}`);
-else {
+if (succeeded) {
   console.log(`PDV_GIT_QA_TEMPORARY_SNAPSHOT_REMOVED=PASS; runId=${runId}`);
+  console.log('PDV_GIT_QA_RUN_RESULT=PASS');
+  process.exitCode = 0;
+} else {
+  console.log(`PDV_GIT_QA_TEMPORARY_SNAPSHOT_REMOVED=PASS; runId=${runId}`);
+  console.log('PDV_GIT_QA_RUN_RESULT=FAIL');
   process.exitCode = 1;
 }
