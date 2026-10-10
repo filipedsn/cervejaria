@@ -786,7 +786,7 @@ test('cash.movement.write denies, records exact cash movements through the UI, a
     const responsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === movementUrl && response.request().method() === 'POST');
     await dialog.getByRole('button', { name: 'Confirmar' }).click();
     const response = await responsePromise;
-    expect(response.status(), await response.text()).toBe(200);
+    expect(response.status(), await response.text()).toBe(201);
     const safeResponse = await response.json();
     expect(safeResponse.valoresRestritos).toBe(true);
     expect(JSON.stringify(safeResponse)).not.toContain(value.replace(',', '.'));
