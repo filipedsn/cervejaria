@@ -23,6 +23,7 @@ async function primeAndLogout(page: Page, cookie: string) {
 }
 
 async function loginForm(page: Page, email: string, password: string) {
+  await page.goto('/login');
   await expect(page.getByLabel('E-mail')).toBeVisible({ timeout: 15_000 });
   await page.getByLabel('E-mail').fill(email);
   await page.locator('#password').fill(password);
