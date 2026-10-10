@@ -224,6 +224,11 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
 
   // dashboard.read grants a separate read-only route and API. A staff identity
   // without command.read must not inherit command access from this grant.
+  const disabledDashboard = await staffContext.request.get('/api/cervejaria/dashboard');
+  expect([401, 403]).toContain(disabledDashboard.status());
+  await staff.goto('/dashboard');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/dashboard');
+  console.log('RBAC_LIVE_REGRESSION key=dashboard.read; disabled=route-and-api-denied; result=PASS');
   await setPermissions(ownerContext, ['dashboard.read']);
   await staff.goto('/dashboard');
   await expect.poll(() => new URL(staff.url()).pathname).toBe('/dashboard');
