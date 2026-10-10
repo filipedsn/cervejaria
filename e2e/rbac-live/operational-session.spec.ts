@@ -1232,6 +1232,8 @@ test('event.taps.operate mounts a chope only while the permission is granted', a
   await setEventStaffPermissions(['command.read']);
   const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const staff = await staffContext.newPage();
+  const staffPageErrors: string[] = [];
+  staff.on('pageerror', (error) => staffPageErrors.push(error.message));
   await staffContext.addCookies([{ name: 'token', value: eventMenuStaffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
   await staff.goto('/eventos');
   const eventCard = staff.locator('.card').filter({ hasText: eventMenuEventName }).first();
@@ -1241,6 +1243,7 @@ test('event.taps.operate mounts a chope only while the permission is granted', a
   await expect(staff.getByRole('heading', { name: 'Comandas', exact: true })).toBeVisible();
   const tapsTrigger = staff.getByRole('button', { name: /Taps do evento/ });
   await expect(tapsTrigger).toBeVisible();
+  expect(staffPageErrors).toEqual([]);
   await tapsTrigger.click();
   let dialog = staff.getByRole('dialog');
   await expect(dialog.getByText('Você precisa da permissão “Montar e operar Taps” para alterar esta montagem.')).toBeVisible();

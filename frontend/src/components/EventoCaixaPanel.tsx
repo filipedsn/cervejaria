@@ -15,8 +15,8 @@ type CaixaEvento = {
   trocoInicial: number;
   abertoEm: string;
   fechadoEm: string | null;
-  esperado: Record<Forma, number>;
-  recebidos: Record<Forma, number>;
+  esperado?: Record<Forma, number>;
+  recebidos?: Record<Forma, number>;
   contado: Record<Forma, number> | null;
   divergencia: Record<Forma, number> | null;
   movimentos: Array<{ id: string; tipo: 'SUPRIMENTO' | 'SANGRIA'; valor: number; observacao: string | null }>;
@@ -67,6 +67,7 @@ export function EventoCaixaPanel({ eventoId, comandasAbertas = 0, eventoAberto =
   });
   const caixa = caixaQuery.data?.caixa ?? null;
   const aberto = caixaQuery.data?.aberto ?? false;
+  const valoresCaixaDisponiveis = !!caixa?.esperado && !!caixa.recebidos;
   const contagemComandasAbertas = comandasAbertasQuery.data?.length ?? comandasAbertas;
   const podeConfirmarContagemComandas = comandasAbertasQuery.isSuccess;
   const temPendente = contasQuery.data?.some((conta) => conta.saldo > 0) ?? false;
@@ -135,10 +136,10 @@ export function EventoCaixaPanel({ eventoId, comandasAbertas = 0, eventoAberto =
                   <button type="button" className="icon-btn-ghost" aria-label="Suprimir painel do caixa" title="Suprimir painel do caixa" onClick={() => setPainelSuprimido(true)}><IconEyeOff className="h-5 w-5" /></button>
                 </div>
               </div>
-              {podeVerValores && (
+              {podeVerValores && valoresCaixaDisponiveis && (
                 <div className="grid grid-cols-2 gap-2.5">
-                  <div className="rounded-xl border border-line bg-surface-lighter/70 px-3 py-2.5"><p className="text-xs text-ink-muted">Gaveta</p><strong className="mt-0.5 block text-lg font-bold tabular-nums">{formatCurrency(caixa.esperado.DINHEIRO)}</strong></div>
-                  <div className="rounded-xl border border-line bg-surface-lighter/70 px-3 py-2.5"><p className="text-xs text-ink-muted">Recebido</p><strong className="mt-0.5 block text-lg font-bold tabular-nums">{formatCurrency(Object.values(caixa.recebidos).reduce((total, valor) => total + valor, 0))}</strong></div>
+                  <div className="rounded-xl border border-line bg-surface-lighter/70 px-3 py-2.5"><p className="text-xs text-ink-muted">Gaveta</p><strong className="mt-0.5 block text-lg font-bold tabular-nums">{formatCurrency(caixa.esperado!.DINHEIRO)}</strong></div>
+                  <div className="rounded-xl border border-line bg-surface-lighter/70 px-3 py-2.5"><p className="text-xs text-ink-muted">Recebido</p><strong className="mt-0.5 block text-lg font-bold tabular-nums">{formatCurrency(Object.values(caixa.recebidos!).reduce((total, valor) => total + valor, 0))}</strong></div>
                 </div>
               )}
             </div>
@@ -148,20 +149,20 @@ export function EventoCaixaPanel({ eventoId, comandasAbertas = 0, eventoAberto =
                 {podeRegistrarMovimento && <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => { setTipoMovimento('SANGRIA'); setError(''); setDialog('movimento'); }}>−&nbsp; Sangria</button>}
                 <Link to={`/eventos/${eventoId}/contas-pendentes`} className={`touch-btn-secondary touch-btn-sm flex items-center justify-center text-center leading-tight ${temPendente ? 'caixa-contas-pendentes-alerta' : ''}`} aria-label={temPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes{temPendente ? ' •' : ''}</Link>
               </div>}
-              {podeFecharCaixa && <button type="button" className="touch-btn-orange w-full disabled:opacity-50" disabled={fechar.isPending || !podeConfirmarContagemComandas || contagemComandasAbertas > 0} title={contagemComandasAbertas > 0 ? 'Feche ou deixe pendentes as comandas antes de fechar o caixa.' : undefined} onClick={() => { setError(''); setContado(Object.fromEntries(FORMAS.map(({ id }) => [id, formatCurrencyInputFromNumber(caixa.esperado[id] ?? 0)]) as [Forma, string][]) as Record<Forma, string>); setDialog('fechar'); }}>{fechar.isPending ? 'Fechando…' : !podeConfirmarContagemComandas ? 'Verificando comandas abertas…' : contagemComandasAbertas > 0 ? `Feche as ${contagemComandasAbertas} comandas antes de fechar o caixa` : 'Conferir e fechar caixa'}</button>}
+              {podeFecharCaixa && valoresCaixaDisponiveis && <button type="button" className="touch-btn-orange w-full disabled:opacity-50" disabled={fechar.isPending || !podeConfirmarContagemComandas || contagemComandasAbertas > 0} title={contagemComandasAbertas > 0 ? 'Feche ou deixe pendentes as comandas antes de fechar o caixa.' : undefined} onClick={() => { setError(''); setContado(Object.fromEntries(FORMAS.map(({ id }) => [id, formatCurrencyInputFromNumber(caixa.esperado![id] ?? 0)]) as [Forma, string][]) as Record<Forma, string>); setDialog('fechar'); }}>{fechar.isPending ? 'Fechando…' : !podeConfirmarContagemComandas ? 'Verificando comandas abertas…' : contagemComandasAbertas > 0 ? `Feche as ${contagemComandasAbertas} comandas antes de fechar o caixa` : 'Conferir e fechar caixa'}</button>}
             </div>
           </div>
         </>
       )}
 
-      {caixa && !aberto && <div className="rounded-xl border border-line bg-surface-lighter/60 p-3 text-sm text-ink-muted">Último caixa encerrado em {new Date(caixa.fechadoEm ?? caixa.abertoEm).toLocaleString('pt-BR')}.{podeVerValores ? ` O esperado em dinheiro foi ${formatCurrency(caixa.esperado.DINHEIRO)}.` : ''}</div>}
+      {caixa && !aberto && <div className="rounded-xl border border-line bg-surface-lighter/60 p-3 text-sm text-ink-muted">Último caixa encerrado em {new Date(caixa.fechadoEm ?? caixa.abertoEm).toLocaleString('pt-BR')}.{podeVerValores && caixa.esperado ? ` O esperado em dinheiro foi ${formatCurrency(caixa.esperado.DINHEIRO)}.` : ''}</div>}
 
       <Modal open={dialog === 'movimento' && podeRegistrarMovimento} onClose={() => !registrarMovimento.isPending && setDialog(null)} title={tipoMovimento === 'SUPRIMENTO' ? 'Registrar suprimento' : 'Registrar sangria'}>
         <div className="space-y-3"><div><label className="label">Valor</label><CurrencyInput value={valorMovimento} onChange={setValorMovimento} /></div><div><label className="label">Observação (opcional)</label><input className="input" value={observacao} onChange={(event) => setObservacao(event.target.value)} maxLength={300} /></div><button className="touch-btn-primary w-full" disabled={registrarMovimento.isPending || parseCurrencyInput(valorMovimento) <= 0} onClick={() => registrarMovimento.mutate()}>Confirmar {tipoMovimento === 'SUPRIMENTO' ? 'suprimento' : 'sangria'}</button></div>
       </Modal>
 
-      <Modal open={dialog === 'fechar' && podeFecharCaixa} onClose={() => !fechar.isPending && setDialog(null)} title="Conferir caixa do evento">
-        <div className="space-y-3"><p className="text-sm text-ink-muted">Informe os valores contados/confirmados em cada forma de pagamento.</p>{FORMAS.map(({ id, label }) => <div key={id}><label className="label">{label} · esperado {formatCurrency(caixa?.esperado[id] ?? 0)}</label><CurrencyInput value={contado[id]} onChange={(value) => setContado((current) => ({ ...current, [id]: value }))} /></div>)}<div><label className="label">Observação (opcional)</label><textarea className="input min-h-20" value={observacaoFechamento} onChange={(event) => setObservacaoFechamento(event.target.value)} maxLength={1000} /></div><button className="touch-btn-orange w-full" disabled={fechar.isPending} onClick={() => fechar.mutate()}>Confirmar fechamento</button></div>
+      <Modal open={dialog === 'fechar' && podeFecharCaixa && valoresCaixaDisponiveis} onClose={() => !fechar.isPending && setDialog(null)} title="Conferir caixa do evento">
+        <div className="space-y-3"><p className="text-sm text-ink-muted">Informe os valores contados/confirmados em cada forma de pagamento.</p>{FORMAS.map(({ id, label }) => <div key={id}><label className="label">{label} · esperado {formatCurrency(caixa!.esperado![id])}</label><CurrencyInput value={contado[id]} onChange={(value) => setContado((current) => ({ ...current, [id]: value }))} /></div>)}<div><label className="label">Observação (opcional)</label><textarea className="input min-h-20" value={observacaoFechamento} onChange={(event) => setObservacaoFechamento(event.target.value)} maxLength={1000} /></div><button className="touch-btn-orange w-full" disabled={fechar.isPending} onClick={() => fechar.mutate()}>Confirmar fechamento</button></div>
       </Modal>
     </section>
   );
