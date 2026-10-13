@@ -18,7 +18,7 @@ const runId = `qa-operation-${randomBytes(8).toString('hex')}`;
 const operationStartedAt = new Date();
 const photo = JSON.parse(await readFile(process.env.PDV_REPRESENTATIVE_PHOTO_FILE, 'utf8'));
 const historicalIds = photo.tableRows.find(t => t.model === 'Pagamento').rows.map(r => r.id).sort();
-assert.equal(historicalIds.length, 605);
+assert.equal(historicalIds.length, 1151, 'current 2026-10-12 source photo contains 1,151 historical payments');
 const plain = value => JSON.parse(JSON.stringify(value));
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const historical = () => db.pagamento.findMany({ where: { id: { in: historicalIds } }, orderBy: { id: 'asc' } }).then(plain);
@@ -366,7 +366,7 @@ try {
       results.push({ tenant: tenant.name, status: cashClose === 'PASS' ? 'PASS' : 'BLOCKED', durationMs: Math.round(performance.now() - started), flags: plain(config), openingWithAndWithoutOccurrence: 'PASS', menuAndOriginalPrice: 'PASS', commandPayment: 'PASS', cashClose, cancellationStock: 'PASS', portal: 'PASS', permissionsSameSession: 'PASS', originalKitchen, independentKitchen: independent, refund, tapsAndVolume: volume, tapVolumeFixture: tapVolumeFixture ?? null, sessions: sessionIds });
     } finally { globalThis.Date = originalDate; }
   }
-  assert.deepEqual(await historical(), historyBefore, 'exact 605 original payments remain untouched by QA operation');
+  assert.deepEqual(await historical(), historyBefore, 'exact 1,151 original payments remain untouched by QA operation');
   assert.deepEqual(historicalCommandSanitation.map(row => row.commandId), ['cmuqaoyta0007hvdg3q4v7hkj'], 'the approved empty historical command was sanitized exactly once through the authenticated route');
   finalEvidence = { status: results.every(result => result.status === 'PASS') ? 'PASS' : 'BLOCKED', runId, results, blockers: operationalBlockers, historicalCommandSanitation, qaCleanupAfterBlockedCashClose: { directQaSessionCleanupCount: qaSessionCleanupAfterBusinessBlock.length, sessions: qaSessionCleanupAfterBusinessBlock, classification: 'QA_DATA_CLEANUP_ONLY_NOT_AUTHENTICATED_OPERATIONAL_CLOSE' }, priorQaAttempts: { cancelledOpenCommands: qaAttemptCancelledCommands.length, directlyCleanedOpenCashSessions: qaAttemptCleanedSessions.length, cancellationPath: 'AUTHENTICATED_OPERATIONAL_COMMAND_CANCEL', sessions: qaAttemptCleanedSessions, classification: 'QA_DATA_CLEANUP_ONLY_NOT_AUTHENTICATED_OPERATIONAL_CLOSE' }, unlistedIsolation: { status: 'PASS', tenantId: unlisted, dataCompared: baseline.map(t => t.model), legacyMode: 'EVENTO', legacyAttendantProductRead: 'PASS', canonicalCategories: 0, canonicalConfigurations: 0 }, originalPayments: { count: historicalIds.length, beforeSha256: digest(historyBefore), afterSha256: digest(await historical()), status: 'PASS' }, qaOnlyUserIds: credentials, qaOnlyCreatedIds: createdIds };
   if (finalEvidence.status !== 'PASS') process.exitCode = 1;
