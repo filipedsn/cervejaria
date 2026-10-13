@@ -260,8 +260,8 @@ function Invoke-ReleaseCandidatePrepareFromGitSnapshot {
     throw ('candidate existente diverge; preservado sem sobrescrever: ' + ($verified.Errors -join '; '))
   }
   $token = [guid]::NewGuid().ToString('N')
-  $snapshot = Join-Path $root ('.source-' + $ExpectedReleaseSha + '-' + $token)
-  $staging = Join-Path $root ('.preparing-' + $ExpectedReleaseSha + '-' + $token)
+  $snapshot = Join-Path $root ('.s-' + $token.Substring(0, 16))
+  $staging = Join-Path $root ('.p-' + $token.Substring(0, 16))
   $oldRelease = $env:RELEASE_SHA; $oldViteRelease = $env:VITE_RELEASE_SHA
   try {
     New-Item -ItemType Directory -Force -Path $snapshot, $staging | Out-Null
