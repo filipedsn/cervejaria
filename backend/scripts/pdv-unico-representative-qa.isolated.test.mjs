@@ -3,7 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 
 const qaUrl = validateIsolatedQaEnvironment(process.env).toString();
@@ -13,20 +13,46 @@ const photoPath = path.resolve(process.env.PDV_REPRESENTATIVE_PHOTO_FILE);
 assert.ok(photoPath.startsWith(path.resolve(os.tmpdir()) + path.sep));
 assert.ok(path.basename(photoPath).startsWith('tap76-pdv-photo-'));
 const photo = JSON.parse(await readFile(photoPath, 'utf8'));
-const approval = JSON.parse(await readFile(new URL('./pdv-unico-historical-no-session-approval.json', import.meta.url), 'utf8'));
-const evidence = JSON.parse(await readFile(new URL('../../docs/testing/pdv-unico-representative-dev-qa-evidence.json', import.meta.url), 'utf8'));
+const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+function protectedRelativePath(value, label) {
+  assert.ok(value && !path.isAbsolute(value), `${label} must be a relative protected QA path`);
+  const resolved = path.resolve(backendRoot, value);
+  assert.ok(resolved.startsWith(backendRoot + path.sep), `${label} escaped the QA package root`);
+  return resolved;
+}
+const approval = JSON.parse(await readFile(protectedRelativePath(process.env.PDV_QA_CLASS_C_APPROVAL_RELATIVE ?? 'scripts/pdv-unico-historical-no-session-approval.json', 'Class C approval'), 'utf8'));
+const evidence = JSON.parse(await readFile(protectedRelativePath(process.env.PDV_QA_CLASS_C_EVIDENCE_RELATIVE ?? '../docs/testing/pdv-unico-representative-dev-qa-evidence.json', 'Class C evidence'), 'utf8'));
 assert.equal(approval.sourcePhotoSha256, createHash('sha256').update(await readFile(photoPath)).digest('hex'), 'historical C authorization must match this exact sanitized photo');
 assert.equal(approval.approvedSnapshotSha256, createHash('sha256').update(JSON.stringify(approval.entries)).digest('hex'), 'historical C authorization digest');
-assert.deepEqual(approval.counts, { payments: 577, withExactPaymentAuditReference: 323, withoutExactPaymentAuditReference: 254 });
+assert.equal(approval.counts.payments, approval.entries.length);
+const { buildPdvFinanceMigrationItems } = await import('./pdv-unico-finance-transform.ts');
+const qaApprovalProbe = {
+  companyId: 'qa-approval-policy-probe', pointId: 'qa-approval-policy-probe', confirmedPdvSourceKey: 'PDV:qa-approval-policy-probe',
+  snapshot: { payments: [], debts: [], operationalMovements: [], eventMovements: [] }, confirmedSessions: {}, confirmedEvents: {}, mappedPaymentIds: new Set(),
+  historicalNoSessionApproval: approval, historicalNoSessionBackupSha256: process.env.PDV_QA_SOURCE_BACKUP_SHA256,
+};
+assert.deepEqual(buildPdvFinanceMigrationItems(qaApprovalProbe), [], 'the current-origin Class C policy is accepted only for its pinned QA backup');
+for (const wrongBackupSha256 of [undefined, '0'.repeat(64)]) {
+  assert.throws(() => buildPdvFinanceMigrationItems({ ...qaApprovalProbe, historicalNoSessionBackupSha256: wrongBackupSha256 }),
+    (error) => error.code === 'FINANCE_HISTORICAL_APPROVAL_INVALID', 'the 579-payment QA policy is blocked without its exact backup identity');
+}
 assert.equal(photo.version, 1);
 assert.deepEqual(photo.crossTenantEdges, [], 'photo must have complete, tenant-safe FK closure');
-assert.deepEqual(photo.targetIdentity.map((row) => row.status), ['UNIQUE_MATCH', 'UNIQUE_MATCH']);
+assert.ok(photo.targetIdentity.every((row) => row.status === 'UNIQUE_MATCH'));
 
 assert.ok(process.env.PDV_QA_PRISMA_CLIENT, 'QA Prisma client must be generated in the executor-owned temp directory');
 const prismaClientPath = path.resolve(process.env.PDV_QA_PRISMA_CLIENT);
 assert.ok(prismaClientPath.startsWith(path.resolve(os.tmpdir()) + path.sep));
 const { PrismaClient } = await import(pathToFileURL(path.join(prismaClientPath, 'index.js')).href);
 const db = new PrismaClient({ datasources: { db: { url: qaUrl } }, log: [{ emit: 'event', level: 'query' }] });
+const sourceClientDir = path.resolve(process.env.PDV_QA_SOURCE_PRISMA_CLIENT ?? '');
+assert.ok(sourceClientDir.startsWith(path.resolve(os.tmpdir()) + path.sep), 'QA source Prisma client must live in protected temp storage');
+const sourceDatabase = process.env.PDV_QA_SOURCE_DATABASE;
+assert.ok(sourceDatabase && /^[a-z][a-z0-9_]*$/.test(sourceDatabase), 'exact restored QA source database is required');
+const sourceUrl = new URL(qaUrl);
+sourceUrl.pathname = `/${sourceDatabase}`;
+const { PrismaClient: SourcePrismaClient } = await import(pathToFileURL(path.join(sourceClientDir, 'index.js')).href);
+const sourceDb = new SourcePrismaClient({ datasources: { db: { url: sourceUrl.toString() } }, errorFormat: 'minimal' });
 const metricRows = new Map();
 let activeMetric = null;
 db.$on('query', () => { if (activeMetric) activeMetric.queries++; });
@@ -48,7 +74,7 @@ async function measured(stage, operation) {
 const { runPdvBusinessMigration } = await import('./pdv-unico-business-migrator.ts');
 const { runPdvCatalogMigration, runPdvKitchenOrderContextPreparation, runPdvSessionMigration, runPdvFinanceMigration, runPdvCommerceMigration } = await import('./pdv-unico-catalog-migrator.ts');
 const { runPdvTapOwnershipMigration } = await import('./pdv-unico-tap-migrator.ts');
-const runId = `tap76-representative-${randomBytes(8).toString('hex')}`;
+const runId = process.env.PDV_REPRESENTATIVE_RUN_ID ?? `tap76-representative-${randomBytes(8).toString('hex')}`;
 const tableByName = new Map(photo.tableRows.map((table) => [table.model, table]));
 const modelEntries = Object.entries(db._runtimeDataModel.models).map(([name, model]) => [name, model]);
 const modelByName = new Map(modelEntries);
@@ -177,6 +203,7 @@ async function proveCommerceLinkRequiresDurableProof(target, pointId) {
   const originalBatch = await db.pdvMigrationBatch.findUniqueOrThrow({ where: { id: originalMap.lastBatchId } });
   const originalCheckpoint = structuredClone(originalBatch.checkpoint);
   const proofResults = [];
+  const writeCommandContextForProof = async (pontoVendaId, ocorrenciaId) => db.$executeRaw`UPDATE "Comanda" SET "pontoVendaId" = ${pontoVendaId}, "ocorrenciaId" = ${ocorrenciaId}, "updatedAt" = ${originalCommand.updatedAt} WHERE "id" = ${commandId}`;
   const runProof = async (name, expectedCodes) => {
     const result = await runPdvFinanceMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-finance-proof-${name}`, historicalNoSessionApproval: approval, maxBatches: 1 });
     assert.equal(result.status, 'BLOCKED', `${target.label}: ${name} commerce proof mutation is blocked`);
@@ -205,11 +232,11 @@ async function proveCommerceLinkRequiresDurableProof(target, pointId) {
     await runProof('commerce-receipt-divergent', ['FINANCE_HISTORICAL_COMMERCE_PROOF_DIVERGED', 'FINANCE_HISTORICAL_COMMERCE_DESTINATION_DIVERGED']);
     await db.pdvMigrationBatch.update({ where: { id: originalBatch.id }, data: { checkpoint: originalCheckpoint } });
 
-    await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: null, ocorrenciaId: null } });
+    await writeCommandContextForProof(null, null);
     await runProof('command-pdv-manually-altered', ['FINANCE_HISTORICAL_COMMERCE_PROOF_DIVERGED']);
-    await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: originalCommand.pontoVendaId, ocorrenciaId: originalCommand.ocorrenciaId } });
+    await writeCommandContextForProof(originalCommand.pontoVendaId, originalCommand.ocorrenciaId);
   } finally {
-    await db.comanda.update({ where: { id: commandId }, data: { pontoVendaId: originalCommand.pontoVendaId, ocorrenciaId: originalCommand.ocorrenciaId } });
+    await writeCommandContextForProof(originalCommand.pontoVendaId, originalCommand.ocorrenciaId);
     await db.pdvMigrationMap.deleteMany({ where: { sourceType: 'COMANDA', sourceId: commandId } });
     await db.pdvMigrationMap.create({ data: originalMap });
     await db.pdvMigrationBatch.update({ where: { id: originalBatch.id }, data: { checkpoint: originalCheckpoint } });
@@ -392,7 +419,7 @@ try {
         let result = await runStage('firstBatch', () => execute({ maxBatches: 1, measure }));
         const interrupted = result.status === 'RUNNING';
         if (interrupted) result = await runStage('resume', () => execute({ measure }));
-        if (result.status === 'BLOCKED') { blocker = { phase, ...result }; break; }
+        if (result.status === 'BLOCKED') { console.log(`PDV_REP_PHASE_BLOCKED tenant=${target.label} phase=${phase} code=${result.code ?? result.status} sourceType=${result.sourceType ?? 'none'}`); blocker = { phase, ...result }; break; }
         if (result.status !== 'COMPLETED') { blocker = { phase, ...result, code: result.code ?? result.status ?? 'MIGRATOR_NOT_COMPLETED' }; break; }
         const replay = await runStage('replay', () => execute({ measure }));
         if (replay.status !== 'COMPLETED') { blocker = { phase, ...replay, code: replay.code ?? replay.status ?? 'REPLAY_NOT_COMPLETED' }; break; }
@@ -400,7 +427,7 @@ try {
         if (phase === 'finance' || phase === 'finance-revalidation-after-commerce') await reconcileRepresentativeFinance(target);
         if (phase === 'finance-revalidation-after-commerce') {
           proofGuards = await proveCommerceLinkRequiresDurableProof(target, pointId);
-          const verifiedReplay = await runPdvFinanceMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-finance`, historicalNoSessionApproval: approval });
+          const verifiedReplay = await runPdvFinanceMigration({ db, companyId: target.id, pointId, runId: `${runId}-${target.id}-finance`, historicalNoSessionApproval: approval, measure: (stage, operation) => measured(`${target.label}:${phase}:${stage}`, operation) });
           assert.equal(verifiedReplay.status, 'COMPLETED', `${target.label}: finance replay completes after restoring QA proof guard fixtures`);
           await reconcileRepresentativeFinance(target);
         }
@@ -426,18 +453,27 @@ try {
   });
   const immutableComparisons = [];
   for (const modelName of ['TransacaoLog', 'ClienteEstatisticas']) {
-    const sourceTable = tableByName.get(modelName);
-    assert.ok(sourceTable, `approved photo must include ${modelName}`);
-    const actualRows = await db[modelName[0].toLowerCase() + modelName.slice(1)].findMany();
-    assert.equal(actualRows.length, sourceTable.rows.length, `${modelName}: row count unchanged after migration and replay`);
-    const actualByKey = new Map(actualRows.map((row) => [photoKey(sourceTable, row), row]));
-    for (const source of sourceTable.rows) {
-      const key = photoKey(sourceTable, revive(source));
-      const actual = actualByKey.get(key);
-      assert.ok(actual, `${modelName}: historical primary key preserved`);
-      for (const field of sourceTable.scalarFields) assert.deepEqual(canonical(actual[field]), canonical(revive(source[field])), `${modelName}.${field} preserved rowwise for ${key}`);
+    const delegateName = modelName[0].toLowerCase() + modelName.slice(1);
+    const [sourceCount, actualCount] = await Promise.all([
+      sourceDb[delegateName].count(),
+      db[delegateName].count(),
+    ]);
+    assert.equal(actualCount, sourceCount, `${modelName}: source-backup row count preserved`);
+    const sourceModel = sourceDb._runtimeDataModel.models[modelName];
+    const targetModel = db._runtimeDataModel.models[modelName];
+    const fields = sourceModel.fields.filter((field) => (field.kind === 'scalar' || field.kind === 'enum')
+      && targetModel.fields.some((candidate) => candidate.name === field.name && (candidate.kind === 'scalar' || candidate.kind === 'enum'))).map((field) => field.name);
+    const primaryKeyField = modelName === 'ClienteEstatisticas' ? 'clienteId' : 'id';
+    const project = (rows) => rows.map((row) => Object.fromEntries(fields.map((field) => [field, canonical(row[field])]))).sort((left, right) => String(left[primaryKeyField]).localeCompare(String(right[primaryKeyField])));
+    const pageSize = 250;
+    for (let skip = 0; skip < sourceCount; skip += pageSize) {
+      const [sourceRows, actualRows] = await Promise.all([
+        sourceDb[delegateName].findMany({ orderBy: { [primaryKeyField]: 'asc' }, skip, take: pageSize }),
+        db[delegateName].findMany({ orderBy: { [primaryKeyField]: 'asc' }, skip, take: pageSize }),
+      ]);
+      assert.deepEqual(project(actualRows), project(sourceRows), `${modelName}: original source-backup values preserved in page ${skip / pageSize}`);
     }
-    immutableComparisons.push({ model: modelName, status: 'PASS', rows: actualRows.length, primaryKeyFields: sourceTable.primaryKey, contentFields: sourceTable.scalarFields });
+    immutableComparisons.push({ model: modelName, status: 'PASS', rows: actualCount, primaryKeyFields: [primaryKeyField], contentFields: fields, comparison: 'direct immutable source-backup database; bounded pages of 250' });
   }
   const activationReadiness = [];
   for (const target of targets) {
@@ -458,6 +494,15 @@ try {
     }
     activationReadiness.push({ tenant: target.label, pdvId: points[0].id, flags: { tapsEnabled: configuration.tapsEnabled, inventoryEnabled: configuration.inventoryEnabled, kitchenEnabled: configuration.kitchenEnabled, kitchenItemsChargeAtLaunch: configuration.kitchenItemsChargeAtLaunch, allowCloseComandaWithPendingKitchenOrders: configuration.allowCloseComandaWithPendingKitchenOrders }, status: 'PASS', products: products.length, unlinkedCategories: unlinkedCategories.length });
   }
+  if (tenantResults.every((row) => row.status === 'COMPLETED')) {
+    const snapshotPhases = new Set(['catalog', 'sessions', 'finance', 'kitchen-preparation-before-commerce', 'commerce', 'finance-revalidation-after-commerce', 'kitchen-preparation-revalidation']);
+    for (const report of reports.filter((row) => row.status === 'COMPLETED' && snapshotPhases.has(row.phase))) {
+      const metric = metricRows.get(`${report.tenant}:${report.phase}:sourceSnapshotAndTransform`);
+      assert.ok(metric, `${report.tenant}/${report.phase}: source snapshot metric exists`);
+      const expectedInvocations = 2 + (report.interruptedAndResumed ? 1 : 0) + (report.phase === 'finance-revalidation-after-commerce' ? 1 : 0);
+      assert.equal(metric.calls, expectedInvocations, `${report.tenant}/${report.phase}: one source snapshot per invocation, not per batch`);
+    }
+  }
   const aggregateStatus = tenantResults.every((row) => row.status === 'COMPLETED') ? 'COMPLETED' : 'BLOCKED';
   console.log(JSON.stringify({ aggregateStatus, qaDatabase: dbName, sourcePhoto: { tables: tables.length, rows: tables.reduce((sum, table) => sum + table.rows.length, 0), crossTenantEdges: photo.crossTenantEdges.length, measurements: photo.measurements ?? null }, anonymizedFields: photo.anonymization, metrics: [...metricRows.values()], permissionComparisons, immutableComparisons, activationReadiness, tenantResults, reports }, null, 2));
   if (aggregateStatus !== 'COMPLETED') process.exitCode = 1;
@@ -467,6 +512,7 @@ try {
   process.exitCode = 1;
 } finally {
   await db.$disconnect();
+  await sourceDb.$disconnect();
 }
 
 function revive(value) {

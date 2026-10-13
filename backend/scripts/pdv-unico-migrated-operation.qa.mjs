@@ -18,7 +18,7 @@ const runId = `qa-operation-${randomBytes(8).toString('hex')}`;
 const operationStartedAt = new Date();
 const photo = JSON.parse(await readFile(process.env.PDV_REPRESENTATIVE_PHOTO_FILE, 'utf8'));
 const historicalIds = photo.tableRows.find(t => t.model === 'Pagamento').rows.map(r => r.id).sort();
-assert.equal(historicalIds.length, 605);
+assert.equal(historicalIds.length, 1151, 'current 2026-10-12 source photo contains 1,151 historical payments');
 const plain = value => JSON.parse(JSON.stringify(value));
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const historical = () => db.pagamento.findMany({ where: { id: { in: historicalIds } }, orderBy: { id: 'asc' } }).then(plain);
@@ -200,12 +200,15 @@ try {
         account.cookie = (Array.isArray(cookie) ? cookie[0] : cookie).split(';')[0];
       }
       if (tenant.id === 'cmsry9xrn0000hvlgopjxy0oo') {
-        const historicalId = 'cmuqaoyta0007hvdg3q4v7hkj';
+        const emptyCommand = await request(owner.cookie, 'POST', '/api/operacao/comandas', { pontoVendaId: point.id, tipo: 'APELIDO', identificador: `${runId}-empty-cancel` }, 201);
+        const historicalId = emptyCommand.id;
+        createdIds.push(historicalId);
         const before = await db.comanda.findUniqueOrThrow({ where: { id: historicalId }, include: { itens: true, pagamentos: true, contaReceber: true } });
         assert.equal(before.origem, 'CAIXA');
         assert.equal(before.pontoVendaId, point.id);
         assert.equal(before.status, 'ABERTA');
         assert.equal(Number(before.total), 0);
+        assert.ok(before.createdAt >= operationStartedAt, 'empty command was created synthetically in this QA run');
         assert.equal(before.itens.length, 0);
         assert.equal(before.pagamentos.length, 0);
         assert.equal(before.contaReceber, null);
@@ -229,7 +232,7 @@ try {
         assert.deepEqual(await stockBalances(tenant.id), balancesBefore, 'cancelling the empty historical command does not change stock balances');
         assert.deepEqual(await stockMovementPhoto(tenant.id), inventoryBefore, 'cancelling the empty historical command does not write inventory movements');
         assert.deepEqual(await cashMovementPhoto(tenant.id), cashBefore, 'cancelling the empty historical command does not write cash movements');
-        historicalCommandSanitation.push({ commandId: historicalId, tenantId: tenant.id, pointId: point.id, beforeStatus: before.status, afterStatus: after.status, createdAtPreserved: true, total: 0, itemCount: 0, paymentCount: 0, receivable: null, auditType: cancelAudit.tipo, auditActorId: cancelAudit.usuarioId, noFinancialOrStockEffects: true, authenticatedApi: 'POST /api/operacao/comandas/:id/cancelar' });
+        historicalCommandSanitation.push({ commandId: historicalId, tenantId: tenant.id, pointId: point.id, syntheticQaRecord: true, createdByQaUserId: owner.row.id, beforeStatus: before.status, afterStatus: after.status, createdAtPreserved: true, total: 0, itemCount: 0, paymentCount: 0, receivable: null, auditType: cancelAudit.tipo, auditActorId: cancelAudit.usuarioId, noFinancialOrStockEffects: true, authenticatedApi: 'POST /api/operacao/comandas/:id/cancelar' });
       }
       const menus = await db.cardapio.findMany({ where: { cervejariaId: tenant.id, pontoVendaId: point.id, ativo: true }, include: { produtos: { include: { produto: true } } } });
       const menu = menus.find(m => m.produtos.some(p => p.volumeMl === 0 && p.produto.ativo && !p.produto.exigePreparo && Number(p.precoUnit) > 0));
@@ -366,8 +369,9 @@ try {
       results.push({ tenant: tenant.name, status: cashClose === 'PASS' ? 'PASS' : 'BLOCKED', durationMs: Math.round(performance.now() - started), flags: plain(config), openingWithAndWithoutOccurrence: 'PASS', menuAndOriginalPrice: 'PASS', commandPayment: 'PASS', cashClose, cancellationStock: 'PASS', portal: 'PASS', permissionsSameSession: 'PASS', originalKitchen, independentKitchen: independent, refund, tapsAndVolume: volume, tapVolumeFixture: tapVolumeFixture ?? null, sessions: sessionIds });
     } finally { globalThis.Date = originalDate; }
   }
-  assert.deepEqual(await historical(), historyBefore, 'exact 605 original payments remain untouched by QA operation');
-  assert.deepEqual(historicalCommandSanitation.map(row => row.commandId), ['cmuqaoyta0007hvdg3q4v7hkj'], 'the approved empty historical command was sanitized exactly once through the authenticated route');
+  assert.deepEqual(await historical(), historyBefore, 'exact 1,151 original payments remain untouched by QA operation');
+  assert.equal(historicalCommandSanitation.length, 1, 'one empty synthetic QA command was cancelled through the authenticated route');
+  assert.ok(historicalCommandSanitation.every(row => row.syntheticQaRecord && row.createdAtPreserved && row.noFinancialOrStockEffects));
   finalEvidence = { status: results.every(result => result.status === 'PASS') ? 'PASS' : 'BLOCKED', runId, results, blockers: operationalBlockers, historicalCommandSanitation, qaCleanupAfterBlockedCashClose: { directQaSessionCleanupCount: qaSessionCleanupAfterBusinessBlock.length, sessions: qaSessionCleanupAfterBusinessBlock, classification: 'QA_DATA_CLEANUP_ONLY_NOT_AUTHENTICATED_OPERATIONAL_CLOSE' }, priorQaAttempts: { cancelledOpenCommands: qaAttemptCancelledCommands.length, directlyCleanedOpenCashSessions: qaAttemptCleanedSessions.length, cancellationPath: 'AUTHENTICATED_OPERATIONAL_COMMAND_CANCEL', sessions: qaAttemptCleanedSessions, classification: 'QA_DATA_CLEANUP_ONLY_NOT_AUTHENTICATED_OPERATIONAL_CLOSE' }, unlistedIsolation: { status: 'PASS', tenantId: unlisted, dataCompared: baseline.map(t => t.model), legacyMode: 'EVENTO', legacyAttendantProductRead: 'PASS', canonicalCategories: 0, canonicalConfigurations: 0 }, originalPayments: { count: historicalIds.length, beforeSha256: digest(historyBefore), afterSha256: digest(await historical()), status: 'PASS' }, qaOnlyUserIds: credentials, qaOnlyCreatedIds: createdIds };
   if (finalEvidence.status !== 'PASS') process.exitCode = 1;
 } finally { await new Promise(resolve => io.close(resolve)); await app.close(); await prisma.$disconnect(); await db.$disconnect(); }
