@@ -215,7 +215,7 @@ export async function validateCheckpoint(tx: Db, run: any, scope: string, versio
   let expectedKeys = checkpointKeysCache.get(items);
   if (!expectedKeys) { expectedKeys = items.map((item) => key(item.type, item.id)); checkpointKeysCache.set(items, expectedKeys); }
   const completed: string[] = checkpoint.completedSourceKeys ?? [];
-  if (!Array.isArray(checkpoint.completedSourceKeys) || completed.length > expectedKeys.length || (verifyFullPrefix ? completed.some((value, index) => value !== expectedKeys[index]) : completed.at(-1) !== (expectedKeys[completed.length - 1] ?? null)) || (complete && completed.length !== expectedKeys.length) || checkpoint.lastSourceKey !== (completed.at(-1) ?? null)) throw new PdvCatalogBlocker('RUN_CHECKPOINT_DIVERGED', null, run.id, 'Checkpoint não corresponde ao prefixo determinístico esperado.');
+  if (!Array.isArray(checkpoint.completedSourceKeys) || completed.length > expectedKeys.length || (verifyFullPrefix ? completed.some((value, index) => value !== expectedKeys[index]) : (completed.at(-1) ?? null) !== (expectedKeys[completed.length - 1] ?? null)) || (complete && completed.length !== expectedKeys.length) || checkpoint.lastSourceKey !== (completed.at(-1) ?? null)) throw new PdvCatalogBlocker('RUN_CHECKPOINT_DIVERGED', null, run.id, 'Checkpoint não corresponde ao prefixo determinístico esperado.');
   if (!verifyFullPrefix) {
     const batchCount = await tx.pdvMigrationBatch.count({ where: { runId: run.id } });
     if (checkpoint.lastConfirmedBatch !== batchCount) throw new PdvCatalogBlocker('RUN_BATCH_ORDER_DIVERGED', null, run.id, 'Quantidade de lotes não corresponde ao checkpoint.');
