@@ -89,3 +89,55 @@ Describe 'Retained release candidate contract' {
     { Assert-CandidateSource -SourceWorktree $TestDrive -ExpectedReleaseSha $sha -NodeExe $PSHOME\powershell.exe } | Should Throw
   }
 }
+
+Describe 'Git source snapshot contract' {
+  BeforeEach {
+    $script:repo = Join-Path $TestDrive 'snapshot-repository'
+    $script:snapshot = Join-Path $TestDrive 'materialized-source'
+    $script:inventoryPath = Join-Path $TestDrive 'source-inventory.json'
+    New-Item -ItemType Directory -Force -Path (Join-Path $repo 'backend\prisma\migrations\000000_test') | Out-Null
+    Push-Location $repo
+    try {
+      git init -q
+      git config user.email snapshot-test@example.invalid
+      git config user.name 'Snapshot Test'
+      Set-Content (Join-Path $repo 'backend\prisma\migrations\000000_test\migration.sql') 'SELECT 1;' -NoNewline
+      Set-Content (Join-Path $repo 'backend\package.json') '{"dependencies":{}}' -NoNewline
+      Set-Content (Join-Path $repo 'backend\package-lock.json') '{"lockfileVersion":3,"packages":{"":{"dependencies":{}}}}' -NoNewline
+      git add .
+      git commit -qm initial
+      $script:release = (git rev-parse HEAD).Trim()
+      $script:tree = (git rev-parse 'HEAD^{tree}').Trim()
+    } finally { Pop-Location }
+    New-Item -ItemType Directory -Force -Path $snapshot | Out-Null
+    $migration = Join-Path $snapshot 'backend\prisma\migrations\000000_test\migration.sql'
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $migration) | Out-Null
+    Copy-Item (Join-Path $repo 'backend\prisma\migrations\000000_test\migration.sql') $migration
+    $blob = (git -C $repo rev-parse "$release`:backend/prisma/migrations/000000_test/migration.sql").Trim()
+    $fileSha = (Get-FileHash $migration -Algorithm SHA256).Hash.ToLowerInvariant()
+    [ordered]@{ format = 'tap-quiver-git-source-snapshot/v1'; commit = $release; tree = $tree; materializedBlobCount = 1; files = @([ordered]@{ path = 'backend/prisma/migrations/000000_test/migration.sql'; mode = '100644'; blob = $blob; size = (Get-Item $migration).Length; sha256 = $fileSha }) } | ConvertTo-Json -Depth 5 | Set-Content $inventoryPath -Encoding UTF8
+  }
+  It 'accepts the pinned snapshot without .git even when repository HEAD and worktree differ' {
+    Push-Location $repo
+    try { Set-Content tracked-unrelated.txt dirty; git add tracked-unrelated.txt; git commit -qm 'advance local HEAD' } finally { Pop-Location }
+    (Assert-CandidateGitSnapshot -RepositoryPath $repo -SnapshotPath $snapshot -InventoryPath $inventoryPath -ExpectedReleaseSha $release -ExpectedTree $tree).commit | Should Be $release
+    Test-Path (Join-Path $snapshot '.git') | Should Be $false
+  }
+  It 'rejects a materialized blob changed after inventory creation' {
+    Add-Content (Join-Path $snapshot 'backend\prisma\migrations\000000_test\migration.sql') 'SELECT 2;'
+    { Assert-CandidateGitSnapshot -RepositoryPath $repo -SnapshotPath $snapshot -InventoryPath $inventoryPath -ExpectedReleaseSha $release -ExpectedTree $tree } | Should Throw
+  }
+  It 'rejects an extra untracked operational source file' {
+    Set-Content (Join-Path $snapshot 'backend\operational-extra.js') 'module.exports = 1'
+    { Assert-CandidateGitSnapshot -RepositoryPath $repo -SnapshotPath $snapshot -InventoryPath $inventoryPath -ExpectedReleaseSha $release -ExpectedTree $tree } | Should Throw
+  }
+  It 'rejects local dependency references outside the snapshot' {
+    $package = Join-Path $snapshot 'backend\package.json'
+    Set-Content $package '{"dependencies":{"local-tool":"file:../../outside"}}' -NoNewline
+    { Assert-SnapshotDependencyBoundary -SnapshotPath $snapshot } | Should Throw
+  }
+  It 'rejects a ledger whose bytes do not match the explicit hash' {
+    $ledger = Join-Path $TestDrive 'ledger.txt'; Set-Content $ledger 'wrong-ledger' -NoNewline
+    { Assert-MigrationLedgerIdentity -MigrationLedgerPath $ledger -ExpectedMigrationLedgerSha256 ('0' * 64) } | Should Throw
+  }
+}

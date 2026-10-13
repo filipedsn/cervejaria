@@ -85,7 +85,8 @@ function Set-CandidateMigrationBytes {
 }
 
 function Copy-GitMigrationBlobs {
-  param([string]$SourceWorktree, [string]$ExpectedReleaseSha, [string]$CandidatePrismaPath, [string]$MigrationLedgerPath)
+  param([string]$SourceWorktree, [string]$ExpectedReleaseSha, [string]$CandidatePrismaPath, [string]$MigrationLedgerPath, [string]$GitRepositoryRoot = '')
+  if (-not $GitRepositoryRoot) { $GitRepositoryRoot = $SourceWorktree }
   if (-not (Test-Path -LiteralPath $MigrationLedgerPath -PathType Leaf)) { throw 'MigrationLedgerPath must identify the sanitized ledger from the rehearsal source.' }
   $expectedChecksums = @{}
   foreach ($line in (Get-Content -LiteralPath $MigrationLedgerPath -Encoding UTF8)) {
@@ -98,14 +99,14 @@ function Copy-GitMigrationBlobs {
   foreach ($sourceFile in (Get-ChildItem -LiteralPath (Join-Path $SourceWorktree 'backend\prisma\migrations') -Filter 'migration.sql' -File -Recurse | Sort-Object FullName)) {
     $relative = $sourceFile.FullName.Substring((Join-Path $SourceWorktree 'backend\prisma\migrations').Length).TrimStart('\', '/') -replace '\\', '/'
     $gitPath = "backend/prisma/migrations/$relative"
-    $blob = (& git -C $SourceWorktree rev-parse "$ExpectedReleaseSha`:$gitPath").Trim().ToLowerInvariant()
+    $blob = (& git -C $GitRepositoryRoot rev-parse "$ExpectedReleaseSha`:$gitPath").Trim().ToLowerInvariant()
     if ($LASTEXITCODE -ne 0 -or $blob -notmatch '^[a-f0-9]{40}$') { throw "Git migration blob unavailable: $gitPath" }
 
     $destination = Join-Path $migrationRoot ($relative -replace '/', '\')
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
     $start = [System.Diagnostics.ProcessStartInfo]::new()
     $start.FileName = 'git'
-    $start.Arguments = "-C `"$SourceWorktree`" cat-file blob $blob"
+    $start.Arguments = "-C `"$GitRepositoryRoot`" cat-file blob $blob"
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
     $start.RedirectStandardOutput = $true
@@ -134,6 +135,179 @@ function Copy-GitMigrationBlobs {
   return @($integrity)
 }
 
+function Assert-CandidateGitSnapshot {
+  param([string]$RepositoryPath, [string]$SnapshotPath, [string]$InventoryPath, [string]$ExpectedReleaseSha, [string]$ExpectedTree)
+  Assert-ReleaseSha $ExpectedReleaseSha
+  if (-not (Test-Path -LiteralPath $SnapshotPath -PathType Container)) { throw 'Git source snapshot ausente' }
+  if (Test-Path -LiteralPath (Join-Path $SnapshotPath '.git')) { throw 'Git source snapshot nao pode conter .git' }
+  $commit = (& git -C $RepositoryPath rev-parse "$ExpectedReleaseSha^{commit}").Trim().ToLowerInvariant()
+  if ($LASTEXITCODE -ne 0 -or $commit -ne $ExpectedReleaseSha) { throw 'commit source diverge da identidade fixada' }
+  $tree = (& git -C $RepositoryPath rev-parse "$ExpectedReleaseSha^{tree}").Trim().ToLowerInvariant()
+  if ($LASTEXITCODE -ne 0 -or $tree -ne $ExpectedTree) { throw 'tree source diverge da identidade fixada' }
+  $inventory = Get-Content -LiteralPath $InventoryPath -Raw -Encoding UTF8 | ConvertFrom-Json
+  if ($inventory.commit -ne $ExpectedReleaseSha -or $inventory.tree -ne $ExpectedTree -or @($inventory.files).Count -ne $inventory.materializedBlobCount) { throw 'inventario snapshot nao corresponde ao commit/tree fixados' }
+  $declared = @{}
+  foreach ($file in @($inventory.files)) {
+    if ($file.path -match '(^|/)\.git(/|$)' -or $file.path -match '(^|/)\.\.?(/|$)' -or $file.sha256 -notmatch '^[a-f0-9]{64}$' -or $file.blob -notmatch '^[a-f0-9]{40}$') { throw "entrada invalida no inventario snapshot: $($file.path)" }
+    $declared[$file.path] = $file.sha256
+    $path = Join-Path $SnapshotPath ($file.path -replace '/', '\')
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "blob materializado ausente: $($file.path)" }
+    if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $file.sha256) { throw "blob materializado foi alterado: $($file.path)" }
+  }
+  $actual = @(Get-ChildItem -LiteralPath $SnapshotPath -Recurse -File | ForEach-Object { $_.FullName.Substring($SnapshotPath.Length).TrimStart('\', '/') -replace '\\', '/' })
+  if ($actual.Count -ne $declared.Count) { throw 'snapshot possui arquivos extras ou ausentes em relacao aos blobs fixados' }
+  foreach ($path in $actual) { if (-not $declared.ContainsKey($path)) { throw "arquivo extra no snapshot: $path" } }
+  return $inventory
+}
+
+function Assert-SnapshotDependencyBoundary {
+  param([string]$SnapshotPath)
+  foreach ($project in @('frontend', 'backend')) {
+    $packagePath = Join-Path $SnapshotPath "$project\package.json"
+    $lockPath = Join-Path $SnapshotPath "$project\package-lock.json"
+    if (-not (Test-Path -LiteralPath $packagePath -PathType Leaf) -or -not (Test-Path -LiteralPath $lockPath -PathType Leaf)) { throw "package/lockfile ausente no snapshot: $project" }
+    $package = Get-Content -LiteralPath $packagePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($section in @('dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies')) {
+      $deps = $package.$section
+      if ($deps) { foreach ($property in $deps.PSObject.Properties) { if ([string]$property.Value -match '^(file:|link:|workspace:)') { throw "dependencia fora do snapshot nao permitida: $project/$($property.Name)=$($property.Value)" } } }
+    }
+    $lock = Get-Content -LiteralPath $lockPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($property in $lock.packages.PSObject.Properties) {
+      if ($property.Value.link -or ([string]$property.Value.resolved -match '^(file:|link:)')) { throw "lockfile referencia dependencia local: $project/$($property.Name)" }
+    }
+  }
+}
+
+function Get-LedgerAppliedChecksums {
+  param([string]$MigrationLedgerPath)
+  $expected = @{}
+  foreach ($line in (Get-Content -LiteralPath $MigrationLedgerPath -Encoding UTF8)) {
+    $fields = $line -split '\|'
+    if ($fields.Count -ge 4 -and $fields[2] -eq 't' -and $fields[3] -eq 'f' -and $fields[0] -match '^\d{14}_.+$' -and $fields[1] -match '^[a-f0-9]{64}$') { $expected[$fields[0]] = $fields[1] }
+  }
+  if ($expected.Count -eq 0) { throw 'ledger nao contem migrations aplicadas validas' }
+  return $expected
+}
+
+function Assert-MigrationLedgerIdentity {
+  param([string]$MigrationLedgerPath, [string]$ExpectedMigrationLedgerSha256)
+  if ($ExpectedMigrationLedgerSha256 -notmatch '^[a-f0-9]{64}$' -or -not (Test-Path -LiteralPath $MigrationLedgerPath -PathType Leaf)) { throw 'ledger explicito ou SHA-256 invalido' }
+  $actual = (Get-FileHash -LiteralPath $MigrationLedgerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($actual -ne $ExpectedMigrationLedgerSha256) { throw 'hash do ledger diverge da identidade explicitamente aprovada' }
+  return $actual
+}
+
+function Copy-LedgerMatchingArchivedMigrationBytes {
+  param([string]$ArchivedCandidatePath, [string]$ExpectedArchivedManifestSha256, [string]$CandidatePrismaPath, [string]$MigrationLedgerPath)
+  $manifestPath = Get-CandidateManifestPath $ArchivedCandidatePath
+  if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'manifesto do pacote historico ausente' }
+  $manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($manifestHash -ne $ExpectedArchivedManifestSha256) { throw 'hash do manifesto historico diverge do valor autorizado' }
+  $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+  if ($manifest.releaseSha -ne '956f3a64e67fc3016a177426364f625c2682212d' -or -not $manifest.files) { throw 'pacote historico nao e a fonte arquivada autorizada' }
+  foreach ($item in @($manifest.files)) {
+    $source = Join-Path $ArchivedCandidatePath ($item.path -replace '/', '\')
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf) -or (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant() -ne $item.sha256) { throw "arquivo do pacote historico diverge do manifesto: $($item.path)" }
+  }
+  $expected = Get-LedgerAppliedChecksums $MigrationLedgerPath
+  $copied = @()
+  foreach ($name in $expected.Keys) {
+    $relative = "backend\prisma\migrations\$name\migration.sql"
+    $source = Join-Path $ArchivedCandidatePath $relative
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { continue }
+    $sha = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($sha -ne $expected[$name]) { continue }
+    $destination = Join-Path $CandidatePrismaPath ("migrations\$name\migration.sql")
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+    Copy-Item -LiteralPath $source -Destination $destination -Force
+    $copied += $name
+  }
+  return @($copied)
+}
+
+function Invoke-ReleaseCandidatePrepareFromGitSnapshot {
+  param(
+    [Parameter(Mandatory)][string]$RepositoryPath,
+    [Parameter(Mandatory)][string]$ExpectedReleaseSha,
+    [Parameter(Mandatory)][string]$ExpectedTree,
+    [Parameter(Mandatory)][string]$CandidateRoot,
+    [Parameter(Mandatory)][string]$SnapshotInventoryPath,
+    [Parameter(Mandatory)][string]$NodeExe,
+    [Parameter(Mandatory)][string]$NpmCmd,
+    [Parameter(Mandatory)][string]$MigrationLedgerPath,
+    [Parameter(Mandatory)][string]$ExpectedMigrationLedgerSha256,
+    [Parameter(Mandatory)][string]$ArchivedCandidatePath,
+    [Parameter(Mandatory)][string]$ExpectedArchivedManifestSha256
+  )
+  Assert-ReleaseSha $ExpectedReleaseSha
+  if ($ExpectedTree -notmatch '^[a-f0-9]{40}$') { throw 'ExpectedTree deve ser um tree Git completo.' }
+  if (-not (Test-Path -LiteralPath $MigrationLedgerPath -PathType Leaf)) { throw 'MigrationLedgerPath explicito ausente' }
+  $ledgerSha = Assert-MigrationLedgerIdentity -MigrationLedgerPath $MigrationLedgerPath -ExpectedMigrationLedgerSha256 $ExpectedMigrationLedgerSha256
+  $commit = (& git -C $RepositoryPath rev-parse "$ExpectedReleaseSha^{commit}").Trim().ToLowerInvariant()
+  $tree = (& git -C $RepositoryPath rev-parse "$ExpectedReleaseSha^{tree}").Trim().ToLowerInvariant()
+  if ($LASTEXITCODE -ne 0 -or $commit -ne $ExpectedReleaseSha -or $tree -ne $ExpectedTree) { throw 'nao foi possivel fixar commit/tree antes do build' }
+  if (-not (Test-Path -LiteralPath $NodeExe -PathType Leaf) -or -not (Test-Path -LiteralPath $NpmCmd -PathType Leaf)) { throw 'Node/npm executaveis ausentes' }
+  $nodeVersion = ([string](& $NodeExe --version)).Trim()
+  if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^v24\.') { throw "Node major deve ser 24; observado $nodeVersion" }
+  $npmVersion = ([string](& $NodeExe $NpmCmd --version)).Trim()
+  if ($LASTEXITCODE -ne 0) { throw 'npm nao executou com Node informado' }
+  $root = [System.IO.Path]::GetFullPath($CandidateRoot)
+  New-Item -ItemType Directory -Force -Path $root | Out-Null
+  $candidate = Join-Path $root $ExpectedReleaseSha
+  if (Test-Path -LiteralPath $candidate) {
+    $verified = Test-ReleaseCandidate -CandidatePath $candidate -ExpectedReleaseSha $ExpectedReleaseSha -RequireMigrationIntegrity
+    if ($verified.Ok) { return $verified }
+    throw ('candidate existente diverge; preservado sem sobrescrever: ' + ($verified.Errors -join '; '))
+  }
+  $token = [guid]::NewGuid().ToString('N')
+  $snapshot = Join-Path $root ('.source-' + $ExpectedReleaseSha + '-' + $token)
+  $staging = Join-Path $root ('.preparing-' + $ExpectedReleaseSha + '-' + $token)
+  $oldRelease = $env:RELEASE_SHA; $oldViteRelease = $env:VITE_RELEASE_SHA
+  try {
+    New-Item -ItemType Directory -Force -Path $snapshot, $staging | Out-Null
+    $materializer = Join-Path $PSScriptRoot 'materialize-release-source-snapshot.mjs'
+    & $NodeExe $materializer $RepositoryPath $ExpectedReleaseSha $ExpectedTree $snapshot $SnapshotInventoryPath
+    if ($LASTEXITCODE -ne 0) { throw 'materializacao de blobs Git falhou' }
+    $inventory = Assert-CandidateGitSnapshot -RepositoryPath $RepositoryPath -SnapshotPath $snapshot -InventoryPath $SnapshotInventoryPath -ExpectedReleaseSha $ExpectedReleaseSha -ExpectedTree $ExpectedTree
+    Assert-SnapshotDependencyBoundary $snapshot
+    foreach ($project in @('frontend', 'backend')) {
+      Push-Location (Join-Path $snapshot $project)
+      try { & $NodeExe $NpmCmd ci --no-audit --no-fund; if ($LASTEXITCODE -ne 0) { throw "npm ci falhou em $project" } }
+      finally { Pop-Location }
+    }
+    Assert-SnapshotDependencyBoundary $snapshot
+    $env:RELEASE_SHA = $ExpectedReleaseSha; $env:VITE_RELEASE_SHA = $ExpectedReleaseSha
+    $frontendOut = Join-Path $staging 'frontend'
+    Push-Location $snapshot
+    try {
+      & $NodeExe $NpmCmd run build:deploy --prefix frontend -- --outDir $frontendOut
+      if ($LASTEXITCODE -ne 0) { throw 'build frontend do snapshot falhou' }
+      & $NodeExe $NpmCmd run build:deploy --prefix backend
+      if ($LASTEXITCODE -ne 0) { throw 'build backend do snapshot falhou' }
+    } finally { Pop-Location }
+    New-Item -ItemType Directory -Force -Path (Join-Path $staging 'backend') | Out-Null
+    Copy-Item -LiteralPath (Join-Path $snapshot 'backend\dist') -Destination (Join-Path $staging 'backend\dist') -Recurse -Force
+    Copy-Item -LiteralPath (Join-Path $snapshot 'backend\package.json') -Destination (Join-Path $staging 'backend\package.json') -Force
+    Copy-Item -LiteralPath (Join-Path $snapshot 'backend\package-lock.json') -Destination (Join-Path $staging 'backend\package-lock.json') -Force
+    Copy-CandidateTree -Source (Join-Path $snapshot 'backend\prisma') -Destination (Join-Path $staging 'backend\prisma')
+    $seeded = Copy-LedgerMatchingArchivedMigrationBytes -ArchivedCandidatePath $ArchivedCandidatePath -ExpectedArchivedManifestSha256 $ExpectedArchivedManifestSha256 -CandidatePrismaPath (Join-Path $staging 'backend\prisma') -MigrationLedgerPath $MigrationLedgerPath
+    $migrationIntegrity = Copy-GitMigrationBlobs -SourceWorktree $snapshot -GitRepositoryRoot $RepositoryPath -ExpectedReleaseSha $ExpectedReleaseSha -CandidatePrismaPath (Join-Path $staging 'backend\prisma') -MigrationLedgerPath $MigrationLedgerPath
+    $inventoryPackagePath = Join-Path $staging 'source-snapshot-inventory.json'
+    Copy-Item -LiteralPath $SnapshotInventoryPath -Destination $inventoryPackagePath -Force
+    $inventorySha = (Get-FileHash -LiteralPath $inventoryPackagePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $manifest = [ordered]@{ format = $script:CandidateFormat; releaseSha = $ExpectedReleaseSha; releaseTree = $ExpectedTree; createdAt = (Get-Date).ToUniversalTime().ToString('o'); nodeVersion = $nodeVersion; npmVersion = $npmVersion; artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/prisma', 'source-snapshot-inventory.json'); sourceSnapshot = [ordered]@{ commit = $ExpectedReleaseSha; tree = $ExpectedTree; materializedBlobCount = $inventory.materializedBlobCount; inventoryPath = 'source-snapshot-inventory.json'; inventorySha256 = $inventorySha }; migrationLedger = [ordered]@{ path = [System.IO.Path]::GetFileName($MigrationLedgerPath); sha256 = $ledgerSha }; preservedArchivedMigrations = @($seeded); migrationIntegrity = $migrationIntegrity; files = @(Get-CandidateFileHashes $staging) }
+    $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Get-CandidateManifestPath $staging) -Encoding UTF8
+    Test-ReleaseCandidate -CandidatePath $staging -ExpectedReleaseSha $ExpectedReleaseSha -ThrowOnError -RequireMigrationIntegrity | Out-Null
+    Move-Item -LiteralPath $staging -Destination $candidate
+    return (Test-ReleaseCandidate -CandidatePath $candidate -ExpectedReleaseSha $ExpectedReleaseSha -ThrowOnError -RequireMigrationIntegrity)
+  } finally {
+    $env:RELEASE_SHA = $oldRelease; $env:VITE_RELEASE_SHA = $oldViteRelease
+    if (Test-Path -LiteralPath $snapshot) { Remove-Item -LiteralPath $snapshot -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path -LiteralPath $SnapshotInventoryPath) { Remove-Item -LiteralPath $SnapshotInventoryPath -Force -ErrorAction SilentlyContinue }
+  }
+}
+
 function Test-ReleaseCandidate {
   param(
     [Parameter(Mandatory)][string]$CandidatePath,
@@ -154,6 +328,17 @@ function Test-ReleaseCandidate {
   if ($manifest) {
     if ($manifest.format -ne $script:CandidateFormat) { $errors += 'candidate manifest format invalido' }
     if ($manifest.releaseSha -ne $ExpectedReleaseSha) { $errors += 'candidate manifest SHA diverge do SHA esperado' }
+    if ($manifest.sourceSnapshot) {
+      $inventoryPath = Join-Path $CandidatePath ([string]$manifest.sourceSnapshot.inventoryPath)
+      if (-not (Test-Path -LiteralPath $inventoryPath -PathType Leaf)) { $errors += 'source snapshot inventory ausente' }
+      elseif ((Get-FileHash -LiteralPath $inventoryPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest.sourceSnapshot.inventorySha256) { $errors += 'source snapshot inventory diverge do manifest' }
+      else {
+        try {
+          $sourceInventory = Get-Content -LiteralPath $inventoryPath -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($sourceInventory.commit -ne $ExpectedReleaseSha -or $sourceInventory.tree -ne $manifest.releaseTree -or $sourceInventory.materializedBlobCount -ne @($sourceInventory.files).Count) { $errors += 'source snapshot identity diverge do manifest' }
+        } catch { $errors += 'source snapshot inventory invalido' }
+      }
+    }
     if (-not $manifest.files -or @($manifest.files).Count -eq 0) { $errors += 'candidate manifest sem checksums' }
     if (-not $manifest.migrationIntegrity -or @($manifest.migrationIntegrity).Count -eq 0) {
       if ($RequireMigrationIntegrity) { $errors += 'candidate manifest sem integridade dos blobs SQL de migrations' }

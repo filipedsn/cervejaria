@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { after, test } from 'node:test';
 import { materializeGitSnapshot, writeSnapshotImportGuard } from './pdv-unico-git-snapshot.mjs';
 
@@ -23,11 +23,32 @@ test('snapshot materialization uses immutable Git blobs and rejects workspace so
   execFileSync('git', ['-C', repo, 'commit', '--quiet', '-m', 'snapshot fixture']);
   const commit = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   await writeFile(source, "export const origin = 'mutable-workspace';\n");
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '--quiet', '-m', 'advance local HEAD']);
+  assert.notEqual(execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), commit);
 
   const materialized = await materializeGitSnapshot({ repoRoot: repo, commit, destination: snapshot });
   assert.equal(materialized.materializedBlobCount, 1);
+  assert.equal(materialized.files.length, 1);
+  assert.equal(materialized.files[0].path, 'backend/scripts/probe.mjs');
+  assert.match(materialized.files[0].blob, /^[a-f0-9]{40}$/);
+  assert.match(materialized.files[0].sha256, /^[a-f0-9]{64}$/);
   assert.match(await readFile(path.join(snapshot, 'backend/scripts/probe.mjs'), 'utf8'), /git-commit/);
   assert.match(await readFile(source, 'utf8'), /mutable-workspace/);
+  const packagedSnapshot = path.join(root, 'entrypoint-snapshot');
+  const inventoryPath = path.join(root, 'entrypoint-inventory.json');
+  await writeFile(source, "export const origin = 'dirty-after-head';\n");
+  await writeFile(path.join(repo, 'backend', 'operational-extra.mjs'), "export const origin = 'untracked';\n");
+  const materializerScript = new URL('../../scripts/prod/materialize-release-source-snapshot.mjs', import.meta.url);
+  const wrapperResult = spawnSync(process.execPath, [fileURLToPath(materializerScript), repo, commit, materialized.tree, packagedSnapshot, inventoryPath], { encoding: 'utf8', windowsHide: true });
+  assert.equal(wrapperResult.status, 0, wrapperResult.stderr);
+  assert.equal(await readFile(path.join(packagedSnapshot, 'backend/scripts/probe.mjs'), 'utf8'), "export const origin = 'git-commit';\n");
+  await assert.rejects(readFile(path.join(packagedSnapshot, 'backend/operational-extra.mjs')));
+  await assert.rejects(readFile(path.join(packagedSnapshot, '.git')));
+  const inventory = JSON.parse(await readFile(inventoryPath, 'utf8'));
+  assert.equal(inventory.commit, commit);
+  assert.equal(inventory.tree, materialized.tree);
+  assert.equal(inventory.files[0].sha256, materialized.files[0].sha256);
 
   const guard = path.join(root, 'origin-guard.mjs');
   const audit = path.join(root, 'origin-audit.jsonl');

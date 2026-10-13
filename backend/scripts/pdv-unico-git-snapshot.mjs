@@ -35,6 +35,7 @@ export async function materializeGitSnapshot({ repoRoot, commit, destination, gi
     offset = bodyEnd + 1;
   }
   let materializedBlobCount = 0;
+  const materializedFiles = [];
   for (const entry of trackedEntries) {
     const tab = entry.indexOf('\t');
     const [mode, objectType, objectId] = entry.slice(0, tab).split(' ');
@@ -47,10 +48,12 @@ export async function materializeGitSnapshot({ repoRoot, commit, destination, gi
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, bytes);
     if (mode === '100755') await chmod(target, 0o755);
-    if (gitBlobId(await readFile(target)) !== objectId) throw new Error(`Materialized file differs from its Git blob: ${relativePath}`);
+    const materializedBytes = await readFile(target);
+    if (gitBlobId(materializedBytes) !== objectId) throw new Error(`Materialized file differs from its Git blob: ${relativePath}`);
+    materializedFiles.push({ path: relativePath, mode, blob: objectId, size: materializedBytes.length, sha256: createHash('sha256').update(materializedBytes).digest('hex') });
     materializedBlobCount++;
   }
-  return { commit, tree: actualTree, materializedBlobCount };
+  return { commit, tree: actualTree, materializedBlobCount, files: materializedFiles };
 }
 
 function gitBatchBytes(repoRoot, objectIds, gitDir) {
