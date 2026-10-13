@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 export const PDV_FINANCE_SCOPE = 'PDV_FINANCEIRO_V1';
 export const PDV_FINANCE_TRANSFORM_VERSION = 4;
 export const PDV_HISTORICAL_C_APPROVED_SNAPSHOT_SHA256 = '87e3a8f6aca3e878a027c485ca2e15a120ba9cc0edfc27337e3f39858165ef7a';
+export const PDV_HISTORICAL_C_QA_SOURCE_BACKUP_SHA256 = '3ba54e26d9d5b7042e65695217eae396d1c7d291c87aed48f024d5963386cd3e';
+export const PDV_HISTORICAL_C_QA_APPROVED_SNAPSHOT_SHA256 = '6d649ade7c8471adba44b381bd113d0fe2c8c04191287b1f8504e84ad9e908a9';
 const sourceKey = (type: string, id: string) => `${type}:${id}`;
 function jsonSafe(value: any): any {
   if (value instanceof Date) return value.toISOString();
@@ -27,6 +29,7 @@ export interface HistoricalNoSessionApproval {
   scope: 'TAP-76 QA rehearsal only';
   classification: 'C_ORIGIN_UNPROVEN';
   provenance: 'CAIXA_NAO_COMPROVADA';
+  sourceBackupSha256?: string;
   approvedSnapshotSha256: string;
   counts: { payments: number; withExactPaymentAuditReference: number; withoutExactPaymentAuditReference: number };
   entries: ApprovedHistoricalNoSessionPayment[];
@@ -46,6 +49,7 @@ export interface PdvFinanceMigrationInput {
   mappedPaymentIds: Set<string>;
   confirmedHistoricalCommerceCommands?: Record<string, ConfirmedHistoricalCommerceCommand>;
   historicalNoSessionApproval?: HistoricalNoSessionApproval;
+  historicalNoSessionBackupSha256?: string;
 }
 
 function fail(code: string, type: string, id: string, message: string): never {
@@ -75,17 +79,23 @@ const cents = (value: unknown) => {
   return `${match[1] === '-' ? '-' : ''}${(BigInt(match[2]) * 100n + BigInt((match[3] ?? '').padEnd(2, '0'))).toString()}`;
 };
 
-function validateHistoricalNoSessionApproval(approval: HistoricalNoSessionApproval | undefined) {
+function validateHistoricalNoSessionApproval(approval: HistoricalNoSessionApproval | undefined, qaSourceBackupSha256?: string) {
   if (!approval) return { byId: new Map<string, ApprovedHistoricalNoSessionPayment>(), digest: null as string | null };
-  if (approval.version !== 1 || approval.scope !== 'TAP-76 QA rehearsal only' || approval.classification !== 'C_ORIGIN_UNPROVEN'
-    || approval.provenance !== 'CAIXA_NAO_COMPROVADA' || approval.counts.payments !== approval.entries.length
-    || approval.counts.withExactPaymentAuditReference !== 323 || approval.counts.withoutExactPaymentAuditReference !== 254
-    || approval.counts.payments !== approval.counts.withExactPaymentAuditReference + approval.counts.withoutExactPaymentAuditReference
-    || approval.entries.length !== 577 || approval.entries.some((entry) => entry.classification !== 'C_ORIGIN_UNPROVEN')) {
+  const commonValid = approval.version === 1 && approval.scope === 'TAP-76 QA rehearsal only' && approval.classification === 'C_ORIGIN_UNPROVEN'
+    && approval.provenance === 'CAIXA_NAO_COMPROVADA' && approval.counts.payments === approval.entries.length
+    && approval.counts.payments === approval.counts.withExactPaymentAuditReference + approval.counts.withoutExactPaymentAuditReference
+    && approval.entries.every((entry) => entry.classification === 'C_ORIGIN_UNPROVEN');
+  const legacyApproval = commonValid && approval.sourceBackupSha256 == null && approval.counts.withExactPaymentAuditReference === 323
+    && approval.counts.withoutExactPaymentAuditReference === 254 && approval.entries.length === 577;
+  const authorizedQaSnapshot = commonValid && qaSourceBackupSha256 === PDV_HISTORICAL_C_QA_SOURCE_BACKUP_SHA256
+    && approval.sourceBackupSha256 === PDV_HISTORICAL_C_QA_SOURCE_BACKUP_SHA256 && approval.counts.withExactPaymentAuditReference === 0
+    && approval.counts.withoutExactPaymentAuditReference === 579 && approval.entries.length === 579;
+  if (!legacyApproval && !authorizedQaSnapshot) {
     fail('FINANCE_HISTORICAL_APPROVAL_INVALID', 'PAGAMENTO', '', 'A autorização C não corresponde ao inventário histórico aprovado.');
   }
   const digest = createHash('sha256').update(JSON.stringify(approval.entries)).digest('hex');
-  if (digest !== approval.approvedSnapshotSha256 || digest !== PDV_HISTORICAL_C_APPROVED_SNAPSHOT_SHA256) fail('FINANCE_HISTORICAL_APPROVAL_DIGEST_MISMATCH', 'PAGAMENTO', '', 'A fotografia aprovada foi alterada.');
+  const expectedDigest = authorizedQaSnapshot ? PDV_HISTORICAL_C_QA_APPROVED_SNAPSHOT_SHA256 : PDV_HISTORICAL_C_APPROVED_SNAPSHOT_SHA256;
+  if (digest !== approval.approvedSnapshotSha256 || digest !== expectedDigest) fail('FINANCE_HISTORICAL_APPROVAL_DIGEST_MISMATCH', 'PAGAMENTO', '', 'A fotografia aprovada foi alterada.');
   const byId = new Map<string, ApprovedHistoricalNoSessionPayment>();
   for (const entry of approval.entries) {
     if (byId.has(entry.id)) fail('FINANCE_HISTORICAL_APPROVAL_DUPLICATE_ID', 'PAGAMENTO', entry.id, 'A autorização contém ID repetido.');
@@ -142,7 +152,7 @@ const movementFields = (row: any) => ({
 export function buildPdvFinanceMigrationItems(input: PdvFinanceMigrationInput) {
   const items: Array<{ type: string; id: string; destinationType: string; destinationId: string; sourcePayload: unknown; destinationData: Record<string, unknown>; dependencies: string[] }> = [];
   if (!/^(PDV|TRAILER):.+/.test(input.confirmedPdvSourceKey)) fail('FINANCE_PDV_UNCONFIRMED', 'PDV', input.pointId, 'PDV canônico não foi confirmado.');
-  const approval = validateHistoricalNoSessionApproval(input.historicalNoSessionApproval);
+  const approval = validateHistoricalNoSessionApproval(input.historicalNoSessionApproval, input.historicalNoSessionBackupSha256);
   if (input.historicalNoSessionApproval) {
     const expectedForTenant = input.historicalNoSessionApproval.entries.filter((entry) => entry.tenantId === input.companyId);
     const sourceIds = new Set(input.snapshot.payments.map((payment: any) => payment.id));

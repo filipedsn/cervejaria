@@ -838,6 +838,7 @@ async function writeFinanceTarget(tx: Db, item: any, hasExistingMap: boolean) {
 }
 
 export async function runPdvFinanceMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void; afterBatchCommit?: (progress: { tenantId: string; phase: string; cursor: number; total: number; batch: number; durationMs: number }) => Promise<void> | void; historicalNoSessionApproval?: HistoricalNoSessionApproval }) {
+  let qaSourceBackupSha256: string | undefined;
   if (options.historicalNoSessionApproval) {
     let target: URL;
     try { target = new URL(process.env.DATABASE_URL ?? ''); }
@@ -845,6 +846,7 @@ export async function runPdvFinanceMigration(options: { db: Db; companyId: strin
     const qaTarget = process.env.NODE_ENV === 'test' && process.env.PDV_ISOLATED_QA === '1' && process.env.QA_DATABASE_URL === process.env.DATABASE_URL
       && ['postgres:', 'postgresql:'].includes(target.protocol) && ['127.0.0.1', 'localhost'].includes(target.hostname)
       && /^554(?:3[9]|4[0-9])$/.test(target.port) && target.pathname === '/cervejaria_qa_pdv_unico';
+    if (qaTarget) qaSourceBackupSha256 = process.env.PDV_QA_SOURCE_BACKUP_SHA256;
     let explicitlyConfirmedDevTarget = false;
     if (!qaTarget && process.env.PDV_CUTOVER_DEV_ADAPTER === '1'
       && process.env.PDV_CUTOVER_FINANCE_APPROVAL_SHA256 === options.historicalNoSessionApproval.approvedSnapshotSha256) {
@@ -916,7 +918,7 @@ export async function runPdvFinanceMigration(options: { db: Db; companyId: strin
           confirmedHistoricalCommerceCommands[commandId] = await findConfirmedHistoricalCommerceCommand(tx, options.companyId, options.pointId, command);
         }
       }
-      return buildPdvFinanceMigrationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedSessions, confirmedEvents, mappedPaymentIds: new Set(mappedPayments.map((row: any) => row.sourceId)), confirmedHistoricalCommerceCommands, historicalNoSessionApproval: options.historicalNoSessionApproval });
+      return buildPdvFinanceMigrationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedSessions, confirmedEvents, mappedPaymentIds: new Set(mappedPayments.map((row: any) => row.sourceId)), confirmedHistoricalCommerceCommands, historicalNoSessionApproval: options.historicalNoSessionApproval, historicalNoSessionBackupSha256: qaSourceBackupSha256 });
     },
     confirmExternalDependency: async (tx, sourceType, sourceId, transactionContext) => {
       if (sourceType === 'EVENTO') { await transactionContext.resolveOccurrence(sourceId); return true; }

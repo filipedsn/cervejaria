@@ -25,6 +25,17 @@ const evidence = JSON.parse(await readFile(protectedRelativePath(process.env.PDV
 assert.equal(approval.sourcePhotoSha256, createHash('sha256').update(await readFile(photoPath)).digest('hex'), 'historical C authorization must match this exact sanitized photo');
 assert.equal(approval.approvedSnapshotSha256, createHash('sha256').update(JSON.stringify(approval.entries)).digest('hex'), 'historical C authorization digest');
 assert.equal(approval.counts.payments, approval.entries.length);
+const { buildPdvFinanceMigrationItems } = await import('./pdv-unico-finance-transform.ts');
+const qaApprovalProbe = {
+  companyId: 'qa-approval-policy-probe', pointId: 'qa-approval-policy-probe', confirmedPdvSourceKey: 'PDV:qa-approval-policy-probe',
+  snapshot: { payments: [], debts: [], operationalMovements: [], eventMovements: [] }, confirmedSessions: {}, confirmedEvents: {}, mappedPaymentIds: new Set(),
+  historicalNoSessionApproval: approval, historicalNoSessionBackupSha256: process.env.PDV_QA_SOURCE_BACKUP_SHA256,
+};
+assert.deepEqual(buildPdvFinanceMigrationItems(qaApprovalProbe), [], 'the current-origin Class C policy is accepted only for its pinned QA backup');
+for (const wrongBackupSha256 of [undefined, '0'.repeat(64)]) {
+  assert.throws(() => buildPdvFinanceMigrationItems({ ...qaApprovalProbe, historicalNoSessionBackupSha256: wrongBackupSha256 }),
+    (error) => error.code === 'FINANCE_HISTORICAL_APPROVAL_INVALID', 'the 579-payment QA policy is blocked without its exact backup identity');
+}
 assert.equal(photo.version, 1);
 assert.deepEqual(photo.crossTenantEdges, [], 'photo must have complete, tenant-safe FK closure');
 assert.ok(photo.targetIdentity.every((row) => row.status === 'UNIQUE_MATCH'));
