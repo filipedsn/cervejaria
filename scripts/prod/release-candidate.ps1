@@ -61,11 +61,85 @@ function Copy-CandidateTree {
   if ($LASTEXITCODE -gt 7) { throw "falha ao copiar artifact candidate: $Source" }
 }
 
+function Get-ByteSha256 {
+  param([byte[]]$Bytes)
+  $sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try { return [System.BitConverter]::ToString($sha256.ComputeHash($Bytes)).Replace('-', '').ToLowerInvariant() } finally { $sha256.Dispose() }
+}
+
+function Set-CandidateMigrationBytes {
+  param([byte[]]$BlobBytes, [string]$Destination, [string]$ExpectedLedgerSha256)
+  $blobSha = Get-ByteSha256 $BlobBytes
+  if ($ExpectedLedgerSha256 -and $ExpectedLedgerSha256 -notmatch '^[a-f0-9]{64}$') { throw 'Expected migration checksum is invalid.' }
+  if ($ExpectedLedgerSha256) {
+    if (-not (Test-Path -LiteralPath $Destination -PathType Leaf)) { throw 'Applied migration package bytes are missing.' }
+    $currentSha = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($currentSha -eq $ExpectedLedgerSha256) { return $currentSha }
+    if ($blobSha -ne $ExpectedLedgerSha256) { throw "Neither existing package nor Git blob matches the source migration checksum (package=$currentSha blob=$blobSha ledger=$ExpectedLedgerSha256)." }
+  }
+  [System.IO.File]::WriteAllBytes($Destination, $BlobBytes)
+  $packagedSha = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($packagedSha -ne $blobSha) { throw 'Exact Git migration bytes changed while being written to the candidate package.' }
+  if ($ExpectedLedgerSha256 -and $packagedSha -ne $ExpectedLedgerSha256) { throw 'Applied migration bytes do not match their source ledger.' }
+  return $packagedSha
+}
+
+function Copy-GitMigrationBlobs {
+  param([string]$SourceWorktree, [string]$ExpectedReleaseSha, [string]$CandidatePrismaPath, [string]$MigrationLedgerPath)
+  if (-not (Test-Path -LiteralPath $MigrationLedgerPath -PathType Leaf)) { throw 'MigrationLedgerPath must identify the sanitized ledger from the rehearsal source.' }
+  $expectedChecksums = @{}
+  foreach ($line in (Get-Content -LiteralPath $MigrationLedgerPath -Encoding UTF8)) {
+    $fields = $line -split '\|'
+    if ($fields.Count -ge 4 -and $fields[2] -eq 't' -and $fields[3] -eq 'f' -and $fields[0] -match '^\d{14}_.+$' -and $fields[1] -match '^[a-f0-9]{64}$') { $expectedChecksums[$fields[0]] = $fields[1] }
+  }
+  if ($expectedChecksums.Count -eq 0) { throw 'The sanitized migration ledger has no completed migrations.' }
+  $migrationRoot = Join-Path $CandidatePrismaPath 'migrations'
+  $integrity = @()
+  foreach ($sourceFile in (Get-ChildItem -LiteralPath (Join-Path $SourceWorktree 'backend\prisma\migrations') -Filter 'migration.sql' -File -Recurse | Sort-Object FullName)) {
+    $relative = $sourceFile.FullName.Substring((Join-Path $SourceWorktree 'backend\prisma\migrations').Length).TrimStart('\', '/') -replace '\\', '/'
+    $gitPath = "backend/prisma/migrations/$relative"
+    $blob = (& git -C $SourceWorktree rev-parse "$ExpectedReleaseSha`:$gitPath").Trim().ToLowerInvariant()
+    if ($LASTEXITCODE -ne 0 -or $blob -notmatch '^[a-f0-9]{40}$') { throw "Git migration blob unavailable: $gitPath" }
+
+    $destination = Join-Path $migrationRoot ($relative -replace '/', '\')
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+    $start = [System.Diagnostics.ProcessStartInfo]::new()
+    $start.FileName = 'git'
+    $start.Arguments = "-C `"$SourceWorktree`" cat-file blob $blob"
+    $start.UseShellExecute = $false
+    $start.CreateNoWindow = $true
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $start
+    if (-not $process.Start()) { throw "Could not read Git migration blob: $gitPath" }
+    $blobBuffer = New-Object System.IO.MemoryStream
+    $process.StandardOutput.BaseStream.CopyTo($blobBuffer)
+    $errorText = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+    if ($process.ExitCode -ne 0) { throw "Git migration blob read failed: $gitPath ($errorText)" }
+    $blobBytes = $blobBuffer.ToArray()
+    $blobBuffer.Dispose()
+    $sourceSha = Get-ByteSha256 $blobBytes
+    $migrationName = Split-Path -Parent $relative
+    $expectedSha = $expectedChecksums[$migrationName]
+    $materializedFrom = 'candidate-package-preserved'
+    $packageSha = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $packageSha = Set-CandidateMigrationBytes -BlobBytes $blobBytes -Destination $destination -ExpectedLedgerSha256 $expectedSha
+    if ($packageSha -eq $sourceSha) { $materializedFrom = "git-blob:$blob" }
+    if ($expectedSha -and $packageSha -ne $expectedSha) { throw "Packaged migration does not match the source ledger: $migrationName" }
+    $integrity += [ordered]@{ path = "backend/prisma/migrations/$relative"; blob = $blob; gitBlobSha256 = $sourceSha; expectedLedgerSha256 = $expectedSha; packageSha256 = $packageSha; materializedFrom = $materializedFrom }
+  }
+  if ($integrity.Count -eq 0 -or $expectedChecksums.Count -gt $integrity.Count) { throw 'Migration SQL integrity inventory is incomplete.' }
+  return @($integrity)
+}
+
 function Test-ReleaseCandidate {
   param(
     [Parameter(Mandatory)][string]$CandidatePath,
     [Parameter(Mandatory)][string]$ExpectedReleaseSha,
-    [switch]$ThrowOnError
+    [switch]$ThrowOnError,
+    [switch]$RequireMigrationIntegrity
   )
   Assert-ReleaseSha $ExpectedReleaseSha
   $errors = @()
@@ -81,6 +155,22 @@ function Test-ReleaseCandidate {
     if ($manifest.format -ne $script:CandidateFormat) { $errors += 'candidate manifest format invalido' }
     if ($manifest.releaseSha -ne $ExpectedReleaseSha) { $errors += 'candidate manifest SHA diverge do SHA esperado' }
     if (-not $manifest.files -or @($manifest.files).Count -eq 0) { $errors += 'candidate manifest sem checksums' }
+    if (-not $manifest.migrationIntegrity -or @($manifest.migrationIntegrity).Count -eq 0) {
+      if ($RequireMigrationIntegrity) { $errors += 'candidate manifest sem integridade dos blobs SQL de migrations' }
+    } else {
+      $migrationPaths = @{}
+      foreach ($migration in @($manifest.migrationIntegrity)) {
+        if (-not $migration.path -or $migration.path -notmatch '^backend/prisma/migrations/.+/migration\.sql$' -or $migration.gitBlobSha256 -notmatch '^[a-f0-9]{64}$' -or $migration.packageSha256 -notmatch '^[a-f0-9]{64}$' -or ($migration.expectedLedgerSha256 -and $migration.packageSha256 -ne $migration.expectedLedgerSha256) -or (-not $migration.expectedLedgerSha256 -and $migration.packageSha256 -ne $migration.gitBlobSha256)) { $errors += 'registro de integridade de migration invalido'; continue }
+        if ($migrationPaths.ContainsKey($migration.path)) { $errors += "migration duplicada no manifest: $($migration.path)"; continue }
+        $migrationPaths[$migration.path] = $true
+        $migrationPath = Join-Path $CandidatePath ($migration.path -replace '/', '\')
+        if (-not (Test-Path -LiteralPath $migrationPath -PathType Leaf)) { $errors += "migration ausente: $($migration.path)"; continue }
+        $actualMigrationSha = (Get-FileHash -LiteralPath $migrationPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actualMigrationSha -ne $migration.packageSha256) { $errors += "SQL de migration diverge do manifest: $($migration.path)" }
+      }
+      $actualMigrationPaths = @(Get-ChildItem -LiteralPath (Join-Path $CandidatePath 'backend\prisma\migrations') -Filter 'migration.sql' -File -Recurse | ForEach-Object { $_.FullName.Substring($CandidatePath.Length).TrimStart('\', '/') -replace '\\', '/' })
+      if ($actualMigrationPaths.Count -ne $migrationPaths.Count -or @($actualMigrationPaths | Where-Object { -not $migrationPaths.ContainsKey($_) }).Count -gt 0) { $errors += 'inventario de migrations diverge do candidate package' }
+    }
   }
   foreach ($required in Get-CandidateRequiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $CandidatePath $required) -PathType Leaf)) { $errors += "artifact obrigatorio ausente: $required" }
@@ -124,7 +214,8 @@ function Invoke-ReleaseCandidatePrepare {
     [Parameter(Mandatory)][string]$ExpectedReleaseSha,
     [Parameter(Mandatory)][string]$CandidateRoot,
     [Parameter(Mandatory)][string]$NodeExe,
-    [Parameter(Mandatory)][string]$NpmCmd
+    [Parameter(Mandatory)][string]$NpmCmd,
+    [Parameter(Mandatory)][string]$MigrationLedgerPath
   )
   $nodeVersion = Assert-CandidateSource -SourceWorktree $SourceWorktree -ExpectedReleaseSha $ExpectedReleaseSha -NodeExe $NodeExe
   if (-not (Test-Path -LiteralPath $NpmCmd -PathType Leaf)) { throw "NpmCmd ausente: $NpmCmd" }
@@ -133,7 +224,7 @@ function Invoke-ReleaseCandidatePrepare {
   $root = [System.IO.Path]::GetFullPath($CandidateRoot)
   $candidate = Join-Path $root $ExpectedReleaseSha
   if (Test-Path -LiteralPath $candidate) {
-    $verified = Test-ReleaseCandidate -CandidatePath $candidate -ExpectedReleaseSha $ExpectedReleaseSha
+    $verified = Test-ReleaseCandidate -CandidatePath $candidate -ExpectedReleaseSha $ExpectedReleaseSha -RequireMigrationIntegrity
     if ($verified.Ok) { return $verified }
     throw ('candidate existente diverge; preservado sem sobrescrever: ' + ($verified.Errors -join '; '))
   }
@@ -155,10 +246,11 @@ function Invoke-ReleaseCandidatePrepare {
     Copy-Item -LiteralPath (Join-Path $SourceWorktree 'backend\package.json') -Destination (Join-Path $staging 'backend\package.json') -Force
     Copy-Item -LiteralPath (Join-Path $SourceWorktree 'backend\package-lock.json') -Destination (Join-Path $staging 'backend\package-lock.json') -Force
     Copy-CandidateTree -Source (Join-Path $SourceWorktree 'backend\prisma') -Destination (Join-Path $staging 'backend\prisma')
-    $manifest = [ordered]@{ format = $script:CandidateFormat; releaseSha = $ExpectedReleaseSha; createdAt = (Get-Date).ToUniversalTime().ToString('o'); nodeVersion = $nodeVersion; npmVersion = $npmVersion; artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/prisma'); files = @(Get-CandidateFileHashes $staging) }
+    $migrationIntegrity = Copy-GitMigrationBlobs -SourceWorktree $SourceWorktree -ExpectedReleaseSha $ExpectedReleaseSha -CandidatePrismaPath (Join-Path $staging 'backend\prisma') -MigrationLedgerPath $MigrationLedgerPath
+    $manifest = [ordered]@{ format = $script:CandidateFormat; releaseSha = $ExpectedReleaseSha; createdAt = (Get-Date).ToUniversalTime().ToString('o'); nodeVersion = $nodeVersion; npmVersion = $npmVersion; artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/prisma'); migrationIntegrity = $migrationIntegrity; files = @(Get-CandidateFileHashes $staging) }
     $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Get-CandidateManifestPath $staging) -Encoding UTF8
-    Test-ReleaseCandidate -CandidatePath $staging -ExpectedReleaseSha $ExpectedReleaseSha -ThrowOnError | Out-Null
+    Test-ReleaseCandidate -CandidatePath $staging -ExpectedReleaseSha $ExpectedReleaseSha -ThrowOnError -RequireMigrationIntegrity | Out-Null
     Move-Item -LiteralPath $staging -Destination $candidate
-    return (Test-ReleaseCandidate -CandidatePath $candidate -ExpectedReleaseSha $ExpectedReleaseSha -ThrowOnError)
+    return (Test-ReleaseCandidate -CandidatePath $candidate -ExpectedReleaseSha $ExpectedReleaseSha -ThrowOnError -RequireMigrationIntegrity)
   } finally { if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue } }
 }
