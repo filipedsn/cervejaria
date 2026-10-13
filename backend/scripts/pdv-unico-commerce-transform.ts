@@ -3,7 +3,7 @@ import { canonicalPdvPayloadHash, PdvCatalogBlocker } from './pdv-unico-catalog-
 export const PDV_COMMERCE_SCOPE = 'PDV_COMANDAS_PEDIDOS_ESTOQUE_V1';
 export const PDV_COMMERCE_TRANSFORM_VERSION = 3;
 const key = (type: string, id: string) => `${type}:${id}`;
-const relationKeys = new Set(['evento', 'pontoVenda', 'cliente', 'produto', 'opcional', 'opcionalCatalogo', 'grupo', 'produtoEstoque', 'comanda', 'pedido', 'sessao', 'cervejaria', 'itens', 'itensComanda', 'historicoStatus', 'opcionais', 'produtos', 'movimentos']);
+const relationKeys = new Set(['_count', 'evento', 'pontoVenda', 'cliente', 'produto', 'opcional', 'opcionalCatalogo', 'grupo', 'produtoEstoque', 'comanda', 'pedido', 'sessao', 'cervejaria', 'itens', 'itensComanda', 'historicoStatus', 'opcionais', 'produtos', 'movimentos']);
 
 function jsonSafe(value: any): any {
   if (value instanceof Date) return value.toISOString();
