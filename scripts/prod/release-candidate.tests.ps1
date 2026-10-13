@@ -131,6 +131,18 @@ Describe 'Git source snapshot contract' {
     Set-Content (Join-Path $snapshot 'backend\operational-extra.js') 'module.exports = 1'
     { Assert-CandidateGitSnapshot -RepositoryPath $repo -SnapshotPath $snapshot -InventoryPath $inventoryPath -ExpectedReleaseSha $release -ExpectedTree $tree } | Should Throw
   }
+  It 'accepts npm lockfile empty root keys in Windows PowerShell 5.1' {
+    $frontend = Join-Path $snapshot 'frontend'
+    $backend = Join-Path $snapshot 'backend'
+    New-Item -ItemType Directory -Force -Path $frontend, $backend | Out-Null
+    foreach ($projectPath in @($frontend, $backend)) {
+      Set-Content (Join-Path $projectPath 'package.json') '{"dependencies":{}}' -NoNewline
+      Set-Content (Join-Path $projectPath 'package-lock.json') '{"lockfileVersion":3,"packages":{"":{"dependencies":{}},"node_modules/example":{"resolved":"https://registry.npmjs.org/example/-/example-1.0.0.tgz"}}}' -NoNewline
+    }
+    { Assert-SnapshotDependencyBoundary $snapshot } | Should Not Throw
+    Set-Content (Join-Path $frontend 'package-lock.json') '{"lockfileVersion":3,"packages":{"":{},"node_modules/local":{"link":true,"resolved":"../outside"}}}' -NoNewline
+    { Assert-SnapshotDependencyBoundary $snapshot } | Should Throw
+  }
   It 'rejects local dependency references outside the snapshot' {
     $package = Join-Path $snapshot 'backend\package.json'
     Set-Content $package '{"dependencies":{"local-tool":"file:../../outside"}}' -NoNewline

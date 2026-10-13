@@ -171,9 +171,15 @@ function Assert-SnapshotDependencyBoundary {
       $deps = $package.$section
       if ($deps) { foreach ($property in $deps.PSObject.Properties) { if ([string]$property.Value -match '^(file:|link:|workspace:)') { throw "dependencia fora do snapshot nao permitida: $project/$($property.Name)=$($property.Value)" } } }
     }
-    $lock = Get-Content -LiteralPath $lockPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    foreach ($property in $lock.packages.PSObject.Properties) {
-      if ($property.Value.link -or ([string]$property.Value.resolved -match '^(file:|link:)')) { throw "lockfile referencia dependencia local: $project/$($property.Name)" }
+    # npm lockfiles use an empty root package key, unsupported by PS 5.1 ConvertFrom-Json.
+    Add-Type -AssemblyName System.Web.Extensions
+    $lockParser = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+    $lockParser.MaxJsonLength = 16777216
+    $lock = $lockParser.DeserializeObject((Get-Content -LiteralPath $lockPath -Raw -Encoding UTF8))
+    if (-not $lock.ContainsKey('packages')) { throw "lockfile packages ausente: $project" }
+    foreach ($packageName in $lock['packages'].Keys) {
+      $lockPackage = $lock['packages'][$packageName]
+      if ($lockPackage['link'] -or ([string]$lockPackage['resolved'] -match '^(file:|link:)')) { throw "lockfile referencia dependencia local: $project/$packageName" }
     }
   }
 }
