@@ -33,7 +33,7 @@ import {
 } from '../../lib/tap-montagem.js';
 import { canonicalPdvQaActivationEnabled } from '../../lib/canonical-pdv-operational-config.js';
 import { cashOccurrenceContextEnabled } from '../../lib/operacao/contexto-ocorrencia.js';
-import { requirePermissao, requirePermissaoPrecoCardapioTurno, usuarioPode } from '../../lib/operacao/permissoes.js';
+import { requireDonoAtual, requirePermissao, requirePermissaoPrecoCardapioTurno, usuarioPode } from '../../lib/operacao/permissoes.js';
 
 const pontoVendaQuery = z.object({
   pontoVendaId: z.string().min(1),
@@ -101,6 +101,10 @@ const fecharSchema = z.object({
   observacaoFechamento: z.string().trim().max(500).optional(),
 });
 
+const encerramentoAdministrativoSchema = z.object({
+  motivo: z.string().trim().min(8, 'Informe um motivo com pelo menos 8 caracteres').max(500),
+});
+
 const corrigirMovimentoSchema = z.object({
   pontoVendaId: z.string().min(1),
   movimentoId: z.string().min(1),
@@ -125,6 +129,77 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       permissoesEdicao: { cardapioTurno, precoTurno: cardapioTurno, precoTemplate },
     };
   };
+
+  app.post('/sessoes/:sessaoId/encerramento-administrativo', {
+    preHandler: [requireDonoAtual(app)],
+  }, async (request, reply) => {
+    const { cervejariaId } = request.operacao;
+    const { sessaoId } = request.params as { sessaoId: string };
+    const { motivo } = encerramentoAdministrativoSchema.parse(request.body);
+    const operadorId = getAuthUser(request).sub;
+    const resultado = await prisma.$transaction(async (tx) => {
+      const sessao = await tx.sessaoCaixaOperacao.findFirst({
+        where: { id: sessaoId, cervejariaId },
+        select: { id: true, pontoVendaId: true, status: true, tipoEncerramento: true },
+      });
+      if (!sessao) return { erro: 'Sessão não encontrada', status: 404 as const };
+      if (sessao.status === 'FECHADO') {
+        if (sessao.tipoEncerramento === 'ADMINISTRATIVO') {
+          return { sessaoId, idempotente: true };
+        }
+        return { erro: 'A sessão já foi encerrada financeiramente ou não possui classificação administrativa', status: 409 as const };
+      }
+
+      const fechadoEm = new Date();
+      const atualizada = await tx.sessaoCaixaOperacao.updateMany({
+        where: { id: sessao.id, cervejariaId, status: 'ABERTO' },
+        data: {
+          status: 'FECHADO',
+          tipoEncerramento: 'ADMINISTRATIVO',
+          fechadoPorId: operadorId,
+          fechadoEm,
+          observacaoFechamento: motivo,
+        },
+      });
+      if (atualizada.count !== 1) {
+        const estado = await tx.sessaoCaixaOperacao.findFirst({
+          where: { id: sessao.id, cervejariaId },
+          select: { status: true, tipoEncerramento: true },
+        });
+        if (estado?.status === 'FECHADO' && estado.tipoEncerramento === 'ADMINISTRATIVO') {
+          return { sessaoId, idempotente: true };
+        }
+        return { erro: 'A sessão mudou durante o encerramento; recarregue e tente novamente', status: 409 as const };
+      }
+
+      const auditoria = await registrarTransacao({
+        cervejariaId,
+        tipo: 'CASH_REGISTER_ADMINISTRATIVE_CLOSED',
+        usuarioId: operadorId,
+        entidadeTipo: 'SessaoCaixaOperacao',
+        entidadeId: sessao.id,
+        metadata: {
+          modoEncerramento: 'ADMINISTRATIVO',
+          sessaoCaixaId: sessao.id,
+          pontoVendaId: sessao.pontoVendaId,
+          motivo,
+          operadorId,
+          fechadoEm: fechadoEm.toISOString(),
+          conferênciaFinanceira: 'PENDENTE',
+          contagensPreservadasComoDesconhecidas: true,
+          pagamentosAlterados: false,
+          movimentosGerados: false,
+        },
+      }, tx);
+      if (!auditoria) throw new Error('Não foi possível persistir a auditoria do encerramento administrativo');
+      return { sessaoId, idempotente: false };
+    });
+    if ('erro' in resultado && typeof resultado.status === 'number') {
+      return reply.status(resultado.status).send({ error: resultado.erro });
+    }
+    return resultado;
+  });
+
   app.get('/sessoes/:sessaoId', { preHandler: [requirePermissao(app, 'cash.values.read')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { sessaoId } = request.params as { sessaoId: string };

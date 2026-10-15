@@ -7,6 +7,7 @@ type OperationalSessionWindow = {
   abertoEm: Date;
   fechadoEm: Date | null;
   status: string;
+  tipoEncerramento?: 'FINANCEIRO' | 'ADMINISTRATIVO' | null;
 };
 
 /** Keep the historical interval fallback only while canonical PDV is disabled. */
@@ -30,6 +31,11 @@ export function paymentFilterForOperationalSession(
       ],
     },
   };
+  // Administrative closure does not establish a financial interval. Only
+  // payments with an explicit session link may be included in its projection.
+  if (session.status === 'FECHADO' && session.tipoEncerramento === 'ADMINISTRATIVO') {
+    return exactSession;
+  }
   const closedAt = session.status === 'FECHADO' && session.fechadoEm ? session.fechadoEm : undefined;
   const legacyWindow: Prisma.PagamentoWhereInput = {
     sessaoCaixaId: null,

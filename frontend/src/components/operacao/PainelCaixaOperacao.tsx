@@ -27,7 +27,7 @@ import { OperacaoTurnoTapsPanel } from './OperacaoTurnoTapsPanel';
 import type { Trailer } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 
-type Dialogo = 'nenhum' | 'movimento' | 'correcao' | 'fechar' | 'cardapio';
+type Dialogo = 'nenhum' | 'movimento' | 'correcao' | 'fechar' | 'cardapio' | 'encerrar-admin';
 type OcorrenciaAgenda = {
   id: string; nome: string; data: string; status: 'PROGRAMADA' | 'ABERTA' | 'FECHADA' | 'CANCELADA';
   agenda: { nome: string; frequencia: 'SEMANAL'; diaSemana: number } | null;
@@ -85,7 +85,7 @@ interface Props {
 
 export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAbertas: comandasAbertasProp }: Props) {
   const queryClient = useQueryClient();
-  const { canPermission } = useAuth();
+  const { canPermission, isDono } = useAuth();
   const { contexto } = useOperacaoContexto();
   const agendaCanonica = contexto.operationalSettingsSource === 'CANONICAL_PDV';
   const usaCardapio = contexto.ativo ? (contexto.usaCardapio ?? false) : false;
@@ -103,6 +103,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const [historicoAberto, setHistoricoAberto] = useState<string | null>(null);
   const [contado, setContado] = useState<Record<string, string>>({});
   const [obsFechamento, setObsFechamento] = useState('');
+  const [motivoEncerramentoAdministrativo, setMotivoEncerramentoAdministrativo] = useState('');
   const [erro, setErro] = useState('');
   const [cardapioForm, setCardapioForm] = useState<TurnoCardapioFormState>(defaultTurnoCardapioForm);
   const [painelSuprimido, setPainelSuprimido] = useState(compacto);
@@ -238,6 +239,23 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
       setErro('');
     },
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível fechar o caixa'),
+  });
+
+  const encerrarAdministrativamente = useMutation({
+    mutationFn: () => {
+      if (!sessao) throw new Error('Sessão não encontrada');
+      return api.post<{ sessaoId: string; idempotente: boolean }>(
+        `/api/operacao/caixa/sessoes/${sessao.id}/encerramento-administrativo`,
+        { motivo: motivoEncerramentoAdministrativo.trim() },
+      );
+    },
+    onSuccess: () => {
+      invalidar();
+      setDialogo('nenhum');
+      setMotivoEncerramentoAdministrativo('');
+      setErro('');
+    },
+    onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível encerrar administrativamente'),
   });
 
   const corrigir = useMutation({
@@ -576,6 +594,14 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           >
             Fechar caixa
           </button>}
+          {isDono && <button
+            type="button"
+            className="touch-btn-secondary w-full"
+            onClick={() => { setMotivoEncerramentoAdministrativo(''); setErro(''); setDialogo('encerrar-admin'); }}
+            data-audit="operacao-caixa-encerrar-administrativamente"
+          >
+            Encerrar administrativamente
+          </button>}
         </>
       )}
 
@@ -583,12 +609,15 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         <div className="card space-y-3">
           <div>
             <h2 className="text-base font-semibold">Turno encerrado</h2>
-            <p className="text-sm text-ink-faint">
-              Conferência do turno que acabou de fechar. Abra um novo turno abaixo quando for
-              operar de novo.
-            </p>
+            {sessao.tipoEncerramento === 'ADMINISTRATIVO' ? (
+              <p className="text-sm font-semibold text-amber-700">Encerramento administrativo · conferência financeira pendente; contagens desconhecidas.</p>
+            ) : sessao.tipoEncerramento === 'FINANCEIRO' ? (
+              <p className="text-sm text-ink-faint">Fechamento financeiro conferido. Abra um novo turno abaixo quando for operar de novo.</p>
+            ) : (
+              <p className="text-sm text-ink-faint">Encerramento histórico sem classificação financeira.</p>
+            )}
           </div>
-          {!compacto && (
+          {!compacto && sessao.tipoEncerramento !== 'ADMINISTRATIVO' && (
             <div className="space-y-2">
               <h3 className="font-semibold">Conferência</h3>
               {FORMAS_PAGAMENTO.map((forma) => {
@@ -697,6 +726,31 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             <div><label className="label">Senha</label><input className="input" type="password" autoComplete="current-password" value={autorizadorSenha} onChange={(e) => setAutorizadorSenha(e.target.value)} /></div>
           </fieldset>
           <button type="submit" className="touch-btn-primary w-full" disabled={corrigir.isPending} data-audit="operacao-caixa-corrigir">{corrigir.isPending ? 'Corrigindo...' : 'Autorizar e corrigir'}</button>
+        </form>
+      </Modal>
+
+      <Modal
+        open={dialogo === 'encerrar-admin' && Boolean(sessao?.status === 'ABERTO' && isDono)}
+        onClose={() => !encerrarAdministrativamente.isPending && setDialogo('nenhum')}
+        title="Encerramento administrativo"
+      >
+        <form className="space-y-4" onSubmit={(event) => {
+          event.preventDefault();
+          if (motivoEncerramentoAdministrativo.trim().length < 8) {
+            setErro('Informe o motivo com pelo menos 8 caracteres');
+            return;
+          }
+          encerrarAdministrativamente.mutate();
+        }}>
+          <p className="text-sm text-ink-muted">Retira a sessão do conjunto operacional aberto. Não informa contagens, não altera pagamentos e deixa a conferência financeira pendente.</p>
+          {erro && <div className="alert-error">{erro}</div>}
+          <div>
+            <label className="label" htmlFor="motivo-encerramento-administrativo">Motivo</label>
+            <textarea id="motivo-encerramento-administrativo" className="input min-h-28" value={motivoEncerramentoAdministrativo} onChange={(event) => setMotivoEncerramentoAdministrativo(event.target.value)} minLength={8} maxLength={500} required />
+          </div>
+          <button type="submit" className="touch-btn-orange w-full" disabled={encerrarAdministrativamente.isPending}>
+            {encerrarAdministrativamente.isPending ? 'Encerrando...' : 'Confirmar encerramento administrativo'}
+          </button>
         </form>
       </Modal>
 

@@ -130,6 +130,7 @@ enum TransacaoTipo {
   CASH_MOVEMENT_RECORDED
   CASH_MOVEMENT_CORRECTED
   CASH_REGISTER_CLOSED
+  CASH_REGISTER_ADMINISTRATIVE_CLOSED
   COMANDA_GRUPO_FECHADO
   KITCHEN_ORDER_CREATED
   SALE_PAYMENT_RECORDED
@@ -1337,6 +1338,12 @@ enum StatusCaixaOperacao {
   @@map("StatusCaixaQuiosque")
 }
 
+enum TipoEncerramentoSessaoCaixa {
+  FINANCEIRO
+  ADMINISTRATIVO
+
+  @@schema("quiosque")
+}
 enum TipoMovimentoCaixaOperacao {
   SANGRIA
   SUPRIMENTO
@@ -1367,6 +1374,7 @@ model SessaoCaixaOperacao {
   abertoEm       DateTime            @default(now())
   fechadoPorId   String?
   fechadoEm      DateTime?
+  tipoEncerramento TipoEncerramentoSessaoCaixa?
   /// Conferencia fisica no fechamento. Nulo enquanto o caixa esta aberto.
   contadoDinheiro    Decimal? @db.Decimal(10, 2)
   contadoPix         Decimal? @db.Decimal(10, 2)

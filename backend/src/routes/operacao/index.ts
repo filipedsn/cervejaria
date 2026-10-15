@@ -19,6 +19,8 @@ import {
   updateCapacidadesOperacaoSchema,
 } from '../../lib/operacao/capacidades.js';
 import { canonicalPdvQaActivationEnabled } from '../../lib/canonical-pdv-operational-config.js';
+import { writeFreezeStatus } from '../../lib/write-freeze.js';
+import { requireDonoAtual } from '../../lib/operacao/permissoes.js';
 import { updateOperationalConfig } from '../../lib/operational-config.js';
 import { createSinglePdv, SinglePdvProvisioningConflictError } from '../../lib/single-pdv-provisioning.js';
 
@@ -71,6 +73,8 @@ export async function operacaoRoutes(app: FastifyInstance) {
       pontosVenda,
     };
   });
+
+  app.get('/write-freeze-status', { preHandler: [requireDonoAtual(app)] }, async () => writeFreezeStatus());
 
   await app.register(async (catalogScope) => {
     catalogScope.addHook('preHandler', requireCatalogAccess(app));

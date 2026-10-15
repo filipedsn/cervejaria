@@ -83,6 +83,26 @@ export function OperacaoTurnoResumoPage() {
 
   const { caixa, pontoNome, abertoPorNome, fechadoPorNome } = data;
   const titulo = formatTurnoTitulo(caixa.abertoEm, caixa.fechadoEm!);
+  if (caixa.tipoEncerramento === 'ADMINISTRATIVO' || !data.dadosFinanceirosDisponiveis) {
+    return (
+      <div className="space-y-6 pb-6">
+        <div>
+          <Link to={dashboardHref} className="touch-btn-secondary touch-btn-sm inline-flex items-center gap-1.5 mb-3">Dashboard</Link>
+          <p className="page-eyebrow">Relatório do turno</p>
+          <h1 className="page-title">{titulo}</h1>
+          <p className="page-subtitle">{pontoNome}</p>
+          <p className="text-sm text-ink-faint mt-0.5">
+            Aberto por {abertoPorNome}{fechadoPorNome ? ` · Encerrado por ${fechadoPorNome}` : ''}
+          </p>
+        </div>
+        <section className="card space-y-2 border-amber-500/30" role="status">
+          <h2 className="font-semibold text-amber-700">Encerramento administrativo</h2>
+          <p className="text-sm text-amber-700">Conferência financeira pendente. As contagens permanecem desconhecidas; nenhum total ou venda foi associado por horário.</p>
+          {caixa.observacaoFechamento && <p className="text-sm text-ink-faint">Motivo: {caixa.observacaoFechamento}</p>}
+        </section>
+      </div>
+    );
+  }
   const produtosPorCategoria = data.porProduto.reduce((categorias, produto) => {
     const produtos = categorias.get(produto.categoria) ?? [];
     produtos.push(produto);
@@ -116,6 +136,11 @@ export function OperacaoTurnoResumoPage() {
               Aberto por {abertoPorNome}
               {fechadoPorNome ? ` · Fechado por ${fechadoPorNome}` : ''}
             </p>
+            {caixa.tipoEncerramento === 'FINANCEIRO' ? (
+              <p className="mt-2 text-sm font-semibold text-green-700">Fechamento financeiro conferido</p>
+            ) : (
+              <p className="mt-2 text-sm text-ink-faint">Encerramento histórico sem classificação</p>
+            )}
           </div>
           <span className="rounded-full bg-surface-lighter border border-line px-3 py-1 text-xs font-semibold text-ink-muted uppercase">
             Encerrado
@@ -124,17 +149,17 @@ export function OperacaoTurnoResumoPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-        <KpiCard label="Vendas do turno" value={formatCurrency(data.vendasTotal)} />
-        <KpiCard label="Recebido no turno" value={formatCurrency(data.totalRecebido)} />
+        <KpiCard label="Vendas do turno" value={formatCurrency(data.vendasTotal ?? 0)} />
+        <KpiCard label="Recebido no turno" value={formatCurrency(data.totalRecebido ?? 0)} />
         <KpiCard label="Pendente do turno" value={formatCurrency(data.totalPendente ?? 0)} />
-        <KpiCard label="Comandas" value={pluralComandasOperacao(data.comandasAtendidas)} />
-        <KpiCard label="Ticket médio" value={formatCurrency(data.ticketMedio)} />
-        <KpiCard label="Receita/hora" value={`${formatCurrency(data.receitaPorHora)}/h`} />
-        <KpiCard label="Duração" value={formatDuracaoTurnoMinutos(data.duracaoMinutos)} />
-        {data.vendasAvulsas > 0 && (
+        <KpiCard label="Comandas" value={pluralComandasOperacao(data.comandasAtendidas ?? 0)} />
+        <KpiCard label="Ticket médio" value={formatCurrency(data.ticketMedio ?? 0)} />
+        <KpiCard label="Receita/hora" value={`${formatCurrency(data.receitaPorHora ?? 0)}/h`} />
+        <KpiCard label="Duração" value={formatDuracaoTurnoMinutos(data.duracaoMinutos ?? 0)} />
+        {(data.vendasAvulsas ?? 0) > 0 && (
           <KpiCard label="Vendas avulsas" value={String(data.vendasAvulsas)} />
         )}
-        {data.itensVendidos > 0 && (
+        {(data.itensVendidos ?? 0) > 0 && (
           <KpiCard label="Itens vendidos" value={String(data.itensVendidos)} />
         )}
       </div>

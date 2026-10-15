@@ -541,6 +541,7 @@ export interface ResumoCaixa {
   abertoEm: string;
   fechadoPorId: string | null;
   fechadoEm: string | null;
+  tipoEncerramento: 'FINANCEIRO' | 'ADMINISTRATIVO' | null;
   observacaoFechamento: string | null;
   pendente: number;
   gaveta: {
@@ -577,11 +578,12 @@ export interface RelatorioTurnoCaixa {
   pontoNome: string;
   abertoPorNome: string;
   fechadoPorNome: string | null;
-  comandasAtendidas: number;
-  vendasTotal: number;
-  totalRecebido: number;
-  vendasAvulsas: number;
-  itensVendidos: number;
+  dadosFinanceirosDisponiveis: boolean;
+  comandasAtendidas: number | null;
+  vendasTotal: number | null;
+  totalRecebido: number | null;
+  vendasAvulsas: number | null;
+  itensVendidos: number | null;
   porProduto: Array<{
     produtoId: string;
     nome: string;
@@ -615,16 +617,16 @@ export interface RelatorioTurnoCaixa {
     recebido: number;
     saldo: number;
   }>;
-  totalPendente: number;
+  totalPendente: number | null;
   topClientes: Array<{
     clienteId: string;
     nome: string;
     comandas: number;
     consumo: number;
   }>;
-  ticketMedio: number;
-  duracaoMinutos: number;
-  receitaPorHora: number;
+  ticketMedio: number | null;
+  duracaoMinutos: number | null;
+  receitaPorHora: number | null;
 }
 
 export function formatTurnoTitulo(abertoEm: string, fechadoEm: string): string {
