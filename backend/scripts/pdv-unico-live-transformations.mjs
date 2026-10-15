@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 import { DEV_PDV_TENANT_ALLOWLIST, validateDevCutoverEnvironment } from './pdv-unico-dev-cutover-core.mjs';
+import { assertClassCSourceMatchesApproval, validateClassCAuthorization } from '../../scripts/prod/pdv-class-c-authorization.mjs';
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const profile = process.env.PDV_CUTOVER_PROFILE;
@@ -24,10 +25,24 @@ const photoPath = path.resolve(process.env.PDV_REPRESENTATIVE_PHOTO_FILE ?? '');
 const photoBytes = await readFile(photoPath);
 const photoSha256 = createHash('sha256').update(photoBytes).digest('hex');
 assert.equal(photoSha256, '2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b', 'approved source photo must remain byte-identical');
-const approval = JSON.parse(await readFile(path.join(backendRoot, 'scripts/pdv-unico-historical-no-session-approval.json'), 'utf8'));
-assert.equal(approval.sourcePhotoSha256, photoSha256);
-assert.equal(createHash('sha256').update(JSON.stringify(approval.entries)).digest('hex'), approval.approvedSnapshotSha256);
-assert.equal(approval.entries.length, 577, 'the approved class-C payment set is immutable');
+const approvalPath = process.env.PDV_CUTOVER_CLASS_C_APPROVAL_FILE
+  ? path.resolve(process.env.PDV_CUTOVER_CLASS_C_APPROVAL_FILE)
+  : path.join(backendRoot, 'scripts/pdv-unico-historical-no-session-approval.json');
+const approval = JSON.parse(await readFile(approvalPath, 'utf8').then((text) => text.replace(/^\uFEFF/, '')));
+let qaSourceBackupSha256;
+if (profile === 'qa') {
+  qaSourceBackupSha256 = process.env.PDV_CUTOVER_ORIGIN_BACKUP_SHA256;
+  if (!process.env.PDV_CUTOVER_CLASS_C_SOURCE_ENTRIES_FILE) throw new Error('PDV_CUTOVER_CLASS_C_SOURCE_ENTRIES_FILE is required for QA.');
+  const sourceEntriesPath = path.resolve(process.env.PDV_CUTOVER_CLASS_C_SOURCE_ENTRIES_FILE);
+  const sourceEntries = JSON.parse(await readFile(sourceEntriesPath, 'utf8'));
+  validateClassCAuthorization({ mode: 'qa', approval, originBackupSha256: qaSourceBackupSha256 });
+  assertClassCSourceMatchesApproval({ approval, sourceEntries });
+  approval.sourceBackupSha256 = qaSourceBackupSha256;
+} else {
+  assert.equal(approval.sourcePhotoSha256, photoSha256);
+  assert.equal(createHash('sha256').update(JSON.stringify(approval.entries)).digest('hex'), approval.approvedSnapshotSha256);
+  assert.equal(approval.entries.length, 577, 'the historical DEV class-C policy remains pinned to its original set');
+}
 const { PrismaClient } = await import(pathToFileURL(path.join(clientDir, 'index.js')).href);
 const db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal' });
 const { runPdvTapOwnershipMigration } = await import('./pdv-unico-tap-migrator.ts');
@@ -64,11 +79,13 @@ try {
     phases.push(await runBatched('sessions', runPdvSessionMigration));
     phases.push(await runBatched('finance', runPdvFinanceMigration, {
       historicalNoSessionApproval: approval,
+      ...(profile === 'qa' ? { historicalNoSessionBackupSha256: qaSourceBackupSha256 } : {}),
     }));
     phases.push(await runBatched('kitchen-before-commerce', runPdvKitchenOrderContextPreparation));
     phases.push(await runBatched('commerce', runPdvCommerceMigration));
     phases.push(await runBatched('finance-revalidation-after-commerce', runPdvFinanceMigration, {
       historicalNoSessionApproval: approval,
+      ...(profile === 'qa' ? { historicalNoSessionBackupSha256: qaSourceBackupSha256 } : {}),
     }));
     phases.push(await runBatched('kitchen-revalidation', runPdvKitchenOrderContextPreparation));
     tenants.push({ tenantId, tenant: approvedTenant.name, pointId, status: 'PASS', phases });
