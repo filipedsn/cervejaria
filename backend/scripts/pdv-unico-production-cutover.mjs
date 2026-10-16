@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { closeSync, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { assertClassCSourceMatchesApproval, validateClassCAuthorization } from '../../scripts/prod/pdv-class-c-authorization.mjs';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
@@ -8,6 +9,100 @@ export const PRODUCTION_PDV_TENANT_ALLOWLIST = Object.freeze([
   Object.freeze({ id: 'cmsry9xrn0000hvlgopjxy0oo', name: 'Churrasquinho do Thiago' }),
   Object.freeze({ id: 'cmr9yis3c0000hvu00q9fe7y1', name: 'CIA Marítima' }),
 ]);
+
+export const PRODUCTION_CUTOVER_SEQUENCE = Object.freeze([
+  'global-preflight',
+  'minimal-prerequisite-migrations',
+  'business-catalog-transformations',
+  'kitchen-context-preparation',
+  'dependent-migrations-with-original-preflight',
+  'remaining-tenant-transformations-and-replays',
+  'approved-administrative-session-closure',
+  'diagnostics-and-integrated-reconciliation',
+  'per-tenant-activation',
+]);
+
+const receiptDigest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+
+export function readProductionCutoverReceipts(filePath, { runId, tenantIds, checkpointSha256 }) {
+  if (!existsSync(filePath)) return [];
+  const text = readFileSync(filePath, 'utf8');
+  if (text && !text.endsWith('\n')) throw new Error('Production cutover receipt log ends with an incomplete record.');
+  const records = text.split('\n').filter(Boolean).map((line) => JSON.parse(line));
+  let previousSha256 = 'GENESIS';
+  for (const [index, entry] of records.entries()) {
+    const { sha256, ...body } = entry;
+    if (body.previousSha256 !== previousSha256 || sha256 !== receiptDigest(body)
+      || body.runId !== runId || body.checkpointSha256 !== checkpointSha256
+      || JSON.stringify(body.tenantIds) !== JSON.stringify(tenantIds)
+      || body.status !== 'PASS' || body.phase !== PRODUCTION_CUTOVER_SEQUENCE[index]) {
+      throw new Error(`Production cutover receipt chain is invalid at record ${index + 1}.`);
+    }
+    previousSha256 = sha256;
+  }
+  return records.map(({ sha256: _sha256, previousSha256: _previous, ...row }) => row);
+}
+
+export function appendProductionCutoverReceipt(filePath, row) {
+  const completed = readProductionCutoverReceipts(filePath, row);
+  if (row.status !== 'PASS' || row.phase !== PRODUCTION_CUTOVER_SEQUENCE[completed.length]) {
+    throw new Error('Only the next confirmed production cutover phase may append a receipt.');
+  }
+  const prior = existsSync(filePath) ? readFileSync(filePath, 'utf8').trimEnd().split('\n').filter(Boolean).at(-1) : undefined;
+  const previousSha256 = prior ? JSON.parse(prior).sha256 : 'GENESIS';
+  const body = { ...row, previousSha256 };
+  const entry = { ...body, sha256: receiptDigest(body) };
+  const descriptor = openSync(filePath, 'a');
+  try { writeSync(descriptor, `${JSON.stringify(entry)}\n`, undefined, 'utf8'); fsyncSync(descriptor); }
+  finally { closeSync(descriptor); }
+  return entry.sha256;
+}
+
+/**
+ * Single ordered production phase runner. It validates the checkpoint, freeze,
+ * target, and both financial authorizations before invoking any supplied phase.
+ * Replays require live verification of every durable receipt before resuming.
+ */
+export async function executeProductionCutover({
+  env = process.env, operations, receiptFile, verifyCompletedPhase,
+  validateContext = validateProductionCutoverContext,
+} = {}) {
+  const productionContext = await validateContext({ env });
+  if (!path.isAbsolute(receiptFile ?? '')) throw new Error('Production phase receipts require an explicit absolute path.');
+  for (const phase of PRODUCTION_CUTOVER_SEQUENCE) {
+    if (typeof operations?.[phase] !== 'function') throw new Error(`Missing executable production phase: ${phase}`);
+  }
+  const tenantIds = [...productionContext.tenantIds];
+  const runId = env.PDV_CUTOVER_RUN_ID;
+  if (!runId || !/^[a-zA-Z0-9_-]{8,80}$/.test(runId)) throw new Error('A stable production cutover run ID is required.');
+  await mkdir(path.dirname(receiptFile), { recursive: true });
+  const receipts = readProductionCutoverReceipts(receiptFile, {
+    runId, tenantIds, checkpointSha256: productionContext.checkpointSha256,
+  });
+  if (receipts.length && typeof verifyCompletedPhase !== 'function') {
+    throw new Error('Production resume requires live database and migrator verification for completed phases.');
+  }
+  const resumeVerification = [];
+  for (const row of receipts) {
+    const result = await verifyCompletedPhase(row.phase, row, productionContext);
+    if (result?.status !== 'PASS' && result?.status !== 'COMPLETED') throw new Error(`Production resume diverged at phase ${row.phase}.`);
+    resumeVerification.push({ phase: row.phase, status: 'PASS', evidence: result });
+  }
+  const phases = [];
+  for (const phase of PRODUCTION_CUTOVER_SEQUENCE.slice(receipts.length)) {
+    const started = performance.now();
+    const result = await operations[phase]({ productionContext, tenantIds, runId });
+    if (result?.status !== 'PASS' && result?.status !== 'COMPLETED') throw new Error(`Production cutover phase blocked: ${phase}`);
+    const row = {
+      runId, tenantIds, checkpointSha256: productionContext.checkpointSha256,
+      checkpointId: productionContext.checkpoint.checkpointId,
+      phase, status: 'PASS', durationMs: Math.round(performance.now() - started), result,
+    };
+    appendProductionCutoverReceipt(receiptFile, row);
+    phases.push(row);
+  }
+  return { status: 'COMPLETED', productionContext, runId, tenantIds, resumedPhases: receipts.length, resumeVerification, phases: [...receipts, ...phases] };
+}
 
 function absolutePath(value, name) {
   if (!value || !path.isAbsolute(value)) throw new Error(`${name} must be an explicit absolute path.`);

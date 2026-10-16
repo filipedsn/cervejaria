@@ -3,22 +3,24 @@ import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 export const DEV_CANONICAL_TENANTS = Object.freeze(['cmr9yis3c0000hvu00q9fe7y1', 'cmsry9xrn0000hvlgopjxy0oo']);
+export const PRODUCTION_CANONICAL_TENANTS = DEV_CANONICAL_TENANTS;
 const key = 'PDV_CANONICAL_TENANTS';
 const hash = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
 const wrap = (body) => ({ ...body, sha256: hash(JSON.stringify(body)) });
 
-function activationValue(text) {
+function activationValue(text, expectedTenants = DEV_CANONICAL_TENANTS, profile = 'dev') {
   const values = text.split(/\r?\n/).filter((line) => line.trimStart().startsWith(`${key}=`));
   if (values.length > 1) throw new Error('DEV environment has duplicate PDV_CANONICAL_TENANTS keys.');
   if (!values.length) return { line: null, value: null, index: -1 };
   const line = values[0];
   const raw = line.slice(line.indexOf('=') + 1).trim().replace(/^(['"])(.*)\1$/, '$2');
-  if (raw && raw !== DEV_CANONICAL_TENANTS.join(',')) throw new Error('Existing PDV_CANONICAL_TENANTS is outside the reviewed DEV activation scope.');
+  if (raw && raw !== expectedTenants.join(',')) throw new Error(`Existing PDV_CANONICAL_TENANTS is outside the reviewed ${profile} activation scope.`);
   return { line, value: raw || null, index: text.split(/\r?\n/).findIndex((item) => item === line) };
 }
 
-function assertConfigPath(configPath) {
-  if (!path.isAbsolute(configPath) || path.basename(configPath).toLowerCase() !== '.env.development') throw new Error('Persistent activation is restricted to an explicit absolute .env.development file.');
+function assertConfigPath(configPath, profile = 'dev') {
+  const expected = profile === 'production' ? '.env.production' : '.env.development';
+  if (!['dev', 'production'].includes(profile) || !path.isAbsolute(configPath) || path.basename(configPath).toLowerCase() !== expected) throw new Error(`Persistent activation is restricted to an explicit absolute ${expected} file.`);
 }
 
 function replaceActivationLine(text, { priorLine, priorIndex, originalHadTrailingNewline, desired }) {
@@ -52,12 +54,14 @@ async function atomicReplace(filePath, content) {
 }
 
 /** Persist the exact tenant selector read by scripts/dev/start-dev.ps1 and backend/src/lib/load-env.ts. */
-export async function applyPersistentTenantActivation({ configPath, tenants = DEV_CANONICAL_TENANTS, backupPath }) {
-  assertConfigPath(configPath);
+export async function applyPersistentTenantActivation({ configPath, tenants, backupPath, profile = 'dev' }) {
+  const allowlist = profile === 'production' ? PRODUCTION_CANONICAL_TENANTS : DEV_CANONICAL_TENANTS;
+  tenants ??= allowlist;
+  assertConfigPath(configPath, profile);
   if (!path.isAbsolute(backupPath) || path.resolve(backupPath) === path.resolve(configPath)) throw new Error('Activation rollback evidence requires a separate absolute backup path.');
-  if (JSON.stringify([...tenants].sort()) !== JSON.stringify([...DEV_CANONICAL_TENANTS].sort())) throw new Error('Persistent DEV activation requires exactly the reviewed two-tenant allowlist.');
+  if (JSON.stringify([...tenants].sort()) !== JSON.stringify([...allowlist].sort())) throw new Error(`Persistent ${profile} activation requires exactly the reviewed two-tenant allowlist.`);
   const original = await readFile(configPath, 'utf8');
-  const prior = activationValue(original);
+  const prior = activationValue(original, allowlist, profile);
   const newline = original.includes('\r\n') ? '\r\n' : '\n';
   const lines = original.split(newline);
   const originalHadTrailingNewline = original.endsWith('\n');
@@ -68,6 +72,7 @@ export async function applyPersistentTenantActivation({ configPath, tenants = DE
   const next = nextLines.join(newline) + (originalHadTrailingNewline ? newline : '');
   const body = {
     version: 1,
+    profile,
     configPath: path.resolve(configPath),
     beforeSha256: hash(original),
     afterSha256: hash(next),
@@ -85,12 +90,13 @@ export async function applyPersistentTenantActivation({ configPath, tenants = DE
   return { status: 'PASS', configPath: body.configPath, tenants: body.tenants, beforeSha256: body.beforeSha256, afterSha256: body.afterSha256, backupPath: path.resolve(backupPath), changed: body.changed };
 }
 
-export async function rollbackPersistentTenantActivation({ configPath, backupPath }) {
-  assertConfigPath(configPath);
+export async function rollbackPersistentTenantActivation({ configPath, backupPath, profile = 'dev' }) {
+  const allowlist = profile === 'production' ? PRODUCTION_CANONICAL_TENANTS : DEV_CANONICAL_TENANTS;
+  assertConfigPath(configPath, profile);
   const snapshot = JSON.parse(await readFile(backupPath, 'utf8'));
   const { sha256, ...body } = snapshot;
-  if (sha256 !== hash(JSON.stringify(body)) || body.version !== 1 || body.configPath !== path.resolve(configPath)
-    || JSON.stringify([...body.tenants].sort()) !== JSON.stringify([...DEV_CANONICAL_TENANTS].sort())) throw new Error('Activation rollback evidence is invalid or belongs to another DEV config.');
+  if (sha256 !== hash(JSON.stringify(body)) || body.version !== 1 || body.profile !== profile || body.configPath !== path.resolve(configPath)
+    || JSON.stringify([...body.tenants].sort()) !== JSON.stringify([...allowlist].sort())) throw new Error(`Activation rollback evidence is invalid or belongs to another ${profile} config.`);
   const current = await readFile(configPath, 'utf8');
   if (hash(current) === body.beforeSha256) return { status: 'PASS', configPath: body.configPath, tenants: body.tenants, restoredSha256: body.beforeSha256, alreadyRestored: true, changed: false };
   if (hash(current) !== body.afterSha256) throw new Error('DEV environment changed after activation; rollback blocked to preserve newer configuration.');

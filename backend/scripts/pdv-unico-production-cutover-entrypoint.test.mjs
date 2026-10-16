@@ -1,9 +1,10 @@
 ﻿import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { PRODUCTION_CUTOVER_SEQUENCE, executeProductionCutover, validateProductionCutoverContext } from './pdv-unico-production-cutover.mjs';
 import { runLiveTransformations } from './pdv-unico-live-transformations.mjs';
 
 const repoRoot = path.resolve(process.env.PDV_CUTOVER_TEST_FIXTURE_ROOT ?? process.cwd());
@@ -159,4 +160,40 @@ test('tenant outside production allowlist is rejected before effects', async () 
   const f = fixture({ env: { PDV_CUTOVER_TENANTS: 'cmsry9xrn0000hvlgopjxy0oo,unauthorized-tenant' } });
   await assert.rejects(runLiveTransformations({ env: f.env, dependencies: f.dependencies, write: () => {} }), /approved Thiago\/CIA Marítima allowlist/);
   assert.equal(f.dbCreations, 0);
+});
+
+test('single production executor composes every approved phase in its fixed order and persists receipts', async () => {
+  const f = fixture();
+  const temp = await mkdtemp(path.join(os.tmpdir(), 'tap76-production-sequence-'));
+  const receiptFile = path.join(temp, 'cutover.jsonl');
+  const calls = [];
+  const operations = Object.fromEntries(PRODUCTION_CUTOVER_SEQUENCE.map((phase) => [phase, async (context) => {
+    calls.push({ phase, ...context });
+    return { status: 'PASS', evidence: phase };
+  }]));
+  try {
+    const result = await executeProductionCutover({
+      env: f.env, receiptFile, operations,
+      validateContext: ({ env }) => validateProductionCutoverContext({ env, readFileImpl: f.dependencies.readFile }),
+    });
+    assert.equal(result.status, 'COMPLETED');
+    assert.deepEqual(calls.map(({ phase }) => phase), PRODUCTION_CUTOVER_SEQUENCE);
+    assert.ok(calls.every(({ productionContext, tenantIds, runId }) => productionContext.checkpointSha256 === f.checkpointSha256
+      && JSON.stringify([...tenantIds].sort()) === JSON.stringify([...f.env.PDV_CUTOVER_TENANTS.split(',')].sort())
+      && runId === f.env.PDV_CUTOVER_RUN_ID));
+    const receiptRows = (await readFile(receiptFile, 'utf8')).trim().split(/\r?\n/).map((line) => JSON.parse(line));
+    assert.deepEqual(receiptRows.map(({ phase }) => phase), PRODUCTION_CUTOVER_SEQUENCE);
+    assert.ok(receiptRows.every((row) => row.checkpointSha256 === f.checkpointSha256 && row.status === 'PASS'));
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+test('production executor validates every phase before effects and refuses an incomplete operation chain', async () => {
+  const f = fixture();
+  let effects = 0;
+  const operations = Object.fromEntries(PRODUCTION_CUTOVER_SEQUENCE.slice(0, -1).map((phase) => [phase, async () => { effects++; return { status: 'PASS' }; }]));
+  await assert.rejects(executeProductionCutover({
+    env: f.env, receiptFile: path.join(os.tmpdir(), 'incomplete-prod-chain.jsonl'), operations,
+    validateContext: ({ env }) => validateProductionCutoverContext({ env, readFileImpl: f.dependencies.readFile }),
+  }), /Missing executable production phase: per-tenant-activation/);
+  assert.equal(effects, 0);
 });

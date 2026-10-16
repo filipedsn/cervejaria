@@ -11,6 +11,9 @@ const VERSION = 1;
 
 const sha = (value) => createHash('sha256').update(value).digest('hex');
 const json = (value) => JSON.stringify(value);
+const canonical = (value) => Array.isArray(value) ? value.map(canonical)
+  : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]))
+    : value;
 const cents = (value) => {
   const match = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(String(value));
   assert.ok(match, 'QA class-C payment value must be exact cents');
@@ -151,7 +154,7 @@ export async function applyApprovedClassCOutOfScopeDisposition({ db, approval, p
       assert.equal(prior.scope, SCOPE);
       assert.equal(prior.cervejariaId, OUT_OF_SCOPE_TENANT);
       assert.equal(prior.sourceSnapshotHash, subsetHash);
-      assert.deepEqual(prior.checkpoint, checkpoint);
+      assert.equal(json(canonical(prior.checkpoint)), json(canonical(checkpoint)), 'completed class-C checkpoint is semantically identical despite database JSON key ordering');
       assert.equal(prior.status, 'COMPLETED');
       assert.equal(prior.batches.length, 1);
       assert.equal(prior.batches[0].status, 'CONFIRMED');

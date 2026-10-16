@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
-import { applyPersistentTenantActivation, assertPersistentTenantActivation, rollbackPersistentTenantActivation } from './pdv-unico-dev-activation-config.mjs';
+import { applyPersistentTenantActivation, assertPersistentTenantActivation, PRODUCTION_CANONICAL_TENANTS, rollbackPersistentTenantActivation } from './pdv-unico-dev-activation-config.mjs';
 
 const root = await mkdtemp(path.join(os.tmpdir(), 'pdv-activation-config-test-'));
 after(() => rm(root, { recursive: true, force: true }));
@@ -46,4 +46,22 @@ test('activation allowlist and config path are explicit', async () => {
   await writeFile(configPath, 'NODE_ENV=development\n');
   await assert.rejects(applyPersistentTenantActivation({ configPath, tenants: ['cmr9yis3c0000hvu00q9fe7y1'], backupPath: path.join(root, 'partial.json') }), /exactly the reviewed/);
   await assert.rejects(applyPersistentTenantActivation({ configPath: path.join(root, 'production', '.env.production'), backupPath: path.join(root, 'prod.json') }), /\.env\.development/);
+});
+
+test('production activation requires the production config path and restores the exact bytes', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'pdv-production-activation-'));
+  try {
+    const configPath = path.join(root, '.env.production');
+    const backupPath = path.join(root, 'activation.json');
+    const original = 'DATABASE_URL=fixture\nPDV_CANONICAL_TENANTS=\n';
+    await writeFile(configPath, original, 'utf8');
+    const applied = await applyPersistentTenantActivation({ configPath, backupPath, profile: 'production', tenants: PRODUCTION_CANONICAL_TENANTS });
+    assert.equal(applied.status, 'PASS');
+    assert.match(await readFile(configPath, 'utf8'), /PDV_CANONICAL_TENANTS=cmr9yis3c0000hvu00q9fe7y1,cmsry9xrn0000hvlgopjxy0oo/);
+    await assert.rejects(applyPersistentTenantActivation({ configPath, backupPath: path.join(root, 'bad.json'), profile: 'production', tenants: [PRODUCTION_CANONICAL_TENANTS[0]] }), /exactly the reviewed two-tenant/);
+    const restored = await rollbackPersistentTenantActivation({ configPath, backupPath, profile: 'production' });
+    assert.equal(restored.status, 'PASS');
+    assert.equal(await readFile(configPath, 'utf8'), original);
+    await assert.rejects(applyPersistentTenantActivation({ configPath: path.join(root, '.env.development'), backupPath: path.join(root, 'wrong.json'), profile: 'production' }), /\.env\.production/);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

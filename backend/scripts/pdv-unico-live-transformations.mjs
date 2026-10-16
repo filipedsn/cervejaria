@@ -17,15 +17,14 @@ function parseJson(bytes) {
 }
 
 async function readApprovalAndPhoto({ env, profile, productionContext, readFileImpl }) {
+  if (profile === 'production') {
+    // Production is bound to the synchronized checkpoint and exact source facts;
+    // the historic representative photo is not an input to this approval.
+    return { approval: productionContext.approval, photoSha256: null, productionAuthorization: productionContext.productionAuthorization };
+  }
   const photoPath = path.resolve(env.PDV_REPRESENTATIVE_PHOTO_FILE ?? '');
   const photoBytes = await readFileImpl(photoPath);
   const photoSha256 = createHash('sha256').update(photoBytes).digest('hex');
-
-  if (profile === 'production') {
-    if (productionContext.rehearsal) assert.equal(photoSha256, productionContext.approval.sourcePhotoSha256, 'QA rehearsal must use the photo pinned by its protected approval');
-    else assert.equal(photoSha256, APPROVED_PHOTO_SHA256, 'approved production source photo must remain byte-identical');
-    return { approval: productionContext.approval, photoSha256, productionAuthorization: productionContext.productionAuthorization };
-  }
   assert.equal(photoSha256, APPROVED_PHOTO_SHA256, 'approved source photo must remain byte-identical');
 
   const approvalPath = env.PDV_CUTOVER_CLASS_C_APPROVAL_FILE

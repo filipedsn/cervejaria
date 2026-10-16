@@ -1,0 +1,1408 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["public", "quiosque"]
+}
+
+enum UserRole {
+  ADMIN
+  DONO
+  ATENDENTE
+
+  @@schema("public")
+}
+
+enum EventStatus {
+  ABERTO
+  FECHADO
+
+  @@schema("public")
+}
+
+enum StatusCaixaEvento {
+  ABERTO
+  FECHADO
+
+  @@schema("public")
+}
+
+enum TipoMovimentoCaixaEvento {
+  SUPRIMENTO
+  SANGRIA
+
+  @@schema("public")
+}
+
+enum ComandaStatus {
+  ABERTA
+  FECHADA
+  CANCELADA
+
+  @@schema("public")
+}
+
+enum ComandaTipo {
+  COMANDA
+  AVULSA
+  MESA
+  FICHA
+  APELIDO
+
+  @@schema("public")
+}
+
+enum ComandaOrigem {
+  EVENTO
+  CAIXA
+  QUIOSQUE
+
+  @@schema("public")
+}
+
+enum PaymentMethod {
+  DINHEIRO
+  PIX
+  CARTAO
+  CARTAO_DEBITO
+  CARTAO_CREDITO
+
+  @@schema("public")
+}
+
+enum ProdutoTipo {
+  BEBIDA
+  COMIDA
+
+  @@schema("public")
+}
+
+enum FormatoBebida {
+  CHOPE
+  LATA
+  LONGNECK
+  GARRAFA
+  OUTRO
+
+  @@schema("public")
+}
+
+enum TransacaoTipo {
+  COMANDA_CRIADA
+  COMANDA_ITEM_ADICIONADO
+  COMANDA_ITEM_REMOVIDO
+  COMANDA_DESCONTO_APLICADO
+  COMANDA_FECHADA
+  COMANDA_CANCELADA
+  EVENTO_CRIADO
+  EVENTO_SESSAO_INICIADA
+  EVENTO_ATUALIZADO
+  EVENTO_FECHADO
+  EVENTO_REABERTO
+  EVENTO_EXCLUIDO
+  EVENTO_CARDAPIO_ATUALIZADO
+  EVENTO_CAIXA_ABERTO
+  EVENTO_CAIXA_MOVIMENTO
+  EVENTO_CAIXA_FECHADO
+  TAP_CHOPE_POSICIONADO
+  TAP_CHOPE_REMOVIDO
+  TAP_ATIVO_ALTERADO
+  QUIOSQUE_CAIXA_ABERTO
+  QUIOSQUE_CAIXA_MOVIMENTO
+  QUIOSQUE_CAIXA_MOVIMENTO_CORRIGIDO
+  QUIOSQUE_CAIXA_FECHADO
+  QUIOSQUE_COMANDA_CRIADA
+  QUIOSQUE_COMANDA_FECHADA
+  QUIOSQUE_COMANDA_CANCELADA
+  QUIOSQUE_PEDIDO_CRIADO
+  QUIOSQUE_PAGAMENTO_REGISTRADO
+  QUIOSQUE_COMANDA_GRUPO_FECHADO
+  QUIOSQUE_PEDIDO_COZINHA
+  QUIOSQUE_ESTOQUE_MOVIMENTO
+  QUIOSQUE_DESCONTO_APLICADO
+  QUIOSQUE_VENDA_AVULSA
+  PORTAL_PEDIDO_CRIADO
+  PORTAL_PEDIDO_RECUSADO
+  CASH_REGISTER_OPENED
+  CASH_MOVEMENT_RECORDED
+  CASH_MOVEMENT_CORRECTED
+  CASH_REGISTER_CLOSED
+  CASH_REGISTER_ADMINISTRATIVE_CLOSED
+  COMANDA_GRUPO_FECHADO
+  KITCHEN_ORDER_CREATED
+  SALE_PAYMENT_RECORDED
+  KITCHEN_ORDER_STATUS_CHANGED
+  INVENTORY_MOVEMENT
+  SALE_COMPLETED
+  CAPABILITY_CHANGED
+
+  @@schema("public")
+}
+
+enum CadastroOrigem {
+  STAFF
+  AUTO_ATENDIMENTO
+  COMANDA
+
+  @@schema("public")
+}
+
+enum PedidoClienteStatus {
+  PENDENTE
+  CONFIRMADO
+  RECUSADO
+  CANCELADO
+
+  @@schema("public")
+}
+
+model Cervejaria {
+  id          String   @id @default(cuid())
+  nome        String
+  slug        String   @unique
+  chavePix    String?
+  ativo       Boolean  @default(true)
+  logoUrl     String?
+  portalBackgroundUrl String?
+  operacaoCategoriasOrdem Json?
+  corPrimaria String?
+  corPaleta   Json?
+  /** KPIs da tela de comandas (cervejaria e quiosque). */
+  exibirKpisComanda Boolean @default(true)
+  /** Lista de comandas em coluna única (ligado) ou duas colunas (desligado). */
+  comandasColunaUnica Boolean @default(true)
+  /** Cardápios com preço por evento (ligado) ou só catálogo tradicional (desligado). */
+  usaCardapio Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  usuarios Usuario[]
+  produtos Produto[]
+  opcionais Opcional[]
+  trailers Trailer[]
+  taps     Tap[]
+  eventos  Evento[]
+  clientes Cliente[]
+  cardapios Cardapio[]
+  transacoes TransacaoLog[]
+  eventoSerieExclusoes EventoSerieExclusao[]
+
+  configuracaoOperacao ConfiguracaoOperacao?
+  configuracaoOperacional ConfiguracaoOperacional?
+  pontosVenda          PontoVenda[]
+  agendasOperacionais AgendaOperacional[]
+  ocorrenciasOperacionais OcorrenciaOperacional[]
+  pdvMigrationMaps PdvMigrationMap[]
+  pdvMigrationRuns PdvMigrationRun[]
+  pedidosOperacao      PedidoOperacao[]
+  sessoesCaixaOperacao SessaoCaixaOperacao[]
+   saldosEstoqueOperacao InventoryBalance[]
+   movimentosEstoqueOperacao InventoryMovement[]
+
+  @@schema("public")
+}
+
+/// Intenção operacional do estabelecimento. NULL preserva o fallback legado
+/// durante a migração; recursos físicos continuam sendo responsabilidade de readiness.
+model ConfiguracaoOperacional {
+  cervejariaId              String   @id
+  setupCompletedAt          DateTime?
+  directSalesEnabled        Boolean?
+  plannedOperationsEnabled  Boolean?
+  tapsEnabled               Boolean?
+  inventoryEnabled          Boolean?
+  kitchenEnabled            Boolean?
+  /// Include kitchen items in a comanda total as soon as they are launched.
+  kitchenItemsChargeAtLaunch Boolean @default(false)
+  /// Allow closing and paying a comanda while kitchen orders are still pending.
+  allowCloseComandaWithPendingKitchenOrders Boolean @default(false)
+  whatsappPedidoProntoEnabled Boolean @default(false)
+  whatsappPedidoProntoNaCozinha Boolean @default(false)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+
+  @@schema("public")
+}
+
+/// Effective operating capabilities at a canonical point of sale. Legacy fields remain untouched until cutover.
+model ConfiguracaoPontoVenda {
+  id String @id @default(cuid())
+  cervejariaId String
+  pontoVendaId String @unique
+  tapsEnabled Boolean
+  inventoryEnabled Boolean
+  kitchenEnabled Boolean
+  kitchenItemsChargeAtLaunch Boolean
+  allowCloseComandaWithPendingKitchenOrders Boolean
+  whatsappPedidoProntoEnabled Boolean
+  whatsappPedidoProntoNaCozinha Boolean
+  quantidadeMesas Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pontoVenda PontoVenda @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+
+  @@unique([id, cervejariaId, pontoVendaId])
+  @@schema("quiosque")
+  @@unique([pontoVendaId, cervejariaId])
+}
+
+model Trailer {
+  id            String   @id @default(cuid())
+  nome          String
+  identificador String?
+  ativo         Boolean  @default(true)
+  cervejariaId  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  taps       Tap[]
+  eventos    Evento[]
+  sessoesCaixaOperacao SessaoCaixaOperacao[]
+
+  @@index([cervejariaId])
+
+  @@schema("public")
+}
+
+model Usuario {
+  id                 String    @id @default(cuid())
+  nome               String
+  email              String    @unique
+  senhaHash          String
+  papel              UserRole  @default(ATENDENTE)
+  /// Autoriza aplicar desconto manual em comandas do quiosque. Dono sempre pode.
+  podeDarDescontoOperacao Boolean @default(false)
+  cervejariaId       String?
+  passwordChangedAt  DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  cervejaria            Cervejaria?           @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  passwordResetTokens   PasswordResetToken[]
+  comandasFechadas      Comanda[]             @relation("ComandaFechadaPor")
+  pedidosConfirmados    PedidoCliente[]       @relation("PedidoConfirmadoPor")
+  transacoes            TransacaoLog[]
+  pushSubscriptions     PushSubscription[]
+  caixasEventoAbertos   SessaoCaixaEvento[] @relation("CaixaEventoAbertoPor")
+  caixasEventoFechados  SessaoCaixaEvento[] @relation("CaixaEventoFechadoPor")
+  movimentosCaixaEvento MovimentoCaixaEvento[]
+
+  @@index([cervejariaId])
+
+  @@schema("public")
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  usuarioId String
+  endpoint  String
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, endpoint])
+  @@index([usuarioId])
+
+  @@schema("public")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  usuarioId String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+
+  @@schema("public")
+}
+
+model Produto {
+  id           String      @id @default(cuid())
+  nome         String
+  /// Categoria operacional livre (ex.: Bebidas, Comidas), preservada na convergência do catálogo legado.
+  categoria    String?
+  descricao    String?
+  cor          String?
+  estilo       String?
+  tipo         ProdutoTipo   @default(BEBIDA)
+  formato      FormatoBebida?
+  /// Participa do ledger canônico quando inventoryEnabled estiver ativo.
+  controlaEstoque Boolean @default(false)
+  /// Entra na fila canônica quando kitchenEnabled estiver ativo.
+  exigePreparo     Boolean @default(false)
+  /// Ordem de apresentação para produtos unitários.
+  ordem            Int     @default(0)
+  ativo        Boolean       @default(true)
+  cervejariaId String
+  pontoVendaId String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda? @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+  precos     Preco[]
+  taps       Tap[]
+  montagens  TapMontagem[]
+  itens      ItemComanda[]
+  pedidoItens PedidoClienteItem[]
+  eventos    EventoProduto[]
+  cardapios  CardapioProduto[]
+  gruposOpcionais ProdutoOpcionalGrupo[]
+  opcionaisVinculados ProdutoOpcionalVinculo[]
+  opcionalVinculosPdv ProdutoOpcionalVinculo[] @relation("VinculoOpcionalProdutoPdv")
+  cardapioProdutosPdv CardapioProduto[] @relation("CardapioProdutoPdvProduto")
+  opcionaisEstoque ProdutoOpcional[] @relation("ProdutoOpcionalEstoque")
+   saldosEstoqueOperacao InventoryBalance[]
+   movimentosEstoqueOperacao InventoryMovement[]
+  sessoesCaixaOperacao SessaoCaixaProdutoOperacao[]
+
+  @@index([cervejariaId])
+  @@unique([id, cervejariaId, pontoVendaId])
+
+  @@schema("public")
+}
+
+model Preco {
+  id        String  @id @default(cuid())
+  produtoId String
+  volumeMl  Int
+  preco     Decimal @db.Decimal(10, 2)
+
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([produtoId, volumeMl])
+
+  @@schema("public")
+}
+
+model ProdutoOpcionalGrupo {
+  id          String   @id @default(cuid())
+  produtoId   String
+  nome        String
+  obrigatorio Boolean  @default(false)
+  maximo      Int      @default(1)
+  ordem       Int      @default(0)
+  ativo       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  produto  Produto           @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  opcoes   ProdutoOpcional[]
+
+  @@index([produtoId, ativo, ordem])
+  @@schema("public")
+}
+
+model ProdutoOpcional {
+  id               String   @id @default(cuid())
+  grupoId          String
+  nome             String
+  precoAdicional   Decimal  @default(0) @db.Decimal(10, 2)
+  produtoEstoqueId String?
+  ordem            Int      @default(0)
+  ativo            Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  grupo          ProdutoOpcionalGrupo @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  produtoEstoque Produto?              @relation("ProdutoOpcionalEstoque", fields: [produtoEstoqueId], references: [id], onDelete: SetNull)
+  itens          ItemComandaOpcional[]
+
+  @@index([grupoId, ativo, ordem])
+  @@index([produtoEstoqueId])
+  @@schema("public")
+}
+
+model Opcional {
+  id          String   @id @default(cuid())
+  cervejariaId String
+  pontoVendaId String?
+  nome        String
+  preco       Decimal  @default(0) @db.Decimal(10, 2)
+  ativo       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda? @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+  produtos ProdutoOpcionalVinculo[]
+  produtosPdv ProdutoOpcionalVinculo[] @relation("VinculoOpcionalOpcionalPdv")
+  itens ItemComandaOpcional[]
+
+  @@unique([cervejariaId, nome])
+  @@unique([id, cervejariaId, pontoVendaId])
+  @@index([cervejariaId, ativo, nome])
+  @@schema("public")
+}
+
+model ProdutoOpcionalVinculo {
+  id String @id @default(cuid())
+  produtoId String
+  opcionalId String
+  cervejariaId String?
+  pontoVendaId String?
+  ordem Int @default(0)
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  opcional Opcional @relation(fields: [opcionalId], references: [id], onDelete: Cascade)
+  produtoPdv Produto? @relation("VinculoOpcionalProdutoPdv", fields: [produtoId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
+  opcionalPdv Opcional? @relation("VinculoOpcionalOpcionalPdv", fields: [opcionalId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
+  @@unique([produtoId, opcionalId])
+  @@index([produtoId, ordem])
+  @@schema("public")
+}
+
+/// Evidência histórica do backfill do catálogo legado para Produto.
+model ProdutoMigracaoMapa {
+  legacyProdutoId    String   @id
+  canonicalProdutoId String   @unique
+  source             String
+  reason             String
+  migrationRun       String
+  createdAt          DateTime @default(now())
+
+  @@schema("public")
+}
+
+model Tap {
+  id           String  @id @default(cuid())
+  numero       Int
+  nome         String?
+  produtoId    String?
+  ativo        Boolean @default(true)
+  cervejariaId String
+  trailerId    String
+
+  produto    Produto?      @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+  cervejaria Cervejaria    @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  trailer    Trailer       @relation(fields: [trailerId], references: [id], onDelete: Cascade)
+  montagens  TapMontagem[]
+  itens      ItemComanda[]
+
+  @@unique([trailerId, numero])
+  @@index([cervejariaId])
+  @@index([trailerId])
+
+  @@schema("public")
+}
+
+/// Chope posicionado em um tap durante um evento (histórico de trocas no dia).
+model TapMontagem {
+  id          String    @id @default(cuid())
+  tapId       String
+  produtoId   String
+  eventoId    String?
+  sessaoCaixaId String?
+  iniciadoEm  DateTime  @default(now())
+  encerradoEm DateTime?
+
+  tap     Tap     @relation(fields: [tapId], references: [id], onDelete: Cascade)
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  evento  Evento? @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  sessaoCaixa SessaoCaixaOperacao? @relation(fields: [sessaoCaixaId], references: [id], onDelete: Cascade)
+
+  @@index([eventoId, encerradoEm])
+  @@index([sessaoCaixaId, encerradoEm])
+  @@index([tapId, eventoId])
+  @@index([tapId, sessaoCaixaId])
+
+  @@schema("public")
+}
+
+enum RecorrenciaTipo {
+  NENHUMA
+  SEMANAL
+
+  @@schema("public")
+}
+
+model Evento {
+  id           String          @id @default(cuid())
+  nome         String
+  local        String
+  data         DateTime?       @db.Date
+  horaInicio   String          @default("18:00")
+  horaFim      String?
+  recorrencia  RecorrenciaTipo @default(NENHUMA)
+  diaSemana    Int?
+  serieId      String?
+  status           EventStatus     @default(ABERTO)
+  encerradoEm      DateTime?
+  /// Reinicia o numerador de comandas ao reabrir o evento.
+  comandasContadorDesde DateTime      @default(now())
+  portalGeneration Int             @default(0)
+  cervejariaId     String
+  trailerId    String
+  cardapioId   String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  cervejaria  Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  trailer     Trailer    @relation(fields: [trailerId], references: [id], onDelete: Restrict)
+  cardapio    Cardapio?  @relation(fields: [cardapioId], references: [id], onDelete: SetNull)
+  serie       Evento?    @relation("SerieOcorrencias", fields: [serieId], references: [id], onDelete: SetNull)
+  ocorrencias Evento[] @relation("SerieOcorrencias")
+  agendamentoExclusoes EventoSerieExclusao[] @relation("SerieAgendamentoExclusoes")
+  comandas    Comanda[]
+  pedidos     PedidoCliente[]
+  montagens   TapMontagem[]
+  produtos    EventoProduto[]
+  transacoes  TransacaoLog[]
+  sessoesCaixa SessaoCaixaEvento[]
+
+  @@unique([serieId, data])
+  @@index([cervejariaId, status])
+  @@index([cervejariaId, recorrencia])
+  @@index([trailerId])
+  @@index([cardapioId])
+
+  @@schema("public")
+}
+
+/// Ocorrência cancelada de uma agenda fixa semanal (pula um dia específico).
+model EventoSerieExclusao {
+  id           String   @id @default(cuid())
+  serieId      String
+  data         DateTime @db.Date
+  cervejariaId String
+  createdAt    DateTime @default(now())
+
+  serie      Evento     @relation("SerieAgendamentoExclusoes", fields: [serieId], references: [id], onDelete: Cascade)
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+
+  @@unique([serieId, data])
+  @@index([cervejariaId])
+
+  @@schema("public")
+}
+
+/// Cardápio reutilizável entre eventos e turnos de caixa.
+model Cardapio {
+  id           String   @id @default(cuid())
+  nome         String
+  ativo        Boolean  @default(true)
+  /// Indica que a composição operacional escolhe os volumes de chope explicitamente.
+  chopeVolumesConfigurados Boolean @default(false)
+  cervejariaId String
+  pontoVendaId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  cervejaria Cervejaria       @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda? @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+  produtos   CardapioProduto[]
+  produtosPdv CardapioProduto[] @relation("CardapioProdutoPdvCardapio")
+  eventos    Evento[]
+  sessoesCaixaOperacao SessaoCaixaOperacao[]
+
+  @@index([cervejariaId])
+  @@unique([id, cervejariaId, pontoVendaId])
+
+  @@schema("public")
+}
+
+model CardapioProduto {
+  id         String  @id @default(cuid())
+  cardapioId String
+  produtoId  String
+  cervejariaId String?
+  pontoVendaId String?
+  /// 0 para produtos unitários; chopes usam um registro por volume vendido.
+  volumeMl   Int     @default(0)
+  precoUnit  Decimal @db.Decimal(10, 2)
+
+  cardapio Cardapio @relation(fields: [cardapioId], references: [id], onDelete: Cascade)
+  produto  Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  cardapioPdv Cardapio? @relation("CardapioProdutoPdvCardapio", fields: [cardapioId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
+  produtoPdv Produto? @relation("CardapioProdutoPdvProduto", fields: [produtoId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
+
+  @@unique([cardapioId, produtoId, volumeMl])
+  @@index([cardapioId])
+
+  @@schema("public")
+}
+
+model Cliente {
+  id               String          @id @default(cuid())
+  nome             String
+  telefone         String?
+  email            String?
+  dataNascimento   DateTime?
+  optInMarketing   Boolean         @default(false)
+  optInEm          DateTime?
+  cadastradoVia    CadastroOrigem  @default(COMANDA)
+  observacoes      String?
+  ativo            Boolean         @default(true)
+  isSistema        Boolean         @default(false)
+  cervejariaId     String
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  cervejaria    Cervejaria           @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  comandas      Comanda[]
+  contasReceber ContaReceber[]
+  pedidos       PedidoCliente[]
+  estatisticas  ClienteEstatisticas?
+
+  @@unique([cervejariaId, telefone])
+  @@index([cervejariaId, nome])
+  @@index([cervejariaId, ativo])
+
+  @@schema("public")
+}
+
+/// Agregados de consumo — extensível para fidelização (pontos) no futuro.
+model ClienteEstatisticas {
+  clienteId              String   @id
+  totalComandasFechadas  Int      @default(0)
+  totalGasto             Decimal  @default(0) @db.Decimal(12, 2)
+  totalMlChope           Int      @default(0)
+  primeiraVisitaEm       DateTime?
+  ultimaVisitaEm         DateTime?
+  updatedAt              DateTime @updatedAt
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@schema("public")
+}
+
+model Comanda {
+  id             String        @id @default(cuid())
+  origem         ComandaOrigem @default(EVENTO)
+  eventoId       String?
+  clienteId      String?
+  status         ComandaStatus @default(ABERTA)
+  tipo           ComandaTipo   @default(COMANDA)
+  /// Sequencial da comanda dentro do evento ou turno de caixa (vendas avulsas ficam sem numero).
+  numero         Int?
+  /// Desconto manual aplicado na comanda (valor absoluto em reais).
+  desconto       Decimal       @default(0) @db.Decimal(10, 2)
+  total          Decimal       @default(0) @db.Decimal(10, 2)
+  fechadoPorId   String?
+  fechadaEm      DateTime?
+  /// Operacao: ponto de venda, dia operacional e identificador da mesa/ficha/apelido.
+  pontoVendaId   String?
+  diaOperacional DateTime?     @db.Date
+  identificador  String?
+  abertaPorId    String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  evento     Evento?     @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  cliente    Cliente?    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda? @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
+  fechadoPor Usuario?   @relation("ComandaFechadaPor", fields: [fechadoPorId], references: [id], onDelete: SetNull)
+  itens      ItemComanda[]
+  pagamentos Pagamento[]
+  contaReceber ContaReceber?
+  pedidos    PedidoCliente[]
+  pedidosOperacao PedidoOperacao[]
+  transacoes TransacaoLog[]
+
+  @@index([eventoId, status])
+  @@index([eventoId, status, tipo])
+  @@index([fechadoPorId])
+  @@index([origem, status, createdAt])
+  @@index([pontoVendaId, status])
+  @@index([origem, diaOperacional])
+
+  @@schema("public")
+}
+
+model ItemComanda {
+  id                String   @id @default(cuid())
+  comandaId         String
+  produtoId         String?
+  tapId             String?
+  volumeMl          Int      @default(0)
+  quantidade        Int      @default(1)
+  precoUnit         Decimal  @db.Decimal(10, 2)
+  /// Snapshot do nome no quiosque (catalogo pode mudar depois).
+  nome              String?
+  observacao        String?
+  exigePreparo      Boolean  @default(false)
+  paraViagem        Boolean  @default(false)
+  cancelamentoPendenteEm DateTime?
+  canceladoEm       DateTime?
+  pedidoCozinhaId   String?
+  createdAt         DateTime @default(now())
+
+  comanda         Comanda          @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  produto         Produto?         @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  tap             Tap?             @relation(fields: [tapId], references: [id], onDelete: SetNull)
+  pedidoCozinha   PedidoOperacao?  @relation(fields: [pedidoCozinhaId], references: [id], onDelete: SetNull)
+  opcionais       ItemComandaOpcional[]
+
+  @@index([comandaId])
+  @@index([tapId])
+  @@index([pedidoCozinhaId])
+
+  @@schema("public")
+}
+
+model ItemComandaOpcional {
+  id             String  @id @default(cuid())
+  itemComandaId  String
+  opcionalId     String?
+  opcionalCatalogoId String?
+  nome           String
+  precoAdicional Decimal @default(0) @db.Decimal(10, 2)
+  quantidade     Int     @default(1)
+
+  itemComanda ItemComanda      @relation(fields: [itemComandaId], references: [id], onDelete: Cascade)
+  opcional    ProdutoOpcional? @relation(fields: [opcionalId], references: [id], onDelete: SetNull)
+  opcionalCatalogo Opcional? @relation(fields: [opcionalCatalogoId], references: [id], onDelete: SetNull)
+
+  @@index([itemComandaId])
+  @@index([opcionalId])
+  @@index([opcionalCatalogoId])
+  @@schema("public")
+}
+
+model PedidoCliente {
+  id              String              @id @default(cuid())
+  eventoId        String
+  comandaId       String
+  clienteId       String
+  status          PedidoClienteStatus @default(PENDENTE)
+  observacao      String?
+  recusadoMotivo  String?
+  confirmadoPorId String?
+  confirmadoEm    DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  evento        Evento              @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  comanda       Comanda             @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  cliente       Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  confirmadoPor Usuario?            @relation("PedidoConfirmadoPor", fields: [confirmadoPorId], references: [id], onDelete: SetNull)
+  itens         PedidoClienteItem[]
+
+  @@index([eventoId, status])
+  @@index([comandaId])
+  @@index([clienteId])
+
+  @@schema("public")
+}
+
+model PedidoClienteItem {
+  id         String  @id @default(cuid())
+  pedidoId   String
+  produtoId  String
+  tapId      String?
+  volumeMl   Int
+  quantidade Int     @default(1)
+  precoUnit  Decimal @db.Decimal(10, 2)
+
+  pedido  PedidoCliente @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  produto Produto       @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@index([pedidoId])
+
+  @@schema("public")
+}
+
+/// Comida e bebidas (não chope) disponíveis no evento — definido antes de abrir.
+model EventoProduto {
+  id        String   @id @default(cuid())
+  eventoId  String
+  produtoId String
+  createdAt DateTime @default(now())
+
+  evento  Evento  @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([eventoId, produtoId])
+  @@index([eventoId])
+
+  @@schema("public")
+}
+
+model Pagamento {
+  id              String        @id @default(cuid())
+  comandaId       String
+  contaReceberId  String?
+  sessaoCaixaId   String?
+  sessaoCaixaEventoId String?
+  forma           PaymentMethod
+  valor           Decimal       @db.Decimal(10, 2)
+  /// Só no dinheiro: quanto o cliente entregou e quanto voltou de troco.
+  valorRecebido   Decimal?      @db.Decimal(10, 2)
+  troco           Decimal?      @db.Decimal(10, 2)
+  registradoPorId String?
+  pagoEm          DateTime      @default(now())
+
+  comanda Comanda @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  contaReceber ContaReceber? @relation(fields: [contaReceberId], references: [id], onDelete: SetNull)
+  sessaoCaixaEvento SessaoCaixaEvento? @relation(fields: [sessaoCaixaEventoId], references: [id], onDelete: SetNull)
+  sessaoCaixaOperacao SessaoCaixaOperacao? @relation(fields: [sessaoCaixaId], references: [id], onDelete: Restrict)
+
+  @@index([comandaId])
+  @@index([contaReceberId, pagoEm])
+  @@index([sessaoCaixaId, pagoEm])
+  @@index([sessaoCaixaEventoId, pagoEm])
+
+  @@schema("public")
+}
+
+/// Caixa financeiro de uma sessão de evento; novas sessões preservam cada reabertura.
+model SessaoCaixaEvento {
+  id                  String            @id @default(cuid())
+  eventoId            String
+  status              StatusCaixaEvento @default(ABERTO)
+  trocoInicial        Decimal           @default(0) @db.Decimal(10, 2)
+  abertoPorId         String
+  abertoEm            DateTime          @default(now())
+  fechadoPorId        String?
+  fechadoEm           DateTime?
+  contadoDinheiro     Decimal?          @db.Decimal(10, 2)
+  contadoPix          Decimal?          @db.Decimal(10, 2)
+  contadoDebito       Decimal?          @db.Decimal(10, 2)
+  contadoCredito      Decimal?          @db.Decimal(10, 2)
+  contadoCartao       Decimal?          @db.Decimal(10, 2)
+  observacaoFechamento String?
+
+  evento     Evento        @relation(fields: [eventoId], references: [id], onDelete: Restrict)
+  abertoPor  Usuario       @relation("CaixaEventoAbertoPor", fields: [abertoPorId], references: [id], onDelete: Restrict)
+  fechadoPor Usuario?      @relation("CaixaEventoFechadoPor", fields: [fechadoPorId], references: [id], onDelete: SetNull)
+  movimentos MovimentoCaixaEvento[]
+  pagamentos Pagamento[]
+
+  @@index([eventoId, abertoEm])
+  @@index([eventoId, status])
+  @@schema("public")
+}
+
+model MovimentoCaixaEvento {
+  id              String                   @id @default(cuid())
+  sessaoId        String
+  tipo            TipoMovimentoCaixaEvento
+  valor           Decimal                  @db.Decimal(10, 2)
+  observacao      String?
+  registradoPorId String
+  createdAt       DateTime                 @default(now())
+
+  sessao        SessaoCaixaEvento @relation(fields: [sessaoId], references: [id], onDelete: Restrict)
+  registradoPor Usuario           @relation(fields: [registradoPorId], references: [id], onDelete: Restrict)
+
+  @@index([sessaoId, createdAt])
+  @@schema("public")
+}
+
+/// Uma conta a receber nasce quando uma comanda de caixa e encerrada sem pagamento.
+/// O saldo e calculado pelos recebimentos vinculados, preservando o historico.
+model ContaReceber {
+  id             String   @id @default(cuid())
+  comandaId      String   @unique
+  clienteId      String
+  valorOriginal  Decimal  @db.Decimal(10, 2)
+  criadoPorId    String
+  createdAt      DateTime @default(now())
+
+  comanda   Comanda     @relation(fields: [comandaId], references: [id], onDelete: Restrict)
+  cliente   Cliente     @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  pagamentos Pagamento[]
+
+  @@index([clienteId, createdAt])
+  @@schema("public")
+}
+
+model TransacaoLog {
+  id           String        @id @default(cuid())
+  cervejariaId String
+  tipo         TransacaoTipo
+  usuarioId    String?
+  eventoId     String?
+  comandaId    String?
+  entidadeTipo String?
+  entidadeId   String?
+  metadata     Json          @default("{}")
+  createdAt    DateTime      @default(now())
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  usuario    Usuario?   @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  evento     Evento?    @relation(fields: [eventoId], references: [id], onDelete: SetNull)
+  comanda    Comanda?   @relation(fields: [comandaId], references: [id], onDelete: SetNull)
+
+  @@index([cervejariaId, createdAt])
+  @@index([eventoId, createdAt])
+  @@index([comandaId, createdAt])
+  @@index([tipo])
+
+  @@schema("public")
+}
+
+model SystemConfig {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Modulo Operacao — schema proprio, isolado da operacao de cervejaria.
+// Compartilha apenas Cervejaria (cadastro da empresa) e Usuario (autenticacao).
+// ---------------------------------------------------------------------------
+
+/// Ativa o modulo Operacao para uma empresa. A existencia da linha e o que liga
+/// o modulo, evitando qualquer coluna nova nas tabelas da cervejaria.
+model ConfiguracaoOperacao {
+  cervejariaId    String   @id
+  ativo           Boolean  @default(true)
+  controlaEstoque Boolean  @default(false)
+  temCozinha      Boolean  @default(false)
+  /// Empresa que so opera quiosque. Esconde as telas de cervejaria sem precisar
+  /// de nenhuma coluna nova no schema public.
+  exclusivo       Boolean  @default(false)
+  /// Cardápios com preço por turno (ligado) ou só catálogo tradicional (desligado).
+  quantidadeMesas Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+
+  @@schema("quiosque")
+  @@map("ConfiguracaoQuiosque")
+}
+
+/// Operacao fisico. Uma empresa pode ter varios.
+model PontoVenda {
+  id           String   @id @default(cuid())
+  cervejariaId String
+  nome         String
+  ativo        Boolean  @default(true)
+  /// null = legacy ainda não materializado; true/false = capacidade explícita da unidade.
+  usaCaixa     Boolean?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  cervejaria Cervejaria          @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  comandas   Comanda[]
+  pedidos    PedidoOperacao[]
+  sessoesCaixa SessaoCaixaOperacao[]
+  agendasOperacionais AgendaOperacional[]
+  ocorrenciasOperacionais OcorrenciaOperacional[]
+  pdvMigrationMaps PdvMigrationMap[]
+   saldosEstoque InventoryBalance[]
+  configuracaoPdv ConfiguracaoPontoVenda?
+  produtos Produto[]
+  cardapios Cardapio[]
+  opcionais Opcional[]
+   movimentosEstoque InventoryMovement[]
+
+  @@unique([id, cervejariaId])
+  @@index([cervejariaId, ativo])
+  @@schema("quiosque")
+}
+
+/// Additive operational schedules and restartable migration control structures.
+
+enum FrequenciaAgendaOperacional {
+  SEMANAL
+
+  @@schema("quiosque")
+}
+
+enum StatusOcorrenciaOperacional {
+  PROGRAMADA
+  ABERTA
+  FECHADA
+  CANCELADA
+
+  @@schema("quiosque")
+}
+
+enum OrigemHistoricaSessaoOperacao {
+  CAIXA
+  EVENTO
+
+  @@schema("quiosque")
+}
+
+/// A recurring schedule; it does not select a different operating mode.
+model AgendaOperacional {
+  id String @id @default(cuid())
+  cervejariaId String
+  pontoVendaId String
+  nome String
+  frequencia FrequenciaAgendaOperacional @default(SEMANAL)
+  diaSemana Int
+  horaInicio String @default("18:00")
+  horaFim String?
+  local String?
+  ativa Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Restrict)
+  pontoVenda PontoVenda @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+  ocorrencias OcorrenciaOperacional[]
+
+  @@unique([id, cervejariaId, pontoVendaId])
+  @@index([pontoVendaId, ativa])
+  @@schema("quiosque")
+}
+
+/// A dated realization. A one-off occurrence may have no agenda.
+model OcorrenciaOperacional {
+  id String @id @default(cuid())
+  cervejariaId String
+  pontoVendaId String
+  agendaId String?
+  nome String
+  data DateTime @db.Date
+  horaInicio String @default("18:00")
+  horaFim String?
+  local String?
+  status StatusOcorrenciaOperacional @default(PROGRAMADA)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Restrict)
+  pontoVenda PontoVenda @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+  agenda AgendaOperacional? @relation(fields: [agendaId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
+  sessoesCaixa SessaoCaixaOperacao[] @relation("SessaoOcorrenciaOperacional")
+
+  @@unique([id, cervejariaId, pontoVendaId])
+  @@unique([agendaId, data])
+  @@index([pontoVendaId, data])
+  @@index([cervejariaId, data])
+  @@schema("quiosque")
+}
+
+enum PdvMigrationRunStatus {
+  RUNNING
+  COMPLETED
+  BLOCKED
+  FAILED
+
+  @@schema("quiosque")
+}
+
+enum PdvMigrationBatchStatus {
+  PROCESSING
+  CONFIRMED
+  BLOCKED
+
+  @@schema("quiosque")
+}
+
+model PdvMigrationRun {
+  id String @id @default(cuid())
+  status PdvMigrationRunStatus @default(RUNNING)
+  /// Durable scope identity protects invalidation from runId reuse across tenants/PDVs.
+  scope String?
+  cervejariaId String?
+  pontoVendaId String?
+  transformVersion Int
+  sourceSnapshotHash String
+  checkpoint Json?
+  startedAt DateTime @default(now())
+  finishedAt DateTime?
+
+  cervejaria Cervejaria? @relation(fields: [cervejariaId], references: [id], onDelete: Restrict)
+  batches PdvMigrationBatch[]
+  mappings PdvMigrationMap[] @relation("PdvMigrationMapLastRun")
+
+  @@index([scope, cervejariaId, pontoVendaId])
+  @@index([status, startedAt])
+  @@schema("quiosque")
+}
+
+model PdvMigrationBatch {
+  id String @id @default(cuid())
+  runId String
+  sequence Int
+  status PdvMigrationBatchStatus @default(PROCESSING)
+  payloadHash String
+  checkpoint Json
+  createdAt DateTime @default(now())
+  confirmedAt DateTime?
+
+  run PdvMigrationRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  mappings PdvMigrationMap[] @relation("PdvMigrationMapLastBatch")
+
+  @@unique([runId, sequence])
+  @@unique([id, runId])
+  @@index([runId, status])
+  @@schema("quiosque")
+}
+
+/// Stable source identity is unique across runs; hashes detect changed payloads.
+model PdvMigrationMap {
+  id String @id @default(cuid())
+  sourceType String
+  sourceId String
+  destinationType String
+  destinationId String
+  cervejariaId String
+  pontoVendaId String?
+  transformVersion Int
+  payloadHash String
+  lastRunId String
+  sourcePayload Json?
+  lastBatchId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Restrict)
+  pontoVenda PontoVenda? @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+  lastRun PdvMigrationRun @relation("PdvMigrationMapLastRun", fields: [lastRunId], references: [id], onDelete: Restrict)
+  lastBatch PdvMigrationBatch? @relation("PdvMigrationMapLastBatch", fields: [lastBatchId, lastRunId], references: [id, runId], onDelete: Restrict)
+
+  @@unique([sourceType, sourceId])
+  @@index([cervejariaId, pontoVendaId])
+  @@index([lastRunId])
+  @@schema("quiosque")
+}
+enum StatusPedidoOperacao {
+  RECEBIDO
+  EM_PREPARO
+  PRONTO
+  ENTREGUE
+  CANCELAMENTO_PENDENTE
+  CANCELADO
+
+  @@schema("quiosque")
+  @@map("StatusPedidoQuiosque")
+}
+
+/// Uma rodada de itens dentro da comanda. E a unidade que a cozinha ve na fila.
+model PedidoOperacao {
+  id             String               @id @default(cuid())
+  cervejariaId   String
+  comandaId      String
+  pontoVendaId   String?
+  /// Senha mostrada ao cliente, reiniciada a cada dia de operacao.
+  numero         Int
+  diaOperacional DateTime             @db.Date
+  status         StatusPedidoOperacao @default(RECEBIDO)
+  paraViagem     Boolean              @default(false)
+  observacao     String?
+  criadoPorId    String
+  /// Inicio do status atual — o cronometro da cozinha reinicia a cada transicao.
+  statusDesde    DateTime             @default(now())
+  /// Preenchido ao marcar ENTREGUE; congela o tempo total do pedido.
+  entregueEm     DateTime?
+  clienteAvisadoEm DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  cervejaria Cervejaria           @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  comanda    Comanda              @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda?          @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
+  itensComanda ItemComanda[]
+   movimentosEstoque InventoryMovement[]
+  historicoStatus   PedidoOperacaoStatusHistorico[]
+
+  @@unique([cervejariaId, diaOperacional, numero])
+  @@index([cervejariaId, status, createdAt])
+  @@index([comandaId])
+  @@schema("quiosque")
+  @@map("PedidoQuiosque")
+}
+
+/// Marca cada transicao de status na fila da cozinha (auditoria e tempos por fase).
+model PedidoOperacaoStatusHistorico {
+  id           String               @id @default(cuid())
+  pedidoId     String
+  status       StatusPedidoOperacao
+  registradoEm DateTime             @default(now())
+
+  pedido PedidoOperacao @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  @@index([pedidoId, registradoEm])
+  @@schema("quiosque")
+  @@map("PedidoQuiosqueStatusHistorico")
+}
+
+enum StatusCaixaOperacao {
+  ABERTO
+  FECHADO
+
+  @@schema("quiosque")
+  @@map("StatusCaixaQuiosque")
+}
+
+enum TipoMovimentoCaixaOperacao {
+  SANGRIA
+  SUPRIMENTO
+
+  @@schema("quiosque")
+  @@map("TipoMovimentoCaixaQuiosque")
+}
+
+/// Identifica os registros derivados de uma correcao, sem alterar o lancamento original.
+enum NaturezaCorrecaoMovimentoCaixaOperacao {
+  ESTORNO
+  SUBSTITUICAO
+
+  @@schema("quiosque")
+  @@map("NaturezaCorrecaoMovimentoCaixaQuiosque")
+}
+
+/// Sessao de caixa por turno: o mesmo ponto pode abrir/fechar varias vezes no dia.
+model SessaoCaixaOperacao {
+  id             String              @id @default(cuid())
+  cervejariaId   String
+  pontoVendaId   String
+  trailerId      String?
+  diaOperacional DateTime            @db.Date
+  status         StatusCaixaOperacao @default(ABERTO)
+  trocoInicial   Decimal             @db.Decimal(10, 2)
+  abertoPorId    String
+  abertoEm       DateTime            @default(now())
+  fechadoPorId   String?
+  fechadoEm      DateTime?
+  /// Conferencia fisica no fechamento. Nulo enquanto o caixa esta aberto.
+  contadoDinheiro    Decimal? @db.Decimal(10, 2)
+  contadoPix         Decimal? @db.Decimal(10, 2)
+  contadoCartaoDebito  Decimal? @db.Decimal(10, 2)
+  contadoCartaoCredito Decimal? @db.Decimal(10, 2)
+  /// Preserves the legacy Evento aggregate card count when debit/credit were not split.
+  contadoCartao Decimal? @db.Decimal(10, 2)
+  observacaoFechamento String?
+  /// Template usado na abertura do turno (referencia historica).
+  cardapioId      String?
+
+  ocorrenciaId String?
+  origemHistorica OrigemHistoricaSessaoOperacao?
+  cervejaria  Cervejaria               @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  pontoVenda  PontoVenda               @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
+  trailer     Trailer?                 @relation(fields: [trailerId], references: [id], onDelete: SetNull)
+  cardapio    Cardapio?                @relation(fields: [cardapioId], references: [id], onDelete: SetNull)
+  ocorrencia OcorrenciaOperacional? @relation("SessaoOcorrenciaOperacional", fields: [ocorrenciaId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
+  movimentos  MovimentoCaixaOperacao[]
+  pagamentos Pagamento[]
+  produtos    SessaoCaixaProdutoOperacao[]
+  montagensTaps TapMontagem[]
+
+  @@index([pontoVendaId, diaOperacional, status])
+  @@index([cervejariaId, diaOperacional])
+  @@index([trailerId])
+  @@index([cardapioId])
+  @@index([ocorrenciaId])
+  @@schema("quiosque")
+  @@map("SessaoCaixaQuiosque")
+}
+
+/// Cardapio operacional do turno de caixa (espelha EventoProduto).
+model SessaoCaixaProdutoOperacao {
+  id               String   @id @default(cuid())
+  sessaoCaixaId    String
+  produtoId        String
+  /// 0 para produtos unitários/legados; chopes usam uma linha por volume.
+  volumeMl         Int      @default(0)
+  /// Override só deste turno; null herda template (ou catálogo).
+  precoUnit        Decimal? @db.Decimal(10, 2)
+  createdAt        DateTime @default(now())
+
+  sessao  SessaoCaixaOperacao @relation(fields: [sessaoCaixaId], references: [id], onDelete: Cascade)
+  produto Produto              @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([sessaoCaixaId, produtoId, volumeMl])
+  @@index([sessaoCaixaId])
+  @@schema("quiosque")
+  @@map("SessaoCaixaProdutoQuiosque")
+}
+
+model MovimentoCaixaOperacao {
+  id              String                     @id @default(cuid())
+  sessaoId        String
+  tipo            TipoMovimentoCaixaOperacao
+  valor           Decimal                    @db.Decimal(10, 2)
+  observacao      String?
+  registradoPorId String
+  /// O movimento manual original que esta sendo compensado/substituido.
+  correcaoDeId   String?
+  naturezaCorrecao NaturezaCorrecaoMovimentoCaixaOperacao?
+  /// Dados da autorizacao ficam no encadeamento contabil, nunca em logs de senha.
+  motivoCorrecao String?
+  autorizadoPorId String?
+  solicitadoPorId String?
+  corrigidoEm      DateTime?
+  createdAt       DateTime                   @default(now())
+
+  sessao       SessaoCaixaOperacao @relation(fields: [sessaoId], references: [id], onDelete: Restrict)
+  correcaoDe   MovimentoCaixaOperacao? @relation("CorrecaoMovimentoCaixaOperacao", fields: [correcaoDeId], references: [id], onDelete: Restrict)
+  correcoes    MovimentoCaixaOperacao[] @relation("CorrecaoMovimentoCaixaOperacao")
+
+  @@index([sessaoId])
+  @@index([correcaoDeId])
+  @@schema("quiosque")
+  @@map("MovimentoCaixaQuiosque")
+}
+
+enum TipoMovimentoEstoqueOperacao {
+  ENTRADA
+  SAIDA_VENDA
+  ESTORNO_VENDA
+  PERDA
+  CORTESIA
+  CONSUMO_INTERNO
+  AJUSTE
+
+  @@schema("quiosque")
+  @@map("TipoMovimentoEstoqueQuiosque")
+}
+
+/// Saldo materializado por ponto de venda e produto.
+model InventoryBalance {
+  id           String   @id @default(cuid())
+  cervejariaId String
+  pontoVendaId String
+  produtoId    String
+  /// Saldo em litros para chope; em unidades para os demais produtos.
+  quantidade   Decimal  @default(0) @db.Decimal(12, 3)
+  /// Alerta opcional na mesma unidade do saldo; nao bloqueia vendas.
+  estoqueMinimo Decimal? @db.Decimal(12, 3)
+  updatedAt    DateTime @updatedAt
+
+  cervejaria Cervejaria     @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda     @relation(fields: [pontoVendaId], references: [id], onDelete: Cascade)
+  produto    Produto        @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([pontoVendaId, produtoId])
+  @@index([cervejariaId, pontoVendaId])
+  @@map("EstoqueSaldoQuiosque")
+  @@schema("quiosque")
+}
+
+model InventoryMovement {
+  id              String                       @id @default(cuid())
+  cervejariaId    String
+  pontoVendaId    String
+  produtoId       String
+  tipo            TipoMovimentoEstoqueOperacao
+  /// Volume em litros para chope; em unidades para os demais produtos.
+  quantidade      Decimal @db.Decimal(12, 3)
+  observacao      String?
+  registradoPorId String
+  pedidoId        String?
+  createdAt       DateTime                     @default(now())
+
+  cervejaria Cervejaria      @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+  pontoVenda PontoVenda      @relation(fields: [pontoVendaId], references: [id], onDelete: Cascade)
+  produto    Produto         @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  pedido     PedidoOperacao? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+
+  @@index([pontoVendaId, produtoId, createdAt])
+  @@index([pedidoId])
+  @@map("MovimentoEstoqueQuiosque")
+  @@schema("quiosque")
+}
