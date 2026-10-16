@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';
+﻿import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -9,7 +9,8 @@ import { runLiveTransformations } from './pdv-unico-live-transformations.mjs';
 const repoRoot = path.resolve(process.env.PDV_CUTOVER_TEST_FIXTURE_ROOT ?? process.cwd());
 const protectedRoot = path.join(repoRoot, 'artifacts/rbac-permissions-ui-2026-10-10/run-admin-freeze-20261015');
 const qaApproval = JSON.parse(await readFile(path.join(protectedRoot, 'class-c-qa-approval.protected.json'), 'utf8'));
-const sourceEntries = JSON.parse(await readFile(path.join(protectedRoot, 'class-c-origin-source-entries.protected.json'), 'utf8'));
+// Guard fixtures use the facts projection. Real database integration is exercised separately.
+const sourceEntries = qaApproval.entries.map(({ classification, ...facts }) => facts);
 const photoBytes = await readFile(path.resolve(repoRoot, 'artifacts/qc-20261015/approved-representative-photo.json'));
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
@@ -136,6 +137,11 @@ test('checkpoint digest mismatch and destination mismatch are rejected before ef
 test('altered values, added or removed IDs in the frozen source are rejected before effects', async (t) => {
   for (const [name, mutate] of [
     ['value', (rows) => { rows[0].cents = '999999'; }],
+    ['tenant', (rows) => { rows[0].tenantId = 'unauthorized-tenant'; }],
+    ['paid timestamp', (rows) => { rows[0].paidAt = '2026-01-01T00:00:00.000Z'; }],
+    ['command link', (rows) => { rows[0].commandId = 'unauthorized-command'; }],
+    ['receivable link', (rows) => { rows[0].receivableId = 'unauthorized-receivable'; }],
+    ['operational session link', (rows) => { rows[0].operationalSessionId = 'unauthorized-session'; }],
     ['added ID', (rows) => { rows.push({ ...rows[0], id: 'new-unapproved-id' }); }],
     ['removed ID', (rows) => { rows.pop(); }],
   ]) {

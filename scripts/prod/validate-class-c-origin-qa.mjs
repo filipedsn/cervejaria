@@ -5,20 +5,31 @@ import { assertClassCSourceMatchesApproval, validateClassCAuthorization } from '
 
 const dbUrl = process.env.PDV_QA_DATABASE_URL;
 const originBackupSha256 = process.env.PDV_QA_ORIGIN_BACKUP_SHA256;
+const checkpointDumpPath = process.env.PDV_QA_CHECKPOINT_DUMP_PATH;
+const checkpointDumpSha256 = process.env.PDV_QA_CHECKPOINT_DUMP_SHA256;
 const approvalPath = process.env.PDV_QA_CLASS_C_APPROVAL_PATH;
 const receiptPath = process.env.PDV_QA_CLASS_C_VALIDATION_RECEIPT;
 const sourceEntriesPath = process.env.PDV_QA_CLASS_C_SOURCE_ENTRIES_PATH;
-if (!dbUrl || !originBackupSha256 || !approvalPath || !receiptPath || !sourceEntriesPath) throw new Error('QA database, backup digest, protected authorization, source snapshot and receipt path are required.');
+if (!dbUrl || !originBackupSha256 || !checkpointDumpPath || !checkpointDumpSha256 || !approvalPath || !receiptPath || !sourceEntriesPath) throw new Error('QA database, approval origin backup, checkpoint dump identity, protected authorization, source snapshot and receipt path are required.');
 const parsed = new URL(dbUrl);
-if (parsed.protocol !== 'postgresql:' || parsed.hostname !== '127.0.0.1' || parsed.port !== '55449'
+if (parsed.protocol !== 'postgresql:' || parsed.hostname !== '127.0.0.1' || parsed.port !== '55450'
   || parsed.pathname !== '/cervejaria_qa_pdv_unico' || decodeURIComponent(parsed.username) !== 'postgres') {
-  throw new Error('Only the named loopback disposable QA database is permitted.');
+  throw new Error('Only the checkpoint-bound loopback disposable QA database is permitted.');
 }
+const EXPECTED_CHECKPOINT_DUMP_SHA256 = '0b80cc117ff100e036b4fdea3d2172267411c8fc06cc07f46ebbbb2c2daafeb5';
+if (checkpointDumpSha256 !== EXPECTED_CHECKPOINT_DUMP_SHA256) throw new Error('QA checkpoint digest is not the identified frozen fixture.');
+const checkpointBytes = await readFile(checkpointDumpPath);
+const actualCheckpointDumpSha256 = createHash('sha256').update(checkpointBytes).digest('hex');
+if (actualCheckpointDumpSha256 !== checkpointDumpSha256) throw new Error('QA checkpoint dump bytes do not match the external digest.');
 const approvalBytes = await readFile(approvalPath);
 const approval = JSON.parse(approvalBytes.toString('utf8').replace(/^\uFEFF/, ''));
-const auth = validateClassCAuthorization({ mode: 'qa', approval, originBackupSha256 });
+const authorization = validateClassCAuthorization({ mode: 'qa', approval, originBackupSha256 });
 const container = process.env.PDV_QA_CONTAINER ?? '';
-if (container !== 'tapq-adminfreeze-20261015-002') throw new Error('Only the named disposable QA container is permitted.');
+if (container !== 'tapq-classc-checkpoint-20261016') throw new Error('Only the named checkpoint-bound disposable QA container is permitted.');
+const inspected = spawnSync('docker', ['inspect', container], { encoding: 'utf8', windowsHide: true, maxBuffer: 1024 * 1024 });
+if (inspected.status !== 0) throw new Error('Named checkpoint QA container is unavailable.');
+const labels = JSON.parse(inspected.stdout)[0]?.Config?.Labels ?? {};
+if (labels['tap.quiver.checkpoint-dump-sha256'] !== checkpointDumpSha256) throw new Error('QA container is not labeled for this exact checkpoint dump.');
 const toCents = (value) => {
   if (value == null) return null;
   const raw = String(value);
@@ -73,19 +84,24 @@ const sourceEntries = queried.map((row) => ({
     receivableId: row.receivableId,
     operationalSessionId: row.operationalSessionId,
     eventSessionId: row.eventSessionId,
-    classification: 'C_ORIGIN_UNPROVEN',
 }));
 const source = assertClassCSourceMatchesApproval({ approval, sourceEntries });
 const sourceEntriesBytes = Buffer.from(`${JSON.stringify(sourceEntries, null, 2)}\n`, 'utf8');
 await writeFile(sourceEntriesPath, sourceEntriesBytes, { flag: 'wx' });
 const receipt = {
+    format: 'tap-quiver-class-c-origin-validation/v2',
     status: 'PASS',
     mode: 'QA_ONLY',
-    originBackupSha256,
+    approvalOriginBackupSha256: originBackupSha256,
+    checkpointDumpSha256,
     approvalFileSha256: createHash('sha256').update(approvalBytes).digest('hex'),
     count: source.count,
     payloadSha256: source.payloadSha256,
     idsSha256: source.idsSha256,
+    authorization: source.authorization,
+    originFacts: source.originFacts,
+    decision: source.decision,
+    persistedOutcome: { status: 'NOT_APPLIED', persistedValue: null },
     sourceEntriesFileSha256: createHash('sha256').update(sourceEntriesBytes).digest('hex'),
     transformerInvoked: false,
     validatedAt: new Date().toISOString(),

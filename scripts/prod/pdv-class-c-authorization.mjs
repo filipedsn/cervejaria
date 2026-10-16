@@ -10,6 +10,37 @@ export const APPROVED_CLASS_C = Object.freeze({
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const payloadDigest = (entries) => sha256(JSON.stringify(entries));
 const idsDigest = (entries) => sha256(JSON.stringify(entries.map(({ id }) => id).sort()));
+const FACT_FIELDS = Object.freeze([
+  'tenantId', 'id', 'commandId', 'origin', 'pointId', 'eventId', 'commandTotalCents',
+  'commandClosedAt', 'form', 'cents', 'receivedCents', 'changeCents', 'paidAt',
+  'registeredById', 'receivableId', 'operationalSessionId', 'eventSessionId',
+]);
+
+function sourceFactsFromDecisionEntry(entry) {
+  return Object.fromEntries(FACT_FIELDS.map((field) => [field, entry[field]]));
+}
+
+function contractsForApproval(approval) {
+  const facts = approval.entries.map(sourceFactsFromDecisionEntry);
+  return Object.freeze({
+    authorization: Object.freeze({
+      formatVersion: approval.version,
+      scope: approval.scope,
+      historicalPayloadSha256: approval.approvedSnapshotSha256,
+      idsSha256: APPROVED_CLASS_C.sortedIdsSha256,
+    }),
+    originFacts: Object.freeze({
+      formatVersion: 1,
+      count: facts.length,
+      payloadSha256: payloadDigest(facts),
+      idsSha256: idsDigest(facts),
+    }),
+    decision: Object.freeze({
+      classification: approval.classification,
+      provenance: approval.provenance,
+    }),
+  });
+}
 
 function assertApprovalShape(approval) {
   if (!approval || approval.version !== 1 || approval.classification !== 'C_ORIGIN_UNPROVEN'
@@ -18,6 +49,9 @@ function assertApprovalShape(approval) {
     || approval.counts?.withExactPaymentAuditReference !== 0
     || approval.counts?.withoutExactPaymentAuditReference !== APPROVED_CLASS_C.payments) {
     throw new Error('CLASS_C_APPROVAL_SHAPE_INVALID');
+  }
+  if (approval.entries.some((entry) => entry?.classification !== approval.classification)) {
+    throw new Error('CLASS_C_DECISION_INVALID');
   }
   const ids = approval.entries.map((entry) => entry?.id);
   if (ids.some((id) => typeof id !== 'string' || id.length === 0) || new Set(ids).size !== ids.length) {
@@ -68,7 +102,12 @@ export function validateClassCAuthorization({ mode, approval, originBackupSha256
   return Object.freeze({ mode, count: APPROVED_CLASS_C.payments, payloadSha256: APPROVED_CLASS_C.payloadSha256, idsSha256: APPROVED_CLASS_C.sortedIdsSha256 });
 }
 
-/** Compare every approved field against the frozen source snapshot, in approved order. */
+/**
+ * The v1 authorization digest covers both the approved origin facts and the
+ * decision annotation. Source rows do not persist classification, so compare
+ * them against the v1 facts projection while retaining and reporting the
+ * original authorization digest unchanged.
+ */
 export function assertClassCSourceMatchesApproval({ approval, sourceEntries }) {
   assertApprovalShape(approval);
   if (!Array.isArray(sourceEntries)) throw new Error('CLASS_C_SOURCE_SNAPSHOT_INVALID');
@@ -78,19 +117,31 @@ export function assertClassCSourceMatchesApproval({ approval, sourceEntries }) {
   }
   const orderedSource = approval.entries.map(({ id }) => byId.get(id));
   if (orderedSource.some((entry) => entry === undefined)) throw new Error('CLASS_C_SOURCE_ID_SET_MISMATCH');
-  if (payloadDigest(orderedSource) !== APPROVED_CLASS_C.payloadSha256
-    || JSON.stringify(orderedSource) !== JSON.stringify(approval.entries)) {
+  const approvedFacts = approval.entries.map(sourceFactsFromDecisionEntry);
+  const canonicalSource = orderedSource.map((entry) => {
+    if (Object.keys(entry ?? {}).sort().join('|') !== [...FACT_FIELDS].sort().join('|')) {
+      throw new Error('CLASS_C_SOURCE_FACT_SHAPE_MISMATCH');
+    }
+    return Object.fromEntries(FACT_FIELDS.map((field) => [field, entry[field]]));
+  });
+  if (JSON.stringify(canonicalSource) !== JSON.stringify(approvedFacts)) {
     const fieldCounts = new Map();
-    for (let index = 0; index < orderedSource.length; index++) {
-      const actual = orderedSource[index];
-      const expected = approval.entries[index];
-      for (const field of new Set([...Object.keys(actual ?? {}), ...Object.keys(expected ?? {})])) {
+    for (let index = 0; index < canonicalSource.length; index++) {
+      const actual = canonicalSource[index];
+      const expected = approvedFacts[index];
+      for (const field of FACT_FIELDS) {
         if (JSON.stringify(actual?.[field]) !== JSON.stringify(expected?.[field])) fieldCounts.set(field, (fieldCounts.get(field) ?? 0) + 1);
       }
     }
     const summary = [...fieldCounts].sort(([a], [b]) => a.localeCompare(b)).map(([field, count]) => `${field}:${count}`).join(',');
     throw new Error(`CLASS_C_SOURCE_CONTENT_MISMATCH:${summary || 'canonicalization'}`);
   }
-  if (idsDigest(orderedSource) !== APPROVED_CLASS_C.sortedIdsSha256) throw new Error('CLASS_C_SOURCE_ID_SET_MISMATCH');
-  return Object.freeze({ count: APPROVED_CLASS_C.payments, payloadSha256: APPROVED_CLASS_C.payloadSha256, idsSha256: APPROVED_CLASS_C.sortedIdsSha256 });
+  const contracts = contractsForApproval(approval);
+  if (idsDigest(canonicalSource) !== APPROVED_CLASS_C.sortedIdsSha256) throw new Error('CLASS_C_SOURCE_ID_SET_MISMATCH');
+  return Object.freeze({
+    count: APPROVED_CLASS_C.payments,
+    payloadSha256: APPROVED_CLASS_C.payloadSha256,
+    idsSha256: APPROVED_CLASS_C.sortedIdsSha256,
+    ...contracts,
+  });
 }
