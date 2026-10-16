@@ -837,22 +837,44 @@ async function writeFinanceTarget(tx: Db, item: any, hasExistingMap: boolean) {
   return false;
 }
 
-export async function runPdvFinanceMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void; afterBatchCommit?: (progress: { tenantId: string; phase: string; cursor: number; total: number; batch: number; durationMs: number }) => Promise<void> | void; historicalNoSessionApproval?: HistoricalNoSessionApproval }) {
+export async function runPdvFinanceMigration(options: { db: Db; companyId: string; pointId: string; runId: string; maxBatches?: number; batchSize?: number; transactionTimeoutMs?: number; transactionMaxWaitMs?: number; measure?: (stage: string, operation: () => Promise<any>) => Promise<any>; afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void; afterBatchCommit?: (progress: { tenantId: string; phase: string; cursor: number; total: number; batch: number; durationMs: number }) => Promise<void> | void; historicalNoSessionApproval?: HistoricalNoSessionApproval; historicalNoSessionBackupSha256?: string; historicalNoSessionProductionAuthorization?: import('./pdv-unico-finance-transform.js').HistoricalNoSessionProductionAuthorization; executionProfile?: 'qa' | 'dev' | 'production'; sourceCheckpointId?: string; sourceCheckpointSha256?: string }) {
   let qaSourceBackupSha256: string | undefined;
   if (options.historicalNoSessionApproval) {
+    if (options.executionProfile === 'production') {
+      const approval = options.historicalNoSessionApproval;
+      const authorization = options.historicalNoSessionProductionAuthorization;
+      const checkpointSha256 = options.sourceCheckpointSha256;
+      if (process.env.PDV_CUTOVER_PROFILE !== 'production'
+        || !/^[a-f0-9]{64}$/.test(checkpointSha256 ?? '')
+        || checkpointSha256 !== options.historicalNoSessionBackupSha256
+        || checkpointSha256 !== process.env.PDV_CUTOVER_CHECKPOINT_SHA256
+        || !options.sourceCheckpointId?.trim()
+        || approval.scope !== 'TAP-76 production checkpoint'
+        || approval.sourceCheckpointId !== options.sourceCheckpointId
+        || approval.sourceCheckpointSha256 !== checkpointSha256
+        || authorization?.scope !== 'PRODUCTION' || authorization.decision !== 'APPROVED'
+        || authorization.sourceCheckpointId !== options.sourceCheckpointId
+        || authorization.sourceCheckpointSha256 !== checkpointSha256
+        || authorization.payloadSha256 !== '6d649ade7c8471adba44b381bd113d0fe2c8c04191287b1f8504e84ad9e908a9'
+        || authorization.idsSha256 !== '9ac3dac5ad2311bcf49817dd062771c5f7cf51b017da96c121b703441a8cf128') {
+        throw new PdvCatalogBlocker('FINANCE_HISTORICAL_PRODUCTION_GUARD_FAILED', 'PAGAMENTO', null, 'Production authorization does not match the verified frozen checkpoint.');
+      }
+      qaSourceBackupSha256 = checkpointSha256;
+    }
     let target: URL;
     try { target = new URL(process.env.DATABASE_URL ?? ''); }
     catch { throw new PdvCatalogBlocker('FINANCE_HISTORICAL_APPROVAL_QA_GUARD_FAILED', 'PAGAMENTO', null, 'A política histórica só pode ser usada no QA isolado.'); }
     const qaTarget = process.env.NODE_ENV === 'test' && process.env.PDV_ISOLATED_QA === '1' && process.env.QA_DATABASE_URL === process.env.DATABASE_URL
       && ['postgres:', 'postgresql:'].includes(target.protocol) && ['127.0.0.1', 'localhost'].includes(target.hostname)
       && /^554(?:3[9]|4[0-9])$/.test(target.port) && target.pathname === '/cervejaria_qa_pdv_unico';
-    if (qaTarget) qaSourceBackupSha256 = process.env.PDV_QA_SOURCE_BACKUP_SHA256;
+    if (qaTarget && options.executionProfile !== 'production') qaSourceBackupSha256 = process.env.PDV_QA_SOURCE_BACKUP_SHA256;
     let explicitlyConfirmedDevTarget = false;
     if (!qaTarget && process.env.PDV_CUTOVER_DEV_ADAPTER === '1'
       && process.env.PDV_CUTOVER_FINANCE_APPROVAL_SHA256 === options.historicalNoSessionApproval.approvedSnapshotSha256) {
       try { validateDevCutoverEnvironment(process.env); explicitlyConfirmedDevTarget = true; } catch { /* fail closed below */ }
     }
-    if (!qaTarget && !explicitlyConfirmedDevTarget) {
+    const productionTarget = options.executionProfile === 'production' && process.env.PDV_CUTOVER_PROFILE === 'production';
+    if (!qaTarget && !explicitlyConfirmedDevTarget && !productionTarget) {
       throw new PdvCatalogBlocker('FINANCE_HISTORICAL_APPROVAL_QA_GUARD_FAILED', 'PAGAMENTO', null, 'A política histórica só pode ser usada no PostgreSQL QA isolado.');
     }
   }
@@ -918,7 +940,7 @@ export async function runPdvFinanceMigration(options: { db: Db; companyId: strin
           confirmedHistoricalCommerceCommands[commandId] = await findConfirmedHistoricalCommerceCommand(tx, options.companyId, options.pointId, command);
         }
       }
-      return buildPdvFinanceMigrationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedSessions, confirmedEvents, mappedPaymentIds: new Set(mappedPayments.map((row: any) => row.sourceId)), confirmedHistoricalCommerceCommands, historicalNoSessionApproval: options.historicalNoSessionApproval, historicalNoSessionBackupSha256: qaSourceBackupSha256 });
+      return buildPdvFinanceMigrationItems({ companyId: options.companyId, pointId: options.pointId, confirmedPdvSourceKey: pdvSourceKey, snapshot, confirmedSessions, confirmedEvents, mappedPaymentIds: new Set(mappedPayments.map((row: any) => row.sourceId)), confirmedHistoricalCommerceCommands, historicalNoSessionApproval: options.historicalNoSessionApproval, historicalNoSessionBackupSha256: qaSourceBackupSha256, historicalNoSessionProductionAuthorization: options.historicalNoSessionProductionAuthorization, executionProfile: options.executionProfile });
     },
     confirmExternalDependency: async (tx, sourceType, sourceId, transactionContext) => {
       if (sourceType === 'EVENTO') { await transactionContext.resolveOccurrence(sourceId); return true; }
