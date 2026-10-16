@@ -67,6 +67,7 @@ function fixture(overrides = {}) {
   if (overrides.env) Object.assign(env, overrides.env);
   let dbCreations = 0;
   const financeCalls = [];
+  const classCDispositionCalls = [];
   const db = { pontoVenda: { findMany: async ({ where }) => [{ id: `point-${where.cervejariaId}` }] }, $disconnect: async () => {} };
   const completed = async () => ({ status: 'COMPLETED', runId: 'mock-run', counts: {} });
   const migrations = {
@@ -85,8 +86,12 @@ function fixture(overrides = {}) {
     access: async () => {},
     createDb: async () => { dbCreations++; return db; },
     migrations,
+    applyApprovedClassCOutOfScopeDisposition: async (input) => {
+      classCDispositionCalls.push(input);
+      return { status: 'COMPLETED', runId: `${input.baseRunId}-classc-fixture`, count: 2, reusedCompletedRun: false };
+    },
   };
-  return { env, files, checkpoint, checkpointSha256, approval, productionAuthorization, sourceEntries, dependencies, financeCalls, get dbCreations() { return dbCreations; } };
+  return { env, files, checkpoint, checkpointSha256, approval, productionAuthorization, sourceEntries, dependencies, financeCalls, classCDispositionCalls, get dbCreations() { return dbCreations; } };
 }
 
 test('production entrypoint accepts the exact checkpoint-bound production authorization and forwards it to finance', async () => {
@@ -95,6 +100,11 @@ test('production entrypoint accepts the exact checkpoint-bound production author
   assert.equal(result.status, 'PASS');
   assert.equal(result.tenants.length, 2);
   assert.equal(f.financeCalls.length, 8);
+  assert.equal(f.classCDispositionCalls.length, 1);
+  assert.deepEqual(f.classCDispositionCalls[0].approval, f.approval);
+  assert.equal(f.classCDispositionCalls[0].productionContext.checkpointSha256, f.checkpointSha256);
+  assert.deepEqual(f.classCDispositionCalls[0].productionContext.productionAuthorization, f.productionAuthorization);
+  assert.equal(f.classCDispositionCalls[0].baseRunId, f.env.PDV_CUTOVER_RUN_ID);
   for (const call of f.financeCalls) {
     assert.equal(call.executionProfile, 'production');
     assert.equal(call.sourceCheckpointId, f.checkpoint.checkpointId);

@@ -7,6 +7,7 @@ import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 import { DEV_PDV_TENANT_ALLOWLIST, validateDevCutoverEnvironment } from './pdv-unico-dev-cutover-core.mjs';
 import { assertClassCSourceMatchesApproval, validateClassCAuthorization } from '../../scripts/prod/pdv-class-c-authorization.mjs';
 import { PRODUCTION_PDV_TENANT_ALLOWLIST, validateProductionCutoverContext } from './pdv-unico-production-cutover.mjs';
+import { applyApprovedClassCOutOfScopeDisposition } from './pdv-unico-class-c-out-of-scope-disposition.mjs';
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APPROVED_PHOTO_SHA256 = '2071d444df091fe85438278ca1e6d2329d4e2106679b23143f0e863b8769d16b';
@@ -144,8 +145,11 @@ export async function runLiveTransformations({ env = process.env, dependencies =
       phases.push(await runBatched('kitchen-revalidation', migrations.runPdvKitchenOrderContextPreparation));
       tenants.push({ tenantId, tenant: approvedTenant.name, pointId, status: 'PASS', phases });
     }
-    write(`${JSON.stringify({ status: 'PASS', profile, photoSha256, approvedClassCPayments: approval.entries.length, checkpointId: productionContext?.checkpoint.checkpointId ?? null, checkpointSha256: productionContext?.checkpointSha256 ?? null, tenants })}\n`);
-    return { status: 'PASS', profile, approval, productionContext, tenants };
+    const classCOutOfScopeDisposition = profile === 'production'
+      ? await (dependencies.applyApprovedClassCOutOfScopeDisposition ?? applyApprovedClassCOutOfScopeDisposition)({ db, approval, productionContext, baseRunId: runId })
+      : null;
+    write(`${JSON.stringify({ status: 'PASS', profile, photoSha256, approvedClassCPayments: approval.entries.length, checkpointId: productionContext?.checkpoint.checkpointId ?? null, checkpointSha256: productionContext?.checkpointSha256 ?? null, tenants, classCOutOfScopeDisposition })}\n`);
+    return { status: 'PASS', profile, approval, productionContext, tenants, classCOutOfScopeDisposition };
   } finally {
     await db.$disconnect();
   }
