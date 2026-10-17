@@ -22,13 +22,42 @@ function Get-DirectoryFileHashes {
 
   $hashes = @{}
   if (-not (Test-Path $Directory)) { return $hashes }
-
-  Get-ChildItem -Path $Directory -Recurse -File | ForEach-Object {
-    $relative = $_.FullName.Substring($Directory.Length).TrimStart('\', '/')
-    $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-    $hashes[$relative] = $hash
+  $basePath = [System.IO.Path]::GetFullPath($Directory).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+  $transientPrismaCache = [System.IO.Path]::GetFullPath((Join-Path $basePath '@prisma\engines\node_modules\.cache\prisma\master'))
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $pending = [System.Collections.Generic.Stack[string]]::new()
+    $pending.Push($basePath)
+    while ($pending.Count -gt 0) {
+      $currentDirectory = $pending.Pop()
+      foreach ($childDirectory in [System.IO.Directory]::GetDirectories($currentDirectory)) {
+        if (([System.IO.File]::GetAttributes($childDirectory) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+          throw 'Dependency inventory encountered a linked directory.'
+        }
+        $pending.Push($childDirectory)
+      }
+      foreach ($filePath in [System.IO.Directory]::GetFiles($currentDirectory)) {
+        $fullPath = [System.IO.Path]::GetFullPath($filePath)
+        if (-not $fullPath.StartsWith($basePath, [System.StringComparison]::OrdinalIgnoreCase)) {
+          throw 'Dependency inventory encountered a file outside its root.'
+        }
+        if ($fullPath.StartsWith($transientPrismaCache + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+          continue
+        }
+        if (([System.IO.File]::GetAttributes($fullPath) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+          throw 'Dependency inventory encountered a linked file.'
+        }
+        $relative = $fullPath.Substring($basePath.Length)
+        $stream = [System.IO.File]::OpenRead($fullPath)
+        try { $hash = [System.BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
+        finally { $stream.Dispose() }
+        $hashes[$relative] = $hash
+      }
+    }
+  } finally {
+    $sha.Dispose()
   }
-  return $hashes
+  return ,$hashes
 }
 
 function Ensure-ProdArtifactsBaseline {
@@ -181,6 +210,178 @@ function Ensure-ProdBackendRuntime {
     }
     Install-ProdBackendRuntime -Paths $Paths -ForceRefresh:$linkedToDev -RefreshPrismaSchema:(-not (Test-Path (Join-Path $Paths.ProdBackendPrisma 'schema.prisma')))
   }
+}
+
+function Get-ProdNodeModulesInventorySha256 {
+  param([Parameter(Mandatory)][string]$Directory)
+
+  $hashes = Get-DirectoryFileHashes -Directory $Directory
+  $rows = @($hashes.Keys | Sort-Object | ForEach-Object { [ordered]@{ path = $_; sha256 = $hashes[$_] } })
+  $json = ConvertTo-Json -InputObject $rows -Depth 4 -Compress
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try { return [System.BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant() }
+  finally { $sha.Dispose() }
+}
+
+function Test-ProdBackendRuntimeForCandidate {
+  param(
+    [Parameter(Mandatory)][hashtable]$Paths,
+    [Parameter(Mandatory)][string]$CandidatePath,
+    [Parameter(Mandatory)][string]$ExpectedReleaseSha,
+    [Parameter(Mandatory)][string]$ExpectedManifestSha256
+  )
+
+  $runtimeManifestPath = Join-Path $Paths.ProdBackendRoot '.runtime-manifest.json'
+  if (-not (Test-Path -LiteralPath $runtimeManifestPath -PathType Leaf)) { return $false }
+  try { $runtime = Get-Content -LiteralPath $runtimeManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+  catch { return $false }
+  if ($runtime.candidateSha -ne $ExpectedReleaseSha -or $runtime.candidateManifestSha256 -ne $ExpectedManifestSha256) { return $false }
+
+  $candidateManifest = Get-Content -LiteralPath (Join-Path $CandidatePath 'candidate-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+  foreach ($item in @($candidateManifest.files)) {
+    if ($item.path -like 'backend/*') {
+      $liveFile = Join-Path $Paths.ProdBackendRoot ($item.path.Substring('backend/'.Length) -replace '/', '\')
+    } elseif ($item.path -like 'frontend/*') {
+      $liveFile = Join-Path $Paths.ProdFrontendDist ($item.path.Substring('frontend/'.Length) -replace '/', '\')
+    } elseif ($item.path -eq 'source-snapshot-inventory.json') {
+      continue
+    } else { return $false }
+    if (-not (Test-Path -LiteralPath $liveFile -PathType Leaf)) { return $false }
+    if ((Get-FileHash -LiteralPath $liveFile -Algorithm SHA256).Hash.ToLowerInvariant() -ne $item.sha256) { return $false }
+  }
+  $candidateBackend = Join-Path $CandidatePath 'backend'
+  $candidateFiles = @{
+    packageJson = Join-Path $candidateBackend 'package.json'
+    packageLock = Join-Path $candidateBackend 'package-lock.json'
+    prismaSchema = Join-Path $candidateBackend 'prisma/schema.prisma'
+  }
+  $liveFiles = @{
+    packageJson = Join-Path $Paths.ProdBackendRoot 'package.json'
+    packageLock = Join-Path $Paths.ProdBackendRoot 'package-lock.json'
+    prismaSchema = Join-Path $Paths.ProdBackendPrisma 'schema.prisma'
+  }
+  foreach ($key in $candidateFiles.Keys) {
+    if (-not (Test-Path -LiteralPath $liveFiles[$key] -PathType Leaf)) { return $false }
+    $expected = (Get-FileHash -LiteralPath $candidateFiles[$key] -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actual = (Get-FileHash -LiteralPath $liveFiles[$key] -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $expected) { return $false }
+  }
+  if (-not (Test-Path -LiteralPath (Join-Path $Paths.ProdBackendNodeModules '.prisma/client/index.js') -PathType Leaf)) { return $false }
+  $livePackageSha = (Get-FileHash -LiteralPath $liveFiles.packageJson -Algorithm SHA256).Hash.ToLowerInvariant()
+  $liveLockSha = (Get-FileHash -LiteralPath $liveFiles.packageLock -Algorithm SHA256).Hash.ToLowerInvariant()
+  $liveSchemaSha = (Get-FileHash -LiteralPath $liveFiles.prismaSchema -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($runtime.packageJsonSha256 -ne $livePackageSha) { return $false }
+  if ($runtime.packageLockSha256 -ne $liveLockSha) { return $false }
+  if ($runtime.prismaSchemaSha256 -ne $liveSchemaSha) { return $false }
+  return ((Get-ProdNodeModulesInventorySha256 -Directory $Paths.ProdBackendNodeModules) -eq $runtime.nodeModulesInventorySha256)
+}
+
+function Install-ProdBackendRuntimeFromCandidate {
+  param(
+    [Parameter(Mandatory)][hashtable]$Paths,
+    [Parameter(Mandatory)][string]$CandidatePath,
+    [Parameter(Mandatory)][string]$ExpectedReleaseSha,
+    [Parameter(Mandatory)][string]$ExpectedManifestSha256
+  )
+
+  $verified = Test-ReleaseCandidate -CandidatePath $CandidatePath -ExpectedReleaseSha $ExpectedReleaseSha -RequireMigrationIntegrity -ThrowOnError
+  $manifestPath = Join-Path $CandidatePath 'candidate-manifest.json'
+  $manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($manifestHash -ne $ExpectedManifestSha256) { throw 'Retained candidate manifest does not match its external SHA-256.' }
+  $candidateManifest = $verified.Manifest
+  if ($candidateManifest.releaseSha -ne $ExpectedReleaseSha -or $candidateManifest.sourceSnapshot.commit -ne $ExpectedReleaseSha) {
+    throw 'Retained candidate source identity does not match the approved application SHA.'
+  }
+  $expectedBackend = [System.IO.Path]::GetFullPath((Join-Path $CandidatePath 'backend'))
+  if ([System.IO.Path]::GetFullPath($Paths.BackendDir) -ne $expectedBackend) {
+    throw 'Production runtime package source must be the backend directory inside the retained candidate.'
+  }
+  if (-not (Test-ProdBackendRuntimeForCandidate -Paths $Paths -CandidatePath $CandidatePath -ExpectedReleaseSha $ExpectedReleaseSha -ExpectedManifestSha256 $ExpectedManifestSha256)) {
+    foreach ($item in @($candidateManifest.files)) {
+      if ($item.path -like 'backend/*') {
+        $liveFile = Join-Path $Paths.ProdBackendRoot ($item.path.Substring('backend/'.Length) -replace '/', '\')
+      } elseif ($item.path -like 'frontend/*') {
+        $liveFile = Join-Path $Paths.ProdFrontendDist ($item.path.Substring('frontend/'.Length) -replace '/', '\')
+      } elseif ($item.path -eq 'source-snapshot-inventory.json') { continue }
+      else { throw 'Retained candidate contains an unsupported published file path.' }
+      if (-not (Test-Path -LiteralPath $liveFile -PathType Leaf)) {
+        throw "Published production file is missing: $($item.path)"
+      }
+      $liveSha = (Get-FileHash -LiteralPath $liveFile -Algorithm SHA256).Hash.ToLowerInvariant()
+      if ($liveSha -ne $item.sha256) {
+        throw "Published production file differs from the retained candidate: $($item.path)"
+      }
+    }
+  }
+  if (Test-ProdBackendRuntimeForCandidate -Paths $Paths -CandidatePath $CandidatePath -ExpectedReleaseSha $ExpectedReleaseSha -ExpectedManifestSha256 $ExpectedManifestSha256) {
+    return [pscustomobject]@{ status='PASS'; installed=$false; candidateSha=$ExpectedReleaseSha; manifestSha256=$ExpectedManifestSha256; runtimeManifest=(Join-Path $Paths.ProdBackendRoot '.runtime-manifest.json') }
+  }
+
+  $candidateBackend = Join-Path $CandidatePath 'backend'
+  $candidateFiles = @{
+    packageJson = Join-Path $candidateBackend 'package.json'
+    packageLock = Join-Path $candidateBackend 'package-lock.json'
+    prismaSchema = Join-Path $candidateBackend 'prisma/schema.prisma'
+  }
+  foreach ($file in $candidateFiles.Values) { if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Retained candidate is missing a required runtime package file.' } }
+  foreach ($pair in @(
+    @((Join-Path $Paths.ProdBackendRoot 'package.json'), $candidateFiles.packageJson),
+    @((Join-Path $Paths.ProdBackendRoot 'package-lock.json'), $candidateFiles.packageLock),
+    @((Join-Path $Paths.ProdBackendPrisma 'schema.prisma'), $candidateFiles.prismaSchema)
+  )) {
+    if (-not (Test-Path -LiteralPath $pair[0] -PathType Leaf)) { throw 'Published candidate is missing package, lockfile, or Prisma schema.' }
+    $expected = (Get-FileHash -LiteralPath $pair[1] -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actual = (Get-FileHash -LiteralPath $pair[0] -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $expected) { throw 'Published package, lockfile, or Prisma schema differs from the retained candidate.' }
+  }
+
+  if (Test-Path -LiteralPath $Paths.ProdBackendNodeModules) {
+    $nodeModulesItem = Get-Item -LiteralPath $Paths.ProdBackendNodeModules -Force
+    if (($nodeModulesItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+      throw 'Refusing to run npm ci against a linked production node_modules directory.'
+    }
+    # npm ci removes and recreates a normal node_modules directory itself.
+    # Avoid a separate recursive delete that can race transient Prisma engine cache files.
+  }
+  Push-Location $Paths.ProdBackendRoot
+  try {
+    Invoke-ProdBackendNpm -Paths $Paths -NpmArgs @('ci', '--include=dev', '--no-audit', '--no-fund')
+    Invoke-ProdBackendNpm -Paths $Paths -NpmArgs @('exec', '--', 'prisma', 'generate', '--schema', (Join-Path $Paths.ProdBackendPrisma 'schema.prisma'))
+  } finally { Pop-Location }
+
+  foreach ($pair in @(
+    @((Join-Path $Paths.ProdBackendRoot 'package.json'), $candidateFiles.packageJson),
+    @((Join-Path $Paths.ProdBackendRoot 'package-lock.json'), $candidateFiles.packageLock),
+    @((Join-Path $Paths.ProdBackendPrisma 'schema.prisma'), $candidateFiles.prismaSchema)
+  )) {
+    $expected = (Get-FileHash -LiteralPath $pair[1] -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actual = (Get-FileHash -LiteralPath $pair[0] -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $expected) { throw 'Pinned dependency materialization changed an approved candidate file.' }
+  }
+  $clientFile = Join-Path $Paths.ProdBackendNodeModules '.prisma/client/index.js'
+  if (-not (Test-Path -LiteralPath $clientFile -PathType Leaf)) { throw 'Pinned dependency materialization did not generate the Prisma Client.' }
+  $packageSha = (Get-FileHash -LiteralPath (Join-Path $Paths.ProdBackendRoot 'package.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+  $lockSha = (Get-FileHash -LiteralPath (Join-Path $Paths.ProdBackendRoot 'package-lock.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+  $schemaSha = (Get-FileHash -LiteralPath (Join-Path $Paths.ProdBackendPrisma 'schema.prisma') -Algorithm SHA256).Hash.ToLowerInvariant()
+  $inventorySha = Get-ProdNodeModulesInventorySha256 -Directory $Paths.ProdBackendNodeModules
+  $runtimeManifest = [ordered]@{
+    materializedAt = [DateTime]::UtcNow.ToString('o')
+    candidateSha = $ExpectedReleaseSha
+    candidateManifestSha256 = $ExpectedManifestSha256
+    packageJsonSha256 = $packageSha
+    packageLockSha256 = $lockSha
+    prismaSchemaSha256 = $schemaSha
+    nodeModulesInventorySha256 = $inventorySha
+    dependencyMaterialization = 'npm ci --include=dev from retained package lock; Prisma generated from retained schema'
+    dependencyInventoryExclusions = @('@prisma/engines/node_modules/.cache/prisma/master/** (transient Prisma engine download cache)')
+    isolatedNodeModules = $true
+  }
+  $runtimeManifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Paths.ProdBackendRoot '.runtime-manifest.json') -Encoding UTF8
+  if (-not (Test-ProdBackendRuntimeForCandidate -Paths $Paths -CandidatePath $CandidatePath -ExpectedReleaseSha $ExpectedReleaseSha -ExpectedManifestSha256 $ExpectedManifestSha256)) {
+    throw 'Materialized production runtime does not match the retained candidate and dependency inventory.'
+  }
+  return [pscustomobject]@{ status='PASS'; installed=$true; candidateSha=$ExpectedReleaseSha; manifestSha256=$ExpectedManifestSha256; packageJsonSha256=$packageSha; packageLockSha256=$lockSha; prismaSchemaSha256=$schemaSha; nodeModulesInventorySha256=$inventorySha; runtimeManifest=(Join-Path $Paths.ProdBackendRoot '.runtime-manifest.json') }
 }
 
 function Assert-ProdDatabaseSchemaSync {

@@ -132,15 +132,22 @@ function Assert-DatabaseEnvironment {
 }
 
 function Get-QuiverTapSettings {
-  $deployDir = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'deploy'
-  if (-not (Test-Path $deployDir)) {
-    $deployDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..\deploy')).Path
+  $settingsOverride = $env:QUIVER_PRODUCTION_SETTINGS_FILE
+  if ($settingsOverride) {
+    if (-not [System.IO.Path]::IsPathRooted($settingsOverride) -or -not (Test-Path -LiteralPath $settingsOverride -PathType Leaf)) {
+      throw 'QUIVER_PRODUCTION_SETTINGS_FILE must be an explicit absolute existing file.'
+    }
+    $localFile = [System.IO.Path]::GetFullPath($settingsOverride)
+  } else {
+    $deployDir = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'deploy'
+    if (-not (Test-Path $deployDir)) {
+      $deployDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..\deploy')).Path
+    }
+    $localFile = Join-Path $deployDir 'production.settings.psd1'
+    $exampleFile = Join-Path $deployDir 'production.settings.psd1.example'
   }
 
-  $localFile = Join-Path $deployDir 'production.settings.psd1'
-  $exampleFile = Join-Path $deployDir 'production.settings.psd1.example'
-
-  $settingsFile = if (Test-Path $localFile) { $localFile } elseif (Test-Path $exampleFile) { $exampleFile } else { $null }
+  $settingsFile = if (Test-Path -LiteralPath $localFile) { $localFile } elseif ($exampleFile -and (Test-Path -LiteralPath $exampleFile)) { $exampleFile } else { $null }
   if (-not $settingsFile) {
     throw 'Configure deploy/production.settings.psd1 (copie de production.settings.psd1.example).'
   }
@@ -212,10 +219,27 @@ function Resolve-QuiverTapPaths {
   # Fica ao lado (nao dentro) de prod-artifacts para nao ser servida nem varrida pelo verify.
   $prodArtifactsPrevious = Join-Path (Split-Path $prodArtifactsDir -Parent) ((Split-Path $prodArtifactsDir -Leaf) + '.previous')
   $prodUploadsDir = Join-Path $root 'backend\uploads-prod'
+  $backendDir = if ($Settings.BackendDirOverride) {
+    [System.IO.Path]::GetFullPath([string]$Settings.BackendDirOverride)
+  } else {
+    Join-Path $root 'backend'
+  }
+  $environmentBackendDir = if ($Settings.EnvironmentBackendDir) {
+    [System.IO.Path]::GetFullPath([string]$Settings.EnvironmentBackendDir)
+  } else {
+    Join-Path $root 'backend'
+  }
+  if (-not (Test-Path -LiteralPath $backendDir -PathType Container)) {
+    throw 'BackendDirOverride does not identify an existing package backend directory.'
+  }
+  if (-not (Test-Path -LiteralPath $environmentBackendDir -PathType Container)) {
+    throw 'EnvironmentBackendDir does not identify an existing configuration backend directory.'
+  }
 
   @{
     ProjectRoot       = (Resolve-Path $root).Path
-    BackendDir        = Join-Path $root 'backend'
+    BackendDir        = $backendDir
+    EnvironmentBackendDir = $environmentBackendDir
     FrontendDir       = Join-Path $root 'frontend'
     DevFrontendDist   = Join-Path $root 'frontend\dist'
     DevApiEntry       = Join-Path $root 'backend\dist\index.js'

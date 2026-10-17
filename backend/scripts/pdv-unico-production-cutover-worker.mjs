@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { copyFile, cp, mkdir, readdir, readFile, writeFile, symlink } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -283,6 +284,173 @@ async function closeAdministrativeSessions() {
   return { status: 'PASS', sessions: results, financialClosure: false, financialConference: 'PENDING', paymentsChanged: false, movementsGenerated: false };
 }
 
+function productionScriptEnvironment(env) {
+  const child = { ...env };
+  for (const key of Object.keys(child)) {
+    if (key.startsWith('PDV_CUTOVER_') || key.startsWith('PDV_QA_') || key === 'QA_DATABASE_URL'
+      || key === 'PGPASSWORD' || key === 'DATABASE_URL' || key === 'JWT_SECRET') delete child[key];
+  }
+  child.QUIVER_PRODUCTION_SETTINGS_FILE = env.PDV_CUTOVER_PRODUCTION_SETTINGS_FILE;
+  child.PDV_TOOLS_ROOT = path.resolve(toolsBackendRoot, '..');
+  child.PDV_PROJECT_ROOT = requiredAbsolute(env.PDV_CUTOVER_PROJECT_ROOT, 'PDV_CUTOVER_PROJECT_ROOT');
+  child.PDV_CANDIDATE_PATH = appRoot;
+  child.PDV_CANDIDATE_SHA = env.PDV_CUTOVER_APPLICATION_SHA;
+  child.PDV_CANDIDATE_MANIFEST_SHA = env.PDV_CUTOVER_MANIFEST_SHA256;
+  child.PDV_NODE_EXE = requiredAbsolute(env.PDV_CUTOVER_NODE_EXE, 'PDV_CUTOVER_NODE_EXE');
+  return child;
+}
+
+function invokeProductionPowerShell(script, env, label) {
+  const result = spawnSync(env.PDV_CUTOVER_POWERSHELL_EXE ?? 'powershell.exe',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+      encoding: 'utf8', windowsHide: true, maxBuffer: 16 * 1024 * 1024,
+      env: productionScriptEnvironment(env),
+    });
+  if (result.status !== 0) {
+    const token = env.PDV_CUTOVER_OPERATOR_TOKEN;
+    const scrub = (value) => String(value ?? '').replaceAll(token ?? '\u0000', '[REDACTED]');
+    const safe = `${scrub(result.stderr)}\n${scrub(result.stdout)}`.trim().slice(-3000);
+    throw new Error(`${label} failed (${result.status ?? result.error?.code ?? 'unknown'}): ${safe || 'see protected run log'}`);
+  }
+  return String(result.stdout ?? '').trim();
+}
+
+function validateProductionExecutionSettings(env) {
+  const settings = requiredAbsolute(env.PDV_CUTOVER_PRODUCTION_SETTINGS_FILE, 'PDV_CUTOVER_PRODUCTION_SETTINGS_FILE');
+  const settingsHash = env.PDV_CUTOVER_PRODUCTION_SETTINGS_SHA256;
+  if (!/^[a-f0-9]{64}$/.test(settingsHash ?? '')
+    || createHash('sha256').update(readFileSync(settings)).digest('hex') !== settingsHash) {
+    throw new Error('Explicit production settings file does not match its external SHA-256.');
+  }
+  requiredAbsolute(env.PDV_CUTOVER_PROJECT_ROOT, 'PDV_CUTOVER_PROJECT_ROOT');
+  requiredAbsolute(env.PDV_CUTOVER_NODE_EXE, 'PDV_CUTOVER_NODE_EXE');
+  const toolsRoot = path.resolve(toolsBackendRoot, '..');
+  const requiredScripts = ['scripts/prod/_config.ps1', 'scripts/prod/publish-artifacts.ps1', 'scripts/prod/start-api.ps1', 'scripts/prod/restart-api.ps1'];
+  for (const relative of requiredScripts) {
+    if (!existsSync(path.join(toolsRoot, relative))) throw new Error(`Published production lifecycle script is missing: ${relative}`);
+  }
+  const settingsRoot = path.relative(toolsRoot, settings);
+  if (settingsRoot.startsWith('..') || path.isAbsolute(settingsRoot)) throw new Error('Production settings must reside with the extracted published tools.');
+  const version = spawnSync(env.PDV_CUTOVER_NODE_EXE, ['--version'], { encoding: 'utf8', windowsHide: true });
+  if (version.status !== 0 || !/^v24\./.test(String(version.stdout ?? '').trim())) {
+    throw new Error('The explicitly identified production Node runtime is missing or not Node 24.');
+  }
+  const script = String.raw`
+$ErrorActionPreference='Stop'
+. (Join-Path $env:PDV_TOOLS_ROOT 'scripts/prod/_config.ps1')
+$settings=Get-QuiverTapSettings
+$paths=Resolve-QuiverTapPaths -Settings $settings
+if ([System.IO.Path]::GetFullPath($paths.ProjectRoot) -ne [System.IO.Path]::GetFullPath($env:PDV_PROJECT_ROOT)) { throw 'ProjectRoot differs from the approved workspace.' }
+if ([System.IO.Path]::GetFullPath($paths.BackendDir) -ne [System.IO.Path]::GetFullPath((Join-Path $env:PDV_CANDIDATE_PATH 'backend'))) { throw 'BackendDirOverride does not identify the retained package backend.' }
+if ([System.IO.Path]::GetFullPath($paths.EnvironmentBackendDir) -ne [System.IO.Path]::GetFullPath((Join-Path $env:PDV_PROJECT_ROOT 'backend'))) { throw 'EnvironmentBackendDir does not identify the production configuration source.' }
+if ([System.IO.Path]::GetFullPath($paths.NodeExe) -ne [System.IO.Path]::GetFullPath($env:PDV_NODE_EXE)) { throw 'Production settings selected a different Node runtime.' }
+if ([int]$paths.ApiPort -ne 3001) { throw 'Production API port differs from the approved local listener.' }
+if ([System.IO.Path]::GetFullPath($paths.ProdArtifactsDir) -ne [System.IO.Path]::GetFullPath((Join-Path $env:PDV_PROJECT_ROOT 'deploy/prod-artifacts'))) { throw 'Production artifacts target differs from the approved runtime path.' }
+Write-Output 'PRODUCTION_SETTINGS_PREFLIGHT=PASS'
+`;
+  const output = invokeProductionPowerShell(script, env, 'Production settings preflight');
+  if (!output.split(/\r?\n/).includes('PRODUCTION_SETTINGS_PREFLIGHT=PASS')) {
+    throw new Error('Published settings resolver did not attest the exact runtime paths.');
+  }
+  return { status: 'PASS', settingsSha256: settingsHash, nodeVersion: String(version.stdout).trim(), toolsRootSha256: null };
+}
+
+async function assertLocalOwnerApi() {
+  if (!apiBaseUrl || !apiToken) throw new Error('Candidate API acceptance requires the authenticated real operator session.');
+  const endpoint = new URL(apiBaseUrl);
+  if (!['127.0.0.1', 'localhost', '::1'].includes(endpoint.hostname)) throw new Error('Candidate API operations must use loopback only.');
+  const headers = { authorization: `Bearer ${apiToken}` };
+  const [ready, me] = await Promise.all([
+    fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/ready`, { headers }),
+    fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/auth/me`, { headers }),
+  ]);
+  if (!ready.ok || !me.ok) throw new Error(`Candidate API readiness/authentication failed (ready ${ready.status}, auth/me ${me.status}).`);
+  const body = await me.json();
+  if (body?.usuario?.papel !== 'DONO' || body?.cervejaria?.id !== names[0]) {
+    throw new Error('Candidate API authenticated identity is outside the approved real Thiago owner tenant.');
+  }
+  return { status: 'PASS', readyHttp: ready.status, authMeHttp: me.status, role: 'DONO', tenantId: names[0] };
+}
+
+async function publishAndStartCandidateApi(env) {
+  if (env.PDV_CUTOVER_PRODUCTION_REHEARSAL === '1') return { status: 'PASS', mode: 'isolated QA app.inject rehearsal' };
+  const settings = requiredAbsolute(env.PDV_CUTOVER_PRODUCTION_SETTINGS_FILE, 'PDV_CUTOVER_PRODUCTION_SETTINGS_FILE');
+  const settingsHash = env.PDV_CUTOVER_PRODUCTION_SETTINGS_SHA256;
+  if (!/^[a-f0-9]{64}$/.test(settingsHash ?? '')
+    || createHash('sha256').update(await readFile(settings)).digest('hex') !== settingsHash) {
+    throw new Error('Explicit production settings file does not match its external SHA-256.');
+  }
+  requiredAbsolute(env.PDV_CUTOVER_NODE_EXE, 'PDV_CUTOVER_NODE_EXE');
+  const script = String.raw`
+$ErrorActionPreference='Stop'
+. (Join-Path $env:PDV_TOOLS_ROOT 'scripts/prod/_config.ps1')
+. (Join-Path $env:PDV_TOOLS_ROOT 'scripts/prod/publish-artifacts.ps1')
+$settings=Get-QuiverTapSettings
+$paths=Resolve-QuiverTapPaths -Settings $settings
+if ([System.IO.Path]::GetFullPath($paths.ProjectRoot) -ne [System.IO.Path]::GetFullPath($env:PDV_PROJECT_ROOT)) { throw 'Production settings project root differs from the authorized workspace.' }
+if ([System.IO.Path]::GetFullPath($paths.BackendDir) -ne [System.IO.Path]::GetFullPath((Join-Path $env:PDV_CANDIDATE_PATH 'backend'))) { throw 'Runtime package source is not the retained candidate backend.' }
+if ([System.IO.Path]::GetFullPath($paths.EnvironmentBackendDir) -ne [System.IO.Path]::GetFullPath((Join-Path $env:PDV_PROJECT_ROOT 'backend'))) { throw 'Production environment source differs from the protected workspace configuration.' }
+if ([int]$paths.ApiPort -ne 3001) { throw 'Production candidate API must use the approved local listener port.' }
+$freezePath=Join-Path $paths.RuntimeDir 'write-freeze'
+if (-not (Test-Path -LiteralPath $freezePath -PathType Leaf)) { throw 'Write freeze marker is missing before candidate publication.' }
+$freeze=Get-Content -LiteralPath $freezePath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ($freeze.blocked -ne $true) { throw 'Write freeze marker does not block ordinary API writes.' }
+if (Test-PortListening -Port $paths.ApiPort) { throw 'API port is occupied by an unidentified process; candidate publication stopped.' }
+$verified=Test-ReleaseCandidate -CandidatePath $env:PDV_CANDIDATE_PATH -ExpectedReleaseSha $env:PDV_CANDIDATE_SHA -RequireMigrationIntegrity -ThrowOnError
+$manifestHash=(Get-FileHash -LiteralPath (Join-Path $env:PDV_CANDIDATE_PATH 'candidate-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($manifestHash -ne $env:PDV_CANDIDATE_MANIFEST_SHA) { throw 'Retained candidate manifest hash differs from the approved external digest.' }
+$liveManifest=Join-Path $paths.ProdArtifactsDir 'manifest.json'
+$alreadyPublished=$false
+if (Test-Path -LiteralPath $liveManifest) {
+  try { $deployed=Get-Content -LiteralPath $liveManifest -Raw -Encoding UTF8 | ConvertFrom-Json; $alreadyPublished=($deployed.gitSha -eq $env:PDV_CANDIDATE_SHA) } catch { $alreadyPublished=$false }
+}
+if ($alreadyPublished) {
+  foreach ($item in @($verified.Manifest.files)) {
+    if ($item.path -like 'backend/*') {
+      $liveFile=Join-Path $paths.ProdBackendRoot ($item.path.Substring('backend/'.Length) -replace '/', '\\')
+    } elseif ($item.path -like 'frontend/*') {
+      $liveFile=Join-Path $paths.ProdFrontendDist ($item.path.Substring('frontend/'.Length) -replace '/', '\\')
+    } elseif ($item.path -eq 'source-snapshot-inventory.json') { continue }
+    else { throw 'Retained candidate contains an unsupported published file path.' }
+    if (-not (Test-Path -LiteralPath $liveFile -PathType Leaf)
+      -or (Get-FileHash -LiteralPath $liveFile -Algorithm SHA256).Hash.ToLowerInvariant() -ne $item.sha256) {
+      throw "Published release SHA matches, but deployed content differs from the retained candidate: $($item.path)"
+    }
+  }
+}
+if (-not $alreadyPublished) {
+  Publish-ReleaseCandidateArtifacts -Paths $paths -CandidatePath $env:PDV_CANDIDATE_PATH -ExpectedReleaseSha $env:PDV_CANDIDATE_SHA
+}
+& (Join-Path $env:PDV_TOOLS_ROOT 'scripts/prod/start-api.ps1') -RetainedCandidatePath $env:PDV_CANDIDATE_PATH -ExpectedReleaseSha $env:PDV_CANDIDATE_SHA -ExpectedManifestSha256 $env:PDV_CANDIDATE_MANIFEST_SHA -Quiet
+if ($LASTEXITCODE -ne 0) { throw 'Retained candidate API starter failed.' }
+`;
+  const output = invokeProductionPowerShell(script, env, 'Retained package publication/start');
+  const identity = await assertLocalOwnerApi();
+  return { status: 'PASS', publishedSha: env.PDV_CUTOVER_APPLICATION_SHA,
+    manifestSha256: env.PDV_CUTOVER_MANIFEST_SHA256, settingsSha256: settingsHash,
+    scriptOutputSha256: createHash('sha256').update(output).digest('hex'), identity };
+}
+
+async function restartCandidateApi(env) {
+  if (env.PDV_CUTOVER_PRODUCTION_REHEARSAL === '1') return { status: 'PASS', mode: 'isolated QA app.inject rehearsal' };
+  const script = String.raw`
+$ErrorActionPreference='Stop'
+. (Join-Path $env:PDV_TOOLS_ROOT 'scripts/prod/_config.ps1')
+$settings=Get-QuiverTapSettings
+$paths=Resolve-QuiverTapPaths -Settings $settings
+if ([System.IO.Path]::GetFullPath($paths.ProjectRoot) -ne [System.IO.Path]::GetFullPath($env:PDV_PROJECT_ROOT)) { throw 'Production settings project root differs from the authorized workspace.' }
+if ([System.IO.Path]::GetFullPath($paths.BackendDir) -ne [System.IO.Path]::GetFullPath((Join-Path $env:PDV_CANDIDATE_PATH 'backend'))) { throw 'Runtime package source is not the retained candidate backend.' }
+$freeze=Get-Content -LiteralPath (Join-Path $paths.RuntimeDir 'write-freeze') -Raw -Encoding UTF8 | ConvertFrom-Json
+if ($freeze.blocked -ne $true) { throw 'Candidate restart requires the active write freeze.' }
+& (Join-Path $env:PDV_TOOLS_ROOT 'scripts/prod/restart-api.ps1') -RetainedCandidatePath $env:PDV_CANDIDATE_PATH -ExpectedReleaseSha $env:PDV_CANDIDATE_SHA -ExpectedManifestSha256 $env:PDV_CANDIDATE_MANIFEST_SHA -Quiet
+if ($LASTEXITCODE -ne 0) { throw 'Retained candidate API restart failed.' }
+`;
+  const output = invokeProductionPowerShell(script, env, 'Retained package restart');
+  const identity = await assertLocalOwnerApi();
+  return { status: 'PASS', settingsSha256: env.PDV_CUTOVER_PRODUCTION_SETTINGS_SHA256,
+    scriptOutputSha256: createHash('sha256').update(output).digest('hex'), identity };
+}
+
 async function reconciliation(context) {
   const db = await prisma(context);
   try {
@@ -427,6 +595,7 @@ export function reconcileThirdTenantClassC(entries, selectedTenantIds, paymentRo
 
 export async function executeProductivePdvWorker({ env = process.env } = {}) {
   const context = await validateProductionCutoverContext({ env });
+  if (!context.rehearsal) validateProductionExecutionSettings(env);
   requiredAbsolute(appRoot, 'PDV_CUTOVER_APP_ROOT'); requiredAbsolute(schemaFile, 'PDV_CUTOVER_SCHEMA_FILE');
   requiredAbsolute(migrationsRoot, 'PDV_CUTOVER_MIGRATIONS_ROOT'); requiredAbsolute(clientRoot, 'PDV_CUTOVER_PRISMA_CLIENT');
   requiredAbsolute(precommerceClientRoot, 'PDV_CUTOVER_PRECOMMERCE_PRISMA_CLIENT');
@@ -482,7 +651,11 @@ export async function executeProductivePdvWorker({ env = process.env } = {}) {
       const categories = await transformCategories(context);
       return { status: 'PASS', transformations: transformed, categories };
     },
-    'approved-administrative-session-closure': async () => ({ status: 'PASS', ...(await closeAdministrativeSessions()) }),
+    'approved-administrative-session-closure': async () => {
+      const publication = await publishAndStartCandidateApi(contextEnv);
+      const closures = await closeAdministrativeSessions();
+      return { status: 'PASS', publication, ...closures };
+    },
     'diagnostics-and-integrated-reconciliation': async ({ productionContext }) => reconciliation(productionContext),
     'per-tenant-activation': async () => {
       requiredAbsolute(activationFile, 'PDV_CUTOVER_ACTIVATION_CONFIG');
@@ -490,7 +663,8 @@ export async function executeProductivePdvWorker({ env = process.env } = {}) {
       if (results.status !== 'PASS') throw new Error('Tenant readiness did not pass.');
       const backup = path.join(receiptRoot, `${runId}.activation-rollback.json`);
       const activation = await applyPersistentTenantActivation({ configPath: activationFile, tenants: names, backupPath: backup, profile: 'production' });
-      return { status: 'PASS', readiness: results.readiness, activation, otherTenants: 'LEGACY' };
+      const restartedApi = await restartCandidateApi(contextEnv);
+      return { status: 'PASS', readiness: results.readiness, activation, restartedApi, otherTenants: 'LEGACY' };
     },
   };
   const verifyPdvMigratorRuns = async (expectedRuns, productionContext) => {

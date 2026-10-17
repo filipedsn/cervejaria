@@ -2,7 +2,10 @@
 
 param(
   [switch]$Force,
-  [switch]$Quiet
+  [switch]$Quiet,
+  [string]$RetainedCandidatePath = '',
+  [string]$ExpectedReleaseSha = '',
+  [string]$ExpectedManifestSha256 = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,7 +18,7 @@ $paths = Resolve-QuiverTapPaths -Settings $settings
 # Carrega o ambiente antes da verificacao de dependencia. O artefato publicado e
 # propositalmente sem segredos; as variaveis vivem em backend/.env.production.
 try {
-  Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment production
+  Import-BackendEnvFile -BackendDir $paths.EnvironmentBackendDir -Environment production
 } catch {
   Write-WatchdogLog -Paths $paths -Message "Falha ao carregar ambiente de producao: $($_.Exception.Message)"
   Write-Host $_.Exception.Message -ForegroundColor Red
@@ -46,7 +49,16 @@ try {
     Write-Host 'Banco de producao ainda indisponivel; nova tentativa sera feita pelo watchdog.' -ForegroundColor Yellow
     exit 1
   }
-  Ensure-ProdBackendRuntime -Paths $paths -Quiet:$Quiet
+  if ($RetainedCandidatePath) {
+    if (-not $ExpectedReleaseSha -or -not $ExpectedManifestSha256) {
+      throw 'Retained candidate startup requires the exact application SHA and external manifest SHA-256.'
+    }
+    $runtime = Install-ProdBackendRuntimeFromCandidate -Paths $paths -CandidatePath $RetainedCandidatePath `
+      -ExpectedReleaseSha $ExpectedReleaseSha -ExpectedManifestSha256 $ExpectedManifestSha256
+    if ($runtime.status -ne 'PASS') { throw 'Retained candidate runtime verification failed.' }
+  } else {
+    Ensure-ProdBackendRuntime -Paths $paths -Quiet:$Quiet
+  }
   Assert-ProdDatabaseSchemaSync -Paths $paths
 } catch {
   Write-WatchdogLog -Paths $paths -Message "Preflight da API falhou: $($_.Exception.Message)"
