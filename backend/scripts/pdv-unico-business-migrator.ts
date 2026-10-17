@@ -8,6 +8,9 @@ const SOURCE_TYPES = ['PDV', 'TRAILER', 'EVENTO'] as const;
 type SourceType = typeof SOURCE_TYPES[number];
 type DestinationType = 'PONTO_VENDA' | 'AGENDA_OPERACIONAL' | 'OCORRENCIA_OPERACIONAL';
 type AnyDb = any;
+// Bound Prisma pool acquisition and transaction execution explicitly. The
+// restored QA snapshot briefly exhausted the default 2s interactive wait.
+const PDV_TRANSACTION_OPTIONS = { maxWait: 15_000, timeout: 60_000 } as const;
 
 export class PdvMigrationBlocker extends Error {
   constructor(readonly code: string, readonly sourceType: string | null, readonly sourceId: string | null, message: string) {
@@ -288,7 +291,7 @@ export async function runPdvBusinessMigration(options: {
   const { db, companyId, runId } = options;
   const batchSize = options.batchSize ?? 10;
   if (!companyId || !runId || !Number.isInteger(batchSize) || batchSize < 1) throw new Error('companyId, runId e batchSize válido são obrigatórios.');
-  const initialSnapshot = await db.$transaction((tx: AnyDb) => readScopeSnapshot(tx, companyId), { isolationLevel: 'RepeatableRead' });
+  const initialSnapshot = await db.$transaction((tx: AnyDb) => readScopeSnapshot(tx, companyId), { isolationLevel: 'RepeatableRead', ...PDV_TRANSACTION_OPTIONS });
   const graph = buildPdvPlanningGraph(initialSnapshot);
   const sourceProjection = scopePayload(initialSnapshot);
   const sourceHash = hash(sourceProjection);
@@ -310,7 +313,7 @@ export async function runPdvBusinessMigration(options: {
       const currentSnapshot = await readScopeSnapshot(tx, companyId);
       if (hash(scopePayload(currentSnapshot)) !== sourceHash) throw new PdvMigrationBlocker('SOURCE_SNAPSHOT_CHANGED', null, companyId, 'A fotografia de origem mudou antes da inicialização/retomada do run.');
       return await tx.pdvMigrationRun.findUnique({ where: { id: runId } }) ?? await tx.pdvMigrationRun.create({ data: { id: runId, transformVersion: PDV_TRANSFORM_VERSION, sourceSnapshotHash: sourceHash, checkpoint: initialCheckpoint } });
-    });
+    }, PDV_TRANSACTION_OPTIONS);
     if (preflightBlocker) throw preflightBlocker;
     const initialState = await db.$transaction(async (tx: AnyDb) => {
       await acquireScopeLock(tx, companyId);
@@ -323,7 +326,7 @@ export async function runPdvBusinessMigration(options: {
         if (!canonical || canonical.cervejariaId !== companyId) throw new PdvMigrationBlocker('CANONICAL_PDV_MISSING', null, plan.canonicalPdvId, 'PDV canônico ausente ou de outra empresa.');
       }
       return { run: liveRun, state };
-    });
+    }, PDV_TRANSACTION_OPTIONS);
     run = initialState.run;
     cursor = initialState.state.cursor;
     if (run.status === 'COMPLETED') return { status: 'COMPLETED', runId, checkpoint: run.checkpoint, reusedCompletedRun: true };
@@ -389,7 +392,7 @@ export async function runPdvBusinessMigration(options: {
         const nextCheckpoint = { ...currentCheckpoint, completedSourceKeys: nextKeys, lastConfirmedBatch: batchSequence, lastSourceKey: nextKeys.at(-1) ?? null };
         await tx.pdvMigrationRun.update({ where: { id: runId }, data: { checkpoint: nextCheckpoint } });
         return { checkpoint: nextCheckpoint, receipts: plannedReceipts, cursor: nextKeys.length };
-      });
+      }, PDV_TRANSACTION_OPTIONS);
       if ('alreadyCompleted' in result && result.alreadyCompleted) return { status: 'COMPLETED', runId, processedBatches, checkpoint: result.checkpoint, reusedCompletedRun: true };
       if ('advanced' in result && result.advanced) { cursor = result.cursor; continue; }
       cursor = result.cursor;
@@ -407,7 +410,7 @@ export async function runPdvBusinessMigration(options: {
       const row = await tx.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } });
       await validateConfirmedState(tx, { run: row, companyId, pdvId: plan.canonicalPdvId, sourceHash, items: plan.items, requireComplete: true });
       return tx.pdvMigrationRun.update({ where: { id: runId }, data: { status: 'COMPLETED', finishedAt: new Date() } });
-    });
+    }, PDV_TRANSACTION_OPTIONS);
     return { status: 'COMPLETED', runId, processedBatches, checkpoint: finalRun.checkpoint, counts: (finalRun.checkpoint as any).scopeCounts };
   } catch (error) {
     if (error instanceof PdvMigrationBlocker) {
@@ -416,7 +419,7 @@ export async function runPdvBusinessMigration(options: {
         await db.$transaction(async (tx: AnyDb) => {
           await acquireScopeLock(tx, companyId);
           await tx.pdvMigrationRun.updateMany({ where: { id: runId }, data: { status: 'BLOCKED', finishedAt: null } });
-        });
+        }, PDV_TRANSACTION_OPTIONS);
       }
       return { status: 'BLOCKED', runId, checkpoint: persistedRun?.checkpoint ?? null, blocker: { code: error.code, sourceType: error.sourceType, sourceId: error.sourceId, message: error.message } };
     }
