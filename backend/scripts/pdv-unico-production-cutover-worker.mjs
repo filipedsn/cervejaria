@@ -12,6 +12,7 @@ import { runLiveTransformations } from './pdv-unico-live-transformations.mjs';
 import { applyPersistentTenantActivation } from './pdv-unico-dev-activation-config.mjs';
 import { assertTenantActivationReady } from './pdv-unico-dev-cutover-core.mjs';
 import { scopeCategorySql } from './pdv-unico-dev-cutover-core.mjs';
+import { assertApprovedProductionPackage } from './pdv-unico-approved-package.mjs';
 
 const sessions = Object.freeze(['cmsxnry380001hvq4mr19uwnr', 'cmuyhu2nm00akhvekroi8onoz', 'cmv575i7c07bmhv74pf6gvbz6']);
 const names = PRODUCTION_PDV_TENANT_ALLOWLIST.map(({ id }) => id);
@@ -433,9 +434,8 @@ export async function executeProductivePdvWorker({ env = process.env } = {}) {
   if (!precommerceClientRoot.startsWith(`${tempRoot}${path.sep}`)) throw new Error('Pre-commerce Prisma Client must remain within this run temporary directory.');
   if (!runId || !/^[A-Za-z0-9_-]{8,80}$/.test(runId)) throw new Error('A stable production cutover run ID is required.');
   const expectedApp = env.PDV_CUTOVER_APPLICATION_SHA;
-  if (expectedApp !== 'a415a08a4c410c5c0db1ce57be9b19ce763706ad') throw new Error('Retained application SHA differs from the explicitly approved package.');
   const manifestFile = requiredAbsolute(env.PDV_CUTOVER_PACKAGE_MANIFEST_FILE, 'PDV_CUTOVER_PACKAGE_MANIFEST_FILE');
-  if (env.PDV_CUTOVER_MANIFEST_SHA256 !== '8e6cfdb410e430ae85e3efdc3857b6df7375f28154d8d500b0545d35a6c73238') throw new Error('External retained package manifest digest is missing or differs from the approved digest.');
+  assertApprovedProductionPackage({ applicationSha: expectedApp, manifestSha256: env.PDV_CUTOVER_MANIFEST_SHA256 });
   const manifestBytes = await readFile(manifestFile);
   if (createHash('sha256').update(manifestBytes).digest('hex') !== env.PDV_CUTOVER_MANIFEST_SHA256) throw new Error('Retained package manifest does not match the approved external digest.');
   const manifest = JSON.parse(manifestBytes.toString('utf8').replace(/^\uFEFF/, ''));
