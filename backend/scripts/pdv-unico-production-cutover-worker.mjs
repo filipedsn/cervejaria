@@ -376,15 +376,34 @@ async function reconciliation(context) {
       readiness.push(assertTenantActivationReady({ tenantId, pointIds: points.map(({ id }) => id), configuration: configs.length === 1 ? configs[0] : null,
         permissionReadiness: { status: 'PASS', ownerExclusiveGrantCount: ownerGrants }, categoryReadiness: { status: categoryReadiness ? 'BLOCKED' : 'PASS', unlinkedProducts: categoryReadiness } }));
     }
-    const thirdTenantRows = paymentRows.filter((row) => !names.includes(row.cervejariaId));
+    const thirdTenantDisposition = reconcileThirdTenantClassC(entries, names, paymentRows);
     return { status: 'PASS', paymentFinancialBaseline: { count: afterFinancial.rows, frozenPayloadSha256: baseline.payloadSha256,
       persistedPayloadSha256: afterFinancial.payloadSha256, matchesFrozenCheckpointExceptExactSessionMaps: true,
       exactEventSessionMaps: { count: approvedSessionMappings.length,
         sha256: createHash('sha256').update(JSON.stringify(approvedSessionMappings)).digest('hex') } },
       classCPayments: { count: paymentRows.length, idsSha256: createHash('sha256').update(JSON.stringify(ids)).digest('hex'), payloadSha256: context.approval.approvedSnapshotSha256, sourceFactsPreserved: true, provenance: 'CAIXA_NAO_COMPROVADA',
         canonicalPointAudit: { count: pointAudit.length, mappedEvents: pointAudit.filter(({ mapDestinationId }) => mapDestinationId !== null).length, sha256: createHash('sha256').update(JSON.stringify(pointAudit)).digest('hex'), includesPointId: true } },
-      thirdTenantDispositionOnly: { count: thirdTenantRows.length, operationalLinksCreated: 0, activation: false }, readiness };
+      thirdTenantDispositionOnly: thirdTenantDisposition, readiness };
   } finally { await db.$disconnect(); }
+}
+
+export function reconcileThirdTenantClassC(entries, selectedTenantIds, paymentRows) {
+  const selected = new Set(selectedTenantIds);
+  const thirdTenantEntries = entries.filter(({ tenantId }) => !selected.has(tenantId));
+  const thirdTenantIds = new Set(thirdTenantEntries.map(({ id }) => id));
+  const thirdTenantRows = paymentRows.filter(({ id }) => thirdTenantIds.has(id));
+  assert.equal(thirdTenantRows.length, thirdTenantEntries.length, 'third-tenant class-C source set differs from persisted rows');
+  const operationalLinks = thirdTenantRows.filter((row) => row.sessaoCaixaId != null || row.sessaoCaixaEventoId != null);
+  assert.equal(operationalLinks.length, 0, 'third-tenant historical disposition must not create operational session links');
+  const dispositionPersisted = thirdTenantRows.filter((row) => row.provenienciaHistorica === 'CAIXA_NAO_COMPROVADA').length;
+  assert.equal(dispositionPersisted, thirdTenantEntries.length, 'third-tenant historical disposition is not fully persisted');
+  return {
+    count: thirdTenantEntries.length,
+    idsSha256: createHash('sha256').update(JSON.stringify([...thirdTenantIds].sort())).digest('hex'),
+    dispositionPersisted,
+    operationalLinksCreated: operationalLinks.length,
+    activation: false,
+  };
 }
 
 export async function executeProductivePdvWorker({ env = process.env } = {}) {
