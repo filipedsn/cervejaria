@@ -22,7 +22,14 @@ export function tenantPdvActivation(tenantId?: string, env: NodeJS.ProcessEnv = 
   const target = new URL(env.DATABASE_URL ?? '');
   const dev = env.NODE_ENV === 'development' && !env.PDV_ISOLATED_QA && ['localhost', '127.0.0.1', '[::1]'].includes(target.hostname) && target.port === '5434' && target.pathname === '/cervejaria_dev';
   const qa = ['development', 'test'].includes(env.NODE_ENV ?? '') && env.PDV_ISOLATED_QA === '1' && env.QA_DATABASE_URL === env.DATABASE_URL && target.hostname === '127.0.0.1' && Number(target.port) >= 55439 && Number(target.port) <= 55449 && target.pathname === '/cervejaria_qa_pdv_unico';
-  if ((!dev && !qa) || !['postgres:', 'postgresql:'].includes(target.protocol) || Object.keys(env).some(key => /^PROD(?:_|$)/i.test(key))) throw new Error('Invalid PDV activation destination.');
+  const production = env.NODE_ENV === 'production'
+    && !env.PDV_ISOLATED_QA
+    && !env.QA_DATABASE_URL
+    && ['localhost', '127.0.0.1', '[::1]'].includes(target.hostname)
+    && (target.port === '' || target.port === '5432')
+    && target.pathname === '/cervejaria';
+  const productionMarkerOutsideProduction = !production && Object.keys(env).some(key => /^PROD(?:_|$)/i.test(key));
+  if ((!dev && !qa && !production) || !['postgres:', 'postgresql:'].includes(target.protocol) || productionMarkerOutsideProduction) throw new Error('Invalid PDV activation destination.');
   const request = context.getStore();
   const id = tenantId ?? request?.user?.cervejariaId ?? (request ? resolvedPublicTenant.get(request) : undefined);
   return Boolean(id && ids.includes(id));

@@ -51,3 +51,70 @@ test('overlapping requests retain independent tenant identity and explicit tenan
     for (const key of keys) if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key];
   }
 });
+
+const production = {
+  NODE_ENV: 'production',
+  DATABASE_URL: 'postgresql://fixture:fixture@localhost:5432/cervejaria',
+  PDV_CANONICAL_TENANTS: `${cia},${other}`,
+};
+
+test('production activates only reviewed tenants on the local production database', () => {
+  assert.equal(tenantPdvActivation(cia, production), true);
+  assert.equal(tenantPdvActivation(other, production), true);
+  assert.equal(tenantPdvActivation('third-tenant', production), false);
+  assert.equal(tenantPdvActivation(undefined, production), false);
+  for (const host of ['localhost', '127.0.0.1', '[::1]']) {
+    assert.equal(tenantPdvActivation(cia, { ...production, DATABASE_URL: `postgresql://fixture:fixture@${host}:5432/cervejaria` }), true);
+  }
+  assert.equal(tenantPdvActivation(cia, { ...production, DATABASE_URL: 'postgresql://fixture:fixture@localhost/cervejaria' }), true);
+  assert.equal(tenantPdvActivation(cia, { ...production, PDV_CANONICAL_TENANTS: cia }), true);
+  assert.equal(tenantPdvActivation(other, { ...production, PDV_CANONICAL_TENANTS: cia }), false);
+});
+
+test('production rejects QA identities, unapproved tenants and unrelated database destinations', () => {
+  const invalidDestinations = [
+    'postgresql://fixture:fixture@remote.invalid:5432/cervejaria',
+    'postgresql://fixture:fixture@localhost:5434/cervejaria_dev',
+    'postgresql://fixture:fixture@localhost:55447/cervejaria_qa_pdv_unico',
+    'postgresql://fixture:fixture@localhost:5432/other',
+    'postgresql://fixture:fixture@localhost:5433/cervejaria',
+    'https://localhost:5432/cervejaria',
+  ];
+  for (const destination of invalidDestinations) {
+    assert.throws(() => tenantPdvActivation(cia, { ...production, DATABASE_URL: destination }));
+  }
+  assert.throws(() => tenantPdvActivation(cia, { ...production, PDV_ISOLATED_QA: '1' }));
+  assert.throws(() => tenantPdvActivation(cia, { ...production, QA_DATABASE_URL: production.DATABASE_URL }));
+  assert.throws(() => tenantPdvActivation(cia, { ...production, PDV_CANONICAL_TENANTS: 'third-tenant' }));
+  assert.throws(() => tenantPdvActivation(cia, { ...production, PDV_CANONICAL_TENANTS: `${cia},${cia}` }));
+  assert.throws(() => tenantPdvActivation(cia, { ...env, PROD_DATABASE_URL: production.DATABASE_URL }));
+});
+
+test('production request context responds successfully and keeps simultaneous tenants isolated', async () => {
+  const keys = [...new Set([...Object.keys(production), 'PDV_ISOLATED_QA', 'QA_DATABASE_URL'])];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  delete process.env.PDV_ISOLATED_QA;
+  delete process.env.QA_DATABASE_URL;
+  Object.assign(process.env, production);
+  const app = Fastify();
+  registerPdvTenantContext(app);
+  app.get('/:tenant', async request => {
+    const tenant = (request.params as { tenant: string }).tenant;
+    request.user = { sub: 'fixture', email: 'fixture@example.invalid', nome: 'Fixture', papel: 'DONO', cervejariaId: tenant, pwdAt: 0 };
+    const before = tenantPdvActivation();
+    await new Promise(resolve => setTimeout(resolve, tenant === cia ? 10 : 1));
+    return { tenant, before, after: tenantPdvActivation() };
+  });
+  try {
+    const replies = await Promise.all([app.inject(`/${cia}`), app.inject(`/${other}`), app.inject('/third-tenant')]);
+    for (const reply of replies) assert.equal(reply.statusCode, 200, reply.body);
+    assert.deepEqual(replies.map(reply => reply.json()), [
+      { tenant: cia, before: true, after: true },
+      { tenant: other, before: true, after: true },
+      { tenant: 'third-tenant', before: false, after: false },
+    ]);
+  } finally {
+    await app.close();
+    for (const key of keys) if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key];
+  }
+});
