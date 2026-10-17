@@ -224,7 +224,25 @@ async function closeAdministrativeSessions() {
   if (process.env.PDV_CUTOVER_PRODUCTION_REHEARSAL === '1') {
     const isolatedDist = path.join(tempRoot, `pdv-a415-api-${runId}`);
     await cp(path.join(appRoot, 'backend/dist'), isolatedDist, { recursive: true, errorOnExist: true });
-    await symlink(path.join(toolsBackendRoot, 'node_modules'), path.join(isolatedDist, 'node_modules'), 'junction');
+    const isolatedNodeModules = path.join(isolatedDist, 'node_modules');
+    const toolNodeModules = path.join(toolsBackendRoot, 'node_modules');
+    await mkdir(isolatedNodeModules, { recursive: true });
+    for (const entry of await readdir(toolNodeModules, { withFileTypes: true })) {
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+      const source = path.join(toolNodeModules, entry.name);
+      const destination = path.join(isolatedNodeModules, entry.name);
+      if (entry.name !== '@prisma') {
+        await symlink(source, destination, 'junction');
+        continue;
+      }
+      await mkdir(destination, { recursive: true });
+      for (const prismaEntry of await readdir(source, { withFileTypes: true })) {
+        if (!prismaEntry.isDirectory() && !prismaEntry.isSymbolicLink()) continue;
+        const prismaDestination = path.join(destination, prismaEntry.name);
+        const prismaSource = prismaEntry.name === 'client' ? clientRoot : path.join(source, prismaEntry.name);
+        await symlink(prismaSource, prismaDestination, 'junction');
+      }
+    }
     process.env.QUIVER_WRITE_FREEZE_FILE = process.env.PDV_CUTOVER_WRITE_FREEZE_FILE;
     process.env.UPLOADS_DIR = path.join(tempRoot, `pdv-a415-uploads-${runId}`);
     const appModule = await import(pathToFileURL(path.join(isolatedDist, 'app.js')).href);
