@@ -147,7 +147,7 @@ export function requireModuloOperacao(app: FastifyInstance) {
       : null;
 
     if (!profile || !hasComplementaryAccess(profile)) {
-      throw app.httpErrors.notFound('Modulo Operacao não disponível');
+      throw app.httpErrors.notFound('Módulo Operação não disponível');
     }
 attachOperacaoContext(request, user.cervejariaId!, profile);
   };

@@ -149,7 +149,7 @@ export async function resolverItens(
   });
 
   if (produtos.length !== ids.length) {
-    throw new VendaInvalidaError('Produto indisponível no catálogo do operacao');
+    throw new VendaInvalidaError('Produto indisponível no catálogo deste ponto de venda');
   }
 
   if (opts?.sessaoCaixaId) {

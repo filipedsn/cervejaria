@@ -238,7 +238,7 @@ export function CardapioOperacaoProdutosPicker(props: TemplatePickerProps | Sele
 
       <p className="text-sm text-ink-faint text-center py-3">
 
-        Cadastre produtos no catálogo do operacao primeiro.
+        Cadastre produtos no catálogo primeiro.
 
       </p>
 

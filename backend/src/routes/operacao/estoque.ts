@@ -47,7 +47,7 @@ const estoqueMinimoSchema = z.object({
 export async function estoqueOperacaoRoutes(app: FastifyInstance) {
   app.addHook('preHandler', async (request) => {
     if (!request.operacao.controlaEstoque) {
-      throw app.httpErrors.notFound('Operacao sem controle de estoque');
+      throw app.httpErrors.notFound('Operação sem controle de estoque');
     }
   });
 

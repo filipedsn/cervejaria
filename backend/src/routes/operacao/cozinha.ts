@@ -39,7 +39,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
   /** A empresa escolhe no cadastro se tem cozinha; sem ela a fila nem existe. */
   app.addHook('preHandler', async (request) => {
     if (!request.operacao.temCozinha) {
-      throw app.httpErrors.notFound('Operacao sem cozinha');
+      throw app.httpErrors.notFound('Operação sem cozinha');
     }
   });
 

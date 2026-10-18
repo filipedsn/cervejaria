@@ -285,37 +285,37 @@ async function cancelarItemEntregueOperacao(
   },
   itemInicial: NonNullable<Awaited<ReturnType<typeof carregarItem>>>,
 ) {
-  if (!/^[0-9a-f-]{36}$/i.test(params.idempotencyKey)) return { error: 'Identificador invalido para confirmar cancelamento' as const };
+  if (!/^[0-9a-f-]{36}$/i.test(params.idempotencyKey)) return { error: 'Identificador inválido para confirmar cancelamento' as const };
   if (params.motivo.trim().length < 3 || params.motivo.trim().length > 500) return { error: 'Informe um motivo entre 3 e 500 caracteres' as const };
 
   const resultado = await prisma.$transaction(async (tx) => {
     await lockComandaItemsInTx(tx, params.comandaId);
     const item = await carregarItem(tx, params.comandaId, params.itemId, params.cervejariaId);
-    if (!item || !item.pedidoCozinha) throw Object.assign(new Error('Item nao encontrado'), { statusCode: 404 });
+    if (!item || !item.pedidoCozinha) throw Object.assign(new Error('Item não encontrado'), { statusCode: 404 });
     if (!(await usuarioPodeCancelarItemEntregue(params.user, tx))) {
-      throw Object.assign(new Error('Voce precisa das permissoes Cancelar itens e Cancelar item ja entregue.'), { statusCode: 403 });
+      throw Object.assign(new Error('Você precisa das permissões Cancelar itens e Cancelar item já entregue.'), { statusCode: 403 });
     }
     const anterior = await tx.itemComandaCancelamentoEntregue.findUnique({ where: { idempotencyKey: params.idempotencyKey } });
     if (anterior) {
       if (anterior.itemComandaId !== params.itemId || anterior.cervejariaId !== params.cervejariaId || anterior.usuarioId !== params.user.sub) {
-        throw Object.assign(new Error('Identificador ja utilizado em outra operacao'), { statusCode: 409 });
+        throw Object.assign(new Error('Identificador já utilizado em outra operação'), { statusCode: 409 });
       }
       const comanda = await tx.comanda.findUniqueOrThrow({ where: { id: params.comandaId }, include: INCLUDE_COMANDA_OPERACAO });
       return { comanda, quantidade: anterior.quantidade, valor: toNumber(anterior.valorRetirado), repetido: true };
     }
-    if (item.pedidoCozinha.comanda.status !== 'ABERTA') throw Object.assign(new Error('Comanda nao encontrada ou fechada'), { statusCode: 409 });
-    if (item.pedidoCozinha.status !== 'ENTREGUE') throw Object.assign(new Error('O pedido nao esta mais marcado como entregue'), { statusCode: 409 });
+    if (item.pedidoCozinha.comanda.status !== 'ABERTA') throw Object.assign(new Error('Comanda não encontrada ou fechada'), { statusCode: 409 });
+    if (item.pedidoCozinha.status !== 'ENTREGUE') throw Object.assign(new Error('O pedido não está mais marcado como entregue'), { statusCode: 409 });
     if (itemBloqueadoPorCancelamentoIntegral(item.pedidoCozinha, item) || item.cancelamentoPendenteEm || item.canceladoEm) {
-      throw Object.assign(new Error('Este item ja foi cancelado ou esta em cancelamento'), { statusCode: 409 });
+      throw Object.assign(new Error('Este item já foi cancelado ou está em cancelamento'), { statusCode: 409 });
     }
     if (item.pedidoCozinha.comanda.pagamentos.length > 0 || await tx.pagamento.count({ where: { comandaId: params.comandaId } }) > 0) {
-      throw Object.assign(new Error('Esta comanda possui pagamentos. Use o fluxo proprio de correcao ou estorno.'), { statusCode: 409 });
+      throw Object.assign(new Error('Esta comanda possui pagamentos. Use o fluxo próprio de correção ou estorno.'), { statusCode: 409 });
     }
     if (item.quantidade !== params.quantidadeEsperada) {
-      throw Object.assign(new Error('A quantidade disponivel mudou em outra sessao. Atualize a comanda e tente novamente.'), { statusCode: 409 });
+      throw Object.assign(new Error('A quantidade disponível mudou em outra sessão. Atualize a comanda e tente novamente.'), { statusCode: 409 });
     }
     const quantidade = resolverQuantidadeCancelamento(item.quantidade, params.quantidade);
-    if (quantidade == null) throw Object.assign(new Error('Quantidade invalida para cancelamento'), { statusCode: 400 });
+    if (quantidade == null) throw Object.assign(new Error('Quantidade inválida para cancelamento'), { statusCode: 400 });
 
     const pedidoId = item.pedidoCozinhaId!;
     let estoqueEstornado = false;
@@ -327,7 +327,7 @@ async function cancelarItemEntregueOperacao(
         const estornos = await tx.inventoryMovement.aggregate({ where: { pedidoId, produtoId: item.produto.id, tipo: 'ESTORNO_VENDA' }, _sum: { quantidade: true } });
         const baixaLiquida = Number(saidas._sum.quantidade ?? 0) - Number(estornos._sum.quantidade ?? 0);
         if (baixaLiquida > 0 && baixaLiquida + 1e-9 < quantidadeEstoque) {
-          throw Object.assign(new Error('A baixa registrada para este produto e pedido nao cobre a quantidade. O estoque nao foi alterado.'), { statusCode: 409 });
+          throw Object.assign(new Error('A baixa registrada para este produto e pedido não cobre a quantidade. O estoque não foi alterado.'), { statusCode: 409 });
         }
         produtoPrincipalComBaixa = baixaLiquida + 1e-9 >= quantidadeEstoque;
       }
@@ -342,7 +342,7 @@ async function cancelarItemEntregueOperacao(
         const estornosOpcional = await tx.inventoryMovement.aggregate({ where: { pedidoId, produtoId: produtoEstoqueId, tipo: 'ESTORNO_VENDA' }, _sum: { quantidade: true } });
         const baixaLiquidaOpcional = Number(saidasOpcional._sum.quantidade ?? 0) - Number(estornosOpcional._sum.quantidade ?? 0);
         if (baixaLiquidaOpcional > 0 && baixaLiquidaOpcional + 1e-9 < quantidadeOpcional) {
-          throw Object.assign(new Error('A baixa registrada para um opcional nao cobre a quantidade. O estoque nao foi alterado.'), { statusCode: 409 });
+          throw Object.assign(new Error('A baixa registrada para um opcional não cobre a quantidade. O estoque não foi alterado.'), { statusCode: 409 });
         }
         if (baixaLiquidaOpcional + 1e-9 >= quantidadeOpcional) opcionaisComBaixa.push(opcional);
       }
