@@ -24,7 +24,7 @@ write('run-manifest.json',manifest);
 let registry=null, inventory=null; const failures=[];
 let qaEvidence=null;
 for (const id of B) { if (resume && (batches[id]?.status==='DONE' || (id==='42-full-regression' && batches[id]?.evidence))) continue; batches[id]={status:'RUNNING',startedAt:new Date().toISOString()}; write('batches.json',batches); let result; try { result=await executeBatch(id); } catch(e) { result=fail(e?.stack ?? String(e)); } batches[id]={...result,startedAt:batches[id].startedAt,finishedAt:new Date().toISOString()}; if(result.status==='FAILED') failures.push({batchId:id,...result}); write('batches.json',batches); }
-registry ??= expandRegistry(validate(jsonFile(path.join(root,'docs','e2e-master-coverage.json')))); inventory ??= inventoryTests();
+registry ??= expandRegistry(validate(jsonFile(path.join(root,'docs','testing','e2e-master-coverage.json')))); inventory ??= inventoryTests();
 const coverage=reconcile(registry.scenarios,inventory.tests,batches); write('scenario-results.json',coverage.scenarios); write('coverage-results.json',coverage); write('failures.json',failures); write('coverage-counts.json',coverage.counts); const pii=piiScan(); write('pii-scan.json',pii);
 manifest.finishedAt=new Date().toISOString(); manifest.durationSeconds=Math.round((Date.parse(manifest.finishedAt)-Date.parse(manifest.startedAt))/1000); write('run-manifest.json',manifest);
 const requiredFailed=Object.values(batches).some(x=>x.status==='FAILED'), browserBlocked=coverage.counts.HOST_BLOCKED_BROWSER, uncovered=coverage.counts.UNKNOWN+coverage.counts.NOT_COVERED, partial=coverage.counts.PARTIALLY_COVERED, status=requiredFailed?'FAIL':uncovered||partial||browserBlocked?'PASS_WITH_GAPS':'PASS';
@@ -37,7 +37,7 @@ async function executeBatch(id) {
   if(id==='00-preflight') return done('DEV-only preflight passed');
   if(id==='01-runtime-isolation') return done('Node 24 process and DEV database isolation active');
   if(id==='02-discovery'){write('discovery.json',discover());return done('Repository-backed discovery completed','discovery.json');}
-  if(id==='03-master-scenario-registry'){registry=expandRegistry(validate(jsonFile(path.join(root,'docs','e2e-master-coverage.json'))));write('master-scenario-registry.json',registry);return registry.valid?done(`${registry.scenarios.length} atomic scenarios validated`,'master-scenario-registry.json'):fail(registry.errors.join('; '),'master-scenario-registry.json');}
+  if(id==='03-master-scenario-registry'){registry=expandRegistry(validate(jsonFile(path.join(root,'docs','testing','e2e-master-coverage.json'))));write('master-scenario-registry.json',registry);return registry.valid?done(`${registry.scenarios.length} atomic scenarios validated`,'master-scenario-registry.json'):fail(registry.errors.join('; '),'master-scenario-registry.json');}
   if(id==='04-test-inventory-reconciliation'){inventory=inventoryTests();write('test-inventory.json',inventory);return done(`${inventory.tests.length} tests inventoried`,'test-inventory.json');}
   if(id==='05-dataset-seed') return invoke('dataset-seed',['--import','tsx','backend/qa/certification-dataset.ts']);
   if(id==='06-dataset-validation') return invoke('dataset-validation',['scripts/certification/validate-dataset.mjs']);

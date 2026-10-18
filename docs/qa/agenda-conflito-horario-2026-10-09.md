@@ -20,7 +20,7 @@ O contrato anterior aceitava `horaFim` ausente e o serviço gravava ocorrências
 - `npm.cmd run build` em `frontend`: aprovado; avisos atuais de tamanho do bundle e importação dinâmica permaneceram.
 - `node scripts/run-agenda-disposable-qa.mjs` em `backend`: **21 verificações aprovadas**, usando PostgreSQL descartável e `buildApp` real. Inclui início igual, sobreposição parcial, contenção, adjacência, edição própria, edição conflitante, cancelamento, regra arquivada, geração alternativa, rollback semanal, retry, duas criações simultâneas, tenant/PDV, permissão, horário ausente e intervalo atravessando meia-noite. O container PostgreSQL temporário foi removido.
 - `npx.cmd playwright test --config=playwright.agenda.config.ts`: **18 testes aprovados**, APIs simuladas, larguras 390px e 768px. Início/término aparecem no formulário; conflito mantém os campos e permite nova tentativa livre. A bateria também cobre LEGACY e permissão.
-- Capturas da mensagem no formulário: `artifacts/agenda-conflict-mobile.png` e `artifacts/agenda-conflict-tablet.png`.
+- Capturas da mensagem no formulário: `docs/evidence/agenda-conflict-mobile.png` e `docs/evidence/agenda-conflict-tablet.png`.
 
 ## DEV e repetição manual
 

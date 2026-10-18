@@ -10,7 +10,7 @@ if (!['SMALL','MEDIUM','LARGE'].includes(profile)) throw new Error('Use --profil
 const runId = resume ?? `TAP-CERT-${stamp()}-${cmd('git',['rev-parse','--short','HEAD'])||'nogit'}`;
 process.env.CERTIFICATION_RUN_ID = runId;
 process.env.CERTIFICATION_DATASET_PROFILE = profile;
-const out = path.join(root,'artifacts','certification',runId), registryFile = path.join(root,'docs','e2e-master-coverage.json');
+const out = path.join(root,'artifacts','certification',runId), registryFile = path.join(root,'docs','testing','e2e-master-coverage.json');
 mkdirSync(out,{recursive:true});
 const B = ['00-preflight','01-runtime-isolation','02-discovery','03-master-scenario-registry','04-test-inventory-reconciliation','05-dataset-seed','06-dataset-validation','07-functional','08-configuration','09-resource-states','10-capability-dependencies','11-state-machines','12-transitions','13-cross-state','14-invariants','15-navigation','16-entry-points','17-rbac','18-tenant-isolation','19-data-conditions','20-temporal','21-errors','22-concurrency','23-idempotency','24-security','25-public-surfaces','26-legacy','27-dead-ends','28-pwa','29-realtime','30-performance','31-database-performance','32-frontend-performance','33-dashboard-inventory','34-dashboard-reconciliation','35-dashboard-filters','36-dashboard-time','37-cross-dashboard','38-dashboard-freshness','39-observability','40-observability-goldens','41-backup-restore-dev','42-full-regression','43-coverage-reconciliation','44-report'];
 let batches = existsSync(file('batches.json')) ? json(file('batches.json')) : Object.fromEntries(B.map(id=>[id,{status:'NOT_STARTED'}]));
