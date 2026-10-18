@@ -284,13 +284,16 @@ function Invoke-ReleaseCandidatePrepareFromGitSnapshot {
     Assert-SnapshotDependencyBoundary $snapshot
     $env:RELEASE_SHA = $ExpectedReleaseSha; $env:VITE_RELEASE_SHA = $ExpectedReleaseSha
     $frontendOut = Join-Path $staging 'frontend'
+    # NODE_ENV herdado do shell (ex.: development) faz o Vite emitir a build de desenvolvimento do React.
+    $previousNodeEnv = $env:NODE_ENV
+    $env:NODE_ENV = 'production'
     Push-Location $snapshot
     try {
       & $NodeExe $NpmCmd run build:deploy --prefix frontend -- --outDir $frontendOut
       if ($LASTEXITCODE -ne 0) { throw 'build frontend do snapshot falhou' }
       & $NodeExe $NpmCmd run build:deploy --prefix backend
       if ($LASTEXITCODE -ne 0) { throw 'build backend do snapshot falhou' }
-    } finally { Pop-Location }
+    } finally { Pop-Location; $env:NODE_ENV = $previousNodeEnv }
     New-Item -ItemType Directory -Force -Path (Join-Path $staging 'backend') | Out-Null
     Copy-Item -LiteralPath (Join-Path $snapshot 'backend\dist') -Destination (Join-Path $staging 'backend\dist') -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $snapshot 'backend\package.json') -Destination (Join-Path $staging 'backend\package.json') -Force
@@ -425,13 +428,16 @@ function Invoke-ReleaseCandidatePrepare {
     New-Item -ItemType Directory -Force -Path $staging | Out-Null
     $frontendOut = Join-Path $staging 'frontend'
     $env:RELEASE_SHA = $ExpectedReleaseSha; $env:VITE_RELEASE_SHA = $ExpectedReleaseSha
+    # NODE_ENV herdado do shell (ex.: development) faz o Vite emitir a build de desenvolvimento do React.
+    $previousNodeEnv = $env:NODE_ENV
+    $env:NODE_ENV = 'production'
     Push-Location $SourceWorktree
     try {
       & $NodeExe $NpmCmd run build:deploy --prefix frontend -- --outDir $frontendOut
       if ($LASTEXITCODE -ne 0) { throw 'build frontend falhou' }
       & $NodeExe $NpmCmd run build:deploy --prefix backend
       if ($LASTEXITCODE -ne 0) { throw 'build backend falhou' }
-    } finally { Pop-Location }
+    } finally { Pop-Location; $env:NODE_ENV = $previousNodeEnv }
     New-Item -ItemType Directory -Force -Path (Join-Path $staging 'backend') | Out-Null
     Copy-Item -LiteralPath (Join-Path $SourceWorktree 'backend\dist') -Destination (Join-Path $staging 'backend\dist') -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $SourceWorktree 'backend\package.json') -Destination (Join-Path $staging 'backend\package.json') -Force

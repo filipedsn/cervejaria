@@ -5,71 +5,13 @@ description: Guides Quiver Tap Git flow on GitHub (feature branches, pull reques
 
 # Quiver Tap — Git workflow (GitHub)
 
-## Regras
+A regra é [CONTRIBUTING.md](../../../CONTRIBUTING.md). Leia e siga esse arquivo; esta skill não define regra própria, para Cursor e VS Code seguirem o mesmo fluxo.
 
-1. **`main`** = codigo pronto para producao. Evite push direto; use branch + PR.
-2. **Deploy** so apos merge em `main` + `git pull` no PC (skill `quiver-tap-deploy`).
-3. Nunca commitar `.env.production`, `.env.development`, senhas ou `deploy/production.settings.psd1`.
+Resumo operacional para agentes:
 
-## Fluxo padrao
-
-```text
-main (atualizada)
-  → feat/nome ou fix/nome
-  → dev local (:5202)
-  → commit + push
-  → Pull Request → main
-  → CI verde
-  → Squash and merge
-  → git pull origin main no PC (ou Verificar release no ops-panel — sincroniza automaticamente)
-  → npm.cmd run prod:deploy
-```
-
-## Comandos (agente)
-
-```powershell
-git checkout main
-git pull origin main
-git checkout -b feat/descricao-curta
-# ... alteracoes ...
-git add .
-git commit -m "feat: descricao"
-git push -u origin feat/descricao-curta
-```
-
-Depois: abrir PR no GitHub (`feat/...` → `main`) ou usar `gh pr create`.
-
-Antes de sugerir merge:
-
-- Verificar CI no PR (jobs `frontend` e `backend-validate` devem passar)
-- `backend-build` pode falhar por erros `tsc` pre-existentes — nao bloqueia merge, mas avisar
-
-Apos merge confirmado pelo usuario:
-
-```powershell
-git checkout main
-git pull origin main
-```
-
-Entao seguir skill `quiver-tap-deploy` para `prod:deploy`.
-
-## Convencao de branches
-
-| Prefixo | Uso |
-|---------|-----|
-| `feat/` | Funcionalidade nova |
-| `fix/` | Correcao de bug |
-| `chore/` | CI, scripts, docs, refactors |
-
-## CI local (mesmo que GitHub)
-
-```powershell
-npm run ci:frontend
-npm run ci:backend
-```
-
-## Referencia
-
-- Painel visual local: http://127.0.0.1:3099 ([ops-panel/README.md](../../ops-panel/README.md))
-- [deploy/README.md](../../deploy/README.md) — fluxo Git + deploy
-- [quiver-tap-deploy](../quiver-tap-deploy/SKILL.md) — deploy apos merge
+- Trabalho novo nasce de `main` atualizada, em `feat/`, `fix/` ou `chore/`.
+- Antes do PR: `npm run ci`.
+- Merge só com os sete jobs do CI verdes (`frontend`, `backend-validate`, `backend-test`, `backend-build`, `ops-panel-test`, `support-analyst-test`, `realtime-security-qa`).
+- Nunca construir pacote DEV ou PROD a partir de cópia solta ou pasta suja.
+- Deploy em produção: só com autorização explícita do usuário, seguindo [quiver-tap-deploy](../quiver-tap-deploy/SKILL.md). O preflight bloqueia `HEAD` diferente de `origin/main` e CI não verde.
+- Nunca commitar `.env.production`, `.env.development`, senhas ou `deploy/production.settings.psd1`.
