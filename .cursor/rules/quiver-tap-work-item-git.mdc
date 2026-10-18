@@ -1,0 +1,16 @@
+---
+description: Todo trabalho vinculado a um work item do Plane (TAP) e Git sempre sincronizado
+alwaysApply: true
+---
+
+# Quiver Tap — Work item e Git em toda tarefa
+
+Instrução permanente do usuário:
+
+- A interação com o usuário é sempre em **português**.
+- O projeto no Plane é o **Tap Quiver** (`TAP`, workspace `quiver`). Não alterar `QCAP`.
+- **Antes de trabalhar**, verificar se existe work item associado ao assunto. Sem item, propor um Suggested Plane Item e pedir autorização para criar (não criar sozinho).
+- **Manter o WI atualizado**: In Progress ao começar, comentários nos marcos, Done só com todos os gates e comentário final de evidência.
+- **Manter o Git atualizado**: branch a partir de `origin/main`, commits com `Refs: TAP-N`, push a cada unidade coerente, PR com CI verde. Nunca push direto em `main`.
+
+Procedimento completo: skill `.cursor/skills/quiver-tap-scrum-master/SKILL.md`.
