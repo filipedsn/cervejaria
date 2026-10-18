@@ -12,9 +12,9 @@ O layout anterior (47c86a8) foi substituído por Mês/Lista, seleção de dia, H
 
 ## Capturas
 
-- `artifacts/agenda-mobile-calendar.png` e `agenda-tablet-calendar.png`.
-- `artifacts/agenda-mobile-calendar-list.png` e `agenda-tablet-calendar-list.png`.
-- `artifacts/agenda-mobile-calendar-form.png` e `agenda-tablet-calendar-form.png`.
+- `docs/evidence/agenda-mobile-calendar.png` e `agenda-tablet-calendar.png`.
+- `docs/evidence/agenda-mobile-calendar-list.png` e `agenda-tablet-calendar-list.png`.
+- `docs/evidence/agenda-mobile-calendar-form.png` e `agenda-tablet-calendar-form.png`.
 
 Capturas anteriores foram preservadas como histórico do commit rejeitado. O banner Reconectando, causado pelo socket intencionalmente fechado nas fixtures, é ocultado apenas na captura; a aplicação não foi alterada para escondê-lo.
 

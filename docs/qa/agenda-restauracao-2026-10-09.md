@@ -15,8 +15,8 @@ Conflito ou intervalo incompleto devolve erro sem escrita e abre formulario com 
 
 ## Capturas
 
-- Celular: `artifacts/agenda-restore-conflict-mobile.png`.
-- Tablet: `artifacts/agenda-restore-conflict-tablet.png`.
+- Celular: `docs/evidence/agenda-restore-conflict-mobile.png`.
+- Tablet: `docs/evidence/agenda-restore-conflict-tablet.png`.
 
 ## Publicacao DEV
 

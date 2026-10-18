@@ -34,7 +34,7 @@ são modos ou destinos operacionais.
 
 ## Evidência
 
-A matriz completa está em [E2E-REGRESSION-MATRIX.md](../E2E-REGRESSION-MATRIX.md).
+A matriz completa está em [E2E-REGRESSION-MATRIX.md](../testing/E2E-REGRESSION-MATRIX.md).
 Cada combinação C01–C08 e E01–E08 possui teste Playwright individual e
  screenshot fixture-only no artefato do lote.
 
@@ -49,4 +49,4 @@ de auditoria `operational_mode_change_blocked` com tenant, modos e razao.
 As transicoes sao serializadas por advisory lock quando executadas no cliente
 Prisma real. O bloqueio ocorre antes do upsert, portanto chamadas diretas de
 API e tentativas concorrentes nao deixam configuracao parcial. A matriz e os
-casos T68-01 a T68-07 estao em [E2E-REGRESSION-MATRIX.md](../E2E-REGRESSION-MATRIX.md).
+casos T68-01 a T68-07 estao em [E2E-REGRESSION-MATRIX.md](../testing/E2E-REGRESSION-MATRIX.md).

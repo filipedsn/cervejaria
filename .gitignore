@@ -13,8 +13,6 @@ Thumbs.db
 .vscode/
 .idea/
 coverage/
-artifacts/certification/
-artifacts/audit/
 *.tsbuildinfo
 frontend/dev-dist/
 backend/uploads/logos/*
@@ -33,15 +31,12 @@ reports/browser/
 reports/cliente-teste-prod-diagnostico.md
 reports/
 
-# Evidencias locais de resgate e snapshots de desenvolvimento (nao versionar)
-artifacts/rescue/
-artifacts/domain-convergence/*.sql
+# Snapshots de desenvolvimento (nao versionar)
 work/
 
 # Playwright (gerados)
 e2e/.auth/
 test-results/
-playwright-report/
 
 # Uploads locais por ambiente
 backend/uploads-dev/
@@ -51,8 +46,9 @@ backend/uploads-prod/
 ops-panel/node_modules/
 ops-panel/.env
 
-# Dumps SQL locais
+# Dumps SQL locais (inclui copias prod->dev com dados reais)
 deploy/backups/*.sql
+deploy/backups/*/
 !deploy/backups/.gitkeep
 # Snapshots locais criados pelos fluxos de recuperação; podem conter artefatos e configuração de ambiente.
 deploy/backups/prod-*-recovery-*/
@@ -72,6 +68,23 @@ deploy/prod-artifacts.previous.swap/
 # Candidates de release retidos: fora do artefato ativo e nunca versionados.
 deploy/release-candidates/
 deploy/release-worktrees/
+
+# Runtime do DEV oficial (gerado por scripts/dev/prepare-dev-release.ps1 e publish-dev-release.ps1)
+deploy/dev-artifacts/
+deploy/dev-artifacts.*/
+deploy/.dev-artifacts-staging-*/
+deploy/dev-runtime-dependencies/
+deploy/restore-drills-dev/
+# Copias de codigo fora do Git: o DEV e montado a partir de commits, nunca destas pastas.
+deploy/.dev-source-*/
+deploy/.tap81-*/
+
+# Evidencias locais geradas (as versionadas ficam em docs/evidence/)
+artifacts/
+!docs/evidence/**/*.log
+z/
+playwright-report*/
+backend/deploy/
 
 # Scripts de diagnostico/temporarios (nao versionar)
 backend/scripts/diag-*.mjs
