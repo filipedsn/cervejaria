@@ -58,6 +58,7 @@ import { notifyPedidoCreated } from '../lib/push-notifications.js';
 import { registrarTransacao } from '../lib/transacao-log.js';
 
 import { getDevFrontendOrigin } from '../lib/lan-url.js';
+import { assertLegacyWriteAllowed } from '../lib/legacy-write-guard.js';
 
 
 
@@ -601,11 +602,11 @@ export async function publicRoutes(app: FastifyInstance) {
 
     const { slug, trailerId } = request.params as { slug: string; trailerId: string };
 
-    const body = sessaoSchema.parse(request.body);
-
-
-
     const ctx = await resolveTrailerPortalContext(slug, trailerId);
+
+    if (ctx) assertLegacyWriteAllowed(request.method, ctx.cervejaria.id);
+
+    const body = sessaoSchema.parse(request.body);
 
     if (!ctx) return reply.status(404).send({ error: 'Link inválido' });
 

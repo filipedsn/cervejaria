@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { registerLegacyWriteGuard } from '../lib/legacy-write-guard.js';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { getTenantUser } from '../types/auth.js';
@@ -118,6 +119,7 @@ const eventoListCount = {
 
 export async function eventosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.requireTenant);
+  registerLegacyWriteGuard(app);
 
   app.get('/', async (request) => {
     const user = getTenantUser(app, request);

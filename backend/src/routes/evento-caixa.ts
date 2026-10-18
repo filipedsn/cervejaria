@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { registerLegacyWriteGuard } from '../lib/legacy-write-guard.js';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { getTenantUser } from '../types/auth.js';
@@ -60,6 +61,7 @@ function resumoCaixaEventoRestrito(session: ReturnType<typeof resumoCaixaEvento>
 
 export async function eventoCaixaRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+  registerLegacyWriteGuard(app);
 
   app.get('/:eventoId/caixa', async (request, reply) => {
     const user = getTenantUser(app, request);
