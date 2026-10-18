@@ -12,6 +12,7 @@ const permissionKeys = [
   'command.read', 'kitchen.read', 'kitchen.operate', 'inventory.read', 'inventory.adjust', 'catalog.manage',
   'catalog.shift.manage', 'clients.manage', 'taps.operate', 'agenda.manage', 'event.menu.manage',
 ];
+const initialCashierPermissions = ['cash.open', 'cash.close', 'command.read', 'command.operate', 'command.close', 'payment.receive', 'debt.receive', 'discount.apply'];
 
 test('RBAC-S01 concede e revoga as 28 chaves sem novo login', async ({ browser, evidence }) => {
   const owner = await personaContext(browser, baseURL, 'owner');
@@ -32,7 +33,10 @@ test('RBAC-S01 concede e revoga as 28 chaves sem novo login', async ({ browser, 
     }
     expect(permissionKeys).toHaveLength(28);
     expect(failures, 'All 28 permissions must grant and revoke through the owner UI contract').toEqual([]);
-  } finally { await owner.close(); await staff.close(); }
+  } finally {
+    await owner.request.patch(`/api/usuarios/${context.users.cashier.id}/permissoes-operacao`, { data: { permissoesOperacao: initialCashierPermissions } });
+    await owner.close(); await staff.close();
+  }
 });
 
 test('RBAC-S02 dono acessa o contexto operacional completo', async ({ browser }) => {
@@ -113,7 +117,7 @@ test('RBAC-X07 registra a disponibilidade das chaves de evento no canônico', as
     expect(user.permissoesOperacao).toEqual(expect.arrayContaining(['event.dashboard.read', 'event.menu.manage']));
     test.info().annotations.push({ type: 'product-decision', description: 'O endpoint aceita e persiste event.dashboard.read/event.menu.manage no usuário canônico; a decisão sobre o efeito dessas chaves nas telas do modelo único permanece pendente.' });
   } finally {
-    await owner.request.patch(`/api/usuarios/${context.users.cashier.id}/permissoes-operacao`, { data: { permissoesOperacao: [] } });
+    await owner.request.patch(`/api/usuarios/${context.users.cashier.id}/permissoes-operacao`, { data: { permissoesOperacao: initialCashierPermissions } });
     await owner.close(); await staff.close();
   }
 });
