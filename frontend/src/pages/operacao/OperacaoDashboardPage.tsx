@@ -276,9 +276,9 @@ export function OperacaoDashboardPage() {
         />
         <KpiCard label="Recebido no período" value={formatCurrency(resumo.totalRecebido)} />
         <KpiCard
-          label="Pendente"
-          value={formatCurrency(Number.isFinite(resumo.totalPendente) ? resumo.totalPendente : 0)}
-          hint="Saldo ainda não recebido das contas pendentes"
+          label="Pendente do período"
+          value={formatCurrency(resumo.pendentePeriodo ?? 0)}
+          hint={`Em aberto hoje (todos os meses): ${formatCurrency(Number.isFinite(resumo.totalPendente) ? resumo.totalPendente : 0)}`}
         />
         <KpiCard label="Comandas atendidas" value={String(resumo.comandasAtendidas)} />
         <KpiCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} />
@@ -367,6 +367,9 @@ export function OperacaoDashboardPage() {
                       <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
                         <TurnoMetric value={pluralComandasOperacao(turno.comandasAtendidas)} label="atendidas" />
                         <TurnoMetric value={formatCurrency(turno.totalRecebido)} label="recebido" />
+                        {(turno.fiadoQuitadoDepois ?? 0) > 0 && (
+                          <TurnoMetric value={formatCurrency(turno.fiadoQuitadoDepois ?? 0)} label="fiado quitado depois" />
+                        )}
                         <TurnoMetric value={formatCurrency(turno.ticketMedio)} label="ticket médio" />
                         <TurnoMetric value={`${formatCurrency(turno.receitaPorHora)}/h`} label="receita/h" />
                         <TurnoMetric

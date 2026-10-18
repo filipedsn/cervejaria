@@ -192,7 +192,9 @@ export async function fecharComandaComPagamentos(
     where: { id: comandaAtual.id, status: 'ABERTA' },
     data: {
       status: 'FECHADA', fechadoPorId: usuarioId, fechadaEm,
-      ...(canonicalPdv && params.sessaoCaixaId ? { sessaoCaixaRealizacaoId: params.sessaoCaixaId } : {}),
+      ...(canonicalPdv && params.sessaoCaixaId
+        ? { sessaoCaixaRealizacaoId: comandaAtual.sessaoCaixaRealizacaoId ?? params.sessaoCaixaId }
+        : {}),
     },
   });
   if (fechou.count === 0) {

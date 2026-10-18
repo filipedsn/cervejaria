@@ -6,6 +6,7 @@ import {
   calcularEsperadoDinheiroGaveta,
   planoCorrecaoMovimento,
   resolveCashRegisterCapability,
+  resumirFiadoDoTurno,
   totalPendenteContasReceber,
   totaisMovimentos,
   totaisPorForma,
@@ -25,6 +26,18 @@ describe('caixa operacao (property-based)', () => {
       { valorOriginal: 30, pagamentos: [{ valor: 30 }] },
       { valorOriginal: 10, pagamentos: [{ valor: 12 }] },
     ]), 45);
+  });
+
+  it('resume o fiado do turno separando quitações no turno e depois dele', () => {
+    assert.deepEqual(resumirFiadoDoTurno([
+      { valorOriginal: 344, recebimentos: [{ valor: 344, nesteTurno: false }] },
+      { valorOriginal: 70.1, recebimentos: [{ valor: 20.05, nesteTurno: true }, { valor: 10, nesteTurno: false }] },
+      { valorOriginal: 15, recebimentos: [] },
+    ]), {
+      fiadoVendido: 429.1,
+      fiadoQuitadoNoTurno: 20.05,
+      fiadoQuitadoDepois: 354,
+    });
   });
 
   it('resolve a capacidade por unidade: explícito vence fallback, NULL preserva legado', () => {

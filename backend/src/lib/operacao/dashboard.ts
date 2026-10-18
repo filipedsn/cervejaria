@@ -5,6 +5,7 @@ import { totaisPorForma } from './caixa.js';
 import { pedidoContaNaComanda } from './cozinha.js';
 import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
 import { paymentFilterForOperationalSession } from './payment-session-filter.js';
+import { contasPendentesWhere, sumDebtSettledAfterTurn } from './dashboard-fiado.js';
 
 const MS_HOUR = 3_600_000;
 
@@ -118,12 +119,14 @@ async function fetchHistoricoSemAtribuicao(
   return { count: rows.length, total: rows.reduce((sum: number, row: { valor: unknown }) => sum + toNumber(row.valor), 0), byForm: byForm.map(({ forma, valor }) => ({ forma, valor })) };
 }
 
-async function saldoContasPendentes(cervejariaId: string, pontoVendaId?: string, canonicalPdvEnabled = false) {
+async function saldoContasPendentes(
+  cervejariaId: string,
+  pontoVendaId?: string,
+  canonicalPdvEnabled = false,
+  periodo?: { inicio: Date; fim: Date },
+) {
   const contas = await prisma.contaReceber.findMany({
-    where: {
-      cliente: { cervejariaId },
-      comanda: { ...(canonicalPdvEnabled ? { origem: { in: ['CAIXA', 'EVENTO'] }, pontoVendaId: { not: null }, pontoVenda: { cervejariaId } } : { origem: 'CAIXA' }), status: 'FECHADA', ...(pontoVendaId ? { pontoVendaId } : {}) },
-    },
+    where: contasPendentesWhere(cervejariaId, pontoVendaId, canonicalPdvEnabled, periodo),
     include: { pagamentos: { select: { valor: true } } },
   });
   return contas.reduce((total, conta) => {
@@ -298,7 +301,7 @@ async function buildTurnosRecentes(
           pontoVenda: { cervejariaId },
           status: 'FECHADA',
         },
-        select: { id: true, tipo: true, total: true },
+        select: { id: true, tipo: true, total: true, pagamentos: { select: { valor: true, sessaoCaixaId: true, contaReceberId: true } } },
       })
       : await prisma.comanda.findMany({
         where: {
@@ -309,7 +312,7 @@ async function buildTurnosRecentes(
           status: 'FECHADA',
           fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm },
         },
-        select: { id: true, tipo: true, total: true },
+        select: { id: true, tipo: true, total: true, pagamentos: { select: { valor: true, sessaoCaixaId: true, contaReceberId: true } } },
       });
     // A canonical turn that only collects debt is still an operational turn.
     // Keep the legacy filter unchanged while showing those real receipts in Por Caixa.
@@ -338,6 +341,7 @@ async function buildTurnosRecentes(
       fechadoEm: sessao.fechadoEm,
       receitaTotal: vendasTotal,
       totalRecebido: totais.totalVendas,
+      fiadoQuitadoDepois: sumDebtSettledAfterTurn(sessao.id, comandasFechadas),
       comandasAtendidas: comandaIds.size,
       vendasAvulsas: 0,
       receitaAvulsa: 0,
@@ -422,12 +426,13 @@ export async function buildOperacaoDashboard(
   const { inicio, fim } = monthBounds(ano, mes);
   const canonicalSettings = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId);
 
-  const [comandasMes, comandasAno, turnosRecentes, recebimentosMes, totalPendente, historicoSemAtribuicao] = await Promise.all([
+  const [comandasMes, comandasAno, turnosRecentes, recebimentosMes, totalPendente, pendentePeriodo, historicoSemAtribuicao] = await Promise.all([
     fetchClosedComandas(cervejariaId, inicio, fim, pontoVendaId, canonicalSettings !== null),
     fetchClosedComandas(cervejariaId, yearBounds(anoVigente).inicio, yearBounds(anoVigente).fim, pontoVendaId, canonicalSettings !== null),
     buildTurnosRecentes(cervejariaId, inicio, fim, pontoVendaId, canonicalSettings !== null),
     fetchRecebimentos(cervejariaId, inicio, fim, pontoVendaId, canonicalSettings !== null),
     saldoContasPendentes(cervejariaId, pontoVendaId, canonicalSettings !== null),
+    saldoContasPendentes(cervejariaId, pontoVendaId, canonicalSettings !== null, { inicio, fim }),
     fetchHistoricoSemAtribuicao(canonicalSettings !== null, cervejariaId, inicio, fim, pontoVendaId),
   ]);
   const comparativoPontos = pontoVendaId
@@ -492,6 +497,7 @@ export async function buildOperacaoDashboard(
       totalRecebido,
       historicoSemAtribuicao,
       totalPendente,
+      pendentePeriodo,
       comandasAtendidas: resumo.comandasAtendidas,
       vendasAvulsas: resumo.vendasAvulsas,
       receitaAvulsa: resumo.receitaAvulsa,

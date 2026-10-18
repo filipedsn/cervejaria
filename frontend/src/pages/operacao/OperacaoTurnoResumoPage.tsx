@@ -109,11 +109,9 @@ export function OperacaoTurnoResumoPage() {
     categorias.set(produto.categoria, produtos);
     return categorias;
   }, new Map<string, typeof data.porProduto>());
-  const recebimentosContasForaTurno = data.contasReceber.flatMap((conta) =>
-    conta.recebimentos
-      .filter((pagamento) => !pagamento.nesteTurno)
-      .map((pagamento) => ({ ...pagamento, conta })),
-  );
+  const fiadoVendido = data.fiadoVendido ?? 0;
+  const fiadoQuitadoNoTurno = data.fiadoQuitadoNoTurno ?? 0;
+  const fiadoQuitadoDepois = data.fiadoQuitadoDepois ?? 0;
 
   return (
     <div className="space-y-6 pb-6">
@@ -151,7 +149,11 @@ export function OperacaoTurnoResumoPage() {
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         <KpiCard label="Vendas do turno" value={formatCurrency(data.vendasTotal ?? 0)} />
         <KpiCard label="Recebido no turno" value={formatCurrency(data.totalRecebido ?? 0)} />
-        <KpiCard label="Pendente do turno" value={formatCurrency(data.totalPendente ?? 0)} />
+        <KpiCard label="Vendido fiado" value={formatCurrency(fiadoVendido)} />
+        {fiadoQuitadoDepois > 0 && (
+          <KpiCard label="Fiado quitado depois" value={formatCurrency(fiadoQuitadoDepois)} />
+        )}
+        <KpiCard label="Fiado pendente" value={formatCurrency(data.totalPendente ?? 0)} />
         <KpiCard label="Comandas" value={pluralComandasOperacao(data.comandasAtendidas ?? 0)} />
         <KpiCard label="Ticket médio" value={formatCurrency(data.ticketMedio ?? 0)} />
         <KpiCard label="Receita/hora" value={`${formatCurrency(data.receitaPorHora ?? 0)}/h`} />
@@ -191,17 +193,24 @@ export function OperacaoTurnoResumoPage() {
         </section>
       )}
 
-      {recebimentosContasForaTurno.length === 0 && (
       <section className="card space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="section-label">Contas a receber originadas neste turno</h2>
-          <span className="font-bold text-brand-600 tabular-nums">{formatCurrency(data.totalPendente ?? 0)}</span>
+          <h2 className="section-label">Fiado deste turno</h2>
+          <span className="font-bold text-brand-600 tabular-nums">{formatCurrency(fiadoVendido)}</span>
+        </div>
+        <div>
+          <LinhaResumo rotulo="Vendido fiado" valor={fiadoVendido} />
+          <LinhaResumo rotulo="Quitado neste caixa" valor={fiadoQuitadoNoTurno} />
+          <LinhaResumo rotulo="Quitado depois do turno" valor={fiadoQuitadoDepois} />
+          <div className="border-t border-line pt-2">
+            <LinhaResumo rotulo="Pendente" valor={data.totalPendente ?? 0} destaque />
+          </div>
         </div>
         <p className="text-xs text-ink-faint">
-          Recebimentos vinculados a este caixa entram no fechamento; pagamentos posteriores ou fora do caixa ficam apenas no histórico da conta.
+          Quitações registradas neste caixa entram no fechamento; quitações feitas depois ficam só no histórico da conta e não alteram a conferência.
         </p>
         {data.contasReceber.length === 0 ? (
-          <p className="text-sm text-ink-faint">Nenhuma conta a receber foi originada neste turno.</p>
+          <p className="text-sm text-ink-faint">Nenhuma venda fiado neste turno.</p>
         ) : (
           <div className="divide-y divide-line">
             {data.contasReceber.map((conta) => (
@@ -219,7 +228,7 @@ export function OperacaoTurnoResumoPage() {
                         const dataPagamento = new Date(pagamento.pagoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
                         return (
                           <li key={`${conta.contaReceberId}:${index}`}>
-                            {forma}: {formatCurrency(pagamento.valor)} · {dataPagamento} · {pagamento.nesteTurno ? 'incluído no fechamento deste caixa' : 'fora do fechamento deste turno'}
+                            {forma}: {formatCurrency(pagamento.valor)} · {dataPagamento} · {pagamento.nesteTurno ? 'quitado neste caixa' : 'quitado depois do turno'}
                           </li>
                         );
                       })}
@@ -232,7 +241,6 @@ export function OperacaoTurnoResumoPage() {
           </div>
         )}
       </section>
-      )}
 
       <section className="card space-y-3">
         <h2 className="section-label">Top 5 clientes por consumo</h2>
@@ -256,12 +264,10 @@ export function OperacaoTurnoResumoPage() {
         )}
       </section>
 
-      {recebimentosContasForaTurno.length === 0 && (
-      <>
       <div className="card space-y-3">
         <h2 className="section-label">Conferência de fechamento</h2>
         <p className="text-xs text-ink-faint">
-          Esta conferência considera somente pagamentos registrados neste caixa. Recebimentos posteriores de contas aparecem separados abaixo.
+          Esta conferência considera somente pagamentos registrados neste caixa.
         </p>
         {FORMAS_PAGAMENTO.map((forma) => {
           const esperadoChave =
@@ -331,42 +337,6 @@ export function OperacaoTurnoResumoPage() {
           </div>
         </section>
       </div>
-      </>
-      )}
-
-      <section className="card space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="section-label">Recebimentos de contas fora deste turno</h2>
-          <span className="font-bold text-brand-600 tabular-nums">
-            {formatCurrency(recebimentosContasForaTurno.reduce((soma, pagamento) => soma + pagamento.valor, 0))}
-          </span>
-        </div>
-        <p className="text-xs text-ink-faint">
-          Valores recebidos fora desta sessão não alteram o fechamento acima.
-        </p>
-        {recebimentosContasForaTurno.length === 0 ? (
-          <p className="text-sm text-ink-faint">Nenhum recebimento de conta fora deste turno.</p>
-        ) : (
-          <div className="divide-y divide-line">
-            {recebimentosContasForaTurno.map((pagamento, index) => {
-              const forma = FORMAS_PAGAMENTO.find((item) => item.valor === pagamento.forma)?.label ?? pagamento.forma;
-              const dataPagamento = new Date(pagamento.pagoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-              const identificacao = pagamento.conta.comandaNumero !== null
-                ? `Comanda ${pagamento.conta.comandaNumero}`
-                : pagamento.conta.identificador || 'Comanda sem identificação';
-              return (
-                <div key={`${pagamento.conta.contaReceberId}:${index}`} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
-                  <div className="min-w-0">
-                    <p className="font-semibold truncate">{pagamento.conta.clienteNome} · {identificacao}</p>
-                    <p className="text-xs text-ink-faint">{forma} · {dataPagamento}</p>
-                  </div>
-                  <p className="font-bold text-brand-600 tabular-nums">{formatCurrency(pagamento.valor)}</p>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
 
       {caixa.movimentos.length > 0 && (
         <section className="card space-y-2">

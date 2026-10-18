@@ -608,6 +608,9 @@ export interface RelatorioTurnoCaixa {
       nesteTurno: boolean;
     }>;
   }>;
+  fiadoVendido?: number | null;
+  fiadoQuitadoNoTurno?: number | null;
+  fiadoQuitadoDepois?: number | null;
   contasPendentes: Array<{
     contaReceberId: string;
     comandaNumero: number | null;
@@ -867,6 +870,7 @@ export interface OperacaoDashboard {
     totalRecebido: number;
     historicoSemAtribuicao: { count: number; total: number; byForm: Array<{ forma: string; valor: number }> };
     totalPendente: number;
+    pendentePeriodo?: number;
     comandasAtendidas: number;
     vendasAvulsas: number;
     receitaAvulsa: number;
@@ -902,6 +906,7 @@ export interface OperacaoDashboard {
     fechadoEm: string;
     receitaTotal: number;
     totalRecebido: number;
+    fiadoQuitadoDepois?: number;
     comandasAtendidas: number;
     vendasAvulsas: number;
     receitaAvulsa: number;

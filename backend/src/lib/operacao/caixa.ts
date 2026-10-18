@@ -123,6 +123,26 @@ export function totalPendenteContasReceber(
   return reais(saldoTotal);
 }
 
+export function resumirFiadoDoTurno(
+  contas: Array<{ valorOriginal: unknown; recebimentos: Array<{ valor: unknown; nesteTurno: boolean }> }>,
+) {
+  let vendido = 0;
+  let quitadoNoTurno = 0;
+  let quitadoDepois = 0;
+  for (const conta of contas) {
+    vendido += centavos(conta.valorOriginal);
+    for (const recebimento of conta.recebimentos) {
+      if (recebimento.nesteTurno) quitadoNoTurno += centavos(recebimento.valor);
+      else quitadoDepois += centavos(recebimento.valor);
+    }
+  }
+  return {
+    fiadoVendido: reais(vendido),
+    fiadoQuitadoNoTurno: reais(quitadoNoTurno),
+    fiadoQuitadoDepois: reais(quitadoDepois),
+  };
+}
+
 export function totaisMovimentos(movimentos: Array<{ tipo: 'SANGRIA' | 'SUPRIMENTO'; valor: unknown }>) {
   let sangrias = 0;
   let suprimentos = 0;
@@ -645,6 +665,9 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
       itensVendidos: null,
       porProduto: [],
       contasReceber: [],
+      fiadoVendido: null,
+      fiadoQuitadoNoTurno: null,
+      fiadoQuitadoDepois: null,
       contasPendentes: [],
       totalPendente: null,
       topClientes: [],
@@ -821,6 +844,7 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
     itensVendidos,
     porProduto: porProdutoArr,
     contasReceber,
+    ...resumirFiadoDoTurno(contasReceber),
     contasPendentes: contasPendentes.sort((a, b) => b.saldo - a.saldo),
     totalPendente: Math.round(contasPendentes.reduce((soma, conta) => soma + conta.saldo, 0) * 100) / 100,
     topClientes: porClienteArr,
