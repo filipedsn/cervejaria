@@ -71,7 +71,8 @@ test('DSH-S02 filtros de mês e de ponto de venda', async ({ ops, page, evidence
 test('DSH-S03 dashboard leva ao resumo do turno com os mesmos números', async ({ ops, page, evidence }) => {
   const { tenant, sessaoId } = await massaConhecida(ops);
   const resumo = await tenant.owner.expect(tenant.owner.get(`/api/operacao/caixa/sessoes/${sessaoId}`), 200, 'resumo do turno');
-  expect(resumo).toMatchObject({ comandasAtendidas: 3, totalRecebido: 69 });
+  // O resumo do turno conta a venda avulsa como comanda; o dashboard separa em vendasAvulsas.
+  expect(resumo).toMatchObject({ comandasAtendidas: 4, totalRecebido: 69, vendasAvulsas: 1 });
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
   await page.goto('/operacao/dashboard', { waitUntil: 'networkidle' });
   await page.locator(`a[href^="/operacao/turnos/${sessaoId}"]`).first().click();

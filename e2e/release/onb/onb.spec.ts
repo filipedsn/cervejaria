@@ -17,7 +17,7 @@ test('ONB-S02 wizard não mostra escolha de modo', async ({ ops, page, evidence 
   const tenant = await ops.tenant();
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
   await page.goto('/operacao/configuracoes/pdv', { waitUntil: 'networkidle' });
-  await expect(page.getByText(/Por caixa|Por operações|EVENTO/i)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Por operações ou eventos/i })).toHaveCount(0);
   await expect(page.getByTestId('canonical-pdv-settings')).toBeVisible();
   await evidence.screenshot('onboarding-sem-modo');
 });

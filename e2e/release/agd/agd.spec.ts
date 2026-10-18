@@ -1,8 +1,7 @@
 import { expect, PERSONA_PERMISSIONS, randomUUID, test, todayIso, uniqueSuffix } from '../support/ops';
 
-async function agendaPronta(ops: Parameters<typeof test>[1] extends never ? never : import('../support/ops').Ops) {
-  const tenant = await ops.tenant();
-  return tenant;
+async function agendaPronta(ops: import('../support/ops').Ops) {
+  return ops.tenant();
 }
 
 test('AGD-S01 criar, editar, arquivar, interromper e gerar ocorrências @api', async ({ ops }) => {

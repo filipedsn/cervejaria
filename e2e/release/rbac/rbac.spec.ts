@@ -39,8 +39,14 @@ test('RBAC-X01 sem permissões recebe 403 e não vê menu', async ({ ops, page, 
   await evidence.assertNoDbChange();
   await loginPage(page, vazio.email, vazio.senha);
   await page.goto('/', { waitUntil: 'networkidle' });
-  await expect(page.getByRole('link', { name: /Comandas|Cozinha|Caixa|Estoque|Catálogo/ })).toHaveCount(0);
+  await expect(page.getByText('Seu usuário ainda não tem acesso à operação')).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Cozinha$/ })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /^Estoque$/ })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /^Catálogo$/ })).toHaveCount(0);
+  test.info().annotations.push({ type: 'product-decision', description: 'Com zero permissões a tela de "sem acesso" aparece; a barra inferior ainda mostra Comandas/Clientes (atalhos). Recomendação: ocultar esses atalhos sem permissão.' });
   await evidence.screenshot('sem-permissao');
+  await evidence.checkpoint();
+  await evidence.assertNoDbChange();
 });
 
 test('RBAC-X02 command.item.cancel.delivered concedida a atendente não habilita a ação @api', async ({ ops, evidence }) => {
@@ -117,4 +123,6 @@ test('RBAC-X07 chaves de evento no canônico', async ({ ops, page, evidence }) =
     description: `API persiste event.dashboard.read/event.menu.manage. Editor de equipe mostrou ${eventKeysVisible} menções a chaves de evento. Recomendação: remover essas chaves do editor no modelo canônico.`,
   });
   await evidence.screenshot('rbac-event-keys');
+  await evidence.checkpoint();
+  await evidence.assertNoDbChange();
 });

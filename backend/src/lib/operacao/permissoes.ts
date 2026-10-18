@@ -77,6 +77,9 @@ export async function usuarioPode(
   });
   if (!persisted || persisted.cervejariaId !== user.cervejariaId) return false;
   if (persisted.papel === 'DONO') return true;
+  // Cancelar item já entregue continua exclusivo do dono, mesmo com a chave
+  // concedida ao atendente no editor (RBAC-X02 / TAP-98).
+  if (permissao === 'command.item.cancel.delivered') return false;
   return persisted.permissoesOperacao.includes(permissao);
 }
 

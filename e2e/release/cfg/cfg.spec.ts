@@ -95,7 +95,9 @@ test('CFG-X05 upload com tipo inválido dá 400 @api', async ({ ops, evidence })
     multipart: { logo: { name: 'x.txt', mimeType: 'text/plain', buffer: Buffer.from('nao-e-imagem') } },
     failOnStatusCode: false,
   });
-  const body = await response.json().catch(() => ({ error: await response.text() }));
+  const text = await response.text();
+  let body: any = text;
+  try { body = text ? JSON.parse(text) : null; } catch { body = { error: text }; }
   evidence.recordApi({ actor: tenant.owner.who, method: 'POST', url: '/api/cervejaria/branding/logo', status: response.status(), responseBody: body });
   expect(response.status()).toBe(400);
   expect(body.error).toMatch(/Formato de logo inválido|Nenhuma imagem/i);
