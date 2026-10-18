@@ -20,6 +20,7 @@ type PdvProduct = {
   tipo: string;
   categoria?: string | null;
   precoEfetivo?: number;
+  volumeMl?: number;
   gruposOpcionais?: Array<{ id: string; nome: string; opcoes: Array<{ id: string; nome: string; precoAdicional: number }> }>;
 };
 
@@ -41,7 +42,11 @@ type PdvComanda = {
   pedidos: Array<{ id: string; numero: number; status: string; itens: Array<{ nome: string; quantidade: number; subtotal: number; cancelamentoPendenteEm?: string | null; canceladoEm?: string | null }> }>;
 };
 
-type PdvCartItem = { produtoId: string; nome: string; quantidade: number; preco: number };
+type PdvCartItem = { chave: string; produtoId: string; volumeMl?: number; nome: string; quantidade: number; preco: number };
+
+/** Chope comes once per volume with the same product id. */
+const chaveProduto = (product: PdvProduct) => `${product.id}:${product.volumeMl ?? 0}`;
+const nomeProduto = (product: PdvProduct) => ((product.volumeMl ?? 0) > 1 ? `${product.nome} ${product.volumeMl} ml` : product.nome);
 
 function ReceiptIcon() {
   return <svg aria-hidden="true" viewBox="0 0 32 32" className="portal-login-icon portal-login-icon--receipt"><path d="M9 4h14v23l-3.5-2.5L16 27l-3.5-2.5L9 27V4Z" /><path d="M12.5 10h7M12.5 14h7M12.5 18h5" /></svg>;
@@ -122,7 +127,7 @@ export function PortalPdvPage() {
   const enviarPedido = useMutation({
     mutationFn: (itens: PdvCartItem[]) => api.post<PdvComanda>(
       `/api/public/cervejarias/${slug}/pontos-venda/${pontoVendaId}/comanda/pedidos`,
-      { itens: itens.map((item) => ({ produtoId: item.produtoId, quantidade: item.quantidade })) },
+      { itens: itens.map((item) => ({ produtoId: item.produtoId, quantidade: item.quantidade, ...(item.volumeMl ? { volumeMl: item.volumeMl } : {}) })) },
     ),
     onSuccess: (data) => {
       setCart([]);
@@ -137,15 +142,17 @@ export function PortalPdvPage() {
   const totalConsumido = displayedComanda?.total ?? 0;
   const valorEmAberto = displayedComanda?.valorEmAberto ?? 0;
   const addProduct = (product: PdvProduct) => {
+    const chave = chaveProduto(product);
     setCart((current) => {
-      const existing = current.find((item) => item.produtoId === product.id);
-      if (existing) return current.map((item) => item.produtoId === product.id ? { ...item, quantidade: item.quantidade + 1 } : item);
-      return [...current, { produtoId: product.id, nome: product.nome, quantidade: 1, preco: product.precoEfetivo ?? 0 }];
+      const existing = current.find((item) => item.chave === chave);
+      if (existing) return current.map((item) => item.chave === chave ? { ...item, quantidade: item.quantidade + 1 } : item);
+      const volumeMl = (product.volumeMl ?? 0) > 1 ? product.volumeMl : undefined;
+      return [...current, { chave, produtoId: product.id, volumeMl, nome: nomeProduto(product), quantidade: 1, preco: product.precoEfetivo ?? 0 }];
     });
   };
-  const changeQuantity = (produtoId: string, delta: number) => {
+  const changeQuantity = (chave: string, delta: number) => {
     setCart((current) => current
-      .map((item) => item.produtoId === produtoId ? { ...item, quantidade: item.quantidade + delta } : item)
+      .map((item) => item.chave === chave ? { ...item, quantidade: item.quantidade + delta } : item)
       .filter((item) => item.quantidade > 0));
   };
   const cartTotal = cart.reduce((total, item) => total + item.preco * item.quantidade, 0);
@@ -235,12 +242,12 @@ export function PortalPdvPage() {
                       <span>R$ {cartTotal.toFixed(2).replace('.', ',')}</span>
                     </div>
                     {cart.map((item) => (
-                      <div className="portal-pdv-cart-item" key={item.produtoId}>
+                      <div className="portal-pdv-cart-item" key={item.chave}>
                         <span>{item.nome}</span>
                         <div className="portal-pdv-quantity" aria-label={`Quantidade de ${item.nome}`}>
-                          <button type="button" aria-label={`Diminuir ${item.nome}`} onClick={() => changeQuantity(item.produtoId, -1)}>−</button>
+                          <button type="button" aria-label={`Diminuir ${item.nome}`} onClick={() => changeQuantity(item.chave, -1)}>−</button>
                           <strong>{item.quantidade}</strong>
-                          <button type="button" aria-label={`Aumentar ${item.nome}`} onClick={() => changeQuantity(item.produtoId, 1)}>+</button>
+                          <button type="button" aria-label={`Aumentar ${item.nome}`} onClick={() => changeQuantity(item.chave, 1)}>+</button>
                         </div>
                       </div>
                     ))}
@@ -260,8 +267,8 @@ export function PortalPdvPage() {
                     <h4>{categoria}</h4>
                     <div className="portal-pdv-product-grid">
                       {produtos.map((product) => (
-                        <button type="button" key={product.id} className="portal-pdv-product" onClick={() => addProduct(product)}>
-                          <span><strong>{product.nome}</strong>{product.descricao && <small>{product.descricao}</small>}</span>
+                        <button type="button" key={chaveProduto(product)} className="portal-pdv-product" onClick={() => addProduct(product)}>
+                          <span><strong>{nomeProduto(product)}</strong>{product.descricao && <small>{product.descricao}</small>}</span>
                           <b>+ R$ {(product.precoEfetivo ?? 0).toFixed(2).replace('.', ',')}</b>
                         </button>
                       ))}
@@ -280,7 +287,7 @@ export function PortalPdvPage() {
                   <div><span>Valor em aberto</span><strong>R$ {valorEmAberto.toFixed(2).replace('.', ',')}</strong></div>
                 </div>
                 {displayedComanda?.pedidos?.length ? displayedComanda.pedidos.map((pedido) => (
-                  <article key={pedido.id}><strong>Pedido #{pedido.numero}</strong><span>{pedido.status}</span>{itensValidos(pedido.itens).map((item) => <p key={item.nome}>{item.quantidade}x {item.nome}<small>R$ {item.subtotal.toFixed(2).replace('.', ',')}</small></p>)}</article>
+                  <article key={pedido.id}><strong>Pedido #{pedido.numero}</strong><span>{pedido.status}</span>{itensValidos(pedido.itens).map((item, index) => <p key={`${item.nome}-${index}`}>{item.quantidade}x {item.nome}<small>R$ {item.subtotal.toFixed(2).replace('.', ',')}</small></p>)}</article>
                 )) : <p>Nenhum pedido enviado ainda.</p>}
                 <p className="portal-pdv-no-close">O fechamento e o pagamento são feitos pela equipe do caixa.</p>
               </div>

@@ -15,7 +15,7 @@ import {
 import { normalizePhone } from '../lib/phone.js';
 import { registerOrUpdateCliente } from '../lib/cliente-resolver.js';
 import { assertCaixaAberto, lockCaixaEmTx } from '../lib/operacao/caixa.js';
-import { diaOperacional, CAIXA_VENDA_TX, criarPedidos, resolverItens, resumoComanda } from '../lib/operacao/venda.js';
+import { atribuirTapMontado, diaOperacional, CAIXA_VENDA_TX, criarPedidos, resolverItens, resumoComanda } from '../lib/operacao/venda.js';
 import { INCLUDE_COMANDA_OPERACAO, recalcComandaTotalOperacao, whereComandaOperacao } from '../lib/operacao/comanda-adapter.js';
 import { listProdutosOperacionaisTurno } from '../lib/operacao/sessao-cardapio.js';
 import { CATEGORIAS_PRODUTO_OPERACAO, normalizarOrdemCategoriasProduto } from '../lib/operacao/categorias.js';
@@ -472,7 +472,8 @@ export async function publicRoutes(app: FastifyInstance) {
       });
       if (!comanda) throw Object.assign(new Error('Esta comanda já foi fechada'), { statusCode: 409 });
       assertCommandOccurrenceMatchesSession(comanda, sessao);
-      const itens = await resolverItens(tx, session.cervejariaId, body.itens, {
+      const itensComTap = await atribuirTapMontado(tx, sessao.id, body.itens);
+      const itens = await resolverItens(tx, session.cervejariaId, itensComTap, {
         sessaoCaixaId: sessao.id,
         tapsEnabled: profile?.capabilities.taps ?? false,
       });
