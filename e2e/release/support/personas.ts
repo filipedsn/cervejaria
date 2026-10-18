@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Browser, BrowserContext } from '@playwright/test';
 
-export type PersonaKey = 'owner' | 'ownerB' | 'cashier' | 'kitchen' | 'admin';
+export type PersonaKey = 'owner' | 'ownerB' | 'cashier' | 'kitchen' | 'staffB' | 'admin';
 const context = JSON.parse(readFileSync(process.env.RELEASE_QA_CONTEXT!, 'utf8')) as {
   users: Record<string, { email: string; password: string }>;
   admin: { email: string; password: string };
