@@ -399,7 +399,7 @@ const router = createBrowserRouter([
                             element: <RequireCaixaMode />,
                             children: [
                               { path: 'comandas', element: <RequirePermissionRoute permission="command.read" />, children: [{ index: true, element: <OperacaoComandasPage /> }] },
-                              { path: 'contas-pendentes', element: <OperacaoContasPendentesPage /> },
+                              { path: 'contas-pendentes', element: <RequirePermissionRoute permission="debt.receive" />, children: [{ index: true, element: <OperacaoContasPendentesPage /> }] },
                               { path: 'comandas/nova', element: <RequirePermissionRoute permission="command.operate" />, children: [{ index: true, element: <OperacaoNovaComandaPage /> }] },
                               { path: 'comandas/venda-avulsa', element: <RequirePermissionRoute permission="command.operate" />, children: [{ index: true, element: <OperacaoVendaAvulsaPage /> }] },
                               { path: 'comandas/:id', element: <RequirePermissionRoute permission="command.read" />, children: [{ index: true, element: <OperacaoComandaDetailPage /> }] },
