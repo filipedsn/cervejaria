@@ -359,6 +359,8 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       },
     });
 
+    for (const c of [...resultado.fechadas, ...resultado.canceladas]) notificarComandaOperacaoAtualizada(app, cervejariaId, c.id);
+
     return {
       comandas: resultado.fechadas,
       canceladas: resultado.canceladas,
@@ -451,6 +453,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       data: { clienteId: body.clienteId },
       include: INCLUDE_COMANDA_OPERACAO,
     });
+    notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
     return resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
   });
 
@@ -566,6 +569,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
 
     const { comanda, pedidos } = resultado;
 
+    notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
     if (temCozinha) for (const pedido of pedidos) await notificarPedidoNovo(app, cervejariaId, pedido);
 
     const resumo = resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
@@ -653,6 +657,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       };
     }, CAIXA_VENDA_TX);
 
+    notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
     if (temCozinha) for (const pedido of pedidos) await notificarPedidoNovo(app, cervejariaId, pedido);
 
     const resumo = resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
@@ -786,6 +791,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     }, CAIXA_VENDA_TX);
 
     const resumoAtualizado = resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
+    notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
     void registrarTransacao({
       cervejariaId,
       tipo: 'COMANDA_DESCONTO_APLICADO',
@@ -875,6 +881,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     }, CAIXA_VENDA_TX);
 
     const resumoFechada = resumoComanda(fechada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
+    notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
 
     if (!body.deixarPendente) {
       void registrarTransacao({
@@ -938,6 +945,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       });
     });
 
+    notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
     if (temCozinha) await notificarPedidosDaComanda(app, cervejariaId, comanda.id);
 
     const resumoCancelada = resumoComanda(cancelada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
