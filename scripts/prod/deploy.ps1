@@ -16,6 +16,8 @@ param(
   [switch]$BackendOnly,
   [switch]$DryRun,
   [switch]$PreflightOnly,
+  # Emergencia autorizada: publica mesmo sem main limpa e CI verde. O motivo fica no log.
+  [string]$BypassReleaseGate = '',
   # Internos: preenchidos quando o script se relanca elevado.
   [switch]$NoElevate,
   [string]$LogFile = '',
@@ -23,8 +25,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$script:deployBoundParameters = $PSBoundParameters
 . "$PSScriptRoot\_config.ps1"
 . "$PSScriptRoot\publish-artifacts.ps1"
+. "$PSScriptRoot\release-gate.ps1"
 
 if ($FrontendOnly -and $BackendOnly) {
   Write-Host 'Use apenas -FrontendOnly ou -BackendOnly, nao ambos.' -ForegroundColor Red
@@ -137,6 +141,21 @@ function Invoke-DeployPreflight {
 
   $elevated = Test-IsElevated
   Write-Host "  Shell elevado           : $(if ($elevated) { 'sim' } else { 'nao' })"
+
+  $gate = Get-ReleaseGateResult -ProjectRoot $paths.ProjectRoot
+  if ($gate.Ok) {
+    Write-Host "  Origem da release       : main $($gate.Sha.Substring(0, 8)) limpa, CI verde"
+  } elseif ($BypassReleaseGate) {
+    Write-Host "  Origem da release       : GATE IGNORADO ($BypassReleaseGate)" -ForegroundColor Yellow
+    foreach ($gateBlocker in $gate.Blockers) {
+      $warnings.Add("gate ignorado: $gateBlocker")
+    }
+  } else {
+    Write-Host '  Origem da release       : BLOQUEADA' -ForegroundColor Red
+    foreach ($gateBlocker in $gate.Blockers) {
+      $blockers.Add($gateBlocker)
+    }
+  }
 
   if ($paths.NpmCmd -and (Test-Path $paths.NpmCmd)) {
     Write-Host '  npm.cmd                 : OK'
@@ -284,9 +303,12 @@ function Invoke-SelfElevatedDeploy {
     '-ExitCodeFile', "`"$exitFile`""
   )
   foreach ($switchName in @('SkipBackup', 'SkipMigrate', 'SkipBackfill', 'FrontendOnly', 'BackendOnly')) {
-    if ($PSBoundParameters.ContainsKey($switchName) -and $PSBoundParameters[$switchName]) {
+    if ($script:deployBoundParameters.ContainsKey($switchName) -and $script:deployBoundParameters[$switchName]) {
       $childArgs += "-$switchName"
     }
+  }
+  if ($BypassReleaseGate) {
+    $childArgs += @('-BypassReleaseGate', "`"$($BypassReleaseGate -replace '"', "'")`"")
   }
 
   Write-Host 'Elevando o deploy (confirme o UAC)...' -ForegroundColor Cyan

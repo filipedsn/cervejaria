@@ -1,5 +1,9 @@
 # Agent Governance
 
+## Delivery flow
+
+[CONTRIBUTING.md](CONTRIBUTING.md) is the mandatory delivery flow for every tool (Cursor, VS Code, terminal): production is the source of truth, `main` matches production, work starts from `main` in its own branch, `npm run ci` before the PR, merge only with CI green, and production deploy only with explicit user authorization. The deploy preflight blocks anything that is not a clean `origin/main` commit with a green `CI` run.
+
 ## Plane MCP workflow
 
 Plane is the source of truth for work state. GitHub is the source of truth for code, commits, and CI.

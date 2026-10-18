@@ -74,12 +74,17 @@ Isso remove a tarefa antiga `QuiverTap-Watchdog` e usa um unico processo oculto 
 
 ## Deploy de producao (caminho principal)
 
+O fluxo obrigatorio (branch, PR, CI verde, merge em `main`) esta em [CONTRIBUTING.md](../CONTRIBUTING.md).
+
 ```powershell
+git switch main
+git pull --ff-only origin main
 npm run prod:deploy
 ```
 
 O script pede confirmacao digitando `DEPLOY`, depois executa:
 
+0. Preflight com gate de origem: arquivos rastreados limpos, nada solto em `frontend/src`, `frontend/public`, `backend/src` e `backend/prisma`, `HEAD` igual a `origin/main` e workflow `CI` verde nesse SHA. Se falhar, nada e alterado.
 1. Backup do banco `cervejaria`
 2. Build frontend em staging (`build:prod`) e backend (`backend/dist`)
 3. Parada da API e do Alert Poller, depois de staging valido
@@ -107,6 +112,7 @@ npm run prod:deploy -- -FrontendOnly        # so UI
 npm run prod:deploy -- -BackendOnly         # so API
 npm run prod:deploy -- -SkipMigrate         # sem migration Prisma
 npm run prod:deploy -- -SkipBackup          # emergencia (evitar)
+npm run prod:deploy -- -Confirmed -BypassReleaseGate "motivo"  # emergencia autorizada, fora do gate
 ```
 
 ### Outros comandos prod

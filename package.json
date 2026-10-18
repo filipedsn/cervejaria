@@ -40,6 +40,8 @@
     "prod:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/stop-all.ps1",
     "prod:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/uninstall-autostart.ps1",
     "build": "npm run build --prefix frontend && npm run build --prefix backend",
+    "ci": "node scripts/ci/local-ci.mjs",
+    "test:release-gate": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Invoke-Pester -Script scripts/prod/release-gate.tests.ps1 -EnableExit\"",
     "ci:frontend": "npm run build:deploy --prefix frontend",
     "ci:backend": "npm run build:deploy --prefix backend",
     "ci:validate": "npm run ci:frontend && cd backend && npx prisma generate && cd .. && node scripts/validate-prisma.mjs",
