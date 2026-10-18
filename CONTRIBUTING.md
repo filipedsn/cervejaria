@@ -36,6 +36,19 @@ git pull --ff-only origin main
 .\deploy.cmd -Confirmed
 ```
 
+## Publicar no DEV
+
+O DEV oficial roda um pacote compilado em `deploy/dev-artifacts`, montado a partir de um commit já enviado ao GitHub (branch do PR ou `main`). Editar arquivos não muda a tela. Em PowerShell elevado (os processos do DEV rodam elevados):
+
+```powershell
+$sha = git rev-parse HEAD
+$ativo = (Invoke-RestMethod http://127.0.0.1:3002/api/health).releaseSha
+.\scripts\dev\prepare-dev-release.ps1 -ExpectedReleaseSha $sha
+.\scripts\dev\swap-dev-release.ps1 -FromSha $ativo -ToSha $sha
+```
+
+`swap-dev-release.ps1` para o DEV, publica o pacote, sobe a API e o frontend e confere `/api/health` e `/api/ready`. Se falhar, volta sozinho para a versão anterior. Nunca toca na porta `:3001` nem em `deploy/prod-artifacts`.
+
 ## Convenção de branches
 
 | Prefixo | Uso |
