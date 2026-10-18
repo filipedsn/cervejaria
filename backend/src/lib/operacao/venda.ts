@@ -118,6 +118,27 @@ export async function validarChopeDoTurno(
 }
 
 /**
+ * The customer portal does not know the taps: a chope ordered by volume is
+ * served from the tap where it is mounted in the open shift.
+ */
+export async function atribuirTapMontado(
+  tx: TxClient,
+  sessaoCaixaId: string,
+  itens: ItemVendaInput[],
+): Promise<ItemVendaInput[]> {
+  return Promise.all(itens.map(async (item) => {
+    if (item.tapId || !item.volumeMl) return item;
+    const montagem = await tx.tapMontagem.findFirst({
+      where: { sessaoCaixaId, produtoId: item.produtoId, encerradoEm: null, tap: { ativo: true } },
+      orderBy: { tap: { numero: 'asc' } },
+      select: { tapId: true },
+    });
+    if (!montagem) throw new VendaInvalidaError('Este chope não está sendo servido agora');
+    return { ...item, tapId: montagem.tapId };
+  }));
+}
+
+/**
  * Confere que os produtos sao da empresa e estao ativos, e copia nome e preco
  * para o item. Quantidades repetidas do mesmo produto viram uma linha so.
  */
