@@ -127,3 +127,16 @@ node backend/scripts/run-pdv-unico-dev-cutover.mjs `
 ```
 
 O cancelamento autorizado de `cmuqaoyta0007hvdg3q4v7hkj` permanece limitado à API normal, com auditoria, em QA descartável. Não incluir produto de menu nem regenerar a autorização financeira dos 577 pagamentos C. A prova integral histórica em `888a4a8` continua válida para aquela árvore e está preservada acima; o gate focado de categories em `7021097` também foi registrado separadamente. Na revisão final `7807721`, o entrypoint DEV real passou dry-run com 1.266 blobs materializados, nove imports de projeto do snapshot e zero imports de projeto do workspace mutável; guardas focadas passaram 20/20 e o build backend passou. O ensaio integral final em QA descartável passou as migrations, preparações, transforms/replays, reconciliação, readiness/ativação e cancelamento autenticado; 605 pagamentos foram preservados e o estado local permaneceu igual. Evidências: [follow-up do executor](../testing/pdv-unico-dev-cutover-followup-evidence-7807721.json), [QA integral final](../testing/pdv-unico-dev-cutover-followup-qa-full-7807721.json) e [gate QA focado](../testing/pdv-unico-dev-cutover-followup-qa-gate.json). Nenhuma migration, saneamento, alteração de configuração ou inicialização de serviço foi feita no DEV compartilhado.
+
+## Ativação global (TAP-99)
+
+Desde o TAP-99 o modelo canônico vale para todas as empresas com `PDV_CANONICAL_ALL=1`. A lista fixa de IDs saiu do código; `PDV_CANONICAL_TENANTS` continua aceito só pelos runners de QA descartáveis.
+
+Pré-condição: toda empresa ativa tem exatamente 1 PDV ativo com `ConfiguracaoPontoVenda`. Sem isso a API responde 409 `CANONICAL_PDV_*`. O `npm run prod:preflight` roda `backend/scripts/check-canonical-readiness.mjs` (somente leitura) e bloqueia o deploy quando falta a variável ou há empresa fora do modelo.
+
+No deploy autorizado para PROD:
+
+1. `npm run prod:preflight` e conferir a lista de empresas bloqueadas.
+2. Para cada empresa bloqueada: cutover com recibos (cliente real) ou desativação (empresa de teste), sempre com autorização.
+3. Em `backend/.env.production`, trocar `PDV_CANONICAL_TENANTS=...` por `PDV_CANONICAL_ALL=1`.
+4. `npm run prod:preflight` de novo até `Modelo canonico : OK`; só então `.\deploy.cmd -Confirmed`.

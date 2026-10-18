@@ -173,6 +173,33 @@ function Invoke-DeployPreflight {
     }
   }
 
+  # Somente leitura: toda empresa ativa precisa de 1 PDV ativo com configuracao canonica.
+  if (Test-DockerContainerRunning -Name 'cervejaria-db') {
+    $readinessScript = Join-Path $paths.BackendDir 'scripts\check-canonical-readiness.mjs'
+    Push-Location $paths.BackendDir
+    try {
+      $readinessRaw = (& node $readinessScript 2>$null | Select-Object -Last 1)
+    } finally {
+      Pop-Location
+    }
+    $readiness = $null
+    try { $readiness = $readinessRaw | ConvertFrom-Json } catch { $readiness = $null }
+    if ($readiness -and $readiness.status -eq 'READY') {
+      Write-Host "  Modelo canonico         : OK ($($readiness.activeTenants) empresas ativas)"
+    } elseif ($readiness -and $readiness.status -eq 'BLOCKED') {
+      Write-Host '  Modelo canonico         : BLOQUEADO' -ForegroundColor Red
+      if ($readiness.activation -ne 'PDV_CANONICAL_ALL') {
+        $blockers.Add("PDV_CANONICAL_ALL=1 ausente em backend/.env.production (ativacao atual: $($readiness.activation)).")
+      }
+      foreach ($tenant in @($readiness.blocked)) {
+        $blockers.Add("Empresa ativa fora do modelo canonico: $($tenant.slug) ($($tenant.reasons -join ', ')). Rode o cutover ou desative a empresa.")
+      }
+    } else {
+      Write-Host '  Modelo canonico         : FALHA NA VERIFICACAO' -ForegroundColor Red
+      $blockers.Add('Nao foi possivel verificar o modelo canonico (check-canonical-readiness).')
+    }
+  }
+
   try {
     $drive = (Get-Item $paths.ProdArtifactsDir).PSDrive
     if ($drive -and $null -ne $drive.Free) {

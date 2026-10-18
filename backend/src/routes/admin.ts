@@ -284,14 +284,14 @@ export async function adminRoutes(app: FastifyInstance) {
   app.get('/cervejarias/:id/configuracao-operacional', async (request, reply) => {
     const { id } = request.params as { id: string };
     const configuration = await readOperationalConfig(id);
-    if (!configuration) return reply.status(404).send({ error: 'ConfiguraÃ§Ã£o operacional nÃ£o encontrada' });
+    if (!configuration) return reply.status(404).send({ error: 'Configuração operacional não encontrada' });
     return configuration;
   });
 
   app.patch('/cervejarias/:id/configuracao-operacional', async (request, reply) => {
     const { id } = request.params as { id: string };
     const existing = await prisma.cervejaria.findUnique({ where: { id }, select: { id: true } });
-    if (!existing) return reply.status(404).send({ error: 'Cervejaria nÃ£o encontrada' });
+    if (!existing) return reply.status(404).send({ error: 'Cervejaria não encontrada' });
     const body = updateOperationalConfigSchema.parse(request.body);
     const user = getAuthUser(request);
     return prisma.$transaction((tx) => updateOperationalConfig(tx, id, body, { userId: user.sub, role: 'ADMIN' }));
@@ -301,7 +301,7 @@ export async function adminRoutes(app: FastifyInstance) {
     const canonical = canonicalPdvQaActivationEnabled();
     const body = provisionEstablishmentRequestSchema.parse(request.body);
     const existing = await prisma.usuario.findUnique({ where: { email: body.dono.email }, select: { id: true } });
-    if (existing) return reply.status(409).send({ error: 'E-mail do proprietÃ¡rio jÃ¡ cadastrado' });
+    if (existing) return reply.status(409).send({ error: 'E-mail do proprietário já cadastrado' });
     let slug = slugify(body.nome);
     if (await prisma.cervejaria.findUnique({ where: { slug } })) slug = `${slug}-${Date.now().toString(36)}`;
     const senhaHash = await hashPassword(body.dono.senha);
