@@ -34,4 +34,19 @@
 - Movidos nove specs de arena/legados para `e2e/legacy/`; `playwright.config.ts` exclui `legacy/`, `rbac-live/` e `release/` do runner padrão. A suíte release continua com comando e ambiente descartável próprios.
 - Removida a senha fixa de ADMIN em `e2e/helpers/auth.ts`; credenciais legadas agora vêm de `E2E_ADMIN_EMAIL` e `E2E_ADMIN_PASSWORD`. Atualizada a documentação do modelo E2E e matriz.
 - `npm run test:e2e:current -- --list`: 50 casos em 9 arquivos de `e2e/current-model/`; nenhum spec de `e2e/legacy/` foi listado. Apenas listagem, sem conexão ao DEV.
+- Commit: `fa9dcea4e1809a281ffaea2399149979a7d54c8a` (push efetuado).
+
+## Etapa 6 — Execução e certificação
+
+- Release testada: `63a6416d303978b07e85f9d853877c1d407bb9a4`. Suíte completa nos quatro viewports: 100/124 execuções aprovadas; placar por caso: P0 17/22, P1 8/9, P2 0/0. Três rodadas P0 consecutivas tiveram 68/88 execuções aprovadas e as mesmas cinco falhas: ADM-S02, CXA-X02, DSH-X02, SEC-X02, SMK-S04.
+- CAT-X01 também falha como P1: leitura de produtos sem `catalog.manage` retornou 200, sem mutação no banco.
+- Relatório: `docs/testing/release-certification/63a6416d303978b07e85f9d853877c1d407bb9a4/RELATORIO-CERTIFICACAO.md`; resultados e matriz RBAC no mesmo diretório; traces, vídeos, screenshots e JSONs em `artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/`.
+- Parecer NO-GO por falhas P0. Casos CMD/KDS e a maior parte dos fluxos transacionais estão listados como não automatizados. Decisões pendentes: disponibilidade do dashboard legado no canônico (DSH-S04) e efeito das chaves de evento (RBAC-X07). Dados de clientes Demo e acentuação ADM-X03 não foram consultados/testados.
+- Suggested Plane Items descritos no relatório; nenhum ticket foi criado ou alterado.
+- `npm run ci`: passou localmente (10 gates), com fallback validado para o client Prisma bloqueado por outro processo.
 - Commit: a registrar após commit desta etapa.
+
+## Etapa 7 — PR
+
+- CI local verde; PR será aberta para `main` com TAP-98 no título e link para o relatório NO-GO.
+- Parecer e comentário HTML final para TAP-98: preparado na conclusão desta etapa. Não fazer merge nem deploy.
