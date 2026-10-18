@@ -90,8 +90,8 @@ test.describe('TAP-68 — matriz cartesiana operacional', () => {
       await expect(page.getByRole('button', { name: selected })).toHaveAttribute('aria-pressed', 'true');
 
       const navigation = page.getByRole('navigation', { name: 'Navegação principal' });
-      // A operaÃ§Ã£o muda a organizaÃ§Ã£o (caixa ou eventos), nÃ£o o mÃ³dulo de
-      // venda: comandas permanece disponÃ­vel com a mesma identidade nos dois.
+      // A operação muda a organização (caixa ou eventos), não o módulo de
+      // venda: comandas permanece disponível com a mesma identidade nos dois.
       await expect(navigation.getByRole('link', { name: 'Comandas', exact: true })).toHaveCount(1);
       await expect(navigation.getByRole('link', { name: 'Quiosque' })).toHaveCount(0);
       await expect(navigation.getByRole('link', { name: 'Estabelecimento' })).toHaveCount(0);

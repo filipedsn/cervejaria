@@ -1028,11 +1028,11 @@ async function reconstituteConfirmedCommerceCommandSources(tx: Db, companyId: st
       || batch?.runId !== run.id || batch?.status !== 'CONFIRMED' || receipt?.destinationType !== 'COMANDA' || receipt?.destinationId !== item.id
       || receipt?.payloadHash !== map.payloadHash || receipt?.destinationHash !== destinationHash
       || item.destinationData.pontoVendaId !== pointId || canonicalPdvPayloadHash(item.sourcePayload) === canonicalPdvPayloadHash(original)) {
-      throw new PdvCatalogBlocker('COMMERCE_TRANSFORMATION_PROOF_DIVERGED', 'COMANDA', item.id, 'A fotografia original sÃ³ pode ser restaurada por mapa, run/checkpoint, lote/recibo e destino comercial confirmados.');
+      throw new PdvCatalogBlocker('COMMERCE_TRANSFORMATION_PROOF_DIVERGED', 'COMANDA', item.id, 'A fotografia original só pode ser restaurada por mapa, run/checkpoint, lote/recibo e destino comercial confirmados.');
     }
     item.sourcePayload.transformationSourcePointId = original.transformationSourcePointId;
     item.sourcePayload.transformationSourceOccurrenceId = original.transformationSourceOccurrenceId;
-    if (canonicalPdvPayloadHash(item.sourcePayload) !== map.payloadHash) throw new PdvCatalogBlocker('SOURCE_PAYLOAD_CHANGED', 'COMANDA', item.id, 'Campos alÃ©m dos vÃ­nculos PDV/ocorrÃªncia diferem da fotografia comercial confirmada.');
+    if (canonicalPdvPayloadHash(item.sourcePayload) !== map.payloadHash) throw new PdvCatalogBlocker('SOURCE_PAYLOAD_CHANGED', 'COMANDA', item.id, 'Campos além dos vínculos PDV/ocorrência diferem da fotografia comercial confirmada.');
   }
 }
 

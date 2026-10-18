@@ -266,7 +266,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
     const produto = await prisma.produto.findFirst({ where: { id, cervejariaId } });
-    if (!produto) return reply.status(404).send({ error: 'Produto nÃ£o encontrado' });
+    if (!produto) return reply.status(404).send({ error: 'Produto não encontrado' });
     return listarOpcionaisProduto(prisma, id);
   });
 
@@ -275,7 +275,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = opcionaisSchema.parse(request.body);
     const produto = await prisma.produto.findFirst({ where: { id, cervejariaId } });
-    if (!produto) return reply.status(404).send({ error: 'Produto nÃ£o encontrado' });
+    if (!produto) return reply.status(404).send({ error: 'Produto não encontrado' });
     return prisma.$transaction((tx) => substituirOpcionaisProduto(tx, id, cervejariaId, body.opcionalIds));
   });
 

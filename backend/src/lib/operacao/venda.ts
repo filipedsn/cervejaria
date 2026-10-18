@@ -89,11 +89,11 @@ export async function validarChopeDoTurno(
       throw new VendaInvalidaError('A venda de chope por Tap está desativada nas configurações');
     }
     if (!chope) {
-      if (linha.tapId || linha.volumeMl) throw new VendaInvalidaError('Tap e volume sÃ³ podem ser informados para chope');
+      if (linha.tapId || linha.volumeMl) throw new VendaInvalidaError('Tap e volume só podem ser informados para chope');
       continue;
     }
     if (!linha.tapId || !linha.volumeMl) throw new VendaInvalidaError('Selecione o Tap e o volume do chope');
-    if (!trailerId && !pontoVendaId) throw new VendaInvalidaError('Este turno nÃ£o possui PDV vinculado para vender chope');
+    if (!trailerId && !pontoVendaId) throw new VendaInvalidaError('Este turno não possui PDV vinculado para vender chope');
 
     const montagem = await tx.tapMontagem.findFirst({
       where: {
@@ -110,9 +110,9 @@ export async function validarChopeDoTurno(
       },
       select: { id: true },
     });
-    if (!montagem) throw new VendaInvalidaError('Este chope nÃ£o estÃ¡ montado neste Tap para o turno');
+    if (!montagem) throw new VendaInvalidaError('Este chope não está montado neste Tap para o turno');
     if (!produto.precos.some((preco) => preco.volumeMl === linha.volumeMl)) {
-      throw new VendaInvalidaError('O volume selecionado nÃ£o possui preÃ§o cadastrado para este chope');
+      throw new VendaInvalidaError('O volume selecionado não possui preço cadastrado para este chope');
     }
   }
 }
