@@ -116,24 +116,35 @@ function Install-ProdBackendRuntime {
   param(
     [hashtable]$Paths,
     [switch]$ForceRefresh,
-    [switch]$RefreshPrismaSchema
+    [switch]$RefreshPrismaSchema,
+    # Candidate publicado ja traz package.json, lock e prisma verificados por hash;
+    # copiar da pasta de trabalho os sobrescreveria com outra linha de codigo.
+    [switch]$UsePublishedPackage
   )
 
-  $packageJsonSrc = Join-Path $Paths.BackendDir 'package.json'
-  $packageLockSrc = Join-Path $Paths.BackendDir 'package-lock.json'
-  if (-not (Test-Path $packageJsonSrc)) {
-    throw 'backend/package.json ausente.'
-  }
-  if (-not (Test-Path $packageLockSrc)) {
-    throw 'backend/package-lock.json ausente. Rode npm install --prefix backend.'
-  }
+  if ($UsePublishedPackage) {
+    foreach ($required in @('package.json', 'package-lock.json', 'prisma\schema.prisma')) {
+      if (-not (Test-Path (Join-Path $Paths.ProdBackendRoot $required))) {
+        throw "Backend publicado sem $required."
+      }
+    }
+  } else {
+    $packageJsonSrc = Join-Path $Paths.BackendDir 'package.json'
+    $packageLockSrc = Join-Path $Paths.BackendDir 'package-lock.json'
+    if (-not (Test-Path $packageJsonSrc)) {
+      throw 'backend/package.json ausente.'
+    }
+    if (-not (Test-Path $packageLockSrc)) {
+      throw 'backend/package-lock.json ausente. Rode npm install --prefix backend.'
+    }
 
-  New-Item -ItemType Directory -Force -Path $Paths.ProdBackendRoot | Out-Null
-  Copy-Item -Path $packageJsonSrc -Destination (Join-Path $Paths.ProdBackendRoot 'package.json') -Force
-  Copy-Item -Path $packageLockSrc -Destination (Join-Path $Paths.ProdBackendRoot 'package-lock.json') -Force
+    New-Item -ItemType Directory -Force -Path $Paths.ProdBackendRoot | Out-Null
+    Copy-Item -Path $packageJsonSrc -Destination (Join-Path $Paths.ProdBackendRoot 'package.json') -Force
+    Copy-Item -Path $packageLockSrc -Destination (Join-Path $Paths.ProdBackendRoot 'package-lock.json') -Force
 
-  if ($RefreshPrismaSchema -or -not (Test-Path (Join-Path $Paths.ProdBackendPrisma 'schema.prisma'))) {
-    Copy-ProdPrismaSchema -Paths $Paths
+    if ($RefreshPrismaSchema -or -not (Test-Path (Join-Path $Paths.ProdBackendPrisma 'schema.prisma'))) {
+      Copy-ProdPrismaSchema -Paths $Paths
+    }
   }
 
   $linkedToDev = Test-ProdNodeModulesLinkedToDev -Paths $Paths
@@ -326,13 +337,18 @@ function Publish-ProdArtifactsSwap {
     if (-not (Test-Path (Join-Path $stagingBackend 'dist\index.js'))) {
       throw 'Staging backend/dist/index.js ausente.'
     }
+    $stagedOwnPackage = Test-Path (Join-Path $stagingBackend 'package.json')
     $liveBackendRoot = Join-Path $Paths.ProdArtifactsDir 'backend'
     if (Test-Path $liveBackendRoot) {
       Move-Item -Path $liveBackendRoot -Destination (Join-Path $previous 'backend')
       $savedParts += 'backend'
     }
     Move-Item -Path $stagingBackend -Destination $liveBackendRoot
-    Install-ProdBackendRuntime -Paths $Paths -RefreshPrismaSchema
+    if ($stagedOwnPackage) {
+      Install-ProdBackendRuntime -Paths $Paths -UsePublishedPackage
+    } else {
+      Install-ProdBackendRuntime -Paths $Paths -RefreshPrismaSchema
+    }
   }
 
   Write-ProdRollbackMeta -PreviousDir $previous -Parts $savedParts
