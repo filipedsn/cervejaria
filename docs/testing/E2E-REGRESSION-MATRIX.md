@@ -1,5 +1,9 @@
 # E2E regression matrix
 
+## TAP-98 release certification
+
+The disposable, production-shaped release regression suite lives in `e2e/release/` and runs only through `npm run qa:release-e2e`. It uses a disposable PostgreSQL container and records case evidence under `artifacts/release-e2e/<releaseSha>/`. Release specs are excluded from the regular Playwright runner. See `docs/testing/release-regression/PLANO.md` for case scope and current certification report.
+
 ## Gamified category catalog
 
 | ID | Scope | Gate | Spec / runner |

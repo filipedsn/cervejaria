@@ -16,4 +16,6 @@ O comando canônico para validar o modelo atual é `npm run test:e2e:current`. E
 
 Esta reconstrução é deliberadamente incremental. A suíte atual ainda não certifica venda efetiva de 700 ml e seu efeito no estoque, cancelamento/estorno de estoque, vendas avulsas, concorrência/idempotência, isolamento entre empresas nem cobertura de observabilidade por transação para todo o fluxo CAIXA e suas métricas/logs externos. Esses casos devem ser adicionados como cenários atuais explícitos antes de declarar a certificação E2E completa; testes históricos/legados não contam como evidência para eles.
 
-`npm run test:e2e` e `npm run test:e2e:current` agora executam o gate canônico atual; `npm run test:e2e:compat` mantém os testes históricos disponíveis em separado. Os testes de `e2e/` fora de `e2e/current-model/` não contam como evidência do novo modelo. Não foram removidos nem alterados por esta reconstrução.
+`npm run test:e2e:current` executa o gate atual em `e2e/current-model/`. A suíte descartável de release TAP-98 roda por `npm run qa:release-e2e` e só usa o PostgreSQL isolado. `e2e/legacy/` e `e2e/rbac-live/` estão fora do runner padrão; os antigos specs de arena listados no plano foram movidos para `legacy/`. Specs ainda não reescritos não contam como evidência de certificação.
+
+O helper de autenticação não contém senha fixa de ADMIN. Para specs históricos que ainda dependam de ADMIN, forneça `E2E_ADMIN_EMAIL` e `E2E_ADMIN_PASSWORD` no ambiente de teste.

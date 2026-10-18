@@ -27,4 +27,11 @@
 - Defeito confirmado: CAT-X01 retornou HTTP 200 ao atendente B sem `catalog.manage` em `GET /api/operacao/produtos`; hash do banco preservado. Evidência: `artifacts/release-e2e/d2cab7024aecf031f63a03e4581d334dc278e957/evidence/api/CAT-X01.json` e `.../db/CAT-X01.json`.
 - Onboarding visual X01 não foi automatizado: o seed canônico inicia sem prontidão que renderize a ação `CERVEJARIA_FIRST_SALE`; readiness da API respondeu. O destino `/venda-avulsa` e alvo ausente `brewery-start-sale` constam no código de mapeamento existente e precisam ser confirmados numa massa de onboarding cervejaria.
 - Fluxos completos transacionais de catálogo, configuração, estoque, agenda, portal, clientes e PWA offline/push permanecem pendentes; os casos P1/P2 acima cobrem apenas verificações isoladas de leitura/segurança/contrato.
+- Commit: `85d188eae963ee25aad0446893d7336b1bf32a2a` (push efetuado).
+
+## Etapa 5 — Limpeza
+
+- Movidos nove specs de arena/legados para `e2e/legacy/`; `playwright.config.ts` exclui `legacy/`, `rbac-live/` e `release/` do runner padrão. A suíte release continua com comando e ambiente descartável próprios.
+- Removida a senha fixa de ADMIN em `e2e/helpers/auth.ts`; credenciais legadas agora vêm de `E2E_ADMIN_EMAIL` e `E2E_ADMIN_PASSWORD`. Atualizada a documentação do modelo E2E e matriz.
+- `npm run test:e2e:current -- --list`: 50 casos em 9 arquivos de `e2e/current-model/`; nenhum spec de `e2e/legacy/` foi listado. Apenas listagem, sem conexão ao DEV.
 - Commit: a registrar após commit desta etapa.
