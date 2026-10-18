@@ -4,6 +4,7 @@ import fc from 'fast-check';
 import {
   assertCaixaAberto,
   calcularEsperadoDinheiroGaveta,
+  escopoComandasDoTurno,
   planoCorrecaoMovimento,
   resolveCashRegisterCapability,
   resumirFiadoDoTurno,
@@ -38,6 +39,24 @@ describe('caixa operacao (property-based)', () => {
       fiadoQuitadoNoTurno: 20.05,
       fiadoQuitadoDepois: 354,
     });
+  });
+
+  it('relatório de turno administrativo usa só comandas vinculadas; financeiro usa a janela do turno', () => {
+    const base = {
+      id: 'sessao-1',
+      diaOperacional: new Date('2026-10-12T00:00:00.000Z'),
+      abertoEm: new Date('2026-10-12T11:56:47.591Z'),
+      fechadoEm: new Date('2026-10-12T23:35:01.150Z'),
+    };
+    assert.deepEqual(escopoComandasDoTurno({ ...base, tipoEncerramento: 'ADMINISTRATIVO' }), {
+      sessaoCaixaRealizacaoId: 'sessao-1',
+    });
+    for (const tipoEncerramento of ['FINANCEIRO', null]) {
+      assert.deepEqual(escopoComandasDoTurno({ ...base, tipoEncerramento }), {
+        diaOperacional: base.diaOperacional,
+        fechadaEm: { gte: base.abertoEm, lte: base.fechadoEm },
+      });
+    }
   });
 
   it('resolve a capacidade por unidade: explícito vence fallback, NULL preserva legado', () => {

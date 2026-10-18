@@ -579,6 +579,8 @@ export interface RelatorioTurnoCaixa {
   abertoPorNome: string;
   fechadoPorNome: string | null;
   dadosFinanceirosDisponiveis: boolean;
+  /** Administrative closure: values come from explicit links, without physical count. */
+  conferenciaFisicaPendente?: boolean;
   comandasAtendidas: number | null;
   vendasTotal: number | null;
   totalRecebido: number | null;

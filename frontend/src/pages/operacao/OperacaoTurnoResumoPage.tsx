@@ -83,7 +83,8 @@ export function OperacaoTurnoResumoPage() {
 
   const { caixa, pontoNome, abertoPorNome, fechadoPorNome } = data;
   const titulo = formatTurnoTitulo(caixa.abertoEm, caixa.fechadoEm!);
-  if (caixa.tipoEncerramento === 'ADMINISTRATIVO' || !data.dadosFinanceirosDisponiveis) {
+  const conferenciaFisicaPendente = data.conferenciaFisicaPendente ?? caixa.tipoEncerramento === 'ADMINISTRATIVO';
+  if (!data.dadosFinanceirosDisponiveis) {
     return (
       <div className="space-y-6 pb-6">
         <div>
@@ -134,7 +135,16 @@ export function OperacaoTurnoResumoPage() {
               Aberto por {abertoPorNome}
               {fechadoPorNome ? ` · Fechado por ${fechadoPorNome}` : ''}
             </p>
-            {caixa.tipoEncerramento === 'FINANCEIRO' ? (
+            {conferenciaFisicaPendente ? (
+              <div className="mt-2 space-y-0.5" role="status">
+                <p className="text-sm font-semibold text-amber-700">
+                  Encerramento administrativo · contagem física do caixa pendente
+                </p>
+                {caixa.observacaoFechamento && (
+                  <p className="text-xs text-ink-faint">Motivo: {caixa.observacaoFechamento}</p>
+                )}
+              </div>
+            ) : caixa.tipoEncerramento === 'FINANCEIRO' ? (
               <p className="mt-2 text-sm font-semibold text-green-700">Fechamento financeiro conferido</p>
             ) : (
               <p className="mt-2 text-sm text-ink-faint">Encerramento histórico sem classificação</p>
@@ -264,6 +274,11 @@ export function OperacaoTurnoResumoPage() {
         )}
       </section>
 
+      {conferenciaFisicaPendente ? (
+        <p className="card text-sm text-amber-700">
+          Sem contagem física: vendas são as comandas vinculadas a este turno e recebimentos são os pagamentos registrados neste caixa.
+        </p>
+      ) : (
       <div className="card space-y-3">
         <h2 className="section-label">Conferência de fechamento</h2>
         <p className="text-xs text-ink-faint">
@@ -305,6 +320,7 @@ export function OperacaoTurnoResumoPage() {
           </p>
         )}
       </div>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-5">
         <section className="card space-y-3">

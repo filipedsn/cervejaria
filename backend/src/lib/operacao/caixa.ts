@@ -633,6 +633,22 @@ export async function fecharCaixa(params: {
   return montarResumoCaixa(fechada, params.cervejariaId);
 }
 
+/**
+ * Administrative closure has no physical count and no trustworthy time window,
+ * so its report only includes comandas explicitly linked to the session.
+ */
+export function escopoComandasDoTurno(sessao: {
+  id: string;
+  tipoEncerramento: string | null;
+  diaOperacional: Date;
+  abertoEm: Date;
+  fechadoEm: Date;
+}): Prisma.ComandaWhereInput {
+  return sessao.tipoEncerramento === 'ADMINISTRATIVO'
+    ? { sessaoCaixaRealizacaoId: sessao.id }
+    : { diaOperacional: sessao.diaOperacional, fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm } };
+}
+
 export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId: string) {
   const sessao = await prisma.sessaoCaixaOperacao.findFirst({
     where: { id: sessaoId, cervejariaId, status: 'FECHADO' },
@@ -651,31 +667,8 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
       })
     : [];
   const nomeUsuario = (id: string | null) => usuarios.find((usuario) => usuario.id === id)?.nome ?? null;
-  if (sessao.tipoEncerramento === 'ADMINISTRATIVO') {
-    return {
-      caixa,
-      pontoNome: sessao.pontoVenda.nome,
-      abertoPorNome: nomeUsuario(sessao.abertoPorId) ?? '—',
-      fechadoPorNome: nomeUsuario(sessao.fechadoPorId),
-      dadosFinanceirosDisponiveis: false,
-      comandasAtendidas: null,
-      vendasTotal: null,
-      totalRecebido: null,
-      vendasAvulsas: null,
-      itensVendidos: null,
-      porProduto: [],
-      contasReceber: [],
-      fiadoVendido: null,
-      fiadoQuitadoNoTurno: null,
-      fiadoQuitadoDepois: null,
-      contasPendentes: [],
-      totalPendente: null,
-      topClientes: [],
-      ticketMedio: null,
-      duracaoMinutos: null,
-      receitaPorHora: null,
-    };
-  }
+  const administrativo = sessao.tipoEncerramento === 'ADMINISTRATIVO';
+  const escopo = escopoComandasDoTurno({ ...sessao, fechadoEm: sessao.fechadoEm });
   const vendasAvulsas = await prisma.comanda.count({
     where: {
       origem: 'CAIXA',
@@ -683,7 +676,7 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
       pontoVendaId: sessao.pontoVendaId,
       tipo: 'AVULSA',
       status: 'FECHADA',
-      fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm },
+      ...(administrativo ? escopo : { fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm } }),
     },
   });
 
@@ -698,9 +691,8 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
       origem: 'CAIXA',
       pontoVenda: { cervejariaId },
       pontoVendaId: sessao.pontoVendaId,
-      diaOperacional: sessao.diaOperacional,
       status: 'FECHADA',
-      fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm },
+      ...escopo,
     },
     include: {
       cliente: { select: { id: true, nome: true } },
@@ -834,6 +826,7 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
   return {
     caixa,
     dadosFinanceirosDisponiveis: true,
+    conferenciaFisicaPendente: administrativo,
     pontoNome: sessao.pontoVenda.nome,
     abertoPorNome: nomeUsuario(sessao.abertoPorId) ?? '—',
     fechadoPorNome: nomeUsuario(sessao.fechadoPorId),
