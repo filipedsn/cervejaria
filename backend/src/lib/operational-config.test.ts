@@ -170,11 +170,12 @@ test('persists WhatsApp ready-order settings independently per tenant', async ()
   }]);
 });
 
-test('checks only the current operational day when guarding the mode transition', async () => {
+test('guards the mode transition with any open cash session, including one opened before midnight', async () => {
   const db = database({ directSalesEnabled: true, plannedOperationsEnabled: false });
   await updateOperationalConfig(db as any, 'tenant-a', { operationMode: 'EVENTO' });
   assert.equal((db.cashQueries[0] as any).where.status, 'ABERTO');
-  assert.ok((db.cashQueries[0] as any).where.diaOperacional instanceof Date);
+  assert.equal((db.cashQueries[0] as any).where.cervejariaId, 'tenant-a');
+  assert.equal('diaOperacional' in (db.cashQueries[0] as any).where, false);
 });
 
 test('blocks EVENTO to CAIXA while an event is active', async () => {
