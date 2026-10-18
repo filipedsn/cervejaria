@@ -47,7 +47,7 @@ const abrirSchema = z
   .object({
     pontoVendaId: z.string().min(1),
     trailerId: z.string().min(1).optional(),
-    trocoInicial: z.number().min(0),
+    trocoInicial: z.number({ invalid_type_error: 'Informe o troco inicial', required_error: 'Informe o troco inicial' }).min(0, 'O troco inicial não pode ser negativo'),
     cardapioId: z.string().optional(),
     produtoIds: z.array(z.string().min(1)).optional(),
     ocorrenciaId: z.string().min(1).optional(),
@@ -63,7 +63,7 @@ const abrirSchema = z
 const movimentoSchema = z.object({
   pontoVendaId: z.string().min(1),
   tipo: z.enum(['SANGRIA', 'SUPRIMENTO']),
-  valor: z.number().positive(),
+  valor: z.number({ invalid_type_error: 'Informe o valor', required_error: 'Informe o valor' }).positive('O valor da movimentação deve ser maior que zero'),
   observacao: z.string().trim().max(280).optional(),
 });
 
@@ -94,10 +94,10 @@ async function resolverTrailerSessao(sessao: { id: string; trailerId: string | n
 
 const fecharSchema = z.object({
   pontoVendaId: z.string().min(1),
-  contadoDinheiro: z.number().min(0),
-  contadoPix: z.number().min(0),
-  contadoCartaoDebito: z.number().min(0),
-  contadoCartaoCredito: z.number().min(0),
+  contadoDinheiro: z.number({ required_error: 'Informe o valor contado em dinheiro' }).min(0, 'O valor contado em dinheiro não pode ser negativo'),
+  contadoPix: z.number({ required_error: 'Informe o valor contado em Pix' }).min(0, 'O valor contado em Pix não pode ser negativo'),
+  contadoCartaoDebito: z.number({ required_error: 'Informe o valor contado em cartão de débito' }).min(0, 'O valor contado em cartão de débito não pode ser negativo'),
+  contadoCartaoCredito: z.number({ required_error: 'Informe o valor contado em cartão de crédito' }).min(0, 'O valor contado em cartão de crédito não pode ser negativo'),
   observacaoFechamento: z.string().trim().max(500).optional(),
 });
 
@@ -108,7 +108,7 @@ const encerramentoAdministrativoSchema = z.object({
 const corrigirMovimentoSchema = z.object({
   pontoVendaId: z.string().min(1),
   movimentoId: z.string().min(1),
-  valorCorrigido: z.number().positive(),
+  valorCorrigido: z.number({ required_error: 'Informe o valor corrigido' }).positive('O valor corrigido deve ser maior que zero'),
   motivo: z.string().trim().min(1, 'Informe o motivo da correção').max(500),
   autorizadorEmail: z.string().trim().email(),
   autorizadorSenha: z.string().min(1),
