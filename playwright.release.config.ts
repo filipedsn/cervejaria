@@ -19,10 +19,11 @@ export default defineConfig({
   reporter: [['list'], ['json', { outputFile: `artifacts/release-e2e/${releaseSha}/playwright-results.json` }]],
   outputDir: `artifacts/release-e2e/${releaseSha}/test-results`,
   use: { baseURL, serviceWorkers: 'block', trace: 'on', screenshot: 'on', video: 'on' },
+  // Tests tagged @api exercise only the HTTP contract, so they run once (desktop).
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
-    { name: 'mobile', use: { ...devices['Pixel 7'] } },
-    { name: 'tablet', use: { ...devices['Desktop Chrome'], viewport: { width: 1180, height: 820 } } },
-    { name: 'tv', use: { ...devices['Desktop Chrome'], viewport: { width: 1920, height: 1080 } } },
+    { name: 'mobile', grepInvert: /@api/, use: { ...devices['Pixel 7'] } },
+    { name: 'tablet', grepInvert: /@api/, use: { ...devices['Desktop Chrome'], viewport: { width: 1180, height: 820 } } },
+    { name: 'tv', grepInvert: /@api/, use: { ...devices['Desktop Chrome'], viewport: { width: 1920, height: 1080 } } },
   ],
 });

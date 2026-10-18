@@ -49,12 +49,12 @@ async function selectPort() {
 function cleanEnvironment() {
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
-    if (/^PROD/i.test(key) || /_DATABASE_URL$/i.test(key) || ['DATABASE_URL', 'DIRECT_URL', 'PDV_CANONICAL_CONFIG_QA', 'PDV_INDIVIDUAL_PERMISSIONS_ENABLED'].includes(key)) delete env[key];
+    if (/^PROD/i.test(key) || /_DATABASE_URL$/i.test(key) || ['DATABASE_URL', 'DIRECT_URL', 'PDV_CANONICAL_CONFIG_QA', 'PDV_CANONICAL_TENANTS', 'PDV_INDIVIDUAL_PERMISSIONS_ENABLED'].includes(key)) delete env[key];
   }
   Object.assign(env, {
     NODE_ENV: 'test', PDV_ISOLATED_QA: '1', PDV_QA_RUN_ID: runId, PDV_QA_CONTAINER: container,
     QA_DATABASE_URL: databaseUrl, DATABASE_URL: databaseUrl,
-    PDV_CANONICAL_TENANTS: 'cmr9yis3c0000hvu00q9fe7y1,cmsry9xrn0000hvlgopjxy0oo',
+    PDV_CANONICAL_ALL: '1',
     QA_MODE: '1', QA_RATE_LIMIT_LOGIN_MAX: '500', RELEASE_SHA: releaseSha, RELEASE_QA_CONTEXT: contextFile,
     LOG_LEVEL: 'silent',
     FRONTEND_DIST: frontendDist, JWT_SECRET: randomBytes(48).toString('base64url'),
