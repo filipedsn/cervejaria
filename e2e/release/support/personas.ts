@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import type { Browser, BrowserContext } from '@playwright/test';
 
 export type PersonaKey = 'owner' | 'ownerB' | 'cashier' | 'kitchen' | 'admin';
 const context = JSON.parse(readFileSync(process.env.RELEASE_QA_CONTEXT!, 'utf8')) as {
@@ -14,4 +15,8 @@ export function personaCredentials(key: PersonaKey) {
 
 export function personaStorageState(key: PersonaKey) {
   return path.join(stateRoot, `${key}.json`);
+}
+
+export async function personaContext(browser: Browser, baseURL: string, key: PersonaKey): Promise<BrowserContext> {
+  return browser.newContext({ baseURL, storageState: personaStorageState(key), serviceWorkers: 'block' });
 }
