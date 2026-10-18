@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { registerLegacyWriteGuard } from '../lib/legacy-write-guard.js';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { getAuthUser } from '../types/auth.js';
@@ -67,6 +68,7 @@ const descontoSchema = z.object({
 
 export async function comandasRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+  registerLegacyWriteGuard(app);
 
   app.get('/evento/:eventoId', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
     const user = getAuthUser(request);

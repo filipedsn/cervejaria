@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { registerLegacyWriteGuard } from '../lib/legacy-write-guard.js';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { getTenantUser } from '../types/auth.js';
@@ -34,6 +35,7 @@ class PedidoConfirmacaoError extends Error {
 
 export async function pedidosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+  registerLegacyWriteGuard(app);
 
   app.get('/eventos/:eventoId/pedidos', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
