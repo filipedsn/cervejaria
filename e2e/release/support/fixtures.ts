@@ -16,25 +16,33 @@ function redact(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(redact);
   if (!value || typeof value !== 'object') return value;
   return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) =>
-    [/password|senha|cookie|token|authorization/i.test(key) ? key : '', '[REDACTED]'].filter(Boolean).length
-      ? [key, '[REDACTED]'] : [key, redact(item)]));
+    [key, /password|senha|cookie|token|authorization/i.test(key) ? '[REDACTED]' : redact(item)]));
 }
 
 async function databaseSnapshot() {
   const prisma = new PrismaClient();
   try {
-    const counts: Record<string, Record<string, number>> = {};
+    const counts: Record<string, Record<string, unknown>> = {};
     for (const tenantId of tenantIds) {
       counts[tenantId] = {
         usuarios: await prisma.usuario.count({ where: { cervejariaId: tenantId } }),
+        userPermissions: await prisma.usuario.findMany({ where: { cervejariaId: tenantId }, select: { id: true, permissoesOperacao: true, podeDarDescontoOperacao: true }, orderBy: { id: 'asc' } }),
         produtos: await prisma.produto.count({ where: { cervejariaId: tenantId } }),
+        productState: await prisma.produto.findMany({ where: { cervejariaId: tenantId }, select: { id: true, nome: true, ativo: true, controlaEstoque: true, exigePreparo: true, precos: { select: { id: true, preco: true, volumeMl: true } } }, orderBy: { id: 'asc' } }),
         clientes: await prisma.cliente.count({ where: { cervejariaId: tenantId } }),
+        clientState: await prisma.cliente.findMany({ where: { cervejariaId: tenantId }, select: { id: true, nome: true, telefone: true, ativo: true }, orderBy: { id: 'asc' } }),
         comandas: await prisma.comanda.count({ where: { pedidos: { some: { cervejariaId: tenantId } } } }).catch(() => 0),
+        commandState: await prisma.comanda.findMany({ where: { pontoVenda: { cervejariaId: tenantId } }, select: { id: true, status: true, tipo: true, total: true, desconto: true, identificador: true, fechadaEm: true, itens: { select: { id: true, produtoId: true, quantidade: true, precoUnit: true, canceladoEm: true } }, pagamentos: { select: { id: true, valor: true, forma: true } } }, orderBy: { id: 'asc' } }),
         pontosVenda: await prisma.pontoVenda.count({ where: { cervejariaId: tenantId } }),
         sessoesCaixa: await prisma.sessaoCaixaOperacao.count({ where: { cervejariaId: tenantId } }),
+        cashSessionState: await prisma.sessaoCaixaOperacao.findMany({ where: { cervejariaId: tenantId }, select: { id: true, status: true, trocoInicial: true, fechadoEm: true, contadoDinheiro: true, contadoPix: true, contadoCartaoDebito: true, contadoCartaoCredito: true }, orderBy: { id: 'asc' } }),
         pedidosOperacao: await prisma.pedidoOperacao.count({ where: { cervejariaId: tenantId } }),
+        kitchenState: await prisma.pedidoOperacao.findMany({ where: { cervejariaId: tenantId }, select: { id: true, status: true, observacao: true, entregueEm: true, itensComanda: { select: { id: true, cancelamentoPendenteEm: true, canceladoEm: true } } }, orderBy: { id: 'asc' } }),
         inventoryBalances: await prisma.inventoryBalance.count({ where: { cervejariaId: tenantId } }),
+        inventoryState: await prisma.inventoryBalance.findMany({ where: { cervejariaId: tenantId }, select: { id: true, produtoId: true, pontoVendaId: true, quantidade: true, estoqueMinimo: true }, orderBy: { id: 'asc' } }),
         inventoryMovements: await prisma.inventoryMovement.count({ where: { cervejariaId: tenantId } }),
+        movementState: await prisma.inventoryMovement.findMany({ where: { cervejariaId: tenantId }, select: { id: true, produtoId: true, quantidade: true, tipo: true }, orderBy: { id: 'asc' } }),
+        eventStates: await prisma.evento.findMany({ where: { cervejariaId: tenantId }, select: { id: true, status: true }, orderBy: { id: 'asc' } }),
       };
     }
     const canonical = JSON.stringify(counts);
@@ -88,10 +96,12 @@ export const test = base.extend<{ evidence: Evidence }>({
     await Promise.all([mkdir(apiRoot, { recursive: true }), mkdir(dbRoot, { recursive: true })]);
     const apiPath = path.join(apiRoot, `${id}.json`);
     const previous = await readFile(apiPath, 'utf8').then((value) => JSON.parse(value)).catch(() => ({ runs: [] }));
+    if (!Array.isArray(previous.runs)) previous.runs = [];
     previous.runs.push({ project: testInfo.project.name, requests: api, consoleErrors, serverErrors });
     await writeFile(apiPath, JSON.stringify(redact(previous), null, 2));
     const dbPath = path.join(dbRoot, `${id}.json`);
     const priorDb = await readFile(dbPath, 'utf8').then((value) => JSON.parse(value)).catch(() => ({ runs: [] }));
+    if (!Array.isArray(priorDb.runs)) priorDb.runs = [];
     const unchanged = before.sha256 === after.sha256;
     priorDb.runs.push({ project: testInfo.project.name, before, after, unchanged });
     await writeFile(dbPath, JSON.stringify(priorDb, null, 2));

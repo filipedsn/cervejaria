@@ -56,6 +56,7 @@ function cleanEnvironment() {
     QA_DATABASE_URL: databaseUrl, DATABASE_URL: databaseUrl,
     PDV_CANONICAL_TENANTS: 'cmr9yis3c0000hvu00q9fe7y1,cmsry9xrn0000hvlgopjxy0oo',
     QA_MODE: '1', QA_RATE_LIMIT_LOGIN_MAX: '500', RELEASE_SHA: releaseSha, RELEASE_QA_CONTEXT: contextFile,
+    LOG_LEVEL: 'silent',
     FRONTEND_DIST: frontendDist, JWT_SECRET: randomBytes(48).toString('base64url'),
     UPLOADS_DIR: path.join(tempRoot, 'uploads'),
   });
