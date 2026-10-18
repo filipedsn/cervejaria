@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { getTenantUser } from '../types/auth.js';
-import { emitToEvento } from '../lib/realtime.js';
+import { emitToComanda, emitToEvento } from '../lib/realtime.js';
 import { toNumber } from '../lib/utils.js';
 import { cancelarComandaVazia } from '../lib/comanda-cancelar.js';
 import {
@@ -59,6 +59,7 @@ export async function pagamentosRoutes(app: FastifyInstance) {
       });
       if ('error' in cancelled) return reply.status(400).send({ error: cancelled.error });
       emitToEvento(app.io, cancelled.eventoId, { type: 'comanda:closed', data: cancelled.comanda });
+      emitToComanda(app.io, id, { type: 'comanda:closed', data: cancelled.comanda });
       return cancelled.comanda;
     }
 
@@ -113,6 +114,7 @@ export async function pagamentosRoutes(app: FastifyInstance) {
     }
 
     emitToEvento(app.io, eventoId, { type: 'comanda:closed', data: updated });
+    emitToComanda(app.io, id, { type: 'comanda:closed', data: updated });
     return updated;
   });
 
@@ -241,6 +243,7 @@ export async function pagamentosRoutes(app: FastifyInstance) {
 
     for (const comanda of [...fechadas, ...canceladas]) {
       emitToEvento(app.io, eventoId, { type: 'comanda:closed', data: comanda });
+      emitToComanda(app.io, comanda.id, { type: 'comanda:closed', data: comanda });
     }
 
     return {

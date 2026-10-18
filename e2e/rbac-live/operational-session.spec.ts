@@ -11,6 +11,18 @@ const staffCookie = process.env.RBAC_QA_STAFF_COOKIE!;
 const permissionApi = `/api/usuarios/${process.env.RBAC_QA_STAFF_ID}/permissoes-operacao`;
 const permission = 'command.read';
 const cashValuesPermission = 'cash.values.read';
+const reportEventId = process.env.RBAC_QA_REPORT_EVENT_ID!;
+const inventoryProductId = process.env.RBAC_QA_INVENTORY_PRODUCT_ID!;
+const inventoryProductName = process.env.RBAC_QA_INVENTORY_PRODUCT_NAME!;
+const kitchenOrderId = process.env.RBAC_QA_KITCHEN_ORDER_ID!;
+const kitchenCommandIdentifier = process.env.RBAC_QA_KITCHEN_COMMAND_IDENTIFIER!;
+const eventMenuOwnerCookie = process.env.RBAC_QA_EVENT_MENU_OWNER_COOKIE!;
+const eventMenuStaffCookie = process.env.RBAC_QA_EVENT_MENU_STAFF_COOKIE!;
+const eventMenuStaffId = process.env.RBAC_QA_EVENT_MENU_STAFF_ID!;
+const eventMenuEventId = process.env.RBAC_QA_EVENT_MENU_EVENT_ID!;
+const eventMenuEventName = process.env.RBAC_QA_EVENT_MENU_EVENT_NAME!;
+const eventMenuForeignProductId = process.env.RBAC_QA_EVENT_MENU_PRODUCT_FOREIGN_ID!;
+const eventMenuForeignProductName = process.env.RBAC_QA_EVENT_MENU_PRODUCT_FOREIGN_NAME!;
 
 async function primeAndLogout(page: Page, cookie: string) {
   await page.context().addCookies([{ name: 'token', value: cookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
@@ -224,6 +236,11 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
 
   // dashboard.read grants a separate read-only route and API. A staff identity
   // without command.read must not inherit command access from this grant.
+  const disabledDashboard = await staffContext.request.get('/api/cervejaria/dashboard');
+  expect([401, 403]).toContain(disabledDashboard.status());
+  await staff.goto('/dashboard');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/dashboard');
+  console.log('RBAC_LIVE_REGRESSION key=dashboard.read; disabled=route-and-api-denied; result=PASS');
   await setPermissions(ownerContext, ['dashboard.read']);
   await staff.goto('/dashboard');
   await expect.poll(() => new URL(staff.url()).pathname).toBe('/dashboard');
@@ -259,4 +276,1145 @@ test('real login, live grant and revoke, same-user sessions, tenant switch, and 
 
   await Promise.all([ownerContext.close(), staffContext.close(), staffTabContext.close()]);
   expect(baseURL).toBeTruthy();
+});
+
+test('global ADMIN session does not inherit a tenant operational permission set', async ({ browser }) => {
+  const context = await browser.newContext();
+  await context.addCookies([{ name: 'token', value: process.env.RBAC_QA_ADMIN_COOKIE!.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  const page = await context.newPage();
+  await page.goto('/operacao/caixa');
+  const identity = await context.request.get('/api/auth/me');
+  expect(identity.status()).toBe(200);
+  const payload = await identity.json();
+  expect(payload.usuario.papel).toBe('ADMIN');
+  expect(payload.usuario.permissoesOperacao ?? []).toEqual([]);
+
+  for (const route of ['/api/operacao/comandas', '/api/operacao/contexto']) {
+    const response = await context.request.get(route);
+    expect([401, 403, 404], `${route} must deny tenantless ADMIN access, received ${response.status()}`).toContain(response.status());
+  }
+  await page.goto('/operacao/comandas');
+  await expect.poll(() => new URL(page.url()).pathname).not.toBe('/operacao/comandas');
+  await context.close();
+});
+
+test('transverse permission refresh reaches two live sessions and survives a user and tenant switch', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  const ownerPage = await ownerContext.newPage();
+  await ownerPage.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const sessions = await Promise.all([390, 768].map(async (width) => {
+    const context = await browser.newContext({ viewport: { width, height: 844 } });
+    const page = await context.newPage();
+    await loginForm(page, staffEmail, staffPassword);
+    const identity = await context.request.get('/api/auth/me');
+    expect(identity.status()).toBe(200);
+    expect((await identity.json()).usuario.permissoesOperacao).toEqual([]);
+    expect([401, 403]).toContain((await context.request.get('/api/operacao/comandas')).status());
+    return { context, page };
+  }));
+
+  await setPermissions(ownerContext, [permission]);
+  for (const { context, page } of sessions) {
+    await expect.poll(async () => (await (await context.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual([permission]);
+    expect((await context.request.get('/api/operacao/comandas')).status()).toBe(200);
+    await page.goto('/operacao/comandas');
+    await expect.poll(() => new URL(page.url()).pathname).toBe('/operacao/comandas');
+    const width = await page.evaluate(() => document.documentElement.clientWidth);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  }
+
+  await setPermissions(ownerContext, []);
+  for (const { context, page } of sessions) {
+    await expect.poll(async () => (await (await context.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual([]);
+    expect([401, 403]).toContain((await context.request.get('/api/operacao/comandas')).status());
+    await page.reload();
+    await expect.poll(() => new URL(page.url()).pathname).toBe('/operacao/caixa');
+  }
+
+  const switched = sessions[0];
+  const beforeSwitch = await switched.context.request.get('/api/auth/me');
+  const beforeTenant = (await beforeSwitch.json()).cervejaria.id;
+  await logoutInBrowser(switched.page);
+  await loginForm(switched.page, foreignEmail, foreignPassword);
+  const foreignIdentity = await switched.context.request.get('/api/auth/me');
+  expect(foreignIdentity.status()).toBe(200);
+  const foreign = await foreignIdentity.json();
+  expect(foreign.usuario.papel).toBe('DONO');
+  expect(foreign.cervejaria.id).not.toBe(beforeTenant);
+  const users = await switched.context.request.get('/api/usuarios');
+  expect(users.status()).toBe(200);
+  expect((await users.json()).some((user: { id: string }) => user.id === process.env.RBAC_QA_STAFF_ID)).toBe(false);
+  await Promise.all([ownerContext.close(), ...sessions.map(({ context }) => context.close())]);
+});
+
+test('transverse legacy API routes enforce RBAC and leave each fixture unchanged', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  const ownerPage = await ownerContext.newPage();
+  await ownerPage.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+  const staffContext = await browser.newContext();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  const staffPage = await staffContext.newPage();
+  await staffPage.goto('/operacao/caixa');
+  expect((await staffContext.request.get('/api/auth/me')).status()).toBe(200);
+  const readCommand = async (id: string) => {
+    const response = await ownerContext.request.get(`/api/operacao/comandas/${id}`);
+    expect(response.status(), await response.text()).toBe(200);
+    return response.json();
+  };
+  const paymentCommandId = process.env.RBAC_QA_PAYMENT_COMMAND_ID!;
+  const closeCommandId = process.env.RBAC_QA_CLOSE_COMMAND_ID!;
+  const discountCommandId = process.env.RBAC_QA_DISCOUNT_COMMAND_ID!;
+  const itemCommandId = process.env.RBAC_QA_ITEM_CANCEL_COMMAND_ID!;
+  const cancelCommandId = process.env.RBAC_QA_COMMAND_CANCEL_COMMAND_ID!;
+  const debtCommandId = process.env.RBAC_QA_DEBT_COMMAND_ID!;
+  const refundCommandId = process.env.RBAC_QA_REFUND_COMMAND_ID!;
+  const snapshots = new Map<string, unknown>();
+  for (const [name, id] of Object.entries({ paymentCommandId, closeCommandId, discountCommandId, itemCommandId, cancelCommandId, debtCommandId, refundCommandId })) {
+    snapshots.set(name, await readCommand(id));
+  }
+
+  const deniedRoutes: Array<{ method: 'get' | 'post' | 'patch' | 'delete'; url: string; data?: unknown }> = [
+    { method: 'get', url: `/api/comandas/${paymentCommandId}` },
+    { method: 'post', url: `/api/comandas/${paymentCommandId}/itens`, data: { produtoId: process.env.RBAC_QA_INVENTORY_PRODUCT_ID, quantidade: 1 } },
+    { method: 'post', url: '/api/vendas-avulsas', data: { pontoVendaId: 'unauthorized-probe', itens: [], pagamentos: [] } },
+    { method: 'post', url: `/api/pagamentos/comandas/${closeCommandId}/fechar`, data: { pagamentos: [{ forma: 'PIX', valor: 10 }] } },
+    { method: 'patch', url: `/api/comandas/${discountCommandId}/desconto`, data: { desconto: 1 } },
+    { method: 'delete', url: `/api/comandas/${itemCommandId}/itens/${process.env.RBAC_QA_ITEM_CANCEL_ITEM_ID}` },
+    { method: 'post', url: `/api/comandas/${cancelCommandId}/cancelar`, data: {} },
+    { method: 'post', url: `/api/eventos/${reportEventId}/contas-pendentes/${process.env.RBAC_QA_DEBT_ID}/pagamentos`, data: { pagamentos: [{ forma: 'PIX', valor: 1 }] } },
+    { method: 'patch', url: `/api/operacao/cozinha/${process.env.RBAC_QA_REFUND_ORDER_ID}/itens/${process.env.RBAC_QA_REFUND_ITEM_ID}/confirmar-cancelamento`, data: {} },
+  ];
+  for (const route of deniedRoutes) {
+    const options = route.data === undefined ? undefined : { data: route.data };
+    const response = route.method === 'get' ? await staffContext.request.get(route.url)
+      : route.method === 'post' ? await staffContext.request.post(route.url, options)
+        : route.method === 'patch' ? await staffContext.request.patch(route.url, options)
+          : await staffContext.request.delete(route.url);
+    expect([401, 403]).toContain(response.status());
+  }
+
+  for (const [name, id] of Object.entries({ paymentCommandId, closeCommandId, discountCommandId, itemCommandId, cancelCommandId, debtCommandId, refundCommandId })) {
+    expect(await readCommand(id), `${name} changed after an unauthorized alternative route`).toEqual(snapshots.get(name));
+  }
+  const refundCommand = await readCommand(refundCommandId);
+  expect(refundCommand.pedidos.find((order: { id: string }) => order.id === process.env.RBAC_QA_REFUND_ORDER_ID).status).toBe('CANCELAMENTO_PENDENTE');
+  expect(refundCommand.pagamentos.filter((payment: { valor: number }) => payment.valor < 0)).toHaveLength(1);
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('agenda.manage blocks, grants and revokes real agenda writes in the live session', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/comandas');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const staffMe = await staffContext.request.get('/api/auth/me');
+  expect(staffMe.status()).toBe(200);
+  expect((await staffMe.json()).usuario.email).toBe(staffEmail);
+  const today = new Date().toISOString().slice(0, 10);
+  const horizon = new Date(Date.now() + 330 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const existingSchedules = await staffContext.request.get(`/api/operacao/agenda/ocorrencias?inicio=${today}&fim=${horizon}`);
+  expect(existingSchedules.status(), await existingSchedules.text()).toBe(200);
+  const occupiedDates = new Set((await existingSchedules.json()).ocorrencias.map((item: { data: string }) => item.data));
+  let scheduleDate = '';
+  for (let offset = 2; offset < 330; offset++) {
+    const candidate = new Date(Date.now() + offset * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    if (!occupiedDates.has(candidate)) { scheduleDate = candidate; break; }
+  }
+  expect(scheduleDate, 'disposable QA tenant must have an unoccupied date for the agenda write').toBeTruthy();
+  const range = `inicio=${scheduleDate}&fim=${scheduleDate}`;
+  const scheduleUrl = '/api/operacao/agenda/agendamentos';
+  const payload = {
+    requestId: crypto.randomUUID(), nome: `RBAC QA ${crypto.randomUUID()}`, data: scheduleDate,
+    horaInicio: '18:00', horaFim: '19:00', local: null, repetirSemanalmente: false,
+  };
+
+  const disabledList = await staffContext.request.get(`/api/operacao/agenda/ocorrencias?${range}`);
+  expect(disabledList.status(), await disabledList.text()).toBe(200);
+  const before = (await disabledList.json()).ocorrencias.length;
+  await staff.goto('/operacao/agenda');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/caixa');
+  const deniedWrite = await staffContext.request.post(scheduleUrl, { data: payload });
+  expect([401, 403]).toContain(deniedWrite.status());
+  const afterDenied = await staffContext.request.get(`/api/operacao/agenda/ocorrencias?${range}`);
+  expect((await afterDenied.json()).ocorrencias).toHaveLength(before);
+
+  await setPermissions(ownerContext, ['agenda.manage']);
+  await staff.reload();
+  await staff.goto('/operacao/agenda');
+  await expect(staff.getByRole('heading', { name: 'Agenda' })).toBeVisible();
+  await staff.getByRole('button', { name: '+ Novo agendamento' }).click();
+  await staff.getByLabel('Nome').fill(payload.nome);
+  await staff.getByLabel('Data', { exact: true }).fill(scheduleDate);
+  await staff.getByLabel('Horário de início').fill(payload.horaInicio);
+  await staff.getByLabel('Horário de término').fill(payload.horaFim);
+  await staff.getByRole('button', { name: 'Salvar' }).click();
+  await expect(staff.getByText(payload.nome, { exact: true })).toBeVisible();
+  const saved = await staffContext.request.get(`/api/operacao/agenda/ocorrencias?${range}`);
+  expect(saved.status(), await saved.text()).toBe(200);
+  const matching = (await saved.json()).ocorrencias.filter((item: { nome: string }) => item.nome === payload.nome);
+  expect(matching).toHaveLength(1);
+  const savedId = matching[0].id;
+
+  await setPermissions(ownerContext, []);
+  await staff.reload();
+  await staff.goto('/operacao/agenda');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/caixa');
+  const revokedWrite = await staffContext.request.post(scheduleUrl, { data: { ...payload, requestId: crypto.randomUUID(), nome: `${payload.nome} revoked` } });
+  expect([401, 403]).toContain(revokedWrite.status());
+  const afterRevoke = await staffContext.request.get(`/api/operacao/agenda/ocorrencias?${range}`);
+  const finalOccurrences = (await afterRevoke.json()).ocorrencias;
+  expect(finalOccurrences.filter((item: { id: string }) => item.id === savedId)).toHaveLength(1);
+  expect(finalOccurrences).toHaveLength(before + 1);
+  console.log('RBAC_LIVE_REGRESSION key=agenda.manage; disabled=route-and-api-denied-no-write; granted=real-ui-write-persisted; revoked=same-session-route-and-api-denied-no-write; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('command.operate denies, creates through the UI, then denies after same-session revoke', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, ['command.read']);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const staffMe = await staffContext.request.get('/api/auth/me');
+  expect(staffMe.status()).toBe(200);
+  expect((await staffMe.json()).usuario.permissoesOperacao).toEqual(['command.read']);
+  const operationalContext = await staffContext.request.get('/api/operacao/contexto');
+  expect(operationalContext.status()).toBe(200);
+  const pointOfSaleId = (await operationalContext.json()).pontosVenda[0]?.id;
+  expect(pointOfSaleId).toBeTruthy();
+
+  const beforeResponse = await ownerContext.request.get(`/api/operacao/comandas?pontoVendaId=${pointOfSaleId}`);
+  expect(beforeResponse.status()).toBe(200);
+  const beforeCount = (await beforeResponse.json()).length;
+  const firstPhone = `119${Math.floor(10000000 + Math.random() * 89999999)}`;
+  const firstName = `RBAC command ${crypto.randomUUID()}`;
+  const createPayload = { pontoVendaId: pointOfSaleId, tipo: 'APELIDO', identificador: firstName, clienteNome: firstName, clienteTelefone: firstPhone, itens: [] };
+
+  await staff.goto('/operacao/comandas/nova');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/caixa');
+  const deniedCreate = await staffContext.request.post('/api/operacao/comandas', { data: createPayload });
+  expect([401, 403]).toContain(deniedCreate.status());
+  const afterDenied = await ownerContext.request.get(`/api/operacao/comandas?pontoVendaId=${pointOfSaleId}`);
+  expect((await afterDenied.json()).length).toBe(beforeCount);
+
+  await setPermissions(ownerContext, ['command.operate', 'command.read']);
+  await staff.reload();
+  const grantedStaff = await staffContext.request.get('/api/auth/me');
+  expect((await grantedStaff.json()).usuario.permissoesOperacao).toEqual(['command.operate', 'command.read']);
+  await staff.goto('/operacao/comandas/nova');
+  await expect(staff.getByRole('heading', { name: 'Nova comanda' })).toBeVisible();
+  await staff.getByPlaceholder('(11) 9 9999-9999').fill(firstPhone);
+  await staff.getByPlaceholder('Digite o nome...').fill(firstName);
+  const createResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === '/api/operacao/comandas' && response.request().method() === 'POST');
+  await staff.getByRole('button', { name: 'Abrir comanda' }).click();
+  const createResponse = await createResponsePromise;
+  const created = await createResponse.json();
+  expect(createResponse.status(), JSON.stringify(created)).toBe(201);
+  const commandId = created.id as string;
+  await expect.poll(() => new URL(staff.url()).pathname).toBe(`/operacao/comandas/${commandId}`);
+  const persistedList = await ownerContext.request.get(`/api/operacao/comandas?pontoVendaId=${pointOfSaleId}`);
+  expect(persistedList.status(), await persistedList.text()).toBe(200);
+  const persistedCommands = (await persistedList.json()).filter((item: { identificador: string }) => item.identificador === firstName);
+  expect(persistedCommands).toHaveLength(1);
+  expect(persistedCommands[0]).toMatchObject({ id: commandId, identificador: firstName, status: 'ABERTA' });
+
+  await setPermissions(ownerContext, ['command.read']);
+  await staff.reload();
+  await staff.goto('/operacao/comandas/nova');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/caixa');
+  const secondPayload = { ...createPayload, identificador: `${firstName} denied`, clienteNome: `${firstName} denied`, clienteTelefone: `119${Math.floor(10000000 + Math.random() * 89999999)}` };
+  const revokedCreate = await staffContext.request.post('/api/operacao/comandas', { data: secondPayload });
+  expect([401, 403]).toContain(revokedCreate.status());
+  const afterRevoke = await ownerContext.request.get(`/api/operacao/comandas?pontoVendaId=${pointOfSaleId}`);
+  const finalCommands = await afterRevoke.json();
+  expect(finalCommands).toHaveLength(beforeCount + 1);
+  expect(finalCommands.filter((item: { id: string }) => item.id === commandId)).toHaveLength(1);
+  console.log('RBAC_LIVE_REGRESSION key=command.operate; disabled=route-and-api-denied-no-write; granted=real-ui-create-persisted; revoked=same-session-route-and-api-denied-no-write; dependency=command.read; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('reports.read blocks, opens the executive report, and revokes in the live session', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const reportPath = `/eventos/${reportEventId}/resumo`;
+  const reportApi = `/api/eventos/${reportEventId}/resumo-executivo`;
+
+  const deniedReport = await staffContext.request.get(reportApi);
+  expect([401, 403]).toContain(deniedReport.status());
+  await staff.goto(reportPath);
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe(reportPath);
+
+  await setPermissions(ownerContext, ['reports.read']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['reports.read']);
+  await staff.goto(reportPath);
+  await expect(staff.getByText('Resumo executivo')).toBeVisible();
+  const allowedReport = await staffContext.request.get(reportApi);
+  expect(allowedReport.status(), await allowedReport.text()).toBe(200);
+  const report = await allowedReport.json();
+  expect(report.evento.id).toBe(reportEventId);
+  const csv = await staffContext.request.get(`/api/relatorios/evento/${reportEventId}/csv`);
+  expect(csv.status(), await csv.text()).toBe(200);
+  expect(csv.headers()['content-type']).toContain('text/csv');
+
+  await setPermissions(ownerContext, []);
+  await staff.reload();
+  await staff.goto(reportPath);
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe(reportPath);
+  expect([401, 403]).toContain((await staffContext.request.get(reportApi)).status());
+  expect([401, 403]).toContain((await staffContext.request.get(`/api/relatorios/evento/${reportEventId}/csv`)).status());
+  console.log('RBAC_LIVE_REGRESSION key=reports.read; disabled=route-and-api-denied; enabled=executive-report-and-csv-readable; revoked=same-session-route-report-and-csv-denied; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('clients.manage blocks, creates a client through the UI, then denies after same-session revoke', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const key = `RBAC clients ${crypto.randomUUID()}`;
+  const phone = `119${Math.floor(10000000 + Math.random() * 89999999)}`;
+  const payload = { nome: key, telefone: phone };
+  const query = encodeURIComponent(key);
+  const listUrl = `/api/clientes?q=${query}`;
+
+  await staff.goto('/clientes/novo');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/clientes/novo');
+  await expect(staff.getByRole('heading', { name: 'Novo cliente' })).toHaveCount(0);
+  const deniedCreate = await staffContext.request.post('/api/clientes', { data: payload });
+  expect([401, 403]).toContain(deniedCreate.status());
+  const afterDenied = await ownerContext.request.get(listUrl);
+  expect(afterDenied.status()).toBe(200);
+  expect((await afterDenied.json()).items).toHaveLength(0);
+
+  await setPermissions(ownerContext, ['clients.manage']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['clients.manage']);
+  await staff.goto('/clientes/novo');
+  await expect(staff.getByRole('heading', { name: 'Novo cliente' })).toBeVisible();
+  await staff.locator('input').nth(0).fill(key);
+  await staff.getByPlaceholder('(11) 9 9999-9999').fill(phone);
+  const createResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === '/api/clientes' && response.request().method() === 'POST');
+  await staff.getByRole('button', { name: 'Cadastrar cliente' }).click();
+  const createResponse = await createResponsePromise;
+  const created = await createResponse.json();
+  expect(createResponse.status(), JSON.stringify(created)).toBe(201);
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/clientes');
+  const persisted = await ownerContext.request.get(listUrl);
+  expect(persisted.status(), await persisted.text()).toBe(200);
+  const matches = (await persisted.json()).items.filter((item: { nome: string; telefone: string }) => item.nome === key);
+  expect(matches).toHaveLength(1);
+  expect(created.id).toBe(matches[0].id);
+  expect(matches[0].telefone.replace(/\D/g, '')).toBe(phone);
+
+  await setPermissions(ownerContext, []);
+  await staff.reload();
+  await staff.goto('/clientes/novo');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/clientes/novo');
+  await expect(staff.getByRole('heading', { name: 'Novo cliente' })).toHaveCount(0);
+  const revokedCreate = await staffContext.request.post('/api/clientes', { data: { ...payload, nome: `${key} revoked`, telefone: `119${Math.floor(10000000 + Math.random() * 89999999)}` } });
+  expect([401, 403]).toContain(revokedCreate.status());
+  const afterRevoke = await ownerContext.request.get(listUrl);
+  const finalMatches = (await afterRevoke.json()).items.filter((item: { nome: string }) => item.nome === key);
+  expect(finalMatches).toHaveLength(1);
+  console.log('RBAC_LIVE_REGRESSION key=clients.manage; disabled=route-and-api-denied-no-write; enabled=real-ui-create-persisted; revoked=same-session-route-and-api-denied-no-write; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('inventory.read blocks, exposes stock read-only, and revokes in the live session', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const operationalContext = await staffContext.request.get('/api/operacao/contexto');
+  expect(operationalContext.status()).toBe(200);
+  const pointOfSaleId = (await operationalContext.json()).pontosVenda[0]?.id;
+  expect(pointOfSaleId).toBeTruthy();
+  const inventoryUrl = `/api/operacao/estoque?pontoVendaId=${pointOfSaleId}`;
+  const entryUrl = '/api/operacao/estoque/entrada';
+  const before = await ownerContext.request.get(inventoryUrl);
+  expect(before.status(), await before.text()).toBe(200);
+  const beforeBalances = await before.json();
+  expect(beforeBalances.some((item: { produtoId: string }) => item.produtoId === inventoryProductId)).toBe(true);
+  const deniedEntry = await staffContext.request.post(entryUrl, { data: { pontoVendaId: pointOfSaleId, produtoId: inventoryProductId, quantidade: 1, observacao: 'disabled read-only QA probe' } });
+  expect([401, 403]).toContain(deniedEntry.status());
+  await staff.goto('/operacao/estoque');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/operacao/estoque');
+  await expect(staff.getByRole('heading', { name: 'Estoque' })).toHaveCount(0);
+  const afterDenied = await ownerContext.request.get(inventoryUrl);
+  expect(await afterDenied.json()).toEqual(beforeBalances);
+
+  await setPermissions(ownerContext, ['inventory.read']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['inventory.read']);
+  const allowedRead = await staffContext.request.get(inventoryUrl);
+  expect(allowedRead.status(), await allowedRead.text()).toBe(200);
+  const readableBalances = await allowedRead.json();
+  expect(readableBalances.some((item: { produtoId: string }) => item.produtoId === inventoryProductId)).toBe(true);
+  const readOnlyEntry = await staffContext.request.post(entryUrl, { data: { pontoVendaId: pointOfSaleId, produtoId: inventoryProductId, quantidade: 1, observacao: 'read-only QA probe' } });
+  expect([401, 403]).toContain(readOnlyEntry.status());
+  await staff.goto('/operacao/estoque');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/estoque');
+  await expect(staff.getByText(inventoryProductName, { exact: true })).toBeVisible();
+  await expect(staff.getByRole('button', { name: 'Repor' })).toHaveCount(0);
+
+  await setPermissions(ownerContext, []);
+  await staff.reload();
+  await staff.goto('/operacao/estoque');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/operacao/estoque');
+  expect([401, 403]).toContain((await staffContext.request.get(inventoryUrl)).status());
+  const revokedEntry = await staffContext.request.post(entryUrl, { data: { pontoVendaId: pointOfSaleId, produtoId: inventoryProductId, quantidade: 1, observacao: 'revoked read QA probe' } });
+  expect([401, 403]).toContain(revokedEntry.status());
+  const afterRevoke = await ownerContext.request.get(inventoryUrl);
+  expect(await afterRevoke.json()).toEqual(beforeBalances);
+  console.log('RBAC_LIVE_REGRESSION key=inventory.read; disabled=route-and-api-denied-no-write; enabled=real-ui-stock-read-only; inventory.adjust=absent-and-entry-denied; revoked=same-session-route-and-api-denied-no-write; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('inventory.adjust denies, changes stock through the UI, and denies after same-session revoke', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, ['inventory.read']);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const operationalContext = await staffContext.request.get('/api/operacao/contexto');
+  expect(operationalContext.status()).toBe(200);
+  const pointOfSaleId = (await operationalContext.json()).pontosVenda[0]?.id;
+  expect(pointOfSaleId).toBeTruthy();
+  const inventoryUrl = `/api/operacao/estoque?pontoVendaId=${pointOfSaleId}`;
+  const entryUrl = '/api/operacao/estoque/entrada';
+  const beforeResponse = await ownerContext.request.get(inventoryUrl);
+  expect(beforeResponse.status(), await beforeResponse.text()).toBe(200);
+  const before = await beforeResponse.json();
+  const beforeProduct = before.find((item: { produtoId: string }) => item.produtoId === inventoryProductId);
+  expect(beforeProduct).toBeTruthy();
+  const deniedEntry = await staffContext.request.post(entryUrl, { data: { pontoVendaId: pointOfSaleId, produtoId: inventoryProductId, quantidade: 1, observacao: 'adjust disabled QA probe' } });
+  expect([401, 403]).toContain(deniedEntry.status());
+  await staff.goto('/operacao/estoque');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/estoque');
+  await expect(staff.getByText(inventoryProductName, { exact: true })).toBeVisible();
+  await expect(staff.getByRole('button', { name: 'Repor' })).toHaveCount(0);
+  expect(await (await ownerContext.request.get(inventoryUrl)).json()).toEqual(before);
+
+  await setPermissions(ownerContext, ['inventory.read', 'inventory.adjust']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['inventory.read', 'inventory.adjust']);
+  await staff.goto('/operacao/estoque');
+  const stockCard = staff.locator('main .card-touch').filter({ has: staff.getByText(inventoryProductName, { exact: true }) }).first();
+  await expect(stockCard.getByRole('button', { name: 'Repor' })).toBeVisible();
+  await stockCard.getByRole('button', { name: 'Repor' }).click();
+  const replenishDialog = staff.getByRole('dialog');
+  await expect(replenishDialog).toBeVisible();
+  await replenishDialog.locator('input').nth(0).fill('1');
+  await replenishDialog.locator('input').nth(1).fill('authorized live RBAC adjustment');
+  const entryResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === entryUrl && response.request().method() === 'POST');
+  await replenishDialog.getByRole('button', { name: 'Confirmar reposição' }).click();
+  const entryResponse = await entryResponsePromise;
+  expect(entryResponse.status(), await entryResponse.text()).toBe(201);
+  const entryBalances = await entryResponse.json();
+  const entryProduct = entryBalances.find((item: { produtoId: string }) => item.produtoId === inventoryProductId);
+  expect(Number(entryProduct.quantidade)).toBe(Number(beforeProduct.quantidade) + 1);
+  const afterGrant = await ownerContext.request.get(inventoryUrl);
+  expect(afterGrant.status()).toBe(200);
+  const grantedBalances = await afterGrant.json();
+  const grantedProduct = grantedBalances.find((item: { produtoId: string }) => item.produtoId === inventoryProductId);
+  expect(Number(grantedProduct.quantidade)).toBe(Number(beforeProduct.quantidade) + 1);
+
+  await setPermissions(ownerContext, ['inventory.read']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['inventory.read']);
+  await staff.goto('/operacao/estoque');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/estoque');
+  await expect(staff.getByText(inventoryProductName, { exact: true })).toBeVisible();
+  await expect(staff.getByRole('button', { name: 'Repor' })).toHaveCount(0);
+  const revokedEntry = await staffContext.request.post(entryUrl, { data: { pontoVendaId: pointOfSaleId, produtoId: inventoryProductId, quantidade: 1, observacao: 'revoked adjust QA probe' } });
+  expect([401, 403]).toContain(revokedEntry.status());
+  expect(await (await ownerContext.request.get(inventoryUrl)).json()).toEqual(grantedBalances);
+  console.log('RBAC_LIVE_REGRESSION key=inventory.adjust; dependency=inventory.read retained; disabled=button-hidden-and-api-denied-no-write; enabled=real-ui-entry-persisted; revoked=button-hidden-and-api-denied-with-read-retained; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('kitchen.read blocks, shows the real queue read-only, and revokes in the live session', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const queueUrl = '/api/operacao/cozinha';
+  const statusUrl = `/api/operacao/cozinha/${kitchenOrderId}/status`;
+  const deniedQueue = await staffContext.request.get(queueUrl);
+  expect([401, 403]).toContain(deniedQueue.status());
+  await staff.goto('/operacao/cozinha');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/operacao/cozinha');
+  const deniedStatus = await staffContext.request.patch(statusUrl, { data: { status: 'EM_PREPARO' } });
+  expect([401, 403]).toContain(deniedStatus.status());
+
+  await setPermissions(ownerContext, ['kitchen.read']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['kitchen.read']);
+  const allowedQueue = await staffContext.request.get(queueUrl);
+  expect(allowedQueue.status(), await allowedQueue.text()).toBe(200);
+  const queue = await allowedQueue.json();
+  expect(queue.some((order: { id: string }) => order.id === kitchenOrderId)).toBe(true);
+  await staff.goto('/operacao/cozinha');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/cozinha');
+  const visibleKitchenOrder = staff.locator('article:visible').filter({ hasText: kitchenCommandIdentifier }).first();
+  await expect(visibleKitchenOrder).toBeVisible();
+  await expect(staff.getByRole('button', { name: 'Iniciar' })).toHaveCount(0);
+  const readOnlyStatus = await staffContext.request.patch(statusUrl, { data: { status: 'EM_PREPARO' } });
+  expect([401, 403]).toContain(readOnlyStatus.status());
+
+  await setPermissions(ownerContext, []);
+  await staff.reload();
+  await staff.goto('/operacao/cozinha');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/operacao/cozinha');
+  expect([401, 403]).toContain((await staffContext.request.get(queueUrl)).status());
+  const revokedStatus = await staffContext.request.patch(statusUrl, { data: { status: 'EM_PREPARO' } });
+  expect([401, 403]).toContain(revokedStatus.status());
+  console.log('RBAC_LIVE_REGRESSION key=kitchen.read; disabled=route-and-queue-denied; enabled=real-queue-visible; kitchen.operate=absent-button-and-status-denied; revoked=same-session-route-queue-and-status-denied; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('kitchen.operate denies, advances the queue through the UI, and denies after same-session revoke', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, ['kitchen.read']);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const queueUrl = '/api/operacao/cozinha';
+  const statusUrl = `/api/operacao/cozinha/${kitchenOrderId}/status`;
+  const deniedStatus = await staffContext.request.patch(statusUrl, { data: { status: 'EM_PREPARO' } });
+  expect([401, 403]).toContain(deniedStatus.status());
+  await staff.goto('/operacao/cozinha');
+  const visibleKitchenOrder = staff.locator('article:visible').filter({ hasText: kitchenCommandIdentifier }).first();
+  await expect(visibleKitchenOrder).toBeVisible();
+  await expect(visibleKitchenOrder.getByRole('button', { name: 'Iniciar' })).toHaveCount(0);
+
+  await setPermissions(ownerContext, ['kitchen.read', 'kitchen.operate']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['kitchen.read', 'kitchen.operate']);
+  await staff.goto('/operacao/cozinha');
+  const allowedCard = staff.locator('article:visible').filter({ hasText: kitchenCommandIdentifier }).first();
+  await expect(allowedCard.getByRole('button', { name: 'Iniciar' })).toBeVisible();
+  const advanceResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === statusUrl && response.request().method() === 'PATCH');
+  await allowedCard.getByRole('button', { name: 'Iniciar' }).click();
+  const advanceResponse = await advanceResponsePromise;
+  expect(advanceResponse.status(), await advanceResponse.text()).toBe(200);
+  const allowedQueue = await staffContext.request.get(queueUrl);
+  const advanced = (await allowedQueue.json()).find((order: { id: string }) => order.id === kitchenOrderId);
+  expect(advanced.status).toBe('EM_PREPARO');
+  await expect(allowedCard.getByRole('button', { name: 'Pronto' })).toBeVisible();
+
+  await setPermissions(ownerContext, ['kitchen.read']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['kitchen.read']);
+  await staff.goto('/operacao/cozinha');
+  const revokedCard = staff.locator('article:visible').filter({ hasText: kitchenCommandIdentifier }).first();
+  await expect(revokedCard).toBeVisible();
+  await expect(revokedCard.getByRole('button', { name: 'Pronto' })).toHaveCount(0);
+  const revokedAdvance = await staffContext.request.patch(statusUrl, { data: { status: 'PRONTO', expectedStatus: 'EM_PREPARO' } });
+  expect([401, 403]).toContain(revokedAdvance.status());
+  const finalQueue = await staffContext.request.get(queueUrl);
+  expect((await finalQueue.json()).find((order: { id: string }) => order.id === kitchenOrderId).status).toBe('EM_PREPARO');
+  console.log('RBAC_LIVE_REGRESSION key=kitchen.operate; dependency=kitchen.read retained; disabled=button-and-status-api-denied; enabled=real-ui-advance-persisted; revoked=same-session-button-and-status-api-denied-with-read-retained; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('cash.movement.write denies, records exact cash movements through the UI, and denies after revoke', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const operationalContext = await staffContext.request.get('/api/operacao/contexto');
+  expect(operationalContext.status()).toBe(200);
+  const pointOfSaleId = (await operationalContext.json()).pontosVenda[0]?.id;
+  expect(pointOfSaleId).toBeTruthy();
+  const cashUrl = `/api/operacao/caixa?pontoVendaId=${pointOfSaleId}`;
+  const beforeResponse = await ownerContext.request.get(cashUrl);
+  expect(beforeResponse.status(), await beforeResponse.text()).toBe(200);
+  const before = await beforeResponse.json();
+  expect(before.sessao?.status).toBe('ABERTO');
+  const movementsBefore = before.sessao.movimentos.length;
+  const movementUrl = '/api/operacao/caixa/movimentos';
+  const probe = { pontoVendaId: pointOfSaleId, tipo: 'SUPRIMENTO', valor: 12.34, observacao: 'disabled movement QA' };
+
+  await expect(staff.getByRole('button', { name: 'Suprimento' })).toHaveCount(0);
+  await expect(staff.getByRole('button', { name: 'Sangria' })).toHaveCount(0);
+  const deniedMovement = await staffContext.request.post(movementUrl, { data: probe });
+  expect([401, 403]).toContain(deniedMovement.status());
+  expect(await (await ownerContext.request.get(cashUrl)).json()).toEqual(before);
+
+  await setPermissions(ownerContext, ['cash.movement.write']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['cash.movement.write']);
+  for (const [label, value, observation] of [['Suprimento', '12,34', 'authorized supply QA'], ['Sangria', '3,21', 'authorized withdrawal QA']]) {
+    await staff.getByRole('button', { name: label, exact: true }).click();
+    const dialog = staff.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.locator('input').nth(0).fill(value);
+    await dialog.locator('input').nth(1).fill(observation);
+    const responsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === movementUrl && response.request().method() === 'POST');
+    await dialog.getByRole('button', { name: 'Confirmar' }).click();
+    const response = await responsePromise;
+    expect(response.status(), await response.text()).toBe(201);
+    const safeResponse = await response.json();
+    expect(safeResponse.valoresRestritos).toBe(true);
+    expect(JSON.stringify(safeResponse)).not.toContain(value.replace(',', '.'));
+  }
+  const afterGrantResponse = await ownerContext.request.get(cashUrl);
+  const afterGrant = await afterGrantResponse.json();
+  expect(afterGrant.sessao.movimentos).toHaveLength(movementsBefore + 2);
+  expect(afterGrant.sessao.movimentos.filter((item: { observacao: string }) => ['authorized supply QA', 'authorized withdrawal QA'].includes(item.observacao))).toMatchObject([
+    expect.objectContaining({ observacao: 'authorized supply QA' }),
+    expect.objectContaining({ observacao: 'authorized withdrawal QA' }),
+  ]);
+  expect(afterGrant.sessao.gaveta.suprimentos).toBeCloseTo(Number(before.sessao.gaveta.suprimentos) + 12.34, 2);
+  expect(afterGrant.sessao.gaveta.sangrias).toBeCloseTo(Number(before.sessao.gaveta.sangrias) + 3.21, 2);
+
+  await setPermissions(ownerContext, []);
+  await staff.reload();
+  await expect(staff.getByRole('button', { name: 'Suprimento' })).toHaveCount(0);
+  await expect(staff.getByRole('button', { name: 'Sangria' })).toHaveCount(0);
+  const revokedMovement = await staffContext.request.post(movementUrl, { data: { ...probe, observacao: 'revoked movement QA' } });
+  expect([401, 403]).toContain(revokedMovement.status());
+  expect(await (await ownerContext.request.get(cashUrl)).json()).toEqual(afterGrant);
+  console.log('RBAC_LIVE_REGRESSION key=cash.movement.write; disabled=buttons-hidden-and-api-denied-no-write; enabled=real-ui-supply-and-withdrawal-redacted-response-and-exact-persisted-effects; revoked=same-session-buttons-hidden-and-api-denied-no-write; cash.values.read=absent; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('catalog.manage blocks, creates an operational product through the UI, and denies after revoke', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, []);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const operationalContext = await staffContext.request.get('/api/operacao/contexto');
+  expect(operationalContext.status()).toBe(200);
+  const pointOfSaleId = (await operationalContext.json()).pontosVenda[0]?.id;
+  expect(pointOfSaleId).toBeTruthy();
+  const key = `RBAC catalog ${crypto.randomUUID()}`;
+  const productApi = '/api/operacao/produtos';
+  const payload = { nome: key, categoria: 'Bebidas', tipo: 'BEBIDA', precoUnit: 7.25, exigePreparo: false, controlaEstoque: false };
+  const before = await ownerContext.request.get(`${productApi}?incluirInativos=true`);
+  expect(before.status(), await before.text()).toBe(200);
+  const beforeProducts = await before.json();
+
+  await staff.goto('/operacao/catalogo');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/operacao/catalogo');
+  const deniedCreate = await staffContext.request.post(productApi, { data: payload });
+  expect([401, 403]).toContain(deniedCreate.status());
+  expect(await (await ownerContext.request.get(`${productApi}?incluirInativos=true`)).json()).toEqual(beforeProducts);
+
+  await setPermissions(ownerContext, ['catalog.manage']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['catalog.manage']);
+  await staff.goto('/operacao/catalogo');
+  await expect(staff.getByRole('heading', { name: 'Cardápio' })).toBeVisible();
+  await staff.getByRole('button', { name: '+ Produto' }).click();
+  await expect(staff.getByRole('dialog')).toBeVisible();
+  await staff.locator('#produto-pdv-nome').fill(key);
+  await staff.locator('#produto-pdv-preco').fill('7,25');
+  const createResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === productApi && response.request().method() === 'POST');
+  await staff.getByRole('button', { name: 'Salvar' }).click();
+  const createResponse = await createResponsePromise;
+  expect(createResponse.status(), await createResponse.text()).toBe(201);
+  const created = await createResponse.json();
+  const persistedResponse = await ownerContext.request.get(`${productApi}?incluirInativos=true`);
+  const persisted = (await persistedResponse.json()).filter((product: { id: string; nome: string; precoUnit: string }) => product.id === created.id && product.nome === key);
+  expect(persisted).toHaveLength(1);
+  expect(Number(persisted[0].precoUnit)).toBe(7.25);
+  expect(persisted[0].ativo).toBe(true);
+
+  await setPermissions(ownerContext, []);
+  await staff.reload();
+  await staff.goto('/operacao/catalogo');
+  await expect.poll(() => new URL(staff.url()).pathname).not.toBe('/operacao/catalogo');
+  const revokedCreate = await staffContext.request.post(productApi, { data: { ...payload, nome: `${key} revoked` } });
+  expect([401, 403]).toContain(revokedCreate.status());
+  const finalProducts = await (await ownerContext.request.get(`${productApi}?incluirInativos=true`)).json();
+  expect(finalProducts).toHaveLength(beforeProducts.length + 1);
+  expect(finalProducts.filter((product: { id: string }) => product.id === created.id)).toHaveLength(1);
+  console.log('RBAC_LIVE_REGRESSION key=catalog.manage; disabled=route-and-create-api-denied-no-write; enabled=real-ui-product-create-persisted; revoked=same-session-route-and-create-api-denied-no-write; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('catalog.shift.manage permits only the live shift price and preserves the global template price', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: ownerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/operacao/caixa');
+  expect((await ownerContext.request.get('/api/auth/me')).status()).toBe(200);
+  await setPermissions(ownerContext, ['cash.values.read']);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: staffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/operacao/caixa');
+  const operationalContext = await staffContext.request.get('/api/operacao/contexto');
+  expect(operationalContext.status()).toBe(200);
+  const pointOfSaleId = (await operationalContext.json()).pontosVenda[0]?.id;
+  expect(pointOfSaleId).toBeTruthy();
+  const cardApi = `/api/operacao/caixa/cardapio?pontoVendaId=${pointOfSaleId}`;
+  const priceApi = `/api/operacao/caixa/cardapio/preco?pontoVendaId=${pointOfSaleId}`;
+  const productCatalogApi = '/api/operacao/produtos?incluirInativos=true';
+  const catalogBeforeResponse = await ownerContext.request.get(productCatalogApi);
+  expect(catalogBeforeResponse.status(), await catalogBeforeResponse.text()).toBe(200);
+  const catalogBefore = await catalogBeforeResponse.json();
+  const catalogProductBefore = catalogBefore.find((product: { id: string }) => product.id === inventoryProductId);
+  expect(catalogProductBefore).toBeTruthy();
+  const templateBefore = Number(catalogProductBefore.precoUnit);
+  const cardBeforeResponse = await ownerContext.request.get(cardApi);
+  expect(cardBeforeResponse.status(), await cardBeforeResponse.text()).toBe(200);
+  const cardBefore = await cardBeforeResponse.json();
+  const targetBefore = cardBefore.produtos.find((product: { id: string }) => product.id === inventoryProductId);
+  expect(targetBefore).toBeTruthy();
+  const turnBefore = Number(targetBefore.precoEfetivo ?? targetBefore.precoUnit);
+  expect(turnBefore).toBeGreaterThan(0);
+  const deniedPayload = { produtoId: inventoryProductId, volumeMl: 0, precoUnit: turnBefore + 2, escopo: 'TURNO' };
+
+  expect([401, 403]).toContain((await staffContext.request.patch(priceApi, { data: deniedPayload })).status());
+  await expect(staff.getByRole('button', { name: 'Editar cardápio do turno' })).toHaveCount(0);
+  const unchangedDenied = await (await ownerContext.request.get(cardApi)).json();
+  expect(unchangedDenied).toEqual(cardBefore);
+
+  await setPermissions(ownerContext, ['cash.values.read', 'catalog.shift.manage']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['cash.values.read', 'catalog.shift.manage']);
+  const targetRow = staff.getByText(inventoryProductName, { exact: true }).locator('..').locator('..');
+  const priceInput = targetRow.locator('input').first();
+  await expect(priceInput).toBeVisible();
+  await priceInput.fill((turnBefore + 2).toFixed(2).replace('.', ','));
+  await priceInput.blur();
+  const confirmModal = staff.getByRole('dialog').filter({ hasText: inventoryProductName });
+  await expect(confirmModal).toBeVisible();
+  await expect(confirmModal.getByRole('button', { name: 'Só neste turno' })).toBeVisible();
+  await expect(confirmModal.getByRole('button', { name: /Salvar no cardápio/ })).toHaveCount(0);
+  const updatePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === '/api/operacao/caixa/cardapio/preco' && response.request().method() === 'PATCH');
+  await confirmModal.getByRole('button', { name: 'Só neste turno' }).click();
+  const update = await updatePromise;
+  expect(update.status(), await update.text()).toBe(200);
+  const afterGrant = await (await ownerContext.request.get(cardApi)).json();
+  const targetAfter = afterGrant.produtos.find((product: { id: string }) => product.id === inventoryProductId);
+  expect(Number(targetAfter.precoEfetivo)).toBe(turnBefore + 2);
+  const catalogAfter = await (await ownerContext.request.get(productCatalogApi)).json();
+  expect(Number(catalogAfter.find((product: { id: string }) => product.id === inventoryProductId).precoUnit)).toBe(templateBefore);
+
+  await setPermissions(ownerContext, ['cash.values.read']);
+  await staff.reload();
+  const readOnlyTarget = staff.getByText(inventoryProductName, { exact: true }).locator('..').locator('..');
+  await expect(readOnlyTarget.locator('input')).toHaveCount(0);
+  expect([401, 403]).toContain((await staffContext.request.patch(priceApi, { data: { ...deniedPayload, precoUnit: turnBefore + 3 } })).status());
+  const afterRevoke = await (await ownerContext.request.get(cardApi)).json();
+  const targetFinal = afterRevoke.produtos.find((product: { id: string }) => product.id === inventoryProductId);
+  expect(Number(targetFinal.precoEfetivo)).toBe(turnBefore + 2);
+  const catalogFinal = await (await ownerContext.request.get(productCatalogApi)).json();
+  expect(Number(catalogFinal.find((product: { id: string }) => product.id === inventoryProductId).precoUnit)).toBe(templateBefore);
+  console.log('RBAC_LIVE_REGRESSION key=catalog.shift.manage; cash.values.read=retained-as-screen-read-dependency; disabled=price-write-denied-no-mutation; enabled=UI-turn-price-only-change; catalog.manage=absent-template-option-hidden-and-global-price-unchanged; revoked=same-session-price-edit-hidden-and-api-denied; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('event.menu.manage controls the event menu editor and persists changes only while granted', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: eventMenuOwnerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/eventos');
+  const ownerMe = await ownerContext.request.get('/api/auth/me');
+  expect(ownerMe.status()).toBe(200);
+  const ownerTenantId = (await ownerMe.json()).cervejaria.id;
+  const menuUrl = `/api/eventos/${eventMenuEventId}/cardapio`;
+  const beforeResponse = await ownerContext.request.get(menuUrl);
+  expect(beforeResponse.status(), await beforeResponse.text()).toBe(200);
+  const before = await beforeResponse.json();
+  expect(before.produtoIds).toEqual([]);
+  const adminUrl = `/api/usuarios/${eventMenuStaffId}/permissoes-operacao`;
+  const setMenuPermissions = async (permissoesOperacao: string[]) => {
+    const response = await ownerContext.request.patch(adminUrl, { data: { permissoesOperacao } });
+    expect(response.status(), await response.text()).toBe(200);
+  };
+  await setMenuPermissions([]);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: eventMenuStaffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  const modeContext = await staffContext.request.get('/api/operacao/contexto');
+  expect(modeContext.status(), await modeContext.text()).toBe(200);
+  const mode = await modeContext.json();
+  expect(mode.operationMode).toBe('EVENTO');
+  expect(mode.operationalSettingsSource).toBe('LEGACY');
+  await staff.goto('/eventos');
+  const disabledStaffMe = await (await staffContext.request.get('/api/auth/me')).json();
+  expect(disabledStaffMe.usuario.permissoesOperacao).toEqual([]);
+  expect(disabledStaffMe.cervejaria.id).toBe(ownerTenantId);
+  const eventCard = staff.locator('.card').filter({ hasText: eventMenuEventName }).first();
+  await expect(eventCard).toBeVisible();
+  await expect(eventCard.locator('button[aria-label*="card"]')).toHaveCount(0);
+  const denied = await staffContext.request.put(menuUrl, { data: { produtoIds: [eventMenuForeignProductId] } });
+  expect([401, 403]).toContain(denied.status());
+  expect(await (await ownerContext.request.get(menuUrl)).json()).toEqual(before);
+
+  await setMenuPermissions(['event.menu.manage']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['event.menu.manage']);
+  const grantedCard = staff.locator('.card').filter({ hasText: eventMenuEventName }).first();
+  const editorButton = grantedCard.locator('button[aria-label*="card"]');
+  await expect(editorButton).toHaveCount(1);
+  await editorButton.click();
+  const dialog = staff.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: /Montar manual/ }).click();
+  await expect(dialog.getByText(eventMenuForeignProductName, { exact: true })).toBeVisible();
+  await dialog.locator('label').filter({ hasText: eventMenuForeignProductName }).locator('input[type="checkbox"]').check();
+  const savePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === menuUrl && response.request().method() === 'PUT');
+  await dialog.getByRole('button', { name: /Salvar card/ }).click();
+  const saved = await savePromise;
+  expect(saved.status(), await saved.text()).toBe(200);
+  const afterGrant = await (await ownerContext.request.get(menuUrl)).json();
+  expect(afterGrant.produtoIds).toEqual([eventMenuForeignProductId]);
+  expect(afterGrant.produtos.map((produto: { id: string }) => produto.id)).toEqual([eventMenuForeignProductId]);
+
+  await setMenuPermissions([]);
+  await staff.reload();
+  const revokedCard = staff.locator('.card').filter({ hasText: eventMenuEventName }).first();
+  await expect(revokedCard.locator('button[aria-label*="card"]')).toHaveCount(0);
+  const revoked = await staffContext.request.put(menuUrl, { data: { produtoIds: [] } });
+  expect([401, 403]).toContain(revoked.status());
+  expect(await (await ownerContext.request.get(menuUrl)).json()).toEqual(afterGrant);
+  console.log('RBAC_LIVE_REGRESSION key=event.menu.manage; dependency=none; disabled=editor-hidden-and-direct-write-denied-no-mutation; enabled=real-ui-menu-change-persisted; revoked=same-session-editor-hidden-and-direct-write-denied; event-mode=LEGACY; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('event.dashboard.read reveals and revokes event KPIs without changing command access', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: eventMenuOwnerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/eventos');
+  const permissionApiForEventStaff = `/api/usuarios/${eventMenuStaffId}/permissoes-operacao`;
+  const setEventStaffPermissions = async (permissoesOperacao: string[]) => {
+    const response = await ownerContext.request.patch(permissionApiForEventStaff, { data: { permissoesOperacao } });
+    expect(response.status(), await response.text()).toBe(200);
+  };
+  const dashboardUrl = `/api/eventos/${eventMenuEventId}/dashboard`;
+  const baselineResponse = await ownerContext.request.get(dashboardUrl);
+  expect(baselineResponse.status(), await baselineResponse.text()).toBe(200);
+  const baseline = await baselineResponse.json();
+  await setEventStaffPermissions(['command.read']);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: eventMenuStaffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  const modeResponse = await staffContext.request.get('/api/operacao/contexto');
+  expect(modeResponse.status(), await modeResponse.text()).toBe(200);
+  const mode = await modeResponse.json();
+  expect(mode.operationMode).toBe('EVENTO');
+  expect(mode.operationalSettingsSource).toBe('LEGACY');
+  const disabledMe = await (await staffContext.request.get('/api/auth/me')).json();
+  expect(disabledMe.usuario.permissoesOperacao).toEqual(['command.read']);
+  const deniedDashboard = await staffContext.request.get(dashboardUrl);
+  expect([401, 403]).toContain(deniedDashboard.status());
+  const disabledCommands = await staffContext.request.get(`/api/comandas/evento/${eventMenuEventId}?status=ABERTA`);
+  expect(disabledCommands.status(), await disabledCommands.text()).toBe(200);
+  await staff.goto('/eventos');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/eventos');
+  const eventCard = staff.locator('.card').filter({ hasText: eventMenuEventName }).first();
+  await expect(eventCard.getByText('Comandas abertas', { exact: true })).toHaveCount(0);
+  const openCommandsValue = () => eventCard.getByText('Comandas abertas', { exact: true }).locator('..').locator('p').nth(1);
+  await staff.goto('/comandas');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/comandas');
+  await expect(staff.getByRole('heading', { name: 'Comandas', exact: true })).toBeVisible();
+  await expect(staff.locator('.metric-card').filter({ hasText: 'Comandas abertas' })).toHaveCount(0);
+  await staff.goto('/eventos');
+
+  await setEventStaffPermissions(['command.read', 'event.dashboard.read']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['command.read', 'event.dashboard.read']);
+  const grantedDashboard = await staffContext.request.get(dashboardUrl);
+  expect(grantedDashboard.status(), await grantedDashboard.text()).toBe(200);
+  const grantedProjection = await grantedDashboard.json();
+  expect(grantedProjection).toEqual(baseline);
+  await expect(eventCard.getByText('Comandas abertas', { exact: true })).toBeVisible();
+  await expect(openCommandsValue()).toHaveText(String(baseline.resumo.comandasAbertas));
+
+  await setEventStaffPermissions(['command.read']);
+  await staff.reload();
+  const revokedDashboard = await staffContext.request.get(dashboardUrl);
+  expect([401, 403]).toContain(revokedDashboard.status());
+  const commandAccessAfterRevoke = await staffContext.request.get(`/api/comandas/evento/${eventMenuEventId}?status=ABERTA`);
+  expect(commandAccessAfterRevoke.status(), await commandAccessAfterRevoke.text()).toBe(200);
+  await expect(eventCard.getByText('Comandas abertas', { exact: true })).toHaveCount(0);
+  await staff.goto('/comandas');
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/comandas');
+  await expect(staff.getByRole('heading', { name: 'Comandas', exact: true })).toBeVisible();
+  await expect(staff.locator('.metric-card').filter({ hasText: 'Comandas abertas' })).toHaveCount(0);
+  console.log('RBAC_LIVE_REGRESSION key=event.dashboard.read; dependency=command.read retained; disabled=event-dashboard-api-denied-kpis-hidden-command-read-works; enabled=event-kpis-visible-and-api-projection-matches-owner; revoked=same-session-kpis-hidden-dashboard-denied-command-read-remains; event-mode=LEGACY; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('event.cash.open controls event cash opening without granting financial values', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: eventMenuOwnerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/eventos');
+  const cashUrl = `/api/eventos/${eventMenuEventId}/caixa`;
+  const openingUrl = `${cashUrl}/abrir`;
+  const permissionApiForEventStaff = `/api/usuarios/${eventMenuStaffId}/permissoes-operacao`;
+  const setEventStaffPermissions = async (permissoesOperacao: string[]) => {
+    const response = await ownerContext.request.patch(permissionApiForEventStaff, { data: { permissoesOperacao } });
+    expect(response.status(), await response.text()).toBe(200);
+  };
+  const initialCash = await ownerContext.request.get(cashUrl);
+  expect(initialCash.status(), await initialCash.text()).toBe(200);
+  expect(await initialCash.json()).toMatchObject({ caixa: null, aberto: false });
+  await setEventStaffPermissions(['command.read']);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: eventMenuStaffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  expect((await (await staffContext.request.get('/api/operacao/contexto')).json()).operationMode).toBe('EVENTO');
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['command.read']);
+  await staff.goto('/comandas');
+  await expect(staff.getByRole('heading', { name: 'Comandas', exact: true })).toBeVisible();
+  const cashPanel = staff.getByRole('region', { name: 'Caixa do evento' });
+  await expect(cashPanel).toBeVisible();
+  await expect(cashPanel.getByRole('button', { name: 'Abrir caixa', exact: true })).toHaveCount(0);
+  await expect(cashPanel.getByLabel('Troco inicial do evento')).toHaveCount(0);
+  const denied = await staffContext.request.post(openingUrl, { data: { trocoInicial: 83.17 } });
+  expect([401, 403]).toContain(denied.status());
+  expect(await (await ownerContext.request.get(cashUrl)).json()).toMatchObject({ caixa: null, aberto: false });
+
+  await setEventStaffPermissions(['command.read', 'cash.open']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['command.read', 'cash.open']);
+  await expect(cashPanel.getByLabel('Troco inicial do evento')).toBeVisible();
+  await cashPanel.getByLabel('Troco inicial do evento').fill('987,65');
+  const openResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === openingUrl && response.request().method() === 'POST');
+  await cashPanel.getByRole('button', { name: 'Abrir caixa', exact: true }).click();
+  const opened = await openResponsePromise;
+  expect(opened.status(), await opened.text()).toBe(201);
+  const staffCash = await (await staffContext.request.get(cashUrl)).json();
+  expect(staffCash).toMatchObject({ aberto: true, caixa: { valoresRestritos: true } });
+  expect(JSON.stringify(staffCash)).not.toContain('987.65');
+  expect(JSON.stringify(staffCash)).not.toContain('trocoInicial');
+  const ownerCashAfterGrant = await (await ownerContext.request.get(cashUrl)).json();
+  expect(ownerCashAfterGrant.aberto).toBe(true);
+  expect(Number(ownerCashAfterGrant.caixa.trocoInicial)).toBe(987.65);
+
+  await setEventStaffPermissions(['command.read']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao).toEqual(['command.read']);
+  await expect(cashPanel.getByRole('button', { name: 'Abrir caixa', exact: true })).toHaveCount(0);
+  const revoked = await staffContext.request.post(openingUrl, { data: { trocoInicial: 12.34 } });
+  expect([401, 403]).toContain(revoked.status());
+  expect(await (await ownerContext.request.get(cashUrl)).json()).toEqual(ownerCashAfterGrant);
+  const commandAccessAfterRevoke = await staffContext.request.get(`/api/comandas/evento/${eventMenuEventId}?status=ABERTA`);
+  expect(commandAccessAfterRevoke.status(), await commandAccessAfterRevoke.text()).toBe(200);
+  console.log('RBAC_LIVE_REGRESSION key=cash.open; dependency=command.read retained; disabled=button-hidden-api-denied-no-session; enabled=real-ui-opens-session-with-exact-float-and-redacted-response; revoked=same-session-button-hidden-api-denied-session-unchanged; event-mode=LEGACY; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('event.cash.close requires both close and value access and denies after revoke', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: eventMenuOwnerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/eventos');
+  const eventId = eventMenuEventId;
+  const cashUrl = `/api/eventos/${eventId}/caixa`;
+  const closeUrl = `${cashUrl}/fechar`;
+  const permissionApiForEventStaff = `/api/usuarios/${eventMenuStaffId}/permissoes-operacao`;
+  const setEventStaffPermissions = async (permissoesOperacao: string[]) => {
+    const response = await ownerContext.request.patch(permissionApiForEventStaff, { data: { permissoesOperacao } });
+    expect(response.status(), await response.text()).toBe(200);
+  };
+  const closingBody = { contadoDinheiro: 45.67, contadoPix: 0, contadoDebito: 0, contadoCredito: 0, contadoCartao: 0 };
+  const initialCashResponse = await ownerContext.request.get(cashUrl);
+  expect(initialCashResponse.status(), await initialCashResponse.text()).toBe(200);
+  const initialCash = await initialCashResponse.json();
+  expect(initialCash).toMatchObject({ aberto: true, caixa: { status: 'ABERTO' } });
+  const firstSessionId = initialCash.caixa.id;
+  await setEventStaffPermissions(['command.read', 'cash.values.read']);
+
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  await staffContext.addCookies([{ name: 'token', value: eventMenuStaffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/comandas');
+  const cashPanel = staff.getByRole('region', { name: 'Caixa do evento' });
+  await expect(cashPanel).toBeVisible();
+  await expect(cashPanel.getByRole('button', { name: 'Conferir e fechar caixa' })).toHaveCount(0);
+  const denied = await staffContext.request.post(closeUrl, { data: closingBody });
+  expect([401, 403]).toContain(denied.status());
+  expect(await (await ownerContext.request.get(cashUrl)).json()).toEqual(initialCash);
+
+  await setEventStaffPermissions(['command.read', 'cash.values.read', 'cash.close']);
+  await staff.reload();
+  expect((await (await staffContext.request.get('/api/auth/me')).json()).usuario.permissoesOperacao)
+    .toEqual(['command.read', 'cash.values.read', 'cash.close']);
+  const closeButton = cashPanel.getByRole('button', { name: 'Conferir e fechar caixa' });
+  await expect(closeButton).toBeVisible();
+  await expect(closeButton).toBeEnabled();
+  await closeButton.click();
+  await expect(staff.getByRole('heading', { name: 'Conferir caixa do evento' })).toBeVisible();
+  const closeResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === closeUrl && response.request().method() === 'POST');
+  await staff.getByRole('button', { name: 'Confirmar fechamento' }).click();
+  const closed = await closeResponsePromise;
+  expect(closed.status(), await closed.text()).toBe(200);
+  expect(await (await ownerContext.request.get(cashUrl)).json()).toMatchObject({ aberto: false, caixa: { id: firstSessionId, status: 'FECHADO' } });
+
+  const reopened = await ownerContext.request.post(`${cashUrl}/abrir`, { data: { trocoInicial: 12.34 } });
+  expect(reopened.status(), await reopened.text()).toBe(201);
+  const secondSession = await (await ownerContext.request.get(cashUrl)).json();
+  expect(secondSession).toMatchObject({ aberto: true, caixa: { status: 'ABERTO' } });
+  expect(secondSession.caixa.id).not.toBe(firstSessionId);
+  await setEventStaffPermissions(['command.read', 'cash.values.read']);
+  await staff.reload();
+  await expect(cashPanel.getByRole('button', { name: 'Conferir e fechar caixa' })).toHaveCount(0);
+  const revoked = await staffContext.request.post(closeUrl, { data: closingBody });
+  expect([401, 403]).toContain(revoked.status());
+  expect(await (await ownerContext.request.get(cashUrl)).json()).toEqual(secondSession);
+  console.log('RBAC_LIVE_REGRESSION key=cash.close; dependencies=cash.values.read+command.read retained; disabled=close-hidden-api-denied-session-unchanged; enabled=real-ui-close-persisted; revoked=same-session-close-hidden-api-denied-session-unchanged; event-mode=LEGACY; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
+});
+
+test('event.taps.operate mounts a chope only while the permission is granted', async ({ browser }) => {
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await ownerContext.addCookies([{ name: 'token', value: eventMenuOwnerCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await owner.goto('/eventos');
+  const tapId = process.env.RBAC_QA_EVENT_TAP_ID!;
+  const chopeId = process.env.RBAC_QA_EVENT_TAP_CHOPE_ID!;
+  const tapUrl = `/api/eventos/${eventMenuEventId}/taps/${tapId}/chope`;
+  const permissionApiForEventStaff = `/api/usuarios/${eventMenuStaffId}/permissoes-operacao`;
+  const setEventStaffPermissions = async (permissoesOperacao: string[]) => {
+    const response = await ownerContext.request.patch(permissionApiForEventStaff, { data: { permissoesOperacao } });
+    expect(response.status(), await response.text()).toBe(200);
+  };
+  await setEventStaffPermissions(['command.read']);
+  const staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const staff = await staffContext.newPage();
+  const staffPageErrors: string[] = [];
+  staff.on('pageerror', (error) => staffPageErrors.push(error.message));
+  await staffContext.addCookies([{ name: 'token', value: eventMenuStaffCookie.replace(/^token=/, ''), url: process.env.RBAC_QA_BASE_URL! }]);
+  await staff.goto('/eventos');
+  const eventCard = staff.locator('.card').filter({ hasText: eventMenuEventName }).first();
+  await expect(eventCard).toBeVisible();
+  await eventCard.getByRole('button', { name: 'Comandas', exact: true }).click();
+  await expect.poll(() => new URL(staff.url()).pathname).toBe('/comandas');
+  await expect(staff.getByRole('heading', { name: 'Comandas', exact: true })).toBeVisible();
+  const eventCashPanel = staff.getByRole('region', { name: 'Caixa do evento' });
+  await expect(eventCashPanel.getByText('Gaveta', { exact: true })).toHaveCount(0);
+  await expect(eventCashPanel.getByText('Recebido', { exact: true })).toHaveCount(0);
+  await expect(eventCashPanel.getByRole('button', { name: 'Conferir e fechar caixa' })).toHaveCount(0);
+  const tapsTrigger = staff.getByRole('button', { name: /Taps do evento/ });
+  await expect(tapsTrigger).toBeVisible();
+  expect(staffPageErrors).toEqual([]);
+  await tapsTrigger.click();
+  let dialog = staff.getByRole('dialog');
+  await expect(dialog.getByText('Você precisa da permissão “Montar e operar Taps” para alterar esta montagem.')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /TAP 9902/ })).toHaveCount(0);
+  const denied = await staffContext.request.put(tapUrl, { data: { produtoId: chopeId } });
+  expect([401, 403]).toContain(denied.status());
+  const before = await ownerContext.request.get(`/api/eventos/${eventMenuEventId}/taps`);
+  expect(before.status()).toBe(200);
+  expect((await before.json()).find((tap: { id: string }) => tap.id === tapId).chopeAtual).toBeNull();
+  await dialog.getByRole('button', { name: /Fechar|Cancelar/ }).first().click();
+
+  await setEventStaffPermissions(['command.read', 'taps.operate']);
+  await staff.reload();
+  await tapsTrigger.click();
+  dialog = staff.getByRole('dialog');
+  const tapButton = dialog.getByRole('button', { name: /TAP 9902/ });
+  await expect(tapButton).toBeVisible();
+  await tapButton.click();
+  await dialog.getByRole('button', { name: 'Posicionar chope' }).click();
+  await dialog.getByRole('combobox').selectOption(chopeId);
+  const mountResponsePromise = staff.waitForResponse((response) => new URL(response.url()).pathname === tapUrl && response.request().method() === 'PUT');
+  await dialog.getByRole('button', { name: 'Posicionar', exact: true }).click();
+  const mounted = await mountResponsePromise;
+  expect(mounted.status(), await mounted.text()).toBe(200);
+  expect((await (await ownerContext.request.get(`/api/eventos/${eventMenuEventId}/taps`)).json()).find((tap: { id: string }) => tap.id === tapId).chopeAtual.id).toBe(chopeId);
+
+  await setEventStaffPermissions(['command.read']);
+  await staff.reload();
+  await tapsTrigger.click();
+  dialog = staff.getByRole('dialog');
+  await expect(dialog.getByText('Você precisa da permissão “Montar e operar Taps” para alterar esta montagem.')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /TAP 9902/ })).toHaveCount(0);
+  const revoked = await staffContext.request.put(tapUrl, { data: { produtoId: chopeId } });
+  expect([401, 403]).toContain(revoked.status());
+  const afterRevoke = await ownerContext.request.get(`/api/eventos/${eventMenuEventId}/taps`);
+  expect((await afterRevoke.json()).find((tap: { id: string }) => tap.id === tapId).chopeAtual.id).toBe(chopeId);
+  console.log('RBAC_LIVE_REGRESSION key=taps.operate; dependency=command.read and tapsEnabled legacy setting; disabled=grid-read-only-api-denied-no-mount; enabled=real-ui-mount-persisted; revoked=same-session-grid-read-only-api-denied-mount-unchanged; event-mode=LEGACY; result=PASS');
+  await Promise.all([ownerContext.close(), staffContext.close()]);
 });

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { getTenantUser } from '../types/auth.js';
-import { resolveClienteParaComanda } from '../lib/cliente-resolver.js';
+import { findClienteByTelefone, resolveClienteParaComanda } from '../lib/cliente-resolver.js';
 import { normalizePhone, formatPhoneBr } from '../lib/phone.js';
 import { toNumber } from '../lib/utils.js';
 import { assertClientePodeExcluir, buildExclusaoMeta, getComandaCountsByClienteIds, getClienteComandaCounts } from '../lib/cliente-delete.js';
@@ -28,6 +28,10 @@ const patchClienteSchema = z.object({
   observacoes: z.string().optional().nullable(),
   ativo: z.boolean().optional(),
 });
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
+}
 
 const listQuerySchema = z.object({
   q: z.string().optional(),
@@ -255,28 +259,35 @@ export async function clientesRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Telefone inválido. Informe DDD + número (10 ou 11 dígitos).' });
     }
 
-    const existing = await prisma.cliente.findFirst({
-      where: { cervejariaId: user.cervejariaId, telefone },
-    });
+    const existing = await findClienteByTelefone(user.cervejariaId!, telefone);
     if (existing) {
       return reply.status(409).send({ error: 'Já existe cliente com este telefone', clienteId: existing.id });
     }
 
     const now = new Date();
-    const cliente = await prisma.cliente.create({
-      data: {
-        nome: body.nome.trim(),
-        telefone,
-        email: body.email?.trim() || null,
-        dataNascimento: body.dataNascimento ? new Date(body.dataNascimento) : null,
-        optInMarketing: body.optInMarketing ?? false,
-        optInEm: body.optInMarketing ? now : null,
-        observacoes: body.observacoes?.trim() || null,
-        cadastradoVia: 'STAFF',
-        cervejariaId: user.cervejariaId!,
-      },
-      include: clienteInclude,
-    });
+    let cliente;
+    try {
+      cliente = await prisma.cliente.create({
+        data: {
+          nome: body.nome.trim(),
+          telefone,
+          email: body.email?.trim() || null,
+          dataNascimento: body.dataNascimento ? new Date(body.dataNascimento) : null,
+          optInMarketing: body.optInMarketing ?? false,
+          optInEm: body.optInMarketing ? now : null,
+          observacoes: body.observacoes?.trim() || null,
+          cadastradoVia: 'STAFF',
+          cervejariaId: user.cervejariaId!,
+        },
+        include: clienteInclude,
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        const conflict = await findClienteByTelefone(user.cervejariaId!, telefone);
+        if (conflict) return reply.status(409).send({ error: 'Já existe cliente com este telefone', clienteId: conflict.id });
+      }
+      throw error;
+    }
 
     return reply.status(201).send(serializeCliente(cliente));
   });
@@ -304,9 +315,7 @@ export async function clientesRoutes(app: FastifyInstance) {
     if (body.telefone !== undefined) {
       telefone = normalizePhone(body.telefone);
       if (telefone) {
-        const conflict = await prisma.cliente.findFirst({
-          where: { cervejariaId: user.cervejariaId, telefone, NOT: { id } },
-        });
+        const conflict = await findClienteByTelefone(user.cervejariaId!, telefone, id);
         if (conflict) {
           return reply.status(409).send({ error: 'Telefone já usado por outro cliente', clienteId: conflict.id });
         }
@@ -316,26 +325,35 @@ export async function clientesRoutes(app: FastifyInstance) {
     const now = new Date();
     const optInMarketing = body.optInMarketing ?? existing.optInMarketing;
 
-    const cliente = await prisma.cliente.update({
-      where: { id },
-      data: {
-        ...(body.nome !== undefined ? { nome: body.nome.trim() } : {}),
-        ...(body.telefone !== undefined ? { telefone } : {}),
-        ...(isDono && body.email !== undefined ? { email: body.email?.trim() || null } : {}),
-        ...(isDono && body.dataNascimento !== undefined
-          ? { dataNascimento: body.dataNascimento ? new Date(body.dataNascimento) : null }
-          : {}),
-        ...(isDono && body.observacoes !== undefined ? { observacoes: body.observacoes?.trim() || null } : {}),
-        ...(isDono && body.ativo !== undefined ? { ativo: body.ativo } : {}),
-        ...(isDono && body.optInMarketing !== undefined
-          ? {
-              optInMarketing,
-              optInEm: optInMarketing ? now : null,
-            }
-          : {}),
-      },
-      include: clienteInclude,
-    });
+    let cliente;
+    try {
+      cliente = await prisma.cliente.update({
+        where: { id },
+        data: {
+          ...(body.nome !== undefined ? { nome: body.nome.trim() } : {}),
+          ...(body.telefone !== undefined ? { telefone } : {}),
+          ...(isDono && body.email !== undefined ? { email: body.email?.trim() || null } : {}),
+          ...(isDono && body.dataNascimento !== undefined
+            ? { dataNascimento: body.dataNascimento ? new Date(body.dataNascimento) : null }
+            : {}),
+          ...(isDono && body.observacoes !== undefined ? { observacoes: body.observacoes?.trim() || null } : {}),
+          ...(isDono && body.ativo !== undefined ? { ativo: body.ativo } : {}),
+          ...(isDono && body.optInMarketing !== undefined
+            ? {
+                optInMarketing,
+                optInEm: optInMarketing ? now : null,
+              }
+            : {}),
+        },
+        include: clienteInclude,
+      });
+    } catch (error) {
+      if (telefone && isUniqueConstraintError(error)) {
+        const conflict = await findClienteByTelefone(user.cervejariaId!, telefone, id);
+        if (conflict) return reply.status(409).send({ error: 'Telefone já usado por outro cliente', clienteId: conflict.id });
+      }
+      throw error;
+    }
 
     return serializeClienteWithExclusao(cliente);
   });

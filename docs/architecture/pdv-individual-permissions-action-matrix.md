@@ -6,10 +6,10 @@ Atualizado em 2026-10-07. Inventario das operacoes atuais de Cervejaria, Evento 
 
 | Chave | Acao agrupada e dependencias | Aplicacao |
 |---|---|---|
-| cash.open | Abrir sessao; nao concede leitura de valores | Backend + UI |
+| cash.open | Abrir sessao; UI de evento testada com `command.read` como depend?ncia; nao concede leitura de valores | Backend + UI real (EVENTO/LEGACY), concessao/revogacao PASS em `3704167` |
 | cash.values.read | Ler valores, movimentos e fechamento | Backend + UI; sem ela a sessao e sanitizada |
 | cash.movement.write | Suprimento/sangria; corrigir tambem exige cash.values.read | Backend + UI |
-| cash.close | Fechar caixa; tambem exige cash.values.read | Backend + UI |
+| cash.close | Fechar caixa; requer cash.values.read | Backend + UI real EVENTO/LEGACY; disabled/granted/revoked PASS em `5428bdf` |
 | payment.receive | Receber pagamentos em comandas e vendas | Backend + UI operacional |
 | debt.receive | Receber conta pendente | Backend + UI operacional |
 | command.close | Fechar comanda; pagamento exige payment.receive | Backend + UI |
@@ -19,7 +19,7 @@ Atualizado em 2026-10-07. Inventario das operacoes atuais de Cervejaria, Evento 
 | command.cancel | Cancelar comanda inteira vazia no fluxo Por Caixa; concessão explícita, sem backfill para atendente | Backend + UI |
 | kitchen.cancel + sale.refund | Cancelar pedido pago e confirmar estorno; as duas chaves sao exigidas juntas | Backend |
 | dashboard.read | Painel consolidado da cervejaria e painel operacional | Backend + rota/navegacao |
-| event.dashboard.read | Painel do evento | Backend + rota/navegacao |
+| event.dashboard.read | Indicadores e valores do evento | Backend + rota/navegacao; KPI so e consultado/renderizado com a chave |
 | reports.read | Resumo, relatorios financeiros e exportacao CSV | Backend + rota/navegacao |
 | command.read | Consultar filas/listas/detalhes de comandas e pedidos recebidos | Backend + rota/navegacao |
 | command.operate | Abrir comandas, incluir itens, aumentar quantidade, aceitar/recusar pedido de cliente e efetuar venda com as permissoes de pagamento requeridas | Backend + rota/navegacao; nao concede consulta, fechamento, pagamento ou cancelamento |
@@ -30,11 +30,17 @@ Atualizado em 2026-10-07. Inventario das operacoes atuais de Cervejaria, Evento 
 | catalog.shift.manage | Selecionar cardapio do turno e manter precos apenas no turno | Backend + botoes do caixa; nao concede alteracao do catalogo/modelo global |
 | catalog.manage | Manter produtos, precos globais, disponibilidade, opcionais e modelos de cardapio | Backend + rota/navegacao; nao concede manutencao global automaticamente a atendentes |
 | clients.manage | Lista e manutencao de clientes administrativos | Backend + rota/navegacao; busca de checkout continua separada |
-| taps.operate | Montar, trocar, remover e ativar Tap em evento ou turno | Backend + UI; cadastro/configuracao de Tap continua owner-only |
+| taps.operate | Montar, trocar, remover e ativar Tap em evento ou turno | Backend + UI real EVENTO/LEGACY; disabled/granted/revoked PASS em `327f546`; cadastro/configuracao de Tap continua owner-only |
 | agenda.manage | Criar/editar agenda e ocorrencia e gerar ocorrencias | Backend + rota/painel proprio; equipe e configuracoes gerais continuam owner-only |
 | event.menu.manage | Selecionar/editar cardapio de evento | Backend + UI; separado de catalog.manage |
 
 O papel persistido DONO recebe todas as chaves em tenants com RBAC individual ativo. Somente owner da propria empresa edita funcionarios; autoedicao, edicao de owner, tenant cruzado e chaves desconhecidas sao rejeitados. Lista vazia significa nenhuma permissao. Novos funcionarios iniciam vazios. Migration preenche para ATENDENTE as chaves cujo acesso anterior estava disponivel por tenant/PDV: operacao e consulta de comanda, cozinha, estoque manual, manutencao comum de cliente, montagem de Tap, cardapio de evento e `catalog.shift.manage` para cardapio/preco apenas no turno. `discount.apply` deriva de `podeDarDescontoOperacao`. Produto/preco global, template de catalogo e agenda, antes owner-only, nao recebem concessao automatica. Cancelar item, cancelar item entregue, cancelar comanda, cancelamento/estorno e recebimento/fechamento permanecem em chaves separadas. `command.item.cancel.delivered` e uma excecao tambem em LEGACY: somente DONO pode cancelar item entregue; atendente continua negado mesmo com a flag individual desligada.
+
+## Evidencia de UI ao vivo
+
+`taps.operate` foi exercitada em EVENTO/LEGACY com `command.read` mantida como dependencia e `tapsEnabled=true` em tenant sintetico: sem a chave, UI read-only/API negada/sem montagem; habilitada, a montagem foi persistida pelo staff via UI; revogada na mesma sessao, UI voltou a read-only, a API negou e a montagem permaneceu. Evidencia completa: `artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-final-evidence.json`.
+
+`EventoCaixaPanel` tambem foi corrigido para tratar `esperado` e `recebidos` ausentes como valores restritos. Sem `cash.values.read`, nenhum valor e renderizado como zero; o conteudo do modal de fechamento so e construido quando a API fornece os valores esperados. A tela de comandas e Taps continua utilizavel sem erro.
 
 ## Inventario de acoes e caminhos alternativos
 
@@ -65,6 +71,7 @@ O papel persistido DONO recebe todas as chaves em tenants com RBAC individual at
 | Manter agendas/ocorrencias e gerar ocorrencias | POST/PATCH agendas/ocorrencias/gerar | `/operacao/agenda` (painel reutilizado) | Owner-only | `agenda.manage` explicitamente concedivel; sem backfill / API + UI PASS; sem novas transicoes de status |
 | Configuracao do tenant, PDV, financeiro e cozinha | /api/cervejaria/* e /api/operacao/configuracao/* | Configuracoes | Owner-only | Manter owner-only; sem nova permissao individual |
 | Equipe e permissoes | /api/usuarios/* | Configuracoes > Equipe | Owner administra equipe; desconto era booleano legado | Owner atual + validacao de lista / IMPLEMENTADO |
+| Indicadores do evento | GET `/api/eventos/:id/dashboard` | Hero/evento e tela de comandas | API retorna 401/403 sem a chave; antes da correcao o painel de evento ainda desenhava indicadores | `event.dashboard.read`; UI agora oculta e nao consulta o painel sem a chave; concessao/revogacao real validada em EVENTO/LEGACY no SHA `dc0e5260c3f8196b63acd12ed576f2fdc61d107c` / PASS |
 | Painel consolidado, evento, relatorios, exportacao e realtime | /api/cervejaria/dashboard, /api/operacao/dashboard, /api/eventos/:id/dashboard, /api/relatorios/*, transacoes CSV e Socket.IO join:evento/join:cervejaria/leave:evento | Dashboards e relatorios | A flag desligada usa sala legada; ligada, conteudo de caixa/comandas/cozinha e invalidacoes tem salas/projecoes distintas. `resumoPedidoCozinha` publica `itens`, projetados como `itensComanda` sem precos. | Acoes nomeadas com chaves dashboard.read, event.dashboard.read, reports.read e cash.values.read; realtime command.read/kitchen.read/cash.values.read independentes; emissor API real, dono, perfil vazio, cozinha-only, comando-only, caixa-only, tenant cruzado, concessao/revogacao no mesmo socket e legado flag-off / PASS em `5b7062f308edcb25f029850e451c7f452a142aed`. Outros eventos/rotas permanecem NAO COMPROVADOS ate teste proprio. |
 
 A interface mostra seletores para as chaves protegidas, e a API permanece autoridade. Acoes owner-only e fora de escopo estao justificadas acima. O catalogo nao cria uma chave por endpoint. A matriz continua delimitada as acoes mapeadas: qualquer caminho ainda sem politica testada deve ser marcado NAO COMPROVADA; nao declara RBAC global completo. Ensaio representativo, migracao real, corte e deploy nao foram executados.
@@ -122,3 +129,57 @@ The exact Git source candidate for this browser run was `8d7ea1c98a0b2b12c485673
 Fix commit: `4017a9ddc7d934b81c411f3808121fb681a520fa`. Tested source/test candidate: `e9c59938b0721b8d07a795eb4927951dfe7fbfa6` (tree `71e7024b19c2c444d9f5d45f585a1e6da438ca20`). The corrected cash page handles the sanitized API projection without reading omitted financial fields or representing them as zero. A focused immutable snapshot run passed: 1,448 tracked blobs materialized, zero mutable-workspace imports, backend/frontend builds, disposable authenticated API suite, and Playwright 1/1. Full receipt: [`rbac-final-evidence.json`](../../artifacts/rbac-permissions-ui-2026-10-10/rbac-final-evidence.json).
 
 Live grant/revoke UI evidence now covers `command.read`, `cash.values.read`, and `dashboard.read`, each at disabled, enabled, and revoked stages. The browser verified two staff sessions, 390px/768px layouts, same-browser tenant change, sanitized cash values and command denial, and dashboard access without command access. API evidence remains representative for 28 keys; the other 25 keys have no live-browser action stages. This is not full 28-key certification. Full per-key UI status and pending compatibility/configuration dimensions are in [`rbac-functional-assessment-2026-10-10.md`](../testing/rbac-functional-assessment-2026-10-10.md).
+
+## Live agenda.manage addendum (10 Oct 2026)
+
+Exact snapshot `fe3dba972a1e8bc503ca0c6457a8b8885590a0d9` passed the authenticated disposable API/PostgreSQL suite and Playwright 2/2. Real browser stages for `agenda.manage`: disabled route and POST refused without a persisted change; grant through the owner API preserved the staff session and the staff created an occurrence through the UI; revoke during that session redirected the route and refused the next POST while preserving the single allowed occurrence. The fixture used a canonical PDV with exactly one point, and its business data stayed in disposable PostgreSQL. The test did not use mocks for authentication, permission state, agenda reads, or writes. Receipt: [`agenda-live-fe3dba9.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/agenda-live-fe3dba9.json).
+
+Accumulated real-browser stage count is **11/84 PASS**, 0 FAIL, 0 BLOCKED, 73 NOT RUN: all three stages for `command.read`, `cash.values.read`, and `agenda.manage`; enabled/revoked for `dashboard.read`; dashboard disabled remains NOT RUN. Twenty-four other permission keys have all three UI stages NOT RUN. Representative API coverage for all 28 keys remains separate; overall certification is incomplete. No production access or shared DEV writes occurred.
+
+The follow-up snapshot `203b6e176b1f5e21427d4e45f31e30ae8bdef5dc` adds `dashboard.read` disabled: the real API call is refused and the browser is redirected away from `/dashboard`. All three stages for `dashboard.read` now pass. Accumulated real-browser coverage is **12/84 PASS**, 0 FAIL, 0 BLOCKED, 72 NOT RUN; the remaining 24 keys still lack all three UI stages. Receipt: [`dashboard-live-203b6e1.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/dashboard-live-203b6e1.json). Overall certification remains incomplete.
+
+Snapshot `e503a9c01958cecf006c69d429f4f83b08473c38` adds live `command.operate`: keeping only its `command.read` dependency denies the create route/API without writes; granting the two minimal keys allows a comanda creation through the UI; revoking only `command.operate` denies a second create while preserving read access. PostgreSQL confirms the single created comanda was authored by the synthetic staff user. No payment or external integration was invoked. Accumulated real-browser evidence is **15/84 PASS**, 0 FAIL, 0 BLOCKED, 69 NOT RUN; 23 other keys have no UI stages. Receipt: [`command-operate-e503a9c.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/command-operate-e503a9c.json). Full certification remains incomplete.
+
+Snapshot `4c5c1bc6c2b022330614188120a0ebd8a2bd17dd` adds `reports.read`: without it, the executive summary route, summary API and CSV endpoint are denied; with it, the real page and read/export endpoints work; revocation during the session removes route and endpoint access. The closed event was synthetic and confined to disposable PostgreSQL. Accumulated real-browser evidence is **18/84 PASS**, 0 FAIL, 0 BLOCKED, 66 NOT RUN; six keys have all three stages and 22 keys still have none. Receipt: [`reports-read-4c5c1bc.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/reports-read-4c5c1bc.json). Full certification remains incomplete.
+
+Snapshot `4f4d63cc295476bc344909f068f36abcae1de028` adds `clients.manage`: the live staff route and direct create API are denied without the key; granting only that key permits a client create through the UI; the owner API confirms the same persisted ID and normalized phone; revocation during that session blocks the route and another create without removing the allowed record. Cliente records this as `cadastradoVia=STAFF`; the model does not store a creator user ID. Accumulated real-browser evidence is **21/84 PASS**, 0 FAIL, 0 BLOCKED, 63 NOT RUN; seven keys have all three stages and 21 keys still have none. Receipt: [`clients-live-final.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/clients-live-final.json). Full certification remains incomplete.
+
+Snapshot `d2b2a0dc37e2bef598c40365f31c6e5259dce827` adds `inventory.read` and `inventory.adjust`. Read access is independently denied/granted/revoked while write stays denied; `inventory.adjust` is tested with `inventory.read` retained as its screen dependency. The granted UI entry increases only the selected product by one and the disposable DB records the staff actor; revocation hides controls and refuses another entry without changing the balance. Accumulated real-browser evidence is **27/84 PASS**, 0 FAIL, 0 BLOCKED, 57 NOT RUN; nine keys have all three stages and 19 keys still have none. Receipt: [`inventory-adjust-final.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/inventory-adjust-final.json). Full certification remains incomplete.
+
+Snapshot `33eb5321233a1802a0e7d3e52e74be4460a6ae6c` adds `kitchen.read` and `kitchen.operate`. Read denial/grant/revoke is checked against the real kitchen queue; read-only staff see the target order without the “Iniciar” control and cannot change status. Keeping `kitchen.read`, the exact `kitchen.operate` grant advances the order through the UI from `RECEBIDO` to `EM_PREPARO`; revocation hides the next action and denies the subsequent status request. Accumulated real-browser evidence is **33/84 PASS**, 0 FAIL, 0 BLOCKED, 51 NOT RUN; eleven keys have all three stages and 17 keys still have none. Receipt: [`kitchen-combined.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/kitchen-combined.json). Full certification remains incomplete.
+
+
+Snapshot `25b06d76d5755abc4e4c7b2f4bb75ab803686fb8` adds live `cash.movement.write`: disabled staff cannot use suprimento/sangria controls or POST; the isolated grant creates both through UI while `cash.values.read` remains absent and the response stays redacted; same-session revocation removes both controls and refuses further writes. PostgreSQL confirms exact movement records and balances. The full snapshot run passed 10/10 Playwright checks. Accumulated real-browser evidence is **36/84 PASS**, 0 FAIL, 0 BLOCKED, 48 NOT RUN; twelve keys complete, 16 keys have no UI stages. Receipt: [`cash-movement-final.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-movement-final.json). Full certification remains incomplete.
+
+
+Snapshot `88f7487ce8524e82bdee5a0398be08886052d1f5` adds live `catalog.manage`: without it, the operational catalog route and create POST are denied with no product; granting only the key permits creation through the real UI; revocation in-session blocks the route and a second POST while preserving exactly one created product. The owner confirms persisted ID, name, price, and active state. The snapshot suite passed 11/11 Playwright checks. Accumulated UI evidence is **39/84 PASS**, 0 FAIL, 0 BLOCKED, 45 NOT RUN; thirteen keys complete and 15 have no UI stages. Receipt: [`catalog-manage-final.json`](../../artifacts/rbac-permissions-ui-2026-10-10/results/catalog-manage-final.json). Full certification remains incomplete.
+
+
+
+Snapshot dbea03100a660dd6ea722489efe097c161ed4dd0 adds live catalog.shift.manage. cash.values.read stays as the screen dependency and catalog.manage remains absent. Disabled/revoked price writes are refused; the grant changes the turn price through UI, while a separate catalog read confirms the global product price remains R$ 10. The fixture existing turn override from a prior API case was retained as baseline. Playwright passed 12/12. Accumulated UI evidence is 42/84 PASS, 0 FAIL, 0 BLOCKED, 42 NOT RUN; fourteen keys complete and fourteen have no UI stages. Receipt: [shift-catalog-final.json](../../artifacts/rbac-permissions-ui-2026-10-10/results/shift-catalog-final.json). Full certification remains incomplete.
+
+## Live UI: `event.menu.manage` (`b1ef7ca`)
+
+The permission controls the event-specific menu editor in EVENTO/LEGACY mode. A separate synthetic tenant and staff account were used because the regular browser suite activates CANONICAL_PDV for its primary fixture. Disabled: editor hidden; direct PUT denied and menu unchanged. Enabled: only `event.menu.manage` is granted; staff selects one product in the real editor; the event menu API confirms the exact persisted product ID. Revoked in the same session: editor hidden; another PUT denied; persisted menu unchanged. API, browser and PostgreSQL were real; no mocks were used for the certified action. The runner starts this case separately with canonical activation off. Receipt: [event-menu-ui-final-evidence.json](../../artifacts/rbac-permissions-ui-2026-10-10/results/event-menu-ui-final-evidence.json); browser log: [browser-run.log](../../artifacts/rbac-permissions-ui-2026-10-10/run-0bc87f58d3fb495c/live-results/browser-run.log). Accumulated browser count: 45/84 PASS, 0 FAIL, 0 BLOCKED, 39 NOT RUN. Full certification remains incomplete.
+
+## Live UI: `event.menu.manage` (`b1ef7ca`)
+
+The permission controls the event-specific menu editor in EVENTO/LEGACY mode. A separate synthetic tenant and staff account were used because the regular browser suite activates CANONICAL_PDV for its primary fixture. Disabled: editor hidden; direct PUT denied and menu unchanged. Enabled: only `event.menu.manage` is granted; staff selects one product in the real editor; the event menu API confirms the exact persisted product ID. Revoked in the same session: editor hidden; another PUT denied; persisted menu unchanged. API, browser and PostgreSQL were real; no mocks were used for the certified action. The runner starts this case separately with canonical activation off. Receipt: [event-menu-ui-final-evidence.json](../../artifacts/rbac-permissions-ui-2026-10-10/results/event-menu-ui-final-evidence.json); browser log: [browser-run.log](../../artifacts/rbac-permissions-ui-2026-10-10/run-0bc87f58d3fb495c/live-results/browser-run.log). Accumulated browser count: 45/84 PASS, 0 FAIL, 0 BLOCKED, 39 NOT RUN. Full certification remains incomplete.
+
+
+## Validacao funcional ao vivo: `event.dashboard.read` (10 Oct 2026)
+
+A API negava o endpoint sem a chave, mas a tela de eventos continuava renderizando indicadores. A correcao restringe a consulta e a renderizacao de `EventoResumoKpis` e impede a consulta/renderizacao equivalente em `ComandasPage`. No navegador real, sem a chave os indicadores ficam ausentes; com `command.read` e `event.dashboard.read`, os valores coincidem com a projecao do owner; depois da revogacao no mesmo usuario, os indicadores desaparecem e a listagem/API de comandas segue permitida. Commit final testado: `adaa6baf2d09adb335069e443913b1d1c558d388`. O fluxo confirma ambas as telas em disabled e revoked, concessao na tela de evento, e preservacao independente de command.read.
+
+
+A correcao do painel do evento e da tela de comandas foi publicada em DEV no SHA `adaa6baf2d09adb335069e443913b1d1c558d388`; o SHA servido foi confirmado local e publicamente, com banco pronto e smoke autenticado de owner/atendente QA. Ver recibo `docs/testing/rbac-functional-assessment-2026-10-10.md`.
+
+
+A abertura de caixa de evento foi validada pela interface real em disabled/granted/revoked. O controle respeita `cash.open`; valores permanecem restritos sem `cash.values.read`. Snapshot `370416704b59af56ecc9f88c17560a303583fa69`; recibo detalhado no relat?rio funcional.
+
+
+O fechamento do caixa de evento foi validado na UI real: sem `cash.close`, o controle e a escrita são negados; `cash.close` com `cash.values.read` permite fechar com ator e contagem exatos; revogar na mesma sessão impede fechar uma nova sessão. Fixture em EVENTO/LEGACY. Recibo e regressões de harness estão no relatório funcional.
+
+## Validação funcional concluída — continuação 10 out 2026
+
+As 28 permissões têm disabled/enabled/revoked executados em navegador autenticado com API e PostgreSQL reais: **84/84 PASS**, sem FAIL/BLOCKED/NOT RUN. Os cenários de dependências, duas sessões, troca de usuário/tenant, ADMIN global, rotas alternativas e contratos CANONICAL_PDV/LEGACY também passaram. Checkpoints detalhados por permissão e contrato: `artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/`; consolidação e recibos: `docs/testing/rbac-functional-assessment-2026-10-10.json` e `.md`.

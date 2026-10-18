@@ -69,8 +69,8 @@ const updateProdutoSchema = z
     descricao: z.string().optional(),
     cor: z.string().optional(),
     estilo: z.string().optional(),
-    categoria: z.string().trim().min(1).max(80).optional(),
-    categoriaPdvId: z.string().min(1).optional(),
+  categoria: z.string().trim().min(1).max(80).optional(),
+  categoriaPdvId: z.string().min(1).optional(),
     controlaEstoque: z.boolean().optional(),
     exigePreparo: z.boolean().optional(),
     prepararEmPedidoSeparado: z.boolean().optional(),
@@ -266,10 +266,6 @@ export async function produtosRoutes(app: FastifyInstance) {
         },
       },
       include: { precos: { orderBy: { volumeMl: 'asc' } } },
-      omit: {
-        ...(catalogoCategoriasCanonicoAtivo() ? {} : { categoriaPdvId: true }),
-        ...(canonicalPdvQaActivationEnabled() ? {} : { prepararEmPedidoSeparado: true }),
-      },
     });
 
     return reply.status(201).send(produto);
@@ -281,20 +277,25 @@ export async function produtosRoutes(app: FastifyInstance) {
     const body = updateProdutoSchema.parse(request.body);
 
     const canonicalCategoriesEnabled = catalogoCategoriasCanonicoAtivo();
-    const existing = await prisma.produto.findFirst({ where: { id, cervejariaId: user.cervejariaId }, ...(canonicalCategoriesEnabled ? { include: { categoriaPdv: true } } : {}) });
-    if (!existing) return reply.status(404).send({ error: 'Produto nao encontrado' });
+    const existing = await prisma.produto.findFirst({
+      where: { id, cervejariaId: user.cervejariaId },
+      ...(canonicalCategoriesEnabled ? { include: { categoriaPdv: true } } : {}),
+    });
+    if (!existing) return reply.status(404).send({ error: 'Produto não encontrado' });
 
     const categoriaPdvAtual = (existing as typeof existing & { categoriaPdv?: { nome: string } | null }).categoriaPdv;
     let categoria = body.categoria ?? (canonicalCategoriesEnabled ? categoriaPdvAtual?.nome ?? existing.categoria : existing.categoria);
     let categoriaPdvId: string | null | undefined;
     if (canonicalCategoriesEnabled && body.categoriaPdvId) {
       const categoriaPdv = await prisma.categoriaProdutoPdv.findFirst({ where: { id: body.categoriaPdvId, cervejariaId: user.cervejariaId } });
-      if (!categoriaPdv) return reply.status(404).send({ error: 'Categoria nao encontrada neste PDV' });
+      if (!categoriaPdv) return reply.status(404).send({ error: 'Categoria não encontrada neste PDV' });
       categoria = categoriaPdv.nome;
       categoriaPdvId = categoriaPdv.id;
     } else if (canonicalCategoriesEnabled) {
       const categoriaCanonicaAtual = categoriaPdvAtual?.nome ?? existing.categoria;
-      if (body.categoria !== undefined && body.categoria !== categoriaCanonicaAtual) return reply.status(400).send({ error: 'Para trocar a categoria, selecione uma categoria cadastrada' });
+      if (body.categoria !== undefined && body.categoria !== categoriaCanonicaAtual) {
+        return reply.status(400).send({ error: 'Para trocar a categoria, selecione uma categoria cadastrada' });
+      }
       categoria = categoriaCanonicaAtual;
     }
 

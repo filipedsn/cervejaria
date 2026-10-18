@@ -11,24 +11,32 @@ async function saveAuthState(
   password: string,
   fileName: string,
 ) {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    await page.goto('/login');
-    await page.getByLabel('E-mail').fill(email);
-    await page.locator('#password').fill(password);
-    await page.getByRole('button', { name: 'Entrar' }).click();
-    try {
-      await expect(page).not.toHaveURL(/\/login$/, { timeout: 15_000 });
-      await page.context().storageState({ path: path.join(AUTH_DIR, fileName) });
-      return;
-    } catch {
-      if (attempt === 4) throw new Error(`Login falhou para ${email} após 5 tentativas`);
-      await page.waitForTimeout(5000);
-    }
+  await page.goto('/login');
+  await page.getByLabel('E-mail').fill(email);
+  await page.locator('#password').fill(password);
+  const loginResponse = page.waitForResponse((response) =>
+    response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/auth/login',
+  );
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  const response = await loginResponse;
+  if (response.status() >= 500) {
+    throw new Error(`Login returned HTTP ${response.status()}; consulte o log protegido da API QA.`);
   }
+  await expect(page).not.toHaveURL(/\/login$/, { timeout: 15_000 });
+  const statePath = path.join(AUTH_DIR, fileName);
+  await page.context().storageState({ path: statePath });
+  // Playwright generates the state; normalize it to UTF-8 JSON without BOM.
+  const generated = fs.readFileSync(statePath, 'utf8').replace(/^\uFEFF/, '');
+  fs.writeFileSync(statePath, `${JSON.stringify(JSON.parse(generated), null, 2)}\n`, { encoding: 'utf8' });
 }
 
 setup('authenticate roles', async ({ page }) => {
   fs.mkdirSync(AUTH_DIR, { recursive: true });
+
+  if (process.env.E2E_SYNTHETIC_ONLY === '1') {
+    await saveAuthState(page, CREDENTIALS.quiosque.email, CREDENTIALS.quiosque.password, 'operacao.json');
+    return;
+  }
 
   const roles = [
     { file: 'dono.json', ...CREDENTIALS.dono },

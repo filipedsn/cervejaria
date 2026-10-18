@@ -531,6 +531,7 @@ export async function publicRoutes(app: FastifyInstance) {
         const numero = await proximoNumeroComandaOperacaoTurno(tx, cervejaria.id, pontoVenda.id, sessao.abertoEm);
         const comanda = await tx.comanda.create({ data: {
           origem: 'CAIXA', pontoVendaId: pontoVenda.id,
+          sessaoCaixaRealizacaoId: sessao.id,
           ...(occurrenceScoped ? { ocorrenciaId: sessao.ocorrenciaId ?? null } : {}),
           clienteId: cliente.id, tipo: 'APELIDO', identificador: cliente.nome,
           numero, diaOperacional: sessao.diaOperacional, status: 'ABERTA', total: 0,

@@ -199,41 +199,6 @@ try {
         const cookie = login.headers['set-cookie'];
         account.cookie = (Array.isArray(cookie) ? cookie[0] : cookie).split(';')[0];
       }
-      if (tenant.id === 'cmsry9xrn0000hvlgopjxy0oo') {
-        const emptyCommand = await request(owner.cookie, 'POST', '/api/operacao/comandas', { pontoVendaId: point.id, tipo: 'APELIDO', identificador: `${runId}-empty-cancel` }, 201);
-        const historicalId = emptyCommand.id;
-        createdIds.push(historicalId);
-        const before = await db.comanda.findUniqueOrThrow({ where: { id: historicalId }, include: { itens: true, pagamentos: true, contaReceber: true } });
-        assert.equal(before.origem, 'CAIXA');
-        assert.equal(before.pontoVendaId, point.id);
-        assert.equal(before.status, 'ABERTA');
-        assert.equal(Number(before.total), 0);
-        assert.ok(before.createdAt >= operationStartedAt, 'empty command was created synthetically in this QA run');
-        assert.equal(before.itens.length, 0);
-        assert.equal(before.pagamentos.length, 0);
-        assert.equal(before.contaReceber, null);
-        const paymentsBefore = await historical();
-        const balancesBefore = await stockBalances(tenant.id);
-        const inventoryBefore = await stockMovementPhoto(tenant.id);
-        const cashBefore = await cashMovementPhoto(tenant.id);
-        const auditBefore = await db.transacaoLog.findMany({ where: { comandaId: historicalId }, select: { id: true } });
-        await request(owner.cookie, 'POST', `/api/operacao/comandas/${historicalId}/cancelar`, {});
-        const after = await db.comanda.findUniqueOrThrow({ where: { id: historicalId }, include: { itens: true, pagamentos: true, contaReceber: true } });
-        assert.equal(after.id, before.id);
-        assert.equal(after.createdAt.toISOString(), before.createdAt.toISOString());
-        assert.equal(after.status, 'CANCELADA');
-        assert.equal(Number(after.total), 0);
-        assert.equal(after.itens.length, 0);
-        assert.equal(after.pagamentos.length, 0);
-        assert.equal(after.contaReceber, null);
-        const cancelAudit = await db.transacaoLog.findFirstOrThrow({ where: { comandaId: historicalId, tipo: 'COMANDA_CANCELADA', usuarioId: owner.row.id }, orderBy: { createdAt: 'desc' } });
-        assert.ok(!auditBefore.some(row => row.id === cancelAudit.id));
-        assert.deepEqual(await historical(), paymentsBefore, 'historical payment rows stay unchanged after operational sanitation');
-        assert.deepEqual(await stockBalances(tenant.id), balancesBefore, 'cancelling the empty historical command does not change stock balances');
-        assert.deepEqual(await stockMovementPhoto(tenant.id), inventoryBefore, 'cancelling the empty historical command does not write inventory movements');
-        assert.deepEqual(await cashMovementPhoto(tenant.id), cashBefore, 'cancelling the empty historical command does not write cash movements');
-        historicalCommandSanitation.push({ commandId: historicalId, tenantId: tenant.id, pointId: point.id, syntheticQaRecord: true, createdByQaUserId: owner.row.id, beforeStatus: before.status, afterStatus: after.status, createdAtPreserved: true, total: 0, itemCount: 0, paymentCount: 0, receivable: null, auditType: cancelAudit.tipo, auditActorId: cancelAudit.usuarioId, noFinancialOrStockEffects: true, authenticatedApi: 'POST /api/operacao/comandas/:id/cancelar' });
-      }
       const menus = await db.cardapio.findMany({ where: { cervejariaId: tenant.id, pontoVendaId: point.id, ativo: true }, include: { produtos: { include: { produto: true } } } });
       const menu = menus.find(m => m.produtos.some(p => p.volumeMl === 0 && p.produto.ativo && !p.produto.exigePreparo && Number(p.precoUnit) > 0));
       assert.ok(menu, 'original migrated menu has an active unit product');
@@ -256,6 +221,42 @@ try {
       for (const withOccurrence of [false, true]) {
         const session = await request(owner.cookie, 'POST', '/api/operacao/caixa/abrir', { pontoVendaId: point.id, trocoInicial: 0, cardapioId: menu.id, ...(withOccurrence ? { ocorrenciaId: occurrence.id } : {}) }, 201);
         sessionIds.push(session.id);
+          if (tenant.id === 'cmsry9xrn0000hvlgopjxy0oo' && !withOccurrence) {
+          const emptyCommand = await request(owner.cookie, 'POST', '/api/operacao/comandas', { pontoVendaId: point.id, tipo: 'APELIDO', identificador: `${runId}-empty-cancel` }, 201);
+          const historicalId = emptyCommand.id;
+          createdIds.push(historicalId);
+          const before = await db.comanda.findUniqueOrThrow({ where: { id: historicalId }, include: { itens: true, pagamentos: true, contaReceber: true } });
+          assert.equal(before.origem, 'CAIXA');
+          assert.equal(before.pontoVendaId, point.id);
+          assert.equal(before.status, 'ABERTA');
+          assert.equal(Number(before.total), 0);
+          assert.ok(before.createdAt >= operationStartedAt, 'empty command was created synthetically in this QA run');
+          assert.equal(before.itens.length, 0);
+          assert.equal(before.pagamentos.length, 0);
+          assert.equal(before.contaReceber, null);
+          const paymentsBefore = await historical();
+          const balancesBefore = await stockBalances(tenant.id);
+          const inventoryBefore = await stockMovementPhoto(tenant.id);
+          const cashBefore = await cashMovementPhoto(tenant.id);
+          const auditBefore = await db.transacaoLog.findMany({ where: { comandaId: historicalId }, select: { id: true } });
+          await request(owner.cookie, 'POST', `/api/operacao/comandas/${historicalId}/cancelar`, {});
+          const after = await db.comanda.findUniqueOrThrow({ where: { id: historicalId }, include: { itens: true, pagamentos: true, contaReceber: true } });
+          assert.equal(after.id, before.id);
+          assert.equal(after.createdAt.toISOString(), before.createdAt.toISOString());
+          assert.equal(after.status, 'CANCELADA');
+          assert.equal(Number(after.total), 0);
+          assert.equal(after.itens.length, 0);
+          assert.equal(after.pagamentos.length, 0);
+          assert.equal(after.contaReceber, null);
+          const cancelAudit = await db.transacaoLog.findFirstOrThrow({ where: { comandaId: historicalId, tipo: 'COMANDA_CANCELADA', usuarioId: owner.row.id }, orderBy: { createdAt: 'desc' } });
+          assert.ok(!auditBefore.some(row => row.id === cancelAudit.id));
+          assert.deepEqual(await historical(), paymentsBefore, 'historical payment rows stay unchanged after operational sanitation');
+          assert.deepEqual(await stockBalances(tenant.id), balancesBefore, 'cancelling the empty historical command does not change stock balances');
+          assert.deepEqual(await stockMovementPhoto(tenant.id), inventoryBefore, 'cancelling the empty historical command does not write inventory movements');
+          assert.deepEqual(await cashMovementPhoto(tenant.id), cashBefore, 'cancelling the empty historical command does not write cash movements');
+          historicalCommandSanitation.push({ commandId: historicalId, tenantId: tenant.id, pointId: point.id, syntheticQaRecord: true, createdByQaUserId: owner.row.id, beforeStatus: before.status, afterStatus: after.status, createdAtPreserved: true, total: 0, itemCount: 0, paymentCount: 0, receivable: null, auditType: cancelAudit.tipo, auditActorId: cancelAudit.usuarioId, noFinancialOrStockEffects: true, authenticatedApi: 'POST /api/operacao/comandas/:id/cancelar' });
+        }
+
         assert.equal(session.ocorrenciaId ?? null, withOccurrence ? occurrence.id : null);
         const menuView = await request(owner.cookie, 'GET', `/api/operacao/caixa/cardapio?pontoVendaId=${point.id}`);
         assert.equal(Number(menuView.produtos.find(p => p.id === product.id && p.volumeMl === 0).precoUnit), price);

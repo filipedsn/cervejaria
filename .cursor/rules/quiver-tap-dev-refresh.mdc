@@ -1,0 +1,21 @@
+---
+description: Toda alteracao de codigo atualiza o DEV oficial e o work item no Plane
+alwaysApply: true
+---
+
+# Quiver Tap — Atualizar DEV e Plane a cada alteracao
+
+Instrucao permanente do usuario: **toda alteracao feita deve ser publicada no ambiente oficial de DEV** (`:3002` / `:5202` / `tapdev.quivercloud.com.br`) e **refletida no work item do Plane**.
+
+## DEV oficial
+
+- O DEV roda um pacote compilado em `deploy/dev-artifacts` (manifest com `releaseSha`), nao o codigo da pasta de trabalho. Editar arquivos nao atualiza a tela.
+- A base do pacote e a fonte do runtime DEV ativo (`deploy/.dev-source-*` ou o snapshot indicado no manifest), nao a `main` nem a pasta de trabalho, que pode ter mudancas nao commitadas de outras frentes.
+- Ao terminar uma alteracao: aplicar so a mudanca na fonte do DEV ativo, compilar, montar o candidate em `deploy/release-candidates/<id>`, publicar com `scripts/dev/publish-dev-release.ps1` e subir com `scripts/dev/start-dev-artifacts.ps1`. Conferir `/api/health` (`releaseSha`) local e publico.
+- Os processos do DEV rodam elevados: parar a API exige UAC. Nunca tocar na porta `:3001` nem em `deploy/prod-artifacts`.
+- PROD continua exigindo autorizacao explicita (regra `quiver-tap-deploy`).
+
+## Plane
+
+- Registrar no work item indicado pelo usuario um comentario de evidencia (o que mudou, testes, `releaseSha` do DEV, `PROD_DEPLOY_REQUIRED`), seguindo `AGENTS.md`.
+- Se o Plane MCP nao estiver disponivel ou o work item nao tiver sido informado, avisar o usuario em vez de pular silenciosamente.

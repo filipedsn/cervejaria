@@ -49,7 +49,7 @@ async function stage(key: string, name: 'disabled' | 'enabled' | 'revoked', evid
 }
 
 test.afterEach(async ({}, testInfo) => {
-  const key = [...pendingKeys].sort((a, b) => b.length - a.length).find((candidate) => testInfo.title.includes(candidate));
+  const key = pendingKeys.find((candidate) => testInfo.title.startsWith(`${candidate} `));
   if (key && testInfo.status !== 'passed') await saveCheckpoint(key, testInfo);
 });
 
@@ -87,10 +87,16 @@ async function assertDenied(response: { status(): number }) {
 
 async function findKitchenCard(staff: Page, itemName: string) {
   const card = staff.locator('article:visible').filter({ hasText: itemName }).first();
-  for (let page = 0; page < 8 && !(await card.isVisible().catch(() => false)); page++) {
-    const next = staff.getByRole('button', { name: 'Próxima' });
-    if (!(await next.isVisible().catch(() => false)) || !(await next.isEnabled())) break;
+  const pager = staff.locator('.cozinha-tv-pager-bar');
+  const next = pager.locator('.cozinha-tv-page-button').last();
+  for (let page = 0; page < 8; page++) {
+    if (await card.isVisible().catch(() => false)) return card;
+    await expect(pager).toBeVisible();
+    await expect(next).toBeVisible();
+    await expect(next).toBeEnabled();
+    const before = await pager.innerText();
     await next.click();
+    await expect.poll(() => pager.innerText()).not.toBe(before);
   }
   await expect(card).toBeVisible();
   return card;
@@ -443,15 +449,19 @@ test('sale.refund requires kitchen.cancel and revokes same-session confirmation'
   const key = 'sale.refund';
   const orderId = process.env.RBAC_QA_REFUND_ORDER_ID!;
   const itemName = process.env.RBAC_QA_REFUND_ITEM_NAME!;
+  const commandId = process.env.RBAC_QA_REFUND_COMMAND_ID!;
   const deps = ['kitchen.read', 'kitchen.cancel'];
   const { ownerContext, staffContext, staff } = await contexts(browser, deps);
   const queueUrl = '/api/operacao/cozinha';
   const statusUrl = `/api/operacao/cozinha/${orderId}/status`;
+  const refundsBefore = (await command(ownerContext, commandId)).pagamentos.filter((payment: { valor: string | number }) => Number(payment.valor) < 0);
+  expect(refundsBefore).toHaveLength(1);
   const before = await staffContext.request.get(queueUrl);
   expect(before.status()).toBe(200);
   expect((await before.json()).find((order: { id: string }) => order.id === orderId).status).toBe('CANCELAMENTO_PENDENTE');
   const denied = await staffContext.request.patch(statusUrl, { data: { status: 'CANCELADO' } });
   await assertDenied(denied);
+  expect((await command(ownerContext, commandId)).pagamentos.filter((payment: { valor: string | number }) => Number(payment.valor) < 0)).toEqual(refundsBefore);
   await staff.goto('/operacao/cozinha');
   const card = await findKitchenCard(staff, itemName);
   await expect(card.getByRole('button', { name: 'Confirmar cancelamento' })).toHaveCount(0);
@@ -463,11 +473,9 @@ test('sale.refund requires kitchen.cancel and revokes same-session confirmation'
   await expect.poll(() => new URL(staff.url()).pathname).toBe('/operacao/cozinha');
   const allowedCard = await findKitchenCard(staff, itemName);
   await allowedCard.getByRole('button', { name: 'Confirmar cancelamento' }).click();
-  await expect.poll(async () => (await (await staffContext.request.get(queueUrl)).json()).find((order: { id: string }) => order.id === orderId).status).toBe('CANCELADO');
-  const commandId = process.env.RBAC_QA_REFUND_COMMAND_ID!;
-  const afterGrant = await command(ownerContext, commandId);
-  expect(afterGrant.pagamentos.some((payment: { valor: string | number }) => Number(payment.valor) < 0)).toBe(true);
-  await stage(key, 'enabled', 'real UI confirmed paid-sale cancellation; negative refund payment persisted', testInfo);
+  await expect.poll(async () => (await command(ownerContext, commandId)).pedidos.find((order: { id: string }) => order.id === orderId).status).toBe('CANCELADO');
+  expect((await command(ownerContext, commandId)).pagamentos.filter((payment: { valor: string | number }) => Number(payment.valor) < 0)).toEqual(refundsBefore);
+  await stage(key, 'enabled', 'real UI confirmed a previously requested paid-sale cancellation; API and PostgreSQL retained exactly one refund payment without duplicating it', testInfo);
   await setPermissions(ownerContext, deps);
   await staff.reload();
   const revokedOrderId = process.env.RBAC_QA_REFUND_REVOKE_ORDER_ID!;
@@ -477,6 +485,8 @@ test('sale.refund requires kitchen.cancel and revokes same-session confirmation'
   const revoked = await staffContext.request.patch(`/api/operacao/cozinha/${revokedOrderId}/status`, { data: { status: 'CANCELADO' } });
   await assertDenied(revoked);
   expect((await (await staffContext.request.get(queueUrl)).json()).find((order: { id: string }) => order.id === revokedOrderId).status).toBe('CANCELAMENTO_PENDENTE');
+  const revokedCommand = await command(ownerContext, process.env.RBAC_QA_REFUND_REVOKE_COMMAND_ID!);
+  expect(revokedCommand.pagamentos.filter((payment: { valor: string | number }) => Number(payment.valor) < 0)).toHaveLength(1);
   await stage(key, 'revoked', 'same session retained kitchen.cancel but lost sale.refund; second paid cancellation stayed pending', testInfo);
   await Promise.all([ownerContext.close(), staffContext.close()]);
 });

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, formatCurrency } from '../lib/api';
 import type { EventoDashboard } from '../types';
 import { getSocket } from '../lib/socket';
+import { useAuth } from '../contexts/AuthContext';
 
 function HeroStatCell({ label, value }: { label: string; value: string }) {
   return (
@@ -41,11 +42,13 @@ export function EventoResumoKpis({
   liveUpdates?: boolean;
 }) {
   const queryClient = useQueryClient();
+  const { canPermission } = useAuth();
+  const podeVerIndicadores = canPermission('event.dashboard.read');
 
   const { data: dashboard } = useQuery({
     queryKey: ['dashboard', eventoId],
     queryFn: () => api.get<EventoDashboard>(`/api/eventos/${eventoId}/dashboard`),
-    enabled: !!eventoId,
+    enabled: !!eventoId && podeVerIndicadores,
   });
 
   useEffect(() => {
@@ -68,6 +71,8 @@ export function EventoResumoKpis({
       socket.off('pedido:confirmed', invalidate);
     };
   }, [eventoId, queryClient, liveUpdates]);
+
+  if (!podeVerIndicadores) return null;
 
   const resumo = dashboard?.resumo;
   const Cell = variant === 'hero' ? HeroStatCell : CardStatCell;

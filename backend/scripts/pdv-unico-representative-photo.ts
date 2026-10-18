@@ -203,7 +203,7 @@ export async function captureRepresentativeTenantPhoto(tx: AnyRecord, targets: A
     const parents = model.fields.filter((field: AnyRecord) => field.kind === 'object' && field.relationFromFields?.length).map((field: AnyRecord) => ({ model: field.type, fields: field.relationFromFields, references: field.relationToFields ?? ['id'] }));
     tableRows.push({ model: model.name, schema: model.schema ?? 'public', table: model.dbName ?? model.name, primaryKey: model.primaryKey?.fields ?? model.fields.filter((field: AnyRecord) => field.isId).map((field: AnyRecord) => field.name), scalarFields: fields, parents, rowCount: outputRows.length, rows: outputRows });
   }
-  return { version: 1, anonymization: ['Cervejaria.nome/slug', 'Cliente.nome/email/telefone/dataNascimento/observacoes', 'Usuario.nome/email/senhaHash', 'TransacaoLog.metadata values for person/free-text keys', 'Evento.local', 'observacao(s), endpoint/push/reset credentials'], targets, tableRows, crossTenantEdges };
+  return { version: 1, anonymization: ['Cervejaria.nome/slug', 'Cliente.nome/email/telefone/dataNascimento/observacoes', 'Usuario.nome/email/senhaHash', 'TransacaoLog.metadata personal/free-text leaves; nested business payload structure retained', 'Evento.local', 'observacao(s), endpoint/push/reset credentials'], targets, tableRows, crossTenantEdges };
 }
 
 export function revivePhotoValue(value: any): any {

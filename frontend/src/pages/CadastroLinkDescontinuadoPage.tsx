@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api, assetUrl } from '../lib/api';
+import { api, logoAssetUrl } from '../lib/api';
 import type { PublicCervejariaInfo } from '../types';
 import { Loading } from '../components/Loading';
 
@@ -28,7 +28,7 @@ export function CadastroLinkDescontinuadoPage() {
     );
   }
 
-  const logo = info ? assetUrl(info.logoUrl) : null;
+  const logo = info ? logoAssetUrl(info) : null;
 
   return (
     <div className="min-h-screen bg-canvas px-4 py-8 safe-area-pt safe-area-pb">

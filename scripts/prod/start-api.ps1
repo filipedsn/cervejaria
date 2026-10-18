@@ -93,6 +93,7 @@ $nodeDir = Split-Path $paths.NodeExe -Parent
 $env:Path = "$nodeDir;$env:Path"
 $env:NODE_ENV = 'production'
 $env:FRONTEND_DIST = $paths.ProdFrontendDist
+$env:QUIVER_WRITE_FREEZE_FILE = Join-Path $paths.RuntimeDir 'write-freeze'
 # O manifest e o artefato publicado sao a fonte de verdade do processo em execucao.
 # Manifest ausente/corrompido e fail-safe: a API continua com release "unknown".
 $env:RELEASE_SHA = 'unknown'

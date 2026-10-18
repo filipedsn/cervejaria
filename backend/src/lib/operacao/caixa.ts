@@ -123,6 +123,26 @@ export function totalPendenteContasReceber(
   return reais(saldoTotal);
 }
 
+export function resumirFiadoDoTurno(
+  contas: Array<{ valorOriginal: unknown; recebimentos: Array<{ valor: unknown; nesteTurno: boolean }> }>,
+) {
+  let vendido = 0;
+  let quitadoNoTurno = 0;
+  let quitadoDepois = 0;
+  for (const conta of contas) {
+    vendido += centavos(conta.valorOriginal);
+    for (const recebimento of conta.recebimentos) {
+      if (recebimento.nesteTurno) quitadoNoTurno += centavos(recebimento.valor);
+      else quitadoDepois += centavos(recebimento.valor);
+    }
+  }
+  return {
+    fiadoVendido: reais(vendido),
+    fiadoQuitadoNoTurno: reais(quitadoNoTurno),
+    fiadoQuitadoDepois: reais(quitadoDepois),
+  };
+}
+
 export function totaisMovimentos(movimentos: Array<{ tipo: 'SANGRIA' | 'SUPRIMENTO'; valor: unknown }>) {
   let sangrias = 0;
   let suprimentos = 0;
@@ -299,6 +319,7 @@ export async function montarResumoCaixa(
     abertoEm: sessao.abertoEm,
     fechadoPorId: sessao.fechadoPorId,
     fechadoEm: sessao.fechadoEm,
+    tipoEncerramento: sessao.tipoEncerramento,
     observacaoFechamento: sessao.observacaoFechamento,
     pendente,
     gaveta: {
@@ -596,6 +617,7 @@ export async function fecharCaixa(params: {
       where: { id: sessao.id },
       data: {
         status: 'FECHADO',
+        tipoEncerramento: 'FINANCEIRO',
         fechadoPorId: params.fechadoPorId,
         fechadoEm: new Date(),
         contadoDinheiro: params.contadoDinheiro,
@@ -621,6 +643,39 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
   }
 
   const caixa = await montarResumoCaixa(sessao, cervejariaId);
+  const usuarioIds = [sessao.abertoPorId, sessao.fechadoPorId].filter(Boolean) as string[];
+  const usuarios = usuarioIds.length
+    ? await prisma.usuario.findMany({
+        where: { id: { in: usuarioIds } },
+        select: { id: true, nome: true },
+      })
+    : [];
+  const nomeUsuario = (id: string | null) => usuarios.find((usuario) => usuario.id === id)?.nome ?? null;
+  if (sessao.tipoEncerramento === 'ADMINISTRATIVO') {
+    return {
+      caixa,
+      pontoNome: sessao.pontoVenda.nome,
+      abertoPorNome: nomeUsuario(sessao.abertoPorId) ?? '—',
+      fechadoPorNome: nomeUsuario(sessao.fechadoPorId),
+      dadosFinanceirosDisponiveis: false,
+      comandasAtendidas: null,
+      vendasTotal: null,
+      totalRecebido: null,
+      vendasAvulsas: null,
+      itensVendidos: null,
+      porProduto: [],
+      contasReceber: [],
+      fiadoVendido: null,
+      fiadoQuitadoNoTurno: null,
+      fiadoQuitadoDepois: null,
+      contasPendentes: [],
+      totalPendente: null,
+      topClientes: [],
+      ticketMedio: null,
+      duracaoMinutos: null,
+      receitaPorHora: null,
+    };
+  }
   const vendasAvulsas = await prisma.comanda.count({
     where: {
       origem: 'CAIXA',
@@ -637,15 +692,6 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
     Math.round((sessao.fechadoEm.getTime() - sessao.abertoEm.getTime()) / 60_000),
   );
   const duracaoHoras = Math.max(0.25, Math.round((duracaoMinutos / 60) * 100) / 100);
-
-  const usuarioIds = [sessao.abertoPorId, sessao.fechadoPorId].filter(Boolean) as string[];
-  const usuarios = usuarioIds.length
-    ? await prisma.usuario.findMany({
-        where: { id: { in: usuarioIds } },
-        select: { id: true, nome: true },
-      })
-    : [];
-  const nomeUsuario = (id: string | null) => usuarios.find((usuario) => usuario.id === id)?.nome ?? null;
 
   const comandas = await prisma.comanda.findMany({
     where: {
@@ -787,6 +833,7 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
 
   return {
     caixa,
+    dadosFinanceirosDisponiveis: true,
     pontoNome: sessao.pontoVenda.nome,
     abertoPorNome: nomeUsuario(sessao.abertoPorId) ?? '—',
     fechadoPorNome: nomeUsuario(sessao.fechadoPorId),
@@ -797,6 +844,7 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
     itensVendidos,
     porProduto: porProdutoArr,
     contasReceber,
+    ...resumirFiadoDoTurno(contasReceber),
     contasPendentes: contasPendentes.sort((a, b) => b.saldo - a.saldo),
     totalPendente: Math.round(contasPendentes.reduce((soma, conta) => soma + conta.saldo, 0) * 100) / 100,
     topClientes: porClienteArr,

@@ -158,25 +158,29 @@ export function OperacaoDashboardPage() {
     [data?.receitaAnual],
   );
 
+  const turnosOrdenados = useMemo(
+    () =>
+      [...(data?.turnosRecentes ?? [])].sort(
+        (a, b) => new Date(a.fechadoEm).getTime() - new Date(b.fechadoEm).getTime(),
+      ),
+    [data?.turnosRecentes],
+  );
+
   const turnosChart = useMemo(
     () =>
-      (data?.turnosRecentes ?? []).map((turno) => ({
-        nome: formatTurnoTitulo(turno.abertoEm, turno.fechadoEm),
+      turnosOrdenados.map((turno) => ({
+        nome: formatTurnoTitulo(
+          turno.abertoEm,
+          turno.fechadoEm,
+          turno.tipoEncerramento === 'ADMINISTRATIVO',
+        ),
         dataLabel: new Date(turno.fechadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
         pontoNome: turno.pontoNome,
         receita: turno.receitaTotal,
         comandas: turno.comandasAtendidas,
         sessaoId: turno.sessaoId,
       })),
-    [data?.turnosRecentes],
-  );
-
-  const turnosOrdenados = useMemo(
-    () =>
-      [...(data?.turnosRecentes ?? [])].sort(
-        (a, b) => new Date(a.abertoEm).getTime() - new Date(b.abertoEm).getTime(),
-      ),
-    [data?.turnosRecentes],
+    [turnosOrdenados],
   );
 
   if (isLoading || !data) return <Loading />;
@@ -276,9 +280,9 @@ export function OperacaoDashboardPage() {
         />
         <KpiCard label="Recebido no período" value={formatCurrency(resumo.totalRecebido)} />
         <KpiCard
-          label="Pendente"
-          value={formatCurrency(Number.isFinite(resumo.totalPendente) ? resumo.totalPendente : 0)}
-          hint="Saldo ainda não recebido das contas pendentes"
+          label="Pendente do período"
+          value={formatCurrency(resumo.pendentePeriodo ?? 0)}
+          hint={`Em aberto hoje (todos os meses): ${formatCurrency(Number.isFinite(resumo.totalPendente) ? resumo.totalPendente : 0)}`}
         />
         <KpiCard label="Comandas atendidas" value={String(resumo.comandasAtendidas)} />
         <KpiCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} />
@@ -286,6 +290,54 @@ export function OperacaoDashboardPage() {
         <KpiCard label="Itens vendidos" value={String(resumo.itensVendidos)} />
         <KpiCard label="Turnos de caixa" value={String(resumo.turnosCaixa)} />
       </div>
+
+      {resumo.reconciliacaoVendasTurnos.vendasForaDosTurnosCents > 0 && (
+        <section className="rounded-xl border border-line bg-surface-lighter/60 px-4 py-3 text-sm text-ink-soft" aria-label="Reconciliação entre vendas e turnos">
+          <h2 className="font-semibold text-ink mb-1">Reconciliação das vendas</h2>
+          <p>
+            Vendas no período {formatCurrency(resumo.reconciliacaoVendasTurnos.vendasDoMesCents / 100)} ={' '}
+            vendas nos turnos listados {formatCurrency(resumo.reconciliacaoVendasTurnos.vendasExibidasNosTurnosCents / 100)} +{' '}
+            vendas fora deles {formatCurrency(resumo.reconciliacaoVendasTurnos.vendasForaDosTurnosCents / 100)}{' '}
+            ({resumo.reconciliacaoVendasTurnos.comandasForaDosTurnos} comandas).
+          </p>
+          {resumo.reconciliacaoVendasTurnos.porTipoForaDosTurnos.length > 0 && (
+            <p className="mt-1">
+              Tipo das comandas fora dos turnos (informativo; não determina o turno):{' '}
+              {resumo.reconciliacaoVendasTurnos.porTipoForaDosTurnos.map((grupo) =>
+                `${grupo.comandas} ${grupo.tipo} · ${formatCurrency(grupo.vendasCents / 100)}`,
+              ).join('; ')}.
+            </p>
+          )}
+          <ul className="mt-2 space-y-1 text-xs">
+            {resumo.reconciliacaoVendasTurnos.quitadasPorRecebimentoEmTurno.comandas > 0 && (
+              <li>
+                {resumo.reconciliacaoVendasTurnos.quitadasPorRecebimentoEmTurno.comandas} vendas, totalizadas pelo valor das comandas em{' '}
+                {formatCurrency(resumo.reconciliacaoVendasTurnos.quitadasPorRecebimentoEmTurno.vendasCents / 100)}, sem sessão de realização vinculada;{' '}
+                recebimentos de contas em turnos no período: {formatCurrency(resumo.reconciliacaoVendasTurnos.quitadasPorRecebimentoEmTurno.recebimentosNoPeriodoCents / 100)}{' '}
+                ({resumo.reconciliacaoVendasTurnos.quitadasPorRecebimentoEmTurno.recebimentosNoPeriodoCount} pagamentos).
+              </li>
+            )}
+            {resumo.reconciliacaoVendasTurnos.semSessaoComprovada.comandas > 0 && (
+              <li>
+                {resumo.reconciliacaoVendasTurnos.semSessaoComprovada.comandas} vendas sem sessão de realização comprovada: total das comandas{' '}
+                {formatCurrency(resumo.reconciliacaoVendasTurnos.semSessaoComprovada.vendasCents / 100)}; recebimentos ligados a essas comandas no período:{' '}
+                {formatCurrency(resumo.reconciliacaoVendasTurnos.semSessaoComprovada.recebimentosNoPeriodoCents / 100)}{' '}
+                ({resumo.reconciliacaoVendasTurnos.semSessaoComprovada.recebimentosNoPeriodoCount} pagamentos).
+              </li>
+            )}
+            {resumo.reconciliacaoVendasTurnos.outroVinculoForaDaLista.comandas > 0 && (
+              <li>
+                Outros vínculos de venda fora dos turnos listados: {resumo.reconciliacaoVendasTurnos.outroVinculoForaDaLista.comandas} comandas,{' '}
+                {formatCurrency(resumo.reconciliacaoVendasTurnos.outroVinculoForaDaLista.vendasCents / 100)}.
+              </li>
+            )}
+          </ul>
+          <p className="mt-2 text-xs text-ink-faint">
+            O vínculo da sessão de realização não foi gravado nessas comandas da cópia histórica. Sem esse vínculo ou um pagamento da própria venda ligado à sessão, não é possível identificar o turno pelo tipo nem pelo horário. Vendas usam o total das comandas fechadas no período; quitações de contas são recebimentos e não atribuem a venda a um turno.
+            {resumo.reconciliacaoVendasTurnos.reconciliado ? '' : ' Há vínculos repetidos ou valores a reconciliar.'}
+          </p>
+        </section>
+      )}
 
       {resumo.historicoSemAtribuicao.count > 0 && (
         <div className="rounded-xl border border-line bg-surface-lighter/60 px-4 py-3 text-sm text-ink-soft">
@@ -354,7 +406,13 @@ export function OperacaoDashboardPage() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="font-semibold truncate">{formatTurnoTitulo(turno.abertoEm, turno.fechadoEm)}</p>
+                          <p className="font-semibold truncate">
+                            {formatTurnoTitulo(
+                              turno.abertoEm,
+                              turno.fechadoEm,
+                              turno.tipoEncerramento === 'ADMINISTRATIVO',
+                            )}
+                          </p>
                         </div>
                         <div className="text-right shrink-0">
                           <p className="font-bold text-brand-600 text-lg tabular-nums leading-none">
@@ -367,19 +425,28 @@ export function OperacaoDashboardPage() {
                       <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
                         <TurnoMetric value={pluralComandasOperacao(turno.comandasAtendidas)} label="atendidas" />
                         <TurnoMetric value={formatCurrency(turno.totalRecebido)} label="recebido" />
+                        {(turno.fiadoQuitadoDepois ?? 0) > 0 && (
+                          <TurnoMetric value={formatCurrency(turno.fiadoQuitadoDepois ?? 0)} label="fiado quitado depois" />
+                        )}
                         <TurnoMetric value={formatCurrency(turno.ticketMedio)} label="ticket médio" />
-                        <TurnoMetric value={`${formatCurrency(turno.receitaPorHora)}/h`} label="receita/h" />
-                        <TurnoMetric
-                          value={formatDuracaoTurnoMinutos(
-                            Math.max(
-                              1,
-                              Math.round(
-                                (new Date(turno.fechadoEm).getTime() - new Date(turno.abertoEm).getTime()) / 60_000,
-                              ),
-                            ),
-                          )}
-                          label="duração"
-                        />
+                        {turno.tipoEncerramento === 'ADMINISTRATIVO' ? (
+                          <TurnoMetric value="Administrativo" label="encerramento" />
+                        ) : (
+                          <>
+                            <TurnoMetric value={`${formatCurrency(turno.receitaPorHora ?? 0)}/h`} label="receita/h" />
+                            <TurnoMetric
+                              value={formatDuracaoTurnoMinutos(
+                                Math.max(
+                                  1,
+                                  Math.round(
+                                    (new Date(turno.fechadoEm).getTime() - new Date(turno.abertoEm).getTime()) / 60_000,
+                                  ),
+                                ),
+                              )}
+                              label="duração"
+                            />
+                          </>
+                        )}
                         {turno.vendasAvulsas > 0 && (
                           <TurnoMetric value={String(turno.vendasAvulsas)} label="vendas avulsas" />
                         )}
@@ -486,6 +553,7 @@ export function OperacaoDashboardPage() {
 
             <section className="card p-4 sm:p-5">
               <h2 className="section-label mb-2">Produtos mais vendidos</h2>
+              <p className="text-xs text-ink-faint mb-2">Receita líquida distribuída pelos itens ativos; descontos incluídos.</p>
               <div className="divide-y divide-line">
                 {porProduto.map((p, i) => (
                   <div key={p.produtoId} className="flex items-center gap-4 py-3">

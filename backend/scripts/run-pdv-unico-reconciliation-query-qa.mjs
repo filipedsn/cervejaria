@@ -21,6 +21,7 @@ const tempRoot = await import('node:fs/promises').then(({ mkdtemp }) => mkdtemp(
 const clientDir = path.join(tempRoot, 'client');
 const schemaPath = path.join(tempRoot, 'schema.prisma');
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+const schemaBlobSha1 = execFileSync('git', ['rev-parse', `${revision}:backend/prisma/schema.prisma`], { cwd: repoRoot, encoding: 'utf8' }).trim();
 const schema = execFileSync('git', ['show', `${revision}:backend/prisma/schema.prisma`], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { cwd: backendRoot, encoding: 'utf8', windowsHide: true, ...options });
@@ -49,7 +50,7 @@ try {
   Object.assign(env, { NODE_ENV: 'test', PDV_ISOLATED_QA: '1', PDV_QA_RUN_ID: runId, QA_DATABASE_URL: databaseUrl, PDV_QA_PRISMA_CLIENT: clientDir });
   const output = run(process.execPath, ['--import', 'tsx', 'scripts/pdv-unico-live-reconciliation.query.qa.mjs'], { env });
   const cases = JSON.parse(output.trim().split(/\r?\n/).at(-1));
-  const evidence = { ...cases, cutoverRunId, schemaRevision: revision, qaRunId: runId, testedAt: new Date().toISOString() };
+  const evidence = { ...cases, cutoverRunId, schemaRevision: revision, schemaBlobSha1, qaRunId: runId, testedAt: new Date().toISOString() };
   const receiptsRoot = path.join(process.env.LOCALAPPDATA ?? os.homedir(), 'TAP Quiver', 'pdv-cutover-receipts');
   await mkdir(receiptsRoot, { recursive: true });
   const evidenceFile = path.join(receiptsRoot, `${cutoverRunId}.reconciliation-query-qa-${runId}.json`);

@@ -1,6 +1,7 @@
 import Fastify, { type FastifyBaseLogger } from 'fastify';
 import { registerPdvTenantContext } from './lib/pdv-tenant-activation.js';
 import { CanonicalPdvConfigurationError } from './lib/canonical-pdv-operational-config.js';
+import { registerWriteFreezeGuard } from './lib/write-freeze.js';
 
 import { ZodError } from 'zod';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
@@ -149,6 +150,7 @@ export async function buildApp() {
     loggerInstance: createLogger(),
   });
   registerPdvTenantContext(app);
+  registerWriteFreezeGuard(app);
 
   await app.register(helmet, {
 

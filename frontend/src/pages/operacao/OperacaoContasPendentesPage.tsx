@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../../lib/api';
 import { Loading } from '../../components/Loading';
@@ -55,6 +56,8 @@ function Icon({ nome, className = 'h-5 w-5' }: { nome: 'pessoa' | 'moeda' | 'ten
 }
 
 export function OperacaoContasPendentesPage() {
+  const [searchParams] = useSearchParams();
+  const clienteIdFiltro = searchParams.get('clienteId');
   const queryClient = useQueryClient();
   const { cervejaria, canPermission } = useAuth();
   const podeReceberConta = canPermission('debt.receive');
@@ -103,6 +106,7 @@ export function OperacaoContasPendentesPage() {
     const termo = busca.trim().toLocaleLowerCase('pt-BR');
     const digitos = termo.replace(/\D/g, '');
     const filtradas = contas.filter((conta) => {
+      if (clienteIdFiltro && conta.cliente.id !== clienteIdFiltro) return false;
       const dataConsumo = dataLocal(conta.comanda.fechadaEm ?? conta.createdAt);
       const corresponde = !termo || [
         conta.cliente.nome, conta.cliente.telefone ?? '', rotuloConta(conta),
@@ -114,7 +118,7 @@ export function OperacaoContasPendentesPage() {
       return true;
     });
     return filtro === 'MAIOR_VALOR' ? filtradas.sort((a, b) => b.saldo - a.saldo) : filtradas;
-  }, [busca, contas, filtro]);
+  }, [busca, clienteIdFiltro, contas, filtro]);
   const contaExpandida = contasVisiveis.find((conta) => conta.id === contaExpandidaId)
     ?? (contaExpandidaId === undefined ? contasVisiveis[0] : undefined);
 

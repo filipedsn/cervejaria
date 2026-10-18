@@ -204,6 +204,8 @@ export function formatTransacaoDescricao(tipo: TransacaoTipo, metadata: unknown)
       return `Movimento de caixa corrigido â€” R$ ${(num(m.valorOriginal) ?? 0).toFixed(2)} → R$ ${(num(m.valorCorrigido) ?? 0).toFixed(2)}`;
     case 'CASH_REGISTER_CLOSED':
       return `Caixa fechado${num(m.divergenciaCentavos) != null ? ` — divergência R$ ${((num(m.divergenciaCentavos) ?? 0) / 100).toFixed(2)}` : ''}`;
+    case 'CASH_REGISTER_ADMINISTRATIVE_CLOSED':
+      return `Caixa encerrado administrativamente — conferência financeira pendente`;
     case 'COMANDA_CRIADA':
       return `Comanda operacao ${str(m.identificador) ?? ''}`.trim();
     case 'COMANDA_FECHADA':

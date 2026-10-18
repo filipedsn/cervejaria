@@ -70,8 +70,7 @@ try {
   $frontendDependencies = Join-Path (Split-Path $dependencyManifestPath -Parent) 'frontend'
   Start-DevArtifactService -Label 'Frontend DEV compiled release' -WorkingDir $frontendDependencies -NpmArgs @('run','preview','--','--outDir',(Join-Path $artifactRoot 'frontend'),'--host','0.0.0.0','--port',[string]$paths.FrontendPort,'--strictPort','--configLoader','runner') -PidFile $paths.FrontendPidFile -Port $paths.FrontendPort -StdoutLog $paths.FrontendLog -StderrLog $paths.FrontendErrLog
 } catch {
-  Stop-ManagedPidFile -PidFile $paths.FrontendPidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('vite') -Label 'Frontend DEV failed start' | Out-Null
-  Stop-ManagedPidFile -PidFile $paths.BackendPidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('backend') -Label 'API DEV failed start' | Out-Null
+  Write-DevLog -Paths $paths -Message "Compiled DEV startup failed: $($_.Exception.Message). No listener was stopped; the coordinated DEV restart/rollback owner must recover the runtime."
   throw
 } finally {
   $env:NODE_OPTIONS = $savedNodeOptions

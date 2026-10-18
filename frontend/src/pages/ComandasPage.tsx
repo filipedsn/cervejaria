@@ -43,7 +43,8 @@ export function ComandasPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const { cervejaria } = useAuth();
+  const { cervejaria, canPermission } = useAuth();
+  const podeVerIndicadoresEvento = canPermission('event.dashboard.read');
   const exibirKpis = cervejaria?.exibirKpisComanda ?? true;
   const colunaUnica = cervejaria?.comandasColunaUnica ?? true;
   const { evento, trailer } = useEvento();
@@ -60,7 +61,7 @@ export function ComandasPage() {
   const { data: dashboard, isLoading: loadingDashboard } = useQuery({
     queryKey: ['dashboard', evento?.id],
     queryFn: () => api.get<EventoDashboard>(`/api/eventos/${evento!.id}/dashboard`),
-    enabled: !!evento,
+    enabled: !!evento && podeVerIndicadoresEvento,
   });
 
   const { data: comandas, isLoading: loadingComandas } = useQuery({
@@ -220,7 +221,7 @@ export function ComandasPage() {
     );
   }
 
-  if (loadingDashboard || loadingComandas) return <Loading />;
+  if ((podeVerIndicadoresEvento && loadingDashboard) || loadingComandas) return <Loading />;
 
   const resumo = dashboard?.resumo;
   const showPayBar = selectMode && selectedIds.length >= 2 && totalGrupo > 0;
@@ -256,7 +257,7 @@ export function ComandasPage() {
       {groupSuccess && <div className="alert-success">{groupSuccess}</div>}
       {groupError && !showGroupPayment && <div className="alert-error">{groupError}</div>}
 
-      {resumo && exibirKpis && (
+      {podeVerIndicadoresEvento && resumo && exibirKpis && (
         <div className="grid grid-cols-2 gap-3">
           <StatCard label="Comandas abertas" value={String(resumo.comandasAbertas)} />
           <StatCard label="Comandas fechadas" value={String(resumo.comandasFechadas)} accent="green" />

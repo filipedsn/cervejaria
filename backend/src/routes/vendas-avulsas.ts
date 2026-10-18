@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { getAuthUser } from '../types/auth.js';
-import { emitToEvento } from '../lib/realtime.js';
+import { emitToComanda, emitToEvento } from '../lib/realtime.js';
 import { toNumber } from '../lib/utils.js';
 import { ensureClienteAvulso } from '../lib/cliente-avulso.js';
 import { addItemToComandaInTx, recalcComandaTotalInTx } from '../lib/comanda-service.js';
@@ -182,6 +182,7 @@ export async function vendasAvulsasRoutes(app: FastifyInstance) {
       });
 
       emitToEvento(app.io, body.eventoId, { type: 'comanda:closed', data: comanda });
+      emitToComanda(app.io, comanda.id, { type: 'comanda:closed', data: comanda });
       return reply.status(201).send(comanda);
     } catch (err: unknown) {
       const statusCode = (err as { statusCode?: number }).statusCode;

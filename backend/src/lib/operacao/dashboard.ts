@@ -1,12 +1,17 @@
-import type { PaymentMethod, Prisma } from '@prisma/client';
+import { Prisma, type PaymentMethod } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
 import { totaisPorForma } from './caixa.js';
 import { pedidoContaNaComanda } from './cozinha.js';
 import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
 import { paymentFilterForOperationalSession } from './payment-session-filter.js';
-
-const MS_HOUR = 3_600_000;
+import {
+  aggregateDashboardProducts,
+  contasPendentesWhere,
+  projectDashboardTurnMetrics,
+  reconcileDashboardSalesToTurns,
+  sumDebtSettledAfterTurn,
+} from './dashboard-metrics.js';
 
 const MESES = [
   'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
@@ -118,12 +123,14 @@ async function fetchHistoricoSemAtribuicao(
   return { count: rows.length, total: rows.reduce((sum: number, row: { valor: unknown }) => sum + toNumber(row.valor), 0), byForm: byForm.map(({ forma, valor }) => ({ forma, valor })) };
 }
 
-async function saldoContasPendentes(cervejariaId: string, pontoVendaId?: string, canonicalPdvEnabled = false) {
+async function saldoContasPendentes(
+  cervejariaId: string,
+  pontoVendaId?: string,
+  canonicalPdvEnabled = false,
+  periodo?: { inicio: Date; fim: Date },
+) {
   const contas = await prisma.contaReceber.findMany({
-    where: {
-      cliente: { cervejariaId },
-      comanda: { ...(canonicalPdvEnabled ? { origem: { in: ['CAIXA', 'EVENTO'] }, pontoVendaId: { not: null }, pontoVenda: { cervejariaId } } : { origem: 'CAIXA' }), status: 'FECHADA', ...(pontoVendaId ? { pontoVendaId } : {}) },
-    },
+    where: contasPendentesWhere(cervejariaId, pontoVendaId, canonicalPdvEnabled, periodo),
     include: { pagamentos: { select: { valor: true } } },
   });
   return contas.reduce((total, conta) => {
@@ -149,7 +156,6 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
   let receitaAvulsa = 0;
   let itensVendidos = 0;
   const porPagamento = new Map<PaymentMethod, number>();
-  const porProduto = new Map<string, { produtoId: string; nome: string; quantidade: number; receita: number }>();
   const porFuncionario = new Map<string, { usuarioId: string | null; nome: string; comandas: number; receita: number }>();
 
   for (const comanda of comandas) {
@@ -178,18 +184,8 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
     }
 
     for (const item of comanda.itens) {
-      if (!item.produtoId) continue;
+      if (!item.produtoId || item.canceladoEm || item.cancelamentoPendenteEm) continue;
       itensVendidos += item.quantidade;
-      const itemValor = toNumber(item.precoUnit) * item.quantidade;
-      const prod = porProduto.get(item.produtoId) ?? {
-        produtoId: item.produtoId,
-        nome: item.nome ?? 'Item',
-        quantidade: 0,
-        receita: 0,
-      };
-      prod.quantidade += item.quantidade;
-      prod.receita += itemValor;
-      porProduto.set(item.produtoId, prod);
     }
   }
 
@@ -205,7 +201,7 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
     }))
     .sort((a, b) => b.valor - a.valor);
 
-  const porProdutoArr = Array.from(porProduto.values())
+  const porProdutoArr = aggregateDashboardProducts(comandas)
     .map((produto) => ({
       ...produto,
       percentual: receitaTotal > 0 ? Math.round((produto.receita / receitaTotal) * 100) : 0,
@@ -274,8 +270,16 @@ async function buildTurnosRecentes(
       ...(pontoVendaId ? { pontoVendaId } : {}),
     },
     include: { movimentos: true, pontoVenda: { select: { id: true, nome: true } } },
-    orderBy: [{ diaOperacional: 'asc' }, { abertoEm: 'asc' }],
+    orderBy: [{ fechadoEm: 'asc' }, { abertoEm: 'asc' }],
   });
+  const encerramentos = sessoes.length
+    ? await prisma.$queryRaw<Array<{ id: string; tipoEncerramento: string | null }>>`
+        SELECT "id", "tipoEncerramento"::text AS "tipoEncerramento"
+        FROM "quiosque"."SessaoCaixaQuiosque"
+        WHERE "id" IN (${Prisma.join(sessoes.map((sessao) => sessao.id))})
+      `
+    : [];
+  const encerramentoPorSessao = new Map(encerramentos.map((row) => [row.id, row.tipoEncerramento]));
 
   const indiceTurnoDia = new Map<string, number>();
   const abertoPorIds = [...new Set(sessoes.map((sessao) => sessao.abertoPorId))];
@@ -284,6 +288,7 @@ async function buildTurnosRecentes(
   const resultados = [];
   for (const sessao of sessoes) {
     if (!sessao.fechadoEm) continue;
+    const tipoEncerramento = encerramentoPorSessao.get(sessao.id) ?? null;
     const chaveDia = `${sessao.pontoVendaId}:${sessao.diaOperacional.toISOString().slice(0, 10)}`;
     const pagamentos = await pagamentosDoTurno(sessao, cervejariaId, canonicalPdvEnabled);
     const pagamentosDeVenda = pagamentos.filter((payment) => payment.contaReceberId === null);
@@ -298,7 +303,7 @@ async function buildTurnosRecentes(
           pontoVenda: { cervejariaId },
           status: 'FECHADA',
         },
-        select: { id: true, tipo: true, total: true },
+        select: { id: true, tipo: true, total: true, pagamentos: { select: { valor: true, sessaoCaixaId: true, contaReceberId: true } } },
       })
       : await prisma.comanda.findMany({
         where: {
@@ -309,7 +314,7 @@ async function buildTurnosRecentes(
           status: 'FECHADA',
           fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm },
         },
-        select: { id: true, tipo: true, total: true },
+        select: { id: true, tipo: true, total: true, pagamentos: { select: { valor: true, sessaoCaixaId: true, contaReceberId: true } } },
       });
     // A canonical turn that only collects debt is still an operational turn.
     // Keep the legacy filter unchanged while showing those real receipts in Por Caixa.
@@ -320,11 +325,13 @@ async function buildTurnosRecentes(
 
     const totais = totaisPorForma(pagamentos);
     const vendasTotal = comandasFechadas.reduce((soma, comanda) => soma + toNumber(comanda.total), 0);
-    const comandaIds = new Set(comandasFechadas.map((comanda) => comanda.id));
-    const duracaoHoras = Math.max(
-      Math.round(((sessao.fechadoEm.getTime() - sessao.abertoEm.getTime()) / MS_HOUR) * 100) / 100,
-      0.25,
-    );
+    const metricasTurno = projectDashboardTurnMetrics({
+      totalVendas: vendasTotal,
+      transacoes: comandasFechadas,
+      abertoEm: sessao.abertoEm,
+      fechadoEm: sessao.fechadoEm,
+      administrativo: tipoEncerramento === 'ADMINISTRATIVO',
+    });
 
     resultados.push({
       sessaoId: sessao.id,
@@ -336,15 +343,16 @@ async function buildTurnosRecentes(
       abertoPorNome: nomesAbertura.get(sessao.abertoPorId) ?? '—',
       abertoEm: sessao.abertoEm,
       fechadoEm: sessao.fechadoEm,
+      tipoEncerramento,
       receitaTotal: vendasTotal,
       totalRecebido: totais.totalVendas,
-      comandasAtendidas: comandaIds.size,
-      vendasAvulsas: 0,
+      fiadoQuitadoDepois: sumDebtSettledAfterTurn(sessao.id, comandasFechadas),
+      comandasAtendidas: metricasTurno.comandasAtendidas,
+      vendasAvulsas: metricasTurno.vendasAvulsas,
       receitaAvulsa: 0,
-      ticketMedio: comandaIds.size > 0 ? vendasTotal / comandaIds.size : 0,
-      duracaoHoras,
-      receitaPorHora:
-        duracaoHoras > 0 ? Math.round((vendasTotal / duracaoHoras) * 100) / 100 : 0,
+      ticketMedio: metricasTurno.ticketMedio,
+      duracaoHoras: metricasTurno.duracaoHoras,
+      receitaPorHora: metricasTurno.receitaPorHora,
     });
   }
 
@@ -356,20 +364,6 @@ async function buildTurnosRecentes(
   for (const turno of resultados) {
     const chaveDia = `${turno.pontoVendaId}:${turno.diaOperacional.toISOString().slice(0, 10)}`;
     turno.turnosNoDia = turnosAtivosPorDia.get(chaveDia) ?? 1;
-  }
-
-  for (const turno of resultados) {
-    const avulsas = await prisma.comanda.count({
-      where: {
-        origem: 'CAIXA',
-        pontoVenda: { cervejariaId },
-        pontoVendaId: turno.pontoVendaId,
-        tipo: 'AVULSA',
-        status: 'FECHADA',
-        fechadaEm: { gte: turno.abertoEm, lte: turno.fechadoEm },
-      },
-    });
-    turno.vendasAvulsas = avulsas;
   }
 
   return resultados;
@@ -422,12 +416,13 @@ export async function buildOperacaoDashboard(
   const { inicio, fim } = monthBounds(ano, mes);
   const canonicalSettings = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId);
 
-  const [comandasMes, comandasAno, turnosRecentes, recebimentosMes, totalPendente, historicoSemAtribuicao] = await Promise.all([
+  const [comandasMes, comandasAno, turnosRecentes, recebimentosMes, totalPendente, pendentePeriodo, historicoSemAtribuicao] = await Promise.all([
     fetchClosedComandas(cervejariaId, inicio, fim, pontoVendaId, canonicalSettings !== null),
     fetchClosedComandas(cervejariaId, yearBounds(anoVigente).inicio, yearBounds(anoVigente).fim, pontoVendaId, canonicalSettings !== null),
     buildTurnosRecentes(cervejariaId, inicio, fim, pontoVendaId, canonicalSettings !== null),
     fetchRecebimentos(cervejariaId, inicio, fim, pontoVendaId, canonicalSettings !== null),
     saldoContasPendentes(cervejariaId, pontoVendaId, canonicalSettings !== null),
+    saldoContasPendentes(cervejariaId, pontoVendaId, canonicalSettings !== null, { inicio, fim }),
     fetchHistoricoSemAtribuicao(canonicalSettings !== null, cervejariaId, inicio, fim, pontoVendaId),
   ]);
   const comparativoPontos = pontoVendaId
@@ -440,6 +435,31 @@ export async function buildOperacaoDashboard(
   const nomesPorId = await fetchUsuariosNomes(fechadoPorIds);
 
   const resumo = aggregateComandas(comandasMes, nomesPorId);
+  const reconciliacaoVendasTurnos = reconcileDashboardSalesToTurns({
+    comandas: comandasMes.filter((comanda) => comanda.fechadaEm !== null).map((comanda) => ({
+      id: comanda.id,
+      tipo: comanda.tipo,
+      pontoVendaId: comanda.pontoVendaId,
+      fechadaEm: comanda.fechadaEm!,
+      total: comanda.total,
+      sessaoCaixaRealizacaoId: comanda.sessaoCaixaRealizacaoId,
+      pagamentos: comanda.pagamentos.map((pagamento) => ({
+        id: pagamento.id,
+        valor: pagamento.valor,
+        pagoEm: pagamento.pagoEm,
+        sessaoCaixaId: pagamento.sessaoCaixaId,
+        sessaoCaixaEventoId: pagamento.sessaoCaixaEventoId,
+        contaReceberId: pagamento.contaReceberId,
+      })),
+    })),
+    turnos: turnosRecentes.map((turno) => ({
+      sessaoId: turno.sessaoId,
+      pontoVendaId: turno.pontoVendaId,
+      receitaTotal: turno.receitaTotal,
+    })),
+    inicio,
+    fim,
+  });
   const totalRecebido = recebimentosMes.reduce((soma, pagamento) => soma + toNumber(pagamento.valor), 0);
   const porPagamento = agregarFormasPagamento(recebimentosMes);
   const evolucaoSemanal = weeklyEvolution(comandasMes, ano, mes);
@@ -492,6 +512,7 @@ export async function buildOperacaoDashboard(
       totalRecebido,
       historicoSemAtribuicao,
       totalPendente,
+      pendentePeriodo,
       comandasAtendidas: resumo.comandasAtendidas,
       vendasAvulsas: resumo.vendasAvulsas,
       receitaAvulsa: resumo.receitaAvulsa,
@@ -499,6 +520,7 @@ export async function buildOperacaoDashboard(
       itensVendidos: resumo.itensVendidos,
       turnosCaixa: turnosNoMes,
       variacaoReceitaMesAnterior: variacaoReceita,
+      reconciliacaoVendasTurnos: reconciliacaoVendasTurnos,
     },
     evolucaoSemanal,
     porPagamento,

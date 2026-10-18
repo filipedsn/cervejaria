@@ -235,7 +235,7 @@ export async function runCrmMergeTests(ctx: QaContext, test: TestFn) {
     {
       id: 'CRM-C-04',
       category: 'CRM concorrente',
-      name: 'Merge com telefones diferentes → 409',
+      name: 'Merge com telefones diferentes confirmado pelo dono',
       requirement: 'CRM-C-04',
     },
     async () => {
@@ -262,15 +262,23 @@ export async function runCrmMergeTests(ctx: QaContext, test: TestFn) {
         token: tenant.donoToken,
         body: { fonteId: fonte.id },
       });
-      if (merge.status !== 409) {
-        return { status: 'failed', message: 'Telefones divergentes', expected: '409', actual: `${merge.status} ${merge.raw.slice(0, 120)}` };
+      if (merge.status !== 200) {
+        return { status: 'failed', message: 'União deveria ser aceita pelo dono', expected: '200', actual: `${merge.status} ${merge.raw.slice(0, 120)}` };
       }
 
-      const fonteVivo = await prisma.cliente.findUnique({ where: { id: fonte.id } });
-      if (!fonteVivo) {
-        return { status: 'failed', message: 'Fonte apagada apesar do 409', expected: 'existe', actual: 'removida' };
+      const [fonteViva, destinoAtual] = await Promise.all([
+        prisma.cliente.findUnique({ where: { id: fonte.id } }),
+        prisma.cliente.findUnique({ where: { id: destino.id }, select: { telefone: true } }),
+      ]);
+      if (fonteViva || destinoAtual?.telefone !== destino.telefone) {
+        return {
+          status: 'failed',
+          message: 'União não preservou perfil destino/telefone',
+          expected: 'fonte removida e telefone do destino mantido',
+          actual: `fonte ${fonteViva ? 'existe' : 'removida'}; telefone ${destinoAtual?.telefone ?? 'null'}`,
+        };
       }
-      return { message: 'Merge bloqueado sem efeito colateral', expected: '409', actual: '409' };
+      return { message: 'União aceita mesmo com telefones diferentes; destino preservado', expected: '200', actual: '200' };
     },
   );
 

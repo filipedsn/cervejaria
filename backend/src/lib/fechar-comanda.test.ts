@@ -5,6 +5,7 @@ import {
   assertPagamentosParaTotal,
   assertValorPagamentosParaTotal,
   podeDeixarContaPendente,
+  resolveSessaoCaixaRealizacaoForClose,
 } from './fechar-comanda.js';
 
 describe('allocatePagamentosToComandas', () => {
@@ -142,5 +143,54 @@ describe('podeDeixarContaPendente', () => {
     assert.equal(podeDeixarContaPendente('CAIXA'), true);
     assert.equal(podeDeixarContaPendente('EVENTO'), true);
     assert.equal(podeDeixarContaPendente('QUIOSQUE'), false);
+  });
+});
+
+describe('resolveSessaoCaixaRealizacaoForClose', () => {
+  it('não exige sessão para EVENTO', () => {
+    assert.equal(
+      resolveSessaoCaixaRealizacaoForClose({ origem: 'EVENTO', sessaoCaixaId: null }),
+      undefined,
+    );
+  });
+
+  it('grava a sessão informada em CAIXA sem vínculo prévio', () => {
+    assert.equal(
+      resolveSessaoCaixaRealizacaoForClose({ origem: 'CAIXA', sessaoCaixaId: 'sess-1' }),
+      'sess-1',
+    );
+  });
+
+  it('rejeita fechamento CAIXA sem sessão', () => {
+    assert.throws(
+      () => resolveSessaoCaixaRealizacaoForClose({ origem: 'CAIXA', sessaoCaixaId: null }),
+      (error: unknown) =>
+        error instanceof Error
+        && error.message.includes('sessão de caixa de realização')
+        && (error as { statusCode?: number }).statusCode === 409,
+    );
+  });
+
+  it('mantém vínculo já gravado quando a sessão do fechamento coincide', () => {
+    assert.equal(
+      resolveSessaoCaixaRealizacaoForClose({
+        origem: 'CAIXA',
+        sessaoCaixaId: 'sess-1',
+        alreadyLinkedId: 'sess-1',
+      }),
+      'sess-1',
+    );
+  });
+
+  it('rejeita atravessar turnos quando já há vínculo diferente', () => {
+    assert.throws(
+      () =>
+        resolveSessaoCaixaRealizacaoForClose({
+          origem: 'CAIXA',
+          sessaoCaixaId: 'sess-2',
+          alreadyLinkedId: 'sess-1',
+        }),
+      /não pode atravessar turnos/,
+    );
   });
 });

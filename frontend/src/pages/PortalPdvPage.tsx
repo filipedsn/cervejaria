@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { api, ApiError, assetUrl } from '../lib/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, ApiError, assetUrl, logoAssetUrl } from '../lib/api';
 import { formatPhone } from '../lib/phone';
 import { Loading } from '../components/Loading';
 import { PortalBackground } from '../components/PortalBackground';
-import { CATEGORIAS_PRODUTO_OPERACAO, normalizeCategoriaProduto } from '../lib/operacao';
+import { CATEGORIAS_PRODUTO_OPERACAO, classificarGrupoProdutoOperacao, normalizeCategoriaProduto } from '../lib/operacao';
 
 type Info = {
-  cervejaria: { nome: string; logoUrl?: string | null; portalBackgroundUrl?: string | null };
+  cervejaria: { nome: string; logoUrl?: string | null; logoVersion?: string | null; portalBackgroundUrl?: string | null };
   pontoVenda: { nome: string };
   disponivel: boolean;
 };
@@ -17,7 +17,7 @@ type PdvProduct = {
   id: string;
   nome: string;
   descricao?: string | null;
-  tipo: string;
+  tipo: 'BEBIDA' | 'COMIDA';
   categoria?: string | null;
   precoEfetivo?: number;
   gruposOpcionais?: Array<{ id: string; nome: string; opcoes: Array<{ id: string; nome: string; precoAdicional: number }> }>;
@@ -57,11 +57,14 @@ function PhoneIcon() {
 
 export function PortalPdvPage() {
   const { slug, pontoVendaId } = useParams<{ slug: string; pontoVendaId: string }>();
+  const queryClient = useQueryClient();
   const [nome, setNome] = useState('');
   const [telefone, setTelefone] = useState('');
   const [result, setResult] = useState<{ numero: number | null; reused: boolean; comanda: PdvComanda } | null>(null);
   const [menuTab, setMenuTab] = useState<'pedidos' | 'resumo'>('pedidos');
+  const [tipoSelecionado, setTipoSelecionado] = useState<'COMIDA' | 'BEBIDA'>('COMIDA');
   const [cart, setCart] = useState<PdvCartItem[]>([]);
+  const [comandaEncerrada, setComandaEncerrada] = useState(false);
   const lastLookupPhone = useRef('');
 
   const info = useQuery({
@@ -95,7 +98,10 @@ export function PortalPdvPage() {
         reused: boolean;
         pontoVenda: { nome: string };
       }>(`/api/public/cervejarias/${slug}/pontos-venda/${pontoVendaId}/comandas`, { nome, telefone }),
-    onSuccess: (data) => setResult({ numero: data.comanda.numero, reused: data.reused, comanda: data.comanda }),
+    onSuccess: (data) => {
+      setComandaEncerrada(false);
+      setResult({ numero: data.comanda.numero, reused: data.reused, comanda: data.comanda });
+    },
   });
 
   const cardapio = useQuery({
@@ -115,9 +121,17 @@ export function PortalPdvPage() {
     queryKey: ['portal-pdv-comanda', result?.comanda.id],
     queryFn: () => api.get<PdvComanda>(`/api/public/cervejarias/${slug}/pontos-venda/${pontoVendaId}/comanda`),
     enabled: Boolean(result),
-    refetchInterval: 5_000,
+    refetchInterval: (query) =>
+      query.state.error instanceof ApiError && query.state.error.status === 401 ? false : 5_000,
     refetchIntervalInBackground: false,
   });
+
+  useEffect(() => {
+    if (comandaQuery.error instanceof ApiError && comandaQuery.error.status === 401) {
+      setComandaEncerrada(true);
+      setCart([]);
+    }
+  }, [comandaQuery.error]);
 
   const enviarPedido = useMutation({
     mutationFn: (itens: PdvCartItem[]) => api.post<PdvComanda>(
@@ -129,6 +143,9 @@ export function PortalPdvPage() {
       setResult((prev) => prev ? { ...prev, comanda: data } : prev);
       void comandaQuery.refetch();
     },
+    onError: () => {
+      void comandaQuery.refetch();
+    },
   });
 
   const displayedComanda = comandaQuery.data ?? result?.comanda;
@@ -137,6 +154,7 @@ export function PortalPdvPage() {
   const totalConsumido = displayedComanda?.total ?? 0;
   const valorEmAberto = displayedComanda?.valorEmAberto ?? 0;
   const addProduct = (product: PdvProduct) => {
+    enviarPedido.reset();
     setCart((current) => {
       const existing = current.find((item) => item.produtoId === product.id);
       if (existing) return current.map((item) => item.produtoId === product.id ? { ...item, quantidade: item.quantidade + 1 } : item);
@@ -144,19 +162,27 @@ export function PortalPdvPage() {
     });
   };
   const changeQuantity = (produtoId: string, delta: number) => {
+    enviarPedido.reset();
     setCart((current) => current
       .map((item) => item.produtoId === produtoId ? { ...item, quantidade: item.quantidade + delta } : item)
       .filter((item) => item.quantidade > 0));
   };
   const cartTotal = cart.reduce((total, item) => total + item.preco * item.quantidade, 0);
+  const cartItemsCount = cart.reduce((total, item) => total + item.quantidade, 0);
 
   const produtosCardapio = Array.isArray(cardapio.data) ? cardapio.data : (cardapio.data?.produtos ?? []);
   const ordemCategorias = categoriasCardapio.data?.ordemCategorias
     ?? (Array.isArray(cardapio.data) ? CATEGORIAS_PRODUTO_OPERACAO : (cardapio.data?.ordemCategorias ?? CATEGORIAS_PRODUTO_OPERACAO));
 
+  const tipoProduto = (product: PdvProduct): 'COMIDA' | 'BEBIDA' => {
+    const grupo = classificarGrupoProdutoOperacao(product);
+    return grupo === 'comidas' ? 'COMIDA' : grupo === 'bebidas' || grupo === 'chope' ? 'BEBIDA' : product.tipo;
+  };
+  const tiposDisponiveis = [...new Set(produtosCardapio.map(tipoProduto))];
+  const tipoAtivo = tiposDisponiveis.includes(tipoSelecionado) ? tipoSelecionado : tiposDisponiveis[0] ?? 'COMIDA';
   const produtosPorCategoria = (() => {
     const grupos = new Map<string, PdvProduct[]>();
-    for (const product of produtosCardapio) {
+    for (const product of produtosCardapio.filter((item) => tipoProduto(item) === tipoAtivo)) {
       const categoria = categoriasCardapio.data?.catalogoCanonico
         ? product.categoria?.trim() || 'Outros'
         : normalizeCategoriaProduto(product.categoria);
@@ -194,7 +220,7 @@ export function PortalPdvPage() {
         <div className="portal-login-brand">
           {info.data.cervejaria.logoUrl ? (
             <img
-              src={assetUrl(info.data.cervejaria.logoUrl) ?? undefined}
+              src={logoAssetUrl(info.data.cervejaria) ?? undefined}
               alt={info.data.cervejaria.nome}
               className="portal-login-logo"
             />
@@ -210,61 +236,82 @@ export function PortalPdvPage() {
               Este ponto de venda não está atendendo agora. Procure a equipe.
             </p>
           </div>
+        ) : result && comandaEncerrada ? (
+          <section className="card space-y-3 text-center" role="status">
+            <h2 className="font-bold">Comanda encerrada</h2>
+            <p className="text-sm text-ink-muted">
+              Esta comanda foi fechada no caixa. Abra uma nova para continuar fazendo pedidos.
+            </p>
+            <button
+              type="button"
+              className="touch-btn-primary w-full"
+              onClick={() => {
+                setResult(null);
+                setComandaEncerrada(false);
+                setCart([]);
+                setNome('');
+                setTelefone('');
+                queryClient.removeQueries({ queryKey: ['portal-pdv-sessao', slug, pontoVendaId] });
+                queryClient.removeQueries({ queryKey: ['portal-pdv-comanda', result.comanda.id] });
+              }}
+            >
+              Abrir nova comanda
+            </button>
+          </section>
         ) : result ? (
-          <section className="portal-pdv-workspace">
+          <section className={`portal-pdv-workspace ${menuTab === 'pedidos' ? 'portal-pdv-workspace--orders' : ''}`}>
             <div className="portal-pdv-account">
               <div>
                 <h2>{displayedComanda?.cliente?.nome ?? nome}</h2>
                 <p>{telefone}</p>
               </div>
               <strong>R$ {totalConsumido.toFixed(2).replace('.', ',')}</strong>
+              <button type="button" className="portal-pdv-summary-link" onClick={() => setMenuTab(menuTab === 'resumo' ? 'pedidos' : 'resumo')}>
+                {menuTab === 'resumo' ? 'Pedidos' : 'Resumo'}
+              </button>
             </div>
             <p className="portal-pdv-status">
               {result.reused ? 'Comanda já está aberta.' : `Comanda aberta · senha ${result.numero ?? '—'}.`} O atendente confirma e prepara seus pedidos.
             </p>
-            <div className="portal-pdv-tabs">
-              <button type="button" className={menuTab === 'pedidos' ? 'active' : ''} onClick={() => setMenuTab('pedidos')}>Pedidos ({cart.length})</button>
-              <button type="button" className={menuTab === 'resumo' ? 'active' : ''} onClick={() => setMenuTab('resumo')}>Resumo da conta</button>
-            </div>
             {menuTab === 'pedidos' && (
               <div className="portal-pdv-orders">
-                {cart.length > 0 && (
-                  <div className="portal-pdv-cart">
-                    <div>
-                      <strong>Novo pedido</strong>
-                      <span>R$ {cartTotal.toFixed(2).replace('.', ',')}</span>
-                    </div>
-                    {cart.map((item) => (
-                      <div className="portal-pdv-cart-item" key={item.produtoId}>
-                        <span>{item.nome}</span>
-                        <div className="portal-pdv-quantity" aria-label={`Quantidade de ${item.nome}`}>
-                          <button type="button" aria-label={`Diminuir ${item.nome}`} onClick={() => changeQuantity(item.produtoId, -1)}>−</button>
-                          <strong>{item.quantidade}</strong>
-                          <button type="button" aria-label={`Aumentar ${item.nome}`} onClick={() => changeQuantity(item.produtoId, 1)}>+</button>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="portal-pdv-cart-actions">
-                      <button type="button" className="portal-pdv-cart-cancel" onClick={() => setCart([])} disabled={enviarPedido.isPending}>
-                        Cancelar
-                      </button>
-                      <button type="button" onClick={() => enviarPedido.mutate(cart)} disabled={enviarPedido.isPending}>
-                        {enviarPedido.isPending ? 'Enviando...' : 'Enviar pedido'}
-                      </button>
-                    </div>
+                {enviarPedido.error && (
+                  <div className="alert-error" role="alert">
+                    {enviarPedido.error instanceof ApiError ? enviarPedido.error.message : 'Não foi possível enviar o pedido. Revise os itens e tente novamente.'}
                   </div>
                 )}
                 <h3>Escolha seus itens</h3>
+                {tiposDisponiveis.length > 0 && (
+                  <nav className="portal-pdv-category-tabs" aria-label="Tipo de produto" style={{ gridTemplateColumns: `repeat(${tiposDisponiveis.length}, minmax(0, 1fr))` }}>
+                    {tiposDisponiveis.map((tipo) => (
+                      <button
+                        type="button"
+                        key={tipo}
+                        className={tipoAtivo === tipo ? 'active' : ''}
+                        aria-pressed={tipoAtivo === tipo}
+                        onClick={() => setTipoSelecionado(tipo as 'COMIDA' | 'BEBIDA')}
+                      >
+                        {tipo === 'COMIDA' ? 'Comidas' : 'Bebidas'}
+                      </button>
+                    ))}
+                  </nav>
+                )}
                 {produtosPorCategoria.map(([categoria, produtos]) => (
                   <section className="portal-pdv-category" key={categoria}>
                     <h4>{categoria}</h4>
                     <div className="portal-pdv-product-grid">
-                      {produtos.map((product) => (
-                        <button type="button" key={product.id} className="portal-pdv-product" onClick={() => addProduct(product)}>
-                          <span><strong>{product.nome}</strong>{product.descricao && <small>{product.descricao}</small>}</span>
-                          <b>+ R$ {(product.precoEfetivo ?? 0).toFixed(2).replace('.', ',')}</b>
-                        </button>
-                      ))}
+                      {produtos.map((product) => {
+                        const quantidade = cart.find((item) => item.produtoId === product.id)?.quantidade ?? 0;
+                        return (
+                          <button type="button" key={product.id} className="portal-pdv-product" onClick={() => addProduct(product)}>
+                            <strong>{product.nome}</strong>
+                            <span>
+                              <small>R$ {(product.precoEfetivo ?? 0).toFixed(2).replace('.', ',')}</small>
+                              {quantidade > 0 && <small className="portal-pdv-product-quantity">{quantidade} selecionado{quantidade > 1 ? 's' : ''}</small>}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </section>
                 ))}
@@ -284,6 +331,31 @@ export function PortalPdvPage() {
                 )) : <p>Nenhum pedido enviado ainda.</p>}
                 <p className="portal-pdv-no-close">O fechamento e o pagamento são feitos pela equipe do caixa.</p>
               </div>
+            )}
+            {menuTab === 'pedidos' && (
+              <footer className="portal-pdv-order-footer">
+                {cart.length > 0 && (
+                  <div className="portal-pdv-footer-cart" aria-label="Itens selecionados">
+                    {cart.map((item) => (
+                      <div className="portal-pdv-footer-cart-item" key={item.produtoId}>
+                        <span>{item.nome}</span>
+                        <div className="portal-pdv-quantity" aria-label={`Quantidade de ${item.nome}`}>
+                          <button type="button" aria-label={`Diminuir ${item.nome}`} onClick={() => changeQuantity(item.produtoId, -1)}>−</button>
+                          <strong>{item.quantidade}</strong>
+                          <button type="button" aria-label={`Aumentar ${item.nome}`} onClick={() => changeQuantity(item.produtoId, 1)}>+</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p>{cartItemsCount} item{cartItemsCount === 1 ? '' : 's'} selecionado{cartItemsCount === 1 ? '' : 's'}{cart.length > 0 && <strong>R$ {cartTotal.toFixed(2).replace('.', ',')}</strong>}</p>
+                <button type="button" className="portal-pdv-submit" disabled={!cart.length || enviarPedido.isPending} onClick={() => enviarPedido.mutate(cart)}>
+                  {enviarPedido.isPending ? 'Enviando...' : 'Enviar pedido ao atendente'}
+                </button>
+                <button type="button" className="portal-pdv-back" onClick={() => setMenuTab('resumo')}>
+                  Voltar
+                </button>
+              </footer>
             )}
           </section>
         ) : (

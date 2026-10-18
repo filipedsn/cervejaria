@@ -93,7 +93,7 @@ async function mockCatalog(page: Page, options: { permission?: boolean; canonica
 test('três abas e manutenção centralizada com rascunho, erro/retry, flag false e descarte', async ({ page }) => {
   test.setTimeout(45_000);
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  const { writes, unexpected } = await mockCatalog(page);
+  const { categories, writes, unexpected } = await mockCatalog(page);
   await page.goto('/operacao/catalogo');
   await expect(page.getByRole('button', { name: 'Catálogo' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Cardápios salvos' })).toBeVisible();
@@ -106,13 +106,18 @@ test('três abas e manutenção centralizada com rascunho, erro/retry, flag fals
   const dialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Nova categoria' }) });
   await dialog.getByLabel('Nome').fill('Doces artesanais');
   await dialog.getByLabel('Nome').fill('Sobremesas');
-  await dialog.getByRole('button', { name: 'Salvar' }).click();
+  const submitCategory = page.locator('button[form="categoria-pdv-form"][type="submit"]');
+  await submitCategory.click();
   await expect(dialog.getByRole('alert')).toContainText('Falha simulada');
   await expect(dialog.getByLabel('Nome')).toHaveValue('Sobremesas');
-  await dialog.getByRole('button', { name: 'Salvar' }).click();
+  await dialog.getByLabel('Nome').press('Enter');
+  await expect.poll(() => writes.filter((write) => write.method === 'POST' && write.path.endsWith('/categorias')).length).toBe(2);
+  await expect.poll(() => categories.filter((category) => category.nome === 'Sobremesas').length).toBe(1);
+  await page.getByRole('button', { name: 'Categorias' }).click();
   await expect(page.locator('ul').getByText('Sobremesas', { exact: true })).toBeVisible();
   expect(writes.filter((write) => write.method === 'POST' && write.path.endsWith('/categorias'))).toHaveLength(2);
   expect(writes.filter((write) => write.method === 'POST' && write.path.endsWith('/categorias'))[1].body.gamificada).toBe(false);
+  expect(categories.filter((category) => category.nome === 'Sobremesas')).toHaveLength(1);
 
   const editRow = page.locator('li').filter({ hasText: 'Doces artesanais' });
   await editRow.getByRole('button', { name: 'Editar' }).click();

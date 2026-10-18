@@ -541,6 +541,7 @@ export interface ResumoCaixa {
   abertoEm: string;
   fechadoPorId: string | null;
   fechadoEm: string | null;
+  tipoEncerramento: 'FINANCEIRO' | 'ADMINISTRATIVO' | null;
   observacaoFechamento: string | null;
   pendente: number;
   gaveta: {
@@ -577,11 +578,12 @@ export interface RelatorioTurnoCaixa {
   pontoNome: string;
   abertoPorNome: string;
   fechadoPorNome: string | null;
-  comandasAtendidas: number;
-  vendasTotal: number;
-  totalRecebido: number;
-  vendasAvulsas: number;
-  itensVendidos: number;
+  dadosFinanceirosDisponiveis: boolean;
+  comandasAtendidas: number | null;
+  vendasTotal: number | null;
+  totalRecebido: number | null;
+  vendasAvulsas: number | null;
+  itensVendidos: number | null;
   porProduto: Array<{
     produtoId: string;
     nome: string;
@@ -606,6 +608,9 @@ export interface RelatorioTurnoCaixa {
       nesteTurno: boolean;
     }>;
   }>;
+  fiadoVendido?: number | null;
+  fiadoQuitadoNoTurno?: number | null;
+  fiadoQuitadoDepois?: number | null;
   contasPendentes: Array<{
     contaReceberId: string;
     comandaNumero: number | null;
@@ -615,24 +620,45 @@ export interface RelatorioTurnoCaixa {
     recebido: number;
     saldo: number;
   }>;
-  totalPendente: number;
+  totalPendente: number | null;
   topClientes: Array<{
     clienteId: string;
     nome: string;
     comandas: number;
     consumo: number;
   }>;
-  ticketMedio: number;
-  duracaoMinutos: number;
-  receitaPorHora: number;
+  ticketMedio: number | null;
+  duracaoMinutos: number | null;
+  receitaPorHora: number | null;
 }
 
-export function formatTurnoTitulo(abertoEm: string, fechadoEm: string): string {
-  const d = new Date(fechadoEm);
-  const data = d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+export function formatTurnoTitulo(
+  abertoEm: string,
+  fechadoEm: string,
+  encerramentoAdministrativo = false,
+): string {
+  const data = (iso: string) =>
+    new Date(iso).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'short',
+      timeZone: 'America/Sao_Paulo',
+    });
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  return `${data} · ${fmt(abertoEm)} – ${fmt(fechadoEm)}`;
+    new Date(iso).toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'America/Sao_Paulo',
+    });
+  const dataAbertura = data(abertoEm);
+  const dataFechamento = data(fechadoEm);
+
+  if (encerramentoAdministrativo) {
+    return `Abertura ${dataAbertura} · ${fmt(abertoEm)} · Encerrado administrativamente em ${dataFechamento} às ${fmt(fechadoEm)}`;
+  }
+
+  return dataAbertura === dataFechamento
+    ? `${dataFechamento} · ${fmt(abertoEm)} – ${fmt(fechadoEm)}`
+    : `${dataAbertura} ${fmt(abertoEm)} – ${dataFechamento} ${fmt(fechadoEm)}`;
 }
 
 export function formatDuracaoTurnoMinutos(minutos: number): string {
@@ -865,6 +891,7 @@ export interface OperacaoDashboard {
     totalRecebido: number;
     historicoSemAtribuicao: { count: number; total: number; byForm: Array<{ forma: string; valor: number }> };
     totalPendente: number;
+    pendentePeriodo?: number;
     comandasAtendidas: number;
     vendasAvulsas: number;
     receitaAvulsa: number;
@@ -872,6 +899,28 @@ export interface OperacaoDashboard {
     itensVendidos: number;
     turnosCaixa: number;
     variacaoReceitaMesAnterior: number | null;
+    reconciliacaoVendasTurnos: {
+      vendasDoMesCents: number;
+      vendasExibidasNosTurnosCents: number;
+      vendasForaDosTurnosCents: number;
+      comandasForaDosTurnos: number;
+      porTipoForaDosTurnos: Array<{ tipo: string; comandas: number; vendasCents: number }>;
+      quitadasPorRecebimentoEmTurno: {
+        comandas: number;
+        vendasCents: number;
+        recebimentosNoPeriodoCount: number;
+        recebimentosNoPeriodoCents: number;
+      };
+      semSessaoComprovada: {
+        comandas: number;
+        vendasCents: number;
+        recebimentosNoPeriodoCount: number;
+        recebimentosNoPeriodoCents: number;
+      };
+      outroVinculoForaDaLista: { comandas: number; vendasCents: number };
+      sobreposicoes: Array<{ comandaId: string; turnos: number }>;
+      reconciliado: boolean;
+    };
   };
   evolucaoSemanal: Array<{ semana: number; label: string; receita: number; comandas: number }>;
   porPagamento: Array<{ forma: string; valor: number; percentual: number }>;
@@ -898,14 +947,16 @@ export interface OperacaoDashboard {
     abertoPorNome: string;
     abertoEm: string;
     fechadoEm: string;
+    tipoEncerramento?: 'FINANCEIRO' | 'ADMINISTRATIVO' | null;
     receitaTotal: number;
     totalRecebido: number;
+    fiadoQuitadoDepois?: number;
     comandasAtendidas: number;
     vendasAvulsas: number;
     receitaAvulsa: number;
     ticketMedio: number;
-    duracaoHoras: number;
-    receitaPorHora: number;
+    duracaoHoras: number | null;
+    receitaPorHora: number | null;
   }>;
   comparativoPontos: Array<{
     pontoVendaId: string;

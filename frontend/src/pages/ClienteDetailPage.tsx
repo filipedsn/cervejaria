@@ -11,6 +11,8 @@ import { EmptyState } from '../components/EmptyState';
 import { ExcluirClienteModal } from '../components/ExcluirClienteModal';
 import { UnirClienteModal } from '../components/UnirClienteModal';
 import { Modal } from '../components/Modal';
+import { useEvento } from '../contexts/EventoContext';
+import { useOperacaoContexto } from '../hooks/useOperacaoContexto';
 
 const CADASTRO_LABELS: Record<string, string> = {
   STAFF: 'Equipe',
@@ -34,6 +36,8 @@ export function ClienteDetailPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { isDono } = useAuth();
+  const { evento } = useEvento();
+  const { contexto } = useOperacaoContexto();
   const queryClient = useQueryClient();
   const [editMode, setEditMode] = useState(false);
   const [nome, setNome] = useState('');
@@ -162,6 +166,12 @@ export function ClienteDetailPage() {
   if (isLoading || !cliente) return <Loading />;
 
   const stats = cliente.estatisticas;
+  const clienteIdQuery = `clienteId=${encodeURIComponent(cliente.id)}`;
+  const pagamentosPendentesPath = contexto.operationMode === 'CAIXA'
+    ? `/operacao/contas-pendentes?${clienteIdQuery}`
+    : evento
+      ? `/eventos/${evento.id}/contas-pendentes?${clienteIdQuery}`
+      : '/eventos';
 
   return (
     <div className="space-y-5 pb-6">
@@ -197,6 +207,16 @@ export function ClienteDetailPage() {
           </div>
         )}
       </div>
+
+      {(cliente.valorPendente ?? 0) > 0 && (
+        <button
+          type="button"
+          className="touch-btn-orange w-full caixa-contas-pendentes-alerta"
+          onClick={() => navigate(pagamentosPendentesPath)}
+        >
+          Receber pagamento pendente
+        </button>
+      )}
 
       <div className="card space-y-2">
         <div className="flex items-center justify-between gap-2">

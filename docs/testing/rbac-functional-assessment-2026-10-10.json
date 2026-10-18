@@ -1,451 +1,900 @@
 {
-  "assessmentDate": "2026-10-10",
-  "operationalHeadAtStart": "d1fb75740834bf78abbee486598a5b558ff551fc",
-  "workspaceWasDirtyAtStart": true,
-  "apiSourceQualification": "Disposable runner pinned schema/migrations to HEAD but imported source from the dirty workspace; this is not a clean Git snapshot certification.",
-  "continuation": {
-    "selectedCommit": "d139a94c8fb89147e06fd9356fbe94cefff0c3d2",
-    "selectedTree": "2942ddafd556d75a13979e457fa9ce93ae7975ae",
-    "sourceMaterialization": "1441 tracked Git blobs extracted with git cat-file into an owned temporary QA snapshot; zero mutable workspace modules imported",
-    "runner": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
-    "runnerSha256": "25500816cc1519109e9af7a2e5cdffe04bc3b37cca7df0ac8d1036beb6739d7f",
-    "runtime": {
-      "node": "v24.18.0",
-      "prismaClient": "6.19.3",
-      "postgres": "17-alpine"
-    },
-    "backendBuild": "PASS",
-    "frontendBuild": "PASS",
-    "activationPreflightTests": {
-      "pass": 14,
-      "fail": 0
-    },
-    "authenticatedDisposableApiSuite": "PASS",
-    "tap82DeliveredItemApi": "PASS: minimal two-key grant, denial without second key, persisted partial/full effects, audit, stock handling, idempotent retry, stale quantity, paid/closed comanda, foreign tenant, and LEGACY staff denial/owner allowance",
-    "liveOperationalUi": "NOT RUN",
-    "perKeyLiveSessionGrantRevoke": "NOT RUN for all 28 keys",
-    "sameBrowserUserAndTenantSwitch": "NOT RUN",
-    "globalAdminOperationalContract": "PARTIAL",
-    "allPermissionsAcrossLegacyCanonicalModes": "PARTIAL",
-    "checkoutAndLocalStateUnchanged": true,
-    "prodAccess": "NO",
-    "sharedDevAccess": "NO",
-    "disposableResourcesRemoved": true,
-    "evidence": "../../artifacts/rbac-permissions-ui-2026-10-10/pinned-api-evidence.json"
-  },
-  "permissionCount": 28,
-  "apiRepresentativeEnabledScenarios": {
-    "pass": 28,
-    "fail": 0,
-    "notRun": 0
-  },
-  "apiRepresentativeDisabledScenarios": {
-    "pass": 28,
-    "fail": 0,
-    "notRun": 0
-  },
-  "sameAuthenticatedSessionGrant": "PASS across representative API cases using a staff cookie created before the grant",
-  "sameSessionRevocation": "PARTIAL; exercised on representative endpoints, not every permission",
-  "isolatedApiSuite": "PASS",
-  "focusedPermissionUnitTests": {
-    "pass": 1,
-    "fail": 0
-  },
-  "permissionEditorPlaywright": {
-    "pass": 12,
-    "fail": 0,
-    "viewports": [
-      390,
-      768
-    ],
-    "apiMode": "mocked; editor evidence only"
-  },
-  "backendBuild": "PASS",
-  "frontendBuild": "PASS",
-  "canonicalAndLegacy": "PARTIAL; representative compatibility and PDV cases, not all permissions in both modes",
-  "operationalScreensWithLiveApi": "PARTIAL: one real-browser permission flow (command.read), including reproducible UI failure",
-  "productDefectsConfirmed": 1,
-  "reportedTickets": [
-    "TAP-76",
-    "TAP-78",
-    "TAP-82"
-  ],
-  "newTicketCreated": false,
-  "productionAccess": "NO",
-  "sharedDevAccess": "NO",
-  "permissionKeys": [
-    "cash.open",
-    "cash.close",
-    "cash.values.read",
-    "cash.movement.write",
-    "payment.receive",
-    "debt.receive",
-    "command.close",
-    "discount.apply",
-    "command.item.cancel",
-    "command.item.cancel.delivered",
-    "command.cancel",
-    "kitchen.cancel",
-    "sale.refund",
-    "dashboard.read",
-    "event.dashboard.read",
-    "reports.read",
-    "command.operate",
-    "command.read",
-    "kitchen.read",
-    "kitchen.operate",
-    "inventory.read",
-    "inventory.adjust",
-    "catalog.manage",
-    "catalog.shift.manage",
-    "clients.manage",
-    "taps.operate",
-    "agenda.manage",
-    "event.menu.manage"
-  ],
-  "report": "rbac-functional-assessment-2026-10-10.md",
-  "uiArtifacts": "../../artifacts/rbac-permissions-ui-2026-10-10",
-  "liveBrowserContinuation": {
-    "codeSnapshotCommit": "4b2649e47335f92ca9201258c04f514f185a6694",
-    "certificationCommit": "8d7ea1c98a0b2b12c4856737bba5976aede98cce",
-    "sourceTree": "3cf7e0ef27c5f5b997a1088be17256e7b0ff7146",
-    "sourceMaterialization": "Git blobs only; 1,448 tracked blobs; no mutable workspace imports",
-    "fixture": "Synthetic Permission QA tenant, synthetic owner and staff, one open synthetic comanda, disposable PostgreSQL. Initial setup flags plannedOperationsEnabled/tapsEnabled/inventoryEnabled/kitchenEnabled=false and setupCompletedAt set. Individual API scenarios toggle representative kitchen, inventory, tap and pending-kitchen parameters. This is representative configuration, not a copy of Churrasquinho do Thiago settings.",
-    "backendBuild": "PASS",
-    "frontendBuild": "PASS",
-    "activationPreflightTests": {
-      "pass": 14,
-      "fail": 0
-    },
-    "authenticatedDisposableApiSuite": "PASS; representative allow/deny checks for the 28-key catalog and the previously documented tenant, persistence, revoke, legacy/canonical and TAP-82 cases; this does not certify every alternative endpoint or the full configuration matrix",
-    "browser": {
-      "testFile": "e2e/rbac-live/operational-session.spec.ts",
-      "playwrightResult": "PASS 1/1 harness test; product behavior recorded separately as FAIL; final runner integrity gate failed because local workspace fingerprint changed",
-      "realAuthentication": "PASS; owner and staff login forms against real Fastify API",
-      "permission": "command.read only",
-      "disabled": "PASS direct API denial (401/403); cash fallback API returns sanitized 200",
-      "enabled": "PASS real owner grant while two staff sessions remain open; command list route and endpoint return 200",
-      "revoked": "API denial PASS in existing session; UI fallback FAIL due TypeError reading esperadoDinheiro",
-      "sameUserSessions": "PASS two simultaneously authenticated staff contexts",
-      "tenantSwitch": "PASS same browser context after real POST /api/auth/logout and login form; auth/me company id changes and foreign user list excludes original staff id",
-      "viewportWidths": [
-        390,
-        768
-      ],
-      "coverage": "1/28 permissions exercised through live browser grant/revoke; 27/28 operational UI permission flows remain unverified live",
-      "screenshotArtifact": "../../artifacts/rbac-permissions-ui-2026-10-10/live-results/command-read-revocation-cash-fallback.png"
-    },
-    "reproducedProductDefect": {
-      "key": "command.read",
-      "route": "/operacao/caixa",
-      "apiContract": "GET /api/operacao/comandas denied; GET /api/operacao/caixa returns sanitized data without financial values",
-      "observation": "PainelCaixaOperacao throws TypeError: Cannot read properties of undefined (reading 'esperadoDinheiro'); backend records ui.error",
-      "impact": "Staff without command.read cannot use the fallback cash screen; post-revocation controls/navigation are interrupted",
-      "plane": "TAP-76 internal evidence comment f7bc162e-2364-4b2b-92c5-f1ecbccf62ee",
-      "evidenceDirectory": "../../artifacts/rbac-permissions-ui-2026-10-10/live-results/"
-    },
-    "scenarioDenominator": {
-      "permissions": 28,
-      "corePermissionStages": 84,
-      "meaning": "28 permissions x disabled/enabled/revoked; live browser currently covers 1/28; API evidence is representative and is not equivalent to 84 UI action stages",
-      "additionalRequiredDimensions": "alternate endpoints, cross-tenant IDs, global admin contract, complete LEGACY/CANONICAL_PDV matrices, settings combinations and screen actions remain separately unverified"
-    },
-    "certificationIntegrityGate": "FAIL: focused runner detected a local workspace fingerprint change after all component tests passed and withheld its final receipt; the exact Git snapshot was immutable during its tests",
-    "disposableResourcesRemoved": true,
-    "productionAccess": "NO",
-    "sharedDevAccess": "NO"
-  },
-  "finalContinuation": {
-    "testCandidateCommit": "e9c59938b0721b8d07a795eb4927951dfe7fbfa6",
-    "testedTree": "71e7024b19c2c444d9f5d45f585a1e6da438ca20",
-    "fixCommit": "4017a9ddc7d934b81c411f3808121fb681a520fa",
-    "runnerResult": "PASS",
-    "productResult": "PASS for corrected cash fallback and live-tested flows; full 28-key UI certification INCOMPLETE",
-    "snapshotIntegrity": {
-      "result": "PASS",
-      "commit": "e9c59938b0721b8d07a795eb4927951dfe7fbfa6",
-      "tree": "71e7024b19c2c444d9f5d45f585a1e6da438ca20",
-      "materializedTree": "71e7024b19c2c444d9f5d45f585a1e6da438ca20",
-      "trackedBlobs": 1448
-    },
-    "moduleAudit": {
-      "projectModules": 198,
-      "nonSnapshotWorkspaceImports": 0,
-      "externalDependencyModules": 1531,
-      "pathListSha256": "28951682ce8e5330791d773dbc324b477186f3720420e1729383e4a13bd6b89d"
-    },
-    "builds": {
-      "backend": "PASS",
-      "frontend": "PASS"
-    },
-    "authenticatedDisposableApiSuite": "PASS; representative enabled/denied API behavior for 28 keys, not 84 UI stages",
-    "playwright": {
-      "result": "PASS 1/1",
-      "grantRevokeUiKeys": [
-        "command.read",
-        "cash.values.read",
-        "dashboard.read"
-      ],
-      "viewportWidths": [
-        390,
-        768
-      ],
-      "simultaneousStaffSessions": "PASS",
-      "sameBrowserTenantSwitch": "PASS",
-      "syntheticQueryError": "PASS; only 503 response intercepted"
-    },
-    "browserPermissionStages": {
-      "cash.open": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "cash.close": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "cash.values.read": {
-        "disabled": "PASS",
-        "enabled": "PASS",
-        "revoked": "PASS"
-      },
-      "cash.movement.write": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "payment.receive": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "debt.receive": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "command.close": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "discount.apply": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "command.item.cancel": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "command.item.cancel.delivered": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "command.cancel": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "kitchen.cancel": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "sale.refund": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "dashboard.read": {
-        "disabled": "NOT RUN",
-        "enabled": "PASS",
-        "revoked": "PASS"
-      },
-      "event.dashboard.read": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "reports.read": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "command.operate": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "command.read": {
-        "disabled": "PASS",
-        "enabled": "PASS",
-        "revoked": "PASS"
-      },
-      "kitchen.read": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "kitchen.operate": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "inventory.read": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "inventory.adjust": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "catalog.manage": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "catalog.shift.manage": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "clients.manage": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "taps.operate": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "agenda.manage": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      },
-      "event.menu.manage": {
-        "disabled": "NOT RUN",
-        "enabled": "NOT RUN",
-        "revoked": "NOT RUN"
-      }
-    },
-    "unrunBrowserPermissions": [
-      "cash.open",
-      "cash.close",
-      "cash.movement.write",
-      "payment.receive",
-      "debt.receive",
-      "command.close",
-      "discount.apply",
-      "command.item.cancel",
-      "command.item.cancel.delivered",
-      "command.cancel",
-      "kitchen.cancel",
-      "sale.refund",
-      "event.dashboard.read",
-      "reports.read",
-      "command.operate",
-      "kitchen.read",
-      "kitchen.operate",
-      "inventory.read",
-      "inventory.adjust",
-      "catalog.manage",
-      "catalog.shift.manage",
-      "clients.manage",
-      "taps.operate",
-      "agenda.manage",
-      "event.menu.manage",
-      "dashboard.read"
-    ],
-    "workspace": {
-      "checkoutUnchanged": true,
-      "externalChangesObservedDuringFinalRun": false,
-      "prodAccess": "NO",
-      "sharedDevWrites": "NO",
-      "disposablePostgresRemoved": true
-    },
-    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/rbac-final-evidence.json",
-    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/rbac-final-console.log",
-    "modifiedFiles": [
-      "frontend/src/components/operacao/PainelCaixaOperacao.tsx",
-      "backend/scripts/pdv-individual-permissions.isolated.test.mjs",
-      "e2e/rbac-live/operational-session.spec.ts",
-      "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
-      "docs/testing/rbac-functional-assessment-2026-10-10.md",
-      "docs/testing/rbac-functional-assessment-2026-10-10.json",
-      "docs/architecture/pdv-individual-permissions-action-matrix.md",
-      "artifacts/rbac-permissions-ui-2026-10-10/rbac-final-evidence.json",
-      "artifacts/rbac-permissions-ui-2026-10-10/rbac-final-console.log"
-    ],
-    "pending": [
-      "25 remaining live-browser permission keys",
-      "full LEGACY and CANONICAL_PDV matrix",
-      "global admin contract",
-      "alternate UI endpoints and setting combinations"
-    ],
-    "harnessResult": "PASS",
-    "executedFileBlobs": {
-      "frontend/src/components/operacao/PainelCaixaOperacao.tsx": "1d1fc6530e8588a8ecb2aba77d3c78ed40240f12",
-      "backend/scripts/pdv-individual-permissions.isolated.test.mjs": "a6c4bc4f84cf4ac1e48d320df9fd8f40ee992b50",
-      "e2e/rbac-live/operational-session.spec.ts": "13cb35c3d356d8d8f67b79a2ebff1b43e11d4bf8",
-      "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs": "76534dc85318542313f1f788a173c2f3b0af9e1b"
-    }
-  },
-  "latestContinuation": {
-    "testedCommit": "e534a777df434cb96d65c98d98e080ccc746faaf",
-    "testedTree": "c63d578183b7bf9e03306e0dabf0ff98b32257ea",
-    "focusedRunner": "PASS",
-    "snapshotIntegrity": "PASS; 1448 blobs; exact tree materialized",
-    "moduleAudit": "198 snapshot modules; 0 mutable workspace imports",
-    "backendBuild": "PASS",
-    "frontendBuild": "PASS",
-    "activationPreflight": "14/14 PASS",
-    "authenticatedDisposableApiSuite": "PASS; representative enabled/denied checks for 28 keys",
-    "playwright": "PASS 1/1",
-    "uiStageCounts": {
-      "required": 84,
-      "pass": 8,
-      "fail": 0,
-      "blocked": 0,
-      "notRun": 76
-    },
-    "uiKeys": {
-      "command.read": {
-        "disabled": "PASS",
-        "enabled": "PASS",
-        "revoked": "PASS"
-      },
-      "cash.values.read": {
-        "disabled": "PASS",
-        "enabled": "PASS",
-        "revoked": "PASS"
-      },
-      "dashboard.read": {
-        "disabled": "NOT RUN",
-        "enabled": "PASS",
-        "revoked": "PASS"
-      }
-    },
-    "sameUserSessions": "PASS; two contexts",
-    "sameBrowserTenantSwitch": "PASS; real logout/login into second synthetic tenant",
-    "viewportWidths": [
-      390,
-      768
-    ],
-    "productDefect": "Fixed at 3df315c84bdf8a14e624568ba9651da5fd810a5e: sanitized cash fallback dereferenced absent sessao.gaveta",
-    "harnessCorrection": "e534a777df434cb96d65c98d98e080ccc746faaf: login navigation retry",
-    "receipt": "../../artifacts/rbac-permissions-ui-2026-10-10/results/final-live-e534a77.json",
-    "playwrightResults": "../../artifacts/rbac-permissions-ui-2026-10-10/run-0895b4cfd740d8a8/live-results/playwright-results.json",
-    "console": "../../artifacts/rbac-permissions-ui-2026-10-10/run-0895b4cfd740d8a8/live-results/browser-run.log",
-    "prodAccess": "NO",
-    "sharedDevWrites": "NO",
-    "certification": "INCOMPLETE"
-  }
+    "assessmentDate":  "2026-10-10",
+    "operationalHeadAtStart":  "d1fb75740834bf78abbee486598a5b558ff551fc",
+    "workspaceWasDirtyAtStart":  true,
+    "apiSourceQualification":  "Disposable runner pinned schema/migrations to HEAD but imported source from the dirty workspace; this is not a clean Git snapshot certification.",
+    "continuation":  {
+                         "selectedCommit":  "d139a94c8fb89147e06fd9356fbe94cefff0c3d2",
+                         "selectedTree":  "2942ddafd556d75a13979e457fa9ce93ae7975ae",
+                         "sourceMaterialization":  "1441 tracked Git blobs extracted with git cat-file into an owned temporary QA snapshot; zero mutable workspace modules imported",
+                         "runner":  "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+                         "runnerSha256":  "25500816cc1519109e9af7a2e5cdffe04bc3b37cca7df0ac8d1036beb6739d7f",
+                         "runtime":  {
+                                         "node":  "v24.18.0",
+                                         "prismaClient":  "6.19.3",
+                                         "postgres":  "17-alpine"
+                                     },
+                         "backendBuild":  "PASS",
+                         "frontendBuild":  "PASS",
+                         "activationPreflightTests":  {
+                                                          "pass":  14,
+                                                          "fail":  0
+                                                      },
+                         "authenticatedDisposableApiSuite":  "PASS",
+                         "tap82DeliveredItemApi":  "PASS: minimal two-key grant, denial without second key, persisted partial/full effects, audit, stock handling, idempotent retry, stale quantity, paid/closed comanda, foreign tenant, and LEGACY staff denial/owner allowance",
+                         "liveOperationalUi":  "NOT RUN",
+                         "perKeyLiveSessionGrantRevoke":  "NOT RUN for all 28 keys",
+                         "sameBrowserUserAndTenantSwitch":  "NOT RUN",
+                         "globalAdminOperationalContract":  "PARTIAL",
+                         "allPermissionsAcrossLegacyCanonicalModes":  "PARTIAL",
+                         "checkoutAndLocalStateUnchanged":  true,
+                         "prodAccess":  "NO",
+                         "sharedDevAccess":  "NO",
+                         "disposableResourcesRemoved":  true,
+                         "evidence":  "../../artifacts/rbac-permissions-ui-2026-10-10/pinned-api-evidence.json"
+                     },
+    "permissionCount":  28,
+    "apiRepresentativeEnabledScenarios":  {
+                                              "pass":  28,
+                                              "fail":  0,
+                                              "notRun":  0
+                                          },
+    "apiRepresentativeDisabledScenarios":  {
+                                               "pass":  28,
+                                               "fail":  0,
+                                               "notRun":  0
+                                           },
+    "sameAuthenticatedSessionGrant":  "PASS across representative API cases using a staff cookie created before the grant",
+    "sameSessionRevocation":  "PARTIAL; exercised on representative endpoints, not every permission",
+    "isolatedApiSuite":  "PASS",
+    "focusedPermissionUnitTests":  {
+                                       "pass":  1,
+                                       "fail":  0
+                                   },
+    "permissionEditorPlaywright":  {
+                                       "pass":  12,
+                                       "fail":  0,
+                                       "viewports":  [
+                                                         390,
+                                                         768
+                                                     ],
+                                       "apiMode":  "mocked; editor evidence only"
+                                   },
+    "backendBuild":  "PASS",
+    "frontendBuild":  "PASS",
+    "canonicalAndLegacy":  "PASS for all 84 core live UI permission stages across CANONICAL_PDV and LEGACY; supplemental routes/admin/tenant scenarios PASS",
+    "operationalScreensWithLiveApi":  "PASS: 28 permissions x disabled/enabled/revoked = 84/84 live browser stages across CANONICAL_PDV and LEGACY; see completionContinuation",
+    "productDefectsConfirmed":  5,
+    "reportedTickets":  [
+                            "TAP-76",
+                            "TAP-78",
+                            "TAP-82"
+                        ],
+    "newTicketCreated":  false,
+    "productionAccess":  "NO",
+    "sharedDevAccess":  "YES; authorized immutable DEV release deployment and temporary synthetic owner/staff login smoke; smoke records deleted",
+    "permissionKeys":  [
+                           "cash.open",
+                           "cash.close",
+                           "cash.values.read",
+                           "cash.movement.write",
+                           "payment.receive",
+                           "debt.receive",
+                           "command.close",
+                           "discount.apply",
+                           "command.item.cancel",
+                           "command.item.cancel.delivered",
+                           "command.cancel",
+                           "kitchen.cancel",
+                           "sale.refund",
+                           "dashboard.read",
+                           "event.dashboard.read",
+                           "reports.read",
+                           "command.operate",
+                           "command.read",
+                           "kitchen.read",
+                           "kitchen.operate",
+                           "inventory.read",
+                           "inventory.adjust",
+                           "catalog.manage",
+                           "catalog.shift.manage",
+                           "clients.manage",
+                           "taps.operate",
+                           "agenda.manage",
+                           "event.menu.manage"
+                       ],
+    "report":  "rbac-functional-assessment-2026-10-10.md",
+    "uiArtifacts":  "../../artifacts/rbac-permissions-ui-2026-10-10",
+    "liveBrowserContinuation":  {
+                                    "codeSnapshotCommit":  "4b2649e47335f92ca9201258c04f514f185a6694",
+                                    "certificationCommit":  "8d7ea1c98a0b2b12c4856737bba5976aede98cce",
+                                    "sourceTree":  "3cf7e0ef27c5f5b997a1088be17256e7b0ff7146",
+                                    "sourceMaterialization":  "Git blobs only; 1,448 tracked blobs; no mutable workspace imports",
+                                    "fixture":  "Synthetic Permission QA tenant, synthetic owner and staff, one open synthetic comanda, disposable PostgreSQL. Initial setup flags plannedOperationsEnabled/tapsEnabled/inventoryEnabled/kitchenEnabled=false and setupCompletedAt set. Individual API scenarios toggle representative kitchen, inventory, tap and pending-kitchen parameters. This is representative configuration, not a copy of Churrasquinho do Thiago settings.",
+                                    "backendBuild":  "PASS",
+                                    "frontendBuild":  "PASS",
+                                    "activationPreflightTests":  {
+                                                                     "pass":  14,
+                                                                     "fail":  0
+                                                                 },
+                                    "authenticatedDisposableApiSuite":  "PASS; representative allow/deny checks for the 28-key catalog and the previously documented tenant, persistence, revoke, legacy/canonical and TAP-82 cases; this does not certify every alternative endpoint or the full configuration matrix",
+                                    "browser":  {
+                                                    "testFile":  "e2e/rbac-live/operational-session.spec.ts",
+                                                    "playwrightResult":  "PASS 1/1 harness test; product behavior recorded separately as FAIL; final runner integrity gate failed because local workspace fingerprint changed",
+                                                    "realAuthentication":  "PASS; owner and staff login forms against real Fastify API",
+                                                    "permission":  "command.read only",
+                                                    "disabled":  "PASS direct API denial (401/403); cash fallback API returns sanitized 200",
+                                                    "enabled":  "PASS real owner grant while two staff sessions remain open; command list route and endpoint return 200",
+                                                    "revoked":  "API denial PASS in existing session; UI fallback FAIL due TypeError reading esperadoDinheiro",
+                                                    "sameUserSessions":  "PASS two simultaneously authenticated staff contexts",
+                                                    "tenantSwitch":  "PASS same browser context after real POST /api/auth/logout and login form; auth/me company id changes and foreign user list excludes original staff id",
+                                                    "viewportWidths":  [
+                                                                           390,
+                                                                           768
+                                                                       ],
+                                                    "coverage":  "1/28 permissions exercised through live browser grant/revoke; 27/28 operational UI permission flows remain unverified live",
+                                                    "screenshotArtifact":  "../../artifacts/rbac-permissions-ui-2026-10-10/live-results/command-read-revocation-cash-fallback.png"
+                                                },
+                                    "reproducedProductDefect":  {
+                                                                    "key":  "command.read",
+                                                                    "route":  "/operacao/caixa",
+                                                                    "apiContract":  "GET /api/operacao/comandas denied; GET /api/operacao/caixa returns sanitized data without financial values",
+                                                                    "observation":  "PainelCaixaOperacao throws TypeError: Cannot read properties of undefined (reading \u0027esperadoDinheiro\u0027); backend records ui.error",
+                                                                    "impact":  "Staff without command.read cannot use the fallback cash screen; post-revocation controls/navigation are interrupted",
+                                                                    "plane":  "TAP-76 internal evidence comment f7bc162e-2364-4b2b-92c5-f1ecbccf62ee",
+                                                                    "evidenceDirectory":  "../../artifacts/rbac-permissions-ui-2026-10-10/live-results/"
+                                                                },
+                                    "scenarioDenominator":  {
+                                                                "permissions":  28,
+                                                                "corePermissionStages":  84,
+                                                                "meaning":  "28 permissions x disabled/enabled/revoked; live browser currently covers 1/28; API evidence is representative and is not equivalent to 84 UI action stages",
+                                                                "additionalRequiredDimensions":  "alternate endpoints, cross-tenant IDs, global admin contract, complete LEGACY/CANONICAL_PDV matrices, settings combinations and screen actions remain separately unverified"
+                                                            },
+                                    "certificationIntegrityGate":  "FAIL: focused runner detected a local workspace fingerprint change after all component tests passed and withheld its final receipt; the exact Git snapshot was immutable during its tests",
+                                    "disposableResourcesRemoved":  true,
+                                    "productionAccess":  "NO",
+                                    "sharedDevAccess":  "NO"
+                                },
+    "finalContinuation":  {
+                              "testCandidateCommit":  "e9c59938b0721b8d07a795eb4927951dfe7fbfa6",
+                              "testedTree":  "71e7024b19c2c444d9f5d45f585a1e6da438ca20",
+                              "fixCommit":  "4017a9ddc7d934b81c411f3808121fb681a520fa",
+                              "runnerResult":  "PASS",
+                              "productResult":  "PASS for corrected cash fallback and live-tested flows; full 28-key UI certification INCOMPLETE",
+                              "snapshotIntegrity":  {
+                                                        "result":  "PASS",
+                                                        "commit":  "e9c59938b0721b8d07a795eb4927951dfe7fbfa6",
+                                                        "tree":  "71e7024b19c2c444d9f5d45f585a1e6da438ca20",
+                                                        "materializedTree":  "71e7024b19c2c444d9f5d45f585a1e6da438ca20",
+                                                        "trackedBlobs":  1448
+                                                    },
+                              "moduleAudit":  {
+                                                  "projectModules":  198,
+                                                  "nonSnapshotWorkspaceImports":  0,
+                                                  "externalDependencyModules":  1531,
+                                                  "pathListSha256":  "28951682ce8e5330791d773dbc324b477186f3720420e1729383e4a13bd6b89d"
+                                              },
+                              "builds":  {
+                                             "backend":  "PASS",
+                                             "frontend":  "PASS"
+                                         },
+                              "authenticatedDisposableApiSuite":  "PASS; representative enabled/denied API behavior for 28 keys, not 84 UI stages",
+                              "playwright":  {
+                                                 "result":  "PASS 1/1",
+                                                 "grantRevokeUiKeys":  [
+                                                                           "command.read",
+                                                                           "cash.values.read",
+                                                                           "dashboard.read"
+                                                                       ],
+                                                 "viewportWidths":  [
+                                                                        390,
+                                                                        768
+                                                                    ],
+                                                 "simultaneousStaffSessions":  "PASS",
+                                                 "sameBrowserTenantSwitch":  "PASS",
+                                                 "syntheticQueryError":  "PASS; only 503 response intercepted"
+                                             },
+                              "browserPermissionStages":  {
+                                                              "cash.open":  {
+                                                                                "disabled":  "NOT RUN",
+                                                                                "enabled":  "NOT RUN",
+                                                                                "revoked":  "NOT RUN"
+                                                                            },
+                                                              "cash.close":  {
+                                                                                 "disabled":  "NOT RUN",
+                                                                                 "enabled":  "NOT RUN",
+                                                                                 "revoked":  "NOT RUN"
+                                                                             },
+                                                              "cash.values.read":  {
+                                                                                       "disabled":  "PASS",
+                                                                                       "enabled":  "PASS",
+                                                                                       "revoked":  "PASS"
+                                                                                   },
+                                                              "cash.movement.write":  {
+                                                                                          "disabled":  "NOT RUN",
+                                                                                          "enabled":  "NOT RUN",
+                                                                                          "revoked":  "NOT RUN"
+                                                                                      },
+                                                              "payment.receive":  {
+                                                                                      "disabled":  "NOT RUN",
+                                                                                      "enabled":  "NOT RUN",
+                                                                                      "revoked":  "NOT RUN"
+                                                                                  },
+                                                              "debt.receive":  {
+                                                                                   "disabled":  "NOT RUN",
+                                                                                   "enabled":  "NOT RUN",
+                                                                                   "revoked":  "NOT RUN"
+                                                                               },
+                                                              "command.close":  {
+                                                                                    "disabled":  "NOT RUN",
+                                                                                    "enabled":  "NOT RUN",
+                                                                                    "revoked":  "NOT RUN"
+                                                                                },
+                                                              "discount.apply":  {
+                                                                                     "disabled":  "NOT RUN",
+                                                                                     "enabled":  "NOT RUN",
+                                                                                     "revoked":  "NOT RUN"
+                                                                                 },
+                                                              "command.item.cancel":  {
+                                                                                          "disabled":  "NOT RUN",
+                                                                                          "enabled":  "NOT RUN",
+                                                                                          "revoked":  "NOT RUN"
+                                                                                      },
+                                                              "command.item.cancel.delivered":  {
+                                                                                                    "disabled":  "NOT RUN",
+                                                                                                    "enabled":  "NOT RUN",
+                                                                                                    "revoked":  "NOT RUN"
+                                                                                                },
+                                                              "command.cancel":  {
+                                                                                     "disabled":  "NOT RUN",
+                                                                                     "enabled":  "NOT RUN",
+                                                                                     "revoked":  "NOT RUN"
+                                                                                 },
+                                                              "kitchen.cancel":  {
+                                                                                     "disabled":  "NOT RUN",
+                                                                                     "enabled":  "NOT RUN",
+                                                                                     "revoked":  "NOT RUN"
+                                                                                 },
+                                                              "sale.refund":  {
+                                                                                  "disabled":  "NOT RUN",
+                                                                                  "enabled":  "NOT RUN",
+                                                                                  "revoked":  "NOT RUN"
+                                                                              },
+                                                              "dashboard.read":  {
+                                                                                     "disabled":  "NOT RUN",
+                                                                                     "enabled":  "PASS",
+                                                                                     "revoked":  "PASS"
+                                                                                 },
+                                                              "event.dashboard.read":  {
+                                                                                           "disabled":  "NOT RUN",
+                                                                                           "enabled":  "NOT RUN",
+                                                                                           "revoked":  "NOT RUN"
+                                                                                       },
+                                                              "reports.read":  {
+                                                                                   "disabled":  "NOT RUN",
+                                                                                   "enabled":  "NOT RUN",
+                                                                                   "revoked":  "NOT RUN"
+                                                                               },
+                                                              "command.operate":  {
+                                                                                      "disabled":  "NOT RUN",
+                                                                                      "enabled":  "NOT RUN",
+                                                                                      "revoked":  "NOT RUN"
+                                                                                  },
+                                                              "command.read":  {
+                                                                                   "disabled":  "PASS",
+                                                                                   "enabled":  "PASS",
+                                                                                   "revoked":  "PASS"
+                                                                               },
+                                                              "kitchen.read":  {
+                                                                                   "disabled":  "NOT RUN",
+                                                                                   "enabled":  "NOT RUN",
+                                                                                   "revoked":  "NOT RUN"
+                                                                               },
+                                                              "kitchen.operate":  {
+                                                                                      "disabled":  "NOT RUN",
+                                                                                      "enabled":  "NOT RUN",
+                                                                                      "revoked":  "NOT RUN"
+                                                                                  },
+                                                              "inventory.read":  {
+                                                                                     "disabled":  "NOT RUN",
+                                                                                     "enabled":  "NOT RUN",
+                                                                                     "revoked":  "NOT RUN"
+                                                                                 },
+                                                              "inventory.adjust":  {
+                                                                                       "disabled":  "NOT RUN",
+                                                                                       "enabled":  "NOT RUN",
+                                                                                       "revoked":  "NOT RUN"
+                                                                                   },
+                                                              "catalog.manage":  {
+                                                                                     "disabled":  "NOT RUN",
+                                                                                     "enabled":  "NOT RUN",
+                                                                                     "revoked":  "NOT RUN"
+                                                                                 },
+                                                              "catalog.shift.manage":  {
+                                                                                           "disabled":  "NOT RUN",
+                                                                                           "enabled":  "NOT RUN",
+                                                                                           "revoked":  "NOT RUN"
+                                                                                       },
+                                                              "clients.manage":  {
+                                                                                     "disabled":  "NOT RUN",
+                                                                                     "enabled":  "NOT RUN",
+                                                                                     "revoked":  "NOT RUN"
+                                                                                 },
+                                                              "taps.operate":  {
+                                                                                   "disabled":  "NOT RUN",
+                                                                                   "enabled":  "NOT RUN",
+                                                                                   "revoked":  "NOT RUN"
+                                                                               },
+                                                              "agenda.manage":  {
+                                                                                    "disabled":  "NOT RUN",
+                                                                                    "enabled":  "NOT RUN",
+                                                                                    "revoked":  "NOT RUN"
+                                                                                },
+                                                              "event.menu.manage":  {
+                                                                                        "disabled":  "NOT RUN",
+                                                                                        "enabled":  "NOT RUN",
+                                                                                        "revoked":  "NOT RUN"
+                                                                                    }
+                                                          },
+                              "unrunBrowserPermissions":  [
+                                                              "cash.open",
+                                                              "cash.close",
+                                                              "cash.movement.write",
+                                                              "payment.receive",
+                                                              "debt.receive",
+                                                              "command.close",
+                                                              "discount.apply",
+                                                              "command.item.cancel",
+                                                              "command.item.cancel.delivered",
+                                                              "command.cancel",
+                                                              "kitchen.cancel",
+                                                              "sale.refund",
+                                                              "event.dashboard.read",
+                                                              "reports.read",
+                                                              "command.operate",
+                                                              "kitchen.read",
+                                                              "kitchen.operate",
+                                                              "inventory.read",
+                                                              "inventory.adjust",
+                                                              "catalog.manage",
+                                                              "catalog.shift.manage",
+                                                              "clients.manage",
+                                                              "taps.operate",
+                                                              "agenda.manage",
+                                                              "event.menu.manage",
+                                                              "dashboard.read"
+                                                          ],
+                              "workspace":  {
+                                                "checkoutUnchanged":  true,
+                                                "externalChangesObservedDuringFinalRun":  false,
+                                                "prodAccess":  "NO",
+                                                "sharedDevWrites":  "NO",
+                                                "disposablePostgresRemoved":  true
+                                            },
+                              "receipt":  "../../artifacts/rbac-permissions-ui-2026-10-10/rbac-final-evidence.json",
+                              "console":  "../../artifacts/rbac-permissions-ui-2026-10-10/rbac-final-console.log",
+                              "modifiedFiles":  [
+                                                    "frontend/src/components/operacao/PainelCaixaOperacao.tsx",
+                                                    "backend/scripts/pdv-individual-permissions.isolated.test.mjs",
+                                                    "e2e/rbac-live/operational-session.spec.ts",
+                                                    "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
+                                                    "docs/testing/rbac-functional-assessment-2026-10-10.md",
+                                                    "docs/testing/rbac-functional-assessment-2026-10-10.json",
+                                                    "docs/architecture/pdv-individual-permissions-action-matrix.md",
+                                                    "artifacts/rbac-permissions-ui-2026-10-10/rbac-final-evidence.json",
+                                                    "artifacts/rbac-permissions-ui-2026-10-10/rbac-final-console.log"
+                                                ],
+                              "pending":  [
+                                              "25 remaining live-browser permission keys",
+                                              "full LEGACY and CANONICAL_PDV matrix",
+                                              "global admin contract",
+                                              "alternate UI endpoints and setting combinations"
+                                          ],
+                              "harnessResult":  "PASS",
+                              "executedFileBlobs":  {
+                                                        "frontend/src/components/operacao/PainelCaixaOperacao.tsx":  "1d1fc6530e8588a8ecb2aba77d3c78ed40240f12",
+                                                        "backend/scripts/pdv-individual-permissions.isolated.test.mjs":  "a6c4bc4f84cf4ac1e48d320df9fd8f40ee992b50",
+                                                        "e2e/rbac-live/operational-session.spec.ts":  "13cb35c3d356d8d8f67b79a2ebff1b43e11d4bf8",
+                                                        "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs":  "76534dc85318542313f1f788a173c2f3b0af9e1b"
+                                                    }
+                          },
+    "latestContinuation":  {
+                               "testedCommit":  "327f546cad95b595e6ab4517cfac01c6c0044992",
+                               "testedTree":  "cf788cd506d898d68043c70e2d9e2eb2e8d099b1",
+                               "focusedRunner":  "PASS",
+                               "snapshotIntegrity":  "PASS; 1490 tracked blobs; exact tree materialized",
+                               "moduleAudit":  "198 snapshot modules; 0 mutable workspace imports; module path-list SHA-256 c7ee0c710a575d77b40c1bad3b39362a6eb2eafba8d70599a43dd630a1b2e601",
+                               "testedFileBlobs":  {
+                                                       "frontend/src/components/EventoCaixaPanel.tsx":  "2c337db6e1461d644fdd88bdecc6be27e8f86794",
+                                                       "e2e/rbac-live/operational-session.spec.ts":  "98184794e6e47eb37e6324c3913e114543189c34",
+                                                       "backend/scripts/pdv-individual-permissions.isolated.test.mjs":  "df02135303decd73bb637771c2d27836dcd0834f"
+                                                   },
+                               "backendBuild":  "PASS",
+                               "frontendBuild":  "PASS",
+                               "activationPreflight":  "14/14 PASS",
+                               "authenticatedDisposableApiSuite":  "PASS; representative enabled/denied checks for 28 keys plus tenant, session, ownership, legacy/canonical, and persistence cases",
+                               "playwright":  "PASS 12/12 CANONICAL_PDV checks plus 5/5 EVENTO/LEGACY checks; real Fastify API/frontend and disposable PostgreSQL",
+                               "uiStageCounts":  {
+                                                     "required":  84,
+                                                     "pass":  57,
+                                                     "fail":  0,
+                                                     "blocked":  0,
+                                                     "notRun":  27
+                                                 },
+                               "uiKeys":  {
+                                              "command.read":  {
+                                                                   "disabled":  "PASS",
+                                                                   "enabled":  "PASS",
+                                                                   "revoked":  "PASS"
+                                                               },
+                                              "cash.values.read":  {
+                                                                       "disabled":  "PASS",
+                                                                       "enabled":  "PASS",
+                                                                       "revoked":  "PASS"
+                                                                   },
+                                              "dashboard.read":  {
+                                                                     "disabled":  "PASS",
+                                                                     "enabled":  "PASS",
+                                                                     "revoked":  "PASS"
+                                                                 },
+                                              "agenda.manage":  {
+                                                                    "disabled":  "PASS",
+                                                                    "enabled":  "PASS",
+                                                                    "revoked":  "PASS"
+                                                                },
+                                              "command.operate":  {
+                                                                      "disabled":  "PASS",
+                                                                      "enabled":  "PASS",
+                                                                      "revoked":  "PASS",
+                                                                      "dependency":  "command.read retained; only command.operate varied"
+                                                                  },
+                                              "reports.read":  {
+                                                                   "disabled":  "PASS",
+                                                                   "enabled":  "PASS",
+                                                                   "revoked":  "PASS"
+                                                               },
+                                              "clients.manage":  {
+                                                                     "disabled":  "PASS",
+                                                                     "enabled":  "PASS",
+                                                                     "revoked":  "PASS",
+                                                                     "dependency":  "none; staff identity confirmed by auth/me; API persists cadastradoVia=STAFF (model has no creator user ID)"
+                                                                 },
+                                              "inventory.read":  {
+                                                                     "disabled":  "PASS",
+                                                                     "enabled":  "PASS",
+                                                                     "revoked":  "PASS",
+                                                                     "dependency":  "none; read-only screen and API; entry denied without inventory.adjust"
+                                                                 },
+                                              "inventory.adjust":  {
+                                                                       "disabled":  "PASS",
+                                                                       "enabled":  "PASS",
+                                                                       "revoked":  "PASS",
+                                                                       "dependency":  "inventory.read retained; only adjustment permission varied; DB confirmed exact movement and staff actor"
+                                                                   },
+                                              "kitchen.read":  {
+                                                                   "disabled":  "PASS",
+                                                                   "enabled":  "PASS",
+                                                                   "revoked":  "PASS",
+                                                                   "dependency":  "none; real queue visible read-only; kitchen.operate absent"
+                                                               },
+                                              "kitchen.operate":  {
+                                                                      "disabled":  "PASS",
+                                                                      "enabled":  "PASS",
+                                                                      "revoked":  "PASS",
+                                                                      "dependency":  "kitchen.read retained; only operate varied"
+                                                                  },
+                                              "cash.movement.write":  {
+                                                                          "disabled":  "PASS",
+                                                                          "enabled":  "PASS",
+                                                                          "revoked":  "PASS",
+                                                                          "dependency":  "cash.values.read absent; movement response remains sanitized"
+                                                                      },
+                                              "catalog.manage":  {
+                                                                     "disabled":  "PASS",
+                                                                     "enabled":  "PASS",
+                                                                     "revoked":  "PASS",
+                                                                     "dependency":  "none for product create; only catalog.manage granted"
+                                                                 },
+                                              "catalog.shift.manage":  {
+                                                                           "disabled":  "PASS",
+                                                                           "enabled":  "PASS",
+                                                                           "revoked":  "PASS",
+                                                                           "dependency":  "cash.values.read retained as screen dependency; catalog.manage absent; global price checked through separate catalog API"
+                                                                       },
+                                              "event.menu.manage":  {
+                                                                        "disabled":  "PASS",
+                                                                        "enabled":  "PASS",
+                                                                        "revoked":  "PASS",
+                                                                        "dependency":  "none; separate synthetic EVENTO/LEGACY tenant; real editor, session and PostgreSQL"
+                                                                    },
+                                              "event.dashboard.read":  {
+                                                                           "disabled":  "PASS",
+                                                                           "enabled":  "PASS",
+                                                                           "revoked":  "PASS",
+                                                                           "dependency":  "command.read retained; event and command screens gated; command-list API remains available"
+                                                                       },
+                                              "cash.open":  {
+                                                                "disabled":  "PASS",
+                                                                "enabled":  "PASS",
+                                                                "revoked":  "PASS",
+                                                                "dependency":  "command.read retained for the event command screen; cash.values.read absent throughout"
+                                                            },
+                                              "cash.close":  {
+                                                                 "disabled":  "PASS",
+                                                                 "enabled":  "PASS",
+                                                                 "revoked":  "PASS",
+                                                                 "dependency":  "command.read and cash.values.read retained; cash.close varied alone"
+                                                             },
+                                              "taps.operate":  {
+                                                                   "disabled":  "PASS",
+                                                                   "enabled":  "PASS",
+                                                                   "revoked":  "PASS",
+                                                                   "dependency":  "command.read retained; tapsEnabled=true on synthetic EVENTO/LEGACY tenant; only taps.operate varied"
+                                                               }
+                                          },
+                               "sameUserSessions":  "PASS; two contexts in prior command.read/cash.values.read flow",
+                               "sameBrowserTenantSwitch":  "PASS; real logout/login into second synthetic tenant",
+                               "viewportWidths":  [
+                                                      390,
+                                                      768
+                                                  ],
+                               "productDefect":  "Five confirmed UI defects across cash/event authorization. This continuation fixed the event cash panel crash when the API omits expected/received values: JSX evaluated close-modal children even while the modal was closed, dereferencing null caixa.esperado. Values are now optional, render only when supplied, and the close dialog content is constructed only when expected values exist. No hidden value is displayed as zero. The same run verifies event cash values remain redacted without cash.values.read.",
+                               "harnessCorrection":  "Prior cash.close fixture corrections remain documented. This continuation fixed event navigation by selecting the synthetic event card; the initial run exposed the real redacted-cash UI crash. The close-dialog crash was fixed next. A later timeout was a harness-only selector using an unassociated visible label; getByRole(combobox) now selects the native control. Final snapshot passes all 12 canonical and 5 legacy browser checks.",
+                               "receipt":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-final-evidence.json",
+                               "playwrightResults":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-playwright-results.json",
+                               "console":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-browser-run.log",
+                               "prodAccess":  "NO",
+                               "sharedDevWrites":  "YES after QA; immutable DEV release activated and synthetic owner/staff records created for authenticated smoke then deleted",
+                               "certification":  "INCOMPLETE",
+                               "pending":  [
+                                               "9 live-browser permission keys: payment.receive, debt.receive, command.close, discount.apply, command.item.cancel, command.item.cancel.delivered, command.cancel, kitchen.cancel, sale.refund",
+                                               "full LEGACY and CANONICAL_PDV matrix, global-admin contract, alternate endpoints and remaining operational setting combinations",
+                                               "cross-tenant, user/tenant switch, editor usability, and remaining transverse scenarios"
+                                           ],
+                               "devDeployment":  {
+                                                     "releaseSha":  "327f546cad95b595e6ab4517cfac01c6c0044992",
+                                                     "sourceTree":  "cf788cd506d898d68043c70e2d9e2eb2e8d099b1",
+                                                     "pushedCommit":  "327f546cad95b595e6ab4517cfac01c6c0044992",
+                                                     "publishStatus":  "PASS; immutable DEV candidate published and restarted",
+                                                     "priorDevSha":  "370416704b59af56ecc9f88c17560a303583fa69",
+                                                     "apiHealth":  "PASS local and public; exact release SHA 327f546cad95b595e6ab4517cfac01c6c0044992",
+                                                     "databaseReadiness":  "PASS local and public",
+                                                     "frontend":  "PASS local/public; /assets/index-DTLwfaLt.js SHA-256 4b7bce56a335c5babd021f2cde1df1d0ad88f79d0d8ab180f7a738cc3294b33c matches candidate manifest",
+                                                     "authenticatedSmoke":  "PASS synthetic owner/staff login and auth/me tenant identity; synthetic records deleted in finally",
+                                                     "migrations":  "none in release diff from prior DEV release",
+                                                     "PROD_DEPLOY_REQUIRED":  "NO",
+                                                     "receipt":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-final-evidence.json"
+                                                 },
+                               "sourceMaterialization":  "Git blobs only; 1,484 tracked blobs; no mutable workspace imports",
+                               "cashCloseRun":  {
+                                                    "result":  "PASS",
+                                                    "permission":  "cash.close",
+                                                    "mode":  "EVENTO/LEGACY",
+                                                    "disabled":  "close control hidden; direct API denied; session remained unchanged",
+                                                    "enabled":  "cash.close plus cash.values.read; UI closed session; exact R$ 987.65 counted cash and authorized staff actor persisted",
+                                                    "revoked":  "same authenticated session lost close control; direct API denied; a second open session remained unchanged",
+                                                    "apiAndDatabase":  "real Fastify API; owner reopened session for revoke stage; database asserted both session states and actors",
+                                                    "focusedRunReceipt":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-ui-final-evidence.json",
+                                                    "playwrightResults":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-playwright-results.json",
+                                                    "browserLog":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-browser-run.log"
+                                                },
+                               "harnessRetryEvidence":  {
+                                                            "firstAttempt":  "results/cash-close-ui-runner.log; fixture failed before browser on unique Evento.trailerId",
+                                                            "secondAttempt":  "results/cash-close-ui-runner-retry1.log; 12 canonical passed, event menu passed, other legacy cases exposed trailer-selection fixture mismatch",
+                                                            "screenshot":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-harness-selection-screen.png",
+                                                            "errorContext":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/cash-close-harness-selection-error-context.md",
+                                                            "fixedRun":  "results/cash-close-ui-runner-retry2.log"
+                                                        },
+                               "productFix":  {
+                                                  "cause":  "EventoCaixaPanel eagerly evaluated the close dialog child map while caixa was null or its financial fields were sanitized away.",
+                                                  "solution":  "Represent expected/received amounts as optional, gate value display by actual returned fields, and conditionally construct the close dialog body only when expected values exist.",
+                                                  "regression":  "Live real-authenticated page assertion verifies no browser page errors, no Gaveta/Recebido values, and no close action when staff has command.read only.",
+                                                  "productionAccess":  "NO"
+                                              },
+                               "tapsOperateRun":  {
+                                                      "result":  "PASS",
+                                                      "mode":  "EVENTO/LEGACY",
+                                                      "disabled":  "grid read-only; direct PUT denied; no mount persisted",
+                                                      "enabled":  "real UI mounted Chope on TAP 9902; owner API confirmed exact product id",
+                                                      "revoked":  "same staff session lost operation controls; direct PUT denied; mounted product unchanged",
+                                                      "browser":  "390px viewport; no mocks; real login, Fastify API, PostgreSQL, and Socket.IO",
+                                                      "receipt":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-final-evidence.json"
+                                                  },
+                               "runnerReceipt":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-ui-final-evidence.json",
+                               "failureArtifacts":  {
+                                                        "redactedCashScreenshot":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-redacted-cash-crash.png",
+                                                        "redactedCashContext":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/taps-operate-redacted-cash-crash-context.md",
+                                                        "nullCashDialogTrace":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/event-cash-null-modal-crash-trace.zip"
+                                                    }
+                           },
+    "completionContinuation":  {
+                                   "baseline":  {
+                                                    "pass":  57,
+                                                    "notRun":  27,
+                                                    "fail":  0,
+                                                    "blocked":  0
+                                                },
+                                   "currentCoreStages":  {
+                                                             "required":  84,
+                                                             "pass":  84,
+                                                             "notRun":  0,
+                                                             "fail":  0,
+                                                             "blocked":  0
+                                                         },
+                                   "addedPermissions":  [
+                                                            "payment.receive",
+                                                            "debt.receive",
+                                                            "command.close",
+                                                            "discount.apply",
+                                                            "command.item.cancel",
+                                                            "command.item.cancel.delivered",
+                                                            "command.cancel",
+                                                            "kitchen.cancel",
+                                                            "sale.refund"
+                                                        ],
+                                   "modes":  [
+                                                 "CANONICAL_PDV",
+                                                 "LEGACY"
+                                             ],
+                                   "perPermissionStages":  "disabled, enabled, revoked in the same authenticated session; all nine PASS in both modes",
+                                   "authentication":  "Real login cookies/browser, Fastify API and disposable PostgreSQL; no authorization mocks",
+                                   "persistence":  "Owner API and database assertions verify successful persistence and unchanged state after denied/revoked writes",
+                                   "transverse":  {
+                                                      "dependencies":  "PASS",
+                                                      "simultaneousSessions":  "PASS",
+                                                      "userTenantSwitch":  "PASS",
+                                                      "globalAdmin":  "PASS",
+                                                      "alternativeRoutes":  "PASS: nine denied routes with state unchanged",
+                                                      "canonicalLegacy":  "PASS"
+                                                  },
+                                   "receipt":  "../../artifacts/rbac-permissions-ui-2026-10-10/results/rbac-completion-receipt.json",
+                                   "checkpoints":  "../../artifacts/rbac-permissions-ui-2026-10-10/checkpoints/remaining-permissions/",
+                                   "release":  {
+                                                   "commitSha":  "4555adf8bcf36a6b0055c67bf1cb97b951a52bb9",
+                                                   "pushStatus":  "PUSHED",
+                                                   "devServedSha":  "327f546cad95b595e6ab4517cfac01c6c0044992",
+                                                   "PROD_DEPLOY_REQUIRED":  "YES",
+                                                   "status":  "NOT_PUBLISHED",
+                                                   "blocker":  "Frontend recovery has no safe isolated startup path. Candidate 4555adf8bcf36a6b0055c67bf1cb97b951a52bb9 is built but inactive; localhost:5202 has no listener and public DEV is HTTP 502.",
+                                                   "serviceImpact":  "2026-10-10T20:08Z: local API health 200 at 327f546cad95b595e6ab4517cfac01c6c0044992; readiness 200/database healthy. API process PID 37376 is node.exe from deploy/dev-artifacts/backend. Frontend localhost:5202 has no listener; public URL returns HTTP 502."
+                                               },
+                                   "plane":  {
+                                                 "ticket":  "TAP-76",
+                                                 "status":  "In Progress",
+                                                 "evidenceComment":  "CREATED: 46272ebe-86f8-483b-ba57-52140a94b4d2",
+                                                 "pendingWork":  "Frontend DEV unavailable; candidate 4555adf not activated; authenticated post-publication smoke pending",
+                                                 "commentAttemptError":  null
+                                             },
+                                   "oldTapsOperateReportReissued":  false
+                               },
+    "publicationFollowup":  {
+                                "checkedAt":  "2026-10-10T20:08:14Z",
+                                "apiHealth":  "200 release 327f546cad95b595e6ab4517cfac01c6c0044992",
+                                "apiReadiness":  "200 ready; database healthy",
+                                "frontendLocal":  "NO_LISTENER localhost:5202",
+                                "frontendPublic":  "HTTP 502",
+                                "candidate":  "4555adf8bcf36a6b0055c67bf1cb97b951a52bb9 built, not active",
+                                "planeComment":  "CREATED 46272ebe-86f8-483b-ba57-52140a94b4d2",
+                                "prodDeployRequired":  "YES",
+                                "releaseStatus":  "BLOCKED_FRONTEND_RECOVERY",
+                                "reportUpdatePublish":  "BLOCKED before execution: functions.exec_command returned Rejected(... blocked by policy) for isolated-index commit/push. No equivalent retry; report updates are local only."
+                            },
+    "frontendRecoveryPreparation":  {
+                                        "checkedAt":  "2026-10-10T20:13:48.9394541Z",
+                                        "script":  "scripts/dev/start-dev-frontend-artifacts.ps1",
+                                        "status":  "PREPARED_NOT_STARTED",
+                                        "syntax":  "PASS",
+                                        "staticIdentityAndErrorGuards":  "PASS",
+                                        "runtimeBehavior":  "NOT_RUN: no technical permission grant channel available; approval policy is never",
+                                        "apiSha":  "327f546cad95b595e6ab4517cfac01c6c0044992",
+                                        "apiHealth":  "ok",
+                                        "apiReadiness":  "ready",
+                                        "database":  true,
+                                        "frontendFilesVerified":  11,
+                                        "frontendLocal":  "NO_LISTENER :5202",
+                                        "frontendPublic":  "HTTP 502",
+                                        "candidate":  "4555adf8bcf36a6b0055c67bf1cb97b951a52bb9 PREPARED_NOT_ACTIVE",
+                                        "prodTouched":  false,
+                                        "manualCommand":  "\u0026 \u0027C:\\Users\\Papai\\Documents\\Desenvolvimento\\Cervejaria\\scripts\\dev\\start-dev-frontend-artifacts.ps1\u0027",
+                                        "planeComment":  "94a56708-d3ad-46f2-8f38-677dabdf5843"
+                                    },
+    "coordinatedDevRestart":  {
+                                  "planeComment":  "b380876c-21cb-4095-ac62-ec2164a5629a",
+                                  "checkedAt":  "2026-10-10T21:05:31.7866926Z",
+                                  "prodDeployRequired":  "YES",
+                                  "rollback":  "previous immutable DEV artifact retained; script restores it if target activation or smoke fails",
+                                  "qaCredentials":  "none; per-run random synthetic credential held in memory and never logged",
+                                  "currentRuntime":  {
+                                                         "frontendLocal":  200,
+                                                         "bundleSha256":  "4b7bce56a335c5babd021f2cde1df1d0ad88f79d0d8ab180f7a738cc3294b33c",
+                                                         "apiSha":  "327f546cad95b595e6ab4517cfac01c6c0044992",
+                                                         "supervisor":  "none found; frontend parent process no longer present",
+                                                         "apiPid":  37376,
+                                                         "frontendPort":  5202,
+                                                         "database":  "healthy",
+                                                         "bundle":  "assets/index-DTLwfaLt.js",
+                                                         "apiHealth":  200,
+                                                         "apiPort":  3002,
+                                                         "frontendPid":  119684,
+                                                         "apiReadiness":  "ready",
+                                                         "frontendPublic":  200
+                                                     },
+                                  "scriptSyntax":  "PASS",
+                                  "candidate":  {
+                                                    "schemaAndMigrationsDiff":  "none against 327f546",
+                                                    "status":  "PREPARED_NOT_ACTIVATED",
+                                                    "dependencies":  "immutable manifest and lock hashes previously verified",
+                                                    "sha":  "4555adf8bcf36a6b0055c67bf1cb97b951a52bb9"
+                                                },
+                                  "script":  "scripts/dev/restart-dev-runtime.ps1",
+                                  "reason":  "Reinício não realizado: approval_policy efetiva do Codex está never e não há mecanismo de solicitação técnica nesta sessão. Testes Windows PowerShell passaram com Bypass apenas no processo conforme autorizado.",
+                                  "restartExecuted":  false,
+                                  "syntheticQaSmoke":  {
+                                                           "checkedAt":  "2026-10-10T20:38:26.1240905Z",
+                                                           "releaseSha":  "327f546cad95b595e6ab4517cfac01c6c0044992",
+                                                           "result":  "PASS",
+                                                           "ownerLogin":  "PASS",
+                                                           "staffLogin":  "PASS",
+                                                           "fixture":  "CREATED_AND_REMOVED",
+                                                           "fixtureTag":  "dev-rbac-smoke-1778b86f49d94267a82351e6279036ca",
+                                                           "cleanup":  "PASS",
+                                                           "leftoverTenantCount":  0,
+                                                           "credentials":  "random per-run secret held in memory; no credential persisted or logged",
+                                                           "localApi":  "health 200; readiness ready; database healthy",
+                                                           "publicApi":  "health 200; readiness ready; database healthy",
+                                                           "localFrontend":  200,
+                                                           "publicFrontend":  200,
+                                                           "bundle":  "assets/index-DTLwfaLt.js",
+                                                           "bundleSha256":  "4b7bce56a335c5babd021f2cde1df1d0ad88f79d0d8ab180f7a738cc3294b33c",
+                                                           "candidateSmoke":  "PENDING_NOT_ACTIVATED"
+                                                       },
+                                  "restartScriptUpdate":  {
+                                                              "runtimeSmoke":  {
+                                                                                   "checkedAt":  "2026-10-10T20:38:26.1240905Z",
+                                                                                   "releaseSha":  "327f546cad95b595e6ab4517cfac01c6c0044992",
+                                                                                   "result":  "PASS",
+                                                                                   "ownerLogin":  "PASS",
+                                                                                   "staffLogin":  "PASS",
+                                                                                   "fixture":  "CREATED_AND_REMOVED",
+                                                                                   "fixtureTag":  "dev-rbac-smoke-1778b86f49d94267a82351e6279036ca",
+                                                                                   "cleanup":  "PASS",
+                                                                                   "leftoverTenantCount":  0,
+                                                                                   "credentials":  "random per-run secret held in memory; no credential persisted or logged",
+                                                                                   "localApi":  "health 200; readiness ready; database healthy",
+                                                                                   "publicApi":  "health 200; readiness ready; database healthy",
+                                                                                   "localFrontend":  200,
+                                                                                   "publicFrontend":  200,
+                                                                                   "bundle":  "assets/index-DTLwfaLt.js",
+                                                                                   "bundleSha256":  "4b7bce56a335c5babd021f2cde1df1d0ad88f79d0d8ab180f7a738cc3294b33c",
+                                                                                   "candidateSmoke":  "PENDING_NOT_ACTIVATED"
+                                                                               },
+                                                              "qaAccountPreparation":  "transactionally creates synthetic DONO and ATENDENTE under an isolated tenant using random in-memory password",
+                                                              "authFailureHandling":  "no release rollback when authentication/fixture smoke fails and independent service checks pass",
+                                                              "serviceFailureHandling":  "independent health/readiness/SHA/local/public bundle checks before and after auth smoke; service failure triggers rollback",
+                                                              "syntheticHarness":  "scripts/dev/dev-qa-auth-smoke.mjs",
+                                                              "script":  "scripts/dev/restart-dev-runtime.ps1",
+                                                              "interactiveCredentials":  false,
+                                                              "cleanup":  "deletes only exact created user IDs and tenant ID; cleanup outcome and fixture tag are reported"
+                                                          },
+                                  "processIdentityRootCause":  "Causa real do erro IndexOf: Get-Lineage retornava ,$items (vÃƒÆ’Ã‚Â­rgula unÃƒÆ’Ã‚Â¡ria), produzindo ancestry aninhada. Em Windows PowerShell 5.1, $_ era System.Object[] e $_.Cmd tambÃƒÆ’Ã‚Â©m System.Object[] dentro do Where-Object; o backendPath era System.String e StringComparison era System.StringComparison. A invocaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o de dois argumentos atingia Array em vez de String. CorreÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o: Get-Lineage agora emite registros planos; ConvertTo-FlatProcessLineage normaliza ancestry aninhada; Test-CommandLineContainsPath converte entrada/comparaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o para strings/enums explÃƒÆ’Ã‚Â­citos e rejeita ausentes.",
+                                  "processIdentityTests":  {
+                                                               "files":  [
+                                                                             "scripts/dev/restart-dev-runtime.identity.tests.ps1"
+                                                                         ],
+                                                               "cases":  [
+                                                                             "compiled backend SHA/hash",
+                                                                             "missing parent",
+                                                                             "Vite preview",
+                                                                             "paths with spaces",
+                                                                             "nested lineage and supervisor snapshots",
+                                                                             "PID reuse and command/executable mismatches"
+                                                                         ],
+                                                               "parse":  "PASS",
+                                                               "execution":  "PASS",
+                                                               "runtime":  "Windows PowerShell 5.1.26100.9549",
+                                                               "passed":  19,
+                                                               "failed":  0,
+                                                               "executionPolicy":  "Bypass process scope only"
+                                                           },
+                                  "manualCommand":  "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \u0027C:\\Users\\Papai\\Documents\\Desenvolvimento\\Cervejaria\\scripts\\dev\\restart-dev-runtime.ps1\u0027",
+                                  "effectiveCodexPermission":  "approval_policy=never (runtime policy); no formal access request tool available",
+                                  "codexConfigInspection":  "config.toml mostra approval_mode=approve para MCP Plane e sandbox=elevated em [windows]; estes nÃƒÆ’Ã‚Â£o alteram approval_policy efetiva da sessÃƒÆ’Ã‚Â£o",
+                                  "identityDiagnosis":  {
+                                                            "powershell":  "5.1.26100.9549",
+                                                            "apiPid":  37376,
+                                                            "frontendPid":  119684,
+                                                            "oldLineageShape":  "one System.Object[] containing five process records; property Cmd was System.Object[]",
+                                                            "normalizedLineageCount":  5,
+                                                            "launcherCommandType":  "System.String",
+                                                            "backendPathType":  "System.String",
+                                                            "stringComparisonType":  "System.StringComparison",
+                                                            "launcherPathMatchIndex":  151,
+                                                            "backendArtifactHashMatchesManifest":  true,
+                                                            "apiHealthMatchesManifest":  true,
+                                                            "frontendIdentityMatches":  true,
+                                                            "localApiSha":  "327f546cad95b595e6ab4517cfac01c6c0044992",
+                                                            "publicApiSha":  "327f546cad95b595e6ab4517cfac01c6c0044992",
+                                                            "readiness":  "ready",
+                                                            "database":  "healthy",
+                                                            "localFrontend":  200,
+                                                            "publicFrontend":  200
+                                                        },
+                                  "lastRestartFailure":  {
+                                                             "reportedError":  "PID identity changed; refusing to stop it",
+                                                             "reportedLine":  "restart-dev-runtime.ps1:110",
+                                                             "service":  "DEV supervisor (the first stop phase before runtime service sequence)",
+                                                             "pidRecoverable":  false,
+                                                             "reason":  "the original log interpolated an empty Snapshot.Id and no process snapshot/PID was persisted",
+                                                             "evidence":  "preflight logged supervisors=1; failure log immediately followed; current identity inventory has no supervisor process; API/frontend listeners and SHAs remain unchanged",
+                                                             "assessment":  "nested array returned by Get-Supervisors caused a snapshot-shape mismatch; no evidence of PID reuse or different process",
+                                                             "fieldsComparedPreviously":  [
+                                                                                              "Name",
+                                                                                              "Exe",
+                                                                                              "Cmd",
+                                                                                              "Created"
+                                                                                          ],
+                                                             "historicalFieldDiffsPersisted":  false,
+                                                             "currentRuntimeServicesStopped":  false
+                                                         },
+                                  "identityTestsWindowsPowerShell51":  {
+                                                                           "file":  "scripts/dev/restart-dev-runtime.identity.tests.ps1",
+                                                                           "runtime":  "Windows PowerShell 5.1.26100.9549",
+                                                                           "execution":  "PASS",
+                                                                           "passed":  19,
+                                                                           "failed":  0,
+                                                                           "executionPolicy":  "Bypass process scope only",
+                                                                           "cases":  [
+                                                                                         "backend artifact and health SHA",
+                                                                                         "missing parent",
+                                                                                         "paths with spaces",
+                                                                                         "nested ancestry/snapshot",
+                                                                                         "incompatible command/executable/launcher/port",
+                                                                                         "stable snapshot",
+                                                                                         "changed command refusal",
+                                                                                         "PID reuse refusal",
+                                                                                         "snapshot shape refusal with PID evidence"
+                                                                                     ]
+                                                                       },
+                                  "currentReadOnlyDiagnosis":  {
+                                                                   "file":  "scripts/dev/diagnose-dev-runtime.ps1",
+                                                                   "noMutation":  true,
+                                                                   "apiIdentity":  true,
+                                                                   "frontendIdentity":  true,
+                                                                   "apiPid":  37376,
+                                                                   "frontendPid":  119684,
+                                                                   "apiSha":  "327f546cad95b595e6ab4517cfac01c6c0044992",
+                                                                   "apiLocalHealth":  200,
+                                                                   "apiPublicHealth":  200,
+                                                                   "readiness":  "ready",
+                                                                   "database":  "healthy",
+                                                                   "localFrontend":  200,
+                                                                   "publicFrontend":  200,
+                                                                   "apiSnapshotStable":  true,
+                                                                   "apiChangedFields":  [
+
+                                                                                        ],
+                                                                   "frontendSnapshotStable":  true,
+                                                                   "frontendChangedFields":  [
+
+                                                                                             ],
+                                                                   "supervisors":  0,
+                                                                   "candidateSha":  "4555adf8bcf36a6b0055c67bf1cb97b951a52bb9",
+                                                                   "candidateActive":  false
+                                                               }
+                              },
+    "release":  {
+                    "commitSha":  "4555adf8bcf36a6b0055c67bf1cb97b951a52bb9",
+                    "pushStatus":  "PUSHED",
+                    "devServedSha":  "327f546cad95b595e6ab4517cfac01c6c0044992",
+                    "PROD_DEPLOY_REQUIRED":  "YES",
+                    "status":  "NOT_PUBLISHED",
+                    "blocker":  "Candidate is prepared but not activated. Coordinated stop/start was not run because the technical approval policy is never and no permission-grant mechanism is available in this session. No service operation was attempted in this turn."
+                },
+    "plane":  {
+                  "ticket":  "TAP-76",
+                  "evidenceComment":  "CREATED: 595d6a27-6562-4258-bab0-2f13af8e248a",
+                  "status":  "In Progress",
+                  "pendingWork":  "Manual coordinated restart/publication of 4555adf and authenticated QA smoke pending",
+                  "commentAttemptError":  null
+              }
 }

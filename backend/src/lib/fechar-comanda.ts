@@ -6,8 +6,6 @@ import { recordComandaFechada } from './business-metrics.js';
 import { toNumber } from './utils.js';
 import { lockComandaItemsInTx } from './comanda-service.js';
 import { normalizePhone } from './phone.js';
-import { canonicalPdvQaActivationEnabled } from './canonical-pdv-operational-config.js';
-
 export type PagamentoInput = {
   forma: 'DINHEIRO' | 'PIX' | 'CARTAO' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO';
   valor: number;
@@ -163,10 +161,11 @@ export async function fecharComandaComPagamentos(
   const desconto = toNumber(comandaAtual.desconto ?? 0);
   const origem = params.origem ?? comandaAtual.origem;
   const linhasPagamento = params.pagamentosDetalhados ?? pagamentos;
-  const canonicalPdv = canonicalPdvQaActivationEnabled();
-  if (canonicalPdv && origem === 'CAIXA' && !params.sessaoCaixaId) {
-    throw Object.assign(new Error('O fechamento canônico exige a sessão Por Caixa de realização.'), { statusCode: 409 });
-  }
+  const sessaoCaixaRealizacaoId = resolveSessaoCaixaRealizacaoForClose({
+    origem,
+    sessaoCaixaId: params.sessaoCaixaId,
+    alreadyLinkedId: comandaAtual.sessaoCaixaRealizacaoId,
+  });
 
   if (params.deixarPendente) {
     const cliente = comandaAtual.clienteId
@@ -192,7 +191,7 @@ export async function fecharComandaComPagamentos(
     where: { id: comandaAtual.id, status: 'ABERTA' },
     data: {
       status: 'FECHADA', fechadoPorId: usuarioId, fechadaEm,
-      ...(canonicalPdv && params.sessaoCaixaId ? { sessaoCaixaRealizacaoId: params.sessaoCaixaId } : {}),
+      ...(sessaoCaixaRealizacaoId ? { sessaoCaixaRealizacaoId } : {}),
     },
   });
   if (fechou.count === 0) {
@@ -327,4 +326,34 @@ export async function cancelarComandaVaziaInTx(
 
 export function newGrupoPagamentoId(): string {
   return randomUUID();
+}
+
+/**
+ * Turno de realização para fechamento de comanda CAIXA.
+ * Exige sessão; se a comanda já tiver vínculo, não permite trocar de turno.
+ */
+export function resolveSessaoCaixaRealizacaoForClose(args: {
+  origem: 'EVENTO' | 'CAIXA' | 'QUIOSQUE';
+  sessaoCaixaId?: string | null;
+  alreadyLinkedId?: string | null;
+}): string | undefined {
+  if (args.origem !== 'CAIXA') return undefined;
+  const already = args.alreadyLinkedId ?? null;
+  const incoming = args.sessaoCaixaId ?? null;
+  if (already) {
+    if (incoming && incoming !== already) {
+      throw Object.assign(
+        new Error('A comanda já está vinculada a outro turno de caixa e não pode atravessar turnos.'),
+        { statusCode: 409 },
+      );
+    }
+    return already;
+  }
+  if (!incoming) {
+    throw Object.assign(
+      new Error('O fechamento exige a sessão de caixa de realização.'),
+      { statusCode: 409 },
+    );
+  }
+  return incoming;
 }

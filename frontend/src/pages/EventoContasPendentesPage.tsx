@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../lib/api';
 import { PageHeader } from '../components/PageHeader';
@@ -21,6 +21,8 @@ type ContaEvento = {
 
 export function EventoContasPendentesPage() {
   const { eventoId = '' } = useParams<{ eventoId: string }>();
+  const [searchParams] = useSearchParams();
+  const clienteIdFiltro = searchParams.get('clienteId');
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<ContaEvento | null>(null);
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([]);
@@ -54,7 +56,7 @@ export function EventoContasPendentesPage() {
   });
 
   if (contasQuery.isLoading) return <Loading />;
-  const contas = contasQuery.data ?? [];
+  const contas = (contasQuery.data ?? []).filter((conta) => !clienteIdFiltro || conta.cliente.id === clienteIdFiltro);
   const totalPendente = contas.reduce((sum, conta) => sum + conta.saldo, 0);
 
   return (

@@ -57,13 +57,6 @@ export async function mergeClientes(params: MergeClientesParams): Promise<MergeC
       throw new ClienteMergeError('Cliente de sistema não pode ser unido', 409);
     }
 
-    if (destino.telefone && fonte.telefone && destino.telefone !== fonte.telefone) {
-      throw new ClienteMergeError(
-        'Os clientes têm telefones diferentes. Abra a ficha do cliente com o telefone correto e tente unir novamente.',
-        409,
-      );
-    }
-
     const comandasMovidas = await tx.comanda.updateMany({
       where: { clienteId: fonteId },
       data: { clienteId: destinoId },

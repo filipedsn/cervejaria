@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, formatCurrency, ApiError } from '../lib/api';
@@ -11,8 +11,7 @@ import { Loading } from '../components/Loading';
 import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { MobileActionBar } from '../components/MobileActionBar';
-import { StatusBadge, comandaStatusVariant } from '../components/StatusBadge';
-import { IconTrash } from '../components/NavIcons';
+import { IconTrash, IconWhatsApp } from '../components/NavIcons';
 import { AdicionarItemComandaModal } from '../components/AdicionarItemComandaModal';
 import { classificarGrupoProdutoOperacao } from '../lib/operacao';
 import { PaymentDiscountFields } from '../components/checkout/PaymentDiscountFields';
@@ -25,13 +24,15 @@ import {
 import { parseCurrencyInput, formatCurrencyInputFromNumber } from '../lib/currency';
 import { trackUiError } from '../lib/audit-tracker';
 import { createCorrelationId } from '../lib/correlation-id';
+import { formatPhone } from '../lib/phone';
+import { linkWhatsAppNumeroComanda, linkWhatsAppResumoConta, navegarParaWhatsApp } from '../lib/whatsapp';
 
 export function ComandaDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { evento } = useEvento();
-  const { podeDarDescontoOperacao } = useAuth();
+  const { cervejaria, podeDarDescontoOperacao } = useAuth();
   const canPermission = useAuth().canPermission;
   const podeOperarComanda = canPermission('command.operate');
   const podeCancelarItem = canPermission('command.item.cancel');
@@ -48,6 +49,7 @@ export function ComandaDetailPage() {
   const [error, setError] = useState('');
   const [closeErrorDetails, setCloseErrorDetails] = useState<{ referenceId: string; isApiCorrelation: boolean; status?: number; requestId?: string } | null>(null);
   const [itemAddedMessage, setItemAddedMessage] = useState('');
+  const [visaoItens, setVisaoItens] = useState<'PEDIDOS' | 'RESUMO'>('PEDIDOS');
 
   useEffect(() => {
     if (!itemAddedMessage) return;
@@ -67,6 +69,26 @@ export function ComandaDetailPage() {
     enabled: Boolean(comanda),
   });
   const kitchenItemsChargeAtLaunch = operationalConfiguration?.configuration?.kitchenItemsChargeAtLaunch ?? false;
+  const resumoItens = useMemo(() => {
+    const agrupados = new Map<string, { nome: string; quantidade: number; totalCentavos: number }>();
+    for (const item of comanda?.itens ?? []) {
+      if (item.cancelamentoPendenteEm || item.canceladoEm) continue;
+      if (item.exigePreparo && !kitchenItemsChargeAtLaunch && item.pedidoCozinha?.status !== 'ENTREGUE') continue;
+      const chave = item.produtoId;
+      const existente = agrupados.get(chave) ?? { nome: item.produto.nome, quantidade: 0, totalCentavos: 0 };
+      const opcionaisUnitarios = (item.opcionais ?? []).reduce(
+        (total, opcional) => total + parseFloat(opcional.precoAdicional) * opcional.quantidade,
+        0,
+      );
+      const valorCentavos = Math.round((parseFloat(item.precoUnit) + opcionaisUnitarios) * item.quantidade * 100);
+      existente.quantidade += item.quantidade;
+      existente.totalCentavos += Number.isFinite(valorCentavos) ? valorCentavos : 0;
+      agrupados.set(chave, existente);
+    }
+    return [...agrupados.entries()]
+      .map(([chave, item]) => ({ chave, nome: item.nome, quantidade: item.quantidade, total: item.totalCentavos / 100, precoMedio: item.quantidade ? item.totalCentavos / item.quantidade / 100 : 0 }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }));
+  }, [comanda?.itens, kitchenItemsChargeAtLaunch]);
 
   const needsEventoFetch = !!comanda && evento?.id !== comanda.eventoId;
   const { data: comandaEvento } = useQuery({
@@ -136,7 +158,7 @@ export function ComandaDetailPage() {
       queryClient.setQueryData(['comanda', id], updated);
       if (evento) queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
       setError('');
-      setItemAddedMessage('Itens lançados. Selecione os próximos itens.');
+      setItemAddedMessage('Itens lanÃ§ados. Selecione os prÃ³ximos itens.');
     },
     onError: (err) => {
       setItemAddedMessage('');
@@ -216,7 +238,7 @@ export function ComandaDetailPage() {
 
   const novaComandaMutation = useMutation({
     mutationFn: () => {
-      if (!comanda) throw new Error('Comanda não carregada');
+      if (!comanda) throw new Error('Comanda nÃ£o carregada');
       return api.post<Comanda>('/api/comandas', {
         eventoId: comanda.eventoId,
         clienteNome: comanda.cliente.nome,
@@ -256,7 +278,7 @@ export function ComandaDetailPage() {
     const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
     const podeAplicarDesconto = podeDarDescontoOperacao;
     if (podeAplicarDesconto && desconto > subtotal) {
-      setError('O desconto não pode ser maior que o subtotal da comanda');
+      setError('O desconto nÃ£o pode ser maior que o subtotal da comanda');
       return;
     }
     const pagamentos = deixarPendente ? [] : paymentForm.map((p) => ({
@@ -273,6 +295,33 @@ export function ComandaDetailPage() {
   };
 
   const comandaTotal = comanda ? parseFloat(comanda.total) : 0;
+
+  const enviarNumeroComandaWhatsApp = () => {
+    if (!comanda?.cliente?.telefone) return;
+    const url = linkWhatsAppNumeroComanda({
+      telefone: comanda.cliente.telefone,
+      clienteNome: comanda.cliente.nome,
+      nomeEmpresa: cervejaria?.nome ?? 'nossa empresa',
+      numeroComanda: comanda.numero,
+    });
+    if (url) navegarParaWhatsApp(url);
+  };
+
+  const enviarResumoContaWhatsApp = () => {
+    if (!comanda?.cliente?.telefone) return;
+    const url = linkWhatsAppResumoConta({
+      telefone: comanda.cliente.telefone,
+      clienteNome: comanda.cliente.nome,
+      nomeEmpresa: cervejaria?.nome ?? 'nossa empresa',
+      identificacaoComanda: rotuloComandaCervejaria(comanda, comanda.cliente),
+      itens: resumoItens.map((item) => ({ nome: item.nome, quantidade: item.quantidade, total: formatCurrency(item.total) })),
+      subtotal: formatCurrency(comanda ? subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch) : 0),
+      desconto: descontoSalvo > 0 ? formatCurrency(descontoSalvo) : null,
+      total: formatCurrency(comanda.total),
+      valorEmPreparo: valorPendente > 0 ? formatCurrency(valorPendente) : null,
+    });
+    if (url) navegarParaWhatsApp(url);
+  };
 
   if (isLoading) {
     return (
@@ -298,7 +347,7 @@ export function ComandaDetailPage() {
     return (
       <div className="space-y-4">
         <PageHeader title="Comanda" />
-        <p className="empty-state-text">Comanda não encontrada</p>
+        <p className="empty-state-text">Comanda nÃ£o encontrada</p>
       </div>
     );
   }
@@ -328,10 +377,10 @@ export function ComandaDetailPage() {
           <div>{error}</div>
           {closeErrorDetails && (
             <div className="mt-1 text-xs opacity-80">
-              {closeErrorDetails.isApiCorrelation ? 'Correlação da requisição: ' : 'Referência local (não pesquisável no servidor): '}
+              {closeErrorDetails.isApiCorrelation ? 'CorrelaÃ§Ã£o da requisiÃ§Ã£o: ' : 'ReferÃªncia local (nÃ£o pesquisÃ¡vel no servidor): '}
               {closeErrorDetails.referenceId}
-              {closeErrorDetails.status != null && ` · HTTP ${closeErrorDetails.status}`}
-              {closeErrorDetails.requestId && ` · Requisição ${closeErrorDetails.requestId}`}
+              {closeErrorDetails.status != null && ` Â· HTTP ${closeErrorDetails.status}`}
+              {closeErrorDetails.requestId && ` Â· RequisiÃ§Ã£o ${closeErrorDetails.requestId}`}
             </div>
           )}
         </div>
@@ -354,14 +403,25 @@ export function ComandaDetailPage() {
     <div className={`space-y-4 ${hasActionBar ? 'page-with-action-bar' : 'pb-2'}`}>
 
       <div className="card">
-        <div className="flex items-start justify-between gap-3">
-          <h2 className="text-xl font-bold min-w-0 truncate leading-tight">
-            {rotuloComandaCervejaria(comanda, comanda.cliente)}
-          </h2>
-          <StatusBadge variant={comandaStatusVariant(comanda.status)} />
+        <div className="flex items-center gap-x-4 gap-y-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              aria-label="Enviar nÃºmero sequencial da comanda pelo WhatsApp"
+              title={comanda.cliente.telefone ? 'Enviar nÃºmero da comanda pelo WhatsApp' : 'Cadastre um telefone para o cliente'}
+              className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-600 text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!comanda.cliente.telefone || comanda.numero == null}
+              onClick={enviarNumeroComandaWhatsApp}
+            >
+              <IconWhatsApp className="h-5 w-5" />
+            </button>
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold truncate leading-tight">{comanda.cliente.nome}</h2>
+              {comanda.cliente.telefone && <p className="text-sm text-ink-faint mt-1">{formatPhone(comanda.cliente.telefone)}</p>}
+            </div>
+          </div>
+          <p className="ml-auto text-2xl sm:text-3xl font-bold text-brand-600 tabular-nums whitespace-nowrap">{formatCurrency(comanda.total)}</p>
         </div>
-        {comanda.cliente.telefone && <p className="text-sm text-ink-faint mt-1">{comanda.cliente.telefone}</p>}
-        <p className="text-2xl sm:text-3xl font-bold text-brand-600 mt-2 tabular-nums">{formatCurrency(comanda.total)}</p>
         {valorPendente > 0 && <p className="mt-1 text-right text-sm font-semibold text-amber-400">Pendente na cozinha: {formatCurrency(valorPendente)}</p>}
         {!isOpen && descontoSalvo > 0 && (
           <div className="mt-3 space-y-1 text-sm border-t border-line pt-3">
@@ -371,7 +431,7 @@ export function ComandaDetailPage() {
             </div>
             <div className="flex justify-between text-ink-muted">
               <span>Desconto</span>
-              <span className="tabular-nums text-red-600">− {formatCurrency(descontoSalvo)}</span>
+              <span className="tabular-nums text-red-600">âˆ’ {formatCurrency(descontoSalvo)}</span>
             </div>
             <div className="flex justify-between font-semibold">
               <span>Total</span>
@@ -383,9 +443,9 @@ export function ComandaDetailPage() {
 
       {error && !showAddItem && !showPayment && <div className="alert-error">{error}</div>}
 
-      {/* Itens */}
+      {/* Consumo da comanda */}
       <div className="space-y-2">
-        <h3 className="section-label">Itens</h3>
+        <h3 className="section-label">Consumo da comanda</h3>
         {isOpen && podeOperarComanda && (
           <button
             type="button"
@@ -399,15 +459,45 @@ export function ComandaDetailPage() {
             + Itens
           </button>
         )}
+        <nav className="segmented-control" aria-label="VisualizaÃ§Ã£o dos itens da comanda">
+          <button
+            type="button"
+            className={`segmented-control-btn ${visaoItens === 'PEDIDOS' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
+            aria-pressed={visaoItens === 'PEDIDOS'}
+            onClick={() => setVisaoItens('PEDIDOS')}
+          >
+            Pedidos ({comanda.itens.length})
+          </button>
+          <button
+            type="button"
+            className={`segmented-control-btn ${visaoItens === 'RESUMO' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
+            aria-pressed={visaoItens === 'RESUMO'}
+            onClick={() => setVisaoItens('RESUMO')}
+          >
+            Resumo da conta
+          </button>
+          <button
+            type="button"
+            aria-label="Enviar resumo da conta pelo WhatsApp"
+            title={comanda.cliente.telefone ? 'Enviar resumo da conta pelo WhatsApp' : 'Cadastre um telefone para o cliente'}
+            className="inline-flex min-h-12 min-w-12 shrink-0 items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-600 text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={!comanda.cliente.telefone}
+            onClick={enviarResumoContaWhatsApp}
+          >
+            <IconWhatsApp className="h-6 w-6" />
+          </button>
+        </nav>
+        {visaoItens === 'PEDIDOS' ? (
+          <>
         {comanda.itens.map((item) => (
           <div key={item.id} className={`card flex items-center justify-between gap-3 py-3 ${item.cancelamentoPendenteEm ? 'border-orange-500/70 bg-orange-950/20' : item.canceladoEm ? 'opacity-60' : ''}`}>
             <div className="min-w-0">
               <p className="font-semibold">{item.produto.nome}</p>
               <p className="text-sm text-ink-muted">{formatItemDetail(item)}</p>
-              {item.cancelamentoPendenteEm && <p className="mt-1 text-xs font-semibold text-orange-400">Cancelamento solicitado — aguardando confirmação da cozinha</p>}
+              {item.cancelamentoPendenteEm && <p className="mt-1 text-xs font-semibold text-orange-400">Cancelamento solicitado â€” aguardando confirmaÃ§Ã£o da cozinha</p>}
               {item.canceladoEm && <p className="mt-1 text-xs font-semibold text-ink-muted">Cancelado pela cozinha</p>}
               {item.observacao && <p className="text-xs text-ink-muted">Obs: {item.observacao}</p>}
-              {item.opcionais?.length ? <p className="text-xs text-ink-muted">{item.opcionais.map((opcao) => opcao.nome).join(' · ')}</p> : null}
+              {item.opcionais?.length ? <p className="text-xs text-ink-muted">{item.opcionais.map((opcao) => opcao.nome).join(' Â· ')}</p> : null}
               {item.paraViagem && (
                 <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">
                   Para viagem
@@ -415,7 +505,7 @@ export function ComandaDetailPage() {
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="font-bold tabular-nums">{item.cancelamentoPendenteEm || item.canceladoEm ? '—' : formatCurrency(parseFloat(item.precoUnit) * item.quantidade)}</span>
+              <span className="font-bold tabular-nums">{item.cancelamentoPendenteEm || item.canceladoEm ? 'â€”' : formatCurrency(parseFloat(item.precoUnit) * item.quantidade)}</span>
               {isOpen && podeCancelarItem && !item.cancelamentoPendenteEm && !item.canceladoEm && (
                 <button
                   type="button"
@@ -435,26 +525,56 @@ export function ComandaDetailPage() {
             Nenhum item ainda. Adicione itens para registrar consumo.
           </p>
         )}
+          </>
+        ) : (
+          <section className="card space-y-3">
+            {resumoItens.length === 0 ? (
+              <p className="py-4 text-center text-sm text-ink-faint">Ainda nÃ£o hÃ¡ itens vÃ¡lidos para resumir.</p>
+            ) : (
+              <>
+                <div className="hidden grid-cols-[minmax(0,1fr)_5rem_8rem_8rem] gap-3 border-b border-line pb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint sm:grid">
+                  <span>Produto</span><span className="text-right">Qtd.</span><span className="text-right">Valor</span><span className="text-right">Total</span>
+                </div>
+                <ul className="divide-y divide-line">
+                  {resumoItens.map((linha) => (
+                    <li key={linha.chave} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 py-3 sm:grid-cols-[minmax(0,1fr)_5rem_8rem_8rem] sm:items-center">
+                      <span className="min-w-0 font-medium">{linha.nome}</span>
+                      <span className="text-right text-sm tabular-nums">{linha.quantidade}x</span>
+                      <span className="col-start-1 text-xs text-ink-faint sm:col-auto sm:text-right">Valor {formatCurrency(linha.precoMedio)}</span>
+                      <strong className="row-span-2 self-center text-right tabular-nums sm:row-span-1">{formatCurrency(linha.total)}</strong>
+                    </li>
+                  ))}
+                </ul>
+                <div className="space-y-2 border-t border-line pt-3">
+                  <div className="flex justify-between text-sm text-ink-muted"><span>Subtotal dos itens</span><span className="tabular-nums">{formatCurrency(subtotal)}</span></div>
+                  {descontoSalvo > 0 && <div className="flex justify-between text-sm text-ink-muted"><span>Desconto</span><span className="tabular-nums">âˆ’ {formatCurrency(descontoSalvo)}</span></div>}
+                  <div className="flex justify-between font-semibold"><span>Total</span><span className="tabular-nums">{formatCurrency(comanda.total)}</span></div>
+                </div>
+              </>
+            )}
+            <p className="text-xs text-ink-faint">Itens cancelados ou com cancelamento pendente nÃ£o entram neste resumo. Itens de cozinha entram apÃ³s a entrega.</p>
+          </section>
+        )}
       </div>
 
       {!isOpen && (
         <div className="rounded-xl bg-surface-lighter border border-line px-4 py-3 text-sm text-ink-muted leading-relaxed">
           {isCancelled ? (
-            <>Comanda cancelada — encerrada sem consumação.</>
+            <>Comanda cancelada â€” encerrada sem consumaÃ§Ã£o.</>
           ) : comanda.pagamentos.length > 0 ? (
             <>
-              Pagamento confirmado — comanda registrada, sem edição.
+              Pagamento confirmado â€” comanda registrada, sem ediÃ§Ã£o.
               Para novos pedidos, use <span className="font-semibold text-ink-soft">Nova comanda</span> abaixo.
             </>
           ) : descontoSalvo >= subtotal && subtotal > 0 ? (
-            <>Cortesia confirmada — comanda encerrada sem pagamento.</>
+            <>Cortesia confirmada â€” comanda encerrada sem pagamento.</>
           ) : (
-            <>Comanda fechada — somente leitura.</>
+            <>Comanda fechada â€” somente leitura.</>
           )}
         </div>
       )}
 
-      {/* Pagamentos — comanda fechada */}
+      {/* Pagamentos â€” comanda fechada */}
       {!isOpen && comanda.pagamentos.length > 0 && (
         <div className="card space-y-2">
           <h3 className="text-sm font-medium text-ink-muted">Pagamentos confirmados</h3>
@@ -467,14 +587,14 @@ export function ComandaDetailPage() {
         </div>
       )}
 
-      {/* Ações fixas — comanda aberta */}
+      {/* AÃ§Ãµes fixas â€” comanda aberta */}
       {isOpen && comanda.itens.length > 0 && (
         <MobileActionBar>
           <button type="button" className="touch-btn-orange w-full" onClick={openPayment} data-audit="comanda-fechar">
-            Fechar Comanda · {formatCurrency(comanda.total)}
+            Fechar Comanda Â· {formatCurrency(comanda.total)}
           </button>
           <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/comandas')}>
-            Voltar ao evento
+            Voltar às comandas
           </button>
         </MobileActionBar>
       )}
@@ -482,7 +602,7 @@ export function ComandaDetailPage() {
       {isOpen && comanda.itens.length === 0 && (
         <MobileActionBar>
           <p className="text-xs text-center text-ink-faint px-2">
-            Sem consumação — use Encerrar comanda para cancelar.
+            Sem consumaÃ§Ã£o â€” use Encerrar comanda para cancelar.
           </p>
           <button
             type="button"
@@ -494,12 +614,12 @@ export function ComandaDetailPage() {
             {cancelMutation.isPending ? 'Encerrando...' : 'Encerrar comanda'}
           </button>
           <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/comandas')}>
-            Voltar ao evento
+            Voltar às comandas
           </button>
         </MobileActionBar>
       )}
 
-      {/* Ações fixas — comanda fechada */}
+      {/* AÃ§Ãµes fixas â€” comanda fechada */}
       {!isOpen && (
         <MobileActionBar>
           {evento?.status === 'ABERTO' && !isCancelled && (
@@ -511,11 +631,11 @@ export function ComandaDetailPage() {
             >
               {novaComandaMutation.isPending
                 ? 'Abrindo...'
-                : `Nova comanda · ${rotuloComandaCervejaria(comanda, comanda.cliente)}`}
+                : `Nova comanda Â· ${rotuloComandaCervejaria(comanda, comanda.cliente)}`}
             </button>
           )}
           <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/comandas')}>
-            Voltar ao evento
+            Voltar às comandas
           </button>
         </MobileActionBar>
       )}
@@ -566,7 +686,7 @@ export function ComandaDetailPage() {
           </button>
         ) : undefined}
         deferDisabled={!comanda?.cliente.telefone || comanda.cliente.telefone.replace(/\D/g, '').length < 10 || comandaTotal <= 0}
-        deferConfirmation={<p className="rounded-xl border border-orange/30 bg-surface-lighter p-4 text-sm">A comanda será encerrada sem recebimento. O saldo ficará vinculado a {comanda?.cliente.nome ?? 'este cliente'} e aparecerá nas contas pendentes do evento.</p>}
+        deferConfirmation={<p className="rounded-xl border border-orange/30 bg-surface-lighter p-4 text-sm">A comanda serÃ¡ encerrada sem recebimento. O saldo ficarÃ¡ vinculado a {comanda?.cliente.nome ?? 'este cliente'} e aparecerÃ¡ nas contas pendentes do evento.</p>}
         onConfirmDefer={() => handleClose(true)}
       />
 
@@ -574,14 +694,14 @@ export function ComandaDetailPage() {
       <Modal open={showReceipt} onClose={() => { setShowReceipt(false); navigate('/comandas'); }} title="Comanda Fechada">
         {closedComanda && (
           <div className="space-y-4 text-center">
-            <div className="text-4xl">✅</div>
+            <div className="text-4xl">âœ…</div>
             <p className="text-xl font-bold">{rotuloComandaCervejaria(closedComanda, closedComanda.cliente)}</p>
             <p className="text-3xl font-bold text-brand-600">{formatCurrency(closedComanda.total)}</p>
             <div className="space-y-1">
               {closedAsPending ? (
-                <p className="font-semibold text-orange-dark">Conta pendente registrada · receba pelo painel do evento.</p>
+                <p className="font-semibold text-orange-dark">Conta pendente registrada Â· receba pelo painel do evento.</p>
               ) : closedComanda.pagamentos.length === 0 ? (
-                <p className="font-semibold text-success">Cortesia — sem pagamento</p>
+                <p className="font-semibold text-success">Cortesia â€” sem pagamento</p>
               ) : (
                 closedComanda.pagamentos.map((p) => (
                   <p key={p.id} className="text-ink-muted">{PAYMENT_LABELS[p.forma]}: {formatCurrency(p.valor)}</p>

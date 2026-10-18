@@ -295,6 +295,7 @@ export interface PublicCervejariaInfo {
   nome: string;
   slug: string;
   logoUrl?: string | null;
+  logoVersion?: string | null;
   portalBackgroundUrl?: string | null;
   corPrimaria?: string | null;
   corPaleta?: BrandTheme | null;
@@ -332,6 +333,7 @@ export interface PortalCardapioProduto {
   nome: string;
   descricao?: string | null;
   tipo: string;
+  categoria?: string | null;
   formato?: string | null;
   precos: { volumeMl: number; preco: number }[];
 }

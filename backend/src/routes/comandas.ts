@@ -327,6 +327,7 @@ export async function comandasRoutes(app: FastifyInstance) {
     if ('error' in result) return reply.status(400).send({ error: result.error });
 
     emitToEvento(app.io, result.eventoId!, { type: 'comanda:closed', data: result.comanda });
+    emitToComanda(app.io, id, { type: 'comanda:closed', data: result.comanda });
     return result.comanda;
   });
 

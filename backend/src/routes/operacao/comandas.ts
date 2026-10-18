@@ -30,6 +30,7 @@ import {
   updateItemQuantidadeComandaOperacao,
 } from '../../lib/operacao/comanda-itens.js';
 import { registrarTransacao } from '../../lib/transacao-log.js';
+import { emitToComanda } from '../../lib/realtime.js';
 import {
   INCLUDE_COMANDA_OPERACAO,
   fecharComandaOperacaoInTx,
@@ -328,6 +329,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         metadata: { identificador: c.identificador, grupo: true, motivo: 'vazia' },
         payload: c,
       });
+      emitToComanda(app.io, c.id, { type: 'comanda:closed', data: c });
     }
 
     for (const c of resultado.fechadas) {
@@ -339,6 +341,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         metadata: { total: c.total, grupo: true },
         payload: c,
       });
+      emitToComanda(app.io, c.id, { type: 'comanda:closed', data: c });
     }
 
     void registrarTransacao({
@@ -887,6 +890,8 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       });
     }
 
+    emitToComanda(app.io, comanda.id, { type: 'comanda:closed', data: resumoFechada });
+
     return resumoFechada;
   });
 
@@ -941,6 +946,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     if (temCozinha) await notificarPedidosDaComanda(app, cervejariaId, comanda.id);
 
     const resumoCancelada = resumoComanda(cancelada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
+    emitToComanda(app.io, comanda.id, { type: 'comanda:closed', data: resumoCancelada });
     void registrarTransacao({
       cervejariaId,
       tipo: 'COMANDA_CANCELADA',

@@ -35,7 +35,7 @@ async function selectPort() {
   for (let candidate = 55439; candidate <= 55449; candidate++) {
     const free = await new Promise((resolve, reject) => {
       const server = net.createServer();
-      server.once('error', (error) => error.code === 'EADDRINUSE' ? resolve(false) : reject(error));
+      server.once('error', (error) => error.code === 'EADDRINUSE' || error.code === 'EACCES' ? resolve(false) : reject(error));
       server.listen(candidate, '127.0.0.1', () => server.close((error) => error ? reject(error) : resolve(true)));
     });
     if (free) return candidate;
@@ -57,7 +57,7 @@ try {
   if (!ready) throw new Error('Disposable individual-permissions PostgreSQL did not become ready within 60 seconds.');
   const env = { ...process.env };
   for (const key of Object.keys(env)) if (key === 'DATABASE_URL' || key === 'DIRECT_URL' || key === 'PDV_INDIVIDUAL_PERMISSIONS_ENABLED' || /_DATABASE_URL$/.test(key) || /^PROD/i.test(key)) delete env[key];
-  Object.assign(env, { NODE_ENV: 'test', PDV_ISOLATED_QA: '1', PDV_QA_RUN_ID: runId, PDV_QA_CONTAINER: container, QA_DATABASE_URL: databaseUrl, DATABASE_URL: databaseUrl, PDV_INDIVIDUAL_PERMISSIONS_ENABLED: '0' });
+  Object.assign(env, { NODE_ENV: 'test', QA_MODE: '1', QA_RATE_LIMIT_LOGIN_MAX: '500', PDV_ISOLATED_QA: '1', PDV_QA_RUN_ID: runId, PDV_QA_CONTAINER: container, QA_DATABASE_URL: databaseUrl, DATABASE_URL: databaseUrl, PDV_INDIVIDUAL_PERMISSIONS_ENABLED: '0' });
   const manifest = await createPinnedManifest(selectedCommit);
   const trackedMigrations = new Set(manifest.migrations.map((migration) => migration.name));
   for (const entry of await readdir(migrationRoot, { withFileTypes: true })) {

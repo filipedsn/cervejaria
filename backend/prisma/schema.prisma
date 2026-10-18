@@ -130,6 +130,7 @@ enum TransacaoTipo {
   CASH_MOVEMENT_RECORDED
   CASH_MOVEMENT_CORRECTED
   CASH_REGISTER_CLOSED
+  CASH_REGISTER_ADMINISTRATIVE_CLOSED
   COMANDA_GRUPO_FECHADO
   KITCHEN_ORDER_CREATED
   SALE_PAYMENT_RECORDED
@@ -420,23 +421,27 @@ model PdvCategoriaTransformacaoProduto {
   categoriaPdvIdAntes  String?
   categoriaDepois      String?
   categoriaPdvIdDepois String
+
   @@id([transformacao, cervejariaId, produtoId])
   @@index([transformacao, cervejariaId, categoriaPdvIdDepois])
   @@schema("public")
 }
+
 /// Snapshot of category provenance and fields used to prove replay and rollback safety.
 model PdvCategoriaTransformacaoCategoria {
-  transformacao   String  @db.VarChar(80)
-  cervejariaId    String
-  categoriaPdvId  String
-  acao            String  @db.VarChar(16)
-  nome            String  @db.VarChar(80)
-  nomeNormalizado String  @db.VarChar(100)
-  gamificada      Boolean
-  origemMigracao  String? @db.VarChar(80)
+  transformacao  String  @db.VarChar(80)
+  cervejariaId   String
+  categoriaPdvId String
+  acao           String  @db.VarChar(16)
+  nome           String  @db.VarChar(80)
+  nomeNormalizado String @db.VarChar(100)
+  gamificada     Boolean
+  origemMigracao String? @db.VarChar(80)
+
   @@id([transformacao, cervejariaId, categoriaPdvId])
   @@schema("public")
 }
+
 model Preco {
   id        String  @id @default(cuid())
   produtoId String
@@ -702,7 +707,8 @@ model CardapioProduto {
 model Cliente {
   id               String          @id @default(cuid())
   nome             String
-  telefone         String?
+    /// Armazenado como DDD+número; migration também impede formatos equivalentes duplicados.
+    telefone         String?
   email            String?
   dataNascimento   DateTime?
   optInMarketing   Boolean         @default(false)
@@ -721,7 +727,7 @@ model Cliente {
   pedidos       PedidoCliente[]
   estatisticas  ClienteEstatisticas?
 
-  @@unique([cervejariaId, telefone])
+    @@unique([cervejariaId, telefone])
   @@index([cervejariaId, nome])
   @@index([cervejariaId, ativo])
 
@@ -759,11 +765,11 @@ model Comanda {
   fechadaEm      DateTime?
   /// Operacao: ponto de venda, dia operacional e identificador da mesa/ficha/apelido.
   pontoVendaId   String?
-  /// Caixa operacional em que a venda foi realizada; null for historical sales without proof.
+  /// Caixa operacional em que a venda foi realizada; nulo em histórico sem prova.
   sessaoCaixaRealizacaoId String?
-  diaOperacional DateTime?     @db.Date
   /// Contexto histórico opcional da realização, preenchido pelo migrador após confirmar o mapa.
   ocorrenciaId   String?
+  diaOperacional DateTime?     @db.Date
   identificador  String?
   abertaPorId    String?
   createdAt      DateTime      @default(now())
@@ -773,8 +779,8 @@ model Comanda {
   cliente    Cliente?    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   pontoVenda PontoVenda? @relation(fields: [pontoVendaId], references: [id], onDelete: Restrict)
   sessaoCaixaRealizacao SessaoCaixaOperacao? @relation(fields: [pontoVendaId, sessaoCaixaRealizacaoId], references: [pontoVendaId, id], onDelete: Restrict)
-  fechadoPor Usuario?   @relation("ComandaFechadaPor", fields: [fechadoPorId], references: [id], onDelete: SetNull)
   ocorrencia OcorrenciaOperacional? @relation(fields: [pontoVendaId, ocorrenciaId], references: [pontoVendaId, id], onDelete: Restrict)
+  fechadoPor Usuario?   @relation("ComandaFechadaPor", fields: [fechadoPorId], references: [id], onDelete: SetNull)
   itens      ItemComanda[]
   pagamentos Pagamento[]
   contaReceber ContaReceber?
@@ -1091,12 +1097,12 @@ model PontoVenda {
   agendasOperacionais AgendaOperacional[]
   ocorrenciasOperacionais OcorrenciaOperacional[]
   pdvMigrationMaps PdvMigrationMap[]
-   saldosEstoque InventoryBalance[]
   configuracaoPdv ConfiguracaoPontoVenda?
   taps Tap[]
   produtos Produto[]
   cardapios Cardapio[]
   opcionais Opcional[]
+   saldosEstoque InventoryBalance[]
    movimentosEstoque InventoryMovement[]
 
   @@unique([id, cervejariaId])
@@ -1172,11 +1178,11 @@ model OcorrenciaOperacional {
   pontoVenda PontoVenda @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
   agenda AgendaOperacional? @relation(fields: [agendaId, cervejariaId, pontoVendaId], references: [id, cervejariaId, pontoVendaId], onDelete: Restrict)
   sessoesCaixa SessaoCaixaOperacao[] @relation("SessaoOcorrenciaOperacional")
-
   comandas Comanda[]
+
   @@unique([id, cervejariaId, pontoVendaId])
-  @@unique([agendaId, data])
   @@unique([pontoVendaId, id])
+  @@unique([agendaId, data])
   @@index([pontoVendaId, data])
   @@index([cervejariaId, data])
   @@schema("quiosque")
@@ -1251,8 +1257,8 @@ model PdvMigrationMap {
   pontoVendaId String?
   transformVersion Int
   payloadHash String
-  lastRunId String
   sourcePayload Json?
+  lastRunId String
   lastBatchId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1308,8 +1314,8 @@ model PedidoOperacao {
   historicoStatus   PedidoOperacaoStatusHistorico[]
 
   @@unique([cervejariaId, diaOperacional, numero])
-  @@index([cervejariaId, status, createdAt])
   @@unique([id, cervejariaId, pontoVendaId])
+  @@index([cervejariaId, status, createdAt])
   @@index([comandaId])
   @@schema("quiosque")
   @@map("PedidoQuiosque")
@@ -1335,6 +1341,13 @@ enum StatusCaixaOperacao {
 
   @@schema("quiosque")
   @@map("StatusCaixaQuiosque")
+}
+
+enum TipoEncerramentoSessaoCaixa {
+  FINANCEIRO
+  ADMINISTRATIVO
+
+  @@schema("quiosque")
 }
 
 enum TipoMovimentoCaixaOperacao {
@@ -1367,6 +1380,7 @@ model SessaoCaixaOperacao {
   abertoEm       DateTime            @default(now())
   fechadoPorId   String?
   fechadoEm      DateTime?
+  tipoEncerramento TipoEncerramentoSessaoCaixa?
   /// Conferencia fisica no fechamento. Nulo enquanto o caixa esta aberto.
   contadoDinheiro    Decimal? @db.Decimal(10, 2)
   contadoPix         Decimal? @db.Decimal(10, 2)

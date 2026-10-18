@@ -123,7 +123,6 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     };
   });
 
-
   app.post('/categorias', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     if (!catalogoCategoriasCanonicoAtivo()) return reply.status(404).send({ error: 'Catálogo canônico desativado' });
     const { cervejariaId } = request.operacao;
@@ -321,10 +320,6 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
         precos: { create: precos },
       },
       include: { precos: { orderBy: { volumeMl: 'asc' } }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
-      omit: {
-        ...(catalogoCategoriasCanonicoAtivo() ? {} : { categoriaPdvId: true }),
-        ...(canonicalPdvQaActivationEnabled() ? {} : { prepararEmPedidoSeparado: true }),
-      },
     });
 
     return reply.status(201).send(respostaProduto(produto));
@@ -336,22 +331,29 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     const body = updateProdutoSchema.parse(request.body);
 
     const canonicalCategoriesEnabled = catalogoCategoriasCanonicoAtivo();
-    const existing = await prisma.produto.findFirst({ where: { id, cervejariaId }, include: { precos: { orderBy: { volumeMl: 'asc' } }, ...(canonicalCategoriesEnabled ? { categoriaPdv: true } : {}) } });
-    if (!existing) return reply.status(404).send({ error: 'Produto nao encontrado' });
+    const existing = await prisma.produto.findFirst({
+      where: { id, cervejariaId },
+      include: {
+        precos: { orderBy: { volumeMl: 'asc' } },
+        ...(canonicalCategoriesEnabled ? { categoriaPdv: true } : {}),
+      },
+    });
+    if (!existing) return reply.status(404).send({ error: 'Produto não encontrado' });
 
     let categoria = body.categoria ?? (canonicalCategoriesEnabled ? existing.categoriaPdv?.nome ?? existing.categoria : normalizeCategoriaProduto(existing.categoria)) ?? 'Outros';
     let categoriaPdvId: string | null | undefined;
     if (canonicalCategoriesEnabled && body.categoriaPdvId) {
       const categoriaPdv = await prisma.categoriaProdutoPdv.findFirst({ where: { id: body.categoriaPdvId, cervejariaId } });
-      if (!categoriaPdv) return reply.status(404).send({ error: 'Categoria nao encontrada neste PDV' });
+      if (!categoriaPdv) return reply.status(404).send({ error: 'Categoria não encontrada neste PDV' });
       categoria = categoriaPdv.nome;
       categoriaPdvId = categoriaPdv.id;
     } else if (canonicalCategoriesEnabled) {
       const categoriaCanonicaAtual = existing.categoriaPdv?.nome ?? existing.categoria;
-      if (body.categoria !== undefined && body.categoria !== categoriaCanonicaAtual) return reply.status(400).send({ error: 'Para trocar a categoria, selecione uma categoria cadastrada' });
+      if (body.categoria !== undefined && body.categoria !== categoriaCanonicaAtual) {
+        return reply.status(400).send({ error: 'Para trocar a categoria, selecione uma categoria cadastrada' });
+      }
       categoria = categoriaCanonicaAtual ?? 'Outros';
     }
-
     const tipoAtualizado = body.tipo ?? (body.formato === 'CHOPE' ? 'BEBIDA' : existing.tipo);
     const formatoAtualizado = tipoAtualizado === 'BEBIDA'
       ? body.formato ?? existing.formato ?? 'OUTRO'
@@ -385,7 +387,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
         data: {
           nome: body.nome?.trim(),
           categoria: body.categoria !== undefined || categoriaPdvId !== undefined || (canonicalCategoriesEnabled && existing.categoriaPdvId) ? categoria : undefined,
-          ...(catalogoCategoriasCanonicoAtivo() && categoriaPdvId !== undefined ? { categoriaPdvId } : {}),
+          ...(canonicalCategoriesEnabled && categoriaPdvId !== undefined ? { categoriaPdvId } : {}),
           ...(classificationChanged ? { tipo, formato } : {}),
           descricao: body.descricao,
           estilo: body.estilo,

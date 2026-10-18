@@ -6,6 +6,10 @@ function namesMatch(a: string, b: string) {
   return a.trim().localeCompare(b.trim(), 'pt-BR', { sensitivity: 'accent' }) === 0;
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
+}
+
 export class TelefoneConflitoError extends Error {
   readonly outroNome: string;
 
@@ -14,6 +18,35 @@ export class TelefoneConflitoError extends Error {
     this.name = 'TelefoneConflitoError';
     this.outroNome = outroNome;
   }
+}
+
+/** Busca por telefone lógico, inclusive registros antigos salvos com máscara ou +55. */
+export async function findClienteByTelefone(
+  cervejariaId: string,
+  telefone: string,
+  excludeClienteId?: string,
+) {
+  const matches = await prisma.$queryRaw<Array<{ id: string }>>`
+    WITH normalized AS (
+      SELECT c.id,
+        CASE
+          WHEN left(regexp_replace(c.telefone, '[^0-9]', '', 'g'), 2) = '55'
+            AND length(regexp_replace(c.telefone, '[^0-9]', '', 'g')) IN (12, 13)
+          THEN substring(regexp_replace(c.telefone, '[^0-9]', '', 'g') FROM 3)
+          ELSE left(regexp_replace(c.telefone, '[^0-9]', '', 'g'), 11)
+        END AS telefone_normalizado
+      FROM "Cliente" c
+      WHERE c."cervejariaId" = ${cervejariaId}
+        AND c.telefone IS NOT NULL
+        AND (${excludeClienteId ?? null}::text IS NULL OR c.id <> ${excludeClienteId ?? null})
+    )
+    SELECT id FROM normalized WHERE telefone_normalizado = ${telefone} LIMIT 1
+  `;
+  if (!matches[0]) return null;
+  return prisma.cliente.findUnique({
+    where: { id: matches[0].id },
+    select: { id: true, nome: true },
+  });
 }
 
 export type ResolveClienteParams = {
@@ -29,14 +62,7 @@ export async function assertTelefoneDisponivel(
   telefone: string,
   excludeClienteId?: string,
 ) {
-  const existing = await prisma.cliente.findFirst({
-    where: {
-      cervejariaId,
-      telefone,
-      ...(excludeClienteId ? { NOT: { id: excludeClienteId } } : {}),
-    },
-    select: { id: true, nome: true },
-  });
+  const existing = await findClienteByTelefone(cervejariaId, telefone, excludeClienteId);
   if (existing) {
     throw new TelefoneConflitoError(existing.nome);
   }
@@ -69,9 +95,8 @@ async function resolveByTelefone(
   telefone: string,
   cadastradoVia: CadastroOrigem,
 ) {
-  let cliente = await prisma.cliente.findFirst({
-    where: { cervejariaId, telefone },
-  });
+  const existing = await findClienteByTelefone(cervejariaId, telefone);
+  let cliente = existing ? await prisma.cliente.findUnique({ where: { id: existing.id } }) : null;
 
   if (cliente) {
     if (!namesMatch(cliente.nome, nome)) {
@@ -83,14 +108,21 @@ async function resolveByTelefone(
     return cliente;
   }
 
-  return prisma.cliente.create({
-    data: {
-      nome,
-      telefone,
-      cervejariaId,
-      cadastradoVia,
-    },
-  });
+  try {
+    return await prisma.cliente.create({
+      data: {
+        nome,
+        telefone,
+        cervejariaId,
+        cadastradoVia,
+      },
+    });
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) throw error;
+    const concurrent = await findClienteByTelefone(cervejariaId, telefone);
+    if (!concurrent) throw error;
+    return prisma.cliente.findUniqueOrThrow({ where: { id: concurrent.id } });
+  }
 }
 
 async function resolveByNomeLegado(
@@ -177,29 +209,49 @@ export async function registerOrUpdateCliente(params: RegisterClientePublicParam
     throw new Error('Telefone inválido');
   }
 
+  const existing = await findClienteByTelefone(params.cervejariaId, telefone);
   const now = new Date();
-  return prisma.cliente.upsert({
-    where: {
-      cervejariaId_telefone: {
-        cervejariaId: params.cervejariaId,
-        telefone,
+  const data = {
+    nome,
+    email: params.email?.trim() || null,
+    optInMarketing: params.optInMarketing,
+    optInEm: params.optInMarketing ? now : null,
+    ativo: true,
+  };
+  if (existing) {
+    return prisma.cliente.update({
+      where: { id: existing.id },
+      data: {
+        nome,
+        ...(params.email !== undefined ? { email: params.email?.trim() || null } : {}),
+        optInMarketing: params.optInMarketing,
+        optInEm: params.optInMarketing ? now : undefined,
+        ativo: true,
       },
-    },
-    create: {
-      nome,
-      telefone,
-      email: params.email?.trim() || null,
-      optInMarketing: params.optInMarketing,
-      optInEm: params.optInMarketing ? now : null,
-      cadastradoVia: params.cadastradoVia,
-      cervejariaId: params.cervejariaId,
-    },
-    update: {
-      nome,
-      ...(params.email !== undefined ? { email: params.email?.trim() || null } : {}),
-      optInMarketing: params.optInMarketing,
-      optInEm: params.optInMarketing ? now : undefined,
-      ativo: true,
-    },
-  });
+    });
+  }
+  try {
+    return await prisma.cliente.create({
+      data: {
+        ...data,
+        telefone,
+        cadastradoVia: params.cadastradoVia,
+        cervejariaId: params.cervejariaId,
+      },
+    });
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) throw error;
+    const concurrent = await findClienteByTelefone(params.cervejariaId, telefone);
+    if (!concurrent) throw error;
+    return prisma.cliente.update({
+      where: { id: concurrent.id },
+      data: {
+        nome,
+        ...(params.email !== undefined ? { email: params.email?.trim() || null } : {}),
+        optInMarketing: params.optInMarketing,
+        optInEm: params.optInMarketing ? now : undefined,
+        ativo: true,
+      },
+    });
+  }
 }

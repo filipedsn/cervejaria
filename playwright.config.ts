@@ -19,7 +19,10 @@ export default defineConfig({
   use: {
     baseURL,
     trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
+    screenshot: process.env.E2E_CAPTURE_SMOKE === '1' ? 'on' : 'only-on-failure',
+    ...(process.env.E2E_VIEWPORT_WIDTH
+      ? { viewport: { width: Number(process.env.E2E_VIEWPORT_WIDTH), height: 900 } }
+      : {}),
     launchOptions: process.env.E2E_EXECUTABLE_PATH
       ? { executablePath: process.env.E2E_EXECUTABLE_PATH }
       : undefined,
@@ -37,7 +40,12 @@ export default defineConfig({
       name: 'chromium',
       dependencies: ['setup'],
       testIgnore: [/auth\.setup\.ts/, /pwa-offline\.spec\.ts/],
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(process.env.E2E_VIEWPORT_WIDTH
+          ? { viewport: { width: Number(process.env.E2E_VIEWPORT_WIDTH), height: 900 } }
+          : {}),
+      },
     },
   ],
   webServer: process.env.E2E_SKIP_SERVER

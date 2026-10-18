@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError, assetUrl, formatCurrency } from '../lib/api';
+import { api, ApiError, assetUrl, formatCurrency, logoAssetUrl } from '../lib/api';
 import { formatPhone } from '../lib/phone';
 import type {
   PortalTrailerInfo,
@@ -14,7 +13,7 @@ import type {
 import { Loading } from '../components/Loading';
 import { PortalBackground } from '../components/PortalBackground';
 import { connectClientePortalSocket } from '../lib/socket';
-import { applyAppTheme, getAppTheme, setAppTheme, type AppTheme } from '../lib/app-theme';
+import { CATEGORIAS_PRODUTO_OPERACAO, normalizeCategoriaProduto } from '../lib/operacao';
 
 type Tab = 'comanda' | 'pedir';
 
@@ -74,8 +73,7 @@ function formatVolume(ml: number) {
 export function PortalClientePage() {
   const { slug, trailerId } = useParams<{ slug: string; trailerId: string }>();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<Tab>('comanda');
-  const [theme, setThemeState] = useState<AppTheme>(() => getAppTheme());
+  const [tab, setTab] = useState<Tab>('pedir');
   const [loginStep, setLoginStep] = useState<LoginStep>('telefone');
   const [nome, setNome] = useState('');
   const [lookupNome, setLookupNome] = useState('');
@@ -88,7 +86,7 @@ export function PortalClientePage() {
   const phoneInputRef = useRef<HTMLInputElement>(null);
   const nomeInputRef = useRef<HTMLInputElement>(null);
 
-  const clearPortalSession = useCallback(async () => {
+  const clearPortalSession = useCallback(async (message = '') => {
     try {
       await api.post('/api/public/cliente/logout', {});
     } catch {
@@ -96,6 +94,12 @@ export function PortalClientePage() {
     }
     setAuthenticated(false);
     setCart([]);
+    setTab('pedir');
+    setLoginStep('telefone');
+    setNome('');
+    setLookupNome('');
+    setTelefone('');
+    setError(message);
     queryClient.removeQueries({ queryKey: ['portal-comanda'] });
     queryClient.removeQueries({ queryKey: ['portal-cardapio'] });
   }, [queryClient]);
@@ -110,12 +114,6 @@ export function PortalClientePage() {
     },
     [clearPortalSession],
   );
-
-  const setTheme = useCallback((next: AppTheme) => {
-    setAppTheme(next);
-    applyAppTheme(next);
-    setThemeState(next);
-  }, []);
 
   const { data: info, isLoading, isError } = useQuery({
     queryKey: ['portal-info', slug, trailerId],
@@ -149,7 +147,7 @@ export function PortalClientePage() {
 
   useEffect(() => {
     if (authenticated || loginStep !== 'telefone') return;
-    nomeInputRef.current?.focus();
+    phoneInputRef.current?.focus();
   }, [authenticated, loginStep]);
 
   useEffect(() => {
@@ -172,9 +170,9 @@ export function PortalClientePage() {
 
   useEffect(() => {
     if (!cardapio) return;
-    if (cardapio.chopes.length > 0) setMenuTab('chope');
+    if (cardapio.comidas.length > 0) setMenuTab('comidas');
     else if (cardapio.bebidas.length > 0) setMenuTab('bebidas');
-    else setMenuTab('comidas');
+    else setMenuTab('chope');
   }, [cardapio]);
 
   useEffect(() => {
@@ -187,12 +185,16 @@ export function PortalClientePage() {
     const onSessionExpired = () => {
       void clearPortalSession();
     };
+    const onComandaClosed = () => {
+      void clearPortalSession('Sua comanda foi fechada. Informe seus dados para abrir uma nova.');
+    };
 
     socket.on('pedido:confirmed', refreshComanda);
     socket.on('pedido:recusado', refreshComanda);
     socket.on('pedido:cancelado', refreshComanda);
     socket.on('item:added', refreshComanda);
     socket.on('portal:session-expired', onSessionExpired);
+    socket.on('comanda:closed', onComandaClosed);
 
     return () => {
       socket.off('pedido:confirmed', refreshComanda);
@@ -200,6 +202,7 @@ export function PortalClientePage() {
       socket.off('pedido:cancelado', refreshComanda);
       socket.off('item:added', refreshComanda);
       socket.off('portal:session-expired', onSessionExpired);
+      socket.off('comanda:closed', onComandaClosed);
     };
   }, [authenticated, queryClient, clearPortalSession]);
 
@@ -231,6 +234,8 @@ export function PortalClientePage() {
       ),
     onSuccess: (data) => {
       setAuthenticated(true);
+      setNome(data.cliente.nome);
+      setLookupNome(data.cliente.nome);
       setError('');
       queryClient.setQueryData(['portal-comanda'], data.comanda);
     },
@@ -278,6 +283,19 @@ export function PortalClientePage() {
     () => cart.reduce((s, i) => s + i.precoUnit * i.quantidade, 0),
     [cart],
   );
+
+  const produtosPorCategoria = useMemo(() => {
+    const produtosDaAba = menuTab === 'bebidas' ? cardapio?.bebidas ?? [] : menuTab === 'comidas' ? cardapio?.comidas ?? [] : [];
+    const grupos = new Map<string, typeof produtosDaAba>();
+    for (const produto of produtosDaAba) {
+      const categoria = normalizeCategoriaProduto(produto.categoria);
+      grupos.set(categoria, [...(grupos.get(categoria) ?? []), produto]);
+    }
+    return [...grupos.entries()].sort(
+      ([a], [b]) => CATEGORIAS_PRODUTO_OPERACAO.indexOf(a as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number])
+        - CATEGORIAS_PRODUTO_OPERACAO.indexOf(b as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]),
+    );
+  }, [cardapio, menuTab]);
 
   const phoneDigits = telefone.replace(/\D/g, '');
 
@@ -331,6 +349,12 @@ export function PortalClientePage() {
     });
   };
 
+  const changeCartQuantity = (key: string, delta: number) => {
+    setCart((current) => current
+      .map((item) => item.key === key ? { ...item, quantidade: item.quantidade + delta } : item)
+      .filter((item) => item.quantidade > 0));
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-canvas px-4">
@@ -350,18 +374,18 @@ export function PortalClientePage() {
     );
   }
 
-  const logo = assetUrl(info.cervejaria.logoUrl);
+  const logo = logoAssetUrl(info.cervejaria);
   const portalBackground = assetUrl(info.cervejaria.portalBackgroundUrl);
 
   if (!info.disponivel || !info.evento) {
     return (
       <div className="portal-background-host min-h-screen bg-canvas px-4 py-8 safe-area-pt">
         <PortalBackground src={portalBackground} />
-        <div className="max-w-md mx-auto text-center space-y-4">
-          {logo && <img src={logo} alt="" className="h-14 mx-auto rounded-xl" />}
+        <div className="portal-login-content">
+          {logo && <img src={logo} alt="" className="portal-login-logo" />}
           <h1 className="text-xl font-bold">{info.cervejaria.nome}</h1>
           <p className="text-sm text-ink-muted">{info.trailer.nome}</p>
-          <div className="card">
+          <div className="portal-login-card">
             <p className="font-semibold">Evento indisponível</p>
             <p className="text-sm text-ink-muted mt-2">
               Não há evento aberto neste trailer no momento. Tente novamente mais tarde.
@@ -391,23 +415,10 @@ export function PortalClientePage() {
                 <ReceiptIcon />
                 <div>
                   <h1>Abrir comanda</h1>
-                  <p>Informe seus dados para abrir sua comanda neste caixa.</p>
+                  <p>Informe seus dados para abrir sua comanda neste evento.</p>
                 </div>
               </div>
               {error && <div className="alert-error">{error}</div>}
-              <div className="portal-login-field">
-                <label htmlFor="portal-nome"><UserIcon />Nome</label>
-                <input
-                  id="portal-nome"
-                  ref={nomeInputRef}
-                  className="portal-login-input"
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  placeholder="Digite seu nome"
-                  required
-                  autoComplete="name"
-                />
-              </div>
               <div className="portal-login-field">
                 <label htmlFor="portal-telefone"><PhoneIcon />Telefone</label>
                 <input
@@ -423,6 +434,19 @@ export function PortalClientePage() {
                   required
                 />
               </div>
+              <div className="portal-login-field">
+                <label htmlFor="portal-nome"><UserIcon />Nome</label>
+                <input
+                  id="portal-nome"
+                  ref={nomeInputRef}
+                  className="portal-login-input"
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
+                  placeholder="Digite seu nome"
+                  required
+                  autoComplete="name"
+                />
+              </div>
               <button
                 type="submit"
                 className="portal-login-submit"
@@ -435,7 +459,7 @@ export function PortalClientePage() {
           )}
 
           {loginStep === 'confirmar' && (
-            <div className="card space-y-4">
+            <div className="portal-login-card space-y-4">
               <h2 className="font-bold">Confirmar identidade</h2>
               <p className="text-sm text-ink-muted">
                 Telefone <span className="font-semibold text-ink">{formatPhone(telefone)}</span>
@@ -467,7 +491,7 @@ export function PortalClientePage() {
           )}
 
           {loginStep === 'cadastro' && (
-            <form onSubmit={handleRegister} className="card space-y-4">
+            <form onSubmit={handleRegister} className="portal-login-card space-y-4">
               <h2 className="font-bold">Cadastro</h2>
               <p className="text-sm text-ink-muted">
                 Telefone <span className="font-semibold text-ink">{formatPhone(telefone)}</span> ainda não está
@@ -496,7 +520,7 @@ export function PortalClientePage() {
           )}
 
           {loginStep === 'bloqueado' && (
-            <div className="card space-y-4">
+            <div className="portal-login-card space-y-4">
               <h2 className="font-bold">Cadastro não confere</h2>
               <p className="text-sm text-ink-muted">
                 O telefone <span className="font-semibold text-ink">{formatPhone(telefone)}</span> está vinculado a
@@ -521,320 +545,88 @@ export function PortalClientePage() {
   const comandaVazia =
     !comanda?.itens.length && pedidosPendentes.length === 0 && pedidosRecusados.length === 0;
 
+  const quantidadeNoCarrinho = cart.reduce((total, item) => total + item.quantidade, 0);
   return (
-    <div className="portal-background-host min-h-screen bg-canvas pb-24 safe-area-pt">
+    <main className="portal-background-host min-h-screen bg-canvas px-4 py-8 safe-area-pt">
       <PortalBackground src={portalBackground} />
-      <header className="app-shell-header px-4 py-3">
-        <div className="max-w-lg mx-auto flex items-center gap-3">
-          {logo && <img src={logo} alt="" className="h-9 w-9 rounded-lg object-contain" />}
-          <div className="min-w-0">
-            <p className="font-bold truncate">{info.cervejaria.nome}</p>
-            <p className="text-xs text-ink-muted truncate">{info.evento.nome}</p>
-          </div>
-          <div className="ml-auto text-right">
-            <p className="text-xs text-ink-muted">Saldo</p>
-            <p className="font-bold text-brand-600">{formatCurrency(comanda?.total ?? 0)}</p>
-          </div>
+      <div className="portal-login-content">
+        <div className="portal-login-brand">
+          {logo ? <img src={logo} alt={info.cervejaria.nome} className="portal-login-logo" /> : <div className="portal-login-logo-fallback" aria-hidden="true">🍺</div>}
         </div>
-      </header>
-
-      <main className="max-w-lg mx-auto px-4 py-4 space-y-4">
-        {error && <div className="alert-error">{error}</div>}
-
-        {tab === 'comanda' && (
-          <section className="space-y-4">
-            <div>
-              <h2 className="font-bold text-lg">Sua comanda</h2>
-              <p className="text-sm text-ink-muted mt-1">
-                Itens confirmados entram no saldo. Pedidos enviados aguardam o atendente.
-              </p>
-            </div>
-
-            {comandaVazia && (
-              <p className="text-sm text-ink-muted">Nenhum item na comanda ainda.</p>
-            )}
-
-            {!!comanda?.itens.length && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                  Na comanda
-                </p>
-                {comanda.itens.map((item) => (
-                  <div key={item.id} className="card flex justify-between gap-2">
-                    <div>
-                      <p className="font-medium">{item.produto}</p>
-                      <p className="text-xs text-ink-muted">
-                        {item.quantidade}x {formatVolume(item.volumeMl)}
-                      </p>
-                    </div>
-                    <p className="font-semibold">{formatCurrency(item.subtotal)}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {pedidosPendentes.length > 0 && (
-              <div className="space-y-2">
-                <p className="notice-warn-label">
-                  Aguardando confirmação
-                </p>
-                {pedidosPendentes.map((pedido) => (
-                  <article
-                    key={pedido.id}
-                    className="card-notice-warn space-y-2"
-                  >
-                    <div className="flex justify-between gap-2">
-                      <p className="font-semibold text-warn">
-                        {PEDIDO_STATUS_LABEL[pedido.status]}
-                      </p>
-                      <p className="text-sm font-medium">{formatCurrency(pedido.totalEstimado)}</p>
-                    </div>
-                    <ul className="text-sm text-ink-muted space-y-0.5">
-                      {pedido.itens.map((i) => (
-                        <li key={i.id}>
-                          {i.quantidade}x {i.produto.nome}{' '}
-                          {i.volumeMl > 1 ? `(${formatVolume(i.volumeMl)})` : ''}
-                        </li>
-                      ))}
-                    </ul>
-                    <button
-                      type="button"
-                      className="touch-btn-danger touch-btn-sm w-full"
-                      disabled={cancelarPedidoMutation.isPending}
-                      onClick={() => {
-                        setError('');
-                        setCancelandoPedidoId(pedido.id);
-                        cancelarPedidoMutation.mutate(pedido.id);
-                      }}
-                    >
-                      {cancelandoPedidoId === pedido.id && cancelarPedidoMutation.isPending
-                        ? 'Cancelando...'
-                        : 'Cancelar pedido'}
-                    </button>
-                  </article>
-                ))}
-              </div>
-            )}
-
-            {pedidosRecusados.length > 0 && (
-              <div className="space-y-2">
-                <p className="notice-danger-label">
-                  Recusados
-                </p>
-                {pedidosRecusados.map((pedido) => (
-                  <article key={pedido.id} className="card-notice-danger">
-                    <div className="flex justify-between gap-2">
-                      <p className="notice-danger-title">
-                        {PEDIDO_STATUS_LABEL[pedido.status]}
-                      </p>
-                      <p className="text-sm font-medium">{formatCurrency(pedido.totalEstimado)}</p>
-                    </div>
-                    <ul className="text-sm text-ink-muted space-y-0.5">
-                      {pedido.itens.map((i) => (
-                        <li key={i.id}>
-                          {i.quantidade}x {i.produto.nome}{' '}
-                          {i.volumeMl > 1 ? `(${formatVolume(i.volumeMl)})` : ''}
-                        </li>
-                      ))}
-                    </ul>
-                    {pedido.recusadoMotivo && (
-                      <p className="text-xs text-danger">Motivo: {pedido.recusadoMotivo}</p>
-                    )}
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        {tab === 'pedir' && cardapio && (
-          <section className="space-y-4">
-            <p className="text-sm text-ink-muted">
-              Monte seu pedido. O atendente confirma antes de lançar na comanda.
-            </p>
-            <div className="segmented-control">
-              {cardapio.chopes.length > 0 && (
-                <button
-                  type="button"
-                  className={`segmented-control-btn ${menuTab === 'chope' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
-                  onClick={() => setMenuTab('chope')}
-                >
-                  Chopes
-                </button>
-              )}
-              {cardapio.bebidas.length > 0 && (
-                <button
-                  type="button"
-                  className={`segmented-control-btn ${menuTab === 'bebidas' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
-                  onClick={() => setMenuTab('bebidas')}
-                >
-                  Bebidas
-                </button>
-              )}
-              {cardapio.comidas.length > 0 && (
-                <button
-                  type="button"
-                  className={`segmented-control-btn ${menuTab === 'comidas' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
-                  onClick={() => setMenuTab('comidas')}
-                >
-                  Comidas
-                </button>
-              )}
-            </div>
-
-            {menuTab === 'chope' &&
-              cardapio.chopes.map((chope) => (
-                <div key={chope.tapId} className="card space-y-2">
-                  <p className="font-bold">
-                    Tap {chope.tapNumero} — {chope.produto.nome}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {chope.produto.precos.map((p) => (
-                      <button
-                        key={p.volumeMl}
-                        type="button"
-                        className="touch-btn-secondary touch-btn-sm"
-                        onClick={() =>
-                          addToCart({
-                            produtoId: chope.produto.id,
-                            produtoNome: chope.produto.nome,
-                            volumeMl: p.volumeMl,
-                            quantidade: 1,
-                            precoUnit: p.preco,
-                            tapId: chope.tapId,
-                          })
-                        }
-                      >
-                        {formatVolume(p.volumeMl) || 'Un'} — {formatCurrency(p.preco)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+        {error && <div className="alert-error w-full" role="alert">{error}</div>}
+        <section className={`portal-pdv-workspace ${tab === 'pedir' ? 'portal-pdv-workspace--orders' : ''}`}>
+          <div className="portal-pdv-account">
+            <div className="min-w-0"><h2 className="truncate">{lookupNome || nome}</h2><p>{formatPhone(telefone)}</p></div>
+            <strong>{formatCurrency(comanda?.total ?? 0)}</strong>
+            <button type="button" className="portal-pdv-summary-link" onClick={() => setTab(tab === 'comanda' ? 'pedir' : 'comanda')}>{tab === 'comanda' ? 'Pedir' : 'Resumo'}</button>
+          </div>
+          <p className="portal-pdv-status">Evento: {info.evento.nome}. Os pedidos aguardam confirmação do atendente.</p>
+          {tab === 'pedir' ? (
+            <div className="portal-pdv-orders">
+              <h3>Escolha seus itens</h3>
+              <nav className="portal-pdv-category-tabs" aria-label="Tipo de produto">
+                {cardapio?.chopes.length ? <button type="button" className={menuTab === 'chope' ? 'active' : ''} aria-pressed={menuTab === 'chope'} onClick={() => setMenuTab('chope')}>Chopes</button> : null}
+                {cardapio?.comidas.length ? <button type="button" className={menuTab === 'comidas' ? 'active' : ''} aria-pressed={menuTab === 'comidas'} onClick={() => setMenuTab('comidas')}>Comidas</button> : null}
+                {cardapio?.bebidas.length ? <button type="button" className={menuTab === 'bebidas' ? 'active' : ''} aria-pressed={menuTab === 'bebidas'} onClick={() => setMenuTab('bebidas')}>Bebidas</button> : null}
+              </nav>
+              {menuTab === 'chope' && cardapio?.chopes.map((chope) => (
+                <section className="portal-pdv-category" key={chope.tapId}>
+                  <h4>Tap {chope.tapNumero}{chope.tapNome ? ` · ${chope.tapNome}` : ''}</h4>
+                  <div className="portal-pdv-product-grid"><article className="portal-pdv-product">
+                    <strong>{chope.produto.nome}</strong>
+                    <div className="portal-event-price-options">{chope.produto.precos.map((preco) => {
+                      const key = `${chope.produto.id}-${preco.volumeMl}-${chope.tapId}`;
+                      const quantidade = cart.find((item) => item.key === key)?.quantidade ?? 0;
+                      return <button type="button" key={preco.volumeMl} onClick={() => addToCart({ produtoId: chope.produto.id, produtoNome: chope.produto.nome, volumeMl: preco.volumeMl, quantidade: 1, precoUnit: preco.preco, tapId: chope.tapId })}>{formatVolume(preco.volumeMl) || 'Un'} · {formatCurrency(preco.preco)}{quantidade > 0 ? ` · ${quantidade} no pedido` : ''}</button>;
+                    })}</div>
+                  </article></div>
+                </section>
               ))}
-
-            {(menuTab === 'bebidas' ? cardapio.bebidas : menuTab === 'comidas' ? cardapio.comidas : []).map(
-              (produto) => (
-                <div key={produto.id} className="card flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-medium">{produto.nome}</p>
-                    <p className="text-sm text-brand-600">
-                      {formatCurrency(produto.precos[0]?.preco ?? 0)}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="touch-btn-primary touch-btn-sm"
-                    onClick={() =>
-                      addToCart({
-                        produtoId: produto.id,
-                        produtoNome: produto.nome,
-                        volumeMl: produto.precos[0]?.volumeMl ?? 1,
-                        quantidade: 1,
-                        precoUnit: produto.precos[0]?.preco ?? 0,
-                      })
-                    }
-                  >
-                    Adicionar
-                  </button>
-                </div>
-              ),
-            )}
-
-            {cart.length > 0 &&
-              createPortal(
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                  <button
-                    type="button"
-                    className="overlay-backdrop"
-                    aria-label="Fechar carrinho"
-                    onClick={() => setCart([])}
-                  />
-                  <div
-                    role="dialog"
-                    aria-modal
-                    aria-labelledby="portal-cart-title"
-                    className="relative card shadow-xl w-full max-w-sm space-y-3 p-4"
-                  >
-                    <p id="portal-cart-title" className="font-bold">
-                      Carrinho ({cart.length})
-                    </p>
-                    {cart.map((item) => (
-                      <div key={item.key} className="flex justify-between text-sm">
-                        <span>
-                          {item.quantidade}x {item.produtoNome} {formatVolume(item.volumeMl)}
-                        </span>
-                        <span>{formatCurrency(item.precoUnit * item.quantidade)}</span>
-                      </div>
-                    ))}
-                    <div className="flex justify-between font-bold pt-1 border-t border-line">
-                      <span>Total estimado</span>
-                      <span>{formatCurrency(cartTotal)}</span>
-                    </div>
-                    <button
-                      type="button"
-                      className="touch-btn-primary w-full"
-                      disabled={pedidoMutation.isPending}
-                      onClick={() => {
-                        setError('');
-                        pedidoMutation.mutate(cart);
-                      }}
-                    >
-                      {pedidoMutation.isPending ? 'Enviando...' : 'Enviar pedido ao atendente'}
-                    </button>
-                    <button
-                      type="button"
-                      className="touch-btn-secondary w-full"
-                      disabled={pedidoMutation.isPending}
-                      onClick={() => setCart([])}
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </div>,
-                document.body,
-              )}
-          </section>
-        )}
-
-      </main>
-
-      <nav className="app-bottom-nav safe-area-pb">
-        <div className="max-w-lg mx-auto flex items-stretch">
-          {(
-            [
-              ['comanda', `Comanda${pedidosPendentes.length ? ` (${pedidosPendentes.length})` : ''}`],
-              ['pedir', 'Pedir'],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              className={`flex-1 py-3 text-sm font-semibold ${tab === id ? 'text-brand-600' : 'text-ink-faint'}`}
-              onClick={() => setTab(id)}
-            >
-              {label}
-            </button>
-          ))}
-          <button
-            type="button"
-            className="shrink-0 px-4 py-3 text-ink-muted flex items-center justify-center"
-            aria-label={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-            title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          >
-            {theme === 'dark' ? (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <circle cx="12" cy="12" r="4" />
-                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-              </svg>
-            ) : (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden>
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-              </svg>
-            )}
-          </button>
-        </div>
-      </nav>
-    </div>
+              {produtosPorCategoria.map(([categoria, produtos]) => (
+                <section className="portal-pdv-category" key={categoria}><h4>{categoria}</h4><div className="portal-pdv-product-grid">
+                  {produtos.map((produto) => <article className="portal-pdv-product" key={produto.id}>
+                    <strong>{produto.nome}</strong>
+                    <div className="portal-event-price-options">{produto.precos.map((preco) => {
+                      const key = `${produto.id}-${preco.volumeMl}-unit`;
+                      const quantidade = cart.find((item) => item.key === key)?.quantidade ?? 0;
+                      return <button type="button" key={preco.volumeMl} onClick={() => addToCart({ produtoId: produto.id, produtoNome: produto.nome, volumeMl: preco.volumeMl, quantidade: 1, precoUnit: preco.preco })}>{formatVolume(preco.volumeMl) || 'Un'} · {formatCurrency(preco.preco)}{quantidade > 0 ? ` · ${quantidade} no pedido` : ''}</button>;
+                    })}</div>
+                  </article>)}
+                </div></section>
+              ))}
+              {!cardapio && <p className="text-sm text-ink-muted">Carregando cardápio...</p>}
+              {cardapio && !cardapio.chopes.length && !cardapio.comidas.length && !cardapio.bebidas.length && <p className="text-sm text-ink-muted">Nenhum item disponível neste evento.</p>}
+            </div>
+          ) : (
+            <div className="portal-pdv-summary">
+              <h3>Sua comanda</h3>
+              <div className="portal-pdv-account-totals"><div><span>Saldo</span><strong>{formatCurrency(comanda?.total ?? 0)}</strong></div><div><span>Pedidos aguardando</span><strong>{pedidosPendentes.length}</strong></div></div>
+              {comandaVazia && <p>Nenhum item na comanda ainda.</p>}
+              {!!comanda?.itens.length && <section className="portal-pdv-category"><h4>Itens confirmados</h4>{comanda.itens.map((item) => <article key={item.id}><strong>{item.produto}</strong><span>{formatCurrency(item.subtotal)}</span><p>{item.quantidade}x {formatVolume(item.volumeMl) || 'Un'}</p></article>)}</section>}
+              {pedidosPendentes.map((pedido) => <article className="card-notice-warn space-y-2" key={pedido.id}>
+                <div className="flex justify-between gap-2"><strong>{PEDIDO_STATUS_LABEL[pedido.status]}</strong><strong>{formatCurrency(pedido.totalEstimado)}</strong></div>
+                <ul className="text-sm text-ink-muted space-y-0.5">{pedido.itens.map((item) => <li key={item.id}>{item.quantidade}x {item.produto.nome} {item.volumeMl > 1 ? `(${formatVolume(item.volumeMl)})` : ''}</li>)}</ul>
+                <button type="button" className="touch-btn-danger touch-btn-sm w-full" disabled={cancelarPedidoMutation.isPending} onClick={() => { setError(''); setCancelandoPedidoId(pedido.id); cancelarPedidoMutation.mutate(pedido.id); }}>{cancelandoPedidoId === pedido.id && cancelarPedidoMutation.isPending ? 'Cancelando...' : 'Cancelar pedido'}</button>
+              </article>)}
+              {pedidosRecusados.map((pedido) => <article className="card-notice-danger space-y-2" key={pedido.id}>
+                <div className="flex justify-between gap-2"><strong>{PEDIDO_STATUS_LABEL[pedido.status]}</strong><strong>{formatCurrency(pedido.totalEstimado)}</strong></div>
+                <ul className="text-sm text-ink-muted space-y-0.5">{pedido.itens.map((item) => <li key={item.id}>{item.quantidade}x {item.produto.nome} {item.volumeMl > 1 ? `(${formatVolume(item.volumeMl)})` : ''}</li>)}</ul>
+                {pedido.recusadoMotivo && <p className="text-xs text-danger">Motivo: {pedido.recusadoMotivo}</p>}
+              </article>)}
+              <p className="portal-pdv-no-close">O fechamento e o pagamento são feitos pela equipe do evento.</p>
+            </div>
+          )}
+          {tab === 'pedir' && <footer className="portal-pdv-order-footer">
+            {cart.length > 0 && <div className="portal-pdv-footer-cart" aria-label="Itens selecionados">{cart.map((item) => <div className="portal-pdv-footer-cart-item" key={item.key}>
+              <span>{item.produtoNome} {formatVolume(item.volumeMl)}{item.tapId ? ` · Tap ${cardapio?.chopes.find((chope) => chope.tapId === item.tapId)?.tapNumero ?? ''}` : ''}</span>
+              <div className="portal-pdv-quantity" aria-label={`Quantidade de ${item.produtoNome}`}><button type="button" aria-label={`Diminuir ${item.produtoNome}`} onClick={() => changeCartQuantity(item.key, -1)}>−</button><strong>{item.quantidade}</strong><button type="button" aria-label={`Aumentar ${item.produtoNome}`} onClick={() => changeCartQuantity(item.key, 1)}>+</button></div>
+            </div>)}</div>}
+            <p>{quantidadeNoCarrinho} item{quantidadeNoCarrinho === 1 ? '' : 's'} selecionado{quantidadeNoCarrinho === 1 ? '' : 's'}{cart.length > 0 && <strong>{formatCurrency(cartTotal)}</strong>}</p>
+            <button type="button" className="portal-pdv-submit" disabled={!cart.length || pedidoMutation.isPending} onClick={() => { setError(''); pedidoMutation.mutate(cart); }}>{pedidoMutation.isPending ? 'Enviando...' : 'Enviar pedido ao atendente'}</button>
+            <button type="button" className="portal-pdv-back" onClick={() => setTab('comanda')}>Ver comanda</button>
+          </footer>}
+        </section>
+      </div>
+    </main>
   );
 }

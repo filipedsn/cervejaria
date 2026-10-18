@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../lib/api';
@@ -106,6 +106,11 @@ export function ClientesPage() {
   const [clienteToDelete, setClienteToDelete] = useState<{ id: string; nome: string } | null>(null);
   const [deleteError, setDeleteError] = useState('');
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setSearch(q.trim()), 300);
+    return () => window.clearTimeout(timeout);
+  }, [q]);
+
   const { data, isLoading } = useQuery({
     queryKey: ['clientes-list', search, ordenar, page],
     queryFn: () =>
@@ -156,10 +161,14 @@ export function ClientesPage() {
 
       <form onSubmit={handleSearch} className="flex gap-2">
         <input
+          type="search"
           className="input flex-1"
           placeholder="Buscar nome, telefone ou e-mail..."
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setPage(1);
+          }}
         />
         <button type="submit" className="touch-btn-secondary touch-btn-sm shrink-0">
           Buscar

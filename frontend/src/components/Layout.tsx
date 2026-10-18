@@ -8,7 +8,6 @@ import { formatTrailerLabel } from '../types';
 import { ConnectionStatus } from './ConnectionStatus';
 import { AccountMenu, UserAvatarButton } from './AccountMenu';
 import { BackToEventosLink } from './BackToEventosLink';
-import { PortalQrButton } from './PortalQrButton';
 import { PdvPortalQrButton } from './PdvPortalQrButton';
 import { VerRankingButton } from './VerRankingButton';
 import { EventoTapMontagemPanel } from './EventoTapMontagemPanel';
@@ -109,7 +108,7 @@ function EventoBar({
       <BackToEventosLink className="shrink-0 min-w-[5.5rem] rounded-none border-0 border-r border-line" />
       <EventoInfo evento={evento} />
       {showEventActions ? (
-        <div className={`col-span-2 grid ${evento.status === 'ABERTO' ? 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)_3rem]' : 'grid-cols-2'} gap-2 border-t border-line p-2 md:col-auto md:flex md:shrink-0 md:items-center md:border-l md:border-t-0 md:p-1.5`}>
+        <div className="col-span-2 grid grid-cols-2 gap-2 border-t border-line p-2 md:col-auto md:flex md:shrink-0 md:items-center md:border-l md:border-t-0 md:p-1.5">
           <VerRankingButton eventoId={evento.id} fullWidth={false} primary className="min-h-11 whitespace-nowrap rounded-lg px-2 text-xs sm:px-3 sm:text-sm" />
           <EventoTapMontagemPanel
             eventoId={evento.id}
@@ -117,24 +116,8 @@ function EventoBar({
             presentation="modal"
             triggerClassName="touch-btn-orange touch-btn-sm inline-flex min-h-11 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 text-xs sm:px-3 sm:text-sm md:w-auto"
           />
-          {evento.status === 'ABERTO' && (
-            <PortalQrButton
-              trailerId={evento.trailerId}
-              trailer={evento.trailer ?? trailer}
-              iconOnly
-              variant="header"
-              className="min-h-11 w-12 rounded-lg border border-brand-500/30 bg-brand-500/10 text-brand-600 hover:bg-brand-500/20 md:min-h-11 md:w-11 md:border-0 md:bg-transparent"
-            />
-          )}
         </div>
-      ) : evento.status === 'ABERTO' && (
-        <PortalQrButton
-          trailerId={evento.trailerId}
-          trailer={evento.trailer ?? trailer}
-          iconOnly
-          variant="header"
-        />
-      )}
+      ) : null}
     </div>
   );
 }
@@ -162,7 +145,7 @@ export function Layout() {
   const { contexto: operacao, isLoading: operacaoLoading } = useOperacaoContexto();
   const inOperacao = location.pathname.startsWith('/operacao');
   const onOperacaoComandasPage = location.pathname === '/operacao/comandas';
-  const onEventoComandasPage = location.pathname === '/comandas';
+  const onEventoComandasHome = location.pathname === '/comandas';
   const pontoVendaQrParam = new URLSearchParams(location.search).get('pontoVendaId');
   const pontoVendaQrId = operacao.pontosVenda.some((ponto) => ponto.id === pontoVendaQrParam)
     ? pontoVendaQrParam!
@@ -283,6 +266,7 @@ export function Layout() {
                 </div>
                 <div className="flex items-center gap-2">
                   {onOperacaoComandasPage && pontoVendaQrId && <PdvPortalQrButton pontoVendaId={pontoVendaQrId} iconOnly className="icon-btn-ghost" />}
+                  {!hideOperacionalChrome && evento?.status === 'ABERTO' && <PdvPortalQrButton trailerId={evento.trailerId} iconOnly className="icon-btn-ghost" />}
                   {usuario && <UserAvatarButton nome={usuario.nome} onClick={() => setAccountOpen(true)} />}
                 </div>
               </div>
@@ -292,7 +276,7 @@ export function Layout() {
                 trailer={trailer}
                 onEventsPage={onEventsPage}
                 hideOnPage={hideOperacionalChrome}
-                showEventActions={onEventoComandasPage}
+                showEventActions={onEventoComandasHome}
               />
             </>
           )}
