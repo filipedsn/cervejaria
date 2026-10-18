@@ -59,7 +59,8 @@ import { OnboardingProvider } from './contexts/OnboardingContext';
 import { OnboardingSurface } from './components/OnboardingSurface';
 import { OnboardingChecklist } from './components/OnboardingChecklist';
 import { OperationalSetupWizard } from './components/OperationalSetupWizard';
-import { getTenantCashEntryPath } from './lib/tenant-entry';
+import { getOperacaoEntryPath, getTenantCashEntryPath, type OperacaoEntryAccess } from './lib/tenant-entry';
+import { OperacaoSemAcessoPage } from './pages/operacao/OperacaoSemAcessoPage';
 
 function RootLayout() {
   const { pathname } = useLocation();
@@ -95,22 +96,41 @@ function PublicAuthShell() {
   return <Outlet />;
 }
 
+function useOperacaoEntry() {
+  const { canPermission, isLoading: authLoading } = useAuth();
+  const { contexto, isLoading: operacaoLoading } = useOperacaoContexto();
+  const access: OperacaoEntryAccess = {
+    can: canPermission,
+    kitchenEnabled: contexto.ativo && contexto.temCozinha,
+    inventoryEnabled: contexto.ativo && contexto.controlaEstoque,
+  };
+  return {
+    isLoading: authLoading || operacaoLoading,
+    entryPath: getOperacaoEntryPath(access),
+    cashEntryPath: getTenantCashEntryPath(contexto.operationMode, contexto.pontosVenda.length, access),
+  };
+}
+
 function TenantEntryRedirect() {
   const { needsTrailerSelection, evento, isLoading } = useEvento();
-  const { contexto, isLoading: operacaoLoading } = useOperacaoContexto();
-  if (isLoading || operacaoLoading) return <Loading fullScreen />;
-  const cashEntryPath = getTenantCashEntryPath(contexto.operationMode, contexto.pontosVenda.length);
+  const { cashEntryPath, isLoading: entryLoading } = useOperacaoEntry();
+  if (isLoading || entryLoading) return <Loading fullScreen />;
   if (cashEntryPath) return <Navigate to={cashEntryPath} replace />;
   if (needsTrailerSelection) return <Navigate to="/trailer" replace />;
   if (evento?.status === 'ABERTO') return <Navigate to="/comandas" replace />;
   return <Navigate to="/eventos" replace />;
 }
 
+function OperacaoEntryRedirect() {
+  const { entryPath, isLoading } = useOperacaoEntry();
+  if (isLoading) return <Loading fullScreen />;
+  return <Navigate to={entryPath} replace />;
+}
+
 /** Evita que um PWA restaurado em /eventos ignore o modo CAIXA da empresa. */
 function RequireEventoMode() {
-  const { contexto, isLoading } = useOperacaoContexto();
+  const { cashEntryPath, isLoading } = useOperacaoEntry();
   if (isLoading) return <Loading fullScreen />;
-  const cashEntryPath = getTenantCashEntryPath(contexto.operationMode, contexto.pontosVenda.length);
   if (cashEntryPath) return <Navigate to={cashEntryPath} replace />;
   return <Outlet />;
 }
@@ -165,15 +185,17 @@ function RequireCaixaMode() {
 /** Operacao sem cozinha nao tem fila: a tela nao existe nem por URL direta. */
 function RequireCozinhaOperacao() {
   const { contexto, isLoading } = useOperacaoContexto();
-  if (isLoading) return <Loading fullScreen />;
-  if (!contexto.ativo || !contexto.temCozinha) return <Navigate to="/operacao/comandas" replace />;
+  const { entryPath, isLoading: entryLoading } = useOperacaoEntry();
+  if (isLoading || entryLoading) return <Loading fullScreen />;
+  if (!contexto.ativo || !contexto.temCozinha) return <Navigate to={entryPath} replace />;
   return <Outlet />;
 }
 
 function RequireEstoqueOperacao() {
   const { contexto, isLoading } = useOperacaoContexto();
-  if (isLoading) return <Loading fullScreen />;
-  if (!contexto.ativo || !contexto.controlaEstoque) return <Navigate to="/operacao/comandas" replace />;
+  const { entryPath, isLoading: entryLoading } = useOperacaoEntry();
+  if (isLoading || entryLoading) return <Loading fullScreen />;
+  if (!contexto.ativo || !contexto.controlaEstoque) return <Navigate to={entryPath} replace />;
   return <Outlet />;
 }
 
@@ -191,18 +213,21 @@ function RequireDono() {
   return <Outlet />;
 }
 
-function RequirePermissionRoute({ permission, fallback }: { permission: string; fallback: string }) {
+/** Without an explicit fallback, a denied user goes to the first operational screen they can use. */
+function RequirePermissionRoute({ permission, fallback }: { permission: string; fallback?: string }) {
   const { isLoading, canPermission } = useAuth();
-  if (isLoading) return <Loading fullScreen />;
-  if (!canPermission(permission)) return <Navigate to={fallback} replace />;
+  const { entryPath, isLoading: entryLoading } = useOperacaoEntry();
+  if (isLoading || (!fallback && entryLoading)) return <Loading fullScreen />;
+  if (!canPermission(permission)) return <Navigate to={fallback ?? entryPath} replace />;
   return <Outlet />;
 }
 
 function RequireDonoOperacao() {
   const { isDono, isLoading, hasPermission } = useAuth();
+  const { entryPath, isLoading: entryLoading } = useOperacaoEntry();
   const location = useLocation();
-  if (isLoading) return <Loading fullScreen />;
-  if (!isDono && !(location.pathname === '/operacao/dashboard' && hasPermission('dashboard.read'))) return <Navigate to="/operacao/comandas" replace />;
+  if (isLoading || entryLoading) return <Loading fullScreen />;
+  if (!isDono && !(location.pathname === '/operacao/dashboard' && hasPermission('dashboard.read'))) return <Navigate to={entryPath} replace />;
   return <Outlet />;
 }
 
@@ -368,28 +393,29 @@ const router = createBrowserRouter([
                         path: 'operacao',
                         element: <OperacaoLayout />,
                         children: [
-                          { index: true, element: <Navigate to="comandas" replace /> },
+                          { index: true, element: <OperacaoEntryRedirect /> },
+                          { path: 'sem-acesso', element: <OperacaoSemAcessoPage /> },
                           {
                             element: <RequireCaixaMode />,
                             children: [
-                              { path: 'comandas', element: <RequirePermissionRoute permission="command.read" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoComandasPage /> }] },
+                              { path: 'comandas', element: <RequirePermissionRoute permission="command.read" />, children: [{ index: true, element: <OperacaoComandasPage /> }] },
                               { path: 'contas-pendentes', element: <OperacaoContasPendentesPage /> },
-                              { path: 'comandas/nova', element: <RequirePermissionRoute permission="command.operate" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoNovaComandaPage /> }] },
-                              { path: 'comandas/venda-avulsa', element: <RequirePermissionRoute permission="command.operate" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoVendaAvulsaPage /> }] },
-                              { path: 'comandas/:id', element: <RequirePermissionRoute permission="command.read" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoComandaDetailPage /> }] },
+                              { path: 'comandas/nova', element: <RequirePermissionRoute permission="command.operate" />, children: [{ index: true, element: <OperacaoNovaComandaPage /> }] },
+                              { path: 'comandas/venda-avulsa', element: <RequirePermissionRoute permission="command.operate" />, children: [{ index: true, element: <OperacaoVendaAvulsaPage /> }] },
+                              { path: 'comandas/:id', element: <RequirePermissionRoute permission="command.read" />, children: [{ index: true, element: <OperacaoComandaDetailPage /> }] },
                               { path: 'caixa', element: <OperacaoCaixaPage /> },
                             ],
                           },
                           {
                             element: <RequireEstoqueOperacao />,
-                            children: [{ path: 'estoque', element: <RequirePermissionRoute permission="inventory.read" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoEstoquePage /> }] }],
+                            children: [{ path: 'estoque', element: <RequirePermissionRoute permission="inventory.read" />, children: [{ index: true, element: <OperacaoEstoquePage /> }] }],
                           },
                           {
                             element: <RequireCozinhaOperacao />,
-                            children: [{ path: 'cozinha', element: <RequirePermissionRoute permission="kitchen.read" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoCozinhaPage /> }] }],
+                            children: [{ path: 'cozinha', element: <RequirePermissionRoute permission="kitchen.read" />, children: [{ index: true, element: <OperacaoCozinhaPage /> }] }],
                           },
-                          { path: 'catalogo', element: <RequirePermissionRoute permission="catalog.manage" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoCatalogoPage /> }] },
-                          { path: 'agenda', element: <RequirePermissionRoute permission="agenda.manage" fallback="/operacao/caixa" />, children: [{ index: true, element: <OperacaoAgendaPage /> }] },
+                          { path: 'catalogo', element: <RequirePermissionRoute permission="catalog.manage" />, children: [{ index: true, element: <OperacaoCatalogoPage /> }] },
+                          { path: 'agenda', element: <RequirePermissionRoute permission="agenda.manage" />, children: [{ index: true, element: <OperacaoAgendaPage /> }] },
                           {
                             element: <RequireDonoOperacao />,
                             children: [
