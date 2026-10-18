@@ -103,19 +103,19 @@ export async function contasPendentesOperacaoRoutes(app: FastifyInstance) {
       where: { id, cliente: { cervejariaId }, comanda: { origem: 'CAIXA' } },
       include: { cliente: true, comanda: { select: { id: true, pontoVendaId: true, status: true } }, pagamentos: true },
     });
-    if (!conta) return reply.status(404).send({ error: 'Conta pendente nÃ£o encontrada' });
+    if (!conta) return reply.status(404).send({ error: 'Conta pendente não encontrada' });
     if (!conta.cliente.ativo || conta.cliente.isSistema || !normalizePhone(conta.cliente.telefone)) {
-      return reply.status(409).send({ error: 'Esta conta nÃ£o possui cliente ativo com telefone vÃ¡lido' });
+      return reply.status(409).send({ error: 'Esta conta não possui cliente ativo com telefone válido' });
     }
     if (conta.comanda.status !== 'FECHADA') {
-      return reply.status(409).send({ error: 'A comanda vinculada nÃ£o estÃ¡ encerrada' });
+      return reply.status(409).send({ error: 'A comanda vinculada não está encerrada' });
     }
 
     const totalCentavos = body.pagamentos.reduce((sum, pagamento) => sum + centavos(pagamento.valor), 0);
     const jaRecebido = conta.pagamentos.reduce((sum, pagamento) => sum + centavos(pagamento.valor), 0);
     const saldoCentavos = centavos(conta.valorOriginal) - jaRecebido;
     if (totalCentavos <= 0 || totalCentavos > saldoCentavos) {
-      return reply.status(400).send({ error: `O recebimento deve ser maior que zero e nÃ£o pode exceder o saldo de ${reais(Math.max(0, saldoCentavos)).toFixed(2)}` });
+      return reply.status(400).send({ error: `O recebimento deve ser maior que zero e não pode exceder o saldo de ${reais(Math.max(0, saldoCentavos)).toFixed(2)}` });
     }
 
     const pagamentos = await prisma.$transaction(async (tx) => {
@@ -137,7 +137,7 @@ export async function contasPendentesOperacaoRoutes(app: FastifyInstance) {
       const pagoAtual = atual.pagamentos.reduce((sum, pagamento) => sum + centavos(pagamento.valor), 0);
       const saldoAtual = centavos(atual.valorOriginal) - pagoAtual;
       if (atual.comanda.status !== 'FECHADA' || saldoAtual <= 0) {
-        throw Object.assign(new Error('Esta conta jÃ¡ foi quitada ou nÃ£o estÃ¡ disponÃ­vel'), { statusCode: 409 });
+        throw Object.assign(new Error('Esta conta já foi quitada ou não está disponível'), { statusCode: 409 });
       }
       if (totalCentavos > saldoAtual) {
         throw Object.assign(new Error('O saldo mudou. Atualize a conta antes de registrar este recebimento.'), { statusCode: 409 });

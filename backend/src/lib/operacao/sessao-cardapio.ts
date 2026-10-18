@@ -271,7 +271,7 @@ export async function alterarPrecoCardapioTurno(params: {
   if (produto && (isBebidaChopeOperacao(produto)
     ? volumeMl <= 1 || !produto.precos.some((preco) => preco.volumeMl === volumeMl)
     : volumeMl !== 0)) {
-    return { error: 'Volume invÃ¡lido para o item do cardÃ¡pio.' as const, statusCode: 400 as const };
+    return { error: 'Volume inválido para o item do cardápio.' as const, statusCode: 400 as const };
   }
 
   if (!(await operacaoUsaCardapio(cervejariaId))) {

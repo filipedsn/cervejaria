@@ -182,7 +182,7 @@ test('permissão, tenant e conflitos sem cancelamento pendente não geram efeito
   console.log(JSON.stringify({ scenario: 'denials-and-specific-409', permissionStatus: forbidden.statusCode, otherTenantStatus: wrongTenant.statusCode, noPendingStatus: noPending.statusCode, unchanged: true, state: noPendingBefore }, null, 2));
 });
 
-test('status concorrente Ã© idempotente, comando atrasado nÃ£o desfaz estado e Voltar segue explÃ­cito', async () => {
+test('status concorrente é idempotente, comando atrasado não desfaz estado e Voltar segue explícito', async () => {
   const f = await tenantFixture('status-concurrency');
   // Keep the synthetic fixture at its calculated open-command total before
   // comparing status-only actions, which recalculate the operational command.

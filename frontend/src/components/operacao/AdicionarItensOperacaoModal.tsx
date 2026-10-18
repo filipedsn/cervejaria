@@ -282,10 +282,10 @@ export function AdicionarItensOperacaoModal({
                 <p className="text-sm text-ink-muted">Carregando Taps do turno...</p>
               ) : erroCarregarTaps ? (
                 <p role="alert" className="rounded-xl border border-red-500/30 bg-red-950/20 p-3 text-sm text-red-200">
-                  NÃ£o foi possÃ­vel carregar as Taps: {erroCarregarTaps instanceof Error ? erroCarregarTaps.message : 'erro inesperado'}
+                  Não foi possível carregar as Taps: {erroCarregarTaps instanceof Error ? erroCarregarTaps.message : 'erro inesperado'}
                 </p>
               ) : tapsData && !tapsData.trailerId ? (
-                <p className="rounded-xl border border-line bg-surface-lighter p-3 text-sm text-ink-muted">Este turno estÃ¡ sem trailer vinculado. Confira o trailer selecionado ao abrir o turno.</p>
+                <p className="rounded-xl border border-line bg-surface-lighter p-3 text-sm text-ink-muted">Este turno está sem trailer vinculado. Confira o trailer selecionado ao abrir o turno.</p>
               ) : tapsDisponiveis.length === 0 ? (
                 <p className="rounded-xl border border-line bg-surface-lighter p-3 text-sm text-ink-muted">O trailer deste turno não tem Tap ativa com chope montado. Confira a configuração das Taps e a montagem do chope.</p>
               ) : (

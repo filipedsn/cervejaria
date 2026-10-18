@@ -6,8 +6,8 @@ export function digitsOnly(value: string): string {
 export function normalizePhone(value: string | null | undefined): string | null {
   if (!value) return null;
   let digits = digitsOnly(value);
-  // Telefones informados com o cÃ³digo do Brasil devem corresponder ao mesmo
-  // cadastro do formato nacional usado no caixa (DDD + nÃºmero).
+  // Telefones informados com o código do Brasil devem corresponder ao mesmo
+  // cadastro do formato nacional usado no caixa (DDD + número).
   if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) {
     digits = digits.slice(2);
   }

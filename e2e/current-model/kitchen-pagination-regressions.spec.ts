@@ -356,7 +356,7 @@ test('libera interação interrompida ao ocultar e retoma quando a aba volta', a
   await page.screenshot({ path: resolve(process.cwd(), 'artifacts/kitchen-pagination/regression-after/interaction-resumed.png') });
 });
 
-test('duplo toque mantÃ©m a aÃ§Ã£o presa ao ID do pedido e envia um Ãºnico comando', async ({ page }) => {
+test('duplo toque mantém a ação presa ao ID do pedido e envia um único comando', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 720 });
   const kitchen = await stubKitchen(page, 4);
   await page.goto('/operacao/cozinha/tv');
@@ -381,7 +381,7 @@ test('duplo toque mantÃ©m a aÃ§Ã£o presa ao ID do pedido e envia um Ãºni
   await expect(page.locator('.cozinha-tv-pager-bar')).toContainText('5 pedidos', { timeout: 5_000 });
 });
 
-test('conflito real sincroniza o pedido, libera os controles e permanece associado ao cartÃ£o', async ({ page }) => {
+test('conflito real sincroniza o pedido, libera os controles e permanece associado ao cartão', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 720 });
   const kitchen = await stubKitchen(page, 2);
   await page.goto('/operacao/cozinha/tv');

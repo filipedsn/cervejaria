@@ -2,6 +2,7 @@ import Fastify, { type FastifyBaseLogger } from 'fastify';
 import { registerPdvTenantContext } from './lib/pdv-tenant-activation.js';
 import { CanonicalPdvConfigurationError } from './lib/canonical-pdv-operational-config.js';
 import { registerWriteFreezeGuard } from './lib/write-freeze.js';
+import { installZodPtBrErrorMap } from './lib/zod-pt-br.js';
 
 import { ZodError } from 'zod';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
@@ -145,6 +146,7 @@ function resolveFrontendDist(): string | null {
 }
 
 export async function buildApp() {
+  installZodPtBrErrorMap();
   const startedAt = new Date().toISOString();
   const app = Fastify<HttpServer, IncomingMessage, ServerResponse<IncomingMessage>, FastifyBaseLogger>({
     loggerInstance: createLogger(),

@@ -217,7 +217,7 @@ export async function produtosRoutes(app: FastifyInstance) {
     const user = getTenantUser(app, request);
     const { id } = request.params as { id: string };
     const produto = await prisma.produto.findFirst({ where: { id, cervejariaId: user.cervejariaId } });
-    if (!produto) return reply.status(404).send({ error: 'Produto nÃ£o encontrado' });
+    if (!produto) return reply.status(404).send({ error: 'Produto não encontrado' });
     return listarOpcionaisProduto(prisma, id);
   });
 
@@ -226,7 +226,7 @@ export async function produtosRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = opcionaisSchema.parse(request.body);
     const produto = await prisma.produto.findFirst({ where: { id, cervejariaId: user.cervejariaId } });
-    if (!produto) return reply.status(404).send({ error: 'Produto nÃ£o encontrado' });
+    if (!produto) return reply.status(404).send({ error: 'Produto não encontrado' });
     return prisma.$transaction((tx) => substituirOpcionaisProduto(tx, id, user.cervejariaId, body.opcionalIds));
   });
 
@@ -282,14 +282,14 @@ export async function produtosRoutes(app: FastifyInstance) {
 
     const canonicalCategoriesEnabled = catalogoCategoriasCanonicoAtivo();
     const existing = await prisma.produto.findFirst({ where: { id, cervejariaId: user.cervejariaId }, ...(canonicalCategoriesEnabled ? { include: { categoriaPdv: true } } : {}) });
-    if (!existing) return reply.status(404).send({ error: 'Produto nao encontrado' });
+    if (!existing) return reply.status(404).send({ error: 'Produto não encontrado' });
 
     const categoriaPdvAtual = (existing as typeof existing & { categoriaPdv?: { nome: string } | null }).categoriaPdv;
     let categoria = body.categoria ?? (canonicalCategoriesEnabled ? categoriaPdvAtual?.nome ?? existing.categoria : existing.categoria);
     let categoriaPdvId: string | null | undefined;
     if (canonicalCategoriesEnabled && body.categoriaPdvId) {
       const categoriaPdv = await prisma.categoriaProdutoPdv.findFirst({ where: { id: body.categoriaPdvId, cervejariaId: user.cervejariaId } });
-      if (!categoriaPdv) return reply.status(404).send({ error: 'Categoria nao encontrada neste PDV' });
+      if (!categoriaPdv) return reply.status(404).send({ error: 'Categoria não encontrada neste PDV' });
       categoria = categoriaPdv.nome;
       categoriaPdvId = categoriaPdv.id;
     } else if (canonicalCategoriesEnabled) {

@@ -266,7 +266,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
     const produto = await prisma.produto.findFirst({ where: { id, cervejariaId } });
-    if (!produto) return reply.status(404).send({ error: 'Produto nÃ£o encontrado' });
+    if (!produto) return reply.status(404).send({ error: 'Produto não encontrado' });
     return listarOpcionaisProduto(prisma, id);
   });
 
@@ -275,7 +275,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = opcionaisSchema.parse(request.body);
     const produto = await prisma.produto.findFirst({ where: { id, cervejariaId } });
-    if (!produto) return reply.status(404).send({ error: 'Produto nÃ£o encontrado' });
+    if (!produto) return reply.status(404).send({ error: 'Produto não encontrado' });
     return prisma.$transaction((tx) => substituirOpcionaisProduto(tx, id, cervejariaId, body.opcionalIds));
   });
 
@@ -337,13 +337,13 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
 
     const canonicalCategoriesEnabled = catalogoCategoriasCanonicoAtivo();
     const existing = await prisma.produto.findFirst({ where: { id, cervejariaId }, include: { precos: { orderBy: { volumeMl: 'asc' } }, ...(canonicalCategoriesEnabled ? { categoriaPdv: true } : {}) } });
-    if (!existing) return reply.status(404).send({ error: 'Produto nao encontrado' });
+    if (!existing) return reply.status(404).send({ error: 'Produto não encontrado' });
 
     let categoria = body.categoria ?? (canonicalCategoriesEnabled ? existing.categoriaPdv?.nome ?? existing.categoria : normalizeCategoriaProduto(existing.categoria)) ?? 'Outros';
     let categoriaPdvId: string | null | undefined;
     if (canonicalCategoriesEnabled && body.categoriaPdvId) {
       const categoriaPdv = await prisma.categoriaProdutoPdv.findFirst({ where: { id: body.categoriaPdvId, cervejariaId } });
-      if (!categoriaPdv) return reply.status(404).send({ error: 'Categoria nao encontrada neste PDV' });
+      if (!categoriaPdv) return reply.status(404).send({ error: 'Categoria não encontrada neste PDV' });
       categoria = categoriaPdv.nome;
       categoriaPdvId = categoriaPdv.id;
     } else if (canonicalCategoriesEnabled) {

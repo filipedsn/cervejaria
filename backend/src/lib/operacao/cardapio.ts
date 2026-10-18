@@ -36,19 +36,19 @@ export async function normalizeItensCardapioOperacao(
     const unique = new Map<string, OperacaoCardapioItemInput>();
     for (const item of itens) {
       const produto = porId.get(item.produtoId);
-      if (!produto) return { error: 'Um ou mais itens do cardÃ¡pio sÃ£o invÃ¡lidos' };
+      if (!produto) return { error: 'Um ou mais itens do cardápio são inválidos' };
       const chope = isBebidaChopeOperacao(produto);
       const volumes = item.volumeMl === undefined && chope
         ? produto.precos.filter((preco) => preco.volumeMl > 1).map((preco) => preco.volumeMl)
         : [item.volumeMl ?? 0];
       for (const volumeMl of volumes) {
         if (chope ? volumeMl <= 1 || !produto.precos.some((preco) => preco.volumeMl === volumeMl) : volumeMl !== 0) {
-          return { error: 'Volume invÃ¡lido para o item do cardÃ¡pio' };
+          return { error: 'Volume inválido para o item do cardápio' };
         }
         const precoUnit = item.volumeMl === undefined && chope
           ? defaultPrecoCatalogoOperacao(produto, volumeMl)
           : item.precoUnit;
-        if (!(precoUnit > 0)) return { error: 'Informe preÃ§o maior que zero para todos os itens' };
+        if (!(precoUnit > 0)) return { error: 'Informe preço maior que zero para todos os itens' };
         unique.set(`${item.produtoId}:${volumeMl}`, { produtoId: item.produtoId, volumeMl, precoUnit });
       }
     }
@@ -315,7 +315,7 @@ export async function getItensCardapioOperacao(
     where: { id: cardapioId, cervejariaId, ativo: true },
     include: { produtos: { include: { produto: { include: { precos: { orderBy: { volumeMl: 'asc' } } } } } } },
   });
-  if (!cardapio) return { error: 'CardÃ¡pio nÃ£o encontrado' };
+  if (!cardapio) return { error: 'Cardápio não encontrado' };
   const produtosComVolume = new Set(cardapio.produtos.filter((item) => item.volumeMl > 1).map((item) => item.produtoId));
   const itens = cardapio.produtos.flatMap((item) => {
     if (item.volumeMl === 0 && isBebidaChopeOperacao(item.produto)) {

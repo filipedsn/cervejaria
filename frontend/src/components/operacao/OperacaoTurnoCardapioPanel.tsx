@@ -229,7 +229,7 @@ export function OperacaoTurnoCardapioPanel({
       {!hasCatalogo ? (
         <div className="space-y-3">
           <p className="text-sm text-ink-faint text-center py-3">
-            Cadastre produtos no catálogo do operacao primeiro.
+            Cadastre produtos no catálogo primeiro.
           </p>
           {closeButton}
         </div>

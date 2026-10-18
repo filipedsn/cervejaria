@@ -172,7 +172,7 @@ test.describe('Current operating model — attendant sales parity', () => {
         let orderId = '';
         if (mode === 'CAIXA') {
           const savedMenu = await required<Json>('POST', '/api/operacao/cardapios', tenant.adminOwnerCookie, {
-            nome: `CardÃ¡pio E2E ${runId}`, produtoIds: [tenant.foodId],
+            nome: `Cardápio E2E ${runId}`, produtoIds: [tenant.foodId],
           });
           const emptySession = await required<Json>('POST', '/api/operacao/caixa/abrir', tenant.ownerCookie, {
             pontoVendaId: tenant.posId, trailerId: tenant.trailerId, trocoInicial: 0, cardapioId: savedMenu.id,
