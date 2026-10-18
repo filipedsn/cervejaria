@@ -8,7 +8,7 @@ const other = 'cmsry9xrn0000hvlgopjxy0oo';
 const url = 'postgresql://qa:fixture@127.0.0.1:55439/cervejaria_qa_pdv_unico';
 const env = { NODE_ENV: 'development', PDV_ISOLATED_QA: '1', DATABASE_URL: url, QA_DATABASE_URL: url, PDV_CANONICAL_TENANTS: cia };
 
-test('scoped activation rejects PROD and QA impersonation while keeping unlisted tenants legacy', () => {
+test('scoped activation rejects PROD and QA impersonation while keeping unselected tenants legacy', () => {
   assert.equal(tenantPdvActivation(cia, env), true);
   assert.equal(tenantPdvActivation(other, env), false);
   assert.equal(tenantPdvActivation('unlisted', env), false);
@@ -58,7 +58,7 @@ const production = {
   PDV_CANONICAL_TENANTS: `${cia},${other}`,
 };
 
-test('production activates only reviewed tenants on the local production database', () => {
+test('production per-tenant selector activates only selected tenants on the local production database', () => {
   assert.equal(tenantPdvActivation(cia, production), true);
   assert.equal(tenantPdvActivation(other, production), true);
   assert.equal(tenantPdvActivation('third-tenant', production), false);
@@ -71,7 +71,34 @@ test('production activates only reviewed tenants on the local production databas
   assert.equal(tenantPdvActivation(other, { ...production, PDV_CANONICAL_TENANTS: cia }), false);
 });
 
-test('production rejects QA identities, unapproved tenants and unrelated database destinations', () => {
+test('global activation turns every tenant canonical, including requests without a tenant', () => {
+  const global = { NODE_ENV: 'production', DATABASE_URL: production.DATABASE_URL, PDV_CANONICAL_ALL: '1' };
+  assert.equal(tenantPdvActivation(cia, global), true);
+  assert.equal(tenantPdvActivation('cmnewtenant0000provisioned', global), true);
+  assert.equal(tenantPdvActivation(undefined, global), true);
+  assert.equal(tenantPdvActivation(undefined, { ...global, PDV_CANONICAL_TENANTS: cia }), true);
+  assert.equal(tenantPdvActivation(undefined, { ...global, PDV_CANONICAL_ALL: '0' }), undefined);
+  assert.equal(tenantPdvActivation(cia, { NODE_ENV: 'development', DATABASE_URL: 'postgresql://dev:fixture@localhost:5434/cervejaria_dev', PDV_CANONICAL_ALL: '1' }), true);
+  assert.equal(tenantPdvActivation(undefined, { ...env, PDV_CANONICAL_TENANTS: undefined, PDV_CANONICAL_ALL: '1' }), true);
+});
+
+test('global activation keeps the destination guards', () => {
+  const global = { NODE_ENV: 'production', DATABASE_URL: production.DATABASE_URL, PDV_CANONICAL_ALL: '1' };
+  assert.throws(() => tenantPdvActivation(cia, { ...global, DATABASE_URL: 'postgresql://fixture:fixture@remote.invalid:5432/cervejaria' }));
+  assert.throws(() => tenantPdvActivation(cia, { ...global, DATABASE_URL: 'not a url' }));
+  assert.throws(() => tenantPdvActivation(cia, { ...global, PDV_ISOLATED_QA: '1' }));
+  assert.throws(() => tenantPdvActivation(cia, { ...global, NODE_ENV: 'development' }));
+  assert.throws(() => tenantPdvActivation(cia, { ...env, PDV_CANONICAL_ALL: '1', PROD_DATABASE_URL: production.DATABASE_URL }));
+});
+
+test('per-tenant selector no longer depends on a hardcoded tenant list', () => {
+  const tenant = 'cmnewtenant0000provisioned';
+  assert.equal(tenantPdvActivation(tenant, { ...production, PDV_CANONICAL_TENANTS: tenant }), true);
+  assert.equal(tenantPdvActivation(cia, { ...production, PDV_CANONICAL_TENANTS: tenant }), false);
+  assert.throws(() => tenantPdvActivation(cia, { ...production, PDV_CANONICAL_TENANTS: '' }));
+});
+
+test('production rejects QA identities, malformed selectors and unrelated database destinations', () => {
   const invalidDestinations = [
     'postgresql://fixture:fixture@remote.invalid:5432/cervejaria',
     'postgresql://fixture:fixture@localhost:5434/cervejaria_dev',

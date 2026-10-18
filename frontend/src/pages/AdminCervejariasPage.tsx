@@ -6,7 +6,7 @@ import { Loading } from '../components/Loading';
 import { ToggleAtivo } from '../components/ToggleAtivo';
 import { BrandingEditorFields, BRANDING_DEFAULT_PRIMARY, normalizeTheme } from '../components/BrandingEditorFields';
 import { PasswordWithConfirmFields, validatePasswordPair } from '../components/PasswordWithConfirmFields';
-import { mensagemConfirmacaoEstoque, modoEmpresa } from '../lib/operacao-capacidades';
+import { mensagemConfirmacaoEstoque } from '../lib/operacao-capacidades';
 import type { BrandTheme } from '../types';
 
 interface MesAtualStats {
@@ -121,29 +121,14 @@ function ModuloOption({
   );
 }
 
-const MODULOS_PADRAO = {
-  cervejaria: true,
-  operacao: false,
-  operacaoControlaEstoque: false,
-  operacaoTemCozinha: false,
-};
-
-const CAPABILITY_OPTIONS = [
-  ['cashMode', 'Venda avulsa', 'Vender diretamente no balcÃ£o ou ponto de venda.'],
-  ['plannedOperations', 'OperaÃ§Ãµes', 'Trabalhar com operaÃ§Ãµes iniciadas agora ou agendadas.'],
-  ['taps', 'Torneiras de chope', 'Usar torneiras de chope nas operaÃ§Ãµes.'],
-  ['inventory', 'Controle de estoque', 'Controlar saldo e movimentaÃ§Ã£o dos produtos.'],
-  ['kitchen', 'Cozinha / preparo', 'Usar o fluxo de preparo de pedidos.'],
-] as const;
-type Enablements = { cashMode: boolean; plannedOperations: boolean; taps: boolean; inventory: boolean; kitchen: boolean };
+type Enablements = { taps: boolean; inventory: boolean; kitchen: boolean };
 const CAPABILITY_COPY: Record<keyof Enablements, { title: string; description: string }> = {
-  cashMode: { title: 'Venda avulsa', description: 'Vender diretamente no balcão ou ponto de venda.' },
-  plannedOperations: { title: 'Operações', description: 'Trabalhar com operações iniciadas agora ou agendadas.' },
-  taps: { title: 'Torneiras de chope', description: 'Usar torneiras de chope nas operações.' },
+  taps: { title: 'Torneiras de chope', description: 'Usar torneiras de chope no ponto de venda.' },
   inventory: { title: 'Controle de estoque', description: 'Controlar saldo e movimentação dos produtos.' },
   kitchen: { title: 'Cozinha / preparo', description: 'Usar o fluxo de preparo de pedidos.' },
 };
-const ENABLEMENTS_PADRAO: Enablements = { cashMode: false, plannedOperations: false, taps: false, inventory: false, kitchen: false };
+const CAPABILITY_KEYS = Object.keys(CAPABILITY_COPY) as (keyof Enablements)[];
+const ENABLEMENTS_PADRAO: Enablements = { taps: false, inventory: false, kitchen: false };
 
 export function AdminCervejariasPage() {
   const queryClient = useQueryClient();
@@ -161,8 +146,6 @@ export function AdminCervejariasPage() {
   const [corPrimaria, setCorPrimaria] = useState(BRANDING_DEFAULT_PRIMARY);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  // Compatibility projection is kept only for the unreachable legacy block below.
-  const [modulos, setModulos] = useState({ ...MODULOS_PADRAO });
   const [enablements, setEnablements] = useState<Enablements>({ ...ENABLEMENTS_PADRAO });
 
   const { data: editingConfiguration, isLoading: isEditingConfigurationLoading } = useQuery({
@@ -181,8 +164,6 @@ export function AdminCervejariasPage() {
   useEffect(() => {
     if (!editingConfiguration) return;
     setEnablements({
-      cashMode: editingConfiguration.configurationSource === 'CANONICAL_PDV' || editingConfiguration.plannedOperationsEnabled !== true,
-      plannedOperations: editingConfiguration.configurationSource === 'CANONICAL_PDV' ? false : editingConfiguration.plannedOperationsEnabled,
       taps: editingConfiguration.tapsEnabled,
       inventory: editingConfiguration.inventoryEnabled,
       kitchen: editingConfiguration.kitchenEnabled,
@@ -296,7 +277,6 @@ export function AdminCervejariasPage() {
       return Promise.all([
         api.postFormData<CervejariaAdmin>(`/api/admin/cervejarias/${editing.id}`, data, { method: 'PATCH' }),
         api.patch(`/api/admin/cervejarias/${editing.id}/configuracao-operacional`, {
-          plannedOperationsEnabled: enablements.plannedOperations,
           tapsEnabled: enablements.taps,
           inventoryEnabled: enablements.inventory,
           kitchenEnabled: enablements.kitchen,
@@ -556,50 +536,13 @@ export function AdminCervejariasPage() {
             </div>
           </div>
 
-          {editing && false && (
-            <div className="space-y-2">
-              <label className="label">Modo da empresa</label>
-              <div className="rounded-xl border border-line bg-surface-lighter px-4 py-3 text-sm font-semibold text-ink">
-                {modoEmpresa(editing!.modulos.cervejaria, editing!.modulos.operacao)}
-                <span className="ml-2 font-normal text-ink-muted">(somente leitura)</span>
-              </div>
-
-              {editing!.modulos.operacao && (
-                <div className="space-y-2 pt-2">
-                  <p className="text-sm font-semibold text-ink">Recursos do Operacao</p>
-                  <ModuloOption
-                    titulo="Controlar estoque"
-                    descricao="Baixa na venda, reposição e registro de perdas."
-                    marcado={modulos.operacaoControlaEstoque}
-                    onChange={(v) => setModulos((m) => ({ ...m, operacaoControlaEstoque: v }))}
-                  />
-                  <ModuloOption
-                    titulo="Tem cozinha"
-                    descricao="Fila e painel de pedidos em preparo."
-                    marcado={modulos.operacaoTemCozinha}
-                    onChange={(v) => setModulos((m) => ({ ...m, operacaoTemCozinha: v }))}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
           {editing && <div className="space-y-2">
             {isEditingConfigurationLoading || !editingConfiguration ? (
               <p role="status" className="text-sm text-ink-muted">Carregando capacidades operacionais...</p>
             ) : <>
             <label className="label">Capacidades operacionais</label>
-            <p className="text-xs text-ink-faint">Defina os recursos que fazem parte desta operaÃ§Ã£o.</p>
-            {editingConfiguration.configurationSource === 'CANONICAL_PDV' ? (
-              <><label className="label">Motor operacional</label><p className="text-sm text-ink-muted">Por Caixa é o motor único; eventos continuam como contexto de agenda.</p></>
-            ) : <>
-            <label className="label">Como este estabelecimento trabalha?</label>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <button type="button" className={`card text-left ${enablements.cashMode ? 'ring-2 ring-brand-400' : ''}`} onClick={() => setEnablements((current) => ({ ...current, cashMode: true, plannedOperations: false }))}>Por caixa</button>
-              <button type="button" className={`card text-left ${enablements.plannedOperations ? 'ring-2 ring-brand-400' : ''}`} onClick={() => setEnablements((current) => ({ ...current, cashMode: false, plannedOperations: true }))}>Por operações / eventos</button>
-            </div>
-            </>}
-            {CAPABILITY_OPTIONS.filter(([key]) => key !== 'cashMode' && key !== 'plannedOperations').map(([key]) => (
+            <p className="text-xs text-ink-faint">Defina os recursos que fazem parte deste ponto de venda.</p>
+            {CAPABILITY_KEYS.map((key) => (
               <ModuloOption key={key} titulo={CAPABILITY_COPY[key].title} descricao={CAPABILITY_COPY[key].description} marcado={enablements[key]} onChange={(value) => setEnablements((current) => ({ ...current, [key]: value }))} />
             ))}
             </>}
