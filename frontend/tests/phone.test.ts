@@ -3,11 +3,11 @@ import { describe, it } from 'node:test';
 import { formatPhone } from '../src/lib/phone';
 
 describe('formatPhone', () => {
-  it('formata celular nacional com o nono dÃ­gito separado', () => {
+  it('formata celular nacional com o nono dígito separado', () => {
     assert.equal(formatPhone('27981283526'), '(27) 9 8128-3526');
   });
 
-  it('remove prefixo 55 colado antes de aplicar a mÃ¡scara', () => {
+  it('remove prefixo 55 colado antes de aplicar a máscara', () => {
     assert.equal(formatPhone('+55 (27) 98128-3526'), '(27) 9 8128-3526');
   });
 
@@ -15,7 +15,7 @@ describe('formatPhone', () => {
     assert.equal(formatPhone('(55) 98128-3526'), '(55) 9 8128-3526');
   });
 
-  it('formata telefone fixo sem dÃ­gito mÃ³vel separado', () => {
+  it('formata telefone fixo sem dígito móvel separado', () => {
     assert.equal(formatPhone('2731234567'), '(27) 3123-4567');
   });
 });

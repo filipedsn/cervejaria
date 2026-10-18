@@ -8,12 +8,12 @@ export async function resolverOpcionais(tx: Prisma.TransactionClient, produtoId:
   if (!entradas.length) return [];
   const ids = [...new Set(entradas.map((item) => item.opcionalId))];
   const vinculos = await tx.produtoOpcionalVinculo.findMany({ where: { produtoId, opcionalId: { in: ids }, opcional: { ativo: true } }, include: { opcional: true } });
-  if (vinculos.length !== ids.length) throw new Error('Opcional não vinculado a este produto');
+  if (vinculos.length !== ids.length) throw Object.assign(new Error('Opcional não vinculado a este produto'), { statusCode: 400 });
   const porId = new Map(vinculos.map((vinculo) => [vinculo.opcionalId, vinculo.opcional]));
   return entradas.map((entrada) => {
     const opcional = porId.get(entrada.opcionalId)!;
     const quantidade = entrada.quantidade ?? 1;
-    if (!Number.isInteger(quantidade) || quantidade < 1) throw new Error('Quantidade de opcional inválida');
+    if (!Number.isInteger(quantidade) || quantidade < 1) throw Object.assign(new Error('Quantidade de opcional inválida'), { statusCode: 400 });
     return { opcionalId: opcional.id, nome: opcional.nome, precoAdicional: Number(opcional.preco), quantidade, produtoEstoqueId: null, opcionalCatalogoId: opcional.id };
   });
 }

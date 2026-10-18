@@ -106,14 +106,14 @@ export async function posicionarChopeNoPdv(params: { sessaoCaixaId: string; pont
   const { sessaoCaixaId, pontoVendaId, tapId, produtoId, cervejariaId } = params;
   return prisma.$transaction(async (tx) => {
     const lockScope = await tx.sessaoCaixaOperacao.findUnique({ where: { id: sessaoCaixaId }, select: { cervejariaId: true, pontoVendaId: true, diaOperacional: true } });
-    if (!lockScope?.pontoVendaId) return { error: 'Sessao de caixa invalida' as const };
+    if (!lockScope?.pontoVendaId) return { error: 'Sessão de caixa inválida' as const };
     await lockCaixaEmTx(tx, lockScope.cervejariaId, lockScope.pontoVendaId, lockScope.diaOperacional);
     const sessao = await tx.sessaoCaixaOperacao.findFirst({ where: { id: sessaoCaixaId, cervejariaId, pontoVendaId, status: 'ABERTO' }, select: { id: true } });
-    if (!sessao) return { error: 'Sessao de caixa invalida' as const };
+    if (!sessao) return { error: 'Sessão de caixa inválida' as const };
     const tap = await tx.tap.findFirst({ where: { id: tapId, pontoVendaId, cervejariaId, ativo: true }, include: { produto: { select: { nome: true } } } });
-    if (!tap) return { error: 'Tap nao encontrado neste PDV' as const };
+    if (!tap) return { error: 'Tap não encontrado neste PDV' as const };
     const produto = await tx.produto.findFirst({ where: { id: produtoId, cervejariaId, pontoVendaId, ativo: true }, include: { precos: { select: { volumeMl: true } } } });
-    if (!produto || !isChopeConfiguravelNaTapOperacao(produto)) return { error: 'Chope invalido para este tenant' as const };
+    if (!produto || !isChopeConfiguravelNaTapOperacao(produto)) return { error: 'Chope inválido para esta empresa' as const };
     const anterior = await tx.tapMontagem.findFirst({ where: { sessaoCaixaId, tapId, encerradoEm: null }, include: { produto: { select: { nome: true } } } });
     await tx.tapMontagem.updateMany({ where: { sessaoCaixaId, tapId, encerradoEm: null }, data: { encerradoEm: new Date() } });
     await tx.tapMontagem.create({ data: { tapId, produtoId, sessaoCaixaId } });
@@ -125,12 +125,12 @@ export async function removerChopeDoPdv(params: { sessaoCaixaId: string; pontoVe
   const { sessaoCaixaId, pontoVendaId, tapId, cervejariaId } = params;
   return prisma.$transaction(async (tx) => {
     const lockScope = await tx.sessaoCaixaOperacao.findUnique({ where: { id: sessaoCaixaId }, select: { cervejariaId: true, pontoVendaId: true, diaOperacional: true } });
-    if (!lockScope?.pontoVendaId) return { error: 'Sessao de caixa invalida' as const };
+    if (!lockScope?.pontoVendaId) return { error: 'Sessão de caixa inválida' as const };
     await lockCaixaEmTx(tx, lockScope.cervejariaId, lockScope.pontoVendaId, lockScope.diaOperacional);
     const sessao = await tx.sessaoCaixaOperacao.findFirst({ where: { id: sessaoCaixaId, cervejariaId, pontoVendaId, status: 'ABERTO' }, select: { id: true } });
-    if (!sessao) return { error: 'Sessao de caixa invalida' as const };
+    if (!sessao) return { error: 'Sessão de caixa inválida' as const };
     const tap = await tx.tap.findFirst({ where: { id: tapId, pontoVendaId, cervejariaId }, select: { numero: true } });
-    if (!tap) return { error: 'Tap nao encontrado neste PDV' as const };
+    if (!tap) return { error: 'Tap não encontrado neste PDV' as const };
     const updated = await tx.tapMontagem.updateMany({ where: { sessaoCaixaId, tapId, encerradoEm: null }, data: { encerradoEm: new Date() } });
     if (!updated.count) return { error: 'Este tap n?o possui chope montado no turno' as const };
     return { ok: true as const, tapNumero: tap.numero };

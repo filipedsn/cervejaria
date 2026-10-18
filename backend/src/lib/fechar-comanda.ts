@@ -181,7 +181,7 @@ export async function fecharComandaComPagamentos(
         })
       : null;
     if (!podeDeixarContaPendente(origem) || linhasPagamento.length > 0 || !cliente || !normalizePhone(cliente.telefone)) {
-      throw Object.assign(new Error('Conta pendente exige cliente cadastrado com telefone vÃ¡lido e nenhum pagamento no fechamento'), { statusCode: 400 });
+      throw Object.assign(new Error('Conta pendente exige cliente cadastrado com telefone válido e nenhum pagamento no fechamento'), { statusCode: 400 });
     }
   } else {
     assertPagamentosParaTotal(total, linhasPagamento);

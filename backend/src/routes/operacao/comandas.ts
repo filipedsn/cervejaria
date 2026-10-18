@@ -830,7 +830,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
 
     if (body.deixarPendente) {
       if (resumo.total <= 0) {
-        return reply.status(400).send({ error: 'Uma conta sem valor nÃ£o pode ficar pendente' });
+        return reply.status(400).send({ error: 'Uma conta sem valor não pode ficar pendente' });
       }
       const cliente = comanda.clienteId
         ? await prisma.cliente.findFirst({
@@ -840,7 +840,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         : null;
       if (!cliente || !normalizePhone(cliente.telefone)) {
         return reply.status(400).send({
-          error: 'Para deixar a conta pendente, associe um cliente cadastrado com telefone vÃ¡lido.',
+          error: 'Para deixar a conta pendente, associe um cliente cadastrado com telefone válido.',
         });
       }
       if (body.pagamentos.length > 0) {

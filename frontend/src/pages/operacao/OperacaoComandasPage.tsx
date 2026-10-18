@@ -186,7 +186,7 @@ export function OperacaoComandasPage() {
       void queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
     },
     onError: (cause) => {
-      setAvisoError(cause instanceof ApiError ? cause.message : 'NÃ£o foi possÃ­vel atualizar o aviso.');
+      setAvisoError(cause instanceof ApiError ? cause.message : 'Não foi possível atualizar o aviso.');
     },
   });
 

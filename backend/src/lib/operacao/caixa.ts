@@ -432,7 +432,7 @@ export async function abrirCaixa(params: {
       take: 2,
     });
     const abertaAgora = resolveUniqueOpenCashSession(abertasAgora);
-    if (abertaAgora) throw new CaixaInvalidoError('O caixa deste ponto ja esta aberto');
+    if (abertaAgora) throw new CaixaInvalidoError('O caixa deste ponto já está aberto');
 
     return tx.sessaoCaixaOperacao.create({
       data: {

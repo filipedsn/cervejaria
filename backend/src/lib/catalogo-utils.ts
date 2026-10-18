@@ -41,7 +41,7 @@ export async function assertTapPodeExcluir(tap: { id: string; produtoId: string 
     return 'A bebida deste tap está em uma comanda aberta e o tap não pode ser excluído.';
   }
   if (await prisma.tapMontagem.count({ where: { tapId: tap.id } })) {
-    return 'Este Tap possui histÃ³rico de montagens e nÃ£o pode ser excluÃ­do. Desative-o para ocultar das vendas.';
+    return 'Este Tap possui histórico de montagens e não pode ser excluído. Desative-o para ocultar das vendas.';
   }
   return null;
 }
