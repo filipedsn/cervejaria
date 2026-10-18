@@ -3,7 +3,7 @@ import { expect, type Page } from '@playwright/test';
 export const CREDENTIALS = {
   dono: { email: 'dono@demo.com', password: '123456' },
   atendente: { email: 'atendente@demo.com', password: '123456' },
-  admin: { email: 'contato@quivercloud.com.br', password: 'M1H2sy27!pedro01' },
+  admin: { email: process.env.E2E_ADMIN_EMAIL ?? '', password: process.env.E2E_ADMIN_PASSWORD ?? '' },
   quiosque: {
     email: process.env.E2E_QUIOSQUE_EMAIL ?? 'qa-cfg-quiosque-00-dono@qa.test',
     password: process.env.E2E_QUIOSQUE_PASSWORD ?? 'qa123456',

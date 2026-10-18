@@ -8,6 +8,8 @@ const authDir = path.join(process.cwd(), 'e2e/.auth');
 
 export default defineConfig({
   testDir: './e2e',
+  // The disposable release suite and retired specs have dedicated gates.
+  testIgnore: [/release\//, /legacy\//, /rbac-live\//],
   // The full regression creates and changes shared QA fixtures (including
   // operational capabilities). Run it serially so the official command is
   // deterministic; dedicated QA suites retain their own concurrency coverage.
