@@ -1,123 +1,120 @@
-import { randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { expect, test } from '../support/fixtures';
-import { personaContext } from '../support/personas';
+import { expect, loginPage, PERSONA_PERMISSIONS, ALL_PERMISSIONS, randomUUID, strongPassword, test, uniqueSuffix } from '../support/ops';
 
-const baseURL = process.env.RELEASE_QA_BASE_URL!;
-const context = JSON.parse(readFileSync(process.env.RELEASE_QA_CONTEXT!, 'utf8'));
-const permissionKeys = [
-  'cash.open', 'cash.close', 'cash.values.read', 'cash.movement.write', 'payment.receive', 'debt.receive',
-  'command.close', 'discount.apply', 'command.item.cancel', 'command.item.cancel.delivered', 'command.cancel',
-  'kitchen.cancel', 'sale.refund', 'dashboard.read', 'event.dashboard.read', 'reports.read', 'command.operate',
-  'command.read', 'kitchen.read', 'kitchen.operate', 'inventory.read', 'inventory.adjust', 'catalog.manage',
-  'catalog.shift.manage', 'clients.manage', 'taps.operate', 'agenda.manage', 'event.menu.manage',
-];
-const initialCashierPermissions = ['cash.open', 'cash.close', 'command.read', 'command.operate', 'command.close', 'payment.receive', 'debt.receive', 'discount.apply'];
-
-test('RBAC-S01 concede e revoga as 28 chaves sem novo login', async ({ browser, evidence }) => {
-  const owner = await personaContext(browser, baseURL, 'owner');
-  const staff = await personaContext(browser, baseURL, 'cashier');
+test('RBAC-S01 concede e revoga as 28 chaves sem novo login @api', async ({ ops }) => {
+  const tenant = await ops.tenant();
+  const staff = await tenant.staff('Caixa', []);
   const failures: string[] = [];
-  try {
-    for (const permission of permissionKeys) {
-      const granted = await owner.request.patch(`/api/usuarios/${context.users.cashier.id}/permissoes-operacao`, { data: { permissoesOperacao: [permission] } });
-      evidence.recordApi({ method: 'PATCH', path: '/api/usuarios/:id/permissoes-operacao', status: granted.status(), body: await granted.json().catch(() => null), permission });
-      if (granted.status() !== 200) { failures.push(`${permission}: grant HTTP ${granted.status()}`); continue; }
-      const live = await staff.request.get('/api/auth/me');
-      const liveData = await live.json();
-      if (live.status() !== 200 || !liveData.usuario.permissoesOperacao.includes(permission)) failures.push(`${permission}: grant not reflected without relogin`);
-      const revoked = await owner.request.patch(`/api/usuarios/${context.users.cashier.id}/permissoes-operacao`, { data: { permissoesOperacao: [] } });
-      if (revoked.status() !== 200) { failures.push(`${permission}: revoke HTTP ${revoked.status()}`); continue; }
-      const afterRevoke = await staff.request.get('/api/auth/me');
-      if ((await afterRevoke.json()).usuario.permissoesOperacao.includes(permission)) failures.push(`${permission}: revoke not reflected without relogin`);
-    }
-    expect(permissionKeys).toHaveLength(28);
-    expect(failures, 'All 28 permissions must grant and revoke through the owner UI contract').toEqual([]);
-  } finally {
-    await owner.request.patch(`/api/usuarios/${context.users.cashier.id}/permissoes-operacao`, { data: { permissoesOperacao: initialCashierPermissions } });
-    await owner.close(); await staff.close();
+  expect(ALL_PERMISSIONS).toHaveLength(28);
+  for (const permission of ALL_PERMISSIONS) {
+    await tenant.owner.expect(tenant.owner.patch(`/api/usuarios/${staff.userId}/permissoes-operacao`, { permissoesOperacao: [permission] }), 200, `grant ${permission}`);
+    const live = await staff.expect(staff.get('/api/auth/me'), 200, `me ${permission}`);
+    if (!live.usuario.permissoesOperacao.includes(permission)) failures.push(`${permission}: grant not reflected`);
+    await tenant.owner.expect(tenant.owner.patch(`/api/usuarios/${staff.userId}/permissoes-operacao`, { permissoesOperacao: [] }), 200, `revoke ${permission}`);
+    const after = await staff.expect(staff.get('/api/auth/me'), 200, `me after ${permission}`);
+    if (after.usuario.permissoesOperacao.includes(permission)) failures.push(`${permission}: revoke not reflected`);
   }
+  expect(failures).toEqual([]);
 });
 
-test('RBAC-S02 dono acessa o contexto operacional completo', async ({ browser }) => {
-  const owner = await personaContext(browser, baseURL, 'owner');
-  try {
-    const response = await owner.request.get('/api/operacao/contexto');
-    expect(response.status()).toBe(200);
-    expect(await response.json()).toMatchObject({ ativo: true, operationalSettingsSource: 'CANONICAL_PDV', temCozinha: true, controlaEstoque: true });
-  } finally { await owner.close(); }
+test('RBAC-S02 dono acessa o contexto operacional completo @api', async ({ ops }) => {
+  const tenant = await ops.tenant();
+  const ctx = await tenant.owner.expect(tenant.owner.get('/api/operacao/contexto'), 200, 'contexto');
+  expect(ctx).toMatchObject({ ativo: true, operationalSettingsSource: 'CANONICAL_PDV', temCozinha: true, controlaEstoque: true });
 });
 
-test('RBAC-S03 cadastro pelo dono cria sempre ATENDENTE sem acesso inicial', async ({ browser, evidence }) => {
-  const owner = await personaContext(browser, baseURL, 'owner');
-  try {
-    const suffix = randomBytes(10).toString('hex');
-    const response = await owner.request.post('/api/usuarios', { data: { nome: 'Novo Atendente QA', email: `new-${suffix}@example.invalid`, senha: `Qa-${randomBytes(24).toString('base64url')}-!` } });
-    const body = await response.json();
-    evidence.recordApi({ method: 'POST', path: '/api/usuarios', status: response.status(), body });
-    expect(response.status()).toBe(201);
-    expect(body).toMatchObject({ papel: 'ATENDENTE', permissoesOperacao: [] });
-  } finally { await owner.close(); }
+test('RBAC-S03 cadastro pelo dono cria sempre ATENDENTE sem acesso inicial @api', async ({ ops }) => {
+  const tenant = await ops.tenant();
+  const body = await tenant.owner.expect(tenant.owner.post('/api/usuarios', {
+    nome: 'Novo Atendente QA', email: `new-${uniqueSuffix()}@example.invalid`, senha: strongPassword(),
+  }), 201, 'criar atendente');
+  expect(body).toMatchObject({ papel: 'ATENDENTE', permissoesOperacao: [] });
 });
 
-test('RBAC-X01 sem permissões recebe 403 ao consultar comandas', async ({ browser, evidence }) => {
-  const staff = await personaContext(browser, baseURL, 'staffB');
-  try {
-    const response = await staff.request.get('/api/operacao/comandas');
-    evidence.recordApi({ method: 'GET', path: '/api/operacao/comandas', status: response.status(), body: await response.json().catch(() => null) });
-    expect(response.status()).toBe(403);
-  } finally { await staff.close(); }
+test('RBAC-X01 sem permissões recebe 403 e não vê menu', async ({ ops, page, evidence }) => {
+  const tenant = await ops.tenant();
+  const vazio = await tenant.staff('Vazio', PERSONA_PERMISSIONS.semPermissao);
+  await evidence.checkpoint();
+  await vazio.expect(vazio.get('/api/operacao/comandas'), 403, 'comandas');
+  await vazio.expect(vazio.post('/api/operacao/comandas', { pontoVendaId: tenant.pointId, tipo: 'APELIDO', identificador: 'X', itens: [] }), 403, 'escrita');
+  await evidence.assertNoDbChange();
+  await loginPage(page, vazio.email, vazio.senha);
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await expect(page.getByRole('link', { name: /Comandas|Cozinha|Caixa|Estoque|Catálogo/ })).toHaveCount(0);
+  await evidence.screenshot('sem-permissao');
 });
 
-test('RBAC-X03 e-mail duplicado retorna 409 e preserva os dados', async ({ browser, evidence }) => {
-  const owner = await personaContext(browser, baseURL, 'owner');
-  try {
-    const response = await owner.request.post('/api/usuarios', { data: { nome: 'Duplicado QA', email: context.users.cashier.email, senha: `Qa-${randomBytes(24).toString('base64url')}-!` } });
-    evidence.recordApi({ method: 'POST', path: '/api/usuarios', status: response.status(), body: await response.json().catch(() => null) });
-    expect(response.status()).toBe(409);
-  } finally { await owner.close(); }
+test('RBAC-X02 command.item.cancel.delivered concedida a atendente não habilita a ação @api', async ({ ops, evidence }) => {
+  const tenant = await ops.tenant();
+  await tenant.openCash();
+  const atendente = await tenant.staff('Atendente', [
+    'command.read', 'command.operate', 'command.item.cancel', 'command.item.cancel.delivered', 'kitchen.read', 'kitchen.operate',
+  ]);
+  const aberta = await tenant.openComanda(tenant.owner, [tenant.porcaoItem(1)]);
+  const pedido = aberta.pedidos.find((p: { itens: Array<{ produtoId: string }> }) => p.itens.some((i) => i.produtoId === tenant.catalog!.porcao.id));
+  await tenant.advanceKitchen(tenant.owner, pedido.id, ['EM_PREPARO', 'PRONTO', 'ENTREGUE']);
+  const item = (await tenant.comanda(tenant.owner, aberta.id)).pedidos.flatMap((p: { itens: Array<{ id: string; produtoId: string }> }) => p.itens).find((i: { produtoId: string }) => i.produtoId === tenant.catalog!.porcao.id);
+  await evidence.checkpoint();
+  const body = await atendente.expect(atendente.delete(`/api/operacao/comandas/${aberta.id}/itens/${item.id}`, {
+    quantidade: 1, quantidadeEsperada: 1, motivo: 'Cliente devolveu', tratamentoEstoque: 'ERRO_LANCAMENTO', idempotencyKey: randomUUID(),
+  }), 403, 'atendente com cancel.delivered');
+  expect(body.error).toMatch(/permiss|dono|entregue/i);
+  await evidence.assertNoDbChange();
+  await tenant.owner.expect(tenant.owner.delete(`/api/operacao/comandas/${aberta.id}/itens/${item.id}`, {
+    quantidade: 1, quantidadeEsperada: 1, motivo: 'Cliente devolveu', tratamentoEstoque: 'ERRO_LANCAMENTO', idempotencyKey: randomUUID(),
+  }), 200, 'controle positivo dono');
 });
 
-test('RBAC-X04 atendente não pode editar permissões de si mesmo', async ({ browser, evidence }) => {
-  const staff = await personaContext(browser, baseURL, 'cashier');
-  try {
-    const response = await staff.request.patch(`/api/usuarios/${context.users.cashier.id}/permissoes-operacao`, { data: { permissoesOperacao: [] } });
-    evidence.recordApi({ method: 'PATCH', path: '/api/usuarios/:id/permissoes-operacao', status: response.status(), body: await response.json().catch(() => null) });
-    expect(response.status()).toBe(403);
-  } finally { await staff.close(); }
+test('RBAC-X03 e-mail duplicado retorna 409 @api', async ({ ops, evidence }) => {
+  const tenant = await ops.tenant();
+  const staff = await tenant.staff('Caixa', PERSONA_PERMISSIONS.caixa);
+  await evidence.checkpoint();
+  const body = await tenant.owner.expect(tenant.owner.post('/api/usuarios', {
+    nome: 'Duplicado', email: staff.email, senha: strongPassword(),
+  }), 409, 'email duplicado');
+  expect(body.error).toMatch(/já|cadastrado|e-mail/i);
+  await evidence.assertNoDbChange();
 });
 
-test('RBAC-X05 dono A não altera permissões de atendente da empresa B', async ({ browser, evidence }) => {
-  const owner = await personaContext(browser, baseURL, 'owner');
-  try {
-    const response = await owner.request.patch(`/api/usuarios/${context.users.staffB.id}/permissoes-operacao`, { data: { permissoesOperacao: ['command.read'] } });
-    evidence.recordApi({ method: 'PATCH', path: '/api/usuarios/:id/permissoes-operacao', status: response.status(), body: await response.json().catch(() => null) });
-    expect(response.status()).toBe(404);
-  } finally { await owner.close(); }
+test('RBAC-X04 atendente não edita permissões @api', async ({ ops, evidence }) => {
+  const tenant = await ops.tenant();
+  const staff = await tenant.staff('Caixa', PERSONA_PERMISSIONS.caixa);
+  await evidence.checkpoint();
+  await staff.expect(staff.patch(`/api/usuarios/${staff.userId}/permissoes-operacao`, { permissoesOperacao: [] }), 403, 'self edit');
+  await evidence.assertNoDbChange();
 });
 
-test('RBAC-X06 dono não edita alvo ADMIN', async ({ browser, evidence }) => {
-  const owner = await personaContext(browser, baseURL, 'owner');
-  try {
-    const response = await owner.request.patch(`/api/usuarios/${context.users.owner.id}/permissoes-operacao`, { data: { permissoesOperacao: ['command.read'] } });
-    evidence.recordApi({ method: 'PATCH', path: '/api/usuarios/:id/permissoes-operacao', status: response.status(), body: await response.json().catch(() => null) });
-    expect(response.status()).toBe(409);
-  } finally { await owner.close(); }
+test('RBAC-X05 dono A não altera permissões da empresa B @api', async ({ ops, evidence }) => {
+  const a = await ops.tenant();
+  const b = await ops.tenant();
+  const staffB = await b.staff('StaffB', PERSONA_PERMISSIONS.salao);
+  await evidence.checkpoint();
+  await a.owner.expect(a.owner.patch(`/api/usuarios/${staffB.userId}/permissoes-operacao`, { permissoesOperacao: ['command.read'] }), 404, 'cross-tenant');
+  await evidence.assertNoDbChange();
 });
 
-test('RBAC-X07 registra a disponibilidade das chaves de evento no canônico', async ({ browser, evidence }) => {
-  const owner = await personaContext(browser, baseURL, 'owner');
-  const staff = await personaContext(browser, baseURL, 'cashier');
-  try {
-    const response = await owner.request.patch(`/api/usuarios/${context.users.cashier.id}/permissoes-operacao`, { data: { permissoesOperacao: ['event.dashboard.read', 'event.menu.manage'] } });
-    evidence.recordApi({ method: 'PATCH', path: '/api/usuarios/:id/permissoes-operacao', status: response.status(), body: await response.json().catch(() => null) });
-    expect(response.status()).toBe(200);
-    const current = await staff.request.get('/api/auth/me');
-    const user = (await current.json()).usuario;
-    expect(user.permissoesOperacao).toEqual(expect.arrayContaining(['event.dashboard.read', 'event.menu.manage']));
-    test.info().annotations.push({ type: 'product-decision', description: 'O endpoint aceita e persiste event.dashboard.read/event.menu.manage no usuário canônico; a decisão sobre o efeito dessas chaves nas telas do modelo único permanece pendente.' });
-  } finally {
-    await owner.request.patch(`/api/usuarios/${context.users.cashier.id}/permissoes-operacao`, { data: { permissoesOperacao: initialCashierPermissions } });
-    await owner.close(); await staff.close();
-  }
+test('RBAC-X06 dono não edita alvo não-atendente @api', async ({ ops, evidence }) => {
+  const tenant = await ops.tenant();
+  const me = await tenant.owner.expect(tenant.owner.get('/api/auth/me'), 200, 'me');
+  await evidence.checkpoint();
+  const body = await tenant.owner.expect(tenant.owner.patch(`/api/usuarios/${me.usuario.id}/permissoes-operacao`, { permissoesOperacao: ['command.read'] }), 409, 'alvo dono');
+  expect(body.error).toBe('Permissão aplicável apenas a atendentes');
+  await evidence.assertNoDbChange();
+});
+
+test('RBAC-X07 chaves de evento no canônico', async ({ ops, page, evidence }) => {
+  const tenant = await ops.tenant();
+  const staff = await tenant.staff('Caixa', []);
+  await tenant.owner.expect(tenant.owner.patch(`/api/usuarios/${staff.userId}/permissoes-operacao`, {
+    permissoesOperacao: ['event.dashboard.read', 'event.menu.manage'],
+  }), 200, 'persistir chaves de evento');
+  const me = await staff.expect(staff.get('/api/auth/me'), 200, 'me');
+  expect(me.usuario.permissoesOperacao).toEqual(expect.arrayContaining(['event.dashboard.read', 'event.menu.manage']));
+  await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
+  await page.goto('/operacao/configuracoes/equipe', { waitUntil: 'networkidle' });
+  const eventKeysVisible = await page.getByText(/event\.dashboard\.read|event\.menu\.manage|Dashboard do evento|Cardápio do evento/i).count();
+  test.info().annotations.push({
+    type: 'product-decision',
+    description: `API persiste event.dashboard.read/event.menu.manage. Editor de equipe mostrou ${eventKeysVisible} menções a chaves de evento. Recomendação: remover essas chaves do editor no modelo canônico.`,
+  });
+  await evidence.screenshot('rbac-event-keys');
 });

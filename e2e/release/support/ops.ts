@@ -11,6 +11,7 @@ export const seed = JSON.parse(readFileSync(process.env.RELEASE_QA_CONTEXT!, 'ut
   points: Record<string, string>;
   users: Record<string, { id: string; email: string; password: string }>;
   admin: { id: string; email: string; password: string };
+  events?: { legacy?: string };
 };
 export const tenantA = seed.tenants[0]!;
 export const tenantB = seed.tenants[1]!;
