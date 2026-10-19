@@ -9,6 +9,7 @@ import { toNumber } from '../lib/utils.js';
 import { assertClientePodeExcluir, buildExclusaoMeta, getComandaCountsByClienteIds, getClienteComandaCounts } from '../lib/cliente-delete.js';
 import { ClienteMergeError, mergeClientes } from '../lib/cliente-merge.js';
 import { requireDonoAtual, requirePermissao } from '../lib/operacao/permissoes.js';
+import { notificarComandaOperacaoAtualizada } from '../lib/operacao/cozinha.js';
 
 const createClienteSchema = z.object({
   nome: z.string().min(1),
@@ -316,26 +317,68 @@ export async function clientesRoutes(app: FastifyInstance) {
     const now = new Date();
     const optInMarketing = body.optInMarketing ?? existing.optInMarketing;
 
-    const cliente = await prisma.cliente.update({
-      where: { id },
-      data: {
-        ...(body.nome !== undefined ? { nome: body.nome.trim() } : {}),
-        ...(body.telefone !== undefined ? { telefone } : {}),
-        ...(isDono && body.email !== undefined ? { email: body.email?.trim() || null } : {}),
-        ...(isDono && body.dataNascimento !== undefined
-          ? { dataNascimento: body.dataNascimento ? new Date(body.dataNascimento) : null }
-          : {}),
-        ...(isDono && body.observacoes !== undefined ? { observacoes: body.observacoes?.trim() || null } : {}),
-        ...(isDono && body.ativo !== undefined ? { ativo: body.ativo } : {}),
-        ...(isDono && body.optInMarketing !== undefined
-          ? {
-              optInMarketing,
-              optInEm: optInMarketing ? now : null,
-            }
-          : {}),
-      },
-      include: clienteInclude,
+    const nomeNovo = body.nome?.trim();
+    const { cliente, comandasAtualizadas } = await prisma.$transaction(async (tx) => {
+      // A comanda criada pela tela "Nova comanda" usa o nome do cliente como
+      // identificador. Igualdade com o nome anterior distingue esse rótulo de
+      // apelidos personalizados; mesa, ficha e comandas fechadas ficam fora.
+      const candidatas = nomeNovo && nomeNovo !== existing.nome
+        ? await tx.comanda.findMany({
+            where: {
+              origem: 'CAIXA',
+              clienteId: id,
+              status: 'ABERTA',
+              tipo: 'APELIDO',
+              identificador: existing.nome,
+              pontoVenda: { cervejariaId: user.cervejariaId },
+            },
+            select: { id: true },
+          })
+        : [];
+
+      const clienteAtualizado = await tx.cliente.update({
+        where: { id },
+        data: {
+          ...(body.nome !== undefined ? { nome: body.nome.trim() } : {}),
+          ...(body.telefone !== undefined ? { telefone } : {}),
+          ...(isDono && body.email !== undefined ? { email: body.email?.trim() || null } : {}),
+          ...(isDono && body.dataNascimento !== undefined
+            ? { dataNascimento: body.dataNascimento ? new Date(body.dataNascimento) : null }
+            : {}),
+          ...(isDono && body.observacoes !== undefined ? { observacoes: body.observacoes?.trim() || null } : {}),
+          ...(isDono && body.ativo !== undefined ? { ativo: body.ativo } : {}),
+          ...(isDono && body.optInMarketing !== undefined
+            ? {
+                optInMarketing,
+                optInEm: optInMarketing ? now : null,
+              }
+            : {}),
+        },
+        include: clienteInclude,
+      });
+
+      const idsAtualizados: string[] = [];
+      for (const candidata of candidatas) {
+        const resultado = await tx.comanda.updateMany({
+          where: {
+            id: candidata.id,
+            origem: 'CAIXA',
+            clienteId: id,
+            status: 'ABERTA',
+            tipo: 'APELIDO',
+            identificador: existing.nome,
+            pontoVenda: { cervejariaId: user.cervejariaId },
+          },
+          data: { identificador: nomeNovo },
+        });
+        if (resultado.count > 0) idsAtualizados.push(candidata.id);
+      }
+      return { cliente: clienteAtualizado, comandasAtualizadas: idsAtualizados };
     });
+
+    for (const comandaId of comandasAtualizadas) {
+      notificarComandaOperacaoAtualizada(app, user.cervejariaId!, comandaId);
+    }
 
     return serializeClienteWithExclusao(cliente);
   });
