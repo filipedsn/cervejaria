@@ -1,5 +1,5 @@
 import { prismaClient } from '../support/fixtures';
-import { expect, loginPage, PERSONA_PERMISSIONS, randomUUID, test, uniquePhone, type Ops, type Tenant } from '../support/ops';
+import { expect, loginPage, PERSONA_PERMISSIONS, randomUUID, test, uniquePhone, uniqueSuffix, type Ops, type Tenant } from '../support/ops';
 
 type Item = { id: string; produtoId: string; quantidade: number; precoUnit: number; canceladoEm: string | null; observacao: string | null; opcionais: Array<{ nome: string; precoAdicional: number; quantidade: number }> };
 const itens = (comanda: { pedidos: Array<{ itens: Item[] }> }) => comanda.pedidos.flatMap((pedido) => pedido.itens);
@@ -64,6 +64,94 @@ test('CMD-S04 dono cancela item já entregue com motivo e tratamento de estoque 
   }), 200, 'cancelar entregue');
   expect(atualizada.total).toBe(30);
   expect((await tenant.stock())(tenant.catalog!.porcao.id)).toBe(19);
+});
+
+test('CMD-S16 atendente cancela parcialmente e totalmente item entregue pela comanda autenticada', async ({ ops, page, evidence }) => {
+  const tenant = await ops.tenant();
+  const catalog = await tenant.seedCatalog();
+  const atendente = await tenant.staff('AtendenteEntrega', ['command.read', 'command.operate', 'command.item.cancel', 'inventory.read']);
+  const suco = await tenant.owner.expect(tenant.owner.post('/api/operacao/produtos', {
+    nome: 'Suco errado QA', categoriaPdvId: tenant.catalog!.categoriaId, tipo: 'BEBIDA', formato: 'OUTRO', precoUnit: 12,
+    exigePreparo: true, controlaEstoque: true,
+  }), 201, 'criar produto sintético do relato');
+  await tenant.owner.expect(tenant.owner.post('/api/operacao/estoque/entrada', {
+    pontoVendaId: tenant.pointId, produtoId: suco.id, quantidade: 10,
+  }), 201, 'estoque sintético inicial');
+  const cardapio = await tenant.owner.expect(tenant.owner.post('/api/operacao/cardapios', {
+    nome: `Cardápio P7 QA ${uniqueSuffix()}`, produtoIds: [catalog.chope.id, catalog.porcao.id, catalog.lata.id, catalog.agua.id, suco.id],
+  }), 201, 'incluir o suco errado no cardápio sintético');
+  catalog.cardapioId = cardapio.id;
+  await tenant.openCash(tenant.owner, 100);
+  const aberta = await tenant.openComanda(tenant.owner, [{ produtoId: suco.id, quantidade: 2 }]);
+  const pedido = aberta.pedidos.find((p: { itens: Array<{ produtoId: string }> }) => p.itens.some((i) => i.produtoId === suco.id));
+  await tenant.advanceKitchen(tenant.owner, pedido.id, ['EM_PREPARO', 'PRONTO', 'ENTREGUE']);
+  const entregue = await tenant.comanda(tenant.owner, aberta.id);
+  const itemSuco = itemDe(entregue, suco.id);
+  const remover = 'Remover Suco errado QA';
+
+  await loginPage(page, atendente.email, atendente.senha);
+  await page.goto(`/operacao/comandas/${aberta.id}`, { waitUntil: 'networkidle' });
+  await expect(page.getByRole('button', { name: remover })).toHaveCount(0);
+  await atendente.expect(atendente.delete(`/api/operacao/comandas/${aberta.id}/itens/${itemSuco.id}`, {
+    quantidade: 1, quantidadeEsperada: 2, motivo: 'Sem autorização especial', tratamentoEstoque: 'PREPARADO_ENTREGUE_OU_PERDIDO', idempotencyKey: randomUUID(),
+  }), 403, 'sem permissão especial');
+
+  await tenant.owner.expect(tenant.owner.patch(`/api/usuarios/${atendente.userId}/permissoes-operacao`, {
+    permissoesOperacao: ['command.read', 'command.operate', 'command.item.cancel', 'command.item.cancel.delivered', 'inventory.read'],
+  }), 200, 'conceder na sessão existente');
+  await page.reload({ waitUntil: 'networkidle' });
+  const botaoRemover = page.getByRole('button', { name: remover });
+  await expect(botaoRemover).toBeVisible();
+
+  await botaoRemover.click();
+  await expect(page.getByRole('heading', { name: 'Cancelar item já entregue' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirmar cancelamento' })).toBeDisabled();
+  await page.getByLabel('Quantidade a cancelar').fill('1');
+  await page.getByLabel('Preparado, entregue ou perdido. O item sai da cobrança e o estoque não retorna.').check();
+  await page.getByLabel('Motivo obrigatório').fill('Cliente recusou uma unidade');
+  const respostaParcial = page.waitForResponse((response) => response.request().method() === 'DELETE' && response.url().includes(`/api/operacao/comandas/${aberta.id}/itens/${itemSuco.id}`));
+  await page.getByRole('button', { name: 'Confirmar cancelamento' }).click();
+  const cancelamentoParcial = await respostaParcial;
+  expect(cancelamentoParcial.status()).toBe(200);
+  expect((await cancelamentoParcial.json()).total).toBe(12);
+  await expect(page.getByText('Cliente recusou uma unidade')).toBeVisible();
+  expect((await tenant.stock())(suco.id)).toBe(8);
+
+  // The UI suppresses duplicate submits for 400 ms after a successful mutation.
+  await page.waitForTimeout(450);
+  await page.getByRole('button', { name: remover }).click();
+  await expect(page.getByRole('heading', { name: 'Cancelar item já entregue' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirmar cancelamento' })).toBeDisabled();
+  await page.getByLabel('Motivo obrigatório').fill('Cancelamento da última unidade');
+  const respostaTotal = page.waitForResponse((response) => response.request().method() === 'DELETE' && response.url().includes(`/api/operacao/comandas/${aberta.id}/itens/${itemSuco.id}`));
+  await page.getByRole('button', { name: 'Confirmar cancelamento' }).click();
+  const totalCancelado = await respostaTotal;
+  expect(totalCancelado.status()).toBe(200);
+  const totalCanceladoBody = await totalCancelado.json();
+  expect(totalCanceladoBody.total).toBe(0);
+  expect(totalCanceladoBody.pedidos[0].status).toBe('ENTREGUE');
+  expect(totalCanceladoBody.pedidos[0].itens[0].cancelamentosEntregue.map((item: { motivo: string }) => item.motivo)).toEqual([
+    'Cliente recusou uma unidade', 'Cancelamento da última unidade',
+  ]);
+  await expect(page.getByText('Cancelamento da última unidade')).toBeVisible();
+  const final = await tenant.comanda(tenant.owner, aberta.id);
+  expect(final.pedidos.find((pedido: { id: string }) => pedido.id === entregue.pedidos[0].id)?.status).toBe('ENTREGUE');
+  const historico = final.pedidos.flatMap((pedido: { itens: Item[] }) => pedido.itens)
+    .flatMap((item: Item & { cancelamentosEntregue?: Array<{ motivo: string; quantidade: number }> }) => item.cancelamentosEntregue ?? []);
+  expect(historico).toEqual(expect.arrayContaining([
+    expect.objectContaining({ motivo: 'Cliente recusou uma unidade', quantidade: 1 }),
+    expect.objectContaining({ motivo: 'Cancelamento da última unidade', quantidade: 1 }),
+  ]));
+  const auditoria = await prismaClient().itemComandaCancelamentoEntregue.findMany({ where: { itemComandaId: itemSuco.id, cervejariaId: tenant.id }, orderBy: { createdAt: 'asc' } });
+  expect(auditoria.map((registro: { usuarioId: string; motivo: string; quantidade: number; valorRetirado: unknown; tratamentoEstoque: string }) => ({
+    usuarioId: registro.usuarioId, motivo: registro.motivo, quantidade: registro.quantidade,
+    valorRetirado: Number(registro.valorRetirado), tratamentoEstoque: registro.tratamentoEstoque,
+  }))).toEqual([
+    { usuarioId: atendente.userId, motivo: 'Cliente recusou uma unidade', quantidade: 1, valorRetirado: 12, tratamentoEstoque: 'SEM_RETORNO_PRODUTO_PREPARADO_ENTREGUE_OU_PERDIDO' },
+    { usuarioId: atendente.userId, motivo: 'Cancelamento da última unidade', quantidade: 1, valorRetirado: 12, tratamentoEstoque: 'SEM_RETORNO_PRODUTO_PREPARADO_ENTREGUE_OU_PERDIDO' },
+  ]);
+  expect((await tenant.stock())(suco.id)).toBe(8);
+  await evidence.screenshot('cancelamento-entregue-interface', page);
 });
 
 test('CMD-S05 aplica desconto na comanda @api', async ({ ops }) => {
@@ -148,7 +236,9 @@ test('CMD-S10 links de WhatsApp da comanda abrem wa.me com número e resumo', as
 
 test('CMD-S11 dois navegadores veem a comanda atualizar em tempo real', async ({ ops, page, browser, evidence }) => {
   const tenant = await vendaPronta(ops);
-  const comanda = await tenant.openComanda(tenant.owner, [tenant.item('agua')]);
+  const comanda = await tenant.openComanda(tenant.owner, [tenant.item('agua'), tenant.porcaoItem(1)]);
+  const entregue = await entregarPorcao(tenant, comanda.id);
+  const porcao = itemDe(entregue, tenant.catalog!.porcao.id);
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
   await page.goto(`/operacao/comandas/${comanda.id}`, { waitUntil: 'networkidle' });
   const outro = await browser.newContext();
@@ -161,6 +251,15 @@ test('CMD-S11 dois navegadores veem a comanda atualizar em tempo real', async ({
     await salao.expect(salao.post(`/api/operacao/comandas/${comanda.id}/pedidos`, { itens: [tenant.item('lata')] }), 201, 'novo pedido');
     await expect(page.getByText('Lata QA').first()).toBeVisible({ timeout: 10_000 });
     await expect(segunda.getByText('Lata QA').first()).toBeVisible({ timeout: 10_000 });
+    await segunda.context().setOffline(true);
+    await tenant.owner.expect(tenant.owner.delete(`/api/operacao/comandas/${comanda.id}/itens/${porcao.id}`, {
+      quantidade: 1, quantidadeEsperada: 1, motivo: 'Cancelamento de reconexão QA', tratamentoEstoque: 'PREPARADO_ENTREGUE_OU_PERDIDO', idempotencyKey: randomUUID(),
+    }), 200, 'cancelar enquanto segundo aparelho está offline');
+    await expect(page.getByText('Cancelamento de reconexão QA')).toBeVisible({ timeout: 10_000 });
+    await segunda.context().setOffline(false);
+    await segunda.reload({ waitUntil: 'networkidle' });
+    await expect(segunda.getByText('Cancelamento de reconexão QA')).toBeVisible({ timeout: 10_000 });
+    expect((await tenant.comanda(tenant.owner, comanda.id)).pedidos[0].status).toBe('ENTREGUE');
     await evidence.screenshot('tempo-real');
   } finally {
     await outro.close();
@@ -269,6 +368,27 @@ test('CMD-X09 cancelar item entregue em comanda com pagamento é recusado @api',
   await evidence.assertNoDbChange();
 });
 
+test('CMD-X16 cancelamento entregue recusa comanda fechada e acesso de outro tenant @api', async ({ ops, evidence }) => {
+  const tenant = await vendaPronta(ops);
+  const fechada = await tenant.openComanda(tenant.owner, [tenant.porcaoItem(1)]);
+  const entregue = await entregarPorcao(tenant, fechada.id);
+  const itemFechado = itemDe(entregue, tenant.catalog!.porcao.id);
+  await tenant.pay(tenant.owner, fechada.id, [{ forma: 'PIX', valor: 30 }]);
+  await evidence.checkpoint();
+  const payload = { quantidade: 1, quantidadeEsperada: 1, motivo: 'Recusado após fechamento QA', tratamentoEstoque: 'PREPARADO_ENTREGUE_OU_PERDIDO', idempotencyKey: randomUUID() };
+  const fechado = await tenant.owner.expect(tenant.owner.delete(`/api/operacao/comandas/${fechada.id}/itens/${itemFechado.id}`, payload), 409, 'comanda paga e fechada');
+  expect(fechado.error).toMatch(/fechada/i);
+
+  const outroTenant = await vendaPronta(ops);
+  const estrangeira = await tenant.openComanda(tenant.owner, [tenant.porcaoItem(1)]);
+  const entregueEstrangeira = await entregarPorcao(tenant, estrangeira.id);
+  const itemEstrangeiro = itemDe(entregueEstrangeira, tenant.catalog!.porcao.id);
+  await evidence.checkpoint();
+  await outroTenant.owner.expect(outroTenant.owner.delete(`/api/operacao/comandas/${estrangeira.id}/itens/${itemEstrangeiro.id}`, payload), 404, 'comanda de outro tenant');
+  await evidence.assertNoDbChange();
+  expect(itemDe(await tenant.comanda(tenant.owner, estrangeira.id), tenant.catalog!.porcao.id).quantidade).toBe(1);
+});
+
 test('CMD-X10 chave de idempotência reutilizada em outro item é recusada @api', async ({ ops, evidence }) => {
   const tenant = await vendaPronta(ops);
   const aberta = await tenant.openComanda(tenant.owner, [tenant.porcaoItem(2)]);
@@ -322,16 +442,91 @@ test('CMD-X14 dois atendentes cancelando o mesmo item entregue: só um vence @ap
   const aberta = await tenant.openComanda(tenant.owner, [tenant.porcaoItem(2)]);
   const entregue = await entregarPorcao(tenant, aberta.id);
   const porcao = itemDe(entregue, tenant.catalog!.porcao.id);
-  const outroDono = await ops.login(tenant.ownerEmail, tenant.ownerPassword, 'owner-tablet-2');
+  const grants = ['command.read', 'command.operate', 'command.item.cancel', 'command.item.cancel.delivered'];
+  const atendenteA = await tenant.staff('ConcorrenciaA', grants);
+  const atendenteB = await tenant.staff('ConcorrenciaB', grants);
   const url = `/api/operacao/comandas/${aberta.id}/itens/${porcao.id}`;
   const payload = () => ({ quantidade: 1, quantidadeEsperada: 2, motivo: 'Cliente devolveu', tratamentoEstoque: 'ERRO_LANCAMENTO', idempotencyKey: randomUUID() });
-  const [a, b] = await Promise.all([tenant.owner.delete(url, payload()), outroDono.delete(url, payload())]);
+  const [a, b] = await Promise.all([atendenteA.delete(url, payload()), atendenteB.delete(url, payload())]);
   expect([a.status, b.status].sort()).toEqual([200, 409]);
   const perdedor = a.status === 409 ? a : b;
   expect(perdedor.body.error).toBe('A quantidade disponível mudou em outra sessão. Atualize a comanda e tente novamente.');
   const final = await tenant.comanda(tenant.owner, aberta.id);
   expect(itemDe(final, tenant.catalog!.porcao.id).quantidade).toBe(1);
   await evidence.checkpoint();
+});
+
+test('CMD-X17 quantidade esperada obsoleta recusa cancelamento entregue sem efeitos @api', async ({ ops, evidence }) => {
+  const tenant = await vendaPronta(ops);
+  const aberta = await tenant.openComanda(tenant.owner, [tenant.porcaoItem(2)]);
+  const entregue = await entregarPorcao(tenant, aberta.id);
+  const porcao = itemDe(entregue, tenant.catalog!.porcao.id);
+  await evidence.checkpoint();
+  const semMotivo = await tenant.owner.delete(`/api/operacao/comandas/${aberta.id}/itens/${porcao.id}`, {
+    quantidade: 1, quantidadeEsperada: 2, tratamentoEstoque: 'ERRO_LANCAMENTO', idempotencyKey: randomUUID(),
+  });
+  expect(semMotivo.status).toBe(400);
+  await evidence.assertNoDbChange();
+  await evidence.checkpoint();
+  const body = await tenant.owner.expect(tenant.owner.delete(`/api/operacao/comandas/${aberta.id}/itens/${porcao.id}`, {
+    quantidade: 1, quantidadeEsperada: 1, motivo: 'Tentativa com quantidade antiga QA', tratamentoEstoque: 'ERRO_LANCAMENTO', idempotencyKey: randomUUID(),
+  }), 409, 'quantidade esperada obsoleta');
+  expect(body.error).toMatch(/quantidade disponível mudou/i);
+  await evidence.assertNoDbChange();
+  const final = await tenant.comanda(tenant.owner, aberta.id);
+  expect(itemDe(final, tenant.catalog!.porcao.id).quantidade).toBe(2);
+  expect(final.pedidos[0].itens[0].cancelamentosEntregue).toHaveLength(0);
+  expect((await tenant.stock())(tenant.catalog!.porcao.id)).toBe(18);
+});
+
+test('CMD-X18 operação deixa de cancelar ao existir PDV concorrente fora do canônico @api', async ({ ops, evidence }) => {
+  const tenant = await vendaPronta(ops);
+  const aberta = await tenant.openComanda(tenant.owner, [tenant.porcaoItem(1)]);
+  const entregue = await entregarPorcao(tenant, aberta.id);
+  const porcao = itemDe(entregue, tenant.catalog!.porcao.id);
+  await prismaClient().pontoVenda.create({ data: { cervejariaId: tenant.id, nome: 'Outro PDV QA' } });
+  await evidence.checkpoint();
+  const resposta = await tenant.owner.delete(`/api/operacao/comandas/${aberta.id}/itens/${porcao.id}`, {
+    quantidade: 1, quantidadeEsperada: 1, motivo: 'Não operar fora do PDV canônico QA', tratamentoEstoque: 'PREPARADO_ENTREGUE_OU_PERDIDO', idempotencyKey: randomUUID(),
+  });
+  expect(resposta.status).toBe(409);
+  expect(resposta.body.code).toBe('CANONICAL_PDV_AMBIGUOUS');
+  await evidence.assertNoDbChange();
+});
+
+test('CMD-X19 repetição com a mesma chave idempotente não duplica cancelamento nem estoque @api', async ({ ops, evidence }) => {
+  const tenant = await vendaPronta(ops);
+  const aberta = await tenant.openComanda(tenant.owner, [tenant.porcaoItem(2)]);
+  const entregue = await entregarPorcao(tenant, aberta.id);
+  const porcao = itemDe(entregue, tenant.catalog!.porcao.id);
+  const key = randomUUID();
+  const payload = { quantidade: 1, quantidadeEsperada: 2, motivo: 'Correção já enviada QA', tratamentoEstoque: 'ERRO_LANCAMENTO', idempotencyKey: key };
+  const primeira = await tenant.owner.expect(tenant.owner.delete(`/api/operacao/comandas/${aberta.id}/itens/${porcao.id}`, payload), 200, 'primeira chamada');
+  expect(primeira.total).toBe(30);
+  await evidence.checkpoint();
+  const repetida = await tenant.owner.expect(tenant.owner.delete(`/api/operacao/comandas/${aberta.id}/itens/${porcao.id}`, payload), 200, 'repetição da mesma chamada');
+  expect(repetida.total).toBe(30);
+  await evidence.assertNoDbChange();
+  const final = await tenant.comanda(tenant.owner, aberta.id);
+  expect(itemDe(final, tenant.catalog!.porcao.id).quantidade).toBe(1);
+  expect(final.pedidos[0].itens[0].cancelamentosEntregue).toHaveLength(1);
+  expect((await tenant.stock())(tenant.catalog!.porcao.id)).toBe(19);
+});
+
+test('CMD-X20 troca autenticada de tenant não conserva a comanda anterior no navegador', async ({ ops, page, evidence }) => {
+  const tenant = await vendaPronta(ops);
+  const comanda = await tenant.openComanda(tenant.owner, [tenant.item('agua')], { identificador: 'Comanda tenant A QA' });
+  await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
+  await page.goto(`/operacao/comandas/${comanda.id}`, { waitUntil: 'networkidle' });
+  await expect(page.getByText('Água QA')).toBeVisible();
+
+  const outroTenant = await ops.tenant();
+  await evidence.checkpoint();
+  await loginPage(page, outroTenant.ownerEmail, outroTenant.ownerPassword);
+  await page.goto(`/operacao/comandas/${comanda.id}`, { waitUntil: 'networkidle' });
+  await expect(page.getByText('Comanda não encontrada.')).toBeVisible();
+  await expect(page.getByText('Água QA')).toHaveCount(0);
+  await evidence.assertNoDbChange();
 });
 
 test('CMD-X15 produto fora do cardápio do turno não pode ser lançado @api', async ({ ops, evidence }) => {
