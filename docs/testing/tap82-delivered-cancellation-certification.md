@@ -49,7 +49,11 @@ node --import ./scripts/node24-tsx-host.mjs --import ./backend/node_modules/tsx/
 
 No estado atual da árvore, os cenários focados passaram no conjunto: 21 execuções de teste, somando quatro viewports para CMD-S11, CMD-S16 e CMD-X20. Uma agregação inicial expôs um filtro inválido no novo assert de auditoria; o filtro foi corrigido e CMD-S16, CMD-X14 e CMD-X17 passaram em nova execução (desktop, mobile e tablet). O container PostgreSQL foi removido após cada execução. Os relatórios E2E do runner ficam em `artifacts/release-e2e/<SHA-base>/evidence/`; o diretório é indexado ao HEAD-base usado pelo harness, então não representa sozinho um recibo imutável do commit final.
 
-`npm.cmd run ci` passou fora do sandbox: frontend, validação Prisma (fallback de client já gerado para o schema atual, pois o DLL estava bloqueado por outro processo), 256 testes backend aprovados e 2 skipped, typecheck/build backend, 45 testes ops-panel, 82 testes support-analyst, dossier replay, build support-analyst e 12 testes do release gate. O `realtime-security-qa` é executado apenas no GitHub Actions. Publicação/validação no DEV oficial e CI do PR ainda precisam constar como aprovados antes do fechamento do item.
+`npm.cmd run ci` passou fora do sandbox: frontend, validação Prisma (fallback de client já gerado para o schema atual, pois o DLL estava bloqueado por outro processo), 256 testes backend aprovados e 2 skipped, typecheck/build backend, 45 testes ops-panel, 82 testes support-analyst, dossier replay, build support-analyst e 12 testes do release gate. O `realtime-security-qa` também passou no GitHub Actions.
+
+O commit `ea469f8567c21d2fdf42013b9ce55603bac861f2` foi enviado a `origin/fix/tap82-attendant-delivered-cancel` e abriu o PR [#73](https://github.com/filipedsn/cervejaria/pull/73), pronto para revisão. Os sete checks do PR passaram: `frontend`, `backend-validate`, `backend-test`, `backend-build`, `ops-panel-test`, `support-analyst-test` e `realtime-security-qa`.
+
+O DEV oficial está em `ea469f8567c21d2fdf42013b9ce55603bac861f2`; API health e ready passaram, frontend retornou HTTP 200 e o manifesto confirma o mesmo SHA. O runner foi iniciado a partir do artefato anterior `c8e636ab`; a troca reportou o mesmo PID do listener de produção antes/depois. Nenhuma conta ou comanda real foi alterada no DEV.
 
 ## Estado de entrega
 
