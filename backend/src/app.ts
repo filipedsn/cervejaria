@@ -412,7 +412,7 @@ export async function buildApp() {
         filePath.includes(`${path.sep}logos${path.sep}`) ||
         filePath.includes(`${path.sep}portal-backgrounds${path.sep}`)
       ) {
-        res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+        res.header('Cache-Control', 'public, max-age=0, must-revalidate');
       }
     },
 

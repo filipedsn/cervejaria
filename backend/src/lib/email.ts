@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import nodemailer, { type Transporter } from 'nodemailer';
 import { formatBrazilDateTime } from './event-datetime.js';
 import { getSmtpCredentials } from './system-config.js';
 import {
@@ -6,7 +6,7 @@ import {
   formatObservabilityAlertEmailSubject,
 } from './observability-alert-format.js';
 let cachedKey: string | null = null;
-let transporter: nodemailer.Transporter | null = null;
+let transporter: Transporter | null = null;
 
 async function getTransporter() {
   const creds = await getSmtpCredentials();
