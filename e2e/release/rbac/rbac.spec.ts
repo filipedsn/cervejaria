@@ -49,25 +49,54 @@ test('RBAC-X01 sem permissões recebe 403 e não vê menu', async ({ ops, page, 
   await evidence.assertNoDbChange();
 });
 
-test('RBAC-X02 command.item.cancel.delivered concedida a atendente não habilita a ação @api', async ({ ops, evidence }) => {
+test('RBAC-X02 atendente com ambas as permissões pode cancelar item entregue @api', async ({ ops, evidence }) => {
   const tenant = await ops.tenant();
   await tenant.openCash();
   const atendente = await tenant.staff('Atendente', [
-    'command.read', 'command.operate', 'command.item.cancel', 'command.item.cancel.delivered', 'kitchen.read', 'kitchen.operate',
+    'command.read', 'command.operate', 'command.item.cancel', 'kitchen.read', 'kitchen.operate',
   ]);
-  const aberta = await tenant.openComanda(tenant.owner, [tenant.porcaoItem(1)]);
+  const outraSessao = await ops.login(atendente.email, atendente.senha, 'atendente-session-2');
+  const aberta = await tenant.openComanda(tenant.owner, [tenant.porcaoItem(2)]);
   const pedido = aberta.pedidos.find((p: { itens: Array<{ produtoId: string }> }) => p.itens.some((i) => i.produtoId === tenant.catalog!.porcao.id));
   await tenant.advanceKitchen(tenant.owner, pedido.id, ['EM_PREPARO', 'PRONTO', 'ENTREGUE']);
   const item = (await tenant.comanda(tenant.owner, aberta.id)).pedidos.flatMap((p: { itens: Array<{ id: string; produtoId: string }> }) => p.itens).find((i: { produtoId: string }) => i.produtoId === tenant.catalog!.porcao.id);
   await evidence.checkpoint();
-  const body = await atendente.expect(atendente.delete(`/api/operacao/comandas/${aberta.id}/itens/${item.id}`, {
-    quantidade: 1, quantidadeEsperada: 1, motivo: 'Cliente devolveu', tratamentoEstoque: 'ERRO_LANCAMENTO', idempotencyKey: randomUUID(),
-  }), 403, 'atendente com cancel.delivered');
-  expect(body.error).toMatch(/permiss|dono|entregue/i);
+  const payload = (quantidade: number) => ({
+    quantidade, quantidadeEsperada: 2, motivo: 'Erro registrado no pedido', tratamentoEstoque: 'PREPARADO_ENTREGUE_OU_PERDIDO', idempotencyKey: randomUUID(),
+  });
+  const negado = await atendente.expect(atendente.delete(`/api/operacao/comandas/${aberta.id}/itens/${item.id}`, payload(1)), 403, 'sem permissão especial');
+  expect(negado.error).toMatch(/permiss/i);
   await evidence.assertNoDbChange();
-  await tenant.owner.expect(tenant.owner.delete(`/api/operacao/comandas/${aberta.id}/itens/${item.id}`, {
-    quantidade: 1, quantidadeEsperada: 1, motivo: 'Cliente devolveu', tratamentoEstoque: 'ERRO_LANCAMENTO', idempotencyKey: randomUUID(),
-  }), 200, 'controle positivo dono');
+
+  await tenant.owner.expect(tenant.owner.patch(`/api/usuarios/${atendente.userId}/permissoes-operacao`, {
+    permissoesOperacao: ['command.read', 'command.operate', 'command.item.cancel', 'command.item.cancel.delivered', 'kitchen.read', 'kitchen.operate'],
+  }), 200, 'grant em sessão ativa');
+  for (const session of [atendente, outraSessao]) {
+    const me = await session.expect(session.get('/api/auth/me'), 200, 'permissões sem novo login');
+    expect(me.usuario.permissoesOperacao).toContain('command.item.cancel.delivered');
+  }
+  await atendente.expect(atendente.delete(`/api/operacao/comandas/${aberta.id}/itens/${item.id}`, {
+    quantidade: 1, quantidadeEsperada: 2, motivo: 'Cliente devolveu', tratamentoEstoque: 'PREPARADO_ENTREGUE_OU_PERDIDO', idempotencyKey: randomUUID(),
+  }), 200, 'atendente com ambas as permissões');
+  const atualizada = await tenant.comanda(atendente, aberta.id);
+  expect(atualizada.total).toBe(30);
+  const cancelamento = atualizada.pedidos.flatMap((p: { itens: Array<{ cancelamentosEntregue?: Array<{ motivo: string; quantidade: number }> }> }) => p.itens)
+    .flatMap((i: { cancelamentosEntregue?: Array<{ motivo: string; quantidade: number }> }) => i.cancelamentosEntregue ?? [])[0];
+  expect(cancelamento).toMatchObject({ motivo: 'Cliente devolveu', quantidade: 1 });
+  await tenant.owner.expect(tenant.owner.patch(`/api/usuarios/${atendente.userId}/permissoes-operacao`, {
+    permissoesOperacao: ['command.read', 'command.operate', 'command.item.cancel', 'kitchen.read', 'kitchen.operate'],
+  }), 200, 'revogar permissão especial');
+  for (const session of [atendente, outraSessao]) {
+    const me = await session.expect(session.get('/api/auth/me'), 200, 'revogação sem novo login');
+    expect(me.usuario.permissoesOperacao).not.toContain('command.item.cancel.delivered');
+  }
+  await evidence.checkpoint();
+  for (const session of [atendente, outraSessao]) {
+    await session.expect(session.delete(`/api/operacao/comandas/${aberta.id}/itens/${item.id}`, {
+      quantidade: 1, quantidadeEsperada: 1, motivo: 'repetição após revogação', tratamentoEstoque: 'PREPARADO_ENTREGUE_OU_PERDIDO', idempotencyKey: randomUUID(),
+    }), 403, 'recusar após revogação');
+  }
+  await evidence.assertNoDbChange();
 });
 
 test('RBAC-X03 e-mail duplicado retorna 409 @api', async ({ ops, evidence }) => {
