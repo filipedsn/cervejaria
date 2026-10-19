@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../lib/api';
@@ -106,7 +106,18 @@ export function ClientesPage() {
   const [clienteToDelete, setClienteToDelete] = useState<{ id: string; nome: string } | null>(null);
   const [deleteError, setDeleteError] = useState('');
 
-  const { data, isLoading } = useQuery({
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const nextSearch = q.trim();
+      if (search === nextSearch) return;
+      setSearch(nextSearch);
+      setPage(1);
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [q, search]);
+
+  const { data, error, isError, isFetching, isLoading } = useQuery({
     queryKey: ['clientes-list', search, ordenar, page],
     queryFn: () =>
       api.get<ClienteListResponse>(
@@ -190,7 +201,17 @@ export function ClientesPage() {
 
       {isLoading && <Loading />}
 
-      {!isLoading && data?.items.length === 0 && (
+      {isFetching && !isLoading && (
+        <p className="text-sm text-ink-muted" role="status">Atualizando clientes...</p>
+      )}
+
+      {isError && (
+        <p className="rounded-xl border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">
+          {error instanceof ApiError ? error.message : 'Não foi possível carregar os clientes. Tente novamente.'}
+        </p>
+      )}
+
+      {!isLoading && !isError && data?.items.length === 0 && (
         <EmptyState
           icon="👤"
           title={search ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado'}
@@ -198,7 +219,7 @@ export function ClientesPage() {
         />
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-2" aria-busy={isLoading || isFetching}>
         {data?.items.map((cliente) => (
           <ClienteListItem
             key={cliente.id}
