@@ -21,6 +21,10 @@ function parseQuantidadeEstoque(value: string) {
   return Number(value.trim().replace(',', '.'));
 }
 
+function normalizarBuscaEstoque(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').trim();
+}
+
 export function OperacaoEstoquePage() {
   const queryClient = useQueryClient();
   const { contexto, isLoading: isContextoLoading } = useOperacaoContexto();
@@ -29,6 +33,9 @@ export function OperacaoEstoquePage() {
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
 
   const [pontoVendaId, setPontoVendaId] = useState('');
+  const [buscaProduto, setBuscaProduto] = useState('');
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const [sugestaoAtiva, setSugestaoAtiva] = useState(0);
   const [dialogo, setDialogo] = useState<Dialogo | 'minimo'>('nenhum');
   const [produtoSelecionado, setProdutoSelecionado] = useState<SaldoEstoque | null>(null);
   const [quantidade, setQuantidade] = useState('1');
@@ -47,6 +54,31 @@ export function OperacaoEstoquePage() {
     enabled: Boolean(pontoAtivo),
     refetchInterval: pollMs,
   });
+
+  const saldosOrdenados = [...(saldos ?? [])].sort((a, b) => {
+    const prioridade = { OUT_OF_STOCK: 0, LOW: 1, NORMAL: 2 };
+    return prioridade[a.statusEstoque] - prioridade[b.statusEstoque];
+  });
+  const termoBusca = normalizarBuscaEstoque(buscaProduto);
+  const produtosFiltrados = termoBusca
+    ? saldosOrdenados.filter((item) => normalizarBuscaEstoque(item.nome).includes(termoBusca))
+    : saldosOrdenados;
+  const sugestoesProduto = termoBusca
+    ? [...produtosFiltrados]
+      .sort((a, b) => {
+        const aComecaComTermo = normalizarBuscaEstoque(a.nome).startsWith(termoBusca);
+        const bComecaComTermo = normalizarBuscaEstoque(b.nome).startsWith(termoBusca);
+        return Number(bComecaComTermo) - Number(aComecaComTermo) || a.nome.localeCompare(b.nome, 'pt-BR');
+      })
+      .slice(0, 6)
+    : [];
+  const mostrarSugestoes = buscaAberta && sugestoesProduto.length > 0;
+
+  const selecionarSugestao = (produto: SaldoEstoque) => {
+    setBuscaProduto(produto.nome);
+    setBuscaAberta(false);
+    setSugestaoAtiva(0);
+  };
 
   const invalidar = () => {
     queryClient.invalidateQueries({ queryKey: ['operacao-estoque', pontoAtivo] });
@@ -219,12 +251,97 @@ export function OperacaoEstoquePage() {
           description="Marque produtos no catálogo para controlar saldo."
         />
       ) : (
-        <div className="space-y-2">
-          {[...saldos].sort((a, b) => {
-            const prioridade = { OUT_OF_STOCK: 0, LOW: 1, NORMAL: 2 };
-            return prioridade[a.statusEstoque] - prioridade[b.statusEstoque];
-          }).map((item) => (
-            <div key={item.produtoId} className="card-touch space-y-3 py-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="relative sm:col-span-2">
+            <label className="label" htmlFor="busca-produto-estoque">Buscar produto pelo nome</label>
+            <div className="relative">
+              <input
+                id="busca-produto-estoque"
+                className="input pr-12"
+                type="text"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={mostrarSugestoes}
+                aria-controls={mostrarSugestoes ? 'sugestoes-produto-estoque' : undefined}
+                aria-activedescendant={mostrarSugestoes ? `sugestao-produto-estoque-${sugestaoAtiva}` : undefined}
+                autoComplete="off"
+                placeholder="Digite o nome do produto"
+                value={buscaProduto}
+                onFocus={() => { if (termoBusca) setBuscaAberta(true); }}
+                onBlur={() => setBuscaAberta(false)}
+                onChange={(event) => {
+                  setBuscaProduto(event.target.value);
+                  setBuscaAberta(true);
+                  setSugestaoAtiva(0);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    setBuscaAberta(false);
+                    return;
+                  }
+                  if (!mostrarSugestoes) return;
+                  if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    setSugestaoAtiva((atual) => (atual + 1) % sugestoesProduto.length);
+                  } else if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    setSugestaoAtiva((atual) => (atual - 1 + sugestoesProduto.length) % sugestoesProduto.length);
+                  } else if (event.key === 'Enter') {
+                    event.preventDefault();
+                    selecionarSugestao(sugestoesProduto[sugestaoAtiva]);
+                  }
+                }}
+                data-audit="operacao-estoque-busca"
+              />
+              {buscaProduto && (
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 px-3 text-ink-faint"
+                  aria-label="Limpar busca de produto"
+                  onClick={() => { setBuscaProduto(''); setBuscaAberta(false); setSugestaoAtiva(0); }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            {mostrarSugestoes && (
+              <ul
+                id="sugestoes-produto-estoque"
+                role="listbox"
+                aria-label="Produtos encontrados"
+                className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-line bg-surface shadow-lg"
+              >
+                {sugestoesProduto.map((produto, index) => (
+                  <li key={produto.produtoId}>
+                    <button
+                      id={`sugestao-produto-estoque-${index}`}
+                      type="button"
+                      role="option"
+                      aria-selected={index === sugestaoAtiva}
+                      className={`w-full px-4 py-3 text-left text-sm ${index === sugestaoAtiva ? 'bg-brand-50 text-brand-700' : 'hover:bg-surface-lighter'}`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onMouseEnter={() => setSugestaoAtiva(index)}
+                      onClick={() => selecionarSugestao(produto)}
+                    >
+                      <span className="block truncate font-semibold">{produto.nome}</span>
+                      {produto.categoria && <span className="block text-xs text-ink-faint">{normalizeCategoriaProduto(produto.categoria)}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {termoBusca && (
+              <p className="mt-1 text-xs text-ink-faint" aria-live="polite">
+                {produtosFiltrados.length === 1 ? '1 produto encontrado' : `${produtosFiltrados.length} produtos encontrados`}
+              </p>
+            )}
+          </div>
+          {produtosFiltrados.length === 0 ? (
+            <div className="sm:col-span-2">
+              <EmptyState title="Nenhum produto encontrado" description="Tente outro nome ou limpe a busca para ver todo o estoque." />
+            </div>
+          ) : produtosFiltrados.map((item) => (
+            <div key={item.produtoId} className="card-touch h-full space-y-3 py-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate font-semibold">{item.nome}</p>
