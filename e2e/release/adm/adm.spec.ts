@@ -46,6 +46,16 @@ test('ADM-S04 backup listar e executar @api', async ({ ops }) => {
 
 test('ADM-S05 reextrair branding @api', async ({ ops }) => {
   const tenant = await ops.tenant();
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const upload = await tenant.owner.ctx.fetch('/api/cervejaria/branding/logo', {
+    method: 'POST',
+    multipart: { logo: { name: 'logo.png', mimeType: 'image/png', buffer: png } },
+    failOnStatusCode: false,
+  });
+  expect(upload.status(), await upload.text()).toBe(200);
   const admin = await ops.admin();
   await admin.expect(admin.post(`/api/admin/cervejarias/${tenant.id}/branding/reextract`), 200, 'reextract');
 });
@@ -65,10 +75,10 @@ test('ADM-X02 slug duplicado não quebra o provisionamento @api', async ({ ops }
   const admin = await ops.admin();
   const nome = `Empresa Duplicada ${uniqueSuffix()}`;
   const a = await admin.expect(admin.post('/api/admin/cervejarias/provision', {
-    nome, dono: { nome: 'A', email: `a-${uniqueSuffix()}@example.invalid`, senha: strongPassword() },
+    nome, dono: { nome: 'Dono A', email: `a-${uniqueSuffix()}@example.invalid`, senha: strongPassword() },
   }), 201, 'primeira');
   const b = await admin.expect(admin.post('/api/admin/cervejarias/provision', {
-    nome, dono: { nome: 'B', email: `b-${uniqueSuffix()}@example.invalid`, senha: strongPassword() },
+    nome, dono: { nome: 'Dono B', email: `b-${uniqueSuffix()}@example.invalid`, senha: strongPassword() },
   }), 201, 'segunda');
   expect(a.cervejaria.slug).not.toBe(b.cervejaria.slug);
   test.info().annotations.push({ type: 'observed', description: 'Slug duplicado é resolvido com sufixo temporal; não há 409 de slug.' });

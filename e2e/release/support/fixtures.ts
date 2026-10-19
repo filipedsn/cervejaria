@@ -140,7 +140,10 @@ export const test = base.extend<{ evidence: Evidence }>({
     await writeFile(dbPath, JSON.stringify(priorDb, null, 2));
     const isException = /\b[A-Z]{3,4}-X\d{2}\b/.test(testInfo.title);
     if (isException && !verified) expect(unchangedSinceBaseline, `${id} must leave the database unchanged`).toBe(true);
-    expect(consoleErrors, `${id} must have no browser console errors`).toEqual([]);
+    const expectedOfflineSocketError = (message: string) =>
+      id === 'PWA-S02' && /^WebSocket connection to 'ws:\/\/(?:127\.0\.0\.1|localhost):\d+\/socket\.io\/\?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_INTERNET_DISCONNECTED$/.test(message);
+    const unexpectedConsoleErrors = consoleErrors.filter((message) => !expectedOfflineSocketError(message));
+    expect(unexpectedConsoleErrors, `${id} must have no unexpected browser console errors`).toEqual([]);
     expect(serverErrors, `${id} must have no HTTP 5xx responses`).toEqual([]);
     expect([...new Set(forbiddenPageRequests)], `${id} screens must not request endpoints the persona cannot access`).toEqual([]);
   }, { auto: true }],

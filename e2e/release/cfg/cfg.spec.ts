@@ -8,12 +8,19 @@ test('CFG-S01 grupos do PDV persistem e afetam a operação @api', async ({ ops 
     whatsappPedidoProntoEnabled: true,
     whatsappPedidoProntoNaCozinha: false,
   });
-  expect(config.configuration).toMatchObject({
+  expect(config).toMatchObject({
     kitchenItemsChargeAtLaunch: true,
     allowCloseComandaWithPendingKitchenOrders: true,
     whatsappPedidoProntoEnabled: true,
     configurationSource: 'CANONICAL_PDV',
   });
+  const read = await tenant.owner.expect(tenant.owner.get('/api/cervejaria/configuracao-operacional'), 200, 'ler config');
+  expect(read.configuration).toMatchObject({
+    kitchenItemsChargeAtLaunch: true,
+    allowCloseComandaWithPendingKitchenOrders: true,
+    whatsappPedidoProntoEnabled: true,
+  });
+  expect(read.configurationSource).toBe('CANONICAL_PDV');
 });
 
 test('CFG-S02 aparência aceita cor válida @api', async ({ ops }) => {
@@ -117,10 +124,12 @@ test('CFG-X06 desligar cozinha com pedidos ativos dá 409 @api', async ({ ops, e
 test('CFG-X07 abas trailers e operacao legadas não ficam no canônico', async ({ ops, page, evidence }) => {
   const tenant = await ops.tenant();
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
+  await evidence.checkpoint();
   await page.goto('/operacao/configuracoes/trailers', { waitUntil: 'networkidle' });
   await expect(page).toHaveURL(/\/operacao\/configuracoes\/pdv/);
   await page.goto('/operacao/configuracoes/operacao', { waitUntil: 'networkidle' });
   await expect(page).toHaveURL(/\/operacao\/configuracoes\/pdv/);
   await expect(page.getByTestId('canonical-pdv-settings')).toBeVisible();
+  await evidence.assertNoDbChange();
   await evidence.screenshot('cfg-pdv');
 });

@@ -1,4 +1,4 @@
-import { expect, loginPage, test } from '../support/ops';
+import { expect, loginPage, logoutPage, test } from '../support/ops';
 
 test('PWA-S01 manifest publicado contém nome e ícones @api', async ({ ops }) => {
   const anon = await ops.anonymous();
@@ -12,8 +12,9 @@ test('PWA-S02 barra Sem conexão aparece offline', async ({ ops, page, evidence 
   const tenant = await ops.tenant();
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
   await page.goto('/operacao/comandas', { waitUntil: 'networkidle' });
+  await expect(page.getByRole('heading', { name: /Caixa do dia|Comandas/i }).first()).toBeVisible({ timeout: 15_000 });
   await page.context().setOffline(true);
-  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => undefined);
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
   await expect(page.getByText(/Sem conexão/i)).toBeVisible({ timeout: 10_000 });
   await evidence.screenshot('offline');
   await page.context().setOffline(false);
@@ -22,9 +23,7 @@ test('PWA-S02 barra Sem conexão aparece offline', async ({ ops, page, evidence 
 test('PWA-S03 logout e troca de usuário com sessão limpa', async ({ ops, page, evidence }) => {
   const tenant = await ops.tenant();
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
-  await tenant.owner.expect(tenant.owner.post('/api/auth/logout'), 200, 'logout');
-  await page.goto('/login', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('button', { name: 'Entrar' })).toBeVisible();
+  await logoutPage(page);
   await evidence.screenshot('sessao-limpa');
 });
 

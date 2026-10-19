@@ -37,8 +37,8 @@ test('CAT-S04 preço no escopo TURNO com catalog.shift.manage @api', async ({ op
   const tenant = await ops.tenant();
   await tenant.openCash();
   const turno = await tenant.staff('Turno', [...PERSONA_PERMISSIONS.caixa, 'catalog.shift.manage']);
-  await turno.expect(turno.patch('/api/operacao/caixa/cardapio/preco', {
-    pontoVendaId: tenant.pointId, produtoId: tenant.catalog!.lata.id, precoUnit: 9, escopo: 'TURNO',
+  await turno.expect(turno.patch(`/api/operacao/caixa/cardapio/preco?pontoVendaId=${tenant.pointId}`, {
+    produtoId: tenant.catalog!.lata.id, precoUnit: 9, escopo: 'TURNO',
   }), 200, 'preço turno');
   const comanda = await tenant.openComanda(tenant.owner, [tenant.item('lata')]);
   expect(comanda.total).toBe(9);
@@ -47,8 +47,8 @@ test('CAT-S04 preço no escopo TURNO com catalog.shift.manage @api', async ({ op
 test('CAT-S05 preço TEMPLATE com catalog.manage @api', async ({ ops }) => {
   const tenant = await ops.tenant();
   await tenant.openCash();
-  await tenant.owner.expect(tenant.owner.patch('/api/operacao/caixa/cardapio/preco', {
-    pontoVendaId: tenant.pointId, produtoId: tenant.catalog!.lata.id, precoUnit: 7, escopo: 'TEMPLATE',
+  await tenant.owner.expect(tenant.owner.patch(`/api/operacao/caixa/cardapio/preco?pontoVendaId=${tenant.pointId}`, {
+    produtoId: tenant.catalog!.lata.id, precoUnit: 7, escopo: 'TEMPLATE',
   }), 200, 'preço template');
 });
 
@@ -76,13 +76,13 @@ test('CAT-X02 TURNO sem catalog.shift.manage dá 403 @api', async ({ ops, eviden
   await tenant.openCash();
   const salao = await tenant.staff('Salao', PERSONA_PERMISSIONS.salao);
   await evidence.checkpoint();
-  await salao.expect(salao.patch('/api/operacao/caixa/cardapio/preco', {
-    pontoVendaId: tenant.pointId, produtoId: tenant.catalog!.lata.id, precoUnit: 9, escopo: 'TURNO',
+  await salao.expect(salao.patch(`/api/operacao/caixa/cardapio/preco?pontoVendaId=${tenant.pointId}`, {
+    produtoId: tenant.catalog!.lata.id, precoUnit: 9, escopo: 'TURNO',
   }), 403, 'sem shift.manage');
   await evidence.assertNoDbChange();
   const turno = await tenant.staff('Turno', [...PERSONA_PERMISSIONS.caixa, 'catalog.shift.manage']);
-  await turno.expect(turno.patch('/api/operacao/caixa/cardapio/preco', {
-    pontoVendaId: tenant.pointId, produtoId: tenant.catalog!.lata.id, precoUnit: 9, escopo: 'TURNO',
+  await turno.expect(turno.patch(`/api/operacao/caixa/cardapio/preco?pontoVendaId=${tenant.pointId}`, {
+    produtoId: tenant.catalog!.lata.id, precoUnit: 9, escopo: 'TURNO',
   }), 200, 'controle positivo');
 });
 

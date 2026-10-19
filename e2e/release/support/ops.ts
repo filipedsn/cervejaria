@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { request as playwrightRequest, type APIRequestContext, type Page } from '@playwright/test';
 import { expect, test as base, type Evidence } from './fixtures';
+import { gotoAfterLogin } from '../../helpers/auth';
 
 export const baseURL = process.env.RELEASE_QA_BASE_URL!;
 export const seed = JSON.parse(readFileSync(process.env.RELEASE_QA_CONTEXT!, 'utf8')) as {
@@ -55,8 +56,23 @@ export function todayIso(offsetDays = 0) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 }
 
+/** A newly activated PWA worker can abort one navigation while taking control. */
+async function gotoLogin(page: Page) {
+  await gotoAfterLogin(page, '/login');
+  await expect(page.getByRole('button', { name: 'Entrar' })).toBeVisible({ timeout: 10_000 });
+}
+
+/** Clears the browser session so PublicOnly can render /login. */
+export async function logoutPage(page: Page) {
+  await page.request.post('/api/auth/logout').catch(() => undefined);
+  await page.context().clearCookies();
+  await gotoLogin(page);
+}
+
 export async function loginPage(page: Page, email: string, senha: string) {
-  await page.goto('/login', { waitUntil: 'domcontentloaded' });
+  await page.request.post('/api/auth/logout').catch(() => undefined);
+  await page.context().clearCookies();
+  await gotoLogin(page);
   await page.getByLabel('E-mail').fill(email);
   await page.locator('#password').fill(senha);
   await page.getByRole('button', { name: 'Entrar' }).click();

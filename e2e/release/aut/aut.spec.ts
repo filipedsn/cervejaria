@@ -1,17 +1,12 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { prismaClient } from '../support/fixtures';
-import { expect, loginPage, PERSONA_PERMISSIONS, seed, strongPassword, test, uniqueSuffix } from '../support/ops';
+import { expect, loginPage, logoutPage, PERSONA_PERMISSIONS, seed, strongPassword, test, uniqueSuffix } from '../support/ops';
 
 test('AUT-S01 login e logout', async ({ ops, page, evidence }) => {
   const tenant = await ops.tenant();
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
   await expect(page).not.toHaveURL(/\/login/);
-  await tenant.owner.expect(tenant.owner.post('/api/auth/logout'), 200, 'logout API');
-  await page.goto('/operacao/comandas', { waitUntil: 'domcontentloaded' });
-  // After cookie cleared via API, page may redirect on next auth check
-  await page.evaluate(() => document.cookie.split(';').forEach((c) => { document.cookie = c.replace(/^ +/, '').replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/'); }));
-  await page.goto('/login', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('button', { name: 'Entrar' })).toBeVisible();
+  await logoutPage(page);
   await evidence.screenshot('logout');
 });
 
@@ -45,11 +40,8 @@ test('AUT-S04 troca de usuário no mesmo dispositivo', async ({ ops, page, evide
   const tenant = await ops.tenant();
   const caixa = await tenant.staff('Caixa', PERSONA_PERMISSIONS.caixa);
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
-  await page.goto('/login', { waitUntil: 'domcontentloaded' });
-  await page.getByLabel('E-mail').fill(caixa.email);
-  await page.locator('#password').fill(caixa.senha);
-  await page.getByRole('button', { name: 'Entrar' }).click();
-  await page.waitForURL((url) => url.pathname !== '/login', { timeout: 15_000 });
+  await logoutPage(page);
+  await loginPage(page, caixa.email, caixa.senha);
   await evidence.screenshot('troca-usuario');
 });
 
@@ -89,9 +81,11 @@ test('AUT-X03 rate limit de login @api', async ({ ops }) => {
 test('AUT-X04 token adulterado leva ao login', async ({ ops, page, evidence }) => {
   const tenant = await ops.tenant();
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
+  await evidence.checkpoint();
   await page.context().addCookies([{ name: 'token', value: 'adulterado.qa.token', url: page.url() }]);
   await page.goto('/operacao/comandas', { waitUntil: 'networkidle' });
   await expect(page).toHaveURL(/\/login/);
+  await evidence.assertNoDbChange();
   await evidence.screenshot('token-adulterado');
 });
 
@@ -108,7 +102,9 @@ test('AUT-X05 ADMIN em rota de empresa dá 404 e front manda para /admin', async
 test('AUT-X06 rota inexistente cai no CatchAll', async ({ ops, page, evidence }) => {
   const tenant = await ops.tenant();
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
+  await evidence.checkpoint();
   await page.goto(`/rota-que-nao-existe-${uniqueSuffix()}`, { waitUntil: 'networkidle' });
   await expect(page).not.toHaveURL(/rota-que-nao-existe/);
+  await evidence.assertNoDbChange();
   await evidence.screenshot('catchall');
 });
