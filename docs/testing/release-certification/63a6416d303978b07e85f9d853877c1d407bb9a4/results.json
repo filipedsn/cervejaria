@@ -1,0 +1,1604 @@
+{
+  "releaseSha": "63a6416d303978b07e85f9d853877c1d407bb9a4",
+  "generatedAt": "2026-10-18T20:34:16.182Z",
+  "totals": {
+    "P0": {
+      "passed": 17,
+      "total": 22
+    },
+    "P1": {
+      "passed": 8,
+      "total": 9
+    },
+    "P2": {
+      "passed": 0,
+      "total": 0
+    }
+  },
+  "verdict": "NO-GO",
+  "fullSuite": {
+    "passedExecutions": 100,
+    "totalExecutions": 124,
+    "viewports": [
+      "desktop",
+      "mobile",
+      "tablet",
+      "tv"
+    ]
+  },
+  "p0Stability": {
+    "rounds": 3,
+    "distinctCases": 22,
+    "passedEachRound": 17,
+    "failedEachRound": 5,
+    "executionsPerRound": {
+      "passed": 68,
+      "total": 88
+    },
+    "sameFailures": true,
+    "failedIds": [
+      "ADM-S02",
+      "CXA-X02",
+      "DSH-X02",
+      "SEC-X02",
+      "SMK-S04"
+    ]
+  },
+  "cases": [
+    {
+      "id": "ADM-S02",
+      "priority": "P0",
+      "status": "failed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "failed",
+          "durationMs": 785,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m"
+        },
+        {
+          "project": "mobile",
+          "status": "failed",
+          "durationMs": 933,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m"
+        },
+        {
+          "project": "tablet",
+          "status": "failed",
+          "durationMs": 762,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m"
+        },
+        {
+          "project": "tv",
+          "status": "failed",
+          "durationMs": 735,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m"
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/ADM-S02.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/ADM-S02.json"
+      }
+    },
+    {
+      "id": "CXA-X02",
+      "priority": "P0",
+      "status": "failed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "failed",
+          "durationMs": 558,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m"
+        },
+        {
+          "project": "mobile",
+          "status": "failed",
+          "durationMs": 800,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m"
+        },
+        {
+          "project": "tablet",
+          "status": "failed",
+          "durationMs": 585,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m"
+        },
+        {
+          "project": "tv",
+          "status": "failed",
+          "durationMs": 593,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m"
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/CXA-X02.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/CXA-X02.json"
+      }
+    },
+    {
+      "id": "CXA-X06",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 577
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 797
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 549
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 602
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/CXA-X06.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/CXA-X06.json"
+      }
+    },
+    {
+      "id": "DSH-X01",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 424
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 764
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 430
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 537
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/DSH-X01.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/DSH-X01.json"
+      }
+    },
+    {
+      "id": "DSH-X02",
+      "priority": "P0",
+      "status": "failed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "failed",
+          "durationMs": 516,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m"
+        },
+        {
+          "project": "mobile",
+          "status": "failed",
+          "durationMs": 679,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m"
+        },
+        {
+          "project": "tablet",
+          "status": "failed",
+          "durationMs": 456,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m"
+        },
+        {
+          "project": "tv",
+          "status": "failed",
+          "durationMs": 453,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m"
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/DSH-X02.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/DSH-X02.json"
+      }
+    },
+    {
+      "id": "DSH-S04",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 590,
+          "productDecision": "Em tenant canônico, GET /api/cervejaria/dashboard respondeu HTTP 200; produto deve decidir se o dashboard legado permanece acessível."
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 820,
+          "productDecision": "Em tenant canônico, GET /api/cervejaria/dashboard respondeu HTTP 200; produto deve decidir se o dashboard legado permanece acessível."
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 595,
+          "productDecision": "Em tenant canônico, GET /api/cervejaria/dashboard respondeu HTTP 200; produto deve decidir se o dashboard legado permanece acessível."
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 618,
+          "productDecision": "Em tenant canônico, GET /api/cervejaria/dashboard respondeu HTTP 200; produto deve decidir se o dashboard legado permanece acessível."
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/DSH-S04.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/DSH-S04.json"
+      }
+    },
+    {
+      "id": "CAT-X01",
+      "priority": "P1",
+      "status": "failed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "failed",
+          "durationMs": 460,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m"
+        },
+        {
+          "project": "mobile",
+          "status": "failed",
+          "durationMs": 697,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m"
+        },
+        {
+          "project": "tablet",
+          "status": "failed",
+          "durationMs": 435,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m"
+        },
+        {
+          "project": "tv",
+          "status": "failed",
+          "durationMs": 469,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m"
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/CAT-X01.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/CAT-X01.json"
+      }
+    },
+    {
+      "id": "CFG-X01",
+      "priority": "P1",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 2136
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 824
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 569
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 561
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/CFG-X01.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/CFG-X01.json"
+      }
+    },
+    {
+      "id": "EST-X05",
+      "priority": "P1",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 416
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 638
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 409
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 437
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/EST-X05.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/EST-X05.json"
+      }
+    },
+    {
+      "id": "AGD-X04",
+      "priority": "P1",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 405
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 629
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 387
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 450
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/AGD-X04.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/AGD-X04.json"
+      }
+    },
+    {
+      "id": "CLI-X01",
+      "priority": "P1",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 425
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 667
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 403
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 430
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/CLI-X01.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/CLI-X01.json"
+      }
+    },
+    {
+      "id": "ONB-S01",
+      "priority": "P1",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 530
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 658
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 442
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 460
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/ONB-S01.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/ONB-S01.json"
+      }
+    },
+    {
+      "id": "AUT-X01",
+      "priority": "P1",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 401
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 642
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 405
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 421
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/AUT-X01.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/AUT-X01.json"
+      }
+    },
+    {
+      "id": "POR-X01",
+      "priority": "P1",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 2058
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 624
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 402
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 404
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/POR-X01.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/POR-X01.json"
+      }
+    },
+    {
+      "id": "PWA-S01",
+      "priority": "P1",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 410
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 662
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 453
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 437
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/PWA-S01.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/PWA-S01.json"
+      }
+    },
+    {
+      "id": "RBAC-S01",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 1640
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 1876
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 1649
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 1545
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/RBAC-S01.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/RBAC-S01.json"
+      }
+    },
+    {
+      "id": "RBAC-S02",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 405
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 664
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 407
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 413
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/RBAC-S02.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/RBAC-S02.json"
+      }
+    },
+    {
+      "id": "RBAC-S03",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 471
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 722
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 502
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 510
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/RBAC-S03.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/RBAC-S03.json"
+      }
+    },
+    {
+      "id": "RBAC-X01",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 2357
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 643
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 418
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 490
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/RBAC-X01.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/RBAC-X01.json"
+      }
+    },
+    {
+      "id": "RBAC-X03",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 401
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 641
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 383
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 440
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/RBAC-X03.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/RBAC-X03.json"
+      }
+    },
+    {
+      "id": "RBAC-X04",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 390
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 628
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 389
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 415
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/RBAC-X04.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/RBAC-X04.json"
+      }
+    },
+    {
+      "id": "RBAC-X05",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 476
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 651
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 381
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 415
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/RBAC-X05.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/RBAC-X05.json"
+      }
+    },
+    {
+      "id": "RBAC-X06",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 474
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 647
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 409
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 490
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/RBAC-X06.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/RBAC-X06.json"
+      }
+    },
+    {
+      "id": "RBAC-X07",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 507,
+          "productDecision": "O endpoint aceita e persiste event.dashboard.read/event.menu.manage no usuário canônico; a decisão sobre o efeito dessas chaves nas telas do modelo único permanece pendente."
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 690,
+          "productDecision": "O endpoint aceita e persiste event.dashboard.read/event.menu.manage no usuário canônico; a decisão sobre o efeito dessas chaves nas telas do modelo único permanece pendente."
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 448,
+          "productDecision": "O endpoint aceita e persiste event.dashboard.read/event.menu.manage no usuário canônico; a decisão sobre o efeito dessas chaves nas telas do modelo único permanece pendente."
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 451,
+          "productDecision": "O endpoint aceita e persiste event.dashboard.read/event.menu.manage no usuário canônico; a decisão sobre o efeito dessas chaves nas telas do modelo único permanece pendente."
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/RBAC-X07.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/RBAC-X07.json"
+      }
+    },
+    {
+      "id": "SEC-X02",
+      "priority": "P0",
+      "status": "failed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "failed",
+          "durationMs": 2491,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m"
+        },
+        {
+          "project": "mobile",
+          "status": "failed",
+          "durationMs": 648,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m"
+        },
+        {
+          "project": "tablet",
+          "status": "failed",
+          "durationMs": 418,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m"
+        },
+        {
+          "project": "tv",
+          "status": "failed",
+          "durationMs": 426,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m"
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/SEC-X02.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/SEC-X02.json"
+      }
+    },
+    {
+      "id": "SEC-X05",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 501
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 709
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 488
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 543
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/SEC-X05.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/SEC-X05.json"
+      }
+    },
+    {
+      "id": "SEC-X06",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 408
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 641
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 395
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 424
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/SEC-X06.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/SEC-X06.json"
+      }
+    },
+    {
+      "id": "SMK-S01",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 403
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 742
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 404
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 414
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/SMK-S01.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/SMK-S01.json"
+      }
+    },
+    {
+      "id": "SMK-S02",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 396
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 625
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 397
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 409
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/SMK-S02.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/SMK-S02.json"
+      }
+    },
+    {
+      "id": "SMK-S03",
+      "priority": "P0",
+      "status": "passed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "passed",
+          "durationMs": 390
+        },
+        {
+          "project": "mobile",
+          "status": "passed",
+          "durationMs": 606
+        },
+        {
+          "project": "tablet",
+          "status": "passed",
+          "durationMs": 373
+        },
+        {
+          "project": "tv",
+          "status": "passed",
+          "durationMs": 417
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/SMK-S03.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/SMK-S03.json"
+      }
+    },
+    {
+      "id": "SMK-S04",
+      "priority": "P0",
+      "status": "failed",
+      "executions": [
+        {
+          "project": "desktop",
+          "status": "failed",
+          "durationMs": 7214,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed"
+        },
+        {
+          "project": "mobile",
+          "status": "failed",
+          "durationMs": 7777,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed"
+        },
+        {
+          "project": "tablet",
+          "status": "failed",
+          "durationMs": 7357,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed"
+        },
+        {
+          "project": "tv",
+          "status": "failed",
+          "durationMs": 7536,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed"
+        }
+      ],
+      "evidence": {
+        "api": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/SMK-S04.json",
+        "db": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/db/SMK-S04.json"
+      }
+    }
+  ],
+  "productDecisions": [
+    {
+      "id": "DSH-S04",
+      "description": "Em tenant canônico, GET /api/cervejaria/dashboard respondeu HTTP 200; produto deve decidir se o dashboard legado permanece acessível."
+    },
+    {
+      "id": "RBAC-X07",
+      "description": "O endpoint aceita e persiste event.dashboard.read/event.menu.manage no usuário canônico; a decisão sobre o efeito dessas chaves nas telas do modelo único permanece pendente."
+    }
+  ],
+  "defects": [
+    {
+      "type": "Suggested Plane Item",
+      "title": "[ADM-S02] Empresa provisionada pelo Admin inicia em LEGACY",
+      "problem": "GET /api/cervejaria/configuracao-operacional retornou configurationSource=LEGACY após provisionamento.",
+      "impact": "Bloqueia a criação de clientes no modelo canônico e a certificação da release.",
+      "evidence": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/ADM-S02.json",
+      "suggestedPriority": "high",
+      "labels": [
+        "Quality",
+        "E2E"
+      ]
+    },
+    {
+      "type": "Suggested Plane Item",
+      "title": "[CXA-X02] Mensagem do troco negativo fora do contrato",
+      "problem": "A API rejeitou o valor com HTTP 400, mas apresentou mensagem em inglês em vez de explicar o erro em português.",
+      "impact": "Reduz clareza do erro para a equipe operacional.",
+      "evidence": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/CXA-X02.json",
+      "suggestedPriority": "medium",
+      "labels": [
+        "Quality",
+        "E2E"
+      ]
+    },
+    {
+      "type": "Suggested Plane Item",
+      "title": "[DSH-X02] Dashboard aceita mês futuro",
+      "problem": "A consulta do dashboard operacional não recusou o mês futuro com HTTP 400.",
+      "impact": "Permite filtros temporais inválidos e indicadores sem período real.",
+      "evidence": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/DSH-X02.json",
+      "suggestedPriority": "medium",
+      "labels": [
+        "Quality",
+        "E2E"
+      ]
+    },
+    {
+      "type": "Suggested Plane Item",
+      "title": "[CAT-X01] Leitura do catálogo sem permissão",
+      "problem": "Atendente sem catalog.manage recebeu HTTP 200 em GET /api/operacao/produtos; o hash do banco permaneceu igual.",
+      "impact": "Exibe dados do catálogo a um usuário sem permissão atribuída.",
+      "evidence": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/CAT-X01.json",
+      "suggestedPriority": "high",
+      "labels": [
+        "Quality",
+        "E2E"
+      ]
+    },
+    {
+      "type": "Suggested Plane Item",
+      "title": "[SEC-X02] Rota de ciclo de vida de evento sem autorização",
+      "problem": "Atendente sem permissão fechou evento por PATCH /api/eventos/:id/fechar com HTTP 200; o estado ABERTO mudou para FECHADO.",
+      "impact": "Permite mutação operacional sem autorização e quebra o controle por capacidade.",
+      "evidence": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/SEC-X02.json",
+      "suggestedPriority": "high",
+      "labels": [
+        "Quality",
+        "E2E"
+      ]
+    },
+    {
+      "type": "Suggested Plane Item",
+      "title": "[SMK-S04] Persona Cozinha redirecionada para Caixa",
+      "problem": "Após login, a persona Cozinha não iniciou em /operacao/cozinha como esperado.",
+      "impact": "Bloqueia a entrada direta no fluxo de cozinha.",
+      "evidence": "artifacts/release-e2e/63a6416d303978b07e85f9d853877c1d407bb9a4/evidence/api/SMK-S04.json",
+      "suggestedPriority": "high",
+      "labels": [
+        "Quality",
+        "E2E"
+      ]
+    }
+  ],
+  "notAutomated": [
+    {
+      "id": "CMD-S01",
+      "reason": "Requer massa de produto, opcionais, cardápio de turno, caixa e pedidos; não implementado nesta execução."
+    },
+    {
+      "id": "CMD-S02",
+      "reason": "Requer massa de produto, opcionais, cardápio de turno, caixa e pedidos; não implementado nesta execução."
+    },
+    {
+      "id": "CMD-S03",
+      "reason": "Requer massa de produto, opcionais, cardápio de turno, caixa e pedidos; não implementado nesta execução."
+    },
+    {
+      "id": "CMD-S04",
+      "reason": "Requer massa de produto, opcionais, cardápio de turno, caixa e pedidos; não implementado nesta execução."
+    },
+    {
+      "id": "CMD-S05",
+      "reason": "Requer massa de produto, opcionais, cardápio de turno, caixa e pedidos; não implementado nesta execução."
+    },
+    {
+      "id": "CMD-S06",
+      "reason": "Requer massa de produto, opcionais, cardápio de turno, caixa e pedidos; não implementado nesta execução."
+    },
+    {
+      "id": "CMD-S07",
+      "reason": "Requer massa de produto, opcionais, cardápio de turno, caixa e pedidos; não implementado nesta execução."
+    },
+    {
+      "id": "CMD-S08",
+      "reason": "Requer massa de produto, opcionais, cardápio de turno, caixa e pedidos; não implementado nesta execução."
+    },
+    {
+      "id": "CMD-S09",
+      "reason": "Requer massa de produto, opcionais, cardápio de turno, caixa e pedidos; não implementado nesta execução."
+    },
+    {
+      "id": "CMD-S10",
+      "reason": "Requer massa de produto, opcionais, cardápio de turno, caixa e pedidos; não implementado nesta execução."
+    },
+    {
+      "id": "CMD-S11",
+      "reason": "Requer massa de produto, opcionais, cardápio de turno, caixa e pedidos; não implementado nesta execução."
+    },
+    {
+      "id": "CMD-S12",
+      "reason": "Requer massa de produto, opcionais, cardápio de turno, caixa e pedidos; não implementado nesta execução."
+    },
+    {
+      "id": "CMD-X01",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "CMD-X02",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "CMD-X03",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "CMD-X04",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "CMD-X05",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "CMD-X06",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "CMD-X07",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "CMD-X08",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "CMD-X09",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "CMD-X10",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "CMD-X11",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "CMD-X12",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "CMD-X13",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "CMD-X14",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "CMD-X15",
+      "reason": "Exceções de comanda, pagamento, cancelamento, concorrência e idempotência sem fixtures transacionais estáveis."
+    },
+    {
+      "id": "KDS-S01",
+      "reason": "Fila requer pedidos válidos, itens e transições de estado seedados."
+    },
+    {
+      "id": "KDS-S02",
+      "reason": "Fila requer pedidos válidos, itens e transições de estado seedados."
+    },
+    {
+      "id": "KDS-S03",
+      "reason": "Fila requer pedidos válidos, itens e transições de estado seedados."
+    },
+    {
+      "id": "KDS-S04",
+      "reason": "Fila requer pedidos válidos, itens e transições de estado seedados."
+    },
+    {
+      "id": "KDS-S05",
+      "reason": "Fila requer pedidos válidos, itens e transições de estado seedados."
+    },
+    {
+      "id": "KDS-S06",
+      "reason": "Fila requer pedidos válidos, itens e transições de estado seedados."
+    },
+    {
+      "id": "KDS-X01",
+      "reason": "Transições concorrentes, cancelamento e módulo desligado não foram automatizados."
+    },
+    {
+      "id": "KDS-X02",
+      "reason": "Transições concorrentes, cancelamento e módulo desligado não foram automatizados."
+    },
+    {
+      "id": "KDS-X03",
+      "reason": "Transições concorrentes, cancelamento e módulo desligado não foram automatizados."
+    },
+    {
+      "id": "KDS-X04",
+      "reason": "Transições concorrentes, cancelamento e módulo desligado não foram automatizados."
+    },
+    {
+      "id": "CXA-S01",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-S02",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-S03",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-S04",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-S05",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-S06",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-S07",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-S08",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-S09",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-X01",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-X03",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-X04",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-X05",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-X07",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-X08",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-X09",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "CXA-X10",
+      "reason": "Requer cardápio, taps mapeados e/ou sessão de caixa com conciliação."
+    },
+    {
+      "id": "DSH-S01",
+      "reason": "Conciliação de indicadores, filtros, resumo e exportação não implementada para uma massa conhecida."
+    },
+    {
+      "id": "DSH-S02",
+      "reason": "Conciliação de indicadores, filtros, resumo e exportação não implementada para uma massa conhecida."
+    },
+    {
+      "id": "DSH-S03",
+      "reason": "Conciliação de indicadores, filtros, resumo e exportação não implementada para uma massa conhecida."
+    },
+    {
+      "id": "DSH-S05",
+      "reason": "Conciliação de indicadores, filtros, resumo e exportação não implementada para uma massa conhecida."
+    },
+    {
+      "id": "REL-X03",
+      "reason": "Conciliação de indicadores, filtros, resumo e exportação não implementada para uma massa conhecida."
+    },
+    {
+      "id": "ONB-X01",
+      "reason": "O seed canônico não renderizou CERVEJARIA_FIRST_SALE; o mapeamento do destino quebrado precisa de prova E2E com onboarding cervejaria."
+    },
+    {
+      "id": "CFG-S01",
+      "reason": "Persistência de configuração, upload ou pedido ativo não foram cobertos."
+    },
+    {
+      "id": "CFG-S02",
+      "reason": "Persistência de configuração, upload ou pedido ativo não foram cobertos."
+    },
+    {
+      "id": "CFG-S03",
+      "reason": "Persistência de configuração, upload ou pedido ativo não foram cobertos."
+    },
+    {
+      "id": "CFG-S04",
+      "reason": "Persistência de configuração, upload ou pedido ativo não foram cobertos."
+    },
+    {
+      "id": "CFG-S05",
+      "reason": "Persistência de configuração, upload ou pedido ativo não foram cobertos."
+    },
+    {
+      "id": "CFG-X02",
+      "reason": "Persistência de configuração, upload ou pedido ativo não foram cobertos."
+    },
+    {
+      "id": "CFG-X03",
+      "reason": "Persistência de configuração, upload ou pedido ativo não foram cobertos."
+    },
+    {
+      "id": "CFG-X04",
+      "reason": "Persistência de configuração, upload ou pedido ativo não foram cobertos."
+    },
+    {
+      "id": "CFG-X05",
+      "reason": "Persistência de configuração, upload ou pedido ativo não foram cobertos."
+    },
+    {
+      "id": "CFG-X06",
+      "reason": "Persistência de configuração, upload ou pedido ativo não foram cobertos."
+    },
+    {
+      "id": "CFG-X07",
+      "reason": "Persistência de configuração, upload ou pedido ativo não foram cobertos."
+    },
+    {
+      "id": "CAT-S01",
+      "reason": "CRUD, cardápio e escopo de preço não foram automatizados nesta rodada."
+    },
+    {
+      "id": "CAT-S02",
+      "reason": "CRUD, cardápio e escopo de preço não foram automatizados nesta rodada."
+    },
+    {
+      "id": "CAT-S03",
+      "reason": "CRUD, cardápio e escopo de preço não foram automatizados nesta rodada."
+    },
+    {
+      "id": "CAT-S04",
+      "reason": "CRUD, cardápio e escopo de preço não foram automatizados nesta rodada."
+    },
+    {
+      "id": "CAT-S05",
+      "reason": "CRUD, cardápio e escopo de preço não foram automatizados nesta rodada."
+    },
+    {
+      "id": "CAT-X02",
+      "reason": "CRUD, cardápio e escopo de preço não foram automatizados nesta rodada."
+    },
+    {
+      "id": "CAT-X03",
+      "reason": "CRUD, cardápio e escopo de preço não foram automatizados nesta rodada."
+    },
+    {
+      "id": "EST-S01",
+      "reason": "Movimentos de estoque e baixa requerem produto, saldo e venda transacional seedados."
+    },
+    {
+      "id": "EST-S02",
+      "reason": "Movimentos de estoque e baixa requerem produto, saldo e venda transacional seedados."
+    },
+    {
+      "id": "EST-S03",
+      "reason": "Movimentos de estoque e baixa requerem produto, saldo e venda transacional seedados."
+    },
+    {
+      "id": "EST-S04",
+      "reason": "Movimentos de estoque e baixa requerem produto, saldo e venda transacional seedados."
+    },
+    {
+      "id": "EST-S05",
+      "reason": "Movimentos de estoque e baixa requerem produto, saldo e venda transacional seedados."
+    },
+    {
+      "id": "EST-X01",
+      "reason": "Movimentos de estoque e baixa requerem produto, saldo e venda transacional seedados."
+    },
+    {
+      "id": "EST-X02",
+      "reason": "Movimentos de estoque e baixa requerem produto, saldo e venda transacional seedados."
+    },
+    {
+      "id": "EST-X03",
+      "reason": "Movimentos de estoque e baixa requerem produto, saldo e venda transacional seedados."
+    },
+    {
+      "id": "EST-X04",
+      "reason": "Movimentos de estoque e baixa requerem produto, saldo e venda transacional seedados."
+    },
+    {
+      "id": "EST-X06",
+      "reason": "Movimentos de estoque e baixa requerem produto, saldo e venda transacional seedados."
+    },
+    {
+      "id": "POR-S01",
+      "reason": "Sessão de cliente, pedido, polling e reconciliação não foram exercitados."
+    },
+    {
+      "id": "POR-S02",
+      "reason": "Sessão de cliente, pedido, polling e reconciliação não foram exercitados."
+    },
+    {
+      "id": "POR-S03",
+      "reason": "Sessão de cliente, pedido, polling e reconciliação não foram exercitados."
+    },
+    {
+      "id": "POR-S04",
+      "reason": "Sessão de cliente, pedido, polling e reconciliação não foram exercitados."
+    },
+    {
+      "id": "POR-S05",
+      "reason": "Sessão de cliente, pedido, polling e reconciliação não foram exercitados."
+    },
+    {
+      "id": "POR-X02",
+      "reason": "Sessão de cliente, pedido, polling e reconciliação não foram exercitados."
+    },
+    {
+      "id": "POR-X03",
+      "reason": "Sessão de cliente, pedido, polling e reconciliação não foram exercitados."
+    },
+    {
+      "id": "POR-X04",
+      "reason": "Sessão de cliente, pedido, polling e reconciliação não foram exercitados."
+    },
+    {
+      "id": "POR-X05",
+      "reason": "Sessão de cliente, pedido, polling e reconciliação não foram exercitados."
+    },
+    {
+      "id": "AGD-S01",
+      "reason": "CRUD de agenda e geração/cancelamento de ocorrências não foram implementados."
+    },
+    {
+      "id": "AGD-S02",
+      "reason": "CRUD de agenda e geração/cancelamento de ocorrências não foram implementados."
+    },
+    {
+      "id": "AGD-S03",
+      "reason": "CRUD de agenda e geração/cancelamento de ocorrências não foram implementados."
+    },
+    {
+      "id": "AGD-X01",
+      "reason": "CRUD de agenda e geração/cancelamento de ocorrências não foram implementados."
+    },
+    {
+      "id": "AGD-X02",
+      "reason": "CRUD de agenda e geração/cancelamento de ocorrências não foram implementados."
+    },
+    {
+      "id": "AGD-X03",
+      "reason": "CRUD de agenda e geração/cancelamento de ocorrências não foram implementados."
+    },
+    {
+      "id": "CLI-S01",
+      "reason": "CRUD, histórico, união e duplicidade de clientes não cobertos."
+    },
+    {
+      "id": "CLI-S02",
+      "reason": "CRUD, histórico, união e duplicidade de clientes não cobertos."
+    },
+    {
+      "id": "CLI-X02",
+      "reason": "CRUD, histórico, união e duplicidade de clientes não cobertos."
+    },
+    {
+      "id": "PWA-S02",
+      "reason": "Offline, reconexão, troca de sessão, push e aviso de versão não cobertos."
+    },
+    {
+      "id": "PWA-S03",
+      "reason": "Offline, reconexão, troca de sessão, push e aviso de versão não cobertos."
+    },
+    {
+      "id": "PWA-S04",
+      "reason": "Offline, reconexão, troca de sessão, push e aviso de versão não cobertos."
+    },
+    {
+      "id": "PWA-S05",
+      "reason": "Offline, reconexão, troca de sessão, push e aviso de versão não cobertos."
+    },
+    {
+      "id": "AUT-S01",
+      "reason": "Somente credencial inválida foi exercitada; outros fluxos de autenticação e rate limit pendentes."
+    },
+    {
+      "id": "AUT-S02",
+      "reason": "Somente credencial inválida foi exercitada; outros fluxos de autenticação e rate limit pendentes."
+    },
+    {
+      "id": "AUT-S03",
+      "reason": "Somente credencial inválida foi exercitada; outros fluxos de autenticação e rate limit pendentes."
+    },
+    {
+      "id": "AUT-S04",
+      "reason": "Somente credencial inválida foi exercitada; outros fluxos de autenticação e rate limit pendentes."
+    },
+    {
+      "id": "AUT-X02",
+      "reason": "Somente credencial inválida foi exercitada; outros fluxos de autenticação e rate limit pendentes."
+    },
+    {
+      "id": "AUT-X03",
+      "reason": "Somente credencial inválida foi exercitada; outros fluxos de autenticação e rate limit pendentes."
+    },
+    {
+      "id": "AUT-X04",
+      "reason": "Somente credencial inválida foi exercitada; outros fluxos de autenticação e rate limit pendentes."
+    },
+    {
+      "id": "AUT-X05",
+      "reason": "Somente credencial inválida foi exercitada; outros fluxos de autenticação e rate limit pendentes."
+    },
+    {
+      "id": "AUT-X06",
+      "reason": "Somente credencial inválida foi exercitada; outros fluxos de autenticação e rate limit pendentes."
+    }
+  ]
+}

@@ -63,6 +63,8 @@
     "test:prod-write-guard": "node --test scripts/test-prod-write-guard.test.mjs",
     "ops:test": "npm run test:unit --prefix ops-panel",
     "qa:validate": "npm run test:unit --prefix backend && npm run qa:test --prefix backend && npm run test:e2e:current",
+    "qa:release-e2e": "npm run qa:release-e2e --prefix backend --",
+    "qa:release-report": "node scripts/qa/build-release-report.mjs",
     "certify:dev": "node scripts/certification/certify-dev-v3.mjs",
     "test:e2e": "playwright test --config=playwright.current.config.ts",
     "test:e2e:compat": "playwright test",
