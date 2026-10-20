@@ -171,7 +171,7 @@ export function OperacaoComandaDetailPage() {
   };
 
   const resolverSolicitacao = useMutation({
-    mutationFn: () => api.delete(`/api/operacao/comandas/${id}/solicitacao-pagamento`),
+    mutationFn: () => api.delete(`/api/operacao/comandas/${id}/solicitacao-pagamento`, {}),
     onSuccess: invalidar,
   });
 
