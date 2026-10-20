@@ -232,3 +232,41 @@ Nenhum item adicional foi criado no Plane. Sugestões são títulos para decisã
 O código permite reconstruir parte de requests HTTP de mutação/falha e alguns erros de banco. Não comprova consultas bem-sucedidas de cada recurso, todas as ações/etapas assíncronas, entrega realtime, completude de traces, ACL por tenant ou ingestão/retention atuais. A correção de atribuição PDV/cliente/equipe e minimização de campos passou nos testes sintéticos locais e nos sete checks de CI. A matriz acima mantém cobertura parcial, ausente e não executada explícita; não há base para declarar percentual ou cobertura total.
 
 **Pendências para TAP-96:** abrir acesso operacional somente leitura ao Elasticsearch/Kibana e disponibilizar contas/sessões de QA sintéticas em dois tenants DEV, com atores e comandas válidas e descartáveis. Então executar jornadas concorrentes sem dados reais, registrar IDs de correlação/janela/contagens/atraso, consultar os eventos por empresa no Kibana e comprovar ACL, ausência de cruzamento e ILM/retention. O PR ainda segue o fluxo de merge oficial. `PROD_DEPLOY_REQUIRED=YES`: produção permanece em `e39b2e6d` e a correção de runtime não foi publicada nela; deploy de produção requer autorização específica.
+
+## Aditivo da auditoria operacional — 2026-10-20
+
+Este aditivo substitui as observações de estado operacional acima quando houver diferença. O relatório mantém a matriz de produto e as lacunas de código anteriores; esta atualização cobre a stack compartilhada observada após o merge do PR #81.
+
+### Releases e disponibilidade observadas
+
+| Componente | Evidência de leitura | Resultado em 2026-10-20 |
+|---|---|---|
+| Branch de auditoria | `git rev-parse HEAD` | `7b2968c6abdd53bd0d4f16505eaa5602876d7500`, `origin/main`; PR #81 já integrado por squash. |
+| DEV API | `GET http://127.0.0.1:3002/api/health` e `/api/ready` | `releaseSha=f7554e6d09247b715d75df1bc8b4b9c12528efc0`; `ok` / `ready`. |
+| PROD API local | `GET http://127.0.0.1:3001/api/health` e `/api/ready` | `releaseSha=e39b2e6d`; `ok` / `ready`. Nenhum deploy de produção foi feito. |
+| Kibana | `GET http://127.0.0.1:5601/api/status` | `available`; container `healthy`. |
+| Elasticsearch | Docker health observado em execução anterior desta mesma auditoria | versão 8.17.0, um nó, estado green; a chave de escrita do Collector não tem permissão de busca. |
+| Collector | Docker e configuração montada observados | `otel/opentelemetry-collector-contrib:0.130.1`, ativo; OTLP publicado somente em `127.0.0.1:4317-4318`. |
+
+### Ensaio sintético no Collector compartilhado
+
+Em 2026-10-20, o runner descartável executou 18 casos Playwright em seis cenários: `SMK-S04`, `POR-S01`, `POR-S02`, `POR-X02`, `POR-X03` e `SEC-X01`. O resultado agregado foi 18 esperados, 18 aprovados, zero falhas, zero retries, zero skips e zero casos inesperados. Os casos cobriram login, abertura e envio de pedido do portal, cliente inativo, sessão ausente/adulterada/encerrada e negação entre tenants. O banco PostgreSQL foi efêmero e isolado; os dados foram sintéticos. O serviço recebeu `deployment.environment.name=development`, `test.synthetic=true` e nome único `quiver-tap-api-tap96-shared-20261020-1215`. As evidências locais do Playwright estão em `artifacts/release-e2e/e647c56c7e7f9bc52f3acf610c5caf158df0be0c/`; não foram adicionadas ao commit.
+
+O Elasticsearch respondeu `403` à busca agregada autenticada com a chave do Collector. A chave tem escopo de escrita do pipeline e não permite leitura; a revisão automática também recusou o uso de credencial superusuária do container para contornar esse limite. Por isso o ensaio comprova os resultados funcionais das jornadas e a configuração/envio apontados pelo runner, mas **não comprova que os documentos sintéticos ficaram pesquisáveis no Elasticsearch/Kibana**, nem permite contar duplicatas, medir atraso, validar a separação por tenant no índice ou confirmar a atribuição observada nos documentos. Não foi tentada outra credencial nem alterada a stack compartilhada.
+
+### Estado efetivo e lacunas de operação
+
+- A configuração efetiva observada usa `transform/namespace`; o processador `filter/dev-only` está declarado e não está conectado a pipeline algum. Não o habilitar sem separar os sinais PROD, pois o filtro pode eliminar tráfego de produção.
+- Os pipelines não declaram `sending_queue` nem armazenamento persistente. O `tail_sampling` guarda decisões em memória. Reinício ou indisponibilidade do destino pode perder telemetria pendente; persistência/garantia de entrega não foi demonstrada.
+- `hostmetrics` não monta `/proc` ou `/sys` do host e não usa `docker_stats`; portanto os sinais de host descrevem o ambiente Linux do Collector, não métricas confiáveis do Windows hospedeiro nem de cada container.
+- A chave de escrita observada autentica como `elastic` via API key chamada `quiver-collector`, mas seu descritor permite apenas `monitor` no cluster e criação/escrita/indexação em `logs-*`, `metrics-*` e `traces-*`. O padrão abrange namespaces DEV e PROD. A busca retorna 403. Não há evidência de isolamento de leitura por tenant.
+- Na consulta de estado de índices feita anteriormente nesta auditoria: 498 data streams; políticas efetivas de `logs` e `metrics` tinham fase hot sem exclusão por idade; `traces` não tinha ILM. O cluster tinha 522 shards ativos de limite 1000. Não alteramos ILM ou limites. Sem credencial de leitura operacional aprovada nesta retomada, essas contagens devem ser tratadas como observação da consulta anterior, não como nova medição do ensaio.
+- O hostname `kibana.quivercloud.com.br` é roteado pelo Cloudflare Tunnel para Kibana; a consulta anterior à API Cloudflare não encontrou aplicação Cloudflare Access para esse hostname. Elasticsearch e Kibana publicam portas em todas as interfaces locais. Isso registra rotas/configuração, mas não prova alcance externo, regras de firewall, nem acesso anônimo ao conteúdo. A autenticação interna do Kibana estava saudável na verificação anterior.
+- A configuração da zona Cloudflare tem geolocalização por IP habilitada, mas a transformação gerenciada que adiciona cidade/região não está habilitada. O código da aplicação não consome `CF-IPCountry` ou headers de cidade/região e não registra localização. Nenhuma localização precisa é observada.
+- A ausência de documentos `metrics` PROD nas 24 horas da consulta anterior não permite concluir se faltou tráfego ou instrumentação em produção. Logs e traces PROD estavam presentes naquela janela.
+
+### Fechamento e gates restantes
+
+Não foi identificado um ajuste seguro de código para corrigir sozinho os riscos remanescentes: retenção, ACL de Kibana, escopo DEV/PROD, fila durável do Collector e autorização de busca alteram operação ou política da stack compartilhada. Nenhum desses componentes foi modificado. O ensaio passou funcionalmente, mas o gate ponta a ponta de consulta, atraso, duplicidade e isolamento por tenant continua pendente até existir credencial read-only aprovada e uma configuração de acesso compatível.
+
+`PROD_DEPLOY_REQUIRED=YES`. A correção de identidade do PR #81 está no DEV (`f7554e6d`) e a API PROD segue em `e39b2e6d`. Esta auditoria não autoriza deploy de produção. TAP-96 deve permanecer **In Progress** até validar busca/atribuição/tenant no Kibana, decidir e aplicar retenção/controle de acesso/fila por fluxo autorizado e revisar as lacunas da matriz. Sugestões de trabalho futuro não foram criadas no Plane.
