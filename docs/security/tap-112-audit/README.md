@@ -118,7 +118,9 @@ Os 11 skips observados são os mesmos no snapshot-base e no candidato; os testes
 - Instalação limpa do artefato de runtime isolado: `npm ci --omit=dev`, 367 pacotes adicionados; generate Prisma passou e `npm audit --omit=dev` reportou zero vulnerabilidades.
 - `npm run ci`: passou na worktree isolada; frontend build, Prisma generate/validate, backend 256/258 (2 skips), typecheck, ops-panel 45/45, support-analyst 82/82, dossier replay e gate Windows.
 - QA de release após correção do seletor: ADM-X03 passou em 4/4 projetos. O restante da suíte extensa anteriormente teve 304 pass, 11 skips e essa falha de seletor; não foi repetido todo o E2E por ser independente da correção Prisma. Migrações e seed sintético também passaram com override no QA descartável.
-- CI do PR de follow-up, SHA final, push/merge, SHA servido no DEV e health/readiness serão acrescentados após publicação do candidato.
+- PR de follow-up [#77](https://github.com/filipedsn/cervejaria/pull/77): push concluído e squash merge com os 7/7 checks verdes. Commit do branch `a8c5219a7f2fa713e3a1892e6d20e6a077663b5f`; SHA final de `main` `8fc47c93fe2e5e7b2d2b3af620f9226bd50f9706`.
+- Publicado no DEV pelo fluxo oficial em `2026-10-20` no mesmo SHA. `diagnose-dev-runtime.ps1`: API `:3002` reporta esse SHA, readiness `ready`, DB ok, identidade e hash do artefato válidos; frontend `:5202` identidade válida e HTTP 200; candidato passou no validador oficial com 0 erros. Listener PROD `:3001` permaneceu no PID `10012`; nenhum deploy PROD foi feito.
+- `PROD_DEPLOY_REQUIRED=YES`: TAP-112 permanece **In Progress** até decisão/autorização explícita para publicação em produção.
 - `backend/node_modules` usado pela produção não foi tocado; instalações ocorreram em diretórios isolados. Nenhum deploy em produção foi feito.
 ## Fontes oficiais
 
