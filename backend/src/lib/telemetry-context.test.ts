@@ -51,3 +51,50 @@ test('slug público inexistente não escolhe tenant ou dataset pelo texto da URL
   assert.equal(context.slug, 'unknown');
   assert.deepEqual(context.actor, { type: 'anonymous' });
 });
+
+test('public PDV API context prioritizes its signed customer over a coexisting staff cookie', async () => {
+  const session = {
+    type: 'cliente-pdv',
+    cervejariaId: tenantId,
+    pontoVendaId: pointOfSaleId,
+    clienteId: customerId,
+    comandaId: commandId,
+  };
+  const request = {
+    id: 'request-public-pdv-coexist-test',
+    correlationId: '123e4567-e89b-42d3-a456-426614174002',
+    url: '/api/public/cervejarias/tenant-falso/pontos-venda/pdv-falso/comanda',
+    user: { sub: 'staff-user', papel: 'CAIXA', cervejariaId: 'staff-tenant' },
+    cookies: { token: 'valid-staff-cookie', cliente_pdv_token: 'signed-customer-cookie' },
+    server: { jwt: { verify: async (token: string) => token === 'signed-customer-cookie' ? session : undefined } },
+    jwtVerify: async () => { throw new Error('should not choose staff context for public route'); },
+  };
+
+  const context = await resolveTelemetryFromRequest(request as never, {
+    byId: async (id) => id === tenantId ? 'tenant-pdv-audit-test-real' : 'staff-tenant',
+    byPublicSlug: async () => undefined,
+  });
+  assert.equal(context.cervejariaId, tenantId);
+  assert.equal(context.slug, 'tenant-pdv-audit-test-real');
+  assert.deepEqual(context.actor, { type: 'cliente-pdv', id: customerId, clienteId: customerId });
+});
+
+test('unauthenticated public API calls stay anonymous even when a staff cookie exists', async () => {
+  const request = {
+    id: 'request-public-anon-coexist-test',
+    correlationId: '123e4567-e89b-42d3-a456-426614174003',
+    url: '/api/public/cervejarias/tenant-publico/cardapio',
+    user: { sub: 'staff-user', papel: 'CAIXA', cervejariaId: 'staff-tenant' },
+    cookies: { token: 'valid-staff-cookie' },
+    server: { jwt: { verify: async () => { throw new Error('no customer cookie'); } } },
+    jwtVerify: async () => { throw new Error('public endpoint must not adopt staff'); },
+  };
+
+  const context = await resolveTelemetryFromRequest(request as never, {
+    byId: async () => 'staff-tenant',
+    byPublicSlug: async (slug) => slug === 'tenant-publico' ? { id: tenantId, slug } : undefined,
+  });
+  assert.equal(context.cervejariaId, tenantId);
+  assert.equal(context.slug, 'tenant-publico');
+  assert.deepEqual(context.actor, { type: 'anonymous' });
+});
