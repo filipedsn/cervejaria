@@ -875,7 +875,6 @@ model PedidoCliente {
   clienteId       String
   status          PedidoClienteStatus @default(PENDENTE)
   observacao      String?
-  idempotencyKey  String?             @unique
   recusadoMotivo  String?
   confirmadoPorId String?
   confirmadoEm    DateTime?
@@ -903,10 +902,6 @@ model PedidoClienteItem {
   volumeMl   Int
   quantidade Int     @default(1)
   precoUnit  Decimal @db.Decimal(10, 2)
-  paraViagem Boolean @default(false)
-  observacao String?
-  opcionais Json?
-
   pedido  PedidoCliente @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
   produto Produto       @relation(fields: [produtoId], references: [id], onDelete: Restrict)
 
@@ -1321,6 +1316,17 @@ model PedidoOperacao {
   @@index([comandaId])
   @@schema("quiosque")
   @@map("PedidoQuiosque")
+}
+
+/// Chave idempotente para envios do portal cliente PDV.
+model PortalPedidoOperacaoRequest {
+  idempotencyKey String   @id
+  cervejariaId   String
+  comandaId      String
+  createdAt      DateTime @default(now())
+
+  @@index([comandaId, createdAt])
+  @@schema("quiosque")
 }
 
 /// Marca cada transicao de status na fila da cozinha (auditoria e tempos por fase).

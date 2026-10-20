@@ -5,6 +5,7 @@ import { api, ApiError, assetUrl } from '../lib/api';
 import { formatPhone } from '../lib/phone';
 import { Loading } from '../components/Loading';
 import { PortalBackground } from '../components/PortalBackground';
+import { Modal } from '../components/Modal';
 import { CATEGORIAS_PRODUTO_OPERACAO, normalizeCategoriaProduto } from '../lib/operacao';
 
 type Info = {
@@ -39,10 +40,11 @@ type PdvComanda = {
   total: number;
   desconto: number;
   valorEmAberto: number;
+  solicitacaoPagamentoEm?: string | null;
   pedidos: Array<{ id: string; numero: number; status: string; itens: Array<{ nome: string; quantidade: number; subtotal: number; cancelamentoPendenteEm?: string | null; canceladoEm?: string | null }> }>;
 };
 
-type PdvCartItem = { chave: string; produtoId: string; volumeMl?: number; nome: string; quantidade: number; preco: number };
+type PdvCartItem = { chave: string; produtoId: string; volumeMl?: number; nome: string; quantidade: number; preco: number; paraViagem: boolean; observacao?: string; opcionais: Array<{ opcionalId: string; quantidade: number; nome: string; precoAdicional: number }> };
 
 /** Chope comes once per volume with the same product id. */
 const chaveProduto = (product: PdvProduct) => `${product.id}:${product.volumeMl ?? 0}`;
@@ -67,6 +69,11 @@ export function PortalPdvPage() {
   const [result, setResult] = useState<{ numero: number | null; reused: boolean; comanda: PdvComanda } | null>(null);
   const [menuTab, setMenuTab] = useState<'pedidos' | 'resumo'>('pedidos');
   const [cart, setCart] = useState<PdvCartItem[]>([]);
+  const [produtoSelecionado, setProdutoSelecionado] = useState<PdvProduct | null>(null);
+  const [paraViagem, setParaViagem] = useState(false);
+  const [observacao, setObservacao] = useState('');
+  const [opcionais, setOpcionais] = useState<Record<string, number>>({});
+  const pedidoKey = useRef<string | null>(null);
   const lastLookupPhone = useRef('');
 
   const info = useQuery({
@@ -127,13 +134,19 @@ export function PortalPdvPage() {
   const enviarPedido = useMutation({
     mutationFn: (itens: PdvCartItem[]) => api.post<PdvComanda>(
       `/api/public/cervejarias/${slug}/pontos-venda/${pontoVendaId}/comanda/pedidos`,
-      { itens: itens.map((item) => ({ produtoId: item.produtoId, quantidade: item.quantidade, ...(item.volumeMl ? { volumeMl: item.volumeMl } : {}) })) },
+      { idempotencyKey: pedidoKey.current ?? (pedidoKey.current = crypto.randomUUID()), itens: itens.map((item) => ({ produtoId: item.produtoId, quantidade: item.quantidade, ...(item.volumeMl ? { volumeMl: item.volumeMl } : {}), paraViagem: item.paraViagem, observacao: item.observacao, opcionais: item.opcionais.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })) })) },
     ),
     onSuccess: (data) => {
       setCart([]);
+      pedidoKey.current = null;
       setResult((prev) => prev ? { ...prev, comanda: data } : prev);
       void comandaQuery.refetch();
     },
+  });
+
+  const solicitarPagamento = useMutation({
+    mutationFn: () => api.post<{ pendente: boolean }>(`/api/public/cervejarias/${slug}/pontos-venda/${pontoVendaId}/comanda/solicitar-pagamento`, {}),
+    onSuccess: () => void comandaQuery.refetch(),
   });
 
   const displayedComanda = comandaQuery.data ?? result?.comanda;
@@ -142,13 +155,22 @@ export function PortalPdvPage() {
   const totalConsumido = displayedComanda?.total ?? 0;
   const valorEmAberto = displayedComanda?.valorEmAberto ?? 0;
   const addProduct = (product: PdvProduct) => {
+    setProdutoSelecionado(product);
+    setParaViagem(false);
+    setObservacao('');
+    setOpcionais({});
+  };
+  const confirmProduct = () => {
+    const product = produtoSelecionado;
+    if (!product) return;
     const chave = chaveProduto(product);
-    setCart((current) => {
-      const existing = current.find((item) => item.chave === chave);
-      if (existing) return current.map((item) => item.chave === chave ? { ...item, quantidade: item.quantidade + 1 } : item);
-      const volumeMl = (product.volumeMl ?? 0) > 1 ? product.volumeMl : undefined;
-      return [...current, { chave, produtoId: product.id, volumeMl, nome: nomeProduto(product), quantidade: 1, preco: product.precoEfetivo ?? 0 }];
-    });
+    const options = product.gruposOpcionais?.flatMap((group) => group.opcoes.filter((option) => opcionais[option.id]).map((option) => ({ opcionalId: option.id, nome: option.nome, precoAdicional: option.precoAdicional, quantidade: opcionais[option.id] }))) ?? [];
+    const details = `${chave}:${paraViagem}:${observacao.trim()}:${JSON.stringify(options.map(({ opcionalId, quantidade }) => [opcionalId, quantidade]))}`;
+    const volumeMl = (product.volumeMl ?? 0) > 1 ? product.volumeMl : undefined;
+    const base = product.precoEfetivo ?? 0;
+    const name = nomeProduto(product);
+    setCart((current) => [...current, { chave: details, produtoId: product.id, volumeMl, nome: name, quantidade: 1, preco: base + options.reduce((sum, option) => sum + option.precoAdicional * option.quantidade, 0), paraViagem, observacao: observacao.trim() || undefined, opcionais: options }]);
+    setProdutoSelecionado(null);
   };
   const changeQuantity = (chave: string, delta: number) => {
     setCart((current) => current
@@ -243,7 +265,7 @@ export function PortalPdvPage() {
                     </div>
                     {cart.map((item) => (
                       <div className="portal-pdv-cart-item" key={item.chave}>
-                        <span>{item.nome}</span>
+                        <span>{item.nome}<small>{[...item.opcionais.map((option) => option.nome), item.paraViagem ? 'Para levar' : '', item.observacao].filter(Boolean).join(' · ')}</small></span>
                         <div className="portal-pdv-quantity" aria-label={`Quantidade de ${item.nome}`}>
                           <button type="button" aria-label={`Diminuir ${item.nome}`} onClick={() => changeQuantity(item.chave, -1)}>−</button>
                           <strong>{item.quantidade}</strong>
@@ -297,6 +319,10 @@ export function PortalPdvPage() {
                   <article key={pedido.id}><strong>Pedido #{pedido.numero}</strong><span>{pedido.status}</span>{itensValidos(pedido.itens).map((item, index) => <p key={`${item.nome}-${index}`}>{item.quantidade}x {item.nome}<small>R$ {item.subtotal.toFixed(2).replace('.', ',')}</small></p>)}</article>
                 )) : <p>Nenhum pedido enviado ainda.</p>}
                 <p className="portal-pdv-no-close">O fechamento e o pagamento são feitos pela equipe do caixa.</p>
+                <button type="button" className="portal-pdv-payment-request" disabled={Boolean(displayedComanda?.solicitacaoPagamentoEm) || solicitarPagamento.isPending} onClick={() => solicitarPagamento.mutate()}>
+                  {displayedComanda?.solicitacaoPagamentoEm ? 'Pagamento solicitado · aguarde a equipe' : solicitarPagamento.isPending ? 'Solicitando...' : 'Solicitar pagamento'}
+                </button>
+                {solicitarPagamento.error && <div role="alert" className="alert-error">Não foi possível solicitar atendimento.</div>}
               </div>
             )}
           </section>
@@ -366,6 +392,14 @@ export function PortalPdvPage() {
           </form>
         )}
       </div>
+      <Modal open={Boolean(produtoSelecionado)} onClose={() => setProdutoSelecionado(null)} title={produtoSelecionado ? `Adicionar ${nomeProduto(produtoSelecionado)}` : 'Adicionar item'} footer={<div className="flex justify-end gap-3"><button type="button" className="btn-secondary" onClick={() => setProdutoSelecionado(null)}>Cancelar</button><button type="button" className="btn-primary" onClick={confirmProduct}>Adicionar ao pedido</button></div>}>
+        {produtoSelecionado && <div className="space-y-4 pb-5">
+          <p className="text-sm text-ink-muted">R$ {(produtoSelecionado.precoEfetivo ?? 0).toFixed(2).replace('.', ',')} por unidade</p>
+          {produtoSelecionado.gruposOpcionais?.flatMap((group) => group.opcoes).map((option) => <label key={option.id} className="flex items-center justify-between gap-3 rounded-xl border border-line p-3"><span className="flex items-center gap-3"><input type="checkbox" checked={Boolean(opcionais[option.id])} onChange={() => setOpcionais((current) => current[option.id] ? Object.fromEntries(Object.entries(current).filter(([id]) => id !== option.id)) : { ...current, [option.id]: 1 })} />{option.nome}</span><span>{option.precoAdicional ? `+ R$ ${option.precoAdicional.toFixed(2).replace('.', ',')}` : 'Grátis'}</span></label>)}
+          <label className="flex items-center gap-3 rounded-xl border border-line p-3"><input type="checkbox" checked={paraViagem} onChange={(event) => setParaViagem(event.target.checked)} />Para levar</label>
+          <label className="block text-sm font-semibold">Observações<textarea className="input mt-2 min-h-20 w-full" maxLength={280} value={observacao} onChange={(event) => setObservacao(event.target.value)} /></label>
+        </div>}
+      </Modal>
     </main>
   );
 }

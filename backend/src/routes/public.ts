@@ -1,5 +1,4 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { randomUUID } from 'node:crypto';
 
 import rateLimit from '@fastify/rate-limit';
 
@@ -95,6 +94,7 @@ const abrirComandaPdvSchema = z.object({
 });
 
 const pedidoPdvSchema = z.object({
+  idempotencyKey: z.string().uuid().optional(),
   ocorrenciaId: z.never().optional(),
   itens: z.array(z.object({
     produtoId: z.string().min(1),
@@ -147,12 +147,6 @@ const pedidoItemSchema = z.object({
 
   tapId: z.string().optional(),
 
-  paraViagem: z.boolean().optional(),
-
-  observacao: z.string().trim().max(280).optional(),
-
-  opcionais: z.array(z.object({ opcionalId: z.string().min(1), quantidade: z.number().int().positive().max(99).optional() })).optional(),
-
 });
 
 
@@ -160,8 +154,6 @@ const pedidoItemSchema = z.object({
 const createPedidoSchema = z.object({
 
   observacao: z.string().max(300).optional(),
-
-  idempotencyKey: z.string().uuid().optional(),
 
   itens: z.array(pedidoItemSchema).min(1),
 
@@ -183,11 +175,6 @@ async function validatePedidoItens(
 
   const cardapio = await buildPublicEventCardapio(eventoId, trailerId, cervejariaId);
 
-  const settings = await prisma.cervejaria.findUnique({ where: { id: cervejariaId }, select: { portalCategoriasPermitidas: true } });
-  const configuredCategories = settings?.portalCategoriasPermitidas;
-  const permittedCategories = Array.isArray(configuredCategories)
-    ? new Set(configuredCategories.filter((value): value is string => typeof value === 'string'))
-    : null;
   const chopeByTap = new Map(cardapio.chopes.map((c) => [c.tapId, c]));
 
   const unitById = new Map(
@@ -210,12 +197,6 @@ async function validatePedidoItens(
 
     precoUnit: number;
 
-    paraViagem: boolean;
-
-    observacao: string | null;
-
-    opcionais: { opcionalId: string; quantidade?: number }[];
-
   }[] = [];
 
 
@@ -234,8 +215,6 @@ async function validatePedidoItens(
 
       const preco = chope.produto.precos.find((p) => p.volumeMl === item.volumeMl);
 
-      if (!isPortalCategoryAllowed(chope.produto.categoria, permittedCategories ? [...permittedCategories] : null)) return { error: 'Categoria nao disponivel no portal' as const };
-
       if (!preco) return { error: 'Volume inválido para este chope' as const };
 
       normalized.push({
@@ -250,12 +229,6 @@ async function validatePedidoItens(
 
         precoUnit: preco.preco,
 
-        paraViagem: item.paraViagem ?? false,
-
-        observacao: item.observacao ?? null,
-
-        opcionais: [],
-
       });
 
       continue;
@@ -266,21 +239,9 @@ async function validatePedidoItens(
 
     const produto = unitById.get(item.produtoId);
 
-    if (produto && !isPortalCategoryAllowed(produto.categoria, permittedCategories ? [...permittedCategories] : null)) return { error: 'Categoria nao disponivel no portal' as const };
-
     if (!produto) return { error: 'Item não disponível no cardápio' as const };
 
     const preco = produto.precos.find((p: { volumeMl: number }) => p.volumeMl === item.volumeMl);
-    const availableOptions = new Map((produto.gruposOpcionais ?? []).flatMap((group) => group.opcoes).map((option) => [option.id, option]));
-    const opcionais = item.opcionais ?? [];
-    for (const selected of opcionais) {
-      if (!availableOptions.has(selected.opcionalId)) return { error: 'Opcional nao disponivel para este produto' as const };
-    }
-    const precoOpcionais = opcionais.reduce((sum, selected) => {
-      const option = availableOptions.get(selected.opcionalId)!;
-      return sum + Number(option.precoAdicional) * (selected.quantidade ?? 1);
-    }, 0);
-
     if (!preco) return { error: 'Volume inválido para este produto' as const };
 
     normalized.push({
@@ -293,17 +254,7 @@ async function validatePedidoItens(
 
       tapId: null,
 
-      precoUnit: preco.preco + precoOpcionais,
-
-      paraViagem: item.paraViagem ?? false,
-
-      observacao: item.observacao ?? null,
-
-      opcionais: opcionais.map((selected) => ({
-        ...selected,
-        nome: availableOptions.get(selected.opcionalId)?.nome ?? selected.opcionalId,
-        precoAdicional: Number(availableOptions.get(selected.opcionalId)?.precoAdicional ?? 0),
-      })),
+      precoUnit: preco.preco,
 
     });
 
@@ -463,12 +414,17 @@ export async function publicRoutes(app: FastifyInstance) {
       return reply.status(403).send({ error: 'Sessão inválida para este ponto de venda' });
     }
     const profile = await getOperationalProfile(session.cervejariaId);
-    return listProdutosOperacionaisTurno(
+    const produtos = await listProdutosOperacionaisTurno(
       session.cervejariaId,
       session.pontoVendaId,
       comanda.diaOperacional ?? diaOperacional(),
       profile?.capabilities.taps ?? false,
     );
+    const settings = await prisma.cervejaria.findUnique({ where: { id: session.cervejariaId }, select: { portalCategoriasPermitidas: true } });
+    const allowed = Array.isArray(settings?.portalCategoriasPermitidas)
+      ? settings.portalCategoriasPermitidas.filter((value): value is string => typeof value === 'string')
+      : null;
+    return filterPortalCategories(produtos, allowed);
   });
 
   app.get('/cervejarias/:slug/pontos-venda/:pontoVendaId/cardapio/categorias', async (request, reply) => {
@@ -515,7 +471,9 @@ export async function publicRoutes(app: FastifyInstance) {
     const profile = await getOperationalProfile(session.cervejariaId);
     const temCozinha = profile?.capabilities.kitchen ?? false;
     const controlaEstoque = profile?.capabilities.inventory ?? false;
-    const resultado = await prisma.$transaction(async (tx) => {
+    let resultado;
+    try {
+    resultado = await prisma.$transaction(async (tx) => {
       // Existing sessions remain read-only after deactivation. Locking the client row
       // serializes this write with the administrative active=false update.
       const cliente = await tx.$queryRaw<Array<{ id: string; ativo: boolean }>>`
@@ -532,7 +490,23 @@ export async function publicRoutes(app: FastifyInstance) {
       });
       if (!comanda) throw Object.assign(new Error('Esta comanda já foi fechada'), { statusCode: 409 });
       assertCommandOccurrenceMatchesSession(comanda, sessao);
+      if (body.idempotencyKey) await tx.portalPedidoOperacaoRequest.create({ data: {
+        idempotencyKey: body.idempotencyKey,
+        cervejariaId: session.cervejariaId,
+        comandaId: session.comandaId,
+      } });
       const itensComTap = await atribuirTapMontado(tx, sessao.id, body.itens);
+      const settings = await tx.cervejaria.findUnique({ where: { id: session.cervejariaId }, select: { portalCategoriasPermitidas: true } });
+      const allowed = Array.isArray(settings?.portalCategoriasPermitidas)
+        ? settings.portalCategoriasPermitidas.filter((value): value is string => typeof value === 'string')
+        : null;
+      if (allowed !== null) {
+        const produtos = await tx.produto.findMany({ where: { cervejariaId: session.cervejariaId, id: { in: [...new Set(body.itens.map((item) => item.produtoId))] }, ativo: true }, select: { id: true, categoria: true } });
+        const categoriaById = new Map(produtos.map((produto) => [produto.id, produto.categoria]));
+        if (body.itens.some((item) => !isPortalCategoryAllowed(categoriaById.get(item.produtoId), allowed))) {
+          throw Object.assign(new Error('Este item nÃ£o estÃ¡ disponÃ­vel no portal do cliente'), { statusCode: 400 });
+        }
+      }
       const itens = await resolverItens(tx, session.cervejariaId, itensComTap, {
         sessaoCaixaId: sessao.id,
         tapsEnabled: profile?.capabilities.taps ?? false,
@@ -559,6 +533,14 @@ export async function publicRoutes(app: FastifyInstance) {
         comanda: await tx.comanda.findUniqueOrThrow({ where: { id: session.comandaId }, include: INCLUDE_COMANDA_OPERACAO }),
       };
     }, CAIXA_VENDA_TX);
+    } catch (error) {
+      if (!body.idempotencyKey || !isUniqueViolation(error)) throw error;
+      const previous = await prisma.portalPedidoOperacaoRequest.findUnique({ where: { idempotencyKey: body.idempotencyKey } });
+      if (!previous || previous.cervejariaId !== session.cervejariaId || previous.comandaId !== session.comandaId) throw error;
+      const comanda = await prisma.comanda.findFirst({ where: whereComandaOperacao(session.cervejariaId, { id: session.comandaId, status: 'ABERTA' }), include: INCLUDE_COMANDA_OPERACAO });
+      if (!comanda) throw Object.assign(new Error('Esta comanda jÃ¡ foi fechada'), { statusCode: 409 });
+      return reply.status(200).send(await summarizePdvClientComanda(comanda, session.cervejariaId));
+    }
     for (const pedido of resultado.pedidos) {
       void registrarTransacao({
         cervejariaId: session.cervejariaId,
@@ -579,6 +561,20 @@ export async function publicRoutes(app: FastifyInstance) {
     notificarComandaOperacaoAtualizada(app, session.cervejariaId, session.comandaId);
     if (temCozinha) for (const pedido of resultado.pedidos) await notificarPedidoNovo(app, session.cervejariaId, pedido);
     return reply.status(201).send(resumoComanda(resultado.comanda, profile?.effectiveSettings.kitchenItemsChargeAtLaunch));
+  });
+
+  app.post('/cervejarias/:slug/pontos-venda/:pontoVendaId/comanda/solicitar-pagamento', async (request, reply) => {
+    const { session } = await getPdvClienteSession(app, request);
+    if (session.pontoVendaId !== (request.params as { pontoVendaId: string }).pontoVendaId) return reply.status(403).send({ error: 'SessÃ£o invÃ¡lida para este ponto de venda' });
+    const requestedAt = new Date();
+    const result = await prisma.comanda.updateMany({
+      where: { ...whereComandaOperacao(session.cervejariaId, { id: session.comandaId, status: 'ABERTA' }), clienteId: session.clienteId, pontoVendaId: session.pontoVendaId, solicitacaoPagamentoEm: null },
+      data: { solicitacaoPagamentoEm: requestedAt },
+    });
+    const comanda = await prisma.comanda.findFirst({ where: whereComandaOperacao(session.cervejariaId, { id: session.comandaId }), select: { id: true, solicitacaoPagamentoEm: true } });
+    if (!comanda) return reply.status(404).send({ error: 'Comanda nÃ£o encontrada' });
+    if (result.count > 0) notificarComandaOperacaoAtualizada(app, session.cervejariaId, comanda.id);
+    return { pendente: Boolean(comanda.solicitacaoPagamentoEm), solicitacaoPagamentoEm: comanda.solicitacaoPagamentoEm };
   });
 
   app.post('/cervejarias/:slug/pontos-venda/:pontoVendaId/comandas', {
@@ -786,42 +782,11 @@ export async function publicRoutes(app: FastifyInstance) {
 
     });
 
-    clienteApp.post('/cliente/solicitar-pagamento', async (request, reply) => {
-      const session = getClienteSession(request);
-      const requestedAt = new Date();
-      const changed = await prisma.comanda.updateMany({
-        where: { id: session.comandaId, clienteId: session.clienteId, status: 'ABERTA', solicitacaoPagamentoEm: null, evento: { cervejariaId: session.cervejariaId } },
-        data: { solicitacaoPagamentoEm: requestedAt },
-      });
-      const comanda = await prisma.comanda.findFirst({
-        where: { id: session.comandaId, clienteId: session.clienteId, evento: { cervejariaId: session.cervejariaId } },
-        select: { id: true, status: true, solicitacaoPagamentoEm: true },
-      });
-      if (!comanda || comanda.status !== 'ABERTA') return reply.status(409).send({ error: 'Comanda nao esta aberta' });
-      if (changed.count === 1) {
-        emitToComanda(app.io, comanda.id, { type: 'payment:requested', data: { comandaId: comanda.id, solicitacaoPagamentoEm: comanda.solicitacaoPagamentoEm } });
-        emitToEvento(app.io, session.eventoId, { type: 'payment:requested', data: { comandaId: comanda.id } });
-      }
-      return { pendente: true, solicitacaoPagamentoEm: comanda.solicitacaoPagamentoEm };
-    });
-
-
-
     clienteApp.get('/cliente/cardapio', async (request) => {
 
       const session = getClienteSession(request);
 
       let cardapio = await buildPublicEventCardapio(session.eventoId, session.trailerId, session.cervejariaId);
-      const portalSettings = await prisma.cervejaria.findUnique({ where: { id: session.cervejariaId }, select: { portalCategoriasPermitidas: true } });
-      if (Array.isArray(portalSettings?.portalCategoriasPermitidas)) {
-        const allowed = portalSettings.portalCategoriasPermitidas.filter((value): value is string => typeof value === 'string');
-        cardapio = {
-          ...cardapio,
-          chopes: cardapio.chopes.filter((chope) => isPortalCategoryAllowed(chope.produto.categoria, allowed)),
-          bebidas: filterPortalCategories(cardapio.bebidas, allowed),
-          comidas: filterPortalCategories(cardapio.comidas, allowed),
-        };
-      }
       if (!catalogoCategoriasCanonicoAtivo()) return cardapio;
       const categories = await prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId: session.cervejariaId }, select: { nome: true }, orderBy: [{ nomeNormalizado: 'asc' }, { nome: 'asc' }] });
       const brewery = await prisma.cervejaria.findUnique({ where: { id: session.cervejariaId }, select: { operacaoCategoriasOrdem: true } });
@@ -869,16 +834,6 @@ export async function publicRoutes(app: FastifyInstance) {
       const session = getClienteSession(request);
 
       const body = createPedidoSchema.parse(request.body);
-      const idempotencyKey = body.idempotencyKey ?? randomUUID();
-
-      const existingPedido = await prisma.pedidoCliente.findFirst({
-        where: { idempotencyKey, comandaId: session.comandaId, clienteId: session.clienteId },
-        include: pedidoInclude,
-      });
-      if (existingPedido) return reply.status(200).send(serializePedido(existingPedido));
-
-
-
       const evento = await prisma.evento.findFirst({
 
         where: { id: session.eventoId, status: 'ABERTO', cervejariaId: session.cervejariaId },
@@ -915,9 +870,7 @@ export async function publicRoutes(app: FastifyInstance) {
 
 
 
-      let pedido;
-      try {
-      pedido = await prisma.pedidoCliente.create({
+      const pedido = await prisma.pedidoCliente.create({
 
         data: {
 
@@ -928,8 +881,6 @@ export async function publicRoutes(app: FastifyInstance) {
           clienteId: session.clienteId,
 
           observacao: body.observacao?.trim() || null,
-
-          idempotencyKey,
 
           itens: {
 
@@ -945,12 +896,6 @@ export async function publicRoutes(app: FastifyInstance) {
 
               precoUnit: i.precoUnit,
 
-              paraViagem: i.paraViagem,
-
-              observacao: i.observacao,
-
-              opcionais: i.opcionais,
-
             })),
 
           },
@@ -960,15 +905,6 @@ export async function publicRoutes(app: FastifyInstance) {
         include: pedidoInclude,
 
       });
-      } catch (error) {
-        if (!isUniqueViolation(error)) throw error;
-        const duplicate = await prisma.pedidoCliente.findFirst({
-          where: { idempotencyKey, comandaId: session.comandaId, clienteId: session.clienteId },
-          include: pedidoInclude,
-        });
-        if (!duplicate) throw error;
-        return reply.status(200).send(serializePedido(duplicate));
-      }
 
 
 

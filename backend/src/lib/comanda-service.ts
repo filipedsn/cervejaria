@@ -427,7 +427,6 @@ export async function buildPublicEventCardapio(eventoId: string, trailerId: stri
       produto: {
         id: t.chopeAtual!.id,
         nome: t.chopeAtual!.nome,
-        categoria: t.chopeAtual!.categoria ?? null,
         cor: t.chopeAtual!.cor,
         estilo: t.chopeAtual!.estilo,
         precos: t.chopeAtual!.precos.map((p) => ({
@@ -565,7 +564,6 @@ export async function serializeComandaForCliente(comandaId: string) {
     id: comanda.id,
     status: comanda.status,
     total: toNumber(comanda.total),
-    solicitacaoPagamentoEm: comanda.solicitacaoPagamentoEm,
     itens: comanda.itens.map((i) => ({
       id: i.id,
       produto: i.produto?.nome ?? i.nome,

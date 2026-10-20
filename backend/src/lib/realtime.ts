@@ -27,9 +27,7 @@ export type RealtimeEvent =
   | { type: 'operacao:pedido-novo'; data: unknown }
   | { type: 'operacao:pedido-atualizado'; data: unknown }
   | { type: 'operacao:comanda-atualizada'; data: { comandaId: string } }
-  | { type: 'portal:session-expired'; data: { eventoId: string; reason: string } }
-  | { type: 'payment:requested'; data: { comandaId: string; solicitacaoPagamentoEm?: Date | null } }
-  | { type: 'payment:request-resolved'; data: { comandaId: string } };
+  | { type: 'portal:session-expired'; data: { eventoId: string; reason: string } };
 
 export const realtimeRoomTenant = (id: string) => `cervejaria:${id}`;
 export const realtimeRoomTenantFinance = (id: string) => `cervejaria:${id}:financeiro`;

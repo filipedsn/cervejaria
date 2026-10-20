@@ -273,6 +273,7 @@ export interface ComandaOperacao {
   desconto: number;
   total: number;
   valorEmAberto: number;
+  solicitacaoPagamentoEm?: string | null;
   cliente: { id: string; nome: string; telefone: string | null } | null;
   pedidos: PedidoOperacao[];
   pagamentos: PagamentoOperacao[];

@@ -155,8 +155,6 @@ export function ComandasPage() {
     socket.on('comanda:closed', invalidate);
     socket.on('item:added', invalidate);
     socket.on('item:removed', invalidate);
-    socket.on('payment:requested', invalidate);
-    socket.on('payment:request-resolved', invalidate);
     const invalidateCash = () => queryClient.invalidateQueries({ queryKey: ['evento-caixa', evento.id] });
     socket.on('evento-caixa:updated', invalidateCash);
 
@@ -166,8 +164,6 @@ export function ComandasPage() {
       socket.off('comanda:closed', invalidate);
       socket.off('item:added', invalidate);
       socket.off('item:removed', invalidate);
-      socket.off('payment:requested', invalidate);
-      socket.off('payment:request-resolved', invalidate);
       socket.off('evento-caixa:updated', invalidateCash);
     };
   }, [evento?.id, queryClient]);
@@ -397,7 +393,6 @@ export function ComandasPage() {
                                 <StatusBadge variant="comanda-fechada" />
                               )
                             )}
-                            {c.solicitacaoPagamentoEm && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900" aria-label="Pagamento solicitado">🔔 Pagamento solicitado</span>}
                           </div>
                           {!isAvulsa && c.cliente.telefone && (
                             <p className="text-sm text-ink-faint">{c.cliente.telefone}</p>
@@ -435,7 +430,6 @@ export function ComandasPage() {
                                   <StatusBadge variant="comanda-fechada" />
                                 )
                               )}
-                              {c.solicitacaoPagamentoEm && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[0.65rem] font-bold text-amber-900" aria-label="Pagamento solicitado">🔔 Pagamento</span>}
                             </div>
                           </div>
                         </div>

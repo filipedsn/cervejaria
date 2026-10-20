@@ -532,6 +532,7 @@ export function OperacaoComandasPage() {
                     <h3 className={`flex min-w-0 flex-1 items-center whitespace-nowrap font-bold leading-tight ${colunaUnica ? 'text-[clamp(0.75rem,5cqi,1rem)]' : 'text-[clamp(0.875rem,5.5cqi,1.05rem)]'}`}>
                       {comanda?.numero != null && <span className="mr-1 shrink-0 text-orange-dark">{comanda.numero} —</span>}
                       <span className="min-w-0 truncate">{titulo}</span>
+                      {comanda?.solicitacaoPagamentoEm && <span className="ml-2 shrink-0 rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900" title="Cliente solicitou atendimento para pagamento">Solicitou pagamento</span>}
                     </h3>
                   </button>
                   <div className="comanda-card-notify flex shrink-0 items-center gap-1.5">

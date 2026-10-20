@@ -116,11 +116,6 @@ export async function pedidosRoutes(app: FastifyInstance) {
               volumeMl: item.volumeMl,
               quantidade: item.quantidade,
               tapId: tapId ?? undefined,
-              paraViagem: item.paraViagem,
-              observacao: item.observacao ?? undefined,
-              opcionais: Array.isArray(item.opcionais)
-                ? item.opcionais as Array<{ opcionalId: string; quantidade?: number }>
-                : undefined,
             },
             criadoPorId: user.sub,
           });

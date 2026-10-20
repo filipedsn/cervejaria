@@ -590,6 +590,7 @@ export function resumoComanda(comanda: ComandaCompleta, effectiveKitchenItemsCha
     desconto: reais(financeiro.desconto),
     total: reais(financeiro.total),
     valorEmAberto: reais(financeiro.valorEmAberto),
+    solicitacaoPagamentoEm: comanda.solicitacaoPagamentoEm ?? null,
     pedidos,
     pagamentos: comanda.pagamentos.map((pagamento) => ({
       id: pagamento.id,
