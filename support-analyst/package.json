@@ -14,7 +14,7 @@
     "analyst:validate": "npm run validate",
     "dev-smoke": "tsx src/index.ts --dev-smoke",
     "incident-replay": "tsx src/index.ts --incident-replay",
-    "dossier-replay": "tsx src/index.ts --dossier-replay",
+    "dossier-replay": "node --import ../scripts/node24-tsx-host.mjs --import tsx src/index.ts --dossier-replay",
     "feedback": "tsx src/index.ts --feedback",
     "analyst:llm-benchmark": "tsx src/llm-benchmark/cli.ts",
     "analyst:llm-smoke": "tsx src/local-llm/cli.ts --smoke",

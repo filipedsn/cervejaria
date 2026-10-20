@@ -1,7 +1,7 @@
 const SENSITIVE_KEYS = new Set([
   'senha',
   'password',
-  'senhaHash',
+  'senhahash',
   'token',
   'jwt',
   'authorization',
@@ -9,9 +9,9 @@ const SENSITIVE_KEYS = new Set([
   'email',
   'endereco',
   'address',
-  'JWT_SECRET',
-  'SMTP_PASS',
-  'OBS_ALERT_TELEGRAM_BOT_TOKEN',
+  'jwt_secret',
+  'smtp_pass',
+  'obs_alert_telegram_bot_token',
   'secret',
 ]);
 

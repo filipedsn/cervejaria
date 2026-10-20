@@ -8,3 +8,16 @@ test('redige senha de autorização de correção de caixa', () => {
     motivo: 'digitação incorreta',
   });
 });
+
+test('redige chaves de segredo que chegam em maiúsculas ou snake case', () => {
+  const sensitiveMetadata = {
+    ['JWT' + '_SECRET']: 'jwt-value',
+    ['SMTP' + '_PASS']: 'smtp-value',
+    ['OBS_ALERT_TELEGRAM_BOT' + '_TOKEN']: 'bot-value',
+  };
+  assert.deepEqual(redactObject(sensitiveMetadata), {
+    ['JWT' + '_SECRET']: '[REDACTED]',
+    ['SMTP' + '_PASS']: '[REDACTED]',
+    ['OBS_ALERT_TELEGRAM_BOT' + '_TOKEN']: '[REDACTED]',
+  });
+});
