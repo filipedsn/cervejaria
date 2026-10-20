@@ -270,3 +270,8 @@ O Elasticsearch respondeu `403` à busca agregada autenticada com a chave do Col
 Não foi identificado um ajuste seguro de código para corrigir sozinho os riscos remanescentes: retenção, ACL de Kibana, escopo DEV/PROD, fila durável do Collector e autorização de busca alteram operação ou política da stack compartilhada. Nenhum desses componentes foi modificado. O ensaio passou funcionalmente, mas o gate ponta a ponta de consulta, atraso, duplicidade e isolamento por tenant continua pendente até existir credencial read-only aprovada e uma configuração de acesso compatível.
 
 `PROD_DEPLOY_REQUIRED=YES`. A correção de identidade do PR #81 está no DEV (`f7554e6d`) e a API PROD segue em `e39b2e6d`. Esta auditoria não autoriza deploy de produção. TAP-96 deve permanecer **In Progress** até validar busca/atribuição/tenant no Kibana, decidir e aplicar retenção/controle de acesso/fila por fluxo autorizado e revisar as lacunas da matriz. Sugestões de trabalho futuro não foram criadas no Plane.
+
+
+## Atualização de retenção
+
+A preparação segura de policies/templates, os limites de capacidade e a decisão operacional pendente estão em [TAP-96-preparacao-retencao-2026-10-20.md](TAP-96-preparacao-retencao-2026-10-20.md). Nenhuma mudança foi aplicada à infraestrutura compartilhada.
