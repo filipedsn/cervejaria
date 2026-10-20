@@ -303,7 +303,7 @@ Os destinos propostos são estreitos e não alteram `logs`/`metrics` genéricas 
 
 | Área | Estado | Evidência atual | Próximo passo |
 |---|---|---|---|
-| Correções runtime do PR #84 | comprovado como merge; publicação é gate separado | main informada `c5dc13c821cd5ad76ccb8e14606bee0b83a53618`; não inferir deploy PROD pelo merge | verificar release DEV/PROD pelo fluxo próprio; deploy PROD só com autorização explícita. |
+| Correções runtime do PR #84 | merge comprovado; DEV e PROD locais respondem, mas não estão no SHA informado para main | main informada `c5dc13c821cd5ad76ccb8e14606bee0b83a53618`; leitura `GET /api/health` e `/api/ready` em 2026-10-20 18:23 BRT: DEV `603a2d32e6b8cef855aeeff3b71e41b599d0887e` / ready; PROD `e39b2e6d` / ready | publicar o SHA de main no DEV pelo fluxo oficial e validar; deploy PROD só com autorização explícita. |
 | Login e pedido sintéticos focados | parcial | API consultou 47 docs da execução `22f8ff00ab3d3345`; Discover conferiu a janela/SHA, mas a confirmação visual individual de login 401/403 e pedido aceito não foi registrada | completar somente confirmações humanas pendentes e preservar que 47 não significa cobertura total/zero duplicidade. |
 | Retenção atual | comprovado para a fotografia | 415 gerenciados hot-only sem delete; 132 traces unmanaged; policies/templates inspecionados | proprietários decidem janelas e semântica; coletar deciders e confirmar alvo/composição antes do piloto. |
 | Capacidade/shards | parcial | 574 primários, 49 réplicas não alocadas, limite 1000; escala de réplica é provável single-node | obter allocation explain e settings de réplica; medir tendência semanal comparável. |
