@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, assetUrl, formatCurrency } from '../lib/api';
@@ -15,19 +14,23 @@ import { Loading } from '../components/Loading';
 import { PortalBackground } from '../components/PortalBackground';
 import { connectClientePortalSocket } from '../lib/socket';
 import { applyAppTheme, getAppTheme, setAppTheme, type AppTheme } from '../lib/app-theme';
+import { AdicionarItemComandaModal } from '../components/AdicionarItemComandaModal';
+import type { Produto, TapComChope } from '../types';
 
 type Tab = 'comanda' | 'pedir';
 
 type LoginStep = 'telefone' | 'confirmar' | 'cadastro' | 'bloqueado';
 
 type CartItem = {
-  key: string;
   produtoId: string;
   produtoNome: string;
   volumeMl: number;
   quantidade: number;
   precoUnit: number;
   tapId?: string;
+  paraViagem?: boolean;
+  observacao?: string;
+  opcionais?: { opcionalId: string; quantidade: number }[];
 };
 
 function ReceiptIcon() {
@@ -82,11 +85,11 @@ export function PortalClientePage() {
   const [telefone, setTelefone] = useState('');
   const [error, setError] = useState('');
   const [authenticated, setAuthenticated] = useState(false);
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [menuTab, setMenuTab] = useState<'chope' | 'bebidas' | 'comidas'>('chope');
+  const [showPedidoBuilder, setShowPedidoBuilder] = useState(false);
   const [cancelandoPedidoId, setCancelandoPedidoId] = useState<string | null>(null);
   const phoneInputRef = useRef<HTMLInputElement>(null);
   const nomeInputRef = useRef<HTMLInputElement>(null);
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
 
   const clearPortalSession = useCallback(async () => {
     try {
@@ -95,7 +98,6 @@ export function PortalClientePage() {
       /* cookie pode já estar inválido */
     }
     setAuthenticated(false);
-    setCart([]);
     queryClient.removeQueries({ queryKey: ['portal-comanda'] });
     queryClient.removeQueries({ queryKey: ['portal-cardapio'] });
   }, [queryClient]);
@@ -171,13 +173,6 @@ export function PortalClientePage() {
   }, [comandaQuery.error, handlePortalAuthError]);
 
   useEffect(() => {
-    if (!cardapio) return;
-    if (cardapio.chopes.length > 0) setMenuTab('chope');
-    else if (cardapio.bebidas.length > 0) setMenuTab('bebidas');
-    else setMenuTab('comidas');
-  }, [cardapio]);
-
-  useEffect(() => {
     if (!authenticated) return;
 
     const socket = connectClientePortalSocket();
@@ -192,6 +187,8 @@ export function PortalClientePage() {
     socket.on('pedido:recusado', refreshComanda);
     socket.on('pedido:cancelado', refreshComanda);
     socket.on('item:added', refreshComanda);
+    socket.on('payment:requested', refreshComanda);
+    socket.on('payment:request-resolved', refreshComanda);
     socket.on('portal:session-expired', onSessionExpired);
 
     return () => {
@@ -199,6 +196,8 @@ export function PortalClientePage() {
       socket.off('pedido:recusado', refreshComanda);
       socket.off('pedido:cancelado', refreshComanda);
       socket.off('item:added', refreshComanda);
+      socket.off('payment:requested', refreshComanda);
+      socket.off('payment:request-resolved', refreshComanda);
       socket.off('portal:session-expired', onSessionExpired);
     };
   }, [authenticated, queryClient, clearPortalSession]);
@@ -242,15 +241,20 @@ export function PortalClientePage() {
   const pedidoMutation = useMutation({
     mutationFn: (itens: CartItem[]) =>
       api.post('/api/public/cliente/pedidos', {
+        idempotencyKey: idempotencyKeyRef.current,
         itens: itens.map((i) => ({
           produtoId: i.produtoId,
           volumeMl: i.volumeMl,
           quantidade: i.quantidade,
           tapId: i.tapId,
+          paraViagem: i.paraViagem,
+          observacao: i.observacao,
+          opcionais: i.opcionais,
         })),
       }),
     onSuccess: () => {
-      setCart([]);
+      idempotencyKeyRef.current = crypto.randomUUID();
+      setShowPedidoBuilder(false);
       setTab('comanda');
       queryClient.invalidateQueries({ queryKey: ['portal-comanda'] });
     },
@@ -274,10 +278,38 @@ export function PortalClientePage() {
     },
   });
 
-  const cartTotal = useMemo(
-    () => cart.reduce((s, i) => s + i.precoUnit * i.quantidade, 0),
-    [cart],
-  );
+  const solicitarPagamentoMutation = useMutation({
+    mutationFn: () => api.post<{ pendente: boolean }>('/api/public/cliente/solicitar-pagamento', {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['portal-comanda'] }),
+    onError: (err) => {
+      if (handlePortalAuthError(err)) return;
+      setError(err instanceof ApiError ? err.message : 'Nao foi possivel solicitar atendimento');
+    },
+  });
+
+  const portalProdutos = useMemo<Produto[]>(() => (cardapio ? [...cardapio.bebidas, ...cardapio.comidas].map((item) => ({
+    id: item.id,
+    nome: item.nome,
+    descricao: item.descricao,
+    tipo: item.tipo as Produto['tipo'],
+    formato: item.formato as Produto['formato'],
+    categoria: item.categoria,
+    ativo: true,
+    precos: item.precos.map((preco) => ({ id: `${item.id}-${preco.volumeMl}`, volumeMl: preco.volumeMl, preco: String(preco.preco) })),
+    gruposOpcionais: item.gruposOpcionais,
+  })) : []), [cardapio]);
+  const portalTaps = useMemo<TapComChope[]>(() => (cardapio?.chopes ?? []).map((item) => ({
+    id: item.tapId,
+    numero: item.tapNumero,
+    nome: item.tapNome,
+    trailerId: null,
+    ativo: true,
+    produtoId: item.produto.id,
+    chopeAtual: { id: item.produto.id, nome: item.produto.nome, tipo: 'BEBIDA', formato: 'CHOPE', categoria: item.produto.categoria, cor: item.produto.cor, estilo: item.produto.estilo, ativo: true, precos: item.produto.precos.map((preco) => ({ id: `${item.produto.id}-${preco.volumeMl}`, volumeMl: preco.volumeMl, preco: String(preco.preco) })) },
+    chopeCadastro: null,
+    temMontagemAtiva: true,
+    trocadoNoEvento: false,
+  })), [cardapio]);
 
   const phoneDigits = telefone.replace(/\D/g, '');
 
@@ -318,17 +350,6 @@ export function PortalClientePage() {
       return;
     }
     sessaoMutation.mutate({ nome: nome.trim(), telefone: phoneDigits });
-  };
-
-  const addToCart = (item: Omit<CartItem, 'key'>) => {
-    const key = `${item.produtoId}-${item.volumeMl}-${item.tapId ?? 'unit'}`;
-    setCart((prev) => {
-      const existing = prev.find((c) => c.key === key);
-      if (existing) {
-        return prev.map((c) => (c.key === key ? { ...c, quantidade: c.quantidade + 1 } : c));
-      }
-      return [...prev, { ...item, key }];
-    });
   };
 
   if (isLoading) {
@@ -550,6 +571,22 @@ export function PortalClientePage() {
               </p>
             </div>
 
+            <div className="card space-y-2">
+              {comanda?.solicitacaoPagamentoEm ? (
+                <p className="notice-warn-label" role="status">Solicitacao de pagamento enviada. Um atendente vira ate voce.</p>
+              ) : (
+                <button
+                  type="button"
+                  className="touch-btn-secondary w-full"
+                  disabled={solicitarPagamentoMutation.isPending || comanda?.status !== 'ABERTA'}
+                  onClick={() => solicitarPagamentoMutation.mutate()}
+                >
+                  {solicitarPagamentoMutation.isPending ? 'Solicitando...' : 'Solicitar pagamento'}
+                </button>
+              )}
+              <p className="text-xs text-ink-muted">Esta acao chama um atendente. O pagamento continua sendo feito com a equipe.</p>
+            </div>
+
             {comandaVazia && (
               <p className="text-sm text-ink-muted">Nenhum item na comanda ainda.</p>
             )}
@@ -594,6 +631,9 @@ export function PortalClientePage() {
                         <li key={i.id}>
                           {i.quantidade}x {i.produto.nome}{' '}
                           {i.volumeMl > 1 ? `(${formatVolume(i.volumeMl)})` : ''}
+                          {i.opcionais?.length ? <span className="block pl-3 text-xs">{i.opcionais.map((option) => `${option.quantidade}x ${option.nome}`).join(', ')}</span> : null}
+                          {i.observacao && <span className="block pl-3 text-xs">Obs: {i.observacao}</span>}
+                          {i.paraViagem && <span className="block pl-3 text-xs font-semibold">Para levar</span>}
                         </li>
                       ))}
                     </ul>
@@ -634,6 +674,9 @@ export function PortalClientePage() {
                         <li key={i.id}>
                           {i.quantidade}x {i.produto.nome}{' '}
                           {i.volumeMl > 1 ? `(${formatVolume(i.volumeMl)})` : ''}
+                          {i.opcionais?.length ? <span className="block pl-3 text-xs">{i.opcionais.map((option) => `${option.quantidade}x ${option.nome}`).join(', ')}</span> : null}
+                          {i.observacao && <span className="block pl-3 text-xs">Obs: {i.observacao}</span>}
+                          {i.paraViagem && <span className="block pl-3 text-xs font-semibold">Para levar</span>}
                         </li>
                       ))}
                     </ul>
@@ -649,154 +692,35 @@ export function PortalClientePage() {
 
         {tab === 'pedir' && cardapio && (
           <section className="space-y-4">
-            <p className="text-sm text-ink-muted">
-              Monte seu pedido. O atendente confirma antes de lançar na comanda.
-            </p>
-            <div className="segmented-control">
-              {cardapio.chopes.length > 0 && (
-                <button
-                  type="button"
-                  className={`segmented-control-btn ${menuTab === 'chope' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
-                  onClick={() => setMenuTab('chope')}
-                >
-                  Chopes
-                </button>
-              )}
-              {cardapio.bebidas.length > 0 && (
-                <button
-                  type="button"
-                  className={`segmented-control-btn ${menuTab === 'bebidas' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
-                  onClick={() => setMenuTab('bebidas')}
-                >
-                  Bebidas
-                </button>
-              )}
-              {cardapio.comidas.length > 0 && (
-                <button
-                  type="button"
-                  className={`segmented-control-btn ${menuTab === 'comidas' ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
-                  onClick={() => setMenuTab('comidas')}
-                >
-                  Comidas
-                </button>
-              )}
+            <div className="card space-y-3">
+              <h2 className="text-lg font-bold">Monte seu pedido</h2>
+              <p className="text-sm text-ink-muted">Escolha produtos, quantidades, acompanhamentos e opcionais; revise cada unidade antes de enviar ao atendente.</p>
+              <button type="button" className="touch-btn-primary w-full" onClick={() => setShowPedidoBuilder(true)}>
+                Montar e revisar pedido
+              </button>
             </div>
-
-            {menuTab === 'chope' &&
-              cardapio.chopes.map((chope) => (
-                <div key={chope.tapId} className="card space-y-2">
-                  <p className="font-bold">
-                    Tap {chope.tapNumero} — {chope.produto.nome}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {chope.produto.precos.map((p) => (
-                      <button
-                        key={p.volumeMl}
-                        type="button"
-                        className="touch-btn-secondary touch-btn-sm"
-                        onClick={() =>
-                          addToCart({
-                            produtoId: chope.produto.id,
-                            produtoNome: chope.produto.nome,
-                            volumeMl: p.volumeMl,
-                            quantidade: 1,
-                            precoUnit: p.preco,
-                            tapId: chope.tapId,
-                          })
-                        }
-                      >
-                        {formatVolume(p.volumeMl) || 'Un'} — {formatCurrency(p.preco)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-
-            {(menuTab === 'bebidas' ? cardapio.bebidas : menuTab === 'comidas' ? cardapio.comidas : []).map(
-              (produto) => (
-                <div key={produto.id} className="card flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-medium">{produto.nome}</p>
-                    <p className="text-sm text-brand-600">
-                      {formatCurrency(produto.precos[0]?.preco ?? 0)}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="touch-btn-primary touch-btn-sm"
-                    onClick={() =>
-                      addToCart({
-                        produtoId: produto.id,
-                        produtoNome: produto.nome,
-                        volumeMl: produto.precos[0]?.volumeMl ?? 1,
-                        quantidade: 1,
-                        precoUnit: produto.precos[0]?.preco ?? 0,
-                      })
-                    }
-                  >
-                    Adicionar
-                  </button>
-                </div>
-              ),
-            )}
-
-            {cart.length > 0 &&
-              createPortal(
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                  <button
-                    type="button"
-                    className="overlay-backdrop"
-                    aria-label="Fechar carrinho"
-                    onClick={() => setCart([])}
-                  />
-                  <div
-                    role="dialog"
-                    aria-modal
-                    aria-labelledby="portal-cart-title"
-                    className="relative card shadow-xl w-full max-w-sm space-y-3 p-4"
-                  >
-                    <p id="portal-cart-title" className="font-bold">
-                      Carrinho ({cart.length})
-                    </p>
-                    {cart.map((item) => (
-                      <div key={item.key} className="flex justify-between text-sm">
-                        <span>
-                          {item.quantidade}x {item.produtoNome} {formatVolume(item.volumeMl)}
-                        </span>
-                        <span>{formatCurrency(item.precoUnit * item.quantidade)}</span>
-                      </div>
-                    ))}
-                    <div className="flex justify-between font-bold pt-1 border-t border-line">
-                      <span>Total estimado</span>
-                      <span>{formatCurrency(cartTotal)}</span>
-                    </div>
-                    <button
-                      type="button"
-                      className="touch-btn-primary w-full"
-                      disabled={pedidoMutation.isPending}
-                      onClick={() => {
-                        setError('');
-                        pedidoMutation.mutate(cart);
-                      }}
-                    >
-                      {pedidoMutation.isPending ? 'Enviando...' : 'Enviar pedido ao atendente'}
-                    </button>
-                    <button
-                      type="button"
-                      className="touch-btn-secondary w-full"
-                      disabled={pedidoMutation.isPending}
-                      onClick={() => setCart([])}
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </div>,
-                document.body,
-              )}
           </section>
         )}
-
       </main>
+
+      {cardapio && <AdicionarItemComandaModal
+        open={showPedidoBuilder}
+        onClose={() => setShowPedidoBuilder(false)}
+        tapsComChope={portalTaps}
+        bebidas={portalProdutos.filter((produto) => produto.tipo === 'BEBIDA' && produto.formato !== 'CHOPE')}
+        comidas={portalProdutos.filter((produto) => produto.tipo === 'COMIDA')}
+        outros={[]}
+        eventoAberto={info.evento != null}
+        comandaTotal={comanda?.total ?? 0}
+        onAdd={() => undefined}
+        launchMode
+        onLaunch={async (items) => {
+          setError('');
+          await pedidoMutation.mutateAsync(items as CartItem[]);
+        }}
+        isPending={pedidoMutation.isPending}
+        error={error}
+      />}
 
       <nav className="app-bottom-nav safe-area-pb">
         <div className="max-w-lg mx-auto flex items-stretch">

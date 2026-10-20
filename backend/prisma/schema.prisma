@@ -167,6 +167,8 @@ model Cervejaria {
   ativo       Boolean  @default(true)
   logoUrl     String?
   portalBackgroundUrl String?
+  /// NULL keeps the legacy public catalog; [] explicitly hides every portal category.
+  portalCategoriasPermitidas Json?
   operacaoCategoriasOrdem Json?
   corPrimaria String?
   corPaleta   Json?
@@ -756,6 +758,7 @@ model Comanda {
   /// Desconto manual aplicado na comanda (valor absoluto em reais).
   desconto       Decimal       @default(0) @db.Decimal(10, 2)
   total          Decimal       @default(0) @db.Decimal(10, 2)
+  solicitacaoPagamentoEm DateTime?
   fechadoPorId   String?
   fechadaEm      DateTime?
   /// Operacao: ponto de venda, dia operacional e identificador da mesa/ficha/apelido.
@@ -872,6 +875,7 @@ model PedidoCliente {
   clienteId       String
   status          PedidoClienteStatus @default(PENDENTE)
   observacao      String?
+  idempotencyKey  String?             @unique
   recusadoMotivo  String?
   confirmadoPorId String?
   confirmadoEm    DateTime?
@@ -899,6 +903,9 @@ model PedidoClienteItem {
   volumeMl   Int
   quantidade Int     @default(1)
   precoUnit  Decimal @db.Decimal(10, 2)
+  paraViagem Boolean @default(false)
+  observacao String?
+  opcionais Json?
 
   pedido  PedidoCliente @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
   produto Produto       @relation(fields: [produtoId], references: [id], onDelete: Restrict)

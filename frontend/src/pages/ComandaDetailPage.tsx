@@ -103,6 +103,8 @@ export function ComandaDetailPage() {
     socket.on('item:removed', handler);
     socket.on('comanda:closed', handler);
     socket.on('comanda:updated', handler);
+    socket.on('payment:requested', handler);
+    socket.on('payment:request-resolved', handler);
     socket.on('tap-montagem:updated', handler);
     socket.on('evento-cardapio:updated', handler);
     return () => {
@@ -110,6 +112,8 @@ export function ComandaDetailPage() {
       socket.off('item:removed', handler);
       socket.off('comanda:closed', handler);
       socket.off('comanda:updated', handler);
+      socket.off('payment:requested', handler);
+      socket.off('payment:request-resolved', handler);
       socket.off('tap-montagem:updated', handler);
       socket.off('evento-cardapio:updated', handler);
     };
@@ -200,6 +204,12 @@ export function ComandaDetailPage() {
       });
       trackUiError('Falha ao encerrar comanda');
     },
+  });
+
+  const resolvePaymentRequestMutation = useMutation({
+    mutationFn: () => api.post<Comanda>(`/api/comandas/${id}/solicitacao-pagamento/resolver`, {}),
+    onSuccess: (updated) => queryClient.setQueryData(['comanda', id], updated),
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao resolver solicitacao'),
   });
 
   const cancelMutation = useMutation({
@@ -382,6 +392,13 @@ export function ComandaDetailPage() {
       </div>
 
       {error && !showAddItem && !showPayment && <div className="alert-error">{error}</div>}
+
+      {comanda.solicitacaoPagamentoEm && <div className="notice-warn flex flex-wrap items-center justify-between gap-3" role="status">
+        <span className="font-semibold">Cliente solicitou pagamento</span>
+        <button type="button" className="touch-btn-secondary touch-btn-sm" disabled={resolvePaymentRequestMutation.isPending} onClick={() => resolvePaymentRequestMutation.mutate()}>
+          {resolvePaymentRequestMutation.isPending ? 'Resolvendo...' : 'Marcar como atendida'}
+        </button>
+      </div>}
 
       {/* Itens */}
       <div className="space-y-2">

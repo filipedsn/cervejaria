@@ -323,6 +323,7 @@ export interface PortalCardapioChope {
     nome: string;
     cor?: string | null;
     estilo?: string | null;
+    categoria?: string | null;
     precos: { volumeMl: number; preco: number }[];
   };
 }
@@ -333,6 +334,8 @@ export interface PortalCardapioProduto {
   descricao?: string | null;
   tipo: string;
   formato?: string | null;
+  categoria?: string | null;
+  gruposOpcionais?: GrupoOpcionalProduto[];
   precos: { volumeMl: number; preco: number }[];
 }
 
@@ -359,6 +362,9 @@ export interface PedidoClienteItem {
   volumeMl: number;
   quantidade: number;
   precoUnit: number;
+  paraViagem?: boolean;
+  observacao?: string | null;
+  opcionais?: { opcionalId: string; nome: string; quantidade: number; precoAdicional: number }[] | null;
   produto: { id: string; nome: string };
 }
 
@@ -380,6 +386,7 @@ export interface PortalComanda {
   id: string;
   status: string;
   total: number;
+  solicitacaoPagamentoEm?: string | null;
   itens: PortalComandaItem[];
   pedidos: PedidoCliente[];
 }
@@ -426,6 +433,7 @@ export interface Comanda {
   eventoId: string;
   clienteId: string;
   status: 'ABERTA' | 'FECHADA' | 'CANCELADA';
+  solicitacaoPagamentoEm?: string | null;
   tipo?: 'COMANDA' | 'AVULSA';
   numero?: number | null;
   desconto?: string | number;

@@ -1,4 +1,5 @@
 import { prisma } from '../src/lib/prisma.js';
+import { randomUUID } from 'node:crypto';
 import { api, login, portalPedidoBody, portalSessao, uniquePortalTestPhone } from './lib/http.js';
 import { assertQaEnvironment } from './lib/guard.js';
 import { CONTEXT_PATH, readJson } from './lib/store.js';
@@ -23,11 +24,23 @@ async function criarPedido(label: string): Promise<PedidoCriado> {
   assert(sessao.status === 201 && sessao.cookie && sessao.comandaId && sessao.clienteId, `${label}: sessao portal falhou`);
   comandaIds.push(sessao.comandaId);
 
+  const requestBody = { ...portalPedidoBody(arena.produtoId, arena.tapId, arena.volumeMl, `TQ003-${label}`), idempotencyKey: randomUUID() };
   const pedido = await api<PedidoCriado>('POST', '/api/public/cliente/pedidos', {
     cookie: sessao.cookie,
-    body: portalPedidoBody(arena.produtoId, arena.tapId, arena.volumeMl, `TQ003-${label}`),
+    body: requestBody,
   });
   assert(pedido.status === 201 && pedido.data.id, `${label}: criacao do pedido falhou (${pedido.status})`);
+  const duplicatePedido = await api<PedidoCriado>('POST', '/api/public/cliente/pedidos', { cookie: sessao.cookie, body: requestBody });
+  assert(duplicatePedido.status === 200 && duplicatePedido.data.id === pedido.data.id, `${label}: a mesma chave de idempotência criou outro pedido`);
+  if (label === 'normal') {
+    const paymentBody = {};
+    const request = await api<{ pendente: boolean; solicitacaoPagamentoEm: string }>('POST', '/api/public/cliente/solicitar-pagamento', { cookie: sessao.cookie, body: paymentBody });
+    assert(request.status === 200 && request.data.pendente, `solicitar pagamento falhou (${request.status})`);
+    const duplicate = await api<{ pendente: boolean; solicitacaoPagamentoEm: string }>('POST', '/api/public/cliente/solicitar-pagamento', { cookie: sessao.cookie, body: paymentBody });
+    assert(duplicate.status === 200 && duplicate.data.solicitacaoPagamentoEm === request.data.solicitacaoPagamentoEm, 'solicitação duplicada criou um segundo sinal');
+    const resolved = await api('POST', `/api/comandas/${pedido.data.comandaId}/solicitacao-pagamento/resolver`, { token: donoToken, body: {} });
+    assert(resolved.status === 200 && (resolved.data as { solicitacaoPagamentoEm?: string | null }).solicitacaoPagamentoEm == null, 'equipe não conseguiu resolver solicitação');
+  }
   return pedido.data;
 }
 

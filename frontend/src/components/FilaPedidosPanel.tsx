@@ -181,9 +181,11 @@ export function FilaPedidosPanel() {
           </div>
           <ul className="text-base space-y-0.5">
             {pedido.itens.map((item) => (
-              <li key={item.id}>
-                {item.quantidade}x {item.produto.nome}{' '}
-                {item.volumeMl > 1 ? formatVolume(item.volumeMl) : ''}
+              <li key={item.id} className="space-y-0.5">
+                <span>{item.quantidade}x {item.produto.nome}{' '}{item.volumeMl > 1 ? formatVolume(item.volumeMl) : ''}</span>
+                {item.opcionais?.length ? <p className="pl-3 text-xs text-ink-muted">Opcionais: {item.opcionais.map((option) => `${option.quantidade}x ${option.nome}`).join(', ')}</p> : null}
+                {item.observacao && <p className="pl-3 text-xs text-ink-muted">Obs: {item.observacao}</p>}
+                {item.paraViagem && <p className="pl-3 text-xs font-semibold text-amber-700">Para levar</p>}
               </li>
             ))}
           </ul>

@@ -70,6 +70,21 @@ export async function comandasRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
   registerLegacyWriteGuard(app);
 
+  app.post('/:id/solicitacao-pagamento/resolver', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
+    const user = getAuthUser(request);
+    const { id } = request.params as { id: string };
+    const resolved = await prisma.comanda.updateMany({
+      where: { id, solicitacaoPagamentoEm: { not: null }, evento: { cervejariaId: user.cervejariaId! } },
+      data: { solicitacaoPagamentoEm: null },
+    });
+    if (!resolved.count) return reply.status(404).send({ error: 'Solicitacao pendente nao encontrada' });
+    emitToComanda(app.io, id, { type: 'payment:request-resolved', data: { comandaId: id } });
+    const comanda = await prisma.comanda.findFirst({ where: { id, evento: { cervejariaId: user.cervejariaId! } }, include: comandaDetailInclude });
+    if (!comanda?.eventoId) return reply.status(404).send({ error: 'Comanda nao encontrada' });
+    emitToEvento(app.io, comanda.eventoId!, { type: 'payment:request-resolved', data: { comandaId: id } });
+    return comanda;
+  });
+
   app.get('/evento/:eventoId', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
     const user = getAuthUser(request);
     const { eventoId } = request.params as { eventoId: string };
