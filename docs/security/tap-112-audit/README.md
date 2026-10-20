@@ -43,16 +43,16 @@ Todos os 26 nós abaixo apareceram na árvore instalada com `npm ci --omit=dev`.
 | `@opentelemetry/instrumentation-oracledb@0.45.0` (transitivo) | Mesmo caminho; exposição de `db.user` em spans Oracle instrumentados. | **Corrigir:** `0.46.0` via Elastic `1.17.0`; mesmo GHSA. |
 | `@opentelemetry/instrumentation-pg@0.72.0` (transitivo) | Mesmo caminho; instrumentação PostgreSQL está presente e a API conecta ao PostgreSQL. | **Corrigir:** `0.73.0` via Elastic `1.17.0`; mesmo GHSA. |
 | `@opentelemetry/instrumentation-tedious@0.39.0` (transitivo) | Mesmo caminho; exposição de `db.user` em spans Tedious instrumentados. | **Corrigir:** `0.40.0` via Elastic `1.17.0`; mesmo GHSA. |
-| `@prisma/config@6.19.3` (transitivo) | `@prisma/client` → `prisma` CLI → config. Presente no artefato e CLI chamado no generate/migrate; não é handler de API. O audit agrega o problema de `deepmerge-ts` abaixo. | **Não aplicável com evidência ao tráfego da aplicação:** bundle distribuído `@prisma/config/dist/index.js` não importa nem referencia `deepmerge-ts`; config atual é repo-controlada e não recebe objeto cíclico de entrada HTTP. O audit ainda o reporta, por isso fica no relatório pós. |
+| `@prisma/config@6.19.3` (transitivo) | `@prisma/client@6.19.3` peer → `prisma@6.19.3` → config; CLI presente no artefato runtime e executado em generate/migrate, não no handler HTTP. O merge vulnerable é o `c12` loader de config JS/TS. | **Corrigido:** override estreito `deepmerge-ts@8.0.2`; `npm ci`, Prisma commands, CI e migrations descartáveis passaram. |
 | `brace-expansion@5.0.7` e `2.1.2` (transitivos) | Instâncias por `@fastify/static`/`glob` e cadeia `@elastic` → `rimraf`/`glob`; DoS por expansão/recurso em padrões. `GHSA-mh99-v99m-4gvg`, `GHSA-rgw5-rvv9-x895`, `GHSA-q2hr-2g5m-vwhr`, `GHSA-qhr7-859c-m2p7`, `GHSA-6j4f-fj2g-mc7p`. Padrões vêm da configuração de diretórios do servidor, não de rota HTTP. | **Corrigir:** `5.0.12` e `2.1.7` no lock, dentro das faixas aceitas pelos pais. |
-| `deepmerge-ts@7.1.5` (transitivo) | Dependência declarada por `@prisma/config@6.19.3`; `GHSA-ggr8-5vv4-36mx` / CVE-2026-40345. Só falha quando dois objetos JavaScript com referências cíclicas são mesclados; JSON comum não cria esse grafo. Busca textual no bundle publicado de `@prisma/config` não encontrou referência/import do pacote. | **Não aplicável com evidência para o fluxo atual; audit remanescente registrado:** pacote está instalado e o audit continua high. Não forcei override 7→8 nem Prisma 7, pois o código distribuído não chama a função vulnerável e essa mudança seria apenas para reduzir contagem. |
+| `deepmerge-ts@7.1.5` (transitivo) | `@prisma/config@6.19.3`; `GHSA-ggr8-5vv4-36mx` / CVE-2026-40345, afetado `<8.0.0`. Stack exhaustion requer dois grafos JS cíclicos no mesmo caminho. Config atual é JSON sem ciclos; `prisma.config.ts` ausente. | **Corrigido:** o lockfile fixa a resolução a `8.0.2` via override scoped; os três nós agregados desapareceram dos audits. |
 | `engine.io@6.6.9` (transitivo) | `socket.io@4.8.3`; protocolo Engine.IO exposto pela instância Socket.IO e DoS por revisão de protocolo divergente. `GHSA-2gc4-cqfq-p2gv`. | **Corrigir:** `6.6.11` no lock via atualização do nó compatível. |
 | `fast-jwt@5.0.6` (transitivo) | `@fastify/jwt@9.1.0`; verificação JWT em requests e sockets. Os dez IDs estão junto ao pai acima; incluem algorithm confusion, aceitação de segredo vazio em resolver, cache/claim validation e condições dependentes de configuração. | **Corrigir:** `6.3.5` via `@fastify/jwt@10.2.5`. |
 | `fast-uri@3.1.3` (transitivo) | `fastify` → `@fastify/ajv-compiler`/`fast-json-stringify`; parser usado no roteamento/validação de URLs. `GHSA-v2hh-gcrm-f6hx`, `GHSA-7p8r-x3mc-p8w7`, `GHSA-5jgf-p345-68v8`, `GHSA-f65p-4m7j-42xc`, `GHSA-fph4-wmhf-6fwf`, `GHSA-jqff-g426-hqxp`, `GHSA-qw65-cvwx-89v3`, `GHSA-hrr3-gc8f-f4qj`. | **Corrigir:** `3.1.8` no lock após atualizar Fastify e o nó transitivo. |
 | `fastify@5.9.0` (direto) | Framework e parser de todas as rotas/API. Inclui bypasses de autenticação/validação e headers; condições de rede estão detalhadas nos advisories. `GHSA-w2qp-rph6-63g4`, `GHSA-3m5p-2c4r-xxw2`, `GHSA-4mh8-r7rc-xpvc`, `GHSA-667r-xxjv-c9mm`, `GHSA-p68q-wchp-6fh7`, `GHSA-hwr6-493r-vm6h`, `GHSA-9q9j-q6p8-xq58`. | **Corrigir:** `5.12.7` no major Fastify 5; atualizar também `find-my-way` transitivo. |
 | `find-my-way@9.6.0` (transitivo) | `fastify`; roteamento recebe URLs externas. Advisory `GHSA-c96f-x56v-gq3h` reporta DoS HTTP/2; o servidor Quiver usa o listener HTTP/1 padrão, reduzindo essa condição específica. | **Corrigir:** `9.10.0` no lock, permitido pelo range do Fastify atualizado. |
 | `nodemailer@6.10.1` (direto) | API envia e-mail por SMTP. Advisories cobrem parser de endereços, resolução de URL/arquivo, cabeçalhos e comandos SMTP; vários exigem opções avançadas/entrada controlável. IDs: `GHSA-mm7p-fcc7-pg87`, `GHSA-c7w3-x93f-qmm8`, `GHSA-vvjj-xcjg-gr5g`, `GHSA-268h-hp4c-crq3`, `GHSA-wqvq-jvpq-h66f`, `GHSA-rcmh-qjqh-p98v`, `GHSA-p6gq-j5cr-w38f`, `GHSA-8m3c-c648-2xjj`, `GHSA-wmmp-3585-3rmp`, `GHSA-2x7j-588g-ccc2`, `GHSA-cc9r-2j5m-2m83`, `GHSA-6vj9-mwq6-2f5v`, `GHSA-8vvx-rff5-p5rq`, `GHSA-v53p-9fqp-m79j`, `GHSA-r7g4-qg5f-qqm2`. | **Corrigir:** `10.1.7` (Node requerido `>=20`, compatível com Node 24) e `@types/nodemailer@8.0.2`. Atualizei o tipo `Transporter`; validação TypeScript passou. |
-| `prisma@6.19.3` (direto de desenvolvimento; instalado via peer no runtime) | CLI de generate/validate/migrate; cadeia `@prisma/client` → `prisma` → `@prisma/config` → `deepmerge-ts`. Não está carregado pelo handler HTTP. | **Não aplicável com evidência ao fluxo atual**, pelo mesmo GHSA agregado acima. Prisma 7 corrige a árvore, mas a migração oficial exige atualizar ambos os pacotes, ESM/config/client/adapter e exige validar conexões. |
+| `prisma@6.19.3` (dev declarado; incluído via peer no runtime) | CLI usado em generate/validate/migrate, cadeia `@prisma/client` → `prisma` → `@prisma/config` → `deepmerge-ts`. CLI/config não é handler HTTP. | **Mitigado/corrigido no nó vulnerável:** Prisma 6.19.3 preservado; o config usa `deepmerge-ts@8.0.2` corrigido e foi validado. |
 | `sharp@0.35.3` (direto) | Importado em processamento de logo/fundo e conversão de imagem; imagens de usuário passam por decodificação nativa. `GHSA-rgj7-g3m4-5g8c`, `GHSA-wq5f-xc86-pv6w`. | **Corrigir:** patch `0.35.5`, a última versão corrigida compatível observada no feed. |
 | `socket.io-parser@4.2.6` (transitivo) | Via `socket.io@4.8.3` e cliente de teste; parser de mensagens/attachments recebido pelo Socket.IO. `GHSA-2m8v-j782-fhvr` descreve exaustão de memória por attachments. | **Corrigir:** `socket.io` e `socket.io-client@4.8.4`; lock `socket.io-parser@4.2.7`. |
 | `undici@6.27.0` (transitivo) | `@elastic/opamp-client-node`; rede de gerenciamento/telemetria, não handler de request da API. Os seis IDs e condições de retry, headers/cookies e WebSocket estão em `before-full.json`. | **Corrigir:** `6.29.1` dentro do range aceito pelo cliente OpAMP. |
@@ -66,31 +66,65 @@ Todos os 26 nós abaixo apareceram na árvore instalada com `npm ci --omit=dev`.
 - Alterações de compatibilidade de código: callback `setHeaders` do `@fastify/static` 10 recebe `FastifyReply`, então usa `reply.header`; o novo `@types/nodemailer` exporta `Transporter` como tipo nomeado.
 - Não usei `npm audit fix --force`. Não alterei os lockfiles root/frontend/ops-panel/support-analyst. `backend/node_modules` local permaneceu intacto.
 
-## Auditoria após as correções
+## Resultado final do Prisma
 
-Comandos executados no backend e no mesmo npm advisory feed:
+### Achado e caminho de execução
 
-```powershell
-npm.cmd audit --prefix backend --json
-npm.cmd audit --prefix backend --omit=dev --json
-```
+- O advisory é `GHSA-ggr8-5vv4-36mx` / `CVE-2026-40345`, high (CVSS 8.2). `deepmerge-ts` em todas as versões `<8.0.0` está afetado; `8.0.0+` está corrigido. A vulnerabilidade é recursão sem detecção de ciclos: a exploração exige que os dois objetos mesclados tenham referências próprias pelo mesmo caminho de propriedade, causando `RangeError`/exaustão de stack.
+- As três entradas do audit anterior eram nós/caminhos agregados do mesmo advisory: `@prisma/config@6.19.3`, `deepmerge-ts@7.1.5` e `prisma@6.19.3`. Cadeia runtime confirmada com `npm ls --omit=dev --all`: `@prisma/client@6.19.3` (peer) → `prisma@6.19.3` → `@prisma/config@6.19.3` → `deepmerge-ts@7.1.5`. O CLI e config estão presentes no artefato `npm ci --omit=dev`, embora Prisma seja devDependency no manifest, e scripts de release usam `prisma generate`/`prisma migrate deploy`.
+- `@prisma/config/dist/index.js` importa `deepmerge` no carregamento da configuração CLI e passa a função a `c12` como `merger`. O call site só mescla config JS/TS carregado pelo CLI; não é usado por handlers HTTP nem pelo Prisma Client de consultas. O repositório não contém `prisma.config.ts/js`; usa somente `backend/package.json#prisma.seed` (JSON acíclico) e flags `--schema` nos comandos de release. JSON não representa objetos cíclicos. Para fornecer o grafo necessário seria preciso executar código de configuração local controlado pelo próprio repositório; upstream observa que quem consegue criar tal `prisma.config.ts` já tem execução de código no host.
+- Portanto, a instância estava fisicamente instalada e carregada pela cadeia CLI/build, mas o caminho vulnerável exigia configuração JS local que não existe e não era alcançável por payload HTTP. Ainda assim, corrigi a dependência em vez de depender apenas dessa condição de exposição.
 
-Ambos reportaram `0 critical, 0 moderate, 3 high, 3 total`, nos nós `@prisma/config`, `deepmerge-ts` e `prisma`. Os três são agregações/caminhos do mesmo advisory subjacente `GHSA-ggr8-5vv4-36mx` (CVE-2026-40345), e não foram omitidos nem chamados de seguros por serem dev. O SHA-256 do lockfile pós-correção é `62DBD22667307EF080917E867B48B61745B02320FF83126F0C9E75BE7D8B2370`. Os dois relatórios completos estão em [after-full.json](./after-full.json) e [after-omit-dev.json](./after-omit-dev.json).
+### Correção aplicada e escolha de versão
 
-Decisão técnica para o achado remanescente: **não aplicável com evidência ao tráfego da API e às operações atuais do CLI**. O GHSA requer mesclar dois objetos JavaScript cíclicos; plain JSON não cria ciclos. A versão instalada de `@prisma/config` declara `deepmerge-ts` no manifest, mas seu bundle publicado `dist/index.js` não importa nem referencia o módulo, e a árvore de runtime não tem outro pai de `deepmerge-ts`. Os comandos Prisma do CI (generate/validate) e do release não fornecem objeto JavaScript não confiável a essa função. O audit continua high e isso é mantido explícito nos JSONs; nenhuma aceitação de risco foi declarada.
+- Adicionado override restrito a `@prisma/config → deepmerge-ts@8.0.2`; demais dependências e Prisma Client/CLI permanecem em Prisma `6.19.3`. O lockfile resolve a versão corrigida no mesmo nó.
+- Prisma ORM `7.10.1` também atualiza `deepmerge-ts`, mas a migração Prisma 7 exige atualizar conjuntamente `prisma` e `@prisma/client` e adaptar ESM, `prisma.config.ts`, geração/import do client, adapter PostgreSQL e configuração de pool/SSL. Para este advisory, o override estreito reduz a superfície de mudança e foi validado concretamente: `npm ci`, Prisma generate/validate e deploy das 102 migrations no banco descartável passaram. Prisma 7 não foi descartado apenas por ser major; a alternativa foi avaliada e não é necessária para corrigir este nó.
+- A mudança de major de `deepmerge-ts` foi revisada no único call site de Prisma: este projeto não fornece mapas nem tipos da API de `deepmerge-ts`; config do CLI é JSON ou código local confiável. `npm ci`, geração/validação Prisma, CI e QA de release validaram a compatibilidade. Override não é supressão: a instalação passa a conter a versão corrigida `8.0.2`.
 
-Como alternativa, Prisma `7.10.1` seria uma migração major, com mudanças oficiais de ESM, `prisma.config.ts`, saída/import do client, adapter obrigatório e pool de conexão. Não introduzi essa migração nem um override para reduzir apenas a contagem, dado que a função vulnerável não está no caminho carregado e os testes de compatibilidade/CI do Prisma 6 passaram.
+### Audit final
 
-## Validação
+Depois do override, `npm audit --json` e `npm audit --omit=dev --json` reportaram ambos `0 info, 0 low, 0 moderate, 0 high, 0 critical, 0 total`. O mesmo resultado foi confirmado depois de uma instalação limpa `npm ci --omit=dev` em diretório isolado contendo o schema. O `npm ls --omit=dev` dessa instalação confirma que o Prisma CLI continua presente por peer e que usa `deepmerge-ts@8.0.2`.
 
-- `npm ci` do backend completou em worktree temporário, usando os manifests/lock atualizados; relatório da instalação: 3 highs do Prisma acima.
-- `npm run ci`: passou em worktree temporário com Node 24/npm 11.16.0. Frontend build; Prisma generate/validate; backend 258 testes (256 pass, 2 skipped), TypeScript; ops-panel 45/45; support-analyst 82/82, typecheck/build/dossier replay; gate Windows de release.
-- O host retorna `ENOMEM` até em `node -e "require('node:os').userInfo()"`. Para executar o `tsx` dossier replay e completar o CI, usei um preload temporário fora do repositório que só retorna o nome de usuário ao `tsx` para compor o diretório temporário. O replay passou isoladamente e no CI. Nenhum shim foi adicionado ao produto.
-- `realtime-security-qa` é executado no GitHub Actions; status remoto, QA E2E descartável, publicação/health do DEV, SHA final, push/PR e sete checks são registrados após a entrega do commit.
+- JSON completo: [after-prisma-fix-full.json](./after-prisma-fix-full.json)
+- Audit omit-dev no install completo: [after-prisma-fix-omit-dev.json](./after-prisma-fix-omit-dev.json)
+- Audit após instalação limpa omit-dev: [after-prisma-fix-omit-dev-install.json](./after-prisma-fix-omit-dev-install.json)
+- Lockfile final SHA-256: `E0ABF7FDF95ED10733819F20C041302D0B1771E14446C5172B47EC3B5083B6E4`.
+- Os relatórios [after-full.json](./after-full.json) e [after-omit-dev.json](./after-omit-dev.json) preservam a etapa intermediária (3 entradas do advisory antes do override); não representam o resultado final.
 
+## ADM-X03: comparação e correção do teste
+
+O teste foi executado com o mesmo runner, seed sintético, browser Chromium e projeto Playwright `mobile` (Pixel 7), primeiro no baseline `e37682231355b592c40d74f6f8ead0a992a92dfc` após `npm ci` original, depois no candidato `5aa2d5d99e4e030ad96e3fde86c23c0cc9d1a3bd` com dependências atualizadas. Ambos falharam na mesma asserção. `AdminLayout.tsx` não mudou entre os commits: no mobile, a sidebar desktop usa `hidden md:flex` e os links funcionais estão na navegação inferior `md:hidden`. O seletor `getByText('Empresas').first()` escolhia o link desktop oculto por estar primeiro no DOM. É defeito preexistente do roteiro, não regressão do produto nem dependência.
+
+O roteiro agora busca o link visível dentro da última região `navigation`, que é a navegação inferior real no mobile, e conserva o teste de texto corrompido. O cenário corrigido passou em desktop, mobile/Pixel 7, tablet e TV (4/4), com banco e seed descartáveis.
+
+## Skips encontrados na suíte de release
+
+Os 11 skips observados são os mesmos no snapshot-base e no candidato; os testes/Playwright config correspondentes não foram alterados pela atualização de dependências:
+
+- 3 repetições de `CMD-S21` fora de desktop são skips intencionais: o teste de propagação entre sessões executa uma vez em desktop; a execução desktop passou.
+- 4 repetições de `POR-X02` são `test.fixme` por uma lacuna real: cliente marcado inativo é reativado pelo fluxo público de autoatendimento. É relevante para autorização/controle de conta, mas independente da cadeia de dependências deste WI e não foi aceito como risco.
+- 4 repetições de `PWA-S05` são `test.fixme`: o aviso de nova versão do service worker ainda não existe; sem impacto de segurança identificado e fora dos caminhos alterados.
+
+**Suggested Plane Item (não criado):**
+
+- **Título:** `[SEGURANÇA] Impedir cliente desativado de reabrir pedido pelo autoatendimento`
+- **Problema/evidência:** `e2e/release/por/por.spec.ts` documenta o gap; `backend/src/routes/public.ts` chama `registerOrUpdateCliente` na criação de comanda pública e `backend/src/lib/cliente-resolver.ts` grava `ativo: true` no `update`.
+- **Impacto:** uma conta de cliente desativada pode voltar a abrir comanda pelo portal público, contornando a ação administrativa de bloqueio.
+- **Prioridade sugerida:** high. Abrir um WI separado exige autorização humana; não alterei esse fluxo nesta entrega.
+
+## Validação desta revisão
+
+- Instalação limpa completa do backend na worktree isolada, Node `v24.18.0` / npm `11.16.0`: `npm ci` concluído; zero vulnerabilidades.
+- Instalação limpa do artefato de runtime isolado: `npm ci --omit=dev`, 367 pacotes adicionados; generate Prisma passou e `npm audit --omit=dev` reportou zero vulnerabilidades.
+- `npm run ci`: passou na worktree isolada; frontend build, Prisma generate/validate, backend 256/258 (2 skips), typecheck, ops-panel 45/45, support-analyst 82/82, dossier replay e gate Windows.
+- QA de release após correção do seletor: ADM-X03 passou em 4/4 projetos. O restante da suíte extensa anteriormente teve 304 pass, 11 skips e essa falha de seletor; não foi repetido todo o E2E por ser independente da correção Prisma. Migrações e seed sintético também passaram com override no QA descartável.
+- CI do PR de follow-up, SHA final, push/merge, SHA servido no DEV e health/readiness serão acrescentados após publicação do candidato.
+- `backend/node_modules` usado pela produção não foi tocado; instalações ocorreram em diretórios isolados. Nenhum deploy em produção foi feito.
 ## Fontes oficiais
 
 - [GitHub Advisory Database: DeepmergeTS GHSA-ggr8-5vv4-36mx / CVE-2026-40345](https://github.com/advisories/GHSA-ggr8-5vv4-36mx)
+- [Prisma upstream issue: deepmerge-ts advisory and scoped override discussion](https://github.com/prisma/orm/issues/30052)
+- [Prisma ORM 7.10.1 release notes: dependency security advisories](https://github.com/prisma/orm/releases/tag/7.10.1)
 - [GitHub Advisory: fast-jwt cache confusion GHSA-rp9m-7r4c-75qg](https://github.com/advisories/GHSA-rp9m-7r4c-75qg)
 - [Fastify JWT README: compatibilidade com Fastify 5](https://github.com/fastify/fastify-jwt)
 - [GitHub Advisory: @fastify/static path/guard bypass GHSA-423g-23ch-w7c6](https://github.com/fastify/fastify-static/security/advisories/GHSA-423g-23ch-w7c6)

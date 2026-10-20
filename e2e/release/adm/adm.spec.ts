@@ -89,6 +89,7 @@ test('ADM-X03 textos admin sem acentuação corrompida', async ({ ops, page, evi
   await page.goto('/admin/cervejarias', { waitUntil: 'networkidle' });
   const text = await page.locator('body').innerText();
   expect(text).not.toMatch(/OperaÃ|Ã§|Ã£|Ã©/);
-  await expect(page.getByText('Empresas').first()).toBeVisible();
+  const mobileNavigation = page.getByRole('navigation').last();
+  await expect(mobileNavigation.getByRole('link', { name: 'Empresas' })).toBeVisible();
   await evidence.screenshot('admin-acentos');
 });
