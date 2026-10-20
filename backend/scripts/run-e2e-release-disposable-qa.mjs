@@ -56,6 +56,7 @@ function cleanEnvironment() {
     QA_DATABASE_URL: databaseUrl, DATABASE_URL: databaseUrl,
     PDV_CANONICAL_ALL: '1',
     QA_MODE: '1', QA_RATE_LIMIT_LOGIN_MAX: '500', RELEASE_SHA: releaseSha, RELEASE_QA_CONTEXT: contextFile,
+    OTEL_SERVICE_NAME: 'quiver-tap-api-qa',
     LOG_LEVEL: 'silent',
     FRONTEND_DIST: frontendDist, JWT_SECRET: randomBytes(48).toString('base64url'),
     UPLOADS_DIR: path.join(tempRoot, 'uploads'),
@@ -64,8 +65,44 @@ function cleanEnvironment() {
   return env;
 }
 
+async function initializeQaAuditExporter() {
+  if (process.env.PDV_QA_EXPORT_AUDIT_OTLP !== '1') return undefined;
+  const endpoint = new URL(process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ?? 'http://127.0.0.1:4318/v1/logs');
+  if (
+    endpoint.protocol !== 'http:' ||
+    !['127.0.0.1', 'localhost'].includes(endpoint.hostname) ||
+    endpoint.port !== '4318' ||
+    endpoint.pathname !== '/v1/logs' ||
+    endpoint.username ||
+    endpoint.password
+  ) {
+    throw new Error('QA audit export requires the local OTLP HTTP logs endpoint on loopback:4318.');
+  }
+
+  const [{ logs }, { LoggerProvider, BatchLogRecordProcessor }, { OTLPLogExporter }, { resourceFromAttributes }] = await Promise.all([
+    import('@opentelemetry/api-logs'),
+    import('@opentelemetry/sdk-logs'),
+    import('@opentelemetry/exporter-logs-otlp-http'),
+    import('@opentelemetry/resources'),
+  ]);
+  const provider = new LoggerProvider({
+    resource: resourceFromAttributes({
+      'service.name': process.env.OTEL_SERVICE_NAME,
+      'service.version': process.env.RELEASE_SHA,
+      'deployment.environment.name': 'development',
+    }),
+    processors: [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter({ url: endpoint.toString() }) })],
+  });
+  if (!logs.setGlobalLoggerProvider(provider)) {
+    await provider.shutdown();
+    throw new Error('QA audit export refused because an OpenTelemetry Logs provider is already registered.');
+  }
+  return provider;
+}
+
 let created = false;
 let app;
+let qaAuditProvider;
 try {
   const env = cleanEnvironment();
   command('docker', ['run', '-d', '--rm', '--name', container, '--label', 'codex.purpose=release-pdv-qa', '--label', `codex.run=${runId}`,
@@ -84,6 +121,7 @@ try {
   command(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--outDir', frontendDist, '--emptyOutDir'], { cwd: frontendRoot, env, stdio: 'inherit' });
 
   Object.assign(process.env, env);
+  qaAuditProvider = await initializeQaAuditExporter();
   const { buildApp, setupSocketIO } = await import('../src/app.ts');
   app = await buildApp();
   setupSocketIO(app, app.server);
@@ -111,6 +149,11 @@ try {
   if (testExitCode !== 0) throw new Error(`Playwright release QA failed (${testExitCode}).`);
 } finally {
   if (app) await app.close().catch(() => undefined);
+  if (qaAuditProvider) {
+    await qaAuditProvider.forceFlush();
+    await qaAuditProvider.shutdown();
+    console.log(`RELEASE_QA_AUDIT_OTLP_FLUSH=PASS; runId=${runId}`);
+  }
   if (created) {
     const labels = command('docker', ['inspect', '-f', '{{ index .Config.Labels "codex.purpose" }}|{{ index .Config.Labels "codex.run" }}', container], { cwd: repoRoot });
     if (labels !== `release-pdv-qa|${runId}`) throw new Error('Recusando remover container QA com ownership labels divergentes.');

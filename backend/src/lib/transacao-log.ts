@@ -70,6 +70,7 @@ export async function registrarTransacao(
       outcome: 'success',
       entityType: input.entidadeTipo ?? undefined,
       entityId: input.entidadeId ?? undefined,
+      cervejariaId: input.cervejariaId,
       slug,
       metadata: {
         tipo: input.tipo,
@@ -93,6 +94,7 @@ export async function registrarTransacao(
           : `transacao.${input.tipo.toLowerCase()}`,
       message: `${describeTransacao(input.tipo, failMeta)} — falha ao persistir`,
       outcome: 'failure',
+      cervejariaId: input.cervejariaId,
       slug,
       metadata: {
         tipo: input.tipo,

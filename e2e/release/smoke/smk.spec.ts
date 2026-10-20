@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
+import { request as playwrightRequest } from '@playwright/test';
 import { assertTestProdWriteGuard } from '../../../scripts/test-prod-write-guard.mjs';
-import { expect, loginPage, PERSONA_PERMISSIONS, seed, test } from '../support/ops';
+import { baseURL, expect, loginPage, PERSONA_PERMISSIONS, seed, test } from '../support/ops';
 
 test('SMK-S01 health informa o commit da execução @api', async ({ ops }) => {
   const anon = await ops.anonymous();
@@ -32,4 +33,35 @@ test('SMK-S04 login leva cada persona à tela operacional correta', async ({ ops
     await page.context().clearCookies();
   }
   await evidence.screenshot('personas');
+});
+
+test('SMK-X01 login inválido e tenant inativo são distinguidos sem alterar o banco @api', async ({ ops, evidence }) => {
+  const tenant = await ops.tenant();
+  const admin = await ops.admin();
+  const context = await playwrightRequest.newContext({ baseURL });
+  try {
+    const active = await context.post('/api/auth/login', {
+      data: { email: tenant.ownerEmail, senha: tenant.ownerPassword },
+      failOnStatusCode: false,
+    });
+    expect(active.status()).toBe(200);
+    await admin.expect(admin.patch(`/api/admin/cervejarias/${tenant.id}/ativo`, { ativo: false }), 200, 'desativar tenant de QA');
+    await evidence.checkpoint();
+
+    const invalid = await context.post('/api/auth/login', {
+      data: { email: 'missing-user@example.invalid', senha: 'Qa-invalid-synthetic-password' },
+      failOnStatusCode: false,
+    });
+    expect(invalid.status()).toBe(401);
+
+    const inactive = await context.post('/api/auth/login', {
+      data: { email: tenant.ownerEmail, senha: tenant.ownerPassword },
+      failOnStatusCode: false,
+    });
+    expect(inactive.status()).toBe(403);
+  } finally {
+    await context.dispose();
+  }
+
+  await evidence.assertNoDbChange();
 });
