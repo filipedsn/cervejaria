@@ -39,7 +39,15 @@ const ERROR_MAX_PER_SESSION = 20;
 let errorCountSession = 0;
 
 function currentPage(): string {
-  return `${window.location.pathname}${window.location.search}`;
+  return window.location.pathname;
+}
+
+function safePagePath(page: string): string {
+  try {
+    return new URL(page, 'http://frontend.local').pathname;
+  } catch {
+    return page.split(/[?#]/, 1)[0] || '/';
+  }
 }
 
 function resolveSemanticAction(el: HTMLElement): string | null {
@@ -122,7 +130,7 @@ function enqueue(event: UiEvent): void {
 }
 
 export function trackPageView(page: string = currentPage()): void {
-  enqueue({ type: 'page_view', page });
+  enqueue({ type: 'page_view', page: safePagePath(page) });
 }
 
 export function trackClick(label: string, meta?: Record<string, unknown>, element?: string): void {
