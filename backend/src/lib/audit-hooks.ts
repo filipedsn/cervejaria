@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { redactObject } from './audit/redact.js';
 import { describeHttpAction } from './audit/describe.js';
 import { emitAuditEvent } from './audit/emit-audit-event.js';
+import type { AuditEventInput } from './audit/emit-audit-event.js';
 import {
   applyTelemetryContext,
   enterTelemetryContext,
@@ -78,7 +79,10 @@ function parseResponseError(payload: unknown): Record<string, unknown> | undefin
   return undefined;
 }
 
-export function registerAuditHooks(app: FastifyInstance): void {
+export function registerAuditHooks(
+  app: FastifyInstance,
+  emit: (input: AuditEventInput) => void = emitAuditEvent,
+): void {
   app.addHook('onRequest', async (request, reply) => {
     if (!shouldInitializeTelemetry(request.url, request.method)) return;
 
@@ -129,8 +133,17 @@ export function registerAuditHooks(app: FastifyInstance): void {
       const message = describeHttpAction(method, route, statusCode);
       const outcome = statusCode >= 400 ? 'failure' : 'success';
 
-      // GET 2xx não gera audit (evita poluição por polling); mutações e erros sim.
-      if (method.toUpperCase() === 'GET' && statusCode < 400) return;
+      // Polling de alto volume já está excluído acima. Audite demais leituras
+      // sem query/body, preservando rota parametrizada, resultado e duração.
+      if (method.toUpperCase() === 'GET' && statusCode < 400) {
+        emit({
+          action: 'http.get',
+          message,
+          outcome,
+          http: { method, route, statusCode, durationMs: Math.round(reply.elapsedTime) },
+        });
+        return;
+      }
 
       if (mutating || statusCode >= 400) {
         const body =
@@ -141,11 +154,11 @@ export function registerAuditHooks(app: FastifyInstance): void {
         if (body) metadata.requestBody = body;
         if (req.auditResponseError) metadata.responseError = req.auditResponseError;
 
-        emitAuditEvent({
+        emit({
           action: `http.${method.toLowerCase()}`,
           message,
           outcome,
-          http: { method, route, statusCode },
+          http: { method, route, statusCode, durationMs: Math.round(reply.elapsedTime) },
           metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
         });
       }

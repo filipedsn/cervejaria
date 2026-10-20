@@ -17,7 +17,7 @@ export type AuditEventInput = {
   entityType?: string;
   entityId?: string;
   actor?: TelemetryActor;
-  http?: { method?: string; route?: string; statusCode?: number };
+  http?: { method?: string; route?: string; statusCode?: number; durationMs?: number };
   db?: { operation?: string; model?: string; query?: string; durationMs?: number };
   ui?: { page?: string; element?: string; label?: string };
   metadata?: Record<string, unknown>;
@@ -73,6 +73,7 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
   if (input.http?.method) payload['http.request.method'] = input.http.method;
   if (input.http?.route) payload['http.route'] = input.http.route;
   if (input.http?.statusCode != null) payload['http.response.status_code'] = input.http.statusCode;
+  if (input.http?.durationMs != null) payload['http.response.duration_ms'] = input.http.durationMs;
   if (input.db?.operation) payload['db.operation'] = input.db.operation;
   if (input.db?.model) payload['db.model'] = input.db.model;
   if (input.db?.query) payload['db.query'] = input.db.query;
