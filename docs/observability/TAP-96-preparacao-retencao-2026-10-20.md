@@ -15,11 +15,11 @@ Esta seção registra preparação de código/documentação. Nenhuma policy, te
 
 O provisionador exige `-Environment dev`, constrói uma allowlist DEV estreita e apenas imprime um plano por padrão. PROD, infra e ambiente omitido são rejeitados. O plano usa nomes `quiver-tap96-dev-…-v1`, sem substituir nomes de policies PROD compartilhadas; não inclui réplicas, limites, deletes diretos ou rollover manual. O helper com credenciais só é carregado com `-Apply -ConfirmApply TAP96-DEV-RETENTION`. Mesmo então, são feitas precondições somente leitura antes de qualquer escrita e o script falha fechado se detectar conflito. Policies com mesmo nome precisam ser idênticas. Templates composable existentes são conflito, pois o Elasticsearch escolhe o de maior prioridade e não mescla templates concorrentes. Um template afeta novos data streams e novas gerações de backing (inclusive o próximo rollover de um data stream existente), mas não altera o backing atual retroativamente. Não executar ainda: a confirmação técnica explícita não substitui aprovação dos prazos e do rollout.
 
-O template versionado de single-node define `number_of_replicas=0`, mas prioridade/precedência efetiva atual não foi confirmada pela chave restrita. No Elasticsearch, um template composable de prioridade maior vence; não se deve elevar prioridade e substituir silenciosamente um vencedor sem incorporar mappings/component templates. O tempo `max_age` conta da criação para decidir rollover. Para fases ILM, `min_age` de um backing que já sofreu rollover conta a partir do rollover; em backing não rolado, a idade se baseia na criação (salvo data de origem customizada). O estado atual deve ser obtido com as consultas abaixo antes de qualquer rollout.
+O template versionado de single-node define `number_of_replicas=0`, mas prioridade/precedência efetiva atual não foi confirmada pela chave restrita. No Elasticsearch, um template composable de prioridade maior vence; no teste descartável 8.17, `logs-*-*` e `logs-*.otel-*` se sobrepuseram ao destino audit DEV. A simulação do template priority 300 não trouxe os mappings/settings dos templates perdedores, então a guarda do script recusa esse conflito. Não se deve elevar prioridade e substituir silenciosamente um vencedor sem incorporar mappings/component templates. O tempo `max_age` conta da criação para decidir rollover. Para fases ILM, `min_age` de um backing que já sofreu rollover conta a partir do rollover; em backing não rolado, a idade se baseia na criação (salvo data de origem customizada). O estado atual deve ser obtido com as consultas abaixo antes de qualquer rollout.
 
 ## Testes e execução isolada
 
-O modo padrão não carrega `_elastic-auth.ps1` e retorna antes de construir cliente HTTP. O teste de processo aponta `ELASTICSEARCH_URL` para `http://127.0.0.1:1` (porta local fechada); a execução bem-sucedida do plano comprova que nenhuma chamada foi feita. `scripts/observability/setup-ilm.Tests.ps1` cobre ambiente ausente/inválido, allowlist, plano sem segredo e exclusão de ações sobre backings. O Docker Engine não estava acessível nesta sessão; portanto não foi possível executar Elasticsearch 8.17 descartável. Teste real de PUT/precedência/idempotência/autorização permanece gate pendente. Nenhuma chamada chegou ao cluster compartilhado.
+O modo padrão não carrega `_elastic-auth.ps1` e retorna antes de construir cliente HTTP. O teste de processo aponta `ELASTICSEARCH_URL` para `http://127.0.0.1:1` (porta local fechada); a execução bem-sucedida do plano comprova que nenhuma chamada foi feita. `scripts/observability/setup-ilm.test.ps1` cobre ambiente ausente/inválido, allowlist, plano sem segredo, colisões/idempotência e exclusão de ações sobre backings. Um Elasticsearch 8.17.0 descartável, sem rede nem volume, aceitou a policy e template. `_simulate_index` mostrou os templates built-in concorrentes; a data stream criada antes da alteração manteve o lifecycle antigo no backing existente, enquanto rollover depois da alteração gerou backing novo com lifecycle diferente. Isso confirma que o template não altera backings atuais, mas afeta a próxima geração de data streams existentes. O rollover foi executado somente no cluster descartável. Nenhuma chamada chegou ao cluster compartilhado.
 
 ## Capacidade: estimativa ilustrativa, não previsão
 
@@ -44,10 +44,10 @@ Consultas administrativas somente leitura para o operador autorizado (Console El
 ```http
 GET /_data_stream/logs-*.otel-dev,traces-*.otel-dev,metrics-generic.otel-dev
 GET /_index_template
-GET /_index_template/_simulate_index/logs-audit_tap96-probe.otel-dev
-GET /_index_template/_simulate_index/logs-technical.otel-dev
-GET /_index_template/_simulate_index/traces-generic.otel-dev
-GET /_index_template/_simulate_index/metrics-generic.otel-dev
+POST /_index_template/_simulate_index/logs-audit_tap96-probe.otel-dev
+POST /_index_template/_simulate_index/logs-technical.otel-dev
+POST /_index_template/_simulate_index/traces-generic.otel-dev
+POST /_index_template/_simulate_index/metrics-generic.otel-dev
 GET /_ilm/policy/logs,metrics,quiver-tap96-dev-audit-90d-v1,quiver-tap96-dev-technical-30d-v1,quiver-tap96-dev-traces-30d-v1,quiver-tap96-dev-metrics-45d-v1
 GET /logs-*.otel-dev,traces-*.otel-dev,metrics-generic.otel-dev/_stats/store,docs,indexing,search
 GET /_cluster/stats

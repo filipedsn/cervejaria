@@ -57,6 +57,7 @@ try {
   Assert-True ($output -match 'Nenhuma chamada HTTP ocorre') 'default mode states that it does not call HTTP'
   Assert-True ($output -match 'logs-audit_\*\.otel-dev') 'plan exposes exact DEV audit pattern'
   Assert-True ($output -match '/_ilm/policy/quiver-tap96-dev-audit-90d-v1') 'plan exposes policy endpoint'
+  Assert-True ($output -match 'delete_after=90d \(proposta\)') 'plan displays proposed retention without implying approval'
   Assert-True ($output -notmatch 'TAP96-TEST-SENTINEL') 'plan does not print credential-like environment value'
 }
 finally {
@@ -65,7 +66,7 @@ finally {
 }
 
 $source = Get-Content -LiteralPath $SetupScript -Raw
-Assert-True ($source -notmatch 'number_of_replicas|_rollover|DELETE|_delete_by_query') 'script does not configure replicas or mutate/delete existing backings'
+Assert-True ($source -notmatch 'number_of_replicas|/_rollover|_delete_by_query|Invoke-IlmApi -Method DELETE') 'script does not configure replicas or mutate/delete existing backings'
 Assert-True ($source.IndexOf(". (Join-Path `$PSScriptRoot '_elastic-auth.ps1')") -gt $source.IndexOf('if (-not $Apply)')) 'auth helper is loaded only after explicit apply path'
 Assert-True ($source -match 'if \(-not \$env:ELASTIC_API_KEY\)' -and $source -notmatch 'ELASTIC_USER|ELASTIC_PASSWORD|Get-ElasticAuthHeader') 'apply requires an explicit API key and has no privileged username/password fallback'
 

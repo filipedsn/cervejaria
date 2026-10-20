@@ -18,12 +18,19 @@ function New-DevIlmPlan {
     if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
       throw "Policy versionada ausente: $($family.PolicyFile)"
     }
+    $policyDefinition = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
+    $rollover = $policyDefinition.policy.phases.hot.actions.rollover
+    $rolloverSummary = @()
+    if ($rollover.max_age) { $rolloverSummary += "max_age=$($rollover.max_age)" }
+    if ($rollover.max_primary_shard_size) { $rolloverSummary += "max_primary_shard_size=$($rollover.max_primary_shard_size)" }
     [pscustomobject]@{
       Environment = 'dev'
       Family = $family.Family
       PolicyName = $family.PolicyName
       PolicyFile = $family.PolicyFile
       PolicyPath = $policyPath
+      DeleteAfter = $policyDefinition.policy.phases.delete.min_age
+      RolloverProposal = $rolloverSummary -join ' or '
       Pattern = $family.Pattern
       TemplateName = "$($family.PolicyName)-template"
       Priority = 300

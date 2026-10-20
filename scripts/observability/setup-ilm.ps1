@@ -17,9 +17,10 @@ $plan = New-DevIlmPlan -ProjectRoot $ProjectRoot
 
 Write-Host 'Quiver Tap — plano ILM limitado a DEV' -ForegroundColor Cyan
 Write-Host 'Nenhuma chamada HTTP ocorre no modo padrão.' -ForegroundColor Green
+Write-Host 'As janelas são propostas nos JSON versionados; não significam aprovação de retenção.' -ForegroundColor Yellow
 Write-Host 'Policies/templates propostos:'
 $plan | ForEach-Object {
-  Write-Host ("- {0}: {1}; destino={2}; endpoint={3}; template={4}; endpoint={5}; prioridade={6}" -f $_.PolicyName, $_.PolicyFile, $_.Pattern, $_.EndpointPolicy, $_.TemplateName, $_.EndpointTemplate, $_.Priority)
+  Write-Host ("- {0}: rollover={1}; delete_after={2} (proposta); destino={3}; policy={4}; template={5} endpoint={6}; prioridade={7}" -f $_.PolicyName, $_.RolloverProposal, $_.DeleteAfter, $_.Pattern, $_.EndpointPolicy, $_.TemplateName, $_.EndpointTemplate, $_.Priority)
 }
 Write-Host 'Nenhum backing existente, documento, réplica ou limite será alterado por este plano.'
 
