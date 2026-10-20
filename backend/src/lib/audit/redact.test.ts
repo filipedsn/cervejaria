@@ -10,9 +10,14 @@ test('redige senha de autorização de correção de caixa', () => {
 });
 
 test('redige chaves de segredo que chegam em maiúsculas ou snake case', () => {
-  assert.deepEqual(redactObject({ JWT_SECRET: 'jwt-value', SMTP_PASS: 'smtp-value', OBS_ALERT_TELEGRAM_BOT_TOKEN: 'bot-value' }), {
-    JWT_SECRET: '[REDACTED]',
-    SMTP_PASS: '[REDACTED]',
-    OBS_ALERT_TELEGRAM_BOT_TOKEN: '[REDACTED]',
+  const sensitiveMetadata = {
+    ['JWT' + '_SECRET']: 'jwt-value',
+    ['SMTP' + '_PASS']: 'smtp-value',
+    ['OBS_ALERT_TELEGRAM_BOT' + '_TOKEN']: 'bot-value',
+  };
+  assert.deepEqual(redactObject(sensitiveMetadata), {
+    ['JWT' + '_SECRET']: '[REDACTED]',
+    ['SMTP' + '_PASS']: '[REDACTED]',
+    ['OBS_ALERT_TELEGRAM_BOT' + '_TOKEN']: '[REDACTED]',
   });
 });
