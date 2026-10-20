@@ -19,7 +19,7 @@ O template versionado de single-node define `number_of_replicas=0`, mas priorida
 
 ## Testes e execução isolada
 
-O modo padrão não carrega `_elastic-auth.ps1` e retorna antes de construir cliente HTTP. O teste de processo aponta `ELASTICSEARCH_URL` para `http://127.0.0.1:1` (porta local fechada); a execução bem-sucedida do plano comprova que nenhuma chamada foi feita. `scripts/observability/setup-ilm.test.ps1` cobre ambiente ausente/inválido, allowlist, plano sem segredo, colisões/idempotência e exclusão de ações sobre backings. Um Elasticsearch 8.17.0 descartável, sem rede nem volume, aceitou a policy e template. `_simulate_index` mostrou os templates built-in concorrentes; a data stream criada antes da alteração manteve o lifecycle antigo no backing existente, enquanto rollover depois da alteração gerou backing novo com lifecycle diferente. Isso confirma que o template não altera backings atuais, mas afeta a próxima geração de data streams existentes. O rollover foi executado somente no cluster descartável. Nenhuma chamada chegou ao cluster compartilhado.
+O modo padrão não carrega `_elastic-auth.ps1` e retorna antes de construir cliente HTTP. O teste de processo aponta `ELASTICSEARCH_URL` para `http://127.0.0.1:1` (porta local fechada); a execução bem-sucedida do plano comprova que nenhuma chamada foi feita. `scripts/observability/setup-ilm.test.ps1` cobre ambiente ausente/inválido, allowlist, plano sem segredo, colisões/idempotência e exclusão de ações sobre backings. Um Elasticsearch 8.17.0 descartável, sem rede nem volume, aceitou a policy e template. `_simulate_index` mostrou os templates built-in concorrentes; a data stream criada antes da alteração manteve o lifecycle antigo no backing existente, enquanto rollover depois da alteração gerou backing novo com lifecycle diferente. Isso confirma que o template não altera backings atuais, mas afeta a próxima geração de data streams existentes. O rollover foi executado somente no cluster descartável. Em outro ES descartável 8.17 publicado apenas em loopback, a execução real de `setup-ilm.ps1 -Apply` com chave fictícia foi recusada antes de PUT pela colisão com `logs` e `logs-otel@template`; consulta posterior confirmou 404 para a policy/template novos. Nenhuma chamada chegou ao cluster compartilhado.
 
 ## Capacidade: estimativa ilustrativa, não previsão
 
@@ -28,9 +28,10 @@ Com 397 streams de logs, 127 traces e 1 metrics, o número de gerações se a id
 | Hipótese | Cálculo de gerações de backings | Gerações estimadas |
 |---|---:|---:|
 | Logs technical 30d + traces 30d + metrics 45d | `397×ceil(30/7) + 127×ceil(30/7) + 1×ceil(45/7)` | 2.627 |
-| Todos os logs tratados como audit 90d + traces 30d + metrics 45d | `397×ceil(90/7) + 127×ceil(30/7) + 1×ceil(45/7)` | 6.207 |
+| Todos os logs tratados como audit 90d/14d + traces 30d/7d + metrics 45d/7d | `397×ceil(90/14) + 127×ceil(30/7) + 1×ceil(45/7)` | 3.421 |
+| Estresse: mesmo cenário audit, mas rollover semanal em tudo | `397×ceil(90/7) + 127×ceil(30/7) + 1×ceil(45/7)` | 5.803 |
 
-São cenários de teto para uma geração por stream por semana, não previsão: os 397 logs não estão divididos entre audit/technical/generic; rollover por tamanho, streams vazios, datas e policy efetiva mudam o resultado. Shard count não foi medido. Se cada backing tivesse um primary e nenhuma réplica, esses números também seriam primaries, mas essa premissa não foi verificada. Rollover semanal para centenas de streams pequenos não está aprovado.
+São cenários aproximados de gerações ativas por stream, não previsão: os 397 logs não estão divididos entre audit/technical/generic; rollover por tamanho, streams vazios, datas e policy efetiva mudam o resultado. O cenário semanal é apenas estresse, não proposta para audit. Shard count não foi medido. Se cada backing tivesse um primary e nenhuma réplica, esses números também seriam primaries, mas essa premissa não foi verificada. Rollover semanal para centenas de streams pequenos não está aprovado.
 
 ## Plano futuro de rollout e recuperação
 
