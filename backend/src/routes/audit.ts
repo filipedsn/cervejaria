@@ -5,6 +5,7 @@ import { describePageView, describeUiAction } from '../lib/audit/describe.js';
 import { verifySession } from '../lib/session.js';
 import { verifyClienteSession } from '../lib/cliente-session.js';
 import { validCorrelationId } from '../lib/correlation-context.js';
+import { verifyPdvClienteSession } from '../lib/pdv-client-session.js';
 
 function safeHttpText(value: string): boolean {
   return !/[\u0000-\u001F\u007F]/.test(value);
@@ -58,7 +59,12 @@ export async function auditRoutes(app: FastifyInstance) {
         await verifyClienteSession(app, request);
         cliente = true;
       } catch {
-        return reply.status(401).send({ error: 'Não autorizado' });
+        try {
+          await verifyPdvClienteSession(app, request);
+          cliente = true;
+        } catch {
+          return reply.status(401).send({ error: 'Não autorizado' });
+        }
       }
     }
 

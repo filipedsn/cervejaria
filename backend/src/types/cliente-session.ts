@@ -32,3 +32,13 @@ export function isClienteSessionPayload(value: unknown): value is ClienteSession
     typeof v.portalGeneration === 'number'
   );
 }
+
+export function isPdvClienteSessionPayload(value: unknown): value is PdvClienteSessionPayload {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as PdvClienteSessionPayload;
+  return v.type === 'cliente-pdv'
+    && typeof v.cervejariaId === 'string'
+    && typeof v.pontoVendaId === 'string'
+    && typeof v.clienteId === 'string'
+    && typeof v.comandaId === 'string';
+}
