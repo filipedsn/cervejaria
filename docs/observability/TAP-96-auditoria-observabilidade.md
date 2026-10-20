@@ -275,3 +275,51 @@ Não foi identificado um ajuste seguro de código para corrigir sozinho os risco
 ## Atualização de retenção
 
 A preparação segura de policies/templates, os limites de capacidade e a decisão operacional pendente estão em [TAP-96-preparacao-retencao-2026-10-20.md](TAP-96-preparacao-retencao-2026-10-20.md). Nenhuma mudança foi aplicada à infraestrutura compartilhada.
+
+## Aditivo: inventário administrativo e saldo TAP-96 — 2026-10-20
+
+Fonte: 24 consultas administrativas somente leitura concluídas às **17:57 America/Sao_Paulo**, endpoint `http://127.0.0.1:9200`, cluster `docker-cluster`, Elasticsearch 8.17.0. Os JSON de origem estão localmente em `docs/observability/tap96-admin-inventory-2026-10-20_175727/`; não contêm credenciais. Sem busca ou leitura de conteúdo comercial. É uma fotografia, não uma medição de tendência.
+
+### Estado efetivo comprovado
+
+| Medida | Resultado | Interpretação e limite |
+|---|---:|---|
+| Cluster | 1 nó, yellow | PROD, DEV e infra compartilham o mesmo cluster. |
+| Shards | 574 primários ativos; 49 não alocados; limite efetivo 1000/node | 623 cópias demandadas, não 574. A margem numérica 377 não é orçamento operacional. |
+| OTel | 540 streams, 547 backings, 23.759.951 documentos, ~2,410 GiB | Store e docs observados uma vez, sem taxa de crescimento. |
+| Namespace | DEV 525; PROD 12; infra 3 | DEV domina cardinalidade; PROD não está isolado em cluster separado. |
+| Famílias | logs 403 streams/405 backings; traces 132/132; metrics 5/10 | Metrics concentra 95,8% dos docs e 81,4% do armazenamento OTel. |
+| ILM | 415 backings gerenciados (`logs` 405, `metrics` 10), hot-only; 132 traces sem lifecycle | Policies compartilhadas `logs`/`metrics` só têm rollover 30d/50gb; nenhuma fase delete. `failed_step=0`. |
+
+Os 49 shards yellow são réplicas: 574 primários ativos = 574 shards ativos, sem cópias de réplica ativas; CAT indices lista 49 backings yellow com `rep=1`. Distribuição: logs 34 (33 DEV e 1 PROD), traces 10 DEV, metrics 5 (DEV 1, PROD 1, infra 3). A explicação provável é a impossibilidade de colocar a réplica no mesmo nó do primary single-node, mas o motivo atual de alocação ainda precisa da resposta de `_cluster/allocation/explain`. As 24 evidências não registram o template vencedor **no momento de criação** de cada índice. Logo, não atribuo os 49 a um template histórico sem prova. O roteiro complementar de quatro leituras mais uma allocation explain está no relatório de preparação de retenção; inclui shards `p/r`, settings de réplicas, metadados de data stream, templates atuais e deciders, sem ler documentos.
+
+### Cardinalidade e impacto de capacidade
+
+Classificação nominal das 540 streams: 510 com nomes/IDs de teste QA sintético (389 audit, 121 traces), 14 com slugs empresariais conhecidos e 16 system/generic/unknown. Não é fonte autoritativa de tenant nem base para exclusão. Nenhuma stream QA foi excluída e nenhum roteamento foi alterado. Metrics é volumosa; logs/traces são cardinalidade/shards pequenos. A proposta atual cobre 527 streams (395 audit DEV, 1 technical DEV, 127 traces DEV, 1 metrics generic DEV, 3 infra). Uma geração a mais em cada destino acrescentaria 527 primários, levando os primários projetados a 1.101, acima de 1.000, ainda sem contar réplicas. Com uma réplica para cada novo backing, a projeção aproximada total seria 1.677 cópias frente às 623 observadas. O template simulado não explicita `number_of_replicas`; a quantidade efetiva precisa ser revalidada. Rollover semanal/quatorzenal por todas as streams seria ainda mais caro.
+
+Os destinos propostos são estreitos e não alteram `logs`/`metrics` genéricas compartilhadas nem Collector. Templates custom prioridade 121 venceram as simulações DEV específicas no ES descartável 8.17 e mantiveram o mapping data stream e componentes logs/OTel/TSDS incluídos na composição. As probes PROD continuaram com lifecycle atual ou nenhum; os padrões de APM continuam fora dos nomes custom estreitos na simulação. Isso prova o cenário testado, não substitui comparação de composição e prioridade no cluster real antes de qualquer rollout. Templates composable concorrentes não se mesclam automaticamente; um vencedor pode substituir os outros.
+
+### Matriz de aceite atualizada
+
+| Área | Estado | Evidência atual | Próximo passo |
+|---|---|---|---|
+| Correções runtime do PR #84 | comprovado como merge; publicação é gate separado | main informada `c5dc13c821cd5ad76ccb8e14606bee0b83a53618`; não inferir deploy PROD pelo merge | verificar release DEV/PROD pelo fluxo próprio; deploy PROD só com autorização explícita. |
+| Login e pedido sintéticos focados | parcial | API consultou 47 docs da execução `22f8ff00ab3d3345`; Discover conferiu a janela/SHA, mas a confirmação visual individual de login 401/403 e pedido aceito não foi registrada | completar somente confirmações humanas pendentes e preservar que 47 não significa cobertura total/zero duplicidade. |
+| Retenção atual | comprovado para a fotografia | 415 gerenciados hot-only sem delete; 132 traces unmanaged; policies/templates inspecionados | proprietários decidem janelas e semântica; coletar deciders e confirmar alvo/composição antes do piloto. |
+| Capacidade/shards | parcial | 574 primários, 49 réplicas não alocadas, limite 1000; escala de réplica é provável single-node | obter allocation explain e settings de réplica; medir tendência semanal comparável. |
+| Cardinalidade de tenant/QA | parcial | 510 nomes QA, 14 slugs conhecidos, 16 generic/system/unknown | validar ownership com cadastro; definir controle de crescimento sem apagar streams nem reescrever roteamento automaticamente. |
+| Jornadas além de login e pedido PDV | ausente/parcial conforme matriz de código | inventário estático e ensaios anteriores não cobrem todas as jornadas, GETs bem-sucedidos, exportações, realtime e assíncrono | selecionar jornadas de risco e instrumentação; não repetir os 18 testes sem mudança que os invalide. |
+| Geolocalização | ausente para eventos da aplicação | Cloudflare country pode existir na borda, mas a aplicação não registra país/região; cidade não habilitada | decisão de produto sobre precisão, finalidade, minimização e acesso. |
+| Permissão de consulta por empresa | ausente | os filtros de painel não provam ACL; esta coleta administrativa não testou dois papéis empresariais em Discover | teste positivo/negativo com usuários empresariais separados e prova de negação cross-tenant. |
+| Durabilidade/entrega | ausente | pipelines sem fila persistente explícita; tail sampling mantém estado em memória; coleta de retention não mede perda em falha | definir RPO/RTO e owner; ensaio isolado de indisponibilidade/restart e confirmação de recuperação. |
+| Backup/restauração | ausente | nenhum snapshot/restauração de Elasticsearch foi comprovado nesta coleta; dump local histórico não prova cópia off-host nem restore | comprovar destino/cópia e executar restore drill isolado antes de excluir dados. |
+| Retenção proposta e novos templates | parcial, descartável validado | 5 policies/templates foram criados somente no container ES 8.17 descartável; simulações DEV/PROD/infra conferiram lifecycle e composição testada | decisão concreta é piloto de `metrics-generic.otel-dev` em futuras gerações, com autorização específica e prechecks. |
+| Backings existentes | ausente para efeito de expiração futura | 7 backings antigos não-write identificados: technical DEV/PROD, metrics-generic DEV/PROD e três receivers infra; traces 132 sem ILM e dois têm ~30,03 dias desde criação | inventário individual de write index, ILM age/lifecycle date, docs/store, impacto de delete, e backup restaurável. Não aplicar retroativamente. |
+
+### Decisão e limites operacionais
+
+Recomendação concreta: preparar como primeira etapa **um piloto futuro, estritamente em `metrics-generic.otel-dev`**, com policy própria de 45 dias após rollover e um template de nome exato só para DEV; aguardar autorização do proprietário e revalidar templates, replicas e shards no cluster real imediatamente antes. O piloto não inclui backing atual nem força rollover. Benefício: foco na família de maior volume, escopo controlado e capacidade de testar governança sem mudar policies compartilhadas. Risco: a métrica de 1,6 GiB está no backing antigo e não expira com o template futuro; réplica adicional pode ficar amarela; template 121 pode competir com composição Elastic futura. Abortar se a simulação real não preservar mapping/TSDS, se abranger PROD/infra, se o primário+réplica ultrapassar orçamento explicitamente aprovado, se houver efeito em backing histórico ou se backup/restore for requisito ainda não satisfeito.
+
+Antes/depois do piloto: capturar winner/composição/replicas; simular nomes DEV, PROD, infra e APM; conferir policy/template efetivos e `_ilm/explain`; monitorar criação natural do próximo backing, saúde, docs/store/shards e erros. O rollback da configuração não restaura documentos eliminados. Para backings existentes é necessário plano e aprovação separados; primeiro comprovar snapshot e restauração, idade efetiva, write index, docs e store. As janelas audit 90d, technical 30d, traces 30d, metrics 45d e infra 15d seguem **não aprovadas**, salvo a hipótese proposta do piloto, que também exige aceite expresso.
+
+Relatórios atualizados: [preparação de retenção](TAP-96-preparacao-retencao-2026-10-20.md) e este aditivo. A coleta local foi resumida; os artefatos brutos permanecem como entrada não versionada. TAP-96 continua **In Progress**. `PROD_DEPLOY_REQUIRED=YES` enquanto os gates de runtime e operação permanecerem. Merge/publicação das correções de runtime e a futura intervenção na infraestrutura de observabilidade são mudanças distintas. Nenhuma policy, template, rede, credencial, réplica, limite ou serviço compartilhado foi alterado nesta etapa.
