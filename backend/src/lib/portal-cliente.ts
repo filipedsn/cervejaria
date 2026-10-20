@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { registerOrUpdateCliente } from './cliente-resolver.js';
 import { normalizePhone } from './phone.js';
@@ -6,6 +7,49 @@ import { proximoNumeroComandaEvento } from './comanda-numero.js';
 export type PortalClienteLookupResult =
   | { encontrado: true; nome: string }
   | { encontrado: false };
+
+export const CLIENTE_PORTAL_INATIVO_MESSAGE = 'Não foi possível abrir ou enviar pedidos por este portal. Procure a equipe do ponto de venda.';
+
+export class ClientePortalInativoError extends Error {
+  constructor() {
+    super(CLIENTE_PORTAL_INATIVO_MESSAGE);
+    this.name = 'ClientePortalInativoError';
+  }
+}
+
+/** Canonical PDV registration runs inside the opening transaction and never reactivates an existing client. */
+export async function registerClientePortalPdv(
+  tx: Prisma.TransactionClient,
+  params: { cervejariaId: string; nome: string; telefone: string },
+) {
+  const lockKey = `${params.cervejariaId}:${params.telefone}`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+
+  const locked = await tx.$queryRaw<Array<{ id: string; ativo: boolean }>>`
+    SELECT "id", "ativo" FROM "Cliente"
+    WHERE "cervejariaId" = ${params.cervejariaId} AND "telefone" = ${params.telefone}
+    FOR UPDATE
+  `;
+  const existing = locked[0];
+  if (existing && !existing.ativo) throw new ClientePortalInativoError();
+
+  if (existing) {
+    return tx.cliente.update({
+      where: { id: existing.id },
+      data: { nome: params.nome.trim(), optInMarketing: false },
+    });
+  }
+
+  return tx.cliente.create({
+    data: {
+      nome: params.nome.trim(),
+      telefone: params.telefone,
+      optInMarketing: false,
+      cadastradoVia: 'AUTO_ATENDIMENTO',
+      cervejariaId: params.cervejariaId,
+    },
+  });
+}
 
 export async function lookupClientePortalPorTelefone(
   cervejariaId: string,

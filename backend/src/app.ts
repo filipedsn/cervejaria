@@ -412,7 +412,13 @@ export async function buildApp() {
         filePath.includes(`${path.sep}logos${path.sep}`) ||
         filePath.includes(`${path.sep}portal-backgrounds${path.sep}`)
       ) {
-        res.header('Cache-Control', 'public, max-age=0, must-revalidate');
+        const response = res as unknown as {
+          header?: (name: string, value: string) => unknown;
+          setHeader?: (name: string, value: string) => unknown;
+        };
+        const setCacheHeader = response.header ?? response.setHeader;
+        if (!setCacheHeader) throw new Error('Static response does not support setting headers');
+        setCacheHeader.call(res, 'Cache-Control', 'public, max-age=0, must-revalidate');
       }
     },
 

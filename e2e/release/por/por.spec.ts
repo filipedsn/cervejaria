@@ -1,5 +1,6 @@
 import { request as playwrightRequest, type Page } from '@playwright/test';
 import { Api, baseURL, expect, test, uniquePhone, type Ops, type Tenant } from '../support/ops';
+import { prismaClient } from '../support/fixtures';
 
 async function portalAberto(ops: Ops, settings?: Record<string, unknown>) {
   const tenant = await ops.tenant(undefined, settings);
@@ -9,14 +10,14 @@ async function portalAberto(ops: Ops, settings?: Record<string, unknown>) {
 
 const portalBase = (tenant: Tenant) => `/api/public/cervejarias/${tenant.slug}/pontos-venda/${tenant.pointId}`;
 
-async function abrirNoPortal(page: Page, tenant: Tenant, nome: string) {
+async function abrirNoPortal(page: Page, tenant: Tenant, nome: string, telefone = uniquePhone()) {
   await page.goto(`/c/${tenant.slug}/p/${tenant.pointId}`, { waitUntil: 'networkidle' });
   const busca = page.waitForResponse((response) => response.url().includes('/cliente-por-telefone'));
-  await page.locator('#portal-pdv-telefone').fill(uniquePhone());
+  await page.locator('#portal-pdv-telefone').fill(telefone);
   await busca;
   await page.locator('#portal-pdv-nome').fill(nome);
   await page.getByRole('button', { name: 'Abrir comanda' }).click();
-  await expect(page.getByText(/Comanda aberta · senha \d+\./)).toBeVisible();
+  await expect(page.getByText(/Comanda (aberta · senha \d+|já está aberta)\./)).toBeVisible();
 }
 
 async function clientePortal(ops: Ops, tenant: Tenant, nome = 'Cliente Portal QA') {
@@ -122,8 +123,116 @@ test('POR-X01 slug, PDV ou empresa inválidos não abrem o portal', async ({ ops
   await evidence.assertNoDbChange();
 });
 
-test.fixme('POR-X02 cliente bloqueado não abre comanda pelo portal', async () => {
-  test.info().annotations.push({ type: 'product-gap', description: 'Não existe bloqueio de cliente. Cliente desativado (ativo:false) é reativado ao abrir comanda pelo portal (registerOrUpdateCliente faz upsert com ativo:true).' });
+test('POR-X02 cliente inativo não abre comanda nem envia pedidos pelo portal', async ({ ops, page, evidence }) => {
+  const tenant = await portalAberto(ops);
+  const telefone = uniquePhone();
+  const cliente = await tenant.owner.expect(tenant.owner.post('/api/clientes', {
+    nome: 'Cliente Inativo Original QA', telefone, email: 'cliente-inativo@example.invalid', optInMarketing: true,
+  }), 201, 'criar cliente ativo pela equipe');
+  const visitante = await ops.anonymous('portal-cliente-inativo');
+  const aberta = await visitante.expect(visitante.post(`${portalBase(tenant)}/comandas`, { nome: cliente.nome, telefone }), 201, 'controle positivo: cliente ativo abre comanda');
+  const samePhone = `+55 (${telefone.slice(0, 2)}) ${telefone.slice(2)}`;
+  const visitanteDuplicado = await ops.anonymous('portal-reenvio-concorrente');
+  const resultadosReenvio = await Promise.all([
+    visitante.post(`${portalBase(tenant)}/comandas`, { nome: cliente.nome, telefone: samePhone }),
+    visitanteDuplicado.post(`${portalBase(tenant)}/comandas`, { nome: cliente.nome, telefone }),
+  ]);
+  expect(resultadosReenvio.map((item) => item.status).sort()).toEqual([200, 200]);
+  expect(resultadosReenvio.map((item) => item.body.comanda.id)).toEqual([aberta.comanda.id, aberta.comanda.id]);
+
+  const outroTenant = await portalAberto(ops);
+  const mesmoTelefoneOutroTenant = await outroTenant.owner.expect(outroTenant.owner.post('/api/clientes', {
+    nome: cliente.nome, telefone,
+  }), 201, 'o mesmo telefone pode pertencer a outro tenant');
+  expect(mesmoTelefoneOutroTenant.id).not.toBe(cliente.id);
+  const portalOutroTenant = await ops.anonymous('portal-isolamento-tenant');
+  const comandaOutroTenant = await portalOutroTenant.expect(portalOutroTenant.post(`${portalBase(outroTenant)}/comandas`, {
+    nome: cliente.nome, telefone,
+  }), 201, 'abertura isolada no outro tenant');
+  await visitante.expect(visitante.post(`${portalBase(tenant)}/comanda/pedidos`, { itens: [tenant.item('lata', 2)] }), 201, 'pedido existente antes da desativação');
+  const estoqueAoDesativar = await tenant.stock();
+
+  await abrirNoPortal(page, tenant, cliente.nome, telefone);
+  await page.getByRole('button', { name: /Água QA/ }).click();
+  await tenant.owner.expect(tenant.owner.patch(`/api/clientes/${cliente.id}`, { ativo: false }), 200, 'desativar pelo fluxo administrativo');
+  await evidence.checkpoint();
+
+  const leitura = await visitante.expect(visitante.get(`${portalBase(tenant)}/comanda`), 200, 'sessão anterior mantém consulta somente leitura');
+  expect(leitura.id).toBe(aberta.comanda.id);
+  expect(leitura.total).toBe(16);
+  const bloqueado = await visitante.post(`${portalBase(tenant)}/comanda/pedidos`, { itens: [tenant.item('agua', 1)] });
+  expect(bloqueado.status).toBe(409);
+  expect(bloqueado.body.error).toMatch(/Procure a equipe do ponto de venda/);
+  await page.getByRole('button', { name: 'Enviar pedido' }).click();
+  await expect(page.getByRole('alert')).toContainText('Procure a equipe do ponto de venda');
+
+  const tentativaDireta = await visitanteDuplicado.post(`${portalBase(tenant)}/comandas`, { nome: 'Nome enviado pelo portal QA', telefone: samePhone });
+  expect(tentativaDireta.status).toBe(409);
+  expect(tentativaDireta.headers['set-cookie']).toBeUndefined();
+  const tentativaFormatoNormalizado = await (await ops.anonymous('portal-formato-normalizado')).post(`${portalBase(tenant)}/comandas`, {
+    nome: 'Nome enviado pelo portal QA', telefone: `55${telefone}`,
+  });
+  expect(tentativaFormatoNormalizado.status).toBe(409);
+  const clienteDoOutroTenant = await portalOutroTenant.expect(portalOutroTenant.post(`${portalBase(outroTenant)}/comandas`, {
+    nome: cliente.nome, telefone: samePhone,
+  }), 200, 'desativação não atravessa o tenant');
+  expect(clienteDoOutroTenant.comanda.id).toBe(comandaOutroTenant.comanda.id);
+  await expect(page.getByRole('button', { name: 'Pedidos (1)' })).toBeVisible();
+
+  const estado = await prismaClient().cliente.findFirst({ where: { id: cliente.id }, select: { nome: true, email: true, ativo: true, optInMarketing: true } });
+  expect(estado).toEqual({ nome: 'Cliente Inativo Original QA', email: 'cliente-inativo@example.invalid', ativo: false, optInMarketing: false });
+  expect(await prismaClient().comanda.count({ where: { clienteId: cliente.id, pontoVendaId: tenant.pointId, status: 'ABERTA' } })).toBe(1);
+  expect(await prismaClient().pedidoOperacao.count({ where: { comandaId: aberta.comanda.id } })).toBe(1);
+  expect(await prismaClient().pagamento.count({ where: { comandaId: aberta.comanda.id } })).toBe(0);
+  expect((await tenant.stock())(tenant.catalog!.lata.id)).toBe(estoqueAoDesativar(tenant.catalog!.lata.id));
+
+  const atendente = await tenant.staff('cliente-sem-permissao-de-reativar', ['clients.manage']);
+  expect((await atendente.patch(`/api/clientes/${cliente.id}`, { ativo: true })).status).toBe(403);
+  await tenant.owner.expect(tenant.owner.patch(`/api/clientes/${cliente.id}`, { ativo: true }), 200, 'reativar como proprietário');
+  const reaberta = await visitanteDuplicado.expect(visitanteDuplicado.post(`${portalBase(tenant)}/comandas`, {
+    nome: cliente.nome, telefone,
+  }), 200, 'cliente reativado volta a reutilizar comanda');
+  expect(reaberta.comanda.id).toBe(aberta.comanda.id);
+
+  const novoTelefone = uniquePhone();
+  const novo = await ops.anonymous('portal-cliente-novo');
+  expect((await novo.post(`${portalBase(tenant)}/comandas`, { nome: 'Cliente Novo QA', telefone: novoTelefone })).status).toBe(201);
+  const mesmoNome = await tenant.owner.expect(tenant.owner.post('/api/clientes', {
+    nome: 'Cliente Inativo Original QA', telefone: uniquePhone(),
+  }), 201, 'clientes homônimos com telefones distintos são permitidos');
+  expect(mesmoNome.id).not.toBe(cliente.id);
+
+  const clienteHistorico = await tenant.owner.expect(tenant.owner.post('/api/clientes', {
+    nome: 'Cliente com Histórico QA', telefone: uniquePhone(),
+  }), 201, 'criar cliente para preservar histórico pago');
+  const portalHistorico = await ops.anonymous('portal-historico-pago');
+  const comandaHistorica = await portalHistorico.expect(portalHistorico.post(`${portalBase(tenant)}/comandas`, {
+    nome: clienteHistorico.nome, telefone: clienteHistorico.telefone,
+  }), 201, 'abrir comanda de histórico');
+  await portalHistorico.expect(portalHistorico.post(`${portalBase(tenant)}/comanda/pedidos`, { itens: [tenant.item('lata', 1)] }), 201, 'pedido pago antes da desativação');
+  await tenant.owner.expect(tenant.pay(tenant.owner, comandaHistorica.comanda.id, [{ forma: 'PIX', valor: 8 }]), 200, 'pagar comanda histórica');
+  await tenant.owner.expect(tenant.owner.patch(`/api/clientes/${clienteHistorico.id}`, { ativo: false }), 200, 'desativar cliente com histórico');
+  const historico = await tenant.owner.expect(tenant.owner.get(`/api/clientes/${clienteHistorico.id}/historico`), 200, 'histórico administrativo após desativação');
+  expect(historico.items).toEqual(expect.arrayContaining([expect.objectContaining({ id: comandaHistorica.comanda.id, pagamentos: [expect.objectContaining({ forma: 'PIX', valor: 8 })] })]));
+
+  const clienteCorrida = await tenant.owner.expect(tenant.owner.post('/api/clientes', {
+    nome: 'Cliente Corrida QA', telefone: uniquePhone(),
+  }), 201, 'criar cliente para concorrência');
+  const portalCorrida = await ops.anonymous('portal-corrida-desativacao');
+  const [aberturaCorrida, desativacaoCorrida] = await Promise.all([
+    portalCorrida.post(`${portalBase(tenant)}/comandas`, { nome: clienteCorrida.nome, telefone: clienteCorrida.telefone }),
+    tenant.owner.patch(`/api/clientes/${clienteCorrida.id}`, { ativo: false }),
+  ]);
+  expect(desativacaoCorrida.status).toBe(200);
+  expect([200, 201, 409]).toContain(aberturaCorrida.status);
+  expect((await prismaClient().cliente.findUnique({ where: { id: clienteCorrida.id }, select: { ativo: true } }))?.ativo).toBe(false);
+  expect(await prismaClient().comanda.count({ where: { clienteId: clienteCorrida.id, pontoVendaId: tenant.pointId, status: 'ABERTA' } })).toBeLessThanOrEqual(1);
+  if (aberturaCorrida.status !== 409) {
+    expect((await portalCorrida.post(`${portalBase(tenant)}/comanda/pedidos`, { itens: [tenant.item('agua', 1)] })).status).toBe(409);
+  }
+
+  await evidence.checkpoint();
+  await evidence.assertNoDbChange();
 });
 
 test('POR-X03 sessão ausente, adulterada ou de comanda encerrada é recusada @api', async ({ ops, evidence }) => {
