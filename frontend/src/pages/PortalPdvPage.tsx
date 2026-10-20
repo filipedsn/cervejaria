@@ -259,6 +259,13 @@ export function PortalPdvPage() {
                         {enviarPedido.isPending ? 'Enviando...' : 'Enviar pedido'}
                       </button>
                     </div>
+                    {enviarPedido.error && (
+                      <div role="alert" className="alert-error">
+                        {enviarPedido.error instanceof ApiError
+                          ? enviarPedido.error.message
+                          : 'Não foi possível enviar o pedido. Procure a equipe do ponto de venda.'}
+                      </div>
+                    )}
                   </div>
                 )}
                 <h3>Escolha seus itens</h3>

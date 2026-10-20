@@ -9,11 +9,12 @@ import { resolveLogoVersion } from '../lib/cervejaria-branding.js';
 
 import {
   lookupClientePortalPorTelefone,
+  ClientePortalInativoError,
+  registerClientePortalPdv,
   resolveTrailerPortalContext,
   startClientePortalSession,
 } from '../lib/portal-cliente.js';
 import { normalizePhone } from '../lib/phone.js';
-import { registerOrUpdateCliente } from '../lib/cliente-resolver.js';
 import { assertCaixaAberto, lockCaixaEmTx } from '../lib/operacao/caixa.js';
 import { atribuirTapMontado, diaOperacional, CAIXA_VENDA_TX, criarPedidos, resolverItens, resumoComanda } from '../lib/operacao/venda.js';
 import { INCLUDE_COMANDA_OPERACAO, recalcComandaTotalOperacao, whereComandaOperacao } from '../lib/operacao/comanda-adapter.js';
@@ -464,6 +465,14 @@ export async function publicRoutes(app: FastifyInstance) {
     const temCozinha = profile?.capabilities.kitchen ?? false;
     const controlaEstoque = profile?.capabilities.inventory ?? false;
     const resultado = await prisma.$transaction(async (tx) => {
+      // Existing sessions remain read-only after deactivation. Locking the client row
+      // serializes this write with the administrative active=false update.
+      const cliente = await tx.$queryRaw<Array<{ id: string; ativo: boolean }>>`
+        SELECT "id", "ativo" FROM "Cliente"
+        WHERE "id" = ${session.clienteId} AND "cervejariaId" = ${session.cervejariaId}
+        FOR UPDATE
+      `;
+      if (!cliente[0]?.ativo) throw Object.assign(new ClientePortalInativoError(), { statusCode: 409 });
       await lockCaixaEmTx(tx, session.cervejariaId, session.pontoVendaId, diaOperacional());
       const sessao = await assertCaixaAberto(session.cervejariaId, session.pontoVendaId, diaOperacional(), tx);
       await lockComandaItemsInTx(tx, session.comandaId);
@@ -520,8 +529,8 @@ export async function publicRoutes(app: FastifyInstance) {
     if (!telefone) return reply.status(400).send({ error: 'Telefone inválido. Informe DDD + número.' });
     const dia = diaOperacional();
     try {
-      const cliente = await registerOrUpdateCliente({ cervejariaId: cervejaria.id, nome: body.nome, telefone, optInMarketing: false, cadastradoVia: 'AUTO_ATENDIMENTO' });
       const result = await prisma.$transaction(async (tx) => {
+        const cliente = await registerClientePortalPdv(tx, { cervejariaId: cervejaria.id, nome: body.nome, telefone });
         await lockCaixaEmTx(tx, cervejaria.id, pontoVenda.id, dia);
         const sessao = await assertCaixaAberto(cervejaria.id, pontoVenda.id, dia, tx);
         const occurrenceScoped = cashOccurrenceContextEnabled();
@@ -529,7 +538,7 @@ export async function publicRoutes(app: FastifyInstance) {
           origem: 'CAIXA', pontoVendaId: pontoVenda.id, clienteId: cliente.id, status: 'ABERTA',
           ...(occurrenceScoped ? { ocorrenciaId: sessao.ocorrenciaId ?? null } : {}),
         } });
-        if (existente) return { comanda: existente, reused: true };
+        if (existente) return { clienteId: cliente.id, comanda: existente, reused: true };
         const numero = await proximoNumeroComandaOperacaoTurno(tx, cervejaria.id, pontoVenda.id, sessao.abertoEm);
         const comanda = await tx.comanda.create({ data: {
           origem: 'CAIXA', pontoVendaId: pontoVenda.id,
@@ -538,7 +547,7 @@ export async function publicRoutes(app: FastifyInstance) {
           clienteId: cliente.id, tipo: 'APELIDO', identificador: cliente.nome,
           numero, diaOperacional: sessao.diaOperacional, status: 'ABERTA', total: 0,
         } });
-        return { comanda, reused: false };
+        return { clienteId: cliente.id, comanda, reused: false };
       });
       void registrarTransacao({ cervejariaId: cervejaria.id, tipo: 'COMANDA_CRIADA', comandaId: result.comanda.id, metadata: { origem: 'PORTAL_PDV', pontoVendaId, ocorrenciaId: result.comanda.ocorrenciaId ?? null, reused: result.reused }, payload: { numero: result.comanda.numero, identificador: result.comanda.identificador, ocorrenciaId: result.comanda.ocorrenciaId ?? null } });
       if (!result.reused) {
@@ -548,7 +557,7 @@ export async function publicRoutes(app: FastifyInstance) {
         type: 'cliente-pdv',
         cervejariaId: cervejaria.id,
         pontoVendaId: pontoVenda.id,
-        clienteId: cliente.id,
+        clienteId: result.clienteId,
         comandaId: result.comanda.id,
       } as PdvClienteSessionPayload, { expiresIn: '12h' });
       reply.setCookie(PDV_CLIENTE_COOKIE_NAME, token, {
