@@ -92,7 +92,7 @@ export const test = base.extend<{ evidence: Evidence }>({
       const request = response.request();
       const pathname = new URL(response.url()).pathname;
       if (!pathname.startsWith('/api/')) return;
-      const entry = { method: request.method(), url: response.url(), status: response.status(), requestBody: request.postData(), responseBody: await response.text().catch(() => '') };
+      const entry = { method: request.method(), url: pathname, status: response.status() };
       api.push(redact(entry) as Record<string, unknown>);
       if (response.status() >= 500) serverErrors.push(entry);
       // A screen must not call endpoints the signed-in persona cannot use.
@@ -101,7 +101,13 @@ export const test = base.extend<{ evidence: Evidence }>({
     const evidence: Evidence = {
       id,
       recordApi: (item) => {
-        api.push(redact(item) as Record<string, unknown>);
+        const safeItem = {
+          actor: item.actor,
+          method: item.method,
+          url: typeof item.url === 'string' ? new URL(item.url, process.env.RELEASE_QA_BASE_URL).pathname : undefined,
+          status: item.status,
+        };
+        api.push(redact(safeItem) as Record<string, unknown>);
         if (typeof item.status === 'number' && item.status >= 500) serverErrors.push(item);
       },
       screenshot: async (step, target = page) => {

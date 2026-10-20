@@ -24,6 +24,7 @@ export type AuditEventInput = {
   slug?: string;
   requestId?: string;
   correlationId?: string;
+  cervejariaId?: string | null;
 };
 
 function actorFields(actor: TelemetryActor): Record<string, string | undefined> {
@@ -37,7 +38,7 @@ function actorFields(actor: TelemetryActor): Record<string, string | undefined> 
 
 export function buildAuditPayload(input: AuditEventInput): Record<string, unknown> {
   const ctx = getTelemetryContextOrDefault();
-  const slug = input.slug ?? ctx.slug;
+  const slug = input.slug === undefined ? ctx.slug : (input.slug ?? 'unknown');
   const env = ctx.env;
   const actor = input.actor ?? ctx.actor;
   const span = trace.getActiveSpan();
@@ -56,7 +57,7 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
     releaseSha: release.releaseSha,
     service: release.service,
     environment: release.environment,
-    'cervejaria.id': ctx.cervejariaId,
+    'cervejaria.id': input.cervejariaId === undefined ? ctx.cervejariaId : input.cervejariaId,
     'cervejaria.slug': slug,
     'data_stream.dataset': `audit_${slugSafe}`,
     'data_stream.namespace': env,
@@ -85,6 +86,14 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
     if (metadata.payload != null) {
       payload['transacao.payload'] = metadata.payload;
     }
+  }
+
+  // The disposable QA runner assigns this process-local ID. Keep it on audit
+  // logs only; never attach it to metric dimensions or trust request headers.
+  const qaRunId = process.env.PDV_QA_RUN_ID;
+  if (process.env.PDV_ISOLATED_QA === '1' && qaRunId && /^[a-f0-9]{16}$/i.test(qaRunId)) {
+    payload['test.synthetic'] = true;
+    payload['test.run.id'] = qaRunId.toLowerCase();
   }
 
   return payload;

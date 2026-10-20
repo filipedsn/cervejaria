@@ -508,6 +508,21 @@ export async function publicRoutes(app: FastifyInstance) {
         comanda: await tx.comanda.findUniqueOrThrow({ where: { id: session.comandaId }, include: INCLUDE_COMANDA_OPERACAO }),
       };
     }, CAIXA_VENDA_TX);
+    for (const pedido of resultado.pedidos) {
+      void registrarTransacao({
+        cervejariaId: session.cervejariaId,
+        tipo: 'PORTAL_PEDIDO_CRIADO',
+        comandaId: session.comandaId,
+        entidadeTipo: 'pedido_operacao',
+        entidadeId: pedido.id,
+        metadata: {
+          origem: 'PORTAL_PDV',
+          pontoVendaId: session.pontoVendaId,
+          clienteId: session.clienteId,
+          comandaId: session.comandaId,
+        },
+      });
+    }
     // A tela geral de comandas precisa atualizar mesmo quando não há cozinha
     // habilitada para o perfil operacional.
     notificarComandaOperacaoAtualizada(app, session.cervejariaId, session.comandaId);

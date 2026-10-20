@@ -60,6 +60,38 @@ test('POR-S02 cliente escolhe itens, limpa o carrinho e envia o pedido', async (
   const lista = await tenant.owner.expect(tenant.owner.get(`/api/operacao/comandas?pontoVendaId=${tenant.pointId}`), 200, 'comandas da equipe');
   const comandas = (Array.isArray(lista) ? lista : lista.comandas ?? lista.items) as Array<{ identificador: string; total: number }>;
   expect(comandas.find((c) => c.identificador === 'Cliente Pedido QA')?.total).toBe(34);
+
+  const comanda = await prismaClient().comanda.findFirst({
+    where: { pontoVendaId: tenant.pointId, identificador: 'Cliente Pedido QA' },
+    select: { id: true },
+  });
+  expect(comanda).toBeTruthy();
+  const pedidos = await prismaClient().pedidoOperacao.findMany({ where: { comandaId: comanda!.id }, select: { id: true } });
+  const pedidoIds = pedidos.map((pedido: { id: string }) => pedido.id).sort();
+  expect(pedidoIds.length).toBeGreaterThan(0);
+  let auditRows: Array<{ entidadeId: string | null; metadata: unknown }> = [];
+  await expect.poll(async () => {
+    auditRows = await prismaClient().transacaoLog.findMany({
+      where: {
+        cervejariaId: tenant.id,
+        tipo: 'PORTAL_PEDIDO_CRIADO',
+        entidadeTipo: 'pedido_operacao',
+        entidadeId: { in: pedidoIds },
+      },
+      select: { entidadeId: true, metadata: true },
+    });
+    return auditRows.length;
+  }, { timeout: 10_000, intervals: [100, 250, 500, 1000] }).toBe(pedidoIds.length);
+  expect(auditRows.map((row) => row.entidadeId).sort()).toEqual(pedidoIds);
+  for (const row of auditRows) {
+    expect(row.metadata).toMatchObject({
+      origem: 'PORTAL_PDV',
+      pontoVendaId: tenant.pointId,
+      clienteId: expect.any(String),
+      comandaId: comanda!.id,
+    });
+    expect(Object.keys(row.metadata as Record<string, unknown>).some((key) => /email|nome|telefone|senha|token|observacao/i.test(key))).toBe(false);
+  }
 });
 
 test('POR-S03 o status do pedido muda no portal sem recarregar', async ({ ops, page, evidence }) => {
@@ -160,9 +192,25 @@ test('POR-X02 cliente inativo não abre comanda nem envia pedidos pelo portal', 
   const leitura = await visitante.expect(visitante.get(`${portalBase(tenant)}/comanda`), 200, 'sessão anterior mantém consulta somente leitura');
   expect(leitura.id).toBe(aberta.comanda.id);
   expect(leitura.total).toBe(16);
+  const pedidosAntesDoBloqueio = await prismaClient().pedidoOperacao.findMany({
+    where: { comandaId: aberta.comanda.id },
+    select: { id: true },
+  });
+  const pedidoIdsAntesDoBloqueio = pedidosAntesDoBloqueio.map((pedido: { id: string }) => pedido.id);
+  const countAuditDoPortal = () => prismaClient().transacaoLog.count({
+    where: {
+      cervejariaId: tenant.id,
+      tipo: 'PORTAL_PEDIDO_CRIADO',
+      entidadeTipo: 'pedido_operacao',
+      entidadeId: { in: pedidoIdsAntesDoBloqueio },
+    },
+  });
+  await expect.poll(countAuditDoPortal, { timeout: 10_000, intervals: [100, 250, 500, 1000] }).toBe(pedidoIdsAntesDoBloqueio.length);
+  const auditCountBeforeRejectedOrder = await countAuditDoPortal();
   const bloqueado = await visitante.post(`${portalBase(tenant)}/comanda/pedidos`, { itens: [tenant.item('agua', 1)] });
   expect(bloqueado.status).toBe(409);
   expect(bloqueado.body.error).toMatch(/Procure a equipe do ponto de venda/);
+  expect(await countAuditDoPortal()).toBe(auditCountBeforeRejectedOrder);
   await page.getByRole('button', { name: 'Enviar pedido' }).click();
   await expect(page.getByRole('alert')).toContainText('Procure a equipe do ponto de venda');
 
