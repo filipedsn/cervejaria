@@ -24,7 +24,7 @@ export type AuditEventInput = {
   slug?: string;
   requestId?: string;
   correlationId?: string;
-  cervejariaId?: string;
+  cervejariaId?: string | null;
 };
 
 function actorFields(actor: TelemetryActor): Record<string, string | undefined> {
@@ -38,7 +38,7 @@ function actorFields(actor: TelemetryActor): Record<string, string | undefined> 
 
 export function buildAuditPayload(input: AuditEventInput): Record<string, unknown> {
   const ctx = getTelemetryContextOrDefault();
-  const slug = input.slug ?? ctx.slug;
+  const slug = input.slug === undefined ? ctx.slug : (input.slug ?? 'unknown');
   const env = ctx.env;
   const actor = input.actor ?? ctx.actor;
   const span = trace.getActiveSpan();
@@ -57,7 +57,7 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
     releaseSha: release.releaseSha,
     service: release.service,
     environment: release.environment,
-    'cervejaria.id': input.cervejariaId ?? ctx.cervejariaId,
+    'cervejaria.id': input.cervejariaId === undefined ? ctx.cervejariaId : input.cervejariaId,
     'cervejaria.slug': slug,
     'data_stream.dataset': `audit_${slugSafe}`,
     'data_stream.namespace': env,

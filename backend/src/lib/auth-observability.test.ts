@@ -5,11 +5,13 @@ import type { FastifyRequest } from 'fastify';
 import type { AuditEventInput } from './audit/emit-audit-event.js';
 
 function requestForLogin(): FastifyRequest {
-  return {
+  const request = {
     method: 'POST',
     url: '/api/auth/login?discard=this',
     routeOptions: { url: '/api/auth/login' },
   } as unknown as FastifyRequest;
+  Object.assign(request, { user: { sub: 'stale-session-user', papel: 'DONO', cervejariaId: 'stale-session-tenant' } });
+  return request;
 }
 
 test('categoriza rejeições de sessão sem carregar detalhes sensíveis', () => {
@@ -36,7 +38,7 @@ test('login audit distinguishes valid, invalid and inactive-tenant outcomes with
     role: 'DONO',
     statusCode: 200,
   }, emit);
-  emitAuthEvent(request, 'auth.login.failed', { reasonCode: 'INVALID_CREDENTIALS', statusCode: 401 }, emit);
+  emitAuthEvent(request, 'auth.login.failed', { reasonCode: 'INVALID_CREDENTIALS', statusCode: 401, user: null }, emit);
   emitAuthEvent(request, 'auth.login.rejected', {
     reasonCode: 'TENANT_INACTIVE',
     user: { id: 'inactive-user-id', papel: 'DONO', cervejariaId: 'inactive-tenant-id', cervejaria: { slug: 'inactive-qa' } },
@@ -52,7 +54,9 @@ test('login audit distinguishes valid, invalid and inactive-tenant outcomes with
   assert.equal(events[0].actor?.id, 'user-safe-id');
   assert.equal(events[0].cervejariaId, 'tenant-safe-id');
   assert.equal(events[0].slug, 'tenant-qa');
-  assert.equal(events[1].actor, undefined);
+  assert.deepEqual(events[1].actor, { type: 'anonymous' });
+  assert.equal(events[1].cervejariaId, null);
+  assert.equal(events[1].slug, 'unknown');
   assert.equal(events[1].metadata?.reasonCode, 'INVALID_CREDENTIALS');
   assert.equal(events[2].actor?.id, 'inactive-user-id');
   assert.equal(events[2].cervejariaId, 'inactive-tenant-id');

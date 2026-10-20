@@ -134,7 +134,7 @@ export async function authRoutes(app: FastifyInstance) {
 
 
       if (!usuario || !(await verifyPassword(body.senha, usuario.senhaHash))) {
-        emitAuthEvent(request, 'auth.login.failed', { reasonCode: 'INVALID_CREDENTIALS', statusCode: 401 });
+        emitAuthEvent(request, 'auth.login.failed', { reasonCode: 'INVALID_CREDENTIALS', statusCode: 401, user: null });
 
         return reply.status(401).send({ error: 'E-mail ou senha inválidos' });
 

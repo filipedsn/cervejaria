@@ -35,17 +35,18 @@ function route(request: FastifyRequest): string {
 export function emitAuthEvent(
   request: FastifyRequest,
   action: AuthAction,
-  options: { reasonCode?: AuthReasonCode; user?: AuthUser; role?: string; statusCode?: number } = {},
+  options: { reasonCode?: AuthReasonCode; user?: AuthUser | null; role?: string; statusCode?: number } = {},
   emit: AuditEmitter = emitAuditEvent,
 ): void {
-  const user = options.user ?? (request.user as AuthUser | undefined);
+  const suppressRequestUser = Object.hasOwn(options, 'user') && options.user === null;
+  const user = suppressRequestUser ? undefined : options.user ?? (request.user as AuthUser | undefined);
   emit({
     action,
     message: action,
     outcome: action.endsWith('succeeded') || action === 'auth.logout' ? 'success' : 'failure',
-    actor: user ? { type: 'usuario', id: ('sub' in user ? user.sub : user.id) ?? undefined, role: user.papel } : undefined,
-    cervejariaId: user?.cervejariaId ?? undefined,
-    slug: user?.cervejaria?.slug ?? undefined,
+    actor: user ? { type: 'usuario', id: ('sub' in user ? user.sub : user.id) ?? undefined, role: user.papel } : (suppressRequestUser ? { type: 'anonymous' } : undefined),
+    cervejariaId: suppressRequestUser ? null : user?.cervejariaId ?? undefined,
+    slug: suppressRequestUser ? 'unknown' : user?.cervejaria?.slug ?? undefined,
     http: { method: request.method, route: route(request), statusCode: options.statusCode },
     metadata: { reasonCode: options.reasonCode, role: options.role ?? user?.papel },
   });
