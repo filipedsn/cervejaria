@@ -253,10 +253,40 @@ export function formatLiters(ml: number): string {
 }
 
 export async function downloadCsv(path: string, filename: string): Promise<void> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    credentials: 'include',
-    headers: { [CORRELATION_ID_HEADER]: createCorrelationId() },
+  const headers = { [CORRELATION_ID_HEADER]: createCorrelationId() };
+  const correlationId = headers[CORRELATION_ID_HEADER];
+  const startedAt = now();
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      credentials: 'include',
+      headers,
+    });
+  } catch (error) {
+    reportHttpRequest({
+      method: 'GET',
+      path,
+      outcome: fetchFailureOutcome(error),
+      startedAt,
+      correlationId,
+    });
+    throw error;
+  }
+
+  const returnedCorrelationId = res.headers.get(CORRELATION_ID_HEADER);
+  const responseCorrelationId = isCorrelationId(returnedCorrelationId)
+    ? returnedCorrelationId
+    : correlationId;
+  reportHttpRequest({
+    method: 'GET',
+    path,
+    statusCode: res.status,
+    outcome: responseOutcome(res.status),
+    startedAt,
+    correlationId: responseCorrelationId,
+    requestId: res.headers.get('x-request-id') ?? undefined,
   });
+
   if (!res.ok) throw new ApiError('Erro ao exportar', res.status);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);

@@ -323,3 +323,34 @@ Recomendação concreta: preparar como primeira etapa **um piloto futuro, estrit
 Antes/depois do piloto: capturar winner/composição/replicas; simular nomes DEV, PROD, infra e APM; conferir policy/template efetivos e `_ilm/explain`; monitorar criação natural do próximo backing, saúde, docs/store/shards e erros. O rollback da configuração não restaura documentos eliminados. Para backings existentes é necessário plano e aprovação separados; primeiro comprovar snapshot e restauração, idade efetiva, write index, docs e store. As janelas audit 90d, technical 30d, traces 30d, metrics 45d e infra 15d seguem **não aprovadas**, salvo a hipótese proposta do piloto, que também exige aceite expresso.
 
 Relatórios atualizados: [preparação de retenção](TAP-96-preparacao-retencao-2026-10-20.md) e este aditivo. A coleta local foi resumida; os artefatos brutos permanecem como entrada não versionada. TAP-96 continua **In Progress**. `PROD_DEPLOY_REQUIRED=YES` enquanto os gates de runtime e operação permanecerem. Merge/publicação das correções de runtime e a futura intervenção na infraestrutura de observabilidade são mudanças distintas. Nenhuma policy, template, rede, credencial, réplica, limite ou serviço compartilhado foi alterado nesta etapa.
+
+## TAP-96 follow-up: PR #85, active releases and coverage progress - 2026-10-20
+
+This addendum records post-merge observations. Earlier values remain historical snapshots.
+
+### Git, DEV and production
+
+| Source | Observed SHA/state | Evidence and limit |
+|---|---|---|
+| `origin/main` | `45e149aa0c7851457b0bf1980daced58c768e497` | Commit `docs(observability): registrar proposta de retencao TAP-96 (#85)`, parent `c5dc13c821cd5ad76ccb8e14606bee0b83a53618`; PR #85 is integrated. Seven PR checks and isolated `npm.cmd run ci` passed before this new change. |
+| DEV `:3002` | `05b5c84a0164f0d9960404aaf0d8acd4d0d3f344`, `/api/ready=ready` | Local read at 2026-10-20 18:41 BRT and `deploy/dev-artifacts/manifest.json`, activation `2026-10-20T21:40:47.811Z`. This activity did not publish it. |
+| Prior DEV commit | `6b56cb0daf6430c7a7cab8a4aabdecbd8deacbc5` | Parent `603a2d32e6b8cef855aeeff3b71e41b599d0887e`, both in branch/worktree `feat/portal-cliente-comanda-pagamento`. Current DEV `05b5c84` is a child of `6b56cb0` and changes a portal payment flow file. |
+| PROD `:3001` | `e39b2e6d091906ff414fbaff3c93d2c55693c25b`, `/api/ready=ready` | Local health at 18:41 BRT exposed prefix `e39b2e6d`, resolved to the full commit. No deploy was done. |
+
+The portal branch is active work from a separate flow. Compared with `origin/main`, revision `6b56cb0` has 19 divergent paths: 17 portal feature/migration files and two TAP-96 documents absent because the branch descends from `c5dc13c`, before PR #85. `backend/package.json` changes only the `test:unit` script list; it does not change dependencies. No lockfile differs. The `05b5c84` dependency manifest declares Node 24.18.0, npm 11.16.0 and `npm ci`. The branch is not evidence of a merge to `main`; its DEV SHAs are not TAP-96 candidates and must not be replaced without coordination.
+
+### Focused implementation in this branch
+
+`downloadCsv()` previously called `fetch` outside the HTTP wrapper, omitting a terminal outcome, duration, `correlationId`, `requestId` and transport failure classification. This branch emits one request signal per response or transport failure, with a route stripped of query and no payload; HTTP errors remain errors for the UI. The `page_view` signal also strips query and fragment because reset and query URLs can contain user data.
+
+Focused tests cover CSV 200, 403, network failure, response correlation, request ID, route without query, absence of CSV content, and removal of query/fragment from `page_view`. Result: 8/8 passed. Local `npm.cmd run ci` passed all local stages in the isolated checkout; `realtime-security-qa` remains GitHub Actions only. This change covers client-side export telemetry; it does not prove audit persistence, Elasticsearch ingestion/ACL, export integrity or coverage of every report route.
+
+### Reused functional evidence and remaining gates
+
+The user-provided local certification material at `docs/testing/release-certification/65dc9df8677efa130a11135dc199454377df434b/` summarizes functional certification for SHA `65dc9df8677efa130a11135dc199454377df434b` (2026-10-18): 162 catalog cases, P0 80/80 in three rounds, P1 80/82, and 172/174 executions across desktop/tablet/mobile/TV. The report marks `POR-X02` and `PWA-S05` absent/skipped. This is earlier functional evidence, not proof of audit logging, database audit persistence, Elasticsearch/Discover or current runtime behavior. The local source artifact was not included in the commit.
+
+The prior 18-case test, execution `22f8ff00ab3d3345` with 47 documents and visual confirmation of time range/SHA remain partial evidence. Forty-seven documents do not prove complete coverage, no duplicates or an SLA. Individual visual confirmation of login 401/403 and accepted order remains pending unless it exists in the corresponding human comment.
+
+Unproven independently: staff and customer journeys outside the sample, successful reads per resource, cancellation/refund/stock, concurrency/retry, Socket.IO delivery, jobs/integrations, trusted geolocation, Elasticsearch/Kibana ACL by company, retention and growth, active alerts/channels, Collector outage/replay durability, off-host backup and restore. The previous read key was confirmed revoked and its file removed; no current read credential is available for another shared-cluster query.
+
+The first `npm ci` hit EPERM in the global npm cache. A retry with a dedicated cache in this temporary checkout completed. No service, key, index, policy, template or shared configuration was changed. TAP-96 remains **In Progress** and `PROD_DEPLOY_REQUIRED=YES`.
