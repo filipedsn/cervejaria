@@ -373,3 +373,9 @@ A POC, as limitações e o exemplo versionado estão em [TAP-96-collector-durabi
 | Infra e detecção do próprio monitoramento | parcial/ausente | API readiness testa PostgreSQL, não ES/Collector/Kibana; hostmetrics observa namespace do Collector. Métricas internas do Collector não têm scraper/alerta operacional comprovado. |
 
 TAP-96 continua **In Progress**; `PROD_DEPLOY_REQUIRED=YES`. Publicação das correções de runtime, eventual release DEV e atualização do Collector compartilhado são operações distintas. Nenhuma infraestrutura compartilhada ou produção foi alterada.
+
+## Aditivo: auditoria de leituras HTTP — 2026-10-20
+
+A branch `fix/tap96-successful-read-audit` adiciona evento `http.get` para respostas GET 2xx nas rotas API não classificadas como polling. O evento usa o template da rota, status, duração medida pelo servidor, correlation/request ID, release, tenant e ator resolvidos pelo contexto já existente. Query, corpo de resposta e identificadores de caminho concretos não são incluídos. GET 4xx/5xx e mutações continuam usando o fluxo existente; endpoints de cozinha/eventos/ranking/polling explicitamente excluídos continuam sem evento para controlar volume. A duração é tempo de processamento/resposta no servidor; não mede entrega nem latência de ingestão.
+
+Teste focal: rota parametrizada com query contendo e-mail/token não vaza esses valores, captura rota template e duração, e o polling de cozinha continua excluído. `npm.cmd run ci` local passou (backend 275 pass / 2 skipped e demais gates verdes). O evento ainda aguarda merge, publicação/validação no DEV e reconciliação por rota no Elasticsearch. Portanto a cobertura de jornadas permanece parcial, não total. A questão de emissão pelos dois canais atuais (Pino/OTel) e a duplicidade documental efetiva seguem sem medição de ingestão.
