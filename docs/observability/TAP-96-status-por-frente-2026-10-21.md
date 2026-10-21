@@ -30,3 +30,8 @@ O pipeline usa Elasticsearch 8.17.0 e Collector Contrib 0.130.1 isolados. A cons
 4. Para operações compartilhadas futuras, ainda faltam: política de retenção aprovada e autorização para apenas gerações futuras DEV; destino off-host e RPO/RTO pretendidos; canal/receptor e permissão para alerta sintético real; endereço confiável do proxy e permissão de mudança Cloudflare/origem; decisão sobre Discover exclusivamente interno versus requisito empresarial.
 
 Nenhum novo WI foi criado. Não houve mudança de infraestrutura compartilhada, retenção real, credencial, rede ou produção. Merge, validação em DEV e operação futura de retenção continuam gates separados.
+## Evidência do commit de código final
+
+O candidato com código observado é `2bb8ecf3cf11f018ce451ff05ef97822ae4a20b5` (PR #92). No run `c6a31d66c5946236`, o teste focado de rotas passou em 9,8 s: dois pedidos e duas resoluções persistidos, nenhum pagamento, nenhum retry convertido em transição, três recusas 404/404/403 com status e correlação conferidos; dois eventos por transição e contador agregado 2 por tipo em `metrics-generic.otel-dev`. A matriz TAP-114 contém o contrato e limites dessa prova. A política mínima foi validada para resource OTEL e Pino. O commit subsequente pode ser só documentação; qualquer alteração em runtime invalida a evidência do candidato de código.
+
+O CI local completo terminou verde depois da política `base: null` do Pino. Foram 290 testes de backend (288 aprovados, 2 skipped), 45 de Ops Panel, 82 de Support Analyst, builds e 12 Pester de release; o único gate indisponível localmente é `realtime-security-qa`, executado no GitHub Actions. Os 7 checks oficiais ainda precisam rodar no HEAD final do PR.
