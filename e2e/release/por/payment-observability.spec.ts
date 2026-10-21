@@ -23,7 +23,7 @@ async function search(index: string, body: Record<string, unknown>) {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error(`Disposable Elasticsearch query failed: HTTP ${response.status}`);
-  return response.json() as Promise<{ hits: { hits: Array<{ _source: Record<string, any> }> } }>;
+  return response.json() as Promise<{ hits: { hits: Array<{ _id: string; _index: string; _source: Record<string, any> }> } }>;
 }
 
 test('TAP96 payment-request routes persist once and export searchable DEV signals @api', async ({ ops, evidence }) => {
@@ -96,26 +96,26 @@ test('TAP96 payment-request routes persist once and export searchable DEV signal
   expect((await readCommand()).solicitacaoPagamentoEm).toBeNull();
   expect(await paymentCount()).toBe(0);
 
-  let audit: Array<Record<string, any>> = [];
+  let audit: Array<{ _id: string; _index: string; _source: Record<string, any> }> = [];
   await poll(async () => {
-    const result = await search('logs-audit*.otel-dev', {
+    const result = await search('logs-*.otel-dev', {
       size: 500, query: { term: { 'attributes.test.run.id': seed.runId } },
-      _source: ['attributes.event.action', 'attributes.event.outcome', 'attributes.cervejaria.id', 'attributes.cervejaria.slug', 'attributes.actor.id', 'attributes.actor.type', 'attributes.releaseSha', 'attributes.requestId', 'attributes.correlationId', 'attributes.test.run.id', 'attributes.http.response.status_code'],
+      _source: ['body', 'message', 'msg', 'severity_text', 'severity_number', 'attributes.log.logger', 'attributes.log.record.original', 'attributes.data_stream.dataset', 'attributes.event.action', 'attributes.event.outcome', 'attributes.cervejaria.id', 'attributes.cervejaria.slug', 'attributes.actor.id', 'attributes.actor.type', 'attributes.releaseSha', 'attributes.requestId', 'attributes.correlationId', 'attributes.test.run.id', 'attributes.http.response.status_code'],
     });
-    audit = result.hits.hits.map((hit) => hit._source);
-    const count = (action: string) => audit.filter((hit) => hit.attributes?.['event.action'] === action).length;
+    audit = result.hits.hits;
+    const count = (action: string) => audit.filter((hit) => hit._source.attributes?.['event.action'] === action).length;
     return { requested: count('payment.requested'), resolved: count('payment.request_resolved') };
-  }, (counts) => counts.requested === 2 && counts.resolved === 2, 'real route events searchable in audit DEV stream');
+  }, (counts) => counts.requested >= 2 && counts.resolved >= 2, 'semantic payment transitions searchable across log families');
 
   for (const [action, correlationIds] of Object.entries({
     'payment.requested': [ids.request1, ids.request2],
     'payment.request_resolved': [ids.resolve1, ids.resolve2],
   })) {
-    const matches = audit.filter((hit) => hit.attributes?.['event.action'] === action);
+    const matches = audit.filter((hit) => hit._source.attributes?.['event.action'] === action);
     expect(matches).toHaveLength(2);
-    expect(matches.map((hit) => hit.attributes?.correlationId).sort()).toEqual([...correlationIds].sort());
+    expect(matches.map((hit) => hit._source.attributes?.correlationId).sort()).toEqual([...correlationIds].sort());
     for (const hit of matches) {
-      const attrs = hit.attributes;
+      const attrs = hit._source.attributes;
       expect(attrs['event.outcome']).toBe('success');
       expect(attrs['cervejaria.id']).toBe(tenant.id);
       expect(attrs['cervejaria.slug']).toBe(tenant.slug);
@@ -126,25 +126,84 @@ test('TAP96 payment-request routes persist once and export searchable DEV signal
       expect(attrs['actor.id']).toBe(action === 'payment.requested' ? persisted.clienteId : ownerId);
     }
   }
-  expect(audit.filter((hit) => hit.attributes?.['event.action'] === 'payment.requested')).toHaveLength(2);
-  expect(audit.filter((hit) => hit.attributes?.['event.action'] === 'payment.request_resolved')).toHaveLength(2);
-  expect(audit.some((hit) => hit.attributes?.['event.action'] === 'SALE_PAYMENT_RECORDED')).toBe(false);
+  expect(audit.filter((hit) => hit._source.attributes?.['event.action'] === 'payment.requested').length).toBeGreaterThanOrEqual(2);
+  expect(audit.filter((hit) => hit._source.attributes?.['event.action'] === 'payment.request_resolved').length).toBeGreaterThanOrEqual(2);
+  expect(audit.some((hit) => hit._source.attributes?.['event.action'] === 'SALE_PAYMENT_RECORDED')).toBe(false);
+  for (const retryCorrelation of [ids.requestRetry, ids.resolveRetry]) {
+    expect(audit.some((hit) => hit._source.attributes?.correlationId === retryCorrelation &&
+      ['payment.requested', 'payment.request_resolved'].includes(hit._source.attributes?.['event.action']))).toBe(false);
+  }
   for (const denied of [
     { correlationId: ids.wrongCommand, status: 404, companyId: tenant.id, actorId: ownerId, actorType: 'usuario' },
     { correlationId: ids.foreignTenant, status: 404, companyId: seed.tenants[1]!.id, actorId: seed.users.ownerB!.id, actorType: 'usuario' },
     { correlationId: ids.foreignPdv, status: 403, companyId: tenant.id, actorId: persisted.clienteId, actorType: 'cliente-pdv' },
   ]) {
-    const event = audit.find((hit) => hit.attributes?.correlationId === denied.correlationId &&
-      hit.attributes?.['http.response.status_code'] === denied.status);
+    const event = audit.find((hit) => hit._source.attributes?.correlationId === denied.correlationId &&
+      hit._source.attributes?.['http.response.status_code'] === denied.status);
     expect(event, `denial event for ${denied.status}`).toBeTruthy();
-    expect(event!.attributes?.['event.outcome']).toBe('failure');
-    expect(event!.attributes?.['cervejaria.id']).toBe(denied.companyId);
-    expect(event!.attributes?.['actor.id']).toBe(denied.actorId);
-    expect(event!.attributes?.['actor.type']).toBe(denied.actorType);
-    expect(event!.attributes?.releaseSha).toBe(seed.releaseSha);
-    expect(event!.attributes?.['test.run.id']).toBe(seed.runId);
+    expect(event!._source.attributes?.['event.outcome']).toBe('failure');
+    expect(event!._source.attributes?.['cervejaria.id']).toBe(denied.companyId);
+    expect(event!._source.attributes?.['actor.id']).toBe(denied.actorId);
+    expect(event!._source.attributes?.['actor.type']).toBe(denied.actorType);
+    expect(event!._source.attributes?.releaseSha).toBe(seed.releaseSha);
+    expect(event!._source.attributes?.['test.run.id']).toBe(seed.runId);
   }
   expect(responses).toHaveLength(9);
+
+  const auditIds = audit.map((hit) => `${hit._index}/${hit._id}`);
+  expect(new Set(auditIds).size).toBe(auditIds.length);
+  const semanticDocs = audit.filter((hit) => ['payment.requested', 'payment.request_resolved'].includes(hit._source.attributes?.['event.action']));
+  const transitionCorrelations = [ids.request1, ids.request2, ids.resolve1, ids.resolve2];
+  const transitionDocs = audit.filter((hit) => transitionCorrelations.includes(hit._source.attributes?.correlationId));
+  const expectedSignals = [
+    { correlationId: ids.request1, semantic: 'payment.requested', http: 'http.post' },
+    { correlationId: ids.request2, semantic: 'payment.requested', http: 'http.post' },
+    { correlationId: ids.resolve1, semantic: 'payment.request_resolved', http: 'http.delete' },
+    { correlationId: ids.resolve2, semantic: 'payment.request_resolved', http: 'http.delete' },
+  ];
+  expect(semanticDocs).toHaveLength(4);
+  expect(transitionDocs).toHaveLength(8);
+  for (const expected of expectedSignals) {
+    const docs = transitionDocs.filter((hit) => hit._source.attributes?.correlationId === expected.correlationId);
+    expect(docs).toHaveLength(2);
+    expect(docs.map((hit) => hit._source.attributes?.['event.action']).sort()).toEqual([expected.semantic, expected.http].sort());
+    for (const hit of docs) {
+      const attrs = hit._source.attributes;
+      const isRequest = expected.semantic === 'payment.requested';
+      expect(attrs['event.outcome']).toBe('success');
+      expect(attrs['cervejaria.id']).toBe(tenant.id);
+      expect(attrs['cervejaria.slug']).toBe(tenant.slug);
+      expect(attrs['actor.id']).toBe(isRequest ? persisted.clienteId : ownerId);
+      expect(attrs['actor.type']).toBe(isRequest ? 'cliente-pdv' : 'usuario');
+      expect(attrs.releaseSha).toBe(seed.releaseSha);
+      expect(attrs['test.run.id']).toBe(seed.runId);
+      expect(attrs.requestId).toBeTruthy();
+    }
+  }
+  const documentEvidence = transitionDocs.map((hit) => ({
+    index: hit._index,
+    id: hit._id,
+    dataset: hit._source.attributes?.['data_stream.dataset'],
+    action: hit._source.attributes?.['event.action'],
+    correlationId: hit._source.attributes?.correlationId,
+    requestId: hit._source.attributes?.requestId,
+    body: hit._source.body,
+    message: hit._source.message,
+    severityText: hit._source.severity_text,
+    msg: hit._source.msg,
+    loggerName: hit._source.attributes?.['log.logger'],
+    pinoOriginal: hit._source.attributes?.['log.record.original'],
+    origin: hit._source.attributes?.['event.action']?.startsWith('payment.')
+      ? 'recordPaymentRequestTransition -> semantic business event'
+      : 'registerAuditHooks.onResponse -> HTTP result event',
+  }));
+  test.info().annotations.push({ type: 'tap96-document-origins', description: JSON.stringify({
+    runId: seed.runId, releaseSha: seed.releaseSha,
+    documents: documentEvidence,
+    expectedSignals,
+    documentsPerTransition: 2,
+    duplicateSemanticEvents: 0,
+  }) });
 
   let metrics: Array<Record<string, any>> = [];
   await poll(async () => {
@@ -171,8 +230,9 @@ test('TAP96 payment-request routes persist once and export searchable DEV signal
   test.info().annotations.push({ type: 'tap96-evidence', description: JSON.stringify({
     runId: seed.runId, releaseSha: seed.releaseSha, companyId: tenant.id, commandId,
     persistedRequests: 2, persistedResolutions: 2, financialPayments: await paymentCount(),
-    searchableTransitions: { requested: 2, resolved: 2, duplicateNewTransitions: 0 },
+    searchableTransitions: { persisted: { requested: 2, resolved: 2 }, semanticDocs: { requested: audit.filter((hit) => hit._source.attributes?.['event.action'] === 'payment.requested').length, resolved: audit.filter((hit) => hit._source.attributes?.['event.action'] === 'payment.request_resolved').length }, duplicateNewTransitions: 0 },
     rejections: { siblingCommand: 404, otherCompany: 404, foreignPoint: 403 },
     metricDestination: 'metrics-generic.otel-dev', correlations: Object.values(ids),
+    transitionDocuments: documentEvidence,
   }) });
 });

@@ -58,7 +58,9 @@ function cleanEnvironment() {
     QA_MODE: '1', QA_RATE_LIMIT_LOGIN_MAX: '500', RELEASE_SHA: releaseSha, RELEASE_QA_CONTEXT: contextFile,
     OTEL_SERVICE_NAME: 'quiver-tap-api-qa',
     OTEL_NODE_RESOURCE_DETECTORS: 'env,serviceinstance',
-    LOG_LEVEL: 'silent',
+    // Keep application audit Pino records enabled for the TAP-96 payment proof
+    // so it can distinguish the dedicated OTLP audit record from any Pino copy.
+    LOG_LEVEL: process.argv.some((arg) => arg.includes('payment-observability.spec.ts')) ? 'info' : 'silent',
     FRONTEND_DIST: frontendDist, JWT_SECRET: randomBytes(48).toString('base64url'),
     UPLOADS_DIR: path.join(tempRoot, 'uploads'),
   });
@@ -124,7 +126,12 @@ try {
   command(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--outDir', frontendDist, '--emptyOutDir'], { cwd: frontendRoot, env, stdio: 'inherit' });
 
   Object.assign(process.env, env);
-  qaAuditProvider = await initializeQaAuditExporter();
+  // The route proof can preload the same EDOT distribution as the runtime
+  // after disposable migrations/builds have finished, avoiding NODE_OPTIONS
+  // leaking instrumentation into Prisma's migration subprocess.
+  const capturePinoWithEdot = process.env.PDV_QA_EDOT_CAPTURE_PINO === '1';
+  if (capturePinoWithEdot) await import('@elastic/opentelemetry-node');
+  else qaAuditProvider = await initializeQaAuditExporter();
   const { buildApp, setupSocketIO } = await import('../src/app.ts');
   app = await buildApp();
   setupSocketIO(app, app.server);
