@@ -71,12 +71,14 @@ async function initializeQaAuditExporter() {
   if (
     endpoint.protocol !== 'http:' ||
     !['127.0.0.1', 'localhost'].includes(endpoint.hostname) ||
-    endpoint.port !== '4318' ||
+    !/^\d+$/.test(endpoint.port) ||
+    Number(endpoint.port) < 1024 ||
+    Number(endpoint.port) > 65535 ||
     endpoint.pathname !== '/v1/logs' ||
     endpoint.username ||
     endpoint.password
   ) {
-    throw new Error('QA audit export requires the local OTLP HTTP logs endpoint on loopback:4318.');
+    throw new Error('QA audit export requires a loopback OTLP HTTP logs endpoint using port 1024-65535.');
   }
 
   const [{ logs }, { LoggerProvider, BatchLogRecordProcessor }, { OTLPLogExporter }, { resourceFromAttributes }] = await Promise.all([

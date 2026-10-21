@@ -96,3 +96,38 @@ Quando o responsável pelo portal liberar a janela DEV, autorizar **uma única t
 Aceite após troca: `/api/health` expõe o SHA completo esperado e `/api/ready=ready`; repetir somente login válido, login 401, pedido PDV público/equipe e uma operação de leitura GET não-polling; localizar eventos com test.run.id, tenant/ator/namespace/release/correlation esperados no data stream DEV; abortar aceite se aparecer PROD/infra, se a rota/contexto estiver errada ou se nenhum documento chegar. A verificação Elasticsearch requer acesso somente leitura DEV temporário e guardado localmente, com revogação confirmada após uso. Nenhuma alteração ao Collector compartilhado ou política de retenção está incluída nessa autorização. **Deploy PROD continua proibido sem autorização específica separada.**
 
 TAP-96 permanece **In Progress**. Este aditivo não declara cobertura total nem conclui a publicação oficial no DEV.
+
+## Aditivo TAP-96: reconciliacao focada pos-PR #90 (2026-10-20)
+
+A main depois do merge do PR #90 e `41f49a0aa8a8bbd3014e5bd4910d1228dbdee41a`. Ela inclui o runtime do merge do portal `a48d2357` alem do candidato anterior `d0ed1c18`; as arvores nao sao equivalentes. Os ensaios abaixo foram executados em `41f49a0` com API Fastify real, PostgreSQL 17 descartavel em tmpfs, Elasticsearch 8.17.0 e Collector 0.130.1. O Collector usou `mapping.mode: otel` e indice dinamico, conforme `deploy/observability/otel-collector-config.yml`; os atributos de log sao pesquisados sob `attributes.*`.
+
+| Execucao | Casos e resultado funcional | Auditoria na origem e Elasticsearch | Contexto/limite |
+|---|---|---|---|
+| `1be0ae921f5fde9a` | `ADM-S02`, `ADM-X01` e `CMD-S11`; 6 execucoes Playwright: dois casos admin em desktop e CMD-S11 em desktop/mobile/tablet/TV; 6/6 passaram. | O contador in-memory da origem observou 451 registros OTEL; a consulta DEV em nove data streams retornou os mesmos 451 com `test.run.id`. Foram pesquisados 2 `auth.authorization.denied`, 2 GET 403 (atendente e DONO), o GET 200 de controle, POST de provisionamento 201 e quatro POST de pedido 201 de CMD-S11. | Todos os 451 documentos tinham requestId/correlationId e release SHA `41f49a0...`; o payload de negação nao carrega status HTTP, que aparece no evento HTTP pareado. As evidencias JSON dos casos confirmam provisionamento canonico, resultado 403/controle 200 e pedido 201; elas nao armazenam correlationId, portanto o vinculo individual API-artifact/documento e parcial. |
+| `6da21fca9a43df99` | `RT-17` acrescentado ao ID existente; 1/1 passou. Handshake com token invalido rejeitado; token valido conecta; pedido de room de outro tenant nao recebe evento; room propria propaga atualizacao apos desconectar e reconectar. | 102 documentos de auditoria pesquisaveis; 102/102 com requestId/correlationId; 0 grupos repetidos por acao+correlationId. | `realtime.room.denied/joined` sao sinais tecnicos enviados a `app.log` (Pino), nao eventos audit funcionais. O runner de QA nao habilita instrumentacao Pino->OTLP; portanto o comportamento de isolamento foi comprovado pelo nao recebimento cross-tenant e por propagacao propria, mas esses sinais tecnicos nao foram localizados no Elasticsearch. `CMD-S11` tambem prova propagacao entre duas telas e atualizacao apos voltar online/recarregar. |
+
+### Localizacao da falha anterior e duplicidades
+
+A ausencia registrada na execucao antiga de sete documentos nao se reproduziu. O caminho atual foi observado da funcao `emitAuditEvent`/`emitAuthEvent`, pelo `LoggerProvider` OTEL em memoria, Collector e data streams corretos. A primeira configuracao exploratoria deste turno usou mapping ECS e indice fixo; o Collector reportou `document_parsing_exception` e `illegal_argument_exception`, por isso ela foi descartada e nao usada como evidência. Com a configuracao OTEL dinamica do projeto, as contagens origem/destino fecharam 451/451. Sem a configuracao original e payloads da execucao `d8d4...`, nao e possivel atribuir retroativamente uma causa unica para aquela amostra; nao ha causa de emissao da aplicacao reproduzida para corrigir.
+
+Na execucao de 451 documentos foram observados 12 grupos duplicados, todos `ui.page_view`, com mesma acao, page, requestId, correlationId e timestamp igual ou a 1 ms. Nenhum grupo duplicado ocorreu nas acoes de negacao, provisionamento focado por correlationId, pedido ou RT-17. Isto prova duplicacao de page_view nesta amostra; nao prova exatamente-uma-vez do pipeline. O tempo do servidor nao mede atraso de ingestao. A consulta nao tinha timestamp independente de chegada que sustentasse um atraso evento->Elasticsearch.
+
+### Alertas, snapshot e geolocalizacao
+
+As cinco regras continuam sintaticamente validas. Em rede Docker local isolada, Prometheus 3.5.0 avaliou `OTelCollectorQueueHighWatermark`; fila sintetica de 90/100 por mais de 2 minutos gerou `firing`, e baixar para 10/100 gerou `resolved`. Alertmanager 0.28.1 entregou exatamente as duas notificacoes a um webhook local descartavel. Isto comprova avaliacao, recuperacao e entrega ao receptor de teste; nao comprova canal nem recebimento por operador real.
+
+Em ES 8.17.0 descartavel, um indice e documento sinteticos foram incluidos em snapshot, apagados e restaurados do repositorio temporario; o documento voltou a ser consultavel. Isto nao comprova agenda, copia off-host, volume de producao, permissao do repositorio ou RPO/RTO.
+
+O candidato `trusted-geolocation.ts` so calcula pais quando o peer imediato esta numa allowlist explicita e os headers Cloudflare contem IP valido. Quatro testes cobrem spoof direto, peer IPv4 confiavel, peer IPv6/IPv4-mapped, IP invalido e pais desconhecido. O helper nao esta ligado ao runtime; a allowlist esta vazia por padrao. Ainda falta descobrir/confirmar o endereco que `cloudflared` apresenta ao processo e restringir o caminho ate a origem. Nao se habilitou `trustProxy`, Cloudflare, firewall ou coleta de IP.
+
+### Status por ID e limites da bateria
+
+A matriz individual dos 93 IDs, com contrato de sinal esperado, sinais pesquisaveis, contexto disponivel e limite de cada linha, esta em [TAP-96-matriz-IDs-funcionais-2026-10-20.md](TAP-96-matriz-IDs-funcionais-2026-10-20.md).
+
+A bateria antiga preserva 172/172 testes funcionais e 93 IDs, com evidencias API/DB por arquivo em `artifacts/release-e2e/d0ed1c1...`; nao foi repetida. Esses artefatos provam assercoes funcionais e snapshots do PostgreSQL, nao indexacao por ID no Elasticsearch. A validacao de eventos pesquisaveis fica limitada aos IDs e execucoes acima e aos cenarios anteriormente reconciliados. IDs funcionais sem runId/correlationId de pipeline permanecem sem prova de sinal individual; nao interpretar 172 testes ou 93 IDs como cobertura de observabilidade.
+
+O teste de QA agora aceita qualquer porta OTLP loopback nao privilegiada (1024-65535), mantendo bloqueio de endpoint remoto. Isso permite usar 4319/4321 quando 4318 esta ocupado, sem conectar ao Collector compartilhado.
+
+### Estado e proxima troca
+
+SHA de main testado nesta validacao: `41f49a0aa8a8bbd3014e5bd4910d1228dbdee41a`. Nenhum deploy no DEV oficial ou PROD foi feito; o slot DEV permanece pertencente a tarefa paralela ate liberacao confirmada. A proxima publicacao DEV deve ser uma unica troca para o SHA final de `main` depois de PR/CI verdes e liberacao do slot, seguida do smoke minimo ja descrito. A aprovacao para PROD e independente e nao esta incluida. TAP-96 permanece **In Progress** e `PROD_DEPLOY_REQUIRED=YES`.
