@@ -4,6 +4,8 @@
 
 > **Decisão posterior do proprietário em 21/10/2026:** backup da observabilidade adiado; RPO/RTO pendentes para retomada futura **não bloqueiam a entrega atual do TAP-96**. Não executar novos snapshots/backups, sincronização OneDrive ou restauração dessa frente. Evidências e arquivos existentes preservados, sem novo WI. Esta mudança não alcança backups transacionais ou obrigatórios dos procedimentos de deploy. Os demais gates continuam vigentes e TAP-96 permanece In Progress.
 
+> **Código candidato posterior, PR #92:** geolocalização DEV autenticada implementada e testada, mas desligada; health do poller diferencia erro histórico e loop/configuração efetivos sem expor credenciais; redação de auditoria corrigida para segredos em arrays/objetos. Os 17 testes focados passaram. Esses resultados não comprovam a borda Cloudflare real, execução no worker compartilhado ou entrega Telegram. Contrato, provas e intervenções restantes no [aditivo operacional](TAP-96-aditivo-decisoes-operacionais-2026-10-21.md). Evidências históricas abaixo mantêm data e limites originais.
+
 > Atualização 2026-10-21: a matriz complementar que incorpora as sete jornadas TAP-114, a prova isolada de eventos/métricas de solicitação de pagamento, o filtro de payload comercial e a política mínima de metadados está em [matriz TAP-114](TAP-96-matriz-TAP-114-2026-10-21.md). Ela complementa os achados históricos abaixo; não reclassifica execuções antigas como consulta por caso.
 
 Data da auditoria: 2026-10-19 (America/Sao_Paulo)

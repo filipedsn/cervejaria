@@ -25,7 +25,7 @@ const redactPaths = [
   'databaseUrl',
 ];
 
-const SENSITIVE_KEY = /authorization|cookie|jwt|token|password|senha|secret|api[-_]?key|connection[-_]?string|database[-_]?url/i;
+const SENSITIVE_KEY = /authorization|cookie|jwt|token|password|senha|secret|api[-_]?key|connection[-_]?string|database[-_]?url|x-tap-geo-auth/i;
 const SENSITIVE_VALUE = /\b(?:bearer|basic)\s+\S+|\b(?:eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)|\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|amqps?):\/\/\S+|https?:\/\/[^\s/@]+:[^\s/@]+@/i;
 
 function redactString(value: string): string {
