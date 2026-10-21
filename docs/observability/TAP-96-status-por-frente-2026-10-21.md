@@ -1,5 +1,7 @@
 # TAP-96 — status consolidado por frente (2026-10-21)
 
+> **Atualização operacional de 2026-10-21:** decisões já confirmadas e resultados desta execução em [aditivo operacional TAP-96](TAP-96-aditivo-decisoes-operacionais-2026-10-21.md). Esse aditivo supersede apenas as listas de decisões que antes constavam como pendentes; preserva os registros históricos e os limites das evidências.
+
 Este aditivo registra o estado mais recente da execução no PR #92. Evidências históricas continuam identificadas pela data e SHA de origem; contagens antigas não foram convertidas em prova por jornada. TAP-96 permanece **In Progress** e `PROD_DEPLOY_REQUIRED=YES`.
 
 ## Matriz de resultados
