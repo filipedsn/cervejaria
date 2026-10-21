@@ -59,6 +59,7 @@ import {
 import { emitToEvento, emitToComanda, emitToCervejaria } from '../lib/realtime.js';
 import { notifyPedidoCreated } from '../lib/push-notifications.js';
 import { registrarTransacao } from '../lib/transacao-log.js';
+import { recordPaymentRequestTransition } from '../lib/payment-request-observability.js';
 
 import { getDevFrontendOrigin } from '../lib/lan-url.js';
 import { assertLegacyWriteAllowed } from '../lib/legacy-write-guard.js';
@@ -573,7 +574,16 @@ export async function publicRoutes(app: FastifyInstance) {
     });
     const comanda = await prisma.comanda.findFirst({ where: whereComandaOperacao(session.cervejariaId, { id: session.comandaId }), select: { id: true, solicitacaoPagamentoEm: true } });
     if (!comanda) return reply.status(404).send({ error: 'Comanda nÃ£o encontrada' });
-    if (result.count > 0) notificarComandaOperacaoAtualizada(app, session.cervejariaId, comanda.id);
+    if (result.count > 0) {
+      recordPaymentRequestTransition('requested', {
+        cervejariaId: session.cervejariaId,
+        comandaId: comanda.id,
+        route: request.routeOptions.url ?? request.url.split('?')[0] ?? request.url,
+        method: request.method,
+        statusCode: 200,
+      });
+      notificarComandaOperacaoAtualizada(app, session.cervejariaId, comanda.id);
+    }
     return { pendente: Boolean(comanda.solicitacaoPagamentoEm), solicitacaoPagamentoEm: comanda.solicitacaoPagamentoEm };
   });
 

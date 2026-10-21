@@ -12,6 +12,8 @@ const SENSITIVE_KEYS = new Set([
   'jwt_secret',
   'smtp_pass',
   'obs_alert_telegram_bot_token',
+  'tap_geo_edge_token',
+  'x-tap-geo-auth',
   'secret',
 ]);
 
@@ -48,10 +50,13 @@ export function redactObject(value: unknown, depth = 0): unknown {
 
   const out: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof val === 'object' && val !== null) {
+    const redacted = redactValue(key, val);
+    if (redacted !== val) {
+      out[key] = redacted;
+    } else if (typeof val === 'object' && val !== null) {
       out[key] = redactObject(val, depth + 1);
     } else {
-      out[key] = redactValue(key, val);
+      out[key] = redacted;
     }
   }
   return out;

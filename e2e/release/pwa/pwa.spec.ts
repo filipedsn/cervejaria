@@ -9,10 +9,23 @@ test('PWA-S01 manifest publicado contém nome e ícones @api', async ({ ops }) =
 });
 
 test('PWA-S02 barra Sem conexão aparece offline', async ({ ops, page, evidence }) => {
+  const pageViews = new Map<string, number>();
+  page.on('request', (request) => {
+    if (request.method() !== 'POST' || !request.url().endsWith('/api/audit/events')) return;
+    try {
+      const events = (JSON.parse(request.postData() ?? '{}') as { events?: Array<{ type?: string; page?: string }> }).events ?? [];
+      for (const event of events) {
+        if (event.type !== 'page_view' || typeof event.page !== 'string') continue;
+        pageViews.set(event.page, (pageViews.get(event.page) ?? 0) + 1);
+      }
+    } catch { /* the API response assertion remains the primary test */ }
+  });
   const tenant = await ops.tenant();
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
+  await expect.poll(() => pageViews.get('/login') ?? 0, { timeout: 6_000 }).toBe(1);
   await page.goto('/operacao/comandas', { waitUntil: 'networkidle' });
   await expect(page.getByRole('heading', { name: /Caixa do dia|Comandas/i }).first()).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => pageViews.get('/operacao/comandas') ?? 0, { timeout: 6_000 }).toBe(1);
   await page.context().setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event('offline')));
   await expect(page.getByText(/Sem conexão/i)).toBeVisible({ timeout: 10_000 });

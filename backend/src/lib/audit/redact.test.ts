@@ -21,3 +21,15 @@ test('redige chaves de segredo que chegam em maiúsculas ou snake case', () => {
     ['OBS_ALERT_TELEGRAM_BOT' + '_TOKEN']: '[REDACTED]',
   });
 });
+
+test('redacts the DEV edge authenticator in audit objects', () => {
+  assert.deepEqual(redactObject({ headers: { 'x-tap-geo-auth': 'synthetic-only', 'x-tap-geo-country': 'BR' }, TAP_GEO_EDGE_TOKEN: 'synthetic-only' }), {
+    headers: { 'x-tap-geo-auth': '[REDACTED]', 'x-tap-geo-country': 'BR' }, TAP_GEO_EDGE_TOKEN: '[REDACTED]',
+  });
+});
+
+test('redacts sensitive keys before traversing duplicate headers or structured values', () => {
+  assert.deepEqual(redactObject({ headers: { 'x-tap-geo-auth': ['synthetic-a', 'synthetic-b'] }, token: { value: 'synthetic-c' }, nested: { action: 'accepted' } }), {
+    headers: { 'x-tap-geo-auth': '[REDACTED]' }, token: '[REDACTED]', nested: { action: 'accepted' },
+  });
+});

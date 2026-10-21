@@ -25,7 +25,7 @@ const redactPaths = [
   'databaseUrl',
 ];
 
-const SENSITIVE_KEY = /authorization|cookie|jwt|token|password|senha|secret|api[-_]?key|connection[-_]?string|database[-_]?url/i;
+const SENSITIVE_KEY = /authorization|cookie|jwt|token|password|senha|secret|api[-_]?key|connection[-_]?string|database[-_]?url|x-tap-geo-auth/i;
 const SENSITIVE_VALUE = /\b(?:bearer|basic)\s+\S+|\b(?:eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)|\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|amqps?):\/\/\S+|https?:\/\/[^\s/@]+:[^\s/@]+@/i;
 
 function redactString(value: string): string {
@@ -59,6 +59,9 @@ export function redactLogValue(value: unknown, key?: string, depth = 0): unknown
 function buildPinoLogger(destination?: pino.DestinationStream, release = getReleaseContext()): pino.Logger {
   return pino({
     level: process.env.LOG_LEVEL ?? (isProd ? 'info' : 'debug'),
+    // Pino's default base adds machine hostname and process PID to every record.
+    // Release/service and request context below provide the required identifiers.
+    base: null,
     redact: { paths: redactPaths, censor: REDACTED },
     hooks: {
       logMethod(args, method) {

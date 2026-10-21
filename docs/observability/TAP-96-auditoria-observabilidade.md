@@ -1,5 +1,13 @@
 # TAP-96 — auditoria de observabilidade do TAP Quiver
 
+> **Atualização operacional de 2026-10-21:** decisões já confirmadas e resultados desta execução em [aditivo operacional TAP-96](TAP-96-aditivo-decisoes-operacionais-2026-10-21.md). Esse aditivo supersede apenas as listas de decisões que antes constavam como pendentes; preserva os registros históricos e os limites das evidências.
+
+> **Decisão posterior do proprietário em 21/10/2026:** backup da observabilidade adiado; RPO/RTO pendentes para retomada futura **não bloqueiam a entrega atual do TAP-96**. Não executar novos snapshots/backups, sincronização OneDrive ou restauração dessa frente. Evidências e arquivos existentes preservados, sem novo WI. Esta mudança não alcança backups transacionais ou obrigatórios dos procedimentos de deploy. Os demais gates continuam vigentes e TAP-96 permanece In Progress.
+
+> **Código candidato posterior, PR #92:** geolocalização DEV autenticada implementada e testada, mas desligada; health do poller diferencia erro histórico e loop/configuração efetivos sem expor credenciais; redação de auditoria corrigida para segredos em arrays/objetos. Os 17 testes focados passaram. Esses resultados não comprovam a borda Cloudflare real, execução no worker compartilhado ou entrega Telegram. Contrato, provas e intervenções restantes no [aditivo operacional](TAP-96-aditivo-decisoes-operacionais-2026-10-21.md). Evidências históricas abaixo mantêm data e limites originais.
+
+> Atualização 2026-10-21: a matriz complementar que incorpora as sete jornadas TAP-114, a prova isolada de eventos/métricas de solicitação de pagamento, o filtro de payload comercial e a política mínima de metadados está em [matriz TAP-114](TAP-96-matriz-TAP-114-2026-10-21.md). Ela complementa os achados históricos abaixo; não reclassifica execuções antigas como consulta por caso.
+
 Data da auditoria: 2026-10-19 (America/Sao_Paulo)
 
 Revisão de código: `e39b2e6d091906ff414fbaff3c93d2c55693c25b`
@@ -402,3 +410,34 @@ Main testada: `41f49a0aa8a8bbd3014e5bd4910d1228dbdee41a`. A main inclui o merge 
 | Retencao, capacidade e durabilidade compartilhada | pendentes | Nenhuma policy, template, replica, limite, rede ou Collector compartilhado foi alterado. Projecao, capacidade fisica e aceite de perda/RPO/RTO nao sao substituidos pelos probes descartaveis. |
 
 Proximas operacoes compartilhadas continuam separadas: uma troca DEV para o SHA final de main quando o slot for liberado; depois smoke minimo de observabilidade; qualquer deploy PROD exige autorizacao especifica. Mudancas do Collector, Elasticsearch, policies/templates, caminho Cloudflare/origem e retenção exigem aprovacao operacional propria com escopo, verificacoes, impacto e retorno definidos. Nenhuma delas foi aplicada nesta execucao. TAP-96 permanece **In Progress**; `PROD_DEPLOY_REQUIRED=YES`.
+
+## Aditivo de certificação técnica e decisão operacional (2026-10-21)
+
+O ensaio real Pino → EDOT → Collector → Elasticsearch e a correção de emissão repetida `ui.page_view` estão documentados em [TAP-96-jornadas-executadas-2026-10-20.md](TAP-96-jornadas-executadas-2026-10-20.md). O tracker agora suprime replay da mesma location key; PWA-S02 verifica um único `/login` no POST de auditoria. A duplicidade histórica de 12 grupos foi reproduzida na origem no build exato de QA; os IDs brutos históricos não foram preservados, portanto não há atribuição retroativa documento a documento. O harness grava request/correlation IDs recebidos nas respostas para próximas provas. Os 172 testes/93 IDs antigos continuam prova funcional agregada; não provam ingestão por cada ID e não foram repetidos.
+
+O relatório histórico contém estados e conclusões de 2026-10-20. Para gates atuais, prevalece este aditivo e a tabela de certificação abaixo; não se deve interpretar status antigos como reabertura da falha administrativa/concorrente que não se reproduziu.
+
+| Gate | Status em 2026-10-21 | Evidência / próximo passo |
+|---|---|---|
+| Pino técnico real e redação | Comprovado em stack descartável | 1 info, 1 warn e 1 erro controlado pesquisáveis; sentinel de senha `[REDACTED]`; metadados de host foram incluídos e requerem decisão de detector antes de rollout. |
+| Audit versus technical | Comprovado para probe | Audit uma vez em `logs-audit_system.otel-dev`; Pino em `logs-technical.otel-dev`; uma ocorrência não é garantia exactly-once. |
+| `page_view` repetida | Causa reproduzida e correção preparada | Mesmo load `/login` emitiu duas ações antes do transporte; correção por location key, PWA-S02 passou 4/4 (desktop/mobile/tablet/TV). |
+| Rastreio por chamada QA | Implementado | `requestId`/`correlationId` capturados no helper; evidência histórica não pode ser reconstruída. |
+| 451/451 e admin/concorrência | Comprovado para execução 41f49a0 | Não reabrir investigação antiga; cobertura universal, atraso e exactly-once permanecem fora da prova. |
+| DEV oficial | Bloqueado pelo slot de tarefa paralela | Esperar liberação efetiva; uma troca para o único SHA final após PR/CI e smoke focado. Nenhuma mudança compartilhada feita. |
+| Alertas reais | Bloqueado por decisão de destinatário/autorização de envio | Receptor descartável firing/resolved comprovado; pacote operacional define texto e aceite humano. |
+| Geolocalização | Bloqueado pela fronteira de confiança | Helper seguro testado, sem ligação no runtime; descobrir peer Tunnel e aprovar país-only/origem restrita. |
+| Retenção/capacidade | Bloqueado por autorização operacional | Piloto futuro `metrics-generic.otel-dev` descrito; janelas não aprovadas, backings existentes separados. Confirmar fotografia comparável e budget primário+r​​éplica. |
+| Durabilidade/recuperação | Bloqueado por aceite RPO/RTO e destino | Replay duplica; fila cheia pode coexistir com OTLP 200; marcador snapshot isolado não prova restore integral/off-host. |
+| Kibana/ACL empresarial | Não aplicável enquanto Discover for interno; confirmar decisão de produto | Não criar role empresarial sem necessidade; se acesso externo virar requisito, modelo DLS/FLS e prova negativa cross-tenant. |
+| Produção | Não autorizado | `PROD_DEPLOY_REQUIRED=YES`; PR de runtime e troca DEV não autorizam deploy PROD. |
+
+Pacotes executáveis, impactos, precondições, verificações, retorno e decisões humanas estão em [TAP-96-pacote-operacional-final-2026-10-21.md](TAP-96-pacote-operacional-final-2026-10-21.md). Nenhum envio real, mudança de rede/Collector/Elasticsearch/retention ou deploy ocorreu. TAP-96 permanece **In Progress**.
+# Aditivo atual 2026-10-21 — veja status por frente
+
+Para o estado mais recente, matriz de rotas TAP-114 e ações bloqueadas consulte [TAP-96-status-por-frente-2026-10-21.md](TAP-96-status-por-frente-2026-10-21.md) e [matriz TAP-114](TAP-96-matriz-TAP-114-2026-10-21.md). O aditivo de matriz comprova as rotas reais de solicitação/resolução e `metrics-generic.otel-dev` em stack descartável. Esse resultado atualiza os trechos históricos abaixo que ainda dizem que as rotas/namespace DEV aguardam prova. O slot DEV foi liberado, mas não houve troca porque os sete checks de GitHub Actions não iniciaram por bloqueio de billing. Nenhuma alteração compartilhada ou produção foi feita; TAP-96 segue **In Progress** e `PROD_DEPLOY_REQUIRED=YES`.
+## Aditivo 2026-10-21 — pares de auditoria por transicao
+
+Na execucao descartavel final `97b01b45db19724b`, a expressao “dois documentos por transicao” foi discriminada por acao, origem e IDs na [matriz de rotas TAP-114](TAP-96-matriz-TAP-114-2026-10-21.md). Cada operacao produziu um sinal semantico `payment.*` e um sinal HTTP `http.post`/`http.delete`, com mesmo requestId/correlationId e IDs de documento distintos. A contagem por correlacao foi um de cada; nao se observou duplicata do mesmo evento semantico nessa amostra.
+
+O slot DEV esta liberado. O HEAD remoto `6379ea55d1ad6d2332e8aeb123753c5f56d5fd9a` do PR #92 foi confirmado; CI local completo e prova focalizada passaram, mas os sete checks oficiais atuais nao iniciaram por falha de pagamento/limite Actions. A publicacao autorizada continua aguardando regularizacao pelo proprietario GitHub e checks remotos verdes. Permanecem pendentes as decisoes de retencao DEV futura, backup/RPO/RTO, canal e autorizacao de alerta real, fronteira de confianca Cloudflare/origem para geo, e requisito interno versus acesso empresarial do Discover. Estado TAP-96 **In Progress**; `PROD_DEPLOY_REQUIRED=YES`.

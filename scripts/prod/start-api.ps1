@@ -16,6 +16,8 @@ $paths = Resolve-QuiverTapPaths -Settings $settings
 # propositalmente sem segredos; as variaveis vivem em backend/.env.production.
 try {
   Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment production
+  # Keep service identity and opaque process instance ID for APM metrics; omit host, process, OS, container, and cloud metadata.
+  $env:OTEL_NODE_RESOURCE_DETECTORS = 'env,serviceinstance'
 } catch {
   Write-WatchdogLog -Paths $paths -Message "Falha ao carregar ambiente de producao: $($_.Exception.Message)"
   Write-Host $_.Exception.Message -ForegroundColor Red

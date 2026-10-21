@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import cookie from '@fastify/cookie';
 import Fastify from 'fastify';
-import { registerAuditHooks } from './audit-hooks.js';
+import { buildHttpAuditMetadata, registerAuditHooks } from './audit-hooks.js';
 import { registerCorrelationContext } from './correlation-context.js';
 import { getTelemetryContext } from './telemetry-context.js';
 import type { AuditEventInput } from './audit/emit-audit-event.js';
@@ -59,4 +59,25 @@ test('keeps high-frequency kitchen polling out of successful-read audit', async 
   } finally {
     await app.close();
   }
+});
+
+test('omits product, options, and idempotency payload from portal order HTTP audit', () => {
+  const metadata = buildHttpAuditMetadata(
+    '/api/public/cervejarias/:slug/pontos-venda/:pontoVendaId/comanda/pedidos',
+    {
+      idempotencyKey: 'synthetic-idempotency-key',
+      itens: [{ produtoId: 'synthetic-product', quantidade: 2, opcionais: [{ opcionalId: 'synthetic-option', quantidade: 1 }] }],
+      paraViagem: true,
+    },
+  );
+  assert.equal(metadata, undefined);
+});
+
+test('retains safe response errors when a portal order payload is omitted', () => {
+  const metadata = buildHttpAuditMetadata(
+    '/api/public/cervejarias/:slug/pontos-venda/:pontoVendaId/comanda/pedidos',
+    { itens: [{ produtoId: 'synthetic-product' }] },
+    { error: 'request rejected' },
+  );
+  assert.deepEqual(metadata, { responseError: { error: 'request rejected' } });
 });

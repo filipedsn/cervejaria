@@ -10,6 +10,7 @@ import {
 } from '../types/cliente-session.js';
 import { getReleaseContext } from './release-context.js';
 import { readPdvClienteSession } from './pdv-client-session.js';
+import { trustedGeoCountryForRequest } from './trusted-geolocation.js';
 
 export type AuditActorType = 'usuario' | 'cliente' | 'cliente-pdv' | 'system' | 'anonymous';
 
@@ -28,6 +29,8 @@ export type TelemetryContext = {
   slug: string;
   env: 'dev' | 'prd';
   actor: TelemetryActor;
+  /** ISO country only; no client IP is retained. */
+  clientCountryCode?: string;
 };
 
 const storage = new AsyncLocalStorage<TelemetryContext>();
@@ -213,10 +216,18 @@ export async function resolveTelemetryFromRequest(
 ): Promise<TelemetryContext> {
   const env = getObservabilityEnv();
   const publicSlug = slugFromPublicPath(request.url);
-  const requestContext = { requestId: request.id, correlationId: request.correlationId };
+  const geo = trustedGeoCountryForRequest({
+    remoteAddress: request.raw?.socket?.remoteAddress,
+    headers: request.headers ?? {},
+  });
+  const requestContext = {
+    requestId: request.id,
+    correlationId: request.correlationId,
+    ...(geo.countryCode ? { clientCountryCode: geo.countryCode } : {}),
+  };
 
   const publicKind = publicPortalKind(request.url);
-  if (publicKind) return resolvePublicRequestContext(request, publicKind, tenantResolver);
+  if (publicKind) return { ...(await resolvePublicRequestContext(request, publicKind, tenantResolver)), ...requestContext };
 
   let user = request.user as JwtPayload | undefined;
   if (!user) {
@@ -314,4 +325,5 @@ export function applyTelemetryContext(ctx: TelemetryContext): void {
   span.setAttribute('data_stream.namespace', ctx.env);
   if (ctx.actor.id) span.setAttribute('actor.id', ctx.actor.id);
   if (ctx.actor.type) span.setAttribute('actor.type', ctx.actor.type);
+  if (ctx.clientCountryCode) span.setAttribute('client.geo.country_iso_code', ctx.clientCountryCode);
 }

@@ -1,5 +1,7 @@
 # TAP-96: preparação segura de retenção (2026-10-20)
 
+> **Atualização operacional de 2026-10-21:** decisões já confirmadas e resultados desta execução em [aditivo operacional TAP-96](TAP-96-aditivo-decisoes-operacionais-2026-10-21.md). Esse aditivo supersede apenas as listas de decisões que antes constavam como pendentes; preserva os registros históricos e os limites das evidências.
+
 Esta seção registra preparação de código/documentação. Nenhuma policy, template, backing index, retenção, Collector ou ambiente compartilhado foi alterado. TAP-96 permanece **In Progress**; `PROD_DEPLOY_REQUIRED=YES` enquanto os gates de produto e autorização permanecerem pendentes.
 
 ## Estado observado e limites de acesso

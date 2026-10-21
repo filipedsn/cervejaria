@@ -1,4 +1,6 @@
-﻿# TAP-96 - matriz por ID da bateria funcional (2026-10-20)
+# TAP-96 - matriz por ID da bateria funcional (2026-10-20)
+
+Complemento finito de jornadas originadas no TAP-114: [TAP-96-matriz-TAP-114-2026-10-21.md](TAP-96-matriz-TAP-114-2026-10-21.md). As 93 linhas desta bateria permanecem históricas e não foram contadas como cobertura automática das jornadas do portal.
 
 Fonte: 93 artefatos API/DB da bateria `d0ed1c1...`; resultado agregado do runner: 172/172 testes passaram. Os JSON registram chamadas/snapshot, mas nao carregam todos os IDs de correlacao e nao foram ligados a uma consulta Elasticsearch por caso. As linhas abaixo mantem esse limite explicito.
 
@@ -97,3 +99,106 @@ Fonte: 93 artefatos API/DB da bateria `d0ed1c1...`; resultado agregado do runner
 | RBAC-X04 | Passou no agregado 172/172 | HTTP de autorizacao; sem mutacao no DB quando negado | Nao consultado por ID na bateria ampla | Artefato API (ator/rota/status) e hash de snapshot DB; sem correlationId/release por chamada | Funcionalidade aprovada nao prova ingestao/ausencia de duplicidade |
 | RBAC-X05 | Passou no agregado 172/172 | HTTP de autorizacao; sem mutacao no DB quando negado | Nao consultado por ID na bateria ampla | Artefato API (ator/rota/status) e hash de snapshot DB; sem correlationId/release por chamada | Funcionalidade aprovada nao prova ingestao/ausencia de duplicidade |
 | RBAC-X06 | Passou no agregado 172/172 | HTTP de autorizacao; sem mutacao no DB quando negado | Nao consultado por ID na bateria ampla | Artefato API (ator/rota/status) e hash de snapshot DB; sem correlationId/release por chamada | Funcionalidade aprovada nao prova ingestao/ausencia de duplicidade |
+
+
+## Classificação de evidência por ID
+
+A classificação separa resultado funcional do sinal pesquisável. Os 93 IDs funcionais passaram na bateria finita, mas os artefatos antigos não guardavam request/correlation ID por chamada. Os casos sem prova Elasticsearch por ID ficam explicitamente bloqueados para correlação, não por defeito funcional conhecido; não é necessária nova bateria completa. O harness agora captura esses IDs para eventual replay focal.
+
+| ID | Fechamento de observabilidade nesta fase |
+|---|---|
+| ADM-S02 | Comprovado: execução 1be0ae921f5fde9a, SHA 41f49a0; sinal e contexto pesquisáveis (ver jornada). |
+| ADM-X01 | Comprovado: execução 1be0ae921f5fde9a, SHA 41f49a0; sinal e contexto pesquisáveis (ver jornada). |
+| AGD-S01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| AGD-S02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| AGD-S03 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| AGD-X01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| AGD-X04 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| AUT-S01 | Comprovado histórico: run 6b555058adf0bbdd, SHA d0ed1c1; login/logout pesquisáveis. Não atribuir automaticamente à main posterior. |
+| AUT-S02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| AUT-S03 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| AUT-S04 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| AUT-X01 | Comprovado histórico: run f5f980298b7c30ff, SHA d0ed1c1; não atribuir automaticamente à main posterior. |
+| AUT-X02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| AUT-X04 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CAT-S01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CAT-S02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CAT-S03 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CAT-S04 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CAT-S05 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CFG-S01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CFG-S02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CFG-S03 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CFG-S04 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CFG-S05 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CFG-X01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CLI-S01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CLI-S02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-S01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-S02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-S03 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-S04 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-S05 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-S06 | Comprovado histórico: run 6b555058adf0bbdd, SHA d0ed1c1; não atribuir automaticamente à main posterior. |
+| CMD-S07 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-S08 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-S09 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-S10 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-S11 | Comprovado: execução 1be0ae921f5fde9a, SHA 41f49a0; sinal e contexto pesquisáveis (ver jornada). |
+| CMD-S12 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-X05 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-X06 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-X07 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-X12 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-X18 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CMD-X20 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CXA-S01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CXA-S02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CXA-S03 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CXA-S04 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CXA-S05 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CXA-S06 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CXA-S07 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CXA-S08 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| CXA-S09 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| DSH-S01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| DSH-S02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| DSH-S03 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| DSH-S04 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| DSH-S05 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| EST-S01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| EST-S02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| EST-S03 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| EST-S04 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| EST-S05 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| KDS-S01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| KDS-S02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| KDS-S03 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| KDS-S04 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| KDS-S05 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| KDS-S06 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| KDS-X01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| KDS-X02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| KDS-X03 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| KDS-X04 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| ONB-S01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| ONB-S02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| POR-S01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| POR-S02 | Comprovado histórico: run f5f980298b7c30ff, SHA d0ed1c1; não atribuir automaticamente à main posterior. |
+| POR-S03 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| POR-S04 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| POR-S05 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| POR-X05 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| PWA-S01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| PWA-S02 | Comprovado na origem: 1 page_view de /login após correção em PWA-S02; ingestão pós-correção no DEV aguarda slot. |
+| RBAC-S01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| RBAC-S02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| RBAC-S03 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| RBAC-X01 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| RBAC-X02 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| RBAC-X03 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| RBAC-X04 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| RBAC-X05 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+| RBAC-X06 | Bloqueado para prova pesquisável individual: artefato funcional sem request/correlation ID por chamada; ação futura é replay focal desse ID no pipeline isolado, se exigido, sem repetir os 172 testes. |
+
+IDs de jobs, SMTP, upload/download, reset por e-mail e integrações que não pertencem aos 93 executados continuam fora do denominador, não N/A implícito. Para incluí-los é preciso requisito operacional/dono e destino de teste específico. Login anônimo `unknown` continua contexto correto quando a empresa ainda não pode ser resolvida. Uma ação de auditoria, log técnico e trace amostrado são sinais distintos; trace não é registro de auditoria.

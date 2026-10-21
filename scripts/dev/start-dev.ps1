@@ -22,6 +22,8 @@ $env:NODE_ENV = 'development'
 
 . (Join-Path $PSScriptRoot '..\prod\_config.ps1')
 Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment development
+# Keep service identity and opaque process instance ID for APM metrics; omit host, process, OS, container, and cloud metadata.
+$env:OTEL_NODE_RESOURCE_DETECTORS = 'env,serviceinstance'
 $devRevision = (& git -C $paths.ProjectRoot rev-parse HEAD 2>$null).Trim()
 if ($devRevision -notmatch '^[a-f0-9]{40}$') { throw 'Nao foi possivel identificar a revisao DEV.' }
 $env:RELEASE_SHA = $devRevision

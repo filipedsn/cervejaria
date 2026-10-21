@@ -28,6 +28,7 @@ test('redacts secrets recursively and preserves safe request context in a Pino c
     () => log.child({ method: 'POST', route: '/api/test' }).error({
       authorization: 'Bearer should-not-appear',
       nested: { accessToken: 'should-not-appear', connectionString: 'postgresql://user:pass@example/db' },
+      req: { headers: { 'x-tap-geo-auth': 'geo-value-must-not-appear', 'x-tap-geo-country': 'BR' } },
       safe: 'kept',
     }, 'controlled failure'),
   );
@@ -45,8 +46,12 @@ test('redacts secrets recursively and preserves safe request context in a Pino c
   assert.equal(event.releaseSha, 'dev');
   assert.equal(event.service, 'quiver-tap-api');
   assert.equal(event.environment, 'development');
+  assert.equal(event.hostname, undefined);
+  assert.equal(event.pid, undefined);
   assert.equal(event.safe, 'kept');
   assert.equal(event.authorization, '[REDACTED]');
   assert.deepEqual(event.nested, { accessToken: '[REDACTED]', connectionString: '[REDACTED]' });
+  assert.deepEqual(event.req, { headers: { 'x-tap-geo-auth': '[REDACTED]', 'x-tap-geo-country': 'BR' } });
+  assert.doesNotMatch(output.lines[0] ?? '', /geo-value-must-not-appear/);
   assert.doesNotMatch(output.lines[0] ?? '', /should-not-appear|postgresql:\/\/user:pass/i);
 });

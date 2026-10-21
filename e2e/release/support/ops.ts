@@ -87,7 +87,8 @@ export class Api {
     const text = await response.text();
     let body: any = text;
     try { body = text ? JSON.parse(text) : null; } catch { /* keep raw text */ }
-    this.evidence.recordApi({ actor: this.who, method, url, requestBody: data, status: response.status(), responseBody: body });
+    const headers = response.headers();
+    this.evidence.recordApi({ actor: this.who, method, url, requestBody: data, status: response.status(), responseBody: body, requestId: headers['x-request-id'], correlationId: headers['x-correlation-id'] });
     return { status: response.status(), body, headers: response.headers() };
   }
 

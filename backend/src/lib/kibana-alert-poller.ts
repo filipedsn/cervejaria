@@ -93,9 +93,16 @@ export type AlertPollerHealth = {
   status: 'healthy' | 'degraded';
   process: 'up';
   elasticsearch: 'ok' | 'error' | 'unknown';
+  pollingActive: boolean;
+  pollInFlight: boolean;
+  notifyChannels: string[];
+  authentication: 'api-key' | 'basic' | 'none';
+  target: { origin: string | null; customPath: boolean; queryPresent: boolean; index: string };
   lastPollAttemptAt?: string;
   lastSuccessfulPollAt?: string;
   lastPollError?: string;
+  lastPollErrorAt?: string;
+  lastPollErrorIsHistorical: boolean;
   lastEventProcessedAt?: string;
   lastSuccessfulDeliveryAt?: string;
   lastDeliveryError?: string;
@@ -107,14 +114,34 @@ export function getAlertPollerHealth(now = Date.now()): AlertPollerHealth {
   state = loadAlertPollerState();
   const lastSuccess = state.lastSuccessfulPollAt ? Date.parse(state.lastSuccessfulPollAt) : NaN;
   const stale = !Number.isFinite(lastSuccess) || now - lastSuccess > pollIntervalMs() * 3;
-  const hasRecentError = Boolean(state.lastPollErrorAt && (!Number.isFinite(lastSuccess) || Date.parse(state.lastPollErrorAt) >= lastSuccess));
+  const errorAt = state.lastPollErrorAt ? Date.parse(state.lastPollErrorAt) : NaN;
+  const errorIsHistorical = Boolean(state.lastPollError && (!Number.isFinite(errorAt) || now - errorAt > pollIntervalMs() * 3));
+  const hasRecentError = Boolean(!errorIsHistorical && state.lastPollErrorAt && (!Number.isFinite(lastSuccess) || errorAt >= lastSuccess));
+  let origin: string | null = null;
+  let customPath = false;
+  let queryPresent = false;
+  try {
+    const url = new URL(esUrl());
+    if (['http:', 'https:'].includes(url.protocol)) origin = url.origin;
+    customPath = url.pathname !== '/';
+    queryPresent = Boolean(url.search);
+  } catch { /* Invalid configuration is metadata, never a place to echo secrets. */ }
+  const keyConfigured = Boolean(process.env.KIBANA_ALERT_ES_API_KEY?.trim() || process.env.ELASTIC_API_KEY_ALERT_POLLER?.trim());
+  const passwordConfigured = Boolean(process.env.KIBANA_ALERT_ES_PASSWORD?.trim() || process.env.ELASTIC_PASSWORD?.trim());
   return {
     status: stale || hasRecentError ? 'degraded' : 'healthy',
     process: 'up',
-    elasticsearch: hasRecentError ? 'error' : Number.isFinite(lastSuccess) ? 'ok' : 'unknown',
+    elasticsearch: hasRecentError ? 'error' : !stale && Number.isFinite(lastSuccess) ? 'ok' : 'unknown',
+    pollingActive: timer !== null,
+    pollInFlight: polling,
+    notifyChannels: activeNotifyChannels(),
+    authentication: keyConfigured ? 'api-key' : passwordConfigured ? 'basic' : 'none',
+    target: { origin, customPath, queryPresent, index: esIndex() },
     lastPollAttemptAt: state.lastPollAttemptAt,
     lastSuccessfulPollAt: state.lastSuccessfulPollAt,
     lastPollError: state.lastPollError,
+    lastPollErrorAt: state.lastPollErrorAt,
+    lastPollErrorIsHistorical: errorIsHistorical,
     lastEventProcessedAt: state.lastEventProcessedAt,
     lastSuccessfulDeliveryAt: state.lastSuccessfulDeliveryAt,
     lastDeliveryError: state.lastDeliveryError,
