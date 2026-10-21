@@ -170,6 +170,11 @@ export function OperacaoComandaDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
   };
 
+  const resolverSolicitacao = useMutation({
+    mutationFn: () => api.delete(`/api/operacao/comandas/${id}/solicitacao-pagamento`, {}),
+    onSuccess: invalidar,
+  });
+
   useEffect(() => {
     if (!cervejaria) return;
 
@@ -519,6 +524,7 @@ export function OperacaoComandaDetailPage() {
           </div>
           <p className="ml-auto text-2xl sm:text-3xl font-bold text-brand-600 tabular-nums whitespace-nowrap">{formatCurrency(totalParcialComanda)}</p>
         </div>
+        {aberta && comanda.solicitacaoPagamentoEm && <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-950"><strong>Cliente solicitou atendimento para pagamento</strong><button type="button" className="touch-btn-secondary touch-btn-sm" disabled={resolverSolicitacao.isPending} onClick={() => resolverSolicitacao.mutate()}>{resolverSolicitacao.isPending ? 'Resolvendo...' : 'Resolver solicitação'}</button></div>}
         {totalPendente > 0 && <p className="mt-1 text-right text-sm font-semibold text-amber-400">Pendente na cozinha: {formatCurrency(totalPendente)}</p>}
         {!aberta && comanda.desconto > 0 && (
           <div className="mt-3 space-y-1 text-sm border-t border-line pt-3">

@@ -167,6 +167,8 @@ model Cervejaria {
   ativo       Boolean  @default(true)
   logoUrl     String?
   portalBackgroundUrl String?
+  /// NULL keeps the legacy public catalog; [] explicitly hides every portal category.
+  portalCategoriasPermitidas Json?
   operacaoCategoriasOrdem Json?
   corPrimaria String?
   corPaleta   Json?
@@ -756,6 +758,7 @@ model Comanda {
   /// Desconto manual aplicado na comanda (valor absoluto em reais).
   desconto       Decimal       @default(0) @db.Decimal(10, 2)
   total          Decimal       @default(0) @db.Decimal(10, 2)
+  solicitacaoPagamentoEm DateTime?
   fechadoPorId   String?
   fechadaEm      DateTime?
   /// Operacao: ponto de venda, dia operacional e identificador da mesa/ficha/apelido.
@@ -899,7 +902,6 @@ model PedidoClienteItem {
   volumeMl   Int
   quantidade Int     @default(1)
   precoUnit  Decimal @db.Decimal(10, 2)
-
   pedido  PedidoCliente @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
   produto Produto       @relation(fields: [produtoId], references: [id], onDelete: Restrict)
 
@@ -1314,6 +1316,17 @@ model PedidoOperacao {
   @@index([comandaId])
   @@schema("quiosque")
   @@map("PedidoQuiosque")
+}
+
+/// Chave idempotente para envios do portal cliente PDV.
+model PortalPedidoOperacaoRequest {
+  idempotencyKey String   @id
+  cervejariaId   String
+  comandaId      String
+  createdAt      DateTime @default(now())
+
+  @@index([comandaId, createdAt])
+  @@schema("quiosque")
 }
 
 /// Marca cada transicao de status na fila da cozinha (auditoria e tempos por fase).

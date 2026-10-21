@@ -108,6 +108,18 @@ const fecharGrupoSchema = z.object({
 });
 
 export async function comandasOperacaoRoutes(app: FastifyInstance) {
+  app.delete('/:id/solicitacao-pagamento', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
+    const { cervejariaId } = request.operacao;
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+    const result = await prisma.comanda.updateMany({
+      where: whereComandaOperacao(cervejariaId, { id, status: 'ABERTA', solicitacaoPagamentoEm: { not: null } }),
+      data: { solicitacaoPagamentoEm: null },
+    });
+    if (!result.count) return reply.status(404).send({ error: 'SolicitaÃ§Ã£o pendente nÃ£o encontrada' });
+    notificarComandaOperacaoAtualizada(app, cervejariaId, id);
+    return { ok: true };
+  });
+
   app.get('/', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { status, pontoVendaId, dia, sessaoCaixaId } = z

@@ -5,6 +5,8 @@ import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma.js';
+import { isUniqueViolation } from '../lib/prisma-errors.js';
+import { filterPortalCategories, isPortalCategoryAllowed } from '../lib/portal-catalog.js';
 import { resolveLogoVersion } from '../lib/cervejaria-branding.js';
 
 import {
@@ -92,6 +94,7 @@ const abrirComandaPdvSchema = z.object({
 });
 
 const pedidoPdvSchema = z.object({
+  idempotencyKey: z.string().uuid().optional(),
   ocorrenciaId: z.never().optional(),
   itens: z.array(z.object({
     produtoId: z.string().min(1),
@@ -239,7 +242,6 @@ async function validatePedidoItens(
     if (!produto) return { error: 'Item não disponível no cardápio' as const };
 
     const preco = produto.precos.find((p: { volumeMl: number }) => p.volumeMl === item.volumeMl);
-
     if (!preco) return { error: 'Volume inválido para este produto' as const };
 
     normalized.push({
@@ -412,12 +414,17 @@ export async function publicRoutes(app: FastifyInstance) {
       return reply.status(403).send({ error: 'Sessão inválida para este ponto de venda' });
     }
     const profile = await getOperationalProfile(session.cervejariaId);
-    return listProdutosOperacionaisTurno(
+    const produtos = await listProdutosOperacionaisTurno(
       session.cervejariaId,
       session.pontoVendaId,
       comanda.diaOperacional ?? diaOperacional(),
       profile?.capabilities.taps ?? false,
     );
+    const settings = await prisma.cervejaria.findUnique({ where: { id: session.cervejariaId }, select: { portalCategoriasPermitidas: true } });
+    const allowed = Array.isArray(settings?.portalCategoriasPermitidas)
+      ? settings.portalCategoriasPermitidas.filter((value): value is string => typeof value === 'string')
+      : null;
+    return filterPortalCategories(produtos, allowed);
   });
 
   app.get('/cervejarias/:slug/pontos-venda/:pontoVendaId/cardapio/categorias', async (request, reply) => {
@@ -464,7 +471,9 @@ export async function publicRoutes(app: FastifyInstance) {
     const profile = await getOperationalProfile(session.cervejariaId);
     const temCozinha = profile?.capabilities.kitchen ?? false;
     const controlaEstoque = profile?.capabilities.inventory ?? false;
-    const resultado = await prisma.$transaction(async (tx) => {
+    let resultado;
+    try {
+    resultado = await prisma.$transaction(async (tx) => {
       // Existing sessions remain read-only after deactivation. Locking the client row
       // serializes this write with the administrative active=false update.
       const cliente = await tx.$queryRaw<Array<{ id: string; ativo: boolean }>>`
@@ -481,7 +490,23 @@ export async function publicRoutes(app: FastifyInstance) {
       });
       if (!comanda) throw Object.assign(new Error('Esta comanda já foi fechada'), { statusCode: 409 });
       assertCommandOccurrenceMatchesSession(comanda, sessao);
+      if (body.idempotencyKey) await tx.portalPedidoOperacaoRequest.create({ data: {
+        idempotencyKey: body.idempotencyKey,
+        cervejariaId: session.cervejariaId,
+        comandaId: session.comandaId,
+      } });
       const itensComTap = await atribuirTapMontado(tx, sessao.id, body.itens);
+      const settings = await tx.cervejaria.findUnique({ where: { id: session.cervejariaId }, select: { portalCategoriasPermitidas: true } });
+      const allowed = Array.isArray(settings?.portalCategoriasPermitidas)
+        ? settings.portalCategoriasPermitidas.filter((value): value is string => typeof value === 'string')
+        : null;
+      if (allowed !== null) {
+        const produtos = await tx.produto.findMany({ where: { cervejariaId: session.cervejariaId, id: { in: [...new Set(body.itens.map((item) => item.produtoId))] }, ativo: true }, select: { id: true, categoria: true } });
+        const categoriaById = new Map(produtos.map((produto) => [produto.id, produto.categoria]));
+        if (body.itens.some((item) => !isPortalCategoryAllowed(categoriaById.get(item.produtoId), allowed))) {
+          throw Object.assign(new Error('Este item nÃ£o estÃ¡ disponÃ­vel no portal do cliente'), { statusCode: 400 });
+        }
+      }
       const itens = await resolverItens(tx, session.cervejariaId, itensComTap, {
         sessaoCaixaId: sessao.id,
         tapsEnabled: profile?.capabilities.taps ?? false,
@@ -508,6 +533,14 @@ export async function publicRoutes(app: FastifyInstance) {
         comanda: await tx.comanda.findUniqueOrThrow({ where: { id: session.comandaId }, include: INCLUDE_COMANDA_OPERACAO }),
       };
     }, CAIXA_VENDA_TX);
+    } catch (error) {
+      if (!body.idempotencyKey || !isUniqueViolation(error)) throw error;
+      const previous = await prisma.portalPedidoOperacaoRequest.findUnique({ where: { idempotencyKey: body.idempotencyKey } });
+      if (!previous || previous.cervejariaId !== session.cervejariaId || previous.comandaId !== session.comandaId) throw error;
+      const comanda = await prisma.comanda.findFirst({ where: whereComandaOperacao(session.cervejariaId, { id: session.comandaId, status: 'ABERTA' }), include: INCLUDE_COMANDA_OPERACAO });
+      if (!comanda) throw Object.assign(new Error('Esta comanda jÃ¡ foi fechada'), { statusCode: 409 });
+      return reply.status(200).send(await summarizePdvClientComanda(comanda, session.cervejariaId));
+    }
     for (const pedido of resultado.pedidos) {
       void registrarTransacao({
         cervejariaId: session.cervejariaId,
@@ -528,6 +561,20 @@ export async function publicRoutes(app: FastifyInstance) {
     notificarComandaOperacaoAtualizada(app, session.cervejariaId, session.comandaId);
     if (temCozinha) for (const pedido of resultado.pedidos) await notificarPedidoNovo(app, session.cervejariaId, pedido);
     return reply.status(201).send(resumoComanda(resultado.comanda, profile?.effectiveSettings.kitchenItemsChargeAtLaunch));
+  });
+
+  app.post('/cervejarias/:slug/pontos-venda/:pontoVendaId/comanda/solicitar-pagamento', async (request, reply) => {
+    const { session } = await getPdvClienteSession(app, request);
+    if (session.pontoVendaId !== (request.params as { pontoVendaId: string }).pontoVendaId) return reply.status(403).send({ error: 'SessÃ£o invÃ¡lida para este ponto de venda' });
+    const requestedAt = new Date();
+    const result = await prisma.comanda.updateMany({
+      where: { ...whereComandaOperacao(session.cervejariaId, { id: session.comandaId, status: 'ABERTA' }), clienteId: session.clienteId, pontoVendaId: session.pontoVendaId, solicitacaoPagamentoEm: null },
+      data: { solicitacaoPagamentoEm: requestedAt },
+    });
+    const comanda = await prisma.comanda.findFirst({ where: whereComandaOperacao(session.cervejariaId, { id: session.comandaId }), select: { id: true, solicitacaoPagamentoEm: true } });
+    if (!comanda) return reply.status(404).send({ error: 'Comanda nÃ£o encontrada' });
+    if (result.count > 0) notificarComandaOperacaoAtualizada(app, session.cervejariaId, comanda.id);
+    return { pendente: Boolean(comanda.solicitacaoPagamentoEm), solicitacaoPagamentoEm: comanda.solicitacaoPagamentoEm };
   });
 
   app.post('/cervejarias/:slug/pontos-venda/:pontoVendaId/comandas', {
@@ -735,13 +782,11 @@ export async function publicRoutes(app: FastifyInstance) {
 
     });
 
-
-
     clienteApp.get('/cliente/cardapio', async (request) => {
 
       const session = getClienteSession(request);
 
-      const cardapio = await buildPublicEventCardapio(session.eventoId, session.trailerId, session.cervejariaId);
+      let cardapio = await buildPublicEventCardapio(session.eventoId, session.trailerId, session.cervejariaId);
       if (!catalogoCategoriasCanonicoAtivo()) return cardapio;
       const categories = await prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId: session.cervejariaId }, select: { nome: true }, orderBy: [{ nomeNormalizado: 'asc' }, { nome: 'asc' }] });
       const brewery = await prisma.cervejaria.findUnique({ where: { id: session.cervejariaId }, select: { operacaoCategoriasOrdem: true } });
@@ -789,9 +834,6 @@ export async function publicRoutes(app: FastifyInstance) {
       const session = getClienteSession(request);
 
       const body = createPedidoSchema.parse(request.body);
-
-
-
       const evento = await prisma.evento.findFirst({
 
         where: { id: session.eventoId, status: 'ABERTO', cervejariaId: session.cervejariaId },
