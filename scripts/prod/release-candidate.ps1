@@ -16,7 +16,29 @@ function Get-CandidateManifestPath {
 }
 
 function Get-CandidateRequiredFiles {
-  return @('frontend/index.html', 'backend/dist/index.js', 'backend/package.json', 'backend/package-lock.json', 'backend/prisma/schema.prisma')
+  return @(
+    'frontend/index.html',
+    'backend/dist/index.js',
+    'backend/package.json',
+    'backend/package-lock.json',
+    'backend/prisma/schema.prisma',
+    # start / start:deploy carregam a politica OTEL antes do EDOT (TAP-117).
+    'backend/scripts/otel-resource-policy.mjs'
+  )
+}
+
+function Copy-BackendRuntimeScripts {
+  param(
+    [Parameter(Mandatory)][string]$SourceBackend,
+    [Parameter(Mandatory)][string]$DestinationBackend
+  )
+  $sourceScript = Join-Path $SourceBackend 'scripts\otel-resource-policy.mjs'
+  if (-not (Test-Path -LiteralPath $sourceScript -PathType Leaf)) {
+    throw "backend/scripts/otel-resource-policy.mjs ausente em $SourceBackend"
+  }
+  $destScripts = Join-Path $DestinationBackend 'scripts'
+  New-Item -ItemType Directory -Force -Path $destScripts | Out-Null
+  Copy-Item -LiteralPath $sourceScript -Destination (Join-Path $destScripts 'otel-resource-policy.mjs') -Force
 }
 
 function Get-CandidateFileHashes {
@@ -298,13 +320,14 @@ function Invoke-ReleaseCandidatePrepareFromGitSnapshot {
     Copy-Item -LiteralPath (Join-Path $snapshot 'backend\dist') -Destination (Join-Path $staging 'backend\dist') -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $snapshot 'backend\package.json') -Destination (Join-Path $staging 'backend\package.json') -Force
     Copy-Item -LiteralPath (Join-Path $snapshot 'backend\package-lock.json') -Destination (Join-Path $staging 'backend\package-lock.json') -Force
+    Copy-BackendRuntimeScripts -SourceBackend (Join-Path $snapshot 'backend') -DestinationBackend (Join-Path $staging 'backend')
     Copy-CandidateTree -Source (Join-Path $snapshot 'backend\prisma') -Destination (Join-Path $staging 'backend\prisma')
     $seeded = Copy-LedgerMatchingArchivedMigrationBytes -ArchivedCandidatePath $ArchivedCandidatePath -ExpectedArchivedManifestSha256 $ExpectedArchivedManifestSha256 -CandidatePrismaPath (Join-Path $staging 'backend\prisma') -MigrationLedgerPath $MigrationLedgerPath
     $migrationIntegrity = Copy-GitMigrationBlobs -SourceWorktree $snapshot -GitRepositoryRoot $RepositoryPath -ExpectedReleaseSha $ExpectedReleaseSha -CandidatePrismaPath (Join-Path $staging 'backend\prisma') -MigrationLedgerPath $MigrationLedgerPath
     $inventoryPackagePath = Join-Path $staging 'source-snapshot-inventory.json'
     Copy-Item -LiteralPath $SnapshotInventoryPath -Destination $inventoryPackagePath -Force
     $inventorySha = (Get-FileHash -LiteralPath $inventoryPackagePath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $manifest = [ordered]@{ format = $script:CandidateFormat; releaseSha = $ExpectedReleaseSha; releaseTree = $ExpectedTree; createdAt = (Get-Date).ToUniversalTime().ToString('o'); nodeVersion = $nodeVersion; npmVersion = $npmVersion; artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/prisma', 'source-snapshot-inventory.json'); sourceSnapshot = [ordered]@{ commit = $ExpectedReleaseSha; tree = $ExpectedTree; materializedBlobCount = $inventory.materializedBlobCount; inventoryPath = 'source-snapshot-inventory.json'; inventorySha256 = $inventorySha }; migrationLedger = [ordered]@{ path = [System.IO.Path]::GetFileName($MigrationLedgerPath); sha256 = $ledgerSha }; preservedArchivedMigrations = @($seeded); migrationIntegrity = $migrationIntegrity; files = @(Get-CandidateFileHashes $staging) }
+    $manifest = [ordered]@{ format = $script:CandidateFormat; releaseSha = $ExpectedReleaseSha; releaseTree = $ExpectedTree; createdAt = (Get-Date).ToUniversalTime().ToString('o'); nodeVersion = $nodeVersion; npmVersion = $npmVersion; artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/scripts/otel-resource-policy.mjs', 'backend/prisma', 'source-snapshot-inventory.json'); sourceSnapshot = [ordered]@{ commit = $ExpectedReleaseSha; tree = $ExpectedTree; materializedBlobCount = $inventory.materializedBlobCount; inventoryPath = 'source-snapshot-inventory.json'; inventorySha256 = $inventorySha }; migrationLedger = [ordered]@{ path = [System.IO.Path]::GetFileName($MigrationLedgerPath); sha256 = $ledgerSha }; preservedArchivedMigrations = @($seeded); migrationIntegrity = $migrationIntegrity; files = @(Get-CandidateFileHashes $staging) }
     $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Get-CandidateManifestPath $staging) -Encoding UTF8
     Test-ReleaseCandidate -CandidatePath $staging -ExpectedReleaseSha $ExpectedReleaseSha -ThrowOnError -RequireMigrationIntegrity | Out-Null
     Move-Item -LiteralPath $staging -Destination $candidate
@@ -442,9 +465,10 @@ function Invoke-ReleaseCandidatePrepare {
     Copy-Item -LiteralPath (Join-Path $SourceWorktree 'backend\dist') -Destination (Join-Path $staging 'backend\dist') -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $SourceWorktree 'backend\package.json') -Destination (Join-Path $staging 'backend\package.json') -Force
     Copy-Item -LiteralPath (Join-Path $SourceWorktree 'backend\package-lock.json') -Destination (Join-Path $staging 'backend\package-lock.json') -Force
+    Copy-BackendRuntimeScripts -SourceBackend (Join-Path $SourceWorktree 'backend') -DestinationBackend (Join-Path $staging 'backend')
     Copy-CandidateTree -Source (Join-Path $SourceWorktree 'backend\prisma') -Destination (Join-Path $staging 'backend\prisma')
     $migrationIntegrity = Copy-GitMigrationBlobs -SourceWorktree $SourceWorktree -ExpectedReleaseSha $ExpectedReleaseSha -CandidatePrismaPath (Join-Path $staging 'backend\prisma') -MigrationLedgerPath $MigrationLedgerPath
-    $manifest = [ordered]@{ format = $script:CandidateFormat; releaseSha = $ExpectedReleaseSha; createdAt = (Get-Date).ToUniversalTime().ToString('o'); nodeVersion = $nodeVersion; npmVersion = $npmVersion; artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/prisma'); migrationIntegrity = $migrationIntegrity; files = @(Get-CandidateFileHashes $staging) }
+    $manifest = [ordered]@{ format = $script:CandidateFormat; releaseSha = $ExpectedReleaseSha; createdAt = (Get-Date).ToUniversalTime().ToString('o'); nodeVersion = $nodeVersion; npmVersion = $npmVersion; artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/scripts/otel-resource-policy.mjs', 'backend/prisma'); migrationIntegrity = $migrationIntegrity; files = @(Get-CandidateFileHashes $staging) }
     $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Get-CandidateManifestPath $staging) -Encoding UTF8
     Test-ReleaseCandidate -CandidatePath $staging -ExpectedReleaseSha $ExpectedReleaseSha -ThrowOnError -RequireMigrationIntegrity | Out-Null
     Move-Item -LiteralPath $staging -Destination $candidate
