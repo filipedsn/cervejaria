@@ -74,7 +74,7 @@ Isso remove a tarefa antiga `QuiverTap-Watchdog` e usa um unico processo oculto 
 
 ## Deploy de producao (caminho principal)
 
-O fluxo obrigatorio (branch, PR, CI verde, merge em `main`) esta em [CONTRIBUTING.md](../CONTRIBUTING.md).
+O fluxo obrigatorio (branch, PR, `npm run ci` local, merge em `main`) esta em [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ```powershell
 git switch main
@@ -84,7 +84,7 @@ npm run prod:deploy
 
 O script pede confirmacao digitando `DEPLOY`, depois executa:
 
-0. Preflight com gate de origem: arquivos rastreados limpos, nada solto em `frontend/src`, `frontend/public`, `backend/src` e `backend/prisma`, `HEAD` igual a `origin/main` e workflow `CI` verde nesse SHA. Se falhar, nada e alterado.
+0. Preflight com gate de origem: arquivos rastreados limpos, nada solto em `frontend/src`, `frontend/public`, `backend/src` e `backend/prisma`, `HEAD` igual a `origin/main` e atestado de `npm run ci` (`deploy/.local-ci-attestation.json`) para esse SHA. Se falhar, nada e alterado.
 1. Backup do banco `cervejaria`
 2. Build frontend em staging (`build:prod`) e backend (`backend/dist`)
 3. Parada da API e do Alert Poller, depois de staging valido
@@ -223,47 +223,40 @@ Repo: `https://github.com/filipedsn/cervejaria.git` â€” branch **`main`** =
 ```mermaid
 flowchart LR
   branch[feat ou fix branch] -->|push| pr[Pull Request]
-  pr --> ci[GitHub Actions CI]
-  ci -->|verde| main[main]
-  main -->|git pull no PC| deploy[prod:deploy]
+  pr --> localCi[npm run ci local]
+  localCi -->|verde| main[main]
+  main -->|git pull + npm run ci no PC| deploy[prod:deploy]
 ```
 
 ### Passo a passo
 
 | # | Acao |
 |---|------|
-| 1 | `git checkout main` â†’ `git pull origin main` |
+| 1 | `git checkout main` → `git pull origin main` |
 | 2 | `git checkout -b feat/nome-curto` |
 | 3 | Desenvolver e testar em http://localhost:5202 |
-| 4 | `git commit` + `git push -u origin feat/nome-curto` |
-| 5 | Abrir PR **â†’ main** no GitHub |
-| 6 | Esperar CI verde (`frontend`, `backend-validate`) |
+| 4 | `npm run ci` + `git commit` + `git push -u origin feat/nome-curto` |
+| 5 | Abrir PR **→ main** no GitHub |
+| 6 | Confirmar CI local verde no commit a mergear (Actions desligado — TAP-116) |
 | 7 | **Squash and merge** |
-| 8 | No PC: `git pull origin main` â†’ `npm.cmd run prod:deploy` |
+| 8 | No PC: `git pull origin main` → `npm run ci` → `npm.cmd run prod:deploy` |
 
 ### Branches
 
-- `feat/` â€” funcionalidade
-- `fix/` â€” correcao
-- `chore/` â€” CI, scripts, docs
+- `feat/` — funcionalidade
+- `fix/` — correcao
+- `chore/` — CI, scripts, docs
 
 ### CI
 
-GitHub Actions em [`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
+Fonte de verdade: `npm run ci` (grava `deploy/.local-ci-attestation.json`). O workflow em [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) nao dispara em push/PR.
 
-| Job | Bloqueia merge? |
-|-----|-----------------|
-| `frontend` | Sim â€” `build:deploy` |
-| `backend-validate` | Sim â€” `prisma validate` |
-| `backend-build` | Nao (tsc ainda com erros pre-existentes) |
-
-Rodar localmente antes do PR:
+Rodar antes do PR e imediatamente antes do deploy em `main`:
 
 ```powershell
-npm run ci:frontend
-npm run ci:validate
+npm run ci
 ```
 
-### GitHub (recomendado apos primeiro push do workflow)
+### GitHub
 
-**Settings â†’ Branches â†’ main**: exigir status checks `frontend` e `backend-validate` (sem reviewer obrigatorio â€” solo dev).
+Actions esta desligado no repositorio (TAP-116). No plano free privado nao ha branch protection; o gate obrigatorio e o deploy local com atestado de `npm run ci`.

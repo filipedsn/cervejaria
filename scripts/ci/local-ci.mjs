@@ -1,11 +1,12 @@
-// Roda localmente os mesmos gates do workflow .github/workflows/ci.yml, na mesma ordem.
-// realtime-security-qa fica so no GitHub: exige Postgres e API isolados.
+// Roda localmente os gates de qualidade do Tap Quiver, na ordem do antigo workflow CI.
+// GitHub Actions esta desligado (TAP-116); este script e a fonte de verdade do release gate.
+// Em sucesso grava deploy/.local-ci-attestation.json com o SHA atual (gitignore).
 //
 // Neste PC o alert poller de producao executa backend/dist com backend/node_modules da pasta
 // principal. Por isso o CI local nao grava backend/dist (checa tipos com --noEmit) e aceita um
 // motor Prisma travado apenas se o client ja gerado vier do mesmo schema.
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,6 +88,37 @@ for (const { label, ok, note, seconds } of results) {
 }
 const skipped = steps.length - results.length;
 if (skipped > 0) console.log(`${skipped} etapa(s) nao executada(s) apos a falha.`);
-console.log('realtime-security-qa roda apenas no GitHub Actions.');
 
-process.exit(results.every((r) => r.ok) && skipped === 0 ? 0 : 1);
+const allOk = results.every((r) => r.ok) && skipped === 0;
+if (allOk) {
+  const rev = spawnSync('git', ['rev-parse', 'HEAD'], {
+    cwd: root,
+    encoding: 'utf8',
+    shell: isWindows,
+  });
+  const sha = (rev.stdout || '').trim().toLowerCase();
+  if (rev.status === 0 && /^[a-f0-9]{40}$/.test(sha)) {
+    const attestDir = path.join(root, 'deploy');
+    mkdirSync(attestDir, { recursive: true });
+    const attestPath = path.join(attestDir, '.local-ci-attestation.json');
+    writeFileSync(
+      attestPath,
+      `${JSON.stringify({
+        ok: true,
+        sha,
+        passedAt: new Date().toISOString(),
+        source: 'npm run ci',
+        steps: results.map(({ label, seconds }) => ({ label, seconds })),
+      }, null, 2)}\n`,
+      'utf8',
+    );
+    console.log(`Atestado de CI local gravado para ${sha.slice(0, 8)} em deploy/.local-ci-attestation.json`);
+  } else {
+    console.error('CI passou, mas nao foi possivel gravar o atestado (git rev-parse HEAD falhou).');
+    process.exit(1);
+  }
+} else {
+  console.log('Sem atestado: corrija as falhas e rode npm run ci de novo antes do deploy.');
+}
+
+process.exit(allOk ? 0 : 1);

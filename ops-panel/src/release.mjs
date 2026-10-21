@@ -1,26 +1,29 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 
 /**
  * Gate de liberacao de release.
  *
- * O repositorio esta no plano Free do GitHub, que nao oferece branch protection. A
- * disciplina de "so vai para producao o que esta em origin/main com CI verde" e
- * garantida aqui, no caminho do botao de deploy, e nao pelo GitHub.
+ * O repositorio esta no plano Free do GitHub, que nao oferece branch protection.
+ * GitHub Actions esta desligado (TAP-116). A disciplina de "so vai para producao
+ * o que esta em origin/main com npm run ci atestado" e garantida aqui e em
+ * scripts/prod/release-gate.ps1, via deploy/.local-ci-attestation.json.
  *
  * Detalhe que dita o desenho: `deploy.ps1` compila a partir da working tree local,
  * nao de origin/main. Por isso o gate olha o HEAD local e se ha alteracao nao
  * commitada — sem isso, "deploy do main" publicaria codigo que ninguem revisou.
  */
 
-// backend-build fica fora de proposito: tem continue-on-error no workflow enquanto os
-// erros de tsc pre-existentes nao forem zerados, entao exigi-lo travaria todo deploy.
+/** @deprecated Mantido para compatibilidade de testes/UI; o gate usa CI local. */
 export const DEFAULT_REQUIRED_CHECKS = [
   'frontend',
   'backend-validate',
   'backend-test',
   'ops-panel-test',
 ];
+
+export const LOCAL_CI_ATTESTATION_RELATIVE = path.join('deploy', '.local-ci-attestation.json');
 
 export const OVERRIDE_CONFIRM = 'DEPLOY-SEM-GATE';
 
@@ -191,6 +194,23 @@ export function readDeployRecovery(recoveryPath) {
       completed: raw.swap?.completed === true,
     },
     watchdog: { paused: raw.watchdog?.paused === true },
+  };
+}
+
+/** Le o atestado gerado por `npm run ci` (deploy/.local-ci-attestation.json). */
+export function readLocalCiAttestation(projectRoot) {
+  const filePath = path.join(projectRoot, LOCAL_CI_ATTESTATION_RELATIVE);
+  const raw = readJsonFile(filePath);
+  if (!raw || typeof raw !== 'object') return null;
+  const sha = typeof raw.sha === 'string' ? raw.sha.trim().toLowerCase() : '';
+  const ok = raw.ok === true || raw.passed === true;
+  if (!sha) return null;
+  return {
+    ok,
+    sha,
+    passedAt: typeof raw.passedAt === 'string' ? raw.passedAt : null,
+    source: typeof raw.source === 'string' ? raw.source : null,
+    path: filePath,
   };
 }
 
@@ -372,34 +392,28 @@ export function evaluateReleaseGate(state, options = {}) {
     });
   }
 
-  if (state.checksConfigured === false) {
-    // Sem token nao ha como provar que o CI passou, e "nao sei" nao pode virar "pode ir".
+  const headSha = (state.head?.sha || '').toLowerCase();
+  const localCi = state.localCi || null;
+  if (!localCi) {
     blockers.push({
-      code: 'ci-nao-verificavel',
+      code: 'ci-local-ausente',
       message:
-        'GITHUB_TOKEN nao configurado em ops-panel/.env: nao ha como verificar o CI deste commit.',
+        `Sem atestado de CI local para ${short(headSha)}. Rode \`npm run ci\` neste commit antes do deploy ` +
+        '(grava deploy/.local-ci-attestation.json).',
       overridable: true,
     });
-  } else if (state.checksError) {
+  } else if (!localCi.ok) {
     blockers.push({
-      code: 'ci-nao-verificavel',
-      message: `Falha ao consultar os checks no GitHub: ${state.checksError}`,
+      code: 'ci-local-falhou',
+      message: `Atestado de CI local existe mas nao marca sucesso para ${short(headSha)}. Rode \`npm run ci\` de novo.`,
       overridable: true,
     });
-  }
-
-  for (const name of state.checksConfigured === false ? [] : requiredChecks) {
-    const check = state.checks?.find((c) => c.name === name);
-    const verdict = checkVerdict(check);
-    if (verdict === 'sucesso' || verdict === 'ignorado') continue;
+  } else if (!localCi.sha || localCi.sha !== headSha) {
     blockers.push({
-      code: `check-${verdict}`,
+      code: 'ci-local-desatualizado',
       message:
-        verdict === 'ausente'
-          ? `O check \`${name}\` nao rodou para ${short(state.head?.sha)}.`
-          : verdict === 'rodando'
-            ? `O check \`${name}\` ainda esta rodando. Aguarde o CI terminar.`
-            : `O check \`${name}\` falhou (${check.conclusion}).`,
+        `Atestado de CI local e do commit ${short(localCi.sha)}, nao de ${short(headSha)}. ` +
+        'Rode `npm run ci` neste HEAD.',
       overridable: true,
     });
   }

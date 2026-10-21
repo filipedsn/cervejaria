@@ -1,14 +1,39 @@
 # Gate de origem da release: producao so publica o commit atual de origin/main,
-# com arquivos rastreados limpos e o workflow CI concluido com sucesso nesse SHA.
-# Git e gh sao injetaveis para que os testes nao dependam de rede nem do repositorio real.
+# com arquivos rastreados limpos e atestado local de `npm run ci` para esse SHA.
+# GitHub Actions foi desligado (TAP-116); a prova de qualidade e o arquivo
+# deploy/.local-ci-attestation.json gerado pelo CI local.
+# Git e leitura do atestado sao injetaveis para que os testes nao dependam de rede.
+
+function Get-LocalCiAttestationPath {
+  param([Parameter(Mandatory)][string]$ProjectRoot)
+  return (Join-Path $ProjectRoot 'deploy\.local-ci-attestation.json')
+}
+
+function Read-LocalCiAttestation {
+  param(
+    [Parameter(Mandatory)][string]$ProjectRoot,
+    [string]$Path = ''
+  )
+  $file = if ($Path) { $Path } else { Get-LocalCiAttestationPath -ProjectRoot $ProjectRoot }
+  if (-not (Test-Path -LiteralPath $file)) {
+    return $null
+  }
+  try {
+    $raw = Get-Content -LiteralPath $file -Raw -ErrorAction Stop
+    # Set-Content UTF8 no PS 5.1 pode gravar BOM.
+    $raw = $raw -replace '^\uFEFF', ''
+    return ($raw | ConvertFrom-Json)
+  } catch {
+    return $null
+  }
+}
 
 function Get-ReleaseGateResult {
   param(
     [Parameter(Mandatory)][string]$ProjectRoot,
     [string]$Branch = 'main',
-    [string]$Workflow = 'CI',
     [scriptblock]$Git = { & git @args },
-    [scriptblock]$Gh = { & gh @args }
+    [scriptblock]$ReadAttestation = $null
   )
 
   $blockers = New-Object 'System.Collections.Generic.List[string]'
@@ -48,22 +73,29 @@ function Get-ReleaseGateResult {
     }
   }
 
-  $runsJson = & $Gh run list --workflow $Workflow --commit $sha --limit 20 --json 'status,conclusion,event,headBranch,url' 2>$null
-  if ($LASTEXITCODE -ne 0 -or -not $runsJson) {
-    $blockers.Add("Nao foi possivel consultar o workflow $Workflow no GitHub (gh instalado e autenticado?).")
+  $attest = if ($ReadAttestation) {
+    & $ReadAttestation $ProjectRoot $sha
   } else {
-    # PowerShell 5.1 emite o array JSON como um unico objeto; o pipeline o desmonta.
-    $runs = @((($runsJson -join "`n") | ConvertFrom-Json) | ForEach-Object { $_ })
-    $succeeded = @($runs | Where-Object { $_.status -eq 'completed' -and $_.conclusion -eq 'success' })
-    $running = @($runs | Where-Object { $_.status -ne 'completed' })
-    if ($succeeded.Count -eq 0) {
-      if ($running.Count -gt 0) {
-        $blockers.Add("Workflow $Workflow ainda em execucao para $($sha.Substring(0, 8)). Aguarde terminar verde.")
-      } elseif ($runs.Count -gt 0) {
-        $blockers.Add("Workflow $Workflow nao passou para $($sha.Substring(0, 8)): $($runs[0].url)")
-      } else {
-        $blockers.Add("Nenhuma execucao do workflow $Workflow encontrada para $($sha.Substring(0, 8)).")
-      }
+    Read-LocalCiAttestation -ProjectRoot $ProjectRoot
+  }
+
+  if (-not $attest) {
+    $blockers.Add("Sem atestado de CI local para $($sha.Substring(0, 8)). Rode ``npm run ci`` neste commit antes do deploy.")
+  } else {
+    $attestSha = ([string]($attest.sha)).Trim().ToLowerInvariant()
+    $attestOk = $false
+    if ($null -ne $attest.ok) {
+      $attestOk = [bool]$attest.ok
+    } elseif ($null -ne $attest.passed) {
+      $attestOk = [bool]$attest.passed
+    }
+    if (-not $attestOk) {
+      $blockers.Add("Atestado de CI local existe mas nao marca sucesso para $($sha.Substring(0, 8)). Rode ``npm run ci`` de novo.")
+    } elseif (-not $attestSha) {
+      $blockers.Add('Atestado de CI local esta invalido (sem sha). Rode ``npm run ci`` de novo.')
+    } elseif ($attestSha -ne $sha) {
+      $shortAttest = if ($attestSha.Length -ge 8) { $attestSha.Substring(0, 8) } else { $attestSha }
+      $blockers.Add("Atestado de CI local e do commit $shortAttest, nao de $($sha.Substring(0, 8)). Rode ``npm run ci`` neste HEAD.")
     }
   }
 

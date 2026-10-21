@@ -25,69 +25,65 @@ function New-FakeGit {
   }.GetNewClosure()
 }
 
-function New-FakeGh {
-  param([string]$Json = '[{"status":"completed","conclusion":"success","event":"push","headBranch":"main","url":"u"}]', [int]$Exit = 0)
+function New-FakeAttestation {
+  param(
+    [object]$Value = ([pscustomobject]@{ ok = $true; sha = $mainSha; passedAt = '2026-10-21T12:00:00Z' })
+  )
   return {
-    $global:LASTEXITCODE = $Exit
-    return $Json
+    param($ProjectRoot, $Sha)
+    return $Value
   }.GetNewClosure()
 }
 
 Describe 'Gate de origem da release' {
-  It 'libera commit limpo igual a origin/main com CI verde' {
-    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit) -Gh (New-FakeGh)
+  It 'libera commit limpo igual a origin/main com CI local atestado' {
+    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit) -ReadAttestation (New-FakeAttestation)
     $result.Ok | Should Be $true
     $result.Sha | Should Be $mainSha
   }
 
   It 'bloqueia arquivo rastreado alterado' {
-    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit -Dirty @(' M backend/src/app.ts')) -Gh (New-FakeGh)
+    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit -Dirty @(' M backend/src/app.ts')) -ReadAttestation (New-FakeAttestation)
     $result.Ok | Should Be $false
     ($result.Blockers -join ' ') | Should Match 'rastreado'
   }
 
   It 'bloqueia arquivo sem commit dentro de pasta que entra no build' {
-    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit -Loose @('?? backend/src/lib/novo.ts')) -Gh (New-FakeGh)
+    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit -Loose @('?? backend/src/lib/novo.ts')) -ReadAttestation (New-FakeAttestation)
     $result.Ok | Should Be $false
     ($result.Blockers -join ' ') | Should Match 'backend/src/lib/novo.ts'
   }
 
   It 'bloqueia HEAD diferente de origin/main' {
-    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit -Remote $otherSha) -Gh (New-FakeGh)
+    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit -Remote $otherSha) -ReadAttestation (New-FakeAttestation)
     $result.Ok | Should Be $false
     ($result.Blockers -join ' ') | Should Match 'difere de origin/main'
   }
 
   It 'bloqueia quando o fetch falha' {
-    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit -FetchExit 1) -Gh (New-FakeGh)
+    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit -FetchExit 1) -ReadAttestation (New-FakeAttestation)
     $result.Ok | Should Be $false
     ($result.Blockers -join ' ') | Should Match 'fetch'
   }
 
-  It 'bloqueia CI com falha' {
-    $gh = New-FakeGh -Json '[{"status":"completed","conclusion":"failure","event":"push","headBranch":"main","url":"https://ci/1"}]'
-    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit) -Gh $gh
+  It 'bloqueia sem atestado de CI local' {
+    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit) -ReadAttestation (New-FakeAttestation -Value $null)
     $result.Ok | Should Be $false
-    ($result.Blockers -join ' ') | Should Match 'https://ci/1'
+    ($result.Blockers -join ' ') | Should Match 'Sem atestado'
   }
 
-  It 'bloqueia CI ainda em execucao' {
-    $gh = New-FakeGh -Json '[{"status":"in_progress","conclusion":"","event":"push","headBranch":"main","url":"u"}]'
-    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit) -Gh $gh
+  It 'bloqueia atestado de outro commit' {
+    $wrong = [pscustomobject]@{ ok = $true; sha = $otherSha; passedAt = '2026-10-21T12:00:00Z' }
+    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit) -ReadAttestation (New-FakeAttestation -Value $wrong)
     $result.Ok | Should Be $false
-    ($result.Blockers -join ' ') | Should Match 'em execucao'
+    ($result.Blockers -join ' ') | Should Match 'nao de'
   }
 
-  It 'bloqueia commit sem nenhuma execucao de CI' {
-    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit) -Gh (New-FakeGh -Json '[]')
+  It 'bloqueia atestado que nao marca sucesso' {
+    $failed = [pscustomobject]@{ ok = $false; sha = $mainSha }
+    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit) -ReadAttestation (New-FakeAttestation -Value $failed)
     $result.Ok | Should Be $false
-    ($result.Blockers -join ' ') | Should Match 'Nenhuma execucao'
-  }
-
-  It 'bloqueia quando o gh nao responde' {
-    $result = Get-ReleaseGateResult -ProjectRoot 'X' -Git (New-FakeGit) -Gh (New-FakeGh -Json '' -Exit 1)
-    $result.Ok | Should Be $false
-    ($result.Blockers -join ' ') | Should Match 'gh instalado'
+    ($result.Blockers -join ' ') | Should Match 'nao marca sucesso'
   }
 }
 

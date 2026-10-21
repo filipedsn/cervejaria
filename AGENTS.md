@@ -2,11 +2,11 @@
 
 ## Delivery flow
 
-[CONTRIBUTING.md](CONTRIBUTING.md) is the mandatory delivery flow for every tool (Cursor, VS Code, terminal): production is the source of truth, `main` matches production, work starts from `main` in its own branch, `npm run ci` before the PR, merge only with CI green, and production deploy only with explicit user authorization. The deploy preflight blocks anything that is not a clean `origin/main` commit with a green `CI` run.
+[CONTRIBUTING.md](CONTRIBUTING.md) is the mandatory delivery flow for every tool (Cursor, VS Code, terminal): production is the source of truth, `main` matches production, work starts from `main` in its own branch, `npm run ci` before the PR (GitHub Actions is disabled — TAP-116), merge only after local CI is green, and production deploy only with explicit user authorization. The deploy preflight blocks anything that is not a clean `origin/main` commit with a matching `deploy/.local-ci-attestation.json` from `npm run ci`.
 
 ## Plane MCP workflow
 
-Plane is the source of truth for work state. GitHub is the source of truth for code, commits, and CI.
+Plane is the source of truth for work state. GitHub is the source of truth for code and commits. Local `npm run ci` (attestation file) is the source of truth for release quality gates.
 
 Use the Plane MCP with least privilege. The authorized capabilities are limited to `workspace`, `project`, `workitem`, `workitem_comment`, `state`, and `label`; do not expand tools without an explicit need.
 
