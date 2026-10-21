@@ -1,5 +1,35 @@
+import { createRequire } from 'node:module';
+import path from 'node:path';
 import { prismaClient } from '../support/fixtures';
-import { expect, loginPage, PERSONA_PERMISSIONS, randomUUID, test, uniquePhone, uniqueSuffix, type Ops, type Tenant } from '../support/ops';
+import { baseURL, expect, loginPage, PERSONA_PERMISSIONS, randomUUID, test, uniquePhone, uniqueSuffix, type Ops, type Tenant } from '../support/ops';
+
+const requireBackend = createRequire(path.join(process.cwd(), 'backend', 'package.json'));
+const { io: socketIo } = requireBackend('socket.io-client') as typeof import('socket.io-client');
+
+function socketEvent(socket: ReturnType<typeof socketIo>, name: string, timeoutMs = 5000): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Socket event timed out: ${name}`)), timeoutMs);
+    socket.once(name, (payload: unknown) => {
+      clearTimeout(timer);
+      resolve(payload);
+    });
+  });
+}
+
+function socketConnected(socket: ReturnType<typeof socketIo>, timeoutMs = 5000): Promise<void> {
+  if (socket.connected) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Socket connection timed out')), timeoutMs);
+    socket.once('connect', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    socket.once('connect_error', (error: Error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
 
 type Item = { id: string; produtoId: string; quantidade: number; precoUnit: number; canceladoEm: string | null; observacao: string | null; opcionais: Array<{ nome: string; precoAdicional: number; quantidade: number }> };
 const itens = (comanda: { pedidos: Array<{ itens: Item[] }> }) => comanda.pedidos.flatMap((pedido) => pedido.itens);
@@ -263,6 +293,51 @@ test('CMD-S11 dois navegadores veem a comanda atualizar em tempo real', async ({
     await evidence.screenshot('tempo-real');
   } finally {
     await outro.close();
+  }
+});
+
+test('RT-17 handshake autenticado, room tenant-bound, negação e reconexão @api', async ({ ops }) => {
+  const tenant = await vendaPronta(ops);
+  const foreignTenant = await vendaPronta(ops);
+  const foreignComanda = await foreignTenant.openComanda(foreignTenant.owner, [foreignTenant.porcaoItem(1)]);
+  const state = await tenant.owner.ctx.storageState();
+  const token = state.cookies.find((cookie) => cookie.name === 'token')?.value;
+  expect(token).toBeTruthy();
+
+  const invalid = socketIo(baseURL, { transports: ['websocket'], auth: { token: 'invalid-synthetic-token' }, reconnection: false });
+  try {
+    await expect(socketEvent(invalid, 'connect_error')).resolves.toBeTruthy();
+  } finally {
+    invalid.disconnect();
+  }
+
+  const socket = socketIo(baseURL, { transports: ['websocket'], auth: { token }, reconnection: false });
+  try {
+    await socketConnected(socket);
+    const leakedEvents: unknown[] = [];
+    socket.on('operacao:comanda-atualizada', (payload: unknown) => leakedEvents.push(payload));
+    socket.emit('join:cervejaria', foreignTenant.id);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await entregarPorcao(foreignTenant, foreignComanda.id);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(leakedEvents).toHaveLength(0);
+
+    socket.emit('join:cervejaria', tenant.id);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    socket.disconnect();
+    expect(socket.connected).toBe(false);
+    const reconnected = socketConnected(socket);
+    socket.connect();
+    await reconnected;
+    socket.emit('join:cervejaria', tenant.id);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const ownComanda = await tenant.openComanda(tenant.owner, [tenant.porcaoItem(1)]);
+    const ownEvents = socketEvent(socket, 'operacao:comanda-atualizada') as Promise<{ comandaId?: string }>;
+    await entregarPorcao(tenant, ownComanda.id);
+    expect(await ownEvents).toMatchObject({ comandaId: ownComanda.id });
+  } finally {
+    socket.disconnect();
   }
 });
 
