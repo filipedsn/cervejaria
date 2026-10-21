@@ -75,6 +75,7 @@ Este pacote não autoriza nem executa deploy, mudança compartilhada, retenção
 ## Sequência recomendada e autorização agrupada
 
 1. Integrar por PR a correção de origem `page_view` e a captura de correlation IDs, validar CI e só depois publicar o SHA final em uma única troca DEV quando o responsável liberar o slot. Isto publica runtime de aplicação; não mexe em Collector/Elasticsearch.
+   O candidato também contém as jornadas TAP-114, o evento/métrica próprios de solicitação/resolução e a omissão do corpo do pedido; saldo em [matriz TAP-114](TAP-96-matriz-TAP-114-2026-10-21.md). Antes do smoke DEV, o CI remoto do PR #92 precisa concluir e o responsável do slot precisa liberar a instância que ainda serve `1c85adf`.
 2. Separadamente, decidir geolocalização e fronteira Tunnel; nenhum header confiável é ativado agora.
 3. Separadamente, confirmar canal/destinatário e autorizar os dois alertas sintéticos ao operador.
 4. Separadamente, aceitar RPO/RTO/destino off-host e aprovar o futuro piloto metrics DEV com orçamento de shards primário+r​​éplica após fotografia comparável. Retenção em backings existentes permanece outra autorização destrutiva.

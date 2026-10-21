@@ -30,6 +30,7 @@ import {
   updateItemQuantidadeComandaOperacao,
 } from '../../lib/operacao/comanda-itens.js';
 import { registrarTransacao } from '../../lib/transacao-log.js';
+import { recordPaymentRequestTransition } from '../../lib/payment-request-observability.js';
 import {
   INCLUDE_COMANDA_OPERACAO,
   fecharComandaOperacaoInTx,
@@ -116,6 +117,13 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       data: { solicitacaoPagamentoEm: null },
     });
     if (!result.count) return reply.status(404).send({ error: 'SolicitaÃ§Ã£o pendente nÃ£o encontrada' });
+    recordPaymentRequestTransition('resolved', {
+      cervejariaId,
+      comandaId: id,
+      route: request.routeOptions.url ?? request.url.split('?')[0] ?? request.url,
+      method: request.method,
+      statusCode: 200,
+    });
     notificarComandaOperacaoAtualizada(app, cervejariaId, id);
     return { ok: true };
   });

@@ -1,5 +1,7 @@
 # TAP-96 - matriz por ID da bateria funcional (2026-10-20)
 
+Complemento finito de jornadas originadas no TAP-114: [TAP-96-matriz-TAP-114-2026-10-21.md](TAP-96-matriz-TAP-114-2026-10-21.md). As 93 linhas desta bateria permanecem históricas e não foram contadas como cobertura automática das jornadas do portal.
+
 Fonte: 93 artefatos API/DB da bateria `d0ed1c1...`; resultado agregado do runner: 172/172 testes passaram. Os JSON registram chamadas/snapshot, mas nao carregam todos os IDs de correlacao e nao foram ligados a uma consulta Elasticsearch por caso. As linhas abaixo mantem esse limite explicito.
 
 | ID | Resultado funcional | Sinal esperado | Sinal pesquisavel nesta prova | Contexto encontrado | Limite |

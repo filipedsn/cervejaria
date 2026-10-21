@@ -1,5 +1,7 @@
 # TAP-96 — jornadas finitas e validação integrada isolada
 
+> Atualização 2026-10-21: as jornadas de portal TAP-114 e a emissão sintética de `payment.requested` / `payment.request_resolved` em ES 8.17.0 descartável estão em [matriz de observabilidade TAP-114](TAP-96-matriz-TAP-114-2026-10-21.md). Não houve consulta a eventos históricos do TAP-114 nem troca do DEV.
+
 Data: 2026-10-20 (America/Sao_Paulo). Candidato testado: `d0ed1c189abd9df2dfefd98ebcfb40b58e01c4d4` (main local/remota reportada após PR #89).
 
 ## Estado dos ambientes nesta execução

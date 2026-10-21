@@ -29,6 +29,8 @@ $nodeDir = Split-Path $paths.NpmCmd -Parent
 $env:Path = "$nodeDir;$env:Path"
 $env:NODE_ENV = 'development'
 Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment development
+# Keep service identity and opaque process instance ID for APM metrics; omit host, process, OS, container, and cloud metadata.
+$env:OTEL_NODE_RESOURCE_DETECTORS = 'env,serviceinstance'
 $env:RELEASE_SHA = $manifest.releaseSha
 $env:VITE_RELEASE_SHA = $manifest.releaseSha
 $env:PORT = [string]$paths.BackendPort

@@ -55,6 +55,26 @@ function routeTemplate(request: FastifyRequest): string {
   return request.routeOptions?.url ?? request.url.split('?')[0] ?? request.url;
 }
 
+function shouldCaptureRequestBody(route: string): boolean {
+  // Portal order payloads contain product/options/quantity details that add no
+  // troubleshooting value to a request audit; the semantic transaction event
+  // records only the persisted entity and safe tenant/actor context.
+  return !(route.startsWith('/api/public/cervejarias/') && route.endsWith('/comanda/pedidos'));
+}
+
+export function buildHttpAuditMetadata(
+  route: string,
+  body: unknown,
+  responseError?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const metadata: Record<string, unknown> = {};
+  if (shouldCaptureRequestBody(route) && body && typeof body === 'object') {
+    metadata.requestBody = redactObject(body) as Record<string, unknown>;
+  }
+  if (responseError) metadata.responseError = responseError;
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
 type AuditRequest = FastifyRequest & {
   telemetryCtx?: Awaited<ReturnType<typeof resolveTelemetryFromRequest>>;
   auditResponseError?: Record<string, unknown>;
@@ -146,20 +166,14 @@ export function registerAuditHooks(
       }
 
       if (mutating || statusCode >= 400) {
-        const body =
-          request.body && typeof request.body === 'object'
-            ? (redactObject(request.body) as Record<string, unknown>)
-            : undefined;
-        const metadata: Record<string, unknown> = {};
-        if (body) metadata.requestBody = body;
-        if (req.auditResponseError) metadata.responseError = req.auditResponseError;
+        const metadata = buildHttpAuditMetadata(route, request.body, req.auditResponseError);
 
         emit({
           action: `http.${method.toLowerCase()}`,
           message,
           outcome,
           http: { method, route, statusCode, durationMs: Math.round(reply.elapsedTime) },
-          metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+          metadata,
         });
       }
     });

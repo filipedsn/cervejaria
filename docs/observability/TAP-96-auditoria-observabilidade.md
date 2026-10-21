@@ -1,5 +1,7 @@
 # TAP-96 — auditoria de observabilidade do TAP Quiver
 
+> Atualização 2026-10-21: a matriz complementar que incorpora as sete jornadas TAP-114, a prova isolada de eventos/métricas de solicitação de pagamento, o filtro de payload comercial e a política mínima de metadados está em [matriz TAP-114](TAP-96-matriz-TAP-114-2026-10-21.md). Ela complementa os achados históricos abaixo; não reclassifica execuções antigas como consulta por caso.
+
 Data da auditoria: 2026-10-19 (America/Sao_Paulo)
 
 Revisão de código: `e39b2e6d091906ff414fbaff3c93d2c55693c25b`
