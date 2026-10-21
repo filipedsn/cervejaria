@@ -2,6 +2,8 @@
 
 Este pacote não autoriza nem executa deploy, mudança compartilhada, retenção, envio real, exclusão ou alteração de credenciais. Decisões separadas abaixo continuam necessárias. Base técnica: main `bf74eda30658a3b295f3182608491302a9bb7a63`; certificação de Pino e correção `page_view` em branch de PR pendente de CI/merge. O DEV oficial estava ocupado por outra tarefa na última observação; confirmar slot antes de qualquer troca.
 
+> **Decisões vigentes posteriores:** consultar o [aditivo operacional](TAP-96-aditivo-decisoes-operacionais-2026-10-21.md), que supersede as listas históricas de autorizações abaixo. Backup da observabilidade adiado pelo proprietário: nenhuma nova atividade de backup, sincronização OneDrive ou restauração; RPO/RTO pendentes para retomada futura não bloqueiam esta entrega. Evidências existentes preservadas. Backups transacionais e obrigatórios de deploy permanecem exigidos. O slot DEV já está liberado e não requer nova confirmação.
+
 ## A. Fronteira de proxy e país aproximado
 
 **Ação candidata:** expor somente código de país obtido de `CF-IPCountry`, sem IP bruto, e aceitar o header apenas quando o peer TCP imediato for um proxy/Tunnel explicitamente confiável. O helper testado `trusted-geolocation.ts` tem allowlist vazia por padrão e rejeita peer direto, header ausente/inválido e país desconhecido. Ele não está ligado ao runtime.

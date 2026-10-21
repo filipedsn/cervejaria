@@ -2,6 +2,8 @@
 
 > **Atualização operacional de 2026-10-21:** decisões já confirmadas e resultados desta execução em [aditivo operacional TAP-96](TAP-96-aditivo-decisoes-operacionais-2026-10-21.md). Esse aditivo supersede apenas as listas de decisões que antes constavam como pendentes; preserva os registros históricos e os limites das evidências.
 
+> **Decisão posterior do proprietário em 21/10/2026:** backup da observabilidade adiado; RPO/RTO pendentes para retomada futura **não bloqueiam a entrega atual do TAP-96**. Não executar novos snapshots/backups, sincronização OneDrive ou restauração dessa frente. Evidências e arquivos existentes preservados, sem novo WI. Esta mudança não alcança backups transacionais ou obrigatórios dos procedimentos de deploy. Os demais gates continuam vigentes e TAP-96 permanece In Progress.
+
 > Atualização 2026-10-21: a matriz complementar que incorpora as sete jornadas TAP-114, a prova isolada de eventos/métricas de solicitação de pagamento, o filtro de payload comercial e a política mínima de metadados está em [matriz TAP-114](TAP-96-matriz-TAP-114-2026-10-21.md). Ela complementa os achados históricos abaixo; não reclassifica execuções antigas como consulta por caso.
 
 Data da auditoria: 2026-10-19 (America/Sao_Paulo)
