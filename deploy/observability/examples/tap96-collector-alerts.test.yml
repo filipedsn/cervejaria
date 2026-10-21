@@ -1,0 +1,82 @@
+﻿rule_files:
+  - tap96-collector-alerts.rules.yml
+evaluation_interval: 1m
+tests:
+  - name: enqueue failures fire after receiver-level success cannot prove delivery
+    interval: 1m
+    input_series:
+      - series: 'otelcol_exporter_enqueue_failed_log_records_total{job="quiver-otel-durable"}'
+        values: '0 0 1 1'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: OTelCollectorEnqueueFailures
+        exp_alerts:
+          - exp_labels:
+              job: quiver-otel-durable
+              severity: critical
+            exp_annotations:
+              summary: "Collector accepted OTLP but could not enqueue telemetry"
+              description: "Non-zero exporter enqueue failures in the last 5m. Check queue capacity and downstream availability."
+
+  - name: exporter failures fire
+    interval: 1m
+    input_series:
+      - series: 'otelcol_exporter_send_failed_log_records_total{job="quiver-otel-durable"}'
+        values: '0 0 0 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: OTelCollectorExportFailures
+        exp_alerts:
+          - exp_labels:
+              job: quiver-otel-durable
+              severity: warning
+            exp_annotations:
+              summary: "Collector exporter could not deliver telemetry"
+              description: "Non-zero exporter send failures in the last 5m. OTLP receiver success does not prove destination persistence."
+
+  - name: persistent queue high watermark fires after two minutes
+    interval: 1m
+    input_series:
+      - series: 'otelcol_exporter_queue_size{job="quiver-otel-durable"}'
+        values: '0 0 900 900 900'
+      - series: 'otelcol_exporter_queue_capacity{job="quiver-otel-durable"}'
+        values: '1000 1000 1000 1000 1000'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: OTelCollectorQueueHighWatermark
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Collector persistent queue exceeds 80%"
+              description: "Queue size is high for 2m. Check physical volume space and downstream recovery."
+
+  - name: receiver refused logs fire
+    interval: 1m
+    input_series:
+      - series: 'otelcol_receiver_refused_log_records_total{job="quiver-otel-durable"}'
+        values: '0 0 0 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: OTelCollectorReceiverRefusedLogs
+        exp_alerts:
+          - exp_labels:
+              job: quiver-otel-durable
+              severity: critical
+            exp_annotations:
+              summary: "Collector refused log records"
+              description: "Receiver refused log records in the last 5m. Investigate client backpressure and collector health."
+
+  - name: absent queue metrics fire
+    interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: OTelCollectorQueueMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              job: quiver-otel-durable
+              severity: critical
+            exp_annotations:
+              summary: "Collector queue metrics are missing"
+              description: "The durable Collector scrape is absent or no longer exposes queue capacity."
