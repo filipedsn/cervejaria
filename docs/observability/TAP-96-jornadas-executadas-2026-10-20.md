@@ -1,4 +1,4 @@
-﻿# TAP-96 — jornadas finitas e validação integrada isolada
+# TAP-96 — jornadas finitas e validação integrada isolada
 
 Data: 2026-10-20 (America/Sao_Paulo). Candidato testado: `d0ed1c189abd9df2dfefd98ebcfb40b58e01c4d4` (main local/remota reportada após PR #89).
 
@@ -131,3 +131,34 @@ O teste de QA agora aceita qualquer porta OTLP loopback nao privilegiada (1024-6
 ### Estado e proxima troca
 
 SHA de main testado nesta validacao: `41f49a0aa8a8bbd3014e5bd4910d1228dbdee41a`. Nenhum deploy no DEV oficial ou PROD foi feito; o slot DEV permanece pertencente a tarefa paralela ate liberacao confirmada. A proxima publicacao DEV deve ser uma unica troca para o SHA final de `main` depois de PR/CI verdes e liberacao do slot, seguida do smoke minimo ja descrito. A aprovacao para PROD e independente e nao esta incluida. TAP-96 permanece **In Progress** e `PROD_DEPLOY_REQUIRED=YES`.
+
+## Aditivo de certificação Pino e page_view — 2026-10-21
+
+Este aditivo complementa o baseline `bf74eda30658a3b295f3182608491302a9bb7a63` em um clone descartável. Não reabre a ausência antiga de eventos admin/concorrência: a execução original não foi reproduzida e sua configuração/payloads não foram preservados; a execução posterior 41f49a0 já encontrou 451/451 sinais daquela amostra. A correção desta fase trata somente os 12 grupos repetidos de `ui.page_view` e a rastreabilidade dos artefatos QA.
+
+### Pino → Collector → Elasticsearch
+
+Com ES 8.17.0 e Collector Contrib 0.130.1 descartáveis, rede Docker privada e OTLP somente no loopback, foram executados `buildApp()` e o singleton Pino reais da aplicação sob `@elastic/opentelemetry-node`, não um produtor OTel substituto. `info`, `warn` e um erro HTTP 500 controlado chegaram pesquisáveis em `logs-technical.otel-dev`; os campos carregaram namespace DEV, release completo `bf74eda30658a3b295f3182608491302a9bb7a63`, request/correlation IDs e contexto sintético de tenant/ator quando disponível. A rota anônima teve tenant `system` e ator `anonymous`; uma segunda execução via `runWithTelemetryContext` carregou tenant/ator sintéticos. O marcador sintético de senha no campo redigido foi indexado como `[REDACTED]`. As consultas por probe acharam um `info`, um `warn` e um erro controlado; o escopo OTel foi `@opentelemetry/instrumentation-pino`.
+
+Um `emitAuditEvent` sintético, no mesmo runtime/exportador, apareceu uma vez em `logs-audit_system.otel-dev` com `event.category=audit`. Assim, no ensaio atual não houve duplicação entre os dois caminhos de emissão. Evento de auditoria usa dataset `audit_system`/categoria audit; log técnico Pino usa dataset `technical`/escopo Pino. Uma ocorrência não estabelece exactly-once geral.
+
+Não foram fornecidos dados pessoais ou comerciais. O resource detector EDOT acrescentou metadados do host, incluindo `host.name`, `host.id`, processo e SO; o ensaio não prova ausência de identificadores de máquina. Antes de publicar, o responsável deve decidir se mantém o detector de host ou configura detectores permitidos (por exemplo `env,process,os,serviceinstance`) no processo da aplicação e validar a mudança em pacote próprio. Nada foi alterado no serviço compartilhado.
+
+### Duplicidade `ui.page_view`
+
+A comparação preservada do run de 451 descreve 12 grupos iguais por ação, página, requestId e correlationId, com timestamps iguais ou separados por 1 ms; os `_id` e payloads brutos desses 12 grupos não foram preservados, portanto não é possível comparar cada ID/transporte retroativamente. A inspeção do único callsite (`AuditTracker.tsx`) encontrou efeito por `pathname/search` sob React `StrictMode`. O build exato `NODE_ENV=test`, servido por preview loopback, foi reproduzido antes da correção: uma abertura de `/login` enviou duas ações idênticas no mesmo POST de lote, antes de Collector/Elasticsearch. HMR de Vite não foi usado como prova. Isso confirma emissão repetida no efeito de origem para o mesmo location key nesta configuração.
+
+Correção: o tracker guarda a última chave de navegação do React Router; replay do mesmo efeito é suprimido, enquanto outra chave continua emitindo uma nova página. O build pós-correção emitiu um `page_view` de `/login` e um para uma nova rota ao navegar para `/forgot-password`; PWA-S02 também afirma 1 para `/login` e 1 após navegar a `/operacao/comandas`. O teste existente `PWA-S02` agora afirma exatamente um `/login` na requisição à API de auditoria e manteve suas verificações offline. O PWA-S02 focado passou uma vez após a alteração do tracker; uma segunda execução, após a instrumentação dos IDs no fixture, passou em 4/4 projetos (desktop, mobile, tablet e TV). `npm run ci` local também passou; o gate remoto de sete checks do PR permanece necessário.
+
+### Rastreabilidade dos artefatos e alcance
+
+O fixture de release agora grava `x-request-id` e `x-correlation-id` recebidos em cada resposta API, inclusive nos registros do helper `Api.call`, mantendo a redação existente e sem guardar corpo livre adicional. Isso habilita junção futura entre operação funcional e documento pesquisável. Os JSON antigos não têm esses campos; não foram reescritos nem tratados como se os IDs pudessem ser inferidos.
+
+| Prova | Status | Limite |
+|---|---|---|
+| Pino real → OTLP → Collector → ES | Comprovado em stack descartável | Não prova serviço compartilhado/DEV oficial, volume, alerta real ou ausência de metadados do host. |
+| Redação do marcador sintético | Comprovada | Não substitui revisão do schema de todos os campos de log. |
+| Separação audit vs técnico | Comprovada no probe | Uma emissão audit encontrada não prova exactly-once global. |
+| Causa dos 12 `page_view` | Duplicação na origem reproduzida pelo StrictMode/mesmo location key no build de QA | Evidência histórica de 12 grupos sem `_id` bruto; não há atribuição de cada documento antigo ao efeito. |
+| Correção da UI | Comprovada em build e teste Playwright focal; gate final no CI pendente | A ingestão de `page_view` pós-correção no Elasticsearch não foi necessária para provar que a requisição de origem deixou de duplicar, mas permanece validável no smoke DEV autorizado. |
+| Correlação por chamada QA | Alteração implementada no harness | Evidências anteriores seguem sem correlation IDs. |
