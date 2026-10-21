@@ -103,7 +103,9 @@ export function resumoPedidoCozinha(pedido: PedidoCozinha | PedidoCozinhaComClie
         quantidade: item.quantidade,
         cancelamentoPendente: Boolean(item.cancelamentoPendenteEm),
         precoUnit: toNumber(item.precoUnit),
-        paraViagem: item.paraViagem || pedido.paraViagem,
+        // A flag do pedido é apenas um resumo para o cartão; aplicar esse
+        // agregado a cada linha marca incorretamente todos os itens irmãos.
+        paraViagem: item.paraViagem,
         observacao: item.observacao,
         opcionais: (item.opcionais ?? []).map((opcional) => ({
           id: opcional.id,

@@ -151,4 +151,42 @@ describe('resumoPedidoCozinha', () => {
     assert.equal(resumo.itens[0].id, 'pendente');
     assert.equal(resumo.itens[0].cancelamentoPendente, true);
   });
+
+  it('mantém a escolha para viagem independente em cada item e preserva dados agrupados', () => {
+    const itens = [false, true, false].map((paraViagem, index) => ({
+      id: `item-${index + 1}`,
+      nome: index === 1 ? 'C. BOI' : index === 0 ? 'C. COSTELA' : 'C. LINGUIÇA',
+      quantidade: index === 0 ? 2 : 1,
+      precoUnit: 14,
+      exigePreparo: true,
+      paraViagem,
+      opcionais: [{ id: `op-${index + 1}`, nome: ['Farinha', 'Molho'][index % 2], precoAdicional: 1, quantidade: 1 }],
+    }));
+    const pedido = {
+      id: 'pedido-1', numero: 2, status: 'RECEBIDO', paraViagem: true,
+      observacao: null, createdAt: new Date(), statusDesde: new Date(), entregueEm: null,
+      itensComanda: itens,
+      comanda: { id: 'comanda-1', tipo: 'COMANDA', identificador: null, numero: 1 },
+    };
+
+    const esperado = [false, true, false];
+    const resumo = resumoPedidoCozinha(pedido as never);
+    assert.equal(resumo.paraViagem, true, 'o agregado do pedido continua disponível para o cartão');
+    assert.deepEqual(resumo.itens.map((item) => item.paraViagem), esperado);
+    assert.deepEqual(resumo.itens.map((item) => item.quantidade), [2, 1, 1]);
+    assert.deepEqual(resumo.itens.map((item) => item.opcionais[0]?.nome), ['Farinha', 'Molho', 'Farinha']);
+
+    // Cobre os quatro padrões de escolha no payload usado por listagem e realtime.
+    for (const escolhas of [[], [1], [0, 2], [0, 1, 2]]) {
+      const linhas = itens.map((item, index) => ({ ...item, paraViagem: escolhas.includes(index) }));
+      const resultado = resumoPedidoCozinha({ ...pedido, paraViagem: escolhas.length > 0, itensComanda: linhas } as never);
+      assert.deepEqual(resultado.itens.map((item) => item.paraViagem), linhas.map((item) => item.paraViagem));
+    }
+
+    const mesmoProduto = resumoPedidoCozinha({ ...pedido, itensComanda: [
+      { ...itens[1], id: 'igual-1', paraViagem: false },
+      { ...itens[1], id: 'igual-2', paraViagem: true },
+    ] } as never);
+    assert.deepEqual(mesmoProduto.itens.map((item) => [item.nome, item.paraViagem]), [['C. BOI', false], ['C. BOI', true]]);
+  });
 });
