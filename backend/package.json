@@ -7,11 +7,11 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "node --import ../scripts/node24-tsx-host.mjs --import @elastic/opentelemetry-node ./node_modules/tsx/dist/cli.mjs watch src/index.ts",
+    "dev": "node --import ../scripts/node24-tsx-host.mjs --import ./scripts/otel-resource-policy.mjs --import @elastic/opentelemetry-node ./node_modules/tsx/dist/cli.mjs watch src/index.ts",
     "postinstall": "prisma generate",
     "build": "tsc",
     "build:deploy": "tsc --noCheck",
-    "start": "node --import @elastic/opentelemetry-node dist/index.js",
+    "start": "node --import ./scripts/otel-resource-policy.mjs --import @elastic/opentelemetry-node dist/index.js",
     "db:migrate": "node scripts/run-with-env.mjs development npx prisma migrate dev",
     "db:migrate:prod": "node scripts/run-with-env.mjs production npx prisma migrate deploy",
     "db:backfill-cliente-stats": "node scripts/run-with-env.mjs development npx tsx scripts/backfill-cliente-stats.ts",

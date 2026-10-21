@@ -70,6 +70,7 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
 
   if (input.entityType) payload['entity.type'] = input.entityType;
   if (input.entityId) payload['entity.id'] = input.entityId;
+  if (ctx.clientCountryCode) payload['client.geo.country_iso_code'] = ctx.clientCountryCode;
   if (input.http?.method) payload['http.request.method'] = input.http.method;
   if (input.http?.route) payload['http.route'] = input.http.route;
   if (input.http?.statusCode != null) payload['http.response.status_code'] = input.http.statusCode;

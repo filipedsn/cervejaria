@@ -1,0 +1,54 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # The same DEV namespace mapping as the shared Collector, with no infra receiver.
+  transform/namespace:
+    error_mode: ignore
+    log_statements:
+      - context: resource
+        statements:
+          - set(attributes["data_stream.namespace"], "prd") where attributes["data_stream.namespace"] == nil and attributes["deployment.environment.name"] == "production"
+          - set(attributes["data_stream.namespace"], "dev") where attributes["data_stream.namespace"] == nil and attributes["deployment.environment.name"] == "development"
+          - set(attributes["data_stream.namespace"], "dev") where attributes["data_stream.namespace"] == nil
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["data_stream.namespace"], "prd") where attributes["data_stream.namespace"] == nil and attributes["deployment.environment.name"] == "production"
+          - set(attributes["data_stream.namespace"], "dev") where attributes["data_stream.namespace"] == nil and attributes["deployment.environment.name"] == "development"
+          - set(attributes["data_stream.namespace"], "dev") where attributes["data_stream.namespace"] == nil
+    trace_statements:
+      - context: resource
+        statements:
+          - set(attributes["data_stream.namespace"], "prd") where attributes["data_stream.namespace"] == nil and attributes["deployment.environment.name"] == "production"
+          - set(attributes["data_stream.namespace"], "dev") where attributes["data_stream.namespace"] == nil and attributes["deployment.environment.name"] == "development"
+          - set(attributes["data_stream.namespace"], "dev") where attributes["data_stream.namespace"] == nil
+  batch:
+    timeout: 1s
+    send_batch_size: 128
+
+exporters:
+  elasticsearch:
+    endpoint: http://tap96-route-es:9200
+    mapping:
+      mode: otel
+
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [transform/namespace, batch]
+      exporters: [elasticsearch]
+    metrics:
+      receivers: [otlp]
+      processors: [transform/namespace, batch]
+      exporters: [elasticsearch]
+    traces:
+      receivers: [otlp]
+      processors: [transform/namespace, batch]
+      exporters: [elasticsearch]

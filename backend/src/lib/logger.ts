@@ -59,6 +59,9 @@ export function redactLogValue(value: unknown, key?: string, depth = 0): unknown
 function buildPinoLogger(destination?: pino.DestinationStream, release = getReleaseContext()): pino.Logger {
   return pino({
     level: process.env.LOG_LEVEL ?? (isProd ? 'info' : 'debug'),
+    // Pino's default base adds machine hostname and process PID to every record.
+    // Release/service and request context below provide the required identifiers.
+    base: null,
     redact: { paths: redactPaths, censor: REDACTED },
     hooks: {
       logMethod(args, method) {

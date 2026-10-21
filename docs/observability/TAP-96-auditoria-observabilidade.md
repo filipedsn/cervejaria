@@ -427,3 +427,6 @@ O relatório histórico contém estados e conclusões de 2026-10-20. Para gates 
 | Produção | Não autorizado | `PROD_DEPLOY_REQUIRED=YES`; PR de runtime e troca DEV não autorizam deploy PROD. |
 
 Pacotes executáveis, impactos, precondições, verificações, retorno e decisões humanas estão em [TAP-96-pacote-operacional-final-2026-10-21.md](TAP-96-pacote-operacional-final-2026-10-21.md). Nenhum envio real, mudança de rede/Collector/Elasticsearch/retention ou deploy ocorreu. TAP-96 permanece **In Progress**.
+# Aditivo atual 2026-10-21 — veja status por frente
+
+Para o estado mais recente, matriz de rotas TAP-114 e ações bloqueadas consulte [TAP-96-status-por-frente-2026-10-21.md](TAP-96-status-por-frente-2026-10-21.md) e [matriz TAP-114](TAP-96-matriz-TAP-114-2026-10-21.md). O aditivo de matriz comprova as rotas reais de solicitação/resolução e `metrics-generic.otel-dev` em stack descartável. Esse resultado atualiza os trechos históricos abaixo que ainda dizem que as rotas/namespace DEV aguardam prova. O slot DEV foi liberado, mas não houve troca porque os sete checks de GitHub Actions não iniciaram por bloqueio de billing. Nenhuma alteração compartilhada ou produção foi feita; TAP-96 segue **In Progress** e `PROD_DEPLOY_REQUIRED=YES`.

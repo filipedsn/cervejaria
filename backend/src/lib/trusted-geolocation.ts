@@ -5,6 +5,10 @@ export type TrustedGeoCountry = {
   source: 'trusted-proxy' | 'unknown';
 };
 
+export function trustedProxyAddressesFromEnv(value = process.env.TAP_TRUSTED_GEO_PROXY_ADDRESSES): string[] {
+  return (value ?? '').split(',').map((item) => item.trim()).filter(Boolean);
+}
+
 function normalizedIp(value: string | undefined): string | undefined {
   const candidate = value?.trim().toLowerCase();
   if (!candidate) return undefined;
@@ -36,4 +40,18 @@ export function trustedGeoCountry(input: {
     return { countryCode: null, source: 'unknown' };
   }
   return { countryCode: country, source: 'trusted-proxy' };
+}
+
+export function trustedGeoCountryForRequest(input: {
+  remoteAddress?: string;
+  headers: Record<string, string | string[] | undefined>;
+  trustedProxyAddresses?: readonly string[];
+}): TrustedGeoCountry {
+  const header = (value: string | string[] | undefined) => Array.isArray(value) ? undefined : value;
+  return trustedGeoCountry({
+    remoteAddress: input.remoteAddress,
+    trustedProxyAddresses: input.trustedProxyAddresses ?? trustedProxyAddressesFromEnv(),
+    cfConnectingIp: header(input.headers['cf-connecting-ip']),
+    cfIpCountry: header(input.headers['cf-ipcountry']),
+  });
 }

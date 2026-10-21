@@ -57,6 +57,7 @@ function cleanEnvironment() {
     PDV_CANONICAL_ALL: '1',
     QA_MODE: '1', QA_RATE_LIMIT_LOGIN_MAX: '500', RELEASE_SHA: releaseSha, RELEASE_QA_CONTEXT: contextFile,
     OTEL_SERVICE_NAME: 'quiver-tap-api-qa',
+    OTEL_NODE_RESOURCE_DETECTORS: 'env,serviceinstance',
     LOG_LEVEL: 'silent',
     FRONTEND_DIST: frontendDist, JWT_SECRET: randomBytes(48).toString('base64url'),
     UPLOADS_DIR: path.join(tempRoot, 'uploads'),

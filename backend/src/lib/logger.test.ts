@@ -45,6 +45,8 @@ test('redacts secrets recursively and preserves safe request context in a Pino c
   assert.equal(event.releaseSha, 'dev');
   assert.equal(event.service, 'quiver-tap-api');
   assert.equal(event.environment, 'development');
+  assert.equal(event.hostname, undefined);
+  assert.equal(event.pid, undefined);
   assert.equal(event.safe, 'kept');
   assert.equal(event.authorization, '[REDACTED]');
   assert.deepEqual(event.nested, { accessToken: '[REDACTED]', connectionString: '[REDACTED]' });
