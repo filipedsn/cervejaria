@@ -1,0 +1,47 @@
+﻿groups:
+  - name: tap96-otel-collector-delivery
+    rules:
+      - alert: OTelCollectorEnqueueFailures
+        expr: sum by (job) (increase(otelcol_exporter_enqueue_failed_log_records_total{job="quiver-otel-durable"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Collector accepted OTLP but could not enqueue telemetry"
+          description: "Non-zero exporter enqueue failures in the last 5m. Check queue capacity and downstream availability."
+
+      - alert: OTelCollectorExportFailures
+        expr: sum by (job) (increase(otelcol_exporter_send_failed_log_records_total{job="quiver-otel-durable"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Collector exporter could not deliver telemetry"
+          description: "Non-zero exporter send failures in the last 5m. OTLP receiver success does not prove destination persistence."
+
+      - alert: OTelCollectorQueueHighWatermark
+        expr: sum(otelcol_exporter_queue_size{job="quiver-otel-durable"}) / clamp_min(sum(otelcol_exporter_queue_capacity{job="quiver-otel-durable"}), 1) > 0.80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Collector persistent queue exceeds 80%"
+          description: "Queue size is high for 2m. Check physical volume space and downstream recovery."
+
+      - alert: OTelCollectorReceiverRefusedLogs
+        expr: sum by (job) (increase(otelcol_receiver_refused_log_records_total{job="quiver-otel-durable"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Collector refused log records"
+          description: "Receiver refused log records in the last 5m. Investigate client backpressure and collector health."
+
+      - alert: OTelCollectorQueueMetricsMissing
+        expr: absent(otelcol_exporter_queue_capacity{job="quiver-otel-durable"})
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Collector queue metrics are missing"
+          description: "The durable Collector scrape is absent or no longer exposes queue capacity."
