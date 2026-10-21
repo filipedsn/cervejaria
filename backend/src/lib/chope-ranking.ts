@@ -1,6 +1,7 @@
 import type { FormatoBebida, ProdutoTipo } from '@prisma/client';
 import { toNumber } from './utils.js';
 import { isBebidaChope } from './produto-utils.js';
+import { itemContaNaVendaLiquida } from './venda-liquida.js';
 
 export interface ChopeRankingRow {
   clienteId: string;
@@ -22,6 +23,8 @@ type ComandaForRanking = {
     volumeMl: number;
     quantidade: number;
     precoUnit: unknown;
+    canceladoEm?: unknown;
+    cancelamentoPendenteEm?: unknown;
     produto: { tipo: ProdutoTipo; formato: FormatoBebida | null } | null;
   }>;
 };
@@ -42,7 +45,7 @@ export function aggregateChopeRanking(comandas: ComandaForRanking[]): ChopeRanki
     };
 
     for (const item of comanda.itens) {
-      if (!item.produto) continue;
+      if (!item.produto || !itemContaNaVendaLiquida(item)) continue;
       if (isBebidaChope(item.produto.tipo, item.produto.formato)) {
         current.totalMl += item.volumeMl * item.quantidade;
         current.pedidos += item.quantidade;

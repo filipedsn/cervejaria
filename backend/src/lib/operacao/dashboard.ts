@@ -1,6 +1,7 @@
 import type { PaymentMethod, Prisma } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
+import { itemContaNaVendaLiquida } from '../venda-liquida.js';
 import { totaisPorForma } from './caixa.js';
 import { pedidoContaNaComanda } from './cozinha.js';
 import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
@@ -181,7 +182,7 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
     }
 
     for (const item of comanda.itens) {
-      if (!item.produtoId) continue;
+      if (!item.produtoId || !itemContaNaVendaLiquida(item)) continue;
       itensVendidos += item.quantidade;
       const itemValor = toNumber(item.precoUnit) * item.quantidade;
       const prod = porProduto.get(item.produtoId) ?? {

@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { toNumber } from './utils.js';
 import { isBebidaChope } from './produto-utils.js';
+import { itemContaNaVendaLiquida } from './venda-liquida.js';
 import {
   getReportFechadoPorContext,
   resolveFechadoPorForReport,
@@ -323,7 +324,7 @@ function aggregateComandas(comandas: ClosedComanda[], fechadoPorCtx: ReportFecha
     porFuncionario.set(funcKey, func);
 
     for (const item of comanda.itens) {
-      if (!item.produto || !item.produtoId) continue;
+      if (!item.produto || !item.produtoId || !itemContaNaVendaLiquida(item)) continue;
 
       const itemValor = toNumber(item.precoUnit) * item.quantidade;
       const prod = porProduto.get(item.produtoId) ?? {

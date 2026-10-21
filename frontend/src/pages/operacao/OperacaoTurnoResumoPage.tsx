@@ -6,6 +6,8 @@ import {
   formatDuracaoTurnoMinutos,
   formatTurnoTitulo,
   pluralComandasOperacao,
+  rotuloComanda,
+  type ComandaOperacao,
   type RelatorioTurnoCaixa,
 } from '../../lib/operacao';
 import { Loading } from '../../components/Loading';
@@ -63,6 +65,20 @@ export function OperacaoTurnoResumoPage() {
     queryKey: ['operacao-turno-resumo', sessaoId],
     queryFn: () => api.get<RelatorioTurnoCaixa>(`/api/operacao/caixa/sessoes/${sessaoId}`),
     enabled: Boolean(sessaoId),
+    retry: false,
+  });
+
+  const comandasTurnoQuery = useQuery({
+    queryKey: ['operacao-comandas', 'FECHADA', 'turno-encerrado', sessaoId, data?.caixa.pontoVendaId],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        status: 'FECHADA',
+        pontoVendaId: data!.caixa.pontoVendaId,
+        sessaoCaixaId: sessaoId!,
+      });
+      return api.get<ComandaOperacao[]>(`/api/operacao/comandas?${params.toString()}`);
+    },
+    enabled: Boolean(sessaoId && data?.caixa.pontoVendaId),
     retry: false,
   });
 
@@ -175,6 +191,64 @@ export function OperacaoTurnoResumoPage() {
           <KpiCard label="Itens vendidos" value={String(data.itensVendidos)} />
         )}
       </div>
+
+      <section className="card space-y-3" data-testid="turno-comandas-encerradas">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="section-label">Comandas do turno</h2>
+          <p className="text-xs text-ink-faint">Somente leitura — caixa encerrado, sem reabertura</p>
+        </div>
+        {comandasTurnoQuery.isLoading && <p className="text-sm text-ink-faint">Carregando comandas…</p>}
+        {comandasTurnoQuery.isError && (
+          <p className="text-sm text-red-600" role="alert">
+            Não foi possível carregar as comandas deste turno. Verifique a permissão de leitura.
+          </p>
+        )}
+        {comandasTurnoQuery.isSuccess && (comandasTurnoQuery.data?.length ?? 0) === 0 && (
+          <p className="text-sm text-ink-faint">Nenhuma comanda fechada vinculada a este turno.</p>
+        )}
+        {comandasTurnoQuery.isSuccess && (comandasTurnoQuery.data?.length ?? 0) > 0 && (
+          <div className="divide-y divide-line">
+            {(comandasTurnoQuery.data ?? [])
+              .filter((comanda) => comanda.tipo !== 'AVULSA')
+              .map((comanda) => {
+                const formas = comanda.pagamentos
+                  .map((pagamento) => FORMAS_PAGAMENTO.find((item) => item.valor === pagamento.forma)?.label ?? pagamento.forma)
+                  .join(', ');
+                const itensAtivos = comanda.pedidos
+                  .flatMap((pedido) => pedido.itens)
+                  .filter((item) => !item.canceladoEm && !item.cancelamentoPendenteEm);
+                const itensCancelados = comanda.pedidos
+                  .flatMap((pedido) => pedido.itens)
+                  .filter((item) => Boolean(item.canceladoEm));
+                return (
+                  <div key={comanda.id} className="flex flex-wrap items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold truncate">{rotuloComanda(comanda)}</p>
+                      <p className="text-xs text-ink-faint">
+                        {comanda.numero != null ? `Nº ${comanda.numero} · ` : ''}
+                        {formatCurrency(comanda.total)}
+                        {formas ? ` · ${formas}` : ' · sem pagamento registrado'}
+                      </p>
+                      <p className="text-xs text-ink-faint mt-0.5">
+                        {itensAtivos.length} item(ns) ativos
+                        {itensCancelados.length > 0 ? ` · ${itensCancelados.length} cancelado(s)` : ''}
+                      </p>
+                      <p className="text-[11px] text-ink-faint mt-1">
+                        Pagamentos listados são os registrados no sistema; valores da maquininha exigem conferência externa.
+                      </p>
+                    </div>
+                    <Link
+                      to={`/operacao/comandas/${comanda.id}`}
+                      className="touch-btn-secondary touch-btn-sm shrink-0"
+                    >
+                      Ver detalhes
+                    </Link>
+                  </div>
+                );
+              })}
+          </div>
+        )}
+      </section>
 
       {data.porProduto.length > 0 && (
         <section className="space-y-3">

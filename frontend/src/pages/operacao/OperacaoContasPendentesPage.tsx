@@ -15,6 +15,7 @@ import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import { useAuth } from '../../contexts/AuthContext';
 import type { CaixaResposta, ContaPendenteOperacao } from '../../lib/operacao';
+import { contaPendenteCorrespondeBusca } from '../../lib/contas-pendentes-busca';
 import type { Cervejaria } from '../../types';
 
 type FiltroConta = 'TODAS' | 'HOJE' | 'ATRASADAS' | 'MAIOR_VALOR';
@@ -100,15 +101,9 @@ export function OperacaoContasPendentesPage() {
   const valorPendente = contas.reduce((total, conta) => total + conta.saldo, 0);
   const clientesPendentes = new Set(contas.map((conta) => conta.cliente.id)).size;
   const contasVisiveis = useMemo(() => {
-    const termo = busca.trim().toLocaleLowerCase('pt-BR');
-    const digitos = termo.replace(/\D/g, '');
     const filtradas = contas.filter((conta) => {
+      if (!contaPendenteCorrespondeBusca(conta, busca)) return false;
       const dataConsumo = dataLocal(conta.comanda.fechadaEm ?? conta.createdAt);
-      const corresponde = !termo || [
-        conta.cliente.nome, conta.cliente.telefone ?? '', rotuloConta(conta),
-        String(conta.comanda.numero ?? ''), ...conta.comanda.itens.map((item) => item.nome ?? ''),
-      ].some((campo) => campo.toLocaleLowerCase('pt-BR').includes(termo) || (digitos.length > 0 && campo.replace(/\D/g, '').includes(digitos)));
-      if (!corresponde) return false;
       if (filtro === 'HOJE') return dataConsumo === dataLocal(new Date());
       if (filtro === 'ATRASADAS') return diasEmAberto(conta) >= 3;
       return true;
@@ -219,7 +214,14 @@ export function OperacaoContasPendentesPage() {
           <section className="flex flex-col gap-3 lg:flex-row lg:items-center" aria-label="Buscar e filtrar contas">
             <label className="relative min-w-0 flex-1">
               <Icon nome="busca" className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-faint" />
-              <input className="input pl-12" value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar cliente, telefone ou comanda..." />
+              <input
+                className="input pl-12"
+                value={busca}
+                onChange={(event) => setBusca(event.target.value)}
+                placeholder="Buscar cliente, telefone ou comanda..."
+                data-testid="contas-pendentes-busca"
+                aria-label="Buscar contas pendentes"
+              />
             </label>
             <div className="flex gap-2 overflow-x-auto pb-1 xl:pb-0">
               <FiltroButton active={filtro === 'TODAS'} onClick={() => setFiltro('TODAS')}>Todas</FiltroButton>

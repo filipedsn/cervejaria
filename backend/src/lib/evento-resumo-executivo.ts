@@ -4,6 +4,8 @@ import { toNumber } from './utils.js';
 
 import { isBebidaChope } from './produto-utils.js';
 
+import { itemContaNaVendaLiquida } from './venda-liquida.js';
+
 import { getReportFechadoPorContext, resolveFechadoPorForReport } from './fechado-por-report.js';
 
 import { buildVendasPorIntervalo, sumVendasPorIntervalo } from './evento-vendas-intervalo.js';
@@ -273,7 +275,7 @@ export async function buildEventoResumoExecutivo(eventoId: string, cervejariaId:
 
     for (const item of comanda.itens) {
 
-      if (!item.produto || !item.produtoId) continue;
+      if (!item.produto || !item.produtoId || !itemContaNaVendaLiquida(item)) continue;
 
       const itemValor = toNumber(item.precoUnit) * item.quantidade;
 
