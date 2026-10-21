@@ -11,7 +11,7 @@ Resumo operacional para agentes:
 
 - Trabalho novo nasce de `main` atualizada, em `feat/`, `fix/` ou `chore/`.
 - Antes do PR: `npm run ci`.
-- Merge só com os sete jobs do CI verdes (`frontend`, `backend-validate`, `backend-test`, `backend-build`, `ops-panel-test`, `support-analyst-test`, `realtime-security-qa`).
+- Merge só com `npm run ci` verde localmente (GitHub Actions desligado — TAP-116).
 - Nunca construir pacote DEV ou PROD a partir de cópia solta ou pasta suja.
 - Deploy em produção: só com autorização explícita do usuário, seguindo [quiver-tap-deploy](../quiver-tap-deploy/SKILL.md). O preflight bloqueia `HEAD` diferente de `origin/main` e CI não verde.
 - Nunca commitar `.env.production`, `.env.development`, senhas ou `deploy/production.settings.psd1`.

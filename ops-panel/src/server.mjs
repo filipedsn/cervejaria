@@ -9,15 +9,14 @@ import fastifyStatic from '@fastify/static';
 import {
   DEFAULT_REQUIRED_CHECKS,
   OVERRIDE_CONFIRM,
-  checkVerdict,
   collectGitStateWithAutoSync,
   evaluateReleaseGate,
   readDeployRecovery,
+  readLocalCiAttestation,
   readManifest,
   readReleaseHistory,
   readRollbackPoint,
   runGit,
-  summarizeChecks,
 } from './release.mjs';
 import { isTrustedLocalOperator } from './local-auth.mjs';
 
@@ -598,16 +597,6 @@ async function annotatePendingCommits(commits) {
   return [...annotated, ...commits.slice(limited.length).map((c) => ({ ...c, pr: null }))];
 }
 
-async function fetchChecksForSha(sha) {
-  if (!GITHUB_TOKEN || !sha) return { checks: [], configured: false };
-  try {
-    const data = await githubFetch(`/commits/${sha}/check-runs?per_page=50`);
-    return { checks: summarizeChecks(data.check_runs), configured: true };
-  } catch (err) {
-    return { checks: [], configured: true, error: String(err.message || err) };
-  }
-}
-
 async function buildReleaseState() {
   const deployed = readManifest(PROD_MANIFEST);
   const recovery = readDeployRecovery(DEPLOY_RECOVERY);
@@ -624,6 +613,7 @@ async function buildReleaseState() {
       sync,
       ...git,
       checks: [],
+      localCi: null,
       gate,
       gateWithMigrationsAck: gate,
       overridable: false,
@@ -631,12 +621,20 @@ async function buildReleaseState() {
     };
   }
 
-  const [{ checks, configured, error }, pending] = await Promise.all([
-    fetchChecksForSha(git.head.sha),
-    annotatePendingCommits(git.pending),
-  ]);
-
-  const state = { ...git, deployed, recovery, history, pending, checks, checksConfigured: configured, checksError: error || null };
+  const pending = await annotatePendingCommits(git.pending);
+  const localCi = readLocalCiAttestation(PROJECT_ROOT);
+  // checks permanece vazio: GitHub Actions desligado (TAP-116); o gate usa localCi.
+  const state = {
+    ...git,
+    deployed,
+    recovery,
+    history,
+    pending,
+    checks: [],
+    checksConfigured: true,
+    checksError: null,
+    localCi,
+  };
   const gate = evaluateReleaseGate(state, { requiredChecks });
 
   return {
@@ -660,7 +658,7 @@ function releaseSummaryForAudit(state, gate, body) {
     `publicado=${state.deployed?.gitSha || 'nenhum'}`,
     `pendentes=${state.pending?.length ?? 0}`,
     `migrations=${state.migrationsChanged?.length ?? 0}`,
-    `checks=${(state.checks || []).map((c) => `${c.name}:${checkVerdict(c)}`).join('|') || 'nenhum'}`,
+    `localCi=${state.localCi?.ok ? `ok:${(state.localCi.sha || '').slice(0, 8)}` : 'ausente'}`,
     `override=${gate.overridden ? `SIM motivo="${(body.overrideReason || '').slice(0, 120)}"` : 'nao'}`,
     `impedimentos=${gate.blockers.map((b) => b.code).join('|') || 'nenhum'}`,
   ].join(' ');

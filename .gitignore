@@ -19,6 +19,7 @@ backend/uploads/logos/*
 !backend/uploads/logos/.gitkeep
 backend/data/backups/
 deploy/production.settings.psd1
+deploy/.local-ci-attestation.json
 deploy/logs/*
 !deploy/logs/.gitkeep
 deploy/runtime/*
