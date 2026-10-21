@@ -105,6 +105,7 @@ try {
   foreach ($name in @('package.json', 'package-lock.json')) {
     Copy-Item -LiteralPath (Join-Path $sourceBackend $name) -Destination $candidateBackend
   }
+  Copy-BackendRuntimeScripts -SourceBackend $sourceBackend -DestinationBackend $candidateBackend
   Copy-Item -LiteralPath (Join-Path $sourceBackend 'prisma') -Destination $candidateBackend -Recurse
 
   $dependencyBackend = Join-Path $dependencyStaging 'backend'
@@ -131,7 +132,7 @@ try {
     createdAt = [DateTime]::UtcNow.ToString('o')
     nodeVersion = $nodeVersion
     npmVersion = $npmVersion
-    artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/prisma')
+    artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/scripts/otel-resource-policy.mjs', 'backend/prisma')
     files = @(Get-CandidateFileHashes $staging)
   }
   $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Get-CandidateManifestPath $staging) -Encoding UTF8
