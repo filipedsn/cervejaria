@@ -1,5 +1,6 @@
 import { toNumber } from './utils.js';
 import { isBebidaChope } from './produto-utils.js';
+import { itemContaNaVendaLiquida } from './venda-liquida.js';
 import type { FormatoBebida, ProdutoTipo } from '@prisma/client';
 import {
   BRAZIL_TZ,
@@ -30,6 +31,8 @@ export type FluxoComandaInput = ComandaCloseInput & {
     precoUnit: unknown;
     quantidade: number;
     volumeMl?: number;
+    canceladoEm?: unknown;
+    cancelamentoPendenteEm?: unknown;
     produto?: { tipo: string; formato: string | null } | null;
   }>;
 };
@@ -160,6 +163,7 @@ export function buildFluxoPorIntervalo(
 
   for (const comanda of activeComandas) {
     for (const item of comanda.itens) {
+      if (!itemContaNaVendaLiquida(item)) continue;
       const bucketTime = floorTo15MinUtc(item.createdAt, BRAZIL_TZ).getTime();
       if (!statsMap.has(bucketTime)) {
         statsMap.set(bucketTime, emptyStats());

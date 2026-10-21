@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { getTenantUser } from '../types/auth.js';
 import { toNumber } from '../lib/utils.js';
 import { isBebidaChope } from '../lib/produto-utils.js';
+import { itemContaNaVendaLiquida } from '../lib/venda-liquida.js';
 import { resumoFinanceiroComandas } from '../lib/financeiro-contas.js';
 import { buildRelatorioEventoCsv } from '../lib/relatorio-evento-csv.js';
 import { requirePermissaoOuDono } from '../lib/operacao/permissoes.js';
@@ -38,7 +39,7 @@ export async function relatoriosRoutes(app: FastifyInstance) {
     for (const comanda of comandas) {
       totalVendido += toNumber(comanda.total);
       for (const item of comanda.itens) {
-        if (!item.produto || !item.produtoId) continue;
+        if (!item.produto || !item.produtoId || !itemContaNaVendaLiquida(item)) continue;
         if (isBebidaChope(item.produto.tipo, item.produto.formato)) {
           totalMl += item.volumeMl * item.quantidade;
         }

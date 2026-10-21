@@ -1,6 +1,7 @@
 import type { PaymentMethod, Prisma, SessaoCaixaOperacao } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
+import { itemContaNaVendaLiquida } from '../venda-liquida.js';
 import { centavos, diaOperacional, reais } from './venda.js';
 import { pedidoContaNaComanda } from './cozinha.js';
 import { aplicarCardapioInicialTurno } from './sessao-cardapio.js';
@@ -786,7 +787,7 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
     }
 
     for (const item of comanda.itens) {
-      if (!item.produtoId) continue;
+      if (!item.produtoId || !itemContaNaVendaLiquida(item)) continue;
       itensVendidos += item.quantidade;
       const itemValor = toNumber(item.precoUnit) * item.quantidade;
       const volumeMl = item.volumeMl ?? 0;

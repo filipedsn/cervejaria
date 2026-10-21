@@ -1,5 +1,6 @@
 import { prisma } from './prisma.js';
 import { toNumber } from './utils.js';
+import { itemContaNaVendaLiquida } from './venda-liquida.js';
 import type { FormatoBebida, ProdutoTipo } from '@prisma/client';
 
 type ProdutoAgg = {
@@ -78,7 +79,7 @@ export async function buildEventoDashboard(eventoId: string, cervejariaId: strin
         comandasAbertas += 1;
         valorAberto += toNumber(comanda.total);
         for (const item of comanda.itens) {
-          if (item.produto && item.produtoId) {
+          if (item.produto && item.produtoId && itemContaNaVendaLiquida(item)) {
             addItem(aberto, { ...item, produtoId: item.produtoId, produto: item.produto });
           }
         }
@@ -92,7 +93,7 @@ export async function buildEventoDashboard(eventoId: string, cervejariaId: strin
         valorFechado += toNumber(comanda.total);
       }
       for (const item of comanda.itens) {
-        if (item.produto && item.produtoId) {
+        if (item.produto && item.produtoId && itemContaNaVendaLiquida(item)) {
           addItem(fechado, { ...item, produtoId: item.produtoId, produto: item.produto });
         }
       }

@@ -1,6 +1,7 @@
 import { csvRow } from './csv.js';
 import { resumoFinanceiroComandas } from './financeiro-contas.js';
 import { toNumber } from './utils.js';
+import { itemContaNaVendaLiquida } from './venda-liquida.js';
 
 type ComandaCsv = {
   id: string;
@@ -15,6 +16,8 @@ type ComandaCsv = {
     volumeMl: number;
     quantidade: number;
     precoUnit: unknown;
+    canceladoEm?: unknown;
+    cancelamentoPendenteEm?: unknown;
     produto: { nome: string } | null;
   }>;
 };
@@ -26,7 +29,8 @@ export function buildRelatorioEventoCsv(comandas: ComandaCsv[]) {
     const financeiro = resumoFinanceiroComandas([comanda]);
     const formas = comanda.pagamentos.map((pagamento) => `${pagamento.forma}:${toNumber(pagamento.valor).toFixed(2)}`).join('|');
     const datasRecebimentos = comanda.pagamentos.map((pagamento) => pagamento.pagoEm.toISOString()).join('|');
-    const itens = comanda.itens.length ? comanda.itens : [null];
+    const itensVendidos = comanda.itens.filter(itemContaNaVendaLiquida);
+    const itens = itensVendidos.length ? itensVendidos : [null];
     for (const [index, item] of itens.entries()) {
       const primeiraLinha = index === 0;
       lines.push(csvRow([
