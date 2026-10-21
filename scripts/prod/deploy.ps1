@@ -16,7 +16,7 @@ param(
   [switch]$BackendOnly,
   [switch]$DryRun,
   [switch]$PreflightOnly,
-  # Emergencia autorizada: publica mesmo sem main limpa e CI verde. O motivo fica no log.
+  # Emergencia autorizada: publica mesmo sem main limpa e CI local atestado. O motivo fica no log.
   [string]$BypassReleaseGate = '',
   # Internos: preenchidos quando o script se relanca elevado.
   [switch]$NoElevate,
@@ -144,7 +144,7 @@ function Invoke-DeployPreflight {
 
   $gate = Get-ReleaseGateResult -ProjectRoot $paths.ProjectRoot
   if ($gate.Ok) {
-    Write-Host "  Origem da release       : main $($gate.Sha.Substring(0, 8)) limpa, CI verde"
+    Write-Host "  Origem da release       : main $($gate.Sha.Substring(0, 8)) limpa, CI local atestado"
   } elseif ($BypassReleaseGate) {
     Write-Host "  Origem da release       : GATE IGNORADO ($BypassReleaseGate)" -ForegroundColor Yellow
     foreach ($gateBlocker in $gate.Blockers) {

@@ -9,6 +9,7 @@ import {
   checkVerdict,
   evaluateReleaseGate,
   readDeployRecovery,
+  readLocalCiAttestation,
   readReleaseHistory,
   shouldAutoSyncMain,
   summarizeChecks,
@@ -29,12 +30,8 @@ function estadoLimpo(overrides = {}) {
     deployed: { gitSha: 'b'.repeat(7), deployedAt: '2026-08-11T10:00:00Z' },
     pending: [{ sha: HEAD, shortSha: HEAD.slice(0, 7), message: 'fix: algo' }],
     migrationsChanged: [],
-    checks: DEFAULT_REQUIRED_CHECKS.map((name) => ({
-      name,
-      status: 'completed',
-      conclusion: 'success',
-      startedAt: '2026-08-12T10:01:00Z',
-    })),
+    checks: [],
+    localCi: { ok: true, sha: HEAD, passedAt: '2026-08-12T10:01:00Z', source: 'npm run ci' },
     ...overrides,
   };
 }
@@ -43,20 +40,30 @@ function codigos(result) {
   return result.blockers.map((b) => b.code);
 }
 
-test('libera quando main, working tree limpa e CI verde', () => {
+test('libera quando main, working tree limpa e CI local atestado', () => {
   const result = evaluateReleaseGate(estadoLimpo());
   assert.equal(result.allowed, true);
   assert.deepEqual(result.blockers, []);
 });
 
-test('bloqueia quando o CI nao pode ser verificado', () => {
-  const semToken = evaluateReleaseGate(estadoLimpo({ checksConfigured: false, checks: [] }));
-  assert.equal(semToken.allowed, false);
-  assert.deepEqual(codigos(semToken), ['ci-nao-verificavel'], 'um impedimento so, nao um por check');
+test('bloqueia quando falta atestado de CI local', () => {
+  const sem = evaluateReleaseGate(estadoLimpo({ localCi: null }));
+  assert.equal(sem.allowed, false);
+  assert.deepEqual(codigos(sem), ['ci-local-ausente']);
+});
 
-  const comErro = evaluateReleaseGate(estadoLimpo({ checksError: 'GitHub API 403' }));
-  assert.ok(codigos(comErro).includes('ci-nao-verificavel'));
-  assert.match(comErro.blockers[0].message, /403/);
+test('bloqueia atestado de outro commit ou sem sucesso', () => {
+  const outro = evaluateReleaseGate(estadoLimpo({
+    localCi: { ok: true, sha: 'b'.repeat(40), passedAt: '2026-08-12T10:01:00Z' },
+  }));
+  assert.equal(outro.allowed, false);
+  assert.deepEqual(codigos(outro), ['ci-local-desatualizado']);
+
+  const falhou = evaluateReleaseGate(estadoLimpo({
+    localCi: { ok: false, sha: HEAD, passedAt: '2026-08-12T10:01:00Z' },
+  }));
+  assert.equal(falhou.allowed, false);
+  assert.deepEqual(codigos(falhou), ['ci-local-falhou']);
 });
 
 test('avisa quando nao ha manifest publicado', () => {
@@ -95,28 +102,27 @@ test('bloqueia working tree suja, porque o deploy compila o local', () => {
   assert.match(result.blockers[0].message, /backend\/foo\.txt/);
 });
 
-test('bloqueia check que falhou, que esta rodando e que nao existe', () => {
-  const result = evaluateReleaseGate(
-    estadoLimpo({
-      checks: [
-        { name: 'frontend', status: 'completed', conclusion: 'failure' },
-        { name: 'backend-validate', status: 'completed', conclusion: 'success' },
-        { name: 'backend-test', status: 'in_progress', conclusion: null },
-      ],
-    }),
-    { requiredChecks: ['frontend', 'backend-validate', 'backend-test', 'ops-panel-test'] },
-  );
-  assert.equal(result.allowed, false);
-  assert.deepEqual(codigos(result), ['check-falhou', 'check-rodando', 'check-ausente']);
+test('checkVerdict ainda classifica status legado do Actions', () => {
+  assert.equal(checkVerdict(null), 'ausente');
+  assert.equal(checkVerdict({ status: 'in_progress' }), 'rodando');
+  assert.equal(checkVerdict({ status: 'completed', conclusion: 'success' }), 'sucesso');
+  assert.equal(checkVerdict({ status: 'completed', conclusion: 'failure' }), 'falhou');
+  assert.equal(checkVerdict({ status: 'completed', conclusion: 'skipped' }), 'ignorado');
 });
 
-test('check skipped ou neutral nao bloqueia', () => {
-  const result = evaluateReleaseGate(
-    estadoLimpo({
-      checks: DEFAULT_REQUIRED_CHECKS.map((name) => ({ name, status: 'completed', conclusion: 'skipped' })),
-    }),
+test('readLocalCiAttestation le o arquivo gerado pelo CI local', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tap116-ci-'));
+  const deployDir = path.join(dir, 'deploy');
+  fs.mkdirSync(deployDir);
+  fs.writeFileSync(
+    path.join(deployDir, '.local-ci-attestation.json'),
+    JSON.stringify({ ok: true, sha: HEAD, passedAt: '2026-10-21T12:00:00Z', source: 'npm run ci' }),
   );
-  assert.equal(result.allowed, true);
+  const attest = readLocalCiAttestation(dir);
+  assert.equal(attest.ok, true);
+  assert.equal(attest.sha, HEAD);
+  assert.equal(attest.source, 'npm run ci');
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('backend-build nao entra no gate por ter continue-on-error', () => {

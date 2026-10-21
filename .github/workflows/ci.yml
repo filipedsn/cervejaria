@@ -1,192 +1,22 @@
+# TAP-116: GitHub Actions desligado no repositorio (billing).
+# A fonte de verdade e `npm run ci` local + deploy/.local-ci-attestation.json.
+# workflow_dispatch permanece so para reativacao manual consciente; nao dispara em push/PR.
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  frontend:
-    name: frontend
+  disabled:
+    name: actions-disabled
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - run: npm ci
-      - run: npm run build
-
-  backend-validate:
-    name: backend-validate
-    runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
-
-      - run: npm ci
-      - run: npx prisma generate
-      - run: npx prisma validate
-
-  backend-test:
-    name: backend-test
-    runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
-
-      - run: npm ci
-      - run: npx prisma generate
-      - run: npm run test:unit
-
-  ops-panel-test:
-    name: ops-panel-test
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ops-panel
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      # Sem npm ci: o gate de release nao depende das dependencias de runtime do painel,
-      # e rodar so os testes mantem o job em segundos.
-      - run: npm run test:unit
-
-  support-analyst-test:
-    name: support-analyst-test
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: support-analyst
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: support-analyst/package-lock.json
-
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run test
-      - run: npm run dossier-replay
-      - run: npm run build
-
-  backend-build:
-    name: backend-build
-    runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
-
-      - run: npm ci
-      - run: npx prisma generate
-      - run: npm run build
-
-  realtime-security-qa:
-    name: realtime-security-qa
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: ci
-          POSTGRES_PASSWORD: ci
-          POSTGRES_DB: cervejaria_dev
-        ports:
-          - 5434:5432
-        options: >-
-          --health-cmd "pg_isready -U ci -d cervejaria_dev"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
-
-      - run: npm ci
-      - name: Configure isolated QA environment
-        shell: bash
+      - name: Explain local CI gate
         run: |
-          cat > .env.development <<'EOF'
-          DATABASE_URL="postgresql://ci:ci@localhost:5434/cervejaria_dev?schema=public"
-          MIGRATE_DATABASE_URL="postgresql://ci:ci@localhost:5434/cervejaria_dev?schema=public"
-          JWT_SECRET="ci-realtime-security-qa"
-          JWT_EXPIRES_IN="8h"
-          PORT=3002
-          HOST=127.0.0.1
-          QA_MODE=1
-          QA_PUBLIC_RATE_LIMIT_MAX=200
-          EOF
-      - run: npx prisma generate
-      - run: node scripts/run-with-env.mjs development npx prisma migrate deploy
-      - name: Start API
-        shell: bash
-        run: |
-          node --import tsx src/index.ts > "$RUNNER_TEMP/realtime-security-api.log" 2>&1 &
-          for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:3002/api/health > /dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          cat "$RUNNER_TEMP/realtime-security-api.log"
+          echo "GitHub Actions esta desligado para este repositorio (TAP-116)."
+          echo "Rode npm run ci localmente. O deploy exige deploy/.local-ci-attestation.json."
           exit 1
-      - run: npm run qa:setup
-      - run: npm run qa:tq-sec-02

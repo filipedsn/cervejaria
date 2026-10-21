@@ -5,11 +5,10 @@
 ## Checklist
 
 - [ ] Branch criada a partir de `main` atualizada
-- [ ] `npm run ci` verde localmente
+- [ ] `npm run ci` verde localmente (gera `deploy/.local-ci-attestation.json`)
 - [ ] Testado em dev quando há efeito visível (`:5202` / `tapdev.quivercloud.com.br`)
 - [ ] Sem secrets, `.env` ou credenciais no diff
 - [ ] Migration Prisma incluída? (sim / não)
-- [ ] CI verde no GitHub antes do merge
 
 ## Deploy após merge
 
@@ -18,7 +17,8 @@ Somente com autorização explícita, no PC de produção (fluxo completo em `CO
 ```powershell
 git switch main
 git pull --ff-only origin main
+npm run ci
 .\deploy.cmd -Confirmed
 ```
 
-O preflight recusa o deploy se `HEAD` não for `origin/main`, se houver arquivos sem commit no build ou se o CI desse commit não estiver verde.
+O preflight recusa o deploy se `HEAD` não for `origin/main`, se houver arquivos sem commit no build ou se o atestado de CI local não corresponder a esse SHA. GitHub Actions está desligado (TAP-116).

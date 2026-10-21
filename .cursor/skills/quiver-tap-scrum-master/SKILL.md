@@ -95,7 +95,7 @@ Fluxo obrigatório da skill [quiver-tap-git-workflow](../quiver-tap-git-workflow
   ```
 
 - `git push` a cada unidade coerente de trabalho, não só no fim.
-- PR para `main` com `TAP-N` no título ou na descrição; merge só com CI verde.
+- PR para `main` com `TAP-N` no título ou na descrição; merge só com `npm run ci` local verde.
 - Nunca push direto em `main`. Deploy em produção só com autorização explícita
   (regra `quiver-tap-deploy`).
 - Toda alteração de código também é publicada no DEV oficial (regra

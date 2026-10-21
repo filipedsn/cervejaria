@@ -43,17 +43,17 @@ Uma pagina em outra origem nao consegue disparar essas acoes (checagem de Origin
 
 `OPS_PANEL_TOKEN` so e necessario se o painel for acessado de fora do localhost.
 
-## GITHUB_TOKEN (necessario para liberar deploy)
+## Qualidade do deploy (CI local)
 
-Defina `GITHUB_TOKEN` em `ops-panel/.env` (PAT com leitura do repo). Sem ele o painel
-mostra o status do CI como indisponivel e **o gate de release recusa o deploy**: nao ha
-como provar que os testes passaram, e "nao sei" nao vira "pode ir".
+O gate de release exige `deploy/.local-ci-attestation.json` gerado por `npm run ci` para
+o SHA de `HEAD`. `GITHUB_TOKEN` continua opcional: so enriquece metadados de PR no painel
+(Actions esta desligado — TAP-116).
 
 ## Console de release
 
-O repositorio esta no plano Free do GitHub, que nao tem branch protection. A regra "so
-vai para producao o que esta em `origin/main` com CI verde" e aplicada aqui, no caminho
-do botao de deploy.
+O repositorio esta no plano Free do GitHub, que nao tem branch protection. GitHub Actions
+esta desligado (TAP-116). A regra "so vai para producao o que esta em `origin/main` com
+`npm run ci` atestado" e aplicada aqui e em `scripts/prod/release-gate.ps1`.
 
 `GET /api/release` mostra:
 
@@ -71,15 +71,12 @@ O deploy e **recusado** (HTTP 409) quando:
 |---|---|
 | `head-fora-do-main` | o commit local nao esta em `origin/main` — falta merge do PR |
 | `working-tree-suja` | ha arquivo nao commitado (o painel lista os caminhos) |
-| `ci-nao-verificavel` | sem `GITHUB_TOKEN` ou com erro na API do GitHub |
-| `check-ausente` / `check-rodando` / `check-falhou` | um check obrigatorio nao passou |
+| `ci-local-ausente` | sem `deploy/.local-ci-attestation.json` — rode `npm run ci` |
+| `ci-local-desatualizado` / `ci-local-falhou` | atestado de outro SHA ou sem sucesso |
 | `migrations-sem-confirmacao` | ha migration nova e falta o aceite explicito na tela |
 | `git-indisponivel` | nao da para ler o repositorio (unico impedimento sem override) |
 
-Checks obrigatorios padrao: `frontend`, `backend-validate`, `backend-test`,
-`ops-panel-test`. Ajuste com `OPS_PANEL_REQUIRED_CHECKS`
-(lista separada por virgula). `backend-build` fica fora porque tem `continue-on-error`
-no workflow enquanto os erros de `tsc` pre-existentes nao forem zerados.
+A prova de qualidade e o atestado gerado por `npm run ci` para o SHA de `HEAD`.
 
 O override existe para hotfix, exige motivo, e o motivo vai para `deploy/logs/ops-panel.log`
 junto com todos os impedimentos ignorados.
@@ -96,7 +93,7 @@ O console de release mostra um **roteiro numerado** (passos 1–4):
 
 1. **Verificar release** no painel — sincroniza `main` com `origin/main` automaticamente (checkout + pull) quando a working tree esta limpa
 2. Working tree — lista arquivos sujos e o que fazer
-3. CI / gate — checks obrigatorios
+3. CI / gate — atestado de `npm run ci`
 4. Campo **DEPLOY** — habilita o botao **Liberar deploy** (sem `prompt()` do navegador)
 
 Apos o deploy, o **Passo 5 (smoke)** roda sozinho: `/api/ready`, frontend, manifest e amostra de logo.
