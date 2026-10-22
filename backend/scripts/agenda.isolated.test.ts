@@ -4,12 +4,14 @@ import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { signUserToken } from '../src/lib/session.js';
-import { cancelOccurrence, generateAgendaDates, lockAgendaResource, saveAgendamento, stopAgenda } from '../src/lib/operacao/agenda.js';
+import { cancelOccurrence, generateAgendaDates, lockAgendaResource, renewAgendaWindows, saveAgendamento, stopAgenda } from '../src/lib/operacao/agenda.js';
 import { validateCashOccurrenceSelection } from '../src/lib/operacao/contexto-ocorrencia.js';
 import { lockCaixaEmTx } from '../src/lib/operacao/caixa-lock.js';
 
 assert.equal(validateIsolatedQaEnvironment(process.env).toString(), process.env.DATABASE_URL);
 const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+await prisma.$executeRawUnsafe('ALTER TABLE quiosque."AgendaOperacional" DROP CONSTRAINT IF EXISTS "AgendaOperacional_periodo_check"');
+await prisma.$executeRawUnsafe('ALTER TABLE quiosque."AgendaOperacional" ADD CONSTRAINT "AgendaOperacional_periodo_check" CHECK (("primeiraData" IS NULL AND "ultimaData" IS NULL) OR ("primeiraData" IS NOT NULL AND ("ultimaData" IS NULL OR "ultimaData" >= "primeiraData")))');
 console.log('QA fixtures: creating tenant and point');
 const tenant = await prisma.cervejaria.create({ data: { nome: 'QA Agenda descartável', slug: `qa-agenda-${randomUUID()}` } });
 const point = await prisma.pontoVenda.create({ data: { nome: 'QA PDV', cervejariaId: tenant.id, ativo: true, usaCaixa: true } });
@@ -63,6 +65,37 @@ try {
       assert.equal(await prisma.ocorrenciaOperacional.count({ where: { agendaId: rule.id } }), before);
     } finally { if (previousTz === undefined) delete process.env.TZ; else process.env.TZ = previousTz; }
   });
+  await check('open-ended rule persists null end, reloads, and idempotently renews finite windows without crossing a later end', async () => {
+    const open = await postSchedule(input({ nome: 'Sextas sem término QA', data: '2026-11-06', fim: null, horaInicio: '03:00', horaFim: '04:00' }));
+    assert.equal(open.statusCode, 200, open.body); const id = open.json().agendaId as string;
+    const stored = await prisma.agendaOperacional.findUniqueOrThrow({ where: { id } });
+    assert.equal(stored.primeiraData?.toISOString().slice(0, 10), '2026-11-06'); assert.equal(stored.ultimaData, null);
+    const listed = await inject({ method: 'GET', url: '/api/operacao/agenda/ocorrencias?inicio=2026-11-01&fim=2026-11-30' });
+    assert.equal(listed.statusCode, 200); const reloaded = listed.json().agendas.find((row: any) => row.id === id);
+    assert.equal(reloaded.primeiraData, '2026-11-06T00:00:00.000Z'); assert.equal(reloaded.ultimaData, null);
+    const pastWindowCount = await prisma.ocorrenciaOperacional.count({ where: { agendaId: id } });
+    const renewal = await renewAgendaWindows(prisma, new Date('2027-01-01T00:00:00.000Z'));
+    assert.ok(renewal.criadas > 0);
+    const renewalRetry = await renewAgendaWindows(prisma, new Date('2027-01-01T00:00:00.000Z'));
+    assert.equal(renewalRetry.criadas, 0);
+    assert.ok(await prisma.ocorrenciaOperacional.count({ where: { agendaId: id } }) > pastWindowCount);
+    const bounded = await postSchedule(input({ nome: 'Sextas com término QA', data: '2026-11-06', fim: '2026-11-20', horaInicio: '04:00', horaFim: '05:00' }));
+    assert.equal(bounded.statusCode, 200, bounded.body); const boundedId = bounded.json().agendaId as string;
+    const boundedBefore = await prisma.ocorrenciaOperacional.count({ where: { agendaId: boundedId } });
+    await renewAgendaWindows(prisma, new Date('2027-01-01T00:00:00.000Z'));
+    assert.equal(await prisma.ocorrenciaOperacional.count({ where: { agendaId: boundedId } }), boundedBefore);
+    assert.equal(boundedBefore, 3);
+    const legacy = await prisma.agendaOperacional.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, nome: 'Legada retomável QA', diaSemana: 5, horaInicio: '05:00', horaFim: '06:00', ativa: false } });
+    const oldCancelled = await prisma.ocorrenciaOperacional.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, agendaId: legacy.id, nome: legacy.nome, data: new Date('2026-11-06T00:00:00Z'), horaInicio: '05:00', horaFim: '06:00', status: 'CANCELADA' } });
+    const resumeUrl = `/api/operacao/agenda/agendas/${legacy.id}/retomar`;
+    const needsStart = await inject({ method: 'POST', url: resumeUrl, payload: { requestId: randomUUID() } });
+    assert.equal(needsStart.statusCode, 409); assert.equal(needsStart.json().code, 'AGENDA_INICIO_NECESSARIO');
+    const resumed = await inject({ method: 'POST', url: resumeUrl, payload: { requestId: randomUUID(), inicio: '2026-11-06', fim: null } });
+    assert.equal(resumed.statusCode, 200, resumed.body); assert.equal(resumed.json().agendaId, legacy.id);
+    const reloadedLegacy = await prisma.agendaOperacional.findUniqueOrThrow({ where: { id: legacy.id } });
+    assert.equal(reloadedLegacy.ativa, true); assert.equal(reloadedLegacy.primeiraData?.toISOString().slice(0, 10), '2026-11-06'); assert.equal(reloadedLegacy.ultimaData, null);
+    assert.equal((await prisma.ocorrenciaOperacional.findUniqueOrThrow({ where: { id: oldCancelled.id } })).status, 'CANCELADA');
+  });
   await check('shrinking a recurrence reports future dates outside the new bounds and preserves their status and cash history', async () => {
     const initial = { requestId: randomUUID(), nome: 'Shrink QA', data: '2026-10-23', horaInicio: '15:00', horaFim: '16:00', repetirSemanalmente: true, fim: '2026-11-20' };
     const created = await postSchedule(initial); assert.equal(created.statusCode, 200, created.body); assert.equal(created.json().criadas, 5);
@@ -80,10 +113,11 @@ try {
   });
   await check('month/year boundary is inclusive and direct creation remains definition-only until explicit audited resume', async () => {
     const inputBody = { nome: 'Virada QA', diaSemana: 5, horaInicio: '18:00', horaFim: '20:00', primeiraData: '2026-12-25', ultimaData: '2027-01-08' };
-    const tooLong = await inject({ method: 'POST', url: '/api/operacao/agenda/agendas', payload: { ...inputBody, primeiraData: '2026-01-01', ultimaData: '2027-01-03' } }); assert.equal(tooLong.statusCode, 400, tooLong.body);
+    const longDefinition = await inject({ method: 'POST', url: '/api/operacao/agenda/agendas', payload: { ...inputBody, primeiraData: '2026-01-01', ultimaData: '2027-01-03' } }); assert.equal(longDefinition.statusCode, 201, longDefinition.body);
     const created = await inject({ method: 'POST', url: '/api/operacao/agenda/agendas', payload: inputBody }); assert.equal(created.statusCode, 201, created.body);
     const id = created.json().id; assert.equal(created.json().ativa, false); assert.equal(await prisma.ocorrenciaOperacional.count({ where: { agendaId: id } }), 0);
-    const tooLongEdit = await inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${id}`, payload: { ultimaData: '2028-01-01' } }); assert.equal(tooLongEdit.statusCode, 400, tooLongEdit.body);
+    const longEdit = await inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${id}`, payload: { ultimaData: '2028-01-01' } }); assert.equal(longEdit.statusCode, 200, longEdit.body);
+    await inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${id}`, payload: { ultimaData: '2027-01-08' } });
     const requestId = randomUUID(); const url = `/api/operacao/agenda/agendas/${id}/retomar`;
     const [first, retry] = await Promise.all([inject({ method: 'POST', url, payload: { requestId } }), inject({ method: 'POST', url, payload: { requestId } })]);
     assert.equal(first.statusCode, 200, first.body); assert.deepEqual(first.json(), retry.json());
@@ -178,7 +212,7 @@ try {
       postSchedule(input({ nome: 'Concorrente A', repetirSemanalmente: false, data: concurrentDate, horaInicio: '18:00', horaFim: '20:00', fim: undefined })),
       postSchedule(input({ nome: 'Concorrente B', repetirSemanalmente: false, data: concurrentDate, horaInicio: '19:00', horaFim: '21:00', fim: undefined })),
     ]);
-    assert.deepEqual([left.statusCode, right.statusCode].sort(), [200, 409]); assert.equal(await prisma.ocorrenciaOperacional.count({ where: { data: new Date(`${concurrentDate}T00:00:00Z`) } }), 1);
+    assert.deepEqual([left.statusCode, right.statusCode].sort(), [200, 409]); assert.equal(await prisma.ocorrenciaOperacional.count({ where: { data: new Date(`${concurrentDate}T00:00:00Z`), nome: { startsWith: 'Concorrente ' } } }), 1);
   });
   await check('incomplete legacy interval blocks same start and unknown comparisons; name edit and completion remain possible', async () => {
     const date = '2027-03-19'; const legacy = await occurrence('Teste antigo', { data: new Date(`${date}T00:00:00Z`), horaInicio: '17:00', horaFim: null });

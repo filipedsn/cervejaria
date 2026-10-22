@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { diaOperacional } from './venda.js';
 
 type Scope = { cervejariaId: string; pontoVendaId: string; usuarioId: string };
-export type AgendamentoInput = { requestId: string; nome: string; data: string; horaInicio?: string; horaFim?: string | null; local?: string | null; ocorrenciaId?: string; repetirSemanalmente: boolean; agendaId?: string; fim?: string; gerarDatas?: boolean };
+export type AgendamentoInput = { requestId: string; nome: string; data: string; horaInicio?: string; horaFim?: string | null; local?: string | null; ocorrenciaId?: string; repetirSemanalmente: boolean; agendaId?: string; fim?: string | null; gerarDatas?: boolean };
 export type AgendaOutOfRangeOccurrence = { id: string; nome: string; data: string; status: string; possuiHistorico: boolean };
 type Resultado = { agendaId?: string; ocorrenciaId?: string; salva: true; criadas: number; datas: string[]; motivo?: string; foraDoPeriodo?: AgendaOutOfRangeOccurrence[] };
 export function agendaError(message: string, statusCode = 409, code?: string, details?: unknown) { return Object.assign(new Error(message), { statusCode, ...(code ? { code } : {}), ...(details ? { details } : {}) }); }
@@ -15,16 +15,16 @@ export function parseAgendaDate(value: string) {
 function dateKey(value: Date | null) { return value?.toISOString().slice(0, 10) ?? null; }
 function compareDateOnly(a: Date, b: Date) { return a.getTime() - b.getTime(); }
 function assertRuleRange(agenda: { primeiraData: Date | null; ultimaData: Date | null }, requestedStart?: Date, requestedEnd?: Date) {
-  if (!agenda.primeiraData || !agenda.ultimaData) throw agendaError('Esta repetição antiga não tem início e término confiáveis. Informe explicitamente as duas datas antes de agendar novas ocorrências.', 409, 'AGENDA_PERIODO_NAO_DEFINIDO');
-  if (compareDateOnly(agenda.ultimaData, agenda.primeiraData) < 0) throw agendaError('O término da repetição deve ser igual ou posterior ao início.', 400, 'AGENDA_PERIODO_INVALIDO');
-  if (requestedStart && requestedEnd && (compareDateOnly(requestedStart, agenda.primeiraData) < 0 || compareDateOnly(requestedEnd, agenda.ultimaData) > 0)) {
-    throw agendaError(`A geração deve ficar dentro do período inclusivo ${dateKey(agenda.primeiraData)} a ${dateKey(agenda.ultimaData)}.`, 409, 'AGENDA_FORA_DO_PERIODO', { primeiraData: dateKey(agenda.primeiraData), ultimaData: dateKey(agenda.ultimaData) });
+  if (!agenda.primeiraData) throw agendaError('Esta repetição antiga não tem início confiável. Informe explicitamente a data de início antes de agendar novas ocorrências.', 409, 'AGENDA_PERIODO_NAO_DEFINIDO');
+  if (agenda.ultimaData && compareDateOnly(agenda.ultimaData, agenda.primeiraData) < 0) throw agendaError('O término da repetição deve ser igual ou posterior ao início.', 400, 'AGENDA_PERIODO_INVALIDO');
+  if (requestedStart && requestedEnd && (compareDateOnly(requestedStart, agenda.primeiraData) < 0 || (agenda.ultimaData && compareDateOnly(requestedEnd, agenda.ultimaData) > 0))) {
+    throw agendaError(`A geração deve ficar dentro do período inclusivo iniciado em ${dateKey(agenda.primeiraData)}${agenda.ultimaData ? ` e terminado em ${dateKey(agenda.ultimaData)}` : ', sem término definido'}.`, 409, 'AGENDA_FORA_DO_PERIODO', { primeiraData: dateKey(agenda.primeiraData), ultimaData: dateKey(agenda.ultimaData) });
   }
 }
-export async function occurrencesOutsideRange(tx: Prisma.TransactionClient, scope: Pick<Scope, 'cervejariaId' | 'pontoVendaId'>, agendaId: string, first: Date, last: Date): Promise<AgendaOutOfRangeOccurrence[]> {
+export async function occurrencesOutsideRange(tx: Prisma.TransactionClient, scope: Pick<Scope, 'cervejariaId' | 'pontoVendaId'>, agendaId: string, first: Date, last: Date | null): Promise<AgendaOutOfRangeOccurrence[]> {
   const today = diaOperacional();
   const rows = await tx.ocorrenciaOperacional.findMany({
-    where: { ...scope, agendaId, data: { gte: today }, OR: [{ data: { lt: first } }, { data: { gt: last } }] },
+    where: { ...scope, agendaId, data: { gte: today }, OR: [{ data: { lt: first } }, ...(last ? [{ data: { gt: last } }] : [])] },
     include: { _count: { select: { sessoesCaixa: true, comandas: true } } },
     orderBy: [{ data: 'asc' }, { horaInicio: 'asc' }],
   });
@@ -120,7 +120,7 @@ export async function saveAgendamento(tx: Prisma.TransactionClient, scope: Scope
   if (input.repetirSemanalmente) {
     if (input.ocorrenciaId) throw agendaError('Edite a repetição separadamente deste agendamento.', 400);
     const end = input.fim ? parseAgendaDate(input.fim) : null;
-    if (!end || end < data || end.getTime() - data.getTime() > 366 * 86400000) throw agendaError('Informe o término da repetição, em um período de até 366 dias.', 400);
+    if (end && end < data) throw agendaError('O término da repetição deve ser igual ou posterior ao início.', 400);
     let agendaId = input.agendaId;
     const primeiraData = data;
     const ultimaData = end;
@@ -132,7 +132,7 @@ export async function saveAgendamento(tx: Prisma.TransactionClient, scope: Scope
       if (agenda.archivedAt) throw agendaError('Esta repetição está arquivada e disponível apenas para consulta.');
       if (!agenda.ativa && input.gerarDatas !== false) throw agendaError('Esta repetição está inativa. Salve somente sua definição, sem agendar novas datas.');
       assertRuleRange({ primeiraData, ultimaData });
-      foraDoPeriodo = await occurrencesOutsideRange(tx, whereScope, agendaId, primeiraData!, ultimaData!);
+      foraDoPeriodo = end ? await occurrencesOutsideRange(tx, whereScope, agendaId, primeiraData, end) : [];
       const intervalProvided = input.horaInicio !== undefined || input.horaFim !== undefined;
       const weekdayChanged = agenda.diaSemana !== data.getUTCDay();
       if (intervalProvided || weekdayChanged) validateAgendaInterval(input.horaInicio, input.horaFim);
@@ -143,7 +143,10 @@ export async function saveAgendamento(tx: Prisma.TransactionClient, scope: Scope
       const agenda = await tx.agendaOperacional.create({ data: { ...whereScope, ...fields, diaSemana: data.getUTCDay(), primeiraData, ultimaData, frequencia: 'SEMANAL', ativa: input.gerarDatas !== false } });
       agendaId = agenda.id;
     }
-    const generated = input.gerarDatas === false ? { criadas: 0, datas: [], motivo: 'DEFINICAO_SALVA_SEM_AGENDAR' } : await generateAgendaDates(tx, whereScope, agendaId, input.data, input.fim!);
+    const generationStart = data;
+    const rollingEnd = new Date(generationStart.getTime() + 90 * 86400000);
+    const generationEnd = end && compareDateOnly(end, rollingEnd) < 0 ? end : rollingEnd;
+    const generated = input.gerarDatas === false ? { criadas: 0, datas: [], motivo: 'DEFINICAO_SALVA_SEM_AGENDAR' } : compareDateOnly(generationStart, generationEnd) > 0 ? { criadas: 0, datas: [], motivo: 'PERIODO_ENCERRADO' } : await generateAgendaDates(tx, whereScope, agendaId, dateKey(generationStart)!, dateKey(generationEnd)!);
     resultado = { agendaId, salva: true, ...generated, ...(foraDoPeriodo.length ? { foraDoPeriodo } : {}) };
   } else {
     if (input.agendaId) throw agendaError('Uma repetição existente não pode ser convertida em agendamento único.', 400);
@@ -173,13 +176,37 @@ export async function saveAgendamento(tx: Prisma.TransactionClient, scope: Scope
   return resultado;
 }
 
-export async function resumeAgenda(tx: Prisma.TransactionClient, scope: Scope, id: string, requestId: string) {
+/** Materialize only the next finite 90-day window. Safe to retry and across API instances. */
+export async function renewAgendaWindows(client: import('@prisma/client').PrismaClient, reference = diaOperacional()) {
+  const start = reference;
+  const windowEnd = new Date(start.getTime() + 90 * 86400000);
+  const agendas = await client.agendaOperacional.findMany({
+    where: { ativa: true, archivedAt: null, primeiraData: { not: null } },
+    select: { id: true, cervejariaId: true, pontoVendaId: true, primeiraData: true, ultimaData: true },
+  });
+  let created = 0;
+  const failures: Array<{ agendaId: string; error: string }> = [];
+  for (const agenda of agendas) {
+    const from = compareDateOnly(agenda.primeiraData!, start) > 0 ? agenda.primeiraData! : start;
+    const through = agenda.ultimaData && compareDateOnly(agenda.ultimaData, windowEnd) < 0 ? agenda.ultimaData : windowEnd;
+    if (compareDateOnly(from, through) > 0) continue;
+    try {
+      const result = await client.$transaction((tx) => generateAgendaDates(tx, { cervejariaId: agenda.cervejariaId, pontoVendaId: agenda.pontoVendaId }, agenda.id, dateKey(from)!, dateKey(through)!));
+      created += result.criadas;
+    } catch (error) {
+      failures.push({ agendaId: agenda.id, error: error instanceof Error ? error.message : 'Falha desconhecida' });
+    }
+  }
+  return { regras: agendas.length, criadas: created, falhas: failures };
+}
+
+export async function resumeAgenda(tx: Prisma.TransactionClient, scope: Scope, id: string, input: { requestId: string; inicio?: string; fim?: string | null }) {
   const { usuarioId, ...whereScope } = scope;
   await lockAgendaPdv(tx, scope);
   await lockAgendaResource(tx, scope, 'regra', id);
-  const receiptId = `agenda-resume-${createHash('sha256').update(`${scope.cervejariaId}:${scope.pontoVendaId}:${requestId}`).digest('hex')}`;
+  const receiptId = `agenda-resume-${createHash('sha256').update(`${scope.cervejariaId}:${scope.pontoVendaId}:${input.requestId}`).digest('hex')}`;
   await lockAgendaResource(tx, scope, 'request', receiptId);
-  const fingerprint = createHash('sha256').update(JSON.stringify({ agendaId: id, acao: 'RETOMAR_REPETICAO' })).digest('hex');
+  const fingerprint = createHash('sha256').update(JSON.stringify({ agendaId: id, acao: 'RETOMAR_REPETICAO', inicio: input.inicio, fim: input.fim })).digest('hex');
   const receipt = await tx.transacaoLog.findUnique({ where: { id: receiptId } });
   if (receipt) {
     const metadata = receipt.metadata as { fingerprint?: string; resultado?: unknown };
@@ -190,13 +217,19 @@ export async function resumeAgenda(tx: Prisma.TransactionClient, scope: Scope, i
   if (!agenda) throw agendaError('RepetiÃ§Ã£o nÃ£o encontrada', 404);
   if (agenda.archivedAt) throw agendaError('Esta repetiÃ§Ã£o estÃ¡ arquivada e disponÃ­vel apenas para consulta.');
   if (agenda.ativa) throw agendaError('Esta repetiÃ§Ã£o jÃ¡ estÃ¡ ativa.', 409, 'AGENDA_JA_ATIVA');
-  assertRuleRange(agenda);
+  const primeiraData = agenda.primeiraData ?? (input.inicio ? parseAgendaDate(input.inicio) : null);
+  const ultimaData = input.fim !== undefined ? (input.fim ? parseAgendaDate(input.fim) : null) : agenda.ultimaData;
+  if (!primeiraData) throw agendaError('Informe explicitamente a data de retomada desta regra antiga.', 409, 'AGENDA_INICIO_NECESSARIO');
+  assertRuleRange({ primeiraData, ultimaData });
   validateAgendaInterval(agenda.horaInicio, agenda.horaFim);
-  await tx.agendaOperacional.update({ where: { id }, data: { ativa: true } });
-  const generated = await generateAgendaDates(tx, whereScope, id, dateKey(agenda.primeiraData)!, dateKey(agenda.ultimaData)!);
-  const foraDoPeriodo = await occurrencesOutsideRange(tx, whereScope, id, agenda.primeiraData!, agenda.ultimaData!);
+  await tx.agendaOperacional.update({ where: { id }, data: { primeiraData, ultimaData, ativa: true } });
+  const start = compareDateOnly(primeiraData, diaOperacional()) > 0 ? primeiraData : diaOperacional();
+  const windowEnd = new Date(start.getTime() + 90 * 86400000);
+  const end = ultimaData && compareDateOnly(ultimaData, windowEnd) < 0 ? ultimaData : windowEnd;
+  const generated = compareDateOnly(start, end) > 0 ? { criadas: 0, datas: [], motivo: 'PERIODO_ENCERRADO' } : await generateAgendaDates(tx, whereScope, id, dateKey(start)!, dateKey(end)!);
+  const foraDoPeriodo = ultimaData ? await occurrencesOutsideRange(tx, whereScope, id, primeiraData, ultimaData) : [];
   const resultado = { agendaId: id, salva: true as const, reativada: true, ...generated, ...(foraDoPeriodo.length ? { foraDoPeriodo } : {}) };
-  await tx.transacaoLog.create({ data: { id: receiptId, cervejariaId: scope.cervejariaId, usuarioId, tipo: 'EVENTO_ATUALIZADO', entidadeTipo: 'AgendaOperacional', entidadeId: id, metadata: { acao: 'REPETICAO_RETOMADA', pontoVendaId: scope.pontoVendaId, atorId: usuarioId, instante: new Date().toISOString(), fingerprint, resultado } } });
+  await tx.transacaoLog.create({ data: { id: receiptId, cervejariaId: scope.cervejariaId, usuarioId, tipo: 'EVENTO_ATUALIZADO', entidadeTipo: 'AgendaOperacional', entidadeId: id, metadata: { acao: 'REPETICAO_RETOMADA', pontoVendaId: scope.pontoVendaId, atorId: usuarioId, instante: new Date().toISOString(), inicioRetomada: dateKey(primeiraData), fingerprint, resultado } } });
   return resultado;
 }
 
