@@ -43,21 +43,24 @@ test('KDS-S02 cancelamento pendente confirmado pela Cozinha-Líder devolve estoq
   expect((await tenant.stock())(tenant.catalog!.porcao.id)).toBe(20);
 });
 
-test('KDS-S03 TV da cozinha pagina a fila completa', async ({ ops, page, evidence }) => {
+test('KDS-S03 TV da cozinha mostra a fila completa com scroll', async ({ ops, page, evidence }) => {
   const tenant = await cozinhaPronta(ops);
   await tenant.owner.expect(tenant.owner.post('/api/operacao/estoque/entrada', { pontoVendaId: tenant.pointId, produtoId: tenant.catalog!.porcao.id, quantidade: 20 }), 201, 'reforço de estoque');
   for (let i = 0; i < 30; i++) await tenant.openComanda(tenant.owner, [tenant.porcaoItem(1)], { identificador: `Fila ${i}` });
   const cozinha = await tenant.staff('Cozinha', PERSONA_PERMISSIONS.cozinha);
   await loginPage(page, cozinha.email, cozinha.senha);
   await page.goto('/operacao/cozinha/tv', { waitUntil: 'networkidle' });
-  const label = page.getByText(/Página 1 de (\d+) · 30 pedidos/);
-  await expect(label).toBeVisible();
-  const pages = Number((await label.textContent())!.match(/Página 1 de (\d+)/)![1]);
-  for (let index = 2; index <= pages; index++) {
-    await page.getByRole('button', { name: 'Próxima' }).click();
-    await expect(page.getByText(new RegExp(`Página ${index} de ${pages} · 30 pedidos`))).toBeVisible();
-  }
-  await evidence.screenshot('tv-paginacao');
+  await expect(page.locator('.cozinha-tv-pager-bar')).toContainText('30 pedidos');
+  await expect(page.locator('.cozinha-tv-grid > article')).toHaveCount(30);
+  const scrollMetrics = await page.locator('.cozinha-tv-grid').evaluate((grid) => ({
+    scrollHeight: grid.scrollHeight,
+    clientHeight: grid.clientHeight,
+    overflowY: getComputedStyle(grid).overflowY,
+  }));
+  expect(scrollMetrics.overflowY).toMatch(/auto|scroll/);
+  expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight);
+  expect(await page.getByRole('button', { name: 'Próxima' }).count()).toBe(0);
+  await evidence.screenshot('tv-scroll');
 });
 
 test('KDS-S04 TV da cozinha e modo demonstração renderizam', async ({ ops, page, evidence }) => {
@@ -65,11 +68,11 @@ test('KDS-S04 TV da cozinha e modo demonstração renderizam', async ({ ops, pag
   await tenant.openComanda(tenant.owner, [tenant.porcaoItem(1)], { identificador: 'Mesa TV QA' });
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
   await page.goto('/operacao/cozinha/tv', { waitUntil: 'networkidle' });
-  await expect(page.getByText(/Página 1 de \d+ · 1 pedidos/)).toBeVisible();
+  await expect(page.locator('.cozinha-tv-pager-bar')).toContainText('1 pedidos');
   await expect(page.getByText('Mesa TV QA').filter({ visible: true }).first()).toBeVisible();
   await evidence.screenshot('tv');
   await page.goto('/operacao/cozinha/tv?demo=1', { waitUntil: 'networkidle' });
-  await expect(page.getByText(/Página 1 de \d+ · \d+ pedidos/)).toBeVisible();
+  await expect(page.locator('.cozinha-tv-pager-bar')).toContainText('pedidos');
   await evidence.screenshot('tv-demo');
 });
 

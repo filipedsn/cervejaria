@@ -57,7 +57,12 @@ async function stubKitchen(page: Page, count: number, options: { socket?: boolea
   };
 }
 
-test('TV e tablets paginam por espaço medido, mostram 3 páginas e deixam todos os detalhes acessíveis', async ({ page }) => {
+async function queueCount(page: Page, count: number) {
+  await expect(page.getByRole('navigation', { name: 'Fila da cozinha' })).toBeVisible();
+  await expect(page.locator('.cozinha-tv-pager-bar')).toContainText(`${count} pedidos`);
+}
+
+test('TV e tablets mostram a fila completa com scroll vertical e detalhes acessíveis', async ({ page }) => {
   const evidenceDir = resolve(process.cwd(), 'artifacts', 'kitchen-pagination');
   await mkdir(evidenceDir, { recursive: true });
   const cases = [
@@ -68,122 +73,85 @@ test('TV e tablets paginam por espaço medido, mostram 3 páginas e deixam todos
   for (const scenario of cases) {
     await page.setViewportSize({ width: scenario.width, height: scenario.height });
     await page.unrouteAll();
-    const kitchen = await stubKitchen(page, 72);
+    await stubKitchen(page, 72);
     await page.goto('/operacao/cozinha/tv');
-    await expect(page.getByRole('navigation', { name: 'Paginação dos pedidos' })).toBeVisible();
-    await expect(page.getByText(/Página 1 de \d+ · 72 pedidos/)).toBeVisible({ timeout: 10_000 });
-    const pageCapacity = await page.locator('.cozinha-tv-grid > article').count();
-    expect(pageCapacity).toBeGreaterThan(0);
-    const count = pageCapacity * 3;
-    kitchen.setCount(count);
-    await page.reload();
-    await expect(page.getByText(new RegExp(`Página 1 de 3 · ${count} pedidos`))).toBeVisible({ timeout: 10_000 });
-    const scroll = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight, innerWidth: innerWidth, innerHeight: innerHeight }));
-    expect(scroll.width).toBeLessThanOrEqual(scroll.innerWidth);
-    expect(scroll.height).toBeLessThanOrEqual(scroll.innerHeight);
-    await page.screenshot({ path: resolve(evidenceDir, `kitchen-${scenario.name}-page-1.png`), fullPage: true });
-    await page.getByRole('button', { name: 'Próxima' }).click();
-    await expect(page.getByText(new RegExp(`Página 2 de 3 · ${count} pedidos`))).toBeVisible();
-    await page.screenshot({ path: resolve(evidenceDir, `kitchen-${scenario.name}-page-2.png`), fullPage: true });
-    await page.getByRole('button', { name: 'Próxima' }).click();
-    await expect(page.getByText(new RegExp(`Página 3 de 3 · ${count} pedidos`))).toBeVisible();
-    await page.screenshot({ path: resolve(evidenceDir, `kitchen-${scenario.name}-page-3.png`), fullPage: true });
-    await page.getByRole('button', { name: 'Anterior' }).click();
-    await page.getByRole('button', { name: 'Anterior' }).click();
-    const seenItems = new Set<string>();
-    for (let detailPage = 0; detailPage < 12; detailPage += 1) {
-      for (const text of await page.locator('.cozinha-tv-grid > article').allTextContents()) seenItems.add(text);
-      if (await page.getByRole('button', { name: 'Próxima' }).isDisabled()) break;
-      await page.getByRole('button', { name: 'Próxima' }).click();
-    }
-    expect([...seenItems].join(' ')).toContain(`Hambúrguer da casa 1 · item 1`);
-    expect([...seenItems].join(' ')).toContain(`Hambúrguer da casa 1 · item 2`);
-    expect([...seenItems].join(' ')).toContain(`Hambúrguer da casa 1 · item 3`);
-    expect([...seenItems].join(' ')).toContain('Sem cebola. Molho à parte.');
-    expect([...seenItems].join(' ')).toContain('Pedido de teste com observação completa.');
+    await queueCount(page, 72);
+    await expect(page.locator('.cozinha-tv-grid > article')).toHaveCount(72);
+    const scrollMetrics = await page.locator('.cozinha-tv-grid').evaluate((grid) => ({
+      scrollHeight: grid.scrollHeight,
+      clientHeight: grid.clientHeight,
+      overflowY: getComputedStyle(grid).overflowY,
+    }));
+    expect(scrollMetrics.overflowY).toMatch(/auto|scroll/);
+    expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight);
+    const pageScroll = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight, innerWidth: innerWidth, innerHeight: innerHeight }));
+    expect(pageScroll.width).toBeLessThanOrEqual(pageScroll.innerWidth);
+    expect(pageScroll.height).toBeLessThanOrEqual(pageScroll.innerHeight);
+    await page.locator('.cozinha-tv-grid').evaluate((grid) => { grid.scrollTop = 0; });
+    await page.screenshot({ path: resolve(evidenceDir, `kitchen-${scenario.name}-top.png`), fullPage: true });
+    await page.locator('.cozinha-tv-grid').evaluate((grid) => { grid.scrollTop = grid.scrollHeight; });
+    await page.screenshot({ path: resolve(evidenceDir, `kitchen-${scenario.name}-bottom.png`), fullPage: true });
+    const firstCard = page.locator('.cozinha-tv-grid > article').first();
+    await firstCard.scrollIntoViewIfNeeded();
+    const text = await firstCard.innerText();
+    expect(text).toContain('Hambúrguer da casa 1 · item 1');
+    expect(text).toContain('Hambúrguer da casa 1 · item 2');
+    expect(text).toContain('Hambúrguer da casa 1 · item 3');
+    expect(text).toContain('Sem cebola. Molho à parte.');
+    expect(text).toContain('Pedido de teste com observação completa.');
     await page.goto('about:blank');
   }
 });
 
 test('TV e modo operacional permanecem manuais mesmo com intervalo antigo salvo', async ({ page }) => {
   await page.setViewportSize({ width: 1180, height: 820 });
-  const kitchen = await stubKitchen(page, 72);
+  await stubKitchen(page, 36);
   await page.goto('/operacao/cozinha/tv');
-  await expect(page.getByText(/Página 1 de \d+ · 72 pedidos/)).toBeVisible();
-  const capacity = await page.locator('.cozinha-tv-grid > article').count();
-  kitchen.setCount(capacity * 3);
-  await page.reload();
-  await expect(page.getByText(new RegExp(`Página 1 de 3 · ${capacity * 3} pedidos`))).toBeVisible();
+  await queueCount(page, 36);
   const deviceId = await page.evaluate(() => localStorage.getItem('qt:cozinha:device-id'));
   await page.evaluate(({ deviceId, tenantId, userId }) => localStorage.setItem(`qt:cozinha:visual:${tenantId}:${userId}:${deviceId}`, JSON.stringify({ profile: 'automatico', intervalMs: 5_000 })), { deviceId, tenantId: 'tenant-test', userId: 'user-test' });
   await page.reload();
-  await expect(page.getByText(new RegExp(`Página 1 de 3 · ${capacity * 3} pedidos`))).toBeVisible();
+  await queueCount(page, 36);
   const migratedPreference = await page.evaluate(({ deviceId, tenantId, userId }) => localStorage.getItem(`qt:cozinha:visual:${tenantId}:${userId}:${deviceId}`), { deviceId, tenantId: 'tenant-test', userId: 'user-test' });
   expect(JSON.parse(migratedPreference ?? '{}')).toEqual({ profile: 'automatico' });
+  await page.locator('.cozinha-tv-grid').evaluate((grid) => { grid.scrollTop = Math.min(240, Math.max(0, grid.scrollHeight - grid.clientHeight)); });
+  const scrolled = await page.locator('.cozinha-tv-grid').evaluate((grid) => grid.scrollTop);
   await page.waitForTimeout(5_500);
-  await expect(page.getByText(new RegExp(`Página 1 de 3 · ${capacity * 3} pedidos`))).toBeVisible();
-  await page.getByRole('button', { name: 'Próxima' }).click();
-  await expect(page.getByText(new RegExp(`Página 2 de 3 · ${capacity * 3} pedidos`))).toBeVisible();
+  expect(await page.locator('.cozinha-tv-grid').evaluate((grid) => grid.scrollTop)).toBe(scrolled);
+  expect(await page.getByRole('button', { name: 'Próxima' }).count()).toBe(0);
   await page.goto('/operacao/cozinha');
-  await expect(page.getByText(/Página 1 de \d+ · \d+ pedidos/)).toBeVisible();
+  await expect(page.locator('.cozinha-tv-pager-bar')).toContainText('pedidos');
   await page.waitForTimeout(5_500);
-  await expect(page.getByText(/Página 1 de \d+ · \d+ pedidos/)).toBeVisible();
+  expect(await page.getByRole('button', { name: 'Próxima' }).count()).toBe(0);
 });
 
-test('ao entregar um pedido, os pedidos seguintes preenchem a página sem duplicações', async ({ page }) => {
+test('ao entregar um pedido, a contagem cai e o cartão some da fila', async ({ page }) => {
   await page.setViewportSize({ width: 1180, height: 820 });
-  const kitchen = await stubKitchen(page, 72);
+  await stubKitchen(page, 12);
   await page.goto('/operacao/cozinha/tv');
-  await expect(page.getByText(/Página 1 de \d+ · 72 pedidos/)).toBeVisible();
-  const capacity = await page.locator('.cozinha-tv-grid > article').count();
-  kitchen.setCount(capacity * 3);
-  await page.reload();
-  await expect(page.getByText(new RegExp(`Página 1 de 3 · ${capacity * 3} pedidos`))).toBeVisible();
+  await queueCount(page, 12);
   const firstCard = page.locator('.cozinha-tv-grid > article').first();
-  const visibleCapacity = await page.locator('.cozinha-tv-grid > article').count();
   await firstCard.getByRole('button', { name: 'Iniciar' }).click();
   await firstCard.getByRole('button', { name: 'Pronto' }).click();
   await firstCard.getByRole('button', { name: 'Entregue' }).click();
-  await expect(page.getByText(new RegExp(`Página 1 de 3 · ${capacity * 3 - 1} pedidos`))).toBeVisible();
-  await expect(page.locator('.cozinha-tv-grid > article')).toHaveCount(visibleCapacity, { timeout: 2_000 });
-  await expect.poll(() => page.locator('.cozinha-tv-grid .cozinha-tv-card-senha').allTextContents()).toEqual(Array.from({ length: visibleCapacity }, (_, index) => `Senha ${index + 2}`));
+  await queueCount(page, 11);
+  await expect(page.locator('.cozinha-tv-grid > article')).toHaveCount(11);
+  await expect.poll(() => page.locator('.cozinha-tv-grid .cozinha-tv-card-senha').allTextContents()).toEqual(Array.from({ length: 11 }, (_, index) => `Senha ${index + 2}`));
 });
 
-test('pedido recebido durante uma ação fica no fim e não desloca o cartão em uso', async ({ page }) => {
+test('pedido recebido durante uma ação fica no fim e não desloca o scroll do cartão em uso', async ({ page }) => {
   await page.setViewportSize({ width: 1180, height: 820 });
-  const kitchen = await stubKitchen(page, 72);
+  const kitchen = await stubKitchen(page, 12);
   await page.goto('/operacao/cozinha/tv');
-  await expect(page.getByText(/Página 1 de \d+ · 72 pedidos/)).toBeVisible();
-  const capacity = await page.locator('.cozinha-tv-grid > article').count();
-  kitchen.setCount(capacity * 3);
-  await page.reload();
-  const total = capacity * 3;
-  await expect(page.getByText(new RegExp(`Página 1 de 3 · ${total} pedidos`))).toBeVisible();
+  await queueCount(page, 12);
+  const grid = page.locator('.cozinha-tv-grid');
+  await grid.evaluate((node) => { node.scrollTop = 0; });
   const card = page.locator('.cozinha-tv-grid > article').first();
   kitchen.addOnNextStatus();
   await card.getByRole('button', { name: 'Iniciar' }).click();
-  await expect(page.getByText(new RegExp(`Página 1 de 3 · ${total} pedidos`))).toBeVisible();
-  await expect(page.getByText(new RegExp(`Página 1 de \\d+ · ${total + 1} pedidos`))).toBeVisible({ timeout: 5_000 });
   await expect(page.locator('.cozinha-tv-grid > article').first()).toContainText('Senha 1');
-  await expect(page.getByRole('button', { name: 'Próxima' })).toBeEnabled();
-});
-
-test('a página atual é corrigida quando uma atualização remove a última página', async ({ page }) => {
-  await page.setViewportSize({ width: 1180, height: 820 });
-  const kitchen = await stubKitchen(page, 72);
-  await page.goto('/operacao/cozinha/tv');
-  await expect(page.getByText(/Página 1 de \d+ · 72 pedidos/)).toBeVisible();
-  const capacity = await page.locator('.cozinha-tv-grid > article').count();
-  kitchen.setCount(capacity * 3);
-  await page.reload();
-  await expect(page.getByText(new RegExp(`Página 1 de 3 · ${capacity * 3} pedidos`))).toBeVisible();
-  await page.getByRole('button', { name: 'Próxima' }).click();
-  await page.getByRole('button', { name: 'Próxima' }).click();
-  await expect(page.getByText(new RegExp(`Página 3 de 3 · ${capacity * 3} pedidos`))).toBeVisible();
-  kitchen.setCount(capacity * 2);
-  await page.locator('.cozinha-tv-grid > article').first().getByRole('button', { name: 'Iniciar' }).click();
-  await expect(page.getByText(new RegExp(`Página 2 de 2 · ${capacity * 2} pedidos`))).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByRole('button', { name: 'Próxima' })).toBeDisabled();
+  await queueCount(page, 13);
+  expect(await grid.evaluate((node) => node.scrollTop)).toBeLessThan(40);
 });
 
 test('reconexão realtime atualiza a lista sem duplicar pedidos', async ({ page }) => {
@@ -206,11 +174,11 @@ test('reconexão realtime atualiza a lista sem duplicar pedidos', async ({ page 
     });
   });
   await page.goto('/operacao/cozinha/tv');
-  await expect(page.getByText('Página 1 de 1 · 2 pedidos')).toBeVisible();
+  await queueCount(page, 2);
   await expect.poll(() => connectionCount).toBeGreaterThan(0);
   kitchen.setCount(3);
   await connections[connectionCount - 1]!.close({ code: 1000, reason: 'qa reconnect' });
-  await expect(page.getByText('Página 1 de 1 · 3 pedidos')).toBeVisible({ timeout: 8_000 });
+  await queueCount(page, 3);
   expect(connectionCount).toBeGreaterThanOrEqual(2);
   const orderNumbers = await page.locator('.cozinha-tv-grid .cozinha-tv-card-senha').allTextContents();
   expect(orderNumbers).toEqual(['Senha 1', 'Senha 2', 'Senha 3']);

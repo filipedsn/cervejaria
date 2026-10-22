@@ -4,7 +4,7 @@
 
 QA focado em PostgreSQL descartável tmpfs, aplicação Fastify e Socket.IO reais, duas sessões independentes e tela TV executada em Chromium/Playwright. A sessão A alterou dados pelas rotas reais; a sessão B abriu `/operacao/cozinha/tv` e acompanhou o navegador. Nenhum banco DEV/PROD, pedido de cliente ou dado pessoal foi usado.
 
-Viewport fixo: `1280×800` (Chromium headless). Para evitar o falso positivo do ensaio anterior, o harness consulta cartões somente por `.cozinha-tv-grid [data-kitchen-order-id]`. Cada cartão precisa ter bounding box não nulo, estilo visível e interseção positiva com o retângulo da grade. A cópia `.cozinha-tv-measure` nunca conta como prova. Para entrega/cancelamento, o harness registra o primeiro snapshot da grade em que o cartão desaparece.
+Viewport fixo: `1280×800` (Chromium headless). Para evitar o falso positivo do ensaio anterior, o harness consulta cartões somente por `.cozinha-tv-grid [data-kitchen-order-id]`. Cada cartão precisa ter bounding box não nulo, estilo visível e interseção positiva com o retângulo da grade. Cartões da grade (`.cozinha-tv-grid`) são a prova visual; não há cópia de medição. Para entrega/cancelamento, o harness registra o primeiro snapshot da grade em que o cartão desaparece.
 
 Todos os marcos de evento Socket.IO, GET, parse de dados e DOM foram lidos com `performance.now()` da sessão B; não subtraí relógios de máquinas diferentes. O marco de ação é registrado imediatamente antes de despachar a chamada pela sessão A. Essa medida ação→evento inclui o custo de orquestração do Playwright entre contextos e deve ser lida como um limite superior aproximado, enquanto evento→GET→DOM usa o relógio do navegador que exibe a cozinha.
 

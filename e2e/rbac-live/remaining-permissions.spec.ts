@@ -86,18 +86,9 @@ async function assertDenied(response: { status(): number }) {
 }
 
 async function findKitchenCard(staff: Page, itemName: string) {
-  const card = staff.locator('article:visible').filter({ hasText: itemName }).first();
-  const pager = staff.locator('.cozinha-tv-pager-bar');
-  const next = pager.locator('.cozinha-tv-page-button').last();
-  for (let page = 0; page < 8; page++) {
-    if (await card.isVisible().catch(() => false)) return card;
-    await expect(pager).toBeVisible();
-    await expect(next).toBeVisible();
-    await expect(next).toBeEnabled();
-    const before = await pager.innerText();
-    await next.click();
-    await expect.poll(() => pager.innerText()).not.toBe(before);
-  }
+  const card = staff.locator('.cozinha-tv-grid article').filter({ hasText: itemName }).first();
+  await expect(staff.locator('.cozinha-tv-pager-bar')).toBeVisible();
+  await card.scrollIntoViewIfNeeded();
   await expect(card).toBeVisible();
   return card;
 }
