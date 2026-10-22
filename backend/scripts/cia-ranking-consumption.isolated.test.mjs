@@ -78,6 +78,11 @@ try {
     const ranking = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/agendas/${agenda.id}`, headers: auth(owner) });
     assert.equal(ranking.statusCode, 200, ranking.body);
     assert.equal(ranking.json().ranking.reduce((sum, row) => sum + row.totalMl, 0), 4000);
+    const rankingBeforeEdit = ranking.json().ranking;
+    await prisma.agendaOperacional.update({ where: { id: agenda.id }, data: { nome: 'Sextas QA editada', diaSemana: 4, horaInicio: '19:00' } });
+    const afterDefinitionEdit = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/agendas/${agenda.id}`, headers: auth(owner) });
+    assert.equal(afterDefinitionEdit.statusCode, 200, afterDefinitionEdit.body);
+    assert.deepEqual(afterDefinitionEdit.json().ranking, rankingBeforeEdit, 'definition changes do not change agenda identity or historical ranking');
     const list = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/ocorrencias`, headers: auth(owner) });
     assert.equal(list.statusCode, 200, list.body);
     assert.ok(list.json().ocorrencias.some((row) => row.id === occurrenceRows[0].id && row.data === '2025-07-01'));

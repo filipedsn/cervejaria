@@ -1140,6 +1140,7 @@ model AgendaOperacional {
   frequencia FrequenciaAgendaOperacional @default(SEMANAL)
   diaSemana Int
   primeiraData DateTime? @db.Date
+  geracaoDesde DateTime? @db.Date
   ultimaData DateTime? @db.Date
   horaInicio String @default("18:00")
   horaFim String?

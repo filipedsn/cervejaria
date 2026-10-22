@@ -11,7 +11,7 @@ import { lockCaixaEmTx } from '../src/lib/operacao/caixa-lock.js';
 assert.equal(validateIsolatedQaEnvironment(process.env).toString(), process.env.DATABASE_URL);
 const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
 await prisma.$executeRawUnsafe('ALTER TABLE quiosque."AgendaOperacional" DROP CONSTRAINT IF EXISTS "AgendaOperacional_periodo_check"');
-await prisma.$executeRawUnsafe('ALTER TABLE quiosque."AgendaOperacional" ADD CONSTRAINT "AgendaOperacional_periodo_check" CHECK (("primeiraData" IS NULL AND "ultimaData" IS NULL) OR ("primeiraData" IS NOT NULL AND ("ultimaData" IS NULL OR "ultimaData" >= "primeiraData")))');
+await prisma.$executeRawUnsafe('ALTER TABLE quiosque."AgendaOperacional" ADD CONSTRAINT "AgendaOperacional_periodo_check" CHECK ("primeiraData" IS NULL OR "ultimaData" IS NULL OR "ultimaData" >= "primeiraData")');
 console.log('QA fixtures: creating tenant and point');
 const tenant = await prisma.cervejaria.create({ data: { nome: 'QA Agenda descartável', slug: `qa-agenda-${randomUUID()}` } });
 const point = await prisma.pontoVenda.create({ data: { nome: 'QA PDV', cervejariaId: tenant.id, ativo: true, usaCaixa: true } });
@@ -38,6 +38,16 @@ try {
     const unauthenticated = await app.inject({ method: 'POST', url: '/api/operacao/agenda/agendamentos', payload: {} }); assert.equal(unauthenticated.statusCode, 401, unauthenticated.body);
     const unauthenticatedRestore = await app.inject({ method: 'POST', url: '/api/operacao/agenda/ocorrencias/example/restaurar', payload: { requestId: randomUUID() } }); assert.equal(unauthenticatedRestore.statusCode, 401, unauthenticatedRestore.body);
   });
+  await check('reproduction: legacy definition-only edit is rejected because the shared scheduling contract requires a date', async () => {
+    const legacy = await prisma.agendaOperacional.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, nome: 'Cia Marítima Igarapé fixture', diaSemana: 5, horaInicio: '18:00', horaFim: '20:00', ativa: false } });
+    const response = await postSchedule({ requestId: randomUUID(), agendaId: legacy.id, nome: 'Nome atualizado', horaInicio: '19:00', horaFim: '21:00', repetirSemanalmente: true, gerarDatas: false, fim: null });
+    assert.equal(response.statusCode, 400, response.body);
+    assert.match(response.body, /Campo obrigatório/i);
+    const unchanged = await prisma.agendaOperacional.findUniqueOrThrow({ where: { id: legacy.id } });
+    assert.equal(unchanged.nome, 'Cia Marítima Igarapé fixture');
+    assert.equal(unchanged.primeiraData, null);
+    await prisma.agendaOperacional.delete({ where: { id: legacy.id } });
+  });
   await check('weekly atomic save and concurrent retry reuse one receipt/series/dates', async () => {
     const body = input();
     const responses = await Promise.all([inject({ method: 'POST', url: '/api/operacao/agenda/agendamentos', payload: body }), inject({ method: 'POST', url: '/api/operacao/agenda/agendamentos', payload: body })]);
@@ -53,7 +63,7 @@ try {
       const response = await postSchedule(body); assert.equal(response.statusCode, 200, response.body); assert.equal(response.json().criadas, 2);
       assert.deepEqual(response.json().datas, ['2026-10-23', '2026-10-30']);
       const rule = await prisma.agendaOperacional.findUniqueOrThrow({ where: { id: response.json().agendaId } });
-      assert.equal(rule.diaSemana, 5); assert.equal(rule.primeiraData?.toISOString().slice(0, 10), '2026-10-23'); assert.equal(rule.ultimaData?.toISOString().slice(0, 10), '2026-10-31');
+      assert.equal(rule.diaSemana, 5); assert.equal(rule.primeiraData?.toISOString().slice(0, 10), '2026-10-23'); assert.equal(rule.geracaoDesde?.toISOString().slice(0, 10), '2026-10-23'); assert.equal(rule.ultimaData?.toISOString().slice(0, 10), '2026-10-31');
       const rows = await prisma.ocorrenciaOperacional.findMany({ where: { agendaId: rule.id }, orderBy: { data: 'asc' } });
       assert.deepEqual(rows.map((row) => row.data.toISOString().slice(0, 10)), ['2026-10-23', '2026-10-30']);
       const listed = await inject({ method: 'GET', url: '/api/operacao/agenda/ocorrencias?inicio=2026-10-01&fim=2026-10-31' });
@@ -90,10 +100,10 @@ try {
     const resumeUrl = `/api/operacao/agenda/agendas/${legacy.id}/retomar`;
     const needsStart = await inject({ method: 'POST', url: resumeUrl, payload: { requestId: randomUUID() } });
     assert.equal(needsStart.statusCode, 409); assert.equal(needsStart.json().code, 'AGENDA_INICIO_NECESSARIO');
-    const resumed = await inject({ method: 'POST', url: resumeUrl, payload: { requestId: randomUUID(), inicio: '2026-11-06', fim: null } });
+    const resumed = await inject({ method: 'POST', url: resumeUrl, payload: { requestId: randomUUID(), aPartirDe: '2026-11-06' } });
     assert.equal(resumed.statusCode, 200, resumed.body); assert.equal(resumed.json().agendaId, legacy.id);
     const reloadedLegacy = await prisma.agendaOperacional.findUniqueOrThrow({ where: { id: legacy.id } });
-    assert.equal(reloadedLegacy.ativa, true); assert.equal(reloadedLegacy.primeiraData?.toISOString().slice(0, 10), '2026-11-06'); assert.equal(reloadedLegacy.ultimaData, null);
+    assert.equal(reloadedLegacy.ativa, true); assert.equal(reloadedLegacy.primeiraData, null); assert.equal(reloadedLegacy.geracaoDesde?.toISOString().slice(0, 10), '2026-11-06'); assert.equal(reloadedLegacy.ultimaData, null);
     assert.equal((await prisma.ocorrenciaOperacional.findUniqueOrThrow({ where: { id: oldCancelled.id } })).status, 'CANCELADA');
   });
   await check('shrinking a recurrence reports future dates outside the new bounds and preserves their status and cash history', async () => {
@@ -102,14 +112,14 @@ try {
     const ruleId = created.json().agendaId as string;
     const historicDate = await prisma.ocorrenciaOperacional.findFirstOrThrow({ where: { agendaId: ruleId, data: new Date('2026-11-13T00:00:00Z') } });
     const session = await prisma.sessaoCaixaOperacao.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, ocorrenciaId: historicDate.id, diaOperacional: historicDate.data, status: 'FECHADO', trocoInicial: 0, abertoPorId: owner.id, fechadoEm: new Date('2026-11-13T23:00:00Z') } });
-    const updateBody = { ...initial, requestId: randomUUID(), agendaId: ruleId, fim: '2026-10-31', gerarDatas: false };
-    const updated = await postSchedule(updateBody); assert.equal(updated.statusCode, 200, updated.body); assert.equal(updated.json().criadas, 0);
-    assert.equal(updated.json().motivo, 'DEFINICAO_SALVA_SEM_AGENDAR'); assert.equal(updated.json().foraDoPeriodo.length, 3);
+    const updateBody = { ultimaData: '2026-10-31' };
+    const updated = await inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${ruleId}`, payload: updateBody }); assert.equal(updated.statusCode, 200, updated.body);
+    assert.equal(updated.json().foraDoPeriodo.length, 3);
     assert.ok(updated.json().foraDoPeriodo.some((row: any) => row.id === historicDate.id && row.data === '2026-11-13' && row.status === 'PROGRAMADA' && row.possuiHistorico));
     const datesAfter = await prisma.ocorrenciaOperacional.findMany({ where: { agendaId: ruleId }, orderBy: { data: 'asc' } });
     assert.equal(datesAfter.length, 5); assert.ok(datesAfter.some((row) => row.id === historicDate.id && row.status === 'PROGRAMADA'));
     assert.deepEqual(await prisma.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: session.id } }), session);
-    const retry = await postSchedule(updateBody); assert.deepEqual(retry.json(), updated.json());
+    const retry = await inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${ruleId}`, payload: updateBody }); assert.equal(retry.statusCode, 200, retry.body);
   });
   await check('month/year boundary is inclusive and direct creation remains definition-only until explicit audited resume', async () => {
     const inputBody = { nome: 'Virada QA', diaSemana: 5, horaInicio: '18:00', horaFim: '20:00', primeiraData: '2026-12-25', ultimaData: '2027-01-08' };
@@ -119,7 +129,7 @@ try {
     const longEdit = await inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${id}`, payload: { ultimaData: '2028-01-01' } }); assert.equal(longEdit.statusCode, 200, longEdit.body);
     await inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${id}`, payload: { ultimaData: '2027-01-08' } });
     const requestId = randomUUID(); const url = `/api/operacao/agenda/agendas/${id}/retomar`;
-    const [first, retry] = await Promise.all([inject({ method: 'POST', url, payload: { requestId } }), inject({ method: 'POST', url, payload: { requestId } })]);
+    const [first, retry] = await Promise.all([inject({ method: 'POST', url, payload: { requestId, aPartirDe: '2026-12-25' } }), inject({ method: 'POST', url, payload: { requestId, aPartirDe: '2026-12-25' } })]);
     assert.equal(first.statusCode, 200, first.body); assert.deepEqual(first.json(), retry.json());
     assert.equal(first.json().criadas, 3); assert.deepEqual(first.json().datas, ['2026-12-25', '2027-01-01', '2027-01-08']);
     assert.equal((await prisma.agendaOperacional.findUniqueOrThrow({ where: { id } })).ativa, true);
@@ -136,19 +146,25 @@ try {
     assert.deepEqual([await prisma.agendaOperacional.count(), await prisma.ocorrenciaOperacional.count(), await prisma.transacaoLog.count()], before);
     await prisma.$executeRawUnsafe(`DROP TRIGGER qa_agenda_fail ON quiosque."OcorrenciaOperacional"`); await prisma.$executeRawUnsafe('DROP FUNCTION quiosque.qa_agenda_fail()');
   });
-  await check('existing active rule without dates saves same ID and schedules its period', async () => {
-    const rule = await prisma.agendaOperacional.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, nome: 'Sem datas', diaSemana: 6, horaInicio: '18:00' } });
+  await check('legacy active rule without start saves definition, preserves weekday and ID, then explicitly initializes generation', async () => {
+    const rule = await prisma.agendaOperacional.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, nome: 'Sem datas', diaSemana: 6, horaInicio: '18:00', horaFim: '20:00' } });
     const before = await inject({ method: 'POST', url: `/api/operacao/agenda/agendas/${rule.id}/gerar`, payload: { inicio: '2026-10-23', fim: '2026-10-31' } });
-    assert.equal(before.statusCode, 409, before.body); assert.equal(before.json().code, 'AGENDA_PERIODO_NAO_DEFINIDO');
-    const result = await schedule({ agendaId: rule.id, nome: 'Regra editada', data: '2026-10-23', fim: '2026-10-31', horaInicio: '20:00', horaFim: '21:00' }); assert.equal(result.agendaId, rule.id); assert.equal(result.criadas, 2);
+    assert.equal(before.statusCode, 409, before.body); assert.equal(before.json().code, 'AGENDA_INICIO_NECESSARIO');
+    const immutableHistoryStart = await inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${rule.id}`, payload: { primeiraData: '2026-10-23' } }); assert.equal(immutableHistoryStart.statusCode, 400, immutableHistoryStart.body);
+    const saved = await inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${rule.id}`, payload: { nome: 'Regra editada', diaSemana: 5, horaInicio: '20:00', horaFim: '21:00', ultimaData: '2026-10-31', local: 'Igarapé' } }); assert.equal(saved.statusCode, 200, saved.body);
     const persisted = await prisma.agendaOperacional.findUniqueOrThrow({ where: { id: rule.id } });
-    assert.equal(persisted.primeiraData?.toISOString().slice(0, 10), '2026-10-23'); assert.equal(persisted.ultimaData?.toISOString().slice(0, 10), '2026-10-31');
+    assert.equal(persisted.id, rule.id); assert.equal(persisted.nome, 'Regra editada'); assert.equal(persisted.diaSemana, 5); assert.equal(persisted.primeiraData, null); assert.equal(persisted.ultimaData?.toISOString().slice(0, 10), '2026-10-31'); assert.equal(persisted.ativa, true);
+    const reloaded = await inject({ method: 'GET', url: '/api/operacao/agenda/ocorrencias?inicio=2026-10-01&fim=2026-10-31' }); assert.equal(reloaded.statusCode, 200); assert.equal(reloaded.json().agendas.find((row: any) => row.id === rule.id).diaSemana, 5);
+    const resumeUrl = `/api/operacao/agenda/agendas/${rule.id}/retomar`;
+    const needsReference = await inject({ method: 'POST', url: resumeUrl, payload: { requestId: randomUUID() } }); assert.equal(needsReference.statusCode, 409); assert.equal(needsReference.json().code, 'AGENDA_INICIO_NECESSARIO');
+    const resumed = await inject({ method: 'POST', url: resumeUrl, payload: { requestId: randomUUID(), aPartirDe: '2026-10-23' } }); assert.equal(resumed.statusCode, 200, resumed.body); assert.deepEqual(resumed.json().datas, ['2026-10-23', '2026-10-30']);
+    const afterResume = await prisma.agendaOperacional.findUniqueOrThrow({ where: { id: rule.id } }); assert.equal(afterResume.primeiraData, null); assert.equal(afterResume.geracaoDesde?.toISOString().slice(0, 10), '2026-10-23');
   });
   await check('inactive rule edits without reactivation or new dates', async () => {
-    const rule = await prisma.agendaOperacional.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, nome: 'Inativa', diaSemana: 6, horaInicio: '18:00', ativa: false } });
-    const result = await schedule({ agendaId: rule.id, gerarDatas: false, nome: 'Inativa editada' }); assert.equal(result.criadas, 0);
-    assert.equal((await prisma.agendaOperacional.findUniqueOrThrow({ where: { id: rule.id } })).ativa, false);
-    await assert.rejects(() => schedule({ agendaId: rule.id, gerarDatas: true }), /inativa/);
+    const rule = await prisma.agendaOperacional.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, nome: 'Inativa', diaSemana: 6, horaInicio: '18:00', horaFim: '20:00', ativa: false } });
+    const result = await inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${rule.id}`, payload: { nome: 'Inativa editada', diaSemana: 0, local: 'Bar' } }); assert.equal(result.statusCode, 200, result.body);
+    const persisted = await prisma.agendaOperacional.findUniqueOrThrow({ where: { id: rule.id } }); assert.equal(persisted.ativa, false); assert.equal(persisted.nome, 'Inativa editada'); assert.equal(persisted.diaSemana, 0); assert.equal(persisted.geracaoDesde, null);
+    assert.equal(await prisma.ocorrenciaOperacional.count({ where: { agendaId: rule.id } }), 0);
   });
   await check('one-off retry and per-occurrence edit preserve ID and history', async () => {
     const body = input({ repetirSemanalmente: false, fim: undefined });
@@ -176,7 +192,7 @@ try {
     const overnight = await postSchedule(input({ repetirSemanalmente: false, data: '2027-04-09', horaInicio: '23:00', horaFim: '01:00', fim: undefined })); assert.equal(overnight.statusCode, 400, overnight.body); assert.equal(overnight.json().code, 'AGENDA_INTERVALO_INVALIDO');
     const alternative = await inject({ method: 'POST', url: '/api/operacao/agenda/ocorrencias', payload: { nome: 'Alt route', data: date, horaInicio: '19:00', horaFim: '21:00' } }); assert.equal(alternative.statusCode, 409, alternative.body); assert.equal(alternative.json().code, 'AGENDA_HORARIO_CONFLITO');
     const day = new Date(`${date}T00:00:00Z`).getUTCDay();
-    const rule = await prisma.agendaOperacional.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, nome: 'Generator blocker', diaSemana: day, primeiraData: new Date(`${date}T00:00:00Z`), ultimaData: new Date(`${date}T00:00:00Z`), horaInicio: '19:00', horaFim: '21:00' } });
+    const rule = await prisma.agendaOperacional.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, nome: 'Generator blocker', diaSemana: day, primeiraData: new Date(`${date}T00:00:00Z`), geracaoDesde: new Date(`${date}T00:00:00Z`), ultimaData: new Date(`${date}T00:00:00Z`), horaInicio: '19:00', horaFim: '21:00' } });
     const before = await prisma.ocorrenciaOperacional.count({ where: { agendaId: rule.id } });
     const generated = await inject({ method: 'POST', url: `/api/operacao/agenda/agendas/${rule.id}/gerar`, payload: { inicio: date, fim: date } }); assert.equal(generated.statusCode, 409, generated.body); assert.equal(generated.json().code, 'AGENDA_HORARIO_CONFLITO');
     assert.equal(await prisma.ocorrenciaOperacional.count({ where: { agendaId: rule.id } }), before);
@@ -284,11 +300,16 @@ try {
     await assert.rejects(() => prisma.$transaction((tx) => cancelOccurrence(tx, { ...scope, cervejariaId: 'foreign' }, row.id)), /não encontrado/);
     await assert.rejects(() => prisma.$transaction((tx) => cancelOccurrence(tx, { ...scope, pontoVendaId: 'foreign' }, row.id)), /não encontrado/);
     const response = await inject({ method: 'POST', url: '/api/operacao/agenda/agendamentos', headers: { 'x-qa-user': staff.id }, payload: input() }); assert.equal(response.statusCode, 403, response.body);
+    const ownedRule = await prisma.agendaOperacional.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, nome: 'Permission fixture', diaSemana: 5, horaInicio: '18:00', horaFim: '20:00' } });
+    const deniedEdit = await inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${ownedRule.id}`, headers: { 'x-qa-user': staff.id }, payload: { nome: 'Denied edit' } }); assert.equal(deniedEdit.statusCode, 403, deniedEdit.body);
     const other = await prisma.cervejaria.create({ data: { nome: 'QA foreign tenant', slug: `foreign-${randomUUID()}` } });
     const otherPoint = await prisma.pontoVenda.create({ data: { nome: 'QA foreign PDV', cervejariaId: other.id } });
     const otherRule = await prisma.agendaOperacional.create({ data: { nome: 'Foreign rule', cervejariaId: other.id, pontoVendaId: otherPoint.id, diaSemana: 6, horaInicio: '18:00' } });
     const otherRow = await prisma.ocorrenciaOperacional.create({ data: { nome: 'Foreign date', cervejariaId: other.id, pontoVendaId: otherPoint.id, data: row.data } });
-    const foreignEdit = await inject({ method: 'POST', url: '/api/operacao/agenda/agendamentos', payload: input({ agendaId: otherRule.id }) }); assert.equal(foreignEdit.statusCode, 404, foreignEdit.body);
+    const foreignEdit = await inject({ method: 'POST', url: '/api/operacao/agenda/agendamentos', payload: input({ agendaId: otherRule.id }) }); assert.equal(foreignEdit.statusCode, 400, foreignEdit.body);
+    const foreignRuleEdit = await inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${otherRule.id}`, payload: { nome: 'Cross tenant write' } }); assert.equal(foreignRuleEdit.statusCode, 404, foreignRuleEdit.body);
+    assert.equal((await prisma.agendaOperacional.findUniqueOrThrow({ where: { id: ownedRule.id } })).nome, 'Permission fixture');
+    assert.equal((await prisma.agendaOperacional.findUniqueOrThrow({ where: { id: otherRule.id } })).nome, 'Foreign rule');
     const foreignCancel = await inject({ method: 'POST', url: `/api/operacao/agenda/ocorrencias/${otherRow.id}/cancelar`, payload: {} }); assert.equal(foreignCancel.statusCode, 404, foreignCancel.body);
     assert.equal((await prisma.ocorrenciaOperacional.findUniqueOrThrow({ where: { id: otherRow.id } })).status, 'PROGRAMADA');
     assert.equal(await prisma.transacaoLog.count(), before);
@@ -335,7 +356,7 @@ try {
     const listed = await inject({ method: 'GET', url: `/api/operacao/agenda/ocorrencias?inicio=${archiveInput.data}&fim=${archiveInput.fim}` }); assert.equal(listed.statusCode, 200, listed.body); assert.ok(!listed.json().agendas.some((rule: any) => rule.id === id)); assert.equal(listed.json().ocorrencias.filter((row: any) => row.agendaId === id).length, 6);
     const archivedList = await inject({ method: 'GET', url: '/api/operacao/agenda/agendas/arquivadas' }); assert.equal(archivedList.statusCode, 200, archivedList.body); assert.equal(archivedList.json().agendas.find((rule: any) => rule.id === id)._count.ocorrencias, 6);
     const generate = await inject({ method: 'POST', url: `/api/operacao/agenda/agendas/${id}/gerar`, payload: { inicio: '2026-11-15', fim: '2026-12-31' } }); assert.equal(generate.statusCode, 409, generate.body);
-    const save = await inject({ method: 'POST', url: '/api/operacao/agenda/agendamentos', payload: input({ agendaId: id }) }); assert.equal(save.statusCode, 409, save.body);
+    const save = await inject({ method: 'POST', url: '/api/operacao/agenda/agendamentos', payload: input({ agendaId: id }) }); assert.equal(save.statusCode, 400, save.body);
     const legacyPatch = await inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${id}`, payload: { ativa: true } }); assert.equal(legacyPatch.statusCode, 400, legacyPatch.body);
     const inactive = await prisma.agendaOperacional.create({ data: { cervejariaId: tenant.id, pontoVendaId: point.id, nome: 'Inativa removida', diaSemana: 6, horaInicio: '18:00', ativa: false } });
     const removed = await inject({ method: 'POST', url: `/api/operacao/agenda/agendas/${inactive.id}/arquivar`, payload: {} }); assert.equal(removed.statusCode, 200, removed.body); const persisted = await prisma.agendaOperacional.findUniqueOrThrow({ where: { id: inactive.id } }); assert.equal(persisted.ativa, false); assert.ok(persisted.archivedAt);

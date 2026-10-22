@@ -17,7 +17,14 @@ const agendaCreateSchema = z.object({
   ultimaData: dateSchema.nullable().optional(),
   local: z.string().trim().max(160).nullable().optional(),
 }).strict();
-const agendaUpdateSchema = agendaCreateSchema.partial().strict();
+const agendaUpdateSchema = z.object({
+  nome: z.string().trim().min(1).max(120).optional(),
+  diaSemana: z.number().int().min(0).max(6).optional(),
+  horaInicio: timeSchema.optional(),
+  horaFim: timeSchema.optional(),
+  ultimaData: dateSchema.nullable().optional(),
+  local: z.string().trim().max(160).nullable().optional(),
+}).strict();
 const occurrenceCreateSchema = z.object({
   nome: z.string().trim().min(1).max(120),
   data: dateSchema,
@@ -27,11 +34,11 @@ const occurrenceCreateSchema = z.object({
 }).strict();
 const generationSchema = z.object({ inicio: dateSchema, fim: dateSchema }).strict();
 const restorationSchema = z.object({ requestId: z.string().uuid(), data: dateSchema.optional(), horaInicio: timeSchema.nullable().optional(), horaFim: timeSchema.nullable().optional() }).strict();
-const resumeSchema = z.object({ requestId: z.string().uuid(), inicio: dateSchema.optional(), fim: dateSchema.nullable().optional() }).strict();
+const resumeSchema = z.object({ requestId: z.string().uuid(), aPartirDe: dateSchema.optional() }).strict();
 const schedulingSchema = occurrenceCreateSchema.extend({
   horaInicio: timeSchema.optional(), horaFim: timeSchema.nullable().optional(),
   requestId: z.string().uuid(), repetirSemanalmente: z.boolean(),
-  agendaId: z.string().min(1).optional(), ocorrenciaId: z.string().min(1).optional(),
+  diaSemana: z.number().int().min(0).max(6).optional(), ocorrenciaId: z.string().min(1).optional(),
   fim: dateSchema.nullable().optional(), gerarDatas: z.boolean().optional(),
 }).strict();
 
@@ -157,15 +164,15 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
       await lockAgendaResource(tx, { cervejariaId: request.operacao.cervejariaId, pontoVendaId }, 'regra', agendaId);
       const current = await tx.agendaOperacional.findFirst({ where: { id: agendaId, cervejariaId: request.operacao.cervejariaId, pontoVendaId, archivedAt: null } });
       if (!current) return null;
-      const nextFirst = body.primeiraData ?? (current.primeiraData?.toISOString().slice(0, 10) ?? null);
+      const nextFirst = current.primeiraData?.toISOString().slice(0, 10) ?? null;
       const nextLast = body.ultimaData !== undefined ? body.ultimaData : (current.ultimaData?.toISOString().slice(0, 10) ?? null);
-      const first = nextFirst ? parseDateOnly(nextFirst) : null; const last = nextLast ? parseDateOnly(nextLast) : null;
+      const first = current.primeiraData; const last = nextLast ? parseDateOnly(nextLast) : null;
       if (nextFirst && nextLast && nextLast < nextFirst) throw Object.assign(new Error('O tÃ©rmino deve ser igual ou posterior ao inÃ­cio.'), { statusCode: 400, code: 'AGENDA_PERIODO_INVALIDO' });
       if (body.horaInicio !== undefined || body.horaFim !== undefined) {
         validateAgendaInterval(body.horaInicio ?? current.horaInicio, body.horaFim ?? current.horaFim);
       }
-      const foraDoPeriodo = first && (body.primeiraData !== undefined || body.ultimaData !== undefined) ? await occurrencesOutsideRange(tx, { cervejariaId: request.operacao.cervejariaId, pontoVendaId }, agendaId, first, last) : [];
-      const data = { ...body, ...(body.primeiraData !== undefined ? { primeiraData: first! } : {}), ...(body.ultimaData !== undefined ? { ultimaData: last } : {}) };
+      const foraDoPeriodo = body.ultimaData !== undefined ? await occurrencesOutsideRange(tx, { cervejariaId: request.operacao.cervejariaId, pontoVendaId }, agendaId, first, last) : [];
+      const data = { ...body, ...(body.ultimaData !== undefined ? { ultimaData: last } : {}) };
       const agenda = await tx.agendaOperacional.update({ where: { id: agendaId }, data });
       await tx.transacaoLog.create({ data: { cervejariaId: request.operacao.cervejariaId, usuarioId: getAuthUser(request).sub, tipo: 'EVENTO_ATUALIZADO', entidadeTipo: 'AgendaOperacional', entidadeId: agendaId, metadata: { acao: 'REPETICAO_DEFINICAO_ATUALIZADA', pontoVendaId, atorId: getAuthUser(request).sub, campos: Object.keys(body), primeiraData: agenda.primeiraData?.toISOString().slice(0, 10) ?? null, ultimaData: agenda.ultimaData?.toISOString().slice(0, 10) ?? null } } });
       return { agenda, foraDoPeriodo };
