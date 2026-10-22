@@ -25,8 +25,8 @@ test('each committed request-state transition emits one event and one distinct m
   recordPaymentRequestTransition('resolved', input, (event) => events.push(event as { action: string }), (attrs) => metrics.push(attrs));
   assert.deepEqual(events.map((event) => event.action), ['payment.requested', 'payment.request_resolved']);
   assert.deepEqual(metrics, [
-    { 'quiver.payment_request.action': 'requested' },
-    { 'quiver.payment_request.action': 'resolved' },
+    { 'quiver.payment_request.action': 'requested', 'cervejaria.id': input.cervejariaId },
+    { 'quiver.payment_request.action': 'resolved', 'cervejaria.id': input.cervejariaId },
   ]);
   assert.equal(events.some((event) => event.action.includes('paid') || event.action.includes('payment.received')), false);
 });

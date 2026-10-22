@@ -25,23 +25,30 @@ const redactPaths = [
   'databaseUrl',
 ];
 
-const SENSITIVE_KEY = /authorization|cookie|jwt|token|password|senha|secret|api[-_]?key|connection[-_]?string|database[-_]?url|x-tap-geo-auth/i;
+const SENSITIVE_KEY = /authorization|cookie|jwt|token|password|senha|secret|api[-_]?key|connection[-_]?string|database[-_]?url|x-tap-geo-auth|email|telefone|address|endereco|requestBody|^payload$/i;
 const SENSITIVE_VALUE = /\b(?:bearer|basic)\s+\S+|\b(?:eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)|\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|amqps?):\/\/\S+|https?:\/\/[^\s/@]+:[^\s/@]+@/i;
 
 function redactString(value: string): string {
-  return SENSITIVE_VALUE.test(value) ? REDACTED : value;
+  return SENSITIVE_VALUE.test(value) ? REDACTED : value
+    .replace(/([?&](?:token|key|password|email|secret|code)=)[^&#\s]*/gi, '$1[REDACTED]')
+    .slice(0, 4000);
 }
 
 /** Redacts arbitrary structured Pino arguments before serialization or OTLP export. */
 export function redactLogValue(value: unknown, key?: string, depth = 0): unknown {
   if (key && SENSITIVE_KEY.test(key)) return REDACTED;
   if (typeof value === 'string') return redactString(value);
-  if (value == null || typeof value !== 'object' || depth > 8) return value;
+  if (depth > 8) return '[MAX_DEPTH]';
+  if (value == null || typeof value !== 'object') return value;
 
   if (value instanceof Error) {
     const safe = new Error(redactString(value.message));
-    safe.name = value.name;
+    safe.name = /^[A-Za-z0-9_.]{1,100}$/.test(value.name) ? value.name : 'Error';
     if (value.stack) safe.stack = redactString(value.stack);
+    const code = (value as Error & { code?: unknown }).code;
+    if (typeof code === 'string' && /^(?:P\d{4}|[A-Z0-9_]{2,40})$/.test(code)) {
+      Object.assign(safe, { code });
+    }
     return safe;
   }
 
@@ -50,7 +57,7 @@ export function redactLogValue(value: unknown, key?: string, depth = 0): unknown
   }
 
   const out: Record<string, unknown> = {};
-  for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
+  for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>).slice(0, 100)) {
     out[childKey] = redactLogValue(childValue, childKey, depth + 1);
   }
   return out;
@@ -62,6 +69,7 @@ function buildPinoLogger(destination?: pino.DestinationStream, release = getRele
     // Pino's default base adds machine hostname and process PID to every record.
     // Release/service and request context below provide the required identifiers.
     base: null,
+    formatters: { bindings: bindings => redactLogValue(bindings) as Record<string, unknown> },
     redact: { paths: redactPaths, censor: REDACTED },
     hooks: {
       logMethod(args, method) {

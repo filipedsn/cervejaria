@@ -3,6 +3,7 @@ import { prisma } from './prisma.js';
 import { emitAuditEvent } from './audit/emit-audit-event.js';
 import { describeTransacao } from './audit/describe.js';
 import { recordTransacaoMetric } from './business-metrics.js';
+import { logger } from './logger.js';
 
 export async function registrarEventoRemovido(tx: Prisma.TransactionClient, input: {
   cervejariaId: string;
@@ -71,6 +72,6 @@ export async function emitirAuditoriaAposCommit(input: {
     });
     recordTransacaoMetric(input.tipo, 'success', company?.slug);
   } catch (error) {
-    console.error('[evento-auditoria] Falha ao emitir auditoria pós-commit:', error);
+    logger.error({ err: error }, 'Falha ao emitir auditoria pós-commit');
   }
 }

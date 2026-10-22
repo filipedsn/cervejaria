@@ -275,7 +275,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
     }
 
     const resumo = resumoPedidoCozinha(atualizado);
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId,
       tipo: 'KITCHEN_ORDER_STATUS_CHANGED',
       usuarioId: user.sub,

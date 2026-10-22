@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
 $paths = Get-DevPaths
-. (Join-Path $paths.ProjectRoot 'scripts\prod\release-candidate.ps1')
+. (Join-Path $PSScriptRoot '..\prod\release-candidate.ps1')
 
 if ($ExpectedReleaseSha -notmatch '^[a-f0-9]{40}$') { throw 'ExpectedReleaseSha must be a full lowercase Git SHA.' }
 & git -C $paths.ProjectRoot cat-file -e "$ExpectedReleaseSha^{commit}"
@@ -132,7 +132,7 @@ try {
     createdAt = [DateTime]::UtcNow.ToString('o')
     nodeVersion = $nodeVersion
     npmVersion = $npmVersion
-    artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/scripts/otel-resource-policy.mjs', 'backend/prisma')
+    artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/scripts/otel-resource-policy.mjs', 'backend/scripts/otel-sdk.mjs', 'backend/prisma')
     files = @(Get-CandidateFileHashes $staging)
   }
   $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Get-CandidateManifestPath $staging) -Encoding UTF8

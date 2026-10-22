@@ -1,0 +1,48 @@
+{
+  "index_patterns": [
+    "metrics-generic.otel-dev"
+  ],
+  "template": {
+    "settings": {
+      "index": {
+        "mode": "time_series",
+        "lifecycle": {
+          "name": "quiver-tap-metrics-dev-45d"
+        }
+      }
+    },
+    "mappings": {
+      "properties": {
+        "data_stream.type": {
+          "type": "constant_keyword",
+          "value": "metrics"
+        }
+      }
+    }
+  },
+  "composed_of": [
+    "metrics@tsdb-settings",
+    "otel@mappings",
+    "metrics-otel@mappings",
+    "semconv-resource-to-ecs@mappings",
+    "metrics@custom",
+    "metrics-otel@custom",
+    "ecs-tsdb@mappings"
+  ],
+  "priority": 121,
+  "version": 1,
+  "_meta": {
+    "ticket": "TAP-96",
+    "scope": "future generations of metrics-generic.otel-dev only",
+    "source_template": "metrics-otel@template v7"
+  },
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "allow_auto_create": true,
+  "ignore_missing_component_templates": [
+    "metrics@custom",
+    "metrics-otel@custom"
+  ]
+}

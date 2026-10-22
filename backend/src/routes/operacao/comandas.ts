@@ -340,7 +340,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     });
 
     for (const c of resultado.canceladas) {
-      void registrarTransacao({
+      await registrarTransacao({
         cervejariaId,
         tipo: 'COMANDA_CANCELADA',
         usuarioId: user.sub,
@@ -351,7 +351,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     }
 
     for (const c of resultado.fechadas) {
-      void registrarTransacao({
+      await registrarTransacao({
         cervejariaId,
         tipo: 'COMANDA_FECHADA',
         usuarioId: user.sub,
@@ -361,7 +361,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       });
     }
 
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId,
       tipo: 'COMANDA_GRUPO_FECHADO',
       usuarioId: user.sub,
@@ -593,7 +593,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     if (temCozinha) for (const pedido of pedidos) await notificarPedidoNovo(app, cervejariaId, pedido);
 
     const resumo = resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId,
       tipo: 'COMANDA_CRIADA',
       usuarioId: user.sub,
@@ -603,7 +603,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     });
 
     for (const pedido of pedidos) {
-      void registrarTransacao({
+      await registrarTransacao({
         cervejariaId,
         tipo: 'KITCHEN_ORDER_CREATED',
         usuarioId: user.sub,
@@ -681,7 +681,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     if (temCozinha) for (const pedido of pedidos) await notificarPedidoNovo(app, cervejariaId, pedido);
 
     const resumo = resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId,
       tipo: 'KITCHEN_ORDER_CREATED',
       usuarioId: user.sub,
@@ -812,7 +812,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
 
     const resumoAtualizado = resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
     notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId,
       tipo: 'COMANDA_DESCONTO_APLICADO',
       usuarioId: user.sub,
@@ -904,7 +904,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
 
     if (!body.deixarPendente) {
-      void registrarTransacao({
+      await registrarTransacao({
         cervejariaId,
         tipo: 'SALE_PAYMENT_RECORDED',
         usuarioId: user.sub,
@@ -969,7 +969,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     if (temCozinha) await notificarPedidosDaComanda(app, cervejariaId, comanda.id);
 
     const resumoCancelada = resumoComanda(cancelada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId,
       tipo: 'COMANDA_CANCELADA',
       usuarioId: user.sub,

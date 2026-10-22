@@ -1,0 +1,41 @@
+{
+  "at": "2026-10-21 America/Sao_Paulo",
+  "policy": "quiver-tap-metrics-dev-45d",
+  "template": "quiver-tap-metrics-dev-45d",
+  "acknowledged": true,
+  "index_patterns": [
+    "metrics-generic.otel-dev"
+  ],
+  "priority": 121,
+  "source_template": "metrics-otel@template v7",
+  "mappingsIdentical": true,
+  "settingsIdenticalExceptLifecycleAndDynamicTimes": true,
+  "cluster": {
+    "active_primary_shards": 610,
+    "active_shards": 610,
+    "unassigned_shards": 85,
+    "max_shards_per_node": 1000
+  },
+  "generationBefore": 2,
+  "generationAfter": 2,
+  "existingBackings": [
+    {
+      "name": ".ds-metrics-generic.otel-dev-2026.09.20-000001",
+      "policy": "metrics",
+      "replicas": 0
+    },
+    {
+      "name": ".ds-metrics-generic.otel-dev-2026.10.20-000002",
+      "policy": "metrics",
+      "replicas": 1
+    }
+  ],
+  "controlPolicies": {
+    "metrics_prd": "metrics",
+    "metrics_infra": "metrics",
+    "logs_technical_dev": "logs"
+  },
+  "forcedRollover": false,
+  "historicalIndicesChanged": false,
+  "deleteObserved": false
+}

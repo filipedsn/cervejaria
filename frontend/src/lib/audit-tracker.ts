@@ -18,6 +18,7 @@ export type HttpRequestTelemetry = {
 };
 
 type UiEvent = {
+  id?: string;
   type: UiEventType;
   page: string;
   element?: string;
@@ -25,12 +26,62 @@ type UiEvent = {
   timestamp?: string;
   meta?: Record<string, unknown>;
   http?: HttpRequestTelemetry;
+  session?: { actorId: string; cervejariaId: string | null };
+  portalSession?: { comandaId: string; slug: string };
+  attempts?: number;
 };
 
 const queue: UiEvent[] = [];
 const pendingPreAuth: UiEvent[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let initialized = false;
+let identity: UiEvent['session'];
+let portalIdentity: UiEvent['portalSession'];
+let generation = 0;
+let inFlight = false;
+let activeRequest: AbortController | undefined;
+let dropped = 0;
+const MAX_QUEUE = 200;
+const MAX_AGE_MS = 15 * 60_000;
+
+export function getAuditQueueStats() { return { queued: queue.length + pendingPreAuth.length, dropped }; }
+
+/** Bind memory to the authenticated origin; never persist UI/identity to disk. */
+export function setAuditIdentity(actorId: string | null, cervejariaId: string | null): void {
+  const next = actorId ? { actorId, cervejariaId } : undefined;
+  if (JSON.stringify(next) === JSON.stringify(identity) && actorId && !portalIdentity) return;
+  generation++;
+  activeRequest?.abort();
+  const preLogin = actorId ? [...queue, ...pendingPreAuth].filter(e => !e.session && e.page === '/login' && e.type === 'page_view') : [];
+  dropped += queue.length + pendingPreAuth.length - preLogin.length;
+  queue.length = pendingPreAuth.length = 0;
+  queue.push(...preLogin);
+  identity = next;
+  portalIdentity = undefined;
+  errorDedup.clear(); errorCountSession = 0;
+  if (flushTimer) clearTimeout(flushTimer);
+  flushTimer = null;
+}
+
+export function setAuditPortalSession(comandaId: string | null, slug: string | null): void {
+  if (comandaId && portalIdentity?.comandaId === comandaId && portalIdentity.slug === slug) return;
+  setAuditIdentity(null, null);
+  if (comandaId && slug) {
+    portalIdentity = { comandaId, slug };
+    trackPageView();
+  }
+}
+
+function trimQueue(): void {
+  for (const buffer of [queue, pendingPreAuth]) {
+    for (let i = buffer.length - 1; i >= 0; i--) {
+      if (Date.now() - Date.parse(buffer[i].timestamp ?? '') > MAX_AGE_MS || (buffer[i].attempts ?? 0) >= 5) { buffer.splice(i, 1); dropped++; }
+    }
+  }
+  while (queue.length + pendingPreAuth.length > MAX_QUEUE) {
+    (pendingPreAuth.length ? pendingPreAuth : queue).shift(); dropped++;
+  }
+}
 
 /** Dedup de ui.error — evita laço em render quebrado. */
 const errorDedup = new Map<string, number>();
@@ -81,30 +132,48 @@ export async function flushAuditEvents(): Promise<void> {
     flushTimer = null;
   }
   if (queue.length === 0) return;
+  trimQueue();
+  if (inFlight || queue.length === 0) return;
+  inFlight = true;
+  const originGeneration = generation;
+  const controller = new AbortController(); activeRequest = controller;
+  const timeout = setTimeout(() => controller.abort(), 10_000);
   const batch = queue.splice(0, 50);
+  for (const event of batch) event.attempts = (event.attempts ?? 0) + 1;
   try {
     const res = await fetch(`${API_BASE}/api/audit/events`, {
       method: 'POST',
+      signal: controller.signal,
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', [CORRELATION_ID_HEADER]: createCorrelationId() },
       body: JSON.stringify({ events: batch }),
     });
     if (res.status === 401) {
-      pendingPreAuth.push(...batch);
+      if (originGeneration === generation) {
+        const anonymous = batch.filter(e => !e.session && e.page === '/login' && e.type === 'page_view');
+        pendingPreAuth.push(...anonymous); dropped += batch.length - anonymous.length;
+      }
       return;
     }
-    if (!res.ok) {
+    if (res.status === 409) { dropped += batch.length; return; }
+    if (!res.ok && originGeneration === generation) {
       queue.unshift(...batch);
     }
   } catch {
-    queue.unshift(...batch);
+    if (originGeneration === generation) queue.unshift(...batch);
+  } finally {
+    clearTimeout(timeout);
+    inFlight = false;
+    if (activeRequest === controller) activeRequest = undefined;
+    trimQueue();
+    if (queue.length) scheduleFlush();
   }
 }
 
 /** Drena eventos enfileirados antes do login (ex.: page_view em /login). */
 export function flushPendingAuditAfterAuth(): void {
-  if (pendingPreAuth.length === 0) return;
   queue.push(...pendingPreAuth.splice(0, pendingPreAuth.length));
+  trimQueue();
   void flushAuditEvents();
 }
 
@@ -113,15 +182,19 @@ function scheduleFlush(): void {
   flushTimer = setTimeout(() => {
     flushTimer = null;
     void flushAuditEvents();
-  }, 5000);
+  }, Math.min(30_000, 1000 * 2 ** Math.min(5, queue[0]?.attempts ?? 2)));
 }
 
 function enqueue(event: UiEvent): void {
   queue.push({
     ...event,
+    id: createCorrelationId(),
+    session: identity,
+    portalSession: portalIdentity,
     meta: { frontendReleaseSha, ...event.meta },
     timestamp: event.timestamp ?? new Date().toISOString(),
   });
+  trimQueue();
   if (queue.length >= 20) {
     void flushAuditEvents();
     return;
@@ -210,7 +283,9 @@ export function initAuditTracker(): void {
 
   window.addEventListener('beforeunload', () => {
     if (queue.length === 0) return;
-    const body = JSON.stringify({ events: queue.splice(0, 50) });
-    navigator.sendBeacon(`${API_BASE}/api/audit/events`, new Blob([body], { type: 'application/json' }));
+    trimQueue();
+    const batch = queue.slice(0, 50);
+    const body = JSON.stringify({ events: batch });
+    if (navigator.sendBeacon(`${API_BASE}/api/audit/events`, new Blob([body], { type: 'application/json' }))) queue.splice(0, batch.length);
   });
 }

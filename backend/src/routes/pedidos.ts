@@ -215,7 +215,7 @@ export async function pedidosRoutes(app: FastifyInstance) {
     emitToEvento(app.io, pedido.eventoId, { type: 'pedido:recusado', data: serialized });
     emitToComanda(app.io, pedido.comandaId, { type: 'pedido:recusado', data: { comandaId: pedido.comandaId } });
 
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId: user.cervejariaId!,
       tipo: 'PORTAL_PEDIDO_RECUSADO',
       usuarioId: user.sub,

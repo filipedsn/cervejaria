@@ -176,7 +176,7 @@ export async function contasPendentesOperacaoRoutes(app: FastifyInstance) {
     });
 
     const resumo = resumoConta(pagamentos.conta);
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId,
       tipo: 'SALE_PAYMENT_RECORDED',
       usuarioId: user.sub,

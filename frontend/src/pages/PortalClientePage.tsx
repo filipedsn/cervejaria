@@ -15,6 +15,7 @@ import { Loading } from '../components/Loading';
 import { PortalBackground } from '../components/PortalBackground';
 import { connectClientePortalSocket } from '../lib/socket';
 import { applyAppTheme, getAppTheme, setAppTheme, type AppTheme } from '../lib/app-theme';
+import { setAuditPortalSession } from '../lib/audit-tracker';
 
 type Tab = 'comanda' | 'pedir';
 
@@ -89,12 +90,14 @@ export function PortalClientePage() {
   const nomeInputRef = useRef<HTMLInputElement>(null);
 
   const clearPortalSession = useCallback(async () => {
+    setAuditPortalSession(null, null);
     try {
       await api.post('/api/public/cliente/logout', {});
     } catch {
       /* cookie pode já estar inválido */
     }
     setAuthenticated(false);
+    setAuditPortalSession(null, null);
     setCart([]);
     queryClient.removeQueries({ queryKey: ['portal-comanda'] });
     queryClient.removeQueries({ queryKey: ['portal-cardapio'] });
@@ -135,6 +138,10 @@ export function PortalClientePage() {
       return pedidos.some((p) => p.status === 'PENDENTE') ? 3000 : false;
     },
   });
+  useEffect(() => {
+    if (authenticated && comandaQuery.data?.id && slug) setAuditPortalSession(comandaQuery.data.id, slug);
+  }, [authenticated, comandaQuery.data?.id, slug]);
+  useEffect(() => () => setAuditPortalSession(null, null), [slug, trailerId]);
 
   const { data: cardapio } = useQuery({
     queryKey: ['portal-cardapio'],

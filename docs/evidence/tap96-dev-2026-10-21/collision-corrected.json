@@ -1,0 +1,63 @@
+{
+  "mode": "corrected",
+  "timestamp": "1792635441928000000",
+  "documents": [
+    {
+      "@timestamp": "1792635441928.0",
+      "resource": {
+        "attributes": {
+          "deployment.environment.name": "development",
+          "service.name": "quiver-tap-api-dev",
+          "service.instance.id": "tap96-corrected-1792635441868"
+        }
+      },
+      "data_stream": {
+        "namespace": "dev",
+        "type": "metrics",
+        "dataset": "generic.otel"
+      },
+      "scope": {
+        "name": "tap96-collision"
+      },
+      "_metric_names_hash": "81ced4d1969660e3",
+      "attributes": {
+        "quiver.metric.name": "tap96.collision.first"
+      },
+      "metrics": {
+        "tap96.collision.first": 1
+      },
+      "event": {
+        "ingested": "2026-10-22T02:17:21.960966994Z"
+      }
+    },
+    {
+      "@timestamp": "1792635441928.0",
+      "resource": {
+        "attributes": {
+          "deployment.environment.name": "development",
+          "service.name": "quiver-tap-api-dev",
+          "service.instance.id": "tap96-corrected-1792635441868"
+        }
+      },
+      "data_stream": {
+        "namespace": "dev",
+        "type": "metrics",
+        "dataset": "generic.otel"
+      },
+      "scope": {
+        "name": "tap96-collision"
+      },
+      "_metric_names_hash": "5276e55a01c131bb",
+      "attributes": {
+        "quiver.metric.name": "tap96.collision.second"
+      },
+      "metrics": {
+        "tap96.collision.second": 2
+      },
+      "event": {
+        "ingested": "2026-10-22T02:17:23.985626475Z"
+      }
+    }
+  ],
+  "searchStatus": 200
+}

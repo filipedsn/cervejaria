@@ -15,6 +15,7 @@ async function makeApp() {
   registerAuditHooks(app, (input) => events.push({ input, context: getTelemetryContext() }));
   app.get('/api/reports/:reportId', async () => ({ result: 'synthetic-only' }));
   app.get('/api/operacao/cozinha', async () => []);
+  app.get('/api/operacao/cozinha/failure/:status', async (request, reply) => reply.code(Number((request.params as { status: string }).status)).send({ error: 'synthetic failure' }));
   return { app, events };
 }
 
@@ -48,6 +49,15 @@ test('audits successful API reads with route template and duration but no query 
   } finally {
     await app.close();
   }
+});
+
+test('polling exclusions preserve 401, 403 and 500 with correlation context', async () => {
+  const { app, events } = await makeApp();
+  try {
+    for (const status of [401, 403, 500]) await app.inject(`/api/operacao/cozinha/failure/${status}`);
+    assert.deepEqual(events.map(e => e.input.http?.statusCode), [401, 403, 500]);
+    assert.ok(events.every(e => e.context?.correlationId));
+  } finally { await app.close(); }
 });
 
 test('keeps high-frequency kitchen polling out of successful-read audit', async () => {

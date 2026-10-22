@@ -1,0 +1,29 @@
+{
+  "mode": "baseline",
+  "timestamp": "1792632838436000000",
+  "documents": [
+    {
+      "@timestamp": "1792632838436.0",
+      "data_stream": {
+        "type": "metrics",
+        "dataset": "generic.otel",
+        "namespace": "dev"
+      },
+      "resource": {
+        "attributes": {
+          "service.name": "quiver-tap-api-dev",
+          "service.instance.id": "tap96-baseline-1792632838265",
+          "deployment.environment.name": "development"
+        }
+      },
+      "scope": {
+        "name": "tap96-collision"
+      },
+      "metrics": {
+        "tap96.collision.first": 1
+      },
+      "_metric_names_hash": "81ced4d1969660e3"
+    }
+  ],
+  "searchStatus": 200
+}

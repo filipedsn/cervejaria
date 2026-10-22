@@ -6,6 +6,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+if ($env:QUIVER_DEV_PROJECT_ROOT) { $root = (Resolve-Path -LiteralPath $env:QUIVER_DEV_PROJECT_ROOT).Path }
 $log = Join-Path $root ("deploy\logs\dev-swap-{0}-{1}.log" -f $ToSha.Substring(0, 7), [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'))
 Start-Transcript -Path $log -Force | Out-Null
 
@@ -29,6 +30,20 @@ function Assert-DevIdentity($Proc, [string]$Kind, [string]$Sha) {
 function Stop-Listener([int]$Port) {
   $p = Get-Listener $Port
   if (-not $p) { return }
+  if ($Port -eq 3002) {
+    $tokenPath = Join-Path $root 'deploy\runtime\dev-shutdown-token'
+    if (Test-Path -LiteralPath $tokenPath) {
+      $token = (Get-Content -LiteralPath $tokenPath -Raw).Trim()
+      try {
+        Invoke-RestMethod 'http://127.0.0.1:3002/api/_dev/shutdown' -Method Post -Headers @{ 'x-quiver-dev-shutdown-token' = $token } -TimeoutSec 4 | Out-Null
+        Wait-Process -Id $p.ProcessId -Timeout 12 -ErrorAction SilentlyContinue
+        if (-not (Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue)) { return }
+      } catch { Write-Output 'DEV graceful shutdown unavailable; using verified listener fallback.' }
+    }
+  }
+  $remaining = Get-CimInstance Win32_Process -Filter "ProcessId=$($p.ProcessId)" -ErrorAction SilentlyContinue
+  if (-not $remaining) { return }
+  if ($remaining.CreationDate -ne $p.CreationDate -or $remaining.CommandLine -ne $p.CommandLine) { throw 'DEV PID was reused while waiting; refusing to stop a different process.' }
   Stop-Process -Id $p.ProcessId -Force
   Wait-Process -Id $p.ProcessId -Timeout 15 -ErrorAction SilentlyContinue
 }
@@ -75,10 +90,10 @@ try {
 
   $attempt = 0
   while ($true) {
-    try { & (Join-Path $root 'scripts\dev\publish-dev-release.ps1') -ExpectedReleaseSha $ToSha; break }
+    try { & (Join-Path $PSScriptRoot 'publish-dev-release.ps1') -ExpectedReleaseSha $ToSha; break }
     catch { $attempt++; if ($attempt -ge 3) { throw }; Write-Output "publish retry $attempt after: $($_.Exception.Message)"; Start-Sleep -Seconds 5 }
   }
-  & (Join-Path $root 'scripts\dev\start-dev-artifacts.ps1')
+  & (Join-Path $PSScriptRoot 'start-dev-artifacts.ps1')
   Wait-Release $ToSha
   Write-Output "DEV_SWAP_OK=$ToSha"
 } catch {
@@ -95,7 +110,7 @@ try {
         if (Test-Path $active) { Move-Item $active (Join-Path $root ("deploy\dev-artifacts.failed-{0}-{1}" -f [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss'), $ToSha.Substring(0, 7))) }
         Move-Item $previous.FullName $active
       }
-      & (Join-Path $root 'scripts\dev\start-dev-artifacts.ps1')
+      & (Join-Path $PSScriptRoot 'start-dev-artifacts.ps1')
       Wait-Release $FromSha
       Write-Output "DEV_ROLLED_BACK=$FromSha"
     } catch {

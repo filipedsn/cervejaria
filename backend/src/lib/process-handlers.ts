@@ -1,7 +1,8 @@
 import { emitAuditEvent } from './audit/emit-audit-event.js';
 import { getTelemetryContext } from './telemetry-context.js';
+import { logger } from './logger.js';
 
-export function registerProcessErrorHandlers(): void {
+export function registerProcessErrorHandlers(shutdown: () => Promise<void> = async () => { process.exit(1); }): void {
   process.on('uncaughtException', (err) => {
     try {
       emitAuditEvent({
@@ -11,10 +12,10 @@ export function registerProcessErrorHandlers(): void {
         metadata: { stack: err.stack?.slice(0, 2000) },
       });
     } catch {
-      console.error('[process] uncaughtException (audit falhou):', err);
+      logger.error({ err }, 'process audit failed');
     }
-    console.error('[process] uncaughtException:', err);
-    process.exit(1);
+    logger.error({ err }, 'uncaught exception');
+    void shutdown();
   });
 
   process.on('unhandledRejection', (reason) => {
@@ -28,9 +29,9 @@ export function registerProcessErrorHandlers(): void {
         metadata: { stack: stack?.slice(0, 2000) },
       });
     } catch {
-      console.error('[process] unhandledRejection (audit falhou):', reason);
+      logger.error({ err: reason }, 'process audit failed');
     }
-    console.error('[process] unhandledRejection:', reason);
+    logger.error({ err: reason }, 'unhandled rejection');
   });
 }
 
@@ -38,7 +39,7 @@ export function registerProcessErrorHandlers(): void {
 export function emitProcessAuditFailure(action: string, message: string, meta?: Record<string, unknown>): void {
   const ctx = getTelemetryContext();
   if (!ctx) {
-    console.error(`[audit] ${action}: ${message}`, meta);
+    logger.error({ action, metadata: meta }, message);
     return;
   }
   emitAuditEvent({

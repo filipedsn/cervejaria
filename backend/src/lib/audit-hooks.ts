@@ -40,7 +40,7 @@ function shouldSkipAudit(url: string, method?: string): boolean {
 // UI audit events emit their own records, so they need context even though we do
 // not create a second HTTP audit event for the batch endpoint.
 function shouldInitializeTelemetry(url: string, method?: string): boolean {
-  return !shouldSkipAudit(url, method) || url.startsWith('/api/audit/events');
+  return !shouldSkipAudit(url, method) || url.startsWith('/api/');
 }
 
 /** 401 em /api/auth/me é esperado (cookie expirado ao reabrir aba). */
@@ -59,7 +59,7 @@ function shouldCaptureRequestBody(route: string): boolean {
   // Portal order payloads contain product/options/quantity details that add no
   // troubleshooting value to a request audit; the semantic transaction event
   // records only the persisted entity and safe tenant/actor context.
-  return !(route.startsWith('/api/public/cervejarias/') && route.endsWith('/comanda/pedidos'));
+  return false;
 }
 
 export function buildHttpAuditMetadata(
@@ -134,7 +134,7 @@ export function registerAuditHooks(
   });
 
   app.addHook('onResponse', async (request, reply) => {
-    if (shouldSkipAudit(request.url, request.method)) return;
+    if (shouldSkipAudit(request.url, request.method) && reply.statusCode < 400) return;
 
     const req = request as AuditRequest;
     const ctx = req.telemetryCtx ?? (await resolveTelemetryFromRequest(request));

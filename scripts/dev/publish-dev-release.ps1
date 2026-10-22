@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
 $paths = Get-DevPaths
-. (Join-Path $paths.ProjectRoot 'scripts\prod\release-candidate.ps1')
+. (Join-Path $PSScriptRoot '..\prod\release-candidate.ps1')
 
 if ($ExpectedReleaseSha -notmatch '^[a-f0-9]{40}$') { throw 'ExpectedReleaseSha must be a full lowercase Git SHA.' }
 $candidateRoot = Join-Path $paths.ProjectRoot 'deploy\release-candidates'
@@ -36,6 +36,11 @@ try {
     candidateManifestSha256 = $candidateManifestHash
     dependencyManifest = "deploy/dev-runtime-dependencies/$ExpectedReleaseSha/dependency-manifest.json"
     activatedAt = [DateTime]::UtcNow.ToString('o')
+  }
+  if ($env:QUIVER_DEV_OTEL_ENDPOINT) {
+    $endpoint = [uri]$env:QUIVER_DEV_OTEL_ENDPOINT
+    if ($endpoint.Scheme -ne 'http' -or $endpoint.Host -notin @('127.0.0.1','localhost') -or $endpoint.Port -lt 1024 -or $endpoint.UserInfo -or $endpoint.Query -or $endpoint.AbsolutePath -ne '/') { throw 'Temporary DEV OTEL endpoint must be a credential-free loopback HTTP base URL.' }
+    $runtimeManifest.telemetryEndpoint = $endpoint.AbsoluteUri.TrimEnd('/')
   }
   $runtimeManifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $staging 'manifest.json') -Encoding UTF8
 

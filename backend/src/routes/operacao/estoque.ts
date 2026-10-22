@@ -77,7 +77,7 @@ export async function estoqueOperacaoRoutes(app: FastifyInstance) {
       registradoPorId: user.sub,
     });
 
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId,
       tipo: 'INVENTORY_MOVEMENT',
       usuarioId: user.sub,
@@ -103,7 +103,7 @@ export async function estoqueOperacaoRoutes(app: FastifyInstance) {
       registradoPorId: user.sub,
     });
 
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId,
       tipo: 'INVENTORY_MOVEMENT',
       usuarioId: user.sub,
@@ -128,7 +128,7 @@ export async function estoqueOperacaoRoutes(app: FastifyInstance) {
       registradoPorId: user.sub,
     });
 
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId,
       tipo: 'INVENTORY_MOVEMENT',
       usuarioId: user.sub,

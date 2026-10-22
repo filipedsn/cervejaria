@@ -1,6 +1,7 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { formatBrazilDateTime } from './event-datetime.js';
 import { getSmtpCredentials } from './system-config.js';
+import { logger } from './logger.js';
 import {
   formatObservabilityAlertEmailHtml,
   formatObservabilityAlertEmailSubject,
@@ -20,6 +21,9 @@ async function getTransporter() {
     port: creds.port,
     secure: creds.secure,
     auth: { user: creds.user, pass: creds.pass },
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 10_000,
   });
   cachedKey = key;
   return transporter;
@@ -46,10 +50,7 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
 
   if (!transport) {
     if (process.env.NODE_ENV !== 'production') {
-      console.log('\n--- E-mail de recuperação (SMTP não configurado) ---');
-      console.log(`Para: ${to}`);
-      console.log(`Link: ${resetUrl}`);
-      console.log('---\n');
+      logger.warn({ event: 'email.reset.delivery_unavailable' }, 'SMTP not configured; password reset email was not delivered');
     }
     return;
   }

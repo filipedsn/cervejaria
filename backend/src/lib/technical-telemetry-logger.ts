@@ -1,9 +1,5 @@
-import { SeverityNumber, type Logger } from '@opentelemetry/api-logs';
-import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
-import { resourceFromAttributes } from '@opentelemetry/resources';
-import { BatchLogRecordProcessor, LoggerProvider } from '@opentelemetry/sdk-logs';
+import { logs, SeverityNumber, type Logger } from '@opentelemetry/api-logs';
 
-import { getReleaseContext } from './release-context.js';
 import { getObservabilityEnv } from './telemetry-context.js';
 
 export const TECHNICAL_TELEMETRY_DATASET = 'technical';
@@ -19,42 +15,21 @@ export type TechnicalTelemetryEvent =
   | { action: 'technical_telemetry_probe'; probeId: string };
 type TechnicalTelemetryLogger = Pick<Logger, 'emit'>;
 
-let technicalProvider: LoggerProvider | undefined;
-let technicalLogger: TechnicalTelemetryLogger | undefined;
-
 function getTechnicalLogger(): TechnicalTelemetryLogger {
-  if (!technicalLogger) {
-    const release = getReleaseContext();
-    technicalProvider = new LoggerProvider({
-      resource: resourceFromAttributes({
-        'service.name': release.service,
-        'service.version': release.releaseSha,
-        'deployment.environment.name': release.environment,
-        'data_stream.type': 'logs',
-        'data_stream.dataset': TECHNICAL_TELEMETRY_DATASET,
-        'data_stream.namespace': getObservabilityEnv(),
-      }),
-      processors: [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter() })],
-    });
-    technicalLogger = technicalProvider.getLogger('quiver-tap-technical', '1.0.0');
-  }
-  return technicalLogger;
+  // Reuse the SDK resource/instance and exporter; a second provider can drift
+  // from the process identity and bypass coordinated shutdown.
+  return logs.getLogger('quiver-tap-technical', '1.0.0');
 }
 
-/** Starts the singleton provider before requests begin. Safe to call repeatedly. */
-export function initializeTechnicalTelemetry(): void {
-  getTechnicalLogger();
-}
+export function initializeTechnicalTelemetry(): void { getTechnicalLogger(); }
 
-/** Explicit flush for bounded diagnostic probes; never used per request. */
 export async function forceFlushTechnicalTelemetry(): Promise<void> {
-  await technicalProvider?.forceFlush();
+  const provider = logs.getLoggerProvider() as { forceFlush?: () => Promise<void> };
+  await provider.forceFlush?.();
 }
 
-/** Flushes this dedicated technical transport during the existing app shutdown. */
-export async function shutdownTechnicalTelemetry(): Promise<void> {
-  await technicalProvider?.shutdown();
-}
+/** The single SDK owner drains this provider together with metrics/traces. */
+export async function shutdownTechnicalTelemetry(): Promise<void> {}
 
 export function isLegacyFallbackKind(value: string): value is LegacyFallbackKind {
   return (LEGACY_FALLBACK_KINDS as readonly string[]).includes(value);

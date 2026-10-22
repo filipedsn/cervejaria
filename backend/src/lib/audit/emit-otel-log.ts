@@ -1,4 +1,5 @@
 import { logs, SeverityNumber } from '@opentelemetry/api-logs';
+import { redactLogValue } from '../logger.js';
 
 type OtelAttr = string | number | boolean;
 
@@ -22,7 +23,7 @@ function getAuditOtelLogger() {
   return logs.getLogger('quiver-tap-audit', '1.0.0');
 }
 
-/** Emissão direta OTLP — reserva para uso futuro; hoje audit exporta via Pino + OTel instrumentation. */
+/** Authoritative audit transport; sanitizes even callers outside emitAuditEvent. */
 export function emitAuditLogRecord(
   payload: Record<string, unknown>,
   message: string,
@@ -31,7 +32,7 @@ export function emitAuditLogRecord(
   getAuditOtelLogger().emit({
     severityNumber: outcome === 'failure' ? SeverityNumber.WARN : SeverityNumber.INFO,
     severityText: outcome === 'failure' ? 'WARN' : 'INFO',
-    body: message,
-    attributes: auditPayloadToOtelAttributes(payload),
+    body: redactLogValue(message) as string,
+    attributes: auditPayloadToOtelAttributes(redactLogValue(payload) as Record<string, unknown>),
   });
 }

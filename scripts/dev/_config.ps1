@@ -6,6 +6,12 @@ $script:DevFrontendPort = 5202
 
 function Get-DevPaths {
   $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+  # A branch worktree may prepare/deploy a pinned commit into the canonical DEV
+  # slot without copying scripts over another developer's working checkout.
+  if ($env:QUIVER_DEV_PROJECT_ROOT) {
+    $projectRoot = (Resolve-Path -LiteralPath $env:QUIVER_DEV_PROJECT_ROOT).Path
+    if (-not (Test-Path (Join-Path $projectRoot '.git'))) { throw 'DEV project root must be a Git checkout.' }
+  }
   $runtimeDir = Join-Path $projectRoot 'deploy\runtime'
   $logDir = Join-Path $projectRoot 'deploy\logs'
 

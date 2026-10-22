@@ -386,7 +386,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       ocorrenciaId: body.ocorrenciaId,
       confirmarDataDiferente: body.confirmarDataDiferente,
     });
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId,
       tipo: 'CASH_REGISTER_OPENED',
       usuarioId: user.sub,
@@ -413,7 +413,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       observacao: body.observacao,
       registradoPorId: user.sub,
     });
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId,
       tipo: 'CASH_MOVEMENT_RECORDED',
       usuarioId: user.sub,
@@ -445,7 +445,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     });
     const original = resumo.movimentos.find((movimento) => movimento.id === body.movimentoId);
     // Credencial e senha nunca fazem parte do payload de transacao/auditoria.
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId,
       tipo: 'CASH_MOVEMENT_CORRECTED',
       usuarioId: user.sub,
@@ -489,7 +489,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
         Math.abs(centavos(dif.cartaoCredito))
       : 0;
     if (divCent > 0) recordDivergenciaCaixa(divCent);
-    void registrarTransacao({
+    await registrarTransacao({
       cervejariaId,
       tipo: 'CASH_REGISTER_CLOSED',
       usuarioId: user.sub,

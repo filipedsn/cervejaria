@@ -5,6 +5,8 @@ import { emitAuditEvent } from './audit/emit-audit-event.js';
 import { describeTransacao } from './audit/describe.js';
 import { mergeTransacaoMetadata } from './transacao-payload.js';
 import { recordTransacaoMetric } from './business-metrics.js';
+import { afterTransactionCommit } from './transaction-effects.js';
+import { logger } from './logger.js';
 
 export type RegistrarTransacaoInput = {
   cervejariaId: string;
@@ -58,33 +60,40 @@ export async function registrarTransacao(
       },
     });
 
-    const metaObj = metadata as Record<string, unknown>;
-    const slug = await auditSlugForTransacao(input.cervejariaId);
-    const action =
-      metaObj.operacao === 'CAPABILITY_CHANGED'
-        ? 'operacao.capacidade_alterada'
-        : `transacao.${input.tipo.toLowerCase()}`;
-    emitAuditEvent({
-      action,
-      message: describeTransacao(input.tipo, metaObj),
-      outcome: 'success',
-      entityType: input.entidadeTipo ?? undefined,
-      entityId: input.entidadeId ?? undefined,
-      cervejariaId: input.cervejariaId,
-      slug,
-      metadata: {
-        tipo: input.tipo,
-        eventoId: input.eventoId,
-        comandaId: input.comandaId,
-        ...metaObj,
-      },
-    });
+    const publishCommitted = async () => {
+      const metaObj = metadata as Record<string, unknown>;
+      const slug = await auditSlugForTransacao(input.cervejariaId);
+      const action =
+        metaObj.operacao === 'CAPABILITY_CHANGED'
+          ? 'operacao.capacidade_alterada'
+          : `transacao.${input.tipo.toLowerCase()}`;
+      emitAuditEvent({
+        action,
+        message: describeTransacao(input.tipo, metaObj),
+        outcome: 'success',
+        entityType: input.entidadeTipo ?? undefined,
+        entityId: input.entidadeId ?? undefined,
+        cervejariaId: input.cervejariaId,
+        slug,
+        metadata: {
+          tipo: input.tipo,
+          eventoId: input.eventoId,
+          comandaId: input.comandaId,
+          ...metaObj,
+        },
+      });
 
-    recordTransacaoMetric(input.tipo, 'success', slug);
+      recordTransacaoMetric(input.tipo, 'success', slug);
+    };
+    if (tx) {
+      if (!afterTransactionCommit(tx, publishCommitted)) {
+        logger.warn({ event: 'audit.unmanaged_transaction', tipo: input.tipo }, 'Audit success withheld until transaction commit can be verified');
+      }
+    } else { await publishCommitted(); }
 
     return row;
   } catch (err) {
-    console.error('[transacao-log] Falha ao registrar transação:', err);
+    logger.error({ err }, 'Falha ao registrar transação');
     const failMeta = mergeTransacaoMetadata(input.metadata, input.payload);
     const slug = await auditSlugForTransacao(input.cervejariaId);
     emitAuditEvent({

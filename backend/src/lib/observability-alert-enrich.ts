@@ -393,6 +393,7 @@ async function fetchFailureLogs(payload: KibanaAlertPayload): Promise<ParsedLog[
   const index = auditIndexForRule(payload.ruleName);
 
   const res = await fetch(`${esUrl()}/${encodeURIComponent(index)}/_search`, {
+    signal: AbortSignal.timeout(10_000),
     method: 'POST',
     headers: esAuthHeaders(),
     body: JSON.stringify({

@@ -2,8 +2,8 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
 $paths = Get-DevPaths
 . (Join-Path $paths.ProjectRoot 'scripts\prod\_config.ps1')
-. (Join-Path $paths.ProjectRoot 'scripts\dev\_config.ps1')
-. (Join-Path $paths.ProjectRoot 'scripts\prod\release-candidate.ps1')
+. (Join-Path $PSScriptRoot '_config.ps1')
+. (Join-Path $PSScriptRoot '..\prod\release-candidate.ps1')
 
 $artifactRoot = Join-Path $paths.ProjectRoot 'deploy\dev-artifacts'
 $manifestPath = Join-Path $artifactRoot 'manifest.json'
@@ -28,13 +28,24 @@ if ($dependencyManifest.releaseSha -ne $manifest.releaseSha -or -not (Test-Path 
 $nodeDir = Split-Path $paths.NpmCmd -Parent
 $env:Path = "$nodeDir;$env:Path"
 $env:NODE_ENV = 'development'
+Get-ChildItem env: | Where-Object { $_.Name -match '^(OTEL_|ELASTIC_OTEL_)' } | ForEach-Object { Remove-Item -LiteralPath ('env:' + $_.Name) }
 Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment development
+if ($manifest.telemetryEndpoint) {
+  $endpoint = [uri]$manifest.telemetryEndpoint
+  if ($endpoint.Scheme -ne 'http' -or $endpoint.Host -notin @('127.0.0.1','localhost') -or $endpoint.Port -lt 1024 -or $endpoint.UserInfo -or $endpoint.Query -or $endpoint.AbsolutePath -ne '/') { throw 'Invalid temporary DEV telemetry endpoint in runtime manifest.' }
+  $env:OTEL_EXPORTER_OTLP_ENDPOINT = $endpoint.AbsoluteUri.TrimEnd('/')
+  foreach ($signal in @('LOGS','METRICS','TRACES')) {
+    Set-Item -Path "env:OTEL_EXPORTER_OTLP_${signal}_ENDPOINT" -Value ($endpoint.AbsoluteUri.TrimEnd('/') + '/v1/' + $signal.ToLowerInvariant())
+  }
+}
 # Keep service identity and opaque process instance ID for APM metrics; omit host, process, OS, container, and cloud metadata.
 $env:OTEL_NODE_RESOURCE_DETECTORS = 'env,serviceinstance'
 $env:RELEASE_SHA = $manifest.releaseSha
 $env:VITE_RELEASE_SHA = $manifest.releaseSha
 $env:PORT = [string]$paths.BackendPort
 $env:HOST = '0.0.0.0'
+$env:QUIVER_DEV_SHUTDOWN_TOKEN = [guid]::NewGuid().ToString('N')
+Set-Content -LiteralPath (Join-Path $paths.RuntimeDir 'dev-shutdown-token') -Value $env:QUIVER_DEV_SHUTDOWN_TOKEN -Encoding ASCII
 $env:FRONTEND_DIST = Join-Path $artifactRoot 'frontend'
 if ($env:UPLOADS_DIR -and -not [IO.Path]::IsPathRooted($env:UPLOADS_DIR)) {
   $env:UPLOADS_DIR = [IO.Path]::GetFullPath((Join-Path $paths.BackendDir $env:UPLOADS_DIR))
@@ -64,7 +75,7 @@ function Start-DevArtifactService {
 }
 
 $savedNodeOptions = $env:NODE_OPTIONS
-$env:NODE_OPTIONS = if ($savedNodeOptions -and $savedNodeOptions -notlike '*opentelemetry-node*') { $savedNodeOptions } else { '' }
+$env:NODE_OPTIONS = ''
 try {
   Start-DevArtifactService -Label 'API DEV compiled release' -WorkingDir (Join-Path $artifactRoot 'backend') -NpmArgs @('run','start') -PidFile $paths.BackendPidFile -Port $paths.BackendPort -StdoutLog $paths.BackendLog -StderrLog $paths.BackendErrLog
   $env:NODE_OPTIONS = ''

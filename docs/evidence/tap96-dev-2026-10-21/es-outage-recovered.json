@@ -1,0 +1,305 @@
+{
+  "emittedAt": "2026-10-22T02:09:33.306Z",
+  "searchableAt": "2026-10-22T02:10:26.399Z",
+  "expected": 10,
+  "result": {
+    "took": 25,
+    "timed_out": false,
+    "_shards": {
+      "total": 1,
+      "successful": 1,
+      "skipped": 0,
+      "failed": 0
+    },
+    "hits": {
+      "total": {
+        "value": 10,
+        "relation": "eq"
+      },
+      "max_score": 1.4098248,
+      "hits": [
+        {
+          "_index": ".ds-logs-generic.otel-dev-2026.10.22-000001",
+          "_id": "AaFhX+qo9RaU3hSw2Dzr",
+          "_score": 1.4098248,
+          "_source": {
+            "observed_timestamp": "0.0",
+            "@timestamp": "1792634973306.0",
+            "resource": {
+              "attributes": {
+                "service.name": "tap96-es-outage"
+              }
+            },
+            "data_stream": {
+              "namespace": "dev",
+              "type": "logs",
+              "dataset": "generic.otel"
+            },
+            "scope": {
+              "name": "tap96-es-outage"
+            },
+            "body": {
+              "text": "tap96-es-outage-0"
+            },
+            "event": {
+              "ingested": "2026-10-22T02:10:23.325778640Z"
+            }
+          }
+        },
+        {
+          "_index": ".ds-logs-generic.otel-dev-2026.10.22-000001",
+          "_id": "AaFhX+qo9RaU3hS32D/s",
+          "_score": 1.4098248,
+          "_source": {
+            "observed_timestamp": "0.0",
+            "@timestamp": "1792634973306.0",
+            "resource": {
+              "attributes": {
+                "service.name": "tap96-es-outage"
+              }
+            },
+            "data_stream": {
+              "namespace": "dev",
+              "type": "logs",
+              "dataset": "generic.otel"
+            },
+            "scope": {
+              "name": "tap96-es-outage"
+            },
+            "body": {
+              "text": "tap96-es-outage-1"
+            },
+            "event": {
+              "ingested": "2026-10-22T02:10:25.214672202Z"
+            }
+          }
+        },
+        {
+          "_index": ".ds-logs-generic.otel-dev-2026.10.22-000001",
+          "_id": "AaFhX+qo9RaU3hS32KTt",
+          "_score": 1.4098248,
+          "_source": {
+            "observed_timestamp": "0.0",
+            "@timestamp": "1792634973306.0",
+            "resource": {
+              "attributes": {
+                "service.name": "tap96-es-outage"
+              }
+            },
+            "data_stream": {
+              "namespace": "dev",
+              "type": "logs",
+              "dataset": "generic.otel"
+            },
+            "scope": {
+              "name": "tap96-es-outage"
+            },
+            "body": {
+              "text": "tap96-es-outage-2"
+            },
+            "event": {
+              "ingested": "2026-10-22T02:10:25.315849123Z"
+            }
+          }
+        },
+        {
+          "_index": ".ds-logs-generic.otel-dev-2026.10.22-000001",
+          "_id": "AaFhX+qo9RaU3hS42Abu",
+          "_score": 1.4098248,
+          "_source": {
+            "observed_timestamp": "0.0",
+            "@timestamp": "1792634973306.0",
+            "resource": {
+              "attributes": {
+                "service.name": "tap96-es-outage"
+              }
+            },
+            "data_stream": {
+              "namespace": "dev",
+              "type": "logs",
+              "dataset": "generic.otel"
+            },
+            "scope": {
+              "name": "tap96-es-outage"
+            },
+            "body": {
+              "text": "tap96-es-outage-3"
+            },
+            "event": {
+              "ingested": "2026-10-22T02:10:25.413585380Z"
+            }
+          }
+        },
+        {
+          "_index": ".ds-logs-generic.otel-dev-2026.10.22-000001",
+          "_id": "AaFhX+qo9RaU3hS42Gnv",
+          "_score": 1.4098248,
+          "_source": {
+            "observed_timestamp": "0.0",
+            "@timestamp": "1792634973306.0",
+            "resource": {
+              "attributes": {
+                "service.name": "tap96-es-outage"
+              }
+            },
+            "data_stream": {
+              "namespace": "dev",
+              "type": "logs",
+              "dataset": "generic.otel"
+            },
+            "scope": {
+              "name": "tap96-es-outage"
+            },
+            "body": {
+              "text": "tap96-es-outage-4"
+            },
+            "event": {
+              "ingested": "2026-10-22T02:10:25.452409978Z"
+            }
+          }
+        },
+        {
+          "_index": ".ds-logs-generic.otel-dev-2026.10.22-000001",
+          "_id": "AaFhX+qo9RaU3hS42Ibw",
+          "_score": 1.4098248,
+          "_source": {
+            "observed_timestamp": "0.0",
+            "@timestamp": "1792634973306.0",
+            "resource": {
+              "attributes": {
+                "service.name": "tap96-es-outage"
+              }
+            },
+            "data_stream": {
+              "namespace": "dev",
+              "type": "logs",
+              "dataset": "generic.otel"
+            },
+            "scope": {
+              "name": "tap96-es-outage"
+            },
+            "body": {
+              "text": "tap96-es-outage-5"
+            },
+            "event": {
+              "ingested": "2026-10-22T02:10:25.541902510Z"
+            }
+          }
+        },
+        {
+          "_index": ".ds-logs-generic.otel-dev-2026.10.22-000001",
+          "_id": "AaFhX+qo9RaU3hS42Nfx",
+          "_score": 1.4098248,
+          "_source": {
+            "observed_timestamp": "0.0",
+            "@timestamp": "1792634973306.0",
+            "resource": {
+              "attributes": {
+                "service.name": "tap96-es-outage"
+              }
+            },
+            "data_stream": {
+              "namespace": "dev",
+              "type": "logs",
+              "dataset": "generic.otel"
+            },
+            "scope": {
+              "name": "tap96-es-outage"
+            },
+            "body": {
+              "text": "tap96-es-outage-6"
+            },
+            "event": {
+              "ingested": "2026-10-22T02:10:25.623232122Z"
+            }
+          }
+        },
+        {
+          "_index": ".ds-logs-generic.otel-dev-2026.10.22-000001",
+          "_id": "AaFhX+qo9RaU3hS52DHy",
+          "_score": 1.4098248,
+          "_source": {
+            "observed_timestamp": "0.0",
+            "@timestamp": "1792634973306.0",
+            "resource": {
+              "attributes": {
+                "service.name": "tap96-es-outage"
+              }
+            },
+            "data_stream": {
+              "namespace": "dev",
+              "type": "logs",
+              "dataset": "generic.otel"
+            },
+            "scope": {
+              "name": "tap96-es-outage"
+            },
+            "body": {
+              "text": "tap96-es-outage-7"
+            },
+            "event": {
+              "ingested": "2026-10-22T02:10:25.642150699Z"
+            }
+          }
+        },
+        {
+          "_index": ".ds-logs-generic.otel-dev-2026.10.22-000001",
+          "_id": "AaFhX+qo9RaU3hS52Ebz",
+          "_score": 1.4098248,
+          "_source": {
+            "observed_timestamp": "0.0",
+            "@timestamp": "1792634973306.0",
+            "resource": {
+              "attributes": {
+                "service.name": "tap96-es-outage"
+              }
+            },
+            "data_stream": {
+              "namespace": "dev",
+              "type": "logs",
+              "dataset": "generic.otel"
+            },
+            "scope": {
+              "name": "tap96-es-outage"
+            },
+            "body": {
+              "text": "tap96-es-outage-8"
+            },
+            "event": {
+              "ingested": "2026-10-22T02:10:25.733719118Z"
+            }
+          }
+        },
+        {
+          "_index": ".ds-logs-generic.otel-dev-2026.10.22-000001",
+          "_id": "AaFhX+qo9RaU3hS52KH0",
+          "_score": 1.4098248,
+          "_source": {
+            "observed_timestamp": "0.0",
+            "@timestamp": "1792634973306.0",
+            "resource": {
+              "attributes": {
+                "service.name": "tap96-es-outage"
+              }
+            },
+            "data_stream": {
+              "namespace": "dev",
+              "type": "logs",
+              "dataset": "generic.otel"
+            },
+            "scope": {
+              "name": "tap96-es-outage"
+            },
+            "body": {
+              "text": "tap96-es-outage-9"
+            },
+            "event": {
+              "ingested": "2026-10-22T02:10:25.825368399Z"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "metrics": "# HELP otelcol_elasticsearch_bulk_requests_count_total Count of the completed bulk requests. [alpha]\n# TYPE otelcol_elasticsearch_bulk_requests_count_total counter\notelcol_elasticsearch_bulk_requests_count_total{otel_scope_name=\"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/elasticsearchexporter\",otel_scope_schema_url=\"\",otel_scope_version=\"\",outcome=\"success\"} 10\n# HELP otelcol_elasticsearch_docs_processed_total Count of documents flushed to Elasticsearch. [alpha]\n# TYPE otelcol_elasticsearch_docs_processed_total counter\notelcol_elasticsearch_docs_processed_total{otel_scope_name=\"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/elasticsearchexporter\",otel_scope_schema_url=\"\",otel_scope_version=\"\",outcome=\"success\"} 10\n# HELP otelcol_elasticsearch_docs_received_total Count of Elasticsearch documents successfully received to be buffered. [alpha]\n# TYPE otelcol_elasticsearch_docs_received_total counter\notelcol_elasticsearch_docs_received_total{otel_scope_name=\"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/elasticsearchexporter\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 10\n# HELP otelcol_elasticsearch_flushed_bytes_bytes_total Number of bytes flushed by the indexer. [alpha]\n# TYPE otelcol_elasticsearch_flushed_bytes_bytes_total counter\notelcol_elasticsearch_flushed_bytes_bytes_total{otel_scope_name=\"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/elasticsearchexporter\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 2066\n# HELP otelcol_elasticsearch_flushed_uncompressed_bytes_bytes_total Number of uncompressed bytes flushed by the indexer. [alpha]\n# TYPE otelcol_elasticsearch_flushed_uncompressed_bytes_bytes_total counter\notelcol_elasticsearch_flushed_uncompressed_bytes_bytes_total{otel_scope_name=\"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/elasticsearchexporter\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 3110\n# HELP otelcol_exporter_queue_capacity Fixed capacity of the retry queue (in batches) [alpha]\n# TYPE otelcol_exporter_queue_capacity gauge\notelcol_exporter_queue_capacity{data_type=\"logs\",exporter=\"elasticsearch\",otel_scope_name=\"go.opentelemetry.io/collector/exporter/exporterhelper\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 100\notelcol_exporter_queue_capacity{data_type=\"metrics\",exporter=\"elasticsearch\",otel_scope_name=\"go.opentelemetry.io/collector/exporter/exporterhelper\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 100\notelcol_exporter_queue_capacity{data_type=\"traces\",exporter=\"elasticsearch\",otel_scope_name=\"go.opentelemetry.io/collector/exporter/exporterhelper\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 100\n# HELP otelcol_exporter_queue_size Current size of the retry queue (in batches) [alpha]\n# TYPE otelcol_exporter_queue_size gauge\notelcol_exporter_queue_size{data_type=\"logs\",exporter=\"elasticsearch\",otel_scope_name=\"go.opentelemetry.io/collector/exporter/exporterhelper\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 0\notelcol_exporter_queue_size{data_type=\"metrics\",exporter=\"elasticsearch\",otel_scope_name=\"go.opentelemetry.io/collector/exporter/exporterhelper\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 0\notelcol_exporter_queue_size{data_type=\"traces\",exporter=\"elasticsearch\",otel_scope_name=\"go.opentelemetry.io/collector/exporter/exporterhelper\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 0\n# HELP otelcol_exporter_send_failed_log_records_total Number of log records in failed attempts to send to destination. [alpha]\n# TYPE otelcol_exporter_send_failed_log_records_total counter\notelcol_exporter_send_failed_log_records_total{exporter=\"elasticsearch\",otel_scope_name=\"go.opentelemetry.io/collector/exporter/exporterhelper\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 0\n# HELP otelcol_exporter_sent_log_records_total Number of log record successfully sent to destination. [alpha]\n# TYPE otelcol_exporter_sent_log_records_total counter\notelcol_exporter_sent_log_records_total{exporter=\"elasticsearch\",otel_scope_name=\"go.opentelemetry.io/collector/exporter/exporterhelper\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 10\n# HELP otelcol_process_cpu_seconds_seconds_total Total CPU user and system time in seconds [alpha]\n# TYPE otelcol_process_cpu_seconds_seconds_total counter\notelcol_process_cpu_seconds_seconds_total{otel_scope_name=\"go.opentelemetry.io/collector/service\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 0.43000000000000005\n# HELP otelcol_process_memory_rss_bytes Total physical memory (resident set size) [alpha]\n# TYPE otelcol_process_memory_rss_bytes gauge\notelcol_process_memory_rss_bytes{otel_scope_name=\"go.opentelemetry.io/collector/service\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 1.85376768e+08\n# HELP otelcol_process_runtime_heap_alloc_bytes_bytes Bytes of allocated heap objects (see 'go doc runtime.MemStats.HeapAlloc') [alpha]\n# TYPE otelcol_process_runtime_heap_alloc_bytes_bytes gauge\notelcol_process_runtime_heap_alloc_bytes_bytes{otel_scope_name=\"go.opentelemetry.io/collector/service\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 2.3072712e+07\n# HELP otelcol_process_runtime_total_alloc_bytes_bytes_total Cumulative bytes allocated for heap objects (see 'go doc runtime.MemStats.TotalAlloc') [alpha]\n# TYPE otelcol_process_runtime_total_alloc_bytes_bytes_total counter\notelcol_process_runtime_total_alloc_bytes_bytes_total{otel_scope_name=\"go.opentelemetry.io/collector/service\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 4.3417088e+07\n# HELP otelcol_process_runtime_total_sys_memory_bytes_bytes Total bytes of memory obtained from the OS (see 'go doc runtime.MemStats.Sys') [alpha]\n# TYPE otelcol_process_runtime_total_sys_memory_bytes_bytes gauge\notelcol_process_runtime_total_sys_memory_bytes_bytes{otel_scope_name=\"go.opentelemetry.io/collector/service\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 4.570036e+07\n# HELP otelcol_process_uptime_seconds_total Uptime of the process [alpha]\n# TYPE otelcol_process_uptime_seconds_total counter\notelcol_process_uptime_seconds_total{otel_scope_name=\"go.opentelemetry.io/collector/service\",otel_scope_schema_url=\"\",otel_scope_version=\"\"} 73.476869656\n# HELP otelcol_processor_accepted_log_records_total Number of log records successfully pushed into the next component in the pipeline. [deprecated since v0.110.0]\n# TYPE otelcol_processor_accepted_log_records_total counter\notelcol_processor_accepted_log_records_total{otel_scope_name=\"go.opentelemetry.io/collector/processor/memorylimiterprocessor\",otel_scope_schema_url=\"\",otel_scope_version=\"\",processor=\"memory_limiter\"} 10\n# HELP otelcol_processor_incoming_items_total Number of items passed to the processor. [alpha]\n# TYPE otelcol_processor_incoming_items_total counter\notelcol_processor_incoming_items_total{otel_signal=\"logs\",otel_scope_name=\"go.opentelemetry.io/collector/processor/processorhelper\",otel_scope_schema_url=\"\",otel_scope_version=\"\",processor=\"memory_limiter\"} 10\notelcol_processor_incoming_items_total{otel_signal=\"logs\",otel_scope_name=\"go.opentelemetry.io/collector/processor/processorhelper\",otel_scope_schema_url=\"\",otel_scope_version=\"\",processor=\"transform/identity\"} 10\n# HELP otelcol_processor_outgoing_items_total Number of items emitted from the processor. [alpha]\n# TYPE otelcol_processor_outgoing_items_total counter\notelcol_processor_outgoing_items_total{otel_signal=\"logs\",otel_scope_name=\"go.opentelemetry.io/collector/processor/processorhelper\",otel_scope_schema_url=\"\",otel_scope_version=\"\",processor=\"memory_limiter\"} 10\notelcol_processor_outgoing_items_total{otel_signal=\"logs\",otel_scope_name=\"go.opentelemetry.io/collector/processor/processorhelper\",otel_scope_schema_url=\"\",otel_scope_version=\"\",processor=\"transform/identity\"} 10\n# HELP otelcol_receiver_accepted_log_records_total Number of log records successfully pushed into the pipeline. [alpha]\n# TYPE otelcol_receiver_accepted_log_records_total counter\notelcol_receiver_accepted_log_records_total{otel_scope_name=\"go.opentelemetry.io/collector/receiver/receiverhelper\",otel_scope_schema_url=\"\",otel_scope_version=\"\",receiver=\"otlp\",transport=\"http\"} 10\n# HELP otelcol_receiver_refused_log_records_total Number of log records that could not be pushed into the pipeline. [alpha]\n# TYPE otelcol_receiver_refused_log_records_total counter\notelcol_receiver_refused_log_records_total{otel_scope_name=\"go.opentelemetry.io/collector/receiver/receiverhelper\",otel_scope_schema_url=\"\",otel_scope_version=\"\",receiver=\"otlp\",transport=\"http\"} 0\n# HELP promhttp_metric_handler_errors_total Total number of internal errors encountered by the promhttp metric handler.\n# TYPE promhttp_metric_handler_errors_total counter\npromhttp_metric_handler_errors_total{cause=\"encoding\"} 0\npromhttp_metric_handler_errors_total{cause=\"gathering\"} 0\n# HELP target_info Target metadata\n# TYPE target_info gauge\ntarget_info{service_instance_id=\"28b37288-70dc-4c32-88c6-abbffb1c968e\",service_name=\"otelcol-contrib\",service_version=\"0.130.1\"} 1\n"
+}

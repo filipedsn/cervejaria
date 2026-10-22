@@ -6,6 +6,8 @@ services:
     image: otel/opentelemetry-collector-contrib:0.130.1
     container_name: quiver-edot-collector
     restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     env_file:
       - deploy/observability/.env.observability
@@ -13,6 +15,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./deploy/observability/otel-collector-config.yml:/etc/otelcol-contrib/config.yaml:ro
+      - collector-queue:/var/lib/otelcol
     ports:
       # DEV-only: do not expose the collector to non-local/production clients.
       - "127.0.0.1:4317:4317"
@@ -24,3 +27,6 @@ networks:
   elastic:
     external: true
     name: elasticsearch-kibana_elastic
+
+volumes:
+  collector-queue:

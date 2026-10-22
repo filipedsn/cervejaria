@@ -1,0 +1,6 @@
+{
+  "description": "TAP-96: authoritative ingest clock; install before enabling on an exporter",
+  "processors": [
+    { "set": { "field": "event.ingested", "value": "{{{_ingest.timestamp}}}", "override": true } }
+  ]
+}

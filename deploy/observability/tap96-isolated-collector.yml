@@ -1,0 +1,87 @@
+# TEMPORARY proof only: own network, ES, ports and persistent queue. Never load
+# this file into quiver-edot-collector or attach it to the shared Elastic network.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        max_request_body_size: 2097152
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol
+    create_directory: true
+    fsync: true
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 192
+    spike_limit_mib: 48
+  transform/identity:
+    error_mode: propagate
+    log_statements:
+      - context: resource
+        statements:
+          - set(attributes["data_stream.namespace"], "quarantine") where attributes["data_stream.namespace"] == nil
+      - context: log
+        statements:
+          - set(attributes["data_stream.namespace"], "quarantine") where resource.attributes["data_stream.namespace"] == "quarantine"
+    trace_statements:
+      - context: resource
+        statements:
+          - set(attributes["data_stream.namespace"], "quarantine") where attributes["data_stream.namespace"] == nil
+      - context: span
+        statements:
+          - set(attributes["data_stream.namespace"], "quarantine") where resource.attributes["data_stream.namespace"] == "quarantine"
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["data_stream.namespace"], "quarantine") where attributes["data_stream.namespace"] == nil
+      - context: datapoint
+        statements:
+          - set(attributes["data_stream.namespace"], "quarantine") where resource.attributes["data_stream.namespace"] == "quarantine"
+          # ES 8.17.0 lacks the metric-name hash dimension shipped in 8.17.6.
+          # Separate instruments in different batches must remain distinct.
+          - set(attributes["quiver.metric.name"], metric.name)
+exporters:
+  elasticsearch:
+    endpoint: http://tap96-es:9200
+    mapping:
+      mode: otel
+    timeout: 90s
+    pipeline: quiver-observability-ingested
+    batcher:
+      enabled: false
+    sending_queue:
+      enabled: true
+      num_consumers: 1
+      queue_size: 100
+      storage: file_storage
+    retry:
+      enabled: true
+      max_retries: 100
+      initial_interval: 1s
+      max_interval: 3s
+      retry_on_status: [429, 502, 503, 504]
+service:
+  extensions: [file_storage]
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/identity]
+      exporters: [elasticsearch]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/identity]
+      exporters: [elasticsearch]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/identity]
+      exporters: [elasticsearch]

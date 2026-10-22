@@ -35,6 +35,42 @@ const staffContext: TelemetryContext = {
   actor: { type: 'usuario', id: 'staff-a', role: 'CAIXA' },
 };
 
+test('stale actor/tenant from a previous browser session is rejected before attribution', async () => {
+  const { app, emitted } = await makeApp();
+  try {
+    const response = await app.inject({ method: 'POST', url: '/events', headers: { cookie: 'token=staff' },
+      payload: { events: [{ type: 'click', page: '/operacao', label: 'operacao-caixa-abrir',
+        session: { actorId: 'previous-staff', cervejariaId: 'previous-tenant' } }] } });
+    assert.equal(response.statusCode, 409);
+    assert.equal(emitted.length, 0);
+  } finally { await app.close(); }
+});
+
+test('portal events queued for another command or company cannot follow a rotated customer cookie', async () => {
+  const { app, emitted } = await makeApp({ pdvValid: true });
+  try {
+    const response = await app.inject({ method: 'POST', url: '/events', headers: { cookie: 'cliente_pdv_token=pdv' },
+      payload: { events: [{ type: 'click', page: '/c/tenant/p/pdv', portalSession: { comandaId: 'previous-command', slug: 'previous-tenant' } }] } });
+    assert.equal(response.statusCode, 409);
+    assert.equal(emitted.length, 0);
+  } finally { await app.close(); }
+});
+
+test('client occurrence remains separate from server receive time and unsafe clock skew', async () => {
+  const { app, emitted } = await makeApp();
+  try {
+    const timestamp = new Date(Date.now() - 120_000).toISOString();
+    const response = await app.inject({ method: 'POST', url: '/events', headers: { cookie: 'token=staff' },
+      payload: { events: [{ type: 'page_view', page: '/operacao', timestamp },
+        { type: 'page_view', page: '/operacao', timestamp: '2099-01-01T00:00:00.000Z' }] } });
+    assert.equal(response.statusCode, 204);
+    assert.equal(emitted[0].input.metadata?.clientOccurredAt, timestamp);
+    assert.ok(emitted[0].input.metadata?.serverReceivedAt);
+    assert.equal(emitted[1].input.metadata?.clientClockAccepted, false);
+    assert.equal(emitted[1].input.metadata?.clientOccurredAt, undefined);
+  } finally { await app.close(); }
+});
+
 function customerContext(session: ClienteSessionPayload | PdvClienteSessionPayload): TelemetryContext {
   return {
     requestId: 'request-audit-test',

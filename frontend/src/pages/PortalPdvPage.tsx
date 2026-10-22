@@ -7,6 +7,7 @@ import { Loading } from '../components/Loading';
 import { PortalBackground } from '../components/PortalBackground';
 import { Modal } from '../components/Modal';
 import { CATEGORIAS_PRODUTO_OPERACAO, normalizeCategoriaProduto } from '../lib/operacao';
+import { setAuditPortalSession } from '../lib/audit-tracker';
 
 type Info = {
   cervejaria: { nome: string; logoUrl?: string | null; portalBackgroundUrl?: string | null };
@@ -109,6 +110,11 @@ export function PortalPdvPage() {
       }>(`/api/public/cervejarias/${slug}/pontos-venda/${pontoVendaId}/comandas`, { nome, telefone }),
     onSuccess: (data) => setResult({ numero: data.comanda.numero, reused: data.reused, comanda: data.comanda }),
   });
+  useEffect(() => {
+    const comandaId = result?.comanda.id ?? sessaoComanda.data?.id;
+    if (comandaId && slug) setAuditPortalSession(comandaId, slug);
+  }, [result?.comanda.id, sessaoComanda.data?.id, slug]);
+  useEffect(() => () => setAuditPortalSession(null, null), [slug, pontoVendaId]);
 
   const cardapio = useQuery({
     queryKey: ['portal-pdv-cardapio', result?.comanda.id],

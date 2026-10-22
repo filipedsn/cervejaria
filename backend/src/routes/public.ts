@@ -543,7 +543,7 @@ export async function publicRoutes(app: FastifyInstance) {
       return reply.status(200).send(await summarizePdvClientComanda(comanda, session.cervejariaId));
     }
     for (const pedido of resultado.pedidos) {
-      void registrarTransacao({
+      await registrarTransacao({
         cervejariaId: session.cervejariaId,
         tipo: 'PORTAL_PEDIDO_CRIADO',
         comandaId: session.comandaId,
@@ -621,7 +621,7 @@ export async function publicRoutes(app: FastifyInstance) {
         } });
         return { clienteId: cliente.id, comanda, reused: false };
       });
-      void registrarTransacao({ cervejariaId: cervejaria.id, tipo: 'COMANDA_CRIADA', comandaId: result.comanda.id, metadata: { origem: 'PORTAL_PDV', pontoVendaId, ocorrenciaId: result.comanda.ocorrenciaId ?? null, reused: result.reused }, payload: { numero: result.comanda.numero, identificador: result.comanda.identificador, ocorrenciaId: result.comanda.ocorrenciaId ?? null } });
+      await registrarTransacao({ cervejariaId: cervejaria.id, tipo: 'COMANDA_CRIADA', comandaId: result.comanda.id, metadata: { origem: 'PORTAL_PDV', pontoVendaId, ocorrenciaId: result.comanda.ocorrenciaId ?? null, reused: result.reused }, payload: { numero: result.comanda.numero, identificador: result.comanda.identificador, ocorrenciaId: result.comanda.ocorrenciaId ?? null } });
       if (!result.reused) {
         emitToCervejaria(app.io, cervejaria.id, { type: 'comanda:created', data: result.comanda });
       }
@@ -935,7 +935,7 @@ export async function publicRoutes(app: FastifyInstance) {
         pendenteCount,
       });
 
-      void registrarTransacao({
+      await registrarTransacao({
         cervejariaId: session.cervejariaId,
         tipo: 'PORTAL_PEDIDO_CRIADO',
         eventoId: session.eventoId,

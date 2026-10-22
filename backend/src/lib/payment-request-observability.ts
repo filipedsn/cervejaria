@@ -30,5 +30,5 @@ export function recordPaymentRequestTransition(
   addMetric: (attributes: Record<string, string>) => void = (attributes) => paymentRequestTotal.add(1, attributes),
 ): void {
   emit(paymentRequestAuditInput(transition, input));
-  addMetric({ 'quiver.payment_request.action': transition });
+  addMetric({ 'quiver.payment_request.action': transition, 'cervejaria.id': input.cervejariaId });
 }

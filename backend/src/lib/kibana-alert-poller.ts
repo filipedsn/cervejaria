@@ -79,6 +79,7 @@ async function markProcessedInEs(alertId: string): Promise<void> {
   try {
     await fetch(`${esUrl()}/${encodeURIComponent(esIndex())}/_update/${encodeURIComponent(alertId)}`, {
       method: 'POST',
+      signal: AbortSignal.timeout(10_000),
       headers: esAuthHeaders(),
       body: JSON.stringify({
         doc: { processed: true, processedAt: new Date().toISOString() },
@@ -169,11 +170,14 @@ export async function pollOnce(log: {
 
     const res = await fetch(`${esUrl()}/${encodeURIComponent(esIndex())}/_search`, {
       method: 'POST',
+      signal: AbortSignal.timeout(10_000),
       headers: esAuthHeaders(),
       body: JSON.stringify({
         query: {
           bool: {
-            must: [{ range: { '@timestamp': { gt: state.lastPollIso } } }],
+            // The durable ES acknowledgement is authoritative. A timestamp
+            // high-water mark cannot exclude equal-time or late-indexed events.
+            // Drain a bounded page each tick; failures stay eligible for retry.
             must_not: [{ term: { processed: true } }],
           },
         },
@@ -205,11 +209,15 @@ export async function pollOnce(log: {
       const ts = typeof src['@timestamp'] === 'string' ? src['@timestamp'] : undefined;
       if (ts && ts > maxTs) maxTs = ts;
 
-      if (isAlertProcessed(state, hit._id)) continue;
+      if (isAlertProcessed(state, hit._id)) {
+        if (hit._id) await markProcessedInEs(hit._id);
+        continue;
+      }
 
       try {
         state = { ...state, lastDeliveryAttemptAt: now().toISOString() };
         const result = await notify(src, hit._id);
+        if (!result.sent && !result.deduped) throw new Error('No notification channel accepted the alert');
         if (result.sent) {
           state = { ...state, lastSuccessfulDeliveryAt: now().toISOString(), lastDeliveryErrorAt: undefined, lastDeliveryError: undefined };
           log.info(
@@ -224,7 +232,10 @@ export async function pollOnce(log: {
         if (hit._id) {
           state = markAlertProcessed(state, hit._id);
           state = { ...state, lastEventProcessedAt: now().toISOString() };
-          void markProcessedInEs(hit._id);
+          // Persist dedup before acknowledging in ES. A restart between these
+          // writes retries the acknowledgement without repeating delivery.
+          saveAlertPollerState(state);
+          await markProcessedInEs(hit._id);
         }
       } catch (err) {
         const msg = summarizeAlertPollerError(err);

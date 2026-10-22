@@ -1,8 +1,9 @@
 import type { Prisma } from '@prisma/client';
 import { PrismaClient } from '@prisma/client';
 import { logger } from './logger.js';
-import { getTelemetryContext } from './telemetry-context.js';
+import { getTelemetryContext, runWithTelemetryContext } from './telemetry-context.js';
 import { observeDbOperation, observeDbTransaction } from './prisma-observability.js';
+import { withTransactionEffects } from './transaction-effects.js';
 
 function databaseUrlWithPool(url: string | undefined): string | undefined {
   if (!url) return url;
@@ -66,12 +67,24 @@ function observeDelegate(model: string, delegate: object): object {
 // Capture AsyncLocalStorage before crossing Prisma's native engine boundary.
 // This covers all model delegates, raw operations and transactions without
 // creating a log for successful normal queries.
-const observed = new Proxy(baseClient, {
+function observeClient(client: PrismaClient | Prisma.TransactionClient) { return new Proxy(client, {
   get(target, property, receiver) {
     const value = Reflect.get(target, property, receiver);
     if (property === '$transaction' && typeof value === 'function') {
       return (...args: unknown[]) => {
         const context = getTelemetryContext();
+        if (typeof args[0] === 'function') {
+          const callback = args[0] as (tx: Prisma.TransactionClient) => Promise<unknown>;
+          return withTransactionEffects(bind => observeDbTransaction(
+            () => value.apply(target, [(tx: Prisma.TransactionClient) => {
+              const observedTx = observeClient(tx) as Prisma.TransactionClient;
+              return bind(observedTx, () => context
+                ? runWithTelemetryContext(context, () => callback(observedTx))
+                : callback(observedTx));
+            }, ...args.slice(1)]),
+            logger, Date.now, context,
+          ));
+        }
         return observeDbTransaction(() => value.apply(target, args), logger, Date.now, context);
       };
     }
@@ -92,7 +105,7 @@ const observed = new Proxy(baseClient, {
     }
     return value;
   },
-});
+}); }
 
-export const prisma = observed as unknown as PrismaClient;
+export const prisma = observeClient(baseClient) as unknown as PrismaClient;
 export type DbClient = Prisma.TransactionClient | PrismaClient;

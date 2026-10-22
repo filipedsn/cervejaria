@@ -52,11 +52,14 @@ function prismaGenerate() {
 }
 
 const steps = [
+  ['otel-startup-contract', () => run('node', ['--test', 'scripts/otel-startup.test.mjs', 'scripts/otel-runtime-contract.test.mjs'], 'backend')],
+  ['frontend-observability-test', () => run('node', ['--import', '../scripts/node24-tsx-host.mjs', '--import', '../backend/node_modules/tsx/dist/loader.mjs', '--test', 'tests/audit-queue.test.ts', 'tests/audit-session-regression.test.ts'], 'frontend')],
   ['frontend', () => run(npm, ['run', 'build'], 'frontend')],
   ['backend-validate: prisma generate', prismaGenerate],
   ['backend-validate: prisma validate', () => run('node', ['scripts/validate-prisma.mjs'], '.')],
   ['backend-test', () => run(npm, ['run', 'test:unit'], 'backend')],
   ['backend-build (tsc --noEmit)', () => run(npx, ['tsc', '--noEmit'], 'backend')],
+  ['realtime-security-qa (disposable)', () => run('node', ['scripts/run-realtime-security-disposable-qa.mjs'], 'backend')],
   ['ops-panel-test', () => run(npm, ['run', 'test:unit'], 'ops-panel')],
   ['support-analyst-test: typecheck', () => run(npm, ['run', 'typecheck'], 'support-analyst')],
   ['support-analyst-test: test', () => run(npm, ['run', 'test'], 'support-analyst')],

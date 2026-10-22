@@ -30,6 +30,9 @@ const httpTelemetrySchema = z.object({
 });
 
 const uiEventSchema = z.object({
+  id: z.string().uuid().optional(),
+  session: z.object({ actorId: z.string().min(1).max(200), cervejariaId: z.string().max(200).nullable() }).optional(),
+  portalSession: z.object({ comandaId: z.string().min(1).max(200), slug: z.string().min(1).max(200) }).optional(),
   type: z.enum(['click', 'page_view', 'submit', 'error', 'http_request']),
   page: z.string().min(1).max(500),
   element: z.string().max(200).optional(),
@@ -108,7 +111,7 @@ function safeUiMetadata(meta: Record<string, unknown> | undefined): Record<strin
 
 export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestOptions = {}) {
   const dependencies = { ...defaultDependencies, ...options.dependencies };
-  app.post('/events', async (request, reply) => {
+  app.post('/events', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = bodySchema.safeParse(request.body);
     const events = parsed.success ? parsed.data.events : [];
     const publicKinds = new Set(
@@ -174,6 +177,14 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
         ? await dependencies.resolveClienteContext(request, customerSession)
         : dependencies.getStaffContext();
       const source = customerSession ? 'cliente' : 'staff';
+      // A stale tab may hold a previous staff session while cookies changed.
+      // Compare with the authenticated server context, never assign from client.
+      if (event.session && (event.session.actorId !== context.actor.id || event.session.cervejariaId !== (context.cervejariaId ?? null))) {
+        return reply.status(409).send({ error: 'Sessão de origem alterada' });
+      }
+      if (event.portalSession && (!customerSession || event.portalSession.comandaId !== customerSession.comandaId || event.portalSession.slug !== context.slug)) {
+        return reply.status(409).send({ error: 'Sessão de origem alterada' });
+      }
       const emit = (input: Parameters<typeof emitAuditEvent>[0]) =>
         runWithTelemetryContext(context, () => dependencies.emit(input));
 
@@ -193,6 +204,8 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
           requestId: event.http.requestId,
           metadata: {
             source,
+            ...clientEventTime(event.timestamp),
+            ...(event.id ? { clientEventId: event.id } : {}),
             durationMs: event.http.durationMs,
             outcome: event.http.outcome,
           },
@@ -220,6 +233,8 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
         },
         metadata: {
           source,
+          ...clientEventTime(event.timestamp),
+          ...(event.id ? { clientEventId: event.id } : {}),
           ...safeUiMetadata(event.meta),
         },
       });
@@ -227,4 +242,11 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
 
     return reply.status(204).send();
   });
+}
+
+function clientEventTime(timestamp?: string): Record<string, string | boolean> {
+  const received = new Date();
+  const occurred = timestamp ? Date.parse(timestamp) : NaN;
+  const valid = Number.isFinite(occurred) && occurred <= received.getTime() + 60_000 && occurred >= received.getTime() - 15 * 60_000;
+  return { serverReceivedAt: received.toISOString(), ...(valid ? { clientOccurredAt: timestamp! } : {}), clientClockAccepted: valid };
 }

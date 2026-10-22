@@ -176,7 +176,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
 
       const res = resumoComanda(comanda, true);
       recordVendaAvulsa(centavos(res.total));
-      void registrarTransacao({
+      await registrarTransacao({
         cervejariaId,
         tipo: 'SALE_COMPLETED',
         usuarioId: user.sub,

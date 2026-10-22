@@ -1,6 +1,6 @@
 import { trace } from '@opentelemetry/api';
 import { BRAZIL_TZ, formatBrazilDateTime } from '../event-datetime.js';
-import { logger } from '../logger.js';
+import { redactLogValue } from '../logger.js';
 import { getReleaseContext } from '../release-context.js';
 import { emitAuditLogRecord } from './emit-otel-log.js';
 import { redactObject } from './redact.js';
@@ -53,7 +53,8 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
     'event.outcome': input.outcome ?? 'success',
     'event.timezone': BRAZIL_TZ,
     'event.local_time': formatBrazilDateTime(),
-    message: input.message,
+    message: input.action.startsWith('transacao.') || input.action.startsWith('process.')
+      ? `${input.action}: ${input.outcome ?? 'success'}` : input.message,
     releaseSha: release.releaseSha,
     service: release.service,
     environment: release.environment,
@@ -77,17 +78,13 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
   if (input.http?.durationMs != null) payload['http.response.duration_ms'] = input.http.durationMs;
   if (input.db?.operation) payload['db.operation'] = input.db.operation;
   if (input.db?.model) payload['db.model'] = input.db.model;
-  if (input.db?.query) payload['db.query'] = input.db.query;
   if (input.db?.durationMs != null) payload['db.duration_ms'] = input.db.durationMs;
   if (input.ui?.page) payload['ui.page'] = input.ui.page;
   if (input.ui?.element) payload['ui.element'] = input.ui.element;
   if (input.ui?.label) payload['ui.label'] = input.ui.label;
-  const metadata = input.metadata ? (redactObject(input.metadata) as Record<string, unknown>) : undefined;
+  const metadata = input.metadata ? safeAuditMetadata(input.action, input.metadata) : undefined;
   if (metadata && Object.keys(metadata).length > 0) {
     payload.metadata = metadata;
-    if (metadata.payload != null) {
-      payload['transacao.payload'] = metadata.payload;
-    }
   }
 
   // The disposable QA runner assigns this process-local ID. Keep it on audit
@@ -98,11 +95,27 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
     payload['test.run.id'] = qaRunId.toLowerCase();
   }
 
-  return payload;
+  return redactLogValue(payload) as Record<string, unknown>;
+}
+
+/** Finite metadata contract: persisted references/categories, never whole entities. */
+function safeAuditMetadata(action: string, source: Record<string, unknown>): Record<string, unknown> {
+  const shared = ['tipo', 'eventoId', 'comandaId', 'pontoVendaId', 'ocorrenciaId', 'tenantId', 'currentMode', 'requestedMode', 'origem', 'operacao', 'status', 'statusAnterior', 'qtdItens', 'quantidade', 'total', 'valor', 'forma', 'campo', 'valorAnterior', 'valorNovo', 'reused', 'reason', 'reasonCode', 'role', 'code', 'prismaCode'];
+  const allowed = action.startsWith('ui.') || action === 'http.request.completed'
+    ? ['source', 'durationMs', 'outcome', 'frontendReleaseSha', 'tag', 'line', 'kind', 'clientOccurredAt', 'serverReceivedAt', 'clientClockAccepted', 'clientEventId']
+    : action.startsWith('http.') ? ['durationMs', 'code'] : shared;
+  const out: Record<string, unknown> = {};
+  for (const key of allowed) {
+    const value = source[key];
+    if (typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value)) ||
+      (typeof value === 'string' && /^[A-Za-z0-9_.:/-]{1,200}$/.test(value))) out[key] = value;
+  }
+  return redactObject(out) as Record<string, unknown>;
 }
 
 export function emitAuditEvent(input: AuditEventInput): void {
   const payload = buildAuditPayload(input);
-  emitAuditLogRecord(payload, input.message, input.outcome ?? 'success');
-  logger.info(payload, input.message);
+  // Direct Logs API is the single authoritative audit transport. Pino exports
+  // technical records only; enabling its instrumentation cannot duplicate audit.
+  emitAuditLogRecord(payload, String(payload.message), input.outcome ?? 'success');
 }

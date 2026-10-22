@@ -6,7 +6,7 @@ import { connectSocket, disconnectSocket } from '../lib/socket';
 import { resetBreweryTheme, syncBreweryTheme } from '../lib/theme';
 import { ensureAppShellBranding } from '../lib/app-branding';
 import { isPublicPath, setUnauthorizedHandler } from '../lib/auth-session';
-import { flushPendingAuditAfterAuth } from '../lib/audit-tracker';
+import { flushPendingAuditAfterAuth, setAuditIdentity } from '../lib/audit-tracker';
 
 interface AuthContextType {
   usuario: Usuario | null;
@@ -32,6 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const authInitializationStarted = useRef(false);
 
   const applyAuth = useCallback((data: AuthResponse) => {
+    setAuditIdentity(data.usuario.id, data.cervejaria?.id ?? null);
     clearSessionQueryCache();
     resetBreweryTheme();
     setUsuario(data.usuario);
@@ -44,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    setAuditIdentity(null, null);
     clearSessionQueryCache();
     resetBreweryTheme();
     ensureAppShellBranding();
@@ -55,18 +57,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('eventoAtivo');
     localStorage.removeItem('trailerAtivo');
     setUsuario(null);
+    setAuditIdentity(null, null);
     setCervejaria(null);
     disconnectSocket();
   }, []);
 
   const updateCervejaria = useCallback((updated: Cervejaria) => {
+    setAuditIdentity(usuario?.id ?? null, updated.id);
     setCervejaria(updated);
     setUsuario((current) => {
       syncBreweryTheme(current, updated);
       ensureAppShellBranding();
       return current;
     });
-  }, []);
+  }, [usuario?.id]);
 
   useEffect(() => {
     setUnauthorizedHandler(async () => {
@@ -95,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api
       .get<{ usuario: Usuario; cervejaria: Cervejaria | null }>('/api/auth/me')
       .then((data) => {
+        setAuditIdentity(data.usuario.id, data.cervejaria?.id ?? null);
         clearSessionQueryCache();
         resetBreweryTheme();
         setUsuario(data.usuario);

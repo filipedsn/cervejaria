@@ -15,6 +15,7 @@ $paths = Resolve-QuiverTapPaths -Settings $settings
 # Carrega o ambiente antes da verificacao de dependencia. O artefato publicado e
 # propositalmente sem segredos; as variaveis vivem em backend/.env.production.
 try {
+  Get-ChildItem env: | Where-Object { $_.Name -match '^(OTEL_|ELASTIC_OTEL_)' } | ForEach-Object { Remove-Item -LiteralPath ('env:' + $_.Name) }
   Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment production
   # Keep service identity and opaque process instance ID for APM metrics; omit host, process, OS, container, and cloud metadata.
   $env:OTEL_NODE_RESOURCE_DETECTORS = 'env,serviceinstance'
@@ -109,10 +110,11 @@ if (Test-Path $paths.ProdManifest) {
   }
 }
 Set-ProdUploadsEnv -Paths $paths
+$env:NODE_OPTIONS = ''
 
 $proc = Start-Process `
   -FilePath $paths.NodeExe `
-  -ArgumentList @('--import', '@elastic/opentelemetry-node', $paths.ProdApiEntry) `
+  -ArgumentList @('--import', './scripts/otel-sdk.mjs', $paths.ProdApiEntry) `
   -WorkingDirectory $paths.ProdBackendRoot `
   -WindowStyle Hidden `
   -RedirectStandardOutput $paths.ApiLog `

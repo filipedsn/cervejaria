@@ -31,7 +31,8 @@ const transacaoFailure = meter.createCounter('quiver.transacao.failure', {
 function businessAttrs(tipo: string): Record<string, string> {
   const ctx = getTelemetryContext();
   const attrs: Record<string, string> = { 'quiver.evento.tipo': tipo };
-  if (ctx?.slug) attrs['cervejaria.slug'] = ctx.slug;
+  attrs['cervejaria.slug'] = ctx?.slug ?? 'unknown';
+  if (ctx?.cervejariaId) attrs['cervejaria.id'] = ctx.cervejariaId;
   return attrs;
 }
 
@@ -65,7 +66,9 @@ export function recordTransacaoMetric(
     'quiver.evento.tipo': 'transacao',
     'quiver.transacao.tipo': tipo,
   };
-  if (slug) attrs['cervejaria.slug'] = slug;
+  attrs['cervejaria.slug'] = slug ?? 'unknown';
+  const ctx = getTelemetryContext();
+  if (ctx?.cervejariaId) attrs['cervejaria.id'] = ctx.cervejariaId;
   transacaoTotal.add(1, attrs);
   if (outcome === 'failure') transacaoFailure.add(1, attrs);
 }

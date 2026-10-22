@@ -39,6 +39,12 @@ function Copy-BackendRuntimeScripts {
   $destScripts = Join-Path $DestinationBackend 'scripts'
   New-Item -ItemType Directory -Force -Path $destScripts | Out-Null
   Copy-Item -LiteralPath $sourceScript -Destination (Join-Path $destScripts 'otel-resource-policy.mjs') -Force
+  $sdkScript = Join-Path $SourceBackend 'scripts\otel-sdk.mjs'
+  $sourcePackage = Get-Content -LiteralPath (Join-Path $SourceBackend 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+  if ($sourcePackage.scripts.start -match 'otel-sdk\.mjs') {
+    if (-not (Test-Path -LiteralPath $sdkScript -PathType Leaf)) { throw 'backend/scripts/otel-sdk.mjs ausente' }
+    Copy-Item -LiteralPath $sdkScript -Destination (Join-Path $destScripts 'otel-sdk.mjs') -Force
+  }
 }
 
 function Get-CandidateFileHashes {
@@ -327,7 +333,7 @@ function Invoke-ReleaseCandidatePrepareFromGitSnapshot {
     $inventoryPackagePath = Join-Path $staging 'source-snapshot-inventory.json'
     Copy-Item -LiteralPath $SnapshotInventoryPath -Destination $inventoryPackagePath -Force
     $inventorySha = (Get-FileHash -LiteralPath $inventoryPackagePath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $manifest = [ordered]@{ format = $script:CandidateFormat; releaseSha = $ExpectedReleaseSha; releaseTree = $ExpectedTree; createdAt = (Get-Date).ToUniversalTime().ToString('o'); nodeVersion = $nodeVersion; npmVersion = $npmVersion; artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/scripts/otel-resource-policy.mjs', 'backend/prisma', 'source-snapshot-inventory.json'); sourceSnapshot = [ordered]@{ commit = $ExpectedReleaseSha; tree = $ExpectedTree; materializedBlobCount = $inventory.materializedBlobCount; inventoryPath = 'source-snapshot-inventory.json'; inventorySha256 = $inventorySha }; migrationLedger = [ordered]@{ path = [System.IO.Path]::GetFileName($MigrationLedgerPath); sha256 = $ledgerSha }; preservedArchivedMigrations = @($seeded); migrationIntegrity = $migrationIntegrity; files = @(Get-CandidateFileHashes $staging) }
+    $manifest = [ordered]@{ format = $script:CandidateFormat; releaseSha = $ExpectedReleaseSha; releaseTree = $ExpectedTree; createdAt = (Get-Date).ToUniversalTime().ToString('o'); nodeVersion = $nodeVersion; npmVersion = $npmVersion; artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/scripts/otel-resource-policy.mjs', 'backend/scripts/otel-sdk.mjs', 'backend/prisma', 'source-snapshot-inventory.json'); sourceSnapshot = [ordered]@{ commit = $ExpectedReleaseSha; tree = $ExpectedTree; materializedBlobCount = $inventory.materializedBlobCount; inventoryPath = 'source-snapshot-inventory.json'; inventorySha256 = $inventorySha }; migrationLedger = [ordered]@{ path = [System.IO.Path]::GetFileName($MigrationLedgerPath); sha256 = $ledgerSha }; preservedArchivedMigrations = @($seeded); migrationIntegrity = $migrationIntegrity; files = @(Get-CandidateFileHashes $staging) }
     $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Get-CandidateManifestPath $staging) -Encoding UTF8
     Test-ReleaseCandidate -CandidatePath $staging -ExpectedReleaseSha $ExpectedReleaseSha -ThrowOnError -RequireMigrationIntegrity | Out-Null
     Move-Item -LiteralPath $staging -Destination $candidate
@@ -391,6 +397,15 @@ function Test-ReleaseCandidate {
   }
   foreach ($required in Get-CandidateRequiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $CandidatePath $required) -PathType Leaf)) { $errors += "artifact obrigatorio ausente: $required" }
+  }
+  # Historical rollback candidates keep their own startup contract. New
+  # candidates must carry every preload referenced by their package manifest.
+  $packagePath = Join-Path $CandidatePath 'backend\package.json'
+  if (Test-Path -LiteralPath $packagePath) {
+    try {
+      $package = Get-Content -LiteralPath $packagePath -Raw -Encoding UTF8 | ConvertFrom-Json
+      if ($package.scripts.start -match 'otel-sdk\.mjs' -and -not (Test-Path -LiteralPath (Join-Path $CandidatePath 'backend\scripts\otel-sdk.mjs') -PathType Leaf)) { $errors += 'artifact obrigatorio ausente: backend/scripts/otel-sdk.mjs' }
+    } catch { $errors += 'backend/package.json invalido' }
   }
   if ($manifest -and $manifest.files) {
     $actual = @{}
@@ -468,7 +483,7 @@ function Invoke-ReleaseCandidatePrepare {
     Copy-BackendRuntimeScripts -SourceBackend (Join-Path $SourceWorktree 'backend') -DestinationBackend (Join-Path $staging 'backend')
     Copy-CandidateTree -Source (Join-Path $SourceWorktree 'backend\prisma') -Destination (Join-Path $staging 'backend\prisma')
     $migrationIntegrity = Copy-GitMigrationBlobs -SourceWorktree $SourceWorktree -ExpectedReleaseSha $ExpectedReleaseSha -CandidatePrismaPath (Join-Path $staging 'backend\prisma') -MigrationLedgerPath $MigrationLedgerPath
-    $manifest = [ordered]@{ format = $script:CandidateFormat; releaseSha = $ExpectedReleaseSha; createdAt = (Get-Date).ToUniversalTime().ToString('o'); nodeVersion = $nodeVersion; npmVersion = $npmVersion; artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/scripts/otel-resource-policy.mjs', 'backend/prisma'); migrationIntegrity = $migrationIntegrity; files = @(Get-CandidateFileHashes $staging) }
+    $manifest = [ordered]@{ format = $script:CandidateFormat; releaseSha = $ExpectedReleaseSha; createdAt = (Get-Date).ToUniversalTime().ToString('o'); nodeVersion = $nodeVersion; npmVersion = $npmVersion; artifacts = @('frontend', 'backend/dist', 'backend/package.json', 'backend/package-lock.json', 'backend/scripts/otel-resource-policy.mjs', 'backend/scripts/otel-sdk.mjs', 'backend/prisma'); migrationIntegrity = $migrationIntegrity; files = @(Get-CandidateFileHashes $staging) }
     $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Get-CandidateManifestPath $staging) -Encoding UTF8
     Test-ReleaseCandidate -CandidatePath $staging -ExpectedReleaseSha $ExpectedReleaseSha -ThrowOnError -RequireMigrationIntegrity | Out-Null
     Move-Item -LiteralPath $staging -Destination $candidate

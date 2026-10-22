@@ -1,4 +1,4 @@
-import { metrics } from '@opentelemetry/api';
+import { metrics, trace, SpanStatusCode } from '@opentelemetry/api';
 import { Prisma } from '@prisma/client';
 
 import { logger } from './logger.js';
@@ -219,7 +219,14 @@ export async function observeDbOperation<T>(
   const contextLogger = loggerWithTelemetryContext(targetLogger, telemetryContext);
   const start = now();
   try {
-    const result = await execute();
+    const result = await trace.getTracer('quiver-tap-database').startActiveSpan(`db.${operation.model ?? 'raw'}.${operation.operation}`, async span => {
+      span.setAttributes({ 'db.system': 'postgresql', 'db.operation': operation.operation,
+        ...(operation.model ? { 'db.collection.name': operation.model } : {}),
+        ...(telemetryContext?.slug ? { 'cervejaria.slug': telemetryContext.slug } : {}) });
+      try { return await execute(); }
+      catch (error) { span.setStatus({ code: SpanStatusCode.ERROR, message: classifyDbError(error) }); throw error; }
+      finally { span.end(); }
+    });
     const durationMs = Math.max(0, now() - start);
     if (durationMs >= slowDbThresholdMs()) {
       safeLog(contextLogger, 'warn',
@@ -243,7 +250,13 @@ export async function observeDbTransaction<T>(
   const contextLogger = loggerWithTelemetryContext(targetLogger, telemetryContext);
   const start = now();
   try {
-    const result = await execute();
+    const result = await trace.getTracer('quiver-tap-database').startActiveSpan('db.transaction', async span => {
+      span.setAttributes({ 'db.system': 'postgresql', 'db.operation': 'transaction',
+        ...(telemetryContext?.slug ? { 'cervejaria.slug': telemetryContext.slug } : {}) });
+      try { return await execute(); }
+      catch (error) { span.setStatus({ code: SpanStatusCode.ERROR, message: classifyDbError(error) }); throw error; }
+      finally { span.end(); }
+    });
     recordDbTransaction('success', Math.max(0, now() - start), telemetryContext);
     return result;
   } catch (error) {
