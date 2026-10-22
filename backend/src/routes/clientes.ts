@@ -6,6 +6,7 @@ import { getTenantUser } from '../types/auth.js';
 import { resolveClienteParaComanda } from '../lib/cliente-resolver.js';
 import { normalizePhone, formatPhoneBr } from '../lib/phone.js';
 import { toNumber } from '../lib/utils.js';
+import { calcularEstatisticasCliente } from '../lib/cliente-stats.js';
 import { assertClientePodeExcluir, buildExclusaoMeta, getComandaCountsByClienteIds, getClienteComandaCounts } from '../lib/cliente-delete.js';
 import { ClienteMergeError, mergeClientes } from '../lib/cliente-merge.js';
 import { requireDonoAtual, requirePermissao } from '../lib/operacao/permissoes.js';
@@ -50,16 +51,17 @@ function serializeCliente(
   cliente: Prisma.ClienteGetPayload<{ include: typeof clienteInclude }>,
   exclusao = buildExclusaoMeta(cliente.isSistema, { abertas: 0, fechadas: 0 }),
   valorPendente = 0,
+  stats = cliente.estatisticas,
 ) {
   return {
     ...cliente,
     telefone: cliente.telefone ? formatPhoneBr(cliente.telefone) : null,
-    totalGasto: cliente.estatisticas ? toNumber(cliente.estatisticas.totalGasto) : 0,
+    totalGasto: stats ? toNumber(stats.totalGasto) : 0,
     valorPendente,
-    estatisticas: cliente.estatisticas
+    estatisticas: stats
       ? {
-          ...cliente.estatisticas,
-          totalGasto: toNumber(cliente.estatisticas.totalGasto),
+          ...stats,
+          totalGasto: toNumber(stats.totalGasto),
         }
       : null,
     podeExcluir: exclusao.podeExcluir,
@@ -92,11 +94,23 @@ async function getSaldosPendentesPorCliente(clienteIds: string[]) {
 async function serializeClienteWithExclusao(
   cliente: Prisma.ClienteGetPayload<{ include: typeof clienteInclude }>,
 ) {
-  const [counts, saldos] = await Promise.all([
+  const [counts, saldos, stats] = await Promise.all([
     getClienteComandaCounts(cliente.id),
     getSaldosPendentesPorCliente([cliente.id]),
+    getLiveStatsByClienteIds(cliente.cervejariaId, [cliente.id]),
   ]);
-  return serializeCliente(cliente, buildExclusaoMeta(cliente.isSistema, counts), saldos.get(cliente.id) ?? 0);
+  return serializeCliente(cliente, buildExclusaoMeta(cliente.isSistema, counts), saldos.get(cliente.id) ?? 0, stats.get(cliente.id) ?? null);
+}
+
+async function getLiveStatsByClienteIds(cervejariaId: string, clienteIds: string[]) {
+  const byCliente = new Map<string, Array<{ total: unknown; fechadaEm: Date | null; updatedAt: Date; pagamentos: Array<{ valor: unknown }>; itens: Array<{ volumeMl: number; quantidade: number; canceladoEm: Date | null; cancelamentoPendenteEm: Date | null; produto: { tipo: string; formato: string | null } | null }> }>>();
+  if (clienteIds.length === 0) return new Map();
+  const comandas = await prisma.comanda.findMany({
+    where: { clienteId: { in: clienteIds }, cliente: { is: { cervejariaId, isSistema: false } }, status: 'FECHADA', tipo: { not: 'AVULSA' } },
+    select: { clienteId: true, total: true, fechadaEm: true, updatedAt: true, pagamentos: { select: { valor: true } }, itens: { select: { volumeMl: true, quantidade: true, canceladoEm: true, cancelamentoPendenteEm: true, produto: { select: { tipo: true, formato: true } } } } },
+  });
+  for (const comanda of comandas) if (comanda.clienteId) byCliente.set(comanda.clienteId, [...(byCliente.get(comanda.clienteId) ?? []), comanda]);
+  return new Map(clienteIds.map((id) => [id, calcularEstatisticasCliente(byCliente.get(id) ?? [])]));
 }
 
 function orderByFromSort(ordenar: string): Prisma.ClienteOrderByWithRelationInput[] {
@@ -149,6 +163,7 @@ export async function clientesRoutes(app: FastifyInstance) {
       getComandaCountsByClienteIds(items.map((c) => c.id)),
       getSaldosPendentesPorCliente(items.map((c) => c.id)),
     ]);
+    const liveStats = await getLiveStatsByClienteIds(user.cervejariaId!, items.map((c) => c.id));
 
     return {
       items: items.map((cliente) => {
@@ -157,6 +172,7 @@ export async function clientesRoutes(app: FastifyInstance) {
           cliente,
           buildExclusaoMeta(cliente.isSistema, counts),
           saldosPendentes.get(cliente.id) ?? 0,
+          liveStats.get(cliente.id) ?? null,
         );
       }),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
@@ -175,11 +191,10 @@ export async function clientesRoutes(app: FastifyInstance) {
     });
     if (!cliente) return reply.status(404).send({ error: 'Cliente não encontrado' });
 
-    const where = {
+    const where: Prisma.ComandaWhereInput = {
       clienteId: id,
-      status: 'FECHADA' as const,
-      tipo: { not: 'AVULSA' as const },
-      pagamentos: { some: { valor: { gt: 0 } } },
+      status: { in: ['FECHADA', 'CANCELADA'] },
+      tipo: { not: 'AVULSA' },
     };
 
     const [comandas, total] = await Promise.all([
@@ -188,9 +203,10 @@ export async function clientesRoutes(app: FastifyInstance) {
         include: {
           evento: { select: { id: true, nome: true, local: true, data: true } },
           pontoVenda: { select: { id: true, nome: true } },
+          ocorrencia: { select: { id: true, nome: true, data: true, agenda: { select: { id: true, nome: true } } } },
           contaReceber: { select: { valorOriginal: true } },
           itens: {
-            include: { produto: { select: { id: true, nome: true, tipo: true, formato: true } } },
+            include: { produto: { select: { id: true, nome: true, tipo: true, formato: true } }, pedidoCozinha: { select: { status: true } } },
             orderBy: { createdAt: 'asc' },
           },
           pagamentos: true,
@@ -205,18 +221,17 @@ export async function clientesRoutes(app: FastifyInstance) {
     return {
       items: comandas.map((c) => ({
         id: c.id,
+        status: c.status,
         total: c.pagamentos.reduce((soma, pagamento) => soma + toNumber(pagamento.valor), 0),
         totalComanda: toNumber(c.total),
+        desconto: toNumber(c.desconto),
         valorPendente: c.contaReceber
           ? Math.max(0, toNumber(c.contaReceber.valorOriginal) - c.pagamentos.reduce((soma, pagamento) => soma + toNumber(pagamento.valor), 0))
-          : 0,
+          : (c.status === 'CANCELADA' ? 0 : Math.max(0, toNumber(c.total) - c.pagamentos.reduce((soma, pagamento) => soma + toNumber(pagamento.valor), 0))),
         fechadaEm: c.fechadaEm ?? c.updatedAt,
-        evento: c.evento ?? {
-          id: c.pontoVenda?.id ?? c.id,
-          nome: c.pontoVenda ? `Caixa · ${c.pontoVenda.nome}` : 'Caixa',
-          local: '',
-          data: null,
-        },
+        evento: c.evento,
+        pontoVenda: c.pontoVenda,
+        ocorrencia: c.ocorrencia,
         itens: c.itens.map((i) => ({
           id: i.id,
           produto: i.produto?.nome ?? i.nome,
@@ -224,6 +239,9 @@ export async function clientesRoutes(app: FastifyInstance) {
           quantidade: i.quantidade,
           precoUnit: toNumber(i.precoUnit),
           subtotal: toNumber(i.precoUnit) * i.quantidade,
+          canceladoEm: i.canceladoEm,
+          cancelamentoPendenteEm: i.cancelamentoPendenteEm,
+          statusEntrega: i.pedidoCozinha?.status ?? null,
         })),
         pagamentos: c.pagamentos.map((p) => ({
           forma: p.forma,

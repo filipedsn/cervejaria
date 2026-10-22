@@ -43,8 +43,8 @@ export function AgendaOperacionalPanel() {
   const archivedQuery = useQuery({ queryKey: ['operacao-agenda-arquivadas'], queryFn: () => api.get<{ agendas: Agenda[] }>('/api/operacao/agenda/agendas/arquivadas'), enabled: rulesOpen && showArchived });
   const displayedRules = showArchived ? archivedQuery.data?.agendas ?? [] : agendas;
   const ocorrencias = query.data?.ocorrencias ?? [];
-  const archivedOccurrenceCount = ocorrencias.filter((item) => Boolean(item.agenda?.archivedAt)).length;
-  const displayedOccurrences = showArchivedOccurrenceHistory ? ocorrencias : ocorrencias.filter((item) => !item.agenda?.archivedAt);
+  const hiddenHistoryCount = ocorrencias.filter((item) => item.status === 'CANCELADA' || Boolean(item.agenda?.archivedAt)).length;
+  const displayedOccurrences = showArchivedOccurrenceHistory ? ocorrencias : ocorrencias.filter((item) => item.status !== 'CANCELADA' && !item.agenda?.archivedAt);
   const byDay = useMemo(() => {
     const result = new Map<string, Ocorrencia[]>();
     for (const item of displayedOccurrences) result.set(item.data, [...(result.get(item.data) ?? []), item]);
@@ -173,7 +173,7 @@ export function AgendaOperacionalPanel() {
       </div>
       </div>
     </div>
-    <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-ink-muted"><span>{displayedOccurrences.length} agendamento{displayedOccurrences.length === 1 ? '' : 's'} no mês</span>{archivedOccurrenceCount > 0 && <button type="button" className="touch-btn-secondary min-h-11" aria-pressed={showArchivedOccurrenceHistory} onClick={() => setShowArchivedOccurrenceHistory((visible) => !visible)}>{showArchivedOccurrenceHistory ? 'Ocultar histórico arquivado' : `Mostrar histórico arquivado (${archivedOccurrenceCount})`}</button>}</div>
+    <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-ink-muted"><span>{displayedOccurrences.length} agendamento{displayedOccurrences.length === 1 ? '' : 's'} no mês</span>{hiddenHistoryCount > 0 && <button type="button" className="touch-btn-secondary min-h-11" aria-pressed={showArchivedOccurrenceHistory} onClick={() => setShowArchivedOccurrenceHistory((visible) => !visible)}>{showArchivedOccurrenceHistory ? 'Ocultar histórico cancelado/arquivado' : `Mostrar histórico cancelado/arquivado (${hiddenHistoryCount})`}</button>}</div>
     {notice && !rulesOpen && <p role="status" className="rounded-xl bg-success-soft p-3 text-sm text-ink">{notice}</p>}
     {query.isError && <div role="alert" className="alert-error flex flex-wrap items-center gap-3"><span>Não foi possível carregar a agenda.</span><button type="button" className="touch-btn-secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>Tentar novamente</button></div>}
     {query.isFetching && <p role="status" className="text-sm text-ink-faint">Carregando agendamentos…</p>}

@@ -178,11 +178,11 @@ export function ClienteDetailPage() {
           <p className="text-2xl font-bold text-brand-600">{stats?.totalComandasFechadas ?? 0}</p>
         </div>
         <div className="card text-center">
-          <p className="text-xs text-ink-muted uppercase tracking-wide">Total gasto</p>
+          <p className="text-xs text-ink-muted uppercase tracking-wide">Total recebido</p>
           <p className="text-2xl font-bold text-brand-600">{formatCurrency(stats?.totalGasto ?? 0)}</p>
         </div>
         <div className="card text-center">
-          <p className="text-xs text-ink-muted uppercase tracking-wide">Chope</p>
+          <p className="text-xs text-ink-muted uppercase tracking-wide">Chope líquido lançado</p>
           <p className="text-2xl font-bold">{formatMl(stats?.totalMlChope ?? 0)}</p>
         </div>
         <div className="card text-center">
@@ -336,13 +336,17 @@ export function ClienteDetailPage() {
           <article key={item.id} className="card space-y-2">
             <div className="flex justify-between gap-2">
               <div>
-                <p className="font-semibold">{item.evento.nome}</p>
+                <p className="font-semibold">{item.ocorrencia?.nome ?? item.evento?.nome ?? `Caixa · ${item.pontoVenda?.nome ?? 'PDV'}`}</p>
                 <p className="text-xs text-ink-muted">
-                  {item.evento.local ? `${item.evento.local} · ` : ''}{formatDateTime(item.fechadaEm)}
+                  {item.ocorrencia ? `Ocorrência ${new Date(`${item.ocorrencia.data}T12:00:00`).toLocaleDateString('pt-BR')} · ` : ''}
+                  {item.evento?.local ? `${item.evento.local} · ` : ''}{formatDateTime(item.fechadaEm)}
+                  {item.status === 'CANCELADA' ? ' · Comanda cancelada' : ''}
                 </p>
               </div>
               <div className="shrink-0 text-right">
-                <p className="font-bold text-brand-600">Pago: {formatCurrency(item.total)}</p>
+                <p className="font-bold text-brand-600">Recebido: {formatCurrency(item.total)}</p>
+                <p className="text-xs text-ink-muted">Lançado: {formatCurrency(item.totalComanda)}</p>
+                {item.desconto > 0 && <p className="text-xs text-ink-muted">Desconto: {formatCurrency(item.desconto)}</p>}
                 {item.valorPendente > 0 && (
                   <p className="mt-0.5 text-xs font-semibold text-orange-400">Pendente: {formatCurrency(item.valorPendente)}</p>
                 )}
@@ -353,9 +357,11 @@ export function ClienteDetailPage() {
                 <li key={i.id}>
                   {i.quantidade}x {i.produto}
                   {i.volumeMl > 1 ? ` (${i.volumeMl} ml)` : ''} — {formatCurrency(i.subtotal)}
+                  {i.canceladoEm ? ' · Cancelado (fora do consumo líquido)' : i.cancelamentoPendenteEm ? ' · Cancelamento pendente (fora do consumo líquido)' : i.statusEntrega === 'ENTREGUE' ? ' · Entregue' : ' · Lançado'}
                 </li>
               ))}
             </ul>
+            <p className="text-xs text-ink-faint">O consumo líquido conta itens lançados sem cancelamento; “entregue” identifica o estado da cozinha.</p>
           </article>
         ))}
         {historico && historico.pagination.pages > 1 && (
