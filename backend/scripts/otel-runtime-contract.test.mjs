@@ -91,9 +91,12 @@ test('real API DEV stop drains HTTP and flushes SDK providers before process exi
   const exited = new Promise(resolve => child.once('exit', resolve));
   const timeout = setTimeout(() => child.kill(), 20_000);
   try {
+    // A cold instrumented API can exceed six seconds on this Windows host.
+    // Keep a bounded readiness deadline and fail immediately if the child exits.
+    const readyDeadline = Date.now() + 15_000;
     for (let i = 0; ; i++) {
       try { const r = await fetch(`http://127.0.0.1:${port}/api/health`); if (r.ok) break; } catch {}
-      if (i > 60) throw new Error('isolated API did not start');
+      if (child.exitCode !== null || Date.now() >= readyDeadline) throw new Error(`isolated API did not start (exit=${child.exitCode}): ${output.replaceAll(token, '[REDACTED]')}`);
       await new Promise(r => setTimeout(r, 100));
     }
     const response = await fetch(`http://127.0.0.1:${port}/api/_dev/shutdown`, { method: 'POST', headers: { 'x-quiver-dev-shutdown-token': token } });
