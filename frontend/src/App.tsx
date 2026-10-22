@@ -33,6 +33,7 @@ import { ComandaDetailPage } from './pages/ComandaDetailPage';
 import { NovaComandaPage } from './pages/NovaComandaPage';
 import { VendaAvulsaPage } from './pages/VendaAvulsaPage';
 import { RankingPage } from './pages/RankingPage';
+import { RankingPdvPage } from './pages/RankingPdvPage';
 import { RankingPeriodoPage } from './pages/RankingPeriodoPage';
 import { RankingSeriePage } from './pages/RankingSeriePage';
 import { RankingFullscreenPage } from './pages/RankingFullscreenPage';
@@ -403,6 +404,7 @@ const router = createBrowserRouter([
                               { path: 'comandas/nova', element: <RequirePermissionRoute permission="command.operate" />, children: [{ index: true, element: <OperacaoNovaComandaPage /> }] },
                               { path: 'comandas/venda-avulsa', element: <RequirePermissionRoute permission="command.operate" />, children: [{ index: true, element: <OperacaoVendaAvulsaPage /> }] },
                               { path: 'comandas/:id', element: <RequirePermissionRoute permission="command.read" />, children: [{ index: true, element: <OperacaoComandaDetailPage /> }] },
+                              { path: 'ranking', element: <RequirePermissionRoute permission="command.read" />, children: [{ index: true, element: <RankingPdvPage /> }] },
                               { path: 'caixa', element: <OperacaoCaixaPage /> },
                             ],
                           },

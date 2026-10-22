@@ -517,6 +517,21 @@ export interface RankingResponse {
   ranking: RankingEntry[];
 }
 
+export interface RankingPdvResponse {
+  pontoVenda: { id: string; nome: string };
+  dia: string;
+  ocorrencia: { id: string; nome: string; data: string } | null;
+  ranking: RankingEntry[];
+}
+
+export interface RankingPdvPeriodoResponse {
+  pontoVenda: { id: string; nome: string };
+  escopo: 'mensal' | 'geral';
+  mes: string | null;
+  mesesDisponiveis: string[];
+  entries: RankingEntry[];
+}
+
 export interface RankingSerieResponse {
   serie: {
     id: string;

@@ -1,4 +1,5 @@
-import { expect, loginPage, PERSONA_PERMISSIONS, test, uniquePhone, type Ops } from '../support/ops';
+import { expect, loginPage, PERSONA_PERMISSIONS, test, todayIso, uniquePhone, type Ops } from '../support/ops';
+import { prismaClient } from '../support/fixtures';
 
 /**
  * Known month: comanda A (owner) chope 500 + porção = 48 in PIX; comanda B (Caixa) 2 latas = 16 in cash;
@@ -93,16 +94,119 @@ test('DSH-S04 dashboard legado no modelo canônico', async ({ ops, page, evidenc
   if (destino === '/dashboard' && legado.status === 200) expect(legado.body.resumo.receitaTotal).toBe(operacional.resumo.receitaTotal);
 });
 
-test('DSH-S05 ranking e TV de ranking no modelo canônico', async ({ ops, page, evidence }) => {
+test('DSH-S05 ranking acessível por PDV e ocorrência, com regras e isolamento empresarial', async ({ ops, page, evidence }) => {
   const tenant = await ops.tenant();
+  const other = await ops.tenant();
+  const catalog = await tenant.seedCatalog();
+  const occurrence = await tenant.owner.expect(tenant.owner.post('/api/operacao/agenda/ocorrencias', {
+    nome: 'Ocorrência Ranking QA', data: todayIso(), horaInicio: '18:00', horaFim: '23:00',
+  }), 201, 'criar ocorrência sintética');
+  const secondShift = await tenant.owner.expect(tenant.owner.post('/api/operacao/caixa/abrir', {
+    pontoVendaId: tenant.pointId, trocoInicial: 0, cardapioId: catalog.cardapioId, ocorrenciaId: occurrence.id,
+  }), 201, 'abrir caixa vinculado à ocorrência');
+  const comanda = await tenant.openComanda(tenant.owner, [tenant.chopeItem(500, 2)], {
+    clienteNome: 'Cliente Ranking QA', clienteTelefone: uniquePhone(),
+  });
+  const prisma = prismaClient();
+  const commandDb = await prisma.comanda.findFirst({ where: { id: comanda.id, pontoVendaId: tenant.pointId }, select: { origem: true, tipo: true, status: true, ocorrenciaId: true, clienteId: true, cliente: { select: { nome: true } }, itens: { select: { volumeMl: true, quantidade: true, precoUnit: true, canceladoEm: true, cancelamentoPendenteEm: true, produto: { select: { tipo: true, formato: true } } } } } });
+  expect(commandDb?.ocorrenciaId).toBe(occurrence.id);
+  expect(commandDb?.clienteId).toBeTruthy();
+  expect(commandDb).toMatchObject({ origem: 'CAIXA', tipo: 'APELIDO', cliente: { nome: 'Cliente Ranking QA' }, itens: [expect.objectContaining({ volumeMl: 500, quantidade: 2, produto: { tipo: 'BEBIDA', formato: 'CHOPE' } })] });
+  const linked = await tenant.owner.expect(tenant.owner.get(`/api/operacao/caixa?pontoVendaId=${tenant.pointId}`), 200, 'caixa com ocorrência');
+  expect(linked.sessao.ocorrenciaId).toBe(occurrence.id);
+  const byDay = await tenant.owner.expect(tenant.owner.get(`/api/ranking/pdv/${tenant.pointId}?dia=${todayIso()}&ocorrenciaId=${occurrence.id}`), 200, 'ranking por ocorrência');
+  test.info().annotations.push({ type: 'observed', description: `comanda=${JSON.stringify(commandDb)}; ranking=${JSON.stringify(byDay.ranking)}` });
+  expect(byDay.ranking).toEqual(expect.arrayContaining([expect.objectContaining({ nome: 'Cliente Ranking QA', totalMl: 1000, pedidos: 2 })]));
+  const monthly = await tenant.owner.expect(tenant.owner.get(`/api/ranking/pdv/${tenant.pointId}/periodo?mes=${todayIso().slice(0, 7)}`), 200, 'ranking mensal do PDV');
+  expect(monthly.entries).toEqual(expect.arrayContaining([expect.objectContaining({ nome: 'Cliente Ranking QA', totalMl: 1000 })]));
+  const general = await tenant.owner.expect(tenant.owner.get(`/api/ranking/pdv/${tenant.pointId}/periodo`), 200, 'ranking geral do PDV');
+  expect(general.entries).toEqual(expect.arrayContaining([expect.objectContaining({ nome: 'Cliente Ranking QA', totalMl: 1000 })]));
+  await other.seedCatalog();
+  await other.openCash();
+  const otherComanda = await other.openComanda(other.owner, [other.chopeItem(300)], { clienteNome: 'Cliente Outro Tenant QA', clienteTelefone: uniquePhone() });
+  const isolated = await tenant.owner.expect(tenant.owner.get(`/api/ranking/pdv/${tenant.pointId}?dia=${todayIso()}`), 200, 'ranking isolado');
+  expect(isolated.ranking.map((entry: { nome: string }) => entry.nome)).not.toContain('Cliente Outro Tenant QA');
+  const crossTenant = await tenant.owner.get(`/api/ranking/pdv/${other.pointId}?dia=${todayIso()}`);
+  expect(crossTenant.status).toBe(404);
+  const unauthorized = await tenant.staff('Ranking', []).then((user) => user.get(`/api/ranking/pdv/${tenant.pointId}?dia=${todayIso()}`));
+  expect(unauthorized.status).toBe(403);
+
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
-  await page.goto('/ranking', { waitUntil: 'networkidle' });
-  const destino = new URL(page.url()).pathname;
+  await page.goto(`/operacao/comandas?pontoVendaId=${tenant.pointId}`, { waitUntil: 'networkidle' });
+  await expect(page.getByRole('link', { name: /Ranking de chope/ })).toBeVisible();
+  await page.getByRole('link', { name: /Ranking de chope/ }).click();
+  await expect(page).toHaveURL(new RegExp(`/operacao/ranking\\?pontoVendaId=${tenant.pointId}.*ocorrenciaId=${occurrence.id}`));
+  await expect(page.getByRole('heading', { name: 'Ranking de chope' })).toBeVisible();
+  await expect(page.getByText('Cliente Ranking QA')).toBeVisible();
+  await page.getByRole('button', { name: 'Mensal' }).click();
+  await expect(page.getByText('Cliente Ranking QA')).toBeVisible();
+  await page.getByRole('button', { name: 'Geral' }).click();
+  await expect(page.getByText('Cliente Ranking QA')).toBeVisible();
   await evidence.screenshot('ranking');
-  const api = await tenant.owner.get('/api/ranking/evento/inexistente');
-  expect(api.status).toBe(404);
-  test.info().annotations.push({ type: 'product-gap', description: `Ranking depende de evento ou série: /ranking redirecionou para ${destino} e a API exige eventoId (404 sem evento). Não há ranking alcançável no PDV canônico.` });
-  expect(destino).not.toBe('/ranking');
+  const db = await prisma.comanda.findFirst({ where: { id: comanda.id, pontoVendaId: tenant.pointId }, select: { ocorrenciaId: true, sessaoCaixaRealizacaoId: true, origem: true } });
+  expect(db).toMatchObject({ ocorrenciaId: occurrence.id, origem: 'CAIXA' });
+  expect(db?.sessaoCaixaRealizacaoId).toBeTruthy();
+  test.info().annotations.push({ type: 'observed', description: `Ranking sintético do PDV ${tenant.pointId}; sessão vinculada ${secondShift.id}; produto chope ${catalog.chope.id}; comanda isolada ${comanda.id}; controle de outro tenant ${otherComanda.id}.` });
+});
+
+test('DSH-S06 ocorrência ao abrir caixa e montagem de chope compacta com permissões', async ({ ops, page, evidence }) => {
+  const tenant = await ops.tenant();
+  const catalog = await tenant.seedCatalog();
+  const occurrence = await tenant.owner.expect(tenant.owner.post('/api/operacao/agenda/ocorrencias', {
+    nome: 'Ocorrência Agenda QA', data: todayIso(), horaInicio: '18:00', horaFim: '23:00',
+  }), 201, 'criar ocorrência sintética');
+  await evidence.checkpoint();
+  let agendaAttempts = 0;
+  await page.route('**/api/operacao/agenda/ocorrencias?*', async (route) => {
+    agendaAttempts += 1;
+    if (agendaAttempts <= 4) return route.abort();
+    await route.continue();
+  });
+  await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
+  await page.goto(`/operacao/comandas?pontoVendaId=${tenant.pointId}`, { waitUntil: 'networkidle' });
+  await expect(page.getByRole('alert')).toContainText('Não foi possível carregar os agendamentos');
+  await page.getByRole('button', { name: 'Tentar novamente' }).last().click();
+  const selector = page.getByLabel('Ocorrência do caixa (opcional)');
+  await expect(selector).toBeVisible();
+  await expect(selector.locator('option', { hasText: 'Ocorrência Agenda QA' })).toHaveCount(1);
+  await page.getByRole('button', { name: 'Cardápio salvo' }).click();
+  await page.getByRole('radio').first().click();
+  await selector.selectOption(occurrence.id);
+  await page.getByRole('button', { name: 'Abrir caixa' }).click();
+  await expect(page.getByTestId('caixa-contexto-ocorrencia')).toContainText('Ocorrência Agenda QA');
+  const session = await tenant.owner.expect(tenant.owner.get(`/api/operacao/caixa?pontoVendaId=${tenant.pointId}`), 200, 'sessão vinculada');
+  expect(session.sessao.ocorrenciaId).toBe(occurrence.id);
+
+  const authorized = await tenant.staff('Montador', ['command.read', 'taps.operate']);
+  const denied = await tenant.staff('Leitor', ['command.read']);
+  const taps = await authorized.expect(authorized.get(`/api/operacao/caixa/taps?pontoVendaId=${tenant.pointId}`), 200, 'taps efetivos do turno');
+  expect(taps.taps).toHaveLength(1);
+  expect(taps.taps[0].chopeAtual).toBeTruthy();
+  const deniedMount = await denied.put(`/api/operacao/caixa/taps/${catalog.tapId}/chope`, { pontoVendaId: tenant.pointId, produtoId: catalog.chope.id });
+  expect(deniedMount.status).toBe(403);
+  const mount = await authorized.expect(authorized.put(`/api/operacao/caixa/taps/${catalog.tapId}/chope`, { pontoVendaId: tenant.pointId, produtoId: catalog.chope.id }), 200, 'montar chope');
+  expect(mount.taps[0].chopeAtual.id).toBe(catalog.chope.id);
+  await evidence.checkpoint();
+
+  await loginPage(page, authorized.email, authorized.senha);
+  await page.goto(`/operacao/comandas?pontoVendaId=${tenant.pointId}`, { waitUntil: 'networkidle' });
+  await expect(page.getByRole('button', { name: 'Montar chope nas Taps' })).toBeVisible();
+  await page.getByRole('button', { name: 'Montar chope nas Taps' }).click();
+  await expect(page.getByRole('heading', { name: 'Taps do turno' })).toBeVisible();
+  await expect(page.getByText('Tap 1')).toBeVisible();
+  await evidence.screenshot('montagem-compacta');
+
+  await tenant.owner.expect(tenant.owner.put(`/api/operacao/produtos/${catalog.chope.id}`, { ativo: false }), 200, 'desativar chope sintético');
+  await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
+  await page.goto(`/operacao/comandas?pontoVendaId=${tenant.pointId}`, { waitUntil: 'networkidle' });
+  await page.getByRole('button', { name: 'Montar chope nas Taps' }).click();
+  await expect(page.getByText('Nenhum chope está disponível para montar neste PDV.')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Abrir Catálogo' })).toHaveAttribute('href', '/operacao/catalogo');
+
+  const prisma = prismaClient();
+  const stored = await prisma.sessaoCaixaOperacao.findFirst({ where: { cervejariaId: tenant.id, pontoVendaId: tenant.pointId, id: session.sessao.id }, select: { ocorrenciaId: true } });
+  expect(stored?.ocorrenciaId).toBe(occurrence.id);
+  test.info().annotations.push({ type: 'observed', description: `Caixa QA ${session.sessao.id} vinculou ocorrência ${occurrence.id}; montagem foi autorizada por taps.operate e negada sem a permissão.` });
 });
 
 test('DSH-X01 sem dashboard.read a API recusa e a tela redireciona', async ({ ops, page, evidence }) => {
