@@ -6,7 +6,7 @@ import { Modal } from '../Modal';
 
 type Agenda = { id: string; nome: string; diaSemana: number; primeiraData?: string | null; ultimaData?: string | null; horaInicio: string; horaFim: string | null; local: string | null; ativa: boolean; archivedAt?: string | null; _count: { ocorrencias: number } };
 type Confirmation = { kind: 'discard'; navigation?: boolean; restoring?: boolean } | { kind: 'cancel'; item: Ocorrencia } | { kind: 'restore'; item: Ocorrencia; requestId: string } | { kind: 'stop'; agendaId: string } | { kind: 'resume'; agendaId: string; requestId: string } | { kind: 'archive'; agendaId: string };
-type Ocorrencia = { id: string; agendaId: string | null; nome: string; data: string; horaInicio?: string | null; horaFim?: string | null; local?: string | null; status: 'PROGRAMADA' | 'ABERTA' | 'FECHADA' | 'CANCELADA'; podeEditar: boolean; podeCancelar: boolean; podeRestaurar?: boolean; bloqueio: string | null; bloqueioRestauracao?: string | null };
+type Ocorrencia = { id: string; agendaId: string | null; agenda?: { archivedAt?: string | null } | null; nome: string; data: string; horaInicio?: string | null; horaFim?: string | null; local?: string | null; status: 'PROGRAMADA' | 'ABERTA' | 'FECHADA' | 'CANCELADA'; podeEditar: boolean; podeCancelar: boolean; podeRestaurar?: boolean; bloqueio: string | null; bloqueioRestauracao?: string | null };
 type Draft = { requestId: string; nome: string; data: string; horaInicio: string; horaFim: string; local: string; repetirSemanalmente: boolean; agendaId?: string; ocorrenciaId?: string; fim: string; gerarDatas: boolean };
 type RestoreDraft = { item: Ocorrencia; requestId: string; data: string; horaInicio: string; horaFim: string };
 const dias = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
@@ -24,6 +24,7 @@ export function AgendaOperacionalPanel() {
   const [view, setView] = useState<'Mês' | 'Lista'>('Mês');
   const [rulesOpen, setRulesOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [showArchivedOccurrenceHistory, setShowArchivedOccurrenceHistory] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [notice, setNotice] = useState('');
   const [detail, setDetail] = useState<Ocorrencia | null>(null);
@@ -36,16 +37,19 @@ export function AgendaOperacionalPanel() {
   const navigationPrompted = useRef(false);
   const queryClient = useQueryClient();
   const { inicio, fim } = monthRange(month);
+  useEffect(() => { setShowArchivedOccurrenceHistory(false); }, [month]);
   const query = useQuery({ queryKey: ['operacao-agenda-ocorrencias', 'gestao', inicio, fim], queryFn: () => api.get<{ agendas: Agenda[]; ocorrencias: Ocorrencia[] }>(`/api/operacao/agenda/ocorrencias?inicio=${inicio}&fim=${fim}`) });
   const agendas = query.data?.agendas ?? [];
   const archivedQuery = useQuery({ queryKey: ['operacao-agenda-arquivadas'], queryFn: () => api.get<{ agendas: Agenda[] }>('/api/operacao/agenda/agendas/arquivadas'), enabled: rulesOpen && showArchived });
   const displayedRules = showArchived ? archivedQuery.data?.agendas ?? [] : agendas;
   const ocorrencias = query.data?.ocorrencias ?? [];
+  const archivedOccurrenceCount = ocorrencias.filter((item) => Boolean(item.agenda?.archivedAt)).length;
+  const displayedOccurrences = showArchivedOccurrenceHistory ? ocorrencias : ocorrencias.filter((item) => !item.agenda?.archivedAt);
   const byDay = useMemo(() => {
     const result = new Map<string, Ocorrencia[]>();
-    for (const item of ocorrencias) result.set(item.data, [...(result.get(item.data) ?? []), item]);
+    for (const item of displayedOccurrences) result.set(item.data, [...(result.get(item.data) ?? []), item]);
     return result;
-  }, [ocorrencias]);
+  }, [displayedOccurrences]);
   const visibleDays = view === 'Mês' ? [[selected, byDay.get(selected) ?? []] as const] : [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b));
   const mutation = useMutation({
     mutationFn: (operation: { path: string; body: unknown; restoreItem?: Ocorrencia }) => api.post(operation.path, operation.body),
@@ -169,7 +173,7 @@ export function AgendaOperacionalPanel() {
       </div>
       </div>
     </div>
-    <div className="flex items-center justify-between gap-3 text-sm text-ink-muted"><span>{ocorrencias.length} agendamento{ocorrencias.length === 1 ? '' : 's'} no mês</span></div>
+    <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-ink-muted"><span>{displayedOccurrences.length} agendamento{displayedOccurrences.length === 1 ? '' : 's'} no mês</span>{archivedOccurrenceCount > 0 && <button type="button" className="touch-btn-secondary min-h-11" aria-pressed={showArchivedOccurrenceHistory} onClick={() => setShowArchivedOccurrenceHistory((visible) => !visible)}>{showArchivedOccurrenceHistory ? 'Ocultar histórico arquivado' : `Mostrar histórico arquivado (${archivedOccurrenceCount})`}</button>}</div>
     {notice && !rulesOpen && <p role="status" className="rounded-xl bg-success-soft p-3 text-sm text-ink">{notice}</p>}
     {query.isError && <div role="alert" className="alert-error flex flex-wrap items-center gap-3"><span>Não foi possível carregar a agenda.</span><button type="button" className="touch-btn-secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>Tentar novamente</button></div>}
     {query.isFetching && <p role="status" className="text-sm text-ink-faint">Carregando agendamentos…</p>}

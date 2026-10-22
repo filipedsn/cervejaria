@@ -59,7 +59,7 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
     if (!pontoVendaId) return reply.status(409).send({ code: 'CANONICAL_PDV_UNAVAILABLE', error: 'A empresa precisa ter exatamente um PDV ativo' });
     const ocorrencias = await prisma.ocorrenciaOperacional.findMany({
       where: { cervejariaId: request.operacao.cervejariaId, pontoVendaId, data: { gte: inicio, lte: fim } },
-      include: { agenda: { select: { id: true, nome: true, frequencia: true, diaSemana: true } }, _count: { select: { sessoesCaixa: true, comandas: true } } },
+      include: { agenda: { select: { id: true, nome: true, frequencia: true, diaSemana: true, archivedAt: true } }, _count: { select: { sessoesCaixa: true, comandas: true } } },
       orderBy: [{ data: 'asc' }, { horaInicio: 'asc' }, { nome: 'asc' }],
     });
     const agendas = await prisma.agendaOperacional.findMany({ where: { cervejariaId: request.operacao.cervejariaId, pontoVendaId, archivedAt: null }, include: { _count: { select: { ocorrencias: true } } }, orderBy: [{ diaSemana: 'asc' }, { nome: 'asc' }] });

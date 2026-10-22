@@ -11,11 +11,12 @@ async function fixture(page: Page) {
     { id: 'old-active', nome: 'Sábado sem datas', diaSemana: 6, horaInicio: '18:00', horaFim: null, local: null, ativa: true, archivedAt: null as string | null, _count: { ocorrencias: 0 } },
     { id: 'old-inactive', nome: 'Repetição inativa', diaSemana: 6, horaInicio: '17:00', horaFim: null, local: null, ativa: false, archivedAt: null as string | null, _count: { ocorrencias: 0 } },
   ];
-  const rows = [
+  const rows: any[] = [
     { id: 'one', agendaId: null as string | null, nome: 'Encontro da tarde', data: '2026-10-10', horaInicio: '15:00', horaFim: '16:00', local: 'Salão', status: 'PROGRAMADA', podeEditar: true, podeCancelar: true, bloqueio: null as string | null },
     { id: 'two', agendaId: null as string | null, nome: 'Operação encerrada', data: '2026-10-10', horaInicio: '18:00', horaFim: null, local: null, status: 'FECHADA', podeEditar: false, podeCancelar: false, bloqueio: 'Este agendamento possui histórico operacional ou de caixa. Seus dados e status são preservados.' },
     { id: 'three', agendaId: null as string | null, nome: 'Domingo no jardim', data: '2026-10-11', horaInicio: '11:00', horaFim: null, local: null, status: 'ABERTA', podeEditar: false, podeCancelar: false, bloqueio: 'Somente agendamentos programados e sem histórico operacional podem ser editados ou cancelados.' },
   ];
+  rows.push({ ...rows[0], id: 'archived-history', agendaId: 'archived-rule', agenda: { archivedAt: '2026-10-20T12:00:00Z' }, nome: 'Histórico da repetição arquivada', data: '2026-10-14', status: 'FECHADA', podeEditar: false, podeCancelar: false, bloqueio: 'Este agendamento possui histórico operacional ou de caixa. Seus dados e status são preservados.' });
   const writes: { url: string; body: any }[] = []; const reads: string[] = []; const receipts = new Set<string>();
   let failures = 0; let conflicts = 0; let restoreConflicts = 0; let hold: Promise<void> | null = null;
   await page.route('**/api/operacao/agenda/**', async (route) => {
@@ -88,6 +89,18 @@ for (const width of [390, 768]) {
       const emptyDay = page.locator('section[aria-label="segunda-feira, 12 de outubro"]'); await expect(emptyDay).toContainText('Nenhum agendamento neste dia.');
       const emptyBeforeCalendar = await emptyDay.evaluate((section) => Boolean(section.compareDocumentPosition(document.querySelector('[aria-label="Dias do mês"]')!) & Node.DOCUMENT_POSITION_FOLLOWING));
       expect(emptyBeforeCalendar).toBe(true); await noOverflow(page);
+    });
+    test('ocorrências de repetições arquivadas ficam fora do calendário padrão e podem ser reexibidas', async ({ page }) => {
+      await fixture(page); await open(page);
+      await expect(page.getByText('3 agendamentos no mês')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'quarta-feira, 14 de outubro, 0 agendamentos' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Mostrar histórico arquivado (1)' })).toBeVisible();
+      await page.getByRole('button', { name: 'Mostrar histórico arquivado (1)' }).click();
+      await expect(page.getByText('4 agendamentos no mês')).toBeVisible();
+      await page.getByRole('button', { name: 'quarta-feira, 14 de outubro, 1 agendamentos' }).click();
+      await expect(page.getByRole('button', { name: /Histórico da repetição arquivada/ })).toBeVisible();
+      await page.getByRole('button', { name: 'Ocultar histórico arquivado' }).click();
+      await expect(page.getByText('3 agendamentos no mês')).toBeVisible();
     });
     test('recurring schedules button is beside the primary action and opens the counted panel', async ({ page }) => {
       const state = await fixture(page); await open(page);
