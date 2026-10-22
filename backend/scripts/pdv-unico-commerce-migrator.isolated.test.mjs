@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -1374,7 +1374,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const occurrenceProofs = [];
     const withOwnerAt = (day, operation) => withQaDate(day, async () => operation(await login(authOwner.email, ownerPassword, 'DONO')));
     const withSecondOwnerAt = (day, operation) => withQaDate(day, async () => operation(await login(secondOwner.email, secondOwnerPassword, 'DONO')));
-    const agendaCreate = await app.inject({ method: 'POST', url: '/api/operacao/agenda/agendas', headers: { cookie: ownerCookie }, payload: { nome: `Sábado no PDV ${runId}`, diaSemana: 6, horaInicio: '18:00' } });
+    const agendaCreate = await app.inject({ method: 'POST', url: '/api/operacao/agenda/agendas', headers: { cookie: ownerCookie }, payload: { nome: `Sábado no PDV ${runId}`, diaSemana: 6, horaInicio: '18:00', horaFim: '22:00', primeiraData: '2026-11-07', ultimaData: '2026-11-28' } });
     assert.equal(agendaCreate.statusCode, 201, `authenticated weekly agenda create: ${agendaCreate.body}`);
     const managedAgenda = JSON.parse(agendaCreate.body);
     const generateUrl = `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}/gerar`;
@@ -1386,12 +1386,16 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const attendeeWrite = await app.inject({ method: 'POST', url: '/api/operacao/agenda/agendas', headers: { cookie: attendantCookie }, payload: { nome: 'No permission', diaSemana: 6 } });
     assert.equal(attendeeWrite.statusCode, 403, 'agenda management remains protected by the existing owner authorization');
     await assertNoApiWrites(readOnlyBefore, 'attendant agenda write');
+    const resumeRequestId = randomUUID();
+    const resumed = await app.inject({ method: 'POST', url: `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}/retomar`, headers: { cookie: ownerCookie }, payload: { requestId: resumeRequestId } });
+    assert.equal(resumed.statusCode, 200, `explicit authorized recurrence resume: ${resumed.body}`);
+    assert.equal(JSON.parse(resumed.body).criadas, 4, 'explicit resume creates dates only within its saved bounds');
     const [generateA, generateB] = await Promise.all([
       app.inject({ method: 'POST', url: generateUrl, headers: { cookie: ownerCookie }, payload: generatedRange }),
       app.inject({ method: 'POST', url: generateUrl, headers: { cookie: ownerCookie }, payload: generatedRange }),
     ]);
     assert.deepEqual([generateA.statusCode, generateB.statusCode], [200, 200], 'concurrent explicit recurrence generation completes');
-    assert.equal([JSON.parse(generateA.body).criadas, JSON.parse(generateB.body).criadas].reduce((sum, count) => sum + count, 0), 4, 'concurrent generation creates each Saturday once');
+    assert.equal([JSON.parse(generateA.body).criadas, JSON.parse(generateB.body).criadas].reduce((sum, count) => sum + count, 0), 0, 'concurrent generation does not duplicate dates created by explicit resume');
     const generatedListResponse = await app.inject({ method: 'GET', url: '/api/operacao/agenda/ocorrencias?inicio=2026-11-01&fim=2026-11-30', headers: { cookie: ownerCookie } });
     assert.equal(generatedListResponse.statusCode, 200);
     const generatedList = JSON.parse(generatedListResponse.body);

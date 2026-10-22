@@ -141,4 +141,44 @@ test.describe('Agenda operacional canônica', () => {
     expect(Object.hasOwn(requested[0]!, 'confirmarDataDiferente')).toBe(false);
     await expect(page.getByTestId('caixa-contexto-ocorrencia')).toContainText('Sem ocorrência');
   });
+
+  test('legacy weekly rule requires explicit dates and keeps saving separate from resume', async ({ page }) => {
+    await authenticateAsOwner(page);
+    const rule: Record<string, unknown> = { id: 'legacy-weekly', nome: 'Legacy Friday', diaSemana: 5, primeiraData: null, ultimaData: null, horaInicio: '18:00', horaFim: '20:00', local: null, ativa: false, archivedAt: null, _count: { ocorrencias: 0 } };
+    const savedBodies: Record<string, unknown>[] = []; const resumeBodies: Record<string, unknown>[] = [];
+    await page.route('**/api/operacao/agenda/ocorrencias?**', (route) => route.fulfill({ json: { agendas: [rule], ocorrencias: [] } }));
+    await page.route('**/api/operacao/agenda/agendamentos', async (route) => {
+      const body = route.request().postDataJSON() as Record<string, unknown>; savedBodies.push(body);
+      rule.primeiraData = String(body.data) + 'T00:00:00.000Z'; rule.ultimaData = String(body.fim) + 'T00:00:00.000Z';
+      return route.fulfill({ json: { agendaId: rule.id, salva: true, criadas: 0, datas: [], motivo: 'DEFINICAO_SALVA_SEM_AGENDAR' } });
+    });
+    await page.route('**/api/operacao/agenda/agendas/legacy-weekly/retomar', async (route) => {
+      resumeBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+      return route.fulfill({ json: { agendaId: rule.id, salva: true, reativada: true, criadas: 2, datas: ['2026-10-23', '2026-10-30'] } });
+    });
+    await page.goto('/operacao/agenda');
+    await page.getByRole('button', { name: /Agendamentos recorrentes/ }).click();
+    await expect(page.getByText(/Regra antiga sem limites persistidos/)).toBeVisible();
+    await page.getByRole('button', { name: /Legacy Friday/ }).click();
+    await expect(page.getByText(/limites persistidos/)).toBeVisible();
+    const firstDate = page.getByLabel('Primeira data'); const lastDate = page.locator('[role="dialog"] input[type="date"]').nth(1);
+    await expect(firstDate).toHaveValue(''); await expect(lastDate).toHaveValue('');
+    await firstDate.fill('2026-10-23'); await lastDate.fill('2026-10-31');
+    await page.getByRole('button', { name: /Salvar defini/ }).click();
+    await expect.poll(() => savedBodies.length).toBe(1);
+    expect(savedBodies[0]).toMatchObject({ agendaId: 'legacy-weekly', data: '2026-10-23', fim: '2026-10-31', gerarDatas: false });
+    await expect(page.getByRole('status').filter({ hasText: 'Regra salva' })).toBeVisible();
+    await page.getByRole('button', { name: /Agendamentos recorrentes/ }).click();
+    await page.getByRole('button', { name: /Legacy Friday/ }).click();
+    await expect(page.getByLabel('Primeira data')).toHaveValue('2026-10-23');
+    await expect(page.locator('[role="dialog"] input[type="date"]').nth(1)).toHaveValue('2026-10-31');
+    await page.getByRole('dialog').getByRole('button', { name: 'Voltar' }).click();
+    await page.getByRole('button', { name: /Agendamentos recorrentes/ }).click();
+    await page.getByRole('button', { name: 'Retomar e agendar datas' }).click();
+    await expect(page.getByRole('heading', { name: /Retomar repeti/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Retomar e agendar datas' }).click();
+    await expect.poll(() => resumeBodies.length).toBe(1);
+    expect(resumeBodies[0]?.requestId).toBeTruthy();
+    await expect(page.getByRole('status').filter({ hasText: /retomad/ })).toBeVisible();
+  });
 });

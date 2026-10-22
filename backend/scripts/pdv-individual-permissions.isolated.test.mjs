@@ -140,7 +140,7 @@ const canonicalLinks = JSON.parse(canonicalLinkRead.body);
 assert.deepEqual(canonicalLinks.map(({ opcional }) => ({ companyId: opcional.cervejariaId, pointId: opcional.pontoVendaId })), [
   { companyId: company.id, pointId: point.id }, { companyId: company.id, pointId: point.id },
 ]);
-const agendaPayload = { nome: `Agenda permission QA ${suffix}`, diaSemana: 3, horaInicio: '18:00', horaFim: '22:00' };
+const agendaPayload = { nome: `Agenda permission QA ${suffix}`, diaSemana: 3, horaInicio: '18:00', horaFim: '22:00', primeiraData: '2026-10-28', ultimaData: '2026-11-04' };
 const agendaDeniedBefore = await prisma.agendaOperacional.count({ where: { cervejariaId: company.id, pontoVendaId: point.id } });
 const agendaCreateDenied = await app.inject({ method: 'POST', url: '/api/operacao/agenda/agendas', headers: authHeaders(staffCookie), payload: agendaPayload });
 assert.equal(agendaCreateDenied.statusCode, 403, agendaCreateDenied.body);
@@ -152,7 +152,7 @@ assert.equal(agendaCreateAllowed.statusCode, 201, agendaCreateAllowed.body);
 const savedAgenda = await prisma.agendaOperacional.findFirstOrThrow({ where: { cervejariaId: company.id, pontoVendaId: point.id, nome: agendaPayload.nome } });
 assert.equal(savedAgenda.diaSemana, agendaPayload.diaSemana, 'agenda.manage persists the authorized schedule');
 const foreignAgenda = await prisma.agendaOperacional.create({ data: { cervejariaId: otherCompany.id, pontoVendaId: foreignPoint.id, nome: `Foreign agenda ${suffix}`, diaSemana: 3 } });
-const crossTenantAgenda = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${foreignAgenda.id}`, headers: authHeaders(staffCookie), payload: { ativa: false } });
+const crossTenantAgenda = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${foreignAgenda.id}`, headers: authHeaders(staffCookie), payload: { nome: 'Tentativa entre empresas' } });
 assert.equal(crossTenantAgenda.statusCode, 404, crossTenantAgenda.body);
 const revokeAgendaManage = await app.inject({ method: 'PATCH', url: `/api/usuarios/${staff.id}/permissoes-operacao`, headers: authHeaders(ownerCookie), payload: { permissoesOperacao: [] } });
 assert.equal(revokeAgendaManage.statusCode, 200, revokeAgendaManage.body);

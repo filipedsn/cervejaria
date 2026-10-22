@@ -7,14 +7,16 @@ async function agendaPronta(ops: import('../support/ops').Ops) {
 test('AGD-S01 criar, editar, arquivar, interromper e gerar ocorrências @api', async ({ ops }) => {
   const tenant = await agendaPronta(ops);
   const o = tenant.owner;
-  const agenda = await o.expect(o.post('/api/operacao/agenda/agendas', {
-    nome: `Agenda ${uniqueSuffix()}`, diaSemana: new Date().getDay(), horaInicio: '18:00', horaFim: '22:00', local: 'Salão',
-  }), 201, 'criar agenda');
-  await o.expect(o.patch(`/api/operacao/agenda/agendas/${agenda.id}`, { local: 'Área externa' }), 200, 'editar');
   const inicio = todayIso(0);
   const fim = todayIso(14);
+  const agenda = await o.expect(o.post('/api/operacao/agenda/agendas', {
+    nome: `Agenda ${uniqueSuffix()}`, diaSemana: new Date(`${inicio}T00:00:00.000Z`).getUTCDay(), horaInicio: '18:00', horaFim: '22:00', local: 'Salão', primeiraData: inicio, ultimaData: fim,
+  }), 201, 'criar agenda');
+  await o.expect(o.patch(`/api/operacao/agenda/agendas/${agenda.id}`, { local: 'Área externa' }), 200, 'editar');
+  const retomar = await o.expect(o.post(`/api/operacao/agenda/agendas/${agenda.id}/retomar`, { requestId: randomUUID() }), 200, 'retomar e agendar');
+  expect(retomar.criadas).toBeGreaterThan(0);
   const geradas = await o.expect(o.post(`/api/operacao/agenda/agendas/${agenda.id}/gerar`, { inicio, fim }), 200, 'gerar');
-  expect(geradas.criadas).toBeGreaterThan(0);
+  expect(geradas.criadas).toBe(0);
   await o.expect(o.post(`/api/operacao/agenda/agendas/${agenda.id}/interromper`), 200, 'interromper');
   await o.expect(o.post(`/api/operacao/agenda/agendas/${agenda.id}/arquivar`), 200, 'arquivar');
   const arquivadas = await o.expect(o.get('/api/operacao/agenda/agendas/arquivadas'), 200, 'listar arquivadas');
@@ -73,12 +75,13 @@ test('AGD-X02 intervalo atravessando a meia-noite dá 400 @api', async ({ ops, e
 test('AGD-X03 agenda arquivada não gera novas datas @api', async ({ ops, evidence }) => {
   const tenant = await agendaPronta(ops);
   const o = tenant.owner;
+  const inicio = todayIso(0);
   const agenda = await o.expect(o.post('/api/operacao/agenda/agendas', {
-    nome: `Arquivada ${uniqueSuffix()}`, diaSemana: 1, horaInicio: '18:00', horaFim: '22:00',
+    nome: `Arquivada ${uniqueSuffix()}`, diaSemana: new Date(`${inicio}T00:00:00.000Z`).getUTCDay(), horaInicio: '18:00', horaFim: '22:00', primeiraData: inicio, ultimaData: todayIso(14),
   }), 201, 'criar');
   await o.expect(o.post(`/api/operacao/agenda/agendas/${agenda.id}/arquivar`), 200, 'arquivar');
   await evidence.checkpoint();
-  const body = await o.expect(o.post(`/api/operacao/agenda/agendas/${agenda.id}/gerar`, { inicio: todayIso(0), fim: todayIso(7) }), 409, 'gerar arquivada');
+  const body = await o.expect(o.post(`/api/operacao/agenda/agendas/${agenda.id}/gerar`, { inicio, fim: todayIso(7) }), 409, 'gerar arquivada');
   expect(body.error).toMatch(/arquivada/i);
   await evidence.assertNoDbChange();
 });
