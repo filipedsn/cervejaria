@@ -100,7 +100,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const [painelSuprimido, setPainelSuprimido] = useState(compacto);
   const [montagemTapsAberta, setMontagemTapsAberta] = useState(false);
   const [trailerId, setTrailerId] = useState('');
-  const [ocorrenciaEscolha, setOcorrenciaEscolha] = useState<{ contexto: string; id: string; origem: 'nenhuma' | 'explicita' | 'invalidada' } | null>(null);
+  const [ocorrenciaEscolha, setOcorrenciaEscolha] = useState<{ contexto: string; id: string; origem: 'sugestao' | 'explicita' | 'invalidada' } | null>(null);
   const [aberturaPendente, setAberturaPendente] = useState<{
     contexto: string;
     ocorrenciaId: string;
@@ -154,12 +154,12 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         // replace it with a different event that happens to be the only option.
         return { contexto: contextoAgendamento, id: '', origem: 'invalidada' };
       }
-      return { contexto: contextoAgendamento, id: '', origem: 'nenhuma' };
+      return { contexto: contextoAgendamento, id: ocorrenciasElegiveis.length === 1 ? ocorrenciasElegiveis[0]!.id : '', origem: 'sugestao' };
     });
   }, [agendaCanonica, contextoAgendamento, ocorrenciasQuery.isLoading, ocorrenciasQuery.isFetching, ocorrenciasQuery.isError, ocorrenciasQuery.data?.ocorrencias, diaOperacional, ocorrenciasElegiveis]);
   useEffect(() => {
     if (!aberturaPendente) return;
-    if (aberturaPendente.contexto !== contextoAgendamento) {
+    if (aberturaPendente.contexto !== contextoAgendamento || (ocorrenciasElegiveis.length > 1 && escolhaAtual?.origem !== 'explicita')) {
       setAberturaPendente(null);
       setDialogo('nenhum');
       return;
@@ -172,7 +172,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
       setDialogo('nenhum');
       setErro('O agendamento selecionado mudou ou deixou de estar elegível. Confira a lista e tente novamente.');
     }
-  }, [aberturaPendente, contextoAgendamento, ocorrenciasQuery.isLoading, ocorrenciasQuery.isFetching, ocorrenciasQuery.isError, ocorrenciasQuery.data?.ocorrencias, diaOperacional]);
+  }, [aberturaPendente, contextoAgendamento, ocorrenciasQuery.isLoading, ocorrenciasQuery.isFetching, ocorrenciasQuery.isError, ocorrenciasQuery.data?.ocorrencias, diaOperacional, ocorrenciasElegiveis.length, escolhaAtual?.origem]);
 
   const contasPendentesQuery = useQuery({
     queryKey: ['operacao-contas-pendentes'],
@@ -337,7 +337,8 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     && consultaAgendamentoPronta
     && selecaoAgendamentoValida
     && (!aberturaPendente.ocorrenciaId || cashOccurrenceSelectionIsEligible(ocorrenciasQuery.data?.ocorrencias ?? [], aberturaPendente.ocorrenciaId, diaOperacional)));
-  const podeAbrir = Boolean(cardapioAbrirPayload && !abrir.isPending && !precisaSelecionarTrailer && consultaAgendamentoPronta && selecaoAgendamentoValida);
+  const escolhaAgendamentoCompleta = !agendaCanonica || ocorrenciasElegiveis.length <= 1 || escolhaAtual?.origem === 'explicita';
+  const podeAbrir = Boolean(cardapioAbrirPayload && !abrir.isPending && !precisaSelecionarTrailer && consultaAgendamentoPronta && selecaoAgendamentoValida && escolhaAgendamentoCompleta);
   const abrirDialogoConfirmacao = () => {
     if (!podeAbrir || !cardapioAbrirPayload) return;
     setErro('');
@@ -390,6 +391,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
               </option>
             ))}
           </select>
+          {ocorrenciaSelecionada && escolhaAtual?.origem === 'sugestao' && <p role="status" className="text-sm text-ink-muted">Sugestão: {ocorrenciaSelecionada.nome}. Confira o agendamento na confirmação antes de abrir.</p>}
           {ocorrenciasElegiveis.length === 0 && <p className="text-sm text-ink-faint">Nenhum agendamento para hoje</p>}
           {ocorrenciasElegiveis.length > 0 && !ocorrenciaId && <p className="text-sm text-ink-muted">Escolha um agendamento ou selecione “Abrir sem agendamento”.</p>}
           {ocorrenciaId && ocorrenciaSelecionada && escolhaAtual?.origem === 'explicita' && <p className="text-sm text-ink-muted">Selecionado: {ocorrenciaSelecionada.nome} · {dataCalendarioPt(ocorrenciaSelecionada.data)} · {ocorrenciaSelecionada.horaInicio ?? 'horário a confirmar'}{ocorrenciaSelecionada.horaFim ? `–${ocorrenciaSelecionada.horaFim}` : ''}</p>}
