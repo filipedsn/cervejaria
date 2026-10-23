@@ -68,6 +68,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
   })] }, async (request, reply) => {
     try {
       const { cervejariaId, temCozinha, controlaEstoque, tapsEnabled } = request.operacao;
+      const canonicalPdv = request.operacao.effectiveSettings.source === 'CANONICAL_PDV';
       const user = getAuthUser(request);
       const body = vendaAvulsaSchema.parse(request.body);
       const desconto = body.desconto ?? 0;
@@ -113,7 +114,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
           data: {
             origem: 'CAIXA',
             pontoVendaId: body.pontoVendaId,
-            sessaoCaixaRealizacaoId: sessao.id,
+            ...(canonicalPdv ? { sessaoCaixaRealizacaoId: sessao.id } : {}),
             ...(cashOccurrenceContextEnabled() ? { ocorrenciaId: sessao.ocorrenciaId ?? null } : {}),
             tipo: 'AVULSA',
             identificador: body.nomeCliente || null,

@@ -155,16 +155,15 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       });
       if (!sessao) return reply.status(404).send({ error: 'Sessão de caixa não encontrada neste ponto de venda' });
 
-      const associacoes: Prisma.ComandaWhereInput[] = [
-        { sessaoCaixaRealizacaoId: sessao.id },
-      ];
+      const associacoes: Prisma.ComandaWhereInput[] = request.operacao.effectiveSettings.source === 'CANONICAL_PDV'
+        ? [{ sessaoCaixaRealizacaoId: sessao.id }]
+        : [];
       if (request.operacao.effectiveSettings.source === 'LEGACY') {
         // Compatibility only: older LEGACY rows may lack both explicit links.
         // This mirrors the pre-existing day/turn-time view; it cannot prove which
         // shift owns an unlinked row when multiple shifts share an operational day.
         associacoes.push({
           AND: [
-            { sessaoCaixaRealizacaoId: null },
             { diaOperacional: sessao.diaOperacional },
             status === 'ABERTA'
               ? { createdAt: { gte: sessao.abertoEm } }
@@ -535,7 +534,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         data: {
           origem: 'CAIXA',
           pontoVendaId: body.pontoVendaId,
-          sessaoCaixaRealizacaoId: sessao.id,
+          ...(request.operacao.effectiveSettings.source === 'CANONICAL_PDV' ? { sessaoCaixaRealizacaoId: sessao.id } : {}),
           ...(occurrenceScoped ? { ocorrenciaId: sessao.ocorrenciaId ?? null } : {}),
           tipo: body.tipo,
           identificador: body.identificador,
