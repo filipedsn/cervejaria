@@ -7,9 +7,7 @@ export interface RankingTvStats {
   gapMl: number | null;
 }
 
-export function computeRankingStats(entries: RankingEntry[]): RankingTvStats | null {
-  if (entries.length === 0) return null;
-
+export function computeRankingStats(entries: RankingEntry[]): RankingTvStats {
   const totalMl = entries.reduce((sum, e) => sum + e.totalMl, 0);
   const leaderMl = entries[0]?.totalMl ?? 0;
   const gapMl = entries.length >= 2 ? leaderMl - entries[1].totalMl : null;

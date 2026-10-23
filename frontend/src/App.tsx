@@ -304,6 +304,19 @@ function RankingPeriodoTvEntry() {
   );
 }
 
+function RankingPdvTvEntry() {
+  const { isAuthenticated, isLoading: authLoading, isAdmin, canPermission } = useAuth();
+  const { contexto, isLoading: operationLoading, isResolved } = useOperacaoContexto();
+  if (authLoading || operationLoading) return <Loading fullScreen />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (isAdmin) return <Navigate to="/admin/cervejarias" replace />;
+  if (!canPermission('command.read')) return <Navigate to="/operacao/comandas" replace />;
+  if (!isResolved || !contexto.ativo || contexto.operationMode !== 'CAIXA' || !contexto.tapsEnabled) {
+    return <Navigate to="/operacao/comandas" replace />;
+  }
+  return <div className="qt-tv"><RankingPdvPage tv /></div>;
+}
+
 function CozinhaTvShell({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading, isAdmin, canPermission } = useAuth();
   const { contexto, isLoading: qLoading } = useOperacaoContexto();
@@ -382,6 +395,7 @@ const router = createBrowserRouter([
           {
             element: <RequireTenant />,
             children: [
+          { path: '/operacao/ranking/tv', element: <RankingPdvTvEntry /> },
               {
                 path: '/',
                 element: <TenantShell />,

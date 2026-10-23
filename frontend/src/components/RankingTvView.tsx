@@ -19,6 +19,13 @@ export interface RankingTvViewProps {
   entries: RankingEntry[];
   lastUpdatedAt?: number;
   isDemo?: boolean;
+  updateMode?: 'socket' | 'polling';
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
+  emptyMessage?: string;
+  linkToClientHistory?: boolean;
+  autoScroll?: boolean;
   breweryName?: string | null;
   breweryLogoUrl?: string | null;
 }
@@ -40,12 +47,20 @@ export function RankingTvView({
   entries,
   lastUpdatedAt,
   isDemo = false,
+  updateMode = 'socket',
+  loading = false,
+  error = null,
+  onRetry,
+  emptyMessage = 'Ainda não há consumo registrado neste evento.',
+  linkToClientHistory = false,
+  autoScroll = true,
   breweryName: breweryNameProp,
   breweryLogoUrl: breweryLogoUrlProp,
 }: RankingTvViewProps) {
   const { cervejaria } = useAuth();
-  const socketConnected = useRankingSocketConnected(!isDemo);
-  const isLive = useRankingLiveIndicator(socketConnected, isDemo);
+  const socketConnected = useRankingSocketConnected(!isDemo && updateMode === 'socket');
+  const socketLive = useRankingLiveIndicator(socketConnected, isDemo);
+  const isLive = updateMode === 'polling' ? false : socketLive;
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
 
   const breweryName = breweryNameProp ?? cervejaria?.nome ?? (isDemo ? 'Cervejaria Demo' : null);
@@ -80,7 +95,7 @@ export function RankingTvView({
         kicker={kicker}
         title={title}
         subtitle={subtitle}
-        badge={badge}
+        badge={badge ?? (updateMode === 'polling' ? 'Atualiza a cada minuto' : undefined)}
         breweryName={breweryName}
         breweryLogoUrl={breweryLogoUrl}
         breweryLogoVersion={cervejaria?.logoVersion ?? cervejaria?.updatedAt}
@@ -95,17 +110,24 @@ export function RankingTvView({
       />
 
       <main className="tap-champions-main">
-        {entries.length === 0 ? (
+        {loading ? (
+          <div className="tap-champions-empty" role="status"><p className="tap-champions-empty-title">Carregando ranking…</p></div>
+        ) : error ? (
+          <div className="tap-champions-empty" role="alert">
+            <p className="tap-champions-empty-title">{error}</p>
+            {onRetry && <button type="button" className="touch-btn-secondary touch-btn-sm mt-4" onClick={onRetry}>Tentar novamente</button>}
+          </div>
+        ) : entries.length === 0 ? (
           <div className="tap-champions-empty">
             <EmptyIcon />
             <p className="tap-champions-empty-title">
-              Ainda não há consumo registrado neste evento.
+              {emptyMessage}
             </p>
           </div>
         ) : (
           <>
-            <RankingPodium entries={entries} leaderMl={leaderMl} />
-            <RankingRestGrid entries={entries} leaderMl={leaderMl} />
+            <RankingPodium entries={entries} leaderMl={leaderMl} linkToClientHistory={linkToClientHistory} />
+            <RankingRestGrid entries={entries} leaderMl={leaderMl} linkToClientHistory={linkToClientHistory} autoScroll={autoScroll} />
           </>
         )}
       </main>

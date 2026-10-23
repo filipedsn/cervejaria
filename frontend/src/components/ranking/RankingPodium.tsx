@@ -1,4 +1,5 @@
 import { memo, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { formatLiters } from '../../lib/api';
 import { leaderPercent } from '../../lib/ranking-tv-stats';
 import type { RankingEntry } from '../../types';
@@ -8,6 +9,7 @@ interface PodiumCardProps {
   leaderMl: number;
   variant: 'first' | 'second' | 'third';
   orderClass: string;
+  linkToClientHistory: boolean;
 }
 
 const MEDAL_LABELS = { first: '1', second: '2', third: '3' } as const;
@@ -27,6 +29,7 @@ const PodiumCard = memo(function PodiumCard({
   leaderMl,
   variant,
   orderClass,
+  linkToClientHistory,
 }: PodiumCardProps) {
   const pct = leaderPercent(entry.totalMl, leaderMl);
   const isLeader = variant === 'first';
@@ -38,7 +41,13 @@ const PodiumCard = memo(function PodiumCard({
     >
       {isLeader && <span className="tap-champions-crown" aria-hidden>👑</span>}
       <div className={`tap-champions-medal ${MEDAL_CLASS[variant]}`}>{MEDAL_LABELS[variant]}</div>
-      <p className="tap-champions-podium-name">{entry.nome}</p>
+      {linkToClientHistory ? (
+        <Link className="tap-champions-podium-name ranking-client-link" to={`/clientes/${entry.clienteId}`} title={`Ver histórico de ${entry.nome}`}>
+          {entry.nome}
+        </Link>
+      ) : (
+        <p className="tap-champions-podium-name" title={entry.nome}>{entry.nome}</p>
+      )}
       <p className="tap-champions-podium-volume">{formatLiters(entry.totalMl)}</p>
       {isLeader ? (
         <p className="tap-champions-podium-label">Líder do ranking</p>
@@ -56,9 +65,10 @@ const PodiumCard = memo(function PodiumCard({
 interface RankingPodiumProps {
   entries: RankingEntry[];
   leaderMl: number;
+  linkToClientHistory?: boolean;
 }
 
-export function RankingPodium({ entries, leaderMl }: RankingPodiumProps) {
+export function RankingPodium({ entries, leaderMl, linkToClientHistory = false }: RankingPodiumProps) {
   const top3 = entries.filter((e) => e.posicao <= 3);
   if (top3.length === 0) return null;
 
@@ -81,6 +91,7 @@ export function RankingPodium({ entries, leaderMl }: RankingPodiumProps) {
         leaderMl={leaderMl}
         variant="second"
         orderClass="tap-champions-podium-order-2"
+        linkToClientHistory={linkToClientHistory}
       />,
     );
   }
@@ -92,6 +103,7 @@ export function RankingPodium({ entries, leaderMl }: RankingPodiumProps) {
         leaderMl={leaderMl}
         variant="first"
         orderClass="tap-champions-podium-order-1"
+        linkToClientHistory={linkToClientHistory}
       />,
     );
   }
@@ -103,6 +115,7 @@ export function RankingPodium({ entries, leaderMl }: RankingPodiumProps) {
         leaderMl={leaderMl}
         variant="third"
         orderClass="tap-champions-podium-order-3"
+        linkToClientHistory={linkToClientHistory}
       />,
     );
   }

@@ -52,6 +52,8 @@ function TrendIcon() {
 interface RankingStatsBarProps {
   stats: RankingTvStats | null;
   exitTo: string;
+  tvTo?: string;
+  exitLabel?: string;
   isNativeFullscreen?: boolean;
   onToggleNativeFullscreen?: () => void;
 }
@@ -59,6 +61,8 @@ interface RankingStatsBarProps {
 export function RankingStatsBar({
   stats,
   exitTo,
+  tvTo,
+  exitLabel,
   isNativeFullscreen,
   onToggleNativeFullscreen,
 }: RankingStatsBarProps) {
@@ -125,6 +129,8 @@ export function RankingStatsBar({
       </div>
       <RankingToolbarActions
         exitTo={exitTo}
+        tvTo={tvTo}
+        exitLabel={exitLabel}
         isNativeFullscreen={isNativeFullscreen}
         onToggleNativeFullscreen={onToggleNativeFullscreen}
       />
