@@ -1375,7 +1375,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.equal(agendaCreate.statusCode, 201, `authenticated weekly agenda create: ${agendaCreate.body}`);
     const managedAgenda = JSON.parse(agendaCreate.body);
     const generateUrl = `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}/gerar`;
-    const generatedRange = { inicio: '2026-11-01', fim: '2026-11-30' };
+    const generatedRange = { inicio: '2026-11-07', fim: '2026-11-28' };
     const readOnlyBefore = await counts();
     const attendantScheduleRead = await app.inject({ method: 'GET', url: '/api/operacao/agenda/ocorrencias?inicio=2026-11-01&fim=2026-11-30', headers: { cookie: attendantCookie } });
     assert.equal(attendantScheduleRead.statusCode, 200, 'users who can operate cash can read the operational schedule');
