@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:http';
@@ -50,15 +50,6 @@ const independentKitchenSql = await readFile(path.join(repoRoot, independentKitc
 assert.equal(sha256(independentKitchenSql), independentKitchenMigration.sha256, 'pinned independent kitchen order SQL');
 const individualPermissionsMigrationPath = 'backend/prisma/migrations/20261007220000_individual_operational_permissions/migration.sql';
 const individualPermissionsSql = await readFile(path.join(repoRoot, individualPermissionsMigrationPath));
-const portalExperienceMigrationPath = 'backend/prisma/migrations/20261020210000_portal_cliente_experience/migration.sql';
-const portalExperienceSql = readPinnedBlob(manifest.delivery.schemaCommit, portalExperienceMigrationPath);
-assert.equal(sha256(await readFile(path.join(repoRoot, portalExperienceMigrationPath))), sha256(portalExperienceSql), 'pinned additive portal migration matches the candidate schema commit');
-const agendaLimitMigrations = ['20261009180000_agenda_archive', '20261022170000_agenda_recorrencia_limites', '20261023120000_agenda_fim_opcional', '20261024110000_agenda_generation_reference'].map((name) => ({
-  name,
-  path: `backend/prisma/migrations/${name}/migration.sql`,
-  sql: readPinnedBlob(manifest.delivery.schemaCommit, `backend/prisma/migrations/${name}/migration.sql`),
-}));
-for (const migration of agendaLimitMigrations) assert.equal(sha256(await readFile(path.join(repoRoot, migration.path))), sha256(migration.sql), `pinned ${migration.name} migration matches the candidate schema commit`);
 for (const item of manifest.immutableManifests) assert.equal(sha256(await readFile(path.join(repoRoot, item.path))), item.sha256, `immutable prior manifest ${item.path}`);
 for (const item of manifest.codeCandidates) assert.equal(sha256(await readFile(path.join(repoRoot, item.path))), item.sha256, `current code candidate ${item.path}`);
 
@@ -2464,7 +2455,7 @@ try {
   const catalog = JSON.parse(await readFile(path.join(repoRoot, manifest.priorManifests.catalog.path), 'utf8'));
   const finance = JSON.parse(await readFile(path.join(repoRoot, manifest.priorManifests.finance.path), 'utf8'));
   const sessionSql = readPinnedBlob(manifest.priorManifests.session.commit, manifest.priorManifests.session.path);
-  const candidates = [
+  const explicitCandidates = [
     [core.migrationName, await readFile(path.join(repoRoot, core.migrationPath))],
     [catalog.delivery.migrationName, await readFile(path.join(repoRoot, catalog.delivery.migrationPath))],
     [manifest.priorManifests.session.name, sessionSql],
@@ -2475,9 +2466,24 @@ try {
     [tapMountMigration.name, tapMountSql],
     [independentKitchenMigration.name, independentKitchenSql],
     ['20261007220000_individual_operational_permissions', individualPermissionsSql],
-    ['20261020210000_portal_cliente_experience', portalExperienceSql],
-    ...agendaLimitMigrations.map(({ name, sql }) => [name, sql]),
   ];
+  const historicalMigrationNames = new Set(history.migrations.map((migration) => migration.name));
+  const explicitMigrationNames = new Set(explicitCandidates.map(([name]) => name));
+  const migrationRoot = path.join(repoRoot, 'backend/prisma/migrations');
+  const postHistoryMigrationNames = (await readdir(migrationRoot, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory() && !historicalMigrationNames.has(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+  const additionalCandidates = [];
+  for (const name of postHistoryMigrationNames) {
+    if (explicitMigrationNames.has(name)) continue;
+    const migrationPath = `backend/prisma/migrations/${name}/migration.sql`;
+    const sql = readPinnedBlob(manifest.delivery.schemaCommit, migrationPath);
+    assert.equal(sha256(await readFile(path.join(repoRoot, migrationPath))), sha256(sql), `pinned ${name} migration matches the candidate schema commit`);
+    additionalCandidates.push([name, sql]);
+  }
+  const candidates = [...explicitCandidates, ...additionalCandidates];
+  assert.deepEqual(candidates.map(([name]) => name).sort(), postHistoryMigrationNames, 'disposable chain includes every migration after the pinned historical baseline exactly once');
   assert.equal(sha256(candidates[0][1]), core.migrationSha256, 'pinned core SQL');
   assert.equal(sha256(candidates[1][1]), catalog.delivery.migrationSha256, 'pinned catalog SQL');
   assert.equal(sha256(candidates[2][1]), manifest.priorManifests.session.sha256, 'pinned session SQL');
@@ -2516,10 +2522,8 @@ try {
   const { PrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
   db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal', omit: { produto: { prepararEmPedidoSeparado: true, categoriaPdvId: process.env.PDV_GAMIFIED_CATEGORY_CATALOG !== '1' } } });
   const applied = await db.$queryRaw`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL ORDER BY migration_name`;
-  assert.equal(applied.length, history.migrations.length + 15, 'full historical + operational core/catalog/session/finance/provenance/commerce/sale-session/Tap-mount/independent-kitchen/individual-permissions/portal/agenda-archive-and-bounds chain');
+  assert.equal(applied.length, history.migrations.length + candidates.length, 'full historical and every pinned post-history migration are applied in the disposable database');
   assert(applied.some((row) => row.migration_name === manifest.priorManifests.finance.historicalProvenanceMigration.name), 'Payment.provenienciaHistorica migration is applied before commerce route regressions');
-  assert(applied.some((row) => row.migration_name === '20261020210000_portal_cliente_experience'), 'additive portal schema migration is applied before real route regressions');
-  for (const migration of agendaLimitMigrations) assert(applied.some((row) => row.migration_name === migration.name), `${migration.name} is applied before recurrence route regressions`);
   const constraints = await db.$queryRaw`SELECT conname, confdeltype, convalidated FROM pg_constraint WHERE conname IN ('Comanda_pontoVendaId_ocorrenciaId_fkey','Comanda_pontoVendaId_sessaoCaixaRealizacaoId_fkey','EstoqueSaldoQuiosque_pontoVendaId_cervejariaId_fkey','EstoqueSaldoQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pontoVendaId_cervejariaId_fkey','MovimentoEstoqueQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pedidoId_tenant_point_fkey') ORDER BY conname`;
   assert.equal(constraints.length, 7);
   assert(constraints.every((row) => row.confdeltype === 'r' && row.convalidated), 'tenant/context/history constraints are validated and restrictive');
