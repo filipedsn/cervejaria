@@ -1405,7 +1405,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.equal(agendaEdit.statusCode, 200, `weekly agenda edit: ${agendaEdit.body}`);
     const afterAgendaEdit = await db.ocorrenciaOperacional.findMany({ where: { agendaId: managedAgenda.id }, orderBy: { data: 'asc' } });
     assert.deepEqual(afterAgendaEdit.map((item) => [item.id, item.data.toISOString().slice(0, 10), item.nome]), generatedIdsBeforeEdit, 'editing recurrence preserves generated occurrence IDs, dates and historical names');
-    const avulsaCreate = await app.inject({ method: 'POST', url: '/api/operacao/agenda/ocorrencias', headers: { cookie: ownerCookie }, payload: { nome: 'Avulsa da agenda canônica', data: '2026-11-09' } });
+    const avulsaCreate = await app.inject({ method: 'POST', url: '/api/operacao/agenda/ocorrencias', headers: { cookie: ownerCookie }, payload: { nome: 'Avulsa da agenda canônica', data: '2026-11-09', horaInicio: '18:00', horaFim: '22:00' } });
     assert.equal(avulsaCreate.statusCode, 201, `authenticated one-off occurrence create: ${avulsaCreate.body}`);
     const selectorDay = '2029-02-12';
     const selectorOccurrence = async (id, nome, date, status = 'PROGRAMADA', point = primaryPoint) => db.ocorrenciaOperacional.create({ data: {
