@@ -299,6 +299,7 @@ type ScopedMigrationOptions = {
   measure?: (stage: string, operation: () => Promise<any>) => Promise<any>;
   afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void;
   afterBatchCommit?: (progress: { tenantId: string; phase: string; cursor: number; total: number; batch: number; durationMs: number }) => Promise<void> | void;
+  concurrentRetry?: number;
 };
 
 /** Shared transactional runner for catalog and session scopes. */
@@ -463,7 +464,7 @@ export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
       // source photograph and validate every map, receipt and destination before
       // treating that winner as success. A genuine divergence still falls through
       // to the BLOCKED path below.
-      if (error.code === 'RUN_SCOPE_OR_SNAPSHOT_MISMATCH') {
+      if (error.code !== 'RUN_ID_SCOPE_MISMATCH' && error.code?.startsWith('RUN_') && (options.concurrentRetry ?? 0) < 3) {
         try {
           const dependency = await transactionWithRetry(db, async (tx: Db) => {
             await lock(tx, scope, companyId, pointId);
@@ -473,22 +474,25 @@ export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
           const items = await options.buildItems(db, dependency.sourceKey, context);
           const sourceHash = snapshotHash(scope, transformVersion, companyId, pointId, items);
           const completed = await db.pdvMigrationRun.findUnique({ where: { id: runId } });
-          if (completed && runMatchesScope(completed, scope, companyId, pointId) && completed.status === 'COMPLETED' && completed.sourceSnapshotHash === sourceHash) {
+          if (completed && runMatchesScope(completed, scope, companyId, pointId) && ['RUNNING', 'BLOCKED', 'COMPLETED'].includes(completed.status) && completed.sourceSnapshotHash === sourceHash) {
             const confirmExternal = options.confirmExternalDependency
               ? (tx: Db, sourceType: string, sourceId: string) => options.confirmExternalDependency!(tx, sourceType, sourceId, context)
               : undefined;
-            await validateCheckpoint(db, completed, scope, transformVersion, companyId, pointId, sourceHash, items, true, confirmExternal, true, true);
+            await validateCheckpoint(db, completed, scope, transformVersion, companyId, pointId, sourceHash, items, completed.status === 'COMPLETED', confirmExternal, true, true);
             if (options.validateScope) await options.validateScope(db, items, context);
-            const expectedCheckpoint = JSON.stringify(completed.checkpoint);
-            await transactionWithRetry(db, async (tx: Db) => {
-              await lock(tx, scope, companyId, pointId);
-              const current = await tx.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } });
-              if (!runMatchesScope(current, scope, companyId, pointId) || current.status !== 'COMPLETED' || current.sourceSnapshotHash !== sourceHash || JSON.stringify(current.checkpoint) !== expectedCheckpoint) {
-                throw new PdvCatalogBlocker('RUN_SCOPE_OR_SNAPSHOT_MISMATCH', null, runId, 'Completed run changed during concurrent recovery validation.');
-              }
-              return current;
-            }, txOptions);
-            return { status: 'COMPLETED', runId, checkpoint: completed.checkpoint, committedBatches, reusedCompletedRun: true };
+            if (completed.status === 'COMPLETED') {
+              const expectedCheckpoint = JSON.stringify(completed.checkpoint);
+              await transactionWithRetry(db, async (tx: Db) => {
+                await lock(tx, scope, companyId, pointId);
+                const current = await tx.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } });
+                if (!runMatchesScope(current, scope, companyId, pointId) || current.status !== 'COMPLETED' || current.sourceSnapshotHash !== sourceHash || JSON.stringify(current.checkpoint) !== expectedCheckpoint) {
+                  throw new PdvCatalogBlocker('RUN_SCOPE_OR_SNAPSHOT_MISMATCH', null, runId, 'Completed run changed during concurrent recovery validation.');
+                }
+                return current;
+              }, txOptions);
+              return { status: 'COMPLETED', runId, checkpoint: completed.checkpoint, committedBatches, reusedCompletedRun: true };
+            }
+            return runPdvScopedMigration({ ...options, concurrentRetry: (options.concurrentRetry ?? 0) + 1 });
           }
         } catch (recoveryError) {
           if (!(recoveryError instanceof PdvCatalogBlocker)) throw recoveryError;
