@@ -460,7 +460,7 @@ export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
     if (error instanceof PdvCatalogBlocker) {
       let invalidated = false;
       let scopeMismatch = false;
-      const existing = await db.$transaction(async (tx: Db) => {
+      const existing = await transactionWithRetry(db, async (tx: Db) => {
         await lock(tx, scope, companyId, pointId);
         const row = await tx.pdvMigrationRun.findUnique({ where: { id: runId } });
         if (!row) return null;
@@ -470,7 +470,7 @@ export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
         await tx.pdvMigrationRun.update({ where: { id: runId }, data });
         invalidated = true;
         return row;
-      }, { isolationLevel: 'RepeatableRead', timeout: 10000, maxWait: 5000 });
+      }, txOptions);
       return { status: 'BLOCKED', runId, code: scopeMismatch ? 'RUN_ID_SCOPE_MISMATCH' : error.code, sourceType: error.sourceType, sourceId: error.sourceId, message: scopeMismatch ? 'runId belongs to another tenant/PDV/scope; evidence was left untouched.' : error.message, committedBatches, invalidatedCompletedRun: invalidated && existing?.status === 'COMPLETED' };
     }
     throw error;
