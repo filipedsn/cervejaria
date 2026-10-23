@@ -407,6 +407,7 @@ export interface PortalSessaoResponse {
 export interface ItemComanda {
   id: string;
   produtoId: string;
+  tapId?: string | null;
   volumeMl: number;
   quantidade: number;
   paraViagem?: boolean;

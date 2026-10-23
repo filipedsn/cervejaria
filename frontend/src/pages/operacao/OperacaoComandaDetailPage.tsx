@@ -674,7 +674,7 @@ export function OperacaoComandaDetailPage() {
             {pedido.itens.map((item) => {
               const itemEmCancelamento = Boolean(item.cancelamentoPendenteEm || item.canceladoEm);
               const quantidadeEditavel = aberta && !itemEmCancelamento && podeAlterarQuantidadeItemComanda(comanda, pedido, item);
-              const entregue = pedido.status === 'ENTREGUE';
+              const entregue = pedido.status === 'ENTREGUE' || (Boolean(item.tapId) && !item.exigePreparo && pedido.status !== 'CANCELADO' && pedido.status !== 'CANCELAMENTO_PENDENTE');
               const removivel = aberta && !itemEmCancelamento && (entregue
                 ? podeCancelarItemEntregue
                 : podeCancelarItem && podeRemoverItemComanda(comanda, pedido, item));
@@ -686,7 +686,7 @@ export function OperacaoComandaDetailPage() {
                 (alterarQuantidadeItem.isPending && alterarQuantidadeItem.variables?.itemId === item.id);
 
               return (
-              <div key={item.id} className="py-2 first:pt-2 last:pb-2">
+              <div key={item.id} data-comanda-item-id={item.id} className="py-2 first:pt-2 last:pb-2">
                 <div className="flex min-w-0 items-center gap-2">
                   {quantidadeEditavel ? (
                     <div className="flex shrink-0 items-center rounded-lg border border-line bg-surface shadow-sm">

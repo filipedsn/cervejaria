@@ -175,6 +175,7 @@ export const TIPOS_COMANDA: Array<{ valor: Exclude<TipoComanda, 'AVULSA'>; label
 export interface ItemPedido {
   id: string;
   produtoId: string;
+  tapId?: string | null;
   nome: string;
   precoUnit: number;
   quantidade: number;

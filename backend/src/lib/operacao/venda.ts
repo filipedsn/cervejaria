@@ -540,6 +540,8 @@ export function resumoComanda(comanda: ComandaCompleta, effectiveKitchenItemsCha
     itens: pedido.itensComanda.map((item) => ({
       id: item.id,
       produtoId: item.produtoId ?? '',
+      tapId: item.tapId ?? null,
+      volumeMl: item.volumeMl,
       nome: item.nome ?? '',
       precoUnit: toNumber(item.precoUnit),
       quantidade: item.quantidade,

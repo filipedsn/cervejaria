@@ -1,6 +1,6 @@
-import assert from 'node:assert/strict';
+﻿import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import net from 'node:net';
@@ -19,6 +19,11 @@ const app = await buildApp();
 setupSocketIO(app, app.server);
 await app.ready();
 function day(value) { return new Date(`${value}T00:00:00.000Z`); }
+function operationalDateSaoPaulo() {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const pick = (type) => parts.find((part) => part.type === type)?.value;
+  return `${pick('year')}-${pick('month')}-${pick('day')}`;
+}
 function auth(user) { return { authorization: `Bearer ${signUserToken(app, user)}` }; }
 async function check(name, fn) { process.stdout.write(`RUN ${name}\n`); await fn(); process.stdout.write(`PASS ${name}\n`); }
 try {
@@ -28,8 +33,8 @@ try {
   const foreignPoint = await prisma.pontoVenda.create({ data: { cervejariaId: foreignCompany.id, nome: 'Outro PDV QA', ativo: true, usaCaixa: true } });
   for (const [tenant, pdv] of [[company, point], [foreignCompany, foreignPoint]]) {
     await prisma.configuracaoOperacao.create({ data: { cervejariaId: tenant.id, ativo: true, exclusivo: true } });
-    await prisma.configuracaoOperacional.create({ data: { cervejariaId: tenant.id, setupCompletedAt: day('2026-10-01'), directSalesEnabled: true, plannedOperationsEnabled: true, tapsEnabled: true, inventoryEnabled: false, kitchenEnabled: false } });
-    await prisma.configuracaoPontoVenda.create({ data: { cervejariaId: tenant.id, pontoVendaId: pdv.id, tapsEnabled: true, inventoryEnabled: false, kitchenEnabled: false, kitchenItemsChargeAtLaunch: false, allowCloseComandaWithPendingKitchenOrders: false, whatsappPedidoProntoEnabled: false, whatsappPedidoProntoNaCozinha: false } });
+    await prisma.configuracaoOperacional.create({ data: { cervejariaId: tenant.id, setupCompletedAt: day('2026-10-01'), directSalesEnabled: true, plannedOperationsEnabled: true, tapsEnabled: true, inventoryEnabled: false, kitchenEnabled: true } });
+    await prisma.configuracaoPontoVenda.create({ data: { cervejariaId: tenant.id, pontoVendaId: pdv.id, tapsEnabled: true, inventoryEnabled: false, kitchenEnabled: true, kitchenItemsChargeAtLaunch: false, allowCloseComandaWithPendingKitchenOrders: false, whatsappPedidoProntoEnabled: false, whatsappPedidoProntoNaCozinha: false } });
   }
   const owner = await prisma.usuario.create({ data: { nome: 'Owner QA', email: `owner-${suffix}@qa.test`, senhaHash: 'QA_ONLY', cervejariaId: company.id, papel: 'DONO' } });
   const denied = await prisma.usuario.create({ data: { nome: 'Denied QA', email: `denied-${suffix}@qa.test`, senhaHash: 'QA_ONLY', cervejariaId: company.id, papel: 'ATENDENTE', permissoesOperacao: [] } });
@@ -39,6 +44,20 @@ try {
   const homonym = await prisma.cliente.create({ data: { cervejariaId: company.id, nome: 'Cliente Homônimo QA', telefone: null } });
   const foreignClient = await prisma.cliente.create({ data: { cervejariaId: foreignCompany.id, nome: 'Cliente Homônimo QA', telefone: null } });
   await prisma.clienteEstatisticas.create({ data: { clienteId: primaryClient.id } });
+  const saleDay = operationalDateSaoPaulo();
+  const saleDayDate = day(saleDay);
+  const saleWeekday = saleDayDate.getUTCDay();
+  const salesItatiaiaAgenda = await prisma.agendaOperacional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, nome: `Itatiaia QA · ${suffix}`, diaSemana: saleWeekday, primeiraData: saleDayDate, ultimaData: saleDayDate, horaInicio: '18:00', horaFim: '22:00', ativa: true } });
+  const salesIgarapeAgenda = await prisma.agendaOperacional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, nome: `Igarapé QA · ${suffix}`, diaSemana: saleWeekday, primeiraData: saleDayDate, ultimaData: saleDayDate, horaInicio: '18:00', horaFim: '22:00', ativa: true } });
+  const salesIgarapeOccurrence = await prisma.ocorrenciaOperacional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, agendaId: salesIgarapeAgenda.id, nome: 'Igarapé QA', data: saleDayDate, horaInicio: '18:00', horaFim: '22:00' } });
+  const salesItatiaiaOccurrence = await prisma.ocorrenciaOperacional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, agendaId: salesItatiaiaAgenda.id, nome: 'Itatiaia QA', data: saleDayDate, horaInicio: '18:00', horaFim: '22:00' } });
+  const salesClientPhone = `119${String(Date.now()).slice(-8)}`;
+  const salesClient = await prisma.cliente.create({ data: { cervejariaId: company.id, nome: `Cliente E2E QA ${suffix}`, telefone: salesClientPhone } });
+  const beerCategory = await prisma.categoriaProdutoPdv.create({ data: { cervejariaId: company.id, nome: 'Chope', nomeNormalizado: 'chope', gamificada: false } });
+  const mountedBeer = await prisma.produto.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, nome: `Chope Montado QA ${suffix}`, categoria: 'Chope', categoriaPdvId: beerCategory.id, tipo: 'BEBIDA', formato: 'CHOPE', exigePreparo: true } });
+  await prisma.preco.createMany({ data: [[300, 12], [500, 18], [700, 24]].map(([volumeMl, preco]) => ({ produtoId: mountedBeer.id, volumeMl, preco })) });
+  const salesMenu = await prisma.cardapio.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, nome: `Cardápio E2E QA ${suffix}`, chopeVolumesConfigurados: true, produtos: { create: [[300, 12], [500, 18], [700, 24]].map(([volumeMl, preco]) => ({ produtoId: mountedBeer.id, cervejariaId: company.id, pontoVendaId: point.id, volumeMl, precoUnit: preco })) } } });
+  const salesTap = await prisma.tap.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, numero: 1, nome: 'E2E', ativo: true } });
   const agenda = await prisma.agendaOperacional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, nome: 'Itatiaia QA', diaSemana: 5, primeiraData: day('2025-07-01'), ultimaData: day('2026-11-30'), horaInicio: '18:00', horaFim: '22:00', ativa: true } });
   const agendaIgarape = await prisma.agendaOperacional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, nome: 'Igarapé QA', diaSemana: 5, primeiraData: day('2026-10-01'), ultimaData: day('2026-11-30'), horaInicio: '18:00', horaFim: '22:00', ativa: true } });
   const occurrenceRows = [];
@@ -98,6 +117,8 @@ try {
     assert.equal(deniedResponse.statusCode, 403, deniedResponse.body);
     const foreignResponse = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}`, headers: auth(foreignOwner) });
     assert.equal(foreignResponse.statusCode, 404, foreignResponse.body);
+    const foreignLaunch = await app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: auth(foreignOwner), payload: { pontoVendaId: point.id, tipo: 'APELIDO', identificador: `foreign-${suffix}` } });
+    assert.equal(foreignLaunch.statusCode, 404, foreignLaunch.body);
   });
 
   await check('daily API returns the same participant count, total, and stable position for 0, 1, 2, 3, and many participants', async () => {
@@ -223,7 +244,7 @@ try {
       }
       assert.equal(ready, true, 'Vite frontend did not become ready');
       browser = await chromium.launch({ headless: true });
-      const screenshots = path.resolve('../.worktrees/ranking-agenda-scope-evidence');
+      const screenshots = path.resolve(process.env.QA_EVIDENCE_DIR ?? '../.worktrees/ranking-agenda-scope-evidence');
       await mkdir(screenshots, { recursive: true });
 
       const ownerToken = signUserToken(app, owner);
@@ -250,6 +271,311 @@ try {
         }
         throw new Error('Browser did not join the authenticated tenant commands socket room.');
       };
+      await check('real browser sale lifecycle opens scheduled and unscheduled turns, launches priced beer, pays, closes, reconciles history and ranking', async () => {
+        const operationUrl = `${frontendOrigin}/operacao/comandas?pontoVendaId=${encodeURIComponent(point.id)}`;
+        const records = [];
+        async function openTurn(occurrenceId, label) {
+          await page.goto(operationUrl, { waitUntil: 'domcontentloaded' });
+          const occurrenceSelect = page.getByRole('combobox', { name: 'Agendamento de hoje' });
+          await occurrenceSelect.waitFor({ timeout: 15000 });
+          await occurrenceSelect.click();
+          await page.getByRole('option', { name: occurrenceId === salesIgarapeOccurrence.id ? 'Igarapé QA' : occurrenceId === salesItatiaiaOccurrence.id ? 'Itatiaia QA' : 'Abrir sem agendamento' }).click();
+          const savedMenuMode = page.getByRole('button', { name: 'Cardápio salvo', exact: true });
+          try { await savedMenuMode.click({ timeout: 10000 }); } catch {
+            throw new Error(`${label}: saved-menu selector unavailable url=${page.url()} buttons=${JSON.stringify(await page.getByRole('button').allInnerTexts())} body=${(await page.locator('body').innerText()).slice(0, 1800)}`);
+          }
+          await page.getByRole('radio', { name: new RegExp(salesMenu.nome) }).click();
+          await page.getByLabel('Troco inicial em reais').fill('0,00');
+          await page.getByRole('button', { name: 'Abrir caixa', exact: true }).click();
+          const openingResponse = page.waitForResponse((response) => response.url().includes('/api/operacao/caixa/abrir') && response.request().method() === 'POST');
+          await page.getByRole('button', { name: 'Confirmar e abrir caixa' }).click();
+          const opened = await openingResponse;
+          assert.equal(opened.status(), 201, `${label}: opening route: ${await opened.text()}`);
+          const openedBody = await opened.json();
+          const turn = await prisma.sessaoCaixaOperacao.findUnique({ where: { id: openedBody.id } });
+          assert.ok(turn, `${label}: UI opening creates a cash session`);
+          assert.equal(turn.ocorrenciaId, occurrenceId ?? null);
+          if (occurrenceId) assert.equal((await prisma.ocorrenciaOperacional.findUnique({ where: { id: turn.ocorrenciaId } })).agendaId, occurrenceId === salesIgarapeOccurrence.id ? salesIgarapeAgenda.id : salesItatiaiaAgenda.id);
+          await page.getByRole('button', { name: 'Montar chope nas Taps' }).click();
+          const tapSelect = page.locator('section.card select').first();
+          await tapSelect.waitFor({ timeout: 15000 });
+          await tapSelect.selectOption(mountedBeer.id);
+          await page.locator('section.card p').filter({ hasText: mountedBeer.nome }).first().waitFor();
+          const mounted = await prisma.tapMontagem.findFirst({ where: { sessaoCaixaId: turn.id, tapId: salesTap.id, produtoId: mountedBeer.id, encerradoEm: null } });
+          assert.ok(mounted, `${label}: beer is mounted to the turn by the UI`);
+          await page.getByRole('button', { name: 'Fechar', exact: true }).click();
+          records.push({ label, turnId: turn.id, occurrenceId: occurrenceId ?? null, trocoInicial: Number(turn.trocoInicial) });
+          return turn;
+        }
+        async function launchAndPay(volumes, label, expectedTotal) {
+          await page.getByRole('link', { name: 'Nova comanda', exact: true }).click();
+          await page.waitForURL(/\/operacao\/comandas\/nova$/);
+          await page.locator('input[type="tel"]').fill(salesClientPhone);
+          await page.locator('input[autocomplete="off"]').waitFor();
+          await page.waitForFunction((name) => document.querySelector('input[autocomplete="off"]')?.value === name, salesClient.nome);
+          const commandCreate = page.waitForResponse((response) => response.url().endsWith('/api/operacao/comandas') && response.request().method() === 'POST');
+          await page.getByRole('button', { name: 'Abrir comanda', exact: true }).click();
+          const createdCommand = await commandCreate;
+          assert.equal(createdCommand.status(), 201, `${label}: create-command route: ${await createdCommand.text()}`);
+          const createdCommandBody = await createdCommand.json();
+          await page.getByRole('button', { name: '+ Itens', exact: true }).click();
+          await page.getByRole('dialog').waitFor();
+          const itemTabs = await page.getByRole('dialog').locator('.segmented-control button').allInnerTexts();
+          if (!itemTabs.some((tab) => /chope/i.test(tab))) {
+            const tapData = await page.evaluate(async (id) => (await fetch(`/api/operacao/caixa/taps?pontoVendaId=${id}`, { credentials: 'include' })).json(), point.id);
+            const productData = await page.evaluate(async (id) => (await fetch(`/api/operacao/produtos?pontoVendaId=${id}&incluirTodosChopes=true`, { credentials: 'include' })).json(), point.id);
+            throw new Error(`Tap tab missing. tabs=${JSON.stringify(itemTabs)} taps=${JSON.stringify(tapData)} products=${JSON.stringify(productData)}`);
+          }
+          await page.getByRole('button', { name: /chope/i }).first().click();
+          const dialogText = await page.getByRole('dialog').innerText();
+          if (!/Tap|torneira/i.test(dialogText)) {
+            const tapData = await page.evaluate(async (id) => (await fetch(`/api/operacao/caixa/taps?pontoVendaId=${id}`, { credentials: 'include' })).json(), point.id);
+            throw new Error(`No mounted tap in launch dialog. dialog=${dialogText} taps=${JSON.stringify(tapData)}`);
+          }
+          for (const volume of volumes) {
+            const tapButtons = page.getByRole('dialog').locator('button').filter({ hasText: mountedBeer.nome });
+            assert.equal(await tapButtons.count(), 1, `exactly one mounted tap button must appear in the launch dialog: ${await page.getByRole('dialog').innerText()}`);
+            await tapButtons.first().click();
+            await page.getByRole('button', { name: new RegExp(`${volume} ml`) }).click();
+            const price = ({ 300: 'R$ 12,00', 500: 'R$ 18,00', 700: 'R$ 24,00' })[volume];
+            await page.getByText(`${price} cada`, { exact: false }).waitFor();
+            await page.getByRole('button', { name: /Adicionar chope à lista/ }).click();
+          }
+          const detailPath = new URL(page.url()).pathname;
+          const comandaId = detailPath.split('/').at(-1);
+          assert.ok(comandaId, `${label}: comanda route includes its server ID`);
+          assert.equal(createdCommandBody.id, comandaId, `${label}: browser route retains the server command ID`);
+          await page.locator('text=Consumo da comanda').waitFor();
+          const beforePayment = await prisma.comanda.findUnique({ where: { id: comandaId }, include: { itens: true } });
+          assert.equal(beforePayment.clienteId, salesClient.id);
+          assert.equal(beforePayment.ocorrenciaId, records.at(-1).occurrenceId);
+          if (volumes.length === 3) {
+            await page.locator('body').screenshot({ path: path.join(screenshots, 'sale-igarape-desktop.png'), fullPage: true });
+            await page.setViewportSize({ width: 390, height: 844 });
+            await page.locator('body').screenshot({ path: path.join(screenshots, 'sale-igarape-mobile.png'), fullPage: true });
+            await page.setViewportSize({ width: 1440, height: 1000 });
+          }
+          const paymentCall = page.waitForResponse((response) => response.url().includes(`/api/operacao/comandas/${comandaId}/pedidos`) && response.request().method() === 'POST');
+          await page.getByRole('button', { name: 'Lançar na comanda' }).click();
+          const response = await paymentCall;
+          assert.equal(response.status(), 201, `${label}: launch route: ${await response.text()}`);
+          const returned = await response.json();
+          assert.equal(Number(returned.total), expectedTotal, `${label}: server calculated the explicit menu total`);
+          records.at(-1).valorLancado = Number(returned.total);
+          await page.getByRole('button', { name: 'Voltar', exact: true }).click();
+          if (volumes.length === 3) {
+            await page.locator('body').screenshot({ path: path.join(screenshots, 'sale-igarape-launch-confirmed-desktop.png'), fullPage: true });
+            await page.setViewportSize({ width: 390, height: 844 });
+            await page.locator('body').screenshot({ path: path.join(screenshots, 'sale-igarape-launch-confirmed-mobile.png'), fullPage: true });
+            await page.setViewportSize({ width: 1440, height: 1000 });
+          }
+          const stored = await prisma.comanda.findUnique({ where: { id: comandaId }, include: { itens: true, pagamentos: true } });
+          assert.equal(Number(stored.total), expectedTotal);
+          assert.deepEqual(stored.itens.map((item) => item.volumeMl).sort((a, b) => a - b), [...volumes].sort((a, b) => a - b));
+          assert.ok(stored.itens.every((item) => item.produtoId === mountedBeer.id && item.tapId === salesTap.id), `${label}: items preserve product and tap IDs`);
+          let amountToPay = expectedTotal;
+          let netVolumeMl = volumes.reduce((sum, volume) => sum + volume, 0);
+          if (volumes.length === 3) {
+            const baseline = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?dia=${saleDay}&ocorrenciaId=${salesIgarapeOccurrence.id}`, headers: auth(owner) });
+            assert.equal(baseline.statusCode, 200, baseline.body);
+            assert.equal(baseline.json().ranking.find((row) => row.clienteId === salesClient.id).totalMl, 1500, 'all launched volumes count before cancellation');
+            await page.goto(`${frontendOrigin}/operacao/comandas/${comandaId}`, { waitUntil: 'domcontentloaded' });
+            const cancellationTarget = await prisma.itemComanda.findFirst({ where: { comandaId, volumeMl: 500 }, orderBy: { createdAt: 'asc' } });
+            assert.ok(cancellationTarget, '500 ml line is linked to the active command by item ID');
+            const cancellationTargetRow = page.locator(`[data-comanda-item-id="${cancellationTarget.id}"]`);
+            await cancellationTargetRow.waitFor({ state: 'visible', timeout: 15000 });
+            assert.equal(await cancellationTargetRow.count(), 1, 'the rendered sale line is linked by item ID');
+            await cancellationTargetRow.getByRole('button', { name: `Remover ${cancellationTarget.nome}`, exact: true }).click();
+            await page.getByRole('heading', { name: /Cancelar item/ }).waitFor();
+            await page.locator('#cancel-delivered-quantity').fill('1');
+            await page.locator('#cancel-delivered-reason').fill('Chope de 500 ml preparado e entregue; ajuste solicitado pelo cliente.');
+            const cancelResponsePromise = page.waitForResponse((response) => response.url().includes(`/api/operacao/comandas/${comandaId}/itens/${cancellationTarget.id}`) && response.request().method() === 'DELETE');
+            await page.getByRole('button', { name: 'Confirmar cancelamento', exact: true }).click();
+            const cancelResponse = await cancelResponsePromise;
+            assert.equal(cancelResponse.status(), 200, `delivered-item cancellation route: ${await cancelResponse.text()}`);
+            const cancelBody = await cancelResponse.json();
+            const cancelPayload = cancelResponse.request().postDataJSON();
+            assert.equal(cancelPayload.quantidade, 1);
+            assert.equal(cancelPayload.quantidadeEsperada, 1);
+            assert.equal(cancelPayload.tratamentoEstoque, 'PREPARADO_ENTREGUE_OU_PERDIDO');
+            assert.equal(Number(cancelBody.total), 36);
+            const retry = await page.evaluate(async ({ url, payload }) => {
+              const response = await fetch(url, { method: 'DELETE', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+              return { status: response.status, body: await response.json() };
+            }, { url: `/api/operacao/comandas/${comandaId}/itens/${cancellationTarget.id}`, payload: cancelPayload });
+            assert.equal(retry.status, 200, JSON.stringify(retry.body));
+            assert.equal(Number(retry.body.total), 36, 'same idempotency key cannot remove the R$18 twice');
+            const persistedCancellation = await prisma.itemComandaCancelamentoEntregue.findMany({ where: { itemComandaId: cancellationTarget.id } });
+            assert.equal(persistedCancellation.length, 1);
+            assert.equal(Number(persistedCancellation[0].valorRetirado), 18);
+            assert.equal(persistedCancellation[0].tratamentoEstoque, 'SEM_RETORNO_PRODUTO_PREPARADO_ENTREGUE_OU_PERDIDO');
+            assert.equal(await prisma.inventoryMovement.count({ where: { pedidoId: cancellationTarget.pedidoCozinhaId, produtoId: mountedBeer.id } }), 0, 'prepared or delivered volume is not returned to stock');
+            const cancelledItem = await prisma.itemComanda.findUniqueOrThrow({ where: { id: cancellationTarget.id } });
+            assert.ok(cancelledItem.canceladoEm, 'cancelled item remains as a historical line');
+            const commandAfterCancellation = await prisma.comanda.findUniqueOrThrow({ where: { id: comandaId } });
+            assert.equal(Number(cancelBody.subtotal), 36);
+            assert.equal(Number(commandAfterCancellation.desconto), 0, 'retry does not apply a discount');
+            assert.equal(Number(commandAfterCancellation.total), 36);
+            assert.equal(await prisma.pagamento.count({ where: { comandaId } }), 0, 'cancellation precedes payment');
+            const afterCancelRank = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?dia=${saleDay}&ocorrenciaId=${salesIgarapeOccurrence.id}`, headers: auth(owner) });
+            assert.equal(afterCancelRank.statusCode, 200, afterCancelRank.body);
+            assert.equal(afterCancelRank.json().ranking.find((row) => row.clienteId === salesClient.id).totalMl, 1000);
+            amountToPay = 36;
+            records.at(-1).valorAposCancelamento = amountToPay;
+            netVolumeMl = 1000;
+            records.at(-1).cancelledItemId = cancellationTarget.id;
+            records.at(-1).cancellationId = persistedCancellation[0].id;
+            records.at(-1).cancellationRetryRepeated = persistedCancellation.length === 1 && Number(retry.body.total) === 36;
+            records.at(-1).cancelledValue = Number(persistedCancellation[0].valorRetirado);
+            records.at(-1).stockTreatment = persistedCancellation[0].tratamentoEstoque;
+            records.at(-1).cancelledLinePreserved = true;
+          } else {
+            await page.goto(`${frontendOrigin}/operacao/comandas/${comandaId}`, { waitUntil: 'domcontentloaded' });
+          }
+          await page.getByRole('button', { name: /Fechar Comanda/ }).click();
+          await page.getByRole('button', { name: new RegExp(`Revisar pagamento · R\\$ ${amountToPay.toFixed(2).replace('.', ',')}`) }).click();
+          const settlementCall = page.waitForResponse((response) => response.url().includes(`/api/operacao/comandas/${comandaId}/pagamentos`) && response.request().method() === 'POST');
+          await page.getByRole('button', { name: new RegExp(`Efetuar pagamento · R\\$ ${amountToPay.toFixed(2).replace('.', ',')}`) }).click();
+          const paymentResponse = await settlementCall;
+          assert.equal(paymentResponse.status(), 200, `${label}: payment route: ${await paymentResponse.text()}`);
+          const paymentBody = await paymentResponse.json();
+          const paymentPayload = paymentResponse.request().postDataJSON();
+          assert.equal(paymentPayload.pagamentos.reduce((sum, payment) => sum + payment.valor, 0), amountToPay);
+          assert.equal(Number(paymentBody.total), amountToPay);
+          assert.equal(Number(paymentBody.valorEmAberto), 0);
+          await page.getByRole('button', { name: 'OK', exact: true }).click();
+          const closed = await prisma.comanda.findUnique({ where: { id: comandaId }, include: { itens: true, pagamentos: true } });
+          assert.equal(closed.status, 'FECHADA');
+          assert.equal(closed.pagamentos.length, 1);
+          assert.equal(Number(closed.pagamentos[0].valor), amountToPay);
+          records.at(-1).valorRecebido = Number(closed.pagamentos[0].valor);
+          records.at(-1).desconto = Number(closed.desconto);
+          records.at(-1).pendencia = 0;
+          records.at(-1).valorCobrado = amountToPay;
+          assert.equal(Number(closed.desconto), 0);
+          assert.equal(closed.ocorrenciaId, records.at(-1).occurrenceId);
+          records.at(-1).comandaId = comandaId;
+          records.at(-1).volumeMl = netVolumeMl;
+          records.at(-1).valorLancado = expectedTotal;
+          return comandaId;
+        }
+        async function closeTurn(expectedPix, label) {
+          await page.goto(`${frontendOrigin}/operacao/caixa?pontoVendaId=${encodeURIComponent(point.id)}`, { waitUntil: 'domcontentloaded' });
+          const showCashPanel = page.getByRole('button', { name: 'Mostrar painel do caixa' });
+          if (await showCashPanel.count()) await showCashPanel.click();
+          await page.getByRole('button', { name: 'Fechar caixa', exact: true }).click();
+          await page.getByLabel(/Contado.*Dinheiro/).fill('0,00');
+          await page.getByLabel(/Conferido.*Pix/).fill(expectedPix.toFixed(2).replace('.', ','));
+          await page.getByLabel(/Conferido.*Débito/).fill('0,00');
+          await page.getByLabel(/Conferido.*Crédito/).fill('0,00');
+          const closeResponse = page.waitForResponse((response) => response.url().includes('/api/operacao/caixa/fechar') && response.request().method() === 'POST');
+          await page.getByRole('button', { name: 'Confirmar fechamento' }).click();
+          const closedResponse = await closeResponse;
+          assert.equal(closedResponse.status(), 200, `${label}: close route: ${await closedResponse.text()}`);
+          const turn = await prisma.sessaoCaixaOperacao.findFirst({ where: { id: records.at(-1).turnId } });
+          assert.equal(turn.status, 'FECHADO');
+          assert.equal(Number(turn.contadoPix), expectedPix);
+          assert.equal(Number(turn.contadoDinheiro), 0);
+          assert.equal(Number(turn.trocoInicial), 0);
+          assert.equal(records.at(-1).valorRecebido, expectedPix, `${label}: cash close matches payment receipts`);
+          records.at(-1).pixConferido = expectedPix;
+          records.at(-1).fechado = true;
+          return turn;
+        }
+
+        await openTurn(salesIgarapeOccurrence.id, 'Igarapé');
+        const igarapeComandaId = await launchAndPay([300, 500, 700], 'Igarapé', 54);
+        await closeTurn(36, 'Igarapé');
+        await openTurn(salesItatiaiaOccurrence.id, 'Itatiaia');
+        const itatiaiaComandaId = await launchAndPay([500], 'Itatiaia', 18);
+        await closeTurn(18, 'Itatiaia');
+        await openTurn(null, 'Sem agendamento');
+        const unscheduledComandaId = await launchAndPay([300], 'Sem agendamento', 12);
+        await closeTurn(12, 'Sem agendamento');
+
+        const historical = await app.inject({ method: 'GET', url: `/api/clientes/${salesClient.id}/historico`, headers: auth(owner) });
+        assert.equal(historical.statusCode, 200, historical.body);
+        const saleRows = historical.json().items.filter((row) => [igarapeComandaId, itatiaiaComandaId, unscheduledComandaId].includes(row.id));
+        const saleNetVolumes = saleRows.map((row) => row.itens.filter((item) => !item.canceladoEm && !item.cancelamentoPendenteEm).reduce((sum, item) => sum + item.volumeMl * item.quantidade, 0)).sort((a, b) => a - b);
+        assert.deepEqual(saleNetVolumes, [300, 500, 1000]);
+        const cancelledHistoryItem = saleRows.find((row) => row.id === igarapeComandaId).itens.find((item) => item.volumeMl === 500);
+        assert.ok(cancelledHistoryItem.canceladoEm, 'customer history retains the cancelled 500 ml line');
+        assert.equal(saleRows.find((row) => row.id === igarapeComandaId).ocorrencia.id, salesIgarapeOccurrence.id);
+        assert.equal(saleRows.find((row) => row.id === itatiaiaComandaId).ocorrencia.id, salesItatiaiaOccurrence.id);
+        assert.equal(saleRows.find((row) => row.id === unscheduledComandaId).ocorrencia, null);
+        assert.deepEqual([igarapeComandaId, itatiaiaComandaId, unscheduledComandaId].map((id) => Number(saleRows.find((row) => row.id === id).total)).sort((a, b) => a - b), [12, 18, 36]);
+        assert.ok(saleRows.every((row) => row.evento === null && row.pontoVenda.id === point.id && row.desconto === 0 && row.valorPendente === 0));
+        const igarapeDaily = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?dia=${saleDay}&ocorrenciaId=${salesIgarapeOccurrence.id}`, headers: auth(owner) });
+        const itatiaiaDaily = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?dia=${saleDay}&ocorrenciaId=${salesItatiaiaOccurrence.id}`, headers: auth(owner) });
+        assert.equal(igarapeDaily.json().ranking.find((row) => row.clienteId === salesClient.id).totalMl, 1000);
+        assert.equal(itatiaiaDaily.json().ranking.find((row) => row.clienteId === salesClient.id).totalMl, 500);
+        const detail = await app.inject({ method: 'GET', url: `/api/clientes/${salesClient.id}`, headers: auth(owner) });
+        assert.equal(detail.json().estatisticas.totalMlChope, 1800);
+
+        for (const [name, agendaId, occurrenceId, expectedMl] of [['igarape', salesIgarapeAgenda.id, salesIgarapeOccurrence.id, 1000], ['itatiaia', salesItatiaiaAgenda.id, salesItatiaiaOccurrence.id, 500]]) {
+          const period = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/periodo?agendaId=${agendaId}&mes=${saleDay.slice(0, 7)}`, headers: auth(owner) });
+          assert.equal(period.statusCode, 200, period.body);
+          assert.equal(period.json().entries.find((row) => row.clienteId === salesClient.id).totalMl, expectedMl);
+          const general = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/periodo?agendaId=${agendaId}`, headers: auth(owner) });
+          assert.equal(general.statusCode, 200, general.body);
+          assert.equal(general.json().entries.find((row) => row.clienteId === salesClient.id).totalMl, expectedMl);
+          const perAgenda = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/agendas/${agendaId}`, headers: auth(owner) });
+          assert.equal(perAgenda.statusCode, 200, perAgenda.body);
+          assert.equal(perAgenda.json().ranking.find((row) => row.clienteId === salesClient.id).totalMl, expectedMl);
+          await page.goto(rankingUrl({ dia: saleDay, ocorrenciaId: occurrenceId }), { waitUntil: 'domcontentloaded' });
+          await page.locator('.tap-champions-podium-card').first().waitFor({ timeout: 15000 });
+          await waitForSuccessfulRefresh(page);
+          const uiMl = await page.locator('.tap-champions-podium-volume').first().innerText();
+          assert.equal(uiMl, volumeLabel(expectedMl));
+          await page.reload({ waitUntil: 'domcontentloaded' });
+          await page.locator('.tap-champions-podium-card').first().waitFor({ timeout: 15000 });
+          await waitForSuccessfulRefresh(page);
+          assert.equal(await page.locator('.tap-champions-podium-volume').first().innerText(), volumeLabel(expectedMl), 'reload does not duplicate consumption');
+          const screenshotPath = path.join(screenshots, `ranking-${name}-daily-desktop.png`);
+          await page.locator('.ranking-operational').screenshot({ path: screenshotPath });
+          await page.setViewportSize({ width: 390, height: 844 });
+          await page.locator('.ranking-operational').screenshot({ path: path.join(screenshots, `ranking-${name}-daily-mobile.png`) });
+          await page.setViewportSize({ width: 1440, height: 1000 });
+        }
+        const renameAgenda = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${salesIgarapeAgenda.id}`, headers: auth(owner), payload: { nome: `Igarape QA renamed ${suffix}` } });
+        assert.equal(renameAgenda.statusCode, 200, renameAgenda.body);
+        const renamedRanking = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/agendas/${salesIgarapeAgenda.id}`, headers: auth(owner) });
+        assert.equal(renamedRanking.json().ranking.find((row) => row.clienteId === salesClient.id).totalMl, 1000, 'agenda rename preserves historical identity');
+        const archiveAgenda = await app.inject({ method: 'POST', url: `/api/operacao/agenda/agendas/${salesIgarapeAgenda.id}/arquivar`, headers: auth(owner) });
+        assert.equal(archiveAgenda.statusCode, 200, archiveAgenda.body);
+        const archivedRanking = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/agendas/${salesIgarapeAgenda.id}`, headers: auth(owner) });
+        assert.equal(archivedRanking.statusCode, 200, archivedRanking.body);
+        assert.equal(archivedRanking.json().ranking.find((row) => row.clienteId === salesClient.id).totalMl, 1000, 'archiving an agenda does not transfer its consumption');
+        const unaffectedAgenda = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/agendas/${salesItatiaiaAgenda.id}`, headers: auth(owner) });
+        assert.equal(unaffectedAgenda.json().ranking.find((row) => row.clienteId === salesClient.id).totalMl, 500, 'the other agenda retains its own consumption after archive');
+        await prisma.agendaOperacional.update({ where: { id: salesIgarapeAgenda.id }, data: { archivedAt: null, nome: salesIgarapeAgenda.nome } });
+        await page.goto(`${frontendOrigin}/clientes/${salesClient.id}`, { waitUntil: 'domcontentloaded' });
+        await page.getByRole('heading', { name: 'Histórico de consumo', exact: true }).waitFor({ timeout: 15000 });
+        assert.equal(await page.getByText('1.8L', { exact: true }).count(), 1, 'customer browser stats match 1,800 ml net API history');
+        assert.equal(await page.getByText('R$ 66,00', { exact: true }).count(), 1, 'customer browser received total matches settled API payments');
+        assert.equal(await page.getByText('Saldo pendente', { exact: true }).count(), 0, 'settled customer history has no pending balance');
+        const renderedHistory = await page.locator('article.card').allInnerTexts();
+        assert.ok(renderedHistory.some((text) => text.includes('Igarapé QA') && [300, 500, 700].every((volume) => text.includes(`${volume} ml`))));
+        assert.ok(renderedHistory.some((text) => text.includes('Itatiaia QA') && text.includes('500 ml')));
+        assert.ok(renderedHistory.some((text) => text.includes(`Caixa · ${point.nome}`) && text.includes('300 ml')));
+        await page.locator('body').screenshot({ path: path.join(screenshots, 'customer-history-desktop.png'), fullPage: true });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.locator('body').screenshot({ path: path.join(screenshots, 'customer-history-mobile.png'), fullPage: true });
+        await page.setViewportSize({ width: 1440, height: 1000 });
+
+        const databaseCommands = await prisma.$queryRaw`SELECT id, "clienteId", "pontoVendaId", "ocorrenciaId", total::text AS total, desconto::text AS desconto FROM public."Comanda" WHERE id IN (${igarapeComandaId}, ${itatiaiaComandaId}, ${unscheduledComandaId}) ORDER BY id`;
+        const databaseItems = await prisma.$queryRaw`SELECT id, "comandaId", "produtoId", "tapId", "volumeMl", quantidade, "canceladoEm" FROM public."ItemComanda" WHERE "comandaId" IN (${igarapeComandaId}, ${itatiaiaComandaId}, ${unscheduledComandaId}) ORDER BY "comandaId", id`;
+        assert.equal(databaseCommands.length, 3, 'read-only SQL confirms all three E2E commands');
+        assert.ok(databaseCommands.every((row) => row.clienteId === salesClient.id && row.pontoVendaId === point.id));
+        assert.equal(databaseCommands.find((row) => row.id === igarapeComandaId).ocorrenciaId, salesIgarapeOccurrence.id);
+        assert.equal(databaseCommands.find((row) => row.id === itatiaiaComandaId).ocorrenciaId, salesItatiaiaOccurrence.id);
+        assert.equal(databaseCommands.find((row) => row.id === unscheduledComandaId).ocorrenciaId, null);
+        assert.ok(databaseItems.every((row) => row.produtoId === mountedBeer.id && row.tapId === salesTap.id));
+        assert.ok(databaseItems.some((row) => row.id === records[0].cancelledItemId && row.canceladoEm));
+        const manifest = { runId: process.env.QA_RUN_ID ?? suffix, companyId: company.id, pointOfSaleId: point.id, clientId: salesClient.id, agendaIds: { igarape: salesIgarapeAgenda.id, itatiaia: salesItatiaiaAgenda.id }, occurrenceIds: { igarape: salesIgarapeOccurrence.id, itatiaia: salesItatiaiaOccurrence.id }, cashSessions: records, productId: mountedBeer.id, menuId: salesMenu.id, tapId: salesTap.id, pricesByVolumeMl: { 300: 12, 500: 18, 700: 24 }, baselineVolumesMl: { igarape: 1500, itatiaia: 500, unscheduled: 300, consolidated: 2300 }, netVolumesMl: { igarape: 1000, itatiaia: 500, unscheduled: 300, consolidated: 1800 }, expectedVsObtained: [{ scope: 'Igarape before cancellation', expectedMl: 1500, obtainedMl: 1500, launched: 54, cancelled: 0, received: 0, discount: 0, pending: null }, { scope: 'Igarape after cancellation before payment', expectedMl: 1000, obtainedMl: 1000, launched: 54, cancelled: 18, received: 0, discount: 0, pending: null }, { scope: 'Igarape settled', expectedMl: 1000, obtainedMl: 1000, launched: 54, cancelled: 18, received: 36, discount: 0, pending: 0 }, { scope: 'Itatiaia', expectedMl: 500, obtainedMl: 500, launched: 18, cancelled: 0, received: 18, discount: 0, pending: 0 }, { scope: 'Unscheduled', expectedMl: 300, obtainedMl: 300, launched: 12, cancelled: 0, received: 12, discount: 0, pending: 0 }, { scope: 'Customer consolidated net', expectedMl: 1800, obtainedMl: 1800, launched: 84, cancelled: 18, received: 66, discount: 0, pending: 0 }], databaseReadOnly: { commands: databaseCommands, items: databaseItems } };
+        await writeFile(path.join(screenshots, 'canonical-sale-evidence.json'), JSON.stringify(manifest, null, 2));
+        console.log(`CANONICAL_SALE_EVIDENCE=${JSON.stringify(manifest)}`);
+      });
 
       for (const [count, date] of [[0, '2026-12-01'], [1, '2026-12-02'], [2, '2026-12-03'], [3, '2026-12-04'], [12, '2026-12-05']]) {
         const occurrenceId = oneOffRows.get(date).id;
@@ -317,6 +643,12 @@ try {
       const monthly = new URLSearchParams({ pontoVendaId: point.id, escopo: 'mensal', mes: '2026-10', dia: '2026-10-01', agendaId: agenda.id });
       await page.goto(`${frontendOrigin}/operacao/ranking?${monthly}`, { waitUntil: 'domcontentloaded' });
       await page.locator('.ranking-operational').waitFor();
+      const agendaUiResponse = await page.evaluate(async (id) => { const response = await fetch(`/api/ranking/pdv/${id}/ocorrencias`, { credentials: 'include' }); return { status: response.status, body: await response.json() }; }, point.id);
+      assert.equal(agendaUiResponse.status, 200, JSON.stringify(agendaUiResponse));
+      assert.ok(agendaUiResponse.body.agendas.some((item) => item.id === agenda.id && item.nome === 'Itatiaia QA editada'), JSON.stringify(agendaUiResponse.body.agendas));
+      await page.waitForTimeout(500);
+      const agendaContextUi = await page.locator('.ranking-operational').innerText();
+      assert.match(agendaContextUi, /Agenda · Itatiaia QA editada · Mensal · outubro de 2026/i, `agenda UI context missing; url=${page.url()} body=${agendaContextUi}`);
       const monthlyUiText = await page.locator('.ranking-operational').innerText();
       assert.match(monthlyUiText, /Agenda · Itatiaia QA editada · Mensal · outubro de 2026/i, `Unexpected monthly ranking context: ${monthlyUiText.slice(0, 800)}`);
       const monthApi = await page.evaluate(async (url) => (await fetch(url, { credentials: 'include' })).json(), `/api/ranking/pdv/${point.id}/periodo?agendaId=${agenda.id}&mes=2026-10`);
