@@ -32,11 +32,13 @@ test('CXA-S09 real browser confirmation persists the selected occurrence and new
   const occurrence = await schedule(t, 'Independent real QA', day);
   await openScreen(page, t);
   await expect(page.getByLabel('Agendamento de hoje')).toHaveValue(occurrence.ocorrenciaId);
+  await page.screenshot({ path: info.outputPath('suggestion.png'), fullPage: true });
   const db = prismaClient();
   const count = () => db.sessaoCaixaOperacao.count({ where: { pontoVendaId: t.pointId } });
   expect(await count()).toBe(0);
   await page.getByRole('button', { name: 'Abrir caixa', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('Independent real QA');
+  await page.screenshot({ path: info.outputPath('confirmation.png'), fullPage: true });
   expect(await count()).toBe(0);
   await page.getByRole('button', { name: 'Voltar', exact: true }).click();
   expect(await count()).toBe(0);
@@ -49,6 +51,7 @@ test('CXA-S09 real browser confirmation persists the selected occurrence and new
   const persisted = await db.comanda.findUniqueOrThrow({ where: { id: command.id } });
   expect(persisted).toMatchObject({ ocorrenciaId: occurrence.ocorrenciaId, sessaoCaixaRealizacaoId: rows[0].id });
   await page.reload();
+  await expect(page.getByTestId('caixa-contexto-ocorrencia')).toContainText('Independent real QA');
   await expect(page.getByRole('button', { name: 'Abrir caixa', exact: true })).toHaveCount(0);
   expect(await count()).toBe(1);
   info.annotations.push({ type: 'independent-proof', description: JSON.stringify({ sessionId: rows[0].id, commandId: command.id, occurrenceId: occurrence.ocorrenciaId, mocks: false, browserAndPostgres: true }) });
