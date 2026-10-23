@@ -1,5 +1,5 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, formatCurrency } from '../../lib/api';
 import {
@@ -8,7 +8,8 @@ import {
   formatTurnoTitulo,
   pluralComandasOperacao,
   rotuloComanda,
-  type ComandaOperacao,
+  type ComandasTurnoPage,
+  type RecebimentoDividaAnteriorTurno,
   type RelatorioTurnoCaixa,
 } from '../../lib/operacao';
 import { Loading } from '../../components/Loading';
@@ -57,7 +58,9 @@ function Diferenca({ valor }: { valor: number }) {
 }
 
 export function OperacaoTurnoResumoPage() {
-  const [comandaEspelhoId, setComandaEspelhoId] = useState<string | null>(null);
+  const [comandaEspelho, setComandaEspelho] = useState<{ id: string; contexto: 'VENDA' | 'CANCELAMENTO_TURNO' | 'RECEBIMENTO_DIVIDA_ANTERIOR' } | null>(null);
+  const [paginaComandas, setPaginaComandas] = useState(1);
+  const [filtroComandas, setFiltroComandas] = useState<'TODOS' | 'COMANDAS' | 'AVULSAS' | 'CANCELADAS'>('TODOS');
   const { sessaoId } = useParams<{ sessaoId: string }>();
   const [searchParams] = useSearchParams();
   const dashboardHref = searchParams.toString()
@@ -71,17 +74,23 @@ export function OperacaoTurnoResumoPage() {
     retry: false,
   });
 
+  useEffect(() => {
+    setPaginaComandas(1);
+    setFiltroComandas('TODOS');
+    setComandaEspelho(null);
+  }, [sessaoId]);
+
   const comandasTurnoQuery = useQuery({
-    queryKey: ['operacao-comandas', 'FECHADA', 'turno-encerrado', sessaoId, data?.caixa.pontoVendaId],
-    queryFn: () => {
-      const params = new URLSearchParams({
-        status: 'FECHADA',
-        pontoVendaId: data!.caixa.pontoVendaId,
-        sessaoCaixaId: sessaoId!,
-      });
-      return api.get<ComandaOperacao[]>(`/api/operacao/comandas?${params.toString()}`);
-    },
-    enabled: Boolean(sessaoId && data?.caixa.pontoVendaId),
+    queryKey: ['operacao-turno-comandas', sessaoId, paginaComandas, filtroComandas],
+    queryFn: () => api.get<ComandasTurnoPage>(`/api/operacao/caixa/sessoes/${encodeURIComponent(sessaoId!)}/comandas?${new URLSearchParams({ page: String(paginaComandas), pageSize: '25', tipo: filtroComandas })}`),
+    enabled: Boolean(sessaoId),
+    retry: false,
+  });
+
+  const recebimentosAnterioresQuery = useQuery({
+    queryKey: ['operacao-turno-recebimentos-anteriores', sessaoId],
+    queryFn: () => api.get<RecebimentoDividaAnteriorTurno[]>(`/api/operacao/caixa/sessoes/${encodeURIComponent(sessaoId!)}/recebimentos-anteriores`),
+    enabled: Boolean(sessaoId),
     retry: false,
   });
 
@@ -176,44 +185,65 @@ export function OperacaoTurnoResumoPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-        <KpiCard label="Vendas do turno" value={formatCurrency(data.vendasTotal ?? 0)} />
+        <KpiCard label="Vendas na janela histórica" value={formatCurrency(data.vendasTotal ?? 0)} />
         <KpiCard label="Recebido no turno" value={formatCurrency(data.totalRecebido ?? 0)} />
         <KpiCard label="Vendido fiado" value={formatCurrency(fiadoVendido)} />
         {fiadoQuitadoDepois > 0 && (
           <KpiCard label="Fiado quitado depois" value={formatCurrency(fiadoQuitadoDepois)} />
         )}
         <KpiCard label="Fiado pendente" value={formatCurrency(data.totalPendente ?? 0)} />
-        <KpiCard label="Comandas" value={pluralComandasOperacao(data.comandasAtendidas ?? 0)} />
-        <KpiCard label="Ticket médio" value={formatCurrency(data.ticketMedio ?? 0)} />
+        <KpiCard label="Comandas na janela histórica" value={pluralComandasOperacao(data.comandasAtendidas ?? 0)} />
+        <KpiCard label="Ticket médio por venda" value={formatCurrency(data.ticketMedio ?? 0)} />
         <KpiCard label="Receita/hora" value={`${formatCurrency(data.receitaPorHora ?? 0)}/h`} />
         <KpiCard label="Duração" value={formatDuracaoTurnoMinutos(data.duracaoMinutos ?? 0)} />
         {(data.vendasAvulsas ?? 0) > 0 && (
-          <KpiCard label="Vendas avulsas" value={String(data.vendasAvulsas)} />
+          <KpiCard label="Vendas avulsas na janela histórica" value={String(data.vendasAvulsas)} />
         )}
         {(data.itensVendidos ?? 0) > 0 && (
           <KpiCard label="Itens vendidos" value={String(data.itensVendidos)} />
         )}
       </div>
 
-      <section className="card space-y-3" data-testid="turno-comandas-encerradas">
+      <section className="card space-y-4" data-testid="turno-comandas-encerradas">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="section-label">Comandas do turno</h2>
+          <h2 className="section-label">Comandas e vendas avulsas do histórico do turno</h2>
           <p className="text-xs text-ink-faint">Somente leitura — caixa encerrado, sem reabertura</p>
         </div>
+        {data.registrosVenda !== undefined && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm" role="note">
+            <p className="font-semibold">{data.registrosVenda} registros de venda no escopo histórico: {data.comandasAtendidas ?? 0} comandas + {data.vendasAvulsas ?? 0} vendas avulsas; {data.comandasCanceladas ?? 0} comanda(s) cancelada(s).</p>
+            <p className="mt-1 text-ink-muted">Vendas avulsas já estão dentro dos registros de venda; canceladas ficam separadas e não entram nos indicadores financeiros. {data.comandasComVinculoSessao ?? 0} vendas têm vínculo explícito com este turno; {data.historicasSemVinculo ?? 0} registros migrados não têm vínculo de sessão confiável e aparecem identificados separadamente. O valor financeiro mantém os snapshots e filtros históricos existentes.</p>
+          </div>
+        )}
         {comandasTurnoQuery.isLoading && <p className="text-sm text-ink-faint">Carregando comandas…</p>}
         {comandasTurnoQuery.isError && (
           <p className="text-sm text-red-600" role="alert">
             Não foi possível carregar as comandas deste turno. Verifique a permissão de leitura.
           </p>
         )}
-        {comandasTurnoQuery.isSuccess && (comandasTurnoQuery.data?.length ?? 0) === 0 && (
-          <p className="text-sm text-ink-faint">Nenhuma comanda fechada vinculada a este turno.</p>
+        {comandasTurnoQuery.isSuccess && (comandasTurnoQuery.data?.escopo.totalRegistros ?? 0) === 0 && (
+          <p className="text-sm text-ink-faint">Nenhuma comanda ou venda avulsa registrada no escopo deste turno.</p>
         )}
-        {comandasTurnoQuery.isSuccess && (comandasTurnoQuery.data?.length ?? 0) > 0 && (
-          <div className="divide-y divide-line">
-            {(comandasTurnoQuery.data ?? [])
-              .filter((comanda) => comanda.tipo !== 'AVULSA')
-              .map((comanda) => {
+        {comandasTurnoQuery.isSuccess && comandasTurnoQuery.data && comandasTurnoQuery.data.escopo.totalRegistros > 0 && (
+          <>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar registros do turno">
+              {([
+                ['TODOS', `Todos (${comandasTurnoQuery.data.escopo.totalRegistros})`],
+                ['COMANDAS', `Comandas (${comandasTurnoQuery.data.escopo.comandas})`],
+                ['AVULSAS', `Vendas avulsas (${comandasTurnoQuery.data.escopo.vendasAvulsas})`],
+                ['CANCELADAS', `Canceladas (${comandasTurnoQuery.data.escopo.comandasCanceladas})`],
+              ] as const).map(([value, label]) => (
+                <button key={value} type="button" aria-pressed={filtroComandas === value} className={filtroComandas === value ? 'touch-btn-orange touch-btn-sm' : 'touch-btn-secondary touch-btn-sm'} onClick={() => { setFiltroComandas(value); setPaginaComandas(1); }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-ink-faint" data-testid="turno-comandas-paginacao">
+              Filtro ativo: {filtroComandas === 'TODOS' ? 'todos os tipos e status' : filtroComandas === 'COMANDAS' ? 'comandas fechadas' : filtroComandas === 'AVULSAS' ? 'vendas avulsas fechadas' : 'comandas canceladas'} · Exibindo {comandasTurnoQuery.data.paginacao.de}–{comandasTurnoQuery.data.paginacao.ate} de {comandasTurnoQuery.data.paginacao.totalFiltrado} filtrados; escopo total {comandasTurnoQuery.data.escopo.totalRegistros} ({comandasTurnoQuery.data.escopo.comandas} comandas, {comandasTurnoQuery.data.escopo.vendasAvulsas} vendas avulsas, {comandasTurnoQuery.data.escopo.comandasCanceladas} canceladas).
+            </p>
+            <p className="text-xs text-ink-faint">Critério: {comandasTurnoQuery.data.escopo.criterio}</p>
+            <div className="divide-y divide-line" data-testid="turno-comandas-lista">
+              {comandasTurnoQuery.data.dados.map((comanda) => {
                 const formas = comanda.pagamentos
                   .map((pagamento) => FORMAS_PAGAMENTO.find((item) => item.valor === pagamento.forma)?.label ?? pagamento.forma)
                   .join(', ');
@@ -224,10 +254,11 @@ export function OperacaoTurnoResumoPage() {
                   .flatMap((pedido) => pedido.itens)
                   .filter((item) => Boolean(item.canceladoEm));
                 return (
-                  <div key={comanda.id} className="flex flex-wrap items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                  <div key={comanda.id} data-command-id={comanda.id} className="flex flex-wrap items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold truncate">{rotuloComanda(comanda)}</p>
+                      <p className="font-semibold break-words">{rotuloComanda(comanda)}</p>
                       <p className="text-xs text-ink-faint">
+                        {comanda.status === 'CANCELADA' ? 'Comanda cancelada · ' : comanda.tipo === 'AVULSA' ? 'Venda avulsa · ' : 'Comanda · '}
                         {comanda.numero != null ? `Nº ${comanda.numero} · ` : ''}
                         {formatCurrency(comanda.total)}
                         {formas ? ` · ${formas}` : ' · sem pagamento registrado'}
@@ -239,11 +270,14 @@ export function OperacaoTurnoResumoPage() {
                       <p className="text-[11px] text-ink-faint mt-1">
                         Pagamentos listados são os registrados no sistema; valores da maquininha exigem conferência externa.
                       </p>
+                      <p className={`text-xs mt-1 font-medium ${comanda.vinculoSessao === 'CONFIRMADO' ? 'text-green-700' : 'text-amber-700'}`}>
+                        {comanda.vinculoSessao === 'CONFIRMADO' ? 'Vínculo de sessão confirmado' : 'Registro histórico sem vínculo confiável com a sessão'}
+                      </p>
                     </div>
                     <button
                       type="button"
                       className="touch-btn-secondary touch-btn-sm shrink-0"
-                      onClick={() => setComandaEspelhoId(comanda.id)}
+                      onClick={() => setComandaEspelho({ id: comanda.id, contexto: comanda.status === 'CANCELADA' ? 'CANCELAMENTO_TURNO' : 'VENDA' })}
                     >
                       Ver detalhes
                     </button>
@@ -251,7 +285,31 @@ export function OperacaoTurnoResumoPage() {
                 );
               })}
           </div>
+            <div className="flex items-center justify-between gap-3 border-t border-line pt-3">
+              <button type="button" className="touch-btn-secondary touch-btn-sm" disabled={comandasTurnoQuery.data.paginacao.pagina <= 1} onClick={() => setPaginaComandas((page) => Math.max(1, page - 1))}>Anterior</button>
+            <span className="text-sm tabular-nums">Página {comandasTurnoQuery.data.paginacao.pagina} de {comandasTurnoQuery.data.paginacao.paginas}</span>
+              <button type="button" className="touch-btn-secondary touch-btn-sm" disabled={comandasTurnoQuery.data.paginacao.pagina >= comandasTurnoQuery.data.paginacao.paginas} onClick={() => setPaginaComandas((page) => page + 1)}>Próxima</button>
+            </div>
+          </>
         )}
+      </section>
+
+      <section className="card space-y-3" data-testid="turno-recebimentos-anteriores">
+        <h2 className="section-label">Dívidas anteriores recebidas neste turno</h2>
+        <p className="text-xs text-ink-faint">Esses pagamentos entram no recebido do caixa, mas não contam como vendas originadas neste turno.</p>
+        {recebimentosAnterioresQuery.isLoading && <p className="text-sm text-ink-faint">Carregando recebimentos…</p>}
+        {recebimentosAnterioresQuery.isError && <p className="text-sm text-red-600" role="alert">Não foi possível carregar as dívidas anteriores recebidas neste turno.</p>}
+        {recebimentosAnterioresQuery.isSuccess && recebimentosAnterioresQuery.data.length === 0 && <p className="text-sm text-ink-faint">Nenhuma dívida anterior recebida neste turno.</p>}
+        {recebimentosAnterioresQuery.data?.map((row) => (
+          <div key={row.comanda.id} data-command-id={row.comanda.id} className="flex flex-wrap items-start justify-between gap-3 border-t border-line pt-3 first:border-0 first:pt-0">
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold break-words">{row.comanda.identificador || row.comanda.cliente?.nome || 'Comanda anterior'}{row.comanda.numero != null ? ` · Nº ${row.comanda.numero}` : ''}</p>
+              <p className="text-xs text-ink-faint">Venda fechada {row.comanda.fechadaEm ? new Date(row.comanda.fechadaEm).toLocaleString('pt-BR') : 'em data não registrada'} · Recebido agora: {formatCurrency(row.recebidoNesteTurno)}</p>
+              {row.pagamentos.map((pagamento) => <p key={pagamento.id} className="text-xs text-ink-muted">{FORMAS_PAGAMENTO.find((forma) => forma.valor === pagamento.forma)?.label ?? pagamento.forma} · {formatCurrency(pagamento.valor)} · {new Date(pagamento.pagoEm).toLocaleString('pt-BR')}</p>)}
+            </div>
+            <button type="button" className="touch-btn-secondary touch-btn-sm shrink-0" onClick={() => setComandaEspelho({ id: row.comanda.id, contexto: 'RECEBIMENTO_DIVIDA_ANTERIOR' })}>Ver detalhes</button>
+          </div>
+        ))}
       </section>
 
       {data.porProduto.length > 0 && (
@@ -449,13 +507,14 @@ export function OperacaoTurnoResumoPage() {
           ))}
         </section>
       )}
-      {comandaEspelhoId && (
+      {comandaEspelho && (
         <ComandaEspelhoTurnoModal
-          key={comandaEspelhoId}
-          comandaId={comandaEspelhoId}
+          key={`${comandaEspelho.contexto}:${comandaEspelho.id}`}
+          comandaId={comandaEspelho.id}
           pontoVendaId={caixa.pontoVendaId}
           sessaoCaixaId={sessaoId!}
-          onClose={() => setComandaEspelhoId(null)}
+          contexto={comandaEspelho.contexto}
+          onClose={() => setComandaEspelho(null)}
         />
       )}
     </div>

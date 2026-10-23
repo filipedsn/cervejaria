@@ -197,9 +197,10 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
   app.get('/:id/espelho-turno', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
-    const { pontoVendaId, sessaoCaixaId } = z.object({
+    const { pontoVendaId, sessaoCaixaId, contexto } = z.object({
       pontoVendaId: z.string().min(1),
       sessaoCaixaId: z.string().min(1),
+      contexto: z.enum(['VENDA', 'CANCELAMENTO_TURNO', 'RECEBIMENTO_DIVIDA_ANTERIOR']).default('VENDA'),
     }).parse(request.query);
 
     const sessao = await prisma.sessaoCaixaOperacao.findFirst({
@@ -208,20 +209,22 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     });
     if (!sessao?.fechadoEm) return reply.status(404).send({ error: 'Turno não encontrado neste ponto de venda' });
 
-    const associacaoTurno: Prisma.ComandaWhereInput = sessao.tipoEncerramento === 'ADMINISTRATIVO'
-      || request.operacao.effectiveSettings.source === 'CANONICAL_PDV'
-      ? { sessaoCaixaRealizacaoId: sessao.id }
-      : {
-          diaOperacional: sessao.diaOperacional,
-          fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm },
-        };
-    const comanda = await prisma.comanda.findFirst({
+    const associacoesVenda: Prisma.ComandaWhereInput[] = [{ sessaoCaixaRealizacaoId: sessao.id }];
+    if (sessao.tipoEncerramento !== 'ADMINISTRATIVO') {
+      associacoesVenda.push({
+        AND: [
+          { sessaoCaixaRealizacaoId: null },
+          { diaOperacional: sessao.diaOperacional },
+          { fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm } },
+        ],
+      });
+    }
+    let comanda = contexto === 'VENDA' ? await prisma.comanda.findFirst({
       where: whereComandaOperacao(cervejariaId, {
         id,
         pontoVendaId: sessao.pontoVendaId,
         status: 'FECHADA',
-        tipo: { not: 'AVULSA' },
-        ...associacaoTurno,
+        OR: associacoesVenda,
       }),
       include: {
         ...INCLUDE_COMANDA_OPERACAO,
@@ -232,7 +235,40 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           include: { produto: true, opcionais: true, cancelamentosEntregue: { orderBy: { createdAt: 'asc' } } },
         },
       },
-    });
+    }) : contexto === 'CANCELAMENTO_TURNO' ? await prisma.comanda.findFirst({
+      where: whereComandaOperacao(cervejariaId, {
+        id,
+        pontoVendaId: sessao.pontoVendaId,
+        status: 'CANCELADA',
+        sessaoCaixaRealizacaoId: sessao.id,
+      }),
+      include: {
+        ...INCLUDE_COMANDA_OPERACAO,
+        pontoVenda: { select: { id: true, nome: true, cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
+        ocorrencia: { select: { id: true, nome: true, data: true, horaInicio: true, horaFim: true, agenda: { select: { id: true, nome: true } } } },
+        itens: { orderBy: { createdAt: 'asc' }, include: { produto: true, opcionais: true, cancelamentosEntregue: { orderBy: { createdAt: 'asc' } } } },
+      },
+    }) : null;
+    const pagamentoRecebimentoAnterior = contexto === 'RECEBIMENTO_DIVIDA_ANTERIOR'
+      ? await prisma.pagamento.findFirst({
+          where: { comandaId: id, sessaoCaixaId: sessao.id, contaReceberId: { not: null } },
+          select: { id: true },
+        })
+      : null;
+    if (!comanda && pagamentoRecebimentoAnterior) {
+      comanda = await prisma.comanda.findFirst({
+        where: whereComandaOperacao(cervejariaId, { id, pontoVendaId: sessao.pontoVendaId, status: 'FECHADA' }),
+        include: {
+          ...INCLUDE_COMANDA_OPERACAO,
+          pontoVenda: { select: { id: true, nome: true, cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
+          ocorrencia: { select: { id: true, nome: true, data: true, horaInicio: true, horaFim: true, agenda: { select: { id: true, nome: true } } } },
+          itens: {
+            orderBy: { createdAt: 'asc' },
+            include: { produto: true, opcionais: true, cancelamentosEntregue: { orderBy: { createdAt: 'asc' } } },
+          },
+        },
+      });
+    }
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada neste turno' });
 
     const resumo = resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
@@ -251,6 +287,14 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         abertoEm: sessao.abertoEm,
         fechadoEm: sessao.fechadoEm,
       },
+      contextoTurno: contexto === 'RECEBIMENTO_DIVIDA_ANTERIOR'
+        ? 'RECEBIMENTO_DIVIDA_ANTERIOR'
+        : contexto === 'CANCELAMENTO_TURNO'
+          ? 'CANCELAMENTO_TURNO'
+        : comanda.sessaoCaixaRealizacaoId === sessao.id
+          ? 'VINCULO_CONFIRMADO'
+          : 'HISTORICO_SEM_VINCULO_CONFIAVEL',
+      sessaoOrigemId: comanda.sessaoCaixaRealizacaoId,
       agendamento: comanda.ocorrencia ? {
         id: comanda.ocorrencia.id,
         nome: comanda.ocorrencia.nome,

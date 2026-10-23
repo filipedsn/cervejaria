@@ -20,6 +20,8 @@ interface ItemEspelho {
 interface ComandaEspelhoTurno extends ComandaOperacao {
   pontoVenda?: { id: string; nome: string } | null;
   turno?: { id: string; abertoEm: string; fechadoEm: string } | null;
+  contextoTurno?: 'VINCULO_CONFIRMADO' | 'HISTORICO_SEM_VINCULO_CONFIAVEL' | 'CANCELAMENTO_TURNO' | 'RECEBIMENTO_DIVIDA_ANTERIOR';
+  sessaoOrigemId?: string | null;
   agendamento?: { nome: string; data: string; horaInicio: string; horaFim: string | null; agendaNome: string | null } | null;
   pagamentos: Array<ComandaOperacao['pagamentos'][number] & {
     sessaoCaixaId: string | null;
@@ -91,17 +93,19 @@ export function ComandaEspelhoTurnoModal({
   comandaId,
   pontoVendaId,
   sessaoCaixaId,
+  contexto = 'VENDA',
   onClose,
 }: {
   comandaId: string;
   pontoVendaId: string;
   sessaoCaixaId: string;
+  contexto?: 'VENDA' | 'CANCELAMENTO_TURNO' | 'RECEBIMENTO_DIVIDA_ANTERIOR';
   onClose: () => void;
 }) {
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['operacao-comanda-espelho-turno', sessaoCaixaId, pontoVendaId, comandaId],
+    queryKey: ['operacao-comanda-espelho-turno', sessaoCaixaId, pontoVendaId, comandaId, contexto],
     queryFn: () => api.get<ComandaEspelhoTurno>(
-      `/api/operacao/comandas/${encodeURIComponent(comandaId)}/espelho-turno?${new URLSearchParams({ pontoVendaId, sessaoCaixaId })}`,
+      `/api/operacao/comandas/${encodeURIComponent(comandaId)}/espelho-turno?${new URLSearchParams({ pontoVendaId, sessaoCaixaId, contexto })}`,
     ),
     retry: false,
   });
@@ -152,6 +156,7 @@ export function ComandaEspelhoTurnoModal({
               <span className="rounded-full border border-line px-3 py-1 text-xs font-semibold">{statusComanda(data.status)}</span>
             </div>
             <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Campo label="Tipo" value={data.tipo === 'AVULSA' ? 'Venda avulsa' : `Comanda · ${data.tipo}`} />
               <Campo label="Cliente" value={data.cliente?.nome ?? 'Não registrado'} />
               <Campo label="PDV" value={data.pontoVenda?.nome ?? 'Não registrado'} />
               <Campo label="Aberta em" value={dataHora(data.createdAt)} />
@@ -159,6 +164,21 @@ export function ComandaEspelhoTurnoModal({
               <Campo label="Turno" value={data.turno ? `${dataHora(data.turno.abertoEm)} – ${dataHora(data.turno.fechadoEm)}` : 'Não registrado'} />
               <Campo label="Agendamento" value={data.agendamento ? `${data.agendamento.nome} · ${dataLocal(data.agendamento.data)} · ${data.agendamento.horaInicio}${data.agendamento.horaFim ? `–${data.agendamento.horaFim}` : ''}${data.agendamento.agendaNome ? ` · ${data.agendamento.agendaNome}` : ''}` : 'Não registrado'} />
             </dl>
+            {data.contextoTurno === 'HISTORICO_SEM_VINCULO_CONFIAVEL' && (
+              <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-800">
+                Registro histórico no intervalo do caixa; não há vínculo persistido que comprove sua origem neste turno.
+              </p>
+            )}
+            {data.contextoTurno === 'CANCELAMENTO_TURNO' && (
+              <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-700">
+                Comanda cancelada com vínculo explícito ao turno. Não entra nos indicadores nem nos totais de vendas.
+              </p>
+            )}
+            {data.contextoTurno === 'RECEBIMENTO_DIVIDA_ANTERIOR' && (
+              <p className="mt-3 rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-sm text-ink-muted">
+                Comanda de período anterior, aberta aqui porque há um pagamento de dívida registrado neste turno. O recebimento não a transforma em venda originada neste caixa.
+              </p>
+            )}
           </section>
 
           <section className="space-y-3">

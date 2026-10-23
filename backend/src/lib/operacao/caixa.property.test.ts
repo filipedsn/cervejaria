@@ -41,7 +41,7 @@ describe('caixa operacao (property-based)', () => {
     });
   });
 
-  it('relatório de turno administrativo usa só comandas vinculadas; financeiro usa a janela do turno', () => {
+  it('relatório usa vínculos explícitos e mantém legado sem vínculo identificado pela janela', () => {
     const base = {
       id: 'sessao-1',
       diaOperacional: new Date('2026-10-12T00:00:00.000Z'),
@@ -53,8 +53,16 @@ describe('caixa operacao (property-based)', () => {
     });
     for (const tipoEncerramento of ['FINANCEIRO', null]) {
       assert.deepEqual(escopoComandasDoTurno({ ...base, tipoEncerramento }), {
-        diaOperacional: base.diaOperacional,
-        fechadaEm: { gte: base.abertoEm, lte: base.fechadoEm },
+        OR: [
+          { sessaoCaixaRealizacaoId: 'sessao-1' },
+          {
+            AND: [
+              { sessaoCaixaRealizacaoId: null },
+              { diaOperacional: base.diaOperacional },
+              { fechadaEm: { gte: base.abertoEm, lte: base.fechadoEm } },
+            ],
+          },
+        ],
       });
     }
   });
