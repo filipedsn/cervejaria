@@ -445,6 +445,10 @@ export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
             await lock(tx, scope, companyId, pointId);
             const current = await tx.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } });
             if (!runMatchesScope(current, scope, companyId, pointId)) throw new PdvCatalogBlocker('RUN_ID_SCOPE_MISMATCH', null, runId, 'runId already belongs to another tenant, PDV, or scope; state was left untouched.');
+            if (current.status === 'COMPLETED' && current.sourceSnapshotHash === sourceHash) {
+              await validateCheckpoint(tx, current, scope, transformVersion, companyId, pointId, sourceHash, items, true, undefined, true, true);
+              return current;
+            }
             // A previously BLOCKED run may resume only after this invocation has
             // revalidated the full source snapshot, maps, receipts and destinations
             // above. Completing it in this same locked transaction keeps the
