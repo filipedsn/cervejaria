@@ -53,7 +53,7 @@ const individualPermissionsSql = await readFile(path.join(repoRoot, individualPe
 const portalExperienceMigrationPath = 'backend/prisma/migrations/20261020210000_portal_cliente_experience/migration.sql';
 const portalExperienceSql = readPinnedBlob(manifest.delivery.schemaCommit, portalExperienceMigrationPath);
 assert.equal(sha256(await readFile(path.join(repoRoot, portalExperienceMigrationPath))), sha256(portalExperienceSql), 'pinned additive portal migration matches the candidate schema commit');
-const agendaLimitMigrations = ['20261022170000_agenda_recorrencia_limites', '20261023120000_agenda_fim_opcional', '20261024110000_agenda_generation_reference'].map((name) => ({
+const agendaLimitMigrations = ['20261009180000_agenda_archive', '20261022170000_agenda_recorrencia_limites', '20261023120000_agenda_fim_opcional', '20261024110000_agenda_generation_reference'].map((name) => ({
   name,
   path: `backend/prisma/migrations/${name}/migration.sql`,
   sql: readPinnedBlob(manifest.delivery.schemaCommit, `backend/prisma/migrations/${name}/migration.sql`),
@@ -2516,7 +2516,7 @@ try {
   const { PrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
   db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal', omit: { produto: { prepararEmPedidoSeparado: true, categoriaPdvId: process.env.PDV_GAMIFIED_CATEGORY_CATALOG !== '1' } } });
   const applied = await db.$queryRaw`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL ORDER BY migration_name`;
-  assert.equal(applied.length, history.migrations.length + 14, 'full historical + operational core/catalog/session/finance/provenance/commerce/sale-session/Tap-mount/independent-kitchen/individual-permissions/portal/agenda-bounds chain');
+  assert.equal(applied.length, history.migrations.length + 15, 'full historical + operational core/catalog/session/finance/provenance/commerce/sale-session/Tap-mount/independent-kitchen/individual-permissions/portal/agenda-archive-and-bounds chain');
   assert(applied.some((row) => row.migration_name === manifest.priorManifests.finance.historicalProvenanceMigration.name), 'Payment.provenienciaHistorica migration is applied before commerce route regressions');
   assert(applied.some((row) => row.migration_name === '20261020210000_portal_cliente_experience'), 'additive portal schema migration is applied before real route regressions');
   for (const migration of agendaLimitMigrations) assert(applied.some((row) => row.migration_name === migration.name), `${migration.name} is applied before recurrence route regressions`);
