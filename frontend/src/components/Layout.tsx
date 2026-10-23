@@ -22,6 +22,7 @@ import {
   isOperacaoNavActive,
   IconBell,
   IconCalendar,
+  IconTrophy,
 } from './NavIcons';
 import { usePedidoAlertSound } from '../hooks/usePedidoAlertSound';
 import { useOperacaoContexto } from '../hooks/useOperacaoContexto';
@@ -147,7 +148,7 @@ function isNavActive(path: string, current: string, exact?: boolean) {
 }
 
 export function Layout() {
-  const { usuario, cervejaria, logout, isDono } = useAuth();
+  const { usuario, cervejaria, logout, isDono, canPermission } = useAuth();
   const { evento, trailer, trailers, clearTrailer } = useEvento();
   const location = useLocation();
   const navigate = useNavigate();
@@ -281,8 +282,18 @@ export function Layout() {
                   )}
                   <p className="text-base font-bold text-ink truncate leading-tight">{cervejaria?.nome}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-1">
                   {onOperacaoComandasPage && pontoVendaQrId && <PdvPortalQrButton pontoVendaId={pontoVendaQrId} iconOnly className="icon-btn-ghost" />}
+                  {onOperacaoComandasPage && pontoVendaQrId && operacao.tapsEnabled && canPermission('command.read') && (
+                    <Link
+                      to={`/operacao/ranking?pontoVendaId=${encodeURIComponent(pontoVendaQrId)}`}
+                      title="Ranking de chope"
+                      aria-label="Ranking de chope"
+                      className="icon-btn-ghost h-11 w-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2"
+                    >
+                      <IconTrophy />
+                    </Link>
+                  )}
                   {usuario && <UserAvatarButton nome={usuario.nome} onClick={() => setAccountOpen(true)} />}
                 </div>
               </div>

@@ -328,11 +328,6 @@ export function OperacaoComandasPage() {
               <span className="min-w-0"><strong className="block whitespace-nowrap text-[clamp(0.68rem,3.6vw,1rem)] font-bold leading-tight">Venda avulsa</strong></span>
               <span className="shrink-0 text-base text-white/90 transition-transform group-hover:translate-x-1 sm:text-xl" aria-hidden="true">›</span>
             </Link>}
-            {contexto.tapsEnabled && canPermission('command.read') && <Link to={`/operacao/ranking?pontoVendaId=${encodeURIComponent(pontoAtivo)}${caixaData?.sessao?.ocorrenciaId ? `&ocorrenciaId=${encodeURIComponent(caixaData.sessao.ocorrenciaId)}` : ''}`} className="group flex min-h-16 min-w-0 w-full items-center justify-center gap-1.5 rounded-2xl border border-violet-300/40 bg-gradient-to-br from-violet-600 to-violet-800 px-1.5 py-2 text-left text-white shadow-lg shadow-violet-500/15 transition hover:brightness-110 sm:min-h-20 sm:gap-3 sm:px-4 sm:py-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/30 bg-white/15 text-xl sm:h-10 sm:w-10 sm:text-2xl" aria-hidden="true">♛</span>
-              <span className="min-w-0"><strong className="block whitespace-nowrap text-[clamp(0.68rem,3.6vw,1rem)] font-bold leading-tight">Ranking de chope</strong></span>
-              <span className="shrink-0 text-base text-white/90 transition-transform group-hover:translate-x-1 sm:text-xl" aria-hidden="true">›</span>
-            </Link>}
           </div>
         </section>
       )}
