@@ -291,7 +291,7 @@ export function Layout() {
                       aria-label="Ranking de chope"
                       className="icon-btn-ghost h-11 w-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2"
                     >
-                      <IconTrophy />
+                      <IconTrophy className="h-6 w-6" />
                     </Link>
                   )}
                   {usuario && <UserAvatarButton nome={usuario.nome} onClick={() => setAccountOpen(true)} />}
