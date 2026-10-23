@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../../lib/api';
 import { Modal } from '../Modal';
+import { Select } from '../Select';
 import { CurrencyInput } from '../CurrencyInput';
 import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../../lib/currency';
 import {
@@ -382,16 +383,18 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         </div>
       ) : (
         <>
-          <select id="operacao-ocorrencia" className="input" value={ocorrenciaId}
+          <Select id="operacao-ocorrencia" value={ocorrenciaId}
             disabled={ocorrenciasQuery.isFetching}
-      onChange={(event) => setOcorrenciaEscolha({ contexto: contextoAgendamento, id: event.target.value, origem: 'explicita' })}>
-            <option value="">Abrir sem agendamento</option>
-            {ocorrenciasElegiveis.map((ocorrencia) => (
-              <option key={ocorrencia.id} value={ocorrencia.id}>
-                {ocorrencia.nome} · {dataCalendarioPt(ocorrencia.data)} · {ocorrencia.horaInicio ?? 'horário a confirmar'}{ocorrencia.horaFim ? `–${ocorrencia.horaFim}` : ''}
-              </option>
-            ))}
-          </select>
+            onChange={(id) => setOcorrenciaEscolha({ contexto: contextoAgendamento, id, origem: 'explicita' })}
+            options={[
+              { value: '', label: 'Abrir sem agendamento' },
+              ...ocorrenciasElegiveis.map((ocorrencia) => ({
+                value: ocorrencia.id,
+                label: ocorrencia.nome,
+                description: dataCalendarioPt(ocorrencia.data) + ' · ' + (ocorrencia.horaInicio ?? 'horário a confirmar') + (ocorrencia.horaFim ? '–' + ocorrencia.horaFim : ''),
+              })),
+            ]}
+          />
           {ocorrenciaSelecionada && escolhaAtual?.origem === 'sugestao' && <p role="status" className="text-sm text-ink-muted">Sugestão: {ocorrenciaSelecionada.nome}. Confira o agendamento na confirmação antes de abrir.</p>}
           {ocorrenciasElegiveis.length === 0 && <p className="text-sm text-ink-faint">Nenhum agendamento para hoje</p>}
           {ocorrenciasElegiveis.length > 0 && !ocorrenciaId && <p className="text-sm text-ink-muted">Escolha um agendamento ou selecione “Abrir sem agendamento”.</p>}

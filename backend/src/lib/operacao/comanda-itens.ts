@@ -93,6 +93,13 @@ async function carregarItem(
   });
 }
 
+function itemFoiEntregueAoLancar(item: NonNullable<Awaited<ReturnType<typeof carregarItem>>>) {
+  const status = item.pedidoCozinha?.status;
+  return status === 'ENTREGUE' || (
+    Boolean(item.tapId) && !item.exigePreparo
+  );
+}
+
 async function notificarMudancaCozinha(
   app: FastifyInstance,
   cervejariaId: string,
@@ -134,13 +141,20 @@ export async function removeItemFromComandaOperacao(params: {
   if (comanda.status !== 'ABERTA') {
     return { error: 'Comanda não encontrada ou fechada' as const };
   }
+  if (itemFoiEntregueAoLancar(item) && params.user && params.motivo && params.tratamentoEstoque && params.idempotencyKey && params.quantidadeEsperada) {
+    return cancelarItemEntregueOperacao({
+      ...params, user: params.user, motivo: params.motivo,
+      tratamentoEstoque: params.tratamentoEstoque, idempotencyKey: params.idempotencyKey,
+      quantidadeEsperada: params.quantidadeEsperada,
+    }, item);
+  }
   if (itemBloqueadoPorCancelamentoIntegral(item.pedidoCozinha, item)) {
     return { error: 'Este pedido já foi cancelado' as const };
   }
   if (item.cancelamentoPendenteEm || item.canceladoEm) {
     return { error: 'Este item já está em cancelamento' as const };
   }
-  if (item.pedidoCozinha.status === 'ENTREGUE') {
+  if (itemFoiEntregueAoLancar(item)) {
     if (!params.user || !params.motivo || !params.tratamentoEstoque || !params.idempotencyKey || !params.quantidadeEsperada) {
       throw Object.assign(new Error('Informe motivo, tratamento de estoque e confirme a quantidade atual'), { statusCode: 400 });
     }
@@ -171,7 +185,7 @@ export async function removeItemFromComandaOperacao(params: {
     if (itemAtual.cancelamentoPendenteEm || itemAtual.canceladoEm) {
       throw Object.assign(new Error('Este item já está em cancelamento'), { statusCode: 409 });
     }
-    if (itemAtual.pedidoCozinha.status === 'ENTREGUE') {
+    if (itemFoiEntregueAoLancar(itemAtual)) {
       throw Object.assign(new Error('Este item já foi entregue'), { statusCode: 409 });
     }
 
@@ -304,7 +318,7 @@ async function cancelarItemEntregueOperacao(
       return { comanda, quantidade: anterior.quantidade, valor: toNumber(anterior.valorRetirado), repetido: true };
     }
     if (item.pedidoCozinha.comanda.status !== 'ABERTA') throw Object.assign(new Error('Comanda não encontrada ou fechada'), { statusCode: 409 });
-    if (item.pedidoCozinha.status !== 'ENTREGUE') throw Object.assign(new Error('O pedido não está mais marcado como entregue'), { statusCode: 409 });
+    if (!itemFoiEntregueAoLancar(item)) throw Object.assign(new Error('O pedido não está mais marcado como entregue'), { statusCode: 409 });
     if (itemBloqueadoPorCancelamentoIntegral(item.pedidoCozinha, item) || item.cancelamentoPendenteEm || item.canceladoEm) {
       throw Object.assign(new Error('Este item já foi cancelado ou está em cancelamento'), { statusCode: 409 });
     }

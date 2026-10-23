@@ -375,6 +375,7 @@ export function OperacaoVendaAvulsaPage() {
           setShowAddItem(false);
         }}
         pontoVendaId={pontoAtivo}
+        sessaoCaixaId={caixaData?.sessao?.id}
         tapsEnabled={contexto.tapsEnabled}
         produtos={produtos}
         linhas={itensModal}

@@ -100,15 +100,16 @@ test.describe('Agenda operacional canônica', () => {
     await page.getByRole('button', { name: 'Cardápio salvo' }).click();
     await page.getByRole('radio', { name: /Menu de teste/ }).click();
     const occurrenceSelect = page.getByLabel('Agendamento de hoje');
-    await expect(occurrenceSelect).toHaveValue('');
-    await expect(occurrenceSelect.locator('option', { hasText: 'Hoje B' })).toHaveCount(1);
-    await expect(occurrenceSelect.locator('option', { hasText: 'Ontem' })).toHaveCount(0);
-    await expect(occurrenceSelect.locator('option', { hasText: 'Amanhã' })).toHaveCount(0);
-    await expect(occurrenceSelect.locator('option', { hasText: 'Encerrada' })).toHaveCount(0);
-    await expect(occurrenceSelect.locator('option', { hasText: 'Cancelada' })).toHaveCount(0);
+    await expect(occurrenceSelect).toHaveAttribute('value', '');
+    await occurrenceSelect.click();
+    await expect(page.getByRole('option', { name: 'Hoje B', exact: false })).toHaveCount(1);
+    await expect(page.getByRole('option', { name: 'Ontem', exact: false })).toHaveCount(0);
+    await expect(page.getByRole('option', { name: 'Amanhã', exact: false })).toHaveCount(0);
+    await expect(page.getByRole('option', { name: 'Encerrada', exact: false })).toHaveCount(0);
+    await expect(page.getByRole('option', { name: 'Cancelada', exact: false })).toHaveCount(0);
     const openButton = page.getByRole('button', { name: 'Abrir caixa' });
     await expect(openButton).toBeDisabled();
-    await occurrenceSelect.selectOption(selectedOccurrence.id);
+    await page.locator(`[role=option][data-value="${selectedOccurrence.id}"]`).click();
     await openButton.click();
     await expect(page.getByRole('dialog')).toContainText('Hoje B');
     await expect(page.getByRole('dialog')).toContainText('Confirmar e abrir caixa');
@@ -152,7 +153,7 @@ test.describe('Agenda operacional canônica', () => {
     });
     await page.goto('/operacao/comandas');
     const occurrenceSelect = page.getByLabel('Agendamento de hoje');
-    await expect(occurrenceSelect).toHaveValue('');
+    await expect(occurrenceSelect).toHaveAttribute('value', '');
     await expect(page.getByText('Nenhum agendamento para hoje')).toBeVisible();
     await page.getByRole('button', { name: 'Cardápio salvo' }).click();
     await page.getByRole('radio', { name: /Menu de teste/ }).click();
@@ -184,7 +185,8 @@ test.describe('Agenda operacional canônica', () => {
     fail = false;
     await retry.click();
     await expect(page.getByLabel('Agendamento de hoje')).toBeVisible();
-    await expect(page.getByLabel('Agendamento de hoje')).toHaveValue('retry-today');
+    await expect(page.getByLabel('Agendamento de hoje')).toHaveAttribute('value', 'retry-today');
+    await page.getByLabel('Agendamento de hoje').click();
     await expect(page.getByRole('option', { name: /Hoje após retry/ })).toHaveCount(1);
   });
 
@@ -204,19 +206,64 @@ test.describe('Agenda operacional canônica', () => {
     await page.goto('/operacao/comandas');
     const occurrenceSelect = page.getByLabel('Agendamento de hoje');
     await expect(occurrenceSelect).toBeVisible();
-    await occurrenceSelect.selectOption('event-2026-10-22');
+    await occurrenceSelect.click();
+    await page.locator(`[role=option][data-value="${'event-2026-10-22'}"]`).click();
     await page.clock.runFor(30_000);
-    await expect(occurrenceSelect).toHaveValue('event-2026-10-22');
+    await expect(occurrenceSelect).toHaveAttribute('value', 'event-2026-10-22');
 
     operationalDay = '2026-10-23';
     await page.clock.runFor(30_000);
-    await expect(occurrenceSelect).toHaveValue('event-2026-10-23');
-    await expect(occurrenceSelect.locator('option', { hasText: 'Evento 2026-10-23' })).toHaveCount(1);
+    await expect(occurrenceSelect).toHaveAttribute('value', 'event-2026-10-23');
+    await occurrenceSelect.click();
+    await expect(page.getByRole('option', { name: 'Evento 2026-10-23', exact: false })).toHaveCount(1);
     expect(requestedDays).toContain('2026-10-22/2026-10-22');
     expect(requestedDays).toContain('2026-10-23/2026-10-23');
   });
 
   for (const width of [390, 1280]) {
+    test(`seletor tematico acessivel com nomes longos em ${width}px`, async ({ page }, info) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.addInitScript(() => localStorage.setItem('quiver:theme', 'dark'));
+      await authenticateAsOwner(page);
+      await page.route('**/api/operacao/caixa?pontoVendaId=*', (route) => route.fulfill({ json: { sessao: null, comandasAbertas: 0, diaOperacional: '2026-10-07' } }));
+      const longName = 'Festival de cervejas artesanais e gastronomia da comunidade — encontro especial de primavera com convidados';
+      await page.route('**/api/operacao/agenda/ocorrencias?**', (route) => route.fulfill({ json: { ocorrencias: Array.from({ length: 8 }, (_,index) => ({ id: `long-${index}`, nome: `${longName} ${index + 1}`, data: '2026-10-07', horaInicio: '08:30', horaFim: '23:45', status: 'PROGRAMADA', agenda: null })) } }));
+      await page.goto('/operacao/comandas');
+      const selector = page.getByRole('combobox', { name: 'Agendamento de hoje' });
+      await expect(selector).toBeVisible();
+      await selector.focus();
+      await page.keyboard.press('ArrowDown');
+      const list = page.getByRole('listbox');
+      await expect(list).toBeVisible();
+      await expect(page.getByRole('option')).toHaveCount(9);
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('Enter');
+      await expect(selector).toHaveAttribute('value', 'long-0');
+      await expect(selector).toContainText('07/10/2026 · 08:30–23:45');
+      await expect(selector).toBeFocused();
+      await selector.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+      await page.screenshot({ path: info.outputPath(`select-${width}-closed.png`) });
+      await selector.click();
+      await expect(page.getByRole('option', { selected: true })).toContainText(`${longName} 1`);
+      const bounds = await list.boundingBox();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+      expect(bounds!.y).toBeGreaterThanOrEqual(0);
+      expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(width === 390 ? 844 : 900);
+      await page.screenshot({ path: info.outputPath(`select-${width}-open.png`) });
+      await page.keyboard.press('End');
+      await page.keyboard.press('Escape');
+      await expect(list).toHaveCount(0);
+      await expect(selector).toBeFocused();
+      await expect(selector).toHaveAttribute('value', 'long-0');
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('Home');
+      await page.keyboard.press('Enter');
+      await expect(selector).toHaveAttribute('value', '');
+      await expect(page.getByText('Você escolheu abrir sem agendamento.')).toBeVisible();
+    });
+
     test(`seletor opcional cabe na interface em ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       await authenticateAsOwner(page);
@@ -225,10 +272,11 @@ test.describe('Agenda operacional canônica', () => {
       await page.goto('/operacao/comandas');
       const occurrenceSelect = page.getByLabel('Agendamento de hoje');
       await expect(occurrenceSelect).toBeVisible();
-      await expect(occurrenceSelect).toHaveValue('today');
-      await occurrenceSelect.selectOption('');
+      await expect(occurrenceSelect).toHaveAttribute('value', 'today');
+      await occurrenceSelect.click();
+    await page.locator(`[role=option][data-value="${''}"]`).click();
       await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-      await expect(occurrenceSelect).toHaveValue('');
+      await expect(occurrenceSelect).toHaveAttribute('value', '');
       await expect(occurrenceSelect).toBeEnabled();
       const bounds = await occurrenceSelect.boundingBox();
       expect(bounds).not.toBeNull();

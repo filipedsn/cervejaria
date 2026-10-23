@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { formatLiters } from '../../lib/api';
 import { leaderPercent } from '../../lib/ranking-tv-stats';
 import type { RankingEntry } from '../../types';
@@ -6,9 +7,11 @@ import type { RankingEntry } from '../../types';
 const RestCard = memo(function RestCard({
   entry,
   leaderMl,
+  linkToClientHistory,
 }: {
   entry: RankingEntry;
   leaderMl: number;
+  linkToClientHistory: boolean;
 }) {
   const pct = leaderPercent(entry.totalMl, leaderMl);
 
@@ -19,7 +22,13 @@ const RestCard = memo(function RestCard({
           <span className="tap-champions-rest-pos-hash">#</span>
           {entry.posicao}
         </span>
-        <span className="tap-champions-rest-name">{entry.nome}</span>
+        {linkToClientHistory ? (
+          <Link className="tap-champions-rest-name ranking-client-link" to={`/clientes/${entry.clienteId}`} title={`Ver histórico de ${entry.nome}`}>
+            {entry.nome}
+          </Link>
+        ) : (
+          <span className="tap-champions-rest-name" title={entry.nome}>{entry.nome}</span>
+        )}
         <span className="tap-champions-rest-volume">{formatLiters(entry.totalMl)}</span>
       </div>
       <div className="tap-champions-progress mt-2">
@@ -33,19 +42,21 @@ const RestCard = memo(function RestCard({
 interface RankingRestGridProps {
   entries: RankingEntry[];
   leaderMl: number;
+  linkToClientHistory?: boolean;
+  autoScroll?: boolean;
 }
 
 function hasScrollOverflow(el: HTMLElement): boolean {
   return el.scrollHeight > el.clientHeight + 8;
 }
 
-export function RankingRestGrid({ entries, leaderMl }: RankingRestGridProps) {
+export function RankingRestGrid({ entries, leaderMl, linkToClientHistory = false, autoScroll = true }: RankingRestGridProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const rest = entries.filter((e) => e.posicao > 3);
 
   useEffect(() => {
     const el = listRef.current;
-    if (!el) return;
+    if (!el || !autoScroll) return;
 
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reducedMotion) return;
@@ -110,7 +121,7 @@ export function RankingRestGrid({ entries, leaderMl }: RankingRestGridProps) {
       el.removeEventListener('mouseenter', pauseScroll);
       el.removeEventListener('touchstart', pauseScroll);
     };
-  }, [rest.length]);
+  }, [autoScroll, rest.length]);
 
   if (rest.length === 0) return null;
 
@@ -123,7 +134,7 @@ export function RankingRestGrid({ entries, leaderMl }: RankingRestGridProps) {
       >
         <div className="tap-champions-rest-grid pb-4">
           {rest.map((entry) => (
-            <RestCard key={entry.clienteId} entry={entry} leaderMl={leaderMl} />
+            <RestCard key={entry.clienteId} entry={entry} leaderMl={leaderMl} linkToClientHistory={linkToClientHistory} />
           ))}
         </div>
       </div>

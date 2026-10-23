@@ -224,7 +224,9 @@ try {
   await prisma.cervejaria.update({ where: { id: company.id }, data: { operacaoCategoriasOrdem: { comanda: ['comidas', 'chope', 'bebidas', 'outros'] } } });
   const initialUnifiedOrder = body(await call('GET', '/api/produtos/categorias-comanda/ordem', managerCookie));
   assert.equal(initialUnifiedOrder.catalogoCanonico, true);
-  assert.deepEqual(initialUnifiedOrder.ordem, body(await call('GET', '/api/operacao/produtos/categorias', managerCookie)).ordem, 'canonical comanda reads the real catalog order');
+  const realCatalogOrder = body(await call('GET', '/api/operacao/produtos/categorias', managerCookie)).ordem;
+  assert.deepEqual(initialUnifiedOrder.ordem.filter((name) => name !== '__quiver_pdv_tap_chope__'), realCatalogOrder, 'synthetic Chopes identity is excluded from real catalog categories');
+  assert.equal(initialUnifiedOrder.ordem.at(-1), '__quiver_pdv_tap_chope__', 'older category orders retain the previous end position for Chopes');
   const reorderedUnified = [...initialUnifiedOrder.ordem].reverse();
   const deniedComandaOrder = await call('PUT', '/api/produtos/categorias-comanda/ordem', deniedCookie, { ordem: reorderedUnified });
   assert.equal(deniedComandaOrder.statusCode, 403, deniedComandaOrder.body);
@@ -241,7 +243,7 @@ try {
   assert.deepEqual(preferences.comanda, ['comidas', 'chope', 'bebidas', 'outros'], 'legacy comanda preference is retained without being rewritten');
   assert.deepEqual(preferences.catalogo, reorderedCatalog, 'one canonical catalog order persists in the existing preference');
   assert.deepEqual(body(await call('GET', '/api/produtos/categorias-comanda/ordem', managerCookie)).ordem, preferences.catalogo);
-  assert.deepEqual(body(await call('GET', '/api/operacao/produtos/categorias', managerCookie)).ordem, reorderedCatalog);
+  assert.deepEqual(body(await call('GET', '/api/operacao/produtos/categorias', managerCookie)).ordem, reorderedCatalog.filter((name) => name !== '__quiver_pdv_tap_chope__'));
   const renamedAfterOrdering = await call('PUT', `/api/operacao/produtos/categorias/${encodeURIComponent(snackCategory.id)}`, managerCookie, { nome: 'Petiscos revisados', gamificada: false });
   assert.equal(renamedAfterOrdering.statusCode, 200, renamedAfterOrdering.body);
   assert.deepEqual(body(await call('GET', '/api/produtos/categorias-comanda/ordem', managerCookie)).ordem, reorderedCatalog.map((name) => name === 'Petiscos QA' ? 'Petiscos revisados' : name), 'category rename keeps its unified-order position');

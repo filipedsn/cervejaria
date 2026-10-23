@@ -51,7 +51,7 @@ const itemSchema = z.object({
   paraViagem: z.boolean().default(false),
   observacao: z.string().trim().max(280).optional(),
   opcionais: z.array(z.object({ opcionalId: z.string().min(1), quantidade: z.number().int().positive().max(99).optional() })).optional(),
-});
+}).strict();
 
 const pagamentoSchema = z.object({
   forma: z.enum(['DINHEIRO', 'PIX', 'CARTAO_DEBITO', 'CARTAO_CREDITO']),
@@ -75,6 +75,7 @@ const abrirComandaSchema = z.object({
 
 const adicionarPedidoSchema = z.object({
   itens: z.array(itemSchema).min(1),
+  idempotencyKey: z.string().uuid(),
   paraViagem: z.boolean().default(false),
   observacao: z.string().trim().max(280).optional(),
   ocorrenciaId: z.never().optional(),
@@ -626,11 +627,26 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       where: whereComandaOperacao(cervejariaId, { id }),
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada' });
+    const pedidoPorChave = await prisma.portalPedidoOperacaoRequest.findUnique({
+      where: { idempotencyKey: body.idempotencyKey },
+      select: { cervejariaId: true, comandaId: true },
+    });
+    if (pedidoPorChave) {
+      if (pedidoPorChave.cervejariaId !== cervejariaId || pedidoPorChave.comandaId !== id) {
+        return reply.status(409).send({ error: 'Esta chave de envio já foi utilizada em outra operação.' });
+      }
+      const atual = await prisma.comanda.findFirst({
+        where: whereComandaOperacao(cervejariaId, { id }),
+        include: INCLUDE_COMANDA_OPERACAO,
+      });
+      if (!atual) return reply.status(404).send({ error: 'Comanda não encontrada' });
+      return reply.status(200).send(resumoComanda(atual, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch));
+    }
     if (comanda.status !== 'ABERTA') {
       return reply.status(409).send({ error: 'Esta comanda já foi fechada' });
     }
 
-    const { atualizada, pedidos } = await prisma.$transaction(async (tx) => {
+    const { atualizada, pedidos, idempotente } = await prisma.$transaction(async (tx) => {
       await lockCaixaEmTx(tx, cervejariaId, comanda.pontoVendaId!, comanda.diaOperacional!);
       const sessaoAtual = await assertCaixaAberto(
         cervejariaId,
@@ -646,6 +662,25 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         throw Object.assign(new Error('Esta comanda já foi fechada'), { statusCode: 409 });
       }
       assertCommandOccurrenceMatchesSession(comandaAtual, sessaoAtual);
+
+      const repeticao = await tx.portalPedidoOperacaoRequest.findUnique({
+        where: { idempotencyKey: body.idempotencyKey },
+        select: { cervejariaId: true, comandaId: true },
+      });
+      if (repeticao) {
+        if (repeticao.cervejariaId !== cervejariaId || repeticao.comandaId !== id) {
+          throw Object.assign(new Error('Esta chave de envio já foi utilizada em outra operação.'), { statusCode: 409 });
+        }
+        return {
+          atualizada: await tx.comanda.findUniqueOrThrow({ where: { id: comandaAtual.id }, include: INCLUDE_COMANDA_OPERACAO }),
+          pedidos: [],
+          idempotente: true,
+        };
+      }
+
+      await tx.portalPedidoOperacaoRequest.create({
+        data: { idempotencyKey: body.idempotencyKey, cervejariaId, comandaId: id },
+      });
 
       const itens = await resolverItens(tx, cervejariaId, body.itens, { sessaoCaixaId: sessaoAtual.id, tapsEnabled });
       const pedidosCriados = await criarPedidos(tx, {
@@ -673,8 +708,13 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           include: INCLUDE_COMANDA_OPERACAO,
         }),
         pedidos: pedidosCriados.map((item) => item.pedido),
+        idempotente: false,
       };
     }, CAIXA_VENDA_TX);
+
+    if (idempotente) {
+      return reply.status(200).send(resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch));
+    }
 
     notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
     if (temCozinha) for (const pedido of pedidos) await notificarPedidoNovo(app, cervejariaId, pedido);

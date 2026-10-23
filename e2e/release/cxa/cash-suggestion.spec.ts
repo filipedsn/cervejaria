@@ -31,7 +31,7 @@ test('CXA-S09 real browser confirmation persists the selected occurrence and new
   expect(day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   const occurrence = await schedule(t, 'Independent real QA', day);
   await openScreen(page, t);
-  await expect(page.getByLabel('Agendamento de hoje')).toHaveValue(occurrence.ocorrenciaId);
+  await expect(page.getByLabel('Agendamento de hoje')).toHaveAttribute('value', occurrence.ocorrenciaId);
   await page.screenshot({ path: info.outputPath('suggestion.png'), fullPage: true });
   const db = prismaClient();
   const count = () => db.sessaoCaixaOperacao.count({ where: { pontoVendaId: t.pointId } });
@@ -74,12 +74,13 @@ test('CXA-S09 explicit no occurrence survives refetch with a single suggestion',
   await schedule(t, 'Optional suggestion', (await t.cashState()).diaOperacional);
   await openScreen(page, t);
   const selector = page.getByLabel('Agendamento de hoje');
-  await expect(selector).not.toHaveValue('');
-  await selector.selectOption('');
+  await expect(selector).not.toHaveAttribute('value', '');
+  await selector.click();
+  await page.getByRole('option', { name: 'Abrir sem agendamento', exact: true }).click();
   const refreshed = page.waitForResponse(r => r.url().includes('/api/operacao/agenda/ocorrencias?'));
   await page.clock.runFor(31_000);
   await refreshed;
-  await expect(selector).toHaveValue('');
+  await expect(selector).toHaveAttribute('value', '');
   await confirm(page);
   const rows = await prismaClient().sessaoCaixaOperacao.findMany({ where: { pontoVendaId: t.pointId } });
   expect(rows).toHaveLength(1); expect(rows[0].ocorrenciaId).toBeNull();
@@ -93,9 +94,10 @@ test('CXA-S09 multiple choices require explicit selection and cancelled pending 
   await schedule(t, 'Second option', day, '12:00', '14:00');
   await openScreen(page, t);
   const selector = page.getByLabel('Agendamento de hoje');
-  await expect(selector).toHaveValue('');
+  await expect(selector).toHaveAttribute('value', '');
   await expect(page.getByRole('button', { name: 'Abrir caixa', exact: true })).toBeDisabled();
-  await selector.selectOption(occurrence.ocorrenciaId);
+  await selector.click();
+  await page.locator(`[role=option][data-value="${occurrence.ocorrenciaId}"]`).click();
   await page.getByRole('button', { name: 'Abrir caixa', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await t.owner.expect(t.owner.post(`/api/operacao/agenda/ocorrencias/${occurrence.ocorrenciaId}/cancelar`), 200, 'cancel pending occurrence');
@@ -103,7 +105,7 @@ test('CXA-S09 multiple choices require explicit selection and cancelled pending 
   await page.clock.runFor(31_000);
   await refreshed;
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(selector).toHaveValue('');
+  await expect(selector).toHaveAttribute('value', '');
   expect(await prismaClient().sessaoCaixaOperacao.count({ where: { pontoVendaId: t.pointId } })).toBe(0);
 });
 

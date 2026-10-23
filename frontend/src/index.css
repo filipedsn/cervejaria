@@ -2541,6 +2541,204 @@ button[title="Excluir"].icon-btn-danger {
   white-space: nowrap;
 }
 
+/* Ranking canônico dentro da operação: conserva a identidade antiga sem impor
+   a escala/altura fixa do modo TV à tela normal, especialmente em mobile. */
+.ranking-operational {
+  --ranking-canvas: #061426;
+  --ranking-canvas-deep: #04101f;
+  --ranking-canvas-soft: #081a2e;
+  --ranking-surface: #0b1f36;
+  --ranking-surface-elevated: #102a46;
+  --ranking-surface-lighter: #173653;
+  --ranking-surface-active: #1c4568;
+  --ranking-border: rgba(255, 255, 255, 0.09);
+  --ranking-border-soft: rgba(255, 255, 255, 0.06);
+  --ranking-border-strong: rgba(255, 255, 255, 0.16);
+  --ranking-text-primary: #f8f7f3;
+  --ranking-text-secondary: #c6c9c8;
+  --ranking-text-muted: #a7b3bc;
+  --ranking-orange: #f97316;
+  --ranking-orange-soft: rgba(249, 115, 22, 0.14);
+  --ranking-orange-border: rgba(249, 115, 22, 0.4);
+  --ranking-cyan-light: #38bdf8;
+  --ranking-cyan-border-strong: rgba(56, 189, 248, 0.38);
+  --ranking-gold: #f5b942;
+  --ranking-gold-soft: rgba(245, 185, 66, 0.16);
+  --ranking-gold-border: rgba(245, 185, 66, 0.62);
+  --ranking-silver: #b8c2cc;
+  --ranking-silver-soft: rgba(184, 194, 204, 0.12);
+  --ranking-silver-border: rgba(184, 194, 204, 0.52);
+  --ranking-bronze: #c97845;
+  --ranking-bronze-soft: rgba(201, 120, 69, 0.14);
+  --ranking-bronze-border: rgba(201, 120, 69, 0.52);
+  --ranking-card-highlight: rgba(125, 211, 252, 0.075);
+  --tap-champions-pad-x: 16px;
+  --tap-champions-logo-scale: 0.62;
+  --tap-champions-side: minmax(0, 1fr);
+  border: 1px solid var(--ranking-border);
+  border-radius: 1rem;
+  overflow: hidden;
+  color: var(--ranking-text-primary);
+  background:
+    radial-gradient(circle at 50% 12%, rgba(14, 165, 233, 0.08), transparent 30%),
+    linear-gradient(180deg, var(--ranking-canvas-soft), var(--ranking-canvas) 45%, var(--ranking-canvas-deep));
+}
+
+.ranking-operational .tap-champions-header {
+  min-height: 98px;
+  padding: 10px 20px;
+}
+
+.ranking-operational .brewery-brand,
+.ranking-operational .brewery-brand.quiver-tap-brand {
+  height: 72px;
+}
+
+.ranking-operational .brewery-logo { max-height: 64px; }
+.ranking-operational .brewery-logo-fallback { width: 52px; height: 52px; }
+.ranking-operational .tap-champions-header-center { max-width: min(42vw, 640px); }
+.ranking-operational .tap-champions-eyebrow { font-size: 0.65rem; letter-spacing: 0.12em; }
+.ranking-operational .tap-champions-title { font-size: clamp(1.15rem, 2vw, 1.7rem); }
+.ranking-operational .tap-champions-subtitle { font-size: 0.85rem; }
+
+.ranking-operational-filters {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--ranking-border);
+  background: rgba(4, 16, 31, 0.72);
+}
+
+.ranking-operational-scopes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: min(100%, 680px);
+  margin: 0 auto 10px;
+}
+
+.ranking-operational-scopes .segmented-control-btn {
+  min-width: 0;
+  min-height: 40px;
+  padding: 0.4rem 0.3rem;
+  font-size: 0.8rem;
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.ranking-operational-filter-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  align-items: end;
+  gap: 10px 14px;
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.ranking-operational-filter-field { min-width: 0; }
+.ranking-operational-filter-field .label { display: block; margin-bottom: 4px; color: var(--ranking-text-secondary); }
+.ranking-operational-filter-field .input { min-height: 42px; }
+.ranking-operational-month > span { display: block; }
+.ranking-operational-help { max-width: 980px; margin: 8px auto 0; color: var(--ranking-text-muted); font-size: 0.75rem; }
+.ranking-operational-help summary { width: fit-content; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.ranking-operational-help p { margin-top: 6px; max-width: 48rem; line-height: 1.4; }
+
+.ranking-operational .tap-champions-stats-bar {
+  min-height: 64px;
+  padding: 8px 20px;
+}
+
+.ranking-operational .tap-champions-stats { justify-content: flex-start; gap: 8px 24px; }
+.ranking-operational .tap-champions-stat { font-size: 1rem; gap: 8px; }
+.ranking-operational .tap-champions-stat-value { font-size: 1.15rem; }
+.ranking-operational .tap-champions-icon-btn { width: 44px; height: 44px; }
+.ranking-operational .tap-champions-main {
+  display: block;
+  flex: initial;
+  min-height: 0;
+  padding: 20px;
+}
+
+.ranking-operational .tap-champions-podium { gap: 12px; }
+.ranking-operational .tap-champions-podium--single { grid-template-columns: minmax(0, 1fr); max-width: min(100%, 440px); }
+.ranking-operational .tap-champions-podium--double { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: min(100%, 900px); }
+.ranking-operational .tap-champions-podium-card { min-height: 172px; padding: 12px; }
+.ranking-operational .tap-champions-podium-card--first { min-height: 188px; }
+.ranking-operational .tap-champions-podium-name { display: -webkit-box; white-space: normal; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.ranking-operational .tap-champions-rest-section { flex: initial; min-height: 0; margin-top: 18px; }
+.ranking-operational .tap-champions-rest-title { margin-bottom: 8px; }
+.ranking-operational .tap-champions-rest-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); }
+.ranking-operational .tap-champions-rest-card { min-height: 84px; padding: 12px; }
+.ranking-operational .tap-champions-rest-name,
+.ranking-operational .tap-champions-rest-volume { font-size: clamp(1rem, 1.4vw, 1.3rem); }
+.ranking-operational .tap-champions-rest-name { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.ranking-operational-state {
+  display: grid;
+  place-items: center;
+  min-height: 170px;
+  padding: 24px 12px;
+  color: var(--ranking-text-secondary);
+  text-align: center;
+}
+
+.ranking-operational-state > p { max-width: 42rem; font-size: 1rem; font-weight: 600; }
+.ranking-operational-state [role="alert"] { color: #fecaca; }
+.ranking-operational .tap-champions-empty-title { margin: 0; }
+
+.ranking-operational-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--ranking-border);
+  background: rgba(4, 16, 31, 0.82);
+  color: var(--ranking-text-secondary);
+  font-size: 0.8rem;
+}
+
+.ranking-operational-back { color: var(--ranking-cyan-light); text-decoration: underline; text-underline-offset: 3px; }
+.ranking-client-link { text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; }
+.ranking-client-link:hover, .ranking-client-link:focus-visible { color: var(--ranking-cyan-light); text-decoration-color: currentColor; }
+.ranking-client-link:focus-visible { outline: 2px solid var(--ranking-cyan-light); outline-offset: 3px; border-radius: 3px; }
+
+@media (max-width: 768px) {
+  .ranking-operational .tap-champions-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    gap: 6px 10px;
+    padding: 10px 12px;
+  }
+  .ranking-operational .tap-champions-header-center { order: 0; grid-column: 1 / -1; grid-row: 1; max-width: none; padding: 0; }
+  .ranking-operational .brewery-brand,
+  .ranking-operational .brewery-brand.quiver-tap-brand { grid-row: 2; height: 46px; }
+  .ranking-operational .brewery-brand { grid-column: 1; }
+  .ranking-operational .brewery-brand.quiver-tap-brand { grid-column: 2; }
+  .ranking-operational .brewery-logo { max-height: 42px; }
+  .ranking-operational .brewery-logo-fallback { width: 38px; height: 38px; font-size: 0.8rem; }
+  .ranking-operational .tap-champions-eyebrow { font-size: 0.58rem; }
+  .ranking-operational .tap-champions-title { font-size: 1.2rem; }
+  .ranking-operational .tap-champions-subtitle { font-size: 0.75rem; }
+  .ranking-operational-filters { padding: 10px; }
+  .ranking-operational-scopes { gap: 2px; margin-bottom: 8px; }
+  .ranking-operational-scopes .segmented-control-btn { min-height: 42px; font-size: 0.68rem; padding: 0.35rem 0.15rem; }
+  .ranking-operational-filter-fields { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .ranking-operational .tap-champions-stats-bar { align-items: flex-start; padding: 8px 10px; }
+  .ranking-operational .tap-champions-stats { gap: 8px 12px; }
+  .ranking-operational .tap-champions-stat { font-size: 0.8rem; gap: 5px; }
+  .ranking-operational .tap-champions-stat-icon { width: 18px; height: 18px; }
+  .ranking-operational .tap-champions-stat-value { font-size: 0.95rem; }
+  .ranking-operational .tap-champions-stat-label { font-size: 0.75rem; }
+  .ranking-operational .tap-champions-stats-actions { gap: 5px; }
+  .ranking-operational .tap-champions-icon-btn { width: 42px; height: 42px; }
+  .ranking-operational .tap-champions-main { padding: 12px 10px; }
+  .ranking-operational .tap-champions-podium { grid-template-columns: minmax(0, 1fr); }
+  .ranking-operational .tap-champions-podium--double { grid-template-columns: minmax(0, 1fr); }
+  .ranking-operational .tap-champions-podium-card,
+  .ranking-operational .tap-champions-podium-card--first { min-height: 150px; transform: none; }
+  .ranking-operational .tap-champions-podium-order-1 { order: -1 !important; }
+  .ranking-operational .tap-champions-rest-grid { grid-template-columns: minmax(0, 1fr); }
+  .ranking-operational-footer { padding: 10px 12px; font-size: 0.75rem; }
+}
+
 @media (max-width: 1366px) {
   .tap-champions {
     --tap-champions-pad-x: 24px;

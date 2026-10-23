@@ -7,7 +7,13 @@ import { Modal } from '../Modal';
 type CategoriaPdv = { id: string; nome: string; gamificada: boolean };
 type CategoriaResponse = { categorias: string[]; categoriasPdv?: CategoriaPdv[]; ordem: string[]; catalogoCanonico?: boolean };
 type Produto = { id: string; nome: string; categoria: string | null; categoriaPdvId?: string | null };
-const COMANDA_LABELS: Record<string, string> = { chope: 'Chopes', comidas: 'Comidas', bebidas: 'Bebidas', outros: 'Outros' };
+const COMANDA_LABELS: Record<string, string> = {
+  __quiver_pdv_tap_chope__: 'Chopes',
+  chope: 'Chopes',
+  comidas: 'Comidas',
+  bebidas: 'Bebidas',
+  outros: 'Outros',
+};
 
 function erroDaApi(error: unknown, fallback: string) {
   return error instanceof ApiError ? error.message : fallback;
@@ -27,7 +33,13 @@ function OrderEditor({
     onSuccess: async (result) => {
       await Promise.all([queryClient.invalidateQueries({ queryKey }), queryClient.invalidateQueries({ queryKey: ['operacao-categorias'] })]);
       setDraft(null);
-      queryClient.setQueryData(['operacao-categorias'], (current: CategoriaResponse | undefined) => current ? { ...current, categorias: result.ordem, ordem: result.ordem } : current);
+      queryClient.setQueryData(['operacao-categorias'], (current: CategoriaResponse | undefined) => {
+        if (!current) return current;
+        const catalogOrder = result.catalogoCanonico
+          ? result.ordem.filter((category) => current.categorias.includes(category))
+          : result.ordem;
+        return { ...current, categorias: current.categorias, ordem: catalogOrder };
+      });
       queryClient.setQueryData(queryKey, (current: CategoriaResponse | { ordem: string[] } | undefined) => current && 'categorias' in current
         ? { ...current, ordem: result.ordem }
         : result);
@@ -191,7 +203,7 @@ export function CategoriasGestaoPanel() {
         </li>)}
       </ul>}
       {catalogoCanonico ? <>
-        <OrderEditor title="Organizar categorias" description="Esta ordem única é usada no catálogo, na seleção de produtos da comanda e nos portais. Categorias sem produtos não aparecem nos consumidores." queryKey={['comanda-categorias-ordem']} endpoint="/api/produtos/categorias-comanda/ordem" initialOrder={categoryData?.ordem ?? []} enabled={!comandaOrder.isLoading && !comandaOrder.isError} />
+        <OrderEditor title="Organizar categorias" description="Esta ordem única é usada no catálogo, na seleção de produtos da comanda e nos portais. Categorias sem produtos não aparecem nos consumidores." queryKey={['comanda-categorias-ordem']} endpoint="/api/produtos/categorias-comanda/ordem" initialOrder={comandaOrder.data?.ordem ?? categoryData?.ordem ?? []} enabled={!comandaOrder.isLoading && !comandaOrder.isError} />
         {comandaOrder.isError && <div className="alert-error text-sm" role="alert">Não foi possível carregar a ordem compartilhada. <button type="button" className="underline" onClick={() => void comandaOrder.refetch()}>Tentar novamente</button></div>}
       </> : <>
         <OrderEditor title="Organizar na comanda (LEGACY)" description="Ordem efetiva dos grupos na seleção de produtos LEGACY." queryKey={['comanda-categorias-ordem']} endpoint="/api/produtos/categorias-comanda/ordem" initialOrder={comandaOrder.data?.ordem ?? []} enabled={!comandaOrder.isLoading && !comandaOrder.isError} />

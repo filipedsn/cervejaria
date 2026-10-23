@@ -175,6 +175,7 @@ export const TIPOS_COMANDA: Array<{ valor: Exclude<TipoComanda, 'AVULSA'>; label
 export interface ItemPedido {
   id: string;
   produtoId: string;
+  tapId?: string | null;
   nome: string;
   precoUnit: number;
   quantidade: number;
@@ -776,12 +777,14 @@ export interface TapTurno {
   id: string;
   numero: number;
   nome?: string | null;
-  trailerId: string;
+  trailerId?: string | null;
   ativo: boolean;
   chopeAtual: {
     id: string;
     nome: string;
+    ativo: boolean;
     tipo: 'BEBIDA' | 'COMIDA';
+    categoria?: string | null;
     formato?: 'CHOPE' | 'LATA' | 'LONGNECK' | 'GARRAFA' | 'OUTRO' | null;
     precos: Array<{ volumeMl: number; preco: number | string }>;
   } | null;
@@ -790,7 +793,9 @@ export interface TapTurno {
 }
 
 export interface TapsTurnoResposta {
-  trailerId: string | null;
+  pontoVendaId?: string;
+  sessaoCaixaId?: string;
+  trailerId?: string | null;
   taps: TapTurno[];
 }
 
