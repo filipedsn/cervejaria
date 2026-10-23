@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "f9d271713eca3c32aa966f76cba93c65f965f438",
+    "commit": "71c9a437924cd21a5652b9a6b2a25c3871051615",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "9094c712a765ad83f432508a11a8928ba0728ef5ba017c808c35642e93dd98e6"
   },
@@ -545,5 +545,5 @@
       "sha256": "01567913669a6bb52f70fb140341a5bf22334819b9f155e84b29c6099edae8e2"
     }
   ],
-  "manifestSha256": "c841c459f20efd5c6d6778086a99cc4fa25a7523eadb82da566422666ff75ab3"
+  "manifestSha256": "aa8ca59bc5010f18dd250a1c5746e62314ee8b7b016882533302d45130a661fe"
 }
