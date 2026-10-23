@@ -781,7 +781,9 @@ export interface TapTurno {
   chopeAtual: {
     id: string;
     nome: string;
+    ativo: boolean;
     tipo: 'BEBIDA' | 'COMIDA';
+    categoria?: string | null;
     formato?: 'CHOPE' | 'LATA' | 'LONGNECK' | 'GARRAFA' | 'OUTRO' | null;
     precos: Array<{ volumeMl: number; preco: number | string }>;
   } | null;

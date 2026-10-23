@@ -44,6 +44,8 @@ export function AdicionarItensOperacaoModal({
   onSelecionar,
   onAlterar,
   onConfirm,
+  onLaunchTapItem,
+  totalComandaAtual = 0,
   isPending,
   error,
   successMessage,
@@ -61,6 +63,8 @@ export function AdicionarItensOperacaoModal({
   onSelecionar: (produto: ProdutoOperacao, configuracao?: Config) => void;
   onAlterar: (produtoId: string, delta: number, tapId?: string, volumeMl?: number) => void;
   onConfirm: () => void;
+  onLaunchTapItem?: (produto: ProdutoOperacao, configuracao: Config) => void;
+  totalComandaAtual?: number;
   isPending: boolean;
   error?: string;
   successMessage?: string;
@@ -149,12 +153,8 @@ export function AdicionarItensOperacaoModal({
         .filter((item) => item.id === produtoDoTap.id && item.ativo && (item.volumeMl ?? 0) > 1)
         .map((item) => ({ volumeMl: item.volumeMl!, preco: Number(item.precoEfetivo ?? item.precoUnit) }))
     : [];
-  const volumesDoTap = precosPorVolumeNoCardapio.length
-    ? [...new Map(precosPorVolumeNoCardapio.map((item) => [item.volumeMl, item])).values()].sort((a, b) => a.volumeMl - b.volumeMl)
-    : (produtoDoTap?.precos ?? [])
-        .filter((preco) => preco.volumeMl > 1)
-        .map((preco) => ({ volumeMl: preco.volumeMl, preco: Number(preco.preco) }))
-        .sort((a, b) => a.volumeMl - b.volumeMl);
+  const volumesDoTap = [...new Map(precosPorVolumeNoCardapio.map((item) => [item.volumeMl, item])).values()]
+    .sort((a, b) => a.volumeMl - b.volumeMl);
   const volumeDoTapSelecionado = volumesDoTap.find((item) => item.volumeMl === volumeMl);
   const precoSelecionado = produtoEhChope
     ? Number(volumeDoTapSelecionado?.preco ?? 0)
@@ -211,7 +211,7 @@ export function AdicionarItensOperacaoModal({
   ].sort((a, b) => ordemInicial.indexOf(a.id === ABA_TAP_CHOPE ? 'chope' : a.id) - ordemInicial.indexOf(b.id === ABA_TAP_CHOPE ? 'chope' : b.id));
   const tapCategoryName = produtos.find((item) => item.id === tapsAtivas.find((tap) => tap.chopeAtual)?.chopeAtual?.id)?.categoria;
   const canonicalTabs = [
-    ...(tapsEnabled ? [{ id: ABA_TAP_CHOPE, label: 'Chopes (Tap)' }] : []),
+    ...(tapsEnabled ? [{ id: ABA_TAP_CHOPE, label: 'Chopes' }] : []),
     ...[...produtosPorCategoria.keys()].map((category) => ({ id: category, label: category })),
   ].sort((a, b) => {
     const priority = (tab: { id: string }) => ordemInicial.indexOf(tab.id === ABA_TAP_CHOPE
@@ -299,7 +299,24 @@ export function AdicionarItensOperacaoModal({
     ? limiteQuantidadeProdutoNoCarrinho(produto, saldos, controlaEstoque, quantidadeProdutoNoCarrinho(produto))
     : null;
 
-  const footer = <><div>{linhas.length > 0 && <div className="space-y-3"><div className="max-h-32 overflow-y-auto"><ResumoCarrinho linhas={linhas} onAlterar={onAlterar} saldos={saldos} controlaEstoque={controlaEstoque} /></div><div className="flex items-baseline justify-between"><span className="text-sm text-ink-faint">Itens selecionados</span><span className="text-xl font-bold">{formatCurrency(totalCarrinho(linhas))}</span></div></div>}</div><button type="button" className="touch-btn-primary w-full" disabled={!linhas.length || isPending} onClick={onConfirm}>{isPending ? 'Salvando...' : confirmLabel}</button><button type="button" className="touch-btn-orange w-full" onClick={onClose} disabled={isPending}>Voltar</button></>;
+  const abaDeChope = abaSelecionada === ABA_TAP_CHOPE && tapsEnabled;
+  const confirmarTapSelecionada = () => {
+    if (!podeAdicionarChope || !tapSelecionado || !produtoDoTap || !volumeMl) return;
+    const precoUnit = volumesDoTap.find((item) => item.volumeMl === volumeMl)?.preco;
+    if (!precoUnit) return;
+    const configuracao = { quantidade, tapId: tapSelecionado.id, volumeMl, precoUnit };
+    if (onLaunchTapItem) onLaunchTapItem(produtoDoTap, configuracao);
+    else onSelecionar(produtoDoTap, configuracao);
+    setVolumeMl(undefined);
+    setQuantidadeState(1);
+  };
+  const footer = <>
+    <div>{!abaDeChope && linhas.length > 0 && <div className="space-y-3"><div className="max-h-32 overflow-y-auto"><ResumoCarrinho linhas={linhas} onAlterar={onAlterar} saldos={saldos} controlaEstoque={controlaEstoque} /></div><div className="flex items-baseline justify-between"><span className="text-sm text-ink-faint">Itens selecionados</span><span className="text-xl font-bold">{formatCurrency(totalCarrinho(linhas))}</span></div></div>}</div>
+    {abaDeChope && onLaunchTapItem
+      ? <button type="button" className="touch-btn-primary w-full" disabled={!podeAdicionarChope || isPending} onClick={confirmarTapSelecionada}>{isPending ? 'Adicionando...' : 'Adicionar à comanda'}</button>
+      : <button type="button" className="touch-btn-primary w-full" disabled={!linhas.length || isPending} onClick={onConfirm}>{isPending ? 'Salvando...' : confirmLabel}</button>}
+    <button type="button" className="touch-btn-orange w-full" onClick={onClose} disabled={isPending}>Fechar</button>
+  </>;
 
   return <>
     <Modal open={open} onClose={onClose} title="Adicionar item" hideHeaderClose footer={footer}>
@@ -314,7 +331,7 @@ export function AdicionarItensOperacaoModal({
           ))}
         </div> : <p className="rounded-xl border border-line bg-surface-lighter p-3 text-sm text-ink-muted">Nenhum item disponível para adicionar.</p>}
         {abaSelecionada === ABA_TAP_CHOPE && tapsEnabled ? (
-          <div className="space-y-5">
+          <div className="space-y-4">
             <section className="space-y-2">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Escolha a Tap</h3>
               {carregandoTaps ? <p role="status" className="text-sm text-ink-muted">Carregando taps do turno...</p>
@@ -331,26 +348,28 @@ export function AdicionarItensOperacaoModal({
                   <p>Há {tapsAtivas.length} taps configuradas, mas nenhuma tem chope montado neste turno.</p>
                   {canPermission('taps.operate') ? <a className="font-semibold text-brand-500 underline" href="/operacao/caixa">Abrir montagem de taps</a> : <p>Peça ao responsável pela operação para montar um chope.</p>}
                 </div>
-                : <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                : <div className="grid grid-cols-4 gap-3 sm:grid-cols-5 lg:grid-cols-6">
                   {tapsAtivas.map((tap) => {
                     const selecionada = tapSelecionado?.id === tap.id;
-                    const nomeTap = tap.nome?.trim() || `Tap ${tap.numero}`;
-                    return <button key={tap.id} type="button" aria-pressed={selecionada} aria-label={`Selecionar Tap ${tap.numero}, ${nomeTap}${tap.chopeAtual ? `, chope ${tap.chopeAtual.nome}` : ', sem chope montado'}`} className={`flex min-h-28 min-w-0 flex-col items-start gap-1 rounded-xl border p-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 ${selecionada ? 'border-amber-400 bg-amber-400/10 text-ink' : 'border-line bg-surface text-ink-muted'}`} onClick={() => selecionarTap(tap.id)}>
-                      <span className="font-bold">Tap {String(tap.numero).padStart(2, '0')}</span>
-                      <span className="w-full break-words text-sm font-semibold">{nomeTap}</span>
-                      <span className="w-full break-words text-xs text-ink-muted">{tap.chopeAtual?.nome ?? 'Sem chope montado'}</span>
-                      {selecionada && <span className="mt-auto rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold">Tap selecionada</span>}
+                    const nomeProduto = tap.chopeAtual?.nome ?? 'Sem montagem';
+                    return <button key={tap.id} type="button" aria-pressed={selecionada} aria-label={`Selecionar Tap ${String(tap.numero).padStart(2, '0')}, ${nomeProduto}`} className="flex min-w-0 flex-col items-center gap-2 rounded-xl p-1 text-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" onClick={() => selecionarTap(tap.id)}>
+                      <span className={`flex h-16 w-16 items-center justify-center rounded-full border-[3px] text-lg font-bold transition-colors ${selecionada ? 'border-amber-500 bg-amber-400/10 text-ink' : 'border-line bg-surface text-ink-muted'}`}>{String(tap.numero).padStart(2, '0')}</span>
+                      <span className="w-full truncate text-sm font-semibold text-ink-muted">{nomeProduto}</span>
                     </button>;
                   })}
                 </div>}
             </section>
             {montagemAlterada && <p role="alert" className="rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-200">A montagem ou os preços desta Tap mudaram. A seleção anterior foi limpa; escolha novamente.</p>}
             {tapSelecionado && !tapSelecionado.chopeAtual && <p role="status" className="rounded-xl border border-line bg-surface-lighter p-3 text-sm text-ink-muted">Tap {tapSelecionado.numero} está ativa, mas não tem chope montado neste turno.</p>}
-            {tapSelecionado?.chopeAtual && !produtoDoTap && <p role="status" className="rounded-xl border border-line bg-surface-lighter p-3 text-sm text-ink-muted">{tapSelecionado.chopeAtual.nome} está inativo ou não está disponível no cardápio efetivo deste turno.</p>}
+            {tapSelecionado?.chopeAtual && !produtoDoTap && <div role="status" className="space-y-2 rounded-xl border border-line bg-surface-lighter p-3 text-sm text-ink-muted">
+              {!tapSelecionado.chopeAtual.ativo ? <><p>{tapSelecionado.chopeAtual.nome} está inativo no catálogo.</p>{canPermission('catalog.manage') ? <a className="font-semibold text-brand-500 underline" href="/operacao/catalogo">Abrir Catálogo</a> : <p>Peça a alguém com permissão de gerenciamento do catálogo para revisar o produto.</p>}</>
+                : tapSelecionado.chopeAtual.tipo !== 'BEBIDA' || (tapSelecionado.chopeAtual.formato !== 'CHOPE' && !(tapSelecionado.chopeAtual.formato == null && tapSelecionado.chopeAtual.categoria?.trim().toLocaleLowerCase('pt-BR') === 'chope')) ? <><p>{tapSelecionado.chopeAtual.nome} não está classificado em um formato permitido para venda por Tap.</p>{canPermission('catalog.manage') ? <a className="font-semibold text-brand-500 underline" href="/operacao/catalogo">Revisar classificação no Catálogo</a> : <p>Peça a alguém com permissão de gerenciamento do catálogo para revisar a classificação. O produto não foi reclassificado automaticamente.</p>}</>
+                  : <><p>{tapSelecionado.chopeAtual.nome} está montado, mas não foi incluído no cardápio efetivo deste turno.</p>{canPermission('catalog.shift.manage') ? <a className="font-semibold text-brand-500 underline" href="/operacao/caixa">Editar cardápio do turno</a> : <p>Peça à pessoa responsável pelo cardápio do turno para incluir o produto e seus volumes/preços.</p>}</>}
+            </div>}
             {tapSelecionado && produtoDoTap && <>
               <section className="space-y-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Volume</h3>
-                {volumesDoTap.length === 0 || !volumesDoTap.some((item) => item.preco > 0) ? <p role="status" className="text-sm text-ink-muted">Este chope não tem volume com preço elegível no cardápio deste turno.</p> : <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {volumesDoTap.length === 0 || !volumesDoTap.some((item) => item.preco > 0) ? <div role="status" className="space-y-2 text-sm text-ink-muted"><p>{produtoDoTap.nome} está no cardápio do turno, mas não tem volume com preço positivo disponível.</p>{canPermission('catalog.shift.manage') ? <a className="font-semibold text-brand-500 underline" href="/operacao/caixa">Revisar volumes e preços do turno</a> : <p>Peça à pessoa responsável pelo cardápio do turno para revisar os volumes e preços.</p>}</div> : <div className="grid grid-cols-3 gap-2">
                   {volumesDoTap.filter((opcao) => opcao.preco > 0).map((opcao) => <button key={opcao.volumeMl} type="button" aria-pressed={volumeMl === opcao.volumeMl} className={`rounded-xl border px-3 py-3 text-center ${volumeMl === opcao.volumeMl ? 'border-brand-500 bg-brand-600 text-white' : 'border-line bg-surface text-ink-muted'}`} onClick={() => { setVolumeMl(opcao.volumeMl); setMontagemAlterada(false); }}>
                     <span className="block font-semibold">{opcao.volumeMl} ml</span><span className="text-xs">{formatCurrency(opcao.preco)}</span>
                   </button>)}
@@ -358,10 +377,10 @@ export function AdicionarItensOperacaoModal({
               </section>
               {volumeMl && precoVolumeSelecionado > 0 && <div className="rounded-xl border border-line bg-surface-lighter p-3">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0"><p className="break-words font-semibold">{produtoDoTap.nome} ({volumeMl} ml)</p><p className="break-words text-sm text-ink-muted">Tap {tapSelecionado.numero}{tapSelecionado.nome ? ` · ${tapSelecionado.nome}` : ''} · {formatCurrency(precoVolumeSelecionado)} cada</p></div>
+                  <div className="min-w-0"><p className="break-words font-semibold">{produtoDoTap.nome} {volumeMl} ml</p><p className="break-words text-sm text-ink-muted">Tap {tapSelecionado.numero}</p><p className="text-sm text-ink-muted">{formatCurrency(precoVolumeSelecionado)} cada</p></div>
                   <div className="text-right"><p className="text-xs text-ink-faint">Total</p><p className="font-bold text-brand-400">{formatCurrency(precoVolumeSelecionado * quantidade)}</p></div>
                 </div>
-                {linhas.length > 0 && <p className="mt-2 border-t border-line pt-2 text-xs text-ink-faint">Novo total da comanda: {formatCurrency(totalCarrinho(linhas) + precoVolumeSelecionado * quantidade)}</p>}
+                <p className="mt-2 border-t border-line pt-2 text-xs text-ink-faint">Novo total da comanda: {formatCurrency(totalComandaAtual + (onLaunchTapItem ? 0 : totalCarrinho(linhas)) + precoVolumeSelecionado * quantidade)}</p>
               </div>}
               <section className="flex items-center justify-between gap-4">
                 <span className="font-semibold text-ink-muted">Quantidade</span>
@@ -372,7 +391,7 @@ export function AdicionarItensOperacaoModal({
                 </div>
               </section>
               {saldoChope && <p className="text-xs text-ink-faint">Disponível: {Math.max(0, saldoChope.quantidade - litrosNoCarrinhoChope).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} L</p>}
-              <button type="button" className="touch-btn-secondary w-full" disabled={!podeAdicionarChope} onClick={adicionarChopeNaLista}>Adicionar chope à lista</button>
+              {!onLaunchTapItem && <button type="button" className="touch-btn-secondary w-full" disabled={!podeAdicionarChope} onClick={adicionarChopeNaLista}>Adicionar chope à lista</button>}
             </>}
           </div>
         ) : (

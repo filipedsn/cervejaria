@@ -17,7 +17,7 @@ const env = { ...process.env };
 for (const key of Object.keys(env)) if (key === 'DATABASE_URL' || key === 'DIRECT_URL' || /_DATABASE_URL$/.test(key) || /^PROD/i.test(key) || key === 'PDV_CANONICAL_TENANTS') delete env[key];
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { encoding: 'utf8', windowsHide: true, ...options });
-  if (result.status !== 0) throw new Error(`${command} failed: ${(result.stderr || result.stdout || '').replaceAll(databaseUrl ?? '', '[QA URL REDACTED]').replaceAll(password, '[REDACTED]').slice(-2500)}`);
+  if (result.status !== 0) throw new Error(`${command} failed: ${(result.stdout ?? '')}\n${(result.stderr ?? '')}`.replaceAll(databaseUrl ?? '', '[QA URL REDACTED]').replaceAll(password, '[REDACTED]').slice(-4500));
   return (result.stdout ?? '').trim();
 }
 
@@ -37,8 +37,9 @@ try {
   const schemaPath = path.join(temp, 'schema.prisma');
   await writeFile(schemaPath, await readFile(new URL('../prisma/schema.prisma', import.meta.url)));
   run(process.execPath, ['node_modules/prisma/build/index.js', 'db', 'push', '--skip-generate', '--schema', schemaPath], { env });
-  const output = run(process.execPath, ['--import', 'tsx', 'scripts/tap121-canonical-pdv.isolated.test.mjs'], { env });
-  console.log(output.split(/\r?\n/).filter((line) => /^(RUN |PASS )/.test(line)).join('\n'));
+  const apiOutput = run(process.execPath, ['--import', 'tsx', 'scripts/tap121-canonical-pdv.isolated.test.mjs'], { env });
+  const browserOutput = run(process.execPath, ['--import', 'tsx', 'scripts/tap121-canonical-pdv.browser.qa.mjs'], { env });
+  console.log([apiOutput, browserOutput].join('\n').split(/\r?\n/).filter((line) => /^(RUN |PASS |RECONCILIATION|INVENTORY_DISABLED|QA_TAP121_)/.test(line)).join('\n'));
 } finally {
   if (created) {
     const labels = run('docker', ['inspect', '-f', '{{ index .Config.Labels "codex.purpose" }}|{{ index .Config.Labels "codex.run" }}', container]);

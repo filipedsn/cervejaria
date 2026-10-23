@@ -50,6 +50,18 @@ import {
   type SaldoEstoque,
 } from '../../lib/operacao';
 
+function fingerprintItensLancamento(itens: LinhaCarrinho[]): string {
+  return JSON.stringify(itens.map((linha) => ({
+    produtoId: linha.produto.id,
+    quantidade: linha.quantidade,
+    tapId: linha.tapId ?? null,
+    volumeMl: linha.volumeMl ?? null,
+    paraViagem: linha.paraViagem ?? false,
+    observacao: linha.observacao ?? null,
+    opcionais: (linha.opcionais ?? []).map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })),
+  })));
+}
+
 export function OperacaoComandaDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
@@ -73,6 +85,7 @@ export function OperacaoComandaDetailPage() {
     window.sessionStorage.getItem(avisoWhatsAppStorageKey),
   );
   const removalRequests = useRef(new Set<string>());
+  const launchRequestKeys = useRef(new Map<string, string>());
   const poll30 = usePollInterval(30_000);
   const poll15 = usePollInterval(15_000);
 
@@ -258,9 +271,10 @@ export function OperacaoComandaDetailPage() {
   };
 
   const lancarItens = useMutation({
-    mutationFn: () =>
+    mutationFn: ({ itens, idempotencyKey }: { itens: LinhaCarrinho[]; idempotencyKey: string; limparCarrinho: boolean }) =>
       api.post<ComandaOperacao>(`/api/operacao/comandas/${id}/pedidos`, {
-        itens: carrinho.map((linha) => ({
+        idempotencyKey,
+        itens: itens.map((linha) => ({
           produtoId: linha.produto.id,
           quantidade: linha.quantidade,
           tapId: linha.tapId,
@@ -270,16 +284,24 @@ export function OperacaoComandaDetailPage() {
           opcionais: linha.opcionais?.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })),
         })),
       }),
-    onSuccess: () => {
+    onSuccess: (_resultado, variaveis) => {
+      const fingerprint = fingerprintItensLancamento(variaveis.itens);
+      launchRequestKeys.current.delete(fingerprint);
+      window.sessionStorage.removeItem(`quiver:comanda-launch:${id}:${fingerprint}`);
       invalidar();
       if (comanda?.pontoVendaId) {
         queryClient.invalidateQueries({ queryKey: ['operacao-estoque', comanda.pontoVendaId] });
       }
-      setCarrinho([]);
+      if (variaveis.limparCarrinho) setCarrinho([]);
       setErro('');
       setItensAdicionadosMessage('Itens lançados. Selecione os próximos itens.');
     },
-    onError: (err) => {
+    onError: (err, variaveis) => {
+      if (err instanceof ApiError && err.status < 500) {
+        const fingerprint = fingerprintItensLancamento(variaveis.itens);
+        launchRequestKeys.current.delete(fingerprint);
+        window.sessionStorage.removeItem(`quiver:comanda-launch:${id}:${fingerprint}`);
+      }
       setItensAdicionadosMessage('');
       if (comanda?.pontoVendaId) {
         queryClient.invalidateQueries({ queryKey: ['operacao-estoque', comanda.pontoVendaId] });
@@ -287,6 +309,15 @@ export function OperacaoComandaDetailPage() {
       setErro(err instanceof ApiError ? err.message : 'Não foi possível lançar os itens');
     },
   });
+
+  const lancarItensComChave = (itens: LinhaCarrinho[], limparCarrinho = false) => {
+    const fingerprint = fingerprintItensLancamento(itens);
+    const storageKey = `quiver:comanda-launch:${id}:${fingerprint}`;
+    const idempotencyKey = launchRequestKeys.current.get(fingerprint) ?? window.sessionStorage.getItem(storageKey) ?? crypto.randomUUID();
+    launchRequestKeys.current.set(fingerprint, idempotencyKey);
+    window.sessionStorage.setItem(storageKey, idempotencyKey);
+    lancarItens.mutate({ itens, idempotencyKey, limparCarrinho });
+  };
 
   const fecharAdicionarItens = () => {
     if (lancarItens.isPending) return;
@@ -956,7 +987,15 @@ export function OperacaoComandaDetailPage() {
         linhas={carrinho}
         onSelecionar={adicionar}
         onAlterar={alterarQuantidade}
-        onConfirm={() => lancarItens.mutate()}
+        onConfirm={() => lancarItensComChave(carrinho, true)}
+        onLaunchTapItem={(produto, configuracao) => lancarItensComChave([{
+          produto,
+          quantidade: configuracao.quantidade ?? 1,
+          tapId: configuracao.tapId,
+          volumeMl: configuracao.volumeMl,
+          precoUnit: configuracao.precoUnit,
+        }])}
+        totalComandaAtual={comanda?.subtotal ?? 0}
         isPending={lancarItens.isPending}
         error={showAddItem ? erro : undefined}
         successMessage={showAddItem ? itensAdicionadosMessage : undefined}
