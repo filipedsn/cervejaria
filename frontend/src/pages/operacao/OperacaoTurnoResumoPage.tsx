@@ -1,4 +1,5 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, formatCurrency } from '../../lib/api';
 import {
@@ -12,6 +13,7 @@ import {
 } from '../../lib/operacao';
 import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
+import { ComandaEspelhoTurnoModal } from '../../components/operacao/ComandaEspelhoTurnoModal';
 
 function ChevronLeftIcon({ className }: { className?: string }) {
   return (
@@ -55,6 +57,7 @@ function Diferenca({ valor }: { valor: number }) {
 }
 
 export function OperacaoTurnoResumoPage() {
+  const [comandaEspelhoId, setComandaEspelhoId] = useState<string | null>(null);
   const { sessaoId } = useParams<{ sessaoId: string }>();
   const [searchParams] = useSearchParams();
   const dashboardHref = searchParams.toString()
@@ -237,12 +240,13 @@ export function OperacaoTurnoResumoPage() {
                         Pagamentos listados são os registrados no sistema; valores da maquininha exigem conferência externa.
                       </p>
                     </div>
-                    <Link
-                      to={`/operacao/comandas/${comanda.id}`}
+                    <button
+                      type="button"
                       className="touch-btn-secondary touch-btn-sm shrink-0"
+                      onClick={() => setComandaEspelhoId(comanda.id)}
                     >
                       Ver detalhes
-                    </Link>
+                    </button>
                   </div>
                 );
               })}
@@ -444,6 +448,15 @@ export function OperacaoTurnoResumoPage() {
             </div>
           ))}
         </section>
+      )}
+      {comandaEspelhoId && (
+        <ComandaEspelhoTurnoModal
+          key={comandaEspelhoId}
+          comandaId={comandaEspelhoId}
+          pontoVendaId={caixa.pontoVendaId}
+          sessaoCaixaId={sessaoId!}
+          onClose={() => setComandaEspelhoId(null)}
+        />
       )}
     </div>
   );
