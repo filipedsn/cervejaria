@@ -137,6 +137,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     queryKey: ['operacao-caixa-ocorrencias', cervejaria?.id, pontoVendaId, diaOperacional],
     queryFn: () => api.get<{ ocorrencias: CashOccurrenceOption[] }>(cashOccurrenceQueryUrl(diaOperacional)),
     enabled: Boolean(agendaCanonica && cervejaria?.id && pontoVendaId && diaOperacional),
+    refetchInterval: pollMs,
   });
   const ocorrenciasElegiveis = useMemo(
     () => eligibleCashOccurrences(ocorrenciasQuery.data?.ocorrencias ?? [], diaOperacional),

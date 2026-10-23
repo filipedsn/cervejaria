@@ -66,6 +66,7 @@ test('CXA-S09 real browser permits no occurrence and persists null', async ({ op
 });
 
 test('CXA-S09 explicit no occurrence survives refetch with a single suggestion', async ({ ops, page }) => {
+  await page.clock.install();
   const t = await ops.tenant(); await t.seedCatalog();
   await schedule(t, 'Optional suggestion', (await t.cashState()).diaOperacional);
   await openScreen(page, t);
@@ -73,7 +74,7 @@ test('CXA-S09 explicit no occurrence survives refetch with a single suggestion',
   await expect(selector).not.toHaveValue('');
   await selector.selectOption('');
   const refreshed = page.waitForResponse(r => r.url().includes('/api/operacao/agenda/ocorrencias?'));
-  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.clock.runFor(31_000);
   await refreshed;
   await expect(selector).toHaveValue('');
   await confirm(page);
@@ -82,6 +83,7 @@ test('CXA-S09 explicit no occurrence survives refetch with a single suggestion',
 });
 
 test('CXA-S09 multiple choices require explicit selection and cancelled pending confirmation closes', async ({ ops, page }) => {
+  await page.clock.install();
   const t = await ops.tenant(); await t.seedCatalog();
   const day = (await t.cashState()).diaOperacional;
   const occurrence = await schedule(t, 'First option', day);
@@ -95,7 +97,7 @@ test('CXA-S09 multiple choices require explicit selection and cancelled pending 
   await expect(page.getByRole('dialog')).toBeVisible();
   await t.owner.expect(t.owner.post(`/api/operacao/agenda/ocorrencias/${occurrence.ocorrenciaId}/cancelar`), 200, 'cancel pending occurrence');
   const refreshed = page.waitForResponse(r => r.url().includes('/api/operacao/agenda/ocorrencias?'));
-  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.clock.runFor(31_000);
   await refreshed;
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(selector).toHaveValue('');
