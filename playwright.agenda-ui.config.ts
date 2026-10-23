@@ -13,7 +13,8 @@ export default defineConfig({
   reporter: 'list',
   use: { ...devices['Desktop Chrome'], baseURL, serviceWorkers: 'block' },
   webServer: process.env.E2E_SKIP_SERVER ? undefined : {
-    command: 'npm.cmd run preview --prefix frontend -- --configLoader runner --host 127.0.0.1 --port 5198',
+    command: 'node node_modules/vite/bin/vite.js preview --configLoader runner --host 127.0.0.1 --port 5198',
+    cwd: './frontend',
     url: baseURL,
     reuseExistingServer: true,
     timeout: 120_000,

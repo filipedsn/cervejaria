@@ -107,7 +107,7 @@ test.describe('Agenda operacional canônica', () => {
     await expect(occurrenceSelect.locator('option', { hasText: 'Encerrada' })).toHaveCount(0);
     await expect(occurrenceSelect.locator('option', { hasText: 'Cancelada' })).toHaveCount(0);
     const openButton = page.getByRole('button', { name: 'Abrir caixa' });
-    await expect(openButton).toBeEnabled();
+    await expect(openButton).toBeDisabled();
     await occurrenceSelect.selectOption(selectedOccurrence.id);
     await openButton.click();
     await expect(page.getByRole('dialog')).toContainText('Hoje B');
@@ -184,7 +184,7 @@ test.describe('Agenda operacional canônica', () => {
     fail = false;
     await retry.click();
     await expect(page.getByLabel('Agendamento de hoje')).toBeVisible();
-    await expect(page.getByLabel('Agendamento de hoje')).toHaveValue('');
+    await expect(page.getByLabel('Agendamento de hoje')).toHaveValue('retry-today');
     await expect(page.getByRole('option', { name: /Hoje após retry/ })).toHaveCount(1);
   });
 
@@ -210,7 +210,7 @@ test.describe('Agenda operacional canônica', () => {
 
     operationalDay = '2026-10-23';
     await page.clock.runFor(30_000);
-    await expect(occurrenceSelect).toHaveValue('');
+    await expect(occurrenceSelect).toHaveValue('event-2026-10-23');
     await expect(occurrenceSelect.locator('option', { hasText: 'Evento 2026-10-23' })).toHaveCount(1);
     expect(requestedDays).toContain('2026-10-22/2026-10-22');
     expect(requestedDays).toContain('2026-10-23/2026-10-23');
@@ -225,6 +225,9 @@ test.describe('Agenda operacional canônica', () => {
       await page.goto('/operacao/comandas');
       const occurrenceSelect = page.getByLabel('Agendamento de hoje');
       await expect(occurrenceSelect).toBeVisible();
+      await expect(occurrenceSelect).toHaveValue('today');
+      await occurrenceSelect.selectOption('');
+      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
       await expect(occurrenceSelect).toHaveValue('');
       await expect(occurrenceSelect).toBeEnabled();
       const bounds = await occurrenceSelect.boundingBox();
