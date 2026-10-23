@@ -2919,7 +2919,8 @@ try {
   }
   release();
   assert.equal(observedLockWait, true, 'concurrent caller reached scope advisory lock');
-  assert.deepEqual((await Promise.all([first, second])).map((row) => row.status), ['COMPLETED','COMPLETED']);
+  const concurrentRaceResults = await Promise.all([first, second]);
+  assert.deepEqual(concurrentRaceResults.map((row) => row.status), ['COMPLETED','COMPLETED'], JSON.stringify(concurrentRaceResults));
   assert.equal(await db.pdvMigrationMap.count({ where: { sourceType: 'COMANDA', sourceId: raceCommand.id } }), 1);
   assert.equal(await db.pdvMigrationBatch.count({ where: { runId: raceRunId } }), (await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: raceRunId } })).checkpoint.totalRecords);
   await db.itemComanda.update({ where: { id: reparentedItem.id }, data: { comandaId: raceCommand.id } });
