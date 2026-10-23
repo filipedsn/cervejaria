@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "node --import ../scripts/node24-tsx-host.mjs --import tsx --test test/*.test.ts",
+    "test": "node --import ../scripts/node24-tsx-host.mjs --import tsx --test --test-concurrency=4 test/*.test.ts",
     "validate": "npm run typecheck && npm run test && npm run build",
     "analyst:validate": "npm run validate",
     "dev-smoke": "tsx src/index.ts --dev-smoke",
