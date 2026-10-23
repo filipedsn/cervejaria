@@ -95,10 +95,49 @@ export async function generateAgendaDates(tx: Prisma.TransactionClient, scope: P
     if (date.getUTCDay() === agenda.diaSemana) dates.push(date);
   }
   for (const data of dates) await assertNoAgendaConflict(tx, scope, { data, horaInicio: agenda.horaInicio, horaFim }, { agendaId });
+  const existing = dates.length ? await tx.ocorrenciaOperacional.findMany({ where: { ...scope, agendaId, data: { in: dates } }, select: { data: true } }) : [];
+  const existingKeys = new Set(existing.map((row) => dateKey(row.data)));
   const inserted = dates.length ? await tx.ocorrenciaOperacional.createMany({
     data: dates.map((data) => ({ ...scope, agendaId, nome: agenda.nome, data, horaInicio: agenda.horaInicio, horaFim: agenda.horaFim, local: agenda.local, status: 'PROGRAMADA' as const })), skipDuplicates: true,
   }) : { count: 0 };
-  return { criadas: inserted.count, datas: dates.map((date) => date.toISOString().slice(0, 10)), motivo: dates.length === 0 ? 'SEM_DATA_NO_DIA_DA_REPETICAO' : inserted.count === 0 ? 'DATAS_JA_EXISTIAM' : undefined };
+  const datas = dates.map((date) => date.toISOString().slice(0, 10));
+  const datasCriadas = datas.filter((key) => !existingKeys.has(key));
+  return { criadas: inserted.count, datas, datasCriadas, motivo: dates.length === 0 ? 'SEM_DATA_NO_DIA_DA_REPETICAO' : inserted.count === 0 ? 'DATAS_JA_EXISTIAM' : undefined };
+}
+
+/** Save a paused rule's definition and activate it atomically. The durable receipt makes retries safe. */
+export async function saveAndActivateAgenda(tx: Prisma.TransactionClient, scope: Scope, id: string, input: { requestId: string; aPartirDe?: string; nome: string; diaSemana: number; horaInicio: string; horaFim: string; local: string | null; ultimaData: string | null }) {
+  const { usuarioId, ...whereScope } = scope;
+  await lockAgendaPdv(tx, scope);
+  await lockAgendaResource(tx, scope, 'regra', id);
+  const receiptId = `agenda-activate-${createHash('sha256').update(`${scope.cervejariaId}:${scope.pontoVendaId}:${input.requestId}`).digest('hex')}`;
+  await lockAgendaResource(tx, scope, 'request', receiptId);
+  const fingerprint = createHash('sha256').update(JSON.stringify({ agendaId: id, acao: 'SALVAR_E_ATIVAR', ...input })).digest('hex');
+  const receipt = await tx.transacaoLog.findUnique({ where: { id: receiptId } });
+  if (receipt) {
+    const metadata = receipt.metadata as { fingerprint?: string; resultado?: unknown };
+    if (metadata.fingerprint !== fingerprint || !metadata.resultado) throw agendaError('Esta tentativa jÃ¡ foi concluÃ­da com outros dados. Reabra para iniciar outra ativaÃ§Ã£o.');
+    return metadata.resultado;
+  }
+  const current = await tx.agendaOperacional.findFirst({ where: { id, ...whereScope, archivedAt: null } });
+  if (!current) throw agendaError('RepetiÃ§Ã£o nÃ£o encontrada', 404);
+  if (current.ativa) throw agendaError('Esta repetiÃ§Ã£o jÃ¡ estÃ¡ ativa. Atualize a lista antes de ativar.', 409, 'AGENDA_JA_ATIVA');
+  const generationStart = current.geracaoDesde ?? (input.aPartirDe ? parseAgendaDate(input.aPartirDe) : null);
+  if (!generationStart) throw agendaError('Informe explicitamente “Gerar prÃ³ximas datas a partir de”.', 409, 'AGENDA_INICIO_NECESSARIO');
+  const end = input.ultimaData ? parseAgendaDate(input.ultimaData) : null;
+  const first = current.primeiraData;
+  if (first && end && compareDateOnly(end, first) < 0) throw agendaError('O tÃ©rmino deve ser igual ou posterior ao inÃ­cio histÃ³rico da repetiÃ§Ã£o.', 400, 'AGENDA_PERIODO_INVALIDO');
+  if (end && compareDateOnly(end, generationStart) < 0) throw agendaError('O tÃ©rmino deve ser igual ou posterior Ã  data de geraÃ§Ã£o.', 400, 'AGENDA_PERIODO_INVALIDO');
+  validateAgendaInterval(input.horaInicio, input.horaFim);
+  const outside = input.ultimaData !== (dateKey(current.ultimaData) ?? null) ? await occurrencesOutsideRange(tx, whereScope, id, first, end) : [];
+  const updated = await tx.agendaOperacional.update({ where: { id }, data: { nome: input.nome, diaSemana: input.diaSemana, horaInicio: input.horaInicio, horaFim: input.horaFim, local: input.local, ultimaData: end, ...(current.geracaoDesde ? {} : { geracaoDesde: generationStart }), ativa: true } });
+  const start = compareDateOnly(generationStart, diaOperacional()) > 0 ? generationStart : diaOperacional();
+  const windowEnd = new Date(start.getTime() + 90 * 86400000);
+  const through = end && compareDateOnly(end, windowEnd) < 0 ? end : windowEnd;
+  const generated = compareDateOnly(start, through) > 0 ? { criadas: 0, datas: [] as string[], datasCriadas: [] as string[], motivo: 'PERIODO_ENCERRADO' } : await generateAgendaDates(tx, whereScope, id, dateKey(start)!, dateKey(through)!);
+  const resultado = { agendaId: id, nome: updated.nome, salva: true as const, reativada: true, ...generated, ...(outside.length ? { foraDoPeriodo: outside } : {}) };
+  await tx.transacaoLog.create({ data: { id: receiptId, cervejariaId: scope.cervejariaId, usuarioId, tipo: 'EVENTO_ATUALIZADO', entidadeTipo: 'AgendaOperacional', entidadeId: id, metadata: { acao: 'REPETICAO_ATIVADA_COM_DEFINICAO', pontoVendaId: scope.pontoVendaId, atorId: usuarioId, gerarApartirDe: dateKey(generationStart), alteracoesAplicadasAsNovasOcorrencias: true, fingerprint, resultado } } });
+  return resultado;
 }
 
 /** The audit receipt is also the durable retry result, committed with all domain writes. */

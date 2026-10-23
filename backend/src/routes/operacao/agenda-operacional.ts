@@ -4,7 +4,7 @@ import { prisma } from '../../lib/prisma.js';
 import { canonicalPdvQaActivationEnabled, readCanonicalPdvOperationalSettingsIfEnabled } from '../../lib/canonical-pdv-operational-config.js';
 import { requirePermissaoOuDono } from '../../lib/operacao/permissoes.js';
 import { getAuthUser } from '../../types/auth.js';
-import { archiveAgenda, assertNoAgendaConflict, cancelOccurrence, generateAgendaDates, lockAgendaPdv, lockAgendaResource, occurrenceBlock, occurrenceRestoreBlock, occurrencesOutsideRange, restoreOccurrence, resumeAgenda, saveAgendamento, stopAgenda, validateAgendaInterval } from '../../lib/operacao/agenda.js';
+import { archiveAgenda, assertNoAgendaConflict, cancelOccurrence, generateAgendaDates, lockAgendaPdv, lockAgendaResource, occurrenceBlock, occurrenceRestoreBlock, occurrencesOutsideRange, restoreOccurrence, resumeAgenda, saveAgendamento, saveAndActivateAgenda, stopAgenda, validateAgendaInterval } from '../../lib/operacao/agenda.js';
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use uma data no formato AAAA-MM-DD');
 const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -35,6 +35,7 @@ const occurrenceCreateSchema = z.object({
 const generationSchema = z.object({ inicio: dateSchema, fim: dateSchema }).strict();
 const restorationSchema = z.object({ requestId: z.string().uuid(), data: dateSchema.optional(), horaInicio: timeSchema.nullable().optional(), horaFim: timeSchema.nullable().optional() }).strict();
 const resumeSchema = z.object({ requestId: z.string().uuid(), aPartirDe: dateSchema.optional() }).strict();
+const activateAgendaSchema = z.object({ requestId: z.string().uuid(), aPartirDe: dateSchema.optional(), nome: z.string().trim().min(1).max(120), diaSemana: z.number().int().min(0).max(6), horaInicio: timeSchema, horaFim: timeSchema, local: z.string().trim().max(160).nullable(), ultimaData: dateSchema.nullable() }).strict();
 const schedulingSchema = occurrenceCreateSchema.extend({
   horaInicio: timeSchema.optional(), horaFim: timeSchema.nullable().optional(),
   requestId: z.string().uuid(), repetirSemanalmente: z.boolean(),
@@ -131,6 +132,15 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
     const cervejariaId = request.operacao.cervejariaId; const pontoVendaId = await canonicalPointId(cervejariaId);
     if (!pontoVendaId) return reply.status(409).send({ code: 'CANONICAL_PDV_UNAVAILABLE', error: 'PDV canÃ´nico indisponÃ­vel' });
     return prisma.$transaction((tx) => resumeAgenda(tx, { cervejariaId, pontoVendaId, usuarioId: getAuthUser(request).sub }, id, body), { timeout: 15000 });
+  });
+
+  app.post('/agendas/:id/salvar-e-ativar', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
+    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ error: 'Agenda operacional indisponÃ­vel nesta instalaÃ§Ã£o' });
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+    const body = activateAgendaSchema.parse(request.body);
+    const cervejariaId = request.operacao.cervejariaId; const pontoVendaId = await canonicalPointId(cervejariaId);
+    if (!pontoVendaId) return reply.status(409).send({ code: 'CANONICAL_PDV_UNAVAILABLE', error: 'PDV canÃ´nico indisponÃ­vel' });
+    return prisma.$transaction((tx) => saveAndActivateAgenda(tx, { cervejariaId, pontoVendaId, usuarioId: getAuthUser(request).sub }, id, body), { timeout: 20000 });
   });
 
   app.post('/agendas', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
