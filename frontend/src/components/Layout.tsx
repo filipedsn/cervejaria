@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useEvento } from '../contexts/EventoContext';
-import { formatEventoWhen, logoAssetUrl } from '../lib/api';
+import { api, formatEventoWhen, logoAssetUrl } from '../lib/api';
+import type { CaixaResposta } from '../lib/operacao';
 import type { Evento, Trailer } from '../types';
 import { formatTrailerLabel } from '../types';
 import { ConnectionStatus } from './ConnectionStatus';
@@ -168,6 +170,18 @@ export function Layout() {
   const pontoVendaQrId = operacao.pontosVenda.some((ponto) => ponto.id === pontoVendaQrParam)
     ? pontoVendaQrParam!
     : operacao.pontosVenda[0]?.id;
+  const caixaRankingQuery = useQuery({
+    queryKey: ['operacao-caixa', pontoVendaQrId],
+    queryFn: () => api.get<CaixaResposta>(`/api/operacao/caixa?pontoVendaId=${encodeURIComponent(pontoVendaQrId!)}`),
+    enabled: onOperacaoComandasPage && Boolean(pontoVendaQrId && operacao.tapsEnabled && canPermission('command.read')),
+    staleTime: 0,
+  });
+  const rankingEntryParams = new URLSearchParams({ pontoVendaId: pontoVendaQrId ?? '' });
+  const caixaRankingSession = caixaRankingQuery.data?.sessao;
+  if (caixaRankingSession?.status === 'ABERTO') {
+    rankingEntryParams.set('dia', caixaRankingSession.ocorrencia?.data ?? caixaRankingSession.diaOperacional);
+    if (caixaRankingSession.ocorrenciaId) rankingEntryParams.set('ocorrenciaId', caixaRankingSession.ocorrenciaId);
+  }
 
   const navItemsComandasOperacao = CAIXA_NAV_ITEMS.filter((item) => item.path === '/operacao/comandas'
     && (isDono || usuario?.permissoesOperacao === undefined || usuario.permissoesOperacao.includes('command.read')));
@@ -286,7 +300,7 @@ export function Layout() {
                   {onOperacaoComandasPage && pontoVendaQrId && <PdvPortalQrButton pontoVendaId={pontoVendaQrId} iconOnly className="icon-btn-ghost" />}
                   {onOperacaoComandasPage && pontoVendaQrId && operacao.tapsEnabled && canPermission('command.read') && (
                     <Link
-                      to={`/operacao/ranking?pontoVendaId=${encodeURIComponent(pontoVendaQrId)}`}
+                      to={`/operacao/ranking?${rankingEntryParams.toString()}`}
                       title="Ranking de chope"
                       aria-label="Ranking de chope"
                       className="icon-btn-ghost h-11 w-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2"

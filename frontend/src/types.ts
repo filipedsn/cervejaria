@@ -527,12 +527,13 @@ export interface RankingResponse {
 export interface RankingPdvResponse {
   pontoVenda: { id: string; nome: string };
   dia: string;
-  ocorrencia: { id: string; nome: string; data: string } | null;
+  ocorrencia: { id: string; nome: string; data: string; agendaId: string | null } | null;
   ranking: RankingEntry[];
 }
 
 export interface RankingPdvPeriodoResponse {
   pontoVenda: { id: string; nome: string };
+  agenda: { id: string; nome: string; primeiraData: string | null; ultimaData: string | null; archivedAt: string | null };
   escopo: 'mensal' | 'geral';
   mes: string | null;
   mesesDisponiveis: string[];

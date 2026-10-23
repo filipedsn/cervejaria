@@ -6,8 +6,9 @@ import { randomUUID } from 'node:crypto';
 import net from 'node:net';
 import { validateIsolatedQaEnvironment } from './isolated-qa-env.mjs';
 import { PrismaClient } from '@prisma/client';
-import { buildApp } from '../src/app.js';
+import { buildApp, setupSocketIO } from '../src/app.js';
 import { signUserToken } from '../src/lib/session.js';
+import { emitToCervejaria, realtimeRoomTenantCommands } from '../src/lib/realtime.js';
 import { AUTH_COOKIE_NAME } from '../src/lib/security-config.js';
 import { chromium } from '../../node_modules/playwright/index.mjs';
 
@@ -15,6 +16,7 @@ assert.equal(validateIsolatedQaEnvironment(process.env).toString(), process.env.
 const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
 const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
 const app = await buildApp();
+setupSocketIO(app, app.server);
 await app.ready();
 function day(value) { return new Date(`${value}T00:00:00.000Z`); }
 function auth(user) { return { authorization: `Bearer ${signUserToken(app, user)}` }; }
@@ -37,15 +39,24 @@ try {
   const homonym = await prisma.cliente.create({ data: { cervejariaId: company.id, nome: 'Cliente Homônimo QA', telefone: null } });
   const foreignClient = await prisma.cliente.create({ data: { cervejariaId: foreignCompany.id, nome: 'Cliente Homônimo QA', telefone: null } });
   await prisma.clienteEstatisticas.create({ data: { clienteId: primaryClient.id } });
-  const agenda = await prisma.agendaOperacional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, nome: 'Sextas QA', diaSemana: 5, primeiraData: day('2025-07-01'), ultimaData: day('2026-11-30'), horaInicio: '18:00', horaFim: '22:00', ativa: true } });
+  const agenda = await prisma.agendaOperacional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, nome: 'Itatiaia QA', diaSemana: 5, primeiraData: day('2025-07-01'), ultimaData: day('2026-11-30'), horaInicio: '18:00', horaFim: '22:00', ativa: true } });
+  const agendaIgarape = await prisma.agendaOperacional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, nome: 'Igarapé QA', diaSemana: 5, primeiraData: day('2026-10-01'), ultimaData: day('2026-11-30'), horaInicio: '18:00', horaFim: '22:00', ativa: true } });
   const occurrenceRows = [];
   for (const value of ['2025-07-01', '2026-10-01', '2026-10-31', '2026-11-01']) {
     occurrenceRows.push(await prisma.ocorrenciaOperacional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, agendaId: agenda.id, nome: 'Sextas QA', data: day(value), horaInicio: '18:00', horaFim: '22:00' } }));
   }
+  const igarapeOccurrenceRows = [];
+  for (const value of ['2026-10-01', '2026-10-31', '2026-11-01']) {
+    igarapeOccurrenceRows.push(await prisma.ocorrenciaOperacional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, agendaId: agendaIgarape.id, nome: 'Igarapé QA', data: day(value), horaInicio: '18:00', horaFim: '22:00' } }));
+  }
+  const oneOffRows = new Map();
+  for (const value of ['2026-12-01', '2026-12-02', '2026-12-03', '2026-12-04', '2026-12-05', '2026-12-06']) {
+    oneOffRows.set(value, await prisma.ocorrenciaOperacional.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, agendaId: null, nome: `Avulsa ${value} QA`, data: day(value), horaInicio: '18:00', horaFim: '22:00' } }));
+  }
   const product = await prisma.produto.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, nome: 'Chope QA', tipo: 'BEBIDA', formato: 'CHOPE' } });
-  async function sale({ client = primaryClient, origin = 'EVENTO', occurrence, operationalDate, volume, status = 'FECHADA', canceled = false, paid = false, discount = 0 }) {
-    const command = await prisma.comanda.create({ data: { origem: origin, clienteId: client.id, status, tipo: 'COMANDA', pontoVendaId: point.id, ocorrenciaId: occurrence?.id ?? null, diaOperacional: operationalDate ? day(operationalDate) : null, total: 10 - discount, desconto: discount, fechadaEm: day(occurrence?.data.toISOString().slice(0, 10) ?? operationalDate ?? '2026-10-01') } });
-    await prisma.itemComanda.create({ data: { comandaId: command.id, produtoId: product.id, volumeMl: volume, quantidade: 1, precoUnit: 10, ...(canceled ? { canceladoEm: day('2026-10-02') } : {}) } });
+  async function sale({ client = primaryClient, origin = 'EVENTO', occurrence, operationalDate, volume, status = 'FECHADA', canceled = false, paid = false, discount = 0, pointOfSale = point, product: saleProduct = product }) {
+    const command = await prisma.comanda.create({ data: { origem: origin, clienteId: client.id, status, tipo: 'COMANDA', pontoVendaId: pointOfSale.id, ocorrenciaId: occurrence?.id ?? null, diaOperacional: operationalDate ? day(operationalDate) : null, total: 10 - discount, desconto: discount, fechadaEm: day(occurrence?.data.toISOString().slice(0, 10) ?? operationalDate ?? '2026-10-01') } });
+    await prisma.itemComanda.create({ data: { comandaId: command.id, produtoId: saleProduct.id, volumeMl: volume, quantidade: 1, precoUnit: 10, ...(canceled ? { canceladoEm: day('2026-10-02') } : {}) } });
     if (paid) await prisma.pagamento.create({ data: { comandaId: command.id, forma: 'PIX', valor: 10 - discount } });
     return command;
   }
@@ -55,7 +66,13 @@ try {
   await sale({ occurrence: occurrenceRows[2], volume: 1000, client: homonym });
   await sale({ occurrence: occurrenceRows[3], volume: 700 });
   await sale({ occurrence: occurrenceRows[1], volume: 900, canceled: true, status: 'CANCELADA' });
-  await sale({ client: foreignClient, occurrence: null, volume: 500, status: 'FECHADA' });
+  await sale({ occurrence: igarapeOccurrenceRows[0], volume: 1200 });
+  await sale({ origin: 'CAIXA', occurrence: igarapeOccurrenceRows[1], operationalDate: '2026-10-31', volume: 400 });
+  await sale({ occurrence: igarapeOccurrenceRows[2], volume: 600 });
+  const igarapeExclusiveClient = await prisma.cliente.create({ data: { cervejariaId: company.id, nome: `Exclusivo Igarapé QA ${suffix}`, telefone: null } });
+  await sale({ client: igarapeExclusiveClient, occurrence: igarapeOccurrenceRows[1], volume: 2500 });
+  const foreignProduct = await prisma.produto.create({ data: { cervejariaId: foreignCompany.id, pontoVendaId: foreignPoint.id, nome: 'Chope estrangeiro QA', tipo: 'BEBIDA', formato: 'CHOPE' } });
+  await sale({ client: foreignClient, pointOfSale: foreignPoint, product: foreignProduct, volume: 500, status: 'FECHADA' });
 
   const cardinalityDays = new Map();
   for (const [count, date] of [[1, '2026-12-02'], [2, '2026-12-03'], [3, '2026-12-04'], [12, '2026-12-05']]) {
@@ -66,13 +83,13 @@ try {
         : `Participante ${String(index + 1).padStart(2, '0')} QA ${suffix}`;
       const client = await prisma.cliente.create({ data: { cervejariaId: company.id, nome: clientName, telefone: null } });
       clients.push(client);
-      await sale({ client, origin: 'CAIXA', operationalDate: date, volume: (count - index) * 100 });
+      await sale({ client, origin: 'CAIXA', occurrence: oneOffRows.get(date), operationalDate: date, volume: (count - index) * 100 });
     }
     cardinalityDays.set(count, { date, clients });
   }
 
   await check('ranking is canonical by tenant and PDV and accepts migrated EVENTO and current CAIXA origins', async () => {
-    const response = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?ocorrenciaId=${occurrenceRows[1].id}&dia=2026-10-01`, headers: auth(owner) });
+    const response = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?ocorrenciaId=${occurrenceRows[1].id}&agendaId=${agenda.id}&dia=2026-10-01`, headers: auth(owner) });
     assert.equal(response.statusCode, 200, response.body);
     const body = response.json();
     assert.equal(body.ocorrencia.data, '2026-10-01');
@@ -84,12 +101,14 @@ try {
   });
 
   await check('daily API returns the same participant count, total, and stable position for 0, 1, 2, 3, and many participants', async () => {
-    const empty = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?dia=2026-12-01`, headers: auth(owner) });
+    const missingOccurrence = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?dia=2026-12-01`, headers: auth(owner) });
+    assert.equal(missingOccurrence.statusCode, 400, missingOccurrence.body);
+    const empty = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?dia=2026-12-01&ocorrenciaId=${oneOffRows.get('2026-12-01').id}`, headers: auth(owner) });
     assert.equal(empty.statusCode, 200, empty.body);
     assert.deepEqual(empty.json().ranking, []);
     for (const count of [1, 2, 3, 12]) {
       const { date, clients } = cardinalityDays.get(count);
-      const response = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?dia=${date}`, headers: auth(owner) });
+      const response = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?dia=${date}&ocorrenciaId=${oneOffRows.get(date).id}`, headers: auth(owner) });
       assert.equal(response.statusCode, 200, response.body);
       const rows = response.json().ranking;
       assert.equal(rows.length, count);
@@ -102,14 +121,50 @@ try {
   await check('monthly DATE boundaries include October 1 and 31, exclude November 1, and list months from sales', async () => {
     const previousTz = process.env.TZ; process.env.TZ = 'Pacific/Kiritimati';
     try {
-      const response = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/periodo?mes=2026-10`, headers: auth(owner) });
+      const response = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/periodo?agendaId=${agenda.id}&mes=2026-10`, headers: auth(owner) });
       assert.equal(response.statusCode, 200, response.body);
       const body = response.json();
-      assert.deepEqual(body.mesesDisponiveis, ['2026-12', '2026-11', '2026-10', '2025-07']);
+      assert.deepEqual(body.mesesDisponiveis, ['2026-11', '2026-10', '2025-07']);
       assert.equal(body.entries.reduce((sum, row) => sum + row.totalMl, 0), 1800);
       assert.equal(body.entries.length, 2, 'same-name clients remain separate identities');
       assert.deepEqual(new Set(body.entries.map((row) => row.clienteId)), new Set([primaryClient.id, homonym.id]));
     } finally { if (previousTz === undefined) delete process.env.TZ; else process.env.TZ = previousTz; }
+  });
+
+  await check('monthly and general ranking stay inside the selected agenda and month boundaries', async () => {
+    const itatiaiaMonth = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/periodo?agendaId=${agenda.id}&mes=2026-10`, headers: auth(owner) });
+    const igarapeMonth = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/periodo?agendaId=${agendaIgarape.id}&mes=2026-10`, headers: auth(owner) });
+    const itatiaiaGeneral = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/periodo?agendaId=${agenda.id}`, headers: auth(owner) });
+    const igarapeGeneral = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/periodo?agendaId=${agendaIgarape.id}`, headers: auth(owner) });
+    for (const response of [itatiaiaMonth, igarapeMonth, itatiaiaGeneral, igarapeGeneral]) assert.equal(response.statusCode, 200, response.body);
+    assert.equal(itatiaiaMonth.json().entries.reduce((sum, row) => sum + row.totalMl, 0), 1800);
+    assert.equal(igarapeMonth.json().entries.reduce((sum, row) => sum + row.totalMl, 0), 4100);
+    assert.equal(itatiaiaGeneral.json().entries.reduce((sum, row) => sum + row.totalMl, 0), 4000);
+    assert.equal(igarapeGeneral.json().entries.reduce((sum, row) => sum + row.totalMl, 0), 4700);
+    const itatiaiaShared = itatiaiaGeneral.json().entries.find((row) => row.clienteId === primaryClient.id);
+    const igarapeShared = igarapeGeneral.json().entries.find((row) => row.clienteId === primaryClient.id);
+    assert.equal(itatiaiaShared.totalMl, 3000);
+    assert.equal(igarapeShared.totalMl, 2200);
+    assert.ok(!itatiaiaGeneral.json().entries.some((row) => row.clienteId === igarapeExclusiveClient.id));
+    assert.ok(!igarapeGeneral.json().entries.some((row) => row.clienteId === homonym.id));
+    assert.deepEqual(igarapeGeneral.json().mesesDisponiveis, ['2026-11', '2026-10']);
+    assert.equal(itatiaiaGeneral.json().agenda.id, agenda.id);
+    assert.equal(igarapeGeneral.json().agenda.id, agendaIgarape.id);
+  });
+
+  await check('agenda and occurrence parameters are validated within the selected company and PDV', async () => {
+    const mismatch = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/periodo?agendaId=${agenda.id}&ocorrenciaId=${igarapeOccurrenceRows[0].id}`, headers: auth(owner) });
+    assert.equal(mismatch.statusCode, 400, mismatch.body);
+    const invalidDailyContext = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?ocorrenciaId=${igarapeOccurrenceRows[0].id}&agendaId=${agenda.id}`, headers: auth(owner) });
+    assert.equal(invalidDailyContext.statusCode, 400, invalidDailyContext.body);
+    const foreignAgenda = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/periodo?agendaId=${foreignPoint.id}`, headers: auth(owner) });
+    assert.equal(foreignAgenda.statusCode, 404, foreignAgenda.body);
+    const unassignedAccumulation = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/periodo?agendaId=${oneOffRows.get('2026-12-01').id}`, headers: auth(owner) });
+    assert.equal(unassignedAccumulation.statusCode, 404, unassignedAccumulation.body);
+    const standaloneDay = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?ocorrenciaId=${oneOffRows.get('2026-12-02').id}`, headers: auth(owner) });
+    assert.equal(standaloneDay.statusCode, 200, standaloneDay.body);
+    assert.equal(standaloneDay.json().ranking.length, 1);
+    assert.equal(standaloneDay.json().ranking[0].totalMl, 100);
   });
 
   await check('recurrence aggregation preserves exact agenda identity and occurrence picker reaches older history', async () => {
@@ -117,7 +172,7 @@ try {
     assert.equal(ranking.statusCode, 200, ranking.body);
     assert.equal(ranking.json().ranking.reduce((sum, row) => sum + row.totalMl, 0), 4000);
     const rankingBeforeEdit = ranking.json().ranking;
-    await prisma.agendaOperacional.update({ where: { id: agenda.id }, data: { nome: 'Sextas QA editada', diaSemana: 4, horaInicio: '19:00' } });
+    await prisma.agendaOperacional.update({ where: { id: agenda.id }, data: { nome: 'Itatiaia QA editada', diaSemana: 4, horaInicio: '19:00' } });
     const afterDefinitionEdit = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}/agendas/${agenda.id}`, headers: auth(owner) });
     assert.equal(afterDefinitionEdit.statusCode, 200, afterDefinitionEdit.body);
     assert.deepEqual(afterDefinitionEdit.json().ranking, rankingBeforeEdit, 'definition changes do not change agenda identity or historical ranking');
@@ -136,8 +191,8 @@ try {
     assert.ok(rows.some((row) => row.total === 8 && row.desconto === 2 && row.valorPendente === 0));
     const detail = await app.inject({ method: 'GET', url: `/api/clientes/${primaryClient.id}`, headers: auth(owner) });
     assert.equal(detail.statusCode, 200, detail.body);
-    assert.equal(detail.json().estatisticas.totalComandasFechadas, 4);
-    assert.equal(detail.json().estatisticas.totalMlChope, 3000);
+    assert.equal(detail.json().estatisticas.totalComandasFechadas, 7);
+    assert.equal(detail.json().estatisticas.totalMlChope, 5200);
     assert.equal(detail.json().estatisticas.totalGasto, 8);
     const foreignHistory = await app.inject({ method: 'GET', url: `/api/clientes/${foreignClient.id}/historico`, headers: auth(owner) });
     assert.equal(foreignHistory.statusCode, 404, foreignHistory.body);
@@ -168,7 +223,7 @@ try {
       }
       assert.equal(ready, true, 'Vite frontend did not become ready');
       browser = await chromium.launch({ headless: true });
-      const screenshots = path.resolve('../.worktrees/ranking-header-ci-8ff017e/evidence/ranking-canonical-disposable');
+      const screenshots = path.resolve('../.worktrees/ranking-agenda-scope-evidence');
       await mkdir(screenshots, { recursive: true });
 
       const ownerToken = signUserToken(app, owner);
@@ -177,19 +232,35 @@ try {
       await context.addCookies([{ name: AUTH_COOKIE_NAME, value: ownerToken, url: frontendOrigin, httpOnly: true, sameSite: 'Lax' }]);
       const page = await context.newPage();
       const rankingUrl = (params) => `${frontendOrigin}/operacao/ranking?${new URLSearchParams({ pontoVendaId: point.id, ...params })}`;
+      const volumeLabel = (totalMl) => {
+        const liters = totalMl / 1000;
+        const digits = liters >= 10 ? 1 : 2;
+        return `${liters.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits })} L`;
+      };
       const waitForSuccessfulRefresh = async (target) => {
         await target.locator('.tap-champions-updated').waitFor();
         await target.waitForFunction(() => !document.querySelector('.tap-champions-updated')?.textContent?.includes('aguardando'), null, { timeout: 15000 });
       };
+      const waitForCommandsSocket = async () => {
+        const room = realtimeRoomTenantCommands(company.id);
+        for (let attempt = 0; attempt < 40; attempt++) {
+          const connected = [...app.io.of('/').sockets.values()].some((socket) => socket.rooms.has(room));
+          if (connected) return;
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        throw new Error('Browser did not join the authenticated tenant commands socket room.');
+      };
 
       for (const [count, date] of [[0, '2026-12-01'], [1, '2026-12-02'], [2, '2026-12-03'], [3, '2026-12-04'], [12, '2026-12-05']]) {
-        await page.goto(rankingUrl({ dia: date }), { waitUntil: 'domcontentloaded' });
+        const occurrenceId = oneOffRows.get(date).id;
+        await page.goto(rankingUrl({ dia: date, ocorrenciaId: occurrenceId }), { waitUntil: 'domcontentloaded' });
         await page.getByRole('heading', { name: 'Ranking de chope', exact: true }).waitFor({ timeout: 15000 });
         await page.locator('.tap-champions-stats').waitFor();
         await waitForSuccessfulRefresh(page);
-        const apiResult = await page.evaluate(async (url) => (await fetch(url, { credentials: 'include' })).json(), `/api/ranking/pdv/${point.id}?dia=${date}`);
+        const apiResult = await page.evaluate(async (url) => (await fetch(url, { credentials: 'include' })).json(), `/api/ranking/pdv/${point.id}?dia=${date}&ocorrenciaId=${occurrenceId}`);
         assert.equal(apiResult.ranking.length, count);
         assert.equal(Number(await page.locator('.tap-champions-stat-value').nth(0).innerText()), count);
+        assert.equal(await page.locator('.tap-champions-stat-value').nth(1).innerText(), volumeLabel(apiResult.ranking.reduce((sum, row) => sum + row.totalMl, 0)));
         assert.equal(await page.locator('.tap-champions-podium-card').count(), Math.min(count, 3));
         assert.equal(await page.locator('.tap-champions-rest-card').count(), Math.max(0, count - 3));
         if (count === 1 || count === 2) {
@@ -208,61 +279,104 @@ try {
         }
       }
 
-      await check('browser refresh shows a new launch and removes a canceled item under the canonical policy', async () => {
-        await page.goto(rankingUrl({ dia: '2026-12-06' }), { waitUntil: 'domcontentloaded' });
+      await check('socket invalidation and visibility reconnection refresh launches and cancellations', async () => {
+        await page.goto(rankingUrl({ dia: '2026-12-06', ocorrenciaId: oneOffRows.get('2026-12-06').id }), { waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => document.querySelector('.ranking-operational-state')?.textContent?.includes('consumo registrado'));
-        const launched = await sale({ client: cardinalityDays.get(12).clients[0], origin: 'CAIXA', operationalDate: '2026-12-06', volume: 450 });
-        await page.reload({ waitUntil: 'domcontentloaded' });
+        await waitForCommandsSocket();
+        const launched = await sale({ client: cardinalityDays.get(12).clients[0], origin: 'CAIXA', occurrence: oneOffRows.get('2026-12-06'), operationalDate: '2026-12-06', volume: 450 });
+        emitToCervejaria(app.io, company.id, { type: 'operacao:comanda-atualizada', data: { comandaId: launched.id } });
         await page.locator('.tap-champions-podium-card').waitFor();
         await waitForSuccessfulRefresh(page);
         assert.equal(Number(await page.locator('.tap-champions-stat-value').nth(0).innerText()), 1);
         assert.equal(await page.locator('.tap-champions-podium-volume').innerText(), '0,45 L');
         await prisma.itemComanda.updateMany({ where: { comandaId: launched.id }, data: { canceladoEm: day('2026-12-06') } });
         await prisma.comanda.update({ where: { id: launched.id }, data: { status: 'CANCELADA' } });
-        await page.reload({ waitUntil: 'domcontentloaded' });
+        emitToCervejaria(app.io, company.id, { type: 'operacao:comanda-atualizada', data: { comandaId: launched.id } });
         await page.waitForFunction(() => document.querySelector('.ranking-operational-state')?.textContent?.includes('consumo registrado'));
         assert.equal(await page.locator('.tap-champions-podium-card').count(), 0);
         assert.equal(Number(await page.locator('.tap-champions-stat-value').nth(0).innerText()), 0);
+        const afterReconnect = await sale({ client: cardinalityDays.get(12).clients[0], origin: 'CAIXA', occurrence: oneOffRows.get('2026-12-06'), operationalDate: '2026-12-06', volume: 750 });
+        await page.context().setOffline(true);
+        await page.waitForTimeout(100);
+        await page.context().setOffline(false);
+        await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+        await page.locator('.tap-champions-podium-card').waitFor();
+        await waitForSuccessfulRefresh(page);
+        assert.equal(await page.locator('.tap-champions-podium-volume').innerText(), '0,75 L', 'visibility reconnect refreshes the selected daily occurrence');
+        assert.ok(afterReconnect.id);
       });
 
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.goto(rankingUrl({ dia: '2026-12-05' }), { waitUntil: 'domcontentloaded' });
+      await page.goto(rankingUrl({ dia: '2026-12-05', ocorrenciaId: oneOffRows.get('2026-12-05').id }), { waitUntil: 'domcontentloaded' });
       await page.locator('.tap-champions-rest-card').first().waitFor();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'mobile layout has no horizontal overflow');
       assert.ok(await page.getByText(/nome extenso para testar quebra/i).isVisible());
       await page.addStyleTag({ content: '.app-bottom-nav,.app-shell-header,.fixed.top-0.left-0.right-0.z-50{display:none!important}' });
       await page.locator('.ranking-operational').screenshot({ path: path.join(screenshots, 'mobile.png') });
 
-      const monthly = new URLSearchParams({ pontoVendaId: point.id, escopo: 'mensal', mes: '2026-10', dia: '2026-10-01' });
+      const monthly = new URLSearchParams({ pontoVendaId: point.id, escopo: 'mensal', mes: '2026-10', dia: '2026-10-01', agendaId: agenda.id });
       await page.goto(`${frontendOrigin}/operacao/ranking?${monthly}`, { waitUntil: 'domcontentloaded' });
-      await page.getByText(/Mensal · outubro de 2026/i).waitFor();
-      const monthApi = await page.evaluate(async (url) => (await fetch(url, { credentials: 'include' })).json(), `/api/ranking/pdv/${point.id}/periodo?mes=2026-10`);
+      await page.locator('.ranking-operational').waitFor();
+      const monthlyUiText = await page.locator('.ranking-operational').innerText();
+      assert.match(monthlyUiText, /Agenda · Itatiaia QA editada · Mensal · outubro de 2026/i, `Unexpected monthly ranking context: ${monthlyUiText.slice(0, 800)}`);
+      const monthApi = await page.evaluate(async (url) => (await fetch(url, { credentials: 'include' })).json(), `/api/ranking/pdv/${point.id}/periodo?agendaId=${agenda.id}&mes=2026-10`);
       await waitForSuccessfulRefresh(page);
       assert.equal(Number(await page.locator('.tap-champions-stat-value').nth(0).innerText()), monthApi.entries.length);
+      assert.equal(await page.locator('.tap-champions-stat-value').nth(1).innerText(), volumeLabel(monthApi.entries.reduce((sum, row) => sum + row.totalMl, 0)));
 
-      const general = new URLSearchParams({ pontoVendaId: point.id, escopo: 'geral', dia: '2026-10-01' });
+      await page.goto(rankingUrl({ dia: '2026-10-01', ocorrenciaId: occurrenceRows[1].id }), { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => new URL(location.href).searchParams.has('agendaId'));
+      assert.equal(new URL(page.url()).searchParams.get('agendaId'), agenda.id, 'historical occurrence supplies its exact agenda context');
+      await page.getByRole('button', { name: 'Mensal' }).click();
+      assert.equal(new URL(page.url()).searchParams.get('agendaId'), agenda.id, 'switching to monthly keeps the selected agenda');
+      assert.equal(new URL(page.url()).searchParams.get('ocorrenciaId'), occurrenceRows[1].id, 'switching scope preserves the selected occurrence context');
+      await waitForSuccessfulRefresh(page);
+      await page.getByRole('button', { name: 'Geral' }).click();
+      assert.equal(new URL(page.url()).searchParams.get('agendaId'), agenda.id, 'switching to general keeps the selected agenda');
+      await waitForSuccessfulRefresh(page);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await waitForSuccessfulRefresh(page);
+      assert.equal(new URL(page.url()).searchParams.get('agendaId'), agenda.id, 'refresh keeps the selected agenda');
+      await page.goBack();
+      await waitForSuccessfulRefresh(page);
+      assert.equal(new URL(page.url()).searchParams.get('escopo'), 'mensal', 'browser back restores the previous scope');
+      assert.equal(new URL(page.url()).searchParams.get('agendaId'), agenda.id, 'browser back restores the same agenda');
+      await page.goForward();
+      await waitForSuccessfulRefresh(page);
+      assert.equal(new URL(page.url()).searchParams.get('escopo'), 'geral', 'browser forward restores the general scope');
+
+      const general = new URLSearchParams({ pontoVendaId: point.id, escopo: 'geral', dia: '2026-10-01', agendaId: agenda.id });
       await page.goto(`${frontendOrigin}/operacao/ranking?${general}`, { waitUntil: 'domcontentloaded' });
-      await page.getByText('Geral · todo o período').waitFor();
-      const generalApi = await page.evaluate(async (url) => (await fetch(url, { credentials: 'include' })).json(), `/api/ranking/pdv/${point.id}/periodo`);
+      await page.getByText('Agenda · Itatiaia QA editada · Geral · todo o histórico').waitFor();
+      const generalApi = await page.evaluate(async (url) => (await fetch(url, { credentials: 'include' })).json(), `/api/ranking/pdv/${point.id}/periodo?agendaId=${agenda.id}`);
       await waitForSuccessfulRefresh(page);
       assert.equal(Number(await page.locator('.tap-champions-stat-value').nth(0).innerText()), generalApi.entries.length);
+      assert.equal(await page.locator('.tap-champions-stat-value').nth(1).innerText(), volumeLabel(generalApi.entries.reduce((sum, row) => sum + row.totalMl, 0)));
 
-      const agendaParams = new URLSearchParams({ pontoVendaId: point.id, escopo: 'agenda', agendaId: agenda.id, dia: '2026-10-01' });
-      await page.goto(`${frontendOrigin}/operacao/ranking?${agendaParams}`, { waitUntil: 'domcontentloaded' });
-      await page.getByText('Agenda recorrente · Sextas QA editada').waitFor();
-      const agendaApi = await page.evaluate(async (url) => (await fetch(url, { credentials: 'include' })).json(), `/api/ranking/pdv/${point.id}/agendas/${agenda.id}`);
+      await page.getByLabel('Agenda').selectOption(agendaIgarape.id);
+      assert.equal(new URL(page.url()).searchParams.get('agendaId'), agendaIgarape.id, 'changing the agenda updates the URL context');
+      await page.getByText('Agenda · Igarapé QA · Geral · todo o histórico').waitFor();
+      const agendaApi = await page.evaluate(async (url) => (await fetch(url, { credentials: 'include' })).json(), `/api/ranking/pdv/${point.id}/periodo?agendaId=${agendaIgarape.id}`);
       await waitForSuccessfulRefresh(page);
-      assert.equal(Number(await page.locator('.tap-champions-stat-value').nth(0).innerText()), agendaApi.ranking.length);
+      assert.equal(Number(await page.locator('.tap-champions-stat-value').nth(0).innerText()), agendaApi.entries.length);
+      assert.equal(await page.locator('.tap-champions-stat-value').nth(1).innerText(), volumeLabel(agendaApi.entries.reduce((sum, row) => sum + row.totalMl, 0)));
+      const expectedAgendaCards = agendaApi.entries.map((row) => `${row.posicao}º lugar: ${row.nome}`);
+      const agendaCards = await page.locator('.tap-champions-podium-card,.tap-champions-rest-card').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')));
+      const byPosition = (a, b) => Number(a.match(/^\d+/)[0]) - Number(b.match(/^\d+/)[0]);
+      assert.deepEqual([...agendaCards].sort(byPosition), [...expectedAgendaCards].sort(byPosition), 'pódio e lista do acumulado coincidem com a API');
+      assert.ok(await page.getByText('Exclusivo Igarapé QA', { exact: false }).isVisible());
       await page.getByRole('link', { name: 'Abrir modo TV' }).click();
       await page.locator('.qt-tv .tap-champions').waitFor();
-      assert.equal(new URL(page.url()).searchParams.get('escopo'), 'agenda');
-      assert.equal(new URL(page.url()).searchParams.get('agendaId'), agenda.id);
+      assert.equal(new URL(page.url()).searchParams.get('escopo'), 'geral');
+      assert.equal(new URL(page.url()).searchParams.get('agendaId'), agendaIgarape.id);
+      const tvCards = await page.locator('.qt-tv .tap-champions-podium-card,.qt-tv .tap-champions-rest-card').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')));
+      assert.deepEqual([...tvCards].sort(byPosition), agendaApi.entries.map((row) => `${row.posicao}º lugar: ${row.nome}`).sort(byPosition), 'TV usa o mesmo conjunto filtrado da API');
       await page.getByRole('link', { name: 'Sair da tela cheia' }).click();
-      assert.equal(new URL(page.url()).searchParams.get('escopo'), 'agenda');
-      assert.equal(new URL(page.url()).searchParams.get('agendaId'), agenda.id);
+      assert.equal(new URL(page.url()).searchParams.get('escopo'), 'geral');
+      assert.equal(new URL(page.url()).searchParams.get('agendaId'), agendaIgarape.id);
 
       await page.setViewportSize({ width: 1920, height: 1080 });
-      await page.goto(rankingUrl({ dia: '2026-12-05' }), { waitUntil: 'domcontentloaded' });
+      await page.goto(rankingUrl({ dia: '2026-12-05', ocorrenciaId: oneOffRows.get('2026-12-05').id }), { waitUntil: 'domcontentloaded' });
       await page.locator('.ranking-operational').waitFor();
       const originalSearch = new URL(page.url()).search;
       await page.getByRole('link', { name: 'Abrir modo TV' }).click();
@@ -321,16 +435,21 @@ try {
       await prisma.configuracaoPontoVenda.updateMany({ where: { cervejariaId: company.id, pontoVendaId: point.id }, data: { tapsEnabled: true } });
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.getByRole('link', { name: 'Ranking de chope', exact: true }).waitFor();
+      await prisma.sessaoCaixaOperacao.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, diaOperacional: day('2026-10-01'), status: 'ABERTO', trocoInicial: 0, abertoPorId: owner.id, ocorrenciaId: occurrenceRows[1].id } });
+      await page.reload({ waitUntil: 'domcontentloaded' });
       await trophy.click();
       assert.equal(new URL(page.url()).pathname, '/operacao/ranking');
       assert.equal(new URL(page.url()).searchParams.get('pontoVendaId'), point.id, 'ranking link preserves the selected PDV');
+      await page.waitForFunction(() => new URL(location.href).searchParams.has('agendaId'));
+      assert.equal(new URL(page.url()).searchParams.get('ocorrenciaId'), occurrenceRows[1].id, 'turno aberto preselects its linked occurrence');
+      assert.equal(new URL(page.url()).searchParams.get('agendaId'), agenda.id, 'linked occurrence supplies the agenda context');
       await context.close();
 
       const staffContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
       await staffContext.addInitScript((key) => localStorage.setItem(key, '1'), `tap-quiver:onboarding-dismissed:${company.id}:${viewer.id}`);
       await staffContext.addCookies([{ name: AUTH_COOKIE_NAME, value: signUserToken(app, viewer), url: frontendOrigin, httpOnly: true, sameSite: 'Lax' }]);
       const staffPage = await staffContext.newPage();
-      await staffPage.goto(rankingUrl({ dia: '2026-12-05' }), { waitUntil: 'domcontentloaded' });
+      await staffPage.goto(rankingUrl({ dia: '2026-12-05', ocorrenciaId: oneOffRows.get('2026-12-05').id }), { waitUntil: 'domcontentloaded' });
       await staffPage.locator('.tap-champions-podium-card').first().waitFor();
       await waitForSuccessfulRefresh(staffPage);
       assert.equal(await staffPage.locator('.ranking-client-link').count(), 0, 'command.read without clients.manage has no customer-history link');

@@ -50,30 +50,52 @@ export async function rankingRoutes(app: FastifyInstance) {
     cliente: { is: { cervejariaId, isSistema: false } },
     status: { not: 'CANCELADA' },
   });
-  const canonicalPdvSales = (cervejariaId: string, pontoVendaId: string, range?: { gte: Date; lt: Date }): Prisma.ComandaWhereInput => ({
-    pontoVendaId,
-    ...personalClientScope(cervejariaId),
-    OR: [
-      { origem: 'CAIXA', ...(range ? { diaOperacional: { gte: range.gte, lt: range.lt } } : { diaOperacional: { not: null } }) },
-      { origem: 'EVENTO', ocorrenciaId: { not: null }, ocorrencia: { is: { cervejariaId, pontoVendaId, ...(range ? { data: { gte: range.gte, lt: range.lt } } : {}) } } },
-    ],
-  });
+  const canonicalAgendaSales = (
+    cervejariaId: string,
+    pontoVendaId: string,
+    agendaId: string,
+    range?: { gte: Date; lt: Date },
+  ): Prisma.ComandaWhereInput => {
+    const occurrenceScope = {
+      ocorrenciaId: { not: null },
+      ocorrencia: { is: { cervejariaId, pontoVendaId, agendaId, ...(range ? { data: { gte: range.gte, lt: range.lt } } : {}) } },
+    };
+    return {
+      pontoVendaId,
+      ...personalClientScope(cervejariaId),
+      OR: [
+        { origem: 'CAIXA', ...occurrenceScope },
+        { origem: 'EVENTO', ...occurrenceScope },
+      ],
+    };
+  };
 
   app.get('/pdv/:pontoVendaId', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { pontoVendaId } = z.object({ pontoVendaId: z.string().min(1) }).parse(request.params);
-    const query = z.object({ dia: isoDay.optional(), ocorrenciaId: z.string().min(1).optional() }).parse(request.query);
+    const query = z.object({ dia: isoDay.optional(), ocorrenciaId: z.string().min(1).optional(), agendaId: z.string().min(1).optional() }).parse(request.query);
     const pontoVenda = await pdvScope(user.cervejariaId!, pontoVendaId, reply);
     if (!pontoVenda) return reply;
+    if (!query.ocorrenciaId) return reply.status(400).send({ error: 'Selecione uma ocorrência para consultar o ranking diário' });
 
     let day = query.dia ? new Date(`${query.dia}T00:00:00.000Z`) : diaOperacional();
-    let occurrence: { id: string; nome: string; data: Date } | null = null;
+    let occurrence: { id: string; nome: string; data: Date; agendaId: string | null } | null = null;
+    if (query.agendaId) {
+      const agenda = await prisma.agendaOperacional.findFirst({
+        where: { id: query.agendaId, cervejariaId: user.cervejariaId!, pontoVendaId },
+        select: { id: true },
+      });
+      if (!agenda) return reply.status(404).send({ error: 'Agenda não encontrada neste PDV' });
+    }
     if (query.ocorrenciaId) {
       occurrence = await prisma.ocorrenciaOperacional.findFirst({
         where: { id: query.ocorrenciaId, cervejariaId: user.cervejariaId!, pontoVendaId },
-        select: { id: true, nome: true, data: true },
+        select: { id: true, nome: true, data: true, agendaId: true },
       });
       if (!occurrence) return reply.status(404).send({ error: 'Ocorrência não encontrada neste PDV' });
+      if (query.agendaId && occurrence.agendaId !== query.agendaId) {
+        return reply.status(400).send({ error: 'A ocorrência não pertence à agenda selecionada' });
+      }
       day = occurrence.data;
     }
     const nextDay = new Date(day);
@@ -105,27 +127,47 @@ export async function rankingRoutes(app: FastifyInstance) {
   app.get('/pdv/:pontoVendaId/periodo', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { pontoVendaId } = z.object({ pontoVendaId: z.string().min(1) }).parse(request.params);
-    const { mes } = z.object({ mes: z.string().optional() }).parse(request.query);
+    const query = z.object({
+      agendaId: z.string().min(1),
+      ocorrenciaId: z.string().min(1).optional(),
+      mes: z.string().optional(),
+    }).parse(request.query);
     const pontoVenda = await pdvScope(user.cervejariaId!, pontoVendaId, reply);
     if (!pontoVenda) return reply;
+    const agenda = await prisma.agendaOperacional.findFirst({
+      where: { id: query.agendaId, cervejariaId: user.cervejariaId!, pontoVendaId },
+      select: { id: true, nome: true, primeiraData: true, ultimaData: true, archivedAt: true },
+    });
+    if (!agenda) return reply.status(404).send({ error: 'Agenda não encontrada neste PDV' });
+    if (query.ocorrenciaId) {
+      const occurrence = await prisma.ocorrenciaOperacional.findFirst({
+        where: { id: query.ocorrenciaId, cervejariaId: user.cervejariaId!, pontoVendaId },
+        select: { agendaId: true },
+      });
+      if (!occurrence) return reply.status(404).send({ error: 'Ocorrência não encontrada neste PDV' });
+      if (occurrence.agendaId !== agenda.id) return reply.status(400).send({ error: 'A ocorrência não pertence à agenda selecionada' });
+    }
     let range: { gte: Date; lt: Date } | null = null;
     let mesSelecionado: string | null = null;
-    if (mes) {
-      range = mesToDateRange(mes);
+    if (query.mes) {
+      range = mesToDateRange(query.mes);
       if (!range) return reply.status(400).send({ error: 'Parâmetro mes inválido. Use YYYY-MM.' });
-      mesSelecionado = mes;
+      mesSelecionado = query.mes;
     }
     const universo = await prisma.comanda.findMany({
-      where: canonicalPdvSales(user.cervejariaId!, pontoVendaId),
-      select: { diaOperacional: true, ocorrencia: { select: { data: true } } },
+      where: canonicalAgendaSales(user.cervejariaId!, pontoVendaId, agenda.id),
+      include: { cliente: true, itens: { include: { produto: true } }, ocorrencia: { select: { data: true } } },
     });
-    const mesesDisponiveis = mesesDisponiveisFromDates(universo.flatMap((sale) => [sale.diaOperacional, sale.ocorrencia?.data]));
+    const mesesDisponiveis = mesesDisponiveisFromDates(universo
+      .filter((sale) => aggregateChopeRanking([sale]).length > 0)
+      .map((sale) => sale.ocorrencia?.data));
     const comandas = await prisma.comanda.findMany({
-      where: canonicalPdvSales(user.cervejariaId!, pontoVendaId, range ?? undefined),
+      where: canonicalAgendaSales(user.cervejariaId!, pontoVendaId, agenda.id, range ?? undefined),
       include: { cliente: true, itens: { include: { produto: true } } },
     });
     return {
       pontoVenda,
+      agenda,
       escopo: range ? 'mensal' : 'geral',
       mes: mesSelecionado,
       mesesDisponiveis,
