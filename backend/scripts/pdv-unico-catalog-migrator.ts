@@ -299,6 +299,7 @@ type ScopedMigrationOptions = {
   measure?: (stage: string, operation: () => Promise<any>) => Promise<any>;
   afterDestinationWrite?: (item: any, tx: Db) => Promise<void> | void;
   afterBatchCommit?: (progress: { tenantId: string; phase: string; cursor: number; total: number; batch: number; durationMs: number }) => Promise<void> | void;
+  concurrentRetry?: number;
 };
 
 /** Shared transactional runner for catalog and session scopes. */
@@ -445,7 +446,11 @@ export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
             await lock(tx, scope, companyId, pointId);
             const current = await tx.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } });
             if (!runMatchesScope(current, scope, companyId, pointId)) throw new PdvCatalogBlocker('RUN_ID_SCOPE_MISMATCH', null, runId, 'runId already belongs to another tenant, PDV, or scope; state was left untouched.');
-            if (current.status !== 'RUNNING' || current.sourceSnapshotHash !== sourceHash || JSON.stringify(current.checkpoint) !== validatedCheckpoint) throw new PdvCatalogBlocker('RUN_SCOPE_OR_SNAPSHOT_MISMATCH', null, runId, 'Run changed during final source reconciliation.');
+            // A previously BLOCKED run may resume only after this invocation has
+            // revalidated the full source snapshot, maps, receipts and destinations
+            // above. Completing it in this same locked transaction keeps the
+            // recovery atomic without an intermediate RUNNING state.
+            if (!['RUNNING', 'BLOCKED'].includes(current.status) || current.sourceSnapshotHash !== sourceHash || JSON.stringify(current.checkpoint) !== validatedCheckpoint) throw new PdvCatalogBlocker('RUN_SCOPE_OR_SNAPSHOT_MISMATCH', null, runId, 'Run changed during final source reconciliation.');
             return tx.pdvMigrationRun.update({ where: { id: runId }, data: { status: 'COMPLETED', finishedAt: new Date() } });
           }, txOptions);
         });
@@ -454,9 +459,48 @@ export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
     }
   } catch (error) {
     if (error instanceof PdvCatalogBlocker) {
+      // A concurrent caller may have completed and committed this same run while
+      // this invocation was validating an older checkpoint. Rebuild the current
+      // source photograph and validate every map, receipt and destination before
+      // treating that winner as success. A genuine divergence still falls through
+      // to the BLOCKED path below.
+      if (error.code !== 'RUN_ID_SCOPE_MISMATCH' && error.code?.startsWith('RUN_') && (options.concurrentRetry ?? 0) < 3) {
+        try {
+          const dependency = await transactionWithRetry(db, async (tx: Db) => {
+            await lock(tx, scope, companyId, pointId);
+            return canonicalDependency(tx, companyId, pointId);
+          }, txOptions);
+          const context = options.createTransactionContext ? await options.createTransactionContext(db) : undefined;
+          const items = await options.buildItems(db, dependency.sourceKey, context);
+          const sourceHash = snapshotHash(scope, transformVersion, companyId, pointId, items);
+          const completed = await db.pdvMigrationRun.findUnique({ where: { id: runId } });
+          if (completed && runMatchesScope(completed, scope, companyId, pointId) && ['RUNNING', 'BLOCKED', 'COMPLETED'].includes(completed.status) && completed.sourceSnapshotHash === sourceHash) {
+            const confirmExternal = options.confirmExternalDependency
+              ? (tx: Db, sourceType: string, sourceId: string) => options.confirmExternalDependency!(tx, sourceType, sourceId, context)
+              : undefined;
+            await validateCheckpoint(db, completed, scope, transformVersion, companyId, pointId, sourceHash, items, completed.status === 'COMPLETED', confirmExternal, true, true);
+            if (options.validateScope) await options.validateScope(db, items, context);
+            if (completed.status === 'COMPLETED') {
+              const expectedCheckpoint = JSON.stringify(completed.checkpoint);
+              await transactionWithRetry(db, async (tx: Db) => {
+                await lock(tx, scope, companyId, pointId);
+                const current = await tx.pdvMigrationRun.findUniqueOrThrow({ where: { id: runId } });
+                if (!runMatchesScope(current, scope, companyId, pointId) || current.status !== 'COMPLETED' || current.sourceSnapshotHash !== sourceHash || JSON.stringify(current.checkpoint) !== expectedCheckpoint) {
+                  throw new PdvCatalogBlocker('RUN_SCOPE_OR_SNAPSHOT_MISMATCH', null, runId, 'Completed run changed during concurrent recovery validation.');
+                }
+                return current;
+              }, txOptions);
+              return { status: 'COMPLETED', runId, checkpoint: completed.checkpoint, committedBatches, reusedCompletedRun: true };
+            }
+            return runPdvScopedMigration({ ...options, concurrentRetry: (options.concurrentRetry ?? 0) + 1 });
+          }
+        } catch (recoveryError) {
+          if (!(recoveryError instanceof PdvCatalogBlocker)) throw recoveryError;
+        }
+      }
       let invalidated = false;
       let scopeMismatch = false;
-      const existing = await db.$transaction(async (tx: Db) => {
+      const existing = await transactionWithRetry(db, async (tx: Db) => {
         await lock(tx, scope, companyId, pointId);
         const row = await tx.pdvMigrationRun.findUnique({ where: { id: runId } });
         if (!row) return null;
@@ -466,7 +510,7 @@ export async function runPdvScopedMigration(options: ScopedMigrationOptions) {
         await tx.pdvMigrationRun.update({ where: { id: runId }, data });
         invalidated = true;
         return row;
-      }, { isolationLevel: 'RepeatableRead', timeout: 10000, maxWait: 5000 });
+      }, txOptions);
       return { status: 'BLOCKED', runId, code: scopeMismatch ? 'RUN_ID_SCOPE_MISMATCH' : error.code, sourceType: error.sourceType, sourceId: error.sourceId, message: scopeMismatch ? 'runId belongs to another tenant/PDV/scope; evidence was left untouched.' : error.message, committedBatches, invalidatedCompletedRun: invalidated && existing?.status === 'COMPLETED' };
     }
     throw error;

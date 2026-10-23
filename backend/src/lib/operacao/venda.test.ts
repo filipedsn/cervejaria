@@ -1,6 +1,20 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { calcularFinanceiroComanda, itemVaiParaCozinha, particionarItensParaPedidos, resolverItens, resolverPagamentos, resumoComanda, subtotalComandaEmCentavos, validarChopeDoTurno, VendaInvalidaError, type ItemResolvido } from './venda.js';
+import { calcularFinanceiroComanda, diaOperacional, itemVaiParaCozinha, particionarItensParaPedidos, resolverItens, resolverPagamentos, resumoComanda, subtotalComandaEmCentavos, validarChopeDoTurno, VendaInvalidaError, type ItemResolvido } from './venda.js';
+
+describe('diaOperacional', () => {
+  it('uses the backend America/Sao_Paulo day on both sides of the UTC/Brasilia midnight boundary', () => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = 'Pacific/Kiritimati';
+    try {
+      assert.equal(diaOperacional(new Date('2026-10-23T02:59:59.999Z')).toISOString().slice(0, 10), '2026-10-22');
+      assert.equal(diaOperacional(new Date('2026-10-23T03:00:00.000Z')).toISOString().slice(0, 10), '2026-10-23');
+    } finally {
+      if (previousTz === undefined) delete process.env.TZ;
+      else process.env.TZ = previousTz;
+    }
+  });
+});
 
 const linha = (nome: string, exigePreparo: boolean, prepararEmPedidoSeparado = false, quantidade = 1) => ({
   produtoId: nome, tapId: null, volumeMl: 0, nome, precoUnit: 10, quantidade, exigePreparo,

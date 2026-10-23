@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 interface ModalProps {
@@ -29,6 +30,51 @@ export function Modal({
   hideHeader = false,
   noBodyScroll = false,
 }: ModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    const focusableSelector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusFirst = () => {
+      const first = dialog?.querySelector<HTMLElement>(focusableSelector);
+      (first ?? dialog)?.focus();
+    };
+    const frame = window.requestAnimationFrame(focusFirst);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [open]);
+
   if (!open) return null;
 
   return createPortal(
@@ -39,9 +85,11 @@ export function Modal({
         aria-hidden
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal
         aria-labelledby="modal-title"
+        tabIndex={-1}
         className={`relative ${extraWide ? 'bg-gradient-to-br from-surface via-surface to-brand-950/30 border-brand-500/35 sm:rounded-3xl' : 'bg-surface border-line sm:rounded-2xl'} rounded-t-3xl w-full ${compact ? 'max-w-lg' : extraWide ? 'max-w-lg sm:max-w-6xl' : wide ? 'max-w-lg sm:max-w-4xl' : 'max-w-lg sm:max-w-2xl'} max-h-[92dvh] flex flex-col overflow-hidden border sm:mx-4 animate-slide-up shadow-xl`}
       >
         <div className="flex justify-center pt-3 pb-1 sm:hidden shrink-0">

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:http';
@@ -913,10 +913,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const restoreFlagAfterLaunch = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${encodeURIComponent(churrasquinho.id)}`, headers: { cookie: secondOwnerCookie }, payload: { prepararEmPedidoSeparado: true } });
     assert.equal(restoreFlagAfterLaunch.statusCode, 200, `test fixture restores product flag for later sale proofs: ${restoreFlagAfterLaunch.body}`);
 
-    const { diaOperacional } = await import('../src/lib/operacao/venda.ts');
-    const launchDay = diaOperacional();
-    const launchDayText = launchDay.toISOString().slice(0, 10);
-    const concurrentSaleLockDigest = createHash('sha256').update(`caixa-operacao:${secondCompany.id}:${secondPoint.id}:${launchDayText}`).digest();
+    const concurrentSaleLockDigest = createHash('sha256').update(`caixa-operacao:${secondCompany.id}:${secondPoint.id}`).digest();
     const splitSaleCashLockKey = BigInt.asIntN(64, concurrentSaleLockDigest.readBigUInt64BE(0));
     let signalSplitSaleCashLock;
     let releaseSplitSaleCashLock;
@@ -1378,7 +1375,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.equal(agendaCreate.statusCode, 201, `authenticated weekly agenda create: ${agendaCreate.body}`);
     const managedAgenda = JSON.parse(agendaCreate.body);
     const generateUrl = `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}/gerar`;
-    const generatedRange = { inicio: '2026-11-01', fim: '2026-11-30' };
+    const generatedRange = { inicio: '2026-11-07', fim: '2026-11-28' };
     const readOnlyBefore = await counts();
     const attendantScheduleRead = await app.inject({ method: 'GET', url: '/api/operacao/agenda/ocorrencias?inicio=2026-11-01&fim=2026-11-30', headers: { cookie: attendantCookie } });
     assert.equal(attendantScheduleRead.statusCode, 200, 'users who can operate cash can read the operational schedule');
@@ -1387,7 +1384,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.equal(attendeeWrite.statusCode, 403, 'agenda management remains protected by the existing owner authorization');
     await assertNoApiWrites(readOnlyBefore, 'attendant agenda write');
     const resumeRequestId = randomUUID();
-    const resumed = await app.inject({ method: 'POST', url: `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}/retomar`, headers: { cookie: ownerCookie }, payload: { requestId: resumeRequestId } });
+    const resumed = await app.inject({ method: 'POST', url: `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}/retomar`, headers: { cookie: ownerCookie }, payload: { requestId: resumeRequestId, aPartirDe: '2026-11-07' } });
     assert.equal(resumed.statusCode, 200, `explicit authorized recurrence resume: ${resumed.body}`);
     assert.equal(JSON.parse(resumed.body).criadas, 4, 'explicit resume creates dates only within its saved bounds');
     const [generateA, generateB] = await Promise.all([
@@ -1408,8 +1405,35 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.equal(agendaEdit.statusCode, 200, `weekly agenda edit: ${agendaEdit.body}`);
     const afterAgendaEdit = await db.ocorrenciaOperacional.findMany({ where: { agendaId: managedAgenda.id }, orderBy: { data: 'asc' } });
     assert.deepEqual(afterAgendaEdit.map((item) => [item.id, item.data.toISOString().slice(0, 10), item.nome]), generatedIdsBeforeEdit, 'editing recurrence preserves generated occurrence IDs, dates and historical names');
-    const avulsaCreate = await app.inject({ method: 'POST', url: '/api/operacao/agenda/ocorrencias', headers: { cookie: ownerCookie }, payload: { nome: 'Avulsa da agenda canônica', data: '2026-11-09' } });
+    const avulsaCreate = await app.inject({ method: 'POST', url: '/api/operacao/agenda/ocorrencias', headers: { cookie: ownerCookie }, payload: { nome: 'Avulsa da agenda canônica', data: '2026-11-09', horaInicio: '18:00', horaFim: '22:00' } });
     assert.equal(avulsaCreate.statusCode, 201, `authenticated one-off occurrence create: ${avulsaCreate.body}`);
+    const selectorDay = '2029-02-12';
+    const selectorOccurrence = async (id, nome, date, status = 'PROGRAMADA', point = primaryPoint) => db.ocorrenciaOperacional.create({ data: {
+      id: `cash-selector-${id}-${runId}`, cervejariaId: primaryCompany.id, pontoVendaId: point.id,
+      nome, data: new Date(`${date}T00:00:00.000Z`), status, horaInicio: '18:00', horaFim: '20:00',
+    } });
+    const selectorYesterday = await selectorOccurrence('yesterday', 'Selector yesterday', '2029-02-11');
+    const selectorToday = await selectorOccurrence('today', 'Selector today', selectorDay);
+    await selectorOccurrence('today-open', 'Selector today open', selectorDay, 'ABERTA');
+    await selectorOccurrence('today-closed', 'Selector today closed', selectorDay, 'FECHADA');
+    await selectorOccurrence('today-cancelled', 'Selector today cancelled', selectorDay, 'CANCELADA');
+    const selectorTomorrow = await selectorOccurrence('tomorrow', 'Selector tomorrow', '2029-02-13');
+    const selectorOtherCompany = await db.ocorrenciaOperacional.create({ data: {
+      id: `cash-selector-other-company-${runId}`, cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id,
+      nome: 'Selector other company', data: new Date(`${selectorDay}T00:00:00.000Z`), status: 'PROGRAMADA', horaInicio: '18:00', horaFim: '20:00',
+    } });
+    const selectorList = await app.inject({ method: 'GET', url: `/api/operacao/agenda/ocorrencias?inicio=${selectorDay}&fim=${selectorDay}`, headers: { cookie: ownerCookie } });
+    assert.equal(selectorList.statusCode, 200, `selector occurrence list request succeeds: ${selectorList.body}`);
+    const selectorIds = selectorList.json().ocorrencias.map((row) => row.id);
+    assert(selectorIds.includes(selectorToday.id), 'same-day canonical occurrence is returned');
+    assert(!selectorIds.includes(selectorYesterday.id) && !selectorIds.includes(selectorTomorrow.id), 'the selector day query excludes yesterday and tomorrow at the API');
+    assert(!selectorIds.includes(selectorOtherCompany.id), 'the selector day query excludes another company at the API');
+    assert.deepEqual(selectorList.json().ocorrencias.map((row) => row.status).sort(), ['ABERTA', 'CANCELADA', 'FECHADA', 'PROGRAMADA'], 'the single-day agenda response preserves all statuses for the agenda while the selector filters eligible ones');
+    const otherCompanyOpening = await withOwnerAt(selectorDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: {
+      pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: selectorOtherCompany.id,
+    } }));
+    assert.equal(otherCompanyOpening.statusCode, 409, `another company occurrence is rejected by the normal opening API: ${otherCompanyOpening.body}`);
+    assert.match(otherCompanyOpening.body, /CASH_OCCURRENCE_SCOPE_MISMATCH/);
     const beforeForeignAgendaEdit = await db.agendaOperacional.count({ where: { id: managedAgenda.id, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id } });
     const foreignAgendaEdit = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}`, headers: { cookie: secondOwnerCookie }, payload: { nome: 'Tenant cruzado' } });
     assert.equal(foreignAgendaEdit.statusCode, 404, 'another tenant cannot edit the first tenant agenda');
@@ -1524,6 +1548,12 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       const cancelled = await withOwnerAt(crossDay, (cookie) => app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(order.id)}/status`, headers: { cookie }, payload: { status: 'CANCELADO' } }));
       assert.equal(cancelled.statusCode, 200, `context proof kitchen order is terminalized through the real route: ${cancelled.body}`);
     }
+    await db.sessaoCaixaOperacao.update({ where: { id: contextSessionB.id }, data: { status: 'FECHADO', fechadoEm: new Date() } });
+    const closeContextSessionA = await withOwnerAt(crossDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie }, payload: {
+      pontoVendaId: primaryPoint.id, contadoDinheiro: 0, contadoPix: 0, contadoCartaoDebito: 0, contadoCartaoCredito: 0,
+    } }));
+    assert.equal(closeContextSessionA.statusCode, 200, `cross-context fixture session is closed through the cash API after its assertions: ${closeContextSessionA.body}`);
+    assert.equal((await db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: contextSessionA.id } })).status, 'FECHADO', 'cross-context fixture leaves no open cash session for subsequent independent scenarios');
 
     const noOccurrenceSession = await withOwnerAt('2026-11-09', async (cookie) => {
       const response = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id } });
@@ -1590,6 +1620,14 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const commandOrderOverride = await withOwnerAt('2026-11-02', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(recurringCommand1.id)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }], ocorrenciaId: recurringOccurrences[1].id } }));
     assert.equal(commandOrderOverride.statusCode, 400, 'order API rejects a client-supplied occurrence override');
     await assertNoApiWrites(beforeCommandOrderOverride, 'command order occurrence override');
+    const recurringPayment1 = await withOwnerAt('2026-11-02', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(recurringCommand1.id)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: unitPrice }] } }));
+    assert.equal(recurringPayment1.statusCode, 200, `recurring payment 2026-11-02: ${recurringPayment1.body}`);
+    const recurringPersisted1 = await db.comanda.findUniqueOrThrow({ where: { id: recurringCommand1.id }, include: { itens: true, pagamentos: true } });
+    assert.deepEqual([recurringPersisted1.origem, recurringPersisted1.ocorrenciaId, recurringPersisted1.itens.length, recurringPersisted1.pagamentos[0]?.sessaoCaixaId], ['CAIXA', recurringCommand1.ocorrenciaId, 1, recurringSession1.id]);
+    assert.deepEqual([recurringPersisted1.itens[0]?.produtoId, recurringPersisted1.itens[0]?.quantidade, centsExact(recurringPersisted1.itens[0]?.precoUnit), centsExact(recurringPersisted1.pagamentos[0]?.valor)], [product.id, 1, String(primaryCashFlow.itemPriceCents), String(primaryCashFlow.itemPriceCents)], 'first occurrence context preserves catalog and payment snapshots');
+    assert.equal(recurringPersisted1.status, 'FECHADA', 'first recurring command is settled before the next cash session opens');
+    occurrenceProofs.push({ kind: 'recurring-command', sessionId: recurringSession1.id, commandId: recurringPersisted1.id, occurrenceId: recurringPersisted1.ocorrenciaId, paymentSessionId: recurringPersisted1.pagamentos[0]?.sessaoCaixaId });
+    await closeOccurrenceCash('2026-11-02', unitPrice);
 
     const recurringSession2 = await openOccurrenceCash('2026-11-03', recurringOccurrences[1].id);
     const recurringCommand2Response = await withOwnerAt('2026-11-03', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: 'Recurring customer', clienteId: occurrenceClient.id } }));
@@ -1599,19 +1637,14 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.notEqual(recurringCommand1.id, recurringCommand2.id);
     const recurringLaunch2 = await withOwnerAt('2026-11-03', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(recurringCommand2.id)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
     assert.equal(recurringLaunch2.statusCode, 201, `second recurring consumption: ${recurringLaunch2.body}`);
-    for (const [day, session, command] of [['2026-11-03', recurringSession2, recurringCommand2], ['2026-11-02', recurringSession1, recurringCommand1]]) {
-      const payment = await withOwnerAt(day, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(command.id)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: unitPrice }] } }));
-      assert.equal(payment.statusCode, 200, `recurring payment ${day}: ${payment.body}`);
-      const persisted = await db.comanda.findUniqueOrThrow({ where: { id: command.id }, include: { itens: true, pagamentos: true } });
-      assert.deepEqual([persisted.origem, persisted.ocorrenciaId, persisted.itens.length, persisted.pagamentos[0].sessaoCaixaId], ['CAIXA', command.ocorrenciaId, 1, session.id]);
-      assert.deepEqual([persisted.itens[0].produtoId, persisted.itens[0].quantidade, centsExact(persisted.itens[0].precoUnit), centsExact(persisted.pagamentos[0].valor)], [product.id, 1, String(primaryCashFlow.itemPriceCents), String(primaryCashFlow.itemPriceCents)], 'occurrence context does not alter catalog snapshots or amount paid');
-      assert.equal(persisted.status, 'FECHADA', `full payment closes recurring command before cash close ${day}`);
-      occurrenceProofs.push({ kind: 'recurring-command', sessionId: session.id, commandId: persisted.id, occurrenceId: persisted.ocorrenciaId, paymentSessionId: persisted.pagamentos[0].sessaoCaixaId });
-    }
-    // The existing cash close route blocks while any company command remains open,
-    // so settle both occurrence-separated commands before closing either session.
+    const recurringPayment2 = await withOwnerAt('2026-11-03', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(recurringCommand2.id)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: unitPrice }] } }));
+    assert.equal(recurringPayment2.statusCode, 200, `recurring payment 2026-11-03: ${recurringPayment2.body}`);
+    const recurringPersisted2 = await db.comanda.findUniqueOrThrow({ where: { id: recurringCommand2.id }, include: { itens: true, pagamentos: true } });
+    assert.deepEqual([recurringPersisted2.origem, recurringPersisted2.ocorrenciaId, recurringPersisted2.itens.length, recurringPersisted2.pagamentos[0]?.sessaoCaixaId], ['CAIXA', recurringCommand2.ocorrenciaId, 1, recurringSession2.id]);
+    assert.deepEqual([recurringPersisted2.itens[0]?.produtoId, recurringPersisted2.itens[0]?.quantidade, centsExact(recurringPersisted2.itens[0]?.precoUnit), centsExact(recurringPersisted2.pagamentos[0]?.valor)], [product.id, 1, String(primaryCashFlow.itemPriceCents), String(primaryCashFlow.itemPriceCents)], 'second occurrence context preserves catalog and payment snapshots');
+    assert.equal(recurringPersisted2.status, 'FECHADA', 'second recurring command is settled before cash close');
+    occurrenceProofs.push({ kind: 'recurring-command', sessionId: recurringSession2.id, commandId: recurringPersisted2.id, occurrenceId: recurringPersisted2.ocorrenciaId, paymentSessionId: recurringPersisted2.pagamentos[0]?.sessaoCaixaId });
     await closeOccurrenceCash('2026-11-03', unitPrice);
-    await closeOccurrenceCash('2026-11-02', unitPrice);
 
     const protectedHistoryBeforeAgendaEdit = plain({
       commands: await db.comanda.findMany({ where: { id: { in: [recurringCommand1.id, recurringCommand2.id] } }, include: { itens: true, pagamentos: true }, orderBy: { id: 'asc' } }),
@@ -1818,7 +1851,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const closeRaceLaunch = await withOwnerAt(closeRaceDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(closeRaceCommandId)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
     assert.equal(closeRaceLaunch.statusCode, 201);
     const closeRaceItemId = JSON.parse(closeRaceLaunch.body).pedidos[0].itens[0].id;
-    const cashLockDigest = createHash('sha256').update(`caixa-operacao:${primaryCompany.id}:${primaryPoint.id}:${closeRaceDay}`).digest();
+    const cashLockDigest = createHash('sha256').update(`caixa-operacao:${primaryCompany.id}:${primaryPoint.id}`).digest();
     const cashLockKey = BigInt.asIntN(64, cashLockDigest.readBigUInt64BE(0));
     let signalCashLocked;
     let releaseCashLocked;
@@ -1888,7 +1921,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     console.log(`QA_OCCURRENCE_ITEM_INCREASE=PASS; incompatible=${mismatchIncrease.statusCode}/no-write; valid=${correctIncrease.statusCode}/quantity:1->2/totalCents:950->1900/stockDelta:-1; missingSession=${blockedWithoutSession.statusCode}; cashCloseRace=${closeRaceIncrease.statusCode}/waiters:${cashLockWaiters}; tenant=${foreignIncrease.statusCode}; cancellation=reversal-verified; prepared=${preparedIncreaseStatus}; delivered=${deliveredIncreaseStatus}; legacy=${legacyIncrease.statusCode}`);
 
     const concurrentDay = '2026-11-07';
-    const lockDigest = createHash('sha256').update(`caixa-operacao:${primaryCompany.id}:${primaryPoint.id}:${concurrentDay}`).digest();
+    const lockDigest = createHash('sha256').update(`caixa-operacao:${primaryCompany.id}:${primaryPoint.id}`).digest();
     const lockKey = BigInt.asIntN(64, lockDigest.readBigUInt64BE(0));
     let signalLocked;
     let releaseLocked;
@@ -1995,7 +2028,12 @@ async function proveLegacyOrderContextPreflight(args) {
     const previousCanonicalFlag = process.env.PDV_CANONICAL_CONFIG_QA;
     delete process.env.PDV_CANONICAL_CONFIG_QA;
     try {
-      const queried = await noCanonicalDb.comanda.findUnique({ where: { id: oldCommand.id }, include: INCLUDE_COMANDA_OPERACAO });
+      // This pre-canonical fixture intentionally uses a schema from before
+      // ItemComanda.cancelamentosEntregue existed. Keep the assertion focused
+      // on the canonical-config relation while omitting that newer relation.
+      const legacyInclude = structuredClone(INCLUDE_COMANDA_OPERACAO);
+      delete legacyInclude.pedidosOperacao.include.itensComanda.include.cancelamentosEntregue;
+      const queried = await noCanonicalDb.comanda.findUnique({ where: { id: oldCommand.id }, include: legacyInclude });
       assert.equal(queried?.id, oldCommand.id, 'the production-shared comanda include query succeeds without the additive table when activation is off');
     } finally {
       if (previousCanonicalFlag === undefined) delete process.env.PDV_CANONICAL_CONFIG_QA;
@@ -2159,6 +2197,8 @@ async function proveLegacyOrderContextPreflight(args) {
     assert.equal(stillDivergent.code, 'RUN_SCOPE_OR_SNAPSHOT_MISMATCH', 'the still-divergent source is rejected by full snapshot revalidation');
     assert.deepEqual(plain((await legacyDb.pdvMigrationRun.findUniqueOrThrow({ where: { id: eventPreparationRunId } })).checkpoint), eventCheckpointBeforeTamper, 'checkpoint remains at its original confirmed prefix while source is divergent');
     await legacyDb.pedidoOperacao.update({ where: { id: eventOrderWithMovement.id }, data: { observacao: originalTamperFixture.observacao, updatedAt: originalTamperFixture.updatedAt } });
+    const restoredTamperFixture = await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: eventOrderWithMovement.id }, select: { observacao: true, updatedAt: true } });
+    assert.deepEqual(plain(restoredTamperFixture), plain(originalTamperFixture), 'fixture restoration restores the exact source fields and timestamp before revalidation');
     const eventPreparationRecovered = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: eventPreparationRunId });
     assert.equal(eventPreparationRecovered.status, 'COMPLETED', `same BLOCKED run resumes only after original source content is restored and fully revalidated: ${JSON.stringify(eventPreparationRecovered)}`);
     assert.deepEqual(plain(eventPreparationRecovered.checkpoint), eventCheckpointBeforeTamper, 'recovery reuses the existing confirmed checkpoint and receipts without rewriting them');
@@ -2418,7 +2458,7 @@ try {
   const catalog = JSON.parse(await readFile(path.join(repoRoot, manifest.priorManifests.catalog.path), 'utf8'));
   const finance = JSON.parse(await readFile(path.join(repoRoot, manifest.priorManifests.finance.path), 'utf8'));
   const sessionSql = readPinnedBlob(manifest.priorManifests.session.commit, manifest.priorManifests.session.path);
-  const candidates = [
+  const explicitCandidates = [
     [core.migrationName, await readFile(path.join(repoRoot, core.migrationPath))],
     [catalog.delivery.migrationName, await readFile(path.join(repoRoot, catalog.delivery.migrationPath))],
     [manifest.priorManifests.session.name, sessionSql],
@@ -2430,6 +2470,23 @@ try {
     [independentKitchenMigration.name, independentKitchenSql],
     ['20261007220000_individual_operational_permissions', individualPermissionsSql],
   ];
+  const historicalMigrationNames = new Set(history.migrations.map((migration) => migration.name));
+  const explicitMigrationNames = new Set(explicitCandidates.map(([name]) => name));
+  const migrationRoot = path.join(repoRoot, 'backend/prisma/migrations');
+  const postHistoryMigrationNames = (await readdir(migrationRoot, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory() && !historicalMigrationNames.has(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+  const additionalCandidates = [];
+  for (const name of postHistoryMigrationNames) {
+    if (explicitMigrationNames.has(name)) continue;
+    const migrationPath = `backend/prisma/migrations/${name}/migration.sql`;
+    const sql = readPinnedBlob(manifest.delivery.schemaCommit, migrationPath);
+    assert.equal(sha256(await readFile(path.join(repoRoot, migrationPath))), sha256(sql), `pinned ${name} migration matches the candidate schema commit`);
+    additionalCandidates.push([name, sql]);
+  }
+  const candidates = [...explicitCandidates, ...additionalCandidates];
+  assert.deepEqual(candidates.map(([name]) => name).sort(), postHistoryMigrationNames, 'disposable chain includes every migration after the pinned historical baseline exactly once');
   assert.equal(sha256(candidates[0][1]), core.migrationSha256, 'pinned core SQL');
   assert.equal(sha256(candidates[1][1]), catalog.delivery.migrationSha256, 'pinned catalog SQL');
   assert.equal(sha256(candidates[2][1]), manifest.priorManifests.session.sha256, 'pinned session SQL');
@@ -2468,7 +2525,7 @@ try {
   const { PrismaClient } = await import(pathToFileURL(path.join(generatedClientDir, 'index.js')).href);
   db = new PrismaClient({ datasources: { db: { url: databaseUrl } }, errorFormat: 'minimal', omit: { produto: { prepararEmPedidoSeparado: true, categoriaPdvId: process.env.PDV_GAMIFIED_CATEGORY_CATALOG !== '1' } } });
   const applied = await db.$queryRaw`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL ORDER BY migration_name`;
-  assert.equal(applied.length, history.migrations.length + 10, 'full historical + operational core/catalog/session/finance/provenance/commerce/sale-session/Tap-mount/independent-kitchen/individual-permissions chain');
+  assert.equal(applied.length, history.migrations.length + candidates.length, 'full historical and every pinned post-history migration are applied in the disposable database');
   assert(applied.some((row) => row.migration_name === manifest.priorManifests.finance.historicalProvenanceMigration.name), 'Payment.provenienciaHistorica migration is applied before commerce route regressions');
   const constraints = await db.$queryRaw`SELECT conname, confdeltype, convalidated FROM pg_constraint WHERE conname IN ('Comanda_pontoVendaId_ocorrenciaId_fkey','Comanda_pontoVendaId_sessaoCaixaRealizacaoId_fkey','EstoqueSaldoQuiosque_pontoVendaId_cervejariaId_fkey','EstoqueSaldoQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pontoVendaId_cervejariaId_fkey','MovimentoEstoqueQuiosque_produtoId_cervejariaId_fkey','MovimentoEstoqueQuiosque_pedidoId_tenant_point_fkey') ORDER BY conname`;
   assert.equal(constraints.length, 7);
@@ -2865,7 +2922,8 @@ try {
   }
   release();
   assert.equal(observedLockWait, true, 'concurrent caller reached scope advisory lock');
-  assert.deepEqual((await Promise.all([first, second])).map((row) => row.status), ['COMPLETED','COMPLETED']);
+  const concurrentRaceResults = await Promise.all([first, second]);
+  assert.deepEqual(concurrentRaceResults.map((row) => row.status), ['COMPLETED','COMPLETED'], JSON.stringify(concurrentRaceResults));
   assert.equal(await db.pdvMigrationMap.count({ where: { sourceType: 'COMANDA', sourceId: raceCommand.id } }), 1);
   assert.equal(await db.pdvMigrationBatch.count({ where: { runId: raceRunId } }), (await db.pdvMigrationRun.findUniqueOrThrow({ where: { id: raceRunId } })).checkpoint.totalRecords);
   await db.itemComanda.update({ where: { id: reparentedItem.id }, data: { comandaId: raceCommand.id } });

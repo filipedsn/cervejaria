@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../../lib/api';
@@ -8,6 +8,7 @@ import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../../lib/cur
 import {
   FORMAS_PAGAMENTO,
   type CaixaResposta,
+  type CardapioOperacao,
   type ContaPendenteOperacao,
   type ResumoCaixa,
   defaultTurnoCardapioForm,
@@ -26,19 +27,9 @@ import { IconEye, IconEyeOff } from '../NavIcons';
 import { OperacaoTurnoTapsPanel } from './OperacaoTurnoTapsPanel';
 import type { Trailer } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
+import { cashOccurrenceQueryUrl, cashOccurrenceSelectionIsEligible, eligibleCashOccurrences, type CashOccurrenceOption } from '../../lib/cash-occurrences';
 
-type Dialogo = 'nenhum' | 'movimento' | 'correcao' | 'fechar' | 'cardapio' | 'encerrar-admin';
-type OcorrenciaAgenda = {
-  id: string; nome: string; data: string; status: 'PROGRAMADA' | 'ABERTA' | 'FECHADA' | 'CANCELADA';
-  agenda: { nome: string; frequencia: 'SEMANAL'; diaSemana: number } | null;
-};
-
-function dataComDeslocamento(data: string, dias: number) {
-  const date = new Date(`${data}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + dias);
-  return date.toISOString().slice(0, 10);
-}
-
+type Dialogo = 'nenhum' | 'abrir' | 'movimento' | 'correcao' | 'fechar' | 'cardapio' | 'encerrar-admin';
 function dataCalendarioPt(data: string) {
   return new Date(`${data}T00:00:00.000Z`).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 }
@@ -85,7 +76,7 @@ interface Props {
 
 export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAbertas: comandasAbertasProp }: Props) {
   const queryClient = useQueryClient();
-  const { canPermission, isDono } = useAuth();
+  const { canPermission, isDono, cervejaria } = useAuth();
   const { contexto } = useOperacaoContexto();
   const agendaCanonica = contexto.operationalSettingsSource === 'CANONICAL_PDV';
   const usaCardapio = contexto.ativo ? (contexto.usaCardapio ?? false) : false;
@@ -109,13 +100,19 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const [painelSuprimido, setPainelSuprimido] = useState(compacto);
   const [montagemTapsAberta, setMontagemTapsAberta] = useState(false);
   const [trailerId, setTrailerId] = useState('');
-  const [ocorrenciaId, setOcorrenciaId] = useState('');
-  const [confirmarDataDiferente, setConfirmarDataDiferente] = useState(false);
+  const [ocorrenciaEscolha, setOcorrenciaEscolha] = useState<{ contexto: string; id: string; origem: 'sugestao' | 'explicita' | 'invalidada' } | null>(null);
+  const [aberturaPendente, setAberturaPendente] = useState<{
+    contexto: string;
+    ocorrenciaId: string;
+    trocoInicial: number;
+    cardapioPayload: NonNullable<ReturnType<typeof buildTurnoCardapioAbrirPayload>>;
+    cardapioResumo: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!agendaCanonica) {
-      setOcorrenciaId('');
-      setConfirmarDataDiferente(false);
+      setOcorrenciaEscolha(null);
+      setAberturaPendente(null);
     }
   }, [agendaCanonica]);
 
@@ -134,16 +131,53 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     refetchInterval: pollMs,
   });
 
-  const inicioOcorrencias = data?.diaOperacional ? dataComDeslocamento(data.diaOperacional, -90) : '';
-  const fimOcorrencias = data?.diaOperacional ? dataComDeslocamento(data.diaOperacional, 180) : '';
+  const diaOperacional = data?.diaOperacional ?? '';
+  const contextoAgendamento = JSON.stringify([cervejaria?.id ?? '', pontoVendaId, diaOperacional]);
   const ocorrenciasQuery = useQuery({
-    queryKey: ['operacao-agenda-ocorrencias', pontoVendaId, inicioOcorrencias, fimOcorrencias],
-    queryFn: () => api.get<{ ocorrencias: OcorrenciaAgenda[] }>(`/api/operacao/agenda/ocorrencias?inicio=${inicioOcorrencias}&fim=${fimOcorrencias}`),
-    enabled: Boolean(agendaCanonica && pontoVendaId && inicioOcorrencias && fimOcorrencias),
+    queryKey: ['operacao-caixa-ocorrencias', cervejaria?.id, pontoVendaId, diaOperacional],
+    queryFn: () => api.get<{ ocorrencias: CashOccurrenceOption[] }>(cashOccurrenceQueryUrl(diaOperacional)),
+    enabled: Boolean(agendaCanonica && cervejaria?.id && pontoVendaId && diaOperacional),
   });
-  const ocorrenciasElegiveis = (ocorrenciasQuery.data?.ocorrencias ?? []).filter((o) => o.status === 'PROGRAMADA' || o.status === 'ABERTA');
-  const ocorrenciaSelecionada = ocorrenciasElegiveis.find((o) => o.id === ocorrenciaId) ?? null;
-  const outraData = Boolean(ocorrenciaSelecionada && data?.diaOperacional && ocorrenciaSelecionada.data !== data.diaOperacional);
+  const ocorrenciasElegiveis = useMemo(
+    () => eligibleCashOccurrences(ocorrenciasQuery.data?.ocorrencias ?? [], diaOperacional),
+    [ocorrenciasQuery.data?.ocorrencias, diaOperacional],
+  );
+  const escolhaAtual = ocorrenciaEscolha?.contexto === contextoAgendamento ? ocorrenciaEscolha : null;
+  const ocorrenciaId = escolhaAtual?.id ?? '';
+  const ocorrenciaSelecionada = ocorrenciasElegiveis.find((ocorrencia) => ocorrencia.id === ocorrenciaId) ?? null;
+  useEffect(() => {
+    if (!agendaCanonica || !contextoAgendamento || ocorrenciasQuery.isLoading || ocorrenciasQuery.isFetching || ocorrenciasQuery.isError) return;
+    setOcorrenciaEscolha((current) => {
+      if (current?.contexto === contextoAgendamento && current.origem !== 'sugestao') {
+        if (!current.id || cashOccurrenceSelectionIsEligible(ocorrenciasQuery.data?.ocorrencias ?? [], current.id, diaOperacional)) return current;
+        // A choice that became ineligible is cleared explicitly; do not silently
+        // replace it with a different event that happens to be the only option.
+        return { contexto: contextoAgendamento, id: '', origem: 'invalidada' };
+      }
+      if (current?.contexto === contextoAgendamento && current.id && !cashOccurrenceSelectionIsEligible(ocorrenciasQuery.data?.ocorrencias ?? [], current.id, diaOperacional)) {
+        return { contexto: contextoAgendamento, id: '', origem: 'invalidada' };
+      }
+      return ocorrenciasElegiveis.length === 1
+        ? { contexto: contextoAgendamento, id: ocorrenciasElegiveis[0]!.id, origem: 'sugestao' }
+        : current?.contexto === contextoAgendamento ? current : { contexto: contextoAgendamento, id: '', origem: 'sugestao' };
+    });
+  }, [agendaCanonica, contextoAgendamento, ocorrenciasQuery.isLoading, ocorrenciasQuery.isFetching, ocorrenciasQuery.isError, ocorrenciasQuery.data?.ocorrencias, diaOperacional, ocorrenciasElegiveis]);
+  useEffect(() => {
+    if (!aberturaPendente) return;
+    if (aberturaPendente.contexto !== contextoAgendamento) {
+      setAberturaPendente(null);
+      setDialogo('nenhum');
+      return;
+    }
+    if (!ocorrenciasQuery.isLoading && !ocorrenciasQuery.isFetching && !ocorrenciasQuery.isError
+      && aberturaPendente.ocorrenciaId
+      && !cashOccurrenceSelectionIsEligible(ocorrenciasQuery.data?.ocorrencias ?? [], aberturaPendente.ocorrenciaId, diaOperacional)) {
+      setOcorrenciaEscolha({ contexto: contextoAgendamento, id: '', origem: 'invalidada' });
+      setAberturaPendente(null);
+      setDialogo('nenhum');
+      setErro('O agendamento selecionado mudou ou deixou de estar elegível. Confira a lista e tente novamente.');
+    }
+  }, [aberturaPendente, contextoAgendamento, ocorrenciasQuery.isLoading, ocorrenciasQuery.isFetching, ocorrenciasQuery.isError, ocorrenciasQuery.data?.ocorrencias, diaOperacional]);
 
   const contasPendentesQuery = useQuery({
     queryKey: ['operacao-contas-pendentes'],
@@ -167,6 +201,13 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const comandasAbertas = comandasAbertasProp === undefined ? data?.comandasAbertas ?? 0 : comandasAbertasProp;
   const bloqueioFechamento = comandasAbertas === null || comandasAbertas > 0;
   const cardapioAbrirPayload = buildTurnoCardapioAbrirPayload(cardapioForm);
+  const cardapiosAberturaQuery = useQuery({
+    queryKey: ['operacao-cardapios', 'ativo'],
+    queryFn: () => api.get<CardapioOperacao[]>('/api/operacao/cardapios?ativo=true'),
+  });
+  const cardapioResumo = cardapioForm.cardapioModo === 'salvo'
+    ? cardapiosAberturaQuery.data?.find((cardapio) => cardapio.id === cardapioForm.cardapioId)?.nome ?? 'Cardápio salvo'
+    : cardapioForm.cardapioModo === 'montar' ? `Cardápio montado · ${cardapioForm.produtoIds.length} produto(s)` : 'Não selecionado';
   const diferencaFechamento = exibeValoresCaixa && sessao ?
     parseCurrencyInput(contado.dinheiro ?? '') - sessao.gaveta.esperadoDinheiro
     + parseCurrencyInput(contado.pix ?? '') - sessao.esperado.pix
@@ -180,26 +221,26 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
 
   const abrir = useMutation({
     mutationFn: () => {
-      const cardapioPayload = buildTurnoCardapioAbrirPayload(cardapioForm);
-      if (!cardapioPayload) throw new Error('Escolha um cardápio antes de abrir o caixa');
+      if (!aberturaPendente || aberturaPendente.contexto !== contextoAgendamento) throw new Error('O contexto do caixa mudou. Confira os dados e abra novamente.');
+      if (!aberturaConfirmacaoValida) throw new Error('A confirmação do agendamento precisa ser atualizada antes de abrir o caixa.');
       return api.post<ResumoCaixa>('/api/operacao/caixa/abrir', {
         pontoVendaId,
         trailerId: trailerDoTurno || undefined,
-        ...(agendaCanonica && ocorrenciaId ? { ocorrenciaId } : {}),
-        ...(agendaCanonica && outraData ? { confirmarDataDiferente } : {}),
-        trocoInicial: parseCurrencyInput(trocoInicial),
-        ...cardapioPayload,
+        ...(agendaCanonica && aberturaPendente.ocorrenciaId ? { ocorrenciaId: aberturaPendente.ocorrenciaId } : {}),
+        trocoInicial: aberturaPendente.trocoInicial,
+        ...aberturaPendente.cardapioPayload,
       });
     },
     onSuccess: () => {
+      setDialogo('nenhum');
+      setAberturaPendente(null);
       invalidar();
       invalidateOnboardingReadiness(queryClient);
       queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
       queryClient.invalidateQueries({ queryKey: ['operacao-produtos-operacionais', pontoVendaId] });
       queryClient.invalidateQueries({ queryKey: ['operacao-turno-cardapio', pontoVendaId] });
       setCardapioForm(defaultTurnoCardapioForm());
-      setOcorrenciaId('');
-      setConfirmarDataDiferente(false);
+      setOcorrenciaEscolha(null);
       setErro('');
     },
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível abrir o caixa'),
@@ -293,6 +334,28 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     setDialogo('fechar');
   };
 
+  const consultaAgendamentoPronta = !agendaCanonica || Boolean(diaOperacional && !ocorrenciasQuery.isLoading && !ocorrenciasQuery.isFetching && !ocorrenciasQuery.isError);
+  const selecaoAgendamentoValida = !agendaCanonica || !ocorrenciaId || cashOccurrenceSelectionIsEligible(ocorrenciasQuery.data?.ocorrencias ?? [], ocorrenciaId, diaOperacional);
+  const aberturaConfirmacaoValida = Boolean(aberturaPendente
+    && aberturaPendente.contexto === contextoAgendamento
+    && aberturaPendente.ocorrenciaId === (agendaCanonica ? ocorrenciaId : '')
+    && consultaAgendamentoPronta
+    && selecaoAgendamentoValida
+    && (!aberturaPendente.ocorrenciaId || cashOccurrenceSelectionIsEligible(ocorrenciasQuery.data?.ocorrencias ?? [], aberturaPendente.ocorrenciaId, diaOperacional)));
+  const podeAbrir = Boolean(cardapioAbrirPayload && !abrir.isPending && !precisaSelecionarTrailer && consultaAgendamentoPronta && selecaoAgendamentoValida);
+  const abrirDialogoConfirmacao = () => {
+    if (!podeAbrir || !cardapioAbrirPayload) return;
+    setErro('');
+    setAberturaPendente({
+      contexto: contextoAgendamento,
+      ocorrenciaId: agendaCanonica ? ocorrenciaId : '',
+      trocoInicial: parseCurrencyInput(trocoInicial),
+      cardapioPayload: cardapioAbrirPayload,
+      cardapioResumo,
+    });
+    setDialogo('abrir');
+  };
+
   if (!pontoVendaId) return null;
 
   const seletorTrailer = !agendaCanonica && contexto.tapsEnabled && trailers.length > 0 ? (
@@ -309,40 +372,36 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
 
   const seletorOcorrencia = agendaCanonica ? (
     <div className="space-y-2 rounded-xl border border-line bg-surface-lighter/40 p-3">
-      <label className="label" htmlFor="operacao-ocorrencia">Ocorrência do caixa (opcional)</label>
-      <p className="text-sm text-ink-muted">Escolha antes de abrir: a ocorrência fica vinculada a este novo turno. Um caixa já aberto mantém o vínculo atual.</p>
-      {ocorrenciasQuery.isLoading ? (
-        <p role="status" className="text-sm text-ink-faint">Carregando agendamentos deste PDV…</p>
+      <label className="label" htmlFor="operacao-ocorrencia">Agendamento de hoje</label>
+      <p className="text-sm text-ink-muted">O agendamento confirmado ficará vinculado a este novo turno e às comandas abertas nele.</p>
+      {!diaOperacional ? (
+        <p role="status" className="text-sm text-ink-faint">Consultando o dia operacional do caixa…</p>
+      ) : ocorrenciasQuery.isLoading ? (
+        <p role="status" className="text-sm text-ink-faint">Carregando agendamentos de hoje…</p>
       ) : ocorrenciasQuery.isError ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-sm text-danger">
-          <span>Não foi possível carregar os agendamentos. O caixa pode ser aberto sem vínculo ou você pode tentar novamente.</span>
+          <span>Não foi possível carregar os agendamentos. Resolva a consulta antes de abrir o caixa.</span>
           <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => void ocorrenciasQuery.refetch()}>Tentar novamente</button>
         </div>
       ) : (
         <>
           <select id="operacao-ocorrencia" className="input" value={ocorrenciaId}
-            onChange={(event) => { setOcorrenciaId(event.target.value); setConfirmarDataDiferente(false); }}>
-            <option value="">Sem ocorrência</option>
+            disabled={ocorrenciasQuery.isFetching}
+      onChange={(event) => setOcorrenciaEscolha({ contexto: contextoAgendamento, id: event.target.value, origem: 'explicita' })}>
+            <option value="">Abrir sem agendamento</option>
             {ocorrenciasElegiveis.map((ocorrencia) => (
               <option key={ocorrencia.id} value={ocorrencia.id}>
-                {ocorrencia.nome} · {dataCalendarioPt(ocorrencia.data)}{ocorrencia.agenda ? ` · recorrência semanal (${diaSemanaPt(ocorrencia.agenda.diaSemana)})` : ' · avulsa'}
+                {ocorrencia.nome} · {dataCalendarioPt(ocorrencia.data)} · {ocorrencia.horaInicio ?? 'horário a confirmar'}{ocorrencia.horaFim ? `–${ocorrencia.horaFim}` : ''}
               </option>
             ))}
           </select>
-          {ocorrenciasElegiveis.length === 0 && <p className="text-sm text-ink-faint">Nenhum agendamento programado ou aberto para este PDV no período consultado.</p>}
+          {ocorrenciasElegiveis.length === 0 && <p className="text-sm text-ink-faint">Nenhum agendamento para hoje</p>}
+          {ocorrenciasElegiveis.length > 1 && !ocorrenciaId && <p className="text-sm text-ink-muted">Escolha um agendamento ou selecione “Abrir sem agendamento”.</p>}
+          {ocorrenciaSelecionada && escolhaAtual?.origem === 'sugestao' && <p role="status" className="rounded-lg border border-brand-400/30 bg-brand-400/10 p-3 text-sm text-ink">Sugestão: {ocorrenciaSelecionada.nome}, {dataCalendarioPt(ocorrenciaSelecionada.data)} · {ocorrenciaSelecionada.horaInicio ?? 'horário a confirmar'}{ocorrenciaSelecionada.horaFim ? `–${ocorrenciaSelecionada.horaFim}` : ''}. Confirme no próximo passo para abrir.</p>}
+          {ocorrenciaId && ocorrenciaSelecionada && escolhaAtual?.origem === 'explicita' && <p className="text-sm text-ink-muted">Selecionado: {ocorrenciaSelecionada.nome} · {dataCalendarioPt(ocorrenciaSelecionada.data)} · {ocorrenciaSelecionada.horaInicio ?? 'horário a confirmar'}{ocorrenciaSelecionada.horaFim ? `–${ocorrenciaSelecionada.horaFim}` : ''}</p>}
+          {!ocorrenciaId && escolhaAtual?.origem === 'explicita' && ocorrenciasElegiveis.length > 0 && <p role="status" className="rounded-lg border border-line bg-surface p-3 text-sm text-ink-muted">Você escolheu abrir sem agendamento.</p>}
+          {!ocorrenciaId && escolhaAtual?.origem === 'invalidada' && <p role="status" className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">O agendamento escolhido deixou de estar disponível. Escolha outro ou abra sem agendamento.</p>}
         </>
-      )}
-      {!ocorrenciasQuery.isLoading && !ocorrenciasQuery.isError && !ocorrenciaId && (
-        <p role="status" className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
-          Sem ocorrência selecionada, este novo caixa ficará sem vínculo. A tela não permite associar uma ocorrência depois que o caixa abre; não feche nem reabra um caixa para corrigir isso.
-        </p>
-      )}
-      {outraData && ocorrenciaSelecionada && data?.diaOperacional && (
-        <label className="flex cursor-pointer items-start gap-2 text-sm text-amber-200">
-          <input type="checkbox" className="mt-1" checked={confirmarDataDiferente}
-            onChange={(event) => setConfirmarDataDiferente(event.target.checked)} />
-          <span>Confirmo que estou associando “{ocorrenciaSelecionada.nome}”, de {dataCalendarioPt(ocorrenciaSelecionada.data)}, a um caixa do dia {dataCalendarioPt(data.diaOperacional)}.</span>
-        </label>
       )}
     </div>
   ) : null;
@@ -380,7 +439,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           {seletorTrailer}
 
           {canPermission('debt.receive') && <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} flex min-h-12 w-full items-center justify-center text-center`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>}
-          {canPermission('cash.open') && <button type="button" className="touch-btn-primary flex min-h-14 w-full items-center justify-center gap-3 text-base font-bold sm:min-h-16 sm:text-lg" disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload || (outraData && !confirmarDataDiferente)} data-audit="operacao-caixa-abrir" data-onboarding-target="operacao-open-cash" onClick={() => abrir.mutate()}><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8"/></svg>{abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}</button>}
+          {canPermission('cash.open') && <button type="button" className="touch-btn-primary flex min-h-14 w-full items-center justify-center gap-3 text-base font-bold sm:min-h-16 sm:text-lg" disabled={!podeAbrir} data-audit="operacao-caixa-abrir" data-onboarding-target="operacao-open-cash" onClick={abrirDialogoConfirmacao}><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8"/></svg>Abrir caixa</button>}
         </div>
       )}
 
@@ -410,12 +469,12 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           {canPermission('cash.open') && <button
             type="button"
             className="touch-btn-primary w-full"
-            disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload || (outraData && !confirmarDataDiferente)}
+            disabled={!podeAbrir}
             data-audit="operacao-caixa-abrir"
             data-onboarding-target="operacao-open-cash"
-            onClick={() => abrir.mutate()}
+            onClick={abrirDialogoConfirmacao}
           >
-            {abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}
+            Abrir caixa
           </button>}
         </div>
       )}
@@ -692,6 +751,58 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           )}
         </div>
       )}
+
+      <Modal
+        open={dialogo === 'abrir' && Boolean(aberturaPendente)}
+        onClose={() => {
+          if (abrir.isPending) return;
+          setAberturaPendente(null);
+          setDialogo('nenhum');
+        }}
+        closeOnBackdrop={!abrir.isPending}
+        title="Confirmar abertura do caixa"
+      >
+        <div className="space-y-4 py-2" data-testid="confirmar-abertura-caixa">
+          {erro && <div role="alert" className="alert-error">{erro}</div>}
+          <dl className="divide-y divide-line rounded-xl border border-line bg-surface-lighter/40 px-4">
+            <div className="grid gap-1 py-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-4">
+              <dt className="text-sm text-ink-muted">Agendamento</dt>
+              <dd className="font-semibold text-ink">
+                {aberturaPendente?.ocorrenciaId
+                  ? (() => {
+                      const item = ocorrenciasElegiveis.find((ocorrencia) => ocorrencia.id === aberturaPendente.ocorrenciaId);
+                      return item ? `${item.nome} · ${dataCalendarioPt(item.data)} · ${item.horaInicio ?? 'horário a confirmar'}${item.horaFim ? `–${item.horaFim}` : ''}` : 'Agendamento indisponível';
+                    })()
+                  : 'Sem agendamento'}
+              </dd>
+            </div>
+            <div className="grid gap-1 py-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-4">
+              <dt className="text-sm text-ink-muted">Troco inicial</dt>
+              <dd className="font-semibold text-ink">{formatCurrency(aberturaPendente?.trocoInicial ?? 0)}</dd>
+            </div>
+            <div className="grid gap-1 py-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-4">
+              <dt className="text-sm text-ink-muted">Cardápio</dt>
+              <dd className="font-semibold text-ink">{aberturaPendente?.cardapioResumo}</dd>
+            </div>
+          </dl>
+          {agendaCanonica && !aberturaPendente?.ocorrenciaId && ocorrenciasElegiveis.length > 0 && (
+            <p className="rounded-lg border border-line bg-surface-lighter/50 p-3 text-sm text-ink-muted">Você escolheu abrir sem agendamento.</p>
+          )}
+          <p className="text-sm leading-relaxed text-ink-muted">As novas comandas deste turno ficarão vinculadas ao agendamento confirmado.</p>
+          {agendaCanonica && (ocorrenciasQuery.isError || ocorrenciasQuery.isFetching) && (
+            <div role={ocorrenciasQuery.isError ? 'alert' : 'status'} className="flex flex-wrap items-center justify-between gap-2 text-sm text-danger">
+              <span>{ocorrenciasQuery.isError ? 'A consulta de agendamentos falhou. Confirme novamente após recuperar a lista.' : 'Atualizando agendamentos…'}</span>
+              {ocorrenciasQuery.isError && <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => void ocorrenciasQuery.refetch()}>Tentar novamente</button>}
+            </div>
+          )}
+          <div className="grid gap-2 pt-2 sm:grid-cols-2">
+            <button type="button" className="touch-btn-secondary min-h-12 w-full" disabled={abrir.isPending} onClick={() => { setAberturaPendente(null); setDialogo('nenhum'); }}>Voltar</button>
+            <button type="button" className="touch-btn-primary min-h-12 w-full" disabled={abrir.isPending || !aberturaConfirmacaoValida} data-audit="operacao-caixa-abrir-confirmar" onClick={() => abrir.mutate()}>
+              {abrir.isPending ? 'Abrindo caixa…' : 'Confirmar e abrir caixa'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {usaCardapio && (
         <Modal

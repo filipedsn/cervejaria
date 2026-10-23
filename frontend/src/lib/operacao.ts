@@ -124,6 +124,7 @@ export function normalizeCategoriaProduto(value: string | null | undefined): str
   if (exact) return exact;
 
   const lower = trimmed.toLowerCase();
+  if (lower === 'outro') return 'Outros';
   if (lower.includes('cervej')) return 'Cervejas';
   if (lower.includes('drink') || lower.includes('coquetel')) return 'Drinks';
   if (lower.includes('porç') || lower.includes('porc')) return 'Porções';

@@ -1,9 +1,9 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "888a4a8e8f4f347ded6138da218f4b3f01f5f9ea",
+    "commit": "36970b505544ed58db8b26cd66345c86a1dd3df0",
     "schemaPath": "backend/prisma/schema.prisma",
-    "schemaSha256": "fdfecaca2e8d42d1e745b3bea634f2e2e90690f47b57ceb5742dfefcc8b22e57"
+    "schemaSha256": "9094c712a765ad83f432508a11a8928ba0728ef5ba017c808c35642e93dd98e6"
   },
   "immutableManifests": [
     {
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "888a4a8e8f4f347ded6138da218f4b3f01f5f9ea",
+      "commit": "36970b505544ed58db8b26cd66345c86a1dd3df0",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -63,8 +63,8 @@
     }
   },
   "delivery": {
-    "schemaCommit": "888a4a8e8f4f347ded6138da218f4b3f01f5f9ea",
-    "schemaSha256": "fdfecaca2e8d42d1e745b3bea634f2e2e90690f47b57ceb5742dfefcc8b22e57",
+    "schemaCommit": "36970b505544ed58db8b26cd66345c86a1dd3df0",
+    "schemaSha256": "9094c712a765ad83f432508a11a8928ba0728ef5ba017c808c35642e93dd98e6",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
     "migrationSha256": "3aaf567f8dddfd94250c5efee4bd37af4a8074243de000fb6ef2f8f9890cc3ab",
@@ -98,7 +98,7 @@
   "codeCandidates": [
     {
       "path": "backend/package.json",
-      "sha256": "0ca04db2b9733fb3d7a37401aaffd4590310e290135de22bed429901198ae374"
+      "sha256": "1351dd305e1c7c844512e4b74d1b47e10660b4777df19f9c369596eaf137c186"
     },
     {
       "path": "backend/prisma/migrations/20261005180000_payment_historical_provenance/migration.sql",
@@ -134,7 +134,7 @@
     },
     {
       "path": "backend/scripts/pdv-individual-permissions.isolated.test.mjs",
-      "sha256": "df388cd3f35745b507b244738082a804d88a1283780e56551568c43fea1f7710"
+      "sha256": "b43b5b21527708ec7ed986cf128b53736b541facb476e51c4e500046086cf3a5"
     },
     {
       "path": "backend/scripts/pdv-unico-business-migrator.ts",
@@ -142,7 +142,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-catalog-migrator.ts",
-      "sha256": "405988ba4622b726d9d4a0891b451b2a56719cd0e61d854d60fc87807621b3a1"
+      "sha256": "38f4227bed8e5dfea71cbabfd4911053681fe2ba15c5dd934d5e9e5964304b74"
     },
     {
       "path": "backend/scripts/pdv-unico-catalog-transform.test.ts",
@@ -154,7 +154,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs",
-      "sha256": "3bd0e35fc96e79bc7d8f8e227feae21c325b8dfede9830953e06a68e7ffbf0c9"
+      "sha256": "211a0ee50a0a3b0a8055ecf177075775990e704a130c928d703468ccef96c8b2"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
@@ -170,7 +170,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-transform.ts",
-      "sha256": "5d88862ec44f623928dcf5a07153cffecbe9bb09b4fb6594a81c1907143b15b5"
+      "sha256": "bc2c6e921a45b0f744c289224ef5635da8b45b80d646bc4ad78fc3c5789b409e"
     },
     {
       "path": "backend/scripts/pdv-unico-core-schema.isolated.test.mjs",
@@ -206,7 +206,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-finance-transform.ts",
-      "sha256": "bc359db60b34584d24fd8b4a77dd44ef53d55b004f90dfed2a4fa126bb5d6cb4"
+      "sha256": "3dc12ca5185f011355c1631f763c1fe363a9dc85a7c4ddb9e0410f4f0168d2ac"
     },
     {
       "path": "backend/scripts/pdv-unico-historical-no-session-approval.json",
@@ -234,7 +234,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-qa-migration-manifest.mjs",
-      "sha256": "00e3e4d418b8fd8a20b95f9c9a5d33596828b42bab3398fa74dbc34cb760ad9f"
+      "sha256": "b0ec429c90446185999ce92a3ebb9dce884a1de7421136c58813417da59ff8e6"
     },
     {
       "path": "backend/scripts/pdv-unico-ranking-snapshot.qa.mjs",
@@ -246,7 +246,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-representative-qa.isolated.test.mjs",
-      "sha256": "74db99c201adbfa98d5f9e6ee2f12b478c1a17365dd83fc510ee9324b136f20e"
+      "sha256": "45f4bf48cdefee0306807fef4871162fd901f674eadb4afd992b68c633157b67"
     },
     {
       "path": "backend/scripts/pdv-unico-restore-source-photo.qa.mjs",
@@ -298,7 +298,7 @@
     },
     {
       "path": "backend/scripts/run-pdv-unico-git-snapshot-qa.mjs",
-      "sha256": "4bce55c62ae8ebe880ec1ce0f4d5670f2ac6d0399fea37c1c7cedcfba23e9426"
+      "sha256": "95092c8240767874deba85e0a73372a876a4c74fcd6485013be790bc75ddec70"
     },
     {
       "path": "backend/scripts/run-pdv-unico-historical-disposable-qa.mjs",
@@ -314,7 +314,7 @@
     },
     {
       "path": "backend/src/app.ts",
-      "sha256": "4a01612a70e986e7af1ba023bfa115a7bc51fd0677bcc67df95f3956deee43e0"
+      "sha256": "6eec49242dda2da92468bad63efc3c9e4779117be64b8dc91bc31b5b56fe6e1e"
     },
     {
       "path": "backend/src/lib/canonical-pdv-operational-config.test.ts",
@@ -326,27 +326,27 @@
     },
     {
       "path": "backend/src/lib/catalogo-utils.ts",
-      "sha256": "cff79693b0bf2bf39a04a2cf49d6eb125a146c194efe8b4367d24ae5c9a4590f"
+      "sha256": "9c353c2f5e1ce9e5ec694d5702056a64949de52e3c860be2f254897feb7cea22"
     },
     {
       "path": "backend/src/lib/comanda-service.ts",
-      "sha256": "5624b8975e4fdab534e62e970ab74a6ca6b1904bcb55af49dd048f06cf0cdbd4"
+      "sha256": "7c07984737696072cbb1178ef35df1f18b89c304117e954bde889d9dbda8ab41"
     },
     {
       "path": "backend/src/lib/fechar-comanda.ts",
-      "sha256": "93d043bb7d028b2a4a8e8aa754e32a90572f21fbad9999643829f626f38a77f6"
+      "sha256": "b46c38608ad186ae36c0b480ef39c95089e19c8c14824c1d0b460bdd27113836"
     },
     {
       "path": "backend/src/lib/onboarding/readiness.ts",
-      "sha256": "2dd9dfd25d571b584c4b1053319c3abf89302f82b3116b6c57c7c9a48f103b8a"
+      "sha256": "f40f8900803abafe4b93c2a8cfcc14d7f166008a195feb19cc069813ed162402"
     },
     {
       "path": "backend/src/lib/operacao/caixa-lock.ts",
-      "sha256": "f5346b52b569cb679a449a74f3e405580fc7fad002dc18518a56af69d23c2b55"
+      "sha256": "78223fdd0ebb2f92c2ebfddb1fb923a4432a1b2ba7abbb129be78fb6e3a391c0"
     },
     {
       "path": "backend/src/lib/operacao/caixa.ts",
-      "sha256": "c43d44865386b8cc828f0f20573a00df51f0b1f4e3e21ce08b0cff6446d3f955"
+      "sha256": "9f4fe13917da3eb5e1f36308d4bc9355f00002f46553f23d44e8443005925867"
     },
     {
       "path": "backend/src/lib/operacao/capacidades.test.ts",
@@ -358,11 +358,11 @@
     },
     {
       "path": "backend/src/lib/operacao/comanda-adapter.ts",
-      "sha256": "0457524ff6b3189517243c7d0ce62add390d1f227667beee0b97aadc5599362f"
+      "sha256": "be6a1ec07255f42203df5ceebd9093447bc31c2a2df05361bfa21489d7e2f26e"
     },
     {
       "path": "backend/src/lib/operacao/comanda-itens.ts",
-      "sha256": "3697f14e90bccead2be0709ff3763992e289870604f2df9c06dfbb453968e110"
+      "sha256": "b114f3b5c050f610ee35ac67e54646ab1a6a80e751a2e5ba4a55a8c2988fcc5c"
     },
     {
       "path": "backend/src/lib/operacao/contexto-ocorrencia.test.ts",
@@ -374,11 +374,11 @@
     },
     {
       "path": "backend/src/lib/operacao/dashboard.ts",
-      "sha256": "e42eb45256aa71aced76b881231b1fbb7f7c76624f16c90ffb95fd7d6489361f"
+      "sha256": "8e3848aaa48b383e9af6478abd520de23de8a2b6a7954413a6a62c48f22d5e72"
     },
     {
       "path": "backend/src/lib/operacao/modulo.ts",
-      "sha256": "fa5c58651cca58e5a459ba9cdf7884ef9fef1341ed92111c87dde15e52473ba9"
+      "sha256": "535dc5e75e951b157944f2e81a744a146996eee9a425c45cef6a5a979881aca7"
     },
     {
       "path": "backend/src/lib/operacao/payment-session-filter.test.ts",
@@ -386,23 +386,23 @@
     },
     {
       "path": "backend/src/lib/operacao/payment-session-filter.ts",
-      "sha256": "6c512e5cc8e95146151a3397972418724dd3df9f495da3045d916e3f9dddd2aa"
+      "sha256": "76a4dbe35883310a8e43641c3902f864c4f8fed0fdcda560c86fa998da94b71b"
     },
     {
       "path": "backend/src/lib/operacao/venda.test.ts",
-      "sha256": "f27ce972b5344188fecbaec8bdca559bbfb6a6ed66f08dddfe2bb5d3f0116abc"
+      "sha256": "ef1fce95a7de5bd80f78fee19081612096403cfa3952721d89d7a70eaaaf72a4"
     },
     {
       "path": "backend/src/lib/operacao/venda.ts",
-      "sha256": "19e907e2fd4db52216bb0a4b26607ef51b59385e4f0db6bb0a07145ead054356"
+      "sha256": "471a11cc93fc5edee81fa9c8926c00e0a6cd3fe2d5556a7b2cde70f683b4f3ac"
     },
     {
       "path": "backend/src/lib/operational-config.test.ts",
-      "sha256": "951c0deb47a97340e4b6298ba131dd236616e1789da5408548e5240d9242f430"
+      "sha256": "072b7d8f2660f018377cfc1c38d102ff7419ae839946fe061caa188b851dcda2"
     },
     {
       "path": "backend/src/lib/operational-config.ts",
-      "sha256": "c61a59d50854aece18cc57bff65f98bbb4223196cc2ac8f6600585f62392713f"
+      "sha256": "1fde2c8f01f3bcb8687e6a05dffa7c29f3fa095906dfce073de392f4a6ce79f1"
     },
     {
       "path": "backend/src/lib/operational-profile.test.ts",
@@ -430,51 +430,51 @@
     },
     {
       "path": "backend/src/lib/tap-montagem.ts",
-      "sha256": "f9279fab8ef59a8269aa2fe24ac3be4ed3f42abf90e4ba597e0daf538c229a96"
+      "sha256": "e2085a8d5598c3a90dabf326a7b3968614397009feccdfbd01f0bbf80e98a65b"
     },
     {
       "path": "backend/src/routes/admin.ts",
-      "sha256": "f9bfcae5c77352a4d9e8d9f360627d6bf1981671cb9de51fac67bab482828ad1"
+      "sha256": "448cd6d4b0739c36a81a812b7d4b98c588fa277b8e7cea2cf56f42f662da54b6"
     },
     {
       "path": "backend/src/routes/cervejaria.ts",
-      "sha256": "9897148cd6cbfd8e89bf382a3afe1e4454a2bc11afddd0bf70d377204bff46c9"
+      "sha256": "f5a9916cf8f35da6fb41ea7b51f879460b0d2954184ec97435cf19106937e45b"
     },
     {
       "path": "backend/src/routes/operacao/agenda-operacional.ts",
-      "sha256": "ab342ffa54cb5c7aff4e284fabfc7ebed801320c6edc0498894ccdab75d914a1"
+      "sha256": "6d0ac13e0c3fefcbe58d74de235eb59e0b8c46c4680b854cf659aa30a9f3e071"
     },
     {
       "path": "backend/src/routes/operacao/caixa.ts",
-      "sha256": "88d02bdb26a76dfb47bb9dbfd896ee9a836491c2bf0251276f65675af0fde451"
+      "sha256": "0083af612bd31bb9d3cb24d872d5538a69d69a7970ba20e067e85ac6e757c598"
     },
     {
       "path": "backend/src/routes/operacao/comandas.ts",
-      "sha256": "c1ba36037298089ca1d58f12ea12ac349cd6c30b6461bb06e9ee5e2e1a511e7d"
+      "sha256": "13a99da5ea6fe067f9fc1ab7e4c59e35f9f20f743830e81a0e06401796ec935d"
     },
     {
       "path": "backend/src/routes/operacao/cozinha.ts",
-      "sha256": "d9558f75b707b1f1720f29b98a7cec661bbe4c34363c179bcb7099d3044a7bc2"
+      "sha256": "6bc1d3264376a9e4eb2e3e1e75e5ef28f92576ae10c71ccdebc175be8372b4e2"
     },
     {
       "path": "backend/src/routes/operacao/index.ts",
-      "sha256": "300fc3f20d9d4bf6697f6e37ef38f5f82fb590a7d6c7bf69b5f8020bec12ac14"
+      "sha256": "5b9aea4f121c1177ab51fa1f7429c963d1209dbbfcd5db6c55746bfc75f78a60"
     },
     {
       "path": "backend/src/routes/operacao/produtos.ts",
-      "sha256": "05eed601c72348386376c6009bada1545934675dd94422aacb62313365b541ea"
+      "sha256": "2a7230f9533ca6080db74ec219a4e6f70129852ded7124e9981fbd3061340f1b"
     },
     {
       "path": "backend/src/routes/operacao/vendas.ts",
-      "sha256": "2a167e8717ace117671a23a4f0e832e1e3e57d4458b04986bb64ef2db277f74f"
+      "sha256": "fd60ead9590c965ce3955cf22006137d716129b7ced0d45c9b77b6de10eb33c5"
     },
     {
       "path": "backend/src/routes/produtos.ts",
-      "sha256": "b94ca2bf2e58eb1ccd7b205376c1d6a4d3d0d8f6139ac1e77b5b242f359ffed0"
+      "sha256": "5799e46ca5b57a7da7c532ce09f0018f2bf2d655422a70b47c5908e79af02e8a"
     },
     {
       "path": "backend/src/routes/public.ts",
-      "sha256": "ee6077f87bb6f19b08d0271023f9b736bf659011068f696d14b2c2cea1bd7059"
+      "sha256": "0a334819ec9ed27ef65d6f2ba3644da12988741e6bf45b3d5668117e4b093aff"
     },
     {
       "path": "backend/src/routes/taps.ts",
@@ -490,7 +490,7 @@
     },
     {
       "path": "e2e/agenda-operacional.spec.ts",
-      "sha256": "42c1079b828f612b8c9f44108b6c24688926059f3b78323bd8c49b4bb839314a"
+      "sha256": "16a724d4ee19dab895d95b08c09277e067966e70f7ca52848569853a6e34ca25"
     },
     {
       "path": "e2e/current-model/shift-price-permission-ui.spec.ts",
@@ -502,48 +502,48 @@
     },
     {
       "path": "frontend/src/components/operacao/AgendaOperacionalPanel.tsx",
-      "sha256": "8a41a80266e9ae4b00243a276a4529ac3bd2233b33cd443a7fdd0565970db058"
+      "sha256": "1f801d8afce881982e4e9933265ecc55bc6c21cbf69396249313fa78535b4129"
     },
     {
       "path": "frontend/src/components/operacao/OperacaoTurnoCardapioPanel.tsx",
-      "sha256": "ac0793f5f9b927ed5f678d44ea9068b042543da08cf4f30ef2680b9f1794d2e4"
+      "sha256": "c63ee7aa0ac5cfd48922d0c7b16697cac606c2f6c434979cb2b805d882aae492"
     },
     {
       "path": "frontend/src/components/operacao/PainelCaixaOperacao.tsx",
-      "sha256": "997f8e7651ad219c7b7ac33ab76f3f9f4334ef404d71ee4c7127840db0adaa72"
+      "sha256": "3cf7ebf0b05f364b872871694f97c4c64684b50ebb715b79d7213d90f40cd3d7"
     },
     {
       "path": "frontend/src/components/operacao/PdvTapsSection.tsx",
-      "sha256": "0edb914dbdf9ab56bdb39597b670185d589f499e1dd01f851c2277467259a59c"
+      "sha256": "a5138c858f4a4d1c2a838306b0cfa2a163e8d229111d547ce1042389440b86d2"
     },
     {
       "path": "frontend/src/hooks/useOperacaoContexto.ts",
-      "sha256": "e9001ac59da5b214681ee147d5e0a6c3538efd1d8fa0a300e5da9e5fb64982b7"
+      "sha256": "cde0e54c87b5fa47954e0f5f03108cdb62d9697f6b05e1721629f10a09e0ca07"
     },
     {
       "path": "frontend/src/lib/operacao.ts",
-      "sha256": "b193d8b2a61c06e8e78472521734d4e675dec53fcd1dfc3ce1210efe3280c54d"
+      "sha256": "4efe364d8d3d2366b88ebc78d4fd09fc87e01f2f8c2ffefc68d250898ae36105"
     },
     {
       "path": "frontend/src/pages/AdminCervejariasPage.tsx",
-      "sha256": "66820c07b9a1b2670ee60a07c496f6d67d65cedda7b7401dadbf229b35e45cd8"
+      "sha256": "35b53c9995c5d800abf3e38400799bd443dcaed2eff734f93bf437890fb6c4e0"
     },
     {
       "path": "frontend/src/pages/operacao/OperacaoConfiguracoesPage.tsx",
-      "sha256": "35d9a84a3eea8679a7ab4a5fb54ef1d12a64e3916e96cdaaea08e8dcdbcf6d8e"
+      "sha256": "f7e38ac32a3741aa39ac9fafe3aa5cd8d61a5e23206c241fa6f623ea2f8ed849"
     },
     {
       "path": "frontend/src/pages/operacao/OperacaoDashboardPage.tsx",
-      "sha256": "e9c675bd9c06b416ef4a5f7bfee47e7ea17b1e1dac01f98c7ef89f3ffdf9e6de"
+      "sha256": "42f1356e4634d74f6d4c4403bb5c280312d99476edc0f7ade376a5625b13ec71"
     },
     {
       "path": "frontend/src/types.ts",
-      "sha256": "79d434dc5c5264b70488235ff4340d4cf9cef45c29e567ff8f54d53f47953ac7"
+      "sha256": "e65ddc79c310c5ddf13ec2c4d7d980ddefe45cb908592665e21d514c16a2b2f3"
     },
     {
       "path": "playwright.independent-ui.config.ts",
       "sha256": "01567913669a6bb52f70fb140341a5bf22334819b9f155e84b29c6099edae8e2"
     }
   ],
-  "manifestSha256": "a03e1913859d20a0b6d0b75384c20272948e4189be13993ac8e24874e0331078"
+  "manifestSha256": "18b51726f6b353e56614843dc8f21860f6ad273c07cb09fcb4aeabd5c7bd33a2"
 }
