@@ -49,7 +49,7 @@ test.describe('Agenda operacional canônica', () => {
     await page.route('**/api/operacao/caixa?pontoVendaId=*', (route) => route.fulfill({ json: { sessao: null, comandasAbertas: 0, diaOperacional: '2026-10-07' } }));
     await page.goto('/operacao/comandas');
     await expect(page.getByRole('heading', { name: 'Caixa do dia' })).toBeVisible();
-    await expect(page.getByLabel('Ocorrência do caixa (opcional)')).toHaveCount(0);
+    await expect(page.getByLabel('Agendamento de hoje')).toHaveCount(0);
     expect(agendaRequests).toEqual([]);
   });
 
@@ -63,7 +63,7 @@ test.describe('Agenda operacional canônica', () => {
     expect(agendaRequests).toEqual([]);
   });
 
-  test('consulta somente o dia operacional e permite escolher qualquer ocorrência elegível sem selecionar automaticamente', async ({ page }) => {
+  test('consulta somente hoje, sugere a única ocorrência e só abre após confirmação final', async ({ page }) => {
     await authenticateAsOwner(page);
     const requested: Record<string, unknown>[] = [];
     const occurrenceUrls: string[] = [];
@@ -99,7 +99,7 @@ test.describe('Agenda operacional canônica', () => {
     }
     await page.getByRole('button', { name: 'Cardápio salvo' }).click();
     await page.getByRole('radio', { name: /Menu de teste/ }).click();
-    const occurrenceSelect = page.getByLabel('Ocorrência do caixa (opcional)');
+    const occurrenceSelect = page.getByLabel('Agendamento de hoje');
     await expect(occurrenceSelect).toHaveValue('');
     await expect(occurrenceSelect.locator('option', { hasText: 'Hoje B' })).toHaveCount(1);
     await expect(occurrenceSelect.locator('option', { hasText: 'Ontem' })).toHaveCount(0);
@@ -110,6 +110,22 @@ test.describe('Agenda operacional canônica', () => {
     await expect(openButton).toBeEnabled();
     await occurrenceSelect.selectOption(selectedOccurrence.id);
     await openButton.click();
+    await expect(page.getByRole('dialog')).toContainText('Hoje B');
+    await expect(page.getByRole('dialog')).toContainText('Confirmar e abrir caixa');
+    expect(requested).toHaveLength(0);
+    await expect(page.getByRole('dialog')).toContainText('Troco inicial');
+    await expect(page.getByRole('dialog')).toContainText('Menu de teste');
+    await expect.poll(() => page.getByRole('dialog').evaluate((dialog) => dialog.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(openButton).toBeFocused();
+    expect(requested).toHaveLength(0);
+    await openButton.click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('button', { name: 'Voltar' }).click();
+    expect(requested).toHaveLength(0);
+    await openButton.click();
+    await page.getByRole('button', { name: 'Confirmar e abrir caixa' }).click();
 
     await expect.poll(() => requested.length).toBe(1);
     expect(requested[0]).toMatchObject({ ocorrenciaId: selectedOccurrence.id });
@@ -135,12 +151,15 @@ test.describe('Agenda operacional canônica', () => {
       return route.fulfill({ status: 201, json: session });
     });
     await page.goto('/operacao/comandas');
-    const occurrenceSelect = page.getByLabel('Ocorrência do caixa (opcional)');
+    const occurrenceSelect = page.getByLabel('Agendamento de hoje');
     await expect(occurrenceSelect).toHaveValue('');
     await expect(page.getByText('Nenhum agendamento para hoje')).toBeVisible();
     await page.getByRole('button', { name: 'Cardápio salvo' }).click();
     await page.getByRole('radio', { name: /Menu de teste/ }).click();
     await page.getByRole('button', { name: 'Abrir caixa' }).click();
+    await expect(page.getByRole('dialog')).toContainText('Sem agendamento');
+    expect(requested).toHaveLength(0);
+    await page.getByRole('button', { name: 'Confirmar e abrir caixa' }).click();
     await expect.poll(() => requested.length).toBe(1);
     expect(Object.hasOwn(requested[0]!, 'ocorrenciaId')).toBe(false);
     expect(Object.hasOwn(requested[0]!, 'confirmarDataDiferente')).toBe(false);
@@ -164,8 +183,8 @@ test.describe('Agenda operacional canônica', () => {
     expect(attempts).toBeGreaterThan(1);
     fail = false;
     await retry.click();
-    await expect(page.getByLabel('Ocorrência do caixa (opcional)')).toBeVisible();
-    await expect(page.getByLabel('Ocorrência do caixa (opcional)')).toHaveValue('');
+    await expect(page.getByLabel('Agendamento de hoje')).toBeVisible();
+    await expect(page.getByLabel('Agendamento de hoje')).toHaveValue('retry-today');
     await expect(page.getByRole('option', { name: /Hoje após retry/ })).toHaveCount(1);
   });
 
@@ -183,7 +202,7 @@ test.describe('Agenda operacional canônica', () => {
       return route.fulfill({ json: { ocorrencias: [{ id: `event-${date}`, nome: `Evento ${date}`, data: date, status: 'PROGRAMADA', agenda: null }] } });
     });
     await page.goto('/operacao/comandas');
-    const occurrenceSelect = page.getByLabel('Ocorrência do caixa (opcional)');
+    const occurrenceSelect = page.getByLabel('Agendamento de hoje');
     await expect(occurrenceSelect).toBeVisible();
     await occurrenceSelect.selectOption('event-2026-10-22');
     await page.clock.runFor(30_000);
@@ -191,7 +210,7 @@ test.describe('Agenda operacional canônica', () => {
 
     operationalDay = '2026-10-23';
     await page.clock.runFor(30_000);
-    await expect(occurrenceSelect).toHaveValue('');
+    await expect(occurrenceSelect).toHaveValue('event-2026-10-23');
     await expect(occurrenceSelect.locator('option', { hasText: 'Evento 2026-10-23' })).toHaveCount(1);
     expect(requestedDays).toContain('2026-10-22/2026-10-22');
     expect(requestedDays).toContain('2026-10-23/2026-10-23');
@@ -204,8 +223,9 @@ test.describe('Agenda operacional canônica', () => {
       await page.route('**/api/operacao/caixa?pontoVendaId=*', (route) => route.fulfill({ json: { sessao: null, comandasAbertas: 0, diaOperacional: '2026-10-07' } }));
       await page.route('**/api/operacao/agenda/ocorrencias?**', (route) => route.fulfill({ json: { ocorrencias: [{ id: 'today', nome: 'Hoje', data: '2026-10-07', status: 'PROGRAMADA', agenda: null }] } }));
       await page.goto('/operacao/comandas');
-      const occurrenceSelect = page.getByLabel('Ocorrência do caixa (opcional)');
+      const occurrenceSelect = page.getByLabel('Agendamento de hoje');
       await expect(occurrenceSelect).toBeVisible();
+      await expect(occurrenceSelect).toHaveValue('today');
       await expect(occurrenceSelect).toBeEnabled();
       const bounds = await occurrenceSelect.boundingBox();
       expect(bounds).not.toBeNull();

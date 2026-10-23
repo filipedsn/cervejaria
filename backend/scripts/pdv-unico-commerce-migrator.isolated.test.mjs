@@ -2194,6 +2194,8 @@ async function proveLegacyOrderContextPreflight(args) {
     assert.equal(stillDivergent.code, 'RUN_SCOPE_OR_SNAPSHOT_MISMATCH', 'the still-divergent source is rejected by full snapshot revalidation');
     assert.deepEqual(plain((await legacyDb.pdvMigrationRun.findUniqueOrThrow({ where: { id: eventPreparationRunId } })).checkpoint), eventCheckpointBeforeTamper, 'checkpoint remains at its original confirmed prefix while source is divergent');
     await legacyDb.pedidoOperacao.update({ where: { id: eventOrderWithMovement.id }, data: { observacao: originalTamperFixture.observacao, updatedAt: originalTamperFixture.updatedAt } });
+    const restoredTamperFixture = await legacyDb.pedidoOperacao.findUniqueOrThrow({ where: { id: eventOrderWithMovement.id }, select: { observacao: true, updatedAt: true } });
+    assert.deepEqual(plain(restoredTamperFixture), plain(originalTamperFixture), 'fixture restoration restores the exact source fields and timestamp before revalidation');
     const eventPreparationRecovered = await runPdvKitchenOrderContextPreparation({ db: legacyDb, companyId: eventCompany.id, pointId: eventPoint.id, runId: eventPreparationRunId });
     assert.equal(eventPreparationRecovered.status, 'COMPLETED', `same BLOCKED run resumes only after original source content is restored and fully revalidated: ${JSON.stringify(eventPreparationRecovered)}`);
     assert.deepEqual(plain(eventPreparationRecovered.checkpoint), eventCheckpointBeforeTamper, 'recovery reuses the existing confirmed checkpoint and receipts without rewriting them');

@@ -2,6 +2,8 @@ export type CashOccurrenceOption = {
   id: string;
   nome: string;
   data: string;
+  horaInicio?: string;
+  horaFim?: string | null;
   status: 'PROGRAMADA' | 'ABERTA' | 'FECHADA' | 'CANCELADA';
   agenda: { nome: string; frequencia: 'SEMANAL'; diaSemana: number } | null;
 };
