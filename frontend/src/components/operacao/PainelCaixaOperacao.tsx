@@ -26,19 +26,9 @@ import { IconEye, IconEyeOff } from '../NavIcons';
 import { OperacaoTurnoTapsPanel } from './OperacaoTurnoTapsPanel';
 import type { Trailer } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
+import { cashOccurrenceQueryUrl, cashOccurrenceSelectionIsEligible, eligibleCashOccurrences, type CashOccurrenceOption } from '../../lib/cash-occurrences';
 
 type Dialogo = 'nenhum' | 'movimento' | 'correcao' | 'fechar' | 'cardapio' | 'encerrar-admin';
-type OcorrenciaAgenda = {
-  id: string; nome: string; data: string; status: 'PROGRAMADA' | 'ABERTA' | 'FECHADA' | 'CANCELADA';
-  agenda: { nome: string; frequencia: 'SEMANAL'; diaSemana: number } | null;
-};
-
-function dataComDeslocamento(data: string, dias: number) {
-  const date = new Date(`${data}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + dias);
-  return date.toISOString().slice(0, 10);
-}
-
 function dataCalendarioPt(data: string) {
   return new Date(`${data}T00:00:00.000Z`).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 }
@@ -110,13 +100,9 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const [montagemTapsAberta, setMontagemTapsAberta] = useState(false);
   const [trailerId, setTrailerId] = useState('');
   const [ocorrenciaId, setOcorrenciaId] = useState('');
-  const [confirmarDataDiferente, setConfirmarDataDiferente] = useState(false);
 
   useEffect(() => {
-    if (!agendaCanonica) {
-      setOcorrenciaId('');
-      setConfirmarDataDiferente(false);
-    }
+    if (!agendaCanonica) setOcorrenciaId('');
   }, [agendaCanonica]);
 
   const { data: trailers = [] } = useQuery({
@@ -134,16 +120,19 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     refetchInterval: pollMs,
   });
 
-  const inicioOcorrencias = data?.diaOperacional ? dataComDeslocamento(data.diaOperacional, -90) : '';
-  const fimOcorrencias = data?.diaOperacional ? dataComDeslocamento(data.diaOperacional, 180) : '';
+  const diaOperacional = data?.diaOperacional ?? '';
   const ocorrenciasQuery = useQuery({
-    queryKey: ['operacao-agenda-ocorrencias', pontoVendaId, inicioOcorrencias, fimOcorrencias],
-    queryFn: () => api.get<{ ocorrencias: OcorrenciaAgenda[] }>(`/api/operacao/agenda/ocorrencias?inicio=${inicioOcorrencias}&fim=${fimOcorrencias}`),
-    enabled: Boolean(agendaCanonica && pontoVendaId && inicioOcorrencias && fimOcorrencias),
+    queryKey: ['operacao-caixa-ocorrencias', pontoVendaId, diaOperacional],
+    queryFn: () => api.get<{ ocorrencias: CashOccurrenceOption[] }>(cashOccurrenceQueryUrl(diaOperacional)),
+    enabled: Boolean(agendaCanonica && pontoVendaId && diaOperacional),
   });
-  const ocorrenciasElegiveis = (ocorrenciasQuery.data?.ocorrencias ?? []).filter((o) => o.status === 'PROGRAMADA' || o.status === 'ABERTA');
-  const ocorrenciaSelecionada = ocorrenciasElegiveis.find((o) => o.id === ocorrenciaId) ?? null;
-  const outraData = Boolean(ocorrenciaSelecionada && data?.diaOperacional && ocorrenciaSelecionada.data !== data.diaOperacional);
+  const ocorrenciasElegiveis = eligibleCashOccurrences(ocorrenciasQuery.data?.ocorrencias ?? [], diaOperacional);
+  useEffect(() => { setOcorrenciaId(''); }, [pontoVendaId, diaOperacional]);
+  useEffect(() => {
+    if (!ocorrenciaId) return;
+    const stillEligible = cashOccurrenceSelectionIsEligible(ocorrenciasQuery.data?.ocorrencias ?? [], ocorrenciaId, diaOperacional);
+    if (!stillEligible) setOcorrenciaId('');
+  }, [ocorrenciaId, ocorrenciasQuery.data?.ocorrencias, diaOperacional]);
 
   const contasPendentesQuery = useQuery({
     queryKey: ['operacao-contas-pendentes'],
@@ -186,7 +175,6 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         pontoVendaId,
         trailerId: trailerDoTurno || undefined,
         ...(agendaCanonica && ocorrenciaId ? { ocorrenciaId } : {}),
-        ...(agendaCanonica && outraData ? { confirmarDataDiferente } : {}),
         trocoInicial: parseCurrencyInput(trocoInicial),
         ...cardapioPayload,
       });
@@ -199,7 +187,6 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
       queryClient.invalidateQueries({ queryKey: ['operacao-turno-cardapio', pontoVendaId] });
       setCardapioForm(defaultTurnoCardapioForm());
       setOcorrenciaId('');
-      setConfirmarDataDiferente(false);
       setErro('');
     },
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível abrir o caixa'),
@@ -311,8 +298,10 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     <div className="space-y-2 rounded-xl border border-line bg-surface-lighter/40 p-3">
       <label className="label" htmlFor="operacao-ocorrencia">Ocorrência do caixa (opcional)</label>
       <p className="text-sm text-ink-muted">Escolha antes de abrir: a ocorrência fica vinculada a este novo turno. Um caixa já aberto mantém o vínculo atual.</p>
-      {ocorrenciasQuery.isLoading ? (
-        <p role="status" className="text-sm text-ink-faint">Carregando agendamentos deste PDV…</p>
+      {!diaOperacional ? (
+        <p role="status" className="text-sm text-ink-faint">Consultando o dia operacional do caixa…</p>
+      ) : ocorrenciasQuery.isLoading ? (
+        <p role="status" className="text-sm text-ink-faint">Carregando agendamentos de hoje…</p>
       ) : ocorrenciasQuery.isError ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-sm text-danger">
           <span>Não foi possível carregar os agendamentos. O caixa pode ser aberto sem vínculo ou você pode tentar novamente.</span>
@@ -321,7 +310,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
       ) : (
         <>
           <select id="operacao-ocorrencia" className="input" value={ocorrenciaId}
-            onChange={(event) => { setOcorrenciaId(event.target.value); setConfirmarDataDiferente(false); }}>
+            onChange={(event) => setOcorrenciaId(event.target.value)}>
             <option value="">Sem ocorrência</option>
             {ocorrenciasElegiveis.map((ocorrencia) => (
               <option key={ocorrencia.id} value={ocorrencia.id}>
@@ -329,20 +318,13 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
               </option>
             ))}
           </select>
-          {ocorrenciasElegiveis.length === 0 && <p className="text-sm text-ink-faint">Nenhum agendamento programado ou aberto para este PDV no período consultado.</p>}
+          {ocorrenciasElegiveis.length === 0 && <p className="text-sm text-ink-faint">Nenhum agendamento para hoje</p>}
         </>
       )}
       {!ocorrenciasQuery.isLoading && !ocorrenciasQuery.isError && !ocorrenciaId && (
         <p role="status" className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
           Sem ocorrência selecionada, este novo caixa ficará sem vínculo. A tela não permite associar uma ocorrência depois que o caixa abre; não feche nem reabra um caixa para corrigir isso.
         </p>
-      )}
-      {outraData && ocorrenciaSelecionada && data?.diaOperacional && (
-        <label className="flex cursor-pointer items-start gap-2 text-sm text-amber-200">
-          <input type="checkbox" className="mt-1" checked={confirmarDataDiferente}
-            onChange={(event) => setConfirmarDataDiferente(event.target.checked)} />
-          <span>Confirmo que estou associando “{ocorrenciaSelecionada.nome}”, de {dataCalendarioPt(ocorrenciaSelecionada.data)}, a um caixa do dia {dataCalendarioPt(data.diaOperacional)}.</span>
-        </label>
       )}
     </div>
   ) : null;
@@ -380,7 +362,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           {seletorTrailer}
 
           {canPermission('debt.receive') && <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} flex min-h-12 w-full items-center justify-center text-center`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>}
-          {canPermission('cash.open') && <button type="button" className="touch-btn-primary flex min-h-14 w-full items-center justify-center gap-3 text-base font-bold sm:min-h-16 sm:text-lg" disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload || (outraData && !confirmarDataDiferente)} data-audit="operacao-caixa-abrir" data-onboarding-target="operacao-open-cash" onClick={() => abrir.mutate()}><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8"/></svg>{abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}</button>}
+          {canPermission('cash.open') && <button type="button" className="touch-btn-primary flex min-h-14 w-full items-center justify-center gap-3 text-base font-bold sm:min-h-16 sm:text-lg" disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload} data-audit="operacao-caixa-abrir" data-onboarding-target="operacao-open-cash" onClick={() => abrir.mutate()}><svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h16l1 11H3L4 9Z"/><path d="M6 9V5h12v4M8 5V3h8v2M8 13h8"/></svg>{abrir.isPending ? 'Abrindo...' : 'Abrir caixa'}</button>}
         </div>
       )}
 
@@ -410,7 +392,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           {canPermission('cash.open') && <button
             type="button"
             className="touch-btn-primary w-full"
-            disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload || (outraData && !confirmarDataDiferente)}
+            disabled={abrir.isPending || precisaSelecionarTrailer || !cardapioAbrirPayload}
             data-audit="operacao-caixa-abrir"
             data-onboarding-target="operacao-open-cash"
             onClick={() => abrir.mutate()}
