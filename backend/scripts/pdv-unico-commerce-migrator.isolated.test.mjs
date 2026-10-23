@@ -1384,7 +1384,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.equal(attendeeWrite.statusCode, 403, 'agenda management remains protected by the existing owner authorization');
     await assertNoApiWrites(readOnlyBefore, 'attendant agenda write');
     const resumeRequestId = randomUUID();
-    const resumed = await app.inject({ method: 'POST', url: `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}/retomar`, headers: { cookie: ownerCookie }, payload: { requestId: resumeRequestId } });
+    const resumed = await app.inject({ method: 'POST', url: `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}/retomar`, headers: { cookie: ownerCookie }, payload: { requestId: resumeRequestId, aPartirDe: '2026-11-07' } });
     assert.equal(resumed.statusCode, 200, `explicit authorized recurrence resume: ${resumed.body}`);
     assert.equal(JSON.parse(resumed.body).criadas, 4, 'explicit resume creates dates only within its saved bounds');
     const [generateA, generateB] = await Promise.all([
