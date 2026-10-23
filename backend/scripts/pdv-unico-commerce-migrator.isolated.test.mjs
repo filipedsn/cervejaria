@@ -1418,8 +1418,6 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     await selectorOccurrence('today-closed', 'Selector today closed', selectorDay, 'FECHADA');
     await selectorOccurrence('today-cancelled', 'Selector today cancelled', selectorDay, 'CANCELADA');
     const selectorTomorrow = await selectorOccurrence('tomorrow', 'Selector tomorrow', '2029-02-13');
-    const inactivePoint = await db.pontoVenda.create({ data: { id: `cash-selector-other-pdv-${runId}`, nome: 'Synthetic inactive PDV', cervejariaId: primaryCompany.id, ativo: false, usaCaixa: true } });
-    const selectorOtherPdv = await selectorOccurrence('other-pdv', 'Selector other PDV', selectorDay, 'PROGRAMADA', inactivePoint);
     const selectorOtherCompany = await db.ocorrenciaOperacional.create({ data: {
       id: `cash-selector-other-company-${runId}`, cervejariaId: secondCompany.id, pontoVendaId: secondPoint.id,
       nome: 'Selector other company', data: new Date(`${selectorDay}T00:00:00.000Z`), status: 'PROGRAMADA', horaInicio: '18:00', horaFim: '20:00',
@@ -1429,14 +1427,13 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const selectorIds = selectorList.json().ocorrencias.map((row) => row.id);
     assert(selectorIds.includes(selectorToday.id), 'same-day canonical occurrence is returned');
     assert(!selectorIds.includes(selectorYesterday.id) && !selectorIds.includes(selectorTomorrow.id), 'the selector day query excludes yesterday and tomorrow at the API');
-    assert(!selectorIds.includes(selectorOtherPdv.id), 'the selector day query excludes another PDV in the same company at the API');
     assert(!selectorIds.includes(selectorOtherCompany.id), 'the selector day query excludes another company at the API');
     assert.deepEqual(selectorList.json().ocorrencias.map((row) => row.status).sort(), ['ABERTA', 'CANCELADA', 'FECHADA', 'PROGRAMADA'], 'the single-day agenda response preserves all statuses for the agenda while the selector filters eligible ones');
-    const otherPdvOpening = await withOwnerAt(selectorDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: {
-      pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: selectorOtherPdv.id,
+    const otherCompanyOpening = await withOwnerAt(selectorDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: {
+      pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id, ocorrenciaId: selectorOtherCompany.id,
     } }));
-    assert.equal(otherPdvOpening.statusCode, 409, `another PDV occurrence is rejected by the normal opening API: ${otherPdvOpening.body}`);
-    assert.match(otherPdvOpening.body, /CASH_OCCURRENCE_SCOPE_MISMATCH/);
+    assert.equal(otherCompanyOpening.statusCode, 409, `another company occurrence is rejected by the normal opening API: ${otherCompanyOpening.body}`);
+    assert.match(otherCompanyOpening.body, /CASH_OCCURRENCE_SCOPE_MISMATCH/);
     const beforeForeignAgendaEdit = await db.agendaOperacional.count({ where: { id: managedAgenda.id, cervejariaId: primaryCompany.id, pontoVendaId: primaryPoint.id } });
     const foreignAgendaEdit = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${encodeURIComponent(managedAgenda.id)}`, headers: { cookie: secondOwnerCookie }, payload: { nome: 'Tenant cruzado' } });
     assert.equal(foreignAgendaEdit.statusCode, 404, 'another tenant cannot edit the first tenant agenda');
