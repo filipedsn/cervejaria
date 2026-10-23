@@ -1,17 +1,20 @@
 import type { Prisma } from '@prisma/client';
 import { isBebidaChope } from './produto-utils.js';
 import { toNumber } from './utils.js';
+import { itemContaNaVendaLiquida } from './venda-liquida.js';
 
 type ItemWithProduto = {
   volumeMl: number;
   quantidade: number;
+  canceladoEm?: unknown;
+  cancelamentoPendenteEm?: unknown;
   produto: { tipo: string; formato: string | null } | null;
 };
 
 export function computeChopeMlFromItens(itens: ItemWithProduto[]): number {
   let totalMl = 0;
   for (const item of itens) {
-    if (item.produto && isBebidaChope(item.produto.tipo, item.produto.formato)) {
+    if (item.produto && itemContaNaVendaLiquida(item) && isBebidaChope(item.produto.tipo, item.produto.formato)) {
       totalMl += item.volumeMl * item.quantidade;
     }
   }
@@ -29,16 +32,16 @@ type ComandaStats = {
 };
 
 export function calcularEstatisticasCliente(comandas: ComandaStats[]) {
-  const pagas = comandas.flatMap((comanda) => {
+  const visitas = comandas.map((comanda) => comanda.fechadaEm ?? comanda.updatedAt);
+  const recebidas = comandas.flatMap((comanda) => {
     const valorPago = comanda.pagamentos.reduce((soma, pagamento) => soma + toNumber(pagamento.valor), 0);
     return valorPago > 0 ? [{ comanda, valorPago }] : [];
   });
 
-  const visitas = pagas.map(({ comanda }) => comanda.fechadaEm ?? comanda.updatedAt);
   return {
-    totalComandasFechadas: pagas.length,
-    totalGasto: pagas.reduce((soma, item) => soma + item.valorPago, 0),
-    totalMlChope: pagas.reduce((soma, item) => soma + computeChopeMlFromItens(item.comanda.itens), 0),
+    totalComandasFechadas: comandas.length,
+    totalGasto: recebidas.reduce((soma, item) => soma + item.valorPago, 0),
+    totalMlChope: comandas.reduce((soma, comanda) => soma + computeChopeMlFromItens(comanda.itens), 0),
     primeiraVisitaEm: visitas.length ? new Date(Math.min(...visitas.map((data) => data.getTime()))) : null,
     ultimaVisitaEm: visitas.length ? new Date(Math.max(...visitas.map((data) => data.getTime()))) : null,
   };

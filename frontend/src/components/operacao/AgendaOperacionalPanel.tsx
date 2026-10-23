@@ -4,10 +4,10 @@ import { useBlocker } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { Modal } from '../Modal';
 
-type Agenda = { id: string; nome: string; diaSemana: number; horaInicio: string; horaFim: string | null; local: string | null; ativa: boolean; archivedAt?: string | null; _count: { ocorrencias: number } };
-type Confirmation = { kind: 'discard'; navigation?: boolean; restoring?: boolean } | { kind: 'cancel'; item: Ocorrencia } | { kind: 'restore'; item: Ocorrencia; requestId: string } | { kind: 'stop'; agendaId: string } | { kind: 'archive'; agendaId: string };
-type Ocorrencia = { id: string; agendaId: string | null; nome: string; data: string; horaInicio?: string | null; horaFim?: string | null; local?: string | null; status: 'PROGRAMADA' | 'ABERTA' | 'FECHADA' | 'CANCELADA'; podeEditar: boolean; podeCancelar: boolean; podeRestaurar?: boolean; bloqueio: string | null; bloqueioRestauracao?: string | null };
-type Draft = { requestId: string; nome: string; data: string; horaInicio: string; horaFim: string; local: string; repetirSemanalmente: boolean; agendaId?: string; ocorrenciaId?: string; fim: string; gerarDatas: boolean };
+type Agenda = { id: string; nome: string; diaSemana: number; primeiraData?: string | null; geracaoDesde?: string | null; ultimaData?: string | null; horaInicio: string; horaFim: string | null; local: string | null; ativa: boolean; archivedAt?: string | null; _count: { ocorrencias: number } };
+type Confirmation = { kind: 'discard'; navigation?: boolean; restoring?: boolean } | { kind: 'cancel'; item: Ocorrencia } | { kind: 'restore'; item: Ocorrencia; requestId: string } | { kind: 'stop'; agendaId: string } | { kind: 'resume'; agendaId: string; requestId: string; aPartirDe: string } | { kind: 'archive'; agendaId: string };
+type Ocorrencia = { id: string; agendaId: string | null; agenda?: { archivedAt?: string | null } | null; nome: string; data: string; horaInicio?: string | null; horaFim?: string | null; local?: string | null; status: 'PROGRAMADA' | 'ABERTA' | 'FECHADA' | 'CANCELADA'; podeEditar: boolean; podeCancelar: boolean; podeRestaurar?: boolean; bloqueio: string | null; bloqueioRestauracao?: string | null };
+type Draft = { requestId: string; nome: string; data: string; diaSemana: number; horaInicio: string; horaFim: string; local: string; repetirSemanalmente: boolean; agendaId?: string; ocorrenciaId?: string; fim: string; semFim: boolean; gerarDatas: boolean; geracaoDesde?: string | null; activationFrom?: string; activationRequested?: boolean };
 type RestoreDraft = { item: Ocorrencia; requestId: string; data: string; horaInicio: string; horaFim: string };
 const dias = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
 const estados = { PROGRAMADA: 'Programada', ABERTA: 'Aberta', FECHADA: 'Fechada', CANCELADA: 'Cancelada' };
@@ -24,6 +24,7 @@ export function AgendaOperacionalPanel() {
   const [view, setView] = useState<'Mês' | 'Lista'>('Mês');
   const [rulesOpen, setRulesOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [showArchivedOccurrenceHistory, setShowArchivedOccurrenceHistory] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [notice, setNotice] = useState('');
   const [detail, setDetail] = useState<Ocorrencia | null>(null);
@@ -36,20 +37,52 @@ export function AgendaOperacionalPanel() {
   const navigationPrompted = useRef(false);
   const queryClient = useQueryClient();
   const { inicio, fim } = monthRange(month);
+  useEffect(() => { setShowArchivedOccurrenceHistory(false); }, [month]);
   const query = useQuery({ queryKey: ['operacao-agenda-ocorrencias', 'gestao', inicio, fim], queryFn: () => api.get<{ agendas: Agenda[]; ocorrencias: Ocorrencia[] }>(`/api/operacao/agenda/ocorrencias?inicio=${inicio}&fim=${fim}`) });
   const agendas = query.data?.agendas ?? [];
   const archivedQuery = useQuery({ queryKey: ['operacao-agenda-arquivadas'], queryFn: () => api.get<{ agendas: Agenda[] }>('/api/operacao/agenda/agendas/arquivadas'), enabled: rulesOpen && showArchived });
   const displayedRules = showArchived ? archivedQuery.data?.agendas ?? [] : agendas;
   const ocorrencias = query.data?.ocorrencias ?? [];
+  const hiddenHistoryCount = ocorrencias.filter((item) => item.status === 'CANCELADA' || Boolean(item.agenda?.archivedAt)).length;
+  const displayedOccurrences = showArchivedOccurrenceHistory ? ocorrencias : ocorrencias.filter((item) => item.status !== 'CANCELADA' && !item.agenda?.archivedAt);
   const byDay = useMemo(() => {
     const result = new Map<string, Ocorrencia[]>();
-    for (const item of ocorrencias) result.set(item.data, [...(result.get(item.data) ?? []), item]);
+    for (const item of displayedOccurrences) result.set(item.data, [...(result.get(item.data) ?? []), item]);
     return result;
-  }, [ocorrencias]);
+  }, [displayedOccurrences]);
   const visibleDays = view === 'Mês' ? [[selected, byDay.get(selected) ?? []] as const] : [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b));
   const mutation = useMutation({
-    mutationFn: (operation: { path: string; body: unknown; restoreItem?: Ocorrencia }) => api.post(operation.path, operation.body),
-    onSuccess: (_result, operation) => { const saved = operation.body as Partial<Draft>; if (operation.restoreItem) { const item = operation.restoreItem; const updated = { ...item, data: String(saved.data), horaInicio: String(saved.horaInicio), horaFim: String(saved.horaFim), status: 'PROGRAMADA' as const, podeEditar: true, podeCancelar: true, podeRestaurar: false, bloqueio: null, bloqueioRestauracao: null }; setDetail(updated); setMonth(updated.data); setSelected(updated.data); setRestoreDraft(null); setNotice('Agendamento restaurado.'); } else { if (saved.requestId && saved.data) { setMonth(saved.data); setSelected(saved.data); } if (operation.path.endsWith('/arquivar')) setNotice('Repetição removida da lista. As datas existentes foram preservadas.'); setDraft(null); setDetail(null); } setError(''); void queryClient.invalidateQueries({ queryKey: ['operacao-agenda-ocorrencias'] }); void queryClient.invalidateQueries({ queryKey: ['operacao-agenda-arquivadas'] }); },
+    mutationFn: (operation: { path: string; body: unknown; method?: 'POST' | 'PATCH'; restoreItem?: Ocorrencia }) => operation.method === 'PATCH' ? api.patch(operation.path, operation.body) : api.post(operation.path, operation.body),
+    onSuccess: (result, operation) => {
+      const saved = operation.body as Partial<Draft>;
+      if (operation.restoreItem) {
+        const item = operation.restoreItem;
+        const updated = { ...item, data: String(saved.data), horaInicio: String(saved.horaInicio), horaFim: String(saved.horaFim), status: 'PROGRAMADA' as const, podeEditar: true, podeCancelar: true, podeRestaurar: false, bloqueio: null, bloqueioRestauracao: null };
+        setDetail(updated); setMonth(updated.data); setSelected(updated.data); setRestoreDraft(null); setNotice('Agendamento restaurado.');
+      } else {
+        if (saved.requestId && saved.data) { setMonth(saved.data); setSelected(saved.data); }
+        const response = result as { nome?: string; criadas?: number; datasCriadas?: string[]; motivo?: string; reativada?: boolean; foraDoPeriodo?: Array<{ data: string; status: string; possuiHistorico: boolean }> };
+        const ruleName = response.nome || (operation.body as { nome?: string }).nome || 'Repetição';
+        if (operation.path.endsWith('/arquivar')) setNotice(`${ruleName}: removida da lista. As datas existentes foram preservadas.`);
+        else if (operation.path.endsWith('/interromper')) setNotice(`${ruleName} pausada. As datas existentes foram preservadas.`);
+        else if (operation.path.endsWith('/salvar-e-ativar')) {
+          const dates = response.datasCriadas ?? []; const created = response.criadas ?? 0;
+          if (created && dates.length) setNotice(`${ruleName} ativada: ${created} novas datas criadas, de ${dates[0]} até ${dates.at(-1)}.`);
+          else { const why = response.motivo === 'PERIODO_ENCERRADO' ? 'o período de geração já terminou' : response.motivo === 'SEM_DATA_NO_DIA_DA_REPETICAO' ? 'não há datas do dia da semana nesta janela' : response.motivo === 'DATAS_JA_EXISTIAM' ? 'as datas correspondentes já existem' : 'não havia novas datas elegíveis na janela de 90 dias'; setNotice(`${ruleName}: nenhuma nova data criada porque ${why}.`); }
+          const outside = response.foraDoPeriodo ?? []; if (outside.length) setNotice((current) => `${current} ${outside.length} ocorrência(s) futura(s) fora do término foram preservadas; trate-as em ação explícita.`);
+        }
+        else if (operation.method === 'PATCH') { const outside = response.foraDoPeriodo ?? []; const paused = (result as { ativa?: boolean }).ativa === false; setNotice(`${ruleName}: alterações salvas.${paused ? ' A repetição continua pausada.' : ' A repetição continua ativa; as mudanças valem para novas ocorrências.'}` + (outside.length ? ` ${outside.length} ocorrência(s) futura(s) fora do período foram preservadas para tratamento explícito.` : '')); }
+        else {
+          const created = response.criadas ?? 0;
+          const reason = response.motivo === 'DEFINICAO_SALVA_SEM_AGENDAR' ? ' Defini??o salva sem agendar novas datas.' : response.motivo === 'SEM_DATA_NO_DIA_DA_REPETICAO' ? ' N?o havia datas do dia da semana dentro do per?odo.' : response.motivo === 'DATAS_JA_EXISTIAM' ? ' As datas correspondentes j? existiam.' : '';
+          const outside = response.foraDoPeriodo ?? [];
+          const outsideText = outside.length ? ' ' + outside.length + ' ocorr?ncia(s) futura(s) fora do per?odo foram mantidas: ' + outside.map((item) => item.data + ' (' + item.status + (item.possuiHistorico ? ', com hist?rico' : '') + ')').join(', ') + '. Trate-as em a??o expl?cita separada.' : '';
+          setNotice((response.reativada ? 'Repeti??o retomada.' : 'Regra salva.') + ' ' + created + ' nova(s) data(s) criada(s).' + reason + outsideText);
+        }
+        setDraft(null); setDetail(null);
+      }
+      setError(''); void queryClient.invalidateQueries({ queryKey: ['operacao-agenda-ocorrencias'] }); void queryClient.invalidateQueries({ queryKey: ['operacao-agenda-arquivadas'] });
+    },
     onError: (err, operation) => {
       if (operation.restoreItem) { const body = operation.body as RestoreDraft; setRestoreDraft({ item: operation.restoreItem, requestId: body.requestId, data: body.data, horaInicio: body.horaInicio ?? '', horaFim: body.horaFim ?? '' }); setDetail(null); }
       if (err instanceof ApiError && err.body?.code === 'AGENDA_HORARIO_CONFLITO' && err.body.details && typeof err.body.details === 'object') {
@@ -64,8 +97,8 @@ export function AgendaOperacionalPanel() {
     },
     onSettled: () => { submitLock.current = false; },
   });
-  function write(path: string, body: unknown, restoreItem?: Ocorrencia) { if (submitLock.current) return; submitLock.current = true; setError(''); mutation.mutate({ path, body, restoreItem }); }
-  function ask(value: Confirmation) { const nodes = [...document.querySelectorAll<HTMLElement>('[role="dialog"] button:not(:disabled), [role="dialog"] input:not(:disabled), [role="dialog"] select:not(:disabled), [role="dialog"] summary')]; resumeFocusIndex.current = nodes.indexOf(document.activeElement as HTMLElement); setConfirmation(value); }
+  function write(path: string, body: unknown, restoreItem?: Ocorrencia, method?: 'POST' | 'PATCH') { if (submitLock.current) return; submitLock.current = true; setError(''); setNotice(''); mutation.mutate({ path, body, restoreItem, method }); }
+  function ask(value: Confirmation) { setNotice(''); const nodes = [...document.querySelectorAll<HTMLElement>('[role="dialog"] button:not(:disabled), [role="dialog"] input:not(:disabled), [role="dialog"] select:not(:disabled), [role="dialog"] summary')]; resumeFocusIndex.current = nodes.indexOf(document.activeElement as HTMLElement); setConfirmation(value); }
   function closeDraft() { if (mutation.isPending) return; if (draft && JSON.stringify(draft) !== baseline) { ask({ kind: 'discard' }); return; } setDraft(null); setError(''); }
   function refuseConfirmation() { if (confirmation?.kind === 'discard' && confirmation.navigation && blocker.state === 'blocked') blocker.reset(); setConfirmation(null); }
   function acceptConfirmation() {
@@ -74,16 +107,16 @@ export function AgendaOperacionalPanel() {
     if (selectedConfirmation.kind === 'discard') { if (selectedConfirmation.restoring && restoreDraft) { setDetail(restoreDraft.item); setRestoreDraft(null); } else setDraft(null); setError(''); if (selectedConfirmation.navigation && blocker.state === 'blocked') blocker.proceed(); }
     else if (selectedConfirmation.kind === 'cancel') write(`/api/operacao/agenda/ocorrencias/${encodeURIComponent(selectedConfirmation.item.id)}/cancelar`, {});
     else if (selectedConfirmation.kind === 'restore') { const item = selectedConfirmation.item; const body = { requestId: selectedConfirmation.requestId!, data: item.data, horaInicio: item.horaInicio ?? null, horaFim: item.horaFim ?? null }; write(`/api/operacao/agenda/ocorrencias/${encodeURIComponent(item.id)}/restaurar`, body, item); }
+    else if (selectedConfirmation.kind === 'resume') write(`/api/operacao/agenda/agendas/${encodeURIComponent(selectedConfirmation.agendaId)}/retomar`, { requestId: selectedConfirmation.requestId, ...(selectedConfirmation.aPartirDe ? { aPartirDe: selectedConfirmation.aPartirDe } : {}) });
     else write(`/api/operacao/agenda/agendas/${encodeURIComponent(selectedConfirmation.agendaId)}/${selectedConfirmation.kind === 'archive' ? 'arquivar' : 'interromper'}`, {});
   }
   function openDraft(values: Partial<Draft> = {}) {
-    const next = { requestId: crypto.randomUUID(), nome: '', data: selected, horaInicio: '18:00', horaFim: '', local: '', repetirSemanalmente: false, fim, gerarDatas: true, ...values };
-    setDetail(null); setRulesOpen(false); setError(''); setDraft(next); setBaseline(JSON.stringify(next));
+    const next = { requestId: crypto.randomUUID(), nome: '', data: selected, diaSemana: localDate(selected).getDay(), horaInicio: '18:00', horaFim: '', local: '', repetirSemanalmente: false, fim: '', semFim: true, gerarDatas: true, ...values };
+    setDetail(null); setRulesOpen(false); setError(''); setNotice(''); setDraft(next); setBaseline(JSON.stringify(next));
   }
-  function openRule(agenda: Agenda) {
-    const date = localDate(selected); date.setDate(date.getDate() + (agenda.diaSemana - date.getDay() + 7) % 7);
-    const data = dateKey(date); const end = monthRange(data).fim;
-    openDraft({ nome: agenda.nome, data, fim: end, horaInicio: agenda.horaInicio, horaFim: agenda.horaFim ?? '', local: agenda.local ?? '', repetirSemanalmente: true, agendaId: agenda.id, gerarDatas: agenda.ativa });
+  function openRule(agenda: Agenda, requestActivation = false) {
+    const end = agenda.ultimaData?.slice(0, 10) ?? '';
+    openDraft({ nome: agenda.nome, diaSemana: agenda.diaSemana, data: '', fim: end, semFim: !agenda.ultimaData, horaInicio: agenda.horaInicio, horaFim: agenda.horaFim ?? '', local: agenda.local ?? '', repetirSemanalmente: true, agendaId: agenda.id, gerarDatas: false, geracaoDesde: agenda.geracaoDesde, activationFrom: agenda.geracaoDesde?.slice(0, 10) ?? '', activationRequested: requestActivation });
   }
   function navigate(offset: number) {
     const date = localDate(month); const next = dateKey(new Date(date.getFullYear(), date.getMonth() + offset, 1));
@@ -95,17 +128,36 @@ export function AgendaOperacionalPanel() {
   function restore(item: Ocorrencia) { ask({ kind: 'restore', item, requestId: crypto.randomUUID() }); }
   function closeRestoreDraft() { if (mutation.isPending || !restoreDraft) return; if (restoreDraft.data !== restoreDraft.item.data || restoreDraft.horaInicio !== (restoreDraft.item.horaInicio ?? '') || restoreDraft.horaFim !== (restoreDraft.item.horaFim ?? '')) { ask({ kind: 'discard', restoring: true }); return; } setRestoreDraft(null); setError(''); setDetail(restoreDraft.item); }
   function stop(agendaId: string) {
+    setNotice('');
     ask({ kind: 'stop', agendaId });
   }
   const rule = agendas.find((agenda) => agenda.id === draft?.agendaId);
   const originalDraft = useMemo(() => { try { return baseline ? JSON.parse(baseline) as Draft : null; } catch { return null; } }, [baseline]);
-  const preserveIncompleteLegacyTime = Boolean(draft && originalDraft && (!originalDraft.horaInicio || !originalDraft.horaFim) && draft.horaInicio === originalDraft.horaInicio && draft.horaFim === originalDraft.horaFim && ((draft.ocorrenciaId && draft.data === originalDraft.data) || (draft.agendaId && !draft.gerarDatas && localDate(draft.data).getDay() === localDate(originalDraft.data).getDay())));
+  const preserveIncompleteLegacyTime = Boolean(draft && originalDraft && (!originalDraft.horaInicio || !originalDraft.horaFim) && draft.horaInicio === originalDraft.horaInicio && draft.horaFim === originalDraft.horaFim && (draft.ocorrenciaId || draft.agendaId));
   const detailRule = agendas.find((agenda) => agenda.id === detail?.agendaId);
   const first = localDate(inicio); const length = localDate(fim).getDate();
   const cells = Array.from({ length: Math.ceil((first.getDay() + length) / 7) * 7 }, (_, index) => index - first.getDay() + 1);
   const modalOpen = Boolean(draft || detail || restoreDraft || rulesOpen || confirmation);
   const dirty = Boolean((draft && JSON.stringify(draft) !== baseline) || (restoreDraft && (restoreDraft.data !== restoreDraft.item.data || restoreDraft.horaInicio !== (restoreDraft.item.horaInicio ?? '') || restoreDraft.horaFim !== (restoreDraft.item.horaFim ?? ''))));
   const blocker = useBlocker(dirty);
+  function saveDraft(activate = false) {
+    if (!draft) return;
+    if (draft.agendaId) {
+      if (activate && !draft.geracaoDesde && !draft.activationFrom && !draft.activationRequested) { setDraft({ ...draft, activationRequested: true }); setError(''); return; }
+      if (activate && !draft.geracaoDesde && !draft.activationFrom) { setError('Informe “Gerar próximas datas a partir de” para ativar.'); return; }
+      const form = document.getElementById('agendamento-form') as HTMLFormElement | null;
+      if (!form?.reportValidity()) return;
+      const definition: Record<string, unknown> = { nome: draft.nome, diaSemana: draft.diaSemana, horaInicio: draft.horaInicio || undefined, horaFim: draft.horaFim || undefined, local: draft.local || null, ultimaData: draft.semFim ? null : draft.fim };
+      if (preserveIncompleteLegacyTime) { delete definition.horaInicio; delete definition.horaFim; }
+      if (activate) write(`/api/operacao/agenda/agendas/${encodeURIComponent(draft.agendaId)}/salvar-e-ativar`, { requestId: draft.requestId, ...definition, ...(draft.geracaoDesde ? {} : { aPartirDe: draft.activationFrom }) });
+      else write(`/api/operacao/agenda/agendas/${encodeURIComponent(draft.agendaId)}`, definition, undefined, 'PATCH');
+      return;
+    }
+    const body: Record<string, unknown> = { ...draft, diaSemana: draft.diaSemana, fim: draft.repetirSemanalmente ? (draft.semFim ? null : draft.fim) : undefined, horaFim: draft.horaFim || null, local: draft.local || null };
+    delete body.semFim; delete body.gerarDatas; delete body.geracaoDesde; delete body.activationFrom; delete body.activationRequested;
+    if (preserveIncompleteLegacyTime) { delete body.horaInicio; delete body.horaFim; }
+    write('/api/operacao/agenda/agendamentos', body);
+  }
   useEffect(() => {
     if (blocker.state !== 'blocked') { navigationPrompted.current = false; return; }
     if (mutation.isPending) { blocker.reset(); return; }
@@ -141,12 +193,12 @@ export function AgendaOperacionalPanel() {
       <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
       <div className="flex rounded-xl border border-line p-1" role="group" aria-label="Visualização">{(['Mês', 'Lista'] as const).map((option) => <button key={option} type="button" aria-pressed={view === option} className={`min-h-11 rounded-lg px-4 text-sm font-medium ${view === option ? 'bg-brand-600 text-white' : 'text-ink-muted'}`} onClick={() => setView(option)}>{option}</button>)}</div>
       <div className="flex min-w-0 flex-1 gap-2 sm:flex-none">
-        <button type="button" className="touch-btn-secondary min-h-11 min-w-0 flex-1 whitespace-normal !px-2 text-center text-xs leading-tight sm:flex-none sm:px-4 sm:text-sm" onClick={() => { setError(''); setShowArchived(false); setRulesOpen(true); }}>Agendamentos recorrentes ({agendas.length})</button>
+        <button type="button" className="touch-btn-secondary min-h-11 min-w-0 flex-1 whitespace-normal !px-2 text-center text-xs leading-tight sm:flex-none sm:px-4 sm:text-sm" onClick={() => { setError(''); setNotice(''); setShowArchived(false); setRulesOpen(true); }}>Agendamentos recorrentes ({agendas.length})</button>
         <button type="button" className="touch-btn-primary min-h-11 min-w-0 flex-1 whitespace-normal !px-2 text-center text-sm leading-tight sm:flex-none sm:px-3 sm:text-base" onClick={() => openDraft()}>+ Novo agendamento</button>
       </div>
       </div>
     </div>
-    <div className="flex items-center justify-between gap-3 text-sm text-ink-muted"><span>{ocorrencias.length} agendamento{ocorrencias.length === 1 ? '' : 's'} no mês</span></div>
+    <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-ink-muted"><span>{displayedOccurrences.length} agendamento{displayedOccurrences.length === 1 ? '' : 's'} no mês</span>{hiddenHistoryCount > 0 && <button type="button" className="touch-btn-secondary min-h-11" aria-pressed={showArchivedOccurrenceHistory} onClick={() => setShowArchivedOccurrenceHistory((visible) => !visible)}>{showArchivedOccurrenceHistory ? 'Ocultar histórico cancelado/arquivado' : `Mostrar histórico cancelado/arquivado (${hiddenHistoryCount})`}</button>}</div>
     {notice && !rulesOpen && <p role="status" className="rounded-xl bg-success-soft p-3 text-sm text-ink">{notice}</p>}
     {query.isError && <div role="alert" className="alert-error flex flex-wrap items-center gap-3"><span>Não foi possível carregar a agenda.</span><button type="button" className="touch-btn-secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>Tentar novamente</button></div>}
     {query.isFetching && <p role="status" className="text-sm text-ink-faint">Carregando agendamentos…</p>}
@@ -172,9 +224,11 @@ export function AgendaOperacionalPanel() {
       {showArchived && archivedQuery.isError && <div role="alert" className="alert-error">Não foi possível carregar as arquivadas.<button type="button" className="touch-btn-secondary" onClick={() => void archivedQuery.refetch()}>Tentar novamente</button></div>}
       {!query.isError && displayedRules.length === 0 && !archivedQuery.isFetching && <p className="py-4 text-sm text-ink-muted">{showArchived ? 'Nenhuma repetição arquivada.' : 'Nenhuma repetição cadastrada.'}</p>}
       <ul className="divide-y divide-line">{displayedRules.map((agenda) => <li key={agenda.id} className="space-y-2 py-3">
-        <strong className="block break-words">{agenda.nome}</strong><span className="block text-sm text-ink-muted">{dias[agenda.diaSemana]} · {agenda.horaInicio} · {agenda.ativa ? 'Ativa' : 'Inativa'}{agenda.archivedAt ? ' · Arquivada' : ''}</span>
+        <strong className="block break-words">{agenda.nome}</strong><span className={`block text-sm font-semibold ${agenda.ativa ? 'text-success' : 'text-warning'}`}>{agenda.ativa ? 'Ativa — próximas datas são geradas automaticamente' : 'Pausada — nenhuma nova data será gerada'}</span><span className="block text-sm text-ink-muted">{dias[agenda.diaSemana]} · {agenda.horaInicio}{agenda.archivedAt ? ' · Arquivada' : ''}</span>
         <span className="block text-sm text-ink-faint">{agenda._count?.ocorrencias === 0 ? 'Ainda sem datas agendadas · total em todos os períodos' : agenda._count ? `${agenda._count.ocorrencias} datas no total · todos os períodos (inclui canceladas)` : 'Contagem de datas indisponível'}</span>
-        {!showArchived && <div className="flex flex-wrap gap-2"><button type="button" className="touch-btn-secondary" aria-label={`Editar repetição ${agenda.nome}`} disabled={mutation.isPending} onClick={() => openRule(agenda)}>Editar</button>{agenda.ativa && <button type="button" className="touch-btn-secondary" disabled={mutation.isPending} onClick={() => stop(agenda.id)}>Interromper repetição</button>}<button type="button" className="touch-btn-secondary" disabled={mutation.isPending} onClick={() => ask({ kind: 'archive', agendaId: agenda.id })}>Remover da lista</button></div>}
+        {!agenda.primeiraData ? <p className="text-sm text-warning">Regra antiga sem início persistido. Ao retomar, informe a data explicitamente. O término pode ficar em aberto.</p> : <p className="text-sm text-ink-muted">Período: {agenda.primeiraData.slice(0, 10)} {agenda.ultimaData ? `até ${agenda.ultimaData.slice(0, 10)}` : `sem data de término`}.</p>}
+        {!agenda.geracaoDesde && <p className="text-sm text-warning">Esta regra ainda não tem uma referência de geração. Ao iniciar ou retomar, informe a data explicitamente; o início histórico e as ocorrências existentes serão preservados.</p>}
+        {!showArchived && <div className="flex flex-wrap gap-2"><button type="button" className="touch-btn-secondary" aria-label={`Editar repetição ${agenda.nome}`} disabled={mutation.isPending} onClick={() => openRule(agenda)}>Editar</button>{agenda.ativa && <button type="button" className="touch-btn-secondary" disabled={mutation.isPending} onClick={() => stop(agenda.id)}>Pausar repetição</button>}{!agenda.ativa && <button type="button" className="touch-btn-primary" disabled={mutation.isPending} onClick={() => openRule(agenda, true)}>Ativar e gerar próximas datas</button>}<button type="button" className="touch-btn-secondary" disabled={mutation.isPending} onClick={() => ask({ kind: 'archive', agendaId: agenda.id })}>Remover da lista</button></div>}
       </li>)}</ul>
     </Modal>
     <Modal open={Boolean(detail) && !confirmation && !restoreDraft} title="Agendamento" onClose={() => { if (!mutation.isPending) setDetail(null); }} footer={<button type="button" className="touch-btn-orange w-full" disabled={mutation.isPending} onClick={() => setDetail(null)}>Voltar</button>}>
@@ -193,17 +247,20 @@ export function AgendaOperacionalPanel() {
         <div className="grid gap-4 sm:grid-cols-2"><label className="block text-sm">Horário de início<input type="time" className="input mt-1 min-h-11 w-full" required disabled={mutation.isPending} value={restoreDraft.horaInicio} onChange={(event) => setRestoreDraft({ ...restoreDraft, horaInicio: event.target.value })} /></label><label className="block text-sm">Horário de término<input type="time" className="input mt-1 min-h-11 w-full" required disabled={mutation.isPending} value={restoreDraft.horaFim} onChange={(event) => setRestoreDraft({ ...restoreDraft, horaFim: event.target.value })} /></label></div>
       </form>}
     </Modal>
-    <Modal open={Boolean(draft) && !confirmation} title={draft?.agendaId ? 'Editar repetição' : draft?.ocorrenciaId ? 'Editar agendamento' : 'Novo agendamento'} onClose={closeDraft} hideHeaderClose={mutation.isPending} closeOnBackdrop={!mutation.isPending} footer={<div className="grid grid-cols-2 gap-2"><button type="button" className="touch-btn-orange" disabled={mutation.isPending} onClick={closeDraft}>Voltar</button><button type="submit" form="agendamento-form" className="touch-btn-primary" disabled={mutation.isPending}>{mutation.isPending ? 'Salvando…' : 'Salvar'}</button></div>}>
-      {draft && <form id="agendamento-form" className="space-y-4 pb-2" onSubmit={(event) => { event.preventDefault(); const body: Record<string, unknown> = { ...draft, horaFim: draft.horaFim || null, local: draft.local || null, ...(draft.repetirSemanalmente ? {} : { fim: undefined }) }; if (preserveIncompleteLegacyTime) { delete body.horaInicio; delete body.horaFim; } write('/api/operacao/agenda/agendamentos', body); }}>
+    <Modal open={Boolean(draft) && !confirmation} title={draft?.agendaId ? 'Editar repetição' : draft?.ocorrenciaId ? 'Editar agendamento' : 'Novo agendamento'} onClose={closeDraft} hideHeaderClose={mutation.isPending} closeOnBackdrop={!mutation.isPending} footer={<div className={`grid gap-2 ${draft?.agendaId ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2'}`}><button type="button" className="touch-btn-orange" disabled={mutation.isPending} onClick={closeDraft}>Voltar</button><button type="submit" form="agendamento-form" className="touch-btn-primary" disabled={mutation.isPending}>{mutation.isPending ? 'Salvando…' : 'Salvar alterações'}</button>{draft?.agendaId && rule?.ativa && <button type="button" className="touch-btn-secondary text-danger" disabled={mutation.isPending || JSON.stringify(draft) !== baseline} onClick={() => stop(rule.id)}>Pausar repetição</button>}{draft?.agendaId && rule && !rule.ativa && <button type="button" className="touch-btn-primary" disabled={mutation.isPending} onClick={() => saveDraft(true)}>{mutation.isPending ? 'Ativando…' : 'Salvar e ativar'}</button>}</div>}>
+      {draft && <form id="agendamento-form" className="space-y-4 pb-2" onSubmit={(event) => { event.preventDefault(); saveDraft(false); }}>
         {error && <div role="alert" className="alert-error">{error}</div>}
+        {rule && <p className={`rounded-lg p-3 text-sm font-semibold ${rule.ativa ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'}`}>{rule.ativa ? 'Ativa — próximas datas são geradas automaticamente' : 'Pausada — nenhuma nova data será gerada'}</p>}
+        {rule?.ativa && JSON.stringify(draft) !== baseline && <p className="text-sm text-ink-muted">Salve as alterações antes de pausar a repetição.</p>}
         <label className="block text-sm">Nome<input className="input mt-1 min-h-11 w-full" value={draft.nome} maxLength={120} required disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, nome: event.target.value })} /></label>
-        <div className="grid gap-4 sm:grid-cols-2"><label className="block min-w-0 text-sm">{draft.repetirSemanalmente ? 'Primeira data' : 'Data'}<input type="date" className="input mt-1 min-h-11 w-full" value={draft.data} required disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, data: event.target.value })} /></label><label className="block min-w-0 text-sm">Horário de início<input type="time" className="input mt-1 min-h-11 w-full" value={draft.horaInicio} required={!preserveIncompleteLegacyTime} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, horaInicio: event.target.value })} /></label><label className="block min-w-0 text-sm">Horário de término<input type="time" className="input mt-1 min-h-11 w-full" value={draft.horaFim} required={!preserveIncompleteLegacyTime} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, horaFim: event.target.value })} /></label><label className="block text-sm">Local (opcional)<input className="input mt-1 min-h-11 w-full" value={draft.local} maxLength={160} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, local: event.target.value })} /></label></div>
+        <div className="grid gap-4 sm:grid-cols-2">{!draft.agendaId && <label className="block min-w-0 text-sm">{draft.repetirSemanalmente ? 'Primeira data para iniciar a geração' : 'Data'}<input type="date" className="input mt-1 min-h-11 w-full" value={draft.data} required disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, data: event.target.value, diaSemana: draft.repetirSemanalmente ? localDate(event.target.value).getDay() : draft.diaSemana })} /></label>}{draft.repetirSemanalmente && <label className="block min-w-0 text-sm">Dia da semana<select className="input mt-1 min-h-11 w-full" value={draft.diaSemana} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, diaSemana: Number(event.target.value) })}>{dias.map((dia, index) => <option key={dia} value={index}>{dia}</option>)}</select></label>}<label className="block min-w-0 text-sm">Horário de início<input type="time" className="input mt-1 min-h-11 w-full" value={draft.horaInicio} required={!preserveIncompleteLegacyTime} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, horaInicio: event.target.value })} /></label><label className="block min-w-0 text-sm">Horário de término<input type="time" className="input mt-1 min-h-11 w-full" value={draft.horaFim} required={!preserveIncompleteLegacyTime} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, horaFim: event.target.value })} /></label><label className="block text-sm">Local (opcional)<input className="input mt-1 min-h-11 w-full" value={draft.local} maxLength={160} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, local: event.target.value })} /></label></div>
         {!draft.ocorrenciaId && <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" className="h-5 w-5" checked={draft.repetirSemanalmente} disabled={Boolean(draft.agendaId) || mutation.isPending} onChange={(event) => setDraft({ ...draft, repetirSemanalmente: event.target.checked })} />Repetir semanalmente</label>}
-        {draft.repetirSemanalmente && <div className="space-y-3 rounded-xl border border-line p-3"><p className="text-sm text-ink-muted">Repetição semanal: {dias[localDate(draft.data).getDay()]} · {draft.horaInicio}.</p><label className="block text-sm">Última data da repetição<input type="date" className="input mt-1 min-h-11 w-full" value={draft.fim} min={draft.data} required disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, fim: event.target.value })} /></label>{rule && <><p className="text-sm text-ink-muted">Alterações na regra serão usadas somente em novas datas. Os agendamentos existentes serão preservados.</p>{rule.ativa ? <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" className="h-5 w-5" checked={draft.gerarDatas} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, gerarDatas: event.target.checked })} />Agendar datas neste período</label> : <p className="text-sm text-ink-muted">Repetição inativa: serão salvos somente os dados da regra. Nenhuma nova data será agendada.</p>}</>}</div>}
+        {draft.repetirSemanalmente && <div className="space-y-3 rounded-xl border border-line p-3">{!draft.agendaId && <p className="text-sm text-ink-muted">A geração começa na data informada e cria somente o dia da semana selecionado, em janela de 90 dias.</p>}<label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" className="h-5 w-5" checked={draft.semFim} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, semFim: event.target.checked })} />Sem data de término</label><label className="block text-sm">Última data inclusiva<input type="date" className="input mt-1 min-h-11 w-full" value={draft.fim} min={draft.data || undefined} required={!draft.semFim} disabled={mutation.isPending || draft.semFim} onChange={(event) => setDraft({ ...draft, fim: event.target.value })} /></label>{draft.activationRequested && !draft.geracaoDesde && <label className="block text-sm">Gerar próximas datas a partir de<input type="date" className="input mt-1 min-h-11 w-full" value={draft.activationFrom ?? ''} disabled={mutation.isPending} onChange={(event) => setDraft({ ...draft, activationFrom: event.target.value })} /><span className="mt-1 block text-ink-muted">A data informa de onde começar a gerar. O início histórico e as datas existentes serão preservados.</span></label>}{rule && <><p className="text-sm text-ink-muted">As mudanças valem para novas ocorrências. Datas existentes, comandas, caixas e pagamentos permanecem como estão.</p>{!rule.ativa && <p className="text-sm text-ink-muted">Salvar alterações mantém a repetição pausada. “Salvar e ativar” salva a definição e agenda as datas em uma única operação.</p>}</>}</div>}
       </form>}
     </Modal>
-    <Modal open={Boolean(confirmation)} title={confirmation?.kind === 'discard' ? 'Descartar alterações?' : confirmation?.kind === 'cancel' ? 'Cancelar agendamento?' : confirmation?.kind === 'restore' ? 'Restaurar agendamento?' : confirmation?.kind === 'stop' ? 'Interromper repetição?' : 'Remover repetição da lista?'} onClose={refuseConfirmation} hideHeaderClose footer={<div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><button type="button" className="touch-btn-orange min-h-12" onClick={refuseConfirmation}>{confirmation?.kind === 'discard' ? 'Continuar editando' : 'Voltar'}</button><button type="button" className={confirmation?.kind === 'archive' || confirmation?.kind === 'restore' ? 'touch-btn-primary min-h-12' : 'touch-btn-danger min-h-12'} onClick={acceptConfirmation}>{confirmation?.kind === 'discard' ? 'Descartar' : confirmation?.kind === 'cancel' ? 'Cancelar agendamento' : confirmation?.kind === 'restore' ? 'Restaurar agendamento' : confirmation?.kind === 'stop' ? 'Interromper repetição' : 'Remover da lista'}</button></div>}>
-      <p className="pb-3 text-sm leading-relaxed text-ink-muted">{confirmation?.kind === 'discard' ? 'As alterações ainda não salvas serão descartadas. Nenhum agendamento será enviado.' : confirmation?.kind === 'cancel' ? 'Somente este agendamento será cancelado. O registro e a auditoria serão preservados; a repetição não será interrompida.' : confirmation?.kind === 'restore' ? 'O mesmo registro voltará a Programada após uma nova validação de horário. A regra semanal, comandas, pagamentos, caixa e estoque não serão alterados.' : confirmation?.kind === 'stop' ? 'Novas datas não poderão ser geradas. As datas já existentes, comandas e caixa serão mantidos.' : 'A regra será arquivada e poderá ser consultada em Ver arquivadas. Seu estado ativo/inativo será preservado. Nenhuma nova data será gerada; datas existentes, comandas, caixa, estoque e auditoria serão mantidos.'}</p>
+    <Modal open={Boolean(confirmation)} title={confirmation?.kind === 'discard' ? 'Descartar alterações?' : confirmation?.kind === 'cancel' ? 'Cancelar agendamento?' : confirmation?.kind === 'restore' ? 'Restaurar agendamento?' : confirmation?.kind === 'stop' ? 'Pausar repetição?' : confirmation?.kind === 'resume' ? 'Retomar repetição?' : 'Remover repetição da lista?'} onClose={refuseConfirmation} hideHeaderClose footer={<div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><button type="button" className="touch-btn-orange min-h-12" onClick={refuseConfirmation}>{confirmation?.kind === 'discard' ? 'Continuar editando' : 'Voltar'}</button><button type="button" disabled={confirmation?.kind === 'resume' && !confirmation.aPartirDe} className={confirmation?.kind === 'archive' || confirmation?.kind === 'restore' || confirmation?.kind === 'resume' ? 'touch-btn-primary min-h-12' : 'touch-btn-danger min-h-12'} onClick={acceptConfirmation}>{confirmation?.kind === 'discard' ? 'Descartar' : confirmation?.kind === 'cancel' ? 'Cancelar agendamento' : confirmation?.kind === 'restore' ? 'Restaurar agendamento' : confirmation?.kind === 'stop' ? 'Pausar repetição' : confirmation?.kind === 'resume' ? 'Retomar e agendar datas' : 'Remover da lista'}</button></div>}>
+      {confirmation?.kind === 'resume' && !confirmation.aPartirDe && <label className="mb-3 block text-sm">Gerar próximas datas a partir de<input type="date" className="input mt-1 min-h-11 w-full" required value={confirmation.aPartirDe} onChange={(event) => setConfirmation({ ...confirmation, aPartirDe: event.target.value })} /><span className="mt-1 block text-ink-muted">Essa referência inicia a geração nesta mesma regra; não altera o início histórico nem datas já existentes.</span></label>}
+      <p className="pb-3 text-sm leading-relaxed text-ink-muted">{confirmation?.kind === 'discard' ? 'As alterações ainda não salvas serão descartadas. Nenhum agendamento será enviado.' : confirmation?.kind === 'cancel' ? 'Somente este agendamento será cancelado. O registro e a auditoria serão preservados; a repetição não será interrompida.' : confirmation?.kind === 'restore' ? 'O mesmo registro voltará a Programada após uma nova validação de horário. A regra semanal, comandas, pagamentos, caixa e estoque não serão alterados.' : confirmation?.kind === 'stop' ? 'Novas datas não poderão ser geradas. As datas já existentes, comandas e caixa serão mantidos.' : confirmation?.kind === 'resume' ? 'A regra será ativada e serão agendadas apenas datas ainda ausentes na janela futura de 90 dias. Uma data final salva será respeitada. A retomada será registrada na auditoria; ocorrências existentes e canceladas serão preservadas.' : 'A regra será arquivada e poderá ser consultada em Ver arquivadas. Seu estado ativo/inativo será preservado. Nenhuma nova data será gerada; datas existentes, comandas, caixa, estoque e auditoria serão mantidos.'}</p>
     </Modal>
   </section>;
 }

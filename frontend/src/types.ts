@@ -265,11 +265,15 @@ export interface UnirClientesResponse extends Cliente {
 
 export interface ClienteHistoricoItem {
   id: string;
+  status: 'FECHADA' | 'CANCELADA';
   total: number;
   totalComanda: number;
+  desconto: number;
   valorPendente: number;
   fechadaEm: string;
-  evento: { id: string; nome: string; local: string; data: string | null };
+  evento: { id: string; nome: string; local: string; data: string | null } | null;
+  pontoVenda: { id: string; nome: string } | null;
+  ocorrencia: { id: string; nome: string; data: string; agenda: { id: string; nome: string } | null } | null;
   itens: {
     id: string;
     produto: string;
@@ -277,6 +281,9 @@ export interface ClienteHistoricoItem {
     quantidade: number;
     precoUnit: number;
     subtotal: number;
+    canceladoEm: string | null;
+    cancelamentoPendenteEm: string | null;
+    statusEntrega: string | null;
   }[];
   pagamentos: { forma: string; valor: number }[];
 }
@@ -530,6 +537,12 @@ export interface RankingPdvPeriodoResponse {
   mes: string | null;
   mesesDisponiveis: string[];
   entries: RankingEntry[];
+}
+
+export interface RankingPdvAgendaResponse {
+  pontoVenda: { id: string; nome: string };
+  agenda: { id: string; nome: string; primeiraData: string | null; ultimaData: string | null; archivedAt: string | null };
+  ranking: RankingEntry[];
 }
 
 export interface RankingSerieResponse {

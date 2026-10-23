@@ -71,16 +71,16 @@ export function mesToDateRange(mes: string): { gte: Date; lt: Date } | null {
   const year = Number(match[1]);
   const month = Number(match[2]);
   if (month < 1 || month > 12) return null;
-  const gte = new Date(`${year}-${String(month).padStart(2, '0')}-01T12:00:00`);
+  const gte = new Date(Date.UTC(year, month - 1, 1));
   const nextYear = month === 12 ? year + 1 : year;
   const nextMonth = month === 12 ? 1 : month + 1;
-  const lt = new Date(`${nextYear}-${String(nextMonth).padStart(2, '0')}-01T12:00:00`);
+  const lt = new Date(Date.UTC(nextYear, nextMonth - 1, 1));
   return { gte, lt };
 }
 
 export function dateToMesKey(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
   return `${y}-${m}`;
 }
 

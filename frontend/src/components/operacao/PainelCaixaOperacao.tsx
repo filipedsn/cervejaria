@@ -332,6 +332,11 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           {ocorrenciasElegiveis.length === 0 && <p className="text-sm text-ink-faint">Nenhum agendamento programado ou aberto para este PDV no período consultado.</p>}
         </>
       )}
+      {!ocorrenciasQuery.isLoading && !ocorrenciasQuery.isError && !ocorrenciaId && (
+        <p role="status" className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
+          Sem ocorrência selecionada, este novo caixa ficará sem vínculo. A tela não permite associar uma ocorrência depois que o caixa abre; não feche nem reabra um caixa para corrigir isso.
+        </p>
+      )}
       {outraData && ocorrenciaSelecionada && data?.diaOperacional && (
         <label className="flex cursor-pointer items-start gap-2 text-sm text-amber-200">
           <input type="checkbox" className="mt-1" checked={confirmarDataDiferente}

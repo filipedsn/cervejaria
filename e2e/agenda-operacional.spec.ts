@@ -141,4 +141,66 @@ test.describe('Agenda operacional canônica', () => {
     expect(Object.hasOwn(requested[0]!, 'confirmarDataDiferente')).toBe(false);
     await expect(page.getByTestId('caixa-contexto-ocorrencia')).toContainText('Sem ocorrência');
   });
+
+for (const width of [390, 1280]) {
+  test(`paused legacy recurrence definition, activation, reload and Friday dates at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.clock.install({ time: new Date('2026-10-22T15:00:00Z') });
+    await authenticateAsOwner(page);
+    const rule: Record<string, any> = { id: 'legacy-weekly', nome: 'Legacy Friday', diaSemana: 5, primeiraData: null, geracaoDesde: null, ultimaData: '2026-10-31T00:00:00.000Z', horaInicio: '18:00', horaFim: '20:00', local: null, ativa: false, archivedAt: null, _count: { ocorrencias: 0 } };
+    const rows: Array<Record<string, any>> = []; const updates: Record<string, unknown>[] = []; const activations: Record<string, unknown>[] = [];
+    await page.route('**/api/operacao/agenda/ocorrencias?**', (route) => route.fulfill({ json: { agendas: [rule], ocorrencias: rows } }));
+    await page.route('**/api/operacao/agenda/agendas/legacy-weekly', async (route) => {
+      const body = route.request().postDataJSON() as Record<string, unknown>; updates.push(body); Object.assign(rule, body);
+      return route.fulfill({ json: rule });
+    });
+    await page.route('**/api/operacao/agenda/agendas/legacy-weekly/salvar-e-ativar', async (route) => {
+      const body = route.request().postDataJSON() as Record<string, unknown>; activations.push(body);
+      rule.ativa = true; rule.geracaoDesde = `${String(body.aPartirDe)}T00:00:00.000Z`;
+      const start = new Date(`${String(body.aPartirDe)}T00:00:00Z`); const end = new Date(String(body.ultimaData) + 'T00:00:00Z');
+      for (const date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) if (date.getUTCDay() === rule.diaSemana) rows.push({ id: `occ-${date.toISOString().slice(0, 10)}`, agendaId: rule.id, nome: rule.nome, data: date.toISOString().slice(0, 10), horaInicio: rule.horaInicio, horaFim: rule.horaFim, status: 'PROGRAMADA', podeEditar: true, podeCancelar: true, bloqueio: null });
+      rule._count.ocorrencias = rows.length;
+      const dates = rows.map((row) => row.data);
+      return route.fulfill({ json: { agendaId: rule.id, nome: rule.nome, salva: true, reativada: true, criadas: dates.length, datas: dates, datasCriadas: dates } });
+    });
+    await page.goto('/operacao/agenda');
+    await page.getByRole('button', { name: /Agendamentos recorrentes/ }).click();
+    await expect(page.getByText('Pausada — nenhuma nova data será gerada')).toBeVisible();
+    await page.getByRole('button', { name: 'Editar repetição Legacy Friday' }).click();
+    await expect(page.getByText('Pausada — nenhuma nova data será gerada')).toBeVisible();
+    await expect(page.getByLabel('Dia da semana')).toHaveValue('5');
+    await expect(page.getByLabel('Gerar próximas datas a partir de')).toHaveCount(0);
+    await page.getByLabel('Nome').fill('Igarapé');
+    await page.getByLabel('Local (opcional)').fill('Bar QA');
+    await page.getByRole('button', { name: 'Salvar alterações' }).click();
+    await expect.poll(() => updates.length).toBe(1);
+    expect(updates[0]).toMatchObject({ nome: 'Igarapé', local: 'Bar QA', diaSemana: 5, ultimaData: '2026-10-31' });
+    await expect(page.getByRole('status').filter({ hasText: 'Igarapé: alterações salvas.' })).toContainText('A repetição continua pausada.');
+    await page.reload();
+    await page.getByRole('button', { name: /Agendamentos recorrentes/ }).click();
+    await expect(page.getByText('Pausada — nenhuma nova data será gerada')).toBeVisible();
+    await page.getByRole('button', { name: 'Editar repetição Igarapé' }).click();
+    await expect(page.getByLabel('Nome')).toHaveValue('Igarapé');
+    await expect(page.getByLabel('Dia da semana')).toHaveValue('5');
+    await expect(page.getByRole('button', { name: 'Salvar e ativar' })).toBeVisible();
+    await page.getByRole('button', { name: 'Salvar e ativar' }).click();
+    const generationDate = page.getByLabel('Gerar próximas datas a partir de');
+    await expect(generationDate).toBeVisible(); await generationDate.fill('2026-10-23');
+    await page.getByRole('button', { name: 'Salvar e ativar' }).click();
+    await expect.poll(() => activations.length).toBe(1);
+    expect(activations[0]).toMatchObject({ nome: 'Igarapé', diaSemana: 5, aPartirDe: '2026-10-23', ultimaData: '2026-10-31' });
+    await expect(page.getByRole('status').filter({ hasText: 'Igarapé ativada:' })).toContainText('2 novas datas criadas');
+    await expect(page.getByRole('status').filter({ hasText: 'Igarapé ativada:' })).toContainText('2026-10-23 até 2026-10-30');
+    await page.reload();
+    await page.getByRole('button', { name: /sexta-feira, 23 de outubro, 1 agendamentos/ }).click();
+    await expect(page.getByRole('button', { name: /Igarapé Programada · Semanal/ })).toBeVisible();
+    await page.getByRole('button', { name: /sexta-feira, 30 de outubro, 1 agendamentos/ }).click();
+    await expect(page.getByRole('button', { name: /Igarapé Programada · Semanal/ })).toBeVisible();
+    await page.getByRole('button', { name: /Agendamentos recorrentes/ }).click();
+    await expect(page.getByText('Ativa — próximas datas são geradas automaticamente')).toBeVisible();
+    await expect(page.getByText('2 datas no total')).toBeVisible();
+    expect(rows.map((row) => row.data)).toEqual(['2026-10-23', '2026-10-30']);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
 });

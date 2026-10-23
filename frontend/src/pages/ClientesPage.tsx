@@ -181,7 +181,7 @@ export function ClientesPage() {
         {(
           [
             ['ultimaVisita', 'Última visita'],
-            ['totalGasto', 'Maior gasto'],
+            ['totalGasto', 'Maior valor recebido'],
             ['nome', 'Nome A–Z'],
           ] as const
         ).map(([value, label]) => (
