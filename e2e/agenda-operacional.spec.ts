@@ -63,7 +63,7 @@ test.describe('Agenda operacional canônica', () => {
     expect(agendaRequests).toEqual([]);
   });
 
-  test('consulta somente hoje, sugere a única ocorrência e só abre após confirmação final', async ({ page }) => {
+  test('consulta somente hoje, mantem selecao inicial vazia e exige escolha explicita', async ({ page }) => {
     await authenticateAsOwner(page);
     const requested: Record<string, unknown>[] = [];
     const occurrenceUrls: string[] = [];
@@ -184,7 +184,7 @@ test.describe('Agenda operacional canônica', () => {
     fail = false;
     await retry.click();
     await expect(page.getByLabel('Agendamento de hoje')).toBeVisible();
-    await expect(page.getByLabel('Agendamento de hoje')).toHaveValue('retry-today');
+    await expect(page.getByLabel('Agendamento de hoje')).toHaveValue('');
     await expect(page.getByRole('option', { name: /Hoje após retry/ })).toHaveCount(1);
   });
 
@@ -210,7 +210,7 @@ test.describe('Agenda operacional canônica', () => {
 
     operationalDay = '2026-10-23';
     await page.clock.runFor(30_000);
-    await expect(occurrenceSelect).toHaveValue('event-2026-10-23');
+    await expect(occurrenceSelect).toHaveValue('');
     await expect(occurrenceSelect.locator('option', { hasText: 'Evento 2026-10-23' })).toHaveCount(1);
     expect(requestedDays).toContain('2026-10-22/2026-10-22');
     expect(requestedDays).toContain('2026-10-23/2026-10-23');
@@ -225,7 +225,7 @@ test.describe('Agenda operacional canônica', () => {
       await page.goto('/operacao/comandas');
       const occurrenceSelect = page.getByLabel('Agendamento de hoje');
       await expect(occurrenceSelect).toBeVisible();
-      await expect(occurrenceSelect).toHaveValue('today');
+      await expect(occurrenceSelect).toHaveValue('');
       await expect(occurrenceSelect).toBeEnabled();
       const bounds = await occurrenceSelect.boundingBox();
       expect(bounds).not.toBeNull();

@@ -100,7 +100,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const [painelSuprimido, setPainelSuprimido] = useState(compacto);
   const [montagemTapsAberta, setMontagemTapsAberta] = useState(false);
   const [trailerId, setTrailerId] = useState('');
-  const [ocorrenciaEscolha, setOcorrenciaEscolha] = useState<{ contexto: string; id: string; origem: 'sugestao' | 'explicita' | 'invalidada' } | null>(null);
+  const [ocorrenciaEscolha, setOcorrenciaEscolha] = useState<{ contexto: string; id: string; origem: 'nenhuma' | 'explicita' | 'invalidada' } | null>(null);
   const [aberturaPendente, setAberturaPendente] = useState<{
     contexto: string;
     ocorrenciaId: string;
@@ -148,18 +148,13 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   useEffect(() => {
     if (!agendaCanonica || !contextoAgendamento || ocorrenciasQuery.isLoading || ocorrenciasQuery.isFetching || ocorrenciasQuery.isError) return;
     setOcorrenciaEscolha((current) => {
-      if (current?.contexto === contextoAgendamento && current.origem !== 'sugestao') {
+      if (current?.contexto === contextoAgendamento) {
         if (!current.id || cashOccurrenceSelectionIsEligible(ocorrenciasQuery.data?.ocorrencias ?? [], current.id, diaOperacional)) return current;
         // A choice that became ineligible is cleared explicitly; do not silently
         // replace it with a different event that happens to be the only option.
         return { contexto: contextoAgendamento, id: '', origem: 'invalidada' };
       }
-      if (current?.contexto === contextoAgendamento && current.id && !cashOccurrenceSelectionIsEligible(ocorrenciasQuery.data?.ocorrencias ?? [], current.id, diaOperacional)) {
-        return { contexto: contextoAgendamento, id: '', origem: 'invalidada' };
-      }
-      return ocorrenciasElegiveis.length === 1
-        ? { contexto: contextoAgendamento, id: ocorrenciasElegiveis[0]!.id, origem: 'sugestao' }
-        : current?.contexto === contextoAgendamento ? current : { contexto: contextoAgendamento, id: '', origem: 'sugestao' };
+      return { contexto: contextoAgendamento, id: '', origem: 'nenhuma' };
     });
   }, [agendaCanonica, contextoAgendamento, ocorrenciasQuery.isLoading, ocorrenciasQuery.isFetching, ocorrenciasQuery.isError, ocorrenciasQuery.data?.ocorrencias, diaOperacional, ocorrenciasElegiveis]);
   useEffect(() => {
@@ -396,8 +391,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             ))}
           </select>
           {ocorrenciasElegiveis.length === 0 && <p className="text-sm text-ink-faint">Nenhum agendamento para hoje</p>}
-          {ocorrenciasElegiveis.length > 1 && !ocorrenciaId && <p className="text-sm text-ink-muted">Escolha um agendamento ou selecione “Abrir sem agendamento”.</p>}
-          {ocorrenciaSelecionada && escolhaAtual?.origem === 'sugestao' && <p role="status" className="rounded-lg border border-brand-400/30 bg-brand-400/10 p-3 text-sm text-ink">Sugestão: {ocorrenciaSelecionada.nome}, {dataCalendarioPt(ocorrenciaSelecionada.data)} · {ocorrenciaSelecionada.horaInicio ?? 'horário a confirmar'}{ocorrenciaSelecionada.horaFim ? `–${ocorrenciaSelecionada.horaFim}` : ''}. Confirme no próximo passo para abrir.</p>}
+          {ocorrenciasElegiveis.length > 0 && !ocorrenciaId && <p className="text-sm text-ink-muted">Escolha um agendamento ou selecione “Abrir sem agendamento”.</p>}
           {ocorrenciaId && ocorrenciaSelecionada && escolhaAtual?.origem === 'explicita' && <p className="text-sm text-ink-muted">Selecionado: {ocorrenciaSelecionada.nome} · {dataCalendarioPt(ocorrenciaSelecionada.data)} · {ocorrenciaSelecionada.horaInicio ?? 'horário a confirmar'}{ocorrenciaSelecionada.horaFim ? `–${ocorrenciaSelecionada.horaFim}` : ''}</p>}
           {!ocorrenciaId && escolhaAtual?.origem === 'explicita' && ocorrenciasElegiveis.length > 0 && <p role="status" className="rounded-lg border border-line bg-surface p-3 text-sm text-ink-muted">Você escolheu abrir sem agendamento.</p>}
           {!ocorrenciaId && escolhaAtual?.origem === 'invalidada' && <p role="status" className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">O agendamento escolhido deixou de estar disponível. Escolha outro ou abra sem agendamento.</p>}
