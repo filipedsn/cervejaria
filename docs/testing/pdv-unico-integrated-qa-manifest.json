@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "9fed3d1238d42235d956a8e737fc340908468507",
+    "commit": "dedda0568e2221bcfe71eb4dc15f34bf27021b0b",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "9094c712a765ad83f432508a11a8928ba0728ef5ba017c808c35642e93dd98e6"
   },
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "9fed3d1238d42235d956a8e737fc340908468507",
+      "commit": "dedda0568e2221bcfe71eb4dc15f34bf27021b0b",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -63,7 +63,7 @@
     }
   },
   "delivery": {
-    "schemaCommit": "9fed3d1238d42235d956a8e737fc340908468507",
+    "schemaCommit": "dedda0568e2221bcfe71eb4dc15f34bf27021b0b",
     "schemaSha256": "9094c712a765ad83f432508a11a8928ba0728ef5ba017c808c35642e93dd98e6",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
@@ -154,7 +154,7 @@
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-migrator.isolated.test.mjs",
-      "sha256": "338a6324d255d42940c2f57a84df2a042a1a35fe12b7187a5533754d5bdf8551"
+      "sha256": "dd9554110200d510662de6b6d1c876c24e5acceb725500791893ae0a92267ecc"
     },
     {
       "path": "backend/scripts/pdv-unico-commerce-qa-manifest.mjs",
@@ -490,7 +490,7 @@
     },
     {
       "path": "e2e/agenda-operacional.spec.ts",
-      "sha256": "c2b88a0290f9fcccfa387cdacbb19ee082d40c2f87a00897e77c38dcda855f32"
+      "sha256": "16a724d4ee19dab895d95b08c09277e067966e70f7ca52848569853a6e34ca25"
     },
     {
       "path": "e2e/current-model/shift-price-permission-ui.spec.ts",
@@ -510,7 +510,7 @@
     },
     {
       "path": "frontend/src/components/operacao/PainelCaixaOperacao.tsx",
-      "sha256": "6efd82884af0c4b08d34909889618bde5142b3ce4f9d535cad45107c4c4186d4"
+      "sha256": "3cf7ebf0b05f364b872871694f97c4c64684b50ebb715b79d7213d90f40cd3d7"
     },
     {
       "path": "frontend/src/components/operacao/PdvTapsSection.tsx",
@@ -522,7 +522,7 @@
     },
     {
       "path": "frontend/src/lib/operacao.ts",
-      "sha256": "5ff9ab0318da7b63c6915cf3cf8604ae0f5a1a5dfc4f622336c3af5fa5859348"
+      "sha256": "4efe364d8d3d2366b88ebc78d4fd09fc87e01f2f8c2ffefc68d250898ae36105"
     },
     {
       "path": "frontend/src/pages/AdminCervejariasPage.tsx",
@@ -545,5 +545,5 @@
       "sha256": "01567913669a6bb52f70fb140341a5bf22334819b9f155e84b29c6099edae8e2"
     }
   ],
-  "manifestSha256": "bcaef9875a27fb2dcd6eed74374c3935463c77b8861d1479805748f8d37622cf"
+  "manifestSha256": "104422138053d2b6e8be665190775eb484f4b33c126beeeed70237fdfe04fc24"
 }
