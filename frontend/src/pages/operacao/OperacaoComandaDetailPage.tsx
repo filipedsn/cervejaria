@@ -950,6 +950,7 @@ export function OperacaoComandaDetailPage() {
         open={showAddItem}
         onClose={fecharAdicionarItens}
         pontoVendaId={comanda?.pontoVendaId ?? ''}
+        sessaoCaixaId={caixaData?.sessao?.id}
         tapsEnabled={contexto.tapsEnabled}
         produtos={produtos ?? []}
         linhas={carrinho}

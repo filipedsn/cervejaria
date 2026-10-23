@@ -41,6 +41,7 @@ const pontoVendaQuery = z.object({
 
 const tapTurnoQuery = z.object({
   pontoVendaId: z.string().min(1),
+  sessaoCaixaId: z.string().min(1).optional(),
 });
 
 const abrirSchema = z
@@ -266,7 +267,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
   app.get('/taps', async (request, reply) => {
     const { cervejariaId, tapsEnabled } = request.operacao;
     if (!tapsEnabled) return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
-    const { pontoVendaId } = tapTurnoQuery.parse(request.query);
+    const { pontoVendaId, sessaoCaixaId } = tapTurnoQuery.parse(request.query);
     const sessoes = await prisma.sessaoCaixaOperacao.findMany({
       where: { cervejariaId, pontoVendaId, status: 'ABERTO' },
       select: { id: true, trailerId: true },
@@ -275,16 +276,21 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     });
     const sessao = resolveUniqueOpenCashSession(sessoes);
     if (!sessao) return reply.status(404).send({ error: 'Abra o caixa antes de configurar os Taps' });
+    if (sessaoCaixaId && sessao.id !== sessaoCaixaId) {
+      return reply.status(409).send({ error: 'O turno mudou. Atualize a seleção de Tap e tente novamente.', code: 'CASH_SESSION_CHANGED' });
+    }
     if (canonicalPdvQaActivationEnabled()) {
       if (await hasUnmappedCanonicalTaps(cervejariaId)) return reply.status(409).send({ error: 'Existem Taps sem mapeamento confirmado para um PDV', code: 'CANONICAL_TAP_MAPPING_REQUIRED' });
       await inicializarMontagemPdv(sessao.id, pontoVendaId, cervejariaId);
-      return { pontoVendaId, taps: await listTapsComChopeAtualPdv(sessao.id, pontoVendaId, cervejariaId) };
+      return { pontoVendaId, sessaoCaixaId: sessao.id, taps: await listTapsComChopeAtualPdv(sessao.id, pontoVendaId, cervejariaId) };
     }
     const trailerId = await resolverTrailerSessao(sessao, cervejariaId);
-    if (!trailerId) return { trailerId: null, taps: [] };
+    if (!trailerId) return { pontoVendaId, sessaoCaixaId: sessao.id, trailerId: null, taps: [] };
 
     await inicializarMontagemSessaoCaixa(sessao.id, trailerId);
     return {
+      pontoVendaId,
+      sessaoCaixaId: sessao.id,
       trailerId,
       taps: await listTapsComChopeAtualSessaoCaixa(sessao.id, trailerId),
     };

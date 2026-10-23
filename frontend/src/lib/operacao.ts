@@ -776,7 +776,7 @@ export interface TapTurno {
   id: string;
   numero: number;
   nome?: string | null;
-  trailerId: string;
+  trailerId?: string | null;
   ativo: boolean;
   chopeAtual: {
     id: string;
@@ -790,7 +790,9 @@ export interface TapTurno {
 }
 
 export interface TapsTurnoResposta {
-  trailerId: string | null;
+  pontoVendaId?: string;
+  sessaoCaixaId?: string;
+  trailerId?: string | null;
   taps: TapTurno[];
 }
 

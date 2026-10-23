@@ -52,6 +52,7 @@
     "qa:kitchen-cancellation-disposable": "node scripts/run-kitchen-cancellation-disposable-qa.mjs",
     "qa:kitchen-realtime-latency": "node scripts/run-kitchen-realtime-latency-disposable-qa.mjs",
     "inventory:pdv-dev:readonly": "node scripts/run-pdv-unico-dev-inventory-readonly.mjs",
+    "qa:tap121:canonical-pdv": "node scripts/run-tap121-canonical-pdv-disposable-qa.mjs",
     "test:pdv-inventory-summary": "node --test --test-concurrency=4 scripts/pdv-unico-dev-inventory-summary.test.mjs",
     "qa:restore-config-owner": "node scripts/run-with-env.mjs development npx tsx qa/restore-config-owner.ts",
     "qa:suite": "node scripts/run-with-env.mjs development npx tsx qa/suite.ts",
