@@ -913,10 +913,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const restoreFlagAfterLaunch = await app.inject({ method: 'PUT', url: `/api/operacao/produtos/${encodeURIComponent(churrasquinho.id)}`, headers: { cookie: secondOwnerCookie }, payload: { prepararEmPedidoSeparado: true } });
     assert.equal(restoreFlagAfterLaunch.statusCode, 200, `test fixture restores product flag for later sale proofs: ${restoreFlagAfterLaunch.body}`);
 
-    const { diaOperacional } = await import('../src/lib/operacao/venda.ts');
-    const launchDay = diaOperacional();
-    const launchDayText = launchDay.toISOString().slice(0, 10);
-    const concurrentSaleLockDigest = createHash('sha256').update(`caixa-operacao:${secondCompany.id}:${secondPoint.id}:${launchDayText}`).digest();
+    const concurrentSaleLockDigest = createHash('sha256').update(`caixa-operacao:${secondCompany.id}:${secondPoint.id}`).digest();
     const splitSaleCashLockKey = BigInt.asIntN(64, concurrentSaleLockDigest.readBigUInt64BE(0));
     let signalSplitSaleCashLock;
     let releaseSplitSaleCashLock;
@@ -1848,7 +1845,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const closeRaceLaunch = await withOwnerAt(closeRaceDay, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(closeRaceCommandId)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
     assert.equal(closeRaceLaunch.statusCode, 201);
     const closeRaceItemId = JSON.parse(closeRaceLaunch.body).pedidos[0].itens[0].id;
-    const cashLockDigest = createHash('sha256').update(`caixa-operacao:${primaryCompany.id}:${primaryPoint.id}:${closeRaceDay}`).digest();
+    const cashLockDigest = createHash('sha256').update(`caixa-operacao:${primaryCompany.id}:${primaryPoint.id}`).digest();
     const cashLockKey = BigInt.asIntN(64, cashLockDigest.readBigUInt64BE(0));
     let signalCashLocked;
     let releaseCashLocked;
@@ -1918,7 +1915,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     console.log(`QA_OCCURRENCE_ITEM_INCREASE=PASS; incompatible=${mismatchIncrease.statusCode}/no-write; valid=${correctIncrease.statusCode}/quantity:1->2/totalCents:950->1900/stockDelta:-1; missingSession=${blockedWithoutSession.statusCode}; cashCloseRace=${closeRaceIncrease.statusCode}/waiters:${cashLockWaiters}; tenant=${foreignIncrease.statusCode}; cancellation=reversal-verified; prepared=${preparedIncreaseStatus}; delivered=${deliveredIncreaseStatus}; legacy=${legacyIncrease.statusCode}`);
 
     const concurrentDay = '2026-11-07';
-    const lockDigest = createHash('sha256').update(`caixa-operacao:${primaryCompany.id}:${primaryPoint.id}:${concurrentDay}`).digest();
+    const lockDigest = createHash('sha256').update(`caixa-operacao:${primaryCompany.id}:${primaryPoint.id}`).digest();
     const lockKey = BigInt.asIntN(64, lockDigest.readBigUInt64BE(0));
     let signalLocked;
     let releaseLocked;
