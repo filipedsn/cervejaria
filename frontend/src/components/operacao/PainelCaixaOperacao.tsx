@@ -107,6 +107,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const [erro, setErro] = useState('');
   const [cardapioForm, setCardapioForm] = useState<TurnoCardapioFormState>(defaultTurnoCardapioForm);
   const [painelSuprimido, setPainelSuprimido] = useState(compacto);
+  const [montagemTapsAberta, setMontagemTapsAberta] = useState(false);
   const [trailerId, setTrailerId] = useState('');
   const [ocorrenciaId, setOcorrenciaId] = useState('');
   const [confirmarDataDiferente, setConfirmarDataDiferente] = useState(false);
@@ -306,18 +307,31 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     </div>
   ) : null;
 
-  const seletorOcorrencia = agendaCanonica && ocorrenciasQuery.data ? (
+  const seletorOcorrencia = agendaCanonica ? (
     <div className="space-y-2 rounded-xl border border-line bg-surface-lighter/40 p-3">
       <label className="label" htmlFor="operacao-ocorrencia">Ocorrência do caixa (opcional)</label>
-      <select id="operacao-ocorrencia" className="input" value={ocorrenciaId}
-        onChange={(event) => { setOcorrenciaId(event.target.value); setConfirmarDataDiferente(false); }}>
-        <option value="">Sem ocorrência</option>
-        {ocorrenciasElegiveis.map((ocorrencia) => (
-          <option key={ocorrencia.id} value={ocorrencia.id}>
-            {ocorrencia.nome} · {dataCalendarioPt(ocorrencia.data)}{ocorrencia.agenda ? ` · recorrência semanal (${diaSemanaPt(ocorrencia.agenda.diaSemana)})` : ' · avulsa'}
-          </option>
-        ))}
-      </select>
+      <p className="text-sm text-ink-muted">Escolha antes de abrir: a ocorrência fica vinculada a este novo turno. Um caixa já aberto mantém o vínculo atual.</p>
+      {ocorrenciasQuery.isLoading ? (
+        <p role="status" className="text-sm text-ink-faint">Carregando agendamentos deste PDV…</p>
+      ) : ocorrenciasQuery.isError ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-sm text-danger">
+          <span>Não foi possível carregar os agendamentos. O caixa pode ser aberto sem vínculo ou você pode tentar novamente.</span>
+          <button type="button" className="touch-btn-secondary touch-btn-sm" onClick={() => void ocorrenciasQuery.refetch()}>Tentar novamente</button>
+        </div>
+      ) : (
+        <>
+          <select id="operacao-ocorrencia" className="input" value={ocorrenciaId}
+            onChange={(event) => { setOcorrenciaId(event.target.value); setConfirmarDataDiferente(false); }}>
+            <option value="">Sem ocorrência</option>
+            {ocorrenciasElegiveis.map((ocorrencia) => (
+              <option key={ocorrencia.id} value={ocorrencia.id}>
+                {ocorrencia.nome} · {dataCalendarioPt(ocorrencia.data)}{ocorrencia.agenda ? ` · recorrência semanal (${diaSemanaPt(ocorrencia.agenda.diaSemana)})` : ' · avulsa'}
+              </option>
+            ))}
+          </select>
+          {ocorrenciasElegiveis.length === 0 && <p className="text-sm text-ink-faint">Nenhum agendamento programado ou aberto para este PDV no período consultado.</p>}
+        </>
+      )}
       {outraData && ocorrenciaSelecionada && data?.diaOperacional && (
         <label className="flex cursor-pointer items-start gap-2 text-sm text-amber-200">
           <input type="checkbox" className="mt-1" checked={confirmarDataDiferente}
@@ -357,6 +371,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
 
           <TurnoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />
           {seletorOcorrencia}
+          {agendaCanonica && contexto.tapsEnabled && canPermission('taps.operate') && <p className="text-sm text-ink-muted">A montagem do chope deste turno fica disponível depois que o caixa for aberto.</p>}
           {seletorTrailer}
 
           {canPermission('debt.receive') && <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} flex min-h-12 w-full items-center justify-center text-center`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>}
@@ -383,6 +398,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
 
           <TurnoCardapioFormFields form={cardapioForm} setForm={setCardapioForm} />
           {seletorOcorrencia}
+          {agendaCanonica && contexto.tapsEnabled && canPermission('taps.operate') && <p className="text-sm text-ink-muted">A montagem do chope deste turno fica disponível depois que o caixa for aberto.</p>}
           {seletorTrailer}
 
           {canPermission('debt.receive') && <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} flex w-full items-center justify-center text-center`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>}
@@ -423,6 +439,13 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             {canPermission('cash.close') && canPermission('cash.values.read') && <button type="button" className="touch-btn-orange" disabled={bloqueioFechamento} onClick={abrirDialogoFechar}>Fechar caixa</button>}
           </div>
         </div>
+      )}
+
+      {sessao?.status === 'ABERTO' && compacto && contexto.tapsEnabled && canPermission('taps.operate') && (
+        <section className="card flex flex-wrap items-center justify-between gap-3" aria-label="Montagem de chope">
+          <div><h2 className="font-semibold">Montagem de chope</h2><p className="text-sm text-ink-muted">Escolha o chope de cada Tap para este caixa.</p></div>
+          <button type="button" className="touch-btn-secondary" onClick={() => setMontagemTapsAberta(true)}>Montar chope nas Taps</button>
+        </section>
       )}
 
       {sessao?.status === 'ABERTO' && exibeValoresCaixa && compacto && painelSuprimido && (
@@ -752,6 +775,15 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             {encerrarAdministrativamente.isPending ? 'Encerrando...' : 'Confirmar encerramento administrativo'}
           </button>
         </form>
+      </Modal>
+
+      <Modal
+        open={montagemTapsAberta && compacto && sessao?.status === 'ABERTO' && contexto.tapsEnabled && canPermission('taps.operate')}
+        onClose={() => setMontagemTapsAberta(false)}
+        title="Montagem de chope nas Taps"
+        wide
+      >
+        <OperacaoTurnoTapsPanel pontoVendaId={pontoVendaId} />
       </Modal>
 
       <Modal
