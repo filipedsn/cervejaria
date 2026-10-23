@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseline": {
-    "commit": "5a4c474f5e24496e317c19f5c8a2fa866a884915",
+    "commit": "36970b505544ed58db8b26cd66345c86a1dd3df0",
     "schemaPath": "backend/prisma/schema.prisma",
     "schemaSha256": "9094c712a765ad83f432508a11a8928ba0728ef5ba017c808c35642e93dd98e6"
   },
@@ -44,7 +44,7 @@
     "session": {
       "path": "backend/prisma/migrations/20261004100000_pdv_session_restartable/migration.sql",
       "name": "20261004100000_pdv_session_restartable",
-      "commit": "5a4c474f5e24496e317c19f5c8a2fa866a884915",
+      "commit": "36970b505544ed58db8b26cd66345c86a1dd3df0",
       "sha256": "838465ecc6320c94407878ee9f8b97fc1581ccf4636a580a6e35a1d28bff7ac5"
     },
     "finance": {
@@ -63,7 +63,7 @@
     }
   },
   "delivery": {
-    "schemaCommit": "5a4c474f5e24496e317c19f5c8a2fa866a884915",
+    "schemaCommit": "36970b505544ed58db8b26cd66345c86a1dd3df0",
     "schemaSha256": "9094c712a765ad83f432508a11a8928ba0728ef5ba017c808c35642e93dd98e6",
     "migrationName": "20261004170000_pdv_commerce_inventory_context",
     "migrationPath": "backend/prisma/migrations/20261004170000_pdv_commerce_inventory_context/migration.sql",
@@ -450,7 +450,7 @@
     },
     {
       "path": "backend/src/routes/operacao/comandas.ts",
-      "sha256": "891c37046b4f13a4f12662474476c105575388ff1f2ca18f0e61cf92d3e22af3"
+      "sha256": "13a99da5ea6fe067f9fc1ab7e4c59e35f9f20f743830e81a0e06401796ec935d"
     },
     {
       "path": "backend/src/routes/operacao/cozinha.ts",
@@ -466,7 +466,7 @@
     },
     {
       "path": "backend/src/routes/operacao/vendas.ts",
-      "sha256": "8315f3f20cadadfc9598cb850b616b1af0338b348ae81524e42dac7ab655266b"
+      "sha256": "fd60ead9590c965ce3955cf22006137d716129b7ced0d45c9b77b6de10eb33c5"
     },
     {
       "path": "backend/src/routes/produtos.ts",
@@ -545,5 +545,5 @@
       "sha256": "01567913669a6bb52f70fb140341a5bf22334819b9f155e84b29c6099edae8e2"
     }
   ],
-  "manifestSha256": "4fe80d73c8b23209ab444a6138c7a3e7c0e99b3191d0b348427c5fc2d9dedaa8"
+  "manifestSha256": "18b51726f6b353e56614843dc8f21860f6ad273c07cb09fcb4aeabd5c7bd33a2"
 }
