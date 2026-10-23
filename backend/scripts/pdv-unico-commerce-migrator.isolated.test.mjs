@@ -1620,7 +1620,14 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const commandOrderOverride = await withOwnerAt('2026-11-02', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(recurringCommand1.id)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }], ocorrenciaId: recurringOccurrences[1].id } }));
     assert.equal(commandOrderOverride.statusCode, 400, 'order API rejects a client-supplied occurrence override');
     await assertNoApiWrites(beforeCommandOrderOverride, 'command order occurrence override');
-    await closeOccurrenceCash('2026-11-02', 0);
+    const recurringPayment1 = await withOwnerAt('2026-11-02', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(recurringCommand1.id)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: unitPrice }] } }));
+    assert.equal(recurringPayment1.statusCode, 200, `recurring payment 2026-11-02: ${recurringPayment1.body}`);
+    const recurringPersisted1 = await db.comanda.findUniqueOrThrow({ where: { id: recurringCommand1.id }, include: { itens: true, pagamentos: true } });
+    assert.deepEqual([recurringPersisted1.origem, recurringPersisted1.ocorrenciaId, recurringPersisted1.itens.length, recurringPersisted1.pagamentos[0]?.sessaoCaixaId], ['CAIXA', recurringCommand1.ocorrenciaId, 1, recurringSession1.id]);
+    assert.deepEqual([recurringPersisted1.itens[0]?.produtoId, recurringPersisted1.itens[0]?.quantidade, centsExact(recurringPersisted1.itens[0]?.precoUnit), centsExact(recurringPersisted1.pagamentos[0]?.valor)], [product.id, 1, String(primaryCashFlow.itemPriceCents), String(primaryCashFlow.itemPriceCents)], 'first occurrence context preserves catalog and payment snapshots');
+    assert.equal(recurringPersisted1.status, 'FECHADA', 'first recurring command is settled before the next cash session opens');
+    occurrenceProofs.push({ kind: 'recurring-command', sessionId: recurringSession1.id, commandId: recurringPersisted1.id, occurrenceId: recurringPersisted1.ocorrenciaId, paymentSessionId: recurringPersisted1.pagamentos[0]?.sessaoCaixaId });
+    await closeOccurrenceCash('2026-11-02', unitPrice);
 
     const recurringSession2 = await openOccurrenceCash('2026-11-03', recurringOccurrences[1].id);
     const recurringCommand2Response = await withOwnerAt('2026-11-03', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: 'Recurring customer', clienteId: occurrenceClient.id } }));
@@ -1630,19 +1637,14 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     assert.notEqual(recurringCommand1.id, recurringCommand2.id);
     const recurringLaunch2 = await withOwnerAt('2026-11-03', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(recurringCommand2.id)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }] } }));
     assert.equal(recurringLaunch2.statusCode, 201, `second recurring consumption: ${recurringLaunch2.body}`);
-    for (const [day, session, command] of [['2026-11-03', recurringSession2, recurringCommand2], ['2026-11-02', recurringSession1, recurringCommand1]]) {
-      const payment = await withOwnerAt(day, (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(command.id)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: unitPrice }] } }));
-      assert.equal(payment.statusCode, 200, `recurring payment ${day}: ${payment.body}`);
-      const persisted = await db.comanda.findUniqueOrThrow({ where: { id: command.id }, include: { itens: true, pagamentos: true } });
-      assert.deepEqual([persisted.origem, persisted.ocorrenciaId, persisted.itens.length, persisted.pagamentos[0].sessaoCaixaId], ['CAIXA', command.ocorrenciaId, 1, session.id]);
-      assert.deepEqual([persisted.itens[0].produtoId, persisted.itens[0].quantidade, centsExact(persisted.itens[0].precoUnit), centsExact(persisted.pagamentos[0].valor)], [product.id, 1, String(primaryCashFlow.itemPriceCents), String(primaryCashFlow.itemPriceCents)], 'occurrence context does not alter catalog snapshots or amount paid');
-      assert.equal(persisted.status, 'FECHADA', `full payment closes recurring command before cash close ${day}`);
-      occurrenceProofs.push({ kind: 'recurring-command', sessionId: session.id, commandId: persisted.id, occurrenceId: persisted.ocorrenciaId, paymentSessionId: persisted.pagamentos[0].sessaoCaixaId });
-    }
-    // The existing cash close route blocks while any company command remains open,
-    // so settle both occurrence-separated commands before closing either session.
+    const recurringPayment2 = await withOwnerAt('2026-11-03', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(recurringCommand2.id)}/pagamentos`, headers: { cookie }, payload: { pagamentos: [{ forma: 'PIX', valor: unitPrice }] } }));
+    assert.equal(recurringPayment2.statusCode, 200, `recurring payment 2026-11-03: ${recurringPayment2.body}`);
+    const recurringPersisted2 = await db.comanda.findUniqueOrThrow({ where: { id: recurringCommand2.id }, include: { itens: true, pagamentos: true } });
+    assert.deepEqual([recurringPersisted2.origem, recurringPersisted2.ocorrenciaId, recurringPersisted2.itens.length, recurringPersisted2.pagamentos[0]?.sessaoCaixaId], ['CAIXA', recurringCommand2.ocorrenciaId, 1, recurringSession2.id]);
+    assert.deepEqual([recurringPersisted2.itens[0]?.produtoId, recurringPersisted2.itens[0]?.quantidade, centsExact(recurringPersisted2.itens[0]?.precoUnit), centsExact(recurringPersisted2.pagamentos[0]?.valor)], [product.id, 1, String(primaryCashFlow.itemPriceCents), String(primaryCashFlow.itemPriceCents)], 'second occurrence context preserves catalog and payment snapshots');
+    assert.equal(recurringPersisted2.status, 'FECHADA', 'second recurring command is settled before cash close');
+    occurrenceProofs.push({ kind: 'recurring-command', sessionId: recurringSession2.id, commandId: recurringPersisted2.id, occurrenceId: recurringPersisted2.ocorrenciaId, paymentSessionId: recurringPersisted2.pagamentos[0]?.sessaoCaixaId });
     await closeOccurrenceCash('2026-11-03', unitPrice);
-    await closeOccurrenceCash('2026-11-02', unitPrice);
 
     const protectedHistoryBeforeAgendaEdit = plain({
       commands: await db.comanda.findMany({ where: { id: { in: [recurringCommand1.id, recurringCommand2.id] } }, include: { itens: true, pagamentos: true }, orderBy: { id: 'asc' } }),
