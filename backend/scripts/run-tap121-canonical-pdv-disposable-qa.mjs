@@ -39,7 +39,15 @@ try {
   run(process.execPath, ['node_modules/prisma/build/index.js', 'db', 'push', '--skip-generate', '--schema', schemaPath], { env });
   const apiOutput = run(process.execPath, ['--import', 'tsx', 'scripts/tap121-canonical-pdv.isolated.test.mjs'], { env });
   const browserOutput = run(process.execPath, ['--import', 'tsx', 'scripts/tap121-canonical-pdv.browser.qa.mjs'], { env });
-  console.log([apiOutput, browserOutput].join('\n').split(/\r?\n/).filter((line) => /^(RUN |PASS |RECONCILIATION|INVENTORY_DISABLED|QA_TAP121_)/.test(line)).join('\n'));
+  const categoryOrderResult = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/tap-category-order-canonical.browser.qa.mjs'], {
+    cwd: process.cwd(),
+    env: { ...env, PDV_GAMIFIED_CATEGORY_CATALOG: '1' },
+    encoding: 'utf8', windowsHide: true, timeout: 180000,
+  });
+  if (categoryOrderResult.error) throw categoryOrderResult.error;
+  if (categoryOrderResult.status !== 0) throw new Error(`TAP category order browser QA failed (${categoryOrderResult.status}): ${(categoryOrderResult.stderr || categoryOrderResult.stdout || '').slice(-3200)}`);
+  const categoryOrderOutput = categoryOrderResult.stdout ?? '';
+  console.log([apiOutput, browserOutput, categoryOrderOutput].join('\n').split(/\r?\n/).filter((line) => /^(RUN |PASS |RECONCILIATION|INVENTORY_DISABLED|QA_TAP121_|QA_CATEGORY_ORDER_)/.test(line)).join('\n'));
 } finally {
   if (created) {
     const labels = run('docker', ['inspect', '-f', '{{ index .Config.Labels "codex.purpose" }}|{{ index .Config.Labels "codex.run" }}', container]);

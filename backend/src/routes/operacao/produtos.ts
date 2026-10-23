@@ -4,8 +4,11 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import {
   CATEGORIAS_PRODUTO_OPERACAO,
+  CATEGORIA_CHOPE_TAP_ORDEM_ID,
+  normalizarOrdemCategoriasCanonicas,
   normalizarOrdemCategoriasProduto,
   normalizeCategoriaProduto,
+  persistirOrdemCategoriasCanonicas,
 } from '../../lib/operacao/categorias.js';
 import { diaOperacional } from '../../lib/operacao/venda.js';
 import { listProdutosOperacionaisTurno } from '../../lib/operacao/sessao-cardapio.js';
@@ -196,22 +199,33 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
 
   app.put('/categorias/ordem', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
-    const categorias = catalogoCategoriasCanonicoAtivo()
+    const catalogoCanonico = catalogoCategoriasCanonicoAtivo();
+    const categorias = catalogoCanonico
       ? (await prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId }, select: { nome: true }, orderBy: { nomeNormalizado: 'asc' } })).map((categoria) => categoria.nome)
       : request.operacao.tapsEnabled ? [...CATEGORIAS_PRODUTO_OPERACAO, 'Chope'] : [...CATEGORIAS_PRODUTO_OPERACAO];
     const categoriasDisponiveis = new Set<string>(categorias);
     const body = z.object({
-      ordem: z.array(z.string()).length(categorias.length).refine(
-        (ordem) =>
-          new Set(ordem).size === categorias.length &&
-          ordem.every((categoria) => categoriasDisponiveis.has(categoria)),
-        'A ordem deve conter cada categoria disponível uma única vez',
+      ordem: z.array(z.string()).min(categorias.length).max(categorias.length + (catalogoCanonico ? 1 : 0)).refine(
+        (ordem) => {
+          const items = catalogoCanonico ? ordem.filter((item) => item !== CATEGORIA_CHOPE_TAP_ORDEM_ID) : ordem;
+          const tapCount = catalogoCanonico ? ordem.filter((item) => item === CATEGORIA_CHOPE_TAP_ORDEM_ID).length : 0;
+          return new Set(ordem).size === ordem.length
+            && items.length === categorias.length
+            && new Set(items).size === categorias.length
+            && items.every((categoria) => categoriasDisponiveis.has(categoria))
+            && tapCount <= 1
+            && (request.operacao.tapsEnabled || tapCount === 0);
+        },
+        'A ordem deve conter cada categoria disponível uma única vez e somente abas permitidas',
       ),
     }).parse(request.body);
     const atual = await prisma.cervejaria.findUnique({
       where: { id: cervejariaId },
       select: { operacaoCategoriasOrdem: true },
     });
+    const ordemPersistida = catalogoCanonico
+      ? persistirOrdemCategoriasCanonicas(body.ordem, categorias, request.operacao.tapsEnabled, atual?.operacaoCategoriasOrdem)
+      : body.ordem;
     const preferencias = Array.isArray(atual?.operacaoCategoriasOrdem)
       ? { catalogo: atual.operacaoCategoriasOrdem }
       : atual?.operacaoCategoriasOrdem && typeof atual.operacaoCategoriasOrdem === 'object'
@@ -219,14 +233,12 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
         : {};
     const updated = await prisma.cervejaria.update({
       where: { id: cervejariaId },
-      data: { operacaoCategoriasOrdem: { ...preferencias, catalogo: body.ordem } },
+      data: { operacaoCategoriasOrdem: { ...preferencias, catalogo: ordemPersistida } },
       select: { operacaoCategoriasOrdem: true },
     });
     if (catalogoCategoriasCanonicoAtivo()) {
       const config = updated.operacaoCategoriasOrdem;
-      const raw = config && typeof config === 'object' && !Array.isArray(config) ? (config as Record<string, unknown>).catalogo : [];
-      const saved = Array.isArray(raw) ? raw.filter((name): name is string => typeof name === 'string' && categoriasDisponiveis.has(name)) : [];
-      return { ordem: [...new Set(saved), ...categorias.filter((name) => !saved.includes(name))] };
+      return { ordem: normalizarOrdemCategoriasCanonicas(config, categorias, false) };
     }
     return { ordem: normalizarOrdemCategoriasProduto(updated.operacaoCategoriasOrdem, request.operacao.tapsEnabled) };
   });

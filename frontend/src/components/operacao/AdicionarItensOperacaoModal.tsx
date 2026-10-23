@@ -32,6 +32,7 @@ type Config = {
 const IconHash = IconPackage;
 type AbaItens = string;
 const ABA_TAP_CHOPE = '__tap_chope__';
+const ORDEM_TAP_CHOPE = '__quiver_pdv_tap_chope__';
 
 export function AdicionarItensOperacaoModal({
   open,
@@ -132,13 +133,6 @@ export function AdicionarItensOperacaoModal({
     setMontagemAlterada(false);
   }, [pontoVendaId, sessaoCaixaId]);
 
-  useEffect(() => {
-    if (!open) return;
-    const disponiveis = new Set<string>(['comidas', 'bebidas', 'outros']);
-    if (tapsEnabled) disponiveis.add('chope');
-    setAba((ordemInicial.find((categoria) => disponiveis.has(categoria)) ?? 'comidas') as AbaItens);
-  }, [open, tapsEnabled, categoriasComanda?.ordem]);
-
   const produtoEhChope = produto ? isChopeOperacao(produto) : false;
   const tapsAtivas = (tapsData?.taps ?? []).filter((tap) => tap.ativo);
   const tapsDoProduto = produtoEhChope
@@ -214,14 +208,26 @@ export function AdicionarItensOperacaoModal({
     ...(tapsEnabled ? [{ id: ABA_TAP_CHOPE, label: 'Chopes' }] : []),
     ...[...produtosPorCategoria.keys()].map((category) => ({ id: category, label: category })),
   ].sort((a, b) => {
-    const priority = (tab: { id: string }) => ordemInicial.indexOf(tab.id === ABA_TAP_CHOPE
-      ? (categoriasComanda?.catalogoCanonico ? tapCategoryName?.trim() : normalizeCategoriaProduto(tapCategoryName)) ?? ''
-      : tab.id);
+    const priority = (tab: { id: string }) => {
+      if (tab.id !== ABA_TAP_CHOPE) return ordemInicial.indexOf(tab.id);
+      if (categoriasComanda?.catalogoCanonico) {
+        const savedTapPosition = ordemInicial.indexOf(ORDEM_TAP_CHOPE);
+        if (savedTapPosition >= 0) return savedTapPosition;
+      }
+      return ordemInicial.indexOf((categoriasComanda?.catalogoCanonico
+        ? tapCategoryName?.trim()
+        : normalizeCategoriaProduto(tapCategoryName)) ?? '');
+    };
     const aIndex = priority(a) < 0 ? Number.MAX_SAFE_INTEGER : priority(a);
     const bIndex = priority(b) < 0 ? Number.MAX_SAFE_INTEGER : priority(b);
     return aIndex - bIndex || a.label.localeCompare(b.label, 'pt-BR');
   });
   const abasVisiveis: { id: AbaItens; label: string }[] = categoriasComanda?.catalogoCanonico ? canonicalTabs : tabsLegacy;
+  const abasVisiveisKey = abasVisiveis.map((item) => item.id).join('\u001f');
+  useEffect(() => {
+    if (!open) return;
+    setAba(abasVisiveis[0]?.id ?? '');
+  }, [open, abasVisiveisKey]);
   const abaSelecionada = abasVisiveis.some((item) => item.id === aba) ? aba : abasVisiveis[0]?.id;
   const produtosDaAba = categoriasComanda?.catalogoCanonico
     ? produtosPorCategoria.get(abaSelecionada ?? '') ?? []
