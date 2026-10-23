@@ -1548,6 +1548,12 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
       const cancelled = await withOwnerAt(crossDay, (cookie) => app.inject({ method: 'PATCH', url: `/api/operacao/cozinha/${encodeURIComponent(order.id)}/status`, headers: { cookie }, payload: { status: 'CANCELADO' } }));
       assert.equal(cancelled.statusCode, 200, `context proof kitchen order is terminalized through the real route: ${cancelled.body}`);
     }
+    await db.sessaoCaixaOperacao.update({ where: { id: contextSessionB.id }, data: { status: 'FECHADO', fechadoEm: new Date() } });
+    const closeContextSessionA = await withOwnerAt(crossDay, (cookie) => app.inject({ method: 'POST', url: '/api/operacao/caixa/fechar', headers: { cookie }, payload: {
+      pontoVendaId: primaryPoint.id, contadoDinheiro: 0, contadoPix: 0, contadoCartaoDebito: 0, contadoCartaoCredito: 0,
+    } }));
+    assert.equal(closeContextSessionA.statusCode, 200, `cross-context fixture session is closed through the cash API after its assertions: ${closeContextSessionA.body}`);
+    assert.equal((await db.sessaoCaixaOperacao.findUniqueOrThrow({ where: { id: contextSessionA.id } })).status, 'FECHADO', 'cross-context fixture leaves no open cash session for subsequent independent scenarios');
 
     const noOccurrenceSession = await withOwnerAt('2026-11-09', async (cookie) => {
       const response = await app.inject({ method: 'POST', url: '/api/operacao/caixa/abrir', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, trocoInicial: 0, cardapioId: menuA.id } });
