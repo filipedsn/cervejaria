@@ -142,43 +142,65 @@ test.describe('Agenda operacional canônica', () => {
     await expect(page.getByTestId('caixa-contexto-ocorrencia')).toContainText('Sem ocorrência');
   });
 
-  test('legacy weekly rule requires explicit dates and keeps saving separate from resume', async ({ page }) => {
+for (const width of [390, 1280]) {
+  test(`paused legacy recurrence definition, activation, reload and Friday dates at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.clock.install({ time: new Date('2026-10-22T15:00:00Z') });
     await authenticateAsOwner(page);
-    const rule: Record<string, unknown> = { id: 'legacy-weekly', nome: 'Legacy Friday', diaSemana: 5, primeiraData: null, ultimaData: null, horaInicio: '18:00', horaFim: '20:00', local: null, ativa: false, archivedAt: null, _count: { ocorrencias: 0 } };
-    const savedBodies: Record<string, unknown>[] = []; const resumeBodies: Record<string, unknown>[] = [];
-    await page.route('**/api/operacao/agenda/ocorrencias?**', (route) => route.fulfill({ json: { agendas: [rule], ocorrencias: [] } }));
-    await page.route('**/api/operacao/agenda/agendamentos', async (route) => {
-      const body = route.request().postDataJSON() as Record<string, unknown>; savedBodies.push(body);
-      rule.primeiraData = String(body.data) + 'T00:00:00.000Z'; rule.ultimaData = String(body.fim) + 'T00:00:00.000Z';
-      return route.fulfill({ json: { agendaId: rule.id, salva: true, criadas: 0, datas: [], motivo: 'DEFINICAO_SALVA_SEM_AGENDAR' } });
+    const rule: Record<string, any> = { id: 'legacy-weekly', nome: 'Legacy Friday', diaSemana: 5, primeiraData: null, geracaoDesde: null, ultimaData: '2026-10-31T00:00:00.000Z', horaInicio: '18:00', horaFim: '20:00', local: null, ativa: false, archivedAt: null, _count: { ocorrencias: 0 } };
+    const rows: Array<Record<string, any>> = []; const updates: Record<string, unknown>[] = []; const activations: Record<string, unknown>[] = [];
+    await page.route('**/api/operacao/agenda/ocorrencias?**', (route) => route.fulfill({ json: { agendas: [rule], ocorrencias: rows } }));
+    await page.route('**/api/operacao/agenda/agendas/legacy-weekly', async (route) => {
+      const body = route.request().postDataJSON() as Record<string, unknown>; updates.push(body); Object.assign(rule, body);
+      return route.fulfill({ json: rule });
     });
-    await page.route('**/api/operacao/agenda/agendas/legacy-weekly/retomar', async (route) => {
-      resumeBodies.push(route.request().postDataJSON() as Record<string, unknown>);
-      return route.fulfill({ json: { agendaId: rule.id, salva: true, reativada: true, criadas: 2, datas: ['2026-10-23', '2026-10-30'] } });
+    await page.route('**/api/operacao/agenda/agendas/legacy-weekly/salvar-e-ativar', async (route) => {
+      const body = route.request().postDataJSON() as Record<string, unknown>; activations.push(body);
+      rule.ativa = true; rule.geracaoDesde = `${String(body.aPartirDe)}T00:00:00.000Z`;
+      const start = new Date(`${String(body.aPartirDe)}T00:00:00Z`); const end = new Date(String(body.ultimaData) + 'T00:00:00Z');
+      for (const date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) if (date.getUTCDay() === rule.diaSemana) rows.push({ id: `occ-${date.toISOString().slice(0, 10)}`, agendaId: rule.id, nome: rule.nome, data: date.toISOString().slice(0, 10), horaInicio: rule.horaInicio, horaFim: rule.horaFim, status: 'PROGRAMADA', podeEditar: true, podeCancelar: true, bloqueio: null });
+      rule._count.ocorrencias = rows.length;
+      const dates = rows.map((row) => row.data);
+      return route.fulfill({ json: { agendaId: rule.id, nome: rule.nome, salva: true, reativada: true, criadas: dates.length, datas: dates, datasCriadas: dates } });
     });
     await page.goto('/operacao/agenda');
     await page.getByRole('button', { name: /Agendamentos recorrentes/ }).click();
-    await expect(page.getByText(/Regra antiga sem limites persistidos/)).toBeVisible();
-    await page.getByRole('button', { name: /Legacy Friday/ }).click();
-    await expect(page.getByText(/limites persistidos/)).toBeVisible();
-    const firstDate = page.getByLabel('Primeira data'); const lastDate = page.locator('[role="dialog"] input[type="date"]').nth(1);
-    await expect(firstDate).toHaveValue(''); await expect(lastDate).toHaveValue('');
-    await firstDate.fill('2026-10-23'); await lastDate.fill('2026-10-31');
-    await page.getByRole('button', { name: /Salvar defini/ }).click();
-    await expect.poll(() => savedBodies.length).toBe(1);
-    expect(savedBodies[0]).toMatchObject({ agendaId: 'legacy-weekly', data: '2026-10-23', fim: '2026-10-31', gerarDatas: false });
-    await expect(page.getByRole('status').filter({ hasText: 'Regra salva' })).toBeVisible();
+    await expect(page.getByText('Pausada — nenhuma nova data será gerada')).toBeVisible();
+    await page.getByRole('button', { name: 'Editar repetição Legacy Friday' }).click();
+    await expect(page.getByText('Pausada — nenhuma nova data será gerada')).toBeVisible();
+    await expect(page.getByLabel('Dia da semana')).toHaveValue('5');
+    await expect(page.getByLabel('Gerar próximas datas a partir de')).toHaveCount(0);
+    await page.getByLabel('Nome').fill('Igarapé');
+    await page.getByLabel('Local (opcional)').fill('Bar QA');
+    await page.getByRole('button', { name: 'Salvar alterações' }).click();
+    await expect.poll(() => updates.length).toBe(1);
+    expect(updates[0]).toMatchObject({ nome: 'Igarapé', local: 'Bar QA', diaSemana: 5, ultimaData: '2026-10-31' });
+    await expect(page.getByRole('status').filter({ hasText: 'Igarapé: alterações salvas.' })).toContainText('A repetição continua pausada.');
+    await page.reload();
     await page.getByRole('button', { name: /Agendamentos recorrentes/ }).click();
-    await page.getByRole('button', { name: /Legacy Friday/ }).click();
-    await expect(page.getByLabel('Primeira data')).toHaveValue('2026-10-23');
-    await expect(page.locator('[role="dialog"] input[type="date"]').nth(1)).toHaveValue('2026-10-31');
-    await page.getByRole('dialog').getByRole('button', { name: 'Voltar' }).click();
+    await expect(page.getByText('Pausada — nenhuma nova data será gerada')).toBeVisible();
+    await page.getByRole('button', { name: 'Editar repetição Igarapé' }).click();
+    await expect(page.getByLabel('Nome')).toHaveValue('Igarapé');
+    await expect(page.getByLabel('Dia da semana')).toHaveValue('5');
+    await expect(page.getByRole('button', { name: 'Salvar e ativar' })).toBeVisible();
+    await page.getByRole('button', { name: 'Salvar e ativar' }).click();
+    const generationDate = page.getByLabel('Gerar próximas datas a partir de');
+    await expect(generationDate).toBeVisible(); await generationDate.fill('2026-10-23');
+    await page.getByRole('button', { name: 'Salvar e ativar' }).click();
+    await expect.poll(() => activations.length).toBe(1);
+    expect(activations[0]).toMatchObject({ nome: 'Igarapé', diaSemana: 5, aPartirDe: '2026-10-23', ultimaData: '2026-10-31' });
+    await expect(page.getByRole('status').filter({ hasText: 'Igarapé ativada:' })).toContainText('2 novas datas criadas');
+    await expect(page.getByRole('status').filter({ hasText: 'Igarapé ativada:' })).toContainText('2026-10-23 até 2026-10-30');
+    await page.reload();
+    await page.getByRole('button', { name: /sexta-feira, 23 de outubro, 1 agendamentos/ }).click();
+    await expect(page.getByRole('button', { name: /Igarapé Programada · Semanal/ })).toBeVisible();
+    await page.getByRole('button', { name: /sexta-feira, 30 de outubro, 1 agendamentos/ }).click();
+    await expect(page.getByRole('button', { name: /Igarapé Programada · Semanal/ })).toBeVisible();
     await page.getByRole('button', { name: /Agendamentos recorrentes/ }).click();
-    await page.getByRole('button', { name: 'Retomar e agendar datas' }).click();
-    await expect(page.getByRole('heading', { name: /Retomar repeti/ })).toBeVisible();
-    await page.getByRole('button', { name: 'Retomar e agendar datas' }).click();
-    await expect.poll(() => resumeBodies.length).toBe(1);
-    expect(resumeBodies[0]?.requestId).toBeTruthy();
-    await expect(page.getByRole('status').filter({ hasText: /retomad/ })).toBeVisible();
+    await expect(page.getByText('Ativa — próximas datas são geradas automaticamente')).toBeVisible();
+    await expect(page.getByText('2 datas no total')).toBeVisible();
+    expect(rows.map((row) => row.data)).toEqual(['2026-10-23', '2026-10-30']);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
+}
 });
